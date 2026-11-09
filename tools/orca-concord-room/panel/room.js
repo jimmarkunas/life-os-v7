@@ -5,8 +5,9 @@
   let stick = true, lastMsgs = [], me = '', sending = false, lastRoster = '', chosenByUser = false, nicks = {}, order = [], lastMessages = []
 
   const kind = (id) => id.split(':')[0]
-  const brand = (id) => ({ 'claude-code': 'claudecode', codex: 'codex', human: 'human', 'claude-chat': 'claudechat', 'chatgpt-chat': 'chatgpt' }[kind(id)] || 'other')
+  const brand = (id) => ({ 'claude-code': 'claudecode', codex: 'codex', human: 'human', 'claude-chat': 'claudechat', 'chatgpt-chat': 'chatgpt', relay: 'other' }[kind(id)] || 'other')
   const BASE = { claudecode: 'Claude Code', claudechat: 'Claude Chat', chatgpt: 'ChatGPT', codex: 'Codex', human: 'Human', other: 'Agent' }
+  const SENDER = { 'chatgpt-chat': ['chatgpt', 'ChatGPT'], 'claude-chat': ['claudechat', 'Claude Chat'] }
   // Simplified marks, drawn here (not the official artwork).
   const ICONS = {
     claude: () => { const r = [0, 45, 90, 135, 180, 225, 270, 315].map((a) => `<rect x="-1.2" y="-10.5" width="2.4" height="7.6" rx="1.2" transform="rotate(${a})"/>`).join(''); return `<svg viewBox="-12 -12 24 24" fill="#f2a65a" aria-hidden="true">${r}</svg>` },
@@ -16,12 +17,14 @@
   }
   ICONS.claudecode = ICONS.claude; ICONS.claudechat = ICONS.claude; ICONS.chatgpt = ICONS.other
   const AV = window.ROOM_AVATARS || {}
-  const icon = (id) => { const b = brand(id); return AV[b] ? `<img class="avimg" alt="" src="${AV[b]}">` : (ICONS[b] || ICONS.other)() }
+  const iconB = (b) => AV[b] ? `<img class="avimg" alt="" src="${AV[b]}">` : (ICONS[b] || ICONS.other)()
+  const icon = (id) => iconB(brand(id))
   // What an agent is called: your nickname if you gave one, else "Claude" / "Codex" / "You",
   // numbered when several of the same kind exist (in order of first appearance).
   function nameOf(id) {
     if (nicks[id]) return nicks[id]
     const b = brand(id)
+    if (kind(id) === 'relay') return 'Handoff relay'
     if (b === 'human') return id === me ? 'You' : 'Human'
     const same = order.filter((x) => brand(x) === b)
     return same.length > 1 ? `${BASE[b]} ${same.indexOf(id) + 1}` : BASE[b]
@@ -76,7 +79,7 @@
   }
 
   function renderRoster(agents) {
-    const targets = agents.filter((a) => kind(a.id) !== 'human' && a.id !== me)
+    const targets = agents.filter((a) => kind(a.id) !== 'human' && kind(a.id) !== 'relay' && a.id !== me)
     noteIds(agents.map((a) => a.id))
     const key = JSON.stringify(targets) + me + JSON.stringify(nicks) + order.join()
     if (key === lastRoster) return
@@ -134,10 +137,12 @@
         const people = await ask('concord.agents', {}, 12000)
         me = people.me; nicks = people.nicknames || {}; $('me').textContent = 'Sending as ' + nameOf(me) + ' (' + me + ')'
         noteIds(snap.messages.flatMap((m) => [m.from, m.to]))
+        rosterAgents = people.agents.filter((a) => kind(a.id) !== 'human' && kind(a.id) !== 'relay' && a.id !== me)
         renderRoster(people.agents)
       } catch (e) { /* roster is optional for reading */ }
       noteIds(snap.messages.flatMap((m) => [m.from, m.to]))
       lastMsgs = snap.messages; repoRootShown = snap.repoRoot
+      void refreshHandoffs()
       renderMessages(snap.messages)
     } catch (e) {
       setStatus('Unavailable', 'bad'); setBanner((e && e.message) || String(e))
@@ -163,6 +168,87 @@
   text.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send() } })
   toSel.addEventListener('change', () => { chosenByUser = true; updateSend() })
   sendBtn.addEventListener('click', send)
+
+
+  // ---- Handoffs: pointers from Claude Chat / ChatGPT, delivered only after Jim clicks Accept ----
+  const hoBox = $('handoffs')
+  let hoJson = '', rosterAgents = [], busyIds = new Set()
+  const STATUS_TEXT = { delivered: 'delivered', queued: 'queued, not delivered', started: 'new chat started', rejected: 'rejected', invalid: 'invalid', duplicate: 'duplicate' }
+  async function refreshHandoffs() {
+    try {
+      const out = await ask('handoff.list', {}, 12000)
+      const json = JSON.stringify(out.handoffs) + JSON.stringify(rosterAgents) + lastMsgs.map((m) => m.id + (m.receipt || m.status)).join() + JSON.stringify(nicks) + [...busyIds].join()
+      if (json === hoJson) return
+      hoJson = json; renderHandoffs(out.handoffs)
+    } catch (e) {
+      hoJson = ''
+      const msg = (e && e.message) || ''
+      if (/policy/i.test(msg)) { hoBox.className = ''; hoBox.replaceChildren(); return }   // handoffs are off: no policy file
+      hoBox.className = 'on'; const t = document.createElement('div'); t.className = 'hint'; t.textContent = 'Handoffs unavailable: ' + msg; hoBox.replaceChildren(t)
+    }
+  }
+  function targetOptions(h) {
+    const opts = []
+    if (h.target.kind === 'agent') opts.push({ v: JSON.stringify({ kind: 'agent', id: h.target.id }), t: `${nameOf(h.target.id)} (named by the sender)` })
+    else if (h.target.kind === 'new-chat') opts.push({ v: JSON.stringify({ kind: 'new-chat', agent: h.target.agent }), t: `New ${h.target.agent === 'codex' ? 'Codex' : 'Claude Code'} chat (named by the sender)` })
+    else {
+      for (const a of rosterAgents) opts.push({ v: JSON.stringify({ kind: 'agent', id: a.id }), t: `${nameOf(a.id)} (${a.state.split('/')[0]})` })
+      opts.push({ v: JSON.stringify({ kind: 'new-chat', agent: 'claude' }), t: 'New Claude Code chat in this repo' })
+      opts.push({ v: JSON.stringify({ kind: 'new-chat', agent: 'codex' }), t: 'New Codex chat in this repo' })
+      opts.unshift({ v: '', t: 'Choose where to send…' })
+    }
+    return opts
+  }
+  function renderHandoffs(list) {
+    const pending = list.filter((h) => h.status === 'pending')
+    const rest = list.filter((h) => h.status !== 'pending').slice(0, 4)
+    if (!pending.length && !rest.length) { hoBox.className = ''; hoBox.replaceChildren(); return }
+    hoBox.className = 'on'
+    const nodes = []
+    if (pending.length) { const t = document.createElement('div'); t.className = 'hint'; t.textContent = `${pending.length} handoff${pending.length > 1 ? 's' : ''} waiting for you. Nothing is sent until you accept. Synthetic local source, unsigned.`; nodes.push(t) }
+    for (const h of pending) nodes.push(handoffCard(h))
+    for (const h of rest) nodes.push(handoffDone(h))
+    hoBox.replaceChildren(...nodes)
+  }
+  function handoffCard(h) {
+    const [b, label] = SENDER[h.sender] || ['other', h.sender]
+    const el = document.createElement('div'); el.className = 'ho ' + b
+    const top = document.createElement('div'); top.className = 'top'
+    const av = document.createElement('div'); av.className = 'av'; av.innerHTML = iconB(b)
+    const who = document.createElement('div'); who.className = 'who2'; who.textContent = `${label} hands off work`
+    const key = document.createElement('span'); key.className = 'key ' + (h.jiraStatus === 'Agent Go' ? 'ok' : 'warn')
+    key.textContent = `${h.jiraKey} · ${h.jiraStatus || 'status unknown'}`; key.title = h.jiraStatus === 'Agent Go' ? 'Released for Agent Go' : 'Not released for Agent Go: the receiving agent must refuse to do work'
+    top.append(av, who, key)
+    const scope = document.createElement('div'); scope.className = 'scope'; scope.textContent = h.scope
+    const brief = document.createElement('div'); brief.className = 'brief'; brief.textContent = h.brief; brief.title = h.brief
+    const act = document.createElement('div'); act.className = 'act'
+    const sel = document.createElement('select'); sel.setAttribute('aria-label', 'Deliver to')
+    const opts = targetOptions(h)
+    for (const o of opts) { const op = document.createElement('option'); op.value = o.v; op.textContent = o.t; sel.append(op) }
+    sel.disabled = h.target.kind !== 'any'
+    const go = document.createElement('button'); go.className = 'go'; go.type = 'button'; go.textContent = 'Accept & send'
+    const no = document.createElement('button'); no.type = 'button'; no.textContent = 'Reject'
+    const note = document.createElement('div'); note.className = 'note'
+    const run = async (name, input, okText) => {
+      busyIds.add(h.id); go.disabled = no.disabled = true; note.className = 'note'; note.textContent = 'Working…'
+      try { const out = await ask(name, input, 40000); busyIds.delete(h.id); hoJson = ''; await refreshHandoffs(); return out }
+      catch (e) { busyIds.delete(h.id); go.disabled = no.disabled = false; note.className = 'note bad'; note.textContent = (e && e.message) || String(e) }
+    }
+    go.addEventListener('click', () => { if (sel.value) run('handoff.accept', { id: h.id, target: JSON.parse(sel.value) }) })
+    no.addEventListener('click', () => run('handoff.reject', { id: h.id }))
+    if (!opts.length || !sel.value) go.disabled = true
+    sel.addEventListener('change', () => { go.disabled = !sel.value })
+    act.append(sel, go, no)
+    el.append(top, scope, brief, act, note)
+    return el
+  }
+  function handoffDone(h) {
+    const el = document.createElement('div'); el.className = 'ho done'
+    const live = h.messageId ? lastMsgs.find((m) => m.id === h.messageId) : null
+    const badge = document.createElement('span'); badge.className = 'key'; badge.textContent = (STATUS_TEXT[h.status] || h.status) + (live && (live.receipt || live.status) ? ' → ' + (live.receipt || live.status) : '')
+    const text = document.createElement('span'); text.textContent = h.jiraKey ? `${h.jiraKey} — ${h.detail || ''}` : (h.detail || h.id)
+    el.append(badge, text); return el
+  }
 
   // ---- Create a Jira ticket (through Orca's own Jira connection; only on the Create click) ----
   const sheet = $('sheet'), jproject = $('jproject'), jtype = $('jtype'), jtitle = $('jtitle'), jbody = $('jbody'), jcount = $('jcount'), jlabels = $('jlabels'), jparent = $('jparent'), jcreate = $('jcreate'), jnote = $('jnote')

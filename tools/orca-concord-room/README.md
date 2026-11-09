@@ -65,3 +65,12 @@ This v0.1.0 panel is **read-only**; prompts are authored in native Orca agent ch
 ## v0.6.0: Buzz look
 
 - Agent colours and avatars match the Buzz set (Jim's decision, Nov 8 2026): Claude Code rust `#B5532F`, Claude Chat terracotta `#D97757`, ChatGPT green `#10A37F`, Codex indigo `#5B5FEF`; the humans stay blue. The avatars are Jim's own Buzz PNGs resized to 80 px and embedded in `panel/avatars.js`. Unnamed agents are called "Claude Code" / "Codex" (numbered when several), or whatever you rename them to.
+
+## v0.7.0: handoffs (local synthetic prototype, LIFE-375 / LIFE-403)
+
+- **What it is:** a handoff is a *pointer* to a Jira issue (key, scope, short brief), never an order. Handoffs appear in the room as pending cards; **nothing is sent until you click Accept**, and you choose the target (an open agent, or a new Claude Code / Codex chat in the configured repo). Reject records the refusal.
+- **Source:** a local folder (`handoffDir` setting, default `~/.concord-pilot/handoffs`) stands in for the Buzz channel. `node scripts/synthetic-handoff.mjs` writes unsigned synthetic handoffs there. No network, no Oracle, no Buzz.
+- **Policy (shaped like LIFE-403's):** `policy.json` in that folder lists allowed senders (`chatgpt-chat`, `claude-chat`), allowed targets (open agents, new `claude`/`codex` chats) and must set `requireAccept: true`. It is re-read on every call; if it is missing or malformed, every handoff is refused. Invalid, duplicate-nonce, oversized or symlinked files are reported, never trusted.
+- **Audit:** one JSON line per accept/reject in `audit.log`, without the scope or brief text.
+- **Delivery:** to an open agent as a Concord prompt from `relay:orca-room`; to a new chat with `orca agent launch --surface chat --prompt` (restricted to the configured repo). The prompt tells the receiver to check the Jira issue's release state and writer claim and to reply `REFUSED: <reason>` otherwise.
+- **Observed limit (Nov 8 2026):** a running Claude agent that received an accepted handoff as a Concord prompt did NOT act on it. It said the message came from a peer agent, not from Jim, and asked Jim to confirm in its own session. A running session therefore treats any injected message as untrusted; a *new* chat started with the handoff as its first message does not have that problem.

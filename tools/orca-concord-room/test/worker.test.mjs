@@ -1,11 +1,11 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, realpath, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, writeFile, readFile as readF, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { EventEmitter } from 'node:events'
 import { readFileSync } from 'node:fs'
-import { getMessages, validateRecords, validateExecutable, parseWho, sendMessage, callConcordTool, defaultSenderId, parseNicknames, withNickname, createJira, jiraProjects, jiraTypes } from '../worker/main.mjs'
+import { getMessages, validateRecords, validateExecutable, parseWho, sendMessage, callConcordTool, defaultSenderId, parseNicknames, withNickname, createJira, jiraProjects, jiraTypes, readPolicy, validateHandoff, listHandoffs, acceptHandoff, rejectHandoff, handoffPrompt, defaultHandoffDir } from '../worker/main.mjs'
 
 test('reads genuine CLI JSON using fixed argv, without a shell, and sorts by time', async t => {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'concord-orca-')))
@@ -191,4 +191,109 @@ test('avatars are small embedded PNGs for the four Buzz identities and the brand
   assert.ok(avatars.length < 40000)
   const html = readFileSync(new URL('../panel/index.html', import.meta.url), 'utf8')
   for (const hex of ['#b5532f', '#d97757', '#10a37f', '#5b5fef']) assert.ok(html.includes(hex), hex)
+})
+
+const GOOD_POLICY = { senders: ['chatgpt-chat', 'claude-chat'], targets: { agents: true, newChat: ['claude', 'codex'] }, requireAccept: true }
+const handoff = (over = {}) => ({ id: 'hf-aaaaaaaa', sender: 'chatgpt-chat', jiraKey: 'LIFE-411', scope: 'Check status', brief: 'SECRET-BRIEF-TEXT read the Jira issue', nonce: 'nonce-aaaaaaaa', createdAt: '2026-11-09T03:00:00Z', target: { kind: 'any' }, ...over })
+const hdeps = { jiraStatus: async () => 'To Do' }
+async function folder(policy = GOOD_POLICY) {
+  const dir = await realpath(await mkdtemp(path.join(tmpdir(), 'concord-handoffs-')))
+  if (policy !== null) await writeFile(path.join(dir, 'policy.json'), typeof policy === 'string' ? policy : JSON.stringify(policy))
+  return dir
+}
+const put = (dir, h) => writeFile(path.join(dir, `${h.id}.json`), typeof h === 'string' ? h : JSON.stringify(h))
+
+test('handoffs fail closed without a valid policy', async t => {
+  const none = await folder(null)
+  const bad1 = await folder({ ...GOOD_POLICY, requireAccept: false })
+  const bad2 = await folder({ ...GOOD_POLICY, senders: ['someone-else'] })
+  const bad3 = await folder('not json')
+  t.after(() => Promise.all([none, bad1, bad2, bad3].map(d => rm(d, { recursive: true, force: true }))))
+  for (const d of [none, bad1, bad2, bad3]) await assert.rejects(listHandoffs(d, hdeps), /policy/)
+  assert.throws(() => defaultHandoffDir('relative/path'), /absolute/)
+})
+
+test('handoff list reports invalid, duplicate and non-plain files instead of trusting them', async t => {
+  const dir = await folder()
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  await put(dir, handoff())
+  await put(dir, handoff({ id: 'hf-bbbbbbbb', nonce: 'nonce-aaaaaaaa', createdAt: '2026-11-09T03:05:00Z' }))
+  await put(dir, handoff({ id: 'hf-cccccccc', sender: 'random-bot' }))
+  await put(dir, handoff({ id: 'hf-dddddddd', jiraKey: 'nope' }))
+  await put(dir, handoff({ id: 'hf-eeeeeeee', target: { kind: 'new-chat', agent: 'rm' } }))
+  await writeFile(path.join(dir, 'hf-ffffffff.json'), JSON.stringify(handoff({ id: 'hf-zzzzzzzz', nonce: 'nonce-ffffffff' })))
+  await writeFile(path.join(dir, 'hf-gggggggg.json'), '{broken')
+  await symlink(path.join(dir, 'hf-aaaaaaaa.json'), path.join(dir, 'hf-hhhhhhhh.json'))
+  const { handoffs } = await listHandoffs(dir, hdeps)
+  const by = Object.fromEntries(handoffs.map(h => [h.id, h]))
+  assert.equal(by['hf-aaaaaaaa'].status, 'pending')
+  assert.equal(by['hf-aaaaaaaa'].jiraStatus, 'To Do')
+  assert.equal(by['hf-bbbbbbbb'].status, 'duplicate')
+  for (const id of ['hf-cccccccc', 'hf-dddddddd', 'hf-eeeeeeee', 'hf-ffffffff', 'hf-gggggggg', 'hf-hhhhhhhh']) assert.equal(by[id].status, 'invalid', id)
+  assert.throws(() => validateHandoff(handoff({ id: 'hf-aaaaaaaa' }), 'hf-other-name', { senders: new Set(['chatgpt-chat']), newChat: new Set(), agents: true }), /does not match/)
+})
+
+test('accept delivers to an open agent as the relay, with the guard text, and writes state and a text-free audit line', async t => {
+  const dir = await folder()
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  await put(dir, handoff())
+  let sent
+  const send = async (input) => { sent = input; return { delivery: 'delivered', status: 'sent', messageId: 'msg-123' } }
+  const out = await acceptHandoff({ handoffDir: dir, repoRoot: '/r', executable: 'concord', id: 'hf-aaaaaaaa', target: { kind: 'agent', id: 'claude-code:f6958fb5' } }, { ...hdeps, send })
+  assert.equal(out.status, 'delivered')
+  assert.equal((await listHandoffs(dir, hdeps)).handoffs.find(h => h.id === 'hf-aaaaaaaa').messageId, 'msg-123')
+  assert.equal(sent.senderId, 'relay:orca-room')
+  assert.equal(sent.to, 'claude-code:f6958fb5')
+  assert.match(sent.content, /pointer, not an order/)
+  assert.match(sent.content, /LIFE-411/)
+  assert.match(sent.content, /REFUSED/)
+  const audit = await readF(path.join(dir, 'audit.log'), 'utf8')
+  assert.match(audit, /"op":"accept"/); assert.match(audit, /"outcome":"delivered"/)
+  assert.equal(audit.includes('SECRET-BRIEF-TEXT'), false)
+  await assert.rejects(acceptHandoff({ handoffDir: dir, repoRoot: '/r', executable: 'concord', id: 'hf-aaaaaaaa', target: { kind: 'agent', id: 'claude-code:f6958fb5' } }, { ...hdeps, send }), /already delivered/)
+})
+
+test('accept reports queued, not delivered, when Concord only queued it', async t => {
+  const dir = await folder()
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  await put(dir, handoff())
+  const out = await acceptHandoff({ handoffDir: dir, repoRoot: '/r', executable: 'concord', id: 'hf-aaaaaaaa', target: { kind: 'agent', id: 'codex:23408389' } }, { ...hdeps, send: async () => ({ delivery: 'queued_pull', status: 'sent' }) })
+  assert.equal(out.status, 'queued')
+  assert.match(out.detail, /not delivered yet/)
+})
+
+test('a handoff that names its target cannot be redirected, and "any" needs a choice', async t => {
+  const dir = await folder()
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  await put(dir, handoff({ target: { kind: 'agent', id: 'claude-code:f6958fb5' } }))
+  await assert.rejects(acceptHandoff({ handoffDir: dir, repoRoot: '/r', executable: 'concord', id: 'hf-aaaaaaaa', target: { kind: 'agent', id: 'codex:23408389' } }, { ...hdeps, send: async () => { throw Error('must not send') } }), /cannot be redirected/)
+  await put(dir, handoff({ id: 'hf-bbbbbbbb', nonce: 'nonce-bbbbbbbb' }))
+  await assert.rejects(acceptHandoff({ handoffDir: dir, repoRoot: '/r', executable: 'concord', id: 'hf-bbbbbbbb', target: {} }, { ...hdeps, send: async () => { throw Error('must not send') } }), /Choose where/)
+})
+
+test('new chat launches only in the configured repo and only for kinds the policy allows', async t => {
+  const dir = await folder({ ...GOOD_POLICY, targets: { agents: true, newChat: ['claude'] } })
+  const repo = await realpath(await mkdtemp(path.join(tmpdir(), 'concord-repo-')))
+  await mkdir(path.join(repo, '.concord'))
+  t.after(() => Promise.all([dir, repo].map(d => rm(d, { recursive: true, force: true }))))
+  await put(dir, handoff())
+  let seen
+  const launch = async (a) => { seen = a; return 'new claude chat x (prompt journaled)' }
+  await assert.rejects(acceptHandoff({ handoffDir: dir, repoRoot: repo, executable: 'concord', id: 'hf-aaaaaaaa', target: { kind: 'new-chat', agent: 'codex' } }, { ...hdeps, launch }), /does not allow/)
+  assert.equal(seen, undefined)
+  const out = await acceptHandoff({ handoffDir: dir, repoRoot: repo, executable: 'concord', id: 'hf-aaaaaaaa', target: { kind: 'new-chat', agent: 'claude' } }, { ...hdeps, launch })
+  assert.equal(out.status, 'started')
+  assert.equal(seen.agent, 'claude'); assert.equal(seen.worktreeRoot, repo); assert.match(seen.prompt, /pointer, not an order/)
+  await assert.rejects(acceptHandoff({ handoffDir: dir, repoRoot: '/nonexistent', executable: 'concord', id: 'hf-aaaaaaaa', target: { kind: 'new-chat', agent: 'claude' } }, { ...hdeps, launch }), /already started|does not exist/)
+})
+
+test('reject records state, audits, and blocks any later accept', async t => {
+  const dir = await folder()
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  await put(dir, handoff())
+  assert.equal((await rejectHandoff({ handoffDir: dir, id: 'hf-aaaaaaaa' }, hdeps)).status, 'rejected')
+  await assert.rejects(rejectHandoff({ handoffDir: dir, id: 'hf-aaaaaaaa' }, hdeps), /already rejected/)
+  await assert.rejects(acceptHandoff({ handoffDir: dir, repoRoot: '/r', executable: 'concord', id: 'hf-aaaaaaaa', target: { kind: 'agent', id: 'claude-code:f6958fb5' } }, { ...hdeps, send: async () => { throw Error('must not send') } }), /already rejected/)
+  assert.match(await readF(path.join(dir, 'audit.log'), 'utf8'), /"op":"reject"/)
+  assert.match(handoffPrompt({ id: 'hf-1', sender: 'claude-chat', jiraKey: 'LIFE-1', scope: 's', brief: 'b' }), /Claude Chat/)
 })

@@ -90,6 +90,27 @@
   #sheet button.primary { background: #2f6fe0; border-color: #2f6fe0; color: #fff; }
   #sheet button:disabled { opacity: .5; cursor: default; }
   #sheet .warn { font-size: 11px; color: var(--warn); }
+  #handoffs { display: none; flex: none; max-height: 42%; overflow-y: auto; padding: 8px 12px; border-bottom: 1px solid var(--line); gap: 8px; flex-direction: column; background: color-mix(in srgb, var(--warn) 6%, var(--bg)); }
+  #handoffs.on { display: flex; }
+  .ho { --c: var(--other); border: 1px solid color-mix(in srgb, var(--c) 55%, var(--bg)); border-radius: 12px; padding: 8px 10px; background: var(--card); display: flex; flex-direction: column; gap: 5px; }
+  .ho.claudechat { --c: var(--claudechat); } .ho.chatgpt { --c: var(--chatgpt); }
+  .ho .top { display: flex; align-items: center; gap: 8px; }
+  .ho .top .av { width: 22px; height: 22px; }
+  .ho .who2 { font-weight: 600; font-size: 12px; flex: 1; min-width: 0; }
+  .ho .key { font-size: 11px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line); }
+  .ho .key.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 55%, var(--bg)); }
+  .ho .key.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 55%, var(--bg)); }
+  .ho .scope { font-size: 12px; font-weight: 600; }
+  .ho .brief { font-size: 12px; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+  .ho .act { display: flex; gap: 6px; align-items: center; }
+  .ho select { flex: 1; min-width: 0; font: inherit; font-size: 12px; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 4px 6px; }
+  .ho button { font: inherit; font-size: 12px; border-radius: 8px; padding: 4px 10px; border: 1px solid var(--line); background: var(--card); color: var(--fg); cursor: pointer; }
+  .ho button.go { background: #2f6fe0; border-color: #2f6fe0; color: #fff; }
+  .ho button:disabled { opacity: .5; cursor: default; }
+  .ho .note { font-size: 11px; color: var(--muted); } .ho .note.bad { color: var(--bad); }
+  .ho.done .key { white-space: nowrap; flex: none; }
+  .ho.done { padding: 4px 10px; flex-direction: row; align-items: center; gap: 8px; font-size: 11.5px; color: var(--muted); }
+  #handoffs .hint { font-size: 11px; color: var(--muted); }
   #jnote { font-size: 12px; min-height: 0; } #jnote.ok { color: var(--ok); } #jnote.bad { color: var(--bad); }
 </style>
 </head>
@@ -99,6 +120,7 @@
     <div id="chips"></div>
     <div id="banner"></div>
   </header>
+  <div id="handoffs" aria-label="Handoffs waiting for you"></div>
   <div id="wrap">
     <div id="messages"><div class="empty" id="empty">Connecting to Concord…</div></div>
     <button id="jump" type="button">New messages ↓</button>

@@ -3,7 +3,7 @@
   "execution": "trusted-worker",
   "id": "concord-room",
   "name": "Concord Room",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Live Concord message room inside Orca (right sidebar or a center tab): shows real agent messages, lets you message present agents, and can create a Jira ticket from the conversation through Orca's Jira connection.",
   "engines": {
     "orca": ">=1.4.248"
@@ -47,6 +47,13 @@
         "description": "Click an agent's name in the Concord Room to rename it. Stored here as JSON.",
         "type": "string",
         "default": "{}"
+      },
+      {
+        "key": "handoffDir",
+        "title": "Handoff folder (absolute path, optional)",
+        "description": "Where the local synthetic handoff source and its policy.json live. Blank uses ~/.concord-pilot/handoffs. Handoffs are refused unless policy.json is valid.",
+        "type": "string",
+        "default": ""
       }
     ],
     "customEditors": [
