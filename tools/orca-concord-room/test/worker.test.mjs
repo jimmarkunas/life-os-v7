@@ -5,6 +5,9 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { EventEmitter } from 'node:events'
 import { readFileSync } from 'node:fs'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
+const execFileAsync = promisify(execFile)
 import { getMessages, validateRecords, validateExecutable, parseWho, sendMessage, callConcordTool, defaultSenderId, parseNicknames, withNickname, jiraIssues, jiraIssue, linkedJira, linkJira, unlinkJira, jiraChatPrompt, startJiraChat, readPolicy, validateHandoff, listHandoffs, acceptHandoff, rejectHandoff, handoffPrompt, defaultHandoffDir, terminalAgents, handoffLine, typeIntoTerminal, launchChat, roomAgentPrompt, startRoomAgent, parseHidden, withHidden, terminalHandleFrom, reachOf, getReach, getSummaries, wakeLine, wakeAgent } from '../worker/main.mjs'
 
 test('reads genuine CLI JSON using fixed argv, without a shell, and sorts by time', async t => {
@@ -634,19 +637,21 @@ test('the panel and worker are wired for reach, terminal waking and the join pro
 
 // concord-setup-safe.sh: Concord 0.20.0's `setup` rewrote the real ~/.codex/config.toml, so the wrapper backs up the user-level
 // configs, runs setup, and reports (exit 1) any change with the exact restore command. Tested with a fake `concord` and a fake HOME.
-async function runSetupSafe(t, fakeConcordBody) {
+async function runSetupSafe(t, fakeConcordBody, { noCodex = false } = {}) {
   const { spawnSync } = await import('node:child_process')
   const { chmod, readFile } = await import('node:fs/promises')
   const home = await realpath(await mkdtemp(path.join(tmpdir(), 'concord-setup-')))
   t.after(() => rm(home, { recursive: true, force: true }))
   await mkdir(path.join(home, '.codex')); await mkdir(path.join(home, '.claude')); await mkdir(path.join(home, 'bin'))
   const original = 'model = "x"\n# >>> concord hooks >>>\n[[hooks.Stop]]\n# <<< concord hooks <<<\n'
-  await writeFile(path.join(home, '.codex', 'config.toml'), original)
+  if (!noCodex) await writeFile(path.join(home, '.codex', 'config.toml'), original)
   await writeFile(path.join(home, '.claude', 'settings.json'), '{}\n')
   await writeFile(path.join(home, 'bin', 'concord'), `#!/usr/bin/env bash\n${fakeConcordBody}\n`)
   await chmod(path.join(home, 'bin', 'concord'), 0o755)
   const script = new URL('../scripts/concord-setup-safe.sh', import.meta.url).pathname
-  const run = spawnSync('bash', [script, '--no-adapters'], { env: { ...process.env, HOME: home, PATH: `${path.join(home, 'bin')}:${process.env.PATH}` }, encoding: 'utf8' })
+  const env = { ...process.env, HOME: home, PATH: `${path.join(home, 'bin')}:${process.env.PATH}` }
+  delete env.XDG_STATE_HOME                           // the script honours it; these tests are about the HOME default
+  const run = spawnSync('bash', [script, '--no-adapters'], { env, encoding: 'utf8' })
   return { run, home, original, readFile }
 }
 
@@ -663,6 +668,18 @@ test('concord-setup-safe.sh reports a user-level config change, prints the resto
   assert.equal(await readFile(backup, 'utf8'), original)                // and the backup is the pre-setup file
 })
 
+test('concord-setup-safe.sh keeps backups outside the Concord install dir, and reports a config that setup created from nothing', async t => {
+  const made = await runSetupSafe(t, 'echo "model = 1" > "$HOME/.codex/config.toml"', { noCodex: true })
+  assert.equal(made.run.status, 1, made.run.stdout + made.run.stderr)
+  assert.match(made.run.stdout, /CREATED by concord setup: .*\.codex\/config\.toml \(it did not exist before/)
+  assert.match(made.run.stdout, /To undo: rm '.*config\.toml'/)
+  assert.doesNotMatch(made.run.stdout, /configs are unchanged/)
+  const quiet = await runSetupSafe(t, 'echo ok')
+  const where = /backups in (\S+)\)/.exec(quiet.run.stdout)[1]
+  assert.match(where, /\/\.local\/state\/concord-room\/setup-backups\//)
+  assert.doesNotMatch(where, /\.local\/share\/concord/)
+})
+
 test('concord-setup-safe.sh exits 0 and says so when setup leaves the user-level configs alone, and fails when setup fails', async t => {
   const quiet = await runSetupSafe(t, 'echo ok')
   assert.equal(quiet.run.status, 0, quiet.run.stdout + quiet.run.stderr)
@@ -673,7 +690,7 @@ test('concord-setup-safe.sh exits 0 and says so when setup leaves the user-level
 
 // ---- council (Orca orchestration as the harness) ----
 import * as council from '../worker/council.mjs'
-import { councilOrca, councilContext } from '../worker/main.mjs'
+import { councilOrca, councilContext, gitSnapshot } from '../worker/main.mjs'
 
 /** A fake Orca: scripted per-command replies, every call recorded. */
 function fakeOrca(script) {
@@ -741,7 +758,7 @@ test('council: a question is one send per member and its task id joins the answe
   const { ctx, calls } = await councilCtx(t, { ...UP, 'orchestration send': () => ({ taskId: 'task_q1', delivery: 'follow_up' }), 'orchestration inbox': () => inbox })
   const m = await council.startMember(ctx, { agent: 'claude' })
   const sent = await council.askMembers(ctx, { ids: [m.id], text: '  Is the plan sound?  ', from: 'human:jim' })
-  assert.deepEqual(sent, [{ id: m.id, taskId: 'task_q1', delivery: 'follow_up' }])
+  assert.deepEqual(sent, [{ id: m.id, taskId: 'task_q1', messageId: null, queued: false, delivery: 'follow_up' }])
   const send = calls.find((c) => c[1] === 'send')
   assert.equal(send[send.indexOf('--to') + 1], 'dispatch:ctx_abcdef123456')
   assert.match(send[send.indexOf('--body') + 1], /^From jim: Is the plan sound\?/)
@@ -823,6 +840,92 @@ test('council runner: failures name the Orca command and never leak a stack; JSO
   assert.deepEqual(await ok(['terminal', 'list']), { ok: true })
 })
 
+test('council member questions: shown with an Answer, answered through orchestration reply once, never for a released member', async t => {
+  const inbox = { messages: [] }
+  const { ctx, calls } = await councilCtx(t, { ...UP, 'orchestration send': () => ({ taskId: 'task_ask1', delivery: 'follow_up' }), 'orchestration inbox': () => inbox, 'orchestration reply': { ok: true } })
+  const m = await council.startMember(ctx, { agent: 'claude' })
+  const sentQ = await council.askMembers(ctx, { ids: [m.id], text: 'Look at the repo', from: 'human:jim' })
+  // Orca sends a member's question from the dispatch it made for the task, not from the member's worker handle: the task id joins it
+  inbox.messages = [{ id: 'msg_q1', type: 'question', from_handle: 'dispatch:ctx_other999', body: 'Which repo should I read?', payload: JSON.stringify({ taskId: sentQ[0].taskId, dispatchId: 'ctx_other999' }) }]
+  await council.syncCouncil(ctx)
+  let msgs = council.councilMessages(await council.loadState(ctx.stateFile, ctx.repoRoot))
+  const asked = msgs.find((x) => x.id === 'council-a-msg_q1')
+  assert.equal(asked.ask, true); assert.equal(asked.answered, false)
+  await assert.rejects(council.answerMember(ctx, { messageId: 'msg_nope', text: 'x', from: 'human:jim' }), /not a question/)
+  await assert.rejects(council.answerMember(ctx, { messageId: 'msg_q1', text: '  ', from: 'human:jim' }), /Type your answer/)
+  await council.answerMember(ctx, { messageId: 'msg_q1', text: 'The pilot repo.', from: 'human:jim' })
+  const reply = calls.find((c) => c[1] === 'reply')
+  assert.equal(reply[reply.indexOf('--id') + 1], 'msg_q1')
+  assert.equal(reply[reply.indexOf('--body') + 1], 'The pilot repo.')
+  assert.equal(reply[reply.indexOf('--from') + 1], 'term_coord')
+  msgs = council.councilMessages(await council.loadState(ctx.stateFile, ctx.repoRoot))
+  assert.equal(msgs.find((x) => x.id === 'council-a-msg_q1').answered, true)
+  assert.ok(msgs.some((x) => x.to === m.id && x.content === 'The pilot repo.'), 'your answer shows in the room')
+  await assert.rejects(council.answerMember(ctx, { messageId: 'msg_q1', text: 'again', from: 'human:jim' }), /already answered/)
+  inbox.messages = [{ id: 'msg_q2', type: 'question', from_handle: 'term_worker1', body: 'And now?', payload: '{}' }, ...inbox.messages]
+  await council.syncCouncil(ctx)
+  await council.releaseMember(ctx, m.id)
+  await assert.rejects(council.answerMember(ctx, { messageId: 'msg_q2', text: 'late', from: 'human:jim' }), /released/)
+})
+
+/** A ctx whose repo snapshot is whatever `snap.now` says, so a test can change "files" between a question and its answer. */
+async function watchCtx(t, snap) {
+  const inbox = { messages: [] }
+  const { ctx, calls } = await councilCtx(t, { ...UP, 'orchestration send': () => ({ taskId: 'task_q1', delivery: 'follow_up' }), 'orchestration inbox': () => inbox })
+  ctx.snapshot = async () => { if (snap.fail) throw new Error('git broke'); return { ...snap.now } }
+  const m = await council.startMember(ctx, { agent: 'claude' })
+  return { ctx, calls, inbox, m }
+}
+const answerFor = (id) => ({ id, type: 'worker_done', from_handle: 'term_worker1', body: 'Answer.', payload: JSON.stringify({ taskId: 'task_q1' }) })
+
+test('read-only watch: a file that changed while a member was answering is flagged, once, with the honest caveat', async t => {
+  const snap = { now: { 'a.txt': 'M :1:1' } }
+  const { ctx, inbox, m } = await watchCtx(t, snap)
+  await council.askMembers(ctx, { ids: [m.id], text: 'q', from: 'human:jim' })
+  snap.now = { 'a.txt': 'M :2:5', 'new.txt': '??:3:9' }
+  inbox.messages = [answerFor('m2')]
+  await council.syncCouncil(ctx)
+  const notes = council.councilMessages(await council.loadState(ctx.stateFile, ctx.repoRoot)).filter((x) => x.from === 'relay:council')
+  assert.equal(notes.length, 1)
+  assert.match(notes[0].content, /Heads up: 2 files in this repository changed while Claude council member was answering \(a\.txt, new\.txt\)/)
+  assert.match(notes[0].content, /could also be you/)
+  assert.equal(council.changedBetween({ a: '1' }, { a: '1' }).length, 0)
+  assert.deepEqual(council.changedBetween({ a: '1', b: '2' }, { b: '3', c: '4' }), ['a', 'b', 'c'])
+})
+
+test('read-only watch: no change, no snapshot, or a failing snapshot means no warning and never an error', async t => {
+  for (const mode of ['same', 'throws', 'none']) {
+    const snap = { now: { 'a.txt': 'M :1:1' } }
+    const { ctx, inbox, m } = await watchCtx(t, snap)
+    if (mode === 'throws') snap.fail = true
+    if (mode === 'none') delete ctx.snapshot
+    await council.askMembers(ctx, { ids: [m.id], text: 'q', from: 'human:jim' })
+    inbox.messages = [answerFor('m2')]
+    await council.syncCouncil(ctx)
+    const msgs = council.councilMessages(await council.loadState(ctx.stateFile, ctx.repoRoot))
+    assert.ok(!msgs.some((x) => x.from === 'relay:council'), mode)
+    assert.ok(msgs.some((x) => x.id === 'council-a-m2'), `${mode}: the answer still shows`)
+  }
+})
+
+test('gitSnapshot lists changed and new files with a signature that moves when the file does; a non-repo gives nothing', async t => {
+  const dir = await realpath(await mkdtemp(path.join(tmpdir(), 'snap-')))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const run = (...a) => execFileAsync('git', ['-C', dir, ...a])
+  await run('init', '-q'); await writeFile(path.join(dir, 'a.txt'), 'one')
+  await run('add', 'a.txt'); await run('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'x')
+  assert.deepEqual(await gitSnapshot(dir), {})
+  await writeFile(path.join(dir, 'a.txt'), 'changed longer'); await writeFile(path.join(dir, 'b.txt'), 'new')
+  const one = await gitSnapshot(dir)
+  assert.deepEqual(Object.keys(one).sort(), ['a.txt', 'b.txt'])
+  await writeFile(path.join(dir, 'a.txt'), 'changed again, longer still')
+  const two = await gitSnapshot(dir)
+  assert.deepEqual(council.changedBetween(one, two), ['a.txt'])
+  const plain = await realpath(await mkdtemp(path.join(tmpdir(), 'nogit-')))
+  t.after(() => rm(plain, { recursive: true, force: true }))
+  assert.deepEqual(await gitSnapshot(plain), {})
+})
+
 test('council is wired through the worker and the panel, and ids pass the room validators', async () => {
   const worker = readFileSync(new URL('../worker/main.mjs', import.meta.url), 'utf8')
   const js = readFileSync(new URL('../panel/room.js', import.meta.url), 'utf8')
@@ -834,6 +937,10 @@ test('council is wired through the worker and the panel, and ids pass the room v
   assert.match(js, /council\.start/)
   assert.match(js, /council\.release/)
   assert.match(js, /council\.round/)
+  assert.match(worker, /handle\('council\.reply'/)
+  assert.match(js, /council\.reply/)
+  assert.match(js, /startAnswering/)
+  assert.match(html, /id="answering"/)
   assert.match(html, /id="rounds"/)
   assert.match(js, /'council-claude': 'claudecode'/)
   assert.match(html, /data-surface="council"/)
@@ -896,6 +1003,27 @@ test('council round: answers are relayed to the other member, then the round fin
   const shown = council.councilMessages(state).filter((m) => m.from === 'human:jim')
   assert.ok(shown.some((m) => /^Round 2: relayed 1 other answer/.test(m.content)), 'the relay is shown in the room as a short, honest line')
   assert.ok(!shown.some((m) => /Codex council member:/.test(m.content)), 'the relayed text is not replayed as if you wrote it')
+})
+
+test('council: a member that is mid-task takes the message into that task (no new task id): shown as queued, its answer still shows, and a round waits for it', async t => {
+  let n = 0
+  const { ctx, calls, inbox, a, b, done } = await roundSetup(t, { 'orchestration send': (args) => { n += 1; return args[args.indexOf('--to') + 1].endsWith('member2xxxxxxxx') ? { messageId: `msg_busy${n}` } : { taskId: `task_s${n}`, delivery: 'follow_up' } } })
+  const sent = await council.askMembers(ctx, { ids: [b.id], text: 'busy question', from: 'human:jim' })
+  assert.deepEqual([sent[0].taskId, sent[0].queued, sent[0].messageId], [null, true, 'msg_busy1'])
+  inbox.messages = [done('m9', 'term_worker2', 'Late but here.', 'task_boot2')]       // answers under its old task id
+  await council.syncCouncil(ctx)
+  const msgs = council.councilMessages(await council.loadState(ctx.stateFile, ctx.repoRoot))
+  assert.equal(msgs.find((x) => x.id === 'council-q-msg_busy1').receipt, 'queued: it was still working')
+  assert.ok(msgs.some((x) => x.id === 'council-a-m9' && /Late but here/.test(x.content)))
+  // a round where one member is busy still completes: the queued member's answer counts by member
+  await council.startRound(ctx, { ids: [a.id, b.id], text: 'round q', from: 'human:jim', followups: 1 })
+  const open = (await council.loadState(ctx.stateFile, ctx.repoRoot)).rounds[0].pending
+  const aTask = Object.keys(open).find((k) => !k.startsWith('queued:'))
+  assert.ok(Object.keys(open).some((k) => k.startsWith('queued:')), 'the busy member is waited for by member, not task')
+  inbox.messages = [done('m11', 'term_worker2', 'B answer', 'task_boot2'), done('m10', 'term_worker1', 'A answer', aTask)]
+  await council.syncCouncil(ctx)
+  const state = await council.loadState(ctx.stateFile, ctx.repoRoot)
+  assert.equal(state.rounds[0].done, 1, 'both answered, so the relay went out')
 })
 
 test('council round: needs two members and a sane follow-up count; a released member drops out and the round ends early with a note', async t => {
