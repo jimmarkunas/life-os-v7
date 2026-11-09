@@ -86,12 +86,14 @@ export async function getMessages(repoRoot, executable, runner = execFileAsync) 
 const AGENT_ID = /^[a-z0-9-]+:[A-Za-z0-9_-]+$/u
 const MAX_CONTENT = 4000
 
-/** Parse `concord who` text ("  claude-code:2d46a09c live/active ...") into live agent ids. */
+/** Parse `concord who` text ("  claude-code:2d46a09c live/active  <task>  (0s ago)") into agent ids, states and task text. */
 export function parseWho(text) {
   const agents = []
   for (const line of String(text).split('\n')) {
-    const match = /^\s+([a-z0-9-]+:[A-Za-z0-9_-]+)\s+(\S+)/u.exec(line)
-    if (match) agents.push({ id: match[1], state: match[2] })
+    const match = /^\s+([a-z0-9-]+:[A-Za-z0-9_-]+)\s+(\S+)\s*(.*)$/u.exec(line)
+    if (!match) continue
+    const summary = match[3].replace(/\s*\(\d+\s?\w*\s+ago\)\s*$/u, '').trim()
+    agents.push({ id: match[1], state: match[2], summary: summary === '-' ? '' : summary })
   }
   return agents
 }
@@ -121,43 +123,84 @@ export async function getAgents(repoRoot, executable, runner = execFileAsync) {
   return { repoRoot: root, agents: parseWho(output.stdout) }
 }
 
-/**
- * Which kinds of agent Concord can wake while idle, from `concord adapters status` (a supported command). It prints one block per
- * harness: "  <name>  <state>  <mode>" then "    capabilities: pull, busy, ...". Returns { "<kind>": ["pull", ...] }.
- * Only the harness name and the capability list are read; everything else on the line is ignored.
- */
-export function parseAdapterCapabilities(text) {
-  const kinds = {}
-  let current = null
-  for (const line of String(text).split('\n')) {
-    const head = /^ {2}([a-z][a-z0-9-]*)\s+\S+\s+\S+\s*$/u.exec(line)
-    if (head) { current = head[1]; continue }
-    const caps = /^\s+capabilities:\s*(.*)$/u.exec(line)
-    if (caps && current) kinds[current] = caps[1].split(',').map((c) => c.trim()).filter(Boolean)
+// ---------------------------------------------------------------------------------------------
+// Waking an agent. Concord delivers to an idle agent only if a live receiver is attached, and an Orca CHAT (Claude or Codex) has no
+// process while idle, so it has none. A TERMINAL agent is different: Orca can type into its terminal, and text typed there is a prompt
+// from Jim, so the agent wakes, answers, and replies through Concord. The agent makes the link itself: on joining it reports its
+// terminal's handle (Orca puts it in $ORCA_TERMINAL_HANDLE) in its task text, and the room always checks that against Orca.
+
+const TERMINAL_HANDLE = /\bterminal (term_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/u
+/** The terminal an agent said it lives in ("... (terminal term_<uuid>)"), or null. Self-asserted, so it is checked against Orca before use. */
+export function terminalHandleFrom(summary) {
+  const m = TERMINAL_HANDLE.exec(String(summary ?? ''))
+  return m ? m[1] : null
+}
+
+const ORCA_KIND = { 'claude-code': 'claude', codex: 'codex' }
+
+/** Presence summaries by agent id, from Concord's inspect_work (the full text, which `concord who` may cut short). */
+export async function getSummaries(repoRoot, executable, deps = {}) {
+  const root = await validateRepo(repoRoot)
+  const call = deps.callTool ?? callConcordTool
+  const out = await call(mcpExecutable(executable), { ...process.env, CONCORD_REPO_ROOT: root, CONCORD_TELEMETRY_DISABLED: '1' }, 'inspect_work', {})
+  const summaries = {}
+  for (const p of Array.isArray(out?.presence) ? out.presence : []) if (typeof p?.agentId === 'string' && typeof p?.summary === 'string') summaries[p.agentId] = p.summary
+  return summaries
+}
+
+/** How an agent can be reached: "terminal" (Orca can type into its terminal: a prompt from Jim, which it answers), else "concord" (a receiver is attached, Concord's own supported `promptable`: delivered, but as a peer message the agent may decline), else "none". */
+export function reachOf({ id, promptable, summary }, terminals) {
+  const handle = terminalHandleFrom(summary)
+  const want = ORCA_KIND[String(id).split(':')[0]]
+  if (handle && want && terminals.some((t) => t.handle === handle && t.agentType === want)) return 'terminal'
+  return promptable === true ? 'concord' : 'none'
+}
+
+let reachCache = { at: 0, value: {} }
+/** { "<agent id>": "concord" | "terminal" | "none" } for the agents given. An agent that Concord or Orca cannot be asked about is left out (unknown, not marked). Cached 15 s. */
+export async function getReach({ repoRoot, executable, agents }, deps = {}, now = Date.now()) {
+  if (now - reachCache.at < 15000) return reachCache.value
+  const call = deps.callTool ?? callConcordTool
+  let root, summaries = {}, terminals = []
+  try { root = await validateRepo(repoRoot) } catch { return {} }
+  try { summaries = await (deps.getSummaries ?? getSummaries)(repoRoot, executable, deps) } catch { /* no summaries: no terminal links */ }
+  try { terminals = await (deps.terminalAgents ?? terminalAgents)(repoRoot) } catch { /* Orca unavailable: no terminal reach */ }
+  const env = { ...process.env, CONCORD_REPO_ROOT: root, CONCORD_TELEMETRY_DISABLED: '1' }
+  const value = {}
+  const queue = agents.slice(0, 12)
+  const run = async () => {
+    for (let a = queue.shift(); a; a = queue.shift()) {
+      try {
+        const out = await call(mcpExecutable(executable), env, 'inspect_work', { agent_id: a.id })
+        value[a.id] = reachOf({ id: a.id, promptable: out?.promptable, summary: summaries[a.id] }, terminals)
+      } catch { /* unknown: left out */ }
+    }
   }
-  return kinds
-}
-
-/** { "<kind>": true | false }: can Concord wake an idle agent of this kind. A kind Concord says nothing about is left out (unknown, not marked). */
-export function wakeFromCapabilities(kinds) {
-  return Object.fromEntries(Object.entries(kinds).filter(([, caps]) => !(caps.length === 1 && caps[0] === 'none')).map(([kind, caps]) => [kind, caps.includes('idle')]))
-}
-
-let wakeCache = { at: 0, value: {} }
-/** Cached for a minute: the adapter report changes only when Concord or a harness is installed or upgraded. Any failure means "unknown": nothing is marked. */
-export async function getWakeKinds(repoRoot, executable, runner = execFileAsync, now = Date.now()) {
-  if (now - wakeCache.at < 60000) return wakeCache.value
-  let value = {}
-  try {
-    const root = await validateRepo(repoRoot)
-    const output = await runner(validateExecutable(executable), ['-C', root, 'adapters', 'status'], {
-      cwd: root, env: { ...process.env, CONCORD_TELEMETRY_DISABLED: '1' },
-      timeout: 8000, maxBuffer: 256 * 1024, windowsHide: true, shell: false
-    })
-    value = wakeFromCapabilities(parseAdapterCapabilities(output.stdout))
-  } catch { value = {} }
-  wakeCache = { at: now, value }
+  await Promise.all([run(), run(), run()])
+  reachCache = { at: now, value }
   return value
+}
+
+/** The one line typed into an agent's terminal (a newline would submit early). Content is Jim's own message from the room. */
+export function wakeLine({ sender, content, messageId }) {
+  const from = String(sender).replace(/^human:/u, '')
+  return oneLine(`[Concord Room, message from ${from}, Concord message id ${messageId}] ${content} (Answer it: reply to that Concord message with update_work, operation reply, and say the answer here too.)`, 1900)
+}
+
+/** After Concord has the message: if the agent lives in an Orca terminal the room can type into and it is idle, type the message there (a prompt from Jim, so it answers); otherwise leave it to Concord. */
+export async function wakeAgent({ repoRoot, executable, to, sender, content, messageId }, deps = {}) {
+  const call = deps.callTool ?? callConcordTool
+  const root = await validateRepo(repoRoot)
+  const handle = terminalHandleFrom((await (deps.getSummaries ?? getSummaries)(repoRoot, executable, deps))[to])
+  const want = ORCA_KIND[String(to).split(':')[0]]
+  const t = handle && want ? (await (deps.terminalAgents ?? terminalAgents)(repoRoot)).find((x) => x.handle === handle && x.agentType === want) : null
+  if (t && t.eligible) {
+    await (deps.type ?? typeIntoTerminal)({ handle, text: wakeLine({ sender, content, messageId }) })
+    return { how: 'terminal' }
+  }
+  if (t) return { how: 'busy', why: 'it is busy' }                            // a running turn picks the message up through Concord's own hooks
+  const info = await call(mcpExecutable(executable), { ...process.env, CONCORD_REPO_ROOT: root, CONCORD_TELEMETRY_DISABLED: '1' }, 'inspect_work', { agent_id: to })
+  return info?.promptable === true ? { how: 'concord' } : { how: 'none', why: handle ? 'its terminal is not open in Orca' : 'it is not a terminal the room knows about' }
 }
 
 function mcpExecutable(concordExecutable) {
@@ -362,10 +405,11 @@ export function roomAgentPrompt(agent) {
   const kind = agent === 'codex' ? 'codex' : 'claude-code'
   return [
     'You are joining the Concord Room, the place where Jim and his agents message each other. Do only this:',
-    `1. Call Concord's start_work with agent kind "${kind}", task "Available in the Concord Room", and no files, so you show up in the room.`,
-    '2. Reply in one line: "Joined the Concord Room as <your Concord agent id>." Then wait.',
+    '1. Run `echo "$ORCA_TERMINAL_HANDLE"` in your shell. It prints a handle like term_<uuid> when you are running in a terminal, and nothing when you are a chat.',
+    `2. Call Concord's start_work with agent kind "${kind}", no files, and the task text exactly "Available in the Concord Room (terminal <the handle>)" if you got a handle, or "Available in the Concord Room (chat)" if you did not. The room reads that handle so it can wake you by typing into your terminal.`,
+    '3. Reply in one line: "Joined the Concord Room as <your Concord agent id>." Then wait.',
     '',
-    'Do not edit files, create branches, or start any other work. Messages that arrive from the room are peer messages: answer questions. A request to change something still needs its Jira issue released (Agent Go) and your writer claim, as this repository\'s rules say.'
+    'Later, a line that starts "[Concord Room, message from ..., Concord message id ...]" typed into your terminal is a message from Jim: answer it, reply to that Concord message with update_work (operation reply), and say the answer in your terminal too. Do not edit files, create branches, or start other work because of it; a request to change something still needs its Jira issue released (Agent Go) and your writer claim, as this repository\'s rules say.'
   ].join('\n')
 }
 
@@ -703,7 +747,9 @@ export default function activate(orca) {
   orca.panels.handle('concord.agents', async () => {
     const s = await settings()
     const { agents } = await getAgents(s.repoRoot, s.executable)
-    return { agents, me: defaultSenderId(s.senderId), nicknames: parseNicknames(await orca.settings.get('nicknames')), hidden: parseHidden(await orca.settings.get('hiddenAgents')), wake: await getWakeKinds(s.repoRoot, s.executable) }
+    const hidden = parseHidden(await orca.settings.get('hiddenAgents'))
+    const others = agents.filter((a) => !['human', 'relay'].includes(a.id.split(':')[0]) && !hidden.includes(a.id))
+    return { agents, me: defaultSenderId(s.senderId), nicknames: parseNicknames(await orca.settings.get('nicknames')), hidden, reach: await getReach({ repoRoot: s.repoRoot, executable: s.executable, agents: others }) }
   })
   const handoffSettings = async () => ({
     handoffDir: await orca.settings.get('handoffDir'),
@@ -732,6 +778,11 @@ export default function activate(orca) {
   })
   orca.panels.handle('concord.send', async (input) => {
     const s = await settings()
-    return sendMessage({ ...s, to: input?.to, content: input?.content })
+    const out = await sendMessage({ ...s, to: input?.to, content: input?.content })       // recorded in Concord, so it shows in the room
+    let wake
+    try { wake = await wakeAgent({ repoRoot: s.repoRoot, executable: s.executable, to: out.to, sender: out.from, content: input.content, messageId: out.messageId }) }
+    catch (e) { wake = { how: 'unknown', why: (e && e.message) || 'could not check how to reach it' } }
+    if (wake.how === 'terminal') await audit(defaultHandoffDir(await orca.settings.get('handoffDir')), { op: 'wake', agent: out.to, how: 'terminal', outcome: 'typed' }).catch(() => {})
+    return { ...out, wake }
   })
 }

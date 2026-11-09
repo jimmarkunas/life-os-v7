@@ -3,7 +3,7 @@
   "execution": "trusted-worker",
   "id": "concord-room",
   "name": "Concord Room",
-  "version": "0.12.1",
+  "version": "0.13.0",
   "description": "Live Concord message room inside Orca (right sidebar or a center tab): shows real agent messages, lets you message present agents, shows handoffs waiting for your Accept, and pulls Jira issues in the way Orca's own Tasks view does.",
   "engines": {
     "orca": ">=1.4.248"
