@@ -239,6 +239,12 @@ test('editor tab and sidebar panel share one page and script, with no inline scr
   const manifest = JSON.parse(readFileSync(new URL('../orca-plugin.json', import.meta.url), 'utf8'))
   assert.equal(manifest.contributes.customEditors[0].entry, 'editor/main.ts')
   assert.deepEqual(manifest.capabilities, [{ kind: 'settings:own' }])
+  // The + menu entry: one new-file kind that opens in the room editor, with a template that exists.
+  const [newFile] = manifest.contributes.newFiles
+  assert.equal(manifest.contributes.newFiles.length, 1)
+  assert.equal(newFile.title, 'Concord Room')
+  assert.ok(manifest.contributes.customEditors[0].extensions.includes(newFile.extension))
+  assert.ok(readFileSync(new URL(`../${newFile.template}`, import.meta.url), 'utf8').length > 0)
 })
 
 test('avatars are small embedded PNGs for the four Buzz identities and the brand colours match Buzz', () => {

@@ -100,3 +100,7 @@ This v0.1.0 panel is **read-only**; prompts are authored in native Orca agent ch
 ## v0.9.2: crisper avatar edges
 
 - Measured on a real screenshot: the avatar is drawn at exactly 52x52 device pixels (1:1, no browser rescaling) and the logo edges are about one pixel soft, which is the limit for a 26 px circle. The fuzzy look came from (1) a dark 2 px ring around the circle, a second soft step between the page and the avatar, now removed, and (2) a resampling filter (Lanczos) that adds ringing halos, replaced by exact area averaging (520 px canvas to 52 px is exactly 10x, the 512 px original to 32 px is exactly 16x).
+
+## v0.10.0: Concord Room in the + menu
+
+- The tab bar **+** menu and the command palette now have a **Concord Room** entry (Orca's own `contributes.newFiles`, as the plugin-authoring guide describes). It creates an untitled `.concord-room` file in the active workspace, which opens in the center column in the room editor. Opening an existing `.concord-room` file still works. No new access: the approval is for the same worker and settings, but a new version always needs a new approval when installed.
