@@ -120,6 +120,17 @@ This v0.1.0 panel is **read-only**; prompts are authored in native Orca agent ch
 - **Remove an agent from the room:** each agent chip has an **x**. It hides the agent from the room, the **To** box, the **@** list, **@everyone** and handoff targets, and says so. It does not stop the agent, and messages already sent stay in the history. A **N removed · show** link shows the hidden ones dimmed, each with a bring-back button. Stored as a list of agent ids in the new `hiddenAgents` setting (same `settings:own` access; no new capability).
 - Helpers for @mentions are in `panel/mentions.js` (pure, no DOM), unit-tested in a Node `vm`; the panel and the center-tab editor both load it before `room.js`.
 
+## v0.14.0: council members (Orca's own orchestration as the harness)
+
+The room is now the coordinator, the way a shell was when this was proven by hand. **＋ Agent → Council member** starts a kept-open Claude or Codex worker with `orca orchestration worker-start --keep-open`. Your message to it goes out as `orchestration send`; Orca wakes the worker even when its chat was idle, and its answer comes back as a `worker_done` in the Run's mailbox, which the room reads with `orchestration inbox` and shows as a normal reply. No Concord receiver, no terminal typing, no private Orca RPC. Concord stays for claims, overlap warnings and handoff evidence; a council member also registers in Concord, and the room shows it once, as the member.
+
+- **State** lives in `<handoffDir>/council.json` (coordinator terminal, Run id, members, the question/answer log). It is a cache of what Orca holds; deleting it only forgets the room's view.
+- **Coordinator tab.** Orca insists the coordinator is a terminal and types its “you have an orchestration message” line there, so the room opens one silent terminal titled “Concord Room council (leave alone)” in this repository and reuses it. Closing it ends the council's Run: members are marked released and a new one is made on the next start.
+- **×** on a council member releases it (`worker-release`): its chat stays open in Orca as an ordinary chat.
+- **Permissions.** Members are told to answer read-only and one `worker_done` per question. They run with the same Orca agent permissions as any chat you start, so that is an instruction, not a lock.
+- **If a member ends a turn without reporting**, Orca sends an escalation; the room reads the answer from the member's chat (`worker-read`) and marks it as unreported.
+- **Not yet:** a member's own questions (`ask`) are shown but cannot be answered from the room.
+
 ## v0.13.0: message an agent and it answers (the room wakes it through its terminal)
 
 - **The problem:** Concord delivers to an idle agent only while a live receiver is attached to its session. A **Claude chat** gets one from Concord's own hooks (a Stop hook arms a "rewake" waiter) and answers an idle message within seconds, but only while Orca keeps that chat's session running: in the pilot a working chat's receiver disappeared about 31 minutes after its last turn, and a room-launched chat's about 33 minutes after its last turn, and each turn restarts that clock. A **Codex chat** never gets one. And even when Concord delivers to a listening Claude, it arrives as an untrusted *peer* message that the agent may decline. Buzz solves this with a resident harness (`buzz-acp`) that starts the agent's turn on every @mention; this version covers the cases Concord cannot with Orca's own terminal API.
