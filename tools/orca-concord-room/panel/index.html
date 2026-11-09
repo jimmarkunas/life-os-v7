@@ -102,6 +102,9 @@
   #amenu button { display: block; width: 100%; font: inherit; font-size: 12.5px; color: var(--fg); background: none; border: 0; border-radius: 7px; padding: 6px 8px; cursor: pointer; text-align: left; }
   #amenu button:hover { background: var(--card); } #amenu button:disabled { opacity: .5; cursor: default; }
   #amenu .hint { font-size: 11px; color: var(--muted); padding: 6px 8px 4px; border-top: 1px solid var(--line); margin-top: 4px; line-height: 1.35; }
+  #repowarn, #startwarn { margin: 4px 10px; padding: 6px 10px; border-radius: 8px; font-size: 12px; background: rgba(255,170,0,.14); border: 1px solid rgba(255,170,0,.4); }
+  #repowarn[hidden], #startwarn[hidden] { display: none; }
+  .repotag { font-size: 10.5px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 0 6px; margin-left: 4px; }
   .cfields { display: flex; gap: 6px; margin: 4px 8px; }
   .cfields input { flex: 1; min-width: 0; }
   #hosheet { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.55); align-items: center; justify-content: center; padding: 16px; z-index: 6; }
@@ -196,6 +199,8 @@
       <select id="ceffort" aria-label="Council member reasoning effort"><option value="">Effort: default</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option><option value="xhigh">xhigh</option><option value="max">max</option></select></div>
     <div class="hint">Starts in this room's repository and joins the room. It waits for you and does not edit files. A terminal agent answers when you message it: the room types your message into its terminal. A Claude chat answers while its session is still running; Orca ends an idle chat after a while, and after that it only sees a message when it next acts. A Codex chat is never woken when idle. A council member is started by this room through Orca’s own orchestration: your message goes out as a send and its answer comes back from the mailbox, even when it was idle, for Claude and for Codex. It is told to answer read-only; it runs with the same Orca agent permissions as any chat you start, so treat that as an instruction, not a lock. Its coordinator tab “Concord Room council (leave alone)” must stay open. Claude may first ask you to accept “Bypass Permissions” in its terminal tab; only you can do that.</div>
   </div>
+  <div id="repowarn" role="status" hidden></div>
+  <div id="startwarn" role="status" hidden></div>
   <div id="handoffs" aria-label="Handoffs waiting for you"></div>
   <div id="jiractx" aria-label="Jira issues pulled into this room"></div>
   <div id="wrap">

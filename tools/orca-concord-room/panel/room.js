@@ -70,6 +70,8 @@
     ho.hidden = !(String(m.id).startsWith('council-a-') && String(m.from).startsWith('council-') && !m.ask)
     ho.onclick = () => openHandoff(m)
     el.querySelector('.from').textContent = nameOf(m.from)
+    let tag = el.querySelector('.repotag')
+    if (m.repo) { if (!tag) { tag = document.createElement('span'); tag.className = 'repotag'; el.querySelector('.who').append(tag) } tag.textContent = m.repo; tag.title = 'Conversation from the repository ' + m.repo }
     el.querySelector('.to').textContent = '→ ' + nameOf(m.to)
     el.title = `${m.from} → ${m.to}\n${m.id}`
     const st = el.querySelector('.st')
@@ -191,8 +193,11 @@
     try {
       const snap = await ask('concord.messages', {}, 12000)
       setBanner(''); setStatus('Live', 'ok'); $('status').title = snap.repoRoot
+      const rw = $('repowarn'); const errs = snap.repoErrors || []
+      rw.hidden = errs.length === 0; rw.textContent = errs.map((e) => `${e.repo}: ${e.error} The other repositories still show.`).join(' ')
       try {
         const people = await ask('concord.agents', {}, 12000)
+        { const sw = $('startwarn'); const ws = people.warnings || []; sw.hidden = ws.length === 0; sw.textContent = ws.map((w) => w.text).join(' ') }
         me = people.me; nicks = people.nicknames || {}; hidden = people.hidden || []; reach = people.reach || {}; $('me').textContent = 'Sending as ' + nameOf(me) + ' (' + me + ')'
         noteIds(snap.messages.flatMap((m) => [m.from, m.to]))
         rosterAgents = people.agents.filter((a) => kind(a.id) !== 'human' && kind(a.id) !== 'relay' && a.id !== me && !hidden.includes(a.id))

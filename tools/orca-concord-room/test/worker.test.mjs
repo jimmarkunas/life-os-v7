@@ -1018,6 +1018,79 @@ test('Jira send to council: never implement, only council members, at least one'
   await assert.rejects(sendJiraToCouncil({ ...base, ids: ['claude-code:abc'], template: 'review' }, deps), /at least one council member/)
 })
 
+// ---- LIFE-415 repo allow-list, LIFE-414 not-joined warning ----
+import { parseRepos, repoLabels, getAllMessages, pendingStarts, loadStarts } from '../worker/main.mjs'
+
+test('repo allow-list: only absolute, unique paths from a JSON list, at most six; anything else is ignored', () => {
+  assert.deepEqual(parseRepos('["/a/x"," /a/y ","/a/x","rel/path",5,null]'), ['/a/x', '/a/y'])
+  assert.deepEqual(parseRepos('not json'), []); assert.deepEqual(parseRepos(''), []); assert.deepEqual(parseRepos('{"a":1}'), [])
+  assert.equal(parseRepos(JSON.stringify(Array.from({ length: 12 }, (_, i) => `/r/${i}`))).length, 6)
+  assert.deepEqual(repoLabels(['/Users/j/life-os-v7', '/Users/j/pilot']), ['life-os-v7', 'pilot'])
+  assert.deepEqual(repoLabels(['/Users/j/a/app', '/Users/j/b/app']), ['a/app', 'b/app'])
+})
+
+const fakeGet = (stores) => async (root) => {
+  fakeGet.calls.push(root)
+  const s = stores[root]
+  if (!s) throw new Error(`No Concord workspace (.concord) in ${root}.`)
+  return { repoRoot: root, messages: s }
+}
+fakeGet.calls = []
+const msg = (id, at) => ({ id, from: 'claude-code:a', to: 'human:jim', content: id, at, status: 'sent', replyTo: null, receipt: null })
+
+test('repo allow-list: no extras leaves the feed exactly as before; extras are merged, each tagged with its repository', async () => {
+  fakeGet.calls.length = 0
+  const get = fakeGet({ '/m/main': [msg('m1', '2026-11-09T10:00:00Z')], '/m/other': [msg('o1', '2026-11-09T11:00:00Z')] })
+  const plain = await getAllMessages({ repoRoot: '/m/main', executable: 'concord', extraRepos: '[]' }, { getMessages: get })
+  assert.deepEqual(plain, { repoRoot: '/m/main', messages: [msg('m1', '2026-11-09T10:00:00Z')] }, 'no repo tags, no repoErrors when nothing is enrolled')
+  const both = await getAllMessages({ repoRoot: '/m/main', executable: 'concord', extraRepos: '["/m/other"]' }, { getMessages: get, now: () => 1 })
+  assert.deepEqual(both.messages.map((m) => [m.id, m.repo]), [['m1', 'main'], ['o1', 'other']])
+  assert.deepEqual(both.repoErrors, [])
+})
+
+test('repo allow-list: a repository that is not listed is never read, and one unreadable repository is reported while the others keep working', async () => {
+  fakeGet.calls.length = 0
+  const get = fakeGet({ '/n/main': [msg('m1', '2026-11-09T10:00:00Z')], '/n/ok': [msg('k1', '2026-11-09T11:00:00Z')], '/n/secret': [msg('s1', '2026-11-09T12:00:00Z')] })
+  const out = await getAllMessages({ repoRoot: '/n/main', executable: 'concord', extraRepos: '["/n/ok","/n/broken"]' }, { getMessages: get, now: () => 1 })
+  assert.ok(!fakeGet.calls.includes('/n/secret'), 'a repo that is not enrolled is never even asked')
+  assert.deepEqual(out.messages.map((m) => m.id).sort(), ['k1', 'm1'])
+  assert.equal(out.repoErrors.length, 1); assert.equal(out.repoErrors[0].repo, 'broken'); assert.match(out.repoErrors[0].error, /No Concord workspace/)
+  // the main repository failing does not hide the others, and the failure is reported
+  const mainDown = await getAllMessages({ repoRoot: '/n/missing', executable: 'concord', extraRepos: '["/n/ok"]' }, { getMessages: get, now: () => 2 })
+  assert.deepEqual(mainDown.messages.map((m) => m.id), ['k1']); assert.equal(mainDown.repoErrors[0].repo, 'missing')
+  // nothing readable at all is still a plain failure, never a healthy empty feed
+  await assert.rejects(getAllMessages({ repoRoot: '/n/missing', executable: 'concord', extraRepos: '["/n/broken"]' }, { getMessages: get, now: () => 3 }), /No Concord workspace/)
+})
+
+test('repo allow-list: extra repositories are read at most every five seconds', async () => {
+  fakeGet.calls.length = 0
+  const get = fakeGet({ '/c/main': [], '/c/extra': [msg('e1', '2026-11-09T11:00:00Z')] })
+  const args = { repoRoot: '/c/main', executable: 'concord', extraRepos: '["/c/extra"]' }
+  await getAllMessages(args, { getMessages: get, now: () => 1000 })
+  await getAllMessages(args, { getMessages: get, now: () => 3000 })
+  assert.equal(fakeGet.calls.filter((r) => r === '/c/extra').length, 1)
+  await getAllMessages(args, { getMessages: get, now: () => 7000 })
+  assert.equal(fakeGet.calls.filter((r) => r === '/c/extra').length, 2)
+})
+
+test('not-joined warning: silent while starting, then names the usual cause; a new agent of the same kind means it joined', () => {
+  const start = { at: 1_000_000, kind: 'claude-code', surface: 'chat', before: ['claude-code:old'] }
+  assert.deepEqual(pendingStarts([start], [{ id: 'claude-code:old' }], 1_000_000 + 30_000), { keep: [start], warnings: [] })
+  const late = pendingStarts([start], [{ id: 'claude-code:old' }, { id: 'codex:x' }], 1_000_000 + 61_000)
+  assert.equal(late.warnings.length, 1); assert.match(late.warnings[0].text, /Claude Code chat started at .* has not registered with Concord yet/); assert.match(late.warnings[0].text, /concord: command not found/)
+  assert.deepEqual(pendingStarts([start], [{ id: 'claude-code:old' }, { id: 'claude-code:new' }], 1_000_000 + 90_000), { keep: [], warnings: [] })
+  assert.deepEqual(pendingStarts([start], [], 1_000_000 + 31 * 60_000), { keep: [], warnings: [] }, 'forgotten after half an hour')
+})
+
+test('not-joined warning: an agent started from the room is recorded with who was already there', async t => {
+  const dir = await realpath(await mkdtemp(path.join(tmpdir(), 'starts-')))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const repo = path.join(dir, 'repo'); await mkdir(path.join(repo, '.concord'), { recursive: true })
+  const out = await startRoomAgent({ agent: 'codex', surface: 'terminal', repoRoot: repo, handoffDir: path.join(dir, 'h') }, { launch: async () => 'started', agents: async () => [{ id: 'codex:before1' }, { id: 'claude-code:other' }], now: () => 42 })
+  assert.equal(out.agent, 'codex')
+  assert.deepEqual(await loadStarts(path.join(dir, 'h')), [{ at: 42, kind: 'codex', surface: 'terminal', before: ['codex:before1'] }])
+})
+
 test('council is wired through the worker and the panel, and ids pass the room validators', async () => {
   const worker = readFileSync(new URL('../worker/main.mjs', import.meta.url), 'utf8')
   const js = readFileSync(new URL('../panel/room.js', import.meta.url), 'utf8')
@@ -1032,6 +1105,9 @@ test('council is wired through the worker and the panel, and ids pass the room v
   assert.match(worker, /handle\('council\.reply'/)
   assert.match(js, /council\.reply/)
   assert.match(js, /startAnswering/)
+  assert.match(html, /id="repowarn"/); assert.match(html, /id="startwarn"/); assert.match(js, /repoErrors/); assert.match(js, /people\.warnings/); assert.match(js, /repotag/)
+  assert.match(worker, /getAllMessages\(\{ repoRoot: s\.repoRoot/); assert.match(worker, /get\('extraRepos'\)/)
+  assert.ok(JSON.parse(readFileSync(new URL('../orca-plugin.json', import.meta.url), 'utf8')).contributes.settings.some((x) => x.key === 'extraRepos'))
   assert.match(worker, /handle\('jira\.sendCouncil'/); assert.match(js, /jira\.sendCouncil/); assert.match(js, /Send to council/)
   assert.match(worker, /handle\('council\.handoff'/)
   assert.match(js, /council\.handoff/); assert.match(js, /openHandoff/)
