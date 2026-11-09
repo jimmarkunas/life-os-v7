@@ -649,7 +649,9 @@ async function runSetupSafe(t, fakeConcordBody, { noCodex = false } = {}) {
   await writeFile(path.join(home, 'bin', 'concord'), `#!/usr/bin/env bash\n${fakeConcordBody}\n`)
   await chmod(path.join(home, 'bin', 'concord'), 0o755)
   const script = new URL('../scripts/concord-setup-safe.sh', import.meta.url).pathname
-  const run = spawnSync('bash', [script, '--no-adapters'], { env: { ...process.env, HOME: home, PATH: `${path.join(home, 'bin')}:${process.env.PATH}` }, encoding: 'utf8' })
+  const env = { ...process.env, HOME: home, PATH: `${path.join(home, 'bin')}:${process.env.PATH}` }
+  delete env.XDG_STATE_HOME                           // the script honours it; these tests are about the HOME default
+  const run = spawnSync('bash', [script, '--no-adapters'], { env, encoding: 'utf8' })
   return { run, home, original, readFile }
 }
 
