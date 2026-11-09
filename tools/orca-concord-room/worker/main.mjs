@@ -451,6 +451,95 @@ export async function sendJiraToCouncil(input, deps = {}) {
   return { key: issue.key, sent: sent.map((x) => ({ id: x.id, queued: x.queued })) }
 }
 
+// ---------------------------------------------------------------------------------------------
+// LIFE-415: conversations from more than one repository. An EXPLICIT allow-list (the extraRepos setting):
+// a repository that is not listed is never read, each message carries its repository's name, and one
+// unreadable repository is reported while the others keep working.
+// ---------------------------------------------------------------------------------------------
+export const MAX_EXTRA_REPOS = 6
+const EXTRA_CACHE_MS = 5000
+const extraCache = new Map()
+
+export function parseRepos(raw) {
+  let parsed
+  try { parsed = typeof raw === 'string' && raw.trim() ? JSON.parse(raw) : [] } catch { parsed = [] }
+  if (!Array.isArray(parsed)) return []
+  return [...new Set(parsed.filter((p) => typeof p === 'string' && path.isAbsolute(p.trim())).map((p) => p.trim()))].slice(0, MAX_EXTRA_REPOS)
+}
+
+/** A short unique name per repository: its folder name, with the parent folder added when two share one. */
+export function repoLabels(roots) {
+  const base = (r) => path.basename(r) || r
+  const count = new Map()
+  for (const r of roots) count.set(base(r), (count.get(base(r)) ?? 0) + 1)
+  return roots.map((r) => (count.get(base(r)) > 1 ? `${path.basename(path.dirname(r))}/${base(r)}` : base(r)))
+}
+
+/** The main repository's messages plus each allow-listed repository's, each tagged with its repository. */
+export async function getAllMessages({ repoRoot, executable, extraRepos }, deps = {}) {
+  const get = deps.getMessages ?? getMessages
+  const now = deps.now ?? Date.now
+  const extras = parseRepos(extraRepos)
+  const main = await get(repoRoot, executable).then((v) => ({ v }), (e) => ({ e }))
+  if (extras.length === 0) { if (main.e) throw main.e; return main.v }
+  const mainRoot = main.v?.repoRoot ?? repoRoot
+  const roots = [mainRoot, ...extras.filter((x) => x !== mainRoot)]
+  const labels = repoLabels(roots)
+  const settled = await Promise.all(roots.slice(1).map(async (root) => {
+    const hit = extraCache.get(root)
+    if (hit && now() - hit.at < EXTRA_CACHE_MS) return hit.r
+    const r = await get(root, executable).then((v) => ({ v }), (e) => ({ e }))
+    extraCache.set(root, { at: now(), r })
+    return r
+  }))
+  const repoErrors = []
+  const messages = []
+  if (main.e) repoErrors.push({ repo: labels[0], error: String(main.e.message ?? main.e) })
+  else for (const m of main.v.messages ?? []) messages.push({ ...m, repo: labels[0] })
+  settled.forEach((r, i) => {
+    const label = labels[i + 1]
+    if (r.e) repoErrors.push({ repo: label, error: String(r.e.message ?? r.e) })
+    else for (const m of r.v.messages ?? []) messages.push({ ...m, repo: label })
+  })
+  if (main.e && messages.length === 0 && repoErrors.length === roots.length) throw main.e      // nothing could be read at all
+  return { ...(main.v ?? { repoRoot: mainRoot }), messages, repoErrors }
+}
+
+// ---------------------------------------------------------------------------------------------
+// LIFE-414: an agent started from the room that never registers with Concord (for example because
+// `concord` is not on its PATH) must be reported, not silently absent.
+// ---------------------------------------------------------------------------------------------
+const STARTS_FILE = 'room-starts.json'
+const START_WARN_AFTER_MS = 60 * 1000
+const START_FORGET_AFTER_MS = 30 * 60 * 1000
+const kindOfAgent = (agent) => (agent === 'codex' ? 'codex' : 'claude-code')
+
+export async function loadStarts(dirSetting) {
+  try {
+    const list = JSON.parse(await readFile(path.join(defaultHandoffDir(dirSetting), STARTS_FILE), 'utf8'))
+    return Array.isArray(list) ? list.filter((e) => e && typeof e.at === 'number' && typeof e.kind === 'string' && Array.isArray(e.before)).slice(-20) : []
+  } catch { return [] }
+}
+async function saveStarts(dirSetting, list) {
+  const dir = defaultHandoffDir(dirSetting)
+  await mkdir(dir, { recursive: true })
+  await writeFile(path.join(dir, STARTS_FILE), JSON.stringify(list.slice(-20)), { mode: 0o600 })
+}
+export async function recordStart(dirSetting, entry) { await saveStarts(dirSetting, [...await loadStarts(dirSetting), entry]) }
+
+/** Which room-started agents have not shown up in Concord yet: a new id of the same kind appearing means it joined. */
+export function pendingStarts(starts, agents, nowMs) {
+  const joined = [], waiting = [], warnings = []
+  for (const e of starts) {
+    const age = nowMs - e.at
+    if (age > START_FORGET_AFTER_MS) continue
+    if (agents.some((a) => a.id.split(':')[0] === e.kind && !e.before.includes(a.id))) { joined.push(e); continue }
+    waiting.push(e)
+    if (age >= START_WARN_AFTER_MS) warnings.push({ kind: e.kind, surface: e.surface, at: e.at, text: `${e.kind === 'codex' ? 'Codex' : 'Claude Code'} ${e.surface} started at ${new Date(e.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} has not registered with Concord yet. The usual cause is that concord is not on that agent's PATH ("concord: command not found") or its Concord tools did not load; it may also still be starting. Open it and check.` })
+  }
+  return { keep: waiting, warnings }
+}
+
 /** First message of an agent started from the room's "Agent" menu: join the room, then wait. It carries no task and no authority. */
 export function roomAgentPrompt(agent) {
   const kind = agent === 'codex' ? 'codex' : 'claude-code'
@@ -469,7 +558,9 @@ export async function startRoomAgent(input, deps = {}) {
   if (!['claude', 'codex'].includes(input.agent)) fail('invalid_params', 'Choose Claude Code or Codex.')
   if (!['chat', 'terminal'].includes(input.surface)) fail('invalid_params', 'Choose chat or terminal.')
   const root = await validateRepo(input.repoRoot)
+  const before = await (deps.agents ?? (async () => (await getAgents(root, input.executable)).agents))().then((a) => a.map((x) => x.id).filter((id) => id.split(':')[0] === kindOfAgent(input.agent)), () => null)
   const detail = await (deps.launch ?? launchChat)({ agent: input.agent, worktreeRoot: root, prompt: roomAgentPrompt(input.agent), surface: input.surface })
+  if (before) await recordStart(input.handoffDir, { at: (deps.now ?? Date.now)(), kind: kindOfAgent(input.agent), surface: input.surface, before }).catch(() => {})
   await audit(defaultHandoffDir(input.handoffDir), { op: 'agent-start', agent: input.agent, surface: input.surface, outcome: 'started' })
   return { agent: input.agent, surface: input.surface, detail }
 }
@@ -802,7 +893,7 @@ export default function activate(orca) {
   const councilCtx = async () => { const c = await handoffSettings(); return councilContext({ repoRoot: c.repoRoot, handoffDir: c.handoffDir }) }
   orca.panels.handle('concord.messages', async () => {
     const s = await settings()
-    const concord = await getMessages(s.repoRoot, s.executable)
+    const concord = await getAllMessages({ repoRoot: s.repoRoot, executable: s.executable, extraRepos: await orca.settings.get('extraRepos') })
     try {                                                     // the council's answers come from Orca's mailbox; a failure here must not hide the room
       const ctx = await councilCtx()
       await syncOnce(ctx)
@@ -826,7 +917,13 @@ export default function activate(orca) {
     const others = found.filter((a) => !['human', 'relay'].includes(a.id.split(':')[0]) && !hidden.includes(a.id) && !dup.includes(a.id))
     const reach = await getReach({ repoRoot: s.repoRoot, executable: s.executable, agents: others })
     for (const m of members) reach[m.id] = 'council'
-    return { agents, me: defaultSenderId(s.senderId), nicknames: parseNicknames(await orca.settings.get('nicknames')), hidden, reach }
+    let warnings = []
+    try {                                                     // agents started here that never registered with Concord
+      const dirSetting = await orca.settings.get('handoffDir')
+      const starts = await loadStarts(dirSetting)
+      if (starts.length) { const r = pendingStarts(starts, found, Date.now()); warnings = r.warnings; if (r.keep.length !== starts.length) await saveStarts(dirSetting, r.keep) }
+    } catch { /* the warning is optional */ }
+    return { agents, me: defaultSenderId(s.senderId), nicknames: parseNicknames(await orca.settings.get('nicknames')), hidden, reach, warnings }
   })
   const handoffSettings = async () => ({
     handoffDir: await orca.settings.get('handoffDir'),
@@ -846,7 +943,7 @@ export default function activate(orca) {
     return sendJiraToCouncil({ key: input?.key, ids: input?.ids, template: input?.template, from: defaultSenderId((await settings()).senderId), repoRoot: c.repoRoot, handoffDir: c.handoffDir })
   })
   orca.panels.handle('jira.startChat', async (input) => { const c = await handoffSettings(); return startJiraChat({ key: input?.key, agent: input?.agent, template: input?.template, repoRoot: c.repoRoot, handoffDir: c.handoffDir }) })
-  orca.panels.handle('agent.start', async (input) => { const c = await handoffSettings(); return startRoomAgent({ agent: input?.agent, surface: input?.surface, repoRoot: c.repoRoot, handoffDir: c.handoffDir }) })
+  orca.panels.handle('agent.start', async (input) => { const c = await handoffSettings(); return startRoomAgent({ agent: input?.agent, surface: input?.surface, repoRoot: c.repoRoot, handoffDir: c.handoffDir, executable: c.executable }) })
   orca.panels.handle('council.start', async (input) => council.startMember(await councilCtx(), { agent: input?.agent, model: input?.model, effort: input?.effort }))
   orca.panels.handle('council.round', async (input) => {      // one question to several members, then the room relays their answers to each other
     const from = defaultSenderId((await settings()).senderId)
