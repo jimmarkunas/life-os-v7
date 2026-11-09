@@ -79,6 +79,7 @@
   .chip.gone { opacity: .55; border-style: dashed; }
   .linklike { background: none; border: 0; color: var(--muted); font: inherit; font-size: 11px; cursor: pointer; padding: 3px 0 0; text-decoration: underline; }
   .linklike[hidden] { display: none; }
+  #warn { font-size: 11.5px; color: #e0a24a; margin-top: 4px; }
   textarea { flex: 1; resize: none; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; max-height: 140px; min-height: 36px; outline: none; }
   textarea:focus, select:focus { border-color: #ff2fae; }
   button#send { flex: none; width: 36px; height: 36px; border-radius: 50%; border: 0; background: #ff2fae; color: #090909; font-size: 16px; cursor: pointer; }
@@ -184,6 +185,7 @@
       <button id="send" type="button" title="Send" aria-label="Send" disabled>↑</button>
     </div>
     <div id="toline" role="status"></div>
+    <div id="warn" role="status"></div>
     <div id="note" role="status"></div>
     <div class="hint"><span id="me"></span><span>Enter sends · Shift+Enter new line</span></div>
   </footer>
