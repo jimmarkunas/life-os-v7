@@ -101,6 +101,12 @@ This v0.1.0 panel is **read-only**; prompts are authored in native Orca agent ch
 
 - Measured on a real screenshot: the avatar is drawn at exactly 52x52 device pixels (1:1, no browser rescaling) and the logo edges are about one pixel soft, which is the limit for a 26 px circle. The fuzzy look came from (1) a dark 2 px ring around the circle, a second soft step between the page and the avatar, now removed, and (2) a resampling filter (Lanczos) that adds ringing halos, replaced by exact area averaging (520 px canvas to 52 px is exactly 10x, the 512 px original to 32 px is exactly 16x).
 
+## Operating notes (production, Nov 8 2026)
+
+- **Where things live:** Concord itself is installed at `~/.local/share/concord` (an npm prefix; `~/.local/bin/concord`, `~/.local/bin/concord-mcp` and `~/.claude/skills/concord-relay` point into it, and so does the room's `concordExecutable` setting). The plugin is installed from this folder with `orca plugin install <this folder>`; Orca keeps a pinned snapshot, so a change here needs a PR, a merge, then another install and `orca plugin restart local.concord-room`. The room reads the repository in its `repoRoot` setting (`life-os-v7`).
+- **Never run `concord setup` bare.** Concord 0.20.0's `setup` rewrites the Concord hooks block in your real `~/.codex/config.toml` (on Nov 8 2026 it dropped the opening marker and two comment lines, leaving the closing marker). Run `scripts/concord-setup-safe.sh --no-adapters` from the repository instead: it backs up `~/.codex/config.toml` and `~/.claude/settings.json`, runs `concord setup` with your arguments, shows any diff, and prints the exact restore command (exit 1 if a file changed). It restores nothing itself.
+- Codex trusts the Concord hooks once per path (`/hooks` in Codex).
+
 ## v0.10.0: Concord Room in the + menu
 
 - The tab bar **+** menu and the command palette now have a **Concord Room** entry (Orca's own `contributes.newFiles`, as the plugin-authoring guide describes). It creates an untitled `.concord-room` file in the active workspace, which opens in the center column in the room editor. Opening an existing `.concord-room` file still works. No new access: the approval is for the same worker and settings, but a new version always needs a new approval when installed.

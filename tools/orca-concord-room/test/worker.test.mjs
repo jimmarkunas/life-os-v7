@@ -433,3 +433,42 @@ test('terminal input is confirmed from Orca\'s send receipt, in either shape, an
     await assert.rejects(typeIntoTerminal({ handle: 'term_x', text: 'hello' }, reply(bad)), /did not confirm/)
   }
 })
+
+// concord-setup-safe.sh: Concord 0.20.0's `setup` rewrote the real ~/.codex/config.toml, so the wrapper backs up the user-level
+// configs, runs setup, and reports (exit 1) any change with the exact restore command. Tested with a fake `concord` and a fake HOME.
+async function runSetupSafe(t, fakeConcordBody) {
+  const { spawnSync } = await import('node:child_process')
+  const { chmod, readFile } = await import('node:fs/promises')
+  const home = await realpath(await mkdtemp(path.join(tmpdir(), 'concord-setup-')))
+  t.after(() => rm(home, { recursive: true, force: true }))
+  await mkdir(path.join(home, '.codex')); await mkdir(path.join(home, '.claude')); await mkdir(path.join(home, 'bin'))
+  const original = 'model = "x"\n# >>> concord hooks >>>\n[[hooks.Stop]]\n# <<< concord hooks <<<\n'
+  await writeFile(path.join(home, '.codex', 'config.toml'), original)
+  await writeFile(path.join(home, '.claude', 'settings.json'), '{}\n')
+  await writeFile(path.join(home, 'bin', 'concord'), `#!/usr/bin/env bash\n${fakeConcordBody}\n`)
+  await chmod(path.join(home, 'bin', 'concord'), 0o755)
+  const script = new URL('../scripts/concord-setup-safe.sh', import.meta.url).pathname
+  const run = spawnSync('bash', [script, '--no-adapters'], { env: { ...process.env, HOME: home, PATH: `${path.join(home, 'bin')}:${process.env.PATH}` }, encoding: 'utf8' })
+  return { run, home, original, readFile }
+}
+
+test('concord-setup-safe.sh reports a user-level config change, prints the restore command, and restores nothing itself', async t => {
+  const { run, home, original, readFile } = await runSetupSafe(t, 'echo "setup ran with: $*"; sed -i.bak "/>>> concord hooks/d" "$HOME/.codex/config.toml"; rm -f "$HOME/.codex/config.toml.bak"')
+  assert.equal(run.status, 1, run.stdout + run.stderr)
+  assert.match(run.stdout, /setup ran with: setup --no-adapters/)       // the `setup` subcommand and our arguments reach concord
+  assert.match(run.stdout, /CHANGED by concord setup: .*\.codex\/config\.toml/)
+  assert.match(run.stdout, /To restore the version from before setup: cp -p '.*config\.toml' '.*config\.toml'/)
+  assert.doesNotMatch(run.stdout, /CHANGED by concord setup: .*settings\.json/)
+  const changed = await readFile(path.join(home, '.codex', 'config.toml'), 'utf8')
+  assert.notEqual(changed, original)                                    // nothing was restored for the user
+  const backup = /cp -p '([^']+config\.toml)'/.exec(run.stdout)[1]
+  assert.equal(await readFile(backup, 'utf8'), original)                // and the backup is the pre-setup file
+})
+
+test('concord-setup-safe.sh exits 0 and says so when setup leaves the user-level configs alone, and fails when setup fails', async t => {
+  const quiet = await runSetupSafe(t, 'echo ok')
+  assert.equal(quiet.run.status, 0, quiet.run.stdout + quiet.run.stderr)
+  assert.match(quiet.run.stdout, /user-level agent configs are unchanged/)
+  const broken = await runSetupSafe(t, 'echo boom >&2; exit 7')
+  assert.equal(broken.run.status, 7)
+})
