@@ -1,0 +1,5 @@
+{
+  "mcpServers": {
+    "concord": {"command":"concord-mcp","env":{"CONCORD_AGENT_KIND":"devin"}}
+  }
+}

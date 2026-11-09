@@ -1,0 +1,21 @@
+{
+  "concord": {
+    "SessionStart": [
+      {
+        "command": "concord hook session-start --client antigravity"
+      }
+    ],
+    "PreInvocation": [
+      {
+        "command": "concord hook pre-invocation --client antigravity",
+        "timeout": 5
+      }
+    ],
+    "Stop": [
+      {
+        "command": "concord hook stop --client antigravity",
+        "timeout": 5
+      }
+    ]
+  }
+}
