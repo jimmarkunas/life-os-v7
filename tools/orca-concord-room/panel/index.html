@@ -67,7 +67,18 @@
   .row { display: flex; gap: 6px; align-items: center; }
   select, textarea, button { font: inherit; color: var(--fg); }
   select { flex: 1; min-width: 0; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; }
-  .box { display: flex; gap: 6px; align-items: flex-end; margin-top: 6px; }
+  .box { display: flex; gap: 6px; align-items: flex-end; margin-top: 6px; position: relative; }
+  #mention { display: none; position: absolute; left: 0; right: 42px; bottom: calc(100% + 4px); z-index: 4; max-height: 190px; overflow-y: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.4); }
+  #mention.open { display: block; }
+  #mention button { display: flex; justify-content: space-between; gap: 12px; width: 100%; background: none; border: 0; border-radius: 6px; padding: 5px 8px; font-size: 12.5px; cursor: pointer; text-align: left; }
+  #mention button.on, #mention button:hover { background: var(--card); }
+  #mention .st { color: var(--muted); font-size: 11px; }
+  #toline { font-size: 11.5px; color: #ff2fae; margin-top: 4px; }
+  .chip .x { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0 0 0 2px; font-size: 13px; line-height: 1; }
+  .chip .x:hover { color: var(--fg); }
+  .chip.gone { opacity: .55; border-style: dashed; }
+  .linklike { background: none; border: 0; color: var(--muted); font: inherit; font-size: 11px; cursor: pointer; padding: 3px 0 0; text-decoration: underline; }
+  .linklike[hidden] { display: none; }
   textarea { flex: 1; resize: none; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; max-height: 140px; min-height: 36px; outline: none; }
   textarea:focus, select:focus { border-color: #ff2fae; }
   button#send { flex: none; width: 36px; height: 36px; border-radius: 50%; border: 0; background: #ff2fae; color: #090909; font-size: 16px; cursor: pointer; }
@@ -147,6 +158,7 @@
   <header>
     <div class="title"><h1>Concord Room</h1><div class="right"><button id="agentBtn" class="badge" type="button" aria-haspopup="menu" aria-expanded="false" title="Start an agent that joins this room">＋ Agent</button><button id="jiraBtn" class="badge" type="button" title="Pull in a Jira issue">＋ Jira</button><span id="status" class="badge">Connecting</span></div></div>
     <div id="chips"></div>
+    <button id="removedBtn" class="linklike" type="button" hidden></button>
     <div id="banner"></div>
   </header>
   <div id="amenu" role="menu" aria-label="Start an agent in this room">
@@ -156,7 +168,7 @@
     <div class="grp">Codex</div>
     <button type="button" role="menuitem" data-agent="codex" data-surface="chat">Chat</button>
     <button type="button" role="menuitem" data-agent="codex" data-surface="terminal">Terminal</button>
-    <div class="hint">Starts in this room's repository and joins the room. It waits for you and does not edit files. An idle Codex chat cannot receive messages until it next acts; a terminal can.</div>
+    <div class="hint">Starts in this room's repository and joins the room. It waits for you and does not edit files. Claude Code is woken by Concord when idle. An idle Codex is not (Concord needs its own Codex launch for that), so it only sees a message when it next acts.</div>
   </div>
   <div id="handoffs" aria-label="Handoffs waiting for you"></div>
   <div id="jiractx" aria-label="Jira issues pulled into this room"></div>
@@ -167,9 +179,11 @@
   <footer>
     <div class="row"><select id="to" aria-label="Send to"></select></div>
     <div class="box">
-      <textarea id="text" rows="1" maxlength="4000" placeholder="Message an agent…" aria-label="Message"></textarea>
+      <div id="mention" role="listbox" aria-label="Mention an agent"></div>
+      <textarea id="text" rows="1" maxlength="4000" placeholder="Message an agent… (type @ to mention)" aria-label="Message"></textarea>
       <button id="send" type="button" title="Send" aria-label="Send" disabled>↑</button>
     </div>
+    <div id="toline" role="status"></div>
     <div id="note" role="status"></div>
     <div class="hint"><span id="me"></span><span>Enter sends · Shift+Enter new line</span></div>
   </footer>
@@ -182,6 +196,7 @@
   <div id="jnote" role="status"></div>
 </div></div>
 <script src="avatars.js"></script>
+<script src="mentions.js"></script>
 <script src="room.js"></script>
 </body>
 </html>
