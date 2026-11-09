@@ -17,8 +17,8 @@
   }
   ICONS.claudecode = ICONS.claude; ICONS.claudechat = ICONS.claude; ICONS.chatgpt = ICONS.other
   const AV = window.ROOM_AVATARS || {}, AVS = window.ROOM_AVATARS_SMALL || {}
-  // Avatars are rendered at exact 2x sizes (80 px shown at 40 px, 40 px shown at 20 px), so the browser never rescales them.
-  const iconB = (b, small) => { const set = small ? AVS : AV; return set[b] ? `<img class="avimg${b === 'claudecode' ? ' pix' : ''}" alt="" width="${small ? 22 : 44}" height="${small ? 22 : 44}" src="${set[b]}">` : (ICONS[b] || ICONS.other)() }
+  // Avatars are rendered at exact 2x sizes (52 px shown at 26 px, 32 px shown at 16 px), so the browser never rescales them.
+  const iconB = (b, small) => { const set = small ? AVS : AV; return set[b] ? `<img class="avimg${b === 'claudecode' ? ' pix' : ''}" alt="" width="${small ? 16 : 26}" height="${small ? 16 : 26}" src="${set[b]}">` : (ICONS[b] || ICONS.other)() }
   const icon = (id, small) => iconB(brand(id), small)
   // What an agent is called: your nickname if you gave one, else "Claude" / "Codex" / "You",
   // numbered when several of the same kind exist (in order of first appearance).
@@ -218,7 +218,7 @@
     const [b, label] = SENDER[h.sender] || ['other', h.sender]
     const el = document.createElement('div'); el.className = 'ho ' + b
     const top = document.createElement('div'); top.className = 'top'
-    const av = document.createElement('div'); av.className = 'av'; av.innerHTML = iconB(b, true)
+    const av = document.createElement('div'); av.className = 'av'; av.innerHTML = iconB(b)
     const who = document.createElement('div'); who.className = 'who2'; who.textContent = `${label} hands off work`
     const key = document.createElement('span'); key.className = 'key ' + (h.jiraStatus === 'Agent Go' ? 'ok' : 'warn')
     key.textContent = `${h.jiraKey} · ${h.jiraStatus || 'status unknown'}`; key.title = h.jiraStatus === 'Agent Go' ? 'Released for Agent Go' : 'Not released for Agent Go: the receiving agent must refuse to do work'

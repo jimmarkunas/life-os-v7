@@ -28,7 +28,7 @@
   .chip.claudecode { --c: var(--claudecode); } .chip.claudechat { --c: var(--claudechat); } .chip.chatgpt { --c: var(--chatgpt); } .chip.codex { --c: var(--codex); }
   .avimg { width: 100%; height: 100%; border-radius: inherit; display: block; image-rendering: auto; }
   .avimg.pix { image-rendering: pixelated; }
-  .chip .avimg { width: 20px; height: 20px; border-radius: 50%; }
+  .chip .avimg { width: 16px; height: 16px; border-radius: 50%; }
   .chip i { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); display: inline-block; }
   .chip.live i { background: var(--ok); }
   .chip .st { color: var(--muted); }
@@ -48,11 +48,11 @@
   .msg.human { --c: var(--human); --bub: #ff2fae; --bubfg: #090909; }
   .col { display: flex; flex-direction: column; min-width: 0; }
   .mine .col { align-items: flex-end; }
-  .av { flex: none; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; overflow: hidden; }
+  .av { flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; overflow: hidden; box-shadow: 0 0 0 1px color-mix(in srgb, var(--c) 55%, var(--bg)); }
   .av:has(svg) { background: color-mix(in srgb, var(--c) 22%, var(--bg)); }
   .msg.human .av:has(svg) { background: #ff2fae; }
-  .msg.human .av svg { stroke: #090909; width: 24px; height: 24px; }
-  .av svg, .chip svg { width: 20px; height: 20px; display: block; }
+  .msg.human .av svg { stroke: #090909; width: 16px; height: 16px; }
+  .av svg, .chip svg { width: 15px; height: 15px; display: block; }
   .who { font-size: 11px; color: color-mix(in srgb, var(--c) 70%, var(--fg)); margin: 0 4px 2px; font-weight: 600; }
   .who .to { font-weight: 400; color: var(--muted); }
   .bubble { padding: 7px 10px; border-radius: 14px; background: var(--bub); color: var(--bubfg); border: 1px solid transparent; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -118,8 +118,7 @@
   .ho { --c: var(--other); border: 1px solid color-mix(in srgb, var(--c) 55%, var(--bg)); border-radius: 12px; padding: 8px 10px; background: var(--card); display: flex; flex-direction: column; gap: 5px; }
   .ho.claudechat { --c: var(--claudechat); } .ho.chatgpt { --c: var(--chatgpt); }
   .ho .top { display: flex; align-items: center; gap: 8px; }
-  .ho .top .av { width: 20px; height: 20px; border-radius: 50%; }
-  .ho .top .av svg { width: 14px; height: 14px; }
+  .ho .top .av { width: 26px; height: 26px; border-radius: 50%; }
   .ho .who2 { font-weight: 600; font-size: 12px; flex: 1; min-width: 0; }
   .ho .key { font-size: 11px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line); }
   .ho .key.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 55%, var(--bg)); }

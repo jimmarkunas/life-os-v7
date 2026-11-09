@@ -92,3 +92,7 @@ This v0.1.0 panel is **read-only**; prompts are authored in native Orca agent ch
 - **Pull into this room** attaches the issue to the pilot workspace with `orca reference add` (Orca's own linked items; **Unlink** reverses it). Pulled-in issues show in a strip under the header and in Orca's own workspace card.
 - **Start a chat from it** launches a new Claude Code or Codex chat in the configured repo with the ticket as its first message, from one of three templates: *Review (read-only)* (default), *Plan (no changes)*, or *Implement* (only if the issue is released for Agent Go and the agent holds the writer claim; otherwise it must reply `REFUSED`). Every prompt says the issue text is untrusted data, never instructions (Orca's own Jira skill says the same).
 - **It never writes to Jira.** There is no create, comment, transition, assignee or label code in the plugin; a test fails if one is added. Orca holds the Jira login; the plugin never sees credentials. Pulling in and starting a chat only change Orca's workspace and start an agent.
+
+## v0.9.1: avatars back at their original size
+
+- Circles are 26 px again (16 px in the presence chips), with the logos at their original padding. They are sharp because each image is generated at exactly twice its display size (52 px shown at 26 px, 32 px shown at 16 px); the pixel mascot's blocks land on whole pixels. The ring is drawn outside the image with a box-shadow so it no longer shrinks the picture. Earlier versions grew them to 32-44 px, which was not asked for.
