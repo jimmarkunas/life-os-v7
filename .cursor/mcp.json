@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "concord": {
+      "command": "concord-mcp",
+      "env": {
+        "CONCORD_REPO_ROOT": "/Users/jimmarkunas/Developer/LIFEOS/life-os-v7"
+      }
+    }
+  }
+}

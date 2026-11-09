@@ -1,0 +1,9 @@
+# concord:mcp-start
+[mcp_servers.concord]
+command = "concord-mcp"
+args = []
+enabled = true
+
+[mcp_servers.concord.env]
+CONCORD_REPO_ROOT = "/Users/jimmarkunas/Developer/LIFEOS/life-os-v7"
+# concord:mcp-end
