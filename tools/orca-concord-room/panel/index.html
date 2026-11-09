@@ -102,6 +102,20 @@
   #amenu button { display: block; width: 100%; font: inherit; font-size: 12.5px; color: var(--fg); background: none; border: 0; border-radius: 7px; padding: 6px 8px; cursor: pointer; text-align: left; }
   #amenu button:hover { background: var(--card); } #amenu button:disabled { opacity: .5; cursor: default; }
   #amenu .hint { font-size: 11px; color: var(--muted); padding: 6px 8px 4px; border-top: 1px solid var(--line); margin-top: 4px; line-height: 1.35; }
+  .cfields { display: flex; gap: 6px; margin: 4px 8px; }
+  .cfields input { flex: 1; min-width: 0; }
+  #hosheet { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.55); align-items: center; justify-content: center; padding: 16px; z-index: 6; }
+  #hosheet.open { display: flex; }
+  #hosheet .card { width: 100%; max-width: 480px; max-height: 94vh; overflow-y: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+  #hosheet h2 { margin: 0; font-size: 14px; }
+  #hosheet .jhead { display: flex; justify-content: space-between; align-items: center; }
+  #hosheet .jhead button { background: none; border: 0; color: var(--muted); font-size: 14px; cursor: pointer; }
+  #hosheet label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
+  #horeply { font-size: 12px; max-height: 90px; overflow-y: auto; padding: 6px 8px; border-radius: 8px; background: rgba(127,127,127,.12); white-space: pre-wrap; }
+  #hokeys { display: flex; flex-wrap: wrap; gap: 8px; font-size: 12px; }
+  .hobtns { display: flex; gap: 8px; }
+  #honote { font-size: 12px; min-height: 1em; }
+  .ho { border: 0; background: transparent; color: inherit; text-decoration: underline; cursor: pointer; font-size: inherit; padding: 0; }
   #sheet { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.55); align-items: center; justify-content: center; padding: 16px; z-index: 5; }
   #sheet.open { display: flex; }
   #sheet .card { width: 100%; max-width: 540px; max-height: 94vh; overflow-y: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
@@ -176,6 +190,9 @@
     <div class="grp">Council member (answers every time)</div>
     <button type="button" role="menuitem" data-agent="claude" data-surface="council">Claude (kept open, answers in the room)</button>
     <button type="button" role="menuitem" data-agent="codex" data-surface="council">Codex (kept open, answers in the room)</button>
+    <div class="cfields"><input id="cmodel" list="cmodels" maxlength="64" placeholder="Model id (optional, e.g. claude-sonnet-5-5)" aria-label="Council member model id" autocomplete="off">
+      <datalist id="cmodels"><option value="claude-opus-5-5"></option><option value="claude-sonnet-5-5"></option><option value="claude-haiku-5-5"></option><option value="gpt-6-luna"></option><option value="gpt-6-astra"></option></datalist>
+      <select id="ceffort" aria-label="Council member reasoning effort"><option value="">Effort: default</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option><option value="xhigh">xhigh</option><option value="max">max</option></select></div>
     <div class="hint">Starts in this room's repository and joins the room. It waits for you and does not edit files. A terminal agent answers when you message it: the room types your message into its terminal. A Claude chat answers while its session is still running; Orca ends an idle chat after a while, and after that it only sees a message when it next acts. A Codex chat is never woken when idle. A council member is started by this room through Orca’s own orchestration: your message goes out as a send and its answer comes back from the mailbox, even when it was idle, for Claude and for Codex. It is told to answer read-only; it runs with the same Orca agent permissions as any chat you start, so treat that as an instruction, not a lock. Its coordinator tab “Concord Room council (leave alone)” must stay open. Claude may first ask you to accept “Bypass Permissions” in its terminal tab; only you can do that.</div>
   </div>
   <div id="handoffs" aria-label="Handoffs waiting for you"></div>
@@ -202,6 +219,18 @@
     <div id="note" role="status"></div>
     <div class="hint"><span id="me"></span><span>Enter sends · Shift+Enter new line</span></div>
   </footer>
+<div id="hosheet" role="dialog" aria-modal="true" aria-label="Hand off this reply"><div class="card">
+  <div class="jhead"><h2>Hand off this reply</h2><button id="hoclose" type="button" aria-label="Close">✕</button></div>
+  <div class="hint">Starts a new worktree with a fresh agent and this reply as its first message. The council member carries on separately.</div>
+  <div id="horeply"></div>
+  <label>Agent <select id="hoagent"><option value="claude">Claude</option><option value="codex">Codex</option></select></label>
+  <label>What should it do? <textarea id="hotask" rows="3" maxlength="1500" placeholder="Leave empty to have it read the reply, check it against the repo and tell you what it would do, changing nothing."></textarea></label>
+  <label>Worktree name <input id="honame" maxlength="60" placeholder="handoff-…"></label>
+  <div id="hokeys"></div>
+  <div class="cfields"><input id="homodel" list="cmodels" maxlength="64" placeholder="Model id (optional)" autocomplete="off"><select id="hoeffort"><option value="">Effort: default</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option><option value="xhigh">xhigh</option><option value="max">max</option></select></div>
+  <div id="honote" role="status"></div>
+  <div class="hobtns"><button id="hostart" type="button">Start handoff</button><button id="hocancel" type="button">Cancel</button></div>
+</div></div>
 <div id="sheet" role="dialog" aria-modal="true" aria-label="Pull in a Jira issue"><div class="card">
   <div class="jhead"><h2>Pull in a Jira issue</h2><button id="jclose" type="button" aria-label="Close">✕</button></div>
   <div class="tabs" id="jtabs"><button type="button" data-f="assigned" class="on">Assigned</button><button type="button" data-f="reported">Reported</button><button type="button" data-f="all">All</button><button type="button" data-f="done">Done</button></div>

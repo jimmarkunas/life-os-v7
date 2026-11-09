@@ -55,7 +55,7 @@
     if (!el) {
       el = document.createElement('div')
       el.className = 'msg ' + brand(m.from) + ' ' + (isMine ? 'mine' : 'theirs')
-      el.innerHTML = '<div class="av"></div><div class="col"><div class="who"><span class="from"></span> <span class="to"></span></div><div class="bubble"></div><div class="meta"><span class="time"></span><span class="st"></span><span class="rep"></span><button type="button" class="ans" hidden>Answer</button><span class="id"></span></div></div>'
+      el.innerHTML = '<div class="av"></div><div class="col"><div class="who"><span class="from"></span> <span class="to"></span></div><div class="bubble"></div><div class="meta"><span class="time"></span><span class="st"></span><span class="rep"></span><button type="button" class="ans" hidden>Answer</button><button type="button" class="ho" hidden>Hand off</button><span class="id"></span></div></div>'
       el.querySelector('.av').innerHTML = icon(m.from)
       el.querySelector('.bubble').textContent = m.content
       el.querySelector('.time').textContent = clock(m.at)
@@ -66,6 +66,9 @@
     const ans = el.querySelector('.ans')
     ans.hidden = !(m.ask && !m.answered)
     ans.onclick = () => startAnswering(m)
+    const ho = el.querySelector('.ho')
+    ho.hidden = !(String(m.id).startsWith('council-a-') && String(m.from).startsWith('council-') && !m.ask)
+    ho.onclick = () => openHandoff(m)
     el.querySelector('.from').textContent = nameOf(m.from)
     el.querySelector('.to').textContent = '→ ' + nameOf(m.to)
     el.title = `${m.from} → ${m.to}\n${m.id}`
@@ -204,6 +207,29 @@
       setStatus('Unavailable', 'bad'); setBanner((e && e.message) || String(e))
     } finally { fetching = false }
   }
+
+  // Hand off a council reply: a new worktree with a fresh agent, the reply as its first message.
+  const JIRA_IN_TEXT = /\b(?:LIFE|LOS)-\d{1,6}\b/g
+  let handing = null
+  function openHandoff(m) {
+    handing = m
+    $('horeply').textContent = `${nameOf(m.from)}: ${m.content.replace(/\n\(.*\)$/, '')}`
+    $('hotask').value = ''; $('honame').value = ''; $('homodel').value = ''; $('hoeffort').value = ''; $('honote').textContent = ''; $('honote').className = ''
+    const keys = [...new Set(m.content.match(JIRA_IN_TEXT) || [])]
+    $('hokeys').replaceChildren(...keys.map((k) => { const l = document.createElement('label'); const c = document.createElement('input'); c.type = 'checkbox'; c.checked = true; c.value = k; l.append(c, ` Attach ${k}`); return l }))
+    $('hostart').disabled = false; $('hosheet').classList.add('open'); $('hotask').focus()
+  }
+  const closeHandoff = () => { handing = null; $('hosheet').classList.remove('open') }
+  $('hoclose').addEventListener('click', closeHandoff); $('hocancel').addEventListener('click', closeHandoff)
+  $('hostart').addEventListener('click', async () => {
+    if (!handing) return
+    const note = $('honote'); $('hostart').disabled = true; note.className = ''; note.textContent = 'Creating the worktree and starting the agent…'
+    try {
+      const out = await ask('council.handoff', { id: handing.id, agent: $('hoagent').value, task: $('hotask').value, name: $('honame').value.trim(), keys: [...$('hokeys').querySelectorAll('input:checked')].map((c) => c.value), model: $('homodel').value.trim(), effort: $('hoeffort').value }, 130000)
+      closeHandoff(); setNote(out.delivered ? `Handed off to a new ${$('hoagent').value === 'codex' ? 'Codex' : 'Claude'} agent in the worktree "${out.worktree}".` : `The worktree "${out.worktree}" was created but Orca did not confirm the brief reached the agent. Check it in Orca.`, out.delivered ? 'ok' : 'bad')
+      await refresh()
+    } catch (e) { note.className = 'bad'; note.textContent = `Could not hand off: ${(e && e.message) || e}`; $('hostart').disabled = false }
+  })
 
   // Answering a council member's own question: the next message goes back to that question through Orca instead of being a new one.
   function startAnswering(m) {
@@ -473,7 +499,7 @@
     for (const x of items) x.disabled = true
     setMenu(false); setNote(`Starting ${label}…`)
     try {
-      if (isCouncil) { await ask('council.start', { agent: b.dataset.agent }, 120000); setNote(`Started a ${label}. It shows up here now and turns live once it reports in.`, 'ok') }
+      if (isCouncil) { await ask('council.start', { agent: b.dataset.agent, model: $('cmodel').value.trim(), effort: $('ceffort').value }, 120000); setNote(`Started a ${label}. It shows up here now and turns live once it reports in.`, 'ok') }
       else { await ask('agent.start', { agent: b.dataset.agent, surface: b.dataset.surface }, 40000); setNote(`Started ${label}. It shows up here once it joins.`, 'ok') }
     }
     catch (err) { setNote(`Could not start ${label}: ${(err && err.message) || err}`, 'bad') }

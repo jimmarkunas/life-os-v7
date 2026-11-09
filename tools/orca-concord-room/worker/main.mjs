@@ -828,7 +828,7 @@ export default function activate(orca) {
   orca.panels.handle('jira.unlink', async (input) => unlinkJira(input?.key, (await handoffSettings()).repoRoot))
   orca.panels.handle('jira.startChat', async (input) => { const c = await handoffSettings(); return startJiraChat({ key: input?.key, agent: input?.agent, template: input?.template, repoRoot: c.repoRoot, handoffDir: c.handoffDir }) })
   orca.panels.handle('agent.start', async (input) => { const c = await handoffSettings(); return startRoomAgent({ agent: input?.agent, surface: input?.surface, repoRoot: c.repoRoot, handoffDir: c.handoffDir }) })
-  orca.panels.handle('council.start', async (input) => council.startMember(await councilCtx(), { agent: input?.agent }))
+  orca.panels.handle('council.start', async (input) => council.startMember(await councilCtx(), { agent: input?.agent, model: input?.model, effort: input?.effort }))
   orca.panels.handle('council.round', async (input) => {      // one question to several members, then the room relays their answers to each other
     const from = defaultSenderId((await settings()).senderId)
     const sent = await council.startRound(await councilCtx(), { ids: Array.isArray(input?.ids) ? input.ids : [], text: input?.content, from, followups: input?.followups })
@@ -838,6 +838,10 @@ export default function activate(orca) {
     const from = defaultSenderId((await settings()).senderId)
     const id = typeof input?.id === 'string' ? input.id.replace(/^council-a-/u, '') : ''
     return council.answerMember(await councilCtx(), { messageId: id, text: input?.content, from })
+  })
+  orca.panels.handle('council.handoff', async (input) => {      // hand a council reply to a new agent in a new worktree (Orca's own full-handoff recipe)
+    const id = typeof input?.id === 'string' ? input.id.replace(/^council-a-/u, '') : ''
+    return council.handoffReply(await councilCtx(), { messageId: id, agent: input?.agent, task: input?.task, name: input?.name, keys: input?.keys, model: input?.model, effort: input?.effort })
   })
   orca.panels.handle('council.release', async (input) => council.releaseMember(await councilCtx(), input?.id))
   orca.panels.handle('concord.rename', async (input) => {

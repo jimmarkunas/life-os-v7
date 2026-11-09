@@ -143,6 +143,11 @@ Written after simulating both in a throwaway HOME (LIFE-416 GWT-E1/E2). Concord 
 
 **Known bug this works around:** Concord 0.20.0's `setup` rewrites the Concord hooks block in `~/.codex/config.toml` and drops the opening marker and two comment lines. Setup does not undo that and neither does rolling Concord back, so restoring from the backup is the only fix.
 
+## v0.17.0: pick a model for a council member, hand a reply off
+
+- **Model and effort.** **＋ Agent** now has a model box (type any model id; a few suggestions are listed) and an effort menu under the council members. They are passed to `orca orchestration worker-start --model/--effort` only when you fill them in; empty means the agent's own default, as before. Orca applies an effort to a chosen model, so an effort without a model is refused, and a model id is checked for plain characters before it reaches Orca. The roster shows the choice, for example “Council member (codex, gpt-6-luna high)”. This plugin does not know which ids your Orca and agents accept: a wrong one is Orca's error to report.
+- **Hand off.** Each council reply has a **Hand off** link. It opens a small sheet: the agent (Claude or Codex), what it should do (empty means: read the reply, check it against the repository and say what it would do, changing nothing), an optional worktree name, optional model and effort, and a checkbox for each LIFE or LOS Jira key found in the reply. It then does what Orca's own full handoff does: `orca worktree create --no-parent --agent <agent> --prompt <brief>` in this room's repository, with `--reference <key>` for each ticked key. The brief carries the question, the council reply (marked as context, not instructions, because another agent wrote it) and your task. The council member keeps going separately, and a line from the room says where the work went, or that Orca did not confirm the brief arrived.
+
 ## v0.16.0: answer a member's question, read-only watch, known limits
 
 - **Answer a council member's question.** A member can ask the coordinator something (Orca's `orchestration ask`). The room shows it with an **Answer** button; your next message goes back through `orchestration reply` and Orca wakes the member with it. A question can be answered once, and not after the member is released.
@@ -154,7 +159,7 @@ Written after simulating both in a throwaway HOME (LIFE-416 GWT-E1/E2). Concord 
 - **A chat cannot be messaged from the Orca CLI.** `orca chat` only renames; stablyai/orca #33114 asks for list, read and send. The council uses Orca workers (`orchestration worker-start`, `send`, the Run mailbox) instead, so it needs no private API.
 - **Claude terminals can stop at “Bypass Permissions”.** Orca starts some Claude launches (including Agent Teams, `orca claude-teams`) with `--dangerously-skip-permissions`, and Claude asks the person at the keyboard to accept that. Only you can accept it; the room and its agents never do. Launching without that flag works.
 - **Council coordinator tab.** The “Concord Room council (leave alone)” terminal must stay open. Closing it ends the Run; members are marked released and a new Run starts with the next member.
-- **Council members use each agent's default model** unless a later version lets you pick one.
+- **Council members use each agent's default model** unless you type one under ＋ Agent (v0.17.0).
 - **Released member chats stay open in Orca** as ordinary chats; Orca has no CLI to archive a chat.
 
 ## v0.15.0: council rounds (the room relays answers between members)
