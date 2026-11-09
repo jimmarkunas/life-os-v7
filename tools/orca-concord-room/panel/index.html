@@ -181,7 +181,12 @@
     <button id="jump" type="button">New messages ↓</button>
   </div>
   <footer>
-    <div class="row"><select id="to" aria-label="Send to"></select></div>
+    <div class="row"><select id="to" aria-label="Send to"></select>
+      <select id="rounds" aria-label="Council round" hidden title="Council members cannot talk to each other. A round makes the room relay each member's answer to the others, then asks them to respond.">
+        <option value="0">Round: off</option>
+        <option value="1">Round: +1 reply to each other</option>
+        <option value="2">Round: +2 replies</option>
+      </select></div>
     <div class="box">
       <div id="mention" role="listbox" aria-label="Mention an agent"></div>
       <textarea id="text" rows="1" maxlength="4000" placeholder="Message an agent… (type @ to mention)" aria-label="Message"></textarea>

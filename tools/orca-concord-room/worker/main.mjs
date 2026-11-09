@@ -812,6 +812,11 @@ export default function activate(orca) {
   orca.panels.handle('jira.startChat', async (input) => { const c = await handoffSettings(); return startJiraChat({ key: input?.key, agent: input?.agent, template: input?.template, repoRoot: c.repoRoot, handoffDir: c.handoffDir }) })
   orca.panels.handle('agent.start', async (input) => { const c = await handoffSettings(); return startRoomAgent({ agent: input?.agent, surface: input?.surface, repoRoot: c.repoRoot, handoffDir: c.handoffDir }) })
   orca.panels.handle('council.start', async (input) => council.startMember(await councilCtx(), { agent: input?.agent }))
+  orca.panels.handle('council.round', async (input) => {      // one question to several members, then the room relays their answers to each other
+    const from = defaultSenderId((await settings()).senderId)
+    const sent = await council.startRound(await councilCtx(), { ids: Array.isArray(input?.ids) ? input.ids : [], text: input?.content, from, followups: input?.followups })
+    return { ids: sent.map((x) => x.id), status: 'asked', followups: Number(input.followups), wake: { how: 'council' } }
+  })
   orca.panels.handle('council.release', async (input) => council.releaseMember(await councilCtx(), input?.id))
   orca.panels.handle('concord.rename', async (input) => {
     const next = withNickname(parseNicknames(await orca.settings.get('nicknames')), input?.id, input?.name)

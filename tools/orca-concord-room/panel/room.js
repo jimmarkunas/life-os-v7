@@ -1,6 +1,6 @@
 (() => {
   const $ = (id) => document.getElementById(id)
-  const emptyEl = $('empty'), list = $('messages'), toSel = $('to'), text = $('text'), sendBtn = $('send'), note = $('note'), jump = $('jump')
+  const emptyEl = $('empty'), list = $('messages'), toSel = $('to'), roundsSel = $('rounds'), text = $('text'), sendBtn = $('send'), note = $('note'), jump = $('jump')
   const nodes = new Map()
   let stick = true, lastMsgs = [], me = '', sending = false, lastRoster = '', chosenByUser = false, nicks = {}, order = [], lastMessages = []
   let hidden = [], showHidden = false, mentionAgents = [], peopleAgents = [], reach = {}
@@ -161,7 +161,10 @@
   // Who a message goes to: everyone @-mentioned in it, else the agent chosen in the "To" box.
   const mentioned = () => RM.parse(text.value, mentionAgents)
   const recipients = () => { const ids = mentioned(); return ids.length ? ids : (toSel.value ? [toSel.value] : []) }
+  const isCouncilId = (id) => String(id).startsWith('council-')
   function updateSend() {
+    const councilTo = recipients().filter(isCouncilId)
+    roundsSel.hidden = councilTo.length < 2; if (roundsSel.hidden) roundsSel.value = '0'
     sendBtn.disabled = sending || recipients().length === 0 || !text.value.trim()
     const ids = mentioned(); $('toline').textContent = ids.length ? 'Sending to: ' + ids.map(nameOf).join(', ') : ''
     const slow = recipients().filter(noWake)
@@ -204,7 +207,15 @@
     sending = true; updateSend(); text.disabled = true; setNote('Sending…')
     const ok = [], bad = [], woke = [], busy = [], cold = [], asked = []
     try {
-      for (const id of to) {
+      const followups = Number(roundsSel.value) || 0, councilTo = to.filter(isCouncilId)
+      const round = followups > 0 && councilTo.length >= 2
+      if (round) {
+        try {
+          await orca.plugin.request('council.round', { ids: councilTo, content, followups }, { timeoutMs: 120000 })
+          ok.push(`${councilTo.map(nameOf).join(' + ')} (round, +${followups})`); asked.push(...councilTo)
+        } catch (e) { bad.push(`${councilTo.map(nameOf).join(' + ')} round: ${(e && e.message) || e}`) }
+      }
+      for (const id of round ? to.filter((x) => !isCouncilId(x)) : to) {
         try {
           const out = await orca.plugin.request('concord.send', { to: id, content }, { timeoutMs: 30000 })
           ok.push(`${nameOf(id)} (${out.status}${out.delivery ? ', ' + out.delivery : ''})`)
@@ -222,7 +233,7 @@
         + (cold.length ? ` ${names(cold)} can't be woken while idle, so ${be(cold, 'it reads', 'they read')} this only the next time ${be(cold, 'it takes', 'they take')} a turn. Type in ${be(cold, 'its', 'their')} own chat or terminal to make ${be(cold, 'it', 'them')} act now.` : '')
         + (away.length ? ` ${names(away)} ${be(away, 'is', 'are')} away and may not see this until active again.` : '')
       if (bad.length) setNote(`${ok.length ? 'Sent to ' + ok.join(', ') + '. ' : ''}Failed: ${bad.join('; ')}`, 'bad')
-      else setNote(`Sent to ${ok.join(', ')}.${woke.length || asked.length === ok.length ? '' : ' "queued" is not "delivered", so watch the receipt.'}${extra}`, 'ok')
+      else setNote(`Sent to ${ok.join(', ')}.${woke.length || asked.length >= ok.length ? '' : ' "queued" is not "delivered", so watch the receipt.'}${extra}`, 'ok')
       stick = true
       await refresh(); toBottom()
     } finally { sending = false; text.disabled = false; updateSend(); text.focus() }

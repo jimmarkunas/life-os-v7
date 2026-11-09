@@ -827,12 +827,14 @@ test('council is wired through the worker and the panel, and ids pass the room v
   const worker = readFileSync(new URL('../worker/main.mjs', import.meta.url), 'utf8')
   const js = readFileSync(new URL('../panel/room.js', import.meta.url), 'utf8')
   const html = readFileSync(new URL('../panel/index.html', import.meta.url), 'utf8')
-  for (const h of ['council.start', 'council.release']) assert.match(worker, new RegExp(`handle\\('${h.replace('.', '\\.')}'`))
+  for (const h of ['council.start', 'council.release', 'council.round']) assert.match(worker, new RegExp(`handle\\('${h.replace('.', '\\.')}'`))
   assert.match(worker, /councilMessages\(state\)/)
   assert.match(worker, /reach\[m\.id\] = 'council'/)
   assert.match(worker, /startsWith\('council-'\)/)
   assert.match(js, /council\.start/)
   assert.match(js, /council\.release/)
+  assert.match(js, /council\.round/)
+  assert.match(html, /id="rounds"/)
   assert.match(js, /'council-claude': 'claudecode'/)
   assert.match(html, /data-surface="council"/)
   assert.equal(withHidden([], council.memberIdFor('claude', 'ctx_abcdef123456'), true)[0], 'council-claude:abcdef12')
@@ -847,4 +849,95 @@ test('council context needs a Concord workspace and keeps its state with the han
   const ctx = await councilContext({ repoRoot: root, handoffDir: path.join(root, 'ho'), runner: async () => ({ stdout: '{}' }) })
   assert.equal(ctx.stateFile, path.join(root, 'ho', 'council.json'))
   assert.equal(ctx.repoRoot, root)
+})
+
+// ---- council rounds: the room relays answers between members ----
+async function roundSetup(t, extra = {}) {
+  let n = 0, sends = 0
+  const inbox = { messages: [] }
+  const { ctx, calls } = await councilCtx(t, {
+    ...UP,
+    'orchestration worker-start': () => { n += 1; return { dispatchId: `ctx_member${n}xxxxxxxx`, taskId: `task_boot${n}`, terminal: `term_worker${n}` } },
+    'orchestration send': () => { sends += 1; return { taskId: `task_s${sends}`, delivery: 'follow_up' } },
+    'orchestration inbox': () => inbox,
+    ...extra
+  })
+  const a = await council.startMember(ctx, { agent: 'claude' })
+  const b = await council.startMember(ctx, { agent: 'codex' })
+  const done = (id, from, body, taskId) => ({ id, type: 'worker_done', from_handle: from, body, payload: JSON.stringify({ taskId }) })
+  return { ctx, calls, inbox, a, b, done }
+}
+const sendsOf = (calls) => calls.filter((c) => c[1] === 'send')
+const bodyOf = (c) => c[c.indexOf('--body') + 1]
+
+test('council round: answers are relayed to the other member, then the round finishes after the set follow-ups', async t => {
+  const { ctx, calls, inbox, a, b, done } = await roundSetup(t)
+  const sent = await council.startRound(ctx, { ids: [a.id, b.id], text: 'Ship it?', from: 'human:jim', followups: 1 })
+  assert.deepEqual(sent.map((x) => x.taskId), ['task_s1', 'task_s2'])
+  inbox.messages = [done('m2', 'term_worker1', 'Yes, ship.', 'task_s1')]
+  await council.syncCouncil(ctx)
+  assert.equal(sendsOf(calls).length, 2, 'one answer is not enough: the round waits for the other member')
+  inbox.messages = [done('m3', 'term_worker2', 'No, wait for tests.', 'task_s2'), ...inbox.messages]
+  assert.equal(await council.syncCouncil(ctx), true)
+  const relays = sendsOf(calls).slice(2)
+  assert.equal(relays.length, 2)
+  const toA = relays.find((c) => c[c.indexOf('--to') + 1] === 'dispatch:ctx_member1xxxxxxxx')
+  assert.match(bodyOf(toA), /Ship it\?/)
+  assert.match(bodyOf(toA), /Codex council member: No, wait for tests\./)
+  assert.doesNotMatch(bodyOf(toA), /Yes, ship\./, 'a member is not sent its own answer back')
+  const toB = relays.find((c) => c[c.indexOf('--to') + 1] === 'dispatch:ctx_member2xxxxxxxx')
+  assert.match(bodyOf(toB), /Claude council member: Yes, ship\./)
+  // second answers arrive: the one follow-up is used up, so no further sends and the round is finished
+  inbox.messages = [done('m5', 'term_worker2', 'Fair, ship after tests.', 'task_s4'), done('m4', 'term_worker1', 'Agreed, tests first.', 'task_s3'), ...inbox.messages]
+  await council.syncCouncil(ctx)
+  assert.equal(sendsOf(calls).length, 4)
+  const state = await council.loadState(ctx.stateFile, ctx.repoRoot)
+  assert.equal(state.rounds[0].finished, true)
+  const shown = council.councilMessages(state).filter((m) => m.from === 'human:jim')
+  assert.ok(shown.some((m) => /^Round 2: relayed 1 other answer/.test(m.content)), 'the relay is shown in the room as a short, honest line')
+  assert.ok(!shown.some((m) => /Codex council member:/.test(m.content)), 'the relayed text is not replayed as if you wrote it')
+})
+
+test('council round: needs two members and a sane follow-up count; a released member drops out and the round ends early with a note', async t => {
+  const { ctx, inbox, a, b, done } = await roundSetup(t)
+  await assert.rejects(council.startRound(ctx, { ids: [a.id], text: 'q', from: 'human:jim', followups: 1 }), /at least two/)
+  await assert.rejects(council.startRound(ctx, { ids: [a.id, b.id], text: 'q', from: 'human:jim', followups: 0 }), /1 to 3/)
+  await assert.rejects(council.startRound(ctx, { ids: [a.id, b.id], text: 'q', from: 'human:jim', followups: 9 }), /1 to 3/)
+  await council.startRound(ctx, { ids: [a.id, b.id], text: 'q', from: 'human:jim', followups: 2 })
+  await council.releaseMember(ctx, b.id)
+  inbox.messages = [done('m2', 'term_worker1', 'My answer', 'task_s1')]
+  await council.syncCouncil(ctx)
+  const state = await council.loadState(ctx.stateFile, ctx.repoRoot)
+  assert.equal(state.rounds[0].finished, true)
+  assert.match(council.councilMessages(state).at(-1).content, /ended early/)
+})
+
+test('council round: a member that never answers is given up on after ten minutes, and the others are not relayed alone', async t => {
+  const { ctx, inbox, a, b, done } = await roundSetup(t)
+  await council.startRound(ctx, { ids: [a.id, b.id], text: 'q', from: 'human:jim', followups: 1 })
+  inbox.messages = [done('m2', 'term_worker1', 'Only me', 'task_s1')]
+  ctx.now = () => '2026-11-09T12:11:00.000Z'            // ten minutes and a bit after the question (12:00)
+  await council.syncCouncil(ctx)
+  const state = await council.loadState(ctx.stateFile, ctx.repoRoot)
+  assert.equal(state.rounds[0].finished, true)
+  assert.match(council.councilMessages(state).at(-1).content, /fewer than two members answered in time/)
+})
+
+test('council round: a failed relay send stops that round with a visible note instead of looping', async t => {
+  let sends = 0
+  const { ctx, inbox, a, b, done } = await roundSetup(t, { 'orchestration send': () => { sends += 1; if (sends > 2) return new Error('orca down'); return { taskId: `task_s${sends}`, delivery: 'follow_up' } } })
+  await council.startRound(ctx, { ids: [a.id, b.id], text: 'q', from: 'human:jim', followups: 1 })
+  inbox.messages = [done('m3', 'term_worker2', 'B', 'task_s2'), done('m2', 'term_worker1', 'A', 'task_s1')]
+  await council.syncCouncil(ctx)
+  const state = await council.loadState(ctx.stateFile, ctx.repoRoot)
+  assert.equal(state.rounds[0].finished, true)
+  assert.match(council.councilMessages(state).at(-1).content, /The round stopped: .*orca down/)
+})
+
+test('council: sends and syncs queue behind each other so council.json is never overwritten', async t => {
+  const { ctx, inbox, a, b } = await roundSetup(t)
+  inbox.messages = []
+  await Promise.all([council.askMembers(ctx, { ids: [a.id], text: 'one', from: 'human:jim' }), council.syncCouncil(ctx), council.askMembers(ctx, { ids: [b.id], text: 'two', from: 'human:jim' })])
+  const state = await council.loadState(ctx.stateFile, ctx.repoRoot)
+  assert.deepEqual(state.log.filter((e) => e.k === 'q').map((e) => e.text), ['one', 'two'])
 })
