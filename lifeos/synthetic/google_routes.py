@@ -3,7 +3,7 @@
 Labels are neutral (tenant A is the "personal" side, tenant B the "work" side in the Jira text). A read is routed by the caller's tenant, the provider and the exact pinned account
 id, through the merged gate `authz.dispatch`; this module adds no policy of its own and no second gateway. There is no alias, no default and no most-recent account: anything but
 an exact account id fails closed before a handler runs, with a receipt that names the denial. Discovery shows a caller only its own tenant's routes."""
-from lifeos.synthetic import authz, tools as T
+from lifeos.synthetic import authz, composio as C, tools as T
 from lifeos.synthetic.authz_fixture import NOW, AuthzWorld, TENANT_A, TENANT_B
 
 ROUTES = {"a-gmail": {"tenant": TENANT_A, "provider": "gmail", "account": "acct-a-gmail"}, "a-drive": {"tenant": TENANT_A, "provider": "drive", "account": "acct-a-drive"},
@@ -43,7 +43,15 @@ def route_read(world, who, account_id, object_id, nonce="n1", now=NOW):
     The record, only on ALLOW, carries the source text with its attribution; nothing from another tenant's source can come back."""
     src = world.sources.get(object_id)
     tool = READ_TOOL.get(src["kind"] if src else None, READ_TOOL["gmail"])
-    receipt, results = authz.dispatch(world, _request(world, who, account_id, tool, nonce, object_id), now)
+    ledger = world.ledger_hash()
+    flagged = C.consent_flag(world, account_id)                        # a managed connection that needs the owner is shown to the gate as NEEDS_OWNER_RECONSENT, exactly as composio.execute does
+    try:
+        receipt, results = authz.dispatch(world, _request(world, who, account_id, tool, nonce, object_id), now)
+    finally:
+        if flagged:
+            world.consent_needed.discard(account_id)
+    if flagged:
+        receipt["policy_ledger_hash_before"] = receipt["policy_ledger_hash_after"] = ledger      # the flag was only for the gate: a refusal changes nothing, and the receipt says so
     if receipt["decision_code"] != "ALLOW":
         return receipt, None
     provider = world.accounts[account_id][1]

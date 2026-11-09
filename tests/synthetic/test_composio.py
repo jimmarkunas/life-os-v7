@@ -46,21 +46,26 @@ class ExactAccountSelection(unittest.TestCase):
         self.assertEqual((receipt["decision_code"], out, w.provider_calls), ("DENY_ACCOUNT_AMBIGUOUS", None, 0))
 
 
+def upkeep(w, runner):
+    """A signed upkeep run with a fresh nonce."""
+    return C.maintain(w, C.upkeep_command(w, runner, f"u{len(w.manager_nonces)}"))
+
+
 class RoutineUpkeepNeedsNoHuman(unittest.TestCase):
     def test_expiring_tokens_are_refreshed_and_health_is_reported_with_no_login(self):
         w = C.ComposioWorld()
         before = w.connections["ca-a1"]["expires"]
-        out = C.maintain(w, "oracle-admin")
+        out = upkeep(w, "oracle-admin")
         self.assertEqual((out["outcome"], out["counts"], out["human_logins"], w.human_logins), ("done", {"refreshed": 1, "healthy": 1, "needs_reconsent": 2, "disabled": 0}, 0, 0))
         self.assertGreater(w.connections["ca-a1"]["expires"], before)
         self.assertEqual((w.connections["ca-a1"]["refreshes"], w.connections["ca-a2"]["refreshes"]), (1, 0))
-        self.assertEqual(C.maintain(w, "github-admin")["counts"]["refreshed"], 0)                    # a second run has nothing left to refresh
+        self.assertEqual(upkeep(w, "github-admin")["counts"]["refreshed"], 0)                    # a second run has nothing left to refresh
         self.assertEqual(w.human_logins, 0)
 
     def test_buzz_carries_only_scoped_status_and_authorized_approval_requests(self):
         w = C.ComposioWorld()
-        C.maintain(w, "oracle-admin")
-        C.maintain(w, "github-admin")
+        upkeep(w, "oracle-admin")
+        upkeep(w, "github-admin")
         kinds = [n["kind"] for n in w.buzz_outbox]
         self.assertEqual(sorted(set(kinds)), ["approval_request", "status"])
         self.assertEqual(kinds.count("approval_request"), 2)                                          # one per account that needs the owner, not one per run
@@ -70,17 +75,52 @@ class RoutineUpkeepNeedsNoHuman(unittest.TestCase):
         with self.assertRaises(ValueError):
             C._notice(w, kind="status", token="x")                                                   # a notice cannot even be built with a credential field
 
-    def test_only_an_approved_admin_principal_runs_the_upkeep(self):
+    def test_only_a_runner_proven_by_a_signed_command_runs_the_upkeep(self):
+        """GWT-T11-02: a bare name, an unregistered sender, a forged key, a changed command and a replay are all refused, and nothing changes."""
         w = C.ComposioWorld()
-        for runner in ("agent-a", "agent-rogue", "", "hermes"):
-            self.assertEqual(C.maintain(w, runner), {"outcome": "refused", "code": "DENY_MANAGEMENT_SCOPE"})
-        self.assertEqual((w.admin_calls, w.buzz_outbox), (0, []))
+        good = C.upkeep_command(w, "oracle-admin", "u-good")
+        changed = {**good, "nonce": "u-other"}                                                        # edited after signing
+        wrong_project = C.upkeep_command(w, "oracle-admin", "u-p", project="proj-other")
+        wrong_action = C.maintain(w, {**C.upkeep_command(w, "oracle-admin", "u-a"), "action": "disable"})
+        bare = [("oracle-admin", "DENY_INPUT"), ("", "DENY_INPUT"), (None, "DENY_INPUT")]
+        cases = [(name, C.maintain(w, name)["code"]) for name, _ in bare]
+        self.assertEqual(cases, bare)                                                                 # a string, even a registered runner's name, proves nothing
+        for cmd, code in ((C.upkeep_command(w, "agent-a", "u1"), "DENY_PRINCIPAL"), (C.upkeep_command(w, "agent-rogue", "u2"), "DENY_PRINCIPAL"),
+                          (C.upkeep_command(w, "oracle-admin", "u3", key="fake-manager-key-github"), "DENY_PRINCIPAL"), (changed, "DENY_PRINCIPAL"),
+                          (wrong_project, "DENY_TENANT"), ({k: v for k, v in good.items() if k != "sig"}, "DENY_INPUT")):
+            self.assertEqual(C.maintain(w, cmd), {"outcome": "refused", "code": code})
+        self.assertEqual(wrong_action["code"], "DENY_PRINCIPAL")                                       # the action is part of what was signed
+        self.assertEqual((w.admin_calls, w.buzz_outbox, w.manager_nonces, w.human_logins), (0, [], set(), 0))
+        self.assertEqual(C.maintain(w, good)["outcome"], "done")
+        calls, notices = w.admin_calls, len(w.buzz_outbox)
+        self.assertEqual(C.maintain(w, good), {"outcome": "refused", "code": "DENY_REPLAY_OR_WRITER"})   # the same command twice is a replay
+        self.assertEqual((w.admin_calls, len(w.buzz_outbox)), (calls, notices))
+
+    def test_a_correctly_signed_command_for_another_action_is_not_upkeep(self):
+        w = C.ComposioWorld()
+        body = {"sender": "oracle-admin", "project": w.project, "action": "disable", "nonce": "u1"}
+        cmd = {**body, "sig": C.sign(C.MANAGER_KEYS["oracle-admin"], body)}
+        self.assertEqual(C.maintain(w, cmd), {"outcome": "refused", "code": "DENY_MANAGEMENT_SCOPE"})
+        self.assertEqual((w.admin_calls, w.manager_nonces), (0, set()))
+
+    def test_a_refused_runner_changes_nothing_in_the_world(self):
+        w = C.ComposioWorld()
+        before = (w.ledger_hash(), w.provider_hash(), {c: dict(v) for c, v in w.connections.items()}, w.admin_calls, list(w.buzz_outbox), set(w.notified))
+        for cmd in ("oracle-admin", C.upkeep_command(w, "agent-rogue", "u1"), C.upkeep_command(w, "oracle-admin", "u2", key="wrong")):
+            C.maintain(w, cmd)
+        self.assertEqual((w.ledger_hash(), w.provider_hash(), w.connections, w.admin_calls, w.buzz_outbox, w.notified), before)
+
+    def test_the_registered_oracle_and_github_runners_still_refresh_with_no_login(self):
+        w = C.ComposioWorld()
+        out = C.maintain(w, C.upkeep_command(w, "github-admin", "u1"))
+        self.assertEqual((out["runner"], out["counts"]["refreshed"], out["human_logins"], w.human_logins), ("github-admin", 1, 0, 0))
+        self.assertEqual(C.maintain(w, C.upkeep_command(w, "oracle-admin", "u1"))["outcome"], "done")  # a nonce is per sender
 
 
 class OwnerReconsent(unittest.TestCase):
     def test_an_expired_or_revoked_grant_denies_the_provider_and_names_the_owner_step(self):
         w = C.ComposioWorld()
-        C.maintain(w, "oracle-admin")
+        upkeep(w, "oracle-admin")
         for account in ("acct-b-gmail", "acct-b-drive"):
             receipt, out = C.execute(w, "agent-b", account, nonce=f"n-{account}")
             self.assertEqual((receipt["decision_code"], receipt["decision_step"], out, receipt["read_handler_calls"]), ("NEEDS_OWNER_RECONSENT", 13, None, 0))
@@ -93,7 +133,7 @@ class OwnerReconsent(unittest.TestCase):
         receipt, _ = C.execute(w, "agent-b", "acct-b-gmail")
         self.assertEqual(receipt["decision_code"], "NEEDS_OWNER_RECONSENT")
         for _ in range(3):
-            C.maintain(w, "oracle-admin")
+            upkeep(w, "oracle-admin")
             C.manage(w, C.command(w, "oracle-admin", "acct-b-gmail", "refresh", f"r{_}"))
         self.assertEqual((w.connections["ca-b1"]["state"], w.connections["ca-b1"]["refreshes"], w.human_logins), ("EXPIRED", 0, 0))
         self.assertEqual(C.execute(w, "agent-b", "acct-b-gmail", nonce="n9")[0]["decision_code"], "NEEDS_OWNER_RECONSENT")
@@ -159,7 +199,7 @@ class ManagementInterface(unittest.TestCase):
         self.assertEqual((out["state"], w.connections["ca-a2"]["state"]), ("DISABLED", "DISABLED"))
         receipt, result = C.execute(w, "agent-a", "acct-a-drive", source_id="DOC-1")
         self.assertEqual((receipt["decision_code"], result, w.provider_calls), ("DENY_GRANT", None, 0))
-        self.assertEqual(C.maintain(w, "oracle-admin")["counts"]["disabled"], 1)
+        self.assertEqual(upkeep(w, "oracle-admin")["counts"]["disabled"], 1)
 
 
 class RefusedCallsChangeNothing(unittest.TestCase):
@@ -184,7 +224,7 @@ class RefusedCallsChangeNothing(unittest.TestCase):
         self.assertEqual((out["outcome"], out["code"]), ("refused", "DENY_GRANT"))
         self.assertEqual((w.connections["ca-a2"]["state"], w.connections["ca-a2"]["expires"], w.connections["ca-a2"]["refreshes"], w.admin_calls, len(w.buzz_outbox)),
                          ("DISABLED", expires, 0, calls, notices))
-        C.maintain(w, "oracle-admin")
+        upkeep(w, "oracle-admin")
         self.assertEqual((w.connections["ca-a2"]["state"], w.connections["ca-a2"]["refreshes"]), ("DISABLED", 0))
 
 

@@ -96,17 +96,25 @@ def _approval_request(world, account, state):
                 note="Routine recovery failed; the owner must re-consent at the provider.")
 
 
+def consent_flag(world, account_id):
+    """True when the gate had to be shown the owner-consent flag for this account: its managed connection is EXPIRED or REVOKED and the flag was not already up. The flag is raised for
+    the gate only; the caller discards it afterwards and restores the ledger hash, so a refused read changes nothing. A world with no managed connections, or an account with none, selects nothing."""
+    cid = getattr(world, "by_account", {}).get(account_id) if isinstance(account_id, str) else None
+    conn = getattr(world, "connections", {}).get(cid)
+    flagged = bool(conn and conn["state"] in NEEDS_CONSENT and account_id not in world.consent_needed)
+    if flagged:
+        world.consent_needed.add(account_id)
+    return flagged
+
+
 def execute(world, who, account_id, nonce="n1", source_id=None, now=NOW):
     """-> (receipt, result). Through the merged gate. The connected account is chosen only by the exact account id; a missing one, an alias or an account with no connection selects nothing.
     A grant that needs the owner's re-consent is denied here before any provider call."""
     cid = world.by_account.get(account_id) if isinstance(account_id, str) else None
     acct = world.accounts.get(account_id) if isinstance(account_id, str) else None
-    conn = world.connections.get(cid)
     # the gate reads the owner-consent flag, so it is raised for the gate only, and a call that does not end in that denial leaves the ledger as it found it
-    flagged = bool(conn and conn["state"] in NEEDS_CONSENT and account_id not in world.consent_needed)
     ledger = world.ledger_hash()
-    if flagged:
-        world.consent_needed.add(account_id)
+    flagged = consent_flag(world, account_id)
     ctx, agent = WHO.get(who, {"session": "no-session", "task": "no-task"}), world.agents.get(who)
     src = world.sources.get(source_id) if source_id else None
     # the tool follows what is being read: a document needs the drive tool, a message the gmail tool, anything else has no composio read tool at all
@@ -127,10 +135,36 @@ def execute(world, who, account_id, nonce="n1", source_id=None, now=NOW):
     return receipt, {"connected_account_id": cid, "account": account_id, "provider": acct[1], "text": results[0]["text"]}
 
 
-def maintain(world, runner, now=NOW):
-    """The routine upkeep run by an approved Oracle or GitHub admin principal: refresh what is about to expire, report what needs the owner. No human login, ever."""
-    if runner not in MANAGER_KEYS:
+def upkeep_command(world, sender, nonce, project=None, key=None):
+    """A fake signed upkeep command as it would arrive over Buzz: the same keyed digest as a management command, with no account (upkeep covers every managed connection)."""
+    body = {"sender": sender, "project": project or world.project, "action": "maintain", "nonce": nonce}
+    return {**body, "sig": sign(key or MANAGER_KEYS.get(sender, "no-such-key"), body)}
+
+
+def _authenticate(world, cmd, fields):
+    """The checks every signed management or upkeep command passes first: shape, registered principal and key (a changed command fails), then a nonce never used before. -> a refusal or None."""
+    if not isinstance(cmd, dict) or any(not (isinstance(cmd.get(k), str) and cmd[k]) for k in fields):
+        return {"outcome": "refused", "code": "DENY_INPUT"}
+    key = MANAGER_KEYS.get(cmd["sender"])
+    if key is None or sign(key, {k: v for k, v in cmd.items() if k != "sig"}) != cmd["sig"]:
+        return {"outcome": "refused", "code": "DENY_PRINCIPAL"}      # a rogue agent, a bare name, or a command that is forged or was changed
+    if (cmd["sender"], cmd["nonce"]) in world.manager_nonces:
+        return {"outcome": "refused", "code": "DENY_REPLAY_OR_WRITER"}
+    return None
+
+
+def maintain(world, cmd, now=NOW):
+    """The routine upkeep run by an approved Oracle or GitHub admin principal: refresh what is about to expire, report what needs the owner. No human login, ever.
+    The runner is proven by a signed upkeep command (registered principal, key, fresh nonce), never by a bare name. A refusal changes nothing."""
+    refusal = _authenticate(world, cmd, ("sender", "project", "action", "nonce", "sig"))
+    if refusal:
+        return refusal
+    if cmd["action"] != "maintain":
         return {"outcome": "refused", "code": "DENY_MANAGEMENT_SCOPE"}
+    if cmd["project"] != world.project:
+        return {"outcome": "refused", "code": "DENY_TENANT"}
+    world.manager_nonces.add((cmd["sender"], cmd["nonce"]))
+    runner = cmd["sender"]
     counts = {"refreshed": 0, "healthy": 0, "needs_reconsent": 0, "disabled": 0}
     for cid in sorted(world.connections):
         c = world.connections[cid]
@@ -160,14 +194,9 @@ def owner_reconsent(world, cid, now=NOW):
 
 def manage(world, cmd, now=NOW):
     """The management interface behind Buzz: one signed command in, one scoped result out. Nothing a refusal returns, and nothing it posts, holds a key or a token."""
-    fields = ("sender", "project", "tenant", "account", "action", "nonce", "sig")
-    if not isinstance(cmd, dict) or any(not (isinstance(cmd.get(k), str) and cmd[k]) for k in fields):
-        return {"outcome": "refused", "code": "DENY_INPUT"}
-    key = MANAGER_KEYS.get(cmd["sender"])
-    if key is None or sign(key, {k: v for k, v in cmd.items() if k != "sig"}) != cmd["sig"]:
-        return {"outcome": "refused", "code": "DENY_PRINCIPAL"}      # a rogue agent, or a command that is forged or was changed
-    if (cmd["sender"], cmd["nonce"]) in world.manager_nonces:
-        return {"outcome": "refused", "code": "DENY_REPLAY_OR_WRITER"}
+    refusal = _authenticate(world, cmd, ("sender", "project", "tenant", "account", "action", "nonce", "sig"))
+    if refusal:
+        return refusal
     if cmd["action"] not in ALLOWED_ACTIONS:
         return {"outcome": "refused", "code": "DENY_MANAGEMENT_SCOPE"}
     acct = world.accounts.get(cmd["account"])

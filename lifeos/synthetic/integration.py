@@ -46,10 +46,7 @@ def effects(before, after):
 def clear(w, who, acct, obj, nonce, now=NOW):
     """The gate's answer for one cited read, without running it (preflight touches nothing). A connection that needs the owner raises the consent flag for the gate only, as composio.execute does."""
     src = w.sources.get(obj)
-    conn = w.connections.get(w.by_account.get(acct))
-    flagged = bool(conn and conn["state"] in C.NEEDS_CONSENT and acct not in w.consent_needed)
-    if flagged:
-        w.consent_needed.add(acct)
+    flagged = C.consent_flag(w, acct)
     try:
         return authz.preflight(w, G._request(w, who, acct, G.READ_TOOL.get(src["kind"] if src else None, G.READ_TOOL["gmail"]), nonce, obj), now)
     finally:
@@ -173,6 +170,21 @@ def manage_of(cmd_args, cmd_kw=None, who="oracle-admin"):
     return run
 
 
+def maintain_of(make):
+    """Upkeep over a signed command; `make(w)` builds the command (or, for the bare-name case, the string that is not one)."""
+    def run(w):
+        return plain({"code": C.maintain(w, make(w))["code"]})
+    return run
+
+
+def _disabled_connection(w):
+    C.manage(w, C.command(w, "oracle-admin", "acct-a-drive", "disable", "d1"))
+
+
+def _upkeep_done_once(w):
+    C.maintain(w, C.upkeep_command(w, "oracle-admin", "r1"))
+
+
 def _prime_summary(w):
     cited_summary(w, "agent-a", [("acct-a-gmail", "P-MSG-1"), ("acct-a-drive", "P-DOC-1")], nonce="p")
 
@@ -229,8 +241,8 @@ def catalog():
     rows = [
         ("allow-a-gmail", GWTS[0], "allow", "ALLOW", "agent-a", "route", None, route("agent-a", "acct-a-gmail", "P-MSG-1")),
         ("allow-a-drive", GWTS[0], "allow", "ALLOW", "agent-a", "route", None, route("agent-a", "acct-a-drive", "P-DOC-1")),
-        ("allow-b-gmail", GWTS[0], "allow", "ALLOW", "agent-b", "route", None, route("agent-b", "acct-b-gmail", "B-MSG-1")),
-        ("allow-b-drive", GWTS[0], "allow", "ALLOW", "agent-b", "route", None, route("agent-b", "acct-b-drive", "B-DOC-1")),
+        ("allow-b-gmail", GWTS[0], "allow", "ALLOW", "agent-b", "route", _owner_reconsented, route("agent-b", "acct-b-gmail", "B-MSG-1")),
+        ("allow-b-drive", GWTS[0], "allow", "ALLOW", "agent-b", "route", _owner_reconsented, route("agent-b", "acct-b-drive", "B-DOC-1")),
         ("allow-composio-a-gmail", GWTS[0], "allow", "ALLOW", "agent-a", "composio", None, composio_exec("agent-a", "acct-a-gmail")),
         ("allow-composio-a-drive", GWTS[0], "allow", "ALLOW", "agent-a", "composio", None, composio_exec("agent-a", "acct-a-drive", source_id="DOC-1")),
         ("allow-discovery-a", GWTS[0], "allow", "ALLOW", "agent-a", "discover", None, discovery("agent-a", "acct-a-drive")),
@@ -249,6 +261,16 @@ def catalog():
         ("deny-expired-connection", GWTS[1], "deny", "NEEDS_OWNER_RECONSENT", "agent-b", "composio", None, composio_exec("agent-b", "acct-b-gmail")),
         ("deny-revoked-connection", GWTS[1], "deny", "NEEDS_OWNER_RECONSENT", "agent-b", "composio", None, composio_exec("agent-b", "acct-b-drive")),
         ("deny-wrong-tenant-on-dead-connection", GWTS[1], "deny", "DENY_TENANT", "agent-a", "composio", None, composio_exec("agent-a", "acct-b-gmail")),
+        # GWT-T11-01: a Google route behind a dead managed connection is refused through the same gate (the allow-b-* rows above are the owner's re-consent)
+        ("deny-route-expired-connection", GWTS[1], "deny", "NEEDS_OWNER_RECONSENT", "agent-b", "route", None, route("agent-b", "acct-b-gmail", "B-MSG-1")),
+        ("deny-route-revoked-connection", GWTS[1], "deny", "NEEDS_OWNER_RECONSENT", "agent-b", "route", None, route("agent-b", "acct-b-drive", "B-DOC-1")),
+        ("deny-route-newly-expired-connection", GWTS[1], "deny", "NEEDS_OWNER_RECONSENT", "agent-a", "route", _connection_expired, route("agent-a", "acct-a-gmail", "P-MSG-1")),
+        ("deny-route-disabled-connection", GWTS[1], "deny", "DENY_GRANT", "agent-a", "route", _disabled_connection, route("agent-a", "acct-a-drive", "P-DOC-1")),
+        # GWT-T11-02: upkeep takes a signed command, never a bare runner name
+        ("deny-maintain-bare-runner-name", GWTS[1], "deny", "DENY_INPUT", "oracle-admin", "maintain", None, maintain_of(lambda w: "oracle-admin")),
+        ("deny-maintain-unregistered-sender", GWTS[1], "deny", "DENY_PRINCIPAL", "agent-rogue", "maintain", None, maintain_of(lambda w: C.upkeep_command(w, "agent-rogue", "u1"))),
+        ("deny-maintain-forged-key", GWTS[1], "deny", "DENY_PRINCIPAL", "oracle-admin", "maintain", None, maintain_of(lambda w: C.upkeep_command(w, "oracle-admin", "u2", key="wrong-key"))),
+        ("deny-maintain-replayed-command", GWTS[1], "deny", "DENY_REPLAY_OR_WRITER", "oracle-admin", "maintain", _upkeep_done_once, maintain_of(lambda w: C.upkeep_command(w, "oracle-admin", "r1"))),
         ("deny-forged-approval", GWTS[1], "deny", "DENY_APPROVAL_MISMATCH", "agent-a", "gate", None,
          lambda w: rr(gate(w, "agent-a", "gmail_send_message", "acct-a-gmail", "g-acct-a-gmail-write", approval_id="ap-forged", body="Fake note.")[0])),
         ("deny-replayed-approval", GWTS[1], "deny", "DENY_REPLAY_OR_WRITER", "agent-a", "gate", _approved_send,
@@ -319,18 +341,18 @@ def lifecycle():
         kind, expect = LIFE_EXPECT[sid]
         steps.append(run_one(sid, GWTS[3], kind, expect, who, surface, None, run, w))
 
-    def maintain(runner, now=NOW):
-        out = C.maintain(w, runner, now)
+    def maintain(runner, nonce, now=NOW):
+        out = C.maintain(w, C.upkeep_command(w, runner, nonce), now)
         return out["code"] or "ALLOW", None, None, out["counts"]
 
-    step("life-oracle-refreshes-expiring", "oracle-admin", "maintain", lambda _: maintain("oracle-admin"))
+    step("life-oracle-refreshes-expiring", "oracle-admin", "maintain", lambda _: maintain("oracle-admin", "m1"))
     step("life-read-after-refresh", "agent-a", "composio", composio_exec("agent-a", "acct-a-gmail", nonce="l1"))
-    step("life-github-upkeep", "github-admin", "maintain", lambda _: maintain("github-admin"))
+    step("life-github-upkeep", "github-admin", "maintain", lambda _: maintain("github-admin", "m2"))
     step("life-expired-needs-owner", "agent-b", "composio", composio_exec("agent-b", "acct-b-gmail", nonce="l2"))
     step("life-revoked-needs-owner", "agent-b", "composio", composio_exec("agent-b", "acct-b-drive", nonce="l3"))
     step("life-admin-refresh-cannot-revive", "github-admin", "manage", lambda _: plain({"code": None, "summary": C.manage(w, C.command(w, "github-admin", "acct-b-gmail", "refresh", "l4"))}))
     step("life-still-blocked-after-admin-refresh", "agent-b", "composio", composio_exec("agent-b", "acct-b-gmail", nonce="l5"))
-    step("life-later-upkeep-refreshes-again", "oracle-admin", "maintain", lambda _: maintain("oracle-admin", LATER))
+    step("life-later-upkeep-refreshes-again", "oracle-admin", "maintain", lambda _: maintain("oracle-admin", "m3", LATER))
     C.owner_reconsent(w, "ca-b1")                                                                # the one human act in the replay: the owner signs in at the provider
     steps[-1]["owner_step_after"] = True
     step("life-after-owner-reconsent", "agent-b", "composio", composio_exec("agent-b", "acct-b-gmail", nonce="l6"))

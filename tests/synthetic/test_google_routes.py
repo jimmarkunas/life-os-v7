@@ -2,7 +2,7 @@
 import json
 import unittest
 
-from lifeos.synthetic import google_routes as G
+from lifeos.synthetic import composio as C, google_routes as G
 from lifeos.synthetic.authz_fixture import TENANT_A, TENANT_B
 
 
@@ -95,6 +95,59 @@ class FourDistinctRoutesAndNativeConnections(unittest.TestCase):
         for text in (json.dumps(G.ROUTES), json.dumps(w.grants, default=str)):
             self.assertNotIn("refresh", text.lower())
             self.assertNotIn("secret", text.lower())
+
+
+class ManagedConnectionState(unittest.TestCase):
+    """LIFE-421 / GWT-T11-01: a route behind a managed Composio connection follows that connection's state, through the same gate, with nothing changed by a refusal."""
+
+    def world(self):
+        class W(G.RouteWorld, C.ComposioWorld):
+            pass
+        return W()
+
+    def snap(self, w):
+        return (w.provider_hash(), w.ledger_hash(), w.read_calls, w.mutation_calls, w.commits, w.provider_calls, w.admin_calls, list(w.buzz_outbox), set(w.consent_needed), set(w.notified))
+
+    def test_an_expired_or_revoked_connection_refuses_the_route_and_changes_nothing(self):
+        for who, account, obj in (("agent-b", "acct-b-gmail", "B-MSG-1"), ("agent-b", "acct-b-drive", "B-DOC-1")):
+            with self.subTest(account=account):
+                w = self.world()
+                before = self.snap(w)
+                receipt, rec = G.route_read(w, who, account, obj)
+                self.assertEqual((receipt["decision_code"], receipt["decision_step"], rec, receipt["read_handler_calls"]), ("NEEDS_OWNER_RECONSENT", 13, None, 0))
+                self.assertEqual(self.snap(w), before)
+                self.assertEqual((receipt["policy_ledger_hash_before"], receipt["policy_ledger_hash_after"]), (before[1], before[1]))
+
+    def test_a_connection_that_expires_later_refuses_the_next_read_and_the_owner_step_reopens_it(self):
+        w = self.world()
+        self.assertEqual(G.route_read(w, "agent-a", "acct-a-gmail", "P-MSG-1")[0]["decision_code"], "ALLOW")
+        w.connections["ca-a1"]["state"] = "REVOKED"
+        before = self.snap(w)
+        receipt, rec = G.route_read(w, "agent-a", "acct-a-gmail", "P-MSG-1", nonce="n2")
+        self.assertEqual((receipt["decision_code"], rec), ("NEEDS_OWNER_RECONSENT", None))
+        self.assertEqual(self.snap(w), before)
+        C.owner_reconsent(w, "ca-a1")
+        receipt, rec = G.route_read(w, "agent-a", "acct-a-gmail", "P-MSG-1", nonce="n3")
+        self.assertEqual((receipt["decision_code"], rec["text"]), ("ALLOW", "Fake tenant A message."))
+
+    def test_a_disabled_connection_is_refused_by_its_revoked_grants(self):
+        w = self.world()
+        C.manage(w, C.command(w, "oracle-admin", "acct-a-drive", "disable", "c1"))
+        before = self.snap(w)
+        receipt, rec = G.route_read(w, "agent-a", "acct-a-drive", "P-DOC-1")
+        self.assertEqual((receipt["decision_code"], rec), ("DENY_GRANT", None))
+        self.assertEqual(self.snap(w), before)
+
+    def test_a_wrong_tenant_still_gets_the_tenant_denial_and_leaves_no_flag(self):
+        w = self.world()
+        before = self.snap(w)
+        receipt, rec = G.route_read(w, "agent-a", "acct-b-gmail", "B-MSG-1")
+        self.assertEqual((receipt["decision_code"], rec, w.consent_needed), ("DENY_TENANT", None, set()))
+        self.assertEqual(self.snap(w), before)
+
+    def test_a_plain_route_world_without_connections_is_unchanged(self):
+        w = G.RouteWorld()
+        self.assertEqual(G.route_read(w, "agent-b", "acct-b-gmail", "B-MSG-1")[0]["decision_code"], "ALLOW")
 
 
 if __name__ == "__main__":
