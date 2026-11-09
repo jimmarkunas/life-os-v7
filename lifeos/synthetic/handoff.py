@@ -48,7 +48,7 @@ class Receiver:
 
     def __init__(self, world, name="orca-fake"):
         self.world, self.name = world, name
-        self.inbox, self.acks, self.agent_starts, self.fail_next = {}, {}, 0, False
+        self.inbox, self.acks, self.sigs, self.agent_starts, self.fail_next = {}, {}, {}, 0, False
 
     def receive(self, env):
         if not isinstance(env, dict):
@@ -74,12 +74,14 @@ class Receiver:
             return _result("refused", "DENY_TASK_SCOPE")                                 # off scope: not this sender's task, another tenant, or a reference outside the scope
         ident = (env["sender"], env["case"], env["nonce"])
         if ident in self.acks:
+            if self.sigs[ident] != env["sig"]:
+                return _result("refused", "DENY_REPLAY_OR_WRITER")                       # a used nonce carrying different signed content: not a duplicate, and nothing is recorded
             return _result("duplicate", "DENY_REPLAY_OR_WRITER", self.acks[ident], {"writes": len(self.inbox)})
         if self.fail_next:
             self.fail_next = False
             return _result("failed", "RECEIVER_FAILED")                                  # nothing written, nothing acknowledged: a retry will be accepted once
         ack = ref_hash("ack", self.name, *ident)
         self.inbox[ident] = {"task_key": env["task_key"], "scope": env["scope"], "refs": tuple(refs), "at": NOW.isoformat()}
-        self.acks[ident] = ack
+        self.acks[ident], self.sigs[ident] = ack, env["sig"]
         return _result("ack", None, ack, {"case": env["case"], "nonce": env["nonce"], "recipient": self.name, "refs": len(refs), "writes": len(self.inbox)})
 

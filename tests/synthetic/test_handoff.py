@@ -98,6 +98,15 @@ class DuplicatesAndFailures(unittest.TestCase):
             self.assertEqual((again["outcome"], again["code"], again["ack"], again["writes"]), ("duplicate", "DENY_REPLAY_OR_WRITER", first["ack"], 1))
         self.assertEqual((len(r.inbox), r.agent_starts), (1, 0))
 
+    def test_a_reused_nonce_with_different_signed_content_is_refused_not_acknowledged_as_a_duplicate(self):
+        w, r = setup()
+        first = r.receive(send(w))
+        changed = r.receive(send(w, refs=["SYN-1"]))                       # same sender, case and nonce; validly signed, but other references
+        self.assertEqual((changed["outcome"], changed["code"], changed["ack"]), ("refused", "DENY_REPLAY_OR_WRITER", None))
+        self.assertEqual((len(r.inbox), r.agent_starts), (1, 0))
+        self.assertEqual(next(iter(r.inbox.values()))["refs"], tuple(REFS))   # the new references were never recorded
+        self.assertEqual(r.receive(send(w))["ack"], first["ack"])           # the original is still a plain duplicate
+
     def test_the_same_nonce_from_another_sender_is_not_a_duplicate(self):
         w, r = setup()
         r.receive(send(w))
