@@ -52,6 +52,15 @@ class RefusalsHaveZeroEffect(unittest.TestCase):
     def test_a_topic_of_another_tenant_is_refused(self):
         self.refused("DENY_TENANT", tenant=TENANT_B, wanted=[("B-DOC-1", 1)])
 
+    def test_a_stranger_learns_nothing_about_a_topic(self):
+        # a foreign caller must get the same code whether the topic exists, has another version, or does not exist at all
+        codes = {self.refused("DENY_TENANT", tenant=TENANT_B, wanted=[("B-DOC-1", 1)], base=base)["decision_code"] for base in (1, 7)}
+        w = World()
+        before = w.state_hash()
+        missing = topic_store.update(w, TENANT_B, "NO-SUCH-TOPIC", [("B-DOC-1", 1)], 1, "w1", "n1")
+        self.assertEqual((codes, missing["decision_code"], missing["commits"], w.state_hash()), ({"DENY_TENANT"}, "DENY_TENANT", 0, before))
+        self.assertNotIn("NO-SUCH-TOPIC", json.dumps(missing))
+
     def test_stale_and_revoked_content(self):
         rcpt = self.refused("DENY_STALE_SOURCE", wanted=[("SYN-1", 2), ("MTG-1", 2)])
         self.assertEqual(rcpt["source_failure_kind"], "SOURCE_STALE")
@@ -90,6 +99,23 @@ class RevokedSourceQuarantine(unittest.TestCase):
         self.assertEqual((topic, code), (None, "DENY_SOURCE_REVOKED"))
         self.assertIn("DOC-1", w.sources)                      # nothing is deleted
         self.assertEqual(topic_store.read_topic(w, TENANT_B, TOPIC)[1], "DENY_TENANT")
+
+    def test_a_quarantined_topic_is_rebuilt_from_clean_sources_and_then_readable(self):
+        w = World()
+        update(w)
+        w.revoke("DOC-1")
+        again = update(w, wanted=[("SYN-1", 3), ("MTG-1", 2)], base=2, nonce="n2")
+        self.assertEqual((again["decision_code"], again["commits"], w.quarantine), ("ALLOW", 1, []))
+        self.assertEqual(topic_store.read_topic(w, TENANT_A, TOPIC)[1], "ALLOW")
+        self.assertNotIn("DOC-1", [s for s, _ in w.topics[TOPIC]["lineage"]])
+
+    def test_a_quarantined_topic_cannot_be_rebuilt_from_the_revoked_source(self):
+        w = World()
+        update(w)
+        w.revoke("DOC-1")
+        before = w.state_hash()
+        rcpt = update(w, base=2, nonce="n2")                       # still cites the revoked DOC-1
+        self.assertEqual((rcpt["decision_code"], rcpt["commits"], w.quarantine, w.state_hash()), ("DENY_SOURCE_REVOKED", 0, [TOPIC], before))
 
     def test_an_unrelated_revocation_leaves_the_topic_readable(self):
         w = World()

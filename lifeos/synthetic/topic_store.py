@@ -13,14 +13,14 @@ def read_topic(world, tenant, topic_id):
 
 
 def update(world, tenant, topic_id, wanted, base_version, writer, nonce, case_id="update"):
-    """-> receipt. wanted = [(source_id, expected_revision)]. Writer conflict = replayed nonce, another writer holding the topic, or a version that moved (step 4)."""
+    """-> receipt. wanted = [(source_id, expected_revision)]. Writer conflict = replayed nonce, another writer holding the topic, or a version that moved (step 4). A topic that is missing or belongs to another tenant is refused first. A successful update lifts a quarantine."""
     before, r0, m0, c0 = world.state_hash(), world.read_calls, world.mutation_calls, world.commits
     topic = world.topics.get(topic_id)
+    if topic is None or topic["tenant"] != tenant:      # first of all: a missing topic and another tenant's topic look the same, so a stranger learns neither that it exists nor its version
+        return rcpt.build(case_id, tenant, knowledge.CODE["tenant"], world, before, r0, m0, c0)
     bad = knowledge.failures(world, tenant, wanted)
-    if nonce in world.seen_nonces or topic is None or topic["writer"] not in (None, writer) or topic["version"] != base_version:
+    if nonce in world.seen_nonces or topic["writer"] not in (None, writer) or topic["version"] != base_version:
         bad.add("replay_or_writer")
-    if topic is not None and topic["tenant"] != tenant:
-        bad.add("tenant")
     name = knowledge.first_failure(bad)
     if name:
         return rcpt.build(case_id, tenant, knowledge.CODE[name], world, before, r0, m0, c0)
@@ -30,5 +30,7 @@ def update(world, tenant, topic_id, wanted, base_version, writer, nonce, case_id
     topic["lineage"] = [(s, world.sources[s]["revision"]) for s, _ in wanted]
     topic["relations"] = [(topic_id, "cites", s) for s, _ in wanted]
     topic["version"] += 1
+    if topic_id in world.quarantine:                    # rebuilt only from sources that passed every check (none is revoked), so the revoked source is out of the lineage
+        world.quarantine.remove(topic_id)
     world.commits += 1
     return rcpt.build(case_id, tenant, "ALLOW", world, before, r0, m0, c0)
