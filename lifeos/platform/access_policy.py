@@ -6,7 +6,8 @@ unreadable or malformed policy, an unknown service or an unknown agent with no d
 """
 import json
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 LEVELS = ("off", "read", "write")
 SERVICES = ("jira", "notion", "github")
@@ -14,7 +15,7 @@ CAP = {"jira": "read", "notion": "write", "github": "read"}       # the most any
 KINDS = ("read", "write", "delete", "bulk")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 BULK_DEFAULT = 10
-CENTRAL = timezone(timedelta(hours=-6))                              # audit times are Central; the host sets the real offset when it writes the line
+CENTRAL = ZoneInfo("America/Chicago")                                # audit times are Central, with daylight saving (-06:00 in winter, -05:00 in summer)
 
 
 class PolicyError(ValueError):

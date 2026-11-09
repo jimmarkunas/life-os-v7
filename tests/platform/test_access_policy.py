@@ -72,6 +72,8 @@ class Audit(unittest.TestCase):
         now = datetime(2026, 11, 8, 16, 30, tzinfo=timezone.utc)
         line = A.audit_line(AUD, "notion", "notion-update-page", "pending", "bulk_needs_approval", approver="jim", now=now)
         self.assertEqual(line["t"], "2026-11-08T10:30:00-06:00")
+        summer = A.audit_line(AUD, "notion", "notion-update-page", "allow", "write_allowed", now=datetime(2026, 7, 8, 16, 30, tzinfo=timezone.utc))
+        self.assertEqual(summer["t"], "2026-07-08T11:30:00-05:00")           # daylight saving: Central is UTC-5 in July, not a fixed UTC-6
         self.assertEqual((line["service"], line["op"], line["decision"], line["approver"]), ("notion", "notion-update-page", "pending", "jim"))
         dirty = A.audit_line(AUD, "notion", "page: secret text\nwith breaks", "deny", "x" * 200)
         self.assertNotIn("\n", json.dumps(dirty).replace("\\n", ""))
