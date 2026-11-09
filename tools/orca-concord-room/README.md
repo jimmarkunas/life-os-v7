@@ -96,3 +96,7 @@ This v0.1.0 panel is **read-only**; prompts are authored in native Orca agent ch
 ## v0.9.1: avatars back at their original size
 
 - Circles are 26 px again (16 px in the presence chips), with the logos at their original padding. They are sharp because each image is generated at exactly twice its display size (52 px shown at 26 px, 32 px shown at 16 px); the pixel mascot's blocks land on whole pixels. The ring is drawn outside the image with a box-shadow so it no longer shrinks the picture. Earlier versions grew them to 32-44 px, which was not asked for.
+
+## v0.9.2: crisper avatar edges
+
+- Measured on a real screenshot: the avatar is drawn at exactly 52x52 device pixels (1:1, no browser rescaling) and the logo edges are about one pixel soft, which is the limit for a 26 px circle. The fuzzy look came from (1) a dark 2 px ring around the circle, a second soft step between the page and the avatar, now removed, and (2) a resampling filter (Lanczos) that adds ringing halos, replaced by exact area averaging (520 px canvas to 52 px is exactly 10x, the 512 px original to 32 px is exactly 16x).
