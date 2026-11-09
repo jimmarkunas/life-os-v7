@@ -1006,6 +1006,8 @@ test('council is wired through the worker and the panel, and ids pass the room v
   assert.match(js, /startAnswering/)
   assert.match(worker, /handle\('council\.handoff'/)
   assert.match(js, /council\.handoff/); assert.match(js, /openHandoff/)
+  assert.match(js, /class="hoff" hidden/); assert.doesNotMatch(js, /class="ho" hidden/, 'the Hand off link must not reuse the handoff-card class .ho')
+  assert.match(html, /\.hoff\[hidden\]/)
   assert.match(html, /id="hosheet"/); assert.match(html, /id="cmodel"/); assert.match(js, /\$\('cmodel'\)\.value/)
   assert.match(html, /id="answering"/)
   assert.match(html, /id="rounds"/)
