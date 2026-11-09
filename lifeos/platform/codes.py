@@ -887,6 +887,23 @@ CODES.update({    # --- synthetic cited knowledge and topic adapter (lifeos/synt
     'SOURCE_STALE': _r("synthetic", 'state', False, 'The kind of source failure behind a stale-source refusal.', 'None.'),
 })
 
+CODES.update({    # --- the policy-gated synthetic tool contract (lifeos/synthetic/authz.py, LIFE-374); fake data only, every one is a refusal before any change
+    'DENY_INPUT': _r("synthetic", 'terminal', False, 'The tool request is malformed or a required field is missing.', 'Fix the request.'),
+    'DENY_PRINCIPAL': _r("synthetic", 'terminal', False, 'The agent, host or session is not a verified one, or the call did not come through the V7 adapter.', 'Call through the adapter with a valid session.'),
+    'DENY_TASK_SCOPE': _r("synthetic", 'terminal', False, 'The task is missing, blocked or not this agent\'s.', 'Use an authorized, unblocked task.'),
+    'DENY_UNTRUSTED': _r("synthetic", 'terminal', False, 'Source or tool text claimed authority it does not have.', 'Only a recorded Jim approval counts.'),
+    'DENY_UNSUPPORTED_ACTION': _r("synthetic", 'terminal', False, 'The tool is not registered, or the sandbox or workbench action is not supported.', 'Use a registered tool.'),
+    'DENY_MANAGEMENT_SCOPE': _r("synthetic", 'terminal', False, 'An admin or proxy call without an approved management scope.', 'Get the management scope approved first.'),
+    'DENY_PROTECTED': _r("synthetic", 'terminal', False, 'The action is protected or its risk is unknown, and the exact approval or the write grant is missing.', 'Get a write grant and an exact Jim approval.'),
+    'DENY_BATCH_POLICY': _r("synthetic", 'terminal', False, 'The batch mixes kinds of action.', 'Send one kind of action per batch.'),
+    'NEEDS_OWNER_RECONSENT': _r("synthetic", 'blocked', False, 'The provider consent was revoked or expired and only the owner can renew it.', 'Owner renews the consent.'),
+    'DENY_GRANT': _r("synthetic", 'terminal', False, 'No valid grant: it is missing, revoked, expired, overdue for review, for another account, or the level is too low.', 'Renew or request the grant.'),
+    'DENY_APPROVAL_MISMATCH': _r("synthetic", 'terminal', False, 'An approval is present but is not for this exact action, account, host or task, or Jim did not issue it.', 'Get an exact approval.'),
+    'DENY_SECRET_EXPOSURE': _r("synthetic", 'terminal', False, 'A secret-shaped value is in the request or in the tool output; the output is suppressed.', 'Remove the secret and retry.'),
+    'DENY_ACCOUNT_AMBIGUOUS': _r("synthetic", 'terminal', False, 'The account is missing, ambiguous, unknown or not this tool\'s account.', 'Name the exact account.'),
+    'SOURCE_TIMEOUT': _r("synthetic", 'state', False, 'The kind of source failure behind a refusal after a read that returned nothing.', 'None.'),
+})
+
 NOT_CODES = frozenset((
     "LC_ALL", "LIFE_KEY", "PACK_DIR", "O_NOFOLLOW",     # LIFE-310: environment names the runner gives a step, and an os flag
     "LIFEOS_NOTION_IDS", "DASHBOARD_PAGE", "DASHBOARD_CHECKINS", "DASHBOARD_QBRS", "DASHBOARD_ARCHIVE", "DASHBOARD_MATT_MEGIBOW", "DATA_SOURCE", "FULL_WIDTH_TEMPLATE", "LEDGER_ROW", "QA_PARENT", "REPORTS_PAGE", "REVIEW_SOURCE", "ROUND_PAGE", "SANDBOX_PAGE", "SANDBOX_SOURCE", "SMITH_PAGE", "SOURCE_ID", "UI3C", "UI4", "WALMART_PAGE",      # LIFE-338: the <NAME> of a LIFEOS_NOTION_<NAME> variable (lifeos/platform/notion_ids.py)
