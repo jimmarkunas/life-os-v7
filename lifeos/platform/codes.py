@@ -904,6 +904,12 @@ CODES.update({    # --- the policy-gated synthetic tool contract (lifeos/synthet
     'SOURCE_TIMEOUT': _r("synthetic", 'state', False, 'The kind of source failure behind a refusal after a read that returned nothing.', 'None.'),
 })
 
+CODES.update({    # --- the synthetic signed handoff and fake receiver (lifeos/synthetic/handoff.py, LIFE-375); fake data only
+    'DENY_SIGNATURE': _r("synthetic", 'terminal', False, 'The handoff signature does not match: the event was forged or changed after signing.', 'Re-send a correctly signed event.'),
+    'DENY_RECIPIENT': _r("synthetic", 'terminal', False, 'The handoff is addressed to a different receiver.', 'Address it to the intended receiver.'),
+    'RECEIVER_FAILED': _r("synthetic", 'retry', False, 'The receiver failed before it wrote or acknowledged anything.', 'Send the same event again; it is accepted once.'),
+})
+
 NOT_CODES = frozenset((
     "LC_ALL", "LIFE_KEY", "PACK_DIR", "O_NOFOLLOW",     # LIFE-310: environment names the runner gives a step, and an os flag
     "LIFEOS_NOTION_IDS", "DASHBOARD_PAGE", "DASHBOARD_CHECKINS", "DASHBOARD_QBRS", "DASHBOARD_ARCHIVE", "DASHBOARD_MATT_MEGIBOW", "DATA_SOURCE", "FULL_WIDTH_TEMPLATE", "LEDGER_ROW", "QA_PARENT", "REPORTS_PAGE", "REVIEW_SOURCE", "ROUND_PAGE", "SANDBOX_PAGE", "SANDBOX_SOURCE", "SMITH_PAGE", "SOURCE_ID", "UI3C", "UI4", "WALMART_PAGE",      # LIFE-338: the <NAME> of a LIFEOS_NOTION_<NAME> variable (lifeos/platform/notion_ids.py)
