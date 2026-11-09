@@ -193,6 +193,23 @@ class Refusals(unittest.TestCase):
         out = I.cited_summary(w, "agent-b", [("acct-b-gmail", "B-MSG-1"), ("acct-b-drive", "B-DOC-1")])
         self.assertEqual((out["code"], out["summary"], w.derived, w.consent_needed, w.read_calls), ("NEEDS_OWNER_RECONSENT", None, {}, set(), 0))
 
+    def test_the_new_gap_scenarios_are_in_the_catalog_and_change_nothing(self):
+        """LIFE-421 / GWT-T11-01 and GWT-T11-02."""
+        want = {"deny-route-expired-connection": "NEEDS_OWNER_RECONSENT", "deny-route-revoked-connection": "NEEDS_OWNER_RECONSENT", "deny-route-newly-expired-connection": "NEEDS_OWNER_RECONSENT",
+                "deny-route-disabled-connection": "DENY_GRANT", "deny-maintain-bare-runner-name": "DENY_INPUT", "deny-maintain-unregistered-sender": "DENY_PRINCIPAL",
+                "deny-maintain-forged-key": "DENY_PRINCIPAL", "deny-maintain-replayed-command": "DENY_REPLAY_OR_WRITER"}
+        for sid, code in want.items():
+            s = BY_ID[sid]
+            self.assertEqual((s["outcome"]["code"], s["returned"]), (code, None), sid)
+            self.assertFalse(any(s["effects"][k] for k in I.COUNTERS) or s["effects"]["ledger_changed"] or s["effects"]["provider_changed"], sid)
+        self.assertEqual({r[0] for r in I.catalog()} >= set(want), True)
+
+    def test_the_summary_and_cache_paths_agree_with_the_route(self):
+        """A summary and a cached lookup refuse a dead connection with the same code the route gives."""
+        w = I.IntegratedWorld()
+        route_code = I.G.route_read(w, "agent-b", "acct-b-gmail", "B-MSG-1")[0]["decision_code"]
+        self.assertEqual(route_code, I.cited_summary(w, "agent-b", [("acct-b-gmail", "B-MSG-1")])["code"])
+
     def test_a_wrong_tenant_call_against_a_dead_connection_changes_nothing(self):
         s = BY_ID["deny-wrong-tenant-on-dead-connection"]
         self.assertEqual((s["outcome"]["code"], s["effects"]["ledger_changed"]), ("DENY_TENANT", False))
