@@ -162,6 +162,32 @@ class ManagementInterface(unittest.TestCase):
         self.assertEqual(C.maintain(w, "oracle-admin")["counts"]["disabled"], 1)
 
 
+class RefusedCallsChangeNothing(unittest.TestCase):
+    def test_a_wrong_tenant_call_against_a_dead_grant_leaves_the_ledger_alone_and_the_receipt_is_true(self):
+        w = C.ComposioWorld()
+        before = w.ledger_hash()
+        receipt, out = C.execute(w, "agent-a", "acct-b-gmail")                 # tenant A asks for tenant B's expired account
+        self.assertEqual((receipt["decision_code"], out, w.consent_needed, w.ledger_hash()), ("DENY_TENANT", None, set(), before))
+        self.assertEqual((receipt["policy_ledger_hash_before"], receipt["policy_ledger_hash_after"]), (before, before))
+
+    def test_the_right_tenant_denial_also_leaves_nothing_behind(self):
+        w = C.ComposioWorld()
+        before = w.ledger_hash()
+        receipt, _ = C.execute(w, "agent-b", "acct-b-gmail")
+        self.assertEqual((receipt["decision_code"], w.consent_needed, w.ledger_hash(), receipt["policy_ledger_hash_after"]), ("NEEDS_OWNER_RECONSENT", set(), before, before))
+
+    def test_a_disabled_connection_is_not_refreshed(self):
+        w = C.ComposioWorld()
+        C.manage(w, C.command(w, "oracle-admin", "acct-a-drive", "disable", "c1"))
+        expires, calls, notices = w.connections["ca-a2"]["expires"], w.admin_calls, len(w.buzz_outbox)
+        out = C.manage(w, C.command(w, "oracle-admin", "acct-a-drive", "refresh", "c2"))
+        self.assertEqual((out["outcome"], out["code"]), ("refused", "DENY_GRANT"))
+        self.assertEqual((w.connections["ca-a2"]["state"], w.connections["ca-a2"]["expires"], w.connections["ca-a2"]["refreshes"], w.admin_calls, len(w.buzz_outbox)),
+                         ("DISABLED", expires, 0, calls, notices))
+        C.maintain(w, "oracle-admin")
+        self.assertEqual((w.connections["ca-a2"]["state"], w.connections["ca-a2"]["refreshes"]), ("DISABLED", 0))
+
+
 class CustodyException(unittest.TestCase):
     """GWT-T09-05: the exception is written down exactly, and planning consent is not live authorization."""
 

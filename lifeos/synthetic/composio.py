@@ -78,7 +78,7 @@ def _vendor_call(world, op, cid):
     """The only place the vendor's admin key is used. It records a fingerprint, never the key, and returns only ok or not."""
     world.admin_calls += 1
     world.vendor_log.append((op, cid, ref_hash(ADMIN_KEY)))
-    return world.connections[cid]["state"] not in NEEDS_CONSENT
+    return world.connections[cid]["state"] == "ACTIVE"                   # a dead refresh token and a disabled connection both refuse
 
 
 def _try_refresh(world, cid, now):
@@ -102,7 +102,10 @@ def execute(world, who, account_id, nonce="n1", source_id=None, now=NOW):
     cid = world.by_account.get(account_id) if isinstance(account_id, str) else None
     acct = world.accounts.get(account_id) if isinstance(account_id, str) else None
     conn = world.connections.get(cid)
-    if conn and conn["state"] in NEEDS_CONSENT:
+    # the gate reads the owner-consent flag, so it is raised for the gate only, and a call that does not end in that denial leaves the ledger as it found it
+    flagged = bool(conn and conn["state"] in NEEDS_CONSENT and account_id not in world.consent_needed)
+    ledger = world.ledger_hash()
+    if flagged:
         world.consent_needed.add(account_id)
     ctx, agent = WHO.get(who, {"session": "no-session", "task": "no-task"}), world.agents.get(who)
     src = world.sources.get(source_id) if source_id else None
@@ -115,6 +118,9 @@ def execute(world, who, account_id, nonce="n1", source_id=None, now=NOW):
     if source_id:
         req.update(source_id=source_id, source_revision=src["revision"] if src else 0)
     receipt, results = authz.dispatch(world, req, now)
+    if flagged:
+        world.consent_needed.discard(account_id)
+        receipt["policy_ledger_hash_before"] = receipt["policy_ledger_hash_after"] = ledger      # a refusal changes nothing, and the receipt says so truthfully
     if receipt["decision_code"] != "ALLOW":
         return receipt, None
     world.provider_calls += 1
@@ -171,13 +177,15 @@ def manage(world, cmd, now=NOW):
         return {"outcome": "refused", "code": "DENY_ACCOUNT_AMBIGUOUS"}
     if acct[0] != cmd["tenant"]:
         return {"outcome": "refused", "code": "DENY_TENANT"}
-    world.manager_nonces.add((cmd["sender"], cmd["nonce"]))
     cid = world.by_account[cmd["account"]]
     c = world.connections[cid]
+    if cmd["action"] == "refresh" and c["state"] == "DISABLED":
+        return {"outcome": "refused", "code": "DENY_GRANT"}               # a disabled connection is not refreshed or revived by upkeep
+    world.manager_nonces.add((cmd["sender"], cmd["nonce"]))
     result = {"outcome": "done", "code": None, "action": cmd["action"], "account": cmd["account"]}
     if cmd["action"] == "refresh":
         result["refreshed"] = _try_refresh(world, cid, now)
-        if not result["refreshed"]:
+        if not result["refreshed"] and c["state"] in NEEDS_CONSENT:
             _approval_request(world, cmd["account"], c["state"])
     elif cmd["action"] == "disable":
         _vendor_call(world, "disable", cid)
