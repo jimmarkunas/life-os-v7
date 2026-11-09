@@ -3,6 +3,7 @@
   const emptyEl = $('empty'), list = $('messages'), toSel = $('to'), roundsSel = $('rounds'), text = $('text'), sendBtn = $('send'), note = $('note'), jump = $('jump')
   const nodes = new Map()
   let stick = true, lastMsgs = [], me = '', sending = false, lastRoster = '', chosenByUser = false, nicks = {}, order = [], lastMessages = []
+  let answering = null                       // { id, from } while you are answering a council member's own question
   let hidden = [], showHidden = false, mentionAgents = [], peopleAgents = [], reach = {}
   // How an agent can be reached while idle (the worker works it out): "terminal" (the room types your message into its Orca terminal), "concord" (a receiver is attached) or "none". An agent the worker could not ask about is not marked.
   const noWake = (id) => reach[id] === 'none'
@@ -54,7 +55,7 @@
     if (!el) {
       el = document.createElement('div')
       el.className = 'msg ' + brand(m.from) + ' ' + (isMine ? 'mine' : 'theirs')
-      el.innerHTML = '<div class="av"></div><div class="col"><div class="who"><span class="from"></span> <span class="to"></span></div><div class="bubble"></div><div class="meta"><span class="time"></span><span class="st"></span><span class="rep"></span><span class="id"></span></div></div>'
+      el.innerHTML = '<div class="av"></div><div class="col"><div class="who"><span class="from"></span> <span class="to"></span></div><div class="bubble"></div><div class="meta"><span class="time"></span><span class="st"></span><span class="rep"></span><button type="button" class="ans" hidden>Answer</button><span class="id"></span></div></div>'
       el.querySelector('.av').innerHTML = icon(m.from)
       el.querySelector('.bubble').textContent = m.content
       el.querySelector('.time').textContent = clock(m.at)
@@ -62,6 +63,9 @@
       el.querySelector('.id').textContent = m.id.slice(0, 8)
       nodes.set(m.id, el)
     }
+    const ans = el.querySelector('.ans')
+    ans.hidden = !(m.ask && !m.answered)
+    ans.onclick = () => startAnswering(m)
     el.querySelector('.from').textContent = nameOf(m.from)
     el.querySelector('.to').textContent = '→ ' + nameOf(m.to)
     el.title = `${m.from} → ${m.to}\n${m.id}`
@@ -165,7 +169,7 @@
   function updateSend() {
     const councilTo = recipients().filter(isCouncilId)
     roundsSel.hidden = councilTo.length < 2; if (roundsSel.hidden) roundsSel.value = '0'
-    sendBtn.disabled = sending || recipients().length === 0 || !text.value.trim()
+    sendBtn.disabled = sending || (!answering && recipients().length === 0) || !text.value.trim()
     const ids = mentioned(); $('toline').textContent = ids.length ? 'Sending to: ' + ids.map(nameOf).join(', ') : ''
     const slow = recipients().filter(noWake)
     $('warn').textContent = slow.length ? `${slow.map(nameOf).join(', ')} can't be woken while idle: ${slow.length === 1 ? 'it reads' : 'they read'} this the next time ${slow.length === 1 ? 'it takes' : 'they take'} a turn.` : ''
@@ -201,8 +205,28 @@
     } finally { fetching = false }
   }
 
+  // Answering a council member's own question: the next message goes back to that question through Orca instead of being a new one.
+  function startAnswering(m) {
+    answering = { id: m.id, from: m.from }
+    $('answeringtxt').textContent = `Answering ${nameOf(m.from)}'s question. Your next message goes back to it.`
+    $('answering').hidden = false; text.focus(); updateSend()
+  }
+  function stopAnswering() { answering = null; $('answering').hidden = true; updateSend() }
+  $('answeringx').addEventListener('click', stopAnswering)
+
   async function send() {
     if (sendBtn.disabled) return
+    if (answering) {
+      const target = answering, content = text.value
+      sending = true; updateSend(); text.disabled = true; setNote('Sending…')
+      try {
+        await orca.plugin.request('council.reply', { id: target.id, content }, { timeoutMs: 30000 })
+        text.value = ''; autosize(); stopAnswering(); setNote(`Answered ${nameOf(target.from)}. It picks the answer up and continues.`, 'ok'); stick = true
+        await refresh(); toBottom()
+      } catch (e) { setNote(`Could not answer: ${(e && e.message) || e}`, 'bad') }
+      finally { sending = false; text.disabled = false; updateSend(); text.focus() }
+      return
+    }
     const to = recipients(), content = text.value
     sending = true; updateSend(); text.disabled = true; setNote('Sending…')
     const ok = [], bad = [], woke = [], busy = [], cold = [], asked = []

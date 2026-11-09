@@ -58,6 +58,10 @@
   .bubble { padding: 7px 10px; border-radius: 14px; background: var(--bub); color: var(--bubfg); border: 1px solid transparent; white-space: pre-wrap; overflow-wrap: anywhere; }
   .mine .bubble { border-bottom-right-radius: 4px; }
   .theirs .bubble { border-bottom-left-radius: 4px; }
+  #answering { display: flex; gap: 8px; align-items: center; font-size: 12px; margin: 0 2px 4px; padding: 4px 8px; border-radius: 8px; background: var(--chip, rgba(127,127,127,.15)); }
+  #answering[hidden] { display: none; }
+  #answering button { border: 0; background: transparent; cursor: pointer; color: inherit; }
+  .ans { border: 0; background: transparent; color: inherit; text-decoration: underline; cursor: pointer; font-size: inherit; padding: 0; }
   .meta { font-size: 10.5px; color: var(--muted); margin: 2px 4px 0; display: flex; gap: 6px; align-items: center; }
   .st-replied, .st-read { color: var(--ok); }
   .st-failed { color: var(--bad); }
@@ -187,6 +191,7 @@
         <option value="1">Round: +1 reply to each other</option>
         <option value="2">Round: +2 replies</option>
       </select></div>
+    <div id="answering" hidden><span id="answeringtxt"></span> <button id="answeringx" type="button" aria-label="Cancel answering">✕</button></div>
     <div class="box">
       <div id="mention" role="listbox" aria-label="Mention an agent"></div>
       <textarea id="text" rows="1" maxlength="4000" placeholder="Message an agent… (type @ to mention)" aria-label="Message"></textarea>

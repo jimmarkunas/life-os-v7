@@ -312,10 +312,27 @@ export function councilOrca(runner = execFileAsync) {
   }
 }
 
+/** The repo's changed files as path -> "status:mtime:size", so a later snapshot shows what changed. Empty when it is not a git repo; capped so a huge tree stays cheap. */
+export async function gitSnapshot(root, git = execFileAsync) {
+  let out
+  try { out = await git('git', ['-C', root, 'status', '--porcelain=v1', '-z', '--untracked-files=all'], { timeout: 15000, maxBuffer: 8 * 1024 * 1024, shell: false, windowsHide: true }) } catch { return {} }
+  const snap = {}
+  const parts = String(out.stdout).split('\0').filter(Boolean)
+  for (let i = 0; i < parts.length && Object.keys(snap).length < 300; i += 1) {
+    const entry = parts[i]
+    const xy = entry.slice(0, 2), file = entry.slice(3)
+    if (xy[0] === 'R' || xy[0] === 'C') i += 1                       // a rename lists its old path as the next field
+    let sig = xy
+    try { const st = await stat(path.join(root, file)); sig = `${xy}:${Math.round(st.mtimeMs)}:${st.size}` } catch { sig = `${xy}:gone` }
+    snap[file] = sig
+  }
+  return snap
+}
+
 /** The council's context for one call: its Orca runner, the repo it works in, and its state file next to the handoffs. */
-export async function councilContext({ repoRoot, handoffDir, runner }) {
+export async function councilContext({ repoRoot, handoffDir, runner, git }) {
   const root = await validateRepo(repoRoot)
-  return { orca: councilOrca(runner), now: () => new Date().toISOString(), fail, repoRoot: root, stateFile: path.join(defaultHandoffDir(handoffDir), 'council.json') }
+  return { orca: councilOrca(runner), now: () => new Date().toISOString(), fail, repoRoot: root, stateFile: path.join(defaultHandoffDir(handoffDir), 'council.json'), snapshot: () => gitSnapshot(root, git) }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -817,6 +834,11 @@ export default function activate(orca) {
     const sent = await council.startRound(await councilCtx(), { ids: Array.isArray(input?.ids) ? input.ids : [], text: input?.content, from, followups: input?.followups })
     return { ids: sent.map((x) => x.id), status: 'asked', followups: Number(input.followups), wake: { how: 'council' } }
   })
+  orca.panels.handle('council.reply', async (input) => {      // answer a council member's own question
+    const from = defaultSenderId((await settings()).senderId)
+    const id = typeof input?.id === 'string' ? input.id.replace(/^council-a-/u, '') : ''
+    return council.answerMember(await councilCtx(), { messageId: id, text: input?.content, from })
+  })
   orca.panels.handle('council.release', async (input) => council.releaseMember(await councilCtx(), input?.id))
   orca.panels.handle('concord.rename', async (input) => {
     const next = withNickname(parseNicknames(await orca.settings.get('nicknames')), input?.id, input?.name)
@@ -833,7 +855,7 @@ export default function activate(orca) {
     if (typeof input?.to === 'string' && input.to.startsWith('council-')) {          // council members are asked through Orca's mailbox, not Concord
       const from = defaultSenderId(s.senderId)
       const [sent] = await council.askMembers(await councilCtx(), { ids: [input.to], text: input.content, from })
-      return { to: input.to, from, messageId: sent.taskId, status: 'asked', delivery: sent.delivery || undefined, wake: { how: 'council' } }
+      return { to: input.to, from, messageId: sent.taskId ?? sent.messageId, status: sent.queued ? 'queued' : 'asked', delivery: sent.delivery || undefined, wake: { how: 'council' } }
     }
     const out = await sendMessage({ ...s, to: input?.to, content: input?.content })       // recorded in Concord, so it shows in the room
     let wake

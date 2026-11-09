@@ -20,7 +20,7 @@ export const BRIEF = [
   'For THIS first task: finish with worker_done whose result text is exactly READY followed by a space and your Concord agent id (the claude-code:xxxxxxxx or codex:xxxxxxxx id your session start hook printed), or READY none if you did not see one.'
 ].join(' ')
 
-const emptyState = (repoRoot) => ({ version: 1, repoRoot, coordinator: '', run: '', members: [], log: [], seen: [], rounds: [] })
+const emptyState = (repoRoot) => ({ version: 1, repoRoot, coordinator: '', run: '', members: [], log: [], seen: [], rounds: [], snaps: {} })
 
 /** The worker is one process: every read-modify-write of council.json goes through this queue so a sync and a send never overwrite each other. */
 let chain = Promise.resolve()
@@ -29,14 +29,14 @@ const locked = (fn) => { const run = chain.then(fn, fn); chain = run.catch(() =>
 export async function loadState(file, repoRoot) {
   try {
     const s = JSON.parse(await readFile(file, 'utf8'))
-    if (s && s.version === 1 && Array.isArray(s.members) && Array.isArray(s.log) && Array.isArray(s.seen)) return s.repoRoot === repoRoot ? { ...s, rounds: Array.isArray(s.rounds) ? s.rounds : [] } : emptyState(repoRoot)
+    if (s && s.version === 1 && Array.isArray(s.members) && Array.isArray(s.log) && Array.isArray(s.seen)) return s.repoRoot === repoRoot ? { ...s, rounds: Array.isArray(s.rounds) ? s.rounds : [], snaps: s.snaps && typeof s.snaps === 'object' ? s.snaps : {} } : emptyState(repoRoot)
   } catch { /* first use, or unreadable: start empty */ }
   return emptyState(repoRoot)
 }
 
 export async function saveState(file, state) {
   await mkdir(path.dirname(file), { recursive: true })
-  const trimmed = { ...state, log: state.log.slice(-MAX_LOG), seen: state.seen.slice(-2000), rounds: (state.rounds ?? []).slice(-20) }
+  const trimmed = { ...state, log: state.log.slice(-MAX_LOG), seen: state.seen.slice(-2000), rounds: (state.rounds ?? []).slice(-20), snaps: Object.fromEntries(Object.entries(state.snaps ?? {}).slice(-100)) }
   const tmp = `${file}.${process.pid}.tmp`
   await writeFile(tmp, JSON.stringify(trimmed, null, 1), { mode: 0o600 })
   await rename(tmp, file)
@@ -90,10 +90,16 @@ async function startMemberLocked(ctx, { agent }) {
 
 /** One orchestration send to one member; the task id Orca returns is what its answer will carry, so it joins question to answer. */
 async function sendOne(ctx, state, m, framed, logText, from) {
+  const before = await snapshotOf(ctx)
   const out = result(await ctx.orca(['orchestration', 'send', '--from', state.coordinator, '--run', state.run, '--to', `dispatch:${m.dispatchId}`, '--subject', 'Room question', '--body', framed, '--json'], 30000))
-  if (typeof out?.taskId !== 'string') ctx.fail('invalid_output', 'Orca did not confirm the question.')
-  state.log.push({ k: 'q', id: out.taskId, to: m.id, from, text: logText, at: ctx.now() })
-  return { id: m.id, taskId: out.taskId, delivery: String(out.delivery ?? '') }
+  // A member that is mid-task (or waiting for your answer to its own question) gets the message into that task: Orca returns a message id and no
+  // new task id. It was delivered, so say so, and let the member's answer (which carries the old task id) match it by member instead.
+  const queued = typeof out?.taskId !== 'string'
+  if (queued && typeof out?.messageId !== 'string') ctx.fail('invalid_output', 'Orca did not confirm the question.')
+  const taskId = queued ? null : out.taskId
+  state.log.push({ k: 'q', id: taskId ?? out.messageId, to: m.id, from, text: logText, at: ctx.now(), ...(queued ? { queued: true } : {}) })
+  if (before) state.snaps[taskId ?? out.messageId] = before
+  return { id: m.id, taskId, messageId: queued ? out.messageId : null, queued, delivery: queued ? 'queued' : String(out.delivery ?? '') }
 }
 
 const frame = (from, body) => `From ${String(from).replace(/^human:/u, '')}: ${body}\n\n(Council question. Answer concisely and honestly. Read-only: do not edit anything. Report your answer with worker_done; the result text is your answer.)`
@@ -113,6 +119,39 @@ async function askMembersLocked(ctx, { ids, text, from }) {
   }
   await saveState(ctx.stateFile, state)
   return sent
+}
+
+/**
+ * Members are told to stay read-only but Orca has no permission flag for a worker, so the room watches instead: the repo's changed files
+ * (path -> status:mtime:size) are noted when a question goes out and compared when its answer comes back. It cannot say WHO changed a file
+ * (you may be editing the same worktree), so the warning says so.
+ */
+async function snapshotOf(ctx) {
+  if (typeof ctx.snapshot !== 'function') return null
+  try { return await ctx.snapshot() } catch { return null }
+}
+export function changedBetween(before, after) {
+  if (!before || !after) return []
+  const paths = new Set([...Object.keys(before), ...Object.keys(after)])
+  return [...paths].filter((p) => before[p] !== after[p]).sort()
+}
+
+/** Answer a council member's own question (an Orca `ask`): the reply goes back through Orca, which wakes the member with it. */
+export const answerMember = (ctx, input) => locked(() => answerMemberLocked(ctx, input))
+async function answerMemberLocked(ctx, { messageId, text, from }) {
+  const body = String(text ?? '').trim()
+  if (!body) ctx.fail('invalid_params', 'Type your answer first.')
+  const state = await loadState(ctx.stateFile, ctx.repoRoot)
+  const ask = state.log.find((e) => e.k === 'a' && e.id === messageId && e.note === 'asks you')
+  if (!ask) ctx.fail('invalid_params', 'That is not a question from a council member.')
+  if (ask.answered) ctx.fail('conflict', 'You already answered that question.')
+  const m = active(state).find((x) => x.id === ask.from)
+  if (!m) ctx.fail('conflict', 'That council member has been released, so it can no longer be answered.')
+  await ctx.orca(['orchestration', 'reply', '--id', messageId, '--body', body, '--from', state.coordinator, '--run', state.run, '--json'], 30000)
+  ask.answered = true
+  state.log.push({ k: 'q', id: `reply-${messageId}`, to: m.id, from, text: body, at: ctx.now() })
+  await saveState(ctx.stateFile, state)
+  return { id: m.id }
 }
 
 export const MAX_FOLLOWUPS = 3
@@ -140,16 +179,17 @@ async function startRoundLocked(ctx, { ids, text, from, followups }) {
   if (members.length < 2) ctx.fail('invalid_params', 'A round needs at least two council members.')
   const sent = []
   for (const m of members) sent.push(await sendOne(ctx, state, m, frame(from, body), body, from))
-  state.rounds.push({ id: `round_${sent[0].taskId}`, from, question: body, ids: members.map((m) => m.id), done: 0, max: n, pending: Object.fromEntries(sent.map((x) => [x.taskId, x.id])), answers: {}, sentAt: ctx.now(), finished: false })
+  state.rounds.push({ id: `round_${sent[0].taskId ?? sent[0].messageId}`, from, question: body, ids: members.map((m) => m.id), done: 0, max: n, pending: Object.fromEntries(sent.map((x) => [x.taskId ?? `queued:${x.messageId}`, x.id])), answers: {}, sentAt: ctx.now(), finished: false })
   await saveState(ctx.stateFile, state)
   return sent
 }
 
 /** An answer arrived for `taskId`: if a round is waiting on it, keep the text for the relay. */
 function noteRoundAnswer(state, taskId, memberId, text) {
-  if (!taskId) return
   for (const r of state.rounds) {
-    if (!r.finished && r.pending[taskId] === memberId) { delete r.pending[taskId]; r.answers[memberId] = text }
+    if (r.finished) continue
+    const key = taskId && r.pending[taskId] === memberId ? taskId : Object.keys(r.pending).find((k) => k.startsWith('queued:') && r.pending[k] === memberId)   // a queued ask answers under the member's old task id
+    if (key) { delete r.pending[key]; r.answers[memberId] = text }
   }
 }
 
@@ -185,7 +225,7 @@ async function advanceRound(ctx, state, r) {
     const framed = `From the room (round ${r.done + 2} of ${r.max + 1}): ${String(r.from).replace(/^human:/u, '')} asked: ${r.question}\n\nThe other council members answered:\n${others}\n\nRespond to them: say where you agree or disagree, and change your answer if they changed your mind. Concise and honest. Read-only: do not edit anything. Report with worker_done; the result text is your answer.`
     sent[id] = await sendOne(ctx, state, m, framed, `Round ${r.done + 2}: relayed ${who.length - 1} other answer${who.length === 2 ? '' : 's'} and asked for a response.`, r.from)
   }
-  r.done += 1; r.answers = {}; r.pending = Object.fromEntries(Object.values(sent).map((x) => [x.taskId, x.id])); r.sentAt = ctx.now()
+  r.done += 1; r.answers = {}; r.pending = Object.fromEntries(Object.values(sent).map((x) => [x.taskId ?? `queued:${x.messageId}`, x.id])); r.sentAt = ctx.now()
   return true
 }
 
@@ -221,23 +261,36 @@ async function syncCouncilLocked(ctx) {
   const inbox = result(await ctx.orca(['orchestration', 'inbox', '--terminal', `run:${state.run}`, '--limit', '200', '--full', '--json'], 30000))
   const messages = Array.isArray(inbox?.messages) ? [...inbox.messages].reverse() : []        // Orca lists newest first
   let changed = false
+  let nowSnap
+  const watch = async (taskId, member, msgId) => {                 // an answer came back: did the repo change since its question went out?
+    const before = taskId ? state.snaps[taskId] : null
+    if (!before) return
+    delete state.snaps[taskId]
+    nowSnap ??= (await snapshotOf(ctx)) ?? null
+    const files = changedBetween(before, nowSnap)
+    if (files.length) state.log.push({ k: 'n', id: `edit-${msgId}`, text: `Heads up: ${files.length} file${files.length === 1 ? '' : 's'} in this repository changed while ${labelOf(state, member)} was answering (${files.slice(0, 5).join(', ')}${files.length > 5 ? ', …' : ''}). Members are told to stay read-only, but nothing enforces it. This could also be you or another agent editing the same worktree.`, at: ctx.now() })
+  }
   for (const msg of messages) {
     if (!msg || typeof msg.id !== 'string' || state.seen.includes(msg.id)) continue
     state.seen.push(msg.id); changed = true
     const sender = msg.from_handle ?? msg.from                  // Orca's inbox rows carry from_handle; payload is a JSON string
-    const member = state.members.find((m) => m.worker === sender)
+    const taskId = payloadOf(msg).taskId ?? null
+    // A done report comes from the member's worker handle, but a question (`ask`) comes from the dispatch Orca made for the task it is on, which is
+    // not the member's first dispatch. The task id is what joins it: it is the id our own send returned.
+    const askedOf = taskId ? state.log.find((e) => e.k === 'q' && e.id === taskId) : null
+    const member = state.members.find((m) => m.worker === sender) ?? (askedOf ? state.members.find((m) => m.id === askedOf.to) : null)
     if (!member) continue
     const body = String(msg.body ?? '').trim()
-    const taskId = payloadOf(msg).taskId ?? null
     if (msg.type === 'worker_done') {
       if (!member.joined && /^READY\b/u.test(body)) {
         member.joined = true; member.concordId = (CONCORD_ID.exec(body) || [null])[0]
         state.log.push({ k: 'join', id: msg.id, from: member.id, at: ctx.now() })
-      } else { state.log.push({ k: 'a', id: msg.id, taskId, from: member.id, text: body, at: ctx.now() }); noteRoundAnswer(state, taskId, member.id, body) }
+      } else { state.log.push({ k: 'a', id: msg.id, taskId, from: member.id, text: body, at: ctx.now() }); noteRoundAnswer(state, taskId, member.id, body); await watch(taskId, member, msg.id) }
     } else if (msg.type === 'escalation') {
       const got = await recoverAnswer(ctx, member)
       state.log.push({ k: 'a', id: msg.id, taskId, from: member.id, text: got ? got.text : '(It ended its turn without an answer. Ask again.)', at: got ? got.at : ctx.now(), note: got ? 'answered in its chat without reporting' : 'no answer' })
       if (got) noteRoundAnswer(state, taskId, member.id, got.text)
+      await watch(taskId, member, msg.id)
     } else if (msg.type === 'question') {
       state.log.push({ k: 'a', id: msg.id, taskId: null, from: member.id, text: body, at: ctx.now(), note: 'asks you' })
     }
@@ -271,8 +324,8 @@ export const councilConcordIds = (state) => state.members.filter((m) => m.concor
 export function councilMessages(state) {
   const askers = new Map(state.log.filter((e) => e.k === 'q').map((e) => [e.id, e.from]))
   return state.log.flatMap((e) => {
-    if (e.k === 'q') return [{ id: `council-q-${e.id}`, from: e.from, to: e.to, content: e.text, at: e.at, status: 'sent', replyTo: null, receipt: null }]
-    if (e.k === 'a') return [{ id: `council-a-${e.id}`, from: e.from, to: askers.get(e.taskId) ?? 'human:me', content: e.note ? `${e.text}\n(${e.note})` : e.text, at: e.at, status: 'replied', replyTo: e.taskId ? `council-q-${e.taskId}` : null, receipt: null }]
+    if (e.k === 'q') return [{ id: `council-q-${e.id}`, from: e.from, to: e.to, content: e.text, at: e.at, status: 'sent', replyTo: null, receipt: e.queued ? 'queued: it was still working' : null }]
+    if (e.k === 'a') return [{ id: `council-a-${e.id}`, from: e.from, to: askers.get(e.taskId) ?? 'human:me', content: e.note ? `${e.text}\n(${e.note})` : e.text, at: e.at, status: 'replied', replyTo: e.taskId ? `council-q-${e.taskId}` : null, receipt: null, ...(e.note === 'asks you' ? { ask: true, answered: e.answered === true } : {}) }]
     if (e.k === 'n') return [{ id: `council-n-${e.id}`, from: 'relay:council', to: 'human:me', content: e.text, at: e.at, status: 'replied', replyTo: null, receipt: null }]
     return []
   })
