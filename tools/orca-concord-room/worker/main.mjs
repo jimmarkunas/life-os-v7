@@ -574,12 +574,15 @@ async function jiraStatusOf(key) {
   return status
 }
 
+/** Files in the handoff folder that are not handoffs: the policy, and the council's own state (it lives here too). */
+const HANDOFF_DIR_RESERVED = new Set(['policy.json', 'council.json'])
+
 /** Every handoff in the folder with its state. Invalid, duplicate and over-limit files are reported, never trusted. */
 export async function listHandoffs(dirSetting, deps = {}) {
   const dir = defaultHandoffDir(dirSetting)
   const policy = await readPolicy(dir)
   let names
-  try { names = (await readdir(dir)).filter((n) => n.endsWith('.json') && n !== 'policy.json').sort().slice(0, MAX_HANDOFFS) } catch { return { dir, handoffs: [] } }
+  try { names = (await readdir(dir)).filter((n) => n.endsWith('.json') && !HANDOFF_DIR_RESERVED.has(n)).sort().slice(0, MAX_HANDOFFS) } catch { return { dir, handoffs: [] } }
   const entries = []
   for (const name of names) {
     const fileId = name.slice(0, -5)

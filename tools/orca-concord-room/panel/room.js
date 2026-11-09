@@ -55,7 +55,7 @@
     if (!el) {
       el = document.createElement('div')
       el.className = 'msg ' + brand(m.from) + ' ' + (isMine ? 'mine' : 'theirs')
-      el.innerHTML = '<div class="av"></div><div class="col"><div class="who"><span class="from"></span> <span class="to"></span></div><div class="bubble"></div><div class="meta"><span class="time"></span><span class="st"></span><span class="rep"></span><button type="button" class="ans" hidden>Answer</button><button type="button" class="ho" hidden>Hand off</button><span class="id"></span></div></div>'
+      el.innerHTML = '<div class="av"></div><div class="col"><div class="who"><span class="from"></span> <span class="to"></span></div><div class="bubble"></div><div class="meta"><span class="time"></span><span class="st"></span><span class="rep"></span><button type="button" class="ans" hidden>Answer</button><button type="button" class="hoff" hidden>Hand off</button><span class="id"></span></div></div>'
       el.querySelector('.av').innerHTML = icon(m.from)
       el.querySelector('.bubble').textContent = m.content
       el.querySelector('.time').textContent = clock(m.at)
@@ -66,7 +66,7 @@
     const ans = el.querySelector('.ans')
     ans.hidden = !(m.ask && !m.answered)
     ans.onclick = () => startAnswering(m)
-    const ho = el.querySelector('.ho')
+    const ho = el.querySelector('.hoff')
     ho.hidden = !(String(m.id).startsWith('council-a-') && String(m.from).startsWith('council-') && !m.ask)
     ho.onclick = () => openHandoff(m)
     el.querySelector('.from').textContent = nameOf(m.from)
