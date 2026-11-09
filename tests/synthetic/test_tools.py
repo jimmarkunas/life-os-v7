@@ -6,7 +6,7 @@ from pathlib import Path
 
 from lifeos.synthetic import authz, tools as T
 from lifeos.synthetic.authz_fixture import CANARY, AuthzWorld, TENANT_A, TENANT_B
-from tests.synthetic.test_authz import approved, for_tool, req
+from tests.synthetic.test_authz import for_tool, req, with_approval
 
 RECEIPT_FIELDS = {"fixture_case_id", "policy_revision", "fake_actor_id", "fake_host_id", "fake_session_id", "fake_task_id", "tenant_id", "provider", "exact_account_id",
                   "action_class", "grant_or_approval_reference_hash", "request_nonce_hash", "decision_code", "reason", "decision_step", "decision_stage", "source_failure_kind",
@@ -31,8 +31,11 @@ class PermittedCall(unittest.TestCase):
 
     def test_a_protected_send_with_an_exact_approval_commits_once_and_names_jim(self):
         w = AuthzWorld()
-        receipt, results = authz.dispatch(w, approved(for_tool("gmail_send_message", "write", case="gwt-01-send")))
+        send = with_approval(for_tool("gmail_send_message", "write", case="gwt-01-send", body="Fake note."))
+        w.issue_approval("ap-1", send)                                       # Jim approves this exact send
+        receipt, results = authz.dispatch(w, send)
         self.assertEqual((receipt["decision_code"], receipt["mutation_calls"], receipt["commits"], len(w.outbox)), ("ALLOW", 1, 1, 1))
+        self.assertTrue(w.approvals["ap-1"]["used"])
         self.assertEqual(receipt["audit"]["approver"], "jim")
         self.assertTrue(receipt["audit"]["t"].endswith("-06:00"))              # the audit line is Central (winter offset)
         self.assertEqual(receipt["checked_at_utc"], "2026-11-09T12:00:00+00:00")
@@ -40,7 +43,8 @@ class PermittedCall(unittest.TestCase):
 
     def test_the_same_request_cannot_run_twice_and_a_used_approval_is_dead(self):
         w = AuthzWorld()
-        send = approved(for_tool("gmail_send_message", "write"))
+        send = with_approval(for_tool("gmail_send_message", "write", body="Fake note."))
+        w.issue_approval("ap-1", send)
         self.assertEqual(authz.dispatch(w, send)[0]["decision_code"], "ALLOW")
         again, results = authz.dispatch(w, send)
         self.assertEqual((again["decision_code"], again["commits"], results, len(w.outbox)), ("DENY_REPLAY_OR_WRITER", 0, None, 1))
@@ -54,7 +58,9 @@ class PermittedCall(unittest.TestCase):
         self.assertEqual((held["decision_code"], held["reason"], held["decision_stage"], held["read_handler_calls"], held["mutation_calls"], held["commits"], results),
                          ("PENDING", "delete_needs_approval", "held", 0, 0, 0, None))
         self.assertEqual(w.outbox, [])
-        done, _ = authz.dispatch(w, approved(delete, nonce="n9"))
+        answered = with_approval({**delete, "nonce": "n9"})
+        w.issue_approval("ap-1", answered)                                   # Jim says yes
+        done, _ = authz.dispatch(w, answered)
         self.assertEqual((done["decision_code"], done["commits"], len(w.outbox)), ("ALLOW", 1, 1))
 
 
@@ -104,6 +110,27 @@ class AfterTheRead(unittest.TestCase):
         self.assertEqual((receipt["decision_code"], receipt["decision_step"], receipt["read_handler_calls"], receipt["mutation_calls"], receipt["commits"], results),
                          ("DENY_SECRET_EXPOSURE", 20, 1, 0, 0, None))
         self.assertNotIn(CANARY, json.dumps(receipt))
+
+
+class ApprovalsAreSpentOnlyBySuccess(unittest.TestCase):
+    def test_a_refusal_after_the_read_leaves_the_approval_unused_and_a_success_spends_it(self):
+        w = AuthzWorld()
+        read = with_approval(req(object_id="P-MSG-TIMEOUT"))
+        w.issue_approval("ap-1", read)
+        failed, _ = authz.dispatch(w, read)
+        self.assertEqual((failed["decision_code"], w.approvals["ap-1"]["used"]), ("DENY_STALE_SOURCE", False))
+        ok = {**read, "object_id": "P-MSG-1", "nonce": "n2"}
+        w.issue_approval("ap-1", ok)
+        self.assertEqual(authz.dispatch(w, ok)[0]["decision_code"], "ALLOW")
+        self.assertTrue(w.approvals["ap-1"]["used"])
+
+    def test_a_denied_send_never_spends_the_approval(self):
+        w = AuthzWorld()
+        send = with_approval(for_tool("gmail_send_message", "write", body="Fake note."))
+        w.issue_approval("ap-1", send)
+        w.consent_needed.add("acct-a-gmail")
+        receipt, _ = authz.dispatch(w, send)
+        self.assertEqual((receipt["decision_code"], w.approvals["ap-1"]["used"], w.outbox), ("NEEDS_OWNER_RECONSENT", False, []))
 
 
 class EmergencyRevoke(unittest.TestCase):

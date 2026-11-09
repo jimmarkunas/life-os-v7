@@ -1,18 +1,20 @@
 """The V7 in-process policy gate for synthetic tools (LIFE-374, order and cases from LIFE-372). One pure function, `preflight`, answers a tool request with exactly one
 final code by running the 21 steps in order; `dispatch` is the only way a registered fake tool runs. NOT a gateway: no server, no scheduler, no network.
 
-Order: 1 input, 2 principal, 3 task, 4 replay or writer, 5 revoked source, 6 tenant, 7 account, 8 untrusted authority, 9 unsupported, 10 management, 11 unknown risk,
+Order: 1 input, 2 principal, 3 task, 6 tenant (moved up, see below), 4 replay or writer, 5 revoked source, 7 account, 8 untrusted authority, 9 unsupported, 10 management, 11 unknown risk,
 12 batch, 13 owner re-consent, 14 grant, 15 stale source, 16 protected approval, 17 approval match, 18 secret in the request, 19 timeout after a read, 20 secret in the
 output, 21 allow. A wait for Jim (delete without approval, batch over the limit) is HELD and returned as PENDING only if no deny comes up in steps 13 to 18.
-The tenant check (step 6) runs before the revoked check (step 5), as decided for LIFE-373 (Jim, Nov 9 2026), so a caller from another tenant is never told a foreign source was revoked. The step numbers in the receipt stay LIFE-372's.
+The tenant check (step 6) runs before the replay, writer and revoked checks (steps 4 and 5), as decided for LIFE-373 (Jim, Nov 9 2026) and extended after the independent review, so a caller from another tenant never learns what another tenant requested, claimed, approved or revoked. Nonces and writer claims are kept per tenant. The step numbers in the receipt stay LIFE-372's.
+Approvals are Jim's records in a trusted table; a request names one by id (`approval_id`). The record must be unexpired, unused and bound to the exact action, account, host, task, content (`body`) and source revision.
 
-The grant and kind decision reuses lifeos/platform/access_policy.decide() for the V7 services (jira, notion, github). The synthetic services (gmail, drive, calendar,
-...) are not in that module, so `mirror_decide` applies the same rules to the grant level; a test pins the two together. access_policy.py itself is not edited."""
+The grant and kind decision reuses lifeos/platform/access_policy.decide() for the services that module knows (jira, notion, github, and since Nov 9 gmail, drive and calendar,
+all read only except notion). The others (social, finance, composio, buzz) are not in that module, so `mirror_decide` applies the same rules to the grant level; a test pins the two together."""
 from lifeos.platform import access_policy
 from lifeos.synthetic import tools as T
 from lifeos.synthetic.authz_fixture import BULK_LIMIT, CANARY, NOW, V7_SERVICES, approval_hash, ref_hash
 
 REQUIRED = ("case", "tenant", "agent_id", "host_id", "session_id", "task_id", "tool", "nonce", "channel")
+OPTIONAL_TEXT = ("account_id", "grant_id", "source_id", "approval_id", "resource", "claim_id", "object_id", "input_text", "body", "authority_claim")
 AMBIGUOUS_ACCOUNTS = (None, "", "latest", "default", "any")
 
 
@@ -43,7 +45,8 @@ def grant_decision(world, agent, service, level, kind, count):
 
 def preflight(world, req, now=NOW):
     """-> {code, step, reason, kind}. code is ALLOW (cleared for the handler), PENDING (held for Jim), NEEDS_OWNER_RECONSENT or a DENY_* code. Never touches the world."""
-    if not isinstance(req, dict) or any(not (isinstance(req.get(k), str) and req[k]) for k in REQUIRED):
+    if (not isinstance(req, dict) or any(not (isinstance(req.get(k), str) and req[k]) for k in REQUIRED)
+            or any(req.get(k) is not None and not isinstance(req[k], str) for k in OPTIONAL_TEXT)):
         return _r("DENY_INPUT", 1)
     names = req.get("batch") or [req["tool"]]
     if not (isinstance(names, list) and names and all(isinstance(n, str) for n in names)):
@@ -55,14 +58,19 @@ def preflight(world, req, now=NOW):
     task = world.tasks.get(req["task_id"])
     if task is None or task["agent"] != req["agent_id"] or task["blocked"]:
         return _r("DENY_TASK_SCOPE", 3)
-    approval, resource, claim = req.get("approval"), req.get("resource"), req.get("claim_id")
-    if (req["nonce"] in world.req_nonces or (isinstance(approval, dict) and approval.get("nonce") in world.approval_nonces)
-            or (resource and world.writer_claims.get(resource, claim) != claim)):
-        return _r("DENY_REPLAY_OR_WRITER", 4)
-    sid, acct_id = req.get("source_id"), req.get("account_id")
+    tenant, sid, acct_id = req["tenant"], req.get("source_id"), req.get("account_id")
     acct, src = world.accounts.get(acct_id), (world.sources.get(sid) if sid else None)
-    if req["tenant"] != agent["tenant"] or (acct and acct[0] != req["tenant"]) or (sid and (src is None or src["tenant"] != req["tenant"])):
-        return _r("DENY_TENANT", 6)                                  # evaluated before the revoked check on purpose (Jim, Nov 9 2026): a stranger never learns a foreign source was revoked
+    if tenant != agent["tenant"] or (acct and acct[0] != tenant) or (sid and (src is None or src["tenant"] != tenant)):
+        return _r("DENY_TENANT", 6)                                  # evaluated before the replay, writer and revoked checks (Jim, Nov 9 2026): a stranger learns nothing about another tenant's
+                                                                     # requests, claims, approvals or sources. Step numbers in the receipt stay LIFE-372's.
+    aid = req.get("approval_id")
+    rec = world.approvals.get(aid) if isinstance(aid, str) else None
+    if rec is not None and rec["tenant"] != tenant:
+        rec = None                                                   # another tenant's approval looks exactly like an unknown one
+    resource, claim = req.get("resource"), req.get("claim_id")
+    if ((tenant, req["nonce"]) in world.req_nonces or (rec is not None and rec["used"])
+            or (resource and world.writer_claims.get((tenant, resource), claim) != claim)):
+        return _r("DENY_REPLAY_OR_WRITER", 4)
     if sid and sid in world.revoked:
         return _r("DENY_SOURCE_REVOKED", 5)
     regs = [T.TOOLS.get(n) for n in names]
@@ -85,7 +93,7 @@ def preflight(world, req, now=NOW):
     if acct_id in world.consent_needed:
         return _r("NEEDS_OWNER_RECONSENT", 13)
     grant = world.grants.get(req.get("grant_id"))
-    if (grant is None or grant["revoked"] or grant["agent"] != req["agent_id"] or grant["account"] != acct_id or grant["tenant"] != req["tenant"]
+    if (grant is None or grant["revoked"] or grant["agent"] != req["agent_id"] or grant["account"] != acct_id or grant["tenant"] != tenant
             or grant["service"] != acct[1] or grant["expires"] <= now or grant["review_due"] <= now):
         return _r("DENY_GRANT", 14, "grant_missing_revoked_expired_or_overdue")
     decision, reason = grant_decision(world, agent, acct[1], grant["level"], action if action in T.ROUTINE else "read", len(names))
@@ -95,16 +103,17 @@ def preflight(world, req, now=NOW):
         hold = (reason, 14)
     if sid and req.get("source_revision") != src["revision"]:
         return _r("DENY_STALE_SOURCE", 15, kind="SOURCE_STALE")
-    if action in T.PROTECTED + T.MANAGEMENT and (grant["level"] != "write" or not approval):
+    has_approval = aid is not None
+    if action in T.PROTECTED + T.MANAGEMENT and (grant["level"] != "write" or not has_approval):
         return _r("DENY_PROTECTED", 16, "protected_needs_write_grant_and_exact_approval")
-    if action == T.DELETE and not approval and hold is None:
+    if action == T.DELETE and not has_approval and hold is None:
         hold = ("delete_needs_approval", 16)
-    if approval is not None:
-        if (not isinstance(approval, dict) or approval.get("issuer") != "jim" or approval.get("host") != req["host_id"] or approval.get("task") != req["task_id"]
-                or approval.get("account") != acct_id or approval.get("action_hash") != approval_hash(names, acct_id, req["tenant"], req["host_id"], req["task_id"])):
+    if has_approval:                                                 # only Jim's own record counts, and only for this exact action, content and source revision
+        if (rec is None or rec["expires"] <= now or rec["issuer"] != "jim" or rec["host"] != req["host_id"] or rec["task"] != req["task_id"] or rec["account"] != acct_id
+                or rec["action_hash"] != approval_hash(names, acct_id, tenant, req["host_id"], req["task_id"], req.get("body", ""), req.get("source_revision"))):
             return _r("DENY_APPROVAL_MISMATCH", 17)
         hold = None                                                  # Jim's exact, attributable answer ends the wait
-    if CANARY in str(req.get("input_text", "")):
+    if CANARY in str(req.get("input_text", "")) or CANARY in str(req.get("body", "")):
         return _r("DENY_SECRET_EXPOSURE", 18)
     if hold:
         return _r("PENDING", hold[1], hold[0])
@@ -131,9 +140,10 @@ def _execute(world, req):
         for n in names:
             world.outbox.append((n, ref_hash(req["account_id"])))
             world.commits += 1
-    world.req_nonces.add(req["nonce"])
-    if isinstance(req.get("approval"), dict):
-        world.approval_nonces.add(req["approval"].get("nonce"))
+    world.req_nonces.add((req["tenant"], req["nonce"]))
+    rec = world.approvals.get(req.get("approval_id"))
+    if rec is not None and rec["tenant"] == req["tenant"]:
+        rec["used"] = True                                           # an approval is good for one action
     return _r("ALLOW", 21), results, "allow"
 
 
@@ -157,15 +167,17 @@ def build_receipt(world, req, now, d, stage, before):
     code = d["code"]
     outcome = "allow" if code == "ALLOW" else "pending" if code == "PENDING" else "deny"
     ok = lambda v: v if isinstance(v, str) else None                                         # noqa: E731
-    appr = req.get("approval") if isinstance(req.get("approval"), dict) else {}
+    aid = req.get("approval_id")
+    rec = world.approvals.get(aid) if isinstance(aid, str) else None
+    rec = rec if rec is not None and rec["tenant"] == req.get("tenant") else None
     return {"fixture_case_id": ok(req.get("case")), "policy_revision": "access_policy.v1+synthetic-t05", "fake_actor_id": ok(req.get("agent_id")),
             "fake_host_id": ok(req.get("host_id")), "fake_session_id": ok(req.get("session_id")), "fake_task_id": ok(req.get("task_id")), "tenant_id": ok(req.get("tenant")),
             "provider": acct[1] if acct else None, "exact_account_id": ok(req.get("account_id")),
             "action_class": "+".join(sorted({t["actions"][0] for t in regs if t})) or None,
-            "grant_or_approval_reference_hash": ref_hash(req.get("grant_id"), appr.get("action_hash")), "request_nonce_hash": ref_hash(req.get("nonce")),
+            "grant_or_approval_reference_hash": ref_hash(req.get("grant_id"), req.get("approval_id") if rec else None), "request_nonce_hash": ref_hash(req.get("nonce")),
             "decision_code": code, "reason": d["reason"], "decision_step": d["step"], "decision_stage": stage, "source_failure_kind": d["kind"],
             "checked_at_utc": now.isoformat(), "read_handler_calls": world.read_calls - before[2], "mutation_calls": world.mutation_calls - before[3], "commits": world.commits - before[4],
             "provider_state_hash_before": before[0], "provider_state_hash_after": world.provider_hash(),
             "policy_ledger_hash_before": before[1], "policy_ledger_hash_after": world.ledger_hash(), "outcome_label": outcome,
             "audit": access_policy.audit_line(ok(req.get("agent_id")) or "unknown", acct[1] if acct else "unknown", ok(req.get("tool")) or "unknown", outcome, d["reason"],
-                                               "jim" if appr.get("issuer") == "jim" and code == "ALLOW" else None, now)}
+                                               "jim" if rec is not None and code == "ALLOW" else None, now)}

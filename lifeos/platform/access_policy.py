@@ -1,8 +1,8 @@
 """LIFE-403 (epic LIFE-401): the per-agent access policy of the one access layer. Pure functions, no network.
 
-The policy file says, for each agent (by its 64-hex Buzz key) and each service (jira, notion, github), one level: off, read or write. A call is one of read, write, delete, bulk
+The policy file says, for each agent (by its 64-hex Buzz key) and each service (jira, notion, github, gmail, drive, calendar), one level: off, read or write. A call is one of read, write, delete, bulk
 (a write that touches more than `bulk_limit` items). The answer is allow, deny or pending (Jim approves deletes and bulk changes on the toggle page). Fail closed everywhere: a missing,
-unreadable or malformed policy, an unknown service or an unknown agent with no default is a deny, never an allow. v1 caps: Jira and GitHub are read only, Notion is read and write.
+unreadable or malformed policy, an unknown service or an unknown agent with no default is a deny, never an allow. v1 caps: Jira, GitHub, Gmail, Drive and Calendar are read only, Notion is read and write.
 """
 import json
 import re
@@ -10,8 +10,8 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 LEVELS = ("off", "read", "write")
-SERVICES = ("jira", "notion", "github")
-CAP = {"jira": "read", "notion": "write", "github": "read"}       # the most any agent can get in v1 (Jim, Nov 8)
+SERVICES = ("jira", "notion", "github", "gmail", "drive", "calendar")                # gmail, drive and calendar added Nov 9 (Jim, LIFE-374)
+CAP = {"jira": "read", "notion": "write", "github": "read", "gmail": "read", "drive": "read", "calendar": "read"}       # the most any agent can get in v1 (Jim, Nov 8; read only for the new three)
 KINDS = ("read", "write", "delete", "bulk")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 BULK_DEFAULT = 10
