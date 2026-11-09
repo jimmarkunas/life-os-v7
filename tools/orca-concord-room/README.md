@@ -120,6 +120,42 @@ This v0.1.0 panel is **read-only**; prompts are authored in native Orca agent ch
 - **Remove an agent from the room:** each agent chip has an **x**. It hides the agent from the room, the **To** box, the **@** list, **@everyone** and handoff targets, and says so. It does not stop the agent, and messages already sent stay in the history. A **N removed · show** link shows the hidden ones dimmed, each with a bring-back button. Stored as a list of agent ids in the new `hiddenAgents` setting (same `settings:own` access; no new capability).
 - Helpers for @mentions are in `panel/mentions.js` (pure, no DOM), unit-tested in a Node `vm`; the panel and the center-tab editor both load it before `room.js`.
 
+## Install on a fresh machine, and roll it back
+
+Written after simulating both in a throwaway HOME (LIFE-416 GWT-E1/E2). Concord 0.20.0 is the version this was built and tested against; 0.21.0 exists and has not been checked for the hooks-marker bug below, so pin 0.20.0.
+
+**You need:** Orca 1.4.246 or later with plugins on, Claude Code and Codex installed and logged in, Node 22 or later, git, and a checkout of life-os-v7 (the plugin and the safe-setup script live in `tools/orca-concord-room`). The Jira buttons also need Orca's Jira connection.
+
+1. **Install Concord, pinned, outside the repo:** `npm install --prefix ~/.local/share/concord @concord-ai/concord-mcp@0.20.0`
+2. **Put it on your PATH and link its skill:** `ln -s ~/.local/share/concord/node_modules/.bin/concord ~/.local/bin/concord`, the same for `concord-mcp`, and `ln -s ~/.local/share/concord/node_modules/@concord-ai/concord-mcp/plugin/concord-relay ~/.claude/skills/concord-relay`. `~/.local/bin` must be on PATH. Concord telemetry is on by default; set `CONCORD_TELEMETRY_DISABLED=1` to turn it off.
+3. **Enroll a repository, from its root, with the safe wrapper (never bare `concord setup`):** `<life-os-v7>/tools/orca-concord-room/scripts/concord-setup-safe.sh --no-adapters`. It backs up `~/.codex/config.toml` and `~/.claude/settings.json` to `~/.local/state/concord-room/setup-backups/<time>/` and reports any change. Exit 1 means a user-level config was changed or created: read the diff and keep the printed restore or undo command.
+4. **Install the room:** `orca plugin install <life-os-v7>/tools/orca-concord-room`, then open **Concord Room** from the + menu and set its repository.
+5. **Start agents** with **＋ Agent**. Use **Council member** for Codex: Concord cannot wake an idle Codex chat. Concord has no command-line way to send a message; agents send through its MCP tool (`update_work`) and the room sends for you.
+
+**Roll it back, in this order** (the order matters: the wrapper's backups and your agent configs must be restored before anything is deleted):
+
+1. **Restore the configs first.** For each file the wrapper reported as CHANGED, copy the backup back (for example `cp -p ~/.local/state/concord-room/setup-backups/<time>/config.toml ~/.codex/config.toml`); for each one reported CREATED, remove it. Compare with `shasum -a 256` against the backup. If you installed before v0.16.0 your backups are in `~/.local/share/concord/setup-backups`: copy them somewhere else before step 4, because step 4 deletes them. Skipping this leaves Concord hook commands in `~/.codex/config.toml` pointing at a binary that no longer exists.
+2. **Remove the room:** `orca plugin uninstall local.concord-room`, and remove a disposable repository's Orca registration.
+3. **Remove the links:** `~/.local/bin/concord`, `~/.local/bin/concord-mcp`, `~/.claude/skills/concord-relay`.
+4. **Remove Concord:** `~/.local/share/concord` and `~/.concord`. Keep `~/.concord-pilot` if you want the council state and handoff records (`handoffs/council.json`); delete it only if you do not.
+5. **Check:** the four files `~/.claude.json`, `~/.claude/settings.json`, `~/.codex/config.toml` and `~/.codex/AGENTS.md` should match their pre-setup hashes. In the simulation `concord setup` changed only `~/.codex/config.toml`, so that is the one to check hardest.
+
+**Known bug this works around:** Concord 0.20.0's `setup` rewrites the Concord hooks block in `~/.codex/config.toml` and drops the opening marker and two comment lines. Setup does not undo that and neither does rolling Concord back, so restoring from the backup is the only fix.
+
+## v0.16.0: answer a member's question, read-only watch, known limits
+
+- **Answer a council member's question.** A member can ask the coordinator something (Orca's `orchestration ask`). The room shows it with an **Answer** button; your next message goes back through `orchestration reply` and Orca wakes the member with it. A question can be answered once, and not after the member is released.
+- **Read-only watch.** Orca has no permission flag for a worker, and changing Orca's default agent arguments is a security setting this plugin does not touch, so members stay read-only only because they are told to. The room now watches instead: it notes the repository's changed files (`git status` plus each file's modified time and size) when a question goes out and compares them when the answer comes back. If files changed, a line from the room says which ones. It cannot tell who changed them, so the line says it may have been you or another agent in the same worktree. It is a warning, not a lock.
+
+## Known limits (tracked, not fixed here)
+
+- **Orca leaves an idle terminal after setup bootstrap (LIFE-419).** Blocked upstream: stablyai/orca #25071 and #25252. Nothing the plugin can do.
+- **A chat cannot be messaged from the Orca CLI.** `orca chat` only renames; stablyai/orca #33114 asks for list, read and send. The council uses Orca workers (`orchestration worker-start`, `send`, the Run mailbox) instead, so it needs no private API.
+- **Claude terminals can stop at “Bypass Permissions”.** Orca starts some Claude launches (including Agent Teams, `orca claude-teams`) with `--dangerously-skip-permissions`, and Claude asks the person at the keyboard to accept that. Only you can accept it; the room and its agents never do. Launching without that flag works.
+- **Council coordinator tab.** The “Concord Room council (leave alone)” terminal must stay open. Closing it ends the Run; members are marked released and a new Run starts with the next member.
+- **Council members use each agent's default model** unless a later version lets you pick one.
+- **Released member chats stay open in Orca** as ordinary chats; Orca has no CLI to archive a chat.
+
 ## v0.15.0: council rounds (the room relays answers between members)
 
 Council members cannot talk to each other: an Orca worker only reports to its coordinator, and Concord cannot wake an idle Codex. So the room is the go-between. When you address **two or more council members** (the To box, or @mentions), a **Round** menu appears next to it: **off**, **+1 reply to each other** or **+2 replies**. With a round on, the question goes to every chosen member as usual; when all of them have answered, the room sends each member the *other* members' answers and asks it to respond (agree, disagree, change its mind), then repeats up to the number you picked. Everything uses the same `orchestration send` and Run mailbox as a normal question.
