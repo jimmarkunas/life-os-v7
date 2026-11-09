@@ -3,6 +3,9 @@
   const emptyEl = $('empty'), list = $('messages'), toSel = $('to'), text = $('text'), sendBtn = $('send'), note = $('note'), jump = $('jump')
   const nodes = new Map()
   let stick = true, lastMsgs = [], me = '', sending = false, lastRoster = '', chosenByUser = false, nicks = {}, order = [], lastMessages = []
+  let hidden = [], showHidden = false, mentionAgents = [], peopleAgents = []
+  // @mentions: pure helpers in mentions.js. If that file failed to load, the room still works with the "To" box alone.
+  const RM = window.RoomMentions || { active: () => null, candidates: () => [], insert: (t, c) => ({ text: t, caret: c }), parse: () => [] }
 
   const kind = (id) => id.split(':')[0]
   const brand = (id) => ({ 'claude-code': 'claudecode', codex: 'codex', human: 'human', 'claude-chat': 'claudechat', 'chatgpt-chat': 'chatgpt', relay: 'other' }[kind(id)] || 'other')
@@ -80,28 +83,54 @@
   }
 
   function renderRoster(agents) {
-    const targets = agents.filter((a) => kind(a.id) !== 'human' && kind(a.id) !== 'relay' && a.id !== me)
+    peopleAgents = agents
+    // Live agents first, then idle, then away; the box defaults to the first one, so a message goes to an agent that can hear it.
+    const rank = (a) => ({ live: 0, idle: 1 }[a.state.split('/')[0]] ?? 2)
+    const everyone = agents.filter((a) => kind(a.id) !== 'human' && kind(a.id) !== 'relay' && a.id !== me).sort((x, y) => rank(x) - rank(y))
+    const targets = everyone.filter((a) => !hidden.includes(a.id))
+    const gone = everyone.filter((a) => hidden.includes(a.id))
+    mentionAgents = targets.map((a) => ({ id: a.id, name: nameOf(a.id), state: a.state.split('/')[0] }))
     noteIds(agents.map((a) => a.id))
-    const key = JSON.stringify(targets) + me + JSON.stringify(nicks) + order.join()
+    const key = JSON.stringify(targets) + JSON.stringify(gone) + showHidden + me + JSON.stringify(nicks) + order.join()
     if (key === lastRoster) return
     lastRoster = key
-    $('chips').replaceChildren(...targets.map((a) => {
-      const c = document.createElement('span'); c.className = 'chip ' + brand(a.id) + (a.state.startsWith('live') ? ' live' : '')
-      c.title = `${a.id}\nClick the name to rename`
+    const removedBtn = $('removedBtn')
+    removedBtn.hidden = gone.length === 0
+    removedBtn.textContent = showHidden ? 'Hide removed agents' : `${gone.length} removed · show`
+    const chip = (a, isGone) => {
+      const c = document.createElement('span'); c.className = 'chip ' + brand(a.id) + (a.state.startsWith('live') ? ' live' : '') + (isGone ? ' gone' : '')
+      c.title = isGone ? `${a.id}\nRemoved from the room` : `${a.id}\nClick the name to rename`
       const dot = document.createElement('i'); const ic = document.createElement('span'); ic.innerHTML = icon(a.id, true)
       const label = document.createElement('span'); label.textContent = nameOf(a.id)
       const st = document.createElement('span'); st.className = 'st'; st.textContent = a.state.split('/')[0]
-      label.addEventListener('click', () => startRename(c, label, a.id))
-      c.append(ic.firstChild, label, dot, st); return c
-    }))
+      const x = document.createElement('button'); x.type = 'button'; x.className = 'x'
+      x.textContent = isGone ? '↺' : '×'
+      x.title = isGone ? 'Bring back into the room' : 'Remove from the room. It keeps running; this only hides it here.'
+      x.setAttribute('aria-label', `${isGone ? 'Bring back' : 'Remove'} ${nameOf(a.id)}`)
+      x.addEventListener('click', () => setHidden(a.id, !isGone))
+      if (!isGone) label.addEventListener('click', () => startRename(c, label, a.id))
+      c.append(ic.firstChild, label, dot, st, x); return c
+    }
+    $('chips').replaceChildren(...targets.map((a) => chip(a, false)), ...(showHidden ? gone.map((a) => chip(a, true)) : []))
     const prev = toSel.value
     toSel.replaceChildren(...(targets.length ? targets : [{ id: '', state: 'no agents present' }]).map((a) => {
       const o = document.createElement('option'); o.value = a.id; o.textContent = a.id ? `${nameOf(a.id)} (${a.state.split('/')[0]})` : 'No agents present'; return o
     }))
     toSel.disabled = targets.length === 0
-    if (targets.some((a) => a.id === prev)) toSel.value = prev
+    if (chosenByUser && targets.some((a) => a.id === prev)) toSel.value = prev
+    else if (targets.length) toSel.value = targets[0].id
     updateSend()
   }
+
+  // Remove an agent from the room (or bring it back): only hides it here, kept in the plugin's settings. The agent itself keeps running.
+  async function setHidden(id, flag) {
+    try {
+      const out = await ask('concord.hide', { id, hidden: flag }, 8000)
+      hidden = out.hidden || []; lastRoster = ''; renderRoster(peopleAgents)
+      setNote(flag ? `${nameOf(id)} removed from the room. It keeps running; messages already sent stay in the history.` : `${nameOf(id)} is back in the room.`, 'ok')
+    } catch (e) { setNote((e && e.message) || String(e), 'bad') }
+  }
+  $('removedBtn').addEventListener('click', () => { showHidden = !showHidden; lastRoster = ''; renderRoster(peopleAgents) })
 
   function startRename(chip, label, id) {
     const input = document.createElement('input'); input.value = nicks[id] || nameOf(id); input.maxLength = 32; input.setAttribute('aria-label', 'Agent name')
@@ -119,7 +148,13 @@
     input.addEventListener('blur', () => finish(true))
   }
 
-  function updateSend() { sendBtn.disabled = sending || !toSel.value || !text.value.trim() }
+  // Who a message goes to: everyone @-mentioned in it, else the agent chosen in the "To" box.
+  const mentioned = () => RM.parse(text.value, mentionAgents)
+  const recipients = () => { const ids = mentioned(); return ids.length ? ids : (toSel.value ? [toSel.value] : []) }
+  function updateSend() {
+    sendBtn.disabled = sending || recipients().length === 0 || !text.value.trim()
+    const ids = mentioned(); $('toline').textContent = ids.length ? 'Sending to: ' + ids.map(nameOf).join(', ') : ''
+  }
   function autosize() { text.style.height = 'auto'; text.style.height = Math.min(text.scrollHeight, 140) + 'px' }
 
   const surface = (orca && orca.document) ? 'editor' : 'panel'
@@ -136,9 +171,9 @@
       setBanner(''); setStatus('Live', 'ok'); $('status').title = snap.repoRoot
       try {
         const people = await ask('concord.agents', {}, 12000)
-        me = people.me; nicks = people.nicknames || {}; $('me').textContent = 'Sending as ' + nameOf(me) + ' (' + me + ')'
+        me = people.me; nicks = people.nicknames || {}; hidden = people.hidden || []; $('me').textContent = 'Sending as ' + nameOf(me) + ' (' + me + ')'
         noteIds(snap.messages.flatMap((m) => [m.from, m.to]))
-        rosterAgents = people.agents.filter((a) => kind(a.id) !== 'human' && kind(a.id) !== 'relay' && a.id !== me)
+        rosterAgents = people.agents.filter((a) => kind(a.id) !== 'human' && kind(a.id) !== 'relay' && a.id !== me && !hidden.includes(a.id))
         renderRoster(people.agents)
       } catch (e) { /* roster is optional for reading */ }
       noteIds(snap.messages.flatMap((m) => [m.from, m.to]))
@@ -153,21 +188,61 @@
 
   async function send() {
     if (sendBtn.disabled) return
-    const to = toSel.value, content = text.value
+    const to = recipients(), content = text.value
     sending = true; updateSend(); text.disabled = true; setNote('Sending…')
+    const ok = [], bad = []
     try {
-      const out = await orca.plugin.request('concord.send', { to, content }, { timeoutMs: 20000 })
-      text.value = ''; autosize()
-      setNote(`Sent to ${to} (${out.status}${out.delivery ? ', ' + out.delivery : ''}). "queued" is not "delivered" — watch the receipt.`, 'ok')
+      for (const id of to) {
+        try {
+          const out = await orca.plugin.request('concord.send', { to: id, content }, { timeoutMs: 20000 })
+          ok.push(`${nameOf(id)} (${out.status}${out.delivery ? ', ' + out.delivery : ''})`)
+        } catch (e) { bad.push(`${nameOf(id)}: ${(e && e.message) || e}`) }
+      }
+      if (ok.length) { text.value = ''; autosize(); closeMention() }
+      const quiet = to.filter((id) => (mentionAgents.find((a) => a.id === id) || {}).state !== 'live').length
+      const idle = quiet ? (quiet === 1 ? ' One agent is not live and sees this only when it next acts (an idle Codex chat may not at all).' : ` ${quiet} agents are not live and see this only when they next act (an idle Codex chat may not at all).`) : ''
+      if (bad.length) setNote(`${ok.length ? 'Sent to ' + ok.join(', ') + '. ' : ''}Failed: ${bad.join('; ')}`, 'bad')
+      else setNote(`Sent to ${ok.join(', ')}. "queued" is not "delivered", so watch the receipt.${idle}`, 'ok')
       stick = true
       await refresh(); toBottom()
-    } catch (e) {
-      setNote((e && e.message) || String(e), 'bad')
     } finally { sending = false; text.disabled = false; updateSend(); text.focus() }
   }
 
-  text.addEventListener('input', () => { autosize(); updateSend() })
-  text.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send() } })
+  // ---- @mention popup: type @ to pick agents (or everyone); the message goes to each one mentioned. ----
+  const menu = $('mention')
+  let mItems = [], mIdx = 0, mStart = 0
+  function closeMention() { menu.classList.remove('open'); mItems = [] }
+  function showMention() {
+    const a = RM.active(text.value, text.selectionStart)
+    if (!a || mentionAgents.length === 0) { closeMention(); return }
+    mItems = RM.candidates(a.query, mentionAgents); mStart = a.start
+    if (mItems.length === 0) { closeMention(); return }
+    mIdx = Math.min(mIdx, mItems.length - 1)
+    menu.replaceChildren(...mItems.map((it, i) => {
+      const b = document.createElement('button'); b.type = 'button'; b.setAttribute('role', 'option'); b.className = i === mIdx ? 'on' : ''
+      const n = document.createElement('span'); n.textContent = '@' + it.label
+      const h = document.createElement('span'); h.className = 'st'; h.textContent = it.hint
+      b.append(n, h); b.addEventListener('mousedown', (e) => { e.preventDefault(); pickMention(i) }); return b
+    }))
+    menu.classList.add('open')
+  }
+  function pickMention(i) {
+    const it = mItems[i]; if (!it) return
+    const r = RM.insert(text.value, text.selectionStart, mStart, it.label)
+    text.value = r.text; text.setSelectionRange(r.caret, r.caret)
+    closeMention(); autosize(); updateSend(); text.focus()
+  }
+  text.addEventListener('input', () => { autosize(); mIdx = 0; showMention(); updateSend() })
+  text.addEventListener('click', showMention)
+  text.addEventListener('blur', () => setTimeout(closeMention, 120))
+  text.addEventListener('keydown', (e) => {
+    if (menu.classList.contains('open')) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); mIdx = (mIdx + (e.key === 'ArrowDown' ? 1 : -1) + mItems.length) % mItems.length; showMention(); return }
+      if (((e.key === 'Enter' && !e.shiftKey) || e.key === 'Tab') && !e.isComposing) { e.preventDefault(); pickMention(mIdx); return }
+      if (e.key === 'Escape') { e.preventDefault(); closeMention(); return }
+    }
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send() }
+  })
   toSel.addEventListener('change', () => { chosenByUser = true; updateSend() })
   sendBtn.addEventListener('click', send)
 

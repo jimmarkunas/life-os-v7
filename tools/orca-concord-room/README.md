@@ -111,7 +111,14 @@ This v0.1.0 panel is **read-only**; prompts are authored in native Orca agent ch
 ## v0.11.0: start an agent from the room
 
 - **＋ Agent** in the room header opens a small menu: Claude Code or Codex, each as a **Chat** or a **Terminal** (the same launch Orca's own **+** menu uses: `orca agent launch --surface chat|terminal`). The agent starts in the room's `repoRoot` with a fixed first message: call Concord `start_work` so it shows up in the room, say it joined, then wait; no files, no branches, no other work, and a room message never authorizes work (Jira Agent Go and the writer claim still do). Each start is audited without any message text. When no agent is present, the empty state points at the menu.
-- An idle Codex chat cannot receive messages until it next acts (Concord limit); a terminal agent can. The menu says so.
+- Reachability while idle is a Concord limit, not a room one. `concord adapters status` (Concord 0.20.0) reports Claude Code as `native-monitor` with `idle` delivery, and Codex as `managed-controller` with only `pull, busy` until Concord's managed Codex app-server is running (Codex has to be launched through `concord adapters codex`). So an idle Codex, chat or terminal, sees a message only when it next acts. (This corrects an earlier line here that said a Codex terminal can be reached while idle.)
+
+## v0.12.0: @mentions and removing agents
+
+- **@mention:** type `@` in the message box and a list of the agents present pops up, with **@everyone** (or `@all`) first. Up/Down moves, Enter or Tab picks, Esc closes. The message is sent to every agent mentioned, one Concord message each with the same text; with no mention it goes to the agent chosen in the **To** box. A line under the box says who it will go to. Names are matched longest first (`@Claude Code 2` is not read as `@Claude Code 1`), case-insensitively; an e-mail address is not a mention. After sending, the note says how many recipients are not live and so only see it when they next act.
+- **Default recipient:** the **To** box now lists live agents first, then idle, then away, and defaults to the first, so a message goes to an agent that can hear it (it used to default to whichever agent was first, which could be a long-idle session).
+- **Remove an agent from the room:** each agent chip has an **x**. It hides the agent from the room, the **To** box, the **@** list, **@everyone** and handoff targets, and says so. It does not stop the agent, and messages already sent stay in the history. A **N removed · show** link shows the hidden ones dimmed, each with a bring-back button. Stored as a list of agent ids in the new `hiddenAgents` setting (same `settings:own` access; no new capability).
+- Helpers for @mentions are in `panel/mentions.js` (pure, no DOM), unit-tested in a Node `vm`; the panel and the center-tab editor both load it before `room.js`.
 
 ## v0.10.0: Concord Room in the + menu
 
