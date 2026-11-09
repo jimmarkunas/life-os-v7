@@ -637,6 +637,20 @@ export function withNickname(current, id, name) {
   return next
 }
 
+/** Agents Jim removed from the room are stored as a JSON array of agent ids in the plugin's own settings. Removing only hides: the agent keeps running. */
+export function parseHidden(raw) {
+  let parsed
+  try { parsed = typeof raw === 'string' && raw.trim() ? JSON.parse(raw) : [] } catch { parsed = [] }
+  return Array.isArray(parsed) ? [...new Set(parsed.filter((id) => typeof id === 'string' && AGENT_ID.test(id)))].slice(0, 200) : []
+}
+
+export function withHidden(current, id, hidden) {
+  if (typeof id !== 'string' || !AGENT_ID.test(id)) fail('invalid_params', 'Unknown agent id.')
+  if (typeof hidden !== 'boolean') fail('invalid_params', 'Say whether to remove or bring back the agent.')
+  const rest = current.filter((x) => x !== id)
+  return hidden ? [...rest, id].slice(-200) : rest
+}
+
 export default function activate(orca) {
   const settings = async () => ({
     repoRoot: await orca.settings.get('repoRoot'),
@@ -650,7 +664,7 @@ export default function activate(orca) {
   orca.panels.handle('concord.agents', async () => {
     const s = await settings()
     const { agents } = await getAgents(s.repoRoot, s.executable)
-    return { agents, me: defaultSenderId(s.senderId), nicknames: parseNicknames(await orca.settings.get('nicknames')) }
+    return { agents, me: defaultSenderId(s.senderId), nicknames: parseNicknames(await orca.settings.get('nicknames')), hidden: parseHidden(await orca.settings.get('hiddenAgents')) }
   })
   const handoffSettings = async () => ({
     handoffDir: await orca.settings.get('handoffDir'),
@@ -671,6 +685,11 @@ export default function activate(orca) {
     const next = withNickname(parseNicknames(await orca.settings.get('nicknames')), input?.id, input?.name)
     await orca.settings.set('nicknames', JSON.stringify(next))
     return { nicknames: next }
+  })
+  orca.panels.handle('concord.hide', async (input) => {
+    const next = withHidden(parseHidden(await orca.settings.get('hiddenAgents')), input?.id, input?.hidden)
+    await orca.settings.set('hiddenAgents', JSON.stringify(next))
+    return { hidden: next }
   })
   orca.panels.handle('concord.send', async (input) => {
     const s = await settings()

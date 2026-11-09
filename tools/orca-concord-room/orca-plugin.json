@@ -3,7 +3,7 @@
   "execution": "trusted-worker",
   "id": "concord-room",
   "name": "Concord Room",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "Live Concord message room inside Orca (right sidebar or a center tab): shows real agent messages, lets you message present agents, shows handoffs waiting for your Accept, and pulls Jira issues in the way Orca's own Tasks view does.",
   "engines": {
     "orca": ">=1.4.248"
@@ -47,6 +47,13 @@
         "description": "Click an agent's name in the Concord Room to rename it. Stored here as JSON.",
         "type": "string",
         "default": "{}"
+      },
+      {
+        "key": "hiddenAgents",
+        "title": "Agents removed from the room (managed by the room)",
+        "description": "Click the x on an agent in the Concord Room to remove it from the room; this only hides it, the agent keeps running. Stored here as a JSON list.",
+        "type": "string",
+        "default": "[]"
       },
       {
         "key": "handoffDir",

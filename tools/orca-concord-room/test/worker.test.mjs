@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { EventEmitter } from 'node:events'
 import { readFileSync } from 'node:fs'
-import { getMessages, validateRecords, validateExecutable, parseWho, sendMessage, callConcordTool, defaultSenderId, parseNicknames, withNickname, jiraIssues, jiraIssue, linkedJira, linkJira, unlinkJira, jiraChatPrompt, startJiraChat, readPolicy, validateHandoff, listHandoffs, acceptHandoff, rejectHandoff, handoffPrompt, defaultHandoffDir, terminalAgents, handoffLine, typeIntoTerminal, launchChat, roomAgentPrompt, startRoomAgent } from '../worker/main.mjs'
+import { getMessages, validateRecords, validateExecutable, parseWho, sendMessage, callConcordTool, defaultSenderId, parseNicknames, withNickname, jiraIssues, jiraIssue, linkedJira, linkJira, unlinkJira, jiraChatPrompt, startJiraChat, readPolicy, validateHandoff, listHandoffs, acceptHandoff, rejectHandoff, handoffPrompt, defaultHandoffDir, terminalAgents, handoffLine, typeIntoTerminal, launchChat, roomAgentPrompt, startRoomAgent, parseHidden, withHidden } from '../worker/main.mjs'
 
 test('reads genuine CLI JSON using fixed argv, without a shell, and sorts by time', async t => {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'concord-orca-')))
@@ -475,6 +475,70 @@ test('the panel has the Agent menu with all four choices, wired to agent.start, 
   assert.match(js, /ask\('agent\.start'/)
   assert.match(worker, /orca\.panels\.handle\('agent\.start'/)
   assert.match(js, /Use ＋ Agent \(top right\)/)
+})
+
+// v0.12.0: remove an agent from the room, and @mention agents in the composer.
+test('removed agents are a validated, de-duplicated list in the settings, and removing only hides', () => {
+  assert.deepEqual(parseHidden(undefined), []); assert.deepEqual(parseHidden('not json'), []); assert.deepEqual(parseHidden('{"a":1}'), [])
+  assert.deepEqual(parseHidden(JSON.stringify(['claude-code:676d6dda', 'claude-code:676d6dda', 'bad id', 7, 'codex:35be1109'])), ['claude-code:676d6dda', 'codex:35be1109'])
+  let list = withHidden([], 'codex:35be1109', true)
+  list = withHidden(list, 'codex:35be1109', true)
+  assert.deepEqual(list, ['codex:35be1109'])
+  assert.deepEqual(withHidden(list, 'claude-code:676d6dda', true), ['codex:35be1109', 'claude-code:676d6dda'])
+  assert.deepEqual(withHidden(list, 'codex:35be1109', false), [])
+  assert.throws(() => withHidden([], 'rm -rf', true), /Unknown agent id/)
+  assert.throws(() => withHidden([], 'codex:35be1109', 'yes'), /remove or bring back/)
+  assert.equal(withHidden(Array.from({ length: 200 }, (_, i) => `codex:id${i}`), 'codex:new', true).length, 200)   // capped
+})
+
+async function mentionHelpers() {
+  const vm = await import('node:vm')
+  const ctx = { window: {} }
+  vm.runInNewContext(readFileSync(new URL('../panel/mentions.js', import.meta.url), 'utf8'), ctx)
+  return ctx.window.RoomMentions
+}
+const ROOM = [{ id: 'claude-code:aaa', name: 'Claude', state: 'live' }, { id: 'claude-code:bbb', name: 'Claude 2', state: 'idle' }, { id: 'codex:ccc', name: 'Codex', state: 'live' }]
+
+test('@mention: the popup opens only for an @ at the start or after a space, and offers everyone first, then agents by name prefix', async () => {
+  const RM = await mentionHelpers()
+  assert.deepEqual({ ...RM.active('hi @Cl', 6) }, { start: 3, query: 'Cl' })
+  assert.deepEqual({ ...RM.active('@', 1) }, { start: 0, query: '' })
+  assert.equal(RM.active('mail jim@Claude', 15), null)                     // an e-mail address is not a mention
+  assert.equal(RM.active('hi @Claude and', 14), null)                       // the caret is past the mention
+  assert.deepEqual(Array.from(RM.candidates('', ROOM), (i) => i.label), ['everyone', 'Claude', 'Claude 2', 'Codex'])
+  assert.deepEqual(Array.from(RM.candidates('cl', ROOM), (i) => i.label), ['Claude', 'Claude 2'])
+  assert.deepEqual(Array.from(RM.candidates('ev', ROOM), (i) => i.label), ['everyone'])
+  assert.deepEqual(Array.from(RM.candidates('', []), (i) => i.label), [])          // nobody present: nothing to pick
+  assert.deepEqual({ ...RM.insert('hi @Cl there', 6, 3, 'Claude 2') }, { text: 'hi @Claude 2  there', caret: 13 })
+})
+
+test('@mention: the finished text decides who gets the message, longest name first, and @everyone means every present agent', async () => {
+  const RM = await mentionHelpers()
+  assert.deepEqual(Array.from(RM.parse('@Claude can you check this?', ROOM)), ['claude-code:aaa'])
+  assert.deepEqual(Array.from(RM.parse('@Claude 2 and @Codex: look', ROOM)).sort(), ['claude-code:bbb', 'codex:ccc'])   // "@Claude 2" is not read as "@Claude"
+  assert.deepEqual(Array.from(RM.parse('hello @everyone!', ROOM)), ['claude-code:aaa', 'claude-code:bbb', 'codex:ccc'])
+  assert.deepEqual(Array.from(RM.parse('@all stand by', ROOM)), ['claude-code:aaa', 'claude-code:bbb', 'codex:ccc'])
+  assert.deepEqual(Array.from(RM.parse('@claude lowercase works', ROOM)), ['claude-code:aaa'])
+  assert.deepEqual(Array.from(RM.parse('ping @Claude.', ROOM)), ['claude-code:aaa'])
+  for (const none of ['no mention', 'jim@Claude', '@Claudex', '@Nobody', '', '@']) assert.deepEqual(Array.from(RM.parse(none, ROOM)), [], none)
+  assert.deepEqual(Array.from(RM.parse('@everyone', [])), [])                           // an empty room has no one to send to
+})
+
+test('the panel wires removing agents and @mentions: markup, scripts, loader, worker handler and setting', () => {
+  const html = readFileSync(new URL('../panel/index.html', import.meta.url), 'utf8')
+  const js = readFileSync(new URL('../panel/room.js', import.meta.url), 'utf8')
+  const worker = readFileSync(new URL('../worker/main.mjs', import.meta.url), 'utf8')
+  const loader = readFileSync(new URL('../editor/main.ts', import.meta.url), 'utf8')
+  const manifest = JSON.parse(readFileSync(new URL('../orca-plugin.json', import.meta.url), 'utf8'))
+  assert.match(html, /<script src="mentions\.js"><\/script>\s*<script src="room\.js"><\/script>/)   // mentions load before the room
+  assert.equal(/<script(?![^>]*\bsrc=)[^>]*>/u.test(html), false)
+  for (const id of ['mention', 'toline', 'removedBtn']) assert.match(html, new RegExp(`id="${id}"`))
+  assert.match(loader, /import\('\.\.\/panel\/mentions\.js'\)[\s\S]*import\('\.\.\/panel\/room\.js'\)/)   // mentions load before the room, in the center tab too
+  assert.match(js, /ask\('concord\.hide'/)
+  assert.match(js, /RM\.parse\(text\.value, mentionAgents\)/)
+  assert.match(worker, /orca\.panels\.handle\('concord\.hide'/)
+  assert.ok(manifest.contributes.settings.some((s) => s.key === 'hiddenAgents' && s.default === '[]'))
+  assert.deepEqual(manifest.capabilities, [{ kind: 'settings:own' }])      // no new access
 })
 
 // concord-setup-safe.sh: Concord 0.20.0's `setup` rewrote the real ~/.codex/config.toml, so the wrapper backs up the user-level
