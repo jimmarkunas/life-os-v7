@@ -309,6 +309,19 @@ class PullRequestTestsWorkflow(unittest.TestCase):
         self.assertRegex(run, r'-ge 75 \]; then .*exit 1')
         self.assertRegex(run, r'-ge 45 \]; then echo "::warning::')
 
+    def test_it_also_runs_the_concord_room_plugin_tests_after_the_python_suite_with_no_secret_or_install(self):
+        """Jim, Nov 8 2026: the Concord Room Orca plugin is production, so its node:test file runs in this same required check (the named test file, not the directory form, which fails on Node 24)."""
+        doc = yaml.safe_load(self.path.read_text())
+        steps = doc["jobs"]["unit-tests"]["steps"]
+        names = [s.get("name", "") for s in steps]
+        python_suite = next(i for i, n in enumerate(names) if "Unit tests" in n)
+        room = next(i for i, n in enumerate(names) if "Concord Room plugin tests" in n)
+        self.assertGreater(room, python_suite)                                       # the 45 s / 75 s limits above stay about the Python suite alone
+        self.assertEqual(steps[room]["run"], "node --test tools/orca-concord-room/test/worker.test.mjs")
+        self.assertEqual(steps[room - 1]["uses"], "actions/setup-node@v5")
+        self.assertEqual(steps[room - 1]["with"], {"node-version": "24"})
+        self.assertTrue(pathlib.Path(__file__).resolve().parents[2].joinpath("tools/orca-concord-room/test/worker.test.mjs").is_file())
+
 
 class FastPathFirstTests(unittest.TestCase):
     """D206 (LIFE-76 PR 1): the Ledger never waits on bulk discovery, and a quick proof run reads few boards."""
