@@ -66,7 +66,7 @@
   }
 
   function renderMessages(messages) {
-    if (messages.length === 0) { emptyEl.textContent = 'No messages yet. Pick an agent below and say hello.'; if (!emptyEl.isConnected) list.replaceChildren(emptyEl); return }
+    if (messages.length === 0) { emptyEl.textContent = toSel.disabled ? 'No agents here yet. Use ＋ Agent (top right) to start Claude Code or Codex; it joins this room.' : 'No messages yet. Pick an agent below and say hello.'; if (!emptyEl.isConnected) list.replaceChildren(emptyEl); return }
     if (emptyEl.isConnected) emptyEl.remove()
     const before = nodes.size
     let added = 0
@@ -329,11 +329,27 @@
     loadList().then(() => { if (key) selectIssue(key) }); jq.focus()
   }
   $('jiraBtn').addEventListener('click', () => openSheet())
+
+  // ---- Agent menu: start Claude Code or Codex (chat or terminal) in this room's repository, the way Orca's own + menu launches an agent. It joins the room and waits. ----
+  const amenu = $('amenu'), agentBtn = $('agentBtn')
+  const setMenu = (open) => { amenu.classList.toggle('open', open); agentBtn.setAttribute('aria-expanded', String(open)) }
+  agentBtn.addEventListener('click', (e) => { e.stopPropagation(); setMenu(!amenu.classList.contains('open')) })
+  document.addEventListener('click', (e) => { if (!amenu.contains(e.target)) setMenu(false) })
+  amenu.addEventListener('click', async (e) => {
+    const b = e.target.closest('button[data-agent]'); if (!b) return
+    const label = `${b.dataset.agent === 'codex' ? 'Codex' : 'Claude Code'} ${b.dataset.surface}`
+    const items = amenu.querySelectorAll('button')
+    for (const x of items) x.disabled = true
+    setMenu(false); setNote(`Starting ${label}…`)
+    try { await ask('agent.start', { agent: b.dataset.agent, surface: b.dataset.surface }, 40000); setNote(`Started ${label}. It shows up here once it joins.`, 'ok') }
+    catch (err) { setNote(`Could not start ${label}: ${(err && err.message) || err}`, 'bad') }
+    finally { for (const x of items) x.disabled = false; refresh() }
+  })
   $('jclose').addEventListener('click', () => sheet.classList.remove('open'))
   $('jtabs').addEventListener('click', (e) => { const b = e.target.closest('button[data-f]'); if (!b) return; jfilter = b.dataset.f; jq.value = ''; for (const x of $('jtabs').children) x.classList.toggle('on', x === b); loadList() })
   jq.addEventListener('input', () => { clearTimeout(jtimer); jtimer = setTimeout(loadList, 350) })
   jq.addEventListener('keydown', (e) => { if (e.key === 'Enter') { clearTimeout(jtimer); loadList() } })
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') sheet.classList.remove('open') })
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { sheet.classList.remove('open'); setMenu(false) } })
   void refreshLinked()
 
   // Custom editor tab: Orca expects the editor to ask for its (empty, read-only) document once.
