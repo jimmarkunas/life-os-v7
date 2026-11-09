@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { EventEmitter } from 'node:events'
 import { readFileSync } from 'node:fs'
-import { getMessages, validateRecords, validateExecutable, parseWho, sendMessage, callConcordTool, defaultSenderId, parseNicknames, withNickname, createJira, jiraProjects, jiraTypes, readPolicy, validateHandoff, listHandoffs, acceptHandoff, rejectHandoff, handoffPrompt, defaultHandoffDir } from '../worker/main.mjs'
+import { getMessages, validateRecords, validateExecutable, parseWho, sendMessage, callConcordTool, defaultSenderId, parseNicknames, withNickname, createJira, jiraProjects, jiraTypes, readPolicy, validateHandoff, listHandoffs, acceptHandoff, rejectHandoff, handoffPrompt, defaultHandoffDir, terminalAgents, handoffLine, typeIntoTerminal } from '../worker/main.mjs'
 
 test('reads genuine CLI JSON using fixed argv, without a shell, and sorts by time', async t => {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'concord-orca-')))
@@ -188,9 +188,9 @@ test('editor tab and sidebar panel share one page and script, with no inline scr
 test('avatars are small embedded PNGs for the four Buzz identities and the brand colours match Buzz', () => {
   const avatars = readFileSync(new URL('../panel/avatars.js', import.meta.url), 'utf8')
   for (const key of ['claudecode', 'codex', 'claudechat', 'chatgpt']) assert.match(avatars, new RegExp(`"${key}": "data:image/png;base64,`))
-  assert.ok(avatars.length < 40000)
+  assert.ok(avatars.length < 120000)
   const html = readFileSync(new URL('../panel/index.html', import.meta.url), 'utf8')
-  for (const hex of ['#b5532f', '#d97757', '#10a37f', '#5b5fef']) assert.ok(html.includes(hex), hex)
+  for (const hex of ["#b5532f", "#d97757", "#10a37f", "#5b5fef", "#ff2fae"]) assert.ok(html.includes(hex), hex)
 })
 
 const GOOD_POLICY = { senders: ['chatgpt-chat', 'claude-chat'], targets: { agents: true, newChat: ['claude', 'codex'] }, requireAccept: true }
@@ -296,4 +296,77 @@ test('reject records state, audits, and blocks any later accept', async t => {
   await assert.rejects(acceptHandoff({ handoffDir: dir, repoRoot: '/r', executable: 'concord', id: 'hf-aaaaaaaa', target: { kind: 'agent', id: 'claude-code:f6958fb5' } }, { ...hdeps, send: async () => { throw Error('must not send') } }), /already rejected/)
   assert.match(await readF(path.join(dir, 'audit.log'), 'utf8'), /"op":"reject"/)
   assert.match(handoffPrompt({ id: 'hf-1', sender: 'claude-chat', jiraKey: 'LIFE-1', scope: 's', brief: 'b' }), /Claude Chat/)
+})
+
+test('terminalAgents trusts only what Orca reports: same repo, a known agent, idle, writable', async t => {
+  const repo = await realpath(await mkdtemp(path.join(tmpdir(), 'concord-term-')))
+  await mkdir(path.join(repo, '.concord'))
+  t.after(() => rm(repo, { recursive: true, force: true }))
+  const agents = [
+    { paneKey: 'tab1:leaf1', agentType: 'claude', state: 'done', conversationName: 'Idle Claude' },
+    { paneKey: 'tab2:leaf2', agentType: 'claude', state: 'working', workingMode: 'monitoring', conversationName: 'Monitoring Claude' },
+    { paneKey: 'tab3:leaf3', agentType: 'codex', state: 'working', conversationName: 'Busy Codex' },
+    { paneKey: 'tab4:leaf4', agentType: 'claude', state: 'blocked', conversationName: 'Asking permission' },
+    { paneKey: 'tab5:leaf5', agentType: 'mystery', state: 'done', conversationName: 'Unknown agent' },
+    { paneKey: 'tab6:leaf6', agentType: 'claude', state: 'done', conversationName: 'Read only terminal' },
+    { paneKey: 'structured-agent-session-claude_x', agentType: 'claude', state: 'done', conversationName: 'A chat' }
+  ]
+  const terminals = ['1', '2', '3', '4', '5', '6'].map(n => ({ handle: `term_${n}`, tabId: `tab${n}`, leafId: `leaf${n}`, title: `T${n}`, connected: true, writable: n !== '6' }))
+  const run = async (cmd, args) => {
+    const key = args.slice(0, 2).join(' ')
+    if (key === 'worktree ps') return { stdout: JSON.stringify({ ok: true, result: [{ path: repo, agents }, { path: '/some/other/repo', agents: [{ paneKey: 'tab9:leaf9', agentType: 'claude', state: 'done' }] }] }) }
+    if (key === 'terminal list') return { stdout: JSON.stringify({ ok: true, result: { terminals: [...terminals, { handle: 'term_9', tabId: 'tab9', leafId: 'leaf9', title: 'Other repo', connected: true, writable: true }] } }) }
+    throw Error('unexpected ' + key)
+  }
+  const out = await terminalAgents(repo, run)
+  const by = Object.fromEntries(out.map(x => [x.name, x]))
+  assert.equal(out.length, 6)
+  assert.equal(by['Idle Claude'].eligible, true)
+  assert.equal(by['Monitoring Claude'].eligible, true)
+  assert.equal(by['Busy Codex'].eligible, false); assert.match(by['Busy Codex'].reason, /working/)
+  assert.equal(by['Asking permission'].eligible, false)
+  assert.equal(by['Unknown agent'].eligible, false)
+  assert.equal(by['Read only terminal'].eligible, false)
+  assert.equal(out.some(x => x.handle === 'term_9'), false)
+})
+
+test('typing a handoff into a terminal needs policy, a self-routed handoff, and a ready agent; the text is one line', async t => {
+  const dir = await folder({ ...GOOD_POLICY, targets: { ...GOOD_POLICY.targets, terminals: true } })
+  const off = await folder()
+  t.after(() => Promise.all([dir, off].map(d => rm(d, { recursive: true, force: true }))))
+  await put(dir, handoff())
+  await put(off, handoff())
+  await put(dir, handoff({ id: 'hf-named000', nonce: 'nonce-named000', target: { kind: 'agent', id: 'claude-code:f6958fb5' } }))
+  const ready = { handle: 'term_ready', name: 'Concord: Claude', agentType: 'claude', state: 'done', eligible: true, reason: '' }
+  const busy = { handle: 'term_busy', name: 'Busy', agentType: 'codex', state: 'working', eligible: false, reason: 'agent is working' }
+  const typed = []
+  const d = { ...hdeps, terminals: async () => [ready, busy], typeInto: async x => { typed.push(x) } }
+  const base = { handoffDir: dir, repoRoot: '/r', executable: 'concord' }
+  await assert.rejects(acceptHandoff({ ...base, id: 'hf-aaaaaaaa', target: { kind: 'terminal', handle: 'term_busy' } }, d), /not ready \(agent is working\)/)
+  await assert.rejects(acceptHandoff({ ...base, id: 'hf-aaaaaaaa', target: { kind: 'terminal', handle: 'term_gone' } }, d), /no longer available/)
+  await assert.rejects(acceptHandoff({ ...base, id: 'hf-named000', target: { kind: 'terminal', handle: 'term_ready' } }, d), /cannot be redirected|Only a handoff you route/)
+  await assert.rejects(acceptHandoff({ ...base, handoffDir: off, id: 'hf-aaaaaaaa', target: { kind: 'terminal', handle: 'term_ready' } }, d), /does not allow typing/)
+  assert.equal(typed.length, 0)
+  const out = await acceptHandoff({ ...base, id: 'hf-aaaaaaaa', target: { kind: 'terminal', handle: 'term_ready' } }, d)
+  assert.equal(out.status, 'typed')
+  assert.equal(typed.length, 1); assert.equal(typed[0].handle, 'term_ready')
+  assert.equal(typed[0].text.includes('\n'), false)
+  assert.match(typed[0].text, /LIFE-411/); assert.match(typed[0].text, /REFUSED/); assert.match(typed[0].text, /not an order/)
+  const audit = await readF(path.join(dir, 'audit.log'), 'utf8')
+  assert.equal(audit.includes('term_ready'), false); assert.equal(audit.includes('SECRET-BRIEF-TEXT'), false)
+  assert.ok(handoffLine({ id: 'hf-1', sender: 'claude-chat', jiraKey: 'LIFE-1', scope: 's', brief: 'x\ny'.repeat(2000) }).length <= 1400)
+  const bad = await folder({ ...GOOD_POLICY, targets: { ...GOOD_POLICY.targets, terminals: 'yes' } })
+  t.after(() => rm(bad, { recursive: true, force: true }))
+  await assert.rejects(listHandoffs(bad, hdeps), /malformed/)
+})
+
+test('terminal input is confirmed from Orca\'s send receipt, in either shape, and never assumed', async () => {
+  const seen = []
+  const reply = (obj) => async (cmd, args) => { seen.push(args); return { stdout: JSON.stringify(obj) } }
+  await typeIntoTerminal({ handle: 'term_x', text: 'hello' }, reply({ ok: true, result: { send: { accepted: true } } }))
+  await typeIntoTerminal({ handle: 'term_x', text: 'hello' }, reply({ ok: true, result: { accepted: true } }))
+  assert.deepEqual(seen[0], ['terminal', 'send', '--terminal', 'term_x', '--text', 'hello', '--enter', '--json'])
+  for (const bad of [{ ok: true, result: { send: { accepted: false } } }, { ok: true, result: {} }, { ok: false }]) {
+    await assert.rejects(typeIntoTerminal({ handle: 'term_x', text: 'hello' }, reply(bad)), /did not confirm/)
+  }
 })

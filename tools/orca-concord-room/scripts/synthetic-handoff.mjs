@@ -19,7 +19,7 @@ const dir = flag('dir') ?? path.join(os.homedir(), '.concord-pilot', 'handoffs')
 await mkdir(dir, { recursive: true })
 
 if (args.includes('--init-policy')) {
-  const policy = { senders: ['chatgpt-chat', 'claude-chat'], targets: { agents: true, newChat: ['claude', 'codex'] }, requireAccept: true }
+  const policy = { senders: ['chatgpt-chat', 'claude-chat'], targets: { agents: true, terminals: true, newChat: ['claude', 'codex'] }, requireAccept: true }
   await writeFile(path.join(dir, 'policy.json'), `${JSON.stringify(policy, null, 2)}\n`, { mode: 0o600 })
   console.log(`wrote ${path.join(dir, 'policy.json')}`)
   if (!flag('jira')) process.exit(0)

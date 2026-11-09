@@ -12,7 +12,7 @@
   const ICONS = {
     claude: () => { const r = [0, 45, 90, 135, 180, 225, 270, 315].map((a) => `<rect x="-1.2" y="-10.5" width="2.4" height="7.6" rx="1.2" transform="rotate(${a})"/>`).join(''); return `<svg viewBox="-12 -12 24 24" fill="#f2a65a" aria-hidden="true">${r}</svg>` },
     codex: () => '<svg viewBox="0 0 24 24" fill="none" stroke="#10a37f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="2.5" width="19" height="19" rx="6"/><path d="M8 9l3.5 3L8 15M13 16h3.5"/></svg>',
-    human: () => '<svg viewBox="0 0 24 24" fill="none" stroke="#4d8dff" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c.8-4 3.7-6 7.5-6s6.7 2 7.5 6"/></svg>',
+    human: () => '<svg viewBox="0 0 24 24" fill="none" stroke="#ff2fae" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c.8-4 3.7-6 7.5-6s6.7 2 7.5 6"/></svg>',
     other: () => '<svg viewBox="0 0 24 24" fill="none" stroke="#9aa0a6" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg>'
   }
   ICONS.claudecode = ICONS.claude; ICONS.claudechat = ICONS.claude; ICONS.chatgpt = ICONS.other
@@ -172,12 +172,13 @@
 
   // ---- Handoffs: pointers from Claude Chat / ChatGPT, delivered only after Jim clicks Accept ----
   const hoBox = $('handoffs')
-  let hoJson = '', rosterAgents = [], busyIds = new Set()
-  const STATUS_TEXT = { delivered: 'delivered', queued: 'queued, not delivered', started: 'new chat started', rejected: 'rejected', invalid: 'invalid', duplicate: 'duplicate' }
+  let hoJson = '', rosterAgents = [], busyIds = new Set(), hoTerminals = []
+  const STATUS_TEXT = { typed: 'typed into terminal', delivered: 'delivered', queued: 'queued, not delivered', started: 'new chat started', rejected: 'rejected', invalid: 'invalid', duplicate: 'duplicate' }
   async function refreshHandoffs() {
     try {
       const out = await ask('handoff.list', {}, 12000)
-      const json = JSON.stringify(out.handoffs) + JSON.stringify(rosterAgents) + lastMsgs.map((m) => m.id + (m.receipt || m.status)).join() + JSON.stringify(nicks) + [...busyIds].join()
+      hoTerminals = out.terminals || []
+      const json = JSON.stringify(out.handoffs) + JSON.stringify(hoTerminals) + JSON.stringify(rosterAgents) + lastMsgs.map((m) => m.id + (m.receipt || m.status)).join() + JSON.stringify(nicks) + [...busyIds].join()
       if (json === hoJson) return
       hoJson = json; renderHandoffs(out.handoffs)
     } catch (e) {
@@ -193,6 +194,7 @@
     else if (h.target.kind === 'new-chat') opts.push({ v: JSON.stringify({ kind: 'new-chat', agent: h.target.agent }), t: `New ${h.target.agent === 'codex' ? 'Codex' : 'Claude Code'} chat (named by the sender)` })
     else {
       for (const a of rosterAgents) opts.push({ v: JSON.stringify({ kind: 'agent', id: a.id }), t: `${nameOf(a.id)} (${a.state.split('/')[0]})` })
+      for (const t of hoTerminals) opts.push({ v: JSON.stringify({ kind: 'terminal', handle: t.handle }), t: `Terminal: ${t.name} (${t.agentType}${t.eligible ? ', ready' : ', not ready: ' + t.reason})`, d: !t.eligible })
       opts.push({ v: JSON.stringify({ kind: 'new-chat', agent: 'claude' }), t: 'New Claude Code chat in this repo' })
       opts.push({ v: JSON.stringify({ kind: 'new-chat', agent: 'codex' }), t: 'New Codex chat in this repo' })
       opts.unshift({ v: '', t: 'Choose where to send…' })
@@ -224,7 +226,7 @@
     const act = document.createElement('div'); act.className = 'act'
     const sel = document.createElement('select'); sel.setAttribute('aria-label', 'Deliver to')
     const opts = targetOptions(h)
-    for (const o of opts) { const op = document.createElement('option'); op.value = o.v; op.textContent = o.t; sel.append(op) }
+    for (const o of opts) { const op = document.createElement('option'); op.value = o.v; op.textContent = o.t; if (o.d) op.disabled = true; sel.append(op) }
     sel.disabled = h.target.kind !== 'any'
     const go = document.createElement('button'); go.className = 'go'; go.type = 'button'; go.textContent = 'Accept & send'
     const no = document.createElement('button'); no.type = 'button'; no.textContent = 'Reject'

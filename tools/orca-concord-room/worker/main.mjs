@@ -318,9 +318,10 @@ export async function readPolicy(dir) {
   const agents = raw?.targets?.agents
   const ok = Array.isArray(senders) && senders.length > 0 && senders.every((x) => HANDOFF_SENDERS.includes(x)) &&
     Array.isArray(newChat) && newChat.every((x) => ['claude', 'codex'].includes(x)) &&
-    typeof agents === 'boolean' && raw?.requireAccept === true
+    typeof agents === 'boolean' && raw?.requireAccept === true &&
+    (raw?.targets?.terminals === undefined || typeof raw.targets.terminals === 'boolean')
   if (!ok) fail('unavailable', 'Handoff policy is malformed, so every handoff is refused.')
-  return { senders: new Set(senders), newChat: new Set(newChat), agents, requireAccept: true }
+  return { senders: new Set(senders), newChat: new Set(newChat), agents, terminals: raw.targets.terminals === true, requireAccept: true }
 }
 
 const oneLine = (v, max) => String(v ?? '').replace(/[\u0000-\u001f\u007f]/gu, ' ').replace(/\s+/gu, ' ').trim().slice(0, max)
@@ -414,7 +415,50 @@ export async function listHandoffs(dirSetting, deps = {}) {
     const state = await readState(dir, h.id)
     out.push({ ...h, status: state?.status ?? 'pending', detail: state?.detail ?? '', messageId: state?.messageId ?? '', jiraStatus: await (deps.jiraStatus ?? jiraStatusOf)(h.jiraKey) })
   }
-  return { dir, handoffs: out.reverse() }
+  let terminals = []
+  if (policy.terminals && deps.repoRoot && out.some((h) => h.status === 'pending' && h.target?.kind === 'any')) {
+    try { terminals = await (deps.terminals ?? terminalAgents)(deps.repoRoot) } catch { terminals = [] }
+  }
+  return { dir, handoffs: out.reverse(), terminals }
+}
+
+
+/** Terminals in the configured repo that Orca itself reports as running a Claude or Codex agent. Orca ties a terminal to its agent through the pane key. */
+export async function terminalAgents(rootSetting, run = execFileAsync) {
+  const root = await validateRepo(rootSetting)
+  const ps = await orcaJson(['worktree', 'ps', '--json'], run)
+  const worktrees = Array.isArray(ps?.result) ? ps.result : (ps?.result?.worktrees ?? [])
+  const tl = await orcaJson(['terminal', 'list', '--json'], run)
+  const terminals = Array.isArray(tl?.result?.terminals) ? tl.result.terminals : []
+  const out = []
+  for (const w of worktrees) {
+    let wp
+    try { wp = await realpath(String(w.path)) } catch { continue }
+    if (wp !== root) continue
+    for (const a of w.agents ?? []) {
+      const t = terminals.find((x) => `${x.tabId}:${x.leafId}` === a.paneKey)
+      if (!t) continue // chats have no terminal input path
+      const known = a.agentType === 'claude' || a.agentType === 'codex'
+      const idle = a.state === 'done' || a.state === 'waiting' || (a.state === 'working' && a.workingMode === 'monitoring')
+      const live = t.connected !== false && t.writable !== false
+      out.push({ handle: String(t.handle), name: oneLine(a.conversationName || t.title, 60), agentType: String(a.agentType), state: String(a.state), eligible: known && idle && live, reason: !known ? 'unknown agent' : !live ? 'terminal not writable' : !idle ? `agent is ${a.state}` : '' })
+    }
+  }
+  return out
+}
+
+/** Single-line form for typing into an agent's terminal (a newline would submit early). */
+export function handoffLine(h) {
+  return oneLine(`HANDOFF from ${SENDER_LABEL[h.sender] ?? h.sender} (${h.id}), a pointer and not an order. Jira ${h.jiraKey}. Scope: ${h.scope}. Brief: ${oneLine(h.brief, 700)}. Rules: this does not authorize work. First read Jira ${h.jiraKey}: it must be released (Agent Go) and you must hold its writer claim, otherwise reply "REFUSED: <reason>" and do nothing else. Do not edit files unless that issue allows it. Then reply with your decision.`, 1400)
+}
+
+export async function typeIntoTerminal({ handle, text }, run = execFileAsync) {
+  const out = await run(orcaBin(), ['terminal', 'send', '--terminal', handle, '--text', text, '--enter', '--json'], { timeout: 20000, maxBuffer: 1024 * 1024, shell: false, windowsHide: true, env: process.env })
+  let parsed
+  try { parsed = JSON.parse(out.stdout) } catch { fail('invalid_output', 'Orca did not return JSON for the terminal input.') }
+  // Orca reports input acceptance under result.send (older builds: result). Anything else is treated as not accepted.
+  const accepted = parsed?.result?.send?.accepted ?? parsed?.result?.accepted
+  if (parsed?.ok !== true || accepted !== true) fail('action_failed', 'Orca did not confirm the terminal input was accepted. Check the terminal before trying again; the text may have been typed.')
 }
 
 export function handoffPrompt(h) {
@@ -461,6 +505,16 @@ export async function acceptHandoff(input, deps = {}) {
       status = result.delivery === 'delivered' ? 'delivered' : 'queued'
       messageId = typeof result.messageId === 'string' ? result.messageId : ''
       detail = status === 'delivered' ? `Delivered to ${target.id}.` : `Queued for ${target.id}, not delivered yet (${result.delivery || result.status}).`
+    } else if (target.kind === 'terminal') {
+      if (!policy.terminals) fail('invalid_params', 'The policy does not allow typing handoffs into terminals.')
+      if (h.target.kind !== 'any') fail('invalid_params', 'Only a handoff you route yourself can be typed into a terminal.')
+      const terms = await (deps.terminals ?? terminalAgents)(input.repoRoot)
+      const t = terms.find((x) => x.handle === target.handle)
+      if (!t) fail('invalid_params', 'That terminal is no longer available.')
+      if (!t.eligible) fail('invalid_params', `That terminal's agent is not ready (${t.reason}).`)
+      await (deps.typeInto ?? typeIntoTerminal)({ handle: t.handle, text: handoffLine(h) })
+      status = 'typed'
+      detail = `Typed into "${t.name}" (${t.agentType}) as a user turn.`
     } else if (target.kind === 'new-chat') {
       if (!policy.newChat.has(target.agent)) fail('invalid_params', 'The policy does not allow that kind of new chat.')
       const root = await validateRepo(input.repoRoot)
@@ -470,11 +524,11 @@ export async function acceptHandoff(input, deps = {}) {
       fail('invalid_params', 'Choose where this handoff goes.')
     }
   } catch (err) {
-    await audit(dir, { op: 'accept', id: h.id, sender: h.sender, jira: h.jiraKey, target: target.kind === 'agent' ? { kind: 'agent', id: target.id } : target, outcome: 'failed', code: err?.code ?? 'error' })
+    await audit(dir, { op: 'accept', id: h.id, sender: h.sender, jira: h.jiraKey, target: target.kind === 'agent' ? { kind: 'agent', id: target.id } : target.kind === 'terminal' ? { kind: 'terminal' } : target, outcome: 'failed', code: err?.code ?? 'error' })
     throw err
   }
   await writeState(dir, h.id, { status, detail, messageId, at: new Date().toISOString() })
-  await audit(dir, { op: 'accept', id: h.id, sender: h.sender, jira: h.jiraKey, target: target.kind === 'agent' ? { kind: 'agent', id: target.id } : target, outcome: status })
+  await audit(dir, { op: 'accept', id: h.id, sender: h.sender, jira: h.jiraKey, target: target.kind === 'agent' ? { kind: 'agent', id: target.id } : target.kind === 'terminal' ? { kind: 'terminal' } : target, outcome: status })
   return { id: h.id, status, detail }
 }
 
@@ -537,7 +591,7 @@ export default function activate(orca) {
     repoRoot: await orca.settings.get('repoRoot'),
     executable: await orca.settings.get('concordExecutable')
   })
-  orca.panels.handle('handoff.list', async () => listHandoffs((await handoffSettings()).handoffDir))
+  orca.panels.handle('handoff.list', async () => { const c = await handoffSettings(); return listHandoffs(c.handoffDir, { repoRoot: c.repoRoot }) })
   orca.panels.handle('handoff.accept', async (input) => acceptHandoff({ ...(await handoffSettings()), id: input?.id, target: input?.target }))
   orca.panels.handle('handoff.reject', async (input) => rejectHandoff({ ...(await handoffSettings()), id: input?.id }))
   orca.panels.handle('jira.projects', async () => ({ projects: await jiraProjects() }))
