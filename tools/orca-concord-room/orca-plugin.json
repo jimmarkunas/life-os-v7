@@ -1,0 +1,45 @@
+{
+  "manifestVersion": 2,
+  "execution": "trusted-worker",
+  "id": "concord-room",
+  "name": "Concord Room",
+  "version": "0.1.0",
+  "description": "Read-only live Concord message room inside Orca, using Concord's own local message store.",
+  "engines": {
+    "orca": ">=1.4.246"
+  },
+  "pluginApi": 1,
+  "main": "worker/main.mjs",
+  "contributes": {
+    "panels": [
+      {
+        "id": "room",
+        "title": "Concord Room",
+        "icon": "agent",
+        "entry": "src/panel.tsx",
+        "ui": "components"
+      }
+    ],
+    "settings": [
+      {
+        "key": "repoRoot",
+        "title": "Concord repository root (absolute path)",
+        "description": "Choose the existing repository/worktree whose local Concord messages to display. Leave blank to fail closed.",
+        "type": "string",
+        "default": ""
+      },
+      {
+        "key": "concordExecutable",
+        "title": "Concord CLI executable",
+        "description": "Absolute path or command on Orca PATH; never a shell command.",
+        "type": "string",
+        "default": "concord"
+      }
+    ]
+  },
+  "capabilities": [
+    {
+      "kind": "settings:own"
+    }
+  ]
+}
