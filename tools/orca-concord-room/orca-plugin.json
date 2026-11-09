@@ -3,10 +3,10 @@
   "execution": "trusted-worker",
   "id": "concord-room",
   "name": "Concord Room",
-  "version": "0.4.0",
-  "description": "Live Concord message room inside Orca: shows real agent messages and lets you send prompts to present agents, using Concord's own local store and MCP server.",
+  "version": "0.5.0",
+  "description": "Live Concord message room inside Orca (right sidebar or a center tab): shows real agent messages, lets you message present agents, and can create a Jira ticket from the conversation through Orca's Jira connection.",
   "engines": {
-    "orca": ">=1.4.246"
+    "orca": ">=1.4.248"
   },
   "pluginApi": 1,
   "main": "worker/main.mjs",
@@ -47,6 +47,17 @@
         "description": "Click an agent's name in the Concord Room to rename it. Stored here as JSON.",
         "type": "string",
         "default": "{}"
+      }
+    ],
+    "customEditors": [
+      {
+        "id": "room-tab",
+        "title": "Concord Room",
+        "extensions": [
+          ".concord-room"
+        ],
+        "entry": "editor/main.ts",
+        "frame": "isolated"
       }
     ]
   },

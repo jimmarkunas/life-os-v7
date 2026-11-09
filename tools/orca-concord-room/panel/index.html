@@ -67,11 +67,30 @@
   #note { font-size: 11.5px; margin-top: 6px; min-height: 0; }
   #note.ok { color: var(--ok); } #note.bad { color: var(--bad); }
   .hint { font-size: 10.5px; color: var(--muted); margin-top: 4px; display: flex; justify-content: space-between; gap: 8px; }
+  #messages { padding-left: max(12px, calc((100% - 880px) / 2)); padding-right: max(12px, calc((100% - 880px) / 2)); }
+  footer { padding-left: max(10px, calc((100% - 880px) / 2)); padding-right: max(10px, calc((100% - 880px) / 2)); }
+  .title .right { display: flex; gap: 6px; align-items: center; }
+  button.badge { background: transparent; color: var(--fg); cursor: pointer; font: inherit; font-size: 11px; }
+  button.badge:hover { border-color: #4d8dff; }
+  #sheet { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.55); align-items: center; justify-content: center; padding: 16px; z-index: 5; }
+  #sheet.open { display: flex; }
+  #sheet .card { width: 100%; max-width: 540px; max-height: 94vh; overflow-y: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+  #sheet h2 { margin: 0; font-size: 14px; }
+  #sheet label { font-size: 11px; color: var(--muted); display: flex; flex-direction: column; gap: 3px; }
+  #sheet input, #sheet textarea, #sheet select { font: inherit; color: var(--fg); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; width: 100%; }
+  #sheet textarea { min-height: 150px; resize: vertical; }
+  #sheet .two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  #sheet .actions { display: flex; justify-content: flex-end; gap: 8px; align-items: center; }
+  #sheet button { font: inherit; border-radius: 8px; padding: 6px 12px; border: 1px solid var(--line); background: var(--card); color: var(--fg); cursor: pointer; }
+  #sheet button.primary { background: #2f6fe0; border-color: #2f6fe0; color: #fff; }
+  #sheet button:disabled { opacity: .5; cursor: default; }
+  #sheet .warn { font-size: 11px; color: var(--warn); }
+  #jnote { font-size: 12px; min-height: 0; } #jnote.ok { color: var(--ok); } #jnote.bad { color: var(--bad); }
 </style>
 </head>
 <body>
   <header>
-    <div class="title"><h1>Concord Room</h1><span id="status" class="badge">Connecting</span></div>
+    <div class="title"><h1>Concord Room</h1><div class="right"><button id="jiraBtn" class="badge" type="button" title="Create a Jira ticket from this conversation">＋ Jira</button><span id="status" class="badge">Connecting</span></div></div>
     <div id="chips"></div>
     <div id="banner"></div>
   </header>
@@ -88,167 +107,17 @@
     <div id="note" role="status"></div>
     <div class="hint"><span id="me"></span><span>Enter sends · Shift+Enter new line</span></div>
   </footer>
-<script>
-(() => {
-  const $ = (id) => document.getElementById(id)
-  const emptyEl = $('empty'), list = $('messages'), toSel = $('to'), text = $('text'), sendBtn = $('send'), note = $('note'), jump = $('jump')
-  const nodes = new Map()
-  let stick = true, me = '', sending = false, lastRoster = '', chosenByUser = false, nicks = {}, order = [], lastMessages = []
-
-  const kind = (id) => id.split(':')[0]
-  const brand = (id) => ({ 'claude-code': 'claude', codex: 'codex', human: 'human' }[kind(id)] || 'other')
-  const BASE = { claude: 'Claude', codex: 'Codex', human: 'Human', other: 'Agent' }
-  // Simplified marks, drawn here (not the official artwork).
-  const ICONS = {
-    claude: () => { const r = [0, 45, 90, 135, 180, 225, 270, 315].map((a) => `<rect x="-1.2" y="-10.5" width="2.4" height="7.6" rx="1.2" transform="rotate(${a})"/>`).join(''); return `<svg viewBox="-12 -12 24 24" fill="#f2a65a" aria-hidden="true">${r}</svg>` },
-    codex: () => '<svg viewBox="0 0 24 24" fill="none" stroke="#10a37f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="2.5" width="19" height="19" rx="6"/><path d="M8 9l3.5 3L8 15M13 16h3.5"/></svg>',
-    human: () => '<svg viewBox="0 0 24 24" fill="none" stroke="#4d8dff" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c.8-4 3.7-6 7.5-6s6.7 2 7.5 6"/></svg>',
-    other: () => '<svg viewBox="0 0 24 24" fill="none" stroke="#9aa0a6" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg>'
-  }
-  const icon = (id) => ICONS[brand(id)]()
-  // What an agent is called: your nickname if you gave one, else "Claude" / "Codex" / "You",
-  // numbered when several of the same kind exist (in order of first appearance).
-  function nameOf(id) {
-    if (nicks[id]) return nicks[id]
-    const b = brand(id)
-    if (b === 'human') return id === me ? 'You' : 'Human'
-    const same = order.filter((x) => brand(x) === b)
-    return same.length > 1 ? `${BASE[b]} ${same.indexOf(id) + 1}` : BASE[b]
-  }
-  function noteIds(ids) { ids.forEach((id) => { if (id && !order.includes(id)) order.push(id) }) }
-  const clock = (iso) => { const d = new Date(iso); return isNaN(d) ? iso : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) }
-  const nearBottom = () => list.scrollHeight - list.scrollTop - list.clientHeight < 48
-  const toBottom = () => { list.scrollTop = list.scrollHeight; stick = true; jump.style.display = 'none' }
-
-  list.addEventListener('scroll', () => { stick = nearBottom(); if (stick) jump.style.display = 'none' })
-  jump.addEventListener('click', toBottom)
-
-  function setStatus(label, cls) { const s = $('status'); s.textContent = label; s.className = 'badge' + (cls ? ' ' + cls : '') }
-  function setBanner(msg) { const b = $('banner'); b.style.display = msg ? 'block' : 'none'; b.textContent = msg || '' }
-  function setNote(msg, cls) { note.textContent = msg || ''; note.className = cls || '' }
-
-  function renderMessage(m) {
-    let el = nodes.get(m.id)
-    const isMine = m.from === me || kind(m.from) === 'human'
-    if (!el) {
-      el = document.createElement('div')
-      el.className = 'msg ' + brand(m.from) + ' ' + (isMine ? 'mine' : 'theirs')
-      el.innerHTML = '<div class="av"></div><div class="col"><div class="who"><span class="from"></span> <span class="to"></span></div><div class="bubble"></div><div class="meta"><span class="time"></span><span class="st"></span><span class="rep"></span><span class="id"></span></div></div>'
-      el.querySelector('.av').innerHTML = icon(m.from)
-      el.querySelector('.bubble').textContent = m.content
-      el.querySelector('.time').textContent = clock(m.at)
-      el.querySelector('.rep').textContent = m.replyTo ? '↩ reply' : ''
-      el.querySelector('.id').textContent = m.id.slice(0, 8)
-      nodes.set(m.id, el)
-    }
-    el.querySelector('.from').textContent = nameOf(m.from)
-    el.querySelector('.to').textContent = '→ ' + nameOf(m.to)
-    el.title = `${m.from} → ${m.to}\n${m.id}`
-    const st = el.querySelector('.st')
-    const label = m.receipt || m.status
-    if (st.textContent !== label) { st.textContent = label; st.className = 'st st-' + (m.status || '') }
-    return el
-  }
-
-  function renderMessages(messages) {
-    if (messages.length === 0) { emptyEl.textContent = 'No messages yet. Pick an agent below and say hello.'; if (!emptyEl.isConnected) list.replaceChildren(emptyEl); return }
-    if (emptyEl.isConnected) emptyEl.remove()
-    const before = nodes.size
-    let added = 0
-    messages.forEach((m, i) => {
-      const el = renderMessage(m)
-      if (list.children[i] !== el) { list.insertBefore(el, list.children[i] || null); }
-    })
-    added = nodes.size - before
-    if (stick) toBottom()
-    else if (added > 0) jump.style.display = 'block'
-  }
-
-  function renderRoster(agents) {
-    const targets = agents.filter((a) => kind(a.id) !== 'human' && a.id !== me)
-    noteIds(agents.map((a) => a.id))
-    const key = JSON.stringify(targets) + me + JSON.stringify(nicks) + order.join()
-    if (key === lastRoster) return
-    lastRoster = key
-    $('chips').replaceChildren(...targets.map((a) => {
-      const c = document.createElement('span'); c.className = 'chip ' + brand(a.id) + (a.state.startsWith('live') ? ' live' : '')
-      c.title = `${a.id}\nClick the name to rename`
-      const dot = document.createElement('i'); const ic = document.createElement('span'); ic.innerHTML = icon(a.id)
-      const label = document.createElement('span'); label.textContent = nameOf(a.id)
-      const st = document.createElement('span'); st.className = 'st'; st.textContent = a.state.split('/')[0]
-      label.addEventListener('click', () => startRename(c, label, a.id))
-      c.append(ic.firstChild, label, dot, st); return c
-    }))
-    const prev = toSel.value
-    toSel.replaceChildren(...(targets.length ? targets : [{ id: '', state: 'no agents present' }]).map((a) => {
-      const o = document.createElement('option'); o.value = a.id; o.textContent = a.id ? `${nameOf(a.id)} (${a.state.split('/')[0]})` : 'No agents present'; return o
-    }))
-    toSel.disabled = targets.length === 0
-    if (targets.some((a) => a.id === prev)) toSel.value = prev
-    updateSend()
-  }
-
-  function startRename(chip, label, id) {
-    const input = document.createElement('input'); input.value = nicks[id] || nameOf(id); input.maxLength = 32; input.setAttribute('aria-label', 'Agent name')
-    label.replaceWith(input); input.focus(); input.select()
-    let done = false
-    const finish = async (save) => {
-      if (done) return; done = true
-      if (save) {
-        try { const out = await orca.plugin.request('concord.rename', { id, name: input.value }, { timeoutMs: 8000 }); nicks = out.nicknames || {} }
-        catch (e) { setNote((e && e.message) || String(e), 'bad') }
-      }
-      lastRoster = ''; await refresh()
-    }
-    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') finish(true); else if (e.key === 'Escape') finish(false) })
-    input.addEventListener('blur', () => finish(true))
-  }
-
-  function updateSend() { sendBtn.disabled = sending || !toSel.value || !text.value.trim() }
-  function autosize() { text.style.height = 'auto'; text.style.height = Math.min(text.scrollHeight, 140) + 'px' }
-
-  let fetching = false
-  async function refresh() {
-    if (fetching) return
-    fetching = true
-    try {
-      const snap = await orca.plugin.request('concord.messages', {}, { timeoutMs: 12000 })
-      setBanner(''); setStatus('Live', 'ok'); $('status').title = snap.repoRoot
-      try {
-        const people = await orca.plugin.request('concord.agents', {}, { timeoutMs: 12000 })
-        me = people.me; nicks = people.nicknames || {}; $('me').textContent = 'Sending as ' + nameOf(me) + ' (' + me + ')'
-        noteIds(snap.messages.flatMap((m) => [m.from, m.to]))
-        renderRoster(people.agents)
-      } catch (e) { /* roster is optional for reading */ }
-      noteIds(snap.messages.flatMap((m) => [m.from, m.to]))
-      renderMessages(snap.messages)
-    } catch (e) {
-      setStatus('Unavailable', 'bad'); setBanner((e && e.message) || String(e))
-    } finally { fetching = false }
-  }
-
-  async function send() {
-    if (sendBtn.disabled) return
-    const to = toSel.value, content = text.value
-    sending = true; updateSend(); text.disabled = true; setNote('Sending…')
-    try {
-      const out = await orca.plugin.request('concord.send', { to, content }, { timeoutMs: 20000 })
-      text.value = ''; autosize()
-      setNote(`Sent to ${to} (${out.status}${out.delivery ? ', ' + out.delivery : ''}). "queued" is not "delivered" — watch the receipt.`, 'ok')
-      stick = true
-      await refresh(); toBottom()
-    } catch (e) {
-      setNote((e && e.message) || String(e), 'bad')
-    } finally { sending = false; text.disabled = false; updateSend(); text.focus() }
-  }
-
-  text.addEventListener('input', () => { autosize(); updateSend() })
-  text.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send() } })
-  toSel.addEventListener('change', () => { chosenByUser = true; updateSend() })
-  sendBtn.addEventListener('click', send)
-
-  refresh(); setInterval(refresh, 3000)
-})()
-</script>
+<div id="sheet" role="dialog" aria-modal="true" aria-label="Create Jira ticket"><div class="card">
+  <h2>Create a Jira ticket</h2>
+  <div class="two"><label>Project<select id="jproject"></select></label><label>Type<select id="jtype"></select></label></div>
+  <label>Title<input id="jtitle" maxlength="255" placeholder="What is this ticket?" /></label>
+  <label>Description<textarea id="jbody" maxlength="20000"></textarea></label>
+  <div class="two"><label>Include last N messages<input id="jcount" type="number" min="0" max="40" value="6" /></label><label>&nbsp;<button id="jrefill" type="button">Re-fill description from messages</button></label></div>
+  <div class="two"><label>Labels (space separated)<input id="jlabels" value="concord" /></label><label>Parent (optional)<input id="jparent" placeholder="e.g. LIFE-125" /></label></div>
+  <div class="warn">This text goes to Jira through your Orca Jira connection. Review it first; messages can contain private details.</div>
+  <div id="jnote" role="status"></div>
+  <div class="actions"><button id="jcancel" type="button">Close</button><button id="jcreate" class="primary" type="button" disabled>Create ticket</button></div>
+</div></div>
+<script src="room.js"></script>
 </body>
 </html>

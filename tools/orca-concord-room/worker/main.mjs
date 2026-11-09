@@ -2,6 +2,7 @@
 import { execFile, spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import os from 'node:os'
+import { existsSync } from 'node:fs'
 import { promisify } from 'node:util'
 import { stat, realpath } from 'node:fs/promises'
 import path from 'node:path'
@@ -195,6 +196,95 @@ export async function sendMessage({ repoRoot, executable, senderId, to, content 
   }
 }
 
+const PROJECT_KEY = /^[A-Z][A-Z0-9]{1,9}$/u
+const ISSUE_KEY = /^[A-Z][A-Z0-9]{1,9}-\d+$/u
+const LABEL = /^[\w.-]{1,40}$/u
+
+function orcaBin() {
+  const fromEnv = process.env.ORCA_CLI_COMMAND?.trim()
+  if (fromEnv) return fromEnv
+  return existsSync('/usr/local/bin/orca') ? '/usr/local/bin/orca' : 'orca'
+}
+
+async function orcaJson(args, runner = execFileAsync) {
+  let out
+  try {
+    out = await runner(orcaBin(), args, { timeout: 20000, maxBuffer: 1024 * 1024, shell: false, windowsHide: true, env: process.env })
+  } catch (err) {
+    fail('unavailable', err?.code === 'ENOENT' ? 'Orca CLI not found.' : `Orca Jira call failed (${err?.code ?? 'runtime_error'}). Nothing was confirmed created.`)
+  }
+  try { return JSON.parse(out.stdout) } catch { fail('invalid_output', 'Orca did not return JSON.') }
+}
+
+export async function jiraProjects(runner) {
+  const parsed = await orcaJson(['jira', 'project', 'list', '--json'], runner)
+  const list = Array.isArray(parsed?.result) ? parsed.result : []
+  return list.filter((p) => typeof p?.key === 'string' && PROJECT_KEY.test(p.key)).map((p) => ({ key: p.key, name: String(p.name ?? p.key) }))
+}
+
+export async function jiraTypes(project, runner) {
+  if (!PROJECT_KEY.test(String(project))) fail('invalid_params', 'Choose a Jira project.')
+  const parsed = await orcaJson(['jira', 'project', 'types', '--project', project, '--json'], runner)
+  const list = Array.isArray(parsed?.result) ? parsed.result : []
+  return list.filter((t) => /^\d+$/u.test(String(t?.id)) && !t.subtask).map((t) => ({ id: String(t.id), name: String(t.name ?? t.id) }))
+}
+
+/** Create one Jira issue through Orca's own Jira connection. Only on an explicit confirm from the panel. */
+export async function createJira(input, deps = {}) {
+  if (input?.confirm !== true) fail('invalid_params', 'Creating a Jira issue needs an explicit confirm.')
+  const project = String(input.project ?? '')
+  if (!PROJECT_KEY.test(project)) fail('invalid_params', 'Choose a Jira project.')
+  const typeId = String(input.typeId ?? '')
+  if (!/^\d+$/u.test(typeId)) fail('invalid_params', 'Choose an issue type.')
+  const title = String(input.title ?? '').replace(/[\u0000-\u001f]/gu, ' ').trim()
+  if (!title) fail('invalid_params', 'Give the ticket a title.')
+  if (title.length > 255) fail('invalid_params', 'Title is longer than 255 characters.')
+  const body = String(input.body ?? '')
+  if (body.length > 20000) fail('invalid_params', 'Description is longer than 20000 characters.')
+  const labels = Array.isArray(input.labels) ? input.labels.map(String).filter(Boolean) : []
+  if (labels.length > 10 || labels.some((l) => !LABEL.test(l))) fail('invalid_params', 'Labels must be up to 10 short words (letters, numbers, - _ .).')
+  const parent = input.parent ? String(input.parent).trim() : ''
+  if (parent && !ISSUE_KEY.test(parent)) fail('invalid_params', 'Parent must look like LIFE-125.')
+  const fields = {}
+  if (labels.length) fields.labels = labels
+  if (parent) fields.parent = { key: parent }
+  const args = ['jira', 'create', '--project', project, '--type', typeId, '--title', title, '--body-file', '-', '--json']
+  if (Object.keys(fields).length) args.push('--fields-json', JSON.stringify(fields))
+  const run = deps.runWithInput ?? runWithInput
+  let out
+  try { out = await run(orcaBin(), args, body) } catch (err) {
+    fail('unavailable', err?.code === 'ENOENT' ? 'Orca CLI not found.' : 'Orca could not run the Jira create. Check Jira before trying again, in case it went through.')
+  }
+  const text = String(out ?? '')
+  let key
+  try { const j = JSON.parse(text); key = j?.result?.key ?? j?.result?.issue?.key ?? j?.result?.issueKey ?? j?.key } catch { /* fall through to a plain match */ }
+  if (typeof key !== 'string' || !ISSUE_KEY.test(key)) key = text.match(/\b[A-Z][A-Z0-9]{1,9}-\d+\b/u)?.[0]
+  if (!key) fail('invalid_output', `Orca did not return an issue key; check Jira before retrying. Output: ${text.slice(0, 200)}`)
+  const sites = await (deps.sites ?? jiraSiteUrl)()
+  return { key, url: sites ? `${sites}/browse/${key}` : '' }
+}
+
+async function jiraSiteUrl() {
+  try {
+    const parsed = await orcaJson(['jira', 'connection', '--json'])
+    const r = parsed?.result
+    const site = r?.sites?.find((x) => x.id === (r.selectedSiteId ?? r.activeSiteId)) ?? r?.sites?.[0]
+    return typeof site?.siteUrl === 'string' && /^https:\/\//u.test(site.siteUrl) ? site.siteUrl.replace(/\/$/u, '') : ''
+  } catch { return '' }
+}
+
+function runWithInput(command, args, input) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { stdio: ['pipe', 'pipe', 'pipe'], shell: false, windowsHide: true, env: process.env })
+    let out = ''
+    const timer = setTimeout(() => { child.kill(); reject(Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' })) }, 30000)
+    child.stdout.on('data', (d) => { out += d.toString('utf8') })
+    child.on('error', (e) => { clearTimeout(timer); reject(e) })
+    child.on('close', (code) => { clearTimeout(timer); code === 0 ? resolve(out) : reject(Object.assign(new Error('exit ' + code), { code: 'EXIT' + code })) })
+    child.stdin.end(input)
+  })
+}
+
 const MAX_NAME = 32
 
 /** Nicknames are stored as one JSON string in the plugin's own settings: { "<agent id>": "<name>" }. */
@@ -238,6 +328,9 @@ export default function activate(orca) {
     const { agents } = await getAgents(s.repoRoot, s.executable)
     return { agents, me: defaultSenderId(s.senderId), nicknames: parseNicknames(await orca.settings.get('nicknames')) }
   })
+  orca.panels.handle('jira.projects', async () => ({ projects: await jiraProjects() }))
+  orca.panels.handle('jira.types', async (input) => ({ types: await jiraTypes(input?.project) }))
+  orca.panels.handle('jira.create', async (input) => createJira(input))
   orca.panels.handle('concord.rename', async (input) => {
     const next = withNickname(parseNicknames(await orca.settings.get('nicknames')), input?.id, input?.name)
     await orca.settings.set('nicknames', JSON.stringify(next))

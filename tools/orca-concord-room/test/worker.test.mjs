@@ -4,7 +4,8 @@ import { mkdir, mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { EventEmitter } from 'node:events'
-import { getMessages, validateRecords, validateExecutable, parseWho, sendMessage, callConcordTool, defaultSenderId, parseNicknames, withNickname } from '../worker/main.mjs'
+import { readFileSync } from 'node:fs'
+import { getMessages, validateRecords, validateExecutable, parseWho, sendMessage, callConcordTool, defaultSenderId, parseNicknames, withNickname, createJira, jiraProjects, jiraTypes } from '../worker/main.mjs'
 
 test('reads genuine CLI JSON using fixed argv, without a shell, and sorts by time', async t => {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'concord-orca-')))
@@ -138,4 +139,47 @@ test('nicknames: parse is defensive, rename validates the id, clearing removes t
   assert.equal(withNickname({ 'codex:bf5867fb': 'x' }, 'codex:bf5867fb', '')['codex:bf5867fb'], undefined)
   assert.equal(Object.values(withNickname({}, 'codex:bf5867fb', 'y'.repeat(100)))[0].length, 32)
   assert.throws(() => withNickname({}, 'rm -rf', 'x'), /Unknown agent id/)
+})
+
+const jiraBase = { confirm: true, project: 'LIFE', typeId: '10021', title: '  Follow up  ', body: 'hello', labels: ['concord', 'pilot'], parent: 'LIFE-125' }
+const noRun = async () => { throw Error('must not run') }
+
+test('jira create refuses bad input and never runs Orca', async () => {
+  const bad = [
+    [{ confirm: false }, /explicit confirm/], [{ project: 'life' }, /project/], [{ typeId: 'x' }, /issue type/], [{ title: '  ' }, /title/],
+    [{ title: 'x'.repeat(256) }, /255/], [{ labels: ['a b'] }, /Labels/], [{ parent: 'LIFE' }, /Parent/], [{ body: 'x'.repeat(20001) }, /20000/]
+  ]
+  for (const [extra, pattern] of bad) await assert.rejects(createJira({ ...jiraBase, ...extra }, { runWithInput: noRun, sites: async () => '' }), pattern)
+})
+
+test('jira create passes fixed argv, body on stdin, trimmed title, and builds the browse url', async () => {
+  let seen
+  const out = await createJira(jiraBase, { runWithInput: async (cmd, args, input) => { seen = { args, input }; return JSON.stringify({ ok: true, result: { key: 'LIFE-999' } }) }, sites: async () => 'https://example.atlassian.net' })
+  assert.deepEqual(out, { key: 'LIFE-999', url: 'https://example.atlassian.net/browse/LIFE-999' })
+  assert.deepEqual(seen.args.slice(0, 11), ['jira', 'create', '--project', 'LIFE', '--type', '10021', '--title', 'Follow up', '--body-file', '-', '--json'])
+  assert.deepEqual(JSON.parse(seen.args.at(-1)), { labels: ['concord', 'pilot'], parent: { key: 'LIFE-125' } })
+  assert.equal(seen.input, 'hello')
+})
+
+test('jira create fails closed when Orca returns no issue key, and shows what it returned', async () => {
+  await assert.rejects(createJira(jiraBase, { runWithInput: async () => 'weird output', sites: async () => '' }), /check Jira before retrying.*weird output/)
+  const plain = await createJira(jiraBase, { runWithInput: async () => 'Created LIFE-1000', sites: async () => '' })
+  assert.equal(plain.key, 'LIFE-1000')
+})
+
+test('jira project and type lists are filtered', async () => {
+  assert.deepEqual(await jiraProjects(async () => ({ stdout: JSON.stringify({ result: [{ key: 'LIFE', name: 'LIFE OS Development' }, { key: 'bad key', name: 'x' }] }) })), [{ key: 'LIFE', name: 'LIFE OS Development' }])
+  assert.deepEqual(await jiraTypes('LIFE', async () => ({ stdout: JSON.stringify({ result: [{ id: '10021', name: 'Task' }, { id: '10099', name: 'Sub-task', subtask: true }, { id: 'zz', name: 'x' }] }) })), [{ id: '10021', name: 'Task' }])
+  await assert.rejects(jiraTypes('life'), /project/)
+})
+
+test('editor tab and sidebar panel share one page and script, with no inline script (inline scripts do not run in the editor frame)', () => {
+  const html = readFileSync(new URL('../panel/index.html', import.meta.url), 'utf8')
+  assert.match(html, /<script src="room\.js"><\/script>/)
+  assert.equal(/<script(?![^>]*\bsrc=)[^>]*>/u.test(html), false)
+  const loader = readFileSync(new URL('../editor/main.ts', import.meta.url), 'utf8')
+  assert.match(loader, /panel\/index\.html/); assert.match(loader, /panel\/room\.js/)
+  const manifest = JSON.parse(readFileSync(new URL('../orca-plugin.json', import.meta.url), 'utf8'))
+  assert.equal(manifest.contributes.customEditors[0].entry, 'editor/main.ts')
+  assert.deepEqual(manifest.capabilities, [{ kind: 'settings:own' }])
 })
