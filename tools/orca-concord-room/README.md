@@ -126,7 +126,7 @@ Written after simulating both in a throwaway HOME (LIFE-416 GWT-E1/E2). Concord 
 
 **You need:** Orca 1.4.246 or later with plugins on, Claude Code and Codex installed and logged in, Node 22 or later, git, and a checkout of life-os-v7 (the plugin and the safe-setup script live in `tools/orca-concord-room`). The Jira buttons also need Orca's Jira connection.
 
-1. **Install Concord, pinned, outside the repo:** `npm install --prefix ~/.local/share/concord @concord-ai/concord-mcp@0.20.0`
+1. **Install Concord, pinned, outside the repo:** `V=0.20.0; npm install --prefix ~/.local/share/concord "@concord-ai/concord-mcp@$V"`
 2. **Put it on your PATH and link its skill:** `ln -s ~/.local/share/concord/node_modules/.bin/concord ~/.local/bin/concord`, the same for `concord-mcp`, and `ln -s ~/.local/share/concord/node_modules/@concord-ai/concord-mcp/plugin/concord-relay ~/.claude/skills/concord-relay`. `~/.local/bin` must be on PATH. Concord telemetry is on by default; set `CONCORD_TELEMETRY_DISABLED=1` to turn it off.
 3. **Enroll a repository, from its root, with the safe wrapper (never bare `concord setup`):** `<life-os-v7>/tools/orca-concord-room/scripts/concord-setup-safe.sh --no-adapters`. It backs up `~/.codex/config.toml` and `~/.claude/settings.json` to `~/.local/state/concord-room/setup-backups/<time>/` and reports any change. Exit 1 means a user-level config was changed or created: read the diff and keep the printed restore or undo command.
 4. **Install the room:** `orca plugin install <life-os-v7>/tools/orca-concord-room`, then open **Concord Room** from the + menu and set its repository.
