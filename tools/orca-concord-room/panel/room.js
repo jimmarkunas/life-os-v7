@@ -461,7 +461,7 @@
     const link = el('button', 'primary', isLinked(i.key) ? 'Pulled in ✓ — unlink' : 'Pull into this room'); link.type = 'button'
     link.addEventListener('click', async () => {
       link.disabled = true
-      try { await ask(isLinked(i.key) ? 'jira.unlink' : 'jira.link', { key: i.key }, 20000); await refreshLinked(); setJNote(isLinked(i.key) ? `${i.key} is linked to this workspace, the way Orca's own Tasks view links it.` : `${i.key} was unlinked.`, 'ok'); renderDetail(i) }
+      try { await ask(isLinked(i.key) ? 'jira.unlink' : 'jira.link', { key: i.key }, 20000); await refreshLinked(); setJNote(isLinked(i.key) ? `${i.key} is linked to this workspace, the way Orca's own Tasks view links it. It has NOT been sent to any agent: pick council members below and press Send to council.` : `${i.key} was unlinked.`, 'ok'); renderDetail(i) }
       catch (e) { setJNote((e && e.message) || String(e), 'bad'); link.disabled = false }
     })
     row1.append(link)
@@ -476,7 +476,25 @@
       catch (e) { setJNote((e && e.message) || String(e), 'bad') } finally { go.disabled = false }
     })
     row2.append(agent, tpl, go)
-    jdetail.className = 'on'; jdetail.replaceChildren(el('h3', '', `${i.key} — ${i.title}`), meta, desc, row1, row2)
+    // Give it to council members: each gets the ticket as a read-only question and answers in the room.
+    const row3 = el('div', 'row2'); row3.append(el('span', 'hint', 'Send to council:'))
+    const members = rosterAgents.filter((a) => String(a.id).startsWith('council-'))
+    const picks = members.map((a) => { const l = el('label'); const c = document.createElement('input'); c.type = 'checkbox'; c.checked = true; c.value = a.id; l.append(c, ` ${nameOf(a.id)}`); row3.append(l); return c })
+    if (!members.length) row3.append(el('span', 'hint', 'No council members yet. Start one with ＋ Agent.'))
+    const ctpl = el('select'); ctpl.setAttribute('aria-label', 'Council prompt template'); for (const [v, t] of [['review', 'Review (read-only)'], ['plan', 'Plan (no changes)']]) { const o = el('option', '', t); o.value = v; ctpl.append(o) }
+    const sendC = el('button', '', 'Send to council'); sendC.type = 'button'; sendC.disabled = !members.length
+    sendC.addEventListener('click', async () => {
+      const ids = picks.filter((c) => c.checked).map((c) => c.value)
+      if (!ids.length) { setJNote('Tick at least one council member.', 'bad'); return }
+      sendC.disabled = true; setJNote('Sending…')
+      try {
+        const out = await ask('jira.sendCouncil', { key: i.key, ids, template: ctpl.value }, 60000)
+        sheet.classList.remove('open'); setNote(`${i.key} sent to ${out.sent.map((x) => nameOf(x.id)).join(', ')}${out.sent.some((x) => x.queued) ? ' (a busy member takes it into its current task)' : ''}. Their answers show up here when they finish.`, 'ok')
+        stick = true; await refresh(); toBottom()
+      } catch (e) { setJNote((e && e.message) || String(e), 'bad'); sendC.disabled = false }
+    })
+    if (members.length) row3.append(ctpl, sendC)
+    jdetail.className = 'on'; jdetail.replaceChildren(el('h3', '', `${i.key} — ${i.title}`), meta, desc, row1, row3, row2)
   }
 
   function openSheet(key) {

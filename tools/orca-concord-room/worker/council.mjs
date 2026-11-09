@@ -118,7 +118,7 @@ const frame = (from, body) => `From ${String(from).replace(/^human:/u, '')}: ${b
 
 /** One send per member. */
 export const askMembers = (ctx, input) => locked(() => askMembersLocked(ctx, input))
-async function askMembersLocked(ctx, { ids, text, from }) {
+async function askMembersLocked(ctx, { ids, text, from, label }) {
   const body = String(text ?? '').trim()
   if (!body) ctx.fail('invalid_params', 'Type a message first.')
   const state = await loadState(ctx.stateFile, ctx.repoRoot)
@@ -127,7 +127,7 @@ async function askMembersLocked(ctx, { ids, text, from }) {
   for (const id of ids) {
     const m = active(state).find((x) => x.id === id)
     if (!m) ctx.fail('invalid_params', `${id} is not a council member.`)
-    sent.push(await sendOne(ctx, state, m, frame(from, body), body, from))
+    sent.push(await sendOne(ctx, state, m, frame(from, body), String(label ?? '').trim() || body, from))
   }
   await saveState(ctx.stateFile, state)
   return sent
