@@ -520,6 +520,7 @@
   "synthetic": {
    "lifeos/synthetic/authz.py": "The V7 in-process policy gate for synthetic tools (LIFE-374, order and cases from LIFE-372). One pure function, `preflight`, answers a tool request with exactly one final",
    "lifeos/synthetic/authz_fixture.py": "The fake world for the policy-gated tool contract (LIFE-374, fixture plan LIFE-372). Fake data only; nothing here talks to a network or a provider.",
+   "lifeos/synthetic/composio.py": "A simulation of Composio \"bounded hybrid custody\" (LIFE-380, LOS-86 T09). Fake data only: no Composio project, no API key, no spend, no network, no real account.",
    "lifeos/synthetic/fixture.py": "The fake world for LIFE-373 (fixture contract: LIFE-372). Tenants use neutral labels; the mapping to the labels in the Jira text is PERSONAL-TEST = TENANT-A-TEST, BYTALOS",
    "lifeos/synthetic/google_routes.py": "Four exact logical Google routes (LIFE-379, LOS-86 T08): tenant A Gmail, tenant A Drive, tenant B Gmail, tenant B Drive. Fake data only.",
    "lifeos/synthetic/knowledge.py": "Cited source reading with tenant isolation, revision checks and revoked-source refusal (LIFE-373). The earliest failing check wins: writer/replay (4), wrong tenant (6), r",
