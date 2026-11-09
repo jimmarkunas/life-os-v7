@@ -3,7 +3,7 @@
   "execution": "trusted-worker",
   "id": "concord-room",
   "name": "Concord Room",
-  "version": "0.18.0",
+  "version": "0.19.0",
   "description": "Live Concord message room inside Orca (right sidebar or a center tab): shows real agent messages, lets you message present agents, shows handoffs waiting for your Accept, and pulls Jira issues in the way Orca's own Tasks view does.",
   "engines": {
     "orca": ">=1.4.248"
@@ -33,6 +33,13 @@
         "description": "How you appear to agents, like human:jim. Leave blank to use human:<your macOS username>.",
         "type": "string",
         "default": ""
+      },
+      {
+        "key": "extraRepos",
+        "title": "Other repositories to show (absolute paths, JSON list)",
+        "description": "Optional. A JSON list like [\"/Users/me/Developer/other-repo\"]. Their Concord conversations are shown in this room, read-only and labelled with the repository. A repository not listed here is never read. Up to 6.",
+        "type": "string",
+        "default": "[]"
       },
       {
         "key": "concordExecutable",
