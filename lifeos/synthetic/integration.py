@@ -43,12 +43,25 @@ def effects(before, after):
 
 # ---- cited cross-app summary and its derived cache --------------------------------------------------------------------------------------------------------------------------------
 
+def clear(w, who, acct, obj, nonce, now=NOW):
+    """The gate's answer for one cited read, without running it (preflight touches nothing). A connection that needs the owner raises the consent flag for the gate only, as composio.execute does."""
+    src = w.sources.get(obj)
+    conn = w.connections.get(w.by_account.get(acct))
+    flagged = bool(conn and conn["state"] in C.NEEDS_CONSENT and acct not in w.consent_needed)
+    if flagged:
+        w.consent_needed.add(acct)
+    try:
+        return authz.preflight(w, G._request(w, who, acct, G.READ_TOOL.get(src["kind"] if src else None, G.READ_TOOL["gmail"]), nonce, obj), now)
+    finally:
+        if flagged:
+            w.consent_needed.discard(acct)
+
+
 def cited_summary(w, who, items, nonce="s", now=NOW):
     """items = [(account_id, object_id)]. Every item is cleared by the gate BEFORE any is read, so a refusal reads nothing and caches nothing.
     -> {code, step, summary}. The summary cites each source with its route, provider, account, object id and revision, and is cached under the caller's tenant only."""
     for i, (acct, obj) in enumerate(items):
-        src = w.sources.get(obj)
-        verdict = authz.preflight(w, G._request(w, who, acct, G.READ_TOOL.get(src["kind"] if src else None, G.READ_TOOL["gmail"]), f"{nonce}{i}", obj), now)
+        verdict = clear(w, who, acct, obj, f"{nonce}{i}", now)
         if verdict["code"] != "ALLOW":
             return {"code": verdict["code"], "step": verdict["step"], "summary": None}
     cites, parts = [], []
@@ -67,14 +80,17 @@ def cache_key(citations):
     return tuple(sorted((c["object_id"], c["revision"]) for c in citations))
 
 
-def cache_lookup(w, who, key):
-    """A cached summary is returned only to its own tenant, and only while every cited source is still unrevoked and at the cited revision. A missing and a foreign entry look the same."""
+def cache_lookup(w, who, key, now=NOW):
+    """A cached summary is only a copy of text the gate once allowed, so it gets the gate again: every cited source is cleared through authz.preflight for the caller (principal, host, session,
+    task, tenant, account, grant, expiry, owner re-consent, revoked source) before the entry is returned, and the cited revision must still be current. A missing and a foreign entry look the same."""
     entry = w.derived.get((AGENT_TENANT.get(who), key))
     if entry is None:
         return {"code": "DENY_TENANT", "step": 6, "summary": None}
+    for i, c in enumerate(entry["citations"]):
+        verdict = clear(w, who, c["account"], c["object_id"], f"cache{i}", now)
+        if verdict["code"] != "ALLOW":
+            return {"code": verdict["code"], "step": verdict["step"], "summary": None}
     for c in entry["citations"]:
-        if c["object_id"] in w.revoked:
-            return {"code": "DENY_SOURCE_REVOKED", "step": 5, "summary": None}
         if w.sources[c["object_id"]]["revision"] != c["revision"]:
             return {"code": "DENY_STALE_SOURCE", "step": 15, "summary": None}
     return {"code": "ALLOW", "step": 21, "summary": entry}
@@ -166,6 +182,24 @@ def _then_revoke(w):
     w.revoke("P-MSG-1")
 
 
+def _prime_then(*breaks):
+    def prep(w):
+        _prime_summary(w)
+        for brk in breaks:
+            brk(w)
+    return prep
+
+
+def _owner_reconsented(w):
+    """Tenant B's two fake managed connections start dead (expired, revoked); a summary over them is allowed only after the owner's own re-consent."""
+    C.owner_reconsent(w, "ca-b1")
+    C.owner_reconsent(w, "ca-b2")
+
+
+def _connection_expired(w):
+    w.connections["ca-a1"]["state"] = "EXPIRED"
+
+
 def _revoke_grant(w):
     w.revoke_grant("g-acct-a-gmail-read")
 
@@ -201,7 +235,7 @@ def catalog():
         ("allow-composio-a-drive", GWTS[0], "allow", "ALLOW", "agent-a", "composio", None, composio_exec("agent-a", "acct-a-drive", source_id="DOC-1")),
         ("allow-discovery-a", GWTS[0], "allow", "ALLOW", "agent-a", "discover", None, discovery("agent-a", "acct-a-drive")),
         ("allow-cited-summary-a", GWTS[0], "allow", "ALLOW", "agent-a", "summary", None, summary_of("agent-a", SUMMARY_A)),
-        ("allow-cited-summary-b", GWTS[0], "allow", "ALLOW", "agent-b", "summary", None, summary_of("agent-b", [("acct-b-gmail", "B-MSG-1"), ("acct-b-drive", "B-DOC-1")])),
+        ("allow-cited-summary-b", GWTS[0], "allow", "ALLOW", "agent-b", "summary", _owner_reconsented, summary_of("agent-b", [("acct-b-gmail", "B-MSG-1"), ("acct-b-drive", "B-DOC-1")])),
         ("deny-summary-crossing-tenants", GWTS[0], "deny", "DENY_TENANT", "agent-a", "summary", None, summary_of("agent-a", [("acct-a-gmail", "P-MSG-1"), ("acct-b-drive", "B-DOC-1")])),
         ("allow-cache-own-tenant", GWTS[0], "allow", "ALLOW", "agent-a", "cache", _prime_summary, lambda w: plain(cache_lookup(w, "agent-a", SUMMARY_KEY))),
         # GWT-T10-02: refusals with zero provider side effects
@@ -233,6 +267,11 @@ def catalog():
         ("deny-discovery-revoked-grant", GWTS[1], "deny", "DENY_GRANT", "agent-a", "discover", _revoke_grant, discovery("agent-a", "acct-a-gmail")),
         ("deny-discovery-disabled-host", GWTS[1], "deny", "DENY_PRINCIPAL", "agent-a", "discover", _host_off, discovery("agent-a", "acct-a-gmail")),
         ("deny-cache-after-source-revoked", GWTS[1], "deny", "DENY_SOURCE_REVOKED", "agent-a", "cache", _then_revoke, lambda w: plain(cache_lookup(w, "agent-a", SUMMARY_KEY))),
+        ("deny-cache-revoked-grant", GWTS[1], "deny", "DENY_GRANT", "agent-a", "cache", _prime_then(lambda w: w.revoke_grant("g-acct-a-gmail-read")), lambda w: plain(cache_lookup(w, "agent-a", SUMMARY_KEY))),
+        ("deny-cache-expired-grant", GWTS[1], "deny", "DENY_GRANT", "agent-a", "cache", _prime_then(lambda w: w.grants["g-acct-a-drive-read"].update(expires=NOW)),
+         lambda w: plain(cache_lookup(w, "agent-a", SUMMARY_KEY))),
+        ("deny-cache-disabled-host", GWTS[1], "deny", "DENY_PRINCIPAL", "agent-a", "cache", _prime_then(_host_off), lambda w: plain(cache_lookup(w, "agent-a", SUMMARY_KEY))),
+        ("deny-cache-expired-connection", GWTS[1], "deny", "NEEDS_OWNER_RECONSENT", "agent-a", "cache", _prime_then(_connection_expired), lambda w: plain(cache_lookup(w, "agent-a", SUMMARY_KEY))),
         ("deny-cache-other-tenant", GWTS[1], "deny", "DENY_TENANT", "agent-b", "cache", _prime_summary, lambda w: plain(cache_lookup(w, "agent-b", SUMMARY_KEY))),
         ("deny-cache-never-built", GWTS[1], "deny", "DENY_TENANT", "agent-a", "cache", None, lambda w: plain(cache_lookup(w, "agent-a", SUMMARY_KEY))),
     ]
@@ -242,6 +281,9 @@ def catalog():
     for name, tool, acct in MANAGEMENT_CASES:
         rows.append((f"deny-read-grant-{name}", GWTS[2], "deny", "DENY_MANAGEMENT_SCOPE", "agent-a", "gate", None, tool_call("agent-a", tool, acct, RO.format(acct))))
         rows.append((f"deny-write-grant-{name}", GWTS[2], "deny", "DENY_MANAGEMENT_SCOPE", "agent-a", "gate", None, tool_call("agent-a", tool, acct, RW.format(acct))))
+    for name, tool, acct in (("gmail-delete", "gmail_delete_message", "acct-a-gmail"), ("gmail-trash", "gmail_trash_message", "acct-a-gmail"), ("drive-delete", "drive_delete_file", "acct-a-drive")):
+        for kind, level in (("read-grant", RO), ("write-grant", RW)):
+            rows.append((f"deny-{kind}-{name}", GWTS[2], "deny", "DENY_UNSUPPORTED_ACTION", "agent-a", "gate", None, tool_call("agent-a", tool, acct, level.format(acct))))
     rows += [
         ("hold-delete-needs-jim", GWTS[2], "hold", "PENDING", "agent-a", "gate", None, tool_call("agent-a", "notion_delete_page", "acct-a-notion", RW.format("acct-a-notion"))),
         ("deny-production-action", GWTS[2], "deny", "DENY_UNSUPPORTED_ACTION", "agent-a", "gate", None, tool_call("agent-a", "production_deploy", "acct-a-gmail", RW.format("acct-a-gmail"))),
@@ -252,31 +294,49 @@ def catalog():
     return rows
 
 
+LIFECYCLE = (
+    ("life-oracle-refreshes-expiring", "lifecycle", "ALLOW"),
+    ("life-read-after-refresh", "allow", "ALLOW"),
+    ("life-github-upkeep", "lifecycle", "ALLOW"),
+    ("life-expired-needs-owner", "deny", "NEEDS_OWNER_RECONSENT"),
+    ("life-revoked-needs-owner", "deny", "NEEDS_OWNER_RECONSENT"),
+    ("life-admin-refresh-cannot-revive", "lifecycle", "ALLOW"),
+    ("life-still-blocked-after-admin-refresh", "deny", "NEEDS_OWNER_RECONSENT"),
+    ("life-later-upkeep-refreshes-again", "lifecycle", "ALLOW"),
+    ("life-after-owner-reconsent", "allow", "ALLOW"),
+    ("life-other-account-still-blocked", "deny", "NEEDS_OWNER_RECONSENT"),
+    ("life-disable-revokes", "lifecycle", "ALLOW"),
+    ("life-disabled-is-denied", "deny", "DENY_GRANT"),
+)
+LIFE_EXPECT = {i: (k, e) for i, k, e in LIFECYCLE}
+
+
 def lifecycle():
     """GWT-T10-04: one replay, in order, in one world. Routine upkeep by the Oracle and GitHub admin roles needs no login; a dead grant waits for the owner and only the owner's step clears it."""
     w, steps = IntegratedWorld(), []
 
-    def step(sid, kind, expect, who, surface, run):
+    def step(sid, who, surface, run):
+        kind, expect = LIFE_EXPECT[sid]
         steps.append(run_one(sid, GWTS[3], kind, expect, who, surface, None, run, w))
 
     def maintain(runner, now=NOW):
         out = C.maintain(w, runner, now)
         return out["code"] or "ALLOW", None, None, out["counts"]
 
-    step("life-oracle-refreshes-expiring", "lifecycle", "ALLOW", "oracle-admin", "maintain", lambda _: maintain("oracle-admin"))
-    step("life-read-after-refresh", "allow", "ALLOW", "agent-a", "composio", composio_exec("agent-a", "acct-a-gmail", nonce="l1"))
-    step("life-github-upkeep", "lifecycle", "ALLOW", "github-admin", "maintain", lambda _: maintain("github-admin"))
-    step("life-expired-needs-owner", "deny", "NEEDS_OWNER_RECONSENT", "agent-b", "composio", composio_exec("agent-b", "acct-b-gmail", nonce="l2"))
-    step("life-revoked-needs-owner", "deny", "NEEDS_OWNER_RECONSENT", "agent-b", "composio", composio_exec("agent-b", "acct-b-drive", nonce="l3"))
-    step("life-admin-refresh-cannot-revive", "lifecycle", "ALLOW", "github-admin", "manage", lambda _: plain({"code": None, "summary": C.manage(w, C.command(w, "github-admin", "acct-b-gmail", "refresh", "l4"))}))
-    step("life-still-blocked-after-admin-refresh", "deny", "NEEDS_OWNER_RECONSENT", "agent-b", "composio", composio_exec("agent-b", "acct-b-gmail", nonce="l5"))
-    step("life-later-upkeep-refreshes-again", "lifecycle", "ALLOW", "oracle-admin", "maintain", lambda _: maintain("oracle-admin", LATER))
+    step("life-oracle-refreshes-expiring", "oracle-admin", "maintain", lambda _: maintain("oracle-admin"))
+    step("life-read-after-refresh", "agent-a", "composio", composio_exec("agent-a", "acct-a-gmail", nonce="l1"))
+    step("life-github-upkeep", "github-admin", "maintain", lambda _: maintain("github-admin"))
+    step("life-expired-needs-owner", "agent-b", "composio", composio_exec("agent-b", "acct-b-gmail", nonce="l2"))
+    step("life-revoked-needs-owner", "agent-b", "composio", composio_exec("agent-b", "acct-b-drive", nonce="l3"))
+    step("life-admin-refresh-cannot-revive", "github-admin", "manage", lambda _: plain({"code": None, "summary": C.manage(w, C.command(w, "github-admin", "acct-b-gmail", "refresh", "l4"))}))
+    step("life-still-blocked-after-admin-refresh", "agent-b", "composio", composio_exec("agent-b", "acct-b-gmail", nonce="l5"))
+    step("life-later-upkeep-refreshes-again", "oracle-admin", "maintain", lambda _: maintain("oracle-admin", LATER))
     C.owner_reconsent(w, "ca-b1")                                                                # the one human act in the replay: the owner signs in at the provider
     steps[-1]["owner_step_after"] = True
-    step("life-after-owner-reconsent", "allow", "ALLOW", "agent-b", "composio", composio_exec("agent-b", "acct-b-gmail", nonce="l6"))
-    step("life-other-account-still-blocked", "deny", "NEEDS_OWNER_RECONSENT", "agent-b", "composio", composio_exec("agent-b", "acct-b-drive", nonce="l7"))
-    step("life-disable-revokes", "lifecycle", "ALLOW", "oracle-admin", "manage", lambda _: plain({"code": C.manage(w, C.command(w, "oracle-admin", "acct-a-drive", "disable", "l8"))["code"]}))
-    step("life-disabled-is-denied", "deny", "DENY_GRANT", "agent-a", "composio", composio_exec("agent-a", "acct-a-drive", source_id="DOC-1", nonce="l9"))
+    step("life-after-owner-reconsent", "agent-b", "composio", composio_exec("agent-b", "acct-b-gmail", nonce="l6"))
+    step("life-other-account-still-blocked", "agent-b", "composio", composio_exec("agent-b", "acct-b-drive", nonce="l7"))
+    step("life-disable-revokes", "oracle-admin", "manage", lambda _: plain({"code": C.manage(w, C.command(w, "oracle-admin", "acct-a-drive", "disable", "l8"))["code"]}))
+    step("life-disabled-is-denied", "agent-a", "composio", composio_exec("agent-a", "acct-a-drive", source_id="DOC-1", nonce="l9"))
     return steps, w
 
 
@@ -289,8 +349,12 @@ def run_all():
     body = {"revision": REVISION, "mode": MODE, "live_enforcement": False, "scenarios": scenarios, "lifecycle_buzz": notices,
             "lifecycle_json": json.dumps([w.buzz_outbox, w.vendor_log], default=str), "owner_step_index": next(i for i, s in enumerate(steps) if s.get("owner_step_after")),
             "labels": {"tenant_a": TENANT_A, "tenant_b": TENANT_B}}
-    body["digest"] = hashlib.sha256(json.dumps(body, sort_keys=True, default=str).encode()).hexdigest()[:16]
+    body["digest"] = digest_of(body)
     return body
+
+
+def digest_of(body):
+    return hashlib.sha256(json.dumps({k: v for k, v in body.items() if k != "digest"}, sort_keys=True, default=str).encode()).hexdigest()[:16]
 
 
 # ---- the independent checker ------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -306,15 +370,23 @@ def verify(evidence):
         problems.append("evidence is not labelled synthetic and not live")
     if not (isinstance(evidence.get("revision"), str) and len(evidence["revision"]) == 40):
         problems.append("no pinned 40 character revision")
+    if evidence.get("digest") != digest_of(evidence):
+        problems.append("the digest does not match the evidence")
     foreign, every_text = _private(IntegratedWorld())
+    planned = {row[0]: (row[1], row[2], row[3]) for row in catalog()}                       # the catalog's own rows, read and never run: gwt, kind, expected code
+    planned.update({i: (GWTS[3], k, e) for i, k, e in LIFECYCLE})
     seen = set()
     for s in scenarios:
         sid, code = s["id"], s["outcome"]["code"]
         if sid in seen or s["mode"] != MODE:
             problems.append(f"{sid}: duplicate or unlabelled")
         seen.add(sid)
-        if code != s["expect"]:
-            problems.append(f"{sid}: expected {s['expect']} got {code}")
+        if sid not in planned:
+            problems.append(f"{sid}: not in the catalog")
+        elif (s["gwt"], s["kind"], s["expect"]) != planned[sid]:
+            problems.append(f"{sid}: the recorded gwt, kind or expected code differs from the catalog")
+        if code != planned.get(sid, (None, None, s["expect"]))[2]:
+            problems.append(f"{sid}: the catalog expects {planned.get(sid, (None, None, None))[2]} but got {code}")
         text = json.dumps([s["receipt"], s["returned"], s["outcome"]], default=str)
         if CANARY in text or "fake-vendor-token-" in text or "fake-manager-key-" in text or C.ADMIN_KEY in text:
             problems.append(f"{sid}: a secret appears")
@@ -334,6 +406,8 @@ def verify(evidence):
                 problems.append(f"{sid}: an allow that is not clean")
             if s["surface"] in ("route", "composio") and (e["mutations"] or e["commits"] or not e["reads"]):
                 problems.append(f"{sid}: a read with the wrong effects")
+    for missing in sorted(set(planned) - seen):
+        problems.append(f"{missing}: in the catalog but not in the evidence")
     for gwt in GWTS[:4]:                                              # GWT-T10-05 is about the evidence itself: this checker, the pin, the labels and the replayable digest
         if not any(s["gwt"] == gwt for s in scenarios):
             problems.append(f"{gwt}: no scenario")

@@ -62,6 +62,36 @@ class Evidence(unittest.TestCase):
         first_life = next(i for i, s in enumerate(EVIDENCE["scenarios"]) if s["id"] == "life-oracle-refreshes-expiring")
         self.assertTrue(broken(lambda e: e["scenarios"][first_life].update(human_logins=1)))                  # a login before the owner step
 
+    def test_the_checker_compares_against_the_catalog_and_rechecks_the_digest(self):
+        deny = next(i for i, s in enumerate(EVIDENCE["scenarios"]) if s["id"] == "deny-cross-tenant")
+
+        def both(e):                                                      # expect and outcome edited together, and the digest made to match
+            e["scenarios"][deny]["expect"] = e["scenarios"][deny]["outcome"]["code"] = "ALLOW"
+            e["digest"] = I.digest_of(e)
+        ev = copy.deepcopy(EVIDENCE)
+        both(ev)
+        self.assertTrue(any("catalog" in p for p in I.verify(ev)))
+        ev = copy.deepcopy(EVIDENCE)
+        ev["scenarios"][deny]["outcome"]["code"] = "ALLOW"                # only the outcome edited, digest made to match
+        ev["digest"] = I.digest_of(ev)
+        self.assertTrue(any("the catalog expects DENY_TENANT but got ALLOW" in p for p in I.verify(ev)))
+        ev = copy.deepcopy(EVIDENCE)
+        ev["scenarios"][deny]["gwt"] = "GWT-T10-01"                       # a scenario moved to another requirement
+        ev["digest"] = I.digest_of(ev)
+        self.assertTrue(any("catalog" in p for p in I.verify(ev)))
+        ev = copy.deepcopy(EVIDENCE)
+        ev["scenarios"].append({**ev["scenarios"][0], "id": "made-up"})   # a scenario the catalog does not have
+        ev["digest"] = I.digest_of(ev)
+        self.assertTrue(any("not in the catalog" in p for p in I.verify(ev)))
+        ev = copy.deepcopy(EVIDENCE)
+        del ev["scenarios"][deny]
+        ev["digest"] = I.digest_of(ev)
+        self.assertTrue(any("not in the evidence" in p for p in I.verify(ev)))
+        ev = copy.deepcopy(EVIDENCE)
+        ev["scenarios"][0]["returned"] = dict(ev["scenarios"][0]["returned"], text="Fake tenant A message, edited.")      # any edit without a new digest
+        self.assertIn("the digest does not match the evidence", I.verify(ev))
+        self.assertEqual(EVIDENCE["digest"], I.digest_of(EVIDENCE))
+
 
 class PermittedReads(unittest.TestCase):
     """GWT-T10-01"""
@@ -142,6 +172,27 @@ class Refusals(unittest.TestCase):
         w.sources["P-DOC-1"]["revision"] = 2
         self.assertEqual(I.cache_lookup(w, "agent-a", I.SUMMARY_KEY)["code"], "DENY_STALE_SOURCE")
 
+    def test_a_cached_summary_is_cleared_through_the_gate_again(self):
+        """The review's reproduction: prime the cache, then take the caller's grant and host away. The old text must not come back."""
+        for sid, code in (("deny-cache-revoked-grant", "DENY_GRANT"), ("deny-cache-expired-grant", "DENY_GRANT"), ("deny-cache-disabled-host", "DENY_PRINCIPAL"),
+                          ("deny-cache-expired-connection", "NEEDS_OWNER_RECONSENT")):
+            s = BY_ID[sid]
+            self.assertEqual((s["outcome"]["code"], s["returned"], s["surface"]), (code, None, "cache"), sid)
+            self.assertFalse(any(s["effects"][k] for k in I.COUNTERS) or s["effects"]["ledger_changed"] or s["effects"]["provider_changed"], sid)
+        w = I.IntegratedWorld()
+        I.cited_summary(w, "agent-a", I.SUMMARY_A)
+        self.assertEqual(I.cache_lookup(w, "agent-a", I.SUMMARY_KEY)["code"], "ALLOW")
+        w.revoke_grant("g-acct-a-gmail-read")
+        w.hosts.discard("fake-mac")
+        out = I.cache_lookup(w, "agent-a", I.SUMMARY_KEY)
+        self.assertEqual((out["summary"], len(w.derived)), (None, 1))             # refused, and the entry is not read out; a lookup never writes
+        self.assertNotIn("Fake tenant A", json.dumps(out))
+
+    def test_a_summary_over_a_dead_connection_is_refused_until_the_owner_reconsents(self):
+        w = I.IntegratedWorld()
+        out = I.cited_summary(w, "agent-b", [("acct-b-gmail", "B-MSG-1"), ("acct-b-drive", "B-DOC-1")])
+        self.assertEqual((out["code"], out["summary"], w.derived, w.consent_needed, w.read_calls), ("NEEDS_OWNER_RECONSENT", None, {}, set(), 0))
+
     def test_a_wrong_tenant_call_against_a_dead_connection_changes_nothing(self):
         s = BY_ID["deny-wrong-tenant-on-dead-connection"]
         self.assertEqual((s["outcome"]["code"], s["effects"]["ledger_changed"]), ("DENY_TENANT", False))
@@ -165,6 +216,15 @@ class ProtectedActions(unittest.TestCase):
             for kind in ("read-grant", "write-grant"):
                 s = BY_ID[f"deny-{kind}-{name}"]
                 self.assertEqual((s["outcome"]["code"], s["outcome"]["step"]), ("DENY_MANAGEMENT_SCOPE", 10), s["id"])
+
+    def test_google_delete_and_trash_are_refused_on_read_and_write_grants(self):
+        for name in ("gmail-delete", "gmail-trash", "drive-delete"):
+            for kind in ("read-grant", "write-grant"):
+                s = BY_ID[f"deny-{kind}-{name}"]
+                self.assertEqual((s["outcome"]["code"], s["outcome"]["step"], s["gwt"]), ("DENY_UNSUPPORTED_ACTION", 9, "GWT-T10-03"), s["id"])
+                self.assertEqual(s["receipt"]["decision_stage"], "preflight")
+        for tool in ("gmail_delete_message", "gmail_trash_message", "drive_delete_file"):
+            self.assertNotIn(tool, T.TOOLS)                              # no Google delete tool is registered, so there is nothing for a handler to run
 
     def test_delete_is_held_for_jim_and_production_and_sandbox_actions_are_unsupported(self):
         self.assertEqual((BY_ID["hold-delete-needs-jim"]["outcome"]["code"], BY_ID["hold-delete-needs-jim"]["kind"]), ("PENDING", "hold"))
