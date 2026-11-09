@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { EventEmitter } from 'node:events'
 import { readFileSync } from 'node:fs'
-import { getMessages, validateRecords, validateExecutable, parseWho, sendMessage, callConcordTool, defaultSenderId, parseNicknames, withNickname, jiraIssues, jiraIssue, linkedJira, linkJira, unlinkJira, jiraChatPrompt, startJiraChat, readPolicy, validateHandoff, listHandoffs, acceptHandoff, rejectHandoff, handoffPrompt, defaultHandoffDir, terminalAgents, handoffLine, typeIntoTerminal, launchChat, roomAgentPrompt, startRoomAgent, parseHidden, withHidden, parseAdapterCapabilities, wakeFromCapabilities, getWakeKinds } from '../worker/main.mjs'
+import { getMessages, validateRecords, validateExecutable, parseWho, sendMessage, callConcordTool, defaultSenderId, parseNicknames, withNickname, jiraIssues, jiraIssue, linkedJira, linkJira, unlinkJira, jiraChatPrompt, startJiraChat, readPolicy, validateHandoff, listHandoffs, acceptHandoff, rejectHandoff, handoffPrompt, defaultHandoffDir, terminalAgents, handoffLine, typeIntoTerminal, launchChat, roomAgentPrompt, startRoomAgent, parseHidden, withHidden, terminalHandleFrom, reachOf, getReach, getSummaries, wakeLine, wakeAgent } from '../worker/main.mjs'
 
 test('reads genuine CLI JSON using fixed argv, without a shell, and sorts by time', async t => {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'concord-orca-')))
@@ -55,7 +55,7 @@ const never = async () => { throw Error('must not call Concord') }
 
 test('parseWho reads live agent ids and states', () => {
   const agents = parseWho("Workspace: x\nWho's here\n  claude-code:2d46a09c live/active  -  (0s ago)\n  codex:bf5867fb     idle/active   -  (714s ago)\n")
-  assert.deepEqual(agents, [{ id: 'claude-code:2d46a09c', state: 'live/active' }, { id: 'codex:bf5867fb', state: 'idle/active' }])
+  assert.deepEqual(agents, [{ id: 'claude-code:2d46a09c', state: 'live/active', summary: '' }, { id: 'codex:bf5867fb', state: 'idle/active', summary: '' }])
   assert.deepEqual(parseWho('Who\'s here\n  none\n'), [])
 })
 
@@ -458,7 +458,8 @@ test('startRoomAgent starts the chosen agent and surface in the configured repo 
   assert.equal(seen.worktreeRoot, repo); assert.equal(seen.surface, 'terminal'); assert.equal(seen.agent, 'codex')
   assert.match(seen.prompt, /start_work with agent kind "codex"/)
   assert.match(roomAgentPrompt('claude'), /agent kind "claude-code"/)
-  assert.match(seen.prompt, /Do not edit files, create branches, or start any other work/)
+  assert.match(seen.prompt, /Do not edit files, create branches, or start other work because of it/)
+  assert.match(seen.prompt, /ORCA_TERMINAL_HANDLE/)
   assert.match(seen.prompt, /needs its Jira issue released \(Agent Go\) and your writer claim/)    // a room message never authorizes work
   assert.match(await readF(path.join(dir, 'audit.log'), 'utf8'), /"op":"agent-start","agent":"codex","surface":"terminal"/)
   await assert.rejects(startRoomAgent({ agent: 'rm', surface: 'chat', repoRoot: repo, handoffDir: dir }, deps), /Claude Code or Codex/)
@@ -541,57 +542,94 @@ test('the panel wires removing agents and @mentions: markup, scripts, loader, wo
   assert.deepEqual(manifest.capabilities, [{ kind: 'settings:own' }])      // no new access
 })
 
-// v0.12.1: which agents can Concord wake while idle? Fixture = the real `concord adapters status` output (Concord 0.20.0, Nov 9 2026).
-const ADAPTERS_STATUS = `Harness adapters
+// v0.13.0: wake an agent through its Orca terminal (what Buzz's harness does, with Orca's terminal API).
+const TERM_A = 'term_097d19e2-a76f-4b8c-bc2a-eaeb238849e1'
+const TERM_B = 'term_16aa60b6-71ae-45b6-80e5-f84178b765ea'
 
-  claude-code  installed           native-monitor
-    capabilities: pull, inject, steer, idle, busy
-    Native plugin monitor wakes idle sessions; lifecycle hooks cover busy turns.
-  codex        action_required     managed-controller
-    capabilities: pull, busy
-    Global hooks are installed, but the managed app-server daemon is not ready.
-  cursor       not_detected        harness-monitor
-    capabilities: none
-    The Cursor extension and global lifecycle hooks are not both installed.
-  gemini       not_detected        harness-monitor
-    capabilities: pull, steer, idle, busy, monitor-command
-    A one-shot Gemini background shell monitor injects its completion into the agent.
-`
-
-test('adapter status is read into "can Concord wake an idle agent of this kind": Claude Code yes, Codex no, kinds with no capability left unknown', () => {
-  const kinds = parseAdapterCapabilities(ADAPTERS_STATUS)
-  assert.deepEqual(kinds['claude-code'], ['pull', 'inject', 'steer', 'idle', 'busy'])
-  assert.deepEqual(kinds.codex, ['pull', 'busy'])
-  assert.deepEqual(kinds.cursor, ['none'])
-  assert.deepEqual(wakeFromCapabilities(kinds), { 'claude-code': true, codex: false, gemini: true })     // cursor ("none") is not claimed either way
-  assert.deepEqual(parseAdapterCapabilities(''), {}); assert.deepEqual(parseAdapterCapabilities('garbage\n  capabilities: idle'), {})   // no harness header: nothing to attach it to
+test('parseWho keeps each agent\'s task text and drops the "(Ns ago)" tail', () => {
+  const agents = parseWho(`Who's here\n  claude-code:898a1d54 live/active          Available in the Concord Room (terminal ${TERM_A})  (0s ago)\n  codex:35be1109     idle/active          -  (1205s ago)\n`)
+  assert.deepEqual(agents, [{ id: 'claude-code:898a1d54', state: 'live/active', summary: `Available in the Concord Room (terminal ${TERM_A})` }, { id: 'codex:35be1109', state: 'idle/active', summary: '' }])
 })
 
-test('getWakeKinds asks only for `adapters status`, caches for a minute, and reports unknown (nothing marked) on any failure', async t => {
+test('the terminal an agent reports is read exactly, and anything else is ignored', () => {
+  assert.equal(terminalHandleFrom(`Available in the Concord Room (terminal ${TERM_A})`), TERM_A)
+  for (const bad of ['Available in the Concord Room (chat)', '', undefined, 'terminal term_123', `mentions ${TERM_A} without the word`, 'terminal term_097d19e2-a76f-4b8c-bc2a-eaeb238849eZ']) assert.equal(terminalHandleFrom(bad), null, String(bad))
+})
+
+test('reach: a terminal the room can type into wins, then a Concord receiver, else none; the terminal must match the agent kind', () => {
+  const terms = [{ handle: TERM_A, agentType: 'claude' }, { handle: TERM_B, agentType: 'codex' }]
+  const said = (h) => `Available in the Concord Room (terminal ${h})`
+  assert.equal(reachOf({ id: 'claude-code:aaa', promptable: false, summary: said(TERM_A) }, terms), 'terminal')
+  assert.equal(reachOf({ id: 'claude-code:aaa', promptable: true, summary: said(TERM_A) }, terms), 'terminal')      // typing carries Jim's authority; a Concord message is only a peer message
+  assert.equal(reachOf({ id: 'claude-code:aaa', promptable: true, summary: '' }, terms), 'concord')
+  assert.equal(reachOf({ id: 'codex:ccc', promptable: false, summary: said(TERM_B) }, terms), 'terminal')
+  assert.equal(reachOf({ id: 'codex:ccc', promptable: false, summary: said(TERM_A) }, terms), 'none')                 // a Codex claiming a Claude's terminal
+  assert.equal(reachOf({ id: 'claude-code:aaa', promptable: false, summary: said('term_00000000-0000-0000-0000-000000000000') }, terms), 'none')   // not open in Orca
+  assert.equal(reachOf({ id: 'claude-code:aaa', promptable: false, summary: 'Available in the Concord Room (chat)' }, terms), 'none')
+})
+
+test('getReach asks Concord per agent, caches 15 s, leaves out an agent it cannot ask about, and gives nothing for a bad repo', async t => {
+  const repo = await realpath(await mkdtemp(path.join(tmpdir(), 'concord-reach-')))
+  await mkdir(path.join(repo, '.concord'))
+  t.after(() => rm(repo, { recursive: true, force: true }))
+  const asked = []
+  const deps = {
+    callTool: async (cmd, env, name, args) => { asked.push(args.agent_id); if (args.agent_id === 'codex:boom') throw new Error('boom'); return { promptable: args.agent_id === 'claude-code:rcv' } },
+    getSummaries: async () => ({ 'claude-code:term': `Available in the Concord Room (terminal ${TERM_A})` }),
+    terminalAgents: async () => [{ handle: TERM_A, agentType: 'claude' }]
+  }
+  const agents = [{ id: 'claude-code:term' }, { id: 'claude-code:rcv' }, { id: 'codex:chat' }, { id: 'codex:boom' }]
+  const t0 = 2_000_000_000_000
+  assert.deepEqual(await getReach({ repoRoot: repo, executable: 'concord', agents }, deps, t0), { 'claude-code:term': 'terminal', 'claude-code:rcv': 'concord', 'codex:chat': 'none' })
+  const n = asked.length
+  await getReach({ repoRoot: repo, executable: 'concord', agents }, deps, t0 + 10_000); assert.equal(asked.length, n)    // cached
+  await getReach({ repoRoot: repo, executable: 'concord', agents }, deps, t0 + 16_000); assert.ok(asked.length > n)       // asked again
+  assert.deepEqual(await getReach({ repoRoot: path.join(repo, 'missing'), executable: 'concord', agents }, deps, t0 + 100_000), {})
+})
+
+test('wakeLine is one line from the room with the message id and the instruction to reply through Concord', () => {
+  const line = wakeLine({ sender: 'human:jimmarkunas', content: 'Council:\n  what is 2+2?', messageId: 'abc-123' })
+  assert.equal(line.includes('\n'), false)
+  assert.match(line, /^\[Concord Room, message from jimmarkunas, Concord message id abc-123\] Council: what is 2\+2\?/)
+  assert.match(line, /reply to that Concord message with update_work, operation reply/)
+  assert.ok(wakeLine({ sender: 'human:j', content: 'x'.repeat(5000), messageId: 'm' }).length <= 1900)
+})
+
+test('wakeAgent types the message into the agent\'s own idle terminal, and only when the terminal really is that agent\'s', async t => {
   const repo = await realpath(await mkdtemp(path.join(tmpdir(), 'concord-wake-')))
   await mkdir(path.join(repo, '.concord'))
   t.after(() => rm(repo, { recursive: true, force: true }))
-  const calls = []
-  const runner = async (cmd, args) => { calls.push(args); return { stdout: ADAPTERS_STATUS } }
-  const t0 = 1_000_000_000_000 + 10 * 60 * 1000          // beyond any cache left by an earlier call in this process
-  assert.deepEqual(await getWakeKinds(repo, 'concord', runner, t0), { 'claude-code': true, codex: false, gemini: true })
-  assert.deepEqual(calls[0], ['-C', repo, 'adapters', 'status'])
-  await getWakeKinds(repo, 'concord', runner, t0 + 30_000); assert.equal(calls.length, 1)               // cached
-  await getWakeKinds(repo, 'concord', runner, t0 + 61_000); assert.equal(calls.length, 2)               // a minute later: asked again
-  const broken = async () => { throw new Error('boom') }
-  assert.deepEqual(await getWakeKinds(repo, 'concord', broken, t0 + 200_000), {})                       // failure: unknown, not "can't wake"
-  assert.deepEqual(await getWakeKinds(path.join(repo, 'missing'), 'concord', runner, t0 + 400_000), {})  // bad repo: unknown too
+  const said = (h) => `Available in the Concord Room (terminal ${h})`
+  const typed = []
+  const base = { repoRoot: repo, executable: 'concord', sender: 'human:jim', content: 'hello', messageId: 'm1' }
+  const mk = (summaries, terms, promptable = false) => ({ getSummaries: async () => summaries, terminalAgents: async () => terms, callTool: async () => ({ promptable }), type: async (x) => { typed.push(x) } })
+  // idle terminal: typed, even when a Concord receiver exists too
+  assert.deepEqual(await wakeAgent({ ...base, to: 'claude-code:a' }, mk({ 'claude-code:a': said(TERM_A) }, [{ handle: TERM_A, agentType: 'claude', eligible: true }], true)), { how: 'terminal' })
+  assert.equal(typed.length, 1); assert.equal(typed[0].handle, TERM_A); assert.match(typed[0].text, /Concord message id m1\] hello/)
+  // busy terminal: not typed (a running turn takes it through Concord's hooks)
+  assert.deepEqual(await wakeAgent({ ...base, to: 'claude-code:a' }, mk({ 'claude-code:a': said(TERM_A) }, [{ handle: TERM_A, agentType: 'claude', eligible: false }])), { how: 'busy', why: 'it is busy' })
+  assert.equal(typed.length, 1)
+  // no terminal known: Concord's receiver if there is one, else nothing can wake it
+  assert.deepEqual(await wakeAgent({ ...base, to: 'claude-code:a' }, mk({}, [], true)), { how: 'concord' })
+  assert.equal((await wakeAgent({ ...base, to: 'codex:c' }, mk({ 'codex:c': 'Available in the Concord Room (chat)' }, []))).how, 'none')
+  // a Codex claiming a Claude's terminal is never typed into
+  assert.equal((await wakeAgent({ ...base, to: 'codex:c' }, mk({ 'codex:c': said(TERM_A) }, [{ handle: TERM_A, agentType: 'claude', eligible: true }]))).how, 'none')
+  assert.equal(typed.length, 1)
 })
 
-test('the panel shows pull-only agents before and after sending, wired to the worker\'s wake map', () => {
+test('the panel and worker are wired for reach, terminal waking and the join prompt that reports the terminal', () => {
   const html = readFileSync(new URL('../panel/index.html', import.meta.url), 'utf8')
   const js = readFileSync(new URL('../panel/room.js', import.meta.url), 'utf8')
   const worker = readFileSync(new URL('../worker/main.mjs', import.meta.url), 'utf8')
   assert.match(html, /id="warn"/)
-  assert.match(js, /wake = people\.wake \|\| \{\}/)
-  assert.match(js, /pullOnly\(a\.id\) \? ' · pull-only'/)
-  assert.match(js, /can't be woken while idle/)
-  assert.match(worker, /wake: await getWakeKinds\(/)
+  assert.match(js, /reach = people\.reach \|\| \{\}/)
+  assert.match(js, /out\.wake/)
+  assert.match(js, /typed into /)
+  assert.match(js, /can\u2019t wake/)
+  assert.match(worker, /const reach = await getReach\(/)
+  assert.match(worker, /wake = await wakeAgent\(/)
+  assert.match(roomAgentPrompt('claude'), /echo "\$ORCA_TERMINAL_HANDLE"/)
+  assert.match(roomAgentPrompt('claude'), /terminal <the handle>/)
 })
 
 // concord-setup-safe.sh: Concord 0.20.0's `setup` rewrote the real ~/.codex/config.toml, so the wrapper backs up the user-level
@@ -631,4 +669,182 @@ test('concord-setup-safe.sh exits 0 and says so when setup leaves the user-level
   assert.match(quiet.run.stdout, /user-level agent configs are unchanged/)
   const broken = await runSetupSafe(t, 'echo boom >&2; exit 7')
   assert.equal(broken.run.status, 7)
+})
+
+// ---- council (Orca orchestration as the harness) ----
+import * as council from '../worker/council.mjs'
+import { councilOrca, councilContext } from '../worker/main.mjs'
+
+/** A fake Orca: scripted per-command replies, every call recorded. */
+function fakeOrca(script) {
+  const calls = []
+  const orca = async (args) => {
+    calls.push(args)
+    const key = args.slice(0, 2).join(' ')
+    const reply = typeof script[key] === 'function' ? script[key](args) : script[key]
+    if (reply instanceof Error) throw reply
+    return { ok: true, result: reply }
+  }
+  return { orca, calls }
+}
+async function councilCtx(t, script) {
+  const dir = await realpath(await mkdtemp(path.join(tmpdir(), 'council-')))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const fake = fakeOrca(script)
+  const ctx = { orca: fake.orca, now: () => '2026-11-09T12:00:00.000Z', fail: (code, m) => { const e = new Error(m); e.code = code; throw e }, repoRoot: dir, stateFile: path.join(dir, 'h', 'council.json') }
+  return { ctx, calls: fake.calls, dir }
+}
+const UP = {
+  'terminal list': { terminals: [{ handle: 'term_coord', connected: true }] },
+  'terminal create': { terminal: { handle: 'term_coord' } },
+  'orchestration run-create': { runId: 'run_1' },
+  'orchestration worker-start': { dispatchId: 'ctx_abcdef123456', taskId: 'task_boot', terminal: 'term_worker1' }
+}
+
+test('council: the first member creates the coordinator terminal and the Run, then reuses them', async t => {
+  const { ctx, calls } = await councilCtx(t, UP)
+  const a = await council.startMember(ctx, { agent: 'claude' })
+  assert.equal(a.id, 'council-claude:abcdef12')
+  const create = calls.find((c) => c[0] === 'terminal' && c[1] === 'create')
+  assert.ok(create.includes('--title') && create.includes(council.COORDINATOR_TITLE))
+  const start = calls.find((c) => c[1] === 'worker-start')
+  for (const flag of ['--keep-open', '--from', 'term_coord', '--run', 'run_1', '--agent', 'claude']) assert.ok(start.includes(flag), flag)
+  assert.ok(start.includes(council.BRIEF))
+  await council.startMember(ctx, { agent: 'codex' })
+  assert.equal(calls.filter((c) => c[1] === 'create').length, 1, 'coordinator terminal is reused while it is listed')
+  assert.equal(calls.filter((c) => c[1] === 'run-create').length, 1, 'the Run is reused')
+  const state = await council.loadState(ctx.stateFile, ctx.repoRoot)
+  assert.equal(state.members.length, 2)
+  assert.equal((await readF(ctx.stateFile, 'utf8')).includes('"coordinator"'), true)
+})
+
+test('council: a vanished coordinator terminal marks old members released and starts a new Run', async t => {
+  let listed = { terminals: [{ handle: 'term_coord', connected: true }] }
+  const { ctx } = await councilCtx(t, { ...UP, 'terminal list': () => listed, 'terminal create': { terminal: { handle: 'term_coord2' } }, 'orchestration run-create': { runId: 'run_2' } })
+  await council.startMember(ctx, { agent: 'claude' })
+  listed = { terminals: [] }
+  await council.startMember(ctx, { agent: 'claude' })
+  const state = await council.loadState(ctx.stateFile, ctx.repoRoot)
+  assert.equal(state.coordinator, 'term_coord2')
+  assert.equal(state.run, 'run_2')
+  assert.deepEqual(state.members.map((m) => m.released), [true, false])
+})
+
+test('council: rejects other agents, and asking before any member exists', async t => {
+  const { ctx } = await councilCtx(t, UP)
+  await assert.rejects(council.startMember(ctx, { agent: 'gemini' }), /Claude or Codex/)
+  await assert.rejects(council.askMembers(ctx, { ids: ['council-claude:x'], text: 'hi', from: 'human:jim' }), /no council yet/)
+})
+
+test('council: a question is one send per member and its task id joins the answer', async t => {
+  const inbox = { messages: [] }
+  const { ctx, calls } = await councilCtx(t, { ...UP, 'orchestration send': () => ({ taskId: 'task_q1', delivery: 'follow_up' }), 'orchestration inbox': () => inbox })
+  const m = await council.startMember(ctx, { agent: 'claude' })
+  const sent = await council.askMembers(ctx, { ids: [m.id], text: '  Is the plan sound?  ', from: 'human:jim' })
+  assert.deepEqual(sent, [{ id: m.id, taskId: 'task_q1', delivery: 'follow_up' }])
+  const send = calls.find((c) => c[1] === 'send')
+  assert.equal(send[send.indexOf('--to') + 1], 'dispatch:ctx_abcdef123456')
+  assert.match(send[send.indexOf('--body') + 1], /^From jim: Is the plan sound\?/)
+  inbox.messages = [
+    { id: 'msg_2', type: 'worker_done', from_handle: 'term_worker1', body: 'Yes, with one caveat.', payload: JSON.stringify({ taskId: 'task_q1' }) },
+    { id: 'msg_1', type: 'worker_done', from_handle: 'term_worker1', body: 'READY claude-code:2d46a09c', payload: JSON.stringify({ taskId: 'task_boot' }) }
+  ]
+  assert.equal(await council.syncCouncil(ctx), true)
+  assert.equal(await council.syncCouncil(ctx), false, 'a message is read once')
+  const state = await council.loadState(ctx.stateFile, ctx.repoRoot)
+  assert.equal(state.members[0].joined, true)
+  assert.equal(state.members[0].concordId, 'claude-code:2d46a09c')
+  assert.deepEqual(council.councilConcordIds(state), ['claude-code:2d46a09c'])
+  const msgs = council.councilMessages(state)
+  assert.deepEqual(msgs.map((x) => [x.id, x.from, x.to]), [['council-q-task_q1', 'human:jim', m.id], ['council-a-msg_2', m.id, 'human:jim']])
+  assert.equal(msgs[1].replyTo, 'council-q-task_q1')
+  assert.equal(msgs[1].content, 'Yes, with one caveat.')
+  assert.deepEqual(council.councilAgents(state).map((a) => [a.id, a.state]), [[m.id, 'live/active']])
+})
+
+test('council: an escalation recovers the answer from the member chat; a question is shown as asking', async t => {
+  const inbox = { messages: [] }
+  const { ctx } = await councilCtx(t, { ...UP, 'orchestration send': () => ({ taskId: 'task_q1', delivery: 'follow_up' }), 'orchestration inbox': () => inbox,
+    'orchestration worker-read': { transcript: { messages: [{ role: 'user', blocks: [{ type: 'text', text: 'q' }] }, { role: 'assistant', timestamp: 1762689600000, blocks: [{ type: 'text', text: 'Spoken answer.' }] }] } } })
+  const m = await council.startMember(ctx, { agent: 'codex' })
+  await council.askMembers(ctx, { ids: [m.id], text: 'q', from: 'human:jim' })
+  inbox.messages = [
+    { id: 'msg_5', type: 'question', from_handle: 'term_worker1', body: 'Which repo?', payload: '{}' },
+    { id: 'msg_4', type: 'escalation', from_handle: 'term_worker1', body: 'ended turn', payload: JSON.stringify({ taskId: 'task_q1', dispatchId: 'ctx_x' }) }
+  ]
+  await council.syncCouncil(ctx)
+  const msgs = council.councilMessages(await council.loadState(ctx.stateFile, ctx.repoRoot))
+  const answer = msgs.find((x) => x.id === 'council-a-msg_4')
+  assert.match(answer.content, /^Spoken answer\.\n\(answered in its chat without reporting\)/)
+  assert.equal(answer.at, new Date(1762689600000).toISOString())
+  assert.match(msgs.find((x) => x.id === 'council-a-msg_5').content, /Which repo\?\n\(asks you\)/)
+})
+
+test('council: a message from an unknown sender is ignored; a failed read-back says so instead of inventing an answer', async t => {
+  const inbox = { messages: [{ id: 'msg_9', type: 'worker_done', from_handle: 'term_stranger', body: 'hi', payload: '{}' }, { id: 'msg_8', type: 'escalation', from_handle: 'term_worker1', body: '', payload: '{"taskId":"t"}' }] }
+  const { ctx } = await councilCtx(t, { ...UP, 'orchestration inbox': () => inbox, 'orchestration worker-read': new Error('gone') })
+  await council.startMember(ctx, { agent: 'claude' })
+  await council.syncCouncil(ctx)
+  const msgs = council.councilMessages(await council.loadState(ctx.stateFile, ctx.repoRoot))
+  assert.equal(msgs.length, 1)
+  assert.match(msgs[0].content, /without an answer/)
+})
+
+test('council: releasing a member hands it back and drops it from the council', async t => {
+  const { ctx, calls } = await councilCtx(t, { ...UP, 'orchestration worker-release': {} })
+  const m = await council.startMember(ctx, { agent: 'claude' })
+  await council.releaseMember(ctx, m.id)
+  assert.deepEqual(calls.find((c) => c[1] === 'worker-release').slice(0, 4), ['orchestration', 'worker-release', '--dispatch', 'ctx_abcdef123456'])
+  const state = await council.loadState(ctx.stateFile, ctx.repoRoot)
+  assert.deepEqual(council.councilAgents(state), [])
+  await assert.rejects(council.releaseMember(ctx, m.id), /not a council member/)
+})
+
+test('council: state for another repository or a damaged file starts empty, and the log is trimmed', async t => {
+  const { ctx } = await councilCtx(t, UP)
+  await mkdir(path.dirname(ctx.stateFile), { recursive: true })
+  await writeFile(ctx.stateFile, '{not json')
+  assert.deepEqual((await council.loadState(ctx.stateFile, ctx.repoRoot)).members, [])
+  const s = await council.loadState(ctx.stateFile, ctx.repoRoot)
+  s.log = Array.from({ length: 700 }, (_, i) => ({ k: 'q', id: `t${i}`, to: 'x', from: 'y', text: 'z', at: 'a' }))
+  await council.saveState(ctx.stateFile, s)
+  assert.equal((await council.loadState(ctx.stateFile, ctx.repoRoot)).log.length, 600)
+  assert.equal((await council.loadState(ctx.stateFile, '/somewhere/else')).log.length, 0)
+})
+
+test('council runner: failures name the Orca command and never leak a stack; JSON is required', async () => {
+  const bad = councilOrca(async () => { const e = new Error('x'); e.code = 1; e.stderr = 'no such worker\n'; throw e })
+  await assert.rejects(bad(['orchestration', 'send']), /Orca orchestration send failed: no such worker\./)
+  const missing = councilOrca(async () => { const e = new Error('x'); e.code = 'ENOENT'; throw e })
+  await assert.rejects(missing(['terminal', 'list']), /Orca CLI not found/)
+  const text = councilOrca(async () => ({ stdout: 'not json' }))
+  await assert.rejects(text(['terminal', 'list']), /did not return JSON/)
+  const ok = councilOrca(async () => ({ stdout: '{"ok":true}' }))
+  assert.deepEqual(await ok(['terminal', 'list']), { ok: true })
+})
+
+test('council is wired through the worker and the panel, and ids pass the room validators', async () => {
+  const worker = readFileSync(new URL('../worker/main.mjs', import.meta.url), 'utf8')
+  const js = readFileSync(new URL('../panel/room.js', import.meta.url), 'utf8')
+  const html = readFileSync(new URL('../panel/index.html', import.meta.url), 'utf8')
+  for (const h of ['council.start', 'council.release']) assert.match(worker, new RegExp(`handle\\('${h.replace('.', '\\.')}'`))
+  assert.match(worker, /councilMessages\(state\)/)
+  assert.match(worker, /reach\[m\.id\] = 'council'/)
+  assert.match(worker, /startsWith\('council-'\)/)
+  assert.match(js, /council\.start/)
+  assert.match(js, /council\.release/)
+  assert.match(js, /'council-claude': 'claudecode'/)
+  assert.match(html, /data-surface="council"/)
+  assert.equal(withHidden([], council.memberIdFor('claude', 'ctx_abcdef123456'), true)[0], 'council-claude:abcdef12')
+  assert.equal(council.memberIdFor('codex', 'ctx_0123456789'), 'council-codex:01234567')
+})
+
+test('council context needs a Concord workspace and keeps its state with the handoffs', async t => {
+  const root = await realpath(await mkdtemp(path.join(tmpdir(), 'council-ctx-')))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  await assert.rejects(councilContext({ repoRoot: root, handoffDir: '' }), /No Concord workspace/)
+  await mkdir(path.join(root, '.concord'))
+  const ctx = await councilContext({ repoRoot: root, handoffDir: path.join(root, 'ho'), runner: async () => ({ stdout: '{}' }) })
+  assert.equal(ctx.stateFile, path.join(root, 'ho', 'council.json'))
+  assert.equal(ctx.repoRoot, root)
 })

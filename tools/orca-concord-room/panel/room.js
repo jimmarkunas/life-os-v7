@@ -3,15 +3,15 @@
   const emptyEl = $('empty'), list = $('messages'), toSel = $('to'), text = $('text'), sendBtn = $('send'), note = $('note'), jump = $('jump')
   const nodes = new Map()
   let stick = true, lastMsgs = [], me = '', sending = false, lastRoster = '', chosenByUser = false, nicks = {}, order = [], lastMessages = []
-  let hidden = [], showHidden = false, mentionAgents = [], peopleAgents = [], wake = {}
-  // Concord can wake an idle agent only when its adapter reports "idle" (the worker reads `concord adapters status`); a kind it says nothing about is not marked.
-  const pullOnly = (id) => wake[kind(id)] === false
-  const PULL_TIP = "Concord can't wake this agent while it is idle: it reads messages the next time it takes a turn."
+  let hidden = [], showHidden = false, mentionAgents = [], peopleAgents = [], reach = {}
+  // How an agent can be reached while idle (the worker works it out): "terminal" (the room types your message into its Orca terminal), "concord" (a receiver is attached) or "none". An agent the worker could not ask about is not marked.
+  const noWake = (id) => reach[id] === 'none'
+  const NOWAKE_TIP = "Nothing can wake this agent while it is idle: it is not a terminal the room can type into and no Concord receiver is attached, so it reads messages only when it next takes a turn. Start agents with ＋ Agent → Terminal."
   // @mentions: pure helpers in mentions.js. If that file failed to load, the room still works with the "To" box alone.
   const RM = window.RoomMentions || { active: () => null, candidates: () => [], insert: (t, c) => ({ text: t, caret: c }), parse: () => [] }
 
   const kind = (id) => id.split(':')[0]
-  const brand = (id) => ({ 'claude-code': 'claudecode', codex: 'codex', human: 'human', 'claude-chat': 'claudechat', 'chatgpt-chat': 'chatgpt', relay: 'other' }[kind(id)] || 'other')
+  const brand = (id) => ({ 'claude-code': 'claudecode', codex: 'codex', 'council-claude': 'claudecode', 'council-codex': 'codex', human: 'human', 'claude-chat': 'claudechat', 'chatgpt-chat': 'chatgpt', relay: 'other' }[kind(id)] || 'other')
   const BASE = { claudecode: 'Claude Code', claudechat: 'Claude Chat', chatgpt: 'ChatGPT', codex: 'Codex', human: 'Human', other: 'Agent' }
   const SENDER = { 'chatgpt-chat': ['chatgpt', 'ChatGPT'], 'claude-chat': ['claudechat', 'Claude Chat'] }
   // Simplified marks, drawn here (not the official artwork).
@@ -87,15 +87,16 @@
 
   function renderRoster(agents) {
     peopleAgents = agents
-    // Live agents first, then idle, then away; the box defaults to the first one, so a message goes to an agent that can hear it.
+    // Agents the room can wake first (a terminal it can type into, then a Concord receiver), then by liveness; the box defaults to the first, so a message goes to an agent that can answer.
     const rank = (a) => ({ live: 0, idle: 1 }[a.state.split('/')[0]] ?? 2)
-    const everyone = agents.filter((a) => kind(a.id) !== 'human' && kind(a.id) !== 'relay' && a.id !== me).sort((x, y) => rank(x) - rank(y))
+    const reachRank = (a) => ({ council: 0, terminal: 0, concord: 1 }[reach[a.id]] ?? 2)
+    const everyone = agents.filter((a) => kind(a.id) !== 'human' && kind(a.id) !== 'relay' && a.id !== me).sort((x, y) => reachRank(x) - reachRank(y) || rank(x) - rank(y))
     const targets = everyone.filter((a) => !hidden.includes(a.id))
     const gone = everyone.filter((a) => hidden.includes(a.id))
     const live = (a) => a.state.split('/')[0]
-    mentionAgents = targets.map((a) => ({ id: a.id, name: nameOf(a.id), state: live(a) + (pullOnly(a.id) ? ' · pull-only' : ''), pull: pullOnly(a.id), away: live(a) === 'away' }))
+    mentionAgents = targets.map((a) => ({ id: a.id, name: nameOf(a.id), state: live(a) + (noWake(a.id) ? ' · can’t wake' : ''), pull: noWake(a.id), away: live(a) === 'away' }))
     noteIds(agents.map((a) => a.id))
-    const key = JSON.stringify(targets) + JSON.stringify(gone) + showHidden + me + JSON.stringify(nicks) + JSON.stringify(wake) + order.join()
+    const key = JSON.stringify(targets) + JSON.stringify(gone) + showHidden + me + JSON.stringify(nicks) + JSON.stringify(reach) + order.join()
     if (key === lastRoster) return
     lastRoster = key
     const removedBtn = $('removedBtn')
@@ -103,22 +104,22 @@
     removedBtn.textContent = showHidden ? 'Hide removed agents' : `${gone.length} removed · show`
     const chip = (a, isGone) => {
       const c = document.createElement('span'); c.className = 'chip ' + brand(a.id) + (a.state.startsWith('live') ? ' live' : '') + (isGone ? ' gone' : '')
-      c.title = (isGone ? `${a.id}\nRemoved from the room` : `${a.id}\nClick the name to rename`) + (pullOnly(a.id) ? `\n${PULL_TIP}` : '')
+      c.title = (isGone ? `${a.id}\nRemoved from the room` : `${a.id}\nClick the name to rename`) + (noWake(a.id) ? `\n${NOWAKE_TIP}` : '')
       const dot = document.createElement('i'); const ic = document.createElement('span'); ic.innerHTML = icon(a.id, true)
       const label = document.createElement('span'); label.textContent = nameOf(a.id)
-      const st = document.createElement('span'); st.className = 'st'; st.textContent = live(a) + (pullOnly(a.id) ? ' · pull-only' : '')
+      const st = document.createElement('span'); st.className = 'st'; st.textContent = live(a) + (noWake(a.id) ? ' · can’t wake' : '')
       const x = document.createElement('button'); x.type = 'button'; x.className = 'x'
       x.textContent = isGone ? '↺' : '×'
-      x.title = isGone ? 'Bring back into the room' : 'Remove from the room. It keeps running; this only hides it here.'
+      x.title = isGone ? 'Bring back into the room' : a.council ? 'Release from the council. Its chat stays open in Orca as an ordinary chat.' : 'Remove from the room. It keeps running; this only hides it here.'
       x.setAttribute('aria-label', `${isGone ? 'Bring back' : 'Remove'} ${nameOf(a.id)}`)
-      x.addEventListener('click', () => setHidden(a.id, !isGone))
+      x.addEventListener('click', () => (a.council ? releaseMember(a.id) : setHidden(a.id, !isGone)))
       if (!isGone) label.addEventListener('click', () => startRename(c, label, a.id))
       c.append(ic.firstChild, label, dot, st, x); return c
     }
     $('chips').replaceChildren(...targets.map((a) => chip(a, false)), ...(showHidden ? gone.map((a) => chip(a, true)) : []))
     const prev = toSel.value
     toSel.replaceChildren(...(targets.length ? targets : [{ id: '', state: 'no agents present' }]).map((a) => {
-      const o = document.createElement('option'); o.value = a.id; o.textContent = a.id ? `${nameOf(a.id)} (${live(a)}${pullOnly(a.id) ? ', pull-only' : ''})` : 'No agents present'; return o
+      const o = document.createElement('option'); o.value = a.id; o.textContent = a.id ? `${nameOf(a.id)} (${live(a)}${noWake(a.id) ? ', can’t wake' : ''})` : 'No agents present'; return o
     }))
     toSel.disabled = targets.length === 0
     if (chosenByUser && targets.some((a) => a.id === prev)) toSel.value = prev
@@ -127,6 +128,11 @@
   }
 
   // Remove an agent from the room (or bring it back): only hides it here, kept in the plugin's settings. The agent itself keeps running.
+  async function releaseMember(id) {
+    try { await ask('council.release', { id }, 40000); setNote(`${nameOf(id)} released. Its chat stays open in Orca.`, 'ok') }
+    catch (err) { setNote(`Could not release ${nameOf(id)}: ${(err && err.message) || err}`, 'bad') }
+    refresh()
+  }
   async function setHidden(id, flag) {
     try {
       const out = await ask('concord.hide', { id, hidden: flag }, 8000)
@@ -158,7 +164,7 @@
   function updateSend() {
     sendBtn.disabled = sending || recipients().length === 0 || !text.value.trim()
     const ids = mentioned(); $('toline').textContent = ids.length ? 'Sending to: ' + ids.map(nameOf).join(', ') : ''
-    const slow = recipients().filter(pullOnly)
+    const slow = recipients().filter(noWake)
     $('warn').textContent = slow.length ? `${slow.map(nameOf).join(', ')} can't be woken while idle: ${slow.length === 1 ? 'it reads' : 'they read'} this the next time ${slow.length === 1 ? 'it takes' : 'they take'} a turn.` : ''
   }
   function autosize() { text.style.height = 'auto'; text.style.height = Math.min(text.scrollHeight, 140) + 'px' }
@@ -177,7 +183,7 @@
       setBanner(''); setStatus('Live', 'ok'); $('status').title = snap.repoRoot
       try {
         const people = await ask('concord.agents', {}, 12000)
-        me = people.me; nicks = people.nicknames || {}; hidden = people.hidden || []; wake = people.wake || {}; $('me').textContent = 'Sending as ' + nameOf(me) + ' (' + me + ')'
+        me = people.me; nicks = people.nicknames || {}; hidden = people.hidden || []; reach = people.reach || {}; $('me').textContent = 'Sending as ' + nameOf(me) + ' (' + me + ')'
         noteIds(snap.messages.flatMap((m) => [m.from, m.to]))
         rosterAgents = people.agents.filter((a) => kind(a.id) !== 'human' && kind(a.id) !== 'relay' && a.id !== me && !hidden.includes(a.id))
         renderRoster(people.agents)
@@ -196,23 +202,27 @@
     if (sendBtn.disabled) return
     const to = recipients(), content = text.value
     sending = true; updateSend(); text.disabled = true; setNote('Sending…')
-    const ok = [], bad = []
+    const ok = [], bad = [], woke = [], busy = [], cold = [], asked = []
     try {
       for (const id of to) {
         try {
-          const out = await orca.plugin.request('concord.send', { to: id, content }, { timeoutMs: 20000 })
+          const out = await orca.plugin.request('concord.send', { to: id, content }, { timeoutMs: 30000 })
           ok.push(`${nameOf(id)} (${out.status}${out.delivery ? ', ' + out.delivery : ''})`)
+          const how = (out.wake || {}).how
+          if (how === 'council') asked.push(id); else if (how === 'terminal') woke.push(id); else if (how === 'busy') busy.push(id); else if (how === 'none' || how === 'unknown') cold.push(id)
         } catch (e) { bad.push(`${nameOf(id)}: ${(e && e.message) || e}`) }
       }
       if (ok.length) { text.value = ''; autosize(); closeMention() }
       const names = (ids) => ids.map(nameOf).join(', ')
-      const slow = to.filter(pullOnly)
-      const away = to.filter((id) => !pullOnly(id) && (mentionAgents.find((a) => a.id === id) || {}).away)
-      const one = slow.length === 1
-      const idle = (slow.length ? ` ${names(slow)} can't be woken while idle, so ${one ? 'it reads' : 'they read'} this the next time ${one ? 'it takes' : 'they take'} a turn. Type in ${one ? 'its' : 'their'} own chat or terminal to make ${one ? 'it' : 'them'} act now.` : '')
-        + (away.length ? ` ${names(away)} ${away.length === 1 ? 'is' : 'are'} away and may not see this until active again.` : '')
+      const be = (ids, one, many) => (ids.length === 1 ? one : many)
+      const away = to.filter((id) => !woke.includes(id) && (mentionAgents.find((a) => a.id === id) || {}).away)
+      const extra = (asked.length ? ` ${names(asked)}: asked through Orca. ${be(asked, 'Its', 'Their')} answer shows up here when ${be(asked, 'it finishes', 'they finish')}, usually within a minute.` : '')
+        + (woke.length ? ` ${names(woke)}: typed into ${be(woke, 'its', 'their')} terminal, so ${be(woke, 'it', 'they')} should answer here shortly.` : '')
+        + (busy.length ? ` ${names(busy)} ${be(busy, 'is', 'are')} busy and will pick it up on ${be(busy, 'its', 'their')} next step.` : '')
+        + (cold.length ? ` ${names(cold)} can't be woken while idle, so ${be(cold, 'it reads', 'they read')} this only the next time ${be(cold, 'it takes', 'they take')} a turn. Type in ${be(cold, 'its', 'their')} own chat or terminal to make ${be(cold, 'it', 'them')} act now.` : '')
+        + (away.length ? ` ${names(away)} ${be(away, 'is', 'are')} away and may not see this until active again.` : '')
       if (bad.length) setNote(`${ok.length ? 'Sent to ' + ok.join(', ') + '. ' : ''}Failed: ${bad.join('; ')}`, 'bad')
-      else setNote(`Sent to ${ok.join(', ')}. "queued" is not "delivered", so watch the receipt.${idle}`, 'ok')
+      else setNote(`Sent to ${ok.join(', ')}.${woke.length || asked.length === ok.length ? '' : ' "queued" is not "delivered", so watch the receipt.'}${extra}`, 'ok')
       stick = true
       await refresh(); toBottom()
     } finally { sending = false; text.disabled = false; updateSend(); text.focus() }
@@ -422,11 +432,15 @@
   document.addEventListener('click', (e) => { if (!amenu.contains(e.target)) setMenu(false) })
   amenu.addEventListener('click', async (e) => {
     const b = e.target.closest('button[data-agent]'); if (!b) return
-    const label = `${b.dataset.agent === 'codex' ? 'Codex' : 'Claude Code'} ${b.dataset.surface}`
+    const isCouncil = b.dataset.surface === 'council'
+    const label = isCouncil ? `${b.dataset.agent === 'codex' ? 'Codex' : 'Claude'} council member` : `${b.dataset.agent === 'codex' ? 'Codex' : 'Claude Code'} ${b.dataset.surface}`
     const items = amenu.querySelectorAll('button')
     for (const x of items) x.disabled = true
     setMenu(false); setNote(`Starting ${label}…`)
-    try { await ask('agent.start', { agent: b.dataset.agent, surface: b.dataset.surface }, 40000); setNote(`Started ${label}. It shows up here once it joins.`, 'ok') }
+    try {
+      if (isCouncil) { await ask('council.start', { agent: b.dataset.agent }, 120000); setNote(`Started a ${label}. It shows up here now and turns live once it reports in.`, 'ok') }
+      else { await ask('agent.start', { agent: b.dataset.agent, surface: b.dataset.surface }, 40000); setNote(`Started ${label}. It shows up here once it joins.`, 'ok') }
+    }
     catch (err) { setNote(`Could not start ${label}: ${(err && err.message) || err}`, 'bad') }
     finally { for (const x of items) x.disabled = false; refresh() }
   })

@@ -164,12 +164,15 @@
   </header>
   <div id="amenu" role="menu" aria-label="Start an agent in this room">
     <div class="grp">Claude Code</div>
-    <button type="button" role="menuitem" data-agent="claude" data-surface="chat">Chat</button>
-    <button type="button" role="menuitem" data-agent="claude" data-surface="terminal">Terminal</button>
+    <button type="button" role="menuitem" data-agent="claude" data-surface="chat">Chat (answers while its session runs)</button>
+    <button type="button" role="menuitem" data-agent="claude" data-surface="terminal">Terminal (answers you)</button>
     <div class="grp">Codex</div>
-    <button type="button" role="menuitem" data-agent="codex" data-surface="chat">Chat</button>
-    <button type="button" role="menuitem" data-agent="codex" data-surface="terminal">Terminal</button>
-    <div class="hint">Starts in this room's repository and joins the room. It waits for you and does not edit files. Claude Code is woken by Concord when idle. An idle Codex is not (Concord needs its own Codex launch for that), so it only sees a message when it next acts.</div>
+    <button type="button" role="menuitem" data-agent="codex" data-surface="chat">Chat (can’t be woken when idle)</button>
+    <button type="button" role="menuitem" data-agent="codex" data-surface="terminal">Terminal (answers you)</button>
+    <div class="grp">Council member (answers every time)</div>
+    <button type="button" role="menuitem" data-agent="claude" data-surface="council">Claude (kept open, answers in the room)</button>
+    <button type="button" role="menuitem" data-agent="codex" data-surface="council">Codex (kept open, answers in the room)</button>
+    <div class="hint">Starts in this room's repository and joins the room. It waits for you and does not edit files. A terminal agent answers when you message it: the room types your message into its terminal. A Claude chat answers while its session is still running; Orca ends an idle chat after a while, and after that it only sees a message when it next acts. A Codex chat is never woken when idle. A council member is started by this room through Orca’s own orchestration: your message goes out as a send and its answer comes back from the mailbox, even when it was idle, for Claude and for Codex. It is told to answer read-only; it runs with the same Orca agent permissions as any chat you start, so treat that as an instruction, not a lock. Its coordinator tab “Concord Room council (leave alone)” must stay open. Claude may first ask you to accept “Bypass Permissions” in its terminal tab; only you can do that.</div>
   </div>
   <div id="handoffs" aria-label="Handoffs waiting for you"></div>
   <div id="jiractx" aria-label="Jira issues pulled into this room"></div>
