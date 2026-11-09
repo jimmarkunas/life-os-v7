@@ -6,6 +6,7 @@ import { existsSync } from 'node:fs'
 import { promisify } from 'node:util'
 import { stat, realpath, readFile, writeFile, mkdir, lstat, readdir, appendFile } from 'node:fs/promises'
 import path from 'node:path'
+import * as council from './council.mjs'
 
 const execFileAsync = promisify(execFile)
 const MAX_MESSAGES = 80
@@ -294,6 +295,27 @@ async function orcaJson(args, runner = execFileAsync) {
     fail('unavailable', err?.code === 'ENOENT' ? 'Orca CLI not found.' : `Orca Jira call failed (${err?.code ?? 'runtime_error'}). Nothing was confirmed created.`)
   }
   try { return JSON.parse(out.stdout) } catch { fail('invalid_output', 'Orca did not return JSON.') }
+}
+
+/** Orca call for the council: longer timeouts than Jira's (worker-start launches an agent) and errors that say what failed. */
+export function councilOrca(runner = execFileAsync) {
+  return async (args, ms = 30000) => {
+    let out
+    try {
+      out = await runner(orcaBin(), args, { timeout: ms, maxBuffer: 8 * 1024 * 1024, shell: false, windowsHide: true, env: process.env })
+    } catch (err) {
+      if (err?.code === 'ENOENT') fail('unavailable', 'Orca CLI not found.')
+      const said = String(err?.stderr || err?.stdout || '').trim().split('\n').filter(Boolean).slice(-1)[0] || ''
+      fail('unavailable', `Orca ${args.slice(0, 2).join(' ')} failed${err?.killed ? ' (timed out)' : ''}${said ? `: ${said.slice(0, 200)}` : ''}.`)
+    }
+    try { return JSON.parse(out.stdout) } catch { fail('invalid_output', 'Orca did not return JSON.') }
+  }
+}
+
+/** The council's context for one call: its Orca runner, the repo it works in, and its state file next to the handoffs. */
+export async function councilContext({ repoRoot, handoffDir, runner }) {
+  const root = await validateRepo(repoRoot)
+  return { orca: councilOrca(runner), now: () => new Date().toISOString(), fail, repoRoot: root, stateFile: path.join(defaultHandoffDir(handoffDir), 'council.json') }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -740,16 +762,39 @@ export default function activate(orca) {
     executable: await orca.settings.get('concordExecutable'),
     senderId: await orca.settings.get('senderId')
   })
+  let syncing = null                                         // the panel polls every 3 s; one mailbox read at a time, and never longer than 8 s of a poll
+  const syncOnce = (ctx) => {
+    if (!syncing) syncing = council.syncCouncil(ctx).catch(() => {}).finally(() => { syncing = null })
+    return Promise.race([syncing, new Promise((resolve) => setTimeout(resolve, 8000))])
+  }
+  const councilCtx = async () => { const c = await handoffSettings(); return councilContext({ repoRoot: c.repoRoot, handoffDir: c.handoffDir }) }
   orca.panels.handle('concord.messages', async () => {
     const s = await settings()
-    return getMessages(s.repoRoot, s.executable)
+    const concord = await getMessages(s.repoRoot, s.executable)
+    try {                                                     // the council's answers come from Orca's mailbox; a failure here must not hide the room
+      const ctx = await councilCtx()
+      await syncOnce(ctx)
+      const state = await council.loadState(ctx.stateFile, ctx.repoRoot)
+      const extra = council.councilMessages(state)
+      if (extra.length) return { ...concord, messages: [...(concord.messages ?? []), ...extra].sort((a, b) => String(a.at).localeCompare(String(b.at)) || String(a.id).localeCompare(String(b.id))) }
+    } catch { /* no council yet, or Orca unavailable: show the Concord messages alone */ }
+    return concord
   })
   orca.panels.handle('concord.agents', async () => {
     const s = await settings()
-    const { agents } = await getAgents(s.repoRoot, s.executable)
+    const { agents: found } = await getAgents(s.repoRoot, s.executable)
+    let members = [], dup = []
+    try {
+      const ctx = await councilCtx()
+      const state = await council.loadState(ctx.stateFile, ctx.repoRoot)
+      members = council.councilAgents(state); dup = council.councilConcordIds(state)   // a member shows once, as the member, not also as its Concord agent
+    } catch { /* no council */ }
+    const agents = [...found.filter((a) => !dup.includes(a.id)), ...members]
     const hidden = parseHidden(await orca.settings.get('hiddenAgents'))
-    const others = agents.filter((a) => !['human', 'relay'].includes(a.id.split(':')[0]) && !hidden.includes(a.id))
-    return { agents, me: defaultSenderId(s.senderId), nicknames: parseNicknames(await orca.settings.get('nicknames')), hidden, reach: await getReach({ repoRoot: s.repoRoot, executable: s.executable, agents: others }) }
+    const others = found.filter((a) => !['human', 'relay'].includes(a.id.split(':')[0]) && !hidden.includes(a.id) && !dup.includes(a.id))
+    const reach = await getReach({ repoRoot: s.repoRoot, executable: s.executable, agents: others })
+    for (const m of members) reach[m.id] = 'council'
+    return { agents, me: defaultSenderId(s.senderId), nicknames: parseNicknames(await orca.settings.get('nicknames')), hidden, reach }
   })
   const handoffSettings = async () => ({
     handoffDir: await orca.settings.get('handoffDir'),
@@ -766,6 +811,8 @@ export default function activate(orca) {
   orca.panels.handle('jira.unlink', async (input) => unlinkJira(input?.key, (await handoffSettings()).repoRoot))
   orca.panels.handle('jira.startChat', async (input) => { const c = await handoffSettings(); return startJiraChat({ key: input?.key, agent: input?.agent, template: input?.template, repoRoot: c.repoRoot, handoffDir: c.handoffDir }) })
   orca.panels.handle('agent.start', async (input) => { const c = await handoffSettings(); return startRoomAgent({ agent: input?.agent, surface: input?.surface, repoRoot: c.repoRoot, handoffDir: c.handoffDir }) })
+  orca.panels.handle('council.start', async (input) => council.startMember(await councilCtx(), { agent: input?.agent }))
+  orca.panels.handle('council.release', async (input) => council.releaseMember(await councilCtx(), input?.id))
   orca.panels.handle('concord.rename', async (input) => {
     const next = withNickname(parseNicknames(await orca.settings.get('nicknames')), input?.id, input?.name)
     await orca.settings.set('nicknames', JSON.stringify(next))
@@ -778,6 +825,11 @@ export default function activate(orca) {
   })
   orca.panels.handle('concord.send', async (input) => {
     const s = await settings()
+    if (typeof input?.to === 'string' && input.to.startsWith('council-')) {          // council members are asked through Orca's mailbox, not Concord
+      const from = defaultSenderId(s.senderId)
+      const [sent] = await council.askMembers(await councilCtx(), { ids: [input.to], text: input.content, from })
+      return { to: input.to, from, messageId: sent.taskId, status: 'asked', delivery: sent.delivery || undefined, wake: { how: 'council' } }
+    }
     const out = await sendMessage({ ...s, to: input?.to, content: input?.content })       // recorded in Concord, so it shows in the room
     let wake
     try { wake = await wakeAgent({ repoRoot: s.repoRoot, executable: s.executable, to: out.to, sender: out.from, content: input.content, messageId: out.messageId }) }
