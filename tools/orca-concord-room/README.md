@@ -120,6 +120,15 @@ This v0.1.0 panel is **read-only**; prompts are authored in native Orca agent ch
 - **Remove an agent from the room:** each agent chip has an **x**. It hides the agent from the room, the **To** box, the **@** list, **@everyone** and handoff targets, and says so. It does not stop the agent, and messages already sent stay in the history. A **N removed · show** link shows the hidden ones dimmed, each with a bring-back button. Stored as a list of agent ids in the new `hiddenAgents` setting (same `settings:own` access; no new capability).
 - Helpers for @mentions are in `panel/mentions.js` (pure, no DOM), unit-tested in a Node `vm`; the panel and the center-tab editor both load it before `room.js`.
 
+## v0.15.0: council rounds (the room relays answers between members)
+
+Council members cannot talk to each other: an Orca worker only reports to its coordinator, and Concord cannot wake an idle Codex. So the room is the go-between. When you address **two or more council members** (the To box, or @mentions), a **Round** menu appears next to it: **off**, **+1 reply to each other** or **+2 replies**. With a round on, the question goes to every chosen member as usual; when all of them have answered, the room sends each member the *other* members' answers and asks it to respond (agree, disagree, change its mind), then repeats up to the number you picked. Everything uses the same `orchestration send` and Run mailbox as a normal question.
+
+- **In the room** each relay shows as a short line from you (“Round 2: relayed 1 other answer and asked for a response.”), not the full relayed text, so it is not passed off as something you wrote. The full relay (each other member's answer, cut at 2,500 characters) is what the member receives.
+- **Limits:** at most 3 follow-ups; a member never receives its own answer back; a member that has not answered after 10 minutes is dropped from that round, and a round with fewer than two answers ends early with a note; releasing a member drops it from the round; a failed send stops the round with a visible note.
+- **Cost:** every member reads every other member's answer each round, so tokens grow with members × rounds.
+- **Safety:** `council.json` reads and writes now queue behind each other in the worker, so a send and a sync cannot overwrite each other.
+
 ## v0.14.0: council members (Orca's own orchestration as the harness)
 
 The room is now the coordinator, the way a shell was when this was proven by hand. **＋ Agent → Council member** starts a kept-open Claude or Codex worker with `orca orchestration worker-start --keep-open`. Your message to it goes out as `orchestration send`; Orca wakes the worker even when its chat was idle, and its answer comes back as a `worker_done` in the Run's mailbox, which the room reads with `orchestration inbox` and shows as a normal reply. No Concord receiver, no terminal typing, no private Orca RPC. Concord stays for claims, overlap warnings and handoff evidence; a council member also registers in Concord, and the room shows it once, as the member.
