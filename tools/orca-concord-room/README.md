@@ -143,6 +143,10 @@ Written after simulating both in a throwaway HOME (LIFE-416 GWT-E1/E2). Concord 
 
 **Known bug this works around:** Concord 0.20.0's `setup` rewrites the Concord hooks block in `~/.codex/config.toml` and drops the opening marker and two comment lines. Setup does not undo that and neither does rolling Concord back, so restoring from the backup is the only fix.
 
+## v0.18.0: send a Jira issue to the council
+
+**＋ Jira → open an issue** now has a **Send to council** row: tick the council members (all are ticked), pick **Review (read-only)** or **Plan (no changes)**, and press the button. Each ticked member gets the ticket as a question through the same Orca send as any council question, with the issue text marked as untrusted data, and answers in the room. The room shows one short line (“Jira LIFE-416: title (review)”) rather than the whole description. There is no Implement option: council members are read-only. **Pull into this room** is unchanged and only links the issue to the workspace (the “Pulled in” chip and Orca's workspace card); it never sent anything to an agent, which is why it looked like nothing happened. Its confirmation now says so and points at Send to council. A member that is busy takes the ticket into its current task and the room says so.
+
 ## v0.17.0: pick a model for a council member, hand a reply off
 
 - **Model and effort.** **＋ Agent** now has a model box (type any model id; a few suggestions are listed) and an effort menu under the council members. They are passed to `orca orchestration worker-start --model/--effort` only when you fill them in; empty means the agent's own default, as before. Orca applies an effort to a chosen model, so an effort without a model is refused, and a model id is checked for plain characters before it reaches Orca. The roster shows the choice, for example “Council member (codex, gpt-6-luna high)”. This plugin does not know which ids your Orca and agents accept: a wrong one is Orca's error to report.
