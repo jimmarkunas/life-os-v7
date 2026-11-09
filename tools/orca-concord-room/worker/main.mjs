@@ -439,6 +439,18 @@ export function jiraChatPrompt(issue, template) {
   ].join('\n')
 }
 
+/** The room's Jira "Send to council": the ticket goes to the chosen council members as a read-only question (review or plan only, never implement). */
+export async function sendJiraToCouncil(input, deps = {}) {
+  if (!['review', 'plan'].includes(input?.template)) fail('invalid_params', 'Council members only review or plan: they are read-only.')
+  const ids = Array.isArray(input?.ids) ? input.ids.filter((x) => typeof x === 'string') : []
+  if (ids.length === 0 || ids.some((x) => !x.startsWith('council-'))) fail('invalid_params', 'Choose at least one council member.')
+  const issue = await (deps.issue ?? jiraIssue)(input.key)
+  const ctx = deps.ctx ?? await councilContext({ repoRoot: input.repoRoot, handoffDir: input.handoffDir })
+  const sent = await council.askMembers(ctx, { ids, text: jiraChatPrompt(issue, input.template), from: input.from, label: `Jira ${issue.key}: ${issue.title} (${input.template})` })
+  await audit(defaultHandoffDir(input.handoffDir), { op: 'jira-council', jira: issue.key, members: ids.length, template: input.template, outcome: 'sent' }).catch(() => {})
+  return { key: issue.key, sent: sent.map((x) => ({ id: x.id, queued: x.queued })) }
+}
+
 /** First message of an agent started from the room's "Agent" menu: join the room, then wait. It carries no task and no authority. */
 export function roomAgentPrompt(agent) {
   const kind = agent === 'codex' ? 'codex' : 'claude-code'
@@ -829,6 +841,10 @@ export default function activate(orca) {
   orca.panels.handle('jira.linked', async () => ({ issues: await linkedJira((await handoffSettings()).repoRoot) }))
   orca.panels.handle('jira.link', async (input) => linkJira(input?.key, (await handoffSettings()).repoRoot))
   orca.panels.handle('jira.unlink', async (input) => unlinkJira(input?.key, (await handoffSettings()).repoRoot))
+  orca.panels.handle('jira.sendCouncil', async (input) => {      // give a Jira issue to council members as a read-only question
+    const c = await handoffSettings()
+    return sendJiraToCouncil({ key: input?.key, ids: input?.ids, template: input?.template, from: defaultSenderId((await settings()).senderId), repoRoot: c.repoRoot, handoffDir: c.handoffDir })
+  })
   orca.panels.handle('jira.startChat', async (input) => { const c = await handoffSettings(); return startJiraChat({ key: input?.key, agent: input?.agent, template: input?.template, repoRoot: c.repoRoot, handoffDir: c.handoffDir }) })
   orca.panels.handle('agent.start', async (input) => { const c = await handoffSettings(); return startRoomAgent({ agent: input?.agent, surface: input?.surface, repoRoot: c.repoRoot, handoffDir: c.handoffDir }) })
   orca.panels.handle('council.start', async (input) => council.startMember(await councilCtx(), { agent: input?.agent, model: input?.model, effort: input?.effort }))
