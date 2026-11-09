@@ -52,6 +52,30 @@ class Decide(unittest.TestCase):
             self.assertEqual(A.decide(p, *args)[0], "deny", args)
 
 
+class MailDriveCalendar(unittest.TestCase):
+    """Nov 9, 2026 (Jim, LIFE-374): gmail, drive and calendar are services of the policy, read only in v1, off unless a row says otherwise."""
+
+    def test_they_are_known_services_and_a_missing_row_means_off(self):
+        p = policy()
+        for service in ("gmail", "drive", "calendar"):
+            self.assertIn(service, A.SERVICES)
+            self.assertEqual(A.decide(p, AUD, service, "read"), ("deny", "service_off"))
+        self.assertEqual(A.decide(p, AUD, "slack", "read"), ("deny", "unknown_service"))
+
+    def test_read_works_and_every_other_kind_is_refused_even_when_the_file_says_write(self):
+        p = policy(agents={AUD: {"gmail": "write", "drive": "read", "calendar": "write"}})
+        for service in ("gmail", "drive", "calendar"):
+            self.assertEqual(A.decide(p, AUD, service, "read")[0], "allow", service)
+            for kind in ("write", "delete", "bulk"):
+                self.assertEqual(A.decide(p, AUD, service, kind), ("deny", "service_read_only_in_v1"), (service, kind))
+        self.assertEqual(A.level_of(p, AUD, "gmail"), "read")
+
+    def test_an_existing_policy_file_without_the_new_services_still_loads(self):
+        p = policy()
+        self.assertEqual(p["agents"][AUD]["gmail"], "off")
+        self.assertEqual(p["default"]["calendar"], "off")
+
+
 class Load(unittest.TestCase):
     def test_bad_documents_raise(self):
         bad = ["", "[]", "{", json.dumps({**DOC, "version": 2}), json.dumps({**DOC, "bulk_limit": 0}), json.dumps({**DOC, "bulk_limit": "10"}),
