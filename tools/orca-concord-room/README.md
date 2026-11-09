@@ -49,3 +49,9 @@ This v0.1.0 panel is **read-only**; prompts are authored in native Orca agent ch
 - Replies to a human sender are stored as `sent`; a human has no live inbox, so there are no read receipts for you.
 - Orca did not ask for a fresh approval for this version, because its declared access (`settings:own`) is unchanged and trusted-worker code can already run processes. Review the worker code before trusting this plugin.
 - Not yet covered: chat-vs-terminal labels, other repositories, Codex chat agents (see the LOS-95 follow-up tickets).
+
+## v0.3.0: chat layout
+
+- The panel is now a plain HTML frame (`panel/index.html`) instead of Orca's component panel, so it can behave like a normal chat: messages run oldest to newest, the view stays at the newest message unless you scroll up (a "New messages" button appears), and the composer is pinned to the bottom (Enter sends, Shift+Enter adds a line).
+- It talks only to this plugin's own worker through `orca.plugin.request`; message text is always inserted with `textContent`, never as HTML. The worker and manifest access are unchanged (`settings:own`).
+- Orca cannot script HTML panels from the command line (`orca plugin shot --act` refuses them), so the page was exercised in a browser against a stand-in bridge: typed send, error path (draft kept, nothing added), auto-scroll, and roster/recipient list.

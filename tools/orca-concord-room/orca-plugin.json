@@ -3,8 +3,8 @@
   "execution": "trusted-worker",
   "id": "concord-room",
   "name": "Concord Room",
-  "version": "0.2.0",
-  "description": "Live Concord message room inside Orca: shows real agent messages and lets you send prompts to present agents, using Concord\u0027s own local store and MCP server.",
+  "version": "0.3.0",
+  "description": "Live Concord message room inside Orca: shows real agent messages and lets you send prompts to present agents, using Concord's own local store and MCP server.",
   "engines": {
     "orca": ">=1.4.246"
   },
@@ -16,8 +16,7 @@
         "id": "room",
         "title": "Concord Room",
         "icon": "agent",
-        "entry": "src/panel.tsx",
-        "ui": "components"
+        "entry": "panel/index.html"
       }
     ],
     "settings": [

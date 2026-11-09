@@ -1,0 +1,195 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root {
+    --fg: var(--orca-foreground, #e6e6e6);
+    --bg: var(--orca-background, #151515);
+    --muted: color-mix(in srgb, var(--fg) 55%, var(--bg));
+    --line: color-mix(in srgb, var(--fg) 14%, var(--bg));
+    --card: color-mix(in srgb, var(--fg) 7%, var(--bg));
+    --mine: color-mix(in srgb, #4d8dff 28%, var(--bg));
+    --ok: #3fb950; --warn: #d29922; --bad: #f85149;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { display: flex; flex-direction: column; font: 13px/1.4 system-ui, -apple-system, sans-serif; color: var(--fg); background: var(--bg); }
+  header { flex: none; padding: 10px 12px 8px; border-bottom: 1px solid var(--line); }
+  .title { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  h1 { font-size: 14px; margin: 0; font-weight: 600; }
+  .badge { font-size: 11px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+  .badge.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 50%, var(--bg)); }
+  .badge.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 50%, var(--bg)); }
+  #chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  .chip { font-size: 11px; padding: 1px 8px; border-radius: 999px; background: var(--card); color: var(--muted); display: inline-flex; align-items: center; gap: 5px; }
+  .chip i { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); display: inline-block; }
+  .chip.live i { background: var(--ok); }
+  #banner { display: none; margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--bad) 16%, var(--bg)); color: var(--fg); border: 1px solid color-mix(in srgb, var(--bad) 45%, var(--bg)); font-size: 12px; }
+  #wrap { position: relative; flex: 1; min-height: 0; }
+  #messages { height: 100%; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+  .empty { margin: auto; text-align: center; color: var(--muted); max-width: 240px; }
+  .msg { display: flex; flex-direction: column; max-width: 88%; }
+  .msg.mine { align-self: flex-end; align-items: flex-end; }
+  .msg.theirs { align-self: flex-start; align-items: flex-start; }
+  .who { font-size: 11px; color: var(--muted); margin: 0 4px 2px; }
+  .bubble { padding: 7px 10px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .mine .bubble { background: var(--mine); border-bottom-right-radius: 4px; }
+  .theirs .bubble { border-bottom-left-radius: 4px; }
+  .meta { font-size: 10.5px; color: var(--muted); margin: 2px 4px 0; display: flex; gap: 6px; align-items: center; }
+  .st-replied, .st-read { color: var(--ok); }
+  .st-failed { color: var(--bad); }
+  .st-sent, .st-queued { color: var(--warn); }
+  #jump { display: none; position: absolute; right: 14px; bottom: 10px; border: 1px solid var(--line); background: var(--card); color: var(--fg); border-radius: 999px; padding: 4px 10px; font-size: 11px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.35); }
+  footer { flex: none; border-top: 1px solid var(--line); padding: 8px 10px 10px; background: var(--bg); }
+  .row { display: flex; gap: 6px; align-items: center; }
+  select, textarea, button { font: inherit; color: var(--fg); }
+  select { flex: 1; min-width: 0; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; }
+  .box { display: flex; gap: 6px; align-items: flex-end; margin-top: 6px; }
+  textarea { flex: 1; resize: none; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; max-height: 140px; min-height: 36px; outline: none; }
+  textarea:focus, select:focus { border-color: #4d8dff; }
+  button#send { flex: none; width: 36px; height: 36px; border-radius: 50%; border: 0; background: #4d8dff; color: #fff; font-size: 16px; cursor: pointer; }
+  button#send:disabled { background: var(--card); color: var(--muted); cursor: default; }
+  #note { font-size: 11.5px; margin-top: 6px; min-height: 0; }
+  #note.ok { color: var(--ok); } #note.bad { color: var(--bad); }
+  .hint { font-size: 10.5px; color: var(--muted); margin-top: 4px; display: flex; justify-content: space-between; gap: 8px; }
+</style>
+</head>
+<body>
+  <header>
+    <div class="title"><h1>Concord Room</h1><span id="status" class="badge">Connecting</span></div>
+    <div id="chips"></div>
+    <div id="banner"></div>
+  </header>
+  <div id="wrap">
+    <div id="messages"><div class="empty" id="empty">Connecting to Concord…</div></div>
+    <button id="jump" type="button">New messages ↓</button>
+  </div>
+  <footer>
+    <div class="row"><select id="to" aria-label="Send to"></select></div>
+    <div class="box">
+      <textarea id="text" rows="1" maxlength="4000" placeholder="Message an agent…" aria-label="Message"></textarea>
+      <button id="send" type="button" title="Send" aria-label="Send" disabled>↑</button>
+    </div>
+    <div id="note" role="status"></div>
+    <div class="hint"><span id="me"></span><span>Enter sends · Shift+Enter new line</span></div>
+  </footer>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id)
+  const emptyEl = $('empty'), list = $('messages'), toSel = $('to'), text = $('text'), sendBtn = $('send'), note = $('note'), jump = $('jump')
+  const nodes = new Map()
+  let stick = true, me = '', sending = false, lastRoster = '', chosenByUser = false
+
+  const kind = (id) => id.split(':')[0]
+  const short = (id) => { const [k, rest] = id.split(':'); return rest ? `${k} · ${rest.slice(0, 8)}` : id }
+  const clock = (iso) => { const d = new Date(iso); return isNaN(d) ? iso : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) }
+  const nearBottom = () => list.scrollHeight - list.scrollTop - list.clientHeight < 48
+  const toBottom = () => { list.scrollTop = list.scrollHeight; stick = true; jump.style.display = 'none' }
+
+  list.addEventListener('scroll', () => { stick = nearBottom(); if (stick) jump.style.display = 'none' })
+  jump.addEventListener('click', toBottom)
+
+  function setStatus(label, cls) { const s = $('status'); s.textContent = label; s.className = 'badge' + (cls ? ' ' + cls : '') }
+  function setBanner(msg) { const b = $('banner'); b.style.display = msg ? 'block' : 'none'; b.textContent = msg || '' }
+  function setNote(msg, cls) { note.textContent = msg || ''; note.className = cls || '' }
+
+  function renderMessage(m) {
+    let el = nodes.get(m.id)
+    const isMine = m.from === me || kind(m.from) === 'human'
+    if (!el) {
+      el = document.createElement('div')
+      el.className = 'msg ' + (isMine ? 'mine' : 'theirs')
+      el.innerHTML = '<div class="who"></div><div class="bubble"></div><div class="meta"><span class="time"></span><span class="st"></span><span class="rep"></span><span class="id"></span></div>'
+      el.querySelector('.who').textContent = `${short(m.from)} → ${short(m.to)}`
+      el.querySelector('.bubble').textContent = m.content
+      el.querySelector('.time').textContent = clock(m.at)
+      el.querySelector('.rep').textContent = m.replyTo ? '↩ reply' : ''
+      el.querySelector('.id').textContent = m.id.slice(0, 8)
+      nodes.set(m.id, el)
+    }
+    const st = el.querySelector('.st')
+    const label = m.receipt || m.status
+    if (st.textContent !== label) { st.textContent = label; st.className = 'st st-' + (m.status || '') }
+    return el
+  }
+
+  function renderMessages(messages) {
+    if (messages.length === 0) { emptyEl.textContent = 'No messages yet. Pick an agent below and say hello.'; if (!emptyEl.isConnected) list.replaceChildren(emptyEl); return }
+    if (emptyEl.isConnected) emptyEl.remove()
+    const before = nodes.size
+    let added = 0
+    messages.forEach((m, i) => {
+      const el = renderMessage(m)
+      if (list.children[i] !== el) { list.insertBefore(el, list.children[i] || null); }
+    })
+    added = nodes.size - before
+    if (stick) toBottom()
+    else if (added > 0) jump.style.display = 'block'
+  }
+
+  function renderRoster(agents) {
+    const targets = agents.filter((a) => kind(a.id) !== 'human' && a.id !== me)
+    const key = JSON.stringify(targets) + me
+    if (key === lastRoster) return
+    lastRoster = key
+    $('chips').replaceChildren(...targets.map((a) => {
+      const c = document.createElement('span'); c.className = 'chip' + (a.state.startsWith('live') ? ' live' : '')
+      const dot = document.createElement('i'); const label = document.createElement('span'); label.textContent = `${short(a.id)} · ${a.state}`
+      c.append(dot, label); return c
+    }))
+    const prev = toSel.value
+    toSel.replaceChildren(...(targets.length ? targets : [{ id: '', state: 'no agents present' }]).map((a) => {
+      const o = document.createElement('option'); o.value = a.id; o.textContent = a.id ? `${a.id} (${a.state})` : 'No agents present'; return o
+    }))
+    toSel.disabled = targets.length === 0
+    if (targets.some((a) => a.id === prev)) toSel.value = prev
+    updateSend()
+  }
+
+  function updateSend() { sendBtn.disabled = sending || !toSel.value || !text.value.trim() }
+  function autosize() { text.style.height = 'auto'; text.style.height = Math.min(text.scrollHeight, 140) + 'px' }
+
+  let fetching = false
+  async function refresh() {
+    if (fetching) return
+    fetching = true
+    try {
+      const snap = await orca.plugin.request('concord.messages', {}, { timeoutMs: 12000 })
+      setBanner(''); setStatus('Live', 'ok'); $('status').title = snap.repoRoot
+      try {
+        const people = await orca.plugin.request('concord.agents', {}, { timeoutMs: 12000 })
+        me = people.me; $('me').textContent = 'Sending as ' + me; renderRoster(people.agents)
+      } catch (e) { /* roster is optional for reading */ }
+      renderMessages(snap.messages)
+    } catch (e) {
+      setStatus('Unavailable', 'bad'); setBanner((e && e.message) || String(e))
+    } finally { fetching = false }
+  }
+
+  async function send() {
+    if (sendBtn.disabled) return
+    const to = toSel.value, content = text.value
+    sending = true; updateSend(); text.disabled = true; setNote('Sending…')
+    try {
+      const out = await orca.plugin.request('concord.send', { to, content }, { timeoutMs: 20000 })
+      text.value = ''; autosize()
+      setNote(`Sent to ${to} (${out.status}${out.delivery ? ', ' + out.delivery : ''}). "queued" is not "delivered" — watch the receipt.`, 'ok')
+      stick = true
+      await refresh(); toBottom()
+    } catch (e) {
+      setNote((e && e.message) || String(e), 'bad')
+    } finally { sending = false; text.disabled = false; updateSend(); text.focus() }
+  }
+
+  text.addEventListener('input', () => { autosize(); updateSend() })
+  text.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send() } })
+  toSel.addEventListener('change', () => { chosenByUser = true; updateSend() })
+  sendBtn.addEventListener('click', send)
+
+  refresh(); setInterval(refresh, 3000)
+})()
+</script>
+</body>
+</html>
