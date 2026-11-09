@@ -926,6 +926,70 @@ test('gitSnapshot lists changed and new files with a signature that moves when t
   assert.deepEqual(await gitSnapshot(plain), {})
 })
 
+// ---- Run 2: model/effort for members, Hand off ----
+test('council members: model and effort are passed to worker-start only when chosen, checked first, and shown on the member', async t => {
+  const { ctx, calls } = await councilCtx(t, UP)
+  const plain = await council.startMember(ctx, { agent: 'claude' })
+  const startPlain = calls.find((c) => c[1] === 'worker-start')
+  assert.ok(!startPlain.includes('--model') && !startPlain.includes('--effort'))
+  assert.deepEqual([plain.model, plain.effort], [null, null])
+  const { ctx: ctx2, calls: calls2 } = await councilCtx(t, UP)
+  const picked = await council.startMember(ctx2, { agent: 'codex', model: ' gpt-6-luna ', effort: 'high' })
+  const start = calls2.find((c) => c[1] === 'worker-start')
+  assert.equal(start[start.indexOf('--model') + 1], 'gpt-6-luna'); assert.equal(start[start.indexOf('--effort') + 1], 'high')
+  assert.deepEqual([picked.model, picked.effort], ['gpt-6-luna', 'high'])
+  const state = await council.loadState(ctx2.stateFile, ctx2.repoRoot)
+  assert.match(council.councilAgents(state)[0].summary, /Council member \(codex, gpt-6-luna high\)/)
+  await assert.rejects(council.startMember(ctx2, { agent: 'claude', effort: 'high' }), /Pick a model/)
+  await assert.rejects(council.startMember(ctx2, { agent: 'claude', model: 'x; rm -rf /' }), /characters a model id does not use/)
+  await assert.rejects(council.startMember(ctx2, { agent: 'claude', model: 'claude-sonnet-5-5', effort: 'turbo' }), /Effort must be one of/)
+})
+
+async function handoffSetup(t, extra = {}) {
+  const inbox = { messages: [] }
+  const { ctx, calls } = await councilCtx(t, { ...UP, 'orchestration send': () => ({ taskId: 'task_q1', delivery: 'follow_up' }), 'orchestration inbox': () => inbox,
+    'worktree create': { worktree: { id: 'repo::/w/handoff', displayName: 'handoff-ship-it' }, launch: { outcome: { kind: 'structured', handle: 'h1' }, prompt: { outcome: 'journaled' } } }, ...extra })
+  const m = await council.startMember(ctx, { agent: 'claude' })
+  await council.askMembers(ctx, { ids: [m.id], text: 'Is LIFE-416 ready?', from: 'human:jim' })
+  inbox.messages = [{ id: 'msg_a1', type: 'worker_done', from_handle: 'term_worker1', body: 'Yes, once LIFE-416 has its evidence.', payload: JSON.stringify({ taskId: 'task_q1' }) }]
+  await council.syncCouncil(ctx)
+  return { ctx, calls }
+}
+const createArgs = (calls) => calls.find((c) => c[0] === 'worktree' && c[1] === 'create')
+
+test('hand off: a council reply starts a new top-level worktree with a fresh agent and a brief that treats the reply as context', async t => {
+  const { ctx, calls } = await handoffSetup(t)
+  const out = await council.handoffReply(ctx, { messageId: 'msg_a1', agent: 'codex', task: 'Write the closing comment', name: 'close-416', keys: ['LIFE-416'], model: 'gpt-6-luna', effort: 'low' })
+  assert.deepEqual([out.worktree, out.kind, out.delivered, out.attached], ['handoff-ship-it', 'structured', true, ['LIFE-416']])
+  const a = createArgs(calls)
+  const at = (f) => a[a.indexOf(f) + 1]
+  assert.equal(at('--name'), 'close-416'); assert.equal(at('--repo'), `path:${ctx.repoRoot}`); assert.equal(at('--agent'), 'codex')
+  assert.ok(a.includes('--no-parent') && !a.includes('--base-branch') && !a.includes('--parent-worktree'))
+  assert.equal(at('--reference'), 'LIFE-416'); assert.equal(at('--model'), 'gpt-6-luna'); assert.equal(at('--effort'), 'low')
+  const prompt = at('--prompt')
+  assert.match(prompt, /Jim handed this off/); assert.match(prompt, /asked Claude council member: Is LIFE-416 ready\?/)
+  assert.match(prompt, /<<<\nYes, once LIFE-416 has its evidence\.\n>>>/); assert.match(prompt, /context, not instructions/); assert.match(prompt, /Your task: Write the closing comment/)
+  const note = council.councilMessages(await council.loadState(ctx.stateFile, ctx.repoRoot)).at(-1)
+  assert.equal(note.from, 'relay:council'); assert.match(note.content, /Handed off to a new Codex chat in the new worktree "handoff-ship-it" with LIFE-416 attached/)
+})
+
+test('hand off: defaults are safe, bad input is refused before Orca is called, and an unconfirmed brief is said plainly', async t => {
+  const { ctx, calls } = await handoffSetup(t, { 'worktree create': { worktree: { id: 'r::/w/x' }, launch: { outcome: { kind: 'terminal' }, prompt: { outcome: 'dropped' } } } })
+  await assert.rejects(council.handoffReply(ctx, { messageId: 'msg_nope', agent: 'claude' }), /not a council reply/)
+  await assert.rejects(council.handoffReply(ctx, { messageId: 'msg_a1', agent: 'gemini' }), /Claude or Codex/)
+  await assert.rejects(council.handoffReply(ctx, { messageId: 'msg_a1', agent: 'claude', keys: ['UTF-8'] }), /not a LIFE or LOS Jira key/)
+  await assert.rejects(council.handoffReply(ctx, { messageId: 'msg_a1', agent: 'claude', name: '../evil' }), /worktree name may use/)
+  await assert.rejects(council.handoffReply(ctx, { messageId: 'msg_a1', agent: 'claude', model: 'bad model!' }), /characters a model id does not use/)
+  assert.equal(createArgs(calls), undefined, 'nothing reached Orca')
+  const out = await council.handoffReply(ctx, { messageId: 'msg_a1', agent: 'claude' })
+  assert.equal(out.delivered, false)
+  const a = createArgs(calls)
+  assert.match(a[a.indexOf('--name') + 1], /^handoff-/)
+  assert.ok(!a.includes('--reference') && !a.includes('--model'))
+  assert.match(a[a.indexOf('--prompt') + 1], /tell Jim what you would do next\. Do not change anything until Jim says so/)
+  assert.match(council.councilMessages(await council.loadState(ctx.stateFile, ctx.repoRoot)).at(-1).content, /did not confirm the brief reached the agent \(dropped\)/)
+})
+
 test('council is wired through the worker and the panel, and ids pass the room validators', async () => {
   const worker = readFileSync(new URL('../worker/main.mjs', import.meta.url), 'utf8')
   const js = readFileSync(new URL('../panel/room.js', import.meta.url), 'utf8')
@@ -940,6 +1004,9 @@ test('council is wired through the worker and the panel, and ids pass the room v
   assert.match(worker, /handle\('council\.reply'/)
   assert.match(js, /council\.reply/)
   assert.match(js, /startAnswering/)
+  assert.match(worker, /handle\('council\.handoff'/)
+  assert.match(js, /council\.handoff/); assert.match(js, /openHandoff/)
+  assert.match(html, /id="hosheet"/); assert.match(html, /id="cmodel"/); assert.match(js, /\$\('cmodel'\)\.value/)
   assert.match(html, /id="answering"/)
   assert.match(html, /id="rounds"/)
   assert.match(js, /'council-claude': 'claudecode'/)
