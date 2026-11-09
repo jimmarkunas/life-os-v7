@@ -290,7 +290,9 @@ test('handoff list reports invalid, duplicate and non-plain files instead of tru
   await writeFile(path.join(dir, 'hf-ffffffff.json'), JSON.stringify(handoff({ id: 'hf-zzzzzzzz', nonce: 'nonce-ffffffff' })))
   await writeFile(path.join(dir, 'hf-gggggggg.json'), '{broken')
   await symlink(path.join(dir, 'hf-aaaaaaaa.json'), path.join(dir, 'hf-hhhhhhhh.json'))
+  await writeFile(path.join(dir, 'council.json'), JSON.stringify({ version: 1, members: [], log: [], seen: [] }))   // the council keeps its state in this folder: it is not a handoff and must not show as an invalid one
   const { handoffs } = await listHandoffs(dir, hdeps)
+  assert.ok(!JSON.stringify(handoffs).includes('council'), 'council.json is not listed as a handoff')
   const by = Object.fromEntries(handoffs.map(h => [h.id, h]))
   assert.equal(by['hf-aaaaaaaa'].status, 'pending')
   assert.equal(by['hf-aaaaaaaa'].jiraStatus, 'To Do')
