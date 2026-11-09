@@ -280,6 +280,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/physmail/stage.py`: Gmail Physical Mail evidence -> deterministic parse -> private derivative state (MAIL-1.2). Counts only; fixed error codes.
 - `lifeos/physmail/state.py`: The Physical Mail derivative state (MAIL-1.2): one private snapshot row, rebuilt by replay from the anchor, merged idempotently on every run.
 ### lifeos/platform/
+- `lifeos/platform/access_policy.py`: LIFE-403 (epic LIFE-401): the per-agent access policy of the one access layer. Pure functions, no network.
 - `lifeos/platform/alert_registry.py`: The alert registry (LIFE-75): every alert LIFE OS can send, in one list. Each entry says who owns it, how loud it is (severity), what it means, and which channels carry i
 - `lifeos/platform/alert_settings.py`: Alert settings (LIFE-75): what Jim set on the Alert settings page, read from the repository variables every run already receives as environment. ALERTS_ENABLED is the mas
 - `lifeos/platform/alerts.py`: Platform alerts: one place that decides what is worth telling a person, once, and how (D53). Pure logic plus two sinks; no OS knowledge.
