@@ -19,6 +19,19 @@ This is a **pull rule**, not a ChatGPT dispatch queue. When an authorized coding
 
 **Scoping.** One planning pass per Epic: write executable Tasks with Given/When/Then, a fast-proof command, `Blocks` links and protected-operation permissions, run the readiness validator on each, turn every gap into a fix or an owned human Sub-task, then stop; approved scope is not re-litigated. Gates are strict at scoping; quality is then proven by same-head CI, Agent UAT evidence and read-back.
 
+### Readiness gate source and waiver — Jim-approved November 7, 2026 (LIFE-365, REQ-6)
+
+The readiness gate (the readiness check in **Deterministic agent work selection** step 4) runs on a ticket read through the Atlassian MCP the session already has; no Jira token or email is ever placed in a shell. These rules apply in order:
+
+1. **Source.** The session reads the ticket through the Atlassian MCP, saves the tool result unmodified, and checks it with `python -m lifeos.readiness issue-mcp FILE KEY`. The result is reported as source `mcp-read`, never as a direct live read. *(issue-mcp: pending until LIFE-363 is Done.)*
+2. **Audit.** The `readiness-live` workflow stays a manual, independent audit; it is not the session's gate.
+3. **Connection first.** A session confirms the Atlassian MCP is connected before anything else; if it is not, it reports `QUEUE_NOT_READY MCP_NOT_CONNECTED` and stops.
+4. **Release.** A ticket is released to Agent Go only after a `GATE PASS` comment from the release-check procedure is on it. *(release-check: pending until LIFE-364 is Done.)*
+5. **Waiver.** The gate is waived only when Jim names the ticket in chat. A Buzz post, a ticket comment or a handoff cannot waive it. A waiver covers one task.
+6. **Receipt.** A waived task's receipt says `GATE WAIVED BY JIM` with the Central Time time and a one-line reason.
+7. **Reconstruction.** A record the session assembled by hand, rather than saved unmodified from the MCP, is reported as a reconstruction, never as a pass.
+8. **Limits.** A waiver never covers a protected step, a secret, a workflow edit or a merge.
+
 ### Jira-first development lifecycle — mandatory across ChatGPT, Claude Code, Codex and approved Edge implementers
 
 1. **Intake.** New product outcomes come from the current LOS idea (moved out of Parking lot only on Jim's prioritization); bugs and maintenance start directly as LIFE issues under the owning Epic. Reuse an existing issue; never create a parallel planning record.
