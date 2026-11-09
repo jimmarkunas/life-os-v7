@@ -1,12 +1,12 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { getMessages, validateRecords, validateExecutable } from '../worker/main.mjs'
 
 test('reads genuine CLI JSON using fixed argv, without a shell, and sorts by time', async t => {
-  const root = await mkdtemp(path.join(tmpdir(), 'concord-orca-'))
+  const root = await realpath(await mkdtemp(path.join(tmpdir(), 'concord-orca-')))
   t.after(() => rm(root, { recursive: true, force: true }))
   let argv, options
   const runner = async (command, args, opts) => {
@@ -35,7 +35,7 @@ test('malformed message fails closed rather than being displayed', () => {
   assert.throws(()=>validateRecords([{content:'unattributed'}]), /malformed message/)
 })
 test('cloud-linked informational output fails closed', async t => {
-  const root = await mkdtemp(path.join(tmpdir(), 'concord-orca-'))
+  const root = await realpath(await mkdtemp(path.join(tmpdir(), 'concord-orca-')))
   t.after(() => rm(root,{recursive:true,force:true}))
   await assert.rejects(getMessages(root, 'concord', async()=>({stdout:'This repository is linked to Concord Cloud'})), /valid local JSON/)
 })
