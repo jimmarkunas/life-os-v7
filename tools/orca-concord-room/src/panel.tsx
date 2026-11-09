@@ -1,5 +1,5 @@
 // Orca native component panel: real Concord messages plus a composer to message live agents.
-import { atom, Badge, Box, Button, Callout, Heading, read, Row, Select, set, Stack, Text, Textarea, plugin, type PanelContext } from 'orca'
+import { atom, Badge, Box, Button, Callout, Card, Heading, read, Row, Select, set, Stack, Text, Textarea, plugin, type PanelContext } from 'orca'
 
 type Message = { id: string; from: string; to: string; content: string; at: string; status: string; replyTo: string | null; receipt: string | null }
 type Snapshot = { repoRoot: string; messages: Message[] }
@@ -114,6 +114,7 @@ export default function Panel() {
         {targets.map(a => <Badge key={a.id} tone={a.state.startsWith('live') ? 'success' : 'neutral'}>{short(a.id)} · {a.state}</Badge>)}
       </Row>
 
+      <Card title="Message an agent" description="Type here, pick who it goes to, press Send.">
       <Stack gap="xs">
         <Select label="To" value={read(recipient)} onChange={(v) => set(recipient, v)} placeholder="Choose an agent"
           options={targets.map(a => ({ value: a.id, label: `${a.id} (${a.state})` }))} disabled={targets.length === 0} />
@@ -126,15 +127,18 @@ export default function Panel() {
         </Row>
         {note ? <Callout tone={note.tone}>{note.text}</Callout> : null}
       </Stack>
+      </Card>
 
       <Row justify="between">
         <Text muted size="xs">{current?.repoRoot ?? 'No verified repository'} · {messages.length} messages, newest first</Text>
         <Button variant="ghost" icon="refresh" onPress={() => void refresh()} disabled={read(busy)}>Refresh</Button>
       </Row>
       {messages.length === 0 && !read(error) ? <Text muted>No messages yet. Pick an agent above and say hello.</Text> : null}
-      <Stack gap="sm">
-        {messages.map(msg => <Bubble key={msg.id} msg={msg} me={people.me} />)}
-      </Stack>
+      <Box scroll="y" maxHeight={430}>
+        <Stack gap="sm">
+          {messages.map(msg => <Bubble key={msg.id} msg={msg} me={people.me} />)}
+        </Stack>
+      </Box>
       <Text muted size="xs">Last refresh: {read(refreshAt) || 'Never'}. A readable local store is not evidence of remote delivery.</Text>
     </Stack>
   )
