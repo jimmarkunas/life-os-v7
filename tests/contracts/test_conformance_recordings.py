@@ -34,7 +34,7 @@ class RecordingsAreScrubbed(unittest.TestCase):
         self.assertEqual(violations('{"a": "' + "jane.doe" + "@" + "mail.test" + '"}'), ["email"])           # built at runtime: the privacy scan reads source text
         self.assertEqual(violations('{"t": "' + "aB3" * 12 + '"}'), ["token"])
         self.assertEqual(violations('{"n": "13105551234"}'), ["long_digits"])
-        self.assertIn("uuid", violations('{"id": "3e264d79-3af4-4f2a-a86a-b4db015a68de"}'))
+        self.assertIn("uuid", violations('{"id": "00000000-0000-4000-8000-000000000000"}'))
         self.assertEqual(violations('{"k": "secret_abcdefgh12"}'), ["key_prefix"])
         self.assertEqual(violations('{"a": "block-fake-0001", "t": "fake text"}'), [])
 
