@@ -4,11 +4,13 @@ When a pull request adds, renames or deletes a production file under lifeos/ wit
   PYTHONPATH=<a folder with coverage installed> python -m tests.testindex build     (about 3 minutes), then commit docs/test-index.json
 Age is NOT checked here (a pull request must not fail because the index aged); the hourly full run checks age and the same shape (tests/test_testindex.py CommittedIndexIsFresh)."""
 import copy
+import os
 import unittest
 
 from tests import testindex as ti
 
 
+@unittest.skipIf(os.environ.get("TESTINDEX_BUILDING"), "the index is being rebuilt by `python -m tests.testindex build`; this guard runs on every normal run")
 class IndexMatchesTheCode(unittest.TestCase):
     def test_every_production_file_is_in_the_index_and_nothing_in_it_is_gone(self):
         problems = ti.check(ti.load(), max_age_days=10 ** 6)
