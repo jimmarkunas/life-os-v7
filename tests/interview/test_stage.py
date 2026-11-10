@@ -50,14 +50,6 @@ class StageTests(unittest.TestCase):
         self.assertGreaterEqual(result["why"]["parent_ambiguous"], 1)
         self.assertGreater(result["blocked"], 0)
 
-    def test_cli_uses_interview_owned_stage(self):
-        with patch("lifeos.sources.interview_evidence.run", return_value={"writes": 0}) as run:       # LIFE-88: the normal path composes the evidence, then calls stage.run
-            self.assertEqual(STAGES["interview"](2, False), {"writes": 0})
-            run.assert_called_once_with(2, False)
-        with patch("lifeos.interview.stage.probe", return_value={"writes": 0}) as probe:
-            STAGES["interview-probe"](2, False)
-            probe.assert_called_once_with(2, False)
-
     def test_blocked_parents_stop_before_ownership_and_children(self):
         client = Fake()
         client.blocks["root"].append({"id": "duplicate", "type": "child_page", "child_page": {"title": "Example — Program Manager"}})

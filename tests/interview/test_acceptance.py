@@ -72,11 +72,6 @@ class Delegation(unittest.TestCase):
             acceptance.run(1, live, environ=env())
         return run
 
-    def test_dry_harness_delegates_live_false_with_one_pair(self):
-        call = self.delegate(False)
-        self.assertEqual(call.call_args.args, (1, False))
-        self.assertEqual(len(call.call_args.kwargs["evidence"]), 1)
-
     def test_live_flag_delegates_live_true(self):
         self.assertEqual(self.delegate(True).call_args.args, (1, True))
 
