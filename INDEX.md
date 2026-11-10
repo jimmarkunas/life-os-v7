@@ -48,6 +48,7 @@ These repository files hold feature scoping, setup, history or one product area'
 | [`docs/platform/runtime-profile.md`](docs/platform/runtime-profile.md) |
 | [`docs/platform/monitoring-finish.md`](docs/platform/monitoring-finish.md) |
 | [`docs/platform/config-registry.md`](docs/platform/config-registry.md) |
+| [`docs/platform/lint-baseline.md`](docs/platform/lint-baseline.md) |
 | [`docs/platform/test-index.md`](docs/platform/test-index.md) |
 | [`docs/test-index.json`](docs/test-index.json) |
 | [`docs/platform/fake-conformance.md`](docs/platform/fake-conformance.md) |
