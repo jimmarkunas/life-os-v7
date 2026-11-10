@@ -10,20 +10,10 @@ import urllib.parse
 import urllib.request
 
 from lifeos.platform import gdrive, google_consent as G
+from tests.kit import shared
 
 
-class Reply:
-    def __init__(self, body):
-        self.body = body
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *a):
-        return False
-
-    def read(self):
-        return json.dumps(self.body).encode()
+Reply = shared.Reply
 
 
 class Consent(unittest.TestCase):
@@ -59,9 +49,7 @@ class Consent(unittest.TestCase):
             server.server_close()
 
     def test_the_credential_is_never_printed_on_a_terminal(self):
-        class Terminal(io.StringIO):
-            def isatty(self):
-                return True
+        Terminal = shared.Terminal
         out, tty = Terminal(), io.StringIO()
         self.assertEqual(G.main((), stdout=out, tty=tty), 2)
         self.assertEqual(out.getvalue(), "")

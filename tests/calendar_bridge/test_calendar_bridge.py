@@ -11,6 +11,7 @@ from lifeos.calendar_bridge.sync import BridgeError
 from lifeos.platform import gcal
 from lifeos.platform.gcal import GcalError, GoogleCalendar
 from tests.kit.http import Response, http_error  # noqa: F401
+from tests.kit import shared
 
 ROOT = Path(__file__).resolve().parents[2]
 NOW = datetime(2026, 10, 7, 12, 0, tzinfo=timezone.utc)
@@ -62,10 +63,7 @@ class FakeGcal:
         self.items.pop(gid, None)
 
 
-class Db:
-    def __enter__(self): return self
-    def __exit__(self, *e): return False
-    def cursor(self): return self
+Db = shared.SelfCursorDb
 
 
 def connect():

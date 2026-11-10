@@ -16,6 +16,7 @@ from unittest import mock
 
 from lifeos.edge.backup import consent
 from lifeos.edge.backup import offsite_backup as ob
+from tests.kit import shared
 
 ROOT = Path(__file__).resolve().parents[3]
 HERE = ROOT / "lifeos" / "edge" / "backup"
@@ -470,9 +471,7 @@ class Consent(unittest.TestCase):
             consent.exchange("id.example", "s", "c", "http://127.0.0.1:1", "v", opener(consent.SCOPE, refresh=""))
 
     def test_it_refuses_to_print_the_credential_on_a_terminal(self):
-        class Terminal(io.StringIO):
-            def isatty(self):
-                return True
+        Terminal = shared.Terminal
         tty = io.StringIO()
         self.assertEqual(consent.main([], stdout=Terminal(), tty=tty), 2)
         self.assertIn("Refused", tty.getvalue())

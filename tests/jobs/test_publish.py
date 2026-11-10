@@ -3,6 +3,7 @@ import unittest
 
 from lifeos.jobs import identity, publish
 from lifeos.platform import limits, notion_client
+from tests.kit import shared
 
 
 class BodyTests(unittest.TestCase):
@@ -198,12 +199,7 @@ class LedgerReseedTests(unittest.TestCase):
         def fetchone(self):
             return self.next[0]
 
-    class Conn:
-        def __init__(self, cur):
-            self.cur = cur
-
-        def cursor(self):
-            return self.cur
+    Conn = shared.ConnWithCursor
 
     def test_the_seed_is_replaced_and_only_jobs_no_longer_in_the_ledger_are_released(self):
         from lifeos.jobs import publish

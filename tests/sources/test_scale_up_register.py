@@ -1,6 +1,7 @@
 import unittest
 
 from lifeos.sources import scale_up_register as reg
+from tests.kit import shared
 
 CSV = ("Organisation Name,Town/City,County,Type & Rating,Route\n"
        "ExampleCo Limited,London,Greater London,Worker (A rating),Scale-up\n"
@@ -9,9 +10,7 @@ CSV = ("Organisation Name,Town/City,County,Type & Rating,Route\n"
        "Skilled Ltd,London,Greater London,Worker (A rating),Skilled Worker\n")
 
 
-class Page:
-    def __init__(self, html, status=200):
-        self.html, self.status = html, status
+Page = shared.Page
 
 
 class Register(unittest.TestCase):

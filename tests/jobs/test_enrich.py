@@ -4,6 +4,7 @@ from datetime import datetime
 from unittest import mock
 
 from lifeos.jobs import enrich
+from tests.kit import shared
 
 
 class Page:
@@ -497,12 +498,7 @@ class LocationFromThePageTests(unittest.TestCase):
             def fetchone(self):
                 return None                                           # no stored row to compare with
 
-        class Conn:
-            def __init__(self, cur):
-                self.cur = cur
-
-            def cursor(self):
-                return self.cur
+        Conn = shared.ConnWithCursor
 
         cur = Cur()
         result = {"outcome": "ready", "description": {"full_text": "t" * 300, "summary": "s", "responsibilities": "", "requirements": "", "qualifications": "", "fingerprint": "f"},
