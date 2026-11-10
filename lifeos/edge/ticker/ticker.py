@@ -14,6 +14,7 @@ Stdlib only."""
 import json
 import os
 import shutil
+import subprocess
 import sys
 import urllib.error
 import urllib.request
@@ -28,6 +29,7 @@ VARIABLES = ("ALERTS_ENABLED", "ALERTS_MUTED_UNTIL", "ALERT_SETTINGS")
 OK = {"TICK_DISPATCHED", "WATCH_DONE", "TICKER_DRY_OK"}
 DISK_PATH, DISK_LIMIT = "/var/lib/hermeseval", 80        # LIFE-301: the Hermes loop-mounted image (10 GB, 34% used on Nov 7 2026)
 DISK_LABEL, DISK_TITLE = "hermes-disk-full", "Hermes disk is 80% full or more"
+DRIFT_LABEL, DRIFT_TITLE = "deploy-drift", "Installed files on the Oracle VM differ from main"
 REFUSED = (401, 403, 404, 422)          # the token, its permissions, the workflow name or the inputs are wrong: a person must act
 
 
@@ -105,6 +107,41 @@ def disk_incident(path=DISK_PATH, limit=DISK_LIMIT, usage=shutil.disk_usage, syn
                 ("Hermes disk back under 80%", "The Hermes disk image is below the limit again.", "info", "hermes_disk_full_recovered"))
 
 
+def drift_incident(token, opener=urllib.request.urlopen, sync=None, read=None, unit_state=None, rows=None):
+    """LIFE-528: one GitHub issue + one quiet push while any repo-owned file installed on this VM differs from `main` (or its unit is not running); closes when every surface is
+    DEPLOYED. A surface that cannot be read is UNKNOWN and changes nothing. Returns the check rows (counts and surface names only)."""
+    from lifeos.platform import drift                              # noqa: PLC0415 - only the watch command needs it
+
+    def expected_for(path):
+        status, body = _status(_request(f"repos/{REPO}/contents/{path}?ref=main", token), opener)
+        return body.get("sha") if status == 200 and isinstance(body, dict) else None
+
+    def read_file(path):
+        try:
+            return Path(path).read_bytes()
+        except FileNotFoundError:
+            return drift.MISSING
+        except OSError:
+            return None
+
+    def active(unit):
+        done = subprocess.run(["systemctl", "is-active", unit], capture_output=True, text=True, timeout=15)
+        return done.stdout.strip() or None
+
+    rows = rows if rows is not None else drift.check(expected_for, read or read_file, unit_state or active)
+    signal = drift.incident_signal(rows)
+    if signal is not None:
+        counts, drifted = drift.summary(rows)
+        if sync is None:
+            from lifeos.platform import gate                       # noqa: PLC0415
+            sync = gate.sync_incident
+        sync(DRIFT_LABEL, DRIFT_TITLE, "A file installed on lifeos-edge-01 no longer matches main, or its unit is not running. Differing: " + ", ".join(drifted or ["none"]) +
+             ". A merge does not update the VM; show Jim the files and the install command, and install only with his yes. This issue closes itself when every surface matches.", signal,
+             ("Oracle files differ from main", f"{len(drifted)} installed surface(s) differ from main. Open the deploy-drift issue.", "info", "deploy_drift"),
+             ("Oracle files match main", "Every checked surface matches main again.", "info", "deploy_drift_recovered"))
+    return rows
+
+
 def watch(token, topic, opener=urllib.request.urlopen, run=None, environ=None, disk=None):
     """-> (code, status). Sets the switches, the token and the topic for this process only, then runs the watchdog's incident checks."""
     found, status = variables(token, opener)
@@ -125,6 +162,10 @@ def watch(token, topic, opener=urllib.request.urlopen, run=None, environ=None, d
         try:
             disk()
         except Exception:                                           # noqa: BLE001 - the disk check never fails the watchdog; the next run tries again
+            pass
+        try:
+            drift_incident(token, opener)                           # LIFE-528: inside the existing watchdog, no new scheduler
+        except Exception:                                           # noqa: BLE001 - the drift check never fails the watchdog either
             pass
     return "WATCH_DONE", None
 
