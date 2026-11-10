@@ -106,6 +106,65 @@ class Collect(unittest.TestCase):
             self.assertEqual(str(ctx.exception), "mac_backup_nothing_to_save")
 
 
+class Snapshot(unittest.TestCase):
+    """LIFE-542: an idle WAL-mode database (closed cleanly, so no -wal or -shm file) cannot be opened read-only."""
+
+    def make_idle_wal(self, path):
+        db = sqlite3.connect(path)
+        db.execute("pragma journal_mode=wal")
+        db.execute("create table t(x)")
+        db.executemany("insert into t values (?)", [(1,), (2,), (3,)])
+        db.commit()
+        db.close()
+        for suffix in ("-wal", "-shm"):
+            if os.path.exists(path + suffix):
+                os.remove(path + suffix)
+
+    def test_an_idle_wal_database_is_copied(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source, dest = os.path.join(tmp, "idle.db"), os.path.join(tmp, "copy.sqlite")
+            self.make_idle_wal(source)
+            mp.snapshot(source, dest)
+            self.assertEqual(sqlite3.connect(dest).execute("select count(*) from t").fetchone(), (3,))
+
+    def test_when_the_read_only_open_fails_on_an_idle_database_it_retries_once_with_immutable(self):
+        # whether SQLite refuses the read-only open depends on its version, so the refusal is simulated; the test above proves the copy itself
+        with tempfile.TemporaryDirectory() as tmp:
+            source, dest = os.path.join(tmp, "idle.db"), os.path.join(tmp, "copy.sqlite")
+            self.make_idle_wal(source)
+            real, seen = mp._copy_database, []
+            def copy(uri, target):
+                seen.append(uri.split("?")[1])
+                if uri.endswith("mode=ro"):
+                    Path(target).write_bytes(b"partial")                                      # a half-written copy must not survive into the retry
+                    raise sqlite3.OperationalError("unable to open database file")
+                return real(uri, target)
+            with mock.patch.object(mp, "_copy_database", side_effect=copy):
+                mp.snapshot(source, dest)
+            self.assertEqual(seen, ["mode=ro", "immutable=1"])
+            self.assertFalse(os.path.exists(source + "-wal") or os.path.exists(source + "-shm"))   # the immutable open leaves the source untouched
+            self.assertEqual(sqlite3.connect(dest).execute("select count(*) from t").fetchone(), (3,))
+
+    def test_a_live_database_with_a_wal_file_does_not_get_the_immutable_retry(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source, dest = os.path.join(tmp, "live.db"), os.path.join(tmp, "copy.sqlite")
+            Path(source).write_bytes(b"")
+            Path(source + "-wal").write_bytes(b"")
+            with mock.patch.object(mp, "_copy_database", side_effect=sqlite3.OperationalError("unable to open database file")) as copy:
+                with self.assertRaises(mp.PushError) as ctx:
+                    mp.snapshot(source, dest)
+            self.assertEqual(str(ctx.exception), "mac_backup_db_unreadable")
+            self.assertEqual(copy.call_count, 1)
+
+    def test_a_file_that_is_not_a_database_is_still_a_fixed_code(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = os.path.join(tmp, "bad.db")
+            Path(source).write_text("this is not a database " * 50)
+            with self.assertRaises(mp.PushError) as ctx:
+                mp.snapshot(source, os.path.join(tmp, "copy.sqlite"))
+            self.assertEqual(str(ctx.exception), "mac_backup_db_unreadable")
+
+
 class EndToEnd(unittest.TestCase):
     def test_dry_run_encrypts_deletes_the_plain_copy_prints_counts_only_and_restores(self):
         with tempfile.TemporaryDirectory() as tmp:
