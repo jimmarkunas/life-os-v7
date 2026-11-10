@@ -13,7 +13,7 @@ from html import escape as e
 from zoneinfo import ZoneInfo
 
 from lifeos.hiring import close_screen as S
-from lifeos.platform import alert_registry as registry, alert_settings as settings, alerts
+from lifeos.platform import alert_registry as registry, alert_settings as settings, alerts, credentials
 from . import close_app as C
 
 API = "https://api.github.com/repos/jimmarkunas/life-os-v7/actions/variables"
@@ -165,6 +165,22 @@ def _rows(state):
     return "".join(html)
 
 
+def _credentials(now):
+    """LIFE-528: a read-only list of the credentials LIFE OS uses and what is known of their expiry. It comes from the repo list on this machine, never from Notion; names, providers,
+    dates and a status only. A credential whose provider gives no date says so instead of pretending to be safe."""
+    rows = credentials.rows(now.date())
+    counts = {s: sum(1 for r in rows if r["status"] == s) for s in ("OK", "Warning", "Expired", "Unknown")}
+    html = [f'<p class="lead">{len(rows)} credentials. Warned ahead through the alert gateway: {credentials.WARN_AHEAD_DAYS} days before a date. '
+            f'OK {counts["OK"]}, Warning {counts["Warning"]}, Expired {counts["Expired"]}, no date to check {counts["Unknown"]}.</p>',
+            '<table class="alerts"><thead><tr><th>Credential</th><th>Days left</th><th>Source</th></tr></thead><tbody>']
+    for r in sorted(rows, key=lambda r: (r["days_left"] is None, r["days_left"] if r["days_left"] is not None else 0, r["credential"])):
+        days = "-" if r["days_left"] is None else str(r["days_left"])
+        html.append(f'<tr><td><strong>{e(r["credential"])}</strong><div class="meaning">{e(r["provider"])}: {e(r["used_for"])}</div></td><td>{e(days)}</td>'
+                    f'<td>{e(r["source"])}</td></tr>')
+    html.append("</tbody></table>")
+    return "".join(html)
+
+
 def _fields(state):
     """Hidden copies of a proposed state, for the review step."""
     out = {"enabled": "1"} if state["enabled"] else {}
@@ -184,6 +200,7 @@ def _page(state, secret, login, now, notice=""):
             + f'<div class="switchrow"><div><strong>Mute until</strong><small>Central time. Leave empty for no mute. A mute silences every channel.</small></div>'
               f'<input type="datetime-local" name="mute" value="{e(state["mute"])}"></div></section>'
               f'<section class="section"><div class="eyebrow">Channels by alert</div><p class="lead">Tick where each alert should go. A PAGE alert always reaches the phone.</p>{_rows(state)}</section>'
+              f'<section class="section"><div class="eyebrow">Credentials</div>{_credentials(now)}</section>'
               f'{notice}<div class="actions"><button class="btn primary" name="step" value="review">Review changes →</button></div></form>')
     return 200, C.HTML, _shell(S.page("Alert settings", "What gets sent, and where.", body, PATH, TAB)), ()
 

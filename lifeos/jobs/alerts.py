@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 
 from lifeos.jobs import daily, hold, store
-from lifeos.platform import alerts
+from lifeos.platform import alerts, credentials
 
 EXPIRIES = Path(__file__).with_name("expiries.json")
 SOURCE_FAILURES = 3          # a sponsor that failed this many runs in a row
@@ -204,7 +204,7 @@ def save(connection, plan, notified, now):
 
 def run(limit, live, environ=os.environ, now=None, send=None):
     now = now or dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
-    expiries = json.loads(EXPIRIES.read_text())
+    expiries = {**credentials.expiries(), **json.loads(EXPIRIES.read_text())}          # LIFE-528: the credential list's dated entries, plus the older file (it wins on a shared key)
     with store.connect() as connection:
         store.ensure_schema(connection)
         if live:
