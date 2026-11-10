@@ -43,6 +43,17 @@ class Locks(unittest.TestCase):
         for path, number, line in found:
             self.assertRegex(line, r"pip install --require-hashes -r requirements[\w-]*\.lock", "%s:%d is not installed from a lock" % (path, number))
 
+    def test_the_composite_actions_are_valid_yaml_and_the_python_action_installs_the_runtime_lock(self):
+        try:
+            import yaml
+        except ImportError:
+            self.skipTest("PyYAML not installed")
+        for action in (ROOT / ".github/actions").glob("*/action.yml"):
+            data = yaml.safe_load(action.read_text())                     # a stray colon in a description once made GitHub reject the whole action
+            self.assertIn("runs", data, action.as_posix())
+        steps = yaml.safe_load((ROOT / ".github/actions/python/action.yml").read_text())["runs"]["steps"]
+        self.assertTrue(any(s.get("run") == "pip install --require-hashes -r requirements.lock" for s in steps))
+
     def test_every_node_package_json_has_a_committed_lockfile(self):
         for package in ROOT.rglob("package.json"):
             if "node_modules" in package.parts:

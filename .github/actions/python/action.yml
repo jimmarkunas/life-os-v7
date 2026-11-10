@@ -1,5 +1,5 @@
 name: Python and dependencies
-description: Python 3.12 with the pip cache, then the locked requirements (requirements.lock: exact versions and hashes; the one place this is declared).
+description: Python 3.12 with the pip cache, then the locked requirements (requirements.lock, exact versions and hashes; the one place this is declared).
 runs:
   using: composite
   steps:
