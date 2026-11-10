@@ -2,6 +2,7 @@
 
   python3 -m lifeos.edge.backup.restore_check ARCHIVE.gpg                              the secret id is read from ~/.config/life-os/offsite-key-secret-id (one line, mode 600)
   python3 -m lifeos.edge.backup.restore_check ARCHIVE.gpg --bws-secret SECRET_ID      the private key lives in Bitwarden Secrets Manager (needs `bws` and its access token)
+  python3 -m lifeos.edge.backup.restore_check ARCHIVE.gpg --passphrase-prompt         the key's passphrase is typed by the person at the terminal (hidden, never stored)
   python3 -m lifeos.edge.backup.restore_check ARCHIVE.gpg --bw-item "ITEM NAME"       the private key lives in the Bitwarden vault (needs `bw`, unlocked: BW_SESSION)
 
 ARCHIVE.gpg is either the nightly off-site file downloaded from Drive (lifeos-edge-YYYY....tar.gz.gpg) or the Mac file (mac-YYYYMMDD-HHMM.tar.gz.gpg).
@@ -15,6 +16,7 @@ Fixed codes: restore_key_source (no way to read the key), restore_key_fetch, res
 restore_decrypt (the key does not open this archive), plus the verify_restore codes (RESTORE_UNSAFE_PATH, RESTORE_TOO_BIG, RESTORE_DB_CORRUPT, RESTORE_DB_UNCHECKED, RESTORE_UNREADABLE).
 """
 import contextlib
+import getpass
 import hashlib
 import json
 import os
@@ -72,6 +74,12 @@ def ram_folder(run=subprocess.run, platform=sys.platform, mb=RAM_MB):
 def fetch_key(source, run=subprocess.run):
     """-> the ASCII-armoured private key as bytes, straight from Bitwarden. `source` is ("bws", secret id) or ("bw", item name). The value never touches disk, argv or the environment."""
     kind, ref = source
+    if kind == "prompt":                                                                 # Jim types it: hidden, read from the terminal itself, never an argument, an environment value or history
+        try:
+            open("/dev/tty").close()
+        except OSError:
+            raise CheckError("restore_no_tty") from None
+        return getpass.getpass("Backup key passphrase (typing is hidden): ").encode()
     if kind == "bws":
         done = run(["bws", "secret", "get", ref, "--output", "json"], capture_output=True, timeout=60)
         if done.returncode != 0:
@@ -126,6 +134,8 @@ def check_archive(plain, work):
 
 def run_check(archive, source, run=subprocess.run, ram=ram_folder, platform=sys.platform, out=sys.stdout, manifests=(), passphrase=None):
     try:
+        if not os.path.isfile(archive):
+            raise CheckError("restore_no_archive")
         with (ram(run=run, platform=platform) if ram is ram_folder else ram()) as folder:
             key = fetch_key(source, run)
             import_key(folder, key, run)
@@ -182,6 +192,8 @@ def main(argv=None, out=sys.stdout):
             source = ("bw", argv.pop(0))
         elif arg == "--passphrase-bws" and argv:
             passphrase = ("bws", argv.pop(0))
+        elif arg == "--passphrase-prompt":
+            passphrase = ("prompt", "")
         elif arg == "--passphrase-bw" and argv:
             passphrase = ("bw", argv.pop(0))
         elif arg == "--manifest" and argv:
@@ -194,7 +206,7 @@ def main(argv=None, out=sys.stdout):
     if archive and not source and os.path.isfile(ID_FILE):
         source = ("bws", open(ID_FILE).read().strip())                                   # no id on the command line: read it from the local file
     if not archive or not source:
-        out.write("usage: restore_check ARCHIVE.gpg (--bws-secret SECRET_ID | --bw-item NAME) [--passphrase-bws ID | --passphrase-bw NAME] [--manifest code/lifeos-fit/ ...]\n")
+        out.write("usage: restore_check ARCHIVE.gpg (--bws-secret SECRET_ID | --bw-item NAME) [--passphrase-prompt | --passphrase-bws ID | --passphrase-bw NAME] [--manifest code/lifeos-fit/ ...]\n")
         return 2
     return run_check(archive, source, out=out, manifests=tuple(manifests), passphrase=passphrase)
 
