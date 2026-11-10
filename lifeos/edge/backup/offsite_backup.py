@@ -80,6 +80,8 @@ TREES = (   # (archive prefix, source directory): every regular file inside, exc
     ("config/lifeos-fit", UBUNTU + "/.config/lifeos-fit"),
     ("config/lifeos-resume", UBUNTU + "/.config/lifeos-resume"),
     ("config/lifeos-alerts", UBUNTU + "/.config/lifeos-alerts"),
+    ("code/lifeos-fit", UBUNTU + "/.local/lib/lifeos-fit"),            # LIFE-529: the Cloud Fit and resume-builder CODE (VM-only by design, never in the public repo); the config folders above were already saved, the code was not
+    ("code/lifeos-resume", UBUNTU + "/.local/lib/lifeos-resume"),
     ("openclaw/workspace", UBUNTU + "/.openclaw/workspace"),
     ("openclaw/jira-approvals", UBUNTU + "/.openclaw/jira-approvals"),
     ("hermes/memories", HERMES + "/memories"),
@@ -92,6 +94,9 @@ TREES = (   # (archive prefix, source directory): every regular file inside, exc
 SECRET_TREES = (   # (archive prefix, source directory): credential material Jim chose to back up. Exempt from DENY, and ONLY these; never named in any output, counted only
     ("openclaw/credentials", UBUNTU + "/.openclaw/credentials"),
 )
+CODE_PRUNE = ("node_modules", "__pycache__")                                # LIFE-529: under code/ only, folders that are rebuilt from package-lock.json or the interpreter; every other tree is walked as before
+
+
 DENY = re.compile(r"credential|secret|token|passw|\.env\b|auth|key|bws|/gh/|notion|\.pem|id_rsa|\.bak", re.I)    # never collected, and a test holds every list above clear of it
 
 
@@ -159,7 +164,9 @@ def collect(work, run=subprocess.run, sqlite=None, files=None, trees=None, chown
     for prefix, root in trees:
         if denied(prefix, root):
             raise BackupError("backup_secret_path")
-        for folder, _, names in os.walk(root):
+        for folder, dirs, names in os.walk(root):
+            if prefix.startswith("code/"):
+                dirs[:] = [d for d in dirs if d not in CODE_PRUNE]
             for leaf in sorted(names):
                 path = os.path.join(folder, leaf)
                 relative = prefix + "/" + os.path.relpath(path, root)
