@@ -217,7 +217,7 @@
     },
     {
       "date": "2026-11-09",
-      "pr": "TBD",
+      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/862",
       "approval": "Jim, chat, Nov 9, 2026, 6:03 PM CT",
       "part": "docs/development-policy/03, 04, 05, 07, 10, 11 (delivery flow v3: readiness reduced to three checks, delegated closeout by default, Done-when parser, no claim/preflight, no phase gate B/C, CI limit 90 s)"
     }
