@@ -41,6 +41,7 @@ These repository files hold feature scoping, setup, history or one product area'
 | Path |
 |---|
 | [`docs/BIG_FEATURES_ROADMAP.md`](docs/BIG_FEATURES_ROADMAP.md) |
+| [`docs/platform/module-inventory.md`](docs/platform/module-inventory.md) |
 | [`docs/DCC_CARD_CONTRACT.md`](docs/DCC_CARD_CONTRACT.md) |
 | [`docs/DELIVERY_TRACKING_SCOPE.md`](docs/DELIVERY_TRACKING_SCOPE.md) |
 | [`docs/DRIVE_RESUMES.md`](docs/DRIVE_RESUMES.md) |
