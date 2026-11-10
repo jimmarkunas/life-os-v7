@@ -20,7 +20,7 @@ from lifeos.platform.notion_client import NotionError
 from lifeos.sources import close_app, resume_app
 
 SECRET, TOKEN, LEDGER = b"link-signing-key-0123456789abcdef", b"notion-token-secret", "11111111-2222-3333-4444-555555555555"
-PID = "0a0b0c0d-1111-2222-3333-444455556666"
+PID = "00000000-0000-0000-0000-000000000007"
 WHO = {"login": "jim@example.com", "node": "node-1"}
 NOW = datetime(2026, 10, 20, 1, 40, tzinfo=close_app.TZ)
 DOCX = b"PK\x03\x04" + b"0" * 400
@@ -138,7 +138,7 @@ class BuildResume(unittest.TestCase):
         self.assertNotIn("Network Leads", job["description"])                        # the description stops where the published sections end
         self.assertEqual(r.uploads, [(TOKEN.decode(), FILENAME, DOCX, resume_app.DOCX)] * 2)        # one copy for the page, one for the Resume column
         self.assertEqual([f["name"] for f in r.page.props["Resume"]["files"]], [FILENAME])
-        self.assertIn('href="https://www.notion.so/0a0b0c0d111122223333444455556666"', body)          # straight to the job's Ledger page
+        self.assertIn('href="https://www.notion.so/00000000000000000000000000000007"', body)          # straight to the job's Ledger page
         self.assertIn("Open the job in Notion", body)
         self.assertEqual(r.page.appended[0]["file"]["name"], FILENAME)
         self.assertEqual(r.page.appended[0]["file"]["caption"][0]["text"]["content"], "Tailored resume · built Oct 20, 1:40 AM CT · LIFE OS")

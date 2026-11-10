@@ -265,26 +265,26 @@ class StoreTests(unittest.TestCase):
 
     def test_preview_render_hashes_complete_body_and_title_is_identity_safe(self):
         b, d = bundle(), draft()
-        title, bh, body_hash, body, blocks, prep = store.render_preview("0123456789abcdef0123456789abcdef", b, d)
-        self.assertEqual(title, "Advisor Preview 0123456789abcdef0123456789abcdef")
+        title, bh, body_hash, body, blocks, prep = store.render_preview("00000000000000000000000000000004", b, d)
+        self.assertEqual(title, "Advisor Preview 00000000000000000000000000000004")
         self.assertNotIn("Synthetic Co", title); self.assertNotIn("Synthetic Role", title); self.assertNotIn("Interviewer", title)
         self.assertTrue(blocks[0]["paragraph"]["rich_text"][0]["text"]["content"].endswith(body_hash))
         self.assertIn("refs: SL-SYN-001@1,PROFILE-SYN-001@1", body)
         self.assertEqual(body_hash, hashlib.sha256(body.encode()).hexdigest())
         self.assertNotIn("reasoning", body.lower())
-        self.assertNotEqual(body_hash, store.render_preview("0123456789abcdef0123456789abcdef", b,
+        self.assertNotEqual(body_hash, store.render_preview("00000000000000000000000000000004", b,
             __import__("dataclasses").replace(d, focus=(GroundedAdvice("Different", ("PROFILE-SYN-001@1",)),)))[2])
         refs_changed = __import__("dataclasses").replace(d, straight_line=(GroundedAdvice(
             "Clarify the decision threshold.", ("PROFILE-SYN-001@1", "SL-SYN-001@1")),))
-        self.assertNotEqual(body_hash, store.render_preview("0123456789abcdef0123456789abcdef", b, refs_changed)[2])
+        self.assertNotEqual(body_hash, store.render_preview("00000000000000000000000000000004", b, refs_changed)[2])
         prep_changed = __import__("dataclasses").replace(d, focus=(GroundedAdvice("Changed prep.", ("PROFILE-SYN-001@1",)),))
-        self.assertNotEqual(body_hash, store.render_preview("0123456789abcdef0123456789abcdef", b, prep_changed)[2])
-        self.assertNotEqual(blocks[0], store.render_preview("0123456789abcdef0123456789abcdef",
+        self.assertNotEqual(body_hash, store.render_preview("00000000000000000000000000000004", b, prep_changed)[2])
+        self.assertNotEqual(blocks[0], store.render_preview("00000000000000000000000000000004",
             __import__("dataclasses").replace(b, role="Other Role"), d)[4][0])
-        self.assertEqual(prep, store.render_preview("0123456789abcdef0123456789abcdef", b, d)[5])
+        self.assertEqual(prep, store.render_preview("00000000000000000000000000000004", b, d)[5])
 
     def test_preview_parser_never_carries_pending_refs_across_private_section_headings(self):
-        _, _, _, _, blocks, _ = store.render_preview("0123456789abcdef0123456789abcdef", bundle(), draft())
+        _, _, _, _, blocks, _ = store.render_preview("00000000000000000000000000000004", bundle(), draft())
         body = blocks[1:]
         headings = [i for i, b in enumerate(body) if b["type"] == "heading_2"]
         transitions = []
@@ -306,7 +306,7 @@ class StoreTests(unittest.TestCase):
                 store._parse_preview_body(malformed)
 
     def test_preview_parser_accepts_optional_findings_and_empty_optional_sections(self):
-        _, _, _, _, blocks, prep = store.render_preview("0123456789abcdef0123456789abcdef", bundle(), draft())
+        _, _, _, _, blocks, prep = store.render_preview("00000000000000000000000000000004", bundle(), draft())
         body = blocks[1:]
         transition = next(i for i, item in enumerate(body) if item["type"] == "heading_2"
                           and item["heading_2"]["rich_text"][0]["text"]["content"] == "Objections")
@@ -320,12 +320,12 @@ class StoreTests(unittest.TestCase):
 
     def test_preview_create_readback_post_only_conflict_and_no_retry(self):
         b, d = bundle(), draft(); client = FakeNotion(build_tree())
-        verified = store.create_preview(client, "advisor-previews", "0123456789abcdef0123456789abcdef", b, d)
+        verified = store.create_preview(client, "advisor-previews", "00000000000000000000000000000004", b, d)
         self.assertIsInstance(verified.prep, PrepEvidence)
         self.assertEqual(client.posts, 1); self.assertNotIn("PATCH", client.methods)
         same = store.FakeNotion if False else client
         with self.assertRaises(store.AdvisorStoreError) as error:
-            store.create_preview(same, "advisor-previews", "0123456789abcdef0123456789abcdef", b, d)
+            store.create_preview(same, "advisor-previews", "00000000000000000000000000000004", b, d)
         self.assertEqual(error.exception.code, "advisor_preview_conflict")
         self.assertEqual(client.posts, 1)
 
@@ -338,12 +338,12 @@ class StoreTests(unittest.TestCase):
                 return super().call(method, path, body)
         client = Uncertain(build_tree())
         with self.assertRaises(store.AdvisorStoreError) as error:
-            store.create_preview(client, "advisor-previews", "0123456789abcdef0123456789abcdef", bundle(), draft())
+            store.create_preview(client, "advisor-previews", "00000000000000000000000000000004", bundle(), draft())
         self.assertEqual(error.exception.code, "advisor_preview_readback_failed"); self.assertEqual(client.posts, 1)
 
     def test_preview_read_rejects_parent_marker_hash_and_structure_mutations(self):
         client = FakeNotion(build_tree())
-        verified = store.create_preview(client, "advisor-previews", "0123456789abcdef0123456789abcdef", bundle(), draft())
+        verified = store.create_preview(client, "advisor-previews", "00000000000000000000000000000004", bundle(), draft())
         self.assertEqual(store.read_preview(client, "00000000-0000-0000-0000-000000000001", "advisor-previews").prep, verified.prep)
         self.assertEqual(store.read_preview(client, "00000000-0000-0000-0000-000000000001", "root").prep, verified.prep)       # LIFE-383 (D250): the parent is not compared
         for parent, gen, digest in (("advisor-previews", "f" * 32, None), ("advisor-previews", None, "f" * 64)):
@@ -356,7 +356,7 @@ class StoreTests(unittest.TestCase):
 
     def test_preview_read_fails_closed_for_title_marker_state_and_body_tampering(self):
         original = FakeNotion(build_tree())
-        store.create_preview(original, "advisor-previews", "0123456789abcdef0123456789abcdef", bundle(), draft())
+        store.create_preview(original, "advisor-previews", "00000000000000000000000000000004", bundle(), draft())
         pid = "00000000-0000-0000-0000-000000000001"
         mutations = (
             lambda p: p["blocks"][0]["paragraph"]["rich_text"][0]["text"].__setitem__("content", "bad marker"),
@@ -379,7 +379,7 @@ class StoreTests(unittest.TestCase):
                 return super().call(method, path, body)
         client = BrokenReadback(build_tree())
         with self.assertRaises(store.AdvisorStoreError) as error:
-            store.create_preview(client, "advisor-previews", "0123456789abcdef0123456789abcdef", bundle(), draft())
+            store.create_preview(client, "advisor-previews", "00000000000000000000000000000004", bundle(), draft())
         self.assertEqual(error.exception.code, "advisor_preview_readback_failed")
         self.assertEqual(client.posts, 1)
 
@@ -424,7 +424,7 @@ class StoreTests(unittest.TestCase):
             call_once = None
         client = NoOneAttempt(build_tree())
         with self.assertRaises(store.AdvisorStoreError) as error:
-            store.create_preview(client, "advisor-previews", "0123456789abcdef0123456789abcdef", bundle(), draft())
+            store.create_preview(client, "advisor-previews", "00000000000000000000000000000004", bundle(), draft())
         self.assertEqual(error.exception.code, "advisor_preview_invalid")
         self.assertEqual((client.methods, client.posts), ([], 0))
 
@@ -439,7 +439,7 @@ class StoreTests(unittest.TestCase):
                     raise NotionError(_code)
             client = Rejected(build_tree())
             with self.subTest(code=notion_code), self.assertRaises(store.AdvisorStoreError) as error:
-                store.create_preview(client, "advisor-previews", "0123456789abcdef0123456789abcdef", bundle(), draft())
+                store.create_preview(client, "advisor-previews", "00000000000000000000000000000004", bundle(), draft())
             self.assertEqual((error.exception.code, client.posts), (expected, 1))
             self.assertNotIn("PATCH", client.methods)
 
@@ -452,7 +452,7 @@ class StoreTests(unittest.TestCase):
         self.assertNotIn("logging.", source); self.assertNotIn("openai", source.lower())
         self.assertNotIn("PATCH", source)
         with patch("lifeos.interview.prep.apply", side_effect=AssertionError("B3")):
-            store.render_preview("0123456789abcdef0123456789abcdef", bundle(), draft())
+            store.render_preview("00000000000000000000000000000004", bundle(), draft())
 
 
 if __name__ == "__main__":

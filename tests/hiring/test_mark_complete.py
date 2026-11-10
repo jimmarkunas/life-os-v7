@@ -138,13 +138,13 @@ def links(blocks):
 
 class PageRender(unittest.TestCase):
     def test_the_primary_action_links_to_the_close_screen_by_page_and_action_key(self):
-        blocks = template.opportunity_page(opp(close_base="https://edge.example.test:47443", page_id="0123456789abcdef0123456789abcdef"), "2026-10-24")
+        blocks = template.opportunity_page(opp(close_base="https://edge.example.test:47443", page_id="00000000000000000000000000000004"), "2026-10-24")
         self.assertIn(template.action_line(ACTION), texts(blocks))
-        self.assertIn(f"https://edge.example.test:47443/complete?o=0123456789abcdef0123456789abcdef&a={KEY}", links(blocks))
+        self.assertIn(f"https://edge.example.test:47443/complete?o=00000000000000000000000000000004&a={KEY}", links(blocks))
         self.assertNotIn("Mark Complete · unavailable", texts(blocks))
 
     def test_without_the_close_origin_or_the_page_id_it_stays_unavailable(self):
-        for view_ in (opp(), opp(close_base="https://edge.example.test"), opp(page_id="0123456789abcdef0123456789abcdef")):
+        for view_ in (opp(), opp(close_base="https://edge.example.test"), opp(page_id="00000000000000000000000000000004")):
             self.assertIn("Mark Complete · unavailable", texts(template.opportunity_page(view_, "2026-10-24")))
 
     def test_a_recorded_completion_shows_done_and_its_line_is_carried(self):

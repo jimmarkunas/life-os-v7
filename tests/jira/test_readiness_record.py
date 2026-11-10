@@ -105,7 +105,7 @@ class RecordTests(unittest.TestCase):
     def test_a_los_origin_without_its_notion_requirement_page_only_warns(self):
         """LIFE-319, relaxed by delivery flow v3: requirement_page_missing is a warn line, not a refusal."""
         from_los = DESC.replace("chat: example.", "chat: example, from LOS-900.")
-        page = "\n\n**Requirement:** REQ-7 https://app.notion.com/p/0123456789abcdef0123456789abcdef"
+        page = "\n\n**Requirement:** REQ-7 https://app.notion.com/p/00000000000000000000000000000004"
         code, out, err = self.check(raw(from_los))
         self.assertEqual((code, out), (0, "ready v1\n"))
         self.assertIn("warn v1 requirement_page_missing requirement LOS-900", err)
@@ -116,7 +116,7 @@ class RecordTests(unittest.TestCase):
 
     def test_a_bare_notion_link_or_a_los_key_outside_the_origin_line_does_not_count(self):
         from_los = DESC.replace("chat: example.", "chat: example, from LOS-900.")
-        self.assertIn("requirement_page_missing", self.check(raw(from_los + "\n\nSee https://app.notion.com/p/0123456789abcdef0123456789abcdef"))[2])      # no REQ-n on the line
+        self.assertIn("requirement_page_missing", self.check(raw(from_los + "\n\nSee https://app.notion.com/p/00000000000000000000000000000004"))[2])      # no REQ-n on the line
         self.assertIn("requirement_page_missing", self.check(raw(from_los + "\n\nREQ-7 has no link yet"))[2])
         self.assertEqual(self.check(raw(DESC + "\n\nBackground: LOS-900 was scoped earlier."))[:2], (0, "ready v1\n"))
 
