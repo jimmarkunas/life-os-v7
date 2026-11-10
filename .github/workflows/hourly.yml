@@ -218,6 +218,8 @@ jobs:
       - name: Test-only dependency (PyYAML, for the workflow contract tests; skipped if unavailable)
         run: pip install --require-hashes -r requirements-test.lock || echo "pyyaml unavailable; the workflow contract tests will skip"
       - name: Unit tests
+        env:
+          LIFEOS_TEST_INDEX_FRESH: "1"      # LIFE-548: the hourly full run also fails when docs/test-index.json is older than 7 days; a failed hourly run alerts through the existing gateway path
         run: python -m unittest discover -s tests -t . -v
       - name: Stage 1 - sweep
         if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.cloud_backlog != '' && inputs.cloud_backlog != '0') }}   # D219: a Cloud Fit backlog dispatch never sweeps newsletters

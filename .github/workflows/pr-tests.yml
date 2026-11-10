@@ -29,17 +29,30 @@ jobs:
         run: python .github/protected_files.py
       - name: Test-only dependency (PyYAML, for the workflow contract tests)
         run: pip install --require-hashes -r requirements-test.lock
-      - name: Unit tests (two parallel shards; warn at 45 s, fail at 90 s)
+      - name: Pick the tests (LIFE-548; a pull request runs the tests its change can affect plus tests/contracts, a merge to main always runs everything)
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            python -m tests.testindex select --base HEAD^1 > selected.txt || echo FULL > selected.txt     # any trouble picking means everything
+          else
+            echo FULL > selected.txt
+          fi
+          if [ "$(head -n 1 selected.txt)" = "FULL" ]; then echo "tests picked: everything" | tee -a "$GITHUB_STEP_SUMMARY"; else echo "tests picked: $(wc -l < selected.txt) targets" | tee -a "$GITHUB_STEP_SUMMARY"; fi
+      - name: Unit tests (two parallel shards when everything runs; warn at 45 s, fail at 90 s)
         run: |
           start=$(date +%s)
-          python -m tests.shard 1 2 > shard-1.log 2>&1 &
-          first=$!
-          python -m tests.shard 2 2 > shard-2.log 2>&1 &
-          second=$!
           status=0
-          wait "$first" || status=$?
-          wait "$second" || status=$?
-          cat shard-1.log shard-2.log
+          if [ "$(head -n 1 selected.txt)" = "FULL" ]; then
+            python -m tests.shard 1 2 > shard-1.log 2>&1 &
+            first=$!
+            python -m tests.shard 2 2 > shard-2.log 2>&1 &
+            second=$!
+            wait "$first" || status=$?
+            wait "$second" || status=$?
+            cat shard-1.log shard-2.log
+          else
+            python -m unittest $(cat selected.txt) > shard-1.log 2>&1 || status=$?
+            cat shard-1.log
+          fi
           elapsed=$(( $(date +%s) - start ))
           echo "unit tests: exit ${status}, ${elapsed} s" | tee -a "$GITHUB_STEP_SUMMARY"
           if [ "$status" -ne 0 ]; then exit "$status"; fi
