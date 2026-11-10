@@ -1,0 +1,104 @@
+{
+ "list": [
+  {
+   "number": 11,
+   "title": "[LIFE-901] First",
+   "mergedAt": "2026-11-10T18:10:00Z",
+   "additions": 30,
+   "deletions": 4,
+   "changedFiles": 3,
+   "headRefName": "life/LIFE-901/first"
+  },
+  {
+   "number": 12,
+   "title": "[LIFE-902] Second",
+   "mergedAt": "2026-11-10T19:00:00Z",
+   "additions": 5,
+   "deletions": 0,
+   "changedFiles": 1,
+   "headRefName": "life/LIFE-902/second"
+  },
+  {
+   "number": 13,
+   "title": "Not a ticket PR",
+   "mergedAt": "2026-11-10T19:30:00Z",
+   "additions": 1,
+   "deletions": 1,
+   "changedFiles": 1,
+   "headRefName": "other"
+  }
+ ],
+ "view": {
+  "11": {
+   "headRefOid": "aaa",
+   "commits": [
+    {
+     "committedDate": "2026-11-10T18:00:00Z"
+    },
+    {
+     "committedDate": "2026-11-10T18:05:00Z"
+    }
+   ],
+   "files": [
+    {
+     "path": "lifeos/platform/x.py"
+    },
+    {
+     "path": "tests/platform/test_x.py"
+    },
+    {
+     "path": "docs/CODEMAP.md"
+    }
+   ]
+  },
+  "12": {
+   "headRefOid": "bbb",
+   "commits": [
+    {
+     "committedDate": "2026-11-10T18:50:00Z"
+    }
+   ],
+   "files": [
+    {
+     "path": "docs/note.md"
+    }
+   ]
+  }
+ },
+ "runs": {
+  "life/LIFE-901/first": [
+   {
+    "conclusion": "failure",
+    "createdAt": "2026-11-10T18:02:00Z",
+    "updatedAt": "2026-11-10T18:04:00Z",
+    "headSha": "old"
+   },
+   {
+    "conclusion": "cancelled",
+    "createdAt": "2026-11-10T18:03:00Z",
+    "updatedAt": "2026-11-10T18:03:30Z",
+    "headSha": "old"
+   },
+   {
+    "conclusion": "success",
+    "createdAt": "2026-11-10T18:06:00Z",
+    "updatedAt": "2026-11-10T18:08:00Z",
+    "headSha": "aaa"
+   }
+  ],
+  "life/LIFE-902/second": [
+   {
+    "conclusion": "success",
+    "createdAt": "2026-11-10T18:52:00Z",
+    "updatedAt": "2026-11-10T18:53:30Z",
+    "headSha": "bbb"
+   }
+  ]
+ },
+ "jira": {
+  "LIFE-901": {
+   "start": "2026-11-10T11:00:00-06:00",
+   "done": "2026-11-10T12:30:00-06:00"
+  }
+ }
+}
