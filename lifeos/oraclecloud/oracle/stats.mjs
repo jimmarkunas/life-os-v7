@@ -14,6 +14,7 @@ const SDK = path.join(os.homedir(), ".local/share/lifeos-oci/package.json");
 const OPENCLAW = path.join(os.homedir(), ".openclaw/tools/node/bin/openclaw");
 const IMDS = "http://169.254.169.254/opc/v2/instance/";
 const UNITS = { gateway: "openclaw-gateway.service", whatsapp: "lifeos-whatsapp-attention.service", alerts: "lifeos-alerts-whatsapp.service" };
+const AGENTS_DIR = `${process.env.HOME}/.openclaw/agents`;   // LIFE-531: one folder per OpenClaw agent
 const BACKUP_STATUS = "/var/lib/lifeos-offsite/status.json";   // LIFE-129: the nightly off-site backup's last result (root-written, world-readable; counts and a fixed code)
 const IDLE_PCT = 20;                                    // Oracle's Always Free idle rule: 7-day CPU p95, network and (A1) memory all below 20%
 
@@ -55,6 +56,27 @@ export function backupState(text, nowMs, missing = false) {
 
 function backup() {
   try { return backupState(fs.readFileSync(BACKUP_STATUS, "utf8"), Date.now()); } catch (e) { return e && e.code === "ENOENT" ? backupState("", 0, true) : null; }
+}
+
+// LIFE-531: OpenClaw starts one Codex app-server worker per agent; a leak leaves extras. `ps -eo ppid=,args=` text + the gateway's pid + the agent folder names -> { count, agents }:
+// count = direct children of the gateway whose command line has "app-server"; agents = folders under ~/.openclaw/agents. Anything unreadable is null (unknown, never a guess).
+export function workerState(psText, gatewayPid, agentNames) {
+  if (!Number.isInteger(gatewayPid) || gatewayPid <= 0 || typeof psText !== "string" || !Array.isArray(agentNames) || agentNames.length === 0) return null;
+  let count = 0;
+  for (const line of psText.split("\n")) {
+    const m = /^\s*(\d+)\s+(.*)$/.exec(line);
+    if (m && Number(m[1]) === gatewayPid && m[2].includes("app-server")) count += 1;
+  }
+  return { count, agents: agentNames.length };
+}
+
+async function workers() {
+  try {
+    const pid = Number((await run("systemctl", ["--user", "show", "-p", "MainPID", "--value", UNITS.gateway], 10000))?.trim());
+    const ps = await run("ps", ["-eo", "ppid=,args="], 10000);
+    const agents = fs.readdirSync(AGENTS_DIR, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
+    return workerState(ps, pid, agents);
+  } catch { return null; }
 }
 
 export function memoryPct(meminfo) {
@@ -144,6 +166,7 @@ export async function collect() {
     services: svc,
     chatgpt: plan,
     backup: backup(),
+    workers: await workers(),
   };
 }
 

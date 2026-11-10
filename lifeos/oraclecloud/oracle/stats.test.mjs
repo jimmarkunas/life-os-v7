@@ -1,7 +1,7 @@
 // node --test lifeos/oraclecloud/oracle/stats.test.mjs   (synthetic inputs; no network, no OCI)
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parsePlan, reclaimState, memoryPct, diskPct, backupState } from "./stats.mjs";
+import { parsePlan, reclaimState, memoryPct, diskPct, backupState, workerState } from "./stats.mjs";
 
 test("the ChatGPT plan line is read strictly; any other shape is unavailable", () => {
   assert.deepEqual(parsePlan("- openai usage: 5h 87% left ⏱4h 19m · Week 42% left ⏱6d 9h"), { left_5h: 87, left_week: 42 });
@@ -40,4 +40,14 @@ test("the off-site backup reading carries only ok, a fixed code and the age in w
   assert.equal(backupState("not json", 0), null);
   assert.equal(backupState(JSON.stringify({ ok: true, code: "Some /path or name", at }), at * 1000), null);
   assert.equal(backupState(JSON.stringify({ ok: "yes", code: "ok", at }), at * 1000), null);
+});
+
+test("the Codex worker count is the gateway's own app-server children; extras beyond the agents are the leak", () => {
+  const ps = ["    1 /sbin/init", "68602 node openclaw gateway", "68602 node openclaw-codex app-server", "68602 node openclaw-codex app-server", "69000 codex app-server", "68602 node other-child", "  68602   node openclaw-codex app-server"].join("\n");
+  assert.deepEqual(workerState(ps, 68602, ["fit", "fit2", "fit3", "main", "openclaw"]), { count: 3, agents: 5 });
+  assert.deepEqual(workerState(ps, 1, ["main"]), { count: 0, agents: 1 });
+  assert.equal(workerState(ps, 0, ["main"]), null);
+  assert.equal(workerState(ps, NaN, ["main"]), null);
+  assert.equal(workerState(null, 68602, ["main"]), null);
+  assert.equal(workerState(ps, 68602, []), null);
 });
