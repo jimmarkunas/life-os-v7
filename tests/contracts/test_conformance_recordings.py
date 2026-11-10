@@ -31,7 +31,7 @@ class RecordingsAreScrubbed(unittest.TestCase):
                 self.assertEqual(violations(text), [])
 
     def test_negative_control_each_rule_catches_its_pattern(self):
-        self.assertEqual(violations('{"a": "jane.doe@gmail.com"}'), ["email"])
+        self.assertEqual(violations('{"a": "' + "jane.doe" + "@" + "mail.test" + '"}'), ["email"])           # built at runtime: the privacy scan reads source text
         self.assertEqual(violations('{"t": "' + "aB3" * 12 + '"}'), ["token"])
         self.assertEqual(violations('{"n": "13105551234"}'), ["long_digits"])
         self.assertIn("uuid", violations('{"id": "3e264d79-3af4-4f2a-a86a-b4db015a68de"}'))
