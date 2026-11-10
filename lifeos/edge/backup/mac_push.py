@@ -70,9 +70,8 @@ def stamp(clock=time.time):
     return datetime.datetime.fromtimestamp(clock(), CENTRAL).strftime("%Y%m%d-%H%M")
 
 
-def snapshot(source, dest):
-    """Online backup of a live SQLite file -> a consistent copy; refuses a database that fails an integrity check."""
-    src = sqlite3.connect("file:%s?mode=ro" % source, uri=True, timeout=30)
+def _copy_database(uri, dest):
+    src = sqlite3.connect(uri, uri=True, timeout=30)
     try:
         dst = sqlite3.connect(dest)
         try:
@@ -81,10 +80,25 @@ def snapshot(source, dest):
                 raise PushError("mac_backup_db_corrupt")
         finally:
             dst.close()
-    except sqlite3.Error:
-        raise PushError("mac_backup_db_unreadable")
     finally:
         src.close()
+
+
+def snapshot(source, dest):
+    """Online backup of a live SQLite file -> a consistent copy; refuses a database that fails an integrity check.
+    LIFE-542: an idle WAL-mode database (no -wal file, because nothing has it open) cannot be opened read-only, since SQLite cannot create the -shm file.
+    Only in that case, retry once with immutable=1 (nothing is writing, so there is nothing to read around); the integrity check on the copy still decides."""
+    try:
+        try:
+            _copy_database("file:%s?mode=ro" % source, dest)
+        except sqlite3.OperationalError:
+            if os.path.exists(source + "-wal"):                                   # a live database: the read-only open must work, so this is a real failure
+                raise
+            if os.path.exists(dest):
+                os.remove(dest)                                                   # drop any partial copy before the retry
+            _copy_database("file:%s?immutable=1" % source, dest)
+    except sqlite3.Error:
+        raise PushError("mac_backup_db_unreadable")
 
 
 def collect(work, home=HOME, sqlite=None, files=None, trees=None):
