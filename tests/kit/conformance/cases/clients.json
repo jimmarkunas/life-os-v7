@@ -1,0 +1,13 @@
+{
+  "family": "clients",
+  "fake": "tests/kit/gmail.py (FakeGmail) and tests/kit/gcal.py (CalendarEvents)",
+  "ground_truth": "the real client classes lifeos.platform.gmail.Gmail and lifeos.platform.gcal.GoogleCalendar: method names, parameter names and defaults (no network, no credentials)",
+  "cases": [
+    {"name": "gmail_label_id", "applies_to": ["real_gmail", "fake_gmail"], "method": "label_id", "expect": {"params": ["name", "create=False"]}},
+    {"name": "gmail_list_ids", "applies_to": ["real_gmail", "fake_gmail"], "method": "list_ids", "expect": {"params": ["query", "limit=5000"]}},
+    {"name": "gmail_message", "applies_to": ["real_gmail", "fake_gmail"], "method": "message", "expect": {"params": ["message_id"]}},
+    {"name": "gmail_relabel", "applies_to": ["real_gmail", "fake_gmail"], "method": "relabel", "expect": {"params": ["ids", "add=()", "remove=()"]}},
+    {"name": "calendar_list_events", "applies_to": ["real_calendar", "fake_calendar"], "method": "list_events", "expect": {"params": ["time_min", "time_max", "private_property=None"]}}
+  ],
+  "gaps": {}
+}

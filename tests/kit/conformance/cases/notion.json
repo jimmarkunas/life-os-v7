@@ -1,0 +1,18 @@
+{
+  "family": "notion",
+  "fake": "tests/kit/notion.py (FakeBlocks)",
+  "ground_truth": "tests/kit/conformance/recordings/notion_blocks.json: scrubbed response shapes of the Notion block endpoints (hand-built from the API reference; see its provenance)",
+  "cases": [
+    {"name": "list_children_has_the_paging_fields", "record": "list_children", "action": "list", "must_include": ["object", "results", "next_cursor", "has_more"],
+     "expect": {"missing_keys": [], "has_more": false}},
+    {"name": "delete_returns_the_archived_block", "record": "delete_block", "action": "delete", "must_include": ["object", "id", "type", "archived"],
+     "expect": {"missing_keys": [], "archived": true}},
+    {"name": "update_returns_the_updated_block", "record": "update_block", "action": "update", "must_include": ["object", "id", "type", "paragraph"],
+     "expect": {"missing_keys": [], "new_text": "new fake text"}},
+    {"name": "append_returns_a_list_of_the_new_blocks", "record": "append_children", "action": "append", "must_include": ["object", "results", "next_cursor", "has_more"],
+     "expect": {"missing_keys": [], "new_block_has_object": true}}
+  ],
+  "gaps": {
+    "fake_blocks": {}
+  }
+}
