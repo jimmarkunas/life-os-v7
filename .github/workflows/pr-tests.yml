@@ -58,6 +58,19 @@ jobs:
           if [ "$status" -ne 0 ]; then exit "$status"; fi
           if [ "$elapsed" -ge 90 ]; then echo "::error::The unit-test suite took ${elapsed} s; the limit is 90 s"; exit 1; fi
           if [ "$elapsed" -ge 45 ]; then echo "::warning::The unit-test suite took ${elapsed} s; the warning level is 45 s"; fi
+      - name: Ruff advisory (LIFE-558; the Python files this change touches, counts only, can never fail the job or change the required check)
+        continue-on-error: true
+        run: |
+          files=$(git diff --name-only --diff-filter=ACMR HEAD^1 HEAD -- '*.py' | tr '\n' ' ')
+          if [ -z "$files" ]; then echo "ruff (advisory): no Python file changed" | tee -a "$GITHUB_STEP_SUMMARY"; exit 0; fi
+          start=$(date +%s)
+          counts=$(python -m ruff check --no-cache --statistics $files 2>/dev/null || true)
+          total=$(printf '%s\n' "$counts" | awk '$1 ~ /^[0-9]+$/ {n += $1} END {print n + 0}')
+          {
+            echo "ruff (advisory): ${total} finding(s) in $(printf '%s\n' $files | wc -l | tr -d ' ') changed Python file(s), $(( $(date +%s) - start )) s. A hint, never a gate. Baseline: docs/platform/lint-baseline.md"
+            printf '%s\n' "$counts" | grep -E '^[[:space:]]*[0-9]+' || true
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          exit 0
       # Jim, Nov 8 2026: the Concord Room Orca plugin (tools/orca-concord-room) is production, so its own Node tests run on every PR and every merge. Node's built-in test runner, no install, no network, no secret; outside the 90 s Python suite limit above.
       - uses: actions/setup-node@v5
         with:
