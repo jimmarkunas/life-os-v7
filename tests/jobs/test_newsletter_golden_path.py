@@ -23,6 +23,7 @@ from lifeos.sources.newsletters import config, finalize, ingest, sweep
 from tests.jobs.fit.test_fit import PROFILE as _PROFILE_OBJECT  # noqa: F401 - the same synthetic profile shape
 from tests.kit.jobsdb import JobsDB
 from tests.kit.ledger_pages import SOURCE
+from tests.jobs.support import CARD, ENGINEER_BODY, Mailbox, PM_BODY, VACANCIES, alert
 
 PROFILE = {"years": 15, "scope": {"team_size": 10, "budget_usd": 20_000_000, "global": "direct", "enterprise": "direct", "multi_team": "direct", "executive": "adjacent", "people_leadership": "direct"},
            "capabilities": [{"id": "erp", "label": "ERP integrations", "class": "direct", "terms": ["netsuite", "erp"], "committed": True},
@@ -33,28 +34,10 @@ PROFILE = {"years": 15, "scope": {"team_size": 10, "budget_usd": 20_000_000, "gl
            "advantage": ["ai", "automation"], "specialization": ["technical program manager"]}
 ENV = {"FIT_PROFILE_JSON": json.dumps(PROFILE), "V7_FIT_GATE": "true"}
 
-PM_BODY = ("<h2>Responsibilities</h2><ul><li>Own the program roadmap and drive delivery across multiple teams</li><li>Lead integration of NetSuite with the storefront and payment providers</li>"
-           "<li>Report to executive stakeholders on a global enterprise program</li></ul><h2>Requirements</h2><ul><li>8+ years of experience in program management delivering enterprise software</li>"
-           "<li>Experience with NetSuite, Stripe and Contentful</li><li>Strong communication skills</li></ul>") * 2
-ENGINEER_BODY = ("<h2>Responsibilities</h2><ul><li>Write production Java and Go services that process card payments</li><li>Design database schemas and stay on call for the platform</li>"
-                 "<li>Review code and mentor engineers</li></ul><h2>Requirements</h2><ul><li>8+ years of professional software engineering in Java or Go</li>"
-                 "<li>Deep experience with distributed systems and Kubernetes</li></ul>") * 2
-CARD = ('<a href="https://jobright.ai/jobs/info/{id}?utm_source=1&imp_id=SYNTH"><span>{company}</span><span>Software &amp; Services</span><span>· Mid Level</span><span>89</span><span>%</span>'
-        '<span>{title}</span><span>$120K/yr - $150K/yr</span><span>Remote, US</span><span>5+ referrals</span><span>34 minutes ago</span></a>')
 
 # id -> (company, title, employer page url, page body). V4 resolves to V1's employer page: the same vacancy seen twice. V5's resolution is rate limited at first.
-VACANCIES = {
-    "v1": ("Acme", "Senior Program Manager", "https://careers.acme.example/jobs/senior-program-manager-1001", PM_BODY),
-    "v2": ("Globex", "Technical Program Manager", "https://careers.globex.example/jobs/technical-program-manager-2002", PM_BODY),
-    "v3": ("Initech", "Software Engineer", "https://careers.initech.example/jobs/software-engineer-3003", ENGINEER_BODY),
-    "v4": ("Umbrella", "Senior Program Manager", "https://careers.acme.example/jobs/senior-program-manager-1001", PM_BODY),
-    "v5": ("Hooli", "Delivery Lead Program Manager", "https://careers.hooli.example/jobs/delivery-lead-5005", PM_BODY),
-    "v6": ("Wayne", "Technical Program Manager", "https://careers.wayne.example/jobs/technical-program-manager-6006", PM_BODY),
-}
 
 
-def alert(*ids):
-    return "".join(CARD.format(id=i, company=VACANCIES[i][0], title=VACANCIES[i][1]) for i in ids)
 
 
 def page(title, company, body):
@@ -62,38 +45,6 @@ def page(title, company, body):
     return "<html><title>%s</title><script type='application/ld+json'>%s</script></html>" % (title, json.dumps(ld))
 
 
-class Mailbox:
-    """A stateful Gmail: labels per message, and the three search shapes the stages use (label:, -label:, in:inbox, from:, newer_than:). Gmail flattens nested label names, so the slug is the query token."""
-    def __init__(self, messages):
-        self.messages, self.labels, self.log = messages, {i: {"INBOX"} for i in messages}, []
-
-    def label_id(self, name, create=False):
-        return name.lower().replace("/", "-").replace(" ", "-")
-
-    def list_ids(self, query, limit=5000):
-        tokens = query.replace("{", " ").replace("}", " ").split()
-        senders = [t[5:] for t in tokens if t.startswith("from:")]
-        out = []
-        for i, (sender, _, received) in self.messages.items():
-            have = self.labels[i]
-            if any(t.startswith("label:") and t[6:] not in have for t in tokens) or any(t.startswith("-label:") and t[7:] in have for t in tokens):
-                continue
-            if "in:inbox" in tokens and "INBOX" not in have:
-                continue
-            if any(t.startswith("newer_than:") and (time.time() - received) / 86400 > int(t[11:-1]) for t in tokens):
-                continue
-            if senders and not any(s in sender for s in senders):
-                continue
-            out.append(i)
-        return out[:limit]
-
-    def message(self, message_id):
-        return self.messages[message_id]
-
-    def relabel(self, ids, add=(), remove=()):
-        for i in ids:
-            self.labels[i] = (self.labels[i] | set(add)) - set(remove)
-        self.log.append((sorted(ids), list(add), list(remove)))
 
 
 class JobLedger:

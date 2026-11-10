@@ -10,7 +10,7 @@ from lifeos.jobs import enrich
 from lifeos.platform.notion_client import NotionError
 from lifeos.sources import interview_evidence as ev, m1m2_proof as proof
 from lifeos.interview.ui_probe import QA_PARENT
-from tests.interview.test_notion import ENV, page
+from tests.interview.support import ENV, page
 from tests.kit.tree import Tree
 from tests.sources.test_interview_journey import NotionLike
 from tests.sources.test_interview_journey_proof import qa_workspace
