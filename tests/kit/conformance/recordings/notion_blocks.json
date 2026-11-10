@@ -1,0 +1,33 @@
+{
+  "provenance": "Hand-built from the public Notion API reference (Retrieve block children, Update a block, Delete a block, Append block children) and the fields lifeos/platform/notion_client.py reads. No live call was made (no credential is used by tests). Every id and text is an obviously fake value; field names and nesting follow the documented responses. Refresh by replacing a response with a scrubbed live one.",
+  "list_children": {
+    "object": "list",
+    "results": [
+      {"object": "block", "id": "block-fake-0001", "type": "paragraph", "archived": false, "in_trash": false,
+       "paragraph": {"rich_text": [{"type": "text", "text": {"content": "fake text", "link": null}, "plain_text": "fake text"}], "color": "default"}}
+    ],
+    "next_cursor": null,
+    "has_more": false,
+    "type": "block",
+    "block": {}
+  },
+  "update_block": {
+    "object": "block", "id": "block-fake-0001", "type": "paragraph", "archived": false, "in_trash": false,
+    "paragraph": {"rich_text": [{"type": "text", "text": {"content": "new fake text", "link": null}, "plain_text": "new fake text"}], "color": "default"}
+  },
+  "delete_block": {
+    "object": "block", "id": "block-fake-0001", "type": "paragraph", "archived": true, "in_trash": true,
+    "paragraph": {"rich_text": [{"type": "text", "text": {"content": "fake text", "link": null}, "plain_text": "fake text"}], "color": "default"}
+  },
+  "append_children": {
+    "object": "list",
+    "results": [
+      {"object": "block", "id": "block-fake-0002", "type": "paragraph", "archived": false, "in_trash": false,
+       "paragraph": {"rich_text": [{"type": "text", "text": {"content": "added fake text", "link": null}, "plain_text": "added fake text"}], "color": "default"}}
+    ],
+    "next_cursor": null,
+    "has_more": false,
+    "type": "block",
+    "block": {}
+  }
+}
