@@ -216,7 +216,7 @@ jobs:
         run: python3 -m lifeos.platform.gate
       - uses: ./.github/actions/python
       - name: Test-only dependency (PyYAML, for the workflow contract tests; skipped if unavailable)
-        run: pip install pyyaml || echo "pyyaml unavailable; the workflow contract tests will skip"
+        run: pip install --require-hashes -r requirements-test.lock || echo "pyyaml unavailable; the workflow contract tests will skip"
       - name: Unit tests
         run: python -m unittest discover -s tests -t . -v
       - name: Stage 1 - sweep
@@ -398,7 +398,7 @@ jobs:
           OPEN_JOBS_CONTACT: ${{ steps.bws_jobright.outputs.OPEN_JOBS_CONTACT || steps.bws_jobright_retry.outputs.OPEN_JOBS_CONTACT }}
           TINYFISH_API_KEY: ${{ steps.bws_jobright.outputs.TINYFISH_API_KEY || steps.bws_jobright_retry.outputs.TINYFISH_API_KEY }}
         run: |
-          pip install -r requirements-browser.txt
+          pip install --require-hashes -r requirements-browser.lock
           python -m playwright install --with-deps chromium
           python -m lifeos.run resolve-jobright --limit 40 $([ "$LIVE" = "true" ] && echo --live)
 
@@ -604,7 +604,7 @@ jobs:
           key: fastembed-bge-small-v1
       - name: Install semantic layer
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.fit || inputs.publish || inputs.quick)) }}
-        run: pip install -r requirements-fit.txt || echo "semantic layer unavailable (scoring unchanged)"
+        run: pip install --require-hashes -r requirements-fit.lock || echo "semantic layer unavailable (scoring unchanged)"
       - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
         uses: ./.github/actions/bws-helper
         with:
@@ -684,7 +684,7 @@ jobs:
           V7_CLOUD_FIT: ${{ vars.V7_CLOUD_FIT || 'off' }}                 # D214: off unless the repository variable says shadow (G6) or canary (D226); on is refused in code
           V7_CLOUD_FIT_PROFILE_REF: ${{ secrets.V7_CLOUD_FIT_PROFILE_REF }}   # LIFE-41: the 16-hex reference to Oracle's own brief (G5), a SECRET so it is masked: a repository variable is printed in this step's env header and the repo is public
         run: |
-          pip install -r requirements-browser.txt
+          pip install --require-hashes -r requirements-browser.lock
           python -m playwright install --with-deps chromium
           python -m lifeos.jobs.tick $([ "$LIVE" = "true" ] && echo --live) ${{ inputs.quick && '--quick' || '' }}
       - id: web

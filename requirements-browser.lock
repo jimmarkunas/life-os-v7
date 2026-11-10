@@ -1,0 +1,13 @@
+# LOCK FILE (LIFE-536). Exact versions and sha256 hashes of what CI installs today for requirements-browser.txt: CPython 3.12, Linux x86_64 (the ubuntu-24.04 runner).
+# Install with: pip install --require-hashes -r requirements-browser.lock   (it will refuse on a Mac: the hashes are for the Linux wheels).
+# Do not edit by hand. To regenerate, change requirements-browser.txt, then run:
+#   pip install --dry-run --ignore-installed --report out.json --platform manylinux2014_x86_64 --python-version 3.12 --implementation cp --abi cp312 --only-binary=:all: -r requirements-browser.txt --target /tmp/x
+# and write each entry of out.json 'install' as name==version with its archive sha256. No version is upgraded by writing this file.
+greenlet==3.0.3 \
+    --hash=sha256:881b7db1ebff4ba09aaaeae6aa491daeb226c8150fc20e836ad00041bcb11230
+playwright==1.47.0 \
+    --hash=sha256:a1935672531963e4b2a321de5aa59b982fb92463ee6e1032dd7326378e462955
+pyee==12.0.0 \
+    --hash=sha256:7b14b74320600049ccc7d0e0b1becd3b4bd0a03c745758225e31a59f4095c990
+typing_extensions==4.16.0 \
+    --hash=sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8

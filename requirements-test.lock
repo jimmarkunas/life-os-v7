@@ -1,0 +1,7 @@
+# LOCK FILE (LIFE-536). Exact versions and sha256 hashes of what CI installs today for requirements-test.txt: CPython 3.12, Linux x86_64 (the ubuntu-24.04 runner).
+# Install with: pip install --require-hashes -r requirements-test.lock   (it will refuse on a Mac: the hashes are for the Linux wheels).
+# Do not edit by hand. To regenerate, change requirements-test.txt, then run:
+#   pip install --dry-run --ignore-installed --report out.json --platform manylinux2014_x86_64 --python-version 3.12 --implementation cp --abi cp312 --only-binary=:all: -r requirements-test.txt --target /tmp/x
+# and write each entry of out.json 'install' as name==version with its archive sha256. No version is upgraded by writing this file.
+PyYAML==6.0.3 \
+    --hash=sha256:ba1cc08a7ccde2d2ec775841541641e4548226580ab850948cbfda66a1befcdc

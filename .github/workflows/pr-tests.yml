@@ -21,7 +21,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/python
       - name: Test-only dependency (PyYAML, for the workflow contract tests)
-        run: pip install pyyaml
+        run: pip install --require-hashes -r requirements-test.lock
       - name: Unit tests (two parallel shards; warn at 45 s, fail at 90 s)
         run: |
           start=$(date +%s)
