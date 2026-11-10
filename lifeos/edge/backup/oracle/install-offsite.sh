@@ -66,6 +66,8 @@ case "${1:-}" in
     check "timer enabled" 'systemctl is-enabled --quiet lifeos-offsite-backup.timer'
     check "ubuntu cannot read the credential" '! runuser -u ubuntu -- cat "$CRED" >/dev/null 2>&1'
     check "last run succeeded and is recent" 'python3 -I "$PROG" check >/dev/null 2>&1'
+    # LIFE-542: the MacBook pushes weekly; warn (never fail) when its newest file is older than 9 days
+    if mac="$(python3 -I "$PROG" mac-check 2>/dev/null)"; then say "  [PASS] Mac backup is recent ($mac)"; else say "  [WARN] Mac backup: ${mac:-mac_backup_unreadable} (warning only; verify does not fail on it)"; fi
     exit $ok ;;
   disable) systemctl disable --now lifeos-offsite-backup.timer >/dev/null 2>&1 || true; say "timer stopped" ;;
   uninstall)
