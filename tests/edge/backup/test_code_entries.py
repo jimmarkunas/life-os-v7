@@ -29,6 +29,13 @@ class FitService(unittest.TestCase):
         for name in ("systemd-user/lifeos-fit-gw.service", "sbin/lifeos-fit-deploy"):
             self.assertFalse(ob.denied(name, listed[name][0]), name)
 
+    def test_the_resume_system_units_are_listed_optional_and_clear_of_the_deny_pattern(self):
+        listed = {name: (source, required) for name, source, required in ob.FILES}
+        self.assertEqual(listed["systemd/lifeos-resume.socket"], ("/etc/systemd/system/lifeos-resume.socket", False))
+        self.assertEqual(listed["systemd/lifeos-resume@.service"], ("/etc/systemd/system/lifeos-resume@.service", False))
+        for name in ("systemd/lifeos-resume.socket", "systemd/lifeos-resume@.service"):
+            self.assertFalse(ob.denied(name, listed[name][0]), name)
+
     def test_a_missing_one_is_counted_not_fatal_and_a_present_one_is_saved(self):
         with tempfile.TemporaryDirectory() as tmp:
             work, present = Path(tmp) / "w", Path(tmp) / "unit.service"

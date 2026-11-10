@@ -67,6 +67,8 @@ FILES = (   # (archive name, source path, required)
     ("systemd-user/lifeos-imessage-alerts@.service", UBUNTU + "/.config/systemd/user/lifeos-imessage-alerts@.service", False),
     ("systemd-user/lifeos-fit-gw.service", UBUNTU + "/.config/systemd/user/lifeos-fit-gw.service", False),           # LIFE-529 (Jim, Nov 9 2026, 11:58 PM CT): the Cloud Fit service unit and its deploy helper, so a restore can bring Fit back
     ("sbin/lifeos-fit-deploy", "/usr/local/sbin/lifeos-fit-deploy", False),
+    ("systemd/lifeos-resume.socket", "/etc/systemd/system/lifeos-resume.socket", False),                              # LIFE-529 (Jim, Nov 10 2026): the resume builder's system units, so a restore can bring it back
+    ("systemd/lifeos-resume@.service", "/etc/systemd/system/lifeos-resume@.service", False),
     ("hermes/config.yaml", HERMES + "/config.yaml", False),
     ("hermes/SOUL.md", HERMES + "/SOUL.md", False),
     ("hermes/profiles/claude-hermes/config.yaml", HERMES + "/profiles/claude-hermes/config.yaml", False),
