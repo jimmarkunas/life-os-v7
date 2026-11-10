@@ -14,6 +14,6 @@ Anything committed here, written in a PR, or printed in a GitHub Actions log is 
 1. Logs emit **counts and status codes only** - never a subject, sender, company, title, or URL.
 2. Tests use **synthetic** data (`example.com`, invented names). Never copy a real email into a fixture.
 3. Errors never echo HTTP response bodies.
-4. `tests/test_privacy.py` runs in CI and fails the build on emails outside an allowlist, secret-shaped strings, and phone numbers. Fix the leak; never weaken the test to pass.
+4. `tests/contracts/test_privacy.py` runs in CI and fails the build on emails outside an allowlist, secret-shaped strings, and phone numbers. Fix the leak; never weaken the test to pass.
 
 **Rules for the assistant:** never paste secrets or mailbox content into chat, commits, PRs, or issues; describe data by count/category.
