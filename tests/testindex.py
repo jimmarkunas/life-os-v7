@@ -222,7 +222,8 @@ def build_command(out):
     data = ROOT / ".coverage-test-index.data"
     rc.write_text("[run]\ndynamic_context = test_function\nsource = lifeos\n")
     try:
-        subprocess.run([sys.executable, "-m", "coverage", "run", "--rcfile=%s" % rc, "--data-file=%s" % data, "-m", "unittest", "discover", "-s", "tests", "-t", ".", "-p", "test_*.py"], cwd=ROOT, check=True)
+        subprocess.run([sys.executable, "-m", "coverage", "run", "--rcfile=%s" % rc, "--data-file=%s" % data, "-m", "unittest", "discover", "-s", "tests", "-t", ".", "-p", "test_*.py"], cwd=ROOT, check=True,
+                       env={**os.environ, "TESTINDEX_BUILDING": "1"})     # the guards that compare the OLD index with the code are skipped while the new one is being written
         subprocess.run([sys.executable, "-m", "coverage", "json", "--rcfile=%s" % rc, "--data-file=%s" % data, "--show-contexts", "-o", str(ROOT / ".coverage-test-index.json"), "-q"], cwd=ROOT, check=True)
         coverage_json = json.loads((ROOT / ".coverage-test-index.json").read_text())
     finally:

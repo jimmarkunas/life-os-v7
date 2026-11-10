@@ -286,6 +286,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/platform/alerts.py`: Platform alerts: one place that decides what is worth telling a person, once, and how (D53). Pure logic plus two sinks; no OS knowledge.
 - `lifeos/platform/branches.py`: LIFE-81 (Jim, Oct 20 2026; D244): branch archiving on merge, and the weekly stale-branch report.
 - `lifeos/platform/codes.py`: The outcome-code registry (LIFE-72): one checked-in definition of every fixed code the pipeline can emit. A code is a fixed UPPER_SNAKE word that names a result: a refusa
+- `lifeos/platform/credential_list.py`: LIFE-528: the credential list as data, in a Python module so the Close service can ship it (its release tool copies only .py files). NAMES, providers, what each is used f
 - `lifeos/platform/credentials.py`: LIFE-528 outcome 2 (Jim, Nov 10 2026, comments 12547 and 12548): the list of provider credentials LIFE OS uses, and what is known about each one's expiry.
 - `lifeos/platform/db.py`: Hostinger MySQL connection through an SSH tunnel (platform: no job knowledge). Every error is a fixed code. One tunnel per process (LIFE-76 PR 4a, D207): it is opened on 
 - `lifeos/platform/dcc_write.py`: The Daily Command Center write, proven from page markdown alone (D169). The ChatGPT-native router runs outside V7 and its Notion connector gives it the page as markdown a

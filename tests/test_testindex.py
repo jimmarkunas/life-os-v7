@@ -144,6 +144,7 @@ class Check(unittest.TestCase):
 
 
 @unittest.skipUnless(os.environ.get("LIFEOS_TEST_INDEX_FRESH") == "1", "only the hourly full run enforces index freshness (a PR must not fail because the index aged)")
+@unittest.skipIf(os.environ.get("TESTINDEX_BUILDING"), "the index is being rebuilt")
 class CommittedIndexIsFresh(unittest.TestCase):
     def test_the_committed_index_is_recent_and_covers_every_production_file(self):
         self.assertEqual(ti.check(ti.load()), [])
