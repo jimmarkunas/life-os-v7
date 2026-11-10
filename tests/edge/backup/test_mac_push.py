@@ -1,6 +1,8 @@
 """LIFE-538: the Mac-only Hermes and OpenClaw data is archived, encrypted to the PUBLIC key and pushed to one Oracle inbox."""
+import atexit
 import io
 import os
+import shutil
 import sqlite3
 import subprocess
 import tarfile
@@ -12,14 +14,28 @@ from unittest import mock
 from lifeos.edge.backup import mac_push as mp
 
 
+_KEYS = {}
+
+
+def _cleanup_keys():
+    for root in {v[2] for v in _KEYS.values()}:
+        subprocess.run(["gpgconf", "--homedir", root + "/priv", "--kill", "gpg-agent"], capture_output=True)
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def make_keys(base):
-    """A throwaway keypair: -> (public key file, private homedir). The real private key is never needed or present."""
-    home = Path(base) / "priv"
-    home.mkdir(mode=0o700)
-    subprocess.run(["gpg", "--homedir", str(home), "--batch", "--quiet", "--passphrase", "", "--quick-generate-key", "mac-push-test-key", "default", "default", "never"], check=True, capture_output=True)
-    pub = Path(base) / "recipient.asc"
-    pub.write_bytes(subprocess.run(["gpg", "--homedir", str(home), "--armor", "--export", "mac-push-test-key"], check=True, capture_output=True).stdout)
-    return str(pub), str(home)
+    """A throwaway keypair: -> (public key file, private homedir). The real private key is never needed or present.
+    LIFE-527: generated ONCE per test run and shared (key generation was the slowest part of these tests); `base` is accepted for the old call sites and ignored."""
+    if "k" not in _KEYS:
+        root = tempfile.mkdtemp(prefix="mpk-", dir="/tmp")                    # short path: gpg's agent socket path has a length limit
+        home = Path(root) / "priv"
+        home.mkdir(mode=0o700)
+        subprocess.run(["gpg", "--homedir", str(home), "--batch", "--quiet", "--passphrase", "", "--quick-generate-key", "mac-push-test-key", "default", "default", "never"], check=True, capture_output=True)
+        pub = Path(root) / "recipient.asc"
+        pub.write_bytes(subprocess.run(["gpg", "--homedir", str(home), "--armor", "--export", "mac-push-test-key"], check=True, capture_output=True).stdout)
+        _KEYS["k"] = (str(pub), str(home), root)
+        atexit.register(_cleanup_keys)
+    return _KEYS["k"][0], _KEYS["k"][1]
 
 
 def make_home(root):
