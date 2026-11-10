@@ -178,12 +178,12 @@ def push(sealed, run=subprocess.run, ssh_key=SSH_KEY, remote=REMOTE):
     return {"remote_kept": min(len(names), KEEP), "remote_removed": len(stale)}
 
 
-def main(argv=None, home=HOME, key_file=KEY_FILE, run=subprocess.run, clock=time.time, out=sys.stdout):
+def main(argv=None, home=HOME, key_file=KEY_FILE, run=subprocess.run, clock=time.time, out=sys.stdout, tmp_root="/tmp"):
     argv = sys.argv[1:] if argv is None else argv
     live = "--push" in argv
     work = None
     try:
-        work = tempfile.mkdtemp(prefix="mac-push-", dir=os.environ.get("MAC_PUSH_TMP", "/tmp"))
+        work = tempfile.mkdtemp(prefix="mac-push-", dir=tmp_root)
         os.chmod(work, 0o700)
         entries, extra = collect(work, home)
         plain = os.path.join(work, "plain.tar.gz")

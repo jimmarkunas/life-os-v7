@@ -16,9 +16,9 @@ def make_keys(base):
     """A throwaway keypair: -> (public key file, private homedir). The real private key is never needed or present."""
     home = Path(base) / "priv"
     home.mkdir(mode=0o700)
-    subprocess.run(["gpg", "--homedir", str(home), "--batch", "--quiet", "--passphrase", "", "--quick-generate-key", "test-only@example.invalid", "default", "default", "never"], check=True, capture_output=True)
+    subprocess.run(["gpg", "--homedir", str(home), "--batch", "--quiet", "--passphrase", "", "--quick-generate-key", "mac-push-test-key", "default", "default", "never"], check=True, capture_output=True)
     pub = Path(base) / "recipient.asc"
-    pub.write_bytes(subprocess.run(["gpg", "--homedir", str(home), "--armor", "--export", "test-only@example.invalid"], check=True, capture_output=True).stdout)
+    pub.write_bytes(subprocess.run(["gpg", "--homedir", str(home), "--armor", "--export", "mac-push-test-key"], check=True, capture_output=True).stdout)
     return str(pub), str(home)
 
 
@@ -98,7 +98,7 @@ class EndToEnd(unittest.TestCase):
             scratch = Path(tempfile.mkdtemp(prefix="mps-", dir="/tmp"))       # short path: gpg's agent socket path has a length limit
             self.addCleanup(lambda: __import__("shutil").rmtree(scratch, ignore_errors=True))
             out = io.StringIO()
-            with mock.patch.dict(os.environ, {"MAC_PUSH_TMP": str(scratch)}):
+            if True:
                 kept = {}
                 real_encrypt = mp.encrypt
 
@@ -108,7 +108,7 @@ class EndToEnd(unittest.TestCase):
                     kept["sealed"].write_bytes(Path(dest).read_bytes())
                     return result
                 with mock.patch.object(mp, "encrypt", spy):
-                    code = mp.main([], home=str(home), key_file=pub, out=out)
+                    code = mp.main([], home=str(home), key_file=pub, out=out, tmp_root=str(scratch))
             text = out.getvalue()
             self.assertEqual(code, 0, text)
             self.assertTrue(text.startswith("mac_backup ok dry "), text)
@@ -135,7 +135,7 @@ class EndToEnd(unittest.TestCase):
             home = make_home(tmp)
             _, priv = make_keys(tmp)
             both = Path(tmp) / "both.asc"
-            both.write_bytes(subprocess.run(["gpg", "--homedir", priv, "--armor", "--export-secret-keys", "test-only@example.invalid"], check=True, capture_output=True).stdout)
+            both.write_bytes(subprocess.run(["gpg", "--homedir", priv, "--armor", "--export-secret-keys", "mac-push-test-key"], check=True, capture_output=True).stdout)
             out = io.StringIO()
             self.assertEqual(mp.main([], home=str(home), key_file=str(both), out=out), 2)
             self.assertIn("mac_backup_key_has_secret", out.getvalue())
