@@ -9,7 +9,7 @@ reads this list on Oracle; it never reads Notion, so a Notion problem cannot sil
 import copy
 import datetime as dt
 
-from lifeos.platform.credential_list import CREDENTIALS
+from lifeos.platform.credential_list import CONFIG, CREDENTIALS
 
 SOURCES = {"provider_reported": "Provider reported", "manual": "Manual", "none": "No expiry exposed"}
 WARN_AHEAD_DAYS = 7
@@ -18,6 +18,11 @@ REQUIRED = ("key", "label", "provider", "used_for", "read_in", "expiry_source", 
 
 def load():
     return copy.deepcopy(CREDENTIALS)
+
+
+def config():
+    """LIFE-560: the environment-variable name registry (names, kind, owner, purpose; never a value)."""
+    return copy.deepcopy(CONFIG)
 
 
 def days_left(entry, today):
