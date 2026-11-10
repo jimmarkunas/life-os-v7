@@ -38,6 +38,7 @@ STATE = "/var/lib/lifeos-offsite"
 KEY_FILE = "/etc/lifeos-offsite/recipient.asc"
 MAC_INBOX = "/srv/mac-inbox/in"                                         # LIFE-538: the SFTP-only drop folder the MacBook Pro pushes its already-encrypted archive to (lifeos/edge/backup/mac_push.py); only the newest file is taken
 MAC_NAME = re.compile(r"^mac-\d{8}-\d{4}\.tar\.gz\.gpg$")
+MAC_STALE_SECONDS = 9 * 86400                                           # LIFE-542 (Jim, Nov 10 2026): the Mac pushes weekly, so a week and two days without a new file is the warning line
 CENTRAL = ZoneInfo("America/Chicago")
 
 UBUNTU, GRANS = "/home/ubuntu", "/home/grans"
@@ -413,12 +414,30 @@ def check(state_dir=STATE, clock=time.time, limit=STALE_SECONDS):
     return True, "ok"
 
 
+def mac_check(inbox=MAC_INBOX, clock=time.time, limit=MAC_STALE_SECONDS):
+    """LIFE-542: -> (ok, code, whole days old or None) for the newest Mac archive in the inbox, by the time it arrived. WARN-only: `verify` prints it and never fails on it.
+    Codes: mac_backup_ok | mac_backup_stale | mac_backup_none (folder readable, no archive) | mac_backup_unreadable (no folder, or it cannot be read)."""
+    try:
+        names = [n for n in os.listdir(inbox) if MAC_NAME.match(n) and os.path.isfile(os.path.join(inbox, n)) and not os.path.islink(os.path.join(inbox, n))]
+        if not names:
+            return False, "mac_backup_none", None
+        age = clock() - max(os.path.getmtime(os.path.join(inbox, n)) for n in names)
+    except OSError:
+        return False, "mac_backup_unreadable", None
+    days = max(0, int(age // 86400))
+    return (age <= limit), ("mac_backup_ok" if age <= limit else "mac_backup_stale"), days
+
+
 def main(argv=None, environ=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     environ = os.environ if environ is None else environ
     if argv[:1] == ["check"]:
         ok, code = check()
         print(code)
+        return 0 if ok else 1
+    if argv[:1] == ["mac-check"]:
+        ok, code, days = mac_check()
+        print(code + ("" if days is None else " days=%d" % days))
         return 0 if ok else 1
     if argv[:1] == ["dry"]:
         scratch = tempfile.mkdtemp(prefix="dry-", dir="/var/tmp")
@@ -429,7 +448,7 @@ def main(argv=None, environ=None):
         print(record["code"], "files=%s bytes=%s missing=%s skipped=%s credentials=%s" % tuple(record.get(k, 0) for k in ("files", "bytes", "missing", "skipped", "credentials")))
         return 0 if record["ok"] else 1
     if argv[:1] != ["run"]:
-        print("usage: offsite_backup.py run|check|dry")
+        print("usage: offsite_backup.py run|check|mac-check|dry")
         return 2
     directory = environ.get("CREDENTIALS_DIRECTORY", "")
     try:
