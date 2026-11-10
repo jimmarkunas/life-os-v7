@@ -183,6 +183,44 @@ class DefaultId(unittest.TestCase):
             self.assertEqual(seen["s"], ("bws", "from-cli"))
 
 
+class Prompt(unittest.TestCase):
+    def test_a_typed_passphrase_opens_the_protected_key_and_is_never_in_the_output(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pub, secret = make_pair(tmp, "correct horse")
+            archive, _ = build(tmp, pub)
+
+            def fetch(source, run=subprocess.run):
+                if source[0] == "prompt":
+                    return b"correct horse"
+                return secret
+            out = io.StringIO()
+            with mock.patch.object(rc, "fetch_key", fetch):
+                code = rc.run_check(archive, ("bws", "key"), ram=fake_ram, out=out, passphrase=("prompt", ""))
+            self.assertEqual(code, 0, out.getvalue())
+            self.assertNotIn("correct horse", out.getvalue())
+
+    def test_the_prompt_is_hidden_and_needs_a_terminal(self):
+        with mock.patch.object(rc.getpass, "getpass", return_value="typed") as asked, mock.patch("builtins.open", mock.mock_open()):
+            self.assertEqual(rc.fetch_key(("prompt", "")), b"typed")
+        self.assertIn("hidden", asked.call_args[0][0])
+        with mock.patch("builtins.open", side_effect=OSError):
+            with self.assertRaises(rc.CheckError) as ctx:
+                rc.fetch_key(("prompt", ""))
+        self.assertEqual(str(ctx.exception), "restore_no_tty")
+
+    def test_the_flag_selects_the_prompt_source(self):
+        seen = {}
+        with mock.patch.object(rc, "ID_FILE", "/nonexistent/id"), mock.patch.object(rc, "run_check", lambda a, s, **k: seen.update(p=k.get("passphrase")) or 0):
+            rc.main(["backup.tar.gz.gpg", "--bws-secret", "x", "--passphrase-prompt"], out=io.StringIO())
+        self.assertEqual(seen["p"], ("prompt", ""))
+
+    def test_a_missing_archive_is_a_fixed_code_before_anything_is_asked(self):
+        out = io.StringIO()
+        with mock.patch.object(rc, "fetch_key", side_effect=AssertionError("must not ask")):
+            self.assertEqual(rc.run_check("/nonexistent/x.tar.gz.gpg", ("bws", "x"), ram=fake_ram, out=out, passphrase=("prompt", "")), 1)
+        self.assertEqual(out.getvalue(), "FAIL restore_no_archive\n")
+
+
 class Fetch(unittest.TestCase):
     def runner(self, code, stdout):
         seen = {}
