@@ -5,7 +5,7 @@ from datetime import datetime
 from lifeos.interview import notion
 from lifeos.interview.ui_probe import QA_PARENT
 from lifeos.sources import interview_evidence as ev, interview_journey_proof as proof
-from tests.interview.test_notion import ENV, page
+from tests.interview.support import ENV, page
 from tests.sources.test_interview_journey import NotionLike
 
 NOW = datetime(2026, 10, 22, 16, tzinfo=ev.TZ)

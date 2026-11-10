@@ -368,7 +368,7 @@ class OpportunityPage(unittest.TestCase):
         self.assertEqual(view.ledger_facts(Client(), "row", "k1")[1]["hand_ledger"], (self.NEXT,))
 
     def test_a_line_manage_appended_is_carried_by_the_hourly_refresh_never_counts_as_an_edit_and_shows(self):
-        from tests.interview import test_notion as TN, test_ui3c as U
+        from tests.interview import support as TN, support as U
         current = replace(U.opportunity(), stable_job_key="recruiter-exampleco-pm")
         client, page_id = U.written(current)
         fold = client.blocks[page_id][0]["id"]

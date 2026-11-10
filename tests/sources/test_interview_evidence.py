@@ -10,6 +10,8 @@ from lifeos.platform.notion_client import NotionError
 from lifeos.interview.models import Child, Ownership, Parent, Scan
 from lifeos.run import STAGES
 from lifeos.sources import interview_evidence as ev
+from tests.sources.support import event
+from tests.sources.support import mail, outreach
 
 URL = "https://example.test/thread/1"
 OTHER = "https://example.test/thread/2"
@@ -29,8 +31,6 @@ class Calendar:
         return {"items": list(self.events)}
 
 
-def event(title, start="2026-10-28T10:00:00-05:00", **extra):
-    return {"id": title, "summary": title, "status": "confirmed", "start": {"dateTime": start}, **extra}
 
 
 def child(id="c1", date=None, who=None, ordinal=1):
@@ -49,16 +49,8 @@ class Ledger:
 APPLIED = {"id": "ledger-1", "company": "ExampleCo", "role": "Program Manager", "applied_on": "2026-10-01", "decision": None}
 
 
-def mail(subject="Schedule your interview - ExampleCo Program Manager", body="Please select a time for a call. Requisition 12345.", **extra):
-    return {"provider": "gmail", "id": subject, "received": "2026-10-20T15:00:00Z", "sender_name": "ExampleCo Talent", "sender_address": "no-reply.example",
-            "subject": subject, "body": body, "folder": "INBOX", "markers": {"bulk": False, "auto": True, "noreply": True}, "url": "https://example.test/thread/9", **extra}
 
 
-def outreach(role="Program Manager", client="ExampleCo", person="Pat Example", url="https://example.test/thread/5", received="2026-10-20T15:00:00Z", extra=""):
-    """A recruiter's first message: a person who says they are a recruiter, a role and (when given) the client."""
-    return {"provider": "gmail", "id": url, "received": received, "sender_name": person, "sender_address": "pat-example", "subject": f"{role} opportunity", "folder": "INBOX",
-            "markers": {"bulk": False, "auto": False, "noreply": False}, "url": url,
-            "body": f"Hi Jim,\n\nI'm a senior recruiter at Staffing Example Inc. I am hiring for a {role} role" + (f" for our client {client}" if client else "") + f". {extra}\n\n{person}\nSenior Recruiter\nStaffing Example Inc\n"}
 
 
 NOTES_TOP = [{"id": "n", "type": "heading_2", "heading_2": {"rich_text": [{"plain_text": notion.JIM_NOTES}]}}]      # a page that already has the Jim's notes heading (UI 3b)

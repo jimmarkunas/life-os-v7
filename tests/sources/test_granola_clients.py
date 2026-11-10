@@ -4,7 +4,7 @@ from unittest import mock
 from lifeos.interview import granola_match
 from lifeos.platform.notion_client import NotionError
 from lifeos.sources import granola_auto as ga, granola_clients as gc
-from tests.interview.test_granola_write import UUID, envelope
+from tests.interview.support import UUID, envelope
 from tests.sources.test_granola_auto import Catalog, go, oracle
 
 AT = chr(64)

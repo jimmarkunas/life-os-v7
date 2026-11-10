@@ -104,7 +104,7 @@ class RetiredSenderTests(unittest.TestCase):
         """Over the stateful mailbox and the real store: Processed means every card was saved (finalize then closes it Done), so retired mail
         must carry its own label instead, leave the pending query, and stay out of finalize, reconcile and the repair."""
         from lifeos.sources.newsletters import finalize
-        from tests.jobs.test_newsletter_golden_path import Mailbox
+        from tests.jobs.support import Mailbox
         from tests.kit.jobsdb import JobsDB
         box, db = Mailbox({"l1": (MESSAGES["m1"][0], HTML, time.time() - 60)}), JobsDB()
         box.labels["l1"].add("j-newsletters")
@@ -125,7 +125,7 @@ class RetiredSenderTests(unittest.TestCase):
 class SourceAccountingTests(unittest.TestCase):
     """LIFE-64: every parsed card leaves a source row for ITS message, over the real store and its UNIQUE (source_url_hash)."""
     def world(self, **mails):
-        from tests.jobs.test_newsletter_golden_path import Mailbox, alert
+        from tests.jobs.support import Mailbox, alert
         from tests.kit.jobsdb import JobsDB
         box = Mailbox({i: ("Jobright <alerts@jobright.ai>", alert(*ids), time.time() - 60) for i, ids in mails.items()})
         for labels in box.labels.values():

@@ -3,44 +3,14 @@ import unittest
 from lifeos.interview import notion
 from lifeos.interview.models import Ownership
 from lifeos.platform.notion_client import NotionError
-
-ENV = {"NOTION_INTERVIEW_TOKEN": "synthetic", "HIRING_PIPELINE_PAGE_ID": "root", "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "ds-synthetic"}     # LIFE-361: a new pursuit is created in the Ledger
-
-
-def block(label, kind="paragraph", id="block", **extra):
-    return {"id": id, "type": kind, kind: {"rich_text": [{"plain_text": label}]}, **extra}
+from tests.interview.support import ENV, Fake, block, page
 
 
-def page(title="Hiring Pipeline", parent="root", **extra):
-    return {"parent": {"page_id": parent}, "properties": {"title": {"type": "title", "title": [{"plain_text": title}]}}, **extra}
 
 
-class Fake:
-    def __init__(self):
-        self.pages = {"root": page(), "p": page(parent="root"), "c": page(parent="p")}
-        self.blocks = {"root": [block("Active Opportunities", "heading_1"), {"id": "p", "type": "child_page", "child_page": {"title": "Example — Program Manager"}}],
-                       "p": [block(notion.MARKERS["opportunity"]), block("Live Notes", "heading_2", "live"), block("private human notes", id="note"), block("Raw Notes", "heading_2", "raw")],
-                       "c": [block(notion.MARKERS["round"]), block("Live Notes", "heading_2", "live"), block("Raw Notes", "heading_2", "raw")]}
-        self.calls = []
-        self.fail = set()
-        self.more = False
 
-    def call(self, method, path, body=None):
-        self.calls.append((method, path))
-        if method != "GET":
-            raise AssertionError("mutation")
-        if path in self.fail:
-            raise NotionError("NOTION_NETWORK")
-        key = path.split("/")[2].split("?")[0]
-        if path.startswith("/pages/"):
-            if key not in self.pages:
-                raise NotionError("NOTION_HTTP_404")
-            return copy.deepcopy(self.pages[key])
-        results = self.blocks.get(key, [])
-        return {"results": copy.deepcopy(results[:1] if "page_size=1" in path and "page_size=100" not in path else results), "has_more": self.more, "next_cursor": None}
 
-    def query_data_source(self, source_id=None, body=None):
-        return {"results": [], "has_more": False, "next_cursor": None}             # an empty Job Ledger: readers fall back to the page tree as before
+
 
 
 class NotionTests(unittest.TestCase):
