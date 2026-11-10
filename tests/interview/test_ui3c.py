@@ -10,6 +10,7 @@ from lifeos.platform.notion_client import NotionError
 from lifeos.platform.runtime import RunContext
 from tests.interview.test_create import WritableFake
 from tests.interview.test_notion import ENV, block, page
+from tests.interview.support import REQUEST, Sim, opportunity, texts, written
 
 TODAY = "2026-10-20"
 # The approved pages' outlines (read Oct 20, 2026 from (Notion page, found by title) and
@@ -100,22 +101,10 @@ UI4 = """0:toggle ⚙️ LIFE OS · Source Health [color=gray]
 3:heading_3 Transcript & Recording
 2:callout [color=gray_background icon=🔗]
 3:heading_3 Navigation""".split("\n")
-REQUEST = "https://mail.google.com/mail/u/0/#all/synthetic-request"
 
 
-def opportunity(rounds=(), **facts):
-    return view.Opportunity("ExampleCo", "Program Manager", "exampleco-pm-1", None, "row" if facts else None,
-                            "linked" if facts else "not_linked", REQUEST, "root", rounds=rounds, **facts)
 
 
-def texts(client, block_id):
-    out = []
-    for b in client.blocks.get(block_id, []):
-        out.append(notion.text(b))
-        if b["type"] == "table_row":
-            out += ["".join(r.get("plain_text", (r.get("text") or {}).get("content", "")) for r in cell) for cell in b["table_row"]["cells"]]
-        out += texts(client, b["id"])
-    return out
 
 
 def pane(client, round_id, title):
@@ -125,8 +114,6 @@ def pane(client, round_id, title):
     return [b for b in client.blocks[tab] if notion.text(b) == title][0]["id"]
 
 
-class Sim(WritableFake):
-    """The production-shaped writable fake."""
 
 
 class FillerSim(Sim):
@@ -148,17 +135,6 @@ class FillerSim(Sim):
         return out
 
 
-def written(current=None):
-    """A UI 3c page written by the staged writer under "active", with Jim's own note and an interview page after it."""
-    client = Sim()
-    current = current or opportunity()
-    blocks = create.rendered(current, tail=None)[0]
-    page_id = notion.write_tree(client, "active", blocks, title="ExampleCo — Program Manager")
-    assert create.finalize(client, page_id, current, blocks) == "readback_ok"
-    live = [b["id"] for b in client.blocks[page_id] if notion.text(b) == "Live Notes · protected space"][0]
-    client.blocks[live].append(block("Jim's private note", id="jim-note"))
-    client.blocks[page_id].append({"id": "round-1", "type": "child_page", "child_page": {"title": "Interview 1"}})
-    return client, page_id
 
 
 class Layout(unittest.TestCase):

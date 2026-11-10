@@ -5,62 +5,14 @@ from unittest import mock
 from lifeos.jobs import private_report as pr
 from lifeos.platform import snapshot_store, stored_pages
 from lifeos.platform.notion_client import NotionError
-
-PARENT = pr.REPORTS_PAGE
-
-
-class FakeStore:
-    """A dict standing in for the private snapshot store (report key -> snapshot)."""
-    def __init__(self):
-        self.rows = {}
-
-    def ensure(self, connection):
-        pass
-
-    def save(self, connection, key, snapshot):
-        self.rows[key] = snapshot
-
-    def load(self, connection, key):
-        return self.rows.get(key)
+from tests.jobs.support import FakeClient, FakeStore, PARENT, connect
 
 
-@contextmanager
-def connect():
-    yield object()
 
 
-class FakeClient:
-    """Just enough Notion: the ledger's data source -> database -> page chain, search, page create (with its table children), and block children."""
-    source = "s" * 32
 
-    def __init__(self, parent=PARENT, existing=None, fail=False, lose_rows=0):
-        self.parent, self.existing, self.fail, self.lose_rows, self.writes, self.blocks = parent, existing, fail, lose_rows, [], {}
 
-    def call(self, method, path, body=None):
-        if self.fail:
-            raise NotionError("NOTION_HTTP_500")
-        if path.startswith("/data_sources/"):
-            return {"parent": {"type": "database_id", "database_id": "d" * 32}}
-        if path.startswith("/databases/"):
-            return {"parent": {"type": "page_id", "page_id": self.parent} if self.parent else {"type": "workspace"}}
-        if path == "/search":
-            raise AssertionError("D250: a private report is never found by a Notion search")
-        if path.startswith("/pages/"):
-            return self.existing.get(path.split("/")[2], {"archived": False}) if isinstance(self.existing, dict) else {"archived": False}
-        base = path.split("?")[0]
-        return {"results": self.blocks.get(base.split("/")[2], []), "has_more": False}
 
-    def call_once(self, method, path, body=None, version=None):
-        self.writes.append((method, path, body))
-        tables = []
-        for index, table in enumerate(body["children"]):
-            if table.get("type") != "table":                       # LIFE-212: an intro paragraph above the tables
-                continue
-            rows = table["table"]["children"]
-            self.blocks[f"t{index}"] = [{"id": f"r{n}"} for n in range(len(rows) - self.lose_rows)]
-            tables.append({"id": f"t{index}", "type": "table"})
-        self.blocks["page1"] = tables
-        return {"id": "page1"}
 
 
 HEADER = ["company", "link"]

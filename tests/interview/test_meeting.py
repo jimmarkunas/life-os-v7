@@ -7,9 +7,9 @@ from lifeos.interview.models import RoundQuery
 from lifeos.sources import hiring, interview_evidence as ev
 from tests.interview.test_confirm import DATE, LATER, PARENT, REF, pending_round
 from tests.interview.test_notion import ENV
-from tests.sources.test_interview_evidence import event
-from tests.sources import test_interview_journey as J
-from tests.sources.test_interview_journey import INVITE, LEAD, NO_REQ, REQUEST
+from tests.sources.support import event
+from tests.sources.support import JourneyFixture
+from tests.sources.support import INVITE, LEAD, NO_REQ, REQUEST
 
 JOIN, PLACE = "https://meet.example.test/abc-defg-hij", "Example HQ, Room 4"
 
@@ -98,10 +98,8 @@ class FromTheInvite(unittest.TestCase):
 
 
 
-class Through(unittest.TestCase):
+class Through(JourneyFixture, unittest.TestCase):
     """The real Interview runner tick after tick (the LIFE-78 journey harness): the invite's details reach the same round page, and only a change writes."""
-    setUp, tick, settle, pages = J.Journey.setUp, J.Journey.tick, J.Journey.settle, J.Journey.pages
-
     def test_the_accepted_invites_details_land_on_its_round_and_a_later_change_updates_it_in_place(self):
         self.settle(LEAD, NO_REQ, REQUEST)
         self.events.append(event(INVITE, hangoutLink=JOIN))

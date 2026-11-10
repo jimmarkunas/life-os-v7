@@ -28,7 +28,7 @@ class Register(unittest.TestCase):
 
     def test_the_registry_file_loads_and_the_log_gets_counts_only(self):
         self.assertGreaterEqual(len(reg.held_keys()), 40)
-        from tests.jobs.test_private_report import FakeClient, FakeStore, connect
+        from tests.jobs.support import FakeClient, FakeStore, connect
         from unittest import mock
         from lifeos.jobs import private_report, store
         from lifeos.platform import stored_pages

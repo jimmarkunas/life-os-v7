@@ -7,7 +7,7 @@ import unittest
 from unittest import mock
 
 from lifeos.edge import close_gate as gate
-from tests.imessage.test_alerts import RUNNER, OTHER, v2
+from tests.imessage.support import RUNNER, OTHER, v2
 
 HOST = "edge.example.ts.net:47443"
 LOGIN = "owner@example.com"

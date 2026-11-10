@@ -11,7 +11,7 @@ from lifeos.jira import dash_data as D, dash_render as R, dashboard as S
 from lifeos.jira.dash_scrub import scrub, terms
 from lifeos.platform import stored_pages
 from lifeos.platform.notion_client import NotionError
-from tests.jobs.test_private_report import FakeStore, connect
+from tests.jobs.support import FakeStore, connect
 
 ROOT = "a" * 32
 NOW = datetime(2026, 10, 29, 13, 5, tzinfo=D.CENTRAL)             # Thursday 1:05 PM CT: the check-in owed is Wed Oct 28

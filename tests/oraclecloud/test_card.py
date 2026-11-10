@@ -8,7 +8,7 @@ from unittest import mock
 from lifeos.imessage import alerts_endpoint as ep
 from lifeos.oraclecloud import card
 from lifeos.platform import report_region
-from tests.imessage.test_alerts import RUNNER, OTHER, v2, whois
+from tests.imessage.support import RUNNER, OTHER, v2, whois
 from tests.kit.comms import Report, text
 
 NOW = dt.datetime(2026, 10, 15, 13, 5, 0, tzinfo=dt.timezone.utc)                # 8:05 AM in Chicago

@@ -8,7 +8,7 @@ from datetime import datetime
 from lifeos.interview.ui_probe import LEDGER_ROW, QA_PARENT
 from lifeos.platform.notion_client import NotionError
 from lifeos.sources import interview_contacts_proof as proof, interview_evidence as ev
-from tests.interview.test_notion import ENV
+from tests.interview.support import ENV
 from tests.sources.test_m1m2_proof import QAWorkspace
 
 NOW = datetime(2026, 10, 25, 22, 0, tzinfo=ev.TZ)

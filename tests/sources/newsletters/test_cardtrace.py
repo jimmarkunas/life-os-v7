@@ -11,7 +11,7 @@ from unittest import mock
 
 from lifeos.jobs import identity, store
 from lifeos.sources.newsletters import cardtrace, ingest
-from tests.jobs.test_newsletter_golden_path import Mailbox, alert
+from tests.jobs.support import Mailbox, alert
 from tests.kit.jobsdb import JobsDB
 
 MID = "18f0a1b2c3d4e5f6"

@@ -4,41 +4,12 @@ import unittest
 from lifeos.interview import create, granola_write as gw
 from lifeos.interview.transcript import normalize_granz
 from lifeos.platform.notion_client import NotionError
-
-UUID = "3f2a1c6e-1b7a-4c1e-9d55-0a1b2c3d4e5f"
-ROUND = "round-page"
+from tests.interview.support import FakeNotion, ROUND, UUID, envelope
 
 
-def envelope(n=3):
-    rows = [{"id": f"s{i}", "document_id": UUID, "text": f"Line {i} " + "x" * (2500 if i == 1 else 5), "start_timestamp": f"2026-10-13T{17 + i // 3600:02d}:{i // 60 % 60:02d}:{i % 60:02d}Z",
-             "end_timestamp": f"2026-10-13T{17 + (i + 1) // 3600:02d}:{(i + 1) // 60 % 60:02d}:{(i + 1) % 60:02d}Z", "source": "microphone" if i % 2 == 0 else "system", "is_final": True} for i in range(n)]
-    return normalize_granz(UUID, json.dumps({"transcript": rows}))
 
 
-class FakeNotion:
-    def __init__(self, existing=(), fail_on=None, drop_last=False):
-        self.pages = {ROUND: list(existing)}
-        self.calls, self.fail_on, self.drop_last = [], fail_on, drop_last
 
-    def call(self, method, path, body=None):
-        self.calls.append((method, path))
-        if self.fail_on == method:
-            raise NotionError("NOTION_NETWORK")
-        if method == "POST" and path == "/pages":
-            pid = f"page-{len(self.pages)}"
-            self.pages[pid] = list(body["children"])
-            title = body["properties"]["title"]["title"][0]["text"]["content"]
-            self.pages[body["parent"]["page_id"]].append({"id": pid, "type": "child_page", "child_page": {"title": title}})
-            return {"id": pid}
-        if method == "PATCH" and path.endswith("/children"):
-            self.pages[path.split("/")[2]].extend(body["children"])
-            return {"results": []}
-        if method == "GET" and "/children" in path:
-            blocks = self.pages[path.split("/")[2]]
-            blocks = blocks[:-1] if self.drop_last and path.split("/")[2] != ROUND else blocks
-            return {"results": [dict(b, id=b.get("id", "b")) if b.get("type") == "child_page" else {"id": "b", "type": b["type"], b["type"]: b[b["type"]]} for b in blocks],
-                    "has_more": False, "next_cursor": None}
-        raise AssertionError((method, path))
 
 
 class Lines(unittest.TestCase):

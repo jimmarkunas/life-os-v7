@@ -14,6 +14,7 @@ from lifeos.jobs import hiring_pipeline, ledger
 from lifeos.platform import report_region as R, router
 from lifeos.sources import hiring as stage
 from tests.kit.tree import Tree, rich
+from tests.hiring.support import writes
 
 CT = ZoneInfo("America/Chicago")
 NOW = datetime(2026, 10, 6, 14, 0, tzinfo=CT)
@@ -233,8 +234,6 @@ WANT = [[("Acme — Senior Program Manager", None), ("Submitted · Applied Oct 2
         [("Globex — Director", None), ("Interviewing · Interview Tomorrow 10:00 AM CT", None), ("Prepare", None), ("Needs Notes", None)]]
 
 
-def writes(tree):
-    return [e for e in tree.log if e[0] != "GET"]
 
 
 def table_state(tree, table="0000000000000000000000000000a003"):

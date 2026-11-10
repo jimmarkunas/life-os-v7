@@ -5,10 +5,8 @@ import tempfile
 import unittest
 
 from lifeos.edge.oracle import close_release as rel
+from tests.edge.support import APP_SRC, C, FILES, github
 
-C = "a" * 40
-APP_SRC = b'CLOSURE = ("lifeos/hiring/close.py",)\n'
-FILES = {**{p: b"# stub\n" for p in rel.EDGE}, rel.APP: APP_SRC, "lifeos/hiring/close.py": b"# close\n"}
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
@@ -17,12 +15,6 @@ def real_edge(app=b"CLOSURE = ()\n"):
     return {**{p: open(os.path.join(ROOT, p), "rb").read() for p in rel.EDGE if p != rel.APP}, rel.APP: app}
 
 
-def github(files=FILES, status="ahead", tree_extra=None, mode="100644"):
-    tree = [{"path": p, "type": "blob", "mode": mode, "sha": rel.blob(d)} for p, d in files.items()] + (tree_extra or [])
-    urls = {f"https://api.github.com/repos/{rel.REPO}/compare/{C}...main": json.dumps({"status": status}).encode(),
-            f"https://api.github.com/repos/{rel.REPO}/git/trees/{C}?recursive=1": json.dumps({"tree": tree}).encode()}
-    urls.update({f"https://raw.githubusercontent.com/{rel.REPO}/{C}/{p}": d for p, d in files.items()})
-    return urls.__getitem__
 
 
 class Stage(unittest.TestCase):

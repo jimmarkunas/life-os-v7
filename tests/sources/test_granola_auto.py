@@ -6,7 +6,7 @@ from unittest import mock
 from lifeos.interview import granola_match, granola_write as gw
 from lifeos.interview.models import Ownership
 from lifeos.sources import granola_auto as ga
-from tests.interview.test_granola_write import FakeNotion, ROUND, UUID, envelope
+from tests.interview.support import FakeNotion, ROUND, UUID, envelope
 
 ENV = {"NOTION_INTERVIEW_TOKEN": "t", "HIRING_PIPELINE_PAGE_ID": "p", "IMESSAGE_ALERTS_HOST": "oracle.test"}
 DAY = "2026-10-13"
