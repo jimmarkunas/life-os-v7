@@ -12,7 +12,7 @@ import os
 import time
 
 from lifeos.jobs.fit import edge
-from lifeos.platform import report_region
+from lifeos.platform import readback, report_region
 from lifeos.platform.notion_client import Client, NotionError
 
 TZ = ZoneInfo("America/Chicago")
@@ -258,12 +258,10 @@ def write(client, block_id, text, table, live, sleep=time.sleep):
     if text_changed:
         client.call("PATCH", f"/blocks/{quote(block_id, safe='')}", {"callout": {"rich_text": rich(text)}})
         result["text_written"] = True
-    for attempt in range(4):                                                          # authoritative read-back; Notion may briefly show the old state
-        if attempt:
-            sleep(3)
-        after_meta, after_rows = locate(client, block_id)
-        if (table is None or [_cells(r) for r in after_rows] == table) and _callout_text(after_meta) == text:
-            return result
+    ok, _ = readback.confirmed(lambda: locate(client, block_id),                       # authoritative read-back; Notion may briefly show the old state
+                               lambda after: (table is None or [_cells(r) for r in after[1]] == table) and _callout_text(after[0]) == text, sleep=sleep)
+    if ok:
+        return result
     raise _fail("VERIFY_FAILED")
 
 

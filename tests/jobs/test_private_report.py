@@ -3,6 +3,7 @@ from contextlib import contextmanager
 from unittest import mock
 
 from lifeos.jobs import private_report as pr
+from lifeos.platform import snapshot_store, stored_pages
 from lifeos.platform.notion_client import NotionError
 
 PARENT = pr.REPORTS_PAGE
@@ -82,7 +83,7 @@ class Private(unittest.TestCase):
         self.assertEqual(cells[1][0]["text"]["link"]["url"], "https://example.com/1")
 
     def test_a_keyed_report_is_remembered_by_page_id_and_left_alone_next_time(self):
-        with mock.patch.object(pr, "STORE", FakeStore()) as store:
+        with mock.patch.object(stored_pages, "STORE", FakeStore()) as store:
             first = FakeClient()
             self.assertEqual(pr.publish(first, "T", HEADER, ROWS, True, key="k", connect=connect)["page"], "new")
             self.assertEqual(store.rows["k"]["page_id"], "page1")
@@ -91,14 +92,14 @@ class Private(unittest.TestCase):
             self.assertEqual(second.writes, [])
 
     def test_a_remembered_page_that_was_archived_is_written_afresh(self):
-        with mock.patch.object(pr, "STORE", FakeStore()) as store:
+        with mock.patch.object(stored_pages, "STORE", FakeStore()) as store:
             store.rows["k"] = {"page_id": "gone"}
             client = FakeClient(existing={"gone": {"archived": True}})
             self.assertEqual(pr.publish(client, "T", HEADER, ROWS, True, key="k", connect=connect)["page"], "new")
             self.assertEqual(store.rows["k"]["page_id"], "page1")
 
     def test_a_dry_run_with_a_key_reads_but_never_writes(self):
-        with mock.patch.object(pr, "STORE", FakeStore()) as store:
+        with mock.patch.object(stored_pages, "STORE", FakeStore()) as store:
             client = FakeClient()
             self.assertEqual(pr.publish(client, "T", HEADER, ROWS, False, key="k", connect=connect)["page"], "dry")
             self.assertEqual((client.writes, store.rows), ([], {}))
@@ -125,3 +126,30 @@ class Private(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SharedHelpers(unittest.TestCase):
+    """LIFE-526: private_report no longer carries its own copy of the stored-page helpers; it uses lifeos/platform/stored_pages. Schema-neutral: the same table and key column as before."""
+
+    def test_the_table_definition_is_the_one_private_report_always_used(self):
+        original = snapshot_store.Store("v7_private_reports", key_column="report_key", key_type="VARCHAR(96)")      # exactly what private_report.STORE was before LIFE-526
+        self.assertEqual((stored_pages.STORE.table, stored_pages.STORE.key_column, stored_pages.STORE.schema), (original.table, original.key_column, original.schema))
+
+    def test_private_report_calls_the_shared_helpers_and_defines_none_of_its_own(self):
+        self.assertFalse(hasattr(pr, "_existing") or hasattr(pr, "_remember") or hasattr(pr, "STORE"))
+        self.assertIs(pr.stored_pages, stored_pages)
+
+    def test_an_old_record_comes_back_as_the_same_page_id(self):
+        class OldRow:
+            def ensure(self, connection): pass
+            def load(self, connection, key): return {"taken_at": "2026-11-01T00:00:00+00:00", "schema": 1, "page_id": "page-old"}
+
+        class Conn:
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+
+        class Client:
+            def call(self, method, path): return {"archived": False}
+        with mock.patch.object(stored_pages, "STORE", OldRow()):
+            self.assertEqual(stored_pages.find(Client(), Conn, "dash:key", True), "page-old")
+
