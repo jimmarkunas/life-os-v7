@@ -44,6 +44,7 @@ These repository files hold feature scoping, setup, history or one product area'
 | [`docs/platform/module-inventory.md`](docs/platform/module-inventory.md) |
 | [`docs/platform/shared-layer-matrix.md`](docs/platform/shared-layer-matrix.md) |
 | [`docs/platform/test-diet-manifest.md`](docs/platform/test-diet-manifest.md) |
+| [`docs/platform/agent-loop-baseline.md`](docs/platform/agent-loop-baseline.md) |
 | [`docs/platform/monitoring-finish.md`](docs/platform/monitoring-finish.md) |
 | [`docs/platform/test-index.md`](docs/platform/test-index.md) |
 | [`docs/test-index.json`](docs/test-index.json) |
