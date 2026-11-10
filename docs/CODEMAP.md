@@ -269,6 +269,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 ### lifeos/oraclecloud/
 - `lifeos/oraclecloud/backup_watch.py`: LIFE-129 (Jim, Oct 28 2026): a failed or missed off-site backup night must reach the phone, quietly. The backup job on Oracle (lifeos/edge/backup) sends nothing itself: t
 - `lifeos/oraclecloud/card.py`: The Daily Report's Oracle Cloud callout, written every tick (Jim's approval Oct 15 2026: Option B, OCI's own data; the callout under Communications Attention, or under th
+- `lifeos/oraclecloud/worker_watch.py`: LIFE-531: duplicate Codex workers piling up on Oracle must reach the phone, quietly. OpenClaw starts one Codex app-server worker per agent; upstream bug 196499 leaks extr
 ### lifeos/outlook/
 - `lifeos/outlook/stage.py`: Outlook stages. `auth` signs one mailbox in once (read-only by default; `write` asks for the right to move mail into a folder) (device code; the token goes straight into 
 - `lifeos/outlook/store.py`: The Outlook token table lives in the platform (other operating systems, such as the calendar bridge, read it too).
@@ -448,6 +449,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `v7_network_aliases`: `lifeos/network/store.py`
 - `v7_network_page_state`: `lifeos/network/store.py`
 - `v7_offsite_backup`: `lifeos/oraclecloud/backup_watch.py`
+- `v7_openclaw_workers`: `lifeos/oraclecloud/worker_watch.py`
 - `v7_outlook_token`: `lifeos/platform/outlook_tokens.py`
 - `v7_outlook_mail_seen`: `lifeos/sources/newsletters/outlook.py`
 
