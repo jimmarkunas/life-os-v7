@@ -67,3 +67,5 @@ def split_title(title):
     """('Company', 'Role') from a canonical "<Company> — <Role>" title, else (title, '') — a malformed title is never guessed into shape."""
     parts = TITLE_SPLIT.split((title or "").strip(), maxsplit=1)
     return (parts[0], parts[1]) if len(parts) == 2 else (title, "")
+
+import json  # scratch proof: an unused import that ruff should name
