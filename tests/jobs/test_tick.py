@@ -3,14 +3,10 @@ from unittest import mock
 
 from lifeos.jobs import tick
 from lifeos.jobs.tick import Step
+from tests.kit import shared
 
 
-class Clock:
-    def __init__(self):
-        self.now = 0.0
-
-    def __call__(self):
-        return self.now
+Clock = shared.Clock
 
 
 class TickTests(unittest.TestCase):

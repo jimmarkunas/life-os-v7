@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 
 from lifeos.jira import watch
 from lifeos.platform import alerts
+from tests.kit import shared
 
 T0 = datetime(2026, 10, 12, 13, 0)                          # naive UTC, as stored
 
@@ -38,13 +39,7 @@ class FakeDb:
         return self._last
 
 
-class Pushes:
-    def __init__(self, accept=True):
-        self.sent, self.accept = [], accept
-
-    def __call__(self, topic, title, body, severity):
-        self.sent.append((topic, title, body, severity))
-        return self.accept
+Pushes = shared.Pushes
 
 
 def wrapped(db, pushes, outcome, live=True, now=T0):

@@ -8,6 +8,7 @@ from unittest import mock
 from lifeos.platform import limits
 from lifeos.platform.http import Fetched
 from lifeos.sources.web import diff, lister, run, suppress
+from tests.kit import shared
 
 NOW = datetime(2026, 10, 1, 12, 0)
 
@@ -359,12 +360,7 @@ class StoredJobPutRight(unittest.TestCase):
         def fetchone(self):
             return self.row
 
-    class Conn:
-        def __init__(self, cur):
-            self.cur = cur
-
-        def cursor(self):
-            return self.cur
+    Conn = shared.ConnWithCursor
 
     def test_a_changed_stored_job_is_corrected_and_its_score_cleared(self):
         cur = self.Cur()

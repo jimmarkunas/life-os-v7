@@ -2,11 +2,10 @@ import json
 import unittest
 
 from lifeos.sources.web import html_readers as hr, lister
+from tests.kit import shared
 
 
-class Page:
-    def __init__(self, html, status=200):
-        self.html, self.status = html, status
+Page = shared.Page
 
 
 def fetcher(pages):

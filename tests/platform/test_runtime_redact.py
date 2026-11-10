@@ -1,14 +1,10 @@
 import unittest
 
 from lifeos.platform import redact, runtime
+from tests.kit import shared
 
 
-class Clock:
-    def __init__(self):
-        self.now = 0.0
-
-    def __call__(self):
-        return self.now
+Clock = shared.Clock
 
 
 class Runtime(unittest.TestCase):
