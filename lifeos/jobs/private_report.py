@@ -1,9 +1,8 @@
 """LIFE-121 (Jim, Oct 26): a private report goes to a private Notion page, never into a log. The runner writes the table straight to Notion, as a child of Jim's private Reports page; the log carries counts and fixed codes only. Dry run unless live: a dry run reads, counts and writes nothing. One page per title: a page that already exists is
 left untouched (delete it in Notion to write a fresh one). Nothing is encoded, encrypted or copied out of Notion."""
-from datetime import datetime, timezone
 
 from lifeos.platform.notion_ids import notion_id
-from lifeos.platform import limits, snapshot_store
+from lifeos.platform import limits, stored_pages
 from lifeos.platform.notion_client import NotionError, rich_text
 
 ROWS_PER_TABLE = 90                      # a table's children are capped at 100 per request; one header row plus these
@@ -48,34 +47,7 @@ def _children(client, block):
         cursor = page.get("next_cursor")
 
 
-STORE = snapshot_store.Store("v7_private_reports", key_column="report_key", key_type="VARCHAR(96)")     # LIFE-369 (D250-10): report key -> the page id V7 created; one private row per report
-
-
-def _existing(client, connect, key, live):
-    """The page id stored for this report key, if that page is still live in Notion, else None. D250: no Notion search, no title match, no parent check: the stored id is read back by id."""
-    with connect() as connection:
-        if live:
-            STORE.ensure(connection)                                  # a dry run never creates the table; it reads, and a missing table means "no report yet"
-            saved = STORE.load(connection, key)
-        else:
-            try:
-                saved = STORE.load(connection, key)
-            except Exception:                                         # noqa: BLE001  the table does not exist before the first live run
-                saved = None
-    page_id = (saved or {}).get("page_id")
-    if not page_id:
-        return None
-    page = client.call("GET", f"/pages/{page_id}")
-    return None if page.get("archived") or page.get("in_trash") else page_id
-
-
-def _remember(connect, key, page_id):
-    with connect() as connection:
-        STORE.ensure(connection)
-        snapshot = {"taken_at": datetime.now(timezone.utc).isoformat(), "schema": 1, "page_id": page_id}
-        STORE.save(connection, key, snapshot)
-        if STORE.load(connection, key) != snapshot:
-            raise NotionError("PRIVATE_REPORT_KEY_READBACK")
+# The private-store helpers (find a report's stored page id, remember a new one) live in lifeos/platform/stored_pages.py: this module used to carry a byte-identical copy of them (LIFE-526).
 
 
 def publish(client, title, header, rows, live, links=(), intro=(), key=None, connect=None):
@@ -89,7 +61,7 @@ def publish(client, title, header, rows, live, links=(), intro=(), key=None, con
             if connect is None:
                 from lifeos.jobs import store                                      # noqa: PLC0415  the Jobs private store, only when a report is keyed
                 connect = store.connect
-            if _existing(client, connect, key, live):
+            if stored_pages.find(client, connect, key, live):
                 counts["page"] = "present"
                 return counts
         if not live:
@@ -102,7 +74,7 @@ def publish(client, title, header, rows, live, links=(), intro=(), key=None, con
         if written != len(rows):
             return _fail(counts, "PRIVATE_REPORT_READBACK_MISMATCH")
         if key:
-            _remember(connect, key, page["id"])
+            stored_pages.remember(connect, key, page["id"])
         counts["page"] = "new"
     except NotionError:
         return _fail(counts, "PRIVATE_REPORT_NOTION_FAILED")
