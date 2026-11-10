@@ -21,6 +21,25 @@ class Lists(unittest.TestCase):
         self.assertEqual(listed["config/lifeos-resume"], "/home/ubuntu/.config/lifeos-resume")
 
 
+class FitService(unittest.TestCase):
+    def test_the_fit_unit_and_deploy_helper_are_listed_optional_and_clear_of_the_deny_pattern(self):
+        listed = {name: (source, required) for name, source, required in ob.FILES}
+        self.assertEqual(listed["systemd-user/lifeos-fit-gw.service"], ("/home/ubuntu/.config/systemd/user/lifeos-fit-gw.service", False))
+        self.assertEqual(listed["sbin/lifeos-fit-deploy"], ("/usr/local/sbin/lifeos-fit-deploy", False))
+        for name in ("systemd-user/lifeos-fit-gw.service", "sbin/lifeos-fit-deploy"):
+            self.assertFalse(ob.denied(name, listed[name][0]), name)
+
+    def test_a_missing_one_is_counted_not_fatal_and_a_present_one_is_saved(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work, present = Path(tmp) / "w", Path(tmp) / "unit.service"
+            work.mkdir()
+            present.write_text("x")
+            files = (("systemd-user/lifeos-fit-gw.service", str(present), False), ("sbin/lifeos-fit-deploy", str(Path(tmp) / "absent"), False))
+            entries, extra = ob.collect(str(work), local_run, sqlite=(), files=files, trees=(), secret_trees=(), chown=lambda *a, **k: None, mac_inbox=str(Path(tmp) / "no-inbox"))
+            self.assertEqual(sorted(entries), ["systemd-user/lifeos-fit-gw.service"])
+            self.assertEqual(extra["missing"], 1)
+
+
 class Collect(unittest.TestCase):
     def test_code_is_saved_but_rebuildable_folders_and_old_copies_are_not(self):
         with tempfile.TemporaryDirectory() as tmp:
