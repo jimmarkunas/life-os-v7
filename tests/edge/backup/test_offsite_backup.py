@@ -1,3 +1,4 @@
+import contextlib
 import io
 import json
 import os
@@ -403,6 +404,52 @@ class Run(Tmp):
         ob.write_status(state, True, "ok", lambda: 1000, files=3)
         self.assertEqual(ob.check(state, lambda: 1000 + 3600), (True, "ok"))
         self.assertEqual(ob.check(state, lambda: 1000 + ob.STALE_SECONDS + 1), (False, "backup_stale"))
+
+
+class MacCheck(unittest.TestCase):
+    """LIFE-542: the stale-Mac-backup warning in `verify`: 9 days, warning only."""
+    def setUp(self):
+        self.inbox = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.inbox, True)
+
+    def put(self, name, at):
+        path = Path(self.inbox) / name
+        path.write_bytes(b"x")
+        os.utime(path, (at, at))
+
+    def test_the_limit_is_nine_days(self):
+        self.assertEqual(ob.MAC_STALE_SECONDS, 9 * 86400)
+
+    def test_recent_just_under_and_just_over_nine_days(self):
+        self.put("mac-20261109-2308.tar.gz.gpg", 1000)
+        self.assertEqual(ob.mac_check(self.inbox, lambda: 1000 + 3600), (True, "mac_backup_ok", 0))
+        self.assertEqual(ob.mac_check(self.inbox, lambda: 1000 + 9 * 86400), (True, "mac_backup_ok", 9))
+        self.assertEqual(ob.mac_check(self.inbox, lambda: 1000 + 9 * 86400 + 1), (False, "mac_backup_stale", 9))
+        self.assertEqual(ob.mac_check(self.inbox, lambda: 1000 + 36 * 3600 + 1)[1], "mac_backup_ok")      # the old 36 hour line no longer warns
+
+    def test_the_newest_archive_decides_and_other_files_are_ignored(self):
+        self.put("mac-20261101-2308.tar.gz.gpg", 1000)
+        self.put("mac-20261108-2308.tar.gz.gpg", 1000 + 7 * 86400)
+        self.put("notes.txt", 1000 + 20 * 86400)
+        self.assertEqual(ob.mac_check(self.inbox, lambda: 1000 + 8 * 86400)[:2], (True, "mac_backup_ok"))
+
+    def test_no_archive_or_no_folder_is_a_warning_code_not_a_crash(self):
+        self.assertEqual(ob.mac_check(self.inbox, lambda: 5), (False, "mac_backup_none", None))
+        self.assertEqual(ob.mac_check(self.inbox + "/missing", lambda: 5), (False, "mac_backup_unreadable", None))
+
+    def test_verify_warns_but_never_fails_on_it(self):
+        text = (HERE / "oracle" / "install-offsite.sh").read_text()
+        verify = text[text.index("  verify)"):text.index("  disable)")]
+        self.assertIn("[WARN] Mac backup", verify)
+        self.assertIn('mac-check', verify)
+        self.assertNotIn("ok=1", verify[verify.index("mac-check"):])                                        # the warning branch cannot flip the exit code
+        self.assertTrue(verify.rstrip().endswith("exit $ok ;;"))
+
+    def test_the_command_prints_a_code_and_days_only(self):
+        out = io.StringIO()
+        with mock.patch.object(ob, "mac_check", return_value=(False, "mac_backup_stale", 12)), contextlib.redirect_stdout(out):
+            self.assertEqual(ob.main(["mac-check"]), 1)
+        self.assertEqual(out.getvalue().strip(), "mac_backup_stale days=12")
 
 
 class Consent(unittest.TestCase):
