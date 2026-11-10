@@ -151,7 +151,36 @@ class Run(unittest.TestCase):
     def test_a_plain_file_name_is_refused_and_a_missing_source_is_usage(self):
         out = io.StringIO()
         self.assertEqual(rc.run_check("backup.tar.gz", ("bws", "x"), ram=fake_ram, out=out), 1)
-        self.assertEqual(rc.main(["backup.tar.gz.gpg"], out=io.StringIO()), 2)
+        with mock.patch.object(rc, "ID_FILE", "/nonexistent/id"):
+            self.assertEqual(rc.main(["backup.tar.gz.gpg"], out=io.StringIO()), 2)
+
+
+class DefaultId(unittest.TestCase):
+    def test_without_an_id_on_the_command_line_the_local_file_is_used(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            idfile = Path(tmp) / "id"
+            idfile.write_text("the-id\n")
+            seen = {}
+
+            def fake_run_check(archive, source, **kwargs):
+                seen["source"] = source
+                return 0
+            with mock.patch.object(rc, "ID_FILE", str(idfile)), mock.patch.object(rc, "run_check", fake_run_check):
+                self.assertEqual(rc.main(["backup.tar.gz.gpg"], out=io.StringIO()), 0)
+            self.assertEqual(seen["source"], ("bws", "the-id"))
+
+    def test_without_the_file_or_an_id_it_is_usage(self):
+        with mock.patch.object(rc, "ID_FILE", "/nonexistent/id"):
+            self.assertEqual(rc.main(["backup.tar.gz.gpg"], out=io.StringIO()), 2)
+
+    def test_an_id_on_the_command_line_wins(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            idfile = Path(tmp) / "id"
+            idfile.write_text("from-file")
+            seen = {}
+            with mock.patch.object(rc, "ID_FILE", str(idfile)), mock.patch.object(rc, "run_check", lambda a, s, **k: seen.setdefault("s", s) and 0):
+                rc.main(["backup.tar.gz.gpg", "--bws-secret", "from-cli"], out=io.StringIO())
+            self.assertEqual(seen["s"], ("bws", "from-cli"))
 
 
 class Fetch(unittest.TestCase):
