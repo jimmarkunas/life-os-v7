@@ -154,7 +154,18 @@ def select(changed, index, root=ROOT):
                 continue
             return FULL
         return FULL
-    return sorted(targets)
+    modules = {t for t in targets if t in module_set(root)}
+    return sorted(t for t in targets if t in modules or not any(t.startswith(m + ".") for m in modules))     # a test id inside a selected module would run twice
+
+
+def module_set(root=ROOT):
+    key = str(root)
+    if key not in _MODULES:
+        _MODULES[key] = set(test_modules(pathlib.Path(root)))
+    return _MODULES[key]
+
+
+_MODULES = {}
 
 
 def check(index, root=ROOT, now=None, max_age_days=MAX_AGE_DAYS):

@@ -75,7 +75,12 @@ class Select(unittest.TestCase):
         return ti.select(list(changed), self.idx, self.root)
 
     def test_a_production_file_runs_the_tests_the_index_maps_plus_the_contracts(self):
-        self.assertEqual(self.pick("lifeos/jobs/a.py"), sorted(CONTRACTS + ["tests.jobs.test_a.A.test_one", "tests.jobs.test_a"]))
+        self.assertEqual(self.pick("lifeos/jobs/a.py"), sorted(CONTRACTS + ["tests.jobs.test_a"]))
+
+    def test_a_test_inside_a_selected_module_is_not_listed_twice(self):
+        picked = self.pick("lifeos/jobs/a.py")
+        self.assertIn("tests.jobs.test_a", picked)
+        self.assertNotIn("tests.jobs.test_a.A.test_one", picked)                          # the module already runs it
 
     def test_the_contracts_always_run_even_for_a_docs_only_change(self):
         self.assertEqual(self.pick("docs/INDEX.md"), CONTRACTS)
