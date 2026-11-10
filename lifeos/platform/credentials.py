@@ -1,23 +1,23 @@
 """LIFE-528 outcome 2 (Jim, Nov 10 2026, comments 12547 and 12548): the list of provider credentials LIFE OS uses, and what is known about each one's expiry.
 
-`credentials.json` holds NAMES, providers, what each is used for, where it is read, and a date when one is known. Never a value, a secret id or a Bitwarden item id.
+`credential_list.py` holds NAMES, providers, what each is used for, where it is read, and a date when one is known. Never a value, a secret id or a Bitwarden item id.
 expiry_source: provider_reported (the date came from the provider's own evidence) | manual (a person entered it, or the provider can report it but nothing reads it yet) |
 none ("No expiry exposed": the provider gives no date, so this screen cannot warn and says so).
 
 Warnings ride the existing path: lifeos/jobs/alerts.py turns every entry that has a date into the `expiry_*` alert (PAGE, 7 days ahead) through the alert gateway. The Alert settings screen
 reads this list on Oracle; it never reads Notion, so a Notion problem cannot silence a warning. The Token Expiry database in Notion is a read-only mirror of `rows()`."""
+import copy
 import datetime as dt
-import json
-from pathlib import Path
 
-PATH = Path(__file__).with_name("credentials.json")
+from lifeos.platform.credential_list import CREDENTIALS
+
 SOURCES = {"provider_reported": "Provider reported", "manual": "Manual", "none": "No expiry exposed"}
 WARN_AHEAD_DAYS = 7
 REQUIRED = ("key", "label", "provider", "used_for", "read_in", "expiry_source", "expires", "how_read", "renew")
 
 
-def load(path=PATH):
-    return json.loads(Path(path).read_text())["credentials"]
+def load():
+    return copy.deepcopy(CREDENTIALS)
 
 
 def days_left(entry, today):

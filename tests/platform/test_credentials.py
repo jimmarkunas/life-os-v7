@@ -1,6 +1,5 @@
 """LIFE-528 outcome 2: the credential list is names, providers and dates only, every entry is complete, and a dated entry warns through the existing expiry alert."""
 import datetime as dt
-import json
 import re
 import unittest
 
@@ -55,9 +54,9 @@ class TheList(unittest.TestCase):
         self.assertTrue(secret_like("openclaw/outlook/work/" + "Ab1" * 12))                                 # an unlisted long run under the same prefix is still caught
 
     def test_the_file_is_names_only_so_nothing_in_it_could_be_a_value(self):
-        text = cred.PATH.read_text()
-        self.assertEqual(set(json.loads(text)), {"v", "note", "credentials"})
-        self.assertNotIn("value", {k for e in cred.load() for k in e})
+        fields = {k for e in cred.load() for k in e}
+        self.assertNotIn("value", fields)
+        self.assertTrue(fields <= set(cred.REQUIRED), fields - set(cred.REQUIRED))                       # only the known name-and-date fields
 
 
 class Rows(unittest.TestCase):
