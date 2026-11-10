@@ -36,6 +36,8 @@ MAX_ARCHIVE = 200 * 1024 * 1024
 STALE_SECONDS = 36 * 3600                                              # `check`: a night and a half
 STATE = "/var/lib/lifeos-offsite"
 KEY_FILE = "/etc/lifeos-offsite/recipient.asc"
+MAC_INBOX = "/srv/mac-inbox/in"                                         # LIFE-538: the SFTP-only drop folder the MacBook Pro pushes its already-encrypted archive to (lifeos/edge/backup/mac_push.py); only the newest file is taken
+MAC_NAME = re.compile(r"^mac-\d{8}-\d{4}\.tar\.gz\.gpg$")
 CENTRAL = ZoneInfo("America/Chicago")
 
 UBUNTU, GRANS = "/home/ubuntu", "/home/grans"
@@ -128,7 +130,7 @@ def snapshot(source, dest, owner, run=subprocess.run):
         raise BackupError("backup_db_snapshot")
 
 
-def collect(work, run=subprocess.run, sqlite=None, files=None, trees=None, chown=None, secret_trees=None):
+def collect(work, run=subprocess.run, sqlite=None, files=None, trees=None, chown=None, secret_trees=None, mac_inbox=None):
     """Everything on the list -> {archive name: file in `work`}, plus counts. A missing REQUIRED source stops the run (nothing is uploaded); a missing optional one is counted."""
     sqlite, files, trees, chown = SQLITE if sqlite is None else sqlite, FILES if files is None else files, TREES if trees is None else trees, chown or shutil.chown
     secret_trees = SECRET_TREES if secret_trees is None else secret_trees
@@ -177,6 +179,17 @@ def collect(work, run=subprocess.run, sqlite=None, files=None, trees=None, chown
                     continue
                 out[prefix + "/" + os.path.relpath(path, root)] = path
                 credentials += 1
+    inbox = MAC_INBOX if mac_inbox is None else mac_inbox
+    try:
+        newest = sorted(n for n in os.listdir(inbox) if MAC_NAME.match(n) and os.path.isfile(os.path.join(inbox, n)) and not os.path.islink(os.path.join(inbox, n)))
+    except OSError:
+        newest = None                                                               # no inbox folder on this machine: not configured, nothing counted
+    if newest:
+        if denied("mac/" + newest[-1], os.path.join(inbox, newest[-1])):
+            raise BackupError("backup_secret_path")
+        out["mac/" + newest[-1]] = os.path.join(inbox, newest[-1])                  # already encrypted to the same public key; it rides inside the outer encrypted archive
+    elif newest is not None:
+        missing += 1                                                                # the folder exists but holds no archive (the Mac stopped pushing): shows as `missing` in the status
     if not out:
         raise BackupError("backup_nothing_to_save")
     return out, {"missing": missing, "skipped": skipped, "credentials": credentials}
