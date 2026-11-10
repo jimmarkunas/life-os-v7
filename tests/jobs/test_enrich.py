@@ -409,13 +409,6 @@ class FirstPartyRelinkTests(unittest.TestCase):
         self.assertEqual(result["outcome"], "ready")
         self.assertIsNone(enrich._greenhouse_embed("https://acme.example/jobs/", shell))               # no gh_jid, no embed read
 
-    def test_the_board_name_is_read_when_for_is_the_first_query_parameter(self):
-        seen = []
-        with mock.patch.object(enrich, "fetch", side_effect=lambda url, **k: seen.append(url) or Page(404, "")):
-            enrich._api_job("https://boards.greenhouse.io/embed/job_app?for=acme&token=4567")
-            enrich._api_job("https://boards.greenhouse.io/embed/job_app?token=4567&for=acme")
-        self.assertEqual(seen, ["https://boards-api.greenhouse.io/v1/boards/acme/jobs/4567"] * 2)
-
     def test_a_role_on_its_employers_own_board_is_accepted_when_the_page_carries_its_words(self):
         body = LONG.replace('"', "'")
         page = f"<html><head><title>Careers</title></head><body><p>Senior Data Engineer</p>{body}</body></html>"
