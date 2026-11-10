@@ -5,7 +5,7 @@ Ruff is an **advisory** check: it runs on the Python files a pull request change
 - Tool and rules: ruff 0.17.4 (pinned with a hash in `requirements-test.lock`), configured in `pyproject.toml`: pycodestyle errors (E), pyflakes (F) and bugbear (B); line length (E501) is ignored because existing lines run to 661 characters.
 - Scope of this baseline: `lifeos/` and `tests/`, Nov 10 2026, run with `ruff check --no-cache --statistics lifeos tests`.
 - Local run time over the whole repo: 0.09 seconds.
-- Total: **576 findings** (158 in `lifeos/`, 418 in `tests/`). Counts only; no file content is recorded here.
+- Total: **577 findings** (158 in `lifeos/`, 419 in `tests/`). Counts only; no file content is recorded here.
 
 ## Count per rule
 
@@ -13,7 +13,7 @@ Ruff is an **advisory** check: it runs on the Python files a pull request change
 |---|---|---:|---|
 | F401 | unused-import | 120 | yes |
 | E702 | ] | 98 | [ |
-| E731 | ] | 88 | [ |
+| E731 | ] | 89 | [ |
 | E741 | ] | 59 | [ |
 | E701 | ] | 47 | [ |
 | B905 | ] | 43 | [ |
@@ -77,6 +77,7 @@ Ruff is an **advisory** check: it runs on the Python files a pull request change
 | `tests/dcc` | 2 |
 | `lifeos/amazon` | 1 |
 | `lifeos/physmail` | 1 |
+| `tests` | 1 |
 | `tests/agenda` | 1 |
 | `tests/kit` | 1 |
 | `tests/megibow` | 1 |
