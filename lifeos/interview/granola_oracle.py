@@ -8,6 +8,8 @@ import secrets
 import socket
 import time
 
+from lifeos.platform import socket_exchange
+
 PORT = 47341
 MAX_REQUEST = 4096
 MAX_REPLY = 26_000_000              # the contract's own transcript limit is 25,000,000 bytes, plus the envelope
@@ -34,32 +36,8 @@ def frame(op, nonce, **fields):
 
 
 def exchange(host, data, port=PORT, wait=WAIT, sleep=time.sleep):
-    """One request, read to the server's close. b"" = closed with no output. A connection that cannot be opened has sent nothing: tried twice."""
-    s = None
-    for attempt in range(2):
-        try:
-            s = socket.create_connection((host, port), timeout=15)
-            break
-        except OSError:
-            if attempt == 0:
-                sleep(3)
-    if s is None:
-        raise OracleError("GRAN_CONNECT_FAILED")
-    try:
-        with s:
-            s.settimeout(wait)
-            s.sendall(data)
-            out = b""
-            while len(out) <= MAX_REPLY:
-                chunk = s.recv(1 << 20)
-                if not chunk:
-                    break
-                out += chunk
-            return out
-    except TimeoutError:
-        raise OracleError("GRAN_TIMEOUT") from None
-    except OSError:
-        return b""
+    """One request, read to the server's close (shared logic: lifeos/platform/socket_exchange.py). b"" = closed with no output. A connection that cannot be opened has sent nothing: tried twice."""
+    return socket_exchange.exchange(host, data, port, wait, MAX_REPLY, lambda: OracleError("GRAN_CONNECT_FAILED"), lambda: OracleError("GRAN_TIMEOUT"), sleep=sleep, chunk=1 << 20)
 
 
 def call(host, op, send=exchange, **fields):
