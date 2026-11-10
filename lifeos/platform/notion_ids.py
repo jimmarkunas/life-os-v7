@@ -4,12 +4,13 @@ The public repo holds names only. A run that needs a real page gets one JSON var
 variable shaped {"NAME": "id"}); a single LIFEOS_NOTION_<NAME> variable also works and wins. Without either the id is a
 synthetic hash of the name that matches nothing, so tests and forks stay safe.
 """
+from collections.abc import Mapping
 import hashlib
 import json
 import os
 
 
-def configured_id(name, environ=os.environ):
+def configured_id(name: str, environ: Mapping[str, str] = os.environ) -> str:
     """The real id for a name, or "" when neither variable holds it."""
     one = (environ.get("LIFEOS_NOTION_" + name) or "").strip()
     if one:
@@ -21,5 +22,5 @@ def configured_id(name, environ=os.environ):
     return str(mapped).strip() if mapped else ""
 
 
-def notion_id(name):
+def notion_id(name: str) -> str:
     return configured_id(name) or hashlib.sha256(("synthetic:" + name).encode()).hexdigest()[:32]

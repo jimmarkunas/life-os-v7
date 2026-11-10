@@ -1,4 +1,6 @@
 """Polite HTTP fetch with manual redirect following. Returns facts only; URLs are never logged (public repo)."""
+from collections.abc import Iterable
+from typing import Any
 import http.client
 import urllib.error
 import urllib.request
@@ -9,7 +11,7 @@ REDIRECTS = (301, 302, 303, 307, 308)
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, *args, **kwargs):
+    def redirect_request(self, *args: Any, **kwargs: Any) -> None:
         return None
 
 
@@ -19,7 +21,7 @@ _OPENER = urllib.request.build_opener(_NoRedirect)
 class Fetched:
     __slots__ = ("final_url", "status", "html", "hops", "error", "codes", "validators")
 
-    def __init__(self, final_url, status, html="", hops=0, error="", codes=(), validators=None):
+    def __init__(self, final_url: str, status: int, html: str = "", hops: int = 0, error: str = "", codes: Iterable[int] = (), validators: dict[str, str] | None = None) -> None:
         self.final_url, self.status, self.html, self.hops, self.error = final_url, status, html, hops, error
         self.codes = tuple(codes)      # status code of every hop, e.g. (302, 403)
         self.validators = validators or {}     # D216: the answer's ETag / Last-Modified, for a later conditional GET
@@ -36,7 +38,7 @@ def _validators(headers):
     return {k: v.strip() for k, v in out.items() if isinstance(v, str) and 0 < len(v.strip()) <= 200}
 
 
-def fetch(url, timeout=12, max_hops=8, max_bytes=1_500_000, headers=None, data=None):
+def fetch(url: str, timeout: int = 12, max_hops: int = 8, max_bytes: int = 1_500_000, headers: dict[str, str] | None = None, data: bytes | None = None) -> Fetched:
     current, codes = url, []
     for hop in range(max_hops + 1):
         request = urllib.request.Request(current, data=data if hop == 0 else None, headers={
