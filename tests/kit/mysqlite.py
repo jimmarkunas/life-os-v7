@@ -33,10 +33,12 @@ class Cursor:
     def execute(self, sql, args=()):
         self.conn.maybe_fail(sql)
         self.cur.execute(translate(sql), tuple(args))
+        return self.cur.rowcount                                  # LIFE-549: like pymysql, execute() returns the affected-row count
 
     def executemany(self, sql, rows):
         self.conn.maybe_fail(sql)
         self.cur.executemany(translate(sql), [tuple(r) for r in rows])
+        return self.cur.rowcount
 
     @property
     def rowcount(self):

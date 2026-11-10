@@ -45,6 +45,7 @@ These repository files hold feature scoping, setup, history or one product area'
 | [`docs/platform/shared-layer-matrix.md`](docs/platform/shared-layer-matrix.md) |
 | [`docs/platform/test-diet-manifest.md`](docs/platform/test-diet-manifest.md) |
 | [`docs/platform/monitoring-finish.md`](docs/platform/monitoring-finish.md) |
+| [`docs/platform/fake-conformance.md`](docs/platform/fake-conformance.md) |
 | [`docs/design/bitwarden-load-pairs.md`](docs/design/bitwarden-load-pairs.md) |
 | [`docs/DCC_CARD_CONTRACT.md`](docs/DCC_CARD_CONTRACT.md) |
 | [`docs/DELIVERY_TRACKING_SCOPE.md`](docs/DELIVERY_TRACKING_SCOPE.md) |

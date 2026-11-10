@@ -1,0 +1,22 @@
+{
+  "family": "http",
+  "fake": "tests/kit/http.py (Response, http_error)",
+  "ground_truth": "the real urllib.request.urlopen against a loopback stdlib server (no network, no credentials; runs in the normal suite)",
+  "cases": [
+    {"name": "ok_status_body_and_context", "kind": "response", "status": 200, "headers": {"X-Test": "abc"}, "body": "hello world", "lookup": "x-test",
+     "expect": {"status": 200, "body": "hello world", "header": "abc", "ctx_returns_self": true, "exit_returns_false": true}},
+    {"name": "read_with_a_size_returns_only_that_many_bytes", "kind": "response", "status": 200, "headers": {}, "body": "hello world", "partial": 5,
+     "expect": {"partial": "hello"}},
+    {"name": "header_names_are_case_insensitive", "kind": "response", "status": 200, "headers": {"Retry-After": "5"}, "body": "x", "lookup": "RETRY-AFTER",
+     "expect": {"header": "5"}},
+    {"name": "missing_header_is_none", "kind": "response", "status": 200, "headers": {}, "body": "x", "lookup": "x-nope",
+     "expect": {"header": null}},
+    {"name": "error_status_carries_code_body_and_url", "kind": "error", "status": 404, "headers": {}, "body": "no such thing",
+     "expect": {"raised": true, "code": 404, "body": "no such thing", "url_ok": true}},
+    {"name": "error_header_names_are_case_insensitive", "kind": "error", "status": 429, "headers": {"Retry-After": "7"}, "body": "slow down", "lookup": "retry-after",
+     "expect": {"raised": true, "code": 429, "header": "7"}},
+    {"name": "server_error_is_also_an_exception", "kind": "error", "status": 503, "headers": {}, "body": "down",
+     "expect": {"raised": true, "code": 503, "body": "down"}}
+  ],
+  "gaps": {}
+}

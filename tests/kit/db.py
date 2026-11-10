@@ -17,6 +17,7 @@ class FakeCursor:
         self.row = next((row for prefix, row in self.script.items() if sql.startswith(prefix)), None)
         if self.handler:
             self.handler(sql, args, self)
+        return self.rowcount                             # LIFE-549: like pymysql, execute() returns the affected-row count
 
     def fetchone(self):
         return self.row

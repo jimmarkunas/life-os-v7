@@ -1,0 +1,54 @@
+{
+  "family": "db",
+  "fake": "tests/kit/db.py (FakeCursor) and tests/kit/mysqlite.py (MySQLite)",
+  "ground_truth": "API cases: the real pymysql Cursor class (inspected, no connection). Behavior cases: MySQL/PyMySQL documented results, recorded in `expect` (PyMySQL does not set CLIENT.FOUND_ROWS, so rowcount counts CHANGED rows; execute() returns the affected-row count).",
+  "cases": [
+    {"name": "api_core_names", "applies_to": ["pymysql", "fake_cursor", "mysqlite"], "api": ["execute", "fetchone", "fetchall", "__enter__", "__exit__"],
+     "expect": {"present": ["__enter__", "__exit__", "execute", "fetchall", "fetchone"]}},
+    {"name": "api_executemany_and_close", "applies_to": ["pymysql", "fake_cursor", "mysqlite"], "api": ["executemany", "close"],
+     "expect": {"present": ["close", "executemany"]}},
+    {"name": "execute_documents_affected_rows", "applies_to": ["pymysql"], "doc_of": "execute",
+     "expect": {"mentions_affected_rows": true}},
+    {"name": "insert_returns_affected_rows", "applies_to": ["fake_cursor", "mysqlite"],
+     "ops": [{"sql": "CREATE TABLE t (id BIGINT AUTO_INCREMENT PRIMARY KEY, k VARCHAR(10), UNIQUE KEY uk (k)) ENGINE=InnoDB"},
+             {"sql": "INSERT INTO t (k) VALUES (%s)", "args": ["a"], "as": "ins"}],
+     "expect": {"ins": 1}},
+    {"name": "insert_ignore_duplicate_affects_zero_rows", "applies_to": ["mysqlite"],
+     "ops": [{"sql": "CREATE TABLE t (id BIGINT AUTO_INCREMENT PRIMARY KEY, k VARCHAR(10), UNIQUE KEY uk (k)) ENGINE=InnoDB"},
+             {"sql": "INSERT INTO t (k) VALUES (%s)", "args": ["a"]},
+             {"sql": "INSERT IGNORE INTO t (k) VALUES (%s)", "args": ["a"], "as": "dup"}],
+     "expect": {"dup": 0}},
+    {"name": "update_to_the_same_value_affects_zero_rows", "applies_to": ["mysqlite"],
+     "ops": [{"sql": "CREATE TABLE t (id BIGINT AUTO_INCREMENT PRIMARY KEY, k VARCHAR(10), UNIQUE KEY uk (k)) ENGINE=InnoDB"},
+             {"sql": "INSERT INTO t (k) VALUES (%s)", "args": ["a"]},
+             {"sql": "UPDATE t SET k = %s WHERE k = %s", "args": ["a", "a"], "as": "same"}],
+     "expect": {"same": 0}},
+    {"name": "executemany_counts_every_row", "applies_to": ["mysqlite"],
+     "ops": [{"sql": "CREATE TABLE t (id BIGINT AUTO_INCREMENT PRIMARY KEY, k VARCHAR(10), UNIQUE KEY uk (k)) ENGINE=InnoDB"},
+             {"many": "INSERT INTO t (k) VALUES (%s)", "rows": [["a"], ["b"], ["c"]], "as": "many"}],
+     "expect": {"many": 3}},
+    {"name": "fetchone_on_no_rows_is_none", "applies_to": ["fake_cursor", "mysqlite"],
+     "ops": [{"sql": "CREATE TABLE t (id BIGINT AUTO_INCREMENT PRIMARY KEY, k VARCHAR(10), UNIQUE KEY uk (k)) ENGINE=InnoDB"},
+             {"sql": "SELECT k FROM t WHERE k = %s", "args": ["zzz"], "fetch": "one", "as": "row"}],
+     "expect": {"row": null}},
+    {"name": "rows_come_back_as_tuples", "applies_to": ["mysqlite"],
+     "ops": [{"sql": "CREATE TABLE t (id BIGINT AUTO_INCREMENT PRIMARY KEY, k VARCHAR(10), UNIQUE KEY uk (k)) ENGINE=InnoDB"},
+             {"sql": "INSERT INTO t (k) VALUES (%s)", "args": ["a"]},
+             {"sql": "SELECT k FROM t", "fetch": "all_types", "as": "types"}],
+     "expect": {"types": ["tuple"]}},
+    {"name": "a_duplicate_key_without_ignore_raises_an_integrity_error", "applies_to": ["mysqlite"],
+     "ops": [{"sql": "CREATE TABLE t (id BIGINT AUTO_INCREMENT PRIMARY KEY, k VARCHAR(10), UNIQUE KEY uk (k)) ENGINE=InnoDB"},
+             {"sql": "INSERT INTO t (k) VALUES (%s)", "args": ["a"]},
+             {"sql": "INSERT INTO t (k) VALUES (%s)", "args": ["a"], "raises": "error"}],
+     "expect": {"error": "IntegrityError"}}
+  ],
+  "gaps": {
+    "fake_cursor": {
+      "api_executemany_and_close": "FakeCursor records single statements for assertions; tests that need executemany or close use MySQLite or their own double."
+    },
+    "mysqlite": {
+      "api_executemany_and_close": "MySQLite's cursor has no close(): the connection owns the in-memory database; no caller needs a cursor close.",
+      "update_to_the_same_value_affects_zero_rows": "SQLite counts MATCHED rows (1), MySQL counts CHANGED rows (0). Not emulated: code that depends on 'nothing changed' must not be tested against MySQLite."
+    }
+  }
+}

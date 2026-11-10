@@ -9,33 +9,39 @@ class FakeBlocks:
     def call(self, method, path, body=None):
         self.log.append(method)
         if method == "GET":
-            return {"results": [dict(k) for k in self.kids], "has_more": False}
+            return {"object": "list", "results": [dict(k) for k in self.kids], "next_cursor": None, "has_more": False}     # LIFE-549: the paging fields the real list carries
         if method == "DELETE":
             bid = path.rsplit("/", 1)[1]
+            gone = next((k for k in self.kids if k["id"] == bid), {"id": bid})
             self.kids = [k for k in self.kids if k["id"] != bid]
-            return {}
+            return {**gone, "object": "block", "archived": True, "in_trash": True}                                    # the real DELETE returns the archived block
         if method == "PATCH" and path.startswith("/blocks/") and "children" not in path:
             for k in self.kids:
                 if k["id"] == path.rsplit("/", 1)[1]:
                     kind = next(iter(body))                      # paragraph or heading_N: the block keeps its type and takes the new rich text
                     k[kind] = {"rich_text": [{"plain_text": r["text"]["content"], "text": r["text"]} for r in body[kind]["rich_text"]]}
+                    return {"object": "block", **k}                                                                  # the real PATCH returns the updated block
             return {}
         raise AssertionError(path)
 
     def call_once(self, method, path, body=None):
         self.log.append("APPEND")
         if path != "/blocks/card-1/children":
-            return {"results": [self._made(b) for b in body["children"]]}
+            return self._listing([self._made(b) for b in body["children"]])
         made = []
         for b in body["children"]:
             made.append(self._made(b))
             self.kids.append(made[-1])
-        return {"results": made}
+        return self._listing(made)
+
+    @staticmethod
+    def _listing(blocks):
+        return {"object": "list", "results": blocks, "next_cursor": None, "has_more": False, "type": "block", "block": {}}
 
     def _made(self, b):
         self.n += 1
         t = b["type"]
-        return {"id": f"b{self.n}", "type": t, t: {"rich_text": [{"plain_text": r["text"]["content"]} for r in b[t]["rich_text"]]}}
+        return {"object": "block", "id": f"b{self.n}", "type": t, t: {"rich_text": [{"plain_text": r["text"]["content"]} for r in b[t]["rich_text"]]}}
 
 
 class DataSourcePages:

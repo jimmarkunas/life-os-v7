@@ -14,8 +14,13 @@ class Response:
         for key, value in (headers or {}).items():
             self.headers[key] = value
 
-    def read(self, *_):
-        return self.body
+    def read(self, amt=None):
+        """Like the real response: all of the body, or at most `amt` bytes, advancing (LIFE-549: the fake used to ignore the size)."""
+        if amt is None or amt < 0:
+            data, self.body = self.body, b""
+            return data
+        data, self.body = self.body[:amt], self.body[amt:]
+        return data
 
     def __enter__(self):
         return self
@@ -26,7 +31,10 @@ class Response:
 
 def http_error(request, code, body=b"secret body text", headers=None):
     """An HTTPError carrying a body and the URL, so tests can prove neither leaks into the client's fixed error code."""
-    return urllib.error.HTTPError(request.full_url, code, "msg", headers or {}, io.BytesIO(body))
+    message = Message()                                          # LIFE-549: the real error's headers are a case-insensitive Message, not a dict
+    for key, value in (headers or {}).items():
+        message[key] = value
+    return urllib.error.HTTPError(request.full_url, code, "msg", message, io.BytesIO(body))
 
 
 class ScriptedOpener:
