@@ -1,5 +1,6 @@
 """LIFE-538 / LIFE-529: ONE command that proves a real backup can be restored, from ANY computer that can reach Bitwarden. Nothing here depends on the Mac.
 
+  python3 -m lifeos.edge.backup.restore_check ARCHIVE.gpg                              the secret id is read from ~/.config/life-os/offsite-key-secret-id (one line, mode 600)
   python3 -m lifeos.edge.backup.restore_check ARCHIVE.gpg --bws-secret SECRET_ID      the private key lives in Bitwarden Secrets Manager (needs `bws` and its access token)
   python3 -m lifeos.edge.backup.restore_check ARCHIVE.gpg --bw-item "ITEM NAME"       the private key lives in the Bitwarden vault (needs `bw`, unlocked: BW_SESSION)
 
@@ -27,6 +28,7 @@ import uuid
 
 from lifeos.edge.backup import verify_restore as vr
 
+ID_FILE = os.path.expanduser("~/.config/life-os/offsite-key-secret-id")        # one line: the Bitwarden Secrets Manager id of the backup key, kept only on the machine that runs the check (never in Jira or the repo)
 MAC_INNER = re.compile(r"^mac/mac-\d{8}-\d{4}\.tar\.gz\.gpg$")
 RAM_MB = 512
 
@@ -189,6 +191,8 @@ def main(argv=None, out=sys.stdout):
         else:
             archive = None
             break
+    if archive and not source and os.path.isfile(ID_FILE):
+        source = ("bws", open(ID_FILE).read().strip())                                   # no id on the command line: read it from the local file
     if not archive or not source:
         out.write("usage: restore_check ARCHIVE.gpg (--bws-secret SECRET_ID | --bw-item NAME) [--passphrase-bws ID | --passphrase-bw NAME] [--manifest code/lifeos-fit/ ...]\n")
         return 2
