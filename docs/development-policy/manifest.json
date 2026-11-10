@@ -55,16 +55,14 @@
     },
     {
       "path": "docs/development-policy/04-work-selection-lifecycle-reconciliation.md",
-      "title": "Deterministic work selection, Jira-first lifecycle, requirement-change reconciliation",
+      "title": "Deterministic work selection and Jira-first lifecycle",
       "baseline_lines": [
         83,
         119
       ],
       "headings": [
         "### Deterministic agent work selection — mandatory when an authorized execution session starts or resumes",
-        "### Readiness gate source and waiver — Jim-approved November 7, 2026 (LIFE-365, REQ-6)",
-        "### Jira-first development lifecycle — mandatory across ChatGPT, Claude Code, Codex and approved Edge implementers",
-        "### Requirement-change reconciliation — Jim-approved November 1, 2026 (LIFE-79)"
+        "### Jira-first development lifecycle — mandatory across ChatGPT, Claude Code, Codex and approved Edge implementers"
       ]
     },
     {
@@ -161,7 +159,7 @@
       ]
     }
   ],
-  "reassembled_sha256": "ff824ec74cea245d4f9442ff47f9e4f7ab6c0a6f2db813bac13a9548dbcbcbd3",
+  "reassembled_sha256": "1f37f1a08966100043422014f17458e21cad1e5eb22d399715ebe6fc1c0c9686",
   "amendments": [
     {
       "date": "2026-11-02",
@@ -216,6 +214,12 @@
       "pr": "https://github.com/jimmarkunas/life-os-v7/pull/834",
       "approval": "Jim Markunas, November 7, 2026 CT 12:28 PM, chat (REQ-6 v2, LOS-94): the readiness gate runs on an Atlassian MCP read and is waivable only by Jim naming the ticket in chat; eight rules written as LIFE-365 states them (released for Agent Go)",
       "part": "docs/development-policy/04-work-selection-lifecycle-reconciliation.md"
+    },
+    {
+      "date": "2026-11-09",
+      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/862",
+      "approval": "Jim, chat, Nov 9, 2026, 6:03 PM CT",
+      "part": "docs/development-policy/03, 04, 05, 07, 10, 11 (delivery flow v3: readiness reduced to three checks, delegated closeout by default, Done-when parser, no claim/preflight, no phase gate B/C, CI limit 90 s)"
     }
   ]
 }

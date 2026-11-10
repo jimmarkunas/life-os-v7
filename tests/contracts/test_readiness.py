@@ -1,4 +1,4 @@
-"""LIFE-225 (ARCH-04): the readiness validator, proven through its real entrypoint (`python -m lifeos.readiness`, the command AGENTS.md tells every coding agent to run) and, for the repo check, on the real tree in CI.
+"""LIFE-225 (ARCH-04), simplified by delivery flow v3: the readiness validator (three refusals, everything else a warning), proven through its real entrypoint (`python -m lifeos.readiness`, the command AGENTS.md tells every coding agent to run) and, for the repo check, on the real tree in CI.
 Offline: temp-file fixtures only, invented keys and names."""
 import copy
 import json
@@ -10,13 +10,11 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SHA_B = "b" * 40
 
 ISSUE = {"key": "LIFE-901", "owner": "Example Owner", "labels": ["lane-career-v7", "example-label"], "origin": {"los": "LOS-901", "approved": True},
          "host": "isolated cloud worktree", "source": "docs/life-os-development-policy.md", "blockers": [{"key": "LIFE-900", "status": "Done"}],
          "authorization": {"approved_by": "Example Owner", "provenance": "issue description"}, "permissions": ["repo:write"],
          "acceptance": [{"given": "a ready issue", "when": "the validator runs", "then": "it reports ready"}]}
-CLAIM = {"writer": "agent-one", "issue": "LIFE-901", "surfaces": ["lifeos/readiness.py"]}
 
 
 def entry(*args):
@@ -45,21 +43,13 @@ class IssueEligibility(Fixture):
     def test_a_complete_issue_is_ready(self):
         self.assertEqual(entry("issue", self.write("i.json", ISSUE)), (0, "ready v1\n", ""))
 
-    def test_each_gap_is_refused_precisely(self):
+    def test_only_the_three_checks_refuse(self):
         cases = {
-            "origin_missing": lambda d: d.update(origin={}),
-            "origin_unapproved": lambda d: d.update(origin={"los": "LOS-901", "approved": False}),
-            "owner_missing": lambda d: d.update(owner=" "),
-            "lane_missing": lambda d: d.update(labels=["example-label"]),
-            "lane_unknown": lambda d: d.update(labels=["lane-unknown"]),
-            "host_missing": lambda d: d.update(host=""),
-            "source_missing": lambda d: d.update(source=""),
+            "key_invalid": lambda d: d.update(key="nonsense"),
             "blocker_not_done": lambda d: d.update(blockers=[{"key": "LIFE-900", "status": "To Do"}]),
-            "authorization_missing": lambda d: d.update(authorization={"approved_by": "Example Owner"}),
-            "permissions_missing": lambda d: d.update(permissions=[]),
             "gwt_missing": lambda d: d.update(acceptance=[]),
-            "gwt_incomplete": lambda d: d.update(acceptance=[{"given": "x", "when": "y", "then": ""}]),
-            "field_absent": lambda d: d.pop("authorization"),
+            "field_absent": lambda d: d.pop("acceptance"),
+            "blockers_unreadable": lambda d: d.update(blockers="none"),
         }
         for code, mutate in cases.items():
             with self.subTest(code=code):
@@ -67,125 +57,74 @@ class IssueEligibility(Fixture):
                 self.assertEqual((status, out), (2, ""))
                 self.assertIn(f"refused v1 {code} ", err)
 
-    def test_open_prerequisites_and_decisions_are_refused_when_declared(self):
+    def test_every_other_gap_is_a_warning_and_still_ready(self):
         ok = {"what": "Bitwarden project slot", "proof": "plan shows a free slot", "status": "done"}
-        self.assertEqual(self.issue(lambda d: d.update(needs=[ok], decisions=[ok]))[0], 0)
-        for field, code in (("needs", "prerequisite_open"), ("decisions", "decision_open")):
-            for row in ({**ok, "status": "open"}, {**ok, "proof": " "}, "x"):
-                with self.subTest(field=field, row=row):
-                    status, out, err = self.issue(lambda d: d.update({field: [row]}))
-                    self.assertEqual((status, out), (2, ""))
-                    self.assertIn(f"refused v1 {code} {field} item 1", err)
-        self.assertIn("needs_unreadable", self.issue(lambda d: d.update(needs="none"))[2])
+        cases = {
+            "origin_missing": lambda d: d.update(origin={}),
+            "origin_unapproved": lambda d: d.update(origin={"los": "LOS-901", "approved": False}),
+            "owner_missing": lambda d: d.update(owner=" "),
+            "lane_missing": lambda d: d.update(labels=["example-label"]),
+            "lane_unknown": lambda d: d.update(labels=["lane-unknown"]),
+            "component_missing": lambda d: d.update(components=[]),
+            "host_missing": lambda d: d.update(host=""),
+            "source_missing": lambda d: d.update(source=""),
+            "authorization_missing": lambda d: d.update(authorization={"approved_by": "Example Owner"}),
+            "authorization_denied": lambda d: d["authorization"].update(denied=True),
+            "permissions_missing": lambda d: d.update(permissions=[]),
+            "prerequisite_open": lambda d: d.update(needs=[{**ok, "status": "open"}]),
+            "decision_open": lambda d: d.update(decisions=[{**ok, "proof": " "}]),
+            "needs_unreadable": lambda d: d.update(needs="none"),
+            "requirement_page_missing": lambda d: d.update(requirement={"los": "LOS-901", "pages": []}),
+            "gwt_incomplete": lambda d: d.update(acceptance=[{"given": "x", "when": "y", "then": ""}]),
+            "field_absent": lambda d: d.pop("authorization"),
+            "description_long": lambda d: d.update(description_chars=4001),
+        }
+        for code, mutate in cases.items():
+            with self.subTest(code=code):
+                status, out, err = self.issue(mutate)
+                self.assertEqual((status, out), (0, "ready v1\n"))
+                self.assertIn(f"warn v1 {code} ", err)
+                self.assertNotIn("refused", err)
+
+    def test_delivery_flow_v3_acceptance_cases_a_to_c(self):
+        """(a) key + one Done-when bullet + no blockers is ready; (b) an unfinished Blocks predecessor refuses; (c) no Done-when refuses."""
+        base = {"key": "LIFE-902", "blockers": [], "acceptance": [{"done_when": "the cell holds the text"}]}
+        self.assertEqual(entry("issue", self.write("a.json", base))[:2], (0, "ready v1\n"))
+        status, out, err = entry("issue", self.write("b.json", {**base, "blockers": [{"key": "LIFE-900", "status": "In Progress"}]}))
+        self.assertEqual((status, out), (2, ""))
+        self.assertIn("refused v1 blocker_not_done blockers LIFE-900=In Progress", err)
+        status, out, err = entry("issue", self.write("c.json", {**base, "acceptance": []}))
+        self.assertEqual((status, out), (2, ""))
+        self.assertIn("refused v1 gwt_missing acceptance", err)
+
+    def test_a_ticket_missing_every_old_field_prints_warn_lines_and_still_exits_0(self):
+        """Delivery flow v3 (d): only the key, one Done-when item and the blockers list remain."""
+        status, out, err = entry("issue", self.write("i.json", {"key": "LIFE-902", "blockers": [], "acceptance": [{"done_when": "the cell holds the text"}]}))
+        self.assertEqual((status, out), (0, "ready v1\n"))
+        for code in ("field_absent labels", "field_absent origin", "field_absent authorization", "field_absent permissions"):
+            self.assertIn(f"warn v1 {code}", err)
+        self.assertNotIn("refused", err)
 
     def test_owner_host_and_source_are_optional_but_checked_when_present(self):
-        status, out, _ = self.issue(lambda d: [d.pop(k) for k in ("owner", "host", "source")])
-        self.assertEqual((status, out), (0, "ready v1\n"))
+        status, out, err = self.issue(lambda d: [d.pop(k) for k in ("owner", "host", "source")])
+        self.assertEqual((status, out, err), (0, "ready v1\n", ""))
 
-    def test_explicit_denial_is_refused_distinctly_even_with_approver_and_provenance(self):
-        status, out, err = self.issue(lambda d: d["authorization"].update(denied=True))
-        self.assertEqual((status, out), (2, ""))
-        self.assertIn("refused v1 authorization_denied authorization", err)
-        self.assertNotIn("authorization_missing", err)
-        status, _, err = self.issue(lambda d: d.update(authorization={"denied": True}))        # denial wins over missing fields
-        self.assertEqual(status, 2)
-        self.assertIn("authorization_denied", err)
-
-    def test_authorized_issues_without_denial_stay_ready_and_malformed_denial_is_refused(self):
+    def test_authorized_issues_without_denial_stay_ready_without_warnings(self):
         for value in (None, False):
             with self.subTest(denied=value):
                 mutate = (lambda d: None) if value is None else (lambda d: d["authorization"].update(denied=False))
                 self.assertEqual(self.issue(mutate), (0, "ready v1\n", ""))
-        for value in ("true", "false", 1, 0, None, [], {}):
-            with self.subTest(denied=value):
-                status, out, err = self.issue(lambda d: d["authorization"].update(denied=value))
-                self.assertEqual((status, out), (2, ""))
-                self.assertIn("refused v1 authorization_missing ", err)
 
-    def test_maintenance_cites_its_approved_parent_instead_of_a_los_origin(self):
-        self.assertEqual(self.issue(lambda d: d.update(origin={"parent": "LIFE-220", "approved": True}))[0], 0)
-        self.assertEqual(self.issue(lambda d: d.update(origin={"parent": "LIFE-220", "approved": False}))[0], 2)
+    def test_maintenance_cites_its_parent_and_an_unapproved_parent_only_warns(self):
+        self.assertEqual(self.issue(lambda d: d.update(origin={"parent": "LIFE-220", "approved": True})), (0, "ready v1\n", ""))
+        status, _, err = self.issue(lambda d: d.update(origin={"parent": "LIFE-220", "approved": False}))
+        self.assertEqual(status, 0)
+        self.assertIn("warn v1 origin_unapproved", err)
 
     def test_unreadable_input_fails_closed(self):
-        for args in (("issue", self.dir / "absent.json"), ("issue", self.write("bad.json", "{")), ("issue", self.write("list.json", "[]")), ("nonsense",), ()):
+        for args in (("issue", self.dir / "absent.json"), ("issue", self.write("bad.json", "{")), ("issue", self.write("list.json", "[]")), ("nonsense",), ("preflight", "a", "b"), ()):
             with self.subTest(args=args):
                 self.assertEqual(entry(*args)[0], 2)
-
-
-class WriterPreflight(Fixture):
-    """main is fetched by the validator itself from a real (temporary) git origin; the state file only carries the writer-claim record."""
-
-    def git(self, *args, cwd=None):
-        return subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.com", *args], cwd=cwd or self.clone, check=True, capture_output=True, text=True).stdout.strip()
-
-    def setUp(self):
-        super().setUp()
-        origin, self.clone = self.dir / "origin.git", self.dir / "clone"
-        subprocess.run(["git", "init", "-q", "--bare", "-b", "main", origin], check=True)
-        subprocess.run(["git", "clone", "-q", origin, self.clone], check=True, capture_output=True)
-        (self.clone / "f").write_text("1")
-        self.git("add", "f"), self.git("commit", "-q", "-m", "one"), self.git("push", "-q", "origin", "HEAD:main")
-        self.base = self.git("rev-parse", "HEAD")
-        self.claim = dict(CLAIM, base_sha=self.base)
-        self.mine = {"writer": "agent-one", "issue": "LIFE-901", "surfaces": ["lifeos/readiness.py", "AGENTS.md"]}
-
-    def run_preflight(self, claim=None, claims=None, pre=False, repo=None, state=None):
-        args = ["preflight"] + (["--pre"] if pre else []) + [self.write("claim.json", self.claim if claim is None else claim),
-                                                             self.write("state.json", {"claims": [self.mine] if claims is None else claims} if state is None else state), repo or self.clone]
-        return entry(*args)
-
-    def test_valid_recorded_claim_with_unchanged_baseline_proceeds(self):
-        self.assertEqual(self.run_preflight(), (0, "ready v1\n", ""))
-        other = {"writer": "agent-two", "issue": "LIFE-902", "surfaces": ["docs/other.md"]}
-        self.assertEqual(self.run_preflight(claims=[self.mine, other])[0], 0)         # a different writer on a different issue and surface does not conflict
-
-    def test_no_recorded_claim_blocks_mutation_but_not_the_pre_claim_check(self):
-        for claims in ([], [dict(self.mine, writer="agent-two")], [dict(self.mine, issue="LIFE-902")], [dict(self.mine, surfaces=["docs/other.md"])]):
-            with self.subTest(claims=claims):
-                status, out, err = self.run_preflight(claims=claims)
-                self.assertEqual((status, out), (2, ""))
-                self.assertTrue("claim_not_recorded" in err or "writer_conflict" in err, err)
-        self.assertEqual(self.run_preflight(claims=[], pre=True)[0], 0)                # may I record this claim? yes, nobody holds it
-        self.assertEqual(self.run_preflight(claims=[dict(self.mine, writer="agent-two")], pre=True)[0], 2)
-
-    def test_a_different_writer_on_the_same_issue_or_surface_is_refused_before_mutation(self):
-        for held in ({"writer": "agent-two", "issue": "LIFE-901", "surfaces": []},
-                     {"writer": "agent-two", "issue": "LIFE-902", "surfaces": ["lifeos/readiness.py"]},
-                     {"writer": "agent-two", "issue": "LIFE-902", "surfaces": [], "exclusive": True}):
-            for pre in (False, True):
-                with self.subTest(held=held, pre=pre):
-                    status, out, err = self.run_preflight(claims=[self.mine, held], pre=pre)
-                    self.assertEqual((status, out), (2, ""))
-                    self.assertIn("refused v1 writer_conflict claims agent-two holds", err)
-
-    def test_a_changed_baseline_is_refused(self):
-        (self.clone / "f").write_text("2")
-        self.git("add", "f"), self.git("commit", "-q", "-m", "two"), self.git("push", "-q", "origin", "HEAD:main")
-        status, out, err = self.run_preflight()
-        self.assertEqual((status, out), (2, ""))
-        self.assertIn(f"baseline_changed base_sha claimed {self.base[:7]}, main {self.git('rev-parse', 'HEAD')[:7]}", err)
-
-    def test_main_is_fetched_live_never_asserted_by_the_caller(self):
-        self.assertEqual(self.run_preflight(state={"claims": [self.mine], "main_sha": SHA_B, "main_verified": True})[0], 0)   # asserted fields are ignored
-        (self.clone / "f").write_text("2")
-        self.git("add", "f"), self.git("commit", "-q", "-m", "two"), self.git("push", "-q", "origin", "HEAD:main")
-        stale = self.run_preflight(state={"claims": [self.mine], "main_sha": self.base, "main_verified": True})   # a caller claiming the old main is verified still fails
-        self.assertEqual(stale[0], 2)
-        self.assertIn("baseline_changed", stale[2])
-
-    def test_an_unreachable_or_unfetchable_main_is_refused_as_unverified(self):
-        for repo in (self.dir / "absent", self.write("notrepo.txt", "x")):
-            with self.subTest(repo=repo):
-                status, _, err = self.run_preflight(repo=repo)
-                self.assertEqual(status, 2)
-                self.assertIn("baseline_unverified", err)
-        self.git("remote", "set-url", "origin", str(self.dir / "gone.git"))
-        self.assertIn("baseline_unverified", self.run_preflight()[2])
-
-    def test_an_unread_claim_record_or_missing_claim_is_refused(self):
-        self.assertIn("claims_unverified", self.run_preflight(state={})[2])
-        self.assertIn("claim_missing", self.run_preflight(claim={"issue": "LIFE-901"})[2])
-        self.assertEqual(entry("preflight", self.write("c.json", self.claim))[0], 2)  # no state file at all
 
 
 class RepositoryIndex(Fixture):
@@ -217,9 +156,9 @@ class RepositoryIndex(Fixture):
 
     def test_the_agent_entrypoint_names_the_validator(self):
         agents = (ROOT / "AGENTS.md").read_text()
-        for command in ("python -m lifeos.readiness issue", "python -m lifeos.readiness preflight --pre", "python -m lifeos.readiness preflight CLAIM", "python -m lifeos.readiness repo"):
+        for command in ("python -m lifeos.readiness", "python -m lifeos.readiness repo"):
             self.assertIn(command, agents)
-        self.assertIn("procedural", agents)                      # the ChatGPT connector preflight is not claimed as code-enforced (Q30)
+        self.assertNotIn("readiness preflight", agents)             # delivery flow v3: no claim file, no preflight
 
 
 if __name__ == "__main__":
