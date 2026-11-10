@@ -82,20 +82,20 @@ class NativeReadTools(Base):
     def test_hashes_match_the_logged_inputs(self):
         import hashlib
         h = lambda o: hashlib.sha256(json.dumps(o, sort_keys=True, default=str).encode()).hexdigest()[:16]   # same formula as guard.main's input_sha
-        real = "b995612a-678c-4861-82d1-448daffe6f97"                                                          # the LIFE-369 room (a Buzz channel id, not a Notion id)
-        self.assertEqual(h({"channel": real, "limit": 30}), "15d4fb6febf946f1")
-        self.assertEqual(h({"channel": real}), "46117809905a0b4e")
+        real = "00000000-0000-0000-0000-000000000001"                                                          # the LIFE-369 room (a Buzz channel id, not a Notion id)
+        self.assertEqual(h({"channel": real, "limit": 30}), "af7e988e3f7bfe49")
+        self.assertEqual(h({"channel": real}), "b02f255fc87dd5f0")
         self.assertEqual(h({}), "44136fa355b3678a")
 
     def test_notion_reads_and_writes_are_an_exact_list_without_deletes(self):
         """Jim, Nov 8: write access to Notion. Search, fetch, queries, comments, create, update, move, duplicate, comment and schema/view changes are allowed; deletes, restores, sessions,
         skills and user tools are denied; a secret in the input is still denied."""
-        for op, ti in (("notion-search", {"query": "REQ-7 v4"}), ("notion-fetch", {"id": "4113c5a0-5926-81f9-bb8e-de0df05ef8a9"}),
-                       ("notion-query-data-sources", {"data": {"mode": "sql", "data_source_urls": ["collection://a139cff3-ed9c-48d8-aaf2-6663148a786a"], "query": "SELECT 1"}}),
-                       ("notion-get-comments", {"page_id": "4113c5a0-5926-81f9-bb8e-de0df05ef8a9"}),
-                       ("notion-create-pages", {"pages": [{"properties": {"title": "x"}}]}), ("notion-update-page", {"page_id": "4113c5a0-5926-81f9-bb8e-de0df05ef8a9", "command": "update_properties"}),
-                       ("notion-move-pages", {"page_or_database_ids": ["4113c5a0-5926-81f9-bb8e-de0df05ef8a9"]}), ("notion-duplicate-page", {"page_id": "4113c5a0-5926-81f9-bb8e-de0df05ef8a9"}),
-                       ("notion-create-comment", {"page_id": "4113c5a0-5926-81f9-bb8e-de0df05ef8a9"})):
+        for op, ti in (("notion-search", {"query": "REQ-7 v4"}), ("notion-fetch", {"id": "00000000-0000-0000-0000-000000000002"}),
+                       ("notion-query-data-sources", {"data": {"mode": "sql", "data_source_urls": ["collection://00000000-0000-0000-0000-000000000003"], "query": "SELECT 1"}}),
+                       ("notion-get-comments", {"page_id": "00000000-0000-0000-0000-000000000002"}),
+                       ("notion-create-pages", {"pages": [{"properties": {"title": "x"}}]}), ("notion-update-page", {"page_id": "00000000-0000-0000-0000-000000000002", "command": "update_properties"}),
+                       ("notion-move-pages", {"page_or_database_ids": ["00000000-0000-0000-0000-000000000002"]}), ("notion-duplicate-page", {"page_id": "00000000-0000-0000-0000-000000000002"}),
+                       ("notion-create-comment", {"page_id": "00000000-0000-0000-0000-000000000002"})):
             self.assertEqual(self.dec("mcp__claude_ai_Notion__" + op, ti), "allow", op)
         for op in ("notion-delete-pages", "notion-delete-databases", "notion-delete-comment", "notion-restore-pages", "notion-restore-version", "notion-get-users", "notion-send-message-to-session",
                    "notion-spawn-session", "notion-stop-session", "notion-upload-skill", "notion-update-skill-settings", "notion-search-agents", "notion-update-sidebar-tabs", "notion-create-attachment",

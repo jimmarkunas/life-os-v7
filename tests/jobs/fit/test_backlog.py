@@ -139,7 +139,7 @@ class BoundedBatch(Batch):
 
 class TargetedPilot(Batch):
     """LIFE-41 G6: Jim names one preapproved Ledger page; the batch asks that job or nothing, never the next one in rank."""
-    PAGE = "3ed3c5a0-5926-8125-8c1d-f0628db65bc1".replace("3ed3c5a0", "0a0b0c0d")                 # an invented id in the Ledger's dashed form
+    PAGE = "00000000-0000-0000-0000-000000000008".replace("3ed3c5a0", "0a0b0c0d")                 # an invented id in the Ledger's dashed form
 
     def env(self, page):
         return {**ENV, "V7_CLOUD_FIT_BACKLOG_PAGE": page}

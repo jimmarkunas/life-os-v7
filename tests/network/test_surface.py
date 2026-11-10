@@ -494,13 +494,13 @@ class Contract(unittest.TestCase):
 class MarkAsSentLink(unittest.TestCase):
     """LIFE-78: a job with verified contacts but no recorded conversation has no Outreach table, so it had no way to start Mark as Sent. Its Network Leads block now carries the signed-form link for its own job."""
     ENV = {"V7_CLOSE_BASE_URL": "https://close.example.ts.net:47443"}
-    PAGE = "3ed3c5a0-5926-8125-8c1d-f0628db65bc1"
+    PAGE = "00000000-0000-0000-0000-000000000008"
 
     def world(self, **kw):
         return build(jobs=[(KEY1, self.PAGE, "Acme Corp", "Product Director", "ADMIT")], **kw), ledger_for((KEY1, self.PAGE))
 
     def test_the_link_exists_only_for_an_https_origin_and_a_real_page_id(self):
-        self.assertEqual(surface.sent_url("https://close.example/", self.PAGE), "https://close.example/sent?j=3ed3c5a0592681258c1df0628db65bc1")
+        self.assertEqual(surface.sent_url("https://close.example/", self.PAGE), "https://close.example/sent?j=00000000000000000000000000000008")
         for base in ("", None, "http://close.example", "close.example", "ftp://x"):
             self.assertIsNone(surface.sent_url(base, self.PAGE))
         for page in ("", None, "page-1", "x" * 32 + "/../", "3ed3c5a0592681258c1df0628db65bc"):
