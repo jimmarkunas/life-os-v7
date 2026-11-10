@@ -79,7 +79,8 @@ class Review(unittest.TestCase):
         from tests.jobs.test_private_report import FakeClient, FakeStore
         from unittest import mock
         from lifeos.jobs import private_report
-        self.enterContext(mock.patch.object(private_report, "STORE", FakeStore()))
+        from lifeos.platform import stored_pages
+        self.enterContext(mock.patch.object(stored_pages, "STORE", FakeStore()))
         cursor, client = Cursor(self.ROWS), FakeClient()
         self.assertEqual(ex.review(0, False, connect=lambda: cursor, client=client), {"rows": 2, "page": "dry", "failed": 0, "why": {}})
         self.assertEqual((set(cursor.sql), client.writes), ({"SELECT"}, []))                       # a dry run reads only

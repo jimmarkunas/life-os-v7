@@ -11,7 +11,7 @@ from copy import deepcopy
 from itertools import groupby
 from urllib.parse import quote
 
-from lifeos.platform import router
+from lifeos.platform import readback, router
 from lifeos.platform.notion_client import NotionError
 
 HEADINGS = ("heading_2", "heading_3", "heading_4")
@@ -275,18 +275,17 @@ def _write_headless(client, block_id, title, module, blocks, existing, kept, old
                 raise
         finally:
             intact()
-    shape = (False, False, False)
-    for attempt in range(4):                                                              # authoritative read-back; a short wait first if Notion still shows the pre-write state
-        if attempt:
-            time.sleep(3)
+    def read():
         meta = client.call("GET", f"/blocks/{quote(block_id, safe='')}")
         after = children(client, block_id, fail)
         intact()
         own = plain({"type": "callout", "callout": (meta or {}).get("callout") or {}})
-        shape = (own == wanted, not any(b.get("type") in TEXT_KINDS for b in after), [b.get("id") for b in after] == kept)
-        if all(shape):
-            return removed
-    raise fail("CARD_VERIFY_FAILED:own=%s:no_child_text=%s:kept=%s:n=%d/%d" % (*shape, len(after), len(kept)))
+        return (own == wanted, not any(b.get("type") in TEXT_KINDS for b in after), [b.get("id") for b in after] == kept), len(after)
+
+    ok, (shape, n_after) = readback.confirmed(read, lambda seen: all(seen[0]))     # authoritative read-back; a short wait first if Notion still shows the pre-write state
+    if ok:
+        return removed
+    raise fail("CARD_VERIFY_FAILED:own=%s:no_child_text=%s:kept=%s:n=%d/%d" % (*shape, n_after, len(kept)))
 
 
 def _shell(block, depth=2):

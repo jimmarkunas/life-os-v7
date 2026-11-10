@@ -2,9 +2,8 @@
 one table it holds. Every edit is in place (a PATCH of an existing block): nothing is inserted, deleted, moved or reordered, so nothing around the block can change.
 A block that is not the expected shape is DEGRADED and nothing is written; a write is read back and compared exactly."""
 from urllib.parse import quote
-import time
 
-from lifeos.platform import report_region
+from lifeos.platform import readback, report_region
 from lifeos.platform.notion_client import NotionError
 
 ROWS, COLS = 7, 10
@@ -62,13 +61,10 @@ def write(client, block_id, text, table_rows, live):
         result["text_written"] = True
     if not (changed or text_changed):
         return result
-    for attempt in range(4):                                                          # authoritative read-back; Notion may briefly show the old state
-        if attempt:
-            time.sleep(3)
-        after_meta, _, after_rows = locate(client, block_id)
-        table_ok = table_rows is None or [_cells(r) for r in after_rows] == table_rows
-        if table_ok and _plain_callout(after_meta) == text:
-            return result
+    ok, _ = readback.confirmed(lambda: locate(client, block_id),                       # authoritative read-back; Notion may briefly show the old state
+                               lambda after: (table_rows is None or [_cells(r) for r in after[2]] == table_rows) and _plain_callout(after[0]) == text)
+    if ok:
+        return result
     raise _fail("VERIFY_FAILED")
 
 
