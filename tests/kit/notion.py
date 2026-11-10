@@ -313,31 +313,3 @@ def _select_names(node):
         return []
     found = [node["select"]["equals"]] if isinstance(node.get("select"), dict) and "equals" in node["select"] else []
     return found + [name for key in ("and", "or") for child in node.get(key, []) for name in _select_names(child)]
-
-
-class LedgerWithFilterLimit:
-    """A fake Job Ledger client that refuses what Notion refuses: a compound filter nested more than two levels, and a select filter naming an option
-    the property does not have (observed on the real API: HTTP 400, validation_error). `pages` are returned for every query; `queries` records each
-    filter it accepted."""
-
-    def __init__(self, pages=(), properties=None, lane_options=LANE_OPTIONS):
-        from lifeos.jobs import ledger
-        self.source, self.pages, self.queries, self.log = "ledger", list(pages), [], []
-        self.properties = {n: {"type": k} for n, k in (properties or ledger.REQUIRED).items()}
-        self.properties["Visible Lane"] = {"type": "select", "select": {"options": [{"name": n} for n in lane_options]}}
-        self.lane_options = lane_options
-
-    def call(self, method, path, body=None):
-        from lifeos.platform.notion_client import NotionError
-        self.log.append((method, path))
-        if method == "GET":
-            return {"properties": self.properties}
-        if method == "PATCH":
-            return {}
-        if filter_depth((body or {}).get("filter")) > 2:
-            raise NotionError("NOTION_HTTP_400")
-        if any(name not in self.lane_options for name in _select_names(body["filter"]) if isinstance(name, str)):
-            raise NotionError("NOTION_HTTP_400")
-        self.queries.append(body["filter"])
-        return {"results": self.pages, "has_more": False}
-

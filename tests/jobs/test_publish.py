@@ -111,7 +111,7 @@ class SameOpeningTests(unittest.TestCase):
 
     def setUp(self):
         from datetime import datetime
-        from tests.kit.jobsdb import JobsDB
+        from tests.jobs.fakes_jobsdb import JobsDB
         self.db, self.now, self.n = JobsDB(), datetime(2026, 10, 18, 12, 0), 0
 
     def published(self, company, title, url, location=None):
@@ -228,7 +228,7 @@ class PublicationOrderTests(unittest.TestCase):
     NOW = datetime.datetime(2026, 10, 13, 9, 0)
 
     def setUp(self):
-        from tests.kit.jobsdb import JobsDB
+        from tests.jobs.fakes_jobsdb import JobsDB
         self.db = JobsDB()
         self.addCleanup(self.db.raw.close)
 
@@ -444,7 +444,7 @@ class ReseedUnderVacancyKeys(unittest.TestCase):
         from unittest import mock
         from lifeos.jobs import store
         from tests.jobs.test_newsletter_golden_path import ENV, JobLedger
-        from tests.kit.jobsdb import JobsDB
+        from tests.jobs.fakes_jobsdb import JobsDB
         self.db, self.ledger, self.env, now = JobsDB(), JobLedger(), ENV, datetime.datetime(2026, 10, 18, 12, 0)
         for n, url in enumerate(self.ON_LEDGER):
             self.ledger.pages[f"old{n}"] = {"props": {"Apply URL": {"url": url}, "Stable Job Key": {"rich_text": [{"plain_text": f"k{n}"}]}}, "archived": False}

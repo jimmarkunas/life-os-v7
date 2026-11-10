@@ -3,7 +3,7 @@ import unittest
 
 from lifeos.network import surface
 from lifeos.platform import hidden, ledger_body as body
-from tests.kit.ledger_pages import FakeLedger
+from tests.jobs.fakes_ledger import FakeLedger
 from tests.network.test_surface import KEY1, build, go
 
 DESC = {"summary": "About the role\n• lead the program", "responsibilities": "Own the roadmap", "requirements": "", "qualifications": "Ten years"}

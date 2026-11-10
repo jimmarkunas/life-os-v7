@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 
 from lifeos.amazon import card, orders, stage
 from lifeos.platform import report_region, router
-from tests.kit.amazon import AmazonNotion, notion_page
+from tests.amazon.fakes import AmazonNotion, notion_page
 from tests.kit.notion import AmazonRegions
 
 TZ = ZoneInfo("America/Chicago")

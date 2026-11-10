@@ -58,7 +58,7 @@ Out of scope: sending, replying, filing or deleting mail; ordering anything; scr
 | Card region | PARTIAL | `report_region.replace_text` is reusable; no Deliveries owner in `router.OWNERS`. |
 | Alerts | PARTIAL | Layer exists; no detector. |
 | Amazon linkage (order and shipment) | MISSING | |
-| Tests and fakes | PARTIAL | `tests/kit/amazon.py` shows the style. |
+| Tests and fakes | PARTIAL | `tests/amazon/fakes.py` shows the style. |
 | Workflow job | PARTIAL | `domains.yml` pattern; a new job needs its own `DOMAIN_SECRETS` entry. |
 
 ## 4. Evidence ownership

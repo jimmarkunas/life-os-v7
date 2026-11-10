@@ -1,4 +1,4 @@
-"""NET-2.3 surfacing: invented people, companies and ids only. The Ledger is a synthetic Notion (tests/kit/ledger_pages.py), the stores run on an in-memory stand-in."""
+"""NET-2.3 surfacing: invented people, companies and ids only. The Ledger is a synthetic Notion (tests/jobs/fakes_ledger.py), the stores run on an in-memory stand-in."""
 import contextlib
 import io
 import json
@@ -10,7 +10,7 @@ from datetime import date, datetime, timezone
 from lifeos.network import store, surface
 from lifeos.network.errors import NetworkError
 from lifeos.sources import network_surface
-from tests.kit.ledger_pages import FakeLedger
+from tests.jobs.fakes_ledger import FakeLedger
 from tests.kit.mysqlite import MySQLite
 from tests.network.test_match import pipeline_row, save_pipeline
 

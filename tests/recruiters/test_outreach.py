@@ -12,7 +12,7 @@ from lifeos.network import match, surface
 from lifeos.platform import hidden
 from lifeos.recruiters import notion as store, outreach as O, stage
 from lifeos.sources import close_app, outreach_app
-from tests.kit.recruiters import FakeRecruiters, mail, page
+from tests.recruiters.fakes import FakeRecruiters, mail, page
 
 LEDGER, PIPELINE, RECRUITERS = "1" * 32, "2" * 32, "3" * 32
 JOB_A, JOB_B = "a" * 32, "b" * 32

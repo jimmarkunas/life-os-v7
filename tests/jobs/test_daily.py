@@ -6,7 +6,7 @@ from unittest import mock
 from lifeos import run
 from lifeos.jobs import alerts as jobs_alerts, daily
 from lifeos.platform import alerts
-from tests.kit.jobsdb import JobsDB
+from tests.jobs.fakes_jobsdb import JobsDB
 
 NOW = dt.datetime(2026, 10, 26, 12, 0)
 TODAY = NOW.date()

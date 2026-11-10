@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 from lifeos.amazon import retention, stage
 from lifeos.platform.gmail import Gmail
-from tests.kit.amazon import AmazonGmail, AmazonNotion, message
+from tests.amazon.fakes import AmazonGmail, AmazonNotion, message
 
 TOKEN = {"NOTION_AMAZON_TOKEN": "synthetic", "NOTION_AMAZON_DATA_SOURCE_ID": "source-example"}
 NOW = datetime(2026, 10, 3, 12, 0, tzinfo=timezone.utc)
@@ -124,7 +124,7 @@ class MultiOrderTests(unittest.TestCase):
         counts = retention.run(100, True, environ=TOKEN, gmail=gmail, notion=notion)
         self.assertEqual((counts["recorded"], counts["trashed"]), (1, 1))
         gmail.messages["m-1"]["label_ids"] = ["label-amazon"]
-        from tests.kit.amazon import notion_page
+        from tests.amazon.fakes import notion_page
         page = notion.rows[B]
         row = notion._row(page)
         row["Source Message IDs"] = ""
@@ -135,7 +135,7 @@ class MultiOrderTests(unittest.TestCase):
 
 class ReviewAgeTests(unittest.TestCase):
     def store(self, at):
-        from tests.kit.amazon import notion_page
+        from tests.amazon.fakes import notion_page
         order = "555-5555555-5555555"
         gmail = RetentionGmail({"m-9": message("m-9", "order-update", order_id=order, at=at)})
         gmail.messages["m-9"]["label_ids"] = ["label-amazon"]
@@ -196,7 +196,7 @@ class GroupedTotalTests(unittest.TestCase):
 
 class ReviewResetTests(unittest.TestCase):
     def store(self):
-        from tests.kit.amazon import notion_page
+        from tests.amazon.fakes import notion_page
         notion = AmazonNotion()
         notion.rows["111-1111111-1111111"] = notion_page("111-1111111-1111111", {"Status": "REVIEW", "Needs Review": True}, "page-empty")
         notion.rows["222-2222222-2222222"] = notion_page("222-2222222-2222222", {"Status": "SHIPPED", "Latest Event At": "2026-10-01T12:00:00+00:00"}, "page-shipped")
@@ -241,7 +241,7 @@ class TrashedConfirmationTests(unittest.TestCase):
         self.assertNotIn("in:anywhere", plain)                                                # the hourly pass does not read the Trash
 
     def test_retention_keeps_a_confirmation_until_its_row_has_taken_the_total(self):
-        from tests.kit.amazon import notion_page
+        from tests.amazon.fakes import notion_page
         order = "114-5655798-1950618"
         gmail = RetentionGmail({"c1": message("c1", "auto-confirm", order_id=order, at="2026-06-01T12:00:00+00:00", body=f"Order #{order}\n\nTotal\n21.2 USD\n")})
         gmail.messages["c1"]["label_ids"] = ["label-amazon"]

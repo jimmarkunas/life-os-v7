@@ -310,7 +310,7 @@ class StillListedIsNotRemoved(unittest.TestCase):
 
     def test_a_classification_change_never_masquerades_as_a_removal(self):
         from unittest import mock
-        from tests.kit.jobsdb import JobsDB
+        from tests.jobs.fakes_jobsdb import JobsDB
         db = JobsDB()
         board = [{**SOURCES[0], "id": "gh-still", "slug": "still"}]
         listings = [lister.Listing(lister.COMPLETE, [job(1, "Technical Program Manager"), job(2, "Program Manager")]),
@@ -408,7 +408,7 @@ class Preview(unittest.TestCase):
         self.assertEqual(got, ["unscored", "lt60", "lt60", "60_69", "60_69", "60_69", "70_71", "70_71", "72_up", "72_up"])
 
     def test_counts_every_stage_and_writes_nothing(self):
-        from tests.kit.jobsdb import JobsDB
+        from tests.jobs.fakes_jobsdb import JobsDB
         from lifeos.jobs import identity
         db = JobsDB()
         known = "https://boards.greenhouse.io/x/jobs/2"

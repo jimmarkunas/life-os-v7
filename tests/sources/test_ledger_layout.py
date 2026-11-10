@@ -5,7 +5,7 @@ from unittest import mock
 
 from lifeos.platform import ledger_body as body
 from lifeos.sources import ledger_layout as layout
-from tests.kit.ledger_pages import FakeLedger
+from tests.jobs.fakes_ledger import FakeLedger
 
 KEY = "a" * 64
 DESC = {"summary": "About the role\n• lead the program", "responsibilities": "Own the roadmap", "requirements": "", "qualifications": "Ten years"}

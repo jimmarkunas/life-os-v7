@@ -6,7 +6,7 @@ from lifeos.jobs import alerts as jobs_alerts, hold, store
 from lifeos.jobs.resolve import stage as resolve_stage
 from lifeos.platform import alerts, limits
 from tests.kit.db import FakeConn
-from tests.kit.jobsdb import JobsDB
+from tests.jobs.fakes_jobsdb import JobsDB
 
 NOW = datetime(2026, 10, 10, 12, 0)
 

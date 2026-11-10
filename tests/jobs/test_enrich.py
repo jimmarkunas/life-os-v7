@@ -734,7 +734,7 @@ class LinkedInPageAfterMismatchTests(unittest.TestCase):
     POSTING = "https://www.linkedin.com/jobs/view/4443205698"
 
     def setUp(self):
-        from tests.kit.jobsdb import JobsDB                                   # noqa: PLC0415
+        from tests.jobs.fakes_jobsdb import JobsDB                                   # noqa: PLC0415
         self.db, self.fetched = JobsDB(), []
         self.addCleanup(self.db.raw.close)
 

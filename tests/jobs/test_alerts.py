@@ -8,7 +8,7 @@ from unittest import mock
 from lifeos.jobs import alerts as jobs_alerts, alertstate, store
 from lifeos.platform import alerts
 from lifeos.sources.newsletters import finalize
-from tests.kit.jobsdb import JobsDB
+from tests.jobs.fakes_jobsdb import JobsDB
 
 NOW = dt.datetime(2026, 10, 25, 12, 0)
 QUIET = {"published_24h": 5, "sources_failing": 0, "stuck_jobs": 0}

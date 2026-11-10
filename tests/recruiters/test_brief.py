@@ -8,7 +8,7 @@ from lifeos.jobs import hiring_pipeline
 from lifeos.platform.notion_client import NotionError
 from lifeos.recruiters import notion as store, outreach_card
 from lifeos.sources import close_app, outreach_app as A
-from tests.kit.recruiters import page
+from tests.recruiters.fakes import page
 
 ROW, JOB, LEDGER, RECR, PIPE = "c" * 32, "a" * 32, "1" * 32, "2" * 32, "3" * 32
 CONFIG = {"ledger": LEDGER, "pipeline": PIPE, "recruiters": RECR}

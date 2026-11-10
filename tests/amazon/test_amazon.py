@@ -7,7 +7,7 @@ from unittest.mock import patch
 from lifeos.amazon import events, orders, stage
 from lifeos.platform.gmail import Gmail, GmailError
 from lifeos.platform.notion_client import NotionError
-from tests.kit.amazon import AmazonGmail, AmazonNotion, message, notion_page
+from tests.amazon.fakes import AmazonGmail, AmazonNotion, message, notion_page
 
 
 TOKEN = {"NOTION_AMAZON_TOKEN": "synthetic", "NOTION_AMAZON_DATA_SOURCE_ID": "source-example"}
