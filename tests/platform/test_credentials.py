@@ -41,7 +41,7 @@ class TheList(unittest.TestCase):
                     self.assertFalse(secret_like(value), (e["key"], field))
 
     def test_negative_control_the_secret_check_catches_planted_values(self):
-        for planted in ("ghp_" + "a" * 36, "github_pat_" + "B" * 40, "secret_" + "c" * 30, "3e264d79-3af4-4f2a-a86a-b4db015a68de", "-----" + "BEGIN " + "PRIV" + "ATE KEY-----", "jim@example.com",
+        for planted in ("ghp_" + "a" * 36, "github_pat_" + "B" * 40, "secret_" + "c" * 30, "00000000-0000-4000-8000-000000000000", "-----" + "BEGIN " + "PRIV" + "ATE KEY-----", "jim@example.com",
                         "https://x.test/path?token=abc", "A" * 40):
             self.assertTrue(secret_like(planted), planted)
         self.assertFalse(secret_like("Notion internal integration secrets have no expiry"))
