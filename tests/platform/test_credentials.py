@@ -14,7 +14,13 @@ SECRET_SHAPES = (re.compile(r"[A-Za-z0-9+/=_]{32,}"), re.compile(r"\b[0-9a-f]{8}
                  re.compile(r"https?://[^\s]*[?&](token|key|secret)=", re.I))
 
 
+BITWARDEN_NAMES = ("openclaw/outlook/clientId", "openclaw/outlook/personal/mailboxFingerprint", "openclaw/outlook/personal/refreshToken",
+                   "openclaw/outlook/work/mailboxFingerprint", "openclaw/outlook/work/refreshToken")      # secret NAMES Jim gave (LIFE-528 comment 12557); a name is not a value
+
+
 def secret_like(text):
+    for name in BITWARDEN_NAMES:                                                                       # only these exact names are exempt; any other long run still fails
+        text = text.replace(name, " ")
     return any(p.search(text) for p in SECRET_SHAPES)
 
 
@@ -45,6 +51,8 @@ class TheList(unittest.TestCase):
                         "https://x.test/path?token=abc", "A" * 40):
             self.assertTrue(secret_like(planted), planted)
         self.assertFalse(secret_like("Notion internal integration secrets have no expiry"))
+        self.assertFalse(secret_like("Bitwarden secret names: " + ", ".join(BITWARDEN_NAMES)))              # the listed names are allowed
+        self.assertTrue(secret_like("openclaw/outlook/work/" + "Ab1" * 12))                                 # an unlisted long run under the same prefix is still caught
 
     def test_the_file_is_names_only_so_nothing_in_it_could_be_a_value(self):
         text = cred.PATH.read_text()
