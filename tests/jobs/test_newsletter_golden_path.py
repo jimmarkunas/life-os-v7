@@ -21,8 +21,8 @@ from lifeos.jobs.resolve import stage as resolve_stage
 from lifeos.platform.http import Fetched
 from lifeos.sources.newsletters import config, finalize, ingest, sweep
 from tests.jobs.fit.test_fit import PROFILE as _PROFILE_OBJECT  # noqa: F401 - the same synthetic profile shape
-from tests.kit.jobsdb import JobsDB
-from tests.kit.ledger_pages import SOURCE
+from tests.jobs.fakes_jobsdb import JobsDB
+from tests.jobs.fakes_ledger import SOURCE
 from tests.jobs.support import CARD, ENGINEER_BODY, Mailbox, PM_BODY, VACANCIES, alert
 
 PROFILE = {"years": 15, "scope": {"team_size": 10, "budget_usd": 20_000_000, "global": "direct", "enterprise": "direct", "multi_team": "direct", "executive": "adjacent", "people_leadership": "direct"},

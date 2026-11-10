@@ -229,7 +229,7 @@ class NewestScoreFirst(unittest.TestCase):
     def test_the_newest_scores_are_picked_first_on_the_production_sql(self):
         import datetime
         from lifeos.jobs import meta
-        from tests.kit.jobsdb import JobsDB
+        from tests.jobs.fakes_jobsdb import JobsDB
         db = JobsDB()
         self.addCleanup(db.raw.close)
         t0 = datetime.datetime(2026, 10, 31, 1, 0)

@@ -6,7 +6,7 @@ from lifeos.network import surface
 from lifeos.platform import report_region as R
 from lifeos.sources import job_page_outreach as P
 from tests.hiring.support import writes
-from tests.kit.recruiters import FakeRecruiters
+from tests.recruiters.fakes import FakeRecruiters
 from tests.kit.tree import Tree
 from tests.recruiters.test_outreach import JOB_A, JOB_B, LEDGER, NOW, SCHEMA, Ledger, Service, ledger_page, mark
 

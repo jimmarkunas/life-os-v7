@@ -105,7 +105,7 @@ class RetiredSenderTests(unittest.TestCase):
         must carry its own label instead, leave the pending query, and stay out of finalize, reconcile and the repair."""
         from lifeos.sources.newsletters import finalize
         from tests.jobs.support import Mailbox
-        from tests.kit.jobsdb import JobsDB
+        from tests.jobs.fakes_jobsdb import JobsDB
         box, db = Mailbox({"l1": (MESSAGES["m1"][0], HTML, time.time() - 60)}), JobsDB()
         box.labels["l1"].add("j-newsletters")
         counts = ingest.extract(box, True, 10, db)
@@ -126,7 +126,7 @@ class SourceAccountingTests(unittest.TestCase):
     """LIFE-64: every parsed card leaves a source row for ITS message, over the real store and its UNIQUE (source_url_hash)."""
     def world(self, **mails):
         from tests.jobs.support import Mailbox, alert
-        from tests.kit.jobsdb import JobsDB
+        from tests.jobs.fakes_jobsdb import JobsDB
         box = Mailbox({i: ("Jobright <alerts@jobright.ai>", alert(*ids), time.time() - 60) for i, ids in mails.items()})
         for labels in box.labels.values():
             labels.add("j-newsletters")

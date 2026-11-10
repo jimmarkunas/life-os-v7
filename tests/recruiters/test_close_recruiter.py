@@ -5,7 +5,7 @@ from copy import deepcopy
 
 from lifeos.platform.notion_client import NotionError
 from lifeos.recruiters import notion as store
-from tests.kit.recruiters import FakeRecruiters, page
+from tests.recruiters.fakes import FakeRecruiters, page
 from tests.recruiters.test_outreach import RECRUITERS, Ledger, Service, fields
 
 ROW = "c" * 32

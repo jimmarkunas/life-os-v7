@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 from lifeos.platform import mail as platform_mail
 from lifeos.recruiters import classify as C, identity, notion as store, qualify, stage
-from tests.kit.recruiters import FakeRecruiters, ReadOnlyGmail, ReadOnlyOutlook, mail, page
+from tests.recruiters.fakes import FakeRecruiters, ReadOnlyGmail, ReadOnlyOutlook, mail, page
 
 NOW = datetime(2026, 10, 8, 12, 0, tzinfo=timezone.utc)                          # a Thursday
 SIGNED = "Hi,\n\nI'm reaching out about a Data Engineer role for a client.\n\nBest,\nPat Example\nSenior Recruiter at Acme Staffing\n"
