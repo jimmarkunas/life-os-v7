@@ -32,6 +32,7 @@ CODES = {
     "TICK_REFUSED": _r("ticker", "blocked", False, "GitHub refused the dispatch (401/403/404/422): the token, its permissions or the workflow name is wrong.", "Replace the token (install-ticker.sh credential github) or check hourly.yml; GitHub's own crons still run meanwhile."),
     "TICK_GITHUB_ERROR": _r("ticker", "retry", False, "GitHub answered the dispatch with an error (5xx or rate limit).", "None; the next hour tries again and GitHub's own crons still run."),
     "TICK_NETWORK": _r("ticker", "retry", False, "The Oracle machine could not reach GitHub.", "None for one hour; persistent: check the VM's network."),
+    "OPENCLAW_WORKERS_LEAKING": _r("oraclecloud", "degraded", False, "OpenClaw on Oracle has more Codex app-server workers than agents (the duplicate-worker leak, LIFE-531).", "Restart the OpenClaw gateway when no agent run is in progress; see LIFE-531.", "info"),
     "TICKER_NO_CREDENTIAL": _r("ticker", "blocked", False, "A stored credential (the GitHub token or the phone topic) is missing.", "Run install-ticker.sh credential github / credential ntfy."),
     "TICKER_VARIABLES_UNREADABLE": _r("ticker", "blocked", False, "The alert switches could not be read from the repository variables, so the watchdog check did not run (it never guesses on or off).", "Give the token Variables: read, or check GitHub; the GitHub watchdog still runs."),
     "TICKER_WATCH_FAILED": _r("ticker", "retry", False, "The watchdog check could not read the hourly runs from GitHub.", "None; the next check (15 minutes) tries again."),

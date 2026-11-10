@@ -38,6 +38,10 @@ class Card(unittest.TestCase):
         patch = mock.patch.object(card.backup_watch, "record", lambda reading, environ, now: self.watched.append(reading))
         patch.start()
         self.addCleanup(patch.stop)
+        self.counted = []                                                            # LIFE-531: the same for the worker-count watch
+        patch2 = mock.patch.object(card.worker_watch, "record", lambda reading, environ, now: self.counted.append(reading))
+        patch2.start()
+        self.addCleanup(patch2.stop)
 
     def run_card(self, rep, live=True, answer=None, env=None, now=NOW):
         answer = answer or (lambda host: json.dumps(stats()).encode())
@@ -134,6 +138,15 @@ class Card(unittest.TestCase):
         for bad in ({"ok": True, "code": "a /path", "age_h": 1}, {"ok": 1, "code": "ok", "age_h": 1}, {"ok": True, "code": "ok", "age_h": -1}, {"ok": True, "code": "ok"}):
             counts, log = self.run_card(report(), answer=lambda host, bad=bad: json.dumps(stats(backup=bad)).encode())
             self.assertIn("source refused", log, bad)
+
+    def test_the_worker_count_is_optional_on_the_wire_checked_and_handed_to_the_watch(self):
+        self.run_card(report())
+        self.assertEqual(self.counted[-1], None)                                     # an older stats.mjs sends no workers: unknown
+        self.run_card(report(), answer=lambda host: json.dumps({**stats(), "workers": {"count": 6, "agents": 5}}).encode())
+        self.assertEqual(self.counted[-1], {"count": 6, "agents": 5})
+        for bad in ({"count": 6}, {"count": -1, "agents": 5}, {"count": 6, "agents": 0}, {"count": "6", "agents": 5}, {"count": 6, "agents": 5, "pid": 1}, [6, 5]):
+            self.run_card(report(), answer=lambda host, b=bad: json.dumps({**stats(), "workers": b}).encode())
+            self.assertEqual(self.counted[-1], None)                                 # off-contract: the whole reply is refused, the card shows unavailable
 
     def test_a_dry_run_never_touches_the_backup_watch(self):
         self.run_card(report(), live=False)
