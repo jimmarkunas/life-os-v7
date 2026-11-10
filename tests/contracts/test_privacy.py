@@ -42,11 +42,36 @@ def tracked_text_files():
                 continue
 
 
+def unapproved_email_counts(files):
+    """-> {file name: how many addresses outside the allowlist}. NEVER the address itself: a failure here is printed into public CI logs (LIFE-519)."""
+    counts = {}
+    for name, text in files:
+        n = sum(1 for m in EMAIL.finditer(text) if m.group(1).lower() not in ALLOWED_EMAIL_DOMAINS)
+        if n:
+            counts[name] = n
+    return counts
+
+
 class PrivacyGuard(unittest.TestCase):
     def test_no_unapproved_emails(self):
-        bad = [(n, m.group(0)) for n, t in tracked_text_files() for m in EMAIL.finditer(t)
-               if m.group(1).lower() not in ALLOWED_EMAIL_DOMAINS]
-        self.assertEqual(bad, [], "email address outside the allowlist (see docs/PRIVACY.md)")
+        # The failure message names only files and counts. Find the value yourself with: git grep -n -E '[A-Za-z0-9._%+-]+@' -- <file>
+        self.assertEqual(unapproved_email_counts(tracked_text_files()), {}, "email address outside the allowlist in the files above (counts only; see docs/PRIVACY.md)")
+
+    def test_negative_control_a_planted_address_is_caught_and_never_printed(self):
+        """LIFE-519: prove the guard fires on a personal-looking address AND that its failure output holds none of the value. The address is built here, so this file never contains one."""
+        local, domain = "planted" + "." + "person", "gmail" + "." + "com"
+        planted = [("fake/file.txt", "contact: " + local + "@" + domain + " for details\n")]
+        self.assertEqual(unapproved_email_counts(planted), {"fake/file.txt": 1})                    # caught (gmail is not on the allowlist)
+        with self.assertRaises(AssertionError) as caught:
+            self.assertEqual(unapproved_email_counts(planted), {}, "email address outside the allowlist in the files above (counts only; see docs/PRIVACY.md)")
+        shown = str(caught.exception)
+        self.assertIn("fake/file.txt", shown)                                                       # the file is named, so a human can find it
+        for piece in (local, domain, local + "@" + domain, "@"):
+            self.assertNotIn(piece, shown)                                                          # none of the matched value is in the failure text
+
+    def test_allowed_domains_do_not_include_personal_mail(self):
+        for personal in ("gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "live.com", "icloud.com", "yahoo.com", "proton.me", "protonmail.com"):
+            self.assertNotIn(personal, ALLOWED_EMAIL_DOMAINS)
 
     def test_no_secret_shaped_strings(self):
         bad = [(n, label) for n, t in tracked_text_files() for label, rx in SECRET_SHAPES.items() if rx.search(t)]
