@@ -52,6 +52,7 @@ These repository files hold feature scoping, setup, history or one product area'
 | [`docs/platform/test-index.md`](docs/platform/test-index.md) |
 | [`docs/test-index.json`](docs/test-index.json) |
 | [`docs/platform/fake-conformance.md`](docs/platform/fake-conformance.md) |
+| [`docs/platform/type-baseline.md`](docs/platform/type-baseline.md) |
 | [`docs/design/bitwarden-load-pairs.md`](docs/design/bitwarden-load-pairs.md) |
 | [`docs/DCC_CARD_CONTRACT.md`](docs/DCC_CARD_CONTRACT.md) |
 | [`docs/DELIVERY_TRACKING_SCOPE.md`](docs/DELIVERY_TRACKING_SCOPE.md) |
