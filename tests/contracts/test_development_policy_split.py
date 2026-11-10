@@ -71,7 +71,7 @@ class Split(unittest.TestCase):
             name = Path(p["path"]).name
             for h in p["headings"]:
                 self.assertIn(f"](development-policy/{name}#{anchor(h)})", entry, h)
-        for rule in ("Deterministic agent work selection", "Jira-first development lifecycle", "Deadline Mode", "Requirement-change reconciliation"):
+        for rule in ("Deterministic agent work selection", "Jira-first development lifecycle", "Deadline Mode"):
             self.assertEqual(sum(rule in h for h in headings), 1, rule)        # each named rule lives in exactly one place
 
     def test_no_rule_text_is_duplicated_outside_its_part(self):

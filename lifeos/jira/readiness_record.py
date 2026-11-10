@@ -8,7 +8,9 @@ from lifeos.platform.jira import Jira, JiraError
 FIELDS = "summary,status,labels,parent,components,issuelinks,description"
 ROW = re.compile(r"^\[( |x|X)\]\s*(.+)$")
 PROOF = re.compile(r"\(proof:\s*(.*?)(?:;\s*status:[^)]*)?\)\s*\.?\s*(?:Done\.?)?\s*$")
-GWT = re.compile(r"\*{0,2}GWT-[A-Z0-9]+-\d+\*{0,2}\s*Given (.+?),\s*when (.+?),\s*then (.+)$", re.I)
+GWT = re.compile(r"(?:\*{0,2}GWT-[A-Z0-9-]+\*{0,2}\s*)?Given (.+?),\s*when (.+?),\s*then (.+)$", re.I)       # delivery flow v3: any id, or none
+DONE_WHEN = re.compile(r"^[#*\s]*done when\b[:*\s]*(.*)$", re.I)
+HEADING = re.compile(r"^(?:#|\*{2}[A-Z][^*]*:\*{2})|^(?:Outcome|Needs|Decisions|Not in scope|Protected|Build|Never|Steps|Context)\b")
 LOS_KEY = re.compile(r"\bLOS-\d+\b")
 REQ_PAGE = re.compile(r"\bREQ-\d+\b.*?(https://(?:www\.)?(?:app\.)?notion\.(?:com|so)/\S+)|(https://(?:www\.)?(?:app\.)?notion\.(?:com|so)/\S+).*?\bREQ-\d+\b")
 APPROVAL = re.compile(r"^\*{0,2}Origin\s*/\s*approval:\*{0,2}\s*(.+)$", re.I)
@@ -63,6 +65,21 @@ def checklist(block):
     return out
 
 
+def done_when(rows):
+    """Delivery flow v3: the Done-when lines (the text after the heading, then each line up to the next heading), checkbox marks removed."""
+    for i, line in enumerate(rows):
+        m = DONE_WHEN.match(line.replace("\\", ""))
+        if not m:
+            continue
+        out = [m.group(1).strip(" *")]
+        for nxt in rows[i + 1:]:
+            if HEADING.match(nxt.replace("\\", "")):
+                break
+            out.append(re.sub(r"^\[[ xX]\]\s*", "", nxt.replace("\\", "")).strip())
+        return [x for x in out if x]
+    return []
+
+
 def normalize(raw):
     """The validator record for one REST v3 issue. Raises ValueError("INCOMPLETE:<field>") when the issue lacks what the record is built from."""
     if not isinstance(raw, dict) or not isinstance(raw.get("fields"), dict) or not raw.get("key"):
@@ -76,6 +93,8 @@ def normalize(raw):
         m = GWT.search(line.replace("\\", ""))
         if m:
             record["acceptance"].append({"given": m.group(1), "when": m.group(2), "then": m.group(3)})
+    record["acceptance"] += [{"done_when": x} for x in done_when(rows) if not GWT.search(x)]          # a bullet under "Done when" counts as a Done-when line
+    record["description_chars"] = len(f["description"]) if isinstance(f.get("description"), str) else len("\n".join(rows))
     for line in rows:                                                          # origin and authorization come from the written approval line, never from a comment
         m = APPROVAL.match(line)
         if m:

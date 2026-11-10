@@ -44,29 +44,57 @@ class RecordTests(unittest.TestCase):
     def test_a_complete_issue_is_ready(self):
         self.assertEqual(self.check(raw())[:2], (0, "ready v1\n"))
 
-    def test_an_open_need_or_decision_is_refused(self):
-        code, _, err = self.check(raw(DESC.replace("- [x] Parent", "- [ ] Parent")))
-        self.assertEqual(code, 2)
-        self.assertIn("prerequisite_open needs item 1", err)
+    def test_an_open_need_or_decision_is_only_a_warning(self):
+        code, out, err = self.check(raw(DESC.replace("- [x] Parent", "- [ ] Parent")))
+        self.assertEqual((code, out), (0, "ready v1\n"))
+        self.assertIn("warn v1 prerequisite_open needs item 1", err)
         code, _, err = self.check(raw(DESC.replace("None open.", "\n\n- [ ] Pick one (proof: none; status: open).")))
-        self.assertIn("decision_open decisions item 1", err)
+        self.assertEqual(code, 0)
+        self.assertIn("warn v1 decision_open decisions item 1", err)
 
     def test_a_task_numbered_gwt_id_parses(self):
         desc = DESC.replace("GWT-EX-01", "GWT-T04-01")
         self.assertEqual(rr.normalize(raw(desc))["acceptance"], [{"given": "a ready issue", "when": "the check runs", "then": "it reports ready."}])
         self.assertEqual(self.check(raw(desc))[:2], (0, "ready v1\n"))
 
-    def test_each_gap_is_its_own_refusal(self):
-        self.assertIn("lane_missing", self.check(raw(labels=()))[2])
-        self.assertIn("component_missing", self.check(raw(components=()))[2])
-        self.assertIn("gwt_missing", self.check(raw(DESC.replace("Given a ready issue", "A ready issue")))[2])
-        self.assertIn("authorization_missing", self.check(raw(DESC.replace("**Origin / approval:**", "**Origin:**")))[2])
-        self.assertIn("blocker_not_done", self.check(raw(links=[{"type": {"name": "Blocks"}, "inwardIssue": {"key": "LIFE-899", "fields": {"status": {"name": "To Do"}}}}]))[2])
+    def test_any_gwt_id_or_none_parses_and_a_done_when_bullet_counts(self):
+        """Delivery flow v3: the id is optional and free-form; a bullet under Done when is a Done-when line."""
+        for row in ("GWT-1 Given a, when b, then c", "**GWT-S62-01** Given a, when b, then c", "Given a, when b, then c", "1. Given a, when b, then c"):
+            with self.subTest(row=row):
+                self.assertEqual(rr.normalize(raw(f"## Done when\n\n* {row}"))["acceptance"], [{"given": "a", "when": "b", "then": "c"}])
+        bullet = rr.normalize(raw("## Outcome\n\nx\n\n## Done when\n\n* \\[ \\] the cell holds the text\n\n## Never\n\nnothing"))
+        self.assertEqual(bullet["acceptance"], [{"done_when": "the cell holds the text"}])
+        self.assertEqual(self.check(raw("## Done when\n\n* the cell holds the text"))[:2], (0, "ready v1\n"))
+
+    def test_only_a_missing_done_when_or_an_open_blocker_refuses(self):
+        code, out, err = self.check(raw("## Outcome\n\nNo checks here."))
+        self.assertEqual((code, out), (2, ""))
+        self.assertIn("refused v1 gwt_missing acceptance", err)
+        blocker = [{"type": {"name": "Blocks"}, "inwardIssue": {"key": "LIFE-899", "fields": {"status": {"name": "To Do"}}}}]
+        code, _, err = self.check(raw(links=blocker))
+        self.assertEqual(code, 2)
+        self.assertIn("blocker_not_done blockers LIFE-899=To Do", err)
+
+    def test_every_old_gap_is_a_warning_and_the_ticket_stays_ready(self):
+        """Delivery flow v3 (d): a ticket with only a Done-when bullet and no other field is ready."""
+        code, out, err = self.check(raw("## Done when\n\n* the cell holds the text", labels=(), components=()))
+        self.assertEqual((code, out), (0, "ready v1\n"))
+        for warned in ("lane_missing", "component_missing", "origin_missing", "authorization_missing", "permissions_missing"):
+            self.assertIn(f"warn v1 {warned}", err)
+        self.assertNotIn("refused", err)
+        self.assertIn("warn v1 authorization_missing", self.check(raw(DESC.replace("**Origin / approval:**", "**Origin:**")))[2])
+
+    def test_a_long_life_description_warns(self):
+        code, _, err = self.check(raw(DESC + "\n\n" + "x" * 4000))
+        self.assertEqual(code, 0)
+        self.assertIn("warn v1 description_long description", err)
 
     def test_adf_and_text_descriptions_read_the_same(self):
         para = lambda t: {"type": "paragraph", "content": [{"type": "text", "text": t}]}
         adf = {"type": "doc", "content": [para(x) for x in rr.lines(DESC)]}
-        self.assertEqual(rr.normalize(raw(adf)), rr.normalize(raw(DESC)))
+        a, b = rr.normalize(raw(adf)), rr.normalize(raw(DESC))
+        a.pop("description_chars"), b.pop("description_chars")                 # the raw text length exists only for a text description
+        self.assertEqual(a, b)
 
     def test_unreadable_jira_data_is_queue_not_ready_never_ready(self):
         for data in ({}, {"key": "LIFE-901", "fields": {"description": None}}):
@@ -74,14 +102,15 @@ class RecordTests(unittest.TestCase):
             self.assertEqual((code, out), (2, ""))
             self.assertTrue(err.startswith("QUEUE_NOT_READY — INCOMPLETE:"), err)
 
-    def test_a_los_origin_needs_its_notion_requirement_page(self):
-        """LIFE-319: GWT-GATE-01..03."""
+    def test_a_los_origin_without_its_notion_requirement_page_only_warns(self):
+        """LIFE-319, relaxed by delivery flow v3: requirement_page_missing is a warn line, not a refusal."""
         from_los = DESC.replace("chat: example.", "chat: example, from LOS-900.")
         page = "\n\n**Requirement:** REQ-7 https://app.notion.com/p/0123456789abcdef0123456789abcdef"
         code, out, err = self.check(raw(from_los))
-        self.assertEqual((code, out), (2, ""))
-        self.assertIn("requirement_page_missing requirement LOS-900", err)
+        self.assertEqual((code, out), (0, "ready v1\n"))
+        self.assertIn("warn v1 requirement_page_missing requirement LOS-900", err)
         self.assertEqual(self.check(raw(from_los + page))[:2], (0, "ready v1\n"))
+        self.assertNotIn("requirement_page_missing", self.check(raw(from_los + page))[2])
         self.assertEqual(self.check(raw())[:2], (0, "ready v1\n"))                                           # no LOS origin: the check is skipped
         self.assertEqual(rr.normalize(raw())["requirement"], {"los": "", "pages": []})
 
@@ -91,15 +120,15 @@ class RecordTests(unittest.TestCase):
         self.assertIn("requirement_page_missing", self.check(raw(from_los + "\n\nREQ-7 has no link yet"))[2])
         self.assertEqual(self.check(raw(DESC + "\n\nBackground: LOS-900 was scoped earlier."))[:2], (0, "ready v1\n"))
 
-    def test_a_malformed_requirement_record_is_refused(self):
+    def test_a_malformed_requirement_record_only_warns(self):
         with tempfile.TemporaryDirectory() as tmp:
             record = Path(tmp) / "record.json"
             data = rr.normalize(raw())
             data["requirement"] = "yes"
             record.write_text(json.dumps(data))
             code, _, err = entry("issue", record)
-        self.assertEqual(code, 2)
-        self.assertIn("requirement_unreadable", err)
+        self.assertEqual(code, 0)
+        self.assertIn("warn v1 requirement_unreadable", err)
 
     def test_live_read_without_credentials_names_the_settings_only(self):
         done = subprocess.run([sys.executable, "-m", "lifeos.readiness", "issue-key", "LIFE-901"], cwd=ROOT, capture_output=True, text=True, env={"PATH": ""})

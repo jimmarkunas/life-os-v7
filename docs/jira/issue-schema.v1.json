@@ -271,14 +271,14 @@
     "https_url": {"type": "string", "pattern": "^https://\\S+$"},
     "slug": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"},
     "branch": {
-      "description": "<project-key-lower>/<ISSUE-KEY>/<fix-version-slug>/<component-slug>/<scope-slug>",
+      "description": "life/<ISSUE-KEY>/<slug>",
       "type": "string",
-      "pattern": "^[a-z][a-z0-9]*/[A-Z][A-Z0-9]+-[0-9]+/[a-z0-9]+(?:-[a-z0-9]+)*/[a-z0-9]+(?:-[a-z0-9]+)*/[a-z0-9]+(?:-[a-z0-9]+)*$"
+      "pattern": "^life/[A-Z][A-Z0-9]+-[0-9]+/[a-z0-9]+(?:-[a-z0-9]+)*$"
     },
     "pr_title": {
-      "description": "[<ISSUE-KEY>][<component-slug>][<fix-version-slug>] <outcome>",
+      "description": "[<ISSUE-KEY>] <outcome>",
       "type": "string",
-      "pattern": "^\\[[A-Z][A-Z0-9]+-[0-9]+\\]\\[[a-z0-9]+(?:-[a-z0-9]+)*\\]\\[[a-z0-9]+(?:-[a-z0-9]+)*\\] \\S.*$"
+      "pattern": "^\\[[A-Z][A-Z0-9]+-[0-9]+\\] \\S.*$"
     }
   },
   "examples": [

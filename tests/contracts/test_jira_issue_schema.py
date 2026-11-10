@@ -30,14 +30,14 @@ class Contract(unittest.TestCase):
         self.assertNotIn("As the Main User. Given:", POLICY)        # the old combined story/criteria format is reconciled away
 
     def test_the_policy_examples_match_the_schema_formats(self):
-        branch = re.search(r"for example `([^`]+)`", POLICY).group(1)
-        self.assertTrue(matches("branch", branch), branch)
-        self.assertTrue(matches("pr_title", "[LIFE-79][platform-core-os][platform-core-os-1-0-0] Adopt the Jira issue-writing contract"))
+        self.assertIn("Branch: `life/LIFE-nnn/<slug>`. PR title: `[LIFE-nnn] <outcome>`.", POLICY)        # delivery flow v3
+        self.assertTrue(matches("branch", "life/LIFE-79/delivery-flow-v3"))
+        self.assertTrue(matches("pr_title", "[LIFE-79] Adopt the Jira issue-writing contract"))
 
     def test_malformed_names_are_refused(self):
-        for bad in ("claude/friendly-johnson-kcjfxw", "life/life-79/platform-core-os-1-0-0/platform-core-os/x", "life/LIFE-79/Platform/platform-core-os/x"):
+        for bad in ("claude/friendly-johnson-kcjfxw", "life/life-79/x", "life/LIFE-79/Platform", "life/LIFE-79/a/b"):
             self.assertFalse(matches("branch", bad), bad)
-        for bad in ("LIFE-79: Adopt the contract", "[LIFE-79][Platform][platform-core-os-1-0-0] x", "[LIFE-79][platform-core-os][platform-core-os-1-0-0]"):
+        for bad in ("LIFE-79: Adopt the contract", "[LIFE-79]", "[life-79] x"):
             self.assertFalse(matches("pr_title", bad), bad)
 
     def test_the_story_statement_and_acceptance_criteria_stay_separate(self):
@@ -51,7 +51,7 @@ class Contract(unittest.TestCase):
         self.assertEqual(set(refs), {"kind", "identifier"})
         self.assertIn("LIFE workflow statuses include Agent UAT and Human UAT", SCHEMA["description"])
         self.assertIs(SCHEMA["properties"]["fast_proof"]["properties"]["schedule_independent"]["const"], True)
-        self.assertIn("LIFE uses the `Agent UAT` and `Human UAT` workflow statuses", POLICY)
+        self.assertIn("LIFE keeps the `Agent UAT` and `Human UAT` workflow statuses", POLICY)
         self.assertIn("no compulsory independent Tech Lead review", POLICY)
         self.assertNotIn("Assign an independent reviewer and merge operator before implementation", POLICY)
         self.assertIn("Do not invent approvals", POLICY)
@@ -68,9 +68,8 @@ class Contract(unittest.TestCase):
         self.assertIn("never promotes its own, a self-created or any unapproved issue into Agent Go", authorization)
         self.assertIn("not a technical guarantee", authorization)         # the org-admins restriction is not an agent-identity boundary
         self.assertIn("does not by itself start a dormant agent", selector)
-        for skipped in ("incomplete incoming `Blocks` predecessor", "`acceptance-pending` hold", "conflicting or already-claimed writer", "execution environment the agent does not support"):
+        for skipped in ("incomplete incoming `Blocks` predecessor", "conflicting or already-claimed writer", "execution environment the agent does not support"):
             self.assertIn(skipped, selector)                              # blocked or conflicting work is skipped without mutation
-        self.assertIn("exclusive-writer mutation surface is free", selector)
         self.assertIn('transition Agent Go to In Progress (ID 14, "Start work (authorization receipt required)")', selector)
         self.assertIn("transition ID 5 (To Do to Agent Go", authorization)
         self.assertIn("empty `Agent Go` queue", selector)
@@ -81,20 +80,16 @@ class Contract(unittest.TestCase):
         for retained in ("Agent UAT", "Human UAT", "protected-action", "single-writer"):
             self.assertIn(retained, POLICY)
 
-    def test_requirement_changes_are_reconciled_in_the_live_records(self):
-        """LIFE-79 (Jim, Nov 1 2026): an approved requirement change corrects the directly affected live Jira records, bounded and event-driven."""
-        rule = POLICY.split("### Requirement-change reconciliation", 1)[1].split("## 2. Locked architecture", 1)[0]
-        for required in ("not a scheduler, audit, backlog, workflow, status, automation or approval gate", "bounded text search", "in place",
-                         "must not remain an active prerequisite", "`HISTORICAL — SUPERSEDED`", "`RECONCILED`", "`PARTIAL / BLOCKED`",
-                         "never moves an issue into `Agent Go`", "one-writer scope and protected-operation gates are unchanged"):
-            self.assertIn(required, rule)
+    def test_requirement_change_reconciliation_is_retired_and_t3_stays_retired(self):
+        """Delivery flow v3 (Jim, Nov 9 2026): the requirement-change reconciliation section is deleted from the policy."""
+        self.assertNotIn("### Requirement-change reconciliation", POLICY)
         self.assertNotIn("Buzz or T3", POLICY)                            # T3 is retired as an authorization channel
 
     def test_los_first_discovery_and_description_first_contract_is_in_the_policy(self):
         """LIFE-79 (Jim, Nov 1 2026): new product outcomes start in an approved LOS Idea; answers persist before the next tranche; Description owns requirements."""
         rule = POLICY.split("### LOS-first discovery and description-first requirements", 1)[1].split("## 2. Locked architecture", 1)[0]
         for required in ("`DISCOVERY_NOT_READY", "`DISCOVERY_CAPTURE_BLOCKED`", "A parked LOS Idea is not delivery authorization", "**Exception without bypass:**",
-                         "cannot launder a new product outcome", "**NOT TECHNICALLY ENFORCED**", "Discovery log — Tranche N", "never inferred from an assistant recommendation",
+                         "cannot launder a new product outcome", "**NOT TECHNICALLY ENFORCED**", "never inferred from an assistant recommendation",
                          "never comment-only", "A stale comment never outranks a current Description", "`Given / When / Then`", "**UNVERIFIED**",
                          "is not an interactive Jira checklist", "is never Done", "`QUEUE_NOT_READY`", "Agent Go release, Priority order, claims, one-writer scope and protected-operation gates are unchanged"):
             self.assertIn(required, rule)
@@ -157,8 +152,8 @@ class Contract(unittest.TestCase):
                          "safety, authority, a contradiction, missing proof or verification",                                  # the exceptions to reuse
                          "The LOS Description holds", "The LIFE Description holds", "Notion holds detailed product specifications", "GitHub holds code",
                          "Comments hold active development findings and receipts, not requirements", "never move, delete, summarize away or overwrite",
-                         "do not re-fetch Notion during routine questioning", "narrow edit", "revision changed since it was read, re-read and merge",
-                         "Independently read the change back before the next tranche", "`DISCOVERY_CAPTURE_BLOCKED` and stops the next tranche",
+                         "do not re-fetch Notion during routine questioning",
+                         "independently read the change back before the next tranche", "`DISCOVERY_CAPTURE_BLOCKED` and stops the next tranche",
                          "never overrides correctness", "from one Jira key and its authoritative links, without pasted conversation history",
                          "rather than speculative implementation", "no task store, scheduler, dispatcher, index, context-sync service or agent relay",
                          "cannot observe or limit an external agent's tool calls",
