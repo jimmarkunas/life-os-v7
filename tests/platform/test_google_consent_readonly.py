@@ -9,6 +9,7 @@ import urllib.request
 import http.server
 
 from lifeos.platform import google_consent as base, google_consent_readonly as R
+from tests.kit import shared
 
 SECRET = "fake-client-secret-not-real"
 ALLOW = [{"account": "acct-a-gmail", "tenant": "TENANT-A-TEST", "service": "gmail", "label": "INBOX", "size_cap": 1000},
@@ -21,18 +22,7 @@ WRITE = ["https://www.googleapis.com/auth/drive", "https://www.googleapis.com/au
          "https://www.googleapis.com/auth/calendar.events", "https://www.googleapis.com/auth/gmail.compose"]
 
 
-class Reply:
-    def __init__(self, body):
-        self.body = body
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *a):
-        return False
-
-    def read(self):
-        return json.dumps(self.body).encode()
+Reply = shared.Reply
 
 
 def token_endpoint(scope, refresh="fake-refresh-token", seen=None):
@@ -130,9 +120,7 @@ class Refusals(unittest.TestCase):
         self.assertEqual((receipt["code"], receipt["stored"], out), ("DENY_PRINCIPAL", "nothing", ""))
 
     def test_it_refuses_to_print_the_credential_on_a_terminal(self):
-        class Tty(io.StringIO):
-            def isatty(self):
-                return True
+        Tty = shared.Terminal
         tty = io.StringIO()
         def never(srv, state):
             raise AssertionError("no sign-in may start when the output is a terminal")
