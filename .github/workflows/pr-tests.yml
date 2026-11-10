@@ -71,6 +71,19 @@ jobs:
             printf '%s\n' "$counts" | grep -E '^[[:space:]]*[0-9]+' || true
           } | tee -a "$GITHUB_STEP_SUMMARY"
           exit 0
+      - name: Type check advisory (LIFE-559; changed files under lifeos/platform, counts only, can never fail the job or change the required check)
+        continue-on-error: true
+        run: |
+          files=$(git diff --name-only --diff-filter=ACMR HEAD^1 HEAD -- 'lifeos/platform/*.py' | tr '\n' ' ')
+          if [ -z "$files" ]; then echo "mypy (advisory): no lifeos/platform file changed" | tee -a "$GITHUB_STEP_SUMMARY"; exit 0; fi
+          start=$(date +%s)
+          found=$(python -m mypy --no-incremental --no-error-summary $files 2>/dev/null | grep -E ': error:' | sed -E 's/:[0-9]+: error.*//' | sort | uniq -c || true)
+          total=$(printf '%s\n' "$found" | awk '$1 ~ /^[0-9]+$/ {n += $1} END {print n + 0}')
+          {
+            echo "mypy (advisory): ${total} finding(s) in $(printf '%s\n' $files | wc -l | tr -d ' ') changed lifeos/platform file(s), $(( $(date +%s) - start )) s. A hint, never a gate. Baseline: docs/platform/type-baseline.md"
+            printf '%s\n' "$found" | grep -E '^[[:space:]]*[0-9]+' || true
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          exit 0
       # Jim, Nov 8 2026: the Concord Room Orca plugin (tools/orca-concord-room) is production, so its own Node tests run on every PR and every merge. Node's built-in test runner, no install, no network, no secret; outside the 90 s Python suite limit above.
       - uses: actions/setup-node@v5
         with:

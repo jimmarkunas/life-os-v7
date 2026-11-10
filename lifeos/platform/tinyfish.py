@@ -3,6 +3,8 @@
 Fetch (free on Jim's plan) returns final_url, page text/html and every <a href> when links=true - so the apply button's
 destination is visible without metered Agent steps. Only counts/categories are ever logged (public repo).
 """
+from collections.abc import Sequence
+from typing import Any
 import json
 import os
 import re
@@ -13,7 +15,7 @@ ENDPOINT = "https://api.fetch.tinyfish.ai"
 MAX_URLS = 10
 
 
-def clean_key(raw):
+def clean_key(raw: str) -> tuple[str, list[int]]:
     """Tolerate a secret pasted with labels/quotes/whitespace: pick the longest key-shaped token.
     Returns (key, [lengths of the space-separated parts]) - lengths only, never content."""
     tokens = [t.strip("\"'`,;") for t in re.split(r"\s+", raw.strip()) if t.strip("\"'`,;")]
@@ -27,7 +29,7 @@ class TinyFishError(RuntimeError):
     """Fixed codes only - never key material or response bodies."""
 
 
-def fetch_many(urls, fmt="html", links=True, ttl=0, per_url_timeout_ms=45000, timeout=150):
+def fetch_many(urls: Sequence[str], fmt: str = "html", links: bool = True, ttl: int = 0, per_url_timeout_ms: int = 45000, timeout: int = 150) -> tuple[dict[Any, dict[str, Any]], list[dict[str, Any]]]:
     """Fetch up to 10 URLs in one call. Returns (results_by_requested_url, errors_list)."""
     raw = os.environ.get("TINYFISH_API_KEY") or ""
     key, parts = clean_key(raw)

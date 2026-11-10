@@ -10,6 +10,8 @@ then sends a single "alerts paused: flood" notice and holds the rest.
 "Sent" means the push service answered 2xx: it proves acceptance, not that the phone showed it (that is the phone's notification settings).
 
 CLI for jobs with no database (the report job, the watchdog); exits 1 when the push was not accepted:  python -m lifeos.platform.alerts push --severity page --title T --body B"""
+from collections.abc import Callable, Iterable, Mapping
+from typing import Any
 from dataclasses import dataclass
 import argparse
 import datetime as dt
@@ -44,7 +46,7 @@ class Plan:
     notify: list                 # (kind, Alert | key) with kind in open | remind | resolved
 
 
-def reconcile(active, state, now):
+def reconcile(active: list[Alert], state: dict[str, dict[str, Any]], now: dt.datetime) -> Plan:
     """active: list[Alert]; state: {key: {"severity", "last_notified": datetime|None}} for currently open alerts."""
     plan = Plan([], [], [], [])
     live = {a.key: a for a in active}
@@ -66,7 +68,7 @@ def reconcile(active, state, now):
     return plan
 
 
-def render(kind, item):
+def render(kind: str, item: Any) -> tuple[str, str, str]:
     """-> (title, body, severity). Redacted; counts only."""
     if kind == "resolved":
         return redact.redact(f"Resolved: {item}"), "", INFO
@@ -75,7 +77,7 @@ def render(kind, item):
     return redact.redact(prefix + item.title), redact.redact(body), alert_registry.severity(item.key, item.severity)         # LIFE-75: how loud an alert is lives in the registry
 
 
-def hibernated():
+def hibernated() -> bool:
     """LIFE-71 / LIFE-75: alerts are OFF unless the master switch (ALERTS_ENABLED, set on the Alert settings page) says "on". Missing or unreadable means OFF."""
     return not alert_settings.enabled()
 
@@ -85,7 +87,7 @@ SEND_CAP = 5                                # LIFE-73: pushes one process may se
 _flood = {"sent": 0, "paused": False}
 
 
-def muted(environ=None, now=None):
+def muted(environ: Mapping[str, str] | None = None, now: dt.datetime | None = None) -> bool:
     """True while ALERTS_MUTED_UNTIL names a time that has not passed. Unset, empty, unreadable or past all mean NOT muted: a typo must never hide a real page."""
     raw = ((environ if environ is not None else os.environ).get(MUTE_VARIABLE) or "").strip()
     if not raw:
@@ -99,7 +101,7 @@ def muted(environ=None, now=None):
     return (now or dt.datetime.now(dt.timezone.utc)) < until
 
 
-def reset_flood():
+def reset_flood() -> None:
     """A new process starts at zero; tests call this between cases."""
     _flood.update(sent=0, paused=False)
 
@@ -107,7 +109,7 @@ def reset_flood():
 COPY_TAGS = {"telegram": "ch-telegram", "whatsapp": "ch-whatsapp"}        # LIFE-75: a push carries the copies it is meant for; the Oracle relay forwards a copy only when its tag is here
 
 
-def _post(topic, title, body, severity, post=None, channels=None):
+def _post(topic: str, title: str, body: str, severity: str, post: Callable[..., Any] | None = None, channels: Iterable[str] | None = None) -> bool:
     """`channels` (None = the old behaviour): which of ntfy / telegram / whatsapp this push is for. Without the phone the push goes out at the lowest priority, which ntfy
     delivers without a sound or a banner, so a Telegram-only alert still reaches the relay but never wakes the phone."""
     tags = [t for t in (TAGS.get(severity, ""),) if t] + [COPY_TAGS[c] for c in (channels or ()) if c in COPY_TAGS]
@@ -121,7 +123,7 @@ def _post(topic, title, body, severity, post=None, channels=None):
         return False
 
 
-def ntfy(topic, title, body, severity, post=None, channels=None):
+def ntfy(topic: str, title: str, body: str, severity: str, post: Callable[..., Any] | None = None, channels: Iterable[str] | None = None) -> bool:
     """The one gateway to the phone (LIFE-73): every LIFE OS push goes through here, and the Telegram and WhatsApp copies follow ntfy, so a rule here covers all three.
     Phone push through ntfy (https://ntfy.sh): the topic name is the secret. Returns True when accepted. Never raises. Not sent, and False, while alerts are off (the master
     switch ALERTS_ENABLED, LIFE-71), while muted (ALERTS_MUTED_UNTIL), or past SEND_CAP in this process; the first push past the cap sends ONE "alerts paused: flood" notice instead."""
@@ -136,7 +138,7 @@ def ntfy(topic, title, body, severity, post=None, channels=None):
     return _post(topic, title, body, severity, post, channels)
 
 
-def push(key, title, body, topic=None, post=None):
+def push(key: str, title: str, body: str, topic: str | None = None, post: Callable[..., Any] | None = None) -> bool:
     """Send one registered alert (LIFE-75): the severity comes from the registry (lifeos/platform/alert_registry.py), and a key that is not listed is refused (False, nothing sent).
     The master switch, the mute, the flood cap and the channels Jim set apply exactly as for `ntfy`, which this wraps. `topic` defaults to NTFY_TOPIC."""
     spec = alert_registry.lookup(key)
@@ -146,7 +148,7 @@ def push(key, title, body, topic=None, post=None):
     return ntfy((topic if topic is not None else os.environ.get("NTFY_TOPIC", "")).strip(), redact.redact(title), redact.redact(body), spec.severity, post, chosen)
 
 
-def deliver(plan, topic, send=None):
+def deliver(plan: Plan, topic: str, send: Callable[..., bool] | None = None) -> dict[str, int]:
     """Send the plan's notifications; -> counts. INFO opens and reminders still push (low priority, no sound). `send` is a test fake; the default is the gateway."""
     sent = failed = skipped = 0
     for kind, item in plan.notify:
@@ -166,7 +168,7 @@ def deliver(plan, topic, send=None):
     return {"sent": sent, "failed": failed, **({"skipped": skipped} if skipped else {})}
 
 
-def main(argv=None):
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("command", choices=["push"])
     parser.add_argument("--key", required=True, help="the registered alert this push is (lifeos/platform/alert_registry.py); its severity comes from there")
