@@ -17,3 +17,4 @@ Anything committed here, written in a PR, or printed in a GitHub Actions log is 
 4. `tests/contracts/test_privacy.py` runs in CI and fails the build on emails outside an allowlist, secret-shaped strings, and phone numbers. Fix the leak; never weaken the test to pass.
 
 **Rules for the assistant:** never paste secrets or mailbox content into chat, commits, PRs, or issues; describe data by count/category.
+
