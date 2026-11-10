@@ -1,4 +1,5 @@
 """LIFE-538 / LIFE-529: the one-command real-key restore check (restore_check.py). Throwaway keys only; the real key and archive are never used here."""
+import atexit
 import contextlib
 import io
 import os
@@ -18,14 +19,33 @@ from tests.edge.backup.test_mac_push import make_home
 UID = "restore-check-test-key"
 
 
-def make_pair(base, passphrase=""):
-    home = Path(base) / ("priv-" + ("pp" if passphrase else "np"))
-    home.mkdir(mode=0o700)
-    subprocess.run(["gpg", "--homedir", str(home), "--batch", "--quiet", "--pinentry-mode", "loopback", "--passphrase", passphrase, "--quick-generate-key", UID, "default", "default", "never"], check=True, capture_output=True)
-    pub = Path(base) / ("pub-%s.asc" % ("pp" if passphrase else "np"))
-    pub.write_bytes(subprocess.run(["gpg", "--homedir", str(home), "--armor", "--export", UID], check=True, capture_output=True).stdout)
-    secret = subprocess.run(["gpg", "--homedir", str(home), "--batch", "--pinentry-mode", "loopback", "--passphrase", passphrase, "--armor", "--export-secret-keys", UID], check=True, capture_output=True).stdout
-    return str(pub), secret
+_PAIRS = {}
+
+
+def _cleanup_pairs():
+    for root in {v[2] for v in _PAIRS.values()}:
+        for home in Path(root).glob("priv-*"):
+            subprocess.run(["gpgconf", "--homedir", str(home), "--kill", "gpg-agent"], capture_output=True)
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def make_pair(base, passphrase="", slot=0):
+    """A throwaway keypair: -> (public key file, armoured secret key bytes). LIFE-527: each (passphrase, slot) pair is generated ONCE per test run and shared (key generation was
+    the slowest part of this file); `base` is accepted for the old call sites and ignored. A different `slot` is a different key (for the wrong-key test)."""
+    key = (passphrase, slot)
+    if key not in _PAIRS:
+        root = _PAIRS[next(iter(_PAIRS))][2] if _PAIRS else tempfile.mkdtemp(prefix="rck-", dir="/tmp")      # short path: gpg's agent socket path has a length limit
+        if not _PAIRS:
+            atexit.register(_cleanup_pairs)
+        tag = "%s%d" % ("pp" if passphrase else "np", slot)
+        home = Path(root) / ("priv-" + tag)
+        home.mkdir(mode=0o700)
+        subprocess.run(["gpg", "--homedir", str(home), "--batch", "--quiet", "--pinentry-mode", "loopback", "--passphrase", passphrase, "--quick-generate-key", UID, "default", "default", "never"], check=True, capture_output=True)
+        pub = Path(root) / ("pub-%s.asc" % tag)
+        pub.write_bytes(subprocess.run(["gpg", "--homedir", str(home), "--armor", "--export", UID], check=True, capture_output=True).stdout)
+        secret = subprocess.run(["gpg", "--homedir", str(home), "--batch", "--pinentry-mode", "loopback", "--passphrase", passphrase, "--armor", "--export-secret-keys", UID], check=True, capture_output=True).stdout
+        _PAIRS[key] = (str(pub), secret, root)
+    return _PAIRS[key][0], _PAIRS[key][1]
 
 
 def seal(pub, plain, dest):
@@ -47,8 +67,21 @@ def fake_ram(*a, **k):
         shutil.rmtree(path, ignore_errors=True)
 
 
+_BUILT = {}
+
+
 def build(base, pub):
-    """-> (nightly archive path, code dir). A nightly tar.gz with a Mac archive inside, then both sealed."""
+    """-> (nightly archive path, code dir). A nightly tar.gz with a Mac archive inside, then both sealed.
+    LIFE-527: built ONCE per key and shared (sealing runs gpg twice and was most of each test); the archives are only ever read. `_BUILT[pub]` also holds the plain outer archive."""
+    if pub not in _BUILT:
+        root = tempfile.mkdtemp(prefix="rcb-", dir="/tmp")
+        atexit.register(shutil.rmtree, root, True)
+        sealed, code = _build(root, pub)
+        _BUILT[pub] = (sealed, code, str(Path(root) / "nightly.tar.gz"))
+    return _BUILT[pub][0], _BUILT[pub][1]
+
+
+def _build(base, pub):
     base = Path(base)
     home = make_home(base)
     work = base / "w"
@@ -100,7 +133,7 @@ class Run(unittest.TestCase):
             for word in ("front.py", "gw.mjs", "auth", "cred", "token", "fake-not-a-secret", UID, "state.db", "BEGIN PGP"):
                 self.assertNotIn(word, text)                                                 # counts only
             self.assertIn("nightly_manifest_code_lifeos-fit=2 files", text)
-            n, h = rc.manifest_hash(str(Path(tmp) / "nightly.tar.gz"), "code/lifeos-fit/")
+            n, h = rc.manifest_hash(_BUILT[pub][2], "code/lifeos-fit/")
             self.assertIn(h[:16], text)
 
     def test_a_passphrase_protected_key_works_with_its_passphrase_from_bitwarden(self):
@@ -122,9 +155,7 @@ class Run(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             pub, _ = make_pair(tmp)
             archive, _ = build(tmp, pub)
-            other = Path(tmp) / "other"
-            other.mkdir()
-            _, other_secret = make_pair(other)
+            _, other_secret = make_pair(tmp, slot=1)
             out = io.StringIO()
             with key_source(other_secret):
                 self.assertEqual(rc.run_check(archive, ("bws", "x"), ram=fake_ram, out=out), 1)
