@@ -2,21 +2,17 @@
 
 V7 is the active LIFE OS implementation. V1 (`life-os-automation`) and V2 (`life-os-v2`) are read-only references: extract the smallest proven mechanic only. Core rule (D54): V7 must run correctly with ChatGPT completely unavailable. This guide is a summary; the [Development Policy](docs/life-os-development-policy.md) governs (read only the sections you need, especially work selection and the Jira-first lifecycle).
 
-## Agent loop — the whole job
+## Delivery flow v3 — the whole job (Jim, November 9, 2026)
 
-1. **Pick.** Jim named an issue → that one. Else resume your own In Progress issue. Else take the top `Agent Go` leaf issue in your lane (`lane-*` label) by Priority, then Rank. Never pick an Epic or parent, an issue with an unfinished `Blocks` predecessor, or anything outside Agent Go. Start with transition ID 14; resuming from blocked, UAT, Done or Cancelled uses "Resume work".
-2. **Gate.** `python -m lifeos.readiness issue-key LIFE-nnn` (live Jira read; or `issue ISSUE.json` on a record) must print `ready` (a ticket from a LOS key also needs its Notion `REQ-n` page link in the description, else `requirement_page_missing`); on exit 2 quote its `refused` line and stop. Add no refusal reasons of your own.
-3. **Claim.** `python -m lifeos.readiness preflight --pre CLAIM.json STATE.json`, record the claim, then `python -m lifeos.readiness preflight CLAIM.json STATE.json` before every mutation (the validator fetches `origin/main` itself; your `base_sha` must equal it). One writer per surface.
-4. **Build.** One branch `life/LIFE-nnn/<slug>`, one PR, the issue's fast proof first. Protected steps (secrets, production, spend, user data, host changes) wait for their owned human Sub-task and named approval.
-5. **Land.** Open the PR; merge when same-head CI is green and nothing outside Part 07 items 3/3a is touched. Post one receipt on the issue (OUTCOME, REMOVAL, PROOF, REMOTE SHA, NEXT) and move it to Agent UAT. Human UAT only where judgment is needed, with exact steps for Jim. Never mark Done from CI or a merge.
-6. **Next.** After verified Done repeat from 1; nothing eligible → `NO_ELIGIBLE_WORK`. Jira or queue data missing → `QUEUE_NOT_READY — <exact gap>`.
+1. **Pick.** Jim named a ticket → that one. Else the top `Agent Go` leaf ticket in your lane (`lane-*` label) by Priority, then Rank. Moving a ticket to Agent Go IS the approval. Start with transition ID 14; resuming from blocked, UAT, Done or Cancelled uses "Resume work".
+2. **Gate.** `python -m lifeos.readiness` (`issue-key LIFE-nnn`, or `issue-mcp FILE KEY` on an MCP read saved unmodified) checks exactly three things: the key is valid, the ticket has at least one Done-when line (any Given/When/Then row or any bullet under "Done when"), and every `Blocks` predecessor is Done. Anything else prints a `warn` line and exits 0; exit 2 only on those three.
+3. **Build.** One branch `life/LIFE-nnn/<slug>`, one PR, the ticket's fast proof first. No claim file, no preflight; Concord `start_work`/`finish_work` are optional, never a refusal. Protected steps (secrets, production, spend, user data, host changes) wait for their owned human approval.
+4. **Land and close.** Merge when same-head CI is green and no protected item is touched. Post one comment on the ticket: PR link, what changed, how it was verified, what is unverified. Move the ticket to Done yourself; Jim reopens it or files a Bug. Then pick the next ticket and repeat until Agent Go is empty (`NO_ELIGIBLE_WORK`).
+5. **Optional.** Label `needs-uat` means stop at "Human UAT" with exact steps for Jim; use it only for new user-facing UI or anything judgment-based.
 
-## Delivery flow v2 (Jim, November 5, 2026)
+**Scoping.** A scoping note is one page, at most 2,000 characters: Outcome, 3 to 5 Done-when checks, Not in scope. The agent cuts execution tickets from it in the same step. One execution ticket is one PR (or one sheet edit), written so it can be pasted into Claude Code with no questions: exact targets, steps, done-when. Interview answers and discovery logs go in a separate linked page or in comments, never in the ticket description (a LIFE description over 4,000 characters draws a `warn`).
 
-- **One outcome ticket** per feature: outcome, Given/When/Then, `needs` and `decisions` rows ({what, proof, status}), protected steps, not-in-scope. Readiness refuses any open row.
-- **One approval:** Jim's release (ID 5) or named instruction covers everything inside the written scope. A plan change is an edit to the ticket plus one line `Scope change: <what> — Jim, <time CT>`, never a pile of approval comments. The description beats comments.
-- **One receipt, one acceptance:** see step 5. **Ticket truth:** the claiming agent fixes the ticket's text the same session reality changes; a superseded ticket is Cancelled with a line naming its replacement.
-- **Agent identity:** add one label (`agent-claude-code`, `agent-hermes`, `agent-chatgpt`) and start Jira comments with `[agent-…]`. Labels aid reading, not enforcement.
+**Ticket truth and identity.** A plan change is an edit to the ticket plus one line `Scope change: <what> — Jim, <time CT>`; the description beats comments. The claiming agent fixes the ticket's text the same session reality changes; a superseded ticket is Cancelled with a line naming its replacement. Add one label (`agent-claude-code`, `agent-hermes`, `agent-chatgpt`) and start Jira comments with `[agent-…]`; labels aid reading, not enforcement.
 
 ## Where truth lives (one owner each)
 
@@ -24,24 +20,21 @@ V7 is the active LIFE OS implementation. V1 (`life-os-automation`) and V2 (`life
 |---|---|---|
 | Ticket status, approval, receipt, acceptance | Jira LIFE | chat, Notion, comments-as-approval |
 | Code, tests, CI, this guide, the policy | GitHub V7 | Notion copies |
-| Product requirements and decisions | Notion Product Requirements database (REQ-n) for delivery; Jira LOS for scoping and research | Jira descriptions (link, don't copy) |
+| Product requirements and decisions | Notion Product Requirements database for detail; Jira LOS for scoping and research | Jira descriptions (link, don't copy) |
 | Runtime schedule and secrets | Production Contract, central secrets service | this repo, Jira, chat |
 
 Whoever changes a fact updates its owner in the same step and links it; a copy elsewhere is replaced by a link, not edited.
-
-Product requirements: once work moves from LOS to LIFE, the long requirement text lives on one page in Product Requirements (Notion, found by title) (fixed fields, fixed headings, its own change table; no running log). The LIFE ticket links the page and never copies it; a change is a new table row plus a version bump, and one line `Requirement vN — <what changed>` on the ticket. Engineering policy stays in GitHub.
 
 ## Fast path
 
 Read the named LIFE issue first and only the missing authoritative context; reuse unchanged evidence; run independent reads in parallel; verify every consequential write; never reopen discovery or create duplicate planning artifacts.
 
-- **Gate source (LIFE-365):** first confirm the Atlassian MCP is connected (else `QUEUE_NOT_READY MCP_NOT_CONNECTED`); the gate checks an unmodified MCP read (`mcp-read`), a ticket is released only after a release-check `GATE PASS` comment, and only Jim naming the ticket in chat waives it: Part 04 **Readiness gate source and waiver**.
 - **Bootstrap target 60 s** (not permission to skip checks): run `START_EPOCH=$(date -u +%s)` first; after the essential reads report `bootstrap_seconds` and the remote-read count. Warm resumes recheck only live Jira status/ownership and the `origin/main` SHA. Jira: exact key and only summary, status, owner, blockers, acceptance (add `duedate`/`parent` when they matter; an omitted field is UNVERIFIED). GitHub: main SHA, PR head/base, changed files, then touched files only.
 - **Authority order:** Jim's current instruction → Production Contract (runtime/scheduling) → Development Policy (engineering) → LOS (product) → Notion requirements → LIFE issue (delivery) → existing code. On conflict, use the owning authority and stop before mutating.
-- **Scope:** LOS outcome → LIFE Epic → Tasks → executable Sub-tasks. A missing origin, owner/lane, Component/Fix Version, dependency, human prerequisite, Given/When/Then, host, fast proof or stop condition returns `DISCOVERY_NOT_READY` or `QUEUE_NOT_READY`.
-- **Execution gate:** only a named Jim instruction or a correctly released Agent Go issue permits work; a Jira comment, status or agent message alone grants nothing. Enforce the one-writer claim, permissions and protected-operation approval.
-- **Closure:** targeted proof → real outcome → independent read-back → Jira update. Report `DONE`, `PARTIAL`, `BLOCKED` or `UNVERIFIED` and the next responsible action.
-- **No new runtime:** no paid provider, scheduler, orchestrator, sync store, proxy or governance layer without Jim's explicit approval. Do not wait for ChatGPT to pick tickets; a Tech Lead handoff can authorize one specified package, not autonomous pull. `docs/MASTER_ROADMAP.md` never selects work. The ChatGPT connector preflight stays procedural, not code-enforced (LOS-74 Q30). `python -m lifeos.readiness repo` checks the index, links, owners and size limits (CI runs it).
+- **Scope:** LOS outcome → LIFE Epic → Tasks → executable Sub-tasks. A missing Done-when line or an unfinished `Blocks` predecessor returns `QUEUE_NOT_READY`; other gaps are warnings.
+- **Execution gate:** only a named Jim instruction or an issue Jim moved to Agent Go permits work; a Jira comment or agent message alone grants nothing. Keep one writer per surface and protected-operation approval.
+- **Closure:** targeted proof → real outcome → read-back → Jira update. Report `DONE`, `PARTIAL`, `BLOCKED` or `UNVERIFIED` and the next responsible action.
+- **No new runtime:** no paid provider, scheduler, orchestrator, sync store, proxy or governance layer without Jim's explicit approval. Do not wait for ChatGPT to pick tickets; a Tech Lead handoff can authorize one specified package, not autonomous pull. `docs/MASTER_ROADMAP.md` never selects work. `python -m lifeos.readiness repo` checks the index, links, owners and size limits (CI runs it).
 - **Deadline Mode** (when Jim states a deadline): first run `TZ=America/Chicago date '+%Y-%m-%d %H:%M:%S %Z'; date -u +%s`, derive and keep an absolute `LIFEOS_DEADLINE_EPOCH`, recheck remaining seconds at every milestone, apply the policy's 50/75/90% cuts, never reset it on handoff, and claim delivery only after real read-back.
 
 ## Buzz pilot entrypoint — only for LIFE-216

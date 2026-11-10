@@ -57,11 +57,12 @@ class IssueMcp(unittest.TestCase):
         self.assertIn("QUEUE_NOT_READY — KEY_MISMATCH", err)
         self.assertIn("SOURCE mcp-read", out)
 
-    def test_a_stale_file_is_refused(self):
-        code, _, err = run(envelope(), age=16 * 60)
-        self.assertEqual(code, 2)
-        self.assertIn("QUEUE_NOT_READY — STALE_MCP_READ", err)
-        self.assertEqual(run(envelope(), age=14 * 60)[0], 0)
+    def test_a_stale_file_is_a_warning_not_a_refusal(self):
+        code, out, err = run(envelope(), age=16 * 60)
+        self.assertEqual(code, 0)                                   # delivery flow v3: older than 15 minutes only warns
+        self.assertIn("warn v1 stale_read file", err)
+        self.assertIn("ready v1", out)
+        self.assertEqual(run(envelope(), age=14 * 60)[::2], (0, ""))
 
     def test_a_missing_field_names_it(self):
         for name in ("description", "issuelinks", "parent", "components", "labels", "status", "summary"):
