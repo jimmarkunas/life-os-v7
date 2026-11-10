@@ -168,8 +168,8 @@ class RunTests(unittest.TestCase):
         class WithParent(Reader):
             def call(self, method, path, body=None):
                 result = super().call(method, path, body)
-                return {**result, "parent": {"type": "database_id", "database_id": "12345678-1234-1234-1234-123456789abc"}} if path.startswith("/data_sources/") else result
-        self.assertEqual(card._orders_url(WithParent(ROWS), "source-example"), "https://app.notion.com/p/12345678123412341234123456789abc")
+                return {**result, "parent": {"type": "database_id", "database_id": "00000000-0000-0000-0000-000000000006"}} if path.startswith("/data_sources/") else result
+        self.assertEqual(card._orders_url(WithParent(ROWS), "source-example"), "https://app.notion.com/p/00000000000000000000000000000006")
         self.assertIsNone(card._orders_url(Reader(ROWS), "source-example"))
         notion = AmazonRegions()
         card.run(0, True, environ=ENV, reader=WithParent(ROWS), client=notion, now=NOW)

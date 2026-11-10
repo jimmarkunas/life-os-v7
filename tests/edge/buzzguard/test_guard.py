@@ -62,7 +62,7 @@ class Table(Base):
         """LIFE-397 (Jim, Nov 7: no threads unless he starts them): the agent posts top level and @mentions the asker; reply, reply_to and thread are refused with a fixed reason."""
         eid = "ab12" * 16
         self.assertEqual(self.dec("mcp__buzz__send", self.send("@Jim Yes, I am here.")), "allow")
-        self.assertEqual(self.dec("mcp__buzz__send", self.send("@Jim Yes, I am here.", channel="b995612a-678c-4861-82d1-448daffe6f97", mention=["Jim"])), "allow")
+        self.assertEqual(self.dec("mcp__buzz__send", self.send("@Jim Yes, I am here.", channel="00000000-0000-0000-0000-000000000001", mention=["Jim"])), "allow")
         for field in ("reply", "reply_to", "thread"):
             self.assertEqual(self.dec("mcp__buzz__send", self.send("hi", **{field: eid})), "deny", field)
         self.assertEqual(self.dec("mcp__buzz__send", self.send("tskey-api-abc123")), "deny")
