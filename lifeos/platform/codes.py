@@ -927,6 +927,9 @@ NOT_CODES = frozenset((
     "V7_ARCHIVE_TOKEN", "V7_CLOSE_BASE_URL", "V7_CLOUD_FIT", "V7_CLOUD_FIT_BACKLOG_BUDGET", "V7_CLOUD_FIT_BACKLOG_MAX", "V7_CLOUD_FIT_BACKLOG_PAGE",
     "V7_CLOUD_FIT_PARALLEL", "V7_CLOUD_FIT_PER_RUN", "V7_CLOUD_FIT_PROFILE_REF", "V7_FIT_GATE", "WEB_FORCE", "WEEKLY_REVIEW_PAGE_ID",
 ))
+# LIFE-560: every name in the environment-variable registry (lifeos/platform/credential_list.py CONFIG) is a configuration name, never a result code.
+from lifeos.platform.credential_list import CONFIG as _CONFIG    # noqa: E402 - placed beside the list it extends
+NOT_CODES = NOT_CODES | frozenset(row["name"] for row in _CONFIG["names"]) | frozenset(_CONFIG["provided"]["names"])
 
 
 # --- Stored reasons (lowercase): the words written to a job's `unresolved_reason` and `admission_reason`. Not outcome codes: they say why a job sits where it sits.
