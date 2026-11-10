@@ -58,7 +58,7 @@ jobs:
         name: Load the Notion report token from Bitwarden (D244, exactly this 1; masked step outputs only; the job fails if retrieval fails, no fallback)
         continue-on-error: true                 # D209: one retry below; the retry fails the job
         uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
-        with:
+        with: &bws_bws_report
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           set_env: false
           secrets: |
@@ -70,11 +70,7 @@ jobs:
         name: Load the same token from Bitwarden - the one retry (the job fails if it fails, no fallback)
         if: ${{ steps.bws_report.outcome == 'failure' }}
         uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
-        with:
-          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
-          set_env: false
-          secrets: |
-            53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
+        with: *bws_bws_report
       - name: Repository hygiene report (stale branches; run summary, and the Weekly Review callout when live)
         env:
           GITHUB_TOKEN: ${{ github.token }}

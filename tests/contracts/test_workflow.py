@@ -178,9 +178,9 @@ class WorkflowTests(unittest.TestCase):
             self.assertNotIn(f"secrets.{moved}", text)                                                    # no direct copy, so no fallback
         self.assertEqual(re.findall(r"uses:\s*(bitwarden/\S+)", text), ["bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793"] * 2)   # the reviewed v3.0.1 commit: the load and its one retry (D209)
         mappings = re.findall(r"^\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\s*>\s*\w+)\s*$", text, re.M)
-        self.assertEqual(sorted(mappings), sorted(2 * ["08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET", "672a44e9-235f-4121-a99d-b4db015a6987 > GMAIL_OAUTH_REFRESH_TOKEN",
+        self.assertEqual(sorted(mappings), sorted(["08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET", "672a44e9-235f-4121-a99d-b4db015a6987 > GMAIL_OAUTH_REFRESH_TOKEN",
                                                    "46fe195b-82e2-416e-8272-b4db015eea12 > NOTION_AMAZON_TOKEN"]))
-        self.assertEqual(len(re.findall(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", text)), 6)
+        self.assertEqual(len(re.findall(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", text)), 3)                          # each once: the retry reuses the load's block by YAML alias (LIFE-541)
         self.assertLess(text.index("bitwarden/sm-action"), text.index("python -m lifeos.run"))             # loaded before the Amazon command
         self.assertIn("--live", text)                                                                      # the existing live switch is still the only way to write
 
@@ -236,12 +236,12 @@ class WorkflowTests(unittest.TestCase):
         ui_text, report_text = ui_text.split("\n  # LIFE-121:")                                            # then LIFE-121's private reports: the database values and the Jobs Notion token, the one job that writes the report page
         uuid = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
         gmail = {"GMAIL_OAUTH_CLIENT_SECRET": "08245c07-728f-438e-940b-b4db015a6967", "GMAIL_OAUTH_REFRESH_TOKEN": "672a44e9-235f-4121-a99d-b4db015a6987"}
-        self.assertEqual(sorted(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", head, re.M)), sorted([f"{uuid_} > {name}" for name, uuid_ in moved.items()] * 2))
-        self.assertEqual(sorted(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", trace_text, re.M)), sorted([f"{uuid_} > {name}" for name, uuid_ in {**moved, **gmail}.items()] * 2))
-        self.assertEqual((len(re.findall(uuid, head)), len(re.findall(uuid, trace_text))), (14, 18))                    # each in the load and its identical retry (D209)
+        self.assertEqual(sorted(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", head, re.M)), sorted([f"{uuid_} > {name}" for name, uuid_ in moved.items()]))
+        self.assertEqual(sorted(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", trace_text, re.M)), sorted([f"{uuid_} > {name}" for name, uuid_ in {**moved, **gmail}.items()]))
+        self.assertEqual((len(re.findall(uuid, head)), len(re.findall(uuid, trace_text))), (7, 9))                      # each once: the retry reuses the load's block by YAML alias (LIFE-541; D209 one retry)
         self.assertNotIn("GMAIL", head)                                                                    # no Gmail value or secret in the database-only job
-        self.assertEqual(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", sandbox_text, re.M), ["53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN"] * 2)   # LIFE-10: the Jobs Notion token alone, in the load and its retry
-        self.assertEqual(len(re.findall(uuid, sandbox_text)), 2)
+        self.assertEqual(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", sandbox_text, re.M), ["53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN"])   # LIFE-10: the Jobs Notion token alone (the retry is its alias)
+        self.assertEqual(len(re.findall(uuid, sandbox_text)), 1)
         self.assertNotIn("NOTION", head + trace_text)                                                      # no Notion value reaches the database or Gmail diagnostics
         for word in ("LIFEOS_ACQ", "GMAIL", "inputs.message_ref", "secrets.NOTION"):
             self.assertNotIn(word, sandbox_text)                                                           # nothing else reaches the Notion job, and it takes no target input
@@ -262,7 +262,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertIs(next(s for s in sandbox["steps"] if s.get("id") == "bws_sandbox")["with"]["set_env"], False)                                       # a masked step output, never exported job-wide
         report = diag["jobs"]["report"]                                                                    # LIFE-121: private reports to one Notion page; a dry run unless confirm = REPORT
         self.assertEqual((report["if"], report["timeout-minutes"]), ("${{ inputs.stage == 'scale-up-exclusion-review' || inputs.stage == 'scale-up-register' || inputs.stage == 'jobs-backlog' }}", 10))
-        self.assertEqual(sorted(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", report_text, re.M)), sorted([f"{uuid_} > {name}" for name, uuid_ in {**moved, "NOTION_API_TOKEN": "53dc3d04-dbb2-45fe-8185-b4db015eedcb"}.items()] * 2))
+        self.assertEqual(sorted(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", report_text, re.M)), sorted([f"{uuid_} > {name}" for name, uuid_ in {**moved, "NOTION_API_TOKEN": "53dc3d04-dbb2-45fe-8185-b4db015eedcb"}.items()]))
         self.assertEqual(report["steps"][-1]["env"], {"LIFEOS_ACQ_SSH_PORT": "${{ secrets.LIFEOS_ACQ_SSH_PORT }}", "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}",
                                                       "STAGE": "${{ inputs.stage }}", "REPORT_CONFIRM": "${{ inputs.confirm }}"})
         self.assertEqual(report["steps"][-1]["run"].count("--live"), 1)                                    # the only write path, behind the typed REPORT confirmation
@@ -270,7 +270,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn("GMAIL", report_text)
         ui = diag["jobs"]["interview_ui"]                                                                  # LIFE-88: the one job that holds the Interview token
         self.assertEqual((ui["if"], ui["timeout-minutes"]), ("${{ inputs.stage == 'interview-ui-probe' }}", 5))
-        self.assertEqual(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", ui_text, re.M), ["092b44ae-32cb-453b-8cc2-b4db015ef571 > NOTION_INTERVIEW_TOKEN"] * 2)
+        self.assertEqual(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", ui_text, re.M), ["092b44ae-32cb-453b-8cc2-b4db015ef571 > NOTION_INTERVIEW_TOKEN"])
         for word in ("LIFEOS_ACQ", "GMAIL", "inputs.message_ref", "secrets.NOTION", "NOTION_API_TOKEN"):
             self.assertNotIn(word, ui_text)                                                                # nothing else reaches the probe, and it takes no target input
         self.assertNotIn("NOTION_INTERVIEW_TOKEN", head + trace_text + sandbox_text)
