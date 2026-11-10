@@ -67,7 +67,7 @@ class Skip(unittest.TestCase):
     """The board pass over the real SqlRepo statements: quiet reads earn a skip; every WEB_FULL_EVERY-th read is a full diff; a change resets the streak."""
 
     def setUp(self):
-        from tests.kit.jobsdb import JobsDB
+        from tests.jobs.fakes_jobsdb import JobsDB
         self.db = JobsDB()
         self.addCleanup(self.db.raw.close)
 

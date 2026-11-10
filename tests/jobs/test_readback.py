@@ -40,7 +40,7 @@ class Ledger:
 
 class ReadbackBase(unittest.TestCase):
     def setUp(self):
-        from tests.kit.jobsdb import JobsDB
+        from tests.jobs.fakes_jobsdb import JobsDB
         self.db = JobsDB()
         self.addCleanup(self.db.raw.close)
 

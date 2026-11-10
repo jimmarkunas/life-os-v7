@@ -4,7 +4,8 @@ from unittest import mock
 
 from lifeos.jobs import retention
 from tests.kit.db import FakeConn
-from tests.kit.notion import LedgerWithFilterLimit, filter_depth
+from tests.jobs.fakes_ledger import LedgerWithFilterLimit
+from tests.kit.notion import filter_depth
 
 NOW = dt.datetime(2026, 10, 11, 3, 10)
 

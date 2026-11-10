@@ -19,7 +19,7 @@ CLOUD = ("cloud_status", "cloud_reason", "cloud_score", "cloud_confidence", "clo
 
 class Base(unittest.TestCase):
     def setUp(self):
-        from tests.kit.jobsdb import JobsDB
+        from tests.jobs.fakes_jobsdb import JobsDB
         self.db = JobsDB()
         self.addCleanup(self.db.raw.close)
         clock = mock.patch.object(stage, "_now", return_value=T)           # the fixtures are dated T; the stage's age gates (LIFE-212: 14 days) must judge them as of T, not the wall clock

@@ -368,7 +368,7 @@ class EntryPointTests(unittest.TestCase):
         self.assert_degraded_and_untouched(self.go(records, tables=tables, unreadable=("m2",)), tables, before, 1)
 
     def test_malformed_outlook_messages_in_a_complete_listing_are_degraded_not_fresh(self):
-        from tests.kit.recruiters import ReadOnlyOutlook
+        from tests.recruiters.fakes import ReadOnlyOutlook
         good = {"id": "g1", "receivedDateTime": (NOW - timedelta(days=2)).isoformat(), "subject": "Hello", "from": {"emailAddress": {"name": "Recruiting", "address": "jobs@example.com"}}, "body": {"content": ""}}
         for bad, count in (({"id": "x1", "subject": "no received time"}, 1), ({"receivedDateTime": (NOW - timedelta(days=2)).isoformat(), "subject": "no id"}, 1)):
             tables, before = self.seeded()
@@ -379,7 +379,7 @@ class EntryPointTests(unittest.TestCase):
         self.assert_degraded_and_untouched(self.go(self.REC, tables=tables, accounts=[("work", both)]), tables, before, 1)
 
     def test_a_clean_listing_with_nothing_unreadable_is_still_fresh_and_saved(self):
-        from tests.kit.recruiters import ReadOnlyOutlook
+        from tests.recruiters.fakes import ReadOnlyOutlook
         good = {"id": "g1", "receivedDateTime": (NOW - timedelta(days=2)).isoformat(), "subject": "Hello", "from": {"emailAddress": {"name": "Recruiting", "address": "jobs@example.com"}}, "body": {"content": ""}}
         code, counts, err, _, tables, _ = self.go(self.REC, accounts=[("work", ReadOnlyOutlook(inbox=[good]))])
         self.assertEqual((code, counts["status"], counts["unreadable"], counts["saved"], err), (0, "fresh", 0, 1, ""))
