@@ -286,6 +286,13 @@ class DailyCheckin(unittest.TestCase):
         title, body = gate.health([ago(0.3, "success", rid=1), ago(5, "success", rid=2), ago(6, "cancelled", rid=3)], [ago(2, "success", title=gate.DOMAINS_TITLE)], NOW)
         self.assertEqual(title, "V7 daily check: OK")
         self.assertIn("2 hourly runs, 2 ok, 0 failed", body)
+        self.assertIn("Coverage: 2 of 24 expected, 22 missed.", body)                     # LIFE-528 (LIFETMP-62): observed against expected, in counts
+
+    def test_coverage_counts_missed_hours_and_never_goes_negative(self):
+        self.assertEqual(gate.coverage(24), (24, 24, 0))
+        self.assertEqual(gate.coverage(20), (20, 24, 4))
+        self.assertEqual(gate.coverage(30), (30, 24, 0))
+        self.assertIn("Coverage: 0 of 24 expected, 24 missed.", gate.health([], [], NOW)[1])
 
     def test_any_failed_tick_or_domain_run_or_a_stale_success_says_degraded(self):
         self.assertIn("DEGRADED", gate.health([ago(1, "success"), ago(3)], [], NOW)[0])

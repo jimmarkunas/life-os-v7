@@ -98,6 +98,11 @@ def digest_due(now):
     return now.hour == DIGEST_HOUR_UTC and now.minute < 30
 
 
+def coverage(observed, window_hours=24):
+    """LIFE-528 (LIFETMP-62): runs seen against runs expected in the window (one hourly tick an hour) -> (observed, expected, missing). A run missing from the list is a missed hour."""
+    return observed, window_hours, max(0, window_hours - observed)
+
+
 def health(runs, domain_runs, now, window_hours=24):
     """-> (title, body): the daily check-in, counts only. Its absence is the alarm: if the watchdog or the phone path is dead, no check-in arrives."""
     cutoff = now - dt.timedelta(hours=window_hours)
@@ -111,7 +116,8 @@ def health(runs, domain_runs, now, window_hours=24):
     ok = failed == 0 and domains == 0 and since is not None and since < 90
     last = "no good run" if since is None else f"last good run {since} min ago"
     return (f"V7 daily check: {'OK' if ok else 'DEGRADED'}",
-            f"Last 24 h: {len(recent)} hourly runs, {len(good)} ok, {failed} failed; {last}; {domains} failed domain run(s).")
+            f"Last 24 h: {len(recent)} hourly runs, {len(good)} ok, {failed} failed; {last}; {domains} failed domain run(s). "
+            f"Coverage: {len(recent)} of {window_hours} expected, {coverage(len(recent), window_hours)[2]} missed.")
 
 
 def _api(path, method="GET", body=None):
