@@ -5,3 +5,5 @@
 # and write each entry of out.json 'install' as name==version with its archive sha256. No version is upgraded by writing this file.
 PyYAML==6.0.3 \
     --hash=sha256:ba1cc08a7ccde2d2ec775841541641e4548226580ab850948cbfda66a1befcdc
+ruff==0.17.4 \
+    --hash=sha256:2cd025509b2e15721b426fc70fd946d71f43b3db3b08e946dfec2d696d911690

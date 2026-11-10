@@ -1,0 +1,8 @@
+# LIFE-558: ruff configuration only (no other tool is configured here). The check is ADVISORY: it runs on changed Python files in every pull request, prints counts, and cannot fail the job.
+[tool.ruff]
+target-version = "py312"
+extend-exclude = ["__pycache__", "node_modules", "docs/codemap.json"]
+
+[tool.ruff.lint]
+select = ["E", "F", "B"]       # pycodestyle errors, pyflakes, bugbear
+ignore = ["E501"]              # existing lines run to 661 characters
