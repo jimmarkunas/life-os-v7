@@ -70,9 +70,32 @@ def stamp(clock=time.time):
     return datetime.datetime.fromtimestamp(clock(), CENTRAL).strftime("%Y%m%d-%H%M")
 
 
+def open_source(source):
+    """Open a live SQLite file read-only and prove it can be read. A database in WAL mode that nothing holds open has no `-shm` file, and SQLite cannot open it with mode=ro because it
+    cannot create one (LIFE-542: Hermes' kanban.db and cron/executions.db on an idle Mac). Only then, and only when no `-wal` file exists (so there are no uncommitted pages to miss),
+    it retries with immutable=1, which reads the file as it is. Anything else, including a `-wal` file, stays an error."""
+    def attempt(query):
+        connection = sqlite3.connect("file:%s?%s" % (source, query), uri=True, timeout=30)
+        try:
+            connection.execute("select count(*) from sqlite_master").fetchone()
+        except sqlite3.Error:
+            connection.close()
+            raise
+        return connection
+    try:
+        return attempt("mode=ro")
+    except sqlite3.OperationalError:
+        if os.path.exists(source + "-wal") or not os.path.isfile(source):
+            raise                                                       # busy, or not a file at all (immutable=1 would read a missing file as an empty database)
+        return attempt("immutable=1")
+
+
 def snapshot(source, dest):
     """Online backup of a live SQLite file -> a consistent copy; refuses a database that fails an integrity check."""
-    src = sqlite3.connect("file:%s?mode=ro" % source, uri=True, timeout=30)
+    try:
+        src = open_source(source)
+    except sqlite3.Error:
+        raise PushError("mac_backup_db_unreadable")
     try:
         dst = sqlite3.connect(dest)
         try:

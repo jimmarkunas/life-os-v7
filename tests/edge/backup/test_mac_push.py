@@ -83,6 +83,76 @@ class Lists(unittest.TestCase):
             self.assertFalse(mp.NAME.match(bad), bad)
 
 
+class Snapshot(unittest.TestCase):
+    """LIFE-542: an idle WAL database that mode=ro cannot open is read with immutable=1, and only then."""
+    def make(self, tmp, wal=False):
+        path = Path(tmp) / "idle.db"
+        db = sqlite3.connect(path)
+        db.execute("pragma journal_mode=wal")
+        db.execute("create table t(x)")
+        db.executemany("insert into t values (?)", [(1,), (2,), (3,)])
+        db.commit()
+        db.close()
+        for side in ("-wal", "-shm"):
+            if os.path.exists(str(path) + side) and not (wal and side == "-wal"):
+                os.remove(str(path) + side)
+        return path
+
+    def failing_ro(self, real=sqlite3.connect):
+        seen = []
+
+        def connect(target, *args, **kwargs):
+            seen.append(target)
+            if "mode=ro" in str(target):
+                raise sqlite3.OperationalError("unable to open database file")        # what an idle WAL database does to a read-only open
+            return real(target, *args, **kwargs)
+        return connect, seen
+
+    def test_an_idle_wal_database_is_copied_through_the_immutable_retry_and_passes_the_integrity_check(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source, dest = self.make(tmp), Path(tmp) / "copy.sqlite"
+            connect, seen = self.failing_ro()
+            with mock.patch.object(sqlite3, "connect", connect):
+                mp.snapshot(str(source), str(dest))
+            self.assertTrue(any("mode=ro" in s for s in seen) and any("immutable=1" in s for s in seen))
+            copy = sqlite3.connect(dest)
+            self.assertEqual(copy.execute("select count(*) from t").fetchone(), (3,))
+            self.assertEqual(copy.execute("pragma integrity_check").fetchone()[0], "ok")
+            copy.close()
+
+    def test_no_retry_when_a_wal_file_exists_the_database_is_not_idle(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self.make(tmp)
+            Path(str(source) + "-wal").write_bytes(b"")
+            connect, seen = self.failing_ro()
+            with mock.patch.object(sqlite3, "connect", connect), self.assertRaises(mp.PushError) as ctx:
+                mp.snapshot(str(source), str(Path(tmp) / "copy.sqlite"))
+            self.assertEqual(str(ctx.exception), "mac_backup_db_unreadable")
+            self.assertFalse(any("immutable" in s for s in seen))
+
+    def test_a_normal_database_never_uses_the_retry(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self.make(tmp)
+            seen = []
+            real = sqlite3.connect
+
+            def connect(target, *args, **kwargs):
+                seen.append(str(target))
+                return real(target, *args, **kwargs)
+            with mock.patch.object(sqlite3, "connect", connect):
+                mp.snapshot(str(source), str(Path(tmp) / "copy.sqlite"))
+            self.assertFalse(any("immutable" in s for s in seen))
+
+    def test_a_missing_or_corrupt_file_is_still_a_fixed_code(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bad = Path(tmp) / "bad.db"
+            bad.write_bytes(b"this is not a database" * 50)
+            for source in (bad, Path(tmp) / "absent.db"):
+                with self.assertRaises(mp.PushError) as ctx:
+                    mp.snapshot(str(source), str(Path(tmp) / "copy.sqlite"))
+                self.assertEqual(str(ctx.exception), "mac_backup_db_unreadable")
+
+
 class Collect(unittest.TestCase):
     def test_databases_files_and_clean_trees_only(self):
         with tempfile.TemporaryDirectory() as tmp:
