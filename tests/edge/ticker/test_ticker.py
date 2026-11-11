@@ -62,11 +62,42 @@ class Tick(unittest.TestCase):
     def test_the_dispatch_is_exactly_what_cron_job_org_sent(self):
         api = FakeGitHub({"hourly.yml/dispatches": 204})
         self.assertEqual(ticker.tick(TOKEN, api), ("TICK_DISPATCHED", 204))
-        (req,) = api.requests
+        (req,) = [r for r in api.requests if r.get_method() == "POST"]          # LIFE-568: the run list is read first (a failed read still dispatches)
         self.assertEqual((req.full_url, req.get_method()), ("https://api.github.com/repos/jimmarkunas/life-os-v7/actions/workflows/hourly.yml/dispatches", "POST"))
         self.assertEqual(json.loads(req.data), {"ref": "main", "inputs": {"tick": "true"}})
         self.assertEqual(req.get_header("Authorization"), f"Bearer {TOKEN}")
         self.assertEqual(req.get_header("Accept"), "application/vnd.github+json")
+
+    def test_a_tick_inside_the_gap_is_not_dispatched_and_one_outside_is(self):
+        import datetime as dt
+        now = dt.datetime(2026, 11, 11, 6, 17, tzinfo=dt.timezone.utc)
+        recent = {"workflow_runs": [{"id": 1, "display_title": "tick", "conclusion": "success", "run_started_at": "2026-11-11T06:00:10Z"}]}
+        older = {"workflow_runs": [{"id": 1, "display_title": "tick", "conclusion": "success", "run_started_at": "2026-11-11T05:00:10Z"}]}
+        for body, want in ((recent, True), (older, False)):
+            api = FakeGitHub({"per_page=15": (200, body), "GATE_MIN_GAP_MINUTES": 404})
+            self.assertEqual(ticker.too_soon(TOKEN, api, now), want)
+        manual = {"workflow_runs": [{"id": 1, "display_title": "manual", "conclusion": "success", "run_started_at": "2026-11-11T06:00:10Z"}]}
+        self.assertFalse(ticker.too_soon(TOKEN, FakeGitHub({"per_page=15": (200, manual), "GATE_MIN_GAP_MINUTES": 404}), now))
+        cancelled = {"workflow_runs": [{"id": 1, "display_title": "tick", "conclusion": "cancelled", "run_started_at": "2026-11-11T06:00:10Z"}]}
+        self.assertFalse(ticker.too_soon(TOKEN, FakeGitHub({"per_page=15": (200, cancelled), "GATE_MIN_GAP_MINUTES": 404}), now))
+
+    def test_the_repository_gap_variable_is_honoured(self):
+        import datetime as dt
+        now = dt.datetime(2026, 11, 11, 6, 17, tzinfo=dt.timezone.utc)
+        body = {"workflow_runs": [{"id": 1, "display_title": "tick", "conclusion": "success", "run_started_at": "2026-11-11T06:00:10Z"}]}      # 17 minutes ago
+        drain = FakeGitHub({"per_page=15": (200, body), "GATE_MIN_GAP_MINUTES": (200, {"name": "GATE_MIN_GAP_MINUTES", "value": "10"})})
+        self.assertFalse(ticker.too_soon(TOKEN, drain, now))                       # drain mode: a 10 minute gap lets a 17 minute old tick through
+
+    def test_skipping_dispatches_nothing_and_any_doubt_still_dispatches(self):
+        import datetime as dt
+        recent = {"workflow_runs": [{"id": 1, "display_title": "tick", "conclusion": "success",
+                                     "run_started_at": (dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=17)).strftime("%Y-%m-%dT%H:%M:%SZ")}]}
+        api = FakeGitHub({"per_page=15": (200, recent), "GATE_MIN_GAP_MINUTES": 404, "hourly.yml/dispatches": 204})
+        self.assertEqual(ticker.tick(TOKEN, api), ("TICK_SKIPPED", 200))
+        self.assertFalse([r for r in api.requests if r.get_method() == "POST"])
+        for unreadable in (500, urllib.error.URLError("down")):
+            api = FakeGitHub({"per_page=15": unreadable, "hourly.yml/dispatches": 204})
+            self.assertEqual(ticker.tick(TOKEN, api), ("TICK_DISPATCHED", 204))
 
     def test_every_failure_is_a_fixed_code(self):
         for answer, code in ((401, "TICK_REFUSED"), (403, "TICK_REFUSED"), (404, "TICK_REFUSED"), (422, "TICK_REFUSED"),

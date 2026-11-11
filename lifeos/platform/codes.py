@@ -29,6 +29,7 @@ def _r(stage, klass, attempt, meaning, action, severity="none", public=False):
 CODES = {
     # --- the Oracle ticker (LIFE-330, lifeos/edge/ticker/ticker.py): systemd timers on lifeos-edge-01 that replace cron-job.org and run the watchdog's incident checks
     "TICK_DISPATCHED": _r("ticker", "ok", False, "The hourly pipeline was started (GitHub accepted the dispatch).", "None."),
+    "TICK_SKIPPED": _r("ticker", "ok", False, "No hourly run was started: another tick started less than 50 minutes ago (LIFE-568), the same rule the workflow's gate applies.", "None."),
     "TICK_REFUSED": _r("ticker", "blocked", False, "GitHub refused the dispatch (401/403/404/422): the token, its permissions or the workflow name is wrong.", "Replace the token (install-ticker.sh credential github) or check hourly.yml; GitHub's own crons still run meanwhile."),
     "TICK_GITHUB_ERROR": _r("ticker", "retry", False, "GitHub answered the dispatch with an error (5xx or rate limit).", "None; the next hour tries again and GitHub's own crons still run."),
     "TICK_NETWORK": _r("ticker", "retry", False, "The Oracle machine could not reach GitHub.", "None for one hour; persistent: check the VM's network."),
