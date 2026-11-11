@@ -7,7 +7,6 @@ import sqlite3
 import subprocess
 import sys
 import tarfile
-import tempfile
 import unittest
 import urllib.error
 import urllib.parse
@@ -16,6 +15,7 @@ from unittest import mock
 
 from lifeos.edge.backup import consent
 from lifeos.edge.backup import offsite_backup as ob
+from tests.edge.backup import safe_tmp
 from tests.kit import shared
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -42,7 +42,7 @@ def make_db(path, rows=3):
 
 class Tmp(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.mkdtemp()
+        self.tmp = safe_tmp.mkdtemp()
         self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
         self.src = Path(self.tmp) / "src"
         self.src.mkdir()
@@ -410,7 +410,7 @@ class Run(Tmp):
 class MacCheck(unittest.TestCase):
     """LIFE-542: the stale-Mac-backup warning in `verify`: 9 days, warning only."""
     def setUp(self):
-        self.inbox = tempfile.mkdtemp()
+        self.inbox = safe_tmp.mkdtemp()
         self.addCleanup(shutil.rmtree, self.inbox, True)
 
     def put(self, name, at):

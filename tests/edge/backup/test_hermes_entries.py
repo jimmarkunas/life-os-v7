@@ -2,11 +2,11 @@
 import os
 import shutil
 import sqlite3
-import tempfile
 import unittest
 from pathlib import Path
 
 from lifeos.edge.backup import offsite_backup as ob
+from tests.edge.backup import safe_tmp
 from tests.edge.backup.test_offsite_backup import local_run, make_db
 
 HERMES_NAMES = [n for n, *_ in ob.SQLITE + ob.FILES if n.startswith("hermes/")] + [p for p, _ in ob.TREES if p.startswith("hermes/")]
@@ -47,7 +47,7 @@ class Lists(unittest.TestCase):
 
 class Collect(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.mkdtemp()
+        self.tmp = safe_tmp.mkdtemp()
         self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
         self.home = Path(self.tmp) / "hermes"
         self.work = Path(self.tmp) / "work"
