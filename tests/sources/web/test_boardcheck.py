@@ -5,33 +5,13 @@ from unittest import mock
 from lifeos.jobs import identity
 from lifeos.sources.web import boardcheck
 from lifeos.sources.web import lister
+from tests.kit.db import RecorderConn
 
 TODAY = date(2026, 10, 4)
 
 
 def job(title, location="London", url=None, posted=None):
     return {"id": title, "title": title, "location": location, "url": url or f"https://x.example/{title.replace(' ', '-')}", "posted": posted, "content": None}
-
-
-class Conn:
-    def __init__(self, rows):
-        self.rows, self.sql = rows, []
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        return False
-
-    def cursor(self):
-        return self
-
-    def execute(self, sql, args=()):
-        sql % tuple("x" for _ in args)                      # the statement survives driver formatting
-        self.sql.append((sql, args))
-
-    def fetchall(self):
-        return self.rows
 
 
 class BoardCheckTests(unittest.TestCase):
@@ -62,7 +42,7 @@ class BoardCheckTests(unittest.TestCase):
     def test_a_dry_run_reads_the_board_counts_only_and_writes_nothing(self):
         source = {"id": "su-acme", "company": "Acme Ltd", "status": "ready", "tier": "employer", "kind": "greenhouse", "slug": "acme"}
         listing = lister.Listing(lister.COMPLETE, [job("Product Manager"), job("Senior Software Engineer")])
-        conn = Conn([(identity.url_hash(job("Product Manager")["url"]), "PUBLISHED", None, 80, "")])
+        conn = RecorderConn([(identity.url_hash(job("Product Manager")["url"]), "PUBLISHED", None, 80, "")], driver_format=True)
         with mock.patch.object(boardcheck.registry, "load", return_value=[source]), mock.patch.object(boardcheck.lister, "list_source", return_value=listing), \
                 mock.patch.object(boardcheck.store, "connect", return_value=conn), mock.patch.object(boardcheck, "Client") as client:
             counts = boardcheck.run(0, False, environ={"BOARD_COMPANY": "board:acme"})
