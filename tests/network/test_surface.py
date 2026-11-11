@@ -596,3 +596,32 @@ class Block(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StepTiming(unittest.TestCase):
+    """LIFE-572 step 1: seconds and Notion calls per page and per outcome, counts only (no page id, title or content)."""
+    def test_timing_sums_seconds_and_calls_per_outcome(self):
+        class Notion:
+            calls = 0
+        ticks, notion = iter([0.0, 0.0, 6.0, 6.0, 8.0, 8.0]), Notion()
+        timing = network_surface.Timing(notion, clock=lambda: next(ticks))
+        started = timing.start()
+        notion.calls = 15
+        timing.stop(started, "replaced")                       # 6.0 s, 15 calls
+        started = timing.start()
+        notion.calls = 17
+        timing.stop(started, "left")                           # 2.0 s, 2 calls (8.0 - 6.0 would be the next clock tick)
+        report = timing.report()
+        self.assertEqual((report["pages"], report["notion_calls"], report["calls_per_page"]), (2, 17, 8.5))
+        self.assertEqual(report["by_outcome"]["replaced"], {"pages": 1, "seconds": 6.0, "calls": 15})
+        self.assertEqual(sorted(report), ["by_outcome", "calls_per_page", "gap_seconds", "notion_calls", "pages", "seconds", "slowest_page_seconds"])
+
+    def test_a_live_run_reports_its_timing_and_nothing_identifying(self):
+        conn, ledger = build(), ledger_for()
+        counts = go(conn, ledger, live=True)
+        timing = counts["timing"]
+        self.assertEqual(timing["pages"], 1)
+        self.assertEqual(list(timing["by_outcome"]), ["created"])
+        text = json.dumps(timing)
+        for private in ("page-1", KEY1, "Acme"):
+            self.assertNotIn(private, text)
