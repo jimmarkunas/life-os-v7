@@ -55,6 +55,8 @@ def publish(client, title, header, rows, live, links=(), intro=(), key=None, con
     `intro` (LIFE-212): summary lines written as ONE paragraph above the tables. `key` (LIFE-369): a fixed report key; when given, the page id is kept in the private store under it, so a second run finds
     the first page by that id and leaves it alone (delete the page in Notion to write a fresh one). Without a key (a dated, always-new report) there is nothing to look up."""
     counts = {"rows": len(rows), "page": "dry", "failed": 0, "why": {}}
+    if live and not (title or "").strip():
+        return _fail(counts, "PRIVATE_REPORT_EMPTY_TITLE")
     try:
         parent = REPORTS_PAGE
         if key:

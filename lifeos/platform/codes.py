@@ -399,6 +399,7 @@ CODES = {
     "GRAN_PURGE_ALL_UNSUPPORTED": _r("interview", "state", False, "Oracle has not announced the whole-meeting purge, so the meeting was carried but not purged.", "Oracle Claude ships the purge_all capability; the next run purges it."),
     "GRAN_PURGE_SCOPE_NOT_CONFIRMED": _r("interview", "degraded", False, "Oracle's purge reply did not confirm the whole-meeting scope.", "Oracle Claude checks the purge; the meeting is carried and catalogued."),
     "PRIVATE_REPORT_FAILED": _r("jobs", "degraded", False, "A private Notion report could not be written (counts say which fixed code).", "Read the counts and repeat the run."),
+    "PRIVATE_REPORT_EMPTY_TITLE": _r("jobs", "bug", False, "A private report was asked for with no title, so nothing was written.", "Tell Oracle Claude; the caller must pass a title."),
     "PRIVATE_REPORT_NOTION_FAILED": _r("jobs", "degraded", False, "Notion refused or did not answer the private report request.", "Repeat the run."),
     "PRIVATE_REPORT_READBACK_MISMATCH": _r("jobs", "degraded", False, "The private report page was written but its row count did not read back.", "Open the page, delete it, and repeat the run."),
     "PRIVATE_REPORT_KEY_READBACK": _r("jobs", "degraded", False, "The private report page was written but its stored page id did not read back.", "Open the page, delete it, and repeat the run."),

@@ -65,6 +65,11 @@ class Private(unittest.TestCase):
         source = inspect.getsource(pr)
         self.assertNotIn('"/search"', source)
 
+    def test_a_live_report_with_no_title_is_refused_before_anything_is_written(self):
+        client = FakeClient()
+        self.assertEqual(pr.publish(client, "  ", HEADER, ROWS, True)["why"], {"PRIVATE_REPORT_EMPTY_TITLE": 1})
+        self.assertEqual(pr.publish(client, "", HEADER, ROWS, False)["page"], "dry")
+
     def test_a_notion_error_is_a_fixed_code(self):
         self.assertEqual(pr.publish(FakeClient(fail=True), "T", HEADER, ROWS, True)["why"], {"PRIVATE_REPORT_NOTION_FAILED": 1})
 
