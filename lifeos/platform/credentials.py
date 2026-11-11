@@ -15,7 +15,7 @@ from lifeos.platform.credential_list import CONFIG, CREDENTIALS
 SOURCES = {"provider_reported": "Provider reported", "manual": "Manual", "none": "No expiry exposed", "no_expiry": "No fixed expiry"}
 WARN_AHEAD_DAYS = 7
 REQUIRED = ("key", "label", "provider", "used_for", "read_in", "expiry_source", "expires", "how_read", "renew")
-OPTIONAL = ("source_label",)                      # Nov 11 2026: the stated reason a "No fixed expiry" entry shows on the screen
+OPTIONAL = ("source_label", "owner")                      # Nov 11 2026: the stated reason a "No fixed expiry" entry shows on the screen
 
 
 def load():
@@ -47,7 +47,7 @@ def rows(today, credentials=None):
     for entry in (load() if credentials is None else credentials):
         out.append({"key": entry["key"], "credential": entry["label"], "provider": entry["provider"], "used_for": entry["used_for"], "read_in": entry["read_in"],
                     "source": entry.get("source_label") or SOURCES[entry["expiry_source"]], "expires": entry["expires"], "days_left": days_left(entry, today), "status": status(entry, today),
-                    "warn_ahead_days": WARN_AHEAD_DAYS})
+                    "warn_ahead_days": WARN_AHEAD_DAYS, "owner": entry.get("owner", "")})
     return out
 
 

@@ -71,6 +71,10 @@ class Rows(unittest.TestCase):
             self.assertEqual(cred.status(self.entry(when), TODAY), want, days)
         self.assertEqual(cred.status(self.entry(None, "none"), TODAY), "Unknown")
 
+    def test_the_optional_owner_reaches_the_row_and_is_empty_when_absent(self):
+        rows = cred.rows(TODAY, [self.entry("2027-01-01", "provider_reported"), {**self.entry("2027-01-01", "provider_reported"), "owner": "Jim"}])
+        self.assertEqual([r["owner"] for r in rows], ["", "Jim"])
+
     def test_rows_use_the_plain_source_names_and_carry_no_renew_text_or_how_read(self):
         row = cred.rows(TODAY, [self.entry(None, "none"), self.entry("2027-01-01", "provider_reported")])
         self.assertEqual([r["source"] for r in row], ["No expiry exposed", "Provider reported"])

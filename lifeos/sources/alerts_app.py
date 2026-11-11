@@ -175,7 +175,7 @@ def _credentials(now):
             '<table class="alerts"><thead><tr><th>Credential</th><th>Days left</th><th>Source</th></tr></thead><tbody>']
     for r in sorted(rows, key=lambda r: (r["days_left"] is None, r["days_left"] if r["days_left"] is not None else 0, r["credential"])):
         days = "-" if r["days_left"] is None else str(r["days_left"])
-        html.append(f'<tr><td><strong>{e(r["credential"])}</strong><div class="meaning">{e(r["provider"])}: {e(r["used_for"])}</div></td><td>{e(days)}</td>'
+        html.append(f'<tr><td><strong>{e(r["credential"])}</strong><div class="meaning">{e(r["provider"])}: {e(r["used_for"])}{e(" (renewed by " + r["owner"] + ")") if r["owner"] else ""}</div></td><td>{e(days)}</td>'
                     f'<td>{e(r["source"])}</td></tr>')
     html.append("</tbody></table>")
     return "".join(html)
