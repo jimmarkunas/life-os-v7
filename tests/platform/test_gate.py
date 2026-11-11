@@ -329,6 +329,23 @@ class DailyCheckin(unittest.TestCase):
                 gate._api = old
             self.assertEqual(pushed, expect)
 
+    def test_the_checkin_goes_through_the_real_push_with_a_registered_key(self):
+        """LIFE-603: the test above passes a stand-in that takes any arguments, so the real `_push(title, body, severity, key)` was never called and the first real check-in crashed with
+        a missing key. Here the real `_push` and the real `alerts.push` (registry lookup, channels) run; only the last step, the network gateway `alerts.ntfy`, is replaced."""
+        from lifeos.platform import alerts
+        now, sent = dt.datetime(2026, 10, 11, 13, 17, tzinfo=dt.timezone.utc), []
+        fresh = {"workflow_runs": [{"id": 1, "display_title": "tick", "conclusion": "success", "created_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                                    "updated_at": (now - dt.timedelta(minutes=10)).strftime("%Y-%m-%dT%H:%M:%SZ")}]}
+        old_api, old_ntfy = gate._api, alerts.ntfy
+        gate._api = lambda path, *a, **k: fresh if "workflows/" in path else {}
+        alerts.ntfy = lambda topic, title, body, severity, post=None, channels=None: sent.append((topic, title, severity, tuple(channels or ()))) or True
+        try:
+            with mock.patch.dict(os.environ, {"NTFY_TOPIC": "topic", "ALERTS_ENABLED": "on", "ALERT_SETTINGS": ""}):
+                gate.watch(now)
+        finally:
+            gate._api, alerts.ntfy = old_api, old_ntfy
+        self.assertEqual(sent, [("topic", "V7 daily check: OK", "info", ("ntfy",))])          # info: the phone only, as the call site always meant
+
 
 class PurgeIsNamed(unittest.TestCase):
     """D166: the Sunday purge failed twice and the push only said 'finish'. The workflow now names the stage and pushes the purge result itself."""
