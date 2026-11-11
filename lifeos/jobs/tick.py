@@ -13,6 +13,7 @@ import argparse
 from dataclasses import dataclass
 import importlib
 import json
+import os
 import signal
 import sys
 import time
@@ -81,8 +82,9 @@ def _run_step(step, live, limit, stages):
     return "ok" if code in (0, None) or isinstance(code, dict) else "failed"
 
 
-def tick(live, quick=False, plan=PLAN, stages=None, clock=time.monotonic, budget=RUN_BUDGET_SECONDS):
-    """-> {stage: ok | failed | timeout | skipped}. `stages` (name -> callable(limit, live)) replaces lifeos.run in tests."""
+def tick(live, quick=False, plan=PLAN, stages=None, clock=time.monotonic, budget=RUN_BUDGET_SECONDS, timings=None):
+    """-> {stage: ok | failed | timeout | skipped}. `stages` (name -> callable(limit, live)) replaces lifeos.run in tests. LIFE-569: each stage prints one `stage <name>: <outcome> <seconds>s` line as
+    it ends, and `timings` (when given) collects {stage: seconds}."""
     started, outcome = clock(), {}
     previous = signal.signal(signal.SIGALRM, _alarm)
     try:
@@ -94,6 +96,7 @@ def tick(live, quick=False, plan=PLAN, stages=None, clock=time.monotonic, budget
             allowed = max(1, int(min(step.budget, left))) if step.bulk else min(step.budget, max(FAST_FLOOR_SECONDS, int(left)))   # bounded run; a fast-path stage keeps its floor
             limit = QUICK_LIMITS.get(step.name, step.limit) if quick else step.limit
             signal.alarm(allowed)
+            stage_started = clock()
             try:
                 outcome[step.name] = _run_step(step, live, limit, stages)
             except StageTimeout:
@@ -104,9 +107,23 @@ def tick(live, quick=False, plan=PLAN, stages=None, clock=time.monotonic, budget
                 print(f"{step.name.upper()} FAILED: {type(error).__name__}", file=sys.stderr)
             finally:
                 signal.alarm(0)
+                seconds = clock() - stage_started
+                if timings is not None:
+                    timings[step.name] = seconds
+                print(f"stage {step.name}: {outcome.get(step.name, 'failed')} {seconds:.1f}s", flush=True)           # LIFE-569: one line per stage, name, outcome and seconds
     finally:
         signal.signal(signal.SIGALRM, previous)
     return outcome
+
+
+def summary_table(outcome, timings, total):
+    """LIFE-569: the stage table for the job summary: name, outcome, seconds, share of the Jobs tick; skipped stages show 0. Counts stay in each stage's own line."""
+    lines = ["### Jobs tick: seconds per stage", "", "| Stage | Outcome | Seconds | Share |", "|---|---|---:|---:|"]
+    for name, result in outcome.items():
+        seconds = timings.get(name, 0.0)
+        lines.append(f"| {name} | {result} | {seconds:.1f} | {100 * seconds / total:.0f}% |" if total > 0 else f"| {name} | {result} | {seconds:.1f} | - |")
+    lines.append(f"| **total** | | **{total:.1f}** | |")
+    return "\n".join(lines) + "\n"
 
 
 def main(argv=None):
@@ -115,8 +132,16 @@ def main(argv=None):
     parser.add_argument("--quick", action="store_true", help="small caps for a manual end-to-end proof (D206)")
     args = parser.parse_args(argv)
     sys.stdout.reconfigure(line_buffering=True)                                     # each stage's counts line reaches the log when it is printed, not at exit
-    outcome = tick(args.live, args.quick)
+    timings, begun = {}, time.monotonic()
+    outcome = tick(args.live, args.quick, timings=timings)
     print("tick:", json.dumps(outcome, sort_keys=True))
+    path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if path:                                                                         # LIFE-569: a short table in the finish job summary
+        try:
+            with open(path, "a") as handle:
+                handle.write(summary_table(outcome, timings, time.monotonic() - begun))
+        except OSError:
+            pass
     return 1 if any(v in ("failed", "timeout") for v in outcome.values()) else 0
 
 
