@@ -5,6 +5,10 @@ import json
 import os
 
 
+class FrozenInputMissing(RuntimeError):
+    """A frozen board id is not in the registry the stage reads: the benchmark would silently read fewer boards, so the run stops instead."""
+
+
 def frozen(key, environ=os.environ):
     """-> the set of source ids frozen for `key` (a lane name, plus "/boards" for the employer-board pass), or None when benchmark mode is off."""
     path = (environ.get("BENCH_SNAPSHOT") or "").strip()

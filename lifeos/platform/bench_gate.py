@@ -91,11 +91,12 @@ def own_start(run_id):
     """When this run started, from its own run record (None if it cannot be read)."""
     try:
         return gate._api(f"actions/runs/{run_id}").get("run_started_at")
-    except Exception:                                                              # noqa: BLE001 - an unreadable record only means "overlap unknown"
+    except Exception as error:                                                     # noqa: BLE001 - an unreadable record only means "overlap unknown", and it says so
+        print(f"bench_gate: run record unreadable ({type(error).__name__}); overlap unknown", file=sys.stderr)
         return None
 
 
-def main(argv=None, environ=os.environ, fetch=fetch_runs, now=None):
+def main(argv=None, environ=os.environ, fetch=fetch_runs, now=None, own_start=own_start):
     argv = sys.argv[1:] if argv is None else argv
     mode = argv[0] if argv else ""
     current = int(environ.get("GITHUB_RUN_ID") or 0)
@@ -105,7 +106,7 @@ def main(argv=None, environ=os.environ, fetch=fetch_runs, now=None):
         print(message, file=sys.stderr if code else sys.stdout)
         return code
     if mode == "after":
-        started = _t(environ.get("BENCH_STARTED")) or _t(own_start(current))        # tests pass BENCH_STARTED; a real run reads its own start from the run record
+        started = _t(own_start(current))                                          # LIFE-604: the run record is the only source of the start time
         ended = now or dt.datetime.now(dt.timezone.utc)
         text = after(runs, current, started, ended) if started else "### Benchmark overlap check\n\nNo start time was recorded; overlap unknown.\n"
         print(text)
@@ -116,7 +117,7 @@ def main(argv=None, environ=os.environ, fetch=fetch_runs, now=None):
         return 0
     if mode == "jobs":
         jobs = gate._api(f"actions/runs/{current}/jobs?per_page=100").get("jobs", [])
-        started = _t(environ.get("BENCH_STARTED")) or _t(own_start(current))
+        started = _t(own_start(current))
         text = jobs_summary([j for j in jobs if j.get("name") != "bench_report"])
         text += after(runs, current, started, now or dt.datetime.now(dt.timezone.utc)) if started else "\nNo start time was recorded; overlap unknown.\n"
         print(text)
