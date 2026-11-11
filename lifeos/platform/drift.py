@@ -25,7 +25,24 @@ SURFACES = (
     Surface("ticker", "lifeos/edge/ticker/ticker.py", "/opt/lifeos-ticker/ticker.py", "lifeos-ticker-watch.timer"),
     *(Surface("ticker/" + m, "lifeos/platform/" + m, "/opt/lifeos-ticker/lifeos/platform/" + m, "lifeos-ticker-watch.timer") for m in _TICKER_MODULES),
     Surface("offsite-backup", "lifeos/edge/backup/offsite_backup.py", "/opt/lifeos-offsite/offsite_backup.py", "lifeos-offsite-backup.timer"),
+    # LIFE-604 item 4. The installers are deployed files too, and the Close updater runs from a root-owned copy of two repo files that main cannot change by itself.
+    Surface("ticker/install-ticker.sh", "lifeos/edge/ticker/oracle/install-ticker.sh", "/opt/lifeos-ticker/install-ticker.sh", "lifeos-ticker-watch.timer"),
+    Surface("offsite-installer", "lifeos/edge/backup/oracle/install-offsite.sh", "/opt/lifeos-offsite/install-offsite.sh", "lifeos-offsite-backup.timer"),
+    Surface("close/close_release.py", "lifeos/edge/oracle/close_release.py", "/opt/lifeos-close/bin/close_release.py", "lifeos-close-release.timer"),
+    Surface("close/install-close.sh", "lifeos/edge/oracle/install-close.sh", "/opt/lifeos-close/bin/install-close.sh", "lifeos-close-release.timer"),
 )
+
+# Installers that are deliberately NOT surfaces. A new install-*.sh must be a surface above or be listed here with the reason (tests/platform/test_drift.py reads this).
+UNCOVERED_INSTALLERS = {
+    "lifeos/edge/openclaw/install-capture-sweep.sh": "The sweeper timer is switched off by Jim (LIFE-575, LIFE-604 item 3), and it lives under the ubuntu home folder and user manager, which the ticker's drift reader cannot see; switching it on again needs a drift surface first.",
+    "lifeos/edge/runner/install-runner.sh": "The script-pack runner starts no unit, so there is no unit state to compare; its program is pinned by a hash inside its own installer and checked by that installer's verify.",
+}
+
+
+def uncovered_installers(scripts, surfaces=SURFACES, allowed=UNCOVERED_INSTALLERS):
+    """-> the install scripts (repo paths) that are neither a drift surface nor in the allowlist."""
+    covered = {s.repo_path for s in surfaces} | set(allowed)
+    return [path for path in scripts if path not in covered]
 
 
 def blob_sha(data):
