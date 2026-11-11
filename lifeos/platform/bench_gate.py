@@ -19,9 +19,10 @@ def _t(value):
     return dt.datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc) if value else None
 
 
-def active_others(runs, current_id):
-    """Other runs (either workflow) that are queued or running now: [(workflow, display title, status)]."""
-    return [(r["workflow"], r.get("display_title"), r["status"]) for r in runs if r["id"] != current_id and r.get("status") in ACTIVE]
+def active_others(runs, current_id, now=None):
+    """Other runs (either workflow) that are queued or running now: [(workflow, display title, status)]. LIFE-604: with `now`, a stuck run (gate.stuck) is not counted, as in the tick gate."""
+    return [(r["workflow"], r.get("display_title"), r["status"]) for r in runs
+            if r["id"] != current_id and r.get("status") in ACTIVE and not (now is not None and gate.stuck(r, now))]
 
 
 def overlapping(runs, current_id, started, ended):
@@ -46,9 +47,9 @@ def fetch_runs():
     return runs
 
 
-def before(runs, current_id):
+def before(runs, current_id, now=None):
     """-> (exit code, message)."""
-    others = active_others(runs, current_id)
+    others = active_others(runs, current_id, now)
     if others:
         kinds = ", ".join(f"{w} {t} ({s})" for w, t, s in others)
         return 1, f"BENCHMARK_REFUSED: {len(others)} other run(s) in progress or waiting: {kinds}. Start the benchmark when none is running."
@@ -102,7 +103,7 @@ def main(argv=None, environ=os.environ, fetch=fetch_runs, now=None, own_start=ow
     current = int(environ.get("GITHUB_RUN_ID") or 0)
     runs = fetch()
     if mode == "before":
-        code, message = before(runs, current)
+        code, message = before(runs, current, now or dt.datetime.now(dt.timezone.utc))
         print(message, file=sys.stderr if code else sys.stdout)
         return code
     if mode == "after":

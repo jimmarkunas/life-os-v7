@@ -113,13 +113,22 @@ class Gate(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("domains.yml", message)
 
+    def test_a_stuck_queued_run_does_not_block_a_benchmark(self):
+        """LIFE-604 item 8: the same stuck limit as the tick gate."""
+        zombie = run(5, status="queued", title="tick", start="2026-11-11T15:00:00Z")
+        now = datetime(2026, 11, 11, 18, 0, tzinfo=timezone.utc)
+        self.assertEqual(bench_gate.before([zombie], 9, now=now)[0], 0)
+        self.assertEqual(bench_gate.before([zombie], 9)[0], 1)                                       # without a clock nothing is cut
+        fresh = run(6, status="in_progress", title="tick", start="2026-11-11T17:50:00Z")
+        self.assertEqual(bench_gate.before([zombie, fresh], 9, now=now)[0], 1)
+
     def test_it_does_not_count_itself(self):
         self.assertEqual(bench_gate.before([run(9, status="in_progress", title="manual")], 9)[0], 0)
 
     def test_main_before_exits_one_and_prints_to_stderr(self):
         err, out = io.StringIO(), io.StringIO()
         with redirect_stderr(err), redirect_stdout(out):
-            code = bench_gate.main(["before"], {"GITHUB_RUN_ID": "9"}, fetch=lambda: [run(1, status="in_progress")])
+            code = bench_gate.main(["before"], {"GITHUB_RUN_ID": "9"}, fetch=lambda: [run(1, status="in_progress")], now=datetime(2026, 11, 11, 18, 10, tzinfo=timezone.utc))
         self.assertEqual((code, out.getvalue()), (1, ""))
         self.assertIn("BENCHMARK_REFUSED", err.getvalue())
 
