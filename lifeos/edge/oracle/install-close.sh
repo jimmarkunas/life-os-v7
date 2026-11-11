@@ -12,6 +12,16 @@ say() { printf '%s\n' "$*"; }
 code() { tail -n +2 "$1/MANIFEST" | sha256sum | cut -d' ' -f1; }                 # a tree's files, whatever commit carried them
 seen() { [ -s "$ETC/auto.seen" ] && grep -qx "$(code "$1")" "$ETC/auto.seen"; }
 drop() { [ -e "$1" ] && chmod -R u+w "$1" 2>/dev/null; rm -rf "$1"; }                     # a staged tree is read-only
+probe() {     # LIFE-604: the service is socket-activated, so a tree that imports cleanly but fails when it runs passes every other check. One real request over loopback: a PROXY v2 header (from 127.0.0.1, which is no tailnet node) and a GET.
+  # The gate refuses it with a fixed 403 and never reaches the application, so this proves the process starts, reads and answers; it does not prove the application page (not verified here).
+  local line=""
+  exec 3<>"/dev/tcp/127.0.0.1/$LOCAL" 2>/dev/null || return 1
+  printf '\r\n\r\n\0\r\nQUIT\n\x21\x11\x00\x0c\x7f\x00\x00\x01\x7f\x00\x00\x01\x30\x39\x1f\x90GET / HTTP/1.1\r\nHost: close.invalid\r\nConnection: close\r\n\r\n' >&3 || { exec 3>&- 3<&-; return 1; }
+  IFS= read -r -t 15 line <&3 || line=""
+  exec 3>&- 3<&-
+  case "$line" in "HTTP/1.1 "[1-4][0-9][0-9]" "*|"HTTP/1.1 "[1-4][0-9][0-9]$'\r') return 0 ;; esac
+  return 1
+}
 hold() {                                                                               # Jim installed or rolled back by hand: auto never overrides him with main's code as it is now
   install -d -m 755 "$ETC"; end_retries
   local c p n pp _                                                                     # a cut-off release first gets its own previous back, so Jim's rollback has its target
@@ -155,6 +165,7 @@ case "${1:-}" in
     check "socket active" 'systemctl is-active --quiet lifeos-close.socket'
     check "listener on 127.0.0.1 only" '[ "$(ss -Hltn "sport = :$LOCAL" | awk "{print \$4}" | sort -u)" = "127.0.0.1:$LOCAL" ]'
     check "Serve terminates TLS on $TAILNET with PROXY v2, no Funnel" '[ "$(serve_state)" = ours ]'
+    check "one request gets a fixed answer (the service starts and answers, not only imports)" 'probe'
     exit $ok ;;
   auto)
     install -d -m 755 "$OPT" "$ETC"; exec 9>"$OPT/.lock"; flock -n 9 || exit 0           # one run at a time (install, rollback and uninstall take the same lock)
@@ -183,8 +194,9 @@ case "${1:-}" in
     if ! commit="$(python3 -I "$REL" latest)"; then
       # LIFE-562: a head that is not green on CI, or unreadable, is waited out; after 2 hours of it the ticker's watch raises one quiet alert (reads this marker; nothing else does)
       now="$(date +%s)"; since="$(cat "$ETC/auto.waiting" 2>/dev/null || true)"
-      case "$since" in ''|*[!0-9]*) since="$now"; echo "$now" > "$ETC/auto.waiting" ;; esac
-      if [ $(( now - since )) -ge 7200 ]; then echo "$since" > "$ETC/auto.stalled"; chmod 644 "$ETC/auto.stalled"; fi
+      read -r since stalled < <(python3 -I "$REL" wait "$now" "$since") || { since="$now"; stalled=0; }      # LIFE-604: close_release.py decides (unit-tested); a failure restarts the wait, never raises an alert
+      echo "$since" > "$ETC/auto.waiting"
+      if [ "$stalled" = 1 ]; then echo "$since" > "$ETC/auto.stalled"; chmod 644 "$ETC/auto.stalled"; fi
       say "auto: main not green or unreadable; nothing changed"; exit 0
     fi
     rm -f "$ETC/auto.waiting" "$ETC/auto.stalled"                                         # green again: the wait is over

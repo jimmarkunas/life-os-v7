@@ -2,6 +2,8 @@
 and close_release.py replaced by stubs whose behaviour each test sets. The real script, bash, flock and install(1) run; nothing outside the temporary tree is touched."""
 import os
 import shutil
+import socket
+import threading
 import subprocess
 import tempfile
 import unittest
@@ -13,7 +15,7 @@ STUBS = {
     "systemd-creds": 'echo "systemd-creds $*" >> "$SIM/log"; cat > "$4"',
     "systemctl": 'echo "systemctl $*" >> "$SIM/log"; case "$1" in is-enabled) [ "${SOCK_ENABLED:-1}" = 1 ];; *) true;; esac',
     "tailscale": 'echo "tailscale $*" >> "$SIM/log"; [ "$2" = status ] && echo "{}"; true',
-    "ss": 'echo "x x x 127.0.0.1:47344"',
+    "ss": 'echo "x x x 127.0.0.1:$PORT"',
     "stat": "echo 600:root",
     "runuser": "exit 1",
     "find": "true",
@@ -38,8 +40,49 @@ case "$1" in
     for f in ${CHECK_FAIL:-}; do [ "$(basename "$d")" = "$f" ] && exit 1; done
     [ -f "$d/MANIFEST" ] ;;
   same) [ "$(body "$2")" = "$(body "$3")" ] ;;
+  wait) python3 -I "$REAL_REL" wait "$2" "$3" ;;                  # LIFE-604: the stall decision is the real Python function
 esac
 '''
+
+
+ANSWERS = {"ok": b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n", "server_error": b"HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n",
+           "garbage": b"hello\r\n", "silent": b""}
+
+
+class FakeService:
+    """Stands in for the socket-activated Close service on a loopback port: what it answers depends on which tree `current` points at, so a test can make one tree import fine and fail when asked."""
+    def __init__(self, opt):
+        self.opt, self.by_tree, self.default, self.requests = opt, {}, "ok", []
+        self.sock = socket.socket()
+        self.sock.bind(("127.0.0.1", 0))
+        self.sock.listen(5)
+        self.port = self.sock.getsockname()[1]
+        threading.Thread(target=self.serve, daemon=True).start()
+
+    def serve(self):
+        while True:
+            try:
+                conn, _ = self.sock.accept()
+            except OSError:
+                return
+            with conn:
+                conn.settimeout(5)
+                try:
+                    self.requests.append(conn.recv(4096))
+                    try:
+                        tree = os.path.basename(os.readlink(os.path.join(self.opt, "current")))
+                    except OSError:
+                        tree = ""
+                    conn.sendall(ANSWERS[self.by_tree.get(tree, self.default)])
+                except OSError:
+                    pass
+
+    def close(self):
+        try:
+            self.sock.shutdown(socket.SHUT_RDWR)                                                  # a thread blocked in accept() keeps a plain close() from refusing new connections
+        except OSError:
+            pass
+        self.sock.close()
 
 
 @unittest.skipUnless(shutil.which("bash") and shutil.which("flock") and shutil.which("install"), "needs bash, flock and install(1)")
@@ -52,7 +95,11 @@ class AutoReleaseRun(unittest.TestCase):
         script = open(os.path.join(ROOT, "lifeos/edge/oracle/install-close.sh")).read()
         script = script.replace("OPT=/opt/lifeos-close; ETC=/etc/lifeos-close; CREDS=/etc/credstore.encrypted; UNITS=/etc/systemd/system",
                                 'OPT=$SIM/opt; ETC=$SIM/etc; CREDS=$SIM/creds; UNITS=$SIM/units', 1)
+        self.service = FakeService(os.path.join(self.sim, "opt"))
+        self.addCleanup(self.service.close)
+        script = script.replace("LOCAL=47344;", f"LOCAL={self.service.port};", 1)
         script = script.replace('[ "$(id -u)" = 0 ] ||', "true ||", 1).replace('python3 -I "$REL"', 'bash "$REL"')
+        self.assertIn(f"LOCAL={self.service.port};", script)
         self.assertIn("OPT=$SIM/opt", script)
         self.script = os.path.join(app, "install-close.sh")
         open(self.script, "w").write(script)
@@ -69,7 +116,8 @@ class AutoReleaseRun(unittest.TestCase):
         for f in ("etc/policy.json", "creds/lifeos-close.notion", "creds/lifeos-close.link"):
             open(os.path.join(self.sim, f), "w").write("x")
         open(os.path.join(self.sim, "log"), "w").close()
-        self.env = {**os.environ, "SIM": self.sim, "PATH": bin_ + os.pathsep + os.environ["PATH"]}
+        self.env = {**os.environ, "SIM": self.sim, "PATH": bin_ + os.pathsep + os.environ["PATH"], "PORT": str(self.service.port),
+                    "REAL_REL": os.path.join(ROOT, "lifeos/edge/oracle/close_release.py")}
         self.main, self.bodies = None, {}
 
     def tearDown(self):
@@ -196,6 +244,53 @@ class AutoReleaseRun(unittest.TestCase):
         self.assertEqual((rc, self.at("current"), self.at("previous"), self.etc("auto.attempts")), (1, A[:12], P, [B, "1"]), out)
         self.assertIn("restored", out)
         self.assertIsNone(self.etc("auto.pending"))
+
+    def test_verify_sends_one_request_and_accepts_a_fixed_refusal_as_proof_the_service_answers(self):
+        rc, out = self.run_("verify")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("[PASS] one request gets a fixed answer", out)
+        self.assertEqual(len(self.service.requests), 1)
+        sent = self.service.requests[0]
+        self.assertTrue(sent.startswith(b"\r\n\r\n\x00\r\nQUIT\n\x21\x11\x00\x0c"))              # a PROXY v2 header first, as the real gate requires
+        self.assertIn(b"GET / HTTP/1.1", sent)
+
+    def test_verify_fails_when_the_service_answers_with_a_server_error_garbage_or_nothing(self):
+        for mode in ("server_error", "garbage", "silent"):
+            with self.subTest(mode=mode):
+                self.service.default = mode
+                rc, out = self.run_("verify")
+                self.assertEqual(rc, 1, out)
+                self.assertIn("[FAIL] one request gets a fixed answer", out)
+
+    def test_verify_fails_when_nothing_listens(self):
+        self.service.close()
+        rc, out = self.run_("verify")
+        self.assertEqual(rc, 1, out)
+        self.assertIn("[FAIL] one request gets a fixed answer", out)
+
+    def test_a_release_whose_tree_imports_but_fails_per_request_is_rolled_back(self):
+        """LIFE-604 item 5: every other check passes for this tree (the sim's manifest, ownership, socket, listener and Serve checks all pass); only the request fails."""
+        self.service.by_tree[B[:12]] = "server_error"
+        rc, out = self.run_("auto", HEAD=B, BODY="y lifeos/a.py")
+        self.assertEqual((rc, self.at("current"), self.at("previous")), (1, A[:12], P), out)
+        self.assertIn("failed verify; restored", out)
+        self.assertIn("[FAIL] one request gets a fixed answer", out)
+
+    def test_a_release_whose_tree_answers_is_kept(self):
+        rc, out = self.run_("auto", HEAD=B, BODY="y lifeos/a.py")
+        self.assertEqual((rc, self.at("current")), (0, B[:12]), out)
+
+    def test_the_stall_marker_is_written_after_the_decision_says_two_hours_and_not_before(self):
+        import time
+        wait_file = os.path.join(self.sim, "etc", "auto.waiting")
+        rc, out = self.run_("auto")                                                               # main not green: the wait starts
+        self.assertEqual((rc, self.etc("auto.stalled")), (0, None), out)
+        self.assertTrue(self.etc("auto.waiting"))
+        open(wait_file, "w").write(str(int(time.time()) - 7300))                                  # the wait is now older than two hours
+        rc, out = self.run_("auto")
+        self.assertEqual((rc, self.etc("auto.stalled")), (0, self.etc("auto.waiting")), out)
+        rc, out = self.run_("auto", HEAD=A, BODY="x lifeos/a.py")                                # green again: both markers go
+        self.assertEqual((self.etc("auto.waiting"), self.etc("auto.stalled")), (None, None), out)
 
     def test_a_release_cut_off_after_the_switch_is_proven_or_undone_whatever_main_is_now(self):
         self.tree(B[:12], B)
