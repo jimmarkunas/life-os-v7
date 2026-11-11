@@ -156,18 +156,20 @@ class Gate(unittest.TestCase):
 
 class TickSettings(unittest.TestCase):
     def test_none_outside_benchmark_mode(self):
-        self.assertIsNone(tick.benchmark_settings({}))
+        self.assertIsNone(bench.tick_settings(tick.concurrency_from_env({}), {}))
 
     def test_settings_name_the_switch_caps_snapshot_and_dry_mode(self):
         with tempfile.TemporaryDirectory() as tmp:
-            off = tick.benchmark_settings({"BENCH_SNAPSHOT": snapshot_file(tmp)})
-            on = tick.benchmark_settings({"BENCH_SNAPSHOT": snapshot_file(tmp), "TICK_CONCURRENCY": "on", "TICK_CAP_ATS": "8"})
+            env_off = {"BENCH_SNAPSHOT": snapshot_file(tmp)}
+            off = bench.tick_settings(tick.concurrency_from_env(env_off), env_off)
+            env_on = {"BENCH_SNAPSHOT": snapshot_file(tmp), "TICK_CONCURRENCY": "on", "TICK_CAP_ATS": "8"}
+            on = bench.tick_settings(tick.concurrency_from_env(env_on), env_on)
         self.assertEqual((off["TICK_CONCURRENCY"], off["mode"]), ("off", "dry (nothing is written)"))
         self.assertEqual((on["TICK_CONCURRENCY"], on["caps"]["ats"], on["frozen"]["US Remote/boards"]), ("on", 8, 3))
 
     def test_the_summary_is_one_line_of_settings_and_totals(self):
         settings = {"TICK_CONCURRENCY": "off", "frozen": {"US Remote/boards": 350}}
-        text = tick.benchmark_summary(settings, {"a": "ok", "b": "failed"}, {"a": 10.0, "b": 5.5}, 20.0)
+        text = bench.tick_summary(settings, {"a": "ok", "b": "failed"}, {"a": 10.0, "b": 5.5}, 20.0)
         self.assertIn("| off | 350 | 15.5 | 20.0 | b |", text)
 
     def test_a_live_benchmark_is_refused(self):

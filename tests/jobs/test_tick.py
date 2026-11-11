@@ -306,6 +306,77 @@ class SideBySide(unittest.TestCase):
             self.assertTrue(all("linkedin" in next(s for s in tick.PLAN if s.name == n).providers for n in pair))
 
 
+class OneCore(unittest.TestCase):
+    """LIFE-604 item 12: the sequential loop and the side-by-side runner share one rule for the budget, the limit and the skipped-stage line; both timeout mechanisms are kept."""
+    def run_quiet(self, plan, stages, **kw):
+        import io
+        from contextlib import redirect_stderr, redirect_stdout
+        out, timings = io.StringIO(), {}
+        with redirect_stdout(out), redirect_stderr(io.StringIO()):
+            result = tick.tick(False, plan=plan, stages=stages, timings=timings, **kw)
+        return result, out.getvalue(), timings
+
+    def test_a_skipped_bulk_stage_prints_its_line_and_its_zero_seconds_in_both_runners(self):
+        plan = (Step("b1", 20, bulk=True, group="B"), Step("b2", 20, bulk=True, group="B"))
+        stages = {"b1": lambda limit, live: 0, "b2": lambda limit, live: 0}
+        for name, kw in (("sequential", {}), ("side by side", {"concurrency": {"caps": {}, "parallel": 4}})):
+            with self.subTest(runner=name):
+                result, out, timings = self.run_quiet(plan, stages, budget=30, **kw)
+                self.assertEqual(result, {"b1": "skipped", "b2": "skipped"})
+                self.assertEqual(sorted(l for l in out.splitlines() if l.startswith("stage ")), ["stage b1: skipped 0.0s", "stage b2: skipped 0.0s"])
+                self.assertEqual(timings, {"b1": 0.0, "b2": 0.0})
+
+    def test_the_side_by_side_runner_computes_the_time_left_for_each_stage_when_it_starts_it(self):
+        import io
+        from contextlib import redirect_stdout
+        steps = [Step("b1", 20, bulk=True, group="B"), Step("b2", 20, bulk=True, group="B")]
+        left = iter([500, 10])                                                          # the run's time runs out between the two launches
+        outcome, timings = {}, {}
+        with redirect_stdout(io.StringIO()):
+            tick._run_group(steps, False, False, {"b1": lambda limit, live: 0, "b2": lambda limit, live: 0}, lambda: 0.0, lambda: next(left), {"caps": {}, "parallel": 4}, outcome, timings)
+        self.assertEqual(outcome, {"b1": "ok", "b2": "skipped"})
+
+    def test_the_allotment_rule_is_one_function_for_both_runners(self):
+        bulk, fast = Step("b", 100, 5, bulk=True), Step("f", 100, 7)
+        self.assertIsNone(tick._allot(bulk, 59, False))                                   # a bulk stage with under a minute left is skipped
+        self.assertEqual(tick._allot(bulk, 80, False), (80, 5))                           # cut to the run's remaining time
+        self.assertEqual(tick._allot(fast, 10, False), (tick.FAST_FLOOR_SECONDS, 7))      # a fast-path stage is never below its floor
+        self.assertEqual(tick._allot(Step("boards", 1080, 900, bulk=True), 2000, True), (1080, tick.QUICK_LIMITS["boards"]))
+
+    def test_a_stage_blocked_in_a_lock_wait_is_stopped_by_the_alarm_on_the_sequential_path(self):
+        import threading
+        import time
+        forever = threading.Event()
+        began = time.monotonic()
+        result, out, _ = self.run_quiet((Step("stuck", 1), Step("after", 20)), {"stuck": lambda limit, live: forever.wait(), "after": lambda limit, live: 0})
+        self.assertEqual(result, {"stuck": "timeout", "after": "ok"})
+        self.assertLess(time.monotonic() - began, 6)
+
+    def test_a_group_stage_blocked_where_the_thread_timer_cannot_reach_it_is_abandoned_and_named(self):
+        """A read blocked in the operating system ignores the thread timer's exception until it returns; the run must not wait for it."""
+        import threading
+        import time
+        forever = threading.Event()
+        self.addCleanup(forever.set)
+        began = time.monotonic()
+        with mock.patch.object(tick, "ABANDON_GRACE_SECONDS", 0.3):
+            result, out, timings = self.run_quiet((Step("stuck", 1, group="G"), Step("fine", 20, group="G")),
+                                                  {"stuck": lambda limit, live: forever.wait(), "fine": lambda limit, live: 0}, concurrency={"caps": {}, "parallel": 4})
+        self.assertEqual(result, {"stuck": "timeout", "fine": "ok"})
+        self.assertIn("stage abandoned: stuck", out)
+        self.assertLess(time.monotonic() - began, 6)                                         # not longest x (steps + 1) + 60 seconds
+        forever.set()                                                                        # the late return must not rewrite the result or print a second line
+        time.sleep(0.3)
+        self.assertEqual(result["stuck"], "timeout")
+
+    def test_fit_stays_out_of_every_group_because_it_reads_the_alarm_timer(self):
+        self.assertEqual({s.group for s in tick.PLAN if "fit" in s.name}, {""})                    # no Fit stage is in a group
+
+    def test_the_benchmark_code_is_not_in_the_production_entry_point(self):
+        for name in ("benchmark_settings", "benchmark_summary"):
+            self.assertFalse(hasattr(tick, name), name)
+
+
 class AtsSlots(unittest.TestCase):
     """LIFE-569: one global limit on board reads across the stages that read boards, so side by side never means more at once than a single stage's pool does today."""
     def test_reads_in_many_threads_never_exceed_the_slots_and_unset_means_no_extra_limit(self):

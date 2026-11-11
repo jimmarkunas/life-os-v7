@@ -120,14 +120,37 @@ def _stop_thread(thread, flag):
             ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_ulong(thread.ident), ctypes.py_object(StageTimeout))
 
 
-def _run_group(steps, live, quick, stages, clock, left, concurrency, outcome, timings):
+ABANDON_GRACE_SECONDS = 5             # LIFE-604: after a stage's own budget, a side-by-side stage gets this long to end before the run stops waiting for it
+
+
+def _allot(step, left, quick):
+    """LIFE-604: the ONE rule both runners use. -> (seconds the stage may run, its --limit), or None when a bulk stage has under a minute of the run left (it is skipped, and resumes next run).
+    A fast-path stage is never below FAST_FLOOR_SECONDS."""
+    if step.bulk and left < 60:
+        return None
+    allowed = max(1, int(min(step.budget, left))) if step.bulk else min(step.budget, max(FAST_FLOOR_SECONDS, int(left)))
+    return allowed, (QUICK_LIMITS.get(step.name, step.limit) if quick else step.limit)
+
+
+def _report(step, label, seconds, outcome, timings, lock=None):
+    """LIFE-604: one stage's result in one place: the outcome, the seconds and the `stage <name>: <outcome> <seconds>s` line (LIFE-569). Every stage prints exactly one, skipped ones included."""
+    with lock or threading.Lock():
+        outcome[step.name] = label
+        timings[step.name] = seconds
+        print(f"stage {step.name}: {label} {seconds:.1f}s", flush=True)
+
+
+def _run_group(steps, live, quick, stages, clock, remaining, concurrency, outcome, timings):
     """LIFE-569: run consecutive independent steps side by side as threads of this process (one store tunnel: lifeos/platform/db.py opens it once per process). Each keeps its own budget, its own
     outcome and its own `stage ...` line; a stage that fails or times out is that stage's red entry and the others finish and save. Services are capped (concurrency["caps"]); a stage waits for its
-    services' slots before its budget starts. Fills `outcome` and `timings` exactly like the sequential loop."""
+    services' slots before its budget starts. Fills `outcome` and `timings` exactly like the sequential loop. `remaining()` is the run's time left, asked once per stage as it is started.
+    Timeouts here are a timer thread that raises StageTimeout inside the stage's thread (the alarm signal only reaches the main thread); a read blocked in the operating system ignores that until it
+    returns, so the run stops waiting for such a stage after its budget plus ABANDON_GRACE_SECONDS and names it (`stage abandoned: <name>`)."""
     caps = concurrency["caps"]
     slots = {name: threading.BoundedSemaphore(caps[name]) for name in caps if name != "ats"}      # "ats" is capped inside the reader, per read
     parallel = threading.BoundedSemaphore(concurrency["parallel"])
-    shared = threading.Lock()
+    shared = threading.RLock()                                                          # re-entrant: the check for "abandoned" and the report are one step
+    abandoned = set()
     threads = []
 
     def work(step, allowed, limit):
@@ -161,36 +184,33 @@ def _run_group(steps, live, quick, stages, clock, left, concurrency, outcome, ti
         finally:
             for name in held:
                 slots[name].release()
-            seconds = clock() - began
             with shared:
-                outcome[step.name] = label or "failed"
-                timings[step.name] = seconds
-                print(f"stage {step.name}: {outcome[step.name]} {seconds:.1f}s", flush=True)
+                if step.name not in abandoned:                                         # the run stopped waiting and already reported it: a late return changes nothing
+                    _report(step, label or "failed", clock() - began, outcome, timings, shared)
 
-    longest = 0
     for step in steps:
-        if step.bulk and left < 60:
-            outcome[step.name] = "skipped"                                              # no time left for bulk work this run
-            print(f"stage {step.name}: skipped 0.0s", flush=True)
-            timings[step.name] = 0.0
+        plan_for = _allot(step, remaining(), quick)
+        if plan_for is None:
+            _report(step, "skipped", 0.0, outcome, timings, shared)
             continue
-        allowed = max(1, int(min(step.budget, left))) if step.bulk else min(step.budget, max(FAST_FLOOR_SECONDS, int(left)))
-        limit = QUICK_LIMITS.get(step.name, step.limit) if quick else step.limit
-        longest = max(longest, allowed)
+        allowed, limit = plan_for
         thread = threading.Thread(target=work, args=(step, allowed, limit), name=f"tick-{step.name}", daemon=True)
         thread.start()
-        threads.append((step, thread))
-    deadline = clock() + longest * (len(steps) + 1) + 60                                   # an outer bound only: every stage has its own timer
-    for step, thread in threads:
-        thread.join(max(deadline - clock(), 0))
+        threads.append((step, thread, allowed, time.monotonic() + allowed + ABANDON_GRACE_SECONDS))      # a stage's own bound: its budget, one grace, from the moment it started
+    for step, thread, allowed, stop_waiting in threads:                                  # every stage has its own timer; this is only the bound for one that cannot hear it
+        thread.join(max(stop_waiting - time.monotonic(), 0))
         if thread.is_alive():
             with shared:
-                outcome.setdefault(step.name, "timeout")
+                if step.name not in outcome:
+                    abandoned.add(step.name)
+                    _report(step, "timeout", float(allowed), outcome, timings, shared)
+                    print(f"stage abandoned: {step.name}", flush=True)
 
 
 def tick(live, quick=False, plan=PLAN, stages=None, clock=time.monotonic, budget=RUN_BUDGET_SECONDS, timings=None, concurrency=None):
     """-> {stage: ok | failed | timeout | skipped}. `stages` (name -> callable(limit, live)) replaces lifeos.run in tests. LIFE-569: each stage prints one `stage <name>: <outcome> <seconds>s` line as
-    it ends, and `timings` (when given) collects {stage: seconds}. `concurrency` (from concurrency_from_env; None = off) runs each run of consecutive steps that share a `group` side by side."""
+    it ends, and `timings` (when given) collects {stage: seconds}. `concurrency` (from concurrency_from_env; None = off) runs each run of consecutive steps that share a `group` side by side.
+    LIFE-604: both runners use `_allot` and `_report`; the sequential one stops a stage with the alarm signal, the side-by-side one with a timer thread (see `_run_group`)."""
     started, outcome = clock(), {}
     timings = {} if timings is None else timings
     previous = signal.signal(signal.SIGALRM, _alarm)
@@ -205,58 +225,31 @@ def tick(live, quick=False, plan=PLAN, stages=None, clock=time.monotonic, budget
                         break
                     run_of.append(candidate)
                 if len(run_of) > 1:
-                    _run_group(run_of, live, quick, stages, clock, budget - (clock() - started), concurrency, outcome, timings)
+                    _run_group(run_of, live, quick, stages, clock, lambda: budget - (clock() - started), concurrency, outcome, timings)
                     position += len(run_of)
                     continue
             position += 1
-            left = budget - (clock() - started)
-            if step.bulk and left < 60:
-                outcome[step.name] = "skipped"                                      # no time left for bulk work this run; it resumes next run
+            plan_for = _allot(step, budget - (clock() - started), quick)
+            if plan_for is None:
+                _report(step, "skipped", 0.0, outcome, timings)                      # no time left for bulk work this run; it resumes next run
                 continue
-            allowed = max(1, int(min(step.budget, left))) if step.bulk else min(step.budget, max(FAST_FLOOR_SECONDS, int(left)))   # bounded run; a fast-path stage keeps its floor
-            limit = QUICK_LIMITS.get(step.name, step.limit) if quick else step.limit
+            allowed, limit = plan_for
             signal.alarm(allowed)
             stage_started = clock()
+            label = "failed"
             try:
-                outcome[step.name] = _run_step(step, live, limit, stages)
+                label = _run_step(step, live, limit, stages)
             except StageTimeout:
-                outcome[step.name] = "timeout"
+                label = "timeout"
                 print(f"{step.name.upper()} FAILED: STAGE_TIMEOUT_{allowed}S", file=sys.stderr)
             except Exception as error:                                              # noqa: BLE001 - one stage never stops the next; the code is fixed
-                outcome[step.name] = "failed"
                 print(f"{step.name.upper()} FAILED: {type(error).__name__}", file=sys.stderr)
             finally:
                 signal.alarm(0)
-                seconds = clock() - stage_started
-                if timings is not None:
-                    timings[step.name] = seconds
-                print(f"stage {step.name}: {outcome.get(step.name, 'failed')} {seconds:.1f}s", flush=True)           # LIFE-569: one line per stage, name, outcome and seconds
+                _report(step, label, clock() - stage_started, outcome, timings)
     finally:
         signal.signal(signal.SIGALRM, previous)
     return {step.name: outcome[step.name] for step in plan if step.name in outcome}      # plan order, whatever order the side-by-side stages finished in
-
-
-def benchmark_settings(environ=None):
-    """LIFE-577 -> None outside benchmark mode, else the one-line settings in force: concurrency switch, caps, parallel limit, the frozen snapshot and its sizes."""
-    environ = os.environ if environ is None else environ
-    path = (environ.get("BENCH_SNAPSHOT") or "").strip()
-    if not path:
-        return None
-    from lifeos.platform import bench                                                   # noqa: PLC0415
-    with open(path) as handle:
-        lanes = json.load(handle)["lanes"]
-    concurrency = concurrency_from_env(environ)
-    return {"TICK_CONCURRENCY": "on" if concurrency else "off", "caps": concurrency["caps"] if concurrency else "n/a (sequential)",
-            "parallel": concurrency["parallel"] if concurrency else 1, "snapshot": path, "frozen": {key: len(ids) for key, ids in sorted(lanes.items())}, "mode": "dry (nothing is written)"}
-
-
-def benchmark_summary(settings, outcome, timings, total):
-    """LIFE-577: the one-line table for the run summary page: settings in force, the sum of stage seconds and the Jobs tick wall time. The per-stage table follows it."""
-    spent = sum(timings.get(name, 0.0) for name in outcome)
-    failed = [name for name, result in outcome.items() if result in ("failed", "timeout")]
-    return ("### Benchmark\n\n| TICK_CONCURRENCY | Frozen boards | Sum of stage seconds | Jobs tick wall seconds | Stages failed |\n|---|---:|---:|---:|---|\n"
-            f"| {settings['TICK_CONCURRENCY']} | {settings['frozen'].get('US Remote/boards', 0)} | {spent:.1f} | {total:.1f} | {', '.join(failed) or 'none'} |\n\n"
-            f"Settings in force: `{json.dumps(settings, sort_keys=True)}`\n\n")
 
 
 def summary_table(outcome, timings, total):
@@ -275,14 +268,15 @@ def main(argv=None):
     parser.add_argument("--quick", action="store_true", help="small caps for a manual end-to-end proof (D206)")
     args = parser.parse_args(argv)
     sys.stdout.reconfigure(line_buffering=True)                                     # each stage's counts line reaches the log when it is printed, not at exit
-    settings = benchmark_settings()
+    from lifeos.platform import bench                                                # noqa: PLC0415 - LIFE-604: all benchmark logic lives there; this file only calls it
+    concurrency = concurrency_from_env()
+    settings = bench.tick_settings(concurrency)
     if settings:                                                                     # LIFE-577: benchmark mode is always a dry run, and says what is in force before any stage starts
         if args.live:
             print("tick: BENCHMARK_REFUSED_LIVE", file=sys.stderr)
             return 2
         print("benchmark: settings in force:", json.dumps(settings, sort_keys=True), flush=True)
     timings, begun = {}, time.monotonic()
-    concurrency = concurrency_from_env()
     if concurrency:                                                                    # LIFE-569: TICK_CONCURRENCY=on only; the global limit on board reads is set before any stage runs
         from lifeos.platform import read_slots                                         # noqa: PLC0415
         read_slots.configure("ats", concurrency["caps"]["ats"])
@@ -291,13 +285,13 @@ def main(argv=None):
     print("tick:", json.dumps(outcome, sort_keys=True))
     wall = time.monotonic() - begun
     if settings:
-        print(f"benchmark: sum of stage seconds {sum(timings.get(n, 0.0) for n in outcome):.1f}, Jobs tick wall seconds {wall:.1f}", flush=True)
+        print(bench.tick_totals(outcome, timings, wall), flush=True)
     path = os.environ.get("GITHUB_STEP_SUMMARY")
     if path:                                                                         # LIFE-569: a short table in the finish job summary
         try:
             with open(path, "a") as handle:
                 if settings:
-                    handle.write(benchmark_summary(settings, outcome, timings, wall))
+                    handle.write(bench.tick_summary(settings, outcome, timings, wall))
                 handle.write(summary_table(outcome, timings, wall))
         except OSError:
             pass
