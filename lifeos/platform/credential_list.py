@@ -389,6 +389,8 @@ CONFIG = {'provided': {'prefixes': ['GITHUB_', 'RUNNER_'], 'names': ['CI', 'PATH
            {'name': 'AMAZON_SYNC_OUTCOME', 'kind': 'input', 'owner': 'amazon', 'purpose': 'Outcome code a sync step hands to the next step (amazon)'},
            {'name': 'ATTENTION_CARD_BLOCK_ID', 'kind': 'input', 'owner': 'attention', 'purpose': 'Notion block id of the attention card on the Daily Report page'},
            {'name': 'ATTENTION_SYNC_OUTCOME', 'kind': 'input', 'owner': 'attention', 'purpose': 'Outcome code a sync step hands to the next step (attention)'},
+           {'name': 'BENCH_SNAPSHOT', 'kind': 'input', 'owner': 'workflow', 'purpose': 'Path of the frozen benchmark input (LIFE-577); set only by a benchmark dispatch, empty on every other run'},
+           {'name': 'BENCH_STARTED', 'kind': 'input', 'owner': 'workflow', 'purpose': 'Start time of the benchmark run, UTC, for the overlap check (LIFE-577); the run record is read when it is unset'},
            {'name': 'BILLS_CARD_BLOCK_ID', 'kind': 'input', 'owner': 'bills', 'purpose': 'Notion block id of the bills card on the Daily Report page'},
            {'name': 'BOARDS_BACKFILL', 'kind': 'flag', 'owner': 'workflow', 'purpose': 'Manual switch: backfill the board list'},
            {'name': 'BOARD_COMPANY', 'kind': 'input', 'owner': 'sources', 'purpose': 'Company a single manual board check is limited to'},
