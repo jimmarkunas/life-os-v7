@@ -121,9 +121,9 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("completed", domains[True]["workflow_run"]["types"])
         self.assertIn("!= 'cancelled'", domains["jobs"]["agenda"]["if"])               # a tick the gate cancelled starts nothing
         self.assertIn("display_title == 'tick'", domains["jobs"]["agenda"]["if"])      # nor does a manual hourly run
-        self.assertEqual(domains["jobs"]["agenda"]["needs"], "jira")                   # both write the Daily Report page: never at once
+        self.assertEqual(domains["jobs"]["agenda"]["needs"], ["jira", "bench_gate"])                   # both write the Daily Report page: never at once
         self.assertIn("always()", domains["jobs"]["agenda"]["if"])                     # but a failed Jira job does not stop the Calendar card
-        self.assertEqual(set(domains["jobs"]["imessage"]["needs"]), {"jira", "agenda", "bills", "amazon", "attention"})   # its cards prove these regions unchanged: never beside their writers
+        self.assertEqual(set(domains["jobs"]["imessage"]["needs"]), {"jira", "agenda", "bills", "amazon", "attention", "bench_gate"})   # its cards prove these regions unchanged: never beside their writers
         self.assertIn("always()", domains["jobs"]["imessage"]["if"])                   # a failed writer never stops the alerts
 
     def test_bills_paid_runs_on_a_tick_before_the_snapshot_and_follows_the_live_flag(self):
@@ -334,11 +334,11 @@ class AmazonRetentionOffTheChainTests(unittest.TestCase):
 
     def test_retention_is_its_own_job_that_starts_after_the_amazon_job_and_nothing_waits_for_it_but_the_report(self):
         retention = self.jobs["amazon_retention"]
-        self.assertEqual(retention["needs"], ["amazon"])
+        self.assertEqual(retention["needs"], ["amazon", "bench_gate"])
         self.assertEqual(retention["timeout-minutes"], 15)
         self.assertEqual(retention["if"], self.jobs["amazon"]["if"])                      # runs for exactly the same triggers as the amazon job
         waiting = sorted(name for name, job in self.jobs.items() if "amazon_retention" in (job.get("needs") or []))
-        self.assertEqual(waiting, ["report"])                                            # no page writer waits for it
+        self.assertEqual(waiting, ["bench_report", "report"])                            # no page writer waits for it (the benchmark summary job and the failure-push job only watch)
 
     def test_the_amazon_job_no_longer_runs_retention_and_the_command_is_unchanged_in_the_new_job(self):
         self.assertNotIn("aretain", [s.get("id") for s in self.jobs["amazon"]["steps"]])
@@ -525,6 +525,7 @@ DB = {"LIFEOS_ACQ_DB_NAME", "LIFEOS_ACQ_DB_PASSWORD", "LIFEOS_ACQ_DB_USER", "LIF
 DOMAIN_SECRETS = {         # the only secrets each domain job may see; adding one here is a conscious decision
     "granola": DB | {"LIFEOS_ACQ_SSH_PORT", "NOTION_INTERVIEW_TOKEN", "HIRING_PIPELINE_PAGE_ID", "IMESSAGE_ALERTS_HOST", "NOTION_JOB_LEDGER_DATA_SOURCE_ID"},   # LIFE-360: the readers take opportunities from Ledger rows first;   # LIFE-122: the automatic Granola bridge; the Tailscale OAuth pair goes only to the pinned join action (see TAILSCALE_WITH)
     "report": {"NTFY_TOPIC"},   # the failure-push job: the phone topic and nothing else
+    "bench_gate": set(), "bench_report": set(),   # LIFE-577: the benchmark gate and summary jobs hold no secret (the run's own token only)
     "imessage": DB | {"LIFEOS_ACQ_SSH_PORT", "NTFY_TOPIC", "IMESSAGE_ALERTS_HOST", "NOTION_JIRA_TOKEN", "AMAZON_CARD_BLOCK_ID", "ATTENTION_CARD_BLOCK_ID",
                   "BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID"},   # LIFE-34 Communications card (Notion writer + region anchors). LIFE-31: the Tailscale OAuth pair goes only to the pinned join action (see TAILSCALE_WITH)
     "jira": DB | {"JIRA_API_TOKEN", "JIRA_BASE_URL", "JIRA_BOARDS", "JIRA_CARD_BLOCK_ID", "JIRA_CARD_PROJECTS", "JIRA_EMAIL",
@@ -600,7 +601,7 @@ class DomainsWorkflowTests(unittest.TestCase):
         self.assertIn("inputs.calendar_sync", job["if"])
         steps = {s.get("id"): s for s in job["steps"]}
         self.assertEqual(steps["calsync"]["env"]["CALENDAR_ALLOW_MASS_DELETE"], "${{ inputs.allow_mass_delete && 'true' || '' }}")      # a tick (no inputs) is always ''
-        self.assertEqual(steps["outnews"]["if"], "${{ !inputs.calendar_sync || inputs.all }}")                         # a calendar-only run never files newsletters
+        self.assertEqual(steps["outnews"]["if"], "${{ !inputs.calendar_sync || (inputs.all || inputs.benchmark) }}")                         # a calendar-only run never files newsletters
         for name, other in self.doc["jobs"].items():
             if name != "outlook":
                 self.assertNotIn("CALENDAR_ALLOW_MASS_DELETE", str(other))
@@ -615,14 +616,14 @@ class DomainsWorkflowTests(unittest.TestCase):
 
     def test_a_failing_domain_step_is_a_warning_never_a_failed_run(self):
         for name, job in self.doc["jobs"].items():
-            if name == "report":                                                                                   # the failure-push job (see the next test) is the alarm, not a domain stage
+            if name in ("report", "bench_gate", "bench_report"):                                                   # the failure-push job (see the next test) is the alarm, not a domain stage; the benchmark jobs (LIFE-577) only check and summarise
                 continue
             work = [s for s in job["steps"] if s.get("id") and not str(s.get("uses", "")).startswith("bitwarden/")]   # the Bitwarden loader is deliberately fail-closed: a failed load fails the job before its command
             self.assertTrue(work and all(s.get("continue-on-error") for s in work), name)
 
     def test_the_report_job_pushes_the_phone_only_for_a_failed_tick_triggered_run_and_writes_nothing(self):
         job = self.doc["jobs"]["report"]
-        self.assertEqual(set(job["needs"]), set(self.doc["jobs"]) - {"report"})                                    # it watches every domain job
+        self.assertEqual(set(job["needs"]), set(self.doc["jobs"]) - {"report", "bench_report", "bench_gate"})                                    # it watches every domain job
         condition = job["if"]
         for part in ("always()", "github.event_name == 'workflow_run'", "display_title == 'tick'", "contains(needs.*.result, 'failure')"):
             self.assertIn(part, condition)
@@ -699,7 +700,7 @@ CONSUMERS = {
         jobs={"jira": DB | JUMP | TS | {"JIRA_API_TOKEN", "JIRA_EMAIL", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"}, "outlook": DB | JUMP | TS | {"GCAL_SERVICE_ACCOUNT_JSON", "NTFY_TOPIC"}, "bills": DB | JUMP | TS | {"NOTION_BILLS_TOKEN", "NOTION_JIRA_TOKEN"}, "agenda": DB | JUMP | TS | {"GCAL_SERVICE_ACCOUNT_JSON", "NOTION_JIRA_TOKEN"}, "amazon": {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_AMAZON_TOKEN", "NOTION_JIRA_TOKEN"}, "amazon_retention": {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_AMAZON_TOKEN"}, "mail": DB | JUMP | TS | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"}, "hiring": DB | JUMP | TS | {"GCAL_SERVICE_ACCOUNT_JSON", "NOTION_API_TOKEN", "NOTION_INTERVIEW_TOKEN", "NOTION_JIRA_TOKEN"}, "attention": DB | JUMP | TS | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"}, "megibow": DB | JUMP | TS | {"GCAL_SERVICE_ACCOUNT_JSON", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"}, "recruiters": DB | JUMP | TS | {"GCAL_SERVICE_ACCOUNT_JSON", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_API_TOKEN", "NOTION_INTERVIEW_TOKEN", "NOTION_JIRA_TOKEN", "NOTION_RECRUITERS_TOKEN"}, "dcc": {"DCC_CARD_BLOCK_ID", "NOTION_JIRA_TOKEN"}, "report": {"NTFY_TOPIC"}, "imessage": DB | JUMP | TS | {"NTFY_TOPIC", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST", "NOTION_JIRA_TOKEN"}, "granola": DB | JUMP | TS | {"NOTION_INTERVIEW_TOKEN", "IMESSAGE_ALERTS_HOST"}},
         direct=['AMAZON_CARD_BLOCK_ID', 'ATTENTION_CARD_BLOCK_ID', 'BILLS_CARD_BLOCK_ID', 'CALENDAR_CARD_BLOCK_ID', 'GCAL_CALENDAR_ID', 'GMAIL_OAUTH_CLIENT_ID', 'HIRING_CARD_BLOCK_ID', 'HIRING_PIPELINE_PAGE_ID', 'HIRING_STATUS_BLOCK_ID', 'HIRING_TABLE_BLOCK_ID', 'JIRA_BASE_URL', 'JIRA_BOARDS', 'JIRA_CARD_BLOCK_ID', 'JIRA_CARD_PROJECTS', 'JIRA_GTV_CONTEXT_URL', 'JIRA_GTV_EPIC', 'JIRA_SITE_URL', 'LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'LIFEOS_NOTION_IDS', 'MAIL_ALERTS_CARD_BLOCK_ID', 'MEGIBOW_BLOCK_ID', 'MEGIBOW_EXCLUDED_DOMAINS', 'MEGIBOW_REVIEW_DB_ID', 'NOTION_AMAZON_DATA_SOURCE_ID', 'NOTION_BILLS_DATA_SOURCE_ID', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID', 'NOTION_RECRUITERS_DATA_SOURCE_ID', 'OUTLOOK_CLIENT_ID', 'V7_CLOSE_BASE_URL'],
         on=['workflow_dispatch', 'workflow_run'], crons=[], perms={'contents': 'read'}, conc={'group': "${{ (github.event_name == 'workflow_dispatch' && (inputs.refresh == 'hiring' || inputs.refresh == 'recruiters')) && 'life-os-v7-domains' || github.event_name != 'workflow_run' && 'life-os-v7-domains-manual' || ((github.event.workflow_run.conclusion == 'cancelled' || github.event.workflow_run.display_title != 'tick') && 'life-os-v7-domains-idle' || 'life-os-v7-domains') }}", 'cancel-in-progress': False},   # a run that will skip every job must not share the group that holds the one waiting real run
-        timeouts={'jira': 15, 'outlook': 10, 'bills': 15, 'agenda': 15, 'amazon': 15, 'amazon_retention': 15, 'mail': 10, 'hiring': 15, 'attention': 15, 'megibow': 20, 'dcc': 10, 'recruiters': 30, 'imessage': 10, 'granola': 20, 'report': 5}, digest="0d59fbf24be72b66"),   # JFM-221 added the jm-dashboard command to the jira job; LIFE-20 added the recruiter-outreach command (the Daily Report's Recruiter Outreach table, after the Recruiters stage); LIFE-88 added the Interview OS stage command to the recruiters job (where the mail credentials are), and a live run showed the job's two mail reads plus the Notion writes need 30 minutes, not 20; LIFE-10 added the job-page-outreach command; D222 (withdrawn Oct 20 2026) removed the job-outreach and installer commands; LIFE-31 added the imessage-alerts stage command, its warning and the report job's imessage entry; LIFE-34 the imessage-comms command and its warning; the Oracle Cloud card (Oct 15 2026) the oracle-card command and its warning; LIFE-77 D228 the AI Capacity card step
+        timeouts={'bench_gate': 5, 'bench_report': 5, 'jira': 15, 'outlook': 10, 'bills': 15, 'agenda': 15, 'amazon': 15, 'amazon_retention': 15, 'mail': 10, 'hiring': 15, 'attention': 15, 'megibow': 20, 'dcc': 10, 'recruiters': 30, 'imessage': 10, 'granola': 20, 'report': 5}, digest="b4c2f7109eabbae9"),   # JFM-221 added the jm-dashboard command to the jira job; LIFE-20 added the recruiter-outreach command (the Daily Report's Recruiter Outreach table, after the Recruiters stage); LIFE-88 added the Interview OS stage command to the recruiters job (where the mail credentials are), and a live run showed the job's two mail reads plus the Notion writes need 30 minutes, not 20; LIFE-10 added the job-page-outreach command; D222 (withdrawn Oct 20 2026) removed the job-outreach and installer commands; LIFE-31 added the imessage-alerts stage command, its warning and the report job's imessage entry; LIFE-34 the imessage-comms command and its warning; the Oracle Cloud card (Oct 15 2026) the oracle-card command and its warning; LIFE-77 D228 the AI Capacity card step
     "hourly": dict(
         jobs={"prep": DB | JUMP | TS | HRL, "jobright": DB | JUMP | TS | HRL, "linkedin": DB | JUMP | TS | HRL, "lensa": DB | JUMP | TS | HRL, "finish": DB | JUMP | TS | HRL | {"NTFY_TOPIC", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"}, "interview": {"NOTION_INTERVIEW_TOKEN"}, "report": {"NTFY_TOPIC"}},
         direct=['GMAIL_OAUTH_CLIENT_ID', 'HIRING_PIPELINE_PAGE_ID', 'INTERVIEW_ACCEPTANCE_JSON', 'INTERVIEW_ACCEPTANCE_NEGATIVE_JSON', 'LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'LIFEOS_NOTION_IDS', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID', 'V7_CLOSE_BASE_URL', 'V7_CLOUD_FIT_PROFILE_REF'],   # LIFE-41: the shadow's brief reference, masked (a variable is not)

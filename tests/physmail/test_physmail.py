@@ -448,7 +448,7 @@ class RuntimePathTests(unittest.TestCase):
         root = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows"
         domains = yaml.safe_load((root / "domains.yml").read_text())
         job = domains["jobs"]["mail"]
-        self.assertEqual(set(job["needs"]), {"jira", "agenda", "bills", "amazon", "attention"})      # the card proves the other regions unchanged, so it runs after their writers
+        self.assertEqual(set(job["needs"]), {"jira", "agenda", "bills", "amazon", "attention", "bench_gate"})      # the card proves the other regions unchanged, so it runs after their writers
         ingest, card_step = [s for s in job["steps"] if s.get("id") in ("mail", "mcard")]
         self.assertTrue(ingest["run"].startswith("python -m lifeos.run mail-alerts"))
         self.assertTrue(card_step["run"].startswith("python -m lifeos.run mail-card"))
