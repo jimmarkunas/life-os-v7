@@ -31,7 +31,7 @@ class Step:
     limit: int = 40                   # its --limit (the same caps the separate workflow steps used)
     bulk: bool = False                # bulk discovery: runs after the fast path, only while the run's time lasts
     module: str = ""                  # a module whose main(argv) is the stage (finalize); otherwise a lifeos.run stage
-    group: str = ""                   # LIFE-569: consecutive steps with the same group run side by side (threads of this one process) when TICK_CONCURRENCY=on; otherwise in order as always
+    group: str = ""                   # LIFE-569: consecutive steps with the same group run side by side (threads of this one process) (the caps below keep each outside service at its own limit)
     providers: tuple = ()             # LIFE-569: the outside services it calls; each has a cap (TICK_CAP_*), so no service sees more at once than today. "ats" is capped inside the reader
 
 
@@ -99,12 +99,10 @@ def _small_int(raw, default, low=1, high=16):
 
 
 def concurrency_from_env(environ=None):
-    """LIFE-569 -> None (off: stages run in order, exactly as before) or {"caps": {provider: n}, "parallel": n}. Only TICK_CONCURRENCY=on turns it on; a cap that is not a whole number from 1 to 16
-    falls back to its safe default, so a typo can never raise a cap. A cap of 1 reproduces today's behaviour for that service; "ats" is the one global limit on board reads across boards, web and
-    web-scale-up (default: the same 8 workers a single stage uses today)."""
+    """LIFE-569, always on since LIFE-604 -> {"caps": {provider: n}, "parallel": n}. The on/off switch is gone: stages of a group always run side by side. A cap that is not a whole number
+    from 1 to 16 falls back to its safe default, so a typo can never raise a cap. A cap of 1 reproduces the one-at-a-time behaviour for that service; "ats" is the one global limit on board reads across
+    boards, web and web-scale-up (default: the same 8 workers a single stage uses today)."""
     environ = os.environ if environ is None else environ
-    if (environ.get("TICK_CONCURRENCY") or "off").strip().lower() != "on":
-        return None
     from lifeos.platform import limits                                                 # noqa: PLC0415
     return {"caps": {"linkedin": _small_int(environ.get("TICK_CAP_LINKEDIN"), CAP_DEFAULTS["linkedin"]), "tinyfish": _small_int(environ.get("TICK_CAP_TINYFISH"), CAP_DEFAULTS["tinyfish"]),
                      "jobright": _small_int(environ.get("TICK_CAP_JOBRIGHT"), CAP_DEFAULTS["jobright"]), "dice": _small_int(environ.get("TICK_CAP_DICE"), CAP_DEFAULTS["dice"]),
@@ -277,7 +275,7 @@ def main(argv=None):
             return 2
         print("benchmark: settings in force:", json.dumps(settings, sort_keys=True), flush=True)
     timings, begun = {}, time.monotonic()
-    if concurrency:                                                                    # LIFE-569: TICK_CONCURRENCY=on only; the global limit on board reads is set before any stage runs
+    if concurrency:                                                                    # LIFE-569: the global limit on board reads is set before any stage runs
         from lifeos.platform import read_slots                                         # noqa: PLC0415
         read_slots.configure("ats", concurrency["caps"]["ats"])
         print("tick: concurrency on, caps", json.dumps(concurrency["caps"], sort_keys=True), "parallel", concurrency["parallel"], flush=True)
