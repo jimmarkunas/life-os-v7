@@ -373,3 +373,52 @@ class StoredJobPutRight(unittest.TestCase):
         self.assertIn("IF(status='EXCLUDED_FIT' AND unresolved_reason='lane_exclude', 'READY', status)", update)
         self.assertIn("notion_page_id IS NULL", update)
         self.assertTrue(any(s.startswith("DELETE FROM v7_job_fit") for s in statements))
+
+
+class BoardTimeLimit(unittest.TestCase):
+    """LIFE-567: one board that never answers fails at its own limit; the other boards in the same run still finish and commit."""
+    THREE = SOURCES + [{"id": "s3", "company": "S3", "kind": "greenhouse", "slug": "s3"}]
+
+    def test_a_hung_board_is_failed_and_the_others_commit(self):
+        import threading
+        release, repo = threading.Event(), MemRepo()
+        empty = lister.Listing(lister.COMPLETE, [])
+
+        def lister_fn(source):
+            if source["id"] == "s2":
+                release.wait(10)                                                 # never answers within the limit
+            return empty
+        try:
+            got = run.run(10, True, NOW, lister_fn, repo, self.THREE, board_seconds=0.2)
+        finally:
+            release.set()
+        self.assertEqual((got["complete"], got["failed"], got["failed_why"], got["failed_ids"]), (2, 1, {"board_timeout": 1}, ["s2"]))
+        self.assertEqual({o.source["id"] for o, _ in repo.commits}, {"s1", "s2", "s3"})
+        self.assertGreater(repo.state["s2"]["failures"], 0)                    # retried on the normal schedule
+
+    def test_a_reader_error_still_surfaces(self):
+        def lister_fn(source):
+            raise RuntimeError("boom")
+        with self.assertRaises(RuntimeError):
+            run.run(10, True, NOW, lister_fn, MemRepo(), SOURCES, board_seconds=1)
+
+    def test_a_stage_timeout_names_the_board_it_was_waiting_for(self):
+        import io
+        from contextlib import redirect_stderr
+
+        class Stop(BaseException):
+            pass
+
+        def lister_fn(source):
+            if source["id"] == "s2":
+                raise Stop()
+            return lister.Listing(lister.COMPLETE, [])
+        err = io.StringIO()
+        with redirect_stderr(err), self.assertRaises(BaseException):
+            run.run(10, True, NOW, lister_fn, MemRepo(), SOURCES, board_seconds=1)
+        self.assertIn("web: stopped while waiting for board s2", err.getvalue())
+
+    def test_the_limit_is_thirty_seconds_and_below_the_stage_budget(self):
+        from lifeos.jobs import tick
+        self.assertEqual(limits.WEB_BOARD_SECONDS, 30)
+        self.assertLess(limits.WEB_BOARD_SECONDS, next(s for s in tick.PLAN if s.name == "web").budget)
