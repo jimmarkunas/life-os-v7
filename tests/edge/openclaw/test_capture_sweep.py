@@ -38,13 +38,15 @@ class Sandbox(unittest.TestCase):
             os.utime(path, (self.old, self.old))
         return path
 
-    def process(self, pid, environ="", cwd="/", maps="", fds=()):
+    def process(self, pid, environ="", cwd="/", maps="", fds=(), comm="node"):
         d = os.path.join(self.proc, str(pid))
         os.makedirs(os.path.join(d, "fd"))
         with open(os.path.join(d, "environ"), "wb") as f:
             f.write(environ.replace("\n", "\0").encode())
         with open(os.path.join(d, "maps"), "w") as f:
             f.write(maps)
+        with open(os.path.join(d, "comm"), "w") as f:
+            f.write(comm + "\n")
         os.symlink(cwd, os.path.join(d, "cwd"))
         for i, target in enumerate(fds):
             os.symlink(target, os.path.join(d, "fd", str(i)))
@@ -143,6 +145,24 @@ class Unknown(Sandbox):
         self.addCleanup(os.chmod, os.path.join(d, "environ"), 0o644)
         if os.access(os.path.join(d, "maps"), os.R_OK):
             self.skipTest("running as a user that ignores file modes")
+        code, _, _ = run("--delete", "--root", self.root, "--proc", self.proc)
+        self.assertEqual((code, self.names()), (2, [DEAD]))
+
+    def test_an_unreadable_system_process_is_tolerated_but_an_unreadable_node_is_not(self):
+        self.folder(DEAD)
+        self.process(10)
+        d = self.process(11, comm="systemd")
+        os.chmod(os.path.join(d, "maps"), 0)
+        os.chmod(os.path.join(d, "environ"), 0)
+        self.addCleanup(os.chmod, os.path.join(d, "maps"), 0o644)
+        self.addCleanup(os.chmod, os.path.join(d, "environ"), 0o644)
+        if os.access(os.path.join(d, "maps"), os.R_OK):
+            self.skipTest("running as a user that ignores file modes")
+        code, _, _ = run("--delete", "--root", self.root, "--proc", self.proc)
+        self.assertEqual((code, self.names()), (0, []))
+        self.folder(DEAD)
+        with open(os.path.join(d, "comm"), "w") as f:
+            f.write("node\n")
         code, _, _ = run("--delete", "--root", self.root, "--proc", self.proc)
         self.assertEqual((code, self.names()), (2, [DEAD]))
 
