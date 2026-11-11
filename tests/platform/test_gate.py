@@ -35,6 +35,21 @@ class Gate(unittest.TestCase):
     def test_cancelled_runs_and_itself_do_not_count(self):
         self.assertEqual(gate.decide([run(9, "2026-10-01T17:07:00Z", None), run(2, "2026-10-01T16:57:00Z", "cancelled")], NOW, 9), "run")
 
+    def test_a_tick_stuck_with_no_conclusion_for_over_40_minutes_does_not_block_the_next_tick(self):
+        stuck = run(1, "2026-10-01T16:26:00Z", None)                                # created 41 minutes before NOW, still no conclusion (GitHub never closed it)
+        self.assertTrue(gate.stuck(stuck, NOW))
+        self.assertEqual(gate.decide([stuck], NOW, 9), "run")
+
+    def test_a_tick_that_is_still_running_inside_40_minutes_still_blocks(self):
+        running = run(1, "2026-10-01T16:30:00Z", None)                              # 37 minutes: a slow but real tick
+        self.assertFalse(gate.stuck(running, NOW))
+        self.assertEqual(gate.decide([running], NOW, 9), "skip")
+
+    def test_a_finished_tick_is_never_called_stuck(self):
+        self.assertFalse(gate.stuck(run(1, "2026-10-01T15:00:00Z", "success"), NOW))
+        self.assertFalse(gate.stuck(run(1, "2026-10-01T15:00:00Z", "failure"), NOW))
+        self.assertEqual(gate.decide([run(1, "2026-10-01T16:30:00Z", "success")], NOW, 9), "skip")
+
     def test_manual_runs_never_block_a_tick(self):
         self.assertEqual(gate.decide([run(1, "2026-10-01T17:00:00Z", title="manual"), run(2, "2026-10-01T16:50:00Z", title="hourly")], NOW, 9), "run")
 

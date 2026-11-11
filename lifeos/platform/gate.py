@@ -38,11 +38,23 @@ def min_gap(environ=None):
     return int(raw) if raw.isdigit() and GAP_FLOOR_MINUTES <= int(raw) <= MIN_GAP_MINUTES else MIN_GAP_MINUTES
 
 
+STUCK_MINUTES = 40             # LIFE-580: a tick with no conclusion this long after it was created is stuck (a real tick takes 5 to 20 minutes; GitHub ends its prep job at 45)
+
+
+def stuck(run, now, minutes=STUCK_MINUTES):
+    """True for a run that has no conclusion yet and was created more than `minutes` ago."""
+    created = _t(run.get("created_at"))
+    return run.get("conclusion") is None and created is not None and (now - created) > dt.timedelta(minutes=minutes)
+
+
 def decide(runs, now, current_id, gap=None):
-    """-> 'run' | 'skip'. Cancelled (including skipped) runs and manual runs do not count."""
+    """-> 'run' | 'skip'. Cancelled (including skipped) runs and manual runs do not count. LIFE-580: nor does a tick run that has had no conclusion for more than
+    STUCK_MINUTES (GitHub left run 43095033439 queued for good on Nov 11 2026 and refused every cancel): one stuck run must not stop every later tick."""
     gap = min_gap() if gap is None else gap
     for run in runs:
         if run["id"] == current_id or run.get("conclusion") == "cancelled" or run.get("display_title") != TICK_TITLE:
+            continue
+        if stuck(run, now):
             continue
         started = _t(run.get("run_started_at") or run.get("created_at"))
         if started and (now - started) < dt.timedelta(minutes=gap):
