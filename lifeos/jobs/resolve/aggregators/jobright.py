@@ -183,6 +183,16 @@ async def follow(context, page, job_url, wait_ms=12000):
 
 async def resolve_many(urls, environ=os.environ, pause_ms=1500):
     """One login, many jobs. Returns a list of result dicts aligned with `urls` (fixed codes only)."""
+    from lifeos.jobs.resolve.aggregators import jobright_oracle      # noqa: PLC0415 - LIFE-576 option (a)
+    if jobright_oracle.wanted(environ):
+        from playwright.async_api import async_playwright    # noqa: PLC0415
+        async with async_playwright() as pw:
+            done, reason = await jobright_oracle.attempt(pw, urls, environ, follow, pause_ms)
+        print(f"JOBRIGHT_PATH={'oracle' if done is not None else 'runner'} reason={reason}", flush=True)
+        if done is not None:
+            return done
+    else:
+        print("JOBRIGHT_PATH=runner reason=off", flush=True)
     email, password = environ.get("JOBRIGHT_EMAIL", ""), environ.get("JOBRIGHT_PASSWORD", "")
     if not email or not password:
         return [{"outcome": "auth_unavailable"} for _ in urls]
