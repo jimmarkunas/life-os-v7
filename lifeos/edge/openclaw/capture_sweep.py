@@ -18,6 +18,10 @@ UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}
 MIN_AGE_SECONDS = 600
 
 
+# Processes of this user that the kernel never lets us read (LIFE-575 dry run on the VM) and that never hold an OpenClaw capture folder; anything else unreadable still stops the sweep.
+SYSTEM = frozenset({"systemd", "(sd-pam)", "sshd", "sshd-session", "dbus-daemon", "python3"})
+
+
 class Unreadable(Exception):
     pass
 
@@ -46,7 +50,13 @@ def _texts(pid_dir):
     except OSError:
         failed += 1
     if failed:
-        raise Unreadable(os.path.basename(pid_dir))
+        try:
+            with open(os.path.join(pid_dir, "comm")) as f:
+                comm = f.read().strip()
+        except OSError:
+            comm = ""
+        if comm not in SYSTEM:
+            raise Unreadable(os.path.basename(pid_dir))
     return out
 
 
