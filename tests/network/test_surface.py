@@ -5,7 +5,7 @@ import json
 import pathlib
 import unittest
 from urllib.parse import unquote
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from lifeos.network import store, surface
 from lifeos.network.errors import NetworkError
@@ -44,7 +44,11 @@ def ledger_for(*keys_pages):
     return ledger
 
 
+SKIP_OFF = {"NETWORK_SURFACE_SKIP": "off"}                                                   # LIFE-572: the replay tests below check the full-read path; the skip has its own tests (UnchangedPagesAreSkipped)
+
+
 def go(conn, ledger, live=False, limit=0, **kw):
+    kw.setdefault("environ", SKIP_OFF)
     return network_surface.run(limit, live, connection=conn, client=ledger, now=NOW, today=TODAY, **kw)
 
 
@@ -241,7 +245,7 @@ class Corrections(unittest.TestCase):
         conn = build(jobs=jobs)
         ledger = ledger_for((KEY1, "page-1"), (KEY2, "page-2"), (KEY3, "page-3"), ("e" * 64, "page-4"))
         for hour in range(4):
-            network_surface.run(2, True, connection=conn, client=ledger, now=NOW + timedelta(hours=hour), today=TODAY)
+            network_surface.run(2, True, environ=SKIP_OFF, connection=conn, client=ledger, now=NOW + timedelta(hours=hour), today=TODAY)
         self.assertEqual([owned_count(ledger, f"page-{n}") for n in (1, 2, 3)], [1, 1, 1])                  # every target with leads was reached within a few two-page runs
         self.assertEqual(owned_count(ledger, "page-4"), 0)
 
@@ -493,7 +497,7 @@ class Contract(unittest.TestCase):
 
 class MarkAsSentLink(unittest.TestCase):
     """LIFE-78: a job with verified contacts but no recorded conversation has no Outreach table, so it had no way to start Mark as Sent. Its Network Leads block now carries the signed-form link for its own job."""
-    ENV = {"V7_CLOSE_BASE_URL": "https://close.example.ts.net:47443"}
+    ENV = {"V7_CLOSE_BASE_URL": "https://close.example.ts.net:47443", **SKIP_OFF}
     PAGE = "00000000-0000-0000-0000-000000000008"
 
     def world(self, **kw):
@@ -625,3 +629,77 @@ class StepTiming(unittest.TestCase):
         text = json.dumps(timing)
         for private in ("page-1", KEY1, "Acme"):
             self.assertNotIn(private, text)
+
+
+class UnchangedPagesAreSkipped(unittest.TestCase):
+    """LIFE-572: a page proven earlier and untouched since (same last_edited_time, recorded after its proof) costs one Notion call instead of a full read; every edit is still found."""
+    ON = {}                                                                     # the skip is on unless NETWORK_SURFACE_SKIP says off
+
+    def settled(self):
+        conn, ledger = build(), ledger_for()
+        go(conn, ledger, live=True, environ=self.ON)                            # first run: created, state and edit time recorded
+        return conn, ledger
+
+    def test_an_untouched_page_costs_one_call_and_writes_nothing(self):
+        conn, ledger = self.settled()
+        before, written = ledger.calls, list(ledger.writes)
+        counts = go(conn, ledger, live=True, environ=self.ON)
+        self.assertEqual((ledger.calls - before, ledger.writes == written, counts["unchanged_skipped"], counts["blocks"]), (1, True, 1, {}))
+        self.assertEqual(counts["timing"]["by_outcome"], {"skipped_unchanged": {"pages": 1, "seconds": counts["timing"]["by_outcome"]["skipped_unchanged"]["seconds"], "calls": 1}})
+
+    def test_before_and_after_the_same_replay_calls_with_the_skip_off_and_on(self):
+        conn, ledger = self.settled()
+        base = ledger.calls
+        go(conn, ledger, live=True, environ=SKIP_OFF)
+        full = ledger.calls - base
+        base = ledger.calls
+        go(conn, ledger, live=True, environ=self.ON)
+        fast = ledger.calls - base
+        self.assertEqual(fast, 1)
+        self.assertGreater(full, 5)                                              # a full read of a settled page is many calls; the skipped one is one
+
+    def test_a_tick_in_the_block_moves_the_edit_time_so_the_page_is_read_and_the_dismissal_persisted(self):
+        conn, ledger = self.settled()
+        ledger.tick("page-1", "Closed ")
+        counts = go(conn, ledger, live=True, environ=self.ON)
+        self.assertEqual((counts.get("unchanged_skipped", 0), counts["ticks_dismiss"], counts["blocks"]), (0, 1, {"replaced": 1}))
+        self.assertEqual(conn.raw.execute("SELECT COUNT(*) FROM v7_network_dismissals").fetchone()[0], 1)
+
+    def test_a_write_records_the_time_after_the_write_so_the_next_run_skips(self):
+        conn, ledger = self.settled()
+        ledger.tick("page-1", "Closed ")
+        go(conn, ledger, live=True, environ=self.ON)                              # replaced: one more write, edit time moved
+        counts = go(conn, ledger, live=True, environ=self.ON)
+        self.assertEqual((counts["unchanged_skipped"], counts["blocks"]), (1, {}))
+        recorded = conn.raw.execute("SELECT edited FROM v7_network_page_edit").fetchone()[0]
+        self.assertEqual(recorded, ledger.edited_time("page-1"))
+
+    def test_a_page_whose_wanted_block_changed_is_read_even_if_untouched(self):
+        conn, ledger = self.settled()
+        conn.raw.execute("UPDATE v7_network_positions SET company_key='otherco' WHERE person_id IN (1, 2)")      # the roster changed: the wanted block is different now
+        counts = go(conn, ledger, live=True, environ=self.ON)
+        self.assertEqual((counts.get("unchanged_skipped", 0), counts["blocks"]), (0, {"removed": 1}))
+
+    def test_a_page_edited_in_the_last_three_minutes_is_never_skipped(self):
+        conn, ledger = self.settled()
+        edited = datetime.strptime(ledger.edited_time("page-1")[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
+        counts = network_surface.run(0, True, environ=self.ON, connection=conn, client=ledger, now=edited + timedelta(seconds=60), today=TODAY)
+        self.assertEqual((counts.get("unchanged_skipped", 0), counts["blocks"]), (0, {"unchanged": 1}))
+
+    def test_a_recorded_time_older_than_a_day_is_not_trusted(self):
+        conn, ledger = self.settled()
+        conn.raw.execute("UPDATE v7_network_page_edit SET recorded_at='2026-10-05 12:00:00'")
+        counts = go(conn, ledger, live=True, environ=self.ON)
+        self.assertEqual((counts.get("unchanged_skipped", 0), counts["blocks"]), (0, {"unchanged": 1}))
+
+    def test_a_dry_run_and_the_off_switch_never_skip_and_never_record_a_time(self):
+        conn, ledger = self.settled()
+        self.assertEqual(go(conn, ledger, live=False, environ=self.ON).get("unchanged_skipped", 0), 0)
+        self.assertEqual(go(conn, ledger, live=True, environ=SKIP_OFF).get("unchanged_skipped", 0), 0)
+        conn2, ledger2 = build(), ledger_for()
+        go(conn2, ledger2, live=True, environ=SKIP_OFF)
+        self.assertEqual(conn2.raw.execute("SELECT COUNT(*) FROM v7_network_page_edit").fetchone()[0], 0)
+
+    def test_the_table_holds_a_job_key_and_a_time_string_only(self):
+        conn, _ = self.settled()
+        self.assertEqual([c[1] for c in conn.raw.execute("PRAGMA table_info(v7_network_page_edit)").fetchall()], ["job_key", "edited", "recorded_at"])
