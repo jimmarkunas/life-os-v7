@@ -6,6 +6,7 @@ import stat
 import subprocess
 import tempfile
 import unittest
+from tests.kit import this_python
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SCRIPT = os.path.join(ROOT, "hermes", "fix_model_base_url.sh")
@@ -49,7 +50,7 @@ class Fix(unittest.TestCase):
             handle.write(text)
 
     def run_script(self, *args):
-        done = subprocess.run(["bash", SCRIPT, "--home", self.home, "--backup", self.backup, *args], capture_output=True, text=True)
+        done = subprocess.run(["bash", SCRIPT, "--home", self.home, "--backup", self.backup, *args], capture_output=True, text=True, env=this_python.env())
         return done.returncode, done.stdout + done.stderr
 
     def test_dry_run_names_the_change_and_writes_nothing(self):

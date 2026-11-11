@@ -5,6 +5,7 @@ import json
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -316,7 +317,7 @@ class Installer(unittest.TestCase):
             shutil.copy(ROOT / "lifeos/platform" / m, opt / "lifeos/platform" / m)
         probe = "import runpy, sys; sys.argv = ['ticker.py']; g = runpy.run_path(sys.argv[0] if False else %r, run_name='probe'); " \
                 "import lifeos.platform.gate as gate, lifeos.platform.alerts as alerts; print(gate.__file__)" % str(opt / "ticker.py")
-        done = subprocess.run(["python3", "-I", "-c", probe], capture_output=True, text=True, cwd=str(opt))
+        done = subprocess.run([sys.executable, "-I", "-c", probe], capture_output=True, text=True, cwd=str(opt))             # LIFE-605: the interpreter running the tests, not whatever `python3` the host has first
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertTrue(done.stdout.strip().startswith(str(opt)), done.stdout)
 
