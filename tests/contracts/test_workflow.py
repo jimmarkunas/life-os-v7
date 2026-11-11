@@ -405,7 +405,14 @@ class UnitTestGateTests(unittest.TestCase):
         self.assertIn("pip install --require-hashes -r requirements-browser.lock", browser["run"])    # integrity unchanged
         self.assertNotIn("playwright", tick["run"])                                                   # the tick step no longer installs anything
         self.assertNotIn("pip install", tick["run"])
-        self.assertEqual(browser["env"], {"CHROMIUM_CACHE_HIT": "${{ steps.chromium_cache.outputs.cache-hit }}"})
+        self.assertEqual(browser["env"], {"CHROMIUM_CACHE_HIT": "${{ steps.chromium_cache.outputs.cache-hit }}", "LIBS_CACHE_HIT": "${{ steps.libs_cache.outputs.cache-hit }}"})
+        libs = next(s for s in steps if s.get("id") == "libs_cache")                                  # LIFE-576: the system libraries are cached next to Chromium
+        self.assertEqual((libs["uses"], libs["with"]["path"]), ("actions/cache@v4", "~/apt-debs"))
+        self.assertIn("steps.runner_image.outputs.version", libs["with"]["key"])                      # a restored copy can never meet a different runner image
+        self.assertIn("hashFiles('requirements-browser.lock')", libs["with"]["key"])
+        self.assertLess(ids.index("runner_image"), ids.index("libs_cache"))
+        self.assertLess(ids.index("libs_cache"), ids.index("browser"))
+        self.assertEqual(libs["if"], tick["if"])
         self.assertEqual(browser["if"], tick["if"])
         run = browser["run"]
         self.assertNotIn("while ", run)                                                               # bounded: three tries, never an unbounded loop
@@ -426,32 +433,49 @@ class BrowserStepBehaviourTests(unittest.TestCase):
         steps = yaml.safe_load(path.read_text())["jobs"]["finish"]["steps"]
         cls.script = next(s for s in steps if s.get("id") == "browser")["run"]
 
-    def run_step(self, hit, fail_first):
+    def run_step(self, hit, fail_first, libs_hit="false", saved=None, dpkg_fails=False, download_fails=False):
+        """saved: None = no saved libraries, else the list of file names in the restored folder (a manifest is written with them)."""
         import subprocess
         import tempfile
         with tempfile.TemporaryDirectory() as tmp:
             log = pathlib.Path(tmp, "calls.log")
+            if saved is not None:
+                debs = pathlib.Path(tmp, "apt-debs")
+                debs.mkdir()
+                debs.joinpath("manifest.txt").write_text("libx=1\n")
+                for name in saved:
+                    debs.joinpath(name).write_text("deb")
             harness = (
                 "set -eo pipefail\n"
                 f'LOG="{log}"; FAILS={fail_first}; COUNT=0\n'
                 'pip(){ echo "pip $*" >> "$LOG"; }\n'
                 'timeout(){ shift; "$@"; }\n'
                 'sleep(){ echo "sleep $1" >> "$LOG"; }\n'
+                f'sudo(){{ "$@"; }}\ndpkg(){{ echo "dpkg $*" >> "$LOG"; {"return 1" if dpkg_fails else "return 0"}; }}\n'
+                'dpkg-query(){ if [ -e "$HOME/after" ]; then printf "libx=1\\nliby=2\\n"; else printf "liby=2\\n"; touch "$HOME/after"; fi; }\n'
+                f'apt-get(){{ echo "apt-get $*" >> "$LOG"; {"return 100" if download_fails else "touch libx.deb"}; }}\n'
                 'python(){ echo "python $*" >> "$LOG"; case "$*" in *--with-deps*) COUNT=$((COUNT+1)); '
                 '[ "$COUNT" -le "$FAILS" ] && { echo "apt could not resolve the mirror" >&2; return 100; };; esac; return 0; }\n'
                 + self.script)
-            done = subprocess.run(["bash", "-c", harness], capture_output=True, text=True, env={"CHROMIUM_CACHE_HIT": hit, "PATH": "/usr/bin:/bin"})
+            done = subprocess.run(["bash", "-c", harness], capture_output=True, text=True,
+                                  env={"CHROMIUM_CACHE_HIT": hit, "LIBS_CACHE_HIT": libs_hit, "HOME": tmp, "PATH": "/usr/bin:/bin"})
+            self.debs_left = sorted(p.name for p in pathlib.Path(tmp, "apt-debs").glob("*")) if pathlib.Path(tmp, "apt-debs").exists() else None
             return done.returncode, done.stdout, log.read_text().splitlines()
 
     def test_a_cache_hit_runs_no_apt_command(self):
         code, out, calls = self.run_step("true", 99)
         self.assertEqual(code, 0)
         self.assertIn("BROWSER_INSTALL_SKIPPED_APT", out)
-        self.assertFalse([c for c in calls if "--with-deps" in c])
+        self.assertIn("BROWSER_INSTALL_PATH=cache-hit", out)
+        self.assertFalse([c for c in calls if "--with-deps" in c or c.startswith(("apt-get", "dpkg"))])
 
-    def test_a_cache_miss_installs_with_system_libraries_once_when_apt_works(self):
-        code, _, calls = self.run_step("false", 0)
+    def test_a_cold_run_installs_with_apt_once_and_saves_the_libraries(self):
+        code, out, calls = self.run_step("false", 0)
         self.assertEqual((code, len([c for c in calls if "--with-deps" in c])), (0, 1))
+        self.assertIn("BROWSER_INSTALL_PATH=apt-cold", out)
+        self.assertIn("BROWSER_LIBS_SAVED: 1 packages", out)
+        self.assertEqual(self.debs_left, ["libx.deb", "manifest.txt"])
+        self.assertIn("apt-get download libx=1", calls)                                              # only the packages the install added
 
     def test_a_failed_apt_download_is_retried_with_backoff_and_then_succeeds(self):
         code, out, calls = self.run_step("false", 2)
@@ -466,6 +490,37 @@ class BrowserStepBehaviourTests(unittest.TestCase):
         self.assertNotEqual(code, 0)
         self.assertEqual(len([c for c in calls if "--with-deps" in c]), 3)
         self.assertIn("BROWSER_INSTALL_FAILED", out)
+
+    def test_saved_libraries_install_without_any_apt_command(self):
+        code, out, calls = self.run_step("false", 99, libs_hit="true", saved=["libx.deb"])
+        self.assertEqual(code, 0)
+        self.assertIn("BROWSER_INSTALL_PATH=libs-cache", out)
+        self.assertFalse([c for c in calls if "--with-deps" in c or c.startswith("apt-get")])
+        self.assertTrue([c for c in calls if c.startswith("dpkg -i")])
+        self.assertIn("python -m playwright install chromium", calls)
+
+    def test_an_invalid_saved_copy_falls_back_to_apt_and_passes(self):
+        code, out, calls = self.run_step("false", 0, libs_hit="true", saved=["libx.deb"], dpkg_fails=True)
+        self.assertEqual(code, 0)
+        self.assertIn("BROWSER_LIBS_CACHE_FAILED", out)
+        self.assertIn("BROWSER_INSTALL_PATH=apt-fallback", out)
+        self.assertEqual(len([c for c in calls if "--with-deps" in c]), 1)
+
+    def test_a_hit_with_no_manifest_is_treated_as_missing(self):
+        code, out, calls = self.run_step("false", 0, libs_hit="true", saved=None)
+        self.assertEqual(code, 0)
+        self.assertIn("BROWSER_INSTALL_PATH=apt-fallback", out)
+
+    def test_a_fallback_that_also_fails_three_times_still_fails_no_harder_than_before(self):
+        code, out, _ = self.run_step("false", 99, libs_hit="true", saved=["libx.deb"], dpkg_fails=True)
+        self.assertNotEqual(code, 0)
+        self.assertIn("BROWSER_INSTALL_FAILED", out)
+
+    def test_a_failed_save_never_fails_the_step(self):
+        code, out, _ = self.run_step("false", 0, download_fails=True)
+        self.assertEqual(code, 0)
+        self.assertIn("BROWSER_LIBS_SAVE_FAILED", out)
+        self.assertIsNone(self.debs_left)                                                             # nothing half-saved is left to be cached
 
 
 class FastPathFirstTests(unittest.TestCase):
@@ -705,7 +760,7 @@ CONSUMERS = {
         jobs={"prep": DB | JUMP | TS | HRL, "jobright": DB | JUMP | TS | HRL, "linkedin": DB | JUMP | TS | HRL, "lensa": DB | JUMP | TS | HRL, "finish": DB | JUMP | TS | HRL | {"NTFY_TOPIC", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"}, "interview": {"NOTION_INTERVIEW_TOKEN"}, "report": {"NTFY_TOPIC"}},
         direct=['GMAIL_OAUTH_CLIENT_ID', 'HIRING_PIPELINE_PAGE_ID', 'INTERVIEW_ACCEPTANCE_JSON', 'INTERVIEW_ACCEPTANCE_NEGATIVE_JSON', 'LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'LIFEOS_NOTION_IDS', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID', 'V7_CLOSE_BASE_URL', 'V7_CLOUD_FIT_PROFILE_REF'],   # LIFE-41: the shadow's brief reference, masked (a variable is not)
         on=['schedule', 'workflow_dispatch'], crons=['7 * * * *', '27 * * * *', '47 * * * *'], perms={'contents': 'read'}, conc={'group': "life-os-v7-hourly-${{ (github.event_name == 'schedule' || inputs.tick) && 'tick-b' || 'manual' }}", 'cancel-in-progress': False},
-        timeouts={'prep': 45, 'jobright': 40, 'linkedin': 40, 'lensa': 40, 'finish': 58, 'interview': 15, 'report': 5}, digest="3ca801c35f9a16e3"),   # LIFE-577 (Nov 11 2026): the benchmark input (replaces publish_limit): the tick path in dry mode on a frozen set, with a gate that refuses to overlap and an overlap check;   # LIFE-572 (Jim, Nov 11 12:2x PM CT "retry 82"): Network Leads budget 82 again, to be reverted to 41 if any of the next 3 runs exceeds about 60 s;   # LIFE-573 (Jim, Nov 11 12:02 PM CT): the browser install is its own timed step (cache hit: no apt; miss: three tries, then the run fails), BROWSER_CACHE_BUST forces a cold-cache run;   # LIFE-572 (Nov 11 2026, 11:0x AM CT): Network Leads budget back to 41 per run: the first tick at 82 took 110 s, over the 60 s limit Jim set;   # LIFE-573 (Jim, Nov 11 10:40 AM CT): a Chromium cache hit skips apt entirely; a miss installs with three bounded tries;   # LIFE-573 (Nov 11 2026): the tick step installs the browser with two timed tries and degrades instead of failing the tick when apt is unreachable;   # LIFE-572 (Jim, Nov 11 2026): the Network Leads page budget doubled, network-surface --limit 41 to 82 (2,496 pages: a lap of about 30 hours, was about 60);   # Nov 6 2026: the report job also names prep in its failed-lanes push;   # LIFE-76 (Oct 25 2026 drain): a manual enrich reads 450, not 150;   # D238: finish 58 min and the batch to 45 min, so a tick's batch fills the hour;   # D233 (LIFE-42): + the always-dry-run negative interview acceptance case;   # D208 (LIFE-76 PR 4b): a tick (and a manual quick proof, with --quick) runs python -m lifeos.jobs.tick in the finish job; the Dice job and its command are gone (the tick resolves Dice);   # D206 (LIFE-76 PR 1): bulk discovery (boards, Scale-Up, title watch, sponsors) moved after finalize; boards --limit follows the quick input;   # D202 review: + the read-only boards-preview command (D204 acceptance: over the 600-board sample); D203: + linkedin-search;   # D201 removed the resolve-lensa and openjobs commands; D202 added the boards command and its finish-loop entry; LIFE-41 the tick's batch is sized to the hour
+        timeouts={'prep': 45, 'jobright': 40, 'linkedin': 40, 'lensa': 40, 'finish': 58, 'interview': 15, 'report': 5}, digest="40f285fd98951b51"),   # LIFE-577 (Nov 11 2026): the benchmark input (replaces publish_limit): the tick path in dry mode on a frozen set, with a gate that refuses to overlap and an overlap check;   # LIFE-572 (Jim, Nov 11 12:2x PM CT "retry 82"): Network Leads budget 82 again, to be reverted to 41 if any of the next 3 runs exceeds about 60 s;   # LIFE-573 (Jim, Nov 11 12:02 PM CT): the browser install is its own timed step (cache hit: no apt; miss: three tries, then the run fails), BROWSER_CACHE_BUST forces a cold-cache run;   # LIFE-572 (Nov 11 2026, 11:0x AM CT): Network Leads budget back to 41 per run: the first tick at 82 took 110 s, over the 60 s limit Jim set;   # LIFE-573 (Jim, Nov 11 10:40 AM CT): a Chromium cache hit skips apt entirely; a miss installs with three bounded tries;   # LIFE-573 (Nov 11 2026): the tick step installs the browser with two timed tries and degrades instead of failing the tick when apt is unreachable;   # LIFE-572 (Jim, Nov 11 2026): the Network Leads page budget doubled, network-surface --limit 41 to 82 (2,496 pages: a lap of about 30 hours, was about 60);   # Nov 6 2026: the report job also names prep in its failed-lanes push;   # LIFE-76 (Oct 25 2026 drain): a manual enrich reads 450, not 150;   # D238: finish 58 min and the batch to 45 min, so a tick's batch fills the hour;   # D233 (LIFE-42): + the always-dry-run negative interview acceptance case;   # D208 (LIFE-76 PR 4b): a tick (and a manual quick proof, with --quick) runs python -m lifeos.jobs.tick in the finish job; the Dice job and its command are gone (the tick resolves Dice);   # D206 (LIFE-76 PR 1): bulk discovery (boards, Scale-Up, title watch, sponsors) moved after finalize; boards --limit follows the quick input;   # D202 review: + the read-only boards-preview command (D204 acceptance: over the 600-board sample); D203: + linkedin-search;   # D201 removed the resolve-lensa and openjobs commands; D202 added the boards command and its finish-loop entry; LIFE-41 the tick's batch is sized to the hour
     "network": dict(
         jobs={"network": DB | JUMP | TS | {"NOTION_API_TOKEN"}},
         direct=['LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'NETWORK_HANDOFF_PAGE_ID', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID'],
