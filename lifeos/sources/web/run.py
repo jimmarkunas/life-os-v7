@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from hashlib import sha1
 
 from lifeos.jobs import enrich, intake, quality, store
-from lifeos.platform import limits, read_slots
+from lifeos.platform import bench, limits, read_slots
 from lifeos.sources.web import diff, lister, registry, suppress
 
 DEFAULT_LANE = "US Remote"
@@ -279,7 +279,12 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
             store.ensure_schema(connection)
     states = repo.states({s["id"] for s in sources})
     forced = forced_ids(sources, os.environ.get("WEB_FORCE"))
-    due = pick_due(sources, states, now, min(limit, cap or limits.WEB_BOARDS_PER_RUN), select, forced)   # classified against the persisted states
+    frozen = bench.frozen(bench.lane_key(lane, select))                     # LIFE-577: benchmark mode names the boards; None on every other run
+    if frozen is not None:
+        forced = {s["id"] for s in sources if s["id"] in frozen}            # the frozen boards are read in full, in id order, whatever their stored state says
+        due = sorted((s for s in sources if s["id"] in forced), key=lambda s: s["id"])
+    else:
+        due = pick_due(sources, states, now, min(limit, cap or limits.WEB_BOARDS_PER_RUN), select, forced)   # classified against the persisted states
     unread = sum(s["id"] not in states for s in sources)
     states = {k: v for k, v in states.items() if k not in forced}           # a forced read is a full read: no validators, no skip
     counts = {"lane": lane, "sources": len(sources), "due": len(due), "complete": 0, "failed": 0, "added": 0, "changed": 0, "unchanged": 0,

@@ -236,6 +236,29 @@ def tick(live, quick=False, plan=PLAN, stages=None, clock=time.monotonic, budget
     return {step.name: outcome[step.name] for step in plan if step.name in outcome}      # plan order, whatever order the side-by-side stages finished in
 
 
+def benchmark_settings(environ=None):
+    """LIFE-577 -> None outside benchmark mode, else the one-line settings in force: concurrency switch, caps, parallel limit, the frozen snapshot and its sizes."""
+    environ = os.environ if environ is None else environ
+    path = (environ.get("BENCH_SNAPSHOT") or "").strip()
+    if not path:
+        return None
+    from lifeos.platform import bench                                                   # noqa: PLC0415
+    with open(path) as handle:
+        lanes = json.load(handle)["lanes"]
+    concurrency = concurrency_from_env(environ)
+    return {"TICK_CONCURRENCY": "on" if concurrency else "off", "caps": concurrency["caps"] if concurrency else "n/a (sequential)",
+            "parallel": concurrency["parallel"] if concurrency else 1, "snapshot": path, "frozen": {key: len(ids) for key, ids in sorted(lanes.items())}, "mode": "dry (nothing is written)"}
+
+
+def benchmark_summary(settings, outcome, timings, total):
+    """LIFE-577: the one-line table for the run summary page: settings in force, the sum of stage seconds and the Jobs tick wall time. The per-stage table follows it."""
+    spent = sum(timings.get(name, 0.0) for name in outcome)
+    failed = [name for name, result in outcome.items() if result in ("failed", "timeout")]
+    return ("### Benchmark\n\n| TICK_CONCURRENCY | Frozen boards | Sum of stage seconds | Jobs tick wall seconds | Stages failed |\n|---|---:|---:|---:|---|\n"
+            f"| {settings['TICK_CONCURRENCY']} | {settings['frozen'].get('US Remote/boards', 0)} | {spent:.1f} | {total:.1f} | {', '.join(failed) or 'none'} |\n\n"
+            f"Settings in force: `{json.dumps(settings, sort_keys=True)}`\n\n")
+
+
 def summary_table(outcome, timings, total):
     """LIFE-569: the stage table for the job summary: name, outcome, seconds, share of the Jobs tick; skipped stages show 0. Counts stay in each stage's own line."""
     lines = ["### Jobs tick: seconds per stage", "", "| Stage | Outcome | Seconds | Share |", "|---|---|---:|---:|"]
@@ -252,6 +275,12 @@ def main(argv=None):
     parser.add_argument("--quick", action="store_true", help="small caps for a manual end-to-end proof (D206)")
     args = parser.parse_args(argv)
     sys.stdout.reconfigure(line_buffering=True)                                     # each stage's counts line reaches the log when it is printed, not at exit
+    settings = benchmark_settings()
+    if settings:                                                                     # LIFE-577: benchmark mode is always a dry run, and says what is in force before any stage starts
+        if args.live:
+            print("tick: BENCHMARK_REFUSED_LIVE", file=sys.stderr)
+            return 2
+        print("benchmark: settings in force:", json.dumps(settings, sort_keys=True), flush=True)
     timings, begun = {}, time.monotonic()
     concurrency = concurrency_from_env()
     if concurrency:                                                                    # LIFE-569: TICK_CONCURRENCY=on only; the global limit on board reads is set before any stage runs
@@ -260,11 +289,16 @@ def main(argv=None):
         print("tick: concurrency on, caps", json.dumps(concurrency["caps"], sort_keys=True), "parallel", concurrency["parallel"], flush=True)
     outcome = tick(args.live, args.quick, timings=timings, concurrency=concurrency)
     print("tick:", json.dumps(outcome, sort_keys=True))
+    wall = time.monotonic() - begun
+    if settings:
+        print(f"benchmark: sum of stage seconds {sum(timings.get(n, 0.0) for n in outcome):.1f}, Jobs tick wall seconds {wall:.1f}", flush=True)
     path = os.environ.get("GITHUB_STEP_SUMMARY")
     if path:                                                                         # LIFE-569: a short table in the finish job summary
         try:
             with open(path, "a") as handle:
-                handle.write(summary_table(outcome, timings, time.monotonic() - begun))
+                if settings:
+                    handle.write(benchmark_summary(settings, outcome, timings, wall))
+                handle.write(summary_table(outcome, timings, wall))
         except OSError:
             pass
     return 1 if any(v in ("failed", "timeout") for v in outcome.values()) else 0
