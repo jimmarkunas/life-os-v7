@@ -674,7 +674,27 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('requirements-browser.lock') }}
+          key: playwright-${{ runner.os }}${{ vars.BROWSER_CACHE_BUST && format('-{0}', vars.BROWSER_CACHE_BUST) || '' }}-${{ hashFiles('requirements-browser.lock') }}   # LIFE-573: setting the repository variable BROWSER_CACHE_BUST to any word forces one cold-cache run; unset it to go back
+      - id: browser
+        name: Browser install (LIFE-573; its own timed step; a cache hit runs no apt command, a cache miss installs with system libraries, three tries with 20 s and 40 s pauses, and fails the run only after the third)
+        if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.quick) }}
+        env:
+          CHROMIUM_CACHE_HIT: ${{ steps.chromium_cache.outputs.cache-hit }}
+        run: |
+          pip install --require-hashes -r requirements-browser.lock
+          if [ "$CHROMIUM_CACHE_HIT" = "true" ]; then
+            echo "BROWSER_INSTALL_SKIPPED_APT: Chromium cache hit, no apt command runs"
+            timeout 120 python -m playwright install chromium || echo "BROWSER_DOWNLOAD_SKIPPED"
+          else
+            echo "BROWSER_INSTALL_APT: cache miss, installing with system libraries (three tries)"
+            browser=""
+            for attempt in 1 2 3; do
+              if timeout 240 python -m playwright install --with-deps chromium; then browser=yes; break; fi
+              echo "BROWSER_INSTALL_ATTEMPT_${attempt}_FAILED"
+              if [ "$attempt" -lt 3 ]; then sleep $((attempt * 20)); fi
+            done
+            if [ -z "$browser" ]; then echo "BROWSER_INSTALL_FAILED: three tries used up"; exit 1; fi
+          fi
       - id: tick
         continue-on-error: true
         name: Jobs tick - the whole chain in one process, fast path first, one store tunnel (LIFE-76 PR 4b, D208)
@@ -704,7 +724,6 @@ jobs:
           IMESSAGE_ALERTS_HOST: ${{ steps.bws_finish.outputs.IMESSAGE_ALERTS_HOST || steps.bws_finish_retry.outputs.IMESSAGE_ALERTS_HOST }}
           V7_CLOUD_FIT: ${{ vars.V7_CLOUD_FIT || 'off' }}                 # D214: off unless the repository variable says shadow (G6) or canary (D226); on is refused in code
           V7_CLOUD_FIT_PROFILE_REF: ${{ secrets.V7_CLOUD_FIT_PROFILE_REF }}   # LIFE-41: the 16-hex reference to Oracle's own brief (G5), a SECRET so it is masked: a repository variable is printed in this step's env header and the repo is public
-          CHROMIUM_CACHE_HIT: ${{ steps.chromium_cache.outputs.cache-hit }}   # LIFE-573: true when the browser download came from the cache; then no apt command runs
           TICK_CONCURRENCY: ${{ vars.TICK_CONCURRENCY || 'off' }}   # LIFE-569: off unless the repository variable says on
           TICK_CAP_LINKEDIN: ${{ vars.TICK_CAP_LINKEDIN || '1' }}
           TICK_CAP_TINYFISH: ${{ vars.TICK_CAP_TINYFISH || '1' }}
@@ -713,23 +732,6 @@ jobs:
           TICK_CAP_ATS: ${{ vars.TICK_CAP_ATS || '8' }}
           TICK_MAX_PARALLEL: ${{ vars.TICK_MAX_PARALLEL || '4' }}
         run: |
-          pip install --require-hashes -r requirements-browser.lock
-          browser=""
-          if [ "$CHROMIUM_CACHE_HIT" = "true" ]; then
-            echo "BROWSER_INSTALL_SKIPPED_APT: Chromium cache hit, no apt command runs"      # LIFE-573 (Jim, Nov 11): apt failed the 8, 9 and 10 AM CT ticks; a warm cache needs none
-            timeout 120 python -m playwright install chromium || echo "BROWSER_DOWNLOAD_SKIPPED"
-            browser=yes
-          fi
-          for attempt in 1 2 3; do          # a cache miss still installs the system libraries, with three bounded tries
-            if [ -n "$browser" ]; then break; fi
-            if timeout 150 python -m playwright install --with-deps chromium; then browser=yes; break; fi
-            echo "BROWSER_INSTALL_ATTEMPT_${attempt}_FAILED"
-            if [ "$attempt" -lt 3 ]; then sleep $((attempt * 20)); fi
-          done
-          if [ -z "$browser" ]; then
-            echo "BROWSER_INSTALL_DEGRADED: system libraries not installed (apt unreachable); the tick runs with the cached browser, and only browser stages can fail"
-            timeout 120 python -m playwright install chromium || echo "BROWSER_DOWNLOAD_SKIPPED"
-          fi
           python -m lifeos.jobs.tick $([ "$LIVE" = "true" ] && echo --live) ${{ inputs.quick && '--quick' || '' }}
       - id: web
         continue-on-error: true
