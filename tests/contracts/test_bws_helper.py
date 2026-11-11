@@ -48,7 +48,7 @@ class WorkflowWiring(unittest.TestCase):
             self.assertLessEqual(wait * 3, limit * 60, (file, name))      # the retry never takes more than a third of the job's time limit
             self.assertIn("ubuntu", str(job["runs-on"]), (file, name))    # the saved program is the Linux x86_64 build
             self.assertEqual(len(loaders) % 2, 0, (file, name))           # the load and its one retry (D209) are unchanged
-        self.assertEqual(seen, 44)                                        # 44 jobs, 88 loads, one seed each
+        self.assertEqual(seen, 45)                                        # 45 jobs, 90 loads, one seed each (LIFE-571: + amazon_retention)
 
     def test_the_helper_is_called_exactly_once_per_job(self):
         for file, name, job in _jobs():
