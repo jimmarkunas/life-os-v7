@@ -45,6 +45,77 @@ class FakeConn:
         return False
 
 
+class RecorderCursor:
+    """LIFE-551: keeps every statement in full as (sql, args) in `statements`; fetchall() returns the canned `rows`; execute() raises the error whose
+    needle is inside the statement (after recording it); `driver_format=True` also checks the statement survives pymysql-style % formatting first."""
+
+    def __init__(self, rows=(), errors=None, driver_format=False):
+        self.rows, self.errors, self.driver_format, self.statements = list(rows), errors or {}, driver_format, []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def execute(self, sql, args=()):
+        if self.driver_format:
+            sql % tuple("x" for _ in args)
+        self.statements.append((sql, args))
+        for needle, error in self.errors.items():
+            if needle in sql:
+                raise error
+
+    def fetchall(self):
+        return self.rows
+
+
+class RecorderConn:
+    """One RecorderCursor behind a connection that is also a context manager, like store.connect()."""
+
+    def __init__(self, rows=(), errors=None, driver_format=False):
+        self.cur = RecorderCursor(rows, errors, driver_format)
+
+    def cursor(self):
+        return self.cur
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class SingleRowDb:
+    """LIFE-551: one row in memory behind the statements the two stuck-sync watches run (a SELECT returns the row; an INSERT stores params 1 to 3 as the new row).
+    `sql` keeps the first word of each statement; `broken=True` makes entering the connection raise like a lost store tunnel."""
+
+    def __init__(self, row=None, broken=False):
+        self.row, self.broken, self.sql = row, broken, []
+        self._last = None
+
+    def __enter__(self):
+        if self.broken:
+            raise OSError("STORE_SSH_NETWORK")
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def cursor(self):
+        return self
+
+    def execute(self, sql, params=()):
+        self.sql.append(sql.split()[0])
+        if sql.startswith("SELECT"):
+            self._last = self.row
+        elif sql.startswith("INSERT"):
+            self.row = (params[1], params[2], params[3])
+
+    def fetchone(self):
+        return self._last
+
+
 class BillsSnapshotDB:
     """Private snapshot database fake with one atomically replaced JSON payload."""
 
