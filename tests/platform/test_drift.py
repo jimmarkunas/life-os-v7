@@ -66,6 +66,31 @@ class Check(unittest.TestCase):
         self.assertIn("lifeos/edge/backup/offsite_backup.py", listed)
 
 
+    def test_every_installer_under_lifeos_edge_is_covered_by_a_surface_or_named_in_the_allowlist_with_a_reason(self):
+        """LIFE-604 item 4: nothing installed on the VM may go unwatched by accident."""
+        scripts = sorted(str(p) for p in Path("lifeos/edge").rglob("install-*.sh"))
+        self.assertGreaterEqual(len(scripts), 5)                                     # the five known installers: ticker, off-site backup, Close, runner, sweeper
+        self.assertEqual(drift.uncovered_installers(scripts), [])
+        for path, reason in drift.UNCOVERED_INSTALLERS.items():
+            self.assertTrue(Path(path).is_file(), path)                              # an allowlist entry for a script that no longer exists is stale
+            self.assertGreater(len(reason.split()), 5, path)                         # a reason, not a placeholder
+            self.assertNotIn(path, {s.repo_path for s in drift.SURFACES}, path)      # covered AND allowlisted is a contradiction
+
+    def test_a_new_installer_with_no_surface_and_no_allowlist_entry_is_reported(self):
+        scripts = ["lifeos/edge/ticker/oracle/install-ticker.sh", "lifeos/edge/newthing/install-newthing.sh"]
+        self.assertEqual(drift.uncovered_installers(scripts), ["lifeos/edge/newthing/install-newthing.sh"])
+
+    def test_every_surface_names_a_real_repo_file(self):
+        for surface in drift.SURFACES:
+            self.assertTrue(Path(surface.repo_path).is_file(), surface.repo_path)
+
+    def test_the_close_release_script_the_updater_and_their_timer_are_watched(self):
+        by_name = {s.name: s for s in drift.SURFACES}
+        for name, installed in (("close/close_release.py", "/opt/lifeos-close/bin/close_release.py"), ("close/install-close.sh", "/opt/lifeos-close/bin/install-close.sh")):
+            self.assertEqual((by_name[name].installed, by_name[name].unit), (installed, "lifeos-close-release.timer"))
+        self.assertEqual(by_name["close/close_release.py"].repo_path, "lifeos/edge/oracle/close_release.py")
+
+
 class Signal(unittest.TestCase):
     def rows(self, *states):
         return [{"surface": "s%d" % i, "state": s} for i, s in enumerate(states)]
