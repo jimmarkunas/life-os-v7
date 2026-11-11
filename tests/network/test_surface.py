@@ -635,9 +635,13 @@ class UnchangedPagesAreSkipped(unittest.TestCase):
     """LIFE-572: a page proven earlier and untouched since (same last_edited_time, recorded after its proof) costs one Notion call instead of a full read; every edit is still found."""
     ON = {}                                                                     # the skip is on unless NETWORK_SURFACE_SKIP says off
 
+    PROOF = "2026-10-07 11:30:00"                                                 # the stores stamp the real clock; the tests run at NOW (Oct 7 12:00), so the proof times are set to just before it
+
     def settled(self):
         conn, ledger = build(), ledger_for()
         go(conn, ledger, live=True, environ=self.ON)                            # first run: created, state and edit time recorded
+        conn.raw.execute("UPDATE v7_network_page_edit SET recorded_at=?", (self.PROOF,))
+        conn.raw.execute("UPDATE v7_network_page_state SET checked_at=?", (self.PROOF,))
         return conn, ledger
 
     def test_an_untouched_page_costs_one_call_and_writes_nothing(self):
@@ -669,6 +673,8 @@ class UnchangedPagesAreSkipped(unittest.TestCase):
         conn, ledger = self.settled()
         ledger.tick("page-1", "Closed ")
         go(conn, ledger, live=True, environ=self.ON)                              # replaced: one more write, edit time moved
+        conn.raw.execute("UPDATE v7_network_page_edit SET recorded_at=?", (self.PROOF,))
+        conn.raw.execute("UPDATE v7_network_page_state SET checked_at=?", (self.PROOF,))
         counts = go(conn, ledger, live=True, environ=self.ON)
         self.assertEqual((counts["unchanged_skipped"], counts["blocks"]), (1, {}))
         recorded = conn.raw.execute("SELECT edited FROM v7_network_page_edit").fetchone()[0]
@@ -686,9 +692,9 @@ class UnchangedPagesAreSkipped(unittest.TestCase):
         counts = network_surface.run(0, True, environ=self.ON, connection=conn, client=ledger, now=edited + timedelta(seconds=60), today=TODAY)
         self.assertEqual((counts.get("unchanged_skipped", 0), counts["blocks"]), (0, {"unchanged": 1}))
 
-    def test_a_recorded_time_older_than_a_day_is_not_trusted(self):
+    def test_a_proof_older_than_a_week_is_not_trusted(self):
         conn, ledger = self.settled()
-        conn.raw.execute("UPDATE v7_network_page_edit SET recorded_at='2026-10-05 12:00:00'")
+        conn.raw.execute("UPDATE v7_network_page_edit SET recorded_at='2026-09-29 12:00:00'")
         counts = go(conn, ledger, live=True, environ=self.ON)
         self.assertEqual((counts.get("unchanged_skipped", 0), counts["blocks"]), (0, {"unchanged": 1}))
 
@@ -703,3 +709,28 @@ class UnchangedPagesAreSkipped(unittest.TestCase):
     def test_the_table_holds_a_job_key_and_a_time_string_only(self):
         conn, _ = self.settled()
         self.assertEqual([c[1] for c in conn.raw.execute("PRAGMA table_info(v7_network_page_edit)").fetchall()], ["job_key", "edited", "recorded_at"])
+
+    def test_a_page_proven_before_edit_times_were_recorded_is_skipped_when_it_was_not_edited_after_its_proof(self):
+        """The rotation reaches a page about every 60 hours, so most pages carry only the saved proof time. An older edit time than that (by the margin) proves no edit since."""
+        conn, ledger = self.settled()
+        conn.raw.execute("DELETE FROM v7_network_page_edit")                      # as if the page was proven before LIFE-572
+        before = ledger.calls
+        counts = go(conn, ledger, live=True, environ=self.ON)
+        self.assertEqual((ledger.calls - before, counts["unchanged_skipped"], counts["blocks"]), (1, 1, {}))
+
+    def test_the_legacy_rule_does_not_trust_an_edit_close_to_the_proof(self):
+        conn, ledger = self.settled()
+        conn.raw.execute("DELETE FROM v7_network_page_edit")
+        conn.raw.execute("UPDATE v7_network_page_state SET checked_at='2026-10-07 09:10:00'")        # the proof is only minutes after the page's last edit (09:0x): an edit after the proof cannot be excluded
+        counts = go(conn, ledger, live=True, environ=self.ON)
+        self.assertEqual((counts.get("unchanged_skipped", 0), counts["blocks"]), (0, {"unchanged": 1}))
+
+    def test_a_tick_after_the_proof_is_found_even_without_a_recorded_edit_time(self):
+        conn, ledger = self.settled()
+        conn.raw.execute("DELETE FROM v7_network_page_edit")
+        ledger.tick("page-1", "Closed ")
+        ledger.edited["page-1"] += 150                                            # the tick happened two and a half hours after the page's earlier edits, i.e. after the saved proof time
+        conn.raw.execute("UPDATE v7_network_page_state SET checked_at='2026-10-07 10:00:00'")
+        counts = go(conn, ledger, live=True, environ=self.ON)
+        self.assertEqual((counts.get("unchanged_skipped", 0), counts["ticks_dismiss"], counts["blocks"]), (0, 1, {"replaced": 1}))
+
