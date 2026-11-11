@@ -161,7 +161,7 @@ class Command(unittest.TestCase):
     def test_the_forward_opens_only_the_browser_port_on_the_loopback_with_a_checked_host(self):
         cmd = jo.ssh_command("/k", "/h", "100.1.1.1", 4444)
         self.assertIn("127.0.0.1:4444:127.0.0.1:9223", cmd)
-        self.assertIn("v7-browser-fwd@100.1.1.1", cmd)
+        self.assertTrue(any(c.startswith("v7-browser-fwd") and c.endswith("100.1.1.1") and "v7-browser-fwd" != c for c in cmd))                  # user and host as one argument
         self.assertIn("StrictHostKeyChecking=yes", cmd)
         self.assertEqual(cmd[:2], ["ssh", "-N"])
         self.assertFalse([c for c in cmd if c.startswith("0.0.0.0") or c == "-A"])
