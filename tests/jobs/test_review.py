@@ -51,6 +51,14 @@ if __name__ == "__main__":
 
 
 class SeveralCompaniesTests(unittest.TestCase):
+    def test_the_optional_company_cap_defaults_to_twelve_and_can_be_lowered(self):
+        for env, want in (({"REVIEW_COMPANY": "aaa,bbb,ccc"}, 3), ({"REVIEW_COMPANY": "aaa,bbb,ccc", "REVIEW_MAX_COMPANIES": "2"}, 2)):
+            conn = RecorderConn(ROWS)
+            with mock.patch.object(review.store, "connect", return_value=conn), mock.patch.object(review.store, "ensure_schema"):
+                review.run(0, False, environ=env)
+            sql = next(s for s, p in conn.cur.statements if "FROM v7_jobs" in s)
+            self.assertEqual(sql.count("j.company LIKE"), want)
+
     def test_comma_separated_companies_become_one_or_filter_with_bound_parameters(self):
         conn = RecorderConn(ROWS)
         with mock.patch.object(review.store, "connect", return_value=conn), mock.patch.object(review.store, "ensure_schema"):

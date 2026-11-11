@@ -48,7 +48,8 @@ def blocks_for(rows):
 
 def run(limit, live, environ=os.environ):
     needle = (environ.get("REVIEW_COMPANY") or "").strip()
-    names = [n.strip() for n in needle.split(",") if len(n.strip()) >= 3][:12]          # several companies at once: comma separated, each 3+ letters
+    cap = int((environ.get("REVIEW_MAX_COMPANIES") or "12").strip() or 12)               # optional: how many companies one run takes (default 12)
+    names = [n.strip() for n in needle.split(",") if len(n.strip()) >= 3][:cap]          # several companies at once: comma separated, each 3+ letters
     if not names:
         return {"error": "REVIEW_COMPANY_missing_or_short"}
     likes = ["%" + n.replace("%", "").replace("_", "") + "%" for n in names]

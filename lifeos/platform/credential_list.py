@@ -558,6 +558,7 @@ CONFIG = {'provided': {'prefixes': ['GITHUB_', 'RUNNER_'], 'names': ['CI', 'PATH
            {'name': 'REPORT_CONFIRM', 'kind': 'flag', 'owner': 'workflow', 'purpose': 'Confirmation word a manual report run needs'},
            {'name': 'RETENTION_LIVE', 'kind': 'flag', 'owner': 'workflow', 'purpose': 'Lets the retention step delete for real'},
            {'name': 'REVIEW_COMPANY', 'kind': 'input', 'owner': 'jobs', 'purpose': 'Company a manual review run is limited to'},
+           {'name': 'REVIEW_MAX_COMPANIES', 'kind': 'input', 'owner': 'jobs', 'purpose': 'How many companies one manual review run takes (default 12)'},
            {'name': 'SPONSORS_FORCE', 'kind': 'flag', 'owner': 'sources', 'purpose': 'Manual switch: refresh the sponsor register now'},
            {'name': 'STAGE', 'kind': 'workflow_only', 'owner': 'workflow', 'purpose': 'Which stage a manual run starts'},
            {'name': 'STAGES', 'kind': 'workflow_only', 'owner': 'workflow', 'purpose': 'List of stages a run starts'},
