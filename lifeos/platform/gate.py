@@ -32,6 +32,10 @@ def _t(value):
     return dt.datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc) if value else None
 
 
+def _now():
+    return dt.datetime.now(dt.timezone.utc)
+
+
 def min_gap(environ=None):
     """The gap between ticks: the repository variable GATE_MIN_GAP_MINUTES when it is a whole number from GAP_FLOOR_MINUTES to MIN_GAP_MINUTES, else MIN_GAP_MINUTES."""
     raw = ((environ if environ is not None else os.environ).get("GATE_MIN_GAP_MINUTES") or "").strip()
@@ -66,22 +70,23 @@ ACTIVE = ("queued", "in_progress", "pending", "waiting")
 WAIT_MINUTES = 25                  # how long a run waits in line for an older run of the other kind (D210)
 
 
-def active(runs, current_id, title):
-    """Other runs of this workflow with this title (tick | manual) that are queued or running now."""
-    return [r for r in runs if r["id"] != current_id and r.get("status") in ACTIVE and r.get("display_title") == title]
+def active(runs, current_id, title, now=None):
+    """Other runs of this workflow with this title (tick | manual) that are queued or running now. LIFE-604: with `now`, a run that is stuck (see `stuck`) is not counted,
+    the same cut-off `decide` has; without it nothing is cut."""
+    return [r for r in runs if r["id"] != current_id and r.get("status") in ACTIVE and r.get("display_title") == title and not (now is not None and stuck(r, now))]
 
 
-def ahead(runs, current_id, title, created):
+def ahead(runs, current_id, title, created, now=None):
     """D210: the active runs of this title that were created before this run. Ticks and manual runs take turns in creation order:
-    each waits only for OLDER runs of the other kind, so two runs can never wait on each other."""
-    return [r for r in active(runs, current_id, title) if (r.get("created_at") or "") < created]
+    each waits only for OLDER runs of the other kind, so two runs can never wait on each other. `now` as for `active`."""
+    return [r for r in active(runs, current_id, title, now) if (r.get("created_at") or "") < created]
 
 
-def wait_turn(title, current_id, created, fetch, sleep, minutes=WAIT_MINUTES):
-    """Wait while an older `title` run is active. -> (minutes waited, True when it is this run's turn, False when the wait ran out)."""
+def wait_turn(title, current_id, created, fetch, sleep, minutes=WAIT_MINUTES, clock=None):
+    """Wait while an older `title` run is active. -> (minutes waited, True when it is this run's turn, False when the wait ran out). `clock` (returns the current time) turns on the stuck cut-off."""
     waited = 0
     while True:
-        if not ahead(fetch(), current_id, title, created):
+        if not ahead(fetch(), current_id, title, created, clock() if clock else None):
             return waited // 60, True
         if waited >= minutes * 60:
             return waited // 60, False
@@ -240,12 +245,12 @@ def main():
         return _api("actions/workflows/hourly.yml/runs?per_page=15")["workflow_runs"]
 
     if os.environ.get("GITHUB_EVENT_NAME") != "schedule" and os.environ.get("TICK") != "true":
-        waited, _ = wait_turn(TICK_TITLE, current, created, fetch, time.sleep)   # a manual run never cancels a tick: it waits for an older one, then goes on
+        waited, _ = wait_turn(TICK_TITLE, current, created, fetch, time.sleep, clock=_now)   # a manual run never cancels a tick: it waits for an older one, then goes on
         print(f"gate: manual run -> run (waited {waited} min for a tick)")
         return 0
     verdict = decide(fetch(), dt.datetime.now(dt.timezone.utc), current)
     if verdict == "run":
-        waited, turn = wait_turn("manual", current, created, fetch, time.sleep)  # D210: a tick queues behind an older manual run instead of cancelling itself
+        waited, turn = wait_turn("manual", current, created, fetch, time.sleep, clock=_now)  # D210: a tick queues behind an older manual run instead of cancelling itself
         verdict = "run" if turn else "skip"                         # still busy after the wait: the next tick covers the hour
         print(f"gate: waited {waited} min for a manual run")
     print(f"gate: {verdict}")
