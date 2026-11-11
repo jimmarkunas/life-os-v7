@@ -1,10 +1,10 @@
 """LIFE-538: the nightly off-site job takes the newest archive the MacBook Pro pushed to the Oracle inbox."""
 import os
-import tempfile
 import unittest
 from pathlib import Path
 
 from lifeos.edge.backup import offsite_backup as ob
+from tests.edge.backup import safe_tmp
 from tests.edge.backup.test_offsite_backup import local_run
 
 
@@ -14,7 +14,7 @@ def collect(inbox, work):
 
 class Inbox(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
+        self.tmp = safe_tmp.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.work = Path(self.tmp.name) / "w"
         (self.work / "tree").mkdir(parents=True)

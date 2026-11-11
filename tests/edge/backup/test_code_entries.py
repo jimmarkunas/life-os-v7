@@ -1,9 +1,9 @@
 """LIFE-529: the Cloud Fit and resume-builder code folders are in the nightly off-site backup (they run on the Oracle VM only, by design)."""
-import tempfile
 import unittest
 from pathlib import Path
 
 from lifeos.edge.backup import offsite_backup as ob
+from tests.edge.backup import safe_tmp
 from tests.edge.backup.test_offsite_backup import local_run
 
 CODE = {p: r for p, r in ob.TREES if p.startswith("code/")}
@@ -37,7 +37,7 @@ class FitService(unittest.TestCase):
             self.assertFalse(ob.denied(name, listed[name][0]), name)
 
     def test_a_missing_one_is_counted_not_fatal_and_a_present_one_is_saved(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with safe_tmp.TemporaryDirectory() as tmp:
             work, present = Path(tmp) / "w", Path(tmp) / "unit.service"
             work.mkdir()
             present.write_text("x")
@@ -49,7 +49,7 @@ class FitService(unittest.TestCase):
 
 class Collect(unittest.TestCase):
     def test_code_is_saved_but_rebuildable_folders_and_old_copies_are_not(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with safe_tmp.TemporaryDirectory() as tmp:
             root, work = Path(tmp) / "code", Path(tmp) / "work"
             work.mkdir()
             (root / "node_modules" / "docx").mkdir(parents=True)
@@ -62,7 +62,7 @@ class Collect(unittest.TestCase):
             self.assertEqual(extra["skipped"], 1)                                             # the old .bak copy
 
     def test_other_trees_are_still_walked_in_full(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with safe_tmp.TemporaryDirectory() as tmp:
             root, work = Path(tmp) / "t", Path(tmp) / "work"
             work.mkdir()
             (root / "node_modules").mkdir(parents=True)
