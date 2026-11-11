@@ -95,7 +95,7 @@ def pack_files(root):
     try:
         top = os.lstat(root)
     except OSError:
-        raise Refuse("E_UNKNOWN_TICKET")
+        raise Refuse("E_UNKNOWN_TICKET") from None
     if not stat.S_ISDIR(top.st_mode):
         raise Refuse("E_PACK")
 
@@ -158,7 +158,7 @@ def load_manifest(root):
         with open(os.path.join(root, "pack.json"), encoding="utf-8") as handle:
             data = json.load(handle)
     except (OSError, ValueError):
-        raise Refuse("E_PACK")
+        raise Refuse("E_PACK") from None
     if not isinstance(data, dict) or data.get("schema") != 1 or not isinstance(data.get("ticket"), str) or not KEY_RX.match(data["ticket"]):
         raise Refuse("E_PACK")
     steps, restore = data.get("steps"), data.get("restore") or {}
@@ -223,7 +223,7 @@ def snapshot(manifest, host, snapdir):
             meta.append({"path": path, "existed": False})
             continue
         except OSError:
-            raise Refuse("E_PACK")
+            raise Refuse("E_PACK") from None
         if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_SNAPSHOT_FILE:
             raise Refuse("E_PACK")
         with open(path, "rb") as handle:
@@ -379,7 +379,7 @@ def execute(key, sha8, host):
             lock = open(os.path.join(host.state, "lock"), "w")
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
-            raise Refuse("E_BUSY")
+            raise Refuse("E_BUSY") from None
         work = os.path.join(host.state, "work")
         os.makedirs(work, mode=0o700, exist_ok=True)
         stamp = "%s-%d" % (key, int(started))

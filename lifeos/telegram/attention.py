@@ -313,7 +313,7 @@ def login():
         if reply.get("@type") == "error":
             print("Telegram refused that entry; try again.")
         else:
-            s.pump(lambda: s.auth != step, time.monotonic() + 20)          # wait for Telegram's next step before asking again
+            s.pump(lambda step=step: s.auth != step, time.monotonic() + 20)          # wait for Telegram's next step before asking again
     print("Signed in. This Oracle session is now listed in Telegram > Settings > Devices as 'LIFE OS attention (Oracle)'.")
     s.close(time.monotonic() + 10)
     return 0

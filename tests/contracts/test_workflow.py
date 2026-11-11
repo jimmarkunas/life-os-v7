@@ -347,8 +347,8 @@ class PullRequestTestsWorkflow(unittest.TestCase):
         self.assertIn("python -m tests.shard 1 2", run)                      # Jim, Oct 26 2026: two parallel shards of whole test modules; tests/contracts/test_shards.py proves every test runs in exactly one
         self.assertIn("python -m tests.shard 2 2", run)
         self.assertNotIn("unittest discover", run)
-        self.assertRegex(run, r'-ge 90 \]; then .*exit 1')
-        self.assertRegex(run, r'-ge 45 \]; then echo "::warning::')
+        self.assertRegex(run, r'-ge 120 \]; then .*exit 1')
+        self.assertRegex(run, r'-ge 90 \]; then echo "::warning::')
 
     def test_it_also_runs_the_concord_room_plugin_tests_after_the_python_suite_with_no_secret_or_install(self):
         """Jim, Nov 8 2026: the Concord Room Orca plugin is production, so its node:test file runs in this same required check (the named test file, not the directory form, which fails on Node 24)."""
@@ -371,7 +371,7 @@ class AmazonRetentionOffTheChainTests(unittest.TestCase):
         try:
             cls.jobs = yaml.safe_load(pathlib.Path(__file__).resolve().parents[2].joinpath(".github/workflows/domains.yml").read_text())["jobs"]
         except NameError:
-            raise unittest.SkipTest("pyyaml unavailable")
+            raise unittest.SkipTest("pyyaml unavailable") from None
 
     def test_retention_is_its_own_job_that_starts_after_the_amazon_job_and_nothing_waits_for_it_but_the_report(self):
         retention = self.jobs["amazon_retention"]
@@ -403,7 +403,7 @@ class UnitTestGateTests(unittest.TestCase):
         try:
             cls.doc = yaml.safe_load(pathlib.Path(__file__).resolve().parents[2].joinpath(".github/workflows/hourly.yml").read_text())
         except NameError:
-            raise unittest.SkipTest("pyyaml unavailable")
+            raise unittest.SkipTest("pyyaml unavailable") from None
 
     def steps(self):
         return {s.get("name", ""): s for s in self.doc["jobs"]["prep"]["steps"]}
@@ -469,7 +469,7 @@ class BrowserStepBehaviourTests(unittest.TestCase):
         try:
             import yaml
         except ImportError:
-            raise unittest.SkipTest("pyyaml unavailable")
+            raise unittest.SkipTest("pyyaml unavailable") from None
         path = pathlib.Path(__file__).resolve().parents[2] / ".github/workflows/hourly.yml"
         steps = yaml.safe_load(path.read_text())["jobs"]["finish"]["steps"]
         cls.script = next(s for s in steps if s.get("id") == "browser")["run"]
@@ -571,7 +571,7 @@ class FastPathFirstTests(unittest.TestCase):
         try:
             import yaml
         except ImportError:
-            raise unittest.SkipTest("PyYAML not installed")
+            raise unittest.SkipTest("PyYAML not installed") from None
         root = pathlib.Path(__file__).resolve().parents[2] / ".github/workflows"
         cls.hourly = yaml.safe_load((root / "hourly.yml").read_text())
 

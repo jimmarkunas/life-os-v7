@@ -207,9 +207,9 @@ def ensure_schema(connection):
     with connection.cursor() as cursor:
         for table, column, ddl, index in COLUMNS:
             if not _column_present(cursor, table, column):
-                _alter(cursor, f"ALTER TABLE {table} ADD COLUMN {column} {ddl}", lambda: _column_present(cursor, table, column))
+                _alter(cursor, f"ALTER TABLE {table} ADD COLUMN {column} {ddl}", lambda cursor=cursor, table=table, column=column: _column_present(cursor, table, column))
                 if index:
-                    _alter(cursor, f"ALTER TABLE {table} {index}", lambda: _key_present(cursor, table, index.split()[2]))
+                    _alter(cursor, f"ALTER TABLE {table} {index}", lambda cursor=cursor, table=table, index=index: _key_present(cursor, table, index.split()[2]))
     with connection.cursor() as cursor:                                   # D104: a column that was created too narrow is widened once
         for table, column, width in WIDEN:
             cursor.execute("SELECT CHARACTER_MAXIMUM_LENGTH FROM information_schema.columns WHERE table_schema = DATABASE() "

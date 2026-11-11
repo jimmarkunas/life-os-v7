@@ -254,7 +254,7 @@ class Incident(unittest.TestCase):
     def test_no_reminder_inside_the_window_or_when_the_signal_is_unchanged_or_recovered(self):
         for signal, quiet in ((True, 2.9), (None, 10)):                                                   # unchanged = recovering: never nags
             pushed, api = [], FakeGitHub([self.issue(opened_h=12, quiet_h=quiet)])
-            self.assertIsNone(self.sync(api, signal, lambda *a: pushed.append(a) or True))
+            self.assertIsNone(self.sync(api, signal, lambda *a, pushed=pushed: pushed.append(a) or True))
             self.assertEqual((pushed, api.writes()), ([], []))
         pushed, api = [], FakeGitHub([self.issue(opened_h=12, quiet_h=10)])
         self.assertEqual(self.sync(api, False, lambda *a: pushed.append(a) or True), "closed")            # recovered: the recovery push only
@@ -335,12 +335,12 @@ class DailyCheckin(unittest.TestCase):
     def test_watch_sends_the_checkin_at_the_hour_and_not_otherwise(self):
         for hour, expect in ((13, ["V7 daily check: OK"]), (9, [])):
             now, pushed = dt.datetime(2026, 10, 11, hour, 17, tzinfo=dt.timezone.utc), []
-            fresh = lambda: {"workflow_runs": [{"id": 1, "display_title": "tick", "conclusion": "success", "created_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            fresh = lambda now=now: {"workflow_runs": [{"id": 1, "display_title": "tick", "conclusion": "success", "created_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
                                                 "updated_at": (now - dt.timedelta(minutes=10)).strftime("%Y-%m-%dT%H:%M:%SZ")}]}
             old = gate._api
-            gate._api = lambda path, *a, **k: fresh() if "workflows/" in path else {}
+            gate._api = lambda path, *a, fresh=fresh, **k: fresh() if "workflows/" in path else {}
             try:
-                gate.watch(now, push=lambda *a: pushed.append(a[0]) or True)
+                gate.watch(now, push=lambda *a, pushed=pushed: pushed.append(a[0]) or True)
             finally:
                 gate._api = old
             self.assertEqual(pushed, expect)

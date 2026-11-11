@@ -414,7 +414,7 @@ class BoardTimeLimit(unittest.TestCase):
                 raise Stop()
             return lister.Listing(lister.COMPLETE, [])
         err = io.StringIO()
-        with redirect_stderr(err), self.assertRaises(BaseException):
+        with redirect_stderr(err), self.assertRaises(Stop):
             run.run(10, True, NOW, lister_fn, MemRepo(), SOURCES, board_seconds=1)
         self.assertIn("web: stopped while waiting for board s2", err.getvalue())
 

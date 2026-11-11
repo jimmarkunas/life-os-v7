@@ -3,6 +3,7 @@ import unittest
 
 from lifeos.network import surface
 from lifeos.platform import hidden, ledger_body as body
+from lifeos.platform.notion_client import NotionError
 from tests.jobs.fakes_ledger import FakeLedger
 from tests.network.test_surface import KEY1, build, go
 
@@ -45,7 +46,7 @@ class Layout(unittest.TestCase):
         ledger = FakeLedger()
         ledger.add_page("old", KEY1)
         self.assertEqual(body.fill(ledger, "old", DESC, strict=False), 0)
-        with self.assertRaises(Exception):
+        with self.assertRaises(NotionError):
             body.fill(ledger, "old", DESC)
 
     def test_either_layout_reads_back_as_the_same_description_text(self):

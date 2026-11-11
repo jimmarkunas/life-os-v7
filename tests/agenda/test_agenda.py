@@ -210,7 +210,7 @@ class AgendaCardTests(unittest.TestCase):
                                    (AgendaRegions(calendar_type="paragraph"), "calendar-callout"),
                                    (AgendaRegions(calendar_title="Calendar", heading_type="paragraph"), "calendar-callout")):
             before = len(notion.log)
-            with self.assertRaises(Exception):
+            with self.assertRaises(card.CardError):
                 card.run(1, True, environ={**self._env(), "CALENDAR_CARD_BLOCK_ID": configured}, client=notion,
                          now=NOW, connect=lambda: database)
             self.assertFalse(any(kind in ("APPEND", "DELETE", "PATCH") for kind, _ in notion.log[before:]))

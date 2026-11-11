@@ -44,7 +44,7 @@ class Consent(unittest.TestCase):
         for state, want in (("good", "abc"), ("forged", None)):
             server = http.server.HTTPServer(("127.0.0.1", 0), http.server.BaseHTTPRequestHandler)
             port = server.server_port
-            threading.Thread(target=lambda: urllib.request.urlopen(f"http://127.0.0.1:{port}/?state={state}&code=abc").read(), daemon=True).start()
+            threading.Thread(target=lambda port=port, state=state: urllib.request.urlopen(f"http://127.0.0.1:{port}/?state={state}&code=abc").read(), daemon=True).start()
             self.assertEqual(G.catch(server, "good"), want)
             server.server_close()
 

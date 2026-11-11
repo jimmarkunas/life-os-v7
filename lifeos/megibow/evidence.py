@@ -64,7 +64,7 @@ def outlook_sent(client, account, start, end):
             continue
         headers = {h.get("name", "").lower(): h.get("value", "") for h in m.get("internetMessageHeaders") or [] if isinstance(h, dict)}
         bulk = bool(headers.get("list-id") or headers.get("list-unsubscribe")) or headers.get("precedence", "").lower() in ("bulk", "list", "junk") or headers.get("auto-submitted", "no").lower() not in ("", "no")
-        pick = lambda key: [((r.get("emailAddress") or {}).get("address") or "").lower() for r in m.get(key) or []]
+        pick = lambda key, m=m: [((r.get("emailAddress") or {}).get("address") or "").lower() for r in m.get(key) or []]
         out.append({"id": f"o:{account}:{m['id']}", "sent_at": sent, "to": pick("toRecipients"), "cc": pick("ccRecipients"), "subject": m.get("subject") or "",
                     "snippet": m.get("bodyPreview") or "", "bulk": bulk})
     return out, own
