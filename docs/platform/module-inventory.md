@@ -4,7 +4,7 @@ Report only. Nothing was deleted or changed. Taken from origin/main at c7ad41a o
 
 ## Read this first
 
-* **No row is DEAD-PROVEN.** The Mac runtime (launchd, processes, ports) was only partly checked and the Oracle evidence covers the live names, so every row without positive evidence is UNVERIFIED and stays. This follows the ticket: no default to delete.
+* **One row is DEAD-PROVEN (lifeos/synthetic); no row is left unclassified (LIFE-591, Nov 11 2026).** The 11 rows that had no positive evidence were each checked in the repo, in the workflows, on the Oracle VM (system and user units, cron, installed trees, role files) and on this Mac (launchd, cron, processes). Nothing was deleted: the decision on `lifeos/synthetic` is Jim's.
 * **Size correction.** The ticket says lifeos/ is about 66k lines in 35 modules. Measured: **48,457 lines of Python in 34 top-level units** (322 .py files; 34 other files are shell, JSON, Node, systemd and launchd files). tests/ is **56,713 lines**, not about 57k (fine). Largest are sources 8,832, jobs 8,564, platform 5,596, interview 5,159, edge 2,692.
 * **Line-count target for follow-on tickets: none proposed.** The target would count only DEAD-PROVEN rows, and there are none. The first real saving is elsewhere (see Findings).
 
@@ -18,7 +18,7 @@ Report only. Nothing was deleted or changed. Taken from origin/main at c7ad41a o
 
 ## A. lifeos/ (34 units)
 
-Columns: lines = Python lines; tests = test files / test lines that mention the module; PII = handles personal data (judged from purpose and docs, not scanned); Class = LIVE / DEAD-PROVEN / UNVERIFIED.
+Columns: lines = Python lines; tests = test files / test lines that mention the module; PII = handles personal data (judged from purpose and docs, not scanned); Class = LIVE / DEAD-PROVEN (every row has one; LIFE-591).
 
 | Unit | Files | Lines | Last commit | Tests | PII | Host that runs it | Class | Proposed action | Reason |
 |---|---|---|---|---|---|---|---|---|---|
@@ -31,16 +31,16 @@ Columns: lines = Python lines; tests = test files / test lines that mention the 
 | lifeos/imessage | 15 | 1,575 | 2026-10-26 | 9 / 2,342 | yes | GitHub, Oracle (alerts_endpoint); Mac launchd plists not checked | LIVE | keep | 2 stages in workflows; alerts_endpoint.py on Oracle |
 | lifeos/recruiters | 9 | 1,360 | 2026-10-25 | 7 / 2,119 | yes | GitHub | LIVE | keep | 2 of 2 stages in workflows |
 | lifeos/hiring | 10 | 1,355 | 2026-11-08 | 11 / 4,455 | yes | GitHub, Oracle (close_screen via close_app) | LIVE | keep | 1 stage in workflows; used by Oracle Close |
-| lifeos/synthetic | 13 | 1,335 | 2026-11-09 | 9 / 1,547 | no | none found | UNVERIFIED | keep until proven | only a string reference in platform/codes.py; no real import, stage or workflow found |
+| lifeos/synthetic | 13 | 1,335 | 2026-11-09 | 9 / 1,547 | no | none found | DEAD-PROVEN | delete proposed (Jim decides; LIFE-591 deleted nothing) | no import outside itself and its tests, no stage, no workflow; none of the Oracle units, cron entries, installed trees or role files, nor this Mac's launchd, cron or processes names it; only strings in platform/codes.py and the credential list point at it. Rollback if wanted: the code stays in Git history |
 | lifeos/amazon | 10 | 1,319 | 2026-10-26 | 8 / 3,417 | yes | GitHub | LIVE | keep | 3 of 5 stages named in workflows |
-| lifeos/network | 10 | 1,231 | 2026-11-08 | 9 / 2,978 | yes | GitHub (as library) | LIVE | keep | imported by run.py and sources; its own 3 stages are in no workflow (UNVERIFIED for those stages) |
+| lifeos/network | 10 | 1,231 | 2026-11-08 | 9 / 2,978 | yes | GitHub | LIVE | keep | imported by run.py and sources; its stages network-inspect, -import, -audit and -match are run by the manual workflow network.yml (input `stage`), network-surface and -layout by network.yml and (surface) by hourly.yml |
 | lifeos/bills | 5 | 892 | 2026-10-26 | 4 / 1,789 | yes | GitHub | LIVE | keep | 3 of 3 stages in workflows |
 | lifeos/megibow | 11 | 822 | 2026-11-07 | 2 / 454 | yes | GitHub (via sources.megibow stage) | LIVE | keep | imported by sources/megibow.py; stage "megibow" named in a workflow |
 | lifeos/attention | 5 | 721 | 2026-11-06 | 5 / 2,858 | yes | GitHub | LIVE | keep | 2 of 2 stages in workflows |
 | lifeos/physmail | 6 | 640 | 2026-10-25 | 2 / 1,982 | yes | GitHub | LIVE | keep | 2 of 2 stages in workflows |
 | lifeos/probe | 1 | 603 | 2026-10-26 | 2 / 143 | no | GitHub | LIVE | keep | stage "probe" in a workflow |
 | lifeos/agenda | 3 | 587 | 2026-10-19 | 2 / 1,552 | yes | GitHub | LIVE | keep | 2 of 2 stages in workflows |
-| lifeos/delivery | 3 | 361 | 2026-11-01 | 2 / 352 | no | none found | UNVERIFIED | keep until proven | 1 stage in run.py, named in no workflow; Mac/Oracle runtime unchecked |
+| lifeos/delivery | 3 | 361 | 2026-11-01 | 2 / 352 | no | GitHub (manual) | LIVE | keep | its one stage, amazon-census, is the `census` option of the manual workflow amazon.yml (run line `amazon-$STAGE`); no Oracle or Mac caller (and none needed) |
 | lifeos/whatsapp | 8 | 356 | 2026-10-25 | 3 / 699 | yes | Oracle (forward_alerts.py, attention.mjs, state.mjs) | LIVE | keep | Oracle report lists lifeos/whatsapp/oracle as live |
 | lifeos/buzz_mcp | 1 | 333 | 2026-11-07 | 0 / 0 | no | Oracle (lifeos-buzz-mcp.service) | LIVE | keep | Oracle report: lifeos.buzz_mcp live |
 | lifeos/telegram | 2 | 332 | 2026-10-15 | 1 / 123 | yes | Oracle (installed copy, identical to main) | LIVE | keep | called by path from imessage/alerts_endpoint.py (LIFE-530 report); Jim: Telegram alerting |
@@ -93,15 +93,15 @@ Run history for the baseline is in section F.
 | Item | Files | Lines | Last commit | PII | Host | Class | Proposed action | Reason |
 |---|---|---|---|---|---|---|---|---|
 | tools/orca-concord-room | 13 | 3,877 | 2026-11-09 | no | Mac (Orca plugin) | LIVE | keep | Node tests run on every PR; Mac inventory: Concord adapter LIVE |
-| hermes/ (scripts, roles, plugins) | 20 | 943 | 2026-11-07 | no | Mac and Oracle deploy scripts | UNVERIFIED | keep until proven | deploy_plugin.sh is called by hand; which scripts Jim still runs is unchecked |
-| widgets/communications-attention | 1 | 113 | 2026-10-15 | yes (display only) | GitHub Pages | UNVERIFIED | keep until proven | consumer outside the repo not checked |
-| widgets/launch | 6 | 102 | 2026-10-21 | no | GitHub Pages | UNVERIFIED | keep until proven | consumer outside the repo not checked |
-| widgets/world-clock | 1 | 435 | 2026-10-14 | no | GitHub Pages | UNVERIFIED | keep until proven | consumer outside the repo not checked |
+| hermes/ (scripts, roles, plugins) | 20 | 943 | 2026-11-07 | no | Oracle (Hermes runs there) | LIVE | keep | all six role files (`main` and five profiles) are byte-identical to the live copies in the Hermes folder on the VM; the deploy scripts are described in docs/hermes-files.md and have tests under tests/hermes. The connector-allowlist plugin was not found in the VM's top-level plugin folder (profile-level plugin folders were not checked) |
+| widgets/communications-attention | 1 | 113 | 2026-10-15 | yes (display only) | GitHub Pages | LIVE | keep | the hosting copy is the separate public `github-widgets` repository, whose Pages site is built (checked through the GitHub API); the Notion embeds that point at it were not checked |
+| widgets/launch | 6 | 102 | 2026-10-21 | no | GitHub Pages | LIVE | keep | same hosting copy and same limit as the row above |
+| widgets/world-clock | 1 | 435 | 2026-10-14 | no | GitHub Pages | LIVE | keep | same hosting copy and same limit as the row above (its README names this folder as the canonical source) |
 | muse-persona-export/ | removed | | | yes | n/a | n/a | already deleted by LIFE-537 (PR 863) | moved to the Notion Product Requirements entry REQ-34 |
 | requirements.txt | 1 | 2 | 2026-10-01 | no | GitHub | LIVE | keep | pinned requirements used by CI |
-| requirements-browser.txt | 1 | 1 | 2026-10-01 | no | GitHub | UNVERIFIED | keep until proven | which workflow installs it is not checked |
-| requirements-fit.txt | 1 | 1 | 2026-10-01 | no | Oracle (Cloud Fit, VM-only) | UNVERIFIED | keep; do not move (LIFE-529) | Fit code is VM-only by design |
-| docs/ (33 top-level files plus contracts/ and development-policy/) | | | | no | n/a | UNVERIFIED | keep; check stale paths in a later ticket | one summary row; PRIVACY.md line 17 names tests/test_privacy.py, the real guard is tests/contracts/test_privacy.py (drift only, protected file, Jim approves any fix) |
+| requirements-browser.txt | 1 | 1 | 2026-10-01 | no | GitHub | LIVE | keep | source of requirements-browser.lock, which hourly.yml installs with `pip install --require-hashes`; tests/contracts/test_lockfiles.py pairs the two |
+| requirements-fit.txt | 1 | 1 | 2026-10-01 | no | GitHub (semantic layer) | LIVE | keep; do not move (LIFE-529) | source of requirements-fit.lock, which hourly.yml installs for the optional semantic layer (lifeos/jobs/fit/semantic.py imports fastembed); the same pairing test covers it |
+| docs/ (33 top-level files plus contracts/ and development-policy/) | | | | no | n/a | LIVE | keep; check stale paths in a later ticket | read by agents and listed in INDEX.md (the repo check enforces the index); one summary row; PRIVACY.md line 17 names tests/test_privacy.py, the real guard is tests/contracts/test_privacy.py (drift only, protected file, Jim approves any fix) |
 | INDEX.md, AGENTS.md, CLAUDE.md | 3 | 222 | | no | every session | LIVE | keep | bootstrap files |
 
 ## D. Oracle-only code (not in the repo)
