@@ -1234,3 +1234,12 @@ class ProfileSyncWorkflowTests(unittest.TestCase):
     def test_it_is_a_dry_run_unless_ticked_or_following_a_tick_with_the_variable_on(self):
         self.assertFalse(self.doc["on"]["workflow_dispatch"]["inputs"]["live"]["default"] if "on" in self.doc else self.doc[True]["workflow_dispatch"]["inputs"]["live"]["default"])
         self.assertIn("vars.FIT_PROFILE_SYNC == 'on'", self.text)
+
+
+class ConcurrencyHasNoSwitch(unittest.TestCase):
+    """LIFE-604 approval 5: TICK_CONCURRENCY (and its benchmark twin) are gone from the workflow and the code; the list of settings has no row for them."""
+    def test_no_workflow_or_code_file_reads_the_switch(self):
+        root = pathlib.Path(__file__).resolve().parents[2]
+        for path in list((root / ".github/workflows").glob("*.yml")) + [root / "lifeos/jobs/tick.py", root / "lifeos/platform/bench.py", root / "lifeos/platform/credential_list.py"]:
+            self.assertNotIn("TICK_CONCURRENCY", path.read_text(), path.name)
+            self.assertNotIn("BENCH_TICK_CONCURRENCY", path.read_text(), path.name)

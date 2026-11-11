@@ -162,15 +162,15 @@ class TickSettings(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             env_off = {"BENCH_SNAPSHOT": snapshot_file(tmp)}
             off = bench.tick_settings(tick.concurrency_from_env(env_off), env_off)
-            env_on = {"BENCH_SNAPSHOT": snapshot_file(tmp), "TICK_CONCURRENCY": "on", "TICK_CAP_ATS": "8"}
+            env_on = {"BENCH_SNAPSHOT": snapshot_file(tmp), "TICK_CAP_ATS": "8"}
             on = bench.tick_settings(tick.concurrency_from_env(env_on), env_on)
-        self.assertEqual((off["TICK_CONCURRENCY"], off["mode"]), ("off", "dry (nothing is written)"))
-        self.assertEqual((on["TICK_CONCURRENCY"], on["caps"]["ats"], on["frozen"]["US Remote/boards"]), ("on", 8, 3))
+        self.assertEqual((off["concurrency"], off["mode"]), ("on", "dry (nothing is written)"))
+        self.assertEqual((on["concurrency"], on["caps"]["ats"], on["frozen"]["US Remote/boards"]), ("on", 8, 3))
 
     def test_the_summary_is_one_line_of_settings_and_totals(self):
-        settings = {"TICK_CONCURRENCY": "off", "frozen": {"US Remote/boards": 350}}
+        settings = {"concurrency": "on", "frozen": {"US Remote/boards": 350}}
         text = bench.tick_summary(settings, {"a": "ok", "b": "failed"}, {"a": 10.0, "b": 5.5}, 20.0)
-        self.assertIn("| off | 350 | 15.5 | 20.0 | b |", text)
+        self.assertIn("| on | 350 | 15.5 | 20.0 | b |", text)
 
     def test_a_live_benchmark_is_refused(self):
         with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"BENCH_SNAPSHOT": snapshot_file(tmp)}), redirect_stderr(io.StringIO()) as err:

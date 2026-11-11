@@ -213,12 +213,11 @@ class SideBySide(unittest.TestCase):
             result = tick.tick(False, plan=plan, stages=stages, concurrency={"caps": {"linkedin": 1, "tinyfish": 1, "ats": 8}, "parallel": 4, **conc})
         return result, out.getvalue()
 
-    def test_concurrency_is_off_unless_the_variable_says_on_and_a_bad_cap_falls_back_to_the_safe_default(self):
-        for environ in ({}, {"TICK_CONCURRENCY": "off"}, {"TICK_CONCURRENCY": "yes"}, {"TICK_CONCURRENCY": ""}):
-            self.assertIsNone(tick.concurrency_from_env(environ), environ)
-        on = tick.concurrency_from_env({"TICK_CONCURRENCY": "on"})
-        self.assertEqual(on, {"caps": {"linkedin": 1, "tinyfish": 1, "jobright": 1, "dice": 1, "ats": 8}, "parallel": 4})
-        odd = tick.concurrency_from_env({"TICK_CONCURRENCY": " ON ", "TICK_CAP_LINKEDIN": "0", "TICK_CAP_TINYFISH": "99", "TICK_CAP_ATS": "x", "TICK_CAP_DICE": "3", "TICK_MAX_PARALLEL": "2"})
+    def test_concurrency_is_always_on_and_a_bad_cap_falls_back_to_the_safe_default(self):
+        """LIFE-604 approval 5: the TICK_CONCURRENCY switch is gone; stages of a group always run side by side. Only the caps are tunable."""
+        for environ in ({}, {"TICK_CONCURRENCY": "off"}, {"TICK_CONCURRENCY": ""}):                # a leftover variable can no longer turn it off
+            self.assertEqual(tick.concurrency_from_env(environ), {"caps": {"linkedin": 1, "tinyfish": 1, "jobright": 1, "dice": 1, "ats": 8}, "parallel": 4}, environ)
+        odd = tick.concurrency_from_env({"TICK_CAP_LINKEDIN": "0", "TICK_CAP_TINYFISH": "99", "TICK_CAP_ATS": "x", "TICK_CAP_DICE": "3", "TICK_MAX_PARALLEL": "2"})
         self.assertEqual((odd["caps"]["linkedin"], odd["caps"]["tinyfish"], odd["caps"]["ats"], odd["caps"]["dice"], odd["parallel"]), (1, 1, 8, 3, 2))      # junk never raises a cap
 
     def test_stages_of_one_group_run_side_by_side_and_a_service_cap_of_one_keeps_two_stages_in_turn(self):

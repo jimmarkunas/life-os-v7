@@ -569,7 +569,6 @@ CONFIG = {'provided': {'prefixes': ['GITHUB_', 'RUNNER_'], 'names': ['CI', 'PATH
            {'name': 'TICK_CAP_JOBRIGHT', 'kind': 'flag', 'owner': 'jobs', 'purpose': 'how many Jobright stages run at once when stages run side by side (default 1)'},
            {'name': 'TICK_CAP_LINKEDIN', 'kind': 'flag', 'owner': 'jobs', 'purpose': 'how many LinkedIn stages run at once when stages run side by side (default 1: resolve-linkedin, linkedin-search and discover-jobs take turns)'},
            {'name': 'TICK_CAP_TINYFISH', 'kind': 'flag', 'owner': 'jobs', 'purpose': 'how many TinyFish stages run at once when stages run side by side (default 1: title watch and discover-jobs take turns)'},
-           {'name': 'TICK_CONCURRENCY', 'kind': 'flag', 'owner': 'jobs', 'purpose': 'on or off (default off): run the independent Jobs tick stages side by side as threads of one process (LIFE-569)'},
            {'name': 'TICK_MAX_PARALLEL', 'kind': 'flag', 'owner': 'jobs', 'purpose': 'how many Jobs tick stages run at once at most when stages run side by side (default 4)'},
            {'name': 'TINYFISH_API_KEY', 'kind': 'secret', 'owner': 'platform', 'purpose': 'Search provider key (never printed)'},
            {'name': 'V7_AI_CAPACITY_CARD', 'kind': 'flag', 'owner': 'jobs', 'purpose': 'Switch for the AI capacity card'},
