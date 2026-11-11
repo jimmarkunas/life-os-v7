@@ -36,8 +36,10 @@ class TheList(unittest.TestCase):
             if e["expires"]:
                 dt.date.fromisoformat(e["expires"])                                  # a real date
                 self.assertNotEqual(e["expiry_source"], "none", e["key"])           # a credential with a date cannot claim "no expiry exposed"
-            if e["expiry_source"] == "none":
+            if e["expiry_source"] in ("none", "no_expiry"):
                 self.assertIsNone(e["expires"], e["key"])
+            if e["expiry_source"] == "no_expiry":
+                self.assertTrue(e.get("source_label", "").startswith("No fixed expiry ("), e["key"])         # a stated reason, never a bare claim
 
     def test_no_value_looks_like_a_secret_an_id_an_email_or_a_key(self):
         for e in cred.load():
@@ -56,7 +58,7 @@ class TheList(unittest.TestCase):
     def test_the_file_is_names_only_so_nothing_in_it_could_be_a_value(self):
         fields = {k for e in cred.load() for k in e}
         self.assertNotIn("value", fields)
-        self.assertTrue(fields <= set(cred.REQUIRED), fields - set(cred.REQUIRED))                       # only the known name-and-date fields
+        self.assertTrue(fields <= set(cred.REQUIRED) | set(cred.OPTIONAL), fields - set(cred.REQUIRED))                       # only the known name-and-date fields
 
 
 class Rows(unittest.TestCase):
@@ -121,3 +123,22 @@ class Screen(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NoFixedExpiry(unittest.TestCase):
+    """LIFE-528 (Jim, Nov 11 2026): a credential with nothing that expires says so, with its reason; it is not counted as "no date to check"."""
+    def test_outlook_and_the_calendar_key_show_the_reason_and_the_status(self):
+        rows = {r["key"]: r for r in cred.rows(TODAY)}
+        self.assertEqual(rows["outlook_sign_in"]["source"], "No fixed expiry (delegated sign-in, no app secret)")
+        self.assertEqual((rows["outlook_sign_in"]["status"], rows["gcal_service_account"]["status"]), ("No fixed expiry", "No fixed expiry"))
+        self.assertNotIn("No fixed expiry", [r["status"] for r in rows.values() if r["expires"]])
+
+    def test_the_new_bitwarden_and_atlassian_dates_are_in_the_list(self):
+        got = {k: v["expires"] for k, v in cred.expiries().items()}
+        self.assertEqual((got["bws_runtime_token"], got["bws_runtime_token_old"], got["bws_mac_token"]), ("2027-11-04", "2026-12-05", "2027-11-04"))
+        self.assertEqual((got["atlassian_openclaw_jira"], got["atlassian_orca"]), ("2027-10-10", "2027-11-07"))
+
+    def test_the_screen_counts_no_fixed_expiry_apart_from_unknown(self):
+        html = app._credentials(dt.datetime(2026, 11, 11, 12, 0))
+        self.assertIn("no fixed expiry 2,", html)
+        self.assertIn("No fixed expiry (delegated sign-in, no app secret)", html)
