@@ -113,30 +113,55 @@ class IsolatedTree(unittest.TestCase):
 
 
 class AutoRelease(unittest.TestCase):
-    """Jim, Oct 24: the Edge releases main's head by itself, only once main's own hourly run tested that commit, and only when the Close closure changed."""
-    RUN = {"head_sha": C, "head_branch": "main", "path": ".github/workflows/hourly.yml", "status": "completed", "id": 1, "run_attempt": 1}
+    """Jim, Oct 24: the Edge releases main's head by itself, only when the Close closure changed. LIFE-562 (Nov 11): the gate is the required CI check on that exact commit (pr-tests
+    on main); the hourly data run is reported and never blocks."""
+    RUN = {"head_sha": C, "head_branch": "main", "path": ".github/workflows/pr-tests.yml", "event": "push", "status": "completed", "conclusion": "success", "id": 1, "run_attempt": 1}
+    HOURLY = {"head_sha": C, "head_branch": "main", "path": ".github/workflows/hourly.yml", "event": "workflow_dispatch", "status": "completed", "conclusion": "failure", "id": 9, "run_attempt": 1}
 
-    def fetch(self, sha=C, runs=(RUN,), steps=None):
-        steps = steps or {1: "success"}
+    def fetch(self, sha=C, runs=(RUN,), hourly=()):
         urls = {f"https://api.github.com/repos/{rel.REPO}/commits/main": json.dumps({"sha": sha}).encode(),
-                f"https://api.github.com/repos/{rel.REPO}/actions/workflows/hourly.yml/runs?branch=main&head_sha={sha}&per_page=20": json.dumps({"workflow_runs": list(runs)}).encode()}
-        for run_id, conclusion in steps.items():
-            urls[f"https://api.github.com/repos/{rel.REPO}/actions/runs/{run_id}/jobs?per_page=100"] = json.dumps(
-                {"jobs": [{"name": "prep", "steps": [{"name": "Unit tests", "conclusion": conclusion}]}]}).encode()
+                f"https://api.github.com/repos/{rel.REPO}/actions/workflows/pr-tests.yml/runs?branch=main&head_sha={sha}&per_page=20": json.dumps({"workflow_runs": list(runs)}).encode(),
+                f"https://api.github.com/repos/{rel.REPO}/actions/workflows/hourly.yml/runs?branch=main&head_sha={sha}&per_page=20": json.dumps({"workflow_runs": list(hourly)}).encode()}
         return urls.__getitem__
 
-    def test_only_main_own_tested_head_releases(self):
+    def test_only_a_head_with_green_ci_on_main_releases(self):
         R = self.RUN
         self.assertEqual(rel.latest(self.fetch()), C)
-        refused = [dict(runs=()), dict(steps={1: "failure"}), dict(steps={1: "skipped"}), dict(runs=({**R, "status": "in_progress"},)),
+        refused = [dict(runs=()), dict(runs=({**R, "conclusion": "failure"},)), dict(runs=({**R, "conclusion": "cancelled"},)), dict(runs=({**R, "status": "in_progress", "conclusion": None},)),
                    dict(runs=({**R, "head_branch": "feature"},)), dict(runs=({**R, "head_sha": "b" * 40},)), dict(runs=({**R, "path": ".github/workflows/other.yml"},)),
-                   dict(runs=(R, {**R, "id": 2}), steps={1: "success", 2: "failure"}), dict(runs=(R, {**R, "id": 2, "status": "queued"}))]
+                   dict(runs=(R, {**R, "id": 2, "conclusion": "failure"})), dict(runs=(R, {**R, "id": 2, "status": "queued", "conclusion": None}))]
         for kw in refused:
             with self.assertRaises(rel.Refused, msg=str(kw)):
                 rel.latest(self.fetch(**kw))
-        self.assertEqual(rel.latest(self.fetch(runs=(R, {**R, "id": 2}), steps={1: "success", 2: "skipped"})), C)    # a skipped tick tests nothing: the older test stands
         with self.assertRaises(rel.Refused):
             rel.latest(self.fetch(sha="main"))
+
+    def test_a_pull_request_run_never_counts(self):
+        with self.assertRaises(rel.Refused):
+            rel.latest(self.fetch(runs=({**self.RUN, "event": "pull_request"},)))
+
+    def test_a_red_hourly_run_does_not_block_a_green_ci_head_and_is_only_reported(self):
+        red, running = self.HOURLY, {**self.HOURLY, "status": "in_progress", "conclusion": None}
+        for hourly, said in (((red,), "red"), ((running,), "running"), ((), "none"), (({**red, "conclusion": "success"},), "green")):
+            fetch = self.fetch(hourly=hourly)
+            self.assertEqual(rel.latest(fetch), C, said)                                 # LIFE-562: the hourly result never decides the deploy
+            self.assertEqual(rel.hourly_report(C, fetch), said)
+
+    def test_a_green_hourly_run_does_not_release_a_red_ci_head(self):
+        green_hourly = {**self.HOURLY, "conclusion": "success"}
+        with self.assertRaises(rel.Refused):
+            rel.latest(self.fetch(runs=({**self.RUN, "conclusion": "failure"},), hourly=(green_hourly,)))
+
+    def test_an_unreadable_hourly_report_says_unknown_and_never_raises(self):
+        self.assertEqual(rel.hourly_report(C, lambda url: (_ for _ in ()).throw(OSError("down"))), "unknown")
+
+    def test_the_updater_marks_a_wait_and_a_two_hour_stall_and_clears_both_when_green(self):
+        text = (rel_installer := open(os.path.join(os.path.dirname(rel.__file__), "install-close.sh")).read())
+        self.assertIn("auto.waiting", text)
+        self.assertIn("-ge 7200", text)
+        self.assertIn("auto.stalled", text)
+        self.assertLess(text.index("auto.stalled"), text.index('rm -f "$ETC/auto.waiting" "$ETC/auto.stalled"'))
+        self.assertLess(text.index('rm -f "$ETC/auto.waiting"'), text.index('if read -r held _ 2>/dev/null < "$ETC/auto.hold"'))       # cleared as soon as a green head is read
 
     def test_a_commit_that_does_not_touch_the_closure_is_not_a_release(self):
         a, b = os.path.join(tempfile.mkdtemp(), "a"), os.path.join(tempfile.mkdtemp(), "b")

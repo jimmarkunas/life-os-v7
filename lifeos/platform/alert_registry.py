@@ -57,6 +57,8 @@ REGISTRY = {
     "hermes_disk_full_recovered": _info("edge", "The Hermes disk image is back under 80%."),
     "deploy_drift": _info("edge", "A repo-owned file installed on the Oracle VM differs from main, or its unit is not running (LIFE-528)."),
     "deploy_drift_recovered": _info("edge", "Every checked file on the Oracle VM matches main again."),
+    "deploy_stalled": _info("edge", "The Close service release timer has found no green main head for over 2 hours (LIFE-562)."),
+    "deploy_stalled_recovered": _info("edge", "A green main head deployed; the Close release is moving again."),
     # --- one-shot events
     "attention_new": _info("attention", "New items need your attention (counts only)."),
     "physmail_new": _info("physmail", "New physical mail arrived (counts only)."),
