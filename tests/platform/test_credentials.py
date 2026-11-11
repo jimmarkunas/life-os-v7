@@ -103,7 +103,7 @@ class Screen(unittest.TestCase):
     def test_the_section_lists_every_credential_with_days_left_and_source_and_never_a_value(self):
         html = app._credentials(dt.datetime(2026, 11, 10, 12, 0))
         self.assertIn("No expiry exposed", html)
-        self.assertIn("Manual", html)
+        self.assertIn("Provider reported", html)                                                       # LIFE-565: every dated entry now has a provider reading; the "Manual" label is still covered by the Rows tests
         for e in cred.load():
             self.assertIn(app.e(e["label"]), html)
         for fragment in ("renew", "how_read", "token=", "BEGIN"):
