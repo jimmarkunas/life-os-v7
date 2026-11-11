@@ -466,6 +466,7 @@ CONFIG = {'provided': {'prefixes': ['GITHUB_', 'RUNNER_'], 'names': ['CI', 'PATH
            {'name': 'JOB_PAGE_OUTREACH', 'kind': 'flag', 'owner': 'sources', 'purpose': 'Switch for outreach from a job page'},
            {'name': 'KEY', 'kind': 'workflow_only', 'owner': 'workflow', 'purpose': 'Scratch variable used inside a workflow step'},
            {'name': 'LAYOUT_SHARD', 'kind': 'input', 'owner': 'sources', 'purpose': 'Which slice (i/n) of the Ledger pages a layout run moves'},
+           {'name': 'LIBS_CACHE_HIT', 'kind': 'flag', 'owner': 'workflow', 'purpose': 'Set by the hourly run: true when the saved browser system libraries were restored from the cache (LIFE-576)'},
            {'name': 'LIFEOS_ACQ_DB_NAME', 'kind': 'secret', 'owner': 'jobs', 'purpose': 'Connection detail for the Hostinger job store (read at run time through db.py)'},
            {'name': 'LIFEOS_ACQ_DB_PASSWORD',
             'kind': 'secret',
