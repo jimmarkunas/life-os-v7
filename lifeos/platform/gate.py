@@ -224,7 +224,7 @@ def watch(now=None, push=None, checkin=True):
         except Exception:                                          # the check-in must still go out, and say what it could not read
             domain_runs = []
         title, body = health(runs, domain_runs, now)
-        sent = (push or _push)(title, body, "info")
+        sent = (push or _push)(title, body, "info", "daily_check")          # LIFE-603: _push takes the registered alert key; the call without it crashed every real check-in
     print(f"watchdog: stale={is_stale} failing={fail_signal} changes={changes} checkin={sent}")
     return 0
 
