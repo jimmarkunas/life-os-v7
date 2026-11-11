@@ -92,7 +92,7 @@ on:
         options: ["none", "hiring", "recruiters"]
         default: "none"
       benchmark:
-        description: "Benchmark (LIFE-577, manual only): runs every domain job like `all` in DRY mode (nothing is written, `live` is ignored), refuses to start while another hourly or domains run is in progress, and ends with a summary of seconds per job, the run's wall time and an overlap check, so two runs are comparable."
+        description: "Benchmark (LIFE-577, manual only): every domain job in DRY mode, refuses to overlap, ends with a seconds-per-job summary."
         type: boolean
         default: false
       live:
@@ -116,7 +116,6 @@ concurrency:
   cancel-in-progress: false
 jobs:
   bench_gate:
-    # LIFE-577: a benchmark dispatch refuses to start while another hourly or domains run is queued or running; every other job needs this one and does not run if it fails.
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.benchmark }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -677,58 +676,21 @@ jobs:
           NOTION_AMAZON_TOKEN: ${{ steps.bws_amazon.outputs.NOTION_AMAZON_TOKEN || steps.bws_amazon_retry.outputs.NOTION_AMAZON_TOKEN }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_amazon.outputs.NOTION_JIRA_TOKEN || steps.bws_amazon_retry.outputs.NOTION_JIRA_TOKEN }}
         run: python -m lifeos.run amazon-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
-      - name: Amazon Orders warning (does not fail the Jobs run)
-        if: ${{ always() && (steps.amazon.outcome == 'failure' || steps.acard.outcome == 'failure') }}
-        run: echo "::warning title=Amazon Orders::the Amazon Orders stage failed; the Jobs pipeline is unaffected"
-
-  # LIFE-571: Amazon retention (D139) runs in its OWN job. It reads and trashes Gmail and reads the saved Amazon orders; it never writes the Daily Report page, so it does not belong in the
-  # serial chain of page writers (jira, agenda, bills, amazon, mail, ...). It starts when the amazon job (Orders saved, card written) is over and runs beside the rest of the chain. A failure
-  # is a warning only, exactly as before. Same 30-day rule, same 200-a-run limit, same live switch.
-  amazon_retention:
-    needs: [amazon, bench_gate]
-    if: ${{ always() && needs.bench_gate.result != 'failure' && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || (inputs.all || inputs.benchmark) || inputs.amazon) }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v5
-      - uses: ./.github/actions/python
-      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
-        uses: ./.github/actions/bws-helper
-        with:
-          wait_seconds: "300"
-      - id: bws_amazon_retention
-        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 3; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
-        continue-on-error: true                 # D209: one retry below; the retry fails the job
-        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
-        with: &bws_bws_amazon_retention
-          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
-          set_env: false
-          secrets: |
-            08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET
-            672a44e9-235f-4121-a99d-b4db015a6987 > GMAIL_OAUTH_REFRESH_TOKEN
-            46fe195b-82e2-416e-8272-b4db015eea12 > NOTION_AMAZON_TOKEN
-      - name: Bitwarden refused or timed out (429 / 5xx) - pause before the one retry
-        if: ${{ steps.bws_amazon_retention.outcome == 'failure' }}
-        run: sleep $((30 + RANDOM % 45))
-      - id: bws_amazon_retention_retry
-        name: Load the same credentials from Bitwarden - the one retry (the job fails if it fails, no fallback)
-        if: ${{ steps.bws_amazon_retention.outcome == 'failure' }}
-        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
-        with: *bws_bws_amazon_retention
       - id: aretain
         continue-on-error: true
         name: Amazon retention (D139; mail older than 30 days to the Trash once its order is recorded; dry run unless live; counts only)
+        if: ${{ always() }}
         env:
           GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
           NOTION_AMAZON_DATA_SOURCE_ID: ${{ secrets.NOTION_AMAZON_DATA_SOURCE_ID }}
           RETENTION_LIVE: "true"    # D139: live since Jim read the dry-run counts (Oct 5): mail older than 30 days with a recorded order goes to the Trash, at most 200 a run (Jim approved raising it from 40)
-          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_amazon_retention.outputs.GMAIL_OAUTH_CLIENT_SECRET || steps.bws_amazon_retention_retry.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
-          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_amazon_retention.outputs.GMAIL_OAUTH_REFRESH_TOKEN || steps.bws_amazon_retention_retry.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
-          NOTION_AMAZON_TOKEN: ${{ steps.bws_amazon_retention.outputs.NOTION_AMAZON_TOKEN || steps.bws_amazon_retention_retry.outputs.NOTION_AMAZON_TOKEN }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_amazon.outputs.GMAIL_OAUTH_CLIENT_SECRET || steps.bws_amazon_retry.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_amazon.outputs.GMAIL_OAUTH_REFRESH_TOKEN || steps.bws_amazon_retry.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          NOTION_AMAZON_TOKEN: ${{ steps.bws_amazon.outputs.NOTION_AMAZON_TOKEN || steps.bws_amazon_retry.outputs.NOTION_AMAZON_TOKEN }}
         run: python -m lifeos.run amazon-retention --limit 200 $([ "$RETENTION_LIVE" = "true" ] && echo --live)
-      - name: Amazon retention warning (does not fail the Jobs run)
-        if: ${{ always() && steps.aretain.outcome == 'failure' }}
-        run: echo "::warning title=Amazon retention::the Amazon retention stage failed; the Jobs pipeline is unaffected"
+      - name: Amazon Orders warning (does not fail the Jobs run)
+        if: ${{ always() && (steps.amazon.outcome == 'failure' || steps.acard.outcome == 'failure' || steps.aretain.outcome == 'failure') }}
+        run: echo "::warning title=Amazon Orders::the Amazon Orders stage failed; the Jobs pipeline is unaffected"
 
   mail:
     # MAIL-1.2 (D143): V7 is the sole owner and writer of the Daily Report "Mail Alerts" region (Production Contract v2.15.12). Gmail read-only evidence -> private state row -> the callout.
@@ -1570,7 +1532,7 @@ jobs:
   report:
     # A failed domain job (a provider outage, a Bitwarden 503) used to be only a workflow warning, so a stale card and a red run reached nobody. This job pushes the phone once per
     # failed tick-triggered run, counts only; a manual run never pushes. It never writes anything.
-    needs: [jira, outlook, bills, agenda, amazon, amazon_retention, mail, hiring, attention, megibow, recruiters, dcc, imessage, granola]
+    needs: [jira, outlook, bills, agenda, amazon, mail, hiring, attention, megibow, recruiters, dcc, imessage, granola]
     if: ${{ always() && github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick' && contains(needs.*.result, 'failure') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -1602,14 +1564,13 @@ jobs:
           NTFY_TOPIC: ${{ steps.bws_report.outputs.NTFY_TOPIC || steps.bws_report_retry.outputs.NTFY_TOPIC }}
         run: |
           failed=""
-          for pair in jira=${{ needs.jira.result }} outlook=${{ needs.outlook.result }} bills=${{ needs.bills.result }} agenda=${{ needs.agenda.result }} amazon=${{ needs.amazon.result }} amazon_retention=${{ needs.amazon_retention.result }} mail=${{ needs.mail.result }} hiring=${{ needs.hiring.result }} attention=${{ needs.attention.result }} megibow=${{ needs.megibow.result }} recruiters=${{ needs.recruiters.result }} dcc=${{ needs.dcc.result }} imessage=${{ needs.imessage.result }} granola=${{ needs.granola.result }}; do
+          for pair in jira=${{ needs.jira.result }} outlook=${{ needs.outlook.result }} bills=${{ needs.bills.result }} agenda=${{ needs.agenda.result }} amazon=${{ needs.amazon.result }} mail=${{ needs.mail.result }} hiring=${{ needs.hiring.result }} attention=${{ needs.attention.result }} megibow=${{ needs.megibow.result }} recruiters=${{ needs.recruiters.result }} dcc=${{ needs.dcc.result }} imessage=${{ needs.imessage.result }} granola=${{ needs.granola.result }}; do
             [ "${pair#*=}" = "failure" ] && failed="$failed ${pair%=*}"
           done
           python3 -m lifeos.platform.alerts push --key domain_jobs_failed --title "V7 domain jobs failed" --body "Failed domain jobs:$failed. Their cards keep the last good content. Open the Actions tab."
 
   bench_report:
-    # LIFE-577: the run summary for a benchmark: seconds per job, the run's wall time, and whether another run overlapped it. Reads this run's own job records; writes nothing else.
-    needs: [jira, outlook, bills, agenda, amazon, amazon_retention, mail, hiring, attention, megibow, dcc, recruiters, imessage, granola, report]
+    needs: [jira, outlook, bills, agenda, amazon, mail, hiring, attention, megibow, dcc, recruiters, imessage, granola, report]
     if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.benchmark }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
