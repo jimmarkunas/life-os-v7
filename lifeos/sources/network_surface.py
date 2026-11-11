@@ -247,13 +247,14 @@ def _run(limit, live, environ, connection, client, now, today):
               for k, (page, company, title, classes) in surfaced.items()}       # what each target page should show now, as the hash of its block ("" = none): pure and in memory
     state, counts["state_table"] = store.load_page_state(connection)
     edits, counts["edit_table"] = store.load_page_edits(connection) if counts["state_table"] else ({}, False)
+    checked = store.load_page_checked(connection)[0] if counts["state_table"] else {}
     if counts["state_table"]:
         queue, candidates, counts["pages_dirty"] = _queue_state(surfaced, others, wanted, state, budget, now)
     else:
         queue, candidates = _queue(surfaced, others, {k for k, h in wanted.items() if h}, budget, now)
     recorded, seen_edits = {}, {}
     clean = {k for k in (q[0] for q in queue) if counts["state_table"] and k in state and state[k][1] == wanted.get(k, "")}      # LIFE-572: proven to show exactly what it should; the only pages that may be skipped
-    skip = Skip(edits, clean, seen_edits, now) if (environ.get("NETWORK_SURFACE_SKIP") or "on").strip().lower() != "off" else None      # LIFE-572: one repository variable turns the skip off
+    skip = Skip(edits, clean, seen_edits, now, checked) if (environ.get("NETWORK_SURFACE_SKIP") or "on").strip().lower() != "off" else None      # LIFE-572: one repository variable turns the skip off
     timing = Timing(notion)
     for key, page, company, title, target in queue:
         began = timing.start()
@@ -325,26 +326,45 @@ def _flush(connection, recorded, counts, seen_edits=None):
 
 
 class Skip:
-    """LIFE-572: a page that was proven to show exactly what it should, and whose own last-edited time is still the one read right after that proof, is not read again: one Notion call
-    (the page itself) instead of about sixteen. Jim's Dismiss and Same company ticks and any other edit change that time, so they are still found. Notion keeps the time to the minute, so a
-    page edited in the last SETTLE_SECONDS is never skipped. A page with no recorded time, a different time, or any doubt is read in full, exactly as before."""
+    """LIFE-572: a page that was proven to show exactly what it should, and that has not been edited since, is not read again: one Notion call (the page itself) instead of about sixteen.
+    Jim's Dismiss and Same company ticks and any other edit change the page's last-edited time, so they are still found. Two ways to know a page is untouched since its proof:
+      1. the time recorded right after the proof equals the page's time now (pages this stage wrote or re-proved since LIFE-572);
+      2. no time was recorded yet (every page proven before LIFE-572), but the page's time is older than its saved proof time by LEGACY_MARGIN_SECONDS. The proof time is saved at the end of a
+         run, so the margin must cover a whole run (and Notion's whole-minute rounding): an edit after the proof cannot be older than that.
+    Notion keeps the time to the minute, so a page edited in the last SETTLE_SECONDS is never skipped. Any doubt (no proof, a different time, an unreadable time, a proof older than
+    MAX_AGE_HOURS) reads the page in full, exactly as before. The rotation reaches a page about every 60 hours, so a week is the longest a proof is trusted."""
     SETTLE_SECONDS = 180
-    MAX_AGE_HOURS = 24                    # a safety net: a recorded time older than this is not trusted, so every page is read in full at least once a day whatever Notion's timestamps did
+    LEGACY_MARGIN_SECONDS = 1800
+    MAX_AGE_HOURS = 168                   # a safety net: a proof older than a week is not trusted, so every page is read in full at least weekly whatever Notion's timestamps did
 
-    def __init__(self, edits, clean, seen, now):
-        self.edits, self.clean, self.seen, self.now = edits or {}, clean or set(), seen, now
+    def __init__(self, edits, clean, seen, now, checked=None):
+        self.edits, self.clean, self.seen, self.now, self.checked = edits or {}, clean or set(), seen, now, checked or {}
+
+    @staticmethod
+    def _when(value):
+        if isinstance(value, datetime):
+            return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+        return datetime.fromisoformat(str(value).replace("T", " ")[:19]).replace(tzinfo=timezone.utc)
 
     def may_skip(self, key, edited):
-        recorded = self.edits.get(key)
-        if key not in self.clean or not edited or not recorded or recorded[0] != edited:
+        if key not in self.clean or not edited:
             return False
         try:
-            when = datetime.strptime(edited[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
-            saved = recorded[1] if isinstance(recorded[1], datetime) else datetime.fromisoformat(str(recorded[1]))
-            saved = saved.replace(tzinfo=timezone.utc) if saved.tzinfo is None else saved
+            when = self._when(edited)
+            recorded = self.edits.get(key)
+            if recorded:                                               # 1. the time recorded right after the proof
+                proof = self._when(recorded[1])
+                same = recorded[0] == edited
+            else:                                                      # 2. only the saved proof time exists (older pages)
+                saved = self.checked.get(key)
+                if not saved:
+                    return False
+                proof = self._when(saved)
+                same = (proof - when).total_seconds() >= self.LEGACY_MARGIN_SECONDS
         except (ValueError, TypeError):
             return False
-        return (self.now - when).total_seconds() >= self.SETTLE_SECONDS and (self.now - saved).total_seconds() < self.MAX_AGE_HOURS * 3600
+        age = (self.now - proof).total_seconds()
+        return same and (self.now - when).total_seconds() >= self.SETTLE_SECONDS and 0 <= age < self.MAX_AGE_HOURS * 3600
 
     def note(self, key, edited):
         if edited and self.seen is not None:

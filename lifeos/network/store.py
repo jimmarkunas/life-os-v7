@@ -157,6 +157,16 @@ def load_page_edits(connection):
         return {}, False
 
 
+def load_page_checked(connection):
+    """LIFE-572 -> ({job_key: checked_at}, present): when each page's state was last saved after its proof. Used to trust a page that has no recorded edit time yet (see Skip)."""
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT job_key, checked_at FROM v7_network_page_state")
+            return {k: c for k, c in cursor.fetchall()}, True
+    except Exception:                                                  # noqa: BLE001
+        return {}, False
+
+
 def save_page_edits(connection, rows, clock=lambda: datetime.now(timezone.utc).replace(tzinfo=None)):
     """LIFE-572: record each page's last-edited time as read right after its own proof (job_key -> edited string). Losing this loses only a shortcut: the page is read again next run."""
     if not rows:
