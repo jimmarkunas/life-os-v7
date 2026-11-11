@@ -1,15 +1,12 @@
 """Jobs OS alert detectors and the alerts stage (D53). Counts only. Detectors are pure functions of counts so they test without a database;
 state (which alerts are open, when last notified) lives in v7_alerts so a reminder is not a repeat."""
 import datetime as dt
-import json
 import os
 import re
-from pathlib import Path
 
 from lifeos.jobs import daily, hold, store
 from lifeos.platform import alerts, credentials
 
-EXPIRIES = Path(__file__).with_name("expiries.json")
 SOURCE_FAILURES = 3          # a sponsor that failed this many runs in a row
 STUCK_JOBS = 25              # jobs sitting in READY/RESOLVED for over a day
 QUIET_HOURS = 24             # no job published for this long
@@ -204,7 +201,7 @@ def save(connection, plan, notified, now):
 
 def run(limit, live, environ=os.environ, now=None, send=None):
     now = now or dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
-    expiries = {**credentials.expiries(), **json.loads(EXPIRIES.read_text())}          # LIFE-528: the credential list's dated entries, plus the older file (it wins on a shared key)
+    expiries = credentials.expiries()                                                  # LIFE-604: the credential list is the one source of expiry dates
     with store.connect() as connection:
         store.ensure_schema(connection)
         if live:

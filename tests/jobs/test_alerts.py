@@ -122,10 +122,12 @@ class Detect(unittest.TestCase):
         self.assertEqual((a.key, a.severity), ("expiry_timer_token", alerts.PAGE))
         self.assertIn("expired", jobs_alerts.detect(QUIET, dt.datetime(2026, 11, 2), exp)[0].title)
 
-    def test_the_real_expiry_file_is_valid(self):
-        for item in json.loads(jobs_alerts.EXPIRIES.read_text()).values():
-            dt.date.fromisoformat(item["expires"])
-            self.assertTrue(item["label"] and item["renew"])
+    def test_the_credential_list_is_the_only_source_of_expiry_dates(self):
+        """LIFE-604 item 6: the older lifeos/jobs/expiries.json overrode the credential list with a different date; there is now one source."""
+        import pathlib
+        self.assertFalse(pathlib.Path(jobs_alerts.__file__).with_name("expiries.json").exists())
+        self.assertFalse(hasattr(jobs_alerts, "EXPIRIES"))
+        self.assertTrue(jobs_alerts.credentials.expiries())                           # the list still carries the dated credential that file used to hold
 
 
 MSG_A, MSG_B = "aaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbb"
@@ -217,6 +219,15 @@ class YieldMonitors(unittest.TestCase):
     def test_a_healthy_replay_raises_nothing(self):
         with mock.patch.object(jobs_alerts, "RETIRED_SOURCES", {}):
             self.assertEqual(self.replay([5, 6, 4, 5, 7, 5, 6, 4, 5, 6, 5, 5]), [])
+
+    def test_the_stage_hands_the_detectors_exactly_the_credential_lists_dates(self):
+        listed = {"only_one": {"label": "Only one", "expires": "2026-11-12", "renew": "renew it"}}
+        db = JobsDB()
+        self.addCleanup(db.raw.close)
+        with mock.patch.object(jobs_alerts.store, "connect", return_value=db), mock.patch.object(jobs_alerts.store, "ensure_schema"), \
+                mock.patch.object(jobs_alerts.credentials, "expiries", return_value=listed), mock.patch.object(jobs_alerts, "detect", wraps=jobs_alerts.detect) as spy:
+            jobs_alerts.run(0, False, now=NOW)
+        self.assertEqual(spy.call_args.args[2], listed)                              # the real detect ran; nothing was merged into the list
 
     def test_the_stage_log_line_carries_the_monitor_values(self):
         db = JobsDB()

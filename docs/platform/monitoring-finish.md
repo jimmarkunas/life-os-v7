@@ -33,7 +33,7 @@ Result: no code moved, because no direct sender outside the gateway exists apart
 
 ## Outcome 2: credential expiry warnings: PARTIAL
 
-Exists: `lifeos/jobs/expiries.json` (one credential) feeds `lifeos/jobs/alerts.py`, which raises `expiry_*` (PAGE) within 7 days through the gateway. **Not done:** a list of provider credentials with expiry from provider evidence, and the dashboard display. Needs from Jim: which dashboard is "the existing dashboard", and the provider list to check (no provider was queried here).
+Exists: the credential list (`lifeos/platform/credential_list.py`, dated entries only; LIFE-604 removed the older `lifeos/jobs/expiries.json`) feeds `lifeos/jobs/alerts.py`, which raises `expiry_*` (PAGE) within 7 days through the gateway. **Not done:** a list of provider credentials with expiry from provider evidence, and the dashboard display. Needs from Jim: which dashboard is "the existing dashboard", and the provider list to check (no provider was queried here).
 
 ## Outcome 3: old outcomes
 
