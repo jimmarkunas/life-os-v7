@@ -391,26 +391,81 @@ class UnitTestGateTests(unittest.TestCase):
         pr = pathlib.Path(__file__).resolve().parents[2].joinpath(".github/workflows/pr-tests.yml").read_text()
         self.assertIn("unit-tests:", pr)                                                              # the required check name is unchanged
 
-    def test_chromium_is_cached_on_the_browser_lock_and_system_libraries_are_still_installed(self):
+    def test_chromium_is_cached_on_the_browser_lock_and_the_browser_step_is_its_own_timed_step(self):
         steps = self.doc["jobs"]["finish"]["steps"]
         cache = next(s for s in steps if s.get("name", "").startswith("Chromium download, cached"))
         self.assertEqual((cache["uses"], cache["with"]["path"]), ("actions/cache@v4", "~/.cache/ms-playwright"))
         self.assertIn("hashFiles('requirements-browser.lock')", cache["with"]["key"])
+        self.assertIn("vars.BROWSER_CACHE_BUST", cache["with"]["key"])                                # LIFE-573: one variable forces a cold-cache run
+        ids = [s.get("id") for s in steps]
+        self.assertLess(ids.index("chromium_cache"), ids.index("browser"))
+        self.assertLess(ids.index("browser"), ids.index("tick"))                                      # its own step, before the tick, so its seconds show in the run log
+        browser = next(s for s in steps if s.get("id") == "browser")
         tick = next(s for s in steps if s.get("id") == "tick")
-        self.assertIn("pip install --require-hashes -r requirements-browser.lock", tick["run"])      # integrity unchanged
-        run = tick["run"]
-        self.assertIn("playwright install --with-deps chromium", run)
-        # LIFE-573: the install is a bounded retry (two timed tries, never an unbounded loop) and a failure degrades instead of failing the tick before any stage runs
-        self.assertIn("for attempt in 1 2 3; do", run)
-        self.assertIn('[ "$CHROMIUM_CACHE_HIT" = "true" ]', run)                                    # a warm cache runs no apt command at all ...
-        self.assertLess(run.index("BROWSER_INSTALL_SKIPPED_APT"), run.index("--with-deps"))              # ... and the apt install is reached only on a miss
-        self.assertEqual(tick["env"]["CHROMIUM_CACHE_HIT"], "${{ steps.chromium_cache.outputs.cache-hit }}")
-        self.assertIn("timeout 150 python -m playwright install --with-deps chromium", run)
-        self.assertNotIn("while ", run)
+        self.assertIn("pip install --require-hashes -r requirements-browser.lock", browser["run"])    # integrity unchanged
+        self.assertNotIn("playwright", tick["run"])                                                   # the tick step no longer installs anything
+        self.assertNotIn("pip install", tick["run"])
+        self.assertEqual(browser["env"], {"CHROMIUM_CACHE_HIT": "${{ steps.chromium_cache.outputs.cache-hit }}"})
+        self.assertEqual(browser["if"], tick["if"])
+        run = browser["run"]
+        self.assertNotIn("while ", run)                                                               # bounded: three tries, never an unbounded loop
         self.assertNotIn("until ", run)
-        self.assertIn("BROWSER_INSTALL_DEGRADED", run)
-        self.assertLess(run.index("BROWSER_INSTALL_DEGRADED"), run.index("python -m lifeos.jobs.tick"))
-        self.assertTrue(run.rstrip().splitlines()[-1].lstrip().startswith("python -m lifeos.jobs.tick"))      # the step still ends with the tick's own exit code
+        self.assertNotIn("continue-on-error", browser)                                                # a used-up retry fails the run
+        self.assertLess(run.index("BROWSER_INSTALL_SKIPPED_APT"), run.index("--with-deps"))
+
+
+class BrowserStepBehaviourTests(unittest.TestCase):
+    """LIFE-573: the real browser step script, run in bash with fake python/timeout/sleep, shows what a hit, a miss, a retry and a used-up retry do."""
+    @classmethod
+    def setUpClass(cls):
+        try:
+            import yaml
+        except ImportError:
+            raise unittest.SkipTest("pyyaml unavailable")
+        path = pathlib.Path(__file__).resolve().parents[2] / ".github/workflows/hourly.yml"
+        steps = yaml.safe_load(path.read_text())["jobs"]["finish"]["steps"]
+        cls.script = next(s for s in steps if s.get("id") == "browser")["run"]
+
+    def run_step(self, hit, fail_first):
+        import subprocess
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            log = pathlib.Path(tmp, "calls.log")
+            harness = (
+                "set -eo pipefail\n"
+                f'LOG="{log}"; FAILS={fail_first}; COUNT=0\n'
+                'pip(){ echo "pip $*" >> "$LOG"; }\n'
+                'timeout(){ shift; "$@"; }\n'
+                'sleep(){ echo "sleep $1" >> "$LOG"; }\n'
+                'python(){ echo "python $*" >> "$LOG"; case "$*" in *--with-deps*) COUNT=$((COUNT+1)); '
+                '[ "$COUNT" -le "$FAILS" ] && { echo "apt could not resolve the mirror" >&2; return 100; };; esac; return 0; }\n'
+                + self.script)
+            done = subprocess.run(["bash", "-c", harness], capture_output=True, text=True, env={"CHROMIUM_CACHE_HIT": hit, "PATH": "/usr/bin:/bin"})
+            return done.returncode, done.stdout, log.read_text().splitlines()
+
+    def test_a_cache_hit_runs_no_apt_command(self):
+        code, out, calls = self.run_step("true", 99)
+        self.assertEqual(code, 0)
+        self.assertIn("BROWSER_INSTALL_SKIPPED_APT", out)
+        self.assertFalse([c for c in calls if "--with-deps" in c])
+
+    def test_a_cache_miss_installs_with_system_libraries_once_when_apt_works(self):
+        code, _, calls = self.run_step("false", 0)
+        self.assertEqual((code, len([c for c in calls if "--with-deps" in c])), (0, 1))
+
+    def test_a_failed_apt_download_is_retried_with_backoff_and_then_succeeds(self):
+        code, out, calls = self.run_step("false", 2)
+        self.assertEqual(code, 0)
+        self.assertEqual(len([c for c in calls if "--with-deps" in c]), 3)
+        self.assertEqual([c for c in calls if c.startswith("sleep")], ["sleep 20", "sleep 40"])
+        self.assertIn("BROWSER_INSTALL_ATTEMPT_1_FAILED", out)
+        self.assertIn("BROWSER_INSTALL_ATTEMPT_2_FAILED", out)
+
+    def test_three_failed_tries_fail_the_step_after_exactly_three_attempts(self):
+        code, out, calls = self.run_step("false", 99)
+        self.assertNotEqual(code, 0)
+        self.assertEqual(len([c for c in calls if "--with-deps" in c]), 3)
+        self.assertIn("BROWSER_INSTALL_FAILED", out)
 
 
 class FastPathFirstTests(unittest.TestCase):
@@ -649,7 +704,7 @@ CONSUMERS = {
         jobs={"prep": DB | JUMP | TS | HRL, "jobright": DB | JUMP | TS | HRL, "linkedin": DB | JUMP | TS | HRL, "lensa": DB | JUMP | TS | HRL, "finish": DB | JUMP | TS | HRL | {"NTFY_TOPIC", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"}, "interview": {"NOTION_INTERVIEW_TOKEN"}, "report": {"NTFY_TOPIC"}},
         direct=['GMAIL_OAUTH_CLIENT_ID', 'HIRING_PIPELINE_PAGE_ID', 'INTERVIEW_ACCEPTANCE_JSON', 'INTERVIEW_ACCEPTANCE_NEGATIVE_JSON', 'LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'LIFEOS_NOTION_IDS', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID', 'V7_CLOSE_BASE_URL', 'V7_CLOUD_FIT_PROFILE_REF'],   # LIFE-41: the shadow's brief reference, masked (a variable is not)
         on=['schedule', 'workflow_dispatch'], crons=['7 * * * *', '27 * * * *', '47 * * * *'], perms={'contents': 'read'}, conc={'group': "life-os-v7-hourly-${{ (github.event_name == 'schedule' || inputs.tick) && 'tick' || 'manual' }}", 'cancel-in-progress': False},
-        timeouts={'prep': 45, 'jobright': 40, 'linkedin': 40, 'lensa': 40, 'finish': 58, 'interview': 15, 'report': 5}, digest="a756adaeb1fdea7e"),   # LIFE-572 (Nov 11 2026, 11:0x AM CT): Network Leads budget back to 41 per run: the first tick at 82 took 110 s, over the 60 s limit Jim set;   # LIFE-573 (Jim, Nov 11 10:40 AM CT): a Chromium cache hit skips apt entirely; a miss installs with three bounded tries;   # LIFE-573 (Nov 11 2026): the tick step installs the browser with two timed tries and degrades instead of failing the tick when apt is unreachable;   # LIFE-572 (Jim, Nov 11 2026): the Network Leads page budget doubled, network-surface --limit 41 to 82 (2,496 pages: a lap of about 30 hours, was about 60);   # Nov 6 2026: the report job also names prep in its failed-lanes push;   # LIFE-76 (Oct 25 2026 drain): a manual enrich reads 450, not 150;   # D238: finish 58 min and the batch to 45 min, so a tick's batch fills the hour;   # D233 (LIFE-42): + the always-dry-run negative interview acceptance case;   # D208 (LIFE-76 PR 4b): a tick (and a manual quick proof, with --quick) runs python -m lifeos.jobs.tick in the finish job; the Dice job and its command are gone (the tick resolves Dice);   # D206 (LIFE-76 PR 1): bulk discovery (boards, Scale-Up, title watch, sponsors) moved after finalize; boards --limit follows the quick input;   # D202 review: + the read-only boards-preview command (D204 acceptance: over the 600-board sample); D203: + linkedin-search;   # D201 removed the resolve-lensa and openjobs commands; D202 added the boards command and its finish-loop entry; LIFE-41 the tick's batch is sized to the hour
+        timeouts={'prep': 45, 'jobright': 40, 'linkedin': 40, 'lensa': 40, 'finish': 58, 'interview': 15, 'report': 5}, digest="92902df794a64249"),   # LIFE-573 (Jim, Nov 11 12:02 PM CT): the browser install is its own timed step (cache hit: no apt; miss: three tries, then the run fails), BROWSER_CACHE_BUST forces a cold-cache run;   # LIFE-572 (Nov 11 2026, 11:0x AM CT): Network Leads budget back to 41 per run: the first tick at 82 took 110 s, over the 60 s limit Jim set;   # LIFE-573 (Jim, Nov 11 10:40 AM CT): a Chromium cache hit skips apt entirely; a miss installs with three bounded tries;   # LIFE-573 (Nov 11 2026): the tick step installs the browser with two timed tries and degrades instead of failing the tick when apt is unreachable;   # LIFE-572 (Jim, Nov 11 2026): the Network Leads page budget doubled, network-surface --limit 41 to 82 (2,496 pages: a lap of about 30 hours, was about 60);   # Nov 6 2026: the report job also names prep in its failed-lanes push;   # LIFE-76 (Oct 25 2026 drain): a manual enrich reads 450, not 150;   # D238: finish 58 min and the batch to 45 min, so a tick's batch fills the hour;   # D233 (LIFE-42): + the always-dry-run negative interview acceptance case;   # D208 (LIFE-76 PR 4b): a tick (and a manual quick proof, with --quick) runs python -m lifeos.jobs.tick in the finish job; the Dice job and its command are gone (the tick resolves Dice);   # D206 (LIFE-76 PR 1): bulk discovery (boards, Scale-Up, title watch, sponsors) moved after finalize; boards --limit follows the quick input;   # D202 review: + the read-only boards-preview command (D204 acceptance: over the 600-board sample); D203: + linkedin-search;   # D201 removed the resolve-lensa and openjobs commands; D202 added the boards command and its finish-loop entry; LIFE-41 the tick's batch is sized to the hour
     "network": dict(
         jobs={"network": DB | JUMP | TS | {"NOTION_API_TOKEN"}},
         direct=['LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'NETWORK_HANDOFF_PAGE_ID', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID'],
