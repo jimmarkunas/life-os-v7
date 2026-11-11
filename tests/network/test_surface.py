@@ -251,12 +251,12 @@ class Corrections(unittest.TestCase):
 
     def test_a_production_sized_ledger_is_covered_within_the_stated_bound_with_no_starvation(self):
         from datetime import timedelta
-        n_leads, n_other, n_nontarget, budget = 154, 921, 525, 41                                          # the live shape: 1,075 targets (154 with leads) and 525 other published pages
+        n_leads, n_other, n_nontarget, budget = 154, 921, 525, 82                                          # the live shape: 1,075 targets (154 with leads) and 525 other published pages
         surfaced = {f"t{i:04d}": (f"p{i}", "Co", "Role", set()) for i in range(n_leads + n_other)}
         others = [(f"n{i:04d}", f"q{i}", "Co", "Role") for i in range(n_nontarget)]
         with_leads = {f"t{i:04d}" for i in range(n_leads)}
         total = n_leads + n_other + n_nontarget
-        bound = -(-total // budget)                                                                        # ceil(1,600 / 41) = 40 hours
+        bound = -(-total // budget)                                                                        # ceil(1,600 / 82) = 20 hours
         last, worst = {}, 0
         for hour in range(bound * 4):
             picked, candidates = network_surface._queue(surfaced, others, with_leads, budget, NOW + timedelta(hours=hour))
@@ -265,8 +265,8 @@ class Corrections(unittest.TestCase):
                 worst = max(worst, hour - last.get(key, -1))
                 last[key] = hour
         self.assertEqual(len(last), total)                                                                 # no page is starved, cleanup pool included
-        self.assertEqual(bound, 40)
-        self.assertLessEqual(worst, 40)                                                                    # and no page waits longer than the stated 40 hours (exactly, no rounding allowance)
+        self.assertEqual(bound, 20)
+        self.assertLessEqual(worst, 20)                                                                    # and no page waits longer than the stated 20 hours (exactly, no rounding allowance)
         small = network_surface._queue({"a": ("pa", "C", "R", set())}, [], {"a"}, 1, NOW)[0]
         self.assertEqual([k for k, *_ in small], ["a"])                                                    # an explicit limit of one still serves a page
         self.assertEqual(network_surface._queue({}, [], set(), 40, NOW), ([], 0))
@@ -448,13 +448,13 @@ class StoredState(unittest.TestCase):
 
     def test_a_production_sized_ledger_converges_within_the_bound_then_reads_only_what_changed(self):
         from datetime import timedelta
-        n_leads, n_other, n_nontarget, budget = 154, 921, 525, 41
+        n_leads, n_other, n_nontarget, budget = 154, 921, 525, 82
         surfaced = {f"t{i:04d}": (f"p{i}", "Co", "Role", set()) for i in range(n_leads + n_other)}
         others = [(f"n{i:04d}", f"q{i}", "Co", "Role") for i in range(n_nontarget)]
         wanted = {f"t{i:04d}": f"h{i:010d}" for i in range(n_leads)}
         total = n_leads + n_other + n_nontarget
         state, stuck = {}, "t0900"
-        bound = -(-total // (budget - budget // 5))                                          # the block pages keep one slot in five (Jim's ticks), so the dirty pages get 33 of 41
+        bound = -(-total // (budget - budget // 5))                                          # the block pages keep one slot in five (Jim's ticks), so the dirty pages get 66 of 82
         for hour in range(bound + 3):                                                        # bootstrap: every page unknown, one page that never succeeds
             picked, _, dirty = network_surface._queue_state(surfaced, others, wanted, state, budget, NOW + timedelta(hours=hour))
             self.assertLessEqual(len(picked), budget)
@@ -467,7 +467,7 @@ class StoredState(unittest.TestCase):
         self.assertIn(stuck, [k for k, *_ in picked])
         reads = [k for k, *_ in picked if k != stuck]
         self.assertEqual(len(reads), budget - 1)
-        self.assertEqual(bound, 49)                                                          # hourly ticks alone would take 49 hours; one large manual pass does it at once
+        self.assertEqual(bound, 25)                                                          # hourly ticks alone would take 25 hours; one large manual pass does it at once
         surfaced["t0010"] = ("p-moved", "Co", "Role", set())                                 # a page id that changed is dirty at once
         picked, _, dirty = network_surface._queue_state(surfaced, others, wanted, state, 1, NOW + timedelta(hours=100))
         self.assertEqual((dirty, [k for k, *_ in picked]), (2, ["t0010"]))                   # leads-bearing dirty pages come first
@@ -485,7 +485,7 @@ class Contract(unittest.TestCase):
         step = text[text.index("id: network_surface"):]
         step = step[:step.index("      - id: review")]
         self.assertIn("continue-on-error: true", step)                                                       # a Network failure never fails the Jobs run ...
-        self.assertIn("--limit 41", step)                                                                    # ... the bound that makes the 40-hour worst case true ...
+        self.assertIn("--limit 82", step)                                                                    # ... the bound that makes the 20-hour worst case true ...
         self.assertIn("::warning title=Network surface::", step)                                             # ... but it is always explicit warning evidence, never silent
         self.assertNotIn("network_surface", text[text.index("Lane failures fail the run"):])                 # and it is not in the lane-failure list
 
