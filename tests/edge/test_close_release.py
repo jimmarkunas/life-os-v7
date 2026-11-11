@@ -155,12 +155,25 @@ class AutoRelease(unittest.TestCase):
     def test_an_unreadable_hourly_report_says_unknown_and_never_raises(self):
         self.assertEqual(rel.hourly_report(C, lambda url: (_ for _ in ()).throw(OSError("down"))), "unknown")
 
-    def test_the_updater_marks_a_wait_and_a_two_hour_stall_and_clears_both_when_green(self):
-        text = (rel_installer := open(os.path.join(os.path.dirname(rel.__file__), "install-close.sh")).read())
-        self.assertIn("auto.waiting", text)
-        self.assertIn("-ge 7200", text)
-        self.assertIn("auto.stalled", text)
-        self.assertLess(text.index("auto.stalled"), text.index('rm -f "$ETC/auto.waiting" "$ETC/auto.stalled"'))
+    def test_the_two_hour_stall_decision_is_made_by_close_release_not_by_shell_arithmetic(self):
+        """LIFE-604 item 5: the decision lives in a function a unit test can run."""
+        self.assertEqual(rel.waiting(1000, ""), (1000, False))                          # no marker yet: the wait starts now
+        self.assertEqual(rel.waiting(1000, "abc"), (1000, False))                       # anything but digits reads as no marker
+        self.assertEqual(rel.waiting(1000 + 7199, "1000"), (1000, False))
+        self.assertEqual(rel.waiting(1000 + 7200, "1000"), (1000, True))                # exactly two hours: stalled
+        self.assertEqual(rel.waiting(5000, "9000"), (5000, False))                      # a marker from the future (clock change) restarts the wait
+        self.assertEqual(rel.waiting(1000 + 7200, 1000), (1000, True))
+
+    def test_the_stall_command_prints_the_marker_and_the_verdict_for_the_shell(self):
+        import io
+        from contextlib import redirect_stdout
+        out = io.StringIO()
+        with redirect_stdout(out):
+            rel.main(["wait", "9000", "1000"])
+        self.assertEqual(out.getvalue().split(), ["1000", "1"])
+
+    def test_the_updater_still_clears_both_markers_as_soon_as_a_green_head_is_read(self):
+        text = open(os.path.join(os.path.dirname(rel.__file__), "install-close.sh")).read()
         self.assertLess(text.index('rm -f "$ETC/auto.waiting"'), text.index('if read -r held _ 2>/dev/null < "$ETC/auto.hold"'))       # cleared as soon as a green head is read
 
     def test_a_commit_that_does_not_touch_the_closure_is_not_a_release(self):
