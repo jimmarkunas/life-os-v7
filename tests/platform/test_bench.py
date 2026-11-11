@@ -47,9 +47,11 @@ class Frozen(unittest.TestCase):
 
 
 class BoardsStageReadsTheFrozenSet(unittest.TestCase):
-    def test_a_frozen_run_reads_exactly_the_named_boards_in_id_order_whatever_is_due(self):
+    def sources(self):
+        return [{"id": f"gh-{n}", "kind": "greenhouse", "company": n, "status": "ready", "tier": "employer", "slug": n} for n in ("c", "a", "d", "b")]
+
+    def run_stage(self, frozen_ids):
         from lifeos.sources.web import lister, run as web_run
-        sources = [{"id": f"gh-{n}", "kind": "greenhouse", "company": n, "status": "ready", "tier": "employer", "slug": n} for n in ("c", "a", "d", "b")]
         asked = []
 
         def fake_lister(source):
@@ -60,11 +62,40 @@ class BoardsStageReadsTheFrozenSet(unittest.TestCase):
         repo.items.return_value = {}
         with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"BENCH_SNAPSHOT": snapshot_file(tmp)}):
             with open(os.environ["BENCH_SNAPSHOT"], "w") as handle:
-                json.dump({"lanes": {"US Remote/boards": ["gh-d", "gh-a", "gh-zzz"]}}, handle)
-            counts = web_run.run(900, False, now=datetime(2026, 11, 11, 12, 0), lister_fn=fake_lister, repo=repo, sources=sources, select="known")
-        self.assertEqual(asked, ["gh-a", "gh-d"])                       # the named boards that exist, in id order; the others are not read
+                json.dump({"lanes": {"US Remote/boards": frozen_ids}}, handle)
+            try:
+                counts = web_run.run(900, False, now=datetime(2026, 11, 11, 12, 0), lister_fn=fake_lister, repo=repo, sources=self.sources(), select="known")
+            finally:
+                self.asked, self.repo = asked, repo
+        return counts
+
+    def test_a_frozen_run_reads_exactly_the_named_boards_in_id_order_whatever_is_due(self):
+        counts = self.run_stage(["gh-d", "gh-a"])
+        self.assertEqual(sorted(self.asked), ["gh-a", "gh-d"])           # boards are read by a thread pool, so the order they ARE asked in is not fixed (this assertion used to demand it and failed about one run in a few)
         self.assertEqual(counts["due"], 2)
-        repo.commit.assert_not_called()                                # dry run: nothing written
+        self.repo.commit.assert_not_called()                           # dry run: nothing written
+
+    def test_a_frozen_id_the_registry_does_not_have_fails_the_run_loudly_and_reads_nothing(self):
+        """LIFE-604 item 7: the benchmark used to shrink silently when a frozen id was gone from the registry."""
+        with self.assertRaises(bench.FrozenInputMissing) as caught:
+            self.run_stage(["gh-d", "gh-a", "gh-zzz"])
+        self.assertIn("BENCH_FROZEN_IDS_MISSING", str(caught.exception))
+        self.assertIn("1 of 3", str(caught.exception))                  # counts only, no board name
+        self.assertNotIn("zzz", str(caught.exception))
+        self.assertEqual(self.asked, [])
+
+
+class CommittedSnapshotMatchesTheRegistry(unittest.TestCase):
+    def test_every_frozen_id_is_a_board_the_stage_will_find(self):
+        from lifeos.sources.web import lister, registry
+        path = os.path.join(os.path.dirname(bench.__file__), "..", "bench", "snapshot.json")
+        with open(path) as handle:
+            lanes = json.load(handle)["lanes"]
+        universe = {"US Remote": registry.for_lane("US Remote"), "Scale-Up": registry.for_lane("Scale-Up"), "US Remote/boards": registry.boards()}
+        for key, ids in lanes.items():
+            with self.subTest(lane=key):
+                have = {s["id"] for s in universe[key] if s["kind"] in lister.READERS}
+                self.assertEqual(sorted(set(ids) - have), [])
 
 
 class Gate(unittest.TestCase):
@@ -107,7 +138,7 @@ class Gate(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "summary.md")
             with redirect_stdout(io.StringIO()):
-                code = bench_gate.main(["after"], {"GITHUB_RUN_ID": "9", "BENCH_STARTED": "2026-11-11T18:00:00Z", "GITHUB_STEP_SUMMARY": path}, fetch=lambda: [],
+                code = bench_gate.main(["after"], {"GITHUB_RUN_ID": "9", "GITHUB_STEP_SUMMARY": path}, fetch=lambda: [], own_start=lambda run_id: "2026-11-11T18:00:00Z",
                                        now=datetime(2026, 11, 11, 18, 12, tzinfo=timezone.utc))
             self.assertEqual(code, 0)
             with open(path) as handle:
@@ -158,7 +189,7 @@ class DomainsSummary(unittest.TestCase):
             path = os.path.join(tmp, "summary.md")
             jobs = {"jobs": [job("jira", "2026-11-11T18:00:00Z", "2026-11-11T18:01:05Z"), job("bench_report", "2026-11-11T18:02:00Z", "2026-11-11T18:02:05Z")]}
             with mock.patch.object(bench_gate.gate, "_api", return_value=jobs), redirect_stdout(io.StringIO()):
-                code = bench_gate.main(["jobs"], {"GITHUB_RUN_ID": "9", "BENCH_STARTED": "2026-11-11T18:00:00Z", "GITHUB_STEP_SUMMARY": path}, fetch=lambda: [],
+                code = bench_gate.main(["jobs"], {"GITHUB_RUN_ID": "9", "GITHUB_STEP_SUMMARY": path}, fetch=lambda: [], own_start=lambda run_id: "2026-11-11T18:00:00Z",
                                        now=datetime(2026, 11, 11, 18, 3, tzinfo=timezone.utc))
             self.assertEqual(code, 0)
             with open(path) as handle:

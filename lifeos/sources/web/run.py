@@ -281,6 +281,9 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
     forced = forced_ids(sources, os.environ.get("WEB_FORCE"))
     frozen = bench.frozen(bench.lane_key(lane, select))                     # LIFE-577: benchmark mode names the boards; None on every other run
     if frozen is not None:
+        missing = frozen - {s["id"] for s in sources}
+        if missing:
+            raise bench.FrozenInputMissing(f"BENCH_FROZEN_IDS_MISSING: {len(missing)} of {len(frozen)} frozen board ids are not in the registry; the benchmark input must be re-frozen")   # LIFE-604: counts only, never silent
         forced = {s["id"] for s in sources if s["id"] in frozen}            # the frozen boards are read in full, in id order, whatever their stored state says
         due = sorted((s for s in sources if s["id"] in forced), key=lambda s: s["id"])
     else:
