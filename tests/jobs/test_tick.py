@@ -178,3 +178,163 @@ class StageSeconds(unittest.TestCase):
         self.assertIn("| **total** | | **120.0** | |", table)
         self.assertIn("-", tick.summary_table({"a": "ok"}, {"a": 1.0}, 0).splitlines()[4])           # no division by zero
 
+
+
+class SideBySide(unittest.TestCase):
+    """LIFE-569: consecutive independent stages run as threads of the one process when TICK_CONCURRENCY=on; caps, isolation, order between groups and the results stay as they are in a sequential run."""
+    def gate(self):
+        import threading
+        state = {"now": 0, "max": 0, "lock": threading.Lock(), "log": []}
+
+        def stage(name, pause=0.05, error=None, result=0):
+            def run(limit, live):
+                import time
+                with state["lock"]:
+                    state["now"] += 1
+                    state["max"] = max(state["max"], state["now"])
+                    state["log"].append(("start", name))
+                try:
+                    time.sleep(pause)
+                    if error:
+                        raise error
+                    return result
+                finally:
+                    with state["lock"]:
+                        state["now"] -= 1
+                        state["log"].append(("end", name))
+            return run
+        return state, stage
+
+    def run_tick(self, plan, stages, **conc):
+        import io
+        from contextlib import redirect_stderr, redirect_stdout
+        out = io.StringIO()
+        with redirect_stdout(out), redirect_stderr(io.StringIO()):
+            result = tick.tick(False, plan=plan, stages=stages, concurrency={"caps": {"linkedin": 1, "tinyfish": 1, "ats": 8}, "parallel": 4, **conc})
+        return result, out.getvalue()
+
+    def test_concurrency_is_off_unless_the_variable_says_on_and_a_bad_cap_falls_back_to_the_safe_default(self):
+        for environ in ({}, {"TICK_CONCURRENCY": "off"}, {"TICK_CONCURRENCY": "yes"}, {"TICK_CONCURRENCY": ""}):
+            self.assertIsNone(tick.concurrency_from_env(environ), environ)
+        on = tick.concurrency_from_env({"TICK_CONCURRENCY": "on"})
+        self.assertEqual(on, {"caps": {"linkedin": 1, "tinyfish": 1, "jobright": 1, "dice": 1, "ats": 8}, "parallel": 4})
+        odd = tick.concurrency_from_env({"TICK_CONCURRENCY": " ON ", "TICK_CAP_LINKEDIN": "0", "TICK_CAP_TINYFISH": "99", "TICK_CAP_ATS": "x", "TICK_CAP_DICE": "3", "TICK_MAX_PARALLEL": "2"})
+        self.assertEqual((odd["caps"]["linkedin"], odd["caps"]["tinyfish"], odd["caps"]["ats"], odd["caps"]["dice"], odd["parallel"]), (1, 1, 8, 3, 2))      # junk never raises a cap
+
+    def test_stages_of_one_group_run_side_by_side_and_a_service_cap_of_one_keeps_two_stages_in_turn(self):
+        state, stage = self.gate()
+        plan = (Step("a", 20, group="G", providers=("jobright",)), Step("b", 20, group="G", providers=("dice",)), Step("c", 20, group="G", providers=("ats",)))
+        result, _ = self.run_tick(plan, {n: stage(n) for n in "abc"}, caps={"jobright": 1, "dice": 1, "ats": 8})
+        self.assertEqual((result, state["max"]), ({"a": "ok", "b": "ok", "c": "ok"}, 3))
+        state, stage = self.gate()
+        plan = (Step("a", 20, group="G", providers=("linkedin",)), Step("b", 20, group="G", providers=("linkedin",)), Step("c", 20, group="G"))
+        result, _ = self.run_tick(plan, {n: stage(n) for n in "abc"})
+        self.assertEqual((result, state["max"]), ({"a": "ok", "b": "ok", "c": "ok"}, 2))                  # a and b share LinkedIn (cap 1): never both; c runs beside either
+
+    def test_the_stage_thread_limit_is_honoured(self):
+        state, stage = self.gate()
+        plan = tuple(Step(n, 20, group="G") for n in "abcd")
+        self.run_tick(plan, {n: stage(n) for n in "abcd"}, parallel=2)
+        self.assertEqual(state["max"], 2)
+
+    def test_a_stage_that_fails_is_one_red_stage_and_the_others_finish(self):
+        state, stage = self.gate()
+        plan = (Step("a", 20, group="G"), Step("b", 20, group="G"), Step("c", 20, group="G"))
+        result, out = self.run_tick(plan, {"a": stage("a", error=RuntimeError("x")), "b": stage("b"), "c": stage("c")})
+        self.assertEqual(result, {"a": "failed", "b": "ok", "c": "ok"})
+        self.assertEqual(sorted(line.split(":")[0] for line in out.splitlines() if line.startswith("stage ")), ["stage a", "stage b", "stage c"])
+
+    def test_a_stage_over_its_own_budget_is_stopped_and_counted_while_the_others_carry_on(self):
+        import time
+        state, stage = self.gate()
+
+        def stuck(limit, live):
+            while True:
+                time.sleep(0.01)
+        plan = (Step("slow", 1, group="G"), Step("b", 20, group="G"))
+        began = time.monotonic()
+        result, _ = self.run_tick(plan, {"slow": stuck, "b": stage("b", pause=0.1)})
+        self.assertEqual(result, {"slow": "timeout", "b": "ok"})
+        self.assertLess(time.monotonic() - began, 5)
+
+    def test_the_results_equal_a_sequential_run_and_the_order_between_groups_and_plain_steps_is_kept(self):
+        state, stage = self.gate()
+        plan = (Step("a1", 20, group="A"), Step("a2", 20, group="A"), Step("plain", 20), Step("b1", 20, group="B"), Step("b2", 20, group="B"))
+        stages = {n: stage(n, result=0) for n in ("a1", "a2", "plain", "b1", "b2")}
+        concurrent, _ = self.run_tick(plan, stages)
+        import io
+        from contextlib import redirect_stdout
+        with redirect_stdout(io.StringIO()):
+            sequential = tick.tick(False, plan=plan, stages=stages)
+        self.assertEqual(concurrent, sequential)
+        self.assertEqual(list(concurrent), ["a1", "a2", "plain", "b1", "b2"])                          # plan order, whatever order they finished in
+        first = state["log"][:10]
+        starts = [n for kind, n in first if kind == "start"]
+        self.assertEqual(starts[2], "plain")                                                          # plain starts only after both A stages ended
+        self.assertTrue({("end", "a1"), ("end", "a2")} <= set(first[:5]))
+
+    def test_a_bulk_group_stage_is_skipped_when_the_run_has_no_time_left(self):
+        state, stage = self.gate()
+        plan = (Step("b1", 20, bulk=True, group="B"), Step("b2", 20, bulk=True, group="B"))
+        import io
+        from contextlib import redirect_stdout
+        with redirect_stdout(io.StringIO()):
+            result = tick.tick(False, plan=plan, stages={"b1": stage("b1"), "b2": stage("b2")}, budget=30, concurrency={"caps": {}, "parallel": 4})
+        self.assertEqual(result, {"b1": "skipped", "b2": "skipped"})
+
+    def test_off_means_the_old_sequential_path_even_for_grouped_steps(self):
+        state, stage = self.gate()
+        plan = (Step("a", 20, group="G"), Step("b", 20, group="G"))
+        import io
+        from contextlib import redirect_stdout
+        with redirect_stdout(io.StringIO()):
+            tick.tick(False, plan=plan, stages={"a": stage("a"), "b": stage("b")})
+        self.assertEqual(state["max"], 1)
+
+    def test_the_real_plan_groups_only_the_independent_stages_and_keeps_publish_after_the_inputs(self):
+        names = [s.name for s in tick.PLAN]
+        group = lambda g: [s.name for s in tick.PLAN if s.group == g]                                  # noqa: E731
+        self.assertEqual(group("A"), ["resolve-jobright", "resolve-linkedin", "linkedin-search", "resolve-dice", "web"])
+        self.assertEqual(group("B"), ["boards", "web-scale-up", "web-titlewatch", "discover-jobs", "sponsors"])
+        for g in ("A", "B"):                                                                           # a group is one unbroken run of the plan
+            where = [names.index(n) for n in group(g)]
+            self.assertEqual(where, list(range(where[0], where[0] + len(where))))
+        for name in ("audit-ready", "publish", "enrich", "fit", "publish-fresh", "audit", "finalize", "drain-publish", "drain-enrich", "drain-fit"):
+            self.assertEqual(next(s for s in tick.PLAN if s.name == name).group, "")                   # Notion, Fit and the ordered chain never run side by side
+        self.assertEqual(next(s for s in tick.PLAN if s.name == "discover-jobs").providers, ("tinyfish", "linkedin"))
+        for pair in (("resolve-linkedin", "linkedin-search"),):
+            self.assertTrue(all("linkedin" in next(s for s in tick.PLAN if s.name == n).providers for n in pair))
+
+
+class AtsSlots(unittest.TestCase):
+    """LIFE-569: one global limit on board reads across the stages that read boards, so side by side never means more at once than a single stage's pool does today."""
+    def test_reads_in_many_threads_never_exceed_the_slots_and_unset_means_no_extra_limit(self):
+        import threading
+        import time
+        from lifeos.platform import read_slots
+        from lifeos.sources.web import lister, run as web_run
+        seen = {"now": 0, "max": 0, "lock": threading.Lock()}
+
+        def reader(source):
+            with seen["lock"]:
+                seen["now"] += 1
+                seen["max"] = max(seen["max"], seen["now"])
+            time.sleep(0.03)
+            with seen["lock"]:
+                seen["now"] -= 1
+            return lister.Listing(lister.COMPLETE, [])
+        for slots, ceiling in ((2, 2), (None, 12)):
+            seen.update(now=0, max=0)
+            read_slots.configure("ats", slots)
+            try:
+                call = web_run.bounded(reader, 5)
+                threads = [threading.Thread(target=call, args=({"id": i},)) for i in range(12)]
+                [t.start() for t in threads]
+                [t.join() for t in threads]
+            finally:
+                read_slots.configure("ats", None)
+            self.assertLessEqual(seen["max"], ceiling)
+            if slots is None:
+                self.assertGreater(seen["max"], 2)
+            else:
+                self.assertEqual(seen["max"], 2)

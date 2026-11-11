@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from hashlib import sha1
 
 from lifeos.jobs import enrich, intake, quality, store
-from lifeos.platform import limits
+from lifeos.platform import limits, read_slots
 from lifeos.sources.web import diff, lister, registry, suppress
 
 DEFAULT_LANE = "US Remote"
@@ -242,6 +242,10 @@ def bounded(lister_fn, seconds):
     store write) could hold a worker for minutes. Past `seconds` the board is FAILED ("board_timeout", retried on the normal schedule), its still-running read is
     left on a daemon thread, and the other boards finish and commit."""
     def call(source):
+        with read_slots.slot("ats"):                                                  # LIFE-569: one limit across the stages that read boards when they run side by side (no-op otherwise)
+            return read(source)
+
+    def read(source):
         box = {}
 
         def work():
