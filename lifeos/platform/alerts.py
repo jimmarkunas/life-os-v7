@@ -187,7 +187,11 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"push": "muted"}))
         return 0                                              # LIFE-73: a muted push is not a failed step either
     severity = args.severity if args.key == "test_push" and args.severity else spec.severity
-    ok = ntfy(os.environ.get("NTFY_TOPIC", ""), redact.redact(args.title), redact.redact(args.body), severity)
+    chosen = alert_settings.channels(args.key)                # LIFE-604: the same channels `push()` uses, so a workflow alert carries its Telegram and WhatsApp copy tags
+    if not chosen:
+        print(json.dumps({"push": "no_channel"}))
+        return 0                                              # Jim turned every channel off for this alert: handled, not failed (same rule as `deliver`)
+    ok = ntfy(os.environ.get("NTFY_TOPIC", ""), redact.redact(args.title), redact.redact(args.body), severity, channels=chosen)
     print(json.dumps({"push": "sent" if ok else "not_sent"}))
     return 0 if ok else 1                                     # a push the provider did not accept turns the step red, never a silent success
 
