@@ -145,7 +145,7 @@ class Gate(unittest.TestCase):
             notion = Notion(stage)
             out = io.BytesIO()
             gate.main(screen, io.BytesIO(v2(RUNNER) + http(path="/close?stage=Interview")), out, whois_as(), lambda: 0, self.policy, self.creds,
-                      client=lambda token, policy: (self.assertEqual(token, b"synthetic-notion-token"), notion)[1])
+                      client=lambda token, policy, notion=notion: (self.assertEqual(token, b"synthetic-notion-token"), notion)[1])
             self.assertEqual(int(out.getvalue().split(b" ")[1]), want)
             self.assertEqual(notion.log, [("GET", "/pages/page-1"), ("POST", "/data_sources/ds-ledger/query")])      # reads only: zero writes reached Notion
 

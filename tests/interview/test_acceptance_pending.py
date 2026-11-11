@@ -61,7 +61,7 @@ class PendingCase(unittest.TestCase):
         for case, rows, code in cases:
             with self.subTest(code=code, case=case):
                 with patch.object(acceptance.stage, "run", side_effect=AssertionError("must not delegate")):
-                    result = acceptance.run(1, True, environ=environ(case), read_rows=lambda company: rows)
+                    result = acceptance.run(1, True, environ=environ(case), read_rows=lambda company, rows=rows: rows)
                 self.assertEqual((result["writes"], result["why"]), (0, {code: 1}))
 
     def test_wrong_shapes_are_invalid(self):

@@ -244,7 +244,7 @@ def _teamtailor(source, fetcher):
         return Listing(FAILED, reason="bad_shape")                   # a valid empty board still has a channel; anything else is not an inventory
     jobs, seen = [], set()
     for item in channel.findall("item"):
-        def text(name):
+        def text(name, item=item):
             node = item.find(name)
             return (node.text or "").strip() if node is not None and node.text else ""
         link = text("link")

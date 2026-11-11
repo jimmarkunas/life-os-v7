@@ -294,7 +294,7 @@ def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=No
                 job_key = (interview_evidence.facts(client, parent_of[round_id], context) or (None,))[0]
             except (NotionError, KeyError):
                 job_key = None
-            finish(meeting, envelope, header, result, hashlib.sha256(round_id.encode()).hexdigest()[:16], job_key, after=lambda: create.link_transcript(client, round_id, True, {}))
+            finish(meeting, envelope, header, result, hashlib.sha256(round_id.encode()).hexdigest()[:16], job_key, after=lambda round_id=round_id: create.link_transcript(client, round_id, True, {}))
         if listed_unfiled and meetings_ok():                              # LIFE-166: every meeting nothing could place waits for Jim as an Unfiled row
             for meeting in listed_unfiled:
                 outcome = granola_clients.unfiled_row(client, meeting, keys[meeting.id], live)

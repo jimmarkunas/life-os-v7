@@ -406,10 +406,10 @@ class PrepTests(unittest.TestCase):
             client = PrepFake()
             _, _, query = machine_round(client)
             real, start = notion.explicit_child, len(client.calls)
-            def fail_after_append(c, page_id, _client=client, _error=error, _start=start):
+            def fail_after_append(c, page_id, _client=client, _error=error, _start=start, _real=real):
                 if any(method == "PATCH" for method, _ in _client.calls[_start:]):
                     raise _error
-                return real(c, page_id)
+                return _real(c, page_id)
             with patch("lifeos.interview.notion.explicit_child", side_effect=fail_after_append):
                 result = self.apply(client, query, PrepEvidence(focus=("A",)))
             self.assertEqual((result["code"], result["writes"]), ("derived_readback_failed", 1))

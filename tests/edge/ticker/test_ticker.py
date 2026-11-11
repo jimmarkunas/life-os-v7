@@ -169,7 +169,7 @@ class Stall(unittest.TestCase):
 class Watch(unittest.TestCase):
     def test_the_switches_come_from_the_repository_variables_and_no_checkin_is_sent(self):
         calls, env = [], {}
-        code, _ = ticker.watch(TOKEN, TOPIC, FakeGitHub(SWITCHES), run=lambda **k: calls.append(k), environ=env)
+        code, _ = ticker.watch(TOKEN, TOPIC, FakeGitHub(SWITCHES), run=lambda calls=calls, **k: calls.append(k), environ=env)
         self.assertEqual((code, calls), ("WATCH_DONE", [{"checkin": False}]))
         self.assertEqual((env["ALERTS_ENABLED"], env["ALERT_SETTINGS"], env["GITHUB_REPOSITORY"], env["NTFY_TOPIC"]), ("on", '{"v":1}', "jimmarkunas/life-os-v7", TOPIC))
 
@@ -183,7 +183,7 @@ class Watch(unittest.TestCase):
         for broken in (403, 500, urllib.error.URLError("down")):
             calls = []
             answers = {**SWITCHES, "variables/ALERTS_ENABLED": broken}
-            self.assertEqual(ticker.watch(TOKEN, TOPIC, FakeGitHub(answers), run=lambda **k: calls.append(k), environ={})[0], "TICKER_VARIABLES_UNREADABLE")
+            self.assertEqual(ticker.watch(TOKEN, TOPIC, FakeGitHub(answers), run=lambda calls=calls, **k: calls.append(k), environ={})[0], "TICKER_VARIABLES_UNREADABLE")
             self.assertEqual(calls, [], broken)
 
     def test_a_watchdog_that_cannot_read_github_is_a_fixed_code(self):

@@ -4,6 +4,7 @@ from datetime import timedelta
 
 from lifeos.network import surface
 from lifeos.platform import report_region as R
+from lifeos.platform.notion_client import NotionError
 from lifeos.sources import job_page_outreach as P
 from tests.hiring.support import writes
 from tests.recruiters.fakes import FakeRecruiters
@@ -147,7 +148,7 @@ class JobPageOutreach(unittest.TestCase):
 
     def test_an_unreadable_recruiters_source_fails_the_whole_run(self):
         mark(self.svc, JOB_A, "Avery Synthetic")
-        with self.assertRaises(Exception):
+        with self.assertRaises(NotionError):
             P.run(0, True, environ=ON, recruiters=FakeRecruiters(schema=SCHEMA, fail_query=True), ledger=self.ledger, client=job_page(), now=NOW)
 
 

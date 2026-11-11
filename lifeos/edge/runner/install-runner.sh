@@ -8,7 +8,7 @@
 # The runner you install must be the one this script pins (RUNNER_SHA256); change runner.py and this script's own sha256 changes with the pin, so one printed hash covers both.
 # Options: --prefix DIR (tests: put everything under DIR and skip the root check).
 set -euo pipefail
-RUNNER_SHA256=142c279f050814f5d77c114351483e3a53e45e68e7b17eadd5866450cf87e9bf
+RUNNER_SHA256=e6a0442447b4aa65ff34eb690542cff3d5c9f1d1b55dd4ae1b2116040b28ac67
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PREFIX=""; CMD=dry; PURGE=no
 while [ $# -gt 0 ]; do

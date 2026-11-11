@@ -98,7 +98,7 @@ def snapshot(source, dest):
                 os.remove(dest)                                                   # drop any partial copy before the retry
             _copy_database("file:%s?immutable=1" % source, dest)
     except sqlite3.Error:
-        raise PushError("mac_backup_db_unreadable")
+        raise PushError("mac_backup_db_unreadable") from None
 
 
 def collect(work, home=HOME, sqlite=None, files=None, trees=None):
