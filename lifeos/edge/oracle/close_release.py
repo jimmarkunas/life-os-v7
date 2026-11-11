@@ -180,25 +180,45 @@ def serve_state(text, tailnet="47443", local="47344"):
     return "ours" if ours else "other"
 
 
-if __name__ == "__main__":
+STALL_SECONDS = 7200
+
+
+def waiting(now, since, window=STALL_SECONDS):
+    """LIFE-604 item 5 (was shell arithmetic in install-close.sh): the auto-release's wait for a green main head. `since` is the stored marker text (digits) or anything else for none.
+    -> (the marker to store, True once the wait has lasted `window` seconds). A marker in the future (the clock moved) restarts the wait."""
+    text = str(since).strip()
+    start = int(text) if text.isdigit() else now
+    if start > now:
+        start = now
+    return start, (now - start) >= window
+
+
+def main(argv):
     try:
-        if sys.argv[1:2] == ["serve-state"]:
+        if argv[:1] == ["serve-state"]:
             print(serve_state(sys.stdin.read()))
-        elif sys.argv[1:2] == ["stage"] and len(sys.argv) == 4:
-            stage(sys.argv[2], sys.argv[3])
-        elif sys.argv[1:2] == ["policy"] and len(sys.argv) >= 7:
-            print(json.dumps(policy(json.load(sys.stdin), *sys.argv[2:6], sys.argv[6:])))
-        elif sys.argv[1:2] == ["check"] and len(sys.argv) == 3:
-            check(sys.argv[2])
-        elif sys.argv[1:2] == ["latest"]:
+        elif argv[:1] == ["stage"] and len(argv) == 3:
+            stage(argv[1], argv[2])
+        elif argv[:1] == ["policy"] and len(argv) >= 6:
+            print(json.dumps(policy(json.load(sys.stdin), *argv[1:5], argv[5:])))
+        elif argv[:1] == ["check"] and len(argv) == 2:
+            check(argv[1])
+        elif argv[:1] == ["latest"]:
             sha = latest()
             print(f"hourly run on {sha[:12]}: {hourly_report(sha)} (reported, does not block)", file=sys.stderr)
             print(sha)
-        elif sys.argv[1:2] == ["head"]:
+        elif argv[:1] == ["head"]:
             print(head())
-        elif sys.argv[1:2] == ["same"] and len(sys.argv) == 4:
-            sys.exit(0 if same(sys.argv[2], sys.argv[3]) else 1)
+        elif argv[:1] == ["same"] and len(argv) == 3:
+            sys.exit(0 if same(argv[1], argv[2]) else 1)
+        elif argv[:1] == ["wait"] and len(argv) == 3:
+            since, stalled = waiting(int(argv[1]), argv[2])
+            print(since, int(stalled))
         else:
-            sys.exit("usage: close_release.py stage COMMIT DEST | check DEST | serve-state")
+            sys.exit("usage: close_release.py stage COMMIT DEST | check DEST | serve-state | wait NOW SINCE")
     except (Refused, OSError, ValueError, KeyError) as e:
         sys.exit(f"REFUSED: {e}")
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
