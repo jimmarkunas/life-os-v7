@@ -2,6 +2,7 @@ import unittest
 from unittest import mock
 
 from lifeos.jobs import review
+from tests.kit.db import RecorderConn
 
 ROWS = [("Technical Program Manager", "London", "PUBLISHED", "web:su-revolut-ltd", 82, "ADMIT", "", None, None, None),
         ("API Enterprise Sales Executive", "Madrid", "EXCLUDED_FIT", "web:su-revolut-ltd", 79, "EXCLUDE", "excluded: sales_role", None, None, None),
@@ -9,40 +10,9 @@ ROWS = [("Technical Program Manager", "London", "PUBLISHED", "web:su-revolut-ltd
         ("Director of Delivery", None, "NEW", "web:su-revolut-ltd", None, None, None, "http_403", "https://www.revolut.com/", None)]
 
 
-class Cur:
-    def __init__(self, rows):
-        self.rows, self.sql = rows, []
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        return False
-
-    def execute(self, sql, args=()):
-        self.sql.append((sql, args))
-
-    def fetchall(self):
-        return self.rows
-
-
-class Conn:
-    def __init__(self, rows):
-        self.cur = Cur(rows)
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        return False
-
-    def cursor(self):
-        return self.cur
-
-
 class ReviewTests(unittest.TestCase):
     def go(self, live, rows=ROWS, env=None):
-        conn = Conn(rows)
+        conn = RecorderConn(rows)
         client = mock.MagicMock()
         with mock.patch.object(review.store, "connect", return_value=conn), mock.patch.object(review.store, "ensure_schema"), \
                 mock.patch.object(review, "Client", return_value=client), mock.patch.object(review.ledger, "verify", return_value="ok"):
@@ -71,7 +41,7 @@ class ReviewTests(unittest.TestCase):
 
     def test_the_company_filter_is_a_bound_parameter_never_part_of_the_sql(self):
         _, conn, _ = self.go(False, env={"REVIEW_COMPANY": "x'; DROP"})
-        sql, args = conn.cur.sql[-1]
+        sql, args = conn.cur.statements[-1]
         self.assertNotIn("DROP", sql)
         self.assertIn("%x'; DROP%", args)
 
@@ -82,10 +52,10 @@ if __name__ == "__main__":
 
 class SeveralCompaniesTests(unittest.TestCase):
     def test_comma_separated_companies_become_one_or_filter_with_bound_parameters(self):
-        conn = Conn(ROWS)
+        conn = RecorderConn(ROWS)
         with mock.patch.object(review.store, "connect", return_value=conn), mock.patch.object(review.store, "ensure_schema"):
             review.run(0, False, environ={"REVIEW_COMPANY": "wheely, hyperexponential ,ab,plentific"})
-        sql, params = next((s, p) for s, p in conn.cur.sql if "FROM v7_jobs" in s) if conn.cur.sql and isinstance(conn.cur.sql[0], tuple) else (None, None)
+        sql, params = next((s, p) for s, p in conn.cur.statements if "FROM v7_jobs" in s) if conn.cur.statements and isinstance(conn.cur.statements[0], tuple) else (None, None)
         self.assertEqual(params[:-1], ("%wheely%", "%wheely%", "%hyperexponential%", "%hyperexponential%", "%plentific%", "%plentific%"))
         self.assertEqual(sql.count("j.company LIKE"), 3)
         sql % tuple("x" for _ in params)                               # survives driver formatting

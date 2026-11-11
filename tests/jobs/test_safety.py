@@ -3,34 +3,7 @@ import unittest
 from unittest import mock
 
 from lifeos.jobs import safety
-
-
-class Cur:
-    def __init__(self, errors):
-        self.errors, self.seen = errors, []
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        return False
-
-    def execute(self, sql, params=()):
-        self.seen.append((sql, params))
-        for needle, error in self.errors.items():
-            if needle in sql:
-                raise error
-
-    def fetchall(self):
-        return []
-
-
-class Conn:
-    def __init__(self, errors=None):
-        self.cur = Cur(errors or {})
-
-    def cursor(self):
-        return self.cur
+from tests.kit.db import RecorderConn
 
 
 class SqlSmokeTests(unittest.TestCase):
@@ -43,25 +16,25 @@ class SqlSmokeTests(unittest.TestCase):
             self.assertEqual(len(safety._params(sql)), marks)
 
     def test_explain_runs_each_statement_with_one_value_per_placeholder(self):
-        conn = Conn()
+        conn = RecorderConn()
         counts = safety.sql_smoke(conn, [("m.py", 1, "SELECT * FROM v7_jobs WHERE id = %s AND x LIKE 'a%%' LIMIT %s")])
-        sql, params = conn.cur.seen[0]
+        sql, params = conn.cur.statements[0]
         self.assertEqual((sql.startswith("EXPLAIN SELECT"), params, counts["ok"]), (True, (1, 1), 1))
 
     def test_in_placeholders_take_a_tuple_and_runtime_fragments_are_skipped(self):
-        conn = Conn()
+        conn = RecorderConn()
         counts = safety.sql_smoke(conn, [("a.py", 1, "SELECT id FROM v7_jobs WHERE status IN %s AND x = %s"), ("b.py", 2, "SELECT id FROM v7_jobs WHERE k IN (")])
-        self.assertEqual(conn.cur.seen[0][1], ((1,), 1))
-        self.assertEqual((counts["ok"], counts["fragments"], len(conn.cur.seen)), (1, 1, 1))
+        self.assertEqual(conn.cur.statements[0][1], ((1,), 1))
+        self.assertEqual((counts["ok"], counts["fragments"], len(conn.cur.statements)), (1, 1, 1))
 
     def test_a_driver_error_is_reported_by_location_and_code_never_by_text(self):
-        conn = Conn({"BAD": Exception(1054, "Unknown column 'secret_name'")})
+        conn = RecorderConn(errors={"BAD": Exception(1054, "Unknown column 'secret_name'")})
         counts = safety.sql_smoke(conn, [("a.py", 7, "SELECT BAD FROM v7_jobs"), ("b.py", 9, "SELECT 1 FROM v7_jobs")])
         self.assertEqual((counts["ok"], counts["failed"], counts["failures"]), (1, 1, ["a.py:7:1054"]))
         self.assertNotIn("secret_name", json.dumps(counts))
 
     def test_a_table_the_first_live_run_has_not_created_is_not_a_failure(self):
-        counts = safety.sql_smoke(Conn({"v7_later": Exception(1146, "no such table")}), [("a.py", 1, "SELECT 1 FROM v7_later")])
+        counts = safety.sql_smoke(RecorderConn(errors={"v7_later": Exception(1146, "no such table")}), [("a.py", 1, "SELECT 1 FROM v7_later")])
         self.assertEqual((counts["missing_table"], counts["failed"]), (1, 0))
 
 

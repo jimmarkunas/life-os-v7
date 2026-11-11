@@ -7,36 +7,9 @@ from datetime import datetime, timedelta, timezone
 from lifeos.jira import watch
 from lifeos.platform import alerts
 from tests.kit import shared
+from tests.kit.db import SingleRowDb as FakeDb
 
 T0 = datetime(2026, 10, 12, 13, 0)                          # naive UTC, as stored
-
-
-class FakeDb:
-    """The one v7_jira_rollover row in memory, behind the few statements the module runs."""
-    def __init__(self, row=None, broken=False):
-        self.row, self.broken, self.sql = row, broken, []
-        self._last = None
-
-    def __enter__(self):
-        if self.broken:
-            raise OSError("STORE_SSH_NETWORK")
-        return self
-
-    def __exit__(self, *exc):
-        return False
-
-    def cursor(self):
-        return self
-
-    def execute(self, sql, params=()):
-        self.sql.append(sql.split()[0])
-        if sql.startswith("SELECT"):
-            self._last = self.row
-        elif sql.startswith("INSERT"):
-            self.row = (params[1], params[2], params[3])
-
-    def fetchone(self):
-        return self._last
 
 
 Pushes = shared.Pushes
