@@ -712,7 +712,16 @@ jobs:
           TICK_MAX_PARALLEL: ${{ vars.TICK_MAX_PARALLEL || '4' }}
         run: |
           pip install --require-hashes -r requirements-browser.lock
-          python -m playwright install --with-deps chromium
+          browser=""
+          for attempt in 1 2; do          # LIFE-573: three ticks in a row (Nov 11, 8-10 AM CT) died here when apt could not resolve the Ubuntu mirror; two bounded tries, then carry on
+            if timeout 150 python -m playwright install --with-deps chromium; then browser=yes; break; fi
+            echo "BROWSER_INSTALL_ATTEMPT_${attempt}_FAILED"
+            if [ "$attempt" = 1 ]; then sleep 20; fi
+          done
+          if [ -z "$browser" ]; then
+            echo "BROWSER_INSTALL_DEGRADED: system libraries not installed (apt unreachable); the tick runs with the cached browser, and only browser stages can fail"
+            timeout 120 python -m playwright install chromium || echo "BROWSER_DOWNLOAD_SKIPPED"
+          fi
           python -m lifeos.jobs.tick $([ "$LIVE" = "true" ] && echo --live) ${{ inputs.quick && '--quick' || '' }}
       - id: web
         continue-on-error: true
