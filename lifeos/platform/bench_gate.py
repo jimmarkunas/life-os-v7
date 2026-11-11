@@ -2,6 +2,7 @@
 
     python -m lifeos.platform.bench_gate before    exit 1 (BENCHMARK_REFUSED) while any other hourly or domains run is queued or running
     python -m lifeos.platform.bench_gate after     write whether another run overlapped this one to the run summary (a benchmark that was overlapped is NOT COMPARABLE)
+    python -m lifeos.platform.bench_gate jobs      the domains benchmark's summary: seconds per job of this run, its wall time, and the overlap check
 
 Counts and run kinds only (the run's display title and workflow name), no ids. Pure logic is separate from the GitHub reads so tests inject both."""
 import datetime as dt
@@ -63,6 +64,29 @@ def after(runs, current_id, started, ended):
     return "### Benchmark overlap check\n\nNo other hourly or domains run overlapped this one: comparable.\n"
 
 
+def job_seconds(jobs):
+    """[(job name, seconds, conclusion)] for the finished jobs of a run, longest first; a job that did not run is left out."""
+    rows = []
+    for j in jobs:
+        begun, ended = _t(j.get("started_at")), _t(j.get("completed_at"))
+        if begun and ended and j.get("conclusion") != "skipped":
+            rows.append((j["name"], int((ended - begun).total_seconds()), j.get("conclusion")))
+    return sorted(rows, key=lambda row: (-row[1], row[0]))
+
+
+def jobs_summary(jobs):
+    """Markdown: seconds per job, the run's wall time (first job start to last job end) and the sum of job seconds."""
+    rows = job_seconds(jobs)
+    if not rows:
+        return "### Benchmark: seconds per job\n\nNo job finished.\n"
+    starts = [_t(j["started_at"]) for j in jobs if j.get("started_at") and j.get("conclusion") != "skipped"]
+    ends = [_t(j["completed_at"]) for j in jobs if j.get("completed_at") and j.get("conclusion") != "skipped"]
+    wall = int((max(ends) - min(starts)).total_seconds())
+    lines = ["### Benchmark: seconds per job", "", f"**Domains wall seconds (first job start to last job end): {wall}**; sum of job seconds: {sum(r[1] for r in rows)}", "",
+             "| Job | Seconds | Result |", "|---|---:|---|"] + [f"| {name} | {seconds} | {result} |" for name, seconds, result in rows]
+    return "\n".join(lines) + "\n"
+
+
 def own_start(run_id):
     """When this run started, from its own run record (None if it cannot be read)."""
     try:
@@ -90,7 +114,18 @@ def main(argv=None, environ=os.environ, fetch=fetch_runs, now=None):
             with open(path, "a") as handle:
                 handle.write(text)
         return 0
-    print("usage: bench_gate before|after", file=sys.stderr)
+    if mode == "jobs":
+        jobs = gate._api(f"actions/runs/{current}/jobs?per_page=100").get("jobs", [])
+        started = _t(environ.get("BENCH_STARTED")) or _t(own_start(current))
+        text = jobs_summary([j for j in jobs if j.get("name") != "bench_report"])
+        text += after(runs, current, started, now or dt.datetime.now(dt.timezone.utc)) if started else "\nNo start time was recorded; overlap unknown.\n"
+        print(text)
+        path = environ.get("GITHUB_STEP_SUMMARY")
+        if path:
+            with open(path, "a") as handle:
+                handle.write(text)
+        return 0
+    print("usage: bench_gate before|after|jobs", file=sys.stderr)
     return 2
 
 

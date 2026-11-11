@@ -136,5 +136,37 @@ class TickSettings(unittest.TestCase):
         self.assertIn("BENCHMARK_REFUSED_LIVE", err.getvalue())
 
 
+def job(name, start, end, conclusion="success"):
+    return {"name": name, "started_at": start, "completed_at": end, "conclusion": conclusion}
+
+
+class DomainsSummary(unittest.TestCase):
+    def test_seconds_per_job_longest_first_and_the_wall_time_from_first_start_to_last_end(self):
+        jobs = [job("jira", "2026-11-11T18:00:00Z", "2026-11-11T18:01:05Z"), job("recruiters", "2026-11-11T18:00:00Z", "2026-11-11T18:13:02Z"),
+                job("report", "2026-11-11T18:13:03Z", "2026-11-11T18:13:03Z", "skipped"), job("agenda", "2026-11-11T18:01:07Z", "2026-11-11T18:03:48Z")]
+        text = bench_gate.jobs_summary(jobs)
+        self.assertEqual([r[0] for r in bench_gate.job_seconds(jobs)], ["recruiters", "agenda", "jira"])
+        self.assertIn("(first job start to last job end): 782**", text)
+        self.assertIn("sum of job seconds: 1008", text)
+        self.assertIn("| recruiters | 782 | success |", text)
+
+    def test_nothing_finished_says_so(self):
+        self.assertIn("No job finished", bench_gate.jobs_summary([]))
+
+    def test_main_jobs_writes_the_summary_and_the_overlap_check(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "summary.md")
+            jobs = {"jobs": [job("jira", "2026-11-11T18:00:00Z", "2026-11-11T18:01:05Z"), job("bench_report", "2026-11-11T18:02:00Z", "2026-11-11T18:02:05Z")]}
+            with mock.patch.object(bench_gate.gate, "_api", return_value=jobs), redirect_stdout(io.StringIO()):
+                code = bench_gate.main(["jobs"], {"GITHUB_RUN_ID": "9", "BENCH_STARTED": "2026-11-11T18:00:00Z", "GITHUB_STEP_SUMMARY": path}, fetch=lambda: [],
+                                       now=datetime(2026, 11, 11, 18, 3, tzinfo=timezone.utc))
+            self.assertEqual(code, 0)
+            with open(path) as handle:
+                text = handle.read()
+        self.assertIn("| jira | 65 | success |", text)
+        self.assertNotIn("bench_report |", text)
+        self.assertIn("comparable", text)
+
+
 if __name__ == "__main__":
     unittest.main()

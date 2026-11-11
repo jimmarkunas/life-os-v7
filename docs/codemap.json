@@ -760,6 +760,7 @@
   },
   "domains.yml": {
    "jobs": [
+    "bench_gate",
     "jira",
     "outlook",
     "bills",
@@ -774,7 +775,8 @@
     "recruiters",
     "imessage",
     "granola",
-    "report"
+    "report",
+    "bench_report"
    ],
    "manual": true,
    "secrets": [
