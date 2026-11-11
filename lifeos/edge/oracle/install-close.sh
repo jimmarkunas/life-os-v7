@@ -180,7 +180,14 @@ case "${1:-}" in
       fi
       rm -f "$ETC/auto.pending"; exit 0                                                   # the next tick starts from a settled tree
     fi
-    commit="$(python3 -I "$REL" latest)" || { say "auto: main not green or unreadable; nothing changed"; exit 0; }
+    if ! commit="$(python3 -I "$REL" latest)"; then
+      # LIFE-562: a head that is not green on CI, or unreadable, is waited out; after 2 hours of it the ticker's watch raises one quiet alert (reads this marker; nothing else does)
+      now="$(date +%s)"; since="$(cat "$ETC/auto.waiting" 2>/dev/null || true)"
+      case "$since" in ''|*[!0-9]*) since="$now"; echo "$now" > "$ETC/auto.waiting" ;; esac
+      if [ $(( now - since )) -ge 7200 ]; then echo "$since" > "$ETC/auto.stalled"; chmod 644 "$ETC/auto.stalled"; fi
+      say "auto: main not green or unreadable; nothing changed"; exit 0
+    fi
+    rm -f "$ETC/auto.waiting" "$ETC/auto.stalled"                                         # green again: the wait is over
     if read -r held _ 2>/dev/null < "$ETC/auto.hold"; then                                 # Jim's hand: main's code at that moment counts as seen, so only newer code is ever released
       [ "$held" = unknown ] && { echo "$commit" > "$ETC/auto.hold"; exit 0; }              # main was unreadable when Jim acted: the first head read now is held
       [ "$held" = "$commit" ] && exit 0

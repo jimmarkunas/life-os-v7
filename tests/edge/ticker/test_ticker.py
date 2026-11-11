@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 import urllib.error
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -146,6 +147,23 @@ class Disk(unittest.TestCase):
         order.clear()
         ticker.watch(TOKEN, TOPIC, FakeGitHub(SWITCHES), run=lambda **k: order.append("gate"), environ={})
         self.assertEqual(order, ["gate"])                                         # an injected run alone never touches the real disk check
+
+
+class Stall(unittest.TestCase):
+    """LIFE-562: the Close release timer writes a marker after 2 hours without a green main head; the watch opens one quiet issue and closes it when the marker is gone."""
+    def test_the_marker_opens_the_incident_and_its_absence_closes_it(self):
+        seen = []
+        self.assertTrue(ticker.stall_incident("/x/auto.stalled", lambda p: True, lambda *a: seen.append(a)))
+        self.assertFalse(ticker.stall_incident("/x/auto.stalled", lambda p: False, lambda *a: seen.append(a)))
+        self.assertEqual([a[3] for a in seen], [True, False])
+        self.assertEqual((seen[0][4][3], seen[0][5][3]), ("deploy_stalled", "deploy_stalled_recovered"))
+        self.assertEqual(seen[0][0], "deploy-stalled")
+
+    def test_the_watch_runs_it_and_a_failure_never_fails_the_watchdog(self):
+        with mock.patch.object(ticker, "stall_incident", side_effect=RuntimeError("x")) as stall:
+            code = ticker.watch(TOKEN, TOPIC, FakeGitHub(SWITCHES), run=lambda **k: None, environ={}, disk=lambda: None)
+        self.assertEqual(code[0], "WATCH_DONE")
+        stall.assert_called_once()
 
 
 class Watch(unittest.TestCase):
