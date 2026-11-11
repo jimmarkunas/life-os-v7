@@ -2,7 +2,8 @@
 
 `credential_list.py` holds NAMES, providers, what each is used for, where it is read, and a date when one is known. Never a value, a secret id or a Bitwarden item id.
 expiry_source: provider_reported (the date came from the provider's own evidence) | manual (a person entered it, or the provider can report it but nothing reads it yet) |
-none ("No expiry exposed": the provider gives no date, so this screen cannot warn and says so).
+none ("No expiry exposed": the provider gives no date, so this screen cannot warn and says so) | no_expiry ("No fixed expiry": there is nothing that expires, for a stated reason in
+`source_label`; Jim's call or the provider's own page, never a guess).
 
 Warnings ride the existing path: lifeos/jobs/alerts.py turns every entry that has a date into the `expiry_*` alert (PAGE, 7 days ahead) through the alert gateway. The Alert settings screen
 reads this list on Oracle; it never reads Notion, so a Notion problem cannot silence a warning. The Token Expiry database in Notion is a read-only mirror of `rows()`."""
@@ -11,9 +12,10 @@ import datetime as dt
 
 from lifeos.platform.credential_list import CONFIG, CREDENTIALS
 
-SOURCES = {"provider_reported": "Provider reported", "manual": "Manual", "none": "No expiry exposed"}
+SOURCES = {"provider_reported": "Provider reported", "manual": "Manual", "none": "No expiry exposed", "no_expiry": "No fixed expiry"}
 WARN_AHEAD_DAYS = 7
 REQUIRED = ("key", "label", "provider", "used_for", "read_in", "expiry_source", "expires", "how_read", "renew")
+OPTIONAL = ("source_label",)                      # Nov 11 2026: the stated reason a "No fixed expiry" entry shows on the screen
 
 
 def load():
@@ -32,10 +34,10 @@ def days_left(entry, today):
 
 
 def status(entry, today):
-    """OK | Warning | Expired | Unknown (no date to check)."""
+    """OK | Warning | Expired | No fixed expiry | Unknown (no date to check)."""
     days = days_left(entry, today)
     if days is None:
-        return "Unknown"
+        return "No fixed expiry" if entry.get("expiry_source") == "no_expiry" else "Unknown"
     return "Expired" if days < 0 else "Warning" if days <= WARN_AHEAD_DAYS else "OK"
 
 
@@ -44,7 +46,7 @@ def rows(today, credentials=None):
     out = []
     for entry in (load() if credentials is None else credentials):
         out.append({"key": entry["key"], "credential": entry["label"], "provider": entry["provider"], "used_for": entry["used_for"], "read_in": entry["read_in"],
-                    "source": SOURCES[entry["expiry_source"]], "expires": entry["expires"], "days_left": days_left(entry, today), "status": status(entry, today),
+                    "source": entry.get("source_label") or SOURCES[entry["expiry_source"]], "expires": entry["expires"], "days_left": days_left(entry, today), "status": status(entry, today),
                     "warn_ahead_days": WARN_AHEAD_DAYS})
     return out
 

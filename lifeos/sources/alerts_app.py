@@ -169,9 +169,9 @@ def _credentials(now):
     """LIFE-528: a read-only list of the credentials LIFE OS uses and what is known of their expiry. It comes from the repo list on this machine, never from Notion; names, providers,
     dates and a status only. A credential whose provider gives no date says so instead of pretending to be safe."""
     rows = credentials.rows(now.date())
-    counts = {s: sum(1 for r in rows if r["status"] == s) for s in ("OK", "Warning", "Expired", "Unknown")}
+    counts = {s: sum(1 for r in rows if r["status"] == s) for s in ("OK", "Warning", "Expired", "No fixed expiry", "Unknown")}
     html = [f'<p class="lead">{len(rows)} credentials. Warned ahead through the alert gateway: {credentials.WARN_AHEAD_DAYS} days before a date. '
-            f'OK {counts["OK"]}, Warning {counts["Warning"]}, Expired {counts["Expired"]}, no date to check {counts["Unknown"]}.</p>',
+            f'OK {counts["OK"]}, Warning {counts["Warning"]}, Expired {counts["Expired"]}, no fixed expiry {counts["No fixed expiry"]}, no date to check {counts["Unknown"]}.</p>',
             '<table class="alerts"><thead><tr><th>Credential</th><th>Days left</th><th>Source</th></tr></thead><tbody>']
     for r in sorted(rows, key=lambda r: (r["days_left"] is None, r["days_left"] if r["days_left"] is not None else 0, r["credential"])):
         days = "-" if r["days_left"] is None else str(r["days_left"])
