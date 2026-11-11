@@ -457,6 +457,7 @@
    "lifeos/platform/socket_exchange.py": "LIFE-526: one request to an Oracle service over a plain socket (the fit1 and gran1 frames), read to the server's close.",
    "lifeos/platform/stored_pages.py": "LIFE-384 (D250): remember the id of a Notion page V7 created, under a fixed key, in the private store, and read it back by id (never by searching or matching a title).",
    "lifeos/platform/switches.py": "Production switches in the repository (Jim, Oct 24 2026 standing grant, LIFE-3 comment 11095).",
+   "lifeos/platform/testgate.py": "LIFE-570: should the hourly prep job re-run the unit tests?",
    "lifeos/platform/tinyfish.py": "TinyFish Fetch API client (real-browser fetch with anti-bot). Key comes from the TINYFISH_API_KEY secret.",
    "lifeos/platform/tinyfish_search.py": "TinyFish Search API client (free; 30 requests/minute). Key from TINYFISH_API_KEY. Fixed codes only in errors.",
    "lifeos/platform/usage.py": "Hard spending/rate guard for TinyFish (Jim's wallet is $35 total and must never be used up)."
