@@ -298,6 +298,47 @@ class PullRequestTestsWorkflow(unittest.TestCase):
             self.assertNotIn(word, text)
         self.assertEqual([j for j in doc["jobs"]], ["unit-tests"])
 
+    def evaluate(self, expression, context):
+        """Just enough of the Actions expression language for this file: ${{ a || b }}, == and string quotes. Unknown names read as empty, as in Actions."""
+        import re
+
+        def value(token):
+            token = token.strip()
+            if token.startswith("'"):
+                return token.strip("'")
+            node = context
+            for part in token.split("."):
+                node = node.get(part) if isinstance(node, dict) else None
+            return node or ""
+
+        def one(match):
+            body = match.group(1)
+            if "==" in body:
+                left, right = body.split("==")
+                return str(value(left) == value(right)).lower()
+            for token in body.split("||"):
+                if value(token):
+                    return str(value(token))
+            return ""
+        return re.sub(r"\$\{\{(.*?)\}\}", one, str(expression))
+
+    def test_a_merge_to_main_never_cancels_the_previous_merges_check_but_a_pull_request_push_still_replaces_its_older_one(self):
+        """LIFE-604 item 9: two quick merges used to share one group (the branch name) and the second cancelled the first, so the first merge had no verdict (2 of the last 25 main runs)."""
+        concurrency = yaml.safe_load(self.path.read_text())["concurrency"]
+
+        def settings(name, **context):
+            ctx = {"github": {"event_name": name, **context}}
+            return self.evaluate(concurrency["group"], ctx), self.evaluate(concurrency["cancel-in-progress"], ctx)
+        first = settings("push", ref="refs/heads/main", sha="aaa", event={})
+        second = settings("push", ref="refs/heads/main", sha="bbb", event={})
+        self.assertNotEqual(first[0], second[0])                                       # two merges, two groups: neither waits for or replaces the other
+        self.assertEqual((first[1], second[1]), ("false", "false"))
+        pr_one = settings("pull_request", ref="refs/pull/7/merge", sha="ccc", event={"pull_request": {"number": 7}})
+        pr_two = settings("pull_request", ref="refs/pull/7/merge", sha="ddd", event={"pull_request": {"number": 7}})
+        self.assertEqual((pr_one[0], pr_one[1]), (pr_two[0], "true"))                  # a newer push to the same pull request replaces the older check
+        other_pr = settings("pull_request", ref="refs/pull/8/merge", sha="eee", event={"pull_request": {"number": 8}})
+        self.assertNotEqual(pr_one[0], other_pr[0])
+
     def test_it_reuses_the_shared_python_action_and_runs_the_accepted_command_with_the_runtime_limits(self):
         doc = yaml.safe_load(self.path.read_text())
         steps = doc["jobs"]["unit-tests"]["steps"]
