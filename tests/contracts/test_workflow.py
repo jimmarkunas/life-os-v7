@@ -323,6 +323,52 @@ class PullRequestTestsWorkflow(unittest.TestCase):
         self.assertTrue(pathlib.Path(__file__).resolve().parents[2].joinpath("tools/orca-concord-room/test/worker.test.mjs").is_file())
 
 
+class UnitTestGateTests(unittest.TestCase):
+    """LIFE-570: prep skips the unit tests only through the fail-closed gate; the cheap freshness check and every other step are unchanged."""
+    @classmethod
+    def setUpClass(cls):
+        try:
+            cls.doc = yaml.safe_load(pathlib.Path(__file__).resolve().parents[2].joinpath(".github/workflows/hourly.yml").read_text())
+        except NameError:
+            raise unittest.SkipTest("pyyaml unavailable")
+
+    def steps(self):
+        return {s.get("name", ""): s for s in self.doc["jobs"]["prep"]["steps"]}
+
+    def test_the_gate_runs_first_and_only_it_can_skip_the_tests(self):
+        steps = self.doc["jobs"]["prep"]["steps"]
+        names = [s.get("name", "") for s in steps]
+        gate = next(i for i, n in enumerate(names) if n.startswith("Unit-test gate"))
+        tests = next(i for i, n in enumerate(names) if n == "Unit tests")
+        self.assertLess(gate, tests)
+        self.assertEqual(steps[gate]["id"], "testgate")
+        self.assertEqual(steps[gate]["run"], "python -m lifeos.platform.testgate")
+        self.assertEqual(steps[tests]["if"], "${{ steps.testgate.outputs.skip != 'true' }}")            # anything but the gate's own "true" runs the tests
+        self.assertEqual(steps[tests]["run"], "python -m unittest discover -s tests -t . -v")
+        self.assertEqual(steps[tests]["env"], {"LIFEOS_TEST_INDEX_FRESH": "1"})
+
+    def test_the_freshness_check_still_runs_when_the_suite_is_skipped(self):
+        step = next(s for n, s in self.steps().items() if n.startswith("Test index freshness"))
+        self.assertEqual(step["if"], "${{ steps.testgate.outputs.skip == 'true' }}")
+        self.assertEqual((step["env"], step["run"]), ({"LIFEOS_TEST_INDEX_FRESH": "1"}, "python -m unittest tests.test_testindex.CommittedIndexIsFresh -v"))
+
+    def test_the_gate_reads_the_token_the_job_already_has_and_pr_tests_is_untouched(self):
+        gate = next(s for n, s in self.steps().items() if n.startswith("Unit-test gate"))
+        self.assertEqual(gate["env"], {"GITHUB_TOKEN": "${{ github.token }}"})
+        self.assertEqual(self.doc["jobs"]["prep"]["permissions"].get("actions"), "write")
+        pr = pathlib.Path(__file__).resolve().parents[2].joinpath(".github/workflows/pr-tests.yml").read_text()
+        self.assertIn("unit-tests:", pr)                                                              # the required check name is unchanged
+
+    def test_chromium_is_cached_on_the_browser_lock_and_system_libraries_are_still_installed(self):
+        steps = self.doc["jobs"]["finish"]["steps"]
+        cache = next(s for s in steps if s.get("name", "").startswith("Chromium download, cached"))
+        self.assertEqual((cache["uses"], cache["with"]["path"]), ("actions/cache@v4", "~/.cache/ms-playwright"))
+        self.assertIn("hashFiles('requirements-browser.lock')", cache["with"]["key"])
+        tick = next(s for s in steps if s.get("id") == "tick")
+        self.assertIn("pip install --require-hashes -r requirements-browser.lock", tick["run"])      # integrity unchanged
+        self.assertIn("playwright install --with-deps chromium", tick["run"])
+
+
 class FastPathFirstTests(unittest.TestCase):
     """D206 (LIFE-76 PR 1): the Ledger never waits on bulk discovery, and a quick proof run reads few boards."""
     @classmethod
@@ -558,7 +604,7 @@ CONSUMERS = {
         jobs={"prep": DB | JUMP | TS | HRL, "jobright": DB | JUMP | TS | HRL, "linkedin": DB | JUMP | TS | HRL, "lensa": DB | JUMP | TS | HRL, "finish": DB | JUMP | TS | HRL | {"NTFY_TOPIC", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"}, "interview": {"NOTION_INTERVIEW_TOKEN"}, "report": {"NTFY_TOPIC"}},
         direct=['GMAIL_OAUTH_CLIENT_ID', 'HIRING_PIPELINE_PAGE_ID', 'INTERVIEW_ACCEPTANCE_JSON', 'INTERVIEW_ACCEPTANCE_NEGATIVE_JSON', 'LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'LIFEOS_NOTION_IDS', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID', 'V7_CLOSE_BASE_URL', 'V7_CLOUD_FIT_PROFILE_REF'],   # LIFE-41: the shadow's brief reference, masked (a variable is not)
         on=['schedule', 'workflow_dispatch'], crons=['7 * * * *', '27 * * * *', '47 * * * *'], perms={'contents': 'read'}, conc={'group': "life-os-v7-hourly-${{ (github.event_name == 'schedule' || inputs.tick) && 'tick' || 'manual' }}", 'cancel-in-progress': False},
-        timeouts={'prep': 45, 'jobright': 40, 'linkedin': 40, 'lensa': 40, 'finish': 58, 'interview': 15, 'report': 5}, digest="d442e4896cc086d9"),   # Nov 6 2026: the report job also names prep in its failed-lanes push;   # LIFE-76 (Oct 25 2026 drain): a manual enrich reads 450, not 150;   # D238: finish 58 min and the batch to 45 min, so a tick's batch fills the hour;   # D233 (LIFE-42): + the always-dry-run negative interview acceptance case;   # D208 (LIFE-76 PR 4b): a tick (and a manual quick proof, with --quick) runs python -m lifeos.jobs.tick in the finish job; the Dice job and its command are gone (the tick resolves Dice);   # D206 (LIFE-76 PR 1): bulk discovery (boards, Scale-Up, title watch, sponsors) moved after finalize; boards --limit follows the quick input;   # D202 review: + the read-only boards-preview command (D204 acceptance: over the 600-board sample); D203: + linkedin-search;   # D201 removed the resolve-lensa and openjobs commands; D202 added the boards command and its finish-loop entry; LIFE-41 the tick's batch is sized to the hour
+        timeouts={'prep': 45, 'jobright': 40, 'linkedin': 40, 'lensa': 40, 'finish': 58, 'interview': 15, 'report': 5}, digest="fc05dacc7fd903ab"),   # Nov 6 2026: the report job also names prep in its failed-lanes push;   # LIFE-76 (Oct 25 2026 drain): a manual enrich reads 450, not 150;   # D238: finish 58 min and the batch to 45 min, so a tick's batch fills the hour;   # D233 (LIFE-42): + the always-dry-run negative interview acceptance case;   # D208 (LIFE-76 PR 4b): a tick (and a manual quick proof, with --quick) runs python -m lifeos.jobs.tick in the finish job; the Dice job and its command are gone (the tick resolves Dice);   # D206 (LIFE-76 PR 1): bulk discovery (boards, Scale-Up, title watch, sponsors) moved after finalize; boards --limit follows the quick input;   # D202 review: + the read-only boards-preview command (D204 acceptance: over the 600-board sample); D203: + linkedin-search;   # D201 removed the resolve-lensa and openjobs commands; D202 added the boards command and its finish-loop entry; LIFE-41 the tick's batch is sized to the hour
     "network": dict(
         jobs={"network": DB | JUMP | TS | {"NOTION_API_TOKEN"}},
         direct=['LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'NETWORK_HANDOFF_PAGE_ID', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID'],
