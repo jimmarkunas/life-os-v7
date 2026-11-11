@@ -16,6 +16,7 @@ different page, or a different wanted hash: a new job, a roster change, an alias
 plain hourly rotation applies, exactly as before."""
 import json
 import os
+import time
 from datetime import date, datetime, timezone
 
 from lifeos.hiring import models as hiring_models
@@ -23,7 +24,7 @@ from lifeos.jobs import ledger
 from lifeos.platform import ledger_body
 from lifeos.network import match, store, surface
 from lifeos.network.errors import NetworkError
-from lifeos.platform import db
+from lifeos.platform import db, limits
 from lifeos.platform.notion_client import Client, NotionError
 from lifeos.sources import network_leads
 
@@ -250,20 +251,52 @@ def _run(limit, live, environ, connection, client, now, today):
     else:
         queue, candidates = _queue(surfaced, others, {k for k, h in wanted.items() if h}, budget, now)
     recorded = {}
+    timing = Timing(notion)
     for key, page, company, title, target in queue:
+        began = timing.start()
+        label = "failed"
         try:
-            _page(notion, connection, key, page, company, title, target, index, details, today, aliases, dismissed, live, counts, close_base, recorded)
+            label = _page(notion, connection, key, page, company, title, target, index, details, today, aliases, dismissed, live, counts, close_base, recorded) or "none"
         except (NotionError, NetworkError) as error:
             counts["failed"] += 1
             counts["degraded"] = True
             code = str(error)[:48]
             counts["guard_failed"][code] = counts["guard_failed"].get(code, 0) + 1
+        finally:
+            timing.stop(began, label)
         if live and len(recorded) >= FLUSH_EVERY:
             _flush(connection, recorded, counts)
     if live:
         _flush(connection, recorded, counts)
+    counts["timing"] = timing.report()
     counts["pages_deferred"] = max(candidates - len(queue), 0)
     return _finish(counts)
+
+
+class Timing:
+    """LIFE-572 step 1: where the step's time goes. Seconds and Notion calls per page and per outcome ("created", "replaced", "left", "removed", ...), nothing else: no page id, title or
+    content. The Notion client is paced (limits.NOTION_GAP_SECONDS between calls), so calls per page is what the time is made of."""
+    def __init__(self, notion, clock=time.monotonic):
+        self.notion, self.clock, self.began = notion, clock, clock()
+        self.by_label, self.slowest = {}, 0.0
+
+    def start(self):
+        return self.clock(), getattr(self.notion, "calls", 0)
+
+    def stop(self, started, label):
+        seconds, calls = self.clock() - started[0], getattr(self.notion, "calls", 0) - started[1]
+        row = self.by_label.setdefault(label, [0, 0.0, 0])
+        row[0] += 1
+        row[1] += seconds
+        row[2] += calls
+        self.slowest = max(self.slowest, seconds)
+
+    def report(self):
+        pages = sum(r[0] for r in self.by_label.values())
+        calls = sum(r[2] for r in self.by_label.values())
+        return {"seconds": round(self.clock() - self.began, 1), "pages": pages, "notion_calls": calls, "calls_per_page": round(calls / pages, 1) if pages else 0,
+                "slowest_page_seconds": round(self.slowest, 1), "gap_seconds": limits.NOTION_GAP_SECONDS,
+                "by_outcome": {k: {"pages": r[0], "seconds": round(r[1], 1), "calls": r[2]} for k, r in sorted(self.by_label.items())}}
 
 
 FLUSH_EVERY = 25                                                         # a long run saves its proven pages as it goes: a timeout loses at most this many
@@ -296,13 +329,13 @@ def _page(notion, connection, key, page_id, company, title, target, index, detai
     if why:
         counts["degraded"] = True
         counts["guard_failed"][why] = counts["guard_failed"].get(why, 0) + 1
-        return
+        return "guard_failed"
     if not target:                                                      # not an admitted job or active pursuit: it shows nothing, so a block left from before is removed
         action = surface.apply(notion, page_id, top, owned, [], live)
         counts["blocks"][action] = counts["blocks"].get(action, 0) + 1
         if recorded is not None and live and not action.startswith("would_"):
             recorded[key] = (page_id, "")                                  # proven by apply's own read-back: no owned block remains
-        return
+        return action
     full, ckey = _leads(company, title, index, details, today, aliases, dismissed, key, honour_dismissals=False, shortlist=False)       # decisions are validated against every candidate, not only the shown five
     new_dismissals, new_aliases, stale = _decisions(owned, full, key, ckey)
     counts["ticks_dismiss"] += len(new_dismissals)
@@ -320,6 +353,7 @@ def _page(notion, connection, key, page_id, company, title, target, index, detai
     counts["blocks"][action] = counts["blocks"].get(action, 0) + 1
     if recorded is not None and live and not action.startswith("would_"):
         recorded[key] = (page_id, surface.set_hash(shown, link))           # the block (or its absence) that apply just proved on the page
+    return action
 
 
 def _finish(counts):
