@@ -4,6 +4,8 @@ The accepted state only advances on a COMPLETE listing; a FAILED board keeps its
 """
 from concurrent.futures import ThreadPoolExecutor
 import os
+import sys
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from hashlib import sha1
@@ -235,7 +237,31 @@ class SqlRepo:
         return job_id
 
 
-def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=None, lane=DEFAULT_LANE, cap=None, budget=None, screen=None, workers=None, select=None):
+def bounded(lister_fn, seconds):
+    """LIFE-567: one board read gets a hard wall-clock limit. The request timeout only limits the wait for the next bytes, so a host that trickles data (or a stalled
+    store write) could hold a worker for minutes. Past `seconds` the board is FAILED ("board_timeout", retried on the normal schedule), its still-running read is
+    left on a daemon thread, and the other boards finish and commit."""
+    def call(source):
+        box = {}
+
+        def work():
+            try:
+                box["listing"] = lister_fn(source)
+            except BaseException as error:                                            # noqa: BLE001 - handed back to the caller's thread below
+                box["error"] = error
+        thread = threading.Thread(target=work, daemon=True)
+        thread.start()
+        thread.join(seconds)
+        if thread.is_alive():
+            return lister.Listing(lister.FAILED, reason="board_timeout")
+        if "error" in box:
+            raise box["error"]
+        return box["listing"]
+    return call
+
+
+def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=None, lane=DEFAULT_LANE, cap=None, budget=None, screen=None, workers=None, select=None,
+        board_seconds=None):
     """D202: the employer-board pass reuses this run with its own cap, admission budget, workers and `screen` (job -> reason, applied to a
     COMPLETE listing before the diff; only "kept_" jobs are stored, and a stored job screened out while still listed stays CURRENT)."""
     now = now or _now()
@@ -258,13 +284,16 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
         counts["unread"] = unread                                               # D217: boards never read (before this run)
     asked = [{**s, "if_etag": states[s["id"]].get("etag"), "if_modified": states[s["id"]].get("last_modified")}
              if skip_allowed(states.get(s["id"])) else s for s in due]          # D216: validators go out only when a skip is allowed
+    waiting = None
     pool = ThreadPoolExecutor(max_workers=workers or limits.ATS_WORKERS)          # priority boards are on different hosts; seed boards pass fewer workers
     try:
-        listings = pool.map(lister_fn, asked)                                     # Oct 25 2026: lazy, in order, so each board is committed as its answer arrives:
+        listings = iter(pool.map(bounded(lister_fn, board_seconds or limits.WEB_BOARD_SECONDS), asked))                                     # Oct 25 2026: lazy, in order, so each board is committed as its answer arrives:
         budget = limits.WEB_INGEST_PER_RUN if budget is None else budget
         if screen:
             counts["screen"], counts["still_listed"] = {}, 0
-        for source, listing in zip(due, listings):
+        for source in due:
+            waiting = source["id"]                                                # LIFE-567: a stage timeout names the board whose answer it was waiting for
+            listing = next(listings)
             listed = None
             raw = diff.frontier({j["id"]: diff.material_hash(j) for j in listing.jobs}) if listing.status == lister.COMPLETE else None   # D216: the WHOLE board, before the screen
             if screen and listing.status == lister.COMPLETE:
@@ -321,6 +350,10 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
                     counts["why"][why] = counts["why"].get(why, 0) + n
             if live:
                 repo.commit(outcome, failures, lane)
+    except BaseException:                                                         # LIFE-567: the tick's stage timeout is a BaseException; name the board, then let it through
+        if waiting:
+            print(f"web: stopped while waiting for board {waiting}", file=sys.stderr)       # a public registry id, never a job
+        raise
     finally:                                                                      # a pass stopped at its tick budget keeps every board it committed, and the boards
         pool.shutdown(wait=False, cancel_futures=True)                            # not yet asked are cancelled, never read after the stage has stopped
     counts["saved"] = bool(live)

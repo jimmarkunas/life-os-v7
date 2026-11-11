@@ -46,6 +46,7 @@ ATS_TIMEOUT_SECONDS = 10
 
 # Web acquisition (US Remote direct boards): ours, spread over the hourly runs
 WEB_BOARDS_PER_RUN = 12                  # due boards polled per run (26 ready boards drain in three runs)
+WEB_BOARD_SECONDS = 30                   # LIFE-567: hard wall-clock limit for reading one board; over it the board is FAILED (board_timeout) and the others finish
 WEB_REFRESH_HOURS = 6                    # a COMPLETE board is due again after this
 WEB_RETRY_HOURS = 1                      # a FAILED board is retried after this (doubling, capped at WEB_REFRESH_HOURS)
 WEB_FULL_EVERY = 4                       # D216: every 4th read of a quiet board is a full diff, whatever its validators or fingerprint say
