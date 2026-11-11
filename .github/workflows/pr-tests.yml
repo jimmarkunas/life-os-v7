@@ -10,8 +10,8 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: life-os-v7-pr-tests-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true                  # a newer push to the same PR (or to main) replaces its older check; it shares no group with any tick or manual run
+  group: life-os-v7-pr-tests-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}   # LIFE-604: a newer push to the same pull request replaces its older check; every merge to main keeps its own group and is never cancelled (the Close release needs a verdict for each); no group is shared with any tick or manual run
 jobs:
   unit-tests:
     runs-on: ubuntu-24.04
