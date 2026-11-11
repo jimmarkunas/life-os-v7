@@ -142,3 +142,39 @@ class TickTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StageSeconds(unittest.TestCase):
+    """LIFE-569: one line per stage with its seconds, and a summary table; nothing about what a stage found or saved changes."""
+    def test_each_stage_prints_its_outcome_and_seconds_and_fills_the_timings(self):
+        import io
+        from contextlib import redirect_stdout
+        ticks = iter([0, 0, 0, 12, 12, 12, 40])
+        clock = lambda: next(ticks)                                                   # noqa: E731
+        out, timings = io.StringIO(), {}
+        with redirect_stdout(out):
+            result = tick.tick(False, plan=(Step("a", 100), Step("b", 100)), stages={"a": lambda limit, live: 0, "b": lambda limit, live: 0}, clock=clock, timings=timings)
+        self.assertEqual(result, {"a": "ok", "b": "ok"})
+        self.assertEqual(timings, {"a": 12, "b": 28})
+        self.assertEqual(out.getvalue().splitlines(), ["stage a: ok 12.0s", "stage b: ok 28.0s"])
+
+    def test_a_failing_stage_still_reports_its_seconds_and_the_next_stage_runs(self):
+        import io
+        from contextlib import redirect_stdout, redirect_stderr
+        steps = iter(range(0, 100, 5))
+        out, timings = io.StringIO(), {}
+
+        def boom(limit, live):
+            raise RuntimeError("x")
+        with redirect_stdout(out), redirect_stderr(io.StringIO()):
+            result = tick.tick(False, plan=(Step("a", 100), Step("b", 100)), stages={"a": boom, "b": lambda limit, live: 0}, clock=lambda: next(steps), timings=timings)
+        self.assertEqual(result, {"a": "failed", "b": "ok"})
+        self.assertEqual([line.split(" ")[:3] for line in out.getvalue().splitlines()], [["stage", "a:", "failed"], ["stage", "b:", "ok"]])
+
+    def test_the_summary_table_lists_every_stage_with_seconds_and_share_and_a_total(self):
+        table = tick.summary_table({"a": "ok", "b": "skipped"}, {"a": 30.0}, 120.0)
+        self.assertIn("| a | ok | 30.0 | 25% |", table)
+        self.assertIn("| b | skipped | 0.0 | 0% |", table)
+        self.assertIn("| **total** | | **120.0** | |", table)
+        self.assertIn("-", tick.summary_table({"a": "ok"}, {"a": 1.0}, 0).splitlines()[4])           # no division by zero
+
