@@ -106,24 +106,41 @@ def head(fetch=get):
     return commit
 
 
-def latest(fetch=get):
-    """Edge auto-release (Jim, Oct 24): main's head commit, only once main's own hourly run tested that exact commit and its `Unit tests` step passed.
-    Runs are read from the Actions runs of hourly.yml on main (never a check run, which any branch's workflow could post); the newest run whose
-    `Unit tests` step finished decides, and one still queued or running decides nothing yet."""
-    commit = head(fetch)
-    runs = json.loads(fetch(f"https://api.github.com/repos/{REPO}/actions/workflows/hourly.yml/runs?branch=main&head_sha={commit}&per_page=20")).get("workflow_runs") or []
-    mine = sorted((r for r in runs if r.get("head_sha") == commit and r.get("head_branch") == "main" and r.get("path") == ".github/workflows/hourly.yml"),
+PR_TESTS = ".github/workflows/pr-tests.yml"
+HOURLY = ".github/workflows/hourly.yml"
+
+
+def _runs(workflow, commit, fetch):
+    runs = json.loads(fetch(f"https://api.github.com/repos/{REPO}/actions/workflows/{workflow}/runs?branch=main&head_sha={commit}&per_page=20")).get("workflow_runs") or []
+    return sorted((r for r in runs if r.get("head_sha") == commit and r.get("head_branch") == "main" and r.get("path") == f".github/workflows/{workflow}"),
                   key=lambda r: (r.get("id") or 0, r.get("run_attempt") or 0), reverse=True)
-    for run in mine:
-        if run.get("status") != "completed":
-            raise Refused("NOT_GREEN")                                  # a newer run still going may yet fail
-        jobs = json.loads(fetch(f"https://api.github.com/repos/{REPO}/actions/runs/{run.get('id')}/jobs?per_page=100")).get("jobs") or []
-        step = next((s for j in jobs if j.get("name") == "prep" for s in j.get("steps") or [] if s.get("name") == "Unit tests"), {})
-        if step.get("conclusion") == "success":
+
+
+def latest(fetch=get):
+    """Edge auto-release (Jim, Oct 24; LIFE-562, Nov 11): main's head commit, once the required CI check on that exact commit is green: the `pr-tests` workflow's push run on main
+    (the full unit-test suite, which includes the tests of every file the Close tree ships). The hourly data run no longer gates this deploy: a red or slow Cloud Fit step cannot hold a
+    screen back (Nov 10: the Alert settings deploy waited hours on it). Runs are read from the Actions runs of the workflow on main for this commit (never a check run, which any branch's
+    workflow could post); the newest push run decides: queued or running decides nothing yet (NOT_GREEN), anything but success is NOT_GREEN, and no run at all is NOT_GREEN."""
+    commit = head(fetch)
+    for run in _runs("pr-tests.yml", commit, fetch):
+        if run.get("event") not in (None, "push"):
+            continue
+        if run.get("status") == "completed" and run.get("conclusion") == "success":
             return commit
-        if step.get("conclusion") == "failure":
-            raise Refused("NOT_GREEN")
-    raise Refused("NOT_GREEN")                                          # no run of main tested this commit yet (a skipped tick tests nothing)
+        raise Refused("NOT_GREEN")                                      # the newest run is still going, failed or was cancelled: wait for a newer green one
+    raise Refused("NOT_GREEN")                                          # no CI run of main tested this commit yet
+
+
+def hourly_report(commit, fetch=get):
+    """LIFE-562: what main's own hourly run says about this commit, for the journal only. It never blocks: green | red | running | none | unknown."""
+    try:
+        for run in _runs("hourly.yml", commit, fetch):
+            if run.get("status") != "completed":
+                return "running"
+            return "green" if run.get("conclusion") == "success" else "red"
+        return "none"
+    except Exception:                                                   # noqa: BLE001 - a report line, never a reason to refuse
+        return "unknown"
 
 
 def same(a, b):
@@ -174,7 +191,9 @@ if __name__ == "__main__":
         elif sys.argv[1:2] == ["check"] and len(sys.argv) == 3:
             check(sys.argv[2])
         elif sys.argv[1:2] == ["latest"]:
-            print(latest())
+            sha = latest()
+            print(f"hourly run on {sha[:12]}: {hourly_report(sha)} (reported, does not block)", file=sys.stderr)
+            print(sha)
         elif sys.argv[1:2] == ["head"]:
             print(head())
         elif sys.argv[1:2] == ["same"] and len(sys.argv) == 4:

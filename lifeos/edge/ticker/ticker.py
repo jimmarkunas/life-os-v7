@@ -30,6 +30,8 @@ VARIABLES = ("ALERTS_ENABLED", "ALERTS_MUTED_UNTIL", "ALERT_SETTINGS")
 OK = {"TICK_DISPATCHED", "TICK_SKIPPED", "WATCH_DONE", "TICKER_DRY_OK"}
 DISK_PATH, DISK_LIMIT = "/var/lib/hermeseval", 80        # LIFE-301: the Hermes loop-mounted image (10 GB, 34% used on Nov 7 2026)
 DISK_LABEL, DISK_TITLE = "hermes-disk-full", "Hermes disk is 80% full or more"
+STALL_FILE = "/etc/lifeos-close/auto.stalled"            # LIFE-562: written by the Close release timer after 2 hours without a green main head
+STALL_LABEL, STALL_TITLE = "deploy-stalled", "Close service release has not deployed for over 2 hours"
 DRIFT_LABEL, DRIFT_TITLE = "deploy-drift", "Installed files on the Oracle VM differ from main"
 REFUSED = (401, 403, 404, 422)          # the token, its permissions, the workflow name or the inputs are wrong: a person must act
 
@@ -129,6 +131,19 @@ def disk_incident(path=DISK_PATH, limit=DISK_LIMIT, usage=shutil.disk_usage, syn
                 ("Hermes disk back under 80%", "The Hermes disk image is below the limit again.", "info", "hermes_disk_full_recovered"))
 
 
+def stall_incident(path=STALL_FILE, exists=os.path.exists, sync=None):
+    """LIFE-562: one quiet issue + one phone push while the Close release timer has found no green main head for over 2 hours (it writes `path`); closes when the marker is gone."""
+    if sync is None:
+        from lifeos.platform import gate                           # noqa: PLC0415
+        sync = gate.sync_incident
+    stalled = bool(exists(path))
+    sync(STALL_LABEL, STALL_TITLE, "The Close service release timer on lifeos-edge-01 has found no green main head for over 2 hours, so no screen change is being deployed. Check the pr-tests run "
+         "on main's head commit (red or missing). Nothing is broken on the VM; the live tree stays as it is. This issue closes itself when a green head deploys.", stalled,
+         ("Close release stalled", "No green main head for over 2 hours; screen changes are not deploying. Open the deploy-stalled issue.", "info", "deploy_stalled"),
+         ("Close release moving again", "A green main head deployed.", "info", "deploy_stalled_recovered"))
+    return stalled
+
+
 def drift_incident(token, opener=urllib.request.urlopen, sync=None, read=None, unit_state=None, rows=None):
     """LIFE-528: one GitHub issue + one quiet push while any repo-owned file installed on this VM differs from `main` (or its unit is not running); closes when every surface is
     DEPLOYED. A surface that cannot be read is UNKNOWN and changes nothing. Returns the check rows (counts and surface names only)."""
@@ -188,6 +203,10 @@ def watch(token, topic, opener=urllib.request.urlopen, run=None, environ=None, d
         try:
             drift_incident(token, opener)                           # LIFE-528: inside the existing watchdog, no new scheduler
         except Exception:                                           # noqa: BLE001 - the drift check never fails the watchdog either
+            pass
+        try:
+            stall_incident()                                        # LIFE-562: same watchdog; the marker is world-readable under /etc/lifeos-close
+        except Exception:                                           # noqa: BLE001 - never fails the watchdog
             pass
     return "WATCH_DONE", None
 
