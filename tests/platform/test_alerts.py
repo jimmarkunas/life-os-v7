@@ -82,16 +82,79 @@ class Delivery(unittest.TestCase):
 
     def test_the_push_cli_exits_1_when_the_push_is_not_accepted(self):
         import contextlib, io
-        old = alerts.ntfy
-        try:
-            with contextlib.redirect_stdout(io.StringIO()):
-                alerts.ntfy = lambda *a: False
-                self.assertEqual(alerts.main(["push", "--key", "run_failed", "--title", "T"]), 1)
-                alerts.ntfy = lambda *a: True
-                self.assertEqual(alerts.main(["push", "--key", "run_failed", "--title", "T"]), 0)
-        finally:
-            alerts.ntfy = old
 
+        def answer(status):
+            class Resp:
+                def __init__(self):
+                    self.status = status
+
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *a):
+                    return False
+            return lambda request, timeout: Resp()
+        for status, want in ((500, 1), (200, 0)):                                            # LIFE-604: the real main and the real ntfy run; only the network answer is replaced
+            with self.subTest(status=status), mock.patch.dict("os.environ", {"ALERTS_ENABLED": "on", "NTFY_TOPIC": "topic"}, clear=True), \
+                    mock.patch.object(alerts.urllib.request, "urlopen", answer(status)), contextlib.redirect_stdout(io.StringIO()):
+                alerts.reset_flood()
+                self.assertEqual(alerts.main(["push", "--key", "run_failed", "--title", "T"]), want)
+
+
+class CommandLineCopies(unittest.TestCase):
+    """LIFE-604 item 2: the command line (`alerts.main`) used by the workflows must carry the same Telegram and WhatsApp copy tags as `push()` does.
+    Only the network call is replaced; the real main, the real registry and the real settings run."""
+    WORKFLOW_KEYS = ("run_failed", "domain_jobs_failed", "purge_done", "purge_failed", "safety_failed", "test_push")
+
+    def run_main(self, *argv, settings=None):
+        import contextlib, io
+        sent = []
+
+        class Resp:
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        def urlopen(request, timeout):
+            sent.append({"tags": request.get_header("Tags"), "priority": request.get_header("Priority")})
+            return Resp()
+        env = {"ALERTS_ENABLED": "on", "NTFY_TOPIC": "topic", **({"ALERT_SETTINGS": settings} if settings else {})}
+        with mock.patch.dict("os.environ", env, clear=True), mock.patch.object(alerts.urllib.request, "urlopen", urlopen), contextlib.redirect_stdout(io.StringIO()):
+            alerts.reset_flood()
+            code = alerts.main(["push", *argv])
+        return code, sent
+
+    def test_a_page_key_carries_both_copy_tags_and_the_loud_priority(self):
+        code, sent = self.run_main("--key", "run_failed", "--title", "T")
+        self.assertEqual(code, 0)
+        self.assertEqual(sent, [{"tags": "rotating_light,ch-telegram,ch-whatsapp", "priority": "high"}])
+
+    def test_an_info_key_carries_no_copy_tag(self):
+        code, sent = self.run_main("--key", "purge_done", "--title", "T")
+        self.assertEqual((code, sent), (0, [{"tags": "information_source", "priority": "low"}]))
+
+    def test_every_workflow_key_gets_exactly_the_copies_the_registry_gives_it(self):
+        from lifeos.platform import alert_registry
+        for key in self.WORKFLOW_KEYS:
+            with self.subTest(key=key):
+                _, sent = self.run_main("--key", key, "--title", "T")
+                want = [f"ch-{c}" for c in alert_registry.channels(key) if c != "ntfy"]
+                got = [t for t in sent[0]["tags"].split(",") if t.startswith("ch-")]
+                self.assertEqual(got, want)
+
+    def test_jims_channel_choice_applies_to_the_command_line_too(self):
+        settings = '{"v":1,"channels":{"purge_done":["ntfy","whatsapp"]}}'
+        _, sent = self.run_main("--key", "purge_done", "--title", "T", settings=settings)
+        self.assertEqual(sent[0]["tags"], "information_source,ch-whatsapp")
+
+    def test_a_manual_test_push_keeps_its_severity_override(self):
+        _, sent = self.run_main("--key", "test_push", "--severity", "info", "--title", "T")
+        self.assertEqual(sent[0]["priority"], "low")
+        self.assertIn("ch-telegram", sent[0]["tags"])
 
 
 class Hibernated(unittest.TestCase):
