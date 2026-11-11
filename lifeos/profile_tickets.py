@@ -59,7 +59,7 @@ def profile(pr, detail, runs, jira=None):
     row = {"pr": pr["number"], "key": key, "files": pr["changedFiles"], "added": pr["additions"], "removed": pr["deletions"],
            "commit_to_merge_min": minutes(first_commit, pr["mergedAt"]), "ci_runs": len(ordered), "cancelled_runs": sum(1 for r in ordered if r["conclusion"] == "cancelled"),
            "failed_before_green": failed_before, "first_run_to_green_min": minutes(ordered[0]["createdAt"], first_green["updatedAt"]) if ordered and first_green else None,
-           "scope": scope(files)}
+           "scope": scope(files), "first_commit": first_commit, "merged_at": pr["mergedAt"]}
     if jira and key in jira and jira[key].get("start") and jira[key].get("done"):
         row["jira_start_to_done_min"] = minutes(jira[key]["start"], jira[key]["done"])
     return row
@@ -76,6 +76,39 @@ def summary(rows):
     out["prs_with_a_failed_first_run"] = sum(1 for r in rows if r["failed_before_green"] > 0)
     out["prs_touching_more_than_one_package"] = sum(1 for r in rows if len(r["scope"]) > 1)
     return out
+
+
+PARTS = ("queue_and_orientation_min", "building_min", "after_merge_to_done_min")
+
+
+def split(rows, jira):
+    """LIFE-598 -> {ticket: {queue_and_orientation_min, building_min, after_merge_to_done_min, total_min}} for tickets that have both Jira times and at least one PR.
+    Agent Go to the first commit (queueing and reading together: Jira has no In Progress move to separate them), first commit to the last merge (building and CI), last merge to Done
+    (verification, measurement runs, waiting for a person). A ticket with several PRs uses the earliest first commit and the latest merge."""
+    by_ticket = {}
+    for row in rows:
+        by_ticket.setdefault(row["key"], []).append(row)
+    out = {}
+    for key, prs in by_ticket.items():
+        times = (jira or {}).get(key) or {}
+        if not (times.get("start") and times.get("done")):
+            continue
+        first = min(prs, key=lambda r: when(r["first_commit"]))["first_commit"]
+        last = max(prs, key=lambda r: when(r["merged_at"]))["merged_at"]
+        out[key] = {"queue_and_orientation_min": minutes(times["start"], first), "building_min": minutes(first, last), "after_merge_to_done_min": minutes(last, times["done"]),
+                    "total_min": minutes(times["start"], times["done"])}
+    return out
+
+
+def split_summary(tickets):
+    """The sum, median and share of each part over the tickets, and which part is largest by the sum of minutes."""
+    if not tickets:
+        return {"n": 0, "largest": None, "median_min": {}, "share_pct": {}, "sum_min": {}}
+    sums = {part: round(sum(t[part] for t in tickets.values()), 1) for part in PARTS}
+    total = sum(sums.values()) or 1
+    return {"n": len(tickets), "largest": max(PARTS, key=lambda part: sums[part]), "sum_min": sums,
+            "median_min": {part: statistics.median(t[part] for t in tickets.values()) for part in PARTS},
+            "share_pct": {part: round(100 * sums[part] / total) for part in PARTS}}
 
 
 def table(rows):
@@ -114,10 +147,11 @@ def main(argv=None, call=gh, out=sys.stdout):
         with open(args.jira) as handle:
             jira = json.load(handle)
     rows = collect(args.last, jira, call)
+    parts = split(rows, jira)
     if args.json:
-        out.write(json.dumps({"rows": rows, "summary": summary(rows)}, indent=1) + "\n")
+        out.write(json.dumps({"rows": rows, "summary": summary(rows), "split": parts, "split_summary": split_summary(parts)}, indent=1) + "\n")
     else:
-        out.write(table(rows) + "\n" + json.dumps(summary(rows), indent=1) + "\n")
+        out.write(table(rows) + "\n" + json.dumps(summary(rows), indent=1) + "\n" + json.dumps(split_summary(parts), indent=1) + "\n")
     return 0
 
 

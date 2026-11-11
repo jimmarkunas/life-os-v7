@@ -59,7 +59,7 @@ class Output(unittest.TestCase):
         out = io.StringIO()
         pt.main(["--last", "2", "--json"], call=fake_gh, out=out)
         text = out.getvalue()
-        self.assertEqual(sorted(json.loads(text)["rows"][0]), sorted(["pr", "key", "files", "added", "removed", "commit_to_merge_min", "ci_runs", "cancelled_runs", "failed_before_green", "first_run_to_green_min", "scope"]))
+        self.assertEqual(sorted(json.loads(text)["rows"][0]), sorted(["pr", "key", "files", "added", "removed", "commit_to_merge_min", "ci_runs", "cancelled_runs", "failed_before_green", "first_run_to_green_min", "scope", "first_commit", "merged_at"]))                    # LIFE-598 added the two times the split needs; still numbers, keys and times only
         for title_word in ("First", "Second", "Not a ticket"):
             self.assertNotIn(title_word, text)                                    # no PR title text is copied into the output
 
@@ -69,6 +69,37 @@ class Output(unittest.TestCase):
         with self.assertRaises(RuntimeError) as caught:
             pt.gh(["pr", "list"], run=lambda *a, **k: Done())
         self.assertEqual(str(caught.exception), "gh failed")
+
+
+class Split(unittest.TestCase):
+    """LIFE-598: the ticket's minutes split in three: Agent Go to the first commit, first commit to the last merge, last merge to Done. Worked by hand from the fixture."""
+    def rows(self, jira):
+        return pt.collect(20, jira, fake_gh)
+
+    def test_the_three_parts_of_one_ticket_add_up_to_its_total(self):
+        jira = {"LIFE-901": {"start": "2026-11-10T17:30:00Z", "done": "2026-11-10T19:10:00Z"}}      # first commit 18:00, merged 18:10
+        parts = pt.split(self.rows(jira), jira)["LIFE-901"]
+        self.assertEqual((parts["queue_and_orientation_min"], parts["building_min"], parts["after_merge_to_done_min"], parts["total_min"]), (30.0, 10.0, 60.0, 100.0))
+
+    def test_a_ticket_without_both_jira_times_is_left_out_and_counted(self):
+        jira = {"LIFE-901": {"start": "2026-11-10T17:30:00Z"}}
+        self.assertEqual(pt.split(self.rows(jira), jira), {})
+        report = pt.split_summary({})
+        self.assertEqual((report["n"], report["largest"]), (0, None))
+
+    def test_the_largest_part_is_named_by_the_sum_of_minutes_with_its_share(self):
+        tickets = {"A": {"queue_and_orientation_min": 10.0, "building_min": 5.0, "after_merge_to_done_min": 85.0, "total_min": 100.0},
+                   "B": {"queue_and_orientation_min": 30.0, "building_min": 20.0, "after_merge_to_done_min": 50.0, "total_min": 100.0}}
+        report = pt.split_summary(tickets)
+        self.assertEqual((report["n"], report["largest"]), (2, "after_merge_to_done_min"))
+        self.assertEqual(report["share_pct"], {"queue_and_orientation_min": 20, "building_min": 12, "after_merge_to_done_min": 68})
+        self.assertEqual(report["median_min"]["after_merge_to_done_min"], 67.5)
+
+    def test_a_ticket_with_two_prs_uses_the_first_commit_of_the_earlier_and_the_merge_of_the_later(self):
+        rows = [{"key": "T-1", "first_commit": "2026-11-10T10:00:00Z", "merged_at": "2026-11-10T10:30:00Z"}, {"key": "T-1", "first_commit": "2026-11-10T10:20:00Z", "merged_at": "2026-11-10T11:00:00Z"}]
+        jira = {"T-1": {"start": "2026-11-10T09:00:00Z", "done": "2026-11-10T12:00:00Z"}}
+        parts = pt.split(rows, jira)["T-1"]
+        self.assertEqual((parts["queue_and_orientation_min"], parts["building_min"], parts["after_merge_to_done_min"]), (60.0, 60.0, 60.0))
 
 
 if __name__ == "__main__":
