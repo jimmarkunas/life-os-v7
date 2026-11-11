@@ -668,7 +668,8 @@ jobs:
           oauth-secret: ${{ steps.bws_finish.outputs.TAILSCALE_OAUTH_CLIENT_SECRET || steps.bws_finish_retry.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
           use-cache: "false"
-      - name: Chromium download, cached (LIFE-570; keyed on requirements-browser.lock; the system libraries are still installed each run because a fresh runner has none)
+      - id: chromium_cache
+        name: Chromium download, cached (LIFE-570; keyed on requirements-browser.lock; the system libraries are still installed each run because a fresh runner has none)
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.quick) }}
         uses: actions/cache@v4
         with:
@@ -703,6 +704,7 @@ jobs:
           IMESSAGE_ALERTS_HOST: ${{ steps.bws_finish.outputs.IMESSAGE_ALERTS_HOST || steps.bws_finish_retry.outputs.IMESSAGE_ALERTS_HOST }}
           V7_CLOUD_FIT: ${{ vars.V7_CLOUD_FIT || 'off' }}                 # D214: off unless the repository variable says shadow (G6) or canary (D226); on is refused in code
           V7_CLOUD_FIT_PROFILE_REF: ${{ secrets.V7_CLOUD_FIT_PROFILE_REF }}   # LIFE-41: the 16-hex reference to Oracle's own brief (G5), a SECRET so it is masked: a repository variable is printed in this step's env header and the repo is public
+          CHROMIUM_CACHE_HIT: ${{ steps.chromium_cache.outputs.cache-hit }}   # LIFE-573: true when the browser download came from the cache; then no apt command runs
           TICK_CONCURRENCY: ${{ vars.TICK_CONCURRENCY || 'off' }}   # LIFE-569: off unless the repository variable says on
           TICK_CAP_LINKEDIN: ${{ vars.TICK_CAP_LINKEDIN || '1' }}
           TICK_CAP_TINYFISH: ${{ vars.TICK_CAP_TINYFISH || '1' }}
@@ -713,10 +715,16 @@ jobs:
         run: |
           pip install --require-hashes -r requirements-browser.lock
           browser=""
-          for attempt in 1 2; do          # LIFE-573: three ticks in a row (Nov 11, 8-10 AM CT) died here when apt could not resolve the Ubuntu mirror; two bounded tries, then carry on
+          if [ "$CHROMIUM_CACHE_HIT" = "true" ]; then
+            echo "BROWSER_INSTALL_SKIPPED_APT: Chromium cache hit, no apt command runs"      # LIFE-573 (Jim, Nov 11): apt failed the 8, 9 and 10 AM CT ticks; a warm cache needs none
+            timeout 120 python -m playwright install chromium || echo "BROWSER_DOWNLOAD_SKIPPED"
+            browser=yes
+          fi
+          for attempt in 1 2 3; do          # a cache miss still installs the system libraries, with three bounded tries
+            if [ -n "$browser" ]; then break; fi
             if timeout 150 python -m playwright install --with-deps chromium; then browser=yes; break; fi
             echo "BROWSER_INSTALL_ATTEMPT_${attempt}_FAILED"
-            if [ "$attempt" = 1 ]; then sleep 20; fi
+            if [ "$attempt" -lt 3 ]; then sleep $((attempt * 20)); fi
           done
           if [ -z "$browser" ]; then
             echo "BROWSER_INSTALL_DEGRADED: system libraries not installed (apt unreachable); the tick runs with the cached browser, and only browser stages can fail"
