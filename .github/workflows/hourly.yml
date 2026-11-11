@@ -215,12 +215,24 @@ jobs:
           TINYFISH_API_KEY: ${{ steps.bws_prep.outputs.TINYFISH_API_KEY || steps.bws_prep_retry.outputs.TINYFISH_API_KEY }}
         run: python3 -m lifeos.platform.gate
       - uses: ./.github/actions/python
+      - name: Unit-test gate (LIFE-570; fail closed - the tests are skipped only when pr-tests is green on this exact commit)
+        id: testgate
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python -m lifeos.platform.testgate
       - name: Test-only dependency (PyYAML, for the workflow contract tests; skipped if unavailable)
+        if: ${{ steps.testgate.outputs.skip != 'true' }}
         run: pip install --require-hashes -r requirements-test.lock || echo "pyyaml unavailable; the workflow contract tests will skip"
       - name: Unit tests
+        if: ${{ steps.testgate.outputs.skip != 'true' }}
         env:
           LIFEOS_TEST_INDEX_FRESH: "1"      # LIFE-548: the hourly full run also fails when docs/test-index.json is older than 7 days; a failed hourly run alerts through the existing gateway path
         run: python -m unittest discover -s tests -t . -v
+      - name: Test index freshness (LIFE-548; still checked when the suite is skipped)
+        if: ${{ steps.testgate.outputs.skip == 'true' }}
+        env:
+          LIFEOS_TEST_INDEX_FRESH: "1"
+        run: python -m unittest tests.test_testindex.CommittedIndexIsFresh -v
       - name: Stage 1 - sweep
         if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.cloud_backlog != '' && inputs.cloud_backlog != '0') }}   # D219: a Cloud Fit backlog dispatch never sweeps newsletters
         env:
@@ -656,6 +668,12 @@ jobs:
           oauth-secret: ${{ steps.bws_finish.outputs.TAILSCALE_OAUTH_CLIENT_SECRET || steps.bws_finish_retry.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
           use-cache: "false"
+      - name: Chromium download, cached (LIFE-570; keyed on requirements-browser.lock; the system libraries are still installed each run because a fresh runner has none)
+        if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.quick) }}
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('requirements-browser.lock') }}
       - id: tick
         continue-on-error: true
         name: Jobs tick - the whole chain in one process, fast path first, one store tunnel (LIFE-76 PR 4b, D208)

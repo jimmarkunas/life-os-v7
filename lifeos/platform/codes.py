@@ -895,6 +895,7 @@ CODES.update({    # --- the synthetic signed handoff and fake receiver (lifeos/s
 })
 
 NOT_CODES = frozenset((
+    "GITHUB_SHA",     # LIFE-570: the runner-provided commit id the unit-test gate reads
     "LC_ALL", "LIFE_KEY", "PACK_DIR", "O_NOFOLLOW",     # LIFE-310: environment names the runner gives a step, and an os flag
     "LIFEOS_NOTION_IDS", "DASHBOARD_PAGE", "DASHBOARD_CHECKINS", "DASHBOARD_QBRS", "DASHBOARD_ARCHIVE", "DASHBOARD_MATT_MEGIBOW", "DATA_SOURCE", "FULL_WIDTH_TEMPLATE", "LEDGER_ROW", "QA_PARENT", "REPORTS_PAGE", "REVIEW_SOURCE", "ROUND_PAGE", "SANDBOX_PAGE", "SANDBOX_SOURCE", "SMITH_PAGE", "SOURCE_ID", "UI3C", "UI4", "WALMART_PAGE",      # LIFE-338: the <NAME> of a LIFEOS_NOTION_<NAME> variable (lifeos/platform/notion_ids.py)
     "SUDO_USER",            # upper-case names that are configuration, not results: environment variables, secret names and setting keys

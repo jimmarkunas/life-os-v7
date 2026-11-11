@@ -128,7 +128,7 @@ def plan(doc, event, variables=None, **given):
 
 
 LOADERS = ("bitwarden/sm-action",)
-ALLOWED_RUNS = ("python3 -m lifeos.platform.gate", "pip install --require-hashes -r requirements-test.lock", "python -m unittest discover", "python -m lifeos.run fit-cloud-backlog", "failed=\"\"", "alerts push")
+ALLOWED_RUNS = ("python3 -m lifeos.platform.gate", "pip install --require-hashes -r requirements-test.lock", "python -m unittest discover", "python -m lifeos.platform.testgate", "python -m unittest tests.test_testindex.CommittedIndexIsFresh", "python -m lifeos.run fit-cloud-backlog", "failed=\"\"", "alerts push")
 
 
 @unittest.skipIf(yaml is None, "PyYAML unavailable")
