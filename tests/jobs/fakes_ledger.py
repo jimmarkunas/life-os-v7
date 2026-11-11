@@ -14,6 +14,7 @@ class FakeLedger:
     def __init__(self):
         self.pages, self.blocks, self.kids, self.n, self.writes, self.fail_get = {}, {}, {}, 0, [], False
         self.drop_appends, self.fail_delete = False, False
+        self.calls, self.edit_n, self.edited = 0, 0, {}          # LIFE-572: Notion call count and a per-page last_edited_time that moves on every write to the page or inside it
 
     def _new(self, kind, runs, checked=None, children=()):
         """`runs` is a plain string or the rich_text a writer sent; the stored runs carry plain_text and href like Notion's reply."""
@@ -84,17 +85,33 @@ class FakeLedger:
             runs = child["type"] == "to_do" and child["to_do"]["rich_text"]
             if runs and (runs[0]["plain_text"].startswith(prefix) or unquote((runs[0].get("href") or "").rsplit("/lifeos/", 1)[-1]).startswith(prefix)):
                 child["to_do"]["checked"] = True
+                self._touch(child["id"])                      # LIFE-572: Notion moves the page's last_edited_time when a checkbox is ticked
                 return
         raise AssertionError("no such tick")
 
+    def _touch(self, owner):
+        """LIFE-572: a write to a block moves the last_edited_time of the page that holds it (Notion does the same)."""
+        while owner not in self.pages:
+            parent = next((o for o, kids in self.kids.items() if owner in kids), None)
+            if parent is None:
+                return
+            owner = parent
+        self.edit_n += 1
+        self.edited[owner] = self.edit_n
+
+    def edited_time(self, page_id):
+        from datetime import datetime, timedelta
+        return (datetime(2026, 10, 7, 9, 0) + timedelta(minutes=self.edited.get(page_id, 0))).strftime("%Y-%m-%dT%H:%M:00.000Z")
+
     def call(self, method, path, body=None):
+        self.calls += 1
         if self.fail_get and method == "GET" and path.startswith("/pages/"):
             raise NotionError("NOTION_HTTP_500")
         if method == "GET" and path.startswith("/data_sources/"):
             return {"properties": {n: {"type": t} for n, t in ledger.REQUIRED.items()}}
         if method == "GET" and path.startswith("/pages/"):
             page = self.pages[path.rsplit("/", 1)[1]]
-            return {"archived": page["archived"], "parent": {"data_source_id": page["source"]}, "properties": {"Stable Job Key": {"type": "rich_text", "rich_text": [{"plain_text": page["key"]}]}}}
+            return {"archived": page["archived"], "last_edited_time": self.edited_time(path.rsplit("/", 1)[1]), "parent": {"data_source_id": page["source"]}, "properties": {"Stable Job Key": {"type": "rich_text", "rich_text": [{"plain_text": page["key"]}]}}}
         if method == "GET" and "/children" in path:
             owner = unquote(path.split("/blocks/")[1].split("/children")[0])
             return {"results": [dict(self.blocks[b]) for b in self.kids[owner]], "has_more": False}
@@ -102,6 +119,7 @@ class FakeLedger:
             return self.call_once(method, path, body)
         if method == "PATCH" and path.startswith("/blocks/"):               # a block's own text replaced in place (the marker), its id kept
             self.writes.append("UPDATE")
+            self._touch(path.rsplit("/", 1)[1])
             block = self.blocks[path.rsplit("/", 1)[1]]
             kind = block["type"]
             block[kind]["rich_text"] = [{"plain_text": r["text"]["content"], "href": (r["text"].get("link") or {}).get("url")} for r in body[kind]["rich_text"]]
@@ -111,6 +129,7 @@ class FakeLedger:
                 raise NotionError("NOTION_HTTP_500")
             self.writes.append("DELETE")
             bid = path.rsplit("/", 1)[1]
+            self._touch(bid)
             for kids in self.kids.values():
                 if bid in kids:
                     kids.remove(bid)
@@ -123,6 +142,7 @@ class FakeLedger:
         if self.drop_appends:
             return {}
         page_id = unquote(path.split("/blocks/")[1].split("/children")[0])
+        self._touch(page_id)
         at = self.kids[page_id].index(body["after"]) + 1 if body.get("after") else len(self.kids[page_id])
         for child in body["children"]:
             kind = child["type"]

@@ -1054,6 +1054,7 @@ jobs:
           OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT || steps.bws_finish_retry.outputs.OPEN_JOBS_CONTACT }}
           TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY || steps.bws_finish_retry.outputs.TINYFISH_API_KEY }}
           V7_CLOSE_BASE_URL: ${{ secrets.V7_CLOSE_BASE_URL }}          # the private Close origin: the Network Leads block gets a Mark as Sent link for its own job; unset, the block is unchanged
+          NETWORK_SURFACE_SKIP: ${{ vars.NETWORK_SURFACE_SKIP || 'on' }}   # LIFE-572: pages proven earlier and untouched since are not read again; set the repository variable to off to read every page in full
         run: python -m lifeos.run network-surface --limit 41 $([ "$LIVE" = "true" ] && echo --live)
       - name: Network surface warning (never fails the run; DEGRADED is explicit evidence)
         if: ${{ always() && steps.network_surface.outcome == 'failure' }}

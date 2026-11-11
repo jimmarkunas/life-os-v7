@@ -451,6 +451,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `v7_network_dismissals`: `lifeos/network/store.py`
 - `v7_network_aliases`: `lifeos/network/store.py`
 - `v7_network_page_state`: `lifeos/network/store.py`
+- `v7_network_page_edit`: `lifeos/network/store.py`
 - `v7_offsite_backup`: `lifeos/oraclecloud/backup_watch.py`
 - `v7_openclaw_workers`: `lifeos/oraclecloud/worker_watch.py`
 - `v7_outlook_token`: `lifeos/platform/outlook_tokens.py`

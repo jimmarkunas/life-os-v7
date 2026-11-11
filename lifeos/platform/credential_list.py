@@ -520,6 +520,7 @@ CONFIG = {'provided': {'prefixes': ['GITHUB_', 'RUNNER_'], 'names': ['CI', 'PATH
            {'name': 'MEGIBOW_EXCLUDED_DOMAINS', 'kind': 'secret', 'owner': 'sources', 'purpose': 'MegIBOW setting (excluded domains)'},
            {'name': 'MEGIBOW_REVIEW_DB_ID', 'kind': 'input', 'owner': 'sources', 'purpose': 'MegIBOW setting (review db id)'},
            {'name': 'NETWORK_HANDOFF_PAGE_ID', 'kind': 'input', 'owner': 'network', 'purpose': 'Notion page id of the network handoff page'},
+           {'name': 'NETWORK_SURFACE_SKIP', 'kind': 'flag', 'owner': 'network', 'purpose': 'on (default) or off: Network Leads skips Ledger pages proven earlier and untouched since (LIFE-572); off reads every page in full'},
            {'name': 'NOTION_AMAZON_DATA_SOURCE_ID', 'kind': 'input', 'owner': 'amazon', 'purpose': 'Notion data source id (amazon)'},
            {'name': 'NOTION_AMAZON_TOKEN', 'kind': 'secret', 'owner': 'amazon', 'purpose': 'Notion integration token for the amazon integration'},
            {'name': 'NOTION_API_TOKEN', 'kind': 'secret', 'owner': 'sources', 'purpose': 'Notion integration token for the api integration'},

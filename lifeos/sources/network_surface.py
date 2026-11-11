@@ -246,17 +246,20 @@ def _run(limit, live, environ, connection, client, now, today):
     wanted = {k: surface.set_hash(_leads(company, title, index, details, today, aliases, dismissed, k)[0])
               for k, (page, company, title, classes) in surfaced.items()}       # what each target page should show now, as the hash of its block ("" = none): pure and in memory
     state, counts["state_table"] = store.load_page_state(connection)
+    edits, counts["edit_table"] = store.load_page_edits(connection) if counts["state_table"] else ({}, False)
     if counts["state_table"]:
         queue, candidates, counts["pages_dirty"] = _queue_state(surfaced, others, wanted, state, budget, now)
     else:
         queue, candidates = _queue(surfaced, others, {k for k, h in wanted.items() if h}, budget, now)
-    recorded = {}
+    recorded, seen_edits = {}, {}
+    clean = {k for k in (q[0] for q in queue) if counts["state_table"] and k in state and state[k][1] == wanted.get(k, "")}      # LIFE-572: proven to show exactly what it should; the only pages that may be skipped
+    skip = Skip(edits, clean, seen_edits, now) if (environ.get("NETWORK_SURFACE_SKIP") or "on").strip().lower() != "off" else None      # LIFE-572: one repository variable turns the skip off
     timing = Timing(notion)
     for key, page, company, title, target in queue:
         began = timing.start()
         label = "failed"
         try:
-            label = _page(notion, connection, key, page, company, title, target, index, details, today, aliases, dismissed, live, counts, close_base, recorded) or "none"
+            label = _page(notion, connection, key, page, company, title, target, index, details, today, aliases, dismissed, live, counts, close_base, recorded, skip) or "none"
         except (NotionError, NetworkError) as error:
             counts["failed"] += 1
             counts["degraded"] = True
@@ -265,9 +268,9 @@ def _run(limit, live, environ, connection, client, now, today):
         finally:
             timing.stop(began, label)
         if live and len(recorded) >= FLUSH_EVERY:
-            _flush(connection, recorded, counts)
+            _flush(connection, recorded, counts, seen_edits)
     if live:
-        _flush(connection, recorded, counts)
+        _flush(connection, recorded, counts, seen_edits)
     counts["timing"] = timing.report()
     counts["pages_deferred"] = max(candidates - len(queue), 0)
     return _finish(counts)
@@ -302,21 +305,61 @@ class Timing:
 FLUSH_EVERY = 25                                                         # a long run saves its proven pages as it goes: a timeout loses at most this many
 
 
-def _flush(connection, recorded, counts):
-    if not recorded:
+def _flush(connection, recorded, counts, seen_edits=None):
+    if not recorded and not seen_edits:
         return
     try:
-        store.save_page_state(connection, dict(recorded))
-        counts["state_saved"] = counts.get("state_saved", 0) + len(recorded)
+        if recorded:
+            store.save_page_state(connection, dict(recorded))
+            counts["state_saved"] = counts.get("state_saved", 0) + len(recorded)
+        if seen_edits:
+            store.save_page_edits(connection, dict(seen_edits))
+            counts["edits_saved"] = counts.get("edits_saved", 0) + len(seen_edits)
     except NetworkError as error:                                       # only a shortcut is lost: the pages are read again next run
         counts["degraded"] = True
         code = str(error)[:48]
         counts["guard_failed"][code] = counts["guard_failed"].get(code, 0) + 1
     recorded.clear()
+    if seen_edits is not None:
+        seen_edits.clear()
 
 
-def _page(notion, connection, key, page_id, company, title, target, index, details, today, aliases, dismissed, live, counts, close_base="", recorded=None):
+class Skip:
+    """LIFE-572: a page that was proven to show exactly what it should, and whose own last-edited time is still the one read right after that proof, is not read again: one Notion call
+    (the page itself) instead of about sixteen. Jim's Dismiss and Same company ticks and any other edit change that time, so they are still found. Notion keeps the time to the minute, so a
+    page edited in the last SETTLE_SECONDS is never skipped. A page with no recorded time, a different time, or any doubt is read in full, exactly as before."""
+    SETTLE_SECONDS = 180
+    MAX_AGE_HOURS = 24                    # a safety net: a recorded time older than this is not trusted, so every page is read in full at least once a day whatever Notion's timestamps did
+
+    def __init__(self, edits, clean, seen, now):
+        self.edits, self.clean, self.seen, self.now = edits or {}, clean or set(), seen, now
+
+    def may_skip(self, key, edited):
+        recorded = self.edits.get(key)
+        if key not in self.clean or not edited or not recorded or recorded[0] != edited:
+            return False
+        try:
+            when = datetime.strptime(edited[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
+            saved = recorded[1] if isinstance(recorded[1], datetime) else datetime.fromisoformat(str(recorded[1]))
+            saved = saved.replace(tzinfo=timezone.utc) if saved.tzinfo is None else saved
+        except (ValueError, TypeError):
+            return False
+        return (self.now - when).total_seconds() >= self.SETTLE_SECONDS and (self.now - saved).total_seconds() < self.MAX_AGE_HOURS * 3600
+
+    def note(self, key, edited):
+        if edited and self.seen is not None:
+            self.seen[key] = str(edited)[:40]
+
+
+WRITES = ("created", "replaced", "converged", "removed")
+
+
+def _page(notion, connection, key, page_id, company, title, target, index, details, today, aliases, dismissed, live, counts, close_base="", recorded=None, skip=None):
     page = notion.call("GET", f"/pages/{page_id}")
+    edited = page.get("last_edited_time")
+    if skip is not None and live and skip.may_skip(key, edited):
+        counts["unchanged_skipped"] = counts.get("unchanged_skipped", 0) + 1       # LIFE-572: proven earlier, untouched since: nothing to read, nothing to write
+        return "skipped_unchanged"
     top, owned = surface.read_page(notion, page_id, key=key)
     counts["pages_read"] += 1
     why = surface.guard(page, top, key, notion.source)
@@ -335,6 +378,7 @@ def _page(notion, connection, key, page_id, company, title, target, index, detai
         counts["blocks"][action] = counts["blocks"].get(action, 0) + 1
         if recorded is not None and live and not action.startswith("would_"):
             recorded[key] = (page_id, "")                                  # proven by apply's own read-back: no owned block remains
+            _note_edit(notion, skip, key, page_id, action, edited)
         return action
     full, ckey = _leads(company, title, index, details, today, aliases, dismissed, key, honour_dismissals=False, shortlist=False)       # decisions are validated against every candidate, not only the shown five
     new_dismissals, new_aliases, stale = _decisions(owned, full, key, ckey)
@@ -353,7 +397,20 @@ def _page(notion, connection, key, page_id, company, title, target, index, detai
     counts["blocks"][action] = counts["blocks"].get(action, 0) + 1
     if recorded is not None and live and not action.startswith("would_"):
         recorded[key] = (page_id, surface.set_hash(shown, link))           # the block (or its absence) that apply just proved on the page
+        _note_edit(notion, skip, key, page_id, action, edited)
     return action
+
+
+def _note_edit(notion, skip, key, page_id, action, edited):
+    """LIFE-572: remember the page's last-edited time as it is right after this proof: the time already read when nothing was written, else one fresh read (the write moved it)."""
+    if skip is None:
+        return
+    if action in WRITES:
+        try:
+            edited = notion.call("GET", f"/pages/{page_id}").get("last_edited_time")
+        except (NotionError, NetworkError):
+            edited = None                                                  # no time recorded: the page is simply read in full next run
+    skip.note(key, edited)
 
 
 def _finish(counts):

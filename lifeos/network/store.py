@@ -64,9 +64,14 @@ SURFACE_SCHEMA = (                                                    # NET-2.3 
         job_key CHAR(64) NOT NULL PRIMARY KEY,
         page_id VARCHAR(64) NOT NULL, written_hash VARCHAR(16) NOT NULL, checked_at DATETIME NOT NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+    """CREATE TABLE IF NOT EXISTS v7_network_page_edit (
+        job_key CHAR(64) NOT NULL PRIMARY KEY,
+        edited VARCHAR(40) NOT NULL, recorded_at DATETIME NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
 )          # LIFE-116: what each Ledger page was last proven to show (the hash of its Network Leads block, empty for none): hashes and ids only
+           # LIFE-572: and the page's own last-edited time as it was right after that proof, so an untouched page is not read again (a time string only)
 SURFACE_EXPECTED = {"v7_network_dismissals": "id,job_key,person_id,evidence_hash,dismissed_at", "v7_network_aliases": "id,alias_key,company_key,confirmed_at",
-                    "v7_network_page_state": "job_key,page_id,written_hash,checked_at"}
+                    "v7_network_page_state": "job_key,page_id,written_hash,checked_at", "v7_network_page_edit": "job_key,edited,recorded_at"}
 
 
 def ensure_surface_schema(connection):
@@ -140,6 +145,32 @@ def load_page_state(connection):
             return {k: (p, h) for k, p, h in cursor.fetchall()}, True
     except Exception:                                                  # noqa: BLE001
         return {}, False
+
+
+def load_page_edits(connection):
+    """LIFE-572 -> ({job_key: (last_edited_time string, recorded_at)}, present). A missing table reads as nothing recorded: every page is then read exactly as before."""
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT job_key, edited, recorded_at FROM v7_network_page_edit")
+            return {k: (e, r) for k, e, r in cursor.fetchall()}, True
+    except Exception:                                                  # noqa: BLE001
+        return {}, False
+
+
+def save_page_edits(connection, rows, clock=lambda: datetime.now(timezone.utc).replace(tzinfo=None)):
+    """LIFE-572: record each page's last-edited time as read right after its own proof (job_key -> edited string). Losing this loses only a shortcut: the page is read again next run."""
+    if not rows:
+        return
+    now = clock().isoformat(sep=" ", timespec="seconds")
+    _revive(connection)
+    try:
+        connection.begin()
+        with connection.cursor() as cursor:
+            cursor.executemany("REPLACE INTO v7_network_page_edit (job_key, edited, recorded_at) VALUES (%s,%s,%s)", [(k, e, now) for k, e in rows.items()])
+        connection.commit()
+    except Exception:                                                  # noqa: BLE001
+        _rollback(connection)
+        raise NetworkError("NETWORK_STORE_FAILED") from None
 
 
 def save_page_state(connection, rows, clock=lambda: datetime.now(timezone.utc).replace(tzinfo=None)):
