@@ -68,7 +68,13 @@ class FakeService:
             with conn:
                 conn.settimeout(5)
                 try:
-                    self.requests.append(conn.recv(4096))
+                    data = b""
+                    while not (b"GET" in data and data.endswith(b"\r\n\r\n")) and len(data) < 4096:      # bash may write the request in several pieces; the real gate reads exactly as much as it needs
+                        chunk = conn.recv(4096)
+                        if not chunk:
+                            break
+                        data += chunk
+                    self.requests.append(data)
                     try:
                         tree = os.path.basename(os.readlink(os.path.join(self.opt, "current")))
                     except OSError:
