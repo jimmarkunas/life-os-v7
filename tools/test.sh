@@ -42,7 +42,7 @@ version="$("$PY" -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])')"
 
 branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
 selected="$(mktemp)"; trap 'rm -f "$selected" "$selected".*' EXIT
-if [ "$mode" = all ] || [ "$branch" = main ] || ! git rev-parse --verify -q origin/main >/dev/null; then
+if [ "$mode" = all ] || [ "$branch" = main ] || ! git rev-parse --verify -q origin/main >/dev/null 2>&1; then
   echo FULL > "$selected"
 else
   base="$(git merge-base HEAD origin/main)"
