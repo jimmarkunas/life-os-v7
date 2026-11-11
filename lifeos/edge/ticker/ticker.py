@@ -1,7 +1,8 @@
 """LIFE-330: the Oracle ticker. Two systemd timers on lifeos-edge-01 replace cron-job.org (D31) and add a watchdog that does not depend on GitHub's own schedule.
 
-  tick   start the hourly pipeline: POST workflow_dispatch for hourly.yml with tick=true (exactly what cron-job.org sent). The gate in the workflow still
-         cancels a tick that arrives within 50 minutes of another, so a second timer during the hand-over is harmless.
+  tick   start the hourly pipeline: POST workflow_dispatch for hourly.yml with tick=true (exactly what cron-job.org sent). LIFE-568: when another tick started
+         within the gap (the workflow gate's own rule) it dispatches nothing (TICK_SKIPPED), so no duplicate run is created or cancelled. The gate in the workflow
+         remains the backstop for a second timer during the hand-over.
   watch  run the watchdog's incident checks (lifeos.platform.gate.watch) here, incidents only: the daily check-in stays with the GitHub watchdog so it is
          never sent twice. Jim's alert switches (ALERTS_ENABLED, ALERTS_MUTED_UNTIL, ALERT_SETTINGS) are read from the repository variables on every run,
          so the Alert settings page stays the one place they are set; when they cannot be read the run stops (it never guesses "on" or "off").
@@ -26,7 +27,7 @@ sys.path.insert(0, str(HERE if (HERE / "lifeos").is_dir() else HERE.parents[2]))
 REPO = "jimmarkunas/life-os-v7"
 API = "https://api.github.com"
 VARIABLES = ("ALERTS_ENABLED", "ALERTS_MUTED_UNTIL", "ALERT_SETTINGS")
-OK = {"TICK_DISPATCHED", "WATCH_DONE", "TICKER_DRY_OK"}
+OK = {"TICK_DISPATCHED", "TICK_SKIPPED", "WATCH_DONE", "TICKER_DRY_OK"}
 DISK_PATH, DISK_LIMIT = "/var/lib/hermeseval", 80        # LIFE-301: the Hermes loop-mounted image (10 GB, 34% used on Nov 7 2026)
 DISK_LABEL, DISK_TITLE = "hermes-disk-full", "Hermes disk is 80% full or more"
 DRIFT_LABEL, DRIFT_TITLE = "deploy-drift", "Installed files on the Oracle VM differ from main"
@@ -60,8 +61,29 @@ def _status(request, opener):
         return None, None
 
 
+def too_soon(token, opener=urllib.request.urlopen, now=None):
+    """LIFE-568: True when the workflow's own gate would cancel this tick (another tick started within the gap), so the run is never created. Same rule, same module
+    (lifeos.platform.gate.decide, gap from the GATE_MIN_GAP_MINUTES repository variable). Any doubt (a read failed, no list) is False: the dispatch goes ahead and the
+    workflow's gate stays the backstop."""
+    import datetime as dt                                          # noqa: PLC0415
+    from lifeos.platform import gate                               # noqa: PLC0415
+    status, body = _status(_request(f"repos/{REPO}/actions/workflows/hourly.yml/runs?per_page=15", token), opener)
+    if status != 200 or not isinstance(body, dict) or not isinstance(body.get("workflow_runs"), list):
+        return False
+    status, variable = _status(_request(f"repos/{REPO}/actions/variables/GATE_MIN_GAP_MINUTES", token), opener)
+    raw = str(variable.get("value") or "") if status == 200 and isinstance(variable, dict) else ""            # 404 = unset = the default gap
+    if status not in (200, 404):
+        return False
+    try:
+        return gate.decide(body["workflow_runs"], now or dt.datetime.now(dt.timezone.utc), None, gate.min_gap({"GATE_MIN_GAP_MINUTES": raw})) == "skip"
+    except Exception:                                              # noqa: BLE001 - never block a tick on a parsing doubt
+        return False
+
+
 def tick(token, opener=urllib.request.urlopen):
     """-> (code, status)."""
+    if too_soon(token, opener):
+        return "TICK_SKIPPED", 200
     status, _ = _status(_request(f"repos/{REPO}/actions/workflows/hourly.yml/dispatches", token, "POST", {"ref": "main", "inputs": {"tick": "true"}}), opener)
     if status is None:
         return "TICK_NETWORK", None
