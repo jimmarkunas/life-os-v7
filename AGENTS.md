@@ -39,7 +39,7 @@ Read the named LIFE issue first and only the missing authoritative context; reus
 
 ## Buzz pilot entrypoint — only for LIFE-216
 
-[docs/buzz-implementation-roadmap-v1.md](docs/buzz-implementation-roadmap-v1.md) is the frozen 25-step contract and LIFE-216 the evidence ledger; LOS-70 owns product decisions. This pointer grants no Agent Go, credentials, paid usage, live integration or deployment authority.
+[docs/buzz-implementation-roadmap-v1.md](docs/buzz-implementation-roadmap-v1.md) is the frozen 25-step contract and LIFE-216 the evidence ledger; LOS-70 owns product decisions. No Agent Go, credentials, paid usage, live integration or deployment authority comes from this pointer.
 
 ## OpenClaw / Oracle edge
 
