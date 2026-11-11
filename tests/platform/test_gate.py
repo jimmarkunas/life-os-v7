@@ -76,6 +76,22 @@ class Gate(unittest.TestCase):
         self.assertEqual(gate.wait_turn("manual", 2, "2026-10-01T17:07:00Z", lambda: answers.pop(0), sleeps.append), (1, True))
         self.assertEqual(sleeps, [30, 30])
 
+    def test_a_queued_run_older_than_the_stuck_limit_is_not_active_and_not_ahead(self):
+        """LIFE-604 item 8: decide() already ignored a stuck run (LIFE-580); active, ahead and wait_turn now do the same, so a stuck manual run cannot hold every later tick."""
+        stuck_manual = dict(run(1, "2026-10-01T15:00:00Z", None, title="manual"), status="queued")                  # created two hours before NOW, never started
+        fresh_manual = dict(run(4, "2026-10-01T16:55:00Z", None, title="manual"), status="in_progress")
+        runs = [stuck_manual, fresh_manual]
+        self.assertEqual([r["id"] for r in gate.active(runs, 9, "manual", now=NOW)], [4])
+        self.assertEqual([r["id"] for r in gate.ahead(runs, 9, "manual", "2026-10-01T17:07:00Z", now=NOW)], [4])
+        self.assertEqual([r["id"] for r in gate.active(runs, 9, "manual")], [1, 4])                                   # without a clock nothing is cut, as before
+
+    def test_a_tick_does_not_wait_for_a_stuck_manual_run(self):
+        stuck_manual = [dict(run(1, "2026-10-01T15:00:00Z", None, title="manual"), status="queued")]
+        sleeps = []
+        self.assertEqual(gate.wait_turn("manual", 2, "2026-10-01T17:07:00Z", lambda: stuck_manual, sleeps.append, clock=lambda: NOW), (0, True))
+        self.assertEqual(sleeps, [])
+        self.assertEqual(gate.wait_turn("manual", 2, "2026-10-01T17:07:00Z", lambda: stuck_manual, sleeps.append, minutes=1)[1], False)    # no clock: waits, then gives up, as before
+
     def test_a_tick_still_blocked_after_the_wait_gives_up_and_the_next_tick_covers_the_hour(self):
         busy = [dict(run(1, "2026-10-01T17:00:00Z", None, title="manual"), status="in_progress")]
         sleeps = []
