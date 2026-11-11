@@ -123,7 +123,7 @@ env:
 permissions:
   contents: read
 concurrency:
-  group: life-os-v7-hourly-${{ (github.event_name == 'schedule' || inputs.tick) && 'tick' || 'manual' }}   # ticks and manual runs never share a slot, so neither can replace the other's queued run; lifeos.platform.gate makes them take turns in creation order (D210)
+  group: life-os-v7-hourly-${{ (github.event_name == 'schedule' || inputs.tick) && 'tick-b' || 'manual' }}   # ticks and manual runs never share a slot, so neither can replace the other's queued run; lifeos.platform.gate makes them take turns in creation order (D210)
   cancel-in-progress: false
 jobs:
   prep:
