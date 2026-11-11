@@ -4,6 +4,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from lifeos.attention import card
+from lifeos.attention.stage import AttentionError
 from lifeos.platform import report_region
 from tests.attention.test_attention import FakeNotion, page
 from tests.kit.notion import MailRegions
@@ -127,7 +128,7 @@ class Run(unittest.TestCase):
 
     def test_a_schema_mismatch_changes_nothing(self):
         regions = MailRegions()
-        with self.assertRaises(Exception):
+        with self.assertRaises(AttentionError):
             card.run(0, True, environ=ENV, reader=FakeNotion(schema_ok=False), client=regions, now=NOW)
         self.assertEqual([m for m, _ in regions.log if m in ("APPEND", "DELETE", "PATCH")], [])
 

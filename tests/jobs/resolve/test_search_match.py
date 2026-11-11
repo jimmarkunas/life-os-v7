@@ -96,7 +96,7 @@ class FailedSearchIsNeverAMiss(unittest.TestCase):
 
         for outcome, bump in (("failed_search:rate_limited", 0), ("failed_search:http_503", 0), ("no_match_no_board+no_result", 1)):
             cursor = Cursor()
-            stage.apply_result(type("C", (), {"cursor": lambda self: cursor})(), 7, {"outcome": outcome})
+            stage.apply_result(type("C", (), {"cursor": lambda self, cursor=cursor: cursor})(), 7, {"outcome": outcome})
             reason, charged = cursor.calls[-1][1][:2]
             self.assertEqual((reason, charged), (outcome, bump), outcome)
 

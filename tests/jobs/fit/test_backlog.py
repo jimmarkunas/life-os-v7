@@ -651,7 +651,7 @@ class AccountAllowance(Batch):
         for reason in ("QUOTA_UNCONFIGURED", "METER_UNAVAILABLE"):
             self.setUp()
             self.titled(1, "Program Manager 1")
-            counts = self.batch(5, Endpoint(lambda data: refusal(data, reason)))
+            counts = self.batch(5, Endpoint(lambda data, reason=reason: refusal(data, reason)))
             self.assertEqual((counts["cloud_fit"], counts["failed"], self.status(1)), (f"DEGRADED(FIT_EDGE_REFUSED_{reason})", 1, None))
             self.assertNotIn("cloud_quota", counts)
 

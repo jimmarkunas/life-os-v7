@@ -57,7 +57,7 @@ class StepIsAdvisory(unittest.TestCase):
         workflow = yaml.safe_load((ROOT / ".github/workflows/pr-tests.yml").read_text())
         self.assertIn("unit-tests", workflow["jobs"])
         unit = next(s for s in self.job["steps"] if str(s.get("name", "")).startswith("Unit tests"))
-        self.assertIn("-ge 90", unit["run"])
+        self.assertIn("-ge 120", unit["run"])
         self.assertIsNone(unit.get("continue-on-error"))
 
 

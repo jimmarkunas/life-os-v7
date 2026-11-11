@@ -51,9 +51,30 @@ class StepIsAdvisory(unittest.TestCase):
     def test_the_required_check_and_its_limits_are_unchanged(self):
         self.assertIn("unit-tests", yaml.safe_load((ROOT / ".github/workflows/pr-tests.yml").read_text())["jobs"])
         unit = next(s for s in self.job["steps"] if str(s.get("name", "")).startswith("Unit tests"))
+        self.assertIn("-ge 120", unit["run"])
         self.assertIn("-ge 90", unit["run"])
-        self.assertIn("-ge 45", unit["run"])
         self.assertIsNone(unit.get("continue-on-error"))
+
+    def test_the_four_correctness_rules_are_a_blocking_step_and_every_other_rule_stays_advisory(self):
+        """LIFE-596: a deliberate violation of B023, B904, F811 or B017 must fail the pull request check; the advisory step still cannot."""
+        names = [str(s.get("name", "")) for s in self.job["steps"]]
+        blocking = next(s for s in self.job["steps"] if str(s.get("name", "")).startswith("Ruff correctness rules"))
+        self.assertIsNone(blocking.get("continue-on-error"))
+        self.assertIn("--select B023,B904,F811,B017", blocking["run"])
+        self.assertNotIn("|| true", blocking["run"])
+        self.assertNotIn("exit 0", blocking["run"])
+        advisory = next(s for s in self.job["steps"] if str(s.get("name", "")).startswith("Ruff advisory"))
+        self.assertTrue(advisory.get("continue-on-error"))
+        unit = next(i for i, n in enumerate(names) if n.startswith("Unit tests"))
+        self.assertGreater(names.index(blocking["name"]), unit)                       # after the unit tests, so it cannot add to their timer
+
+    def test_the_four_rules_find_nothing_in_the_repository_now(self):
+        import subprocess
+        import sys
+        done = subprocess.run([sys.executable, "-m", "ruff", "check", "--no-cache", "--select", "B023,B904,F811,B017", "--output-format", "concise", "."], cwd=ROOT, capture_output=True, text=True)
+        if "No module named ruff" in done.stderr:
+            self.skipTest("ruff is not installed in this environment (CI installs the locked version)")
+        self.assertEqual((done.returncode, done.stdout.strip().splitlines()[:5]), (0, ["All checks passed!"]), done.stdout)
 
 
 if __name__ == "__main__":

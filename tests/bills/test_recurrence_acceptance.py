@@ -40,7 +40,7 @@ class RecurrenceAcceptanceTests(unittest.TestCase):
                 client = PaidBillTracker(page)
                 database = BillsPaidDB(client.event_log)
 
-                counts = paid.run(1, True, client=client, now=now, connect=lambda: database)
+                counts = paid.run(1, True, client=client, now=now, connect=lambda database=database: database)
                 props = client.pages[page_id]["properties"]
 
                 self.assertEqual(counts["advanced"], 1)

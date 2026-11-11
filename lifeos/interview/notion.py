@@ -404,7 +404,7 @@ def _protected_children(client, page_id, budget):
     try:
         return children(client, page_id, budget)
     except NotionError:
-        raise NotionError("INTERVIEW_PROTECTED_BUDGET" if budget[0] <= 0 else "INTERVIEW_PROTECTED_READ")
+        raise NotionError("INTERVIEW_PROTECTED_BUDGET" if budget[0] <= 0 else "INTERVIEW_PROTECTED_READ") from None
 
 
 def _subtree(client, block, budget, depth=0):

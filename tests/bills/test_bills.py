@@ -45,7 +45,7 @@ class BillSnapshotTests(unittest.TestCase):
         database = BillsSnapshotDB(old)
         client = DataSourcePages({"results": [page()], "has_more": True, "next_cursor": None})
         with self.assertRaises(snapshot.BillsError) as caught:
-            snapshot.run(1, True, client=client, now=datetime(2026, 4, 2, tzinfo=timezone.utc), connect=lambda: database)
+            snapshot.run(1, True, client=client, now=datetime(2026, 4, 2, tzinfo=timezone.utc), connect=lambda database=database: database)
         self.assertEqual(str(caught.exception), "BILLS_PAGE_INCOMPLETE")
         self.assertEqual(json.loads(database.payload), old)
         self.assertEqual(database.sql, [])
@@ -68,7 +68,7 @@ class BillSnapshotTests(unittest.TestCase):
         client = DataSourcePages({"results": [page()], "has_more": False})
         database = BillsSnapshotDB()
         counts = snapshot.run(1, True, client=client,
-                              now=datetime(2026, 4, 3, 0, 30, tzinfo=timezone.utc), connect=lambda: database)
+                              now=datetime(2026, 4, 3, 0, 30, tzinfo=timezone.utc), connect=lambda database=database: database)
         self.assertEqual(counts, {"rows": 1, "active": 1, "paid": 0, "stale_due": 1,
                                   "due_today": 1, "due_7d": 0, "saved": 1})
         self.assertEqual(snapshot.load(database)["rows"][0]["Next Due"], "2026-04-02")
@@ -166,7 +166,7 @@ class PaidProcessorTests(unittest.TestCase):
 
     def run_paid(self, client, database=None, *, live=True, limit=40):
         database = database or BillsPaidDB(client.event_log)
-        counts = paid.run(limit, live, client=client, now=self.now, connect=lambda: database)
+        counts = paid.run(limit, live, client=client, now=self.now, connect=lambda database=database: database)
         return counts, database
 
     def test_recurring_paid_uses_captured_formula_date_and_clears_last(self):
@@ -291,11 +291,11 @@ class PaidProcessorTests(unittest.TestCase):
                     counts, _ = self.run_paid(client, database)
                     self.assertEqual(counts["failed"], 1)
                 else:
-                    counts = paid.run(40, True, client=client, now=self.now, connect=lambda: database)
+                    counts = paid.run(40, True, client=client, now=self.now, connect=lambda database=database: database)
                     self.assertEqual(counts["failed"], 1)
                 due_after_crash = client.pages[page["id"]]["properties"]["Due Date"]["date"]["start"]
                 self.assertEqual(due_after_crash, "2026-10-10")
-                counts = paid.run(40, True, client=client, now=self.now, connect=lambda: database)
+                counts = paid.run(40, True, client=client, now=self.now, connect=lambda database=database: database)
                 props = client.pages[page["id"]]["properties"]
                 self.assertEqual(props["Due Date"]["date"]["start"], "2026-10-10")
                 self.assertFalse(props["Paid"]["checkbox"])
@@ -303,7 +303,7 @@ class PaidProcessorTests(unittest.TestCase):
                 self.assertEqual(counts["failed"], 0)
                 # A third pass is a no-op after acknowledgement.
                 writes = len(client.writes)
-                paid.run(40, True, client=client, now=self.now, connect=lambda: database)
+                paid.run(40, True, client=client, now=self.now, connect=lambda database=database: database)
                 self.assertEqual(len(client.writes), writes)
 
     def test_paid_ticked_again_on_the_same_day_is_review_not_a_second_advance(self):
@@ -315,13 +315,13 @@ class PaidProcessorTests(unittest.TestCase):
         props = client.pages[page["id"]]["properties"]
         due = props["Due Date"]["date"]["start"]
         props["Paid"]["checkbox"] = True                      # an accidental second tick, same day
-        counts = paid.run(40, True, client=client, now=self.now, connect=lambda: database)
+        counts = paid.run(40, True, client=client, now=self.now, connect=lambda database=database: database)
         self.assertEqual((counts["review"], counts["advanced"], counts["failed"]), (1, 0, 0))
         self.assertEqual(len(client.writes), writes)
         self.assertEqual(props["Due Date"]["date"]["start"], due)
         self.assertTrue(props["Paid"]["checkbox"])            # left checked for a person
         from datetime import timedelta
-        counts = paid.run(40, True, client=client, now=self.now + timedelta(days=1), connect=lambda: database)
+        counts = paid.run(40, True, client=client, now=self.now + timedelta(days=1), connect=lambda database=database: database)
         self.assertEqual(counts["advanced"], 1)               # the next day a tick is a new payment
 
     def test_per_run_cap_leaves_extra_commands_checked(self):

@@ -309,7 +309,7 @@ class RecognizedRegionTests(unittest.TestCase):
                 if mode == "duplicate": client.blocks["root"].append(copy.deepcopy(client.blocks["root"][-1]))
                 if mode == "response":
                     original = client.call
-                    def invalid(method, path, body=None):
+                    def invalid(method, path, body=None, original=original):
                         return {"results": None, "has_more": False} if path == "/blocks/active/children?page_size=100" else original(method, path, body)
                     client.call = invalid
                 if mode == "depth":
