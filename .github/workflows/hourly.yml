@@ -703,6 +703,13 @@ jobs:
           IMESSAGE_ALERTS_HOST: ${{ steps.bws_finish.outputs.IMESSAGE_ALERTS_HOST || steps.bws_finish_retry.outputs.IMESSAGE_ALERTS_HOST }}
           V7_CLOUD_FIT: ${{ vars.V7_CLOUD_FIT || 'off' }}                 # D214: off unless the repository variable says shadow (G6) or canary (D226); on is refused in code
           V7_CLOUD_FIT_PROFILE_REF: ${{ secrets.V7_CLOUD_FIT_PROFILE_REF }}   # LIFE-41: the 16-hex reference to Oracle's own brief (G5), a SECRET so it is masked: a repository variable is printed in this step's env header and the repo is public
+          TICK_CONCURRENCY: ${{ vars.TICK_CONCURRENCY || 'off' }}   # LIFE-569: off unless the repository variable says on
+          TICK_CAP_LINKEDIN: ${{ vars.TICK_CAP_LINKEDIN || '1' }}
+          TICK_CAP_TINYFISH: ${{ vars.TICK_CAP_TINYFISH || '1' }}
+          TICK_CAP_JOBRIGHT: ${{ vars.TICK_CAP_JOBRIGHT || '1' }}
+          TICK_CAP_DICE: ${{ vars.TICK_CAP_DICE || '1' }}
+          TICK_CAP_ATS: ${{ vars.TICK_CAP_ATS || '8' }}
+          TICK_MAX_PARALLEL: ${{ vars.TICK_MAX_PARALLEL || '4' }}
         run: |
           pip install --require-hashes -r requirements-browser.lock
           python -m playwright install --with-deps chromium
