@@ -408,6 +408,7 @@ CONFIG = {'provided': {'prefixes': ['GITHUB_', 'RUNNER_'], 'names': ['CI', 'PATH
             'owner': 'calendar_bridge',
             'purpose': 'Lets the calendar bridge remove many events in one run (off by default)'},
            {'name': 'CALENDAR_CARD_BLOCK_ID', 'kind': 'input', 'owner': 'agenda', 'purpose': 'Notion block id of the calendar card on the Daily Report page'},
+           {'name': 'CHROMIUM_CACHE_HIT', 'kind': 'flag', 'owner': 'workflow', 'purpose': 'Set by the hourly run: true when the browser download came from the cache, so no apt command runs (LIFE-573)'},
            {'name': 'CLOUD_BACKLOG',
             'kind': 'workflow_only',
             'owner': 'workflow',
