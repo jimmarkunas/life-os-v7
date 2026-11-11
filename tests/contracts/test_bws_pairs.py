@@ -31,7 +31,7 @@ class BitwardenPairs(unittest.TestCase):
     def test_every_load_step_has_exactly_one_retry(self):
         found, loose = pairs()
         self.assertEqual(loose, [], "a job has an unpaired Bitwarden step")
-        self.assertEqual(len(found), 44)                                    # 44 pairs, 88 steps (LIFE-540); a new pair must be added here on purpose
+        self.assertEqual(len(found), 45)                                    # 45 pairs, 90 steps (LIFE-540; LIFE-571 added the amazon_retention job); a new pair must be added here on purpose
 
     def test_the_retry_block_equals_the_load_block_after_expansion(self):
         for name, job, load, retry in pairs()[0]:
