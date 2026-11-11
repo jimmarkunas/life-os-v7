@@ -311,6 +311,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/platform/notion_ids.py`: Notion page and data-source ids come from the environment, never from source (LIFE-338).
 - `lifeos/platform/outlook.py`: Minimal Microsoft Graph mail client (stdlib only, platform: no product knowledge). Delegated OAuth with refresh tokens (device-code sign-in once, then silent refresh), im
 - `lifeos/platform/outlook_tokens.py`: Private storage for Outlook refresh tokens: one row per account label, replaced whenever Microsoft rotates the token. The database is private; this repo and its logs are 
+- `lifeos/platform/read_slots.py`: LIFE-569: process-wide limits on how many reads of one kind are in flight at once, shared by every stage of a Jobs tick that runs side by side. Unconfigured (the default)
 - `lifeos/platform/readback.py`: LIFE-526: the one read-back wait. After a write, Notion may briefly still show the old state, so the caller READS again (up to `attempts` times, `pause` seconds apart) un
 - `lifeos/platform/redact.py`: Public-safe redaction (ported, trimmed, from V2 core/security.py), with meeting credentials added.
 - `lifeos/platform/report_region.py`: Write the text of one V7-owned callout on the Daily Report, safely (the mechanics proven by the Calendar and Bills cards).
