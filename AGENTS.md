@@ -57,8 +57,8 @@ Before OpenClaw, Oracle, channel, local-model, assistant, meeting-capture or AI-
 
 ## Commands
 
-- All tests: `python -m unittest discover -s tests -t .` (about 2 s); good only if it prints a line starting `OK`. One file: `python -m unittest tests.jira.test_jira`.
-- **On the Mac** (LIFE-553; its `python3` is 3.9 without PyYAML, so a bare run fails tests CI passes): from the repo root run `sh tools/mac-tests.sh`; expect `OK`.
+- **Tests: `sh tools/test.sh`** (any host; finds Python 3.12, runs what CI runs: affected tests on a branch, `--all` for everything). One file: `python -m unittest tests.jira.test_jira`.
+- **Jira reads and searches:** always pass `fields` (docs/platform/agent-jira-settings.md). **Receipts:** docs/platform/receipt-template.md.
 - `git add` new files BEFORE running the suite (the privacy test checks staged files only).
 - **GitHub from a session** (where GraphQL is blocked, `gh pr create` and `gh pr ready` fail): open a PR with `gh api repos/jimmarkunas/life-os-v7/pulls --input pr.json`; draft to ready with `gh api -X POST repos/jimmarkunas/life-os-v7/pulls/N/ccr/ready_for_review`; merge with `gh api -X PUT repos/jimmarkunas/life-os-v7/pulls/N/merge -f merge_method=squash`.
 - **After a squash merge** the Stop hook warns about "unpushed commits"; they are in main: `git fetch origin main && git checkout -B main origin/main` clears it. A warning on an unmerged branch is real.
