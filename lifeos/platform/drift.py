@@ -34,7 +34,6 @@ SURFACES = (
 
 # Installers that are deliberately NOT surfaces. A new install-*.sh must be a surface above or be listed here with the reason (tests/platform/test_drift.py reads this).
 UNCOVERED_INSTALLERS = {
-    "lifeos/edge/openclaw/install-capture-sweep.sh": "The sweeper timer is switched off by Jim (LIFE-575, LIFE-604 item 3), and it lives under the ubuntu home folder and user manager, which the ticker's drift reader cannot see; switching it on again needs a drift surface first.",
     "lifeos/edge/jobright/install-browser.sh": "It installs a user unit under the ubuntu home folder (the persistent Jobright browser), which the ticker's drift reader cannot see; LIFE-576 option a, switched off by default in the workflow.",
     "lifeos/edge/jobright/install-forward-user.sh": "It creates a login user and its restricted key and installs no repo file, so there is no file to compare; LIFE-576 option a.",
     "lifeos/edge/runner/install-runner.sh": "The script-pack runner starts no unit, so there is no unit state to compare; its program is pinned by a hash inside its own installer and checked by that installer's verify.",
