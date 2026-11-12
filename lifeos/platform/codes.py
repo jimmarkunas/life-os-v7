@@ -7,6 +7,8 @@ import ast
 import re
 from typing import NamedTuple
 
+from lifeos.platform import source_registry as registry
+
 CLASSES = ("ok", "state", "terminal", "retry", "blocked", "degraded", "bug")
 SEVERITIES = ("none", "info", "page")
 CANDIDATE = re.compile(r"^[A-Z][A-Z0-9]*(_[A-Z0-9]+)+$")
@@ -875,6 +877,8 @@ CODES.update({    # --- refusal codes of the read-only Google sign-in helper (li
     'DENY_SECRET_EXPOSURE': _r("platform", 'terminal', False, 'A secret-shaped value is in the request or in the tool output; the output is suppressed.', 'Remove the secret and retry.'),
     'DENY_ACCOUNT_AMBIGUOUS': _r("platform", 'terminal', False, 'The account is missing, ambiguous, unknown or not this tool\'s account.', 'Name the exact account.'),
 })
+
+CODES.update(registry.code_rows(_r))      # LIFE-618: the registered job sources' own codes (lifeos/platform/source_registry.json)
 
 NOT_CODES = frozenset((
     "GITHUB_SHA",     # LIFE-570: the runner-provided commit id the unit-test gate reads

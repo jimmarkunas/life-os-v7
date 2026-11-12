@@ -19,6 +19,7 @@ from lifeos.platform.jira import JiraError
 from lifeos.platform.notion_client import NotionError
 from lifeos.platform.gcal import GcalError
 from lifeos.platform.outlook import OutlookError
+from lifeos.platform import source_registry as registry
 
 
 def lazy(module, name="run", floor=0, **fixed):
@@ -146,7 +147,6 @@ STAGES = {
     "network-match": lazy("lifeos.sources.network.network_leads"),
     "network-surface": lazy("lifeos.sources.network.network_surface"),
     "network-layout": lazy("lifeos.sources.network.ledger_layout"),
-    "sponsors": lazy("lifeos.sources.discovery.sponsor_register"),
     "probe": lazy("lifeos.probe"),
     "enrich": lazy("lifeos.jobs.enrich"),
     "fit": lazy("lifeos.jobs.fit.stage", floor=500),
@@ -169,6 +169,7 @@ STAGES = {
     "sync-seen": _sync_seen,
     "purge": _purge,
 }
+STAGES.update(registry.stages(lazy))                                    # LIFE-618: the stages of the registered sources (lifeos/platform/source_registry.json)
 
 
 # D182: a stage whose counts carry `failed > 0` exits 1 with this fixed code (counts are still printed), so the workflow step reports failure, the
