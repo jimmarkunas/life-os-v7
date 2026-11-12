@@ -12,6 +12,7 @@ import os
 import re
 
 from lifeos.jobs import names, store
+from lifeos.platform import stage_contract
 from lifeos.platform.http import fetch
 
 PAGE = "https://www.gov.uk/api/content/government/publications/register-of-licensed-sponsors-workers"
@@ -87,3 +88,11 @@ def run(limit, live, now=None, fetcher=fetch, environ=os.environ):
                     cursor.executemany("INSERT IGNORE INTO v7_sponsors (name_key, name, refreshed_at) VALUES (%s,%s,%s)",
                                        [(" ".join(names.core(n))[:160], n, now) for n in entries[start:start + 1000]])
     return counts
+
+
+CONTRACT = stage_contract.Contract(      # LIFE-589 (pilot): the stage declared; the registry runs it as `sponsors` through this object
+    name="sponsors", run=run,
+    inputs=("the gov.uk content API page for the register of licensed sponsors (public)", "the CSV that page names (public)", "table v7_sponsors, read for its newest refresh time", "SPONSORS_FORCE, an optional switch"),
+    outputs=("status", "sponsors", "saved"),
+    dry_run="reads the register and the table's newest refresh time, parses and counts the Skilled Worker A-rated names; changes nothing",
+    write="replaces v7_sponsors with those names in one transaction, at most weekly unless forced; on any failure the previous register stays")

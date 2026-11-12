@@ -99,7 +99,7 @@ A routing page. Find a stage here, then its module. For anything else ask one qu
 - `scale-up-holds` -> `lifeos.jobs.holds:run`
 - `scale-up-links` -> `lifeos.jobs.linkcheck:run`
 - `scale-up-register` -> `lifeos.sources.discovery.scale_up_register:run`
-- `sponsors` -> `lifeos.sources.discovery.sponsor_register:run`
+- `sponsors` -> `lifeos.sources.discovery.sponsor_register:CONTRACT`
 - `sync-seen` -> `lifeos.run:_sync_seen`
 - `web` -> `lifeos.sources.web.run:run`
 - `web-scale-up` -> `lifeos.sources.web.run:run`
@@ -124,7 +124,7 @@ A routing page. Find a stage here, then its module. For anything else ask one qu
 - `lifeos/oraclecloud/` (3 modules): LIFE-129 (Jim, Oct 28 2026): a failed or missed off-site backup night must reach the phone, quietly. The backu
 - `lifeos/outlook/` (2 modules): Outlook stages. `auth` signs one mailbox in once (read-only by default; `write` asks for the right to move mai
 - `lifeos/physmail/` (5 modules): Render the Physical Mail state into V7's one "Mail Alerts" callout on the Daily Report (MAIL-1.2). V7 owns thi
-- `lifeos/platform/` (54 modules): LIFE-403 (epic LIFE-401): the per-agent access policy of the one access layer. Pure functions, no network.
+- `lifeos/platform/` (55 modules): LIFE-403 (epic LIFE-401): the per-agent access policy of the one access layer. Pure functions, no network.
 - `lifeos/recruiters/` (9 modules): Three explicit source shapes, decided from the normalized mail record alone (D54: no language model).
 - `lifeos/sources/` (55 modules): LIFE-75 (Jim, Oct 26 2026): the Alert settings screen on the private Close service (Oracle; only Jim's iPhone 
 - `lifeos/telegram/` (1 modules): COMM-1.2 (LIFE-29, Jim's approval Oct 15 2026, Jira 10203): Jim's personal Telegram attention, read on Oracle 
