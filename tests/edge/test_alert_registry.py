@@ -120,7 +120,7 @@ class TheCodeUsesOnlyRegisteredAlerts(unittest.TestCase):
         tree = ast.parse(sources()["lifeos/platform/gate.py"])
         rows = [tuple(e.value for e in n.elts) for n in ast.walk(tree) if isinstance(n, ast.Tuple) and len(n.elts) == 4 and all(isinstance(e, ast.Constant) for e in n.elts)
                 and n.elts[2].value in ("page", "info")]
-        self.assertEqual(len(rows), 4)
+        self.assertEqual(len(rows), 6)                                      # stalled, failing, and (LIFE-580) stuck: an open and a recovered push each
         for title, body, severity, key in rows:
             with self.subTest(key=key):
                 self.assertEqual(registry.severity(key), severity)
