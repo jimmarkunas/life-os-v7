@@ -308,6 +308,56 @@ class Incident(unittest.TestCase):
         self.assertEqual(pushed, ["V7 hourly runs failing repeatedly"])
 
 
+class StuckTickAlert(unittest.TestCase):
+    """LIFE-580 step 3 (GWT-3): a tick run with no conclusion for over 40 minutes pages the phone once, through the real watchdog. Only the GitHub calls and the push are replaced."""
+
+    def run_(self, minutes, status="queued", conclusion=None, title="tick", rid=1):
+        created = (NOW - dt.timedelta(minutes=minutes)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        return {"id": rid, "display_title": title, "status": status, "conclusion": conclusion, "created_at": created, "run_started_at": created, "updated_at": created}
+
+    def watch(self, runs, open_stuck=False):
+        pushed, calls = [], []
+
+        def api(path, method="GET", body=None):
+            if "workflows/hourly" in path:
+                return {"workflow_runs": runs}
+            calls.append((method, path.split("?")[0]))
+            if method == "GET" and "issues?" in path:
+                return [{"number": 7, "labels": [{"name": gate.STUCK_LABEL}], "updated_at": NOW.strftime("%Y-%m-%dT%H:%M:%SZ"), "created_at": NOW.strftime("%Y-%m-%dT%H:%M:%SZ")}] if (open_stuck and f"labels={gate.STUCK_LABEL}" in path) else []
+            return {}
+        old = gate._api
+        gate._api = api
+        try:
+            gate.watch(NOW, push=lambda *a: pushed.append(a) or True, checkin=False)
+        finally:
+            gate._api = old
+        return pushed, calls
+
+    def test_a_tick_queued_for_41_minutes_pages_once_and_opens_one_issue(self):
+        pushed, calls = self.watch([self.run_(41)])
+        self.assertEqual([p[3] for p in pushed], ["tick_run_stuck"])
+        self.assertEqual(pushed[0][2], "page")
+        self.assertEqual([c for c in calls if c[0] == "POST" and c[1] == "issues"], [("POST", "issues")])
+
+    def test_an_open_incident_does_not_page_again_on_the_next_watch(self):
+        pushed, calls = self.watch([self.run_(55)], open_stuck=True)
+        self.assertEqual(pushed, [])
+        self.assertEqual([c for c in calls if c[0] == "POST" and c[1] == "issues"], [])
+
+    def test_a_running_tick_is_stuck_too(self):
+        pushed, _ = self.watch([self.run_(45, status="in_progress")])
+        self.assertEqual([p[3] for p in pushed], ["tick_run_stuck"])
+
+    def test_a_tick_younger_than_the_limit_a_manual_run_and_a_finished_run_are_not_stuck(self):
+        pushed, _ = self.watch([self.run_(30), self.run_(90, title="manual", rid=2), self.run_(90, status="completed", conclusion="success", rid=3)])
+        self.assertEqual(pushed, [])
+
+    def test_the_incident_closes_with_a_recovered_push_when_nothing_is_stuck(self):
+        pushed, calls = self.watch([self.run_(10, status="completed", conclusion="success")], open_stuck=True)
+        self.assertEqual([p[3] for p in pushed], ["tick_run_stuck_recovered"])
+        self.assertIn(("PATCH", "issues/7"), calls)
+
+
 class DailyCheckin(unittest.TestCase):
     def test_it_is_due_once_a_day_in_the_first_half_hour_only(self):
         at = lambda h, m: dt.datetime(2026, 10, 11, h, m, tzinfo=dt.timezone.utc)

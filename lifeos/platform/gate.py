@@ -22,6 +22,8 @@ FAIL_WINDOW_HOURS = 24         # failed ticks counted over this window
 FAIL_OPEN = 3                  # this many failed ticks in the window opens the "failing" incident; zero closes it
 FAIL_TITLE = "V7 pipeline: hourly runs failing repeatedly (3+ failed in 24 hours)"
 FAIL_LABEL = "pipeline-failing"
+STUCK_TITLE = "V7 pipeline: an hourly tick run has had no conclusion for over 40 minutes"      # LIFE-580 step 3
+STUCK_LABEL = "pipeline-run-stuck"
 DIGEST_HOUR_UTC = 13           # the daily check-in: 8 AM Chicago in summer time (7 AM in winter); the :17 watchdog run sends it
 DOMAINS_TITLE = "domains (after tick)"
 PENDING = "push-pending"       # the incident exists but its phone push was not accepted yet; retried by the watchdog
@@ -49,6 +51,12 @@ def stuck(run, now, minutes=STUCK_MINUTES):
     """True for a run that has no conclusion yet and was created more than `minutes` ago."""
     created = _t(run.get("created_at"))
     return run.get("conclusion") is None and created is not None and (now - created) > dt.timedelta(minutes=minutes)
+
+
+def stuck_ticks(runs, now):
+    """LIFE-580 step 3: the tick runs that are queued or running and have had no conclusion for more than STUCK_MINUTES. The gate and the ticker already ignore them (so later ticks still run);
+    this is what lets a person hear about one, because GitHub refuses every way to cancel it."""
+    return [r for r in runs if r.get("display_title") == TICK_TITLE and r.get("status") in ACTIVE and stuck(r, now)]
 
 
 def decide(runs, now, current_id, gap=None):
@@ -211,7 +219,7 @@ def watch(now=None, push=None, checkin=True):
     Never touches job data."""
     runs = _api("actions/workflows/hourly.yml/runs?per_page=60")["workflow_runs"]
     now = now or dt.datetime.now(dt.timezone.utc)
-    is_stale, fail_signal = stale(runs, now, 0), failing(runs, now)
+    is_stale, fail_signal, stuck_signal = stale(runs, now, 0), failing(runs, now), bool(stuck_ticks(runs, now))
     changes = [
         sync_incident(LABEL, ISSUE_TITLE, "The newest successful hourly run finished more than 2.5 hours ago. Scheduled triggers may be dropped by GitHub, "
                       "or a stage is failing. Open the Actions tab. This issue closes itself when a run succeeds.", is_stale,
@@ -221,6 +229,11 @@ def watch(now=None, push=None, checkin=True):
                       "This issue closes itself after 24 hours with no failed run.", fail_signal,
                       ("V7 hourly runs failing repeatedly", "3+ failed runs in 24 hours. Open the Actions tab.", "page", "pipeline_failing"),
                       ("V7 hourly runs recovered", "No failed run in 24 hours.", "info", "pipeline_failing_recovered"), push, now),
+        sync_incident(STUCK_LABEL, STUCK_TITLE, "An hourly tick run has been queued or running for more than 40 minutes. A real tick takes 5 to 20 minutes and GitHub ends the prep job at 45, so this run is stuck "
+                      "(it happened on Nov 11 2026 and GitHub refused every cancel). Later ticks are not blocked: the gate and the ticker ignore it. Open the Actions tab; if the run cannot be cancelled, "
+                      "report it to GitHub support. This issue closes itself when no tick run is stuck.", stuck_signal,
+                      ("V7 tick run stuck", "An hourly tick run has had no conclusion for over 40 minutes. Later ticks still run. Open the Actions tab.", "page", "tick_run_stuck"),
+                      ("V7 stuck tick run cleared", "No hourly tick run is stuck.", "info", "tick_run_stuck_recovered"), push, now),
     ]
     sent = None
     if checkin and digest_due(now):                               # LIFE-330: the Oracle ticker runs incidents only; the check-in stays with the GitHub watchdog
