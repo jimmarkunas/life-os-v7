@@ -242,7 +242,7 @@ class OwnershipTests(unittest.TestCase):
         runs = [s.get("run", "") for s in job["steps"]]
         order_ = [next(i for i, r in enumerate(runs) if f"lifeos.run {name}" in r) for name in ("amazon-orders", "amazon-card")]
         self.assertEqual(order_, sorted(order_))
-        self.assertEqual(set(job["needs"]), {"jira", "agenda", "bills", "bench_gate"})
+        self.assertEqual(set(job["needs"]), {"jira", "agenda", "bills", "gate"})
         card_step = next(s for s in job["steps"] if s.get("id") == "acard")
         self.assertTrue(card_step["continue-on-error"])
         self.assertIn("steps.amazon.outcome", card_step["env"]["AMAZON_SYNC_OUTCOME"])

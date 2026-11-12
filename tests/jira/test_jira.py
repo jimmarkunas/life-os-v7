@@ -476,7 +476,7 @@ class WorkflowTests(unittest.TestCase):
     def test_automatic_runs_refresh_snapshot_and_card_but_never_roll_over_or_probe(self):
         job = self.job()
         self.assertRegex(self.domains, r'jira:\n(?:.*\n)*?\s+default: "none"')
-        auto = "github.event_name == 'workflow_run'"                                         # after an hourly tick, never after a manual run
+        auto = "needs.gate.outputs.run == 'true'"                                            # after an hourly tick, never after a manual run (decided once, in the gate job)
         self.assertIn(auto, job.split("runs-on")[0])
         for step_id, nxt in (("jrollauto", "jsnap"), ("jsnap", "jcard"), ("jcard", "jprobe")):
             step = job[job.index(f"id: {step_id}"):job.index(f"id: {nxt}")]
@@ -504,7 +504,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn("outputs.LIFEOS_ACQ", roll)                           # the sprint rollover still gets no database value
         self.assertNotIn("outputs.NOTION", roll)
         self.assertEqual(sorted(re.findall(r"secrets\.(\w+)", head)), ["JIRA_BASE_URL", "JIRA_BOARDS", "JIRA_GTV_EPIC"])
-        self.assertNotIn("outputs.", head)                                     # nothing is exported job-wide
+        self.assertNotIn("outputs.", head.replace("needs.gate.outputs.", ""))     # nothing is exported job-wide (the gate's run flag is the only output this header reads)
 
     def test_no_jira_value_appears_anywhere_in_tracked_workflow_or_code(self):
         self.assertNotRegex(self.text, r"atlassian\.net|api\.atlassian\.com")
