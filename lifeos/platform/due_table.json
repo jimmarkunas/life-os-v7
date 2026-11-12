@@ -1,5 +1,5 @@
 {
-  "_how_to_read": "One row per domain job in .github/workflows/domains.yml. every_hours: the job runs when its last successful run (measured from the start of that run) was at least that long ago, minus 15 minutes of slack; 1 means every tick. slots_ct: fixed Central-Time slots (HH:MM); the job runs once after a slot has passed since its last success. LIFE-609. Jim's rows: comment 12803.",
+  "_how_to_read": "One row per domain job in .github/workflows/domains.yml. every_hours: the job runs when its last successful run (measured from the start of that run) was at least that long ago, minus 15 minutes of slack; 1 means every tick. slots_ct: fixed Central-Time slots (HH:MM); the job runs once after a slot has passed since its last success. LIFE-609. Jim's rows: comment 12803. steps: a schedule kept inside one job (LIFE-610: the Recruiters mail step reads new mail every 3 hours and does the full 14-day scan on the first read after 09:00 CT; the job itself stays hourly).",
   "jobs": {
     "jira": {"every_hours": 1},
     "outlook": {"every_hours": 1},
@@ -15,5 +15,8 @@
     "recruiters": {"every_hours": 1},
     "imessage": {"every_hours": 1},
     "granola": {"every_hours": 1}
+  },
+  "steps": {
+    "recruiters_mail": {"every_hours": 3, "full_scan_ct": ["09:00"]}
   }
 }

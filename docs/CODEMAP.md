@@ -123,8 +123,8 @@ A routing page. Find a stage here, then its module. For anything else ask one qu
 - `lifeos/oraclecloud/` (3 modules): LIFE-129 (Jim, Oct 28 2026): a failed or missed off-site backup night must reach the phone, quietly. The backu
 - `lifeos/outlook/` (2 modules): Outlook stages. `auth` signs one mailbox in once (read-only by default; `write` asks for the right to move mai
 - `lifeos/physmail/` (5 modules): Render the Physical Mail state into V7's one "Mail Alerts" callout on the Daily Report (MAIL-1.2). V7 owns thi
-- `lifeos/platform/` (52 modules): LIFE-403 (epic LIFE-401): the per-agent access policy of the one access layer. Pure functions, no network.
-- `lifeos/recruiters/` (8 modules): Three explicit source shapes, decided from the normalized mail record alone (D54: no language model).
+- `lifeos/platform/` (53 modules): LIFE-403 (epic LIFE-401): the per-agent access policy of the one access layer. Pure functions, no network.
+- `lifeos/recruiters/` (9 modules): Three explicit source shapes, decided from the normalized mail record alone (D54: no language model).
 - `lifeos/sources/` (50 modules): LIFE-75 (Jim, Oct 26 2026): the Alert settings screen on the private Close service (Oracle; only Jim's iPhone 
 - `lifeos/telegram/` (1 modules): COMM-1.2 (LIFE-29, Jim's approval Oct 15 2026, Jira 10203): Jim's personal Telegram attention, read on Oracle 
 
@@ -181,6 +181,8 @@ A routing page. Find a stage here, then its module. For anything else ask one qu
 - `v7_network_page_edit`: `lifeos/network/store.py`
 - `v7_offsite_backup`: `lifeos/oraclecloud/backup_watch.py`
 - `v7_openclaw_workers`: `lifeos/oraclecloud/worker_watch.py`
+- `v7_mail_seen`: `lifeos/platform/mail_seen.py`
+- `v7_mail_scan`: `lifeos/platform/mail_seen.py`
 - `v7_outlook_token`: `lifeos/platform/outlook_tokens.py`
 - `v7_outlook_mail_seen`: `lifeos/sources/newsletters/outlook.py`
 

@@ -4,6 +4,7 @@ A record: provider, id, received (ISO 8601 UTC), sender_name, sender_address, su
 message when it is deterministic, else ""). Content stays in memory: nothing here writes, logs, labels, moves, deletes, sends or forwards mail, and errors are fixed codes only."""
 import os
 import re
+import urllib.parse
 from datetime import datetime, timedelta, timezone
 from email.utils import parseaddr
 
@@ -32,13 +33,19 @@ def _markers(headers, address):
             "noreply": bool(NOREPLY.search(address.split("@")[0] if address else ""))}
 
 
-def gmail_records(gmail, now, limit=MAX_MESSAGES, days=WINDOW_DAYS, terms=""):
+def gmail_records(gmail, now, limit=MAX_MESSAGES, days=WINDOW_DAYS, terms="", known=None, stats=None):
     """Gmail Inbox and Spam, last `days` days (default WINDOW_DAYS), optionally only messages matching Gmail search `terms`. Returns (records, unreadable). A listing that cannot be proven complete raises MailError."""
     query = f"{{in:inbox in:spam}} newer_than:{days}d" + (f" {terms}" if terms else "")
     try:
         ids = gmail.list_ids_complete(query, limit, include_spam=True)
     except GmailError:
         raise MailError("MAIL_GMAIL_LISTING_INCOMPLETE") from None
+    listed = len(ids)
+    if known is not None:                                                    # LIFE-610: only ids new to the system are read; `known(provider, id)` says which are not
+        ids = [i for i in ids if not known("gmail", i)]
+    if stats is not None:
+        stats["scanned"] = stats.get("scanned", 0) + listed
+        stats["new"] = stats.get("new", 0) + len(ids)
     out, unreadable = [], 0
     for message_id in ids:
         try:
@@ -54,26 +61,54 @@ def gmail_records(gmail, now, limit=MAX_MESSAGES, days=WINDOW_DAYS, terms=""):
     return out, unreadable
 
 
-def outlook_records(client, account, now, limit=MAX_MESSAGES, days=WINDOW_DAYS):
-    """Outlook Inbox and Junk Email of one account, last `days` days (default WINDOW_DAYS). Returns (records, unreadable). An incomplete listing raises MailError."""
+NEW_READ_LIMIT = 100          # LIFE-610: more new messages than this are cheaper to read through one full listing than one by one
+
+
+def _outlook_record(raw, account, label):
+    """One Graph message -> the record, or None when it has no id or time (counted as unreadable by the caller)."""
+    sender = ((raw.get("from") or {}).get("emailAddress") or {})
+    if not raw.get("id") or not raw.get("receivedDateTime"):
+        return None
+    headers = {str(h.get("name", "")).lower(): str(h.get("value", "")) for h in raw.get("internetMessageHeaders") or [] if isinstance(h, dict)}
+    address = str(sender.get("address") or "").strip().lower()
+    body = raw.get("body") or {}
+    return {"provider": "outlook", "id": f"{account}:{raw['id']}", "received": raw["receivedDateTime"], "sender_name": str(sender.get("name") or "").strip(),
+            "sender_address": address, "subject": raw.get("subject") or "", "body": body.get("content") or "", "folder": label,
+            "markers": _markers(headers, address), "url": raw.get("webLink") or ""}
+
+
+def outlook_records(client, account, now, limit=MAX_MESSAGES, days=WINDOW_DAYS, known=None, stats=None):
+    """Outlook Inbox and Junk Email of one account, last `days` days (default WINDOW_DAYS). Returns (records, unreadable). An incomplete listing raises MailError.
+    With `known` (LIFE-610) only messages new to the system are read: the listing carries ids and times, and each new message is then read on its own."""
     since = (now - timedelta(days=days)).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     out, unreadable = [], 0
+    text = 'outlook.body-content-type="text"'
     for folder, label in (("inbox", "INBOX"), ("junkemail", "JUNK")):
         try:
-            found = client.messages(folder, since, limit, OUTLOOK_FIELDS, prefer='outlook.body-content-type="text"')
+            found = client.messages(folder, since, limit, OUTLOOK_FIELDS if known is None else "id,receivedDateTime", prefer=text)
+            if known is not None:
+                fresh = [m for m in found if m.get("id") and not known("outlook", f"{account}:{m['id']}")]
+                if stats is not None:
+                    stats["scanned"] = stats.get("scanned", 0) + len(found)
+                    stats["new"] = stats.get("new", 0) + len(fresh)
+                if len(fresh) > NEW_READ_LIMIT:
+                    ids = {m["id"] for m in fresh}
+                    found = [m for m in client.messages(folder, since, limit, OUTLOOK_FIELDS, prefer=text) if m.get("id") in ids]
+                else:
+                    found = []
+                    for m in fresh:
+                        try:
+                            found.append(client.get(f"/me/messages/{urllib.parse.quote(m['id'], safe='')}", {"$select": OUTLOOK_FIELDS}, text))
+                        except OutlookError:
+                            unreadable += 1
         except OutlookError:
             raise MailError("MAIL_OUTLOOK_LISTING_INCOMPLETE") from None
         for raw in found:
-            sender = ((raw.get("from") or {}).get("emailAddress") or {})
-            if not raw.get("id") or not raw.get("receivedDateTime"):
+            record = _outlook_record(raw, account, label)
+            if record is None:
                 unreadable += 1
-                continue
-            headers = {str(h.get("name", "")).lower(): str(h.get("value", "")) for h in raw.get("internetMessageHeaders") or [] if isinstance(h, dict)}
-            address = str(sender.get("address") or "").strip().lower()
-            body = raw.get("body") or {}
-            out.append({"provider": "outlook", "id": f"{account}:{raw['id']}", "received": raw["receivedDateTime"], "sender_name": str(sender.get("name") or "").strip(),
-                        "sender_address": address, "subject": raw.get("subject") or "", "body": body.get("content") or "", "folder": label,
-                        "markers": _markers(headers, address), "url": raw.get("webLink") or ""})
+            else:
+                out.append(record)
     return out, unreadable
 
 

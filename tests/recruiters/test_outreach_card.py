@@ -117,6 +117,17 @@ class RenderTests(unittest.TestCase):
         self.assertEqual([b for b in t.kids["col"] if t.blocks[b]["type"] == "table"], [HIRING_T, "ro-t"])                     # no second table, no view
         self.assertEqual(R.plain(t.blocks["ro-h"]), "🤝 Recruiter Outreach (Updated 9:30 AM CT)")
 
+    def test_the_heading_says_which_mail_read_the_rows_come_from_and_when(self):          # LIFE-610
+        t = report()
+        go(t, Source(MIXED), env={**ENV, "RECRUITERS_SCAN": "new mail", "RECRUITERS_SCAN_AT": "9:05 AM CT"})
+        self.assertEqual(R.plain(t.blocks["ro-h"]), "🤝 Recruiter Outreach (Updated 9:30 AM CT, mail: new mail 9:05 AM CT)")
+        t = report()
+        go(t, Source(MIXED), env={**ENV, "RECRUITERS_SCAN": "14-day scan", "RECRUITERS_SCAN_AT": "9:05 AM CT"})
+        self.assertEqual(R.plain(t.blocks["ro-h"]), "🤝 Recruiter Outreach (Updated 9:30 AM CT, mail: 14-day scan 9:05 AM CT)")
+        t = report()
+        go(t, Source(MIXED), env={**ENV, "RECRUITERS_SCAN": "anything else", "RECRUITERS_SCAN_AT": "not a time"})          # a malformed value never reaches the heading
+        self.assertEqual(R.plain(t.blocks["ro-h"]), "🤝 Recruiter Outreach (Updated 9:30 AM CT)")
+
     def test_a_close_screen_refresh_redraws_the_rows_and_the_heading_says_redrawn_not_updated(self):
         t = report(heading="🤝 Recruiter Outreach (DEGRADED at 9:05 AM CT)")
         done = go(t, Source(MIXED), env={**ENV, "RECRUITERS_STAGE_OUTCOME": "skipped"})
