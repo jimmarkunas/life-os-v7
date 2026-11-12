@@ -1,0 +1,386 @@
+{
+ "after hourly: manual, cancelled": [],
+ "after hourly: manual, failure": [],
+ "after hourly: manual, skipped": [],
+ "after hourly: manual, success": [],
+ "after hourly: quick, cancelled": [],
+ "after hourly: quick, failure": [],
+ "after hourly: quick, skipped": [],
+ "after hourly: quick, success": [],
+ "after hourly: tick, cancelled": [],
+ "after hourly: tick, failure": [
+  "agenda",
+  "amazon",
+  "amazon_retention",
+  "attention",
+  "bills",
+  "dcc",
+  "granola",
+  "hiring",
+  "jira",
+  "mail",
+  "megibow",
+  "outlook",
+  "recruiters"
+ ],
+ "after hourly: tick, skipped": [
+  "agenda",
+  "amazon",
+  "amazon_retention",
+  "attention",
+  "bills",
+  "dcc",
+  "granola",
+  "hiring",
+  "jira",
+  "mail",
+  "megibow",
+  "outlook",
+  "recruiters"
+ ],
+ "after hourly: tick, success": [
+  "agenda",
+  "amazon",
+  "amazon_retention",
+  "attention",
+  "bills",
+  "dcc",
+  "granola",
+  "hiring",
+  "jira",
+  "mail",
+  "megibow",
+  "outlook",
+  "recruiters"
+ ],
+ "after hourly: tick, success, GRANOLA_AUTO=off": [
+  "agenda",
+  "amazon",
+  "amazon_retention",
+  "attention",
+  "bills",
+  "dcc",
+  "hiring",
+  "jira",
+  "mail",
+  "megibow",
+  "outlook",
+  "recruiters"
+ ],
+ "after hourly: tick, success, V7_IMESSAGE_ALERTS=true": [
+  "agenda",
+  "amazon",
+  "amazon_retention",
+  "attention",
+  "bills",
+  "dcc",
+  "granola",
+  "hiring",
+  "imessage",
+  "jira",
+  "mail",
+  "megibow",
+  "outlook",
+  "recruiters"
+ ],
+ "after hourly: tick, success, V7_IMESSAGE_ALERTS=true, GRANOLA_AUTO=off": [
+  "agenda",
+  "amazon",
+  "amazon_retention",
+  "attention",
+  "bills",
+  "dcc",
+  "hiring",
+  "imessage",
+  "jira",
+  "mail",
+  "megibow",
+  "outlook",
+  "recruiters"
+ ],
+ "after hourly: tick, success, amazon fails": [
+  "agenda",
+  "amazon",
+  "amazon_retention",
+  "attention",
+  "bills",
+  "dcc",
+  "granola",
+  "hiring",
+  "jira",
+  "mail",
+  "megibow",
+  "outlook",
+  "recruiters",
+  "report"
+ ],
+ "after hourly: tick, success, jira fails": [
+  "agenda",
+  "amazon",
+  "amazon_retention",
+  "attention",
+  "bills",
+  "dcc",
+  "granola",
+  "hiring",
+  "jira",
+  "mail",
+  "megibow",
+  "outlook",
+  "recruiters",
+  "report"
+ ],
+ "after hourly: tick, success, recruiters fails": [
+  "agenda",
+  "amazon",
+  "amazon_retention",
+  "attention",
+  "bills",
+  "dcc",
+  "granola",
+  "hiring",
+  "jira",
+  "mail",
+  "megibow",
+  "outlook",
+  "recruiters",
+  "report"
+ ],
+ "dispatch: all=True": [
+  "agenda",
+  "amazon",
+  "amazon_retention",
+  "attention",
+  "bills",
+  "dcc",
+  "granola",
+  "hiring",
+  "jira",
+  "mail",
+  "megibow",
+  "outlook",
+  "recruiters"
+ ],
+ "dispatch: all=True + live": [
+  "agenda",
+  "amazon",
+  "amazon_retention",
+  "attention",
+  "bills",
+  "dcc",
+  "granola",
+  "hiring",
+  "jira",
+  "mail",
+  "megibow",
+  "outlook",
+  "recruiters"
+ ],
+ "dispatch: amazon=True": [
+  "amazon",
+  "amazon_retention"
+ ],
+ "dispatch: amazon=True + live": [
+  "amazon",
+  "amazon_retention"
+ ],
+ "dispatch: attention=True": [
+  "attention"
+ ],
+ "dispatch: attention=True + live": [
+  "attention"
+ ],
+ "dispatch: benchmark=True": [
+  "agenda",
+  "amazon",
+  "amazon_retention",
+  "attention",
+  "bench_gate",
+  "bench_report",
+  "bills",
+  "dcc",
+  "granola",
+  "hiring",
+  "jira",
+  "mail",
+  "megibow",
+  "outlook",
+  "recruiters"
+ ],
+ "dispatch: benchmark=True + live": [
+  "agenda",
+  "amazon",
+  "amazon_retention",
+  "attention",
+  "bench_gate",
+  "bench_report",
+  "bills",
+  "dcc",
+  "granola",
+  "hiring",
+  "jira",
+  "mail",
+  "megibow",
+  "outlook",
+  "recruiters"
+ ],
+ "dispatch: benchmark=True, amazon fails": [
+  "agenda",
+  "amazon",
+  "amazon_retention",
+  "attention",
+  "bench_gate",
+  "bench_report",
+  "bills",
+  "dcc",
+  "granola",
+  "hiring",
+  "jira",
+  "mail",
+  "megibow",
+  "outlook",
+  "recruiters"
+ ],
+ "dispatch: benchmark=True, jira fails": [
+  "agenda",
+  "amazon",
+  "amazon_retention",
+  "attention",
+  "bench_gate",
+  "bench_report",
+  "bills",
+  "dcc",
+  "granola",
+  "hiring",
+  "jira",
+  "mail",
+  "megibow",
+  "outlook",
+  "recruiters"
+ ],
+ "dispatch: benchmark=True, recruiters fails": [
+  "agenda",
+  "amazon",
+  "amazon_retention",
+  "attention",
+  "bench_gate",
+  "bench_report",
+  "bills",
+  "dcc",
+  "granola",
+  "hiring",
+  "jira",
+  "mail",
+  "megibow",
+  "outlook",
+  "recruiters"
+ ],
+ "dispatch: bills_paid=True": [
+  "bills"
+ ],
+ "dispatch: bills_paid=True + live": [
+  "bills"
+ ],
+ "dispatch: calendar_sync=True": [
+  "outlook"
+ ],
+ "dispatch: calendar_sync=True + live": [
+  "outlook"
+ ],
+ "dispatch: dcc=True": [
+  "dcc"
+ ],
+ "dispatch: dcc=True + live": [
+  "dcc"
+ ],
+ "dispatch: hiring=True": [
+  "hiring"
+ ],
+ "dispatch: hiring=True + live": [
+  "hiring"
+ ],
+ "dispatch: imessage=True": [
+  "imessage"
+ ],
+ "dispatch: imessage=True + live": [
+  "imessage"
+ ],
+ "dispatch: jira=both": [
+  "jira"
+ ],
+ "dispatch: jira=both + live": [
+  "jira"
+ ],
+ "dispatch: jira=card": [
+  "jira"
+ ],
+ "dispatch: jira=card + live": [
+  "jira"
+ ],
+ "dispatch: jira=dashboard": [
+  "jira"
+ ],
+ "dispatch: jira=dashboard + live": [
+  "jira"
+ ],
+ "dispatch: jira=none": [],
+ "dispatch: jira=probe": [
+  "jira"
+ ],
+ "dispatch: jira=probe + live": [
+  "jira"
+ ],
+ "dispatch: jira=report": [
+  "jira"
+ ],
+ "dispatch: jira=report + live": [
+  "jira"
+ ],
+ "dispatch: jira=rollover": [
+  "jira"
+ ],
+ "dispatch: jira=rollover + live": [
+  "jira"
+ ],
+ "dispatch: jira=snapshot": [
+  "jira"
+ ],
+ "dispatch: jira=snapshot + live": [
+  "jira"
+ ],
+ "dispatch: live=True": [],
+ "dispatch: megibow=True": [
+  "megibow"
+ ],
+ "dispatch: megibow=True + live": [
+  "megibow"
+ ],
+ "dispatch: no input": [],
+ "dispatch: physical_mail=True": [
+  "dcc",
+  "mail"
+ ],
+ "dispatch: physical_mail=True + live": [
+  "dcc",
+  "mail"
+ ],
+ "dispatch: recruiters=True": [
+  "recruiters"
+ ],
+ "dispatch: recruiters=True + live": [
+  "recruiters"
+ ],
+ "dispatch: refresh=hiring": [
+  "hiring"
+ ],
+ "dispatch: refresh=hiring + live": [
+  "hiring"
+ ],
+ "dispatch: refresh=none": [],
+ "dispatch: refresh=recruiters": [
+  "recruiters"
+ ],
+ "dispatch: refresh=recruiters + live": [
+  "recruiters"
+ ]
+}
