@@ -1,7 +1,11 @@
-"""Remote MCP server (Streamable HTTP, JSON replies, stateless) shared by Claude Chat and ChatGPT Chat for four Buzz operations. Loopback only; a TLS reverse proxy is the only public path.
-Every /mcp call needs an OAuth access token (lifeos.buzz.auth); writes also need the buzz:write scope AND an allowlisted (community, channel), so they are off by default.
-Config (environment or systemd credentials, never logged): BUZZ_MCP_PUBLIC_URL, BUZZ_OAUTH_ISSUER, BUZZ_OAUTH_JWKS_URL, BUZZ_OAUTH_CLIENTS=<client_id>,... (allowed OAuth clients; an id may be a URL), BUZZ_OAUTH_USERS=<sub>:<claude|chatgpt>:<community>+<community>,... (owner-approved IdP users; the label picks the signing identity), BUZZ_URL_<COMMUNITY>,
-BUZZ_KEY_<CLIENT>_<COMMUNITY> (four distinct scoped member keys: claude|chatgpt x life_os|bytalos, never an owner key, no shared or fallback key), BUZZ_WRITE_CHANNELS=community:uuid,..., optional BUZZ_RECIPIENTS=<alias>:<community>:<hex pubkey>,... and BUZZ_MENTION_SENDERS=claude,chatgpt (addressing is off unless both are set), optional BUZZ_MCP_ORIGINS, optional BUZZ_OAUTH_AS_URL (authorization-server metadata address if it differs from the issuer)."""
+"""Remote MCP server for Buzz (Streamable HTTP, JSON replies, stateless), shared by Claude Chat and ChatGPT Chat. Loopback only; a TLS proxy is the one public path.
+
+Serves the three permanent tools (buzz_capabilities, buzz_read, buzz_publish). Inputs: an OAuth access token on every /mcp call (lifeos.buzz.auth); writes also need the buzz:write scope and an
+allowlisted (community, channel), so they are off by default. Outputs: one {ok, contract, operation, data, next_cursor} envelope or a stable error code; the audit line carries no token, key or text.
+Config (environment or systemd credentials, never logged): BUZZ_MCP_PUBLIC_URL, BUZZ_OAUTH_ISSUER, BUZZ_OAUTH_JWKS_URL, BUZZ_OAUTH_CLIENTS, BUZZ_OAUTH_USERS=<sub>:<claude|chatgpt>:<community>+...,
+BUZZ_URL_<COMMUNITY>, BUZZ_KEY_<CLIENT>_<COMMUNITY> (four distinct scoped member keys, never an owner key, no fallback key), BUZZ_WRITE_CHANNELS=community:uuid,...,
+optional BUZZ_RECIPIENTS, BUZZ_MENTION_SENDERS (addressing is off unless both are set), BUZZ_MCP_ORIGINS, BUZZ_OAUTH_AS_URL.
+Pointer: docs/buzz-remote-mcp-deploy.md (LIFE-216, LIFE-254)."""
 import hashlib, json, os, sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
