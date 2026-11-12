@@ -26,22 +26,4 @@ regenerates human-readable review artifacts in `.concord/`.
 Enforcement remains client-dependent. `concord doctor` reports setup and
 workflow adoption; optional hooks can block exact-file collisions.
 
-Replace <agent-id> with the id the SessionStart hook printed for this session.
-A monitor may not inherit the session's environment, so it cannot work the id out itself.
-
-In Grok Build, keep this session reachable while idle by starting one persistent
-monitor for `concord inbox watch --agent <agent-id> --provider grok`. Do not start a duplicate when that monitor is active.
-
-In Cursor, start exactly one Cursor background Shell task for `concord inbox watch --agent <agent-id> --provider cursor --once`.
-Leave it active when the turn ends. When Cursor resumes you with its completion,
-answer the emitted peer message and immediately start a fresh background monitor.
-
-In Gemini CLI, start the exact monitor command supplied by the SessionStart hook
-(`concord inbox watch --agent <agent-id> --provider gemini --once`) with `run_shell_command` and `is_background: true`. Project
-settings inject background completion into the agent. Answer the peer message,
-then immediately start a fresh background monitor.
-
-In Antigravity, start exactly one background command for `concord inbox watch --agent <agent-id> --provider antigravity --once`
-and end the turn without waiting on it. Its completion wakes the idle session:
-answer the peer message, then immediately start a fresh background monitor.
 <!-- concord:end -->
