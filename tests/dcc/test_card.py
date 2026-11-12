@@ -1,6 +1,7 @@
 """D175: the Daily Command Center is written by V7 from what the other cards say on the page."""
 import unittest
 from datetime import datetime
+from unittest import mock
 from zoneinfo import ZoneInfo
 
 from lifeos.attention import card as attention_card
@@ -322,10 +323,8 @@ class RunTests(unittest.TestCase):
                 raise NotionError("NOTION_HTTP_500")
             return broken(method, path, body)
         notion.call = call
-        # the protected-region proof also reads Bills, so the write is refused rather than made around an unreadable region
-        with self.assertRaises(NotionError):
-            go(notion)
-        self.assertEqual([m for m, _ in notion.log if m in ("APPEND", "DELETE")], [])
+        # LIFE-586: the write no longer reads the other regions to prove them unchanged, so an unreadable Bills region does not stop the card; the card shows it as unreadable
+        go(notion)
         areas = card.read_areas(notion, ENV)
         self.assertEqual(areas["Bills"], {"unreadable": True})
         self.assertIn("status", areas["Jira"])
@@ -337,11 +336,26 @@ class RunTests(unittest.TestCase):
             go(notion)
         self.assertEqual(str(error.exception), "DCC_NO_EVIDENCE")
 
-    def test_a_protected_region_changing_mid_write_fails_the_run(self):
+    def test_another_cards_write_during_ours_no_longer_fails_the_run(self):
+        """LIFE-586: Jira's callout changing while the DCC card writes is another card doing its own job, not a violation."""
         notion = page(change_on="APPEND", change_region="jira-callout")
-        with self.assertRaises(NotionError) as error:
-            go(notion)
-        self.assertIn("PROTECTED_REGION_CHANGED", str(error.exception))
+        go(notion)
+
+    def test_a_write_into_another_cards_block_is_refused_before_it_is_sent(self):
+        """LIFE-586 mutation proof for the tree writer: a sync aimed at Jira's callout fails with the out-of-scope code and Jira's block stays as it was."""
+        notion = page()
+        foreign = notion.children["jira-callout"][0]["id"]
+        before = notion.full_tree("jira-callout")
+
+        def buggy_sync(client, *args, **kwargs):
+            client.call("PATCH", f"/blocks/{foreign}", {"heading_2": {"rich_text": [{"type": "text", "text": {"content": "overwritten"}}]}})
+            return 0
+
+        with mock.patch.object(report_region, "_sync", buggy_sync):
+            with self.assertRaises(NotionError) as error:
+                go(notion)
+        self.assertIn("WRITE_OUT_OF_SCOPE", str(error.exception))
+        self.assertEqual(notion.full_tree("jira-callout"), before)
 
     def test_a_wrong_target_is_refused_before_any_write(self):
         notion = page()
