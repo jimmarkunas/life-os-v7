@@ -7,16 +7,19 @@ A LinkedIn notification with no recruiting evidence is UNRESOLVED (counted, no r
 link is passed in `quarantine_sources` (nothing passes it today: a sweep over past rows is a separate decision); it is then set inactive only if nobody else has touched it."""
 import json
 import os
+import time
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 from lifeos.platform import mail
 from lifeos.platform.gmail import Gmail, GmailError
 from lifeos.platform.notion_client import Client, NotionError
-from . import classify, notion as store, qualify
+from lifeos.platform import mail_seen as seen
+from . import classify, notion as store, qualify, scan
 from .identity import clean_name, week_ending
 
 CHICAGO = ZoneInfo("America/Chicago")
+AUTO = object()                       # LIFE-610: "build the production ledger if the database is configured"
 REASONS = ("AUTOREPLY", "BULK", "AUTOMATION_ADDRESS", "HIRING_MANAGER", "NO_RECRUITER_EVIDENCE", "RELAY_NOT_A_MESSAGE")
 
 
@@ -24,11 +27,36 @@ def _client(environ):
     return Client(environ, token_name="NOTION_RECRUITERS_TOKEN", source_name="NOTION_RECRUITERS_DATA_SOURCE_ID")
 
 
-def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, notion=None, now=None, quarantine_sources=()):
+def _announce(environ, kind, moment):
+    """The kind and Central time of the mail read the Recruiter Outreach heading reports, passed to the next steps as step outputs (a skipped read reports the last one)."""
+    path = environ.get("GITHUB_OUTPUT")
+    if path and kind and moment:
+        with open(path, "a") as handle:
+            handle.write(f"scan_kind={kind}\nscan_at={scan.clock(moment)}\n")
+
+
+def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, notion=None, now=None, quarantine_sources=(), ledger=AUTO):
     now = now or datetime.now(timezone.utc)
+    began = time.monotonic()
+    ledger = seen.production(environ) if ledger is AUTO else ledger
+    known_keys, state, ledger_status = None, None, "off"
+    if ledger is not None:
+        try:
+            keys, last_read, last_kind, last_full = ledger.read()
+            known_keys, state, ledger_status = keys, (last_read, last_kind, last_full), ("ok" if keys else "empty")
+        except seen.LedgerError:
+            ledger_status = "unavailable"
+    action, kind, why = scan.plan(now, scan.step_row(), state, environ.get("GITHUB_EVENT_NAME") == "workflow_run")
+    stats = {"scanned": 0, "new": 0}
+    if action == "skip":
+        _announce(environ, state[1], state[0])
+        return {"scan": "skipped", "why": why, "ledger": ledger_status}
+    incremental = kind == seen.NEW_MAIL
+    known = (lambda provider, ident: seen.key(provider, ident) in known_keys) if incremental else None
     counts = {"messages": 0, "unreadable": 0, "sources_failed": 0, "outlook_accounts": 0, "direct_human": 0, "human_relay": 0, "excluded": 0, "unresolved": 0, "needs_review": 0,
               "would_create": 0, "would_update": 0, "existing": 0, "done_kept": 0, "ambiguous": 0, "created": 0, "updated": 0, "failed": 0, "excluded_why": {}, "unresolved_why": {}, "would_quarantine": 0, "quarantined": 0, "quarantine_skipped": 0,
-              "waiting": 0, "would_schedule": 0, "scheduled": 0, "would_reopen_due": 0, "reopened_due": 0, "notion": "ok"}
+              "waiting": 0, "would_schedule": 0, "scheduled": 0, "would_reopen_due": 0, "reopened_due": 0, "notion": "ok",
+              "scan": kind, "scan_why": why, "ledger": ledger_status}
     records = []
 
     def take(read):
@@ -42,7 +70,7 @@ def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, noti
 
     try:
         gm = gmail or Gmail.from_env()
-        take(lambda: mail.gmail_records(gm, now))
+        take(lambda: mail.gmail_records(gm, now, known=known, stats=stats))
     except GmailError:
         counts["sources_failed"] += 1
     accounts = list(outlook_accounts if outlook_accounts is not None else mail.outlook_accounts(environ))
@@ -51,8 +79,9 @@ def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, noti
         if client is None:
             counts["sources_failed"] += 1
             continue
-        take(lambda c=client, l=label: mail.outlook_records(c, l, now))
+        take(lambda c=client, l=label: mail.outlook_records(c, l, now, known=known, stats=stats))
     counts["messages"] = len(records)
+    counts["scanned"], counts["new"] = (stats["scanned"], stats["new"]) if incremental else (len(records), len(records))      # a 14-day scan reads everything it lists
     candidates, unverified, quarantine_sources = [], [], set(quarantine_sources)
     for message in records:
         shape, reason, evidence = classify.classify(message)
@@ -90,6 +119,13 @@ def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, noti
     if live and counts["failed"]:                                     # a write or its read-back failed: not a success, whatever the other rows did (stage-local: D182's publish-only exit is untouched)
         print("recruiters:", json.dumps(counts, sort_keys=True))
         raise store.RecruitersError("RECRUITERS_RECORDS_FAILED")
+    if live and ledger is not None and counts["notion"] == "ok":                     # recorded only after a complete live run: a failed write is read again next time
+        try:
+            ledger.commit({seen.key(m["provider"], m["id"]) for m in records}, kind, now)
+        except seen.LedgerError:
+            counts["ledger"] = "not_saved"
+    counts["seconds"] = int(time.monotonic() - began)
+    _announce(environ, kind, now)
     return counts
 
 

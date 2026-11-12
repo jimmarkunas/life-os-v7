@@ -446,6 +446,7 @@
    "lifeos/platform/ledger_body.py": "The Job Ledger page body (contract v7.jd.1 text, v7.jd.2 layout; Jim, Oct 27: the approved two-column page, and no marker line showing).",
    "lifeos/platform/limits.py": "Provider limits, canonized once. Code imports these; docs/LIMITS.md explains them; tests keep them in sync. Rule: every outbound call path stays UNDER the provider's publ",
    "lifeos/platform/mail.py": "One small provider-neutral mail record for read-only classification. Gmail and Outlook are read differently inside; classifier code sees only this shape.",
+   "lifeos/platform/mail_seen.py": "LIFE-610: the ledger of mail that is \"new to the system\", kept in the private database (the store that already holds the Outlook tokens). It lives in platform, next to ou",
    "lifeos/platform/names.py": "Name and role comparison shared by every OS (Jobs: hiring-pipeline handoff, sponsor register; Interview: parent and child identity).",
    "lifeos/platform/net_size.py": "LIFE-625: net size of a branch by area, so every pull request can say how many lines it adds and removes.",
    "lifeos/platform/notion_client.py": "Notion API transport (platform: free API only, paced under 3 req/s, 429 retry). Fixed error codes, no job knowledge.",
@@ -477,6 +478,7 @@
    "lifeos/recruiters/outreach.py": "LIFE-21 / LIFE-47 (D221): role-specific outreach on the canonical Recruiters data source, linked to ONE exact Job Ledger job by the additive `Job` relation.",
    "lifeos/recruiters/outreach_card.py": "LIFE-20: the Daily Report's one \"\ud83e\udd1d Recruiter Outreach\" table, refreshed in place from the Recruiters data source after the Recruiters stage. V7 owns it exclusively (route",
    "lifeos/recruiters/qualify.py": "Turn a classified message into a Recruiters candidate: only source-backed fields, never a guess. -> (\"CANDIDATE\", fields) | (\"UNRESOLVED\", code) | (\"EXCLUDED\", code).",
+   "lifeos/recruiters/scan.py": "LIFE-610: which mail read the Recruiters mail step does this run. Pure logic; the clock, the ledger times and the table row are passed in.",
    "lifeos/recruiters/stage.py": "RECR-1.2: configured Gmail and Outlook mail (Inbox and Junk, last 14 days, read in memory) -> deterministic classification -> the existing Recruiters data source."
   },
   "sources": {
@@ -650,6 +652,8 @@
   "v7_job_sources": "lifeos/jobs/store.py",
   "v7_jobs": "lifeos/jobs/store.py",
   "v7_ledger_urls": "lifeos/jobs/store.py",
+  "v7_mail_scan": "lifeos/platform/mail_seen.py",
+  "v7_mail_seen": "lifeos/platform/mail_seen.py",
   "v7_meeting_catalog": "lifeos/jobs/store.py",
   "v7_network_aliases": "lifeos/network/store.py",
   "v7_network_batches": "lifeos/network/store.py",

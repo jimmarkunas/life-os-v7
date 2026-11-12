@@ -1349,6 +1349,8 @@ jobs:
         name: Recruiter Outreach (LIFE-20; the Daily Report's one Recruiter Outreach table from the Recruiters data source, after the Recruiters stage; writes only when live AND the repo variable RECRUITER_OUTREACH is on; read-back and whole-page proof)
         env:
           RECRUITERS_STAGE_OUTCOME: ${{ steps.recruiters.outcome }}        # 'skipped' only on a Close screen refresh: the rows are redrawn and the heading says Redrawn
+          RECRUITERS_SCAN: ${{ steps.recruiters.outputs.scan_kind }}        # LIFE-610: which mail read the rows come from
+          RECRUITERS_SCAN_AT: ${{ steps.recruiters.outputs.scan_at }}
           RECRUITER_OUTREACH: ${{ vars.RECRUITER_OUTREACH }}
           NOTION_RECRUITERS_DATA_SOURCE_ID: ${{ secrets.NOTION_RECRUITERS_DATA_SOURCE_ID }}
           HIRING_TABLE_BLOCK_ID: ${{ secrets.HIRING_TABLE_BLOCK_ID }}
