@@ -142,6 +142,12 @@ class ScopedClient:
     def __init__(self, client, root, fail):
         self._client, self._fail, self.owned = client, fail, {_norm(root)}
 
+    def adopt(self, *block_ids):
+        """LIFE-613: for a card whose blocks are found by walking the page rather than under one callout (the Communications and Oracle Cloud cards, the Hiring heading and table): the blocks it located
+        and will write are named once, here, and every other block stays refused."""
+        self.owned.update(_norm(i) for i in block_ids)
+        return self
+
     def __getattr__(self, name):
         return getattr(self._client, name)
 
@@ -173,7 +179,7 @@ class ScopedClient:
         return result
 
 
-def _configured(protected_ids, fail):
+def require_configured(protected_ids, fail):
     """The other regions' block ids must still be configured (a missing one means the page is not set up as expected), but nothing is read from them any more."""
     ids = {region: clean_id(block_id) for region, block_id in (protected_ids or {}).items() if block_id or region != router.HIRING_REGION}
     if not ids or not all(ids.values()):
@@ -210,7 +216,7 @@ def replace_text(client, block_id, title, module, blocks, protected_ids, fail, t
     body = existing if headless else existing[1:]
     old_text = [b for b in body if b.get("type") in TEXT_KINDS]
     kept = [b["id"] for b in body if b.get("type") not in TEXT_KINDS]                    # tables, databases, pages and anything else stay, in order
-    _configured(protected_ids, fail)
+    require_configured(protected_ids, fail)
 
     def intact():
         """Kept for the writers below; the proof is now the scope guard on the client, which acts before each write, so there is nothing to compare afterwards."""
@@ -418,7 +424,7 @@ def replace_tree(client, block_id, title, module, spec, protected_ids, fail, tag
     if not live:
         return _sync(client, block_id, ours, spec, existing[0]["id"], fail, False), 0
     _sync(client, block_id, ours, spec, existing[0]["id"], fail, False)                   # preflight: the whole tree is checked before the first write
-    _configured(protected_ids, fail)
+    require_configured(protected_ids, fail)
     changes = _sync(client, block_id, ours, spec, existing[0]["id"], fail, True)
     if _sync(client, block_id, [b for b in children(client, block_id, fail)[1:] if b.get("type") not in TEXT_KINDS], spec, None, fail, False):
         raise fail("CARD_VERIFY_FAILED")

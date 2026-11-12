@@ -275,13 +275,11 @@ def run(limit, live, environ=os.environ, now=None, fetcher=fetch, client=None, k
               **{f"{c}_{k}": v for c in CHANNEL_BLOCKS for k, v in detail[c].items()}, "written": 0}
     if not live:
         return counts
-    protected_ids = {region: (environ.get(var) or "").strip() for var, region in PROTECTED}
-    before = report_region.protected(client, protected_ids, _fail)
+    report_region.require_configured({region: (environ.get(var) or "").strip() for var, region in PROTECTED}, _fail)
+    scoped = report_region.ScopedClient(client, heading["id"], _fail).adopt(*(b["id"] for pair in blocks.values() for b in pair))      # LIFE-613: only the blocks located above can be written
     try:
-        write(client, heading, blocks, lines, heading_text)
+        write(scoped, heading, blocks, lines, heading_text)
     except NotionError:
         raise _fail("COMMS_WRITE_FAILED") from None
-    if not router.protected_intact(MODULE, before, report_region.protected(client, protected_ids, _fail)):
-        raise _fail("PROTECTED_REGION_CHANGED")
     counts["written"] = 2 * len(blocks) + 1
     return counts

@@ -236,13 +236,11 @@ def run(limit, live, environ=os.environ, now=None, fetcher=fetch, client=None, p
         return counts
     (watch or backup_watch.record)(readings["backup"], environ, now)             # LIFE-129: never raises; the card's own result never depends on it
     (workers_watch or worker_watch.record)(readings["workers"], environ, now)     # LIFE-531: same: never raises
-    protected_ids = {region: (environ.get(var) or "").strip() for var, region in PROTECTED}
-    before = report_region.protected(client, protected_ids, _fail)
+    report_region.require_configured({region: (environ.get(var) or "").strip() for var, region in PROTECTED}, _fail)
+    scoped = report_region.ScopedClient(client, heading["id"], _fail).adopt(paragraph["id"])           # LIFE-613: only the two blocks located above can be written
     try:
-        write(client, heading, paragraph, segments, heading_text)
+        write(scoped, heading, paragraph, segments, heading_text)
     except NotionError:
         raise _fail("ORACLE_WRITE_FAILED") from None
-    if not router.protected_intact(MODULE, before, report_region.protected(client, protected_ids, _fail)):
-        raise _fail("PROTECTED_REGION_CHANGED")
     counts["written"] = 2
     return counts
