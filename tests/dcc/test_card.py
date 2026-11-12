@@ -1,6 +1,6 @@
 """D175: the Daily Command Center is written by V7 from what the other cards say on the page."""
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest import mock
 from zoneinfo import ZoneInfo
 
@@ -85,6 +85,29 @@ class ClassifyTests(unittest.TestCase):
         self.assertEqual(card.classify({"status": "no stamp here"}, NOW), ("unknown", None))
         self.assertEqual(card.classify({"unreadable": True}, NOW)[0], "unreadable")
         self.assertEqual(card.classify({"unset": True}, NOW)[0], "unset")
+
+
+class SlowerCardTests(unittest.TestCase):
+    """LIFE-612: a card the due-time table runs less often than every tick is current for its longest gap between runs plus the usual 90 minutes."""
+    TABLE = {"bills": {"slots_ct": ["00:00", "06:00", "12:00", "18:00"]}, "mail": {"every_hours": 6}, "amazon": {"every_hours": 3}, "jira": {"every_hours": 1}}
+
+    def test_the_window_is_the_longest_gap_plus_ninety_minutes_and_an_hourly_card_keeps_ninety(self):
+        self.assertEqual([card.fresh_minutes(label, self.TABLE) for label in ("Bills", "Mail Alerts", "Amazon", "Jira", "Hiring Pipeline", "Calendar")], [450, 450, 270, 90, 90, 90])
+        self.assertEqual(card.fresh_minutes("Bills", {"bills": {"slots_ct": ["03:00", "15:00"]}}), 90 + 12 * 60)          # uneven slots: the longest gap, wrapping past midnight
+
+    def test_a_bills_callout_written_by_the_last_slot_still_reads_fresh_when_the_next_one_is_not_yet_due(self):
+        for hours_old, state in ((5.9, "fresh"), (7.4, "fresh"), (7.6, "stale")):
+            stamped = NOW - timedelta(hours=hours_old)
+            line = f"Updated {stamped.strftime('%-I:%M %p')} CT · 0 due · 26 bills due"
+            self.assertEqual(card.classify({"status": line}, NOW, card.fresh_minutes("Bills", self.TABLE))[0], state, hours_old)
+
+    def test_the_real_table_gives_bills_the_four_slots_and_the_command_center_says_nothing_is_wrong_when_bills_was_skipped(self):
+        self.assertEqual(card.fresh_minutes("Bills"), 450)
+        areas = ComposeTests().areas(Bills={"status": "Updated 5:07 PM CT · 0 due through one week from now · 26 bills due · 26 overdue · Bill Tracker", "lines": [], "links": {}})
+        composed = card.compose(areas, NOW)                                          # NOW is 10:20 PM CT: the Bills callout is 5 hours old, as when the 6 PM slot is the next one
+        self.assertEqual(composed["detail"][1].split(" ")[0], "✅")
+        self.assertNotIn("STALE", composed["health"])
+        self.assertEqual(composed["kpis"][0][:2], ("26", "Bills due"))                 # its number is still shown, bound to its own stamp
 
 
 class ComposeTests(unittest.TestCase):
