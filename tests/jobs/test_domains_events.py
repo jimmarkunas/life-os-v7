@@ -71,10 +71,11 @@ def events(doc):
     return out
 
 
-def runs(doc, event):
+def runs(doc, event, not_due=()):
     """-> sorted names of the jobs that run for one trigger (every job that runs is taken to succeed; the benchmark gate is taken to pass)."""
     name, run_fields, inputs, variables, failing = event
-    ctx = {"github": {"event_name": name, "event": {"workflow_run": run_fields}}, "inputs": inputs, "vars": variables, "env": {}, "steps": {}}
+    due = {f"due_{job}": ("false" if job in not_due and name == "workflow_run" else "true") for job in doc["jobs"]}        # the gate's due step: every job due unless the test says otherwise (a tick only)
+    ctx = {"github": {"event_name": name, "event": {"workflow_run": run_fields}}, "inputs": inputs, "vars": variables, "env": {}, "steps": {"due": {"outputs": due}}}
     results = {}
     for job in order(doc["jobs"]):
         spec = doc["jobs"][job]
@@ -136,6 +137,27 @@ class DomainsEventTable(unittest.TestCase):
             if name not in ("gate", "bench_report"):
                 self.assertIn("gate", job["needs"], name)
         self.assertEqual(text.count("github.event.workflow_run.display_title == 'tick'"), 2, "the trigger clause is stated once in the gate job (its condition and its tick output)")
+
+    def test_a_job_that_is_not_due_is_skipped_on_a_tick_and_never_on_its_own_input_or_on_all(self):
+        """LIFE-609: the due output decides a tick; a manual run of that one job, `all` and a benchmark are not held back by the table."""
+        doc = load()
+        events_ = events(doc)
+        tick = events_["after hourly: tick, success"]
+        self.assertNotIn("mail", runs(doc, tick, not_due=("mail",)))
+        self.assertIn("mail", runs(doc, tick))
+        self.assertIn("mail", runs(doc, events_["dispatch: physical_mail=True"], not_due=("mail",)))
+        self.assertIn("mail", runs(doc, events_["dispatch: all=True"], not_due=("mail",)))
+        self.assertIn("mail", runs(doc, events_["dispatch: benchmark=True"], not_due=("mail",)))
+        others = [j for j in runs(doc, tick) if j != "mail"]
+        self.assertEqual(sorted(runs(doc, tick, not_due=("mail",))), sorted(others))               # nothing else changes with it
+
+    def test_a_skipped_job_does_not_stop_the_jobs_that_come_after_it_or_trigger_the_failure_push(self):
+        doc = load()
+        tick = events(doc)["after hourly: tick, success, V7_IMESSAGE_ALERTS=true"]
+        ran = runs(doc, tick, not_due=("mail", "amazon", "megibow"))
+        for job in ("hiring", "dcc", "imessage", "amazon_retention", "jira"):
+            self.assertIn(job, ran, job)                                                            # they all use always() or !cancelled(), so a skipped need does not stop them
+        self.assertNotIn("report", ran)                                                             # a skipped job is not a failure
 
     def test_the_negative_control_a_changed_trigger_is_caught(self):
         doc = load()
