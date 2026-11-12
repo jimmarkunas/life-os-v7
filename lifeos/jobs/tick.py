@@ -20,6 +20,8 @@ import sys
 import threading
 import time
 
+from lifeos.platform import source_registry as registry
+
 RUN_BUDGET_SECONDS = 35 * 60          # the workflow job allows 45 minutes; the rest is setup and the fast-path floors
 FAST_FLOOR_SECONDS = 60               # a fast-path stage is never skipped: late in a run it still gets this long
 
@@ -56,7 +58,6 @@ PLAN = (
     Step("web-scale-up", 300, 12, bulk=True, group="B", providers=("ats",)),
     Step("web-titlewatch", 240, bulk=True, group="B", providers=("tinyfish",)),
     Step("discover-jobs", 300, 12, bulk=True, group="B", providers=("tinyfish", "linkedin")),
-    Step("sponsors", 120, bulk=True, group="B"),
     Step("boards-backfill", 600, 450, bulk=True),   # D217: after the hourly work, so a first pass never takes time from it; off unless BOARDS_BACKFILL=on
     # LIFE-76 drain pass (Jim, Oct 25: "drain this backlog quickly"): the backlog the first pass found, in the run's spare time, never before the hourly
     # work. Publish first (READY rows already scored, gated first), then read and score more for the next run; each step finds nothing once the queue is empty.
@@ -65,6 +66,7 @@ PLAN = (
     Step("drain-enrich", 480, 600, bulk=True),       # no TinyFish fallback: the Fetch day cap stays the hourly pass's; 300 took 122 s at noon, 450 took 235 s at 2:14 PM CT (600 for Jim's 5 PM CT drain, Oct 25)
     Step("drain-fit", 240, bulk=True),
 )
+PLAN = registry.with_tick_steps(PLAN, Step)                                # LIFE-618: the registered sources' steps (lifeos/platform/source_registry.json), each after the step it names
 QUICK_LIMITS = {"boards": 50, "publish": 10, "publish-fresh": 5, "boards-backfill": 50, "drain-publish": 10, "drain-enrich": 50}   # a manual quick proof run (D206, D208) reads few boards and publishes few pages
 
 
