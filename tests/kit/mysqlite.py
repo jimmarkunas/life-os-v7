@@ -53,7 +53,7 @@ class Cursor:
 
 class MySQLite:
     def __init__(self):
-        self.raw = sqlite3.connect(":memory:", isolation_level=None)
+        self.raw = sqlite3.connect(":memory:", isolation_level=None, check_same_thread=False)
         self.fail_on = None
         self.statements = []
 

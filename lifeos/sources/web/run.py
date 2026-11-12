@@ -3,9 +3,11 @@ accepted state, drop unequivocal misses cheaply, and admit the rest into Jobs OS
 The accepted state only advances on a COMPLETE listing; a FAILED board keeps its state and can never imply a removal.
 """
 from concurrent.futures import ThreadPoolExecutor
+import json
 import os
 import sys
 import threading
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from hashlib import sha1
@@ -15,6 +17,12 @@ from lifeos.platform import bench, limits, read_slots
 from lifeos.sources.web import diff, lister, registry, suppress
 
 DEFAULT_LANE = "US Remote"
+SAVE_SECONDS = 20                  # LIFE-616 (Jim, Nov 12 2026): one board's save gets this long; past it the board is `save_timeout`, not the stage
+STAGE_FAILS_AT = 3                 # LIFE-616: the stage itself fails when at least this many boards failed AND at least half of the boards due did (boards that answer not_found do not count)
+
+
+class BoardsFailing(RuntimeError):
+    """The stage-level failure of LIFE-616. The message is the fixed code."""
 PROVIDER = {"greenhouse": "Greenhouse", "ashby": "Ashby", "lever": "Lever", "smartrecruiters": "SmartRecruiters", "workable": "Workable",
             "pinpoint": "Pinpoint", "workday": "Workday", "jibe": "Jibe", "teamtailor": "Teamtailor"}
 
@@ -237,7 +245,48 @@ class SqlRepo:
         return job_id
 
 
-def bounded(lister_fn, seconds):
+def save_bounded(commit, seconds, stuck=None):
+    """LIFE-616: one board's save gets a hard wall-clock limit, as its read does. -> (saved, seconds taken). Past `seconds` the board is failed `save_timeout`, its accepted state is not
+    advanced (it is read again on its normal retry), the write is left running on a daemon thread and the loop moves on. An error inside the write is raised here, as before.
+    `stuck` (a list kept by the caller) holds a timed-out write: the next save never runs beside it on the same connection, it waits for it within its own limit and fails the same way if it is still running."""
+    box = {}
+    began = time.monotonic()
+    if stuck:
+        stuck[0].join(seconds)
+        if stuck[0].is_alive():
+            return False, round(time.monotonic() - began, 1)
+        stuck.clear()
+
+    def work():
+        try:
+            commit()
+        except BaseException as error:                                           # noqa: BLE001 - handed back to the caller's thread below
+            box["error"] = error
+        else:
+            box["ok"] = True
+    thread = threading.Thread(target=work, daemon=True)
+    thread.start()
+    thread.join(max(seconds - (time.monotonic() - began), 0))
+    took = round(time.monotonic() - began, 1)
+    if thread.is_alive():
+        if stuck is not None:
+            stuck[:] = [thread]
+        return False, took
+    if "error" in box:
+        raise box["error"]
+    return True, took
+
+
+def summary_markdown(lane, rows, limit=10):
+    """LIFE-616: the per-board table for the job summary: the slowest boards and every failed one (public registry ids, result codes and seconds only)."""
+    shown = sorted(rows, key=lambda r: -(r[2] + r[3]))[:limit]
+    shown += [r for r in rows if r[1] not in ("COMPLETE", "UNCHANGED") and r not in shown][:20]
+    lines = [f"### Web boards, {lane}: read and save seconds", "", "| Board | Result | Read s | Save s |", "|---|---|---:|---:|"]
+    lines += [f"| {r[0]} | {r[1]} | {r[2]} | {r[3]} |" for r in shown]
+    return "\n".join(lines) + "\n"
+
+
+def bounded(lister_fn, seconds, timings=None):
     """LIFE-567: one board read gets a hard wall-clock limit. The request timeout only limits the wait for the next bytes, so a host that trickles data (or a stalled
     store write) could hold a worker for minutes. Past `seconds` the board is FAILED ("board_timeout", retried on the normal schedule), its still-running read is
     left on a daemon thread, and the other boards finish and commit."""
@@ -247,6 +296,7 @@ def bounded(lister_fn, seconds):
 
     def read(source):
         box = {}
+        began = time.monotonic()
 
         def work():
             try:
@@ -256,6 +306,8 @@ def bounded(lister_fn, seconds):
         thread = threading.Thread(target=work, daemon=True)
         thread.start()
         thread.join(seconds)
+        if timings is not None:
+            timings[source["id"]] = round(time.monotonic() - began, 1)
         if thread.is_alive():
             return lister.Listing(lister.FAILED, reason="board_timeout")
         if "error" in box:
@@ -265,7 +317,7 @@ def bounded(lister_fn, seconds):
 
 
 def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=None, lane=DEFAULT_LANE, cap=None, budget=None, screen=None, workers=None, select=None,
-        board_seconds=None):
+        board_seconds=None, save_seconds=None):
     """D202: the employer-board pass reuses this run with its own cap, admission budget, workers and `screen` (job -> reason, applied to a
     COMPLETE listing before the diff; only "kept_" jobs are stored, and a stored job screened out while still listed stays CURRENT)."""
     now = now or _now()
@@ -291,15 +343,38 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
     unread = sum(s["id"] not in states for s in sources)
     states = {k: v for k, v in states.items() if k not in forced}           # a forced read is a full read: no validators, no skip
     counts = {"lane": lane, "sources": len(sources), "due": len(due), "complete": 0, "failed": 0, "added": 0, "changed": 0, "unchanged": 0,
-              "removed": 0, "suppressed": 0, "admit": 0, "pending": 0, "why": {}, "failed_why": {}, "failed_kind": {}, "failed_ids": [], "dead_ids": [], "not_modified": 0, "same_frontier": 0}
+              "removed": 0, "suppressed": 0, "admit": 0, "pending": 0, "why": {}, "failed_why": {}, "failed_kind": {}, "failed_ids": [], "dead_ids": [], "not_modified": 0, "same_frontier": 0, "save_timeout": 0}
+    stuck_saves = []                                                                    # a save that outlived its limit; see save_bounded
     if select:
         counts["unread"] = unread                                               # D217: boards never read (before this run)
     asked = [{**s, "if_etag": states[s["id"]].get("etag"), "if_modified": states[s["id"]].get("last_modified")}
              if skip_allowed(states.get(s["id"])) else s for s in due]          # D216: validators go out only when a skip is allowed
     waiting = None
+    read_seconds, rows = {}, []                                                # LIFE-616: per board, seconds of the read and of the save, and the result
+
+    def note_failure(source, reason, failures):
+        counts["failed"] += 1
+        counts["failed_why"][reason] = counts["failed_why"].get(reason, 0) + 1
+        kind = str(source.get("kind") or "unknown")
+        counts["failed_kind"][kind] = counts["failed_kind"].get(kind, 0) + 1              # the board's ATS family
+        if len(counts["failed_ids"]) < 10:
+            counts["failed_ids"].append(source["id"])                                     # a public registry id (the source list is committed), never a job
+        if reason == "not_found" and failures + 1 >= limits.BOARDS_DEAD_AFTER and len(counts["dead_ids"]) < limits.BOARDS_DEAD_IDS_MAX:
+            counts["dead_ids"].append(source["id"])                                       # Oct 25 2026: the boards that keep answering not_found, for the skip-list review (ids only)
+
+    def save(source, outcome, failures, result):
+        """-> True when saved (or a dry run). A save past its limit is counted and reported as that board's failure, never the stage's."""
+        saved, took = True, 0.0
+        if live:
+            saved, took = save_bounded(lambda: repo.commit(outcome, failures, lane), save_seconds or SAVE_SECONDS, stuck_saves)
+        if not saved:
+            counts["save_timeout"] += 1
+        rows.append((source["id"], result if saved else "save_timeout", read_seconds.get(source["id"], 0.0), took))
+        return saved
+
     pool = ThreadPoolExecutor(max_workers=workers or limits.ATS_WORKERS)          # priority boards are on different hosts; seed boards pass fewer workers
     try:
-        listings = iter(pool.map(bounded(lister_fn, board_seconds or limits.WEB_BOARD_SECONDS), asked))                                     # Oct 25 2026: lazy, in order, so each board is committed as its answer arrives:
+        listings = iter(pool.map(bounded(lister_fn, board_seconds or limits.WEB_BOARD_SECONDS, read_seconds), asked))                                     # Oct 25 2026: lazy, in order, so each board is committed as its answer arrives:
         budget = limits.WEB_INGEST_PER_RUN if budget is None else budget
         if screen:
             counts["screen"], counts["still_listed"] = {}, 0
@@ -327,10 +402,11 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
                 outcome = Outcome(source, now, "UNCHANGED", skip, frontier=state.get("frontier"), validators=listing.validators,
                                   unchanged_runs=state.get("unchanged_runs", 0) + 1)
                 outcome.due_at = next_due(source["id"], now, True, 0, 0, source.get("hot_hours") or source.get("refresh_hours"), outcome.unchanged_runs)
+                if not save(source, outcome, failures, "UNCHANGED"):
+                    note_failure(source, "save_timeout", failures)
+                    continue
                 counts["complete"] += 1
                 counts[skip] += 1
-                if live:
-                    repo.commit(outcome, failures, lane)
                 continue
             previous = repo.items(source["id"])
             outcome = plan(source, listing, previous, now, budget, lane, listed)
@@ -342,15 +418,11 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
             outcome.validators = listing.validators
             outcome.due_at = next_due(source["id"], now, outcome.status == "COMPLETE", failures, outcome.pending,
                                       (source.get("hot_hours") if hot else None) or source.get("refresh_hours"), outcome.unchanged_runs)
+            saved = save(source, outcome, failures, outcome.reason if outcome.status == "FAILED" else "COMPLETE")
             if outcome.status == "FAILED":
-                counts["failed"] += 1
-                counts["failed_why"][outcome.reason] = counts["failed_why"].get(outcome.reason, 0) + 1
-                kind = str(source.get("kind") or "unknown")
-                counts["failed_kind"][kind] = counts["failed_kind"].get(kind, 0) + 1          # the board's ATS family
-                if len(counts["failed_ids"]) < 10:
-                    counts["failed_ids"].append(source["id"])                                 # a public registry id (the source list is committed), never a job
-                if outcome.reason == "not_found" and failures + 1 >= limits.BOARDS_DEAD_AFTER and len(counts["dead_ids"]) < limits.BOARDS_DEAD_IDS_MAX:
-                    counts["dead_ids"].append(source["id"])                                   # Oct 25 2026: the boards that keep answering not_found, for the skip-list review (ids only)
+                note_failure(source, outcome.reason, failures)
+            elif not saved:
+                note_failure(source, "save_timeout", failures)
             else:
                 counts["complete"] += 1
                 budget -= len(outcome.admit)
@@ -360,8 +432,6 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
                     counts["still_listed"] += outcome.counts["still_listed"]
                 for why, n in outcome.counts["why"].items():
                     counts["why"][why] = counts["why"].get(why, 0) + n
-            if live:
-                repo.commit(outcome, failures, lane)
     except BaseException:                                                         # LIFE-567: the tick's stage timeout is a BaseException; name the board, then let it through
         if waiting:
             print(f"web: stopped while waiting for board {waiting}", file=sys.stderr)       # a public registry id, never a job
@@ -369,4 +439,16 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
     finally:                                                                      # a pass stopped at its tick budget keeps every board it committed, and the boards
         pool.shutdown(wait=False, cancel_futures=True)                            # not yet asked are cancelled, never read after the stage has stopped
     counts["saved"] = bool(live)
+    counts["slowest"] = [[r[0], r[2], r[3]] for r in sorted(rows, key=lambda r: -(r[2] + r[3]))[:10]]       # LIFE-616: the ten slowest boards, public registry ids with read and save seconds
+    path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if path and rows:
+        try:
+            with open(path, "a") as handle:
+                handle.write(summary_markdown(lane, rows))
+        except OSError:
+            pass                                                                  # a summary is a convenience; never fail a stage for it
+    real = counts["failed"] - counts["failed_why"].get("not_found", 0)
+    if real >= STAGE_FAILS_AT and real * 2 >= counts["due"]:                      # LIFE-616: a systemic failure, not one bad board: the stage (and so the tick) fails, after its counts are printed
+        print(f"web ({lane}):", json.dumps(counts, sort_keys=True))
+        raise BoardsFailing("WEB_BOARDS_FAILING")
     return counts

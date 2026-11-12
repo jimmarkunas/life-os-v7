@@ -779,6 +779,7 @@ CODES = {
     "SHIPMENT_STATE_MISSING": _r("physmail", "terminal", False, "A mail has no shipment state.", "Review the mail."),
     "SNAPSHOT_INVALID": _r("hiring", "bug", False, "The stored snapshot is not valid.", "Re-run the snapshot."),
     "SNAPSHOT_STALE": _r("hiring", "state", False, "Hiring evidence: the snapshot is stale.", "None."),
+    "WEB_BOARDS_FAILING": _r("web", "retry", True, "At least three web boards failed and they are at least half of the boards due in this run.", "Read the boards line and the job summary table for the failing boards; the next run retries them.", "info"),
     "SOURCE_DUPLICATE": _r("recruiters", "blocked", False, "Two sources share one id.", "Remove the duplicate."),
     "SOURCE_TOO_MANY": _r("recruiters", "blocked", False, "More sources than the card can show.", "Reduce the sources."),
     "STAFFING_OUTREACH": _r("recruiters", "state", False, "Classifier reason: a staffing-firm outreach.", "None."),
