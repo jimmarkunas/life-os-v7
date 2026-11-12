@@ -3,10 +3,7 @@
 Bill Tracker -> bills-paid -> bills-snapshot -> bills-card. This stage only reads the accepted private snapshot and writes the one callout it owns;
 it never reads or writes the Bill Tracker, and it never advances a Due Date (the Paid processor owns that). The supporting window is calculated at
 render time from the America/Chicago date, [today, today + 7] (the same boundary as the Bills view's native 'one week from now' filter); no calendar date is stored anywhere. Counts-only logs, fixed error codes."""
-import hashlib
-import json
 import os
-from copy import deepcopy
 from datetime import datetime, timedelta
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
@@ -62,56 +59,9 @@ def _same_id(left, right):
     return isinstance(left, str) and isinstance(right, str) and left.replace("-", "").lower() == right.replace("-", "").lower()
 
 
-VOLATILE = {"last_edited_time", "last_edited_by", "request_id", "expiry_time"}      # metadata that changes without the content changing
-
-
-def _stable(node):
-    if isinstance(node, dict):
-        out = {k: _stable(v) for k, v in node.items() if k not in VOLATILE}
-        if out.get("type") == "file" or "expiry_time" in node:
-            out.pop("url", None)
-        return out
-    if isinstance(node, list):
-        return [_stable(v) for v in node]
-    return node
-
-
-def _hash(value):
-    return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()[:16]
-
-
-def _tree(client, block):
-    node = deepcopy(block)
-    if block.get("has_children"):
-        node["region_children"] = [_tree(client, child) for child in _children(client, block["id"])]
-    return node
-
-
-def _region_digest(client, block_id):
-    """One hash per field of a protected callout and one per child block, so a change can be located (names only)."""
-    meta = client.call("GET", f"/blocks/{quote(block_id, safe='')}")
-    if not isinstance(meta, dict) or meta.get("type") != "callout" or not _same_id(meta.get("id"), block_id):
-        raise CardError("BILLS_PROTECTED_REGION_UNAVAILABLE")
-    tree = _stable(_tree(client, meta))
-    kids = tree.pop("region_children", [])
-    return {"fields": {key: _hash(value) for key, value in tree.items()}, "children": [[child.get("type"), _hash(child)] for child in kids]}
-
-
-def _changed(before, after):
-    if not isinstance(before, dict) or not isinstance(after, dict):
-        return {"digest": "missing"}
-    fields = sorted(k for k in set(before["fields"]) | set(after["fields"]) if before["fields"].get(k) != after["fields"].get(k))
-    kids = [i for i in range(max(len(before["children"]), len(after["children"])))
-            if (before["children"][i:i + 1] or [None]) != (after["children"][i:i + 1] or [None])]
-    return {"fields": fields, "children": kids}
-
-
-def _insert_after(client, block_id, after_id, blocks, after_write):
+def _insert_after(client, block_id, after_id, blocks):
     """Insert the new text right under the heading, so the table below it keeps its place."""
-    try:
-        result = client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": blocks, "after": after_id})
-    finally:
-        after_write()
+    result = client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": blocks, "after": after_id})
     # Notion's reply to an insert-after can list the following blocks as well as the new ones, so the count is only a floor; the read-back is the proof.
     if not isinstance(result, dict) or not isinstance(result.get("results"), list) or len(result["results"]) < len(blocks):
         raise CardError("BILLS_CARD_APPEND_MISMATCH")
@@ -228,28 +178,11 @@ def render(saved, stale=False, now=None, tracker_url=None):
     return blocks, counts
 
 
-def _protected(client, environ):
-    """Digests of the V7 regions this stage must never change (Calendar, JIRA). Both ids must be configured."""
-    ids = {router.JIRA_REGION: (environ.get("JIRA_CARD_BLOCK_ID") or "").strip(), router.CALENDAR_REGION: (environ.get("CALENDAR_CARD_BLOCK_ID") or "").strip()}
-    if not all(ids.values()):
+def _configured(environ):
+    """The Jira and Calendar callouts must still be configured (a missing one means the page is not set up as expected); nothing is read from them. LIFE-613: the proof that this card writes only
+    inside its own region is the scope guard on the client, which refuses any other block before the write is sent, not a comparison of the other cards' regions afterwards."""
+    if not all((environ.get(name) or "").strip() for name in ("JIRA_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID")):
         raise CardError("BILLS_PROTECTED_REGION_UNAVAILABLE")
-    hiring_id = (environ.get("HIRING_CARD_BLOCK_ID") or "").strip()                   # the floating Hiring region joins the proof once its anchor is configured
-    try:
-        digests = {region: _region_digest(client, block_id) for region, block_id in ids.items()}
-        if hiring_id:
-            digests[router.HIRING_REGION] = report_region.region_digest(client, hiring_id, lambda code: CardError("BILLS_" + code))
-        return digests
-    except CardError:
-        raise
-    except Exception:
-        raise CardError("BILLS_PROTECTED_REGION_UNAVAILABLE") from None
-
-
-def _require_intact(client, environ, before):
-    after = _protected(client, environ)
-    if not router.protected_intact(MODULE, before, after):
-        print("bills: protected region changed", json.dumps({r: _changed(before.get(r), after.get(r)) for r in before if before.get(r) != after.get(r)}))
-        raise CardError("BILLS_PROTECTED_REGION_CHANGED")
 
 
 def _target(client, block_id):
@@ -300,19 +233,19 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
     now = _now(now)
     _valid(saved)
     stale = now - _instant(saved["taken_at"]) > timedelta(hours=STALE_HOURS)
-    client = client or _client(environ)
+    client = report_region.ScopedClient(client or _client(environ), block_id, lambda code: CardError("BILLS_" + code))       # LIFE-613: every write is checked against this card's own callout first
     existing = _target(client, block_id)
     blocks, counts = render(saved, stale, now, _tracker_link(existing))
     if not live:
         return counts
     old_text = [block for block in existing[1:] if _replaceable(block)]
     kept = [block["id"] for block in existing[1:] if not _replaceable(block)]            # the interactive table and anything else stays untouched, in order
-    before = _protected(client, environ)
+    _configured(environ)
     try:
         router.check_write(MODULE, [CARD_TITLE])
     except router.RouterError:
         raise CardError("BILLS_CARD_NOT_OWNED") from None
-    _insert_after(client, block_id, existing[0]["id"], blocks, lambda: _require_intact(client, environ, before))   # new text first: a failed write leaves the old text
+    _insert_after(client, block_id, existing[0]["id"], blocks)   # new text first: a failed write leaves the old text
     removed = 0
     for old in old_text:
         try:
@@ -325,10 +258,7 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
         except NotionError as error:
             if str(error) != "NOTION_HTTP_404":
                 raise
-        finally:
-            _require_intact(client, environ, before)
     after = _children(client, block_id)                   # authoritative read-back of the configured Bills region
-    _require_intact(client, environ, before)
     if (not _owned(after) or after[0].get("id") != existing[0].get("id") or len(after) != 1 + len(blocks) + len(kept)
             or [_plain(b) for b in after[1:1 + len(blocks)]] != [_plain(b) for b in blocks] or [b.get("id") for b in after[1 + len(blocks):]] != kept):
         raise CardError("BILLS_CARD_VERIFY_FAILED")

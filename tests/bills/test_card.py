@@ -4,6 +4,7 @@ import inspect
 import pathlib
 import unittest
 from datetime import date, datetime
+from unittest import mock
 from zoneinfo import ZoneInfo
 
 from lifeos.bills import card, paid, snapshot
@@ -179,13 +180,29 @@ class WriteTests(unittest.TestCase):
             self.assertEqual(kept, ["bills-view-old", extra["id"]])
             self.assertNotIn(extra["id"], {p.split("/")[2] for m, p in notion.log if m == "DELETE"})
 
-    def test_a_protected_region_changed_mid_write_fails_the_run(self):
+    def test_another_cards_write_during_ours_no_longer_fails_the_run(self):
+        """LIFE-613: the Jira and Calendar regions are no longer compared before and after our write, so a legitimate write by another card at the same time cannot fail this one."""
         for op in ("APPEND", "DELETE"):
             for region in ("calendar-callout", "jira-callout"):
-                notion = BillsRegions(change_on=op, change_region=region)
-                with self.assertRaises(card.CardError) as caught:
-                    self.run_card(notion)
-                self.assertEqual(str(caught.exception), "BILLS_PROTECTED_REGION_CHANGED")
+                counts = self.run_card(BillsRegions(change_on=op, change_region=region))
+                self.assertGreater(counts["blocks_written"], 0, (op, region))
+
+    def test_a_write_into_another_cards_block_is_refused_before_it_is_sent_and_nothing_changes(self):
+        """LIFE-613 mutation proof. A writer aimed at a block of another card (Jira's callout heading) must fail with the fixed code and leave that block untouched. On the old code the write went
+        through and was only noticed afterwards (BILLS_PROTECTED_REGION_CHANGED), so the untouched-block assertion fails there."""
+        notion = BillsRegions()
+        foreign = notion.children["jira-callout"][0]["id"]
+        before = notion.full_tree("jira-callout")
+
+        def buggy_writer(client, block_id, after_id, blocks, *rest):
+            client.call("PATCH", f"/blocks/{foreign}", {"heading_2": {"rich_text": [{"type": "text", "text": {"content": "overwritten"}}]}})
+
+        with mock.patch.object(card, "_insert_after", buggy_writer):
+            with self.assertRaises(card.CardError) as caught:
+                self.run_card(notion)
+        self.assertEqual(str(caught.exception), "BILLS_WRITE_OUT_OF_SCOPE")
+        self.assertEqual(notion.full_tree("jira-callout"), before)
+        self.assertEqual([m for m, _ in notion.log if m in ("PATCH", "APPEND", "DELETE")], [])
 
     def test_missing_protected_ids_refuse_a_live_write(self):
         for missing in ("CALENDAR_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID"):
