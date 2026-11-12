@@ -19,7 +19,8 @@ from lifeos.jobs import store
 from lifeos.platform.names import split_title
 from lifeos.platform.notion_client import NotionError
 from lifeos.platform.runtime import DeadlineExceeded, RunContext
-from lifeos.sources import granola_clients, interview_evidence
+from lifeos.sources.interview import granola_clients
+from lifeos.sources.interview import interview_evidence
 
 TZ = ZoneInfo("America/Chicago")
 PER_RUN = 3                        # meetings carried per run: a backlog drains over a few runs and one run stays well inside its time

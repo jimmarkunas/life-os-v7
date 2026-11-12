@@ -75,16 +75,16 @@ STAGES = {
     "boards": lazy("lifeos.sources.web.boards"),          # D202: the employer-board pass
     "boards-backfill": lazy("lifeos.sources.web.boards", "backfill"),     # D217: the hibernatable first-pass drainer (BOARDS_BACKFILL=on), the tick's last bulk stage
     "boards-preview": lazy("lifeos.sources.web.boards", "preview"),     # D202 acceptance: read-only, counts only
-    "linkedin-search": lazy("lifeos.sources.linkedin_search"),     # D203: shares the LinkedIn resolve lane with the job alerts
+    "linkedin-search": lazy("lifeos.sources.discovery.linkedin_search"),     # D203: shares the LinkedIn resolve lane with the job alerts
     "web-titlewatch": lazy("lifeos.sources.web.titlewatch"),
     "discover-jobs": lazy("lifeos.sources.web.discover_jobs"),
     "alerts": lazy("lifeos.jobs.alerts"),
     "interview-probe": lazy("lifeos.interview.stage", "probe"),
-    "interview": lazy("lifeos.sources.interview_evidence"),      # LIFE-88: the normal path (accepted evidence to the Interview OS writer); writes need INTERVIEW_OS_WRITER=v7
+    "interview": lazy("lifeos.sources.interview.interview_evidence"),      # LIFE-88: the normal path (accepted evidence to the Interview OS writer); writes need INTERVIEW_OS_WRITER=v7
     "interview-acceptance": lazy("lifeos.interview.acceptance"),
     "granola": lazy("lifeos.interview.granola_bridge", "stage"),     # LIFE-37 Step 2: carry ONE pinned Granola meeting (GRAN_PIN_DAY) from Oracle into its round; manual only, no schedule
-    "granola-auto": lazy("lifeos.sources.granola_auto", "stage"),          # LIFE-122: every synced Granola meeting not yet carried -> its round, catalogued in Hostinger, then purged whole from Oracle; dry run unless live (granola-auto.yml)
-    "manual-job": lazy("lifeos.sources.manual_job"),     # LIFE-37: ONE job Jim names by hand (MANUAL_JOB_*) into Jobs OS and the Interview OS writer; manual only (manual-job.yml), dry run unless live
+    "granola-auto": lazy("lifeos.sources.interview.granola_auto", "stage"),          # LIFE-122: every synced Granola meeting not yet carried -> its round, catalogued in Hostinger, then purged whole from Oracle; dry run unless live (granola-auto.yml)
+    "manual-job": lazy("lifeos.sources.pipeline.manual_job"),     # LIFE-37: ONE job Jim names by hand (MANUAL_JOB_*) into Jobs OS and the Interview OS writer; manual only (manual-job.yml), dry run unless live
     "jira-snapshot": lazy("lifeos.jira.snapshot"),
     "bills-snapshot": lazy("lifeos.bills.snapshot"),
     "bills-paid": lazy("lifeos.bills.paid"),
@@ -103,12 +103,12 @@ STAGES = {
     "scale-up-links": lazy("lifeos.jobs.linkcheck"),
     "scale-up-exclusions": lazy("lifeos.jobs.exclusions"),
     "scale-up-exclusion-review": lazy("lifeos.jobs.exclusions", "review"),          # LIFE-121: the high-scoring Scale-Up jobs Jim's own Fit rules removed, to one private Notion page (diag.yml, report job); counts in the clear
-    "scale-up-register": lazy("lifeos.sources.scale_up_register"),          # LIFE-121 London coverage step 1: current register vs the Scale-Up registry; London sponsors not held, to one private Notion page (diag.yml, report job)          # LIFE-121: read-only report of why Scale-Up jobs are EXCLUDED_FIT (reason, Fit band, source; counts only) (diag.yml)
+    "scale-up-register": lazy("lifeos.sources.discovery.scale_up_register"),          # LIFE-121 London coverage step 1: current register vs the Scale-Up registry; London sponsors not held, to one private Notion page (diag.yml, report job)          # LIFE-121: read-only report of why Scale-Up jobs are EXCLUDED_FIT (reason, Fit band, source; counts only) (diag.yml)
     "alerts-open": lazy("lifeos.jobs.alertstate"),
     "jobs-backlog": lazy("lifeos.jobs.backlog"),          # LIFE-212 (a): every job not on the Job Ledger yet and why it waits, to one dated private Notion page (diag.yml, report job); counts in the clear
     "newsletter-trace": lazy("lifeos.sources.newsletters.cardtrace"),      # LIFE-64: read-only per-card cause check for one message (diag.yml job `trace`); never on a tick
-    "notion-sandbox-access": lazy("lifeos.sources.notion_sandbox_access"),   # LIFE-10 §2: read-only check that the Jobs integration can read the synthetic sandbox Ledger (diag.yml job `sandbox`); never on a tick
-    "notion-sandbox-outreach-proof": lazy("lifeos.sources.notion_sandbox_outreach_proof"),   # LIFE-10 §2: one-time synthetic writer proof on one sandbox page (diag.yml job `sandbox`, typed SYNTHETIC); never on a tick
+    "notion-sandbox-access": lazy("lifeos.sources.proofs.notion_sandbox_access"),   # LIFE-10 §2: read-only check that the Jobs integration can read the synthetic sandbox Ledger (diag.yml job `sandbox`); never on a tick
+    "notion-sandbox-outreach-proof": lazy("lifeos.sources.proofs.notion_sandbox_outreach_proof"),   # LIFE-10 §2: one-time synthetic writer proof on one sandbox page (diag.yml job `sandbox`, typed SYNTHETIC); never on a tick
     "interview-ui-probe": lazy("lifeos.interview.ui_probe"),   # LIFE-88 first gate: can the V7 REST transport build UI 3c (diag.yml job `interview_ui`, typed QA); one QA probe page only; never on a tick
     "fit-edge-test": lazy("lifeos.jobs.fit.edge"),                       # LIFE-60: manual and synthetic-only (fit-edge-test.yml); never on a tick
     "safety-sql-smoke": lazy("lifeos.jobs.safety", "run_sql_smoke"),
@@ -120,7 +120,7 @@ STAGES = {
     "amazon-review-reset": lazy("lifeos.amazon.reset"),
     "mail-alerts": lazy("lifeos.physmail.stage", floor=1000),
     "mail-card": lazy("lifeos.physmail.card"),
-    "mail-filing": lazy("lifeos.sources.mail_filing", floor=200),          # LIFE-149: the Physical Mail vendor's notices marked read and moved to the "Physical Mail" label; dry run unless live (domains.yml mail job)
+    "mail-filing": lazy("lifeos.sources.cards.mail_filing", floor=200),          # LIFE-149: the Physical Mail vendor's notices marked read and moved to the "Physical Mail" label; dry run unless live (domains.yml mail job)
     "amazon-backfill": lazy("lifeos.amazon.backfill", floor=2000),
     "amazon-census": lazy("lifeos.delivery.census", floor=2000),
     "recruiters": lazy("lifeos.recruiters.stage"),
@@ -128,13 +128,13 @@ STAGES = {
     "attention": lazy("lifeos.attention.stage", floor=200),
     "imessage-alerts": lazy("lifeos.imessage.stage"),
     "imessage-comms": lazy("lifeos.imessage.comms_card"),
-    "oracle-card": lazy("lifeos.sources.oracle_card"),
+    "oracle-card": lazy("lifeos.sources.cards.oracle_card"),
     "attention-card": lazy("lifeos.attention.card"),
-    "megibow": lazy("lifeos.sources.megibow"),
+    "megibow": lazy("lifeos.sources.cards.megibow"),
     "capacity-card": lazy("lifeos.jobs.fit.capacity_card"),                  # LIFE-77 D228: the AI Capacity card; not configured (AI_CAPACITY_BLOCK_ID unset) until Jim activates it
-    "hiring": lazy("lifeos.sources.hiring"),
+    "hiring": lazy("lifeos.sources.pipeline.hiring"),
     "hiring-outcomes": lazy("lifeos.hiring.outcomes"),
-    "job-page-outreach": lazy("lifeos.sources.job_page_outreach"),        # LIFE-10 §2: the outreach table on each Job Ledger job page; live writes need JOB_PAGE_OUTREACH=on
+    "job-page-outreach": lazy("lifeos.sources.pipeline.job_page_outreach"),        # LIFE-10 §2: the outreach table on each Job Ledger job page; live writes need JOB_PAGE_OUTREACH=on
     "outlook-auth": _outlook_auth,
     "outlook-probe": lazy("lifeos.outlook.stage", "probe"),
     "outlook-newsletters": lazy("lifeos.sources.newsletters.outlook"),
@@ -143,10 +143,10 @@ STAGES = {
     "network-inspect": lazy("lifeos.network.inspect"),
     "network-import": lazy("lifeos.network.importer"),
     "network-audit": lazy("lifeos.network.importer", "audit"),
-    "network-match": lazy("lifeos.sources.network_leads"),
-    "network-surface": lazy("lifeos.sources.network_surface"),
-    "network-layout": lazy("lifeos.sources.ledger_layout"),
-    "sponsors": lazy("lifeos.sources.sponsor_register"),
+    "network-match": lazy("lifeos.sources.network.network_leads"),
+    "network-surface": lazy("lifeos.sources.network.network_surface"),
+    "network-layout": lazy("lifeos.sources.network.ledger_layout"),
+    "sponsors": lazy("lifeos.sources.discovery.sponsor_register"),
     "probe": lazy("lifeos.probe"),
     "enrich": lazy("lifeos.jobs.enrich"),
     "fit": lazy("lifeos.jobs.fit.stage", floor=500),

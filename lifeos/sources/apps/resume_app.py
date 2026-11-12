@@ -13,7 +13,7 @@ from lifeos.hiring import close_screen as S, decision as D
 from lifeos.platform import ledger_body as body
 from lifeos.platform import notion_files
 from lifeos.platform.notion_client import Client, NotionError
-from .close_app import TTL, HTML, _mac, _now, _same
+from lifeos.sources.close_app import TTL, HTML, _mac, _now, _same
 from .outreach_app import _fp, _job_section, job
 
 PATH = "Job Ledger / Build resume"

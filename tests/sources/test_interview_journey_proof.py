@@ -4,7 +4,8 @@ import unittest
 from datetime import datetime
 from lifeos.interview import notion
 from lifeos.interview.ui_probe import QA_PARENT
-from lifeos.sources import interview_evidence as ev, interview_journey_proof as proof
+from lifeos.sources.interview import interview_evidence as ev
+from lifeos.sources.proofs import interview_journey_proof as proof
 from tests.interview.support import ENV, page
 from tests.sources.test_interview_journey import NotionLike
 

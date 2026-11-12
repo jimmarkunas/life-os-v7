@@ -2,7 +2,7 @@
 ALERTS_ENABLED is the master switch (LIFE-71): alerts send only when it is exactly "on"; unset, empty or anything else means OFF. ALERT_SETTINGS is one small JSON document,
 {"v": 1, "channels": {"<registered alert key>": ["ntfy", "telegram", "whatsapp"]}}, that replaces an alert's default channels. An unreadable or invalid document, an unknown key and an
 unknown channel are ignored (the registry defaults apply), and a PAGE alert always keeps the phone: the page cannot untick it. The page that edits the document is served by the
-Close service on Oracle (lifeos/sources/alerts_app.py); this module is the one reader of what it saves."""
+Close service on Oracle (lifeos/sources/apps/alerts_app.py); this module is the one reader of what it saves."""
 import json
 import os
 

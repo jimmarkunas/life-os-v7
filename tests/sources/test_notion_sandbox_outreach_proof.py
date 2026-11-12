@@ -10,9 +10,9 @@ from unittest.mock import patch
 from lifeos import run as runner
 from lifeos.platform import report_region as R
 from lifeos.platform.notion_client import NotionError
-from lifeos.sources import job_page_outreach as J
-from lifeos.sources import notion_sandbox_outreach_proof as P
-from lifeos.sources.notion_sandbox_access import SANDBOX_SOURCE
+from lifeos.sources.pipeline import job_page_outreach as J
+from lifeos.sources.proofs import notion_sandbox_outreach_proof as P
+from lifeos.sources.proofs.notion_sandbox_access import SANDBOX_SOURCE
 from tests.kit.tree import Tree
 
 ON = {"PROOF_CONFIRM": "SYNTHETIC"}

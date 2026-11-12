@@ -3,7 +3,7 @@
 hourly tick -> domains.yml `imessage` job (already on the tailnet as tag:v7-runner) -> Oracle's private endpoint, request `oracle1` -> this stage -> Notion.
 Oracle answers numbers only (lifeos/oraclecloud/oracle/stats.mjs): month-to-date cost from OCI billing, CPU from OCI Monitoring, the Always Free A1 core
 headroom from OCI Limits, Oracle's idle-reclaim rule, local memory and disk and service health. The two Codex windows are not Oracle's own plan read: the stage
-lifeos.sources.oracle_card passes in the same `limits` reading the AI Capacity card shows (`plan`, left = 100 - used), so the two cards cannot disagree. Every tick
+lifeos.sources.cards.oracle_card passes in the same `limits` reading the AI Capacity card shows (`plan`, left = 100 - used), so the two cards cannot disagree. Every tick
 writes the card; a Codex reading that cannot be had is shown as unavailable and marks the card DEGRADED, as AI Capacity does.
 
 Live, it changes exactly two blocks of the callout Jim made: the heading's stamp (`Oracle Cloud (Updated Oct 15 · 7:05 AM CT)`, with `DEGRADED · ` in front

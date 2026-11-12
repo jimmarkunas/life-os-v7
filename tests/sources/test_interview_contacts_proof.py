@@ -1,4 +1,4 @@
-"""LIFE-88 E10 synthetic QA (lifeos/sources/interview_contacts_proof.py), run exactly as the manual interview-proof dispatch runs it (confirm = E10), on the production-shaped fakes:
+"""LIFE-88 E10 synthetic QA (lifeos/sources/proofs/interview_contacts_proof.py), run exactly as the manual interview-proof dispatch runs it (confirm = E10), on the production-shaped fakes:
 the Interview pages on the journey's Notion fake and the sandbox Job Ledger as a Notion data source on the same client."""
 import copy
 import json
@@ -7,7 +7,8 @@ from datetime import datetime
 
 from lifeos.interview.ui_probe import LEDGER_ROW, QA_PARENT
 from lifeos.platform.notion_client import NotionError
-from lifeos.sources import interview_contacts_proof as proof, interview_evidence as ev
+from lifeos.sources.proofs import interview_contacts_proof as proof
+from lifeos.sources.interview import interview_evidence as ev
 from tests.interview.support import ENV
 from tests.sources.test_m1m2_proof import QAWorkspace
 

@@ -5,7 +5,7 @@ from datetime import timedelta
 from lifeos.network import surface
 from lifeos.platform import report_region as R
 from lifeos.platform.notion_client import NotionError
-from lifeos.sources import job_page_outreach as P
+from lifeos.sources.pipeline import job_page_outreach as P
 from tests.hiring.support import writes
 from tests.recruiters.fakes import FakeRecruiters
 from tests.kit.tree import Tree

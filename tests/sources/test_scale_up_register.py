@@ -1,6 +1,6 @@
 import unittest
 
-from lifeos.sources import scale_up_register as reg
+from lifeos.sources.discovery import scale_up_register as reg
 from tests.kit import shared
 
 CSV = ("Organisation Name,Town/City,County,Type & Rating,Route\n"

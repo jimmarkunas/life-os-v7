@@ -7,7 +7,8 @@ import urllib.error
 from unittest import mock
 
 from lifeos.platform import alert_registry as registry, alert_settings as settings, alerts
-from lifeos.sources import alerts_app as app, close_app as C
+from lifeos.sources import close_app as C
+from lifeos.sources.apps import alerts_app as app
 
 LOGIN = "jim@example.com"
 SECRET = b"s" * 32
@@ -203,13 +204,13 @@ class Screen(unittest.TestCase):
     def test_the_stylesheet_is_served_and_the_service_routes_both_paths(self):
         self.assertEqual(app.handle_css(request(path="/alerts.css"), {}, {})[:2], (200, "text/css; charset=utf-8"))
         for path, name in (("/alerts", "handle"), ("/alerts.css", "handle_css")):
-            self.assertEqual(C.ROUTES[path], ("alerts_app", name))
+            self.assertEqual(C.ROUTES[path], ("apps.alerts_app", name))
         status, ctype, body, _ = C.handle(request(path="/alerts.css"), {"login": LOGIN}, {})
         self.assertEqual((status, ctype), (200, "text/css; charset=utf-8"))
         self.assertIn(".sw input:checked", body.decode())
 
     def test_the_release_closure_carries_the_screen_and_what_it_imports(self):
-        for path in ("lifeos/sources/alerts_app.py", "lifeos/platform/alerts.py", "lifeos/platform/alert_registry.py", "lifeos/platform/alert_settings.py", "lifeos/platform/redact.py"):
+        for path in ("lifeos/sources/apps/alerts_app.py", "lifeos/platform/alerts.py", "lifeos/platform/alert_registry.py", "lifeos/platform/alert_settings.py", "lifeos/platform/redact.py"):
             self.assertIn(path, C.CLOSURE)
 
 

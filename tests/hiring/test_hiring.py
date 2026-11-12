@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 from lifeos.hiring import card, compile as C, models as M, render, snapshot
 from lifeos.jobs import hiring_pipeline, ledger
 from lifeos.platform import report_region as R, router
-from lifeos.sources import hiring as stage
+from lifeos.sources.pipeline import hiring as stage
 from tests.kit.tree import Tree, rich
 from tests.hiring.support import writes
 
@@ -819,7 +819,7 @@ class RuntimePathTests(unittest.TestCase):
 
     def test_entry_point_is_a_registered_stage_and_the_region_job_waits_for_no_other_writer_but_dcc_follows_every_writer(self):
         from lifeos import run as entry
-        self.assertEqual(entry.STAGES["hiring"].target, ("lifeos.sources.hiring", "run"))
+        self.assertEqual(entry.STAGES["hiring"].target, ("lifeos.sources.pipeline.hiring", "run"))
         import yaml
         doc = yaml.safe_load((ROOT / ".github/workflows/domains.yml").read_text())
         self.assertEqual(doc["jobs"]["hiring"]["needs"], ["gate"])                                 # LIFE-613: its writes reach only its own heading, table and rows (ScopedClient), so it waits for nobody
@@ -1086,14 +1086,14 @@ class AutoCloseTests(unittest.TestCase):
 
 
 class GuardrailTests(unittest.TestCase):
-    SOURCES = ["lifeos/hiring/models.py", "lifeos/hiring/compile.py", "lifeos/hiring/render.py", "lifeos/hiring/snapshot.py", "lifeos/hiring/card.py", "lifeos/sources/hiring.py"]
+    SOURCES = ["lifeos/hiring/models.py", "lifeos/hiring/compile.py", "lifeos/hiring/render.py", "lifeos/hiring/snapshot.py", "lifeos/hiring/card.py", "lifeos/sources/pipeline/hiring.py"]
 
     def test_there_is_no_mail_calendar_jira_ledger_or_tinyfish_mutation_path(self):
         for name in self.SOURCES:
             text = (ROOT / name).read_text().lower()
             for banned in ("tinyfish", "gmail", "outlook", ".insert(", "update_event", "delete_event", "send_message", "update_page_properties", ".create(", "lifeos.jira", "lifeos.interview"):
                 self.assertNotIn(banned, text, f"{name}: {banned}")
-        self.assertEqual(re.findall(r"client\.call(?:_once)?\(\"(?:POST|PUT)\"", (ROOT / "lifeos/sources/hiring.py").read_text()), [])
+        self.assertEqual(re.findall(r"client\.call(?:_once)?\(\"(?:POST|PUT)\"", (ROOT / "lifeos/sources/pipeline/hiring.py").read_text()), [])
 
     def test_the_hiring_package_imports_platform_only_and_the_adapter_is_the_only_cross_domain_door(self):
         import ast

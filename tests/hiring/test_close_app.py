@@ -12,7 +12,8 @@ from unittest import mock
 from lifeos.edge import close_gate
 from lifeos.edge.oracle import close_release as rel
 from lifeos.hiring import close_screen, decision as D, models as M
-from lifeos.sources import close_app, hiring as hiring_source
+from lifeos.sources import close_app
+from lifeos.sources.pipeline import hiring as hiring_source
 from tests.edge.support import github
 from tests.hiring import test_decision as TD, test_hiring as T
 from tests.hiring.test_notes_decision import COMPANY, ROLE, World, options

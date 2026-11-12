@@ -86,7 +86,7 @@ class Delegation(unittest.TestCase):
 
     def test_stage_is_registered_and_normal_stages_stay_evidence_free(self):
         self.assertIn("interview-acceptance", STAGES)
-        from lifeos.sources import interview_evidence
+        from lifeos.sources.interview import interview_evidence
         for name, owner, target in (("interview", interview_evidence, "run"), ("interview-probe", stage, "probe")):
             with patch.object(owner, target, return_value={}) as call:
                 STAGES[name](20, False)

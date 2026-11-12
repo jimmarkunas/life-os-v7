@@ -3,7 +3,7 @@ import unittest
 from lifeos.jobs import names, sponsors
 from lifeos.jobs.lanes import NEGATIVE, POSITIVE, UNRESOLVED
 from lifeos.platform.http import Fetched
-from lifeos.sources import sponsor_register as reg
+from lifeos.sources.discovery import sponsor_register as reg
 
 CSV = ("Organisation Name,Town/City,County,Type & Rating,Route\n"
        "Monzo Bank Limited,London,,Worker (A rating),Skilled Worker\n"

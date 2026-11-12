@@ -4,7 +4,8 @@ import unittest
 from datetime import datetime
 from lifeos.interview import create, notion, stage
 from lifeos.interview.models import RoundQuery
-from lifeos.sources import hiring, interview_evidence as ev
+from lifeos.sources.pipeline import hiring
+from lifeos.sources.interview import interview_evidence as ev
 from tests.interview.test_confirm import DATE, LATER, PARENT, REF, pending_round
 from tests.interview.test_notion import ENV
 from tests.sources.support import event

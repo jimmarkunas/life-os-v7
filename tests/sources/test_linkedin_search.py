@@ -6,7 +6,7 @@ import unittest
 from lifeos.jobs import identity
 from lifeos.jobs.resolve import stage
 from lifeos.platform.http import Fetched
-from lifeos.sources import linkedin_search as ls
+from lifeos.sources.discovery import linkedin_search as ls
 from tests.jobs.fakes_jobsdb import JobsDB
 
 NOW = datetime(2026, 10, 17, 22, 0)

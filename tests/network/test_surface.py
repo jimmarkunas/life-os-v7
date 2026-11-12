@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from lifeos.network import store, surface
 from lifeos.network.errors import NetworkError
-from lifeos.sources import network_surface
+from lifeos.sources.network import network_surface
 from tests.jobs.fakes_ledger import FakeLedger
 from tests.kit.mysqlite import MySQLite
 from tests.network.test_match import pipeline_row, save_pipeline
@@ -477,7 +477,7 @@ class Contract(unittest.TestCase):
     ROOT = pathlib.Path(__file__).resolve().parents[2]
 
     def test_surface_code_has_no_mail_or_pipeline_page_writes_and_is_not_in_the_hourly_workflow(self):
-        for name in ("lifeos/network/surface.py", "lifeos/sources/network_surface.py"):
+        for name in ("lifeos/network/surface.py", "lifeos/sources/network/network_surface.py"):
             text = (self.ROOT / name).read_text()
             for banned in ("TinyFish", "tinyfish", "sendMail", "/send", "move(", "hiring_pipeline.read", "Hiring Pipeline page"):
                 self.assertNotIn(banned, text, name)
