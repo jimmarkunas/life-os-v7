@@ -62,10 +62,8 @@ Ruff is an **advisory** check: it runs on the Python files a pull request change
 | `tests/bills` | 5 |
 | `lifeos/hiring` | 4 |
 | `lifeos/jira` | 4 |
-| `lifeos/synthetic` | 4 |
 | `tests/oraclecloud` | 4 |
 | `tests/physmail` | 4 |
-| `tests/synthetic` | 4 |
 | `lifeos/dcc` | 3 |
 | `lifeos/delivery` | 3 |
 | `tests/jira` | 3 |
