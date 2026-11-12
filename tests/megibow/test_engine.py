@@ -191,7 +191,7 @@ class Warnings(unittest.TestCase):
         self.assertEqual(R.notes([], degraded=True), "")
 
     def test_status_lines(self):
-        self.assertIn("Last refreshed Wed Oct 7, 1:00 PM CT", R.status(NOW))
+        self.assertIn("Updated Wed Oct 7, 1:00 PM CT", R.status(NOW))
         self.assertTrue(R.status(NOW, degraded=True).startswith("DEGRADED"))
         self.assertIn("Review needed — 2", R.status(NOW, review=2))
 

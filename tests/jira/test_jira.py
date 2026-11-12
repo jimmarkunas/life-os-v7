@@ -476,7 +476,7 @@ class WorkflowTests(unittest.TestCase):
     def test_automatic_runs_refresh_snapshot_and_card_but_never_roll_over_or_probe(self):
         job = self.job()
         self.assertRegex(self.domains, r'jira:\n(?:.*\n)*?\s+default: "none"')
-        auto = "needs.gate.outputs.run == 'true'"                                            # after an hourly tick, never after a manual run (decided once, in the gate job)
+        auto = "needs.gate.outputs.due_jira == 'true'"                                            # after an hourly tick, never after a manual run (decided once, in the gate job)
         self.assertIn(auto, job.split("runs-on")[0])
         for step_id, nxt in (("jrollauto", "jsnap"), ("jsnap", "jcard"), ("jcard", "jprobe")):
             step = job[job.index(f"id: {step_id}"):job.index(f"id: {nxt}")]

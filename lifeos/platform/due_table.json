@@ -1,0 +1,19 @@
+{
+  "_how_to_read": "One row per domain job in .github/workflows/domains.yml. every_hours: the job runs when its last successful run (measured from the start of that run) was at least that long ago, minus 15 minutes of slack; 1 means every tick. slots_ct: fixed Central-Time slots (HH:MM); the job runs once after a slot has passed since its last success. LIFE-609. Jim's rows: comment 12803.",
+  "jobs": {
+    "jira": {"every_hours": 1},
+    "outlook": {"every_hours": 1},
+    "bills": {"every_hours": 1},
+    "agenda": {"every_hours": 1},
+    "amazon": {"every_hours": 3},
+    "amazon_retention": {"every_hours": 1},
+    "mail": {"every_hours": 6},
+    "hiring": {"every_hours": 1},
+    "attention": {"every_hours": 1},
+    "megibow": {"every_hours": 3},
+    "dcc": {"every_hours": 1},
+    "recruiters": {"every_hours": 1},
+    "imessage": {"every_hours": 1},
+    "granola": {"every_hours": 1}
+  }
+}

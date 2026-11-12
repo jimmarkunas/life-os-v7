@@ -166,7 +166,7 @@ def stale(branches, open_prs, now, days=STALE_DAYS, keep=KEEP):
 def lines(rows, now):
     """The callout's text: one status line, then one line per stale branch. Branch names and PR numbers only."""
     stale_rows = [r for r in rows if r["stale"]]
-    head = (f"Updated {now.astimezone(TZ).strftime('%a %b %-d, %-I:%M %p %Z')} · {len(rows)} branches besides main · "
+    head = (f"Updated {now.astimezone(TZ).strftime('%a %b %-d, %-I:%M %p')} CT · {len(rows)} branches besides main · "
             f"{sum(1 for r in rows if r['pr'])} with an open PR · {len(stale_rows)} idle {STALE_DAYS}+ days")
     body = [f"{('PR #' + str(r['pr'])) if r['pr'] else 'no PR'} · {r['branch']} · idle {r['idle_days']} days" + (" · kept on purpose" if r["kept"] else "")
             for r in stale_rows]

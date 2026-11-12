@@ -142,7 +142,7 @@ class Report(unittest.TestCase):
         self.assertEqual([(r["branch"], r["pr"], r["idle_days"], r["stale"], r["kept"]) for r in rows],
                          [("docs/old", 191, 20, True, False), ("claude/life41-edge-fixtures", None, 8, True, True), ("claude/fresh", None, 2, False, False)])
         text = branches.lines(rows, NOW)
-        self.assertEqual(text[0], "Updated Mon Oct 26, 8:37 AM CDT · 3 branches besides main · 1 with an open PR · 2 idle 7+ days")
+        self.assertEqual(text[0], "Updated Mon Oct 26, 8:37 AM CT · 3 branches besides main · 1 with an open PR · 2 idle 7+ days")
         self.assertEqual(text[1:], ["PR #191 · docs/old · idle 20 days", "no PR · claude/life41-edge-fixtures · idle 8 days · kept on purpose"])
 
     def test_nothing_stale_says_so(self):
