@@ -2,8 +2,8 @@
 Nothing here touches a network. A passing run proves the planning, idempotency and refusal logic, not that a live Hermes answered."""
 import unittest
 
-from lifeos import buzz_nip98 as nip98
-from lifeos.buzz_relay import Relay
+from lifeos.buzz import nip98
+from lifeos.buzz.relay import Relay
 from lifeos.platform.jira import JiraError
 from lifeos import hermes_requests as hr
 from tests.buzz.test_bridge import CHAN, KEY_A, URLS, FakeRelay

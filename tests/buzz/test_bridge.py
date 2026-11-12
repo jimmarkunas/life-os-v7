@@ -3,8 +3,10 @@ Nothing here touches a network beyond loopback and nothing proves live Buzz conn
 import base64, hashlib, json, threading, unittest
 from pathlib import Path
 
-from lifeos import buzz_mcp, buzz_nip98 as nip98
-from lifeos.buzz_relay import Relay
+from lifeos.buzz import mcp as buzz_mcp
+
+from lifeos.buzz import nip98
+from lifeos.buzz.relay import Relay
 
 ROOT = Path(__file__).resolve().parents[2]
 KEY_A, KEY_B = bytes([7]) * 32, bytes([9]) * 32
@@ -280,7 +282,7 @@ class Writes(unittest.TestCase):
 
 class Config(unittest.TestCase):
     def test_server_binds_loopback_only(self):
-        src = (ROOT / "lifeos" / "buzz_mcp.py").read_text()
+        src = (ROOT / "lifeos" / "buzz" / "mcp.py").read_text()
         self.assertIn('ThreadingHTTPServer(("127.0.0.1"', src)
         self.assertNotIn("0.0.0.0", src)
 
@@ -298,7 +300,7 @@ class Budget(unittest.TestCase):
             self.assertEqual(within_budget(files, lines), ok, (files, lines))
 
     def test_policy_code_size_cap_for_this_package(self):
-        files = sorted((ROOT / "lifeos").glob("buzz_*.py"))
+        files = sorted(f for f in (ROOT / "lifeos" / "buzz").glob("*.py") if f.name != "__init__.py")          # LIFE-590: the package; its empty __init__ and the old-name shims are not part of the budget
         lines = sum(1 for f in files for ln in f.read_text().splitlines() if ln.strip() and not ln.strip().startswith("#"))
         self.assertLessEqual(len(files), FILE_CAP)
         self.assertLessEqual(lines - BASELINE_LINES, ADDED_LINE_CAP)

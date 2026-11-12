@@ -4,7 +4,7 @@ One loopback service, one public HTTPS URL, two clients (Claude Chat and ChatGPT
 
 ```
 Claude Chat ─┐                                                     ┌─ life-os community (Block-hosted)
-             ├─ HTTPS /mcp + OAuth token ─ TLS proxy ─ 127.0.0.1:8787 ─ lifeos.buzz_mcp ─ NIP-98 ─┤
+             ├─ HTTPS /mcp + OAuth token ─ TLS proxy ─ 127.0.0.1:8787 ─ lifeos.buzz.mcp ─ NIP-98 ─┤
 ChatGPT Chat ┘                                                     └─ bytalos community (Block-hosted)
 ```
 
@@ -14,7 +14,7 @@ Status: **code only. Nothing is deployed, no public ingress exists, and no real 
 - `/mcp` Streamable HTTP, JSON replies, stateless (no `Mcp-Session-Id`), protocol `2025-06-18` with `2025-03-26`/`2024-11-05` negotiated, `MCP-Protocol-Version`, `Accept` and `Origin` checks, notifications and client replies answered `202`, GET/DELETE `405`.
 - `/.well-known/oauth-protected-resource` (and `/mcp` suffix form) names the authorization server; every `401` carries `WWW-Authenticate: Bearer resource_metadata=...`; wrong scope is `403 insufficient_scope`.
 - Authorization is two checks, both fail closed: the OAuth client must be allowlisted (`BUZZ_OAUTH_CLIENTS`, a list of client ids) AND the token `sub` must be allowlisted (`BUZZ_OAUTH_USERS`, `<sub>:<claude|chatgpt>:<community>+<community>`) with a product label and the communities that user may reach. An unlisted user gets `403 user_not_authorized` (the denied `sub` is logged so the owner can allowlist it); a community outside the user's list is denied before any relay request.
-- `lifeos/buzz_auth.py` validates RS256 JWTs: signature against the issuer's JWKS, `iss`, `aud` = this resource, `exp`/`nbf`, the signed `client_id`/`azp` against `BUZZ_OAUTH_CLIENTS`, and the signed `sub` against `BUZZ_OAUTH_USERS`. The product label (claude or chatgpt) comes ONLY from that verified `sub`; caller-sent actor strings, headers and arguments are ignored. Scopes may carry the audience prefix Oracle IAM adds (`<audience>buzz:read`) and no other prefix.
+- `lifeos/buzz/auth.py` validates RS256 JWTs: signature against the issuer's JWKS, `iss`, `aud` = this resource, `exp`/`nbf`, the signed `client_id`/`azp` against `BUZZ_OAUTH_CLIENTS`, and the signed `sub` against `BUZZ_OAUTH_USERS`. The product label (claude or chatgpt) comes ONLY from that verified `sub`; caller-sent actor strings, headers and arguments are ignored. Scopes may carry the audience prefix Oracle IAM adds (`<audience>buzz:read`) and no other prefix.
 - Scopes: `buzz:read` for the three read tools, `buzz:write` for `buzz_post_message`. Writes additionally need the exact `(community, channel)` in `BUZZ_WRITE_CHANNELS`, which ships empty.
 - Idempotency survives restarts through the relay: every posted event carries `k` (hash of community|channel|actor|key) and `i` (hash including text) tags. A retry reads `#k` first: same text returns `already_delivered`, different text returns `idempotency_conflict`. The in-memory cache only reuses an already-signed event.
 - **Four identities, no fallback.** The signing key is chosen by (the token's verified client label, the requested community): `buzz-claude-lifeos`, `buzz-claude-bytalos`, `buzz-chatgpt-lifeos`, `buzz-chatgpt-bytalos`, each its own keypair (`BUZZ_KEY_<CLAUDE|CHATGPT>_<LIFE_OS|BYTALOS>`). A missing key is `key_not_configured` for that pairing only; a client with no key at all is `client_identity_not_configured`; the caller cannot name a client or actor; the old shared `BUZZ_KEY_<COMMUNITY>` and any key reused across two slots are refused at startup. This needs two distinct IdP USERS, one per product (for example `owner+claude@example.com` and `owner+chatgpt@example.com`): each product's connector must be authorized by its own user, so the verified `sub` tells the products apart. One registered OAuth client can serve both. Authorizing a connector with the wrong user makes it sign as the other product's identity.
@@ -30,7 +30,7 @@ Status: **code only. Nothing is deployed, no public ingress exists, and no real 
 ```
 sudo useradd --system --home /nonexistent --shell /usr/sbin/nologin buzz-mcp
 sudo install -d -o root -g root /opt/lifeos-buzz-mcp/releases/<sha> /etc/lifeos-buzz-mcp
-# copy lifeos/__init__.py lifeos/buzz_*.py (nothing else; tests/buzz/test_remote_mcp.py::Startup runs the unit's ExecStart from exactly this layout) into releases/<sha>/lifeos/ ; ln -sfn releases/<sha> /opt/lifeos-buzz-mcp/current
+# copy lifeos/__init__.py, lifeos/buzz/*.py and the old-name shims lifeos/buzz_*.py (nothing else; LIFE-590: the shims keep a unit that still says `-m lifeos.buzz_mcp` working until it is switched to `-m lifeos.buzz.mcp`; tests/buzz/test_remote_mcp.py::Startup runs the unit's ExecStart from exactly this layout) into releases/<sha>/lifeos/ ; ln -sfn releases/<sha> /opt/lifeos-buzz-mcp/current
 # /etc/lifeos-buzz-mcp/config.env (non-secret): BUZZ_MCP_PUBLIC_URL, BUZZ_OAUTH_ISSUER, BUZZ_OAUTH_JWKS_URL, BUZZ_OAUTH_CLIENTS, BUZZ_OAUTH_AS_URL (only if the IdP publishes its metadata away from the issuer, as Oracle IAM does), BUZZ_OAUTH_USERS (<sub>:<claude|chatgpt>:life-os+bytalos,...; the owner-approved users), BUZZ_URL_LIFE_OS, BUZZ_URL_BYTALOS, BUZZ_WRITE_CHANNELS=
 # the four key files are encrypted straight from stdin (no plaintext file on the VM): see "Onboarding the four identities", step 4
 sudo cp lifeos/edge/buzz/oracle/lifeos-buzz-mcp.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now lifeos-buzz-mcp
@@ -59,7 +59,7 @@ Key helper (stdlib only; prints public values only; tested with throwaway keys a
 ```python
 import os, sys
 from pathlib import Path
-from lifeos import buzz_nip98 as nip98
+from lifeos.buzz import nip98
 
 def pm(values):
     chk = 1
