@@ -148,7 +148,7 @@ class TableMatchesTheWorkflow(unittest.TestCase):
         table = due.load_table()
         self.assertEqual((table["mail"], table["amazon"], table["megibow"]), ({"every_hours": 6}, {"every_hours": 3}, {"every_hours": 3}))     # comment 12803
         for job in ("agenda", "hiring", "recruiters", "amazon_retention", "bills"):
-            self.assertEqual(table[job], {"every_hours": 1}, job)                      # LIFE-610, 611, 612 flip recruiters, retention and bills; agenda and hiring stay hourly by Jim's answer
+            self.assertEqual(table[job], {"every_hours": 1}, job)                      # LIFE-611 and 612 flip retention and bills; the recruiters JOB stays hourly (it also runs Interview OS and the outreach cards): LIFE-610 puts its 3-hour schedule on the mail step, in the table's `steps`; agenda and hiring stay hourly by Jim's answer
 
 
 if __name__ == "__main__":

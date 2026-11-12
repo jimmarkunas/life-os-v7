@@ -322,5 +322,7 @@ def run(limit, live, environ=os.environ, notion=None, client=None, now=None):
         counts["first_contact_shown"] = sum(1 for f in firsts if f)
         return [cells(r, today, f, environ.get("V7_CLOSE_BASE_URL")) for r, f in zip(shown, firsts)]
     stamp = "Redrawn" if stage == "skipped" else "Updated"         # skipped: a Close screen refresh ran no mail stage on purpose, so the heading never claims mail was read (Jim, Oct 24)
-    counts.update(present(target, environ, build, f"{TITLE} ({stamp} {clock})", write))
+    scan_kind, scan_at = (environ.get("RECRUITERS_SCAN") or "").strip(), (environ.get("RECRUITERS_SCAN_AT") or "").strip()
+    mail_read = f", mail: {scan_kind} {scan_at}" if stage == "success" and scan_kind in ("new mail", "14-day scan") and scan_at.endswith(" CT") else ""          # LIFE-610: which mail read the rows come from, and when
+    counts.update(present(target, environ, build, f"{TITLE} ({stamp} {clock}{mail_read})", write))
     return counts

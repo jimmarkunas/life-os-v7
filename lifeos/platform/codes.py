@@ -660,6 +660,8 @@ CODES = {
     "M1M2_SANDBOX_REPORT_SHAPE": _r("sandbox", "bug", False, "The sandbox report is not the expected shape.", "Check the sandbox."),
     "MAIL_GMAIL_LISTING_INCOMPLETE": _r("mail", "degraded", False, "The Gmail listing for mail did not finish.", "None; retried."),
     "MAIL_OUTLOOK_LISTING_INCOMPLETE": _r("mail", "degraded", False, "The Outlook listing for mail did not finish.", "None; retried."),
+    "MAIL_LEDGER_UNREADABLE": _r("mail", "degraded", False, "The list of mail already seen could not be read, so the full 14-day scan ran.", "None; the next run tries again."),
+    "MAIL_LEDGER_NOT_SAVED": _r("mail", "degraded", False, "The list of mail already seen could not be saved, so that mail is read again next time.", "None; retried."),
     "MEGIBOW_FREEZE_READBACK_MISMATCH": _r("megibow", "bug", False, "A freeze write did not read back as written.", "Retried."),
     "MEGIBOW_LEGACY_READBACK_MISMATCH": _r("megibow", "bug", False, "A legacy write did not read back as written.", "Retried."),
     "MEGIBOW_OVERRIDE_READBACK_MISMATCH": _r("megibow", "bug", False, "An override write did not read back as written.", "Retried."),

@@ -550,6 +550,8 @@ CONFIG = {'provided': {'prefixes': ['GITHUB_', 'RUNNER_'], 'names': ['CI', 'PATH
            {'name': 'PROOF_CONFIRM', 'kind': 'flag', 'owner': 'sources', 'purpose': 'Confirmation word a manual proof run needs'},
            {'name': 'PR_LABELS', 'kind': 'workflow_only', 'owner': 'workflow', 'purpose': 'Labels of the pull request, read by the protected-file check'},
            {'name': 'PURGE_FORCE', 'kind': 'flag', 'owner': 'jobs', 'purpose': 'Manual switch: run the purge even when it would wait'},
+           {'name': 'RECRUITERS_SCAN', 'kind': 'input', 'owner': 'recruiters', 'purpose': 'Kind of the last Recruiters mail read (new mail or 14-day scan), for the Recruiter Outreach heading'},
+           {'name': 'RECRUITERS_SCAN_AT', 'kind': 'input', 'owner': 'recruiters', 'purpose': 'Central time of that mail read, for the Recruiter Outreach heading'},
            {'name': 'RECRUITERS_STAGE_OUTCOME', 'kind': 'input', 'owner': 'recruiters', 'purpose': 'Outcome code of the recruiters stage for the report'},
            {'name': 'RECRUITER_OUTREACH', 'kind': 'flag', 'owner': 'recruiters', 'purpose': 'Switch for recruiter outreach'},
            {'name': 'REPORT_CONFIRM', 'kind': 'flag', 'owner': 'workflow', 'purpose': 'Confirmation word a manual report run needs'},
