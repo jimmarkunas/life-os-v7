@@ -433,32 +433,46 @@ class UnitTestGateTests(unittest.TestCase):
         self.assertIn("unit-tests:", pr)                                                              # the required check name is unchanged
 
     def test_chromium_is_cached_on_the_browser_lock_and_the_browser_step_is_its_own_timed_step(self):
+        """LIFE-604 item 13: ONE shared composite action installs the browser; the finish job and the manual Jobright job both use it."""
+        import yaml
+        root = pathlib.Path(__file__).resolve().parents[2]
         steps = self.doc["jobs"]["finish"]["steps"]
-        cache = next(s for s in steps if s.get("name", "").startswith("Chromium download, cached"))
-        self.assertEqual((cache["uses"], cache["with"]["path"]), ("actions/cache@v4", "~/.cache/ms-playwright"))
-        self.assertIn("hashFiles('requirements-browser.lock')", cache["with"]["key"])
-        self.assertIn("vars.BROWSER_CACHE_BUST", cache["with"]["key"])                                # LIFE-573: one variable forces a cold-cache run
         ids = [s.get("id") for s in steps]
-        self.assertLess(ids.index("chromium_cache"), ids.index("browser"))
-        self.assertLess(ids.index("browser"), ids.index("tick"))                                      # its own step, before the tick, so its seconds show in the run log
         browser = next(s for s in steps if s.get("id") == "browser")
         tick = next(s for s in steps if s.get("id") == "tick")
-        self.assertIn("pip install --require-hashes -r requirements-browser.lock", browser["run"])    # integrity unchanged
+        self.assertEqual(browser["uses"], "./.github/actions/browser")
+        self.assertEqual(browser["with"], {"cache_bust": "${{ vars.BROWSER_CACHE_BUST }}"})           # LIFE-573: one variable forces a cold-cache run
+        self.assertLess(ids.index("browser"), ids.index("tick"))                                      # its own step, before the tick, so its seconds show in the run log
+        self.assertEqual(browser["if"], tick["if"])
         self.assertNotIn("playwright", tick["run"])                                                   # the tick step no longer installs anything
         self.assertNotIn("pip install", tick["run"])
-        self.assertEqual(browser["env"], {"CHROMIUM_CACHE_HIT": "${{ steps.chromium_cache.outputs.cache-hit }}", "LIBS_CACHE_HIT": "${{ steps.libs_cache.outputs.cache-hit }}"})
-        libs = next(s for s in steps if s.get("id") == "libs_cache")                                  # LIFE-576: the system libraries are cached next to Chromium
+        jobright = self.doc["jobs"]["jobright"]["steps"]
+        shared = next(s for s in jobright if s.get("id") == "jobright_browser")
+        self.assertEqual((shared["uses"], shared["with"]), (browser["uses"], browser["with"]))        # both jobs run the same step
+        resolve = next(s for s in jobright if s.get("id") == "jobright")
+        self.assertLess([s.get("id") for s in jobright].index("jobright_browser"), [s.get("id") for s in jobright].index("jobright"))
+        self.assertNotIn("playwright install", resolve["run"])                                        # no second install path left in the workflow
+        self.assertNotIn("playwright install", (root / ".github/workflows/hourly.yml").read_text())
+        action = yaml.safe_load((root / ".github/actions/browser/action.yml").read_text())
+        inner = action["runs"]["steps"]
+        inner_ids = [s.get("id") for s in inner]
+        cache = inner[inner_ids.index("chromium_cache")]
+        self.assertEqual((cache["uses"], cache["with"]["path"]), ("actions/cache@v4", "~/.cache/ms-playwright"))
+        self.assertIn("hashFiles('requirements-browser.lock')", cache["with"]["key"])
+        self.assertIn("inputs.cache_bust", cache["with"]["key"])
+        libs = inner[inner_ids.index("libs_cache")]                                                   # LIFE-576: the system libraries are cached next to Chromium
         self.assertEqual((libs["uses"], libs["with"]["path"]), ("actions/cache@v4", "~/apt-debs"))
         self.assertIn("steps.runner_image.outputs.version", libs["with"]["key"])                      # a restored copy can never meet a different runner image
         self.assertIn("hashFiles('requirements-browser.lock')", libs["with"]["key"])
-        self.assertLess(ids.index("runner_image"), ids.index("libs_cache"))
-        self.assertLess(ids.index("libs_cache"), ids.index("browser"))
-        self.assertEqual(libs["if"], tick["if"])
-        self.assertEqual(browser["if"], tick["if"])
-        run = browser["run"]
+        self.assertLess(inner_ids.index("runner_image"), inner_ids.index("libs_cache"))
+        self.assertLess(inner_ids.index("libs_cache"), inner_ids.index("browser"))
+        inner_browser = inner[inner_ids.index("browser")]
+        self.assertEqual(inner_browser["env"], {"CHROMIUM_CACHE_HIT": "${{ steps.chromium_cache.outputs.cache-hit }}", "LIBS_CACHE_HIT": "${{ steps.libs_cache.outputs.cache-hit }}"})
+        run = inner_browser["run"]
+        self.assertIn("pip install --require-hashes -r requirements-browser.lock", run)               # integrity unchanged
         self.assertNotIn("while ", run)                                                               # bounded: three tries, never an unbounded loop
         self.assertNotIn("until ", run)
-        self.assertNotIn("continue-on-error", browser)                                                # a used-up retry fails the run
+        self.assertNotIn("continue-on-error", inner_browser)                                          # a used-up retry fails the run
         self.assertLess(run.index("BROWSER_INSTALL_SKIPPED_APT"), run.index("--with-deps"))
 
 
@@ -470,8 +484,8 @@ class BrowserStepBehaviourTests(unittest.TestCase):
             import yaml
         except ImportError:
             raise unittest.SkipTest("pyyaml unavailable") from None
-        path = pathlib.Path(__file__).resolve().parents[2] / ".github/workflows/hourly.yml"
-        steps = yaml.safe_load(path.read_text())["jobs"]["finish"]["steps"]
+        path = pathlib.Path(__file__).resolve().parents[2] / ".github/actions/browser/action.yml"          # LIFE-604 item 13: the one shared step
+        steps = yaml.safe_load(path.read_text())["runs"]["steps"]
         cls.script = next(s for s in steps if s.get("id") == "browser")["run"]
 
     def run_step(self, hit, fail_first, libs_hit="false", saved=None, dpkg_fails=False, download_fails=False):
@@ -801,7 +815,7 @@ CONSUMERS = {
         jobs={"prep": DB | JUMP | TS | HRL, "jobright": DB | JUMP | TS | HRL, "linkedin": DB | JUMP | TS | HRL, "lensa": DB | JUMP | TS | HRL, "finish": DB | JUMP | TS | HRL | {"NTFY_TOPIC", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"}, "interview": {"NOTION_INTERVIEW_TOKEN"}, "report": {"NTFY_TOPIC"}},
         direct=['GMAIL_OAUTH_CLIENT_ID', 'HIRING_PIPELINE_PAGE_ID', 'INTERVIEW_ACCEPTANCE_JSON', 'INTERVIEW_ACCEPTANCE_NEGATIVE_JSON', 'LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'LIFEOS_NOTION_IDS', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID', 'V7_CLOSE_BASE_URL', 'V7_CLOUD_FIT_PROFILE_REF'],   # LIFE-41: the shadow's brief reference, masked (a variable is not)
         on=['schedule', 'workflow_dispatch'], crons=['7 * * * *', '27 * * * *', '47 * * * *'], perms={'contents': 'read'}, conc={'group': "life-os-v7-hourly-${{ (github.event_name == 'schedule' || inputs.tick) && 'tick-b' || 'manual' }}", 'cancel-in-progress': False},
-        timeouts={'prep': 45, 'jobright': 40, 'linkedin': 40, 'lensa': 40, 'finish': 58, 'interview': 15, 'report': 5}, digest="40f285fd98951b51"),   # LIFE-577 (Nov 11 2026): the benchmark input (replaces publish_limit): the tick path in dry mode on a frozen set, with a gate that refuses to overlap and an overlap check;   # LIFE-572 (Jim, Nov 11 12:2x PM CT "retry 82"): Network Leads budget 82 again, to be reverted to 41 if any of the next 3 runs exceeds about 60 s;   # LIFE-573 (Jim, Nov 11 12:02 PM CT): the browser install is its own timed step (cache hit: no apt; miss: three tries, then the run fails), BROWSER_CACHE_BUST forces a cold-cache run;   # LIFE-572 (Nov 11 2026, 11:0x AM CT): Network Leads budget back to 41 per run: the first tick at 82 took 110 s, over the 60 s limit Jim set;   # LIFE-573 (Jim, Nov 11 10:40 AM CT): a Chromium cache hit skips apt entirely; a miss installs with three bounded tries;   # LIFE-573 (Nov 11 2026): the tick step installs the browser with two timed tries and degrades instead of failing the tick when apt is unreachable;   # LIFE-572 (Jim, Nov 11 2026): the Network Leads page budget doubled, network-surface --limit 41 to 82 (2,496 pages: a lap of about 30 hours, was about 60);   # Nov 6 2026: the report job also names prep in its failed-lanes push;   # LIFE-76 (Oct 25 2026 drain): a manual enrich reads 450, not 150;   # D238: finish 58 min and the batch to 45 min, so a tick's batch fills the hour;   # D233 (LIFE-42): + the always-dry-run negative interview acceptance case;   # D208 (LIFE-76 PR 4b): a tick (and a manual quick proof, with --quick) runs python -m lifeos.jobs.tick in the finish job; the Dice job and its command are gone (the tick resolves Dice);   # D206 (LIFE-76 PR 1): bulk discovery (boards, Scale-Up, title watch, sponsors) moved after finalize; boards --limit follows the quick input;   # D202 review: + the read-only boards-preview command (D204 acceptance: over the 600-board sample); D203: + linkedin-search;   # D201 removed the resolve-lensa and openjobs commands; D202 added the boards command and its finish-loop entry; LIFE-41 the tick's batch is sized to the hour
+        timeouts={'prep': 45, 'jobright': 40, 'linkedin': 40, 'lensa': 40, 'finish': 58, 'interview': 15, 'report': 5}, digest="d947b6e8a0f73ec3"),   # LIFE-577 (Nov 11 2026): the benchmark input (replaces publish_limit): the tick path in dry mode on a frozen set, with a gate that refuses to overlap and an overlap check;   # LIFE-572 (Jim, Nov 11 12:2x PM CT "retry 82"): Network Leads budget 82 again, to be reverted to 41 if any of the next 3 runs exceeds about 60 s;   # LIFE-573 (Jim, Nov 11 12:02 PM CT): the browser install is its own timed step (cache hit: no apt; miss: three tries, then the run fails), BROWSER_CACHE_BUST forces a cold-cache run;   # LIFE-572 (Nov 11 2026, 11:0x AM CT): Network Leads budget back to 41 per run: the first tick at 82 took 110 s, over the 60 s limit Jim set;   # LIFE-573 (Jim, Nov 11 10:40 AM CT): a Chromium cache hit skips apt entirely; a miss installs with three bounded tries;   # LIFE-573 (Nov 11 2026): the tick step installs the browser with two timed tries and degrades instead of failing the tick when apt is unreachable;   # LIFE-572 (Jim, Nov 11 2026): the Network Leads page budget doubled, network-surface --limit 41 to 82 (2,496 pages: a lap of about 30 hours, was about 60);   # Nov 6 2026: the report job also names prep in its failed-lanes push;   # LIFE-76 (Oct 25 2026 drain): a manual enrich reads 450, not 150;   # D238: finish 58 min and the batch to 45 min, so a tick's batch fills the hour;   # D233 (LIFE-42): + the always-dry-run negative interview acceptance case;   # D208 (LIFE-76 PR 4b): a tick (and a manual quick proof, with --quick) runs python -m lifeos.jobs.tick in the finish job; the Dice job and its command are gone (the tick resolves Dice);   # D206 (LIFE-76 PR 1): bulk discovery (boards, Scale-Up, title watch, sponsors) moved after finalize; boards --limit follows the quick input;   # D202 review: + the read-only boards-preview command (D204 acceptance: over the 600-board sample); D203: + linkedin-search;   # D201 removed the resolve-lensa and openjobs commands; D202 added the boards command and its finish-loop entry; LIFE-41 the tick's batch is sized to the hour
     "network": dict(
         jobs={"network": DB | JUMP | TS | {"NOTION_API_TOKEN"}},
         direct=['LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'NETWORK_HANDOFF_PAGE_ID', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID'],
