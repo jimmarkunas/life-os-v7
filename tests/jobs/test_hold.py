@@ -252,7 +252,7 @@ class RecoveryTests(unittest.TestCase):
         from lifeos.jobs.resolve.aggregators import dice
         stages = inspect.getsource(run) + inspect.getsource(dice)
         for source in hold.RESOLVED_BY:                                           # the guard names exactly the sources whose NEW jobs a resolve stage reads
-            self.assertIn(f'"{source}"', stages)
+            self.assertTrue(f'"{source}"' in stages or source in run.STAGES, source)      # a registered source (LIFE-618) is a stage without a line in run.py
 
     def test_a_hold_is_recovered_only_in_the_twelve_hours_after_day_six_so_the_latest_exclusion_is_day_seven(self):
         self.db.job(1, days_held=6.4)                                              # inside [6 d, 6 d 12 h)

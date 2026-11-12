@@ -40,7 +40,6 @@ class Step:
 PLAN = (
     Step("resolve-jobright", 600, 40, group="A", providers=("jobright",)),
     Step("resolve-linkedin", 420, 150, group="A", providers=("linkedin",)),
-    Step("linkedin-search", 180, 40, group="A", providers=("linkedin",)),
     Step("resolve-dice", 180, 15, group="A", providers=("dice",)),
     # LIFE-76 (Jim, Oct 25: publish first): the jobs already read and scored reach the Ledger before this run reads new descriptions (noon tick: 7.5 min to the
     # first page, 2.3 of them in enrich); the rows this run scores follow in publish-fresh
