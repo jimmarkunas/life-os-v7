@@ -12,7 +12,7 @@ except ImportError:                                                         # th
     yaml = None
 
 WORKFLOW = pathlib.Path(__file__).resolve().parents[3] / ".github" / "workflows" / "hourly.yml"
-TOKEN = re.compile(r"\s*(?:(\$\{\{)|(\}\})|('(?:[^']|'')*')|(&&|\|\||==|!=|!|\(|\)|,)|(-?\d+(?:\.\d+)?)|([A-Za-z_][\w\-]*(?:\.[\w\-]+)*))")
+TOKEN = re.compile(r"\s*(?:(\$\{\{)|(\}\})|('(?:[^']|'')*')|(&&|\|\||==|!=|!|\(|\)|,)|(-?\d+(?:\.\d+)?)|([A-Za-z_][\w\-]*(?:\.[\w\-\*]+)*))")
 
 
 def truthy(v):
@@ -58,11 +58,21 @@ def evaluate(text, ctx):
                 if peek() == ",":
                     take()
             take()
-            assert t in ("always", "startsWith"), t
+            assert t in ("always", "startsWith", "cancelled", "contains"), t
+            if t == "cancelled":
+                return False                                                  # a simulated run is never cancelled part-way
+            if t == "contains":
+                haystack = args[0]
+                return (str(args[1]).lower() in [str(x).lower() for x in haystack]) if isinstance(haystack, list) else str(args[1]).lower() in str(haystack or "").lower()
             return True if t == "always" else isinstance(args[0], str) and args[0].lower().startswith(str(args[1]).lower())
         cur = ctx
         for part in t.split("."):
-            cur = cur.get(part) if isinstance(cur, dict) else None
+            if part == "*":                                               # needs.*.result: the values of every entry
+                cur = list(cur.values()) if isinstance(cur, dict) else None
+            elif isinstance(cur, list):
+                cur = [x.get(part) if isinstance(x, dict) else None for x in cur]
+            else:
+                cur = cur.get(part) if isinstance(cur, dict) else None
         return cur
 
     def cmp():

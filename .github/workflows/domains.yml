@@ -115,25 +115,36 @@ concurrency:
   group: ${{ (github.event_name == 'workflow_dispatch' && (inputs.refresh == 'hiring' || inputs.refresh == 'recruiters')) && 'life-os-v7-domains' || github.event_name != 'workflow_run' && 'life-os-v7-domains-manual' || ((github.event.workflow_run.conclusion == 'cancelled' || github.event.workflow_run.display_title != 'tick') && 'life-os-v7-domains-idle' || 'life-os-v7-domains') }}
   cancel-in-progress: false
 jobs:
-  bench_gate:
-    # LIFE-577: a benchmark dispatch refuses to start while another hourly or domains run is queued or running; every other job needs this one and does not run if it fails.
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.benchmark }}
+  gate:
+    # LIFE-604 item 11: the ONE place that decides whether this run does the domain work, and the benchmark's overlap refusal (LIFE-577). It runs only for a completed tick, `all`, or a
+    # benchmark; a manual run of one domain skips it, and then a domain job runs only on its own input. Outputs: run (the whole set: a tick, `all` or a benchmark), tick (only a tick:
+    # imessage, granola and the failure push depend on that) and all (only `all` or a benchmark). A benchmark refuses to start while another hourly or domains run is queued or
+    # running; a refusal fails this job and every domain job then skips (their `needs.gate.result != 'failure'`).
+    # Why each domain job uses always() or !cancelled(): a job that waits for other page writers (needs: ...) uses always() so one failed writer never stops the next card; a job with
+    # no writer to wait for uses !cancelled(). Both skip when the gate failed or the run was cancelled, and both run on their own manual input without the gate.
+    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || (inputs.all || inputs.benchmark) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read
       actions: read
+    outputs:
+      run: 'true'
+      tick: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') }}
+      all: ${{ (inputs.all || inputs.benchmark) }}
     steps:
       - uses: actions/checkout@v5
+        if: ${{ inputs.benchmark }}
       - name: Benchmark gate (LIFE-577) - refuses while another run is in progress
+        if: ${{ inputs.benchmark }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python3 -m lifeos.platform.bench_gate before
   jira:
     # Jira runs in its OWN job, like Interview: scheduled and tick runs refresh the snapshot and the report card (rollover stays manual), only the Jira secrets (the database secrets are
     # re-supplied to the snapshot step alone), and a failure is a warning that never fails the Jobs run.
-    needs: [bench_gate]
-    if: ${{ !cancelled() && needs.bench_gate.result != 'failure' && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || (inputs.all || inputs.benchmark) || (github.event_name == 'workflow_dispatch' && inputs.jira != 'none')) }}   # D212: an empty input (a workflow_run after a manual or cancelled hourly run) is not a request
+    needs: [gate]
+    if: ${{ !cancelled() && needs.gate.result != 'failure' && (needs.gate.outputs.run == 'true' || (github.event_name == 'workflow_dispatch' && inputs.jira != 'none')) }}   # D212: an empty input (a workflow_run after a manual or cancelled hourly run) is not a request
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
@@ -188,7 +199,7 @@ jobs:
       - id: jrollauto
         continue-on-error: true
         name: Jira sprint rollover (scheduled; waits for the sprint to end and Monday 6 AM; live only when V7_LIVE)
-        if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || (inputs.all || inputs.benchmark) }}
+        if: ${{ needs.gate.outputs.run == 'true' }}
         env:
           JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN || steps.bws_jira_retry.outputs.JIRA_API_TOKEN }}
           JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL || steps.bws_jira_retry.outputs.JIRA_EMAIL }}
@@ -216,7 +227,7 @@ jobs:
       - id: jsnap
         continue-on-error: true
         name: Jira snapshot (counts only; saved to the private database only when live)
-        if: ${{ inputs.jira == 'snapshot' || inputs.jira == 'both' || inputs.jira == 'report' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || (inputs.all || inputs.benchmark) }}
+        if: ${{ inputs.jira == 'snapshot' || inputs.jira == 'both' || inputs.jira == 'report' || needs.gate.outputs.run == 'true' }}
         env:
           LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
           JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN || steps.bws_jira_retry.outputs.JIRA_API_TOKEN }}
@@ -236,7 +247,7 @@ jobs:
       - id: jcard
         continue-on-error: true
         name: Jira card (Daily Report; counts only; the page is written only when live)
-        if: ${{ inputs.jira == 'card' || inputs.jira == 'report' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || (inputs.all || inputs.benchmark) }}
+        if: ${{ inputs.jira == 'card' || inputs.jira == 'report' || needs.gate.outputs.run == 'true' }}
         env:
           JIRA_CARD_BLOCK_ID: ${{ secrets.JIRA_CARD_BLOCK_ID }}
           JIRA_CARD_PROJECTS: ${{ secrets.JIRA_CARD_PROJECTS }}
@@ -261,7 +272,7 @@ jobs:
       - id: jmdash
         continue-on-error: true
         name: Jim & Matt dashboard from Jira (JFM-221; Wednesday 7 AM CT check-in, quarterly synopsis, completed archive; reads Jira only; Notion written only when live; counts only)
-        if: ${{ inputs.jira == 'dashboard' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || (inputs.all || inputs.benchmark) }}
+        if: ${{ inputs.jira == 'dashboard' || needs.gate.outputs.run == 'true' }}
         env:
           LIFEOS_NOTION_IDS: ${{ secrets.LIFEOS_NOTION_IDS }}
           JM_DASHBOARD_PAGE_ID: ${{ vars.JM_DASHBOARD_PAGE_ID }}
@@ -309,8 +320,8 @@ jobs:
     # Outlook (read-only) on every scheduled or tick run: job newsletters into Jobs OS, and meeting invites into your Google calendar. Its own
     # job like Jira and Interview: every other credential is blanked, the Outlook/calendar/database secrets reach only the steps that need
     # them, and a failure is a warning that never fails the Jobs run.
-    needs: [bench_gate]
-    if: ${{ !cancelled() && needs.bench_gate.result != 'failure' && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || (inputs.all || inputs.benchmark) || inputs.calendar_sync) }}
+    needs: [gate]
+    if: ${{ !cancelled() && needs.gate.result != 'failure' && (needs.gate.outputs.run == 'true' || inputs.calendar_sync) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -405,8 +416,8 @@ jobs:
   bills:
     # Bills reads its own Notion source and saves only to the private snapshot database. The Paid processor (D85, D86) runs first, so the snapshot sees the advanced dates; on a tick it follows V7_LIVE like every other domain job.
     # D116: the Bills card then renders the saved snapshot into the Daily Report's "Bills: This Week" callout. It waits for the jira and agenda jobs: all three write the same page, and the card verifies the Calendar and JIRA regions are intact.
-    needs: [jira, agenda, bench_gate]
-    if: ${{ always() && needs.bench_gate.result != 'failure' && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || (inputs.all || inputs.benchmark) || inputs.bills_paid) }}
+    needs: [jira, agenda, gate]
+    if: ${{ always() && needs.gate.result != 'failure' && (needs.gate.outputs.run == 'true' || inputs.bills_paid) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -522,8 +533,8 @@ jobs:
   agenda:
     # Read the main Google Calendar and refresh its isolated Daily Report callout; failures are warnings only.
     # Waits for the jira job: both write the same page, and the Calendar card verifies the Jira region is intact.
-    needs: [jira, bench_gate]
-    if: ${{ always() && needs.bench_gate.result != 'failure' && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || (inputs.all || inputs.benchmark)) }}
+    needs: [jira, gate]
+    if: ${{ always() && needs.gate.result != 'failure' && (needs.gate.outputs.run == 'true') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -618,8 +629,8 @@ jobs:
   amazon:
     # Amazon Orders is isolated; a failure warns without affecting the Jobs run.
     # D118: the Amazon card then renders the canonical orders into the Daily Report's "Amazon Orders" callout. It waits for the other page writers (jira, agenda, bills) because it verifies their regions are unchanged.
-    needs: [jira, agenda, bills, bench_gate]
-    if: ${{ always() && needs.bench_gate.result != 'failure' && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || (inputs.all || inputs.benchmark) || inputs.amazon) }}
+    needs: [jira, agenda, bills, gate]
+    if: ${{ always() && needs.gate.result != 'failure' && (needs.gate.outputs.run == 'true' || inputs.amazon) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -685,8 +696,8 @@ jobs:
   # serial chain of page writers (jira, agenda, bills, amazon, mail, ...). It starts when the amazon job (Orders saved, card written) is over and runs beside the rest of the chain. A failure
   # is a warning only, exactly as before. Same 30-day rule, same 200-a-run limit, same live switch.
   amazon_retention:
-    needs: [amazon, bench_gate]
-    if: ${{ always() && needs.bench_gate.result != 'failure' && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || (inputs.all || inputs.benchmark) || inputs.amazon) }}
+    needs: [amazon, gate]
+    if: ${{ always() && needs.gate.result != 'failure' && (needs.gate.outputs.run == 'true' || inputs.amazon) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -733,8 +744,8 @@ jobs:
   mail:
     # MAIL-1.2 (D143): V7 is the sole owner and writer of the Daily Report "Mail Alerts" region (Production Contract v2.15.12). Gmail read-only evidence -> private state row -> the callout.
     # It runs after every other Daily Report writer, because the card proves their regions are unchanged. A failed ingest is a warning and the card shows DEGRADED with the last accepted state.
-    needs: [jira, agenda, bills, amazon, attention, bench_gate]
-    if: ${{ always() && needs.bench_gate.result != 'failure' && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || (inputs.all || inputs.benchmark) || inputs.physical_mail) }}
+    needs: [jira, agenda, bills, amazon, attention, gate]
+    if: ${{ always() && needs.gate.result != 'failure' && (needs.gate.outputs.run == 'true' || inputs.physical_mail) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -850,8 +861,8 @@ jobs:
     # HIRE-1.2: V7 is the sole writer of the floating Daily Report "Hiring Pipeline" region (a heading, a status line and a four-column table; never a callout). It runs after EVERY other Daily Report writer,
     # including mail, so no two jobs ever change the page at once, and it proves the rest of the page unchanged around its write. Read-only toward the Ledger, the Notion pages and the Calendar; no mail.
     # imessage writes the Communications and Oracle Cloud callouts (LIFE-34, Oct 15 2026), so it is one of those writers; `always()` keeps Hiring running when it is skipped or fails.
-    needs: [jira, agenda, bills, amazon, attention, mail, imessage, bench_gate]
-    if: ${{ always() && needs.bench_gate.result != 'failure' && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || (inputs.all || inputs.benchmark) || inputs.hiring || inputs.refresh == 'hiring') }}
+    needs: [jira, agenda, bills, amazon, attention, mail, imessage, gate]
+    if: ${{ always() && needs.gate.result != 'failure' && (needs.gate.outputs.run == 'true' || inputs.hiring || inputs.refresh == 'hiring') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -937,8 +948,8 @@ jobs:
   attention:
     # D127: Attention is its own job. It reads only the Gmail label and the Outlook category Jim controls and writes only the Attention data source (never the Daily Report
     # page), so a failure is a warning that never touches another card or the Jobs run.
-    needs: [bench_gate]
-    if: ${{ !cancelled() && needs.bench_gate.result != 'failure' && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || (inputs.all || inputs.benchmark) || inputs.attention) }}
+    needs: [gate]
+    if: ${{ !cancelled() && needs.gate.result != 'failure' && (needs.gate.outputs.run == 'true' || inputs.attention) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     outputs:
@@ -1019,8 +1030,8 @@ jobs:
   megibow:
     # D134: MegIBOW is its own job. It reads sent mail and calendars (read only) and writes only its one Notion block, its review list and two tiny private tables; a failure is a
     # warning that never touches another card or the Jobs run, and a failed source leaves the last good table in place and says DEGRADED.
-    needs: [bench_gate]
-    if: ${{ !cancelled() && needs.bench_gate.result != 'failure' && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || (inputs.all || inputs.benchmark) || inputs.megibow) }}
+    needs: [gate]
+    if: ${{ !cancelled() && needs.gate.result != 'failure' && (needs.gate.outputs.run == 'true' || inputs.megibow) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -1106,8 +1117,8 @@ jobs:
     # D175: V7 writes the Daily Command Center callout (it was the ChatGPT task's, which could only edit page markdown). It runs after EVERY other Daily Report writer, so no card changes while it reads
     # or writes, reads only the first lines the cards already carry, writes only its own region and proves every other V7 region unchanged around the write. A failure is a warning.
     # A mail-only manual run (physical_mail) also refreshes this job, so the Command Center never shows the Mail Alerts source it had before the run (LIFE-95).
-    needs: [jira, agenda, bills, amazon, attention, mail, hiring, imessage, bench_gate]
-    if: ${{ always() && needs.bench_gate.result != 'failure' && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || (inputs.all || inputs.benchmark) || inputs.dcc || inputs.physical_mail) }}
+    needs: [jira, agenda, bills, amazon, attention, mail, hiring, imessage, gate]
+    if: ${{ always() && needs.gate.result != 'failure' && (needs.gate.outputs.run == 'true' || inputs.dcc || inputs.physical_mail) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -1173,8 +1184,8 @@ jobs:
   recruiters:
     # RECR-1.2 runs on every tick (Jim, Oct 12; it had been manual-only and the Recruiters table stopped updating on Oct 7). It only READS Gmail and Outlook and writes the existing
     # Recruiters data source (create only after absence is proven, read back). A failure is a warning and never touches another card or the Jobs run.
-    needs: [bench_gate]
-    if: ${{ !cancelled() && needs.bench_gate.result != 'failure' && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || (inputs.all || inputs.benchmark) || inputs.recruiters || inputs.refresh == 'recruiters') }}
+    needs: [gate]
+    if: ${{ !cancelled() && needs.gate.result != 'failure' && (needs.gate.outputs.run == 'true' || inputs.recruiters || inputs.refresh == 'recruiters') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     concurrency:
@@ -1346,8 +1357,8 @@ jobs:
     # tailnet policy lets reach only Oracle's alert-METADATA endpoint (TCP 47341); Oracle reads and classifies privately and returns keyed event ids, severity and
     # completeness only. State: the private v7_alerts table. Push: the existing ntfy topic, counts only. Off unless V7_IMESSAGE_ALERTS is 'true' (or run by hand).
     # It follows the writers of the regions its Communications and Oracle Cloud cards prove unchanged (Oct 16 2026): run beside them, every proof saw their own writes as a change.
-    needs: [jira, agenda, bills, amazon, attention, bench_gate]
-    if: ${{ always() && needs.bench_gate.result != 'failure' && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick' && vars.V7_IMESSAGE_ALERTS == 'true') || inputs.imessage) }}
+    needs: [jira, agenda, bills, amazon, attention, gate]
+    if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.tick == 'true' && vars.V7_IMESSAGE_ALERTS == 'true') || inputs.imessage) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -1488,8 +1499,8 @@ jobs:
     # round (lifeos/sources/granola_auto.py): Full Transcript page written and read back, catalogued in Hostinger, and only then purged whole from Oracle. A meeting that matches no round is left
     # on Oracle and counted. It writes only when the run is live AND the repository variable GRANOLA_AUTO is "on" (Jim's switch); otherwise it is a dry run that changes nothing.
     # It queues behind the Recruiters job, which holds the one-writer group of the Interview OS pages.
-    needs: [recruiters, bench_gate]
-    if: ${{ always() && needs.bench_gate.result != 'failure' && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick' && vars.GRANOLA_AUTO != 'off') || (inputs.all || inputs.benchmark)) }}
+    needs: [recruiters, gate]
+    if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.tick == 'true' && vars.GRANOLA_AUTO != 'off') || needs.gate.outputs.all == 'true') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     concurrency:
@@ -1570,8 +1581,8 @@ jobs:
   report:
     # A failed domain job (a provider outage, a Bitwarden 503) used to be only a workflow warning, so a stale card and a red run reached nobody. This job pushes the phone once per
     # failed tick-triggered run, counts only; a manual run never pushes. It never writes anything.
-    needs: [jira, outlook, bills, agenda, amazon, amazon_retention, mail, hiring, attention, megibow, recruiters, dcc, imessage, granola]
-    if: ${{ always() && github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick' && contains(needs.*.result, 'failure') }}
+    needs: [gate, jira, outlook, bills, agenda, amazon, amazon_retention, mail, hiring, attention, megibow, recruiters, dcc, imessage, granola]
+    if: ${{ always() && needs.gate.outputs.tick == 'true' && contains(needs.*.result, 'failure') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

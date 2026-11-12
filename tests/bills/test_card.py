@@ -219,7 +219,7 @@ class RuntimePathTests(unittest.TestCase):
         runs = [step.get("run", "") for step in job["steps"]]
         order = [next(i for i, r in enumerate(runs) if f"lifeos.run {stage}" in r) for stage in ("bills-paid", "bills-snapshot", "bills-card")]
         self.assertEqual(order, sorted(order))
-        self.assertEqual(set(job["needs"]), {"jira", "agenda", "bench_gate"})
+        self.assertEqual(set(job["needs"]), {"jira", "agenda", "gate"})
         self.assertTrue(next(s for s in job["steps"] if s.get("id") == "bcard")["continue-on-error"])
         self.assertNotIn("schedule", doc[True])                                                   # no new scheduler: the job still rides the tick's workflow_run
 
