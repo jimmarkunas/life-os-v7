@@ -4,7 +4,7 @@ import unittest
 from unittest import mock
 
 from lifeos.platform import ledger_body as body
-from lifeos.sources import ledger_layout as layout
+from lifeos.sources.network import ledger_layout as layout
 from tests.jobs.fakes_ledger import FakeLedger
 
 KEY = "a" * 64

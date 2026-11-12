@@ -7,9 +7,9 @@ import pathlib
 
 from lifeos.jobs import names, private_report
 from lifeos.platform.http import fetch
-from lifeos.sources import sponsor_register
+from lifeos.sources.discovery import sponsor_register
 
-REGISTRY = pathlib.Path(__file__).parent / "web" / "scale_up.json"
+REGISTRY = pathlib.Path(__file__).parent.parent / "web" / "scale_up.json"
 
 
 def rows_of(text):

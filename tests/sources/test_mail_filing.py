@@ -1,6 +1,6 @@
 import unittest
 
-from lifeos.sources import mail_filing as filing
+from lifeos.sources.cards import mail_filing as filing
 from lifeos.platform.gmail import GmailError
 
 VENDOR = filing.SENDER

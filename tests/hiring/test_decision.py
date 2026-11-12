@@ -513,7 +513,7 @@ class BoundaryTests(unittest.TestCase):
         for banned in ("call_once", "/move", "/children", "Retired Opportunities", "Active Opportunities", "tinyfish", "gmail", "outlook", ".create(", "lifeos.jobs", "lifeos.interview", "lifeos.jira",
                        '"DELETE"', '"archived": True', '"in_trash": True', "Applied\": {\"checkbox\": ", "\"Stage\": {\"select\": {\"name"):
             self.assertNotIn(banned.lower(), text.lower(), banned)                                 # LIFE-353: no page move, no block write, Stage and Applied never written
-        self.assertNotIn("update_page_properties", (self.ROOT / "lifeos/sources/hiring.py").read_text())
+        self.assertNotIn("update_page_properties", (self.ROOT / "lifeos/sources/pipeline/hiring.py").read_text())
 
     def test_the_action_is_not_reachable_from_any_stage_workflow_or_schedule(self):
         for path in (self.ROOT / ".github/workflows").glob("*.yml"):

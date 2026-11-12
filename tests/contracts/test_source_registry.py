@@ -68,7 +68,7 @@ class MissingSourcesAreCaught(unittest.TestCase):
 
 class ThePilotIsUnchanged(unittest.TestCase):
     def test_sponsors_has_the_same_stage_tick_step_and_place_as_before_the_registry(self):
-        self.assertEqual(run.STAGES["sponsors"].target, ("lifeos.sources.sponsor_register", "run"))
+        self.assertEqual(run.STAGES["sponsors"].target, ("lifeos.sources.discovery.sponsor_register", "run"))
         self.assertEqual(next(s for s in tick.PLAN if s.name == "sponsors"), tick.Step("sponsors", 120, 40, bulk=True, group="B"))
         group_b = [s.name for s in tick.PLAN if s.group == "B"]
         self.assertEqual(group_b, ["boards", "web-scale-up", "web-titlewatch", "discover-jobs", "sponsors"])

@@ -21,8 +21,9 @@ from lifeos.platform.names import split_title
 from lifeos.platform.notion_client import NotionError, rich_text
 from lifeos.recruiters import notion as rstore, outreach
 from lifeos.recruiters.identity import week_ending
-from lifeos.sources import hiring as pipeline, interview_evidence as ev
-from lifeos.sources.interview_journey_proof import Calendar, _event, _outreach, _request
+from lifeos.sources.pipeline import hiring as pipeline
+from lifeos.sources.interview import interview_evidence as ev
+from lifeos.sources.proofs.interview_journey_proof import Calendar, _event, _outreach, _request
 
 CONFIRM, MAX_TICKS = "M1M2", 6
 COMPANY, ROLE, REQ, LANE = "SampleWorks", "Senior Technical Program Manager", "880042", "US Remote"

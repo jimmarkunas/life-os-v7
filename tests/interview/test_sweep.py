@@ -4,7 +4,7 @@ import copy
 import unittest
 from lifeos.interview import create, notion, stage, template
 from lifeos.platform.notion_client import NotionError
-from lifeos.sources import interview_sweep as sweep
+from lifeos.sources.interview import interview_sweep as sweep
 from tests.interview.test_create import ColumnFake
 from tests.interview.test_notion import ENV, block, page
 

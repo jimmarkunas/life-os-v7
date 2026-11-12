@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 from lifeos.megibow import card, classify as C, review
 from lifeos.megibow.windows import CHI
-from lifeos.sources import megibow as stage
+from lifeos.sources.cards import megibow as stage
 
 NOW = datetime(2026, 10, 7, 13, 0, tzinfo=CHI)  # Wednesday
 UTC = timezone.utc

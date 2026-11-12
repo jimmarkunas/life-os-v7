@@ -17,7 +17,8 @@ from lifeos.jobs import identity
 from lifeos.network import match, surface
 from lifeos.platform import hidden, ledger_body
 from lifeos.platform.notion_client import NotionError, rich_text
-from lifeos.sources import interview_evidence as ev, m1m2_proof as base
+from lifeos.sources.interview import interview_evidence as ev
+from lifeos.sources.proofs import m1m2_proof as base
 
 CONFIRM = "E10"
 SYN = "(SYNTHETIC)"
@@ -157,7 +158,7 @@ def layout_cases(client, reader, box, check, today):
     flat_key = key + "-flat"
     note = f"Synthetic note Jim wrote {SYN}"
     flat = _ledger_page(client, box, flat_key, [*ledger_body.legacy_blocks(flat_key, LAYOUT_DESC), base._block("paragraph", note)])
-    from lifeos.sources import ledger_layout                                                                   # noqa: PLC0415
+    from lifeos.sources.network import ledger_layout                                                                   # noqa: PLC0415
     check("9f a flat page is moved to the two-column layout", ledger_layout.migrate(client, flat, flat_key, LAYOUT_DESC, True) == "migrated")
     after = notion.children(reader, flat, [notion.MAX_CALLS])
     check("9g after the move: hidden marker, the column_list, and Jim's note untouched and last", [b.get("type") for b in after] == ["paragraph", "column_list", "paragraph"]

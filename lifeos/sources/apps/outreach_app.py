@@ -10,7 +10,7 @@ from lifeos.hiring import close_screen as S, decision as D
 from lifeos.network import surface as N
 from lifeos.platform.notion_client import Client, NotionError
 from lifeos.recruiters import notion as store, outreach as O
-from .close_app import TTL, HTML, _mac, _now, _same
+from lifeos.sources.close_app import TTL, HTML, _mac, _now, _same
 
 PATH = "Daily Report / Job Outreach / Mark as Sent"
 PEOPLE_MAX = 10

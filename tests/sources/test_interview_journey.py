@@ -7,7 +7,7 @@ from unittest.mock import patch
 from lifeos.interview import create, notion
 from lifeos.jobs import ledger as jobs_ledger
 from lifeos.platform.notion_client import NotionError
-from lifeos.sources import interview_evidence as ev
+from lifeos.sources.interview import interview_evidence as ev
 from tests.interview.support import WritableFake
 from tests.interview.support import ENV
 from tests.sources.test_interview_evidence import event, mail, outreach

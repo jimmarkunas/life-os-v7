@@ -1,6 +1,6 @@
 """LIFE-544: test helpers that more than one test module (often in another domain) uses. Moved here out of test_*.py files, unchanged."""
 from tests.interview.support import ENV
-from lifeos.sources import interview_evidence as ev
+from lifeos.sources.interview import interview_evidence as ev
 from datetime import datetime
 from lifeos.jobs import ledger as jobs_ledger
 from tests.interview.support import WritableFake

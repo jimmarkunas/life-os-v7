@@ -1,6 +1,6 @@
 """UK Skilled Worker route evidence: is the ACTUAL employer on the Home Office register of licensed sponsors (Skilled Worker route)?
 
-The register is loaded into `v7_sponsors` by lifeos.sources.sponsor_register. Lookup is by distinctive-token equality of the employer name
+The register is loaded into `v7_sponsors` by lifeos.sources.discovery.sponsor_register. Lookup is by distinctive-token equality of the employer name
 (lifeos.jobs.names), never a fuzzy score. States: POSITIVE (the employer is on the register), NEGATIVE (the register is loaded and the
 employer is not on it), UNRESOLVED (no register loaded, an empty company, or a recruiter/intermediary whose own licence cannot qualify an
 unresolved client employer, so the job goes to Review).
