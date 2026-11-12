@@ -51,6 +51,7 @@ These repository files hold feature scoping, setup, history or one product area'
 | [`docs/platform/receipt-template.md`](docs/platform/receipt-template.md) |
 | [`docs/platform/agent-jira-settings.md`](docs/platform/agent-jira-settings.md) |
 | [`docs/platform/config-registry.md`](docs/platform/config-registry.md) |
+| [`docs/platform/switch-exits.md`](docs/platform/switch-exits.md) |
 | [`docs/platform/lint-baseline.md`](docs/platform/lint-baseline.md) |
 | [`docs/platform/test-index.md`](docs/platform/test-index.md) |
 | [`docs/test-index.json`](docs/test-index.json) |

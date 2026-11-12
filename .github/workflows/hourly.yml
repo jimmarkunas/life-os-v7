@@ -96,7 +96,7 @@ on:
         type: boolean
         default: false
       quick:
-        description: "Quick proof run (LIFE-76, D208): runs exactly what a tick runs (lifeos.jobs.tick in the finish job) with small caps (employer boards 50, publish 10, board backfill 50 when BOARDS_BACKFILL=on), so the tick path is proven by hand first; the lane jobs do not run; ticks never set it"
+        description: "Quick proof run (LIFE-76, D208): runs exactly what a tick runs (lifeos.jobs.tick in the finish job) with small caps (employer boards 50, publish 10, board backfill 50 when its switch in lifeos/platform/switches.json is on), so the tick path is proven by hand first; the lane jobs do not run; ticks never set it"
         type: boolean
         default: false
       benchmark:
@@ -392,6 +392,12 @@ jobs:
           oauth-secret: ${{ steps.bws_jobright.outputs.TAILSCALE_OAUTH_CLIENT_SECRET || steps.bws_jobright_retry.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
           use-cache: "false"
+      - id: jobright_browser
+        name: Browser install for the Jobright resolver (LIFE-604 item 13; the same shared step the finish job uses)
+        if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.resolve_jobright) }}
+        uses: ./.github/actions/browser
+        with:
+          cache_bust: ${{ vars.BROWSER_CACHE_BUST }}
       - id: jobright
         name: Step 5 - resolve Jobright jobs (free Chromium, saves when live)
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.resolve_jobright) }}
@@ -417,8 +423,6 @@ jobs:
           OPEN_JOBS_CONTACT: ${{ steps.bws_jobright.outputs.OPEN_JOBS_CONTACT || steps.bws_jobright_retry.outputs.OPEN_JOBS_CONTACT }}
           TINYFISH_API_KEY: ${{ steps.bws_jobright.outputs.TINYFISH_API_KEY || steps.bws_jobright_retry.outputs.TINYFISH_API_KEY }}
         run: |
-          pip install --require-hashes -r requirements-browser.lock
-          python -m playwright install --with-deps chromium
           python -m lifeos.run resolve-jobright --limit 40 $([ "$LIVE" = "true" ] && echo --live)
 
   linkedin:
@@ -673,74 +677,17 @@ jobs:
           oauth-secret: ${{ steps.bws_finish.outputs.TAILSCALE_OAUTH_CLIENT_SECRET || steps.bws_finish_retry.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
           use-cache: "false"
-      - id: chromium_cache
-        name: Chromium download, cached (LIFE-570; keyed on requirements-browser.lock; the system libraries are still installed each run because a fresh runner has none)
-        if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.quick || inputs.benchmark)) }}
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}${{ vars.BROWSER_CACHE_BUST && format('-{0}', vars.BROWSER_CACHE_BUST) || '' }}-${{ hashFiles('requirements-browser.lock') }}   # LIFE-573: setting the repository variable BROWSER_CACHE_BUST to any word forces one cold-cache run; unset it to go back
-      - id: runner_image
-        name: Runner image version (LIFE-576; part of the system-library cache key so a restored copy never meets a different image)
-        if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.quick || inputs.benchmark)) }}
-        run: echo "version=${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
-      - id: libs_cache
-        name: Browser system libraries, cached (LIFE-576; the .deb files apt downloaded, keyed on the runner image version and requirements-browser.lock)
-        if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.quick || inputs.benchmark)) }}
-        uses: actions/cache@v4
-        with:
-          path: ~/apt-debs
-          key: aptlibs-${{ runner.os }}-${{ steps.runner_image.outputs.version }}${{ vars.BROWSER_CACHE_BUST && format('-{0}', vars.BROWSER_CACHE_BUST) || '' }}-${{ hashFiles('requirements-browser.lock') }}
       - id: browser
-        name: Browser install (LIFE-573, LIFE-576; its own timed step; one log line names the path (cache-hit runs no apt, libs-cache installs the saved .deb files without apt, apt-fallback or apt-cold use apt with three tries and then save the .deb files)
+        name: Browser install (LIFE-573, LIFE-576, LIFE-604 item 13; the one shared step in .github/actions/browser, its own timed step with one log line naming the path)
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.quick || inputs.benchmark)) }}
-        env:
-          CHROMIUM_CACHE_HIT: ${{ steps.chromium_cache.outputs.cache-hit }}
-          LIBS_CACHE_HIT: ${{ steps.libs_cache.outputs.cache-hit }}
-        run: |
-          pip install --require-hashes -r requirements-browser.lock
-          DEBS="$HOME/apt-debs"
-          if [ "$CHROMIUM_CACHE_HIT" = "true" ]; then
-            echo "BROWSER_INSTALL_PATH=cache-hit"
-            echo "BROWSER_INSTALL_SKIPPED_APT: Chromium cache hit, no apt command runs"
-            timeout 120 python -m playwright install chromium || echo "BROWSER_DOWNLOAD_SKIPPED"
-          else
-            done_path=""
-            if [ "$LIBS_CACHE_HIT" = "true" ] && [ -f "$DEBS/manifest.txt" ]; then
-              if { ! ls "$DEBS"/*.deb >/dev/null 2>&1 || sudo dpkg -i "$DEBS"/*.deb; } && timeout 240 python -m playwright install chromium; then
-                echo "BROWSER_INSTALL_PATH=libs-cache"
-                done_path=yes
-              else
-                echo "BROWSER_LIBS_CACHE_FAILED: saved libraries did not install, falling back to apt (set the repository variable BROWSER_CACHE_BUST to rebuild the saved copy)"
-              fi
-            fi
-            if [ -z "$done_path" ]; then
-              if [ "$LIBS_CACHE_HIT" = "true" ]; then echo "BROWSER_INSTALL_PATH=apt-fallback"; else echo "BROWSER_INSTALL_PATH=apt-cold"; fi
-              dpkg-query -W -f '${Package}=${Version}\n' 2>/dev/null | sort > "$HOME/pkgs-before.txt" || true
-              browser=""
-              for attempt in 1 2 3; do
-                if timeout 240 python -m playwright install --with-deps chromium; then browser=yes; break; fi
-                echo "BROWSER_INSTALL_ATTEMPT_${attempt}_FAILED"
-                if [ "$attempt" -lt 3 ]; then sleep $((attempt * 20)); fi
-              done
-              if [ -z "$browser" ]; then echo "BROWSER_INSTALL_FAILED: three tries used up"; exit 1; fi
-              if [ "$LIBS_CACHE_HIT" != "true" ]; then
-                rm -rf "$DEBS"; mkdir -p "$DEBS"
-                dpkg-query -W -f '${Package}=${Version}\n' 2>/dev/null | sort > "$HOME/pkgs-after.txt" || true
-                comm -13 "$HOME/pkgs-before.txt" "$HOME/pkgs-after.txt" > "$DEBS/manifest.txt" || true
-                if [ -s "$DEBS/manifest.txt" ]; then
-                  (cd "$DEBS" && apt-get download $(cat manifest.txt)) || { echo "BROWSER_LIBS_SAVE_FAILED: nothing saved"; rm -rf "$DEBS"; }
-                fi
-                if [ -d "$DEBS" ]; then echo "BROWSER_LIBS_SAVED: $(ls "$DEBS"/*.deb 2>/dev/null | wc -l | tr -d " ") packages"; fi
-              fi
-            fi
-          fi
+        uses: ./.github/actions/browser
+        with:
+          cache_bust: ${{ vars.BROWSER_CACHE_BUST }}
       - id: tick
         continue-on-error: true
         name: Jobs tick - the whole chain in one process, fast path first, one store tunnel (LIFE-76 PR 4b, D208)
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.quick || inputs.benchmark)) }}   # a manual quick run proves exactly this path
         env:
-          BOARDS_BACKFILL: ${{ vars.BOARDS_BACKFILL || 'off' }}         # D217: the first-pass board drainer is hibernated unless the repository variable says on
           FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON || steps.bws_finish_retry.outputs.FIT_PROFILE_EXTRA_JSON }}
           FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON || steps.bws_finish_retry.outputs.FIT_PROFILE_JSON }}
           GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_SECRET || steps.bws_finish_retry.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
