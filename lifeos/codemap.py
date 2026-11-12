@@ -63,22 +63,64 @@ def build():
     return {"stages": stages(), "packages": packages(), "workflows": workflows(), "tables": tables(), "decisions": decisions()}
 
 
+ROUTING_LIMIT = 15 * 1024                                              # LIFE-592: the routing page stays under this many bytes (a test fails above it)
+
+
+def package_line(name, files):
+    """One line per package for the routing page: the package docstring's first sentence (or the first module's), and the module count."""
+    init = ROOT / "lifeos" / name / "__init__.py"
+    summary = first_line(init) if init.exists() else ""
+    summary = summary or next((d for d in files.values() if d), "")
+    return f"- `lifeos/{name}/` ({len(files)} modules): {summary[:110]}"
+
+
 def markdown(m):
+    """LIFE-592: a SHORT routing page. The full map (every module with its description, every workflow secret, every decision title) is docs/codemap.json; ask it for one thing with
+    `python -m lifeos.codemap find <name>`."""
     lines = ["# V7 code map (generated: do not edit; run `python -m lifeos.codemap`)", "",
-             "Start here. Find a stage, then its module; find the file for a feature in Packages; find why in Decisions (then `grep -n \"^## D<n>\" docs/DECISIONS.md`). Machine-readable twin: `docs/codemap.json`.", "",
+             "A routing page. Find a stage here, then its module. For anything else ask one question instead of reading the whole map: "
+             "`python -m lifeos.codemap find <text>` (a package, module, stage, workflow, table or decision number/word; prints only the matching entries). "
+             "Full machine-readable map: `docs/codemap.json`. Decisions: `docs/DECISIONS_INDEX.md` (find), then `grep -n \"^## D<n>\" docs/DECISIONS.md`.", "",
              "## Stages (`python -m lifeos.run <stage>`)"]
     lines += [f"- `{k}` -> `{v}`" for k, v in m["stages"].items()]
-    lines += ["", "## Packages and modules"]
-    for pkg, files in m["packages"].items():
-        lines.append(f"### lifeos/{pkg}/")
-        lines += [f"- `{f}`: {d}" for f, d in files.items()]
-    lines += ["", "## Workflows (jobs, manual trigger, secrets used by name)"]
-    lines += [f"- `{k}`: jobs {', '.join(v['jobs']) or '-'}; manual {'yes' if v['manual'] else 'no'}; secrets {', '.join(v['secrets']) or '-'}" for k, v in m["workflows"].items()]
+    lines += ["", "## Packages (`find <package>` lists its modules)"]
+    lines += [package_line(pkg, files) for pkg, files in m["packages"].items()]
+    lines += ["", "## Workflows (`find <name>` lists jobs and secret names)"]
+    lines += [f"- `{k}`: {len(v['jobs'])} jobs; manual {'yes' if v['manual'] else 'no'}" for k, v in m["workflows"].items()]
     lines += ["", "## Database tables (Hostinger) and the file that owns each"]
     lines += [f"- `{k}`: `{v}`" for k, v in m["tables"].items()]
-    lines += ["", "## Decisions (index)"]
-    lines += [f"- {k}: {v}" for k, v in m["decisions"].items()]
+    lines += ["", f"## Decisions: {len(m['decisions'])} in `docs/DECISIONS_INDEX.md` (`find D<n>` or `find <word>` prints matching titles)"]
     return "\n".join(lines) + "\n"
+
+
+def find(m, text, limit=40):
+    """-> the lines of every map entry that matches `text` (case-insensitive substring; a bare D<number> matches that decision exactly). A package name lists all its modules."""
+    needle = text.strip().lower()
+    out = []
+    if not needle:
+        return out
+    for name, target in m["stages"].items():
+        if needle in name.lower() or needle in target.lower():
+            out.append(f"stage `{name}` -> `{target}`")
+    for pkg, files in m["packages"].items():
+        if needle == pkg.lower():
+            out.append(f"package `lifeos/{pkg}/` ({len(files)} modules):")
+            out += [f"  `{f}`: {d}" for f, d in files.items()]
+            continue
+        for f, d in files.items():
+            if needle in f.lower() or needle in d.lower():
+                out.append(f"module `{f}`: {d}")
+    for name, w in m["workflows"].items():
+        if needle in name.lower() or needle in " ".join(w["jobs"]).lower() or needle in " ".join(w["secrets"]).lower():
+            out.append(f"workflow `{name}`: jobs {', '.join(w['jobs']) or '-'}; manual {'yes' if w['manual'] else 'no'}; secrets {', '.join(w['secrets']) or '-'}")
+    for name, owner in m["tables"].items():
+        if needle in name.lower() or needle in owner.lower():
+            out.append(f"table `{name}` -> `{owner}`")
+    exact = re.fullmatch(r"d(\d+)", needle)
+    for number, title in m["decisions"].items():
+        if (exact and number.lower() == needle) or (not exact and (needle in number.lower() or needle in title.lower())):
+            out.append(f"decision {number}: {title}")
+    return out[:limit] + ([f"... {len(out) - limit} more; narrow the text"] if len(out) > limit else [])
 
 
 def render():
@@ -86,12 +128,18 @@ def render():
     return markdown(m), json.dumps(m, indent=1, sort_keys=True) + "\n"
 
 
-def main():
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    if argv and argv[0] == "find":
+        found = find(json.loads((ROOT / "docs" / "codemap.json").read_text()), " ".join(argv[1:]))
+        print("\n".join(found) if found else "nothing matches; try a shorter word")
+        return 0 if found else 1
     md, js = render()
     (ROOT / "docs" / "CODEMAP.md").write_text(md)
     (ROOT / "docs" / "codemap.json").write_text(js)
-    print(f"codemap: {len(md.splitlines())} lines")
+    print(f"codemap: {len(md.splitlines())} lines, {len(md.encode())} bytes")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
