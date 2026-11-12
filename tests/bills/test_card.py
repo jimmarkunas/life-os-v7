@@ -226,7 +226,7 @@ class RuntimePathTests(unittest.TestCase):
         self.assertEqual(counts["status"], "fresh")
         self.assertEqual([c for c in database.sql if c.startswith(("INSERT", "UPDATE", "DELETE"))], [])  # the card never writes the snapshot either
 
-    def test_the_bills_job_runs_paid_then_snapshot_then_card_and_waits_for_the_other_page_writers(self):
+    def test_the_bills_job_runs_paid_then_snapshot_then_card_and_waits_for_no_other_card(self):
         try:
             import yaml
         except ImportError:
@@ -236,7 +236,7 @@ class RuntimePathTests(unittest.TestCase):
         runs = [step.get("run", "") for step in job["steps"]]
         order = [next(i for i, r in enumerate(runs) if f"lifeos.run {stage}" in r) for stage in ("bills-paid", "bills-snapshot", "bills-card")]
         self.assertEqual(order, sorted(order))
-        self.assertEqual(set(job["needs"]), {"jira", "agenda", "gate"})
+        self.assertEqual(set(job["needs"]), {"gate"})                                                # LIFE-613: the scope guard replaced the wait for jira and agenda
         self.assertTrue(next(s for s in job["steps"] if s.get("id") == "bcard")["continue-on-error"])
         self.assertNotIn("schedule", doc[True])                                                   # no new scheduler: the job still rides the tick's workflow_run
 

@@ -121,10 +121,9 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("completed", domains[True]["workflow_run"]["types"])
         self.assertIn("!= 'cancelled'", domains["jobs"]["gate"]["if"])                 # a tick the gate cancelled starts nothing (the gate job decides this once)
         self.assertIn("display_title == 'tick'", domains["jobs"]["gate"]["if"])        # nor does a manual hourly run
-        self.assertEqual(domains["jobs"]["agenda"]["needs"], ["jira", "gate"])                   # both write the Daily Report page: never at once
-        self.assertIn("always()", domains["jobs"]["agenda"]["if"])                     # but a failed Jira job does not stop the Calendar card
-        self.assertEqual(set(domains["jobs"]["imessage"]["needs"]), {"jira", "agenda", "bills", "amazon", "attention", "gate"})   # its cards prove these regions unchanged: never beside their writers
-        self.assertIn("always()", domains["jobs"]["imessage"]["if"])                   # a failed writer never stops the alerts
+        for name in ("agenda", "bills", "imessage", "hiring"):                          # LIFE-613: their writes are checked against their own blocks before they are sent, so none waits for another card
+            self.assertEqual(domains["jobs"][name]["needs"], ["gate"], name)
+            self.assertIn("always()", domains["jobs"][name]["if"], name)
 
     def test_bills_paid_runs_on_a_tick_before_the_snapshot_and_follows_the_live_flag(self):
         from pathlib import Path

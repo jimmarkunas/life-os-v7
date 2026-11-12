@@ -181,7 +181,7 @@ def render(saved, stale=False, now=None, tracker_url=None):
 def _configured(environ):
     """The Jira and Calendar callouts must still be configured (a missing one means the page is not set up as expected); nothing is read from them. LIFE-613: the proof that this card writes only
     inside its own region is the scope guard on the client, which refuses any other block before the write is sent, not a comparison of the other cards' regions afterwards."""
-    if not all((environ.get(name) or "").strip() for name in ("JIRA_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID")):
+    if not ((environ.get("JIRA_CARD_BLOCK_ID") or "").strip() and (environ.get("CALENDAR_CARD_BLOCK_ID") or "").strip()):
         raise CardError("BILLS_PROTECTED_REGION_UNAVAILABLE")
 
 
