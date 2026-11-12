@@ -66,7 +66,8 @@ def sync(root=ROOT):
         text = path.read_text()
         if BLOCK.search(text) is None:
             raise ValueError(f"{name} has no concord block to replace")
-        new = BLOCK.sub(lambda m: m.group(1) + expected(name, common) + m.group(3), text, count=1)
+        wanted = expected(name, common)
+        new = BLOCK.sub(lambda m, wanted=wanted: m.group(1) + wanted + m.group(3), text, count=1)
         if new != text:
             path.write_text(new)
             changed.append(name)
