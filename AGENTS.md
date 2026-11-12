@@ -86,6 +86,7 @@ Apply these to every new epic or multi-ticket piece of work (written in LOS-119,
 - Fail closed: a full result or an error, never partial. Dry run is the default; writes need live.
 - Isolated jobs (Interview, Jira, Outlook) blank every workflow-level secret they do not use.
 - Keep diffs small. No new framework or dependency without asking. Stop and report on a schema change.
+- **Net size.** A ticket that adds code states in its description the lines it expects to add and what it removes. The pull request's Net size section pastes `python -m lifeos.platform.net_size`; if lifeos/ net is above zero it says what the change removes or why nothing can be removed (LIFE-625).
 
 ## Reporting
 

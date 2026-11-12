@@ -446,6 +446,7 @@
    "lifeos/platform/limits.py": "Provider limits, canonized once. Code imports these; docs/LIMITS.md explains them; tests keep them in sync. Rule: every outbound call path stays UNDER the provider's publ",
    "lifeos/platform/mail.py": "One small provider-neutral mail record for read-only classification. Gmail and Outlook are read differently inside; classifier code sees only this shape.",
    "lifeos/platform/names.py": "Name and role comparison shared by every OS (Jobs: hiring-pipeline handoff, sponsor register; Interview: parent and child identity).",
+   "lifeos/platform/net_size.py": "LIFE-625: net size of a branch by area, so every pull request can say how many lines it adds and removes.",
    "lifeos/platform/notion_client.py": "Notion API transport (platform: free API only, paced under 3 req/s, 429 retry). Fixed error codes, no job knowledge.",
    "lifeos/platform/notion_files.py": "Notion file upload (platform, no job knowledge; LIFE-87 D234). One small file in one part: create the upload, send the bytes as multipart/form-data, and require Notion to",
    "lifeos/platform/notion_ids.py": "Notion page and data-source ids come from the environment, never from source (LIFE-338).",

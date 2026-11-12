@@ -9,7 +9,7 @@ The first line is the time: run `python -m lifeos.platform.ct_stamp` in the same
 
 **1. Context in plain words:** <what the ticket or PR is for, as if the reader has not seen it>
 
-**2. What changed:** <table or list: file or system, change, PR link>
+**2. What changed:** <table or list: file or system, change, PR link; for a code change, its net lines from `python -m lifeos.platform.net_size`>
 
 **3. How it was verified:** <table: acceptance line, evidence (test name, run id, drift row, read-back), result. A new test shows failing on the old code, then passing. A log line alone is never proof>
 
