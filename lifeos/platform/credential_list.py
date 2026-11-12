@@ -585,7 +585,7 @@ CONFIG = {'provided': {'prefixes': ['GITHUB_', 'RUNNER_'], 'names': ['CI', 'PATH
            {'name': 'WEEKLY_REVIEW_PAGE_ID', 'kind': 'input', 'owner': 'platform', 'purpose': 'Notion page id of the weekly review'}],
  'patterns': [{'file': 'lifeos/amazon/card.py', 'match': ['*_CARD_BLOCK_ID', 'GMAIL_OAUTH_*']},
               {'file': 'lifeos/attention/card.py', 'match': ['*_BLOCK_ID']},
-              {'file': 'lifeos/buzz_mcp.py', 'match': ['BUZZ_*']},
+              {'file': 'lifeos/buzz/mcp.py', 'match': ['BUZZ_*']},
               {'file': 'lifeos/dcc/card.py', 'match': ['*_BLOCK_ID']},
               {'file': 'lifeos/hermes_requests.py', 'match': ['BUZZ_*']},
               {'file': 'lifeos/hiring/card.py', 'match': ['*_BLOCK_ID']},

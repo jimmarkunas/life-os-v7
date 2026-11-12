@@ -2,7 +2,7 @@
 from pathlib import Path
 import unittest
 
-from lifeos import codemap
+from lifeos.sources.devtools import codemap
 
 DOCS = Path(__file__).resolve().parents[2] / "docs"
 
@@ -10,8 +10,8 @@ DOCS = Path(__file__).resolve().parents[2] / "docs"
 class CodeMap(unittest.TestCase):
     def test_committed_map_is_current(self):
         md, js = codemap.render()
-        self.assertEqual((DOCS / "CODEMAP.md").read_text(), md, "docs/CODEMAP.md is stale: run python -m lifeos.codemap")
-        self.assertEqual((DOCS / "codemap.json").read_text(), js, "docs/codemap.json is stale: run python -m lifeos.codemap")
+        self.assertEqual((DOCS / "CODEMAP.md").read_text(), md, "docs/CODEMAP.md is stale: run python -m lifeos.sources.devtools.codemap")
+        self.assertEqual((DOCS / "codemap.json").read_text(), js, "docs/codemap.json is stale: run python -m lifeos.sources.devtools.codemap")
 
     def test_every_stage_and_table_is_listed(self):
         m = codemap.build()

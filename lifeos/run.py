@@ -147,7 +147,7 @@ STAGES = {
     "network-match": lazy("lifeos.sources.network.network_leads"),
     "network-surface": lazy("lifeos.sources.network.network_surface"),
     "network-layout": lazy("lifeos.sources.network.ledger_layout"),
-    "probe": lazy("lifeos.probe"),
+    "probe": lazy("lifeos.sources.devtools.probe"),
     "enrich": lazy("lifeos.jobs.enrich"),
     "fit": lazy("lifeos.jobs.fit.stage", floor=500),
     "fit-cloud-backlog": lazy("lifeos.jobs.fit.backlog"),           # D219: Jim's separately approved bounded Cloud Fit batch (manual only)

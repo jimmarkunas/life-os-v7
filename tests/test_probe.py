@@ -1,6 +1,6 @@
 import unittest
 
-from lifeos import probe
+from lifeos.sources.devtools import probe
 from lifeos.platform.http import Fetched
 
 

@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from lifeos import decisions
+from lifeos.sources.devtools import decisions
 
 ROOT = Path(__file__).resolve().parents[2]
 LOG = "# Decisions\n\n## D1 — First\nx\n\n## D2 — Second\nx\n\n## D2 amendment — more on D2\nx\n\n## D3 — Third\nx\n"
@@ -63,7 +63,7 @@ class Claim(Remote):
     def test_parallel_processes_never_get_the_same_number(self):
         sessions = [self.clone(f"s{i}") for i in range(4)]
         env = {**os.environ, "PYTHONPATH": str(ROOT)}
-        procs = [subprocess.Popen([sys.executable, "-m", "lifeos.decisions", "claim"], cwd=s, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        procs = [subprocess.Popen([sys.executable, "-m", "lifeos.sources.devtools.decisions", "claim"], cwd=s, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                  for s in sessions]
         got = [p.communicate(timeout=120)[0].strip() for p in procs]
         self.assertEqual(sorted(got), ["D4", "D5", "D6", "D7"], got)              # four sessions at once: four different numbers, no gaps lost to errors

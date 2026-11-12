@@ -3,9 +3,11 @@ These are fixture results: they say nothing about the real claude.ai / chatgpt.c
 import base64, hashlib, json, os, pathlib, random, shlex, shutil, socket, subprocess, sys, tempfile, threading, time, unittest, urllib.error, urllib.request
 from http.server import ThreadingHTTPServer
 
-from lifeos import buzz_mcp, buzz_nip98 as nip98
-from lifeos.buzz_auth import AuthError, Verifier
-from lifeos.buzz_relay import Relay
+from lifeos.buzz import mcp as buzz_mcp
+
+from lifeos.buzz import nip98
+from lifeos.buzz.auth import AuthError, Verifier
+from lifeos.buzz.relay import Relay
 from tests.buzz.test_bridge import CHAN, KEY_A, KEY_B, OTHER, ROOT, URLS, FakeRelay
 
 BASE, ISS = "https://edge.example.test", "https://idp.example.test"
@@ -312,7 +314,7 @@ class UserAuthorization(Server):
 
 
 class Startup(unittest.TestCase):
-    """Runs the unit's real ExecStart, parsed from the unit file, from the staged /opt layout (only lifeos/__init__.py + lifeos/buzz_*.py) with synthetic config."""
+    """Runs the unit's real ExecStart, parsed from the unit file, from the staged /opt layout (only lifeos/__init__.py, lifeos/buzz/*.py and the old-name shims lifeos/buzz_*.py) with synthetic config."""
     UNIT = ROOT / "lifeos" / "edge" / "buzz" / "oracle" / "lifeos-buzz-mcp.service"
 
     def stage(self):
@@ -321,6 +323,9 @@ class Startup(unittest.TestCase):
         (stage / "lifeos").mkdir()
         for f in [ROOT / "lifeos" / "__init__.py", *(ROOT / "lifeos").glob("buzz_*.py")]:
             shutil.copy(f, stage / "lifeos" / f.name)
+        (stage / "lifeos" / "buzz").mkdir()
+        for f in (ROOT / "lifeos" / "buzz").glob("*.py"):
+            shutil.copy(f, stage / "lifeos" / "buzz" / f.name)
         return stage
 
     def exec_argv(self, flags=None):

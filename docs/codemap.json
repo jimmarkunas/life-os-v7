@@ -252,6 +252,12 @@
    "lifeos/bills/snapshot.py": "Read the complete Notion Bill Tracker into a private snapshot; logs contain counts only.",
    "lifeos/bills/state.py": "Pure due-state buckets over a saved Bill Tracker snapshot."
   },
+  "buzz": {
+   "lifeos/buzz/auth.py": "OAuth 2.1 resource-server checks for the remote Buzz MCP (stdlib only). Access tokens are RS256 JWTs from ONE configured issuer; this module never issues tokens, stores s",
+   "lifeos/buzz/mcp.py": "Remote MCP server (Streamable HTTP, JSON replies, stateless) shared by Claude Chat and ChatGPT Chat for four Buzz operations. Loopback only; a TLS reverse proxy is the on",
+   "lifeos/buzz/nip98.py": "NIP-98 (kind 27235) request signing for the Buzz relay: BIP-340 Schnorr over secp256k1, stdlib only. Keys are passed in by the caller; nothing is stored or logged.",
+   "lifeos/buzz/relay.py": "Scoped Buzz relay client: reads via POST /query, writes via POST /events (the surface Block's `buzz` CLI uses). The transport is injectable so tests never touch a network"
+  },
   "calendar_bridge": {
    "lifeos/calendar_bridge/sync.py": "Outlook calendar -> the person's own Google calendar (one-way). Every Google event V7 writes carries a private marker and a deterministic id derived from the Outlook even",
    "lifeos/calendar_bridge/watch.py": "A calendar sync that keeps failing must reach the phone (D173). The sync step is a warning by design (a provider hiccup never fails the run), so it refused every run for "
@@ -310,7 +316,7 @@
    "lifeos/jira/dash_render.py": "JFM-221 (Jim, Oct 29 2026): the Notion blocks of the Jim & Matt dashboard pages. Pure: Jira facts in, Notion blocks out. Every Jira text passes dash_scrub first. Times ar",
    "lifeos/jira/dash_scrub.py": "JFM-221 (Jim, Oct 29 2026): nothing private reaches the Jim & Matt dashboard. Jira text passes through `scrub` before it becomes Notion text: e-mail addresses, phone numb",
    "lifeos/jira/dashboard.py": "JFM-221 (Jim, Oct 29 2026): the Jim & Matt Dashboard V2, fed from Jira. Jira is the source of truth; Notion is a read-only output; this stage never writes to Jira.",
-   "lifeos/jira/readiness_record.py": "LIFE-313: turn one Jira issue (REST v3 JSON) into the record `python -m lifeos.readiness issue` reads. Pure and offline except `fetch`, which does one read-only GET with ",
+   "lifeos/jira/readiness_record.py": "LIFE-313: turn one Jira issue (REST v3 JSON) into the record `python -m lifeos.sources.devtools.readiness issue` reads. Pure and offline except `fetch`, which does one re",
    "lifeos/jira/rollover.py": "Scheduled 7/14-day sprint rollover. Read-only unless live; fails closed on ambiguity; never closes a sprint before its end, never closes it before the carry-forward is ve",
    "lifeos/jira/snapshot.py": "Read-only Jira execution snapshot per board, kept in the private database (never in this public repo) for the report. Output is counts only: ticket keys, summaries and sp",
    "lifeos/jira/store.py": "Private storage for the Jira snapshot: one row per project (see platform/snapshot_store).",
@@ -491,6 +497,12 @@
    "lifeos/sources/cards/megibow.py": "MegIBOW stage (D134): Gmail + Outlook sent mail, Google + Outlook calendars, Jim's review decisions -> the 8-week table, warnings and the review list in Notion.",
    "lifeos/sources/cards/oracle_card.py": "The Oracle Cloud card stage with its Codex lines taken from the AI Capacity card's own reading (Jim, Oct 24 2026: the two cards must show the same numbers).",
    "lifeos/sources/close_app.py": "LIFE-47 S2 (Career): the application behind the private Close Opportunity service (the Edge gate in lifeos/edge/close_gate.py calls `handle`); a source adapter (D17): the",
+   "lifeos/sources/devtools/codemap.py": "The code map: one generated, machine-readable index of V7 so an agent can find things without reading the repo. python -m lifeos.sources.devtools.codemap (writes docs/COD",
+   "lifeos/sources/devtools/decisions.py": "LIFE-89 (PLAT-GOV-2, Jim approved Oct 20 2026): claim a decision number before writing a decision, so parallel sessions never take the same one.",
+   "lifeos/sources/devtools/probe.py": "Counts-only shape probes for sources whose real pages the build sandbox cannot reach. Run from Actions; prints facts (status, sizes, key NAMES, counts) and never any post",
+   "lifeos/sources/devtools/profile_runs.py": "LIFE-555: where the hourly and domains workflows spend their time. Read-only: it reads GitHub's own run records and prints seconds per job and per step.",
+   "lifeos/sources/devtools/profile_tickets.py": "LIFE-556: how long ordinary tickets take from first commit to merge, read-only, from data that already exists (GitHub pull requests and their `pr-tests` runs, Jira transi",
+   "lifeos/sources/devtools/readiness.py": "LIFE-225 (ARCH-04), simplified by delivery flow v3 (Jim, Nov 9 2026): one versioned, deterministic, offline readiness validator for coding agents and CI. Stdlib only, no ",
    "lifeos/sources/discovery/linkedin_search.py": "D203: LinkedIn job search (the public guest search, no login, no browser) as a source that works in concert with the LinkedIn job-alert newsletter instead of colliding wi",
    "lifeos/sources/discovery/scale_up_register.py": "LIFE-121 London coverage, step 1 (Jim, Oct 26: \"Do them!\"): read-only comparison of the CURRENT official sponsor register against V7's Scale-Up registry. Counts in the cl",
    "lifeos/sources/discovery/sponsor_register.py": "Load the UK Home Office register of licensed sponsors (workers) into Hostinger, Skilled Worker route only.",
@@ -617,7 +629,7 @@
   "outlook-auth": "lifeos.run:_outlook_auth",
   "outlook-newsletters": "lifeos.sources.newsletters.outlook:run",
   "outlook-probe": "lifeos.outlook.stage:probe",
-  "probe": "lifeos.probe:run",
+  "probe": "lifeos.sources.devtools.probe:run",
   "publish": "lifeos.jobs.publish:run",
   "publish-fresh": "lifeos.jobs.publish:run",
   "purge": "lifeos.run:_purge",

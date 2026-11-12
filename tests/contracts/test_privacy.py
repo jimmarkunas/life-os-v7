@@ -23,7 +23,7 @@ SECRET_SHAPES = {
 # LIFE-338: live Notion page and data-source ids stay out of the repo; code reads them from LIFEOS_NOTION_<NAME> (lifeos/platform/notion_ids.py).
 NOTION_URL = re.compile(r"(?:notion\.(?:so|com)/(?:[\w-]+/)*[\w-]*?|collection://)([0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12})\b", re.I)
 ID_LITERAL = re.compile(r"""["']([0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12})["']""", re.I)
-NOT_NOTION_IDS = {"lifeos/probe.py"}      # public job ids from vendor sites
+NOT_NOTION_IDS = {"lifeos/sources/devtools/probe.py"}      # public job ids from vendor sites
 
 
 def synthetic(value):
