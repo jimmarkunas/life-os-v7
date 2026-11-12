@@ -15,7 +15,7 @@ from lifeos.platform import source_registry as registry
 NOT_YET_MIGRATED = frozenset((
     "board-check", "boards-backfill", "boards-preview", "discover-jobs", "granola-auto", "hiring", "interview", "job-page-outreach", "mail-filing", "manual-job",
     "megibow", "network-layout", "network-match", "network-surface", "newsletter-trace", "notion-sandbox-access", "notion-sandbox-outreach-proof", "oracle-card", "outlook-newsletters",
-    "scale-up-boards", "scale-up-register", "web-scale-up", "web-titlewatch"))
+    "scale-up-boards", "scale-up-register", "web-scale-up"))
 
 
 def unlisted(stages, sources=registry.SOURCES, legacy=NOT_YET_MIGRATED):
@@ -71,7 +71,7 @@ class ThePilotIsUnchanged(unittest.TestCase):
         self.assertEqual(run.STAGES["sponsors"].target, ("lifeos.sources.discovery.sponsor_register", "CONTRACT"))          # LIFE-589: the pilot stage is declared through its contract
         self.assertEqual(next(s for s in tick.PLAN if s.name == "sponsors"), tick.Step("sponsors", 120, 40, bulk=True, group="B"))
         group_b = [s.name for s in tick.PLAN if s.group == "B"]
-        self.assertEqual(group_b, ["boards", "web-scale-up", "discover-jobs", "sponsors"])
+        self.assertEqual(group_b, ["boards", "web-scale-up", "web-titlewatch", "discover-jobs", "sponsors"])
         names = [s.name for s in tick.PLAN]
         self.assertEqual(names[names.index("sponsors") + 1], "boards-backfill")
 
