@@ -63,7 +63,7 @@ class MissingSourcesAreCaught(unittest.TestCase):
         self.assertEqual(unlisted(stages), ["brand-new-source"])
 
     def test_removing_a_registry_line_is_caught_by_name(self):
-        self.assertEqual(unlisted(run.STAGES, sources=()), ["sponsors"])
+        self.assertEqual(unlisted(run.STAGES, sources=()), sorted(s.name for s in registry.SOURCES if s.module.startswith("lifeos.sources")))          # with the registry emptied, every registered source shows up
 
 
 class ThePilotIsUnchanged(unittest.TestCase):
