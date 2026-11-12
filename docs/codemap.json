@@ -463,6 +463,7 @@
    "lifeos/platform/runtime.py": "Bounded execution primitives (ported, trimmed, from the V2 runtime kernel). Not a workflow engine: a deadline, a run id and a terminal result shape.",
    "lifeos/platform/snapshot_store.py": "One private snapshot table: a row per key (a project, or the single row 1), replaced each run. The database is private; this repo is not. Used by the Jira, Bills and Agen",
    "lifeos/platform/socket_exchange.py": "LIFE-526: one request to an Oracle service over a plain socket (the fit1 and gran1 frames), read to the server's close.",
+   "lifeos/platform/source_registry.py": "LIFE-618: the one list of job sources, read from source_registry.json. Adding a source = its module + one object in that file (plus its tests); nothing else is edited by ",
    "lifeos/platform/stored_pages.py": "LIFE-384 (D250): remember the id of a Notion page V7 created, under a fixed key, in the private store, and read it back by id (never by searching or matching a title).",
    "lifeos/platform/switches.py": "Production switches in the repository (Jim, Oct 24 2026 standing grant, LIFE-3 comment 11095).",
    "lifeos/platform/testgate.py": "LIFE-570: should the hourly prep job re-run the unit tests?",
