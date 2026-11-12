@@ -139,7 +139,10 @@ class ReplaySafetyTests(unittest.TestCase):
 
     def diagnostics(self):
         path = os.path.join(self.dir, fa.DIAGNOSTICS)
-        return [json.loads(x) for x in open(path).read().splitlines()] if os.path.exists(path) else []
+        if not os.path.exists(path):
+            return []
+        with open(path) as f:
+            return [json.loads(x) for x in f.read().splitlines()]
 
     def test_only_verified_evidence_is_delivered_and_only_a_proven_refusal_is_retried(self):
         """Career TL review 5576359134: the exit code proves nothing either way; a generic failure is never retried."""
@@ -411,6 +414,100 @@ class HourlyCapTests(unittest.TestCase):
             return (fa.DELIVERED, "message_id", 0)
         fa.follow("topic", "x", Stream(stream({"event": "message", "id": "m0001", "title": "A"})), sender, now=lambda: self.HOUR + 1)
         self.assertEqual(seen, [1])
+
+
+class TopicRereadAndQuietTests(unittest.TestCase):
+    """LIFE-608: the relay read the ntfy topic once at start and kept it for weeks, so a changed topic secret silenced it. These run the real step() and the real follow() with real
+    state files; only the ntfy network call (an opener that answers per topic) and the sender are replaced."""
+
+    START = 1_800_000_000
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        for patch in (mock.patch.object(fa, "STATE", self.dir), mock.patch.object(fa, "LAST", os.path.join(self.dir, "last-id"))):
+            patch.start()
+            self.addCleanup(patch.stop)
+        self.clock = [self.START]
+        self.topics = {}                                   # topic name -> the ntfy events that topic holds
+        self.polled = []                                   # topic names the relay asked ntfy for
+        self.sent = []
+        self.secret = ["old-topic"]                        # what the secret store returns now
+        self.state = {}
+
+    def opener(self, url, timeout=None):
+        name = url.split("/")[3]
+        self.polled.append(name)
+        return stream(*self.topics.get(name, []))
+
+    def sender(self, to, body):
+        self.sent.append(body)
+        return (fa.DELIVERED, "message_id", 0)
+
+    def cycle(self, advance=0, resolve=None):
+        self.clock[0] += advance
+        fa.step(self.state, now=lambda: self.clock[0], resolve=resolve or (lambda: self.secret[0]), lookup=lambda channel: "+15550100001",
+                poll=lambda name, to, sender, channel: fa.follow(name, to, self.opener, sender, channel, now=lambda: self.clock[0]), send_to=lambda to, body, channel: self.sender(to, body))
+
+    def lines(self):
+        path = os.path.join(self.dir, fa.DIAGNOSTICS)
+        if not os.path.exists(path):
+            return []
+        with open(path) as f:
+            return [json.loads(x) for x in f.read().splitlines()]
+
+    def test_a_changed_topic_is_picked_up_within_the_refresh_period_and_the_missed_copies_go_out(self):
+        self.topics["new-topic"] = [{"event": "message", "id": "m0001", "title": "Missed"}]
+        self.cycle()                                                    # starts on the old topic, which is empty
+        self.secret[0] = "new-topic"                                    # the secret changes while the relay keeps running
+        self.cycle(advance=fa.POLL)
+        self.assertEqual((self.sent, set(self.polled)), ([], {"old-topic"}))                 # not read again yet: still the old topic
+        self.cycle(advance=fa.TOPIC_REFRESH)
+        self.assertIn("new-topic", self.polled)
+        self.assertEqual(self.sent, ["🔔 Missed", "🔔 Missed"])         # one copy per channel
+        changed = [x for x in self.lines() if x["outcome"] == fa.TOPIC_CHANGED]
+        self.assertEqual(len(changed), 1)
+
+    def test_the_topic_is_never_written_to_the_diagnostics(self):
+        self.cycle()
+        self.secret[0] = "new-topic"
+        self.cycle(advance=fa.TOPIC_REFRESH + 1)
+        with open(os.path.join(self.dir, fa.DIAGNOSTICS)) as f:
+            text = f.read()
+        self.assertNotIn("old-topic", text)
+        self.assertNotIn("new-topic", text)
+
+    def test_a_failed_reread_keeps_the_working_topic_and_tries_again_soon(self):
+        self.cycle()
+        self.cycle(advance=fa.TOPIC_REFRESH, resolve=lambda: None)      # the secret store is down at refresh time
+        self.assertEqual(self.polled[-1], "old-topic")                  # still polling the topic that worked
+        self.assertEqual([x for x in self.lines() if x["outcome"] == fa.TOPIC_CHANGED], [])
+        self.secret[0] = "new-topic"
+        self.cycle(advance=fa.TOPIC_RETRY)                              # retried after the short retry delay, not a full refresh period
+        self.assertEqual(self.polled[-1], "new-topic")
+
+    def test_an_unchanged_topic_writes_no_changed_line(self):
+        self.cycle()
+        self.cycle(advance=fa.TOPIC_REFRESH + 1)
+        self.assertEqual([x for x in self.lines() if x["outcome"] == fa.TOPIC_CHANGED], [])
+
+    def test_hours_without_any_message_write_one_quiet_line_per_period(self):
+        self.cycle()
+        self.cycle(advance=fa.QUIET_AFTER - 100)
+        self.assertEqual([x for x in self.lines() if x["outcome"] == fa.QUIET], [])
+        self.cycle(advance=200)                                         # past the limit
+        self.cycle(advance=fa.POLL)                                     # polling on does not repeat it
+        self.assertEqual(len([x for x in self.lines() if x["outcome"] == fa.QUIET]), 1)
+        self.cycle(advance=fa.QUIET_AFTER)                              # a whole further quiet period: one more
+        self.assertEqual(len([x for x in self.lines() if x["outcome"] == fa.QUIET]), 2)
+
+    def test_a_message_of_any_kind_resets_the_quiet_clock_even_when_it_is_not_forwarded(self):
+        self.cycle()
+        self.topics["old-topic"] = [{"event": "message", "id": "m0001", "title": "FYI", "tags": ["information_source"]}]     # untagged: nothing is sent
+        self.cycle(advance=fa.QUIET_AFTER - 10)
+        self.topics["old-topic"] = []
+        self.cycle(advance=fa.QUIET_AFTER - 10)                         # still inside a period counted from that message
+        self.assertEqual(self.sent, [])
+        self.assertEqual([x for x in self.lines() if x["outcome"] == fa.QUIET], [])
 
 
 if __name__ == "__main__":
