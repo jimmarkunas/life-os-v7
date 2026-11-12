@@ -317,6 +317,7 @@ class StuckTickAlert(unittest.TestCase):
 
     def watch(self, runs, open_stuck=False):
         pushed, calls = [], []
+        runs = runs + [self.run_(5, status="completed", conclusion="success", rid=99)]            # a healthy recent tick, so the separate "no successful run" incident stays quiet
 
         def api(path, method="GET", body=None):
             if "workflows/hourly" in path:
@@ -336,7 +337,7 @@ class StuckTickAlert(unittest.TestCase):
     def test_a_tick_queued_for_41_minutes_pages_once_and_opens_one_issue(self):
         pushed, calls = self.watch([self.run_(41)])
         self.assertEqual([p[3] for p in pushed], ["tick_run_stuck"])
-        self.assertEqual(pushed[0][2], "page")
+        self.assertEqual(pushed[0][2], "info")                                   # phone only, like the other edge alerts; the paging set stays exactly what Jim approved
         self.assertEqual([c for c in calls if c[0] == "POST" and c[1] == "issues"], [("POST", "issues")])
 
     def test_an_open_incident_does_not_page_again_on_the_next_watch(self):
