@@ -52,7 +52,6 @@ PLAN = (
     Step("audit", 180),                         # the full pass after publish: published pages, duplicates and Exclude clean-up, so it never delays the Ledger
     Step("expire-holds", 120),
     Step("finalize", 180, 300, module="lifeos.sources.newsletters.finalize"),     # its own default; the workflow step never passed one
-    Step("boards", 1080, 900, bulk=True, group="B", providers=("ats",)),          # Oct 25 2026: 600 boards took 318-588 s (about 1 s a board on a slow hour), so 900 get 1080 s
     Step("web-scale-up", 300, 12, bulk=True, group="B", providers=("ats",)),
     Step("web-titlewatch", 240, bulk=True, group="B", providers=("tinyfish",)),
     Step("discover-jobs", 300, 12, bulk=True, group="B", providers=("tinyfish", "linkedin")),
