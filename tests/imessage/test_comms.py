@@ -1,4 +1,5 @@
 import contextlib
+from copy import deepcopy
 import copy
 import datetime as dt
 import io
@@ -182,14 +183,14 @@ class Contract(unittest.TestCase):
 
 
 class Card(unittest.TestCase):
-    ENV = {"IMESSAGE_ALERTS_HOST": "100.64.0.9", "ATTENTION_CARD_BLOCK_ID": "attn", "NOTION_JIRA_TOKEN": "unused"}
+    ENV = {"IMESSAGE_ALERTS_HOST": "100.64.0.9", "ATTENTION_CARD_BLOCK_ID": "attn", "JIRA_CARD_BLOCK_ID": "jira", "CALENDAR_CARD_BLOCK_ID": "cal", "BILLS_CARD_BLOCK_ID": "bills", "AMAZON_CARD_BLOCK_ID": "amz", "NOTION_JIRA_TOKEN": "unused"}
 
     def run_card(self, report, live=True, answer=None, env=None):
         answer = answer or (lambda host, key: json.dumps({"schema": card.SCHEMA, "observed_at": "2026-10-14T15:00:00Z", "health": "CURRENT", "unread_7d": 45,
                                                           "latest_state": "PRESENT", "latest": ep.scramble(key, NAME), "telegram": tg_block(key),
                                                           "whatsapp": tg_block(key, "Carol Example")}).encode())
         out = io.StringIO()
-        with mock.patch.object(report_region, "protected", lambda client, ids, fail: {"Attention": "same"}), contextlib.redirect_stdout(out):
+        with contextlib.redirect_stdout(out):
             counts = card.run(0, live, env or self.ENV, NOW, answer, report, keygen=lambda n: KEY)
         return counts, out.getvalue()
 
@@ -285,12 +286,32 @@ class Card(unittest.TestCase):
         self.assertEqual(str(error.exception), "CARD_NOT_OWNED")
         self.assertEqual(report.patches, [])
 
-    def test_a_changed_protected_region_fails_after_the_write(self):
-        states = iter([{"Attention": "a"}, {"Attention": "b"}])
-        with mock.patch.object(report_region, "protected", lambda client, ids, fail: next(states)), contextlib.redirect_stdout(io.StringIO()):
-            with self.assertRaises(card.CommsError):
-                card.run(0, True, self.ENV, NOW, lambda host, key: b"", Report(), keygen=lambda n: KEY)
+    def test_another_cards_write_during_ours_no_longer_fails_the_run(self):
+        """LIFE-613: the other cards' regions are no longer compared before and after our write, so a legitimate write by another card at the same time cannot fail this one."""
+        class Busy(Report):
+            def call_once(self, method, path, body=None):
+                result = super().call_once(method, path, body)
+                self.blocks["bills"]["callout"] = {"rich_text": [text("Bills (another card wrote this)")]}
+                return result
 
+        counts, _ = self.run_card(Busy())
+        self.assertGreater(counts["written"], 0)
+
+    def test_a_write_into_another_cards_block_is_refused_before_it_is_sent_and_nothing_changes(self):
+        """LIFE-613 mutation proof. A writer aimed at another card's block (the Attention callout) must fail with the fixed code and leave that block untouched. On the old code the write went
+        through and was only noticed afterwards (PROTECTED_REGION_CHANGED), so the untouched-block assertion fails there."""
+        report = Report()
+        before = deepcopy(report.blocks["attn"])
+
+        def buggy_writer(client, heading, blocks, lines, heading_text):
+            client.call_once("PATCH", "/blocks/attn", {"callout": {"rich_text": [{"type": "text", "text": {"content": "overwritten"}}]}})
+
+        with mock.patch.object(card, "write", buggy_writer):
+            with self.assertRaises(card.CommsError) as error:
+                self.run_card(report)
+        self.assertEqual(str(error.exception), "WRITE_OUT_OF_SCOPE")
+        self.assertEqual(report.blocks["attn"], before)
+        self.assertEqual(report.patches, [])
 
 if __name__ == "__main__":
     unittest.main()
