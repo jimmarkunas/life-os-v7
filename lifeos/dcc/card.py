@@ -9,13 +9,15 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from lifeos.dcc import header
-from lifeos.platform import report_region, router
+from lifeos.platform import due, report_region, router
 from lifeos.platform.notion_client import Client, NotionError
 
 TZ = ZoneInfo("America/Chicago")
 TITLE = router.DCC_REGION
 MODULE = router.OWNERS[TITLE]
-FRESH_MINUTES = 90                                        # V7's own daily check uses the same figure
+FRESH_MINUTES = 90                                        # an hourly card is current this long after its stamp
+# LIFE-612: a card that runs less often than every tick is current for the longest gap between its runs plus the same 90 minutes, read from the due-time table (lifeos/platform/due_table.json).
+JOB_OF = {"Calendar": "outlook", "Jira": "jira", "Bills": "bills", "Mail Alerts": "mail", "Amazon": "amazon", "Attention": "attention", "Hiring Pipeline": "hiring"}
 STAMP = re.compile(r"Updated (\d{1,2}):(\d{2}) ([AP]M) CT")
 TIME = re.compile(r"(\d{1,2}):(\d{2}) ([AP]M) CT")          # the clock in a DEGRADED or STALE line ("failed at 10:05 PM CT")
 # (label, block id secret, where the status text is). "head": the callout's heading carries it; "line": the first text line under the heading; "own": the callout's own text (the headless Attention callout, D131);
@@ -96,8 +98,19 @@ def read_areas(client, environ):
     return out
 
 
-def classify(area, now):
-    """-> (state, "H:MM AM" stamp or None). state: fresh | stale | degraded | unknown | unreadable | unset."""
+def fresh_minutes(label, table=None):
+    """How long after its stamp this card still counts as current: 90 minutes for an hourly card, plus the longest gap between runs for a card the due-time table runs less often."""
+    row = (table if table is not None else due.load_table()).get(JOB_OF.get(label, ""), {"every_hours": 1})
+    if "slots_ct" in row:
+        slots = sorted(int(h) * 60 + int(m) for h, m in (slot.split(":") for slot in row["slots_ct"]))
+        gap = max([b - a for a, b in zip(slots, slots[1:])] + [slots[0] + 24 * 60 - slots[-1]])
+    else:
+        gap = row["every_hours"] * 60 if row["every_hours"] > 1 else 0
+    return FRESH_MINUTES + gap
+
+
+def classify(area, now, minutes=FRESH_MINUTES):
+    """-> (state, "H:MM AM" stamp or None). state: fresh | stale | degraded | unknown | unreadable | unset. `minutes`: how old a stamp may be and still be fresh."""
     if area.get("unset"):
         return "unset", None
     if area.get("unreadable"):
@@ -116,7 +129,7 @@ def classify(area, now):
     at = now.replace(hour=hour, minute=int(found.group(2)), second=0, microsecond=0)
     if at > now:
         at -= timedelta(days=1)                         # a stamp later than now is yesterday's
-    return ("fresh" if now - at <= timedelta(minutes=FRESH_MINUTES) else "stale"), stamp
+    return ("fresh" if now - at <= timedelta(minutes=minutes) else "stale"), stamp
 
 
 def _number(text, pattern):
@@ -127,7 +140,7 @@ def _number(text, pattern):
 def compose(areas, now):
     """-> the callout's content as plain data (the approved native layout, LIFE-57). Pure. A count is shown only from a card that is current: a stale, degraded or unreadable card shows
     its own state in place of a number, never a zero."""
-    states = {label: classify(area, now) for label, area in areas.items()}
+    states = {label: classify(area, now, fresh_minutes(label)) for label, area in areas.items()}
     ok, bad = [l for l, (state, _) in states.items() if state == "fresh"], [(l, state) for l, (state, _) in states.items() if state != "fresh"]
 
     def source(label):
@@ -242,7 +255,7 @@ def run(limit, live, environ=os.environ, client=None, now=None):
     areas = read_areas(client, environ)
     if not any("status" in area for area in areas.values()):
         raise _fail("NO_EVIDENCE")                         # nothing could be read: say nothing rather than write an empty summary
-    by_area = {label: classify(area, now)[0] for label, area in areas.items()}
+    by_area = {label: classify(area, now, fresh_minutes(label))[0] for label, area in areas.items()}
     states = list(by_area.values())
     spec = render(compose(areas, now))
     protected_ids = {region: (environ.get(name) or "").strip() for name, region in PROTECTED}
