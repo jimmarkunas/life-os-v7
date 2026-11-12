@@ -1,4 +1,6 @@
-"""NIP-98 (kind 27235) request signing for the Buzz relay: BIP-340 Schnorr over secp256k1, stdlib only. Keys are passed in by the caller; nothing is stored or logged."""
+"""NIP-98 request signing for the Buzz relay: BIP-340 Schnorr over secp256k1 for event kind 27235. Stdlib only.
+
+Inputs: the request fields and a key passed in by the caller. Outputs: the signed authorization value. Nothing is stored or logged; no key is read from disk or the environment."""
 import base64, hashlib, json, os, time, uuid
 
 P = 2**256 - 2**32 - 977
