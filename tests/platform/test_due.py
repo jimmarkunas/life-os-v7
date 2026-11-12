@@ -104,6 +104,43 @@ class BillsEverySixHours(unittest.TestCase):
         self.assertEqual(due.decide({"bills": self.ROW}, {"bills": dt.datetime(2026, 11, 12, 15, 17, tzinfo=UTC)}, NOW, tick=False), {"bills": (True, "not a tick")})
 
 
+class Retention(unittest.TestCase):
+    """LIFE-611: the Amazon retention job runs once a day, on the first tick after 3:00 AM CT."""
+    ROW = due.load_table()["amazon_retention"]
+
+    def ticks(self, start, hours, last, dropped=()):
+        """Hourly ticks at :17 from `start`; -> (the tick times at which the job was due, its last start). A tick in `dropped` runs the gate but the job fails, so it is not a success."""
+        found, now = [], start
+        for n in range(hours):
+            if due.is_due(self.ROW, last, now)[0]:
+                found.append(now)
+                if n not in dropped:
+                    last = now
+            now += dt.timedelta(hours=1)
+        return found, last
+
+    def test_the_real_row_is_a_daily_slot_at_3_am_central(self):
+        self.assertEqual(self.ROW, {"slots_ct": ["03:00"]})
+
+    def test_over_two_days_of_ticks_it_is_due_exactly_once_every_24_hours(self):
+        start = dt.datetime(2026, 11, 12, 6, 17, tzinfo=UTC)               # 12:17 AM CT, after yesterday's run at 3:17 AM CT
+        found, _ = self.ticks(start, 48, dt.datetime(2026, 11, 11, 9, 17, tzinfo=UTC))
+        self.assertEqual([t.astimezone(due.CENTRAL).strftime("%a %-I:%M %p") for t in found], ["Thu 3:17 AM", "Fri 3:17 AM"])
+
+    def test_a_failed_daily_run_is_caught_up_on_the_next_tick_once(self):
+        start = dt.datetime(2026, 11, 12, 6, 17, tzinfo=UTC)
+        found, last = self.ticks(start, 8, dt.datetime(2026, 11, 11, 9, 17, tzinfo=UTC), dropped={3})        # the 3:17 AM run fails
+        self.assertEqual([t.astimezone(due.CENTRAL).strftime("%-I:%M %p") for t in found], ["3:17 AM", "4:17 AM"])      # retried the next tick, then fresh
+        self.assertEqual(last.astimezone(due.CENTRAL).strftime("%-I:%M %p"), "4:17 AM")
+
+    def test_a_dropped_day_runs_once_not_twice(self):
+        found, _ = self.ticks(dt.datetime(2026, 11, 12, 18, 17, tzinfo=UTC), 3, dt.datetime(2026, 11, 9, 9, 17, tzinfo=UTC))      # no success for three days
+        self.assertEqual(len(found), 1)
+
+    def test_a_manual_run_is_not_a_tick_so_the_job_is_due(self):
+        self.assertEqual(due.decide({"amazon_retention": self.ROW}, {"amazon_retention": dt.datetime(2026, 11, 12, 9, 17, tzinfo=UTC)}, NOW, tick=False), {"amazon_retention": (True, "not a tick")})
+
+
 class History_(unittest.TestCase):
     def test_last_success_takes_the_start_of_the_newest_run_where_the_job_succeeded(self):
         api = History([run(1, mail="skipped", jira="success"), run(7, mail="success", jira="success"), run(13, mail="success")])
