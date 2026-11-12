@@ -74,7 +74,6 @@ STAGES = {
     "web-scale-up": lazy("lifeos.sources.web.run", lane="Scale-Up"),
     "boards-backfill": lazy("lifeos.sources.web.boards", "backfill"),     # D217: the hibernatable first-pass drainer (BOARDS_BACKFILL=on), the tick's last bulk stage
     "boards-preview": lazy("lifeos.sources.web.boards", "preview"),     # D202 acceptance: read-only, counts only
-    "discover-jobs": lazy("lifeos.sources.web.discover_jobs"),
     "alerts": lazy("lifeos.jobs.alerts"),
     "interview-probe": lazy("lifeos.interview.stage", "probe"),
     "interview": lazy("lifeos.sources.interview.interview_evidence"),      # LIFE-88: the normal path (accepted evidence to the Interview OS writer); writes need INTERVIEW_OS_WRITER=v7
