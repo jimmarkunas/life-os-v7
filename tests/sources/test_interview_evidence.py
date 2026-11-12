@@ -9,7 +9,7 @@ from lifeos.jobs import ledger as jobs_ledger
 from lifeos.platform.notion_client import NotionError
 from lifeos.interview.models import Child, Ownership, Parent, Scan
 from lifeos.run import STAGES
-from lifeos.sources import interview_evidence as ev
+from lifeos.sources.interview import interview_evidence as ev
 from tests.sources.support import event
 from tests.sources.support import mail, outreach
 

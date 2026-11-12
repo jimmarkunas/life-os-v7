@@ -26,7 +26,7 @@ from lifeos.network import match, store, surface
 from lifeos.network.errors import NetworkError
 from lifeos.platform import db, limits
 from lifeos.platform.notion_client import Client, NotionError
-from lifeos.sources import network_leads
+from lifeos.sources.network import network_leads
 
 DEFAULT_PAGES = 300
 

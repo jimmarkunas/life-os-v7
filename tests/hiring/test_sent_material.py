@@ -9,7 +9,8 @@ from lifeos.hiring import decision as D, models as M
 from lifeos.interview import create, notion, template, view
 from lifeos.interview.models import ParentQuery, RoundQuery
 from lifeos.platform.gmail import Gmail, GmailError
-from lifeos.sources import interview_evidence, manage_app
+from lifeos.sources.interview import interview_evidence
+from lifeos.sources.apps import manage_app
 from tests.hiring import test_decision as TD
 from tests.hiring.test_hand_set import M2, SET_AT, OP, forms, hand_text, ledger_page, ledger_ready
 from tests.hiring.test_mark_complete import lines, opp, texts
@@ -392,4 +393,4 @@ class Picker(unittest.TestCase):
 
     def test_the_picker_script_is_routed(self):
         from lifeos.sources import close_app
-        self.assertEqual(close_app.ROUTES["/manage-picker.js"], ("manage_app", "handle_js"))
+        self.assertEqual(close_app.ROUTES["/manage-picker.js"], ("apps.manage_app", "handle_js"))

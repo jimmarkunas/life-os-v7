@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from lifeos import run as runner
 from lifeos.platform.notion_client import Client, NotionError
-from lifeos.sources import notion_sandbox_access as S
+from lifeos.sources.proofs import notion_sandbox_access as S
 
 
 def refused(code, detail=""):

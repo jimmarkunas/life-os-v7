@@ -1,6 +1,6 @@
 {
   "_how_to_read": "LIFE-618: the one list of job sources. One object per source: name (the stage: python -m lifeos.run <name>), module, function (default run), floor (raise a smaller --limit to this), tick (the Jobs-tick step: budget, limit, bulk, group, providers; leave out when the source does not run in the tick) with after (the tick step it follows), and codes ({CODE: [class, counts as an attempt, meaning, action]}) for its own outcome codes. Data, not code, so no layer imports another (D17).",
   "sources": [
-    {"name": "sponsors", "module": "lifeos.sources.sponsor_register", "tick": {"budget": 120, "bulk": true, "group": "B"}, "after": "discover-jobs"}
+    {"name": "sponsors", "module": "lifeos.sources.discovery.sponsor_register", "tick": {"budget": 120, "bulk": true, "group": "B"}, "after": "discover-jobs"}
   ]
 }

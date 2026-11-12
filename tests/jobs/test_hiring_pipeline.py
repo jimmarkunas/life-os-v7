@@ -178,7 +178,7 @@ class LedgerFirst(unittest.TestCase):
         self.assertEqual(hp.snapshot(Fake(tree), "root")[1], "ok")                                                                       # no ledger: the page tree alone, as before
 
     def test_a_ledger_pursuit_keeps_its_tree_page_id_for_the_writers(self):
-        from lifeos.sources import hiring as stage
+        from lifeos.sources.pipeline import hiring as stage
         tree = {"root": [page("o1", "Acme — Program Manager")], "o1": []}
         out = stage.read_parents(Fake(tree), "root", FakeLedgerClient([[row("r1", "Acme", "Program Manager", "Applied"), row("r2", "Beta", "Analyst", "Applied")]]))
         self.assertEqual({p["company"]: (p["id"], p["row_id"]) for p in out}, {"Acme": ("o1", "r1"), "Beta": ("r2", "r2")})      # LIFE-353: the decision writers act on row_id

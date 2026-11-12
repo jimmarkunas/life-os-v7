@@ -27,7 +27,8 @@ from lifeos.recruiters import classify, qualify
 from lifeos.recruiters import notion as recruiters_store
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 from lifeos.platform.runtime import RunContext
-from lifeos.sources import hiring as pipeline, interview_sweep as sweep
+from lifeos.sources.pipeline import hiring as pipeline
+from lifeos.sources.interview import interview_sweep as sweep
 
 TZ = ZoneInfo("America/Chicago")
 ROUND = re.compile(r"\b(?:interview|round)\s+(\d{1,2})\b|\b(\d{1,2})(?:st|nd|rd|th)\s+(?:interview|round)\b", re.I)
@@ -286,7 +287,7 @@ def network_contacts(client, evidence, context=None, seconds=60):
 
 def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, ledger_rows=None, context=None, ledger=None, records=None, gmail=None, outlook_accounts=None, writer=None, recruiters=None):
     if (environ.get("INTERVIEW_JOURNEY_PROOF") or "").strip():                 # LIFE-78: the manual synthetic journey proof on a fresh QA sandbox, never the real pipeline
-        from lifeos.sources import interview_journey_proof
+        from lifeos.sources.proofs import interview_journey_proof
         return interview_journey_proof.run(environ, live, now=now, client=client)
     live = bool(live) and environ.get("INTERVIEW_OS_WRITER") == "v7"
     injected = context

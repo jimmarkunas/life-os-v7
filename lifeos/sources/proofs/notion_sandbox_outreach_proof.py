@@ -13,8 +13,8 @@ from lifeos.network import surface as N
 from lifeos.platform import report_region as R
 from lifeos.platform.notion_client import Client, NotionError
 from lifeos.recruiters import notion as store
-from lifeos.sources import job_page_outreach as J
-from lifeos.sources.notion_sandbox_access import SANDBOX_SOURCE
+from lifeos.sources.pipeline import job_page_outreach as J
+from lifeos.sources.proofs.notion_sandbox_access import SANDBOX_SOURCE
 
 TITLE = "TEST — ServiceNow Outreach (SYNTHETIC)"
 CONFIRM = "SYNTHETIC"

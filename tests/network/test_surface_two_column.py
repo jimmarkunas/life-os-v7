@@ -102,7 +102,7 @@ class Leads(unittest.TestCase):
 
 class Migration(unittest.TestCase):
     def test_a_page_with_leads_on_the_flat_layout_gets_them_moved_into_the_right_column_after_the_migration(self):
-        from lifeos.sources import ledger_layout as layout
+        from lifeos.sources.network import ledger_layout as layout
         ledger = FakeLedger()
         ledger.add_page("page-1", KEY1, description=False)
         ledger.kids["page-1"] = [ledger._new(b["type"], b[b["type"]]["rich_text"]) for b in body.legacy_blocks(KEY1, DESC)]

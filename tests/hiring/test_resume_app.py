@@ -17,7 +17,8 @@ from unittest import mock
 from lifeos.edge import close_gate
 from lifeos.platform import gdrive, notion_files
 from lifeos.platform.notion_client import NotionError
-from lifeos.sources import close_app, resume_app
+from lifeos.sources import close_app
+from lifeos.sources.apps import resume_app
 
 SECRET, TOKEN, LEDGER = b"link-signing-key-0123456789abcdef", b"notion-token-secret", "11111111-2222-3333-4444-555555555555"
 PID = "00000000-0000-0000-0000-000000000007"
@@ -194,7 +195,7 @@ class BuildResume(unittest.TestCase):
         self.assertEqual([b["file"]["name"] for b in r.page.appended], [FILENAME, "Jim_Markunas_Resume_Acme_TPM_V9b.docx"])
 
     def test_the_route_and_its_modules_are_in_the_release(self):
-        for module in ("lifeos/sources/resume_app.py", "lifeos/platform/notion_files.py"):
+        for module in ("lifeos/sources/apps/resume_app.py", "lifeos/platform/notion_files.py"):
             self.assertIn(module, close_app.CLOSURE)
 
 

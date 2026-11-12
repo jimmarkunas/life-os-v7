@@ -597,7 +597,7 @@ CONFIG = {'provided': {'prefixes': ['GITHUB_', 'RUNNER_'], 'names': ['CI', 'PATH
               {'file': 'lifeos/platform/notion_client.py', 'match': ['NOTION_*']},
               {'file': 'lifeos/platform/notion_ids.py', 'match': ['LIFEOS_NOTION_*']},
               {'file': 'lifeos/platform/switches.py', 'match': ['ALERTS_*']},
-              {'file': 'lifeos/sources/interview_evidence.py', 'match': ['GMAIL_OAUTH_*']},
-              {'file': 'lifeos/sources/manual_job.py', 'match': ['MANUAL_JOB_*']}],
+              {'file': 'lifeos/sources/interview/interview_evidence.py', 'match': ['GMAIL_OAUTH_*']},
+              {'file': 'lifeos/sources/pipeline/manual_job.py', 'match': ['MANUAL_JOB_*']}],
  'not_environment': {'lifeos/telegram/attention.py': 'env is a dict filled from a unit file (writes only)',
                      'lifeos/whatsapp/oracle/forward_alerts.py': 'env is a dict filled from a unit file (writes only)'}}

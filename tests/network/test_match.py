@@ -7,7 +7,7 @@ from datetime import date, datetime, timezone
 from lifeos import run
 from lifeos.network import match, store
 from lifeos.network.errors import NetworkError
-from lifeos.sources import network_leads
+from lifeos.sources.network import network_leads
 from tests.kit.mysqlite import MySQLite
 
 TODAY = date(2026, 10, 7)
@@ -166,7 +166,7 @@ class Stage(unittest.TestCase):
         self.assertEqual(str(ctx.exception), "NETWORK_MATCH_READ_FAILED")
 
     def test_the_stage_is_registered_reads_only_and_creates_no_table(self):
-        self.assertEqual(run.STAGES["network-match"].target, ("lifeos.sources.network_leads", "run"))
+        self.assertEqual(run.STAGES["network-match"].target, ("lifeos.sources.network.network_leads", "run"))
         text = pathlib.Path(network_leads.__file__).read_text()
         for banned in ("CREATE TABLE", "INSERT", "UPDATE", "DELETE", "snapshot.save", "call_once", "Client("):
             self.assertNotIn(banned, text)

@@ -6,7 +6,7 @@ from unittest import mock
 
 from lifeos.jobs.fit import capacity_card, edge
 from lifeos.oraclecloud import card
-from lifeos.sources import oracle_card
+from lifeos.sources.cards import oracle_card
 import datetime as dt
 
 NOW = dt.datetime(2026, 10, 24, 17, 17, tzinfo=dt.timezone.utc)

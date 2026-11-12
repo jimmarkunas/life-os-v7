@@ -15,7 +15,7 @@ from lifeos.interview.ui_probe import QA_PARENT
 from lifeos.jobs import ledger as jobs_ledger
 from lifeos.platform.names import split_title
 from lifeos.platform.notion_client import NotionError, rich_text
-from lifeos.sources import interview_evidence as ev
+from lifeos.sources.interview import interview_evidence as ev
 
 CONFIRM = "QA"
 MAX_TICKS = 6
@@ -225,13 +225,13 @@ def sandbox(client, now):
 def run(environ, live, now=None, client=None):
     """-> counts only: per-step results, final read-back checks and `failed` (steps or checks that did not pass)."""
     if (environ.get("INTERVIEW_JOURNEY_PROOF") or "").strip() == "M1M2":            # LIFE-78: the bounded synthetic M1/M2 exit case, same switch and sandbox rules
-        from lifeos.sources import m1m2_proof
+        from lifeos.sources.proofs import m1m2_proof
         return m1m2_proof.run(environ, live, now=now, client=client)
     if (environ.get("INTERVIEW_JOURNEY_PROOF") or "").strip() == "E10":              # LIFE-88: the synthetic Network Leads / LinkedIn Contacts QA, same switch and sandbox rules
-        from lifeos.sources import interview_contacts_proof
+        from lifeos.sources.proofs import interview_contacts_proof
         return interview_contacts_proof.run(environ, live, now=now, client=client)
     if (environ.get("INTERVIEW_JOURNEY_PROOF") or "").strip() == "LAYOUT":           # Jim, Oct 27: the two-column Ledger page and its migration, on real Notion in a fresh sandbox
-        from lifeos.sources import interview_contacts_proof
+        from lifeos.sources.proofs import interview_contacts_proof
         return interview_contacts_proof.run_layout(environ, live, now=now, client=client)
     if (environ.get("INTERVIEW_JOURNEY_PROOF") or "").strip() != CONFIRM:
         return {"proof": "refused", "code": "proof_confirm_missing", "failed": 1, "why": {}, "writes": 0}

@@ -4,7 +4,7 @@ from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 from lifeos.jobs import identity
-from lifeos.sources import manual_job as mj
+from lifeos.sources.pipeline import manual_job as mj
 
 URL = "https://careers.example.com/en/job/example-city/senior-program-manager/159/101596083584"
 NOW = datetime(2026, 10, 26, 15, 0, tzinfo=ZoneInfo("America/Chicago"))

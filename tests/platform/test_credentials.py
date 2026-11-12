@@ -5,7 +5,7 @@ import unittest
 
 from lifeos.jobs import alerts as job_alerts
 from lifeos.platform import credentials as cred
-from lifeos.sources import alerts_app as app
+from lifeos.sources.apps import alerts_app as app
 
 TODAY = dt.date(2026, 11, 10)
 SECRET_SHAPES = (re.compile(r"[A-Za-z0-9+/=_]{32,}"), re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.I),

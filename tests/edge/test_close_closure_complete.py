@@ -51,12 +51,12 @@ class ClosureIsComplete(unittest.TestCase):
 
     def test_the_alert_settings_screen_ships_the_credential_list(self):
         ship = shipped()
-        for need in ("lifeos/sources/alerts_app.py", "lifeos/platform/credentials.py", "lifeos/platform/credential_list.py"):
+        for need in ("lifeos/sources/apps/alerts_app.py", "lifeos/platform/credentials.py", "lifeos/platform/credential_list.py"):
             self.assertIn(need, ship)
 
     def test_negative_control_a_missing_module_is_reported(self):
         ship = shipped() - {"lifeos/platform/credentials.py"}
-        self.assertIn("lifeos/platform/credentials.py", missing(ship, ship).get("lifeos/sources/alerts_app.py", set()))
+        self.assertIn("lifeos/platform/credentials.py", missing(ship, ship).get("lifeos/sources/apps/alerts_app.py", set()))
 
     def test_every_closure_path_is_a_python_file_the_release_tool_accepts(self):
         for path in shipped():

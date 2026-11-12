@@ -1,4 +1,4 @@
-"""LIFE-78 M1/M2 synthetic exit (lifeos/sources/m1m2_proof.py), run exactly as the manual interview-proof dispatch runs it, on production-shaped fakes:
+"""LIFE-78 M1/M2 synthetic exit (lifeos/sources/proofs/m1m2_proof.py), run exactly as the manual interview-proof dispatch runs it, on production-shaped fakes:
 the Interview pages on the journey's Notion fake, the sandbox Ledger and Recruiters as Notion data sources, the Daily Report region on the block-tree fake."""
 import copy
 import json
@@ -8,7 +8,8 @@ from unittest.mock import patch
 from lifeos.hiring import models as HM
 from lifeos.jobs import enrich
 from lifeos.platform.notion_client import NotionError
-from lifeos.sources import interview_evidence as ev, m1m2_proof as proof
+from lifeos.sources.interview import interview_evidence as ev
+from lifeos.sources.proofs import m1m2_proof as proof
 from lifeos.interview.ui_probe import QA_PARENT
 from tests.interview.support import ENV, page
 from tests.kit.tree import Tree

@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo
 
 from lifeos.hiring import close_screen as S
 from lifeos.platform import alert_registry as registry, alert_settings as settings, alerts, credentials
-from . import close_app as C
+from lifeos.sources import close_app as C
 
 API = "https://api.github.com/repos/jimmarkunas/life-os-v7/actions/variables"
 PATH, TAB = "LIFE OS / Command Center / Alert settings", "Alert settings"
