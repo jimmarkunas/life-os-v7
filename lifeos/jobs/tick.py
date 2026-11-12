@@ -53,7 +53,6 @@ PLAN = (
     Step("expire-holds", 120),
     Step("finalize", 180, 300, module="lifeos.sources.newsletters.finalize"),     # its own default; the workflow step never passed one
     Step("web-scale-up", 300, 12, bulk=True, group="B", providers=("ats",)),
-    Step("web-titlewatch", 240, bulk=True, group="B", providers=("tinyfish",)),
     Step("discover-jobs", 300, 12, bulk=True, group="B", providers=("tinyfish", "linkedin")),
     Step("boards-backfill", 600, 450, bulk=True),   # D217: after the hourly work, so a first pass never takes time from it; off unless BOARDS_BACKFILL=on
     # LIFE-76 drain pass (Jim, Oct 25: "drain this backlog quickly"): the backlog the first pass found, in the run's spare time, never before the hourly
