@@ -13,7 +13,7 @@ from lifeos.platform import source_registry as registry
 # Stages whose target sits under lifeos/sources/ and that are still wired by hand in lifeos/run.py (and, for the tick ones, lifeos/jobs/tick.py). Each migration PR moves one name from here into
 # source_registry.json; a new source is never added here.
 NOT_YET_MIGRATED = frozenset((
-    "board-check", "boards-backfill", "boards-preview", "discover-jobs", "granola-auto", "hiring", "interview", "job-page-outreach", "mail-filing", "manual-job",
+    "board-check", "boards-backfill", "boards-preview", "granola-auto", "hiring", "interview", "job-page-outreach", "mail-filing", "manual-job",
     "megibow", "network-layout", "network-match", "network-surface", "newsletter-trace", "notion-sandbox-access", "notion-sandbox-outreach-proof", "oracle-card", "outlook-newsletters",
     "scale-up-boards", "scale-up-register", "web-scale-up"))
 
