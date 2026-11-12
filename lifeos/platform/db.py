@@ -2,6 +2,7 @@
 One tunnel per process (LIFE-76 PR 4a, D207): it is opened on the first connect(), checked before reuse, reopened after a failure and closed
 at exit; every connect() is its own short MySQL session through it, so no stage holds a database session across network I/O."""
 import atexit
+from collections.abc import Iterator
 from contextlib import contextmanager, suppress
 import os
 from pathlib import Path
@@ -14,6 +15,7 @@ import sys
 import tempfile
 import threading
 import time
+from typing import Any
 
 # All six are GitHub *Secrets* (masked in logs). Variables are NOT masked and this repo is public.
 # The database listens on the server's loopback only, reached through the tunnel: host/port are constants.
@@ -46,28 +48,28 @@ class StoreError(RuntimeError):
     """Message is always a fixed code - never host names, users, or driver text."""
 
 
-def _cfg():
+def _cfg() -> dict[str, str]:
     missing = [f for f in FIELDS if not os.environ.get("LIFEOS_ACQ_" + f)]
     if missing:
         raise StoreError("STORE_CONFIG_MISSING:" + ",".join(missing))  # names of settings only, no values
     return {f: os.environ["LIFEOS_ACQ_" + f] for f in FIELDS}
 
 
-def _jump_cfg():
+def _jump_cfg() -> dict[str, str] | None:
     """The optional Oracle route, or None (any of the three settings missing): without it every connection is direct, as before."""
     values = {f: (os.environ.get("LIFEOS_ACQ_" + f) or "").strip() for f in JUMP_FIELDS}
     return values if all(values.values()) else None
 
 
-_route = {"jump": False}           # once this process saw its direct connection go unanswered, every later tunnel (re)open uses Oracle too
+_route: dict[str, bool] = {"jump": False}           # once this process saw its direct connection go unanswered, every later tunnel (re)open uses Oracle too
 
 
-def _forced():
+def _forced() -> bool:
     """V7_STORE_VIA=oracle (Jim's repository variable): start on the Oracle route, for a live proof or if the direct route ever fails outright."""
     return (os.environ.get("LIFEOS_ACQ_SSH_VIA") or "").strip().lower() == "oracle"
 
 
-def _ssh_code(error):
+def _ssh_code(error: BaseException) -> str:
     if isinstance(error, subprocess.TimeoutExpired):
         return "STORE_SSH_TIMEOUT"
     detail = (error.stderr or "") if isinstance(error, subprocess.CalledProcessError) else ""
@@ -86,18 +88,18 @@ def _ssh_code(error):
     return "STORE_SSH_FAILED"
 
 
-def _jitter():
+def _jitter() -> float:
     return random.uniform(0, JITTER_SECONDS)
 
 
-_spread = [True]                   # cleared by the first attempt of the process's first connect
+_spread: list[bool] = [True]                   # cleared by the first attempt of the process's first connect
 
 
-_tunnel = {"directory": None, "port": None, "exit": None, "check": None}      # one SSH tunnel per process (LIFE-76 PR 4a); each connect() is a fresh MySQL session through it
+_tunnel: dict[str, Any] = {"directory": None, "port": None, "exit": None, "check": None}      # one SSH tunnel per process (LIFE-76 PR 4a); each connect() is a fresh MySQL session through it
 _lock = threading.Lock()                                                      # stages that connect from threads open the tunnel once
 
 
-def _close_tunnel():
+def _close_tunnel() -> None:
     """Close the process's tunnel (at exit, or after a failed attempt so the next one starts clean)."""
     exit_cmd, directory = _tunnel["exit"], _tunnel["directory"]
     _tunnel.update(directory=None, port=None, exit=None, check=None)
@@ -112,7 +114,7 @@ def _close_tunnel():
 atexit.register(_close_tunnel)
 
 
-def _alive():
+def _alive() -> bool:
     """True when the open tunnel's master still answers (a local control-socket check, no network round trip)."""
     if _tunnel["check"] is None:
         return False
@@ -123,7 +125,7 @@ def _alive():
         return False
 
 
-def _proxy(jump, directory, host, port):
+def _proxy(jump: dict[str, str], directory: str, host: str, port: str) -> list[str]:
     """-> the ProxyCommand option for the Oracle route: the store's own IPv4 (the forward-only key may open exactly that address and port) through Oracle."""
     try:
         ip = next(a[4][0] for a in socket.getaddrinfo(host, int(port), socket.AF_INET, socket.SOCK_STREAM))
@@ -139,7 +141,7 @@ def _proxy(jump, directory, host, port):
                   f" -o GlobalKnownHostsFile=/dev/null -o ConnectTimeout=10 -W {ip}:{int(port)} {JUMP_USER}@{jump['SSH_JUMP_HOST']} 2>>{Path(directory, 'jump.err')}"]
 
 
-def _open_tunnel(cfg, jump=None):
+def _open_tunnel(cfg: dict[str, str], jump: dict[str, str] | None = None) -> None:
     directory = tempfile.mkdtemp(prefix="v7-store-")
     key, hosts = Path(directory, "key"), Path(directory, "known_hosts")
     for path, content in ((key, cfg["SSH_PRIVATE_KEY"]), (hosts, cfg["SSH_KNOWN_HOSTS"])):
@@ -169,9 +171,9 @@ def _open_tunnel(cfg, jump=None):
         raise StoreError(code.replace("STORE_SSH_", "STORE_SSH_JUMP_", 1) if jump else code) from None
 
 
-def _lost(error):
+def _lost(error: BaseException) -> bool:
     """A dropped session, not a slow read: the driver reports its own read timeout as 2013 too ("... (timed out)"), and a slow query is not run twice."""
-    args = getattr(error, "args", ())
+    args: tuple[Any, ...] = getattr(error, "args", ())
     return (type(error).__name__ == "OperationalError" and bool(args) and args[0] in LOST_CODES
             and "timed out" not in str(args[1] if len(args) > 1 else "").casefold())
 
@@ -179,22 +181,22 @@ def _lost(error):
 class _Cursor:
     """The driver's cursor, with one reconnect-and-retry for a read whose session was lost."""
 
-    def __init__(self, connection, cursor, args):
+    def __init__(self, connection: "_Connection", cursor: Any, args: tuple[tuple[Any, ...], dict[str, Any]]) -> None:
         self._connection, self._cursor, self._args = connection, cursor, args
 
-    def __getattr__(self, name):
+    def __getattr__(self, name: str) -> Any:
         return getattr(self._cursor, name)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Any]:
         return iter(self._cursor)
 
-    def __enter__(self):
+    def __enter__(self) -> "_Cursor":
         return self
 
-    def __exit__(self, *exc):
+    def __exit__(self, *exc: Any) -> None:
         self._cursor.close()
 
-    def execute(self, query, args=None):
+    def execute(self, query: Any, args: Any = None) -> Any:
         try:
             return self._cursor.execute(query, args)
         except Exception as error:                                              # noqa: BLE001 - only a lost session on a read outside a transaction is retried
@@ -209,26 +211,26 @@ class _Cursor:
 class _Connection:
     """The driver's connection for one connect() block; every attribute but cursor() is the driver's own."""
 
-    def __init__(self, raw):
+    def __init__(self, raw: Any) -> None:
         self._raw = raw
 
-    def __getattr__(self, name):
+    def __getattr__(self, name: str) -> Any:
         return getattr(self._raw, name)
 
-    def __enter__(self):
+    def __enter__(self) -> "_Connection":
         return self
 
-    def __exit__(self, *exc):
+    def __exit__(self, *exc: Any) -> Any:
         return self._raw.__exit__(*exc)
 
-    def cursor(self, *args, **kwargs):
+    def cursor(self, *args: Any, **kwargs: Any) -> _Cursor:
         return _Cursor(self, self._raw.cursor(*args, **kwargs), (args, kwargs))
 
-    def _in_transaction(self):
+    def _in_transaction(self) -> bool:
         status = getattr(self._raw, "server_status", None)
         return not isinstance(status, int) or bool(status & IN_TRANSACTION)    # unknown counts as inside one: no retry
 
-    def _reconnect(self, error):
+    def _reconnect(self, error: BaseException) -> None:
         """A fresh MySQL session on the same driver object, through the process's tunnel (reopened if it died). Any failure re-raises the lost-session error."""
         try:
             with _lock:
@@ -244,8 +246,10 @@ class _Connection:
 
 
 @contextmanager
-def connect():
+def connect() -> Iterator[_Connection]:
     cfg, jump = _cfg(), _jump_cfg()
+    connection: Any
+    last: str | None
     connection, last = None, None
     for attempt in range(len(RETRY_WAITS)):
         if (last == "STORE_SSH_TCP_TIMEOUT" or _forced()) and jump:
