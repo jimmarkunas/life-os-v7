@@ -233,7 +233,6 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/jobs/repost.py`: D6 - reposts. One real opening is one row: a repost never creates a second row or resets the original age.
 - `lifeos/jobs/resolve/aggregators/dice.py`: Resolve anonymous Dice alert redirects to canonical Dice job pages.
 - `lifeos/jobs/resolve/aggregators/jobright.py`: Jobright final apply link: log in with the saved secrets, click Apply, read where the chain lands (D12/D14).
-- `lifeos/jobs/resolve/aggregators/jobright_oracle.py`: LIFE-576 option (a): run the Jobright resolver in the persistent, signed-in headless Chromium on the Oracle VM, and fall back to the runner's own browser.
 - `lifeos/jobs/resolve/aggregators/li_apply.py`: LinkedIn apply-type and employer link WITHOUT logging in (ported from V2's proven logic, D12/D14).
 - `lifeos/jobs/resolve/aggregators/linkedin.py`: LinkedIn rows -> final apply link WITHOUT logging in (D14). Order: guest page (external URL, Easy Apply, closed) -> employer ATS board match by company/title/location -> 
 - `lifeos/jobs/resolve/ats_match.py`: Find a job on its employer's public ATS board by company + title (+ location). Plain HTTP, no login, no browser.

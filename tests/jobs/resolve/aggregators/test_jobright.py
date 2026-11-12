@@ -21,17 +21,6 @@ class OutcomeTests(unittest.TestCase):
                          [{"outcome": "auth_unavailable"}])
 
 
-class OraclePathHookTests(unittest.TestCase):
-    def test_without_the_switch_the_runner_path_runs_and_says_so(self):
-        import asyncio
-        import contextlib
-        import io
-        out = io.StringIO()
-        with contextlib.redirect_stdout(out):
-            asyncio.run(jb.resolve_many(["https://jobright.ai/jobs/info/1"], {}))
-        self.assertIn("JOBRIGHT_PATH=runner reason=off", out.getvalue())
-
-
 class JobResultLinkTests(unittest.TestCase):
     """The employer link comes from THIS job's jobResult only; a link of another job in the page data never does (link_mismatch HOLDs)."""
     def data(self, job, **extra):
