@@ -664,6 +664,8 @@ CODES = {
     "MAIL_OUTLOOK_LISTING_INCOMPLETE": _r("mail", "degraded", False, "The Outlook listing for mail did not finish.", "None; retried."),
     "MAIL_LEDGER_UNREADABLE": _r("mail", "degraded", False, "The list of mail already seen could not be read, so the full 14-day scan ran.", "None; the next run tries again."),
     "MAIL_LEDGER_NOT_SAVED": _r("mail", "degraded", False, "The list of mail already seen could not be saved, so that mail is read again next time.", "None; retried."),
+    "STAGE_CONTRACT_OUTPUT_MISSING": _r("platform", "bug", False, "A stage returned counts that are not a dict or lack a key its contract declares.", "A code defect in the stage or its contract; fix one of them."),
+    "STAGE_CONTRACT_INCOMPLETE": _r("platform", "bug", False, "A stage contract has an empty field (name, inputs, outputs, dry-run or write text).", "A code defect: fill the field."),
     "MEGIBOW_FREEZE_READBACK_MISMATCH": _r("megibow", "bug", False, "A freeze write did not read back as written.", "Retried."),
     "MEGIBOW_LEGACY_READBACK_MISMATCH": _r("megibow", "bug", False, "A legacy write did not read back as written.", "Retried."),
     "MEGIBOW_OVERRIDE_READBACK_MISMATCH": _r("megibow", "bug", False, "An override write did not read back as written.", "Retried."),
