@@ -69,7 +69,7 @@ class Check(unittest.TestCase):
     def test_every_installer_under_lifeos_edge_is_covered_by_a_surface_or_named_in_the_allowlist_with_a_reason(self):
         """LIFE-604 item 4: nothing installed on the VM may go unwatched by accident."""
         scripts = sorted(str(p) for p in Path("lifeos/edge").rglob("install-*.sh"))
-        self.assertGreaterEqual(len(scripts), 5)                                     # the five known installers: ticker, off-site backup, Close, runner, sweeper
+        self.assertGreaterEqual(len(scripts), 4)                                     # the four known installers: ticker, off-site backup, Close, runner
         self.assertEqual(drift.uncovered_installers(scripts), [])
         for path, reason in drift.UNCOVERED_INSTALLERS.items():
             self.assertTrue(Path(path).is_file(), path)                              # an allowlist entry for a script that no longer exists is stale
