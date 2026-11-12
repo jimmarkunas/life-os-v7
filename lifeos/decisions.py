@@ -6,7 +6,9 @@ another session took that number first, the push is rejected and the next number
 its message), so a second claim of the same number can never look like an up-to-date push of the same tag. Prints the claimed number, e.g. `D242`, and
 nothing else. An unused claim leaves a gap, which is harmless. Fixed error codes only.
 
-`python -m lifeos.decisions duplicates` lists any decision number used twice in docs/DECISIONS.md or docs/DECISIONS_INDEX.md (the contract test's check)."""
+`python -m lifeos.decisions duplicates` lists any decision number used twice in docs/DECISIONS.md or docs/DECISIONS_INDEX.md (the contract test's check).
+
+`python -m lifeos.decisions show D139` (LIFE-592) prints only that decision's section of docs/DECISIONS.md, with its amendments and advice, so a lookup loads one decision (about 1 KB) instead of the 367 KB log."""
 import re
 import subprocess
 import sys
@@ -42,6 +44,17 @@ def duplicates(text, pattern=HEADING):
             continue
         seen.setdefault(int(n), []).append(rest.strip(" -—:")[:80])
     return {n: titles for n, titles in sorted(seen.items()) if len(titles) > 1}
+
+
+def section(text, number):
+    """The primary section of decision `number` and every follow-up (amendment, advice) of it, in file order, from the log's text. '' when the number is not in the log."""
+    heads = list(HEADING.finditer(text))
+    out = []
+    for i, head in enumerate(heads):
+        if int(head.group(1)) == number:
+            end = heads[i + 1].start() if i + 1 < len(heads) else len(text)
+            out.append(text[head.start():end].rstrip("\n"))
+    return "\n\n".join(out)
 
 
 def claimed(remote="origin", cwd=None):
@@ -101,7 +114,12 @@ def main(argv=None):
         for where, titles in found.items():
             print(f"{where}: {' | '.join(titles)}")
         return 1 if found else 0
-    print("usage: python -m lifeos.decisions claim | duplicates", file=sys.stderr)
+    if len(argv) == 2 and argv[0] == "show" and re.fullmatch(r"[Dd]\d+", argv[1]):
+        docs = Path(__file__).resolve().parents[1] / "docs"
+        found = section((docs / "DECISIONS.md").read_text(), int(argv[1][1:]))
+        print(found if found else f"{argv[1].upper()} is not in docs/DECISIONS.md")
+        return 0 if found else 1
+    print("usage: python -m lifeos.decisions claim | duplicates | show D<n>", file=sys.stderr)
     return 2
 
 

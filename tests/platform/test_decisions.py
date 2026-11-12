@@ -85,3 +85,30 @@ class Duplicates(unittest.TestCase):
     def test_the_index_is_checked_the_same_way(self):
         index = "- D1 — First\n- D2 — Second\n- D2 amendment — more\n- D2 — Clash\n"
         self.assertEqual(decisions.duplicates(index, decisions.INDEX_ENTRY), {2: ["Second", "Clash"]})
+
+
+class Show(unittest.TestCase):
+    """LIFE-592: `show D<n>` prints one decision (with its amendments), not the whole log."""
+
+    def test_a_decision_comes_back_with_its_amendment_and_nothing_else(self):
+        text = decisions.section(LOG, 2)
+        self.assertIn("## D2 — Second", text)
+        self.assertIn("## D2 amendment — more on D2", text)
+        self.assertNotIn("D1 — First", text)
+        self.assertNotIn("D3 — Third", text)
+
+    def test_the_last_decision_and_an_unknown_number(self):
+        self.assertEqual(decisions.section(LOG, 3), "## D3 — Third\nx")
+        self.assertEqual(decisions.section(LOG, 99), "")
+
+    def test_the_command_prints_the_real_log_entry_and_a_missing_number_exits_nonzero(self):
+        import contextlib
+        import io
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(decisions.main(["show", "D139"]), 0)
+        self.assertTrue(out.getvalue().startswith("## D139"))
+        self.assertLess(len(out.getvalue().encode()), 5000)                               # one decision, not the 367 KB log
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(decisions.main(["show", "D99999"]), 1)
+        self.assertEqual(decisions.main(["show", "nonsense"]), 2)
