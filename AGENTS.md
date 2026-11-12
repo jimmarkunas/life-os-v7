@@ -51,9 +51,9 @@ Before OpenClaw, Oracle, channel, local-model, assistant, meeting-capture or AI-
 
 ## Map
 
-- **Start with `docs/CODEMAP.md` (or `docs/codemap.json`)**: generated index of stages, modules, workflows, secret names, tables and decisions (`python -m lifeos.codemap`; a test fails when stale). Find the file there, read only it.
+- **Start with `docs/CODEMAP.md`**: a short routing page (every stage, one line per package). Ask one question instead of reading maps: `python -m lifeos.codemap find <text>`; the full map is `docs/codemap.json` (`python -m lifeos.codemap`; a test fails when stale).
 - `lifeos/platform/` shared clients (imports nothing above it); `lifeos/jobs|interview|jira|outlook|calendar_bridge/` one OS per package (platform only); `lifeos/sources/` producers (any OS); `lifeos/run.py` stage registry, one `lazy("module", "function")` line per stage; `.github/workflows/hourly.yml` runs stages (`workflow_dispatch` is at the 25-input limit: add none). `tests/` mirrors `lifeos/`; fakes in `tests/kit`; `tests/contracts/` enforce the rules below.
-- Docs: `docs/DECISIONS_INDEX.md` (find), `docs/DECISIONS.md` (grep, never read whole; new numbers only from `python -m lifeos.decisions claim`), `docs/SETUP.md` (secrets, manual steps), `docs/MASTER_ROADMAP.md` (dated WBS and evidence, not a live plan: priorities are in Jira `LOS`, delivery status in `LIFE`); `docs/ROADMAP.md` is legacy.
+- Docs: `docs/DECISIONS_INDEX.md` (find), `python -m lifeos.decisions show D<n>` (one decision; never read `docs/DECISIONS.md` whole; new numbers only from `python -m lifeos.decisions claim`), `docs/SETUP.md` (secrets, manual steps), `docs/MASTER_ROADMAP.md` (dated WBS and evidence, not a live plan: priorities are in Jira `LOS`, delivery status in `LIFE`); `docs/ROADMAP.md` is legacy.
 
 ## Commands
 
@@ -119,22 +119,4 @@ regenerates human-readable review artifacts in `.concord/`.
 Enforcement remains client-dependent. `concord doctor` reports setup and
 workflow adoption; optional hooks can block exact-file collisions.
 
-Replace <agent-id> with the id the SessionStart hook printed for this session.
-A monitor may not inherit the session's environment, so it cannot work the id out itself.
-
-In Grok Build, keep this session reachable while idle by starting one persistent
-monitor for `concord inbox watch --agent <agent-id> --provider grok`. Do not start a duplicate when that monitor is active.
-
-In Cursor, start exactly one Cursor background Shell task for `concord inbox watch --agent <agent-id> --provider cursor --once`.
-Leave it active when the turn ends. When Cursor resumes you with its completion,
-answer the emitted peer message and immediately start a fresh background monitor.
-
-In Gemini CLI, start the exact monitor command supplied by the SessionStart hook
-(`concord inbox watch --agent <agent-id> --provider gemini --once`) with `run_shell_command` and `is_background: true`. Project
-settings inject background completion into the agent. Answer the peer message,
-then immediately start a fresh background monitor.
-
-In Antigravity, start exactly one background command for `concord inbox watch --agent <agent-id> --provider antigravity --once`
-and end the turn without waiting on it. Its completion wakes the idle session:
-answer the peer message, then immediately start a fresh background monitor.
 <!-- concord:end -->

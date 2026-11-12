@@ -1,4 +1,5 @@
-"""LIFE-593: the Concord block in the per-tool instruction files is generated from AGENTS.md and cannot drift from it."""
+"""LIFE-593: the Concord block in the per-tool instruction files is generated from AGENTS.md (the common text, which is all Claude Code uses) plus each tool's own paragraph from the
+generator's table, and cannot drift from it."""
 import shutil
 import tempfile
 import unittest
@@ -33,6 +34,25 @@ class GeneratedCopies(unittest.TestCase):
         cursor = (root / ".cursor/rules/concord.mdc").read_text()
         self.assertTrue(cursor.startswith("---"))                                                   # the Cursor header outside the block is kept
         self.assertIn("Keep each claim tiny", cursor)
+
+    def test_agents_md_holds_only_the_common_text_and_each_copy_gets_only_its_own_tools_paragraph(self):
+        common = af.source(REAL)
+        for tool, paragraph in af.PARAGRAPHS.items():
+            self.assertNotIn(paragraph, common, tool)                                               # the trim: no other tool's monitor text in AGENTS.md
+        self.assertNotIn(af.PREAMBLE, common)
+        for name, tool in af.GENERATED.items():
+            text = (REAL / name).read_text()
+            for other, paragraph in af.PARAGRAPHS.items():
+                self.assertEqual(paragraph in text, other == tool, (name, other))                   # Cursor's file has Cursor's paragraph and nobody else's
+
+    def test_the_cursor_file_follows_a_change_to_its_own_paragraph_in_the_table(self):
+        root = scratch()
+        from unittest import mock
+        with mock.patch.dict(af.PARAGRAPHS, {"cursor": af.PARAGRAPHS["cursor"] + "\nExtra Cursor line."}):
+            self.assertEqual(af.drifted(root), [".cursor/rules/concord.mdc"])
+            self.assertEqual(af.sync(root), [".cursor/rules/concord.mdc"])
+        self.assertIn("Extra Cursor line.", (root / ".cursor/rules/concord.mdc").read_text())
+        self.assertNotIn("Extra Cursor line.", (root / ".codex/concord.md").read_text())
 
     def test_a_hand_edit_of_a_generated_file_is_caught_and_named(self):
         root = scratch()
