@@ -432,8 +432,8 @@ jobs:
 
   bills:
     # Bills reads its own Notion source and saves only to the private snapshot database. The Paid processor (D85, D86) runs first, so the snapshot sees the advanced dates; on a tick it follows V7_LIVE like every other domain job.
-    # D116: the Bills card then renders the saved snapshot into the Daily Report's "Bills: This Week" callout. It waits for the jira and agenda jobs: all three write the same page, and the card verifies the Calendar and JIRA regions are intact.
-    needs: [jira, agenda, gate]
+    # D116: the Bills card then renders the saved snapshot into the Daily Report's "Bills: This Week" callout. LIFE-613: it no longer waits for the jira and agenda jobs; its writes are checked against its own callout before they are sent (report_region.ScopedClient).
+    needs: [gate]
     if: ${{ always() && needs.gate.result != 'failure' && (needs.gate.outputs.due_bills == 'true' || inputs.bills_paid) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -549,8 +549,8 @@ jobs:
 
   agenda:
     # Read the main Google Calendar and refresh its isolated Daily Report callout; failures are warnings only.
-    # Waits for the jira job: both write the same page, and the Calendar card verifies the Jira region is intact.
-    needs: [jira, gate]
+    # LIFE-613: it no longer waits for the jira job. Its writes are checked against its own callout before they are sent (report_region.ScopedClient), not by comparing the Jira region afterwards.
+    needs: [gate]
     if: ${{ always() && needs.gate.result != 'failure' && (needs.gate.outputs.due_agenda == 'true') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -878,10 +878,9 @@ jobs:
         run: echo "::warning title=Mail Alerts::the Physical Mail stage failed; the Jobs pipeline is unaffected"
 
   hiring:
-    # HIRE-1.2: V7 is the sole writer of the floating Daily Report "Hiring Pipeline" region (a heading, a status line and a four-column table; never a callout). It runs after EVERY other Daily Report writer,
-    # including mail, so no two jobs ever change the page at once, and it proves the rest of the page unchanged around its write. Read-only toward the Ledger, the Notion pages and the Calendar; no mail.
-    # imessage writes the Communications and Oracle Cloud callouts (LIFE-34, Oct 15 2026), so it is one of those writers; `always()` keeps Hiring running when it is skipped or fails.
-    needs: [jira, agenda, bills, amazon, attention, mail, imessage, gate]
+    # HIRE-1.2: V7 is the sole writer of the floating Daily Report "Hiring Pipeline" region (a heading and a four-column table; never a callout). Read-only toward the Ledger, the Notion pages and the Calendar; no mail.
+    # LIFE-613: it no longer waits for every other Daily Report writer. Its writes can reach only its heading, its table and the table's rows (report_region.ScopedClient), checked before each write.
+    needs: [gate]
     if: ${{ always() && needs.gate.result != 'failure' && (needs.gate.outputs.due_hiring == 'true' || inputs.hiring || inputs.refresh == 'hiring') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -1378,8 +1377,9 @@ jobs:
     # COMM-1.4b (LIFE-31, Jim's approval in comment 10136): urgent iMessage alerts. The runner joins the tailnet as an ephemeral tag:v7-runner node, which the
     # tailnet policy lets reach only Oracle's alert-METADATA endpoint (TCP 47341); Oracle reads and classifies privately and returns keyed event ids, severity and
     # completeness only. State: the private v7_alerts table. Push: the existing ntfy topic, counts only. Off unless V7_IMESSAGE_ALERTS is 'true' (or run by hand).
-    # It follows the writers of the regions its Communications and Oracle Cloud cards prove unchanged (Oct 16 2026): run beside them, every proof saw their own writes as a change.
-    needs: [jira, agenda, bills, amazon, attention, gate]
+    # LIFE-613: it no longer follows the other writers. Its Communications and Oracle Cloud cards can write only the blocks they located (report_region.ScopedClient), checked before each write, so a write by
+    # another card at the same time is no longer mistaken for a violation.
+    needs: [gate]
     if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.tick == 'true' && needs.gate.outputs.due_imessage == 'true' && vars.V7_IMESSAGE_ALERTS == 'true') || inputs.imessage) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10

@@ -592,17 +592,30 @@ class RegionWriterTests(unittest.TestCase):
             card.present(t, ENV, "x", WANT, True)
         self.assertEqual(str(error.exception), "HIRING_WRONG_PAGE")
 
-    def test_every_other_region_and_the_notes_are_proven_unchanged_and_a_change_fails_closed(self):
+    def test_another_cards_write_during_ours_no_longer_fails_the_run(self):
+        """LIFE-613: the rest of the page is no longer compared before and after our write, so a legitimate write by another card at the same time cannot fail this one."""
         for victim in ("clients-h", "mail-p", "cal-p", "jira-p", "notes"):
             t = page()
-            t.trip = ("0000000000000000000000000000a001", lambda tree, v=victim: tree.blocks[v][tree.blocks[v]["type"]].update({"rich_text": rich("changed by someone else")}))
+            t.trip = ("0000000000000000000000000000a001", lambda tree, v=victim: tree.blocks[v][tree.blocks[v]["type"]].update({"rich_text": rich("changed by another card")}))
+            self.assertTrue(card.present(t, ENV, "x", WANT[:1], True)["verified"], victim)
+        t = page()
+        t.trip = ("0000000000000000000000000000a001", lambda tree: tree.add("sneaky", "paragraph", "page-1", text="new"))
+        self.assertTrue(card.present(t, ENV, "x", WANT[:1], True)["verified"])
+
+    def test_a_write_into_another_cards_block_is_refused_before_it_is_sent_and_nothing_changes(self):
+        """LIFE-613 mutation proof. A writer aimed at a block of another card (the Jira paragraph) must fail with the fixed code and leave that block untouched. On the old code the write went through and
+        was only noticed afterwards (HIRING_PROTECTED_REGION_CHANGED), so the untouched-block assertion fails there."""
+        t = page()
+        before = copy.deepcopy(t.blocks["jira-p"])
+
+        def buggy_writer(client, region, status, rows, fail):
+            client.call("PATCH", "/blocks/jira-p", {"paragraph": {"rich_text": rich("overwritten")}})
+
+        with mock.patch.object(R, "write_floating", buggy_writer):
             with self.assertRaises(snapshot.HiringError) as error:
                 card.present(t, ENV, "x", WANT[:1], True)
-            self.assertEqual(str(error.exception), "HIRING_PROTECTED_REGION_CHANGED", victim)
-        t = page()                                                                              # a block that vanishes or a new one that appears is a change too
-        t.trip = ("0000000000000000000000000000a001", lambda tree: tree.add("sneaky", "paragraph", "page-1", text="new"))
-        with self.assertRaises(snapshot.HiringError):
-            card.present(t, ENV, "x", WANT[:1], True)
+        self.assertEqual(str(error.exception), "HIRING_WRITE_OUT_OF_SCOPE")
+        self.assertEqual(t.blocks["jira-p"], before)
 
     def test_the_stamp_follows_the_status_and_the_heading_keeps_its_block_title_and_place(self):
         t = page()
@@ -728,8 +741,8 @@ class ReciprocalProtectionTests(unittest.TestCase):
         from lifeos.physmail import card as mail
         for module in (amazon, attention, mail):
             self.assertIn(("HIRING_CARD_BLOCK_ID", router.HIRING_REGION), module.PROTECTED, module.__name__)
-        for module in ("lifeos/bills/card.py", "lifeos/agenda/card.py"):
-            self.assertIn("HIRING_CARD_BLOCK_ID", (ROOT / module).read_text())
+        for module in ("lifeos/bills/card.py", "lifeos/agenda/card.py", "lifeos/hiring/card.py"):          # LIFE-613: these no longer compare regions; each writes through the scope guard instead
+            self.assertIn("ScopedClient", (ROOT / module).read_text(), module)
 
 
 class FakeStore:
@@ -804,14 +817,12 @@ class RuntimePathTests(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
-    def test_entry_point_is_a_registered_stage_and_the_region_job_follows_every_other_writer(self):
+    def test_entry_point_is_a_registered_stage_and_the_region_job_waits_for_no_other_writer_but_dcc_follows_every_writer(self):
         from lifeos import run as entry
         self.assertEqual(entry.STAGES["hiring"].target, ("lifeos.sources.hiring", "run"))
         import yaml
         doc = yaml.safe_load((ROOT / ".github/workflows/domains.yml").read_text())
-        needs = set(doc["jobs"]["hiring"]["needs"])
-        self.assertEqual(needs, set(doc["jobs"]) - {"hiring", "outlook", "megibow", "recruiters", "dcc", "report", "granola", "amazon_retention", "bench_report"})   # amazon_retention (LIFE-571) reads Gmail and trashes old mail and never writes the page; imessage writes the Communications and Oracle Cloud callouts (LIFE-34), so Hiring follows it too            # after every Daily Report writer, mail included (the failure-push job and the Recruiters ingest write nothing on the page)
-        self.assertTrue({"jira", "agenda", "bills", "amazon", "attention", "mail"} <= needs)
+        self.assertEqual(doc["jobs"]["hiring"]["needs"], ["gate"])                                 # LIFE-613: its writes reach only its own heading, table and rows (ScopedClient), so it waits for nobody
         self.assertTrue({"jira", "agenda", "bills", "amazon", "attention", "mail", "hiring"} <= set(doc["jobs"]["dcc"]["needs"]))      # the Command Center runs after every writer, Hiring Pipeline included
         for name in ("outlook", "megibow", "recruiters"):                                          # the three that never write the Daily Report page
             self.assertNotIn("hiring", doc["jobs"][name].get("needs", []))

@@ -1,6 +1,7 @@
 import json
 import unittest
 from datetime import datetime
+from unittest import mock
 from zoneinfo import ZoneInfo
 
 from lifeos.agenda import card, snapshot
@@ -215,22 +216,38 @@ class AgendaCardTests(unittest.TestCase):
                          now=NOW, connect=lambda: database)
             self.assertFalse(any(kind in ("APPEND", "DELETE", "PATCH") for kind, _ in notion.log[before:]))
 
-    def test_missing_or_unreadable_jira_id_refuses_before_writes(self):
+    def test_a_missing_jira_id_refuses_before_writes(self):
         database = AgendaSnapshotDB(saved_snapshot([]))
-        for env in ({"CALENDAR_CARD_BLOCK_ID": "calendar-callout"},
-                    {"CALENDAR_CARD_BLOCK_ID": "calendar-callout", "JIRA_CARD_BLOCK_ID": "missing"}):
+        for env in ({"CALENDAR_CARD_BLOCK_ID": "calendar-callout"},):
             notion = AgendaRegions()
             with self.assertRaises(card.CardError):
                 card.run(1, True, environ=env, client=notion, now=NOW, connect=lambda: database)
             self.assertFalse(any(kind in ("APPEND", "DELETE", "PATCH") for kind, _ in notion.log))
 
-    def test_jira_change_mid_write_is_reported_before_deletes(self):
+    def test_a_jira_card_write_during_ours_no_longer_fails_the_run(self):
+        """LIFE-613: the Jira region is no longer compared before and after our write, so a legitimate write by the Jira card at the same time cannot fail this one."""
         database = AgendaSnapshotDB(saved_snapshot([]))
         notion = AgendaRegions(change_jira_on="APPEND")
-        with self.assertRaises(card.CardError) as caught:
-            card.run(1, True, environ=self._env(), client=notion, now=NOW, connect=lambda: database)
-        self.assertEqual(str(caught.exception), "AGENDA_PROTECTED_REGION_CHANGED")
-        self.assertFalse(any(kind == "DELETE" for kind, _ in notion.log))
+        counts = card.run(1, True, environ=self._env(), client=notion, now=NOW, connect=lambda: database)
+        self.assertGreater(counts["blocks_written"], 0)
+
+    def test_a_write_into_another_cards_block_is_refused_before_it_is_sent_and_nothing_changes(self):
+        """LIFE-613 mutation proof. A writer aimed at a block of another card (Jira's callout) must fail with the fixed code and leave that block untouched. On the old code the write went through
+        and was only noticed afterwards (AGENDA_PROTECTED_REGION_CHANGED), so the untouched-block assertion fails there."""
+        database = AgendaSnapshotDB(saved_snapshot([]))
+        notion = AgendaRegions()
+        foreign = notion.children["jira-callout"][0]["id"]
+        before = notion.full_tree("jira-callout")
+
+        def buggy_writer(client, block_id, blocks, *rest):
+            client.call("PATCH", f"/blocks/{foreign}", {"heading_2": {"rich_text": [{"type": "text", "text": {"content": "overwritten"}}]}})
+
+        with mock.patch.object(card, "_append", buggy_writer):
+            with self.assertRaises(card.CardError) as caught:
+                card.run(1, True, environ=self._env(), client=notion, now=NOW, connect=lambda: database)
+        self.assertEqual(str(caught.exception), "AGENDA_WRITE_OUT_OF_SCOPE")
+        self.assertEqual(notion.full_tree("jira-callout"), before)
+        self.assertEqual([m for m, _ in notion.log if m in ("PATCH", "APPEND", "DELETE")], [])
 
     def test_missing_callout_is_reported_without_read_or_write(self):
         counts = card.run(1, True, environ={}, client=None, connect=lambda: self.fail("no database"))
@@ -301,37 +318,6 @@ class HyphenatedIdTests(unittest.TestCase):
         with self.assertRaises(card.CardError) as error:
             card._target(self.Client("00000000-0000-0000-0000-000000000000"), self.PLAIN)
         self.assertEqual(str(error.exception), "AGENDA_CARD_NOT_OWNED")
-
-
-class ProtectedRegionDigestTests(unittest.TestCase):
-    """The Jira region must compare equal when only metadata moved, differ when its content moved, and say where (names only)."""
-
-    JIRA = "aaaaaaaa-0000-0000-0000-000000000001"
-
-    class Client:
-        def __init__(self, edited, text="Example task"):
-            self.edited, self.text = edited, text
-
-        def call(self, method, path, body=None):
-            if path.endswith("/children?page_size=100"):
-                para = {"object": "block", "id": "c1", "type": "paragraph", "has_children": False, "last_edited_time": self.edited,
-                        "paragraph": {"rich_text": [{"plain_text": self.text}]}}
-                return {"results": [para], "has_more": False}
-            return {"object": "block", "id": ProtectedRegionDigestTests.JIRA, "type": "callout", "has_children": True,
-                    "last_edited_time": self.edited, "last_edited_by": {"id": self.edited}}
-
-    def digest(self, edited, text="Example task"):
-        return card._region_digest(self.Client(edited, text), self.JIRA.replace("-", ""))
-
-    def test_edit_time_alone_is_not_a_change(self):
-        self.assertEqual(self.digest("2026-10-03T16:40:00Z"), self.digest("2026-10-03T16:41:00Z"))
-
-    def test_a_content_change_differs_and_is_located_by_position_not_content(self):
-        before, after = self.digest("t1"), self.digest("t1", text="Different task")
-        self.assertNotEqual(before, after)
-        located = card._changed(before, after)
-        self.assertEqual((located["fields"], located["children"]), ([], [0]))
-        self.assertNotIn("Different", json.dumps(located))
 
 
 def links(block):

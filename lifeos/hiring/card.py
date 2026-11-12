@@ -2,9 +2,9 @@
 
 HIRING_CARD_BLOCK_ID and HIRING_TABLE_BLOCK_ID name the existing heading_3 and the table right under it (no status paragraph); both must match the live shape. The writer may change only the heading's
 update stamp (D188: `📈 Hiring Pipeline (Updated 2:00 PM CT)`, the way Calendar and Jira carry theirs; the title, the block and its place never change) and the table rows under it. Before a live
-write the whole page outside those two blocks is digested; after it the region is re-read and the digest must be identical. Any mismatch, any wrong shape, any ambiguity
+write the page is read once to prove the heading is unique; every write then goes through `report_region.ScopedClient` (LIFE-613), which refuses any block other than the heading, the table and its rows
+before the write is sent, instead of comparing the whole page before and after (which made this card wait for every other card). Any wrong shape, any ambiguity
 raises: nothing is created, moved or guessed. Fixed codes only."""
-import json
 import re
 
 from lifeos.platform import report_region as R, router
@@ -32,7 +32,7 @@ def _step(name, call):
 
 
 def validate(client, environ):
-    """-> (region, page digest). The anchor must be the exact heading, on the same page as the Jira card, in the exact H3 -> table shape."""
+    """-> the region. The anchor must be the exact heading, on the same page as the Jira card, in the exact H3 -> table shape."""
     block_id = R.clean_id(environ.get("HIRING_CARD_BLOCK_ID"))
     if not block_id:
         raise fail("NOT_CONFIGURED")
@@ -64,38 +64,36 @@ def validate(client, environ):
         router.check_write(MODULE, [M.TITLE])
     except router.RouterError:
         raise fail("NOT_OWNED") from None
-    return region, digest
+    return region
 
 
 def present(client, environ, text, cells, live):
-    """Dry run: validate only. Live: write, read back, prove the rest of the page unchanged. -> {"rows_changed", "rows_added", "rows_removed", "verified"}."""
-    region, before = validate(client, environ)
+    """Dry run: validate only. Live: write (through the scope guard), read back. -> {"rows_changed", "rows_added", "rows_removed", "verified"}."""
+    region = validate(client, environ)
     counts = {"rows_changed": 0, "rows_added": 0, "rows_removed": 0, "verified": False, "header": "old" if R.cells_of(region["rows"][0]) == list(M.OLD_HEADERS) else "new"}
     if not live:
         return counts
-    own = [region["heading"]["id"], region["table"]["id"]]
     stamp = M.split_status(text)[0]
     heading = M.heading_text(stamp)
+    scoped = R.ScopedClient(client, region["heading"]["id"], fail).adopt(region["table"]["id"], *(row["id"] for row in region["rows"]))       # LIFE-613: nothing else can be written
     try:
-        counts.update(R.write_floating(client, region, None, cells, fail))
+        counts.update(R.write_floating(scoped, region, None, cells, fail))
         if counts["header"] == "old":                                # idempotent: only the exact old text, only the header row, inside the same fail-closed write
-            client.call("PATCH", f"/blocks/{region['rows'][0]['id']}", {"table_row": {"cells": R.cell_blocks([(h, None) for h in M.HEADERS])}})
+            scoped.call("PATCH", f"/blocks/{region['rows'][0]['id']}", {"table_row": {"cells": R.cell_blocks([(h, None) for h in M.HEADERS])}})
             counts["header"] = "migrated"
         if R.plain(region["heading"]).strip() != heading:
-            client.call("PATCH", f"/blocks/{region['heading']['id']}", {"heading_3": {"rich_text": [{"type": "text", "text": {"content": heading}}]}})
-    except Exception:
+            scoped.call("PATCH", f"/blocks/{region['heading']['id']}", {"heading_3": {"rich_text": [{"type": "text", "text": {"content": heading}}]}})
+    except Exception as error:
+        if str(error) == str(fail("WRITE_OUT_OF_SCOPE")):          # LIFE-613: the guard refused a block that is not ours before anything was sent; keep its code
+            raise
         try:                                                     # a half-written table must not look current: the heading says so, best effort
-            client.call("PATCH", f"/blocks/{region['heading']['id']}", {"heading_3": {"rich_text": [{"type": "text", "text": {"content": M.heading_text("DEGRADED")}}]}})
+            scoped.call("PATCH", f"/blocks/{region['heading']['id']}", {"heading_3": {"rich_text": [{"type": "text", "text": {"content": M.heading_text("DEGRADED")}}]}})
         except Exception:
             pass
         raise fail("WRITE_FAILED") from None
     after_region = R.floating_region(client, region["heading"]["id"], M.TITLE, fail, with_status=False)                       # authoritative read-back
-    after = R.page_digest(client, after_region["page_id"], own, fail, SKIP)
     if after_region["heading"]["id"] != region["heading"]["id"] or R.plain(after_region["heading"]).strip() != heading:
         raise fail("HEADING_CHANGED")                               # same block, same place, exactly the title and the stamp this run wrote
-    if before["nodes"] != after["nodes"] or before["layout"] != after["layout"]:
-        print("hiring: protected content changed", json.dumps(R.page_changed(before, after)))
-        raise fail("PROTECTED_REGION_CHANGED")
     rows = after_region["rows"]
     if [R.cells_of(r) for r in rows[:1]] != [list(M.HEADERS)]:
         raise fail("READBACK_MISMATCH")

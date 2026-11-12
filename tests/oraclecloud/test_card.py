@@ -1,4 +1,5 @@
 import contextlib
+from copy import deepcopy
 import datetime as dt
 import io
 import json
@@ -46,7 +47,7 @@ class Card(unittest.TestCase):
     def run_card(self, rep, live=True, answer=None, env=None, now=NOW):
         answer = answer or (lambda host: json.dumps(stats()).encode())
         out = io.StringIO()
-        with mock.patch.object(report_region, "protected", lambda client, ids, fail: {"Attention": "same"}), contextlib.redirect_stdout(out):
+        with mock.patch.object(report_region, "require_configured", lambda ids, fail: None), contextlib.redirect_stdout(out):
             counts = card.run(0, live, env or self.ENV, now, answer, rep)
         return counts, out.getvalue()
 
@@ -87,7 +88,7 @@ class Card(unittest.TestCase):
         calls = []
         plan = lambda: calls.append(1) or {"left_5h": 100, "left_week": 98}           # Oracle's own stats() says 100 and 64
         out = io.StringIO()
-        with mock.patch.object(report_region, "protected", lambda client, ids, fail: {"Attention": "same"}), contextlib.redirect_stdout(out):
+        with mock.patch.object(report_region, "require_configured", lambda ids, fail: None), contextlib.redirect_stdout(out):
             counts = card.run(0, True, self.ENV, NOW, lambda host: json.dumps(stats()).encode(), rep, plan=plan)
         self.assertEqual((counts["missing"], counts["written"], len(calls)), (0, 2, 1))
         self.assertEqual(rep.plain("obody").split("\n")[-1], "Codex 5h ██████████ 100% · Codex week ██████████ 98%")
@@ -95,7 +96,7 @@ class Card(unittest.TestCase):
     def test_a_plan_that_cannot_be_had_is_unavailable_and_degrades_the_card(self):
         rep = report()
         out = io.StringIO()
-        with mock.patch.object(report_region, "protected", lambda client, ids, fail: {"Attention": "same"}), contextlib.redirect_stdout(out):
+        with mock.patch.object(report_region, "require_configured", lambda ids, fail: None), contextlib.redirect_stdout(out):
             counts = card.run(0, True, self.ENV, NOW, lambda host: json.dumps(stats()).encode(), rep, plan=lambda: None)
         self.assertEqual((counts["missing"], counts["written"]), (1, 2))
         self.assertEqual(rep.plain("obody").split("\n")[-1], "Codex plan: unavailable")
@@ -211,12 +212,40 @@ class Card(unittest.TestCase):
             self.run_card(both, env=env)
         self.assertEqual(both.patches, [])
 
-    def test_a_changed_protected_region_fails_after_the_write(self):
-        states = iter([{"Attention": "a"}, {"Attention": "b"}])
-        with mock.patch.object(report_region, "protected", lambda client, ids, fail: next(states)), contextlib.redirect_stdout(io.StringIO()):
-            with self.assertRaises(card.OracleCardError):
-                card.run(0, True, self.ENV, NOW, lambda host: json.dumps(stats()).encode(), report())
+    def test_a_live_write_needs_the_other_regions_configured(self):
+        with self.assertRaises(card.OracleCardError) as error:
+            card.run(0, True, self.ENV, NOW, lambda host: json.dumps(stats()).encode(), report())
+        self.assertEqual(str(error.exception), "PROTECTED_REGION_UNAVAILABLE")
 
+    def test_another_cards_write_during_ours_no_longer_fails_the_run(self):
+        """LIFE-613: the other cards' regions are no longer compared before and after our write, so a legitimate write by another card at the same time cannot fail this one."""
+        rep = report()
+        write = rep.call_once
+
+        def busy(method, path, body=None):
+            result = write(method, path, body)
+            rep.blocks["bills"]["callout"] = {"rich_text": [text("Bills (another card wrote this)")]}
+            return result
+
+        rep.call_once = busy
+        counts, _ = self.run_card(rep)
+        self.assertEqual(counts["written"], 2)
+
+    def test_a_write_into_another_cards_block_is_refused_before_it_is_sent_and_nothing_changes(self):
+        """LIFE-613 mutation proof. A writer aimed at another card's block (the Attention callout) must fail with the fixed code and leave that block untouched. On the old code the write went
+        through and was only noticed afterwards (PROTECTED_REGION_CHANGED), so the untouched-block assertion fails there."""
+        rep = report()
+        before = deepcopy(rep.blocks["attn"])
+
+        def buggy_writer(client, heading, paragraph, segments, heading_text):
+            client.call_once("PATCH", "/blocks/attn", {"callout": {"rich_text": [{"type": "text", "text": {"content": "overwritten"}}]}})
+
+        with mock.patch.object(card, "write", buggy_writer):
+            with self.assertRaises(card.OracleCardError) as error:
+                self.run_card(rep)
+        self.assertEqual(str(error.exception), "WRITE_OUT_OF_SCOPE")
+        self.assertEqual(rep.blocks["attn"], before)
+        self.assertEqual(rep.patches, [])
 
 class Endpoint(unittest.TestCase):
     def call(self, payload, stats_fn):
