@@ -4,7 +4,7 @@ From that list, at import time:
   * `lifeos/run.py` adds the stage (`python -m lifeos.run <name>`), so the hand-kept STAGES line is not needed;
   * `lifeos/jobs/tick.py` adds the source's Jobs-tick step (budget, limit, bulk, group, providers) after the step `after` names;
   * `lifeos/platform/codes.py` registers the source's own outcome codes.
-The code map and docs/codemap.json are generated from STAGES (`python -m lifeos.codemap build`), so they follow without a hand edit.
+The code map and docs/codemap.json are generated from STAGES (`python -m lifeos.sources.devtools.codemap build`), so they follow without a hand edit.
 `tests/contracts/test_source_registry.py` imports every entry, and fails by name for a stage under lifeos/sources/ that is neither registered nor on its short "not yet migrated" list.
 Stays by hand, on purpose: a manual-dispatch input or step in a workflow file (protected-file approval; whether a source can be run by hand is a per-source choice).
 It is data plus three small functions and imports nothing from lifeos (D17: platform knows nothing about jobs or sources; the modules are named by string, never imported here).

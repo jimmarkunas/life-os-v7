@@ -1,4 +1,4 @@
-"""LIFE-363 (REQ-6): `python -m lifeos.readiness issue-mcp FILE KEY` checks the unmodified Atlassian MCP getJiraIssue result with the same validator as issue-json.
+"""LIFE-363 (REQ-6): `python -m lifeos.sources.devtools.readiness issue-mcp FILE KEY` checks the unmodified Atlassian MCP getJiraIssue result with the same validator as issue-json.
 Offline, synthetic envelope (invented key LIFE-1, no real ids or people), proven through the real entrypoint."""
 import copy
 import json
@@ -30,7 +30,7 @@ def run(data, key="LIFE-1", age=0):
         path.write_text(json.dumps(data))
         if age:
             os.utime(path, (time.time() - age, time.time() - age))
-        done = subprocess.run([sys.executable, "-m", "lifeos.readiness", "issue-mcp", str(path), key], cwd=ROOT, capture_output=True, text=True)
+        done = subprocess.run([sys.executable, "-m", "lifeos.sources.devtools.readiness", "issue-mcp", str(path), key], cwd=ROOT, capture_output=True, text=True)
         return done.returncode, done.stdout, done.stderr
 
 
@@ -39,7 +39,7 @@ class IssueMcp(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "issue.json"
             path.write_text(json.dumps(record))
-            done = subprocess.run([sys.executable, "-m", "lifeos.readiness", "issue-json", str(path)], cwd=ROOT, capture_output=True, text=True)
+            done = subprocess.run([sys.executable, "-m", "lifeos.sources.devtools.readiness", "issue-json", str(path)], cwd=ROOT, capture_output=True, text=True)
             return done.returncode, done.stdout, done.stderr
 
     def test_a_ready_ticket_prints_ready_with_the_source_and_fields_and_matches_issue_json(self):

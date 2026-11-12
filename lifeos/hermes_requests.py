@@ -11,8 +11,8 @@ BUZZ_STAGE_KEY (this stage's own scoped member key), BUZZ_STAGE_CHANNEL (the cha
 import os
 import re
 
-from lifeos import buzz_nip98 as nip98
-from lifeos.buzz_relay import HEX, URL, UUID, BuzzError, Relay
+from lifeos.buzz import nip98
+from lifeos.buzz.relay import HEX, URL, UUID, BuzzError, Relay
 from lifeos.jira.dash_data import search
 from lifeos.platform.jira import Jira, JiraError
 

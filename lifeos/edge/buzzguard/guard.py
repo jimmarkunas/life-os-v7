@@ -23,7 +23,7 @@ SECRETY = re.compile(PREFIXES + r"|(?:password|passwd|passphrase|secret|api[_-]?
                      r"\beyJ[a-z0-9_-]{5,}\.[a-z0-9_-]{5,}\.|\b[0-9a-f]{64}\b|\b[a-z0-9+/]{60,}={0,2}")
 COMPACT = re.compile(PREFIXES)                                      # secrets split by spaces or line breaks: only the prefix shapes are re-checked with whitespace removed
 # LIFE-397: the LIFE-333 list was guessed and missed real room-context reads (Council Challenger, Nov 7: "the hook blocked the read"). These are the read operations the Buzz
-# bridge registers (lifeos/buzz_mcp.py READ) plus the names LIFE-333 saw; a tool may carry them bare (mcp__buzz__get_event) or buzz_-prefixed (mcp__buzz__buzz_get_event).
+# bridge registers (lifeos/buzz/mcp.py READ) plus the names LIFE-333 saw; a tool may carry them bare (mcp__buzz__get_event) or buzz_-prefixed (mcp__buzz__buzz_get_event).
 # Still an exact list: a name that merely starts with get_ is refused (LIFE-333 review round 1).
 BUZZ_READ_OPS = {"list_communities", "list_channels", "channel_info", "get_channel_info", "get_channel", "get_messages", "get_event", "search_messages", "get_thread",
                  "get_addressed", "list_agents", "get_evidence", "whoami", "capabilities", "canvas_get", "get_canvas", "channel_get"}

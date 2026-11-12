@@ -4,7 +4,7 @@ import json
 import unittest
 from pathlib import Path
 
-from lifeos import profile_tickets as pt
+from lifeos.sources.devtools import profile_tickets as pt
 
 FX = json.loads((Path(__file__).parent / "fixtures" / "profile_tickets.json").read_text())
 

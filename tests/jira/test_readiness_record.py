@@ -1,4 +1,4 @@
-"""LIFE-313: a Jira issue becomes the readiness record, proven through the real entrypoint (`python -m lifeos.readiness issue-json|issue-key`).
+"""LIFE-313: a Jira issue becomes the readiness record, proven through the real entrypoint (`python -m lifeos.sources.devtools.readiness issue-json|issue-key`).
 Offline fixtures only, invented keys; the live read uses a fake client."""
 import json
 import subprocess
@@ -30,7 +30,7 @@ def raw(desc=DESC, labels=("lane-career-v7",), components=({"name": "Example Com
 
 
 def entry(*args):
-    done = subprocess.run([sys.executable, "-m", "lifeos.readiness", *map(str, args)], cwd=ROOT, capture_output=True, text=True)
+    done = subprocess.run([sys.executable, "-m", "lifeos.sources.devtools.readiness", *map(str, args)], cwd=ROOT, capture_output=True, text=True)
     return done.returncode, done.stdout, done.stderr
 
 
@@ -131,7 +131,7 @@ class RecordTests(unittest.TestCase):
         self.assertIn("warn v1 requirement_unreadable", err)
 
     def test_live_read_without_credentials_names_the_settings_only(self):
-        done = subprocess.run([sys.executable, "-m", "lifeos.readiness", "issue-key", "LIFE-901"], cwd=ROOT, capture_output=True, text=True, env={"PATH": ""})
+        done = subprocess.run([sys.executable, "-m", "lifeos.sources.devtools.readiness", "issue-key", "LIFE-901"], cwd=ROOT, capture_output=True, text=True, env={"PATH": ""})
         self.assertEqual(done.returncode, 2)
         first, hint = done.stderr.strip().splitlines()
         self.assertEqual(first, "QUEUE_NOT_READY — JIRA_CONFIG_MISSING:JIRA_BASE_URL,JIRA_EMAIL,JIRA_API_TOKEN")

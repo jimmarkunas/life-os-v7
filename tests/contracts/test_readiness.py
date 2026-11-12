@@ -1,4 +1,4 @@
-"""LIFE-225 (ARCH-04), simplified by delivery flow v3: the readiness validator (three refusals, everything else a warning), proven through its real entrypoint (`python -m lifeos.readiness`, the command AGENTS.md tells every coding agent to run) and, for the repo check, on the real tree in CI.
+"""LIFE-225 (ARCH-04), simplified by delivery flow v3: the readiness validator (three refusals, everything else a warning), proven through its real entrypoint (`python -m lifeos.sources.devtools.readiness`, the command AGENTS.md tells every coding agent to run) and, for the repo check, on the real tree in CI.
 Offline: temp-file fixtures only, invented keys and names."""
 import copy
 import json
@@ -19,7 +19,7 @@ ISSUE = {"key": "LIFE-901", "owner": "Example Owner", "labels": ["lane-career-v7
 
 def entry(*args):
     """Run the real entrypoint in a fresh process from an unrelated cwd, exactly as an agent or CI does."""
-    done = subprocess.run([sys.executable, "-m", "lifeos.readiness", *map(str, args)], cwd=ROOT, capture_output=True, text=True)
+    done = subprocess.run([sys.executable, "-m", "lifeos.sources.devtools.readiness", *map(str, args)], cwd=ROOT, capture_output=True, text=True)
     return done.returncode, done.stdout, done.stderr
 
 
@@ -156,7 +156,7 @@ class RepositoryIndex(Fixture):
 
     def test_the_agent_entrypoint_names_the_validator(self):
         agents = (ROOT / "AGENTS.md").read_text()
-        for command in ("python -m lifeos.readiness", "python -m lifeos.readiness repo"):
+        for command in ("python -m lifeos.readiness", "python -m lifeos.readiness repo"):          # AGENTS.md (Jim-owned) still names the old module; the shim keeps it working
             self.assertIn(command, agents)
         self.assertNotIn("readiness preflight", agents)             # delivery flow v3: no claim file, no preflight
 

@@ -4,7 +4,7 @@ import unittest
 from contextlib import redirect_stdout
 from unittest import mock
 
-from lifeos import profile_runs as pr
+from lifeos.sources.devtools import profile_runs as pr
 
 # A saved, trimmed run record: names are the workflow's own step names; every time is made up.
 RECORD = {"jobs": [

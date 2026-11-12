@@ -2,8 +2,10 @@
 A signed recipient `p` tag is addressability in Buzz history. It never wakes a chat; nothing here proves a native agent responded."""
 import hashlib, json, unittest
 
-from lifeos import buzz_mcp, buzz_nip98 as nip98
-from lifeos.buzz_relay import BuzzError, Relay
+from lifeos.buzz import mcp as buzz_mcp
+
+from lifeos.buzz import nip98
+from lifeos.buzz.relay import BuzzError, Relay
 from tests.buzz import test_remote_mcp as remote
 from tests.buzz.test_bridge import CHAN, KEY_A, KEY_B, OTHER, URLS, FakeRelay, call, verify
 

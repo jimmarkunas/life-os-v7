@@ -3,8 +3,12 @@ These are fixture results. They say nothing about real ChatGPT or Claude Chat di
 import ast, base64, functools, hashlib, json, pathlib, random, unittest
 from unittest import mock
 
-from lifeos import buzz_mcp, buzz_nip98 as nip98, buzz_relay
-from lifeos.buzz_relay import BuzzError, Relay
+from lifeos.buzz import mcp as buzz_mcp
+
+from lifeos.buzz import nip98
+
+from lifeos.buzz import relay as buzz_relay
+from lifeos.buzz.relay import BuzzError, Relay
 from tests.buzz import test_remote_mcp as remote
 from tests.buzz.test_bridge import CHAN, KEY_A, KEY_B, OTHER, ROOT, URLS, FakeRelay, verify
 from tests.buzz.test_mentions import KEY_CODE, KEY_CODEX, PK_CODE, PK_CODEX
@@ -180,7 +184,7 @@ class Registry(unittest.TestCase):
             self.assertFalse({"post_message", "_post", "send"} & set(handler.__code__.co_names), op)
         self.assertFalse(set(buzz_mcp.READ) & set(buzz_mcp.PUBLISH))
         banned = {"subprocess", "sqlite3", "shelve", "pickle", "socketserver", "sched", "multiprocessing", "ctypes"}
-        for f in sorted((ROOT / "lifeos").glob("buzz_*.py")):
+        for f in sorted((ROOT / "lifeos" / "buzz").glob("*.py")):
             tree = ast.parse(f.read_text())
             imported = {a.name.split(".")[0] for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names} | {n.module.split(".")[0] for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module}
             self.assertFalse(banned & imported, f.name)
