@@ -1,0 +1,4 @@
+{"schema": 1, "ticket": "LIFE-310",
+ "steps": ["steps/10-scratch.sh", "steps/20-check-and-remove.sh"],
+ "restore": {"files": ["/tmp/lifeos-runner-scratch.txt"], "services": []},
+ "step_timeout_seconds": 60}
