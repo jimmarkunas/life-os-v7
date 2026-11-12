@@ -207,7 +207,7 @@ CODES = {
     "NOT_DELIVERED": _r("whatsapp", "state", False, "The alert was not delivered.", "None."),
     "GAVE_UP": _r("whatsapp", "state", False, "Delivery was given up after retries.", "None."),
     "TOPIC_CHANGED": _r("whatsapp", "state", False, "The relay read the ntfy topic again and it differed from the one it was polling; it now follows the new one.", "None."),
-    "QUIET": _r("whatsapp", "state", False, "No ntfy message of any kind reached the relay for hours.", "If alerts are expected, check that the relay follows the current topic."),
+    "RELAY_QUIET": _r("whatsapp", "state", False, "No ntfy message of any kind reached the relay for hours.", "If alerts are expected, check that the relay follows the current topic."),
     # --- the alert-state diagnostic (lifeos/jobs/alertstate.py)
     "ALERT_STATE_MESSAGE_REF_INVALID": _r("alertstate", "blocked", False, "The message reference is not a 64-character hash.", "Pass the SHA-256 of the message id."),
     "ALERT_STATE_NOT_READ_ONLY": _r("alertstate", "bug", False, "The diagnostic did not get a read-only connection.", "A code defect; it never writes."),

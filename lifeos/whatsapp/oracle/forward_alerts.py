@@ -30,7 +30,7 @@ LIFE-73 (the flood cap): each channel forwards at most RELAY_CAP copies per cloc
 
 LIFE-608 (the Nov 6 silence): the relay used to read the ntfy topic once at start and keep it for as long as it ran, so when the topic secret changed it kept polling the old topic
 and forwarded nothing for days, logging nothing. Now it reads the topic again every TOPIC_REFRESH seconds (one line, TOPIC_CHANGED, if it differs; the topic itself is never logged;
-a failed re-read keeps the working topic and tries again soon), and when no ntfy message of any kind has arrived for QUIET_AFTER seconds it writes one QUIET line to the
+a failed re-read keeps the working topic and tries again soon), and when no ntfy message of any kind has arrived for QUIET_AFTER seconds it writes one RELAY_QUIET line to the
 diagnostics file per such period, so a silent relay can be told from a quiet topic."""
 import json
 import os
@@ -62,7 +62,7 @@ PAUSE_TEXT = f"⏸ LIFE OS alerts paused: more than {RELAY_CAP} in an hour. Copi
 TOPIC_REFRESH = 900                                                     # LIFE-608: seconds between topic re-reads (a changed secret is picked up within this)
 TOPIC_RETRY = 60                                                        # LIFE-608: seconds before a failed re-read is tried again
 QUIET_AFTER = 6 * 3600                                                  # LIFE-608: seconds without any ntfy message before one QUIET line is written (then again per period)
-TOPIC_CHANGED, QUIET = "TOPIC_CHANGED", "QUIET"
+TOPIC_CHANGED, QUIET = "TOPIC_CHANGED", "RELAY_QUIET"
 ID = re.compile(r"[A-Za-z0-9]{1,32}")                                  # an ntfy message id, or a Unix time written as a fresh-start cursor
 
 
