@@ -628,8 +628,10 @@ jobs:
 
   amazon:
     # Amazon Orders is isolated; a failure warns without affecting the Jobs run.
-    # D118: the Amazon card then renders the canonical orders into the Daily Report's "Amazon Orders" callout. It waits for the other page writers (jira, agenda, bills) because it verifies their regions are unchanged.
-    needs: [jira, agenda, bills, gate]
+    # D118: the Amazon card then renders the canonical orders into the Daily Report's "Amazon Orders" callout.
+    # LIFE-586: it no longer waits for jira, agenda and bills. Its writes are checked against its own region BEFORE they are sent (report_region.ScopedClient), not by comparing the other cards' regions
+    # afterwards, and none of those three compares the Amazon region. The cards that DO compare it (imessage, hiring) still wait for this job; tests/jobs/test_domains_order.py holds that rule.
+    needs: [gate]
     if: ${{ always() && needs.gate.result != 'failure' && (needs.gate.outputs.run == 'true' || inputs.amazon) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -743,8 +745,9 @@ jobs:
 
   mail:
     # MAIL-1.2 (D143): V7 is the sole owner and writer of the Daily Report "Mail Alerts" region (Production Contract v2.15.12). Gmail read-only evidence -> private state row -> the callout.
-    # It runs after every other Daily Report writer, because the card proves their regions are unchanged. A failed ingest is a warning and the card shows DEGRADED with the last accepted state.
-    needs: [jira, agenda, bills, amazon, attention, gate]
+    # LIFE-586: it no longer waits for the other writers. Its writes are checked against its own region before they are sent (report_region.ScopedClient), and the cards that compare the Mail
+    # Alerts region (hiring, which digests the whole page) still wait for this job; tests/jobs/test_domains_order.py holds that rule. A failed ingest is a warning and the card shows DEGRADED with the last accepted state.
+    needs: [gate]
     if: ${{ always() && needs.gate.result != 'failure' && (needs.gate.outputs.run == 'true' || inputs.physical_mail) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10

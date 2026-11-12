@@ -740,6 +740,7 @@ CODES = {
     "PINNED_BLOCK_MISMATCH": _r("hiring", "blocked", False, "The pinned block is not the one expected, so nothing is written.", "Check the page."),
     "PROTECTED_CONTENT_CHANGED": _r("outreach", "blocked", False, "Protected content changed during the write, so it stops.", "None; nothing of Jim's is overwritten."),
     "PROTECTED_REGION_CHANGED": _r("hiring", "blocked", False, "Jim's protected content changed during a write, so the write stops.", "None; nothing of Jim's is overwritten."),
+    "WRITE_OUT_OF_SCOPE": _r("platform", "bug", False, "A card tried to write to a block outside its own region; the write was refused before it was sent.", "A code defect in the card; nothing was written."),
     "PROTECTED_REGION_UNAVAILABLE": _r("platform", "retry", False, "A protected block could not be read, so no write is made.", "None; retried."),
     "PROTECTED_REGION_VERIFICATION_FAILED": _r("dcc", "degraded", False, "The protected region did not verify after the write.", "Check the page."),
     "PUBLISH_RECORDS_FAILED": _r("publish", "degraded", False, "The publish records could not be saved.", "Retried next run."),

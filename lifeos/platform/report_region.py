@@ -3,13 +3,17 @@
 The caller owns exactly one region (router.OWNERS). This module only: checks the configured block is a callout whose first child is that region's
 heading; inserts new text right under the heading; removes the old PLAIN TEXT of that callout (never a table, database, page or any other block, so
 Jim's interactive views stay where they are); re-reads the callout; and proves the other V7 regions are byte-for-byte unchanged around every write.
-`fail(code)` builds the caller's own error type, so codes stay fixed and carry no content."""
+`fail(code)` builds the caller's own error type, so codes stay fixed and carry no content.
+
+LIFE-586: for `replace_text` and `replace_tree` the proof that nothing else changed is no longer a before/after comparison of the other cards' regions; it is `ScopedClient`, which refuses any write
+outside the card's own region before it is sent (WRITE_OUT_OF_SCOPE). The comparison is still used by the floating-region writers (Hiring) and by the cards that carry their own copy of it."""
 import hashlib
 import json
+import re
 import time
 from copy import deepcopy
 from itertools import groupby
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 from lifeos.platform import readback, router
 from lifeos.platform.notion_client import NotionError
@@ -124,6 +128,58 @@ def protected(client, ids, fail):
         raise fail("PROTECTED_REGION_UNAVAILABLE") from None
 
 
+def _norm(raw):
+    return clean_id(unquote(str(raw or "")))
+
+
+class ScopedClient:
+    """LIFE-586 (option 2, Jim's decision of Nov 12 2026): the guard that a card writes only inside its own region, checked BEFORE every write instead of after it.
+    The card's callout is the root. A block becomes ours when a read of the children of a block that is ours returns it, or when a write under one of ours returns it.
+    A PATCH, POST or DELETE aimed at any other block (another card's callout, a page, a block never seen under ours) is refused with WRITE_OUT_OF_SCOPE and is never sent.
+    This replaces comparing the other cards' regions before and after our write, which made two cards unable to write at the same time (a legitimate write by the other card looked like a violation)."""
+    WRITES = ("PATCH", "POST", "DELETE", "PUT")
+
+    def __init__(self, client, root, fail):
+        self._client, self._fail, self.owned = client, fail, {_norm(root)}
+
+    def __getattr__(self, name):
+        return getattr(self._client, name)
+
+    def _target(self, path):
+        found = re.match(r"/blocks/([^/?]+)", path or "")
+        return _norm(found.group(1)) if found else None
+
+    def _check(self, method, path):
+        if str(method).upper() in self.WRITES and self._target(path) not in self.owned:
+            raise self._fail("WRITE_OUT_OF_SCOPE")
+
+    def _learn(self, path, result):
+        parent = re.match(r"/blocks/([^/?]+)/children", path or "")
+        if parent and _norm(parent.group(1)) in self.owned and isinstance(result, dict):
+            for block in result.get("results") or []:
+                if isinstance(block, dict) and isinstance(block.get("id"), str):
+                    self.owned.add(_norm(block["id"]))
+
+    def call(self, method, path, body=None):
+        self._check(method, path)
+        result = self._client.call(method, path, body)
+        self._learn(path, result)
+        return result
+
+    def call_once(self, method, path, body=None, *args, **kwargs):
+        self._check(method, path)
+        result = self._client.call_once(method, path, body, *args, **kwargs)
+        self._learn(path, result)
+        return result
+
+
+def _configured(protected_ids, fail):
+    """The other regions' block ids must still be configured (a missing one means the page is not set up as expected), but nothing is read from them any more."""
+    ids = {region: clean_id(block_id) for region, block_id in (protected_ids or {}).items() if block_id or region != router.HIRING_REGION}
+    if not ids or not all(ids.values()):
+        raise fail("PROTECTED_REGION_UNAVAILABLE")
+
+
 def _prove(client, module, before, protected_ids, tag, fail):
     after = protected(client, protected_ids, fail)
     if not router.protected_intact(module, before, after):
@@ -138,6 +194,7 @@ def replace_text(client, block_id, title, module, blocks, protected_ids, fail, t
     meta = client.call("GET", f"/blocks/{quote(block_id, safe='')}")
     if not isinstance(meta, dict) or meta.get("type") != "callout" or not same_id(meta.get("id"), block_id):
         raise fail("CARD_NOT_OWNED")
+    client = ScopedClient(client, block_id, fail)                                       # LIFE-586: every write below is checked against this card's own region first
     existing = children(client, block_id, fail)
     if headless:
         if not existing or any(b.get("type") in HEADINGS for b in existing) or all(b.get("type") in TEXT_KINDS for b in existing):
@@ -153,10 +210,10 @@ def replace_text(client, block_id, title, module, blocks, protected_ids, fail, t
     body = existing if headless else existing[1:]
     old_text = [b for b in body if b.get("type") in TEXT_KINDS]
     kept = [b["id"] for b in body if b.get("type") not in TEXT_KINDS]                    # tables, databases, pages and anything else stay, in order
-    before = protected(client, protected_ids, fail)
+    _configured(protected_ids, fail)
 
     def intact():
-        _prove(client, module, before, protected_ids, tag, fail)
+        """Kept for the writers below; the proof is now the scope guard on the client, which acts before each write, so there is nothing to compare afterwards."""
 
     if headless:
         return existing, _write_headless(client, block_id, title, module, blocks, existing, kept, old_text, intact, fail)
@@ -346,6 +403,7 @@ def replace_tree(client, block_id, title, module, spec, protected_ids, fail, tag
     meta = client.call("GET", f"/blocks/{quote(block_id, safe='')}")
     if not isinstance(meta, dict) or meta.get("type") != "callout" or not same_id(meta.get("id"), block_id):
         raise fail("CARD_NOT_OWNED")
+    client = ScopedClient(client, block_id, fail)                                       # LIFE-586: every write below is checked against this card's own region first
     existing = children(client, block_id, fail)
     if not (existing and existing[0].get("type") in HEADINGS and plain(existing[0]).strip() == title):
         raise fail("CARD_NOT_OWNED")
@@ -360,11 +418,8 @@ def replace_tree(client, block_id, title, module, spec, protected_ids, fail, tag
     if not live:
         return _sync(client, block_id, ours, spec, existing[0]["id"], fail, False), 0
     _sync(client, block_id, ours, spec, existing[0]["id"], fail, False)                   # preflight: the whole tree is checked before the first write
-    before = protected(client, protected_ids, fail)
-    try:
-        changes = _sync(client, block_id, ours, spec, existing[0]["id"], fail, True)
-    finally:
-        _prove(client, module, before, protected_ids, tag, fail)
+    _configured(protected_ids, fail)
+    changes = _sync(client, block_id, ours, spec, existing[0]["id"], fail, True)
     if _sync(client, block_id, [b for b in children(client, block_id, fail)[1:] if b.get("type") not in TEXT_KINDS], spec, None, fail, False):
         raise fail("CARD_VERIFY_FAILED")
     removed = 0
@@ -375,7 +430,6 @@ def replace_tree(client, block_id, title, module, spec, protected_ids, fail, tag
         except NotionError as error:
             if str(error) != "NOTION_HTTP_404":
                 raise
-    _prove(client, module, before, protected_ids, tag, fail)
     after = children(client, block_id, fail)
     if [b.get("id") for b in after[:1]] != [existing[0]["id"]] or [b.get("type") for b in after[1:]] != [b.get("type") for b in spec]:
         raise fail("CARD_VERIFY_FAILED")

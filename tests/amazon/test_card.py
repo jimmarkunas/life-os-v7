@@ -4,6 +4,7 @@ import inspect
 import pathlib
 import unittest
 from datetime import datetime
+from unittest import mock
 from zoneinfo import ZoneInfo
 
 from lifeos.amazon import card, orders, stage
@@ -206,13 +207,34 @@ class RunTests(unittest.TestCase):
             self.assertEqual(str(caught.exception), code)
             self.assertEqual([m for m, _ in notion.log if m in ("APPEND", "DELETE")], [])
 
-    def test_a_protected_region_changed_mid_write_fails_the_run(self):
+    def test_another_cards_write_during_ours_no_longer_fails_the_run(self):
+        """LIFE-586: the other cards' regions are no longer compared before and after our write, so a legitimate write by another card at the same time cannot fail this one."""
         for op in ("PATCH", "APPEND"):                                                          # the in-place rewrite, then the extra lines
             for region in ("calendar-callout", "jira-callout", "bills-callout"):
                 notion = AmazonRegions(change_on=op, change_region=region)
-                with self.assertRaises(card.CardError) as caught:
-                    card.run(0, True, environ=ENV, reader=Reader(ROWS), client=notion, now=NOW)
-                self.assertEqual(str(caught.exception), "AMAZON_PROTECTED_REGION_CHANGED")
+                counts = card.run(0, True, environ=ENV, reader=Reader(ROWS), client=notion, now=NOW)
+                self.assertGreater(counts["blocks_written"], 0, (op, region))
+
+    def test_a_write_into_another_cards_block_is_refused_before_it_is_sent_and_nothing_changes(self):
+        """LIFE-586 mutation proof. A card whose writer aims at a block of another card (here Jira's callout) must still fail, and the other card's block must be untouched. On the
+        old code the write went through and was only noticed afterwards (PROTECTED_REGION_CHANGED), so this assertion on the untouched block fails there."""
+        notion = AmazonRegions()
+        foreign = notion.children["jira-callout"][0]["id"]
+        before = notion.full_tree("jira-callout")
+
+        def buggy_writer(client, block_id, title, module, blocks, existing, kept, old_text, intact, fail):
+            try:
+                client.call("PATCH", f"/blocks/{foreign}", {"heading_2": {"rich_text": [{"type": "text", "text": {"content": "overwritten"}}]}})
+            finally:
+                intact()                                                                         # what every real writer does after each write (the old after-the-fact comparison)
+            return 0
+
+        with mock.patch.object(report_region, "_write_in_place", buggy_writer):
+            with self.assertRaises(card.CardError) as caught:
+                card.run(0, True, environ=ENV, reader=Reader(ROWS), client=notion, now=NOW)
+        self.assertEqual(str(caught.exception), "AMAZON_WRITE_OUT_OF_SCOPE")
+        self.assertEqual(notion.full_tree("jira-callout"), before)
+        self.assertEqual([m for m, _ in notion.log if m in ("PATCH", "APPEND", "DELETE")], [])
 
 
 class OwnershipTests(unittest.TestCase):
@@ -242,7 +264,7 @@ class OwnershipTests(unittest.TestCase):
         runs = [s.get("run", "") for s in job["steps"]]
         order_ = [next(i for i, r in enumerate(runs) if f"lifeos.run {name}" in r) for name in ("amazon-orders", "amazon-card")]
         self.assertEqual(order_, sorted(order_))
-        self.assertEqual(set(job["needs"]), {"jira", "agenda", "bills", "gate"})
+        self.assertEqual(set(job["needs"]), {"gate"})
         card_step = next(s for s in job["steps"] if s.get("id") == "acard")
         self.assertTrue(card_step["continue-on-error"])
         self.assertIn("steps.amazon.outcome", card_step["env"]["AMAZON_SYNC_OUTCOME"])
