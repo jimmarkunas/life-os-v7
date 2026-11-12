@@ -253,10 +253,10 @@
    "lifeos/bills/state.py": "Pure due-state buckets over a saved Bill Tracker snapshot."
   },
   "buzz": {
-   "lifeos/buzz/auth.py": "OAuth 2.1 resource-server checks for the remote Buzz MCP (stdlib only). Access tokens are RS256 JWTs from ONE configured issuer; this module never issues tokens, stores s",
-   "lifeos/buzz/mcp.py": "Remote MCP server (Streamable HTTP, JSON replies, stateless) shared by Claude Chat and ChatGPT Chat for four Buzz operations. Loopback only; a TLS reverse proxy is the on",
-   "lifeos/buzz/nip98.py": "NIP-98 (kind 27235) request signing for the Buzz relay: BIP-340 Schnorr over secp256k1, stdlib only. Keys are passed in by the caller; nothing is stored or logged.",
-   "lifeos/buzz/relay.py": "Scoped Buzz relay client: reads via POST /query, writes via POST /events (the surface Block's `buzz` CLI uses). The transport is injectable so tests never touch a network"
+   "lifeos/buzz/auth.py": "OAuth 2.1 resource-server checks for the remote Buzz MCP: RS256 access tokens from one issuer, a client allowlist and a user allowlist. Stdlib only.",
+   "lifeos/buzz/mcp.py": "Remote MCP server for Buzz (Streamable HTTP, JSON replies, stateless), shared by Claude Chat and ChatGPT Chat. Loopback only; a TLS proxy is the one public path.",
+   "lifeos/buzz/nip98.py": "NIP-98 request signing for the Buzz relay: BIP-340 Schnorr over secp256k1 for event kind 27235. Stdlib only.",
+   "lifeos/buzz/relay.py": "Scoped Buzz relay client: reads through POST /query, writes through POST /events, with an injectable transport so tests never touch a network."
   },
   "calendar_bridge": {
    "lifeos/calendar_bridge/sync.py": "Outlook calendar -> the person's own Google calendar (one-way). Every Google event V7 writes carries a private marker and a deterministic id derived from the Outlook even",
@@ -436,6 +436,7 @@
    "lifeos/platform/ct_stamp.py": "LIFE-577: the one helper that prints the current Central time in the format receipts and Jira comments use: `Nov 11 2026, 1:05 PM CT`.",
    "lifeos/platform/db.py": "Hostinger MySQL connection through an SSH tunnel (platform: no job knowledge). Every error is a fixed code. One tunnel per process (LIFE-76 PR 4a, D207): it is opened on ",
    "lifeos/platform/dcc_write.py": "The Daily Command Center write, proven from page markdown alone (D169). The ChatGPT-native router runs outside V7 and its Notion connector gives it the page as markdown a",
+   "lifeos/platform/docstyle.py": "LIFE-595: the docstring standard for every lifeos module, and the check that keeps it. Counts and file names only.",
    "lifeos/platform/drift.py": "LIFE-528 step 0: the deployed-version drift check. A GitHub merge does not update the Oracle VM, so the watchdog compares each repo-owned deployed file with `main`.",
    "lifeos/platform/due.py": "LIFE-609: which domain jobs are due on this tick, from ONE table (lifeos/platform/due_table.json) and each job's last successful run.",
    "lifeos/platform/egress.py": "Other ways to reach a page a plain request from the GitHub runner cannot (counts and flags only; URLs never logged). Each returns lifeos.platform.http.Fetched facts. Used",

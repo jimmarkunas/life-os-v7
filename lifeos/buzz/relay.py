@@ -1,5 +1,7 @@
-"""Scoped Buzz relay client: reads via POST /query, writes via POST /events (the surface Block's `buzz` CLI uses). The transport is injectable so tests never touch a network.
-Authorization is explicit: a community needs a configured relay URL and its own scoped key; a write also needs that exact (community, channel) in `writes`. Errors are fixed codes."""
+"""Scoped Buzz relay client: reads through POST /query, writes through POST /events, with an injectable transport so tests never touch a network.
+
+Inputs: a community with a configured relay URL and its own scoped key; a write also needs that exact (community, channel) in `writes`. Outputs: relay events as plain data, or a BuzzError
+with a fixed code. Pointer: docs/buzz-remote-mcp-deploy.md (LIFE-216)."""
 import base64, hashlib, hmac, json, re, threading, time, urllib.error, urllib.request
 from lifeos.buzz import nip98
 

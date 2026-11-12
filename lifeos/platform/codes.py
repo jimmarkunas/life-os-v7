@@ -883,6 +883,7 @@ CODES.update({    # --- refusal codes of the read-only Google sign-in helper (li
 CODES.update(registry.code_rows(_r))      # LIFE-618: the registered job sources' own codes (lifeos/platform/source_registry.json)
 
 NOT_CODES = frozenset((
+    "NO_DOCSTRING", "FIRST_PARAGRAPH_NOT_ONE_LINE", "FIRST_LINE_TOO_LONG", "TOTAL_TOO_LONG", "INIT_NOT_ONE_LINE", "INIT_NO_ALL",     # LIFE-595: the docstring check's findings (lifeos/platform/docstyle.py), not run outcomes
     "GITHUB_SHA",     # LIFE-570: the runner-provided commit id the unit-test gate reads
     "LC_ALL", "LIFE_KEY", "PACK_DIR", "O_NOFOLLOW",     # LIFE-310: environment names the runner gives a step, and an os flag
     "LIFEOS_NOTION_IDS", "DASHBOARD_PAGE", "DASHBOARD_CHECKINS", "DASHBOARD_QBRS", "DASHBOARD_ARCHIVE", "DASHBOARD_MATT_MEGIBOW", "DATA_SOURCE", "FULL_WIDTH_TEMPLATE", "LEDGER_ROW", "QA_PARENT", "REPORTS_PAGE", "REVIEW_SOURCE", "ROUND_PAGE", "SANDBOX_PAGE", "SANDBOX_SOURCE", "SMITH_PAGE", "SOURCE_ID", "UI3C", "UI4", "WALMART_PAGE",      # LIFE-338: the <NAME> of a LIFEOS_NOTION_<NAME> variable (lifeos/platform/notion_ids.py)

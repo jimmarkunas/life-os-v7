@@ -1,6 +1,8 @@
-"""OAuth 2.1 resource-server checks for the remote Buzz MCP (stdlib only). Access tokens are RS256 JWTs from ONE configured issuer; this module never issues tokens, stores secrets or logs a token.
-The OAuth client (client_id/azp) must be allowlisted, and the signed-in USER must be allowlisted by `sub` with a product label (claude / chatgpt) and the communities that user may reach.
-The label comes only from the verified `sub`, never from anything the caller sends: each product's connector is authorized by its own IdP user, so one registered client can serve both."""
+"""OAuth 2.1 resource-server checks for the remote Buzz MCP: RS256 access tokens from one issuer, a client allowlist and a user allowlist. Stdlib only.
+
+Inputs: the bearer token; the allowlists and issuer from the environment (named in lifeos.buzz.mcp). Outputs: a verified identity (subject, label, communities) or an AuthError with a fixed code.
+The client (client_id/azp) and the user (`sub`) must both be allowlisted; the label (claude or chatgpt) comes only from the verified `sub`, so one registered client can serve both products.
+Never issues tokens, stores secrets or logs a token. Pointer: docs/buzz-remote-mcp-deploy.md (LIFE-216, LIFE-254)."""
 import base64, hashlib, hmac, json, threading, time, urllib.request
 from lifeos.buzz.relay import _NoRedirect
 

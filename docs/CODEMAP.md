@@ -110,7 +110,7 @@ A routing page. Find a stage here, then its module. For anything else ask one qu
 - `lifeos/amazon/` (9 modules): Amazon Orders domain: source event extraction, reconciliation and Gmail/Notion stage.
 - `lifeos/attention/` (4 modules): Attention card (D128): status, suggested decisions and hiring summary above Jim's interactive view.
 - `lifeos/bills/` (4 modules): Private Bill Tracker snapshot and due-state calculations.
-- `lifeos/buzz/` (4 modules): OAuth 2.1 resource-server checks for the remote Buzz MCP (stdlib only). Access tokens are RS256 JWTs from ONE 
+- `lifeos/buzz/` (4 modules): The Buzz remote MCP: relay client, OAuth checks, request signing and the server itself (LIFE-216).
 - `lifeos/calendar_bridge/` (2 modules): Outlook calendar -> the person's own Google calendar (one-way). Every Google event V7 writes carries a private
 - `lifeos/dcc/` (2 modules): The Daily Command Center, written by V7 (D175): one callout on the Daily Report, built by rules from what the 
 - `lifeos/delivery/` (1 modules): DEL-1.1: count the real tracking numbers in recent mail, read-only. Nothing is written, labelled, trashed or s
@@ -124,7 +124,7 @@ A routing page. Find a stage here, then its module. For anything else ask one qu
 - `lifeos/oraclecloud/` (3 modules): LIFE-129 (Jim, Oct 28 2026): a failed or missed off-site backup night must reach the phone, quietly. The backu
 - `lifeos/outlook/` (2 modules): Outlook stages. `auth` signs one mailbox in once (read-only by default; `write` asks for the right to move mai
 - `lifeos/physmail/` (5 modules): Render the Physical Mail state into V7's one "Mail Alerts" callout on the Daily Report (MAIL-1.2). V7 owns thi
-- `lifeos/platform/` (55 modules): LIFE-403 (epic LIFE-401): the per-agent access policy of the one access layer. Pure functions, no network.
+- `lifeos/platform/` (56 modules): LIFE-403 (epic LIFE-401): the per-agent access policy of the one access layer. Pure functions, no network.
 - `lifeos/recruiters/` (9 modules): Three explicit source shapes, decided from the normalized mail record alone (D54: no language model).
 - `lifeos/sources/` (55 modules): LIFE-75 (Jim, Oct 26 2026): the Alert settings screen on the private Close service (Oracle; only Jim's iPhone 
 - `lifeos/telegram/` (1 modules): COMM-1.2 (LIFE-29, Jim's approval Oct 15 2026, Jira 10203): Jim's personal Telegram attention, read on Oracle 
