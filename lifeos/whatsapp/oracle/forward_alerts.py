@@ -26,7 +26,12 @@ LIFE-75 (the Alert settings page): the V7 gateway tags each push with the copies
 that tag is present, so what Jim ticks per alert on the page decides it. An untagged message is skipped silently and the position moves on.
 
 LIFE-73 (the flood cap): each channel forwards at most RELAY_CAP copies per clock hour. The next one sends ONE "paused" notice and the rest of that hour's copies are dropped
-(ntfy keeps every original). The count is persisted (rate-<channel>, 0600) and written before the send; an unreadable count file holds the channel instead of lifting the cap."""
+(ntfy keeps every original). The count is persisted (rate-<channel>, 0600) and written before the send; an unreadable count file holds the channel instead of lifting the cap.
+
+LIFE-608 (the Nov 6 silence): the relay used to read the ntfy topic once at start and keep it for as long as it ran, so when the topic secret changed it kept polling the old topic
+and forwarded nothing for days, logging nothing. Now it reads the topic again every TOPIC_REFRESH seconds (one line, TOPIC_CHANGED, if it differs; the topic itself is never logged;
+a failed re-read keeps the working topic and tries again soon), and when no ntfy message of any kind has arrived for QUIET_AFTER seconds it writes one QUIET line to the
+diagnostics file per such period, so a silent relay can be told from a quiet topic."""
 import json
 import os
 import re
@@ -54,6 +59,10 @@ DELIVERED, NOT_DELIVERED, AMBIGUOUS, GAVE_UP, HELD = "DELIVERED", "NOT_DELIVERED
 CAPPED, PAUSED = "CAPPED", "PAUSED"
 RELAY_CAP = 6                                                           # LIFE-73: forwards per channel per clock hour; the next alert sends ONE "paused" notice and the rest of the hour's copies are dropped (ntfy keeps the originals)
 PAUSE_TEXT = f"⏸ LIFE OS alerts paused: more than {RELAY_CAP} in an hour. Copies resume next hour; ntfy has them all."
+TOPIC_REFRESH = 900                                                     # LIFE-608: seconds between topic re-reads (a changed secret is picked up within this)
+TOPIC_RETRY = 60                                                        # LIFE-608: seconds before a failed re-read is tried again
+QUIET_AFTER = 6 * 3600                                                  # LIFE-608: seconds without any ntfy message before one QUIET line is written (then again per period)
+TOPIC_CHANGED, QUIET = "TOPIC_CHANGED", "QUIET"
 ID = re.compile(r"[A-Za-z0-9]{1,32}")                                  # an ntfy message id, or a Unix time written as a fresh-start cursor
 
 
@@ -297,7 +306,9 @@ def follow(name, to, opener=urllib.request.urlopen, sender=send, channel="whatsa
         return _held(channel, "invalid_rate")
     with opener(f"https://ntfy.sh/{name}/json?poll=1&since={since or '10m'}", timeout=30) as stream:
         lines = [line.decode("utf-8", "replace") for line in stream]
+        seen = 0
         for e in events(lines):
+            seen += 1
             if "ch-" + channel not in (e.get("tags") or []):                  # LIFE-75: a copy goes to this channel only when the push was tagged for it (the Alert settings page)
                 remember(e["id"], channel)
                 continue
@@ -332,23 +343,45 @@ def follow(name, to, opener=urllib.request.urlopen, sender=send, channel="whatsa
                     _done(channel, e["id"])
                     continue
                 _write_attempts(channel, {"id": e["id"], "count": count, "pending": False})
-                return                                                   # keep the order: the next poll retries this alert first
+                return seen                                              # keep the order: the next poll retries this alert first
             _done(channel, e["id"])                                      # DELIVERED or AMBIGUOUS: never sent again
+        return seen                                                      # LIFE-608: how many ntfy messages this poll saw (tagged or not), for the quiet check
+
+
+def step(state, now=time.time, resolve=topic, lookup=recipient, poll=follow, send_to=send):
+    """One poll cycle for every channel. `state` carries the topic, when it was read, and the quiet-check clock between cycles (LIFE-608)."""
+    t = now()
+    if state.get("name") is None or t - state.get("read_at", 0) >= TOPIC_REFRESH:
+        fresh = resolve()
+        if fresh:
+            if state.get("name") and fresh != state["name"]:
+                diagnose("relay", None, TOPIC_CHANGED, "reread", now=now)
+            state["name"], state["read_at"] = fresh, t
+        else:
+            state["read_at"] = t - TOPIC_REFRESH + TOPIC_RETRY             # a failed read keeps the working topic and is tried again soon
+    seen = 0
+    for channel in CHANNELS:
+        to = lookup(channel=channel)
+        if state.get("name") and to:
+            got = poll(state["name"], to, sender=lambda text_, b, c=channel: send_to(text_, b, channel=c), channel=channel)
+            seen += got if isinstance(got, int) else 0
+    state.setdefault("last_seen", t)
+    if seen:
+        state["last_seen"] = t
+    elif t - max(state["last_seen"], state.get("quiet_logged", 0)) >= QUIET_AFTER:
+        diagnose("relay", None, QUIET, "no_messages", now=now)             # one line per quiet period: counts and a fixed word, never a topic or text
+        state["quiet_logged"] = t
 
 
 def main():
     os.environ["PATH"] = os.path.dirname(NODE) + ":" + os.environ.get("PATH", "/usr/bin:/bin")      # openclaw runs on this node
-    name, delay = None, POLL
+    state, delay = {}, POLL
     while True:
         try:
-            name = name or topic()
-            for channel in CHANNELS:
-                to = recipient(channel=channel)
-                if name and to:
-                    follow(name, to, sender=lambda t, b, c=channel: send(t, b, channel=c), channel=channel)
+            step(state)
             delay = POLL
-        except Exception:                                                   # network, Bitwarden or OpenClaw unavailable: back off and resume
-            name, delay = None, min(delay * 2, 300)
+        except Exception:                                                   # network, Bitwarden or OpenClaw unavailable: back off and resume (the topic is read again next cycle)
+            state["name"], delay = None, min(delay * 2, 300)
         time.sleep(delay)
 
 
