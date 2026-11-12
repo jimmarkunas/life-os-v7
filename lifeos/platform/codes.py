@@ -863,35 +863,12 @@ for _reason in ("NOT_ALLOWLISTED", "NONCE_REPLAYED", "COUNTER_UNAVAILABLE", "DAI
         _base = CODES[_reason]
         CODES["FIT_EDGE_REFUSED_" + _reason] = _r(_base.stage, _base.klass, _base.attempt, "Oracle refused: " + _base.meaning[0].lower() + _base.meaning[1:], _base.action, _base.severity)
 
-CODES.update({    # --- synthetic cited knowledge and topic adapter (lifeos/synthetic/, LIFE-373); fake data only, every one is a refusal before any change
-    'DENY_TENANT': _r("synthetic", 'terminal', False, 'The source or topic belongs to another tenant, or does not exist for this one; nothing was read or changed.', 'Use the tenant that owns the source.'),
-    'DENY_SOURCE_REVOKED': _r("synthetic", 'terminal', False, 'The source was revoked, so it and the topics built from it are refused (the topics are quarantined in the fake ledger).', 'Re-approve the source, or rebuild the topic from other sources.'),
-    'DENY_STALE_SOURCE': _r("synthetic", 'terminal', False, 'The source revision is not the one the update was built from.', 'Read the source again and rebuild the update.'),
-    'DENY_REPLAY_OR_WRITER': _r("synthetic", 'terminal', False, 'The request was replayed, or another writer holds the topic, or the topic version moved.', 'Read the topic again and retry with a new nonce.'),
-    'SOURCE_STALE': _r("synthetic", 'state', False, 'The kind of source failure behind a stale-source refusal.', 'None.'),
-})
-
-CODES.update({    # --- the policy-gated synthetic tool contract (lifeos/synthetic/authz.py, LIFE-374); fake data only, every one is a refusal before any change
-    'DENY_INPUT': _r("synthetic", 'terminal', False, 'The tool request is malformed or a required field is missing.', 'Fix the request.'),
-    'DENY_PRINCIPAL': _r("synthetic", 'terminal', False, 'The agent, host or session is not a verified one, or the call did not come through the V7 adapter.', 'Call through the adapter with a valid session.'),
-    'DENY_TASK_SCOPE': _r("synthetic", 'terminal', False, 'The task is missing, blocked or not this agent\'s.', 'Use an authorized, unblocked task.'),
-    'DENY_UNTRUSTED': _r("synthetic", 'terminal', False, 'Source or tool text claimed authority it does not have.', 'Only a recorded Jim approval counts.'),
-    'DENY_UNSUPPORTED_ACTION': _r("synthetic", 'terminal', False, 'The tool is not registered, or the sandbox or workbench action is not supported.', 'Use a registered tool.'),
-    'DENY_MANAGEMENT_SCOPE': _r("synthetic", 'terminal', False, 'An admin or proxy call without an approved management scope.', 'Get the management scope approved first.'),
-    'DENY_PROTECTED': _r("synthetic", 'terminal', False, 'The action is protected or its risk is unknown, and the exact approval or the write grant is missing.', 'Get a write grant and an exact Jim approval.'),
-    'DENY_BATCH_POLICY': _r("synthetic", 'terminal', False, 'The batch mixes kinds of action.', 'Send one kind of action per batch.'),
-    'NEEDS_OWNER_RECONSENT': _r("synthetic", 'blocked', False, 'The provider consent was revoked or expired and only the owner can renew it.', 'Owner renews the consent.'),
-    'DENY_GRANT': _r("synthetic", 'terminal', False, 'No valid grant: it is missing, revoked, expired, overdue for review, for another account, or the level is too low.', 'Renew or request the grant.'),
-    'DENY_APPROVAL_MISMATCH': _r("synthetic", 'terminal', False, 'An approval is present but is not for this exact action, account, host or task, or Jim did not issue it.', 'Get an exact approval.'),
-    'DENY_SECRET_EXPOSURE': _r("synthetic", 'terminal', False, 'A secret-shaped value is in the request or in the tool output; the output is suppressed.', 'Remove the secret and retry.'),
-    'DENY_ACCOUNT_AMBIGUOUS': _r("synthetic", 'terminal', False, 'The account is missing, ambiguous, unknown or not this tool\'s account.', 'Name the exact account.'),
-    'SOURCE_TIMEOUT': _r("synthetic", 'state', False, 'The kind of source failure behind a refusal after a read that returned nothing.', 'None.'),
-})
-
-CODES.update({    # --- the synthetic signed handoff and fake receiver (lifeos/synthetic/handoff.py, LIFE-375); fake data only
-    'DENY_SIGNATURE': _r("synthetic", 'terminal', False, 'The handoff signature does not match: the event was forged or changed after signing.', 'Re-send a correctly signed event.'),
-    'DENY_RECIPIENT': _r("synthetic", 'terminal', False, 'The handoff is addressed to a different receiver.', 'Address it to the intended receiver.'),
-    'RECEIVER_FAILED': _r("synthetic", 'retry', False, 'The receiver failed before it wrote or acknowledged anything.', 'Send the same event again; it is accepted once.'),
+CODES.update({    # --- refusal codes of the read-only Google sign-in helper (lifeos/platform/google_consent_readonly.py, LIFE-423); kept when lifeos/synthetic was removed (LIFE-608)
+    'DENY_INPUT': _r("platform", 'terminal', False, 'The tool request is malformed or a required field is missing.', 'Fix the request.'),
+    'DENY_PRINCIPAL': _r("platform", 'terminal', False, 'The agent, host or session is not a verified one, or the call did not come through the V7 adapter.', 'Call through the adapter with a valid session.'),
+    'DENY_UNSUPPORTED_ACTION': _r("platform", 'terminal', False, 'The tool is not registered, or the sandbox or workbench action is not supported.', 'Use a registered tool.'),
+    'DENY_SECRET_EXPOSURE': _r("platform", 'terminal', False, 'A secret-shaped value is in the request or in the tool output; the output is suppressed.', 'Remove the secret and retry.'),
+    'DENY_ACCOUNT_AMBIGUOUS': _r("platform", 'terminal', False, 'The account is missing, ambiguous, unknown or not this tool\'s account.', 'Name the exact account.'),
 })
 
 NOT_CODES = frozenset((

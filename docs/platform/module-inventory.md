@@ -4,7 +4,7 @@ Report only. Nothing was deleted or changed. Taken from origin/main at c7ad41a o
 
 ## Read this first
 
-* **One row is DEAD-PROVEN (lifeos/synthetic); no row is left unclassified (LIFE-591, Nov 11 2026).** The 11 rows that had no positive evidence were each checked in the repo, in the workflows, on the Oracle VM (system and user units, cron, installed trees, role files) and on this Mac (launchd, cron, processes). Nothing was deleted: the decision on `lifeos/synthetic` is Jim's.
+* **One row is DEAD-PROVEN (lifeos/synthetic); no row is left unclassified (LIFE-591, Nov 11 2026).** The 11 rows that had no positive evidence were each checked in the repo, in the workflows, on the Oracle VM (system and user units, cron, installed trees, role files) and on this Mac (launchd, cron, processes). Nothing was deleted by LIFE-591; Jim then decided, and LIFE-608 deleted `lifeos/synthetic` and `tests/synthetic`.
 * **Size correction.** The ticket says lifeos/ is about 66k lines in 35 modules. Measured: **48,457 lines of Python in 34 top-level units** (322 .py files; 34 other files are shell, JSON, Node, systemd and launchd files). tests/ is **56,713 lines**, not about 57k (fine). Largest are sources 8,832, jobs 8,564, platform 5,596, interview 5,159, edge 2,692.
 * **Line-count target for follow-on tickets: none proposed.** The target would count only DEAD-PROVEN rows, and there are none. The first real saving is elsewhere (see Findings).
 
@@ -31,7 +31,7 @@ Columns: lines = Python lines; tests = test files / test lines that mention the 
 | lifeos/imessage | 15 | 1,575 | 2026-10-26 | 9 / 2,342 | yes | GitHub, Oracle (alerts_endpoint); Mac launchd plists not checked | LIVE | keep | 2 stages in workflows; alerts_endpoint.py on Oracle |
 | lifeos/recruiters | 9 | 1,360 | 2026-10-25 | 7 / 2,119 | yes | GitHub | LIVE | keep | 2 of 2 stages in workflows |
 | lifeos/hiring | 10 | 1,355 | 2026-11-08 | 11 / 4,455 | yes | GitHub, Oracle (close_screen via close_app) | LIVE | keep | 1 stage in workflows; used by Oracle Close |
-| lifeos/synthetic | 13 | 1,335 | 2026-11-09 | 9 / 1,547 | no | none found | DEAD-PROVEN | delete proposed (Jim decides; LIFE-591 deleted nothing) | no import outside itself and its tests, no stage, no workflow; none of the Oracle units, cron entries, installed trees or role files, nor this Mac's launchd, cron or processes names it; only strings in platform/codes.py and the credential list point at it. Rollback if wanted: the code stays in Git history |
+| lifeos/synthetic | 13 | 1,335 | 2026-11-09 | 9 / 1,547 | no | none found | DEAD-PROVEN | DELETED by LIFE-608 on Jim's typed yes (five shared result codes kept in codes.py under platform) | no import outside itself and its tests, no stage, no workflow; none of the Oracle units, cron entries, installed trees or role files, nor this Mac's launchd, cron or processes names it; only strings in platform/codes.py and the credential list point at it. Rollback if wanted: the code stays in Git history |
 | lifeos/amazon | 10 | 1,319 | 2026-10-26 | 8 / 3,417 | yes | GitHub | LIVE | keep | 3 of 5 stages named in workflows |
 | lifeos/network | 10 | 1,231 | 2026-11-08 | 9 / 2,978 | yes | GitHub | LIVE | keep | imported by run.py and sources; its stages network-inspect, -import, -audit and -match are run by the manual workflow network.yml (input `stage`), network-surface and -layout by network.yml and (surface) by hourly.yml |
 | lifeos/bills | 5 | 892 | 2026-10-26 | 4 / 1,789 | yes | GitHub | LIVE | keep | 3 of 3 stages in workflows |
