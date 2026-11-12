@@ -34,8 +34,6 @@ SURFACES = (
 
 # Installers that are deliberately NOT surfaces. A new install-*.sh must be a surface above or be listed here with the reason (tests/platform/test_drift.py reads this).
 UNCOVERED_INSTALLERS = {
-    "lifeos/edge/jobright/install-browser.sh": "It installs a user unit under the ubuntu home folder (the persistent Jobright browser), which the ticker's drift reader cannot see; LIFE-576 option a, switched off by default in the workflow.",
-    "lifeos/edge/jobright/install-forward-user.sh": "It creates a login user and its restricted key and installs no repo file, so there is no file to compare; LIFE-576 option a.",
     "lifeos/edge/runner/install-runner.sh": "The script-pack runner starts no unit, so there is no unit state to compare; its program is pinned by a hash inside its own installer and checked by that installer's verify.",
 }
 
