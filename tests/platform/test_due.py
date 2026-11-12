@@ -75,6 +75,35 @@ class Rules(unittest.TestCase):
         self.assertTrue(two_days[0])
 
 
+class BillsEverySixHours(unittest.TestCase):
+    """LIFE-612: the Bills job runs on the first tick after 12:00 AM, 6:00 AM, 12:00 PM and 6:00 PM CT."""
+    ROW = due.load_table()["bills"]
+
+    def due_ticks(self, start, hours, last, failing=()):
+        found, now = [], start
+        for n in range(hours):
+            if due.is_due(self.ROW, last, now)[0]:
+                found.append(now.astimezone(due.CENTRAL).strftime("%a %-I:%M %p"))
+                if n not in failing:
+                    last = now
+            now += dt.timedelta(hours=1)
+        return found
+
+    def test_the_real_row_is_the_four_slots(self):
+        self.assertEqual(self.ROW, {"slots_ct": ["00:00", "06:00", "12:00", "18:00"]})
+
+    def test_a_day_of_hourly_ticks_runs_it_four_times_and_skips_the_other_twenty(self):
+        found = self.due_ticks(dt.datetime(2026, 11, 12, 6, 17, tzinfo=UTC), 24, dt.datetime(2026, 11, 11, 23, 17, tzinfo=UTC))          # 12:17 AM CT on, after the 6:17 PM run
+        self.assertEqual(found, ["Thu 12:17 AM", "Thu 6:17 AM", "Thu 12:17 PM", "Thu 6:17 PM"])
+
+    def test_a_dropped_slot_is_caught_up_once_on_the_next_tick(self):
+        found = self.due_ticks(dt.datetime(2026, 11, 12, 6, 17, tzinfo=UTC), 14, dt.datetime(2026, 11, 11, 23, 17, tzinfo=UTC), failing={6})        # the 6:17 AM run fails
+        self.assertEqual(found, ["Thu 12:17 AM", "Thu 6:17 AM", "Thu 7:17 AM", "Thu 12:17 PM"])
+
+    def test_a_manual_dispatch_is_not_a_tick_so_bills_runs_as_today(self):
+        self.assertEqual(due.decide({"bills": self.ROW}, {"bills": dt.datetime(2026, 11, 12, 15, 17, tzinfo=UTC)}, NOW, tick=False), {"bills": (True, "not a tick")})
+
+
 class History_(unittest.TestCase):
     def test_last_success_takes_the_start_of_the_newest_run_where_the_job_succeeded(self):
         api = History([run(1, mail="skipped", jira="success"), run(7, mail="success", jira="success"), run(13, mail="success")])
@@ -147,8 +176,8 @@ class TableMatchesTheWorkflow(unittest.TestCase):
     def test_jims_confirmed_rows_are_in_the_table_and_the_three_with_their_own_tickets_are_still_hourly(self):
         table = due.load_table()
         self.assertEqual((table["mail"], table["amazon"], table["megibow"]), ({"every_hours": 6}, {"every_hours": 3}, {"every_hours": 3}))     # comment 12803
-        for job in ("agenda", "hiring", "recruiters", "amazon_retention", "bills"):
-            self.assertEqual(table[job], {"every_hours": 1}, job)                      # LIFE-611 and 612 flip retention and bills; the recruiters JOB stays hourly (it also runs Interview OS and the outreach cards): LIFE-610 puts its 3-hour schedule on the mail step, in the table's `steps`; agenda and hiring stay hourly by Jim's answer
+        for job in ("agenda", "hiring", "recruiters"):
+            self.assertEqual(table[job], {"every_hours": 1}, job)                      # LIFE-611 and 612 flipped retention and bills; the recruiters JOB stays hourly (it also runs Interview OS and the outreach cards): LIFE-610 puts its 3-hour schedule on the mail step, in the table's `steps`; agenda and hiring stay hourly by Jim's answer
 
 
 if __name__ == "__main__":

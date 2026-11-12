@@ -3,7 +3,7 @@
   "jobs": {
     "jira": {"every_hours": 1},
     "outlook": {"every_hours": 1},
-    "bills": {"every_hours": 1},
+    "bills": {"slots_ct": ["00:00", "06:00", "12:00", "18:00"]},
     "agenda": {"every_hours": 1},
     "amazon": {"every_hours": 3},
     "amazon_retention": {"every_hours": 1},
