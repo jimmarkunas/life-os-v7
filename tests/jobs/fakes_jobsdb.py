@@ -46,7 +46,7 @@ class JobsDB(MySQLite):
     def __init__(self):
         super().__init__()
         self.raw.close()                                                       # the base class opened a plain connection; this one parses column types
-        self.raw = sqlite3.connect(":memory:", isolation_level=None, detect_types=sqlite3.PARSE_DECLTYPES)
+        self.raw = sqlite3.connect(":memory:", isolation_level=None, detect_types=sqlite3.PARSE_DECLTYPES, check_same_thread=False)
         self.raw.create_function("IF", 3, lambda cond, a, b: a if cond else b)
         self.raw.create_function("UTC_TIMESTAMP", 0, lambda: datetime.now(timezone.utc).replace(tzinfo=None).isoformat(" "))      # the MySQL functions the stages' statements call
         self.raw.create_function("HOUR", 1, lambda value: datetime.fromisoformat(str(value)).hour if value else None)

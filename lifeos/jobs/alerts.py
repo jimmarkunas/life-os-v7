@@ -128,7 +128,7 @@ def detect(counts, now, expiries=None):
                                 "open the funnel report (report=funnel) to see where its jobs end"))
     flagged = daily_monitors(counts.get("daily") or {}, now.date())
     if "board_reads_failing" in flagged:
-        out.append(alerts.Alert("board_reads_failing", alerts.INFO, "Board reads failing", f"{flagged['board_reads_failing']:.0%} of board reads in the last two days failed (not counting boards that answer not found).",
+        out.append(alerts.Alert("board_reads_failing", alerts.INFO, "Board reads failing", f"{flagged['board_reads_failing']:.0%} of board reads in the last two days failed (not counting boards that answer not found)." + (" Failing now: " + ", ".join(counts["failing_boards"][:3]) + "." if counts.get("failing_boards") else ""),
                                 "check the boards line of the latest run: failed_why shows the reasons"))
     if "search_failing" in flagged:
         out.append(alerts.Alert("search_failing", alerts.INFO, "Search calls failing", f"{flagged['search_failing']:.0%} of search calls in the last two days failed.",
@@ -154,6 +154,8 @@ def gather(connection, now):
         published = cursor.fetchone()[0]
         cursor.execute("SELECT COUNT(*) FROM v7_sources WHERE failures >= %s", (SOURCE_FAILURES,))
         failing = cursor.fetchone()[0]
+        cursor.execute("SELECT source_id FROM v7_sources WHERE last_status = 'FAILED' AND COALESCE(last_reason, '') <> 'not_found' ORDER BY failures DESC, source_id LIMIT 3")
+        failing_boards = [row[0] for row in cursor.fetchall()]                     # LIFE-616: public registry ids, named in the board_reads_failing alert
         cursor.execute("SELECT COUNT(*) FROM v7_jobs WHERE status IN ('READY','RESOLVED') AND updated_at < %s", (cutoff,))
         stuck = cursor.fetchone()[0]
         cursor.execute("SELECT COUNT(*) FROM v7_jobs WHERE status='EXCLUDED_UNRESOLVED' AND unresolved_reason=%s AND updated_at > %s", (hold.FAILED_RECOVERY, cutoff))
@@ -174,7 +176,7 @@ def gather(connection, now):
         cursor.execute("SELECT source, status, COUNT(*) FROM v7_jobs WHERE source IS NOT NULL AND first_seen > %s GROUP BY source, status", (now - dt.timedelta(days=YIELD_WINDOW_DAYS),))
         by_7d = group_status_counts(cursor.fetchall())
         daily_rows = daily.read(cursor, (now - dt.timedelta(days=KEEP_DAILY_DAYS)).date())
-    return {"published_24h": published, "sources_failing": failing, "stuck_jobs": stuck, "unresolved_terminal": unresolved, "stopped_sources": sorted(stopped),
+    return {"published_24h": published, "sources_failing": failing, "failing_boards": failing_boards, "stuck_jobs": stuck, "unresolved_terminal": unresolved, "stopped_sources": sorted(stopped),
             "yield_72h": by_72h, "yield_7d": by_7d, "daily": daily_rows}
 
 
