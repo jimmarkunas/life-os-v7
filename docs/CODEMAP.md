@@ -81,7 +81,7 @@ A routing page. Find a stage here, then its module. For anything else ask one qu
 - `outlook-auth` -> `lifeos.run:_outlook_auth`
 - `outlook-newsletters` -> `lifeos.sources.newsletters.outlook:run`
 - `outlook-probe` -> `lifeos.outlook.stage:probe`
-- `probe` -> `lifeos.sources.devtools.probe:run`
+- `probe` -> `lifeos.probe:run`
 - `publish` -> `lifeos.jobs.publish:run`
 - `publish-fresh` -> `lifeos.jobs.publish:run`
 - `purge` -> `lifeos.run:_purge`
@@ -126,7 +126,7 @@ A routing page. Find a stage here, then its module. For anything else ask one qu
 - `lifeos/physmail/` (5 modules): Render the Physical Mail state into V7's one "Mail Alerts" callout on the Daily Report (MAIL-1.2). V7 owns thi
 - `lifeos/platform/` (54 modules): LIFE-403 (epic LIFE-401): the per-agent access policy of the one access layer. Pure functions, no network.
 - `lifeos/recruiters/` (9 modules): Three explicit source shapes, decided from the normalized mail record alone (D54: no language model).
-- `lifeos/sources/` (56 modules): LIFE-75 (Jim, Oct 26 2026): the Alert settings screen on the private Close service (Oracle; only Jim's iPhone 
+- `lifeos/sources/` (55 modules): LIFE-75 (Jim, Oct 26 2026): the Alert settings screen on the private Close service (Oracle; only Jim's iPhone 
 - `lifeos/telegram/` (1 modules): COMM-1.2 (LIFE-29, Jim's approval Oct 15 2026, Jira 10203): Jim's personal Telegram attention, read on Oracle 
 
 ## Workflows (`find <name>` lists jobs and secret names)

@@ -1,5 +1,5 @@
 """LIFE-590 PR 2: ten root modules moved (lifeos/buzz/, lifeos/sources/devtools/); each old name is a tiny shim that IS the new module, so `python -m lifeos.buzz_mcp` (the installed Oracle unit),
-`python -m lifeos.codemap` (AGENTS.md, .claude/settings.json) and `python -m lifeos.readiness` (a workflow) keep working. The three modules that stay at the root each have a keep reason here."""
+`python -m lifeos.codemap` (AGENTS.md, .claude/settings.json) and `python -m lifeos.readiness` (a workflow) keep working. The four modules that stay at the root each have a keep reason here."""
 import importlib
 import subprocess
 import sys
@@ -8,11 +8,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 MOVED = {"buzz_auth": "lifeos.buzz.auth", "buzz_mcp": "lifeos.buzz.mcp", "buzz_nip98": "lifeos.buzz.nip98", "buzz_relay": "lifeos.buzz.relay",
-         "codemap": "lifeos.sources.devtools.codemap", "decisions": "lifeos.sources.devtools.decisions", "probe": "lifeos.sources.devtools.probe",
+         "codemap": "lifeos.sources.devtools.codemap", "decisions": "lifeos.sources.devtools.decisions",
          "profile_runs": "lifeos.sources.devtools.profile_runs", "profile_tickets": "lifeos.sources.devtools.profile_tickets", "readiness": "lifeos.sources.devtools.readiness"}
 KEPT = {"__init__": "the package marker",
         "run": "the one entry point: `python -m lifeos.run <stage>` is named by about 90 workflow lines, AGENTS.md and every stage doc",
-        "hermes_requests": "a stage module that the config registry pins by path (`lifeos/hermes_requests.py`) and hermes-stage.yml names; moving it is a separate decision"}
+        "hermes_requests": "a stage module that the config registry pins by path (`lifeos/hermes_requests.py`) and hermes-stage.yml names; moving it is a separate decision",
+        "probe": "its path is pinned in tests/contracts/test_privacy.py (NOT_NOTION_IDS), a protected file that needs Jim's protected-file-approved label to change; the move is one line once he gives it"}
 
 
 class OldNamesStillWork(unittest.TestCase):

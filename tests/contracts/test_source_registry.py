@@ -15,7 +15,7 @@ from lifeos.platform import source_registry as registry
 NOT_YET_MIGRATED = frozenset((
     "board-check", "boards", "boards-backfill", "boards-preview", "discover-jobs", "granola-auto", "hiring", "interview", "job-page-outreach", "linkedin-search", "mail-filing", "manual-job",
     "megibow", "network-layout", "network-match", "network-surface", "newsletter-trace", "notion-sandbox-access", "notion-sandbox-outreach-proof", "oracle-card", "outlook-newsletters",
-    "probe", "scale-up-boards", "scale-up-register", "web", "web-scale-up", "web-titlewatch"))
+    "scale-up-boards", "scale-up-register", "web", "web-scale-up", "web-titlewatch"))
 
 
 def unlisted(stages, sources=registry.SOURCES, legacy=NOT_YET_MIGRATED):
