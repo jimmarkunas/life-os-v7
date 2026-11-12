@@ -309,7 +309,7 @@ class HourlyJobTests(unittest.TestCase):
 
     def test_runs_after_an_hourly_tick_only_and_never_fails_the_jobs_run(self):
         job = self.job()
-        self.assertIn("needs.gate.outputs.run == 'true'", job.split("runs-on")[0])             # LIFE-604 item 11: the tick trigger lives once, in the gate job (tests/jobs/test_domains_events.py)
+        self.assertIn("needs.gate.outputs.due_outlook == 'true'", job.split("runs-on")[0])             # LIFE-604 item 11: the tick trigger lives once, in the gate job (tests/jobs/test_domains_events.py)
         self.assertEqual(job.count("continue-on-error: true"), 4)            # + the first Bitwarden load, whose one retry fails the job (D209), + the LIFE-85 tailnet join (no fallback, not a failure)
         self.assertNotIn("\n    continue-on-error:", job)
         self.assertIn("::warning", job)

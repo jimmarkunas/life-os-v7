@@ -32,7 +32,7 @@ def status(now, degraded=False, review=0, reason=None):
     stamp = chicago(now).strftime("%-I:%M %p")
     if degraded:
         return f"DEGRADED — counts may be incomplete · last attempt {stamp} CT" + (f" ({reason})" if reason else "")
-    line = f"Last refreshed {chicago(now).strftime('%a %b %-d')}, {stamp} CT"
+    line = f"Updated {chicago(now).strftime('%a %b %-d')}, {stamp} CT"
     if review:
         line += f" · Review needed — {review} activity candidate{'s' if review != 1 else ''}"
     return line

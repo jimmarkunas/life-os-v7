@@ -151,7 +151,7 @@ class Stage(unittest.TestCase):
         self.assertEqual(n.rows["r6"][-1], "3")           # the total is the LAST row
         self.assertTrue(n.bold["r6"])                     # and it is bold
         self.assertFalse(any(n.bold.get(r) for r in ("r1", "r2", "r3", "r4", "r5")))
-        self.assertTrue(n.callout.startswith("Last refreshed Wed Oct 7, 1:00 PM CT"))
+        self.assertTrue(n.callout.startswith("Updated Wed Oct 7, 1:00 PM CT"))
 
     def test_review_row_created_once_and_answer_applied(self):
         mon = datetime(2026, 10, 5, 15, 0, tzinfo=UTC)
