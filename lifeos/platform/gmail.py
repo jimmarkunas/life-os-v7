@@ -10,6 +10,8 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Iterable
+from typing import Any, Self
 
 API = "https://gmail.googleapis.com/gmail/v1/users/me"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -25,7 +27,7 @@ class GmailError(RuntimeError):
     pass
 
 
-def error_code(error):
+def error_code(error: BaseException) -> str:
     """A GmailError as a fixed log code: Gmail's own code, or its HTTP status and short reason (HTTP_429_RATELIMITEXCEEDED); never a URL, id or body."""
     text = str(error)
     http = re.search(r"HTTP (\d{3}) ?([A-Za-z]*)\s*$", text)
@@ -34,7 +36,7 @@ def error_code(error):
     return "GMAIL_ERROR" if "://" in text else text[:40].upper().replace(" ", "_")
 
 
-def _reason(error):
+def _reason(error: urllib.error.HTTPError) -> str:
     """Google's short error reason code (e.g. rateLimitExceeded), or '' - never free text."""
     try:
         reason = json.loads(error.read())["error"]["errors"][0]["reason"]
@@ -44,20 +46,20 @@ def _reason(error):
 
 
 class Gmail:
-    def __init__(self, client_id, client_secret, refresh_token, timeout=30):
+    def __init__(self, client_id: str, client_secret: str, refresh_token: str, timeout: float = 30) -> None:
         self._creds = (client_id, client_secret, refresh_token)
         self._timeout = timeout
-        self._token = None
+        self._token: str | None = None
 
     @classmethod
-    def from_env(cls):
+    def from_env(cls) -> Self:
         try:
             return cls(os.environ["GMAIL_OAUTH_CLIENT_ID"], os.environ["GMAIL_OAUTH_CLIENT_SECRET"],
                        os.environ["GMAIL_OAUTH_REFRESH_TOKEN"])
         except KeyError as missing:
             raise GmailError(f"missing secret {missing}") from None
 
-    def _request(self, method, url, body=None, form=None, auth=True):
+    def _request(self, method: str, url: str, body: Any = None, form: dict[str, str] | None = None, auth: bool = True) -> Any:
         data, headers = None, {}
         if form is not None:
             data = urllib.parse.urlencode(form).encode()
@@ -81,7 +83,7 @@ class Gmail:
                 # only a short enumerated reason code is surfaced; bodies never reach logs
                 raise GmailError(f"{method} {url.split('?')[0].split('/messages')[0]} -> HTTP {error.code} {reason}") from None
 
-    def _access_token(self):
+    def _access_token(self) -> str:
         if self._token is None:
             client_id, client_secret, refresh_token = self._creds
             reply = self._request("POST", TOKEN_URL, auth=False, form={
@@ -90,7 +92,7 @@ class Gmail:
             self._token = reply["access_token"]
         return self._token
 
-    def label_id(self, name, create=False):
+    def label_id(self, name: str, create: bool = False) -> str:
         for label in self._request("GET", f"{API}/labels").get("labels", []):
             if label["name"] == name:
                 return label["id"]
@@ -98,7 +100,8 @@ class Gmail:
             raise GmailError(f"label not found: {name}")
         return self._request("POST", f"{API}/labels", body={"name": name})["id"]
 
-    def list_ids(self, query, limit=5000):
+    def list_ids(self, query: str, limit: int = 5000) -> list[str]:
+        ids: list[str]
         ids, token = [], None
         while len(ids) < limit:
             params = {"q": query, "maxResults": 500}
@@ -111,10 +114,13 @@ class Gmail:
                 break
         return ids[:limit]
 
-    def list_ids_complete(self, query, limit, include_spam=False):
+    def list_ids_complete(self, query: str, limit: int, include_spam: bool = False) -> list[str]:
         """Return the complete matching ID set, or fail when it exceeds the caller's bound. Spam and Trash are listed only when asked."""
         if not isinstance(limit, int) or limit < 1:
             raise GmailError("GMAIL_LIST_LIMIT_INVALID")
+        ids: list[str]
+        seen_tokens: set[str]
+        seen_ids: set[str]
         ids, token, seen_tokens, seen_ids = [], None, set(), set()
         for _ in range(MAX_LIST_PAGES):
             params = {"q": query, "maxResults": min(500, limit + 1 - len(ids))}
@@ -145,7 +151,7 @@ class Gmail:
                 raise GmailError("GMAIL_LISTING_INCOMPLETE")
         raise GmailError("GMAIL_LISTING_INCOMPLETE")
 
-    def message_record(self, message_id, keep_lines=False):
+    def message_record(self, message_id: Any, keep_lines: bool = False) -> dict[str, Any]:
         """Read source fields and labels; decoded content stays in memory and errors never include message data.
         keep_lines: an HTML-only body keeps one line per block element (a table row, a list item, a <br>) instead of one flat line; text/plain is unchanged either way."""
         full = self._request("GET", f"{API}/messages/{urllib.parse.quote(str(message_id), safe='')}?format=full")
@@ -154,6 +160,7 @@ class Gmail:
         headers = full["payload"].get("headers") or []
         if not isinstance(headers, list) or any(not isinstance(header, dict) for header in headers):
             raise GmailError("GMAIL_MESSAGE_INCOMPLETE")
+        values: dict[str, str]
         values = {}
         for header in headers:
             name, value = header.get("name"), header.get("value")
@@ -161,7 +168,7 @@ class Gmail:
                 values.setdefault(name.lower(), value)
         raw_date = full.get("internalDate")
         try:
-            received = datetime.fromtimestamp(int(raw_date) / 1000, timezone.utc).isoformat()
+            received = datetime.fromtimestamp(int(raw_date) / 1000, timezone.utc).isoformat()    # type: ignore[arg-type]  # a missing date is None: int(None) raises TypeError, caught below
         except (TypeError, ValueError, OverflowError, OSError):
             raise GmailError("GMAIL_MESSAGE_INCOMPLETE") from None
         labels = full.get("labelIds") or []
@@ -172,17 +179,18 @@ class Gmail:
 
     MAIL_HEADERS = ("From", "Subject", "Auto-Submitted", "Precedence", "List-Id", "List-Unsubscribe", "X-Auto-Response-Suppress", "Reply-To")
 
-    def mail_record(self, message_id):
+    def mail_record(self, message_id: Any) -> dict[str, Any]:
         """Read-only: headers that matter for classification, readable body text, labels and received time. Decoded content stays in memory."""
         full = self._request("GET", f"{API}/messages/{urllib.parse.quote(str(message_id), safe='')}?format=full")
         if not isinstance(full, dict) or not isinstance(full.get("payload"), dict):
             raise GmailError("GMAIL_MESSAGE_INCOMPLETE")
+        values: dict[str, str]
         values = {}
         for header in full["payload"].get("headers") or []:
             if isinstance(header, dict) and isinstance(header.get("name"), str) and isinstance(header.get("value"), str):
                 values.setdefault(header["name"].lower(), header["value"])
         try:
-            received = datetime.fromtimestamp(int(full.get("internalDate")) / 1000, timezone.utc).isoformat()
+            received = datetime.fromtimestamp(int(full.get("internalDate")) / 1000, timezone.utc).isoformat()    # type: ignore[arg-type]  # as above
         except (TypeError, ValueError, OverflowError, OSError):
             raise GmailError("GMAIL_MESSAGE_INCOMPLETE") from None
         labels = full.get("labelIds") if isinstance(full.get("labelIds"), list) else []
@@ -191,18 +199,19 @@ class Gmail:
 
     SENT_HEADERS = ("From", "To", "Cc", "Subject", "Date", "Auto-Submitted", "Precedence", "List-Id", "List-Unsubscribe")
 
-    def sent_record(self, message_id):
+    def sent_record(self, message_id: Any) -> dict[str, Any]:
         """Metadata of one message (headers and a short preview, never the body): sender, recipients, subject, sent time, thread id, bulk-mail markers, labels."""
         query = "&".join(["format=metadata"] + ["metadataHeaders=" + name for name in self.SENT_HEADERS])
         full = self._request("GET", f"{API}/messages/{urllib.parse.quote(str(message_id), safe='')}?{query}")
         if not isinstance(full, dict) or not isinstance(full.get("payload"), dict):
             raise GmailError("GMAIL_MESSAGE_INCOMPLETE")
+        values: dict[str, str]
         values = {}
         for header in full["payload"].get("headers") or []:
             if isinstance(header, dict) and isinstance(header.get("name"), str) and isinstance(header.get("value"), str):
                 values.setdefault(header["name"].lower(), header["value"])
         try:
-            sent = datetime.fromtimestamp(int(full.get("internalDate")) / 1000, timezone.utc)
+            sent = datetime.fromtimestamp(int(full.get("internalDate")) / 1000, timezone.utc)    # type: ignore[arg-type]  # as above
         except (TypeError, ValueError, OverflowError, OSError):
             raise GmailError("GMAIL_MESSAGE_INCOMPLETE") from None
         labels = full.get("labelIds") if isinstance(full.get("labelIds"), list) else []
@@ -211,7 +220,7 @@ class Gmail:
                 "bulk": any(values.get(k) for k in ("list-id", "list-unsubscribe")) or values.get("precedence", "").lower() in ("bulk", "list", "junk")
                 or values.get("auto-submitted", "no").lower() not in ("", "no")}
 
-    def profile_address(self):
+    def profile_address(self) -> str:
         """The mailbox's own address (used only in memory, to tell self-sends from real recipients)."""
         reply = self._request("GET", f"{API}/profile")
         address = reply.get("emailAddress") if isinstance(reply, dict) else None
@@ -219,7 +228,7 @@ class Gmail:
             raise GmailError("GMAIL_PROFILE_INCOMPLETE")
         return address.lower()
 
-    def message_labels(self, message_id):
+    def message_labels(self, message_id: Any) -> list[str]:
         path = f"{API}/messages/{urllib.parse.quote(str(message_id), safe='')}?format=minimal"
         result = self._request("GET", path)
         labels = result.get("labelIds") if isinstance(result, dict) else None
@@ -227,7 +236,7 @@ class Gmail:
             raise GmailError("GMAIL_LABEL_READBACK_INCOMPLETE")
         return labels
 
-    def apply_amazon(self, message_id, amazon_label_id):
+    def apply_amazon(self, message_id: Any, amazon_label_id: str) -> Any:
         """Archive one accepted message under the existing Amazon label; never create labels or delete mail."""
         if not isinstance(amazon_label_id, str) or not amazon_label_id or amazon_label_id == "INBOX":
             raise GmailError("GMAIL_AMAZON_LABEL_INVALID")
@@ -235,7 +244,7 @@ class Gmail:
         return self._request("POST", f"{API}/messages/{message}/modify",
                              body={"addLabelIds": [amazon_label_id], "removeLabelIds": ["INBOX"]})
 
-    def thread_replied_since(self, thread_id, since_iso):
+    def thread_replied_since(self, thread_id: Any, since_iso: str) -> bool:
         """True when Jim sent a message in this thread after `since_iso` (a message carrying the SENT label, later than that instant). Read-only; metadata only."""
         if not thread_id:
             return False
@@ -246,7 +255,7 @@ class Gmail:
         since = datetime.fromisoformat(since_iso).timestamp() * 1000
         return any("SENT" in (m.get("labelIds") or []) and int(m.get("internalDate") or 0) > since for m in messages if isinstance(m, dict))
 
-    def thread_sent(self, thread_id):
+    def thread_sent(self, thread_id: Any) -> list[tuple[datetime, str]]:
         """LIFE-114: Jim's own messages in one thread (the SENT label) -> [(sent time, aware UTC datetime, subject)], oldest first. Read-only; metadata only, never a body."""
         result = self._request("GET", f"{API}/threads/{urllib.parse.quote(str(thread_id), safe='')}?format=metadata&metadataHeaders=Subject")
         messages = result.get("messages") if isinstance(result, dict) else None
@@ -257,7 +266,7 @@ class Gmail:
             if not isinstance(m, dict) or "SENT" not in (m.get("labelIds") or []):
                 continue
             try:
-                sent = datetime.fromtimestamp(int(m.get("internalDate")) / 1000, timezone.utc)
+                sent = datetime.fromtimestamp(int(m.get("internalDate")) / 1000, timezone.utc)    # type: ignore[arg-type]  # as above
             except (TypeError, ValueError, OverflowError, OSError):
                 raise GmailError("GMAIL_THREAD_INCOMPLETE") from None
             headers = ((m.get("payload") or {}).get("headers") or []) if isinstance(m.get("payload"), dict) else []
@@ -265,38 +274,38 @@ class Gmail:
             out.append((sent, " ".join(subject.split())))
         return sorted(out)
 
-    def file_read(self, message_id, label_id):
+    def file_read(self, message_id: Any, label_id: str) -> Any:
         """Mark one message read and move it out of the Inbox into an existing label (LIFE-149); never deletes."""
         if not isinstance(label_id, str) or not label_id or label_id in ("INBOX", "UNREAD", "TRASH", "SPAM"):
             raise GmailError("GMAIL_FILE_LABEL_INVALID")
         message = urllib.parse.quote(str(message_id), safe="")
         return self._request("POST", f"{API}/messages/{message}/modify", body={"addLabelIds": [label_id], "removeLabelIds": ["INBOX", "UNREAD"]})
 
-    def trash(self, message_id):
+    def trash(self, message_id: Any) -> Any:
         """Move one message to the Gmail Trash (recoverable for 30 days); never a permanent delete."""
         return self._request("POST", f"{API}/messages/{urllib.parse.quote(str(message_id), safe='')}/trash")
 
-    def sender(self, message_id):
+    def sender(self, message_id: Any) -> str:
         url = f"{API}/messages/{message_id}?format=metadata&metadataHeaders=From"
         for header in self._request("GET", url).get("payload", {}).get("headers", []):
             if header["name"].lower() == "from":
                 return header["value"]
         return ""
 
-    def message(self, message_id):
+    def message(self, message_id: Any) -> tuple[str, str, int]:
         """Return (sender header, html body, received epoch seconds) for one message. Content stays in memory only."""
         full = self._request("GET", f"{API}/messages/{message_id}?format=full")
         payload = full.get("payload", {})
         sender = next((h["value"] for h in payload.get("headers", []) if h["name"].lower() == "from"), "")
         return sender, _find_html(payload), int(full.get("internalDate", 0)) // 1000
 
-    def relabel(self, ids, add=(), remove=()):
+    def relabel(self, ids: list[str], add: Iterable[str] = (), remove: Iterable[str] = ()) -> None:
         for start in range(0, len(ids), 1000):
             self._request("POST", f"{API}/messages/batchModify", body={
                 "ids": ids[start:start + 1000], "addLabelIds": list(add), "removeLabelIds": list(remove)})
 
 
-def _find_html(part):
+def _find_html(part: dict[str, Any]) -> str:
     """Depth-first search of a Gmail payload for the text/html part; decoded from base64url."""
     if part.get("mimeType") == "text/html" and part.get("body", {}).get("data"):
         return base64.urlsafe_b64decode(part["body"]["data"] + "=" * (-len(part["body"]["data"]) % 4)).decode("utf-8", "replace")
@@ -308,11 +317,13 @@ def _find_html(part):
 
 
 class _TextFromHtml(HTMLParser):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
+        self.pieces: list[str]
+        self.links: list[str]
         self.pieces, self.hidden, self.links = [], 0, []
 
-    def handle_starttag(self, tag, attrs):
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag.lower() == "a":
             href = dict(attrs).get("href") or ""
             if href.startswith("https://") and href not in self.links:
@@ -322,22 +333,24 @@ class _TextFromHtml(HTMLParser):
         elif tag.lower() in ("br", "p", "div", "li", "tr") and self.hidden == 0:
             self.pieces.append("\n")
 
-    def handle_endtag(self, tag):
+    def handle_endtag(self, tag: str) -> None:
         if tag.lower() in ("script", "style") and self.hidden:
             self.hidden -= 1
         elif tag.lower() in ("p", "div", "li", "tr") and self.hidden == 0:
             self.pieces.append("\n")
 
-    def handle_data(self, data):
+    def handle_data(self, data: str) -> None:
         if self.hidden == 0:
             self.pieces.append(data)
 
 
-def _find_text(part, keep_lines=False):
+def _find_text(part: Any, keep_lines: bool = False) -> str:
     """Prefer a text/plain alternative and fall back to readable HTML text. keep_lines keeps the HTML fallback's line breaks (one normalised line per block element) and appends the https link targets, one per line."""
+    plain: list[str]
+    html: list[str]
     plain, html = [], []
 
-    def visit(node):
+    def visit(node: Any) -> None:
         if not isinstance(node, dict):
             return
         mime = node.get("mimeType")
