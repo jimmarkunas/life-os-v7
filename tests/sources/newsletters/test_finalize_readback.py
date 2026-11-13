@@ -31,6 +31,11 @@ class FakeNotion:
                             if b["type"] == "paragraph" else {"heading_2": {}} for b in self.blocks[:3]]}
 
 
+def check(client, key, url, fit):
+    page = {"id": "p1", **client.call("GET", "/pages/p1")}
+    return readback.check_listed(client, "p1", key, url, fit, [page])
+
+
 class AcceptanceTests(unittest.TestCase):
     def test_a_newsletter_job_reaches_the_ledger_and_reads_back(self):
         card = lensa.parse(MAIL)[0]
@@ -44,10 +49,10 @@ class AcceptanceTests(unittest.TestCase):
                "admission": decision.status, "work_mode": facts.work_mode}
         props = publish.properties(row)
         blocks = publish.body_blocks(key, {"summary": "About", "responsibilities": "Lead delivery"})
-        self.assertIsNone(readback.check(FakeNotion(props, blocks), "p1", key, url, 81))
-        self.assertEqual(readback.check(FakeNotion(props, blocks), "p1", "other", url, 81), "key_mismatch")
-        self.assertEqual(readback.check(FakeNotion(props, blocks), "p1", key, "https://acme.example/jobs/2", 81), "url_mismatch")
-        self.assertEqual(readback.check(FakeNotion(props, blocks[:1]), "p1", key, url, 81), "no_description")
+        self.assertIsNone(check(FakeNotion(props, blocks), key, url, 81))
+        self.assertEqual(check(FakeNotion(props, blocks), "other", url, 81), "key_mismatch")
+        self.assertEqual(check(FakeNotion(props, blocks), key, "https://acme.example/jobs/2", 81), "url_mismatch")
+        self.assertEqual(check(FakeNotion(props, blocks[:1]), key, url, 81), "no_description")
         self.assertEqual(url_key(url), url_key(url + "/"))
 
     def test_a_uk_newsletter_job_is_excluded_by_market(self):

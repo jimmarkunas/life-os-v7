@@ -2,7 +2,6 @@
 Fit fields when its stored score is newer than the last sync: LIFE OS Fit, Why It Fits, Fit Authority and, with V7_FIT_GATE, the lane-policy fields
 (Admission Status, Review Reason, Work Mode, Visible Lane, Eligible Lanes). Never touches human state (Applied, Applied On, Saturn Decision) or the title,
 and runs only after the Job Ledger target check. Counts only."""
-from datetime import datetime, timezone
 
 from lifeos.jobs import lanes, ledger, meta, store
 from lifeos.platform.notion_client import NotionError, rich_text
@@ -15,11 +14,9 @@ PICK = ("SELECT j.id, j.notion_page_id, f.score, f.line, f.admission, f.admissio
 # LIFE-212: newest score first. A lane-policy re-score marks every published page due at once; oldest-first then left the pages the Cloud Fit batch had just
 # promoted at the back, and its check failed the run (LEDGER_SYNC_INCOMPLETE) until the whole wave had synced. The wave is finite, so nothing waits forever.
 ROLE_PAGES, ROLE_BATCH = 5, 25                         # Role-only backfill: at most 5 query pages (500 empty Roles) read and 25 pages written per run
-VISIBLE_LANE_LABEL = {"Scale-Up": "Scale-up"}          # same spelling rule as publish (the Ledger's existing option)
 
 
-def _now():
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+_now = store.now
 
 
 def properties(score, line, admission, reason, work_mode, lane, eligible, gated, row_meta=None, title=None):
@@ -31,7 +28,7 @@ def properties(score, line, admission, reason, work_mode, lane, eligible, gated,
         props["Admission Status"] = {"select": {"name": lanes.ADMISSION_LABEL[admission]}}
         props["Review Reason"] = {"rich_text": rich_text(reason if admission == lanes.REVIEW and reason else "")}
         if lane:
-            props["Visible Lane"] = {"select": {"name": VISIBLE_LANE_LABEL.get(lane, lane)}}
+            props["Visible Lane"] = {"select": {"name": meta.VISIBLE_LANE_LABEL.get(lane, lane)}}
         names = [n for n in (eligible or "").split(",") if n] or ([lanes.lane_for(row_meta["lane"])] if row_meta else [])
         if names:
             props["Eligible Lanes"] = {"multi_select": [{"name": n} for n in names]}

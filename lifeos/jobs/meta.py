@@ -5,6 +5,7 @@ import re
 from lifeos.jobs import lanes
 from lifeos.platform.notion_client import rich_text
 
+VISIBLE_LANE_LABEL = {"Scale-Up": "Scale-up"}        # the Ledger's Visible Lane option is spelled "Scale-up" (Eligible Lanes uses "Scale-Up")
 META_VERSION = 2            # 2: the Role column (the job title) is filled on every published page. bump to re-sync these fields onto already published pages (fit_sync picks pages with an older version)
 
 _AMOUNT = r"[$£€]\s?\d[\d,]*(?:\.\d+)?\s?(?:[kK]|[mM]\b)?"

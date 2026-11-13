@@ -81,27 +81,26 @@ def title_watch_source(source):
 
 
 THIN_REVIEW_PREFIXES = ("web:su-", "web:gh-", "web:lv-", "web:ab-")
-THIN_ADMIT_PREFIXES = THIN_REVIEW_PREFIXES        # Jim, Oct 25: a Scale-Up sponsor's, Greenhouse, Lever or Ashby board lists only open roles, and its own text is the posting
 
 
 def thin_review_source(source):
     """A Scale-Up sponsor's own board (`web:su-<id>`, Jim, Oct 21) or a Greenhouse, Lever or Ashby board (`web:gh-`/`lv-`/`ab-`, Jim, Oct 25: the board's own
-    feed is the posting, so a short one is as written): its roles with a description too thin to judge are reviewed from their apply link, never held."""
+    feed is the posting, so a short one is as written): its roles with a description too thin to judge are reviewed from their apply link, never held, and an open
+    role there whose title fits (Fit 60 or more from its short text, no private title rule) is admitted even though its description is thin ("as long as it's an open
+    job and it's the right title, admit it", Scale-Up included)."""
     return bool(source) and source.startswith(THIN_REVIEW_PREFIXES)
 
 
-def thin_admit_source(source):
-    """A Scale-Up sponsor's own board or a Greenhouse, Lever or Ashby board (`web:su-`/`gh-`/`lv-`/`ab-`): an open role there whose title fits (Fit 60 or more from its short
-    text, no private title rule) is admitted even though its description is thin (Jim, Oct 25: "as long as it's an open job and it's the right title, admit it", Scale-Up included)."""
-    return bool(source) and source.startswith(THIN_ADMIT_PREFIXES)
+def _listed(table, company, title):
+    return any(c in (company or "").lower() and re.search(t, (title or "").strip(), re.I) for c, t in table)
 
 
 def on_keep_list(company, title):
-    return any(c in (company or "").lower() and re.search(t, (title or "").strip(), re.I) for c, t in KEEP_LIST)
+    return _listed(KEEP_LIST, company, title)
 
 
 def keep_overrides_exclusion(company, title):
-    return any(c in (company or "").lower() and re.search(t, (title or "").strip(), re.I) for c, t in KEEP_OVERRIDES_EXCLUSION)
+    return _listed(KEEP_OVERRIDES_EXCLUSION, company, title)
 
 
 @dataclass
@@ -118,7 +117,7 @@ class Facts:
     geography: str = UNRESOLVED
     located: bool = False                # the job states a place at all
     kept: bool = False                   # D115: on Jim's keep list (or found by a title watch: Jim chose the title)
-    thin_admit: bool = False             # Jim, Oct 25: thin, but from a Scale-Up, Greenhouse, Lever or Ashby board's own text (thin_admit_source): it can be admitted
+    thin_admit: bool = False             # Jim, Oct 25: thin, but from a Scale-Up, Greenhouse, Lever or Ashby board's own text (thin_review_source): it can be admitted
     thin: bool = False                   # Jim, Oct 21 (Oct 25: a fitting one is admitted, see thin_admit): a Scale-Up sponsor's own board whose page text is too thin to judge: a score from it is never a Go; Jim decides from the link
     title_only: bool = False             # D123: found by a title search; the page text could not be read, so the Fit rests on the title alone
     first_party: bool = False            # D111: listed on the employer's own board, so it is open: its posting age is not judged
@@ -354,7 +353,6 @@ def join_routes(stored, **extra):
 
 
 FIT_WINDOW = 6000        # D92: the Fit stage reads the whole top of the description for an explicit work-mode statement, not only the first 1,500 characters
-_CITY_STATE = re.compile(r"^\s*[A-Za-z][A-Za-z .'-]*,\s*[A-Z]{2}\b")
 
 
 def work_mode_for_fit(location, title, text):
