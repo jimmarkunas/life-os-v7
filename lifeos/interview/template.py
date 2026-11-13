@@ -112,6 +112,16 @@ def fold(*lines, title=FOLD, extra=()):
     return toggle(title, [para(x) for x in lines] + list(extra), color=GRAY)
 
 
+MACHINE_NOTE = "Machine-written section: do not edit here. LIFE OS rewrites it from its sources; write your notes under Jim’s Notes below."      # LIFE-658
+ROUND_MACHINE_NOTE = "Machine-written section: do not edit here. Write your notes in Live Notes and Raw Notes; LIFE OS never touches them."
+REPAIRED_LINE = re.compile(r"Repaired \d{1,2}:\d{2} [AP]M CT: an edit in the machine section was preserved below")
+
+
+def repaired_line(clock):
+    """LIFE-658: the one-line marker a repaired machine region carries ("4:34 PM" in Central time); the edited text itself sits in the page's Preserved edits toggle."""
+    return f"Repaired {clock} CT: an edit in the machine section was preserved below"
+
+
 def render_line(job, source, page="pending"):
     return f"v7-render:1;job={job or 'none'};source={source};page={page}"
 
@@ -348,6 +358,7 @@ def opportunity_page(view, today, source="pending", adopted=None):
              extra=[_health(view, f"{len(view.rounds)} verified interview page(s)")]),
         para(("Stage: ", True), current, " · ", ("Next confirmed interview: ", True), next_date, " · ",
              ("Current opportunity status: ", True), *status_parts(view), *([" · "] + ledger if ledger else [])),
+        note(MACHINE_NOTE), *([para((view.repaired, True))] if view.repaired else []),
         callout([h(3, "Action Center"), columns((0.625, [primary]), (0.375, secondary))], ARROW, "blue_background"),
         divider(), columns((0.63, left), (0.37, right)), divider(),
         h(2, "Job Description — Original Posting"),
@@ -445,7 +456,7 @@ def round_page(view, query, parent_id, identity, prep=None, transcript=("absent"
                              else "Ask the recruiter whether the interview moves to a new time." if cancelled
                              else "Prepare; joining details come from the Calendar invite." if ref
                              else "Verify scheduling and interview details before treating this round as confirmed."),
-                        para(("Objective (derived): ", True), "Not run." if not prep else "See Prepare.")],
+                        para(("Objective (derived): ", True), "Not run." if not prep else "See Prepare."), note(ROUND_MACHINE_NOTE)],
                        "🎯", "blue_background", ("Interview snapshot", True))
     live = [note("Your notes. Type directly beneath each heading; automated updates never touch these blocks.")]
     for heading in LIVE_HEADINGS:

@@ -648,6 +648,47 @@ def delete_block(client, block_id):
     return client.call("DELETE", f"/blocks/{block_id}")
 
 
+PRESERVED, PRESERVE_BATCH = "Preserved edits", 90      # LIFE-658: the toggle a repaired machine region's edited text is copied into; Notion takes at most 100 blocks a request
+
+
+def is_preserved(block):
+    return block.get("type") == "toggle" and text(block) == PRESERVED
+
+
+def writable(runs):
+    """A block's rich text as it can be written back: what the page showed (text, link, mention, annotations), nothing Notion computes."""
+    out = []
+    for run in runs or []:
+        kind = run.get("type") or ("mention" if run.get("mention") else "text")
+        body = (({"type": "mention", "mention": run["mention"]} if kind == "mention" else {"type": "text", "text": {k: v for k, v in (run.get("text") or {"content": run.get("plain_text", "")}).items() if v is not None}})
+                | ({"annotations": run["annotations"]} if run.get("annotations") else {}))
+        out.append(body)
+    return out
+
+
+def preserve(client, page_id, toggle, lines, stamp, after=None):
+    """LIFE-658: copy `lines` verbatim and in order under `stamp` into the page's one Preserved edits toggle (`toggle`, its block, or None: created once, after `after` or at the end
+    of the page) and read them back. Any failure is one fixed code; what was copied stays."""
+    batch = [paragraph(stamp)] + [paragraph(line) for line in lines]
+    try:
+        head = batch[:PRESERVE_BATCH]
+        if toggle is None:
+            made = client.call("PATCH", f"/blocks/{page_id}/children", {"children": [{"object": "block", "type": "toggle", "toggle": {"rich_text": rich_text(PRESERVED), "color": "gray", "children": head}}],
+                                                                       **({"after": after} if after else {})})
+            toggle_id = made["results"][0]["id"]
+        else:
+            toggle_id = toggle["id"]
+            client.call("PATCH", f"/blocks/{toggle_id}/children", {"children": head})
+        for at in range(PRESERVE_BATCH, len(batch), PRESERVE_BATCH):
+            client.call("PATCH", f"/blocks/{toggle_id}/children", {"children": batch[at:at + PRESERVE_BATCH]})
+        held = [text(b) for b in children(client, toggle_id, [MAX_CALLS])]
+        if held[-len(batch):] != [text(b) for b in batch]:
+            raise NotionError("INTERVIEW_PRESERVE_FAILED")
+    except (NotionError, KeyError, IndexError, TypeError):
+        raise NotionError("INTERVIEW_PRESERVE_FAILED") from None
+    return toggle_id
+
+
 DERIVED_MAX_CALLS = 100
 
 

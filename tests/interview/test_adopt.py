@@ -257,7 +257,7 @@ class UpgradeTests(unittest.TestCase):
         self.assertEqual(page_blocks[notes + 1]["type"], "callout")
         self.assertEqual(page_blocks[notes + 2:], original)                   # old headings, notes and Interview 1: untouched
         self.assertTrue(notion.text(page_blocks[1]).startswith("Stage: "))
-        self.assertEqual(page_blocks[2]["type"], "callout")                  # the Action Center
+        self.assertEqual((page_blocks[2]["type"], page_blocks[3]["type"]), ("paragraph", "callout"))      # the machine-written note (LIFE-658), then the Action Center
         self.assertIsNotNone(notion.protected_snapshot(client, "human", "opportunity"))
         replay = run(client)
         self.assertEqual((replay["why"], replay["writes"]), ({"child_match": 1}, 0))

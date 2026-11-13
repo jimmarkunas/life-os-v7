@@ -252,3 +252,4 @@ This index is checked by a test: add a line here with every new decision.
 - D251 — Every job gets the Bitwarden helper program from a saved, fingerprint-checked copy; the download, with a long retry, runs only when no copy exists (2026-11-08, Jim; LIFE-406)
 - D252 — Hiring decisions live on the Job Ledger row only: Confirm Rejected and Reopen are one Ledger write each, and no page moves (2026-11-08, Jim; LIFE-353)
 - D253 — The readiness gate runs on an Atlassian MCP read and only Jim, in chat, can waive it for one task (2026-11-08, Jim; LIFE-365)
+- D254 — An edit in a machine-written section is preserved and repaired, never a permanent stop (2026-11-13, Jim; LIFE-658)

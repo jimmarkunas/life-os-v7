@@ -65,7 +65,7 @@ class CreationTests(unittest.TestCase):
                 self.assertRegex(lines[1], r"^v7-render:1;job=none;source=[0-9a-f]{16};page=[0-9a-f]{16}$")
                 self.assertEqual([notion.text(b) for b in parent_blocks if b.get("type", "").startswith("heading")],
                                  ["Job Description — Original Posting", notion.JIM_NOTES])
-                self.assertEqual([b["type"] for b in parent_blocks[:5]], ["toggle", "paragraph", "callout", "divider", "column_list"])
+                self.assertEqual([b["type"] for b in parent_blocks[:6]], ["toggle", "paragraph", "paragraph", "callout", "divider", "column_list"])      # LIFE-658: the machine-written note follows the Stage line
                 before = notion.protected_snapshot(client, parent_id, "opportunity")
                 result = self.run_evidence(client, query=query)
                 self.assertEqual((result["writes"], result["rounds_created"], result["readback_ok"]), (1, 1, 1))

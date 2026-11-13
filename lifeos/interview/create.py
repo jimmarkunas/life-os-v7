@@ -4,6 +4,7 @@ A UI 3c opportunity page's machine region is reconciled from its view when the s
 import hashlib
 import json
 import re
+from collections import Counter
 from dataclasses import replace
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -13,8 +14,8 @@ from lifeos.platform.runtime import DeadlineExceeded
 from . import notion, view as views
 from .identity import creation_eligibility, resolve_child, resolve_parent, valid_date
 from .models import Ownership, RoundQuery, Scan, State
-from .template import (DECISION_LINE, DECISION_MAX, DONE_LINE, DONE_MAX, HAND_MAX, HOLD_LINE, NEXT_LINE, PAGE_ICONS, SENT_LINE, SENT_MAX, UNSENT_LINE, machine_part, opportunity_page, render_line, round_page,
-                       transcript_lines)
+from .template import (DECISION_LINE, DECISION_MAX, DONE_LINE, DONE_MAX, HAND_MAX, HOLD_LINE, NEXT_LINE, PAGE_ICONS, REPAIRED_LINE, SENT_LINE, SENT_MAX, UNSENT_LINE, machine_part, opportunity_page, render_line,
+                       repaired_line, round_page, transcript_lines)
 
 IDENTITY_PREFIX = "v7-interview-identity:1;"
 
@@ -172,13 +173,43 @@ def _undone(nodes):
             if not any(p.fullmatch(n.get("text", "")) for p in (DONE_LINE, DECISION_LINE, HOLD_LINE, NEXT_LINE, SENT_LINE, UNSENT_LINE))]   # shape kept: a page without these lines digests exactly as before
 
 
+def _clock():
+    return datetime.now(ZoneInfo("America/Chicago")).strftime("%I:%M %p").lstrip("0")
+
+
+NOTHING = "No text to copy: the edit emptied, added, removed or moved a block."
+
+
+def _lines(nodes):
+    """Every non-empty text a region's nodes carry, in order (a table's cells one by one)."""
+    out = []
+    for node in nodes:
+        out += [t for t in [node.get("text", ""), *node.get("cells", [])] if t.strip()]
+        out += _lines(node.get("children", []))
+    return out
+
+
+def _differing(shown, fresh):
+    """LIFE-658: the texts of the region as it reads now that a fresh render of it does not carry (each fresh text cancels one shown text), verbatim and in order. The render and repaired lines are machinery, not edits."""
+    left, out = Counter(_lines(fresh)), []
+    for line in _lines(shown):
+        if left[line] > 0:
+            left[line] -= 1
+        elif not (line.startswith("v7-render:") or REPAIRED_LINE.fullmatch(line)):
+            out.append(line)
+    return out
+
+
 def machine_region(client, page_id, context=None):
-    """(machine blocks, fold lines, top blocks): everything before the one Jim's Notes heading, which starts with the fold."""
+    """(machine blocks, fold lines, top blocks): everything before the one Jim's Notes heading, which starts with the fold (LIFE-658: but for a trailing Preserved edits toggle)."""
     tops = notion.children(client, page_id, [notion.MAX_CALLS], context)
     heads = [i for i, b in enumerate(tops) if b.get("type", "").startswith("heading") and notion.text(b) in notion.NOTES]
     if len(heads) != 1 or not notion.is_fold(tops[0]):
         return None, [], tops
-    return tops[:heads[0]], notion.children(client, tops[0]["id"], [notion.MAX_CALLS], context), tops
+    body = tops[:heads[0]]
+    if len(body) > 1 and notion.is_preserved(body[-1]):               # LIFE-658: the Preserved edits toggle sits between the machine region and Jim's Notes; it is neither machine-written nor Jim's, so a refresh never rewrites or counts it
+        body = body[:-1]
+    return body, notion.children(client, tops[0]["id"], [notion.MAX_CALLS], context), tops
 
 
 def prefold_region(client, page_id, context=None):
@@ -234,32 +265,43 @@ def refresh(client, page_id, current, live, out, context=None, migrate=False):
     if machine is None or not lines or not notion.is_marker(notion.text(lines[0]), "opportunity") or "child_page" in [b.get("type") for b in machine]:
         return "parent_unrecognized"
     current = replace(current, done=done_lines(lines), decisions=decision_lines(lines), hand=hand_lines(lines), page_id=page_id)   # E05: completions, decisions and hand-set lines recorded on the Close / Manage screens are carried into the rewrite
-    sections, source = rendered(current)
     found = [m for m in (RENDER.fullmatch(notion.text(b)) for b in lines) if m]
+    shown, edited = [], False
     if found:
         job, previous, page = found[0].groups()
         if len(found) != 1 or job != (current.stable_job_key or "none"):
             return "identity_mismatch"
         skip = {b["id"] for b in lines if RENDER.fullmatch(notion.text(b))}
-        if page != notion.tree_digest(_undone(notion.region_nodes(client, machine, [notion.TREE_MAX_CALLS], skip))):
-            return "machine_region_edited"
-        if previous == source:
-            return "parent_unchanged"
+        shown = notion.region_nodes(client, machine, [notion.TREE_MAX_CALLS], skip)
+        edited = page != notion.tree_digest(_undone(shown))                # LIFE-658: a human edit of the machine region is preserved and repaired below, never a permanent stop
+        current = replace(current, repaired=next((t for t in _lines(shown) if REPAIRED_LINE.fullmatch(t)), ""))     # the one repaired line the page carries stays as written
     elif not (migrate and (prefold or (len(machine) > 1 and notion.text(machine[1]).startswith("Canonical opportunity parent")))):
         return "parent_legacy_layout"                                   # UI 3b (D235-D237): migrated only when authorized
+    if edited:
+        current = replace(current, repaired=repaired_line(_clock()))
+    sections, source = rendered(current)
+    if found and previous == source and not edited:
+        return "parent_unchanged"
     before = (notion.human_tail(client, page_id), _pages(tops))
     out["writes_planned"] = 1
     if not live:
         return "refresh_allowed"
     if context:
         context.require_time()
+    if edited:                                                          # LIFE-658: the differing text is copied, whole and in order, into the Preserved edits toggle BEFORE anything in the region is rewritten
+        toggle = tops[len(machine)] if len(tops) > len(machine) and notion.is_preserved(tops[len(machine)]) else None
+        try:
+            notion.preserve(client, page_id, toggle, _differing(shown, notion.as_nodes(machine_part(sections))) or [NOTHING], f"Preserved {_clock()} CT", after=machine[-1]["id"])
+        except NotionError:
+            return "preserve_failed"                                    # nothing is rewritten; the next run tries again
+        out["writes"] = out["readback_failed"] = 1
     try:
         notion.write_tree(client, page_id, sections, after=machine[-1]["id"])
         out["writes"] = out["readback_failed"] = 1
         client.call("PATCH", f"/pages/{page_id}", {"icon": PAGE_ICONS["opportunity"]})
         for block in machine:
             notion.delete_block(client, block["id"])
-        heading = tops[len(machine)]
+        heading = next(b for b in tops[len(machine):] if b.get("type", "").startswith("heading") and notion.text(b) in notion.NOTES)
         if notion.text(heading) != notion.JIM_NOTES:                    # a migrated UI 3b page takes the approved label
             notion.set_text(client, heading["id"], heading["type"], rich_text(notion.JIM_NOTES))
     except NotionError:
@@ -268,6 +310,8 @@ def refresh(client, page_id, current, live, out, context=None, migrate=False):
     if check != "readback_ok":
         return check
     out["readback_failed"], out["readback_ok"] = 0, 1
+    if edited:
+        out["repaired_edits"] = 1                                       # LIFE-658: its own counter; the page now shows the repaired line, so it is never `failed`
     return "parent_refreshed"
 
 
@@ -417,11 +461,10 @@ def _changed(old, new, path=()):
     return out
 
 
-def _round_targets(client, page_id, edits, budget):
-    """[(block, old block, new block)] on the live page for each changed render path, or None when any target is not machine-owned or reads as
-    neither render (a human edit or an unknown layout). Top level: the fold, the Interview snapshot callout and the one column list; the left
-    column (tabs, Live Notes, Raw Notes) is never a target."""
-    tops = notion.children(client, page_id, budget)
+def _round_targets(client, page_id, edits, budget, tops=None):
+    """[(block, old block, new block)] on the live page for each changed render path, or None when the page's structure is not recognisable (LIFE-658: a block whose text reads as neither render is a
+    human edit, repaired by the caller, no longer a refusal). Top level: the fold, the Interview snapshot callout and the one column list; the left column (tabs, Live Notes, Raw Notes) is never a target."""
+    tops = notion.children(client, page_id, budget) if tops is None else tops
     lists = [b for b in tops if b.get("type") == "column_list"]
     calls = [b for b in tops[1:] if b.get("type") == "callout"]
     if not tops or not notion.is_fold(tops[0]) or len(lists) != 1 or not calls:
@@ -436,7 +479,7 @@ def _round_targets(client, page_id, edits, budget):
             if index >= len(below):
                 return None
             block = below[index]
-        if block.get("type") != old["type"] or notion.text(block) not in (notion.text(old), notion.text(new)):
+        if block.get("type") != old["type"]:
             return None
         found.append((block, old, new))
     return found
@@ -470,10 +513,15 @@ def transition(client, parent_id, child_id, current, want, live, out, context=No
     if source == want:
         return "round_unchanged"
     edits = _changed(round_page(current, source, parent_id, identity_text(source)), round_page(current, want, parent_id, identity_text(want)))
-    targets = _round_targets(client, child_id, edits, budget)
-    lines = [notion.text(b) for b in notion.machine_lines(client, child_id, 2)[0]]
-    if targets is None or len(lines) < 2 or lines[1] != identity_text(source):
-        return "machine_region_edited"
+    tops = notion.children(client, child_id, budget)
+    targets = _round_targets(client, child_id, edits, budget, tops)
+    lines = notion.machine_lines(client, child_id, 2)[0]
+    if targets is None or len(lines) < 2 or lines[1].get("type") != "paragraph" or not notion.text(lines[1]).startswith(IDENTITY_PREFIX):
+        return "machine_region_edited"                                  # the structure is not recognisable (a block or the identity line is missing, or the layout is another): nothing is guessed, nothing is written
+    if all(t[0]["id"] != lines[1]["id"] for t in targets) and notion.text(lines[1]) != identity_text(want):
+        targets.append((lines[1], notion.paragraph(identity_text(source)), notion.paragraph(identity_text(want))))     # the identity line is part of the repair, and still written last
+    snapshot = next(b for b in tops[1:] if b.get("type") == "callout")
+    edited = [t for t in targets if notion.text(t[0]) not in (notion.text(t[1]), notion.text(t[2]))]               # LIFE-658: a machine block that reads as neither render is a human edit: preserved, then repaired
     before = notion.protected_snapshot(client, child_id, "round")
     if before is None:
         return "readback_protected_missing"
@@ -483,16 +531,31 @@ def transition(client, parent_id, child_id, current, want, live, out, context=No
     if context:
         context.require_time()
     todo = sorted([t for t in targets if (notion.text(t[0]), _links(t[0])) != (notion.text(t[2]), _links(t[2]))], key=lambda t: notion.text(t[1]).startswith(IDENTITY_PREFIX))
-    done = []
+    undo = []
     try:
-        for block, old, new in todo:                                    # the identity line last: it is the commit point
+        if edited:
+            try:                                                        # before any machine block is rewritten: the edited text, verbatim and in order, into the page's one Preserved edits toggle
+                notion.preserve(client, child_id, next((b for b in reversed(tops) if notion.is_preserved(b)), None), [t for t in (notion.text(e[0]) for e in edited) if t.strip()] or [NOTHING], f"Preserved {_clock()} CT")
+            except NotionError:
+                return "preserve_failed"                                # nothing is rewritten; the next run tries again
+            out["writes"] = out["readback_failed"] = 1
+            marker = next((b for b in notion.children(client, snapshot["id"], budget) if REPAIRED_LINE.fullmatch(notion.text(b))), None)
+            if marker:
+                was = notion.writable(marker[marker["type"]]["rich_text"])
+                notion.set_text(client, marker["id"], marker["type"], rich_text(repaired_line(_clock())))
+                undo.append(lambda m=marker, w=was: notion.set_text(client, m["id"], m["type"], w))
+            else:
+                made = client.call("PATCH", f"/blocks/{snapshot['id']}/children", {"children": [notion.paragraph(repaired_line(_clock()))]})["results"][0]["id"]
+                undo.append(lambda i=made: notion.delete_block(client, i))
+        for block, _, new in todo:                                    # the identity line last: it is the commit point
+            was = notion.writable(block[block["type"]]["rich_text"])
             notion.set_text(client, block["id"], block["type"], new[new["type"]]["rich_text"])
-            done.append((block, old))
+            undo.append(lambda b=block, w=was: notion.set_text(client, b["id"], b["type"], w))
             out["writes"] = out["readback_failed"] = 1
     except NotionError:
         try:
-            for block, old in reversed(done):                           # roll the machine blocks back to the page as it was
-                notion.set_text(client, block["id"], block["type"], old[old["type"]]["rich_text"])
+            for step in reversed(undo):                                 # roll the machine blocks back to the page as it was (the preserved copy stays)
+                step()
         except NotionError:
             return "write_failed_partial"
         return "write_failed"
@@ -500,11 +563,14 @@ def transition(client, parent_id, child_id, current, want, live, out, context=No
     check = _round_targets(client, child_id, edits, [notion.MAX_CALLS])
     if (after is None or after.identity_valid is not True or (after.interview_date, after.interviewer, after.ordinal) != (want.interview_date, want.interviewer, want.ordinal)
             or check is None or any(notion.text(b) != notion.text(new) for b, _, new in check)
+            or (edited and not any(REPAIRED_LINE.fullmatch(notion.text(b)) for b in notion.children(client, snapshot["id"], [notion.MAX_CALLS])))
             or round_logistics(client, child_id) != (want.calendar_ref, want.cancelled, None if want.cancelled else want.meeting)):
         return "readback_content_mismatch"
     if notion.protected_snapshot(client, child_id, "round") != before:
         return "readback_protected_changed"
     out["readback_failed"], out["readback_ok"] = 0, 1
+    if edited:
+        out["repaired_edits"] = 1                                       # LIFE-658: its own counter; the page shows the repaired line, so it is never `failed`
     return {"confirm": "round_confirmed", "reschedule": "round_rescheduled", "cancel": "round_cancelled", "details": "round_details"}[kind]
 
 
