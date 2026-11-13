@@ -15,7 +15,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from lifeos.hiring import compile as hiring, outcomes
-from lifeos.jobs import classify as job_site, identity, intake, lanes, ledger as jobs_ledger, publish, quality, store
+from lifeos.jobs import classify as job_site, identity, lanes, ledger as jobs_ledger, publish, quality, store
 from lifeos.interview import acceptance, create, notion, stage, view
 from lifeos.interview.models import Ownership, ParentQuery, RoundQuery
 from lifeos.interview.progression import Invite, progress
@@ -25,9 +25,9 @@ from lifeos.platform.gmail import Gmail, GmailError
 from lifeos.platform.names import same_company, same_role, split_title, tokens
 from lifeos.recruiters import classify, qualify
 from lifeos.recruiters import notion as recruiters_store
-from lifeos.platform.notion_client import Client, NotionError, rich_text
+from lifeos.platform.notion_client import Client, NotionError
 from lifeos.platform.runtime import RunContext
-from lifeos.sources.pipeline import hiring as pipeline
+from lifeos.sources.pipeline import hiring as pipeline, manual_job
 from lifeos.sources.interview import interview_sweep as sweep
 
 TZ = ZoneInfo("America/Chicago")
@@ -164,15 +164,9 @@ def lead_job(company, role, link, message, now, connect=store.connect):
     """E01b: a recruiter's public posting link enters Jobs OS like any job (RESOLVED at its own ATS link, lane Recruiter, source `recruiter`), so Enrich reads the posting, the
     static Fit and the Cloud Fit (Luna, public postings only) score it, and Publish writes its Ledger row. The recruiter's own email text never leaves this job.
     -> True when the job is new, False when Jobs OS already holds that link."""
-    job = {"url": link, "status": "RESOLVED", "title": role, "company": company, "location": "", "salary": "", "source": "recruiter", "provider": "Recruiter outreach",
-           "lane": lanes.RECRUITER, "age_days": None, "provider_score": None,
-           "received": datetime.fromisoformat(str(message["received"]).replace("Z", "+00:00")).astimezone(ZoneInfo("UTC")).replace(tzinfo=None)}
-    stamp = now.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
+    received = datetime.fromisoformat(str(message["received"]).replace("Z", "+00:00")).astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
     with connect() as connection, connection.cursor() as cursor:
-        key, new = intake.add_job(cursor, job, stamp)
-        if new:
-            cursor.execute("UPDATE v7_jobs SET final_apply_url=%s, apply_kind='ats', updated_at=%s WHERE dedupe_key=%s", (link, stamp, key))
-    return new
+        return manual_job.enter(cursor, link, company, role, "recruiter", "Recruiter outreach", received, now.astimezone(ZoneInfo("UTC")).replace(tzinfo=None), "ats")[1]
 
 
 def lead_row(writer, company, role, key, url, today):
@@ -354,15 +348,14 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
     events, gone = [], []
     try:
         cancelled = []
-        mapped = lambda title: hiring.match_event(title, [{"company": c, "role": r} for _, c, r in titles])[0]
+        def keep(event, into):                                               # an interview invite for a pursuit whose page is ready
+            at = hiring.match_event(event["title"], [{"company": c, "role": r} for _, c, r in titles])[0]
+            if at is not None and hiring.event_kind(event["title"]) in ("interview", "hiring_manager") and titles[at][0].page_id in ready:
+                into.append((titles[at][0].page_id, event))
         for event in pipeline.read_events(calendar or GoogleCalendar.from_env(environ), now, cancelled):
-            at = mapped(event["title"])
-            if at is not None and hiring.event_kind(event["title"]) in ("interview", "hiring_manager") and titles[at][0].page_id in ready:
-                events.append((titles[at][0].page_id, event))
+            keep(event, events)
         for event in cancelled:                                              # LIFE-46 E07: a cancelled invite, matched to its round only by the round's own recorded reference below
-            at = mapped(event["title"])
-            if at is not None and hiring.event_kind(event["title"]) in ("interview", "hiring_manager") and titles[at][0].page_id in ready:
-                gone.append((titles[at][0].page_id, event))
+            keep(event, gone)
     except Exception:                                                        # noqa: BLE001
         flag("calendar_unavailable")
     recorded = {}

@@ -7,6 +7,7 @@ from lifeos.interview import granola_match, granola_write as gw
 from lifeos.interview.models import Ownership
 from lifeos.sources.interview import granola_auto as ga
 from tests.interview.support import FakeNotion, ROUND, UUID, envelope
+from tests.kit.shared import SelfCursorDb
 
 ENV = {"NOTION_INTERVIEW_TOKEN": "t", "HIRING_PIPELINE_PAGE_ID": "p", "IMESSAGE_ALERTS_HOST": "oracle.test"}
 DAY = "2026-10-13"
@@ -49,16 +50,7 @@ class Catalog:
 
 @contextmanager
 def nothing():
-    class C:
-        def cursor(self):
-            return self
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *e):
-            return False
-    yield C()
+    yield SelfCursorDb()
 
 
 def go(send, client, catalog, live=True, rounds=(ROW,), limit=3, patch_meetings=True):

@@ -14,7 +14,7 @@ from lifeos.interview import create, notion
 from lifeos.interview.ui_probe import QA_PARENT
 from lifeos.jobs import ledger as jobs_ledger
 from lifeos.platform.names import split_title
-from lifeos.platform.notion_client import NotionError, rich_text
+from lifeos.platform.notion_client import NotionError
 from lifeos.sources.interview import interview_evidence as ev
 
 CONFIRM = "QA"
@@ -214,12 +214,8 @@ def sandbox(client, now):
     container = notion.write_tree(client, QA_PARENT, [], title=f"Interview journey proof · {now.strftime('%Y-%m-%d %I:%M %p')} CT (synthetic)")
     pipeline = notion.write_tree(client, container, [], title="Hiring Pipeline")
     notion.write_tree(client, pipeline, [], title="Active Opportunities")
-    made = client.call_once("POST", "/databases", {"parent": {"type": "page_id", "page_id": container}, "title": rich_text("Job Ledger (synthetic)"),
-                                                   "initial_data_source": {"properties": LEDGER_SCHEMA}})
-    sources = made.get("data_sources") if isinstance(made, dict) else None
-    if not isinstance(sources, list) or len(sources) != 1 or not sources[0].get("id"):
-        raise NotionError("JOURNEY_SANDBOX_LEDGER_UNREADABLE")
-    return pipeline, sources[0]["id"]
+    from lifeos.sources.proofs import m1m2_proof                                    # imported here: m1m2_proof imports this module
+    return pipeline, m1m2_proof._database(client, container, "Job Ledger (synthetic)", LEDGER_SCHEMA, "JOURNEY_SANDBOX_LEDGER_UNREADABLE")
 
 
 def run(environ, live, now=None, client=None):
