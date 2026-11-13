@@ -12,13 +12,10 @@ import sys
 from lifeos.sources.newsletters import config, finalize
 from lifeos.jobs import identity, intake, store
 from lifeos.platform.gmail import Gmail, GmailError
-from lifeos.sources.newsletters.parsers import dice, jobright, linkedin, reed
+from lifeos.sources.newsletters.parsers import jobright, linkedin
 
-PARSERS = {"jobright": jobright.parse, "linkedin-alerts": linkedin.parse,
-           "dice": dice.parse, "reed": reed.parse}
-PARSERS_WITH_COUNTS = {"dice": dice.parse_counted, "reed": reed.parse_counted}
-LOOKS_LIKE_JOBS = {"jobright": jobright.looks_like_jobs,
-                   "linkedin-alerts": linkedin.looks_like_jobs, "dice": dice.looks_like_jobs, "reed": reed.looks_like_jobs}
+PARSERS = {"jobright": jobright.parse, "linkedin-alerts": linkedin.parse}
+LOOKS_LIKE_JOBS = {"jobright": jobright.looks_like_jobs, "linkedin-alerts": linkedin.looks_like_jobs}
 from lifeos.jobs import lanes                                                # noqa: E402
 
 # A coarse mail-age pre-filter only, so link-resolution budget is not spent on stale mail; the number is the lane policy's, never a second authority.
@@ -40,7 +37,7 @@ def status_for(card, mail_age=0):
 
 LANE = "Newsletter"
 PROVIDERS = {"lensa": "Lensa", "jobright": "Jobright", "linkedin-alerts": "LinkedIn Jobs",
-             "dice": "Dice", "reed": "Reed"}   # the Notion "Source Types" names
+             "dice": "Dice", "reed": "Reed"}   # the Notion "Source Types" names; dice/reed are no longer read (LIFE-645), kept only for backfill_provider on old rows
 
 
 def backfill_provider(connection):
@@ -64,8 +61,6 @@ def save_cards(connection, rule, message_id, cards, received_epoch=None, counts=
                 "location": card.location_text, "salary": card.salary_text, "source": rule, "provider": PROVIDERS[rule],
                 "lane": LANE, "age_days": known_age(card, mail_age), "received": received,
                 "provider_score": card.provider_score}
-            if rule == "dice":
-                job["identity_url"] = "dice-alert:" + identity.norm(card.company) + "|" + identity.norm(card.title)
             key, is_new = intake.add_job(cursor, job, now)
             new += is_new
             mine = identity.url_hash(message_id + "|" + card.url)

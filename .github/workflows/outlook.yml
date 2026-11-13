@@ -5,9 +5,9 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: "auth = sign one mailbox in read-only (prints a short code to enter at the Microsoft page; needs the Save box); auth-write = sign in again with permission to move newsletters into a folder; probe = read-only check, counts only; newsletters = read job-alert mail into Jobs OS (counts only; saves only with the Save box)"
+        description: "auth = sign one mailbox in read-only (prints a short code to enter at the Microsoft page; needs the Save box); auth-write = sign in again with permission to move newsletters into a folder; probe = read-only check, counts only"
         type: choice
-        options: ["probe", "auth", "auth-write", "newsletters"]
+        options: ["probe", "auth", "auth-write"]
         default: "probe"
       account:
         description: "Which mailbox (used by auth)"
@@ -19,7 +19,7 @@ on:
         type: boolean
         default: false
       live:
-        description: "Save (auth: the sign-in; newsletters: the jobs found; probe never writes)"
+        description: "Save (auth: the sign-in; probe never writes)"
         type: boolean
         default: false
 permissions:
@@ -69,18 +69,6 @@ jobs:
           LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_SSH_USER }}
         run: python -u -m lifeos.run outlook-auth $([ "${{ inputs.live }}" = "true" ] && echo --live)
-      - name: Outlook newsletters (counts only; saves jobs only when the Save box is ticked)
-        if: ${{ inputs.action == 'newsletters' }}
-        env:
-          OUTLOOK_NEWSLETTER_ACCOUNTS: ${{ inputs.account }}
-          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_SSH_USER }}
-        run: python -u -m lifeos.run outlook-newsletters $([ "${{ inputs.live }}" = "true" ] && echo --live)
       - name: Outlook probe (read-only; counts only)
         if: ${{ inputs.action == 'probe' }}
         env:
