@@ -10,6 +10,7 @@ import warnings
 from unittest.mock import patch
 
 from lifeos import run
+from lifeos.platform import codes
 
 
 class RegistryTests(unittest.TestCase):
@@ -138,15 +139,18 @@ class PartialFailureExitTests(unittest.TestCase):
         self.assertEqual((code, err), (0, ""))
 
     def test_every_other_stage_keeps_exit_0_even_when_its_counts_say_failed(self):
-        others = sorted(name for name in run.STAGES if name not in ("capacity-card", "publish", "fit", "fit-cloud-backlog", "interview", "granola-auto", "job-page-outreach", "mail-filing", "manual-job", "jobs-backlog", "notion-sandbox-access", "notion-sandbox-outreach-proof", "scale-up-exclusion-review", "scale-up-register"))
+        others = sorted(name for name in run.STAGES if name not in run.PARTIAL_FAILURE)
         self.assertGreater(len(others), 40)
         for name in others:
             code, out, err = self._main(name, {"failed": 3, "lane": "x"})
             self.assertEqual((name, code, err), (name, 0, ""))
             self.assertEqual(out, f"{name}: " + json.dumps({"failed": 3, "lane": "x"}, sort_keys=True) + "\n")
 
-    def test_only_publish_and_fit_are_registered_for_the_partial_failure_exit(self):
-        self.assertEqual(sorted(run.PARTIAL_FAILURE), ["capacity-card", "fit", "fit-cloud-backlog", "granola-auto", "interview", "job-page-outreach", "jobs-backlog", "mail-filing", "manual-job", "notion-sandbox-access", "notion-sandbox-outreach-proof", "publish", "scale-up-exclusion-review", "scale-up-register"])     # D219: a degraded backlog batch is a failed step too; LIFE-10: a job page that could not sync, and a refused sandbox read
+    def test_every_partial_failure_stage_is_a_real_stage_with_a_registered_fixed_code(self):
+        """D219: a degraded backlog batch is a failed step too; LIFE-10: a job page that could not sync, and a refused sandbox read. LIFE-588: a registered source adds its own through `partial_failure` in its registry row."""
+        for name, code in run.PARTIAL_FAILURE.items():
+            self.assertIn(name, run.STAGES, name)
+            self.assertIn(code, codes.CODES, name)
         self.assertIn("publish", run.STAGES)
         self.assertIn("fit", run.STAGES)
 

@@ -3,6 +3,7 @@ from unittest import mock
 
 from lifeos.jobs import tick
 from lifeos.jobs.tick import Step
+from lifeos.platform import source_registry as registry
 from tests.kit import shared
 
 
@@ -29,8 +30,8 @@ class TickTests(unittest.TestCase):
         bulk = [i for i, s in enumerate(tick.PLAN) if s.bulk]
         self.assertEqual(fast, sorted(fast))
         self.assertLess(max(fast), min(bulk))
-        self.assertEqual({s.name for s in tick.PLAN if s.bulk}, {"boards", "web-scale-up", "web-titlewatch", "discover-jobs", "sponsors", "boards-backfill",
-                                                                 "drain-audit-ready", "drain-publish", "drain-enrich", "drain-fit"})
+        registered = {s.name for s in registry.SOURCES if s.tick}                                          # LIFE-588: a source's bulk step comes from its registry row, so only the hand-kept bulk steps are pinned
+        self.assertEqual({s.name for s in tick.PLAN if s.bulk} - registered, {"drain-audit-ready", "drain-publish", "drain-enrich", "drain-fit"})
         self.assertLess(names.index("finalize"), names.index("boards-backfill"))     # D217: a first pass never takes time from the hourly work
         self.assertFalse({"sweep", "extract"} & set(names))                 # the prep job sweeps and extracts on every run
 
@@ -290,8 +291,9 @@ class SideBySide(unittest.TestCase):
     def test_the_real_plan_groups_only_the_independent_stages_and_keeps_publish_after_the_inputs(self):
         names = [s.name for s in tick.PLAN]
         group = lambda g: [s.name for s in tick.PLAN if s.group == g]                                  # noqa: E731
-        self.assertEqual(group("A"), ["resolve-jobright", "resolve-linkedin", "linkedin-search", "resolve-dice", "web"])
-        self.assertEqual(group("B"), ["boards", "web-scale-up", "web-titlewatch", "discover-jobs", "sponsors"])
+        self.assertEqual({s.group for s in tick.PLAN} - {""}, {"A", "B"})                              # LIFE-588: a source joins a group by its registry row, so the members are a rule, not a list
+        caps = tick.concurrency_from_env({})["caps"]
+        self.assertEqual({p for s in tick.PLAN for p in s.providers} - set(caps), set())               # every outside service a step names has a cap
         for g in ("A", "B"):                                                                           # a group is one unbroken run of the plan
             where = [names.index(n) for n in group(g)]
             self.assertEqual(where, list(range(where[0], where[0] + len(where))))

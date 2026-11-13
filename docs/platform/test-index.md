@@ -26,11 +26,11 @@ A pull request used to run all ~4,300 tests. It now runs the tests its change ca
 
 `.github/workflows/pr-tests.yml` (job and required check `unit-tests`, unchanged): the new step "Pick the tests" runs the selector on pull requests only; on a push to main it writes FULL. A FULL pick runs the two parallel shards as before; a subset runs `python -m unittest <targets>`. Any trouble picking (the selector fails, the base is missing) means FULL. The 45 s warning and 90 s limit still apply.
 
-## Staleness (two checks)
+## Staleness (one check)
 
-**Every pull request:** `tests/contracts/test_test_index.py` fails when a production file under `lifeos/` exists but is not in the index, or the index lists a file that is gone. It has negative controls (a removed entry and a fake deleted file must each be caught). So a PR that adds, renames or deletes a production file must regenerate the index in the same PR; the failure message says how. This is what stops the index from drifting silently.
+**Every pull request:** `tests/contracts/test_test_index.py` only requires that the index is readable and that a production file it does not list still gets its tests (LIFE-588). Adding, renaming or deleting a file under `lifeos/` (a new source, for one) does NOT need a rebuild: the selector sends an unlisted file to its mirror folder, or to FULL.
 
-**Hourly full run (age):** `python -m tests.testindex check` fails when the index is more than 7 days old or when production files exist that are in neither `covers` nor `uncovered`. The hourly full run (`hourly.yml`, step "Unit tests") sets `LIFEOS_TEST_INDEX_FRESH=1`, which turns on one test, `tests/test_testindex.py CommittedIndexIsFresh`. If it fails, the hourly run fails and the existing "run failed" alert goes out through the alert gateway (no new sender). A pull request never fails because the index aged.
+**Hourly full run (age):** `python -m tests.testindex check` fails when the index is more than 7 days old or unreadable. The hourly full run (`hourly.yml`, step "Unit tests") sets `LIFEOS_TEST_INDEX_FRESH=1`, which turns on one test, `tests/test_testindex.py CommittedIndexIsFresh`. If it fails, the hourly run fails and the existing "run failed" alert goes out through the alert gateway (no new sender). A pull request never fails because the index aged.
 
 **If it is stale:** run `python -m tests.testindex build`, commit `docs/test-index.json`, open a PR. Until then pull requests keep working: files missing from the index fall back to their mirror folder or FULL.
 
