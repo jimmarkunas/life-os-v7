@@ -13,6 +13,10 @@ from lifeos.platform.http import fetch
 LOCALE = re.compile(r"^[a-z]{2}([-_][A-Za-z]{2,4})?$")
 
 
+class Gone(Exception):
+    """The ATS says the job no longer exists (404 / 410)."""
+
+
 _last = {"status": 0}
 _misses = {}
 
@@ -29,7 +33,7 @@ def _get_json(url):
         page = _fetch(url, timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=2,
                       headers={"Accept": "application/json", "User-Agent": "lifeos-jobs/0.1"})
     if page.status in (404, 410):
-        return "gone"
+        raise Gone                               # read() turns it into {"closed": True}
     if page.status != 200:
         return None
     try:
@@ -74,8 +78,6 @@ def workday(parts):
     if not api:
         return None
     data = _get_json(api)
-    if data == "gone":
-        return {"closed": True}
     info = (data or {}).get("jobPostingInfo") if isinstance(data, dict) else None
     return _job(info.get("title"), info.get("jobDescription"), info.get("startDate")) if info else None
 
@@ -86,8 +88,6 @@ def workable(parts):
     if len(segs) < 3 or segs[1] != "j":
         return None
     data = _get_json(f"https://apply.workable.com/api/v1/widget/accounts/{quote(segs[0])}?details=true")
-    if data == "gone":
-        return {"closed": True}
     jobs = data.get("jobs") if isinstance(data, dict) else None
     if not isinstance(jobs, list):
         return None
@@ -103,8 +103,6 @@ def bamboohr(parts):
     if len(segs) < 2 or segs[0] != "careers" or not segs[1].isdigit():
         return None
     data = _get_json(f"https://{parts.hostname}/careers/{segs[1]}/detail")
-    if data == "gone":
-        return {"closed": True}
     opening = ((data or {}).get("result") or {}).get("jobOpening") if isinstance(data, dict) else None
     return _job(opening.get("jobOpeningName"), opening.get("description"), opening.get("datePosted")) if opening else None
 
@@ -117,8 +115,6 @@ def oraclecloud(parts):
     url = (f"https://{parts.hostname}/hcmRestApi/resources/latest/recruitingCEJobRequisitionDetails"
            f"?onlyData=true&q=Id={match.group(1)}")
     data = _get_json(url)
-    if data == "gone":
-        return {"closed": True}
     if not isinstance(data, dict):
         return None
     items = data.get("items") or []
@@ -168,8 +164,6 @@ def smartrecruiters(parts):
     if not match:
         return None
     data = _get_json(f"https://api.smartrecruiters.com/v1/companies/{quote(segs[0])}/postings/{match.group(1)}")
-    if data == "gone":
-        return {"closed": True}
     if not isinstance(data, dict):
         return None
     sections = ((data.get("jobAd") or {}).get("sections") or {})
@@ -181,8 +175,6 @@ def smartrecruiters(parts):
 def _ashby_single(org, ident):
     """Ashby's single-job endpoint (the one V2 proved) -> job dict | {"closed": True} | None."""
     data = _get_json(f"https://api.ashbyhq.com/posting-api/job-board/{quote(org)}/job-postings/{quote(ident)}")
-    if data == "gone":
-        return {"closed": True}
     if isinstance(data, dict) and data.get("descriptionHtml"):
         return _job(data.get("title"), data.get("descriptionHtml"), data.get("publishedAt") or data.get("updatedAt"))
     return None
@@ -197,8 +189,6 @@ def ashby(parts):
     if one:
         return one
     data = _get_json(f"https://api.ashbyhq.com/posting-api/job-board/{quote(segs[0])}")
-    if data == "gone":
-        return {"closed": True}
     jobs = data.get("jobs") if isinstance(data, dict) else None
     if not isinstance(jobs, list):
         return None
@@ -245,6 +235,8 @@ def read(url):
             _last["status"] = 0
             try:
                 result = reader(parts)
+            except Gone:
+                return {"closed": True}
             except Exception:                    # noqa: BLE001 - a reader must never take the stage down
                 result = None
             if result is None:
