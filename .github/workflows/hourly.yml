@@ -587,6 +587,9 @@ jobs:
     needs: [prep]                         # does not wait for the resolvers: what they resolve is enriched by the next hourly run
     if: ${{ always() && needs.prep.result == 'success' && ((github.event_name == 'workflow_dispatch' && !inputs.tick) || vars.V7_PIPELINE == 'true') }}   # D208: a parked tick (V7_PIPELINE=false) starts no Jobs job and loads no credentials here
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read                       # LIFE-617: a slower stage row reads earlier ticks' run logs (lifeos/platform/due.py)
     timeout-minutes: 58                   # D208: the tick's 35-minute budget, setup (Chromium) and the maintenance steps; D238: the backlog batch fills the hour to :55
     env:
       FASTEMBED_CACHE: ${{ github.workspace }}/.cache/fastembed
@@ -687,6 +690,7 @@ jobs:
           TICK_CAP_DICE: ${{ vars.TICK_CAP_DICE || '1' }}
           TICK_CAP_ATS: ${{ vars.TICK_CAP_ATS || '8' }}
           TICK_MAX_PARALLEL: ${{ vars.TICK_MAX_PARALLEL || '4' }}
+          GITHUB_TOKEN: ${{ github.token }}   # LIFE-617: the read-only run-history token for a slower stage row (due.py)
           TICK_SKIP_STAGES: ${{ steps.browser.outcome == 'failure' && 'resolve-jobright' || '' }}   # LIFE-653: no browser, so no Jobright stage; every other stage runs as before
         run: |
           python -m lifeos.jobs.tick $([ "$LIVE" = "true" ] && echo --live) ${{ inputs.quick && '--quick' || '' }}
