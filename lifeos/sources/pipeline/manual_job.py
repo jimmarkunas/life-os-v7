@@ -24,23 +24,24 @@ def _text(environ, name):
     return (environ.get(name) or "").strip()
 
 
-def job_of(url, company, title, now):
-    return {"url": url, "status": "RESOLVED", "title": title, "company": company, "location": "", "salary": "", "source": "manual", "provider": "Manual",
-            "lane": lanes.RECRUITER, "age_days": None, "provider_score": None, "received": now.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)}
+def enter(cursor, url, company, title, source, provider, received, stamp, kind):
+    """A job somebody named enters Jobs OS like a recruiter's posting link: RESOLVED at that link, lane Recruiter, so Enrich reads the posting, Fit scores it and Publish writes its Ledger row.
+    -> (Stable Job Key, new); a new job also keeps the link as its final apply URL (`kind`: ats, aggregator or employer). Interview OS's recruiter-lead path enters its jobs here too."""
+    key, new = intake.add_job(cursor, {"url": url, "status": "RESOLVED", "title": title, "company": company, "location": "", "salary": "", "source": source, "provider": provider,
+                                       "lane": lanes.RECRUITER, "age_days": None, "provider_score": None, "received": received}, stamp)
+    if new:
+        cursor.execute("UPDATE v7_jobs SET final_apply_url=%s, apply_kind=%s, updated_at=%s WHERE dedupe_key=%s", (url, kind, stamp, key))
+    return key, new
 
 
 def add_job(url, company, title, now, live, connect=store.connect):
     """-> 'new' | 'present' (live: the job was added or already held; dry run: it would be added or is held). Read only unless live."""
-    key = identity.url_hash(url)
     stamp = now.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
     with connect() as connection, connection.cursor() as cursor:
         if not live:
-            cursor.execute("SELECT 1 FROM v7_jobs WHERE dedupe_key=%s LIMIT 1", (key,))
+            cursor.execute("SELECT 1 FROM v7_jobs WHERE dedupe_key=%s LIMIT 1", (identity.url_hash(url),))
             return "present" if cursor.fetchone() else "new"
-        _, new = intake.add_job(cursor, job_of(url, company, title, now), stamp)
-        if new:
-            cursor.execute("UPDATE v7_jobs SET final_apply_url=%s, apply_kind=%s, updated_at=%s WHERE dedupe_key=%s", (url, classify.apply_kind(url), stamp, key))
-    return "new" if new else "present"
+        return "new" if enter(cursor, url, company, title, "manual", "Manual", stamp, stamp, classify.apply_kind(url))[1] else "present"
 
 
 def run(limit, live, environ=os.environ, client=None, now=None, connect=store.connect, context=None):

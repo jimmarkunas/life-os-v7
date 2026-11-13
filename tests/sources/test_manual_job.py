@@ -5,33 +5,14 @@ from zoneinfo import ZoneInfo
 
 from lifeos.jobs import identity
 from lifeos.sources.pipeline import manual_job as mj
+from tests.kit.shared import SqlLog
 
 URL = "https://careers.example.com/en/job/example-city/senior-program-manager/159/101596083584"
 NOW = datetime(2026, 10, 26, 15, 0, tzinfo=ZoneInfo("America/Chicago"))
 BASE = {"MANUAL_JOB_URL": URL, "MANUAL_JOB_COMPANY": "ExampleCo", "MANUAL_JOB_TITLE": "Senior Program Manager", "MANUAL_JOB_ROUND_DAY": "2026-10-13"}
 
 
-class Cursor:
-    def __init__(self, new=True, held=False):
-        self.sql, self.rowcount, self.held = [], 1 if new else 0, held
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        return False
-
-    def cursor(self):
-        return self
-
-    def execute(self, sql, args=()):
-        self.sql.append((sql.split()[0], args))
-
-    def fetchone(self):
-        return (1,) if self.held else None
-
-    def fetchall(self):
-        return []
+Cursor = SqlLog
 
 
 def go(environ, live=False, cursor=None, **kw):

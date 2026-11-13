@@ -65,6 +65,15 @@ class SelfCursorDb:
     def cursor(self): return self
 
 
+class SqlLog(SelfCursorDb):
+    """A connection that is its own cursor and records each statement as (its first word, args). `new` sets rowcount (an INSERT that took), `held` makes fetchone find a row."""
+
+    def __init__(self, new=True, held=False): self.sql, self.rowcount, self.held = [], 1 if new else 0, held
+    def execute(self, sql, args=()): self.sql.append((sql.split()[0], args))
+    def fetchone(self): return (1,) if self.held else None
+    def fetchall(self): return []
+
+
 class Page:
     """A fetched page: html and status."""
 

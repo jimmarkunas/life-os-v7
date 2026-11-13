@@ -6,7 +6,7 @@ from copy import deepcopy
 from lifeos.platform.notion_client import NotionError
 from lifeos.recruiters import notion as store
 from tests.recruiters.fakes import FakeRecruiters, page
-from tests.recruiters.test_outreach import RECRUITERS, Ledger, Service, fields
+from tests.recruiters.test_outreach import RECRUITERS, Ledger, Service, fields, walk
 
 ROW = "c" * 32
 
@@ -35,11 +35,7 @@ class Svc(Service):
 
 
 def close(svc, status):
-    st, _, body, _ = svc("GET", "/recruiter", {"r": ROW})
-    assert st == 200, body
-    review = svc("POST", "/recruiter", form={**fields(body), "status": status, "step": "review"})
-    assert review[0] == 200, review[2]
-    return svc("POST", "/recruiter", form={**fields(review[2]), "step": "confirm"})
+    return walk(svc, "/recruiter", {"r": ROW}, status=status)
 
 
 class CloseRow(unittest.TestCase):

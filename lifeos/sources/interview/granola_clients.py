@@ -71,16 +71,19 @@ def _select(name):
     return {"select": {"name": name}}
 
 
-def _props(meeting, key, status, filed_to=None, lines=None):
-    day = central_day(meeting.start)
-    out = {TITLE: {"title": rich_text(title_of(meeting))}, STATUS: _select(status), KEY: {"rich_text": rich_text(key)}}
-    if day:
-        out[DATE] = {"date": {"start": day}}
+def _state(status, filed_to=None, lines=None):
+    """The properties that say where a meeting stands: Status, and (once filed) where and how many lines."""
+    out = {STATUS: _select(status)}
     if filed_to:
         out[FILED_TO] = _select(filed_to)
     if lines is not None:
         out[LINES] = {"number": lines}
     return out
+
+
+def _props(meeting, key, status, filed_to=None, lines=None):
+    day = central_day(meeting.start)
+    return {TITLE: {"title": rich_text(title_of(meeting))}, KEY: {"rich_text": rich_text(key)}, **_state(status, filed_to, lines), **({DATE: {"date": {"start": day}}} if day else {})}
 
 
 def _plain(prop):
@@ -129,12 +132,7 @@ def unfiled_row(client, meeting, key, live):
 
 
 def set_status(client, page_id, status, filed_to=None, lines=None):
-    props = {STATUS: _select(status)}
-    if filed_to:
-        props[FILED_TO] = _select(filed_to)
-    if lines is not None:
-        props[LINES] = {"number": lines}
-    client.call_once("PATCH", f"/pages/{page_id}", {"properties": props})
+    client.call_once("PATCH", f"/pages/{page_id}", {"properties": _state(status, filed_to, lines)})
 
 
 def _marker_block(marker):

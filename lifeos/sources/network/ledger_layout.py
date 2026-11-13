@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 
 from lifeos.platform import db, ledger_body as body
 from lifeos.platform.notion_client import Client, NotionError
+from lifeos.sources.network import network_surface
 
 STATE = "v7_ledger_layout"
 SCHEMA = f"""CREATE TABLE IF NOT EXISTS {STATE} (
@@ -37,19 +38,9 @@ def _same(actual, expected):
     return len(actual) == len(expected) and all(a.get("type") == e["type"] and _text(a) == _text(e) for a, e in zip(actual, expected))
 
 
-MAX_SHARDS = 8
-
-
 def shard_of(environ):
     """LAYOUT_SHARD "i/n" -> (i, n): this run takes only the jobs whose id is i modulo n, so n runs can move different pages at once and never the same page. Unset = (0, 1), everything."""
-    raw = (environ.get("LAYOUT_SHARD") or "0/1").strip()
-    try:
-        index, count = (int(part) for part in raw.split("/"))
-    except ValueError:
-        raise LayoutError("LAYOUT_SHARD_INVALID") from None
-    if not 0 < count <= MAX_SHARDS or not 0 <= index < count:
-        raise LayoutError("LAYOUT_SHARD_INVALID")
-    return index, count
+    return network_surface.parse_shard(environ.get("LAYOUT_SHARD"), LayoutError, "LAYOUT_SHARD_INVALID")
 
 
 def read(connection, limit, shard=(0, 1)):

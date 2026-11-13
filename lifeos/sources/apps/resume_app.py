@@ -13,8 +13,9 @@ from lifeos.hiring import close_screen as S, decision as D
 from lifeos.platform import ledger_body as body
 from lifeos.platform import notion_files
 from lifeos.platform.notion_client import Client, NotionError
-from lifeos.sources.close_app import TTL, HTML, _mac, _now, _same
-from .outreach_app import _fp, _job_section, job
+from lifeos.sources.apps.signed import HTML, invalid, live, mac as _mac, same as _same, stopper
+from lifeos.sources.close_app import TTL, _now
+from .outreach_app import RELOAD, _fp, _job_section, job
 
 PATH = "Job Ledger / Build resume"
 WORKER, WORKER_WAIT = "/run/lifeos-resume/worker.sock", 140      # the worker waits for Cloud Fit's one-call lock, then about a minute of Luna
@@ -38,10 +39,7 @@ REASONS = {"QUOTA_RESERVE": "Luna's allowance is at your 50% reserve; it resets 
            "MODEL_DRIFT": "A different model answered, so the result was not used."}
 
 
-def _stop(status, eyebrow, title, text, detail, css="alert"):
-    return status, HTML, S.page(title, "A resume counts only after it is attached to the job's Ledger page and read back.",
-                                f'<section class="section"><div class="eyebrow">{e(eyebrow)}</div><h3 class="step-title">{e(title)}</h3><p class="lead">{e(text)}</p>'
-                                f'<div class="notice {css}">{e(detail)}</div></section>', PATH, "Build resume"), ()
+_stop = stopper("A resume counts only after it is attached to the job's Ledger page and read back.", PATH, "Build resume")
 
 
 def _children(client, block_id):
@@ -174,7 +172,7 @@ def _submit(form, who, secrets, step):
     if (not pid or not (exp.isascii() and exp.isdigit()) or int(exp) < _now().timestamp() or not fid or not name
             or not _same(form.get("a"), _mac(secrets["link"], "a", who["login"], pid, st, exp, fid, name))
             or not _same(_fp({"id": pid, "company": form.get("co", ""), "role": form.get("ro", "")}), st)):
-        return _stop(403, "Not accepted", "This form is no longer valid", "Reload the job from its link.", "Nothing was changed.", "danger")
+        return invalid(_stop, RELOAD)
     config = secrets["config"]
     client = Client({"NOTION_API_TOKEN": secrets["notion"].decode(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": config["ledger"]})
     current = job(client, config, pid)
@@ -222,22 +220,22 @@ def _record(client, current, drive, pid, fid, name, link):
     again = drive.get(fid)
     if not (is_locked(locked) and is_locked(again) and again.get("md5Checksum") == meta.get("md5Checksum") and recorded(client, pid) == [(name, link)]):
         return _stop(500, "Unavailable", "Could not verify the submitted résumé", "Do not assume it is recorded.", "Status: DEGRADED · not read back", "danger")
-    return 200, HTML, S.page("Submitted résumé recorded", "Which résumé you actually sent with this application.", (
-        '<section class="section"><div class="eyebrow">Recorded</div><h3 class="step-title">Submitted résumé recorded</h3>'
-        f'<p class="lead">{e(current["company"])} · {e(current["role"])}</p>'
-        f'<div class="notice ok">{e(name)} · locked read-only in Google Drive and set as the job\'s Submitted Résumé · read back.</div></section>'
-        f'<div class="actions"><a class="btn primary" href="{e(page_url(pid))}" target="_blank" rel="noopener">Open the job in Notion →</a></div>'),
-        PATH, "Build resume"), ()
+    return _done("Submitted résumé recorded", "Which résumé you actually sent with this application.", "Recorded", current, pid,
+                 f"{e(name)} · locked read-only in Google Drive and set as the job's Submitted Résumé · read back.")
+
+
+def _done(title, sub, eyebrow, current, pid, notice):
+    """A success screen: what was done (`notice` is escaped HTML), and a link straight to the job's page in Notion."""
+    return 200, HTML, S.page(title, sub, (
+        f'<section class="section"><div class="eyebrow">{eyebrow}</div><h3 class="step-title">{title}</h3>'
+        f'<p class="lead">{e(current["company"])} · {e(current["role"])}</p><div class="notice ok">{notice}</div></section>'
+        f'<div class="actions"><a class="btn primary" href="{e(page_url(pid))}" target="_blank" rel="noopener">Open the job in Notion →</a></div>'), PATH, "Build resume"), ()
 
 
 def _attached(current, filename, pid, drive=False):
     """The success screen: what was attached, and a link straight to the job's Ledger page (its Resume column and the file at the bottom of the page)."""
-    return 200, HTML, S.page("Resume attached", "A resume counts only after it is attached to the job's Ledger page and read back.", (
-        '<section class="section"><div class="eyebrow">Attached</div><h3 class="step-title">Resume attached</h3>'
-        f'<p class="lead">{e(current["company"])} · {e(current["role"])}</p>'
-        f'<div class="notice ok">{e(filename)} · {"saved in Google Drive (My Drive / LIFE OS / Résumés) and linked " if drive else ""}in the job\'s Resume column and at the bottom of its page · read back.</div></section>'
-        f'<div class="actions"><a class="btn primary" href="{e(page_url(pid))}" target="_blank" rel="noopener">Open the job in Notion →</a></div>'),
-        PATH, "Build resume"), ()
+    return _done("Resume attached", "A resume counts only after it is attached to the job's Ledger page and read back.", "Attached", current, pid,
+                 f'{e(filename)} · {"saved in Google Drive (My Drive / LIFE OS / Résumés) and linked " if drive else ""}in the job\'s Resume column and at the bottom of its page · read back.')
 
 
 def _get(req, who, secrets):
@@ -259,17 +257,17 @@ def _get(req, who, secrets):
 
 def _post(req, who, secrets):
     form, secret, login = req["form"], secrets["link"], who["login"]
-    pid, step, exp, st = D._page_id(form.get("j")), form.get("step"), form.get("exp", ""), form.get("st", "")
+    pid, step, st = D._page_id(form.get("j")), form.get("step"), form.get("st", "")
     if step in ("submit", "record") or (step == "cancel" and form.get("a")):
         if step == "cancel":
             return _stop(200, "Cancelled", "Nothing recorded", "No résumé was marked as submitted.", "Nothing was written.", "")
         return _submit(form, who, secrets, step)
-    if not pid or step not in ("cancel", "build") or not (exp.isascii() and exp.isdigit()) or int(exp) < _now().timestamp() or not _same(form.get("t"), _mac(secret, "r", login, pid, st, exp)):
-        return _stop(403, "Not accepted", "This form is no longer valid", "Reload the job from its link.", "Nothing was changed.", "danger")
+    if not live(form, secret, "r", login, pid, st, _now(), ("cancel", "build")):
+        return invalid(_stop, RELOAD)
     if step == "cancel":
         return _stop(200, "Cancelled", "No resume built", "Nothing was run or attached.", "Nothing was written.", "")
     if not _same(_fp({"id": pid, "company": form.get("co", ""), "role": form.get("ro", "")}), st):
-        return _stop(403, "Not accepted", "This form is no longer valid", "Reload the job from its link.", "Nothing was changed.", "danger")
+        return invalid(_stop, RELOAD)
     config, token = secrets["config"], secrets["notion"].decode()
     client = Client({"NOTION_API_TOKEN": token, "NOTION_JOB_LEDGER_DATA_SOURCE_ID": config["ledger"]})
     current = job(client, config, pid)                                     # the build is authorized only by a fresh read of the same open job

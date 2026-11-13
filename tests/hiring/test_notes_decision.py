@@ -1,8 +1,7 @@
 """LIFE-353 (REQ-5): hiring decisions live on the Job Ledger row only. Confirm Rejected and Reopen are one Ledger write each, read back; no opportunity page is moved and no container is read.
 D195 (closing a Notes-only pursuit by moving its page) is superseded: a pursuit with no Ledger row is refused with nothing written.
 
-Everything is invented. The chain is the production one: stage.confirm_rejected -> decision.route -> decision.confirm_rejected -> stage.run -> compiler -> region writer. Only Notion (the page tree and
-the Ledger), the snapshot store and the Calendar are stand-ins. The page tree stand-in (`Workspace`) stays: the Close, Manage and Mark Complete screens still locate opportunity pages in it."""
+Everything is invented. The chain is the Close screen's: decision.route -> decision.confirm_rejected. Only Notion (the page tree and the Ledger), the snapshot store and the Calendar are stand-ins. The page tree stand-in (`Workspace`) stays: the Close, Manage and Mark Complete screens still locate opportunity pages in it."""
 import copy
 import json
 import unittest
@@ -128,17 +127,13 @@ class World:
             return T.stage.run(0, True, self.env, ledger_client=self.source, pipeline_client=self.ws, calendar=T.FakeCalendar([]), connection=object(), client=self.tree, now=NOW)
 
     def decide(self, req, live=True):
-        with mock.patch.object(T.snapshot, "STORE", self.store):
-            return T.stage.confirm_rejected(req, live, self.env, ledger_client=self.source, now=NOW, pipeline_client=self.ws, calendar=T.FakeCalendar([]), connection=object(), client=self.tree)
+        return TD.Chain(self.source).confirm(req, live, NOW)
 
     def request(self, **changes):
         return {"action": "CONFIRM_REJECTED", "confirmed": True, "id": self.ws.target, "company": COMPANY, "role": ROLE, "reason": "Employer rejection email confirmed", "op": OP, **changes}
 
     def reopen(self, **changes):
         return self.request(action="REOPEN", reason="Rejection was a mistake", op=OP2, **changes)
-
-    def listed(self):
-        return sorted(TD.seen(self.tree))
 
     def sections(self):
         return {o.page_id: (o.section, o.rounds) for o in hiring_pipeline.read(self.ws, self.ws.root)}
@@ -198,7 +193,6 @@ class LedgerDecisionTests(unittest.TestCase):
         self.assertEqual((done["status"], done["verified"], world.source.decision(), len(world.source.history().splitlines())), ("recorded", True, {"name": "Rejected"}, 1))
         self.assertEqual(world.ws.writes(), [])                                                      # no page moved, no record block appended
         self.assertEqual(world.ws.where(world.ws.target), world.ws.col_active)
-        self.assertNotIn(f"{COMPANY} — {ROLE}", world.listed())
         patches = len(world.source.patches())
         self.assertEqual(world.decide(req())["status"], "already_recorded")                          # the same operation id: nothing written twice
         self.assertEqual((len(world.source.patches()), len(world.source.history().splitlines())), (patches, 1))
@@ -220,7 +214,6 @@ class LedgerDecisionTests(unittest.TestCase):
         self.assertEqual(world.decide(reopen())["status"], "already_recorded")
         self.assertEqual(len(world.source.history().splitlines()), 2)
         self.assertEqual(world.ws.writes(), [])
-        self.assertIn(f"{COMPANY} — {ROLE}", world.listed())                                          # back among the open opportunities
 
     def test_gwt_dw_3_a_hired_row_is_not_reopened_without_its_own_confirmation(self):
         world = ledger_world()
@@ -281,14 +274,11 @@ class LedgerDecisionTests(unittest.TestCase):
                 world.decide(want)
             self.assertEqual(str(error.exception), "DECISION_NO_MATCH")
         self.assertEqual((world.ws.writes(), world.source.patches()), ([], []))
-        self.assertIn(f"{COMPANY} — {ROLE}", world.listed())
 
     def test_the_decision_needs_no_pipeline_page_or_page_tree(self):
         world = ledger_world()
-        world.env = {k: v for k, v in world.env.items() if k != "HIRING_PIPELINE_PAGE_ID"}
         with mock.patch.object(hiring_pipeline, "read", side_effect=AssertionError("the page tree was read for a decision")):
-            with mock.patch.object(T.snapshot, "STORE", world.store), mock.patch.object(T.stage, "run", return_value={}):
-                done = T.stage.confirm_rejected(req(), True, world.env, ledger_client=world.source, now=NOW, pipeline_client=world.ws)
+            done = world.decide(req())
         self.assertEqual((done["status"], world.source.decision()), ("recorded", {"name": "Rejected"}))
 
 

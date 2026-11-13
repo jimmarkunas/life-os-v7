@@ -118,14 +118,6 @@ class Reopen(unittest.TestCase):
         self.assertIn("Reopen is not available here: DECISION_AMBIGUOUS", body)
         self.assertNotIn("Reopen this opportunity", body)
 
-    def test_a_screen_the_release_does_not_ship_is_a_named_503_not_a_blank_error(self):
-        h = H()
-        real = close_app.importlib.import_module
-        with mock.patch.object(close_app.importlib, "import_module", side_effect=lambda name: (_ for _ in ()).throw(ImportError()) if name.endswith("manage_app") else real(name)):
-            status, body, _ = h.call("GET", "/manage", query={"o": "a" * 32})
-        self.assertEqual(status, 503)
-        self.assertIn("not on the Close service yet", body)
-
     def test_review_and_cancel_write_nothing_and_a_replay_is_already_recorded(self):
         h = H([(TD.TARGET, COMPANY, ROLE)])
         h.close(TD.TARGET, "Rejected")

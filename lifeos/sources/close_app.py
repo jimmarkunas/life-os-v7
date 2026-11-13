@@ -2,7 +2,6 @@
 the row; no page moves), shown, reviewed and closed with one of the six outcomes; success is reported only after the S1 read-back. Nothing here is a second rule engine: identity, ambiguity, schema, idempotency,
 conflict and read-back all belong to lifeos.hiring.decision. GET and the review step never write. Mark Complete (/complete) records one opportunity page's primary action as done in that page's own fold. Manage and Reopen (/manage) live in manage_app. Fixed codes only."""
 import hashlib
-import hmac
 import importlib
 import re
 from html import escape as e
@@ -12,9 +11,10 @@ from zoneinfo import ZoneInfo
 from lifeos.jobs import hiring_pipeline
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 from lifeos.hiring import close_screen as S, decision as D, models as M
+from lifeos.sources.apps.signed import HTML, gate, handler, invalid, live, mac as _mac, same as _same, stopper, unverified
 
 CLOSURE = ("lifeos/hiring/close_screen.py", "lifeos/hiring/decision.py", "lifeos/hiring/models.py", "lifeos/jobs/__init__.py", "lifeos/jobs/hiring_pipeline.py", "lifeos/platform/names.py",
-           "lifeos/sources/apps/__init__.py", "lifeos/sources/apps/outreach_app.py", "lifeos/recruiters/__init__.py", "lifeos/recruiters/outreach.py", "lifeos/recruiters/notion.py", "lifeos/recruiters/identity.py",
+           "lifeos/sources/apps/__init__.py", "lifeos/sources/apps/signed.py", "lifeos/sources/apps/outreach_app.py", "lifeos/recruiters/__init__.py", "lifeos/recruiters/outreach.py", "lifeos/recruiters/notion.py", "lifeos/recruiters/identity.py",
            "lifeos/network/__init__.py", "lifeos/network/surface.py", "lifeos/network/match.py", "lifeos/platform/hidden.py", "lifeos/platform/ledger_body.py",
            "lifeos/sources/apps/resume_app.py", "lifeos/platform/notion_files.py", "lifeos/platform/gdrive.py", "lifeos/platform/google_consent.py",
            "lifeos/sources/apps/manage_app.py", "lifeos/sources/apps/alerts_app.py", "lifeos/platform/alerts.py", "lifeos/platform/alert_registry.py", "lifeos/platform/alert_settings.py", "lifeos/platform/redact.py",
@@ -22,19 +22,11 @@ CLOSURE = ("lifeos/hiring/close_screen.py", "lifeos/hiring/decision.py", "lifeos
 ROUTES = {"/sent": ("apps.outreach_app", "handle"), "/referral": ("apps.outreach_app", "handle_status"), "/recruiter": ("apps.outreach_app", "handle_close"),     # D221 Mark as Sent, referral status, LIFE-20 recruiter close,
           "/resume": ("apps.resume_app", "handle"), "/manage": ("apps.manage_app", "handle"), "/manage.css": ("apps.manage_app", "handle_css"), "/manage-picker.js": ("apps.manage_app", "handle_js"), "/brief": ("apps.outreach_app", "handle_brief"), "/alerts": ("apps.alerts_app", "handle"), "/alerts.css": ("apps.alerts_app", "handle_css")}                                                       # D234 Build resume, E14 Manage + Reopen (Jim, Oct 24), LIFE-35 brief (read only)
 KIND = "ledger"                                                                       # LIFE-353: the only record a decision is written on (signed into every form)
-TTL, TZ, HTML = 900, ZoneInfo("America/Chicago"), "text/html; charset=utf-8"
+TTL, TZ = 900, ZoneInfo("America/Chicago")
 
 
 def _now():
     return datetime.now(TZ)
-
-
-def _mac(secret, *parts):
-    return hmac.new(secret, "\x1f".join(map(str, parts)).encode(), hashlib.sha256).hexdigest()
-
-
-def _same(a, b):
-    return hmac.compare_digest(str(a).encode(), str(b).encode())
 
 
 def _stop(status, eyebrow, title, text, detail, css="alert"):
@@ -88,12 +80,10 @@ def _get(req, who, secrets):
 
 def _post(req, who, secrets):
     form, secret, login = req["form"], secrets["link"], who["login"]
-    pid, step, exp, st = D._page_id(form.get("o")), form.get("step"), form.get("exp", ""), form.get("st", "")
+    pid, step, exp, st, early = gate(form, secret, login, _now(), "t", "o", _stop, "Reload the opportunity from its link.", ("No changes made", "The proposed closure was cancelled. The opportunity remains in its current state."))
+    if early:
+        return early
     outcome, notes = form.get("outcome", ""), (form.get("notes") or "").strip()
-    if not pid or step not in ("cancel", "edit", "review", "confirm") or not (exp.isascii() and exp.isdigit()) or int(exp) < _now().timestamp() or not _same(form.get("t"), _mac(secret, "t", login, pid, st, exp)):
-        return _stop(403, "Not accepted", "This form is no longer valid", "Reload the opportunity from its link.", "Nothing was changed.", "danger")
-    if step == "cancel":
-        return _stop(200, "Cancelled", "No changes made", "The proposed closure was cancelled. The opportunity remains in its current state.", "Nothing was written.", "")
     config = secrets["config"]
     if step == "confirm":
         client = Client({"NOTION_API_TOKEN": secrets["notion"].decode(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": config["ledger"]})
@@ -103,7 +93,7 @@ def _post(req, who, secrets):
     else:
         opp = _shown(form, pid, st)
         if opp is None:
-            return _stop(403, "Not accepted", "This form is no longer valid", "Reload the opportunity from its link.", "Nothing was changed.", "danger")
+            return invalid(_stop, "Reload the opportunity from its link.")
     fields = {"o": pid, "k": opp["kind"], "co": opp["company"], "ro": opp["role"], "exp": exp, "st": st, "t": form["t"]}     # the token was verified above; the review step adds its own
     if step == "edit":
         return 200, HTML, S.form(opp, fields, outcome, notes), ()
@@ -116,7 +106,7 @@ def _post(req, who, secrets):
     if step == "review":
         return 200, HTML, S.review(opp, {**fields, "outcome": outcome, "notes": notes, "c": sign}, outcome, notes), ()
     if not _same(form.get("c"), sign):
-        return _stop(403, "Not accepted", "This confirmation is not valid", "Review the closure again.", "Nothing was changed.", "danger")
+        return invalid(_stop, "Review the closure again.", "This confirmation is not valid")
     request = {"action": D.ACTION, "confirmed": True, "id": pid, "company": opp["company"], "role": opp["role"], "reason": notes or outcome, "outcome": outcome,
                "op": _mac(secret, "op", pid, st, exp, outcome, notes)[:32]}
     try:
@@ -125,9 +115,9 @@ def _post(req, who, secrets):
         code = str(error)[:60]
         if code in ("DECISION_CONFLICT", "DECISION_SCHEMA_MISSING"):
             return _stop(409, "Not changed", "This closure was not recorded", "A conflicting decision exists, or this outcome is not enabled on the Ledger yet.", f"Refused: {code}. Nothing was changed.")
-        return _stop(500, "Unavailable", "Could not verify closure", "Do not assume the opportunity was closed or left unchanged.", f"Status: DEGRADED · {code}", "danger")
+        return unverified(_stop, "Could not verify closure", "the opportunity was closed", code)
     if done.get("verified") is not True or done.get("status") not in ("recorded", "already_recorded"):
-        return _stop(500, "Unavailable", "Could not verify closure", "Do not assume the opportunity was closed or left unchanged.", "Status: DEGRADED · not verified", "danger")
+        return unverified(_stop, "Could not verify closure", "the opportunity was closed")
     secrets.get("after", []).append("hiring")                          # Jim, Oct 24: the gate asks for the Hiring Pipeline region to be redrawn now (close_gate.REFRESH)
     return _stop(200, "Closed", "Opportunity closed", "The canonical record was updated and read back successfully.", f"{opp['company']} — {opp['role']} · Closed — {outcome}{' (already recorded)' if done['status'] == 'already_recorded' else ''}.", "ok")
 
@@ -171,10 +161,7 @@ def action(client, root, pid, key):
     return {"id": pid, "company": pages[0]["company"], "role": pages[0]["role"], "key": key, "text": found[0], "fold": tops[0]["id"], "done": done[0] if done else None}
 
 
-def _complete_stop(status, eyebrow, title, text, detail, css="alert"):
-    return status, HTML, S.page(title, "A completion counts only after it is read back from the opportunity page.",
-                                f'<section class="section"><div class="eyebrow">{e(eyebrow)}</div><h3 class="step-title">{e(title)}</h3><p class="lead">{e(text)}</p>'
-                                f'<div class="notice {css}">{e(detail)}</div></section>', COMPLETE_PATH, "Mark complete"), ()
+_complete_stop = stopper("A completion counts only after it is read back from the opportunity page.", COMPLETE_PATH, "Mark complete")
 
 
 def _complete_fp(a):
@@ -206,9 +193,9 @@ def _complete_get(req, who, secrets):
 
 def _complete_post(req, who, secrets):
     form, login = req["form"], who["login"]
-    pid, key, step, exp, st = D._page_id(form.get("o")), form.get("a", ""), form.get("step"), form.get("exp", ""), form.get("st", "")
-    if not pid or step not in ("cancel", "confirm") or not (exp.isascii() and exp.isdigit()) or int(exp) < _now().timestamp() or not _same(form.get("t"), _mac(secrets["link"], "m", login, pid, key, st, exp)):
-        return _complete_stop(403, "Not accepted", "This form is no longer valid", "Reload it from the opportunity page.", "Nothing was changed.", "danger")
+    pid, key, step, st = D._page_id(form.get("o")), form.get("a", ""), form.get("step"), form.get("st", "")
+    if not live(form, secrets["link"], "m", login, pid, st, _now(), ("cancel", "confirm"), (key,)):
+        return invalid(_complete_stop, "Reload it from the opportunity page.")
     if step == "cancel":
         return _complete_stop(200, "Cancelled", "No changes made", "Nothing was recorded.", "Nothing was written.", "")
     client = Client({"NOTION_API_TOKEN": secrets["notion"].decode(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": secrets["config"]["ledger"]})
@@ -223,17 +210,13 @@ def _complete_post(req, who, secrets):
         client.call_once("PATCH", f"/blocks/{a['fold']}/children", {"children": [{"object": "block", "type": "paragraph", "paragraph": {"rich_text": rich_text(f"v7-done:1;key={key};on={day}")}}]})
         back = action(client, secrets["config"]["pipeline"], pid, key)
     except NotionError as error:
-        return _complete_stop(500, "Unavailable", "Could not verify the completion", "Do not assume it was recorded or left unchanged.", f"Status: DEGRADED · {str(error)[:60]}", "danger")
+        return unverified(_complete_stop, "Could not verify the completion", code=str(error)[:60])
     if back["done"] != day:
-        return _complete_stop(500, "Unavailable", "Could not verify the completion", "Do not assume it was recorded or left unchanged.", "Status: DEGRADED · not verified", "danger")
+        return unverified(_complete_stop, "Could not verify the completion")
     return _complete_stop(200, "Recorded", "Marked complete", "Recorded on the opportunity page and read back. The page shows it as done after the next hourly run.", f"{head} · Done {day}.", "ok")
 
 
-def handle_complete(req, who, secrets):
-    try:
-        return (_complete_get if req["method"] == "GET" else _complete_post)(req, who, secrets)
-    except NotionError as error:
-        return _complete_stop(409, "Not changed", "This action cannot be marked complete here", "The request was refused before anything was written.", f"Refused: {str(error)[:60]}")
+handle_complete = handler(_complete_get, _complete_post, _complete_stop, "This action cannot be marked complete here")
 
 
 def handle(req, who, secrets):
@@ -245,11 +228,7 @@ def handle(req, who, secrets):
             return 200, "text/javascript; charset=utf-8", S.JS.encode(), ()
         if req["path"] in ROUTES and req["method"] in ("GET", "POST"):                        # same gate, signing key and fresh read; each module is loaded only for its own path
             module, name = ROUTES[req["path"]]
-            try:
-                screen = importlib.import_module("lifeos.sources." + module)
-            except ImportError:                                                               # a screen this release does not ship yet (its CLOSURE entry is the edge lane's)
-                return _stop(503, "Unavailable", "This screen is not on the Close service yet", "It arrives with a later release.", "Nothing was changed.")
-            return getattr(screen, name)(req, who, secrets)
+            return getattr(importlib.import_module("lifeos.sources." + module), name)(req, who, secrets)
         if req["path"] == "/complete" and req["method"] in ("GET", "POST"):                   # E05: Mark Complete, same gate, signing key and fresh read
             return handle_complete(req, who, secrets)
         if req["path"] != "/" or req["method"] not in ("GET", "POST"):

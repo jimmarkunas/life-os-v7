@@ -10,7 +10,8 @@ from lifeos.hiring import close_screen as S, decision as D
 from lifeos.network import surface as N
 from lifeos.platform.notion_client import Client, NotionError
 from lifeos.recruiters import notion as store, outreach as O
-from lifeos.sources.close_app import TTL, HTML, _mac, _now, _same
+from lifeos.sources.apps.signed import HTML, gate, handler, invalid, mac as _mac, same as _same, stopper, written
+from lifeos.sources.close_app import TTL, _now
 
 PATH = "Daily Report / Job Outreach / Mark as Sent"
 PEOPLE_MAX = 10
@@ -18,12 +19,9 @@ STATUS_PATH = "Job Ledger / Outreach / Record reply or referral"
 OUTREACH_TITLE = "🤝 Outreach"
 CHOICES = (("Replied", "They replied"), ("Referral Offered", "They offered to refer me (not yet confirmed)"),
            ("Referral Confirmed", "The referral is confirmed (submitted by them)"), ("Declined", "They declined"))
-
-
-def _stop(status, eyebrow, title, text, detail, css="alert"):
-    return status, HTML, S.page(title, "A Mark as Sent counts only after the canonical record is read back.",
-                                f'<section class="section"><div class="eyebrow">{e(eyebrow)}</div><h3 class="step-title">{e(title)}</h3><p class="lead">{e(text)}</p>'
-                                f'<div class="notice {css}">{e(detail)}</div></section>', PATH, "Mark as Sent"), ()
+RELOAD = "Reload the job from its link."
+JOB_CHANGED = ("Conflict", "Job changed", "The job changed since this form was opened.", "No write attempted. Reload the job and review it again.")
+_stop = stopper("A Mark as Sent counts only after the canonical record is read back.", PATH, "Mark as Sent")
 
 
 def job(client, config, pid):
@@ -110,19 +108,19 @@ def _get(req, who, secrets):
     return 200, HTML, _form(j, {**fields, **_people_fields(secrets["link"], who["login"], j["id"], st, exp, people)}, people), ()
 
 
+def _ledger(secrets):
+    return Client({"NOTION_API_TOKEN": secrets["notion"].decode(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": secrets["config"]["ledger"]})
+
+
 def _post(req, who, secrets):
     form, secret, login = req["form"], secrets["link"], who["login"]
-    pid, step, exp, st = D._page_id(form.get("j")), form.get("step"), form.get("exp", ""), form.get("st", "")
-    if not pid or step not in ("cancel", "edit", "review", "confirm") or not (exp.isascii() and exp.isdigit()) or int(exp) < _now().timestamp() or not _same(form.get("t"), _mac(secret, "s", login, pid, st, exp)):
-        return _stop(403, "Not accepted", "This form is no longer valid", "Reload the job from its link.", "Nothing was changed.", "danger")
-    if step == "cancel":
-        return _stop(200, "Cancelled", "No changes made", "Nothing was recorded.", "Nothing was written.", "")
+    pid, step, exp, st, early = gate(form, secret, login, _now(), "s", "j", _stop, RELOAD)
+    if early:
+        return early
     shown = {"id": pid, "company": form.get("co", ""), "role": form.get("ro", "")}
-    if not _same(_fp(shown), st):
-        return _stop(403, "Not accepted", "This form is no longer valid", "Reload the job from its link.", "Nothing was changed.", "danger")
     people = _people(form)
-    if not _same(form.get("lm"), _people_fields(secret, login, pid, st, exp, people)["lm"]):
-        return _stop(403, "Not accepted", "This form is no longer valid", "Reload the job from its link.", "Nothing was changed.", "danger")
+    if not _same(_fp(shown), st) or not _same(form.get("lm"), _people_fields(secret, login, pid, st, exp, people)["lm"]):
+        return invalid(_stop, RELOAD)
     fields = {**{k: form.get(k, "") for k in ("j", "co", "ro", "exp", "st", "t")}, **_people_fields(secret, login, pid, st, exp, people)}
     choice = form.get("who") or ("" if people else "other")                 # with people offered, a choice is required; without, the typed name is the only one
     employer = O.valid_person(form.get("employer"))
@@ -142,22 +140,15 @@ def _post(req, who, secrets):
     if step == "review":
         return 200, HTML, _review(shown, {**fields, "who": choice, "person": person, "employer": employer, "c": sign}, person, employer), ()
     if not _same(form.get("c"), sign):
-        return _stop(403, "Not accepted", "This confirmation is not valid", "Review it again.", "Nothing was changed.", "danger")
+        return invalid(_stop, "Review it again.", "This confirmation is not valid")
     config = secrets["config"]
-    token = secrets["notion"].decode()
-    current = job(Client({"NOTION_API_TOKEN": token, "NOTION_JOB_LEDGER_DATA_SOURCE_ID": config["ledger"]}), config, pid)   # the write is authorized only by a fresh read
+    current = job(_ledger(secrets), config, pid)                           # the write is authorized only by a fresh read
     if _fp(current) != st:
-        return _stop(409, "Conflict", "Job changed", "The job changed since this form was opened.", "No write attempted. Reload the job and review it again.")
-    try:
-        recruiters = Client({"NOTION_API_TOKEN": token, "NOTION_RECRUITERS_DATA_SOURCE_ID": config.get("recruiters") or ""}, source_name="NOTION_RECRUITERS_DATA_SOURCE_ID")
-        done = O.mark_sent(recruiters, current, person, _now(), config["ledger"], employer)
-    except NotionError as error:
-        code = str(error)[:60]
-        if code in ("OUTREACH_SCHEMA_MISSING", "OUTREACH_AMBIGUOUS", "NOTION_CONFIG_MISSING"):
-            return _stop(409, "Not changed", "Mark as Sent was not recorded", "Job Outreach is not enabled for this record yet, or it is ambiguous.", f"Refused: {code}. Nothing was changed.")
-        return _stop(500, "Unavailable", "Could not verify Mark as Sent", "Do not assume it was recorded or left unchanged.", f"Status: DEGRADED · {code}", "danger")
-    if done.get("verified") is not True:
-        return _stop(500, "Unavailable", "Could not verify Mark as Sent", "Do not assume it was recorded or left unchanged.", "Status: DEGRADED · not verified", "danger")
+        return _stop(409, *JOB_CHANGED)
+    done, early = written(_stop, lambda: O.mark_sent(_recruiters(secrets), current, person, _now(), config["ledger"], employer), "Could not verify Mark as Sent",
+                          ("OUTREACH_SCHEMA_MISSING", "OUTREACH_AMBIGUOUS", "NOTION_CONFIG_MISSING"), ("Mark as Sent was not recorded", "Job Outreach is not enabled for this record yet, or it is ambiguous."))
+    if early:
+        return early
     head = f"{current['company']} — {current['role']} · {person}" + (f" ({employer})" if employer else "")
     if done["status"] == "recorded":
         secrets.get("after", []).append("recruiters")                      # Jim, Oct 24: the gate asks for the Recruiter Outreach table to be redrawn now (close_gate.REFRESH)
@@ -170,11 +161,7 @@ def _post(req, who, secrets):
                  f"{head} · currently {done['action'] or 'no status'}{follow}.", "")
 
 
-def handle(req, who, secrets):
-    try:
-        return (_get if req["method"] == "GET" else _post)(req, who, secrets)
-    except NotionError as error:
-        return _stop(409, "Not changed", "This job cannot be marked here", "The request was refused before anything was written.", f"Refused: {str(error)[:60]}")
+handle = handler(_get, _post, _stop, "This job cannot be marked here")
 
 
 def conversations_on_page(client, page_id):
@@ -211,10 +198,7 @@ def _status_review(j, fields, person, status):
         STATUS_PATH, "Record reply or referral")
 
 
-def _status_stop(status, eyebrow, title, text, detail, css="alert"):
-    return status, HTML, S.page(title, "A status counts only after the canonical record is read back.",
-                                f'<section class="section"><div class="eyebrow">{e(eyebrow)}</div><h3 class="step-title">{e(title)}</h3><p class="lead">{e(text)}</p>'
-                                f'<div class="notice {css}">{e(detail)}</div></section>', STATUS_PATH, "Record reply or referral"), ()
+_status_stop = stopper("A status counts only after the canonical record is read back.", STATUS_PATH, "Record reply or referral")
 
 
 def _people_sign(secret, login, pid, st, exp, people):
@@ -236,18 +220,15 @@ def _status_get(req, who, secrets):
 
 def _status_post(req, who, secrets):
     form, secret, login = req["form"], secrets["link"], who["login"]
-    pid, step, exp, st = D._page_id(form.get("j")), form.get("step"), form.get("exp", ""), form.get("st", "")
-    bad = lambda: _status_stop(403, "Not accepted", "This form is no longer valid", "Reload the job from its link.", "Nothing was changed.", "danger")   # noqa: E731
-    if not pid or step not in ("cancel", "edit", "review", "confirm") or not (exp.isascii() and exp.isdigit()) or int(exp) < _now().timestamp() or not _same(form.get("t"), _mac(secret, "r", login, pid, st, exp)):
-        return bad()
-    if step == "cancel":
-        return _status_stop(200, "Cancelled", "No changes made", "Nothing was recorded.", "Nothing was written.", "")
+    pid, step, exp, st, early = gate(form, secret, login, _now(), "r", "j", _status_stop, RELOAD)
+    if early:
+        return early
     shown = {"id": pid, "company": form.get("co", ""), "role": form.get("ro", "")}
     people = []
     while f"l{len(people)}" in form and len(people) < PEOPLE_MAX:
         people.append(form[f"l{len(people)}"])
     if not _same(_fp(shown), st) or not _same(form.get("lm"), _people_sign(secret, login, pid, st, exp, people)["lm"]):
-        return bad()
+        return invalid(_status_stop, RELOAD)
     fields = {**{k: form.get(k, "") for k in ("j", "co", "ro", "exp", "st", "t")}, **_people_sign(secret, login, pid, st, exp, people)}
     index, status = form.get("who", ""), form.get("status", "")
     person = people[int(index)] if index.isdigit() and int(index) < len(people) else ""
@@ -259,21 +240,16 @@ def _status_post(req, who, secrets):
     if step == "review":
         return 200, HTML, _status_review(shown, {**fields, "who": index, "status": status, "c": sign}, person, status), ()
     if not _same(form.get("c"), sign):
-        return _status_stop(403, "Not accepted", "This confirmation is not valid", "Review it again.", "Nothing was changed.", "danger")
-    config, token = secrets["config"], secrets["notion"].decode()
-    current = job(Client({"NOTION_API_TOKEN": token, "NOTION_JOB_LEDGER_DATA_SOURCE_ID": config["ledger"]}), config, pid)
+        return invalid(_status_stop, "Review it again.", "This confirmation is not valid")
+    config = secrets["config"]
+    current = job(_ledger(secrets), config, pid)
     if _fp(current) != st:
-        return _status_stop(409, "Conflict", "Job changed", "The job changed since this form was opened.", "No write attempted. Reload the job and review it again.")
-    try:
-        recruiters = Client({"NOTION_API_TOKEN": token, "NOTION_RECRUITERS_DATA_SOURCE_ID": config.get("recruiters") or ""}, source_name="NOTION_RECRUITERS_DATA_SOURCE_ID")
-        done = O.set_conversation(recruiters, current, person, status, config["ledger"])
-    except NotionError as error:
-        code = str(error)[:60]
-        if code in ("OUTREACH_SCHEMA_MISSING", "OUTREACH_AMBIGUOUS", "NOTION_CONFIG_MISSING", "OUTREACH_STATUS_UNAVAILABLE", "OUTREACH_NOT_RECORDED"):
-            return _status_stop(409, "Not changed", "Status was not recorded", "This status is not enabled yet, or the conversation is not recorded.", f"Refused: {code}. Nothing was changed.")
-        return _status_stop(500, "Unavailable", "Could not verify the status", "Do not assume it was recorded or left unchanged.", f"Status: DEGRADED · {code}", "danger")
-    if done.get("verified") is not True:
-        return _status_stop(500, "Unavailable", "Could not verify the status", "Do not assume it was recorded or left unchanged.", "Status: DEGRADED · not verified", "danger")
+        return _status_stop(409, *JOB_CHANGED)
+    done, early = written(_status_stop, lambda: O.set_conversation(_recruiters(secrets), current, person, status, config["ledger"]), "Could not verify the status",
+                          ("OUTREACH_SCHEMA_MISSING", "OUTREACH_AMBIGUOUS", "NOTION_CONFIG_MISSING", "OUTREACH_STATUS_UNAVAILABLE", "OUTREACH_NOT_RECORDED"),
+                          ("Status was not recorded", "This status is not enabled yet, or the conversation is not recorded."))
+    if early:
+        return early
     head = f"{current['company']} — {current['role']} · {person}"
     if done["status"] == "recorded":
         secrets.get("after", []).append("recruiters")
@@ -283,11 +259,7 @@ def _status_post(req, who, secrets):
     return _status_stop(409, "Not changed", "Nothing was changed", "The conversation is closed, or already further along than this status.", f"{head} · currently {done['action'] or 'no status'}.")
 
 
-def handle_status(req, who, secrets):
-    try:
-        return (_status_get if req["method"] == "GET" else _status_post)(req, who, secrets)
-    except NotionError as error:
-        return _status_stop(409, "Not changed", "This job cannot be updated here", "The request was refused before anything was written.", f"Refused: {str(error)[:60]}")
+handle_status = handler(_status_get, _status_post, _status_stop, "This job cannot be updated here")
 
 
 # --- LIFE-20 (Jim, Oct 23 2026): close one open recruiter row from the Daily Report's Recruiter Outreach table -------------------------------------------------------------
@@ -331,10 +303,7 @@ def _close_review(r, fields, status):
         CLOSE_PATH, "Close recruiter record")
 
 
-def _close_stop(status, eyebrow, title, text, detail, css="alert"):
-    return status, HTML, S.page(title, "A close counts only after the canonical record is read back.",
-                                f'<section class="section"><div class="eyebrow">{e(eyebrow)}</div><h3 class="step-title">{e(title)}</h3><p class="lead">{e(text)}</p>'
-                                f'<div class="notice {css}">{e(detail)}</div></section>', CLOSE_PATH, "Close recruiter record"), ()
+_close_stop = stopper("A close counts only after the canonical record is read back.", CLOSE_PATH, "Close recruiter record")
 
 
 def _close_get(req, who, secrets):
@@ -353,15 +322,13 @@ def _close_get(req, who, secrets):
 
 def _close_post(req, who, secrets):
     form, secret, login = req["form"], secrets["link"], who["login"]
-    pid, step, exp, st = D._page_id(form.get("r")), form.get("step"), form.get("exp", ""), form.get("st", "")
-    bad = lambda: _close_stop(403, "Not accepted", "This form is no longer valid", "Reload it from the Recruiter Outreach table.", "Nothing was changed.", "danger")   # noqa: E731
-    if not pid or step not in ("cancel", "edit", "review", "confirm") or not (exp.isascii() and exp.isdigit()) or int(exp) < _now().timestamp() or not _same(form.get("t"), _mac(secret, "k", login, pid, st, exp)):
-        return bad()
-    if step == "cancel":
-        return _close_stop(200, "Cancelled", "No changes made", "Nothing was recorded.", "Nothing was written.", "")
+    reload = "Reload it from the Recruiter Outreach table."
+    pid, step, exp, st, early = gate(form, secret, login, _now(), "k", "r", _close_stop, reload)
+    if early:
+        return early
     shown = {"page_id": pid, "person": form.get("pe", ""), "company": form.get("co", ""), "role": form.get("ro", ""), "action": form.get("ac", "")}
     if not _same(_row_fp(shown), st):
-        return bad()
+        return invalid(_close_stop, reload)
     fields = {k: form.get(k, "") for k in ("r", "pe", "co", "ro", "ac", "exp", "st", "t")}
     status = form.get("status", "")
     if step == "edit":
@@ -372,17 +339,14 @@ def _close_post(req, who, secrets):
     if step == "review":
         return 200, HTML, _close_review(shown, {**fields, "status": status, "c": sign}, status), ()
     if not _same(form.get("c"), sign):
-        return _close_stop(403, "Not accepted", "This confirmation is not valid", "Review it again.", "Nothing was changed.", "danger")
+        return invalid(_close_stop, "Review it again.", "This confirmation is not valid")
     recruiters = _recruiters(secrets)
     if _row_fp(store.own_row(recruiters, pid)) != st:
         return _close_stop(409, "Conflict", "Record changed", "The record changed since this form was opened.", "No write attempted. Reload it and review it again.")
-    try:
-        done = store.close_row(recruiters, pid, status)
-    except NotionError as error:
-        return _close_stop(500, "Unavailable", "Could not verify the close", "Do not assume it was recorded or left unchanged.", f"Status: DEGRADED · {str(error)[:60]}", "danger")
+    done, early = written(_close_stop, lambda: store.close_row(recruiters, pid, status), "Could not verify the close")
+    if early:
+        return early
     head = f"{shown['person']} · {shown['company'] or 'Company not recorded'}"
-    if done.get("verified") is not True:
-        return _close_stop(500, "Unavailable", "Could not verify the close", "Do not assume it was recorded or left unchanged.", "Status: DEGRADED · not verified", "danger")
     if done["status"] == "recorded":
         secrets.get("after", []).append("recruiters")
         return _close_stop(200, "Recorded", f"Closed: {status}", "The canonical record was written and read back.", f"{head} · {status}.", "ok")
@@ -391,11 +355,7 @@ def _close_post(req, who, secrets):
     return _close_stop(409, "Not changed", "Nothing was changed", "The record is no longer open.", f"{head} · currently {done['action'] or 'no status'}.")
 
 
-def handle_close(req, who, secrets):
-    try:
-        return (_close_get if req["method"] == "GET" else _close_post)(req, who, secrets)
-    except NotionError as error:
-        return _close_stop(409, "Not changed", "This record cannot be closed here", "The request was refused before anything was written.", f"Refused: {str(error)[:60]}")
+handle_close = handler(_close_get, _close_post, _close_stop, "This record cannot be closed here")
 
 
 # ---------- LIFE-35 (RECR-2.2): the recruiter brief, a read-only page built from the records on file when it is opened; nothing is stored or written ----------

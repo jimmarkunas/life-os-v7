@@ -1,7 +1,7 @@
-"""D194: Confirm Rejected. A confirmed action writes one exact Job Ledger row with read-back, and only then does the Hiring Pipeline projection drop the pursuit.
+"""D194: Confirm Rejected. A confirmed action writes one exact Job Ledger row with read-back.
 
-All company names, roles and ids here are invented. The chain under test is the production one: stage.confirm_rejected -> hiring.decision -> the Ledger client interface -> stage.run -> compiler -> region writer;
-only Notion (a stateful in-memory Ledger and the page tree), the snapshot store and the Calendar are stand-ins."""
+All company names, roles and ids here are invented. The chain under test is the Close screen's: hiring.decision routes the request to its Ledger row by page id and confirm_rejected writes it through the Ledger client interface;
+only Notion (a stateful in-memory Ledger) is a stand-in. The compiler's own tests are in CompilerTests; the Hiring Pipeline projection is tested in test_hiring."""
 import copy
 import json
 import re
@@ -9,8 +9,8 @@ import unittest
 from datetime import timedelta
 from unittest import mock
 
-from lifeos.hiring import compile as C, decision as D, models as M, render
-from lifeos.jobs import hiring_pipeline, ledger
+from lifeos.hiring import decision as D, models as M, render
+from lifeos.jobs import ledger
 from lifeos.platform.notion_client import NotionError
 from tests.hiring import test_hiring as T
 from tests.kit.tree import rich
@@ -121,53 +121,26 @@ class Source:
         return "".join(r["plain_text"] for r in self.pages[page_id]["properties"]["Hiring Decision History"]["rich_text"])
 
 
-class Untouchable:
-    def __getattr__(self, name):
-        raise AssertionError(f"the Notes pages were touched: {name}")
-
-
-PARENT = hiring_pipeline.Opportunity("aaaa1111-0000-4000-8000-0000000000aa", f"{COMPANY} - {ROLE}", hiring_pipeline.ACTIVE, 2, COMPANY, ROLE)       # an Active Notes page with two interview rounds
-SIBLING_PARENT = hiring_pipeline.Opportunity("aaaa1111-0000-4000-8000-0000000000bb", f"{COMPANY} - {SIBLING_ROLE}", hiring_pipeline.ACTIVE, 0, COMPANY, SIBLING_ROLE)
-
-
-def seen(tree):
-    return [row[0][0] for row in T.table_state(tree)]                                 # the first cell is "Company — Role"
-
-
 class Chain:
-    """The whole production path against the stand-ins. `tree` is the Daily Report page, `store` the private projection row."""
+    """What the Close screen does: `route` finds the Ledger row by page id, then `confirm_rejected` writes it with read-back."""
 
-    def __init__(self, source=None, parents=(PARENT, SIBLING_PARENT)):
-        self.source, self.parents, self.tree, self.store = source or Source(), list(parents), T.page(extra_rows=0), T.FakeStore()
+    def __init__(self, source=None):
+        self.source = source or Source()
 
-    def _patched(self):
-        import contextlib
-        stack = contextlib.ExitStack()
-        stack.enter_context(mock.patch.object(T.snapshot, "STORE", self.store))
-        stack.enter_context(mock.patch.object(T.stage.hiring_pipeline, "snapshot", lambda client, root, ledger=None: (list(self.parents), "ok")))
-        return stack
-
-    def project(self):
-        with self._patched():
-            return T.stage.run(0, True, T.RUN_ENV, ledger_client=self.source, pipeline_client=Untouchable(), calendar=T.FakeCalendar([]), connection=object(), client=self.tree, now=NOW)
-
-    def confirm(self, req=None, live=True, now=NOW, calendar=None):
-        with self._patched():
-            return T.stage.confirm_rejected(req or request(), live, T.RUN_ENV, ledger_client=self.source, now=now, pipeline_client=Untouchable(), calendar=calendar or T.FakeCalendar([]), connection=object(), client=self.tree)
+    def confirm(self, req=None, live=True, now=NOW):
+        req = req or request()
+        want = D.parse(req)
+        if D._page_id(D.route(D.rows(D.ledger_pages(self.source)), want)["id"]) != want["id"]:
+            raise D.fail("STALE_IDENTITY")
+        return D.confirm_rejected(self.source, req, live, now)
 
 
 class ConfirmRejectedTests(unittest.TestCase):
-    def test_a_confirmed_rejection_writes_the_exact_row_and_the_pursuit_leaves_the_active_queue_after_read_back(self):
+    def test_a_confirmed_rejection_writes_the_exact_row_after_read_back(self):
         chain = Chain()
-        chain.project()
-        self.assertEqual(sorted(seen(chain.tree)), sorted([f"{COMPANY} — {ROLE}", f"{COMPANY} — {SIBLING_ROLE}", f"{OTHER_COMPANY} — Program Manager"]))
         before = copy.deepcopy(chain.source.pages)
         done = chain.confirm()
         self.assertEqual((done["status"], done["verified"], done["entries"]), ("recorded", True, 1))
-        self.assertEqual(done["projection"], {"status": "fresh", "rows": 2, "closed": 1, "verified": True, "target_listed": False})
-        self.assertIs(done["cleared"], True)
-        self.assertNotIn(f"{COMPANY} — {ROLE}", seen(chain.tree))                                # gone from the Daily Report table only after the verified write
-        self.assertEqual(sorted(seen(chain.tree)), sorted([f"{COMPANY} — {SIBLING_ROLE}", f"{OTHER_COMPANY} — Program Manager"]))
         self.assertEqual(chain.source.patches(), [("PATCH", TARGET, ("Hiring Decision", "Hiring Decision History"))])      # one bounded write, two properties, one row
         self.assertEqual(chain.source.decision(), {"name": "Rejected"})
         entry = json.loads(chain.source.history())
@@ -177,13 +150,6 @@ class ConfirmRejectedTests(unittest.TestCase):
         for name in ("Applied", "Applied On", "Saturn Decision", "Company", "Job"):               # the historical application stays exactly as it was
             self.assertEqual(chain.source.pages[TARGET]["properties"][name], before[TARGET]["properties"][name], name)
 
-    def test_the_active_notes_page_and_its_interview_rounds_stay_where_they_are_while_the_pursuit_is_closed(self):
-        chain = Chain()
-        chain.confirm()
-        self.assertEqual([p.rounds for p in chain.parents if p.company == COMPANY and p.role == ROLE], [2])           # the Notes page is still an Active page with its rounds
-        self.assertNotIn(f"{COMPANY} — {ROLE}", seen(chain.tree))
-        self.assertEqual({e[1].split("/")[2] for e in T.writes(chain.tree)}, {"0000000000000000000000000000a001", "0000000000000000000000000000a003"})     # only the pinned region
-
     def test_retrying_the_same_confirmed_operation_writes_and_appends_nothing_twice(self):
         chain = Chain()
         chain.confirm()
@@ -191,7 +157,6 @@ class ConfirmRejectedTests(unittest.TestCase):
         self.assertEqual((again["status"], again["verified"], again["entries"]), ("already_recorded", True, 1))
         self.assertEqual(len(chain.source.patches()), 1)
         self.assertEqual(len(chain.source.history().splitlines()), 1)
-        self.assertNotIn(f"{COMPANY} — {ROLE}", seen(chain.tree))
 
     def test_a_different_operation_on_a_decided_row_is_a_conflict_and_never_replaces_the_decision(self):
         chain = Chain()
@@ -228,8 +193,8 @@ class ConfirmRejectedTests(unittest.TestCase):
     def test_a_dry_run_validates_everything_and_writes_nothing(self):
         chain = Chain()
         done = chain.confirm(live=False)
-        self.assertEqual((done["status"], done["verified"], done["cleared"]), ("dry_run", False, False))
-        self.assertEqual((chain.source.patches(), T.writes(chain.tree)), ([], []))
+        self.assertEqual((done["status"], done["verified"]), ("dry_run", False))
+        self.assertEqual(chain.source.patches(), [])
 
 
 class IdentityAndAuthorizationTests(unittest.TestCase):
@@ -238,7 +203,6 @@ class IdentityAndAuthorizationTests(unittest.TestCase):
             chain.confirm(req, **kw)
         self.assertEqual(str(error.exception), code)
         self.assertEqual(chain.source.patches(), [])
-        self.assertEqual(T.writes(chain.tree), [])
         for private in (COMPANY, ROLE, TARGET, OP, "Employer rejection"):                          # fixed codes only
             self.assertNotIn(private, str(error.exception))
 
@@ -254,9 +218,9 @@ class IdentityAndAuthorizationTests(unittest.TestCase):
         self.refused(Chain(Source([(TARGET, COMPANY, ROLE), (SIBLING, COMPANY, ROLE)])), request(id="f6" * 16), "DECISION_AMBIGUOUS")      # by names alone, two rows are never guessed
 
     def test_a_missing_row_or_a_row_that_is_no_longer_applied_has_no_match(self):
-        chain = Chain(Source([(SIBLING, COMPANY, SIBLING_ROLE)]), parents=())               # no Notes page either: nothing to close (with one, the pursuit routes through its Notes page, D195)
+        chain = Chain(Source([(SIBLING, COMPANY, SIBLING_ROLE)]))
         self.refused(chain, request(), "DECISION_NO_MATCH")
-        gone = Chain(parents=())
+        gone = Chain()
         gone.source.pages[TARGET]["properties"]["Applied"] = {"checkbox": False}
         self.refused(gone, request(), "DECISION_NO_MATCH")
 
@@ -287,7 +251,7 @@ class IdentityAndAuthorizationTests(unittest.TestCase):
         chain.source.fail_read = True
         with self.assertRaises(NotionError):
             chain.confirm()
-        self.assertEqual((chain.source.patches(), T.writes(chain.tree)), ([], []))
+        self.assertEqual(chain.source.patches(), [])
 
     def changed_after(self, call, edit, code="DECISION_STALE_IDENTITY"):
         chain = Chain()
@@ -295,7 +259,7 @@ class IdentityAndAuthorizationTests(unittest.TestCase):
         with self.assertRaises(NotionError) as error:
             chain.confirm()
         self.assertEqual(str(error.exception), code)
-        self.assertEqual((chain.source.patches(), T.writes(chain.tree)), ([], []))
+        self.assertEqual(chain.source.patches(), [])
 
     def test_a_row_that_changes_after_the_query_but_before_the_exact_fetch_authorizes_nothing(self):
         def unapply(source):
@@ -316,7 +280,7 @@ class IdentityAndAuthorizationTests(unittest.TestCase):
         with self.assertRaises(NotionError) as error:
             chain.confirm()
         self.assertEqual(str(error.exception), "DECISION_STALE_IDENTITY")
-        self.assertEqual((chain.source.patches(), T.writes(chain.tree)), ([], []))
+        self.assertEqual(chain.source.patches(), [])
 
     def test_a_row_that_changes_between_the_first_fetch_and_the_write_authorizes_nothing_even_with_an_unchanged_edit_time(self):
         def unapply(source):
@@ -350,19 +314,15 @@ class IdentityAndAuthorizationTests(unittest.TestCase):
 
 
 class FailedWriteTests(unittest.TestCase):
-    """Whatever goes wrong, nothing reports success and the Hiring Pipeline projection keeps showing what it showed."""
+    """Whatever goes wrong, nothing reports success."""
 
     def broken(self, code, **switch):
         chain = Chain()
-        chain.project()
-        shown, saves = T.table_state(chain.tree), chain.store.saves
         for name, value in switch.items():
             setattr(chain.source, name, value)
         with self.assertRaises(NotionError) as error:
             chain.confirm()
         self.assertEqual(str(error.exception), code)
-        self.assertEqual((T.table_state(chain.tree), chain.store.saves), (shown, saves))           # the UI is not cleared; the region is not even read for a rewrite
-        self.assertIn(f"{COMPANY} — {ROLE}", seen(chain.tree))
         return chain
 
     def test_a_refused_write_is_a_failure(self):
@@ -391,7 +351,6 @@ class FailedWriteTests(unittest.TestCase):
         def edit(source):
             source.pages[TARGET]["last_edited_time"] = "2026-10-06T01:00:00.000Z"
         chain = Chain()
-        chain.project()
         chain.source.on_get = {2: edit}                    # the second read of the exact row, just before the write
         with self.assertRaises(NotionError) as error:
             chain.confirm()
@@ -413,33 +372,6 @@ class FailedWriteTests(unittest.TestCase):
         chain.source.update_page_properties = real
         done = chain.confirm()                                                                       # the same operation id: the row already carries it, so it only verifies
         self.assertEqual((done["status"], len(chain.source.history().splitlines())), ("already_recorded", 1))
-        self.assertNotIn(f"{COMPANY} — {ROLE}", seen(chain.tree))
-
-    def test_a_projection_that_fails_after_a_verified_write_is_reported_and_the_decision_stands(self):
-        chain = Chain()
-        with mock.patch.object(T.stage, "run", side_effect=RuntimeError("down")):
-            done = chain.confirm()
-        self.assertEqual((done["status"], done["verified"], done["projection"], done["cleared"]), ("recorded", True, "FAILED", False))
-        self.assertEqual(chain.source.decision(), {"name": "Rejected"})
-
-    def test_a_fresh_verified_projection_that_still_lists_the_pursuit_is_recorded_but_never_cleared(self):
-        chain = Chain()
-        real = C.compile_rows
-
-        def forgetful(applied, *args, **kw):                         # a compiler that does not honour the decision: the table stays fresh and verified, and still lists the pursuit
-            return real([dict(a, decision=None) for a in applied], *args, **kw)
-        with mock.patch.object(T.stage.C, "compile_rows", forgetful):
-            done = chain.confirm()
-        self.assertEqual((done["status"], done["verified"]), ("recorded", True))                      # the canonical decision stands
-        self.assertEqual((done["projection"]["status"], done["projection"]["verified"], done["projection"]["target_listed"]), ("fresh", True, True))
-        self.assertIs(done["cleared"], False)
-        self.assertIn(f"{COMPANY} — {ROLE}", seen(chain.tree))
-
-    def test_a_degraded_projection_after_a_verified_write_is_never_reported_as_cleared(self):
-        chain = Chain()
-        done = chain.confirm(calendar=T.FakeCalendar([], broken=True))                              # Calendar unreadable: the projection is DEGRADED
-        self.assertEqual((done["status"], done["verified"], done["projection"]["status"], done["cleared"]), ("recorded", True, "degraded", False))
-        self.assertEqual(chain.source.decision(), {"name": "Rejected"})
 
 
 class CompilerTests(unittest.TestCase):
