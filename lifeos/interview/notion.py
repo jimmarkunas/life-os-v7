@@ -191,14 +191,10 @@ def parents_from_ledger(client, source_id, context=None):
         else:
             return Scan((), False)
         found = []
-        for row in rows:
-            props = row.get("properties") or {}
-            company, role = _ledger_text(props.get("Company"), "rich_text"), _ledger_text(props.get("Job"), "title")
-            stage = ((props.get(LEDGER_STAGE) or {}).get("select") or {}).get("name")
-            decision = ((props.get(LEDGER_DECISION) or {}).get("select") or {}).get("name")
-            if not (company and role and stage and row.get("id")):
+        for row in map(_ledger_row, rows):
+            if not (row["company"] and row["role"] and row["stage"] and row["id"]):
                 continue                                                       # an unnamed row is not a pursuit
-            found.append(Parent(row["id"], f"{company} - {role}", stage in LEDGER_ACTIVE and not decision))
+            found.append(Parent(row["id"], f"{row['company']} - {row['role']}", row["stage"] in LEDGER_ACTIVE and not row["decision"]))
         return Scan(tuple(found), True)
     except (NotionError, DeadlineExceeded, KeyError, TypeError, ValueError, AttributeError):
         return Scan((), False)
@@ -575,7 +571,6 @@ def write_tree(client, parent_id, blocks, after=None, title=None, budget=None, i
         raise NotionError("INTERVIEW_TREE_BUDGET")
     body = {"children": [plan[0] for plan in plans]}
     if title is not None:
-        from lifeos.platform.notion_client import rich_text
         page = {"parent": {"type": "page_id", "page_id": parent_id}, "properties": {"title": {"type": "title", "title": rich_text(title)}},
                 **({"icon": icon} if icon else {})}
         if template:                                                    # a template page takes no children in the same request
@@ -676,7 +671,6 @@ def append_children(client, page_id, heading_id, blocks):
 
 
 def paragraph(content):
-    from lifeos.platform.notion_client import rich_text
     return {"object": "block", "type": "paragraph", "paragraph": {"rich_text": rich_text(content)}}
 
 

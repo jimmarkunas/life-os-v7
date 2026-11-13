@@ -3,7 +3,7 @@ import unittest
 from datetime import date, datetime
 
 from lifeos.jobs import backlog
-from tests.jobs.test_exclusions import Cursor
+from tests.kit.db import RoutedRows
 from tests.jobs.test_private_report import FakeClient
 
 NOW = datetime(2026, 10, 31, 7, 0)                                       # 2:00 AM CT
@@ -19,14 +19,9 @@ ROWS = [
 RELEASED = [("PUBLISHED", 1, 30), ("PUBLISHED", 0, 2), ("EXCLUDED_UNRESOLVED", 1, 4), ("EXCLUDED_FIT", 1, 5), ("DUPLICATE", 1, 1), ("RESOLVED", 0, 1)]
 
 
-class TwoQueries(Cursor):
+def TwoQueries(rows, released=()):
     """The backlog query returns ROWS; the LIFE-212 release query returns its own (status, is_linkedin, n) rows."""
-    def __init__(self, rows, released=()):
-        super().__init__(rows)
-        self.released = list(released)
-
-    def fetchall(self):
-        return self.released if "recovered_at" in (self.last or "") else super().fetchall()
+    return RoutedRows([("recovered_at", list(released))], rows)
 
 
 class Report(unittest.TestCase):
@@ -46,7 +41,7 @@ class Report(unittest.TestCase):
         cursor = TwoQueries(ROWS)
         counts = backlog.run(0, False, connect=lambda: cursor, client=FakeClient(), now=NOW)
         self.assertEqual((counts["total"], counts["page"], counts["failed"], counts["left_out"]), (5, "dry", 0, 0))
-        self.assertEqual(cursor.sql, ["SELECT", "SELECT"])                                  # reads only
+        self.assertEqual(cursor.verbs(), ["SELECT", "SELECT"])                                  # reads only
         client = FakeClient()
         counts = backlog.run(0, True, connect=lambda: TwoQueries(ROWS, RELEASED), client=client, now=NOW)
         self.assertEqual((counts["page"], counts["rows"], counts["failed"]), ("new", 5, 0))

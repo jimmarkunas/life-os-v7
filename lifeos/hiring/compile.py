@@ -9,19 +9,10 @@ Inputs (all already read and checked complete by the source adapter):
 
 Output: {"rows": [...] | None, "reasons": [fixed codes], "unsupported": n, "unmatched_events": n}. rows None means UNAVAILABLE (nothing safe to show); any reason means the presentation is DEGRADED.
 A row stores structure (stage, event kind and start, parent state), never display text, so a past event can never keep an "upcoming" label."""
-from datetime import date, datetime, timezone
+from datetime import datetime
 
 from lifeos.platform import names
 from . import models as M
-
-def _tokens(text):
-    return names.tokens(text)
-
-
-def _contains(haystack, needle):
-    n = len(needle)
-    return n > 0 and any(haystack[i:i + n] == needle for i in range(len(haystack) - n + 1))
-
 
 def event_kind(title):
     """The supported evidence kind a title states, else None. Unsupported titles establish nothing."""
@@ -40,10 +31,10 @@ def event_kind(title):
 def match_event(title, opps):
     """-> (index of the one opportunity the title names, None) | (None, "ambiguous") | (None, "none"). Company tokens must appear in order in the title; if
     several opportunities share the company, the role tokens must narrow it to exactly one. Never a guess."""
-    words = _tokens(title)
-    hits = [i for i, o in enumerate(opps) if _contains(words, _tokens(o["company"]))]
+    words = names.tokens(title)
+    hits = [i for i, o in enumerate(opps) if M.contains(words, names.tokens(o["company"]))]
     if len(hits) > 1:
-        hits = [i for i in hits if opps[i]["role"] and set(_tokens(opps[i]["role"])) <= set(words)]
+        hits = [i for i in hits if opps[i]["role"] and set(names.tokens(opps[i]["role"])) <= set(words)]
         if len(hits) != 1:
             return None, "ambiguous"
     return (hits[0], None) if hits else (None, "none")
@@ -102,13 +93,8 @@ def _opportunities(applied, parents, reasons, out):
     return opps
 
 
-def _moment(value):
-    moment = datetime.fromisoformat(value if "T" in value else value + "T00:00:00-05:00")
-    return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
-
-
 def _key(company, role):
-    return "|".join(_tokens(company)) + "|" + "|".join(sorted(_tokens(role)))
+    return "|".join(names.tokens(company)) + "|" + "|".join(sorted(names.tokens(role)))
 
 
 def _hold(row, opp, hit, before):
@@ -117,10 +103,10 @@ def _hold(row, opp, hit, before):
     hold = M.hold_of(opp.get("hand", ()) + opp.get("page_holds", ()))
     if not hold:
         return
-    set_at = _moment(hold["at"])
+    set_at = M.moment(hold["at"])
     cleared = before.get("hold_cleared") if (before.get("hold_cleared") or {}).get("op") == hold["op"] else None
-    newer = sorted((_moment(when), by) for by, when in [("Calendar", e.get("updated")) for e in opp["events"]] + [("mail", (hit or {}).get("received")), ("mail", row.get("contact"))]
-                   if when and _moment(when) > set_at)
+    newer = sorted((M.moment(when), by) for by, when in [("Calendar", e.get("updated")) for e in opp["events"]] + [("mail", (hit or {}).get("received")), ("mail", row.get("contact"))]
+                   if when and M.moment(when) > set_at)
     if not cleared and newer:
         cleared = {"op": hold["op"], "state": hold["state"], "by": newer[0][1], "on": newer[0][0].isoformat()}
     if cleared:
@@ -185,7 +171,7 @@ def compile_rows(applied, parents, events, prior, ok, now, outcomes=None, contac
         hit = (outcomes or {}).get(key)
         if hit and row["stage"] is not None:                      # D190: outcome mail seen after this row's last evidence is shown as a line to confirm, never as a stage change
             last = row["event_start"] or row["applied_on"]
-            if last is None or datetime.fromisoformat(hit["received"]) > _moment(last):
+            if last is None or datetime.fromisoformat(hit["received"]) > M.moment(last):
                 row["outcome"] = {"kind": hit["kind"], "received": hit["received"], "match": hit.get("match", "company"), "exact": hit.get("exact") is True}
         if (contacts or {}).get(key):                             # LIFE-26: the last direct, non-automated message for this row resets its Stale clock
             row["contact"] = contacts[key]

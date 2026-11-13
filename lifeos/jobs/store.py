@@ -1,7 +1,14 @@
 """Jobs OS tables and persistence (Hostinger). The connection itself lives in lifeos.platform.db."""
+from datetime import datetime, timezone
 import sys
 
 from lifeos.platform.db import StoreError, connect          # noqa: F401 - the jobs facade for the database
+
+
+def now():
+    """The one UTC clock (naive) of the jobs stages; each stage keeps it as `_now` so a test can pin that stage alone."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
 
 SCHEMA = (
     """CREATE TABLE IF NOT EXISTS v7_jobs (

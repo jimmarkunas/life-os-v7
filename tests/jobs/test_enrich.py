@@ -5,6 +5,7 @@ from unittest import mock
 
 from lifeos.jobs import enrich
 from tests.kit import shared
+from tests.kit.db import FakeConn
 
 
 class Page:
@@ -18,6 +19,10 @@ JOB = ("<html><head><title>Senior Data Engineer</title><script type='application
 LONG = "<p>" + ("Responsibilities: build pipelines and own data quality across the platform. You will need experience with SQL and Python skills. " * 4) + "</p>"
 
 
+def job_html(posted):
+    return JOB % (posted, LONG.replace('"', "'"))
+
+
 class EnrichTests(unittest.TestCase):
     def _read(self, html, title="Senior Data Engineer", status=200):
         with mock.patch.object(enrich, "fetch", return_value=Page(status, html)):
@@ -25,17 +30,17 @@ class EnrichTests(unittest.TestCase):
 
     def test_fresh_posting_is_ready(self):
         today = enrich._now().date().isoformat()
-        self.assertEqual(self._read(JOB % (today, LONG.replace('"', "'")))["outcome"], "ready")
+        self.assertEqual(self._read(job_html(today))["outcome"], "ready")
 
     def test_old_posting_is_stale(self):
-        self.assertEqual(self._read(JOB % ("2020-01-01", LONG.replace('"', "'")))["outcome"], "stale")
+        self.assertEqual(self._read(job_html("2020-01-01"))["outcome"], "stale")
 
     def test_dead_page_is_closed(self):
         self.assertEqual(self._read("", status=404)["outcome"], "closed")
 
     def test_other_job_is_a_mismatch(self):
         today = enrich._now().date().isoformat()
-        self.assertEqual(self._read(JOB % (today, LONG.replace('"', "'")), title="Registered Nurse Manager")["outcome"],
+        self.assertEqual(self._read(job_html(today), title="Registered Nurse Manager")["outcome"],
                          "mismatch")
 
     def test_blocked_page_is_retryable(self):
@@ -60,8 +65,6 @@ class BlockedReportTests(unittest.TestCase):
 
 class FallbackOnceTests(unittest.TestCase):
     def test_empty_pages_get_one_browser_fetch_then_are_marked_and_skipped(self):
-        from unittest import mock
-        from tests.kit.db import FakeConn
         rows = [(1, "https://a.example/j/1", "PM", "ats", None), (2, "https://b.example/j/2", "PM", "ats", enrich.TRIED_REASON)]
         results = [(1, {"outcome": "blocked", "reason": "description_empty"}),
                    (2, {"outcome": "blocked", "reason": enrich.TRIED_REASON})]
@@ -102,10 +105,6 @@ class LinkedInGuestPageTests(unittest.TestCase):
                 'you agree to the User Agreement, Privacy Policy and Cookie Policy.</p><div class="show-more-less-html__markup"></div></body></html>')
         result = enrich.parse_html("https://www.linkedin.com/jobs/view/4443205698", "Principal Technical Program Manager", page)
         self.assertEqual((result["outcome"], result.get("reason")), ("blocked", "description_empty"))
-
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 class FreshnessAuthority(unittest.TestCase):
@@ -160,8 +159,7 @@ class FreshnessAuthority(unittest.TestCase):
 
 class DiceEasyApply(unittest.TestCase):
     def test_a_dice_page_with_the_easy_apply_marker_is_flagged(self):
-        from unittest import mock
-        html = JOB % (enrich._now().date().isoformat(), LONG.replace('"', "'")) + "<button>Easy Apply</button>"
+        html = job_html(enrich._now().date().isoformat()) + "<button>Easy Apply</button>"
         with mock.patch.object(enrich, "fetch", return_value=Page(200, html)):
             got = enrich.read_page("https://www.dice.com/job-detail/1dde497d-8758-4eed-8aac-816bed294b63", "Senior Data Engineer")
             plain = enrich.read_page("https://careers.example.com/j/1", "Senior Data Engineer")
@@ -184,7 +182,6 @@ class MismatchTests(unittest.TestCase):
 
     def test_a_mismatch_is_an_attempt_and_parks_on_hold_at_the_cap(self):
         from lifeos.platform import limits
-        from tests.kit.db import FakeConn
         seen = []
         conn = FakeConn(handler=lambda sql, args, cursor: seen.append((sql, args)))
         enrich.save(conn, 7, {"outcome": "mismatch", "reason": "jd_listing"})
@@ -240,7 +237,6 @@ class TitleProofTests(unittest.TestCase):
 
 class OneBadPageTests(unittest.TestCase):
     def test_a_page_that_raises_is_blocked_and_the_rest_of_the_batch_still_runs(self):
-        from tests.kit.db import FakeConn
         rows = [(1, "https://a.example.com/jobs/111111", "Senior Engineer", "ats", None, "US Remote", "web:a", None),
                 (2, "https://b.example.com/jobs/222222", "Senior Engineer", "ats", None, "US Remote", "web:b", None)]
 
@@ -266,7 +262,6 @@ class OneBadPageTests(unittest.TestCase):
 class DrainPassTests(unittest.TestCase):
     """LIFE-76: the drain pass never spends the TinyFish Fetch day cap and leaves a page that needs that fallback untouched for the hourly pass."""
     def _run(self, drain):
-        from tests.kit.db import FakeConn
         rows = [(1, "https://a.example.com/jobs/111111", "Senior Engineer", "ats", None, "US Remote", "web:a", None),
                 (2, "https://b.example.com/jobs/222222", "Senior Engineer", "ats", None, "US Remote", "web:b", None)]
 
@@ -291,7 +286,6 @@ class DrainPassTests(unittest.TestCase):
         self.assertEqual((saved, fallback, counts["left_for_hourly"]), ([2], [], 1))      # the blocked page keeps its row as it was: no attempt counted
 
     def test_a_page_the_fallback_reads_keeps_the_link_it_was_read_from(self):
-        from tests.kit.db import FakeConn
         rows = [(1, "https://a.example.com/jobs/111111", "Senior Engineer", "ats", None, "US Remote", "web:a", None)]
 
         def handler(sql, args, cursor):
@@ -379,7 +373,7 @@ class FirstPartyRelinkTests(unittest.TestCase):
         self.assertEqual(revived, [1, 4, 6, 7])
 
     def test_revolut_403_is_retried_as_chrome(self):
-        html = JOB % ("2020-01-01", LONG.replace('"', "'"))
+        html = job_html("2020-01-01")
         with mock.patch.object(enrich, "fetch", return_value=Page(403, "")), \
                 mock.patch.object(enrich.impersonate, "fetch", return_value=Page(200, html)) as chrome:
             result = enrich.read_page(self.URL, "Senior Data Engineer")
@@ -394,7 +388,7 @@ class FirstPartyRelinkTests(unittest.TestCase):
         self.assertEqual(result["reason"], "http_403")
 
     def test_a_first_party_403_is_retried_as_the_announced_bot(self):
-        html = JOB % (enrich._now().date().isoformat(), LONG.replace('"', "'"))         # LIFE-212: dated today, as a US Remote employer-board job is judged by age too
+        html = job_html(enrich._now().date().isoformat())         # LIFE-212: dated today, as a US Remote employer-board job is judged by age too
         with mock.patch.object(enrich, "fetch", return_value=Page(403, "")), \
                 mock.patch.object(enrich.egress, "honest", return_value=Page(200, html)) as honest:
             result = enrich.read_page("https://careers.example.com/j/1", "Senior Data Engineer", first_party=True)
@@ -435,18 +429,10 @@ class FirstPartyRelinkTests(unittest.TestCase):
         self.assertEqual(enrich.parse_html("https://x.example/careers", "Senior Data Engineer", other, "Scale-Up", True, True)["outcome"], "mismatch")
         self.assertEqual(enrich.parse_html("https://x.example/careers", "Senior Data Engineer", page, "Scale-Up", True, False)["outcome"], "mismatch")   # no provenance, no heading proof
 
-    def test_every_thin_board_hold_is_read_again_now_inside_the_one_off_window_and_once_a_day_after_it(self):
-        from datetime import timedelta
-        inside = enrich.THIN_BOARD_REQUEUE_UNTIL - timedelta(minutes=1)
+    def test_a_hold_after_failed_reads_is_read_again_in_its_own_hour_each_day(self):
         cur = self.Cur([])
-        enrich.relink_first_party(cur, now=inside)
+        enrich.relink_first_party(cur)
         hold = [s for s, _ in cur.sql if s.startswith("UPDATE") and "status='HOLD' AND final_apply_url IS NOT NULL" in s][0]
-        self.assertIn("unresolved_reason='jd_thin' AND (source LIKE 'web:gh-%%' OR source LIKE 'web:lv-%%' OR source LIKE 'web:ab-%%')", hold)
-        self.assertIn(enrich.DAILY_SLOT, hold)                                           # every other hold keeps its own hour
-        cur = self.Cur([])
-        enrich.relink_first_party(cur, now=enrich.THIN_BOARD_REQUEUE_UNTIL)
-        hold = [s for s, _ in cur.sql if s.startswith("UPDATE") and "status='HOLD' AND final_apply_url IS NOT NULL" in s][0]
-        self.assertNotIn("web:gh-", hold)                                                # the window is over: back to one slot a day
         self.assertTrue(hold.endswith(enrich.DAILY_SLOT))
 
     def test_a_mismatch_hold_is_read_again_once_a_day(self):
@@ -477,7 +463,7 @@ class LocationFromThePageTests(unittest.TestCase):
 
     def test_no_location_in_the_page_adds_nothing(self):
         today = enrich._now().date().isoformat()
-        html = JOB % (today, LONG.replace('"', "'"))
+        html = job_html(today)
         self.assertNotIn("location", enrich.parse_html("https://careers.example.com/j/1", "Senior Data Engineer", html))
 
     def test_a_stored_place_is_never_overwritten(self):
@@ -618,11 +604,6 @@ class PostedDateAuthority(unittest.TestCase):
         self.assertEqual(list(enrich.TRUST), ["employer", "aggregator", "newsletter", "email"])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
-
 class BoardApiTests(unittest.TestCase):
     """Oct 25 7:40 PM CT drain: 154 pages stayed blocked (jd_thin 80, empty 49); Lever and Greenhouse-listed jobs among them were read short."""
 
@@ -660,7 +641,7 @@ class BoardApiTests(unittest.TestCase):
         self.assertEqual(got["outcome"], "ready")
 
     def test_a_board_api_that_does_not_know_the_id_falls_back_to_the_page(self):
-        html = JOB % ("2026-10-20", LONG.replace('"', "'"))
+        html = job_html("2026-10-20")
         with mock.patch.object(enrich, "_api_job", side_effect=lambda u: {"closed": True} if "greenhouse" in u else None), \
                 mock.patch.object(enrich, "fetch", return_value=Page(200, html)):
             got = enrich.read_page("https://acme.example/careers/position/7654321", "Senior Data Engineer", first_party=True, board=("greenhouse", "acme"))

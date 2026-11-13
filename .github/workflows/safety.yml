@@ -31,7 +31,7 @@ jobs:
       LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}         # deliberately not in Bitwarden; the other values come from the Bitwarden step below
       STAGE: ${{ inputs.stage || 'all' }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
       - uses: ./.github/actions/python
       - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
         uses: ./.github/actions/bws-helper

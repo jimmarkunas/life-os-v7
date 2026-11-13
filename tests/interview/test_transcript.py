@@ -1,7 +1,7 @@
 """LIFE-37: the Granola transcript contract (lifeos/interview/transcript.py), synthetic data only; no live data or credentials."""
 import json
 import unittest
-from lifeos.interview.transcript import ContractError, normalize_granz, disposition
+from lifeos.interview.transcript import ContractError, normalize_granz
 
 DOC = "00000000-0000-4000-8000-000000000001"
 
@@ -50,9 +50,8 @@ class ContractTests(unittest.TestCase):
         a = normalize_granz(DOC, wrapper([segment()]))
         b = normalize_granz(DOC, wrapper([segment()]))
         c = normalize_granz(DOC, wrapper([segment(text="New synthetic content")]))
-        self.assertEqual("INSERT", disposition(None, a.source_content_sha256))
-        self.assertEqual("NOOP", disposition(a.source_content_sha256, b.source_content_sha256))
-        self.assertEqual("UPDATE", disposition(a.source_content_sha256, c.source_content_sha256))
+        self.assertEqual(a.source_content_sha256, b.source_content_sha256)
+        self.assertNotEqual(a.source_content_sha256, c.source_content_sha256)
 
     def test_timestamp_z_and_offset(self):
         e = normalize_granz(DOC, wrapper([segment(start_timestamp="2026-10-21T18:00:00Z",end_timestamp="2026-10-21T18:00:01Z")]))
@@ -106,10 +105,6 @@ class ContractTests(unittest.TestCase):
     def test_none_channel_ok_unknown(self):
         e=normalize_granz(DOC,wrapper([segment(source=None)]))
         self.assertEqual("unknown",e.segments[0].channel)
-
-    def test_digest_validation(self):
-        with self.assertRaises(ContractError):
-            disposition("strange", "00"*32)
 
 if __name__ == "__main__":
     unittest.main()

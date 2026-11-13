@@ -85,6 +85,11 @@ class Envelope:
         }
 
 
+def _refuse(bad, code):
+    if bad:
+        raise ContractError(code)
+
+
 def normalize_granz(document_uuid: str, raw_json: str | bytes) -> Envelope:
     """Validate actual granz `show <uuid> --transcript --json` JSON shape.
 
@@ -92,65 +97,47 @@ def normalize_granz(document_uuid: str, raw_json: str | bytes) -> Envelope:
     proof, so 'available' means segments retrieved, not full audio fidelity.
     """
     uid = _source_uuid(document_uuid)
-    if not isinstance(raw_json, (str, bytes)) or len(raw_json) > MAX_BYTES:
-        raise ContractError("TRANSCRIPT_PAYLOAD_TOO_LARGE_OR_INVALID")
+    _refuse(not isinstance(raw_json, (str, bytes)) or len(raw_json) > MAX_BYTES, "TRANSCRIPT_PAYLOAD_TOO_LARGE_OR_INVALID")
     try:
         obj = json.loads(raw_json)
     except (ValueError, UnicodeDecodeError, TypeError) as exc:
         raise ContractError("TRANSCRIPT_INVALID_JSON") from exc
-    if not isinstance(obj, dict) or set(obj) != {"transcript"}:
-        raise ContractError("TRANSCRIPT_UNEXPECTED_CLI_SHAPE")
+    _refuse(not isinstance(obj, dict) or set(obj) != {"transcript"}, "TRANSCRIPT_UNEXPECTED_CLI_SHAPE")
     rows = obj["transcript"]
-    if not isinstance(rows, list) or not rows:
-        raise ContractError("TRANSCRIPT_NO_TRANSCRIPT_SEGMENTS")
-    if len(rows) > MAX_SEGMENTS:
-        raise ContractError("TRANSCRIPT_TOO_MANY_SEGMENTS")
+    _refuse(not isinstance(rows, list) or not rows, "TRANSCRIPT_NO_TRANSCRIPT_SEGMENTS")
+    _refuse(len(rows) > MAX_SEGMENTS, "TRANSCRIPT_TOO_MANY_SEGMENTS")
 
     result: list[Segment] = []
     seen_ids: set[str] = set()
     prev_time: datetime | None = None
     for idx, item in enumerate(rows):
-        if not isinstance(item, dict):
-            raise ContractError("TRANSCRIPT_INVALID_SEGMENT")
+        _refuse(not isinstance(item, dict), "TRANSCRIPT_INVALID_SEGMENT")
         source_document = item.get("document_id")
-        if source_document is not None and _source_uuid(source_document) != uid:
-            raise ContractError("TRANSCRIPT_SEGMENT_DOCUMENT_MISMATCH")
+        _refuse(source_document is not None and _source_uuid(source_document) != uid, "TRANSCRIPT_SEGMENT_DOCUMENT_MISMATCH")
         text = item.get("text")
-        if not isinstance(text, str) or not text.strip():
-            raise ContractError("TRANSCRIPT_EMPTY_SEGMENT_TEXT")
-        if len(text) > MAX_TEXT_CHARS:
-            raise ContractError("TRANSCRIPT_SEGMENT_TEXT_TOO_LONG")
+        _refuse(not isinstance(text, str) or not text.strip(), "TRANSCRIPT_EMPTY_SEGMENT_TEXT")
+        _refuse(len(text) > MAX_TEXT_CHARS, "TRANSCRIPT_SEGMENT_TEXT_TOO_LONG")
         start_dt = _parse_time(item.get("start_timestamp"), required=True)
         end_dt = _parse_time(item.get("end_timestamp"), required=False)
         assert start_dt is not None
-        if prev_time is not None and start_dt < prev_time:
-            raise ContractError("TRANSCRIPT_NONMONOTONIC_SEGMENTS")
-        if end_dt is not None and end_dt < start_dt:
-            raise ContractError("TRANSCRIPT_END_PRECEDES_START")
+        _refuse(prev_time is not None and start_dt < prev_time, "TRANSCRIPT_NONMONOTONIC_SEGMENTS")
+        _refuse(end_dt is not None and end_dt < start_dt, "TRANSCRIPT_END_PRECEDES_START")
         prev_time = start_dt
 
         raw_id = item.get("id")
         if raw_id is not None:
-            if not isinstance(raw_id, str) or not raw_id or len(raw_id) > 256:
-                raise ContractError("TRANSCRIPT_INVALID_SEGMENT_ID")
-            if raw_id in seen_ids:
-                raise ContractError("TRANSCRIPT_DUPLICATE_SEGMENT_ID")
+            _refuse(not isinstance(raw_id, str) or not raw_id or len(raw_id) > 256, "TRANSCRIPT_INVALID_SEGMENT_ID")
+            _refuse(raw_id in seen_ids, "TRANSCRIPT_DUPLICATE_SEGMENT_ID")
             seen_ids.add(raw_id)
 
         raw_channel = item.get("source")
         channel = "unknown" if raw_channel is None else raw_channel
-        if not isinstance(channel, str) or channel not in CHANNELS:
-            raise ContractError("TRANSCRIPT_INVALID_CHANNEL")
+        _refuse(not isinstance(channel, str) or channel not in CHANNELS, "TRANSCRIPT_INVALID_CHANNEL")
         speaker = item.get("detected_speaker_name")
-        if speaker is not None and (
-            not isinstance(speaker, str) or not speaker.strip() or len(speaker) > 256
-        ):
-            raise ContractError("TRANSCRIPT_INVALID_SPEAKER_LABEL")
+        _refuse(speaker is not None and (not isinstance(speaker, str) or not speaker.strip() or len(speaker) > 256), "TRANSCRIPT_INVALID_SPEAKER_LABEL")
         final = item.get("is_final")
-        if final is not None and not isinstance(final, bool):
-            raise ContractError("TRANSCRIPT_INVALID_IS_FINAL")
-        if final is False:
-            raise ContractError("TRANSCRIPT_UNFINALIZED_SEGMENT")
+        _refuse(final is not None and not isinstance(final, bool), "TRANSCRIPT_INVALID_IS_FINAL")
+        _refuse(final is False, "TRANSCRIPT_UNFINALIZED_SEGMENT")
         result.append(Segment(
             ordinal=idx,
             source_segment_id=raw_id,
@@ -175,14 +162,4 @@ def normalize_granz(document_uuid: str, raw_json: str | bytes) -> Envelope:
         source_fidelity="granz_private_desktop_api",
         segments=tuple(result),
         source_content_sha256=sha256(canonical).hexdigest(),
-    )
-
-
-def disposition(previous_hash: str | None, incoming_hash: str) -> str:
-    if not re.fullmatch(r"[a-f0-9]{64}", incoming_hash):
-        raise ContractError("TRANSCRIPT_INVALID_CONTENT_DIGEST")
-    if previous_hash is not None and not re.fullmatch(r"[a-f0-9]{64}", previous_hash):
-        raise ContractError("TRANSCRIPT_INVALID_CONTENT_DIGEST")
-    return "INSERT" if previous_hash is None else (
-        "NOOP" if previous_hash == incoming_hash else "UPDATE"
     )

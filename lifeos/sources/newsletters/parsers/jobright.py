@@ -4,7 +4,7 @@ The provider's match % is stored as evidence only (provider_score); it counts ze
 import re
 
 from lifeos.sources.newsletters.parsers import _anchors
-from lifeos.sources.newsletters.parsers.lensa import AGE, AGE_DAYS, Card
+from lifeos.sources.newsletters.parsers._anchors import AGE, AGE_DAYS, Card
 
 JOB = re.compile(r"jobright\.ai/jobs/info/([0-9A-Za-z]+)")
 MONEY = re.compile(r"\$\s*[\d.,]+\s*[KkMm]?\s*/\s*(?:yr|hr|year|hour)", re.I)
