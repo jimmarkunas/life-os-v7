@@ -7,7 +7,7 @@ tailnet TCP port to it with a PROXY protocol v2 header carrying the WireGuard-au
   1. requires that header and asks tailscaled who the source is: only a node carrying TAG (the V7 hourly runner's ephemeral identity) is served;
   2. requires the request to be exactly "alerts <lookback hours 1-72>" or "comms <64 lowercase hex: a one-run key the runner just generated>";
   comms3 (LIFE-30, Jim's approval Oct 15 2026, Jira 10215): the comms2 answer plus a `whatsapp` block read from the dedicated WhatsApp attention
-     service's 0600 Unix socket (~/.local/state/lifeos-whatsapp/attention.sock): counts, health and the newest sender's name scrambled the same way;
+     service's Unix socket (/run/lifeos-wa/attention.sock, owner lifeos-wa, group ubuntu, 0660 since LIFE-643 row 1; before that ~/.local/state/lifeos-whatsapp/attention.sock, 0600): counts, health and the newest sender's name scrambled the same way;
   comms2 (LIFE-29/LIFE-34, Jim's approval Oct 15 2026, Jira 10203/10206): the comms answer plus a `telegram` block from the local TDLib attention
      adapter (~/.local/lib/lifeos-telegram/attention.py): Main-list unread messages/chats, total and unmuted, health and auth state, and the newest
      incoming sender's name scrambled under the same one-run key; the adapter's plaintext name never leaves this process;
@@ -52,7 +52,8 @@ SCHEMA = "lifeos.imessage.alerts.v2"
 COMMS_SCHEMA = "lifeos.imessage.comms.v1"
 COMMS2_SCHEMA = "lifeos.imessage.comms.v2"
 COMMS3_SCHEMA = "lifeos.imessage.comms.v3"
-WHATSAPP_SOCKET = os.path.expanduser("~/.local/state/lifeos-whatsapp/attention.sock")
+WHATSAPP_SOCKET = os.path.expanduser("~/.local/state/lifeos-whatsapp/attention.sock")      # the old ubuntu user unit's socket (kept for the rollback)
+WHATSAPP_SOCKET_WA = "/run/lifeos-wa/attention.sock"                                         # LIFE-643 row 1: the lifeos-wa service's socket (owner lifeos-wa, group ubuntu, 0660); tried first
 WA_HEALTH = ("CURRENT", "DEGRADED", "DISCONNECTED", "NOT_LINKED", "UNAVAILABLE")
 TELEGRAM = os.path.expanduser("~/.local/lib/lifeos-telegram/attention.py")
 TELEGRAM_TIMEOUT = 60
@@ -277,8 +278,8 @@ def _attention_block(got, key, healths):
             "observed_at": got.get("observed_at"), "latest_state": state, "latest": scramble(key, name[:MAX_NAME]) if name else None}
 
 
-def whatsapp(key, path=WHATSAPP_SOCKET):
-    """One snapshot from the always-on WhatsApp attention service; not running, slow or malformed is UNAVAILABLE, never zero."""
+def _wa_snapshot(path):
+    """One reply (at most 4096 bytes) from one socket path, parsed; anything wrong is None."""
     data = b""
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
@@ -289,9 +290,18 @@ def whatsapp(key, path=WHATSAPP_SOCKET):
                 if not chunk:
                     break
                 data += chunk
-        got = json.loads(data) if len(data) <= 4096 else None
+        return json.loads(data) if len(data) <= 4096 else None
     except (OSError, ValueError):
-        got = None
+        return None
+
+
+def whatsapp(key, path=None):
+    """One snapshot from the always-on WhatsApp attention service; not running, slow or malformed is UNAVAILABLE, never zero. Without `path`: the lifeos-wa socket first, then the old user unit's."""
+    got = None
+    for candidate in ((path,) if path else (WHATSAPP_SOCKET_WA, WHATSAPP_SOCKET)):
+        got = _wa_snapshot(candidate)
+        if got is not None:
+            break
     if isinstance(got, dict) and got.get("channel") != "whatsapp":
         got = None
     if isinstance(got, dict) and "chats_known" in got:
