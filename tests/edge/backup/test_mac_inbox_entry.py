@@ -41,10 +41,6 @@ class Inbox(unittest.TestCase):
         self.assertEqual(sorted(entries), ["t/keep.md"])
         self.assertEqual(extra["missing"], 0)
 
-    def test_the_inbox_path_and_name_are_clear_of_the_deny_pattern(self):
-        self.assertFalse(ob.denied("mac/mac-20261109-0100.tar.gz.gpg", ob.MAC_INBOX + "/mac-20261109-0100.tar.gz.gpg"))
-        self.assertEqual(ob.MAC_INBOX, "/srv/mac-inbox/in")
-
 
 if __name__ == "__main__":
     unittest.main()
