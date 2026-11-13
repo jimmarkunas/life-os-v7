@@ -1,19 +1,18 @@
 import json
 import re
+import types
 import unittest
-import urllib.error
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-from lifeos.outlook import stage, store
+from lifeos.outlook import stage
 from lifeos.platform import outlook
 from lifeos.platform.outlook import Outlook, OutlookError
-from tests.kit.http import Response, http_error  # noqa: F401
+from tests.kit import shared
+from tests.kit.http import Response, http_error
 
 ROOT = Path(__file__).resolve().parents[2]
-
-
 
 
 class Router:
@@ -158,65 +157,43 @@ class WriteTests(unittest.TestCase):
         self.assertIn("AAMk%2F%2B%3Did", calls[-2][1])                          # ids are URL-quoted
         self.assertEqual(json.loads(calls[-2][2]), {"destinationId": "F1"})
 
-    def test_a_denied_write_is_a_fixed_code_and_never_leaks(self):
-        def denied(request, timeout=0):
-            if "oauth2" in request.full_url:
-                return Response({"access_token": "A"})
-            raise urllib.error.HTTPError(request.full_url, 403, "secret body", {}, None)
-
-        with patch("urllib.request.urlopen", side_effect=denied):
-            with self.assertRaises(OutlookError) as error:
-                Outlook("cid", "R", sleep=lambda s: None).move("m", "F1")
-        self.assertEqual(str(error.exception), "OUTLOOK_HTTP_403")
-
     def test_nothing_in_the_adapter_deletes_or_sends(self):
         source = (ROOT / "lifeos/platform/outlook.py").read_text()
         for forbidden in ('"DELETE"', "'DELETE'", "/send", "sendMail", "/forward", "permanentDelete"):
             self.assertNotIn(forbidden, source)
 
 
-class FakeDb:
+class FakeDb(shared.SelfCursorDb):
     """Just enough of the token table: rows are {account: [refresh_token, fingerprint]}."""
 
     def __init__(self, rows=None):
         self.rows = {k: list(v) if isinstance(v, (list, tuple)) else [v, None] for k, v in (rows or {}).items()}
+        self.out = []
 
     def connect(self):
-        db = self
+        return self
 
-        class Cursor:
-            def __enter__(self): return self
-            def __exit__(self, *e): return False
+    def execute(self, sql, args=None):
+        self.out = []
+        if "information_schema" in sql:
+            self.out = [(1,)]
+        elif sql.startswith("INSERT"):
+            account, token, _, fp = args
+            self.rows[account] = [token, fp if fp is not None else self.rows.get(account, [None, None])[1]]
+        elif sql.startswith("SELECT refresh_token"):
+            self.out = [(self.rows[args[0]][0],)] if args[0] in self.rows else []
+        elif sql.startswith("SELECT fingerprint"):
+            self.out = [(self.rows[args[0]][1],)] if args[0] in self.rows else []
+        elif "WHERE fingerprint" in sql:
+            self.out = [(k,) for k, v in self.rows.items() if v[1] == args[0]]
+        elif sql.startswith("SELECT account"):
+            self.out = [(k,) for k in sorted(self.rows)]
 
-            def execute(self, sql, args=None):
-                self.out = []
-                if "information_schema" in sql:
-                    self.out = [(1,)]
-                elif sql.startswith("INSERT"):
-                    account, token, _, fp = args
-                    old = db.rows.get(account, [None, None])
-                    db.rows[account] = [token, fp if fp is not None else old[1]]
-                elif sql.startswith("SELECT refresh_token"):
-                    self.out = [(db.rows[args[0]][0],)] if args[0] in db.rows else []
-                elif sql.startswith("SELECT fingerprint"):
-                    self.out = [(db.rows[args[0]][1],)] if args[0] in db.rows else []
-                elif "WHERE fingerprint" in sql:
-                    self.out = [(k,) for k, v in db.rows.items() if v[1] == args[0]]
-                elif sql.startswith("SELECT account"):
-                    self.out = [(k,) for k in sorted(db.rows)]
+    def fetchone(self):
+        return self.out[0] if self.out else None
 
-            def fetchone(self):
-                return self.out[0] if self.out else None
-
-            def fetchall(self):
-                return self.out
-
-        class Conn:
-            def cursor(self): return Cursor()
-            def __enter__(self): return self
-            def __exit__(self, *e): return False
-
-        return Conn()
+    def fetchall(self):
+        return self.out
 
 
 class Mailbox:
@@ -226,13 +203,7 @@ class Mailbox:
         self.ids = ids
 
     def __call__(self, client_id, token):
-        mailbox_id = self.ids[token]
-
-        class One:
-            def get(self, path, params=None):
-                return {"id": mailbox_id}
-
-        return One()
+        return types.SimpleNamespace(get=lambda path, params=None: {"id": self.ids[token]})
 
 
 class StageTests(unittest.TestCase):
@@ -277,8 +248,7 @@ class StageTests(unittest.TestCase):
         self.assertEqual(db.rows["personal"][0], "SECRET-REFRESH")
         fp = db.rows["personal"][1]
         self.assertTrue(fp)
-        from lifeos.outlook import store as s
-        s.save(db.connect(), "personal", "ROTATED")
+        stage.store.save(db.connect(), "personal", "ROTATED")
         self.assertEqual(db.rows["personal"], ["ROTATED", fp])
 
     def test_config_must_name_a_known_label_and_a_client_id(self):

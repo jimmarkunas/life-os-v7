@@ -1,12 +1,12 @@
-"""Outlook stages. `auth` signs one mailbox in once (read-only by default; `write` asks for the right to move mail into a folder) (device code; the token goes straight into the private database, never into
-a secret or a log). `probe` is a read-only health check that prints counts only. Imports only the platform."""
+"""Outlook stages. `auth` signs one mailbox in once (device code; read-only by default, `write` also asks to move mail into a folder); the token goes straight into the private database,
+never into a secret or a log. `probe` is a read-only health check that prints counts only. Imports only the platform."""
 import hashlib
 import os
 import time
 from datetime import datetime, timedelta, timezone
 
+from lifeos.platform import db, outlook_tokens as store
 from lifeos.platform.outlook import Outlook, OutlookError, device_start, device_wait
-from . import store
 
 LABELS = ("personal", "work")
 
@@ -23,11 +23,6 @@ def _client_id(environ):
     if not value:
         raise OutlookError("OUTLOOK_CONFIG_MISSING:OUTLOOK_CLIENT_ID")
     return value
-
-
-def _connect():
-    from lifeos.platform import db
-    return db.connect()
 
 
 def fingerprint(factory, client_id, refresh_token):
@@ -48,7 +43,7 @@ def auth(limit, live, environ=os.environ, connect=None, client_factory=None, rep
     say(f"OUTLOOK SIGN-IN: open {started.get('verification_uri')} and enter code {started.get('user_code')}")
     reply = device_wait(client_id, started, sleep=sleep, clock=clock)
     who = fingerprint(client_factory or Outlook, client_id, reply["refresh_token"])
-    with (connect or _connect)() as connection:
+    with (connect or db.connect)() as connection:
         store.ensure_schema(connection)
         # Never let one mailbox replace another by accident (the label dropdown is easy to leave on its default).
         other = store.label_with(connection, who)
@@ -67,7 +62,7 @@ def probe(limit, live, environ=os.environ, connect=None, client_factory=None, no
     now = now or datetime.now(timezone.utc)
     since = (now - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
     out = {"accounts": 0, "ok": 0, "failed": 0, "recent": 0, "unread": 0, "why": {}}
-    with (connect or _connect)() as connection:
+    with (connect or db.connect)() as connection:
         store.ensure_schema(connection)
         labels = store.accounts(connection)
         out["accounts"] = len(labels)
