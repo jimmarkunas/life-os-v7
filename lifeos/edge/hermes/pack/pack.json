@@ -1,0 +1,7 @@
+{
+ "schema": 1,
+ "ticket": "LIFE-518",
+ "steps": ["steps/10-before.sh", "steps/20-message.sh", "steps/30-after.sh"],
+ "restore": {"files": [], "services": []},
+ "step_timeout_seconds": 300
+}
