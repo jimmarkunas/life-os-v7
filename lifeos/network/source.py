@@ -1,8 +1,7 @@
-"""Find and fetch the connections file attached to a private Notion page. Read-only. Nothing is written to Notion, and the file is held in
-memory only: never saved, logged, uploaded or committed.
+"""Find and fetch the connections file attached to a private Notion page. Read-only: nothing is written to Notion, and the file is held in memory only.
 
-Notion serves an attached file from a short-lived signed address (about an hour). The address is read from the page's blocks on each run,
-used once, and never stored or printed; only Notion-hosted files are accepted (an external link on the page is refused)."""
+The file is never saved, logged, uploaded or committed. Only Notion-hosted files are accepted (an external link on the page is refused)."""
+# Notion serves an attached file from a short-lived signed address (about an hour). The address is read from the page's blocks on each run, used once, and never stored or printed.
 import re
 import urllib.error
 import urllib.parse
