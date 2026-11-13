@@ -21,6 +21,7 @@
     {"name": "network-layout", "module": "lifeos.sources.network.ledger_layout"},
     {"name": "network-match", "module": "lifeos.sources.network.network_leads"},
     {"name": "network-surface", "module": "lifeos.sources.network.network_surface"},
-    {"name": "newsletter-trace", "module": "lifeos.sources.newsletters.cardtrace"}
+    {"name": "newsletter-trace", "module": "lifeos.sources.newsletters.cardtrace"},
+    {"name": "notion-sandbox-access", "module": "lifeos.sources.proofs.notion_sandbox_access"}
   ]
 }
