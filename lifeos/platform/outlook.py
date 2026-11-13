@@ -5,7 +5,10 @@ it (both safe to repeat); nothing here ever deletes, sends or edits mail."""
 from collections.abc import Callable
 from typing import Any
 from datetime import datetime
+import hashlib
 import json
+import os
+import re
 import time
 import urllib.error
 import urllib.parse
@@ -25,6 +28,18 @@ MESSAGE_FIELDS = "id,internetMessageId,receivedDateTime,isRead,from,subject,hasA
 
 class OutlookError(RuntimeError):
     """The message is always a fixed code."""
+
+
+def _down_marker(refresh_token):
+    """LIFE-646: one marker file per mailbox in the runner's temp folder (empty outside a runner, so nothing changes locally). It lives only as long as the job: once a mailbox has
+    answered a request with a server error or no answer after the client's own retries, every later request to it in the same job fails at once with a fixed code instead of
+    retrying the same outage again in each step. No cross-run state."""
+    base = os.environ.get("RUNNER_TEMP")
+    return os.path.join(base, "lifeos-outlook-down-" + hashlib.sha256(str(refresh_token).encode()).hexdigest()[:12]) if base else None
+
+
+def _is_outage(code):
+    return code == "OUTLOOK_NETWORK" or bool(re.fullmatch(r"OUTLOOK_HTTP_5\d\d", code))
 
 
 def _post_form(url, form, timeout=30):
@@ -84,7 +99,7 @@ class Outlook:
         if not client_id or not refresh_token:
             raise OutlookError("OUTLOOK_CONFIG_INVALID")
         self._client, self._refresh, self._save = client_id, refresh_token, save_refresh
-        self._timeout, self._sleep, self._token = timeout, sleep, None
+        self._timeout, self._sleep, self._token, self._down = timeout, sleep, None, _down_marker(refresh_token)
 
     def _access(self):
         if self._token is None:
@@ -112,8 +127,18 @@ class Outlook:
             if data is not None:
                 headers["Content-Type"] = "application/json"
             return urllib.request.Request(url, data=data, headers=headers, method=method)
-        return rest.call(build, OutlookError, "OUTLOOK", self._sleep, self._timeout, bad_json="BAD_RESPONSE",
-                         codes={401: "OUTLOOK_UNAUTHORIZED"}, honor_retry_after=True)
+        if self._down and os.path.exists(self._down):
+            raise OutlookError("OUTLOOK_UNAVAILABLE_THIS_JOB")
+        try:
+            return rest.call(build, OutlookError, "OUTLOOK", self._sleep, self._timeout, bad_json="BAD_RESPONSE",
+                             codes={401: "OUTLOOK_UNAUTHORIZED"}, honor_retry_after=True)
+        except OutlookError as error:
+            if self._down and _is_outage(str(error)):
+                try:
+                    open(self._down, "w").close()
+                except OSError:
+                    pass                                                        # a marker is a convenience; the error itself is still raised
+            raise
 
     def folder_id(self, name: str, create: bool = False) -> str | None:
         """The id of a top-level mail folder by name; created when asked and missing. None when missing and not creating."""

@@ -15,7 +15,7 @@ runs:
   steps:
     - id: chromium_cache
       name: Chromium download, cached (keyed on requirements-browser.lock; the system libraries are cached next to it)
-      uses: actions/cache@v4
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
       with:
         path: ~/.cache/ms-playwright
         key: playwright-${{ runner.os }}${{ inputs.cache_bust && format('-{0}', inputs.cache_bust) || '' }}-${{ hashFiles('requirements-browser.lock') }}
@@ -25,7 +25,7 @@ runs:
       run: echo "version=${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
     - id: libs_cache
       name: Browser system libraries, cached (the .deb files apt downloaded, keyed on the runner image version and requirements-browser.lock)
-      uses: actions/cache@v4
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
       with:
         path: ~/apt-debs
         key: aptlibs-${{ runner.os }}-${{ steps.runner_image.outputs.version }}${{ inputs.cache_bust && format('-{0}', inputs.cache_bust) || '' }}-${{ hashFiles('requirements-browser.lock') }}

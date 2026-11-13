@@ -5,11 +5,11 @@ import unittest
 from lifeos.jobs import lanes, publish, readback
 from lifeos.jobs.identity import url_key
 from lifeos.sources.newsletters import config, finalize, ingest
-from lifeos.sources.newsletters.parsers import lensa
+from lifeos.sources.newsletters.parsers import jobright
 from tests.kit.gmail import FakeGmail
 
-MAIL = ('<a href="https://email.lensa.com/f/a/J1"><table><tr><td>Acme</td></tr><tr><td>Program Manager</td></tr>'
-        '<tr><td>Remote</td></tr></table></a>')
+MAIL = ('<a href="https://jobright.ai/jobs/info/J1"><span>Acme</span><span>Software</span><span>89</span><span>%</span>'
+        '<span>Program Manager</span><span>Remote, US</span><span>3 days ago</span></a>')
 
 
 class FakeNotion:
@@ -31,23 +31,28 @@ class FakeNotion:
                             if b["type"] == "paragraph" else {"heading_2": {}} for b in self.blocks[:3]]}
 
 
+def check(client, key, url, fit):
+    page = {"id": "p1", **client.call("GET", "/pages/p1")}
+    return readback.check_listed(client, "p1", key, url, fit, [page])
+
+
 class AcceptanceTests(unittest.TestCase):
     def test_a_newsletter_job_reaches_the_ledger_and_reads_back(self):
-        card = lensa.parse(MAIL)[0]
+        card = jobright.parse(MAIL)[0]
         self.assertEqual(ingest.status_for(card, 0), "NEW")
         facts = lanes.facts_for(81, card.title, card.location_text, "Remote role", None, date(2026, 10, 1), date(2026, 10, 1))
         decision, lane = lanes.decide("Newsletter", facts, date(2026, 10, 1))
         self.assertEqual((decision.status, lane), (lanes.ADMIT, "US Remote"))
         key, url = "k1", "https://acme.example/jobs/1"
-        row = {"title": card.title, "company": card.company, "url": url, "source": "lensa", "provider": "Lensa", "lane": "Newsletter",
+        row = {"title": card.title, "company": card.company, "url": url, "source": "jobright", "provider": "Jobright", "lane": "Newsletter",
                "key": key, "first_seen": date(2026, 10, 1), "posted": date(2026, 10, 1), "fit": 81, "fit_line": "[81%] Go",
                "admission": decision.status, "work_mode": facts.work_mode}
         props = publish.properties(row)
         blocks = publish.body_blocks(key, {"summary": "About", "responsibilities": "Lead delivery"})
-        self.assertIsNone(readback.check(FakeNotion(props, blocks), "p1", key, url, 81))
-        self.assertEqual(readback.check(FakeNotion(props, blocks), "p1", "other", url, 81), "key_mismatch")
-        self.assertEqual(readback.check(FakeNotion(props, blocks), "p1", key, "https://acme.example/jobs/2", 81), "url_mismatch")
-        self.assertEqual(readback.check(FakeNotion(props, blocks[:1]), "p1", key, url, 81), "no_description")
+        self.assertIsNone(check(FakeNotion(props, blocks), key, url, 81))
+        self.assertEqual(check(FakeNotion(props, blocks), "other", url, 81), "key_mismatch")
+        self.assertEqual(check(FakeNotion(props, blocks), key, "https://acme.example/jobs/2", 81), "url_mismatch")
+        self.assertEqual(check(FakeNotion(props, blocks[:1]), key, url, 81), "no_description")
         self.assertEqual(url_key(url), url_key(url + "/"))
 
     def test_a_uk_newsletter_job_is_excluded_by_market(self):
