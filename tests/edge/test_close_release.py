@@ -145,15 +145,11 @@ class AutoRelease(unittest.TestCase):
         for hourly, said in (((red,), "red"), ((running,), "running"), ((), "none"), (({**red, "conclusion": "success"},), "green")):
             fetch = self.fetch(hourly=hourly)
             self.assertEqual(rel.latest(fetch), C, said)                                 # LIFE-562: the hourly result never decides the deploy
-            self.assertEqual(rel.hourly_report(C, fetch), said)
 
     def test_a_green_hourly_run_does_not_release_a_red_ci_head(self):
         green_hourly = {**self.HOURLY, "conclusion": "success"}
         with self.assertRaises(rel.Refused):
             rel.latest(self.fetch(runs=({**self.RUN, "conclusion": "failure"},), hourly=(green_hourly,)))
-
-    def test_an_unreadable_hourly_report_says_unknown_and_never_raises(self):
-        self.assertEqual(rel.hourly_report(C, lambda url: (_ for _ in ()).throw(OSError("down"))), "unknown")
 
     def test_the_two_hour_stall_decision_is_made_by_close_release_not_by_shell_arithmetic(self):
         """LIFE-604 item 5: the decision lives in a function a unit test can run."""

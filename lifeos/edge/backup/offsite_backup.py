@@ -43,6 +43,7 @@ CENTRAL = ZoneInfo("America/Chicago")
 
 UBUNTU, GRANS = "/home/ubuntu", "/home/grans"
 HERMES = "/var/lib/hermeseval/home/.hermes"                           # LIFE-318 (Jim, Nov 5 2026: "Hermes backup: add to nightly"): the Hermes history, settings and memory notes; owner is the `hermes` user
+PROFILES = ("claude-hermes", "developer", "librarian", "research", "writer")
 # (archive name, source path, owner, required): databases are snapshotted by their OWNER through the sqlite backup API, so no file on the host changes hands.
 SQLITE = (
     ("grans/grans.db", GRANS + "/.local/share/grans/grans.db", "grans", True),
@@ -56,12 +57,7 @@ SQLITE = (
     ("hermes/shared-state.db", HERMES + "/shared-state.db", "hermes", False),
     ("hermes/kanban.db", HERMES + "/kanban.db", "hermes", False),
     ("hermes/projects.db", HERMES + "/projects.db", "hermes", False),
-    ("hermes/profiles/claude-hermes/state.db", HERMES + "/profiles/claude-hermes/state.db", "hermes", False),
-    ("hermes/profiles/developer/state.db", HERMES + "/profiles/developer/state.db", "hermes", False),
-    ("hermes/profiles/librarian/state.db", HERMES + "/profiles/librarian/state.db", "hermes", False),
-    ("hermes/profiles/research/state.db", HERMES + "/profiles/research/state.db", "hermes", False),
-    ("hermes/profiles/writer/state.db", HERMES + "/profiles/writer/state.db", "hermes", False),
-)
+) + tuple(("hermes/profiles/%s/state.db" % p, HERMES + "/profiles/%s/state.db" % p, "hermes", False) for p in PROFILES)
 FILES = (   # (archive name, source path, required)
     ("openclaw/openclaw.json", UBUNTU + "/.openclaw/openclaw.json", True),
     ("close/policy.json", "/etc/lifeos-close/policy.json", False),
@@ -72,17 +68,7 @@ FILES = (   # (archive name, source path, required)
     ("systemd/lifeos-resume@.service", "/etc/systemd/system/lifeos-resume@.service", False),
     ("hermes/config.yaml", HERMES + "/config.yaml", False),
     ("hermes/SOUL.md", HERMES + "/SOUL.md", False),
-    ("hermes/profiles/claude-hermes/config.yaml", HERMES + "/profiles/claude-hermes/config.yaml", False),
-    ("hermes/profiles/claude-hermes/SOUL.md", HERMES + "/profiles/claude-hermes/SOUL.md", False),
-    ("hermes/profiles/developer/config.yaml", HERMES + "/profiles/developer/config.yaml", False),
-    ("hermes/profiles/developer/SOUL.md", HERMES + "/profiles/developer/SOUL.md", False),
-    ("hermes/profiles/librarian/config.yaml", HERMES + "/profiles/librarian/config.yaml", False),
-    ("hermes/profiles/librarian/SOUL.md", HERMES + "/profiles/librarian/SOUL.md", False),
-    ("hermes/profiles/research/config.yaml", HERMES + "/profiles/research/config.yaml", False),
-    ("hermes/profiles/research/SOUL.md", HERMES + "/profiles/research/SOUL.md", False),
-    ("hermes/profiles/writer/config.yaml", HERMES + "/profiles/writer/config.yaml", False),
-    ("hermes/profiles/writer/SOUL.md", HERMES + "/profiles/writer/SOUL.md", False),
-)
+) + tuple(("hermes/profiles/%s/%s" % (p, f), HERMES + "/profiles/%s/%s" % (p, f), False) for p in PROFILES for f in ("config.yaml", "SOUL.md"))
 TREES = (   # (archive prefix, source directory): every regular file inside, except the DENY names and old *.bak copies
     ("config/lifeos-fit", UBUNTU + "/.config/lifeos-fit"),
     ("config/lifeos-resume", UBUNTU + "/.config/lifeos-resume"),
@@ -92,12 +78,7 @@ TREES = (   # (archive prefix, source directory): every regular file inside, exc
     ("openclaw/workspace", UBUNTU + "/.openclaw/workspace"),
     ("openclaw/jira-approvals", UBUNTU + "/.openclaw/jira-approvals"),
     ("hermes/memories", HERMES + "/memories"),
-    ("hermes/profiles/claude-hermes/memories", HERMES + "/profiles/claude-hermes/memories"),
-    ("hermes/profiles/developer/memories", HERMES + "/profiles/developer/memories"),
-    ("hermes/profiles/librarian/memories", HERMES + "/profiles/librarian/memories"),
-    ("hermes/profiles/research/memories", HERMES + "/profiles/research/memories"),
-    ("hermes/profiles/writer/memories", HERMES + "/profiles/writer/memories"),
-)
+) + tuple(("hermes/profiles/%s/memories" % p, HERMES + "/profiles/%s/memories" % p) for p in PROFILES)
 SECRET_TREES = (   # (archive prefix, source directory): credential material Jim chose to back up. Exempt from DENY, and ONLY these; never named in any output, counted only
     ("openclaw/credentials", UBUNTU + "/.openclaw/credentials"),
 )

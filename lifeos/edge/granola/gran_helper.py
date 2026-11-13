@@ -22,7 +22,6 @@ Fixed error codes (reply ok false): GRAN_BAD_FRAME, GRAN_BAD_OP, GRAN_NOT_FOUND,
 the contract's own TRANSCRIPT_* code when `purge` meets a transcript that no longer passes it. Never a message, path, exception text or transcript content.
 The Mac and Oracle share one Granola session, so a refresh on the Mac can sign Oracle out: that is GRAN_AUTH_EXPIRED, and a person signs Oracle in again. Stdlib only."""
 import json
-import os
 import re
 import sqlite3
 import subprocess
@@ -112,23 +111,28 @@ def signed_in(ctx):
     return done.returncode == 0 and b"Signed in" in done.stdout
 
 
+def _grans(ctx, args, wait):
+    """-> (the finished process, None) or (None, a fixed error code)."""
+    try:
+        done = ctx.grans_run(args, wait)
+    except subprocess.TimeoutExpired:
+        return None, "GRAN_TIMEOUT"
+    except (OSError, subprocess.SubprocessError):
+        return None, "GRAN_SYNC_FAILED"
+    if done.returncode != 0:
+        return None, "GRAN_SYNC_FAILED" if signed_in(ctx) else "GRAN_AUTH_EXPIRED"
+    return done, None
+
+
 def op_sync(req, ctx, nonce):
     for part in ("documents", "transcripts"):
-        try:
-            done = ctx.grans_run(["sync", part], SYNC_EACH)
-        except subprocess.TimeoutExpired:
-            return fail("GRAN_TIMEOUT", nonce)
-        except (OSError, subprocess.SubprocessError):
-            return fail("GRAN_SYNC_FAILED", nonce)
-        if done.returncode != 0:
-            return fail("GRAN_SYNC_FAILED" if signed_in(ctx) else "GRAN_AUTH_EXPIRED", nonce)
-    try:
-        db = ctx.database()
-        documents = db.execute("select count(*) from documents where deleted_at is null").fetchone()[0]
-        transcripts = db.execute("select count(distinct document_id) from transcript_utterances").fetchone()[0]
-        db.close()
-    except sqlite3.Error:
-        return fail("GRAN_SYNC_FAILED", nonce)
+        code = _grans(ctx, ["sync", part], SYNC_EACH)[1]
+        if code:
+            return fail(code, nonce)
+    db = ctx.database()
+    documents = db.execute("select count(*) from documents where deleted_at is null").fetchone()[0]
+    transcripts = db.execute("select count(distinct document_id) from transcript_utterances").fetchone()[0]
+    db.close()
     return good(nonce, documents=documents, transcripts=transcripts, exit=0)
 
 
@@ -143,15 +147,12 @@ def _calendar_start(raw):
 
 
 def op_list(req, ctx, nonce):
-    try:
-        db = ctx.database()
-        meetings = []
-        for doc_id, created, event, title in db.execute("select id, created_at, google_calendar_event_json, title from documents where deleted_at is null order by created_at"):
-            people = [(email or name or "") for email, name in db.execute("select email, full_name from document_people where document_id=?", (doc_id,))]
-            meetings.append({"id": doc_id, "start": _calendar_start(event) or created, "title": title or "", "attendees": [p for p in people if p]})
-        db.close()
-    except sqlite3.Error:
-        return fail("GRAN_SYNC_FAILED", nonce)
+    db = ctx.database()
+    meetings = []
+    for doc_id, created, event, title in db.execute("select id, created_at, google_calendar_event_json, title from documents where deleted_at is null order by created_at"):
+        people = [(email or name or "") for email, name in db.execute("select email, full_name from document_people where document_id=?", (doc_id,))]
+        meetings.append({"id": doc_id, "start": _calendar_start(event) or created, "title": title or "", "attendees": [p for p in people if p]})
+    db.close()
     return good(nonce, meetings=meetings, caps=CAPS)
 
 
@@ -167,14 +168,9 @@ def _known(ctx, doc_id):
 
 def _show(ctx, doc_id):
     """-> (stdout text, None) or (None, a fixed error code)."""
-    try:
-        done = ctx.grans_run(["show", doc_id, "--transcript", "--json", "--no-color"], SHOW_WAIT)
-    except subprocess.TimeoutExpired:
-        return None, "GRAN_TIMEOUT"
-    except (OSError, subprocess.SubprocessError):
-        return None, "GRAN_SYNC_FAILED"
-    if done.returncode != 0:
-        return None, "GRAN_SYNC_FAILED" if signed_in(ctx) else "GRAN_AUTH_EXPIRED"
+    done, code = _grans(ctx, ["show", doc_id, "--transcript", "--json", "--no-color"], SHOW_WAIT)
+    if code:
+        return None, code
     if len(done.stdout) > MAX_SHOW:
         return None, "GRAN_OVERSIZE"
     try:
@@ -226,15 +222,12 @@ def op_purge(req, ctx, nonce):
         return fail(error.code, nonce)
     if envelope.source_content_sha256 != want:
         return fail("GRAN_HASH_MISMATCH", nonce)
-    try:
-        db = ctx.database(write=True)
-        db.execute("pragma secure_delete=on")
-        removed = _purge_all(db, doc_id) if scope == "all" else db.execute("delete from transcript_utterances where document_id=?", (doc_id,)).rowcount
-        db.commit()
-        db.execute("pragma wal_checkpoint(truncate)")
-        db.close()
-    except sqlite3.Error:
-        return fail("GRAN_SYNC_FAILED", nonce)
+    db = ctx.database(write=True)                                   # a database error is the caller's GRAN_SYNC_FAILED: handle() answers it
+    db.execute("pragma secure_delete=on")
+    removed = _purge_all(db, doc_id) if scope == "all" else db.execute("delete from transcript_utterances where document_id=?", (doc_id,)).rowcount
+    db.commit()
+    db.execute("pragma wal_checkpoint(truncate)")
+    db.close()
     if scope == "all":
         return good(nonce, purged=removed, scope="all")
     return good(nonce, purged=1 if removed > 0 else 0)

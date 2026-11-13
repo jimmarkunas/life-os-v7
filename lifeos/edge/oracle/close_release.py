@@ -106,10 +106,6 @@ def head(fetch=get):
     return commit
 
 
-PR_TESTS = ".github/workflows/pr-tests.yml"
-HOURLY = ".github/workflows/hourly.yml"
-
-
 def _runs(workflow, commit, fetch):
     runs = json.loads(fetch(f"https://api.github.com/repos/{REPO}/actions/workflows/{workflow}/runs?branch=main&head_sha={commit}&per_page=20")).get("workflow_runs") or []
     return sorted((r for r in runs if r.get("head_sha") == commit and r.get("head_branch") == "main" and r.get("path") == f".github/workflows/{workflow}"),
@@ -129,18 +125,6 @@ def latest(fetch=get):
             return commit
         raise Refused("NOT_GREEN")                                      # the newest run is still going, failed or was cancelled: wait for a newer green one
     raise Refused("NOT_GREEN")                                          # no CI run of main tested this commit yet
-
-
-def hourly_report(commit, fetch=get):
-    """LIFE-562: what main's own hourly run says about this commit, for the journal only. It never blocks: green | red | running | none | unknown."""
-    try:
-        for run in _runs("hourly.yml", commit, fetch):
-            if run.get("status") != "completed":
-                return "running"
-            return "green" if run.get("conclusion") == "success" else "red"
-        return "none"
-    except Exception:                                                   # noqa: BLE001 - a report line, never a reason to refuse
-        return "unknown"
 
 
 def same(a, b):
@@ -204,9 +188,7 @@ def main(argv):
         elif argv[:1] == ["check"] and len(argv) == 2:
             check(argv[1])
         elif argv[:1] == ["latest"]:
-            sha = latest()
-            print(f"hourly run on {sha[:12]}: {hourly_report(sha)} (reported, does not block)", file=sys.stderr)
-            print(sha)
+            print(latest())
         elif argv[:1] == ["head"]:
             print(head())
         elif argv[:1] == ["same"] and len(argv) == 3:

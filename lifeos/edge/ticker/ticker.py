@@ -23,6 +23,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE if (HERE / "lifeos").is_dir() else HERE.parents[2]))        # installed: /opt/lifeos-ticker/lifeos; in the repo: the checkout root
+from lifeos.platform import gate                                   # noqa: E402 - after the path line above
 
 REPO = "jimmarkunas/life-os-v7"
 API = "https://api.github.com"
@@ -68,7 +69,6 @@ def too_soon(token, opener=urllib.request.urlopen, now=None):
     (lifeos.platform.gate.decide, gap from the GATE_MIN_GAP_MINUTES repository variable). Any doubt (a read failed, no list) is False: the dispatch goes ahead and the
     workflow's gate stays the backstop."""
     import datetime as dt                                          # noqa: PLC0415
-    from lifeos.platform import gate                               # noqa: PLC0415
     status, body = _status(_request(f"repos/{REPO}/actions/workflows/hourly.yml/runs?per_page=15", token), opener)
     if status != 200 or not isinstance(body, dict) or not isinstance(body.get("workflow_runs"), list):
         return False
@@ -123,7 +123,6 @@ def disk_incident(path=DISK_PATH, limit=DISK_LIMIT, usage=shutil.disk_usage, syn
     if percent is None:
         return None
     if sync is None:
-        from lifeos.platform import gate                           # noqa: PLC0415
         sync = gate.sync_incident
     return sync(DISK_LABEL, DISK_TITLE, f"The Hermes disk image on lifeos-edge-01 is {percent}% full (alarm at {limit}%). Free space or grow the image before it fills; "
                 "LIFE-301 has the plan. This issue closes itself when usage drops below the limit.", percent >= limit,
@@ -134,7 +133,6 @@ def disk_incident(path=DISK_PATH, limit=DISK_LIMIT, usage=shutil.disk_usage, syn
 def stall_incident(path=STALL_FILE, exists=os.path.exists, sync=None):
     """LIFE-562: one quiet issue + one phone push while the Close release timer has found no green main head for over 2 hours (it writes `path`); closes when the marker is gone."""
     if sync is None:
-        from lifeos.platform import gate                           # noqa: PLC0415
         sync = gate.sync_incident
     stalled = bool(exists(path))
     sync(STALL_LABEL, STALL_TITLE, "The Close service release timer on lifeos-edge-01 has found no green main head for over 2 hours, so no screen change is being deployed. Check the pr-tests run "
@@ -170,7 +168,6 @@ def drift_incident(token, opener=urllib.request.urlopen, sync=None, read=None, u
     if signal is not None:
         counts, drifted = drift.summary(rows)
         if sync is None:
-            from lifeos.platform import gate                       # noqa: PLC0415
             sync = gate.sync_incident
         sync(DRIFT_LABEL, DRIFT_TITLE, "A file installed on lifeos-edge-01 no longer matches main, or its unit is not running. Differing: " + ", ".join(drifted or ["none"]) +
              ". A merge does not update the VM; show Jim the files and the install command, and install only with his yes. This issue closes itself when every surface matches.", signal,
@@ -188,7 +185,6 @@ def watch(token, topic, opener=urllib.request.urlopen, run=None, environ=None, d
     environ.update(found)
     environ.update({"GITHUB_TOKEN": token, "GITHUB_REPOSITORY": REPO, "NTFY_TOPIC": topic})
     if run is None:
-        from lifeos.platform import gate                           # noqa: PLC0415 - only the watch command needs it
         run = gate.watch
         disk = disk or disk_incident
     try:
@@ -196,18 +192,11 @@ def watch(token, topic, opener=urllib.request.urlopen, run=None, environ=None, d
     except Exception:                                               # noqa: BLE001 - GitHub unreadable for the run list: a fixed code, the next run tries again
         return "TICKER_WATCH_FAILED", None
     if disk:
-        try:
-            disk()
-        except Exception:                                           # noqa: BLE001 - the disk check never fails the watchdog; the next run tries again
-            pass
-        try:
-            drift_incident(token, opener)                           # LIFE-528: inside the existing watchdog, no new scheduler
-        except Exception:                                           # noqa: BLE001 - the drift check never fails the watchdog either
-            pass
-        try:
-            stall_incident()                                        # LIFE-562: same watchdog; the marker is world-readable under /etc/lifeos-close
-        except Exception:                                           # noqa: BLE001 - never fails the watchdog
-            pass
+        for check in (disk, lambda: drift_incident(token, opener), lambda: stall_incident()):      # LIFE-528 drift and LIFE-562 stall run inside the existing watchdog, no new scheduler; looked up by name at call time
+            try:
+                check()
+            except Exception:                                       # noqa: BLE001 - an incident check never fails the watchdog; the next run tries again
+                pass
     return "WATCH_DONE", None
 
 

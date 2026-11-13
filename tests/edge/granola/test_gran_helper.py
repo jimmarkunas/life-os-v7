@@ -106,6 +106,11 @@ class Helper(unittest.TestCase):
         self.assertEqual((reply["ok"], reply["code"]), (False, "GRAN_SYNC_FAILED"))
         self.assertNotIn("boom", json.dumps(reply))
 
+    def test_an_unreadable_database_is_the_same_fixed_frame_for_sync_and_list(self):
+        self.db = os.path.join(self.dir, "missing.db")
+        for body in ({"op": "sync"}, {"op": "list"}):
+            self.assertEqual(self.call({**body, "nonce": "n"})[0], {"ok": False, "code": "GRAN_SYNC_FAILED", "nonce": "n"}, body["op"])
+
     def test_a_failed_sync_while_signed_out_is_auth_expired(self):
         self.assertEqual(self.call({"op": "sync", "nonce": "n"}, Fake(sync_exit=1, signed_in=False))[0]["code"], "GRAN_AUTH_EXPIRED")
 
