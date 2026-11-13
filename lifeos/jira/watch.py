@@ -1,7 +1,8 @@
-"""A scheduled sprint rollover that keeps failing must reach the phone (D181). The rollover step is a warning by design (a Jira hiccup never fails the Jobs run), so a board's rollover failed every hour from
-Monday 8:12 AM CT on Oct 12 without a word. The workflow runs this stage right after the rollover step and tells it the step's outcome: a live success records the time and closes any open alert; a
-live failure pages the phone only once the rollover has not worked for STUCK_HOURS (one blip is not an incident), then reminds every 6 hours (platform alerts, D53) and says when it recovers. The rollover
-step itself gets no database or phone secret: only this step does. State is one private row. Counts and fixed codes only; alerting never changes the rollover's own result."""
+"""Pages the phone when a scheduled sprint rollover keeps failing (D181).
+
+Runs right after the rollover step and is told that step's outcome. Live success: records the time and closes any open alert. Live failure: pages only once the rollover has not worked for STUCK_HOURS
+(one blip is not an incident), then reminds every 6 hours (platform alerts, D53) and says when it recovers. A skipped step or a dry run records nothing.
+The rollover step itself gets no database or phone secret: only this step does. State: one private row. Output: counts and fixed codes only; alerting never changes the rollover's own result."""
 import json
 import os
 from datetime import datetime, timezone

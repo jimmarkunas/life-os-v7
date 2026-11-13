@@ -1,6 +1,7 @@
-"""LIFE-313: turn one Jira issue (REST v3 JSON) into the record `python -m lifeos.sources.devtools.readiness issue` reads. Pure and offline except `fetch`,
-which does one read-only GET with the existing Jira credentials (names only, never values). A field that cannot be read from the issue is left
-out of the record, so the validator reports it; nothing here ever invents a pass."""
+"""LIFE-313: turn one Jira issue (REST v3 JSON) into the record `python -m lifeos.sources.devtools.readiness issue` reads.
+
+Pure and offline except `fetch`, which does one read-only GET with the existing Jira credentials (names only, never values).
+A field that cannot be read from the issue is left out of the record, so the validator reports it; nothing here ever invents a pass."""
 import re
 
 from lifeos.platform.jira import Jira, JiraError
