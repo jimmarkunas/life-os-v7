@@ -5,8 +5,7 @@ DEGRADED: classification counts are reported, nothing is written, and the run fa
 account returning server errors) the run is PARTIAL: what the readable sources hold is written (every write rests on a message that was read), nothing is concluded from the unread
 source, the heading and the counts name it (`unread`), and the ledger records only what was read, so the next run reads the unread source's mail as new.
 
-A LinkedIn notification with no recruiting evidence is UNRESOLVED (counted, no row; D193). An existing row made from such a notification is changed only when its exact message
-link is passed in `quarantine_sources` (nothing passes it today: a sweep over past rows is a separate decision); it is then set inactive only if nobody else has touched it."""
+A LinkedIn notification with no recruiting evidence is UNRESOLVED (counted, no row; D193). Rows already made from such a notification are never changed here: a sweep over past rows is a separate decision."""
 import json
 import os
 import re
@@ -19,7 +18,6 @@ from lifeos.platform.gmail import Gmail, GmailError
 from lifeos.platform.notion_client import Client, NotionError
 from lifeos.platform import mail_seen as seen
 from . import classify, notion as store, qualify, scan
-from .identity import clean_name, week_ending
 
 CHICAGO = ZoneInfo("America/Chicago")
 AUTO = object()                       # LIFE-610: "build the production ledger if the database is configured"
@@ -45,7 +43,7 @@ def _source(label):
     return "Outlook " + (re.sub(r"[^a-z0-9_-]", "", str(label).lower())[:24] or "account")
 
 
-def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, notion=None, now=None, quarantine_sources=(), ledger=AUTO):
+def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, notion=None, now=None, ledger=AUTO):
     now = now or datetime.now(timezone.utc)
     began = time.monotonic()
     ledger = seen.production(environ) if ledger is AUTO else ledger
@@ -64,7 +62,7 @@ def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, noti
     incremental = kind == seen.NEW_MAIL
     known = (lambda provider, ident: seen.key(provider, ident) in known_keys) if incremental else None
     counts = {"messages": 0, "unreadable": 0, "sources_failed": 0, "outlook_accounts": 0, "direct_human": 0, "human_relay": 0, "excluded": 0, "unresolved": 0, "needs_review": 0,
-              "would_create": 0, "would_update": 0, "existing": 0, "done_kept": 0, "ambiguous": 0, "created": 0, "updated": 0, "failed": 0, "excluded_why": {}, "unresolved_why": {}, "would_quarantine": 0, "quarantined": 0, "quarantine_skipped": 0,
+              "would_create": 0, "would_update": 0, "existing": 0, "done_kept": 0, "ambiguous": 0, "created": 0, "updated": 0, "failed": 0, "excluded_why": {}, "unresolved_why": {},
               "waiting": 0, "would_schedule": 0, "scheduled": 0, "would_reopen_due": 0, "reopened_due": 0, "notion": "ok",
               "scan": kind, "scan_why": why, "ledger": ledger_status}
     records, unread = [], []
@@ -95,7 +93,7 @@ def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, noti
         take(lambda c=client, l=label: mail.outlook_records(c, l, now, known=known, stats=stats), _source(label))
     counts["messages"] = len(records)
     counts["scanned"], counts["new"] = (stats["scanned"], stats["new"]) if incremental else (len(records), len(records))      # a 14-day scan reads everything it lists
-    candidates, unverified, quarantine_sources = [], [], set(quarantine_sources)
+    candidates = []
     for message in records:
         shape, reason, evidence = classify.classify(message)
         verdict, detail = qualify.qualify(message, shape, reason, evidence)
@@ -105,8 +103,6 @@ def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, noti
         elif verdict == "UNRESOLVED":
             counts["unresolved"] += 1
             counts["unresolved_why"][detail] = counts["unresolved_why"].get(detail, 0) + 1
-            if detail == classify.RELAY_UNVERIFIED and message.get("url") in quarantine_sources:
-                unverified.append((clean_name(evidence.get("name", ""), allow_single=True), week_ending(message["received"]), message["url"]))
         else:
             counts["direct_human" if shape == classify.DIRECT_HUMAN else "human_relay"] += 1
             counts["needs_review"] += 1 if detail["needs_review"] else 0
@@ -124,7 +120,6 @@ def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, noti
         notion = None
     if notion is not None:
         _apply(candidates, notion, write, counts)                          # every candidate is a message that was read; an unread source adds none
-        _quarantine(unverified, notion, live and not degraded, counts)     # a sweep over past rows concludes things from the mail: only on a complete read
         _follow_ups(notion, write, counts, now.astimezone(CHICAGO).date())
     if degraded:
         counts["unread"] = unread
@@ -180,24 +175,6 @@ def _apply(candidates, notion, write, counts):
                 except NotionError:
                     counts["failed"] += 1
                 cache.pop(c["week_ending"], None)
-
-
-def _quarantine(unverified, notion, write, counts):
-    """Only rows whose exact message link was passed in: the page must be the automation's own, untouched since it created it. Anything else is counted and left alone."""
-    for person, week, url in unverified:
-        rows = [r for r in store.week_rows(notion, week) if r["source_url"] == url and person and store.norm(r["person"]) == store.norm(person)]
-        if len(rows) != 1:
-            counts["ambiguous" if rows else "quarantine_skipped"] += 1
-        elif not store.quarantine_eligible(rows[0], url):
-            counts["quarantine_skipped"] += 1
-        else:
-            counts["would_quarantine"] += 1
-            if write:
-                try:
-                    store.quarantine(notion, rows[0], week)
-                    counts["quarantined"] += 1
-                except NotionError:
-                    counts["failed"] += 1
 
 
 def _follow_ups(notion, write, counts, today):
