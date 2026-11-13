@@ -22,10 +22,11 @@ from lifeos.platform.outlook import OutlookError
 from lifeos.platform import source_registry as registry
 
 
-def lazy(module, name="run", floor=0, **fixed):
-    """A stage that imports `module` on first use and calls module.name(max(limit, floor), live, **fixed)."""
+def lazy(module, name="run", floor=0, live_only=False, **fixed):
+    """A stage that imports `module` on first use and calls module.name(max(limit, floor), live, **fixed); with live_only it calls module.name(live=live, **fixed) and leaves the function's own limit alone."""
     def stage(limit, live):
-        return getattr(importlib.import_module(module), name)(max(limit, floor), live, **fixed)
+        function = getattr(importlib.import_module(module), name)
+        return function(live=live, **fixed) if live_only else function(max(limit, floor), live, **fixed)
     stage.target = (module, name)                # lets a test prove every stage points at a real function
     return stage
 
@@ -54,16 +55,6 @@ def _linkedin(limit, live):
 def _outlook_auth(limit, live):
     from lifeos.outlook import stage
     return stage.auth(limit, live, replace=os.environ.get("OUTLOOK_REPLACE") == "true", write=os.environ.get("OUTLOOK_WRITE") == "true")
-
-
-def _sync_seen(limit, live):
-    from lifeos.jobs import repost
-    return repost.sync_last_seen(live=live)
-
-
-def _purge(limit, live):
-    from lifeos.jobs import retention
-    return retention.run(live)
 
 
 STAGES = {
@@ -140,16 +131,15 @@ STAGES = {
     "funnel": lazy("lifeos.jobs.funnel"),
     "fit-review": lazy("lifeos.jobs.review"),
     "explain": lazy("lifeos.jobs.explain"),
-    "sync-seen": _sync_seen,
-    "purge": _purge,
+    "sync-seen": lazy("lifeos.jobs.repost", "sync_last_seen", live_only=True),
+    "purge": lazy("lifeos.jobs.retention", live_only=True),
 }
 STAGES.update(registry.stages(lazy))                                    # LIFE-618: the stages of the registered sources (lifeos/platform/source_registry.json)
 
 
 # D182: a stage whose counts carry `failed > 0` exits 1 with this fixed code (counts are still printed), so the workflow step reports failure, the
 # finish job's lane list names it, and the existing report job pushes it. Only the stages listed here; every other stage keeps its exit behavior.
-PARTIAL_FAILURE = {"capacity-card": "CAPACITY_READ_FAILED", "job-page-outreach": "JOB_PAGE_OUTREACH_PAGES_FAILED", "notion-sandbox-access": "NOTION_SANDBOX_ACCESS_DENIED", "notion-sandbox-outreach-proof": "NOTION_SANDBOX_PROOF_FAILED", "publish": "PUBLISH_RECORDS_FAILED", "fit": "FIT_CLOUD_DEGRADED", "fit-cloud-backlog": "FIT_CLOUD_DEGRADED", "interview": "INTERVIEW_OS_DEGRADED", "manual-job": "MANUAL_JOB_FAILED", "granola-auto": "GRAN_AUTO_FAILED", "mail-filing": "PHYSMAIL_FILING_FAILED", "scale-up-exclusion-review": "PRIVATE_REPORT_FAILED", "scale-up-register": "PRIVATE_REPORT_FAILED"}      # fit: D214, only when the cloud shadow is enabled and failed
-PARTIAL_FAILURE["jobs-backlog"] = "PRIVATE_REPORT_FAILED"          # LIFE-212 (a): the backlog report page
+PARTIAL_FAILURE = {"capacity-card": "CAPACITY_READ_FAILED", "job-page-outreach": "JOB_PAGE_OUTREACH_PAGES_FAILED", "notion-sandbox-access": "NOTION_SANDBOX_ACCESS_DENIED", "notion-sandbox-outreach-proof": "NOTION_SANDBOX_PROOF_FAILED", "publish": "PUBLISH_RECORDS_FAILED", "fit": "FIT_CLOUD_DEGRADED", "fit-cloud-backlog": "FIT_CLOUD_DEGRADED", "interview": "INTERVIEW_OS_DEGRADED", "manual-job": "MANUAL_JOB_FAILED", "granola-auto": "GRAN_AUTO_FAILED", "mail-filing": "PHYSMAIL_FILING_FAILED", "scale-up-exclusion-review": "PRIVATE_REPORT_FAILED", "scale-up-register": "PRIVATE_REPORT_FAILED", "jobs-backlog": "PRIVATE_REPORT_FAILED"}      # fit: D214, only when the cloud shadow is enabled and failed; jobs-backlog: LIFE-212 (a), the backlog report page
 
 
 def _step_code(counts):

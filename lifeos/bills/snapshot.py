@@ -107,10 +107,6 @@ def _query_all(client):
             raise BillsError("BILLS_PAGE_INCOMPLETE")
 
 
-def save(connection, snapshot):
-    STORE.save(connection, 1, snapshot)
-
-
 def load(connection):
     return STORE.load(connection, 1)
 

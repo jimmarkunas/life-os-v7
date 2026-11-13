@@ -28,6 +28,10 @@ class RegistryTests(unittest.TestCase):
         with patch("importlib.import_module", return_value=fake):
             self.assertEqual(run.lazy("m", "go", floor=500, lane="X")(40, True), {"n": 1})
         self.assertEqual(calls, [(500, True, {"lane": "X"})])
+        only_live = type("M", (), {"go": staticmethod(lambda live, **kw: calls.append((live, kw)) or {"n": 2})})            # sync-seen and purge: the function keeps its own limit
+        with patch("importlib.import_module", return_value=only_live):
+            self.assertEqual(run.lazy("m", "go", floor=500, live_only=True)(40, True), {"n": 2})
+        self.assertEqual(calls[1:], [(True, {})])
 
     def test_a_failing_stage_prints_a_fixed_code_and_returns_1(self):
         with patch.dict(run.STAGES, {"probe": lambda limit, live: (_ for _ in ()).throw(run.JiraError("JIRA_NETWORK"))}):
