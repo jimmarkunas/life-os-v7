@@ -7,6 +7,7 @@ import re
 
 from . import advisor, notion
 from .models import PrepEvidence
+from lifeos.platform.fixed_code import fixed
 from lifeos.platform.notion_client import Client, NotionError
 
 _ROOT = "LIFE OS — Interview Advisor"
@@ -44,21 +45,17 @@ def _canonical(value):
 
 
 def _json(text, keys, code=_CODE):
-    try:
+    with fixed((ValueError, TypeError), AdvisorStoreError, code):
         value = json.loads(text)
         _need(type(value) is dict and set(value) == set(keys), code)
         _need(_canonical(value) == text, code)
         return value
-    except (ValueError, TypeError):
-        raise AdvisorStoreError(code) from None
 
 
 def _plain(block):
-    try:
+    with fixed((KeyError, TypeError), AdvisorStoreError, "advisor_store_unreadable"):
         parts = block[block["type"]]["rich_text"]
         return "".join(part.get("plain_text", part.get("text", {}).get("content", "")) for part in parts)
-    except (KeyError, TypeError):
-        raise AdvisorStoreError("advisor_store_unreadable") from None
 
 
 def _title(page):
@@ -70,21 +67,15 @@ def _title(page):
 def _page(client, page_id, expected_title=None, parent=None, code=_CODE):
     """A page held by ID must be readable and live. LIFE-383 (D250): its title and its parent are NOT compared (`expected_title` and `parent` stay in the signature for the callers and are unused);
     a page's identity is its machine marker block, checked by `_marked`."""
-    try:
+    with fixed(Exception, AdvisorStoreError, "advisor_store_unreadable", keep=AdvisorStoreError):
         page = client.call("GET", f"/pages/{page_id}")
         _need(isinstance(page, dict) and not page.get("archived") and not page.get("in_trash"), code)
         return page
-    except AdvisorStoreError:
-        raise
-    except Exception:
-        raise AdvisorStoreError("advisor_store_unreadable") from None
 
 
 def _blocks(client, page_id):
-    try:
+    with fixed(Exception, AdvisorStoreError, "advisor_store_unreadable"):
         return notion.children(client, page_id, [40])
-    except Exception:
-        raise AdvisorStoreError("advisor_store_unreadable") from None
 
 
 _TEXT_BLOCKS = ("paragraph", "heading_1", "heading_2", "heading_3", "bulleted_list_item", "numbered_list_item",
@@ -112,24 +103,18 @@ def _marked(client, page_id, kind, metadata_prefix=None):
 
 def _first_marker(client, page_id, kind):
     """Read only the marker block; Queue contents belong to the later queue contract."""
-    try:
+    with fixed(Exception, AdvisorStoreError, "advisor_store_unreadable", keep=AdvisorStoreError):
         data = client.call("GET", f"/blocks/{page_id}/children?page_size=1")
         blocks = data["results"]
         expected = f"v7-interview-advisor:1;kind={kind}"
         _need(isinstance(blocks, list) and blocks and blocks[0].get("type") == "paragraph"
               and _plain(blocks[0]) == expected, "advisor_store_incomplete")
-    except AdvisorStoreError:
-        raise
-    except Exception:
-        raise AdvisorStoreError("advisor_store_unreadable") from None
 
 
 def _kind_of(client, page_id):
     """The `kind` in the page's first-block marker `v7-interview-advisor:1;kind=<kind>`, else None (an unmarked page is free-form and not ours)."""
-    try:
+    with fixed(Exception, AdvisorStoreError, "advisor_store_unreadable"):
         first = client.call("GET", f"/blocks/{page_id}/children?page_size=1")["results"][:1]     # the marker block only: a queue's contents belong to the queue contract
-    except Exception:
-        raise AdvisorStoreError("advisor_store_unreadable") from None
     text = _plain(first[0]) if first and first[0].get("type") == "paragraph" else ""
     match = re.fullmatch(r"v7-interview-advisor:1;kind=([a-z_]+)", text)
     return match.group(1) if match else None
@@ -180,10 +165,8 @@ def _source(client, page_id, kind, expected_marker):
           "advisor_store_invalid")
     text = "\n".join(_body_text(b) for b in blocks[2:])
     _need(bool(text), "advisor_store_incomplete")
-    try:
+    with fixed(ValueError, AdvisorStoreError, "advisor_store_invalid"):
         return advisor.AdvisorSource(meta["source_id"], kind, text, meta["version"])
-    except ValueError:
-        raise AdvisorStoreError("advisor_store_invalid") from None
 
 
 def _bank(client, page_id):
@@ -193,15 +176,13 @@ def _bank(client, page_id):
     _need(type(meta["version"]) is int and meta["version"] > 0, "advisor_store_invalid")
     keys = ("evidence_id", "version", "canonical_text", "source_ref", "tags", "active")
     records = []
-    try:
+    with fixed(ValueError, AdvisorStoreError, "advisor_store_invalid"):
         for block in blocks[2:]:
             _need(block.get("type") == "paragraph" and not block.get("has_children"), "advisor_store_invalid")
             data = _json(_plain(block), keys)
             _need(isinstance(data["tags"], list), "advisor_store_invalid")
             records.append(advisor.CandidateEvidence(advisor.EvidenceRef(data["evidence_id"], data["version"]),
                 data["canonical_text"], data["source_ref"], tuple(data["tags"]), data["active"]))
-    except ValueError:
-        raise AdvisorStoreError("advisor_store_invalid") from None
     _need(records and len({r.ref for r in records}) == len(records), "advisor_store_invalid")
     norm = [[r.ref.canonical(), r.canonical_text, r.source_ref, list(r.tags), r.active] for r in records]
     return meta["version"], tuple(records), hashlib.sha256(_canonical(norm).encode()).hexdigest()
@@ -211,14 +192,12 @@ def _records(client, page_id, marker_kind, signal=False):
     blocks = _marked(client, page_id, marker_kind)
     keys = ("source_id", "version", "source_round", "text", "active") if signal else ("source_id", "version", "text", "active")
     out = []
-    try:
+    with fixed(ValueError, AdvisorStoreError, "advisor_store_invalid"):
         for block in blocks[1:]:
             _need(block.get("type") == "paragraph" and not block.get("has_children"), "advisor_store_invalid")
             data = _json(_plain(block), keys)
             out.append(advisor.AdvisorSource(data["source_id"], advisor.SourceKind.ACCEPTED_SIGNAL if signal else advisor.SourceKind.GUIDANCE,
                                              data["text"], data["version"], data.get("source_round"), data["active"]))
-    except ValueError:
-        raise AdvisorStoreError("advisor_store_invalid") from None
     _need(len({(x.source_id, x.version) for x in out}) == len(out), "advisor_store_invalid")
     active = tuple(x for x in out if x.active)
     _need(len(active) <= (100 if signal else 3), "advisor_store_invalid")
@@ -247,7 +226,7 @@ def read_store(client, environ=os.environ):
     """Read only the root configured by INTERVIEW_ADVISOR_ROOT_PAGE_ID and its exact required descendants."""
     root_page_id = (environ.get("INTERVIEW_ADVISOR_ROOT_PAGE_ID") or "").strip()
     _need(bool(root_page_id), "advisor_store_invalid")
-    try:
+    with fixed(Exception, AdvisorStoreError, "advisor_store_unreadable", keep=AdvisorStoreError):
         _page(client, root_page_id, _ROOT)
         pages = _direct_pages(client, root_page_id, _NAMES)
         for name, page_id in pages.items():
@@ -278,10 +257,6 @@ def read_store(client, environ=os.environ):
         evidence = tuple(item for item in bank if item.active)
         return AdvisorStoreSnapshot(manifest, sl, gt, profile, evidence, guidance, signals,
                                     pages["Advisor Queue"], pages["Advisor Previews"])
-    except AdvisorStoreError:
-        raise
-    except Exception:
-        raise AdvisorStoreError("advisor_store_unreadable") from None
 
 
 def make_client(environ=os.environ):
@@ -406,18 +381,16 @@ def _parse_preview_body(blocks):
     _need(not pending_refs, "advisor_preview_invalid")
     _need(subheads == [x[0] for x in _PREP], "advisor_preview_invalid")
     _need(current == "Questions", "advisor_preview_invalid")
-    try:
+    with fixed(Exception, AdvisorStoreError, "advisor_preview_invalid"):
         result = PrepEvidence(**{key: tuple(value) for key, value in prep.items()})
         from .prep import normalize
         normalize(result)
-    except Exception:
-        raise AdvisorStoreError("advisor_preview_invalid") from None
     return "\n".join(lines), result
 
 
 def read_preview(client, preview_page_id, expected_previews_parent_id, expected_generation_id=None,
                  expected_bundle_hash=None):
-    try:
+    with fixed(Exception, AdvisorStoreError, "advisor_preview_invalid", keep=AdvisorStoreError):
         _need(isinstance(preview_page_id, str) and preview_page_id and
               isinstance(expected_previews_parent_id, str) and expected_previews_parent_id, "advisor_preview_invalid")
         page = _page(client, preview_page_id, parent=expected_previews_parent_id, code="advisor_preview_invalid")
@@ -433,10 +406,6 @@ def read_preview(client, preview_page_id, expected_previews_parent_id, expected_
         body, prep = _parse_preview_body(blocks[1:])
         _need(hashlib.sha256(body.encode()).hexdigest() == body_hash, "advisor_preview_invalid")
         return VerifiedPreview(gen, bundle_hash, body_hash, prep)
-    except AdvisorStoreError:
-        raise
-    except Exception:
-        raise AdvisorStoreError("advisor_preview_invalid") from None
 
 
 _DEFINITE = ("NOTION_HTTP_400", "NOTION_HTTP_401", "NOTION_HTTP_403", "NOTION_HTTP_404", "NOTION_HTTP_409", "NOTION_HTTP_429")
@@ -465,7 +434,7 @@ def create_preview(client, previews_page_id, generation_id, bundle, draft):
                                 else "advisor_preview_readback_failed") from None
     except Exception:
         raise AdvisorStoreError("advisor_preview_readback_failed") from None
-    try:
+    with fixed(Exception, AdvisorStoreError, "advisor_preview_readback_failed"):
         page_id = page.get("id")
         _need(isinstance(page_id, str) and re.fullmatch(
               r"(?:[0-9a-fA-F]{32}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})", page_id),
@@ -473,5 +442,3 @@ def create_preview(client, previews_page_id, generation_id, bundle, draft):
         verified = read_preview(client, page_id, previews_page_id, generation_id, digest)
         _need(verified.body_hash == body_hash and verified.prep == prep, "advisor_preview_readback_failed")
         return verified
-    except Exception:
-        raise AdvisorStoreError("advisor_preview_readback_failed") from None

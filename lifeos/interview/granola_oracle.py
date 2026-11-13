@@ -9,6 +9,7 @@ import socket
 import time
 
 from lifeos.platform import socket_exchange
+from lifeos.platform.fixed_code import fixed
 
 PORT = 47341
 MAX_REQUEST = 4096
@@ -52,13 +53,11 @@ def call(host, op, send=exchange, **fields):
     if len(raw) > MAX_REPLY:
         raise OracleError("GRAN_OVERSIZE")
     head, _, body = raw.partition(b"\n")
-    try:
+    with fixed((ValueError, AssertionError, UnicodeDecodeError), OracleError, "GRAN_REPLY_INVALID"):
         verb, size = head.decode("ascii").split(" ")
         assert verb == "gran1" and int(size) == len(body)
         reply = json.loads(body)
         assert isinstance(reply, dict) and isinstance(reply.get("ok"), bool)
-    except (ValueError, AssertionError, UnicodeDecodeError):
-        raise OracleError("GRAN_REPLY_INVALID") from None
     if reply.get("nonce") != nonce:
         raise OracleError("GRAN_NONCE_MISMATCH")
     if not reply["ok"]:

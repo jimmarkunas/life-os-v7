@@ -8,6 +8,7 @@ import time
 from datetime import datetime
 from urllib.parse import quote
 from lifeos.platform.names import same_company, same_role, split_title, tokens
+from lifeos.platform import notion_pages, notion_text
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 from lifeos.platform.runtime import DeadlineExceeded
 from .models import Child, Ownership, Parent, Scan
@@ -68,9 +69,7 @@ def machine_lines(client, page_id, size):
     return blocks, None
 
 
-def text(block):
-    parts = (block.get(block.get("type")) or {}).get("rich_text") or []
-    return "".join(p.get("plain_text", (p.get("text") or {}).get("content", "")) for p in parts)
+text = notion_text.block_text
 
 
 def target_check(client, environ):
@@ -100,23 +99,15 @@ def ownership(client, page_id, kind):
 
 
 def children(client, page_id, budget, context=None):
-    out, cursor, seen = [], None, set()
-    while budget[0] > 0:
+    def fetch(cursor):
+        if budget[0] <= 0:
+            raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
         if context:
             context.require_time()
         budget[0] -= 1
         path = f"/blocks/{page_id}/children?page_size=100"
-        data = client.call("GET", path + (f"&start_cursor={quote(cursor, safe='')}" if cursor else ""))
-        if not isinstance(data.get("results"), list) or type(data.get("has_more")) is not bool:
-            raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
-        out.extend(data["results"])
-        if not data["has_more"]:
-            return out
-        cursor = data.get("next_cursor")
-        if not isinstance(cursor, str) or not cursor or cursor in seen:
-            raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
-        seen.add(cursor)
-    raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
+        return client.call("GET", path + (f"&start_cursor={quote(cursor, safe='')}" if cursor else ""))
+    return [block for data in notion_pages.pages(fetch, NotionError, "INTERVIEW_SCAN_INCOMPLETE") for block in data["results"]]
 
 
 def parent_scan(client, root, context=None):
@@ -166,30 +157,24 @@ LEDGER_STAGE, LEDGER_DECISION, LEDGER_ACTIVE = "Stage", "Hiring Decision", ("App
 
 
 def _ledger_text(prop, kind):
-    return "".join((p.get("plain_text") or "") for p in (prop or {}).get(kind) or []).strip()
+    return notion_text.plain((prop or {}).get(kind)).strip()
+
+
+def _ledger_pages(client, source_id, body, context):
+    """The pages of a Job Ledger query (LEDGER_PAGES at most); anything short of a complete read raises NotionError, and each page first checks the deadline."""
+    def fetch(cursor):
+        if context:
+            context.require_time()
+        return client.query_data_source(source_id, {**body, **({"start_cursor": cursor} if cursor else {})})
+    return notion_pages.pages(fetch, NotionError, "INTERVIEW_SCAN_INCOMPLETE", limit=LEDGER_PAGES)
 
 
 def parents_from_ledger(client, source_id, context=None):
     """LIFE-360: every Job Ledger row whose Stage is set, as the same Parent the page-tree scan gives (page_id = the row page id, title = "Company - Role").
     Incomplete (a bad page set, a repeated cursor, too many pages, an unreadable row) is Scan((), False): never a partial list."""
-    rows, cursor, seen = [], None, set()
     try:
-        for _ in range(LEDGER_PAGES):
-            if context:
-                context.require_time()
-            body = {"page_size": 100, "filter": {"property": LEDGER_STAGE, "select": {"is_not_empty": True}}, **({"start_cursor": cursor} if cursor else {})}
-            page = client.query_data_source(source_id, body)
-            if not isinstance(page, dict) or not isinstance(page.get("results"), list) or type(page.get("has_more")) is not bool:
-                return Scan((), False)
-            rows += page["results"]
-            if not page["has_more"]:
-                break
-            cursor = page.get("next_cursor")
-            if not isinstance(cursor, str) or not cursor or cursor in seen:
-                return Scan((), False)
-            seen.add(cursor)
-        else:
-            return Scan((), False)
+        rows = [row for page in _ledger_pages(client, source_id, {"page_size": 100, "filter": {"property": LEDGER_STAGE, "select": {"is_not_empty": True}}}, context)
+                for row in page["results"]]
         found = []
         for row in map(_ledger_row, rows):
             if not (row["company"] and row["role"] and row["stage"] and row["id"]):
@@ -234,24 +219,9 @@ def ledger_row(client, source_id, company, role, key=None, context=None):
     words = tokens(company)
     if not words or not role.strip():
         return "ledger_unreadable", None
-    rows, cursor, seen = [], None, set()
     try:
-        for _ in range(LEDGER_PAGES):
-            if context:
-                context.require_time()
-            page = client.query_data_source(source_id, {"page_size": 100, "filter": {"property": "Company", "rich_text": {"contains": words[0]}},
-                                                        **({"start_cursor": cursor} if cursor else {})})
-            if not isinstance(page, dict) or not isinstance(page.get("results"), list) or type(page.get("has_more")) is not bool:
-                return "ledger_unreadable", None
-            rows += [_ledger_row(r) for r in page["results"] if not r.get("archived") and not r.get("in_trash")]
-            if not page["has_more"]:
-                break
-            cursor = page.get("next_cursor")
-            if not isinstance(cursor, str) or not cursor or cursor in seen:
-                return "ledger_unreadable", None
-            seen.add(cursor)
-        else:
-            return "ledger_unreadable", None
+        rows = [_ledger_row(r) for page in _ledger_pages(client, source_id, {"page_size": 100, "filter": {"property": "Company", "rich_text": {"contains": words[0]}}}, context)
+                for r in page["results"] if not r.get("archived") and not r.get("in_trash")]
     except (NotionError, DeadlineExceeded, KeyError, TypeError, ValueError, AttributeError):
         return "ledger_unreadable", None
     keyed = [r for r in rows if key and r["key"] == key]
@@ -686,12 +656,8 @@ def derived_blocks(client, page_id):
     Notion cannot page from a heading, so the API returns the whole top-level list; blocks before the heading are
     dropped as each page arrives and only headings are compared by text. A separate call budget keeps large human
     notes from exhausting the scan budget; running out still fails closed."""
-    heading, payload, ended, cursor, seen = None, [], False, None, set()
-    for _ in range(DERIVED_MAX_CALLS):
-        path = f"/blocks/{page_id}/children?page_size=100"
-        data = client.call("GET", path + (f"&start_cursor={quote(cursor, safe='')}" if cursor else ""))
-        if not isinstance(data.get("results"), list) or type(data.get("has_more")) is not bool:
-            raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
+    heading, payload, ended = None, [], False
+    for data in notion_pages.children(client, page_id, NotionError, incomplete="INTERVIEW_SCAN_INCOMPLETE", limit=DERIVED_MAX_CALLS):
         for block in data["results"]:
             kind = block.get("type")
             major = kind in ("heading_1", "heading_2")
@@ -704,15 +670,9 @@ def derived_blocks(client, page_id):
                     ended = True
                 else:
                     payload.append(block)
-        if not data["has_more"]:
-            if heading is None:
-                raise NotionError("INTERVIEW_DERIVED_MISSING")
-            return heading, payload
-        cursor = data.get("next_cursor")
-        if not isinstance(cursor, str) or not cursor or cursor in seen:
-            raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
-        seen.add(cursor)
-    raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
+    if heading is None:
+        raise NotionError("INTERVIEW_DERIVED_MISSING")
+    return heading, payload
 
 
 def readback(client, page_id, parent_id, kind, before=None):
