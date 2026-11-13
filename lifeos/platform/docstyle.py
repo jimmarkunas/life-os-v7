@@ -1,14 +1,13 @@
 """LIFE-595: the docstring standard for every lifeos module, and the check that keeps it. Counts and file names only.
 
 THE STANDARD (this docstring is the one place it is written):
-1. The first paragraph is ONE line of at most FIRST_LINE_MAX (170) characters that says what the module is for. The code map (`python -m lifeos.codemap`) shows exactly this line.
+1. The first paragraph is ONE line of at most FIRST_LINE_MAX (170) characters saying what the module is for; the code map shows exactly this line.
 2. After a blank line, only what a reader needs to use the module without reading its code: purpose, inputs, outputs, failure codes, and a pointer (a D-number, a LIFE key or a docs file). No history: history lives in docs/DECISIONS.md.
-3. The whole docstring is at most TOTAL_MAX characters (set from the pilot, `lifeos/buzz`: the longest module there needs about 1,000 and the median is about 330).
-4. A package `__init__.py` has a docstring of one line (the package summary the code map lists) and an `__all__` naming what the package exports.
+3. The whole docstring is at most TOTAL_MAX characters.
+4. A package `__init__.py` has a one-line docstring (the package summary the code map lists) and an `__all__` naming what the package exports.
 
-THE CHECK: `problems(source, is_init)` returns fixed codes; `python -m lifeos.platform.docstyle [--strict] [path ...]` prints a count per package. It is ADVISORY until the last package follows the standard:
-tests/platform/test_docstyle.py fails only for the packages listed in ENFORCED, and the last rollout PR turns that list into "every package". Changing a rule here changes it everywhere.
-Imports nothing from lifeos."""
+THE CHECK: `problems(source, is_init)` returns fixed codes; `python -m lifeos.platform.docstyle [--strict] [path ...]` prints a count per package. ADVISORY: tests/platform/test_docstyle.py fails only for the packages in ENFORCED. Imports nothing from lifeos."""
+# TOTAL_MAX was set from the pilot, `lifeos/buzz`: the longest module there needs about 1,000 characters and the median is about 330. The check is advisory until the last package follows the standard; the last rollout PR turns ENFORCED into "every package". Changing a rule here changes it everywhere.
 import ast
 import sys
 from pathlib import Path

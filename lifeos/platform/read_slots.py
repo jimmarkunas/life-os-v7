@@ -1,5 +1,6 @@
-"""LIFE-569: process-wide limits on how many reads of one kind are in flight at once, shared by every stage of a Jobs tick that runs side by side. Unconfigured (the default) a slot
-is a no-op, so nothing changes unless the tick configures it (the side-by-side runner does, always). Stdlib only; no job knowledge."""
+"""LIFE-569: process-wide limits on how many reads of one kind are in flight at once, shared by every stage of a Jobs tick that runs side by side.
+
+Unconfigured (the default) a slot is a no-op, so nothing changes unless the tick configures it (the side-by-side runner always does). Stdlib only; no job knowledge."""
 import threading
 from contextlib import contextmanager
 

@@ -1,6 +1,6 @@
-"""Hostinger MySQL connection through an SSH tunnel (platform: no job knowledge). Every error is a fixed code.
-One tunnel per process (LIFE-76 PR 4a, D207): it is opened on the first connect(), checked before reuse, reopened after a failure and closed
-at exit; every connect() is its own short MySQL session through it, so no stage holds a database session across network I/O."""
+"""Hostinger MySQL connection through an SSH tunnel (platform: no job knowledge); every error is a fixed code.
+
+One tunnel per process (D207, LIFE-76 PR 4a): opened on the first connect(), checked before reuse, reopened after a failure and closed at exit. Every connect() is its own short MySQL session through it, so no stage holds a database session across network I/O."""
 import atexit
 from collections.abc import Iterator
 from contextlib import contextmanager, suppress

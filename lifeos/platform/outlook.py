@@ -1,7 +1,6 @@
-"""Minimal Microsoft Graph mail client (stdlib only, platform: no product knowledge). Delegated OAuth with refresh tokens (device-code
-sign-in once, then silent refresh), immutable message ids, bounded full enumeration. Every error is a fixed code: never a URL, a token,
-an address or a response body. Reads retry transient failures. Writes are limited to creating one mail folder and moving a message into
-it (both safe to repeat); nothing here ever deletes, sends or edits mail."""
+"""Minimal Microsoft Graph mail client (stdlib only; platform: no product knowledge): delegated OAuth with refresh tokens, immutable ids, bounded enumeration.
+
+Device-code sign-in once, then silent refresh. Every error is a fixed code: never a URL, a token, an address or a response body. Reads retry transient failures. Writes are limited to creating one mail folder and moving a message into it (both safe to repeat); nothing here ever deletes, sends or edits mail."""
 from collections.abc import Callable
 from typing import Any
 from datetime import datetime

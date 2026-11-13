@@ -1,5 +1,6 @@
-"""Minimal Jira Cloud REST client (stdlib only, platform: no product knowledge). Every error is a fixed code: never a URL,
-a response body or an issue field. Reads retry transient failures; a write retries only when the caller says it is idempotent."""
+"""Minimal Jira Cloud REST client (stdlib only; platform: no product knowledge).
+
+Every error is a fixed code: never a URL, a response body or an issue field. Reads retry transient failures; a write retries only when the caller says it is idempotent."""
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping

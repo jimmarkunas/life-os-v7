@@ -1,5 +1,6 @@
-"""LIFE-645: `with fixed(catch, fail, code):` re-raises anything `catch` matches as the caller's fixed-code error, with no chained cause (a Notion body, a URL or a token never rides along).
-`keep` names errors that already carry a fixed code: they pass through unchanged (`with fixed(Exception, fail, code, keep=NotionError):`)."""
+"""LIFE-645: `with fixed(catch, fail, code):` re-raises what `catch` matches as the caller's fixed-code error, with no chained cause.
+
+A Notion body, a URL or a token never rides along. `keep` names errors that already carry a fixed code: they pass through unchanged (`with fixed(Exception, fail, code, keep=NotionError):`)."""
 from contextlib import contextmanager
 
 from lifeos.platform.notion_client import NotionError

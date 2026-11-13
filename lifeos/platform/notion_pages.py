@@ -1,7 +1,6 @@
-"""LIFE-645: the one Notion paging loop. It yields each page of a data-source query or a block's children and raises a fixed code for anything short of a provably complete read.
+"""LIFE-645: the one Notion paging loop: yields each page of a query or a block's children; anything short of a provably complete read raises a fixed code.
 
-`fail` is the caller's error factory (`fail(code)` returns the exception). Codes: `incomplete` (a page without results/has_more, or a missing or empty next_cursor), `repeat` (a cursor seen
-before; default `incomplete`), `capped` (more than `limit` pages; default `incomplete`), `read` (the fetch itself raised NotionError; when None that error passes through). `limit=None` is unbounded."""
+`fail` is the caller's error factory (`fail(code)` returns the exception). Codes: `incomplete` (a page without results/has_more, or a missing or empty next_cursor), `repeat` (a cursor seen before; default `incomplete`), `capped` (more than `limit` pages; default `incomplete`), `read` (the fetch itself raised NotionError; when None that error passes through). `limit=None` is unbounded."""
 from urllib.parse import quote
 
 from lifeos.platform import limits
