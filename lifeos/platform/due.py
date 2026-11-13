@@ -6,9 +6,13 @@ For a tick (event workflow_run) a job is due when its row says so; for anything 
 every_hours: due when now minus that time >= hours minus SLACK; 1 means every tick, with no history read. slots_ct: due when a slot (CT, HH:MM) has passed since that time. No success in the history: due; several missed slots: due once. History unreadable: every job is due and "history unreadable" is printed (fail open). Counts and job names only."""
 # A manual run never counts because a dry run must not make a card look fresh; the time is the START of the run so an hourly job that ends late is not mistaken for a recent one.
 import datetime as dt
+import io
 import json
 import os
+import re
 import sys
+import urllib.request
+import zipfile
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -22,6 +26,11 @@ HISTORY_RUNS = 30                                   # a daily row needs at most 
 
 def load_table(path=TABLE):
     return json.loads(Path(path).read_text())["jobs"]
+
+
+def load_stages(path=TABLE):
+    """LIFE-617: the board stages of the Jobs tick (lifeos/jobs/tick.py), rows in the same table and with the same rules as the jobs."""
+    return json.loads(Path(path).read_text()).get("stages", {})
 
 
 def _t(value):
@@ -82,6 +91,59 @@ def needs_history(table):
 def fetch_last_success(wanted, api=gate._api):
     runs = api(f"actions/workflows/domains.yml/runs?event=workflow_run&status=completed&per_page={HISTORY_RUNS}").get("workflow_runs", [])
     return last_success(runs, lambda run: api(f"actions/runs/{run['id']}/jobs?per_page=100").get("jobs", []), set(wanted))
+
+
+STAGE_OK = re.compile(r"\bstage (\S+): ok ")
+TICK_RUNS = 30                                      # a daily stage row needs about 24 hourly runs back
+
+
+class _NoAuthRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        new = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new is not None:
+            new.headers.pop("Authorization", None)                       # the log archive lives on another host: the token is never sent there
+        return new
+
+
+def _log_text(run_id, environ=os.environ):
+    request = urllib.request.Request(f"https://api.github.com/repos/{environ['GITHUB_REPOSITORY']}/actions/runs/{run_id}/logs",
+                                     headers={"Authorization": f"Bearer {environ['GITHUB_TOKEN']}", "Accept": "application/vnd.github+json"})
+    with urllib.request.build_opener(_NoAuthRedirect).open(request, timeout=60) as response:
+        archive = zipfile.ZipFile(io.BytesIO(response.read()))
+    return "\n".join(archive.read(name).decode("utf-8", "replace") for name in archive.namelist())
+
+
+def stages_ok(text):
+    """-> the stage names that print `stage <name>: ok` in one run's log (a stage the log masks, such as one named like a secret, is never found and so is always due)."""
+    return set(STAGE_OK.findall(text))
+
+
+def fetch_stage_success(wanted, api=gate._api, log_text=_log_text):
+    """-> {stage: start of the newest hourly tick run in which it printed ok}; the newest runs first, stops once every wanted stage is found."""
+    runs = api(f"actions/workflows/hourly.yml/runs?status=completed&per_page={TICK_RUNS}").get("workflow_runs", [])
+    found = {}
+    for run in runs:
+        if len(found) == len(wanted):
+            break
+        if run.get("display_title") != gate.TICK_TITLE:
+            continue
+        for name in stages_ok(log_text(run["id"])) & set(wanted):
+            found.setdefault(name, _t(run.get("run_started_at") or run["created_at"]))
+    return found
+
+
+def stage_decisions(table, environ=os.environ, now=None, api=gate._api, log_text=_log_text):
+    """-> ({stage: (due, why)}, history_ok). Every row hourly reads no history. Slower rows read it; when it cannot be read every stage is due and history_ok is False (fail open, as for the jobs)."""
+    now = now or dt.datetime.now(dt.timezone.utc)
+    last, ok = {}, True
+    if needs_history(table):
+        try:
+            last = fetch_stage_success(table, api, log_text)
+        except Exception as error:                                          # noqa: BLE001 - any failure to read history means "run everything" and says so
+            print(f"due: stage history unreadable ({type(error).__name__}); every stage is due")
+            ok = False
+    result = {name: (True, "history unreadable") for name in table} if not ok else decide(table, last, now)
+    return result, ok
 
 
 def local_text(moment):
