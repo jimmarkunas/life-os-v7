@@ -644,8 +644,10 @@ DOMAIN_SECRETS = {         # the only secrets each domain job may see; adding on
     "dcc": {"AMAZON_CARD_BLOCK_ID", "ATTENTION_CARD_BLOCK_ID", "BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "DCC_CARD_BLOCK_ID", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "MAIL_ALERTS_CARD_BLOCK_ID", "NOTION_JIRA_TOKEN"},
     "recruiters": DB | {"GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_RECRUITERS_DATA_SOURCE_ID", "NOTION_RECRUITERS_TOKEN", "OUTLOOK_CLIENT_ID",
                      "NOTION_API_TOKEN", "NOTION_JOB_LEDGER_DATA_SOURCE_ID", "V7_CLOSE_BASE_URL", "RECRUITERS_SCAN", "RECRUITERS_SCAN_AT",      # LIFE-610: step outputs, not secrets
-                     "GCAL_CALENDAR_ID", "GCAL_SERVICE_ACCOUNT_JSON", "HIRING_PIPELINE_PAGE_ID", "NOTION_INTERVIEW_TOKEN",
-                     "HIRING_TABLE_BLOCK_ID", "NOTION_JIRA_TOKEN"},   # LIFE-20: the Recruiter Outreach step (the Daily Report writer and the pinned Hiring Pipeline table it is anchored on); LIFE-10: the job-page outreach step reads and writes Job Ledger pages; LIFE-88: the Interview OS step
+                     "HIRING_TABLE_BLOCK_ID", "NOTION_JIRA_TOKEN"},   # LIFE-20: the Recruiter Outreach step (the Daily Report writer and the pinned Hiring Pipeline table it is anchored on); LIFE-10: the job-page outreach step reads and writes Job Ledger pages
+    "hiring_outcomes": DB | {"GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "OUTLOOK_CLIENT_ID"},   # LIFE-632: the Hiring outcome mail scan beside the Recruiters job; it reads mail and saves one store record
+    "interview": DB | {"GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "OUTLOOK_CLIENT_ID", "NOTION_RECRUITERS_DATA_SOURCE_ID", "NOTION_RECRUITERS_TOKEN",
+                       "NOTION_API_TOKEN", "NOTION_JOB_LEDGER_DATA_SOURCE_ID", "V7_CLOSE_BASE_URL", "GCAL_CALENDAR_ID", "GCAL_SERVICE_ACCOUNT_JSON", "HIRING_PIPELINE_PAGE_ID", "NOTION_INTERVIEW_TOKEN"},   # LIFE-632 (LIFE-88): the Interview OS step; the Recruiters token is read-only here (LIFE-78 E10)
     "mail": DB | {"AMAZON_CARD_BLOCK_ID", "ATTENTION_CARD_BLOCK_ID", "BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET",
                   "GMAIL_OAUTH_REFRESH_TOKEN", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "MAIL_ALERTS_CARD_BLOCK_ID", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"},
     "hiring": DB | {"GCAL_CALENDAR_ID", "GCAL_SERVICE_ACCOUNT_JSON", "HIRING_CARD_BLOCK_ID", "HIRING_PIPELINE_PAGE_ID", "HIRING_STATUS_BLOCK_ID", "HIRING_TABLE_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "NOTION_API_TOKEN",
@@ -654,7 +656,7 @@ DOMAIN_SECRETS = {         # the only secrets each domain job may see; adding on
                "GMAIL_OAUTH_REFRESH_TOKEN", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "NOTION_AMAZON_DATA_SOURCE_ID", "NOTION_AMAZON_TOKEN", "NOTION_JIRA_TOKEN"},
     "amazon_retention": {"GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_AMAZON_DATA_SOURCE_ID", "NOTION_AMAZON_TOKEN"},   # LIFE-571: retention in its own job
 }
-for _job in ("jira", "megibow", "dcc", "recruiters", "granola"):      # LIFE-338: the ids secret reaches only the steps that run Notion-id code
+for _job in ("jira", "megibow", "dcc", "interview", "granola"):      # LIFE-338: the ids secret reaches only the steps that run Notion-id code
     DOMAIN_SECRETS[_job] = DOMAIN_SECRETS[_job] | {"LIFEOS_NOTION_IDS"}
 
 
@@ -677,15 +679,16 @@ class DomainsWorkflowTests(unittest.TestCase):
         self.assertIn("'life-os-v7-domains-manual'", group)
         self.assertNotEqual(group.count("life-os-v7-domains'"), 0)                           # the after-tick runs keep the group the manual Amazon and Recruiters workflows queue behind
         self.assertIs(self.doc["concurrency"]["cancel-in-progress"], False)
-        writer = self.doc["jobs"]["recruiters"]["concurrency"]                              # the one writer of the opportunity pages: after-tick and manual runs take turns
+        writer = self.doc["jobs"]["interview"]["concurrency"]                                # the one writer of the opportunity pages: after-tick and manual runs take turns
         self.assertEqual(writer, {"group": "life-os-v7-interview-writer", "cancel-in-progress": False})
         self.assertEqual(self.doc["jobs"]["granola"]["concurrency"], writer)                  # LIFE-122: the automatic Granola run is also an Interview OS writer: it takes the same turn
-        self.assertEqual([name for name, job in self.doc["jobs"].items() if "concurrency" in job], ["recruiters", "granola"])
+        self.assertEqual([name for name, job in self.doc["jobs"].items() if "concurrency" in job], ["interview", "granola"])
+        self.assertEqual(self.doc["jobs"]["granola"]["needs"], ["interview", "gate"])                 # LIFE-632: Granola waits for the one Interview writer, no longer for the whole Recruiters job
 
     def test_only_five_steps_read_the_close_origin_from_its_own_secret(self):
         """D198 S3 / LIFE-78 / LIFE-20 / E05: the links exist only when the V7_CLOSE_BASE_URL secret is set; five steps pass it (Hiring Pipeline Close links, the job-page Outreach links, the Recruiter Outreach table's action links, the Interview writer's Mark Complete link, and hourly's network-surface step for the Mark as Sent link in a Network Leads block), from that secret, and nothing else names it."""
         seen = [(job, step.get("id")) for job, spec in self.doc["jobs"].items() for step in spec.get("steps", []) if "V7_CLOSE_BASE_URL" in str(step)]
-        self.assertEqual(sorted(seen), [("hiring", "hiring"), ("recruiters", "interview"), ("recruiters", "jpoutreach"), ("recruiters", "routreach")])      # LIFE-20: the Recruiter Outreach table's action links; E05: Mark Complete
+        self.assertEqual(sorted(seen), [("hiring", "hiring"), ("interview", "interview"), ("recruiters", "jpoutreach"), ("recruiters", "routreach")])      # LIFE-20: the Recruiter Outreach table's action links; E05: Mark Complete
         for job, ident in seen:
             step = next(s for s in self.doc["jobs"][job]["steps"] if s.get("id") == ident)
             self.assertEqual(step["env"]["V7_CLOSE_BASE_URL"], "${{ secrets.V7_CLOSE_BASE_URL }}")
