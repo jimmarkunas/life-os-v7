@@ -34,9 +34,6 @@ class JdTests(unittest.TestCase):
         self.assertIsNone(quality.jd_problem(real))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class LinkProblemTests(unittest.TestCase):
     def test_link_problem_matches_what_enrich_rejects_first(self):

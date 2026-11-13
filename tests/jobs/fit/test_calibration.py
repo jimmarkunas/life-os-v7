@@ -106,9 +106,6 @@ class CalibrationFixtures(unittest.TestCase):
         self.assertEqual(calculate([], D).final, 100)                          # title alone is never scored: evaluate() refuses it
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class BritishSpellingTests(unittest.TestCase):
     def test_programme_is_program(self):

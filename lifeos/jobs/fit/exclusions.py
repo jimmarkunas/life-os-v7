@@ -23,6 +23,10 @@ def _matcher(rule):
     return positions
 
 
+def _hit(rule, where):
+    return {"id": rule["id"], "reason": rule.get("reason") or rule["id"], "where": where}
+
+
 def check(title, company, text, profile=None):
     """-> (hard, soft): hard is {"id","reason","where"} or None; soft is a list of rule ids seen once, deep in the text."""
     rules = [*lexicon.DEFAULT_EXCLUSIONS, *(profile.exclusions if profile else [])]
@@ -32,9 +36,9 @@ def check(title, company, text, profile=None):
         positions = _matcher(rule)
         where = rule.get("where") or "any"
         if where in ("title", "any") and positions(title or "", norm(title)):
-            return {"id": rule["id"], "reason": rule.get("reason") or rule["id"], "where": "title"}, soft
+            return _hit(rule, "title"), soft
         if where in ("company", "any") and positions(company or "", norm(company)):
-            return {"id": rule["id"], "reason": rule.get("reason") or rule["id"], "where": "company"}, soft
+            return _hit(rule, "company"), soft
         if where != "any":
             continue
         spots = positions(raw_text.lower(), norm(raw_text))
@@ -43,7 +47,7 @@ def check(title, company, text, profile=None):
         # offsets differ between raw and normalized text, so judge "early" on the raw-text pattern hits alone
         early = any(m.start() < LEAD for m in _early(rule, raw_text)) and not rule.get("min_hits")
         if rule.get("strict") or early or len(spots) >= rule.get("min_hits", 2):
-            return {"id": rule["id"], "reason": rule.get("reason") or rule["id"], "where": "text"}, soft
+            return _hit(rule, "text"), soft
         soft.append(rule["id"])
     return None, soft
 
