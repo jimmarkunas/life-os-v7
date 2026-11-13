@@ -473,34 +473,15 @@ class Contract(unittest.TestCase):
         self.assertEqual(conn.raw.execute("SELECT COUNT(*) FROM sqlite_master WHERE name IN ('v7_network_dismissals','v7_network_aliases')").fetchone()[0], 0)
 
 
-class MarkAsSentLink(unittest.TestCase):
-    """LIFE-78: a job with verified contacts but no recorded conversation has no Outreach table, so it had no way to start Mark as Sent. Its Network Leads block now carries the signed-form link for its own job."""
-    ENV = {"V7_CLOSE_BASE_URL": "https://close.example.ts.net:47443", **SKIP_OFF}
+class LeadsBlock(unittest.TestCase):
+    """The Network Leads block on a Job Ledger page: what a live run writes, that a replay writes nothing, and that older blocks are read and replaced once."""
+    ENV = SKIP_OFF
     PAGE = "00000000-0000-0000-0000-000000000008"
 
     def world(self, **kw):
         return build(jobs=[(KEY1, self.PAGE, "Acme Corp", "Product Director", "ADMIT")], **kw), ledger_for((KEY1, self.PAGE))
 
-    def test_the_link_exists_only_for_an_https_origin_and_a_real_page_id(self):
-        self.assertEqual(surface.sent_url("https://close.example/", self.PAGE), "https://close.example/sent?j=00000000000000000000000000000008")
-        for base in ("", None, "http://close.example", "close.example", "ftp://x"):
-            self.assertIsNone(surface.sent_url(base, self.PAGE))
-        for page in ("", None, "page-1", "x" * 32 + "/../", "3ed3c5a0592681258c1df0628db65bc"):
-            self.assertIsNone(surface.sent_url("https://close.example", page))
-
-    def test_the_block_gains_one_quote_after_the_marker_and_the_link_is_part_of_its_identity(self):
-        leads = [{"person_id": 1, "tier": "CURRENT", "freshness": "FRESH", "age_days": 3, "name": "Invented Person1", "company": "Acme Corp", "title": "Director", "verified": date(2026, 10, 1),
-                  "url_key": "person-00001", "evidence_hash": "abc"}]
-        url = surface.sent_url(self.ENV["V7_CLOSE_BASE_URL"], self.PAGE)
-        plain, linked = surface.build_block(leads)["callout"]["children"], surface.build_block(leads, url)["callout"]["children"]
-        self.assertEqual([c["type"] for c in plain], ["paragraph", "to_do"])
-        self.assertEqual([c["type"] for c in linked], ["quote", "paragraph", "to_do"])
-        self.assertEqual(linked[0]["quote"]["rich_text"][0]["text"], {"content": "Mark as Sent ↗", "link": {"url": url}})
-        self.assertNotEqual(surface.set_hash(leads), surface.set_hash(leads, url))
-        self.assertEqual(surface.set_hash(leads, None), surface.set_hash(leads))
-        self.assertEqual(surface.set_hash([], url), "")
-
-    def test_a_live_run_with_the_origin_writes_the_link_and_a_replay_writes_nothing(self):
+    def test_a_live_run_writes_only_the_cards_and_a_replay_writes_nothing(self):
         conn, ledger = self.world()
         before = ledger.texts(self.PAGE)
         go(conn, ledger, live=True, environ=self.ENV)
@@ -510,21 +491,6 @@ class MarkAsSentLink(unittest.TestCase):
         self.assertEqual([c["type"] for c in owned], ["paragraph", "to_do", "to_do", "to_do"] * 2)     # the approved cards carry no Mark as Sent line (Jim, Oct 28)
         ledger.writes.clear()
         self.assertEqual((go(conn, ledger, live=True, environ=self.ENV)["blocks"], ledger.writes), ({"unchanged": 1}, []))
-
-    def test_without_an_origin_the_block_is_exactly_what_it_was(self):
-        conn, ledger = self.world()
-        go(conn, ledger, live=True, environ={})
-        self.assertEqual([c["type"] for c in ledger.owned(self.PAGE)], ["paragraph", "to_do", "to_do", "to_do"] * 2)
-
-    def test_an_older_block_is_replaced_once_and_keeps_the_dismissals(self):
-        conn, ledger = self.world()
-        go(conn, ledger, live=True, environ={})
-        ledger.tick(self.PAGE, "Closed 1:")
-        counts = go(conn, ledger, live=True, environ=self.ENV)
-        self.assertEqual((counts["blocks"], counts["ticks_dismiss"]), ({"replaced": 1}, 1))
-        self.assertEqual(conn.raw.execute("SELECT job_key, person_id FROM v7_network_dismissals").fetchall(), [(KEY1, 1)])         # persisted before the replacement, as always
-        self.assertEqual(shown(ledger, self.PAGE), 1)
-        self.assertEqual(go(conn, ledger, live=True, environ=self.ENV)["blocks"], {"unchanged": 1})
 
     def test_an_old_style_block_is_read_for_its_ticks_replaced_once_and_nothing_machine_made_shows(self):
         """The first run after the redesign: the page holds the old toggle (visible marker and ids); Jim's Dismiss tick on it is persisted, the block is replaced by the callout, and no id shows."""
@@ -555,12 +521,12 @@ class MarkAsSentLink(unittest.TestCase):
         for machine in ("net:2", "Dismiss 1:", "abc"):
             self.assertNotIn(machine, visible)
 
-    def test_the_leads_reader_used_by_the_deployed_close_service_ignores_the_link(self):
+    def test_the_leads_reader_used_by_the_deployed_close_service_reads_the_leads_back(self):
         conn, ledger = self.world()
         go(conn, ledger, live=True, environ=self.ENV)
         self.assertEqual([lead["name"] for lead in surface.leads_on_page(ledger, self.PAGE)], ["Invented Person1", "Invented Person2"])
 
-    def test_a_job_without_leads_gets_no_block_and_so_no_link(self):
+    def test_a_job_without_leads_gets_no_block(self):
         conn, ledger = self.world(people=[(9, "other", "Other Co", "Engineer", "CURRENT", "2026-09-20")])
         self.assertEqual(go(conn, ledger, live=True, environ=self.ENV)["blocks"], {"none": 1})
         self.assertEqual(ledger.owned(self.PAGE), None)

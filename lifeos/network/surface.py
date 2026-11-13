@@ -7,8 +7,7 @@ refer or hiring authority is ever generated, and no outreach text is drafted."""
 import hashlib
 import re
 import time
-from datetime import date
-from urllib.parse import quote, unquote
+from urllib.parse import quote
 
 from lifeos.platform import ledger_body as body
 from lifeos.network import match
@@ -38,19 +37,9 @@ def evidence_hash(lead, company_key, title, verified):
     return hashlib.sha256(f"{lead['person_id']}|{lead['tier']}|{company_key}|{title or ''}|{verified}".encode()).hexdigest()[:12]
 
 
-SENT_TEXT = "Mark as Sent ↗"
-
-
-def sent_url(base, page_id):
-    """LIFE-78: the private Close Mark as Sent screen for THIS page's job, or None when no https origin is configured (then the block is exactly what it was before)."""
-    base = (base or "").strip().rstrip("/")
-    page = str(page_id or "").replace("-", "").lower()
-    return f"{base}/sent?j={page}" if base.startswith("https://") and len(page) == 32 and page.isalnum() else None
-
-
-def set_hash(leads, link=None):
-    """The block's identity. The link's presence is part of it, so a block written before the link existed is replaced exactly once (Dismiss and Same company ticks are persisted first, as always)."""
-    return hashlib.sha256(("|".join(f"{l['person_id']}:{l['evidence_hash']}" for l in leads) + ("|ms1" if link else "") + "|ui5").encode()).hexdigest()[:12] if leads else ""
+def set_hash(leads):
+    """The block's identity."""
+    return hashlib.sha256(("|".join(f"{l['person_id']}:{l['evidence_hash']}" for l in leads) + "|ui5").encode()).hexdigest()[:12] if leads else ""
 
 
 def _day(moment):
@@ -82,15 +71,11 @@ def _bold(text):
     return [{"type": "text", "text": {"content": text}, "annotations": {"bold": True}}]
 
 
-def build_block(leads, link=None):
+def build_block(leads):
     """leads: display dicts {person_id, tier, freshness, age_days, name, company, title, verified, url_key, evidence_hash}. -> ONE callout "LinkedIn connections" (the approved look: Jim, Oct 27) with children.
     Each lead is a paragraph (bold name, the fixed reason, a Reach Out link that only opens the verified profile) and a tick to dismiss it, plus a "Same company" tick on a possible match. The block's marker and
-    hash ride in a hidden link on the title and each tick's `<person id>:<evidence hash>` in a hidden link on the tick, so nothing machine-made shows. `link` (sent_url) adds ONE quote block at the top that opens
-    the signed Mark as Sent form for this job. A quote, not a paragraph: the leads reader (leads_on_page, also in the deployed Close service) only reads paragraphs and to_dos, so it ignores the link."""
+    hash ride in a hidden link on the title and each tick's `<person id>:<evidence hash>` in a hidden link on the tick, so nothing machine-made shows."""
     kids = []
-    if link:
-        kids.append({"object": "block", "type": "quote", "quote": {"rich_text": [{"type": "text", "text": {"content": SENT_TEXT, "link": {"url": link}}},
-                                                                                   {"type": "text", "text": {"content": " · after you have messaged someone about this job. LIFE OS sends nothing."}}]}})
     for lead in leads:
         runs = _bold(lead["name"]) + rich_text(f" · {reason(lead)}")
         if lead.get("url_key"):
@@ -101,7 +86,7 @@ def build_block(leads, link=None):
         kids.append(_todo(f"Dismiss {ref}", DISMISS_TEXT))
         if lead["tier"] == match.POSSIBLE:
             kids.append(_todo(f"Same company {ref}", SAME_TEXT))
-    title = [hidden.run(f"{MARK2} {set_hash(leads, link)}")] + _bold(TITLE)
+    title = [hidden.run(f"{MARK2} {set_hash(leads)}")] + _bold(TITLE)
     return {"object": "block", "type": "callout", "callout": {"rich_text": title, "icon": {"type": "emoji", "emoji": "🔗"}, "color": "gray_background", "children": kids}}
 
 
@@ -416,12 +401,12 @@ def _verify(client, page_id, others, want, count):
     return top, owned
 
 
-def apply(client, page_id, top, owned, desired_leads, live, link=None):
+def apply(client, page_id, top, owned, desired_leads, live):
     """-> "unchanged" | "created" | "replaced" | "converged" | "removed" | "none" (prefixed "would_" when not live). Only owned blocks are ever touched; the others are proven unchanged.
 
     A replacement is recoverable: the new block is appended and PROVEN first, and only then is the previously accepted block retired. If the run is interrupted anywhere in between, the page
     holds the old and the new block, the old one is still visible, and the next run (the new block's hash is the wanted one) retires the extras and converges. Duplicates never accumulate."""
-    want = set_hash(desired_leads, link)
+    want = set_hash(desired_leads)
     others = _others(top, owned)
     home = getattr(top, "right", None) or page_id                          # where the block belongs: the right column of the two-column page, else the page
     matching = [o for o in owned if o["hash"] == want and o.get("parent", home) == home] if desired_leads else []      # a block with the right content in the wrong place is replaced, once

@@ -1,19 +1,16 @@
 import contextlib
 import datetime as dt
 import io
-import ipaddress
 import json
 import os
 import pathlib
 import socket
-import sqlite3
-import struct
 import tempfile
 import unittest
 
 from lifeos.imessage import alerts_endpoint as ep, stage
-from tests.kit.mysqlite import MySQLite, Cursor
-from tests.imessage.support import OTHER, RUNNER, SIG, v2, whois
+from tests.jobs.fakes_jobsdb import JobsDB
+from tests.imessage.support import OTHER, RUNNER, v2, whois
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 WRAPPER = str(ROOT / "lifeos/imessage/openclaw_imessage.py")
@@ -163,32 +160,11 @@ class Endpoint(unittest.TestCase):
         self.assertEqual(self.call(v2(RUNNER) + b"alerts 2\n", FakeWrapper(recent([message(1)]))), (1, b""))
 
 
-class StageDB(MySQLite):
-    """v7_alerts as MySQL has it, with the two dialect bits the stage uses (ON DUPLICATE KEY, DATETIME round-trip)."""
-
-    def __init__(self):
-        self.raw = sqlite3.connect(":memory:", isolation_level=None, detect_types=sqlite3.PARSE_DECLTYPES)
-        self.fail_on, self.statements = None, []
-        self.raw.execute("CREATE TABLE v7_alerts (alert_key VARCHAR(40) PRIMARY KEY, severity VARCHAR(8) NOT NULL, status VARCHAR(8) NOT NULL,"
-                         " first_seen TIMESTAMP NOT NULL, last_seen TIMESTAMP NOT NULL, last_notified TIMESTAMP NULL)")
-
-    def cursor(self):
-        db = self
-
-        class C(Cursor):
-            def execute(self, sql, args=()):
-                sql = sql.replace("ON DUPLICATE KEY UPDATE last_seen=VALUES(last_seen)", "ON CONFLICT(alert_key) DO UPDATE SET last_seen=excluded.last_seen")
-                return Cursor.execute(self, sql, [a.isoformat(sep=" ") if isinstance(a, dt.datetime) else a for a in args])
-        return C(db)
-
-    def commit(self):
-        pass
+class StageDB(JobsDB):
+    """The Jobs store's real v7_alerts table (tests/jobs/fakes_jobsdb.py), with the rows the alert stage wrote."""
 
     def rows(self):
         return {k: (s, st) for k, s, st in self.raw.execute("SELECT alert_key, severity, status FROM v7_alerts")}
-
-
-sqlite3.register_converter("TIMESTAMP", lambda b: dt.datetime.fromisoformat(b.decode()))
 
 
 def payload(events, observed="2026-10-14T15:00:00Z", hours=2, complete=True, health="CURRENT", scanned=None, reached=False):

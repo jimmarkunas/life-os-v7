@@ -2,11 +2,10 @@
 import csv
 import io
 import unittest
-from datetime import date
 from unittest.mock import patch
 
 from lifeos import run
-from lifeos.network import identity, importer, store
+from lifeos.network import identity, importer
 from lifeos.network.errors import NetworkError
 from tests.kit.mysqlite import MySQLite
 from tests.network.test_source_and_inspect import FakeClient, Response, file_block, page

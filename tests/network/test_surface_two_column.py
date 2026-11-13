@@ -2,7 +2,7 @@
 import unittest
 
 from lifeos.network import surface
-from lifeos.platform import hidden, ledger_body as body
+from lifeos.platform import ledger_body as body
 from lifeos.platform.notion_client import NotionError
 from tests.jobs.fakes_ledger import FakeLedger
 from tests.network.test_surface import KEY1, build, go
