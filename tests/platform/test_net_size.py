@@ -111,5 +111,28 @@ class RealRepository(unittest.TestCase):
         self.assertIn("git diff failed", out.getvalue())
 
 
+class CeilingWarnings(unittest.TestCase):
+    """LIFE-631 (advisory): a package over its ceiling that this change makes bigger gets a warning line; shrinking it, or a package under its ceiling, gets none. Never an error."""
+    def tree(self, lines):
+        folder = tempfile.mkdtemp()
+        write(folder, "lifeos/sources/m.py", ["x"] * lines)
+        return folder
+
+    def test_a_growing_package_over_its_ceiling_is_warned_about(self):
+        root = self.tree(10)
+        got = net_size.ceiling_warnings([(5, 0, "lifeos/sources/m.py")], root, {"sources": 8})
+        self.assertEqual(len(got), 1)
+        self.assertIn("lifeos/sources is 10 lines against its ceiling of 8 and this change adds +5", got[0])
+
+    def test_shrinking_a_package_under_its_ceiling_or_touching_another_package_is_not_warned_about(self):
+        root = self.tree(10)
+        self.assertEqual(net_size.ceiling_warnings([(0, 4, "lifeos/sources/m.py")], root, {"sources": 8}), [])
+        self.assertEqual(net_size.ceiling_warnings([(5, 0, "lifeos/sources/m.py")], root, {"sources": 99}), [])
+        self.assertEqual(net_size.ceiling_warnings([(5, 0, "lifeos/jobs/x.py"), (5, 0, "tests/a.py")], root, {"sources": 8}), [])
+
+    def test_the_approved_ceilings_are_the_ones_jim_approved(self):
+        self.assertEqual(net_size.CEILINGS, {"sources": 9400, "jobs": 8250, "platform": 7050, "interview": 4900, "edge": 3200, "jira": 1550})
+
+
 if __name__ == "__main__":
     unittest.main()
