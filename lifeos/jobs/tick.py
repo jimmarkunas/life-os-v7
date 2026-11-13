@@ -258,17 +258,6 @@ def planned(environ=None):
     return tuple(step for step in PLAN if step.name not in skip)
 
 
-def due_split(plan, environ=None, decisions=None):
-    """LIFE-617: -> (plan without the stages whose row in lifeos/platform/due_table.json says not due this tick, [(step, why)] for the ones left out). Stages with no row always run. With every row
-    hourly nothing is left out and no history is read. The gate logic is lifeos/platform/due.py's, not a copy."""
-    from lifeos.platform import due                                                # noqa: PLC0415
-    table = due.load_stages()
-    result = decisions if decisions is not None else due.stage_decisions(table, os.environ if environ is None else environ)[0]
-    left = [(step, result[step.name][1]) for step in plan if step.name in table and not result[step.name][0]]
-    skipped = {step.name for step, _ in left}
-    return tuple(step for step in plan if step.name not in skipped), left
-
-
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--live", action="store_true")
@@ -281,8 +270,9 @@ def main(argv=None):
         from lifeos.platform import read_slots                                         # noqa: PLC0415
         read_slots.configure("ats", concurrency["caps"]["ats"])
         print("tick: concurrency on, caps", json.dumps(concurrency["caps"], sort_keys=True), "parallel", concurrency["parallel"], flush=True)
+    from lifeos.platform import due                                                # noqa: PLC0415
     full = planned()
-    plan, left_out = due_split(full)
+    plan, left_out = due.split_plan(full)
     outcome = tick(args.live, args.quick, plan=plan, timings=timings, concurrency=concurrency)
     for step, why in left_out:                                                       # LIFE-617: a stage not due is skipped, not red, and the table says so
         print(f"stage {step.name}: not due 0.0s ({why})", flush=True)

@@ -146,6 +146,16 @@ def stage_decisions(table, environ=os.environ, now=None, api=gate._api, log_text
     return result, ok
 
 
+def split_plan(plan, environ=None, decisions=None):
+    """LIFE-617: -> (plan without the stages whose row in the table's `stages` says not due this tick, [(step, why)] for those left out). Stages with no row always run. With every row hourly nothing is
+    left out and no history is read. `plan` is any sequence of objects with a `name` (the tick's steps)."""
+    table = load_stages()
+    result = decisions if decisions is not None else stage_decisions(table, os.environ if environ is None else environ)[0]
+    left = [(step, result[step.name][1]) for step in plan if step.name in table and not result[step.name][0]]
+    skipped = {step.name for step, _ in left}
+    return tuple(step for step in plan if step.name not in skipped), left
+
+
 def local_text(moment):
     if moment is None:
         return "none found"
