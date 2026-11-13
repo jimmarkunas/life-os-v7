@@ -111,7 +111,6 @@ STAGES = {
     "amazon-review-reset": lazy("lifeos.amazon.reset"),
     "mail-alerts": lazy("lifeos.physmail.stage", floor=1000),
     "mail-card": lazy("lifeos.physmail.card"),
-    "mail-filing": lazy("lifeos.sources.cards.mail_filing", floor=200),          # LIFE-149: the Physical Mail vendor's notices marked read and moved to the "Physical Mail" label; dry run unless live (domains.yml mail job)
     "amazon-backfill": lazy("lifeos.amazon.backfill", floor=2000),
     "amazon-census": lazy("lifeos.delivery.census", floor=2000),
     "recruiters": lazy("lifeos.recruiters.stage"),
