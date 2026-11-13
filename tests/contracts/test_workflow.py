@@ -1,4 +1,3 @@
-import hashlib
 import pathlib
 import re
 import unittest
@@ -782,352 +781,70 @@ UUIDS = {
 # The one action that may receive loader outputs through `with:` (LIFE-31): the pinned Tailscale join, and only its two OAuth inputs.
 TAILSCALE_ACTION = "tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd"
 TAILSCALE_WITH = {"oauth-client-id": "TAILSCALE_OAUTH_CLIENT_ID", "oauth-secret": "TAILSCALE_OAUTH_CLIENT_SECRET"}
-# Every V7 workflow that consumes a migrated value reads it through a pinned Bitwarden loader step (EDGE-1.3). Per workflow: the loader's names per job, the remaining direct GitHub secret
-# refs, and the unchanged trigger/permission/concurrency/timeout facts plus a fingerprint of every run command (so a credential-source change cannot alter behaviour).
-CONSUMERS = {
-    "branches": dict(                                                    # D244 (LIFE-81): archive on merge (narrow archive token only); weekly report after safety (Notion token only)
-        jobs={"report": {"NOTION_JIRA_TOKEN"}},
-        direct=['LIFEOS_BWS_RUNTIME_TOKEN', 'V7_ARCHIVE_TOKEN', 'WEEKLY_REVIEW_PAGE_ID'],
-        on=['pull_request', 'workflow_dispatch', 'workflow_run'], crons=[], perms={'contents': 'read'}, conc={'group': "life-os-v7-branches-${{ github.event.pull_request.number || 'report' }}", 'cancel-in-progress': False},
-        timeouts={'archive': 10, 'report': 10}, digest="63d922348f6d79c3"),
-    "agenda": dict(
-        jobs={"agenda": DB | {"GCAL_SERVICE_ACCOUNT_JSON", "NOTION_JIRA_TOKEN"}},
-        direct=['CALENDAR_CARD_BLOCK_ID', 'GCAL_CALENDAR_ID', 'JIRA_CARD_BLOCK_ID', 'LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN'],
-        on=['workflow_dispatch'], crons=[], perms={'contents': 'read'}, conc={'group': 'life-os-v7-agenda', 'cancel-in-progress': False},
-        timeouts={'agenda': 15}, digest="608cf99f1ebfe13d"),
-    "bills": dict(
-        jobs={"bills": DB | {"NOTION_BILLS_TOKEN"}},
-        direct=['LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'NOTION_BILLS_DATA_SOURCE_ID'],
-        on=['workflow_dispatch'], crons=[], perms={'contents': 'read'}, conc={'group': 'life-os-v7-bills', 'cancel-in-progress': False},
-        timeouts={'bills': 15}, digest="978e9cf2d9bfba82"),
-    "calendar": dict(
-        jobs={"calendar": DB | {"GCAL_SERVICE_ACCOUNT_JSON"}},
-        direct=['GCAL_CALENDAR_ID', 'LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'OUTLOOK_CLIENT_ID'],
-        on=['workflow_dispatch'], crons=[], perms={'contents': 'read'}, conc={'group': 'life-os-v7-calendar', 'cancel-in-progress': False},
-        timeouts={'calendar': 15}, digest="58ec7d506d5fd3d5"),
-    "domains": dict(
-        jobs={"jira": DB | JUMP | TS | {"JIRA_API_TOKEN", "JIRA_EMAIL", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"}, "outlook": DB | JUMP | TS | {"GCAL_SERVICE_ACCOUNT_JSON", "NTFY_TOPIC"}, "bills": DB | JUMP | TS | {"NOTION_BILLS_TOKEN", "NOTION_JIRA_TOKEN"}, "agenda": DB | JUMP | TS | {"GCAL_SERVICE_ACCOUNT_JSON", "NOTION_JIRA_TOKEN"}, "amazon": {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_AMAZON_TOKEN", "NOTION_JIRA_TOKEN"}, "amazon_retention": {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_AMAZON_TOKEN"}, "mail": DB | JUMP | TS | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"}, "hiring": DB | JUMP | TS | {"GCAL_SERVICE_ACCOUNT_JSON", "NOTION_API_TOKEN", "NOTION_INTERVIEW_TOKEN", "NOTION_JIRA_TOKEN"}, "attention": DB | JUMP | TS | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"}, "megibow": DB | JUMP | TS | {"GCAL_SERVICE_ACCOUNT_JSON", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"}, "recruiters": DB | JUMP | TS | {"GCAL_SERVICE_ACCOUNT_JSON", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_API_TOKEN", "NOTION_INTERVIEW_TOKEN", "NOTION_JIRA_TOKEN", "NOTION_RECRUITERS_TOKEN"}, "dcc": {"DCC_CARD_BLOCK_ID", "NOTION_JIRA_TOKEN"}, "report": {"NTFY_TOPIC"}, "imessage": DB | JUMP | TS | {"NTFY_TOPIC", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST", "NOTION_JIRA_TOKEN"}, "granola": DB | JUMP | TS | {"NOTION_INTERVIEW_TOKEN", "IMESSAGE_ALERTS_HOST"}},
-        direct=['AMAZON_CARD_BLOCK_ID', 'ATTENTION_CARD_BLOCK_ID', 'BILLS_CARD_BLOCK_ID', 'CALENDAR_CARD_BLOCK_ID', 'GCAL_CALENDAR_ID', 'GMAIL_OAUTH_CLIENT_ID', 'HIRING_CARD_BLOCK_ID', 'HIRING_PIPELINE_PAGE_ID', 'HIRING_STATUS_BLOCK_ID', 'HIRING_TABLE_BLOCK_ID', 'JIRA_BASE_URL', 'JIRA_BOARDS', 'JIRA_CARD_BLOCK_ID', 'JIRA_CARD_PROJECTS', 'JIRA_GTV_CONTEXT_URL', 'JIRA_GTV_EPIC', 'JIRA_SITE_URL', 'LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'LIFEOS_NOTION_IDS', 'MAIL_ALERTS_CARD_BLOCK_ID', 'MEGIBOW_BLOCK_ID', 'MEGIBOW_EXCLUDED_DOMAINS', 'MEGIBOW_REVIEW_DB_ID', 'NOTION_AMAZON_DATA_SOURCE_ID', 'NOTION_BILLS_DATA_SOURCE_ID', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID', 'NOTION_RECRUITERS_DATA_SOURCE_ID', 'OUTLOOK_CLIENT_ID', 'V7_CLOSE_BASE_URL'],
-        on=['workflow_dispatch', 'workflow_run'], crons=[], perms={'contents': 'read'}, conc={'group': "${{ (github.event_name == 'workflow_dispatch' && (inputs.refresh == 'hiring' || inputs.refresh == 'recruiters')) && 'life-os-v7-domains' || github.event_name != 'workflow_run' && 'life-os-v7-domains-manual' || ((github.event.workflow_run.conclusion == 'cancelled' || github.event.workflow_run.display_title != 'tick') && 'life-os-v7-domains-idle' || 'life-os-v7-domains') }}", 'cancel-in-progress': False},   # a run that will skip every job must not share the group that holds the one waiting real run
-        timeouts={'gate': 5, 'bench_report': 5, 'jira': 15, 'outlook': 10, 'bills': 15, 'agenda': 15, 'amazon': 15, 'amazon_retention': 15, 'mail': 10, 'hiring': 15, 'attention': 15, 'megibow': 20, 'dcc': 10, 'recruiters': 30, 'imessage': 10, 'granola': 20, 'report': 5}, digest="6d3bb269743c9552"),   # JFM-221 added the jm-dashboard command to the jira job; LIFE-20 added the recruiter-outreach command (the Daily Report's Recruiter Outreach table, after the Recruiters stage); LIFE-88 added the Interview OS stage command to the recruiters job (where the mail credentials are), and a live run showed the job's two mail reads plus the Notion writes need 30 minutes, not 20; LIFE-10 added the job-page-outreach command; D222 (withdrawn Oct 20 2026) removed the job-outreach and installer commands; LIFE-31 added the imessage-alerts stage command, its warning and the report job's imessage entry; LIFE-34 the imessage-comms command and its warning; the Oracle Cloud card (Oct 15 2026) the oracle-card command and its warning; LIFE-77 D228 the AI Capacity card step
-    "hourly": dict(
-        jobs={"prep": DB | JUMP | TS | HRL, "jobright": DB | JUMP | TS | HRL, "linkedin": DB | JUMP | TS | HRL, "lensa": DB | JUMP | TS | HRL, "finish": DB | JUMP | TS | HRL | {"NTFY_TOPIC", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"}, "interview": {"NOTION_INTERVIEW_TOKEN"}, "report": {"NTFY_TOPIC"}},
-        direct=['GMAIL_OAUTH_CLIENT_ID', 'HIRING_PIPELINE_PAGE_ID', 'INTERVIEW_ACCEPTANCE_JSON', 'INTERVIEW_ACCEPTANCE_NEGATIVE_JSON', 'LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'LIFEOS_NOTION_IDS', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID', 'V7_CLOSE_BASE_URL', 'V7_CLOUD_FIT_PROFILE_REF'],   # LIFE-41: the shadow's brief reference, masked (a variable is not)
-        on=['schedule', 'workflow_dispatch'], crons=['7 * * * *', '27 * * * *', '47 * * * *'], perms={'contents': 'read'}, conc={'group': "life-os-v7-hourly-${{ (github.event_name == 'schedule' || inputs.tick) && 'tick-b' || 'manual' }}", 'cancel-in-progress': False},
-        timeouts={'prep': 45, 'jobright': 40, 'linkedin': 40, 'lensa': 40, 'finish': 58, 'interview': 15, 'report': 5}, digest="d947b6e8a0f73ec3"),   # LIFE-577 (Nov 11 2026): the benchmark input (replaces publish_limit): the tick path in dry mode on a frozen set, with a gate that refuses to overlap and an overlap check;   # LIFE-572 (Jim, Nov 11 12:2x PM CT "retry 82"): Network Leads budget 82 again, to be reverted to 41 if any of the next 3 runs exceeds about 60 s;   # LIFE-573 (Jim, Nov 11 12:02 PM CT): the browser install is its own timed step (cache hit: no apt; miss: three tries, then the run fails), BROWSER_CACHE_BUST forces a cold-cache run;   # LIFE-572 (Nov 11 2026, 11:0x AM CT): Network Leads budget back to 41 per run: the first tick at 82 took 110 s, over the 60 s limit Jim set;   # LIFE-573 (Jim, Nov 11 10:40 AM CT): a Chromium cache hit skips apt entirely; a miss installs with three bounded tries;   # LIFE-573 (Nov 11 2026): the tick step installs the browser with two timed tries and degrades instead of failing the tick when apt is unreachable;   # LIFE-572 (Jim, Nov 11 2026): the Network Leads page budget doubled, network-surface --limit 41 to 82 (2,496 pages: a lap of about 30 hours, was about 60);   # Nov 6 2026: the report job also names prep in its failed-lanes push;   # LIFE-76 (Oct 25 2026 drain): a manual enrich reads 450, not 150;   # D238: finish 58 min and the batch to 45 min, so a tick's batch fills the hour;   # D233 (LIFE-42): + the always-dry-run negative interview acceptance case;   # D208 (LIFE-76 PR 4b): a tick (and a manual quick proof, with --quick) runs python -m lifeos.jobs.tick in the finish job; the Dice job and its command are gone (the tick resolves Dice);   # D206 (LIFE-76 PR 1): bulk discovery (boards, Scale-Up, title watch, sponsors) moved after finalize; boards --limit follows the quick input;   # D202 review: + the read-only boards-preview command (D204 acceptance: over the 600-board sample); D203: + linkedin-search;   # D201 removed the resolve-lensa and openjobs commands; D202 added the boards command and its finish-loop entry; LIFE-41 the tick's batch is sized to the hour
-    "network": dict(
-        jobs={"network": DB | JUMP | TS | {"NOTION_API_TOKEN"}},
-        direct=['LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'NETWORK_HANDOFF_PAGE_ID', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID'],
-        on=['workflow_dispatch'], crons=[], perms={'contents': 'read'}, conc={'group': "${{ inputs.stage == 'layout' && format('life-os-v7-network-layout-{0}', inputs.shard) || (inputs.stage == 'surface' && inputs.shard != '0/1') && format('life-os-v7-network-surface-{0}', inputs.shard) || 'life-os-v7-network' }}", 'cancel-in-progress': False},
-        timeouts={'network': 30}, digest="34f9d82ffad5903f"),   # Jim, Oct 27: the layout stage (flat Ledger pages to the two-column page) added to the stage command
-    "outlook": dict(
-        jobs={"outlook": DB},
-        direct=['LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'OUTLOOK_CLIENT_ID'],
-        on=['workflow_dispatch'], crons=[], perms={'contents': 'read'}, conc={'group': 'life-os-v7-outlook', 'cancel-in-progress': False},
-        timeouts={'outlook': 20}, digest="24b93048ee6bec2c"),
-    "profile-sync": dict(                                                # the Notion-approved Fit evidence block into the store; reads the store credentials from Bitwarden, writes nothing to it
-        jobs={"sync": DB},
-        direct=['LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'NOTION_FIT_SYNC_TOKEN'],
-        on=['workflow_dispatch', 'workflow_run'], crons=[], perms={'contents': 'read'}, conc={'group': 'life-os-v7-profile-sync', 'cancel-in-progress': False},   # its own group: a waiting run in a shared group is cancelled by the next one, which would cancel a waiting domain run
-        timeouts={'sync': 10}, digest="0b34447bfaff37cf"),
-    "granola-auto": dict(                                                # LIFE-122 (Jim, Oct 26 2026): MANUAL run of the automatic Granola bridge (the tick runs it in domains.yml); dry unless live; the store credentials, Interview token, Oracle host and the tailnet join only
-        jobs={"auto": DB - {"LIFEOS_ACQ_SSH_PORT"} | {"NOTION_INTERVIEW_TOKEN", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"}},
-        direct=['HIRING_PIPELINE_PAGE_ID', 'LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'LIFEOS_NOTION_IDS', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID'],
-        on=['workflow_dispatch'], crons=[], perms={'contents': 'read'}, conc={'group': 'life-os-v7-interview-writer', 'cancel-in-progress': False},
-        timeouts={'auto': 20}, digest="3224a02a9230cf3a"),
-    "granola": dict(                                                     # LIFE-37 Step 2 (Jim, Oct 26 2026): ONE pinned Granola meeting from Oracle into its Interview round; dry run unless live; Interview token, Oracle host and the tailnet join only
-        jobs={"granola": {"NOTION_INTERVIEW_TOKEN", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"}},
-        direct=['HIRING_PIPELINE_PAGE_ID', 'LIFEOS_BWS_RUNTIME_TOKEN'],
-        on=['workflow_dispatch'], crons=[], perms={'contents': 'read'}, conc={'group': 'life-os-v7-granola', 'cancel-in-progress': False},
-        timeouts={'granola': 15}, digest="8e4c30f30ad70e52"),
-    "manual-job": dict(                                                  # LIFE-37 (Jim, Oct 26 2026): ONE job Jim names by hand into Jobs OS and the Interview OS writer; dry run unless live; the store credentials and the Interview token only
-        jobs={"manual": DB | {"NOTION_INTERVIEW_TOKEN"}},
-        direct=['HIRING_PIPELINE_PAGE_ID', 'LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'LIFEOS_NOTION_IDS', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID'],   # LIFE-361: the Ledger id (a new pursuit is its row)
-        on=['workflow_dispatch'], crons=[], perms={'contents': 'read'}, conc={'group': 'life-os-v7-interview-writer', 'cancel-in-progress': False},
-        timeouts={'manual': 15}, digest="19cc00b03711f4e0"),
-    "hermes-stage": dict(                                                # LIFE-307: ONE signed Buzz request per Agent Go issue labelled hermes; dry run unless live; Jira credentials only, plus the stage's own Buzz member key
-        jobs={"hermes": {"JIRA_API_TOKEN", "JIRA_EMAIL"}},
-        direct=['BUZZ_STAGE_CHANNEL', 'BUZZ_STAGE_HERMES_PUBKEY', 'BUZZ_STAGE_KEY', 'BUZZ_URL_LIFE_OS', 'JIRA_BASE_URL', 'LIFEOS_BWS_RUNTIME_TOKEN'],
-        on=['workflow_dispatch'], crons=[], perms={'contents': 'read'}, conc={'group': 'life-os-v7-hermes-stage', 'cancel-in-progress': False},
-        timeouts={'hermes': 10}, digest="18675f2595c40c13"),
-    "readiness-live": dict(                                              # LIFE-324: MANUAL live proof of `readiness issue-key` through the real Jira client; the Jira credentials only, read-only, leak check before any output
-        jobs={"readiness": {"JIRA_API_TOKEN", "JIRA_EMAIL"}},
-        direct=['JIRA_BASE_URL', 'LIFEOS_BWS_RUNTIME_TOKEN'],
-        on=['workflow_dispatch'], crons=[], perms={'contents': 'read'}, conc={'group': 'life-os-v7-readiness-live', 'cancel-in-progress': False},
-        timeouts={'readiness': 10}, digest="b31d0b4256024e29"),
-    "interview-proof": dict(                                             # LIFE-78: the synthetic Interview journey in a fresh QA sandbox; the Interview token only, its own queue
-        jobs={"proof": {"NOTION_INTERVIEW_TOKEN"}},
-        direct=['LIFEOS_BWS_RUNTIME_TOKEN', 'LIFEOS_NOTION_IDS'],
-        on=['workflow_dispatch'], crons=[], perms={'contents': 'read'}, conc={'group': 'life-os-v7-interview-proof', 'cancel-in-progress': False},
-        timeouts={'proof': 30}, digest="f1c02db4a2b8dad7"),
-    "recruiters": dict(
-        jobs={"recruiters": DB | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_RECRUITERS_TOKEN"}},
-        direct=['GMAIL_OAUTH_CLIENT_ID', 'LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'NOTION_RECRUITERS_DATA_SOURCE_ID', 'OUTLOOK_CLIENT_ID'],
-        on=['workflow_dispatch'], crons=[], perms={'contents': 'read'}, conc={'group': 'life-os-v7-domains', 'cancel-in-progress': False},
-        timeouts={'recruiters': 20}, digest="e6de13777b39b125"),
-    "watchdog": dict(
-        jobs={"watch": {"NTFY_TOPIC"}},
-        direct=['GITHUB_TOKEN', 'LIFEOS_BWS_RUNTIME_TOKEN'],
-        on=['schedule', 'workflow_dispatch'], crons=['17 * * * *', '47 * * * *'], perms={'contents': 'read', 'actions': 'read', 'issues': 'write'}, conc=None,
-        timeouts={'watch': 3}, digest="4f6304d28137b230"),
-    "safety": dict(
-        jobs={"safety": DB | {"FIT_PROFILE_EXTRA_JSON", "FIT_PROFILE_JSON", "NTFY_TOPIC"}},
-        direct=['LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN'],
-        on=['schedule', 'workflow_dispatch'], crons=['17 13 * * 1'], perms={'contents': 'read'}, conc={'group': 'life-os-v7-safety', 'cancel-in-progress': False},
-        timeouts={'safety': 20}, digest="88fd04b0f310f158"),
-    "amazon": dict(
-        jobs={"amazon": {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_AMAZON_TOKEN"}},
-        direct=['GMAIL_OAUTH_CLIENT_ID', 'LIFEOS_BWS_RUNTIME_TOKEN', 'NOTION_AMAZON_DATA_SOURCE_ID'],
-        on=['workflow_dispatch'], crons=[], perms={'contents': 'read'}, conc={'group': "${{ inputs.stage == 'orders' && 'life-os-v7-domains' || 'life-os-v7-amazon-orders' }}", 'cancel-in-progress': False},
-        timeouts={'amazon': 330}, digest="b31adadc25d75d0f"),
-    "fit-edge-test": dict(
-        jobs={"fit_edge": {"TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"}},                 # LIFE-60: the manual synthetic proof of Oracle's fit1 verb; the same ephemeral tag:v7-runner join the iMessage job uses
-        direct=['LIFEOS_BWS_RUNTIME_TOKEN'],
-        on=['workflow_dispatch'], crons=[], perms={'contents': 'read'}, conc={'group': 'life-os-v7-fit-edge', 'cancel-in-progress': False},
-        timeouts={'fit_edge': 5}, digest="62c235d80f490685"),
-    "diag": dict(
-        jobs={"diag": DB, "trace": DB | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN"}, "sandbox": {"NOTION_API_TOKEN"}, "interview_ui": {"NOTION_INTERVIEW_TOKEN"}, "report": DB | {"NOTION_API_TOKEN"}},   # LIFE-121: the private-report job holds the database values and the Jobs Notion token; LIFE-88: the UI 3c probe alone holds the Interview token; LIFE-64: the trace job alone reads Gmail (list and read only); LIFE-10: the sandbox job alone reads Notion (three fixed reads)
-        direct=['GMAIL_OAUTH_CLIENT_ID', 'LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'LIFEOS_NOTION_IDS', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID'],
-        on=['workflow_dispatch'], crons=[], perms={'contents': 'read'}, conc={'group': 'life-os-v7-diag', 'cancel-in-progress': False},
-        timeouts={"diag": 10, "trace": 10, "sandbox": 5, "interview_ui": 5, "report": 10}, digest="8c8832322a0880c9"),   # LIFE-88: + the interview-ui-probe command
+# Least privilege: the credentials each job may load from Bitwarden (a conscious decision; domains.yml jobs are held to DOMAIN_SECRETS instead). Adding one is the only workflow edit that needs a test edit.
+LOADED = {
+    "branches": {"report": {"NOTION_JIRA_TOKEN"}},
+    "agenda": {"agenda": DB | {"GCAL_SERVICE_ACCOUNT_JSON", "NOTION_JIRA_TOKEN"}},
+    "bills": {"bills": DB | {"NOTION_BILLS_TOKEN"}},
+    "calendar": {"calendar": DB | {"GCAL_SERVICE_ACCOUNT_JSON"}},
+    "hourly": {"prep": DB | JUMP | TS | HRL, "jobright": DB | JUMP | TS | HRL, "linkedin": DB | JUMP | TS | HRL, "lensa": DB | JUMP | TS | HRL, "finish": DB | JUMP | TS | HRL | {"NTFY_TOPIC", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"}, "interview": {"NOTION_INTERVIEW_TOKEN"}, "report": {"NTFY_TOPIC"}},
+    "network": {"network": DB | JUMP | TS | {"NOTION_API_TOKEN"}},
+    "outlook": {"outlook": DB},
+    "profile-sync": {"sync": DB},
+    "granola-auto": {"auto": DB - {"LIFEOS_ACQ_SSH_PORT"} | {"NOTION_INTERVIEW_TOKEN", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"}},
+    "granola": {"granola": {"NOTION_INTERVIEW_TOKEN", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"}},
+    "manual-job": {"manual": DB | {"NOTION_INTERVIEW_TOKEN"}},
+    "hermes-stage": {"hermes": {"JIRA_API_TOKEN", "JIRA_EMAIL"}},
+    "readiness-live": {"readiness": {"JIRA_API_TOKEN", "JIRA_EMAIL"}},
+    "interview-proof": {"proof": {"NOTION_INTERVIEW_TOKEN"}},
+    "recruiters": {"recruiters": DB | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_RECRUITERS_TOKEN"}},
+    "watchdog": {"watch": {"NTFY_TOPIC"}},
+    "safety": {"safety": DB | {"FIT_PROFILE_EXTRA_JSON", "FIT_PROFILE_JSON", "NTFY_TOPIC"}},
+    "amazon": {"amazon": {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_AMAZON_TOKEN"}},
+    "fit-edge-test": {"fit_edge": {"TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"}},
+    "diag": {"diag": DB, "trace": DB | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN"}, "sandbox": {"NOTION_API_TOKEN"}, "interview_ui": {"NOTION_INTERVIEW_TOKEN"}, "report": DB | {"NOTION_API_TOKEN"}},
 }
-# The eight workflows cut over after the pilots: the loader is exported to nothing (set_env: false) and each CONSUMER step receives, as a masked step output, exactly the migrated values it
-# effectively received on main 659de1e (workflow-, job- and step-level env merged), except hourly `report`, which only pushes an alert and needs just the topic. Every step not listed
-# here (checkout, setup, installs, tests, warnings, the loader itself) receives none, so exposure is the same as or narrower than before for every step.
-CONSUMER_STEPS = {
-    "branches": {
-        "report": {
-            'Repository hygiene report (stale branches; run summary, and the Weekly Review callout when live)': {"NOTION_JIRA_TOKEN"},
-        },
-    },
-    "agenda": {
-        "agenda": {
-            'Agenda snapshot (read-only Google Calendar)': DB | {"GCAL_SERVICE_ACCOUNT_JSON"},
-            'Agenda card (saved snapshot only)': DB | {"NOTION_JIRA_TOKEN"},
-        },
-    },
-    "bills": {
-        "bills": {
-            'Bills snapshot (read-only; save only when live)': DB | {"NOTION_BILLS_TOKEN"},
-        },
-    },
-    "calendar": {
-        "calendar": {
-            'Calendar sync (counts only)': DB | {"GCAL_SERVICE_ACCOUNT_JSON"},
-        },
-    },
-    "domains": {
-        "granola": {
-            'Granola auto (every meeting not yet carried; counts and fixed codes only; writes only when live and GRANOLA_AUTO is on)': DB | JUMP | {"NOTION_INTERVIEW_TOKEN", "IMESSAGE_ALERTS_HOST"},
-        },
-        "imessage": {
-            'iMessage urgent alerts (metadata only from Oracle; private alert state; counts-only push)': DB | JUMP | {"NTFY_TOPIC", "IMESSAGE_ALERTS_HOST"},
-            'Communications card, Messages row (7-day unread count and latest sender; counts only in the log; writes only when live)': {"IMESSAGE_ALERTS_HOST", "NOTION_JIRA_TOKEN"},
-            'Oracle Cloud card (daily from 6 AM CT; numbers only in the log; writes only when live)': {"IMESSAGE_ALERTS_HOST", "NOTION_JIRA_TOKEN", "NTFY_TOPIC",   # LIFE-129: the store and the push topic for the off-site backup alert
-                "LIFEOS_ACQ_DB_NAME", "LIFEOS_ACQ_DB_PASSWORD", "LIFEOS_ACQ_DB_USER", "LIFEOS_ACQ_SSH_HOST", "LIFEOS_ACQ_SSH_JUMP_KEY", "LIFEOS_ACQ_SSH_KNOWN_HOSTS",
-                "LIFEOS_ACQ_SSH_PRIVATE_KEY", "LIFEOS_ACQ_SSH_USER"},
-            'AI Capacity card (readings only, no model run; numbers only in the log; writes only when live)': {"IMESSAGE_ALERTS_HOST", "NOTION_JIRA_TOKEN"},   # LIFE-77 D228: the same two as the Oracle Cloud card
-        },
-        "jira": {
-            'Jira sprint rollover (scheduled; waits for the sprint to end and Monday 6 AM; live only when V7_LIVE)': {"JIRA_API_TOKEN", "JIRA_EMAIL"},
-            'Jira rollover watch (pages the phone when the scheduled rollover has not worked for 3 hours; one private state row; counts only)': DB | JUMP | {"NTFY_TOPIC"},
-            'Jira snapshot (counts only; saved to the private database only when live)': DB | JUMP | {"JIRA_API_TOKEN", "JIRA_EMAIL"},
-            'Jira card (Daily Report; counts only; the page is written only when live)': DB | JUMP | {"JIRA_API_TOKEN", "JIRA_EMAIL", "NOTION_JIRA_TOKEN"},
-            'Jim & Matt dashboard from Jira (JFM-221; Wednesday 7 AM CT check-in, quarterly synopsis, completed archive; reads Jira only; Notion written only when live; counts only)': DB | JUMP | {"JIRA_API_TOKEN", "JIRA_EMAIL", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"},        # LIFE-384 (Jim approved the workflow edit): the remembered page ids live in the private store
-            'Jira layout probe (read-only; counts only)': {"JIRA_API_TOKEN", "JIRA_EMAIL"},
-            'Jira sprint rollover (dry run unless live; never before the sprint ends)': {"JIRA_API_TOKEN", "JIRA_EMAIL"},
-        },
-        "outlook": {
-            'Outlook newsletters (job alerts to Jobs OS; counts only; writes only when live)': DB | JUMP,
-            'Calendar sync (Outlook invites to Google; counts only; writes only when live; pages the phone when it has not worked for 3 hours)': DB | JUMP | {"GCAL_SERVICE_ACCOUNT_JSON", "NTFY_TOPIC"},
-        },
-        "bills": {
-            'Bills Paid processor (before the snapshot; writes Notion only when live; counts only)': DB | JUMP | {"NOTION_BILLS_TOKEN"},
-            'Bills snapshot (read-only; private snapshot saved only when live)': DB | JUMP | {"NOTION_BILLS_TOKEN"},
-            'Bills card (saved snapshot only; writes only when live; a stale snapshot is shown as STALE, never as current)': DB | JUMP | {"NOTION_JIRA_TOKEN"},
-        },
-        "agenda": {
-            'Agenda snapshot (read-only Google Calendar; private save only when live)': DB | JUMP | {"GCAL_SERVICE_ACCOUNT_JSON"},
-            'Agenda card (saved snapshot only; writes only when live)': DB | JUMP | {"NOTION_JIRA_TOKEN"},
-        },
-        "amazon": {
-            'Amazon Orders (Gmail to Notion; archive only after read-back)': {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_AMAZON_TOKEN"},
-            'Amazon card (reads the canonical orders and, read-only, other stores\' shipping mail; writes only when live; a failed sync is shown as DEGRADED)': {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_AMAZON_TOKEN", "NOTION_JIRA_TOKEN"},
-        },
-        "amazon_retention": {   # LIFE-571: retention in its own job
-            'Amazon retention (D139; mail older than 30 days to the Trash once its order is recorded; dry run unless live; counts only)': {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_AMAZON_TOKEN"},
-        },
-        "mail": {
-            'Physical Mail (Gmail read-only to the private state; saved with read-back)': DB | JUMP | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NTFY_TOPIC"},
-            "Physical Mail filing (LIFE-149; the vendor's no-reply notices marked read and moved to the Physical Mail label; nothing deleted; read-back; dry run unless live)": {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN"},
-            'Mail Alerts card (reads the stored state; writes only the Mail Alerts callout, with read-back; a failed ingest is shown as DEGRADED)': DB | JUMP | {"NOTION_JIRA_TOKEN"},
-        },
-        "hiring": {
-            'Hiring Pipeline (Ledger, Notion pages and Calendar to the private state and the floating region; read-back and whole-page proof; a failed source is DEGRADED)': DB | JUMP | {"GCAL_SERVICE_ACCOUNT_JSON", "NOTION_API_TOKEN", "NOTION_INTERVIEW_TOKEN", "NOTION_JIRA_TOKEN"},
-        },
-        "attention": {
-            'Attention (Gmail label and Outlook category to Notion; counts only; writes only when live; a failed source is DEGRADED)': DB | JUMP | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"},
-        },
-        "megibow": {
-            'MegIBOW (Gmail, Outlook and calendars to the Notion table; counts only; writes only when live; a failed source is DEGRADED)': DB | JUMP | {"GCAL_SERVICE_ACCOUNT_JSON", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"},
-        },
-        "dcc": {
-            'Attention card (status and suggested decisions above the interactive view; writes only when live; a failed sync is shown as DEGRADED)': {"NOTION_JIRA_TOKEN"},
-            'Daily Command Center (rules over the cards\' first lines; writes only its own callout when live; every other region proven unchanged)': {"DCC_CARD_BLOCK_ID", "NOTION_JIRA_TOKEN"},
-        },
-        "recruiters": {
-            'Recruiters (read-only mail to the Recruiters data source; counts only)': DB | JUMP | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_RECRUITERS_TOKEN"},
-            "Interview OS (LIFE-88; V7 is the only Interview OS writer - scheduling requests in Gmail and Outlook for jobs Jim applied to, accepted Calendar rounds, and the refresh of machine pages from the Ledger and each page's own identity; a dry run unless INTERVIEW_OS_WRITER is v7)": DB | JUMP | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "GCAL_SERVICE_ACCOUNT_JSON", "NOTION_INTERVIEW_TOKEN", "NOTION_API_TOKEN", "NOTION_RECRUITERS_TOKEN"},      # LIFE-78 E10: + the Recruiters token, read only, for recruiter threads; LIFE-88: the mail, Ledger, Calendar and Interview OS values the stage reads, step-scoped; the Jobs token writes a recruiter lead's Ledger row (E01b)
-            "Recruiter Outreach (LIFE-20; the Daily Report's one Recruiter Outreach table from the Recruiters data source, after the Recruiters stage; writes only when live AND the repo variable RECRUITER_OUTREACH is on; read-back and whole-page proof)": {"NOTION_RECRUITERS_TOKEN", "NOTION_JIRA_TOKEN"},      # LIFE-20: reads the Recruiters data source, writes the Daily Report with its integration
-            'Job-page outreach (LIFE-10; the outreach table on each Job Ledger job page from Mark as Sent; writes only when live AND the repo variable JOB_PAGE_OUTREACH is on; page proof and read-back)': {"NOTION_API_TOKEN", "NOTION_RECRUITERS_TOKEN"},
-            'Hiring outcome mail (D190; read-only Gmail and Outlook for the companies in the Hiring Pipeline, rejection or offer wording only; due every 12 hours; counts only)': DB | JUMP | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN"},
-        },
-        "report": {
-            'Domain jobs report here (the run is already red; this pushes the phone)': {"NTFY_TOPIC"},
-        },
-    },
-    "hourly": {
-        "prep": {
-            'Gate - skip a scheduled or tick run when another tick started in the last 50 minutes (manual runs do not count)': DB | JUMP | HRL,
-            'Stage 1 - sweep': DB | JUMP | HRL,
-            'Step 3b - reconcile (repair, manual only)': DB | JUMP | HRL,
-            'Step 2 - store check': DB | JUMP | HRL,
-            'Stage - extract cards from mail': DB | JUMP | HRL,
-        },
-        "jobright": {
-            'Step 5 - resolve Jobright jobs (free Chromium, saves when live)': DB | JUMP | HRL,
-        },
-        "linkedin": {
-            'Step 5 - resolve LinkedIn jobs (no login, no browser)': DB | JUMP | HRL,
-            'Step 5a - LinkedIn job search (guest, after the resolver; the same rows as the job alerts, D203)': DB | JUMP,
-        },
-        "lensa": {
-            'Step 5f - Scale-Up sponsors with no job board - find their jobs by web search (the job keeps its id `lensa`; Lensa itself is retired, D201)': DB | JUMP | HRL,
-        },
-        "finish": {
-            'Jobs tick - the whole chain in one process, fast path first, one store tunnel (LIFE-76 PR 4b, D208)': DB | JUMP | HRL | {"IMESSAGE_ALERTS_HOST"},   # D214: the shadow's Oracle host (unused while V7_CLOUD_FIT is off)
-            'Step 5b - US Remote web acquisition (due ATS boards)': DB | JUMP | HRL,
-            'Step 5b2 - Employer boards (the Open Jobs board list plus extras; due boards, D202)': DB | JUMP,
-            'Employer boards acceptance preview (dispatch only, read-only, counts only, D202)': DB | JUMP | {'FIT_PROFILE_EXTRA_JSON', 'FIT_PROFILE_JSON'},
-            'Step 5c - UK Scale-Up web acquisition (scheduled; due sponsor boards)': DB | JUMP | HRL,
-            "Step 5d - Scale-Up title watch (roles a company's own site lists but its board listing does not carry; free search, found roles arrive as Review)": DB | JUMP | HRL,
-            'Step 5e - UK sponsor register (weekly refresh; forced when dispatched)': DB | JUMP | HRL,
-            'Step 6 - enrich RESOLVED jobs (final page - JD, date, liveness)': DB | JUMP | HRL,
-            'Step 6a - fit scoring (deterministic, private profile)': DB | JUMP | HRL,
-            "Step 6a2 - Cloud Fit backlog batch (LIFE-41 D219; manual, or after each tick when V7_CLOUD_FIT_SCHEDULED is set; one Oracle request at a time)": DB | JUMP | {"FIT_PROFILE_EXTRA_JSON", "FIT_PROFILE_JSON", "NOTION_API_TOKEN", "IMESSAGE_ALERTS_HOST"},   # D219: the store, the Ledger page read for human state, Oracle's host
-            'Step 6b - precision audit (before publish)': DB | JUMP | HRL,
-            'Step 7 - publish READY jobs to Notion': DB | JUMP | HRL,
-            'Step 7a - exclude jobs that have sat on HOLD for 7 days (so their newsletter mail can close)': DB | JUMP | HRL,
-            'Step 7b - close out newsletter mail whose jobs all have an outcome': DB | JUMP | HRL,
-            'Step 7c - Network Leads blocks on Ledger pages (NET-2.3; 41 pages a run, rotating; a failure never fails the Jobs run but always warns)': DB | JUMP | HRL,
-            'Fit review (dispatch only; a private Notion page, counts only in the log)': DB | JUMP | HRL,
-            'Explain (dispatch only; report = company names; counts and short hashes only in the log, nothing written)': DB | JUMP | HRL,
-            'Board check (dispatch only; report = board:<companies>; one private Notion page, counts only in the log)': DB | JUMP | HRL,
-            'Funnel report (dispatch only, read-only, counts only)': DB | JUMP | HRL,
-            'Probe - source shapes (dispatch only, counts only)': DB | JUMP | HRL,
-            'Step 8 - Last Seen sync (daily)': DB | JUMP | HRL,
-            'Step 8b - retention purge (about weekly and catching up (the stage decides when it is due); pushes its own result to the phone, counts and fixed codes only)': DB | JUMP | HRL | {"NTFY_TOPIC"},
-            'Alerts - detect, dedupe and push to the phone (counts only; a failure here never fails the run)': DB | JUMP | HRL | {"NTFY_TOPIC"},
-        },
-        "interview": {
-            'Interview shape probe (counts only, writes nothing)': {"NOTION_INTERVIEW_TOKEN"},
-            'Interview stage (live only when Actually move mail is ticked)': {"NOTION_INTERVIEW_TOKEN"},
-            'Interview private acceptance (manual dispatch only; case comes from the secret)': {"NOTION_INTERVIEW_TOKEN"},
-            'Interview private acceptance - negative case (always a dry run; skipped when its secret is empty)': {"NOTION_INTERVIEW_TOKEN"},   # D233
-        },
-        "report": {
-            'Resolver lanes and the finish job report here (the run fails if any lane failed)': {"NTFY_TOPIC"},
-        },
-    },
-    "fit-edge-test": {
-        "fit_edge": {
-            'Synthetic Fit proof (writes nothing; synthetic content only in the log)': {"IMESSAGE_ALERTS_HOST"},
-        },
-    },
-    "network": {
-        "network": {
-            'Network (reads the attached CSV through Notion; prints counts only)': DB | JUMP | {"NOTION_API_TOKEN"},
-        },
-    },
-    "outlook": {
-        "outlook": {
-            'Outlook sign-in (live only)': DB,
-            'Outlook newsletters (counts only; saves jobs only when the Save box is ticked)': DB,
-            'Outlook probe (read-only; counts only)': DB,
-        },
-    },
-    "profile-sync": {
-        "sync": {
-            'Fit profile sync (the approved Notion evidence block into the store; counts and one fixed code only)': DB,
-        },
-    },
-    "granola-auto": {
-        "auto": {
-            'Granola auto (every meeting not yet carried; dry run unless live; counts and fixed codes only)': DB - {"LIFEOS_ACQ_SSH_PORT"} | {"NOTION_INTERVIEW_TOKEN", "IMESSAGE_ALERTS_HOST"},
-        },
-    },
-    "granola": {
-        "granola": {
-            'Granola bridge (one pinned meeting; dry run unless live is ticked; counts and fixed codes only)': {"NOTION_INTERVIEW_TOKEN", "IMESSAGE_ALERTS_HOST"},
-        },
-    },
-    "manual-job": {
-        "manual": {
-            'Manual job (one job into Jobs OS and the Interview OS writer; dry run unless live is ticked; counts and fixed codes only)': DB | {"NOTION_INTERVIEW_TOKEN"},
-        },
-    },
-    "hermes-stage": {
-        "hermes": {
-            'Hermes stage (every Agent Go issue labelled hermes without a request; dry run unless live; counts and fixed codes only)': {"JIRA_API_TOKEN", "JIRA_EMAIL"},
-        },
-    },
-    "readiness-live": {
-        "readiness": {
-            'Readiness against live Jira (the key, then the negative control; the leak check runs before anything is printed)': {"JIRA_API_TOKEN", "JIRA_EMAIL"},
-        },
-    },
-    "interview-proof": {
-        "proof": {
-            'Interview journey proof (synthetic mail, Calendar and Ledger; real Notion in a fresh QA sandbox only; refuses unless confirm is QA)': {"NOTION_INTERVIEW_TOKEN"},
-        },
-    },
-    "recruiters": {
-        "recruiters": {
-            'Recruiters (read-only mail to the Recruiters data source; counts only)': DB | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_RECRUITERS_TOKEN"},
-        },
-    },
-}
-CUT_OVER = ("agenda", "bills", "branches", "calendar", "domains", "fit-edge-test", "granola", "granola-auto", "hermes-stage", "hourly", "interview-proof", "manual-job", "network", "outlook", "profile-sync", "readiness-live", "recruiters")
 PILOTS = ("watchdog", "safety", "amazon", "diag")
 SECRET_FREE = ("pr-tests",)         # workflows that read no secret at all, so they have no loader to pin (their own test below pins that)
 
 
 @unittest.skipIf(yaml is None, "PyYAML not installed")
 class BitwardenConsumerTests(unittest.TestCase):
+    """LIFE-644 step 2: rules, not pins. Every workflow reads credentials through the pinned Bitwarden loader and nothing else, whatever steps, commands, timeouts or triggers it has.
+    A test edit is needed only when a credential is added to a job (LOADED, DOMAIN_SECRETS) or created (UUIDS)."""
     ACTION = "bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793"
     OUTPUT = re.compile(r"\$\{\{ steps\.(\w+)\.outputs\.(\w+) \|\| steps\.(\w+)\.outputs\.(\w+) \}\}")   # D209: the load's output, else its one retry's
     PAUSE = "sleep $((30 + RANDOM % 45))"
 
     @classmethod
     def setUpClass(cls):
-        cls.root = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows"
-        cls.text = {n: (cls.root / f"{n}.yml").read_text() for n in CONSUMERS}
+        root = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows"
+        cls.text = {p.stem: p.read_text() for p in sorted(root.glob("*.yml")) if p.stem not in SECRET_FREE}
         cls.doc = {n: yaml.safe_load(t) for n, t in cls.text.items()}
 
     def loaders(self, name, job):
         return [(i, s) for i, s in enumerate(self.doc[name]["jobs"][job]["steps"]) if str(s.get("uses", "")).startswith("bitwarden/")]
 
+    def jobs_with_loaders(self, name):
+        return [job for job in self.doc[name]["jobs"] if self.loaders(name, job)]
+
+    def loaded(self, name, job):
+        return {m.group(2) for m in re.finditer(r"^([0-9a-f-]{36}) > (\w+)$", self.loaders(name, job)[0][1]["with"]["secrets"], re.M)}
+
     def test_every_loader_is_the_pinned_action_with_the_exact_ids_and_nothing_that_could_bypass_it(self):
-        for name, want in CONSUMERS.items():
-            doc, text = self.doc[name], self.text[name]
-            self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", text))), want["direct"], name)             # non-migrated refs + the Bitwarden bootstrap token, nothing else
-            self.assertIn("LIFEOS_BWS_RUNTIME_TOKEN", want["direct"], name)
+        for name, doc in self.doc.items():
+            text, jobs = self.text[name], self.jobs_with_loaders(name)
+            self.assertTrue(jobs, name)                                                                         # every workflow that reads a credential loads it through the pinned action
+            self.assertIn("LIFEOS_BWS_RUNTIME_TOKEN", re.findall(r"secrets\.(\w+)", text), name)
             self.assertFalse([n for n in UUIDS if re.search(rf"secrets\.{n}\b", text)], name)                    # no migrated value is read from GitHub any more
-            self.assertEqual(re.findall(r"uses:\s*(bitwarden/\S+)", text), [self.ACTION] * 2 * len(want["jobs"]), name)   # each load and its one retry
-            self.assertTrue(set(want["jobs"]) <= set(doc["jobs"]), name)
-            for job, names in want["jobs"].items():
+            self.assertEqual(re.findall(r"uses:\s*(bitwarden/\S+)", text), [self.ACTION] * 2 * len(jobs), name)   # each load and its one retry
+            if name != "domains":
+                self.assertEqual(set(jobs), set(LOADED[name]), name)
+            for job in jobs:
                 (at, loader), (retry_at, retry) = self.loaders(name, job)
-                steps = doc["jobs"][job]["steps"]
+                steps, names = doc["jobs"][job]["steps"], self.loaded(name, job)
+                self.assertTrue(names and names <= set(UUIDS), (name, job))
+                self.assertTrue(names <= DOMAIN_SECRETS[job] | TS if name == "domains" else names == LOADED[name][job], (name, job, sorted(names)))
                 self.assertEqual(steps[0]["uses"], "actions/checkout@v5", (name, job))
                 self.assertEqual(loader["uses"], self.ACTION, (name, job))
                 self.assertEqual(loader["with"]["access_token"], "${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}", (name, job))
@@ -1142,27 +859,26 @@ class BitwardenConsumerTests(unittest.TestCase):
                 self.assertEqual(retry["if"], failed, (name, job))
                 self.assertEqual((retry["uses"], retry["with"]), (loader["uses"], loader["with"]), (name, job))   # the same pinned action, the same ids
                 self.assertFalse({"continue-on-error", "env"} & set(retry), (name, job))                           # ... and a failed retry fails the job: no fallback
-                if name in CUT_OVER:
+                if name not in PILOTS:                                                                             # every workflow after the four accepted pilots is cut over
                     self.assertEqual(loader["id"], f"bws_{job}", (name, job))                                      # deterministic, unique id
                     self.assertIs(loader["with"]["set_env"], False, (name, job))                                  # nothing is exported job-wide
                     self.assertEqual(set(loader), {"id", "name", "continue-on-error", "uses", "with"}, (name, job))
                     self.assertEqual(set(retry), {"id", "name", "if", "uses", "with"}, (name, job))
                     self.assertEqual(set(loader["with"]), {"access_token", "set_env", "secrets"}, (name, job))
 
-    def test_each_consumer_step_receives_exactly_its_pre_cutover_migrated_secrets_and_no_other_step_receives_any(self):
-        for name in CUT_OVER:
-            doc = self.doc[name]
+    def test_only_steps_that_run_a_command_receive_a_loaded_value_and_the_loader_carries_exactly_what_they_use(self):
+        for name, doc in self.doc.items():
+            if name in PILOTS:
+                continue
             self.assertFalse([k for k, v in (doc.get("env") or {}).items() if k in UUIDS], name)                  # nothing at workflow level
             for job, body in doc["jobs"].items():
                 self.assertFalse([k for k, v in (body.get("env") or {}).items() if k in UUIDS and v != ""], (name, job))   # nothing at job level (the Interview job's blanks stay)
                 found = self.loaders(name, job)
                 if not found:                                                           # D244: a job with no loader may receive no migrated value at all
-                    self.assertNotIn(job, CONSUMERS[name]["jobs"], (name, job))
                     self.assertFalse([k for step in body["steps"] for k in (step.get("env") or {}) if k in UUIDS], (name, job))
                     self.assertFalse([v for step in body["steps"] for v in (step.get("with") or {}).values() if "steps.bws_" in str(v)], (name, job))
                     continue
                 (at, loader), (_, retry) = found
-                expected_all = CONSUMER_STEPS.get(name, {}).get(job, {})
                 seen = set()
                 for i, step in enumerate(body["steps"]):
                     label = step.get("name") or step.get("uses")
@@ -1183,22 +899,20 @@ class BitwardenConsumerTests(unittest.TestCase):
                         seen |= set(TAILSCALE_WITH.values())
                     else:
                         self.assertEqual(passed, {}, (name, job, label))                                           # no other action receives a loader output
-                    self.assertEqual(got, expected_all.get(label, set()), (name, job, label))
                     if "run" not in step or "uses" in step:
                         self.assertEqual(got, set(), (name, job, label))                                           # checkout, setup, actions and installs never get a migrated value
                     seen |= got
-                self.assertEqual(seen, CONSUMERS[name]["jobs"][job], (name, job))            # the loader carries exactly what its consumers use
+                self.assertEqual(seen, self.loaded(name, job), (name, job))                  # the loader carries exactly what its consumers use
 
-    def test_the_credential_source_change_altered_no_trigger_schedule_permission_concurrency_timeout_or_command(self):
-        for name, want in CONSUMERS.items():
-            doc = self.doc[name]
-            on = doc[True]
-            runs = [s["run"] for j in doc["jobs"].values() for s in j["steps"] if "run" in s and s["run"] != self.PAUSE]   # the D209 retry pause is pinned by the loader test
-            self.assertEqual(sorted(on), want["on"], name)
-            self.assertEqual([c["cron"] for c in on.get("schedule", [])], want["crons"], name)
-            self.assertEqual((doc.get("permissions"), doc.get("concurrency")), (want["perms"], want["conc"]), name)
-            self.assertEqual({jn: j.get("timeout-minutes") for jn, j in doc["jobs"].items()}, want["timeouts"], name)
-            self.assertEqual(hashlib.sha256("\n--\n".join(runs).encode()).hexdigest()[:16], want["digest"], name)   # live/dry-run switches and stage commands included
+    def test_every_workflow_is_read_only_queues_its_runs_and_bounds_every_job(self):
+        for name, doc in self.doc.items():
+            self.assertTrue({"pull_request_target", "issue_comment"}.isdisjoint(doc[True]), name)                 # no trigger that runs with secrets on a stranger's input
+            self.assertEqual({k: v for k, v in doc["permissions"].items() if v != "read"}, {"issues": "write"} if name == "watchdog" else {}, name)
+            self.assertTrue(doc.get("concurrency") or name == "watchdog", name)                                     # runs queue; only the read-only watchdog has no group
+            self.assertIs((doc.get("concurrency") or {}).get("cancel-in-progress", False), False, name)           # and a waiting run is never cancelled by the next
+            for job, body in doc["jobs"].items():
+                self.assertIsInstance(body.get("timeout-minutes"), int, (name, job))                                # every job is bounded
+            self.assertFalse(re.findall(r"run:[^\n]*\$\{\{ *secrets\.", self.text[name]), name)                    # a secret is never pasted into a command line
 
     def test_a_stopped_granola_bridge_fails_the_job_so_the_report_job_pushes_the_phone(self):
         """LIFE-312: the bridge step keeps continue-on-error so the warning prints, then a final step fails the job; the report job reads `failure` from `needs`."""
@@ -1211,10 +925,6 @@ class BitwardenConsumerTests(unittest.TestCase):
         self.assertEqual((last["run"], last["if"]), ("exit 1", "${{ always() && steps.gran.outcome == 'failure' }}"))
         self.assertIn("Granola auto warning", steps[-2]["name"])                                                    # the warning still prints first
         self.assertIn("granola", self.doc["domains"]["jobs"]["report"]["needs"])                                    # and the report job watches this job
-
-    def test_only_the_known_workflows_exist_and_the_four_accepted_pilots_are_in_the_table(self):
-        self.assertEqual(sorted(p.stem for p in self.root.glob("*.yml")), sorted(list(CONSUMERS) + list(SECRET_FREE)))
-        self.assertEqual(sorted(CUT_OVER + PILOTS), sorted(CONSUMERS))
 
 
 @unittest.skipIf(yaml is None, "PyYAML not installed")
