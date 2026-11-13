@@ -132,6 +132,8 @@ jobs:
       due_megibow: ${{ steps.due.outputs.due_megibow }}
       due_dcc: ${{ steps.due.outputs.due_dcc }}
       due_recruiters: ${{ steps.due.outputs.due_recruiters }}
+      due_hiring_outcomes: ${{ steps.due.outputs.due_hiring_outcomes }}
+      due_interview: ${{ steps.due.outputs.due_interview }}
       due_imessage: ${{ steps.due.outputs.due_imessage }}
       due_granola: ${{ steps.due.outputs.due_granola }}
     steps:
@@ -1102,9 +1104,9 @@ jobs:
 
   hiring_outcomes:
     # LIFE-632: the D190 Hiring outcome mail scan had run after the Recruiters mail read in the `recruiters` job (211 s). It reads Gmail and Outlook and saves one record to the store; it reads nothing the
-    # Recruiters step writes, so it runs beside it. Same trigger as the Recruiters job (its due row, its manual input), skipped for a Close screen refresh, which redraws only the Recruiter Outreach table.
+    # Recruiters step writes, so it runs beside it. Same trigger as the Recruiters job (its own due row, the same manual input), skipped for a Close screen refresh, which redraws only the Recruiter Outreach table.
     needs: [gate]
-    if: ${{ !cancelled() && needs.gate.result != 'failure' && inputs.refresh != 'recruiters' && (needs.gate.outputs.due_recruiters == 'true' || inputs.recruiters) }}
+    if: ${{ !cancelled() && needs.gate.result != 'failure' && inputs.refresh != 'recruiters' && (needs.gate.outputs.due_hiring_outcomes == 'true' || inputs.recruiters) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -1175,7 +1177,7 @@ jobs:
     # critical path of the whole run. It reads its own mail and only READS the Recruiters rows (recruiter threads by the exact request message), so it runs beside the Recruiters job: a brand-new
     # recruiter message is linked to its opportunity one tick (one hour) later. This job is the one writer of the opportunity pages: it holds the group, and Granola, which writes the same pages, waits for it.
     needs: [gate]
-    if: ${{ !cancelled() && needs.gate.result != 'failure' && inputs.refresh != 'recruiters' && (needs.gate.outputs.due_recruiters == 'true' || inputs.recruiters) }}
+    if: ${{ !cancelled() && needs.gate.result != 'failure' && inputs.refresh != 'recruiters' && (needs.gate.outputs.due_interview == 'true' || inputs.recruiters) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     concurrency:
