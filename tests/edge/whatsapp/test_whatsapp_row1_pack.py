@@ -619,24 +619,24 @@ class ConsumerTests(unittest.TestCase):
         self.addCleanup(server.sock.close)
         return path
 
-    def test_the_new_socket_is_tried_first_then_the_old_one(self):
-        new, old = self.serve("n.sock", SNAPSHOT), self.serve("o.sock", {**SNAPSHOT, "health": "DEGRADED"})
-        with unittest_patch(self.ep, WHATSAPP_SOCKET_WA=new, WHATSAPP_SOCKET=old):
+    def test_only_the_lifeos_wa_socket_is_tried_and_a_missing_one_is_unavailable_never_zero(self):          # LIFE-643 cleanup: the old per-user socket and its fallback are gone
+        new = self.serve("n.sock", SNAPSHOT)
+        with unittest_patch(self.ep, WHATSAPP_SOCKET_WA=new):
             self.assertEqual(self.ep.whatsapp("0" * 64)["health"], "CURRENT")
-        with unittest_patch(self.ep, WHATSAPP_SOCKET_WA=str(self.tmp / "gone.sock"), WHATSAPP_SOCKET=old):
-            self.assertEqual(self.ep.whatsapp("0" * 64)["health"], "CURRENT")                                # fallback = the rollback state
-        with unittest_patch(self.ep, WHATSAPP_SOCKET_WA=str(self.tmp / "gone.sock"), WHATSAPP_SOCKET=str(self.tmp / "gone2.sock")):
-            self.assertEqual(self.ep.whatsapp("0" * 64)["health"], "UNAVAILABLE")                            # neither: unavailable, never zero
+        with unittest_patch(self.ep, WHATSAPP_SOCKET_WA=str(self.tmp / "gone.sock")):
+            self.assertEqual(self.ep.whatsapp("0" * 64)["health"], "UNAVAILABLE")
+        self.assertFalse(hasattr(self.ep, "WHATSAPP_SOCKET"))
 
     def test_an_explicit_path_is_the_only_one_tried(self):
         old = self.serve("o.sock", SNAPSHOT)
-        with unittest_patch(self.ep, WHATSAPP_SOCKET_WA=old, WHATSAPP_SOCKET=old):
+        with unittest_patch(self.ep, WHATSAPP_SOCKET_WA=old):
             self.assertEqual(self.ep.whatsapp("0" * 64, str(self.tmp / "gone.sock"))["health"], "UNAVAILABLE")
 
-    def test_the_oracle_card_script_counts_either_unit(self):
+    def test_the_oracle_card_script_counts_only_the_lifeos_wa_unit(self):                                    # LIFE-643 cleanup: the old ubuntu user unit is gone
         text = (ROOT / "lifeos" / "oraclecloud" / "oracle" / "stats.mjs").read_text()
         self.assertIn('["is-active", "lifeos-wa-attention.service"]', text)
-        self.assertIn("active(UNITS.whatsapp)", text)
+        self.assertNotIn("lifeos-whatsapp-attention", text)
+        self.assertNotIn("UNITS.whatsapp", text)
 
 
 class unittest_patch:
