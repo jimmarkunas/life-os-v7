@@ -12,7 +12,7 @@ import sys
 import urllib.request
 
 REPO = "jimmarkunas/life-os-v7"
-APP = "lifeos/sources/close_app.py"
+APP = "lifeos/sources/apps/close_app.py"
 EDGE = ("lifeos/__init__.py", "lifeos/edge/close_gate.py", "lifeos/imessage/__init__.py", "lifeos/imessage/alerts_endpoint.py", "lifeos/platform/__init__.py",
         "lifeos/platform/notion_client.py", "lifeos/platform/limits.py", "lifeos/hiring/__init__.py", "lifeos/sources/__init__.py", APP)      # the gate's own runtime closure, GET client included
 NOTION_ID = re.compile(r"[0-9a-f]{32}\Z")
@@ -72,7 +72,7 @@ def stage(commit, dest, fetch=get, importer=None):
 
 
 def imports(dest):
-    code = (f"import sys; sys.path = [{dest!r}] + [p for p in sys.path if 'packages' not in p and p]; import lifeos.sources.close_app; "
+    code = (f"import sys; sys.path = [{dest!r}] + [p for p in sys.path if 'packages' not in p and p]; import lifeos.sources.apps.close_app; "
             "from lifeos.edge import close_gate as g; g.ReadOnly(g.notion_client(b'dry-run', {'ledger': '0' * 32}))")   # the real GET client, built in the staged tree
     probe = [sys.executable, "-I", "-B", "-c", code]
     if os.geteuid() == 0 and os.path.isdir("/run/systemd/system"):     # on the Edge (root, systemd) a commit's code never runs as root: a throwaway, read-only, offline user imports it

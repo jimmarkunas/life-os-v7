@@ -363,16 +363,17 @@ class Contract(unittest.TestCase):
         rel.stage("a" * 40, dest, github(files))                                                  # the real verifier: regular blobs, hashes, and an isolated import of the app and the gate
 
     def test_the_release_verifier_and_the_installed_service_use_the_relocated_callable_handler(self):
-        self.assertEqual(rel.APP, "lifeos/sources/close_app.py")
+        self.assertEqual(rel.APP, "lifeos/sources/apps/close_app.py")
         self.assertIn("lifeos/sources/__init__.py", rel.EDGE)
         unit = next(line for line in (ROOT / "lifeos/edge/oracle/install-close.sh").read_text().splitlines() if line.startswith("ExecStart="))
-        self.assertIn("from lifeos.sources.close_app import handle; sys.exit(close_gate.main(handle))", unit)
+        self.assertIn("from lifeos.sources.apps.close_app import handle; sys.exit(close_gate.main(handle))", unit)
+        self.assertNotIn("lifeos.sources.close_app", unit)                                              # LIFE-624 step 2: the unit imports the real module, not the shim
         self.assertNotIn("lifeos.hiring.close_app", unit)
         self.assertTrue(callable(close_app.handle) and close_app.handle.__module__ == "lifeos.sources.apps.close_app")
         self.assertFalse((ROOT / "lifeos/hiring/close_app.py").exists())                              # no wrapper is left in the hiring package
 
     def test_the_old_path_is_a_shim_that_ships_with_the_real_module_until_oracle_points_at_the_new_one(self):
-        """LIFE-624 step 1: the installed unit and `rel.APP` still name lifeos/sources/close_app.py; remove the shim only in step 3, after Oracle's unit points at lifeos.sources.apps.close_app."""
+        """LIFE-624: the old path is a shim and still ships with the real module (a unit installed before step 2 imports it); remove it only in step 3, after the read-back of Oracle's unit."""
         shim = importlib.import_module("lifeos.sources.close_app")                                        # what the installed unit and the release tool's import check import
         self.assertIs(shim.handle, close_app.handle)
         self.assertEqual(shim.handle.__module__, "lifeos.sources.apps.close_app")
