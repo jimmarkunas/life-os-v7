@@ -3,7 +3,8 @@ import os
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
-from lifeos.platform import stage_contract
+from lifeos.platform import clock, notion_pages, stage_contract
+from lifeos.platform.fixed_code import fixed
 from lifeos.platform.gmail import Gmail, GmailError, error_code
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 from . import events, orders
@@ -28,15 +29,12 @@ class AmazonError(NotionError):
     """Fixed failure codes only; never include mail or property values."""
 
 
-def _now():
-    return datetime.now(timezone.utc)
+_now = clock.utcnow
 
 
 def _schema(client, source_id):
-    try:
+    with fixed(NotionError, AmazonError, "AMAZON_NOTION_SCHEMA_READ_FAILED"):
         result = client.call("GET", f"/data_sources/{quote(source_id, safe='')}")
-    except NotionError:
-        raise AmazonError("AMAZON_NOTION_SCHEMA_READ_FAILED") from None
     props = result.get("properties") if isinstance(result, dict) else None
     if not isinstance(props, dict):
         raise AmazonError("AMAZON_NOTION_SCHEMA_INVALID")
@@ -84,30 +82,15 @@ def _row_from_page(page):
 
 
 def _query_order(client, source_id, order_id):
-    rows, cursor, seen = [], None, set()
-    for _ in range(MAX_QUERY_PAGES):
-        body = {"page_size": 100, "filter": {"property": "Order ID", "title": {"equals": order_id}}}
-        if cursor:
-            if cursor in seen:
-                raise AmazonError("AMAZON_NOTION_PAGINATION_INVALID")
-            seen.add(cursor)
-            body["start_cursor"] = cursor
-        try:
-            page = client.query_data_source(source_id, body)
-        except NotionError:
-            raise AmazonError("AMAZON_NOTION_QUERY_FAILED") from None
-        if not isinstance(page, dict) or not isinstance(page.get("results"), list) or not isinstance(page.get("has_more"), bool):
-            raise AmazonError("AMAZON_NOTION_QUERY_INCOMPLETE")
+    rows = []
+    body = {"page_size": 100, "filter": {"property": "Order ID", "title": {"equals": order_id}}}
+    for page in notion_pages.query(client, source_id, body, AmazonError, incomplete="AMAZON_NOTION_QUERY_INCOMPLETE", repeat="AMAZON_NOTION_PAGINATION_INVALID",
+                                   capped="AMAZON_NOTION_PAGINATION_INCOMPLETE", limit=MAX_QUERY_PAGES, read="AMAZON_NOTION_QUERY_FAILED"):
         parsed = [_row_from_page(item) for item in page["results"]]
         if any(row.get("Order ID") != order_id for row in parsed):
             raise AmazonError("AMAZON_NOTION_QUERY_MISMATCH")
         rows.extend(parsed)
-        if not page["has_more"]:
-            return rows
-        cursor = page.get("next_cursor")
-        if not isinstance(cursor, str) or not cursor:
-            raise AmazonError("AMAZON_NOTION_QUERY_INCOMPLETE")
-    raise AmazonError("AMAZON_NOTION_PAGINATION_INCOMPLETE")
+    return rows
 
 
 def _properties(row, partial=False):
@@ -121,10 +104,8 @@ def _properties(row, partial=False):
     if partial:
         return {"Status": {"select": {"name": "REVIEW"}}, "Needs Review": {"checkbox": True}}
     total = row.get("Grand Total")
-    try:
+    with fixed((ValueError, TypeError, OverflowError), AmazonError, "AMAZON_NOTION_VALUE_INVALID"):
         total_value = float(total) if total not in (None, "") else None
-    except (ValueError, TypeError, OverflowError):
-        raise AmazonError("AMAZON_NOTION_VALUE_INVALID") from None
     return {
         "Order ID": {"title": rich_text(row["Order ID"])},
         "Status": {"select": {"name": row["Status"]}},
@@ -142,10 +123,8 @@ def _properties(row, partial=False):
 
 
 def _get_page(client, page_id):
-    try:
+    with fixed(NotionError, AmazonError, "AMAZON_NOTION_READBACK_FAILED"):
         page = client.call("GET", f"/pages/{quote(page_id, safe='')}")
-    except NotionError:
-        raise AmazonError("AMAZON_NOTION_READBACK_FAILED") from None
     return _row_from_page(page)
 
 
@@ -153,19 +132,15 @@ def _write(client, source_id, existing, desired, review_only=False):
     props = _properties(desired, partial=True) if review_only else _properties(desired)
     if existing:
         page_id = existing["page_id"]
-        try:
+        with fixed(NotionError, AmazonError, "AMAZON_NOTION_WRITE_FAILED"):
             client.call_once("PATCH", f"/pages/{quote(page_id, safe='')}", {"properties": props})
-        except NotionError:
-            raise AmazonError("AMAZON_NOTION_WRITE_FAILED") from None
     else:
         # REVIEW rows contain identity and the two review fields only; no event fields are guessed.
         create_props = ({"Order ID": {"title": rich_text(desired["Order ID"])}, **props}
                         if review_only else props)
         body = {"parent": {"type": "data_source_id", "data_source_id": source_id}, "properties": create_props}
-        try:
+        with fixed(NotionError, AmazonError, "AMAZON_NOTION_WRITE_FAILED"):
             result = client.call_once("POST", "/pages", body)
-        except NotionError:
-            raise AmazonError("AMAZON_NOTION_WRITE_FAILED") from None
         page_id = result.get("id") if isinstance(result, dict) else None
         if not isinstance(page_id, str) or not page_id:
             raise AmazonError("AMAZON_NOTION_WRITE_FAILED")
@@ -175,10 +150,8 @@ def _write(client, source_id, existing, desired, review_only=False):
 def _minute(value):
     if value in (None, ""):
         return None
-    try:
+    with fixed((TypeError, ValueError), AmazonError, "AMAZON_NOTION_ROW_INVALID"):
         return datetime.fromisoformat(str(value).replace("Z", "+00:00")).astimezone(timezone.utc).replace(second=0, microsecond=0)
-    except (TypeError, ValueError):
-        raise AmazonError("AMAZON_NOTION_ROW_INVALID") from None
 
 
 def _raw(value):
@@ -212,10 +185,8 @@ def _config(environ):
 def _watermark(client, source_id):
     """Latest accepted event time in the canonical data source (one sorted read), or None when no dated order exists."""
     body = {"page_size": 1, "sorts": [{"property": "Latest Event At", "direction": "descending"}]}
-    try:
+    with fixed(NotionError, AmazonError, "AMAZON_NOTION_QUERY_FAILED"):
         page = client.query_data_source(source_id, body)
-    except NotionError:
-        raise AmazonError("AMAZON_NOTION_QUERY_FAILED") from None
     if not isinstance(page, dict) or not isinstance(page.get("results"), list):
         raise AmazonError("AMAZON_NOTION_QUERY_INCOMPLETE")
     stamps = [row["Latest Event At"] for row in (_row_from_page(item) for item in page["results"]) if row.get("Latest Event At")]
