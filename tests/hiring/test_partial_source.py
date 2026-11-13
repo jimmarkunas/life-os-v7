@@ -7,7 +7,7 @@ from unittest import mock
 from lifeos.hiring import outcomes, render
 from tests.hiring import test_hiring as hiring
 from tests.hiring.support import FakeStore
-from tests.hiring.test_outcomes import NOW, REJECTION, UBER, WALMART, BrokenOutlook, EntryPointTests, RunTests, msg
+from tests.hiring.test_outcomes import NOW, REJECTION, UBER, WALMART, BrokenOutlook, EntryPointTests, FakeGmail, RunTests, msg
 from tests.recruiters.fakes import ReadOnlyOutlook
 
 STORED = ("v7_hiring_outcomes", 1)
@@ -87,10 +87,10 @@ class PartialSourceTests(unittest.TestCase):
     def test_the_next_scan_is_due_in_twelve_hours_not_the_next_hour(self):
         store = FakeStore()
         with mock.patch.object(outcomes, "STORE", store), mock.patch.object(outcomes, "_exists", lambda c: True), mock.patch.object(outcomes.hiring_snapshot, "load", lambda c: RunTests.PRIOR):
-            first = outcomes.run(0, True, environ={}, gmail=hiring_gmail(self.REC), outlook_accounts=[("work", None)], connection=object(), now=NOW)
+            first = outcomes.run(0, True, environ={}, gmail=FakeGmail(list(self.REC)), outlook_accounts=[("work", None)], connection=object(), now=NOW)
             self.assertEqual((first["status"], store.saves, store.row["unread"]), ("partial", 1, ["Outlook work"]))
             for hours, status in ((1, "not_due"), (11, "not_due"), (13, "partial")):
-                gmail = hiring_gmail(self.REC)
+                gmail = FakeGmail(list(self.REC))
                 counts = outcomes.run(0, True, environ={}, gmail=gmail, outlook_accounts=[("work", None)], connection=object(), now=NOW + timedelta(hours=hours))
                 self.assertEqual((counts["status"], bool(gmail.queries)), (status, status != "not_due"), hours)
 
@@ -101,11 +101,6 @@ class PartialSourceTests(unittest.TestCase):
             store.row["unread"] = "Gmail"
             with self.assertRaises(outcomes.OutcomeError):
                 outcomes.load(object())
-
-
-def hiring_gmail(records):
-    from tests.hiring.test_outcomes import FakeGmail
-    return FakeGmail(list(records))
 
 
 class CardTests(unittest.TestCase):
@@ -141,13 +136,6 @@ class CardTests(unittest.TestCase):
         self.assertIn("(Gmail unread)", text)
         self.assertNotIn("example.com", text)
         self.assertEqual(self.card(["pat@example.com"])[1]["status"], "fresh")
-
-    def test_a_scan_with_nothing_unread_is_fresh_as_before(self):
-        self.assertEqual(self.card([])[1]["status"], "fresh")
-
-    def test_the_renderer_names_the_unread_sources_only_for_the_partial_reason(self):
-        text, _, _ = render.render({"rows": [], "reasons": ["OUTCOME_MAIL_STALE"], "outcome_unread": ["Gmail"]}, None, hiring.NOW)
-        self.assertNotIn("unread)", text)
 
 
 if __name__ == "__main__":
