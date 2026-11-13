@@ -1,5 +1,6 @@
 """D175: the Daily Command Center is written by V7 from what the other cards say on the page."""
 import unittest
+import unittest.mock
 from datetime import datetime, timedelta
 from unittest import mock
 from zoneinfo import ZoneInfo
@@ -101,10 +102,12 @@ class SlowerCardTests(unittest.TestCase):
             line = f"Updated {stamped.strftime('%-I:%M %p')} CT · 0 due · 26 bills due"
             self.assertEqual(card.classify({"status": line}, NOW, card.fresh_minutes("Bills", self.TABLE))[0], state, hours_old)
 
-    def test_the_real_table_gives_bills_the_four_slots_and_the_command_center_says_nothing_is_wrong_when_bills_was_skipped(self):
-        self.assertEqual(card.fresh_minutes("Bills"), 450)
+    def test_the_slot_fixture_gives_bills_the_four_slots_and_the_command_center_says_nothing_is_wrong_when_bills_was_skipped(self):
+        self.assertEqual(card.fresh_minutes("Bills", self.TABLE), 450)               # LIFE-630: the real table is hourly now (90); the slot mechanism stays proven on this fixture
+        self.assertEqual(card.fresh_minutes("Bills"), 90)
         areas = ComposeTests().areas(Bills={"status": "Updated 5:07 PM CT · 0 due through one week from now · 26 bills due · 26 overdue · Bill Tracker", "lines": [], "links": {}})
-        composed = card.compose(areas, NOW)                                          # NOW is 10:20 PM CT: the Bills callout is 5 hours old, as when the 6 PM slot is the next one
+        with unittest.mock.patch.object(card.due, "load_table", lambda: self.TABLE):
+            composed = card.compose(areas, NOW)                                      # NOW is 10:20 PM CT: the Bills callout is 5 hours old, as when the 6 PM slot is the next one
         self.assertEqual(composed["detail"][1].split(" ")[0], "✅")
         self.assertNotIn("STALE", composed["health"])
         self.assertEqual(composed["kpis"][0][:2], ("26", "Bills due"))                 # its number is still shown, bound to its own stamp
