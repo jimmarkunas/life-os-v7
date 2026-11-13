@@ -17,6 +17,7 @@
     {"name": "job-page-outreach", "module": "lifeos.sources.pipeline.job_page_outreach"},
     {"name": "mail-filing", "module": "lifeos.sources.cards.mail_filing", "floor": 200},
     {"name": "manual-job", "module": "lifeos.sources.pipeline.manual_job"},
-    {"name": "megibow", "module": "lifeos.sources.cards.megibow"}
+    {"name": "megibow", "module": "lifeos.sources.cards.megibow"},
+    {"name": "network-layout", "module": "lifeos.sources.network.ledger_layout"}
   ]
 }

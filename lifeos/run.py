@@ -131,7 +131,6 @@ STAGES = {
     "network-audit": lazy("lifeos.network.importer", "audit"),
     "network-match": lazy("lifeos.sources.network.network_leads"),
     "network-surface": lazy("lifeos.sources.network.network_surface"),
-    "network-layout": lazy("lifeos.sources.network.ledger_layout"),
     "probe": lazy("lifeos.probe"),
     "enrich": lazy("lifeos.jobs.enrich"),
     "fit": lazy("lifeos.jobs.fit.stage", floor=500),
