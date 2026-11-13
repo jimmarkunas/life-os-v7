@@ -6,7 +6,7 @@
     {"name": "actions/setup-python", "owner": "Jim", "level": "a", "reason": "replaced by the runner image's Python 3.12 in LIFE-639", "review": "2026-12-13"},
     {"name": "actions/setup-node", "owner": "Jim", "level": "a", "reason": "replaced by a checked Node download in LIFE-639", "review": "2026-12-13"},
     {"name": "tailscale/github-action", "owner": "Jim", "level": "a", "reason": "replaced by our own script that checks the official download against a recorded SHA-256 in LIFE-637", "review": "2026-12-13"},
-    {"name": "bitwarden/sm-action", "owner": "Jim", "level": "b", "reason": "vendored as a local action with its cargo fallback deleted in LIFE-636; pinned by fingerprint until then", "review": "2026-12-13"}
+    {"name": "./.github/actions/sm-action", "owner": "Jim", "level": "b", "reason": "vendored copy of bitwarden/sm-action v3.0.1 (GPL-3.0, LICENSE kept), download and cargo fallback deleted (LIFE-636); the helper program stays SHA-256 checked", "review": "2026-12-13"}
   ],
   "downloads": [
     {"name": "bws helper binary", "owner": "Jim", "level": "b", "reason": "downloaded then checked against a committed fingerprint before use", "review": "2026-12-13", "files": [".github/actions/bws-helper/fetch.sh"]},

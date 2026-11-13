@@ -40,12 +40,12 @@ runs:
   steps:
     - id: first
       continue-on-error: true
-      uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+      uses: ./.github/actions/sm-action
       with: {access_token: "${{ inputs.access_token }}", secrets: "${{ inputs.secrets }}", set_env: "${{ inputs.set_env }}"}
     - if: ${{ steps.first.outcome == 'failure' }}
       shell: bash
       run: sleep $((30 + RANDOM % 45))
     - id: retry
       if: ${{ steps.first.outcome == 'failure' }}
-      uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+      uses: ./.github/actions/sm-action
       with: {access_token: "${{ inputs.access_token }}", secrets: "${{ inputs.secrets }}", set_env: "${{ inputs.set_env }}"}

@@ -12,7 +12,7 @@ runs:
   steps:
     - id: where
       shell: bash
-      run: echo "dir=$(dirname "$RUNNER_TEMP")/_actions/bitwarden/sm-action/1238aae8fc64b212641190a9227c8a734ab1a793/target/x86_64-unknown-linux-gnu/release" >> "$GITHUB_OUTPUT"   # where sm-action v3.0.1 looks for its program (index.js getBinary)
+      run: echo "dir=$(realpath -m "$GITHUB_ACTION_PATH/../sm-action/target/x86_64-unknown-linux-gnu/release")" >> "$GITHUB_OUTPUT"   # where the vendored sm-action (index.js) looks for its program
     - id: saved
       if: ${{ inputs.test_download != 'fail' }}
       uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830   # v4.3.0
