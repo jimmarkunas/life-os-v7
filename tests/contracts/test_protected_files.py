@@ -42,7 +42,7 @@ class Check(unittest.TestCase):
         self.assertEqual(len(guard), 1)
         self.assertEqual(guard[0]["if"], "${{ github.event_name == 'pull_request' }}")      # on main pushes there is nothing to compare
         self.assertEqual(guard[0]["env"], {"PR_LABELS": "${{ join(github.event.pull_request.labels.*.name, ',') }}"})
-        self.assertEqual(doc["jobs"]["unit-tests"]["steps"][0]["with"]["fetch-depth"], 2)
+        self.assertIn("fetch -q --no-tags --depth=2 origin", steps[0]["run"])          # LIFE-638: the merge commit and its parent (the checkout step is our own git fetch)
 
 
 if __name__ == "__main__":
