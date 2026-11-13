@@ -119,7 +119,6 @@ STAGES = {
     "imessage-comms": lazy("lifeos.imessage.comms_card"),
     "oracle-card": lazy("lifeos.sources.cards.oracle_card"),
     "attention-card": lazy("lifeos.attention.card"),
-    "megibow": lazy("lifeos.sources.cards.megibow"),
     "capacity-card": lazy("lifeos.jobs.fit.capacity_card"),                  # LIFE-77 D228: the AI Capacity card; not configured (AI_CAPACITY_BLOCK_ID unset) until Jim activates it
     "hiring-outcomes": lazy("lifeos.hiring.outcomes"),
     "outlook-auth": _outlook_auth,
