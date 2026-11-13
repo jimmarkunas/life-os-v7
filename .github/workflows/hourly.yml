@@ -170,12 +170,11 @@ jobs:
             f45f29e2-acbc-4be7-9749-b4db015f0817 > TINYFISH_API_KEY
       - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
         continue-on-error: true
-        uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd   # v4.2.0
+        uses: ./.github/actions/tailscale
         with:
           oauth-client-id: ${{ steps.bws_prep.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ steps.bws_prep.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
-          use-cache: "false"
       - name: Gate - skip a scheduled or tick run when another tick started in the last 50 minutes (manual runs do not count)
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -359,12 +358,11 @@ jobs:
             f45f29e2-acbc-4be7-9749-b4db015f0817 > TINYFISH_API_KEY
       - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
         continue-on-error: true
-        uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd   # v4.2.0
+        uses: ./.github/actions/tailscale
         with:
           oauth-client-id: ${{ steps.bws_jobright.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ steps.bws_jobright.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
-          use-cache: "false"
       - id: jobright_browser
         name: Browser install for the Jobright resolver (LIFE-604 item 13; the same shared step the finish job uses)
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.resolve_jobright) }}
@@ -438,12 +436,11 @@ jobs:
             f45f29e2-acbc-4be7-9749-b4db015f0817 > TINYFISH_API_KEY
       - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
         continue-on-error: true
-        uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd   # v4.2.0
+        uses: ./.github/actions/tailscale
         with:
           oauth-client-id: ${{ steps.bws_linkedin.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ steps.bws_linkedin.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
-          use-cache: "false"
       - id: linkedin
         name: Step 5 - resolve LinkedIn jobs (no login, no browser)
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.resolve_linkedin) }}
@@ -528,12 +525,11 @@ jobs:
             f45f29e2-acbc-4be7-9749-b4db015f0817 > TINYFISH_API_KEY
       - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
         continue-on-error: true
-        uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd   # v4.2.0
+        uses: ./.github/actions/tailscale
         with:
           oauth-client-id: ${{ steps.bws_lensa.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ steps.bws_lensa.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
-          use-cache: "false"
       - id: discover
         continue-on-error: true
         name: Step 5f - Scale-Up sponsors with no job board - find their jobs by web search (the job keeps its id `lensa`; Lensa itself is retired, D201)
@@ -617,12 +613,11 @@ jobs:
             6590208b-506d-4238-ab10-b4e30051b25f > IMESSAGE_ALERTS_HOST
       - name: Cloud-Fit shadow only (D214, G6) - join the tailnet as the existing ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 47341)
         continue-on-error: true                 # LIFE-85: the store's Oracle fallback needs the tailnet on every run; a failed join only means no fallback
-        uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd   # v4.2.0
+        uses: ./.github/actions/tailscale
         with:
           oauth-client-id: ${{ steps.bws_finish.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ steps.bws_finish.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
-          use-cache: "false"
       - id: browser
         name: Browser install (LIFE-573, LIFE-576, LIFE-604 item 13; the one shared step in .github/actions/browser, its own timed step with one log line naming the path)
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.quick) }}

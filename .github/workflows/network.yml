@@ -57,12 +57,11 @@ jobs:
             53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN
       - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
         continue-on-error: true
-        uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd   # v4.2.0
+        uses: ./.github/actions/tailscale
         with:
           oauth-client-id: ${{ steps.bws_network.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ steps.bws_network.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
-          use-cache: "false"
       - name: Network (reads the attached CSV through Notion; prints counts only)
         env:
           NETWORK_HANDOFF_PAGE_ID: ${{ secrets.NETWORK_HANDOFF_PAGE_ID }}
