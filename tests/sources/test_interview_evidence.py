@@ -133,6 +133,12 @@ class SentMailFailure(unittest.TestCase):
                 raise GmailError(message)
         return G()
 
+    @staticmethod
+    def exit_code(counts):
+        out, err = io.StringIO(), io.StringIO()
+        with patch.dict(run.STAGES, {"interview": lambda limit, live: counts}), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            return run.main(["interview", "--live"]), out.getvalue(), err.getvalue()
+
     def counts(self, message):
         counts, got = Run(facts={"p1": ("exampleco-r-1", self.GMAIL_URL)}, gmail=self.gmail(message))()
         self.assertEqual([q.sent_mail_state for _, q in got["evidence"]], ["unreadable"])         # the page still reads DEGRADED
@@ -142,18 +148,15 @@ class SentMailFailure(unittest.TestCase):
     def test_a_thread_gmail_cannot_find_is_counted_on_its_own_and_exits_0(self):
         counts = self.counts("GET https://gmail.googleapis.com/gmail/v1/users/me/threads -> HTTP 404 notFound")
         self.assertEqual((counts["failed"], counts["permanent"]), (0, {"sent_mail_unreadable": 1}))
-        out, err = io.StringIO(), io.StringIO()
-        with patch.dict(run.STAGES, {"interview": lambda limit, live: counts}), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-            self.assertEqual(run.main(["interview", "--live"]), 0)
-        self.assertEqual((out.getvalue(), err.getvalue()), ("interview: " + json.dumps(counts, sort_keys=True) + "\n", ""))
+        code, out, err = self.exit_code(counts)
+        self.assertEqual((code, out, err), (0, "interview: " + json.dumps(counts, sort_keys=True) + "\n", ""))
 
     def test_any_other_gmail_error_still_fails_and_exits_1(self):
         for message in ("GET https://gmail.googleapis.com/gmail/v1/users/me/threads -> HTTP 429 rateLimitExceeded", "GET x -> HTTP 503 ", "GMAIL_THREAD_INCOMPLETE",
                         "POST https://oauth2.googleapis.com/token -> HTTP 400 ", "GET x -> HTTP 403 forbidden"):
             counts = self.counts(message)
             self.assertEqual((counts["failed"], counts["permanent"]), (1, {}), message)
-            with patch.dict(run.STAGES, {"interview": lambda limit, live: counts}), contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-                self.assertEqual(run.main(["interview", "--live"]), 1, message)
+            self.assertEqual(self.exit_code(counts)[0], 1, message)
 
     def test_a_blocked_page_still_counts_as_failed(self):
         """machine_region_edited is permanent too, but nothing on the page or card shows it (only the log's counts), so it stays a failure."""
