@@ -143,7 +143,7 @@ def disposed(state, since=None):
 
 def summary(state, now):
     """Counts and the degraded reason, if any: a pure function of the stored state."""
-    chain_status = {number: chains.fold([tuple(v) for v in chain["events"].values()]) for number, chain in state["chains"].items()}
+    chain_status = {number: _status_of(chain) for number, chain in state["chains"].items()}
     units = state["anchor_count"] + sum(a["count"] for a in state["arrivals"].values())
     first_seen = sorted((min(v[0] for v in state["chains"][n]["events"].values()), n) for n in state["chains"])
     bound = min(units, len(first_seen))
