@@ -138,7 +138,7 @@ def plan(doc, event, variables=None, **given):
 
 
 LOADERS = ("bitwarden/sm-action",)
-ALLOWED_RUNS = ("python3 -m lifeos.platform.gate", "pip install --require-hashes -r requirements-test.lock", "python -m unittest discover", "python -m lifeos.platform.testgate", "python -m unittest tests.test_testindex.CommittedIndexIsFresh", "python -m lifeos.run fit-cloud-backlog", "failed=\"\"", "alerts push")
+ALLOWED_RUNS = ("git init -q .", "python3 -m lifeos.platform.gate", "pip install --require-hashes -r requirements-test.lock", "python -m unittest discover", "python -m lifeos.platform.testgate", "python -m unittest tests.test_testindex.CommittedIndexIsFresh", "python -m lifeos.run fit-cloud-backlog", "failed=\"\"", "alerts push")
 
 
 @unittest.skipIf(yaml is None, "PyYAML unavailable")
@@ -176,7 +176,7 @@ class CloudBacklogRunsAlone(unittest.TestCase):
             self.assertEqual(list(p), ["prep"], name)
             result, steps = p["prep"]
             self.assertEqual(result, "failure", name)
-            self.assertEqual([st.get("uses") for st in steps[:1]], ["actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09"], name)          # only the repository checkout ran before it: no credential
+            self.assertEqual([st.get("name") for st in steps[:1]], ["Checkout the exact commit (own git fetch; the token is passed once and never stored)"], name)          # only the repository checkout ran before it: no credential
             self.assertEqual(len(steps), 2, name)
             self.assertIn("CLOUD_BACKLOG_COMBINED_INPUTS", steps[1]["run"])
             self.assertIn("exit 1", steps[1]["run"])

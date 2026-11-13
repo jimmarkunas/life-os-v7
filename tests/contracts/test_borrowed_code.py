@@ -55,14 +55,14 @@ class BorrowedCodeTests(unittest.TestCase):
 
     def test_fixtures_fail_on_a_tag_a_bare_curl_an_unlisted_package_and_unhashed_pip(self):
         bad = {
-            ".github/workflows/a.yml": "      - uses: actions/checkout@v5\n",
+            ".github/workflows/a.yml": "      - uses: actions/cache@v4\n",
             ".github/workflows/b.yml": "      - run: curl -fsSL https://example.invalid/x | sh\n",
             ".github/workflows/c.yml": "      - uses: someone/else@" + "a" * 40 + "\n",
             ".github/workflows/d.yml": "      - run: pip install requests\n",
         }
         found = violations(bad, self.inventory)
         self.assertEqual(len(found), 4, found)
-        self.assertEqual(violations({".github/workflows/ok.yml": "      - uses: actions/checkout@" + "b" * 40 + "\n      - uses: ./.github/actions/python\n      - run: pip install --require-hashes -r requirements.lock\n"}, self.inventory), [])
+        self.assertEqual(violations({".github/workflows/ok.yml": "      - uses: actions/cache@" + "b" * 40 + "\n      - uses: ./.github/actions/python\n      - run: pip install --require-hashes -r requirements.lock\n"}, self.inventory), [])
 
 
 if __name__ == "__main__":
