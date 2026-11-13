@@ -106,10 +106,6 @@ def screen(job):
     return ("kept_remote_in_location" if lanes.detect_work_mode(where, title) == "remote" else "kept_remote_in_description") + tail
 
 
-def keep(job):
-    return screen(job).startswith("kept_")
-
-
 class StopOnRateLimit:
     """Wraps a lister: after `limit` rate_limited_429 answers from one ATS family, its remaining boards are not requested this run."""
 
