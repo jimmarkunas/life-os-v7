@@ -12,7 +12,7 @@ Status as of Nov 10 2026. Nothing here changes when an alert fires or who gets i
 | DRIFT | hash differs, file is gone, or the unit is not running |
 | UNKNOWN | main, the file or systemd could not be read. **Never DEPLOYED.** |
 
-Surfaces: the ticker, the six platform modules the ticker installs (`gate`, `alerts`, `alert_registry`, `alert_settings`, `redact`, `drift`), and the off-site backup script. A test (`tests/platform/test_drift.py`) holds that list equal to the installer's `MODULES`.
+Surfaces: the ticker, the six platform modules the ticker installs (`gate`, `alerts`, `alert_registry`, `alert_settings`, `redact`, `drift`), and the off-site backup script. A test (`tests/contracts/test_runtime_manifest.py`) holds that list and the installer's `MODULES` equal to `lifeos/platform/runtime.json`.
 Any DRIFT opens one quiet GitHub issue (`deploy-drift`) and one INFO push (`deploy_drift`, phone only); all DEPLOYED closes it (`deploy_drift_recovered`). UNKNOWN changes nothing.
 **Not deployed yet.** The VM install is a protected host action, held for Jim's yes. Until then the VM has none of this and the stale ticker and registry files remain.
 
