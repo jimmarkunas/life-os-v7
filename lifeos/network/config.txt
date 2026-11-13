@@ -1,0 +1,2 @@
+NETWORK_HANDOFF_PAGE_ID input Notion page id of the network handoff page
+NETWORK_SURFACE_SKIP flag on (default) or off: Network Leads skips Ledger pages proven earlier and untouched since (LIFE-572); off reads every page in full

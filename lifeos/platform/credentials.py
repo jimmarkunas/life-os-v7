@@ -9,8 +9,9 @@ Warnings ride the existing path: lifeos/jobs/alerts.py turns every entry that ha
 reads this list on Oracle; it never reads Notion, so a Notion problem cannot silence a warning. The Token Expiry database in Notion is a read-only mirror of `rows()`."""
 import copy
 import datetime as dt
+from pathlib import Path
 
-from lifeos.platform.credential_list import CONFIG, CREDENTIALS
+from lifeos.platform.credential_list import CREDENTIALS, NOT_ENVIRONMENT, PATTERNS, PROVIDED
 
 SOURCES = {"provider_reported": "Provider reported", "manual": "Manual", "none": "No expiry exposed", "no_expiry": "No fixed expiry"}
 WARN_AHEAD_DAYS = 7
@@ -22,9 +23,16 @@ def load():
     return copy.deepcopy(CREDENTIALS)
 
 
-def config():
-    """LIFE-560: the environment-variable name registry (names, kind, owner, purpose; never a value)."""
-    return copy.deepcopy(CONFIG)
+def config(root=Path(__file__).resolve().parents[1]):
+    """LIFE-560: the environment-variable name registry (names, kind, owner, purpose; never a value). LIFE-644: each row is a line `NAME kind purpose` in its owner package's
+    lifeos/<package>/config.txt (`kind:owner` names an owner that is not a package, e.g. workflow); the groups that are not rows stay in credential_list.py."""
+    rows = []
+    for path in sorted(root.glob("*/config.txt")):
+        for line in path.read_text().splitlines():
+            name, kind, purpose = line.split(" ", 2)
+            kind, _, owner = kind.partition(":")
+            rows.append({"name": name, "kind": kind, "owner": owner or path.parent.name, "purpose": purpose})
+    return copy.deepcopy({"provided": PROVIDED, "names": sorted(rows, key=lambda row: row["name"]), "patterns": PATTERNS, "not_environment": NOT_ENVIRONMENT})
 
 
 def days_left(entry, today):

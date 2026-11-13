@@ -1,0 +1,1 @@
+DCC_CARD_BLOCK_ID input Notion block id of the dcc card on the Daily Report page
