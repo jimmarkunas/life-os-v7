@@ -13,6 +13,7 @@
     {"name": "boards-preview", "module": "lifeos.sources.web.boards", "function": "preview"},
     {"name": "granola-auto", "module": "lifeos.sources.interview.granola_auto", "function": "stage"},
     {"name": "hiring", "module": "lifeos.sources.pipeline.hiring"},
-    {"name": "interview", "module": "lifeos.sources.interview.interview_evidence"}
+    {"name": "interview", "module": "lifeos.sources.interview.interview_evidence"},
+    {"name": "job-page-outreach", "module": "lifeos.sources.pipeline.job_page_outreach"}
   ]
 }
