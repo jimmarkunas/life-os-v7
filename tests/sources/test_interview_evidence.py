@@ -11,6 +11,7 @@ from lifeos.jobs import ledger as jobs_ledger
 from lifeos.platform.notion_client import NotionError
 from lifeos.interview.models import Child, Ownership, Parent, Scan
 from lifeos import run
+from lifeos.platform.db import StoreError
 from lifeos.platform.gmail import GmailError
 from lifeos.run import STAGES
 from lifeos.sources.interview import interview_evidence as ev
@@ -21,6 +22,7 @@ from tests.sources.support import mail, outreach
 URL = "https://example.test/thread/1"
 OTHER = "https://example.test/thread/2"
 ENV = {"NOTION_INTERVIEW_TOKEN": "synthetic", "HIRING_PIPELINE_PAGE_ID": "root"}
+LIVE = {**ENV, "INTERVIEW_OS_WRITER": "v7"}                         # the writer switch: a run is live only with it
 ROW = {"page_id": "ledger-1", "company": "ExampleCo", "role": "Program Manager", "stable_job_key": "exampleco-r-1", "requisition": None}
 
 
@@ -87,7 +89,8 @@ class Writer:
 class Run:
     """ev.run with the Notion reads replaced by plain data; `stage.run` is captured, never executed."""
 
-    def __init__(self, parents=(("p1", "ExampleCo — Program Manager"),), facts=None, kids=None, rows=(ROW,), calendar=None, environ=ENV, live=True, roster=(), records=(), ledger=None, retired=(), writer=None, owner=Ownership.MACHINE, tops=(), legacy=None, complete=True, gmail=None, stage_counts=None):
+    def __init__(self, parents=(("p1", "ExampleCo — Program Manager"),), facts=None, kids=None, rows=(ROW,), calendar=None, environ=ENV, live=True, roster=(), records=(), ledger=None, retired=(), writer=None, owner=Ownership.MACHINE, tops=(), legacy=None, complete=True, gmail=None, stage_counts=None, connect=None):
+        self.connect = connect
         self.writer, self.owner, self.tops, self.legacy, self.complete, self.gmail = writer, owner, list(tops), legacy or {}, complete, gmail
         self.stage_counts = stage_counts or {"blocked": 0, "why": {}}
         self.roster, self.records, self.ledger = roster if isinstance(roster, Exception) else list(roster), None if records is None else list(records), ledger or Ledger()
@@ -118,8 +121,42 @@ class Run:
              patch.object(ev.stage, "run", side_effect=fake_stage), \
              patch.object(ev, "network_contacts", side_effect=lambda client, evidence: (evidence, False)):        # E10 contacts have their own tests
             counts = ev.run(20, self.live, environ=self.environ, client=object(), calendar=self.calendar, ledger_rows=self.ledger_rows,
-                            ledger=self.ledger, records=self.records, writer=self.writer, gmail=self.gmail)
+                            ledger=self.ledger, records=self.records, writer=self.writer, gmail=self.gmail, connect=self.connect)
         return counts, captured
+
+
+class DailyCounts:
+    """The private daily-counts table in memory: `connect` is the object, its own connection and cursor."""
+
+    def __init__(self, down=False):
+        self.rows, self.since, self.down = {}, None, down
+
+    def __call__(self):
+        if self.down:
+            raise StoreError("STORE_DOWN")
+        return self
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def cursor(self):
+        return self
+
+    def commit(self):
+        pass
+
+    def execute(self, sql, args=()):
+        if sql.startswith("INSERT"):
+            day, name, value = args
+            self.rows[(day, name)] = value
+        else:
+            self.since = args[0]
+
+    def fetchall(self):
+        return [(day, name, value) for (day, name), value in self.rows.items() if day >= self.since]
 
 
 class SentMailFailure(unittest.TestCase):
@@ -157,6 +194,60 @@ class SentMailFailure(unittest.TestCase):
             counts = self.counts(message)
             self.assertEqual((counts["failed"], counts["permanent"]), (1, {}), message)
             self.assertEqual(self.exit_code(counts)[0], 1, message)
+
+    def test_a_thread_unreadable_for_another_cause_is_failed_twice_then_permanent_and_resets(self):
+        """LIFE-664: a new unreadable thread fails its first runs; from the third it is counted `permanent` (still counted and printed); read again, it starts over."""
+        store, flaky = DailyCounts(), "GET https://gmail.googleapis.com/gmail/v1/users/me/threads -> HTTP 503 "
+        seen = []
+        for run_number in (1, 2, 3, 4):
+            counts, _ = Run(facts={"p1": ("exampleco-r-1", self.GMAIL_URL)}, gmail=self.gmail(flaky), connect=store, environ=LIVE)()
+            seen.append((counts["failed"], counts["permanent"], counts["sent_mail_runs"], self.exit_code(counts)[0]))
+            self.assertEqual(counts["sent_mail_causes"], {"http_503": 1}, run_number)
+        self.assertEqual(seen, [(1, {}, 1, 1), (1, {}, 2, 1), (0, {"sent_mail_unreadable": 1}, 3, 0), (0, {"sent_mail_unreadable": 1}, 4, 0)])
+        class Fine:
+            def thread_sent(self, thread):
+                return []
+        counts, _ = Run(facts={"p1": ("exampleco-r-1", self.GMAIL_URL)}, gmail=Fine(), connect=store, environ=LIVE)()
+        self.assertEqual((counts["failed"], counts["permanent"], "sent_mail_causes" in counts), (0, {}, False))
+        counts, _ = Run(facts={"p1": ("exampleco-r-1", self.GMAIL_URL)}, gmail=self.gmail(flaky), connect=store, environ=LIVE)()
+        self.assertEqual((counts["failed"], counts["sent_mail_runs"]), (1, 1))                  # readable once: the next unreadable run is the first again
+
+    def test_the_cause_is_a_fixed_code_and_carries_no_thread_id_or_message_text(self):
+        for message, cause in (("GET https://gmail.googleapis.com/gmail/v1/users/me/threads/18c0ffee12345678 -> HTTP 429 rateLimitExceeded", "http_429"),
+                               ("GMAIL_THREAD_INCOMPLETE", "gmail_thread_incomplete"), ("a secret@example.test text", "other")):
+            counts, _ = Run(facts={"p1": ("exampleco-r-1", self.GMAIL_URL)}, gmail=self.gmail(message), connect=DailyCounts())()
+            self.assertEqual(counts["sent_mail_causes"], {cause: 1}, message)
+            printed = json.dumps(counts)
+            for private in ("18c0ffee", "secret", "example.test", "mail.google.com"):
+                self.assertNotIn(private, printed)
+
+    def test_a_dry_run_keeps_no_streak_and_a_store_that_is_down_never_makes_a_thread_permanent(self):
+        store, flaky = DailyCounts(), "GET x -> HTTP 503 "
+        for _ in range(4):
+            counts, _ = Run(facts={"p1": ("exampleco-r-1", self.GMAIL_URL)}, gmail=self.gmail(flaky), live=False, connect=store)()
+            self.assertEqual((counts["failed"], counts["sent_mail_runs"]), (1, 1))
+        self.assertEqual(store.rows, {})
+        for _ in range(4):
+            counts, _ = Run(facts={"p1": ("exampleco-r-1", self.GMAIL_URL)}, gmail=self.gmail(flaky), connect=DailyCounts(down=True), environ=LIVE)()
+            self.assertEqual((counts["failed"], counts["permanent"], counts["streak_store"]), (1, {}, "unavailable"))
+
+    def test_a_missing_thread_is_permanent_at_once_and_two_threads_are_counted_alone(self):
+        class Mixed:
+            def thread_sent(self, thread):
+                raise GmailError("GET x -> HTTP 404 notFound" if thread.startswith("18") else "GET x -> HTTP 503 ")
+        urls = ("https://mail.google.com/mail/u/0/#all/18c0ffee12345678", "https://mail.google.com/mail/u/0/#all/29c0ffee12345678")
+        counts, _ = Run(parents=(("p1", "ExampleCo — Program Manager"), ("p2", "OtherCo — Analyst")), facts={"p1": ("exampleco-r-1", urls[0]), "p2": ("otherco-a-1", urls[1])},
+                        kids={"p1": (child(),), "p2": (child("c2"),)}, rows=(ROW, {**ROW, "page_id": "ledger-2", "company": "OtherCo", "role": "Analyst", "stable_job_key": "otherco-a-1"}),
+                        gmail=Mixed(), connect=DailyCounts())()
+        self.assertEqual((counts["failed"], counts["permanent"], counts["sent_mail_causes"]), (1, {"sent_mail_unreadable": 1}, {"http_404": 1, "http_503": 1}))
+
+    def test_a_request_for_a_page_jim_wrote_is_counted_on_its_own_and_exits_0(self):
+        """LIFE-664: `human_page` (nothing is written to Jim's own page) is a state only Jim changes; it is counted `permanent`, not `failed`; any other block still fails."""
+        counts, _ = Run(stage_counts={"blocked": 1, "blocked_why": {"human_page": 1}, "why": {"human_page": 1}})()
+        self.assertEqual((counts["failed"], counts["permanent"]), (0, {"human_page": 1}))
+        self.assertEqual(self.exit_code(counts)[0], 0)
+        counts, _ = Run(stage_counts={"blocked": 2, "blocked_why": {"human_page": 1, "machine_region_edited": 1}, "why": {"human_page": 1, "machine_region_edited": 1}})()
+        self.assertEqual((counts["failed"], counts["permanent"], counts["blocked_why"]), (1, {"human_page": 1}, {"human_page": 1, "machine_region_edited": 1}))
 
     def test_a_blocked_page_still_counts_as_failed(self):
         """A page whose structure is not recognisable (machine_region_edited) shows nothing on the page or card (only the log's counts), so it stays a failure."""
