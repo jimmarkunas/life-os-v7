@@ -20,7 +20,7 @@ from datetime import date, datetime, timezone
 from urllib.parse import quote, urlparse
 from zoneinfo import ZoneInfo
 
-from lifeos.platform import report_region as R, router
+from lifeos.platform import ct_stamp, report_region as R, router
 from lifeos.platform.fixed_code import note_cause
 from lifeos.platform.notion_client import Client, NotionError
 from . import notion as store
@@ -291,17 +291,16 @@ def present(client, environ, build, heading, live):
     return counts
 
 
-def heading(clock, stage="success", scan_kind=""):
-    """LIFE-609: `<Title> (Updated H:MM AM CT)`, the form every Daily Report card heading takes. Skipped (a Close screen refresh ran no mail stage on purpose) says Redrawn, so the heading never
-    claims mail was read (Jim, Oct 24). A mail source that was not read (LIFE-646) is named by its fixed name, only then: `(Updated 9:30 AM CT, Outlook personal unread)`."""
+def heading(moment, stage="success", scan_kind=""):
+    """LIFE-609: `<Title> (Updated Nov 13 · 3:31 PM CT)`, the form every Daily Report card heading takes. Skipped (a Close screen refresh ran no mail stage on purpose) says Redrawn, so the heading never
+    claims mail was read (Jim, Oct 24). A mail source that was not read (LIFE-646) is named by its fixed name, only then: `(Updated Nov 13 · 9:30 AM CT, Outlook personal unread)`."""
     scan_kind = (scan_kind or "").strip()
     unread = UNREAD.search(scan_kind) if stage == "success" and KIND.fullmatch(scan_kind) else None
-    return f"{TITLE} ({'Redrawn' if stage == 'skipped' else 'Updated'} {clock}{f', {unread.group(1)} unread' if unread else ''})"
+    return f"{TITLE} ({'Redrawn' if stage == 'skipped' else 'Updated'} {ct_stamp.when(moment)}{f', {unread.group(1)} unread' if unread else ''})"
 
 
 def run(limit, live, environ=os.environ, notion=None, client=None, now=None):
     now = (now or datetime.now(timezone.utc)).astimezone(CHICAGO)
-    clock = now.strftime("%-I:%M %p") + " CT"
     write = bool(live) and (environ.get("RECRUITER_OUTREACH") or "").strip().lower() == "on"
     counts = {"rows": 0, "needs_action": 0, "waiting": 0, "live": write, "status": "ok"}
     reason = None
@@ -319,7 +318,7 @@ def run(limit, live, environ=os.environ, notion=None, client=None, now=None):
     target = client or writer(environ)
     if reason:
         counts["status"] = "degraded"
-        counts.update(present(target, environ, None, f"{TITLE} (DEGRADED at {clock})", write))
+        counts.update(present(target, environ, None, f"{TITLE} (DEGRADED at {ct_stamp.when(now)})", write))
         print("recruiter-outreach:", json.dumps(counts, sort_keys=True))
         raise fail(f"DEGRADED:{reason}")                            # the rows keep their last accepted content; the step is a warning
     today = now.date()
@@ -329,5 +328,5 @@ def run(limit, live, environ=os.environ, notion=None, client=None, now=None):
         firsts = [first_contact(r, kept) for r in shown]
         counts["first_contact_shown"] = sum(1 for f in firsts if f)
         return [cells(r, today, f, environ.get("V7_CLOSE_BASE_URL")) for r, f in zip(shown, firsts)]
-    counts.update(present(target, environ, build, heading(clock, stage, environ.get("RECRUITERS_SCAN")), write))
+    counts.update(present(target, environ, build, heading(now, stage, environ.get("RECRUITERS_SCAN")), write))
     return counts

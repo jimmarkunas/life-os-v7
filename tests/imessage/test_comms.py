@@ -177,7 +177,7 @@ class Contract(unittest.TestCase):
     def test_render(self):
         lines, heading = card.render({"messages": (45, "PRESENT", NAME), "telegram": (150, "NONE", None)}, NOW)
         self.assertEqual(lines, {"messages": ("Messages (45)", "Latest: Alice Example"), "telegram": ("Telegram (99+)", "Latest: none")})
-        self.assertEqual(heading, "Communications Attention (Updated 10:00 AM CT)")
+        self.assertEqual(heading, "Communications Attention (Updated Oct 14 · 10:00 AM CT)")
         self.assertEqual(card.render(card.UNAVAILABLE, NOW)[0]["messages"], ("Messages (—)", "Latest: unavailable"))
 
 
@@ -206,7 +206,7 @@ class Card(unittest.TestCase):
         self.assertEqual(report.blocks["l0"]["paragraph"]["rich_text"][0]["mention"]["custom_emoji"]["id"], "e-msg")
         self.assertEqual(report.blocks["l0"]["paragraph"]["rich_text"][2]["text"]["link"]["url"], "https://example.com/launch/messages/")
         self.assertEqual(report.plain("r0"), "Latest: Alice Example")
-        self.assertEqual(report.plain("head"), "Communications Attention (Updated 10:00 AM CT)")
+        self.assertEqual(report.plain("head"), "Communications Attention (Updated Oct 14 · 10:00 AM CT)")
         self.assertEqual({b: report.plain(b) for b in others}, others)
         self.assertNotIn("Alice", log)
         self.assertNotIn("Bob", log)

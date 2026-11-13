@@ -1,6 +1,6 @@
 """The Daily Command Center, written by V7 (D175): one callout on the Daily Report, built by rules from what the other V7 cards say on the page.
 
-It reads the first line of each V7 card (the `Updated H:MM AM/PM CT` stamp, or DEGRADED / STALE) and the counts those lines already carry, and writes its own region only, through the
+It reads the first line of each V7 card (the `Updated Nov 13 · 3:31 PM CT` stamp (or the older `Updated H:MM AM/PM CT`), or DEGRADED / STALE) and the counts those lines already carry, and writes its own region only, through the
 same block-local write the other cards use (heading kept, old text replaced, every other V7 region proven unchanged around the write). No new data source, no model, no judgement the
 cards did not already state. It runs last in V7's tick, so no other card is being written while it reads or writes. Counts and fixed codes only in logs."""
 import os
@@ -10,7 +10,7 @@ from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 from lifeos.dcc import header
-from lifeos.platform import due, report_region, router
+from lifeos.platform import ct_stamp, due, report_region, router
 from lifeos.platform.notion_client import Client, NotionError
 from lifeos.platform.notion_text import plain
 
@@ -20,7 +20,8 @@ MODULE = router.OWNERS[TITLE]
 FRESH_MINUTES = 90                                        # an hourly card is current this long after its stamp
 # LIFE-612: a card that runs less often than every tick is current for the longest gap between its runs plus the same 90 minutes, read from the due-time table (lifeos/platform/due_table.json).
 JOB_OF = {"Calendar": "outlook", "Jira": "jira", "Bills": "bills", "Mail Alerts": "mail", "Amazon": "amazon", "Hiring Pipeline": "hiring"}
-STAMP = re.compile(r"Updated (\d{1,2}):(\d{2}) ([AP]M) CT")
+STAMP = re.compile(r"Updated (?:([A-Z][a-z]{2}) (\d{1,2}) · )?(\d{1,2}):(\d{2}) ([AP]M) CT")      # LIFE-660: `Updated Nov 13 · 3:31 PM CT`; the time-only form an older heading still carries has no date group
+MONTHS = {name: number for number, name in enumerate(ct_stamp.MONTHS, 1)}
 TIME = re.compile(r"(\d{1,2}):(\d{2}) ([AP]M) CT")          # the clock in a DEGRADED or STALE line ("failed at 10:05 PM CT")
 # (label, block id secret, where the status text is). "head": the callout's heading carries it; "line": the heading's stamp, then the first text line under the heading (the counts; a card that still carries its stamp in that line works as before); "floating": the Hiring Pipeline's heading stamp and table rows.
 # LIFE-645: V7 retired the Attention card, so the Attention callout is no longer a source (it would read STALE for good); it stays a protected region.
@@ -125,10 +126,19 @@ def classify(area, now, minutes=FRESH_MINUTES):
     found = STAMP.search(text)
     if not found:
         return "unknown", None
-    hour = int(found.group(1)) % 12 + (12 if found.group(3) == "PM" else 0)
-    at = now.replace(hour=hour, minute=int(found.group(2)), second=0, microsecond=0)
-    if at > now:
-        at -= timedelta(days=1)                         # a stamp later than now is yesterday's
+    month, day, hour12, minute, half = found.groups()
+    hour = int(hour12) % 12 + (12 if half == "PM" else 0)
+    if month is None:                                   # the time-only form: today's clock, or yesterday's when it is later than now
+        at = now.replace(hour=hour, minute=int(minute), second=0, microsecond=0)
+        if at > now:
+            at -= timedelta(days=1)
+    else:                                               # LIFE-660: the real date; a stamp that lands after now is the year before (a Dec 31 stamp read on Jan 1)
+        try:
+            at = now.replace(month=MONTHS[month], day=int(day), hour=hour, minute=int(minute), second=0, microsecond=0)
+            if at > now + timedelta(days=1):
+                at = at.replace(year=at.year - 1)
+        except (KeyError, ValueError):
+            return "unknown", None                      # not a date: never guessed fresh
     return ("fresh" if now - at <= timedelta(minutes=minutes) else "stale"), stamp
 
 

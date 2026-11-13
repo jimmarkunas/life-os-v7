@@ -239,7 +239,7 @@ class Pipeline(unittest.TestCase):
         self.assertEqual(T.cells(row)[1:3], ["Paused · Submitted", "No to-do · paused (set by Jim Oct 5)"])
         text, cells, _ = render.render(got, None, T.NOW)
         self.assertEqual([c[0][0] for c in cells], ["Globex — Program Director", "Acme — Senior Program Manager"])     # the Stale Globex row first, the paused one last
-        self.assertEqual(text, "Updated 2:00 PM CT · 1 active · 1 paused or waiting")
+        self.assertEqual(text, "Updated Oct 6 · 2:00 PM CT · 1 active · 1 paused or waiting")
         waiting = T.compile_([held_row((M.hold_line(M.WAITING, SET_AT, OP),))])["rows"][0]
         self.assertEqual(T.cells(waiting)[1], "Waiting on employer · Submitted")
 

@@ -151,7 +151,7 @@ class CompilerTests(unittest.TestCase):
         self.assertIn("CALENDAR_UNAVAILABLE", down["reasons"])
         text, table, counts = render.render(down, prior, NOW + timedelta(hours=1))
         self.assertTrue(text.startswith("DEGRADED · Hiring Pipeline Calendar unreadable"))
-        self.assertIn("showing last accepted state (Oct 6, 2:00 PM CT)", text)
+        self.assertIn("showing last accepted state (Oct 6 · 2:00 PM CT)", text)
         self.assertIn("(last accepted)", table[0][1][0])
         vanished = compile_([applied("Acme", "Senior Program Manager")], prior=prior)               # Calendar read fine, the future event is gone
         self.assertEqual(vanished["rows"][0]["stage"], "Interviewing")
@@ -640,11 +640,22 @@ class RegionWriterTests(unittest.TestCase):
     def test_the_stamp_follows_the_status_and_the_heading_keeps_its_block_title_and_place(self):
         t = page()
         for text, heading in (("Updated 2:00 PM CT · 3 active · 1 more not shown", "📈 Hiring Pipeline (Updated 2:00 PM CT)"),
-                              ("DEGRADED · Hiring Pipeline Calendar unreadable at 3:00 PM CT · showing last accepted state (Oct 6, 2:00 PM CT) · 3 active",
+                              ("DEGRADED · Hiring Pipeline Calendar unreadable at 3:00 PM CT · showing last accepted state (Oct 6 · 2:00 PM CT) · 3 active",
                                "📈 Hiring Pipeline (DEGRADED at 3:00 PM CT)")):
             self.assertTrue(card.present(t, ENV, text, WANT[:1], True)["verified"])
             self.assertEqual(R.plain(t.blocks["0000000000000000000000000000a001"]), heading)
             self.assertEqual(t.kids["right"][:2], ["0000000000000000000000000000a001", "0000000000000000000000000000a003"])
+
+    def test_split_status_reads_the_dated_stamp_and_still_the_time_only_one(self):
+        """LIFE-660: `Updated Nov 13 · 2:00 PM CT · 5 active` holds a middle dot of its own: the stamp is the whole `Updated Nov 13 · 2:00 PM CT`, not the text up to the first dot."""
+        self.assertEqual(M.split_status("Updated Nov 13 · 2:00 PM CT · 5 active"), ("Updated Nov 13 · 2:00 PM CT", "5 active"))
+        self.assertEqual(M.split_status("Updated Nov 13 · 2:00 PM CT"), ("Updated Nov 13 · 2:00 PM CT", ""))
+        self.assertEqual(M.split_status("Updated Nov 13 · 2:00 PM CT · 5 active · 1 paused or waiting"), ("Updated Nov 13 · 2:00 PM CT", "5 active · 1 paused or waiting"))
+        self.assertEqual(M.split_status("Updated 2:00 PM CT · 5 active"), ("Updated 2:00 PM CT", "5 active"))
+        self.assertEqual(M.split_status("DEGRADED · Hiring Pipeline unavailable at Nov 13 · 2:00 PM CT · Job Ledger unreadable · no accepted state yet"),
+                         ("DEGRADED at Nov 13 · 2:00 PM CT", "Hiring Pipeline unavailable · Job Ledger unreadable · no accepted state yet"))
+        self.assertEqual(M.split_status("DEGRADED · Hiring Pipeline Calendar unreadable at Nov 13 · 2:00 PM CT · showing last accepted state (Nov 12 · 1:35 PM CT) · 4 active"),
+                         ("DEGRADED at Nov 13 · 2:00 PM CT", "Hiring Pipeline Calendar unreadable · showing last accepted state (Nov 12 · 1:35 PM CT) · 4 active"))
 
     def test_split_status_covers_every_line_the_renderer_can_produce(self):
         self.assertEqual(M.split_status("Updated 2:00 PM CT · 5 active"), ("Updated 2:00 PM CT", "5 active"))
@@ -668,7 +679,7 @@ class RegionWriterTests(unittest.TestCase):
         status, _ = dcc._text_of(t, "0000000000000000000000000000a001", "floating", router.HIRING_REGION)
         self.assertEqual(status, "Updated 2:00 PM CT · 2 active")                       # the stamp from the heading, the count from the table rows
         self.assertEqual(dcc.classify({"status": status}, NOW)[0], "fresh")
-        card.present(t, ENV, "DEGRADED · Hiring Pipeline Calendar unreadable at 2:05 PM CT · showing last accepted state (Oct 6, 2:00 PM CT) · 3 active", WANT[:1], True)
+        card.present(t, ENV, "DEGRADED · Hiring Pipeline Calendar unreadable at 2:05 PM CT · showing last accepted state (Oct 6 · 2:00 PM CT) · 3 active", WANT[:1], True)
         status, _ = dcc._text_of(t, "0000000000000000000000000000a001", "floating", router.HIRING_REGION)
         self.assertEqual(dcc.classify({"status": status}, NOW)[0], "degraded")
         self.assertEqual(dcc._text_of(page(), "0000000000000000000000000000a001", "floating", router.HIRING_REGION)[0], "")      # a heading with no stamp yet (before the first write) reads as unknown, never as fresh
@@ -846,7 +857,7 @@ class RuntimePathTests(unittest.TestCase):
         self.assertEqual((first["saved"], first["verified"], store.saves), (1, True, 1))
         self.assertEqual(table_state(t), [[("Acme — Senior Program Manager", None), ("Interviewing", None),
                                            ("Prepare for the interview · Tomorrow 10:00 AM CT", None), ("Opportunity Page ↗", "https://www.notion.so/aaaa1111000040008000000000000001")]])
-        self.assertEqual(R.plain(t.blocks["0000000000000000000000000000a001"]), "📈 Hiring Pipeline (Updated 2:00 PM CT)")
+        self.assertEqual(R.plain(t.blocks["0000000000000000000000000000a001"]), "📈 Hiring Pipeline (Updated Oct 6 · 2:00 PM CT)")
         t.log.clear()
         again = run(t, store, events=events)
         self.assertEqual((again["rows_changed"], again["rows_added"], again["rows_removed"]), (0, 0, 0))

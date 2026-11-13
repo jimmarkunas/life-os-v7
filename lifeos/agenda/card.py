@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from urllib.parse import quote, urlparse
 from zoneinfo import ZoneInfo
 
-from lifeos.platform import db, report_region, router
+from lifeos.platform import ct_stamp, db, report_region, router
 from lifeos.platform.fixed_code import fixed
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 from lifeos.platform.report_region import plain
@@ -154,8 +154,7 @@ def _event_block(event, marker=None):
 def _status(snapshot, stale):
     with fixed((KeyError, TypeError, ValueError), CardError, "AGENDA_SNAPSHOT_INVALID"):
         taken = _instant(snapshot["taken_at"])
-    return (f"STALE · last accepted {taken.strftime('%b %-d %-I:%M %p')} CT" if stale
-            else f"Updated {taken.strftime('%-I:%M %p')} CT")
+    return f"STALE · last accepted {ct_stamp.when(taken)}" if stale else ct_stamp.updated(taken)
 
 
 def _heading_text(snapshot, stale):

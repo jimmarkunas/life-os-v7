@@ -7,7 +7,7 @@ import os
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from lifeos.platform import db, report_region, router
+from lifeos.platform import ct_stamp, db, report_region, router
 from lifeos.platform.fixed_code import fixed
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 from . import snapshot as bills_snapshot, state
@@ -78,7 +78,7 @@ def _window(rows, today):
 
 def _status(saved, stale):
     taken = _instant(saved["taken_at"])
-    return f"STALE · last accepted {taken.strftime('%b %-d %-I:%M %p')} CT" if stale else f"Updated {taken.strftime('%-I:%M %p')} CT"
+    return f"STALE · last accepted {ct_stamp.when(taken)}" if stale else ct_stamp.updated(taken)
 
 
 def heading_text(saved, stale):

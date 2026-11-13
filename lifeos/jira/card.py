@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
+from lifeos.platform import ct_stamp
 from lifeos.platform.jira import JiraError
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 from .boards import boards
@@ -159,8 +160,8 @@ def gtv_blocks(snap, sticky, site, context_url):
 def heading_text(now, stale_at=None):
     """D121: the update time shares the heading, like Calendar: "JIRA Execution (Updated 2:10 PM CT)"."""
     if stale_at:
-        return f"{CARD_TITLE} (STALE · last accepted {stale_at.strftime('%b %-d %-I:%M %p')} CT)"
-    return f"{CARD_TITLE} (Updated {now.strftime('%-I:%M %p')} CT)"
+        return f"{CARD_TITLE} (STALE · last accepted {ct_stamp.when(stale_at)})"
+    return f"{CARD_TITLE} ({ct_stamp.updated(now)})"
 
 
 def render(snaps, today, now, site, sticky=None, context_url=None):

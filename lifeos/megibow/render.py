@@ -3,6 +3,7 @@ from lifeos.megibow import classify as C
 from lifeos.megibow import project as P
 from lifeos.megibow import warnings as W
 from lifeos.megibow.windows import chicago
+from lifeos.platform import ct_stamp
 
 DASH = "–"
 
@@ -29,11 +30,10 @@ def table(proj):
 
 
 def status(now, degraded=False, review=0, reason=None):
-    """LIFE-609: the callout's first line is `MegIBOW (Updated H:MM AM CT)`, the form every card heading takes (this callout has no heading block of its own)."""
-    stamp = chicago(now).strftime("%-I:%M %p")
+    """LIFE-609: the callout's first line is `MegIBOW (Updated Nov 13 · 3:31 PM CT)`, the form every card heading takes (this callout has no heading block of its own)."""
     if degraded:
-        return f"MegIBOW (DEGRADED at {stamp} CT) — counts may be incomplete" + (f" ({reason})" if reason else "")
-    line = f"MegIBOW (Updated {stamp} CT)"
+        return f"MegIBOW (DEGRADED at {ct_stamp.when(chicago(now))}) — counts may be incomplete" + (f" ({reason})" if reason else "")
+    line = f"MegIBOW ({ct_stamp.updated(chicago(now))})"
     if review:
         line += f" · Review needed — {review} activity candidate{'s' if review != 1 else ''}"
     return line
