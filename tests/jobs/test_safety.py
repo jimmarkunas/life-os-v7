@@ -15,6 +15,22 @@ class SqlSmokeTests(unittest.TestCase):
             sql % tuple(1 for _ in range(marks))                          # a stray '%' (the 5 PM crash) fails here, before any database
             self.assertEqual(len(safety._params(sql)), marks)
 
+    def test_the_pieces_of_an_f_string_statement_are_not_taken_as_statements(self):
+        # LIFE-634: the weekly check failed 1064 on audit.py:62 and ledger_layout:60, the first piece of an f-string statement ("... WHERE j.status IN " cut at the {...})
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder) / "lifeos"
+            root.mkdir()
+            (root / "m.py").write_text(
+                'def f(cursor, statuses):\n'
+                '    cursor.execute("SELECT j.id FROM v7_jobs j"\n'
+                '                   f" WHERE j.status IN {statuses}"\n'
+                '                   " ORDER BY j.id LIMIT %s", (1,))\n'
+                '    cursor.execute("SELECT id FROM v7_jobs WHERE id = %s", (1,))\n')
+            found = safety.statements(root)
+        self.assertEqual([(line, sql) for _, line, sql in found], [(5, "SELECT id FROM v7_jobs WHERE id = %s")])
+
     def test_explain_runs_each_statement_with_one_value_per_placeholder(self):
         conn = RecorderConn()
         counts = safety.sql_smoke(conn, [("m.py", 1, "SELECT * FROM v7_jobs WHERE id = %s AND x LIKE 'a%%' LIMIT %s")])
