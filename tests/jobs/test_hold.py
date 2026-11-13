@@ -114,7 +114,7 @@ class RecoveryTests(unittest.TestCase):
         status, reason, final, page, attempts, recovered, key = self.db.row(1)
         self.assertEqual((status, final, page, recovered, key), ("NEW", None, None, NOW, "k1"))
         self.assertEqual(attempts, limits.RESOLVE_MAX_ATTEMPTS - 1)               # exactly one attempt left
-        self.assertEqual([row[0] for row in resolve_stage.pick(self.db, "jobright", 10)], [1])      # the existing resolver picks it; the sibling is still on HOLD
+        self.assertEqual([row[0] for row in resolve_stage.pick_rows(self.db, "jobright", 10)], [1])      # the existing resolver picks it; the sibling is still on HOLD
         resolve_stage.apply_result(self.db, 1, {"outcome": "landed", "url": LINK, "kind": "ats"})
         self.assertEqual(self.db.row(1)[:3], ("RESOLVED", None, LINK))            # the normal path: Enrich still has to read the page and the JD before it can be READY
         self.assertEqual(self.db.row(2)[:3], ("HOLD", "no_match_title", None))
@@ -273,7 +273,7 @@ class RecoveryTests(unittest.TestCase):
         for job_id in range(100, 600):
             self.db.job(job_id, status="NEW", days_held=0.1, reason=None, age_days=1)
             self.db.raw.execute("UPDATE v7_jobs SET resolve_attempts=0 WHERE id=?", (job_id,))
-        picked = [row[0] for row in resolve_stage.pick(self.db, "jobright", limits.RESOLVE_MAX_ATTEMPTS * 70)]
+        picked = [row[0] for row in resolve_stage.pick_rows(self.db, "jobright", limits.RESOLVE_MAX_ATTEMPTS * 70)]
         self.assertEqual(len(picked), 420)
         self.assertNotIn(1, picked[:400])                                          # saturated: the recovered job is not among the 400 the stage reads
         self.assertEqual(self.go(NOW + timedelta(hours=hold.RECOVERY_HOURS))["excluded"], 0)       # inside its twelve hours (to the minute) it is left alone to be attempted
@@ -336,9 +336,6 @@ class RecoveryTests(unittest.TestCase):
             report = jobs_alerts.run(0, False, now=later)
         self.assertEqual(report["active"], 2)                                      # quiet_24h and unresolved_terminal in an otherwise empty store
 
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 class RetiredSourceTests(unittest.TestCase):

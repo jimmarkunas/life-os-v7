@@ -227,9 +227,6 @@ class ProfileLoading(unittest.TestCase):
         self.assertNotEqual(Profile({"years": 1}).hash, Profile({"years": 2}).hash)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class RequeueFloorTests(unittest.TestCase):
     def test_one_statement_for_old_floor_exclusions_only(self):

@@ -158,12 +158,6 @@ def _why_one(jobs, want, location):
     return ("hit", same[0])
 
 
-def pick(jobs, title, location):
-    """Exactly one confident board posting for (title, location), else None."""
-    verdict = why(jobs, title, location)
-    return verdict[1] if verdict[0] == "hit" else None
-
-
 def match_many(rows, workers=limits.ATS_WORKERS):
     """rows: [(company, title, location)] -> aligned list of (kind, url) or None. One board fetch per company."""
     companies = list(dict.fromkeys(c for c, _, _ in rows if c))

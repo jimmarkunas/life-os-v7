@@ -45,13 +45,3 @@ class JobResultLinkTests(unittest.TestCase):
         for text in (None, "", "not json", "{}", '{"props": []}'):
             self.assertIsNone(jb.job_result_link(text))
 
-
-if __name__ == "__main__":
-    unittest.main()
-
-
-class WorkModelProbeTests(unittest.TestCase):
-    def test_the_page_state_probe_reports_work_model_fields_with_short_words_only(self):
-        from lifeos.jobs.resolve.aggregators import jobright
-        self.assertIn("work.?(model|type|place|mode|arrangement)|remote|on.?site|hybrid|workplace", jobright.STATE_JS)
-        self.assertIn("/^[A-Za-z _-]{2,20}$/.test(v)", jobright.STATE_JS)           # a long string (a title, a location, a description) is never shown, only its type

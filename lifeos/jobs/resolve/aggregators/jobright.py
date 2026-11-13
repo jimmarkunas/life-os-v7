@@ -84,30 +84,6 @@ def job_result_link(data_text):
     return found.pop() if len(found) == 1 else None
 
 
-STATE_JS = """() => { const out = new Set();
-  const want = /expir|clos|status|active|publish|poste?d|live|valid|open|stale|remov/i;
-  const work = /work.?(model|type|place|mode|arrangement)|remote|on.?site|hybrid|workplace/i;
-  const walk = (o, d) => { if (!o || d > 12 || out.size > 60) return;
-    if (Array.isArray(o)) { o.slice(0, 3).forEach(x => walk(x, d + 1)); return; }
-    if (typeof o === 'object') for (const [k, v] of Object.entries(o)) {
-      if ((want.test(k) || work.test(k)) && typeof v !== 'object') {
-        const shown = typeof v === 'boolean' || (work.test(k) && typeof v === 'string' && /^[A-Za-z _-]{2,20}$/.test(v));
-        out.add(shown ? k + '=' + v : k + ':' + typeof v); } else walk(v, d + 1); } };
-  const el = document.getElementById('__NEXT_DATA__');
-  if (el) { try { walk(JSON.parse(el.textContent), 0); } catch (e) {} }
-  return Array.from(out); }"""
-
-
-async def page_state_keys(page):
-    """Diagnostic only: NAMES of the job page's own liveness-like and work-model-like fields (a boolean shows its value, a work-model field its short word such as Remote / Hybrid;
-    everything else shows only its type). No titles, text or urls.
-    Tells us whether Jobright says if a job is still open, so its description could stand in for an unreadable employer page."""
-    try:
-        return [str(k)[:40] for k in (await page.evaluate(STATE_JS))][:40]
-    except Exception:                                           # noqa: BLE001
-        return []
-
-
 def strip_tracking(url):
     """Drop Jobright's own tracking parameter (jr_id) from an employer URL."""
     parts = urlsplit(url)
@@ -142,7 +118,7 @@ async def follow(context, page, job_url, wait_ms=12000):
         found, via = await page_data_link(page), "page_data"
     if found:
         kind, final = outcome_for(strip_tracking(found), False)
-        return {"outcome": "landed", "via": via, "kind": kind, "url": final, "page_keys": await page_state_keys(page)}
+        return {"outcome": "landed", "via": via, "kind": kind, "url": final}
     try:
         await page.locator(APPLY_XPATH).first.wait_for(timeout=wait_ms)
     except Exception:                                           # noqa: BLE001

@@ -140,9 +140,6 @@ class TickTests(unittest.TestCase):
                 self.assertIn(step.name, run.STAGES)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class StageSeconds(unittest.TestCase):
     """LIFE-569: one line per stage with its seconds, and a summary table; nothing about what a stage found or saved changes."""

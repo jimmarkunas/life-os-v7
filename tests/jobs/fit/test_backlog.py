@@ -492,8 +492,7 @@ class HeldAnswersAreApplied(Batch):
     def test_the_fit_stage_applies_the_holds_only_when_live_and_gated(self):
         self.held(1)
         env = {**ENV, "V7_CLOUD_FIT": "off"}
-        with mock.patch.object(stage.store, "connect", return_value=self.db), mock.patch.object(stage.store, "ensure_schema"), \
-                mock.patch.object(stage.fit_profile, "load", return_value=PROFILE), mock.patch.object(stage.sponsors, "load", return_value=None):
+        with self.fit_stage():
             self.assertNotIn("cloud_held_released", stage.run(10, False, env))
             self.assertNotIn("cloud_held_released", stage.run(10, True, {**env, "V7_FIT_GATE": "false"}))
             self.assertEqual(self.row(1, ("cloud_status",)), ("HELD",))
@@ -559,8 +558,7 @@ class KeepListRolesAreRedecided(Batch):
     def test_the_fit_stage_does_it_only_when_live_and_gated(self):
         self.excluded(1, "Product Owner (UX)")
         env = {**ENV, "V7_CLOUD_FIT": "off"}
-        with mock.patch.object(stage.store, "connect", return_value=self.db), mock.patch.object(stage.store, "ensure_schema"), \
-                mock.patch.object(stage.fit_profile, "load", return_value=PROFILE), mock.patch.object(stage.sponsors, "load", return_value=None):
+        with self.fit_stage():
             self.assertNotIn("kept_redecided", stage.run(10, False, env))
             self.assertNotIn("kept_redecided", stage.run(10, True, {**env, "V7_FIT_GATE": "false"}))
             self.assertEqual(self.row(1, ("admission",)), ("EXCLUDE",))
@@ -611,8 +609,7 @@ class KeepListRolesAreAskedAgainWithTheNewBrief(Batch):
     def test_the_fit_stage_does_it_only_when_live_and_gated(self):
         self.answered(1, "Product Owner (Technical)")
         env = {**ENV, "V7_CLOUD_FIT": "off"}
-        with mock.patch.object(stage.store, "connect", return_value=self.db), mock.patch.object(stage.store, "ensure_schema"), \
-                mock.patch.object(stage.fit_profile, "load", return_value=PROFILE), mock.patch.object(stage.sponsors, "load", return_value=None):
+        with self.fit_stage():
             self.assertNotIn("kept_reasked", stage.run(10, False, env))
             self.assertNotIn("kept_reasked", stage.run(10, True, {**env, "V7_FIT_GATE": "false"}))
             self.assertEqual(self.row(1, ("cloud_status",)), ("CANARY",))
@@ -977,8 +974,7 @@ class ScaleUpCallsFromJim(Batch):
         self.excluded_cloud(1)
         self.stuck(2, "web:su-prepaid-financial-services-lim")
         env = {**ENV, "V7_CLOUD_FIT": "off"}
-        with mock.patch.object(stage.store, "connect", return_value=self.db), mock.patch.object(stage.store, "ensure_schema"), \
-                mock.patch.object(stage.fit_profile, "load", return_value=PROFILE), mock.patch.object(stage.sponsors, "load", return_value=None):
+        with self.fit_stage():
             self.assertNotIn("jim_retired", stage.run(10, False, env))
             self.assertNotIn("jim_retired", stage.run(10, True, {**env, "V7_FIT_GATE": "false"}))
             counts = stage.run(10, True, env)

@@ -9,15 +9,15 @@ class MatchTests(unittest.TestCase):
             ("greenhouse", "Product Manager", "https://boards.greenhouse.io/a/jobs/3", "Remote")]
 
     def test_unique_title_matches(self):
-        self.assertEqual(ats_match.pick(self.jobs, "product manager", "Denver, CO")[2], "https://boards.greenhouse.io/a/jobs/3")
+        self.assertEqual(ats_match.why(self.jobs, "product manager", "Denver, CO")[1][2], "https://boards.greenhouse.io/a/jobs/3")
 
     def test_same_title_is_disambiguated_by_location(self):
-        self.assertEqual(ats_match.pick(self.jobs, "Senior Data Engineer", "Austin, Texas, United States")[2],
+        self.assertEqual(ats_match.why(self.jobs, "Senior Data Engineer", "Austin, Texas, United States")[1][2],
                          "https://boards.greenhouse.io/a/jobs/2")
 
-    def test_ambiguous_or_missing_is_none(self):
-        self.assertIsNone(ats_match.pick(self.jobs, "Senior Data Engineer", "Denver, CO"))
-        self.assertIsNone(ats_match.pick(self.jobs, "Staff Data Engineer", "Austin, TX"))
+    def test_ambiguous_or_missing_is_not_a_hit(self):
+        self.assertEqual(ats_match.why(self.jobs, "Senior Data Engineer", "Denver, CO"), ("ambiguous",))
+        self.assertEqual(ats_match.why(self.jobs, "Staff Data Engineer", "Austin, TX"), ("no_title",))
 
     def test_reasons(self):
         self.assertEqual(ats_match.why([], "X", "")[0], "no_board")

@@ -46,9 +46,6 @@ class ReviewTests(unittest.TestCase):
         self.assertIn("%x'; DROP%", args)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class SeveralCompaniesTests(unittest.TestCase):
     def test_comma_separated_companies_become_one_or_filter_with_bound_parameters(self):

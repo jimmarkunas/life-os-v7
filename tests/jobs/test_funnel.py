@@ -76,9 +76,6 @@ class FunnelTests(unittest.TestCase):
         self.assertEqual([funnel.band(s) for s in (None, 59, 60, 67, 68, 71, 72, 79, 80)], ["unscored", "lt60", "60_67", "60_67", "68_71", "68_71", "72_79", "72_79", "80_up"])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class PublicCodes(unittest.TestCase):
     """M6C: the funnel report and explain print to the public Actions log through funnel.public_code: a fixed store code or a bare Fit floor keeps

@@ -2,7 +2,7 @@
 
 RUNTIME DECLARATION. ENTRY POINT: sweep, extract, resolve-jobright, enrich, fit, publish (with its read-back) and finalize, called as `python -m lifeos.run` calls them.
 REQUIRED INPUTS: a labelled Gmail message, the Jobright parser's card shape, the private-profile projection (a synthetic one here), the Notion Job Ledger target check.
-CALL CHAIN: lifeos.sources.newsletters.sweep -> ingest.extract -> lifeos.jobs.resolve.stage.run -> lifeos.jobs.enrich.run -> lifeos.jobs.fit.stage.run -> lifeos.jobs.publish.run
+CALL CHAIN: lifeos.sources.newsletters.sweep -> ingest.extract -> lifeos.jobs.resolve.stage.run_rows -> lifeos.jobs.enrich.run -> lifeos.jobs.fit.stage.run -> lifeos.jobs.publish.run
 (fit_sync, readback) -> lifeos.sources.newsletters.finalize. MUTATION OWNER: the Jobs store (v7_*) for state, publish for the one Ledger page per qualifying vacancy, finalize for the Gmail Done label.
 SUCCESS SIGNAL: every vacancy has exactly one terminal outcome, each published page was read back, and only then does the message get Done. FAIL-CLOSED SIGNAL: a pending, held, unverified or failed vacancy keeps the message open.
 CANONICAL STATE: v7_jobs / v7_job_sources / v7_job_fit and the Ledger page. AUTHORITATIVE READ-BACK: readback.check against the page. LIVE ACCEPTANCE BOUNDARY: the real Gmail message, the real Ledger and Jim's acceptance (not claimed here).
@@ -146,7 +146,7 @@ class Journey:
         """sweep and extract, then the resolver, enrich, fit, publish with its read-back, then finalize."""
         sweep.sweep(self.mailbox, True)
         ingest.extract(self.mailbox, True, 100, self.db)
-        resolve_stage.run("jobright", 40, True, lambda urls: [self.resolved.get(u, {"outcome": "rate_limited"}) for u in urls])
+        resolve_stage.run_rows("jobright", 40, True, lambda rows: [self.resolved.get(row[1], {"outcome": "rate_limited"}) for row in rows])
         enrich.run(50, True)
         fit_stage.run(100, True, ENV)
         published = publish.run(60, True, ENV)

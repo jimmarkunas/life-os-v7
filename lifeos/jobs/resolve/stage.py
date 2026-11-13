@@ -6,15 +6,12 @@ fixed unresolved_reason so the next run retries. Logs: counts only.
 """
 import hashlib
 import time
-from datetime import datetime, timezone
-from urllib.parse import urlsplit
 
 from lifeos.platform import limits, runtime
 from lifeos.jobs import quality, store
 
 
-def _now():
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+_now = store.now
 
 
 def url_key(url):
@@ -27,14 +24,6 @@ SHARED = {"linkedin-alerts": ("linkedin-alerts", "linkedin-search")}     # D203:
 def _sources(source):
     names = SHARED.get(source, (source,))
     return names, ", ".join(["%s"] * len(names))
-
-
-def pick(connection, source, limit):
-    with connection.cursor() as cursor:
-        cursor.execute("SELECT id, source_url FROM v7_jobs WHERE status='NEW' AND source=%s "
-                       "AND (unresolved_reason IS NULL OR unresolved_reason NOT LIKE 'closed%%') AND resolve_attempts < %s "
-                       "ORDER BY resolve_attempts, last_seen DESC LIMIT %s", (source, limits.RESOLVE_MAX_ATTEMPTS, limit))
-        return [(row[0], row[1]) for row in cursor.fetchall()]
 
 
 def pick_rows(connection, source, limit):
@@ -92,32 +81,6 @@ def why(result):
     return str(result.get("outcome") or "unknown").split(":")[0]
 
 
-def note_page_keys(counts, result, top=40):
-    """Counts of the liveness-like field names a resolver saw on the aggregator's own page (diagnostic; names only)."""
-    keys = result.get("page_keys")
-    if not keys:
-        return
-    seen = counts.setdefault("page_keys", {})
-    for key in keys:
-        seen[key] = seen.get(key, 0) + 1
-    counts["page_keys"] = dict(sorted(seen.items(), key=lambda kv: -kv[1])[:top])
-
-
-def note_refusal(counts, result, top=10):
-    """Where refused landings come from, for diagnosis: the host and the NAMES of the query parameters (never paths or values)."""
-    url = result.get("url")
-    if result.get("outcome") != "landed" or not url or not quality.link_problem(url) or unproven(result):
-        return
-    parts = urlsplit(url)
-    refused = counts.setdefault("refused", {"hosts": {}, "query_keys": {}})
-    host = (parts.hostname or "?").lower().removeprefix("www.")
-    refused["hosts"][host] = refused["hosts"].get(host, 0) + 1
-    for key in {q.split("=")[0] for q in parts.query.split("&") if q}:
-        refused["query_keys"][key[:30]] = refused["query_keys"].get(key[:30], 0) + 1
-    for name in refused:
-        refused[name] = dict(sorted(refused[name].items(), key=lambda kv: -kv[1])[:top])
-
-
 BATCH_ROWS = 50
 DEADLINE_MINUTES = 28          # stop starting batches well before the 40-minute job limit; unfinished rows stay NEW
 
@@ -149,8 +112,7 @@ def run_rows(source, limit, live, resolver, batch=BATCH_ROWS, deadline_minutes=D
 def _save(counts, rows, results, live):
     with store.connect() as connection:
         for row, result in zip(rows, results):
-            key = result.get("outcome") if result.get("outcome") != "landed" else "landed:" + str(result.get("kind"))
-            counts["why"][key] = counts["why"].get(key, 0) + 1
+            counts["why"][why(result)] = counts["why"].get(why(result), 0) + 1       # what a live run does with each, by the same test
             if not live:
                 continue
             if result.get("outcome") == "closed":
@@ -163,33 +125,3 @@ def _save(counts, rows, results, live):
             counts[verdict] += 1
             if verdict == "resolved":
                 counts["kind"][result["kind"]] = counts["kind"].get(result["kind"], 0) + 1
-
-
-def run(source, limit, live, resolver):
-    """resolver(urls) -> list of result dicts aligned with urls."""
-    with store.connect() as connection:
-        store.ensure_schema(connection)
-        rows = pick(connection, source, limit)
-    counts = {"picked": len(rows), "resolved": 0, "duplicate": 0, "pending": 0, "kind": {}, "why": {}}
-    if not rows:
-        return counts
-    results = resolver([url for _, url in rows])
-    if not live:
-        for result in results:
-            key = result["outcome"] if result.get("outcome") != "landed" else "landed:" + str(result.get("kind"))
-            counts["kind"][key] = counts["kind"].get(key, 0) + 1
-            counts["why"][why(result)] = counts["why"].get(why(result), 0) + 1       # what a live run would do with each, by the same test
-            note_refusal(counts, result)
-            note_page_keys(counts, result)
-        counts["dry_run"] = True
-        return counts
-    with store.connect() as connection:
-        for (job_id, _), result in zip(rows, results):
-            verdict = apply_result(connection, job_id, result)
-            counts[verdict] += 1
-            counts["why"][why(result)] = counts["why"].get(why(result), 0) + 1          # why the pending ones are pending, counts only
-            note_refusal(counts, result)
-            note_page_keys(counts, result)
-            if verdict == "resolved":
-                counts["kind"][result["kind"]] = counts["kind"].get(result["kind"], 0) + 1
-    return counts

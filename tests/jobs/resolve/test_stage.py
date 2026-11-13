@@ -53,22 +53,12 @@ class WhyTests(unittest.TestCase):
                    {"outcome": "landed", "url": "https://careers.acme.example/", "kind": "employer"},
                    {"outcome": "landed", "url": "https://job-boards.greenhouse.io/x/jobs/12345", "kind": "ats"}]
         with mock.patch.object(stage.store, "connect", FakeConn), mock.patch.object(stage.store, "ensure_schema", lambda c: None), \
-                mock.patch.object(stage, "pick", lambda c, s, l: [(i, "https://x.example/%d" % i) for i in range(4)]):
-            counts = stage.run("jobright", 10, True, lambda urls: results)
+                mock.patch.object(stage, "pick_rows", lambda c, s, l: [(i, "https://x.example/%d" % i, "Acme", "PM", "Remote") for i in range(4)]):
+            counts = stage.run_rows("jobright", 10, True, lambda rows: results)
+            dry = stage.run_rows("jobright", 10, False, lambda rows: results)
         self.assertEqual(counts["why"], {"apply_unavailable": 2, "bad_link_root": 1, "landed:ats": 1})
         self.assertEqual(counts["resolved"], 1)
-
-
-    def test_a_dry_run_applies_the_same_test_and_names_where_refusals_come_from(self):
-        from unittest import mock
-        results = [{"outcome": "landed", "url": "https://www.acme.example/careers?ref=x&utm=y", "kind": "employer"},
-                   {"outcome": "landed", "url": "https://www.acme.example/careers?ref=z", "kind": "employer"},
-                   {"outcome": "landed", "url": "https://job-boards.greenhouse.io/x/jobs/12345", "kind": "ats"}]
-        with mock.patch.object(stage.store, "connect", FakeConn), mock.patch.object(stage.store, "ensure_schema", lambda c: None), \
-                mock.patch.object(stage, "pick", lambda c, s, l: [(i, "https://x.example/%d" % i) for i in range(3)]):
-            counts = stage.run("jobright", 10, False, lambda urls: results)
-        self.assertEqual(counts["why"], {"bad_link_listing_url": 2, "landed:ats": 1})
-        self.assertEqual(counts["refused"], {"hosts": {"acme.example": 2}, "query_keys": {"ref": 2, "utm": 1}})   # names only, never values or paths
+        self.assertEqual((dry["why"], dry["resolved"], dry["dry_run"]), (counts["why"], 0, True))        # a dry run applies the same test and writes nothing
 
 
 class ProvenanceTests(unittest.TestCase):
@@ -102,23 +92,3 @@ class ProvenanceTests(unittest.TestCase):
 
     def test_why_names_it(self):
         self.assertEqual(stage.why({"outcome": "landed", "url": self.URL, "kind": "employer", "via": "original_post"}), "landed_unproven")
-
-
-class PageKeysTests(unittest.TestCase):
-    def test_liveness_like_field_names_are_counted_across_results(self):
-        counts = {}
-        for keys in (["isExpired=false", "jobStatus:string"], ["isExpired=true", "jobStatus:string"], []):
-            stage.note_page_keys(counts, {"page_keys": keys})
-        self.assertEqual(counts["page_keys"], {"jobStatus:string": 2, "isExpired=false": 1, "isExpired=true": 1})
-
-    def test_a_dry_run_carries_them_into_the_log_counts(self):
-        from unittest import mock
-        results = [{"outcome": "landed", "url": "https://job-boards.greenhouse.io/x/jobs/12345", "kind": "ats", "page_keys": ["isExpired=false"]}]
-        with mock.patch.object(stage.store, "connect", FakeConn), mock.patch.object(stage.store, "ensure_schema", lambda c: None), \
-                mock.patch.object(stage, "pick", lambda c, s, l: [(1, "https://x.example/1")]):
-            counts = stage.run("jobright", 10, False, lambda urls: results)
-        self.assertEqual(counts["page_keys"], {"isExpired=false": 1})
-
-
-if __name__ == "__main__":
-    unittest.main()

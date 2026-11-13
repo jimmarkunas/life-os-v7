@@ -17,7 +17,7 @@ text: the profile is the Oracle-held brief named by `V7_CLOUD_FIT_PROFILE_REF` (
 `cloud_fit=DEGRADED(<code>)`; a failure that is not about the one job (no host, refusal, timeout, a receipt that does not match) stops the run's cloud calls and
 writes nothing, so the job is asked again on a later tick and no static score is ever presented as a cloud answer. Counts only in the log."""
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait as wait_for
-from datetime import datetime, timezone
+from datetime import datetime
 import os
 import re
 import signal
@@ -154,8 +154,7 @@ def remaining(elapsed, budget=STAGE_BUDGET):
     return min(own, alarm) if alarm > 0 else own
 
 
-def _now():
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+_now = store.now
 
 
 def run(environ=os.environ, live=False, started=None, profile=None, send=None, clock=time.monotonic, promote=None, batch=None, ledger_check=None):
@@ -219,7 +218,7 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=None, c
     def skip(job_id, reason, fingerprint):
         if write(SKIP, (reason, fingerprint, _now(), job_id)) == 1:
             counts["cloud_skipped"] += 1
-            counts["cloud_skip_reasons"][reason] = counts["cloud_skip_reasons"].get(reason, 0) + 1     # fixed codes only: why, never which job
+            _bump(counts["cloud_skip_reasons"], reason)     # fixed codes only: why, never which job
 
     def record(job_id, status, reason, got, request_hash, fingerprint):
         """The one write of an asked job's outcome, guarded by this run's claim. -> rows written (0: the claim was lost)."""
@@ -240,7 +239,7 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=None, c
             if code == "FIT_EDGE_BUSY" and state["lanes"] > 1:
                 write(RELEASE, (job_id, token))                          # D232: Oracle had fewer free lanes than this batch's calls: no model ran; the job waits for the
                 state["lanes"] -= 1                                      # next batch, and this one keeps going with one call fewer in flight
-                counts["cloud_busy"] = counts.get("cloud_busy", 0) + 1
+                _bump(counts, "cloud_busy")
                 return
             if code in NO_CALL:                                          # refused before any model call: the job goes back to the queue, the run stops
                 write(RELEASE, (job_id, token))                          # cloud_calls still counts the request sent
@@ -253,17 +252,16 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=None, c
                 return
             if code == "FIT_EDGE_RECEIPT_REJECTED" and error.detail:
                 field = error.detail.upper()                                 # a fixed contract field name, as a code
-                fields = counts.setdefault("cloud_receipt_fields", {})
-                fields[field] = fields.get(field, 0) + 1     # LIFE-77: which receipt field, a fixed name
+                _bump(counts.setdefault("cloud_receipt_fields", {}), field)     # LIFE-77: which receipt field, a fixed name
             record(job_id, "DEGRADED", code, {"receipt": error.receipt} if code in STOP_AND_RECORD else None, edge.digest(sent)[:16], fingerprint)
             if code in SIZE_OUTCOMES:
                 sized = counts.setdefault("cloud_job_too_large", {})        # recorded on the job's row and never re-asked (above), and the batch goes on: nothing here makes the run fail
-                sized[code] = sized.get(code, 0) + 1
+                _bump(sized, code)
                 if code == "FIT_EDGE_OVERSIZE" and sized[code] >= SIZE_STOP and not counts["cloud_ok"]:
                     state["stop"] = counts["cloud_size_stop"] = True     # Oracle refusing job after job for size with nothing judged looks like its limit, not the jobs: stop before more rows are marked
                 return
             if code == REJECTED and batch:
-                counts["cloud_job_rejected"] = counts.get("cloud_job_rejected", 0) + 1      # recorded on the row and never re-asked (above); counted, and judged against the threshold when the batch ends
+                _bump(counts, "cloud_job_rejected")      # recorded on the row and never re-asked (above); counted, and judged against the threshold when the batch ends
                 return
             counts["cloud_failed"] += 1
             _degraded(counts, code)
@@ -325,7 +323,7 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=None, c
                 held = ledger_check(page_id, company, title)             # D219: applied (or unreadable) Ledger pages never use a call; the page itself is never changed here
                 if held:
                     counts["cloud_skipped"] += 1
-                    counts["cloud_skip_reasons"]["LEDGER_" + held.upper()] = counts["cloud_skip_reasons"].get("LEDGER_" + held.upper(), 0) + 1
+                    _bump(counts["cloud_skip_reasons"], "LEDGER_" + held.upper())
                     continue                                             # not recorded: the human state can change, so it is checked again next time
             if remaining(clock() - started, budget) < CALL_SECONDS:
                 if batch and counts["cloud_calls"]:
@@ -417,6 +415,10 @@ def quota_summary(readings):
             row.update(estimate="BELOW_RESOLUTION", per_call_below=round(1 / calls, 4), calls_left_at_least=int(room * calls))
         out[w["label"]] = row
     return {"stop_used_percent": stop, "windows": out}
+
+
+def _bump(table, key):
+    table[key] = table.get(key, 0) + 1
 
 
 def _degraded(counts, code):

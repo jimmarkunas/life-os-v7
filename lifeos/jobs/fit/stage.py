@@ -5,7 +5,7 @@ version, the private profile or the description changes. Each job is then judged
 as US Remote) and the decision is stored. With V7_FIT_GATE=true an EXCLUDE READY job becomes EXCLUDED_FIT (never published) and
 only ADMIT / REVIEW publish; without it everything is recorded in shadow mode and publishing is unchanged.
 """
-from datetime import datetime, timezone
+from datetime import datetime
 import json
 import os
 import time
@@ -56,8 +56,7 @@ def only_clause(raw):
 CHUNK = 10                       # rows scored and written together
 
 
-def _now():
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+_now = store.now
 
 
 def progress(phase, started, **fields):

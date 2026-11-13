@@ -76,9 +76,6 @@ class Private(unittest.TestCase):
         self.assertEqual([len(b["table"]["children"]) for b in blocks], [91, 91, 21])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class SharedHelpers(unittest.TestCase):
     """LIFE-526: private_report no longer carries its own copy of the stored-page helpers; it uses lifeos/platform/stored_pages. Schema-neutral: the same table and key column as before."""

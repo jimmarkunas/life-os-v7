@@ -34,22 +34,14 @@ def lazy(module, name="run", floor=0, live_only=False, **fixed):
 def _jobright(limit, live):
     from lifeos.jobs.resolve.aggregators import jobright
     from lifeos.jobs.resolve import stage
-    return stage.run("jobright", limit, live, jobright.resolve_many_sync)
+    return stage.run_rows("jobright", limit, live, lambda rows: jobright.resolve_many_sync([row[1] for row in rows]), batch=max(limit, 1))     # one login for the whole pick
 
 
 def _linkedin(limit, live):
     from lifeos.jobs.resolve.aggregators import linkedin
     from lifeos.jobs.resolve import stage
-    from lifeos.jobs import store
-    requeued = 0
-    if live:
-        with store.connect() as connection:
-            store.ensure_schema(connection)
-            with connection.cursor() as cursor:
-                requeued = linkedin.requeue_held(cursor)               # the one-time catch-up for D79; finds nothing once it has run
     budget = {"left": linkedin.SEARCH_LIMIT}
-    counts = stage.run_rows("linkedin-alerts", limit, live, functools.partial(linkedin.resolve_rows, budget=budget))
-    return {**counts, "requeued": requeued}
+    return stage.run_rows("linkedin-alerts", limit, live, functools.partial(linkedin.resolve_rows, budget=budget))
 
 
 def _outlook_auth(limit, live):
