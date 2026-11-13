@@ -72,3 +72,5 @@ ENDPOINT_PY='import importlib.util as u,sys
 sp=u.spec_from_file_location("ep",sys.argv[1]); ep=u.module_from_spec(sp); sp.loader.exec_module(ep)
 b=ep.whatsapp("0"*64, sys.argv[2] if len(sys.argv)>2 else None)
 print(b.get("health"))'
+
+cd / || exit 1      # the runner starts steps inside its root-only work folder; the users the steps run commands as must not start in a folder they cannot enter
