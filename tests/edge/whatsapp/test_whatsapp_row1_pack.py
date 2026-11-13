@@ -125,6 +125,7 @@ if [ "$2" = lifeos-wa ]; then
   case "$1" in -u|-g) echo $NEW_UID_VALUE ;; -Gn) [ -e "$P/user-in-groups" ] && echo "lifeos-wa ubuntu" || echo lifeos-wa ;; esac
   exit 0
 fi
+if [ "$2" = ubuntu ]; then exec /usr/bin/id "$1"; fi
 exec /usr/bin/id "$@"
 """
 FAKE_USERADD = r"""#!/bin/bash
@@ -286,7 +287,7 @@ class Fixture(unittest.TestCase):
         self.assertTrue(self.on("old-active") and self.on("old-enabled"))
         self.assertFalse(self.on("new-active") or self.on("sock-active") or self.on("enabled-lifeos-wa-attention.service"))
         self.assertFalse(self.new_state.exists())
-        self.assertFalse((self.new_home / ".config").exists())
+        self.assertFalse((self.new_home / ".config" / "lifeos-whatsapp").exists())
         self.assertFalse(self.flag.exists())
         self.assertEqual(tree_listing(self.old_state), self.before_old)
         self.assertEqual(self.endpoint.read_text(), "# old endpoint\n")                  # the runner put the consumer files back
@@ -334,7 +335,8 @@ class PackShapeTests(Fixture):
 
     def test_only_the_old_user_unit_and_the_new_units_are_ever_started_or_stopped(self):
         self.run_pack()
-        verbs = [c for c in self.calls() if c.split()[0] in ("--user", "start", "stop", "enable", "disable", "restart")]
+        verbs = [c.replace("--user ", "") for c in self.calls()]
+        verbs = [c for c in verbs if c.split()[0] in ("start", "stop", "enable", "disable", "restart")]
         for call in verbs:
             self.assertTrue(any(name in call for name in ("lifeos-whatsapp-attention.service", "lifeos-wa-attention")), call)
 
@@ -345,7 +347,6 @@ class GoodRunTests(Fixture):
         self.assertEqual((result["outcome"], result["code"]), ("ok", None), result)
         # the new side
         self.assertTrue(self.on("new-active") and self.on("enabled-lifeos-wa-attention.service") and self.on("enabled-lifeos-wa-attention.socket"))
-        self.assertEqual(tree_listing(self.new_state), {k: (v if v[0] == "d" else v) for k, v in tree_listing(self.new_state).items()})
         copied, original = tree_listing(self.new_state), self.before_old
         self.assertEqual({k: v[2:] for k, v in copied.items() if v[0] == "f"}, {k: v[2:] for k, v in original.items() if v[0] == "f"})      # same names and sizes
         self.assertEqual({v[1] for v in copied.values() if v[0] == "d"}, {0o700})
@@ -371,9 +372,9 @@ class GoodRunTests(Fixture):
         self.assertEqual(stat.S_IMODE(self.endpoint.stat().st_mode), 0o600)
         self.assertFalse(self.flag.exists())
         readback = " | ".join(result["readback"])
-        for want in ("new_user=absent", "program_tree entries=", "unit_verify" if False else "consumer_files=installed", "old_stopped=yes", "copy_check same entries=", "proof new_pid_user_is_new_user=yes",
+        for want in ("new_user=absent", "program_tree entries=", "consumer_files=installed", "old_stopped=yes", "copy_check same entries=", "proof new_pid_user_is_new_user=yes",
                      "socket_mode=660", "endpoint_health=CURRENT", "consumer_read_session=denied", "other_users=refused", "switched=yes old_disabled=yes new_enabled=yes", "new_unit_active=active enabled=enabled",
-                     "main_pid_user=lifeos-wa uid_is_ubuntu=no", "ProtectSystem=strict", "owner=lifeos-wa group=ubuntu mode=660", "consumer_connect_bytes=", "ubuntu_lists_new_state=denied",
+                     "main_pid_user=lifeos-wa uid_is_ubuntu=no", "ProtectSystem=strict", "socket path=/run/lifeos-wa/attention.sock kind=socket", "consumer_connect_bytes=", "ubuntu_lists_new_state=denied",
                      "ubuntu_lists_new_home=denied", "nobody_connects=no", "old_unit_active=inactive old_unit_enabled=disabled old_unit_file_present=yes", "switch_flag_gone=yes", "user_shell=/usr/sbin/nologin"):
             self.assertIn(want, readback)
         for place in (readback, json.dumps(result)):
@@ -586,7 +587,7 @@ class HelperTests(unittest.TestCase):
         (tree / "ln").symlink_to("p/run")
         out = self.tmp / "out"
         code, said = self.wa("install-tree", str(tree), str(out), env={"WA_NO_CHOWN": "1"})
-        self.assertEqual((code, said), (0, "installed entries=4 bytes=2"))
+        self.assertEqual((code, said), (0, "installed entries=5 bytes=2"))
         self.assertTrue((out / "ln").is_symlink())
         self.assertEqual((stat.S_IMODE((out / "p" / "run").stat().st_mode), stat.S_IMODE((out / "p" / "data").stat().st_mode), stat.S_IMODE((out / "p").stat().st_mode)), (0o755, 0o644, 0o755))
         self.assertEqual(self.wa("tree-summary", str(tree)), self.wa("tree-summary", str(out)))

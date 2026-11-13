@@ -6,7 +6,8 @@
 R=${WA_ROOT:-}
 FLAG="$R/var/lib/lifeos-runner/whatsapp-row1.switching"
 [ -e "$FLAG" ] || exit 0
-OWNER_UID=$(id -u ubuntu 2>/dev/null) || exit 0
+ID=id; [ -z "$R" ] || ID="$R/usr/bin/id"
+OWNER_UID=$($ID -u ubuntu 2>/dev/null) || exit 0
 u() {
   if [ -z "$R" ]; then
     /usr/sbin/runuser -u ubuntu -- env "XDG_RUNTIME_DIR=/run/user/$OWNER_UID" "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$OWNER_UID/bus" /usr/bin/systemctl --user "$@"
