@@ -5,10 +5,11 @@ message when it is deterministic, else ""). Content stays in memory: nothing her
 import os
 import re
 import urllib.parse
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta, timezone
 from email.utils import parseaddr
 
-from lifeos.platform.gmail import Gmail, GmailError
+from lifeos.platform.fixed_code import fixed
+from lifeos.platform.gmail import GmailError
 from lifeos.platform.outlook import Outlook, OutlookError
 
 WINDOW_DAYS = 14
@@ -36,10 +37,8 @@ def _markers(headers, address):
 def gmail_records(gmail, now, limit=MAX_MESSAGES, days=WINDOW_DAYS, terms="", known=None, stats=None):
     """Gmail Inbox and Spam, last `days` days (default WINDOW_DAYS), optionally only messages matching Gmail search `terms`. Returns (records, unreadable). A listing that cannot be proven complete raises MailError."""
     query = f"{{in:inbox in:spam}} newer_than:{days}d" + (f" {terms}" if terms else "")
-    try:
+    with fixed(GmailError, MailError, "MAIL_GMAIL_LISTING_INCOMPLETE"):
         ids = gmail.list_ids_complete(query, limit, include_spam=True)
-    except GmailError:
-        raise MailError("MAIL_GMAIL_LISTING_INCOMPLETE") from None
     listed = len(ids)
     if known is not None:                                                    # LIFE-610: only ids new to the system are read; `known(provider, id)` says which are not
         ids = [i for i in ids if not known("gmail", i)]
@@ -84,7 +83,7 @@ def outlook_records(client, account, now, limit=MAX_MESSAGES, days=WINDOW_DAYS, 
     out, unreadable = [], 0
     text = 'outlook.body-content-type="text"'
     for folder, label in (("inbox", "INBOX"), ("junkemail", "JUNK")):
-        try:
+        with fixed(OutlookError, MailError, "MAIL_OUTLOOK_LISTING_INCOMPLETE"):
             found = client.messages(folder, since, limit, OUTLOOK_FIELDS if known is None else "id,receivedDateTime", prefer=text)
             if known is not None:
                 fresh = [m for m in found if m.get("id") and not known("outlook", f"{account}:{m['id']}")]
@@ -101,8 +100,6 @@ def outlook_records(client, account, now, limit=MAX_MESSAGES, days=WINDOW_DAYS, 
                             found.append(client.get(f"/me/messages/{urllib.parse.quote(m['id'], safe='')}", {"$select": OUTLOOK_FIELDS}, text))
                         except OutlookError:
                             unreadable += 1
-        except OutlookError:
-            raise MailError("MAIL_OUTLOOK_LISTING_INCOMPLETE") from None
         for raw in found:
             record = _outlook_record(raw, account, label)
             if record is None:
