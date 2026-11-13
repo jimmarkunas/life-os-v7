@@ -1,8 +1,8 @@
-"""Outlook calendar -> the person's own Google calendar (one-way). Every Google event V7 writes carries a private marker and a
-deterministic id derived from the Outlook event (iCalUId + occurrence start), so re-runs never duplicate; events V7 did not write are
-never edited or deleted; an Outlook event that already reached Google another way (the same invite, matched by iCalUID and start) is
-left alone; a cancelled or declined Outlook event removes only V7's own copy. Output is counts and fixed codes only: titles, times,
-places and addresses are private."""
+"""Outlook calendar to the person's own Google calendar, one-way, idempotent, never touching events V7 did not write.
+
+Every Google event V7 writes carries a private marker and a deterministic id derived from the Outlook event (iCalUId + occurrence start), so re-runs never duplicate. Output is counts and fixed codes only."""
+# Detail kept from the former docstring: an Outlook event that already reached Google another way (the same invite, matched by iCalUID and start) is left alone; a cancelled or declined Outlook
+# event removes only V7's own copy; titles, times, places and addresses are private and never printed.
 import hashlib
 import json
 import os
