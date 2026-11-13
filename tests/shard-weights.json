@@ -7,8 +7,6 @@
   "tests.amazon.test_card": 0.1,
   "tests.amazon.test_packages": 0.01,
   "tests.amazon.test_retention": 0.01,
-  "tests.attention.test_attention": 0.01,
-  "tests.attention.test_card": 0.01,
   "tests.bills.test_bills": 0.01,
   "tests.bills.test_card": 0.1,
   "tests.bills.test_recurrence_acceptance": 0.01,
