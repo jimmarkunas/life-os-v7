@@ -8,7 +8,7 @@ from urllib.parse import quote
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from lifeos.platform import notion_pages, report_region, router
+from lifeos.platform import ct_stamp, notion_pages, report_region, router
 from lifeos.platform.fixed_code import fixed
 from lifeos.platform.gmail import Gmail, GmailError
 from lifeos.platform.notion_client import Client, NotionError, rich_text
@@ -134,7 +134,7 @@ def package_blocks(packages, now, error=False):
 
 def heading_text(now, degraded=False):
     """LIFE-609: the update time shares the heading, like Calendar: "Amazon Orders (Updated 2:30 PM CT)"; a failed sync says "Amazon Orders (DEGRADED at 2:30 PM CT)"."""
-    return f"{TITLE} ({'DEGRADED at' if degraded else 'Updated'} {now.strftime('%-I:%M %p')} CT)"
+    return f"{TITLE} ({'DEGRADED at ' + ct_stamp.when(now) if degraded else ct_stamp.updated(now)})"
 
 
 def render(rows, now, degraded=False, url=None, packages=None, packages_error=False):

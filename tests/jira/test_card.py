@@ -140,7 +140,7 @@ class WriteTests(unittest.TestCase):
         self.assertEqual((out["written"], out["removed"], out["overdue_blocked"], out["today"], out["this_week"], out["done"]),
                          (1, 2, 2, 2, 3, 1))
         self.assertEqual(client.kids[0]["id"], "h")
-        self.assertEqual(client.kids[0]["heading_4"]["rich_text"][0]["plain_text"], "JIRA Execution (Updated 9:00 AM CT)")   # the update time shares the heading
+        self.assertEqual(client.kids[0]["heading_4"]["rich_text"][0]["plain_text"], "JIRA Execution (Updated Oct 7 · 9:00 AM CT)")   # the update time shares the heading
         self.assertFalse(any(card._plain(k).startswith(("V7 ·", "Updated")) for k in client.kids[1:]))                   # no separate status line
         self.assertLess(client.log.index("APPEND"), client.log.index("DELETE"))      # add first, remove after
 
@@ -154,7 +154,7 @@ class WriteTests(unittest.TestCase):
     def test_stale_snapshot_only_marks_the_heading(self):
         out, client = self.run_card([heading("JIRA Execution (Updated 6:00 AM CT)"), old(1), old(2)], snaps={"AAA": snapshot(taken=datetime(2026, 10, 7, 4, 0, tzinfo=TZ))})
         self.assertEqual((out["stale"], out["written"]), (1, 1))
-        self.assertEqual(client.kids[0]["heading_4"]["rich_text"][0]["plain_text"], "JIRA Execution (STALE · last accepted Oct 7 4:00 AM CT)")
+        self.assertEqual(client.kids[0]["heading_4"]["rich_text"][0]["plain_text"], "JIRA Execution (STALE · last accepted Oct 7 · 4:00 AM CT)")
         self.assertEqual(len(client.kids), 3)                          # no content rewritten, no false zero
 
     def test_the_combined_heading_is_still_ours_and_lookalikes_are_not(self):

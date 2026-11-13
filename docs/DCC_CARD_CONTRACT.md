@@ -14,11 +14,11 @@ LIFE-645: V7 no longer writes the Attention callout (the Attention stage and car
 
 ## 2. What V7 promises about a card
 
-Every V7 region carries a stamp of the form `Updated H:MM AM|PM CT` (Chicago time), in the place shown:
+Every V7 region carries a stamp of the form `Updated Mon D · H:MM AM|PM CT` (Chicago time, with the date: LIFE-660; one formatter, `lifeos/platform/ct_stamp.py`; a heading not yet rewritten may still show the older time-only `Updated H:MM AM|PM CT`, which the DCC also reads), in the place shown:
 
 | Region | Where the stamp is |
 |---|---|
-| Calendar, JIRA Execution | in the heading: `Calendar (Updated 9:05 PM CT)` |
+| Calendar, JIRA Execution | in the heading: `Calendar (Updated Oct 12 · 9:05 PM CT)` |
 | Bills: This Week, Mail Alerts, Amazon Orders | first line under the heading |
 | Hiring Pipeline | first line under its heading, then `· N active` |
 
@@ -45,4 +45,4 @@ A card is written only after its stage ran, and the write is read back. A card w
 
 ## Paste-ready block for the ChatGPT task instructions
 
-> Read V7 cards by their first line. `Updated H:MM AM/PM CT` within 90 minutes of the page fetch = fresh; older = "stale since"; `DEGRADED · …` or `STALE · …` = degraded or stale (content is last accepted); no stamp = unknown. Do not hedge fresh cards. Report numbers as written. Amazon "N in transit" excludes orders over 30 days (counted separately). Do not mention or recreate the old banner, 9 AM Delta or Run history (removed). Write only the `ChatGPT · Daily Command Center` callout: fetch just before, replace only the lines that differ, fetch again, confirm the DCC text is present and every other region is unchanged or has its own stamp moved (then report it as external); one attempt, never retry; return PASS, NO_ACTION or DEGRADED with one fixed code. On `DCC_WRITE_BLOCKED`, include the connector's exact error once.
+> Read V7 cards by their first line. `Updated Mon D · H:MM AM/PM CT` within 90 minutes of the page fetch = fresh; older = "stale since"; `DEGRADED · …` or `STALE · …` = degraded or stale (content is last accepted); no stamp = unknown. Do not hedge fresh cards. Report numbers as written. Amazon "N in transit" excludes orders over 30 days (counted separately). Do not mention or recreate the old banner, 9 AM Delta or Run history (removed). Write only the `ChatGPT · Daily Command Center` callout: fetch just before, replace only the lines that differ, fetch again, confirm the DCC text is present and every other region is unchanged or has its own stamp moved (then report it as external); one attempt, never retry; return PASS, NO_ACTION or DEGRADED with one fixed code. On `DCC_WRITE_BLOCKED`, include the connector's exact error once.

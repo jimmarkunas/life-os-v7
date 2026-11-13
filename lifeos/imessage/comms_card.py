@@ -20,14 +20,12 @@ import os
 import socket
 from datetime import datetime, timezone
 from urllib.parse import quote
-from zoneinfo import ZoneInfo
 
 from lifeos.imessage.alerts_endpoint import TG_COUNTS, _keystream      # the Oracle endpoint file is stdlib-only, so the runner imports from it and never the other way
-from lifeos.platform import report_region, router
+from lifeos.platform import ct_stamp, report_region, router
 from lifeos.platform.fixed_code import fixed
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 
-TZ = ZoneInfo("America/Chicago")
 TITLE = router.COMMS_REGION
 MODULE = router.OWNERS[TITLE]
 PORT = 47341
@@ -123,7 +121,7 @@ def render(rows, now):
         if channel in KEEP_LAST and n is not None and state == "UNAVAILABLE":
             latest = None
         out[channel] = (f"{LABELS[channel]} ({count})", latest)
-    return out, f"{TITLE} (Updated {now.astimezone(TZ).strftime('%-I:%M %p')} CT)"
+    return out, f"{TITLE} ({ct_stamp.updated(now)})"
 
 
 UNAVAILABLE = {c: (None, "UNAVAILABLE", None) for c in ("messages", *CHANNEL_BLOCKS)}

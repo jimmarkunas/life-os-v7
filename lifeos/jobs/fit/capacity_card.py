@@ -9,10 +9,11 @@ from datetime import datetime
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 import os
+import re
 import time
 
 from lifeos.jobs.fit import edge
-from lifeos.platform import readback, report_region
+from lifeos.platform import ct_stamp, readback, report_region
 from lifeos.platform.notion_client import Client, NotionError
 
 TZ = ZoneInfo("America/Chicago")
@@ -72,7 +73,7 @@ def render(reading, now):
     cells = cells[:ROWS - 1] + [[""] * COLS] * max(0, ROWS - 1 - len(cells))
     near = sum(1 for c in cells if c[5] in ("NEAR LIMIT", "RESERVE REACHED"))
     exhausted = sum(1 for c in cells if c[5] == "EXHAUSTED")
-    text = f"AI Capacity (Updated {now.strftime('%-I:%M %p')} CT) · {near} near limit · {exhausted} exhausted"          # LIFE-609: the stamp shares the title, like Calendar's heading
+    text = f"AI Capacity ({ct_stamp.updated(now)}) · {near} near limit · {exhausted} exhausted"          # LIFE-609: the stamp shares the title, like Calendar's heading
     cap = reading.get("safety_cap")
     if extra:
         text += f" · {extra} more not shown"
@@ -95,11 +96,17 @@ def guard_line(reading):
     return f"Cloud Fit guard · {cap['runs_today']:,} of {cap['limit']:,} runs today (our own limit, not a provider's)" if cap else None
 
 
+HEAD = re.compile(r"AI Capacity \((?:Updated|DEGRADED at)[^)]*\)")
+
+
 def rich(text):
     """The callout's rich text for `text`: the label before the first ' · ' of each line is bold, the rest plain. The plain text is exactly `text`."""
     out = []
     for i, line in enumerate(text.split("\n")):
-        label, sep, rest = line.partition(" · ")
+        head = HEAD.match(line)                                         # LIFE-660: the heading's stamp holds a middle dot of its own, so its bold label is the whole `AI Capacity (Updated Nov 13 · 3:31 PM CT)`
+        cut = head.end() if head else 0
+        label, sep, rest = line[cut:].partition(" · ")
+        label = line[:cut] + label
         tail = ("\n" if i < text.count("\n") else "")
         out.append({"type": "text", "text": {"content": label}, "annotations": {"bold": True}})
         if sep or tail:
@@ -287,7 +294,7 @@ def run(limit, live, environ=os.environ, client=None, read=None, now=None):
     try:
         reading = (read or (lambda: edge.limits((environ.get("IMESSAGE_ALERTS_HOST") or "").strip())))()
     except edge.EdgeError as error:
-        text = f"AI Capacity (DEGRADED at {now.strftime('%-I:%M %p')} CT) · Oracle limits read failed ({error}) · showing the last reading"
+        text = f"AI Capacity (DEGRADED at {ct_stamp.when(now)}) · Oracle limits read failed ({error}) · showing the last reading"
         result = write(client, block_id, text, None, live)
         return {**result, "status": "degraded", "code": str(error), "failed": 1}           # a failed read is a failed stage, by name; the old card stays until a fresh reading is verified
     text, table = render(reading, now)
