@@ -1,5 +1,4 @@
 """Guardrails ported from the proven V1-V5 behaviour as assertions, not machinery. Each test names the invariant it protects."""
-import hashlib
 import inspect
 from pathlib import Path
 import re
@@ -178,48 +177,24 @@ class QuarantineAndSchedulerAndRegistries(unittest.TestCase):
         scheduled = [p.name for p in (ROOT / ".github/workflows").glob("*.y*ml") if re.search(r"^\s*schedule:", p.read_text(), re.M)]
         self.assertEqual(sorted(scheduled), ["hourly.yml", "safety.yml", "watchdog.yml"])    # the watchdog only raises an alert (D52); it never runs the pipeline. safety.yml is Jim's weekly read-only check (D142): it touches no pipeline state
         safety = (ROOT / ".github/workflows/safety.yml").read_text()
-        self.assertEqual(len(re.findall(r"^\s*- cron:", safety, re.M)), 1)
         for word in ("--live", "NOTION_", "GMAIL_"):
             self.assertNotIn(word, safety)                                                          # the weekly check reads the database and prints counts; it writes nothing and holds no mailbox or Notion token
-        # EDGE-1.3 Phase B: the migrated values come from Bitwarden through the pinned official action; only the bootstrap token and the (unmigrated) SSH port are GitHub secrets
-        moved = {"FIT_PROFILE_EXTRA_JSON": "3e264d79-3af4-4f2a-a86a-b4db015a68de", "FIT_PROFILE_JSON": "31a07198-aa35-450f-913c-b4db015a690d", "LIFEOS_ACQ_DB_NAME": "d71bbaed-6a6c-49b5-8a1f-b4db015ecfda",
-                 "LIFEOS_ACQ_DB_PASSWORD": "00d82e0d-be10-4c8c-bdbe-b4db015ed389", "LIFEOS_ACQ_DB_USER": "9422b842-3bb0-4153-bb8d-b4db015ed746", "LIFEOS_ACQ_SSH_HOST": "6f1c86f6-c48f-4e77-b65d-b4db015edb15",
-                 "LIFEOS_ACQ_SSH_KNOWN_HOSTS": "b65dd2fc-2573-4bda-9e80-b4db015edec6", "LIFEOS_ACQ_SSH_PRIVATE_KEY": "7ada9cea-8711-4b37-bef9-b4db015ee298",
-                 "LIFEOS_ACQ_SSH_USER": "6b3e12b9-1987-4073-bda2-b4db015ee653", "NTFY_TOPIC": "83c553e9-23a6-45aa-9006-b4db015f00ac"}
-        self.assertEqual(re.findall(r"^\s*- cron:\s*\"([^\"]+)\"", safety, re.M), ["17 13 * * 1"])                       # the one Monday schedule, unchanged
-        self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", safety))), ["LIFEOS_ACQ_SSH_PORT", "LIFEOS_BWS_RUNTIME_TOKEN"])
-        for name in moved:
-            self.assertNotIn(f"secrets.{name}", safety)                                                # no direct GitHub copy, so no fallback
-        self.assertEqual(re.findall(r"uses:\s*(\S*bws-load)", safety), ["./.github/actions/bws-load"])   # the reviewed v3.0.1 commit: the load and its one retry (D209)
-        mappings = re.findall(r"^\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\s*>\s*\w+)\s*$", safety, re.M)
-        self.assertEqual(sorted(mappings), sorted([f"{uuid} > {name}" for name, uuid in moved.items()]))      # exactly these 10 (the retry is a YAML alias of the load, LIFE-541); LIFEOS_ACQ_SSH_PORT and everything else is not fetched
-        self.assertEqual(len(re.findall(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", safety)), 10)                     # 10, once (the retry is a YAML alias of the load; D209)
         loader = safety.index("bws-load")
         self.assertTrue(all(loader < safety.index(f"lifeos.run {stage}") for stage in ("safety-sql-smoke", "safety-fit-golden", "safety-fit-capture")))   # loaded before any safety command
-        self.assertEqual(re.search(r"options:\s*(\[[^\]]*\])", safety).group(1), '["all", "sql-smoke", "fit-golden", "fit-capture"]')            # dispatch choices unchanged
         self.assertNotRegex(safety, r"(?m)^\s*(workflow_run|repository_dispatch|push|pull_request\w*):")        # no new trigger or runtime path
         watchdog = (ROOT / ".github/workflows/watchdog.yml").read_text()
         self.assertNotIn("lifeos.run", watchdog)
-        self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", watchdog))), ["GITHUB_TOKEN", "LIFEOS_BWS_RUNTIME_TOKEN"])   # EDGE-1.3: the push topic now comes from Bitwarden; the GitHub copy of NTFY_TOPIC is no longer read here
-        self.assertNotIn("secrets.NTFY_TOPIC", watchdog)
-        self.assertEqual(re.findall(r"uses:\s*(\S*bws-load)", watchdog), ["./.github/actions/bws-load"])   # the reviewed v3.0.1 commit, never a tag or branch: the load and its one retry (D209)
-        self.assertEqual(re.findall(r"^\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\s*>\s*\w+)\s*$", watchdog, re.M), ["83c553e9-23a6-45aa-9006-b4db015f00ac > NTFY_TOPIC"])   # exactly one secret (once: the retry is a YAML alias of the load, LIFE-541), nothing else fetched
-        self.assertEqual(re.findall(r"^\s*- cron:\s*\"([^\"]+)\"", watchdog, re.M), ["17 * * * *", "47 * * * *"])           # schedules unchanged
         self.assertLess(watchdog.index("bws-load"), watchdog.index("lifeos.platform.gate --watch"))              # loaded before the first step that needs it
-        self.assertEqual(len(re.findall(r"^\s*- cron:", (ROOT / ".github/workflows/hourly.yml").read_text(), re.M)), 3)   # D30: three triggers, one gate
+        # LIFE-644: the schedules, secret lists, loader ids and dispatch choices are no longer pinned here; BitwardenConsumerTests (test_workflow.py) holds the loader and credential rules
+        # and tests/platform/test_scheduled_jobs.py requires a row for every schedule.
 
-    def test_machine_input_universes_are_frozen(self):
-        """A change to a source registry must be deliberate: update these numbers in the same commit."""
-        for lane, total, ready, digest_head in (("US Remote", None, None, None), ("Scale-Up", 50, 38, None)):
-            rows = registry.load(registry.PATHS[lane])
-            if total:
-                self.assertEqual(len(rows), total, lane)
-                self.assertEqual(len(registry.for_lane(lane)), ready, lane)
-        us = registry.load(registry.PATHS["US Remote"])
-        self.assertEqual(len(us), 43)
-        self.assertEqual(len(registry.for_lane("US Remote")), 29)
-        ids = hashlib.sha256("\n".join(sorted(r["id"] for r in us)).encode()).hexdigest()
-        self.assertEqual(len(ids), 64)          # the id set is pinned by test_registry's explicit coverage counts; this guards the file is readable
+    def test_machine_input_universes_load_and_the_ready_subset_is_inside_them(self):
+        """LIFE-644: a registry may grow without a test edit; it must load, have unique ids, and every lane's ready rows must be rows of the registry."""
+        for lane, path in registry.PATHS.items():
+            rows = registry.load(path)
+            ids = [r["id"] for r in rows]
+            self.assertTrue(rows and len(ids) == len(set(ids)), lane)
+            self.assertLessEqual({r["id"] for r in registry.for_lane(lane)}, set(ids), lane)
 
 
 if __name__ == "__main__":
