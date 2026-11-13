@@ -8,7 +8,7 @@ purged, so an Oracle that has not shipped the whole-meeting purge is never asked
 id or transcript text leaves this module (the meeting id is stored as a 16-character hash)."""
 import hashlib
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from lifeos.interview import create, granola_match, granola_oracle, granola_write, notion
@@ -26,6 +26,11 @@ TZ = ZoneInfo("America/Chicago")
 PER_RUN = 3                        # meetings carried per run: a backlog drains over a few runs and one run stays well inside its time
 DONE = ("carried", "carried_purged")
 NOTE_LIMIT = 60_000                # characters of notes or summary kept
+PER_MEETING = ("GRAN_NOT_FOUND", "GRAN_OVERSIZE", "GRAN_TIMEOUT")   # LIFE-651: what Oracle's `show` says about ONE meeting; every other code (no host, connect, no reply, auth, sync) is the helper's and stops the run
+STREAK = 3                         # per-meeting read failures in a row with no read in between: the helper is the problem, not the meetings, so the run stops
+READ_TRIES = 5                     # failed runs on one meeting before later runs skip it (counted as GRAN_READ_GIVEN_UP) ...
+RETRY_DAYS = 3                     # ... and a failure older than this is forgotten, so the meeting is tried again
+READ_FAILED = tuple(f"read_failed_{n}" for n in range(1, READ_TRIES + 1))   # the catalog outcomes that record it; not in DONE, so the meeting is still to do
 
 
 def key_of(meeting_id):
@@ -38,6 +43,14 @@ def catalog_done(cursor, keys):
         return set()
     cursor.execute("SELECT meeting_key FROM v7_meeting_catalog WHERE outcome IN %s AND meeting_key IN %s", (DONE, tuple(keys)))
     return {row[0] for row in cursor.fetchall()}
+
+
+def catalog_failed(cursor, keys, since):
+    """-> {meeting key: failed reads so far} for meetings whose newest read failure is not older than `since`."""
+    if not keys:
+        return {}
+    cursor.execute("SELECT meeting_key, outcome FROM v7_meeting_catalog WHERE outcome IN %s AND carried_at > %s AND meeting_key IN %s", (READ_FAILED, since, tuple(keys)))
+    return {row[0]: READ_FAILED.index(row[1]) + 1 for row in cursor.fetchall()}
 
 
 def catalog_save(cursor, key, day, round_key, job_key, outcome, segments, header, purged, now):
@@ -133,10 +146,11 @@ def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=No
                 store.ensure_schema(connection)
             try:
                 done = catalog_done(cursor, list(keys.values()))
+                read_tries = catalog_failed(cursor, list(keys.values()), now - timedelta(days=RETRY_DAYS))
             except Exception:                                   # noqa: BLE001 - a missing table on a dry run before the first live run reads as nothing carried yet
                 if live:
                     raise
-                done = set()
+                done, read_tries = set(), {}
         todo = [m for m in listed if keys[m.id] not in done]
         counts["already"] = len(listed) - len(todo)
         if not todo:
@@ -145,7 +159,9 @@ def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=No
         have, parent_of = rounds_with_parents(client, environ, context)
         matched = granola_match.match(listed, have)                 # every meeting is matched against every round, so a round two meetings claim is ambiguous for both
         order = sorted(todo, key=lambda m: m.start, reverse=True)
+        order.sort(key=lambda m: keys[m.id] in read_tries)           # LIFE-651: a meeting whose read failed lately goes last, so it never blocks the newer ones
         carried_now = 0
+        read_streak = 0
         meetings_state = []                                          # the Meetings database check, made once per run: ["target_ok"] or the failure
         filed_as = {"client": granola_clients.CLIENT, "internal": granola_clients.INTERNAL}.get((environ.get("GRAN_UNMATCHED_TO") or "").strip().lower())
         by_key = {keys[m.id]: m for m in listed}
@@ -178,8 +194,26 @@ def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=No
             return True
 
         def fetch(meeting):
-            """(envelope, header) from Oracle, or None after counting a contract failure."""
-            shown = ask("show", id=meeting.id)
+            """(envelope, header) from Oracle, or None after counting a contract failure or a failed read of this meeting (LIFE-651: that one only; the run goes on)."""
+            nonlocal read_streak
+            key = keys[meeting.id]
+            if read_tries.get(key, 0) >= READ_TRIES:
+                left("GRAN_READ_GIVEN_UP")
+                return None
+            try:
+                shown = ask("show", id=meeting.id)
+            except Stop as stop:
+                if stop.code not in PER_MEETING:
+                    raise
+                left(stop.code, 1)
+                read_streak += 1
+                if live:
+                    with connect() as connection, connection.cursor() as cursor:
+                        catalog_save(cursor, key, granola_match.central_day(meeting.start), key_of("read_failed"), None, READ_FAILED[min(read_tries.get(key, 0) + 1, READ_TRIES) - 1], 0, (), False, now)
+                if read_streak >= STREAK:
+                    raise
+                return None
+            read_streak = 0
             try:
                 envelope = normalize_granz(meeting.id, shown.get("json") or "")
             except ContractError as error:

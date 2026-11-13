@@ -3,6 +3,7 @@
   "GRAN_AUTO_DONE": ["interview", "ok", false, "The automatic Granola run finished.", "None."],
   "GRAN_AUTO_NOTHING_NEW": ["interview", "ok", false, "Every synced Granola meeting has already been carried.", "None."],
   "GRAN_AUTO_LATER_RUN": ["interview", "state", false, "A matched meeting is waiting for a later run (the per-run cap).", "None; the next run takes it."],
+  "GRAN_READ_GIVEN_UP": ["interview", "degraded", false, "Oracle could not show this meeting on several runs in a row, so it is skipped for a few days.", "None; it is tried again after the wait, and the other meetings are carried meanwhile."],
   "GRAN_CATALOG_FAILED": ["interview", "degraded", false, "The meeting catalog could not be saved or read back, so the meeting was not purged.", "Repeat the run; the meeting is still on Oracle."],
   "GRAN_CLIENT_TARGET_NOT_OK": ["interview", "blocked", false, "The Meetings database could not be read with the Interview OS connection (not shared, or its columns changed), so meetings stay on Oracle.", "Jim shares the Meetings database with the LIFE OS Interview OS connection; the next run files them."],
   "MEETINGS_ROW_AMBIGUOUS": ["interview", "bug", false, "Two Meetings rows carry the same source key, so nothing was filed for that meeting.", "Delete the duplicate row in Notion; the next run continues."],
