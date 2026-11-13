@@ -547,7 +547,7 @@ def transition(client, parent_id, child_id, current, want, live, out, context=No
             else:
                 made = client.call("PATCH", f"/blocks/{snapshot['id']}/children", {"children": [notion.paragraph(repaired_line(_clock()))]})["results"][0]["id"]
                 undo.append(lambda i=made: notion.delete_block(client, i))
-        for block, old, new in todo:                                    # the identity line last: it is the commit point
+        for block, _, new in todo:                                    # the identity line last: it is the commit point
             was = notion.writable(block[block["type"]]["rich_text"])
             notion.set_text(client, block["id"], block["type"], new[new["type"]]["rich_text"])
             undo.append(lambda b=block, w=was: notion.set_text(client, b["id"], b["type"], w))
