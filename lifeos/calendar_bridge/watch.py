@@ -1,7 +1,9 @@
-"""A calendar sync that keeps failing must reach the phone (D173). The sync step is a warning by design (a provider hiccup never fails the run), so it refused every run for five days
-(CALENDAR_MASS_DELETE_GUARD, Oct 7 to 12) without a word. This wraps `sync.run` for the `calendar-sync` stage: a live success records the time and closes any open alert; a live failure
-pages the phone only once the sync has not worked for STUCK_HOURS (one transient provider error is not an incident), then reminds every 6 hours (platform alerts, D53) and says when it
-recovers. State is one private row. Counts and fixed codes only; alerting never changes the sync's own result or error."""
+"""Wraps `sync.run` for the `calendar-sync` stage so a sync that keeps failing reaches the phone (D173).
+
+A live success records the time and closes any open alert; a live failure pages the phone only once the sync has not worked for STUCK_HOURS, then reminds every 6 hours (platform alerts, D53) and says when it recovers.
+State is one private row. Counts and fixed codes only; alerting never changes the sync's own result or error."""
+# Why this exists (D173): the sync step is a warning by design (a provider hiccup never fails the run), so it refused every run for five days (CALENDAR_MASS_DELETE_GUARD, Oct 7 to 12) without
+# a word. One transient provider error is not an incident, hence STUCK_HOURS.
 import json
 import os
 from datetime import datetime, timezone
