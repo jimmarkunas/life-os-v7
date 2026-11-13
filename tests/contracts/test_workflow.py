@@ -1019,6 +1019,67 @@ class ProfileSyncWorkflowTests(unittest.TestCase):
         self.assertIn("vars.FIT_PROFILE_SYNC == 'on'", self.text)
 
 
+class SweepFailureIsItsOwnLaneTests(unittest.TestCase):
+    """LIFE-650: a failing Gmail sweep no longer skips the whole tick; it is its own failed lane in the report job's push, while credentials, the gate and the unit tests still block."""
+    @classmethod
+    def setUpClass(cls):
+        try:
+            cls.doc = yaml.safe_load(pathlib.Path(__file__).resolve().parents[2].joinpath(".github/workflows/hourly.yml").read_text())
+        except NameError:
+            raise unittest.SkipTest("pyyaml unavailable") from None
+        cls.steps = cls.doc["jobs"]["prep"]["steps"]
+
+    def test_the_sweep_step_cannot_fail_the_prep_job_and_its_outcome_is_a_prep_output(self):
+        sweep = next(s for s in self.steps if s.get("id") == "sweep")
+        self.assertTrue(sweep.get("continue-on-error"))
+        self.assertIn("python -m lifeos.sources.newsletters.sweep", sweep["run"])
+        self.assertNotIn("|| true", sweep["run"])                                      # nothing swallows the exit code: the outcome is the evidence
+        self.assertEqual(self.doc["jobs"]["prep"]["outputs"]["sweep"], "${{ steps.sweep.outcome }}")
+        self.assertNotIn("continue-on-error", self.doc["jobs"]["prep"])               # only the one step is tolerated, never the job
+        for later in self.steps[self.steps.index(sweep) + 1:]:
+            self.assertNotIn("steps.sweep", str(later.get("if", "")), later.get("name"))   # a failed sweep never skips the extract step or a later one
+
+    def test_credentials_gate_and_unit_tests_still_fail_prep_and_so_block_finish(self):
+        sweep_at = next(i for i, s in enumerate(self.steps) if s.get("id") == "sweep")
+        before = self.steps[:sweep_at]
+        for prefix in ("Load the migrated credentials", "Gate - skip", "Unit-test gate", "Unit tests", "Test index freshness"):
+            step = next(s for s in before if s.get("name", "").startswith(prefix))
+            self.assertNotIn("continue-on-error", step, prefix)                        # a credential, gate, unit-test or freshness failure fails the job, as before
+        tolerated = [s.get("name", "") for s in self.steps[:sweep_at] if s.get("continue-on-error")]
+        self.assertEqual(len(tolerated), 1)
+        self.assertIn("tailnet", tolerated[0])                                         # the only tolerated earlier step is the tailnet join
+        finish = self.doc["jobs"]["finish"]
+        self.assertEqual(finish["needs"], ["prep"])
+        self.assertIn("needs.prep.result == 'success'", finish["if"])                  # prep red (credentials, gate, unit tests) still skips the Jobs work
+
+    def test_the_report_job_names_a_failed_sweep_as_its_own_lane_and_pushes_once(self):
+        import os
+        import subprocess
+        report = next(s for s in self.doc["jobs"]["report"]["steps"] if "Resolver lanes" in s.get("name", ""))
+        self.assertIn("sweep=${{ needs.prep.outputs.sweep }}", report["run"])
+
+        def run(prep="success", sweep="success", finish="success"):
+            values = {"needs.prep.result": prep, "needs.prep.outputs.sweep": sweep, "needs.finish.result": finish}
+            script = re.sub(r"\$\{\{\s*([^}]+?)\s*\}\}", lambda m: values.get(m.group(1), "success"), report["run"])
+            script = script.replace("python3 -m lifeos.platform.alerts push", "echo PUSH")     # the real push is never called from a test
+            done = subprocess.run(["bash", "-e", "-c", script], env={**os.environ, "STAGES": "", "CODES": ""}, capture_output=True, text=True, check=False)
+            return done.returncode, done.stdout
+
+        code, out = run(sweep="failure")                                               # the sweep failed, everything else ran
+        self.assertEqual(code, 1)
+        self.assertIn("FAILED LANES: sweep", out)
+        self.assertEqual(out.count("PUSH"), 1)
+        self.assertIn("Failed lanes: sweep.", out)
+        code, out = run(prep="failure", sweep="")                                      # unit tests or credentials failed: prep is named, no sweep
+        self.assertEqual((code, "FAILED LANES: prep" in out), (1, True))
+        self.assertEqual(run(sweep="skipped"), (0, ""))                                # a cloud-backlog run never sweeps
+        self.assertEqual(run(), (0, ""))
+        code, out = run(sweep="failure", finish="failure")                             # both: two lanes, one push
+        self.assertIn("FAILED LANES: sweep finish", out)
+        self.assertEqual(out.count("PUSH"), 1)
+        self.assertIn("always()", self.doc["jobs"]["report"]["if"])
+
+
 class ConcurrencyHasNoSwitch(unittest.TestCase):
     """LIFE-604 approval 5: TICK_CONCURRENCY are gone from the workflow and the code; the list of settings has no row for them."""
     def test_no_workflow_or_code_file_reads_the_switch(self):

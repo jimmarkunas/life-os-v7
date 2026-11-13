@@ -131,6 +131,7 @@ jobs:
       issues: write
     outputs:
       extract: ${{ steps.extract.outcome }}
+      sweep: ${{ steps.sweep.outcome }}      # LIFE-650: the sweep may fail without stopping the tick; the report job names it as its own failed lane
     steps:
       - name: Checkout the exact commit (own git fetch; the token is passed once and never stored)
         run: |
@@ -224,7 +225,9 @@ jobs:
         env:
           LIFEOS_TEST_INDEX_FRESH: "1"
         run: python -m unittest tests.test_testindex.CommittedIndexIsFresh -v
-      - name: Stage 1 - sweep
+      - id: sweep
+        continue-on-error: true      # LIFE-650: the sweep only moves mail between Gmail labels and nothing after it needs it (the extract step reads mail already under the label; unswept mail waits for the next run); a failure turns the report job's `sweep` lane red and pushes, but does not skip the finish job. Credentials, the gate and the unit tests above still fail prep
+        name: Stage 1 - sweep
         if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.cloud_backlog != '' && inputs.cloud_backlog != '0') }}   # D219: a Cloud Fit backlog dispatch never sweeps newsletters
         env:
           FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_prep.outputs.FIT_PROFILE_EXTRA_JSON }}
@@ -1418,7 +1421,7 @@ jobs:
           CODES: ${{ needs.finish.outputs.codes }}
         run: |
           failed=""
-          for pair in prep=${{ needs.prep.result }} jobright=${{ needs.jobright.result }} linkedin=${{ needs.linkedin.result }} lensa=${{ needs.lensa.result }} finish=${{ needs.finish.result }}; do
+          for pair in prep=${{ needs.prep.result }} sweep=${{ needs.prep.outputs.sweep }} jobright=${{ needs.jobright.result }} linkedin=${{ needs.linkedin.result }} lensa=${{ needs.lensa.result }} finish=${{ needs.finish.result }}; do
             [ "${pair#*=}" = "failure" ] && failed="$failed ${pair%=*}"
           done
           if [ -n "$failed" ]; then
