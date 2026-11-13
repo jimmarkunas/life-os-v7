@@ -179,12 +179,12 @@ class QuarantineAndSchedulerAndRegistries(unittest.TestCase):
         safety = (ROOT / ".github/workflows/safety.yml").read_text()
         for word in ("--live", "NOTION_", "GMAIL_"):
             self.assertNotIn(word, safety)                                                          # the weekly check reads the database and prints counts; it writes nothing and holds no mailbox or Notion token
-        loader = safety.index("bitwarden/sm-action")
+        loader = safety.index("bws-load")
         self.assertTrue(all(loader < safety.index(f"lifeos.run {stage}") for stage in ("safety-sql-smoke", "safety-fit-golden", "safety-fit-capture")))   # loaded before any safety command
         self.assertNotRegex(safety, r"(?m)^\s*(workflow_run|repository_dispatch|push|pull_request\w*):")        # no new trigger or runtime path
         watchdog = (ROOT / ".github/workflows/watchdog.yml").read_text()
         self.assertNotIn("lifeos.run", watchdog)
-        self.assertLess(watchdog.index("bitwarden/sm-action"), watchdog.index("lifeos.platform.gate --watch"))              # loaded before the first step that needs it
+        self.assertLess(watchdog.index("bws-load"), watchdog.index("lifeos.platform.gate --watch"))              # loaded before the first step that needs it
         # LIFE-644: the schedules, secret lists, loader ids and dispatch choices are no longer pinned here; BitwardenConsumerTests (test_workflow.py) holds the loader and credential rules
         # and tests/platform/test_scheduled_jobs.py requires a row for every schedule.
 
@@ -267,7 +267,7 @@ class InterviewJobIsIsolated(unittest.TestCase):
         block = self.block()
         self.assertIn("github.event_name == 'workflow_dispatch'", block)
         self.assertNotIn("\n    continue-on-error:", block)                    # a job-level continue-on-error would hide the result from the report job
-        self.assertEqual(block.count("continue-on-error: true"), 5)            # the four steps (D233: + the negative acceptance case) + the first Bitwarden load (its one retry fails the job, D209)
+        self.assertEqual(block.count("continue-on-error: true"), 4)            # the four steps (D233: + the negative acceptance case); the Bitwarden load and its retry are inside the local action (LIFE-631)
         self.assertIn("::warning", block)
 
 

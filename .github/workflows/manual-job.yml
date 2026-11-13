@@ -47,9 +47,8 @@ jobs:
           wait_seconds: "300"
       - id: bws_manual
         name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 8; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
-        continue-on-error: true                 # D209: one retry below; the retry fails the job
-        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
-        with: &bws_bws_manual
+        uses: ./.github/actions/bws-load
+        with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           set_env: false
           secrets: |
@@ -61,14 +60,6 @@ jobs:
             7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
             6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
             092b44ae-32cb-453b-8cc2-b4db015ef571 > NOTION_INTERVIEW_TOKEN
-      - name: Bitwarden refused or timed out (429 / 5xx) - pause before the one retry
-        if: ${{ steps.bws_manual.outcome == 'failure' }}
-        run: sleep $((30 + RANDOM % 45))
-      - id: bws_manual_retry
-        name: Load the same credentials from Bitwarden - the one retry (the job fails if it fails, no fallback)
-        if: ${{ steps.bws_manual.outcome == 'failure' }}
-        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
-        with: *bws_bws_manual
       - name: Manual job (one job into Jobs OS and the Interview OS writer; dry run unless live is ticked; counts and fixed codes only)
         env:
           LIFEOS_NOTION_IDS: ${{ secrets.LIFEOS_NOTION_IDS }}
@@ -80,14 +71,14 @@ jobs:
           HIRING_PIPELINE_PAGE_ID: ${{ secrets.HIRING_PIPELINE_PAGE_ID }}
           INTERVIEW_OS_WRITER: ${{ vars.INTERVIEW_OS_WRITER }}
           LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
-          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_manual.outputs.LIFEOS_ACQ_DB_NAME || steps.bws_manual_retry.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_manual.outputs.LIFEOS_ACQ_DB_PASSWORD || steps.bws_manual_retry.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: ${{ steps.bws_manual.outputs.LIFEOS_ACQ_DB_USER || steps.bws_manual_retry.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_manual.outputs.LIFEOS_ACQ_SSH_HOST || steps.bws_manual_retry.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_manual.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS || steps.bws_manual_retry.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_manual.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY || steps.bws_manual_retry.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_manual.outputs.LIFEOS_ACQ_SSH_USER || steps.bws_manual_retry.outputs.LIFEOS_ACQ_SSH_USER }}
-          NOTION_INTERVIEW_TOKEN: ${{ steps.bws_manual.outputs.NOTION_INTERVIEW_TOKEN || steps.bws_manual_retry.outputs.NOTION_INTERVIEW_TOKEN }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_manual.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_manual.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_manual.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_manual.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_manual.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_manual.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_manual.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_INTERVIEW_TOKEN: ${{ steps.bws_manual.outputs.NOTION_INTERVIEW_TOKEN }}
           NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}   # LIFE-361 (Jim approved Nov 8): a new manual pursuit finds or creates its Ledger row
           LIVE: ${{ inputs.live }}
         run: python -m lifeos.run manual-job --limit 5 $([ "$LIVE" = "true" ] && echo --live)

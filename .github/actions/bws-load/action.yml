@@ -1,0 +1,51 @@
+name: Load credentials from Bitwarden
+description: "LIFE-631: the pinned Bitwarden loader with its one retry (D209: 429 / 5xx pause, then one more try; a failed retry fails the job, no fallback). A masked output per secret name; the first try's value wins, else the retry's."
+inputs:
+  access_token: {description: "The Bitwarden machine token (a GitHub secret)", required: true}
+  secrets: {description: "One 'secret-id > NAME' per line", required: true}
+  set_env: {description: "Export the values to the job environment (the default of the loader); false keeps them as masked step outputs only", default: "true"}
+outputs:
+  DCC_CARD_BLOCK_ID: {value: "${{ steps.first.outputs.DCC_CARD_BLOCK_ID || steps.retry.outputs.DCC_CARD_BLOCK_ID }}"}
+  FIT_PROFILE_EXTRA_JSON: {value: "${{ steps.first.outputs.FIT_PROFILE_EXTRA_JSON || steps.retry.outputs.FIT_PROFILE_EXTRA_JSON }}"}
+  FIT_PROFILE_JSON: {value: "${{ steps.first.outputs.FIT_PROFILE_JSON || steps.retry.outputs.FIT_PROFILE_JSON }}"}
+  GCAL_SERVICE_ACCOUNT_JSON: {value: "${{ steps.first.outputs.GCAL_SERVICE_ACCOUNT_JSON || steps.retry.outputs.GCAL_SERVICE_ACCOUNT_JSON }}"}
+  GMAIL_OAUTH_CLIENT_SECRET: {value: "${{ steps.first.outputs.GMAIL_OAUTH_CLIENT_SECRET || steps.retry.outputs.GMAIL_OAUTH_CLIENT_SECRET }}"}
+  GMAIL_OAUTH_REFRESH_TOKEN: {value: "${{ steps.first.outputs.GMAIL_OAUTH_REFRESH_TOKEN || steps.retry.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}"}
+  IMESSAGE_ALERTS_HOST: {value: "${{ steps.first.outputs.IMESSAGE_ALERTS_HOST || steps.retry.outputs.IMESSAGE_ALERTS_HOST }}"}
+  JIRA_API_TOKEN: {value: "${{ steps.first.outputs.JIRA_API_TOKEN || steps.retry.outputs.JIRA_API_TOKEN }}"}
+  JIRA_EMAIL: {value: "${{ steps.first.outputs.JIRA_EMAIL || steps.retry.outputs.JIRA_EMAIL }}"}
+  JOBRIGHT_EMAIL: {value: "${{ steps.first.outputs.JOBRIGHT_EMAIL || steps.retry.outputs.JOBRIGHT_EMAIL }}"}
+  JOBRIGHT_PASSWORD: {value: "${{ steps.first.outputs.JOBRIGHT_PASSWORD || steps.retry.outputs.JOBRIGHT_PASSWORD }}"}
+  LIFEOS_ACQ_DB_NAME: {value: "${{ steps.first.outputs.LIFEOS_ACQ_DB_NAME || steps.retry.outputs.LIFEOS_ACQ_DB_NAME }}"}
+  LIFEOS_ACQ_DB_PASSWORD: {value: "${{ steps.first.outputs.LIFEOS_ACQ_DB_PASSWORD || steps.retry.outputs.LIFEOS_ACQ_DB_PASSWORD }}"}
+  LIFEOS_ACQ_DB_USER: {value: "${{ steps.first.outputs.LIFEOS_ACQ_DB_USER || steps.retry.outputs.LIFEOS_ACQ_DB_USER }}"}
+  LIFEOS_ACQ_SSH_HOST: {value: "${{ steps.first.outputs.LIFEOS_ACQ_SSH_HOST || steps.retry.outputs.LIFEOS_ACQ_SSH_HOST }}"}
+  LIFEOS_ACQ_SSH_JUMP_KEY: {value: "${{ steps.first.outputs.LIFEOS_ACQ_SSH_JUMP_KEY || steps.retry.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}"}
+  LIFEOS_ACQ_SSH_KNOWN_HOSTS: {value: "${{ steps.first.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS || steps.retry.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}"}
+  LIFEOS_ACQ_SSH_PRIVATE_KEY: {value: "${{ steps.first.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY || steps.retry.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}"}
+  LIFEOS_ACQ_SSH_USER: {value: "${{ steps.first.outputs.LIFEOS_ACQ_SSH_USER || steps.retry.outputs.LIFEOS_ACQ_SSH_USER }}"}
+  NOTION_AMAZON_TOKEN: {value: "${{ steps.first.outputs.NOTION_AMAZON_TOKEN || steps.retry.outputs.NOTION_AMAZON_TOKEN }}"}
+  NOTION_API_TOKEN: {value: "${{ steps.first.outputs.NOTION_API_TOKEN || steps.retry.outputs.NOTION_API_TOKEN }}"}
+  NOTION_BILLS_TOKEN: {value: "${{ steps.first.outputs.NOTION_BILLS_TOKEN || steps.retry.outputs.NOTION_BILLS_TOKEN }}"}
+  NOTION_INTERVIEW_TOKEN: {value: "${{ steps.first.outputs.NOTION_INTERVIEW_TOKEN || steps.retry.outputs.NOTION_INTERVIEW_TOKEN }}"}
+  NOTION_JIRA_TOKEN: {value: "${{ steps.first.outputs.NOTION_JIRA_TOKEN || steps.retry.outputs.NOTION_JIRA_TOKEN }}"}
+  NOTION_RECRUITERS_TOKEN: {value: "${{ steps.first.outputs.NOTION_RECRUITERS_TOKEN || steps.retry.outputs.NOTION_RECRUITERS_TOKEN }}"}
+  NTFY_TOPIC: {value: "${{ steps.first.outputs.NTFY_TOPIC || steps.retry.outputs.NTFY_TOPIC }}"}
+  OPEN_JOBS_CONTACT: {value: "${{ steps.first.outputs.OPEN_JOBS_CONTACT || steps.retry.outputs.OPEN_JOBS_CONTACT }}"}
+  TAILSCALE_OAUTH_CLIENT_ID: {value: "${{ steps.first.outputs.TAILSCALE_OAUTH_CLIENT_ID || steps.retry.outputs.TAILSCALE_OAUTH_CLIENT_ID }}"}
+  TAILSCALE_OAUTH_CLIENT_SECRET: {value: "${{ steps.first.outputs.TAILSCALE_OAUTH_CLIENT_SECRET || steps.retry.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}"}
+  TINYFISH_API_KEY: {value: "${{ steps.first.outputs.TINYFISH_API_KEY || steps.retry.outputs.TINYFISH_API_KEY }}"}
+runs:
+  using: composite
+  steps:
+    - id: first
+      continue-on-error: true
+      uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+      with: {access_token: "${{ inputs.access_token }}", secrets: "${{ inputs.secrets }}", set_env: "${{ inputs.set_env }}"}
+    - if: ${{ steps.first.outcome == 'failure' }}
+      shell: bash
+      run: sleep $((30 + RANDOM % 45))
+    - id: retry
+      if: ${{ steps.first.outcome == 'failure' }}
+      uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+      with: {access_token: "${{ inputs.access_token }}", secrets: "${{ inputs.secrets }}", set_env: "${{ inputs.set_env }}"}
