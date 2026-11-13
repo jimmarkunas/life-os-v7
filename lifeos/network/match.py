@@ -5,7 +5,6 @@ tier CURRENT (the latest listed position), tier PREVIOUS (a superseded position 
 other, such as "meta" and "meta platforms"; shown last and never auto-confirmed). Within a tier: title-word overlap with the job's title, then the freshest observation, then a stable id.
 Nobody with no company match is ever shown, so weak signals cannot fill slots, and at most MAX_LEADS are returned. Nothing about closeness, influence, willingness to refer or
 hiring authority is inferred; freshness is only the age of the observation (FRESH up to 45 days, AGING to 120, STALE beyond)."""
-from datetime import date
 
 from lifeos.platform import names
 

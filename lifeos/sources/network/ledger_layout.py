@@ -9,6 +9,7 @@ import json
 import os
 from datetime import datetime, timezone
 
+from lifeos.network.store import revive
 from lifeos.platform import db, ledger_body as body
 from lifeos.platform.notion_client import Client, NotionError
 from lifeos.sources.network import network_surface
@@ -113,19 +114,9 @@ def run(limit, live, environ=os.environ, connection=None, client=None):
         return _run(limit, live, environ, opened, client)
 
 
-def _revive(connection):
-    """A page's Notion work takes a while and the store may have dropped the idle connection: reconnect if the driver can, else carry on and fail normally (the same shortcut as lifeos.network.store)."""
-    ping = getattr(connection, "ping", None)
-    if ping is not None:
-        try:
-            ping(reconnect=True)
-        except Exception:                                              # noqa: BLE001
-            pass
-
-
 def _remember(connection, key, page, state, cleared, counts):
     """Record a page as done (or left) so a later run does not read it again. Only a shortcut: a failed save loses nothing (the page reads back as done next run) and never fails the stage."""
-    _revive(connection)
+    revive(connection)
     try:
         with connection.cursor() as cursor:
             cursor.execute(f"REPLACE INTO {STATE} (job_key, page_id, state, checked_at) VALUES (%s,%s,%s,%s)", (key, page, state, _now()))

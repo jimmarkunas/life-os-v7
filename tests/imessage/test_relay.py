@@ -8,7 +8,6 @@ import re
 import shlex
 import shutil
 import socket
-import sqlite3
 import struct
 import subprocess
 import sys
@@ -18,7 +17,7 @@ import unittest
 from unittest import mock
 from datetime import datetime, timedelta, timezone
 
-from lifeos.imessage import attention_mcp, openclaw_imessage as w
+from lifeos.imessage import openclaw_imessage as w
 from tests.imessage import test_reader as reader
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]

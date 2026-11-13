@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
+from lifeos.imessage.alerts_endpoint import TG_COUNTS, _keystream      # the Oracle endpoint file is stdlib-only, so the runner imports from it and never the other way
 from lifeos.platform import report_region, router
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 
@@ -31,7 +32,6 @@ TITLE = router.COMMS_REGION
 MODULE = router.OWNERS[TITLE]
 PORT = 47341
 SCHEMA = "lifeos.imessage.comms.v3"
-TG_COUNTS = ("chats_main", "unread_messages", "unread_messages_unmuted", "unread_chats", "unread_chats_unmuted")
 TG_KEYS = {"health", "auth", "error", "observed_at", "latest_state", "latest", *TG_COUNTS}
 MAX_REPLY = 8192
 WAIT = 100                                                             # seconds: the endpoint may spend up to 90 (Telegram start-up included)
@@ -62,14 +62,6 @@ def fetch(host, key, port=PORT):
                 break
             data += chunk
     return data
-
-
-def _keystream(key, nonce, n):
-    out, i = b"", 0
-    while len(out) < n:
-        out += hmac.new(key, b"lifeos-comms-ks" + nonce + i.to_bytes(4, "big"), hashlib.sha256).digest()
-        i += 1
-    return out[:n]
 
 
 def unscramble(key, sealed):
