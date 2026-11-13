@@ -11,6 +11,11 @@ def asks_for_net_size(template):
     return "## Net size" in template and COMMAND in template
 
 
+def asks_about_cross_package(template):
+    section = template.split("## Cross-package change", 1)[1] if "## Cross-package change" in template else ""
+    return all(part in section for part in ("two or more packages", "why the second package had to change", '"sweep"'))
+
+
 class NetSizeRule(unittest.TestCase):
     def test_the_pull_request_template_asks_for_net_size_with_the_command(self):
         self.assertTrue(asks_for_net_size((ROOT / ".github/pull_request_template.md").read_text()))
@@ -18,6 +23,15 @@ class NetSizeRule(unittest.TestCase):
     def test_a_template_without_the_section_is_caught(self):                    # negative control: the check can fail
         self.assertFalse(asks_for_net_size("Jira: LIFE-\n\n## What changes\n\n## Evidence\n\n## Not proven yet\n"))
         self.assertFalse(asks_for_net_size("## Net size\n\nlines, counted by hand\n"))
+
+    def test_the_pull_request_template_asks_why_a_second_package_changed_and_how_a_sweep_is_labelled(self):   # LIFE-629: makes Jim's 1-in-5 cross-package target measurable
+        template = (ROOT / ".github/pull_request_template.md").read_text()
+        self.assertTrue(asks_about_cross_package(template))
+        self.assertLess(template.index("## Net size"), template.index("## Cross-package change"))
+
+    def test_a_template_without_the_cross_package_section_or_its_prompts_is_caught(self):                     # negative control
+        self.assertFalse(asks_about_cross_package("## Net size\n\n## Not proven yet\n"))
+        self.assertFalse(asks_about_cross_package("## Cross-package change\n\nAny comment?\n"))
 
     def test_the_receipt_template_names_the_command_under_what_changed(self):
         text = (ROOT / "docs/platform/receipt-template.md").read_text()
