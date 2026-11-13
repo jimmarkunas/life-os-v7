@@ -7,6 +7,7 @@ import json
 import re
 from typing import Protocol
 
+from lifeos.platform.fixed_code import fixed
 from .models import PrepEvidence
 from .prep import normalize as normalize_prep
 
@@ -57,10 +58,8 @@ class EvidenceRef:
         identity, version = value.split("@")
         if not version.isascii() or not version.isdigit() or version.startswith("0"):
             raise AdvisorContractError("advisor_evidence_invalid")
-        try:
+        with fixed((ValueError, TypeError), AdvisorContractError, "advisor_evidence_invalid"):
             result = cls(identity, int(version))
-        except (ValueError, TypeError):
-            raise AdvisorContractError("advisor_evidence_invalid") from None
         _fail(result.canonical() == value, "advisor_evidence_invalid")
         return result
 
@@ -160,11 +159,9 @@ class AdvisorInputBundle:
         _text(self.company, "advisor_input_invalid", 200)
         _text(self.role, "advisor_input_invalid", 200)
         _fail(isinstance(self.interview_date, str), "advisor_input_invalid")
-        try:
+        with fixed(ValueError, AdvisorContractError, "advisor_input_invalid"):
             _fail(date.fromisoformat(self.interview_date).isoformat() == self.interview_date,
                   "advisor_input_invalid")
-        except ValueError:
-            raise AdvisorContractError("advisor_input_invalid") from None
         _fail(self.interviewer is None or isinstance(self.interviewer, str), "advisor_input_invalid")
         if self.interviewer is not None:
             _text(self.interviewer, "advisor_input_invalid", 200)
@@ -206,11 +203,9 @@ def bundle_digest(bundle: AdvisorInputBundle) -> str:
         "sources": [[s.source_id, s.kind.value, s.version, s.text, s.source_round, s.active] for s in bundle.sources],
         "evidence": [[e.ref.canonical(), e.canonical_text, e.source_ref, list(e.tags), e.active] for e in bundle.evidence],
     }
-    try:
+    with fixed((TypeError, ValueError, UnicodeError), AdvisorContractError, "advisor_input_invalid"):
         canonical = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-    except (TypeError, ValueError, UnicodeError):
-        raise AdvisorContractError("advisor_input_invalid") from None
 
 
 @dataclass(frozen=True)
@@ -383,10 +378,6 @@ def compile_prep(bundle: AdvisorInputBundle, draft: AdvisorDraft) -> PrepEvidenc
         pressure_points=tuple(item.text for item in draft.pressure_points),
         questions=tuple(item.text for item in draft.questions),
     )
-    try:
+    with fixed(OverflowError, AdvisorContractError, "advisor_compile_too_large"), fixed((ValueError, TypeError), AdvisorContractError, "advisor_draft_invalid"):
         normalize_prep(result)
-    except OverflowError:
-        raise AdvisorContractError("advisor_compile_too_large") from None
-    except (ValueError, TypeError):
-        raise AdvisorContractError("advisor_draft_invalid") from None
     return result

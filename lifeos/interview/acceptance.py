@@ -6,7 +6,7 @@ Job Ledger rows for that company are read (read-only, LIFE OS Interview OS conne
 before Interview 1 is written. Any refusal is its fixed progression code; an unreadable Ledger is `ledger_unreadable`."""
 import json
 import os
-from lifeos.platform import names
+from lifeos.platform import names, notion_pages, notion_text
 from lifeos.platform.notion_client import Client, NotionError
 from . import stage
 from .identity import valid_date
@@ -29,7 +29,7 @@ def _text(value):
 
 
 def _plain(prop, kind):
-    return "".join((p.get("plain_text") or (p.get("text") or {}).get("content") or "") for p in (prop or {}).get(kind) or []).strip()
+    return notion_text.plain((prop or {}).get(kind)).strip()
 
 
 def ledger_rows(company, environ=os.environ):
@@ -39,25 +39,16 @@ def ledger_rows(company, environ=os.environ):
     if not words:
         raise NotionError("INTERVIEW_LEDGER_UNREADABLE")
     client = Client(environ, token_name="NOTION_INTERVIEW_TOKEN", source_name="NOTION_JOB_LEDGER_DATA_SOURCE_ID")
-    rows, cursor, seen = [], None, set()
-    for _ in range(LEDGER_PAGES):
-        page = client.query_data_source(None, {"page_size": 100, "filter": {"property": "Company", "rich_text": {"contains": words[0]}},
-                                               **({"start_cursor": cursor} if cursor else {})})
-        if not isinstance(page, dict) or not isinstance(page.get("results"), list) or not isinstance(page.get("has_more"), bool):
-            raise NotionError("INTERVIEW_LEDGER_UNREADABLE")
+    rows = []
+    for page in notion_pages.query(client, None, {"page_size": 100, "filter": {"property": "Company", "rich_text": {"contains": words[0]}}}, NotionError,
+                                   incomplete="INTERVIEW_LEDGER_UNREADABLE", limit=LEDGER_PAGES):
         for row in page["results"]:
             if row.get("archived") or row.get("in_trash"):
                 continue
             props = row.get("properties") or {}
             rows.append({"page_id": row.get("id"), "company": _plain(props.get("Company"), "rich_text"), "role": _plain(props.get("Job"), "title"),
                          "stable_job_key": _plain(props.get("Stable Job Key"), "rich_text"), "requisition": None})
-        cursor = page.get("next_cursor")
-        if not page["has_more"]:
-            return rows
-        if not isinstance(cursor, str) or not cursor or cursor in seen:
-            raise NotionError("INTERVIEW_LEDGER_UNREADABLE")
-        seen.add(cursor)
-    raise NotionError("INTERVIEW_LEDGER_UNREADABLE")
+    return rows
 
 
 def _pending(data, read_rows):

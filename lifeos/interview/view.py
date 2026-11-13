@@ -10,6 +10,7 @@ résumé LIFE OS built, not the one Jim sent."""
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
+from lifeos.platform import notion_text
 from lifeos.platform.notion_client import NotionError
 from .identity import valid_date
 
@@ -73,7 +74,7 @@ def _plain(prop):
         return None
     if prop.get("type") == "url":
         return (prop.get("url") or "").strip() or None
-    value = "".join(p.get("plain_text", "") for p in prop.get(prop.get("type"), []) or []).strip()
+    value = notion_text.plain(prop.get(prop.get("type"))).strip()
     return value or None
 
 
