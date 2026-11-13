@@ -124,7 +124,6 @@ STAGES = {
     "attention-card": lazy("lifeos.attention.card"),
     "megibow": lazy("lifeos.sources.cards.megibow"),
     "capacity-card": lazy("lifeos.jobs.fit.capacity_card"),                  # LIFE-77 D228: the AI Capacity card; not configured (AI_CAPACITY_BLOCK_ID unset) until Jim activates it
-    "hiring": lazy("lifeos.sources.pipeline.hiring"),
     "hiring-outcomes": lazy("lifeos.hiring.outcomes"),
     "job-page-outreach": lazy("lifeos.sources.pipeline.job_page_outreach"),        # LIFE-10 §2: the outreach table on each Job Ledger job page; live writes need JOB_PAGE_OUTREACH=on
     "outlook-auth": _outlook_auth,
