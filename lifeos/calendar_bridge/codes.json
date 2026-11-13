@@ -1,0 +1,8 @@
+{
+  "codes": {
+    "CALENDAR_ACCOUNT_NOT_SIGNED_IN": ["calendar", "blocked", false, "A calendar account is not signed in.", "Sign in again."],
+    "CALENDAR_CONFIG_MISSING": ["calendar", "blocked", false, "The calendar bridge configuration is missing.", "Set the variables."],
+    "CALENDAR_MASS_DELETE_GUARD": ["calendar", "blocked", false, "The sync would delete too many events at once, so it stops (a half-empty source looks like this).", "Check the source; allow the delete on purpose if right.", "info"],
+    "GCAL_HTTP_409": ["calendar", "state", false, "The calendar event already exists (a retried insert).", "None."]
+  }
+}
