@@ -10,7 +10,9 @@ import json
 import re
 from datetime import datetime
 
+from lifeos.platform.fixed_code import fixed
 from lifeos.platform.notion_client import NotionError, rich_text
+from lifeos.platform.notion_pages import query
 from . import models as M
 
 ACTION, REOPEN, REJECTED, PASSED = "CONFIRM_REJECTED", "REOPEN", "Rejected", "Passed"
@@ -57,19 +59,7 @@ def check_schema(client, outcome=REJECTED):
 
 def _scan(client, flt):
     """Every Ledger page matching a filter, read completely or not at all."""
-    out, cursor, seen = [], None, set()
-    for _ in range(MAX_PAGES):
-        page = client.query_data_source(None, {"page_size": 100, "filter": flt, **({"start_cursor": cursor} if cursor else {})})
-        if not isinstance(page, dict) or not isinstance(page.get("results"), list) or not isinstance(page.get("has_more"), bool):
-            raise fail("LEDGER_INCOMPLETE")
-        out += page["results"]
-        cursor = page.get("next_cursor")
-        if not page["has_more"]:
-            return out
-        if not isinstance(cursor, str) or not cursor or cursor in seen:
-            raise fail("LEDGER_INCOMPLETE")
-        seen.add(cursor)
-    raise fail("LEDGER_INCOMPLETE")
+    return [row for page in query(client, None, {"page_size": 100, "filter": flt}, fail, incomplete="LEDGER_INCOMPLETE", limit=MAX_PAGES) for row in page["results"]]
 
 
 PURSUIT = {"or": [{"property": "Applied", "checkbox": {"equals": True}}, {"property": "Stage", "select": {"is_not_empty": True}}]}
@@ -190,14 +180,10 @@ def confirm_rejected(client, request, live, now):
     current(again, want, client.source)                                                         # still the requested pursuit immediately before the write
     if again.get("last_edited_time") != page.get("last_edited_time") or snapshot(again) != (kept, decision, history):
         raise fail("CONCURRENT_CHANGE")
-    try:
+    with fixed(NotionError, fail, "WRITE_FAILED"):
         client.update_page_properties(want["id"], {DECISION: {"select": None if reopen else {"name": want["outcome"]}}, **({HISTORY: {"rich_text": rich_text(new)}} if new != history else {})})
-    except NotionError:
-        raise fail("WRITE_FAILED") from None
-    try:
+    with fixed(NotionError, fail, "READBACK_FAILED"):
         back = client.get_page(want["id"])
-    except NotionError:
-        raise fail("READBACK_FAILED") from None
     if snapshot(back) != (kept, after, new):
         raise fail("READBACK_MISMATCH")
     return {"status": "recorded", "verified": True, "entries": len(entries(new))}
@@ -256,14 +242,10 @@ def set_hand(client, want, line, live):
     again, text_again = read()
     if again.get("last_edited_time") != page.get("last_edited_time") or (snapshot(again), text_again) != (snapshot(page), text):
         raise fail("CONCURRENT_CHANGE")
-    try:
+    with fixed(NotionError, fail, "WRITE_FAILED"):
         client.update_page_properties(want["id"], {HAND_SET: {"rich_text": rich_text(new)}})
-    except NotionError:
-        raise fail("WRITE_FAILED") from None
-    try:
+    with fixed(NotionError, fail, "READBACK_FAILED"):
         back = client.get_page(want["id"])
-    except NotionError:
-        raise fail("READBACK_FAILED") from None
     if snapshot(back) != snapshot(page) or _text((back.get("properties") or {}).get(HAND_SET), "rich_text") != new:
         raise fail("READBACK_MISMATCH")
     return {"status": "recorded", "verified": True}

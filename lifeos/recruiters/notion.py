@@ -16,7 +16,9 @@ never changed."""
 from datetime import date, datetime, timedelta
 from urllib.parse import quote
 
+from lifeos.platform.fixed_code import fixed
 from lifeos.platform.notion_client import NotionError, rich_text
+from lifeos.platform.notion_pages import query
 from .identity import key, norm
 
 SCHEMA = {"Recruiter / Person": "title", "Recruiter Company": "rich_text", "Client": "rich_text", "Role": "rich_text", "Medium": "rich_text", "What they want": "rich_text",
@@ -37,10 +39,8 @@ class RecruitersError(NotionError):
 
 
 def check_schema(notion):
-    try:
+    with fixed(NotionError, RecruitersError, "RECRUITERS_NOTION_SCHEMA_READ_FAILED"):
         props = notion.call("GET", f"/data_sources/{quote(notion.source, safe='')}").get("properties")
-    except NotionError:
-        raise RecruitersError("RECRUITERS_NOTION_SCHEMA_READ_FAILED") from None
     if not isinstance(props, dict) or any(not isinstance(props.get(n), dict) or props[n].get("type") != t for n, t in SCHEMA.items()):
         raise RecruitersError("RECRUITERS_NOTION_SCHEMA_MISMATCH")
 
@@ -76,23 +76,7 @@ def _formula(prop):
 
 def week_rows(notion, week):
     """Every row whose Week Ending is `week`, following every page; an incomplete read raises (no create on an unproven absence)."""
-    rows, cursor, seen = [], None, set()
-    for _ in range(MAX_PAGES):
-        body = {"page_size": 100, "filter": {"property": "Week Ending", "date": {"equals": week}}, **({"start_cursor": cursor} if cursor else {})}
-        try:
-            page = notion.query_data_source(None, body)
-        except NotionError:
-            raise RecruitersError("RECRUITERS_NOTION_QUERY_FAILED") from None
-        if not isinstance(page, dict) or not isinstance(page.get("results"), list) or not isinstance(page.get("has_more"), bool):
-            raise RecruitersError("RECRUITERS_NOTION_QUERY_INCOMPLETE")
-        rows += [read(p) for p in page["results"]]
-        if not page["has_more"]:
-            return rows
-        cursor = page.get("next_cursor")
-        if not isinstance(cursor, str) or not cursor or cursor in seen:
-            raise RecruitersError("RECRUITERS_NOTION_PAGINATION_INVALID")
-        seen.add(cursor)
-    raise RecruitersError("RECRUITERS_NOTION_PAGINATION_INCOMPLETE")
+    return rows_where(notion, {"property": "Week Ending", "date": {"equals": week}})
 
 
 def matches(rows, candidate):
@@ -173,10 +157,8 @@ def _create_props(c):
 
 def create(notion, candidate):
     """Create one row (one non-retried write), then prove it: exactly one row has the key and it holds the owned values with Done false and What they want as written."""
-    try:
+    with fixed(NotionError, RecruitersError, "RECRUITERS_NOTION_WRITE_FAILED"):
         notion.call_once("POST", "/pages", {"parent": {"type": "data_source_id", "data_source_id": notion.source}, "properties": _create_props(candidate)})
-    except NotionError:
-        raise RecruitersError("RECRUITERS_NOTION_WRITE_FAILED") from None
     found = matches(week_rows(notion, candidate["week_ending"]), candidate)
     if len(found) != 1:
         raise RecruitersError("RECRUITERS_READBACK_MISMATCH")
@@ -189,10 +171,8 @@ def create(notion, candidate):
 def update(notion, row, props, candidate):
     """One non-retried bounded update, then prove it: still one row under the candidate's key, the same page, Done / Active / Needs review untouched, every written value present
     and every value that was not written unchanged (a human's What they want, company or role is never replaced)."""
-    try:
+    with fixed(NotionError, RecruitersError, "RECRUITERS_NOTION_WRITE_FAILED"):
         notion.update_page_properties(row["page_id"], props)
-    except NotionError:
-        raise RecruitersError("RECRUITERS_NOTION_WRITE_FAILED") from None
     found = matches(week_rows(notion, candidate["week_ending"]), candidate)
     if len(found) != 1 or found[0]["page_id"] != row["page_id"]:
         raise RecruitersError("RECRUITERS_READBACK_MISMATCH")
@@ -231,23 +211,7 @@ def waiting_rows(notion):
 
 def rows_where(notion, where):
     """Every row matching the Notion filter `where`, following every page; an incomplete read raises."""
-    rows, cursor, seen = [], None, set()
-    for _ in range(MAX_PAGES):
-        body = {"page_size": 100, "filter": where, **({"start_cursor": cursor} if cursor else {})}
-        try:
-            page = notion.query_data_source(None, body)
-        except NotionError:
-            raise RecruitersError("RECRUITERS_NOTION_QUERY_FAILED") from None
-        if not isinstance(page, dict) or not isinstance(page.get("results"), list) or not isinstance(page.get("has_more"), bool):
-            raise RecruitersError("RECRUITERS_NOTION_QUERY_INCOMPLETE")
-        rows += [read(p) for p in page["results"]]
-        if not page["has_more"]:
-            return rows
-        cursor = page.get("next_cursor")
-        if not isinstance(cursor, str) or not cursor or cursor in seen:
-            raise RecruitersError("RECRUITERS_NOTION_PAGINATION_INVALID")
-        seen.add(cursor)
-    raise RecruitersError("RECRUITERS_NOTION_PAGINATION_INCOMPLETE")
+    return [read(p) for page in query(notion, None, {"page_size": 100, "filter": where}, RecruitersError, incomplete="RECRUITERS_NOTION_QUERY_INCOMPLETE", repeat="RECRUITERS_NOTION_PAGINATION_INVALID", capped="RECRUITERS_NOTION_PAGINATION_INCOMPLETE", limit=MAX_PAGES, read="RECRUITERS_NOTION_QUERY_FAILED") for p in page["results"]]
 
 
 def follow_up_plan(row, today):
@@ -265,10 +229,8 @@ def follow_up_plan(row, today):
 
 def set_follow_up(notion, row, props):
     """One non-retried update, then prove it on a fresh read of the row's week: same page, only the written field changed."""
-    try:
+    with fixed(NotionError, RecruitersError, "RECRUITERS_NOTION_WRITE_FAILED"):
         notion.update_page_properties(row["page_id"], props)
-    except NotionError:
-        raise RecruitersError("RECRUITERS_NOTION_WRITE_FAILED") from None
     after = [r for r in week_rows(notion, row["week_ending"]) if r["page_id"] == row["page_id"]]
     if len(after) != 1:
         raise RecruitersError("RECRUITERS_READBACK_MISMATCH")
@@ -286,10 +248,8 @@ CLOSE_TO = ("Completed", "Dismissed")                                 # LIFE-20 
 
 def own_row(notion, page_id, source=None):
     """ONE row of this data source (`source`, else the client's own) by its exact page id, read fresh; a page anywhere else is refused."""
-    try:
+    with fixed(NotionError, RecruitersError, "RECRUITERS_ROW_UNREADABLE"):
         page = notion.get_page(page_id)
-    except NotionError:
-        raise RecruitersError("RECRUITERS_ROW_UNREADABLE") from None
     flat = lambda value: str(value or "").replace("-", "").lower()      # noqa: E731
     parent = page.get("parent") if isinstance(page, dict) else None
     if (not isinstance(parent, dict) or parent.get("type") != "data_source_id" or not flat(parent.get("data_source_id"))
@@ -310,10 +270,8 @@ def close_row(notion, page_id, status):
         return {"status": "already_recorded", "verified": True, "action": row["action"]}
     if row["done"] or not row["active"] or row["action"] not in (NEEDS_ACTION, WAITING):
         return {"status": "not_changed", "verified": True, "action": row["action"]}
-    try:
+    with fixed(NotionError, RecruitersError, "RECRUITERS_NOTION_WRITE_FAILED"):
         notion.update_page_properties(row["page_id"], {"Action Status": {"select": {"name": status}}})
-    except NotionError:
-        raise RecruitersError("RECRUITERS_NOTION_WRITE_FAILED") from None
     after = own_row(notion, page_id)
     keep = lambda r: {k: v for k, v in r.items() if k not in ("action", "edited_by")}      # noqa: E731
     if after["action"] != status or keep(after) != keep(row):

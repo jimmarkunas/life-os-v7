@@ -13,6 +13,7 @@ from lifeos.platform import ledger_body as body
 from lifeos.network import match
 from lifeos.platform import hidden
 from lifeos.platform.notion_client import NotionError, rich_text
+from lifeos.platform.notion_pages import children as notion_children
 
 MARK = "v7-net:1"                                                       # the older block (a toggle that showed its marker and ids); still read, and retired once, so a replaced page loses nothing
 MARK2 = "net:2"                                                         # the current block (a callout): its marker and every tick id ride in a hidden link, never in visible text
@@ -192,20 +193,7 @@ def _plain(block):
 
 def children(client, block_id):
     """Every child of a block, following every page; anything short of a provably complete read raises."""
-    out, cursor, seen = [], None, set()
-    for _ in range(50):
-        path = f"/blocks/{quote(block_id, safe='')}/children?page_size=100" + (f"&start_cursor={quote(cursor, safe='')}" if cursor else "")
-        page = client.call("GET", path)
-        if not isinstance(page, dict) or not isinstance(page.get("results"), list) or not isinstance(page.get("has_more"), bool):
-            raise SurfaceError("NETWORK_SURFACE_PAGE_INCOMPLETE")
-        out.extend(page["results"])
-        if not page["has_more"]:
-            return out
-        cursor = page.get("next_cursor")
-        if not isinstance(cursor, str) or not cursor or cursor in seen:
-            raise SurfaceError("NETWORK_SURFACE_PAGE_INCOMPLETE")
-        seen.add(cursor)
-    raise SurfaceError("NETWORK_SURFACE_PAGE_INCOMPLETE")
+    return [c for page in notion_children(client, block_id, SurfaceError, incomplete="NETWORK_SURFACE_PAGE_INCOMPLETE", limit=50) for c in page["results"]]
 
 
 def _tick(child):

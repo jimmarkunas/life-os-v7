@@ -16,6 +16,7 @@ import re
 
 from lifeos.platform.names import LEGAL, norm, same_company, same_role, split_title          # noqa: F401 - shared with Interview OS
 from lifeos.platform.notion_client import NotionError
+from lifeos.platform.notion_pages import query
 
 ACTIVE, RETIRED = "ACTIVE", "RETIRED"
 INTERVIEW_ACTIVE, HIRING_ACTIVE = "INTERVIEW_ACTIVE", "HIRING_ACTIVE"
@@ -148,21 +149,7 @@ def from_ledger(client, rounds=True):
     """LIFE-352: the pursuits of every Job Ledger row whose Stage is set, as Opportunity objects (page_id = the row page id). Section: ACTIVE when Stage is Applied, Interviewing or
     Offer and Hiring Decision is empty, else RETIRED. rounds = the child pages of the row; lead, replied and holds come from the row's fold lines with the same helpers as `read`.
     Raises NotionError when the Ledger page set cannot be proven complete (the caller fails closed)."""
-    rows, cursor, seen = [], None, set()
-    for _ in range(LEDGER_MAX_PAGES):
-        body = {"page_size": 100, "filter": {"property": STAGE, "select": {"is_not_empty": True}}, **({"start_cursor": cursor} if cursor else {})}
-        page = client.query_data_source(None, body)
-        if not isinstance(page, dict) or not isinstance(page.get("results"), list) or not isinstance(page.get("has_more"), bool):
-            raise NotionError("HIRING_LEDGER_INCOMPLETE")
-        rows += page["results"]
-        if not page["has_more"]:
-            break
-        cursor = page.get("next_cursor")
-        if not isinstance(cursor, str) or not cursor or cursor in seen:
-            raise NotionError("HIRING_LEDGER_INCOMPLETE")
-        seen.add(cursor)
-    else:
-        raise NotionError("HIRING_LEDGER_INCOMPLETE")
+    rows = [row for page in query(client, None, {"page_size": 100, "filter": {"property": STAGE, "select": {"is_not_empty": True}}}, NotionError, incomplete="HIRING_LEDGER_INCOMPLETE", limit=LEDGER_MAX_PAGES) for row in page["results"]]
     out, budget = [], [MAX_BLOCKS]
     for row in rows:
         props = row.get("properties") or {}
