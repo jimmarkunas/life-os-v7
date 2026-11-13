@@ -9,7 +9,7 @@ The ChatGPT-native `LIFE OS Daily Runs` task (D58) and V7 are independent schedu
 LIFE-645: V7 no longer writes the Attention callout (the Attention stage and card were retired); the callout stays on the page, protected, and is not a source for the DCC.
 
 - V7 writes the regions it owns (Calendar, JIRA Execution, Bills: This Week, Mail Alerts, Amazon Orders, Hiring Pipeline), hourly, after every tick. The DCC never writes them.
-- The DCC writes exactly one region: the callout whose first child heading is `ChatGPT · Daily Command Center`. It uses the procedure in D169 (`lifeos/platform/dcc_write.py` is the tested reference): fetch just before, replace only the lines that differ, fetch again, prove every other region is unchanged. One attempt, no retry.
+- The DCC writes exactly one region: the callout whose first child heading is `ChatGPT · Daily Command Center`. It uses the procedure in D169 (the former reference module `dcc_write.py` was removed in LIFE-645): fetch just before, replace only the lines that differ, fetch again, prove every other region is unchanged. One attempt, no retry.
 - Nothing else on the page belongs to either side. The old date heading, `Last refreshed` line, `9 AM Delta` and `Run history` were removed on Oct 12 (Jim); do not recreate or mention them.
 
 ## 2. What V7 promises about a card

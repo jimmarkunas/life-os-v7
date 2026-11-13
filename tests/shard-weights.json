@@ -197,7 +197,6 @@
   "tests.platform.test_branches": 0.47,
   "tests.platform.test_credentials": 0.01,
   "tests.platform.test_db": 0.29,
-  "tests.platform.test_dcc_write": 0.04,
   "tests.platform.test_decisions": 2.93,
   "tests.platform.test_drift": 0.01,
   "tests.platform.test_gate": 0.01,
