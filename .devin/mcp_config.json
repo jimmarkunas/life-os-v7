@@ -1,5 +1,5 @@
 {
   "mcpServers": {
-    "concord": {"command":"concord-mcp","env":{"CONCORD_AGENT_KIND":"devin"}}
+    "concord": {"command": "/Users/jimmarkunas/.local/bin/concord-mcp","env":{"CONCORD_AGENT_KIND":"devin"}}
   }
 }

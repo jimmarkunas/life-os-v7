@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "concord": {
-      "command": "concord-mcp",
+      "command": "/Users/jimmarkunas/.local/bin/concord-mcp",
       "env": {
         "CONCORD_REPO_ROOT": "/Users/jimmarkunas/Developer/LIFEOS/life-os-v7",
         "CONCORD_AGENT_KIND": "antigravity"
