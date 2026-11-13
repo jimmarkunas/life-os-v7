@@ -1,5 +1,4 @@
 """Render the saved Agenda snapshot into V7's one Calendar callout."""
-import hashlib
 import json
 import os
 import re
@@ -9,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 from lifeos.platform import db, report_region, router
 from lifeos.platform.notion_client import Client, NotionError, rich_text
+from lifeos.platform.report_region import plain
 from . import snapshot as agenda_snapshot
 
 LOCAL_TZ = "America/Chicago"
@@ -16,53 +16,21 @@ TZ = ZoneInfo(LOCAL_TZ)
 STALE_HOURS = 3
 CARD_TITLE = router.CALENDAR_REGION
 MODULE = router.OWNERS[CARD_TITLE]
-STATUS_PREFIXES = ("Updated ", "STALE · last accepted ")
 
 
 class CardError(NotionError):
     """Fixed codes only; never expose calendar content, IDs, or URLs."""
 
 
-def _plain(block):
-    inner = block.get(block.get("type")) or {}
-    return "".join((part.get("plain_text") or (part.get("text") or {}).get("content") or "")
-                   for part in inner.get("rich_text") or [] if isinstance(part, dict))
-
-
 def _owned(blocks):
     """The first child is the Calendar heading: exactly "Calendar", or "Calendar (Updated 1:18 PM CT)" once the update time shares the heading (D119)."""
     if not (blocks and blocks[0].get("type") in ("heading_3", "heading_4")):
         return False
-    heading = _plain(blocks[0]).strip()
-    return heading == CARD_TITLE or (heading.startswith(CARD_TITLE + " (") and heading.endswith(")"))
+    return report_region.titled(plain(blocks[0]), CARD_TITLE)
 
 
-def _children(client, block_id):
-    results, cursor, seen = [], None, set()
-    for _ in range(50):
-        path = f"/blocks/{quote(block_id, safe='')}/children?page_size=100"
-        if cursor:
-            if cursor in seen:
-                raise CardError("AGENDA_NOTION_PAGINATION_INVALID")
-            seen.add(cursor)
-            path += f"&start_cursor={quote(cursor, safe='')}"
-        page = client.call("GET", path)
-        if not isinstance(page, dict) or not isinstance(page.get("results"), list) or not isinstance(page.get("has_more"), bool):
-            raise CardError("AGENDA_NOTION_PAGE_INCOMPLETE")
-        if any(not isinstance(block, dict) or not isinstance(block.get("id"), str) for block in page["results"]):
-            raise CardError("AGENDA_NOTION_PAGE_INCOMPLETE")
-        results.extend(page["results"])
-        if not page["has_more"]:
-            return results
-        cursor = page.get("next_cursor")
-        if not isinstance(cursor, str) or not cursor:
-            raise CardError("AGENDA_NOTION_PAGE_INCOMPLETE")
-    raise CardError("AGENDA_NOTION_PAGINATION_INCOMPLETE")
-
-
-def _same_id(left, right):
-    """Notion answers with hyphenated ids; a block link (and so the secret) carries them without. Same id either way."""
-    return isinstance(left, str) and isinstance(right, str) and left.replace("-", "").lower() == right.replace("-", "").lower()
+def _fail(code):
+    return CardError("AGENDA_" + code)
 
 
 def _configured(environ):
@@ -76,9 +44,9 @@ def _target(client, block_id):
     # The configured ID is the single authority for this region (D58: one owner per region);
     # scanning the Daily Report tree would be costly and is intentionally unnecessary.
     meta = client.call("GET", f"/blocks/{quote(block_id, safe='')}")
-    if not isinstance(meta, dict) or meta.get("type") != "callout" or not _same_id(meta.get("id"), block_id):
+    if not isinstance(meta, dict) or meta.get("type") != "callout" or not report_region.same_id(meta.get("id"), block_id):
         raise CardError("AGENDA_CARD_NOT_OWNED")
-    blocks = _children(client, block_id)
+    blocks = report_region.children(client, block_id, _fail)
     if not _owned(blocks):
         raise CardError("AGENDA_CARD_NOT_OWNED")
     try:
@@ -205,14 +173,10 @@ def _snapshot_counts(snapshot, stale):
         raise CardError("AGENDA_SNAPSHOT_INVALID")
     events = snapshot["events"]
     for event in events:
-        if (not isinstance(event, dict) or not isinstance(event.get("days"), list)
-                or any(day not in (today, tomorrow) for day in event["days"])
-                or not isinstance(event.get("id"), str) or not isinstance(event.get("title"), str)
-                or not isinstance(event.get("all_day"), bool) or not isinstance(event.get("start"), str)
-                or not isinstance(event.get("end"), str)
-                or (event.get("location") is not None and not isinstance(event.get("location"), str))
-                or (event.get("meeting_link") is not None and not isinstance(event.get("meeting_link"), str))
-                or (event.get("calendar_link") is not None and not isinstance(event.get("calendar_link"), str))):      # optional: snapshots saved before it existed stay valid
+        if (not isinstance(event, dict) or not isinstance(event.get("days"), list) or any(day not in (today, tomorrow) for day in event["days"])
+                or not isinstance(event.get("id"), str) or not isinstance(event.get("title"), str) or not isinstance(event.get("all_day"), bool)
+                or not isinstance(event.get("start"), str) or not isinstance(event.get("end"), str)
+                or any(event.get(key) is not None and not isinstance(event[key], str) for key in ("location", "meeting_link", "calendar_link"))):      # calendar_link is optional: snapshots saved before it existed stay valid
             raise CardError("AGENDA_SNAPSHOT_INVALID")
         try:
             if event["all_day"]:
@@ -230,8 +194,7 @@ def _snapshot_counts(snapshot, stale):
 
 
 def render(snapshot, stale=False, now=None):
-    now = now or datetime.now(TZ)
-    now = now.replace(tzinfo=TZ) if now.tzinfo is None else now.astimezone(TZ)
+    now = agenda_snapshot.local_now(now)
     counts = _snapshot_counts(snapshot, stale)
     blocks = []
     today, tomorrow = _merged(_day_events(snapshot, snapshot["today"])), _merged(_day_events(snapshot, snapshot["tomorrow"]))
@@ -273,60 +236,43 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
         raise CardError("AGENDA_STORE_FAILED") from None
     if saved is None:
         raise CardError("AGENDA_SNAPSHOT_MISSING")
-    now = now or datetime.now(TZ)
-    now = now.replace(tzinfo=TZ) if now.tzinfo is None else now.astimezone(TZ)
+    now = agenda_snapshot.local_now(now)
     try:
         taken = _instant(saved["taken_at"])
     except (KeyError, TypeError, ValueError):
         raise CardError("AGENDA_SNAPSHOT_INVALID") from None
     stale = now - taken > timedelta(hours=STALE_HOURS)
     blocks, counts = render(saved, stale, now)
-    client = report_region.ScopedClient(client or _client(environ), block_id, lambda code: CardError("AGENDA_" + code))      # LIFE-613: every write is checked against this card's own callout first
+    client = report_region.ScopedClient(client or _client(environ), block_id, _fail)      # LIFE-613: every write is checked against this card's own callout first
     existing = _target(client, block_id)
     heading = _heading_text(saved, stale)
     heading_block = existing[0]
     heading_patch = {heading_block["type"]: {"rich_text": rich_text(heading)}}
     if stale:
-        if len(existing) < 2 or not _plain(heading_block).strip().startswith(CARD_TITLE + " ("):
+        if len(existing) < 2 or not plain(heading_block).strip().startswith(CARD_TITLE + " ("):
             raise CardError("AGENDA_CARD_STALE_NO_BASELINE")                 # V7 has not written this card yet: nothing known-good of ours to keep showing
         if live:
             _configured(environ)
-            try:
-                router.check_write(MODULE, [CARD_TITLE])
-            except router.RouterError:
-                raise CardError("AGENDA_CARD_NOT_OWNED") from None
             client.call("PATCH", f"/blocks/{quote(heading_block['id'], safe='')}", heading_patch)     # only the heading text changes; the events stay as accepted
-            after = _children(client, block_id)
-            if not _owned(after) or _plain(after[0]) != heading or after[0].get("id") != heading_block["id"]:
-                raise CardError("AGENDA_CARD_VERIFY_FAILED")
-            if hashlib.sha256(json.dumps(existing[1:], sort_keys=True).encode()).hexdigest() != hashlib.sha256(json.dumps(after[1:], sort_keys=True).encode()).hexdigest():
+            after = report_region.children(client, block_id, _fail)
+            if (not _owned(after) or plain(after[0]) != heading or after[0].get("id") != heading_block["id"]
+                    or json.dumps(existing[1:], sort_keys=True) != json.dumps(after[1:], sort_keys=True)):
                 raise CardError("AGENDA_CARD_VERIFY_FAILED")
             counts["blocks_written"] = 1
         return counts
     if not live:
         return counts
-    new_blocks = blocks
     _configured(environ)
-    try:
-        router.check_write(MODULE, [CARD_TITLE])
-    except router.RouterError:
-        raise CardError("AGENDA_CARD_NOT_OWNED") from None
-    _append(client, block_id, new_blocks)
+    _append(client, block_id, blocks)
     for old in existing[1:]:
-        try:
-            router.check_write(MODULE, [CARD_TITLE])
-        except router.RouterError:
-            raise CardError("AGENDA_CARD_NOT_OWNED") from None
         try:
             client.call("DELETE", f"/blocks/{quote(old['id'], safe='')}")
         except NotionError as error:
-            if str(error) == "NOTION_HTTP_404":
-                pass
-            else:
+            if str(error) != "NOTION_HTTP_404":
                 raise
     client.call("PATCH", f"/blocks/{quote(heading_block['id'], safe='')}", heading_patch)   # the update time shares the heading (D119)
-    after = _children(client, block_id)                    # read back the configured Calendar region
-    if not _owned(after) or len(after) != 1 + len(new_blocks) or _plain(after[0]) != heading or after[0].get("id") != heading_block["id"]:
+    after = report_region.children(client, block_id, _fail)                    # read back the configured Calendar region
+    if not _owned(after) or len(after) != 1 + len(blocks) or plain(after[0]) != heading or after[0].get("id") != heading_block["id"]:
         raise CardError("AGENDA_CARD_VERIFY_FAILED")
-    counts["blocks_written"] = len(new_blocks)
+    counts["blocks_written"] = len(blocks)
     return counts
