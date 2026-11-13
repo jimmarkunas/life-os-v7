@@ -378,3 +378,41 @@ class OutlookCategorySpellings(unittest.TestCase):
             def get(self, url, params=None):
                 return {"categories": ["Other"]}
         self.assertEqual(stage._outlook_proof(Gone(), stage.OUTLOOK_CATEGORIES, "Outlook:a:1", set()), "absent")
+
+
+class Decide(unittest.TestCase):
+    """LIFE-623: the pure decide step of the attention stage, called directly with plain values (no fakes)."""
+    THIS = reconcile.week_ending(TODAY)
+
+    def stored(self, rid, item, **over):
+        return {**row(rid, item, medium="Gmail:1"), "received": "2026-10-05", "linked": True, **over}
+
+    def new(self, item, medium="Gmail:1", category="Account"):
+        return {"category": category, "item": item, "url": "u", "medium": medium, "received": "2026-10-05", "plain": item}
+
+    def decide(self, admitted, rows=(), answered=(), stale=(), done=frozenset(), proofs=None):
+        return stage.decide(admitted, set(answered), list(rows), list(stale), done, proofs or {}, self.THIS, TODAY)
+
+    def test_a_new_message_is_created_and_nothing_else_changes(self):
+        plan, derived = self.decide([self.new("Card added")])
+        self.assertEqual(len(plan["create"]), 1)
+        self.assertEqual((plan["deactivate"], plan["reactivate"], plan["retitle"], plan["backfill"], plan["upgrade"], plan["recategorize"]), ([], [], [], [], [], []))
+        self.assertEqual(derived, {"recategorized": 0, "stale_closed": 0, "backfilled": 0, "linked": 0, "retitled": 0, "retired": 0,
+                                   "ambiguous": 0, "reused": 0, "skipped_done": 0, "skipped_done_before": 0, "carried": 0})
+
+    def test_an_answered_message_with_a_stored_open_row_is_deactivated(self):
+        plan, derived = self.decide([], rows=[self.stored("r1", "Card added")], answered={"Gmail:1"})
+        self.assertEqual((plan["deactivate"], plan["create"]), (["r1"], []))
+
+    def test_a_changed_title_is_retitled_and_an_old_stale_row_is_only_counted(self):
+        plan, derived = self.decide([self.new("Card added · waiting 2 days")], rows=[self.stored("r1", "Card added", received="")], stale=[{"id": "old"}])
+        self.assertEqual(plan["retitle"], [("r1", "Card added · waiting 2 days", "u")])
+        self.assertEqual((plan["backfill"], derived["retitled"], derived["backfilled"], derived["stale_closed"]), ([("r1", "2026-10-05")], 1, 1, 1))
+
+    def test_a_legacy_other_row_is_recategorized_in_place_and_not_duplicated(self):
+        plan, derived = self.decide([self.new("Card added", category="Security")], rows=[self.stored("r1", "Card added", category="Other")])
+        self.assertEqual((plan["recategorize"], derived["recategorized"]), ([("r1", "Security")], 1))
+
+    def test_an_unlinked_row_is_upgraded_and_an_open_fyi_row_is_counted_as_retired(self):
+        plan, derived = self.decide([], rows=[self.stored("r1", "x", linked=False), self.stored("r2", "y", category="FYI", medium="Gmail:2")])
+        self.assertEqual(([r["id"] for r in plan["upgrade"]], derived["linked"], derived["retired"]), (["r1"], 1, 1))
