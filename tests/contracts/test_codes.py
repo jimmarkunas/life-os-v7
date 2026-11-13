@@ -43,13 +43,11 @@ class RegistryShape(unittest.TestCase):
 
 
 class DeclaredByTheirPackages(unittest.TestCase):
-    """LIFE-644: each package declares its own codes in lifeos/<package>/codes.json and platform only collects them."""
+    """LIFE-644: a package declares its own codes in lifeos/<package>/codes.json; platform only collects them, and a code is declared once."""
 
-    def test_every_code_and_reason_is_declared_in_exactly_one_package_file(self):
+    def test_every_code_is_declared_once_and_a_new_package_file_is_collected_with_no_platform_edit(self):
         words = [w for name in ("codes.json", "reasons.json") for path in sorted((ROOT / "lifeos").glob("*/" + name)) for w in json.loads(path.read_text())]
         self.assertEqual(sorted(w for w in words if words.count(w) > 1), [])
-
-    def test_a_new_package_file_is_collected_with_no_edit_to_platform(self):
         with tempfile.TemporaryDirectory() as root:
             (Path(root) / "pkg").mkdir()
             (Path(root) / "pkg" / "codes.json").write_text(json.dumps({"PKG_NEW_CODE": ["pkg", "ok", False, "It worked.", "None.", "info"]}))
