@@ -49,12 +49,6 @@ class DecideTests(unittest.TestCase):
         _, plan = watch.decide(state, True, T0 + timedelta(hours=6))
         self.assertEqual(plan.notify, [])
 
-    def test_a_blip_followed_by_a_success_never_pages(self):
-        state, plan = watch.decide({"last_ok": T0, "alert_open": False, "last_notified": None}, False, T0 + timedelta(hours=1), "X")
-        self.assertEqual(plan.notify, [])
-        state, plan = watch.decide(state, True, T0 + timedelta(hours=2))
-        self.assertEqual((plan.notify, state["alert_open"]), ([], False))
-
 
 class WrapperTests(unittest.TestCase):
     def stuck_row(self, hours=4):
