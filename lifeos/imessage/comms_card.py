@@ -1,19 +1,18 @@
-"""LIFE-34 (COMM-1.7): the Messages row of the Daily Report's Communications Attention callout, every hour (Jim's approval, Oct 15 2026).
+"""The Messages and Telegram rows of the Daily Report's Communications Attention callout, written every hour (LIFE-34, LIFE-29).
 
-hourly tick -> domains.yml `imessage` job (already on the tailnet as tag:v7-runner) -> Oracle's private endpoint, request `comms <one-run key>` -> this stage
--> Notion. The answer is the Mac reader's unread count for the last 7 days and the newest incoming sender's display name SCRAMBLED under a key this run
-generated and sent. The name is unscrambled only in memory, immediately before the Notion write, and is never printed, logged, put in the database or kept:
-Jim's condition is that his Notion is the only place it is stored. The count is the reader's own 7-day window (Mac read flags), not the iPhone badge.
-
-Live, it changes exactly three things, in order: the text of the Messages launch link (`Messages (N)`, `(—)` when the source is not CURRENT), the
-right-column line on the same row (`Latest: <name>`, `Latest: none in 3 days` or `Latest: unavailable`), then the heading's update time. Everything else in
-the callout (Jim's custom icons, the other channels, the launch links) is sent back exactly as read; the row is read back and compared, and every other
-V7 region is proven unchanged. The callout is found beside the Attention callout (same column, heading `Communications Attention`), so it needs no new
-configuration. Counts and fixed codes only in the log.
-
-LIFE-29 (Jim's approval Oct 15 2026, Jira 10203/10206): the request is `comms2`, whose answer adds Jim's personal Telegram from the TDLib adapter on Oracle.
-The Telegram row is written the same way: `Telegram (N)` where N is unread messages in unmuted chats of the Main list (what Telegram's own badge shows
-by default; Archive excluded), and `Latest: <name>` of the newest message from another person (scrambled in transit like the iMessage name)."""
+Flow: hourly tick -> domains.yml `imessage` job -> Oracle's private endpoint (request `comms2`) -> this stage -> Notion.
+Input: the Mac reader's unread count for the last 7 days and the newest sender's name, scrambled under a key this run generated; Telegram's unread count and newest sender.
+Output: live, exactly three changes in order: the Messages link text `Messages (N)` (`(—)` when the source is not CURRENT), the row's `Latest: <name>` line, the heading's update time;
+the Telegram row the same way. Read back and compared. Names are unscrambled only in memory just before the Notion write. Counts and fixed codes only in the log."""
+# Detail moved out of the docstring (LIFE-595):
+# LIFE-34 (COMM-1.7) was approved by Jim on Oct 15 2026 (the hourly Messages row). LIFE-29 (Jim's approval Oct 15 2026, Jira 10203/10206) added the request `comms2`, whose answer includes Jim's personal Telegram from the TDLib adapter on Oracle.
+# The `imessage` job is already on the tailnet as tag:v7-runner.
+# The name is never printed, logged, put in the database or kept: Jim's condition is that his Notion is the only place it is stored.
+# The count is the reader's own 7-day window (Mac read flags), not the iPhone badge.
+# The right-column line is `Latest: <name>`, `Latest: none in 3 days` or `Latest: unavailable`.
+# Everything else in the callout (Jim's custom icons, the other channels, the launch links) is sent back exactly as read; every other V7 region is proven unchanged.
+# The callout is found beside the Attention callout (same column, heading `Communications Attention`), so it needs no new configuration.
+# Telegram: `Telegram (N)` where N is unread messages in unmuted chats of the Main list (what Telegram's own badge shows by default; Archive excluded), and `Latest: <name>` of the newest message from another person (scrambled in transit like the iMessage name).
 import hashlib
 import hmac
 import json
