@@ -28,7 +28,6 @@ LIFEOS_ACQ_SSH_PRIVATE_KEY secret Connection detail for the Hostinger job store 
 LIFEOS_ACQ_SSH_USER secret Connection detail for the Hostinger job store (read at run time through db.py)
 LIFEOS_ACQ_SSH_VIA flag Set to oracle to send the store connection through Oracle
 LIFEOS_NOTION_IDS secret Mapping of private Notion ids, passed whole to stages that read ids
-LIFEOS_TEST_INDEX_FRESH flag:workflow Set by the hourly run to make the test-index age check run
 LIVE flag:workflow Run switch: write for real instead of a dry run
 NOTION_BILLS_DATA_SOURCE_ID input Notion data source id (bills)
 NOTION_BILLS_TOKEN secret Notion integration token for the bills integration

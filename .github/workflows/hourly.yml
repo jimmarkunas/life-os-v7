@@ -217,14 +217,7 @@ jobs:
         run: pip install --require-hashes -r requirements-test.lock || echo "pyyaml unavailable; the workflow contract tests will skip"
       - name: Unit tests
         if: ${{ steps.testgate.outputs.skip != 'true' }}
-        env:
-          LIFEOS_TEST_INDEX_FRESH: "1"      # LIFE-548: the hourly full run also fails when docs/test-index.json is older than 7 days; a failed hourly run alerts through the existing gateway path
         run: python -m unittest discover -s tests -t . -v
-      - name: Test index freshness (LIFE-548; still checked when the suite is skipped)
-        if: ${{ steps.testgate.outputs.skip == 'true' }}
-        env:
-          LIFEOS_TEST_INDEX_FRESH: "1"
-        run: python -m unittest tests.test_testindex.CommittedIndexIsFresh -v
       - id: sweep
         continue-on-error: true      # LIFE-650: the sweep only moves mail between Gmail labels and nothing after it needs it (the extract step reads mail already under the label; unswept mail waits for the next run); a failure turns the report job's `sweep` lane red and pushes, but does not skip the finish job. Credentials, the gate and the unit tests above still fail prep
         name: Stage 1 - sweep

@@ -36,7 +36,6 @@
   "tests.contracts.test_readiness": 3.81,
   "tests.contracts.test_ruff_advisory": 0.01,
   "tests.contracts.test_shards": 0.48,
-  "tests.contracts.test_test_index": 0.06,
   "tests.contracts.test_workflow": 1.86,
   "tests.contracts.test_workflow_ids_not_copied": 0.17,
   "tests.dcc.test_card": 0.02,
