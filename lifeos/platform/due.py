@@ -2,12 +2,9 @@
 
     python3 -m lifeos.platform.due        run by the gate job of domains.yml; writes due_<job>=true|false to $GITHUB_OUTPUT and a table to $GITHUB_STEP_SUMMARY
 
-For a tick (event workflow_run) a job is due when its row says so; for anything else (`all`) every job is due. "Last successful run" comes from the Actions API: the recent
-domains runs started by a tick, newest first, and the conclusion of each job in them; a skipped job is not a success, and a manual run never counts (a dry run must not make a card
-look fresh). The time of a success is the START of the run it happened in (the gate's time), not the job's end, so an hourly job that ends late is not mistaken for a recent one.
-every_hours: due when now minus that time >= hours minus SLACK; 1 means every tick, with no history read. slots_ct: due when a slot (CT, HH:MM) has passed since that time. A job with no success in
-the history is due; a job that missed several slots is due once and is then fresh. If the history cannot be read, every job is due and the line "history unreadable" is printed (fail open).
-Counts and job names only."""
+For a tick (event workflow_run) a job is due when its row says so; for anything else (`all`) every job is due. "Last successful run" comes from the Actions API: the recent domains runs started by a tick, newest first, and each job's conclusion; a skipped job is not a success and a manual run never counts. A success is timed at the START of its run (the gate's time), not the job's end.
+every_hours: due when now minus that time >= hours minus SLACK; 1 means every tick, with no history read. slots_ct: due when a slot (CT, HH:MM) has passed since that time. No success in the history: due; several missed slots: due once. History unreadable: every job is due and "history unreadable" is printed (fail open). Counts and job names only."""
+# A manual run never counts because a dry run must not make a card look fresh; the time is the START of the run so an hourly job that ends late is not mistaken for a recent one.
 import datetime as dt
 import json
 import os

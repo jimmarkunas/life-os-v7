@@ -1,9 +1,7 @@
-"""LIFE-528: the credential list as data, in a Python module so the Close service can ship it (its release tool copies only .py files). NAMES, providers, what each is used for,
-where it is read, an expiry date when one is known. Never a value, a secret id or a Bitwarden item id. `lifeos/platform/credentials.py` reads it; edit the entries here.
+"""The credential inventory as data: names, providers, purpose, where each is read, an expiry date when known; never a value (LIFE-528).
 
-LIFE-560 added the registry of environment-variable NAMES (kind, owner, purpose); LIFE-644 moved its name rows to lifeos/<owner package>/config.txt, and PROVIDED, PATTERNS and NOT_ENVIRONMENT stay here.
-CREDENTIALS is the expiry inventory behind the Alert settings screen (kept in this .py because the Close service ships only .py files); the registry is checked by
-tests/contracts/test_config_registry.py against every environment read in lifeos/ and every name a workflow sets. Names only: never a value, a secret id or a path."""
+A Python module because the Close service's release tool copies only .py files. CREDENTIALS is the expiry inventory behind the Alert settings screen; `lifeos/platform/credentials.py` reads it; edit the entries here. PROVIDED, PATTERNS and NOT_ENVIRONMENT also stay here; the environment-variable name rows live in lifeos/<owner package>/config.txt (LIFE-644). tests/contracts/test_config_registry.py checks the registry against every environment read in lifeos/ and every name a workflow sets. Names only: never a value, a secret id, a Bitwarden item id or a path."""
+# LIFE-560 added the registry of environment-variable NAMES (kind, owner, purpose).
 
 CREDENTIALS = [{'key': 'timer_token',
   'label': 'cron-job.org GitHub token',

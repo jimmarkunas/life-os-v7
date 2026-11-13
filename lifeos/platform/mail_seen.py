@@ -1,9 +1,6 @@
-"""LIFE-610: the ledger of mail that is "new to the system", kept in the private database (the store that already holds the Outlook tokens). It lives in platform, next to outlook_tokens, so the Recruiters package itself still owns no table (tests/recruiters guard).
+"""LIFE-610: the ledger of mail that is new to the system, kept in the private database next to the Outlook tokens.
 
-One row per message, keyed by the SHA-256 of `provider:id` (the Outlook id already carries the mailbox label), so no id, address or content is stored. Gmail ids and Outlook immutable ids do not change when a
-message moves between Inbox and Junk, so a moved message is not new. A second table keeps the time of the last incremental read and of the last 14-day scan. Rows older than KEEP_DAYS are dropped.
-
-Only a live, complete run writes the ledger (`commit`); a dry run only reads. Any read problem raises LedgerError and the stage falls back to the full 14-day scan and says so."""
+In platform so the Recruiters package itself owns no table (tests/recruiters guard). One row per message, keyed by the SHA-256 of `provider:id` (the Outlook id already carries the mailbox label): no id, address or content is stored. Gmail ids and Outlook immutable ids do not change when a message moves between Inbox and Junk, so a moved message is not new. A second table keeps the time of the last incremental read and of the last 14-day scan. Rows older than KEEP_DAYS are dropped. Only a live, complete run writes the ledger (`commit`); a dry run only reads. Any read problem raises LedgerError and the stage falls back to the full 14-day scan and says so."""
 import hashlib
 from datetime import datetime, timedelta, timezone
 

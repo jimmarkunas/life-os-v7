@@ -1,5 +1,6 @@
-"""One retrying JSON call for the API clients (Jira, Google Calendar, Outlook). The caller builds a fresh Request for every attempt (so a
-refreshed token is used); transient HTTP codes and network errors back off 2s, 4s, 8s; every failure becomes the client's own fixed code."""
+"""One retrying JSON call for the API clients (Jira, Google Calendar, Outlook).
+
+The caller builds a fresh Request for every attempt (so a refreshed token is used); transient HTTP codes and network errors back off 2s, 4s, 8s; every failure becomes the client's own fixed code."""
 import json
 import urllib.error
 import urllib.request
