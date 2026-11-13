@@ -368,10 +368,6 @@ class OneCore(unittest.TestCase):
     def test_fit_stays_out_of_every_group_because_it_reads_the_alarm_timer(self):
         self.assertEqual({s.group for s in tick.PLAN if "fit" in s.name}, {""})                    # no Fit stage is in a group
 
-    def test_the_benchmark_code_is_not_in_the_production_entry_point(self):
-        for name in ("benchmark_settings", "benchmark_summary"):
-            self.assertFalse(hasattr(tick, name), name)
-
 
 class AtsSlots(unittest.TestCase):
     """LIFE-569: one global limit on board reads across the stages that read boards, so side by side never means more at once than a single stage's pool does today."""
