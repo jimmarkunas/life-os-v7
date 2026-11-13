@@ -1,10 +1,10 @@
 """Read the complete Notion Bill Tracker into a private snapshot; logs contain counts only."""
-import json
 import os
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from lifeos.platform import db
+from lifeos.platform.fixed_code import fixed
 from lifeos.platform.notion_client import Client, NotionError
 from lifeos.platform.snapshot_store import Store
 
@@ -78,12 +78,8 @@ def compact(page):
 
 
 def query_all(client):
-    try:
+    with fixed(Exception, BillsError, "BILLS_READ_FAILED", keep=NotionError):
         return _query_all(client)
-    except NotionError:
-        raise
-    except Exception:
-        raise BillsError("BILLS_READ_FAILED") from None
 
 
 def _query_all(client):
@@ -123,12 +119,8 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
               "paid": len(buckets["paid"]), "stale_due": len(buckets["stale_due"]),
               "due_today": len(buckets["due_today"]), "due_7d": len(buckets["due_next_7_days"]), "saved": 0}
     if live:
-        try:
+        with fixed(Exception, BillsError, "BILLS_STORE_FAILED", keep=BillsError):
             with (connect or db.connect)() as connection:
                 STORE.save_verified(connection, 1, snapshot, lambda code: BillsError("BILLS_" + code))
-        except BillsError:
-            raise
-        except Exception:
-            raise BillsError("BILLS_STORE_FAILED") from None
         counts["saved"] = 1
     return counts
