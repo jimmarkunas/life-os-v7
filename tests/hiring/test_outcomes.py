@@ -250,7 +250,7 @@ class ContactTests(unittest.TestCase):
             self.assertEqual(outcomes.load(object())[2], store.row["contacts"])
         old = FakeStore({"schema": 1, "scanned_at": NOW.isoformat(), "taken_at": NOW.isoformat(), "outcomes": {}})
         with mock.patch.object(outcomes, "STORE", old), mock.patch.object(outcomes, "_exists", lambda c: True):
-            self.assertEqual(outcomes.load(object()), ({}, NOW.isoformat(), {}))
+            self.assertEqual(outcomes.load(object()), ({}, NOW.isoformat(), {}, []))
         self.assertNotIn("maria", json.dumps(counts))
 
     def test_the_compiler_carries_the_contact_onto_its_row(self):
@@ -328,43 +328,19 @@ class EntryPointTests(unittest.TestCase):
         self.assertNotIn("INSERT", tables.statements)
         self.assertNotIn("CREATE", tables.statements)
 
-    def test_an_incomplete_gmail_or_outlook_scan_fails_closed_and_keeps_the_last_accepted_outcomes(self):
-        seeded = self.Tables()
-        seeded.rows[("v7_hiring_outcomes", 1)] = json.dumps({"schema": 1, "taken_at": NOW.isoformat(), "scanned_at": (NOW - timedelta(hours=30)).isoformat(), "outcomes": {WALMART["key"]: {"kind": "REJECTED", "received": NOW.isoformat(), "match": "role"}}})
-        before = seeded.rows[("v7_hiring_outcomes", 1)]
-        for kwargs in ({"broken": True}, {"accounts": [("work", None)]}, {"accounts": [("work", BrokenOutlook())]}):
-            code, counts, err, _, tables, _ = self.go(self.REC, tables=seeded, **kwargs)
-            self.assertEqual((code, counts["status"], counts["saved"], err), (1, "degraded", 0, "HIRING-OUTCOMES FAILED: OUTCOMES_DEGRADED_SOURCE_INCOMPLETE"), kwargs)
-            self.assertEqual(tables.rows[("v7_hiring_outcomes", 1)], before)
-
     def seeded(self):
         tables = self.Tables()
         tables.rows[("v7_hiring_outcomes", 1)] = json.dumps({"schema": 1, "taken_at": NOW.isoformat(), "scanned_at": (NOW - timedelta(hours=30)).isoformat(),
                                                               "outcomes": {WALMART["key"]: {"kind": "REJECTED", "received": NOW.isoformat(), "match": "role"}}})
         return tables, tables.rows[("v7_hiring_outcomes", 1)]
 
-    def assert_degraded_and_untouched(self, result, tables, before, unreadable):
-        code, counts, err, _, tables, _ = result
-        self.assertEqual((code, counts["status"], counts["unreadable"], counts["saved"]), (1, "degraded", unreadable, 0))
-        self.assertEqual(err, "HIRING-OUTCOMES FAILED: OUTCOMES_DEGRADED_SOURCE_INCOMPLETE")
-        self.assertEqual(tables.rows[("v7_hiring_outcomes", 1)], before)                       # the last accepted snapshot is preserved byte for byte
-        self.assertEqual([s for s in tables.statements if s in ("INSERT", "CREATE", "UPDATE", "DELETE", "REPLACE")], [])      # and nothing was written
-
-    def test_a_complete_gmail_listing_with_one_failed_message_read_is_degraded_not_fresh(self):
+    def test_when_no_source_could_be_listed_the_scan_fails_closed_saves_nothing_and_keeps_the_last_accepted_outcomes(self):      # LIFE-648: one unread source is partial (tests/hiring/test_partial_source.py)
         tables, before = self.seeded()
-        records = self.REC + [msg(subject="Another", body="Hello", mid="m2", days_ago=2)]
-        self.assert_degraded_and_untouched(self.go(records, tables=tables, unreadable=("m2",)), tables, before, 1)
-
-    def test_malformed_outlook_messages_in_a_complete_listing_are_degraded_not_fresh(self):
-        from tests.recruiters.fakes import ReadOnlyOutlook
-        good = {"id": "g1", "receivedDateTime": (NOW - timedelta(days=2)).isoformat(), "subject": "Hello", "from": {"emailAddress": {"name": "Recruiting", "address": "jobs@example.com"}}, "body": {"content": ""}}
-        for bad, count in (({"id": "x1", "subject": "no received time"}, 1), ({"receivedDateTime": (NOW - timedelta(days=2)).isoformat(), "subject": "no id"}, 1)):
-            tables, before = self.seeded()
-            outlook = ReadOnlyOutlook(inbox=[good, bad])
-            self.assert_degraded_and_untouched(self.go(self.REC, tables=tables, accounts=[("work", outlook)]), tables, before, count)
-        tables, before = self.seeded()
-        both = ReadOnlyOutlook(inbox=[good], junk=[{"subject": "neither"}])
-        self.assert_degraded_and_untouched(self.go(self.REC, tables=tables, accounts=[("work", both)]), tables, before, 1)
+        for kwargs in ({"broken": True}, {"broken": True, "accounts": [("work", None)]}, {"broken": True, "accounts": [("work", BrokenOutlook())]}):
+            code, counts, err, _, tables, _ = self.go(self.REC, tables=tables, **kwargs)
+            self.assertEqual((code, counts["status"], counts["saved"], err), (1, "degraded", 0, "HIRING-OUTCOMES FAILED: OUTCOMES_DEGRADED_SOURCE_INCOMPLETE"), kwargs)
+            self.assertEqual(tables.rows[("v7_hiring_outcomes", 1)], before)
+            self.assertEqual([s for s in tables.statements if s in ("INSERT", "CREATE", "UPDATE", "DELETE", "REPLACE")], [])
 
     def test_a_clean_listing_with_nothing_unreadable_is_still_fresh_and_saved(self):
         from tests.recruiters.fakes import ReadOnlyOutlook

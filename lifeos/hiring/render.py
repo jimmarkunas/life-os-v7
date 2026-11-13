@@ -17,7 +17,7 @@ KIND_LABEL = {"assessment": "assessment", "hiring_manager": "hiring-manager inte
 REASON_TEXT = {"LEDGER_UNAVAILABLE": "Job Ledger unreadable", "OPPORTUNITIES_UNAVAILABLE": "Hiring Pipeline pages unreadable", "CALENDAR_UNAVAILABLE": "Calendar unreadable",
                "IDENTITY_AMBIGUOUS": "an opportunity matches more than one page", "CALENDAR_AMBIGUOUS": "a calendar event matches more than one opportunity",
                "EVENT_NOT_ON_CALENDAR": "a scheduled event is no longer on the Calendar", "PARENT_IDENTITY_UNREADABLE": "an opportunity page title is unreadable",
-               "SNAPSHOT_STALE": "evidence is stale", "OUTCOME_MAIL_STALE": "outcome mail not read recently", "OUTCOME_MAIL_UNREADABLE": "outcome mail state unreadable", "DECISION_AMBIGUOUS": "a Hiring Decision sits on one of several applications for one company and role"}
+               "SNAPSHOT_STALE": "evidence is stale", "OUTCOME_MAIL_STALE": "outcome mail not read recently", "OUTCOME_MAIL_UNREADABLE": "outcome mail state unreadable", "OUTCOME_MAIL_PARTIAL": "outcome mail partly read", "DECISION_AMBIGUOUS": "a Hiring Decision sits on one of several applications for one company and role"}
 
 
 def local(value):
@@ -120,7 +120,8 @@ def render(result, stored, now, close=(None, {})):
     if accepted and not reasons and local(accepted) < now - timedelta(hours=STALE_HOURS):
         reasons.append("SNAPSHOT_STALE")
     rows = result["rows"]
-    note = " · ".join(REASON_TEXT.get(r, r.lower()) for r in reasons)
+    unread = result.get("outcome_unread")                       # LIFE-648: the fixed names of the mail sources the last outcome scan could not read
+    note = " · ".join(REASON_TEXT.get(r, r.lower()) + (f" ({', '.join(unread)} unread)" if r == "OUTCOME_MAIL_PARTIAL" and unread else "") for r in reasons)
     if rows is None:
         return (f"DEGRADED · Hiring Pipeline unavailable at {clock(now)} · {note} · no accepted state yet",
                 None, {"status": "unavailable", "rows": 0, "reasons": reasons})

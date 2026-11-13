@@ -21,6 +21,7 @@
   "NOT_VERIFIED": ["hiring", "blocked", false, "The auto-close was not verified.", "Retried."],
   "NO_MATCH": ["hiring", "terminal", false, "No opportunity matches.", "None."],
   "OPPORTUNITIES_UNAVAILABLE": ["hiring", "state", false, "Hiring evidence: the opportunities could not be read.", "None."],
+  "OUTCOME_MAIL_PARTIAL": ["hiring", "state", false, "Hiring evidence: the last outcome-mail scan could not read one source in full.", "None."],
   "PAGES_INCOMPLETE": ["hiring", "degraded", false, "A page listing did not finish.", "None; retried."],
   "PAGE_UNPROVEN": ["hiring", "blocked", false, "The page could not be proven to be the right one.", "Check the page."],
   "PARENT_IDENTITY_UNREADABLE": ["hiring", "state", false, "Hiring evidence: the parent page could not be identified.", "None."],
