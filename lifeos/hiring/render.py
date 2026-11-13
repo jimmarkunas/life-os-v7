@@ -7,6 +7,8 @@ from datetime import datetime, timedelta
 from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
+from lifeos.platform import ct_stamp
+
 from . import models as M
 
 TZ = ZoneInfo("America/Chicago")
@@ -123,7 +125,7 @@ def render(result, stored, now, close=(None, {})):
     unread = result.get("outcome_unread")                       # LIFE-648: the fixed names of the mail sources the last outcome scan could not read
     note = " · ".join(REASON_TEXT.get(r, r.lower()) + (f" ({', '.join(unread)} unread)" if r == "OUTCOME_MAIL_PARTIAL" and unread else "") for r in reasons)
     if rows is None:
-        return (f"DEGRADED · Hiring Pipeline unavailable at {clock(now)} · {note} · no accepted state yet",
+        return (f"DEGRADED · Hiring Pipeline unavailable at {ct_stamp.when(now)} · {note} · no accepted state yet",
                 None, {"status": "unavailable", "rows": 0, "reasons": reasons})
     hidden_older = sum(1 for r in rows if _older(r, now))
     rows = [r for r in rows if not _older(r, now)]
@@ -139,8 +141,8 @@ def render(result, stored, now, close=(None, {})):
     extra = ([f"{held} paused or waiting"] if held else []) + extra   # LIFE-111: listed, but not counted as active to-dos
     tail = (" · " + " · ".join(extra)) if extra else ""
     if reasons:
-        when_text = local(accepted).strftime("%b %-d, ") + clock(local(accepted)) if accepted else "never"
-        text = f"DEGRADED · Hiring Pipeline {note} at {clock(now)} · showing last accepted state ({when_text}) · {len(rows) - held} active{tail}"
+        when_text = ct_stamp.when(local(accepted)) if accepted else "never"
+        text = f"DEGRADED · Hiring Pipeline {note} at {ct_stamp.when(now)} · showing last accepted state ({when_text}) · {len(rows) - held} active{tail}"
     else:
-        text = f"Updated {clock(now)} · {len(rows) - held} active{tail}" if rows else f"Updated {clock(now)} · no submitted or interviewing opportunities{tail}"
+        text = f"{ct_stamp.updated(now)} · {len(rows) - held} active{tail}" if rows else f"{ct_stamp.updated(now)} · no submitted or interviewing opportunities{tail}"
     return text, cells, {"status": "degraded" if reasons else "fresh", "rows": len(shown), "reasons": reasons}

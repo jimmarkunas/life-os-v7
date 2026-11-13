@@ -7,7 +7,7 @@ import os
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from lifeos.platform import db, report_region, router
+from lifeos.platform import ct_stamp, db, report_region, router
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 from urllib.parse import urlsplit
 
@@ -109,7 +109,7 @@ GROUPS = ((chains.REVIEW, "⚠️ Needs a look — notices conflict"),
 
 def heading_text(now, degraded=False):
     """LIFE-609: the update time shares the heading, like Calendar: "Mail Alerts (Updated 2:30 PM CT)"; a card that cannot show current mail says "Mail Alerts (DEGRADED at 2:30 PM CT)"."""
-    return f"{TITLE} ({'DEGRADED at' if degraded else 'Updated'} {_local(now).strftime('%-I:%M %p')} CT)"
+    return f"{TITLE} ({'DEGRADED at ' + ct_stamp.when(now) if degraded else ct_stamp.updated(now)})"
 
 
 def render(stored, now, sync_failed=False):

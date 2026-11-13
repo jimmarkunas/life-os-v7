@@ -91,6 +91,43 @@ class ClassifyTests(unittest.TestCase):
         self.assertEqual(card.classify({"unset": True}, NOW)[0], "unset")
 
 
+class DatedStampTests(unittest.TestCase):
+    """LIFE-660: the heading stamp carries the date (`Updated Oct 12 · 10:06 PM CT`); the Command Center reads it, still reads the old time-only form, and uses the real date."""
+
+    def fresh(self, text, now):
+        return card.classify({"status": text}, now)
+
+    def test_the_dated_form_is_read_and_the_time_only_form_still_is(self):
+        self.assertEqual(self.fresh("Updated Oct 12 · 10:06 PM CT · x", NOW), ("fresh", "10:06 PM"))
+        self.assertEqual(self.fresh("Calendar (Updated Oct 12 · 10:06 PM CT)", NOW), ("fresh", "10:06 PM"))
+        self.assertEqual(self.fresh("Updated 10:06 PM CT · x", NOW), ("fresh", "10:06 PM"))
+        self.assertEqual(self.fresh("Updated Oct 12 · 8:50 PM CT", NOW)[0], "fresh")                         # exactly 90 minutes
+        self.assertEqual(self.fresh("Updated Oct 12 · 8:49 PM CT", NOW)[0], "stale")                          # 91
+        self.assertEqual(self.fresh("DEGRADED · Amazon sync failed at Oct 12 · 10:05 PM CT · x", NOW), ("degraded", "10:05 PM"))
+        self.assertEqual(self.fresh("STALE · last accepted Oct 11 · 9:44 AM CT", NOW)[0], "stale")
+
+    def test_a_stamp_from_yesterday_at_the_same_clock_time_is_stale_by_its_date(self):
+        self.assertEqual(self.fresh("Updated Oct 11 · 10:06 PM CT", NOW)[0], "stale")                         # the time-only form would have read fresh
+        self.assertEqual(self.fresh("Updated Oct 10 · 10:06 PM CT", NOW)[0], "stale")
+
+    def test_a_stamp_across_midnight(self):
+        after_midnight = datetime(2026, 10, 13, 0, 30, tzinfo=TZ)
+        self.assertEqual(self.fresh("Updated Oct 12 · 11:30 PM CT", after_midnight)[0], "fresh")             # 60 minutes ago, the day before
+        self.assertEqual(self.fresh("Updated Oct 12 · 10:50 PM CT", after_midnight)[0], "stale")             # 100 minutes
+        self.assertEqual(self.fresh("Updated Oct 13 · 12:05 AM CT", after_midnight)[0], "fresh")
+
+    def test_a_stamp_across_a_month_end_and_a_year_end(self):
+        self.assertEqual(self.fresh("Updated Oct 31 · 11:30 PM CT", datetime(2026, 11, 1, 0, 40, tzinfo=TZ))[0], "fresh")
+        self.assertEqual(self.fresh("Updated Oct 31 · 9:30 PM CT", datetime(2026, 11, 1, 0, 40, tzinfo=TZ))[0], "stale")
+        self.assertEqual(self.fresh("Updated Feb 28 · 11:45 PM CT", datetime(2026, 3, 1, 0, 10, tzinfo=TZ))[0], "fresh")   # 2026 is not a leap year
+        self.assertEqual(self.fresh("Updated Dec 31 · 11:45 PM CT", datetime(2027, 1, 1, 0, 10, tzinfo=TZ))[0], "fresh")
+        self.assertEqual(self.fresh("Updated Dec 30 · 11:45 PM CT", datetime(2027, 1, 1, 0, 10, tzinfo=TZ))[0], "stale")
+
+    def test_a_date_that_is_not_a_date_is_never_guessed_fresh(self):
+        self.assertEqual(self.fresh("Updated Foo 12 · 10:06 PM CT", NOW), ("unknown", None))
+        self.assertEqual(self.fresh("Updated Feb 30 · 10:06 PM CT", NOW), ("unknown", None))
+
+
 class SlowerCardTests(unittest.TestCase):
     """LIFE-612: a card the due-time table runs less often than every tick is current for its longest gap between runs plus the usual 90 minutes."""
     TABLE = {"bills": {"slots_ct": ["00:00", "06:00", "12:00", "18:00"]}, "mail": {"every_hours": 6}, "amazon": {"every_hours": 3}, "jira": {"every_hours": 1}}

@@ -20,11 +20,11 @@ class Render(unittest.TestCase):
         segments = card.rich(text)
         self.assertEqual("".join(x["text"]["content"] for x in segments), text)                                  # the read-back compares plain text, so nothing may be added or lost
         bold = [x["text"]["content"] for x in segments if x.get("annotations", {}).get("bold")]
-        self.assertEqual(bold, ["AI Capacity (Updated 12:30 AM CT)", "Codex allowance", "Cloud Fit guard"])
+        self.assertEqual(bold, ["AI Capacity (Updated Oct 20 · 12:30 AM CT)", "Codex allowance", "Cloud Fit guard"])
 
     def test_the_approved_layout_tightest_first_remaining_large_used_as_a_bar_resets_in_central(self):
         text, table = card.render(READING, NOW)
-        self.assertEqual(text.split("\n")[0], "AI Capacity (Updated 12:30 AM CT) · 1 near limit · 0 exhausted")
+        self.assertEqual(text.split("\n")[0], "AI Capacity (Updated Oct 20 · 12:30 AM CT) · 1 near limit · 0 exhausted")
         self.assertIn("Cloud Fit guard · 20 of 5,000 runs today (our own limit, not a provider's)", text.split("\n"))
         self.assertTrue(text.split("\n")[1].startswith("Codex allowance · 5-hour "))                               # the Codex numbers come first, right under the headline
         self.assertEqual(table[0], card.HEADER)
@@ -40,7 +40,7 @@ class Render(unittest.TestCase):
                    "unavailable": [], "safety_cap": None}
         text, table = card.render(reading, NOW)
         self.assertEqual([table[1][5], table[2][5]], ["EXHAUSTED", "RESERVE REACHED"])
-        self.assertEqual(text.split("\n")[0], "AI Capacity (Updated 12:30 AM CT) · 1 near limit · 1 exhausted")
+        self.assertEqual(text.split("\n")[0], "AI Capacity (Updated Oct 20 · 12:30 AM CT) · 1 near limit · 1 exhausted")
         self.assertEqual(text.split("\n")[1], "Codex allowance · 5-hour 55% used · weekly 100% used · Cloud Fit stops at 50%")
 
     def test_more_pools_than_rows_are_counted_not_dropped_silently(self):
@@ -199,7 +199,7 @@ class Run(unittest.TestCase):
             raise edge.EdgeError("FIT_EDGE_NO_REPLY")
         out = self.go(notion, read=broken)
         self.assertEqual((out["status"], out["code"], out["failed"]), ("degraded", "FIT_EDGE_NO_REPLY", 1))
-        self.assertEqual(notion.text["capN0"], "AI Capacity (DEGRADED at 12:30 AM CT) · Oracle limits read failed (FIT_EDGE_NO_REPLY) · showing the last reading")
+        self.assertEqual(notion.text["capN0"], "AI Capacity (DEGRADED at Oct 20 · 12:30 AM CT) · Oracle limits read failed (FIT_EDGE_NO_REPLY) · showing the last reading")
         self.assertEqual(notion.rows, before)
 
     def test_a_card_that_lost_its_shape_is_refused_and_nothing_is_written(self):

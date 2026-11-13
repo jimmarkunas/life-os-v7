@@ -13,14 +13,12 @@ import re
 import socket
 from datetime import datetime, timezone
 from urllib.parse import quote
-from zoneinfo import ZoneInfo
 
 from lifeos.oraclecloud import backup_watch, worker_watch
-from lifeos.platform import limits, report_region, router
+from lifeos.platform import ct_stamp, limits, report_region, router
 from lifeos.platform.fixed_code import fixed
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 
-TZ = ZoneInfo("America/Chicago")
 TITLE = router.ORACLE_REGION
 MODULE = router.OWNERS[TITLE]
 PORT = 47341
@@ -134,9 +132,7 @@ def render(r, now):
                _gauge("Codex 5h", plan["left_5h"]) + sep + _gauge("Codex week", plan["left_week"]))
     segments = ([(f"{first} · {cpu}\n\n", None)] + _gauge("Memory", r["memory_pct"]) + sep + _gauge("Disk", r["disk_pct"])
                 + [(f"\n\n{cores} · {reclaim}\n{services}\n\n", None)] + chatgpt)
-    ct = now.astimezone(TZ)
-    stamp = f"Updated {ct.strftime('%b')} {ct.day} · {ct.strftime('%-I:%M %p')} CT"
-    return segments, f"{TITLE} ({'DEGRADED · ' if missing(r) else ''}{stamp})"
+    return segments, f"{TITLE} ({'DEGRADED · ' if missing(r) else ''}{ct_stamp.updated(now)})"
 
 
 def text_of(segments):

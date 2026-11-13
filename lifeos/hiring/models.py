@@ -91,11 +91,13 @@ def next_of(lines):
     return {"text": m.group(4).strip(), "due": None if m.group(1) == "none" else m.group(1), "at": m.group(2), "op": m.group(3)}
 
 
-_DEGRADED = re.compile(r"^DEGRADED · (?P<what>.*?) at (?P<clock>\d{1,2}:\d{2} [AP]M CT)(?P<rest> · .*)?$")
+WHEN = r"(?:[A-Z][a-z]{2} \d{1,2} · )?\d{1,2}:\d{2} [AP]M CT"                       # LIFE-660: `Nov 13 · 3:31 PM CT`; the time-only form an older heading still carries
+_DEGRADED = re.compile(rf"^DEGRADED · (?P<what>.*?) at (?P<clock>{WHEN})(?P<rest> · .*)?$")
+_UPDATED = re.compile(rf"^(?P<stamp>Updated {WHEN})(?: · (?P<rest>.*))?$")
 
 
 def split_status(text):
-    """The compiled status line -> (the stamp the heading carries, the paragraph under it). `Updated 2:00 PM CT · 5 active` -> (`Updated 2:00 PM CT`, `5 active`); a degraded line puts `DEGRADED at 2:00 PM CT`
+    """The compiled status line -> (the stamp the heading carries, the paragraph under it). `Updated Nov 13 · 2:00 PM CT · 5 active` -> (`Updated Nov 13 · 2:00 PM CT`, `5 active`); a degraded line puts `DEGRADED at Nov 13 · 2:00 PM CT`
     in the heading and what is wrong in the paragraph, so the state is the first thing read and the Command Center reads the same words it always did."""
     text = (text or "").strip()
     found = _DEGRADED.match(text)
@@ -103,6 +105,9 @@ def split_status(text):
         return f"DEGRADED at {found.group('clock')}", (found.group("what") + (found.group("rest") or "")).strip()
     if text.startswith("DEGRADED"):
         return "DEGRADED", text[len("DEGRADED"):].lstrip(" ·")
+    found = _UPDATED.match(text)
+    if found:
+        return found.group("stamp"), found.group("rest") or ""
     head, _, rest = text.partition(" · ")
     return head, rest
 

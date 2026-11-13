@@ -98,8 +98,8 @@ class RenderTests(unittest.TestCase):
         self.assertNotIn("$0", texts([bullet])[0])
 
     def test_the_heading_carries_the_stamp_and_the_degraded_line_never_says_updated(self):          # LIFE-609
-        self.assertEqual(card.heading_text(NOW), "Amazon Orders (Updated 1:30 PM CT)")
-        self.assertEqual(card.heading_text(NOW, degraded=True), "Amazon Orders (DEGRADED at 1:30 PM CT)")
+        self.assertEqual(card.heading_text(NOW), "Amazon Orders (Updated Oct 4 · 1:30 PM CT)")
+        self.assertEqual(card.heading_text(NOW, degraded=True), "Amazon Orders (DEGRADED at Oct 4 · 1:30 PM CT)")
         self.assertNotIn("Updated", texts(card.render(ROWS, NOW)[0])[0])                          # the time is in the heading only, never repeated in the first line
         blocks, counts = card.render(ROWS, NOW, degraded=True)
         self.assertTrue(texts(blocks)[0].startswith("Amazon sync failed · showing last accepted orders · "))
@@ -150,7 +150,7 @@ class RunTests(unittest.TestCase):
         before = {k: notion.full_tree(k) for k in ("calendar-callout", "jira-callout", "dcc-callout", "bills-callout")}
         notion, counts = self.run_card(notion)
         kids = notion.children["amazon-callout"]
-        self.assertEqual(report_region.plain(kids[0]), "Amazon Orders (Updated 1:30 PM CT)")                  # LIFE-609: the stamp is in the heading
+        self.assertEqual(report_region.plain(kids[0]), "Amazon Orders (Updated Oct 4 · 1:30 PM CT)")                  # LIFE-609: the stamp is in the heading
         self.assertEqual(kids[0]["id"], "heading-amazon-callout")
         self.assertTrue(report_region.plain(kids[1]).startswith("2 in transit"))
         self.assertEqual(kids[-1]["id"], "amazon-table-old")                                    # a non-text block is never removed
@@ -187,7 +187,7 @@ class RunTests(unittest.TestCase):
 
     def test_failed_sync_flag_writes_the_degraded_line(self):
         notion, counts = self.run_card(env={"AMAZON_SYNC_OUTCOME": "failure"})
-        self.assertEqual(report_region.plain(notion.children["amazon-callout"][0]), "Amazon Orders (DEGRADED at 1:30 PM CT)")
+        self.assertEqual(report_region.plain(notion.children["amazon-callout"][0]), "Amazon Orders (DEGRADED at Oct 4 · 1:30 PM CT)")
         self.assertTrue(report_region.plain(notion.children["amazon-callout"][1]).startswith("Amazon sync failed"))
         self.assertEqual(counts["status"], "degraded")
 

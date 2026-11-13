@@ -152,7 +152,7 @@ class AgendaCardTests(unittest.TestCase):
         event = compacted(timed("one", "Example fresh"))
         saved = saved_snapshot([event])
         heading = card._heading_text(saved, False)
-        self.assertRegex(heading, r"^Calendar \(Updated \d{1,2}:\d{2} (AM|PM) CT\)$")
+        self.assertRegex(heading, r"^Calendar \(Updated [A-Z][a-z]{2} \d{1,2} · \d{1,2}:\d{2} (AM|PM) CT\)$")
         self.assertNotRegex(heading, r"\b(1[3-9]|2[0-3]):\d{2}\b")                          # never 24-hour time
         blocks, _ = card.render(saved, now=NOW)
         self.assertFalse(any(plain(b).startswith("Updated") for b in blocks))
