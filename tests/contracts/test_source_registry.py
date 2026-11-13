@@ -9,7 +9,6 @@ from lifeos import run
 from lifeos.jobs import tick
 from lifeos.platform import codes
 from lifeos.platform import source_registry as registry
-from tests import testindex
 
 # Stages whose target sits under lifeos/sources/ and that are still wired by hand in lifeos/run.py (and, for the tick ones, lifeos/jobs/tick.py). Each migration PR moves one name from here into
 # source_registry.json; a new source is never added here.
@@ -120,11 +119,6 @@ class AFakeSourceNeedsOnlyItsModuleAndOneLine(unittest.TestCase):
         self.assertEqual(registry.partial_failures([self.fake, registry.Source("quiet", "m")]), {"fake-source": "FAKE_SOURCE_FAILED"})
         self.assertEqual(registry.partial_failures(), {s.name: s.partial_failure for s in registry.SOURCES if s.partial_failure})
         self.assertTrue({"mail-filing", "manual-job", "granola-auto"} <= set(run.PARTIAL_FAILURE))             # the registered rows are merged into run.PARTIAL_FAILURE
-
-    def test_a_new_file_under_lifeos_needs_no_row_in_the_test_index_and_gets_its_mirror_folder_of_tests(self):
-        picked = testindex.select(["lifeos/sources/cards/fake_source.py", "tests/sources/test_fake_source.py"], testindex.load())
-        self.assertIn("tests.sources.test_mail_filing", picked)                                                  # the mirror folder runs although the index has never heard of the file
-        self.assertEqual(testindex.check(testindex.load(), max_age_days=10 ** 6), [])
 
     def test_its_codes_become_registered_codes_with_the_sources_stage(self):
         rows = registry.code_rows(codes._r, [self.fake])

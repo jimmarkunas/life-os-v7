@@ -294,7 +294,28 @@ class PullRequestTestsWorkflow(unittest.TestCase):
         self.assertEqual(doc["permissions"], {"contents": "read"})
         for word in ("secrets.", "bitwarden", "LIFEOS_", "NOTION_", "GMAIL_", "--live"):
             self.assertNotIn(word, text)
-        self.assertEqual([j for j in doc["jobs"]], ["unit-tests"])
+        self.assertEqual([j for j in doc["jobs"]], ["unit-tests", "test-index"])
+
+    def test_the_test_index_is_built_on_main_after_the_tests_and_only_restored_in_pull_requests(self):
+        """LIFE-644: docs/test-index.json is not committed. The key holds a hash of the builder and the test lock, so an index made by other code or other pinned tools is never restored."""
+        doc = yaml.safe_load(self.path.read_text())
+        unit, build = doc["jobs"]["unit-tests"]["steps"], doc["jobs"]["test-index"]
+        key = "test-index-v1-${{ hashFiles('tests/testindex.py', 'requirements-test.lock') }}-"
+        restore = next(s for s in unit if str(s.get("uses", "")).startswith("actions/cache/restore@"))
+        names = [s.get("name", "") for s in unit]
+        self.assertLess(unit.index(restore), names.index(next(n for n in names if n.startswith("Pick the tests"))))     # restored before `select` reads it
+        self.assertEqual(restore["if"], "${{ github.event_name == 'pull_request' }}")
+        self.assertEqual((restore["with"]["path"], restore["with"]["key"], restore["with"]["restore-keys"]), ("docs/test-index.json", key + "${{ github.sha }}", key))
+        self.assertFalse([s for s in unit if "cache/save" in str(s.get("uses", ""))])                                   # a pull request never writes the cache
+        self.assertEqual((build["needs"], build["if"]), ("unit-tests", "${{ github.event_name == 'push' }}"))
+        self.assertLessEqual(build["timeout-minutes"], 15)
+        save = next(s for s in build["steps"] if str(s.get("uses", "")).startswith("actions/cache/save@"))
+        self.assertEqual((save["with"]["path"], save["with"]["key"]), ("docs/test-index.json", key + "${{ github.sha }}"))
+        runs = [s["run"] for s in build["steps"] if "run" in s]
+        self.assertIn("pip install --require-hashes -r requirements-test.lock", runs)
+        built = next(i for i, s in enumerate(build["steps"]) if s.get("run") == "python -m tests.testindex build")
+        self.assertLess(built, build["steps"].index(save))                                                            # saved only after a successful build (a failed step skips the save)
+        self.assertIn("coverage", (self.path.parent.parent.parent / "requirements-test.lock").read_text())
 
     def evaluate(self, expression, context):
         """Just enough of the Actions expression language for this file: ${{ a || b }}, == and string quotes. Unknown names read as empty, as in Actions."""
@@ -415,12 +436,8 @@ class UnitTestGateTests(unittest.TestCase):
         self.assertEqual(steps[gate]["run"], "python -m lifeos.platform.testgate")
         self.assertEqual(steps[tests]["if"], "${{ steps.testgate.outputs.skip != 'true' }}")            # anything but the gate's own "true" runs the tests
         self.assertEqual(steps[tests]["run"], "python -m unittest discover -s tests -t . -v")
-        self.assertEqual(steps[tests]["env"], {"LIFEOS_TEST_INDEX_FRESH": "1"})
-
-    def test_the_freshness_check_still_runs_when_the_suite_is_skipped(self):
-        step = next(s for n, s in self.steps().items() if n.startswith("Test index freshness"))
-        self.assertEqual(step["if"], "${{ steps.testgate.outputs.skip == 'true' }}")
-        self.assertEqual((step["env"], step["run"]), ({"LIFEOS_TEST_INDEX_FRESH": "1"}, "python -m unittest tests.test_testindex.CommittedIndexIsFresh -v"))
+        self.assertNotIn("env", steps[tests])                                                          # LIFE-644: no index freshness flag or step; main's own build is the freshness
+        self.assertFalse([n for n in names if "freshness" in n])
 
     def test_the_gate_reads_the_token_the_job_already_has_and_pr_tests_is_untouched(self):
         gate = next(s for n, s in self.steps().items() if n.startswith("Unit-test gate"))
@@ -1042,9 +1059,9 @@ class SweepFailureIsItsOwnLaneTests(unittest.TestCase):
     def test_credentials_gate_and_unit_tests_still_fail_prep_and_so_block_finish(self):
         sweep_at = next(i for i, s in enumerate(self.steps) if s.get("id") == "sweep")
         before = self.steps[:sweep_at]
-        for prefix in ("Load the migrated credentials", "Gate - skip", "Unit-test gate", "Unit tests", "Test index freshness"):
+        for prefix in ("Load the migrated credentials", "Gate - skip", "Unit-test gate", "Unit tests"):
             step = next(s for s in before if s.get("name", "").startswith(prefix))
-            self.assertNotIn("continue-on-error", step, prefix)                        # a credential, gate, unit-test or freshness failure fails the job, as before
+            self.assertNotIn("continue-on-error", step, prefix)                        # a credential, gate or unit-test failure fails the job, as before
         tolerated = [s.get("name", "") for s in self.steps[:sweep_at] if s.get("continue-on-error")]
         self.assertEqual(len(tolerated), 1)
         self.assertIn("tailnet", tolerated[0])                                         # the only tolerated earlier step is the tailnet join
