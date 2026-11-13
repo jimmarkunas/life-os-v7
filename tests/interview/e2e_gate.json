@@ -218,7 +218,7 @@
         "tests.sources.test_interview_evidence.Refresh.test_nothing_is_written_without_jims_switch",
         "tests.sources.test_interview_evidence.Registered.test_the_interview_stage_is_this_path_and_the_manual_ones_are_untouched",
         "tests.contracts.test_workflow.DomainsWorkflowTests.test_a_failing_domain_step_is_a_warning_never_a_failed_run",
-        "tests.contracts.test_workflow.BitwardenConsumerTests.test_every_loader_is_the_pinned_action_with_the_exact_ids_and_nothing_that_could_bypass_it"
+        "tests.contracts.test_workflow.BitwardenConsumerTests.test_every_loader_is_the_local_action_with_the_exact_ids_and_nothing_that_could_bypass_it"
       ]
     },
     "E16": {

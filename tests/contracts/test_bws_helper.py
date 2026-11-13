@@ -32,7 +32,7 @@ class WorkflowWiring(unittest.TestCase):
         seen = 0
         for file, name, job in _jobs():
             steps = job.get("steps") or []
-            loaders = [i for i, s in enumerate(steps) if str(s.get("uses", "")).startswith("bitwarden/sm-action@")]
+            loaders = [i for i, s in enumerate(steps) if s.get("uses") == "./.github/actions/bws-load"]
             if not loaders:
                 continue
             seen += 1
@@ -47,13 +47,13 @@ class WorkflowWiring(unittest.TestCase):
             limit = job.get("timeout-minutes", 360)
             self.assertLessEqual(wait * 3, limit * 60, (file, name))      # the retry never takes more than a third of the job's time limit
             self.assertIn("ubuntu", str(job["runs-on"]), (file, name))    # the saved program is the Linux x86_64 build
-            self.assertEqual(len(loaders) % 2, 0, (file, name))           # the load and its one retry (D209) are unchanged
-        self.assertEqual(seen, 45)                                        # 45 jobs, 90 loads, one seed each (LIFE-571: + amazon_retention)
+            self.assertEqual(len(loaders), 1, (file, name))               # one loader step per job: the load and its one retry (D209) live inside the local action (LIFE-631)
+        self.assertEqual(seen, 45)                                        # 45 jobs, one seed each (LIFE-571: + amazon_retention)
 
     def test_the_helper_is_called_exactly_once_per_job(self):
         for file, name, job in _jobs():
             calls = [s for s in job.get("steps") or [] if s.get("uses") == "./.github/actions/bws-helper"]
-            loaders = [s for s in job.get("steps") or [] if str(s.get("uses", "")).startswith("bitwarden/sm-action@")]
+            loaders = [s for s in job.get("steps") or [] if s.get("uses") == "./.github/actions/bws-load"]
             self.assertEqual(len(calls), 1 if loaders else 0, (file, name))
 
 
@@ -73,10 +73,8 @@ class CompositeAction(unittest.TestCase):
     def test_the_program_is_the_pinned_release_at_the_path_sm_action_checks(self):
         self.assertIn(f"_actions/bitwarden/sm-action/{SM_COMMIT}/target/x86_64-unknown-linux-gnu/release", self.text)
         self.assertIn("releases/download/v3.0.1/sm-action-x86_64-unknown-linux-gnu", self.text)
-        for _, _, job in _jobs():
-            for step in job.get("steps") or []:
-                if str(step.get("uses", "")).startswith("bitwarden/"):
-                    self.assertEqual(step["uses"].split("@")[1], SM_COMMIT)   # the seeded folder is the folder the pinned action reads
+        loader = _read(os.path.join(ROOT, ".github", "actions", "bws-load", "action.yml"))
+        self.assertEqual(set(re.findall(r"uses:\s*bitwarden/sm-action@(\w+)", loader)), {SM_COMMIT})   # the seeded folder is the folder the pinned action reads
 
     def test_fingerprint_is_committed_hex_never_read_from_the_download(self):
         fingerprint = _read(os.path.join(ACTION, "helper.sha256")).strip()

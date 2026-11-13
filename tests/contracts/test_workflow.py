@@ -174,12 +174,12 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", text))), ["GMAIL_OAUTH_CLIENT_ID", "LIFEOS_BWS_RUNTIME_TOKEN", "NOTION_AMAZON_DATA_SOURCE_ID"])
         for moved in ("GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_AMAZON_TOKEN"):
             self.assertNotIn(f"secrets.{moved}", text)                                                    # no direct copy, so no fallback
-        self.assertEqual(re.findall(r"uses:\s*(bitwarden/\S+)", text), ["bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793"] * 2)   # the reviewed v3.0.1 commit: the load and its one retry (D209)
+        self.assertEqual(re.findall(r"uses:\s*(\S*bws-load)", text), ["./.github/actions/bws-load"])   # the one local loader (LIFE-631); the reviewed v3.0.1 commit and its one retry (D209) live in that action, pinned by the loader rules below
         mappings = re.findall(r"^\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\s*>\s*\w+)\s*$", text, re.M)
         self.assertEqual(sorted(mappings), sorted(["08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET", "672a44e9-235f-4121-a99d-b4db015a6987 > GMAIL_OAUTH_REFRESH_TOKEN",
                                                    "46fe195b-82e2-416e-8272-b4db015eea12 > NOTION_AMAZON_TOKEN"]))
         self.assertEqual(len(re.findall(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", text)), 3)                          # each once: the retry reuses the load's block by YAML alias (LIFE-541)
-        self.assertLess(text.index("bitwarden/sm-action"), text.index("python -m lifeos.run"))             # loaded before the Amazon command
+        self.assertLess(text.index("bws-load"), text.index("python -m lifeos.run"))             # loaded before the Amazon command
         self.assertIn("--live", text)                                                                      # the existing live switch is still the only way to write
 
     def test_amazon_since_reaches_only_the_backfill_stage_so_orders_keeps_its_normal_watermark_window(self):
@@ -227,7 +227,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", text))), ["GMAIL_OAUTH_CLIENT_ID", "LIFEOS_ACQ_SSH_PORT", "LIFEOS_BWS_RUNTIME_TOKEN", "LIFEOS_NOTION_IDS", "NOTION_JOB_LEDGER_DATA_SOURCE_ID"])      # LIFE-121: the report job reads the Ledger's data source id to find its page; the Client ID is the trace job's only Gmail GitHub secret
         for name in moved:
             self.assertNotIn(f"secrets.{name}", text)                                                      # no direct copy, so no fallback
-        self.assertEqual(re.findall(r"uses:\s*(bitwarden/\S+)", text), ["bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793"] * 10)   # the reviewed v3.0.1 commit, once per job plus its one retry (D209)
+        self.assertEqual(re.findall(r"uses:\s*(\S*bws-load)", text), ["./.github/actions/bws-load"] * 5)   # the one local loader, once per job (LIFE-631)
         head, rest = text.split("\n  # LIFE-64:")                                                           # the database-only diagnostics, then the one job that reads Gmail,
         trace_text, sandbox_text = rest.split("\n  # LIFE-10:")                                              # then the one job that reads Notion
         sandbox_text, ui_text = sandbox_text.split("\n  # LIFE-88:")                                        # then LIFE-88's UI 3c probe, the one job with the Interview token
@@ -243,7 +243,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn("NOTION", head + trace_text)                                                      # no Notion value reaches the database or Gmail diagnostics
         for word in ("LIFEOS_ACQ", "GMAIL", "inputs.message_ref", "secrets.NOTION"):
             self.assertNotIn(word, sandbox_text)                                                           # nothing else reaches the Notion job, and it takes no target input
-        self.assertLess(text.index("bitwarden/sm-action"), text.index("python -m lifeos.run"))             # loaded before the diagnostic command
+        self.assertLess(text.index("bws-load"), text.index("python -m lifeos.run"))             # loaded before the diagnostic command
         trace = diag["jobs"]["trace"]
         sandbox = diag["jobs"]["sandbox"]
         self.assertEqual((job["if"], trace["if"], sandbox["if"]),
@@ -251,7 +251,7 @@ class WorkflowTests(unittest.TestCase):
                           "${{ inputs.stage == 'newsletter-trace' }}",
                           "${{ inputs.stage == 'notion-sandbox-access' || inputs.stage == 'notion-sandbox-outreach-proof' }}"))   # exactly one of the three jobs runs
         self.assertEqual(sandbox["timeout-minutes"], 5)
-        token = "${{ steps.bws_sandbox.outputs.NOTION_API_TOKEN || steps.bws_sandbox_retry.outputs.NOTION_API_TOKEN }}"
+        token = "${{ steps.bws_sandbox.outputs.NOTION_API_TOKEN }}"
         read, proof = sandbox["steps"][-2:]
         self.assertEqual((read["if"], read["run"], read["env"]), ("${{ inputs.stage == 'notion-sandbox-access' }}", "python -m lifeos.run notion-sandbox-access --limit 0", {"NOTION_API_TOKEN": token, "LIFEOS_NOTION_IDS": "${{ secrets.LIFEOS_NOTION_IDS }}"}))
         self.assertEqual((proof["if"], proof["run"], proof["env"]), ("${{ inputs.stage == 'notion-sandbox-outreach-proof' }}", "python -m lifeos.run notion-sandbox-outreach-proof --limit 0 --live",
@@ -274,7 +274,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn("NOTION_INTERVIEW_TOKEN", head + trace_text + sandbox_text)
         probe = ui["steps"][-1]
         self.assertEqual((probe["run"], probe["env"]), ("python -m lifeos.run interview-ui-probe --limit 0 --live", {
-            "NOTION_INTERVIEW_TOKEN": "${{ steps.bws_interview.outputs.NOTION_INTERVIEW_TOKEN || steps.bws_interview_retry.outputs.NOTION_INTERVIEW_TOKEN }}",
+            "NOTION_INTERVIEW_TOKEN": "${{ steps.bws_interview.outputs.NOTION_INTERVIEW_TOKEN }}",
             "PROBE_CONFIRM": "${{ inputs.confirm }}", "LIFEOS_NOTION_IDS": "${{ secrets.LIFEOS_NOTION_IDS }}"}))                                                    # the stage itself refuses without QA
         self.assertEqual([s.get("env") for s in ui["steps"][:-1]], [None] * (len(ui["steps"]) - 1))
         self.assertEqual(trace["timeout-minutes"], 10)
@@ -726,7 +726,7 @@ class DomainsWorkflowTests(unittest.TestCase):
         for name, job in self.doc["jobs"].items():
             if name in ("report", "gate", "bench_report"):                                                   # the failure-push job (see the next test) is the alarm, not a domain stage; the benchmark jobs (LIFE-577) only check and summarise
                 continue
-            work = [s for s in job["steps"] if s.get("id") and not str(s.get("uses", "")).startswith("bitwarden/")]   # the Bitwarden loader is deliberately fail-closed: a failed load fails the job before its command
+            work = [s for s in job["steps"] if s.get("id") and not str(s.get("uses", "")).endswith("bws-load")]   # the Bitwarden loader is deliberately fail-closed: a failed load fails the job before its command
             self.assertTrue(work and all(s.get("continue-on-error") for s in work), name)
 
     def test_the_report_job_pushes_the_phone_only_for_a_failed_tick_triggered_run_and_writes_nothing(self):
@@ -735,7 +735,7 @@ class DomainsWorkflowTests(unittest.TestCase):
         condition = job["if"]
         for part in ("always()", "needs.gate.outputs.tick == 'true'", "contains(needs.*.result, 'failure')"):
             self.assertIn(part, condition)
-        (step,) = [s for s in job["steps"] if "run" in s and not s["run"].startswith("sleep ")]                   # not the Bitwarden retry pause (D209)
+        (step,) = [s for s in job["steps"] if "run" in s]
         self.assertIn("lifeos.platform.alerts push --key domain_jobs_failed", step["run"])
         self.assertFalse(step.get("continue-on-error"))                                                           # a push the provider refuses turns the job red
         self.assertEqual(sorted(re.findall(r"needs\.(\w+)\.result", step["run"])), sorted(n for n in job["needs"] if n != "gate"))         # every domain job is named in the failed list (the gate is not a domain job)
@@ -812,8 +812,9 @@ SECRET_FREE = ("pr-tests",)         # workflows that read no secret at all, so t
 class BitwardenConsumerTests(unittest.TestCase):
     """LIFE-644 step 2: rules, not pins. Every workflow reads credentials through the pinned Bitwarden loader and nothing else, whatever steps, commands, timeouts or triggers it has.
     A test edit is needed only when a credential is added to a job (LOADED, DOMAIN_SECRETS) or created (UUIDS)."""
-    ACTION = "bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793"
-    OUTPUT = re.compile(r"\$\{\{ steps\.(\w+)\.outputs\.(\w+) \|\| steps\.(\w+)\.outputs\.(\w+) \}\}")   # D209: the load's output, else its one retry's
+    ACTION = "./.github/actions/bws-load"                                  # LIFE-631: the one local loader; the pinned third-party action and its one retry live inside it (rules at the end of this class)
+    PINNED = "bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793"
+    OUTPUT = re.compile(r"\$\{\{ steps\.(\w+)\.outputs\.(\w+) \}\}")   # a loaded value, read from the loader's output
     PAUSE = "sleep $((30 + RANDOM % 45))"
 
     @classmethod
@@ -823,7 +824,7 @@ class BitwardenConsumerTests(unittest.TestCase):
         cls.doc = {n: yaml.safe_load(t) for n, t in cls.text.items()}
 
     def loaders(self, name, job):
-        return [(i, s) for i, s in enumerate(self.doc[name]["jobs"][job]["steps"]) if str(s.get("uses", "")).startswith("bitwarden/")]
+        return [(i, s) for i, s in enumerate(self.doc[name]["jobs"][job]["steps"]) if s.get("uses") == self.ACTION]
 
     def jobs_with_loaders(self, name):
         return [job for job in self.doc[name]["jobs"] if self.loaders(name, job)]
@@ -831,40 +832,50 @@ class BitwardenConsumerTests(unittest.TestCase):
     def loaded(self, name, job):
         return {m.group(2) for m in re.finditer(r"^([0-9a-f-]{36}) > (\w+)$", self.loaders(name, job)[0][1]["with"]["secrets"], re.M)}
 
-    def test_every_loader_is_the_pinned_action_with_the_exact_ids_and_nothing_that_could_bypass_it(self):
+    def test_every_loader_is_the_local_action_with_the_exact_ids_and_nothing_that_could_bypass_it(self):
         for name, doc in self.doc.items():
             text, jobs = self.text[name], self.jobs_with_loaders(name)
-            self.assertTrue(jobs, name)                                                                         # every workflow that reads a credential loads it through the pinned action
+            self.assertTrue(jobs, name)                                                                         # every workflow that reads a credential loads it through the one local loader
             self.assertIn("LIFEOS_BWS_RUNTIME_TOKEN", re.findall(r"secrets\.(\w+)", text), name)
             self.assertFalse([n for n in UUIDS if re.search(rf"secrets\.{n}\b", text)], name)                    # no migrated value is read from GitHub any more
-            self.assertEqual(re.findall(r"uses:\s*(bitwarden/\S+)", text), [self.ACTION] * 2 * len(jobs), name)   # each load and its one retry
+            self.assertEqual(re.findall(r"uses:\s*(\S*bws-load)", text), [self.ACTION] * len(jobs), name)       # one loader step per job: it holds the load and its one retry
+            self.assertNotIn("bitwarden/", text, name)                                                           # the third-party action is named only inside the local action
             if name != "domains":
                 self.assertEqual(set(jobs), set(LOADED[name]), name)
             for job in jobs:
-                (at, loader), (retry_at, retry) = self.loaders(name, job)
+                ((at, loader),) = self.loaders(name, job)
                 steps, names = doc["jobs"][job]["steps"], self.loaded(name, job)
                 self.assertTrue(names and names <= set(UUIDS), (name, job))
                 self.assertTrue(names <= DOMAIN_SECRETS[job] | TS if name == "domains" else names == LOADED[name][job], (name, job, sorted(names)))
                 self.assertEqual(steps[0]["uses"], "actions/checkout@v5", (name, job))
-                self.assertEqual(loader["uses"], self.ACTION, (name, job))
                 self.assertEqual(loader["with"]["access_token"], "${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}", (name, job))
                 self.assertEqual(sorted(re.findall(r"^([0-9a-f-]{36}) > (\w+)$", loader["with"]["secrets"], re.M)), sorted((UUIDS[n], n) for n in names), (name, job))
                 self.assertEqual(len(re.findall(r" > ", loader["with"]["secrets"])), len(names), (name, job))
-                self.assertFalse({"if", "env"} & set(loader), (name, job))                                       # no bypass, no fallback source
-                self.assertIs(loader.get("continue-on-error"), True, (name, job))                                  # D209: Bitwarden's 429 / 5xx gets one retry ...
-                failed = "${{ steps.%s.outcome == 'failure' }}" % loader["id"]
-                self.assertEqual(retry_at, at + 2, (name, job))
-                self.assertEqual(steps[at + 1], {"name": steps[at + 1]["name"], "if": failed, "run": self.PAUSE}, (name, job))   # ... after a jittered pause, only when the load failed
-                self.assertEqual(retry["id"], loader["id"] + "_retry", (name, job))
-                self.assertEqual(retry["if"], failed, (name, job))
-                self.assertEqual((retry["uses"], retry["with"]), (loader["uses"], loader["with"]), (name, job))   # the same pinned action, the same ids
-                self.assertFalse({"continue-on-error", "env"} & set(retry), (name, job))                           # ... and a failed retry fails the job: no fallback
+                self.assertFalse({"if", "env", "continue-on-error"} & set(loader), (name, job))                  # no bypass, no fallback source, and a failed load (after its one retry) fails the job
+                self.assertTrue({"access_token", "secrets"} <= set(loader["with"]) <= {"access_token", "secrets", "set_env"}, (name, job))
                 if name not in PILOTS:                                                                             # every workflow after the four accepted pilots is cut over
                     self.assertEqual(loader["id"], f"bws_{job}", (name, job))                                      # deterministic, unique id
                     self.assertIs(loader["with"]["set_env"], False, (name, job))                                  # nothing is exported job-wide
-                    self.assertEqual(set(loader), {"id", "name", "continue-on-error", "uses", "with"}, (name, job))
-                    self.assertEqual(set(retry), {"id", "name", "if", "uses", "with"}, (name, job))
-                    self.assertEqual(set(loader["with"]), {"access_token", "set_env", "secrets"}, (name, job))
+                    self.assertEqual(set(loader), {"id", "name", "uses", "with"}, (name, job))
+
+    def test_the_local_loader_is_the_pinned_action_once_plus_its_one_retry_and_no_fallback(self):
+        """LIFE-631: D209 (Bitwarden's 429 / 5xx gets one retry after a jittered pause, and a failed retry fails the job) is written once, here, instead of in 45 jobs."""
+        root = pathlib.Path(__file__).resolve().parents[2] / ".github"
+        action = yaml.safe_load((root / "actions" / "bws-load" / "action.yml").read_text())
+        first, pause, retry = action["runs"]["steps"]
+        failed = "${{ steps.first.outcome == 'failure' }}"
+        passed = {"access_token": "${{ inputs.access_token }}", "secrets": "${{ inputs.secrets }}", "set_env": "${{ inputs.set_env }}"}
+        self.assertEqual(action["runs"]["using"], "composite")
+        self.assertEqual(first, {"id": "first", "continue-on-error": True, "uses": self.PINNED, "with": passed})
+        self.assertEqual(pause, {"if": failed, "shell": "bash", "run": self.PAUSE})                              # a jittered pause, only when the first load failed
+        self.assertEqual(retry, {"id": "retry", "if": failed, "uses": self.PINNED, "with": passed})            # the same pinned action and ids; no continue-on-error and no env: a used-up retry fails the job
+        needed = {n for text in self.text.values() for n in re.findall(r"^\s+[0-9a-f-]{36} > (\w+)$", text, re.M)}
+        self.assertTrue(needed <= set(action["outputs"]), sorted(needed - set(action["outputs"])))                # every loaded name has an output
+        for key, spec in action["outputs"].items():
+            self.assertEqual(spec["value"], "${{ steps.first.outputs.%s || steps.retry.outputs.%s }}" % (key, key), key)   # the first load's value, else its one retry's
+        for path in sorted(root.rglob("*.y*ml")):
+            if path != root / "actions" / "bws-load" / "action.yml":
+                self.assertNotRegex(path.read_text(), r"uses:\s*bitwarden/", path.name)                           # the third-party action is used nowhere else
 
     def test_only_steps_that_run_a_command_receive_a_loaded_value_and_the_loader_carries_exactly_what_they_use(self):
         for name, doc in self.doc.items():
@@ -878,7 +889,7 @@ class BitwardenConsumerTests(unittest.TestCase):
                     self.assertFalse([k for step in body["steps"] for k in (step.get("env") or {}) if k in UUIDS], (name, job))
                     self.assertFalse([v for step in body["steps"] for v in (step.get("with") or {}).values() if "steps.bws_" in str(v)], (name, job))
                     continue
-                (at, loader), (_, retry) = found
+                ((at, loader),) = found
                 seen = set()
                 for i, step in enumerate(body["steps"]):
                     label = step.get("name") or step.get("uses")
@@ -886,15 +897,15 @@ class BitwardenConsumerTests(unittest.TestCase):
                     for key, value in (step.get("env") or {}).items():
                         if key in UUIDS:
                             m = self.OUTPUT.fullmatch(str(value).strip())
-                            self.assertTrue(m and m.group(2) == m.group(4) == key and (m.group(1), m.group(3)) == (loader["id"], retry["id"]), (name, job, label, key))
+                            self.assertTrue(m and m.group(2) == key and m.group(1) == loader["id"], (name, job, label, key))
                             got.add(key)
                             self.assertGreater(i, at, (name, job, label))                                          # the loader precedes every step that consumes its outputs
-                    if step is loader or step is retry:
+                    if step is loader:
                         continue
                     passed = {k: self.OUTPUT.fullmatch(str(v).strip()) for k, v in (step.get("with") or {}).items()}
                     passed = {k: m for k, m in passed.items() if m}
                     if step.get("uses") == TAILSCALE_ACTION:              # LIFE-31: the pinned join gets exactly its two OAuth values, from this job's loader
-                        self.assertEqual({k: (m.group(1), m.group(3), m.group(2), m.group(4)) for k, m in passed.items()}, {k: (loader["id"], retry["id"], n, n) for k, n in TAILSCALE_WITH.items()}, (name, job))
+                        self.assertEqual({k: (m.group(1), m.group(2)) for k, m in passed.items()}, {k: (loader["id"], n) for k, n in TAILSCALE_WITH.items()}, (name, job))
                         self.assertGreater(i, at, (name, job, label))
                         seen |= set(TAILSCALE_WITH.values())
                     else:
@@ -939,7 +950,7 @@ class ProfileSyncWorkflowTests(unittest.TestCase):
     def test_nothing_in_it_can_write_to_bitwarden(self):
         self.assertNotIn("bws secret", self.text)
         self.assertNotIn("sdk-sm/releases", self.text)                         # no CLI is installed: the pinned read-only action is the only Bitwarden contact
-        self.assertEqual(re.findall(r"uses:\s*(bitwarden/\S+)", self.text), ["bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793"] * 2)
+        self.assertEqual(re.findall(r"uses:\s*(\S*bws-load)", self.text), ["./.github/actions/bws-load"])
 
     def test_only_it_can_see_the_notion_sync_token(self):
         for path in self.root.glob("*.yml"):

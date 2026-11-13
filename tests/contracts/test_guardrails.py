@@ -190,11 +190,11 @@ class QuarantineAndSchedulerAndRegistries(unittest.TestCase):
         self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", safety))), ["LIFEOS_ACQ_SSH_PORT", "LIFEOS_BWS_RUNTIME_TOKEN"])
         for name in moved:
             self.assertNotIn(f"secrets.{name}", safety)                                                # no direct GitHub copy, so no fallback
-        self.assertEqual(re.findall(r"uses:\s*(bitwarden/\S+)", safety), ["bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793"] * 2)   # the reviewed v3.0.1 commit: the load and its one retry (D209)
+        self.assertEqual(re.findall(r"uses:\s*(\S*bws-load)", safety), ["./.github/actions/bws-load"])   # the reviewed v3.0.1 commit: the load and its one retry (D209)
         mappings = re.findall(r"^\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\s*>\s*\w+)\s*$", safety, re.M)
         self.assertEqual(sorted(mappings), sorted([f"{uuid} > {name}" for name, uuid in moved.items()]))      # exactly these 10 (the retry is a YAML alias of the load, LIFE-541); LIFEOS_ACQ_SSH_PORT and everything else is not fetched
         self.assertEqual(len(re.findall(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", safety)), 10)                     # 10, once (the retry is a YAML alias of the load; D209)
-        loader = safety.index("bitwarden/sm-action")
+        loader = safety.index("bws-load")
         self.assertTrue(all(loader < safety.index(f"lifeos.run {stage}") for stage in ("safety-sql-smoke", "safety-fit-golden", "safety-fit-capture")))   # loaded before any safety command
         self.assertEqual(re.search(r"options:\s*(\[[^\]]*\])", safety).group(1), '["all", "sql-smoke", "fit-golden", "fit-capture"]')            # dispatch choices unchanged
         self.assertNotRegex(safety, r"(?m)^\s*(workflow_run|repository_dispatch|push|pull_request\w*):")        # no new trigger or runtime path
@@ -202,10 +202,10 @@ class QuarantineAndSchedulerAndRegistries(unittest.TestCase):
         self.assertNotIn("lifeos.run", watchdog)
         self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", watchdog))), ["GITHUB_TOKEN", "LIFEOS_BWS_RUNTIME_TOKEN"])   # EDGE-1.3: the push topic now comes from Bitwarden; the GitHub copy of NTFY_TOPIC is no longer read here
         self.assertNotIn("secrets.NTFY_TOPIC", watchdog)
-        self.assertEqual(re.findall(r"uses:\s*(bitwarden/\S+)", watchdog), ["bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793"] * 2)   # the reviewed v3.0.1 commit, never a tag or branch: the load and its one retry (D209)
+        self.assertEqual(re.findall(r"uses:\s*(\S*bws-load)", watchdog), ["./.github/actions/bws-load"])   # the reviewed v3.0.1 commit, never a tag or branch: the load and its one retry (D209)
         self.assertEqual(re.findall(r"^\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\s*>\s*\w+)\s*$", watchdog, re.M), ["83c553e9-23a6-45aa-9006-b4db015f00ac > NTFY_TOPIC"])   # exactly one secret (once: the retry is a YAML alias of the load, LIFE-541), nothing else fetched
         self.assertEqual(re.findall(r"^\s*- cron:\s*\"([^\"]+)\"", watchdog, re.M), ["17 * * * *", "47 * * * *"])           # schedules unchanged
-        self.assertLess(watchdog.index("bitwarden/sm-action"), watchdog.index("lifeos.platform.gate --watch"))              # loaded before the first step that needs it
+        self.assertLess(watchdog.index("bws-load"), watchdog.index("lifeos.platform.gate --watch"))              # loaded before the first step that needs it
         self.assertEqual(len(re.findall(r"^\s*- cron:", (ROOT / ".github/workflows/hourly.yml").read_text(), re.M)), 3)   # D30: three triggers, one gate
 
     def test_machine_input_universes_are_frozen(self):
@@ -292,7 +292,7 @@ class InterviewJobIsIsolated(unittest.TestCase):
         block = self.block()
         self.assertIn("github.event_name == 'workflow_dispatch'", block)
         self.assertNotIn("\n    continue-on-error:", block)                    # a job-level continue-on-error would hide the result from the report job
-        self.assertEqual(block.count("continue-on-error: true"), 5)            # the four steps (D233: + the negative acceptance case) + the first Bitwarden load (its one retry fails the job, D209)
+        self.assertEqual(block.count("continue-on-error: true"), 4)            # the four steps (D233: + the negative acceptance case); the Bitwarden load and its retry are inside the local action (LIFE-631)
         self.assertIn("::warning", block)
 
 
