@@ -1,11 +1,11 @@
-"""LIFE-122 (Jim, Oct 26: "Approved, go"): the Granola bridge, automatic. Every synced meeting that has not been carried before is matched to its Interview OS round; one that matches
-exactly one round is written to the round's Full Transcript page (notes and summary above the word-for-word transcript when Oracle supplies them), read back, catalogued in Hostinger
-(`v7_meeting_catalog`, the dedupe key), and ONLY THEN purged from Oracle. A meeting that matches no round, or several, is never touched: it stays on Oracle and is counted.
+"""Granola bridge, automatic: write each synced meeting that matches exactly one Interview OS round to its Notion page, catalogue it, then purge it from Oracle (LIFE-122).
 
-Jim's safety rule (LIFE-37 comment 11261): purge only after (a) exactly one round matched, (b) the Notion page was written and read back, (c) the catalog row was saved and read back.
-Oracle announces what it can do in `list`'s `caps`: `purge_all` (delete everything held for a meeting) and `notes` (`show` also returns `notes` and `summary`). Without `purge_all` nothing is
-purged, so an Oracle that has not shipped the whole-meeting purge is never asked to do a partial one by mistake. Dry run unless live. Counts and fixed codes only; no title, name, address,
-id or transcript text leaves this module (the meeting id is stored as a 16-character hash)."""
+A meeting not carried before is matched to its Interview OS round; one that matches exactly one round is written to the round's Full Transcript page (notes and summary above the word-for-word transcript when Oracle supplies them), read back, catalogued in Hostinger (`v7_meeting_catalog`, the dedupe key), and ONLY THEN purged
+from Oracle. A meeting that matches no round, or several, is never touched: it stays on Oracle and is counted.
+Purge only after (a) exactly one round matched, (b) the Notion page was written and read back, (c) the catalog row was saved and read back (Jim's safety rule, LIFE-37 comment 11261). Oracle announces what it can do in `list`'s `caps`: `purge_all` (delete everything held for a meeting) and `notes` (`show` also returns `notes` and
+`summary`); without `purge_all` nothing is purged.
+Dry run unless live. Outputs: counts and fixed codes only; no title, name, address, id or transcript text leaves this module (the meeting id is stored as a 16-character hash)."""
+# LIFE-122 (Jim, Oct 26 2026: "Approved, go"). Without `purge_all` an Oracle that has not shipped the whole-meeting purge is never asked to do a partial one by mistake.
 import hashlib
 import os
 from datetime import datetime, timedelta

@@ -1,7 +1,7 @@
-"""The code map: one generated, machine-readable index of V7 so an agent can find things without reading the repo.  python -m lifeos.sources.devtools.codemap  (writes docs/CODEMAP.md and docs/codemap.json)
+"""The code map: one generated index of V7 (stages, packages, workflows, tables, decisions) so an agent finds things without reading the repo.
 
-Everything in it is derived from the code itself (module docstrings, the stage registry, the workflows, the CREATE TABLE statements, the decision index), so it cannot drift:
-the two files are generated on demand and not committed (LIFE-644; .gitignore), and `find` builds the map in memory. Names of things only; no data, no secrets, no values."""
+`python -m lifeos.sources.devtools.codemap` writes docs/CODEMAP.md and docs/codemap.json; `find <text>` builds the map in memory. Everything in it is derived from the code itself (module docstrings, the stage registry, the workflows, the CREATE TABLE statements, the decision index), so it cannot drift: the two files are
+generated on demand and not committed (LIFE-644; .gitignore). Names of things only; no data, no secrets, no values."""
 import ast
 import json
 import re

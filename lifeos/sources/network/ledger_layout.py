@@ -1,10 +1,9 @@
-"""Ledger page layout migration (Jim, Oct 27: the approved two-column page, and no marker line showing). Moves a flat v7.jd.1 Job Ledger page to v7.jd.2 (lifeos.platform.ledger_body). Dry unless live; counts only.
+"""Ledger page layout migration: move a flat v7.jd.1 Job Ledger page to the two-column v7.jd.2 layout (lifeos.platform.ledger_body).
 
-A page is touched only when its own blocks are EXACTLY what V7 wrote from the stored description (same types, same text): nothing Jim wrote can be moved, and a page that differs is counted and left alone.
-Per page, in this order, each step proven before the next: (1) the column_list is added right after the marker (the old description is still there), (2) its toggle is filled and read back, (3) the marker is
-replaced by the hidden one in place, (4) the old description blocks are deleted, (5) the top-level blocks are proven to be the marker, the column_list and exactly the blocks that followed the old description.
-An interrupted page is finished by the next run (the column_list is already there). The page's network state is cleared so the next surface run moves its leads block into the right column.
-Done pages are remembered in v7_ledger_layout (job key, page id, state) so a later run does not read them again."""
+Dry unless live; counts only. A page is touched only when its own blocks are EXACTLY what V7 wrote from the stored description (same types, same text): nothing Jim wrote can be moved, and a page that differs is counted and left alone.
+Per page, each step proven before the next: (1) the column_list is added right after the marker (the old description is still there), (2) its toggle is filled and read back, (3) the marker is replaced by the hidden one in place, (4) the old description blocks are deleted, (5) the top-level blocks are proven to be the marker, the
+column_list and exactly the blocks that followed the old description. An interrupted page is finished by the next run. The page's network state is cleared so the next surface run moves its leads block into the right column. Done pages are remembered in v7_ledger_layout (job key, page id, state)."""
+# Jim, Oct 27 2026: the approved two-column page, and no marker line showing.
 import json
 import os
 from datetime import datetime, timezone

@@ -1,9 +1,8 @@
-"""NET-2.2: how many job and pursuit targets have network leads, and how many each? Read-only, counts only, writes nothing, creates no table, prints no name, company or title.
+"""NET-2.2: how many job and pursuit targets have network leads, and how many each. Read-only, counts only.
 
-Three trigger classes (the product canon): an admitted job (published, stored Fit admission ADMIT), an applied or active-pursuit opportunity, and a scheduled or upcoming interview. The
-last two come from the accepted Hiring Pipeline snapshot (`lifeos.hiring.snapshot`, the private derivative row the pipeline already writes from the Job Ledger, the Hiring Pipeline pages
-and the Calendar): no Notion or Calendar read, no new source. The roster is the whole stored network. Matching is lifeos.network.match; this stage only reads and counts. A target that
-belongs to more than one class is counted in each class and once in the distinct total (by company key and role words)."""
+Writes nothing, creates no table, prints no name, company or title. Three trigger classes (the product canon): an admitted job (published, stored Fit admission ADMIT), an applied or active-pursuit opportunity, and a scheduled or upcoming interview. The last two come from the accepted Hiring Pipeline snapshot
+(`lifeos.hiring.snapshot`, the private derivative row the pipeline already writes from the Job Ledger, the Hiring Pipeline pages and the Calendar): no Notion or Calendar read, no new source.
+The roster is the whole stored network; matching is lifeos.network.match and this stage only reads and counts. A target in more than one class is counted in each class and once in the distinct total (by company key and role words)."""
 from datetime import date, datetime, timezone
 
 from lifeos.hiring import render as hiring_render, snapshot as hiring_snapshot

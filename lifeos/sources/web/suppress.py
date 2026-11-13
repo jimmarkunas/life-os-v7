@@ -1,5 +1,6 @@
-"""Cheap suppression BEFORE any description, Fit or Notion work. Only unequivocal misses are dropped: a title that names the target
-family always continues (so "Technical Program Manager, DevOps Platform" is never killed by "DevOps"), and anything ambiguous goes on to Fit."""
+"""Cheap suppression BEFORE any description, Fit or Notion work: only unequivocal misses are dropped.
+
+A title that names the target family always continues (so "Technical Program Manager, DevOps Platform" is never killed by "DevOps"), and anything ambiguous goes on to Fit."""
 from datetime import date
 import re
 

@@ -1,8 +1,8 @@
-"""LIFE-87 (D234): Build resume on the private Close service (same Edge gate, signing key and fresh-read rule as Mark as Sent, D221). Jim opens one exact open Job Ledger
-job and presses Build. The confirm POST re-reads the job, takes its description from the page V7 published (the v7-jd sections), and hands it to the Oracle resume
-worker over its private socket. The worker writes the resume with Luna under Jim's own resume rules and evidence, checks it with the claims guard, and returns the
-.docx. This attaches the .docx to the job's own Ledger page and shows success only after reading it back. GET never writes. Fixed codes only; no resume text,
-evidence or contact detail ever reaches a log."""
+"""Build resume on the private Close service: a tailored .docx for one exact open Job Ledger job, attached to its page (D234).
+
+Same Edge gate, signing key and fresh-read rule as Mark as Sent (D221). Jim presses Build; the confirm POST re-reads the job, takes its description from the page V7 published (the v7-jd sections) and hands it to the Oracle resume worker over its private socket. The worker writes the resume under Jim's resume rules and evidence,
+checks it with the claims guard and returns the .docx, which is attached to the job's Ledger page; success is shown only after reading it back. GET never writes.
+Outputs: fixed codes only; no resume text, evidence or contact detail reaches a log. Pointer: D234, LIFE-87."""
 import base64
 from html import escape as e
 import json

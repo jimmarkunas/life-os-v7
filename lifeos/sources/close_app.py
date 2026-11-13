@@ -1,6 +1,8 @@
-"""LIFE-47 S2 (Career): the application behind the private Close Opportunity service (the Edge gate in lifeos/edge/close_gate.py calls `handle`); a source adapter (D17): the one place that composes the Ledger, the opportunity pages and the S1 decision rules. One exact pursuit is resolved by its Job Ledger row's page id (LIFE-353: the decision lives on
-the row; no page moves), shown, reviewed and closed with one of the six outcomes; success is reported only after the S1 read-back. Nothing here is a second rule engine: identity, ambiguity, schema, idempotency,
-conflict and read-back all belong to lifeos.hiring.decision. GET and the review step never write. Mark Complete (/complete) records one opportunity page's primary action as done in that page's own fold. Manage and Reopen (/manage) live in manage_app. Fixed codes only."""
+"""The private Close Opportunity service: shows one Job Ledger pursuit and closes it with one of six outcomes (LIFE-47 S2).
+
+The application behind the Edge gate in lifeos/edge/close_gate.py (which calls `handle`); a source adapter (D17): the one place that composes the Ledger, the opportunity pages and the S1 decision rules. One exact pursuit is resolved by its Job Ledger row's page id (LIFE-353: the decision lives on the row; no page moves), shown,
+reviewed and closed; success is reported only after the S1 read-back. Nothing here is a second rule engine: identity, ambiguity, schema, idempotency, conflict and read-back belong to lifeos.hiring.decision. GET and the review step never write.
+Mark Complete (/complete) records one opportunity page's primary action as done in that page's own fold. Manage and Reopen (/manage) live in manage_app. Outputs: fixed codes only. Pointer: D17, LIFE-47."""
 import hashlib
 import importlib
 import re

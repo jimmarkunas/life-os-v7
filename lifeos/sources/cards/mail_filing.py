@@ -1,6 +1,8 @@
-"""LIFE-149 (Jim, Oct 27): file the Physical Mail vendor's notices. Mail from the vendor's no-reply address is marked read and moved out of the Inbox into the "Physical Mail" label (a Gmail folder).
-Separate from the read-only Physical Mail package (lifeos.physmail, which a test keeps free of any label or read-state change), which it never changes: that stage reads by sender, not by label or read state, so filing cannot alter what it sees. Runs after it in the mail job.
-Only mail whose From address is exactly the vendor's no-reply address; nothing is deleted or trashed; every move is read back. Dry run unless live; counts and fixed codes only."""
+"""File the Physical Mail vendor's notices: mark read and move them from the Inbox to the "Physical Mail" Gmail label (LIFE-149).
+
+Only mail whose From address is exactly the vendor's no-reply address is touched; nothing is deleted or trashed; every move is read back. Dry run unless live. Outputs: counts and fixed codes only.
+Runs after the read-only Physical Mail package (lifeos.physmail) in the mail job and never changes it: that stage reads by sender, not by label or read state, so filing cannot alter what it sees (a test keeps physmail free of any label or read-state change)."""
+# LIFE-149 (Jim, Oct 27 2026).
 import os
 from email.utils import getaddresses
 

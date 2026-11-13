@@ -1,11 +1,12 @@
-"""LIFE-225 (ARCH-04), simplified by delivery flow v3 (Jim, Nov 9 2026): one versioned, deterministic, offline readiness validator for coding agents and CI. Stdlib only, no network, no state of its own.
+"""Offline readiness validator for coding agents and CI: is a LIFE issue ready to start (LIFE-225 ARCH-04, delivery flow v3).
 
-Exactly three things refuse (exit 2): the key is valid, the ticket has at least one Done-when line (a Given/When/Then row with any id or none, or a bullet under "Done when"), and every `Blocks` predecessor is Done. Anything else prints `warn v1 <code> <field>` on stderr and still exits 0 (`ready v1`).
-  issue      a normalized LIFE issue record; issue-key a LIVE issue read from Jira by key (read-only GET with JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN); issue-json FILE a saved REST v3 issue
-  issue-mcp  the unmodified Atlassian MCP getJiraIssue result saved to FILE by the session (no Jira credential); prints SOURCE mcp-read; a file older than 15 minutes is a warn
-  repo       the global source index still points at real files with an owner and an authority, inside the size limit
-Unreadable input or an error refuses (exit 2) before the caller mutates anything.
-Usage: python -m lifeos.sources.devtools.readiness issue FILE | issue-key KEY | issue-json FILE | issue-mcp FILE KEY | repo [ROOT]   (FILE is JSON)"""
+Versioned, deterministic, stdlib only, no network, no state of its own. Exactly three things refuse (exit 2): the key is valid, the ticket has at least one Done-when line, and every `Blocks` predecessor is Done. Anything else prints `warn v1 <code> <field>` on stderr and exits 0 (`ready v1`). Unreadable input or an error refuses
+(exit 2) before the caller mutates anything.
+Usage: python -m lifeos.sources.devtools.readiness issue FILE | issue-key KEY | issue-json FILE | issue-mcp FILE KEY | repo [ROOT]   (FILE is JSON)
+  issue      a normalized LIFE issue record; issue-key a LIVE issue read from Jira by key (read-only GET with JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN); issue-json a saved REST v3 issue
+  issue-mcp  the unmodified Atlassian MCP getJiraIssue result saved to FILE (no Jira credential; prints SOURCE mcp-read; a file older than 15 minutes is a warn)
+  repo       the global source index still points at real files with an owner and an authority, inside the size limit"""
+# LIFE-225 (ARCH-04), simplified by delivery flow v3 (Jim, Nov 9 2026). A Done-when line is a Given/When/Then row with any id or none, or a bullet under "Done when".
 import json
 import re
 import sys

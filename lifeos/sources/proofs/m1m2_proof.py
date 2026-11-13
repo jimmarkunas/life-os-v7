@@ -1,8 +1,8 @@
-"""LIFE-78 bounded synthetic M1/M2 exit: ONE finite case, an acquired vacancy to a second interview round, through real V7 code on native Notion QA
-surfaces. Manual only: interview-proof with `confirm = M1M2` (Interview token only). Every write goes to a FRESH sandbox under the QA Interview OS parent:
-its own Job Ledger and Recruiters data sources, a synthetic Daily Report page (the Hiring card's region) and its own Hiring Pipeline pages. Only the
-outside sources are synthetic and in memory (the fetched page, the Fit profile, mail, Calendar; m1m2_fixture.json); nothing real is read or written,
-nothing is sent or submitted. Independent read-back with a new client; PASS/FAIL per assertion, counts only. Gate B machine evidence, not Gate A."""
+"""Bounded synthetic M1/M2 exit: one acquired vacancy to a second interview round, through real V7 code on native Notion QA surfaces (LIFE-78).
+
+Manual only: interview-proof with `confirm = M1M2` (Interview token only). Every write goes to a FRESH sandbox under the QA Interview OS parent: its own Job Ledger and Recruiters data sources, a synthetic Daily Report page (the Hiring card's region) and its own Hiring Pipeline pages. Only the outside sources are synthetic and in
+memory (the fetched page, the Fit profile, mail, Calendar; m1m2_fixture.json); nothing real is read or written, nothing is sent or submitted.
+Outputs: independent read-back with a new client; PASS/FAIL per assertion, counts only. Gate B machine evidence, not Gate A."""
 import copy
 import json
 import pathlib
