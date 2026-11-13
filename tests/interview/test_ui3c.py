@@ -379,16 +379,12 @@ class Reconcile(unittest.TestCase):
         self.assertEqual(create.refresh(client, page_id, opportunity((view.Round("round-1", 1, None, None),)), True, {"writes": 0}),
                          "parent_unchanged")
 
-    def test_a_human_edit_another_job_or_an_unknown_layout_stops_without_writing(self):
-        for mode, code in (("edit", "machine_region_edited"), ("job", "identity_mismatch"), ("legacy", "parent_legacy_layout"),
-                           ("notes", "parent_unrecognized")):
+    def test_another_job_or_an_unknown_layout_stops_without_writing(self):
+        """LIFE-658: a human edit of the region is no longer a stop; it is preserved and repaired (tests/interview/test_repair.py)."""
+        for mode, code in (("job", "identity_mismatch"), ("legacy", "parent_legacy_layout"), ("notes", "parent_unrecognized")):
             with self.subTest(mode=mode):
                 client, page_id = written()
                 current = opportunity(compensation="$95/hr")
-                if mode == "edit":
-                    columns = [b for b in client.blocks[page_id] if b["type"] == "column_list"][-1]
-                    left = client.blocks[client.blocks[columns["id"]][0]["id"]]
-                    left.append(block("Jim typed here", id="typed"))
                 if mode == "job":
                     current = view.Opportunity("Other", "Role", "other-job", None, None, "not_linked", None, "root")
                 if mode == "legacy":

@@ -159,9 +159,15 @@ class SentMailFailure(unittest.TestCase):
             self.assertEqual(self.exit_code(counts)[0], 1, message)
 
     def test_a_blocked_page_still_counts_as_failed(self):
-        """machine_region_edited is permanent too, but nothing on the page or card shows it (only the log's counts), so it stays a failure."""
+        """A page whose structure is not recognisable (machine_region_edited) shows nothing on the page or card (only the log's counts), so it stays a failure."""
         counts, _ = Run(stage_counts={"blocked": 1, "why": {"machine_region_edited": 1}})()
         self.assertEqual((counts["failed"], counts["permanent"]), (1, {}))
+
+    def test_a_repaired_page_is_counted_on_its_own_and_exits_0(self):
+        """LIFE-658: an edit in a machine region is preserved and repaired, the page shows it, and the step no longer fails for it."""
+        counts, _ = Run(stage_counts={"blocked": 0, "repaired_edits": 2, "why": {"round_rescheduled": 1, "parent_refreshed": 1}})()
+        self.assertEqual((counts["failed"], counts["repaired_edits"]), (0, 2))
+        self.assertEqual(self.exit_code(counts)[0], 0)
 
 
 class Ordinal(unittest.TestCase):

@@ -64,12 +64,13 @@ class Confirm(unittest.TestCase):
         self.assertEqual((result["writes_planned"], result["writes"], result["why"].get("confirm_allowed")), (1, 0, 1))
         self.assertEqual({k: [dict(b) for b in v] for k, v in client.blocks.items()}, before)
 
-    def test_a_human_edit_in_a_machine_block_stops_with_no_write(self):
+    def test_a_human_edit_in_a_machine_block_is_repaired_not_a_stop(self):
+        """LIFE-658: the edit is preserved and the round is dated (details in tests/interview/test_repair.py)."""
         client, _, child = pending_round()
         client.blocks[client.blocks[child][1]["id"]][1]["paragraph"]["rich_text"] = [{"plain_text": "When: Jim wrote this"}]
         result = move(client, child)
-        self.assertEqual((result["writes"], result["why"].get("machine_region_edited")), (0, 1))
-        self.assertIsNone(notion.child_scan(client, "created-1").items[0].interview_date)
+        self.assertEqual((result["why"].get("round_confirmed"), result["why"].get("machine_region_edited"), result["repaired_edits"]), (1, None, 1))
+        self.assertEqual(notion.child_scan(client, "created-1").items[0].interview_date, DATE)
 
     def test_a_changed_live_note_during_the_write_is_reported(self):
         client, _, child = pending_round()
