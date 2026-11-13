@@ -92,6 +92,15 @@ class FixedCode(unittest.TestCase):
         with fixed(ValueError, Boom, "X_FAILED"):
             self.assertTrue(True)
 
+    def test_an_error_named_in_keep_passes_through_unchanged_before_the_catch_is_tried(self):
+        with self.assertRaises(KeyError):
+            with fixed(Exception, Boom, "X_FAILED", keep=KeyError):
+                raise KeyError("already coded")
+        with self.assertRaises(Boom) as caught:
+            with fixed(Exception, Boom, "X_FAILED", keep=KeyError):
+                raise ValueError("anything else")
+        self.assertEqual(str(caught.exception), "X_FAILED")
+
 
 class PlainText(unittest.TestCase):
     def test_plain_text_is_preferred_then_the_text_content_and_non_objects_are_skipped(self):
