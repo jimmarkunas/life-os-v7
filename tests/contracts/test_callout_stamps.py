@@ -1,6 +1,6 @@
 """LIFE-609: every card that writes a Daily Report callout shows when it was last updated, in Central Time ("Updated <h:mm AM/PM> CT"). A region added to the router without a rule here fails.
 
-Eight cards have a small pure function for that line, so the real function is called with a fixed time and its output must match. The others (mail, iMessage comms, Oracle, Hiring, AI capacity,
+Seven cards have a small pure function for that line, so the real function is called with a fixed time and its output must match. The others (mail, iMessage comms, Oracle, Hiring, AI capacity,
 Recruiter Outreach) build the line deep inside a larger render that needs a full fixture, so for them the module's code is checked for the stamp (a string that says "Updated" and a time ending
 "CT"); their own card tests exercise the real output. Names and times only."""
 import ast
@@ -12,7 +12,6 @@ from zoneinfo import ZoneInfo
 
 from lifeos.agenda import card as agenda
 from lifeos.amazon import card as amazon
-from lifeos.attention import card as attention
 from lifeos.bills import card as bills
 from lifeos.dcc import header as dcc
 from lifeos.jira import card as jira
@@ -38,7 +37,6 @@ CALLED = {
     router.CALENDAR_REGION: lambda: agenda._status({"taken_at": NOW.isoformat()}, False),
     router.BILLS_REGION: lambda: bills._status({"taken_at": NOW.isoformat()}, False),
     router.AMAZON_REGION: amazon_line,
-    router.ATTENTION_REGION: lambda: attention._status(2, NOW),
     router.DCC_REGION: lambda: dcc.text(NOW),
     router.REPO_REGION: branches_line,
     "MegIBOW": lambda: megibow.status(NOW),
@@ -52,6 +50,9 @@ STRUCTURAL = {
     router.RECRUITER_OUTREACH_REGION: "lifeos/recruiters/outreach_card.py",
     "AI Capacity": "lifeos/jobs/fit/capacity_card.py",
 }
+
+
+UNWRITTEN = {router.ATTENTION_REGION}      # LIFE-645: V7 retired the card that wrote it; the callout stays on the page, protected, and nothing stamps it
 
 
 def carries_the_stamp(path):
@@ -80,7 +81,7 @@ class EveryCalloutShowsWhenItWasUpdated(unittest.TestCase):
                 self.assertTrue(carries_the_stamp(path), f"{path} writes a callout without an 'Updated <time> CT' line")
 
     def test_every_router_region_has_a_rule_so_a_new_card_cannot_skip_the_stamp(self):
-        covered = set(CALLED) | set(STRUCTURAL)
+        covered = set(CALLED) | set(STRUCTURAL) | UNWRITTEN
         self.assertEqual(sorted(set(router.OWNERS) - covered), [], "a region has no stamp rule: add it to CALLED or STRUCTURAL in this test")
 
     def test_the_negative_control_a_module_without_the_stamp_is_caught(self):

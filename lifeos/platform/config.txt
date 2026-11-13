@@ -34,7 +34,9 @@ LIVE flag:workflow Run switch: write for real instead of a dry run
 NOTION_BILLS_DATA_SOURCE_ID input Notion data source id (bills)
 NOTION_BILLS_TOKEN secret Notion integration token for the bills integration
 NOTION_FIT_SYNC_TOKEN secret Notion integration token for the fit_sync integration
+NTFY_TOPIC secret Phone push topic name (the topic name is the secret)
 OPEN_JOBS_CONTACT secret:probe Contact line sent with open-jobs requests
+OUTLOOK_CLIENT_ID input Outlook setting (client id)
 OUTLOOK_REPLACE flag:run Outlook setting (replace)
 OUTLOOK_WRITE flag:run Outlook setting (write)
 PAGES workflow_only:workflow Input of the network run: most pages one run may read

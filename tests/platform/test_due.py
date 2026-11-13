@@ -213,7 +213,7 @@ class TableMatchesTheWorkflow(unittest.TestCase):
     def test_every_job_and_the_recruiters_mail_step_run_every_hour_since_life_630(self):
         table = due.load_table()
         self.assertEqual({job: row for job, row in table.items() if row != {"every_hours": 1}}, {})                 # Jim, Nov 12 2026: everything hourly until the codebase has shrunk
-        self.assertEqual(len(table), 14)
+        self.assertEqual(len(table), 13)
         self.assertEqual(json.loads(due.TABLE.read_text())["steps"]["recruiters_mail"]["every_hours"], 1)
 
 

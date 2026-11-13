@@ -354,12 +354,9 @@ class CardRunTests(unittest.TestCase):
 
 
 class WiringTests(unittest.TestCase):
-    def test_the_cli_stages_exist_and_physical_mail_stays_out_of_attention(self):
+    def test_the_cli_stages_exist(self):
         from lifeos import run
-        from lifeos.attention import policy
         self.assertTrue({"mail-alerts", "mail-card"} <= set(run.STAGES))
-        verdict = policy.decide(f"notices{AT}{events.DOMAIN}", "Anything at all")
-        self.assertNotEqual(verdict[0], "ADMIT")
 
     def test_no_literal_vendor_domain_and_no_block_id_in_the_repository_text(self):
         root = pathlib.Path(__file__).resolve().parents[2]

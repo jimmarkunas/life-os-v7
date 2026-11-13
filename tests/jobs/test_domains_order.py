@@ -14,7 +14,7 @@ from lifeos.platform import router
 
 WORKFLOW = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows" / "domains.yml"
 WRITER = {router.JIRA_REGION: "jira", router.CALENDAR_REGION: "agenda", router.BILLS_REGION: "bills", router.AMAZON_REGION: "amazon", router.MAIL_ALERTS_REGION: "mail",
-          router.ATTENTION_REGION: "attention", router.HIRING_REGION: "hiring", router.DCC_REGION: "dcc"}          # the job that writes each region
+          router.HIRING_REGION: "hiring", router.DCC_REGION: "dcc"}          # the job that writes each region
 # job -> the jobs whose regions it compares before and after its own write. Empty since LIFE-613: bills, agenda, imessage (Communications and Oracle Cloud) and hiring joined amazon, mail, attention
 # and dcc on the scope guard. A card that is added with a comparison puts its entry here and must then wait for what it compares.
 COMPARES = {}
@@ -59,7 +59,7 @@ class ComparingCardsAreOrdered(unittest.TestCase):
             self.assertEqual(self.graph[job], {"gate"}, job)
 
     def test_dcc_still_runs_after_every_card_it_builds_from(self):
-        for job in ("jira", "agenda", "bills", "amazon", "attention", "mail", "hiring", "imessage"):
+        for job in ("jira", "agenda", "bills", "amazon", "mail", "hiring", "imessage"):
             self.assertTrue(waits_for(self.graph, "dcc", job), job)
 
     def test_a_comparing_card_that_does_not_wait_for_what_it_compares_is_caught(self):

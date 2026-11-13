@@ -9,7 +9,6 @@
     "amazon_retention": {"every_hours": 1},
     "mail": {"every_hours": 1},
     "hiring": {"every_hours": 1},
-    "attention": {"every_hours": 1},
     "megibow": {"every_hours": 1},
     "dcc": {"every_hours": 1},
     "recruiters": {"every_hours": 1},

@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 from unittest import mock
 from zoneinfo import ZoneInfo
 
-from lifeos.attention import card as attention_card
 from lifeos.dcc import card
 from lifeos.platform import report_region, router
 from lifeos.platform.notion_client import NotionError
@@ -81,7 +80,7 @@ class ClassifyTests(unittest.TestCase):
         self.assertEqual(card.classify({"status": "Calendar (Updated 10:06 PM CT)"}, NOW)[0], "fresh")
 
     def test_degraded_stale_missing_and_unreadable_are_never_fresh(self):
-        self.assertEqual(card.classify({"status": "DEGRADED · Attention sync failed at 10:05 PM CT · showing the last accepted exceptions"}, NOW), ("degraded", "10:05 PM"))
+        self.assertEqual(card.classify({"status": "DEGRADED · Amazon sync failed at 10:05 PM CT · showing the last accepted orders"}, NOW), ("degraded", "10:05 PM"))
         self.assertEqual(card.classify({"status": "STALE · last accepted Oct 11 9:44 AM CT"}, NOW)[0], "stale")
         self.assertEqual(card.classify({"status": "no stamp here"}, NOW), ("unknown", None))
         self.assertEqual(card.classify({"unreadable": True}, NOW)[0], "unreadable")
@@ -120,32 +119,32 @@ class ComposeTests(unittest.TestCase):
                 "Bills": {"status": "Updated 10:07 PM CT · 0 due through one week from now · 26 bills due · 26 overdue · Bill Tracker", "lines": [],
                           "links": {"Updated 10:07 PM CT · 0 due through one week from now · 26 bills due · 26 overdue · Bill Tracker": "https://example.invalid/tracker"}},
                 "Mail Alerts": {"status": "Updated 10:12 PM CT · 13 waiting · 0 need review", "lines": []},
-                "Amazon": {"status": "Updated 10:08 PM CT · 0 in transit", "lines": []}, "Attention": {"status": "Updated 10:05 PM CT · 23 active exceptions", "lines": []},
+                "Amazon": {"status": "Updated 10:08 PM CT · 0 in transit", "lines": []},
                 "Hiring Pipeline": {"status": "Updated 10:13 PM CT · 5 active", "lines": []}}
         base.update(over)
         return base
 
     def test_everything_fresh_binds_each_number_to_its_own_card_and_links_the_real_records(self):
         m = card.compose(self.areas(), NOW)
-        self.assertEqual(m["health"], "Source health and freshness · 7 of 7 current")
+        self.assertEqual(m["health"], "Source health and freshness · 6 of 6 current")
         self.assertIn("Calendar 10:06 PM", m["detail"][0])
-        self.assertTrue(m["detail"][1].startswith("✅ 7 of 7 source cards current"))
+        self.assertTrue(m["detail"][1].startswith("✅ 6 of 6 source cards current"))
         self.assertNotIn("focus", m)
         self.assertNotIn("sub", m)
         self.assertNotIn("items", m)
         self.assertNotIn("hiring", m)
-        self.assertEqual([(v, n) for v, n, _ in m["kpis"]], [("26", "Bills due"), ("6", "Jira Overdue / Blocked"), ("23", "Attention items"), ("13", "Mail waiting")])
+        self.assertEqual([(v, n) for v, n, _ in m["kpis"]], [("26", "Bills due"), ("6", "Jira Overdue / Blocked"), ("13", "Mail waiting")])
         self.assertEqual(m["kpis"][1][2], "Jira · 10:05 PM CT")                                          # the combined count, labelled as such, with its source stamp
 
     def test_a_degraded_or_stale_card_is_named_in_the_closed_summary_and_never_shows_a_number_or_a_zero(self):
-        areas = self.areas(Attention={"status": "DEGRADED · Attention sync failed at 10:05 PM CT · showing the last accepted exceptions", "lines": []},
+        areas = self.areas(Amazon={"status": "DEGRADED · Amazon sync failed at 10:05 PM CT · showing the last accepted orders", "lines": []},
                            Bills={"status": "STALE · last accepted Oct 11 9:44 AM CT · 4 bills due · 4 overdue", "lines": []})
         m = card.compose(areas, NOW)
-        self.assertEqual(m["health"], "Source health and freshness · 5 of 7 current · Bills STALE · Attention DEGRADED")
-        self.assertTrue(m["detail"][1].startswith("⚠️ 5 of 7"))
-        self.assertEqual([(v, t) for v, n, t in m["kpis"] if n in ("Bills due", "Attention items")], [("—", "STALE · Bills (last 9:44 AM)"), ("—", "DEGRADED · Attention (last 10:05 PM)")])
+        self.assertEqual(m["health"], "Source health and freshness · 4 of 6 current · Bills STALE · Amazon DEGRADED")
+        self.assertTrue(m["detail"][1].startswith("⚠️ 4 of 6"))
+        self.assertEqual([(v, t) for v, n, t in m["kpis"] if n == "Bills due"], [("—", "STALE · Bills (last 9:44 AM)")])
         self.assertIn("Bills STALE", m["health"])
-        self.assertIn("Attention DEGRADED", m["health"])
+        self.assertIn("Amazon DEGRADED", m["health"])
 
     def test_a_missing_gtv_action_or_an_unreadable_jira_card_says_so_instead_of_choosing_one(self):
         m = card.compose(self.areas(Jira={"status": "JIRA Execution (Updated 10:05 PM CT)", "lines": [SPRINT]}), NOW)
@@ -160,11 +159,11 @@ class ComposeTests(unittest.TestCase):
         self.assertEqual(m["kpis"][1][2], "UNREADABLE · Jira")
 
     def test_nothing_flagged_says_so_and_a_fresh_zero_is_a_zero(self):
-        areas = self.areas(Bills={"status": "Updated 10:07 PM CT · 0 due · 0 bills due · 0 overdue", "lines": []}, Attention={"status": "Updated 10:05 PM CT · No active exceptions.", "lines": []},
+        areas = self.areas(Bills={"status": "Updated 10:07 PM CT · 0 due · 0 bills due · 0 overdue", "lines": []},
                            Jira={"status": "JIRA Execution (Updated 10:05 PM CT)", "lines": ["JFM Sprint 15 · 0 Overdue/Blocked · 1 Today"]})
         areas["Mail Alerts"] = {"status": "Updated 10:12 PM CT · 0 waiting · 0 need review", "lines": []}
         m = card.compose(areas, NOW)
-        self.assertEqual([v for v, _, _ in m["kpis"]], ["0", "0", "0", "0"])                   # a verified zero is a zero, Jira included
+        self.assertEqual([v for v, _, _ in m["kpis"]], ["0", "0", "0"])                   # a verified zero is a zero, Jira included
 
     def test_the_jira_card_shows_its_combined_overdue_blocked_count_and_never_a_number_it_cannot_verify(self):
         kpi = lambda areas: card.compose(areas, NOW)["kpis"][1]
@@ -177,18 +176,13 @@ class ComposeTests(unittest.TestCase):
         self.assertEqual(kpi(self.areas(Jira={"status": "JIRA Execution (Updated 10:05 PM CT)", "lines": [GTV]})), ("—", "Jira Overdue / Blocked", "Jira · 10:05 PM CT · count not reported"))
         self.assertEqual(kpi(self.areas(Jira={"status": "JIRA Execution (Updated 10:05 PM CT)", "lines": [GTV, "JFM Sprint 15 · many Overdue/Blocked"]}))[0], "—")
 
-    def test_the_counts_it_reads_match_what_the_attention_card_really_writes(self):
-        text = report_region.plain(attention_card.render(23, NOW)[0])
-        self.assertEqual(card.compose(self.areas(Attention={"status": text, "lines": []}), NOW)["kpis"][2][0], "23")
-
-    def test_render_places_source_health_under_heading_above_four_kpis(self):
+    def test_render_places_source_health_under_heading_above_three_kpis(self):
         health, kpi_row = card.render(card.compose(self.areas(), NOW))
         self.assertEqual(health["type"], "toggle")
-        self.assertEqual([c["column"]["width_ratio"] for c in kpi_row["column_list"]["children"]], [0.25] * 4)
-        self.assertEqual([c["column"]["width_ratio"] for c in kpi_row["column_list"]["children"]], [0.25] * 4)
+        self.assertEqual([c["column"]["width_ratio"] for c in kpi_row["column_list"]["children"]], [0.3333] * 3)
         kpis = [c["column"]["children"][0]["callout"] for c in kpi_row["column_list"]["children"]]
-        self.assertEqual([[b["type"] for b in k["children"]] for k in kpis], [["heading_3", "paragraph", "paragraph"]] * 4)
-        self.assertEqual([k["icon"]["external"]["url"].rsplit("/", 1)[1] for k in kpis], ["credit-card_gray.svg", "arrow-right_gray.svg", "arrow-up_gray.svg", "inbox_gray.svg"])
+        self.assertEqual([[b["type"] for b in k["children"]] for k in kpis], [["heading_3", "paragraph", "paragraph"]] * 3)
+        self.assertEqual([k["icon"]["external"]["url"].rsplit("/", 1)[1] for k in kpis], ["credit-card_gray.svg", "arrow-right_gray.svg", "inbox_gray.svg"])
 
 
 class RunTests(unittest.TestCase):
@@ -208,9 +202,9 @@ class RunTests(unittest.TestCase):
         self.assertNotIn("Protected DCC content", str(self.shape(notion)))                                                  # the old flat line is gone
         health, kpi_row = (b["id"] for b in kids[1:])
         self.assertEqual(len(notion.children[health]), 2)
-        self.assertEqual([len(notion.children[c["id"]]) for c in notion.children[kpi_row]], [1, 1, 1, 1])
+        self.assertEqual([len(notion.children[c["id"]]) for c in notion.children[kpi_row]], [1, 1, 1])
         self.assertEqual({k: notion.full_tree(k) for k in before}, before)
-        self.assertEqual((counts["fresh"], counts["not_current"], counts["removed"]), (6, 1, 1))
+        self.assertEqual((counts["fresh"], counts["not_current"], counts["removed"]), (5, 1, 1))
         self.assertEqual({v for k, v in counts["states"].items() if k != "Hiring Pipeline"}, {"fresh"})
         others = {k["id"] for key in before for k in notion.children.get(key, [])}
         self.assertFalse({p.split("/")[2] for m, p in notion.log if m == "DELETE"} & others)
@@ -237,7 +231,7 @@ class RunTests(unittest.TestCase):
         self.assertNotIn("Primary focus", text)
         self.assertNotIn("Suggested next decisions", text)
         self.assertIn("Hiring Pipeline unset", text)
-        self.assertIn("Source health and freshness · 6 of 7 current · Hiring Pipeline UNSET", text)
+        self.assertIn("Source health and freshness · 5 of 6 current · Hiring Pipeline UNSET", text)
         self.assertNotIn("Current focus", text)
 
     def test_an_install_that_does_not_read_back_complete_keeps_the_old_lines_and_fails(self):
@@ -292,7 +286,7 @@ class RunTests(unittest.TestCase):
         notion = page()
         go(notion)
         kpi_row = notion.children["dcc-callout"][2]["id"]
-        kpi = notion.children[notion.children[notion.children[kpi_row][3]["id"]][0]["id"]]               # the Mail waiting card's blocks
+        kpi = notion.children[notion.children[notion.children[kpi_row][2]["id"]][0]["id"]]               # the Mail waiting card's blocks
         kpi.append(text_block(notion, "human-note", "paragraph", "my own note"))
         mark = len(notion.log)
         with self.assertRaises(NotionError) as error:
@@ -305,7 +299,7 @@ class RunTests(unittest.TestCase):
         notion = page()
         go(notion)
         kpi_row = notion.children["dcc-callout"][2]["id"]
-        last = notion.children[notion.children[notion.children[kpi_row][3]["id"]][0]["id"]]
+        last = notion.children[notion.children[notion.children[kpi_row][2]["id"]][0]["id"]]
         last[0]["type"], last[0]["paragraph"] = "paragraph", {"rich_text": []}                         # the last card's number block was changed
         notion.children["bills-callout"][1] = text_block(notion, "bills-status-old", "paragraph", "Updated 10:07 PM CT · 0 due · 7 bills due · 7 overdue · Bill Tracker")      # an earlier card has new data
         mark = len(notion.log)

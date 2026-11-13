@@ -1,7 +1,0 @@
-{
-  "ATTENTION_READBACK_MISMATCH": ["attention", "bug", false, "The card did not read back as written.", "Check the page."],
-  "ATTENTION_READ_FAILED": ["attention", "retry", false, "The attention source could not be read.", "None; retried next tick."],
-  "ATTENTION_READ_INCOMPLETE": ["attention", "degraded", false, "The attention source read did not finish.", "None; retried next tick."],
-  "ATTENTION_ROW_INVALID": ["attention", "bug", false, "A source row did not match the schema.", "Check the source database."],
-  "ATTENTION_SCHEMA_MISMATCH": ["attention", "blocked", false, "The source database no longer has the properties the card reads.", "Restore the properties."]
-}

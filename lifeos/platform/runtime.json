@@ -1,7 +1,6 @@
 {"hosts": ["github", "oracle", "mac", "dev"], "modules": [
   {"module": "lifeos/agenda", "host": ["github"]},
   {"module": "lifeos/amazon", "host": ["github"]},
-  {"module": "lifeos/attention", "host": ["github"]},
   {"module": "lifeos/bench", "host": ["github"]},
   {"module": "lifeos/bills", "host": ["github"]},
   {"module": "lifeos/buzz", "host": ["oracle"]},

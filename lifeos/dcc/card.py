@@ -17,16 +17,16 @@ TITLE = router.DCC_REGION
 MODULE = router.OWNERS[TITLE]
 FRESH_MINUTES = 90                                        # an hourly card is current this long after its stamp
 # LIFE-612: a card that runs less often than every tick is current for the longest gap between its runs plus the same 90 minutes, read from the due-time table (lifeos/platform/due_table.json).
-JOB_OF = {"Calendar": "outlook", "Jira": "jira", "Bills": "bills", "Mail Alerts": "mail", "Amazon": "amazon", "Attention": "attention", "Hiring Pipeline": "hiring"}
+JOB_OF = {"Calendar": "outlook", "Jira": "jira", "Bills": "bills", "Mail Alerts": "mail", "Amazon": "amazon", "Hiring Pipeline": "hiring"}
 STAMP = re.compile(r"Updated (\d{1,2}):(\d{2}) ([AP]M) CT")
 TIME = re.compile(r"(\d{1,2}):(\d{2}) ([AP]M) CT")          # the clock in a DEGRADED or STALE line ("failed at 10:05 PM CT")
-# (label, block id secret, where the status text is). "head": the callout's heading carries it; "line": the first text line under the heading; "own": the callout's own text (the headless Attention callout, D131);
-# "floating": the Hiring Pipeline's heading stamp and table rows.
+# (label, block id secret, where the status text is). "head": the callout's heading carries it; "line": the first text line under the heading; "floating": the Hiring Pipeline's heading stamp and table rows.
+# LIFE-645: V7 retired the Attention card, so the Attention callout is no longer a source (it would read STALE for good); it stays a protected region.
 AREAS = (("Calendar", "CALENDAR_CARD_BLOCK_ID", router.CALENDAR_REGION, "head"), ("Jira", "JIRA_CARD_BLOCK_ID", router.JIRA_REGION, "head"),
          ("Bills", "BILLS_CARD_BLOCK_ID", router.BILLS_REGION, "line"), ("Mail Alerts", "MAIL_ALERTS_CARD_BLOCK_ID", router.MAIL_ALERTS_REGION, "line"),
-         ("Amazon", "AMAZON_CARD_BLOCK_ID", router.AMAZON_REGION, "line"), ("Attention", "ATTENTION_CARD_BLOCK_ID", router.ATTENTION_REGION, "own"),
+         ("Amazon", "AMAZON_CARD_BLOCK_ID", router.AMAZON_REGION, "line"),
          ("Hiring Pipeline", "HIRING_CARD_BLOCK_ID", router.HIRING_REGION, "floating"))
-PROTECTED = tuple((name, region) for _, name, region, _ in AREAS)
+PROTECTED = tuple((name, region) for _, name, region, _ in AREAS) + (("ATTENTION_CARD_BLOCK_ID", router.ATTENTION_REGION),)
 
 
 class CardError(NotionError):
@@ -59,11 +59,6 @@ def _held(row):
 
 def _text_of(client, block_id, kind, region):
     """-> (status text, [every other text line of the card]) or raises NotionError."""
-    if kind == "own":
-        meta = client.call("GET", f"/blocks/{report_region.clean_id(block_id)}")
-        if not isinstance(meta, dict) or meta.get("type") != "callout":
-            raise _fail("CARD_UNREADABLE")
-        return report_region.plain({"type": "callout", "callout": meta.get("callout") or {}}).strip(), []
     if kind == "floating":
         found = report_region.floating_region(client, report_region.clean_id(block_id), region, _fail, with_status=False)
         heading, active = report_region.plain(found["heading"]).strip(), sum(1 for r in found["rows"][1:] if not _held(r))     # the Hiring Pipeline has no status paragraph: the heading and the table rows say it all
@@ -156,7 +151,6 @@ def compose(areas, now):
     sprint = next((t for t in fresh_lines if "Overdue/Blocked" in t), None)
     bills_due, waiting = count("Bills", r"(\d+) bills? due"), count("Mail Alerts", r"(\d+) waiting")
     combined = count("Jira", r"(\d+) Overdue/Blocked", sprint)
-    exceptions = 0 if "No active exceptions" in ((areas.get("Attention") or {}).get("status") or "") and states["Attention"][0] == "fresh" else count("Attention", r"(\d+) active exception")
     freshness = " · ".join(f"{label} {stamp}" if state == "fresh" else f"{label} {state}" + (f" (last {stamp})" if stamp else "") for label, (state, stamp) in states.items())
 
     def kpi(value, name, text):
@@ -165,9 +159,9 @@ def compose(areas, now):
     return {"health": f"Source health and freshness · {len(ok)} of {len(states)} current" + "".join(f" · {label} {state.upper()}" for label, state in bad),
             "detail": [freshness, ("✅" if not bad else "⚠️") + f" {len(ok)} of {len(states)} source cards current · This is source-card health, not proof that every task is complete."],
             "kpis": [kpi(bills_due, "Bills due", source("Bills")), kpi(combined, "Jira Overdue / Blocked", source("Jira") + (" · count not reported" if combined is None and states.get("Jira", ("unset",))[0] == "fresh" else "")),
-                     kpi(exceptions, "Attention items", source("Attention")), kpi(waiting, "Mail waiting", source("Mail Alerts"))]}
+                     kpi(waiting, "Mail waiting", source("Mail Alerts"))]}
 
-ICONS = ("credit-card", "arrow-right", "arrow-up", "inbox")                  # the approved mockup's native icons, in card order
+ICONS = ("credit-card", "arrow-right", "inbox")                  # the approved mockup's native icons, in card order
 
 
 def _t(text, bold=False, gray=False, link=None):
@@ -188,7 +182,7 @@ def render(model):
         return {"object": "block", "type": "column_list", "column_list": {"children": list(cols)}}
 
     health = _b("toggle", _t(model["health"]), children=[_b("paragraph", _t(text)) for text in model["detail"]])
-    return [health, row(*[column(0.25, _b("callout", icon=icon, children=[_b("heading_3", _t(value)), _b("paragraph", _t(name, bold=True)), _b("paragraph", _t(text, gray=True))]))
+    return [health, row(*[column(round(1 / len(model["kpis"]), 4), _b("callout", icon=icon, children=[_b("heading_3", _t(value)), _b("paragraph", _t(name, bold=True)), _b("paragraph", _t(text, gray=True))]))
                          for icon, (value, name, text) in zip(ICONS, model["kpis"])])]
 
 
