@@ -12,6 +12,7 @@
     {"name": "board-check", "module": "lifeos.sources.web.boardcheck"},
     {"name": "boards-preview", "module": "lifeos.sources.web.boards", "function": "preview"},
     {"name": "granola-auto", "module": "lifeos.sources.interview.granola_auto", "function": "stage"},
-    {"name": "hiring", "module": "lifeos.sources.pipeline.hiring"}
+    {"name": "hiring", "module": "lifeos.sources.pipeline.hiring"},
+    {"name": "interview", "module": "lifeos.sources.interview.interview_evidence"}
   ]
 }

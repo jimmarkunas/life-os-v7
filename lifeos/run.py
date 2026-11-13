@@ -73,7 +73,6 @@ STAGES = {
     "hermes": lazy("lifeos.hermes_requests"),          # LIFE-307: one signed Buzz request per new `hermes`-labelled Agent Go issue; dry run unless --live
     "alerts": lazy("lifeos.jobs.alerts"),
     "interview-probe": lazy("lifeos.interview.stage", "probe"),
-    "interview": lazy("lifeos.sources.interview.interview_evidence"),      # LIFE-88: the normal path (accepted evidence to the Interview OS writer); writes need INTERVIEW_OS_WRITER=v7
     "interview-acceptance": lazy("lifeos.interview.acceptance"),
     "granola": lazy("lifeos.interview.granola_bridge", "stage"),     # LIFE-37 Step 2: carry ONE pinned Granola meeting (GRAN_PIN_DAY) from Oracle into its round; manual only, no schedule
     "manual-job": lazy("lifeos.sources.pipeline.manual_job"),     # LIFE-37: ONE job Jim names by hand (MANUAL_JOB_*) into Jobs OS and the Interview OS writer; manual only (manual-job.yml), dry run unless live
