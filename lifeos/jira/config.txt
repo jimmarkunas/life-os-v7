@@ -1,0 +1,10 @@
+JIRA_BASE_URL input Jira setting (base url)
+JIRA_BOARDS input Jira setting (boards)
+JIRA_CARD_PROJECTS input Jira setting (card projects)
+JIRA_GTV_CONTEXT_URL secret Jira setting (gtv context url)
+JIRA_GTV_EPIC input Jira setting (gtv epic)
+JIRA_ROLLOVER_OUTCOME input Jira setting (rollover outcome)
+JIRA_SITE_URL input Jira setting (site url)
+JM_DASHBOARD_PAGE_ID input Notion page id (jm dashboard)
+JM_DASHBOARD_REDACT_TERMS secret Words the Jim and Matt dashboard removes before publishing
+MEGIBOW_BLOCK_ID input Notion block id (megibow)

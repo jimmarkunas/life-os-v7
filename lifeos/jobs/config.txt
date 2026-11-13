@@ -1,0 +1,29 @@
+ALERTS_MESSAGE_REF input Reference to the message an alert replies to
+EXPLAIN_COMPANY input Company a manual run explains the Fit decision for
+FASTEMBED_CACHE input Folder of the cached text-embedding model on the runner
+FIT_ALL flag Manual switch: score every job, not only the new ones
+FIT_EDGE_MODE input How the Fit step reaches Oracle (off, shadow or real)
+FIT_ONLY input Manual input: score only this one company
+FIT_PROFILE_EXTRA_JSON secret Private Fit profile addition (personal data, never printed)
+FIT_PROFILE_JSON secret Private Fit profile (personal data, never printed)
+JOBRIGHT_EMAIL secret Job-site login name (never printed)
+JOBRIGHT_PASSWORD secret Job-site password (never printed)
+LIFEOS_ACQ_DB_NAME secret Connection detail for the Hostinger job store (read at run time through db.py)
+NOTION_FIT_SYNC_PAGE_ID input Notion page id (notion fit sync)
+PURGE_FORCE flag Manual switch: run the purge even when it would wait
+REVIEW_COMPANY input Company a manual review run is limited to
+TICK_CAP_ATS flag one global limit on board reads across boards, web and web-scale-up when stages run side by side (default 8)
+TICK_CAP_DICE flag how many Dice stages run at once when stages run side by side (default 1)
+TICK_CAP_JOBRIGHT flag how many Jobright stages run at once when stages run side by side (default 1)
+TICK_CAP_LINKEDIN flag how many LinkedIn stages run at once when stages run side by side (default 1: resolve-linkedin, linkedin-search and discover-jobs take turns)
+TICK_CAP_TINYFISH flag how many TinyFish stages run at once when stages run side by side (default 1: title watch and discover-jobs take turns)
+TICK_MAX_PARALLEL flag how many Jobs tick stages run at once at most when stages run side by side (default 4)
+V7_AI_CAPACITY_CARD flag Switch for the AI capacity card
+V7_CLOUD_FIT flag Cloud Fit setting for the hourly batch (cloud fit)
+V7_CLOUD_FIT_BACKLOG_BUDGET input Cloud Fit setting for the hourly batch (cloud fit backlog budget)
+V7_CLOUD_FIT_BACKLOG_MAX input Cloud Fit setting for the hourly batch (cloud fit backlog max)
+V7_CLOUD_FIT_BACKLOG_PAGE input Cloud Fit setting for the hourly batch (cloud fit backlog page)
+V7_CLOUD_FIT_PARALLEL input Cloud Fit setting for the hourly batch (cloud fit parallel)
+V7_CLOUD_FIT_PER_RUN input Cloud Fit setting for the hourly batch (cloud fit per run)
+V7_CLOUD_FIT_PROFILE_REF input Cloud Fit setting for the hourly batch (cloud fit profile ref)
+V7_FIT_GATE flag Switch for the Fit gate

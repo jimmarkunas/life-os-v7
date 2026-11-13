@@ -1,0 +1,4 @@
+RECRUITERS_SCAN input Kind of the last Recruiters mail read (new mail or 14-day scan), for the Recruiter Outreach heading
+RECRUITERS_SCAN_AT input Central time of that mail read, for the Recruiter Outreach heading
+RECRUITERS_STAGE_OUTCOME input Outcome code of the recruiters stage for the report
+RECRUITER_OUTREACH flag Switch for recruiter outreach

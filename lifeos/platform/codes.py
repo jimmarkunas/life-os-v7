@@ -49,9 +49,9 @@ for _reason in ("NOT_ALLOWLISTED", "NONCE_REPLAYED", "COUNTER_UNAVAILABLE", "DAI
 
 CODES.update(registry.code_rows(_r))      # LIFE-618: the registered job sources' own codes (lifeos/platform/source_registry.json)
 
-# LIFE-560: every name in the environment-variable registry (lifeos/platform/credential_list.py CONFIG) is a configuration name, never a result code.
-from lifeos.platform.credential_list import CONFIG as _CONFIG    # noqa: E402 - placed beside the list it extends
-NOT_CODES = frozenset(_NAMES) | frozenset(row["name"] for row in _CONFIG["names"]) | frozenset(_CONFIG["provided"]["names"])
+# LIFE-560: every name in the environment-variable registry (credentials.config()) is a configuration name, never a result code.
+from lifeos.platform import credentials    # noqa: E402 - placed beside the list it extends
+NOT_CODES = frozenset(_NAMES) | frozenset(row["name"] for row in credentials.config()["names"]) | frozenset(credentials.config()["provided"]["names"])
 
 
 def public_reasons():

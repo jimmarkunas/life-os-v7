@@ -1,0 +1,2 @@
+CALENDAR_ACCOUNTS secret Which calendar accounts the bridge reads
+CALENDAR_ALLOW_MASS_DELETE flag Lets the calendar bridge remove many events in one run (off by default)
