@@ -21,20 +21,21 @@ TOKEN_URL = "https://oauth2.googleapis.com/token"
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 
 
-def auth_url(client_id, redirect, state, verifier):
+def auth_url(client_id, redirect, state, verifier, scope=SCOPE):
     challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
-    return AUTH_URL + "?" + urllib.parse.urlencode({"client_id": client_id, "redirect_uri": redirect, "response_type": "code", "scope": SCOPE,
+    return AUTH_URL + "?" + urllib.parse.urlencode({"client_id": client_id, "redirect_uri": redirect, "response_type": "code", "scope": scope,
                                                     "access_type": "offline", "prompt": "consent", "state": state,
                                                     "code_challenge": challenge, "code_challenge_method": "S256"})
 
 
-def exchange(client_id, client_secret, code, redirect, verifier, opener=urllib.request.urlopen):
+def exchange(client_id, client_secret, code, redirect, verifier, opener=urllib.request.urlopen, scope=SCOPE, exact=False):
     body = urllib.parse.urlencode({"client_id": client_id, "client_secret": client_secret, "code": code, "redirect_uri": redirect,
                                    "grant_type": "authorization_code", "code_verifier": verifier}).encode()
     with opener(urllib.request.Request(TOKEN_URL, data=body, method="POST"), timeout=30) as response:
         reply = json.loads(response.read())
-    if SCOPE not in str(reply.get("scope", "")).split() or not reply.get("refresh_token"):
-        raise SystemExit("Google did not grant the full drive scope with a refresh token; nothing was stored.")
+    granted = str(reply.get("scope", "")).split()
+    if (granted != [scope] if exact else scope not in granted) or not reply.get("refresh_token"):          # exact: nothing wider than `scope` may come with it
+        raise SystemExit(f"Google did not grant {'exactly ' if exact else ''}the {scope.rsplit('/', 1)[1]} scope with a refresh token; nothing was stored.")
     return json.dumps({"client_id": client_id, "client_secret": client_secret, "refresh_token": reply["refresh_token"]})
 
 
@@ -61,24 +62,24 @@ def catch(server, state):
     return got["code"]
 
 
-def main(argv=(), stdout=sys.stdout, tty=None):
+def main(argv=(), stdout=sys.stdout, tty=None, scope=SCOPE, exact=False, sink="Edge credential command"):
     tty = tty or open("/dev/tty", "w")
     if stdout.isatty():
-        tty.write("Refused: pipe this into the Edge credential command; the credential is never printed on screen.\n")
+        tty.write(f"Refused: pipe this into the {sink}; the credential is never printed on screen.\n")
         return 2
     client_id = input_tty("Client ID of the LIFE OS Gmail Web client (Bitwarden openclaw/gmail/clientId): ", tty).strip()
     client_secret = getpass.getpass("Its client secret (Bitwarden openclaw/gmail/clientSecret; not shown): ").strip()
     port = int(argv[argv.index("--port") + 1]) if "--port" in argv else 0             # a fixed port for the SSH tunnel; 0 = any free port
     server = http.server.HTTPServer(("127.0.0.1", port), http.server.BaseHTTPRequestHandler)
     redirect, state, verifier = f"http://127.0.0.1:{server.server_port}", secrets.token_urlsafe(24), secrets.token_urlsafe(48)
-    url = auth_url(client_id, redirect, state, verifier)
+    url = auth_url(client_id, redirect, state, verifier, scope)
     tty.write("Open this address in the browser on this Mac and click Allow (Google sends the reply back to this window):\n" + url + "\n")     # never a browser on the Edge
     tty.flush()
     code = catch(server, state)
     if not code:
         tty.write("Sign-in refused; nothing was stored.\n")
         return 1
-    stdout.write(exchange(client_id, client_secret, code, redirect, verifier) + "\n")
+    stdout.write(exchange(client_id, client_secret, code, redirect, verifier, scope=scope, exact=exact) + "\n")
     stdout.flush()
     tty.write("Credential sent to the Edge (not shown).\n")
     return 0
