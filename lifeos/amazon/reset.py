@@ -4,6 +4,7 @@ touched. Dry run unless live; counts only; at most 100 a run."""
 import os
 from urllib.parse import quote
 
+from lifeos.platform.fixed_code import fixed
 from lifeos.platform.notion_client import NotionError
 from .stage import AmazonError, _config, _row_from_page, _schema
 
@@ -22,10 +23,8 @@ def run(limit, live, environ=os.environ, notion=None):
     pages, cursor, seen = [], None, set()
     for _ in range(20):
         body = {"page_size": 100, "filter": {"property": "Grand Total", "number": {"is_empty": True}}, **({"start_cursor": cursor} if cursor else {})}
-        try:
+        with fixed(NotionError, AmazonError, "AMAZON_NOTION_QUERY_FAILED"):
             page = notion.query_data_source(source_id, body)
-        except NotionError:
-            raise AmazonError("AMAZON_NOTION_QUERY_FAILED") from None
         if not isinstance(page, dict) or not isinstance(page.get("results"), list) or not isinstance(page.get("has_more"), bool):
             raise AmazonError("AMAZON_NOTION_QUERY_INCOMPLETE")
         pages.extend(page["results"])
