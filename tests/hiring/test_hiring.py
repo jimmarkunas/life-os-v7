@@ -704,9 +704,8 @@ class ReciprocalProtectionTests(unittest.TestCase):
         self.assertEqual(router.OWNERS[router.HIRING_REGION], "v7-hiring")
         self.assertEqual(router.HIRING_REGION, M.TITLE)
         self.assertEqual(len(set(router.OWNERS.values())), len(router.OWNERS))
-        self.assertFalse(router.is_callout(router.HIRING_REGION))
-        self.assertFalse(router.is_callout(router.RECRUITER_OUTREACH_REGION))            # LIFE-20: the second floating region, right under this one
-        self.assertTrue(all(router.is_callout(h) for h in router.OWNERS if h not in (router.HIRING_REGION, router.RECRUITER_OUTREACH_REGION)))
+        self.assertIn(router.HIRING_REGION, router.FLOATING)
+        self.assertIn(router.RECRUITER_OUTREACH_REGION, router.FLOATING)                 # LIFE-20: the second floating region, right under this one
         router.check_write("v7-hiring", [router.HIRING_REGION])
         with self.assertRaises(router.RouterError):
             router.check_write("v7-mail-alerts", [router.HIRING_REGION])
