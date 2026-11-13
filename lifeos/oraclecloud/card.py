@@ -16,7 +16,7 @@ from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 from lifeos.oraclecloud import backup_watch, worker_watch
-from lifeos.platform import report_region, router
+from lifeos.platform import limits, report_region, router
 from lifeos.platform.fixed_code import fixed
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 
@@ -180,21 +180,37 @@ def locate(client, anchor, jira=""):
 
 
 def _patch(client, block, items):
-    client.call_once("PATCH", f"/blocks/{quote(block['id'], safe='')}", {block["type"]: {"rich_text": items}})
+    client.call_once("PATCH", f"/blocks/{quote(block['id'], safe='')}", {block["type"]: {"rich_text": items}}, rate_retries=limits.NOTION_WRITE_RATE_RETRIES)       # LIFE-661: a 429 is not applied, so it is repeated
+
+
+def _shape(rich):
+    """[(text, color or None)] of a rich_text list with neighbours of one color merged (Notion merges them too), to compare what is on the page with what we would write."""
+    out = []
+    for item in rich:
+        color = (item.get("annotations") or {}).get("color")
+        piece = item.get("plain_text") or (item.get("text") or {}).get("content") or ""
+        color = None if color == "default" else color
+        out = out[:-1] + [(out[-1][0] + piece, color)] if out and out[-1][1] == color else out + [(piece, color)]
+    return [p for p in out if p[0]]
 
 
 def write(client, heading, paragraph, segments, heading_text):
-    """The paragraph, then the heading (keeping the heading's own formatting, e.g. Jim's bold); both read back."""
-    body = text_of(segments)
-    _patch(client, paragraph, items_of(segments))
-    first = ((heading.get(heading["type"]) or {}).get("rich_text") or [{}])[0]
-    items = rich_text(heading_text)
-    if isinstance(first.get("annotations"), dict):
-        items = [{**i, "annotations": first["annotations"]} for i in items]
-    _patch(client, heading, items)
-    for block, want in ((paragraph, body), (heading, heading_text)):
+    """LIFE-661: only a block whose text differs is written (the paragraph, then the heading, keeping its own formatting, e.g. Jim's bold), each read back; -> how many were written (0 to 2)."""
+    items, todo = items_of(segments), []
+    if _shape(paragraph[paragraph["type"]].get("rich_text") or []) != _shape(items):
+        _patch(client, paragraph, items)
+        todo.append((paragraph, text_of(segments)))
+    if report_region.plain(heading) != heading_text:
+        first = ((heading.get(heading["type"]) or {}).get("rich_text") or [{}])[0]
+        items = rich_text(heading_text)
+        if isinstance(first.get("annotations"), dict):
+            items = [{**i, "annotations": first["annotations"]} for i in items]
+        _patch(client, heading, items)
+        todo.append((heading, heading_text))
+    for block, want in todo:
         if report_region.plain(client.call("GET", f"/blocks/{quote(block['id'], safe='')}")) != want:
             raise _fail("ORACLE_READBACK_MISMATCH")
+    return len(todo)
 
 
 def _writer(environ):
@@ -231,6 +247,5 @@ def run(limit, live, environ=os.environ, now=None, fetcher=fetch, client=None, p
     report_region.require_configured({region: (environ.get(var) or "").strip() for var, region in PROTECTED}, _fail)
     scoped = report_region.ScopedClient(client, heading["id"], _fail).adopt(paragraph["id"])           # LIFE-613: only the two blocks located above can be written
     with fixed(NotionError, _fail, "ORACLE_WRITE_FAILED"):
-        write(scoped, heading, paragraph, segments, heading_text)
-    counts["written"] = 2
+        counts["written"] = write(scoped, heading, paragraph, segments, heading_text)
     return counts
