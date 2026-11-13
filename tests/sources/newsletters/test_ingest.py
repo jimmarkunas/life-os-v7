@@ -5,10 +5,9 @@ from unittest import mock
 
 from lifeos.platform.gmail import GmailError
 from lifeos.sources.newsletters import config, ingest
-from lifeos.sources.newsletters.parsers import dice, lensa
+from lifeos.sources.newsletters.parsers import lensa
 from tests.kit.db import FakeConn
 from tests.kit.gmail import FakeGmail
-from tests.sources.newsletters.parsers.test_dice_reed import DICE, DICE_DAY2
 
 
 def store_double():
@@ -48,15 +47,6 @@ class ExtractTests(unittest.TestCase):
                       mock.patch.dict(ingest.LOOKS_LIKE_JOBS, {"lensa": lensa.looks_like_jobs})):
             patch.start()
             self.addCleanup(patch.stop)
-
-    def test_dice_tracking_urls_dedupe_by_company_and_title_across_alerts(self):
-        conn, db = store_double()
-        first, second = dice.parse(DICE)[0], dice.parse(DICE_DAY2)[0]
-        first_counts = ingest.save_cards(conn, "dice", "m1", [first], NOW)
-        second_counts = ingest.save_cards(conn, "dice", "m2", [second], NOW)
-        self.assertEqual((first_counts, second_counts), ((1, 0), (0, 1)))
-        self.assertEqual((len(db["jobs"]), db["sources"]), (1, 2))
-        self.assertNotEqual(db["source_hashes"][0], db["source_hashes"][1])
 
     def test_dry_run_counts_and_writes_nothing(self):
         gmail = FakeGmail(messages=MESSAGES)

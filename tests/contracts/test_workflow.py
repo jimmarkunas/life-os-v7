@@ -709,7 +709,6 @@ class DomainsWorkflowTests(unittest.TestCase):
         self.assertIn("inputs.calendar_sync", job["if"])
         steps = {s.get("id"): s for s in job["steps"]}
         self.assertEqual(steps["calsync"]["env"]["CALENDAR_ALLOW_MASS_DELETE"], "${{ inputs.allow_mass_delete && 'true' || '' }}")      # a tick (no inputs) is always ''
-        self.assertEqual(steps["outnews"]["if"], "${{ !inputs.calendar_sync || (inputs.all || inputs.benchmark) }}")                         # a calendar-only run never files newsletters
         for name, other in self.doc["jobs"].items():
             if name != "outlook":
                 self.assertNotIn("CALENDAR_ALLOW_MASS_DELETE", str(other))

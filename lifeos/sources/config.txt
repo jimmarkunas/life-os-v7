@@ -20,7 +20,6 @@ MEGIBOW_REVIEW_DB_ID input MegIBOW setting (review db id)
 NOTION_API_TOKEN secret Notion integration token for the api integration
 NOTION_RECRUITERS_DATA_SOURCE_ID input Notion data source id (recruiters)
 NOTION_RECRUITERS_TOKEN secret Notion integration token for the recruiters integration
-OUTLOOK_NEWSLETTER_ACCOUNTS secret Outlook accounts the newsletter stage reads
 PROOF_CONFIRM flag Confirmation word a manual proof run needs
 SPONSORS_FORCE flag Manual switch: refresh the sponsor register now
 SURFACE_SHARD input Which slice (i/n) of the Ledger pages a surface run writes

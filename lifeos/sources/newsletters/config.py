@@ -16,8 +16,6 @@ SENDER_RULES = (
     ("lensa", re.compile(r"@([a-z0-9-]+\.)*lensa\.com$")),
     ("jobright", re.compile(r"@([a-z0-9-]+\.)*jobright\.ai$")),
     ("linkedin-alerts", re.compile(r"^(jobalerts-noreply|jobs-noreply)@linkedin\.com$")),
-    # Outlook-only Dice/Reed rules live with the Outlook source. Dice Private Email
-    # is deliberately absent: recruiter mail is human outreach.
 )
 
 # D201: senders whose mail is still swept out of the inbox but no longer read for jobs. Their mail gets RETIRED_LABEL at once with this count; no
