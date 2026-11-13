@@ -397,5 +397,5 @@ class Picker(unittest.TestCase):
         self.assertFalse(hasattr(manage_app, "PICKER"))                                                        # never held in this public repository
 
     def test_the_picker_script_is_routed(self):
-        from lifeos.sources import close_app
+        from lifeos.sources.apps import close_app
         self.assertEqual(close_app.ROUTES["/manage-picker.js"], ("apps.manage_app", "handle_js"))

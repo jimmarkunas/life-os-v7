@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 from lifeos.edge.oracle import close_release as rel
-from lifeos.sources import close_app
+from lifeos.sources.apps import close_app
 
 ROOT = Path(__file__).resolve().parents[2]
 # Imports that are deliberately not shipped: each is wrapped so the screen answers a clear 503 instead of failing (close_app: "a screen this release does not ship yet").

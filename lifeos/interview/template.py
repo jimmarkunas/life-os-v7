@@ -129,7 +129,7 @@ def render_line(job, source, page="pending"):
 # ---------- UI 3c opportunity page ----------
 
 # E05 Mark Complete (Jim, Oct 24): the fold names the page's one completable primary action; the private Close screen appends a completion line to the same fold
-# (lifeos/sources/close_app.py keeps its own copy of these two formats for the Edge; a contract test holds them equal)
+# (lifeos/sources/apps/close_app.py keeps its own copy of these two formats for the Edge; a contract test holds them equal)
 ACTION_LINE = re.compile(r"v7-action:1;key=([0-9a-f]{16});text=(.+)")
 DONE_LINE = re.compile(r"v7-done:1;key=([0-9a-f]{16});on=(\d{4}-\d{2}-\d{2})")
 DONE_MAX = 20                                                  # completion lines carried per page, newest last

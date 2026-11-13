@@ -11,7 +11,7 @@ from unittest import mock
 from lifeos.hiring import compile as C, decision as D, models as M, render
 from lifeos.interview import create, notion, template, view
 from lifeos.jobs import hiring_pipeline
-from lifeos.sources import close_app
+from lifeos.sources.apps import close_app
 from lifeos.sources.pipeline import hiring as stage
 from tests.hiring import test_decision as TD, test_hiring as T
 from tests.hiring.test_manage_app import H
