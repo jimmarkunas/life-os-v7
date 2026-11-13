@@ -1,23 +1,20 @@
-"""COMM-1.4b: urgent iMessage alerts in V7's hourly domain run (LIFE-31; Jim's approval of Oct 13, 2026).
+"""COMM-1.4b: urgent iMessage alerts in V7's hourly domain run (LIFE-31): classify Oracle's alert metadata and push the phone through ntfy.
 
-hourly tick -> domains.yml `imessage` job (joins the tailnet as an ephemeral tag:v7-runner node) -> Oracle's private alert-METADATA endpoint -> this stage ->
-the existing ntfy sink, with the existing private v7_alerts table as the only state. The endpoint reads and classifies the Mac Mini's messages privately on Oracle
-and returns only keyed event ids, severity, reason codes and completeness; nothing here ever sees message text, names, numbers or chat ids, and the push says only
-how many texts need Jim.
-
-Policy (Communications, not the platform's reminder cadence):
-- INFORMATIONAL and ATTENTION never push. ACTION_REQUIRED pushes once per event; during quiet hours (10 PM-8 AM America/Chicago) it waits and goes out at the
-  first run after 8 AM. TIME_CRITICAL (an emergency signal from a known contact in a direct conversation, never a `review` verdict) pushes at any hour.
-- One push per event version: the row key is the event id plus its severity, so the same message escalating to TIME_CRITICAL is a new version; an unchanged
-  event is never pushed again. A push the service did not accept stays queued and is retried next run (up to 24 h), never marked sent.
-- Coverage: the lookback runs from the last COMPLETE scan (the `imsg_scan_ok` marker row) plus an hour of overlap, 2-72 h. A gap over 72 h, a scan that hit the
-  reader's limit, an unreachable, stale or off-contract endpoint are all reported as a failure (counts `failed`), never passed as complete.
-- Delivery is claim-then-send, so a database failure can never cause a duplicate push: events are recorded first; the ones about to go out are marked IMSG_P
-  (pending) and committed BEFORE the push; the receipt then sets IMSG_S (accepted) or back to IMSG_Q (rejected: retried next run). A row still IMSG_P at the next
-  run means the outcome is unknown (the receipt was lost): it is closed as IMSG_U (outcome unknown, never recorded as sent) WITHOUT a second push and
-  reported as `ambiguous` and `failed`.
-Rows use their own statuses (IMSG_Q queued, IMSG_P pending, IMSG_S sent, IMSG_U outcome unknown, IMSG_X expired, IMSG_M marker), never 'OPEN', which the Jobs
-alert stage owns."""
+Flow: hourly tick -> domains.yml `imessage` job -> Oracle's private alert-METADATA endpoint -> this stage -> the existing ntfy sink; the private v7_alerts table is the only state.
+Input: keyed event ids, severity, reason codes and completeness only; this stage never sees message text, names, numbers or chat ids, and the push says only how many texts need Jim.
+Policy: INFORMATIONAL and ATTENTION never push; ACTION_REQUIRED pushes once per event and waits out quiet hours (10 PM-8 AM America/Chicago); TIME_CRITICAL pushes at any hour. One push per event version.
+Failure: a coverage gap, a scan that hit the reader's limit, or an unreachable, stale or off-contract endpoint counts as `failed`, never as complete. Delivery is claim-then-send, so a database failure cannot duplicate a push."""
+# Detail moved out of the docstring (LIFE-595):
+# LIFE-31 was approved by Jim on Oct 13 2026. The job joins the tailnet as an ephemeral tag:v7-runner node; the existing private v7_alerts table is the only state.
+# The endpoint reads and classifies the Mac Mini's messages privately on Oracle.
+# Policy is Communications', not the platform's reminder cadence:
+# - TIME_CRITICAL is an emergency signal from a known contact in a direct conversation, never a `review` verdict.
+# - One push per event version: the row key is the event id plus its severity, so the same message escalating to TIME_CRITICAL is a new version; an unchanged event is never pushed again.
+#   A push the service did not accept stays queued and is retried next run (up to 24 h), never marked sent. ACTION_REQUIRED held for quiet hours goes out at the first run after 8 AM.
+# - Coverage: the lookback runs from the last COMPLETE scan (the `imsg_scan_ok` marker row) plus an hour of overlap, 2-72 h. A gap over 72 h is a failure.
+# - Delivery is claim-then-send: events are recorded first; the ones about to go out are marked IMSG_P (pending) and committed BEFORE the push; the receipt then sets IMSG_S (accepted) or back to IMSG_Q (rejected: retried next run).
+#   A row still IMSG_P at the next run means the outcome is unknown (the receipt was lost): it is closed as IMSG_U (outcome unknown, never recorded as sent) WITHOUT a second push and reported as `ambiguous` and `failed`.
+# Rows use their own statuses (IMSG_Q queued, IMSG_P pending, IMSG_S sent, IMSG_U outcome unknown, IMSG_X expired, IMSG_M marker), never 'OPEN', which the Jobs alert stage owns.
 import datetime as dt
 import json
 import math
