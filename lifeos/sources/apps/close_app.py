@@ -1,6 +1,6 @@
 """The private Close Opportunity service: shows one Job Ledger pursuit and closes it with one of six outcomes (LIFE-47 S2).
 
-The application behind the Edge gate in lifeos/edge/close_gate.py (which calls `handle` through the lifeos/sources/close_app.py shim until Oracle's unit points here); an app of the Close service (D17): the one place that composes the Ledger, the opportunity pages and the S1 decision rules. One exact pursuit is resolved by its Job Ledger row's page id (LIFE-353: the decision lives on the row; no page moves), shown,
+The application behind the Edge gate in lifeos/edge/close_gate.py (which calls `handle` from here); an app of the Close service (D17): the one place that composes the Ledger, the opportunity pages and the S1 decision rules. One exact pursuit is resolved by its Job Ledger row's page id (LIFE-353: the decision lives on the row; no page moves), shown,
 reviewed and closed; success is reported only after the S1 read-back. Nothing here is a second rule engine: identity, ambiguity, schema, idempotency, conflict and read-back belong to lifeos.hiring.decision. GET and the review step never write.
 Mark Complete (/complete) records one opportunity page's primary action as done in that page's own fold. Manage and Reopen (/manage) live in manage_app. Outputs: fixed codes only. Pointer: D17, LIFE-47."""
 import hashlib
@@ -17,7 +17,7 @@ from lifeos.hiring import close_screen as S, decision as D, models as M
 from lifeos.sources.apps.signed import HTML, gate, handler, invalid, live, mac as _mac, same as _same, stopper, unverified
 
 CLOSURE = ("lifeos/hiring/close_screen.py", "lifeos/hiring/decision.py", "lifeos/hiring/models.py", "lifeos/jobs/__init__.py", "lifeos/jobs/hiring_pipeline.py", "lifeos/platform/names.py",
-           "lifeos/sources/close_app.py", "lifeos/sources/apps/close_app.py", "lifeos/sources/apps/__init__.py", "lifeos/sources/apps/signed.py", "lifeos/sources/apps/outreach_app.py", "lifeos/recruiters/__init__.py", "lifeos/recruiters/outreach.py", "lifeos/recruiters/notion.py", "lifeos/recruiters/identity.py",
+           "lifeos/sources/apps/close_app.py", "lifeos/sources/apps/__init__.py", "lifeos/sources/apps/signed.py", "lifeos/sources/apps/outreach_app.py", "lifeos/recruiters/__init__.py", "lifeos/recruiters/outreach.py", "lifeos/recruiters/notion.py", "lifeos/recruiters/identity.py",
            "lifeos/network/__init__.py", "lifeos/network/surface.py", "lifeos/network/match.py", "lifeos/platform/hidden.py", "lifeos/platform/ledger_body.py",
            "lifeos/sources/apps/resume_app.py", "lifeos/platform/notion_files.py", "lifeos/platform/gdrive.py", "lifeos/platform/google_consent.py",
            "lifeos/sources/apps/manage_app.py", "lifeos/sources/apps/alerts_app.py", "lifeos/platform/alerts.py", "lifeos/platform/alert_registry.py", "lifeos/platform/alert_settings.py", "lifeos/platform/redact.py",
