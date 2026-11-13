@@ -1,4 +1,5 @@
-"""LinkedIn rows -> final apply link WITHOUT logging in (D14).
+"""LinkedIn rows to the final apply link without logging in (D14).
+
 Order: guest page (external URL, Easy Apply, closed) -> employer ATS board match by company/title/location -> pending."""
 import time
 

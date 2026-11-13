@@ -1,20 +1,14 @@
-"""D219 (LIFE-41, Jim): the Cloud Fit backlog batch. One manual, bounded run of the ONE Oracle fit1 path over the jobs the tick's single canary call never reaches.
+"""D219 (LIFE-41, Jim): the Cloud Fit backlog batch, one manual bounded run of the one Oracle fit1 path over jobs the tick's single canary call never reaches.
 
-`python -m lifeos.run fit-cloud-backlog --limit N --live` asks at most min(N, V7_CLOUD_FIT_BACKLOG_MAX, BACKLOG_CALLS_MAX) jobs, V7_CLOUD_FIT_PARALLEL at a time (D232:
-1-3, unset 1; Oracle runs one request per open lane and answers BUSY when none frees up, which releases that job and lowers the batch's calls in flight by one),
-within V7_CLOUD_FIT_BACKLOG_BUDGET seconds. V7_CLOUD_FIT_BACKLOG_MAX is Jim's
-approved ceiling (a repository variable); unset or invalid is 0, so nothing is asked. It does not read V7_CLOUD_FIT. A tick runs it only when Jim sets
-V7_CLOUD_FIT_SCHEDULED=N (hourly.yml Step 6a2: N calls after the tick, N its own ceiling, 600 s, never a pilot page).
-
-Candidates are the canary's own (a public employer / ATS posting the audit would keep, a static Admit or Review, never asked) plus published jobs, most useful
-first. A published job's Ledger page is read first (lifeos.jobs.guard): applied, an Applied On date or an unreadable page uses no call. An accepted answer becomes
-the visible Fit through the Fit stage's own promotion, and fit_sync later writes only the page's machine-owned Fit fields (never Applied, Applied On or Saturn
-Decision); a published job the cloud excludes is promoted the same way and the next tick's gated audit removes its page under lifeos.jobs.guard (D224,
-replacing the D219 hold). The batch runs that unchanged fit_sync itself at its end (the publish step
-does not run on a backlog-only dispatch) and checks every promoted page was synced: one that was not is DEGRADED(LEDGER_SYNC_INCOMPLETE), never a silent success. Each job is claimed before its call and written right after it, so a
-batch can stop anywhere and the next one resumes with the jobs still unasked. Counts only in the log: no title, employer, text, profile or answer.
-V7_CLOUD_FIT_BACKLOG_PAGE (LIFE-41 G6, optional): one Ledger page id. The batch then asks at most that one job, under the same predicates, or nothing
-(BACKLOG_TARGET_NOT_ELIGIBLE / BACKLOG_TARGET_INVALID); the id never reaches the log."""
+`python -m lifeos.run fit-cloud-backlog --limit N --live` asks at most min(N, V7_CLOUD_FIT_BACKLOG_MAX, BACKLOG_CALLS_MAX) jobs, V7_CLOUD_FIT_PARALLEL at a time (D232), within V7_CLOUD_FIT_BACKLOG_BUDGET seconds.
+V7_CLOUD_FIT_BACKLOG_MAX is Jim's ceiling (a repository variable); unset or invalid is 0, so nothing is asked. A tick runs it only when V7_CLOUD_FIT_SCHEDULED=N (hourly.yml Step 6a2).
+V7_CLOUD_FIT_BACKLOG_PAGE (optional): one Ledger page id; the batch asks at most that job or nothing (BACKLOG_TARGET_NOT_ELIGIBLE / BACKLOG_TARGET_INVALID); the id never reaches the log.
+An accepted answer becomes the visible Fit through the Fit stage's promotion; the batch then runs fit_sync, and a promoted page not synced is DEGRADED(LEDGER_SYNC_INCOMPLETE). Counts only in the log. Pointers: D219, D224, D232."""
+# Candidates are the canary's own (a public employer / ATS posting the audit would keep, a static Admit or Review, never asked) plus published jobs, most useful first. It does not read V7_CLOUD_FIT.
+# A published job's Ledger page is read first (lifeos.jobs.guard): applied, an Applied On date or an unreadable page uses no call. fit_sync writes only the page's machine-owned Fit fields (never Applied, Applied On or Saturn Decision).
+# A published job the cloud excludes is promoted the same way and the next tick's gated audit removes its page (D224, replacing the D219 hold). The publish step does not run on a backlog-only dispatch, so the batch runs fit_sync itself.
+# Parallelism (D232): 1-3, unset 1; Oracle runs one request per open lane and answers BUSY when none frees up, which releases that job and lowers the batch's calls in flight by one.
+# Each job is claimed before its call and written right after it, so a batch can stop anywhere and the next one resumes with the jobs still unasked. Scheduled run (6a2): N calls after the tick, N its own ceiling, 600 s, never a pilot page.
 import os
 import re
 

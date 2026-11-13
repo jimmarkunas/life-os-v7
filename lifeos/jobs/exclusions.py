@@ -1,8 +1,9 @@
-"""LIFE-121 (Jim, Oct 26: "Approved, make the PR"): counts-only report of WHY Scale-Up jobs are EXCLUDED_FIT. Reads v7_jobs and v7_job_fit, writes nothing, prints no title, link, company or text.
+"""Counts-only report of why Scale-Up jobs are EXCLUDED_FIT (LIFE-121): reads v7_jobs and v7_job_fit, writes nothing.
 
-EXCLUDED_FIT is one status for several causes (a Fit score under the floor, a lane rule such as pay or age, the precision audit). This splits it by stored reason, by Fit band and by
-source, so Jim can see how many roles sit just under the floor before anyone changes the Fit model or a gate. Lane reasons are printed only as the fixed codes of
-lanes.public_reason; `high_score` lists the jobs scored at or over the floor that are still excluded, by stored reason, lane reason code and Fit exclusion rule."""
+Splits the one status by stored reason, by Fit band and by source. Prints no title, link, company or text; lane reasons only as the fixed codes of lanes.public_reason.
+`high_score` lists the jobs scored at or over the floor that are still excluded, by stored reason, lane reason code and Fit exclusion rule."""
+# LIFE-121 (Jim, Oct 26: "Approved, make the PR"). EXCLUDED_FIT is one status for several causes (a Fit score under the floor, a lane rule such as pay or age, the precision audit);
+# the split lets Jim see how many roles sit just under the floor before anyone changes the Fit model or a gate.
 import re
 
 from lifeos.jobs import store

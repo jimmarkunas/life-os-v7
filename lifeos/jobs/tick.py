@@ -1,14 +1,11 @@
-"""LIFE-76 PR 4b (D208): one process runs a whole Jobs tick, in a fixed order, through ONE store tunnel (D207).
+"""One process runs a whole Jobs tick in a fixed order through one store tunnel (LIFE-76 PR 4b, D207, D208).
 
     python -m lifeos.jobs.tick [--live] [--quick]
 
-The workflow's prep job has already swept and extracted the mail. The fast path runs first, so jobs already found reach the Ledger before any bulk work: the resolvers -> the US Remote
-boards -> publish the READY jobs (gated) -> enrich -> fit -> publish the fresh ones (gated) -> audit -> hold expiry -> finalize. Bulk discovery runs after it, while the run's time lasts: the employer
-boards (D202), the Scale-Up lane (its own budget; D206 canon: shared store, Ledger and Fit), title watch, discovery search, the sponsor register.
-Each stage has a wall-clock budget, cut to the run's remaining time (a fast-path stage never below FAST_FLOOR_SECONDS); a stage over it is stopped and counted `timeout`, a failing stage never stops the next one, and a bulk
-stage that cannot start inside the run's remaining time is counted `skipped`. Output: the stages' own counts-only lines (the same `<stage>: {...}`
-lines the separate steps printed), then one `tick:` line; exit 1 when any stage failed or timed out (the old "lane failures fail the run" rule).
-"""
+Order: the resolvers -> US Remote boards -> publish READY jobs (gated) -> enrich -> fit -> publish the fresh ones (gated) -> audit -> hold expiry -> finalize; then bulk discovery while time lasts (employer boards D202, the Scale-Up lane D206,
+title watch, discovery search, the sponsor register). Input: the prep job has already swept and extracted the mail.
+Each stage has a wall-clock budget cut to the run's remaining time (a fast-path stage never below FAST_FLOOR_SECONDS); a stage over it is counted `timeout`, a bulk stage that cannot start in time is counted `skipped`, a failing stage never stops the next.
+Output: the stages' own counts-only `<stage>: {...}` lines, then one `tick:` line; exit 1 when any stage failed or timed out."""
 import argparse
 import ctypes
 from dataclasses import dataclass

@@ -1,5 +1,8 @@
-"""LIFE-121 (Jim, Oct 26): a private report goes to a private Notion page, never into a log. The runner writes the table straight to Notion, as a child of Jim's private Reports page; the log carries counts and fixed codes only. Dry run unless live: a dry run reads, counts and writes nothing. One page per title: a page that already exists is
-left untouched (delete it in Notion to write a fresh one). Nothing is encoded, encrypted or copied out of Notion."""
+"""A private report goes to a private Notion page, never into a log (LIFE-121).
+
+The runner writes the table straight to Notion as a child of Jim's private Reports page; the log carries counts and fixed codes only. Dry run unless live: a dry run reads, counts and writes nothing.
+One page per title: a page that already exists is left untouched (delete it in Notion to write a fresh one). Nothing is encoded, encrypted or copied out of Notion."""
+# LIFE-121 (Jim, Oct 26).
 
 from lifeos.platform.notion_ids import notion_id
 from lifeos.platform import limits, stored_pages

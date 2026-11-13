@@ -1,7 +1,7 @@
-"""Fit sync: put the Fit on pages that were published BEFORE (or without) a score. Publish only creates; this updates a published page's machine-owned
-Fit fields when its stored score is newer than the last sync: LIFE OS Fit, Why It Fits, Fit Authority and, with V7_FIT_GATE, the lane-policy fields
-(Admission Status, Review Reason, Work Mode, Visible Lane, Eligible Lanes). Never touches human state (Applied, Applied On, Saturn Decision) or the title,
-and runs only after the Job Ledger target check. Counts only."""
+"""Fit sync: put the Fit on pages published before (or without) a score; updates only the page's machine-owned Fit fields.
+
+Publish only creates; this updates a published page when its stored score is newer than the last sync: LIFE OS Fit, Why It Fits, Fit Authority and, with V7_FIT_GATE, the lane-policy fields
+(Admission Status, Review Reason, Work Mode, Visible Lane, Eligible Lanes). Never touches human state (Applied, Applied On, Saturn Decision) or the title, and runs only after the Job Ledger target check. Counts only."""
 
 from lifeos.jobs import lanes, ledger, meta, store
 from lifeos.platform import notion_text

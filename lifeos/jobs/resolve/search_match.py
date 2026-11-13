@@ -1,4 +1,5 @@
 """Find the employer's own posting through web search (free TinyFish Search), precision first.
+
 Attempt 1: ATS domains only. Attempt 2: any non-aggregator site whose host carries the company name.
 Accept only when the result title contains the job title AND the company name appears in host/title/snippet."""
 from lifeos.jobs.resolve import ats_match

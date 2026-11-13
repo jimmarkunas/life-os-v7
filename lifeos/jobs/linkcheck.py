@@ -1,8 +1,8 @@
-"""Counts-only diagnostic: why do parked Scale-Up roles keep failing their link check? Reads v7_jobs and each parked role's own public job page, writes nothing, prints no title, link or text.
+"""Counts-only diagnostic: why parked Scale-Up roles keep failing their link check. Reads v7_jobs and each role's public page; writes nothing.
 
-Per source, one fixed-code line per role: the URL-shape problem (if any), the page status (Revolut also after the browser-style retry), whether the page carries a structured
-job posting or a Greenhouse embed, how many of the role's title words the page holds (bucketed), and the description problem. The buckets show whether a role is a wrong link, a
-page that does not carry the role's words, or a page we cannot read."""
+Prints no title, link or text. Per source, one fixed-code line per role: the URL-shape problem (if any), the page status (Revolut also after the browser-style retry), whether the page carries a structured job posting
+or a Greenhouse embed, how many of the role's title words the page holds (bucketed), and the description problem."""
+# The buckets show whether a role is a wrong link, a page that does not carry the role's words, or a page we cannot read.
 from lifeos.jobs import enrich, jd, jsonld, quality, store
 from lifeos.platform import impersonate
 from lifeos.platform.http import fetch
