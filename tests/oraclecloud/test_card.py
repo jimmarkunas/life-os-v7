@@ -44,11 +44,11 @@ class Card(unittest.TestCase):
         patch2.start()
         self.addCleanup(patch2.stop)
 
-    def run_card(self, rep, live=True, answer=None, env=None, now=NOW):
+    def run_card(self, rep, live=True, answer=None, env=None, now=NOW, **kw):
         answer = answer or (lambda host: json.dumps(stats()).encode())
         out = io.StringIO()
         with mock.patch.object(report_region, "require_configured", lambda ids, fail: None), contextlib.redirect_stdout(out):
-            counts = card.run(0, live, env or self.ENV, now, answer, rep)
+            counts = card.run(0, live, env or self.ENV, now, answer, rep, **kw)
         return counts, out.getvalue()
 
     def test_live_writes_the_lines_with_bars_and_the_stamp_keeping_jims_bold(self):
@@ -84,20 +84,15 @@ class Card(unittest.TestCase):
         self.assertEqual(len(calls), 6)                                              # Oracle is asked on every tick
 
     def test_the_codex_lines_are_the_plan_passed_in_not_oracles_own_plan_read(self):
-        rep = report()
-        calls = []
+        rep, calls = report(), []
         plan = lambda: calls.append(1) or {"left_5h": 100, "left_week": 98}           # Oracle's own stats() says 100 and 64
-        out = io.StringIO()
-        with mock.patch.object(report_region, "require_configured", lambda ids, fail: None), contextlib.redirect_stdout(out):
-            counts = card.run(0, True, self.ENV, NOW, lambda host: json.dumps(stats()).encode(), rep, plan=plan)
+        counts, _ = self.run_card(rep, plan=plan)
         self.assertEqual((counts["missing"], counts["written"], len(calls)), (0, 2, 1))
         self.assertEqual(rep.plain("obody").split("\n")[-1], "Codex 5h ██████████ 100% · Codex week ██████████ 98%")
 
     def test_a_plan_that_cannot_be_had_is_unavailable_and_degrades_the_card(self):
         rep = report()
-        out = io.StringIO()
-        with mock.patch.object(report_region, "require_configured", lambda ids, fail: None), contextlib.redirect_stdout(out):
-            counts = card.run(0, True, self.ENV, NOW, lambda host: json.dumps(stats()).encode(), rep, plan=lambda: None)
+        counts, _ = self.run_card(rep, plan=lambda: None)
         self.assertEqual((counts["missing"], counts["written"]), (1, 2))
         self.assertEqual(rep.plain("obody").split("\n")[-1], "Codex plan: unavailable")
         self.assertTrue(rep.plain("ohead").startswith("Oracle Cloud (DEGRADED · "))
@@ -149,10 +144,6 @@ class Card(unittest.TestCase):
             self.run_card(report(), answer=lambda host, b=bad: json.dumps({**stats(), "workers": b}).encode())
             self.assertEqual(self.counted[-1], None)                                 # off-contract: the whole reply is refused, the card shows unavailable
 
-    def test_a_dry_run_never_touches_the_backup_watch(self):
-        self.run_card(report(), live=False)
-        self.assertEqual(self.watched, [])
-
     def test_reclaim_risk_is_shown_plainly(self):
         rep = report()
         self.run_card(rep, answer=lambda host: json.dumps(stats(reclaim="AT_RISK")).encode())
@@ -169,10 +160,10 @@ class Card(unittest.TestCase):
             self.assertTrue(rep.plain("ohead").startswith("Oracle Cloud (DEGRADED · "))
             self.assertIn("Memory unavailable · Disk unavailable", rep.plain("obody"))
 
-    def test_dry_run_writes_nothing(self):
+    def test_dry_run_writes_nothing_and_never_touches_the_watches(self):
         rep = report()
         self.assertEqual(self.run_card(rep, live=False)[0]["written"], 0)
-        self.assertEqual(rep.patches, [])
+        self.assertEqual((rep.patches, self.watched, self.counted), ([], [], []))
 
     def test_a_missing_ambiguous_or_reshaped_callout_is_not_owned(self):
         no_card = Report()
