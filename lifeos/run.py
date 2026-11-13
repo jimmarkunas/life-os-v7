@@ -158,7 +158,6 @@ STAGES = {
     "funnel": lazy("lifeos.jobs.funnel"),
     "fit-review": lazy("lifeos.jobs.review"),
     "explain": lazy("lifeos.jobs.explain"),
-    "board-check": lazy("lifeos.sources.web.boardcheck"),
     "sync-seen": _sync_seen,
     "purge": _purge,
 }
