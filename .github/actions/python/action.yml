@@ -1,13 +1,14 @@
 name: Python and dependencies
-description: Python 3.12 with the pip cache, then the locked requirements (requirements.lock, exact versions and hashes; the one place this is declared).
+description: Python 3.12 from the runner image in a virtual environment (LIFE-639; no third-party setup action), then the locked requirements (requirements.lock, exact versions and hashes; the one place this is declared).
 runs:
   using: composite
   steps:
-    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
-      with:
-        python-version: "3.12"
-        cache: pip
-        cache-dependency-path: requirements*
+    - name: Python 3.12 from the runner image, in a virtual environment
+      shell: bash
+      run: |
+        python3 --version | grep -q '^Python 3\.12\.' || { echo "::error::the runner image's python3 is not 3.12"; exit 1; }
+        python3 -m venv "$RUNNER_TEMP/venv"
+        echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
     - name: Install dependencies
       shell: bash
       run: pip install --require-hashes -r requirements.lock

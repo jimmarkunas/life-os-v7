@@ -1,0 +1,10 @@
+name: Node.js 24 (checked download)
+description: "LIFE-639. Replaces actions/setup-node: downloads Node v24.22.3 for Linux x64 from nodejs.org and installs it only if the tarball's SHA-256 equals the one recorded in node.sha256, then puts it first on the PATH."
+runs:
+  using: composite
+  steps:
+    - name: Install Node (checked against the recorded SHA-256)
+      shell: bash
+      env:
+        NODE_SHA256_FILE: ${{ github.action_path }}/node.sha256
+      run: bash "$GITHUB_ACTION_PATH/install.sh"
