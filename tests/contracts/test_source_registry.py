@@ -12,7 +12,7 @@ from lifeos.platform import source_registry as registry
 
 # Stages whose target sits under lifeos/sources/ and that are still wired by hand in lifeos/run.py (and, for the tick ones, lifeos/jobs/tick.py). Each migration PR moves one name from here into
 # source_registry.json; a new source is never added here.
-NOT_YET_MIGRATED = frozenset(("scale-up-register",))
+NOT_YET_MIGRATED = frozenset(())
 
 
 def unlisted(stages, sources=registry.SOURCES, legacy=NOT_YET_MIGRATED):
