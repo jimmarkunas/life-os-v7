@@ -1,5 +1,6 @@
-"""B2 vertical slice; one page per evidence pass, no write retries. LIFE-88: pages are the approved UI 3c / UI 4 trees, and a
-UI 3c opportunity page's machine region is reconciled from its view when the sources change."""
+"""Creates the Interview pages (the approved UI 3c / UI 4 trees): one page per evidence pass, no write retries (B2 vertical slice, LIFE-88).
+
+A UI 3c opportunity page's machine region is reconciled from its view when the sources change."""
 import hashlib
 import json
 import re
