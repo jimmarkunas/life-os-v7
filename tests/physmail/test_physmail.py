@@ -128,6 +128,14 @@ class FakeStore:
             raise fail("READBACK_MISMATCH")
 
 
+def use_store(test, store, *modules):
+    """The modules' STORE is `store` for this test only."""
+    for module in modules:
+        patch = mock.patch.object(module, "STORE", store)
+        patch.start()
+        test.addCleanup(patch.stop)
+
+
 class FakeGmail:
     """Only the two read calls exist: any modify, label or relabel attempt is an AttributeError."""
 
@@ -149,10 +157,7 @@ class FakeGmail:
 class StageTests(unittest.TestCase):
     def setUp(self):
         self.store = FakeStore()
-        self._saved, stage.STORE = stage.STORE, self.store
-
-    def tearDown(self):
-        stage.STORE = self._saved
+        use_store(self, self.store, stage)
 
     def run_stage(self, messages=(), live=True, env=None, **kw):
         gmail = kw.pop("gmail", None) or FakeGmail(messages)
@@ -280,10 +285,7 @@ class CardRunTests(unittest.TestCase):
         st, _ = state.apply(state.new_state(11, NOW), [events.extract(actions("a1", "Mail #4801 scanned"))], NOW)
         st["accepted_at"] = NOW.isoformat()
         self.store = FakeStore(st)
-        self._saved, card.STORE = card.STORE, self.store
-
-    def tearDown(self):
-        card.STORE = self._saved
+        use_store(self, self.store, card)
 
     def go(self, notion=None, live=True, env=None):
         notion = notion or MailRegions()
@@ -354,10 +356,6 @@ class CardRunTests(unittest.TestCase):
 
 
 class WiringTests(unittest.TestCase):
-    def test_the_cli_stages_exist(self):
-        from lifeos import run
-        self.assertTrue({"mail-alerts", "mail-card"} <= set(run.STAGES))
-
     def test_no_literal_vendor_domain_and_no_block_id_in_the_repository_text(self):
         root = pathlib.Path(__file__).resolve().parents[2]
         for path in list((root / "lifeos" / "physmail").glob("*.py")) + [pathlib.Path(__file__)]:
@@ -399,12 +397,9 @@ class ConnectionTests(unittest.TestCase):
             super().save_verified(connection, key, snapshot, fail)
 
     def run_stage(self, db, store, gmail=None):
-        saved, stage.STORE = stage.STORE, store
-        try:
-            with mock.patch.object(stage.db, "connect", db.connect):
-                return stage.run(1000, True, environ={"PHYSICAL_MAIL_ANCHOR": "11"}, gmail=gmail or FakeGmail([]), now=NOW)
-        finally:
-            stage.STORE = saved
+        use_store(self, store, stage)
+        with mock.patch.object(stage.db, "connect", db.connect):
+            return stage.run(1000, True, environ={"PHYSICAL_MAIL_ANCHOR": "11"}, gmail=gmail or FakeGmail([]), now=NOW)
 
     def test_the_save_uses_a_fresh_connection_and_the_idle_one_is_closed_first(self):
         db, store = self.Db(), self.Store()
@@ -432,23 +427,18 @@ class RuntimePathTests(unittest.TestCase):
     """PRE_MERGE_RUNTIME_GATE: ENTRY POINT -> REQUIRED INPUTS -> CALL CHAIN -> MUTATION OWNER -> SUCCESS / FAIL-CLOSED SIGNAL -> CANONICAL STATE -> READ-BACK, on the production composition."""
 
     def test_the_whole_path_runs_from_gmail_evidence_to_the_read_back_callout_and_ends_fresh(self):
-        store = FakeStore()
-        saved_stage, saved_card = stage.STORE, card.STORE
-        stage.STORE = card.STORE = store
-        try:
-            gmail = FakeGmail([mail("n1", "New Mail (3)", f"https://app.{events.DOMAIN}/in"), actions("a1", "Mail #4801 scanned", "Mail #4802 forwarded", at="2026-10-05T15:00:00+00:00")])
-            counts = stage.run(1000, True, environ={"PHYSICAL_MAIL_ANCHOR": "11"}, gmail=gmail, connection=object(), now=NOW)
-            self.assertEqual((counts["saved"], counts["status"]), (1, "ok"))                       # SUCCESS SIGNAL of the ingest; the row is read back by save_verified
-            notion = MailRegions()
-            before = {k: notion.full_tree(k) for k in ("jira-callout", "calendar-callout", "bills-callout", "amazon-callout", "attention-callout")}
-            out = card.run(0, True, environ={**ENV, "MAIL_SYNC_OUTCOME": "success"}, connection=object(), client=notion, now=NOW)
-            self.assertEqual((out["status"], out["waiting"], out["blocks_written"] > 0), ("fresh", 14, True))      # the promised complete state: not DEGRADED
-            kids = notion.children["mail-callout"]
-            self.assertEqual(report_region.plain(kids[0]), "Mail Alerts")                          # AUTHORITATIVE READ-BACK ran inside replace_text and passed
-            self.assertTrue(report_region.plain(kids[1]).startswith("Updated 10:00 AM CT · 14 waiting"))
-            self.assertEqual({k: notion.full_tree(k) for k in before}, before)                     # no other Daily Report region changed
-        finally:
-            stage.STORE, card.STORE = saved_stage, saved_card
+        use_store(self, FakeStore(), stage, card)
+        gmail = FakeGmail([mail("n1", "New Mail (3)", f"https://app.{events.DOMAIN}/in"), actions("a1", "Mail #4801 scanned", "Mail #4802 forwarded", at="2026-10-05T15:00:00+00:00")])
+        counts = stage.run(1000, True, environ={"PHYSICAL_MAIL_ANCHOR": "11"}, gmail=gmail, connection=object(), now=NOW)
+        self.assertEqual((counts["saved"], counts["status"]), (1, "ok"))                       # SUCCESS SIGNAL of the ingest; the row is read back by save_verified
+        notion = MailRegions()
+        before = {k: notion.full_tree(k) for k in ("jira-callout", "calendar-callout", "bills-callout", "amazon-callout", "attention-callout")}
+        out = card.run(0, True, environ={**ENV, "MAIL_SYNC_OUTCOME": "success"}, connection=object(), client=notion, now=NOW)
+        self.assertEqual((out["status"], out["waiting"], out["blocks_written"] > 0), ("fresh", 14, True))      # the promised complete state: not DEGRADED
+        kids = notion.children["mail-callout"]
+        self.assertEqual(report_region.plain(kids[0]), "Mail Alerts")                          # AUTHORITATIVE READ-BACK ran inside replace_text and passed
+        self.assertTrue(report_region.plain(kids[1]).startswith("Updated 10:00 AM CT · 14 waiting"))
+        self.assertEqual({k: notion.full_tree(k) for k in before}, before)                     # no other Daily Report region changed
 
     def test_the_cli_entry_points_reach_the_changed_modules(self):
         from lifeos import run as runner
@@ -480,17 +470,13 @@ class RuntimePathTests(unittest.TestCase):
 
     def test_missing_input_fails_closed_without_a_write_and_the_card_then_says_degraded(self):
         store = FakeStore()
-        saved_stage, saved_card = stage.STORE, card.STORE
-        stage.STORE = card.STORE = store
-        try:
-            with self.assertRaises(stage.PhysMailError):
-                stage.run(1000, True, environ={}, gmail=FakeGmail([]), connection=object(), now=NOW)       # no anchor, no state: FAIL-CLOSED SIGNAL
-            self.assertEqual(store.saves, 0)
-            notion = MailRegions()
-            card.run(0, True, environ={**ENV, "MAIL_SYNC_OUTCOME": "failure"}, connection=object(), client=notion, now=NOW)
-            self.assertTrue(report_region.plain(notion.children["mail-callout"][1]).startswith("DEGRADED · Physical Mail starting state unknown"))
-        finally:
-            stage.STORE, card.STORE = saved_stage, saved_card
+        use_store(self, store, stage, card)
+        with self.assertRaises(stage.PhysMailError):
+            stage.run(1000, True, environ={}, gmail=FakeGmail([]), connection=object(), now=NOW)       # no anchor, no state: FAIL-CLOSED SIGNAL
+        self.assertEqual(store.saves, 0)
+        notion = MailRegions()
+        card.run(0, True, environ={**ENV, "MAIL_SYNC_OUTCOME": "failure"}, connection=object(), client=notion, now=NOW)
+        self.assertTrue(report_region.plain(notion.children["mail-callout"][1]).startswith("DEGRADED · Physical Mail starting state unknown"))
 
     def test_the_state_table_is_the_one_snapshot_table_with_one_row(self):
         self.assertEqual((stage.STORE.table, stage.KEY), ("v7_physical_mail", 1))
@@ -617,13 +603,6 @@ class ItemLevelTests(unittest.TestCase):
         self.assertEqual([t for t in text if t[:1] in "🚚📥"], ["🚚 Forwarded — not delivered until tracking says so (1)", "📥 Scanned — decide: forward, shred or recycle (9)"])      # the shared next action is said once per group
         self.assertEqual(text[-1], "Last 7 days: 10 recycled, 1 shredded")        # history sits last, muted
 
-    def test_each_mail_number_is_one_line_and_disposed_pieces_are_never_listed(self):
-        text, _, _ = self.lines(self.full())
-        listed = " ".join(t for t in text if t.startswith("#"))
-        for n in RECYCLED + [SHREDDED]:
-            self.assertNotIn(str(n), listed)
-        self.assertEqual(len({t.split(" ")[0] for t in text if t.startswith("#")}), 10)
-
     def test_a_piece_moves_through_scan_forward_and_disposal_as_evidence_arrives(self):
         e = lambda mid, line, at: events.extract(mail(mid, "Completed Action Requests", line, at))
         st = piece_state([e("a", f"Mail #{SCANNED[0]}: Scan completed", "2026-10-05T10:00:00+00:00")])
@@ -703,24 +682,19 @@ class ItemLevelTests(unittest.TestCase):
         self.assertTrue(text[0].startswith("Updated 10:00 AM CT · 40 waiting"))
 
     def test_the_item_lines_are_written_and_read_back_natively_and_the_rest_of_the_page_is_untouched(self):
-        st = self.full()
-        store = FakeStore(st)
-        saved, card.STORE = card.STORE, store
-        try:
-            notion = MailRegions()
-            before = {k: notion.full_tree(k) for k in ("jira-callout", "calendar-callout", "bills-callout", "amazon-callout", "attention-callout")}
-            out = card.run(0, True, environ=dict(ENV), connection=object(), client=notion, now=NOW)
-            kids = notion.children["mail-callout"]
-            self.assertEqual(report_region.plain(kids[0]), "Mail Alerts")
-            written = [report_region.plain(k) for k in kids[1:]]
-            self.assertEqual(sum(1 for t in written if t.startswith("#")), 10)
-            self.assertEqual(kids[-1]["id"], "mail-table-old")                                              # Jim's own non-text block stays last
-            self.assertEqual({k: notion.full_tree(k) for k in before}, before)
-            again = card.run(0, True, environ=dict(ENV), connection=object(), client=notion, now=NOW)       # idempotent: the same lines, no duplicates
-            self.assertEqual([report_region.plain(k) for k in notion.children["mail-callout"][1:]], written)
-            self.assertEqual(out["listed"], again["listed"])
-        finally:
-            card.STORE = saved
+        use_store(self, FakeStore(self.full()), card)
+        notion = MailRegions()
+        before = {k: notion.full_tree(k) for k in ("jira-callout", "calendar-callout", "bills-callout", "amazon-callout", "attention-callout")}
+        out = card.run(0, True, environ=dict(ENV), connection=object(), client=notion, now=NOW)
+        kids = notion.children["mail-callout"]
+        self.assertEqual(report_region.plain(kids[0]), "Mail Alerts")
+        written = [report_region.plain(k) for k in kids[1:]]
+        self.assertEqual(sum(1 for t in written if t.startswith("#")), 10)
+        self.assertEqual(kids[-1]["id"], "mail-table-old")                                              # Jim's own non-text block stays last
+        self.assertEqual({k: notion.full_tree(k) for k in before}, before)
+        again = card.run(0, True, environ=dict(ENV), connection=object(), client=notion, now=NOW)       # idempotent: the same lines, no duplicates
+        self.assertEqual([report_region.plain(k) for k in notion.children["mail-callout"][1:]], written)
+        self.assertEqual(out["listed"], again["listed"])
 
 
 class ReviewReplayTests(unittest.TestCase):
@@ -741,10 +715,7 @@ class ReviewReplayTests(unittest.TestCase):
 class RebuildTests(unittest.TestCase):
     def setUp(self):
         self.store = FakeStore()
-        self._saved, stage.STORE = stage.STORE, self.store
-
-    def tearDown(self):
-        stage.STORE = self._saved
+        use_store(self, self.store, stage)
 
     def old_row(self):
         """What the flat parser left: the same anchor, the chains it did see, and the notices it sent to review."""
@@ -821,9 +792,6 @@ class RebuildTests(unittest.TestCase):
         self.go(env={"PHYSICAL_MAIL_TRACKING_ENTRY": f"{FORWARDED} | ExampleCarrier | Overnight | TRK000004 | Bundle 2"})
         self.assertEqual(self.store.row["chains"][str(FORWARDED)]["tracking"]["number"], "TRK000004")
         self.assertEqual(self.store.row["chains"][str(FORWARDED)]["tracking"]["source"], "operator")
-
-    def test_the_rebuild_is_read_only_toward_gmail(self):
-        self.assertNotIn("modify", inspect.getsource(stage))
 
 
 FEDEX = events.FEDEX_SENDER

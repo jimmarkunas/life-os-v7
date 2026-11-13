@@ -30,11 +30,15 @@ def _fail(code):
     return CardError("MAILALERTS_" + code)
 
 
+def _block(kind, rich):
+    return {"object": "block", "type": kind, kind: {"rich_text": rich}}
+
+
 def _paragraph(content, link=None):
     text = rich_text(content)
     if link and text:
         text[0]["text"]["link"] = {"url": link}
-    return {"object": "block", "type": "paragraph", "paragraph": {"rich_text": text}}
+    return _block("paragraph", text)
 
 
 def _local(now):
@@ -42,7 +46,6 @@ def _local(now):
 
 
 MAX_ITEMS = 30                                      # a pile longer than this ends with a "+N more" line: the heading's count is always the whole pile
-WORDS = {"SCAN": "Scanned", "FORWARD": "Forwarded"}
 
 
 def _item(parts):
@@ -55,7 +58,7 @@ def _item(parts):
             if link:
                 piece["text"]["link"] = {"url": link}
             rich.append(piece)
-    return {"object": "block", "type": "bulleted_list_item", "bulleted_list_item": {"rich_text": rich}}
+    return _block("bulleted_list_item", rich)
 
 
 def _day(iso):
@@ -68,16 +71,11 @@ def _https(value):
 
 def _label(text):
     """A bold group label (a paragraph, so the bullets under it stay a plain list)."""
-    return {"object": "block", "type": "paragraph", "paragraph": {"rich_text": [{**piece, "annotations": {"bold": True}} for piece in rich_text(text)]}}
+    return _block("paragraph", [{**piece, "annotations": {"bold": True}} for piece in rich_text(text)])
 
 
-def _muted(text, link=None):
-    rich = rich_text(text)
-    for piece in rich:
-        piece["annotations"] = {"color": "gray"}
-        if link:
-            piece["text"]["link"] = {"url": link}
-    return {"object": "block", "type": "paragraph", "paragraph": {"rich_text": rich}}
+def _muted(text):
+    return _block("paragraph", [{**piece, "annotations": {"color": "gray"}} for piece in rich_text(text)])
 
 
 def _origin(value):
