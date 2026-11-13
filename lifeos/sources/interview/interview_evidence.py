@@ -21,7 +21,7 @@ from lifeos.interview.models import Ownership, ParentQuery, RoundQuery
 from lifeos.interview.progression import Invite, progress
 from lifeos.platform import mail
 from lifeos.platform.gcal import GoogleCalendar
-from lifeos.platform.gmail import Gmail, GmailError
+from lifeos.platform.gmail import Gmail, GmailError, error_code
 from lifeos.platform.names import same_company, same_role, split_title, tokens
 from lifeos.recruiters import classify, qualify
 from lifeos.recruiters import notion as recruiters_store
@@ -230,7 +230,8 @@ SENT_SHOWN = 10
 
 def sent_mail(environ, evidence, gmail=None):
     """LIFE-114 (Jim, Oct 29): Jim's own messages (follow-ups, thank-yous) on each request's Gmail thread, matched only by the exact thread in the request link; read only,
-    metadata only. -> (evidence with sent_mail on each Gmail request, failed?). No Gmail credential in this step leaves the evidence unchanged (not connected)."""
+    metadata only. -> (evidence with sent_mail on each Gmail request, failed?). No Gmail credential in this step leaves the evidence unchanged (not connected).
+    LIFE-657: a thread Gmail answers 404 for stays unreadable (the page says so, nothing a retry fixes), so it is not `failed?`; any other error (a rate limit, a 5xx, a token or a malformed reply) could clear and is."""
     threads = sorted({m.group(1) for _, q in evidence if (m := GMAIL_THREAD.fullmatch((q.source or "").strip()))})
     if not threads:
         return evidence, False
@@ -243,8 +244,8 @@ def sent_mail(environ, evidence, gmail=None):
     for thread in threads:
         try:
             found[thread] = (tuple((at.isoformat(timespec="seconds"), subject) for at, subject in gmail.thread_sent(thread)[-SENT_SHOWN:]), "read")
-        except GmailError:                                                   # unknown is never "none sent": this request reads DEGRADED this run
-            found[thread], failed = ((), "unreadable"), True
+        except GmailError as error:                                          # unknown is never "none sent": this request reads DEGRADED this run
+            found[thread], failed = ((), "unreadable"), failed or not error_code(error).startswith("HTTP_404")
     out = []
     for p, q in evidence:
         m = GMAIL_THREAD.fullmatch((q.source or "").strip())
@@ -287,10 +288,12 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
     injected = context
     context, now, client = context or RunContext.start(120), (now or datetime.now(TZ)).astimezone(TZ), client or notion.make_client(environ)
     read_rows = ledger_rows or (lambda company: acceptance.ledger_rows(company, environ))
-    why, evidence, ready, where = {}, [], {}, {}
+    why, evidence, ready, where, permanent = {}, [], {}, {}, {}
 
-    def flag(code, site=None):
+    def flag(code, site=None, stays=False):
         why[code] = why.get(code, 0) + 1
+        if stays:                                                         # LIFE-657: a state nothing but Jim or the source changes, and the page already shows: counted on its own, never `failed`
+            permanent[code] = permanent.get(code, 0) + 1
         if site:                                                          # which check raised it, as a fixed word: counts only, never a title, id or address
             where[site] = where.get(site, 0) + 1
 
@@ -554,8 +557,8 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
     if unreadable:
         flag("network_unreadable")
     evidence, unreadable = sent_mail(environ, evidence, gmail)
-    if unreadable:
-        flag("sent_mail_unreadable")
+    if unreadable or any(q.sent_mail_state == "unreadable" for _, q in evidence):
+        flag("sent_mail_unreadable", stays=not unreadable)
     counts = stage.run(limit, live, environ, client=client, evidence=evidence, context=injected or RunContext.start(STAGE_SECONDS))      # a fresh clock: the mail read above can take minutes, and the writes need their own budget
     if where:
         counts["where"] = where
@@ -571,5 +574,6 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
     for row, *_ in [v for v in leads if v[0]["id"] not in handled]:
         label = sha1(row["title"].encode()).hexdigest()[:6]
         counts["lead_requests"][label] = counts["lead_requests"].get(label, 0) + 1
-    counts["failed"] = sum(why.values()) + counts["blocked"] + counts.get("sweep", {}).get("failed", 0)      # a UI 3b page waiting for migration is DEGRADED too: it is not refreshed
+    counts["permanent"] = permanent
+    counts["failed"] = sum(why.values()) - sum(permanent.values()) + counts["blocked"] + counts.get("sweep", {}).get("failed", 0)      # a UI 3b page waiting for migration is DEGRADED too: it is not refreshed
     return counts

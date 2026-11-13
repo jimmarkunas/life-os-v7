@@ -1,4 +1,6 @@
 """LIFE-88: Interview OS's normal path composes only verified evidence, fails each gap visibly and alone, and writes only on Jim's switch."""
+import contextlib
+import io
 import json
 import re
 import unittest
@@ -8,6 +10,8 @@ from lifeos.interview import create, notion
 from lifeos.jobs import ledger as jobs_ledger
 from lifeos.platform.notion_client import NotionError
 from lifeos.interview.models import Child, Ownership, Parent, Scan
+from lifeos import run
+from lifeos.platform.gmail import GmailError
 from lifeos.run import STAGES
 from lifeos.sources.interview import interview_evidence as ev
 from tests.kit.shared import SqlLog
@@ -83,8 +87,9 @@ class Writer:
 class Run:
     """ev.run with the Notion reads replaced by plain data; `stage.run` is captured, never executed."""
 
-    def __init__(self, parents=(("p1", "ExampleCo — Program Manager"),), facts=None, kids=None, rows=(ROW,), calendar=None, environ=ENV, live=True, roster=(), records=(), ledger=None, retired=(), writer=None, owner=Ownership.MACHINE, tops=(), legacy=None, complete=True):
-        self.writer, self.owner, self.tops, self.legacy, self.complete = writer, owner, list(tops), legacy or {}, complete
+    def __init__(self, parents=(("p1", "ExampleCo — Program Manager"),), facts=None, kids=None, rows=(ROW,), calendar=None, environ=ENV, live=True, roster=(), records=(), ledger=None, retired=(), writer=None, owner=Ownership.MACHINE, tops=(), legacy=None, complete=True, gmail=None, stage_counts=None):
+        self.writer, self.owner, self.tops, self.legacy, self.complete, self.gmail = writer, owner, list(tops), legacy or {}, complete, gmail
+        self.stage_counts = stage_counts or {"blocked": 0, "why": {}}
         self.roster, self.records, self.ledger = roster if isinstance(roster, Exception) else list(roster), None if records is None else list(records), ledger or Ledger()
         self.parents = [Parent(i, t) for i, t in parents] + [Parent("r" + str(n), t, False) for n, t in enumerate(retired)]
         self.facts = facts if facts is not None else {"p1": ("exampleco-r-1", URL)}
@@ -101,7 +106,7 @@ class Run:
 
         def fake_stage(limit, live, environ, client, evidence, context):
             captured.update(evidence=list(evidence), live=live, context=context)
-            return {"blocked": 0, "why": {}}
+            return dict(self.stage_counts)
 
         with patch.object(notion, "parent_scan", return_value=Scan(tuple(self.parents), True)), \
              patch.object(notion, "ownership", return_value=self.owner), \
@@ -113,8 +118,47 @@ class Run:
              patch.object(ev.stage, "run", side_effect=fake_stage), \
              patch.object(ev, "network_contacts", side_effect=lambda client, evidence: (evidence, False)):        # E10 contacts have their own tests
             counts = ev.run(20, self.live, environ=self.environ, client=object(), calendar=self.calendar, ledger_rows=self.ledger_rows,
-                            ledger=self.ledger, records=self.records, writer=self.writer)
+                            ledger=self.ledger, records=self.records, writer=self.writer, gmail=self.gmail)
         return counts, captured
+
+
+class SentMailFailure(unittest.TestCase):
+    """LIFE-657: a thread Gmail says is not found stays unreadable (the page says DEGRADED; nothing a retry fixes) and no longer fails the stage; every other Gmail error still does."""
+    GMAIL_URL = "https://mail.google.com/mail/u/0/#all/18c0ffee12345678"
+
+    @staticmethod
+    def gmail(message):
+        class G:
+            def thread_sent(self, thread):
+                raise GmailError(message)
+        return G()
+
+    def counts(self, message):
+        counts, got = Run(facts={"p1": ("exampleco-r-1", self.GMAIL_URL)}, gmail=self.gmail(message))()
+        self.assertEqual([q.sent_mail_state for _, q in got["evidence"]], ["unreadable"])         # the page still reads DEGRADED
+        self.assertEqual(counts["why"]["sent_mail_unreadable"], 1)                               # and the counts line still says so
+        return counts
+
+    def test_a_thread_gmail_cannot_find_is_counted_on_its_own_and_exits_0(self):
+        counts = self.counts("GET https://gmail.googleapis.com/gmail/v1/users/me/threads -> HTTP 404 notFound")
+        self.assertEqual((counts["failed"], counts["permanent"]), (0, {"sent_mail_unreadable": 1}))
+        out, err = io.StringIO(), io.StringIO()
+        with patch.dict(run.STAGES, {"interview": lambda limit, live: counts}), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            self.assertEqual(run.main(["interview", "--live"]), 0)
+        self.assertEqual((out.getvalue(), err.getvalue()), ("interview: " + json.dumps(counts, sort_keys=True) + "\n", ""))
+
+    def test_any_other_gmail_error_still_fails_and_exits_1(self):
+        for message in ("GET https://gmail.googleapis.com/gmail/v1/users/me/threads -> HTTP 429 rateLimitExceeded", "GET x -> HTTP 503 ", "GMAIL_THREAD_INCOMPLETE",
+                        "POST https://oauth2.googleapis.com/token -> HTTP 400 ", "GET x -> HTTP 403 forbidden"):
+            counts = self.counts(message)
+            self.assertEqual((counts["failed"], counts["permanent"]), (1, {}), message)
+            with patch.dict(run.STAGES, {"interview": lambda limit, live: counts}), contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(run.main(["interview", "--live"]), 1, message)
+
+    def test_a_blocked_page_still_counts_as_failed(self):
+        """machine_region_edited is permanent too, but nothing on the page or card shows it (only the log's counts), so it stays a failure."""
+        counts, _ = Run(stage_counts={"blocked": 1, "why": {"machine_region_edited": 1}})()
+        self.assertEqual((counts["failed"], counts["permanent"]), (1, {}))
 
 
 class Ordinal(unittest.TestCase):
