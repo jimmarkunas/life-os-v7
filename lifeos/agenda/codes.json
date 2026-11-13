@@ -1,0 +1,18 @@
+{
+  "AGENDA_CARD_APPEND_MISMATCH": ["agenda", "bug", false, "Blocks appended to the Agenda card did not read back as written.", "Check the page; retried next run."],
+  "AGENDA_CARD_NOT_OWNED": ["agenda", "blocked", false, "The Agenda card block is not one V7 owns, so nothing is changed.", "None; the card never edits what it does not own."],
+  "AGENDA_CARD_STALE_NO_BASELINE": ["agenda", "blocked", false, "The snapshot is stale and V7 has not written this card yet, so there is nothing known-good to keep showing.", "Run the Agenda snapshot stage."],
+  "AGENDA_CARD_VERIFY_FAILED": ["agenda", "degraded", false, "The Agenda card did not read back as written.", "Retried next run."],
+  "AGENDA_EVENT_INVALID": ["agenda", "terminal", false, "A calendar event is not valid and is left out.", "None; check the event if it matters."],
+  "AGENDA_LISTING_INCOMPLETE": ["agenda", "degraded", false, "The calendar listing did not finish paging.", "None; retried next run."],
+  "AGENDA_LISTING_INVALID": ["agenda", "bug", false, "The calendar listing repeated a cursor or was malformed.", "Retried next run."],
+  "AGENDA_NOTION_PAGE_INCOMPLETE": ["agenda", "degraded", false, "A Notion page read for the Agenda card was incomplete.", "None; retried next run."],
+  "AGENDA_NOTION_PAGINATION_INCOMPLETE": ["agenda", "degraded", false, "A Notion list for the Agenda card did not finish paging.", "None; retried next run."],
+  "AGENDA_NOTION_PAGINATION_INVALID": ["agenda", "bug", false, "Notion paging for the Agenda card repeated a cursor.", "Retried next run."],
+  "AGENDA_PROTECTED_REGION_CHANGED": ["agenda", "blocked", false, "Jim's protected content changed during a write, so the write stops.", "None; nothing of Jim's is overwritten."],
+  "AGENDA_PROTECTED_REGION_UNAVAILABLE": ["agenda", "retry", false, "A protected block could not be read, so no write is made.", "None; retried next run."],
+  "AGENDA_READ_FAILED": ["agenda", "retry", false, "The calendar could not be read.", "None; retried next run."],
+  "AGENDA_SNAPSHOT_INVALID": ["agenda", "bug", false, "The stored Agenda snapshot is not valid.", "Re-run the snapshot stage."],
+  "AGENDA_SNAPSHOT_MISSING": ["agenda", "retry", false, "No Agenda snapshot is stored yet.", "None; the snapshot stage runs first."],
+  "AGENDA_STORE_FAILED": ["agenda", "degraded", false, "The Agenda snapshot could not be stored.", "Retried next run."]
+}

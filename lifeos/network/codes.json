@@ -1,0 +1,21 @@
+{
+  "NETWORK_ALIAS_CONFLICT": ["network", "blocked", false, "A confirmed alias would be overwritten, so nothing changes.", "Resolve the alias by hand."],
+  "NETWORK_CONFIG_MISSING": ["network", "blocked", false, "The Network import configuration is missing.", "Set the variables."],
+  "NETWORK_FILE_NETWORK": ["network", "retry", false, "The network failed while fetching the handoff file.", "None; retried."],
+  "NETWORK_FILE_TOO_LARGE": ["network", "terminal", false, "The handoff file is over the size limit.", "Use a smaller file."],
+  "NETWORK_FILE_URL_REFUSED": ["network", "blocked", false, "The file link is not on the allowed host list.", "Use a Notion file."],
+  "NETWORK_IDENTITY_CONFLICT": ["network", "blocked", false, "Two people share one identity key, so nothing changes.", "Resolve the conflict by hand."],
+  "NETWORK_NO_FILE": ["network", "state", false, "No handoff file is attached.", "None."],
+  "NETWORK_NO_HEADER": ["network", "terminal", false, "The handoff file has no header row.", "Fix the file."],
+  "NETWORK_PAGE_INCOMPLETE": ["network", "degraded", false, "A Notion page read did not finish.", "None; retried."],
+  "NETWORK_READBACK_MISMATCH": ["network", "bug", false, "A write did not read back as written.", "Retried."],
+  "NETWORK_SCHEMA_MISMATCH": ["network", "blocked", false, "The Network database no longer has the properties the import writes.", "Restore the properties."],
+  "NETWORK_STORE_FAILED": ["network", "degraded", false, "The import could not be stored.", "Retried."],
+  "NETWORK_SURFACE_PAGE_INCOMPLETE": ["network", "degraded", false, "A surface page read did not finish.", "None; retried."],
+  "NETWORK_DESCRIPTION_READBACK_MISMATCH": ["network", "degraded", false, "After removing a repeated job description, the row's blocks did not read back as expected.", "Open the row; nothing else was removed. The next run checks it again."],
+  "NETWORK_SURFACE_READBACK_MISMATCH": ["network", "bug", false, "A surface write did not read back as written.", "Retried."],
+  "COMPANY_CHANGED": ["network", "state", false, "Network event: a person's company changed.", "None."],
+  "PERSON_IMPORTED": ["network", "state", false, "Network event: a person was imported.", "None."],
+  "SHEET_VIA_CHATGPT": ["network", "state", false, "Network source kind: a sheet handed off through ChatGPT.", "None."],
+  "TITLE_CHANGED": ["network", "state", false, "Network event: a person's title changed.", "None."]
+}

@@ -1,0 +1,22 @@
+{
+  "ORACLE_STATS_OFF_CONTRACT": ["imessage", "bug", false, "The Oracle stats payload failed validation.", "Compare the Edge service version."],
+  "COMMS_NOT_CONFIGURED": ["imessage", "blocked", false, "The comms card has no configuration.", "Set the card variables."],
+  "COMMS_OFF_CONTRACT": ["imessage", "bug", false, "The comms payload did not match the contract.", "Compare the Mac service version."],
+  "COMMS_READBACK_MISMATCH": ["imessage", "bug", false, "The card did not read back as written.", "Check the page."],
+  "COMMS_SCRAMBLE_INVALID": ["imessage", "bug", false, "The scrambled counts failed validation.", "Check the Mac service."],
+  "COMMS_STALE": ["imessage", "degraded", false, "The comms data is older than the freshness limit.", "Check the Mac service."],
+  "COMMS_UNREACHABLE": ["imessage", "retry", false, "The comms endpoint could not be reached.", "None; retried next tick."],
+  "COMMS_WRITE_FAILED": ["imessage", "degraded", false, "The card could not be written to Notion.", "Retried next tick."],
+  "ACTION_REQUIRED": ["imessage", "state", false, "Attention level: action is required.", "None."],
+  "TIME_CRITICAL": ["imessage", "state", false, "Attention level: time critical.", "None."],
+  "NEEDS_ATTENTION": ["imessage", "state", false, "Attention state: a message needs a look.", "None."],
+  "NOT_NEEDED": ["imessage", "state", false, "Attention state: nothing needed.", "None."],
+  "NOT_LINKED": ["imessage", "state", false, "WhatsApp health: not linked.", "Link the device."],
+  "NO_ENDPOINT": ["imessage", "state", false, "No alerts endpoint is configured.", "Set the endpoint."],
+  "IMSG_Q": ["imessage", "state", false, "Alert queue marker: queued.", "None."],
+  "IMSG_P": ["imessage", "state", false, "Alert queue marker: pending.", "None."],
+  "IMSG_S": ["imessage", "state", false, "Alert queue marker: sent.", "None."],
+  "IMSG_U": ["imessage", "state", false, "Alert queue marker: unknown.", "None."],
+  "IMSG_X": ["imessage", "state", false, "Alert queue marker: expired.", "None."],
+  "IMSG_M": ["imessage", "state", false, "Alert queue marker line.", "None."]
+}
