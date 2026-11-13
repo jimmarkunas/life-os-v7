@@ -310,11 +310,11 @@ class ForcedBoard(unittest.TestCase):
     def test_a_named_company_is_due_now_whatever_its_state(self):
         sources = [{"id": "su-revolut-ltd", "company": "Revolut Ltd"}, {"id": "su-plentific", "company": "Plentific"}]
         states = {"su-revolut-ltd": {"due_at": datetime(2030, 1, 1), "failures": 0}, "su-plentific": {"due_at": datetime(2030, 1, 1), "failures": 0}}
-        self.assertEqual(list(run.unforced(states, sources, "revolut")), ["su-plentific"])
-        self.assertEqual(run.unforced(states, sources, "funnel"), states)
-        self.assertEqual(run.unforced(states, sources, "re"), states)
-        self.assertEqual(run.unforced(states, sources, None), states)
-        self.assertEqual(list(run.unforced(states, sources, "board:revolut, plentific")), [])             # several companies, board: ignored
+        def forced(force):
+            return run.forced_ids(sources, force)                      # run.run drops these ids' stored states, so these boards are due now
+        self.assertEqual(forced("revolut"), {"su-revolut-ltd"})
+        self.assertEqual((forced("funnel"), forced("re"), forced(None)), (set(), set(), set()))
+        self.assertEqual(forced("board:revolut, plentific"), set(states))             # several companies, board: ignored
 
 
 class FirstPartyAgeInTheWebPass(unittest.TestCase):

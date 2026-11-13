@@ -1,27 +1,11 @@
 import unittest
 
 from lifeos.jobs import exclusions as ex
+from tests.kit.db import RoutedRows
 
 
-class Cursor:
-    def __init__(self, rows):
-        self.rows, self.sql, self.last = rows, [], None
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        return False
-
-    def cursor(self):
-        return self
-
-    def execute(self, sql, args=()):
-        self.sql.append(sql.split()[0])
-        self.last = sql
-
-    def fetchall(self):
-        return [("EXCLUDED_FIT", 3)] if "GROUP BY" in self.last else self.rows
+def Cursor(rows):
+    return RoutedRows([("GROUP BY", [("EXCLUDED_FIT", 3)])], rows)
 
 
 class Exclusions(unittest.TestCase):
@@ -55,12 +39,9 @@ class Exclusions(unittest.TestCase):
     def test_run_only_selects_and_adds_the_floors_and_status_totals(self):
         cursor = Cursor([("web:su-a", "fit_exclude", 70, "EXCLUDE", "x", None)])
         report = ex.run(0, False, connect=lambda: cursor)
-        self.assertEqual(set(cursor.sql), {"SELECT"})
+        self.assertEqual(set(cursor.verbs()), {"SELECT"})
         self.assertEqual((report["floor"], report["near_miss_floor"], report["review_floor"], report["status_totals"]), (72, 68, 60, {"EXCLUDED_FIT": 3}))
 
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 class Review(unittest.TestCase):
@@ -83,7 +64,7 @@ class Review(unittest.TestCase):
         self.enterContext(mock.patch.object(stored_pages, "STORE", FakeStore()))
         cursor, client = Cursor(self.ROWS), FakeClient()
         self.assertEqual(ex.review(0, False, connect=lambda: cursor, client=client), {"rows": 2, "page": "dry", "failed": 0, "why": {}})
-        self.assertEqual((set(cursor.sql), client.writes), ({"SELECT"}, []))                       # a dry run reads only
+        self.assertEqual((set(cursor.verbs()), client.writes), ({"SELECT"}, []))                       # a dry run reads only
         report = ex.review(0, True, connect=lambda: Cursor(self.ROWS), client=client)
         self.assertEqual((report["rows"], report["page"]), (2, "new"))
         self.assertIn("ExampleCo", str(client.writes[0][2]))                                       # the plaintext only ever went to Notion

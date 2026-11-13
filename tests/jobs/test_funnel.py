@@ -3,55 +3,24 @@ from datetime import datetime
 from unittest import mock
 
 from lifeos.jobs import funnel, lanes
+from tests.kit.db import RoutedRows
 
 NOW = datetime(2026, 10, 10, 12, 0)
 
 
-class FakeCur:
-    def __init__(self):
-        self.sql, self.rows = [], []
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        return False
-
-    def execute(self, sql, args=()):
-        self.sql.append(sql)
-        if "j.enrich_attempts" in sql:
-            self.rows = [("jobright", "PUBLISHED", "", 0, 1, "ats", "title", "Admitted", 81, 2), ("jobright", "HOLD", "http_403", 3, 0, "", "", None, None, 5),
-                         ("lensa", "NEW", "", 0, 0, "", "", None, None, 1)]
-        elif "FROM v7_jobs j" in sql:
-            self.rows = [("jobright", "Passed / Review", "Fit 67 below 68", 67, 4), ("jobright", "Admitted", "", 81, 2), ("lensa", None, None, None, 1)]
-        elif "TIMESTAMPDIFF" in sql:
-            self.rows = [("jobright", 3, 5), ("lensa", 30, None)]
-        else:
-            self.rows = [("jobright", "PUBLISHED", 2), ("jobright", "HOLD", 7), ("unknown", "NEW", 1)]
-
-    def fetchall(self):
-        return self.rows
-
-
-class Conn:
-    def __init__(self):
-        self.cur = FakeCur()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        return False
-
-    def cursor(self):
-        return self.cur
+def connection():
+    return RoutedRows([
+        ("j.enrich_attempts", [("jobright", "PUBLISHED", "", 0, 1, "ats", "title", "Admitted", 81, 2), ("jobright", "HOLD", "http_403", 3, 0, "", "", None, None, 5),
+                               ("lensa", "NEW", "", 0, 0, "", "", None, None, 1)]),
+        ("FROM v7_jobs j", [("jobright", "Passed / Review", "Fit 67 below 68", 67, 4), ("jobright", "Admitted", "", 81, 2), ("lensa", None, None, None, 1)]),
+        ("TIMESTAMPDIFF", [("jobright", 3, 5), ("lensa", 30, None)])], [("jobright", "PUBLISHED", 2), ("jobright", "HOLD", 7), ("unknown", "NEW", 1)])
 
 
 class FunnelTests(unittest.TestCase):
     def go(self):
-        c = Conn()
+        c = connection()
         with mock.patch.object(funnel.store, "connect", return_value=c), mock.patch.object(funnel.store, "ensure_schema"):
-            return funnel.run(0, False, now=NOW), c.cur.sql
+            return funnel.run(0, False, now=NOW), c.sql
 
     def test_report_is_counts_by_source_status_band_and_reason(self):
         out, _ = self.go()
@@ -106,9 +75,6 @@ class FunnelTests(unittest.TestCase):
     def test_bands(self):
         self.assertEqual([funnel.band(s) for s in (None, 59, 60, 67, 68, 71, 72, 79, 80)], ["unscored", "lt60", "60_67", "60_67", "68_71", "68_71", "72_79", "72_79", "80_up"])
 
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 class PublicCodes(unittest.TestCase):

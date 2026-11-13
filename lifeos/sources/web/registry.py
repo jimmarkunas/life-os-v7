@@ -35,14 +35,6 @@ def enabled(status=None, tier=None, path=PATH):
     return [r for r in load(path) if r["enabled"] and (status is None or r["status"] == status) and (tier is None or r["tier"] == tier)]
 
 
-def coverage(path=PATH):
-    """{(tier, status): count} over enabled sources."""
-    out = {}
-    for row in enabled(path=path):
-        out[(row["tier"], row["status"])] = out.get((row["tier"], row["status"]), 0) + 1
-    return out
-
-
 def for_lane(lane, status="ready"):
     """Enabled sources of one lane's universe (default: the ones V7 can list today)."""
     return enabled(status=status, path=PATHS[lane])

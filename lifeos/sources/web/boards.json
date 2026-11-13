@@ -1,5 +1,5 @@
 {
-"about": "D202. seed: the Open Jobs board list (github.com/elliottdehn/open-jobs, data/slugs.json, CC0 1.0), Greenhouse, Ashby and Lever boards only; rebuild with python -m lifeos.sources.web.boards_seed. extras: boards added by hand (kind, slug, company). skip: kind:slug never read.",
+"about": "D202. seed: the Open Jobs board list (github.com/elliottdehn/open-jobs, data/slugs.json, CC0 1.0), Greenhouse, Ashby and Lever boards only; the Open Jobs project ended on 10 Oct 2026 (D201), so this list is now edited by hand. extras: boards added by hand (kind, slug, company). skip: kind:slug never read.",
 "seed_generated_at": "2026-09-09",
 "seed": {
 "greenhouse": [

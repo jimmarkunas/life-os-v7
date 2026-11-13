@@ -176,7 +176,7 @@ class CloudBacklogRunsAlone(unittest.TestCase):
             self.assertEqual(list(p), ["prep"], name)
             result, steps = p["prep"]
             self.assertEqual(result, "failure", name)
-            self.assertEqual([st.get("uses") for st in steps[:1]], ["actions/checkout@v5"], name)          # only the repository checkout ran before it: no credential
+            self.assertEqual([st.get("uses") for st in steps[:1]], ["actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09"], name)          # only the repository checkout ran before it: no credential
             self.assertEqual(len(steps), 2, name)
             self.assertIn("CLOUD_BACKLOG_COMBINED_INPUTS", steps[1]["run"])
             self.assertIn("exit 1", steps[1]["run"])
@@ -249,9 +249,6 @@ class ScheduledBatch(unittest.TestCase):
                          {"CLOUD_BACKLOG": "1", "V7_CLOUD_FIT_BACKLOG_MAX": "1", "V7_CLOUD_FIT_BACKLOG_BUDGET": "240", "V7_CLOUD_FIT_BACKLOG_PAGE": "a" * 32})
         self.assertNotIn("tick", self.names(plan(self.doc, "workflow_dispatch", variables, cloud_backlog="1", live=True)))
 
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 class TheHourIsFilled(unittest.TestCase):

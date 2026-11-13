@@ -1,3 +1,4 @@
+import collections
 import unittest
 
 from lifeos.sources.web import registry
@@ -22,7 +23,7 @@ class RegistryTests(unittest.TestCase):
         self.assertTrue(all(r["status"] == "discovery" for r in helpers))
 
     def test_coverage_counts(self):
-        cov = registry.coverage()
+        cov = collections.Counter((row["tier"], row["status"]) for row in registry.enabled())      # {(tier, status): count} over enabled sources
         self.assertEqual(cov[("employer", "ready")], 28)       # 20 Greenhouse + 4 Ashby + ServiceNow + Adobe, Postman (Workday) + GitHub (Jibe)
         self.assertNotIn(("employer", "port"), cov)
         self.assertEqual(cov[("employer", "bespoke")], 2)      # Shopify, Atlassian (company career pages)
