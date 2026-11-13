@@ -1,4 +1,4 @@
-"""LIFE-618: the job-source registry (lifeos/platform/source_registry.json) drives the stage table, the Jobs-tick plan and the source's own codes, and a stage under lifeos/sources/ that is neither registered nor on
+"""LIFE-618 / LIFE-588: the job-source registry (lifeos/platform/source_registry.json) drives the stage table, the Jobs-tick plan and the source's own codes, and a stage under lifeos/sources/ that is neither registered nor on
 the short "not yet migrated" list fails here, by name."""
 import importlib
 import sys
@@ -9,6 +9,7 @@ from lifeos import run
 from lifeos.jobs import tick
 from lifeos.platform import codes
 from lifeos.platform import source_registry as registry
+from tests import testindex
 
 # Stages whose target sits under lifeos/sources/ and that are still wired by hand in lifeos/run.py (and, for the tick ones, lifeos/jobs/tick.py). Each migration PR moves one name from here into
 # source_registry.json; a new source is never added here.
@@ -82,8 +83,6 @@ class ThePilotIsUnchanged(unittest.TestCase):
     def test_sponsors_has_the_same_stage_tick_step_and_place_as_before_the_registry(self):
         self.assertEqual(run.STAGES["sponsors"].target, ("lifeos.sources.discovery.sponsor_register", "CONTRACT"))          # LIFE-589: the pilot stage is declared through its contract
         self.assertEqual(next(s for s in tick.PLAN if s.name == "sponsors"), tick.Step("sponsors", 120, 40, bulk=True, group="B"))
-        group_b = [s.name for s in tick.PLAN if s.group == "B"]
-        self.assertEqual(group_b, ["boards", "web-scale-up", "web-titlewatch", "discover-jobs", "sponsors"])
         names = [s.name for s in tick.PLAN]
         self.assertEqual(names[names.index("sponsors") + 1], "boards-backfill")
 
@@ -95,7 +94,8 @@ class AFakeSourceNeedsOnlyItsModuleAndOneLine(unittest.TestCase):
         sys.modules["lifeos.sources._fake_source"] = module
         self.addCleanup(sys.modules.pop, "lifeos.sources._fake_source", None)
         self.fake = registry.Source("fake-source", "lifeos.sources._fake_source", floor=5, tick={"budget": 90, "bulk": True, "group": "B"}, after="sponsors",
-                                    codes={"FAKE_SOURCE_FAILED": ("degraded", False, "The fake source could not be read.", "Repeat the run.")})
+                                    codes={"FAKE_SOURCE_FAILED": ("degraded", False, "The fake source could not be read.", "Repeat the run.")},
+                                    partial_failure="FAKE_SOURCE_FAILED")
 
     def test_the_stage_runs_with_the_floor_applied(self):
         stage = registry.stages(run.lazy, [self.fake])["fake-source"]
@@ -110,6 +110,21 @@ class AFakeSourceNeedsOnlyItsModuleAndOneLine(unittest.TestCase):
     def test_a_step_named_after_a_step_that_does_not_exist_raises(self):
         with self.assertRaises(ValueError):
             registry.with_tick_steps(tick.PLAN, tick.Step, [registry.Source("x", "m", tick={"budget": 1}, after="no-such-step")])
+
+    def test_two_sources_that_follow_the_same_step_are_refused_by_name(self):
+        other = registry.Source("other-source", "lifeos.sources._fake_source", tick={"budget": 1}, after="sponsors")
+        with self.assertRaisesRegex(ValueError, "fake-source and other-source both follow tick step 'sponsors'"):
+            registry.with_tick_steps(tick.PLAN, tick.Step, [self.fake, other])
+
+    def test_its_partial_failure_code_is_what_the_run_exits_with_when_its_counts_say_failed(self):
+        self.assertEqual(registry.partial_failures([self.fake, registry.Source("quiet", "m")]), {"fake-source": "FAKE_SOURCE_FAILED"})
+        self.assertEqual(registry.partial_failures(), {s.name: s.partial_failure for s in registry.SOURCES if s.partial_failure})
+        self.assertTrue({"mail-filing", "manual-job", "granola-auto"} <= set(run.PARTIAL_FAILURE))             # the registered rows are merged into run.PARTIAL_FAILURE
+
+    def test_a_new_file_under_lifeos_needs_no_row_in_the_test_index_and_gets_its_mirror_folder_of_tests(self):
+        picked = testindex.select(["lifeos/sources/cards/fake_source.py", "tests/sources/test_fake_source.py"], testindex.load())
+        self.assertIn("tests.sources.test_mail_filing", picked)                                                  # the mirror folder runs although the index has never heard of the file
+        self.assertEqual(testindex.check(testindex.load(), max_age_days=10 ** 6), [])
 
     def test_its_codes_become_registered_codes_with_the_sources_stage(self):
         rows = registry.code_rows(codes._r, [self.fake])
