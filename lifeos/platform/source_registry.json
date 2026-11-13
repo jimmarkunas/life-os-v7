@@ -20,6 +20,7 @@
     {"name": "megibow", "module": "lifeos.sources.cards.megibow"},
     {"name": "network-layout", "module": "lifeos.sources.network.ledger_layout"},
     {"name": "network-match", "module": "lifeos.sources.network.network_leads"},
-    {"name": "network-surface", "module": "lifeos.sources.network.network_surface"}
+    {"name": "network-surface", "module": "lifeos.sources.network.network_surface"},
+    {"name": "newsletter-trace", "module": "lifeos.sources.newsletters.cardtrace"}
   ]
 }
