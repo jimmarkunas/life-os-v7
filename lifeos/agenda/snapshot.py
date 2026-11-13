@@ -1,5 +1,4 @@
 """Read the complete Chicago today/tomorrow calendar window into a private snapshot."""
-import json
 import os
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
@@ -113,12 +112,8 @@ def compact(event, today, tomorrow):
 def build(calendar, now=None):
     now = local_now(now)
     time_min, time_max, today, tomorrow = window(now)
-    try:
+    with fixed(Exception, AgendaError, "AGENDA_READ_FAILED", keep=GcalError):
         raw_events = calendar.list_events(time_min, time_max)
-    except GcalError:
-        raise
-    except Exception:
-        raise AgendaError("AGENDA_READ_FAILED") from None
     if not isinstance(raw_events, list):
         raise AgendaError("AGENDA_LISTING_INCOMPLETE")
     events, seen = [], set()
@@ -155,12 +150,8 @@ def run(limit, live, environ=os.environ, calendar=None, now=None, connect=None):
               "tomorrow": sum(snapshot["tomorrow"] in event["days"] for event in events),
               "saved": 0, "blocks_written": 0, "status": "fresh"}
     if live:
-        try:
+        with fixed(Exception, AgendaError, "AGENDA_STORE_FAILED", keep=AgendaError):
             with (connect or db.connect)() as connection:
                 STORE.save_verified(connection, 1, snapshot, lambda code: AgendaError("AGENDA_" + code))
             counts["saved"] = 1
-        except AgendaError:
-            raise
-        except Exception:
-            raise AgendaError("AGENDA_STORE_FAILED") from None
     return counts

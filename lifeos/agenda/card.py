@@ -222,13 +222,9 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
     if not block_id:
         return {"events": 0, "all_day": 0, "today": 0, "tomorrow": 0, "saved": 0,
                 "blocks_written": 0, "status": "not_configured"}
-    try:
+    with fixed(Exception, CardError, "AGENDA_STORE_FAILED", keep=NotionError):
         with (connect or db.connect)() as connection:
             saved = agenda_snapshot.load(connection)
-    except NotionError:
-        raise
-    except Exception:
-        raise CardError("AGENDA_STORE_FAILED") from None
     if saved is None:
         raise CardError("AGENDA_SNAPSHOT_MISSING")
     now = agenda_snapshot.local_now(now)
