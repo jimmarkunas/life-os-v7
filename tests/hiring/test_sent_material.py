@@ -217,6 +217,11 @@ class Mail(unittest.TestCase):
         out, failed = interview_evidence.sent_mail({}, self.evidence(), Down())
         self.assertTrue(failed)
         self.assertEqual(out[0][1].sent_mail_state, "unreadable")
+        class Gone:
+            def thread_sent(self, thread):
+                raise GmailError("GET https://gmail.googleapis.com/gmail/v1/users/me/threads -> HTTP 404 notFound")
+        out, failed = interview_evidence.sent_mail({}, self.evidence(), Gone())                         # LIFE-657: a thread Gmail does not have stays unreadable and is not a failure to retry
+        self.assertEqual((failed, out[0][1].sent_mail_state), (False, "unreadable"))
         out, failed = interview_evidence.sent_mail({}, self.evidence(), None)                           # no Gmail credential in this step: not connected
         self.assertEqual((out, failed), (self.evidence(), False))
 
