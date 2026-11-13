@@ -16,6 +16,7 @@ TINYFISH_AGENT_ALLOWED = False           # $0.016/step - forbidden
 # Notion (free official API, integration token)
 NOTION_REQUESTS_PER_SECOND = 3           # provider average limit
 NOTION_GAP_SECONDS = 0.4                 # ours: 2.5/s
+NOTION_RETRY_BACKOFF = (0.5, 1.0, 2.0)   # LIFE-654: waits (before jitter, which doubles at most) between tries after a 409 conflict, or a 502/503/504 on a read; capped at 3 retries
 NOTION_MAX_CHILD_BLOCKS = 100            # per create/append call
 NOTION_MAX_RICH_TEXT_CHARS = 2000        # per rich_text item
 NOTION_PAGE_SIZE = 100                   # query page size

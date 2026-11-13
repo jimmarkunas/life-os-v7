@@ -482,6 +482,26 @@ class RegionWriterTests(unittest.TestCase):
         self.assertEqual(t.blocks["0000000000000000000000000000a001"]["type"], "heading_3")
         self.assertEqual(len(t.kids["0000000000000000000000000000a003"]), 2)                                         # header + one row; the surplus rows were removed
 
+    def test_a_block_that_vanishes_mid_walk_is_read_again_once_from_the_page_root(self):
+        for block, final in (("left", "HIRING_PAGE_WALK_NOTION_HTTP_404:column"), ("cal-card", "HIRING_DIGEST:NOTION_HTTP_404")):      # a listing that fails, and the first-child check of a skipped callout
+            for failures in (1, 2):
+                t = page(extra_rows=1)
+                real, seen = t.call, []
+
+                def flaky(method, path, body=None, real=real, seen=seen, block=block, failures=failures):
+                    if method == "GET" and f"/blocks/{block}/children" in path and len(seen) < failures:
+                        seen.append(path)
+                        raise stage.NotionError("NOTION_HTTP_404")
+                    return real(method, path, body)
+                t.call = flaky
+                if failures == 1:
+                    self.assertFalse(card.present(t, ENV, "x", WANT, False)["verified"])
+                else:                                                  # the same fixed code after the one repeat
+                    with self.assertRaises(snapshot.HiringError) as error:
+                        card.present(t, ENV, "x", WANT, False)
+                    self.assertEqual(str(error.exception), final)
+                self.assertEqual((len(seen), writes(t)), (failures, []))
+
     def test_a_dry_run_validates_and_writes_nothing(self):
         t = page(extra_rows=1)
         done = card.present(t, ENV, "x", WANT, False)
