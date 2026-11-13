@@ -33,28 +33,21 @@ class CensusError(GmailError):
 
 def numbers_in(text):
     """Distinct (carrier, number) pairs in one message body. A number belongs to the first carrier shape that claims it."""
-    found, taken = [], set()
+    found = {}
     for carrier, shape, needs_word in SHAPES:
         for match in shape.finditer(text or ""):
-            number = (match.group(1) if needs_word else match.group(0)).upper()
-            if number not in taken:
-                taken.add(number)
-                found.append((carrier, number))
-    return found
+            found.setdefault((match.group(1) if needs_word else match.group(0)).upper(), carrier)
+    return [(carrier, number) for number, carrier in found.items()]
 
 
 def link_numbers(html):
     """Distinct (carrier, number) pairs held in the links of an HTML body: a carrier-shaped number anywhere in a link, or a number in a tracking query parameter."""
-    found, taken = [], set()
+    found = {}
     for href in HREF.findall(html or ""):
         href = unquote(unquote(href.replace("&amp;", "&")))
-        candidates = [(c, n) for c, n in numbers_in(href)]
-        candidates += [(c, n) for c, n in numbers_in("tracking " + " tracking ".join(PARAM.findall(href)))]
-        for carrier, number in candidates:
-            if number not in taken:
-                taken.add(number)
-                found.append((carrier, number))
-    return found
+        for carrier, number in numbers_in(href) + numbers_in("tracking " + " tracking ".join(PARAM.findall(href))):
+            found.setdefault(number, carrier)
+    return [(carrier, number) for number, carrier in found.items()]
 
 
 def run(limit, live, environ=os.environ, gmail=None, now=None):
