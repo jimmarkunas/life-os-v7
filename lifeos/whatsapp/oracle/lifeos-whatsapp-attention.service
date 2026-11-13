@@ -12,6 +12,16 @@ RestartSec=30
 UMask=0077
 MemoryMax=400M
 NoNewPrivileges=yes
+# LIFE-643 row 4: sandbox lines that need no mount namespace. ProtectSystem, PrivateTmp, ProtectKernel* and ProtectControlGroups are NOT set:
+# on Oracle (Ubuntu 24.04, kernel.apparmor_restrict_unprivileged_userns=1) an unprivileged user manager cannot write a uid_map, so those would fail with 226/NAMESPACE.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
 StandardOutput=null
 StandardError=null
 
