@@ -1,18 +1,15 @@
-"""The existing Recruiters data source, and nothing else. Natural key: Week Ending + Recruiter / Person + Recruiter Company + Role (normalized, no fuzzy matching).
+"""The existing Recruiters data source, and nothing else: create after absence is proven, update only a single non-Done match, read every write back.
 
-Create only after absence is proven for the week; update only a row that is the single match and not Done; two matches is an ambiguity and nothing is changed.
-A row that has the same person and week, the SAME non-empty Source URL as the message, and whose only difference is a BLANK Recruiter Company or Role is the same row, enriched
-under the same page (D193): only blank fields are filled (company, role, What they want, client, medium), never a human's value, and the corrected key must then resolve to
-exactly that page. A different or missing source link is a different message: nothing is merged and the original link is never overwritten.
-Every write is read back and checked: owned fields, Done / Active / Needs review preserved, no duplicate. V7 never writes Done, never reopens a Done row and never replaces
-a non-blank What they want.
-
-First Contact (LIFE-20, Jim Oct 23 2026): set once, on create, to the date of the message the row is created from; an update never writes or changes it, and older rows are
-never backfilled.
-
-Action state (RECR-1.4, D220): a new row starts Needs Action; a newer message reopens a Waiting or blank row as Needs Action; a Waiting row with no Follow-up Date gets one two
-business days out, and a Waiting row whose Follow-up Date has come returns to Needs Action. Completed and Dismissed rows, Done rows and inactive rows are history and are
-never changed."""
+Natural key: Week Ending + Recruiter / Person + Recruiter Company + Role (normalized, no fuzzy matching). Two matches is an ambiguity and nothing is changed.
+V7 never writes Done, never reopens a Done row and never replaces a non-blank What they want. Enrichment of a blank company or role: D193. Action state: D220 (RECR-1.4)."""
+# Detail kept from the former docstring:
+# - A row with the same person and week, the SAME non-empty Source URL as the message, and only a BLANK Recruiter Company or Role as the difference is the same row, enriched under the same
+#   page (D193): only blank fields are filled (company, role, What they want, client, medium), never a human's value, and the corrected key must then resolve to exactly that page.
+#   A different or missing source link is a different message: nothing is merged and the original link is never overwritten.
+# - Every write is read back and checked: owned fields, Done / Active / Needs review preserved, no duplicate.
+# - First Contact (LIFE-20, Jim Oct 23 2026): set once, on create, to the date of the message the row is created from; an update never writes or changes it; older rows are never backfilled.
+# - Action state (RECR-1.4, D220): a new row starts Needs Action; a newer message reopens a Waiting or blank row as Needs Action; a Waiting row with no Follow-up Date gets one two business
+#   days out, and a Waiting row whose Follow-up Date has come returns to Needs Action. Completed and Dismissed rows, Done rows and inactive rows are history and are never changed.
 from datetime import date, datetime, timedelta
 from urllib.parse import quote
 

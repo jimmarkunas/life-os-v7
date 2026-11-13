@@ -1,20 +1,18 @@
-"""LIFE-20: the Daily Report's one "🤝 Recruiter Outreach" table, refreshed in place from the Recruiters data source after the Recruiters stage. V7 owns it exclusively
-(router.OWNERS); like the Hiring Pipeline it is a floating region, not a callout.
+"""LIFE-20: the Daily Report's one "🤝 Recruiter Outreach" table, refreshed in place from the Recruiters data source after the Recruiters stage.
 
-The region is anchored on the already pinned Hiring Pipeline table (HIRING_TABLE_BLOCK_ID): the block right after it, in the same parent, must be a heading_3 titled exactly
-`🤝 Recruiter Outreach` or `🤝 Recruiter Outreach (stamp)`, then one four-column table whose header row is exactly HEADERS, then anything but another table. Only the heading's
-stamp and the table's data rows are ever written; the header row, the link under the table, the Historical Snapshot and every other block on the page are digested before the
-write and must be identical after it. Anything else raises: nothing is created, moved or guessed.
-
-One table, four columns, open rows only (Action Status Needs Action or Waiting, not Done, Active): Needs Action first, then Waiting, each by Follow-up Date (none last), then the
-latest contact first. A row with any other status, including a blank one, is not an action item and is not shown.
-
-Original Contact, in order: the row's First Contact (set by the Recruiters stage when it creates the row, from that message's own date); else a date already shown in this
-table for the same recruiter (same name and the same contact or message link, one unique match), which keeps the verified dates that predate the field; else "Not verified".
-Either date must not be after the row's Last Contact. Last Contact itself and the row's creation time are never used, and nothing is backfilled.
-
-Fail closed: if the Recruiters stage failed this run, or the source cannot be read completely, the rows are kept as they are and the heading says DEGRADED. Live writes need
---live AND the repo variable RECRUITER_OUTREACH=on; otherwise the region is validated and the counts say what would change. Fixed codes and counts only."""
+V7 owns the region exclusively (router.OWNERS), a floating region anchored on the pinned Hiring Pipeline table (HIRING_TABLE_BLOCK_ID). Only the heading's stamp and the table's data rows
+are written; every other block is digested before and must be identical after. Anything unexpected raises: nothing is created, moved or guessed.
+Fail closed: if the Recruiters stage failed or the source is unreadable, rows are kept and the heading says DEGRADED. Live writes need --live AND RECRUITER_OUTREACH=on. Fixed codes and counts only."""
+# Detail kept from the former docstring:
+# - Like the Hiring Pipeline it is a floating region, not a callout. The block right after the pinned Hiring Pipeline table, in the same parent, must be a heading_3 titled exactly
+#   `🤝 Recruiter Outreach` or `🤝 Recruiter Outreach (stamp)`, then one four-column table whose header row is exactly HEADERS, then anything but another table. The header row, the link
+#   under the table, the Historical Snapshot and every other block on the page are digested before the write and must be identical after it.
+# - One table, four columns, open rows only (Action Status Needs Action or Waiting, not Done, Active): Needs Action first, then Waiting, each by Follow-up Date (none last), then the latest
+#   contact first. A row with any other status, including a blank one, is not an action item and is not shown.
+# - Original Contact, in order: the row's First Contact (set by the Recruiters stage when it creates the row, from that message's own date); else a date already shown in this table for the
+#   same recruiter (same name and the same contact or message link, one unique match), which keeps the verified dates that predate the field; else "Not verified". Either date must not be
+#   after the row's Last Contact. Last Contact itself and the row's creation time are never used, and nothing is backfilled.
+# - Without --live AND the repo variable RECRUITER_OUTREACH=on the region is validated and the counts say what would change.
 import json
 import os
 import re
