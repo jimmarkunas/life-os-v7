@@ -1,206 +1,206 @@
 {
- "captured": "2026-10-05",
- "today": "2026-10-05",
+ "captured": "2026-11-13",
+ "today": "2026-11-13",
  "jobs": {
-  "903": [
-   "No-Go",
-   "REVIEW"
-  ],
   "910": [
    "Go",
-   "ADMIT"
-  ],
-  "1121": [
-   "Go",
-   "ADMIT"
-  ],
-  "1147": [
-   "Go",
-   "ADMIT"
-  ],
-  "1154": [
-   "No-Go",
-   "EXCLUDE"
-  ],
-  "1546": [
-   "Go",
-   "REVIEW"
-  ],
-  "1555": [
-   "No-Go",
-   "EXCLUDE"
-  ],
-  "1668": [
-   "No-Go",
    "EXCLUDE"
   ],
   "1916": [
    "Go",
-   "ADMIT"
-  ],
-  "1945": [
-   "No-Go",
    "EXCLUDE"
-  ],
-  "1956": [
-   "Go",
-   "EXCLUDE"
-  ],
-  "1963": [
-   "Go",
-   "ADMIT"
   ],
   "2168": [
    "Go",
-   "ADMIT"
-  ],
-  "2206": [
-   "No-Go",
-   "EXCLUDE"
-  ],
-  "2220": [
-   "Go",
-   "ADMIT"
-  ],
-  "2255": [
-   "No-Go",
-   "EXCLUDE"
-  ],
-  "2569": [
-   "No-Go",
-   "EXCLUDE"
-  ],
-  "2607": [
-   "No-Go",
-   "EXCLUDE"
-  ],
-  "2654": [
-   "No-Go",
    "EXCLUDE"
   ],
   "2979": [
    "No-Go",
    "EXCLUDE"
   ],
-  "4005": [
-   "No-Go",
-   "EXCLUDE"
-  ],
-  "5086": [
-   "No-Go",
-   "REVIEW"
-  ],
-  "5831": [
-   "No-Go",
-   "EXCLUDE"
-  ],
-  "5862": [
-   "No-Go",
-   "EXCLUDE"
-  ],
-  "5871": [
-   "No-Go",
-   "EXCLUDE"
-  ],
-  "5884": [
-   "No-Go",
-   "EXCLUDE"
-  ],
-  "6706": [
-   "Go",
-   "REVIEW"
-  ],
-  "6720": [
-   "No-Go",
-   "EXCLUDE"
-  ],
-  "6755": [
-   "No-Go",
-   "REVIEW"
-  ],
-  "6760": [
-   "No-Go",
-   "REVIEW"
-  ],
-  "6773": [
-   "Go",
-   "REVIEW"
-  ],
   "6795": [
    "Go",
-   "REVIEW"
+   "EXCLUDE"
   ],
   "7039": [
    "Go",
    "EXCLUDE"
   ],
-  "7079": [
-   "Go",
-   "REVIEW"
-  ],
-  "7304": [
-   "No-Go",
-   "EXCLUDE"
-  ],
-  "7357": [
-   "No-Go",
-   "EXCLUDE"
-  ],
-  "7438": [
-   "No-Go",
-   "EXCLUDE"
-  ],
-  "7478": [
-   "No-Go",
-   "EXCLUDE"
-  ],
-  "8758": [
-   "Go",
-   "ADMIT"
-  ],
-  "9027": [
-   "Go",
-   "ADMIT"
-  ],
   "9034": [
    "Go",
-   "ADMIT"
+   "EXCLUDE"
   ],
-  "9475": [
-   "No-Go",
-   "REVIEW"
-  ],
-  "9480": [
-   "No-Go",
-   "REVIEW"
-  ],
-  "9803": [
+  "9466": [
    "Go",
-   "ADMIT"
+   "EXCLUDE"
   ],
-  "10249": [
+  "9825": [
    "No-Go",
    "EXCLUDE"
   ],
-  "10535": [
-   "No-Go",
-   "EXCLUDE"
-  ],
-  "10540": [
-   "No-Go",
-   "EXCLUDE"
-  ],
-  "10566": [
+  "10181": [
    "No-Go",
    "EXCLUDE"
   ],
   "10580": [
    "Go",
-   "ADMIT"
+   "EXCLUDE"
   ],
-  "11543": [
+  "10608": [
    "No-Go",
    "EXCLUDE"
+  ],
+  "10990": [
+   "No-Go",
+   "EXCLUDE"
+  ],
+  "11510": [
+   "Go",
+   "EXCLUDE"
+  ],
+  "13235": [
+   "Go",
+   "EXCLUDE"
+  ],
+  "13667": [
+   "Go",
+   "EXCLUDE"
+  ],
+  "21715": [
+   "Go",
+   "EXCLUDE"
+  ],
+  "23821": [
+   "Go",
+   "EXCLUDE"
+  ],
+  "23894": [
+   "Go",
+   "EXCLUDE"
+  ],
+  "24579": [
+   "No-Go",
+   "EXCLUDE"
+  ],
+  "25632": [
+   "No-Go",
+   "EXCLUDE"
+  ],
+  "26560": [
+   "Go",
+   "EXCLUDE"
+  ],
+  "26586": [
+   "No-Go",
+   "EXCLUDE"
+  ],
+  "29227": [
+   "Go",
+   "EXCLUDE"
+  ],
+  "29274": [
+   "Go",
+   "EXCLUDE"
+  ],
+  "29675": [
+   "Go",
+   "EXCLUDE"
+  ],
+  "30379": [
+   "No-Go",
+   "EXCLUDE"
+  ],
+  "30806": [
+   "No-Go",
+   "EXCLUDE"
+  ],
+  "31823": [
+   "Go",
+   "REVIEW"
+  ],
+  "32333": [
+   "Go",
+   "EXCLUDE"
+  ],
+  "32386": [
+   "Go",
+   "EXCLUDE"
+  ],
+  "32761": [
+   "No-Go",
+   "EXCLUDE"
+  ],
+  "33717": [
+   "Go",
+   "EXCLUDE"
+  ],
+  "33744": [
+   "Go",
+   "EXCLUDE"
+  ],
+  "34163": [
+   "No-Go",
+   "EXCLUDE"
+  ],
+  "34531": [
+   "Go",
+   "EXCLUDE"
+  ],
+  "34972": [
+   "No-Go",
+   "EXCLUDE"
+  ],
+  "35146": [
+   "Go",
+   "EXCLUDE"
+  ],
+  "35514": [
+   "Go",
+   "EXCLUDE"
+  ],
+  "35629": [
+   "Go",
+   "EXCLUDE"
+  ],
+  "36615": [
+   "No-Go",
+   "EXCLUDE"
+  ],
+  "37231": [
+   "Go",
+   "EXCLUDE"
+  ],
+  "38618": [
+   "No-Go",
+   "EXCLUDE"
+  ],
+  "42722": [
+   "Go",
+   "EXCLUDE"
+  ],
+  "44931": [
+   "Go",
+   "ADMIT"
+  ],
+  "46538": [
+   "Go",
+   "ADMIT"
+  ],
+  "46605": [
+   "Go",
+   "ADMIT"
+  ],
+  "47695": [
+   "Go",
+   "ADMIT"
+  ],
+  "48976": [
+   "Go",
+   "ADMIT"
+  ],
+  "49543": [
+   "Go",
+   "ADMIT"
   ]
  }
 }
