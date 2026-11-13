@@ -10,9 +10,10 @@ from zoneinfo import ZoneInfo
 
 from lifeos.hiring import auto_close, card, compile as C, decision, models as M, outcomes as outcome_mail, render, snapshot
 from lifeos.jobs import hiring_pipeline, ledger
-from lifeos.platform import db
+from lifeos.platform import db, notion_pages
 from lifeos.platform.gcal import GoogleCalendar
 from lifeos.platform.notion_client import Client, NotionError
+from lifeos.platform.notion_text import plain
 
 TZ = ZoneInfo("America/Chicago")
 CALENDAR_PAGES = 40                                               # the same page cap as the Calendar client's own listing
@@ -21,35 +22,24 @@ MAX_PAGES = 40
 
 
 def _text(prop, kind):
-    parts = (prop or {}).get(kind) or []
-    return "".join((p.get("plain_text") or (p.get("text") or {}).get("content") or "") for p in parts).strip()
+    return plain((prop or {}).get(kind)).strip()
 
 
 def read_applied(client, stats=None):
     """Every Job Ledger row with Applied ticked: [{"company", "role", "applied_on"}]. Anything short of a provably complete read raises (the caller marks the Ledger unavailable)."""
     if ledger.verify(client) != ledger.OK:
         raise NotionError("HIRING_LEDGER_TARGET")
-    out, cursor, seen = [], None, set()
-    for _ in range(MAX_PAGES):
-        body = {"page_size": 100, "filter": {"property": "Applied", "checkbox": {"equals": True}}, **({"start_cursor": cursor} if cursor else {})}
-        page = client.query_data_source(None, body)
-        if not isinstance(page, dict) or not isinstance(page.get("results"), list) or not isinstance(page.get("has_more"), bool):
-            raise NotionError("HIRING_LEDGER_INCOMPLETE")
+    out = []
+    for page in notion_pages.query(client, None, {"page_size": 100, "filter": {"property": "Applied", "checkbox": {"equals": True}}}, NotionError, incomplete="HIRING_LEDGER_INCOMPLETE", limit=MAX_PAGES):
         for row in page["results"]:
             props = row.get("properties") or {}
             when = ((props.get("Applied On") or {}).get("date") or {}).get("start")
             out.append({"company": _text(props.get("Company"), "rich_text"), "role": _text(props.get("Job"), "title"), "applied_on": when[:10] if when else None,
                         "id": row.get("id"), "decision": ((props.get(decision.DECISION) or {}).get("select") or {}).get("name"),            # D194: the stable row id and a confirmed Hiring Decision, read only
                         "hand": M.hand_lines(_text(props.get(decision.HAND_SET), "rich_text"))})                                       # LIFE-111: a hand-set hold, once the Ledger has the property
-        if not page["has_more"]:
-            if stats is not None:
-                stats.update(raw=len(out), unnamed=sum(1 for r in out if not (r["company"] and r["role"])), undated=sum(1 for r in out if not r["applied_on"]))
-            return [r for r in out if r["company"] and r["role"]]
-        cursor = page.get("next_cursor")
-        if not isinstance(cursor, str) or not cursor or cursor in seen:
-            raise NotionError("HIRING_LEDGER_INCOMPLETE")
-        seen.add(cursor)
-    raise NotionError("HIRING_LEDGER_INCOMPLETE")
+    if stats is not None:
+        stats.update(raw=len(out), unnamed=sum(1 for r in out if not (r["company"] and r["role"])), undated=sum(1 for r in out if not r["applied_on"]))
+    return [r for r in out if r["company"] and r["role"]]
 
 
 def _pipeline_client(environ):

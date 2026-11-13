@@ -10,6 +10,7 @@ import os
 from datetime import datetime, timedelta, timezone
 
 from lifeos.jobs import alertstate, identity, store
+from lifeos.platform.fixed_code import fixed
 from lifeos.platform.gmail import Gmail, GmailError
 from lifeos.sources.newsletters import config, ingest
 
@@ -54,27 +55,20 @@ def classify(cursor, message_id, card, received, now):
 def trace(gmail, connection, message_ref, now=None):
     if not alertstate.MESSAGE_REF.fullmatch(message_ref):
         raise store.StoreError("NEWSLETTER_TRACE_MESSAGE_REF_INVALID")
-    try:
+    with fixed(GmailError, store.StoreError, "NEWSLETTER_TRACE_GMAIL_FAILED"):
         message_id = next((i for i in gmail.list_ids(LOOKBACK, limit=MAX_MAIL) if hashlib.sha256(i.encode()).hexdigest() == message_ref), None)
         if message_id is None:
             raise store.StoreError("NEWSLETTER_TRACE_MESSAGE_NOT_FOUND")
         sender, html, received = gmail.message(message_id)
-    except GmailError:
-        raise store.StoreError("NEWSLETTER_TRACE_GMAIL_FAILED") from None
     rule = config.classify(sender)
     parser = ingest.PARSERS.get(rule)
     if parser is None:
         raise store.StoreError("NEWSLETTER_TRACE_UNSUPPORTED_SENDER")
     cards = parser(html)
     now = now or datetime.now(timezone.utc).replace(tzinfo=None)
-    try:
-        with connection.cursor() as cursor:
-            cards_out = [{"n": n, "source": rule, **classify(cursor, message_id, card, received, now)} for n, card in enumerate(cards, 1)]
-            rows = _one(cursor, "SELECT COUNT(*), SUM(job_id IS NULL) FROM v7_job_sources WHERE gmail_message_id = %s", (message_id,))
-    except store.StoreError:
-        raise
-    except Exception:
-        raise store.StoreError("NEWSLETTER_TRACE_QUERY_FAILED") from None
+    with fixed(Exception, store.StoreError, "NEWSLETTER_TRACE_QUERY_FAILED", keep=store.StoreError), connection.cursor() as cursor:
+        cards_out = [{"n": n, "source": rule, **classify(cursor, message_id, card, received, now)} for n, card in enumerate(cards, 1)]
+        rows = _one(cursor, "SELECT COUNT(*), SUM(job_id IS NULL) FROM v7_job_sources WHERE gmail_message_id = %s", (message_id,))
     by_class = {}
     for card in cards_out:
         by_class[card["class"]] = by_class.get(card["class"], 0) + 1

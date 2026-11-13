@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 
 from lifeos.jobs import hiring_pipeline
 from lifeos.platform.notion_client import Client, NotionError, rich_text
+from lifeos.platform.notion_text import block_text as _plain
 from lifeos.hiring import close_screen as S, decision as D, models as M
 from lifeos.sources.apps.signed import HTML, gate, handler, invalid, live, mac as _mac, same as _same, stopper, unverified
 
@@ -18,7 +19,7 @@ CLOSURE = ("lifeos/hiring/close_screen.py", "lifeos/hiring/decision.py", "lifeos
            "lifeos/network/__init__.py", "lifeos/network/surface.py", "lifeos/network/match.py", "lifeos/platform/hidden.py", "lifeos/platform/ledger_body.py",
            "lifeos/sources/apps/resume_app.py", "lifeos/platform/notion_files.py", "lifeos/platform/gdrive.py", "lifeos/platform/google_consent.py",
            "lifeos/sources/apps/manage_app.py", "lifeos/sources/apps/alerts_app.py", "lifeos/platform/alerts.py", "lifeos/platform/alert_registry.py", "lifeos/platform/alert_settings.py", "lifeos/platform/redact.py",
-           "lifeos/platform/credentials.py", "lifeos/platform/credential_list.py")
+           "lifeos/platform/credentials.py", "lifeos/platform/credential_list.py", "lifeos/platform/fixed_code.py", "lifeos/platform/notion_text.py")
 ROUTES = {"/sent": ("apps.outreach_app", "handle"), "/referral": ("apps.outreach_app", "handle_status"), "/recruiter": ("apps.outreach_app", "handle_close"),     # D221 Mark as Sent, referral status, LIFE-20 recruiter close,
           "/resume": ("apps.resume_app", "handle"), "/manage": ("apps.manage_app", "handle"), "/manage.css": ("apps.manage_app", "handle_css"), "/manage-picker.js": ("apps.manage_app", "handle_js"), "/brief": ("apps.outreach_app", "handle_brief"), "/alerts": ("apps.alerts_app", "handle"), "/alerts.css": ("apps.alerts_app", "handle_css")}                                                       # D234 Build resume, E14 Manage + Reopen (Jim, Oct 24), LIFE-35 brief (read only)
 KIND = "ledger"                                                                       # LIFE-353: the only record a decision is written on (signed into every form)
@@ -126,11 +127,6 @@ def _post(req, who, secrets):
 LEAD_ACTION = "Reply to the recruiter's message, or close this lead"
 FOLD, OPP_MARKER, COMPLETE_PATH = "⚙️ LIFE OS", "v7-interview:1;owner=machine;kind=opportunity", "Daily Report / Active Opportunities / Mark Complete"
 ACTION_LINE, DONE_LINE = re.compile(r"v7-action:1;key=([0-9a-f]{16});text=(.+)"), re.compile(r"v7-done:1;key=([0-9a-f]{16});on=(\d{4}-\d{2}-\d{2})")   # lifeos.interview.template's formats (contract-tested)
-
-
-def _plain(block):
-    body = block.get(block.get("type")) or {}
-    return "".join(p.get("plain_text") or (p.get("text") or {}).get("content", "") for p in body.get("rich_text") or [])
 
 
 def _lines(client, block_id):
