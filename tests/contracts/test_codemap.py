@@ -1,17 +1,16 @@
-"""The committed code map must equal what the code generates, so it never goes stale."""
-from pathlib import Path
+"""The code map is generated on demand (not committed, LIFE-644): the generator runs, lists every stage and package, and `find` answers from it."""
 import unittest
 
 from lifeos.sources.devtools import codemap
 
-DOCS = Path(__file__).resolve().parents[2] / "docs"
-
 
 class CodeMap(unittest.TestCase):
-    def test_committed_map_is_current(self):
+    def test_the_generator_runs_and_the_files_it_writes_are_not_committed(self):
         md, js = codemap.render()
-        self.assertEqual((DOCS / "CODEMAP.md").read_text(), md, "docs/CODEMAP.md is stale: run python -m lifeos.sources.devtools.codemap")
-        self.assertEqual((DOCS / "codemap.json").read_text(), js, "docs/codemap.json is stale: run python -m lifeos.sources.devtools.codemap")
+        self.assertTrue(md.startswith("# V7 code map") and js.startswith("{"))
+        ignored = (codemap.ROOT / ".gitignore").read_text()
+        self.assertIn("docs/CODEMAP.md", ignored)
+        self.assertIn("docs/codemap.json", ignored)
 
     def test_every_stage_and_table_is_listed(self):
         m = codemap.build()
@@ -24,7 +23,7 @@ class RoutingPageAndFind(unittest.TestCase):
     """LIFE-592: CODEMAP.md is a short routing page; the full map stays in codemap.json and `codemap find` answers one question from it."""
 
     def test_the_routing_page_stays_under_its_size_limit_and_lists_every_stage_and_package(self):
-        text = (DOCS / "CODEMAP.md").read_text()
+        text = codemap.render()[0]
         self.assertLessEqual(len(text.encode()), codemap.ROUTING_LIMIT)
         m = codemap.build()
         for stage in m["stages"]:

@@ -51,7 +51,7 @@ Before OpenClaw, Oracle, channel, local-model, assistant, meeting-capture or AI-
 
 ## Map
 
-- **Start with `docs/CODEMAP.md`**: a short routing page (every stage, one line per package). Ask one question instead of reading maps: `python -m lifeos.codemap find <text>`; the full map is `docs/codemap.json` (`python -m lifeos.codemap`; a test fails when stale).
+- **Start with `python -m lifeos.codemap`** (about 1 s; writes the untracked routing page `docs/CODEMAP.md`: every stage, one line per package), then read it. Ask one question instead of reading maps: `python -m lifeos.codemap find <text>`; the full map is `docs/codemap.json`, also generated and not committed (LIFE-644).
 - `lifeos/platform/` shared clients (imports nothing above it); `lifeos/jobs|interview|jira|outlook|calendar_bridge/` one OS per package (platform only); `lifeos/sources/` producers (any OS); `lifeos/run.py` stage registry, one `lazy("module", "function")` line per stage; `.github/workflows/hourly.yml` runs stages (`workflow_dispatch` is at the 25-input limit: add none). `tests/` mirrors `lifeos/`; fakes in `tests/kit`; `tests/contracts/` enforce the rules below.
 - Docs: `docs/DECISIONS_INDEX.md` (find), `python -m lifeos.decisions show D<n>` (one decision; never read `docs/DECISIONS.md` whole; new numbers only from `python -m lifeos.decisions claim`), `docs/SETUP.md` (secrets, manual steps), `docs/MASTER_ROADMAP.md` (dated WBS and evidence, not a live plan: priorities are in Jira `LOS`, delivery status in `LIFE`); `docs/ROADMAP.md` is legacy.
 

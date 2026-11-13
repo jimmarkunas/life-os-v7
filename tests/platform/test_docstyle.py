@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 
 from lifeos.platform import docstyle
+from lifeos.sources.devtools import codemap
 
 ROOT = Path(__file__).resolve().parents[2]
 GOOD = '"""One line that says what the module is for.\n\nInputs: a thing. Outputs: another thing."""\n'
@@ -43,7 +44,7 @@ class PilotPackage(unittest.TestCase):
             self.assertIn("FIRST_LINE_TOO_LONG", docstyle.check(copy)[str(copy)])
 
     def test_the_code_map_lists_the_package_summary(self):
-        page = (ROOT / "docs" / "CODEMAP.md").read_text()
+        page = codemap.render()[0]
         self.assertIn("- `lifeos/buzz/` (4 modules): The Buzz remote MCP", page)
 
 

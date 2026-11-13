@@ -1,7 +1,7 @@
 """The code map: one generated, machine-readable index of V7 so an agent can find things without reading the repo.  python -m lifeos.sources.devtools.codemap  (writes docs/CODEMAP.md and docs/codemap.json)
 
 Everything in it is derived from the code itself (module docstrings, the stage registry, the workflows, the CREATE TABLE statements, the decision index), so it cannot drift:
-a contract test regenerates it and fails when the committed files differ. Names of things only; no data, no secrets, no values."""
+the two files are generated on demand and not committed (LIFE-644; .gitignore), and `find` builds the map in memory. Names of things only; no data, no secrets, no values."""
 import ast
 import json
 import re
@@ -131,7 +131,7 @@ def render():
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if argv and argv[0] == "find":
-        found = find(json.loads((ROOT / "docs" / "codemap.json").read_text()), " ".join(argv[1:]))
+        found = find(build(), " ".join(argv[1:]))
         print("\n".join(found) if found else "nothing matches; try a shorter word")
         return 0 if found else 1
     md, js = render()

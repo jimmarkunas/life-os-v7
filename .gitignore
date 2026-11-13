@@ -9,3 +9,7 @@ venv/
 
 # Persona files live in Notion (LIFE-537), never in this public repo
 muse-persona-export/
+
+# Generated on demand by `python -m lifeos.codemap`; never committed (LIFE-644)
+docs/CODEMAP.md
+docs/codemap.json
