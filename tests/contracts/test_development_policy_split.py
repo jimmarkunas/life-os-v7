@@ -102,20 +102,13 @@ class GlobalIndex(unittest.TestCase):
             self.assertEqual(len(row), 5, row)                                    # path, authority, purpose, owner, retrieval
             self.assertTrue(all(row), row)
             self.assertTrue((ROOT / self.path(row[0])).is_file(), row[0])
-        for row in self.rows("Not global sources"):
-            self.assertEqual(len(row), 1, row)
-            self.assertTrue((ROOT / self.path(row[0])).is_file(), row[0])
+        listed = [self.path(r[0]) for r in rows]
+        self.assertEqual(len(listed), len(set(listed)))                          # LIFE-644: only global sources are listed, each once; other docs files need no row
 
     def test_the_policy_bootstrap_and_every_policy_part_are_routed(self):
         listed = {self.path(r[0]) for r in self.rows("Global sources")}
         must = {"INDEX.md", "AGENTS.md", "CLAUDE.md", "docs/life-os-development-policy.md", "docs/development-policy/manifest.json", "docs/jira/issue-schema.v1.json"}
         self.assertLessEqual(must | {p["path"] for p in MANIFEST["parts"]}, listed)
-
-    def test_every_file_under_docs_is_classified_exactly_once(self):
-        listed = [self.path(r[0]) for r in self.rows("Global sources") + self.rows("Not global sources")]
-        self.assertEqual(len(listed), len(set(listed)))
-        on_disk = {p.relative_to(ROOT).as_posix() for p in (ROOT / "docs").rglob("*") if p.is_file() and "__pycache__" not in p.parts}
-        self.assertEqual(on_disk - set(listed), set(), "classify the new docs file in INDEX.md")
 
     def test_it_copies_no_policy_text_and_stays_small(self):
         text = self.INDEX.read_text()

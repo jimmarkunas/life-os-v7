@@ -32,54 +32,6 @@ Project-specific context (requirements, workflows, configuration) is not here. I
 | [`.github/pull_request_template.md`](.github/pull_request_template.md) | Format only | PR layout: Jira key, changes, evidence, not proven | Jim (change by reviewed PR; Q04) | When opening a PR |
 | [`README.md`](README.md) | Pointer only | Repository one-paragraph summary and links | Jim (change by reviewed PR; Q04) | Optional |
 
-## Not global sources
-
-These repository files hold feature scoping, setup, history or one product area's context. They are not global policy: fetch one only when the LIFE issue or a global source names it, and never treat it as overriding the sources above.
-
-| Path |
-|---|
-| [`docs/BIG_FEATURES_ROADMAP.md`](docs/BIG_FEATURES_ROADMAP.md) |
-| [`docs/platform/module-inventory.md`](docs/platform/module-inventory.md) |
-| [`docs/platform/shared-layer-matrix.md`](docs/platform/shared-layer-matrix.md) |
-| [`docs/platform/test-diet-manifest.md`](docs/platform/test-diet-manifest.md) |
-| [`docs/platform/agent-loop-baseline.md`](docs/platform/agent-loop-baseline.md) |
-| [`docs/platform/runtime-profile.md`](docs/platform/runtime-profile.md) |
-| [`docs/platform/monitoring-finish.md`](docs/platform/monitoring-finish.md) |
-| [`docs/platform/branch-protection.md`](docs/platform/branch-protection.md) |
-| [`docs/platform/receipt-template.md`](docs/platform/receipt-template.md) |
-| [`docs/platform/agent-jira-settings.md`](docs/platform/agent-jira-settings.md) |
-| [`docs/platform/config-registry.md`](docs/platform/config-registry.md) |
-| [`docs/platform/switch-exits.md`](docs/platform/switch-exits.md) |
-| [`docs/platform/lint-baseline.md`](docs/platform/lint-baseline.md) |
-| [`docs/platform/test-index.md`](docs/platform/test-index.md) |
-| [`docs/test-index.json`](docs/test-index.json) |
-| [`docs/platform/fake-conformance.md`](docs/platform/fake-conformance.md) |
-| [`docs/platform/type-baseline.md`](docs/platform/type-baseline.md) |
-| [`docs/design/bitwarden-load-pairs.md`](docs/design/bitwarden-load-pairs.md) |
-| [`docs/DCC_CARD_CONTRACT.md`](docs/DCC_CARD_CONTRACT.md) |
-| [`docs/DELIVERY_TRACKING_SCOPE.md`](docs/DELIVERY_TRACKING_SCOPE.md) |
-| [`docs/DRIVE_RESUMES.md`](docs/DRIVE_RESUMES.md) |
-| [`docs/EDGE_GATEWAY_SCOPE.md`](docs/EDGE_GATEWAY_SCOPE.md) |
-| [`docs/FIT_MODEL.md`](docs/FIT_MODEL.md) |
-| [`docs/INTERVIEW_HANDOFF.md`](docs/INTERVIEW_HANDOFF.md) |
-| [`docs/LANES.md`](docs/LANES.md) |
-| [`docs/MASTER_ROADMAP.md`](docs/MASTER_ROADMAP.md) |
-| [`docs/MEGIBOW_SCOPE.md`](docs/MEGIBOW_SCOPE.md) |
-| [`docs/NETWORK_INTELLIGENCE_SCOPE.md`](docs/NETWORK_INTELLIGENCE_SCOPE.md) |
-| [`docs/NOTION_INTEGRATIONS.md`](docs/NOTION_INTEGRATIONS.md) |
-| [`docs/PLAN.md`](docs/PLAN.md) |
-| [`docs/ROADMAP.md`](docs/ROADMAP.md) |
-| [`docs/SCHEDULER_AUTHORITY_DELTA.md`](docs/SCHEDULER_AUTHORITY_DELTA.md) |
-| [`docs/SETUP.md`](docs/SETUP.md) |
-| [`docs/US_REMOTE_WEB.md`](docs/US_REMOTE_WEB.md) |
-| [`docs/buzz-implementation-roadmap-v1.md`](docs/buzz-implementation-roadmap-v1.md) |
-| [`docs/buzz-remote-mcp-deploy.md`](docs/buzz-remote-mcp-deploy.md) |
-| [`docs/delivery-flow-v2-proposal.md`](docs/delivery-flow-v2-proposal.md) |
-| [`docs/contracts/career-lifecycle.requirements.v1.json`](docs/contracts/career-lifecycle.requirements.v1.json) |
-| [`docs/prototypes/hiring-decision-center.html`](docs/prototypes/hiring-decision-center.html) |
-| [`docs/hermes-files.md`](docs/hermes-files.md) |
-| [`docs/SCRIPT_PACK_RUNNER.md`](docs/SCRIPT_PACK_RUNNER.md) |
-
 ## Keeping this index true
 
-Adding, renaming or retiring a global source, or any file directly under `docs/`, updates this index in the same PR. `tests/contracts/test_development_policy_split.py` fails when a listed path is missing or a file under `docs/` is not classified here.
+Adding, renaming or retiring a global source updates this index in the same PR. Other files under `docs/` are not listed: find them by listing the folder, each starts with its own heading (LIFE-644). `python -m lifeos.readiness repo` and `tests/contracts/test_development_policy_split.py` fail when a listed path is missing, has no owner or authority, or is over the size limit.
