@@ -6,7 +6,7 @@ exact-key filters) instead of a GET per page; the body marker is still read per 
 `key_ambiguous`. A create response is never a read-back."""
 
 from lifeos.jobs import store
-from lifeos.platform import ledger_body as body
+from lifeos.platform import ledger_body as body, notion_pages, notion_text
 from lifeos.jobs.identity import url_key
 from lifeos.platform.notion_client import NotionError
 
@@ -18,7 +18,7 @@ _now = store.now
 
 
 def _text(prop, kind):
-    return "".join(t.get("plain_text", "") for t in (prop or {}).get(kind) or [])
+    return notion_text.plain((prop or {}).get(kind))
 
 
 def properties_match(page, key, url, fit):
@@ -41,28 +41,23 @@ def _bare(page_id):
     return str(page_id or "").replace("-", "").lower()
 
 
+def _query(client, body):
+    """The pages of one Ledger query; a missing or repeated cursor would skip or loop pages: refused, never read as `no page`."""
+    return notion_pages.pages(lambda cursor: client.call("POST", f"/data_sources/{client.source}/query", {**body, **({"start_cursor": cursor} if cursor else {})}), NotionError, "ledger_lookup_unreadable")
+
+
 def ledger_pages(client, keys):
     """{key: [page, ...]} as the Ledger holds them now: one data-source query per KEY_CHUNK keys, paged. An unreadable answer raises (never read as `no page`)."""
     found = {key: [] for key in keys}
     for start in range(0, len(keys), KEY_CHUNK):
         body = {"filter": {"or": [{"property": "Stable Job Key", "rich_text": {"equals": key}} for key in keys[start:start + KEY_CHUNK]]}, "page_size": 100}
-        seen = set()
-        while True:
-            data = client.call("POST", f"/data_sources/{client.source}/query", body)
-            results = data.get("results") if isinstance(data, dict) else None
-            if not isinstance(results, list) or any(not isinstance(page, dict) or not page.get("id") for page in results):
+        for data in _query(client, body):
+            if any(not isinstance(page, dict) or not page.get("id") for page in data["results"]):
                 raise NotionError("ledger_lookup_unreadable")
-            for page in results:
+            for page in data["results"]:
                 key = _text((page.get("properties") or {}).get("Stable Job Key"), "rich_text")
                 if key in found:
                     found[key].append(page)
-            if not data.get("has_more"):
-                break
-            cursor = data.get("next_cursor")
-            if not cursor or cursor in seen:                                 # a missing or repeated cursor would skip or loop pages: refused, never read as "no page"
-                raise NotionError("ledger_lookup_unreadable")
-            seen.add(cursor)
-            body = {**body, "start_cursor": cursor}
     return found
 
 
