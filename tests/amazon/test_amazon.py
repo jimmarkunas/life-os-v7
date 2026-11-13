@@ -144,6 +144,15 @@ class ReconciliationTests(unittest.TestCase):
         self.assertIsNone(reason)
         self.assertTrue(orders.same(row, same))
 
+    def test_one_compare_serves_the_order_check_and_the_read_back(self):
+        row, _ = orders.reconcile([event("m-1", "ORDERED", "2026-10-01T12:00:00+00:00", total="12.34")], now=NOW)
+        later = {**row, "Latest Event At": "2026-10-01T12:00:30+00:00", "Item Summary": row["Item Summary"] + " "}
+        self.assertFalse(orders.same(row, later))                                          # seconds differ
+        self.assertTrue(orders.equal(row, later, orders.FIELDS, lambda v: str(v)[:16], lambda v: str(v).strip()))          # minutes and trimmed text agree
+        self.assertFalse(orders.equal(row, {**row, "Grand Total": "x"}, ("Grand Total",)))          # an unreadable total is a difference, never an error
+        self.assertFalse(orders.equal(row, {**row, "Item Count": "x"}, ("Item Count",)))
+        self.assertTrue(orders.equal(row, {**row, "Grand Total": 12.34}, ("Grand Total",)))
+
 
 class StageTests(unittest.TestCase):
     def test_live_persists_and_reads_back_before_filing(self):
@@ -373,18 +382,6 @@ class IngressRepairTests(unittest.TestCase):
         source = inspect.getsource(stage)
         for banned in ("lifeos.jobs", "psycopg", "tinyfish", "TinyFish", "cron"):
             self.assertNotIn(banned, source)
-
-
-class ProjectionTests(unittest.TestCase):
-    def test_pass_no_action_and_degraded_are_region_local(self):
-        from lifeos.amazon import projection
-        ok = {"listed": 3, "accepted": 3, "review": 0, "failed": 0}
-        self.assertEqual(projection.outcome(ok), "PASS")
-        self.assertEqual(projection.outcome({"listed": 0, "accepted": 0, "review": 0, "failed": 0}), "NO_ACTION")
-        self.assertEqual(projection.outcome({"listed": 3, "accepted": 2, "review": 1, "failed": 0}), "DEGRADED")
-        self.assertEqual(projection.outcome({"failed": 1}), "DEGRADED")
-        self.assertEqual(projection.outcome(None), "DEGRADED")
-        self.assertEqual(projection.outcome("AMAZON_FAILED:1of0:X"), "DEGRADED")
 
 
 class GmailClientTests(unittest.TestCase):

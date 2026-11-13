@@ -133,32 +133,30 @@ def reconcile(events, existing=None, now=None):
     return row, None
 
 
-def same(existing, desired):
-    """Compare Notion-normalized properties, excluding the audit timestamp."""
-    if not existing:
-        return False
-    for field in FIELDS:
-        if field == "Last Reconciled At":
-            continue
-        left, right = existing.get(field), desired.get(field)
-        if field in ("Grand Total",) and left not in (None, "") and right not in (None, ""):
+TIMES = ("Ordered At", "Latest Event At", "Last Reconciled At")
+COMPARED = tuple(field for field in FIELDS if field != "Last Reconciled At")
+
+
+def equal(left_row, right_row, fields, moment=_time, text=_text):
+    """True when two Notion-normalized rows agree on `fields`: times by `moment`, the total by value, the count as an integer, the flag by truth, anything else by `text`. An unreadable total or count is a difference."""
+    for field in fields:
+        left, right = left_row.get(field), right_row.get(field)
+        if field in TIMES:
+            pair = moment(left), moment(right)
+        elif field == "Needs Review":
+            pair = bool(left), bool(right)
+        elif field in ("Grand Total", "Item Count"):
             try:
-                if Decimal(str(left)).quantize(Decimal("0.01")) != Decimal(str(right)).quantize(Decimal("0.01")):
-                    return False
-            except (InvalidOperation, ValueError):
-                return False
-        elif field == "Item Count" and left not in (None, "") and right not in (None, ""):
-            try:
-                if int(left) != int(right):
-                    return False
+                pair = tuple(None if value in (None, "") else _total(value) if field == "Grand Total" else int(value) for value in (left, right))
             except (TypeError, ValueError):
                 return False
-        elif field in ("Ordered At", "Latest Event At"):
-            if _time(left) != _time(right):
-                return False
-        elif field == "Needs Review":
-            if bool(left) != bool(right):
-                return False
-        elif _text(left) != _text(right):
+        else:
+            pair = text(left), text(right)
+        if pair[0] != pair[1]:
             return False
     return True
+
+
+def same(existing, desired):
+    """Compare Notion-normalized properties, excluding the audit timestamp."""
+    return bool(existing) and equal(existing, desired, COMPARED)

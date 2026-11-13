@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 from lifeos.platform.gmail import Gmail, GmailError
 from . import events
-from .stage import AmazonError, SENDERS_QUERY, _config, _query_order, _schema
+from .stage import AmazonError, SENDERS_QUERY, _config, _query_order, _schema, tally
 
 RETENTION_DAYS = 30
 REVIEW_DAYS = 90                      # Jim, Oct 6: mail for an order held in REVIEW is trashable once it is 90 days old (the Trash keeps it 30 more)
@@ -65,12 +65,11 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None):
             if why != "recorded":
                 counts["kept_unrecorded"] += 1
                 counts[why] += 1
-                bucket = counts.setdefault("kept_detail", {})
-                bucket[f"{why}:{detail}"] = bucket.get(f"{why}:{detail}", 0) + 1
+                tally(counts, f"{why}:{detail}", group="kept_detail")
                 continue
             counts["recorded"] += 1
             if detail == "REVIEW_AGED":
-                counts["review_aged"] = counts.get("review_aged", 0) + 1
+                tally(counts, "review_aged")
             if not live:
                 continue
             try:

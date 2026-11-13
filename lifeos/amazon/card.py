@@ -89,14 +89,21 @@ def _amount(row):
     return None if value is None else (f"${value:,.0f}" if value.is_integer() else f"${value:,.2f}")
 
 
+def _item(*parts):
+    return {"object": "block", "type": "bulleted_list_item", "bulleted_list_item": {"rich_text": [piece for part in parts for piece in part]}}
+
+
+def _linked(content, url):
+    parts = rich_text(content)
+    if parts and url:
+        parts[0]["text"]["link"] = {"url": url}
+    return parts
+
+
 def _bullet(row, label):
-    name = (row.get("Item Summary") or "").strip() or "Amazon order"
     link = row.get("Amazon Order URL")
-    text = rich_text(name)
-    if isinstance(link, str) and link.startswith("https://") and text:
-        text[0]["text"]["link"] = {"url": link}
     tail = " · ".join(part for part in (label, _amount(row) or "amount unknown", _day(row.get("Latest Event At"))) if part)
-    return {"object": "block", "type": "bulleted_list_item", "bulleted_list_item": {"rich_text": text + rich_text(" · " + tail)}}
+    return _item(_linked((row.get("Item Summary") or "").strip() or "Amazon order", link if isinstance(link, str) and link.startswith("https://") else None), rich_text(" · " + tail))
 
 
 def _paragraph(content, url=None):
@@ -115,26 +122,21 @@ def _orders_url(reader, source_id):
 
 
 def sections(rows, now):
-    cutoff = now - timedelta(days=DELIVERED_DAYS)
     review = [r for r in rows if r.get("Needs Review") is True or r.get("Status") == "REVIEW"]
-    open_all = [r for r in rows if r.get("Status") in ("ORDERED", "SHIPPED") and r not in review]
-    open_ = [r for r in open_all if (_when(r.get("Latest Event At")) or now) >= now - timedelta(days=OPEN_STALE_DAYS)]
-    delivered = [r for r in rows if r.get("Status") == "DELIVERED" and r not in review and (_when(r.get("Latest Event At")) or now) >= cutoff]
-    returning = [r for r in rows if r.get("Status") == "RETURNING" and r not in review and (_when(r.get("Latest Event At")) or now) >= now - timedelta(days=OPEN_STALE_DAYS)]      # LIFE-124: leaves like an open order
-    refunded = [r for r in rows if r.get("Status") == "REFUNDED" and r not in review and (_when(r.get("Latest Event At")) or now) >= cutoff]                                  # LIFE-124: the same 7 days as Delivered
-    key = lambda r: _when(r.get("Latest Event At")) or now
-    return (sorted(open_, key=key, reverse=True), sorted(delivered, key=key, reverse=True), sorted(review, key=key, reverse=True), len(open_all) - len(open_),
-            sorted(returning, key=key, reverse=True), sorted(refunded, key=key, reverse=True))
+    when = lambda r: _when(r.get("Latest Event At")) or now
+    def pick(statuses, days=None):
+        return [r for r in rows if r.get("Status") in statuses and r not in review and (days is None or when(r) >= now - timedelta(days=days))]
+    newest = lambda items: sorted(items, key=when, reverse=True)
+    open_ = pick(("ORDERED", "SHIPPED"), OPEN_STALE_DAYS)
+    return (newest(open_), newest(pick(("DELIVERED",), DELIVERED_DAYS)), newest(review), len(pick(("ORDERED", "SHIPPED"))) - len(open_),
+            newest(pick(("RETURNING",), OPEN_STALE_DAYS)),         # LIFE-124: returning leaves like an open order
+            newest(pick(("REFUNDED",), DELIVERED_DAYS)))           # LIFE-124: refunded stays the same 7 days as Delivered
 
 
 def _package_bullet(pkg, label):
     """One line: store, state, then the carrier and tracking number as the link to the carrier's own tracking page, then the day."""
-    link = packages_mod.tracking_url(pkg.get("carrier"), pkg["number"])
-    track = rich_text(" ".join(part for part in (pkg.get("carrier"), pkg["number"]) if part))
-    if track:
-        track[0]["text"]["link"] = {"url": link}
-    when = pkg["delivered_at"] if label == "Delivered" else pkg["shipped_at"]
-    return {"object": "block", "type": "bulleted_list_item", "bulleted_list_item": {"rich_text": rich_text(f"{pkg['store']} · {label} · ") + track + rich_text(f" · {_day(when)}")}}
+    track = _linked(" ".join(part for part in (pkg.get("carrier"), pkg["number"]) if part), packages_mod.tracking_url(pkg.get("carrier"), pkg["number"]))
+    return _item(rich_text(f"{pkg['store']} · {label} · "), track, rich_text(f" · {_day(pkg['delivered_at'] if label == 'Delivered' else pkg['shipped_at'])}"))
 
 
 def package_blocks(packages, now, error=False):

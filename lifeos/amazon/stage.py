@@ -20,6 +20,7 @@ SCHEMA_TYPES = {
     "Last Reconciled At": "date", "Needs Review": "checkbox",
 }
 STATUS_OPTIONS = {"ORDERED", "SHIPPED", "DELIVERED", "REVIEW"}
+REVIEW_FIELDS = ("Status", "Needs Review")
 MAX_QUERY_PAGES = 100
 
 
@@ -180,52 +181,18 @@ def _minute(value):
         raise AmazonError("AMAZON_NOTION_ROW_INVALID") from None
 
 
+def _raw(value):
+    return "" if value is None else str(value)
+
+
 def _readback_equal(actual, expected, review_only=False):
-    keys = ("Status", "Needs Review") if review_only else orders.FIELDS
-    for field in keys:
-        left, right = actual.get(field), expected.get(field)
-        if field in ("Ordered At", "Latest Event At", "Last Reconciled At"):
-            if _minute(left) != _minute(right):
-                return False
-        elif field == "Grand Total":
-            if (left in (None, "")) != (right in (None, "")):
-                return False
-            if left not in (None, "") and orders._total(left) != orders._total(right):
-                return False
-        elif field == "Needs Review":
-            if bool(left) != bool(right):
-                return False
-        elif field == "Item Count":
-            if left is None and right is None:
-                continue
-            if left is None or right is None or int(left) != int(right):
-                return False
-        elif ("" if left is None else str(left)) != ("" if right is None else str(right)):
-            return False
-    return True
+    return orders.equal(actual, expected, REVIEW_FIELDS if review_only else orders.FIELDS, _minute, _raw)
 
 
 def _review_readback_equal(actual, desired, before):
-    if not _readback_equal(actual, desired, review_only=True):
-        return False
-    for field in orders.FIELDS:
-        if field in ("Status", "Needs Review"):
-            continue
-        left, right = actual.get(field), before.get(field)
-        if field in ("Ordered At", "Latest Event At", "Last Reconciled At"):
-            if _minute(left) != _minute(right):
-                return False
-        elif field == "Grand Total":
-            if (left in (None, "")) != (right in (None, "")):
-                return False
-            if left not in (None, "") and orders._total(left) != orders._total(right):
-                return False
-        elif field == "Needs Review":
-            if bool(left) != bool(right):
-                return False
-        elif ("" if left is None else str(left)) != ("" if right is None else str(right)):
-            return False
-    return True
+    """A row frozen in REVIEW changes its two review fields and nothing else."""
+    return _readback_equal(actual, desired, review_only=True) and orders.equal(
+        actual, before, tuple(field for field in orders.FIELDS if field not in REVIEW_FIELDS), _minute, _raw)
 
 
 def _review_desired(order_id):
@@ -278,15 +245,19 @@ def parsed_sender(message):
     return events.SENDERS.get(events._sender(message.get("sender")), "OTHER")
 
 
+def tally(counts, key, n=1, group=None):
+    """counts[key] += n, or counts[group][key] += n; a counter that does not exist yet starts at 0."""
+    bucket = counts if group is None else counts.setdefault(group, {})
+    bucket[key] = bucket.get(key, 0) + n
+
+
 def _note_conflict(counts, cause, existing, received, now):
     """Counts only: why an order went to REVIEW, whether it already held data (a flip) or was created empty, and whether its mail is recent (30 days)."""
-    why = counts.setdefault("conflict_why", {})
-    why[cause] = why.get(cause, 0) + 1
-    kind = "review_flipped" if existing and existing.get("Latest Event At") else "review_created_empty" if not existing else "review_already_empty"
-    counts[kind] = counts.get(kind, 0) + 1
+    tally(counts, cause, group="conflict_why")
+    tally(counts, "review_flipped" if existing and existing.get("Latest Event At") else "review_created_empty" if not existing else "review_already_empty")
     newest = max((r for r in received if r), default=None)
     if newest and (now - datetime.fromisoformat(newest)).days <= 30:
-        counts["review_recent"] = counts.get("review_recent", 0) + 1
+        tally(counts, "review_recent")
 
 
 def _read_messages(gmail, message_ids, skip_unreadable, counts):
@@ -298,7 +269,7 @@ def _read_messages(gmail, message_ids, skip_unreadable, counts):
         except GmailError as error:
             if not skip_unreadable:
                 raise AmazonError("AMAZON_GMAIL_READ_FAILED_" + error_code(error)) from None
-            counts["unreadable"] = counts.get("unreadable", 0) + 1       # backfill only: a message Gmail cannot return is counted, never recorded, never filed
+            tally(counts, "unreadable")       # backfill only: a message Gmail cannot return is counted, never recorded, never filed
             continue
         messages.append(message)
     return messages
@@ -311,12 +282,9 @@ def _sort_events(messages, counts):
         for parsed in events.extract_all(message):                         # one event, or one per order for a message whose every order is one of its own links
             if parsed.get("status") == "REVIEW":
                 counts["review"] += 1
-                why = counts.setdefault("review_why", {})                     # fixed reason codes only: the mail itself is never described
-                why[parsed.get("reason") or "UNKNOWN"] = why.get(parsed.get("reason") or "UNKNOWN", 0) + 1
+                tally(counts, parsed.get("reason") or "UNKNOWN", group="review_why")       # fixed reason codes only: the mail itself is never described
                 if parsed.get("reason") == "ORDER_ID_AMBIGUOUS":                  # counts only: how many orders, how many links, which sender
-                    shape = counts.setdefault("ambiguous_shape", {})
-                    key = f"{events.ambiguity_shape(message)},from={parsed_sender(message)}"
-                    shape[key] = shape.get(key, 0) + 1
+                    tally(counts, f"{events.ambiguity_shape(message)},from={parsed_sender(message)}", group="ambiguous_shape")
                     days = counts.setdefault("ambiguous_days", [])
                     if len(days) < 6 and parsed_sender(message) == "ORDERED":
                         days.append((message.get("received_at") or "")[:16])               # a date only, so Jim can open an example; never content

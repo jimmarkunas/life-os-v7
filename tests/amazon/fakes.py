@@ -5,9 +5,9 @@ from lifeos.amazon import events
 
 
 class AmazonGmail:
-    def __init__(self, messages=None, *, fail_read=None, fail_file=None, trace=None):
+    def __init__(self, messages=None, *, fail_read=None, fail_file=None, trace=None, fail_list=None):
         self.messages = deepcopy(messages or {})
-        self.fail_read, self.fail_file = fail_read, fail_file
+        self.fail_read, self.fail_file, self.fail_list = fail_read, fail_file, fail_list
         self.calls, self.label_reads = [], 0
         self.trace = trace if trace is not None else []
 
@@ -21,6 +21,8 @@ class AmazonGmail:
     def list_ids_complete(self, query, limit):
         self.calls.append(("list", query, limit))
         self.trace.append(("gmail", "list"))
+        if self.fail_list:
+            raise self.fail_list
         import re
         from datetime import datetime, timezone
         after = re.search(r"after:(\d+)", query)
@@ -31,7 +33,7 @@ class AmazonGmail:
             raise RuntimeError("GMAIL_LIST_LIMIT_EXCEEDED")
         return ids
 
-    def message_record(self, message_id):
+    def message_record(self, message_id, keep_lines=False):
         self.calls.append(("read", message_id))
         self.trace.append(("gmail", "read"))
         if self.fail_read == message_id:
