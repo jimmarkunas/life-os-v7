@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# LIFE-605: the ONE local test command. It runs what CI (pr-tests.yml) runs: on a branch, the tests the change can affect (tests.testindex select, plus tests/contracts); on main or with --all,
+# LIFE-605: the ONE local test command. It runs what CI (pr-tests.yml) runs: on a branch, the tests the change can affect (tests.testindex select, plus tests/contracts; with no docs/test-index.json it runs everything, LIFE-644); on main or with --all,
 # everything in two parallel shards. It finds a Python 3.12 environment by itself, prints the failing test names and a summary line, and exits non-zero on any failure.
 #   sh tools/test.sh            the CI selection for the commits on this branch (needs the changes committed: CI also sees commits only)
 #   sh tools/test.sh --all      everything, like a merge to main
