@@ -270,7 +270,15 @@ def main(argv=None):
         from lifeos.platform import read_slots                                         # noqa: PLC0415
         read_slots.configure("ats", concurrency["caps"]["ats"])
         print("tick: concurrency on, caps", json.dumps(concurrency["caps"], sort_keys=True), "parallel", concurrency["parallel"], flush=True)
-    outcome = tick(args.live, args.quick, plan=planned(), timings=timings, concurrency=concurrency)
+    from lifeos.platform import due                                                # noqa: PLC0415
+    full = planned()
+    plan, left_out = due.split_plan(full)
+    outcome = tick(args.live, args.quick, plan=plan, timings=timings, concurrency=concurrency)
+    for step, why in left_out:                                                       # LIFE-617: a stage not due is skipped, not red, and the table says so
+        print(f"stage {step.name}: not due 0.0s ({why})", flush=True)
+        outcome[step.name], timings[step.name] = "not due", 0.0
+    if left_out:
+        outcome = {step.name: outcome[step.name] for step in full if step.name in outcome}
     print("tick:", json.dumps(outcome, sort_keys=True))
     wall = time.monotonic() - begun
     path = os.environ.get("GITHUB_STEP_SUMMARY")

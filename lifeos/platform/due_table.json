@@ -1,5 +1,5 @@
 {
-  "_how_to_read": "One row per domain job in .github/workflows/domains.yml. every_hours: the job runs when its last successful run (measured from the start of that run) was at least that long ago, minus 15 minutes of slack; 1 means every tick. slots_ct: fixed Central-Time slots (HH:MM); the job runs once after a slot has passed since its last success (no job uses slots today). LIFE-609; LIFE-630 (Jim, Nov 12 2026): every job and the Recruiters mail step run every hour until the codebase has shrunk, the mechanism stays so a slower interval is one number again. steps: a schedule kept inside one job (LIFE-610: the Recruiters mail step reads new mail only and does the full 14-day scan on the first read after 09:00 CT; the job itself stays hourly).",
+  "_how_to_read": "One row per domain job in .github/workflows/domains.yml. every_hours: the job runs when its last successful run (measured from the start of that run) was at least that long ago, minus 15 minutes of slack; 1 means every tick. slots_ct: fixed Central-Time slots (HH:MM); the job runs once after a slot has passed since its last success (no job uses slots today). LIFE-609; LIFE-630 (Jim, Nov 12 2026): every job and the Recruiters mail step run every hour until the codebase has shrunk, the mechanism stays so a slower interval is one number again. steps: a schedule kept inside one job (LIFE-610: the Recruiters mail step reads new mail only and does the full 14-day scan on the first read after 09:00 CT; the job itself stays hourly). stages (LIFE-617): the board stages of the Jobs tick (lifeos/jobs/tick.py), same rules per row; providers names the outside services a stage calls, each with a cap in tick.CAP_DEFAULTS (an empty list is an explicit none); every row is hourly until Jim approves another interval, and a slower row needs GITHUB_TOKEN in the tick step to read its history.",
   "jobs": {
     "jira": {"every_hours": 1},
     "outlook": {"every_hours": 1},
@@ -19,5 +19,18 @@
   },
   "steps": {
     "recruiters_mail": {"every_hours": 1, "full_scan_ct": ["09:00"]}
+  },
+  "stages": {
+    "resolve-jobright": {"every_hours": 1, "providers": ["jobright"]},
+    "resolve-linkedin": {"every_hours": 1, "providers": ["linkedin"]},
+    "linkedin-search": {"every_hours": 1, "providers": ["linkedin"]},
+    "resolve-dice": {"every_hours": 1, "providers": ["dice"]},
+    "web": {"every_hours": 1, "providers": ["ats"]},
+    "web-scale-up": {"every_hours": 1, "providers": ["ats"]},
+    "boards": {"every_hours": 1, "providers": ["ats"]},
+    "web-titlewatch": {"every_hours": 1, "providers": ["tinyfish"]},
+    "discover-jobs": {"every_hours": 1, "providers": ["tinyfish", "linkedin"]},
+    "sponsors": {"every_hours": 1, "providers": []},
+    "boards-backfill": {"every_hours": 1, "providers": []}
   }
 }
