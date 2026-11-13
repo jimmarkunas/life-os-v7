@@ -68,5 +68,21 @@ class ComparingCardsAreOrdered(unittest.TestCase):
         found = sorted((c, w) for c, writers in {"hiring": {"mail", "imessage"}}.items() for w in writers if not waits_for(graph, c, w) and not waits_for(graph, w, c))
         self.assertEqual(found, [("hiring", "imessage"), ("hiring", "mail")])
 
+    def test_interview_os_and_the_hiring_outcome_scan_run_beside_the_recruiters_mail_read_and_granola_waits_for_interview(self):
+        """LIFE-632: the Recruiters job had run the mail read, the hiring outcome scan and Interview OS in a row, which set the run time. The two now need only the gate; Recruiter Outreach still
+        follows the Recruiters step inside its own job; Granola, the other writer of the opportunity pages, waits for the Interview job."""
+        for job in ("interview", "hiring_outcomes"):
+            self.assertEqual(self.graph[job], {"gate"}, job)
+            self.assertFalse(waits_for(self.graph, job, "recruiters") or waits_for(self.graph, "recruiters", job), job)
+        self.assertTrue(waits_for(self.graph, "granola", "interview"))
+        steps = [s.get("id") for s in self.jobs["recruiters"]["steps"]]
+        self.assertEqual([i for i in steps if i in ("recruiters", "routreach", "jpoutreach", "houtcomes", "interview")], ["recruiters", "routreach", "jpoutreach"])
+        self.assertEqual([s.get("id") for s in self.jobs["interview"]["steps"] if s.get("id") == "interview"], ["interview"])
+        self.assertEqual([s.get("id") for s in self.jobs["hiring_outcomes"]["steps"] if s.get("id") == "houtcomes"], ["houtcomes"])
+
+    def test_every_job_that_can_fail_is_named_by_the_report_job(self):
+        self.assertTrue(set(self.jobs) - {"report"} <= self.graph["report"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -12,6 +12,8 @@
     "megibow": {"every_hours": 1},
     "dcc": {"every_hours": 1},
     "recruiters": {"every_hours": 1},
+    "hiring_outcomes": {"every_hours": 1},
+    "interview": {"every_hours": 1},
     "imessage": {"every_hours": 1},
     "granola": {"every_hours": 1}
   },
