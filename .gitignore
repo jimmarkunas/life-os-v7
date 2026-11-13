@@ -13,3 +13,6 @@ muse-persona-export/
 # Generated on demand by `python -m lifeos.codemap`; never committed (LIFE-644)
 docs/CODEMAP.md
 docs/codemap.json
+
+# Built by CI on main and restored in pull requests (LIFE-644); `python -m tests.testindex build` makes one locally
+docs/test-index.json

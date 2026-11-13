@@ -31,6 +31,13 @@ jobs:
         run: python .github/protected_files.py
       - name: Test-only dependency (PyYAML, for the workflow contract tests)
         run: pip install --require-hashes -r requirements-test.lock
+      - name: Restore the newest test index main built (LIFE-644; a pull request only reads it, never writes it; no cache, a missing file, an unreadable one or one older than 7 days all mean FULL)
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830   # v4.3.0
+        with:
+          path: docs/test-index.json
+          key: test-index-v1-${{ hashFiles('tests/testindex.py', 'requirements-test.lock') }}-${{ github.sha }}
+          restore-keys: test-index-v1-${{ hashFiles('tests/testindex.py', 'requirements-test.lock') }}-
       - name: Pick the tests (LIFE-548; a pull request runs the tests its change can affect plus tests/contracts, a merge to main always runs everything)
         run: |
           if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
@@ -92,3 +99,27 @@ jobs:
       - uses: ./.github/actions/node
       - name: Concord Room plugin tests (node:test)
         run: node --test tools/orca-concord-room/test/worker.test.mjs
+  # LIFE-644: the test index is no longer committed. After the unit tests pass on a merge to main, this job builds it (the whole suite once under coverage, about 3 minutes) and saves it under a key made of a hash of the builder and the test lock plus the commit;
+  # a pull request restores the newest one with the same builder and lock. It is its own job so the required `unit-tests` check keeps its short verdict for the Close release; if the build fails nothing is saved and pull requests run everything.
+  test-index:
+    needs: unit-tests
+    if: ${{ github.event_name == 'push' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout the exact commit (own git fetch; the token is passed once and never stored)
+        run: |
+          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
+          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=2 origin "$GITHUB_SHA"
+          git checkout -q --detach FETCH_HEAD
+      - uses: ./.github/actions/python
+      - name: Test-only dependencies (PyYAML and coverage, from the lock)
+        run: pip install --require-hashes -r requirements-test.lock
+      - name: Build the test index
+        run: python -m tests.testindex build
+      - name: Save the test index
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830   # v4.3.0
+        with:
+          path: docs/test-index.json
+          key: test-index-v1-${{ hashFiles('tests/testindex.py', 'requirements-test.lock') }}-${{ github.sha }}

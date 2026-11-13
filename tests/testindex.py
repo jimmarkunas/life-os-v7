@@ -1,10 +1,11 @@
 """LIFE-548: a test index (which tests run which production file) and a selector that picks the tests a change can affect.
 
-  python -m tests.testindex build [--out docs/test-index.json]     run the whole suite once with per-test coverage contexts and write the index (needs `coverage`)
+  python -m tests.testindex build [--out docs/test-index.json]     run the whole suite once with per-test coverage contexts and write the index (needs `coverage`; about 3 minutes). The index is NOT committed (LIFE-644):
+                                                                   CI builds it on every push to main and saves it in the Actions cache; pull requests restore it. A local one is git-ignored.
   python -m tests.testindex select --base HEAD^1                   print the unittest targets for the files changed since BASE; the single word FULL means "run everything"
-  python -m tests.testindex check [--max-age-days 7]               exit 1 (with the reason) when the committed index is older than that or unreadable
+  python -m tests.testindex check [--max-age-days 7]               exit 1 (with the reason) when the index is older than that or unreadable
 
-Safety first: when in doubt the selector says FULL. tests/contracts ALWAYS runs. Changes to the shared test kit, the test tooling, workflows, locks, config, the shared
+Safety first: when in doubt the selector says FULL: no index, an unreadable one, one older than 7 days, or any trouble reading it. tests/contracts ALWAYS runs. Changes to the shared test kit, the test tooling, workflows, locks, config, the shared
 platform layer, privacy files, or any file the selector does not know are FULL. A production file missing from the index falls back to its mirror test folder (tests/<package>),
 and with no mirror to FULL. Docs-only changes run just the contracts. The index holds only repo-relative paths and dotted test ids: no data, no timestamps but one
 `generated_at`, no absolute paths. The full suite still runs on every push to main and every hourly run (the CI wiring is in docs/platform/test-index.md)."""
@@ -242,9 +243,10 @@ def main(argv=None):
         return 0
     if args.command == "select":
         try:
-            picked = select(changed_files(args.base), load())
-        except (subprocess.SubprocessError, OSError):
-            picked = FULL                                                       # cannot list the change: run everything
+            index = load()
+            picked = select(changed_files(args.base), None if check(index) else index)     # an index older than 7 days is never used
+        except Exception:                                                       # cannot list the change, or the index is damaged in any way: run everything
+            picked = FULL
         print(FULL if picked == FULL else "\n".join(picked))
         return 0
     problems = check(load(), max_age_days=args.max_age_days)

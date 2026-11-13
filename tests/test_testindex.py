@@ -1,11 +1,12 @@
 """LIFE-548: the test index builder, the selector and the staleness check. Pure logic over small fake trees; the real index is only read for its shape."""
+import contextlib
 import datetime
+import io
 import json
-import os
 import pathlib
-import re
 import tempfile
 import unittest
+from unittest import mock
 
 from tests import testindex as ti
 
@@ -49,21 +50,6 @@ class Build(unittest.TestCase):
         self.assertEqual(one, two)
         self.assertNotIn("/Users/", one)
         self.assertEqual(json.loads(one)["covers"], {"jobs/a.py": [0]})
-
-    def test_the_committed_index_has_the_expected_shape_and_nothing_private(self):
-        data = ti.load()
-        if data is None:
-            self.skipTest("no committed index yet")
-        self.assertEqual(set(data), {"schema", "generated_at", "commit", "tests", "modules", "skipped", "covers", "uncovered"})
-        text = ti.INDEX.read_text()
-        for bad in ("/Users/", "/home/", "/private/", "/tmp/"):
-            self.assertNotIn(bad, text)
-        self.assertIsNone(re.search(r"[A-Za-z0-9._-]+@[A-Za-z0-9-]+\.[A-Za-z]{2,}", text))              # no email-shaped text
-        self.assertIsNone(re.search(r"(?<![A-Za-z0-9_.])[A-Za-z0-9+/=_-]{40,}(?![A-Za-z0-9_.])", text.replace(",", " ")))   # no key- or token-shaped run (test ids are dotted words and are split by the dots)
-        self.assertEqual(data["tests"], sorted(data["tests"]))
-        for path, nums in data["covers"].items():
-            self.assertFalse(path.startswith("/"))
-            self.assertTrue(all(0 <= n < len(data["tests"]) for n in nums))
 
 
 class Select(unittest.TestCase):
@@ -134,11 +120,28 @@ class Check(unittest.TestCase):
         self.assertEqual(ti.check(None, NOW), ["the test index is missing or unreadable"])
 
 
-@unittest.skipUnless(os.environ.get("LIFEOS_TEST_INDEX_FRESH") == "1", "only the hourly full run enforces index freshness (a PR must not fail because the index aged)")
-@unittest.skipIf(os.environ.get("TESTINDEX_BUILDING"), "the index is being rebuilt")
-class CommittedIndexIsFresh(unittest.TestCase):
-    def test_the_committed_index_is_recent_and_covers_every_production_file(self):
-        self.assertEqual(ti.check(ti.load()), [])
+class SelectCommand(unittest.TestCase):
+    """LIFE-644: the index is restored from a cache in pull requests, so a missing, old, damaged or lying one must never make a test disappear from a run."""
+
+    def run_select(self, loaded, changed=("lifeos/sources/web/boards.py",)):
+        out = io.StringIO()
+        with mock.patch.object(ti, "load", return_value=loaded), mock.patch.object(ti, "changed_files", return_value=list(changed)), contextlib.redirect_stdout(out):
+            self.assertEqual(ti.main(["select", "--base", "HEAD^1"]), 0)
+        return out.getvalue().split()
+
+    def test_no_index_an_old_one_or_a_damaged_one_prints_full(self):
+        fresh_now = datetime.datetime.now(datetime.timezone.utc)
+        idx = index({"sources/web/boards.py": [0]}, tests=("tests.sources.web.test_boards.B.test_one",), made=fresh_now)
+        self.assertNotEqual(self.run_select(idx), ["FULL"])                                       # control: a fresh, sound index gives a subset
+        self.assertEqual(self.run_select(None), ["FULL"])                                         # no cache restored, no file, or a file load() rejected
+        self.assertEqual(self.run_select({**idx, "generated_at": (fresh_now - datetime.timedelta(days=8)).strftime("%Y-%m-%dT%H:%M:%SZ")}), ["FULL"])
+        self.assertEqual(self.run_select(index({"sources/web/boards.py": [99]}, tests=("tests.x.A.t",), made=fresh_now)), ["FULL"])      # a number outside the test list
+        self.assertEqual(self.run_select({"schema": 1, "generated_at": idx["generated_at"]}), ["FULL"])                              # keys missing
+
+    def test_an_index_that_lies_about_a_file_still_runs_the_tests_named_after_it(self):
+        idx = index({"jobs/a.py": [2]})                                                           # says only a sources test covers jobs/a.py
+        picked = ti.select(["lifeos/jobs/a.py"], idx, tree(FILES))
+        self.assertIn("tests.jobs.test_a", picked)                                                # the mirror test of the module runs regardless
 
 
 class LoaderAndModules(unittest.TestCase):
