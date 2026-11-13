@@ -8,6 +8,7 @@ raises: nothing is created, moved or guessed. Fixed codes only."""
 import re
 
 from lifeos.platform import report_region as R, router
+from lifeos.platform.fixed_code import fixed
 from lifeos.platform.notion_client import Client
 from . import models as M
 from lifeos.platform.notion_client import NotionError
@@ -60,10 +61,8 @@ def validate(client, environ):
     digest = _step("DIGEST", lambda: R.page_digest(client, region["page_id"], own, fail, SKIP))
     if any(R.titled(text, M.TITLE) for text in digest["h3"]):         # the owned heading is outside the digest: any other heading with the title is a second region
         raise fail("HEADING_NOT_UNIQUE")
-    try:
+    with fixed(router.RouterError, fail, "NOT_OWNED"):
         router.check_write(MODULE, [M.TITLE])
-    except router.RouterError:
-        raise fail("NOT_OWNED") from None
     return region
 
 
