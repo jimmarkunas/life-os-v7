@@ -155,7 +155,9 @@ def select(changed, index, root=ROOT):
                 continue
             return FULL
         return FULL
-    modules = {t for t in targets if t in module_set(root)}
+    known = module_set(root)
+    targets = {t for t in targets if t in known or any(t.startswith(m + ".") for m in known)}      # a stale index can still name a test file this change deleted: it is not a target
+    modules = {t for t in targets if t in known}
     return sorted(t for t in targets if t in modules or not any(t.startswith(m + ".") for m in modules))     # a test id inside a selected module would run twice
 
 
