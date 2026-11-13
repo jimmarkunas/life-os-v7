@@ -35,7 +35,7 @@ def make_remote(tmp):
     remote = pathlib.Path(tmp, "owner", "repo")
     remote.mkdir(parents=True)
     git(remote, "init", "-q", "-b", "main")
-    for key, value in (("user.email", "a@b.c"), ("user.name", "t"), ("uploadpack.allowAnySHA1InWant", "true")):
+    for key, value in (("user.email", "fixture.invalid"), ("user.name", "t"), ("uploadpack.allowAnySHA1InWant", "true")):
         git(remote, "config", key, value)
     (remote / "one.txt").write_text("1")
     git(remote, "add", "."), git(remote, "commit", "-qm", "one")
