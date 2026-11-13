@@ -16,8 +16,10 @@ from urllib.parse import urlencode
 from lifeos.platform.notion_client import Client, NotionError
 from lifeos.hiring import close_screen as S, decision as D, models as M
 from lifeos.sources import close_app as C
+from lifeos.sources.apps.signed import handler, invalid, live, stopper, unverified
 
 PATH, TAB = "Daily Report / Active Opportunities / Manage", "Manage opportunity"
+SUB = "One interview opportunity: its actions, each confirmed on its own screen."
 REASON = "Reopened on the Close screen"
 HOLD_CHOICES = ((M.PAUSED, "Pause it"), (M.WAITING, "Waiting on employer"), (M.ACTIVE, "Back to Active"))
 DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
@@ -29,10 +31,7 @@ DRIVE_LINK = re.compile(r"https://(?:drive\.google\.com/file|docs\.google\.com/(
 LINK = re.compile(r"https://[^\s<>\"]{1,500}")
 
 
-def _stop(status, eyebrow, title, text, detail, css="alert"):
-    return status, C.HTML, S.page(title, "One interview opportunity: its actions, each confirmed on its own screen.",
-                                  f'<section class="section"><div class="eyebrow">{e(eyebrow)}</div><h3 class="step-title">{e(title)}</h3><p class="lead">{e(text)}</p>'
-                                  f'<div class="notice {css}">{e(detail)}</div></section>', PATH, TAB), ()
+_stop = stopper(SUB, PATH, TAB)
 
 
 def _record(rows, page):
@@ -271,7 +270,7 @@ def _hub(req, who, secrets):
     if not closed:
         body += _link("Mark outreach as sent", "/sent?" + urlencode({"j": rid}), "Record a message you sent to a contact for this job.")
     body += (f'</section><div class="actions"><a class="btn link" href="https://www.notion.so/{pid}" target="_blank" rel="noopener">Open the opportunity page in Notion →</a></div>')
-    return 200, C.HTML, _styled(S.page("Manage opportunity", "One interview opportunity: its actions, each confirmed on its own screen.", body, PATH, TAB)), ()
+    return 200, C.HTML, _styled(S.page("Manage opportunity", SUB, body, PATH, TAB)), ()
 
 
 def _moved(secret, login, act, target, company, role, form):
@@ -282,7 +281,7 @@ def _moved(secret, login, act, target, company, role, form):
     if target.get("decision"):
         body = ('<section class="section"><div class="eyebrow">Conflict</div><h3 class="step-title">This opportunity was closed after Manage opened</h3>'
                 '<p class="lead">A closed opportunity takes no next action or hold.</p><div class="notice alert">Nothing was changed.</div>' + hub + '</section>')
-        return 409, C.HTML, S.page("Opportunity changed", "One interview opportunity: its actions, each confirmed on its own screen.", body, PATH, TAB), ()
+        return 409, C.HTML, S.page("Opportunity changed", SUB, body, PATH, TAB), ()
     keep = ({"v": form.get("v", "")} if act == "hold" else {"sk": form.get("sk", ""), "sx": form.get("sx", ""), "su": form.get("su", "")} if act == "sent"
             else {"v": form.get("v", ""), "sx": form.get("sx", "")} if act == "unsent" else {"nx": form.get("nx", ""), "due": form.get("due", "")})
     fields = _hand_fields(secret, login, C.KIND, D._page_id(target["id"]), company, role, int(C._now().timestamp()) + MANAGE_TTL, act) | keep | {"p": form.get("p", "")}
@@ -291,7 +290,7 @@ def _moved(secret, login, act, target, company, role, form):
             '<div class="notice alert">Nothing was changed. Your entry is kept below: review it on that row, then confirm.</div>'
             f'<form method="post" action="/manage">{S._hidden(fields)}<div class="actions"><button class="btn primary">Review this change on that row</button></div></form>'
             + hub + '</section>')
-    return 409, C.HTML, S.page("Opportunity changed", "One interview opportunity: its actions, each confirmed on its own screen.", body, PATH, TAB), ()
+    return 409, C.HTML, S.page("Opportunity changed", SUB, body, PATH, TAB), ()
 
 
 def _hand_post(req, who, secrets):
@@ -299,8 +298,7 @@ def _hand_post(req, who, secrets):
     form, secret, login = req["form"], secrets["link"], who["login"]
     o, step, exp, st, kind, act = D._page_id(form.get("o")), form.get("step"), form.get("exp", ""), form.get("st", ""), form.get("k", ""), form.get("act", "")
     company, role = form.get("co", ""), form.get("ro", "")
-    if (not o or step not in ("cancel", "review", "confirm") or kind != C.KIND or not (exp.isascii() and exp.isdigit()) or int(exp) < C._now().timestamp()
-            or not C._same(form.get("t"), C._mac(secret, "manage-hand", login, o, st, exp, act)) or not C._same(C._fingerprint(kind, o, company, role, False), st)):
+    if not (live(form, secret, "manage-hand", login, o, st, C._now(), ("cancel", "review", "confirm"), tail=(act,)) and kind == C.KIND and C._same(C._fingerprint(kind, o, company, role, False), st)):
         return _expired(form)
     if step == "cancel":
         return _stop(200, "Cancelled", "Nothing changed", "The opportunity keeps its current state and next action.", "Nothing was written.", "")
@@ -339,7 +337,7 @@ def _hand_post(req, who, secrets):
             f'<form method="post" action="/manage">{S._hidden(fields)}<div class="actions"><button class="btn link" name="step" value="cancel" formnovalidate>Cancel</button>'
             '<button class="btn primary" name="step" value="confirm">Confirm</button></div></form>'), PATH, TAB), ()
     if not C._same(form.get("c"), sign):
-        return _stop(403, "Not accepted", "This confirmation is not valid", "Review the change again.", "Nothing was changed.", "danger")
+        return invalid(_stop, "Review the change again.", "This confirmation is not valid")
     config = secrets["config"]
     client = Client({"NOTION_API_TOKEN": secrets["notion"].decode(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": config["ledger"]})
     target = D.route(D.rows(D.ledger_pages(client)), {"action": D.ACTION, "id": o, "company": company, "role": role})      # the write is authorized only by a fresh read
@@ -356,9 +354,9 @@ def _hand_post(req, who, secrets):
             return _stop(409, "Not changed", "The Job Ledger cannot store this yet", f"It needs a “{D.HAND_SET}” text property on the Job Ledger.", f"Refused: {code}. Nothing was changed.")
         if code.removeprefix("DECISION_") in ("CLOSED", "STALE_IDENTITY", "CONCURRENT_CHANGE", "HISTORY_UNREADABLE"):
             return _stop(409, "Not changed", "This change was not recorded", "The opportunity closed or changed since Manage was opened.", f"Refused: {code}. Nothing was changed.")
-        return _stop(500, "Unavailable", "Could not verify the change", "Do not assume it was recorded or left unchanged.", f"Status: DEGRADED · {code}", "danger")
+        return unverified(_stop, "Could not verify the change", code=code)
     if done.get("verified") is not True or done.get("status") not in ("recorded", "already_recorded"):
-        return _stop(500, "Unavailable", "Could not verify the change", "Do not assume it was recorded or left unchanged.", "Status: DEGRADED · not verified", "danger")
+        return unverified(_stop, "Could not verify the change")
     if act == "hold":
         secrets.get("after", []).append("hiring")                      # the Hiring Pipeline region is redrawn now (close_gate.REFRESH)
     return _stop(200, "Recorded", "Recorded and read back", "The opportunity's own record was updated and read back successfully.",
@@ -371,7 +369,7 @@ def _expired(form):
     body = ('<section class="section"><div class="eyebrow">Not accepted</div><h3 class="step-title">This page has expired</h3>'
             '<p class="lead">Manage was open too long, or the form was changed. Open it again and repeat the step.</p><div class="notice danger">Nothing was changed.</div>'
             + (_link("Reload Manage", "/manage?" + urlencode({"o": page}), "Opens this opportunity's Manage screen fresh.") if page else "") + '</section>')
-    return 403, C.HTML, _styled(S.page("This page has expired", "One interview opportunity: its actions, each confirmed on its own screen.", body, PATH, TAB)), ()
+    return 403, C.HTML, _styled(S.page("This page has expired", SUB, body, PATH, TAB)), ()
 
 
 def _drive_search(req, who, secrets):
@@ -379,8 +377,7 @@ def _drive_search(req, who, secrets):
     credential, newest edits first); each hit opens the usual sent-material review for that file, so nothing is recorded until he confirms there."""
     form, secret, login = req["form"], secrets["link"], who["login"]
     o, exp, st, kind, company, role = D._page_id(form.get("o")), form.get("exp", ""), form.get("st", ""), form.get("k", ""), form.get("co", ""), form.get("ro", "")
-    if (not o or kind != C.KIND or not (exp.isascii() and exp.isdigit()) or int(exp) < C._now().timestamp()
-            or not C._same(form.get("t"), C._mac(secret, "manage-hand", login, o, st, exp, "drive")) or not C._same(C._fingerprint(kind, o, company, role, False), st)):
+    if not (live(form, secret, "manage-hand", login, o, st, C._now(), None, tail=("drive",)) and kind == C.KIND and C._same(C._fingerprint(kind, o, company, role, False), st)):
         return _expired(form)
     q = " ".join((form.get("q") or "").split())
     if len(q) > QMAX or not q.isprintable():                             # an empty box lists the latest files (Jim, Oct 31 2026: "I shouldn't have to type")
@@ -412,8 +409,7 @@ def _post(req, who, secrets):
     form, secret, login = req["form"], secrets["link"], who["login"]
     o, step, exp, st, kind = D._page_id(form.get("o")), form.get("step"), form.get("exp", ""), form.get("st", ""), form.get("k", "")
     company, role = form.get("co", ""), form.get("ro", "")
-    if (not o or step not in ("cancel", "review", "confirm") or kind != C.KIND or not (exp.isascii() and exp.isdigit()) or int(exp) < C._now().timestamp()
-            or not C._same(form.get("t"), C._mac(secret, "manage-reopen", login, o, st, exp)) or not C._same(C._fingerprint(kind, o, company, role, True), st)):
+    if not (live(form, secret, "manage-reopen", login, o, st, C._now(), ("cancel", "review", "confirm")) and kind == C.KIND and C._same(C._fingerprint(kind, o, company, role, True), st)):
         return _expired(form)
     if step == "cancel":
         return _stop(200, "Cancelled", "Nothing reopened", "The opportunity stays closed.", "Nothing was written.", "")
@@ -439,16 +435,12 @@ def _post(req, who, secrets):
             return _stop(409, "Not changed", "It was recorded as Hired", "Tick “If it was recorded as Hired: reopen it anyway” on Manage to reopen it.", f"Refused: {code}. Nothing was changed.")
         if code in ("DECISION_NOT_CLOSED", "DECISION_CONFLICT"):
             return _stop(409, "Not changed", "This opportunity was not reopened", "It is already open, or its decision changed since Manage was opened.", f"Refused: {code}. Nothing was changed.")
-        return _stop(500, "Unavailable", "Could not verify the reopen", "Do not assume it was reopened or left unchanged.", f"Status: DEGRADED · {code}", "danger")
+        return unverified(_stop, "Could not verify the reopen", "it was reopened", code)
     if done.get("verified") is not True or done.get("status") not in ("recorded", "already_recorded"):
-        return _stop(500, "Unavailable", "Could not verify the reopen", "Do not assume it was reopened or left unchanged.", "Status: DEGRADED · not verified", "danger")
+        return unverified(_stop, "Could not verify the reopen", "it was reopened")
     secrets.get("after", []).append("hiring")                          # the Hiring Pipeline region is redrawn now (close_gate.REFRESH)
     return _stop(200, "Reopened", "Opportunity reopened", "The canonical record was updated and read back successfully.",
                  f"{company} — {role} · Reopened{' (already recorded)' if done['status'] == 'already_recorded' else ''}.", "ok")
 
 
-def handle(req, who, secrets):
-    try:
-        return (_hub if req["method"] == "GET" else _post)(req, who, secrets)
-    except NotionError as error:
-        return _stop(409, "Not changed", "This opportunity cannot be managed here", "The request was refused before anything was written.", f"Refused: {str(error)[:60]}")
+handle = handler(_hub, _post, _stop, "This opportunity cannot be managed here")

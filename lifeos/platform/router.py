@@ -1,14 +1,13 @@
-"""The hourly router contract for the ChatGPT-native `LIFE OS Daily Runs` task: independent modules with one of three outcomes, and strict
+"""The hourly router contract for the ChatGPT-native `LIFE OS Daily Runs` task: the three outcome words and strict
 ownership of Daily Report regions. No scheduler, queue, datastore or framework: the ChatGPT task runs hourly outside GitHub and applies
 these rules; V7's own hourly workflow is unrelated and unchanged. Fixed codes only: no content, ids or messages."""
 PASS, NO_ACTION, DEGRADED = "PASS", "NO_ACTION", "DEGRADED"
-OUTCOMES = (PASS, NO_ACTION, DEGRADED)
 
 # A Daily Report region is a callout whose first child heading names its owner. Nothing else is writable by any module.
 JIRA_REGION = "JIRA Execution"                          # V7 owns it exclusively (lifeos/jira/card.py): ChatGPT modules never touch it
 CALENDAR_REGION = "Calendar"                            # V7 owns it exclusively (lifeos/agenda/card.py)
 BILLS_REGION = "Bills: This Week"                       # V7 owns it exclusively (lifeos/bills/card.py)
-ATTENTION_REGION = "Attention"                           # V7 owns it exclusively (lifeos/attention/card.py): only the text above Jim's interactive Attention view
+ATTENTION_REGION = "Attention"                           # Jim's interactive Attention view; V7 no longer writes it (LIFE-645), but other cards still anchor on and protect this callout
 AMAZON_REGION = "Amazon Orders"                         # V7 owns it exclusively (lifeos/amazon/card.py)
 MAIL_ALERTS_REGION = "Mail Alerts"                      # V7 owns it exclusively (lifeos/physmail/card.py; Production Contract v2.15.12): LIFE OS Daily Runs neither reads the source nor writes it
 HIRING_REGION = "📈 Hiring Pipeline"                    # V7 owns it exclusively (lifeos/hiring/card.py). The ONE floating region: a heading_3, a status paragraph and a four-column table, never a callout
@@ -22,42 +21,8 @@ OWNERS = {JIRA_REGION: "v7-jira", CALENDAR_REGION: "v7-calendar", BILLS_REGION: 
 FLOATING = (HIRING_REGION, RECRUITER_OUTREACH_REGION)   # owned regions that are NOT callouts; every other owned region is one (single ownership is unchanged: one OWNERS entry each)
 
 
-def is_callout(heading):
-    """True for an owned region that is a callout; the floating Hiring Pipeline and Recruiter Outreach regions are not."""
-    return heading in OWNERS and heading not in FLOATING
-
-
 class RouterError(RuntimeError):
     """The message is always a fixed code."""
-
-
-def run_modules(modules):
-    """modules: ordered [(name, callable returning PASS | NO_ACTION | DEGRADED)]. Each runs on its own: one that raises or returns anything
-    else is DEGRADED, and never stops the rest. -> {"modules": {name: outcome}, "overall": outcome, "summary": one compact line}."""
-    names = [name for name, _ in modules]
-    if len(set(names)) != len(names):
-        raise RouterError("ROUTER_DUPLICATE_MODULE")
-    outcomes = {}
-    for name, module in modules:
-        try:
-            result = module()
-        except Exception:                                # nothing about the failure is kept: it must not leak and must not spread
-            result = DEGRADED
-        outcomes[name] = result if result in OUTCOMES else DEGRADED
-    values = set(outcomes.values())
-    overall = DEGRADED if DEGRADED in values else PASS if PASS in values else NO_ACTION
-    return {"modules": outcomes, "overall": overall, "summary": " | ".join(f"{n}={o}" for n, o in outcomes.items())}
-
-
-def resolve_target(regions, module):
-    """regions: [(heading, block_id)] of the page. -> the one block id `module` may write. Missing is never created, ambiguous never guessed."""
-    heading = next((h for h, owner in OWNERS.items() if owner == module), None)
-    if heading is None:
-        raise RouterError("ROUTER_MODULE_OWNS_NOTHING")
-    found = [block_id for text, block_id in regions if text.strip() == heading]
-    if len(found) != 1:
-        raise RouterError("ROUTER_TARGET_MISSING" if not found else "ROUTER_TARGET_AMBIGUOUS")
-    return found[0]
 
 
 def check_write(module, headings):

@@ -155,7 +155,7 @@ class History_(unittest.TestCase):
     def test_only_runs_started_by_a_tick_are_read(self):
         api = History([run(1, mail="success")])
         due.fetch_last_success({"mail"}, api)
-        self.assertIn("event=workflow_run", api.paths[0])                              # a manual or benchmark run never makes a card look fresh
+        self.assertIn("event=workflow_run", api.paths[0])                              # a manual run never makes a card look fresh
 
 
 class Main(unittest.TestCase):
@@ -183,7 +183,7 @@ class Main(unittest.TestCase):
         self.assertIn("history unreadable", buffer.getvalue())
         self.assertIn("every job is due (fail open)", summary)
 
-    def test_a_dispatch_or_benchmark_runs_everything_and_reads_no_history(self):
+    def test_a_dispatch_runs_everything_and_reads_no_history(self):
         history = History([run(2, mail="success")])
         code, outputs, _ = self.go(ROWS, history, event="workflow_dispatch")
         self.assertEqual(set(outputs.values()), {"true"})
@@ -200,7 +200,7 @@ class Main(unittest.TestCase):
 class TableMatchesTheWorkflow(unittest.TestCase):
     def test_every_domain_job_has_exactly_one_row_and_every_row_is_valid(self):
         jobs = yaml.safe_load((pathlib.Path(__file__).resolve().parents[2] / ".github/workflows/domains.yml").read_text())["jobs"]
-        domain = set(jobs) - {"gate", "report", "bench_report"}
+        domain = set(jobs) - {"gate", "report"}
         table = due.load_table()
         self.assertEqual(set(table), domain)
         for job, row in table.items():
@@ -213,7 +213,7 @@ class TableMatchesTheWorkflow(unittest.TestCase):
     def test_every_job_and_the_recruiters_mail_step_run_every_hour_since_life_630(self):
         table = due.load_table()
         self.assertEqual({job: row for job, row in table.items() if row != {"every_hours": 1}}, {})                 # Jim, Nov 12 2026: everything hourly until the codebase has shrunk
-        self.assertEqual(len(table), 14)
+        self.assertEqual(len(table), 13)
         self.assertEqual(json.loads(due.TABLE.read_text())["steps"]["recruiters_mail"]["every_hours"], 1)
 
 

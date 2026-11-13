@@ -67,7 +67,6 @@ STAGES = {
     "jira-rollover-watch": lazy("lifeos.jira.watch"),
     "jira-probe": lazy("lifeos.jira.snapshot", "probe"),
     "jira-card": lazy("lifeos.jira.card"),
-    "jm-dashboard": lazy("lifeos.jira.dashboard"),          # JFM-221: the Jim & Matt Dashboard V2 from Jira (weekly check-in, quarterly synopsis, completed archive); read-only on Jira
     "agenda-snapshot": lazy("lifeos.agenda.snapshot"),
     "agenda-card": lazy("lifeos.agenda.card"),
     "fit-profile-sync": lazy("lifeos.jobs.fit.profile_sync"),     # Fit profile: the approved Notion block into the one Bitwarden extra secret (isolated job, profile-sync.yml)
@@ -92,10 +91,8 @@ STAGES = {
     "amazon-census": lazy("lifeos.delivery.census", floor=2000),
     "recruiters": lazy("lifeos.recruiters.stage"),
     "recruiter-outreach": lazy("lifeos.recruiters.outreach_card"),     # LIFE-20: the Daily Report's Recruiter Outreach table, after the Recruiters stage; live writes need RECRUITER_OUTREACH=on
-    "attention": lazy("lifeos.attention.stage", floor=200),
     "imessage-alerts": lazy("lifeos.imessage.stage"),
     "imessage-comms": lazy("lifeos.imessage.comms_card"),
-    "attention-card": lazy("lifeos.attention.card"),
     "capacity-card": lazy("lifeos.jobs.fit.capacity_card"),                  # LIFE-77 D228: the AI Capacity card; not configured (AI_CAPACITY_BLOCK_ID unset) until Jim activates it
     "hiring-outcomes": lazy("lifeos.hiring.outcomes"),
     "outlook-auth": _outlook_auth,

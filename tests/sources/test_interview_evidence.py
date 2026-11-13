@@ -10,6 +10,7 @@ from lifeos.platform.notion_client import NotionError
 from lifeos.interview.models import Child, Ownership, Parent, Scan
 from lifeos.run import STAGES
 from lifeos.sources.interview import interview_evidence as ev
+from tests.kit.shared import SqlLog
 from tests.sources.support import event
 from tests.sources.support import mail, outreach
 
@@ -480,27 +481,7 @@ class Exceptions(unittest.TestCase):
 POSTING = "https://boards.greenhouse.io/exampleco/jobs/1234567"
 
 
-class Cursor:
-    def __init__(self, new=True):
-        self.sql, self.rowcount = [], 1 if new else 0
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        return False
-
-    def cursor(self):
-        return self
-
-    def execute(self, sql, args=()):
-        self.sql.append((sql.split()[0], args))
-
-    def fetchone(self):
-        return None
-
-    def fetchall(self):
-        return []
+Cursor = SqlLog
 
 
 class LinkLeads(unittest.TestCase):

@@ -25,8 +25,6 @@ Generated from `lifeos/platform/runtime.json`; do not edit by hand. The drift ch
 |---|---|---|---|
 | lifeos/agenda | github |  |  |
 | lifeos/amazon | github |  |  |
-| lifeos/attention | github |  |  |
-| lifeos/bench | github |  |  |
 | lifeos/bills | github |  |  |
 | lifeos/buzz | oracle |  |  |
 | lifeos/calendar_bridge | github |  |  |

@@ -72,12 +72,12 @@ def _scoped(client, source):
     return scoped
 
 
-def _database(client, parent, title, properties):
-    """One disposable data source under a sandbox page -> its id. A refusal raises: the run fails closed and says so."""
+def _database(client, parent, title, properties, code="M1M2_SANDBOX_DATABASE_UNREADABLE"):
+    """One disposable data source under a sandbox page -> its id. A refusal raises `code`: the run fails closed and says so."""
     made = client.call_once("POST", "/databases", {"parent": {"type": "page_id", "page_id": parent}, "title": rich_text(title), "initial_data_source": {"properties": properties}})
     sources = made.get("data_sources") if isinstance(made, dict) else None
     if not isinstance(sources, list) or len(sources) != 1 or not sources[0].get("id"):
-        raise NotionError("M1M2_SANDBOX_DATABASE_UNREADABLE")
+        raise NotionError(code)
     return sources[0]["id"]
 
 

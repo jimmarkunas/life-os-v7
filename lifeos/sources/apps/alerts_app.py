@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 from lifeos.hiring import close_screen as S
 from lifeos.platform import alert_registry as registry, alert_settings as settings, alerts, credentials
 from lifeos.sources import close_app as C
+from lifeos.sources.apps.signed import invalid
 
 API = "https://api.github.com/repos/jimmarkunas/life-os-v7/actions/variables"
 PATH, TAB = "LIFE OS / Command Center / Alert settings", "Alert settings"
@@ -44,6 +45,19 @@ def _shell(html):
 
 def _stop(status, eyebrow, title, text, detail, css="alert"):
     return status, C.HTML, _shell(S.result(eyebrow, title, text, detail, css)), ()
+
+
+NO_ANSWER = (503, "Unavailable", "GitHub did not answer", "The settings could not be read.", "Nothing was changed.", "danger")
+RELOAD = "Reload Alert settings."
+
+
+def _unsaved(why):
+    return _stop(500, "Unavailable", "Could not verify the save", "Do not assume the settings were saved or left unchanged. Open Alert settings again.", f"Status: DEGRADED · {why}", "danger")
+
+
+def _forced(spec, channels):
+    """A PAGE alert always reaches the phone: ntfy first, then the other chosen channels."""
+    return ("ntfy",) + tuple(c for c in channels if c != "ntfy") if spec.severity == registry.PAGE else tuple(channels)
 
 
 def handle_css(req, who, secrets):
@@ -93,8 +107,7 @@ def model(values, now):
         pass
     saved = settings.parse(values.get(DOC) or "")
     chosen = {key: (tuple(saved[key]) if key in saved else tuple(spec.channels)) for key, spec in registry.REGISTRY.items()}
-    return {"enabled": settings.enabled({SWITCH: values.get(SWITCH) or ""}), "mute": mute,
-            "channels": {key: (("ntfy",) + tuple(c for c in c_ if c != "ntfy") if registry.REGISTRY[key].severity == registry.PAGE else c_) for key, c_ in chosen.items()}}
+    return {"enabled": settings.enabled({SWITCH: values.get(SWITCH) or ""}), "mute": mute, "channels": {key: _forced(registry.REGISTRY[key], c_) for key, c_ in chosen.items()}}
 
 
 def from_form(form):
@@ -107,8 +120,7 @@ def from_form(form):
             return None
     channels = {}
     for key, spec in registry.REGISTRY.items():
-        chosen = tuple(c for c in registry.CHANNELS if form.get(f"ch:{key}:{c}") == "1")
-        channels[key] = ("ntfy",) + tuple(c for c in chosen if c != "ntfy") if spec.severity == registry.PAGE else chosen
+        channels[key] = _forced(spec, [c for c in registry.CHANNELS if form.get(f"ch:{key}:{c}") == "1"])
     return {"enabled": form.get("enabled") == "1", "mute": mute, "channels": channels}
 
 
@@ -212,7 +224,7 @@ def _get(req, who, secrets, opener):
     try:
         values = read(token, opener)
     except Exception:                                                              # noqa: BLE001 - fixed text only; never the token, URL or reply
-        return _stop(503, "Unavailable", "GitHub did not answer", "The settings could not be read.", "Nothing was changed.", "danger")
+        return _stop(*NO_ANSWER)
     return _page(model(values, C._now()), secrets["link"], who["login"], C._now())
 
 
@@ -225,15 +237,15 @@ def _post(req, who, secrets, opener):
     if form.get("step") == "cancel" and state is not None:                         # Cancel goes back to the settings, keeping what was typed; nothing is written
         return _page(state, secret, login, now)
     if state is None or not (exp.isascii() and exp.isdigit()) or int(exp) < now.timestamp():
-        return _stop(403, "Not accepted", "This form is no longer valid", "Reload Alert settings.", "Nothing was changed.", "danger")
+        return invalid(_stop, RELOAD)
     step = form.get("step")
     if step == "review":
         if not C._same(form.get("t"), C._mac(secret, "alerts", login, exp)):
-            return _stop(403, "Not accepted", "This form is no longer valid", "Reload Alert settings.", "Nothing was changed.", "danger")
+            return invalid(_stop, RELOAD)
         try:
             current = model(read(token, opener), now)
         except Exception:                                                          # noqa: BLE001
-            return _stop(503, "Unavailable", "GitHub did not answer", "The settings could not be read.", "Nothing was changed.", "danger")
+            return _stop(*NO_ANSWER)
         lines = changes(current, state)
         fields = _fields(state) | {"exp": exp, "t": C._mac(secret, "alerts-confirm", login, exp, digest(state))}
         shown = "".join(f"<li>{e(line)}</li>" for line in lines) or "<li>No change.</li>"
@@ -243,15 +255,15 @@ def _post(req, who, secrets, opener):
             '<div class="actions"><button class="btn link" name="step" value="cancel" formnovalidate>Cancel</button>'
             f'<button class="btn primary" name="step" value="confirm"{" disabled" if not lines else ""}>Save</button></div></form>'), PATH, TAB)), ()
     if step != "confirm" or not C._same(form.get("t"), C._mac(secret, "alerts-confirm", login, exp, digest(state))):
-        return _stop(403, "Not accepted", "This form is no longer valid", "Reload Alert settings.", "Nothing was changed.", "danger")
+        return invalid(_stop, RELOAD)
     want = values_for(state)
     try:
         write(token, want, opener)
         got = read(token, opener)
     except Exception:                                                              # noqa: BLE001
-        return _stop(500, "Unavailable", "Could not verify the save", "Do not assume the settings were saved or left unchanged. Open Alert settings again.", "Status: DEGRADED · GitHub error", "danger")
+        return _unsaved("GitHub error")
     if any((got.get(name) or "") != value for name, value in want.items()):
-        return _stop(500, "Unavailable", "Could not verify the save", "Do not assume the settings were saved or left unchanged. Open Alert settings again.", "Status: DEGRADED · not read back", "danger")
+        return _unsaved("not read back")
     return _stop(200, "Saved", "Alert settings saved", "GitHub reports the same values back; the next run uses them.",
                  f"Alerts {'ON' if state['enabled'] else 'OFF'} · {('muted until ' + state['mute'].replace('T', ' ') + ' Central') if state['mute'] else 'no mute'}.", "ok")
 

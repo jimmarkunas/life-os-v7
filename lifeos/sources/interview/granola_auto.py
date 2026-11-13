@@ -91,6 +91,23 @@ def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=No
     def why(code):
         counts["why"][code] = counts["why"].get(code, 0) + 1
 
+    def left(code, failed=0):
+        """The meeting stays on Oracle, for this fixed reason (and counts as failed when `failed`)."""
+        counts["failed"] += failed
+        counts["left_on_oracle"] += 1
+        why(code)
+
+    def purge(meeting, envelope):
+        """The whole-meeting purge, only from an Oracle that announced `purge_all`. -> True when Oracle confirmed it; otherwise the meeting is counted as left."""
+        if "purge_all" not in caps:
+            left("GRAN_PURGE_ALL_UNSUPPORTED")
+            return False
+        reply = ask("purge", id=meeting.id, content_sha256=envelope.source_content_sha256, scope="all")
+        if reply.get("scope") == "all" and int(reply.get("purged") or 0) >= 1:
+            return True
+        left("GRAN_PURGE_SCOPE_NOT_CONFIRMED")
+        return False
+
     def ask(op, **fields):
         try:
             return granola_oracle.call(host, op, send=send, **fields)
@@ -146,9 +163,7 @@ def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=No
                 catalog_save(cursor, keys[meeting.id], day, round_key, job_key, "carried", len(envelope.segments), header if result == "TRANSCRIPT_WRITTEN" else (), False, now)
                 saved = catalog_has(cursor, keys[meeting.id], "carried")
             if not saved:
-                counts["failed"] += 1
-                counts["left_on_oracle"] += 1
-                why("GRAN_CATALOG_FAILED")
+                left("GRAN_CATALOG_FAILED", 1)
                 return False
             counts["carried"] += 1
             carried_now += 1
@@ -156,18 +171,10 @@ def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=No
             counts["header"] += int(bool(header) and result == "TRANSCRIPT_WRITTEN")
             if after:
                 after()
-            if "purge_all" in caps:
-                reply = ask("purge", id=meeting.id, content_sha256=envelope.source_content_sha256, scope="all")
-                if reply.get("scope") == "all" and int(reply.get("purged") or 0) >= 1:
-                    with connect() as connection, connection.cursor() as cursor:
-                        catalog_save(cursor, keys[meeting.id], day, round_key, job_key, "carried_purged", len(envelope.segments), header if result == "TRANSCRIPT_WRITTEN" else (), True, now)
-                    counts["purged"] += 1
-                else:
-                    counts["left_on_oracle"] += 1
-                    why("GRAN_PURGE_SCOPE_NOT_CONFIRMED")
-            else:
-                counts["left_on_oracle"] += 1
-                why("GRAN_PURGE_ALL_UNSUPPORTED")
+            if purge(meeting, envelope):
+                with connect() as connection, connection.cursor() as cursor:
+                    catalog_save(cursor, keys[meeting.id], day, round_key, job_key, "carried_purged", len(envelope.segments), header if result == "TRANSCRIPT_WRITTEN" else (), True, now)
+                counts["purged"] += 1
             return True
 
         def fetch(meeting):
@@ -176,21 +183,17 @@ def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=No
             try:
                 envelope = normalize_granz(meeting.id, shown.get("json") or "")
             except ContractError as error:
-                counts["failed"] += 1
-                counts["left_on_oracle"] += 1
-                why(error.code)
+                left(error.code, 1)
                 return None
             return envelope, (header_of(shown) if "notes" in caps else ())
 
         def file_on_meetings(meeting, filed_to):
             """File one meeting on the Meetings database (LIFE-166). -> True when it was handled (carried, or counted and left on Oracle)."""
             if carried_now >= max(1, limit or PER_RUN):
-                counts["left_on_oracle"] += 1
-                why("GRAN_AUTO_LATER_RUN")
+                left("GRAN_AUTO_LATER_RUN")
                 return True
             if not meetings_ok():
-                counts["left_on_oracle"] += 1
-                why("GRAN_CLIENT_TARGET_NOT_OK")
+                left("GRAN_CLIENT_TARGET_NOT_OK")
                 return True
             context.require_time()
             got = fetch(meeting)
@@ -199,11 +202,9 @@ def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=No
             envelope, header = got
             result, wrote = granola_clients.write(client, filed_to, meeting, keys[meeting.id], envelope, live, header)
             if not live or result not in ("TRANSCRIPT_WRITTEN", "TRANSCRIPT_NOOP"):
-                counts["left_on_oracle"] += 1
-                why(result)
-                counts["failed"] += int(result not in ("TRANSCRIPT_PLANNED",))
+                left(result, int(result not in ("TRANSCRIPT_PLANNED",)))
                 return True
-            return finish(meeting, envelope, header, result, hashlib.sha256(f"meetings:{filed_to}".encode()).hexdigest()[:16], None)
+            return finish(meeting, envelope, header, result, key_of(f"meetings:{filed_to}"), None)
 
         def carry_client(meeting):
             """LIFE-164: a meeting that matches no round but belongs to client work. -> False when it is not client work (the caller lists it as Unfiled)."""
@@ -243,13 +244,9 @@ def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=No
                     if not live:
                         counts["triage_delete_planned"] += 1
                         continue
-                    reply = ask("purge", id=meeting.id, content_sha256=got[0].source_content_sha256, scope="all") if "purge_all" in caps else {}
-                    if reply.get("scope") == "all" and int(reply.get("purged") or 0) >= 1:
+                    if purge(meeting, got[0]):
                         granola_clients.set_status(client, page_id, granola_clients.DELETED)
                         counts["triage_deleted"] += 1
-                    else:
-                        counts["left_on_oracle"] += 1
-                        why("GRAN_PURGE_SCOPE_NOT_CONFIRMED" if "purge_all" in caps else "GRAN_PURGE_ALL_UNSUPPORTED")
                     continue
                 if choice in (granola_clients.CLIENT, granola_clients.INTERNAL, granola_clients.PERSONAL):
                     before = counts["carried"]
@@ -267,18 +264,15 @@ def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=No
                 if code == "MATCH_NONE" and carry_client(meeting):
                     continue
                 counts["unmatched"] += 1
-                counts["left_on_oracle"] += 1
-                why(code)
+                left(code)
                 listed_unfiled.append(meeting)
                 continue
             if carried_now >= max(1, limit or PER_RUN):
-                counts["left_on_oracle"] += 1
-                why("GRAN_AUTO_LATER_RUN")
+                left("GRAN_AUTO_LATER_RUN")
                 continue
             context.require_time()
             if notion.ownership(client, round_id, "round") != Ownership.MACHINE:
-                counts["left_on_oracle"] += 1
-                why("GRAN_ROUND_NOT_MACHINE")
+                left("GRAN_ROUND_NOT_MACHINE")
                 continue
             got = fetch(meeting)
             if got is None:
@@ -286,16 +280,14 @@ def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=No
             envelope, header = got
             result, wrote = granola_write.write(client, round_id, envelope, live, header)
             if not live or result not in ("TRANSCRIPT_WRITTEN", "TRANSCRIPT_NOOP"):
-                counts["left_on_oracle"] += 1
-                why(result)
-                counts["failed"] += int(result not in ("TRANSCRIPT_PLANNED",))
+                left(result, int(result not in ("TRANSCRIPT_PLANNED",)))
                 continue
             job_key = None
             try:
                 job_key = (interview_evidence.facts(client, parent_of[round_id], context) or (None,))[0]
             except (NotionError, KeyError):
                 job_key = None
-            finish(meeting, envelope, header, result, hashlib.sha256(round_id.encode()).hexdigest()[:16], job_key, after=lambda round_id=round_id: create.link_transcript(client, round_id, True, {}))
+            finish(meeting, envelope, header, result, key_of(round_id), job_key, after=lambda round_id=round_id: create.link_transcript(client, round_id, True, {}))
         if listed_unfiled and meetings_ok():                              # LIFE-166: every meeting nothing could place waits for Jim as an Unfiled row
             for meeting in listed_unfiled:
                 outcome = granola_clients.unfiled_row(client, meeting, keys[meeting.id], live)

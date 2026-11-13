@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       all:
-        description: "Run every domain job like an hourly tick does (Jira snapshot + card, Outlook, Bills, Agenda, Amazon, Attention, Physical Mail, Hiring Pipeline); dry run unless Actually write is ticked"
+        description: "Run every domain job like an hourly tick does (Jira snapshot + card, Outlook, Bills, Agenda, Amazon, Physical Mail, Hiring Pipeline); dry run unless Actually write is ticked"
         type: boolean
         default: false
       amazon:
@@ -39,10 +39,6 @@ on:
         default: ""
       imessage:
         description: "iMessage urgent alerts only (COMM-1.4b, LIFE-31): metadata from the private Oracle endpoint over the tailnet; dry run unless Actually write is ticked"
-        type: boolean
-        default: false
-      attention:
-        description: "Attention sync only (the Attention card itself runs with Daily Command Center or Run every domain job): the Gmail label LifeOS/Attention and the Outlook category 'LifeOS Attention' (also spelled 'LIFE OS Attention') into the Attention data source (counts only); dry run unless Actually write is ticked"
         type: boolean
         default: false
       dcc:
@@ -82,19 +78,15 @@ on:
         type: boolean
         default: false
       jira:
-        description: "Jira only (unticked 'Run every domain job' above): snapshot, card, report (both), rollover, rollover+snapshot, a read-only layout probe, or the Jim & Matt dashboard (JFM-221)"
+        description: "Jira only (unticked 'Run every domain job' above): snapshot, card, report (both), rollover, rollover+snapshot, or a read-only layout probe"
         type: choice
-        options: ["none", "snapshot", "card", "report", "rollover", "both", "probe", "dashboard"]
+        options: ["none", "snapshot", "card", "report", "rollover", "both", "probe"]
         default: "none"
       refresh:
         description: "Close screen refresh (Jim, Oct 24): hiring = redraw the Hiring Pipeline region right after a verified close; recruiters = redraw only the Recruiter Outreach table after a verified recruiter close, status or Mark as Sent (no mail read). It queues in the after-tick group, so it never runs beside another Daily Report writer; the Close service skips it when a run is already waiting"
         type: choice
         options: ["none", "hiring", "recruiters"]
         default: "none"
-      benchmark:
-        description: "Benchmark (LIFE-577, manual only): runs every domain job like `all` in DRY mode (nothing is written, `live` is ignored), refuses to start while another hourly or domains run is in progress, and ends with a summary of seconds per job, the run's wall time and an overlap check, so two runs are comparable."
-        type: boolean
-        default: false
       live:
         description: "Actually write (saves snapshots, writes Notion, moves mail). Unticked = dry run, counts only. Automatic runs follow the repo variable V7_LIVE."
         type: boolean
@@ -103,7 +95,7 @@ env:
   ALERTS_MUTED_UNTIL: ${{ vars.ALERTS_MUTED_UNTIL }}      # LIFE-73: silences every alert channel until this time (lifeos.platform.alerts.muted); empty = not muted
   ALERTS_ENABLED: ${{ vars.ALERTS_ENABLED }}      # LIFE-75: the master switch from the Alert settings page; anything but "on" means alerts are OFF (lifeos.platform.alert_settings)
   ALERT_SETTINGS: ${{ vars.ALERT_SETTINGS }}      # LIFE-75: per-alert channel choices from the Alert settings page; empty = the registry defaults
-  LIVE: ${{ ((github.event_name == 'workflow_run' && vars.V7_LIVE == 'true') || (github.event_name == 'workflow_dispatch' && inputs.live && !inputs.benchmark)) && 'true' || 'false' }}
+  LIVE: ${{ ((github.event_name == 'workflow_run' && vars.V7_LIVE == 'true') || (github.event_name == 'workflow_dispatch' && inputs.live)) && 'true' || 'false' }}
 permissions:
   contents: read
 concurrency:
@@ -116,13 +108,11 @@ concurrency:
   cancel-in-progress: false
 jobs:
   gate:
-    # LIFE-604 item 11: the ONE place that decides whether this run does the domain work, and the benchmark's overlap refusal (LIFE-577). It runs only for a completed tick, `all`, or a
-    # benchmark; a manual run of one domain skips it, and then a domain job runs only on its own input. Outputs: due_<job> (LIFE-609: one per domain job, from lifeos/platform/due_table.json; for a tick a job is due when its row says
-    # so, for `all` or a benchmark every job is due), tick (only a tick: imessage, granola and the failure push depend on that) and all (only `all` or a benchmark). A benchmark refuses to start while another hourly or domains run is queued or
-    # running; a refusal fails this job and every domain job then skips (their `needs.gate.result != 'failure'`).
+    # LIFE-604 item 11: the ONE place that decides whether this run does the domain work. It runs only for a completed tick or `all`; a manual run of one domain skips it, and then a domain job runs only on its own input. Outputs: due_<job> (LIFE-609: one per domain job, from lifeos/platform/due_table.json; for a tick a job is due when its row says
+    # so, for `all` every job is due), tick (only a tick: imessage, granola and the failure push depend on that) and all (only `all`). A failed gate makes every domain job skip (their `needs.gate.result != 'failure'`).
     # Why each domain job uses always() or !cancelled(): a job that waits for other page writers (needs: ...) uses always() so one failed writer never stops the next card; a job with
     # no writer to wait for uses !cancelled(). Both skip when the gate failed or the run was cancelled, and both run on their own manual input without the gate.
-    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || (inputs.all || inputs.benchmark) }}
+    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || inputs.all }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -130,7 +120,7 @@ jobs:
       actions: read
     outputs:
       tick: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') }}
-      all: ${{ (inputs.all || inputs.benchmark) }}
+      all: ${{ inputs.all }}
       due_jira: ${{ steps.due.outputs.due_jira }}
       due_outlook: ${{ steps.due.outputs.due_outlook }}
       due_bills: ${{ steps.due.outputs.due_bills }}
@@ -139,7 +129,6 @@ jobs:
       due_amazon_retention: ${{ steps.due.outputs.due_amazon_retention }}
       due_mail: ${{ steps.due.outputs.due_mail }}
       due_hiring: ${{ steps.due.outputs.due_hiring }}
-      due_attention: ${{ steps.due.outputs.due_attention }}
       due_megibow: ${{ steps.due.outputs.due_megibow }}
       due_dcc: ${{ steps.due.outputs.due_dcc }}
       due_recruiters: ${{ steps.due.outputs.due_recruiters }}
@@ -147,11 +136,6 @@ jobs:
       due_granola: ${{ steps.due.outputs.due_granola }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
-      - name: Benchmark gate (LIFE-577) - refuses while another run is in progress
-        if: ${{ inputs.benchmark }}
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: python3 -m lifeos.platform.bench_gate before
       - id: due
         name: Which domain jobs are due (LIFE-609) - one table, each job's last successful run; an unreadable history makes every job due
         env:
@@ -276,32 +260,6 @@ jobs:
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_USER }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_jira.outputs.NOTION_JIRA_TOKEN }}
         run: python -m lifeos.run jira-card $([ "$LIVE" = "true" ] && echo --live)
-      - id: jmdash
-        continue-on-error: true
-        name: Jim & Matt dashboard from Jira (JFM-221; Wednesday 7 AM CT check-in, quarterly synopsis, completed archive; reads Jira only; Notion written only when live; counts only)
-        if: ${{ inputs.jira == 'dashboard' || needs.gate.outputs.due_jira == 'true' }}
-        env:
-          LIFEOS_NOTION_IDS: ${{ secrets.LIFEOS_NOTION_IDS }}
-          JM_DASHBOARD_PAGE_ID: ${{ vars.JM_DASHBOARD_PAGE_ID }}
-          MEGIBOW_BLOCK_ID: ${{ secrets.MEGIBOW_BLOCK_ID }}
-          JIRA_SITE_URL: ${{ secrets.JIRA_SITE_URL }}
-          JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
-          JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
-          NOTION_JIRA_TOKEN: ${{ steps.bws_jira.outputs.NOTION_JIRA_TOKEN }}
-          NTFY_TOPIC: ${{ steps.bws_jira.outputs.NTFY_TOPIC }}
-          LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
-          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KEY: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
-          LIFEOS_ACQ_SSH_JUMP_HOST: ${{ vars.V7_STORE_JUMP_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: ${{ vars.V7_STORE_JUMP_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_VIA: ${{ vars.V7_STORE_VIA }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_USER }}
-        run: python -m lifeos.run jm-dashboard $([ "$LIVE" = "true" ] && echo --live)
       - id: jprobe
         continue-on-error: true
         name: Jira layout probe (read-only; counts only)
@@ -319,7 +277,7 @@ jobs:
           JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
         run: python -m lifeos.run jira-rollover $([ "$LIVE" = "true" ] && echo --live)
       - name: Jira warning (does not fail the run)
-        if: ${{ always() && (steps.jsnap.outcome == 'failure' || steps.jcard.outcome == 'failure' || steps.jrollauto.outcome == 'failure' || steps.jrollwatch.outcome == 'failure' || steps.jroll.outcome == 'failure' || steps.jprobe.outcome == 'failure' || steps.jmdash.outcome == 'failure') }}
+        if: ${{ always() && (steps.jsnap.outcome == 'failure' || steps.jcard.outcome == 'failure' || steps.jrollauto.outcome == 'failure' || steps.jrollwatch.outcome == 'failure' || steps.jroll.outcome == 'failure' || steps.jprobe.outcome == 'failure') }}
         run: echo "::warning title=Jira::a Jira step failed; the Jobs pipeline is unaffected"
 
 
@@ -434,7 +392,7 @@ jobs:
       - id: bpaid
         continue-on-error: true
         name: Bills Paid processor (before the snapshot; writes Notion only when live; counts only)
-        if: ${{ github.event_name == 'workflow_run' || (inputs.all || inputs.benchmark) || inputs.bills_paid }}
+        if: ${{ github.event_name == 'workflow_run' || inputs.all || inputs.bills_paid }}
         env:
           NOTION_BILLS_DATA_SOURCE_ID: ${{ secrets.NOTION_BILLS_DATA_SOURCE_ID }}
           LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
@@ -867,78 +825,6 @@ jobs:
         if: ${{ always() && steps.hiring.outcome == 'failure' }}
         run: echo "::warning title=Hiring Pipeline::the Hiring Pipeline stage failed; the region keeps its last accepted content and the Jobs pipeline is unaffected"
 
-  attention:
-    # D127: Attention is its own job. It reads only the Gmail label and the Outlook category Jim controls and writes only the Attention data source (never the Daily Report
-    # page), so a failure is a warning that never touches another card or the Jobs run.
-    needs: [gate]
-    if: ${{ !cancelled() && needs.gate.result != 'failure' && (needs.gate.outputs.due_attention == 'true' || inputs.attention) }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    outputs:
-      sync: ${{ steps.attention.outcome }}                  # the Attention card (a step of the dcc job, after every other writer) shows a failed sync as DEGRADED
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
-      - uses: ./.github/actions/python
-      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
-        uses: ./.github/actions/bws-helper
-        with:
-          wait_seconds: "300"
-      - id: bws_attention
-        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 14; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
-        uses: ./.github/actions/bws-load
-        with:
-          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
-          set_env: false
-          secrets: |
-            08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET
-            672a44e9-235f-4121-a99d-b4db015a6987 > GMAIL_OAUTH_REFRESH_TOKEN
-            d71bbaed-6a6c-49b5-8a1f-b4db015ecfda > LIFEOS_ACQ_DB_NAME
-            00d82e0d-be10-4c8c-bdbe-b4db015ed389 > LIFEOS_ACQ_DB_PASSWORD
-            9422b842-3bb0-4153-bb8d-b4db015ed746 > LIFEOS_ACQ_DB_USER
-            6f1c86f6-c48f-4e77-b65d-b4db015edb15 > LIFEOS_ACQ_SSH_HOST
-            b65dd2fc-2573-4bda-9e80-b4db015edec6 > LIFEOS_ACQ_SSH_KNOWN_HOSTS
-            7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
-            6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
-            192db2d1-be66-4fca-b9b5-b4e900240507 > LIFEOS_ACQ_SSH_JUMP_KEY
-            454e12df-637f-4f65-9ec1-b4e30052942f > TAILSCALE_OAUTH_CLIENT_ID
-            e54f0a84-84c3-47d8-8b5b-b4e30052d6e9 > TAILSCALE_OAUTH_CLIENT_SECRET
-            53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
-            83c553e9-23a6-45aa-9006-b4db015f00ac > NTFY_TOPIC
-      - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
-        continue-on-error: true
-        uses: ./.github/actions/tailscale
-        with:
-          oauth-client-id: ${{ steps.bws_attention.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ steps.bws_attention.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
-          tags: tag:v7-runner
-      - id: attention
-        continue-on-error: true
-        name: Attention (Gmail label and Outlook category to Notion; counts only; writes only when live; a failed source is DEGRADED)
-        env:
-          LIFEOS_NOTION_IDS: ${{ secrets.LIFEOS_NOTION_IDS }}
-          GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
-          OUTLOOK_CLIENT_ID: ${{ secrets.OUTLOOK_CLIENT_ID }}
-          LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
-          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_attention.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
-          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_attention.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
-          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_attention.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_attention.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: ${{ steps.bws_attention.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_attention.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KEY: ${{ steps.bws_attention.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
-          LIFEOS_ACQ_SSH_JUMP_HOST: ${{ vars.V7_STORE_JUMP_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: ${{ vars.V7_STORE_JUMP_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_VIA: ${{ vars.V7_STORE_VIA }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_attention.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_attention.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_attention.outputs.LIFEOS_ACQ_SSH_USER }}
-          NOTION_JIRA_TOKEN: ${{ steps.bws_attention.outputs.NOTION_JIRA_TOKEN }}
-          NTFY_TOPIC: ${{ steps.bws_attention.outputs.NTFY_TOPIC }}
-        run: python -m lifeos.run attention $([ "$LIVE" = "true" ] && echo --live)
-      - name: Attention warning (does not fail the Jobs run)
-        if: ${{ always() && steps.attention.outcome == 'failure' }}
-        run: echo "::warning title=Attention::the Attention stage failed or a source was unread; the Jobs pipeline is unaffected"
-
   megibow:
     # D134: MegIBOW is its own job. It reads sent mail and calendars (read only) and writes only its one Notion block, its review list and two tiny private tables; a failure is a
     # warning that never touches another card or the Jobs run, and a failed source leaves the last good table in place and says DEGRADED.
@@ -1019,7 +905,7 @@ jobs:
     # D175: V7 writes the Daily Command Center callout (it was the ChatGPT task's, which could only edit page markdown). It runs after EVERY other Daily Report writer, so no card changes while it reads
     # or writes, reads only the first lines the cards already carry, writes only its own region and proves every other V7 region unchanged around the write. A failure is a warning.
     # A mail-only manual run (physical_mail) also refreshes this job, so the Command Center never shows the Mail Alerts source it had before the run (LIFE-95).
-    needs: [jira, agenda, bills, amazon, attention, mail, hiring, imessage, gate]
+    needs: [jira, agenda, bills, amazon, mail, hiring, imessage, gate]
     if: ${{ always() && needs.gate.result != 'failure' && (needs.gate.outputs.due_dcc == 'true' || inputs.dcc || inputs.physical_mail) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -1039,23 +925,6 @@ jobs:
           secrets: |
             53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
             b78d1476-663e-496d-9bc4-b4e1003b61b0 > DCC_CARD_BLOCK_ID
-      - id: attncard
-        continue-on-error: true
-        name: Attention card (status and suggested decisions above the interactive view; writes only when live; a failed sync is shown as DEGRADED)
-        # Runs after every other Daily Report writer (the dcc job's needs), so the decisions are built from this tick's cards, not the last tick's.
-        if: ${{ always() }}
-        env:
-          LIFEOS_NOTION_IDS: ${{ secrets.LIFEOS_NOTION_IDS }}
-          ATTENTION_CARD_BLOCK_ID: ${{ secrets.ATTENTION_CARD_BLOCK_ID }}
-          AMAZON_CARD_BLOCK_ID: ${{ secrets.AMAZON_CARD_BLOCK_ID }}
-          BILLS_CARD_BLOCK_ID: ${{ secrets.BILLS_CARD_BLOCK_ID }}
-          CALENDAR_CARD_BLOCK_ID: ${{ secrets.CALENDAR_CARD_BLOCK_ID }}
-          JIRA_CARD_BLOCK_ID: ${{ secrets.JIRA_CARD_BLOCK_ID }}
-          HIRING_CARD_BLOCK_ID: ${{ secrets.HIRING_CARD_BLOCK_ID }}
-          MAIL_ALERTS_CARD_BLOCK_ID: ${{ secrets.MAIL_ALERTS_CARD_BLOCK_ID }}
-          ATTENTION_SYNC_OUTCOME: ${{ needs.attention.outputs.sync }}
-          NOTION_JIRA_TOKEN: ${{ steps.bws_dcc.outputs.NOTION_JIRA_TOKEN }}
-        run: python -m lifeos.run attention-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - id: dcccard
         continue-on-error: true
         name: Daily Command Center (rules over the cards' first lines; writes only its own callout when live; every other region proven unchanged)
@@ -1447,7 +1316,7 @@ jobs:
   report:
     # A failed domain job (a provider outage, a Bitwarden 503) used to be only a workflow warning, so a stale card and a red run reached nobody. This job pushes the phone once per
     # failed tick-triggered run, counts only; a manual run never pushes. It never writes anything.
-    needs: [gate, jira, outlook, bills, agenda, amazon, amazon_retention, mail, hiring, attention, megibow, recruiters, dcc, imessage, granola]
+    needs: [gate, jira, outlook, bills, agenda, amazon, amazon_retention, mail, hiring, megibow, recruiters, dcc, imessage, granola]
     if: ${{ always() && needs.gate.outputs.tick == 'true' && contains(needs.*.result, 'failure') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -1470,23 +1339,7 @@ jobs:
           NTFY_TOPIC: ${{ steps.bws_report.outputs.NTFY_TOPIC }}
         run: |
           failed=""
-          for pair in jira=${{ needs.jira.result }} outlook=${{ needs.outlook.result }} bills=${{ needs.bills.result }} agenda=${{ needs.agenda.result }} amazon=${{ needs.amazon.result }} amazon_retention=${{ needs.amazon_retention.result }} mail=${{ needs.mail.result }} hiring=${{ needs.hiring.result }} attention=${{ needs.attention.result }} megibow=${{ needs.megibow.result }} recruiters=${{ needs.recruiters.result }} dcc=${{ needs.dcc.result }} imessage=${{ needs.imessage.result }} granola=${{ needs.granola.result }}; do
+          for pair in jira=${{ needs.jira.result }} outlook=${{ needs.outlook.result }} bills=${{ needs.bills.result }} agenda=${{ needs.agenda.result }} amazon=${{ needs.amazon.result }} amazon_retention=${{ needs.amazon_retention.result }} mail=${{ needs.mail.result }} hiring=${{ needs.hiring.result }} megibow=${{ needs.megibow.result }} recruiters=${{ needs.recruiters.result }} dcc=${{ needs.dcc.result }} imessage=${{ needs.imessage.result }} granola=${{ needs.granola.result }}; do
             [ "${pair#*=}" = "failure" ] && failed="$failed ${pair%=*}"
           done
           python3 -m lifeos.platform.alerts push --key domain_jobs_failed --title "V7 domain jobs failed" --body "Failed domain jobs:$failed. Their cards keep the last good content. Open the Actions tab."
-
-  bench_report:
-    # LIFE-577: the run summary for a benchmark: seconds per job, the run's wall time, and whether another run overlapped it. Reads this run's own job records; writes nothing else.
-    needs: [jira, outlook, bills, agenda, amazon, amazon_retention, mail, hiring, attention, megibow, dcc, recruiters, imessage, granola, report]
-    if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.benchmark }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: read
-      actions: read
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
-      - name: Benchmark summary (LIFE-577) - seconds per job, wall time, overlap check
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: python3 -m lifeos.platform.bench_gate jobs

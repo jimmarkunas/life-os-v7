@@ -17,8 +17,8 @@ from tests.jobs.fit.test_backlog_workflow import evaluate, truthy
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github" / "workflows" / "domains.yml"
 TABLE = pathlib.Path(__file__).resolve().parent / "domains_event_table.json"
-GATES = ("bench_gate", "gate")                          # the benchmark gate before item 11, the one gate job after it; compared separately (see test_the_gate_runs_exactly_...)
-TRIGGER_INPUTS = ("all", "amazon", "attention", "benchmark", "bills_paid", "calendar_sync", "dcc", "hiring", "imessage", "jira", "live", "megibow", "physical_mail", "recruiters", "refresh")
+GATES = ("gate",)                                       # the one gate job; compared separately (see test_the_gate_runs_exactly_...)
+TRIGGER_INPUTS = ("all", "amazon", "bills_paid", "calendar_sync", "dcc", "hiring", "imessage", "jira", "live", "megibow", "physical_mail", "recruiters", "refresh")
 
 
 def load():
@@ -54,7 +54,7 @@ def events(doc):
         out["after hourly: tick, success, " + ", ".join(f"{k}={v}" for k, v in variables.items())] = ("workflow_run", {"conclusion": "success", "display_title": "tick"}, {}, variables, ())
     for broken in ("jira", "amazon", "recruiters"):                              # the report job runs only when some job failed
         out[f"after hourly: tick, success, {broken} fails"] = ("workflow_run", {"conclusion": "success", "display_title": "tick"}, {}, {}, (broken,))
-        out[f"dispatch: benchmark=True, {broken} fails"] = ("workflow_dispatch", {}, dict(base, benchmark=True), {}, (broken,))
+        out[f"dispatch: all=True, {broken} fails"] = ("workflow_dispatch", {}, dict(base, all=True), {}, (broken,))
     out["dispatch: no input"] = ("workflow_dispatch", {}, dict(base), {}, ())
     for name in TRIGGER_INPUTS:
         if name not in spec:
@@ -72,7 +72,7 @@ def events(doc):
 
 
 def runs(doc, event, not_due=()):
-    """-> sorted names of the jobs that run for one trigger (every job that runs is taken to succeed; the benchmark gate is taken to pass)."""
+    """-> sorted names of the jobs that run for one trigger (every job that runs is taken to succeed)."""
     name, run_fields, inputs, variables, failing = event
     due = {f"due_{job}": ("false" if job in not_due and name == "workflow_run" else "true") for job in doc["jobs"]}        # the gate's due step: every job due unless the test says otherwise (a tick only)
     ctx = {"github": {"event_name": name, "event": {"workflow_run": run_fields}}, "inputs": inputs, "vars": variables, "env": {}, "steps": {"due": {"outputs": due}}}
@@ -95,10 +95,10 @@ def domain_jobs(names):
 
 
 def gate_expected(event):
-    """The gate's trigger from the event alone, written out independently of the workflow text: a completed tick (not cancelled), `all`, or a benchmark."""
+    """The gate's trigger from the event alone, written out independently of the workflow text: a completed tick (not cancelled) or `all`."""
     name, run_fields, inputs, variables, failing = event
     tick = name == "workflow_run" and run_fields.get("conclusion") != "cancelled" and run_fields.get("display_title") == "tick"
-    return bool(tick or inputs.get("all") or inputs.get("benchmark"))
+    return bool(tick or inputs.get("all"))
 
 
 def table(doc=None):
@@ -117,16 +117,15 @@ class DomainsEventTable(unittest.TestCase):
 
     def test_a_clean_tick_runs_the_chain_a_failure_adds_the_report_and_a_cancelled_or_manual_run_runs_nothing(self):
         current = table()
-        chain = {"jira", "agenda", "bills", "amazon", "amazon_retention", "mail", "hiring", "dcc", "attention", "megibow", "recruiters", "outlook", "granola"}
+        chain = {"jira", "agenda", "bills", "amazon", "amazon_retention", "mail", "hiring", "dcc", "megibow", "recruiters", "outlook", "granola"}
         self.assertEqual(chain, set(domain_jobs(current["after hourly: tick, success"])))
         self.assertEqual(set(domain_jobs(current["after hourly: tick, success, jira fails"])), chain | {"report"})        # the report job exists to name a failed job
         for label in ("after hourly: tick, cancelled", "after hourly: manual, success", "after hourly: quick, success", "dispatch: no input"):
             self.assertEqual(domain_jobs(current[label]), [], label)
 
-    def test_the_gate_runs_exactly_for_a_tick_all_or_a_benchmark(self):
+    def test_the_gate_runs_exactly_for_a_tick_or_all(self):
         doc = load()
         self.assertIn("gate", doc["jobs"])
-        self.assertNotIn("bench_gate", doc["jobs"])
         for label, event in sorted(events(doc).items()):
             self.assertEqual("gate" in runs(doc, event), gate_expected(event), label)
 
@@ -134,12 +133,12 @@ class DomainsEventTable(unittest.TestCase):
         doc = load()
         text = WORKFLOW.read_text()
         for name, job in doc["jobs"].items():
-            if name not in ("gate", "bench_report"):
+            if name != "gate":
                 self.assertIn("gate", job["needs"], name)
         self.assertEqual(text.count("github.event.workflow_run.display_title == 'tick'"), 2, "the trigger clause is stated once in the gate job (its condition and its tick output)")
 
     def test_a_job_that_is_not_due_is_skipped_on_a_tick_and_never_on_its_own_input_or_on_all(self):
-        """LIFE-609: the due output decides a tick; a manual run of that one job, `all` and a benchmark are not held back by the table."""
+        """LIFE-609: the due output decides a tick; a manual run of that one job, and `all` are not held back by the table."""
         doc = load()
         events_ = events(doc)
         tick = events_["after hourly: tick, success"]
@@ -147,7 +146,6 @@ class DomainsEventTable(unittest.TestCase):
         self.assertIn("mail", runs(doc, tick))
         self.assertIn("mail", runs(doc, events_["dispatch: physical_mail=True"], not_due=("mail",)))
         self.assertIn("mail", runs(doc, events_["dispatch: all=True"], not_due=("mail",)))
-        self.assertIn("mail", runs(doc, events_["dispatch: benchmark=True"], not_due=("mail",)))
         others = [j for j in runs(doc, tick) if j != "mail"]
         self.assertEqual(sorted(runs(doc, tick, not_due=("mail",))), sorted(others))               # nothing else changes with it
 

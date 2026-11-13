@@ -27,9 +27,6 @@ class Fetched:
         self.validators = validators or {}     # D216: the answer's ETag / Last-Modified, for a later conditional GET
 
 
-MOBILE_UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1"
-
-
 def _validators(headers):
     """D216: the cache validators an answer carries ({"etag": ..., "last_modified": ...}), each only when present and of a sane length."""
     if not headers:
