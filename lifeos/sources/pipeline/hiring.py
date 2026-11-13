@@ -5,7 +5,6 @@ Lives under sources because it may read the Jobs reader; `lifeos/hiring` itself 
 Counts and fixed codes only."""
 import contextlib
 import os
-import re
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -20,7 +19,6 @@ TZ = ZoneInfo("America/Chicago")
 CALENDAR_PAGES = 40                                               # the same page cap as the Calendar client's own listing
 PAST_DAYS, FUTURE_DAYS = 30, 45                                  # the Calendar window the compiler may use as evidence
 MAX_PAGES = 40
-UNREAD_NAME = re.compile(r"Gmail|Outlook [a-z0-9_-]{1,24}")        # the fixed names the outcome-mail stage records for an unread source (lifeos.platform.mail.source_name)
 
 
 def _text(prop, kind):
@@ -179,7 +177,7 @@ def run(limit, live, environ=os.environ, ledger_client=None, pipeline_client=Non
         try:
             heard, scanned, *rest = outcome_mail.load(conn)           # D190: what the mail scan last found; unavailable never stops the pipeline
             contacts = rest[0] if rest else {}                         # LIFE-26: each row's last direct contact (a scan saved before LIFE-26 has none)
-            unread = [n for n in (rest[1] if len(rest) > 1 else []) if isinstance(n, str) and UNREAD_NAME.fullmatch(n)]     # LIFE-648: only fixed source names ever reach the card
+            unread = rest[1] if len(rest) > 1 else []                  # LIFE-648: the fixed names of the sources the last scan could not read in full
             if prior and prior.get("rows") and (scanned is None or datetime.fromisoformat(scanned) < now - timedelta(hours=_stale_hours(environ))):
                 outcome_reasons.append("OUTCOME_MAIL_STALE")          # E13: a failed or incomplete outcome-mail save is never shown as a fresh "no outcome"
             if unread:

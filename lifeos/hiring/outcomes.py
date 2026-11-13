@@ -31,6 +31,7 @@ STALE_HOURS = 18                       # E13: a scan not saved for this long (on
 MIN_DAYS, MAX_DAYS = 14, 60            # how far back it reads: from the oldest evidence in the pipeline, between these bounds
 BODY_CHARS = 3000
 REJECTED, OFFER = "REJECTED", "OFFER"
+UNREAD_NAME = re.compile(r"Gmail|Outlook [a-z0-9_-]{1,24}")        # the only names a record may carry for an unread source (lifeos.platform.mail.source_name): never an address or text
 
 REJECT = re.compile("|".join((
     r"\bnot (?:be )?moving forward\b", r"\bwill not be (?:proceeding|continuing|advancing|moving)\b", r"\bwon'?t be (?:moving|proceeding|continuing)\b",
@@ -197,7 +198,7 @@ def load(connection):
     if (stored.get("schema") != SCHEMA_V or not isinstance(stored.get("outcomes"), dict) or not isinstance(stored.get("contacts", {}), dict)
             or not isinstance(stored.get("unread", []), list)):
         raise fail("STORE_INVALID")
-    return stored["outcomes"], stored.get("scanned_at"), stored.get("contacts", {}), stored.get("unread", [])
+    return stored["outcomes"], stored.get("scanned_at"), stored.get("contacts", {}), [n for n in stored.get("unread", []) if isinstance(n, str) and UNREAD_NAME.fullmatch(n)]
 
 
 def _roster(prior):
