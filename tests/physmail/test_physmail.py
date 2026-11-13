@@ -245,7 +245,7 @@ class CardRenderTests(unittest.TestCase):
         st = self.stored(extracted=[events.extract(mail("n1", "New Mail (3)", f"https://app.{events.DOMAIN}/in")), events.extract(actions("a1", "Mail #4801 forwarded", at="2026-10-05T10:00:00+00:00"))])
         blocks, counts = card.render(st, NOW)
         text = self.lines(blocks)
-        self.assertTrue(text[0].startswith("Updated 10:00 AM CT · 14 waiting · 0 need review"), text[0])
+        self.assertTrue(text[0].startswith("14 waiting · 0 need review"), text[0])
         self.assertIn("13 new item(s) not yet identified by a mail number", text)
         self.assertIn("#4801  ·  forwarded Oct 5  ·  ⚠ Tracking unavailable — obtain from provider", text)
         self.assertEqual(blocks[-1]["paragraph"]["rich_text"][0]["text"]["link"]["url"], f"https://app.{events.DOMAIN}/")
@@ -253,15 +253,16 @@ class CardRenderTests(unittest.TestCase):
 
     def test_missing_stale_failed_or_unbound_evidence_is_degraded_and_never_none(self):
         none_state, none_counts = card.render(None, NOW)
-        self.assertTrue(self.lines(none_state)[0].startswith("DEGRADED · Physical Mail starting state unknown"))
+        self.assertTrue(self.lines(none_state)[0].startswith("Physical Mail starting state unknown"))
         self.assertEqual(none_counts["reason"], "no_state")
         fresh = self.stored()
         failed, counts = card.render(fresh, NOW, sync_failed=True)
-        self.assertIn("DEGRADED · Physical Mail sync failed", self.lines(failed)[0])
+        self.assertIn("Physical Mail sync failed", self.lines(failed)[0])
         self.assertIn("showing last accepted state", self.lines(failed)[0])
         self.assertEqual(counts["status"], "degraded")
         stale, _ = card.render(self.stored(accepted=(NOW - timedelta(hours=7)).isoformat()), NOW)
-        self.assertIn("DEGRADED · Physical Mail evidence stale", self.lines(stale)[0])
+        self.assertIn("Physical Mail evidence stale", self.lines(stale)[0])
+        self.assertEqual((card.heading_text(NOW, True), card.heading_text(NOW)), ("Mail Alerts (DEGRADED at 10:00 AM CT)", "Mail Alerts (Updated 10:00 AM CT)"))
         for blocks in (failed, stale, none_state):
             self.assertNotIn("No physical mail waiting", self.lines(blocks))
 
@@ -296,8 +297,8 @@ class CardRunTests(unittest.TestCase):
         before = {k: notion.full_tree(k) for k in ("jira-callout", "calendar-callout", "bills-callout", "amazon-callout", "attention-callout")}
         _, counts = self.go(notion)
         kids = notion.children["mail-callout"]
-        self.assertEqual(report_region.plain(kids[0]), "Mail Alerts")
-        self.assertTrue(report_region.plain(kids[1]).startswith("Updated 10:00 AM CT · 11 waiting"))
+        self.assertEqual(report_region.plain(kids[0]), "Mail Alerts (Updated 10:00 AM CT)")                  # LIFE-609: the stamp is in the heading
+        self.assertTrue(report_region.plain(kids[1]).startswith("11 waiting"))
         self.assertEqual(kids[-1]["id"], "mail-table-old")
         self.assertEqual(kids[1]["id"], "mail-status-old")                                    # the old line is rewritten in place, never shown beside the new one
         self.assertEqual([m for m, _ in notion.log if m == "DELETE"], [])
@@ -312,7 +313,8 @@ class CardRunTests(unittest.TestCase):
 
     def test_a_failed_ingest_writes_the_degraded_line_with_the_last_accepted_state(self):
         notion, counts = self.go(env={"MAIL_SYNC_OUTCOME": "failure"})
-        self.assertTrue(report_region.plain(notion.children["mail-callout"][1]).startswith("DEGRADED · Physical Mail sync failed"))
+        self.assertEqual(report_region.plain(notion.children["mail-callout"][0]), "Mail Alerts (DEGRADED at 10:00 AM CT)")
+        self.assertTrue(report_region.plain(notion.children["mail-callout"][1]).startswith("Physical Mail sync failed"))
         self.assertEqual(counts["status"], "degraded")
 
     def test_wrong_target_or_missing_protected_ids_refuse_before_any_write(self):
@@ -336,7 +338,7 @@ class CardRunTests(unittest.TestCase):
         foreign = notion.children["jira-callout"][0]["id"]
         before = notion.full_tree("jira-callout")
 
-        def buggy_writer(client, block_id, title, module, blocks, existing, kept, old_text, intact, fail):
+        def buggy_writer(client, block_id, title, module, blocks, existing, kept, old_text, intact, fail, shown=None):
             try:
                 client.call("PATCH", f"/blocks/{foreign}", {"heading_2": {"rich_text": [{"type": "text", "text": {"content": "overwritten"}}]}})
             finally:
@@ -436,8 +438,8 @@ class RuntimePathTests(unittest.TestCase):
         out = card.run(0, True, environ={**ENV, "MAIL_SYNC_OUTCOME": "success"}, connection=object(), client=notion, now=NOW)
         self.assertEqual((out["status"], out["waiting"], out["blocks_written"] > 0), ("fresh", 14, True))      # the promised complete state: not DEGRADED
         kids = notion.children["mail-callout"]
-        self.assertEqual(report_region.plain(kids[0]), "Mail Alerts")                          # AUTHORITATIVE READ-BACK ran inside replace_text and passed
-        self.assertTrue(report_region.plain(kids[1]).startswith("Updated 10:00 AM CT · 14 waiting"))
+        self.assertEqual(report_region.plain(kids[0]), "Mail Alerts (Updated 10:00 AM CT)")   # AUTHORITATIVE READ-BACK ran inside replace_text and passed
+        self.assertTrue(report_region.plain(kids[1]).startswith("14 waiting"))
         self.assertEqual({k: notion.full_tree(k) for k in before}, before)                     # no other Daily Report region changed
 
     def test_the_cli_entry_points_reach_the_changed_modules(self):
@@ -476,7 +478,8 @@ class RuntimePathTests(unittest.TestCase):
         self.assertEqual(store.saves, 0)
         notion = MailRegions()
         card.run(0, True, environ={**ENV, "MAIL_SYNC_OUTCOME": "failure"}, connection=object(), client=notion, now=NOW)
-        self.assertTrue(report_region.plain(notion.children["mail-callout"][1]).startswith("DEGRADED · Physical Mail starting state unknown"))
+        self.assertEqual(report_region.plain(notion.children["mail-callout"][0]), "Mail Alerts (DEGRADED at 10:00 AM CT)")
+        self.assertTrue(report_region.plain(notion.children["mail-callout"][1]).startswith("Physical Mail starting state unknown"))
 
     def test_the_state_table_is_the_one_snapshot_table_with_one_row(self):
         self.assertEqual((stage.STORE.table, stage.KEY), ("v7_physical_mail", 1))
@@ -593,7 +596,7 @@ class ItemLevelTests(unittest.TestCase):
         facts = state.summary(st, NOW)
         self.assertEqual((facts["identified"], facts["opened"], facts["done"], facts["waiting_tracking"], facts["unidentified"], facts["review"]), (21, 9, 11, 1, 0, 0))
         text, blocks, counts = self.lines(st)
-        self.assertEqual(text[0], "Updated 10:00 AM CT · 10 waiting · 0 need review")                   # the first line keeps the shape the Command Center and Attention read
+        self.assertEqual(text[0], "10 waiting · 0 need review")                   # the first line keeps the counts the Command Center reads; the stamp is in the heading (LIFE-609)
         items = [t for t in text if t.startswith("#")]
         self.assertEqual(len(items), 10)
         self.assertEqual([t.split(" ")[0] for t in items], [f"#{FORWARDED}"] + [f"#{n}" for n in sorted(SCANNED, reverse=True)])      # forwarded first, then newest number first
@@ -670,7 +673,7 @@ class ItemLevelTests(unittest.TestCase):
 
     def test_an_unreadable_source_keeps_the_last_accepted_pieces_under_a_degraded_line(self):
         text, _, counts = self.lines(self.full(), sync_failed=True)
-        self.assertTrue(text[0].startswith("DEGRADED · Physical Mail sync failed"))
+        self.assertTrue(text[0].startswith("Physical Mail sync failed"))
         self.assertEqual(sum(1 for t in text if t.startswith("#")), 10)
         self.assertEqual(counts["status"], "degraded")
 
@@ -679,7 +682,7 @@ class ItemLevelTests(unittest.TestCase):
         text, _, counts = self.lines(many)
         self.assertEqual(sum(1 for t in text if t.startswith("#")), card.MAX_ITEMS)
         self.assertIn("+10 more active pieces: open the mailbox portal", text)
-        self.assertTrue(text[0].startswith("Updated 10:00 AM CT · 40 waiting"))
+        self.assertTrue(text[0].startswith("40 waiting"))
 
     def test_the_item_lines_are_written_and_read_back_natively_and_the_rest_of_the_page_is_untouched(self):
         use_store(self, FakeStore(self.full()), card)
@@ -687,7 +690,7 @@ class ItemLevelTests(unittest.TestCase):
         before = {k: notion.full_tree(k) for k in ("jira-callout", "calendar-callout", "bills-callout", "amazon-callout", "attention-callout")}
         out = card.run(0, True, environ=dict(ENV), connection=object(), client=notion, now=NOW)
         kids = notion.children["mail-callout"]
-        self.assertEqual(report_region.plain(kids[0]), "Mail Alerts")
+        self.assertEqual(report_region.plain(kids[0]), "Mail Alerts (Updated 10:00 AM CT)")
         written = [report_region.plain(k) for k in kids[1:]]
         self.assertEqual(sum(1 for t in written if t.startswith("#")), 10)
         self.assertEqual(kids[-1]["id"], "mail-table-old")                                              # Jim's own non-text block stays last

@@ -21,7 +21,7 @@ FRESH_MINUTES = 90                                        # an hourly card is cu
 JOB_OF = {"Calendar": "outlook", "Jira": "jira", "Bills": "bills", "Mail Alerts": "mail", "Amazon": "amazon", "Hiring Pipeline": "hiring"}
 STAMP = re.compile(r"Updated (\d{1,2}):(\d{2}) ([AP]M) CT")
 TIME = re.compile(r"(\d{1,2}):(\d{2}) ([AP]M) CT")          # the clock in a DEGRADED or STALE line ("failed at 10:05 PM CT")
-# (label, block id secret, where the status text is). "head": the callout's heading carries it; "line": the first text line under the heading; "floating": the Hiring Pipeline's heading stamp and table rows.
+# (label, block id secret, where the status text is). "head": the callout's heading carries it; "line": the heading's stamp, then the first text line under the heading (the counts; a card that still carries its stamp in that line works as before); "floating": the Hiring Pipeline's heading stamp and table rows.
 # LIFE-645: V7 retired the Attention card, so the Attention callout is no longer a source (it would read STALE for good); it stays a protected region.
 AREAS = (("Calendar", "CALENDAR_CARD_BLOCK_ID", router.CALENDAR_REGION, "head"), ("Jira", "JIRA_CARD_BLOCK_ID", router.JIRA_REGION, "head"),
          ("Bills", "BILLS_CARD_BLOCK_ID", router.BILLS_REGION, "line"), ("Mail Alerts", "MAIL_ALERTS_CARD_BLOCK_ID", router.MAIL_ALERTS_REGION, "line"),
@@ -73,7 +73,10 @@ def _text_of(client, block_id, kind, region):
     body = [b for b in kids if b.get("type") not in report_region.HEADINGS]
     lines = [report_region.plain(b).strip() for b in body]
     lines = [t for t in lines if t]
-    return (lines[0] if lines else ""), lines[1:]
+    heading = next((report_region.plain(b).strip() for b in kids if b.get("type") in report_region.HEADINGS), "")
+    stamp = heading[len(region) + 2:-1].strip() if heading.startswith(region + " (") and heading.endswith(")") else ""        # LIFE-609: the update time lives in the heading, as Calendar's does
+    first = lines[0] if lines else ""
+    return (f"{stamp} · {first}" if stamp and first else stamp or first), lines[1:]
 
 
 def read_areas(client, environ):

@@ -81,10 +81,15 @@ def _status(saved, stale):
     return f"STALE · last accepted {taken.strftime('%b %-d %-I:%M %p')} CT" if stale else f"Updated {taken.strftime('%-I:%M %p')} CT"
 
 
+def heading_text(saved, stale):
+    """LIFE-609: the update time shares the heading, like Calendar: "Bills: This Week (Updated 2:30 PM CT)"."""
+    return f"{CARD_TITLE} ({_status(saved, stale)})"
+
+
 def _summary(saved, stale, overdue, due):
     known = [amount for amount in (_amount(row) for row in due) if amount is not None]
     total = len(overdue) + len(due)                                       # the Daily Command Center's "Bills due" tile reads this: due this week, plus unpaid and already past due
-    parts = [_status(saved, stale), f"{total} bill{'s' if total != 1 else ''} due", f"{len(due)} due through one week from now"]
+    parts = [f"{total} bill{'s' if total != 1 else ''} due", f"{len(due)} due through one week from now"]
     if due:
         parts.append(f"{_money(sum(known))} known")
         if len(known) < len(due):
@@ -150,7 +155,7 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
     client = client or _client(environ)
 
     def write(blocks, live):
-        return report_region.replace_text(client, block_id, CARD_TITLE, MODULE, blocks, protected_ids, _fail, "bills", live)
+        return report_region.replace_text(client, block_id, CARD_TITLE, MODULE, blocks, protected_ids, _fail, "bills", live, heading=heading_text(saved, stale))
 
     existing, _ = write([], False)                              # the dry run checks the callout is ours and returns what it holds, so the Bill Tracker link can be kept
     blocks, counts = render(saved, stale, now, _tracker_link(existing))

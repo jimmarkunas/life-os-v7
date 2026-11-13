@@ -132,11 +132,15 @@ def package_blocks(packages, now, error=False):
     return blocks, {"packages_in_transit": len(transit), "packages_delivered": len(delivered), "packages_status": "ok"}
 
 
+def heading_text(now, degraded=False):
+    """LIFE-609: the update time shares the heading, like Calendar: "Amazon Orders (Updated 2:30 PM CT)"; a failed sync says "Amazon Orders (DEGRADED at 2:30 PM CT)"."""
+    return f"{TITLE} ({'DEGRADED at' if degraded else 'Updated'} {now.strftime('%-I:%M %p')} CT)"
+
+
 def render(rows, now, degraded=False, url=None, packages=None, packages_error=False):
     """-> (blocks, counts). Pure."""
     open_, delivered, review, older, returning, refunded = sections(rows, now)
-    head = (f"DEGRADED · Amazon sync failed at {now.strftime('%-I:%M %p')} CT · showing last accepted orders" if degraded else f"Updated {now.strftime('%-I:%M %p')} CT")
-    summary = f"{head} · {len(open_)} in transit · {len(delivered)} delivered (last {DELIVERED_DAYS} days)"
+    summary = f"{'Amazon sync failed · showing last accepted orders · ' if degraded else ''}{len(open_)} in transit · {len(delivered)} delivered (last {DELIVERED_DAYS} days)"
     summary += (f" · {len(returning)} returning" if returning else "") + (f" · {len(refunded)} refunded (last {DELIVERED_DAYS} days)" if refunded else "") + f" · {len(review)} need review"
     if older:
         summary += f" · {older} older than {OPEN_STALE_DAYS} days not shown"
@@ -189,7 +193,7 @@ def run(limit, live, environ=os.environ, reader=None, client=None, now=None, gma
     blocks, counts = render(rows, now, degraded, _orders_url(reader, source_id), packages, packages_error=mail is False or (bool(mail) and packages is None))
     client = client or _writer(environ)
     protected_ids = {region: (environ.get(name) or "").strip() for name, region in PROTECTED}
-    _, removed = report_region.replace_text(client, block_id, TITLE, MODULE, blocks, protected_ids, _fail, "amazon", live)
+    _, removed = report_region.replace_text(client, block_id, TITLE, MODULE, blocks, protected_ids, _fail, "amazon", live, heading=heading_text(now, degraded))
     if live:
         counts["blocks_written"], counts["removed"] = len(blocks), removed
     return counts

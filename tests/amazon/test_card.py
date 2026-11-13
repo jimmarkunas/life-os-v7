@@ -55,7 +55,7 @@ class ReturnRenderTests(unittest.TestCase):
                 order(3, "REFUNDED", "2026-09-26T18:00:00+00:00", summary="Old refund"), order(4, "RETURNING", "2026-06-08T10:00:00+00:00", summary="Old return")]
         blocks, counts = card.render(rows, NOW)
         text = texts(blocks)
-        self.assertEqual(text[0], "Updated 1:30 PM CT · 0 in transit · 0 delivered (last 7 days) · 1 returning · 1 refunded (last 7 days) · 0 need review")
+        self.assertEqual(text[0], "0 in transit · 0 delivered (last 7 days) · 1 returning · 1 refunded (last 7 days) · 0 need review")
         self.assertIn("Returning", text)
         self.assertIn("Refunded, last 7 days", text)
         self.assertTrue(any(t.startswith("Phone case · Returning") for t in text))
@@ -80,7 +80,7 @@ class RenderTests(unittest.TestCase):
     def test_summary_sections_and_the_seven_day_delivered_window(self):
         blocks, counts = card.render(ROWS, NOW)
         text = texts(blocks)
-        self.assertEqual(text[0], "Updated 1:30 PM CT · 2 in transit · 1 delivered (last 7 days) · 1 need review · 1 older than 30 days not shown")
+        self.assertEqual(text[0], "2 in transit · 1 delivered (last 7 days) · 1 need review · 1 older than 30 days not shown")
         self.assertIn("In transit", text)
         self.assertTrue(any(t.startswith("USB cable · Ordered") for t in text))
         self.assertTrue(any(t.startswith("Garden hose · Shipped") for t in text))
@@ -97,9 +97,12 @@ class RenderTests(unittest.TestCase):
         self.assertIn("amount unknown", texts([bullet])[0])
         self.assertNotIn("$0", texts([bullet])[0])
 
-    def test_degraded_line_keeps_the_last_orders_visible_and_never_says_updated(self):
+    def test_the_heading_carries_the_stamp_and_the_degraded_line_never_says_updated(self):          # LIFE-609
+        self.assertEqual(card.heading_text(NOW), "Amazon Orders (Updated 1:30 PM CT)")
+        self.assertEqual(card.heading_text(NOW, degraded=True), "Amazon Orders (DEGRADED at 1:30 PM CT)")
+        self.assertNotIn("Updated", texts(card.render(ROWS, NOW)[0])[0])                          # the time is in the heading only, never repeated in the first line
         blocks, counts = card.render(ROWS, NOW, degraded=True)
-        self.assertTrue(texts(blocks)[0].startswith("DEGRADED · Amazon sync failed at 1:30 PM CT"))
+        self.assertTrue(texts(blocks)[0].startswith("Amazon sync failed · showing last accepted orders · "))
         self.assertNotIn("Updated", texts(blocks)[0])
         self.assertTrue(any(t.startswith("Garden hose") for t in texts(blocks)))
         self.assertEqual(counts["status"], "degraded")
@@ -147,9 +150,9 @@ class RunTests(unittest.TestCase):
         before = {k: notion.full_tree(k) for k in ("calendar-callout", "jira-callout", "dcc-callout", "bills-callout")}
         notion, counts = self.run_card(notion)
         kids = notion.children["amazon-callout"]
-        self.assertEqual(report_region.plain(kids[0]), "Amazon Orders")
+        self.assertEqual(report_region.plain(kids[0]), "Amazon Orders (Updated 1:30 PM CT)")                  # LIFE-609: the stamp is in the heading
         self.assertEqual(kids[0]["id"], "heading-amazon-callout")
-        self.assertTrue(report_region.plain(kids[1]).startswith("Updated 1:30 PM CT"))
+        self.assertTrue(report_region.plain(kids[1]).startswith("2 in transit"))
         self.assertEqual(kids[-1]["id"], "amazon-table-old")                                    # a non-text block is never removed
         self.assertNotIn("last accepted order state retained", "\n".join(texts(kids)))
         self.assertEqual({k: notion.full_tree(k) for k in before}, before)
@@ -184,7 +187,8 @@ class RunTests(unittest.TestCase):
 
     def test_failed_sync_flag_writes_the_degraded_line(self):
         notion, counts = self.run_card(env={"AMAZON_SYNC_OUTCOME": "failure"})
-        self.assertTrue(report_region.plain(notion.children["amazon-callout"][1]).startswith("DEGRADED · Amazon sync failed"))
+        self.assertEqual(report_region.plain(notion.children["amazon-callout"][0]), "Amazon Orders (DEGRADED at 1:30 PM CT)")
+        self.assertTrue(report_region.plain(notion.children["amazon-callout"][1]).startswith("Amazon sync failed"))
         self.assertEqual(counts["status"], "degraded")
 
     def test_an_unreadable_or_malformed_order_list_fails_closed_and_leaves_the_callout_alone(self):
@@ -222,7 +226,7 @@ class RunTests(unittest.TestCase):
         foreign = notion.children["jira-callout"][0]["id"]
         before = notion.full_tree("jira-callout")
 
-        def buggy_writer(client, block_id, title, module, blocks, existing, kept, old_text, intact, fail):
+        def buggy_writer(client, block_id, title, module, blocks, existing, kept, old_text, intact, fail, shown=None):
             try:
                 client.call("PATCH", f"/blocks/{foreign}", {"heading_2": {"rich_text": [{"type": "text", "text": {"content": "overwritten"}}]}})
             finally:
@@ -234,7 +238,7 @@ class RunTests(unittest.TestCase):
                 card.run(0, True, environ=ENV, reader=Reader(ROWS), client=notion, now=NOW)
         self.assertEqual(str(caught.exception), "AMAZON_WRITE_OUT_OF_SCOPE")
         self.assertEqual(notion.full_tree("jira-callout"), before)
-        self.assertEqual([m for m, _ in notion.log if m in ("PATCH", "APPEND", "DELETE")], [])
+        self.assertEqual([p for m, p in notion.log if m in ("PATCH", "APPEND", "DELETE")], ["/blocks/heading-amazon-callout"])          # LIFE-609: only the card's own heading was written before the writer was refused
 
 
 class OwnershipTests(unittest.TestCase):
