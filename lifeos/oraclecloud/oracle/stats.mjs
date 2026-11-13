@@ -139,7 +139,9 @@ async function oci() {
 
 async function services() {
   const active = async (unit) => (await run("systemctl", ["--user", "is-active", unit], 10000))?.trim() === "active";
-  const [gateway, whatsapp, alerts, channels] = await Promise.all([active(UNITS.gateway), active(UNITS.whatsapp), active(UNITS.alerts),
+  // LIFE-643 row 1: WhatsApp attention is a SYSTEM unit of its own user (lifeos-wa-attention.service) once moved; the old ubuntu user unit counts too, so the card is right on either side of the move.
+  const whatsappActive = async () => (await active(UNITS.whatsapp)) || (await run("systemctl", ["is-active", "lifeos-wa-attention.service"], 10000))?.trim() === "active";
+  const [gateway, whatsapp, alerts, channels] = await Promise.all([active(UNITS.gateway), whatsappActive(), active(UNITS.alerts),
     run(OPENCLAW, ["channels", "status", "--json"], 45000)]);
   let telegram = null;
   try { telegram = JSON.parse(channels).channels.telegram.running === true; } catch { telegram = null; }

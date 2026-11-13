@@ -100,3 +100,9 @@ export class Attention {
   }
 }
 
+
+// LIFE-643 row 1: where the answer socket comes from. Under systemd socket activation (LISTEN_FDS=1 for THIS process) the already-bound socket is fd 3, with the owner,
+// group and mode set by the .socket unit; otherwise (the old user unit, a hand run) the program makes its own 0600 socket at `path`.
+export function listenTarget(env, pid, path) {
+  return env.LISTEN_FDS === "1" && env.LISTEN_PID === String(pid) ? { fd: 3 } : { path };
+}

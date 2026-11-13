@@ -1,0 +1,15 @@
+# LIFE-643 row 1: the answer socket of lifeos-wa-attention.service. Owner lifeos-wa, group ubuntu (the endpoint's user; the group has no other member), mode 0660:
+# nobody else can connect, and the group right is on the socket only, not on the session folder. No process runs for it between connections.
+[Unit]
+Description=LIFE OS WhatsApp attention answer socket (the private endpoint, user ubuntu, is the only client)
+
+[Socket]
+ListenStream=/run/lifeos-wa/attention.sock
+SocketUser=lifeos-wa
+SocketGroup=ubuntu
+SocketMode=0660
+DirectoryMode=0755
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target

@@ -1,7 +1,7 @@
 // node --test lifeos/whatsapp/oracle/state.test.mjs  (synthetic ids and names only)
 import test from "node:test";
 import assert from "node:assert/strict";
-import { Attention } from "./state.mjs";
+import { Attention, listenTarget } from "./state.mjs";
 
 const NOW = Date.parse("2026-10-15T18:00:00Z");
 const ready = (a) => { a.linked = true; a.connection = "open"; a.synced = true; return a; };
@@ -88,4 +88,11 @@ test("chat ids can be stored hashed", () => {
   const a = new Attention((j) => "h:" + j.length);
   a.absolute({ id: "contact-1", unreadCount: 2 });
   assert.deepEqual(Object.keys(a.saved()), ["h:9"]);
+});
+
+test("the answer socket is systemd's fd 3 only when LISTEN_FDS names this very process", () => {
+  assert.deepEqual(listenTarget({ LISTEN_FDS: "1", LISTEN_PID: "42" }, 42, "/s"), { fd: 3 });
+  assert.deepEqual(listenTarget({ LISTEN_FDS: "1", LISTEN_PID: "41" }, 42, "/s"), { path: "/s" });   // inherited from a parent: not ours
+  assert.deepEqual(listenTarget({ LISTEN_FDS: "2", LISTEN_PID: "42" }, 42, "/s"), { path: "/s" });
+  assert.deepEqual(listenTarget({}, 42, "/s"), { path: "/s" });
 });

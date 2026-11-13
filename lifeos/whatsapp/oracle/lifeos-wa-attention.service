@@ -1,0 +1,46 @@
+# LIFE-643 row 1: the WhatsApp attention service as a SYSTEM unit of its own unprivileged user `lifeos-wa` (nologin, home /var/lib/lifeos-wa, mode 700), so the linked-device
+# session is no longer readable by `ubuntu` (OpenClaw, the Claude Code read-only login, backup and relay all run as ubuntu). The old user unit
+# (lifeos-whatsapp-attention.service, ubuntu) is stopped and disabled by the pack and kept until Jim says to remove it. Same program, same pinned Baileys tree (copied read-only
+# to /opt/lifeos-wa, root-owned: the service cannot change its own code). Counts only; no output; never re-pairs by itself.
+# The answer socket is NOT made by the program here: systemd hands it over (lifeos-wa-attention.socket), owned by lifeos-wa, group ubuntu, mode 0660, in /run/lifeos-wa/,
+# so the one consumer (the private endpoint, user ubuntu) can connect without any right to the session folder (/var/lib/lifeos-wa is 700 lifeos-wa).
+[Unit]
+Description=LIFE OS WhatsApp attention (dedicated linked device; counts only; own user lifeos-wa)
+Wants=network-online.target
+After=network-online.target lifeos-wa-attention.socket
+Requires=lifeos-wa-attention.socket
+
+[Service]
+User=lifeos-wa
+Group=lifeos-wa
+Environment=HOME=/var/lib/lifeos-wa
+WorkingDirectory=/opt/lifeos-wa/app
+ExecStart=/opt/lifeos-wa/bin/node /opt/lifeos-wa/app/attention.mjs serve
+# Only while the row-1 switch is in progress (a flag file the pack writes and removes): if this service is stopped by an interrupted or failed run, start the old ubuntu unit again.
+ExecStopPost=+/opt/lifeos-wa/bin/resume-old.sh
+Restart=on-failure
+RestartSec=30
+UMask=0077
+MemoryMax=400M
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/lifeos-wa
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+StandardOutput=null
+StandardError=null
+
+[Install]
+WantedBy=multi-user.target
