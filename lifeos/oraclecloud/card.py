@@ -45,8 +45,7 @@ class OracleCardError(Exception):
     pass
 
 
-def _fail(code):
-    return OracleCardError(code)
+_fail = OracleCardError
 
 
 def fetch(host, port=PORT):
@@ -155,10 +154,6 @@ def items_of(segments):
     return out
 
 
-def _children(client, block_id):
-    return report_region.children(client, block_id, _fail)
-
-
 def _parent_of(client, anchor):
     meta = client.call("GET", f"/blocks/{quote(report_region.clean_id(anchor), safe='')}")
     parent = (meta.get("parent") if isinstance(meta, dict) else None) or {}
@@ -177,9 +172,9 @@ def locate(client, anchor, jira=""):
         homes.append(other)
     found = []
     for parent_id in homes:
-        for block in _children(client, parent_id):
+        for block in report_region.children(client, parent_id, _fail):
             if block.get("type") == "callout":
-                kids = _children(client, block["id"])
+                kids = report_region.children(client, block["id"], _fail)
                 if kids and kids[0].get("type") in report_region.HEADINGS and report_region.titled(report_region.plain(kids[0]), TITLE):
                     found.append(kids)
     if len(found) != 1 or len(found[0]) != 2 or found[0][1].get("type") != "paragraph":
