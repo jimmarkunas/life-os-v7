@@ -1,6 +1,6 @@
 # LIFE-643 row 1: shared by the pack steps (sourced, never run alone). Names, modes, ids and counts only; no session file is ever opened, printed or hashed.
 R=$(cat "$PACK_DIR/files/ROOT" 2>/dev/null || true)     # empty on the host; a temp folder in the tests
-[ -z "$R" ] || export WA_NO_CHOWN=1 WA_ROOT="$R"        # tests only: no root, so no chown to a second user
+NOCHOWN=""; [ -z "$R" ] || { NOCHOWN=--no-chown; export WA_ROOT="$R"; }        # tests only: no root, so no chown to a second user
 
 # the old side: the ubuntu user unit, its session folder, key, program folder
 UH="$R/home/ubuntu"
@@ -39,7 +39,7 @@ PY=python3; [ -z "$R" ] || PY="$R/usr/bin/python3"
 
 # run an installed command by name: the real one on the host, the stand-in under $R/usr/bin in the tests
 cmd() { local c=$1; shift; if [ -z "$R" ]; then command "$c" "$@"; else "$R/usr/bin/$c" "$@"; fi; }
-wa() { "$PY" -I "$PACK_DIR/files/wa_row1.py" "$@"; }
+wa() { "$PY" -I "$PACK_DIR/files/wa_row1.py" $NOCHOWN "$@"; }
 sysc() { cmd systemctl "$@"; }                                    # the system manager (root)
 as_user() { local u=$1; shift; cmd runuser -u "$u" -- "$@"; }       # run as another user
 

@@ -7,7 +7,7 @@ import socket
 import stat
 import sys
 
-NO_CHOWN = os.environ.get("WA_NO_CHOWN") == "1"            # tests only (no root, no second user); the host run never sets it
+NO_CHOWN = False                                           # `--no-chown` as the first argument: tests only (no root, no second user); the host run never passes it
 
 
 def walk(tree):
@@ -226,6 +226,9 @@ def cmd_sha256(path):
 
 
 def main(argv):
+    global NO_CHOWN
+    if argv and argv[0] == "--no-chown":
+        NO_CHOWN, argv = True, argv[1:]
     cmd, args = argv[0], argv[1:]
     table = {
         "check": lambda: cmd_check(args[0], args[1]),

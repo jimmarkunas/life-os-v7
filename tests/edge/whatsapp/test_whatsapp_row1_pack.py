@@ -552,8 +552,8 @@ class HelperTests(unittest.TestCase):
         self.server.start()
         self.addCleanup(self.server.sock.close)
 
-    def wa(self, *args, env=None):
-        done = subprocess.run([sys.executable, "-I", str(WA_ROW1), *args], capture_output=True, text=True, env={**os.environ, **(env or {})})
+    def wa(self, *args, no_chown=False):
+        done = subprocess.run([sys.executable, "-I", str(WA_ROW1), *(["--no-chown"] if no_chown else []), *args], capture_output=True, text=True)
         return done.returncode, done.stdout.strip()
 
     def test_copy_session_skips_the_socket_sets_700_600_and_changes_the_names_and_sizes_of_nothing(self):
@@ -586,7 +586,7 @@ class HelperTests(unittest.TestCase):
         (tree / "p" / "data").chmod(0o666)
         (tree / "ln").symlink_to("p/run")
         out = self.tmp / "out"
-        code, said = self.wa("install-tree", str(tree), str(out), env={"WA_NO_CHOWN": "1"})
+        code, said = self.wa("install-tree", str(tree), str(out), no_chown=True)
         self.assertEqual((code, said), (0, "installed entries=5 bytes=2"))
         self.assertTrue((out / "ln").is_symlink())
         self.assertEqual((stat.S_IMODE((out / "p" / "run").stat().st_mode), stat.S_IMODE((out / "p" / "data").stat().st_mode), stat.S_IMODE((out / "p").stat().st_mode)), (0o755, 0o644, 0o755))
