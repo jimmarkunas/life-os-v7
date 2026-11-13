@@ -61,6 +61,7 @@ Before OpenClaw, Oracle, channel, local-model, assistant, meeting-capture or AI-
 - **Jira reads and searches:** always pass `fields` (docs/platform/agent-jira-settings.md). **Receipts:** docs/platform/receipt-template.md.
 - `git add` new files BEFORE running the suite (the privacy test checks staged files only).
 - **GitHub from a session** (where GraphQL is blocked, `gh pr create` and `gh pr ready` fail): open a PR with `gh api repos/jimmarkunas/life-os-v7/pulls --input pr.json`; draft to ready with `gh api -X POST repos/jimmarkunas/life-os-v7/pulls/N/ccr/ready_for_review`; merge with `gh api -X PUT repos/jimmarkunas/life-os-v7/pulls/N/merge -f merge_method=squash`.
+- **Updating your own pushed branch (LIFE-663):** after a rebase or amend of your `life/...` branch run `sh tools/push_life_branch.sh`; it fetches the branch and pushes with a lease on the tip it saw, only for the current `life/*` branch, ignoring any argument. Use plain `git push` for ordinary pushes. `--force`, `-f`, `--force-with-lease`, `--delete`, `+refspec` and `git branch -d/-D` stay denied. Changing the script needs Jim's typed yes and the `protected-file-approved` label.
 - **After a squash merge** the Stop hook warns about "unpushed commits"; they are in main: `git fetch origin main && git checkout -B main origin/main` clears it. A warning on an unmerged branch is real.
 - **Jira workflows** cannot be edited through the Atlassian connection: use the Jira admin page in Chrome once; do not retry through the API. Jira search lags after a write: read the issue by key.
 

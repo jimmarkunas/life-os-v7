@@ -10,8 +10,8 @@ spec.loader.exec_module(pf)
 
 
 class Check(unittest.TestCase):
-    def test_the_three_privacy_files_are_the_protected_set(self):
-        self.assertEqual(sorted(pf.PROTECTED), [".claude/settings.json", "docs/PRIVACY.md", "tests/contracts/test_privacy.py"])
+    def test_the_privacy_files_and_the_push_wrapper_are_the_protected_set(self):
+        self.assertEqual(sorted(pf.PROTECTED), [".claude/settings.json", "docs/PRIVACY.md", "tests/contracts/test_privacy.py", "tools/push_life_branch.sh"])
 
     def test_an_ordinary_change_passes(self):
         self.assertTrue(pf.check(["lifeos/run.py", "docs/CODEMAP.md"], [])[0])
