@@ -3,6 +3,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
+from lifeos.platform import stage_contract
 from lifeos.platform.gmail import Gmail, GmailError, error_code
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 from . import events, orders
@@ -288,6 +289,136 @@ def _note_conflict(counts, cause, existing, received, now):
         counts["review_recent"] = counts.get("review_recent", 0) + 1
 
 
+def _read_messages(gmail, message_ids, skip_unreadable, counts):
+    """READ: the entire bounded census before any write. An incomplete read leaves the mailbox untouched."""
+    messages = []
+    for message_id in message_ids:
+        try:
+            message = gmail.message_record(message_id)
+        except GmailError as error:
+            if not skip_unreadable:
+                raise AmazonError("AMAZON_GMAIL_READ_FAILED_" + error_code(error)) from None
+            counts["unreadable"] = counts.get("unreadable", 0) + 1       # backfill only: a message Gmail cannot return is counted, never recorded, never filed
+            continue
+        messages.append(message)
+    return messages
+
+
+def _sort_events(messages, counts):
+    """-> (accepted events by order id, review messages by order id, accepted message ids by order id). Counts the review reasons (fixed codes only)."""
+    events_by_order, review_by_order, accepted_ids = {}, {}, {}
+    for message in messages:
+        for parsed in events.extract_all(message):                         # one event, or one per order for a message whose every order is one of its own links
+            if parsed.get("status") == "REVIEW":
+                counts["review"] += 1
+                why = counts.setdefault("review_why", {})                     # fixed reason codes only: the mail itself is never described
+                why[parsed.get("reason") or "UNKNOWN"] = why.get(parsed.get("reason") or "UNKNOWN", 0) + 1
+                if parsed.get("reason") == "ORDER_ID_AMBIGUOUS":                  # counts only: how many orders, how many links, which sender
+                    shape = counts.setdefault("ambiguous_shape", {})
+                    key = f"{events.ambiguity_shape(message)},from={parsed_sender(message)}"
+                    shape[key] = shape.get(key, 0) + 1
+                    days = counts.setdefault("ambiguous_days", [])
+                    if len(days) < 6 and parsed_sender(message) == "ORDERED":
+                        days.append((message.get("received_at") or "")[:16])               # a date only, so Jim can open an example; never content
+                if parsed.get("order_id"):
+                    review_by_order.setdefault(parsed["order_id"], []).append(message)
+                continue
+            counts["accepted"] += 1
+            order_id = parsed["order_id"]
+            events_by_order.setdefault(order_id, []).append(parsed)
+            accepted_ids.setdefault(order_id, []).append(message["id"])
+    return events_by_order, review_by_order, accepted_ids
+
+
+def decide_order(order_id, existing, order_events, order_reviews, now):
+    """PURE: what one order row should hold. -> (desired row, conflict flag, cause code). A conflict freezes the row in REVIEW with no event fields guessed."""
+    conflict = bool(order_reviews)
+    cause = ("PARSE_" + next((e.get("reason") or "UNKNOWN") for e in [events.extract_all(m)[0] for m in order_reviews])) if conflict else None
+    desired = _review_desired(order_id) if conflict else None
+    if not conflict:
+        desired, reason = orders.reconcile(order_events, existing, now)
+        conflict = reason is not None
+        if conflict:
+            desired = _review_desired(order_id)
+            cause = reason
+            if reason == "ORDER_ALREADY_REVIEW":                   # the row was frozen earlier: would these messages alone conflict? (FRESH_NONE = they would not)
+                cause = "FRESH_" + (orders.reconcile(order_events, None, now)[1] or "NONE")
+    return desired, conflict, cause
+
+
+def _plan_orders(notion, source_id, events_by_order, review_by_order, accepted_ids, now, counts):
+    """READ each order row, DECIDE it, and count. -> [(order id, existing row, desired row, review only, message ids to file)]."""
+    plans = []
+    for order_id in sorted(set(events_by_order) | set(review_by_order)):
+        found = _query_order(notion, source_id, order_id)
+        if len(found) > 1:
+            raise AmazonError("AMAZON_NOTION_DUPLICATE_ORDER")
+        existing = found[0] if found else None
+        desired, conflict, cause = decide_order(order_id, existing, events_by_order.get(order_id, []), review_by_order.get(order_id, []), now)
+        if conflict:
+            _note_conflict(counts, cause, existing, [m["received_at"] for m in review_by_order.get(order_id, [])] + [e["received_at"] for e in events_by_order.get(order_id, [])], now)
+            counts["accepted"] -= len(events_by_order.get(order_id, []))
+            counts["review"] += len(events_by_order.get(order_id, []))
+            if existing:
+                already_review = existing.get("Status") == "REVIEW" and existing.get("Needs Review") is True
+                counts["orders_same" if already_review else "orders_updated"] += 1
+            else:
+                counts["orders_new"] += 1
+            plans.append((order_id, existing, desired, True, []))
+        else:
+            if existing and orders.same(existing, desired):
+                desired["Last Reconciled At"] = existing.get("Last Reconciled At")
+                counts["orders_same"] += 1
+            else:
+                counts["orders_updated" if existing else "orders_new"] += 1
+            plans.append((order_id, existing, desired, False, accepted_ids.get(order_id, [])))
+    return plans
+
+
+def _apply_plans(gmail, notion, source_id, label_id, plans, already_filed, review_by_order, counts):
+    """APPLY each order (write, then CONFIRM by the Notion read-back), then file its mail (confirmed by a Gmail read-back). Failures are collected and raised once."""
+    failures, filed_now = [], set()
+    for order_id, existing, desired, review_only, file_ids in plans:
+        try:
+            same = bool(existing) and (_readback_equal(existing, desired, review_only) if review_only
+                                       else orders.same(existing, desired))
+            if same and not review_only:
+                persisted = _get_page(notion, existing["page_id"])
+                if not _readback_equal(persisted, desired):
+                    raise AmazonError("AMAZON_NOTION_READBACK_MISMATCH")
+            elif review_only and existing and existing.get("Status") == "REVIEW" and existing.get("Needs Review") is True:
+                persisted = existing
+            else:
+                persisted = _write(notion, source_id, existing, desired, review_only)
+                matches = (_review_readback_equal(persisted, desired, existing) if review_only and existing
+                           else _readback_equal(persisted, desired, review_only))
+                if not matches:
+                    raise AmazonError("AMAZON_NOTION_READBACK_MISMATCH")
+            if review_only:
+                continue
+            for message_id in file_ids:
+                if message_id in already_filed or message_id in filed_now:
+                    counts["already_filed"] += 1
+                    continue
+                try:
+                    gmail.apply_amazon(message_id, label_id)
+                    labels = gmail.message_labels(message_id)
+                except GmailError as error:
+                    raise AmazonError("AMAZON_GMAIL_FILE_FAILED_" + error_code(error)) from None
+                if label_id not in labels or "INBOX" in labels or "TRASH" in labels:
+                    raise AmazonError("AMAZON_GMAIL_READBACK_MISMATCH")
+                counts["filed"] += 1
+                filed_now.add(message_id)                                      # a message that carries several orders is filed once
+        except AmazonError as error:
+            failures.append(str(error))
+            counts["failed"] += max(1, len(file_ids) or len(review_by_order.get(order_id, [])))
+        except Exception:
+            failures.append("AMAZON_INTERNAL_FAILED")
+            counts["failed"] += max(1, len(file_ids))
+    if failures:
+        raise AmazonError(f"AMAZON_FAILED:{counts['failed']}of{counts['listed']}:" + "+".join(sorted(set(failures))))
+
+
 def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None, since=None, until=None, skip_unreadable=False):
     counts = {"listed": 0, "accepted": 0, "review": 0, "orders_new": 0, "orders_updated": 0,
               "orders_same": 0, "filed": 0, "already_filed": 0, "failed": 0}
@@ -309,119 +440,15 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None, sinc
                 counts["listed"] = limit + 1
             raise
         counts["listed"] = len(message_ids)
-        # Fetch the entire bounded census before any write. An incomplete read leaves the mailbox untouched.
-        messages = []
-        for message_id in message_ids:
-            try:
-                message = gmail.message_record(message_id)
-            except GmailError as error:
-                if not skip_unreadable:
-                    raise AmazonError("AMAZON_GMAIL_READ_FAILED_" + error_code(error)) from None
-                counts["unreadable"] = counts.get("unreadable", 0) + 1       # backfill only: a message Gmail cannot return is counted, never recorded, never filed
-                continue
-            messages.append(message)
-        events_by_order, review_by_order, accepted_ids = {}, {}, {}
+        messages = _read_messages(gmail, message_ids, skip_unreadable, counts)
         # A message that is already under the Amazon label and out of the Inbox needs no filing; it still counts as an event so replay is verified.
         already_filed = {m["id"] for m in messages if ("TRASH" in m["label_ids"]) or (label_id in m["label_ids"] and "INBOX" not in m["label_ids"])}     # trashed mail is read, never re-filed
-        for message in messages:
-            for parsed in events.extract_all(message):                         # one event, or one per order for a message whose every order is one of its own links
-                if parsed.get("status") == "REVIEW":
-                    counts["review"] += 1
-                    why = counts.setdefault("review_why", {})                     # fixed reason codes only: the mail itself is never described
-                    why[parsed.get("reason") or "UNKNOWN"] = why.get(parsed.get("reason") or "UNKNOWN", 0) + 1
-                    if parsed.get("reason") == "ORDER_ID_AMBIGUOUS":                  # counts only: how many orders, how many links, which sender
-                        shape = counts.setdefault("ambiguous_shape", {})
-                        key = f"{events.ambiguity_shape(message)},from={parsed_sender(message)}"
-                        shape[key] = shape.get(key, 0) + 1
-                        days = counts.setdefault("ambiguous_days", [])
-                        if len(days) < 6 and parsed_sender(message) == "ORDERED":
-                            days.append((message.get("received_at") or "")[:16])               # a date only, so Jim can open an example; never content
-                    if parsed.get("order_id"):
-                        review_by_order.setdefault(parsed["order_id"], []).append(message)
-                    continue
-                counts["accepted"] += 1
-                order_id = parsed["order_id"]
-                events_by_order.setdefault(order_id, []).append(parsed)
-                accepted_ids.setdefault(order_id, []).append(message["id"])
+        events_by_order, review_by_order, accepted_ids = _sort_events(messages, counts)
         if not events_by_order and not review_by_order:
             return counts
-        plans = []
-        for order_id in sorted(set(events_by_order) | set(review_by_order)):
-            found = _query_order(notion, source_id, order_id)
-            if len(found) > 1:
-                raise AmazonError("AMAZON_NOTION_DUPLICATE_ORDER")
-            existing = found[0] if found else None
-            conflict = bool(review_by_order.get(order_id))
-            cause = ("PARSE_" + next((e.get("reason") or "UNKNOWN") for e in [events.extract_all(m)[0] for m in review_by_order[order_id]])) if conflict else None
-            desired = _review_desired(order_id) if conflict else None
-            if not conflict:
-                desired, reason = orders.reconcile(events_by_order[order_id], existing, now)
-                conflict = reason is not None
-                if conflict:
-                    desired = _review_desired(order_id)
-                    cause = reason
-                    if reason == "ORDER_ALREADY_REVIEW":                   # the row was frozen earlier: would these messages alone conflict? (FRESH_NONE = they would not)
-                        cause = "FRESH_" + (orders.reconcile(events_by_order[order_id], None, now)[1] or "NONE")
-            if conflict:
-                _note_conflict(counts, cause, existing, [m["received_at"] for m in review_by_order.get(order_id, [])] + [e["received_at"] for e in events_by_order.get(order_id, [])], now)
-                counts["accepted"] -= len(events_by_order.get(order_id, []))
-                counts["review"] += len(events_by_order.get(order_id, []))
-                if existing:
-                    already_review = existing.get("Status") == "REVIEW" and existing.get("Needs Review") is True
-                    counts["orders_same" if already_review else "orders_updated"] += 1
-                else:
-                    counts["orders_new"] += 1
-                plans.append((order_id, existing, desired, True, []))
-            else:
-                if existing and orders.same(existing, desired):
-                    desired["Last Reconciled At"] = existing.get("Last Reconciled At")
-                    counts["orders_same"] += 1
-                else:
-                    counts["orders_updated" if existing else "orders_new"] += 1
-                plans.append((order_id, existing, desired, False, accepted_ids.get(order_id, [])))
-        if not live:
-            return counts
-        failures, filed_now = [], set()
-        for order_id, existing, desired, review_only, file_ids in plans:
-            try:
-                same = bool(existing) and (_readback_equal(existing, desired, review_only) if review_only
-                                           else orders.same(existing, desired))
-                if same and not review_only:
-                    persisted = _get_page(notion, existing["page_id"])
-                    if not _readback_equal(persisted, desired):
-                        raise AmazonError("AMAZON_NOTION_READBACK_MISMATCH")
-                elif review_only and existing and existing.get("Status") == "REVIEW" and existing.get("Needs Review") is True:
-                    persisted = existing
-                else:
-                    persisted = _write(notion, source_id, existing, desired, review_only)
-                    matches = (_review_readback_equal(persisted, desired, existing) if review_only and existing
-                               else _readback_equal(persisted, desired, review_only))
-                    if not matches:
-                        raise AmazonError("AMAZON_NOTION_READBACK_MISMATCH")
-                if review_only:
-                    continue
-                for message_id in file_ids:
-                    if message_id in already_filed or message_id in filed_now:
-                        counts["already_filed"] += 1
-                        continue
-                    try:
-                        gmail.apply_amazon(message_id, label_id)
-                        labels = gmail.message_labels(message_id)
-                    except GmailError as error:
-                        raise AmazonError("AMAZON_GMAIL_FILE_FAILED_" + error_code(error)) from None
-                    if label_id not in labels or "INBOX" in labels or "TRASH" in labels:
-                        raise AmazonError("AMAZON_GMAIL_READBACK_MISMATCH")
-                    counts["filed"] += 1
-                    filed_now.add(message_id)                                      # a message that carries several orders is filed once
-            except AmazonError as error:
-                failures.append(str(error))
-                counts["failed"] += max(1, len(file_ids) or len(review_by_order.get(order_id, [])))
-            except Exception:
-                failures.append("AMAZON_INTERNAL_FAILED")
-                counts["failed"] += max(1, len(file_ids))
-        if failures:
-            codes = "+".join(sorted(set(failures)))
-            raise AmazonError(f"AMAZON_FAILED:{counts['failed']}of{counts['listed']}:{codes}")
+        plans = _plan_orders(notion, source_id, events_by_order, review_by_order, accepted_ids, now, counts)
+        if live:
+            _apply_plans(gmail, notion, source_id, label_id, plans, already_filed, review_by_order, counts)
         return counts
     except AmazonError as error:
         code = str(error)
@@ -434,3 +461,11 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None, sinc
         raise AmazonError("AMAZON_NOTION_FAILED") from None
     except Exception:
         raise AmazonError("AMAZON_FAILED:1of0:AMAZON_INTERNAL_FAILED") from None
+
+
+CONTRACT = stage_contract.Contract(      # LIFE-623: the stage declared; run() = read (_read_messages, _plan_orders), decide (decide_order, pure), _apply_plans (write, then read-back)
+    name="amazon-orders", run=run,
+    inputs=("Gmail messages from the allowlisted Amazon senders since the newest accepted event minus 3 days (or AMAZON_SINCE)", "the Amazon Orders data source: its schema, its newest event, and each order's row"),
+    outputs=("listed", "accepted", "review", "orders_new", "orders_updated", "orders_same", "filed", "already_filed", "failed"),
+    dry_run="reads the mail and the order rows and counts what a live run would create, update and file; changes nothing",
+    write="creates or updates one Amazon Orders row per order (a conflict freezes it in REVIEW), reads each back, then files the mail under the Amazon label and reads that back")

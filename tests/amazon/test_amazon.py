@@ -428,3 +428,21 @@ class GmailClientTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DecideOrderTests(unittest.TestCase):
+    """LIFE-623: the pure per-order decision, called directly with plain values (no fakes)."""
+    ORDER = "123-1234567-1234567"
+
+    def test_a_first_event_makes_a_row_with_no_conflict(self):
+        desired, conflict, cause = stage.decide_order(self.ORDER, None, [event("m-1", "ORDERED", "2026-10-03T12:00:00+00:00", total="12.34")], [], NOW)
+        self.assertEqual((desired["Status"], conflict, cause), ("ORDERED", False, None))
+
+    def test_two_different_totals_freeze_the_row_in_review(self):
+        events_ = [event("m-1", "ORDERED", "2026-10-03T12:00:00+00:00", total="12.34"), event("m-2", "ORDERED", "2026-10-03T12:05:00+00:00", total="99.00")]
+        desired, conflict, cause = stage.decide_order(self.ORDER, None, events_, [], NOW)
+        self.assertEqual((desired["Status"], conflict, cause), ("REVIEW", True, "TOTAL_CONFLICT"))
+
+    def test_a_mail_that_names_no_order_goes_to_review_with_its_parse_reason(self):
+        unparsed = {"id": "m-3", "sender": sender("auto-confirm"), "subject": "s", "received_at": "2026-10-03T12:00:00+00:00", "body_text": "no order here", "label_ids": []}
+        self.assertEqual(stage.decide_order(self.ORDER, None, [], [unparsed], NOW)[1:], (True, "PARSE_ORDER_ID_MISSING"))
