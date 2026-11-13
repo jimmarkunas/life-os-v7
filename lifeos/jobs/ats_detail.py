@@ -1,7 +1,8 @@
-"""Direct job readers for ATS pages that are JavaScript shells. The job URL already names the tenant and the job, so each
-reader asks the ATS's public JSON (or the JSON embedded in the page) for that one job: no browser, no daily cap.
-Endpoint shapes follow open-jobs (CC0) and career-ops (MIT). read(url) -> dict(title, html, posted) | {"closed": True} | None.
-"""
+"""Direct readers for ATS job pages that are JavaScript shells: one public-JSON call per job, no browser.
+
+The job URL already names the tenant and the job, so each reader asks the ATS's public JSON (or the JSON embedded in the page) for that one job. No daily cap.
+Input: read(url). Output: dict(title, html, posted) | {"closed": True} | None."""
+# Endpoint shapes follow open-jobs (CC0) and career-ops (MIT).
 import html as htmllib
 import json
 import re

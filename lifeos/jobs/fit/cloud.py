@@ -1,21 +1,15 @@
-"""LIFE-41 (10472 C, 10474, 10475): the switchable cloud-Fit shadow. `V7_CLOUD_FIT` = off (default, unset or anything unknown) | shadow | canary | on.
+"""The switchable cloud-Fit shadow (LIFE-41): V7_CLOUD_FIT = off (default; unset or unknown) | shadow | canary | on (refused).
 
-shadow and canary are authorized (canary: Jim, LIFE-41 10555, D226); on is refused. shadow asks Oracle's existing `fit1` verb (lifeos.jobs.fit.edge, the same framing, receipt and judge.accept envelope) for at most
-one judgment a tick (MAX_PER_RUN; `V7_CLOUD_FIT_PER_RUN` can only lower it to 0) and stores the answer privately in nullable `cloud_*` columns of the job's
-existing v7_job_fit row. It never changes the visible Fit, the decision, the admission, the Ledger, Gmail, the audit or Trash: the static score stays the
-authority. canary (D226) asks exactly as shadow and stores the answer first as the named failure DEGRADED / CANARY_PROMOTION_FAILED; then the Fit stage's `promote` makes that
-one job's accepted score its visible Fit through the stage's own lane decision, in the one statement that also marks the row CANARY. A promotion that does not
-happen leaves that failure (the static score stays visible and re-scorable, the run is DEGRADED); every other failure path stores and promotes nothing visible.
-on is refused with no call.
-
-Candidates are NEW records only: READY / RESOLVED, a public employer / ATS posting (10500: proven by the final Apply URL's host, `public_posting`) that the precision
-audit would keep (`audit_problem`: its listing/root/no-job-id link and thin-description guards, judged exactly as lifeos.jobs.audit does), no Ledger page, a static admission of ADMIT or REVIEW, no private exclusion and never asked before
-(`cloud_status IS NULL`), in a stable order by first seen and Stable Job Key. Up to SCAN of them are examined a run: one that cannot be sent (not a public
-posting, a place in its title, nothing substantive) is recorded SKIPPED with its fixed reason at no network cost, and the run moves on to the next, so an
-unsendable backlog never uses up the run's one call (LIFE-41 G6 proof run 39202038517 spent its only pick on a skip). A PUBLISHED job is never asked, whatever changes on it later. V7 sends no profile
-text: the profile is the Oracle-held brief named by `V7_CLOUD_FIT_PROFILE_REF` (16 hex); without it nothing is sent. Every failure is a fixed code shown as
-`cloud_fit=DEGRADED(<code>)`; a failure that is not about the one job (no host, refusal, timeout, a receipt that does not match) stops the run's cloud calls and
-writes nothing, so the job is asked again on a later tick and no static score is ever presented as a cloud answer. Counts only in the log."""
+shadow and canary are authorized (canary: Jim, LIFE-41 10555, D226); on is refused with no call. Both ask Oracle's `fit1` verb (lifeos.jobs.fit.edge) for at most one judgment a tick (MAX_PER_RUN; V7_CLOUD_FIT_PER_RUN can only lower it to 0).
+shadow stores the answer privately in the `cloud_*` columns of the job's v7_job_fit row and never changes the visible Fit, decision, admission, Ledger, Gmail, audit or Trash. canary (D226) stores it first as DEGRADED / CANARY_PROMOTION_FAILED,
+then the Fit stage's `promote` makes that one job's accepted score its visible Fit; a promotion that does not happen leaves that failure (static score stays visible, run DEGRADED).
+Input: the Oracle-held profile brief named by V7_CLOUD_FIT_PROFILE_REF (16 hex); without it nothing is sent. Failures: fixed codes shown as `cloud_fit=DEGRADED(<code>)`; one not about the one job stops the run's cloud calls and writes nothing. Counts only in the log."""
+# History: LIFE-41 (10472 C, 10474, 10475). Candidates are NEW records only: READY / RESOLVED, a public employer / ATS posting (10500: proven by the final Apply URL's host, `public_posting`) that the precision audit would keep
+# (`audit_problem`: its listing/root/no-job-id link and thin-description guards, judged exactly as lifeos.jobs.audit does), no Ledger page, a static admission of ADMIT or REVIEW, no private exclusion and never asked before
+# (`cloud_status IS NULL`), in a stable order by first seen and Stable Job Key. Up to SCAN of them are examined a run: one that cannot be sent (not a public posting, a place in its title, nothing substantive) is recorded SKIPPED
+# with its fixed reason at no network cost, and the run moves on to the next, so an unsendable backlog never uses up the run's one call (LIFE-41 G6 proof run 39202038517 spent its only pick on a skip). A PUBLISHED job is never asked, whatever changes on it later.
+# shadow uses the same framing, receipt and judge.accept envelope as the verb's other callers. A failure that is not about the one job (no host, refusal, timeout, a receipt that does not match) is asked again on a later tick;
+# no static score is ever presented as a cloud answer. The canary promotion happens through the stage's own lane decision, in the one statement that also marks the row CANARY. Every other failure path stores and promotes nothing visible.
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait as wait_for
 from datetime import datetime
 import os

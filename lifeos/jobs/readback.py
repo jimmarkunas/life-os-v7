@@ -1,9 +1,8 @@
-"""Ledger read-back: a PUBLISHED job is only finished once the page Notion holds matches what was sent. Checks the Apply URL,
-the Stable Job Key, a title, the Fit being present when one was scored, and the v7-jd marker that opens the description body. Fixed reason codes only.
+"""Ledger read-back: a PUBLISHED job is only finished once the page Notion holds matches what was sent (D212).
 
-D212 (Jim, LIFE-76 10451): every page is verified by reading Notion. The properties come from ONE data-source query per KEY_CHUNK Stable Job Keys (an OR of
-exact-key filters) instead of a GET per page; the body marker is still read per page. A page the query does not return is `page_gone`; two pages with one key is
-`key_ambiguous`. A create response is never a read-back."""
+Checks the Apply URL, the Stable Job Key, a title, the Fit being present when one was scored, and the v7-jd marker that opens the description body. Fixed reason codes only.
+The properties come from ONE data-source query per KEY_CHUNK Stable Job Keys (an OR of exact-key filters); the body marker is still read per page. A page the query does not return is `page_gone`; two pages with one key is `key_ambiguous`."""
+# D212 (Jim, LIFE-76 10451): every page is verified by reading Notion; a create response is never a read-back.
 
 from lifeos.jobs import store
 from lifeos.platform import ledger_body as body, notion_pages, notion_text

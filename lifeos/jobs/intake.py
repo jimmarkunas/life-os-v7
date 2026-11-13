@@ -1,5 +1,5 @@
-"""The one way a producer adds a job to Jobs OS. A source emits a normalized job here and stops; dedupe, repost
-linking and everything downstream (resolve, enrich, quality, publish) belong to Jobs OS."""
+"""The one way a producer adds a job to Jobs OS: a source emits a normalized job here and stops."""
+# Dedupe, repost linking and everything downstream (resolve, enrich, quality, publish) belong to Jobs OS.
 from lifeos.jobs import identity, repost, tombstone
 
 

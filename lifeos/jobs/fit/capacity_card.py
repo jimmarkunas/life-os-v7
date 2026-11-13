@@ -1,10 +1,10 @@
-"""AI Capacity card (LIFE-77, D228; Jim approved the design Oct 20 2026): for each account allowance Oracle can read, what is left, what is used, the window and its reset,
-on the Daily Report. Oracle's `limits` request supplies the readings (no model run). The card finds itself by its table's header row: the one top-level callout on the page (or, until it has moved, the one callout beside the
-Attention callout) whose table carries this header row. Jim (Oct 21) moved it out of the Daily Report's half-width column: it lives at the top level of the page, under the last full-width divider, so its table
-is full width. A run that finds none there inserts it directly after that divider; a card still in the old column is then removed, but only after the new one is written and read back.
-After that it writes only the callout's own text and the cells of its one fixed-shape table, in place, read back (the MegIBOW writer's method, D134).
-V7_AI_CAPACITY_CARD unset or not "on" -> not configured: nothing read or written.
-A reading that cannot be had is DEGRADED: the line says so and the table keeps the last reading. Unreadable providers are shown as UNAVAILABLE, never as empty or full."""
+"""AI Capacity card (LIFE-77, D228): what is left on each account allowance Oracle can read, its window and reset, on the Daily Report.
+
+Input: Oracle's `limits` request (no model run). Output: the callout's own text and the cells of its one fixed-shape table, written in place and read back (the MegIBOW writer's method, D134).
+The card finds itself by its table's header row: the one top-level callout on the page whose table carries it. A run that finds none inserts it directly after the last full-width divider.
+V7_AI_CAPACITY_CARD unset or not "on" -> not configured: nothing read or written. A reading that cannot be had is DEGRADED: the line says so and the table keeps the last reading; unreadable providers show UNAVAILABLE, never empty or full."""
+# Jim approved the design Oct 20 2026. Jim (Oct 21) moved the card out of the Daily Report's half-width column: it lives at the top level of the page, under the last full-width divider, so its table is full width.
+# Until it has moved, the card is also found as the one callout beside the Attention callout; a card still in the old column is removed, but only after the new one is written and read back.
 from datetime import datetime
 from urllib.parse import quote
 from zoneinfo import ZoneInfo

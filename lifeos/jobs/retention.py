@@ -1,14 +1,10 @@
-"""Retention (weekly), per the Jobs canon plus Jim's rules (docs/LANES.md).
+"""Weekly retention per the Jobs canon plus Jim's rules (docs/LANES.md): description, row and tombstone expiry, and trashing our stale Notion pages. Counts only.
 
-Hostinger: job descriptions go at 90 days; job rows that were never published or are already PURGED go at 365; suppression tombstones expire at 90 days.
-Notion, OUR pages only (matched by stored page id; pre-existing ledger rows are never touched):
-  an UNAPPLIED job with no Saturn Decision whose age is 30+ days (employer Posting Date, else First Surfaced; never Created At)
-  and for which progression.resolve says NOT_PROTECTED  ->  trashed (recoverable 30 days), marked PURGED here, and a 90-day tombstone is written.
-A job read off its employer's own board (source web:<board>) is open while the board lists it (D111): it is retired only once a complete listing of that board no longer has it (D167).
-LIFE-212 (Jim, Oct 31 2026): a lane whose policy judges employer-board jobs by age (US Remote 14 days, Scale-Up 30) retires a job older than that age, listed on its board or not.
-Applied jobs are never destructively retired by Jobs until the Interview progression handoff (INT-7.1A) exists: they resolve UNKNOWN and are kept.
-No legacy Lifecycle / Liveness value is read for a decision or written. One filtered Notion query per page of 100 (the approved weekly read). Counts only.
-"""
+Hostinger: job descriptions go at 90 days; rows never published or already PURGED go at 365; suppression tombstones expire at 90 days.
+Notion, OUR pages only (matched by stored page id): an UNAPPLIED job with no Saturn Decision, aged 30+ days (employer Posting Date, else First Surfaced; never Created At), for which progression.resolve says NOT_PROTECTED, is trashed (recoverable 30 days), marked PURGED and given a 90-day tombstone.
+A job off its employer's own board (source web:<board>) is retired only once a complete listing of that board no longer has it (D111, D167). LIFE-212: a lane whose policy judges employer-board jobs by age (US Remote 14 days, Scale-Up 30) retires an older job, listed or not.
+Applied jobs resolve UNKNOWN and are kept until the Interview progression handoff (INT-7.1A) exists. One filtered Notion query per page of 100 (the approved weekly read)."""
+# Pre-existing ledger rows are never touched. No legacy Lifecycle / Liveness value is read for a decision or written. LIFE-212 is Jim, Oct 31 2026.
 from datetime import date, timedelta
 import os
 

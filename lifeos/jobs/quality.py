@@ -1,5 +1,5 @@
-"""Precision guards: is this URL a single job page, and is this text a real job description?
-Pure functions. Found by the first live Notion batch (2 of 3 pages were wrong: an apply-form template and a listing page)."""
+"""Precision guards: is this URL a single job page, and is this text a real job description? Pure functions."""
+# Found by the first live Notion batch: 2 of 3 pages were wrong (an apply-form template and a listing page).
 import re
 from urllib.parse import parse_qs, urlsplit
 

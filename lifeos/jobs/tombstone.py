@@ -1,5 +1,6 @@
-"""Suppression tombstones (machine state only): after a canonical job is retired, keep the minimum identity for 90 days so the same stale or
-reposted vacancy is not immediately recreated. A vacancy that is provably newer than the retirement (a later posting date) may re-enter."""
+"""Suppression tombstones (machine state only): the minimum identity kept 90 days after a canonical job is retired.
+
+Stops the same stale or reposted vacancy from being immediately recreated. A vacancy provably newer than the retirement (a later posting date) may re-enter."""
 from datetime import timedelta
 
 TTL_DAYS = 90

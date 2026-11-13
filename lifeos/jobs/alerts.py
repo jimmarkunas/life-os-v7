@@ -1,5 +1,5 @@
-"""Jobs OS alert detectors and the alerts stage (D53). Counts only. Detectors are pure functions of counts so they test without a database;
-state (which alerts are open, when last notified) lives in v7_alerts so a reminder is not a repeat."""
+"""Jobs OS alert detectors and the alerts stage (D53): counts in, open or resolved alerts out."""
+# Detectors are pure functions of counts so they test without a database; state (which alerts are open, when last notified) lives in v7_alerts so a reminder is not a repeat. Counts only.
 import datetime as dt
 import os
 import re

@@ -1,8 +1,8 @@
-"""Fit v2 (LIFE-41): the request the named OpenClaw Jobs Fit capability gets and the code-owned envelope its answer must pass (it judges semantic match only; scoreability, caps, gate and the 72 floor stay here).
-accept() returns None for an unusable answer: before cutover the static scorer may stay authoritative; after cutover an approved fail-closed or retryable path, never a silent static fallback.
-Place in the title (TL review of #339, 5567054574): the job's structured location is removed and a short capitalised title tail is dropped; a place still left in the cleaned title, even with
-no separator ("Senior Technical Program Manager London"), is found by the lane policy's own place patterns (`title_place`) and nothing is sent for that job (fail closed, no geo engine).
-"Global" and "worldwide" are scope words, not places."""
+"""Fit v2 (LIFE-41): the request the OpenClaw Jobs Fit capability gets and the code-owned envelope its answer must pass.
+
+The capability judges semantic match only; scoreability, caps, gate and the 72 floor stay here. accept() returns None for an unusable answer: before cutover the static scorer may stay authoritative; after cutover an approved fail-closed or retryable path, never a silent static fallback.
+Place in the title: the job's structured location is removed and a short capitalised title tail is dropped; a place still left in the cleaned title is found by the lane policy's own place patterns (`title_place`) and nothing is sent for that job (fail closed, no geo engine)."""
+# TL review of #339 (5567054574): a place with no separator ("Senior Technical Program Manager London") is also caught. "Global" and "worldwide" are scope words, not places.
 from dataclasses import dataclass
 import json
 import re

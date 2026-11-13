@@ -1,10 +1,8 @@
-"""Jobs that sit on HOLD for a week are excluded, so the newsletter mail that holds them open can close.
-HOLD means retries ran out (a link that never resolves, a page that never reads, a link rejected again and again). Nothing retries a HOLD job, so
-it never reaches an outcome by itself, and a newsletter mail closes only when every job from it has one (D-finalize). After HOLD_DAYS the job
-becomes EXCLUDED_UNRESOLVED: terminal, never published, never retried. Counts only.
+"""Jobs on HOLD for a week are excluded (EXCLUDED_UNRESOLVED), so the newsletter mail that holds them open can close (D185).
 
-D185 recovery (docs/DECISIONS.md): a worthwhile HOLD job gets ONE more try through the normal path, from day 6; one still HOLD, NEW or RESOLVED
-RECOVERY_HOURS after its try is excluded as `unresolved_after_recovery`, so the latest exclusion is day 7 and the seven-day rule is unchanged."""
+HOLD means retries ran out (a link that never resolves, a page that never reads, a link rejected again and again). After HOLD_DAYS the job becomes EXCLUDED_UNRESOLVED: terminal, never published, never retried. Counts only.
+Recovery (D185): a worthwhile HOLD job gets ONE more try through the normal path, from day 6; one still HOLD, NEW or RESOLVED RECOVERY_HOURS after its try is excluded as `unresolved_after_recovery`, so the latest exclusion is day 7."""
+# Nothing retries a HOLD job, so it never reaches an outcome by itself, and a newsletter mail closes only when every job from it has one (D-finalize). The seven-day rule is unchanged.
 from datetime import datetime, timedelta
 
 from lifeos.jobs import lanes, store

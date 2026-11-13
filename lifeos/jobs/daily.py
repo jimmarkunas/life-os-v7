@@ -1,6 +1,6 @@
-"""Daily counts (LIFE-74): a few integers per day and name that the stages' own counts lines cannot give the monitors, because a log line is gone after a run and the store keeps only a
-job's CURRENT status. Board reads and failures, search calls and failures, and the HOLD pile are kept here for about two weeks. Counts only; no title, company or link.
-`record` is called by lifeos.run after a live stage and never raises: a missed row costs a monitor one day of evidence, never a run. Days are UTC dates, like the TinyFish spend."""
+"""Daily counts per day and name (board reads and failures, search calls and failures, the HOLD pile), kept about two weeks for the monitors (LIFE-74)."""
+# A few integers per day and name that the stages' own counts lines cannot give the monitors, because a log line is gone after a run and the store keeps only a job's CURRENT status.
+# Counts only; no title, company or link. `record` is called by lifeos.run after a live stage and never raises: a missed row costs a monitor one day of evidence, never a run. Days are UTC dates, like the TinyFish spend.
 import datetime as dt
 
 from lifeos.jobs import store

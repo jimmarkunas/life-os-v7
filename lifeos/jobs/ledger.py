@@ -1,5 +1,6 @@
-"""Production target guard: before any Notion write (publish, audit trash, retention trash) verify the configured data source really is the LIFE OS
-Job Ledger, by the properties this code reads and writes and their types. Wrong or unreadable target = no write. Checked once per client."""
+"""Production target guard: before any Notion write, verify the configured data source really is the LIFE OS Job Ledger.
+
+Applies to publish, audit trash and retention trash. Checks the properties this code reads and writes and their types, once per client. Wrong or unreadable target = no write."""
 from datetime import timezone
 from zoneinfo import ZoneInfo
 
