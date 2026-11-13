@@ -155,7 +155,7 @@ class RepositoryIndex(Fixture):
 
     def test_the_agent_entrypoint_names_the_validator(self):
         agents = (ROOT / "AGENTS.md").read_text()
-        for command in ("python -m lifeos.readiness", "python -m lifeos.readiness repo"):          # AGENTS.md (Jim-owned) still names the old module; the shim keeps it working
+        for command in ("python -m lifeos.sources.devtools.readiness", "python -m lifeos.sources.devtools.readiness repo"):          # AGENTS.md (Jim-owned) names the real module (LIFE-631: the old-name shim is gone)
             self.assertIn(command, agents)
         self.assertNotIn("readiness preflight", agents)             # delivery flow v3: no claim file, no preflight
 
