@@ -227,10 +227,8 @@ def latest_incoming(s, deadline):
     for chat in candidates:
         if best and chat["last_message"]["date"] <= best[1]:
             break
-        found = None
-        if person(chat["last_message"], s.me, s.users):
-            found = (person(chat["last_message"], s.me, s.users), chat["last_message"]["date"])
-        elif scanned < MAX_HISTORY:
+        found = (who, chat["last_message"]["date"]) if (who := person(chat["last_message"], s.me, s.users)) else None
+        if not found and scanned < MAX_HISTORY:
             scanned += 1
             page = s.call({"@type": "getChatHistory", "chat_id": chat["id"], "from_message_id": 0, "offset": 0, "limit": 20, "only_local": False}, deadline)
             for m in page.get("messages") or []:

@@ -236,38 +236,35 @@ def urgent(recent):
     return {k: recent[k] for k in ("channel", "health", "sync", "observed_at", "source", "hours")} | {"summary": summary, "flagged": flagged}
 
 
-def run(argv, now=None, path=ENDPOINT, fetcher=fetch):
-    """argv -> one validated result, or None for a form outside the allowlist."""
-    now = now or datetime.now(timezone.utc)
-    hours = 24
-    if argv[:1] in (["recent"], ["urgent"]) and len(argv) == 3 and argv[1] == "--hours" and re.fullmatch(r"[1-9][0-9]?", argv[2]) and int(argv[2]) <= 72:
-        hours = int(argv[2])
-    elif argv[:1] in (["recent"], ["urgent"]) and len(argv) == 1:
-        pass
-    elif argv == ["attention"] or argv == ["counts"]:
-        pass
-    elif len(argv) == 2 and argv[0] == "conversation" and re.fullmatch(r"c?[1-9][0-9]{0,8}", argv[1]):
-        chat = int(argv[1].lstrip("c"))
-    else:
-        return None
-    kind = argv[0]
-    request = {"attention": REQUEST, "counts": b"counts\n", "recent": b"recent %d\n" % hours, "urgent": b"recent %d\n" % hours}.get(kind)
-    if kind == "conversation":
-        request = b"conversation %d\n" % chat
-    try:
-        host, port = endpoint(path)
-        data = fetcher(host, port, request, MAX_REPLY if kind == "attention" else MAX_CONTENT_REPLY)
-    except (OSError, ValueError):
-        data = b""
-    if kind == "attention":
-        return validate(data, now)
-    if kind == "counts":
-        return _content(data, now, "counts", {}, None)
-    if kind == "conversation":
-        return _content(data, now, "messages", {"chat": "c%d" % chat}, 20)
+def _recent(data, now, hours, view=lambda recent: recent):
     recent = _content(data, now, "messages", {"hours": hours}, 50)
     recent.setdefault("hours", hours)
-    return recent if kind == "recent" else urgent(recent)
+    return view(recent)
+
+
+HOURS = r"(?:\0--hours\0([1-9]|[1-6][0-9]|7[0-2]))?"
+FORMS = {   # command: (argument grammar, request line, reply limit, validator(data, now, n)); n is the hours, the conversation number, or 24 where unused
+    "attention": ("()", lambda n: REQUEST, MAX_REPLY, lambda d, now, n: validate(d, now)),
+    "counts": ("()", lambda n: b"counts\n", MAX_CONTENT_REPLY, lambda d, now, n: _content(d, now, "counts", {}, None)),
+    "recent": (HOURS, lambda n: b"recent %d\n" % n, MAX_CONTENT_REPLY, _recent),
+    "urgent": (HOURS, lambda n: b"recent %d\n" % n, MAX_CONTENT_REPLY, lambda d, now, n: _recent(d, now, n, urgent)),
+    "conversation": (r"\0c?([1-9][0-9]{0,8})", lambda n: b"conversation %d\n" % n, MAX_CONTENT_REPLY, lambda d, now, n: _content(d, now, "messages", {"chat": "c%d" % n}, 20)),
+}
+
+
+def run(argv, now=None, path=ENDPOINT, fetcher=fetch):
+    """argv -> one validated result, or None for a form outside the allowlist."""
+    form = FORMS.get((argv or [""])[0])
+    found = form and re.fullmatch(argv[0] + form[0], "\0".join(argv))
+    if not found:
+        return None
+    n = int(found.group(1) or 24)
+    try:
+        host, port = endpoint(path)
+        data = fetcher(host, port, form[1](n), form[2])
+    except (OSError, ValueError):
+        data = b""
+    return form[3](data, now or datetime.now(timezone.utc), n)
 
 
 def _page(data, now):
@@ -336,10 +333,6 @@ def scan(hours, now=None, path=ENDPOINT, fetcher=fetch, clock=time.monotonic, to
         request = b"next %d %d\n" % last
     out["messages"] = list(reversed(msgs))
     return out
-
-
-def attention(now=None, path=ENDPOINT, fetcher=fetch):
-    return run(["attention"], now, path, fetcher)
 
 
 def main(argv):
