@@ -198,12 +198,11 @@ jobs:
             83c553e9-23a6-45aa-9006-b4db015f00ac > NTFY_TOPIC
       - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
         continue-on-error: true
-        uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd   # v4.2.0
+        uses: ./.github/actions/tailscale
         with:
           oauth-client-id: ${{ steps.bws_jira.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ steps.bws_jira.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
-          use-cache: "false"
       - id: jrollauto
         continue-on-error: true
         name: Jira sprint rollover (scheduled; waits for the sprint to end and Monday 6 AM; live only when V7_LIVE)
@@ -360,12 +359,11 @@ jobs:
             83c553e9-23a6-45aa-9006-b4db015f00ac > NTFY_TOPIC
       - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
         continue-on-error: true
-        uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd   # v4.2.0
+        uses: ./.github/actions/tailscale
         with:
           oauth-client-id: ${{ steps.bws_outlook.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ steps.bws_outlook.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
-          use-cache: "false"
       - id: calsync
         continue-on-error: true
         name: Calendar sync (Outlook invites to Google; counts only; writes only when live; pages the phone when it has not worked for 3 hours)
@@ -428,12 +426,11 @@ jobs:
             53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
       - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
         continue-on-error: true
-        uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd   # v4.2.0
+        uses: ./.github/actions/tailscale
         with:
           oauth-client-id: ${{ steps.bws_bills.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ steps.bws_bills.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
-          use-cache: "false"
       - id: bpaid
         continue-on-error: true
         name: Bills Paid processor (before the snapshot; writes Notion only when live; counts only)
@@ -536,12 +533,11 @@ jobs:
             53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
       - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
         continue-on-error: true
-        uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd   # v4.2.0
+        uses: ./.github/actions/tailscale
         with:
           oauth-client-id: ${{ steps.bws_agenda.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ steps.bws_agenda.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
-          use-cache: "false"
       - id: asnap
         continue-on-error: true
         name: Agenda snapshot (read-only Google Calendar; private save only when live)
@@ -725,12 +721,11 @@ jobs:
             83c553e9-23a6-45aa-9006-b4db015f00ac > NTFY_TOPIC
       - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
         continue-on-error: true
-        uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd   # v4.2.0
+        uses: ./.github/actions/tailscale
         with:
           oauth-client-id: ${{ steps.bws_mail.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ steps.bws_mail.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
-          use-cache: "false"
       - id: mail
         continue-on-error: true
         name: Physical Mail (Gmail read-only to the private state; saved with read-back)
@@ -832,12 +827,11 @@ jobs:
             53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
       - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
         continue-on-error: true
-        uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd   # v4.2.0
+        uses: ./.github/actions/tailscale
         with:
           oauth-client-id: ${{ steps.bws_hiring.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ steps.bws_hiring.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
-          use-cache: "false"
       - id: hiring
         continue-on-error: true
         name: Hiring Pipeline (Ledger, Notion pages and Calendar to the private state and the floating region; read-back and whole-page proof; a failed source is DEGRADED)
@@ -912,12 +906,11 @@ jobs:
             83c553e9-23a6-45aa-9006-b4db015f00ac > NTFY_TOPIC
       - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
         continue-on-error: true
-        uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd   # v4.2.0
+        uses: ./.github/actions/tailscale
         with:
           oauth-client-id: ${{ steps.bws_attention.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ steps.bws_attention.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
-          use-cache: "false"
       - id: attention
         continue-on-error: true
         name: Attention (Gmail label and Outlook category to Notion; counts only; writes only when live; a failed source is DEGRADED)
@@ -984,12 +977,11 @@ jobs:
             83c553e9-23a6-45aa-9006-b4db015f00ac > NTFY_TOPIC
       - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
         continue-on-error: true
-        uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd   # v4.2.0
+        uses: ./.github/actions/tailscale
         with:
           oauth-client-id: ${{ steps.bws_megibow.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ steps.bws_megibow.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
-          use-cache: "false"
       - id: megibow
         continue-on-error: true
         name: MegIBOW (Gmail, Outlook and calendars to the Notion table; counts only; writes only when live; a failed source is DEGRADED)
@@ -1125,12 +1117,11 @@ jobs:
             53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
       - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
         continue-on-error: true
-        uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd   # v4.2.0
+        uses: ./.github/actions/tailscale
         with:
           oauth-client-id: ${{ steps.bws_recruiters.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ steps.bws_recruiters.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
-          use-cache: "false"
       - id: recruiters
         if: ${{ inputs.refresh != 'recruiters' }}       # a Close screen refresh redraws only the Recruiter Outreach table
         continue-on-error: true
@@ -1284,12 +1275,11 @@ jobs:
             6590208b-506d-4238-ab10-b4e30051b25f > IMESSAGE_ALERTS_HOST
             53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
       - name: Join the tailnet as an ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 47341)
-        uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd   # v4.2.0
+        uses: ./.github/actions/tailscale
         with:
           oauth-client-id: ${{ steps.bws_imessage.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ steps.bws_imessage.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
-          use-cache: "false"
       - id: imsg
         continue-on-error: true
         name: iMessage urgent alerts (metadata only from Oracle; private alert state; counts-only push)
@@ -1419,12 +1409,11 @@ jobs:
             e54f0a84-84c3-47d8-8b5b-b4e30052d6e9 > TAILSCALE_OAUTH_CLIENT_SECRET
             6590208b-506d-4238-ab10-b4e30051b25f > IMESSAGE_ALERTS_HOST
       - name: Join the tailnet as an ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 22 and 47341)
-        uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd   # v4.2.0
+        uses: ./.github/actions/tailscale
         with:
           oauth-client-id: ${{ steps.bws_granola.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ steps.bws_granola.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
-          use-cache: "false"
       - id: gran
         continue-on-error: true
         name: Granola auto (every meeting not yet carried; counts and fixed codes only; writes only when live and GRANOLA_AUTO is on)

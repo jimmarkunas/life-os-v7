@@ -778,7 +778,7 @@ UUIDS = {
     "LIFEOS_ACQ_SSH_JUMP_KEY": "192db2d1-be66-4fca-b9b5-b4e900240507",        # LIFE-85 (Jim, Oct 19 2026): the v7-store-fwd relay key; id only, never the value
 }
 # The one action that may receive loader outputs through `with:` (LIFE-31): the pinned Tailscale join, and only its two OAuth inputs.
-TAILSCALE_ACTION = "tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd"
+TAILSCALE_ACTION = "./.github/actions/tailscale"
 TAILSCALE_WITH = {"oauth-client-id": "TAILSCALE_OAUTH_CLIENT_ID", "oauth-secret": "TAILSCALE_OAUTH_CLIENT_SECRET"}
 # Least privilege: the credentials each job may load from Bitwarden (a conscious decision; domains.yml jobs are held to DOMAIN_SECRETS instead). Adding one is the only workflow edit that needs a test edit.
 LOADED = {
