@@ -32,9 +32,6 @@ class LinkedInApplyTests(unittest.TestCase):
         self.assertEqual(li_apply.job_id("https://www.linkedin.com/jobs/view/project-manager-at-acme-1234567890"), "1234567890")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class ClosedAndShapeTests(unittest.TestCase):
     def test_closed_posting_is_detected(self):

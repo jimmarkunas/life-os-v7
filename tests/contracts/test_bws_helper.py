@@ -11,7 +11,6 @@ import yaml
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ACTION = os.path.join(ROOT, ".github", "actions", "bws-helper")
-SM_COMMIT = "1238aae8fc64b212641190a9227c8a734ab1a793"
 CACHE_COMMIT = "0057852bfaa89a56745cba8c7296529d2fc39830"   # actions/cache v4.3.0
 
 
@@ -71,10 +70,10 @@ class CompositeAction(unittest.TestCase):
         self.assertNotIn("GITHUB_ENV", self.text)
 
     def test_the_program_is_the_pinned_release_at_the_path_sm_action_checks(self):
-        self.assertIn(f"_actions/bitwarden/sm-action/{SM_COMMIT}/target/x86_64-unknown-linux-gnu/release", self.text)
+        self.assertIn("$GITHUB_ACTION_PATH/../sm-action/target/x86_64-unknown-linux-gnu/release", self.text)
         self.assertIn("releases/download/v3.0.1/sm-action-x86_64-unknown-linux-gnu", self.text)
         loader = _read(os.path.join(ROOT, ".github", "actions", "bws-load", "action.yml"))
-        self.assertEqual(set(re.findall(r"uses:\s*bitwarden/sm-action@(\w+)", loader)), {SM_COMMIT})   # the seeded folder is the folder the pinned action reads
+        self.assertEqual(re.findall(r"uses:\s*(\S*sm-action)", loader), ["./.github/actions/sm-action"] * 2)   # the seeded folder is the folder the vendored action reads (its own target/ folder)
 
     def test_fingerprint_is_committed_hex_never_read_from_the_download(self):
         fingerprint = _read(os.path.join(ACTION, "helper.sha256")).strip()

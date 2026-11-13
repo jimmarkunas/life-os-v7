@@ -43,9 +43,6 @@ class Exclusions(unittest.TestCase):
         self.assertEqual((report["floor"], report["near_miss_floor"], report["review_floor"], report["status_totals"]), (72, 68, 60, {"EXCLUDED_FIT": 3}))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class Review(unittest.TestCase):
     ROWS = [("ExampleCo", "Head of Sales", "London", "https://example.com/j/1", 80, "excluded: sales_role", "sales_role", "lane_exclude"),

@@ -1,5 +1,6 @@
 """D214 (LIFE-41 10472 C, 10474, 10475): the cloud-Fit shadow. Production SQL over the sqlite kit, the production request builder, edge.invoke and judge.accept; only the Oracle endpoint is
 a fake that follows its wire contract. Nothing here calls a model or the network, and the switch is never set in any workflow (test_edge.Dormant)."""
+import contextlib
 import datetime
 import json
 import unittest
@@ -33,6 +34,14 @@ class Base(unittest.TestCase):
         self.db.insert("v7_job_descriptions", job_id=job_id, source_kind=kind, full_text=text, fingerprint=f"fp{job_id}", fetched_at=seen)
         self.db.insert("v7_job_fit", job_id=job_id, score=80, decision="Go", line="fits", confidence="high", model_version="6", profile_hash="p", jd_fingerprint=f"fp{job_id}",
                        scored_at=seen, admission=admission, admission_reason=None, lane="US Remote", eligible="US Remote", exclusion=exclusion, cloud_status=cloud_status)
+
+    def fit_stage(self, *extra):
+        """The Fit stage over this test's store with its profile and sponsor register stubbed; `extra` are more patches."""
+        stack = contextlib.ExitStack()
+        for patch in (mock.patch.object(stage.store, "connect", return_value=self.db), mock.patch.object(stage.store, "ensure_schema"),
+                      mock.patch.object(stage.fit_profile, "load", return_value=PROFILE), mock.patch.object(stage.sponsors, "load", return_value=None), *extra):
+            stack.enter_context(patch)
+        return stack
 
     def row(self, job_id, columns):
         return self.db.raw.execute(f"SELECT {', '.join(columns)} FROM v7_job_fit WHERE job_id=?", (job_id,)).fetchone()
@@ -74,9 +83,7 @@ class OffByDefault(Base):
         self.job(1)
         self.db.raw.execute("DELETE FROM v7_job_fit")                                          # a new job: the stage scores it
         endpoint = Endpoint()
-        with mock.patch.object(stage.store, "connect", return_value=self.db), mock.patch.object(stage.store, "ensure_schema"), \
-                mock.patch.object(stage.fit_profile, "load", return_value=PROFILE), mock.patch.object(stage.sponsors, "load", return_value=None), \
-                mock.patch.object(edge, "exchange", endpoint):
+        with self.fit_stage(mock.patch.object(edge, "exchange", endpoint)):
             counts = stage.run(10, True, {})
         self.assertEqual((counts["picked"], counts["cloud_fit"], counts["cloud_calls"]), (1, "off", 0))
         self.assertEqual(endpoint.sent, [])
@@ -228,9 +235,7 @@ class CloudFitCanary(Base):
     CANARY = {**SHADOW, "V7_CLOUD_FIT": "canary", "V7_FIT_GATE": "true"}
 
     def stage_run(self, environ, endpoint):
-        with mock.patch.object(stage.store, "connect", return_value=self.db), mock.patch.object(stage.store, "ensure_schema"), \
-                mock.patch.object(stage.fit_profile, "load", return_value=PROFILE), mock.patch.object(stage.sponsors, "load", return_value=None), \
-                mock.patch.object(edge, "exchange", endpoint):
+        with self.fit_stage(mock.patch.object(edge, "exchange", endpoint)):
             return stage.run(10, True, environ)
 
     def visible(self, job_id):
@@ -543,9 +548,7 @@ class DegradedIsAFailedFitStage(Base):
     def stage_run(self, environ, endpoint):
         self.job(1)
         self.db.raw.execute("DELETE FROM v7_job_fit")
-        with mock.patch.object(stage.store, "connect", return_value=self.db), mock.patch.object(stage.store, "ensure_schema"), \
-                mock.patch.object(stage.fit_profile, "load", return_value=PROFILE), mock.patch.object(stage.sponsors, "load", return_value=None), \
-                mock.patch.object(cloud.store, "connect", return_value=self.db), mock.patch.object(edge, "exchange", endpoint):
+        with self.fit_stage(mock.patch.object(cloud.store, "connect", return_value=self.db), mock.patch.object(edge, "exchange", endpoint)):
             return stage.run(10, True, environ)
 
     def test_off_leaves_the_fit_stage_green_and_a_shadow_refusal_fails_it(self):
@@ -597,9 +600,6 @@ class StaticWritePreservesCloudColumns(Base):
         self.assertEqual(stage.rejudge_excluded(self.db.cursor()), 1)
         self.assertEqual(self.row(1, ("model_version", "cloud_status")), ("0", "OK"))
 
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 class OracleContract10504(Base):
