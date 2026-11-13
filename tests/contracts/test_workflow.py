@@ -84,12 +84,12 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn("dice", data["jobs"])
         self.assertIn("resolve-dice", [s.name for s in tick.PLAN])
         for lane in ("jobright", "linkedin", "lensa"):
-            self.assertIn("github.event_name == 'workflow_dispatch' && !inputs.tick && !(inputs.quick || inputs.benchmark)", data["jobs"][lane]["if"], lane)   # a quick proof or a benchmark (LIFE-577) runs the tick path instead
+            self.assertIn("github.event_name == 'workflow_dispatch' && !inputs.tick && !inputs.quick", data["jobs"][lane]["if"], lane)   # a quick proof runs the tick path instead
         finish = data["jobs"]["finish"]
         self.assertIn("vars.V7_PIPELINE == 'true'", finish["if"])
         steps = finish["steps"]
         step = next(s for s in steps if s.get("id") == "tick")
-        self.assertEqual(step["if"], "${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.quick || inputs.benchmark)) }}")   # a manual quick run (or a benchmark, LIFE-577) proves exactly what a tick runs
+        self.assertEqual(step["if"], "${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.quick) }}")   # a manual quick run proves exactly what a tick runs
         self.assertIn("${{ inputs.quick && '--quick' || '' }}", step["run"])
         self.assertTrue(step.get("continue-on-error"))
         self.assertIn("python -m lifeos.jobs.tick", step["run"])
@@ -377,7 +377,7 @@ class AmazonRetentionOffTheChainTests(unittest.TestCase):
         self.assertEqual(retention["timeout-minutes"], 15)
         self.assertEqual(retention["if"].replace("due_amazon_retention", "due_amazon"), self.jobs["amazon"]["if"])      # runs for exactly the same triggers as the amazon job (each reads its own due output, LIFE-609)
         waiting = sorted(name for name, job in self.jobs.items() if "amazon_retention" in (job.get("needs") or []))
-        self.assertEqual(waiting, ["bench_report", "report"])                            # no page writer waits for it (the benchmark summary job and the failure-push job only watch)
+        self.assertEqual(waiting, ["report"])                                            # no page writer waits for it (the failure-push job only watches)
 
     def test_the_amazon_job_no_longer_runs_retention_and_the_command_is_unchanged_in_the_new_job(self):
         self.assertNotIn("aretain", [s.get("id") for s in self.jobs["amazon"]["steps"]])
@@ -633,7 +633,7 @@ DB = {"LIFEOS_ACQ_DB_NAME", "LIFEOS_ACQ_DB_PASSWORD", "LIFEOS_ACQ_DB_USER", "LIF
 DOMAIN_SECRETS = {         # the only secrets each domain job may see; adding one here is a conscious decision
     "granola": DB | {"LIFEOS_ACQ_SSH_PORT", "NOTION_INTERVIEW_TOKEN", "HIRING_PIPELINE_PAGE_ID", "IMESSAGE_ALERTS_HOST", "NOTION_JOB_LEDGER_DATA_SOURCE_ID"},   # LIFE-360: the readers take opportunities from Ledger rows first;   # LIFE-122: the automatic Granola bridge; the Tailscale OAuth pair goes only to the pinned join action (see TAILSCALE_WITH)
     "report": {"NTFY_TOPIC"},   # the failure-push job: the phone topic and nothing else
-    "gate": set(), "bench_report": set(),   # LIFE-577 / LIFE-604 item 11: the gate and summary jobs hold no secret (the run's own token only)
+    "gate": set(),   # LIFE-604 item 11: the gate job holds no secret (the run's own token only)
     "imessage": DB | {"LIFEOS_ACQ_SSH_PORT", "NTFY_TOPIC", "IMESSAGE_ALERTS_HOST", "NOTION_JIRA_TOKEN", "AMAZON_CARD_BLOCK_ID", "ATTENTION_CARD_BLOCK_ID",
                   "BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID"},   # LIFE-34 Communications card (Notion writer + region anchors). LIFE-31: the Tailscale OAuth pair goes only to the pinned join action (see TAILSCALE_WITH)
     "jira": DB | {"JIRA_API_TOKEN", "JIRA_BASE_URL", "JIRA_BOARDS", "JIRA_CARD_BLOCK_ID", "JIRA_CARD_PROJECTS", "JIRA_EMAIL",
@@ -721,14 +721,14 @@ class DomainsWorkflowTests(unittest.TestCase):
 
     def test_a_failing_domain_step_is_a_warning_never_a_failed_run(self):
         for name, job in self.doc["jobs"].items():
-            if name in ("report", "gate", "bench_report"):                                                   # the failure-push job (see the next test) is the alarm, not a domain stage; the benchmark jobs (LIFE-577) only check and summarise
+            if name in ("report", "gate"):                                                                       # the failure-push job (see the next test) is the alarm, not a domain stage; the gate only decides
                 continue
             work = [s for s in job["steps"] if s.get("id") and not str(s.get("uses", "")).endswith("bws-load")]   # the Bitwarden loader is deliberately fail-closed: a failed load fails the job before its command
             self.assertTrue(work and all(s.get("continue-on-error") for s in work), name)
 
     def test_the_report_job_pushes_the_phone_only_for_a_failed_tick_triggered_run_and_writes_nothing(self):
         job = self.doc["jobs"]["report"]
-        self.assertEqual(set(job["needs"]), set(self.doc["jobs"]) - {"report", "bench_report"})                                    # it watches every domain job and the gate (whose `tick` output it reads)
+        self.assertEqual(set(job["needs"]), set(self.doc["jobs"]) - {"report"})                                    # it watches every domain job and the gate (whose `tick` output it reads)
         condition = job["if"]
         for part in ("always()", "needs.gate.outputs.tick == 'true'", "contains(needs.*.result, 'failure')"):
             self.assertIn(part, condition)
@@ -968,9 +968,9 @@ class ProfileSyncWorkflowTests(unittest.TestCase):
 
 
 class ConcurrencyHasNoSwitch(unittest.TestCase):
-    """LIFE-604 approval 5: TICK_CONCURRENCY (and its benchmark twin) are gone from the workflow and the code; the list of settings has no row for them."""
+    """LIFE-604 approval 5: TICK_CONCURRENCY are gone from the workflow and the code; the list of settings has no row for them."""
     def test_no_workflow_or_code_file_reads_the_switch(self):
         root = pathlib.Path(__file__).resolve().parents[2]
-        for path in list((root / ".github/workflows").glob("*.yml")) + [root / "lifeos/jobs/tick.py", root / "lifeos/platform/bench.py", root / "lifeos/platform/credential_list.py"]:
+        for path in list((root / ".github/workflows").glob("*.yml")) + [root / "lifeos/jobs/tick.py", root / "lifeos/platform/credential_list.py"]:
             self.assertNotIn("TICK_CONCURRENCY", path.read_text(), path.name)
             self.assertNotIn("BENCH_TICK_CONCURRENCY", path.read_text(), path.name)
