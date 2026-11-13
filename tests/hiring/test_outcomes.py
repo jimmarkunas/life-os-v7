@@ -6,8 +6,9 @@ from unittest import mock
 from zoneinfo import ZoneInfo
 
 from lifeos.hiring import compile as C, models as M, outcomes, render
-from lifeos.platform import mail
+from lifeos.platform import mail, names
 from lifeos.platform.gmail import GmailError
+from tests.hiring.support import FakeStore
 
 CT = ZoneInfo("America/Chicago")
 NOW = datetime(2026, 10, 13, 12, 0, tzinfo=CT)
@@ -19,7 +20,7 @@ def msg(subject="Your application", body="", sender="Recruiting Team", address="
 
 
 def row(company, role, event_days_ago=None, applied="2026-09-01"):
-    return {"key": "|".join(outcomes._tokens(company)) + "|" + "|".join(sorted(outcomes._tokens(role))), "company": company, "role": role,
+    return {"key": "|".join(names.tokens(company)) + "|" + "|".join(sorted(names.tokens(role))), "company": company, "role": role,
             "event_start": (NOW - timedelta(days=event_days_ago)).isoformat() if event_days_ago is not None else None, "applied_on": applied}
 
 
@@ -150,19 +151,6 @@ class ShownTests(unittest.TestCase):
         self.assertEqual((result["rows"], result["closed"]), ([], 1))
 
 
-class FakeStore:
-    table = "v7_hiring_outcomes"
-
-    def __init__(self, doc=None):
-        self.doc, self.saves = doc, 0
-
-    def load(self, connection, key):
-        return self.doc
-
-    def save_verified(self, connection, key, snapshot, fail):
-        self.doc, self.saves = json.loads(json.dumps(snapshot)), self.saves + 1
-
-
 class FakeGmail:
     def __init__(self, records, broken=False, unreadable=()):
         self.records, self.broken, self.queries, self.unreadable = records, broken, [], set(unreadable)
@@ -193,7 +181,7 @@ class RunTests(unittest.TestCase):
     def test_a_scan_finds_the_rejection_saves_it_and_reports_counts_only(self):
         counts, store, gmail = self.go([msg(subject="Your Walmart application", body=REJECTION, days_ago=3)])
         self.assertEqual((counts["status"], counts["matched"], counts["rejected"], counts["saved"], counts["roster"]), ("fresh", 1, 1, 1, 2))
-        self.assertEqual(list(store.doc["outcomes"]), [WALMART["key"]])
+        self.assertEqual(list(store.row["outcomes"]), [WALMART["key"]])
         self.assertIn('"Walmart"', gmail.queries[0])                                       # Gmail is asked only about the pipeline's companies
         self.assertIn("newer_than:37d", gmail.queries[0])
         text = json.dumps(counts)
@@ -216,7 +204,7 @@ class RunTests(unittest.TestCase):
         with self.assertRaises(outcomes.OutcomeError) as error:
             self.go([], store=store, broken=True)
         self.assertEqual(str(error.exception), "OUTCOMES_DEGRADED_SOURCE_INCOMPLETE")
-        self.assertEqual(list(store.doc["outcomes"]), [WALMART["key"]])                   # the last accepted outcomes stay
+        self.assertEqual(list(store.row["outcomes"]), [WALMART["key"]])                   # the last accepted outcomes stay
 
     def test_an_empty_pipeline_reads_no_mail(self):
         counts, _, gmail = self.go([], prior={"rows": []})
@@ -257,9 +245,9 @@ class ContactTests(unittest.TestCase):
     def test_a_scan_saves_the_contacts_and_an_older_save_without_them_still_loads(self):
         prior = {"rows": [dict(EXAMPLE)]}
         counts, store, _ = RunTests().go([msg(subject="Example next steps", sender="Maria Lopez", address="maria@example.com", days_ago=2)], prior=prior)
-        self.assertEqual((counts["contacts"], list(store.doc["contacts"])), (1, [EXAMPLE["key"]]))
+        self.assertEqual((counts["contacts"], list(store.row["contacts"])), (1, [EXAMPLE["key"]]))
         with mock.patch.object(outcomes, "STORE", store), mock.patch.object(outcomes, "_exists", lambda c: True):
-            self.assertEqual(outcomes.load(object())[2], store.doc["contacts"])
+            self.assertEqual(outcomes.load(object())[2], store.row["contacts"])
         old = FakeStore({"schema": 1, "scanned_at": NOW.isoformat(), "taken_at": NOW.isoformat(), "outcomes": {}})
         with mock.patch.object(outcomes, "STORE", old), mock.patch.object(outcomes, "_exists", lambda c: True):
             self.assertEqual(outcomes.load(object()), ({}, NOW.isoformat(), {}))
