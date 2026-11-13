@@ -185,6 +185,23 @@ class RunTests(unittest.TestCase):
             return [(b["type"], report_region.plain(b), walk(b["id"])) for b in notion.children.get(block_id, [])]
         return walk("dcc-callout")
 
+    def test_a_card_with_its_stamp_in_the_heading_reads_the_same_as_one_with_it_in_the_first_line(self):          # LIFE-609
+        old, new = page(), page()
+        for key, title, stamp, body in (("bills", "Bills: This Week", "Updated 10:07 PM CT", "0 due through one week from now · 26 bills due · 26 overdue · Bill Tracker"),
+                                        ("mail", "Mail Alerts", "Updated 10:12 PM CT", "13 waiting · 0 need review"),
+                                        ("amazon", "Amazon Orders", "Updated 10:08 PM CT", "0 in transit · 2 delivered (last 7 days) · 0 need review")):
+            new.children[f"{key}-callout"][0] = text_block(new, f"heading-{key}-callout", "heading_3", f"{title} ({stamp})")
+            new.children[f"{key}-callout"][1] = text_block(new, f"{key}-status-old", "paragraph", body)
+        before, after = card.read_areas(old, ENV), card.read_areas(new, ENV)
+        for label in ("Bills", "Mail Alerts", "Amazon"):
+            self.assertEqual(after[label]["status"], before[label]["status"], label)
+            self.assertEqual(card.classify(after[label], NOW), card.classify(before[label], NOW))
+            self.assertEqual(card.classify(after[label], NOW)[0], "fresh")
+        degraded = page()
+        degraded.children["mail-callout"][0] = text_block(degraded, "heading-mail-callout", "heading_3", "Mail Alerts (DEGRADED at 10:12 PM CT)")
+        degraded.children["mail-callout"][1] = text_block(degraded, "mail-status-old", "paragraph", "Physical Mail sync failed · showing last accepted state (Oct 12, 9:12 PM CT) · 13 waiting · 0 need review")
+        self.assertEqual(card.classify(card.read_areas(degraded, ENV)["Mail Alerts"], NOW), ("degraded", "10:12 PM"))
+
     def test_the_first_live_run_installs_the_layout_removes_the_old_lines_and_keeps_every_other_region(self):
         notion = page()
         before = {k: notion.full_tree(k) for k in ("calendar-callout", "jira-callout", "bills-callout", "amazon-callout", "attention-callout", "mail-callout")}

@@ -193,10 +193,12 @@ def _prove(client, module, before, protected_ids, tag, fail):
         raise fail("PROTECTED_REGION_CHANGED")
 
 
-def replace_text(client, block_id, title, module, blocks, protected_ids, fail, tag, live, headless=False):
+def replace_text(client, block_id, title, module, blocks, protected_ids, fail, tag, live, headless=False, heading=None):
     """Dry run: validate the target and return (existing children, [] ). Live: write, read back, verify. -> (existing children, removed count).
     headless (D129): the callout has no heading of its own (it holds only Jim's interactive view, which shows its own title), so the configured block id is the ownership proof;
-    it must hold at least one non-text block and no heading, and the text goes in at the top, above that view."""
+    it must hold at least one non-text block and no heading, and the text goes in at the top, above that view.
+    heading (LIFE-609): the heading text the card shows, `title (stamp)` (the way Calendar, Jira and Hiring carry their update time). The callout's heading may be `title` or `title (...)`; a live write
+    sets it to `heading` (one PATCH of the heading block's text, before the body is written) and the read-back requires it. None: the heading must be exactly `title`, as before."""
     meta = client.call("GET", f"/blocks/{quote(block_id, safe='')}")
     if not isinstance(meta, dict) or meta.get("type") != "callout" or not same_id(meta.get("id"), block_id):
         raise fail("CARD_NOT_OWNED")
@@ -205,7 +207,7 @@ def replace_text(client, block_id, title, module, blocks, protected_ids, fail, t
     if headless:
         if not existing or any(b.get("type") in HEADINGS for b in existing) or all(b.get("type") in TEXT_KINDS for b in existing):
             raise fail("CARD_NOT_OWNED")
-    elif not (existing and existing[0].get("type") in HEADINGS and plain(existing[0]).strip() == title):
+    elif not (existing and existing[0].get("type") in HEADINGS and (plain(existing[0]).strip() == title if heading is None else titled(plain(existing[0]), title) and titled(heading, title))):
         raise fail("CARD_NOT_OWNED")
     try:
         router.check_write(module, [title])
@@ -217,6 +219,9 @@ def replace_text(client, block_id, title, module, blocks, protected_ids, fail, t
     old_text = [b for b in body if b.get("type") in TEXT_KINDS]
     kept = [b["id"] for b in body if b.get("type") not in TEXT_KINDS]                    # tables, databases, pages and anything else stay, in order
     require_configured(protected_ids, fail)
+    shown = title if heading is None else heading
+    if shown != plain(existing[0]).strip():
+        client.call("PATCH", f"/blocks/{quote(existing[0]['id'], safe='')}", {existing[0]["type"]: {"rich_text": [{"type": "text", "text": {"content": shown}}]}})
 
     def intact():
         """Kept for the writers below; the proof is now the scope guard on the client, which acts before each write, so there is nothing to compare afterwards."""
@@ -224,7 +229,7 @@ def replace_text(client, block_id, title, module, blocks, protected_ids, fail, t
     if headless:
         return existing, _write_headless(client, block_id, title, module, blocks, existing, kept, old_text, intact, fail)
     if _in_place_ok(body, old_text, blocks):
-        return existing, _write_in_place(client, block_id, title, module, blocks, existing, kept, old_text, intact, fail)
+        return existing, _write_in_place(client, block_id, title, module, blocks, existing, kept, old_text, intact, fail, shown)
     try:
         placement = {"after": existing[0]["id"]}
         result = client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": blocks, **placement})
@@ -249,7 +254,7 @@ def replace_text(client, block_id, title, module, blocks, protected_ids, fail, t
             intact()
     after = children(client, block_id, fail)                                             # authoritative read-back
     intact()
-    if (not after or after[0].get("id") != existing[0].get("id") or plain(after[0]).strip() != title or len(after) != 1 + len(blocks) + len(kept)
+    if (not after or after[0].get("id") != existing[0].get("id") or plain(after[0]).strip() != shown or len(after) != 1 + len(blocks) + len(kept)
             or [plain(b) for b in after[1:1 + len(blocks)]] != [plain(b) for b in blocks] or [b.get("id") for b in after[1 + len(blocks):]] != kept):
         raise fail("CARD_VERIFY_FAILED")
     return existing, removed
@@ -263,7 +268,7 @@ def _in_place_ok(body, old_text, blocks):
     return all(old.get("type") == new.get("type") for old, new in zip(old_text, blocks))
 
 
-def _write_in_place(client, block_id, title, module, blocks, existing, kept, old_text, intact, fail):
+def _write_in_place(client, block_id, title, module, blocks, existing, kept, old_text, intact, fail, shown=None):
     """Each old line takes the new text in place (same block, same position); extra new lines go in right after them; surplus old lines are removed.
     The page never shows two versions of the card at once. Same ownership checks, protected-region proof after every write and authoritative read-back.
     -> removed count."""
@@ -305,7 +310,7 @@ def _write_in_place(client, block_id, title, module, blocks, existing, kept, old
     after = children(client, block_id, fail)                                             # authoritative read-back
     intact()
     rewritten = [b["id"] for b, _ in pairs]
-    if (not after or after[0].get("id") != existing[0].get("id") or plain(after[0]).strip() != title or len(after) != 1 + len(blocks) + len(kept)
+    if (not after or after[0].get("id") != existing[0].get("id") or plain(after[0]).strip() != (title if shown is None else shown) or len(after) != 1 + len(blocks) + len(kept)
             or [plain(b) for b in after[1:1 + len(blocks)]] != [plain(b) for b in blocks] or [b.get("id") for b in after[1:1 + len(rewritten)]] != rewritten
             or [b.get("id") for b in after[1 + len(blocks):]] != kept):
         raise fail("CARD_VERIFY_FAILED")

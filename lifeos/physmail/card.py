@@ -107,27 +107,29 @@ GROUPS = ((chains.REVIEW, "⚠️ Needs a look — notices conflict"),
           (chains.OPEN, "📥 Scanned — decide: forward, shred or recycle"))
 
 
+def heading_text(now, degraded=False):
+    """LIFE-609: the update time shares the heading, like Calendar: "Mail Alerts (Updated 2:30 PM CT)"; a card that cannot show current mail says "Mail Alerts (DEGRADED at 2:30 PM CT)"."""
+    return f"{TITLE} ({'DEGRADED at' if degraded else 'Updated'} {_local(now).strftime('%-I:%M %p')} CT)"
+
+
 def render(stored, now, sync_failed=False):
-    """-> (blocks, counts). Pure. The first line keeps its shape (the Command Center and Attention read it); then one native line per active piece."""
+    """-> (blocks, counts). Pure. The first line (the counts the Command Center reads; the update time is in the heading) comes first; then one native line per active piece."""
     now = _local(now)
     if stored is None:
-        return ([_paragraph(f"DEGRADED · Physical Mail starting state unknown at {now.strftime('%-I:%M %p')} CT · nothing accepted yet")],
+        return ([_paragraph("Physical Mail starting state unknown · nothing accepted yet")],
                 {"status": "degraded", "reason": "no_state"})
     accepted = stored.get("accepted_at")
     stale = not accepted or _local(datetime.fromisoformat(accepted)) < now - timedelta(hours=STALE_HOURS)
     facts = state_mod.summary(stored, now)
     reason = "sync_failed" if sync_failed else "stale" if stale else facts["degraded_reason"].lower() if facts["degraded_reason"] else None
     when = _local(datetime.fromisoformat(accepted)).strftime("%b %-d, %-I:%M %p") if accepted else "never"
-    if reason:
-        head = f"DEGRADED · Physical Mail {'sync failed' if sync_failed else 'evidence stale' if stale else 'needs a look'} at {now.strftime('%-I:%M %p')} CT · showing last accepted state ({when} CT)"
-    else:
-        head = f"Updated {now.strftime('%-I:%M %p')} CT"
+    head = f"Physical Mail {'sync failed' if sync_failed else 'evidence stale' if stale else 'needs a look'} · showing last accepted state ({when} CT) · " if reason else ""
     portal = _origin(stored.get("portal"))
     items = state_mod.pieces(stored)
     delivered = [p for p in items if isinstance(p["tracking"], dict) and p["tracking"].get("delivered")]
     items = [p for p in items if p not in delivered]
     waiting = facts["unidentified"] + facts["opened"] + facts["waiting_tracking"] - len(delivered)
-    blocks = [_paragraph(f"{head} · {waiting} waiting · {facts['review']} need review")]
+    blocks = [_paragraph(f"{head}{waiting} waiting · {facts['review']} need review")]
     cutoff = now - timedelta(days=state_mod.KEEP_DAYS)
     gone = state_mod.disposed(stored, cutoff)
     arrived = sum(1 for p in delivered if _local(datetime.fromisoformat(p["tracking"]["delivered"] + "T00:00:00")) >= cutoff.replace(hour=0, minute=0, second=0, microsecond=0))
@@ -172,7 +174,7 @@ def run(limit, live, environ=os.environ, connection=None, client=None, now=None)
     blocks, counts = render(stored, now, failed)
     client = client or _writer(environ)
     protected_ids = {region: (environ.get(name) or "").strip() for name, region in PROTECTED}
-    _, removed = report_region.replace_text(client, block_id, TITLE, MODULE, blocks, protected_ids, _fail, "mailalerts", live)
+    _, removed = report_region.replace_text(client, block_id, TITLE, MODULE, blocks, protected_ids, _fail, "mailalerts", live, heading=heading_text(now, counts["status"] == "degraded"))
     if live:
         counts["blocks_written"], counts["removed"] = len(blocks), removed
     return counts
