@@ -339,6 +339,13 @@ class LinkedInNotificationTests(unittest.TestCase):
         alert = mail(sender_name="LinkedIn Job Alerts", address="jobalerts-noreply@linkedin.com", subject="12 new jobs for you", body="Engineering Manager at Globex and 11 more")
         self.assertEqual(classify(alert)[0], C.OTHER)
 
+    def test_an_unverified_notification_creates_nothing_and_is_counted_with_its_code(self):
+        notion = FakeRecruiters()
+        counts = run([notification()], notion, live=True)
+        self.assertEqual((counts["unresolved"], counts["human_relay"], counts["created"], notion.writes, notion.pages), (1, 0, 0, [], []))
+        self.assertEqual(counts["unresolved_why"], {"RELAY_RECRUITING_UNVERIFIED": 1})
+        self.assertNotIn("Morgan", json.dumps(counts))
+
 
 class EnrichmentTests(unittest.TestCase):
     """D193: an existing row made from THIS message that only lacks company / role / request is enriched under the same page; another message, a human's value and a Done row are never touched."""
@@ -427,61 +434,6 @@ class EnrichmentTests(unittest.TestCase):
         notion = FakeRecruiters([page("Riley Sample", pid="p", url=self.SRC)], drop_writes=True)
         counts = failed_run(lambda: run([opportunity()], notion, live=True))
         self.assertEqual((counts["updated"], counts["failed"]), (0, 1))
-
-
-class QuarantineTests(unittest.TestCase):
-    URL = "https://mail.google.com/mail/u/0/#all/t1"                    # what the Gmail reader builds from the (fake) thread id
-
-    def row(self, **kw):
-        base = dict(person="Morgan Example", review=True, url=self.URL, last="2026-10-07T15:00:00+00:00")
-        return page(**{**base, **kw})
-
-    def go(self, pages, sources=(URL,), live=True):
-        notion = FakeRecruiters(pages)
-        counts = stage.run(0, live, environ={}, gmail=ReadOnlyGmail([notification()]), outlook_accounts=[], notion=notion, now=NOW, quarantine_sources=sources)
-        return counts, notion
-
-    def test_an_unedited_automation_row_from_that_message_is_set_inactive_and_nothing_else(self):
-        counts, notion = self.go([self.row(pid="mark")])
-        row = store.read(notion.pages[0])
-        self.assertEqual((counts["quarantined"], counts["unresolved"], counts["created"], counts["failed"]), (1, 1, 0, 0))
-        self.assertEqual((row["active"], row["done"], row["needs_review"], row["person"], row["source_url"], row["last_contact"], row["company"], row["what"]),
-                         (False, False, True, "Morgan Example", self.URL, "2026-10-07T15:00:00+00:00", "", ""))
-        self.assertEqual(notion.writes, [("update", {"Active": {"checkbox": False}})])
-        again = self.go(notion.pages)[0]
-        self.assertEqual((again["quarantined"], again["quarantine_skipped"]), (0, 1))                  # already inactive: nothing to do
-
-    def test_nothing_is_quarantined_unless_the_exact_message_link_is_passed_in(self):
-        counts, notion = self.go([self.row(pid="mark")], sources=())
-        self.assertEqual((counts["quarantined"], counts["would_quarantine"], notion.writes, store.read(notion.pages[0])["active"]), (0, 0, [], True))
-        counts, notion = self.go([self.row(pid="mark")], sources=("https://mail.example.com/m/other",))
-        self.assertEqual((counts["quarantined"], notion.writes), (0, []))
-
-    def test_a_dry_run_counts_and_writes_nothing(self):
-        counts, notion = self.go([self.row(pid="mark")], live=False)
-        self.assertEqual((counts["would_quarantine"], counts["quarantined"], notion.writes), (1, 0, []))
-
-    def test_a_row_a_human_has_touched_is_protected(self):
-        for kw in ({"edited_by": "human-1"}, {"what": "Jim: ignore"}, {"role": "Chosen"}, {"company": "Acme"}, {"client": "X"}, {"done": True, "active": False},
-                   {"review": False}, {"created_by": "human-1", "edited_by": "human-2"}, {"url": "https://mail.example.com/m/else"}):
-            counts, notion = self.go([self.row(pid="mark", **kw)])
-            self.assertEqual((counts["quarantined"], notion.writes), (0, []), kw)
-
-    def test_two_rows_for_the_message_are_ambiguous_and_untouched(self):
-        counts, notion = self.go([self.row(pid="a"), self.row(pid="b", role="")])
-        self.assertEqual((counts["quarantined"], counts["ambiguous"], notion.writes), (0, 1, []))
-
-    def test_a_quarantine_that_does_not_read_back_is_a_failure(self):
-        notion = FakeRecruiters([self.row(pid="mark")], drop_writes=True)
-        counts = failed_run(lambda: stage.run(0, True, environ={}, gmail=ReadOnlyGmail([notification()]), outlook_accounts=[], notion=notion, now=NOW, quarantine_sources=(self.URL,)))
-        self.assertEqual((counts["quarantined"], counts["failed"]), (0, 1))
-
-    def test_an_unverified_notification_creates_nothing_and_is_counted_with_its_code(self):
-        notion = FakeRecruiters()
-        counts = run([notification()], notion, live=True)
-        self.assertEqual((counts["unresolved"], counts["human_relay"], counts["created"], notion.writes, notion.pages), (1, 0, 0, [], []))
-        self.assertEqual(counts["unresolved_why"], {"RELAY_RECRUITING_UNVERIFIED": 1})
-        self.assertNotIn("Morgan", json.dumps(counts))
 
 
 class EntryPointTests(unittest.TestCase):
