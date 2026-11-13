@@ -18,7 +18,7 @@ from lifeos.platform import mail, names
 from lifeos.platform.gmail import Gmail, GmailError
 from lifeos.platform.notion_client import NotionError
 from lifeos.platform.snapshot_store import Store
-from . import snapshot as hiring_snapshot
+from . import models as M, snapshot as hiring_snapshot
 
 STORE, KEY, SCHEMA_V = Store("v7_hiring_outcomes"), 1, 1
 SCAN_EVERY_HOURS = 12                  # outcome mail is not urgent; the stage decides when it is due, so a tick that is not due reads no mail
@@ -46,15 +46,6 @@ def fail(code):
     return OutcomeError("OUTCOMES_" + code)
 
 
-def _tokens(text):
-    return names.tokens(text)
-
-
-def _contains(haystack, needle):
-    n = len(needle)
-    return n > 0 and any(haystack[i:i + n] == needle for i in range(len(haystack) - n + 1))
-
-
 def kind_of(text):
     """REJECTED | OFFER | None from the fixed wording. An offer wins when both appear (a rejection of one role and an offer for another is not told apart here, so the person looks)."""
     if OFFERED.search(text):
@@ -71,18 +62,18 @@ def _domain_labels(address):
 
 def mentions(message, company):
     """True when the company's words appear in order in the sender's name, the subject, the sender's domain or the opening of the body."""
-    want = _tokens(company)
+    want = names.tokens(company)
     if not want or len("".join(want)) < 3:
         return False
     for text in (message.get("sender_name", ""), message.get("subject", ""), (message.get("body") or "")[:BODY_CHARS]):
-        if _contains(_tokens(text), want):
+        if M.contains(names.tokens(text), want):
             return True
     return len(want) == 1 and want[0] in _domain_labels(message.get("sender_address"))
 
 
 def role_in(message, role):
-    words = set(_tokens(role))
-    return bool(words) and words <= set(_tokens(f"{message.get('subject', '')} {(message.get('body') or '')[:BODY_CHARS]}"))
+    words = set(names.tokens(role))
+    return bool(words) and words <= set(names.tokens(f"{message.get('subject', '')} {(message.get('body') or '')[:BODY_CHARS]}"))
 
 
 MODIFIERS = {"senior", "sr", "junior", "jr", "lead", "principal", "staff", "associate", "head", "chief", "group", "director", "vp", "assistant", "deputy", "executive", "global", "regional", "i", "ii", "iii", "iv", "1", "2", "3"}
@@ -91,7 +82,7 @@ MODIFIERS = {"senior", "sr", "junior", "jr", "lead", "principal", "staff", "asso
 def exact_role(message, role):
     """Auto-close (Jim, Oct 24): the role's own words appear together, in order, with no seniority word or level number touching them: "Program Manager" in
     "your application for Program Manager" is exact, in "Senior Program Manager" or "Program Manager II" it is another role."""
-    want, text = _tokens(role), _tokens(f"{message.get('subject', '')} {(message.get('body') or '')[:BODY_CHARS]}")
+    want, text = names.tokens(role), names.tokens(f"{message.get('subject', '')} {(message.get('body') or '')[:BODY_CHARS]}")
     n = len(want)
     return n > 0 and any(text[i:i + n] == want and (i == 0 or text[i - 1] not in MODIFIERS) and (i + n == len(text) or text[i + n] not in MODIFIERS)
                          for i in range(len(text) - n + 1))
@@ -100,10 +91,7 @@ def exact_role(message, role):
 def _since(row):
     """The moment the pipeline last had evidence for this row: its latest event, else its Applied date (start of that day, Central), else None."""
     value = row.get("event_start") or row.get("applied_on")
-    if not value:
-        return None
-    moment = datetime.fromisoformat(value) if "T" in value else datetime.fromisoformat(value + "T00:00:00-05:00")
-    return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+    return M.moment(value) if value else None
 
 
 def _received(message):
@@ -135,7 +123,7 @@ def attribute(message, roster, at):
     named = [row for row in roster if mentions(message, row["company"]) and (_since(row) is None or at > _since(row))]
     if not named:
         return None, "unmatched"
-    if len({tuple(_tokens(row["company"])) for row in named}) > 1:
+    if len({tuple(names.tokens(row["company"])) for row in named}) > 1:
         return None, "ambiguous"
     by_role = [row for row in named if role_in(message, row["role"])]
     pick = by_role if by_role else named
@@ -149,7 +137,7 @@ def _own_domain(domain, company):
     """LIFE-26: the employer's own registered domain and nothing under it: acme.com or acme.co.uk, never a tenant such as acme.myworkday.com or jira.acme.net."""
     labels = [label for label in domain.lower().split(".") if label]
     base = labels[:-2] if len(labels) > 2 and labels[-2] in SUFFIXES else labels[:-1]
-    return len(base) == 1 and base[0].replace("-", "") == "".join(_tokens(company))
+    return len(base) == 1 and base[0].replace("-", "") == "".join(names.tokens(company))
 
 
 def _person(message, company):
@@ -157,7 +145,7 @@ def _person(message, company):
     (Maria Lopez <maria.lopez@...> or <mlopez@...>). Brand, team and transactional senders have no such name."""
     words = re.findall(r"[a-z]+", (message.get("sender_name") or "").lower())
     local = (message.get("sender_address") or "").partition("@")[0].lower()
-    return (2 <= len(words) <= 4 and not set(words) & set(_tokens(company)) and not any(AUTOMATED.search(w) for w in words)
+    return (2 <= len(words) <= 4 and not set(words) & set(names.tokens(company)) and not any(AUTOMATED.search(w) for w in words)
             and any(len(w) >= 3 and w in local for w in words))
 
 

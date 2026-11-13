@@ -35,24 +35,20 @@ def nid(n):
 
 
 class Workspace:
-    """An in-memory Notion page hierarchy with just the calls V7 makes: list children, fetch a page, append blocks, move a page. Every switch breaks one step."""
+    """An in-memory Notion page hierarchy with just the calls V7 makes: list children, fetch a page, append blocks, relabel a line. The `fail` switches break one step."""
 
-    def __init__(self, retired=1, active=1):
-        self.blocks, self.kids, self.parent_of, self.times, self.log, self.versions = {}, {}, {}, {}, [], []
-        self.n, self.edits, self.gets = 100, 0, 0
-        self.fail, self.drop_move, self.lose_move, self.tamper, self.on_get, self.paged_forever = set(), False, False, None, {}, False
+    def __init__(self):
+        self.blocks, self.kids, self.parent_of, self.times, self.log = {}, {}, {}, {}, []
+        self.n, self.edits = 100, 0
+        self.fail = set()
         self.root = nid(1)
         self.put(self.root, "child_page", None, "Hiring Pipeline")
         self.add("callout", self.root, "Context and interview notes only.")
         cols = self.add("column_list", self.root)
-        self.col_active, self.col_retired = self.add("column", cols), self.add("column", cols)
+        self.col_active = self.add("column", cols)
         self.add("heading_2", self.col_active, "Active Opportunities")
-        self.add("heading_2", self.col_retired, "Retired Opportunities")
-        self.active = [self.add("child_page", self.root, "Active Opportunities") for _ in range(active)]           # the existing machine container
-        self.retired = [self.add("child_page", self.root, "Retired Opportunities") for _ in range(retired)]        # the container Jim would create
+        self.add("child_page", self.root, "Active Opportunities")                                          # the existing machine container
         self.target = self.opportunity(f"{COMPANY} — {ROLE}", "Pat Example")
-        self.sibling = self.opportunity(f"{COMPANY} — {SIBLING_ROLE}", "Sam Example")
-        self.other = self.opportunity("Contoso Freight — Program Manager", "Lee Example")
 
     def canon(self, bid):
         """V7 sends ids without dashes (decision._page_id); Notion accepts either form."""
@@ -79,9 +75,6 @@ class Workspace:
         self.add("paragraph", round_, "Transcript text.")
         return page
 
-    def digest(self, bid):
-        return [(k, self.blocks[k]["type"], (self.blocks[k].get(self.blocks[k]["type"]) or {}).get("title") if self.blocks[k]["type"] == "child_page" else "".join(r["plain_text"] for r in (self.blocks[k].get(self.blocks[k]["type"]) or {}).get("rich_text", []))) for k in self.kids[bid]]
-
     def parent_page(self, bid):
         parent = self.parent_of[bid]
         return {"type": "page_id", "page_id": parent} if self.blocks[parent]["type"] == "child_page" else {"type": "block_id", "block_id": parent}
@@ -90,16 +83,11 @@ class Workspace:
         assert method == "GET", (method, path)
         if path.startswith("/pages/"):
             bid = self.canon(path.split("/")[2])
-            self.gets += 1
             self.log.append(("GET", "page"))
-            if self.on_get.get(self.gets):
-                self.on_get[self.gets](self)
             return {"id": bid, "archived": False, "in_trash": False, "last_edited_time": self.times[bid], "parent": self.parent_page(bid),
                     "properties": {"title": {"type": "title", "title": [{"plain_text": self.blocks[bid]["child_page"]["title"]}]}}}
         bid = self.canon(path.split("/")[2].split("?")[0])
         self.log.append(("GET", "children"))
-        if self.paged_forever:
-            return {"results": [], "has_more": True, "next_cursor": None}
         return {"results": [copy.deepcopy(self.blocks[k]) for k in self.kids[bid]], "has_more": False}
 
     def call_once(self, method, path, body=None, version=None):
@@ -112,37 +100,14 @@ class Workspace:
             self.blocks[bid][kind] = {"rich_text": [{"plain_text": "".join(r["text"]["content"] for r in body[kind]["rich_text"])}]}
             self.edits += 1
             return {}
-        if method == "PATCH":
-            if "append" in self.fail:
-                raise NotionError("NOTION_HTTP_500")
-            for child in body["children"]:
-                new = self.add(child["type"], bid, "".join(r["text"]["content"] for r in child[child["type"]]["rich_text"]))
-                self.edits += 1
-                self.times[bid] = f"2026-10-06T00:00:{self.edits:02d}.000Z"
-            return {}
-        assert method == "POST" and path.endswith("/move") and body["parent"]["type"] == "page_id"
-        self.versions.append(version)
-        if "move" in self.fail:
+        assert method == "PATCH", (method, path)
+        if "append" in self.fail:
             raise NotionError("NOTION_HTTP_500")
-        if not self.drop_move:
-            dest = self.canon(body["parent"]["page_id"])
-            assert self.blocks[dest]["type"] == "child_page"                              # the Move page API takes a page as the new parent, never a column or other block
-            self.kids[self.parent_of[bid]].remove(bid)
-            self.kids[dest].append(bid)
-            self.parent_of[bid] = dest
+        for child in body["children"]:
+            new = self.add(child["type"], bid, "".join(r["text"]["content"] for r in child[child["type"]]["rich_text"]))
             self.edits += 1
             self.times[bid] = f"2026-10-06T00:00:{self.edits:02d}.000Z"
-            if callable(self.tamper):
-                self.tamper(self)
-        if self.lose_move:
-            raise NotionError("NOTION_NETWORK")
         return {}
-
-    def relocate(self, bid, new_parent):
-        """A person drags the page somewhere else (a column, a container, or out of the pipeline) between two V7 reads. The edit time is left alone, as Notion would for a parent a reader sees only by walking."""
-        self.kids[self.parent_of[bid]].remove(bid)
-        self.kids[new_parent].append(bid)
-        self.parent_of[bid] = new_parent
 
     def writes(self):
         return [e for e in self.log if e[0] in ("PATCH", "POST")]

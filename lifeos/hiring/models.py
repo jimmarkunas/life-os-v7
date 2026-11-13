@@ -2,7 +2,7 @@
 
 A stage appears only when deterministic evidence supports it: nothing here is a default. `rank` orders the stages the first slice can establish, so a missing source can never roll a row backward."""
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 
 from lifeos.platform import names
 
@@ -118,3 +118,15 @@ def same(a_company, a_role, b_company, b_role):
 
 def label(company, role):
     return f"{company} — {role}" if role else company
+
+
+def contains(haystack, needle):
+    """The token list `needle` appears in order, unbroken, inside `haystack`."""
+    n = len(needle)
+    return n > 0 and any(haystack[i:i + n] == needle for i in range(len(haystack) - n + 1))
+
+
+def moment(value):
+    """An ISO date or time as an aware moment: a bare date is the start of that day, Central; no zone means UTC."""
+    at = datetime.fromisoformat(value if "T" in value else value + "T00:00:00-05:00")
+    return at if at.tzinfo else at.replace(tzinfo=timezone.utc)

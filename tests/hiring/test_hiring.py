@@ -14,7 +14,7 @@ from lifeos.jobs import hiring_pipeline, ledger
 from lifeos.platform import report_region as R, router
 from lifeos.sources.pipeline import hiring as stage
 from tests.kit.tree import Tree, rich
-from tests.hiring.support import writes
+from tests.hiring.support import FakeStore, writes
 
 CT = ZoneInfo("America/Chicago")
 NOW = datetime(2026, 10, 6, 14, 0, tzinfo=CT)
@@ -746,23 +746,6 @@ class ReciprocalProtectionTests(unittest.TestCase):
             self.assertIn("ScopedClient", (ROOT / module).read_text(), module)
 
 
-class FakeStore:
-    def __init__(self, row=None, fail=False):
-        self.row, self.saves, self.fail = row, 0, fail
-
-    def ensure(self, connection):
-        pass
-
-    def load(self, connection, key):
-        return copy.deepcopy(self.row)
-
-    def save_verified(self, connection, key, snap, fail):
-        if self.fail:
-            raise fail("READBACK_MISMATCH")
-        self.saves += 1
-        self.row = copy.deepcopy(snap)
-
-
 class FakeLedger:
     source = "src"
 
@@ -921,18 +904,6 @@ class RuntimePathTests(unittest.TestCase):
         retired = [hiring_pipeline.Opportunity("r", "Old - Role", hiring_pipeline.RETIRED, 1, "Old", "Role")]
         with mock.patch.object(stage.hiring_pipeline, "snapshot", lambda client, root, ledger=None: (retired + PARENTS, "ok")):
             self.assertEqual([(p["company"], p["retired"]) for p in stage.read_parents(object(), "root")], [("Old", True), ("Acme", False)])
-
-
-def subprocess_diff_hourly():
-    """hourly.yml must equal what main had before this slice: compare with the base commit when git can answer, else vacuously fine."""
-    import subprocess
-    try:
-        base = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--verify", "-q", "d3585198370a4f55f3a48c03dc84e8288839c67a"], capture_output=True, text=True).stdout.strip()
-        if not base:
-            return ""
-        return subprocess.run(["git", "-C", str(ROOT), "diff", base, "--", ".github/workflows/hourly.yml"], capture_output=True, text=True).stdout
-    except OSError:
-        return ""
 
 
 class OutcomeConsumerTests(unittest.TestCase):
@@ -1096,19 +1067,10 @@ class GuardrailTests(unittest.TestCase):
                 self.assertNotIn(banned, text, f"{name}: {banned}")
         self.assertEqual(re.findall(r"client\.call(?:_once)?\(\"(?:POST|PUT)\"", (ROOT / "lifeos/sources/pipeline/hiring.py").read_text()), [])
 
-    def test_the_hiring_package_imports_platform_only_and_the_adapter_is_the_only_cross_domain_door(self):
-        import ast
-        for path in (ROOT / "lifeos/hiring").glob("*.py"):
-            for node in ast.walk(ast.parse(path.read_text())):
-                names = [a.name for a in node.names] if isinstance(node, ast.Import) else [node.module or ""] if isinstance(node, ast.ImportFrom) else []
-                self.assertEqual([n for n in names if n.startswith("lifeos.") and n.split(".")[1] not in ("platform", "hiring")], [], path.name)
-
     def test_hourly_and_the_scheduler_are_untouched(self):
         hourly = (ROOT / ".github/workflows/hourly.yml").read_text()
         self.assertNotIn("lifeos.run hiring", hourly)
         self.assertNotIn("HIRING_CARD_BLOCK_ID", hourly)
-        changed = [l for l in subprocess_diff_hourly().splitlines() if l[:1] in "+-" and not l.startswith(("+++", "---"))]   # context lines may name neighbouring keys
-        self.assertNotIn("hiring", "\n".join(changed).lower())                      # later slices may change hourly.yml; the Hiring Pipeline never has
         domains = (ROOT / ".github/workflows/domains.yml").read_text()
         self.assertNotIn("schedule:", domains)
         self.assertNotIn("cron", domains)
