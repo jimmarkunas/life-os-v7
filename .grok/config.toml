@@ -1,6 +1,6 @@
 # concord:mcp-start
 [mcp_servers.concord]
-command = "concord-mcp"
+command = "/Users/jimmarkunas/.local/bin/concord-mcp"
 args = []
 enabled = true
 

@@ -1,13 +1,91 @@
 {
   "about": "Every piece of code this repo borrows from outside (LIFE-635). tests/contracts/test_borrowed_code.py fails on any action, download or installer not listed here. level a = remove (replace with our own), b = vendor and pin, c = accepted exception.",
   "actions": [
-    {"name": "actions/cache", "owner": "Jim", "level": "c", "reason": "GitHub's own cache service has no other client; pinned by fingerprint (LIFE-640)", "review": "2026-12-13"},
-    {"name": "./.github/actions/sm-action", "owner": "Jim", "level": "b", "reason": "vendored copy of bitwarden/sm-action v3.0.1 (GPL-3.0, LICENSE kept), download and cargo fallback deleted (LIFE-636); the helper program stays SHA-256 checked", "review": "2026-12-13"}
+    {
+      "name": "actions/cache",
+      "owner": "Jim",
+      "level": "c",
+      "reason": "accepted exception: GitHub's own cache service has no other client; pinned by fingerprint (LIFE-640)",
+      "review": "2026-12-13"
+    },
+    {
+      "name": "./.github/actions/sm-action",
+      "owner": "Jim",
+      "level": "b",
+      "reason": "vendored copy of bitwarden/sm-action v3.0.1 (GPL-3.0, LICENSE kept), download and cargo fallback deleted (LIFE-636); the helper program stays SHA-256 checked",
+      "review": "2026-12-13"
+    }
   ],
   "downloads": [
-    {"name": "Node.js v24.22.3 (official tarball)", "owner": "Jim", "level": "b", "reason": "downloaded from nodejs.org and unpacked only if its SHA-256 equals the one recorded in .github/actions/node/node.sha256 (LIFE-639); runs the Concord Room plugin tests", "review": "2026-12-13", "files": [".github/actions/node/install.sh"]},
-    {"name": "Tailscale client 1.94.2 (official tarball)", "owner": "Jim", "level": "b", "reason": "downloaded from pkgs.tailscale.com and installed only if its SHA-256 equals the one recorded in .github/actions/tailscale/tailscale.sha256 (LIFE-637)", "review": "2026-12-13", "files": [".github/actions/tailscale/install.sh"]},
-    {"name": "bws helper binary", "owner": "Jim", "level": "b", "reason": "downloaded then checked against a committed fingerprint before use", "review": "2026-12-13", "files": [".github/actions/bws-helper/fetch.sh"]},
-    {"name": "Playwright Chromium and its system libraries", "owner": "Jim", "level": "c", "reason": "the browser tests need a real Chromium; installed from Playwright and the runner image's packages (LIFE-640)", "review": "2026-12-13", "files": [".github/actions/browser/action.yml"]}
+    {
+      "name": "Node.js v24.22.3 (official tarball)",
+      "owner": "Jim",
+      "level": "b",
+      "reason": "downloaded from nodejs.org and unpacked only if its SHA-256 equals the one recorded in .github/actions/node/node.sha256 (LIFE-639); runs the Concord Room plugin tests",
+      "review": "2026-12-13",
+      "files": [
+        ".github/actions/node/install.sh"
+      ]
+    },
+    {
+      "name": "Tailscale client 1.94.2 (official tarball)",
+      "owner": "Jim",
+      "level": "b",
+      "reason": "downloaded from pkgs.tailscale.com and installed only if its SHA-256 equals the one recorded in .github/actions/tailscale/tailscale.sha256 (LIFE-637)",
+      "review": "2026-12-13",
+      "files": [
+        ".github/actions/tailscale/install.sh"
+      ]
+    },
+    {
+      "name": "bws helper binary",
+      "owner": "Jim",
+      "level": "b",
+      "reason": "downloaded then checked against a committed fingerprint before use",
+      "review": "2026-12-13",
+      "files": [
+        ".github/actions/bws-helper/fetch.sh"
+      ]
+    },
+    {
+      "name": "Playwright Chromium and its system libraries",
+      "owner": "Jim",
+      "level": "c",
+      "reason": "the browser tests need a real Chromium (Playwright 1.47.0); Playwright publishes no fingerprint for its browser download, so this is an accepted exception, installed from Playwright and the runner image's packages (LIFE-640)",
+      "review": "2026-12-13",
+      "files": [
+        ".github/actions/browser/action.yml"
+      ]
+    }
+  ],
+  "packages": [
+    {
+      "name": "@concord-ai/concord-mcp",
+      "version": "0.20.0",
+      "integrity": "sha512-Am15v7c1x34GTirYbI6MjR/T6Pc2uac2dgtYTS8rW0fUm9c3ZNHpSG0AzTMhZQxNBBxgoNi9EcSwK7JmqEHGNA==",
+      "path": "/Users/jimmarkunas/.local/bin/concord-mcp",
+      "owner": "Jim",
+      "level": "c",
+      "reason": "Concord's MCP server, installed on Jim's Mac outside the repo at a pinned version (tools/orca-concord-room/README.md); all seven agent MCP configs call it by this absolute path, never by a PATH lookup",
+      "review": "2026-12-13",
+      "configs": [
+        ".mcp.json",
+        ".gemini/settings.json",
+        ".grok/config.toml",
+        ".cursor/mcp.json",
+        ".agents/mcp_config.json",
+        ".github/mcp.json",
+        ".devin/mcp_config.json"
+      ]
+    }
+  ],
+  "baselines": [
+    {
+      "name": "GitHub-hosted runner image ubuntu-24.04",
+      "owner": "Jim",
+      "level": "c",
+      "reason": "accepted baseline: the operating system, git, Python 3.12, curl and sudo the jobs run on; there is no alternative to the host image",
+      "review": "2026-12-13"
+    }
   ]
 }
