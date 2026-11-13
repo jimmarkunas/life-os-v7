@@ -99,9 +99,8 @@ def concurrency_from_env(environ=None):
     boards, web and web-scale-up (default: the same 8 workers a single stage uses today)."""
     environ = os.environ if environ is None else environ
     from lifeos.platform import limits                                                 # noqa: PLC0415
-    return {"caps": {"linkedin": _small_int(environ.get("TICK_CAP_LINKEDIN"), CAP_DEFAULTS["linkedin"]), "tinyfish": _small_int(environ.get("TICK_CAP_TINYFISH"), CAP_DEFAULTS["tinyfish"]),
-                     "jobright": _small_int(environ.get("TICK_CAP_JOBRIGHT"), CAP_DEFAULTS["jobright"]), "dice": _small_int(environ.get("TICK_CAP_DICE"), CAP_DEFAULTS["dice"]),
-                     "ats": _small_int(environ.get("TICK_CAP_ATS"), limits.ATS_WORKERS)},
+    caps = {name: _small_int(environ.get("TICK_CAP_" + name.upper()), default) for name, default in CAP_DEFAULTS.items()}
+    return {"caps": {**caps, "ats": _small_int(environ.get("TICK_CAP_ATS"), limits.ATS_WORKERS)},
             "parallel": _small_int(environ.get("TICK_MAX_PARALLEL"), MAX_PARALLEL_DEFAULT)}
 
 

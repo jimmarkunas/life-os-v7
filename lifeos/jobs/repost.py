@@ -5,7 +5,7 @@ DUPLICATE of it (repost_of) and bumps the original's seen_count/last_seen. Ghost
 3+ sightings inside 60 days, or no real posting date for 21+ days, flags `ghost_flag` (Review Reason in Notion).
 sync_last_seen(): daily Notion write per resighted/flagged page (no reads).
 """
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 
 from lifeos.jobs import ledger, store
 from lifeos.platform import notion_client
@@ -18,8 +18,7 @@ SYNC_PER_RUN = 100
 LIVE_STATES = ("NEW", "RESOLVED", "READY", "PUBLISHED", "HOLD")
 
 
-def _now():
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+_now = store.now
 
 
 def link(cursor, key, fuzzy, now):
