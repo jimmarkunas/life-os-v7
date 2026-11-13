@@ -15,7 +15,7 @@ from lifeos.platform import source_registry as registry
 NOT_YET_MIGRATED = frozenset((
     "board-check", "boards-preview", "granola-auto", "hiring", "interview", "job-page-outreach", "mail-filing", "manual-job",
     "megibow", "network-layout", "network-match", "network-surface", "newsletter-trace", "notion-sandbox-access", "notion-sandbox-outreach-proof", "oracle-card", "outlook-newsletters",
-    "scale-up-boards", "scale-up-register", "web-scale-up"))
+    "scale-up-boards", "scale-up-register"))
 
 
 def unlisted(stages, sources=registry.SOURCES, legacy=NOT_YET_MIGRATED):
@@ -51,6 +51,21 @@ class EveryEntryIsReal(unittest.TestCase):
     def test_every_not_yet_migrated_name_is_still_a_stage_under_lifeos_sources(self):
         for name in NOT_YET_MIGRATED:
             self.assertTrue(run.STAGES[name].target[0].startswith("lifeos.sources"), name)
+
+
+class FixedArguments(unittest.TestCase):
+    def test_a_registered_source_passes_its_fixed_arguments_to_the_stage_function(self):
+        self.assertEqual(next(s for s in registry.SOURCES if s.name == "web-scale-up").args, {"lane": "Scale-Up"})
+        seen = {}
+        module = types.ModuleType("lifeos.sources._args_source")
+        module.run = lambda limit, live, **fixed: seen.update(limit=limit, live=live, **fixed) or {}
+        sys.modules[module.__name__] = module
+        try:
+            stages = registry.stages(run.lazy, (registry.Source("args-source", module.__name__, args={"lane": "X"}),))
+            stages["args-source"](3, False)
+        finally:
+            del sys.modules[module.__name__]
+        self.assertEqual(seen, {"limit": 3, "live": False, "lane": "X"})
 
 
 class MissingSourcesAreCaught(unittest.TestCase):

@@ -21,6 +21,7 @@ class Source:
     name: str                                   # the stage name
     module: str                                 # the module that holds the stage function
     function: str = "run"
+    args: dict = field(default_factory=dict)    # fixed keyword arguments for the stage function (e.g. the Scale-Up lane)
     floor: int = 0                              # raise a smaller --limit to this (the same meaning as run.lazy)
     tick: dict | None = None                    # run inside the Jobs tick: the keyword arguments of tick.Step (budget, limit, bulk, group, providers)
     after: str = ""                             # the tick step it follows
@@ -38,7 +39,7 @@ SOURCES = load()
 
 def stages(lazy, sources=SOURCES):
     """-> {name: stage function} for the registered sources; `lazy` is lifeos.run.lazy (passed in so this file imports nothing)."""
-    return {s.name: lazy(s.module, s.function, floor=s.floor) for s in sources}
+    return {s.name: lazy(s.module, s.function, floor=s.floor, **s.args) for s in sources}
 
 
 def with_tick_steps(base, make_step, sources=SOURCES):

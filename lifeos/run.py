@@ -71,7 +71,6 @@ STAGES = {
     "resolve-linkedin": _linkedin,
     "resolve-dice": lazy("lifeos.jobs.resolve.aggregators.dice"),
     "hermes": lazy("lifeos.hermes_requests"),          # LIFE-307: one signed Buzz request per new `hermes`-labelled Agent Go issue; dry run unless --live
-    "web-scale-up": lazy("lifeos.sources.web.run", lane="Scale-Up"),
     "boards-preview": lazy("lifeos.sources.web.boards", "preview"),     # D202 acceptance: read-only, counts only
     "alerts": lazy("lifeos.jobs.alerts"),
     "interview-probe": lazy("lifeos.interview.stage", "probe"),
