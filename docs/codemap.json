@@ -468,6 +468,7 @@
    "lifeos/platform/rest.py": "One retrying JSON call for the API clients (Jira, Google Calendar, Outlook). The caller builds a fresh Request for every attempt (so a refreshed token is used); transient",
    "lifeos/platform/router.py": "The hourly router contract for the ChatGPT-native `LIFE OS Daily Runs` task: independent modules with one of three outcomes, and strict ownership of Daily Report regions.",
    "lifeos/platform/runtime.py": "Bounded execution primitives (ported, trimmed, from the V2 runtime kernel). Not a workflow engine: a deadline, a run id and a terminal result shape.",
+   "lifeos/platform/scheduled_jobs.py": "LIFE-627: one read-only list of every job that starts on a clock, with its schedule and last run in Central Time and a state: on time, late, missing, not due or unknown.",
    "lifeos/platform/snapshot_store.py": "One private snapshot table: a row per key (a project, or the single row 1), replaced each run. The database is private; this repo is not. Used by the Jira, Bills and Agen",
    "lifeos/platform/socket_exchange.py": "LIFE-526: one request to an Oracle service over a plain socket (the fit1 and gran1 frames), read to the server's close.",
    "lifeos/platform/source_registry.py": "LIFE-618: the one list of job sources, read from source_registry.json. Adding a source = its module + one object in that file (plus its tests); nothing else is edited by ",

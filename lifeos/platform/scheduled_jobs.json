@@ -1,0 +1,11 @@
+{"jobs": [
+  {"job": "hourly run", "host": "oracle, github", "schedule": "every hour at :17 (Oracle tick); backups :07 :27 :47 (GitHub)", "rule": "gap", "source": "hourly.yml", "match": {"display_title": "tick"}, "late": 75, "missing": 150, "unit": "lifeos-ticker-tick.timer"},
+  {"job": "watchdog", "host": "github", "schedule": "every hour at :17 and :47", "rule": "gap", "source": "watchdog.yml", "late": 90, "missing": 150},
+  {"job": "weekly safety check", "host": "github", "rule": "weekly", "source": "safety.yml", "weekday": 0, "utc": "13:17", "late": 720, "missing": 1440},
+  {"job": "domain jobs", "host": "github", "schedule": "after each tick", "rule": "after", "source": "domains.yml", "after": "hourly.yml", "late": 30},
+  {"job": "ticker watch", "host": "oracle", "schedule": "every hour at :05 :20 :35 :50", "rule": "unknown", "unit": "lifeos-ticker-watch.timer"},
+  {"job": "off-site backup", "host": "oracle", "schedule": "daily 2:30 AM", "rule": "unknown", "unit": "lifeos-offsite-backup.timer"},
+  {"job": "Close release", "host": "oracle", "schedule": "not in the repo", "rule": "unknown", "unit": "lifeos-close-release.timer"},
+  {"job": "iMessage attention", "host": "mac", "schedule": "no clock (starts on demand)", "rule": "unknown", "unit": "ai.lifeos.imessage-attention"},
+  {"job": "iMessage relay", "host": "mac", "schedule": "no clock (starts on demand)", "rule": "unknown", "unit": "ai.lifeos.imessage-relay"}
+]}
