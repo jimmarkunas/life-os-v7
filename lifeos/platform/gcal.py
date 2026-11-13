@@ -12,6 +12,7 @@ import urllib.parse
 import urllib.request
 
 from lifeos.platform import rest
+from lifeos.platform.fixed_code import fixed
 
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 API = "https://www.googleapis.com/calendar/v3"
@@ -47,11 +48,9 @@ def openssl_sign(private_key_pem, message):
 
 class GoogleCalendar:
     def __init__(self, service_account_json, calendar_id, timeout=30, sleep=time.sleep, sign=openssl_sign, clock=time.time):
-        try:
+        with fixed((ValueError, KeyError, TypeError), GcalError, "GCAL_CONFIG_INVALID"):
             info = json.loads(service_account_json)
             self._email, self._key = info["client_email"], info["private_key"]
-        except (ValueError, KeyError, TypeError):
-            raise GcalError("GCAL_CONFIG_INVALID") from None
         if not calendar_id:
             raise GcalError("GCAL_CONFIG_INVALID")
         self._calendar = urllib.parse.quote(calendar_id, safe="")
@@ -75,11 +74,9 @@ class GoogleCalendar:
             request = urllib.request.Request(TOKEN_URL, method="POST", headers={"Content-Type": "application/x-www-form-urlencoded"},
                                              data=urllib.parse.urlencode({"grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
                                                                           "assertion": assertion}).encode())
-            try:
+            with fixed((urllib.error.URLError, TimeoutError, OSError, ValueError, KeyError), GcalError, "GCAL_AUTH_FAILED"):
                 with urllib.request.urlopen(request, timeout=self._timeout) as response:
                     self._token = json.loads(response.read())["access_token"]
-            except (urllib.error.URLError, TimeoutError, OSError, ValueError, KeyError):
-                raise GcalError("GCAL_AUTH_FAILED") from None
         return self._token
 
     def request(self, method, path, params=None, body=None, ok=(200,)):
