@@ -7,7 +7,7 @@ import os
 import subprocess
 import sys
 
-PROTECTED = ("docs/PRIVACY.md", "tests/contracts/test_privacy.py", ".claude/settings.json")
+PROTECTED = ("docs/PRIVACY.md", "tests/contracts/test_privacy.py", ".claude/settings.json", "tools/push_life_branch.sh")   # LIFE-663: the one force-style push agents may run
 LABEL = "protected-file-approved"
 
 
