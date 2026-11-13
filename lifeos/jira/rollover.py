@@ -1,6 +1,7 @@
-"""Scheduled 7/14-day sprint rollover. Read-only unless live; fails closed on ambiguity; never closes a
-sprint before its end, never closes it before the carry-forward is verified, and verifies every step it takes.
-Output is counts and fixed codes only: sprint names, issue keys and summaries are private."""
+"""Scheduled 7/14-day Jira sprint rollover: read-only unless live, fails closed on ambiguity, verifies every step it takes.
+
+Never closes a sprint before its end, and never closes it before the carry-forward is verified. A sub-task stranded under a finished parent is left out of the move (D181).
+Output: counts and fixed codes only; sprint names, issue keys and summaries are private."""
 import os
 import time
 from datetime import datetime, time as clock, timedelta

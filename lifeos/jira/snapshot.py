@@ -1,5 +1,6 @@
 """Read-only Jira execution snapshot per board, kept in the private database (never in this public repo) for the report.
-Output is counts only: ticket keys, summaries and sprint names are private."""
+
+Output: counts only; ticket keys, summaries and sprint names are private."""
 import os
 import time
 from datetime import datetime

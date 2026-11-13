@@ -102,6 +102,19 @@ class FixedCode(unittest.TestCase):
         self.assertEqual(str(caught.exception), "X_FAILED")
 
 
+class CauseCode(unittest.TestCase):
+    def test_a_notion_error_prints_its_own_code_before_the_fixed_code_and_nothing_else_does(self):
+        import io
+        from contextlib import redirect_stdout
+        from lifeos.platform.notion_client import NotionError
+        for error, printed in ((NotionError("NOTION_HTTP_409"), "cause=NOTION_HTTP_409\n"), (ValueError("secret body"), "")):
+            out = io.StringIO()
+            with redirect_stdout(out), self.assertRaises(Boom) as caught:
+                with fixed(Exception, Boom, "X_FAILED"):
+                    raise error
+            self.assertEqual((out.getvalue(), str(caught.exception)), (printed, "X_FAILED"))
+
+
 class PlainText(unittest.TestCase):
     def test_plain_text_is_preferred_then_the_text_content_and_non_objects_are_skipped(self):
         self.assertEqual(notion_text.plain([{"plain_text": "a"}, {"text": {"content": "b"}}, "x", {"plain_text": None, "text": {"content": None}}, {}]), "ab")

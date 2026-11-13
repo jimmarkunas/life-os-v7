@@ -1,8 +1,9 @@
-"""MegIBOW history (D148): the weeks before V7 took over, from Jim's own Google Sheet "Megibow Dashboard" (his week-of dates, each placed in the Monday to Sunday week that contains it).
+"""MegIBOW history (D148): the weeks before V7 took over, recorded from Jim's own Google Sheet and shown in their weeks, never added to Cumulative twice.
 
-V7 cannot see everything Jim did before the cutover (a recruiter who phoned his mobile leaves no mail or calendar trace), so these recorded numbers, not V7's reading of the mailbox, are the history.
-They are already inside the Legacy totals seeded in the Notion block (Outreach 20, Scheduled 13, Networking Calls 11, Recruiter Calls 36, Company Calls 15 = 95), so they are SHOWN in their weeks and never added to Cumulative a second time.
 Counts only: no names, no addresses."""
+# Why these numbers and not V7's reading of the mailbox (D148): a recruiter who phoned Jim's mobile leaves no mail or calendar trace, so the sheet is the history.
+# The weeks are already inside the Legacy totals seeded in the Notion block (Outreach 20, Scheduled 13, Networking Calls 11, Recruiter Calls 36, Company Calls 15 = 95).
+# Each sheet week-of date is placed in the Monday to Sunday week that contains it.
 from datetime import date
 
 ORDER = ("Outreach", "Scheduled", "Networking Calls", "Recruiter Calls", "Company Calls")

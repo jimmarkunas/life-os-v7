@@ -24,6 +24,7 @@ from urllib.parse import quote, urlparse
 from zoneinfo import ZoneInfo
 
 from lifeos.platform import report_region as R, router
+from lifeos.platform.fixed_code import note_cause
 from lifeos.platform.notion_client import Client, NotionError
 from . import notion as store
 
@@ -278,6 +279,7 @@ def present(client, environ, build, heading, live):
     except Exception as error:
         if str(error) == str(fail("WRITE_OUT_OF_SCOPE")):          # the guard refused a block that is not ours before anything was sent; keep its code
             raise
+        note_cause(error)
         try:                                                     # a half-written table must not look current: the heading says so, best effort
             _retitle(scoped, found["heading"]["id"], f"{TITLE} (DEGRADED)")
         except Exception:

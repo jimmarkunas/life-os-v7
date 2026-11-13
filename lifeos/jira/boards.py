@@ -1,5 +1,7 @@
-"""Which Jira boards V7 manages: JIRA_BOARDS="KEY:board_id[:flag...],..." (a secret; keys and ids stay out of the public repo).
-Flags: all = triage every non-Epic item; readonly = snapshot only, never sprint rollover (e.g. a team board until opted in)."""
+"""Which Jira boards V7 manages, read from JIRA_BOARDS (a secret: keys and ids stay out of the public repo).
+
+JIRA_BOARDS="KEY:board_id[:flag...],...". Flags: all = triage every non-Epic item; readonly = snapshot only, never sprint rollover (e.g. a team board until opted in).
+Failure: JIRA_CONFIG_MISSING:JIRA_BOARDS."""
 import os
 
 from lifeos.platform.jira import JiraError
