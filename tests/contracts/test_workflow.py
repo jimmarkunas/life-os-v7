@@ -1080,6 +1080,96 @@ class SweepFailureIsItsOwnLaneTests(unittest.TestCase):
         self.assertIn("always()", self.doc["jobs"]["report"]["if"])
 
 
+class FinishFailuresAreSurfacedTests(unittest.TestCase):
+    """LIFE-653: a failed browser install costs only the Jobright lane, and no `continue-on-error` step in the finish job fails silently: each is a lane in the lanes step or is listed here with its reason."""
+    SILENT = {
+        None: "the tailnet join (no id): a failed join only means no Oracle fallback (LIFE-85)",
+        "review": "dispatch-only report: a person started it and reads the log",
+        "explain": "dispatch-only report: a person started it and reads the log",
+        "boardcheck": "dispatch-only report: a person started it and reads the log",
+        "funnel": "dispatch-only report: a person started it and reads the log",
+        "boards_preview": "dispatch-only report: a person started it and reads the log",
+    }
+
+    @classmethod
+    def setUpClass(cls):
+        try:
+            cls.doc = yaml.safe_load(pathlib.Path(__file__).resolve().parents[2].joinpath(".github/workflows/hourly.yml").read_text())
+        except NameError:
+            raise unittest.SkipTest("pyyaml unavailable") from None
+        cls.steps = cls.doc["jobs"]["finish"]["steps"]
+        cls.lanes = next(s for s in cls.steps if s.get("id") == "lanes")
+
+    def lane_result(self, failed_step):
+        import os
+        import subprocess
+        import tempfile
+        script = re.sub(r"\$\{\{\s*([^}]+?)\s*\}\}", lambda m: "failure" if m.group(1) == f"steps.{failed_step}.outcome" else "success", self.lanes["run"])
+        with tempfile.TemporaryDirectory() as directory:
+            output = pathlib.Path(directory, "out")
+            done = subprocess.run(["bash", "-e", "-c", script], env={**os.environ, "GITHUB_OUTPUT": str(output)}, capture_output=True, text=True, check=False)
+            return done.returncode, next(line for line in output.read_text().splitlines() if line.startswith("failed="))
+
+    def test_every_continue_on_error_step_is_a_lane_or_listed_as_silent_with_a_reason(self):
+        listed = set(re.findall(r"=\$\{\{ steps\.(\w+)\.outcome \}\}", self.lanes["run"]))
+        for step in self.steps:
+            if step.get("continue-on-error") and step.get("id") != "lanes":
+                ident = step.get("id")
+                self.assertTrue(ident in listed or (ident in self.SILENT and self.SILENT[ident]), f"silent and unlisted: {ident or step.get('name')}")
+        self.assertTrue(listed.isdisjoint(self.SILENT))                                # a step is one or the other, never both
+        for ident in self.SILENT:
+            if ident:
+                self.assertIn(ident, [s.get("id") for s in self.steps])                # a stale entry fails here
+
+    def test_the_network_surface_and_alerts_steps_are_lanes_and_still_do_not_stop_the_steps_after_them(self):
+        for ident in ("network_surface", "alerts"):
+            step = next(s for s in self.steps if s.get("id") == ident)
+            self.assertTrue(step.get("continue-on-error"), ident)                      # every later stage still runs
+            self.assertEqual(self.lane_result(ident), (1, f"failed={ident}"))          # the run ends red and names only the lane
+            for later in self.steps[self.steps.index(step) + 1:]:
+                if "annotation" not in later.get("name", ""):                          # the warning step reads the outcome on purpose
+                    self.assertNotIn(f"steps.{ident}.", str(later.get("if", "")), later.get("name"))
+        self.assertEqual(self.lane_result("none"), (0, "failed="))                    # nothing changes when they succeed
+
+    def test_a_failed_browser_install_is_only_the_jobright_lane_and_the_tick_skips_only_that_stage(self):
+        browser = next(s for s in self.steps if s.get("id") == "browser")
+        tick = next(s for s in self.steps if s.get("id") == "tick")
+        self.assertTrue(browser.get("continue-on-error"))
+        self.assertEqual(self.lane_result("browser"), (1, "failed=jobright"))          # the lane is named; the tick lane stays green when only the browser failed
+        self.assertEqual(tick["env"]["TICK_SKIP_STAGES"], "${{ steps.browser.outcome == 'failure' && 'resolve-jobright' || '' }}")
+        self.assertNotIn("steps.browser", str(tick.get("if", "")))                     # the tick still runs after a failed install
+        for later in self.steps[self.steps.index(browser) + 1:]:
+            self.assertNotIn("steps.browser", str(later.get("if", "")), later.get("name"))
+        manual = next(s for s in self.doc["jobs"]["jobright"]["steps"] if s.get("id") == "jobright_browser")
+        self.assertNotIn("continue-on-error", manual)                                  # the manual Jobright job is the lane itself: its install failure still fails it
+        self.assertEqual(self.lane_result("tick"), (1, "failed=tick"))
+
+    def test_credentials_the_gate_and_unit_tests_still_block_the_finish_job(self):
+        browser_at = next(i for i, s in enumerate(self.steps) if s.get("id") == "browser")
+        for step in self.steps[:browser_at]:
+            if step.get("continue-on-error"):
+                self.assertEqual(step.get("uses"), "./.github/actions/tailscale")      # the only tolerated earlier step is the tailnet join
+        loader = next(s for s in self.steps if s.get("id") == "bws_finish")
+        self.assertFalse({"if", "continue-on-error"} & set(loader))
+        self.assertNotIn("continue-on-error", self.doc["jobs"]["finish"])
+        self.assertIn("needs.prep.result == 'success'", self.doc["jobs"]["finish"]["if"])   # a failed credential, gate or unit-test step in prep still skips the Jobs work
+
+    def test_the_report_job_pushes_once_and_names_the_stages(self):
+        import os
+        import subprocess
+        report = next(s for s in self.doc["jobs"]["report"]["steps"] if "Resolver lanes" in s.get("name", ""))
+
+        def run(stages):
+            script = re.sub(r"\$\{\{\s*([^}]+?)\s*\}\}", lambda m: "failure" if m.group(1) == "needs.finish.result" else "success", report["run"])
+            script = script.replace("python3 -m lifeos.platform.alerts push", "echo PUSH")
+            done = subprocess.run(["bash", "-e", "-c", script], env={**os.environ, "STAGES": stages, "CODES": ""}, capture_output=True, text=True, check=False)
+            return done.returncode, done.stdout
+
+        code, out = run("network_surface alerts jobright")
+        self.assertEqual((code, out.count("PUSH")), (1, 1))
+        self.assertIn("stages: network_surface alerts jobright", out)
+
+
 class ConcurrencyHasNoSwitch(unittest.TestCase):
     """LIFE-604 approval 5: TICK_CONCURRENCY are gone from the workflow and the code; the list of settings has no row for them."""
     def test_no_workflow_or_code_file_reads_the_switch(self):

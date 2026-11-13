@@ -126,6 +126,16 @@ class TickTests(unittest.TestCase):
             with mock.patch.object(tick, "tick", return_value=outcome):
                 self.assertEqual(tick.main(["--live"]), code)
 
+    def test_a_named_stage_is_left_out_of_the_plan_and_nothing_else_changes(self):
+        """LIFE-653: no browser, no Jobright stage; an empty or unknown name changes nothing."""
+        self.assertEqual(tick.planned({}), tuple(tick.PLAN))
+        self.assertEqual(tick.planned({"TICK_SKIP_STAGES": "no-such-stage"}), tuple(tick.PLAN))
+        kept = tick.planned({"TICK_SKIP_STAGES": "resolve-jobright"})
+        self.assertEqual([s.name for s in kept], [s.name for s in tick.PLAN if s.name != "resolve-jobright"])
+        with mock.patch.object(tick, "tick", return_value={"a": "ok"}) as ran, mock.patch.dict(tick.os.environ, {"TICK_SKIP_STAGES": "resolve-jobright"}):
+            self.assertEqual(tick.main([]), 0)
+        self.assertNotIn("resolve-jobright", [s.name for s in ran.call_args.kwargs["plan"]])
+
     def test_main_prints_each_stage_line_as_it_happens(self):
         with mock.patch.object(tick, "tick", return_value={"a": "ok"}), mock.patch.object(tick.sys.stdout, "reconfigure") as reconfigure:
             tick.main([])

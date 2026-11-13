@@ -647,6 +647,7 @@ jobs:
           oauth-secret: ${{ steps.bws_finish.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
       - id: browser
+        continue-on-error: true                 # LIFE-653: only the Jobright resolver uses the browser; a used-up install turns the `jobright` lane red (lanes step below) and the tick skips that one stage, instead of the install failing the job and skipping the whole tick
         name: Browser install (LIFE-573, LIFE-576, LIFE-604 item 13; the one shared step in .github/actions/browser, its own timed step with one log line naming the path)
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.quick) }}
         uses: ./.github/actions/browser
@@ -686,6 +687,7 @@ jobs:
           TICK_CAP_DICE: ${{ vars.TICK_CAP_DICE || '1' }}
           TICK_CAP_ATS: ${{ vars.TICK_CAP_ATS || '8' }}
           TICK_MAX_PARALLEL: ${{ vars.TICK_MAX_PARALLEL || '4' }}
+          TICK_SKIP_STAGES: ${{ steps.browser.outcome == 'failure' && 'resolve-jobright' || '' }}   # LIFE-653: no browser, so no Jobright stage; every other stage runs as before
         run: |
           python -m lifeos.jobs.tick $([ "$LIVE" = "true" ] && echo --live) ${{ inputs.quick && '--quick' || '' }}
       - id: web
@@ -1011,7 +1013,7 @@ jobs:
         run: python -m lifeos.run sponsors $([ "$LIVE" = "true" ] && echo --live)
       - id: network_surface
         continue-on-error: true
-        name: Step 7c - Network Leads blocks on Ledger pages (NET-2.3; 41 pages a run, rotating; a failure never fails the Jobs run but always warns)
+        name: Step 7c - Network Leads blocks on Ledger pages (NET-2.3; 41 pages a run, rotating; a failure is the `network_surface` lane (LIFE-653), so the run ends red and the report job pushes once)
         if: ${{ env.PIPELINE == 'true' }}
         env:
           FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
@@ -1037,9 +1039,9 @@ jobs:
           V7_CLOSE_BASE_URL: ${{ secrets.V7_CLOSE_BASE_URL }}          # the private Close origin: the Network Leads block gets a Mark as Sent link for its own job; unset, the block is unchanged
           NETWORK_SURFACE_SKIP: ${{ vars.NETWORK_SURFACE_SKIP || 'on' }}   # LIFE-572: pages proven earlier and untouched since are not read again; set the repository variable to off to read every page in full
         run: python -m lifeos.run network-surface --limit 82 $([ "$LIVE" = "true" ] && echo --live)
-      - name: Network surface warning (never fails the run; DEGRADED is explicit evidence)
+      - name: Network surface warning (the annotation; the `network_surface` lane fails the run, LIFE-653)
         if: ${{ always() && steps.network_surface.outcome == 'failure' }}
-        run: echo "::warning title=Network surface::NETWORK_SURFACE_DEGRADED or failed; Ledger Network Leads blocks may be stale, Jobs is unaffected. See the step log for the counts."
+        run: echo "::warning title=Network surface::NETWORK_SURFACE_DEGRADED or failed; Ledger Network Leads blocks may be stale, the other stages are unaffected. See the step log for the counts."
       - id: review
         continue-on-error: true
         name: Fit review (dispatch only; a private Notion page, counts only in the log)
@@ -1263,7 +1265,7 @@ jobs:
           fi
       - id: alerts
         continue-on-error: true
-        name: Alerts - detect, dedupe and push to the phone (counts only; a failure here never fails the run)
+        name: Alerts - detect, dedupe and push to the phone (counts only; a failure is the `alerts` lane (LIFE-653), so the run ends red and the report job pushes once)
         if: ${{ env.PIPELINE == 'true' }}
         env:
           FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
@@ -1297,7 +1299,7 @@ jobs:
           codes=$(printf '%s\n' $CODES | grep -E '^[A-Z0-9_]{1,48}$' | sort -u | tr '\n' ' ' || true)   # no code is the normal case (bash -e, pipefail)
           echo "codes=${codes% }" >> "$GITHUB_OUTPUT"
           failed=""
-          for pair in extract=${{ needs.prep.outputs.extract }} tick=${{ steps.tick.outcome }} web=${{ steps.web.outcome }} scale_up=${{ steps.web_scale_up.outcome }} boards=${{ steps.boards.outcome }} titlewatch=${{ steps.titlewatch.outcome }} sponsors=${{ steps.sponsors.outcome }} enrich=${{ steps.enrich.outcome }} fit=${{ steps.fit.outcome }} fit_cloud_backlog=${{ steps.fit_cloud_backlog.outcome }} audit=${{ steps.audit.outcome }} publish=${{ steps.publish.outcome }} finalize=${{ steps.finalize.outcome }} holds=${{ steps.holds.outcome }} probe=${{ steps.probe.outcome }} sync_seen=${{ steps.sync_seen.outcome }} purge=${{ steps.purge.outcome }}; do
+          for pair in extract=${{ needs.prep.outputs.extract }} jobright=${{ steps.browser.outcome }} tick=${{ steps.tick.outcome }} web=${{ steps.web.outcome }} scale_up=${{ steps.web_scale_up.outcome }} boards=${{ steps.boards.outcome }} titlewatch=${{ steps.titlewatch.outcome }} sponsors=${{ steps.sponsors.outcome }} enrich=${{ steps.enrich.outcome }} fit=${{ steps.fit.outcome }} fit_cloud_backlog=${{ steps.fit_cloud_backlog.outcome }} audit=${{ steps.audit.outcome }} publish=${{ steps.publish.outcome }} finalize=${{ steps.finalize.outcome }} holds=${{ steps.holds.outcome }} probe=${{ steps.probe.outcome }} sync_seen=${{ steps.sync_seen.outcome }} purge=${{ steps.purge.outcome }} network_surface=${{ steps.network_surface.outcome }} alerts=${{ steps.alerts.outcome }}; do
             [ "${pair#*=}" = "failure" ] && failed="$failed ${pair%=*}"
           done
           echo "failed=${failed# }" >> "$GITHUB_OUTPUT"
