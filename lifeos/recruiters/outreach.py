@@ -7,7 +7,9 @@ Fixed codes only; never a name, company or id in a log."""
 from datetime import datetime
 from urllib.parse import quote
 
+from lifeos.platform.fixed_code import fixed
 from lifeos.platform.notion_client import NotionError, rich_text
+from lifeos.platform.notion_pages import query
 from . import notion as store
 from .identity import norm, week_ending
 
@@ -22,10 +24,8 @@ def _id(value):
 
 def check_schema(notion, ledger_source):
     """The Recruiters data source must carry `Job` as a relation to the Job Ledger data source; anything else refuses before a write."""
-    try:
+    with fixed(NotionError, store.RecruitersError, "OUTREACH_SCHEMA_READ_FAILED"):
         props = notion.call("GET", f"/data_sources/{quote(notion.source, safe='')}").get("properties")
-    except NotionError:
-        raise store.RecruitersError("OUTREACH_SCHEMA_READ_FAILED") from None
     job = (props or {}).get(JOB) if isinstance(props, dict) else None
     target = ((job or {}).get("relation") or {}).get("data_source_id")
     if not isinstance(job, dict) or job.get("type") != "relation" or _id(target) != _id(ledger_source):
@@ -36,23 +36,8 @@ def check_schema(notion, ledger_source):
 
 def job_rows(notion, job_id):
     """Every Recruiters row linked to this exact job, following every page; an incomplete read raises (no create on an unproven absence)."""
-    rows, cursor, seen = [], None, set()
-    for _ in range(store.MAX_PAGES):
-        body = {"page_size": 100, "filter": {"property": JOB, "relation": {"contains": job_id}}, **({"start_cursor": cursor} if cursor else {})}
-        try:
-            page = notion.query_data_source(None, body)
-        except NotionError:
-            raise store.RecruitersError("RECRUITERS_NOTION_QUERY_FAILED") from None
-        if not isinstance(page, dict) or not isinstance(page.get("results"), list) or not isinstance(page.get("has_more"), bool):
-            raise store.RecruitersError("RECRUITERS_NOTION_QUERY_INCOMPLETE")
-        rows += [r for r in map(store.read, page["results"]) if _id(job_id) in map(_id, r["jobs"])]
-        if not page["has_more"]:
-            return rows
-        cursor = page.get("next_cursor")
-        if not isinstance(cursor, str) or not cursor or cursor in seen:
-            raise store.RecruitersError("RECRUITERS_NOTION_PAGINATION_INVALID")
-        seen.add(cursor)
-    raise store.RecruitersError("RECRUITERS_NOTION_PAGINATION_INCOMPLETE")
+    body = {"page_size": 100, "filter": {"property": JOB, "relation": {"contains": job_id}}}
+    return [r for r in (store.read(p) for page in query(notion, None, body, store.RecruitersError, incomplete="RECRUITERS_NOTION_QUERY_INCOMPLETE", repeat="RECRUITERS_NOTION_PAGINATION_INVALID", capped="RECRUITERS_NOTION_PAGINATION_INCOMPLETE", limit=store.MAX_PAGES, read="RECRUITERS_NOTION_QUERY_FAILED") for p in page["results"]) if _id(job_id) in map(_id, r["jobs"])]
 
 
 def valid_person(person):
@@ -94,10 +79,8 @@ def mark_sent(notion, job, person, now, ledger_source, employer=""):
         state = "closed" if row["done"] or not row["active"] or row["action"] in store.HISTORY else "open"
         return {"status": "already_recorded", "verified": True, "state": state, "action": row["action"], "follow_up": row["follow_up"]}
     props = _props(job, person, now, employer)
-    try:
+    with fixed(NotionError, store.RecruitersError, "RECRUITERS_NOTION_WRITE_FAILED"):
         notion.call_once("POST", "/pages", {"parent": {"type": "data_source_id", "data_source_id": notion.source}, "properties": props})
-    except NotionError:
-        raise store.RecruitersError("RECRUITERS_NOTION_WRITE_FAILED") from None
     after = [r for r in job_rows(notion, job["id"]) if norm(r["person"]) == norm(person)]
     want = props["Follow-up Date"]["date"]["start"]
     if len(after) != 1 or after[0]["action"] != store.WAITING or after[0]["follow_up"] != want or after[0]["company"] != employer or after[0]["done"] or not after[0]["active"]:
@@ -134,10 +117,8 @@ def set_conversation(notion, job, person, status, ledger_source):
     rank = lambda a: store.CONVERSATION.index(a) if a in store.CONVERSATION else -1       # noqa: E731 - Waiting / Needs Action / blank rank below Replied
     if status != store.DECLINED and rank(status) < rank(row["action"]):
         return {**seen, "status": "not_changed"}
-    try:
+    with fixed(NotionError, store.RecruitersError, "RECRUITERS_NOTION_WRITE_FAILED"):
         notion.update_page_properties(row["page_id"], {"Action Status": {"select": {"name": status}}})
-    except NotionError:
-        raise store.RecruitersError("RECRUITERS_NOTION_WRITE_FAILED") from None
     after = [r for r in job_rows(notion, job["id"]) if norm(r["person"]) == norm(person)]
     if len(after) != 1 or after[0]["page_id"] != row["page_id"] or after[0]["action"] != status or after[0]["follow_up"] != row["follow_up"] or after[0]["done"] or not after[0]["active"]:
         raise store.RecruitersError("OUTREACH_READBACK_MISMATCH")
