@@ -1,93 +1,105 @@
-"""LIFE-609: every card that writes a Daily Report callout shows when it was last updated, in Central Time ("Updated <h:mm AM/PM> CT"). A region added to the router without a rule here fails.
-
-Seven cards have a small pure function for that line, so the real function is called with a fixed time and its output must match. The others (mail, iMessage comms, Oracle, Hiring, AI capacity,
-Recruiter Outreach) build the line deep inside a larger render that needs a full fixture, so for them the module's code is checked for the stamp (a string that says "Updated" and a time ending
-"CT"); their own card tests exercise the real output. Names and times only."""
-import ast
+"""LIFE-609: every Daily Report card shows when it was last updated IN ITS HEADING, in Central Time: `<Title> (Updated H:MM AM CT)` (Jim, Nov 13 2026, after UAT: the stamp in the heading, the same
+form as Calendar's; not a body line, not a second time, no `mail:` clause). Each card's own heading function is called with a fixed time and its output must match. A region added to the router
+without a rule here fails; a card whose heading lacks the stamp fails; a stamp only in the body line fails. Names and times only."""
 import datetime as dt
+import json
 import re
 import unittest
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from lifeos.agenda import card as agenda
 from lifeos.amazon import card as amazon
 from lifeos.bills import card as bills
-from lifeos.dcc import header as dcc
+from lifeos.hiring import models as hiring_models, render as hiring_render
+from lifeos.imessage import comms_card
 from lifeos.jira import card as jira
+from lifeos.jobs.fit import capacity_card
 from lifeos.megibow import render as megibow
-from lifeos.platform import branches, router
+from lifeos.oraclecloud import card as oracle
+from lifeos.platform import router
+from lifeos.recruiters import outreach_card
 
-ROOT = Path(__file__).resolve().parents[2]
 NOW = dt.datetime(2026, 11, 12, 13, 35, tzinfo=ZoneInfo("America/Chicago"))
-STAMP = re.compile(r"Updated (?:\w{3} \w{3} \d{1,2}, |\w+, \w{3} \d{1,2} · |\w{3} \d{1,2} · )?\d{1,2}:\d{2} [AP]M CT")
+CLOCK = r"\d{1,2}:\d{2} [AP]M CT"
+BODY_LINE = re.compile(r"Updated (?:\w{3} \w{3} \d{1,2}, |\w+, \w{3} \d{1,2} · |\w{3} \d{1,2} · )?" + CLOCK)          # the old, rejected place: a body line
 
 
-def amazon_line():
-    return amazon.render([], NOW)[0][0]["paragraph"]["rich_text"][0]["text"]["content"]
+def heading_form(title):
+    """`<Title> (Updated H:MM AM CT)`; Oracle's stamp also carries its date, and a mail source that was not read may be named after the time (`, Outlook personal unread`)."""
+    return re.compile(rf"^{re.escape(title)} \(Updated (?:[A-Z][a-z]{{2}} \d{{1,2}} · )?{CLOCK}(?:, [^()0-9:]+ unread)?\)$")
 
 
-def branches_line():
-    return branches.lines([], NOW)[0]
+def oracle_heading():
+    raw = {"schema": oracle.SCHEMA, "observed_at": "2026-11-12T19:34:30Z", "cost": {"amount": 0, "currency": "USD"}, "cpu_24h_pct": 5, "memory_pct": 50, "disk_pct": 40,
+           "a1_cores": {"used": 2, "available": 0}, "reclaim": "NONE", "services": {key: True for key, _ in oracle.SERVICES}, "chatgpt": {"left_5h": 100, "left_week": 64},
+           "backup": {"ok": True, "code": "ok", "age_h": 3}}
+    return oracle.render(oracle.validate(json.dumps(raw), NOW), NOW)[1]
 
 
-# region -> a function returning the callout's update line for a fixed time
-CALLED = {
-    router.JIRA_REGION: lambda: jira.heading_text(NOW),
-    router.CALENDAR_REGION: lambda: agenda._status({"taken_at": NOW.isoformat()}, False),
-    router.BILLS_REGION: lambda: bills._status({"taken_at": NOW.isoformat()}, False),
-    router.AMAZON_REGION: amazon_line,
-    router.DCC_REGION: lambda: dcc.text(NOW),
-    router.REPO_REGION: branches_line,
-    "MegIBOW": lambda: megibow.status(NOW),
+def hiring_heading():
+    text = hiring_render.render({"rows": [], "reasons": []}, None, NOW)[0]
+    return hiring_models.heading_text(hiring_models.split_status(text)[0])
+
+
+def capacity_heading():
+    return capacity_card.render({"pools": [], "unavailable": [], "safety_cap": None}, NOW)[0].split("\n")[0].split(" · ")[0]          # the callout's first line, up to its first " · " (the bold label)
+
+
+# region (or card name) -> (the card's title, a function returning the heading the card writes for a fixed time)
+HEADINGS = {
+    router.JIRA_REGION: (router.JIRA_REGION, lambda: jira.heading_text(NOW)),
+    router.CALENDAR_REGION: (router.CALENDAR_REGION, lambda: agenda._heading_text({"taken_at": NOW.isoformat()}, False)),
+    router.HIRING_REGION: (router.HIRING_REGION, hiring_heading),
+    router.COMMS_REGION: (router.COMMS_REGION, lambda: comms_card.render(comms_card.UNAVAILABLE, NOW)[1]),
+    router.ORACLE_REGION: (router.ORACLE_REGION, oracle_heading),
+    router.RECRUITER_OUTREACH_REGION: (router.RECRUITER_OUTREACH_REGION, lambda: outreach_card.heading("1:35 PM CT")),
+    "MegIBOW": ("MegIBOW", lambda: megibow.status(NOW).split(" · ")[0]),
+    "AI Capacity": ("AI Capacity", capacity_heading),
 }
-# region -> the module whose code must carry the stamp (its own card tests exercise the real output)
-STRUCTURAL = {
-    router.MAIL_ALERTS_REGION: "lifeos/physmail/card.py",
-    router.COMMS_REGION: "lifeos/imessage/comms_card.py",
-    router.ORACLE_REGION: "lifeos/oraclecloud/card.py",
-    router.HIRING_REGION: "lifeos/hiring/render.py",
-    router.RECRUITER_OUTREACH_REGION: "lifeos/recruiters/outreach_card.py",
-    "AI Capacity": "lifeos/jobs/fit/capacity_card.py",
+# Not a Daily Report card heading, with the reason:
+EXEMPT = {
+    router.ATTENTION_REGION: "LIFE-645: V7 retired the card that wrote it; the callout stays on the page, protected, and nothing stamps it",
+    router.DCC_REGION: "the Command Center's stamp is the page's first line (lifeos/dcc/header.py, `Friday, Nov 13 · Updated 1:35 PM CT`), checked by the DCC tests",
+    router.REPO_REGION: "the Weekly LIFE OS Review page, not the Daily Report (lifeos/platform/branches.py)",
 }
+# LIFE-609 rework, part 2: these three still write the stamp in their first body line. Their writer (report_region.replace_text) insists the heading is exactly the title, and
+# that file is protected; the change that moves them is its own pull request. Empty this set when it lands.
+PENDING = {router.BILLS_REGION: lambda: bills._status({"taken_at": NOW.isoformat()}, False),
+           router.AMAZON_REGION: lambda: amazon.render([], NOW)[0][0]["paragraph"]["rich_text"][0]["text"]["content"],
+           router.MAIL_ALERTS_REGION: None}
 
 
-UNWRITTEN = {router.ATTENTION_REGION}      # LIFE-645: V7 retired the card that wrote it; the callout stays on the page, protected, and nothing stamps it
-
-
-def carries_the_stamp(path):
-    """True when the module builds a string that says "Updated" and a time ending " CT" (a plain or an f-string)."""
-    tree = ast.parse((ROOT / path).read_text())
-    words, times = False, False
-    for node in ast.walk(tree):
-        pieces = [node.value] if isinstance(node, ast.Constant) and isinstance(node.value, str) else [p.value for p in node.values if isinstance(p, ast.Constant)] if isinstance(node, ast.JoinedStr) else []
-        for text in pieces:
-            words = words or "Updated" in text
-            times = times or text.rstrip().endswith(" CT") or " CT" in text
-    return words and times
-
-
-class EveryCalloutShowsWhenItWasUpdated(unittest.TestCase):
-    def test_each_pure_renderer_produces_an_updated_time_in_ct(self):
-        for region, render in CALLED.items():
+class EveryCardHeadingShowsWhenItWasUpdated(unittest.TestCase):
+    def test_each_card_heading_is_the_title_then_the_update_time_in_ct(self):
+        for region, (title, render) in HEADINGS.items():
             with self.subTest(region=region):
-                line = render()
-                self.assertRegex(line, STAMP, line)
-                self.assertNotRegex(line, r"\b(UTC|CST|CDT|GMT)\b")                              # always "CT", never a zone name or UTC
-
-    def test_the_heavier_renderers_carry_the_stamp_in_their_code(self):
-        for region, path in STRUCTURAL.items():
-            with self.subTest(region=region):
-                self.assertTrue(carries_the_stamp(path), f"{path} writes a callout without an 'Updated <time> CT' line")
+                heading = render()
+                self.assertRegex(heading, heading_form(title), heading)
+                self.assertEqual(len(re.findall(r"\d{1,2}:\d{2} [AP]M", heading)), 1, "the time is shown once: " + heading)         # never a second time (the old `mail: ... 10:24 AM CT` clause)
+                self.assertNotIn("mail:", heading)
+                self.assertNotRegex(heading, r"\b(UTC|CST|CDT|GMT)\b")                                                          # always "CT", never a zone name or UTC
 
     def test_every_router_region_has_a_rule_so_a_new_card_cannot_skip_the_stamp(self):
-        covered = set(CALLED) | set(STRUCTURAL) | UNWRITTEN
-        self.assertEqual(sorted(set(router.OWNERS) - covered), [], "a region has no stamp rule: add it to CALLED or STRUCTURAL in this test")
+        covered = set(HEADINGS) | set(EXEMPT) | set(PENDING)
+        self.assertEqual(sorted(set(router.OWNERS) - covered), [], "a region has no heading rule: add it to HEADINGS (or EXEMPT, with the reason) in this test")
 
-    def test_the_negative_control_a_module_without_the_stamp_is_caught(self):
-        self.assertFalse(carries_the_stamp("lifeos/platform/ct_stamp.py"))                       # it builds times but never says "Updated"
-        self.assertNotRegex("Last refreshed Thu Nov 12, 1:35 PM CT", STAMP)
-        self.assertNotRegex("Updated Thu Nov 12, 1:35 PM CST", STAMP)
+    def test_the_pending_set_is_exactly_the_three_cards_waiting_on_the_protected_file(self):
+        self.assertEqual(sorted(PENDING), sorted([router.BILLS_REGION, router.AMAZON_REGION, router.MAIL_ALERTS_REGION]))
+        for region in (router.BILLS_REGION, router.AMAZON_REGION):
+            self.assertRegex(PENDING[region](), BODY_LINE)                                                                      # until they move, the stamp is still on the page
+
+    def test_the_degraded_stale_and_unread_forms_keep_the_title_and_the_clock_in_the_heading(self):
+        self.assertEqual(outreach_card.heading("1:35 PM CT", "success", "14-day scan (Outlook personal unread)"), "🤝 Recruiter Outreach (Updated 1:35 PM CT, Outlook personal unread)")
+        self.assertEqual(outreach_card.heading("1:35 PM CT", "success", "new mail"), "🤝 Recruiter Outreach (Updated 1:35 PM CT)")
+        self.assertEqual(jira.heading_text(NOW, NOW), "JIRA Execution (STALE · last accepted Nov 12 1:35 PM CT)")
+        self.assertTrue(megibow.status(NOW, degraded=True).startswith("MegIBOW (DEGRADED at 1:35 PM CT)"))
+
+    def test_the_negative_controls_the_old_and_wrong_forms_are_caught(self):
+        form = heading_form("Mail Alerts")
+        self.assertRegex("Mail Alerts (Updated 1:35 PM CT)", form)
+        for wrong in ("Mail Alerts", "Updated 1:35 PM CT · 11 waiting", "Mail Alerts (Updated 1:35 PM CT, mail: new mail 1:35 PM CT)", "Mail Alerts · Updated 1:35 PM CT",
+                      "Mail Alerts (Updated 1:35 PM CST)", "Mail Alerts (Updated 1:35 PM UTC)", "Mail Alerts (Last refreshed 1:35 PM CT)"):
+            self.assertNotRegex(wrong, form, wrong)
 
 
 if __name__ == "__main__":

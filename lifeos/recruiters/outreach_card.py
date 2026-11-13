@@ -38,6 +38,7 @@ SKIP = (router.DCC_REGION,)                                      # as for the Hi
 CHICAGO = ZoneInfo("America/Chicago")
 _SOURCE = r"(?:Gmail|Outlook [a-z0-9_-]{1,24})"
 KIND = re.compile(rf"(?:new mail|14-day scan)(?: \({_SOURCE}(?:, {_SOURCE})* unread\))?")          # LIFE-646: the heading names only fixed words, never an address
+UNREAD = re.compile(rf"\(({_SOURCE}(?:, {_SOURCE})*) unread\)$")
 
 
 class OutreachError(NotionError):
@@ -293,6 +294,14 @@ def present(client, environ, build, heading, live):
     return counts
 
 
+def heading(clock, stage="success", scan_kind=""):
+    """LIFE-609: `<Title> (Updated H:MM AM CT)`, the form every Daily Report card heading takes. Skipped (a Close screen refresh ran no mail stage on purpose) says Redrawn, so the heading never
+    claims mail was read (Jim, Oct 24). A mail source that was not read (LIFE-646) is named by its fixed name, only then: `(Updated 9:30 AM CT, Outlook personal unread)`."""
+    scan_kind = (scan_kind or "").strip()
+    unread = UNREAD.search(scan_kind) if stage == "success" and KIND.fullmatch(scan_kind) else None
+    return f"{TITLE} ({'Redrawn' if stage == 'skipped' else 'Updated'} {clock}{f', {unread.group(1)} unread' if unread else ''})"
+
+
 def run(limit, live, environ=os.environ, notion=None, client=None, now=None):
     now = (now or datetime.now(timezone.utc)).astimezone(CHICAGO)
     clock = now.strftime("%-I:%M %p") + " CT"
@@ -323,8 +332,5 @@ def run(limit, live, environ=os.environ, notion=None, client=None, now=None):
         firsts = [first_contact(r, kept) for r in shown]
         counts["first_contact_shown"] = sum(1 for f in firsts if f)
         return [cells(r, today, f, environ.get("V7_CLOSE_BASE_URL")) for r, f in zip(shown, firsts)]
-    stamp = "Redrawn" if stage == "skipped" else "Updated"         # skipped: a Close screen refresh ran no mail stage on purpose, so the heading never claims mail was read (Jim, Oct 24)
-    scan_kind, scan_at = (environ.get("RECRUITERS_SCAN") or "").strip(), (environ.get("RECRUITERS_SCAN_AT") or "").strip()
-    mail_read = f", mail: {scan_kind} {scan_at}" if stage == "success" and KIND.fullmatch(scan_kind) and scan_at.endswith(" CT") else ""          # LIFE-610: which mail read the rows come from, and when; LIFE-646: and which source was unread
-    counts.update(present(target, environ, build, f"{TITLE} ({stamp} {clock}{mail_read})", write))
+    counts.update(present(target, environ, build, heading(clock, stage, environ.get("RECRUITERS_SCAN")), write))
     return counts

@@ -117,15 +117,21 @@ class RenderTests(unittest.TestCase):
         self.assertEqual([b for b in t.kids["col"] if t.blocks[b]["type"] == "table"], [HIRING_T, "ro-t"])                     # no second table, no view
         self.assertEqual(R.plain(t.blocks["ro-h"]), "🤝 Recruiter Outreach (Updated 9:30 AM CT)")
 
-    def test_the_heading_says_which_mail_read_the_rows_come_from_and_when(self):          # LIFE-610
+    def test_the_heading_is_the_plain_stamp_whatever_mail_read_it_came_from(self):          # LIFE-609: no `mail:` clause, no second time
+        for kind in ("new mail", "14-day scan", "anything else"):
+            t = report()
+            go(t, Source(MIXED), env={**ENV, "RECRUITERS_SCAN": kind, "RECRUITERS_SCAN_AT": "9:05 AM CT"})
+            self.assertEqual(R.plain(t.blocks["ro-h"]), "🤝 Recruiter Outreach (Updated 9:30 AM CT)")
+
+    def test_an_unread_mail_source_is_named_in_the_heading_and_only_then(self):          # LIFE-646 note, LIFE-609 form
         t = report()
-        go(t, Source(MIXED), env={**ENV, "RECRUITERS_SCAN": "new mail", "RECRUITERS_SCAN_AT": "9:05 AM CT"})
-        self.assertEqual(R.plain(t.blocks["ro-h"]), "🤝 Recruiter Outreach (Updated 9:30 AM CT, mail: new mail 9:05 AM CT)")
+        go(t, Source(MIXED), env={**ENV, "RECRUITERS_SCAN": "14-day scan (Outlook personal unread)", "RECRUITERS_SCAN_AT": "9:05 AM CT"})
+        self.assertEqual(R.plain(t.blocks["ro-h"]), "🤝 Recruiter Outreach (Updated 9:30 AM CT, Outlook personal unread)")
         t = report()
-        go(t, Source(MIXED), env={**ENV, "RECRUITERS_SCAN": "14-day scan", "RECRUITERS_SCAN_AT": "9:05 AM CT"})
-        self.assertEqual(R.plain(t.blocks["ro-h"]), "🤝 Recruiter Outreach (Updated 9:30 AM CT, mail: 14-day scan 9:05 AM CT)")
+        go(t, Source(MIXED), env={**ENV, "RECRUITERS_SCAN": "new mail (Gmail, Outlook work unread)", "RECRUITERS_SCAN_AT": "9:05 AM CT"})
+        self.assertEqual(R.plain(t.blocks["ro-h"]), "🤝 Recruiter Outreach (Updated 9:30 AM CT, Gmail, Outlook work unread)")
         t = report()
-        go(t, Source(MIXED), env={**ENV, "RECRUITERS_SCAN": "anything else", "RECRUITERS_SCAN_AT": "not a time"})          # a malformed value never reaches the heading
+        go(t, Source(MIXED), env={**ENV, "RECRUITERS_SCAN": "14-day scan (pat@example.com unread)"})          # a malformed value never reaches the heading
         self.assertEqual(R.plain(t.blocks["ro-h"]), "🤝 Recruiter Outreach (Updated 9:30 AM CT)")
 
     def test_a_close_screen_refresh_redraws_the_rows_and_the_heading_says_redrawn_not_updated(self):

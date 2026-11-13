@@ -29,10 +29,11 @@ def table(proj):
 
 
 def status(now, degraded=False, review=0, reason=None):
+    """LIFE-609: the callout's first line is `MegIBOW (Updated H:MM AM CT)`, the form every card heading takes (this callout has no heading block of its own)."""
     stamp = chicago(now).strftime("%-I:%M %p")
     if degraded:
-        return f"DEGRADED — counts may be incomplete · last attempt {stamp} CT" + (f" ({reason})" if reason else "")
-    line = f"Updated {chicago(now).strftime('%a %b %-d')}, {stamp} CT"
+        return f"MegIBOW (DEGRADED at {stamp} CT) — counts may be incomplete" + (f" ({reason})" if reason else "")
+    line = f"MegIBOW (Updated {stamp} CT)"
     if review:
         line += f" · Review needed — {review} activity candidate{'s' if review != 1 else ''}"
     return line
