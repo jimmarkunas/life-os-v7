@@ -13,6 +13,7 @@ from lifeos.platform.notion_ids import notion_id
 from lifeos.megibow import card, classify as C, evidence, history, project as P, render as R, review, store, warnings as W
 from lifeos.megibow.windows import CHI, chicago, monday, window_utc
 from lifeos.platform.gcal import GcalError, GoogleCalendar
+from lifeos.platform import mail
 from lifeos.platform.gmail import Gmail, GmailError
 from lifeos.platform.notion_client import Client, NotionError
 from lifeos.platform.outlook import OutlookError
@@ -29,11 +30,6 @@ class MegibowError(NotionError):
 
 def _writer(environ):
     return Client({"NOTION_API_TOKEN": (environ.get("NOTION_JIRA_TOKEN") or "").strip(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused"})
-
-
-def _outlook_clients(environ):
-    from lifeos.attention import stage as attention                      # noqa: PLC0415 - the same sign-in loader Attention uses (sources may reach any OS)
-    return attention._outlook_clients(environ)
 
 
 def _meta(outcome, msgs, evs, ctx):
@@ -79,7 +75,7 @@ def run(limit, live, environ=os.environ, gmail=None, gcal=None, outlook_clients=
         own |= mine
     except GcalError as error:
         fail("gcal", error)
-    accounts = list(outlook_clients if outlook_clients is not None else _outlook_clients(environ))
+    accounts = list(outlook_clients if outlook_clients is not None else ((label, client, client is None) for label, client in mail.outlook_accounts(environ)))
     for account, client, connect_error in accounts:
         if connect_error:
             fail(f"outlook@{account}", "sign-in unreadable")
