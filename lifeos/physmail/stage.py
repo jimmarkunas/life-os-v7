@@ -9,6 +9,7 @@ from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 
 from lifeos.platform import alerts, db
+from lifeos.platform.fixed_code import fixed
 from lifeos.platform.gmail import Gmail, GmailError, error_code
 from lifeos.platform.snapshot_store import Store
 from . import events, state as state_mod
@@ -26,10 +27,8 @@ def _anchor_count(environ):
     raw = (environ.get("PHYSICAL_MAIL_ANCHOR") or "").strip()
     if not raw:
         return None
-    try:
+    with fixed(ValueError, PhysMailError, "PHYSMAIL_ANCHOR_INVALID"):
         return int(raw)
-    except ValueError:
-        raise PhysMailError("PHYSMAIL_ANCHOR_INVALID") from None
 
 
 def _session(connection):
@@ -120,10 +119,8 @@ def _expected(environ):
     raw = (environ.get("PHYSICAL_MAIL_EXPECT") or "").strip()
     if not raw:
         return None
-    try:
+    with fixed(ValueError, PhysMailError, "PHYSMAIL_EXPECT_INVALID"):
         values = tuple(int(part) for part in raw.split(","))
-    except ValueError:
-        raise PhysMailError("PHYSMAIL_EXPECT_INVALID") from None
     if len(values) != 6 or any(v < 0 for v in values):
         raise PhysMailError("PHYSMAIL_EXPECT_INVALID")
     return values
