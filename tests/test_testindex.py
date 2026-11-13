@@ -103,6 +103,11 @@ class Select(unittest.TestCase):
         self.assertEqual(ti.select(["lifeos/jobs/a.py"], idx, self.root), sorted(CONTRACTS + ["tests.jobs.test_a", "tests.jobs.test_b"]))
 
 
+    def test_a_test_the_index_names_but_a_change_deleted_is_not_selected(self):
+        idx = index({"jobs/a.py": [0, 3]}, tests=("tests.jobs.test_a.A.test_one", "tests.jobs.test_b.B.test_two", "tests.sources.test_c.C.test_three", "tests.jobs.test_gone.G.test_old"))
+        self.assertEqual(ti.select(["lifeos/jobs/a.py"], idx, self.root), sorted(CONTRACTS + ["tests.jobs.test_a"]))
+
+
 class Check(unittest.TestCase):
     def test_a_fresh_index_passes(self):
         self.assertEqual(ti.check(index({"jobs/a.py": [0], "x.py": [1]}), NOW), [])

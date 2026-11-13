@@ -155,7 +155,9 @@ def select(changed, index, root=ROOT):
                 continue
             return FULL
         return FULL
-    modules = {t for t in targets if t in module_set(root)}
+    on_disk = module_set(root)
+    targets = {t for t in targets if any(t == m or t.startswith(m + ".") for m in on_disk)}      # an index can be days old: a test file this change deleted must not be selected
+    modules = {t for t in targets if t in on_disk}
     return sorted(t for t in targets if t in modules or not any(t.startswith(m + ".") for m in modules))     # a test id inside a selected module would run twice
 
 
