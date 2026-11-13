@@ -462,10 +462,10 @@ class Contract(unittest.TestCase):
         text = (self.ROOT / ".github/workflows/hourly.yml").read_text()
         step = text[text.index("id: network_surface"):]
         step = step[:step.index("      - id: review")]
-        self.assertIn("continue-on-error: true", step)                                                       # a Network failure never fails the Jobs run ...
+        self.assertIn("continue-on-error: true", step)                                                       # a Network failure never stops the stages after it ...
         self.assertIn("--limit 82", step)                                                                    # ... the bound that makes the 20-hour worst case true ...
-        self.assertIn("::warning title=Network surface::", step)                                             # ... but it is always explicit warning evidence, never silent
-        self.assertNotIn("network_surface", text[text.index("Lane failures fail the run"):])                 # and it is not in the lane-failure list
+        self.assertIn("::warning title=Network surface::", step)                                             # ... it is always explicit warning evidence ...
+        self.assertIn("network_surface=${{ steps.network_surface.outcome }}", text[text.index("Lane failures fail the run"):])   # ... and (LIFE-653) its own lane: the run ends red and the report job pushes once
 
     def test_the_importer_does_not_create_the_surface_tables(self):
         conn = MySQLite()
