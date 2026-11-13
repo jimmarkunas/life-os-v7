@@ -18,6 +18,7 @@
       "Bash(git merge-tree:*)",
       "Bash(git push:*)",
       "Bash(git fetch:*)",
+      "Bash(sh tools/push_life_branch.sh:*)",
       "Bash(gh pr merge:*)",
       "Bash(python3 -m unittest:*)",
       "Bash(python3 -m lifeos.sources.devtools.codemap:*)",
