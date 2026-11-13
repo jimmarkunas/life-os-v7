@@ -1,5 +1,5 @@
-"""LIFE-590 PR 2: ten root modules moved (lifeos/buzz/, lifeos/sources/devtools/); each old name is a tiny shim that IS the new module, so `python -m lifeos.buzz_mcp` (the installed Oracle unit),
-`python -m lifeos.codemap` (AGENTS.md, .claude/settings.json) and `python -m lifeos.readiness` (a workflow) keep working. The four modules that stay at the root each have a keep reason here."""
+"""LIFE-590 PR 2, reduced by LIFE-631: of the nine old-name shims, seven are removed (buzz_*, codemap, profile_runs, profile_tickets: no caller left); `decisions` and `readiness` stay as shims that ARE the new module,
+so `python -m lifeos.decisions` and `python -m lifeos.readiness` (INDEX.md, policy parts 04 and 10, AGENTS.md, a workflow) keep working until Jim approves those edits. The modules that stay at the root each have a keep reason here."""
 import importlib
 import subprocess
 import sys
@@ -7,9 +7,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-MOVED = {"buzz_auth": "lifeos.buzz.auth", "buzz_mcp": "lifeos.buzz.mcp", "buzz_nip98": "lifeos.buzz.nip98", "buzz_relay": "lifeos.buzz.relay",
-         "codemap": "lifeos.sources.devtools.codemap", "decisions": "lifeos.sources.devtools.decisions",
-         "profile_runs": "lifeos.sources.devtools.profile_runs", "profile_tickets": "lifeos.sources.devtools.profile_tickets", "readiness": "lifeos.sources.devtools.readiness"}
+MOVED = {"decisions": "lifeos.sources.devtools.decisions", "readiness": "lifeos.sources.devtools.readiness"}      # LIFE-631: seven shims are gone; these two stay while Jim's INDEX.md and policy parts 04 and 10 still name them
 KEPT = {"__init__": "the package marker",
         "run": "the one entry point: `python -m lifeos.run <stage>` is named by about 90 workflow lines, AGENTS.md and every stage doc",
         "hermes_requests": "a stage module that the config registry pins by path (`lifeos/hermes_requests.py`) and hermes-stage.yml names; moving it is a separate decision",
@@ -33,13 +31,10 @@ class OldNamesStillWork(unittest.TestCase):
 
     def test_python_dash_m_runs_the_moved_entry_points_under_the_old_names(self):
         run = lambda *args: subprocess.run([sys.executable, "-m", *args], cwd=ROOT, capture_output=True, text=True, timeout=60)          # noqa: E731
-        found = run("lifeos.codemap", "find", "buzz")
-        self.assertEqual(found.returncode, 0)
-        self.assertIn("lifeos/buzz/", found.stdout)
         shown = run("lifeos.decisions", "show", "D193")
         self.assertEqual(shown.returncode, 0)
         self.assertIn("D193", shown.stdout)
-        started = run("lifeos.buzz_mcp")                                       # the installed Oracle unit's command: with no config it refuses by name, it does not fail to import
+        started = run("lifeos.buzz.mcp")                                       # the unit's command (the Oracle pack switches to it): with no config it refuses by name, it does not fail to import
         self.assertIn("config error", started.stderr)
         self.assertNotIn("No module named", started.stderr)
 

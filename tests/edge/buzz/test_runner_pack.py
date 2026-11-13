@@ -75,8 +75,7 @@ class PackTests(unittest.TestCase):
         manifest = runner.load_manifest(str(self.pack))
         self.assertEqual(manifest["services"], ["lifeos-buzz-mcp.service"])
         shipped = sorted(str(p.relative_to(self.pack / "files" / "tree")) for p in (self.pack / "files" / "tree").rglob("*") if p.is_file())
-        self.assertEqual(shipped, ["lifeos/__init__.py", "lifeos/buzz/__init__.py", "lifeos/buzz/auth.py", "lifeos/buzz/mcp.py", "lifeos/buzz/nip98.py", "lifeos/buzz/relay.py",
-                                   "lifeos/buzz_auth.py", "lifeos/buzz_mcp.py", "lifeos/buzz_nip98.py", "lifeos/buzz_relay.py"])
+        self.assertEqual(shipped, ["lifeos/__init__.py", "lifeos/buzz/__init__.py", "lifeos/buzz/auth.py", "lifeos/buzz/mcp.py", "lifeos/buzz/nip98.py", "lifeos/buzz/relay.py"])
         self.assertIn("-m lifeos.buzz.mcp", (self.pack / "files" / "lifeos-buzz-mcp.service").read_text())
         self.assertEqual(len(manifest["files"]), 1 + len(shipped))
 

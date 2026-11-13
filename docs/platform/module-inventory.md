@@ -29,12 +29,7 @@ Generated from `lifeos/platform/runtime.json`; do not edit by hand. The drift ch
 | lifeos/bench | github |  |  |
 | lifeos/bills | github |  |  |
 | lifeos/buzz | oracle |  |  |
-| lifeos/buzz_auth.py | oracle |  |  |
-| lifeos/buzz_mcp.py | oracle |  |  |
-| lifeos/buzz_nip98.py | oracle |  |  |
-| lifeos/buzz_relay.py | oracle |  |  |
 | lifeos/calendar_bridge | github |  |  |
-| lifeos/codemap.py | github |  |  |
 | lifeos/dcc | github |  |  |
 | lifeos/decisions.py | dev |  |  |
 | lifeos/delivery | github |  |  |
@@ -52,8 +47,6 @@ Generated from `lifeos/platform/runtime.json`; do not edit by hand. The drift ch
 | lifeos/physmail | github |  |  |
 | lifeos/platform | github, oracle |  |  |
 | lifeos/probe.py | github |  |  |
-| lifeos/profile_runs.py | dev |  |  |
-| lifeos/profile_tickets.py | dev |  |  |
 | lifeos/readiness.py | github, dev |  |  |
 | lifeos/recruiters | github |  |  |
 | lifeos/run.py | github |  |  |
