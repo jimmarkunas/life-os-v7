@@ -1,10 +1,10 @@
-"""One-time Google sign-in for the Drive credential (platform, no job knowledge). It asks Google for the full drive scope (Jim, Oct 24: "full", so
-résumés land in My Drive / LIFE OS / Résumés), catches the reply on a loopback port, and writes the credential JSON {"client_id", "client_secret", "refresh_token"} to stdout, which
-must be a pipe straight into the Edge's encrypted credential store: it refuses to print the credential on a terminal. Prompts go to the terminal,
-never to stdout. It runs on Jim's Mac, where the browser is (an SSH -L tunnel to the Edge proved fragile, Oct 24), and pipes over ssh; the client is
-the existing LIFE OS Gmail Web client (docs/DRIVE_RESUMES.md). Standalone (stdlib only):
+"""One-time Google sign-in for the Drive credential: full `drive` scope, reply caught on a loopback port, credential written only to a pipe.
+
+Writes {"client_id", "client_secret", "refresh_token"} to stdout, which must be a pipe straight into the Edge's encrypted credential store: it refuses to print the credential on a terminal; prompts go to the terminal, never to stdout.
+Standalone (stdlib only), platform, no job knowledge:
   python3 google_consent.py --port 8765 | ssh opc@lifeos-edge-01 "sudo bash /opt/lifeos-close/bin/install-close.sh credential gdrive"
-"""
+Runs on Jim's Mac, where the browser is, and pipes over ssh; the client is the existing LIFE OS Gmail Web client (docs/DRIVE_RESUMES.md)."""
+# Jim, Oct 24 2026: the scope is the full `drive` ("full") so résumés land in My Drive / LIFE OS / Résumés; it runs on his Mac because an SSH -L tunnel to the Edge proved fragile.
 import base64
 import getpass
 import hashlib

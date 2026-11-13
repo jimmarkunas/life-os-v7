@@ -1,6 +1,6 @@
-"""The hourly router contract for the ChatGPT-native `LIFE OS Daily Runs` task: the three outcome words and strict
-ownership of Daily Report regions. No scheduler, queue, datastore or framework: the ChatGPT task runs hourly outside GitHub and applies
-these rules; V7's own hourly workflow is unrelated and unchanged. Fixed codes only: no content, ids or messages."""
+"""The hourly router contract for the ChatGPT-native `LIFE OS Daily Runs` task: the three outcome words and strict ownership of Daily Report regions.
+
+No scheduler, queue, datastore or framework: the ChatGPT task runs hourly outside GitHub and applies these rules; V7's own hourly workflow is unrelated and unchanged. Fixed codes only: no content, ids or messages."""
 PASS, NO_ACTION, DEGRADED = "PASS", "NO_ACTION", "DEGRADED"
 
 # A Daily Report region is a callout whose first child heading names its owner. Nothing else is writable by any module.

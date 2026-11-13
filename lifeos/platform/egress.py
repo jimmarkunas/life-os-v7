@@ -1,5 +1,6 @@
-"""Other ways to reach a page a plain request from the GitHub runner cannot (counts and flags only; URLs never logged).
-Each returns lifeos.platform.http.Fetched facts. Used by probes first; a registry source opts in only after a probe proves the route."""
+"""Other ways to reach a page that a plain request from the GitHub runner cannot; each returns lifeos.platform.http.Fetched facts.
+
+Counts and flags only; URLs are never logged. Used by probes first; a registry source opts in only after a probe proves the route."""
 import json
 from urllib.parse import quote
 

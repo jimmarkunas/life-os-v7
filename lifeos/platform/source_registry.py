@@ -1,15 +1,13 @@
-"""LIFE-618: the one list of job sources, read from source_registry.json. Adding a source = THREE files: its module, its test, and one object in that file (LIFE-588). Nothing else is edited by hand.
+"""LIFE-618: the one list of job sources, read from source_registry.json; a new source is three files: its module, its test and one object in that file (LIFE-588).
 
 From that list, at import time:
-  * `lifeos/run.py` adds the stage (`python -m lifeos.run <name>`), so the hand-kept STAGES line is not needed;
+  * `lifeos/run.py` adds the stage (`python -m lifeos.run <name>`) and exits 1 for a run whose counts carry `failed > 0`, with the row's `partial_failure` code (registered by the row's `codes` or a package's codes.json);
   * `lifeos/jobs/tick.py` adds the source's Jobs-tick step (budget, limit, bulk, group, providers) after the step `after` names;
-  * `lifeos/platform/codes.py` registers the source's own outcome codes;
-  * `lifeos/run.py` makes a run whose counts carry `failed > 0` exit 1 with the row's `partial_failure` code (a code the row's `codes`, or a package's codes.json, registers).
-The code map (`python -m lifeos.sources.devtools.codemap build`) is generated from STAGES and is not committed, so it follows without a hand edit; a new file under lifeos/ needs no row in docs/test-index.json (the selector falls back to the mirror test folder).
-`tests/contracts/test_source_registry.py` imports every entry, and fails by name for a stage under lifeos/sources/ that is neither registered nor on its short "not yet migrated" list.
-Stays by hand, on purpose: a manual-dispatch input or step in a workflow file (protected-file approval; whether a source can be run by hand is a per-source choice), and one row in its package's config.txt for each new setting (environment name) it reads.
-It is data plus four small functions and imports nothing from lifeos (D17: platform knows nothing about jobs or sources; the modules are named by string, never imported here).
-"""
+  * `lifeos/platform/codes.py` registers the source's own outcome codes.
+`tests/contracts/test_source_registry.py` imports every entry and fails by name for a stage under lifeos/sources/ that is neither registered nor on its "not yet migrated" list.
+Stays by hand: a manual-dispatch input or step in a workflow file (protected-file approval), and one row in the package's config.txt for each new setting it reads.
+Data plus four small functions; imports nothing from lifeos (D17: platform knows nothing about jobs or sources; modules are named by string, never imported here)."""
+# The code map (`python -m lifeos.sources.devtools.codemap build`) is generated from STAGES and is not committed, so it follows without a hand edit; a new file under lifeos/ needs no row in docs/test-index.json (the selector falls back to the mirror test folder). Whether a source can be run by hand is a per-source choice, which is why the manual-dispatch input stays a hand edit.
 import json
 from dataclasses import dataclass, field
 from pathlib import Path

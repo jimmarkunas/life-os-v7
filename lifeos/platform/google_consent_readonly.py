@@ -1,14 +1,11 @@
-"""Read-only Google sign-in helper (LIFE-423, LOS-86 T13). It PRINTS a sign-in link for Jim to open himself, catches the reply on a loopback port (PKCE, state checked) and writes the
-credential only to a pipe, exactly like `google_consent` (whose PKCE link builder and loopback catcher it reuses; nothing there is changed). The differences are the point:
+"""Read-only Google sign-in helper (LIFE-423, LOS-86 T13): prints a sign-in link for Jim, catches the reply on loopback, writes the credential only to a pipe.
 
-* Scopes are limited to the read-only set for ONE service: Gmail readonly, Drive readonly (metadata), Calendar readonly. Any other scope, or a reply that grants more, is refused in code.
-* A link is produced only for an account on the allowlist (account, tenant, service, label or folder, size cap). An account that is not listed gets no link and nothing is stored.
-* A refusal returns a named, machine-readable code; nothing is written to stdout, the credential pipe, or anywhere else.
-* The receipt shows the scopes granted and never holds a secret. Nothing here opens a browser, calls Google by itself or reads a credential store; tests use a fake token endpoint.
-
-Run on Jim's Mac (the host he chose, Nov 9 2026), piped to the Edge credential command, the same way as the full-scope script:
-  python3 -m lifeos.platform.google_consent_readonly --account ACCT --service gmail --allowlist FILE | ssh ... credential NAME
-"""
+Like `google_consent`, whose PKCE link builder and loopback catcher it reuses (nothing there is changed). The differences:
+* Scopes: the read-only set for ONE service (Gmail readonly, Drive readonly metadata, Calendar readonly); any other scope, or a reply that grants more, is refused in code.
+* A link only for an account on the allowlist (account, tenant, service, label or folder, size cap); an unlisted account gets no link and nothing is stored.
+* A refusal returns a named, machine-readable code and writes nothing to stdout or the credential pipe. The receipt shows the scopes granted, never a secret.
+Nothing here opens a browser, calls Google by itself or reads a credential store; tests use a fake token endpoint. Run on Jim's Mac (his choice, Nov 9 2026):
+  python3 -m lifeos.platform.google_consent_readonly --account ACCT --service gmail --allowlist FILE | ssh ... credential NAME"""
 import getpass
 import http.server
 import json

@@ -1,5 +1,6 @@
-"""One private snapshot table: a row per key (a project, or the single row 1), replaced each run. The database is private; this repo is not.
-Used by the Jira, Bills and Agenda snapshots, so the schema, the replace and the read-back live in one place."""
+"""One private snapshot table: a row per key (a project, or the single row 1), replaced each run.
+
+The database is private; this repo is not. Used by the Jira, Bills and Agenda snapshots, so the schema, the replace and the read-back live in one place."""
 from collections.abc import Callable
 from typing import Any
 import json

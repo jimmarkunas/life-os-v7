@@ -1,5 +1,6 @@
-"""Notion file upload (platform, no job knowledge; LIFE-87 D234). One small file in one part: create the upload, send the bytes as multipart/form-data, and
-require Notion to report it "uploaded". -> the upload id, which a file block can then reference. Fixed error codes only; the token and bytes are never logged."""
+"""Notion file upload (platform, no job knowledge; LIFE-87, D234): create the upload, send the bytes as multipart/form-data, require "uploaded".
+
+One small file in one part. Returns the upload id, which a file block can then reference. Fixed error codes only; the token and bytes are never logged."""
 import json
 import secrets
 import urllib.error

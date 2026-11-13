@@ -1,9 +1,7 @@
-"""Minimal Google Drive client (stdlib only; platform: no job knowledge). Jim, Oct 24 2026: résumés live in Drive as real .docx files, directly in
-My Drive / LIFE OS / Résumés, with no hand moving ("full", Oct 24): the credential is the full `drive` scope, because the narrower drive.file cannot
-see the LIFE OS folder Jim made himself. This client still only ever finds that one folder (exactly one "LIFE OS" folder at the top of My Drive),
-creates or finds Résumés inside it, uploads, reads back and locks its own uploads. Files are uploaded as .docx and never converted to Google Docs,
-so their bytes and checksum stay fixed. Every error is a fixed code: never a URL, a token, an id or a response body. The credential is one JSON
-object {"client_id", "client_secret", "refresh_token"} (the Edge stores it encrypted as `gdrive`)."""
+"""Minimal Google Drive client (stdlib only; platform: no job knowledge) for the résumé folder: find or create, upload, read back and lock.
+
+The credential is the full `drive` scope (docs/DRIVE_RESUMES.md): one JSON object {"client_id", "client_secret", "refresh_token"}, stored encrypted by the Edge as `gdrive`. It finds exactly one "LIFE OS" folder at the top of My Drive, creates or finds Résumés inside it, uploads .docx files (never converted to Google Docs, so bytes and checksum stay fixed), reads back and locks its own uploads. Every error is a fixed code: never a URL, a token, an id or a response body."""
+# Jim, Oct 24 2026 ("full"): résumés live in Drive as real .docx files, directly in My Drive / LIFE OS / Résumés, with no hand moving; the credential is the full `drive` scope because the narrower drive.file cannot see the LIFE OS folder Jim made himself.
 import hashlib
 import json
 import secrets

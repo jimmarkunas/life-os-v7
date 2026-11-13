@@ -1,7 +1,6 @@
-"""LIFE-526: the one read-back wait. After a write, Notion may briefly still show the old state, so the caller READS again (up to `attempts` times, `pause` seconds apart) until what it reads matches.
+"""LIFE-526: the one read-back wait: after a write, READ again (up to `attempts` times, `pause` seconds apart) until what is read matches.
 
-It only ever repeats a READ. It never repeats a write, and a write that may or may not have happened is the caller's business (read it back; do not send it again). It prints nothing and
-knows no content: `read` and `matches` are the caller's. Used by the Notion card writers (jobs/fit/capacity_card, megibow/card, platform/report_region)."""
+Notion may briefly still show the old state. It only ever repeats a READ, never a write; a write that may or may not have happened is the caller's business (read it back; do not send it again). It prints nothing and knows no content: `read` and `matches` are the caller's. Used by the Notion card writers (jobs/fit/capacity_card, megibow/card, platform/report_region)."""
 import time
 
 

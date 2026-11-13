@@ -1,6 +1,6 @@
-"""Provider limits, canonized once. Code imports these; docs/LIMITS.md explains them; tests keep them in sync.
-Rule: every outbound call path stays UNDER the provider's published limit, with a margin, and stops on 429/403 instead
-of retrying harder. Change a number here only after re-reading the provider's current docs."""
+"""Provider limits, canonized once: code imports these, docs/LIMITS.md explains them, tests keep them in sync.
+
+Rule: every outbound call path stays UNDER the provider's published limit, with a margin, and stops on 429/403 instead of retrying harder. Change a number here only after re-reading the provider's current docs."""
 
 # TinyFish (Jim's plan; wallet is $35 and must never be spent)
 TINYFISH_FETCH_PER_DAY = 1000            # provider limit

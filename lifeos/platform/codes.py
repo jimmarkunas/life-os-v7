@@ -1,8 +1,8 @@
-"""The outcome-code registry (LIFE-72): one checked-in definition of every fixed code the pipeline can emit. LIFE-644: each package declares its own in lifeos/<package>/codes.json (plus reasons.json for stored reasons and not_codes.json for configuration names); this file only collects them.
-A code is a fixed UPPER_SNAKE word that names a result: a refusal, a failure, a skip, a normal stop or a state. For each one the registry says which stage owns it,
-what kind of result it is (CLASSES), whether it counts as an attempt against the job's retry budget, what it means in plain words, what to do next, and whether it
-may ever alert (SEVERITIES: none, info, page). tests/contracts/test_codes.py fails when the code emits a code-shaped string that is neither here nor in NOT_CODES, so a new code cannot appear without a definition. No code pages yet: turning any severity up is Jim's call (LIFE-71, alerts are suspended).
-Config and environment names that look like codes are listed in NOT_CODES."""
+"""The outcome-code registry (LIFE-72): the one checked-in definition of every fixed code the pipeline can emit.
+
+Each package declares its own codes in lifeos/<package>/codes.json (plus reasons.json for stored reasons and not_codes.json for configuration names); this module only collects them (LIFE-644).
+A code is a fixed UPPER_SNAKE word that names a result: a refusal, a failure, a skip, a normal stop or a state. For each one the registry gives the owning stage, the kind of result (CLASSES), whether it counts against the job's retry budget, what it means in plain words, what to do next, and whether it may ever alert (SEVERITIES: none, info, page; no code pages yet, LIFE-71).
+Config and environment names that look like codes are listed in NOT_CODES. tests/contracts/test_codes.py fails when the code emits a code-shaped string that is neither a code nor in NOT_CODES."""
 import ast
 import json
 import re

@@ -1,6 +1,6 @@
-"""Minimal Google Calendar client (stdlib + the system openssl for the JWT signature; platform: no product knowledge). Service-account
-auth: the account only ever sees the one calendar its owner shared with it. Every error is a fixed code: never a URL, a token, an id
-or a response body."""
+"""Minimal Google Calendar client (stdlib plus the system openssl for the JWT signature; platform: no product knowledge).
+
+Service-account auth: the account only ever sees the one calendar its owner shared with it. Every error is a fixed code: never a URL, a token, an id or a response body."""
 import base64
 import json
 import os
