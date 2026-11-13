@@ -2,7 +2,7 @@
 
     python3 lifeos/edge/buzz/oracle/build_pack.py OUTDIR [--commit SHA] [--root-prefix DIR]
 
-The files under files/tree come from `git show <commit>:path` (default HEAD): lifeos/__init__.py, lifeos/buzz/*.py and the old-name shims lifeos/buzz_*.py, nothing else.
+The files under files/tree come from `git show <commit>:path` (default HEAD): lifeos/__init__.py, lifeos/buzz/*.py, nothing else (LIFE-631: the old-name shims are gone; the unit the pack installs says `-m lifeos.buzz.mcp`).
 The release folder is named after the first 12 characters of the commit. `--root-prefix` is for tests only: every path in the pack moves under DIR."""
 import json
 import shutil
@@ -13,7 +13,6 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[3]
 PREVIOUS = "c423a4434c4c"
-SHIMS = ("buzz_auth", "buzz_mcp", "buzz_nip98", "buzz_relay")
 
 
 def git(*args):
@@ -26,7 +25,7 @@ def build(out, commit="HEAD", prefix=""):
     if out.exists():
         shutil.rmtree(out)
     (out / "files" / "tree" / "lifeos" / "buzz").mkdir(parents=True)
-    wanted = ["lifeos/__init__.py"] + [f"lifeos/{name}.py" for name in SHIMS]
+    wanted = ["lifeos/__init__.py"]
     wanted += sorted(p for p in git("ls-tree", "-r", "--name-only", commit, "lifeos/buzz/").decode().split() if p.endswith(".py"))
     for path in wanted:
         target = out / "files" / "tree" / path
