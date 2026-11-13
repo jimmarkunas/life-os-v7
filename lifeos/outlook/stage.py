@@ -1,5 +1,7 @@
-"""Outlook stages. `auth` signs one mailbox in once (device code; read-only by default, `write` also asks to move mail into a folder); the token goes straight into the private database,
-never into a secret or a log. `probe` is a read-only health check that prints counts only. Imports only the platform."""
+"""Outlook stages: `auth` signs one mailbox in once, `probe` is a read-only health check that prints counts only.
+
+`auth` uses the device code; it is read-only by default and `write` also asks to move mail into a folder. The token goes straight into the private database, never into a secret or a log.
+Imports only the platform."""
 import hashlib
 import os
 import time
