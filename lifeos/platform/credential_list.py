@@ -305,7 +305,6 @@ CREDENTIALS = [{'key': 'timer_token',
 # LIFE-644: the name rows themselves (NAME kind purpose) are in lifeos/<owner package>/config.txt; credentials.config() collects them with the groups below.
 PROVIDED = {'prefixes': ['GITHUB_', 'RUNNER_'], 'names': ['CI', 'PATH', 'SUDO_USER', 'CREDENTIALS_DIRECTORY', 'HOME']}
 PATTERNS = [{'file': 'lifeos/amazon/card.py', 'match': ['*_CARD_BLOCK_ID', 'GMAIL_OAUTH_*']},
- {'file': 'lifeos/attention/card.py', 'match': ['*_BLOCK_ID']},
  {'file': 'lifeos/buzz/mcp.py', 'match': ['BUZZ_*']},
  {'file': 'lifeos/dcc/card.py', 'match': ['*_BLOCK_ID']},
  {'file': 'lifeos/hermes_requests.py', 'match': ['BUZZ_*']},
