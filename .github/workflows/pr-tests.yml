@@ -89,8 +89,6 @@ jobs:
           } | tee -a "$GITHUB_STEP_SUMMARY"
           exit 0
       # Jim, Nov 8 2026: the Concord Room Orca plugin (tools/orca-concord-room) is production, so its own Node tests run on every PR and every merge. Node's built-in test runner, no install, no network, no secret; outside the 90 s Python suite limit above.
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
-        with:
-          node-version: "24"
+      - uses: ./.github/actions/node
       - name: Concord Room plugin tests (node:test)
         run: node --test tools/orca-concord-room/test/worker.test.mjs
