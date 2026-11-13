@@ -25,6 +25,7 @@ from zoneinfo import ZoneInfo
 
 from lifeos.imessage.alerts_endpoint import TG_COUNTS, _keystream      # the Oracle endpoint file is stdlib-only, so the runner imports from it and never the other way
 from lifeos.platform import report_region, router
+from lifeos.platform.fixed_code import fixed
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 
 TZ = ZoneInfo("America/Chicago")
@@ -65,17 +66,13 @@ def fetch(host, key, port=PORT):
 
 
 def unscramble(key, sealed):
-    try:
+    with fixed((KeyError, TypeError, ValueError), _fail, "COMMS_OFF_CONTRACT"):
         nonce, box, tag = (bytes.fromhex(sealed[k]) for k in ("nonce", "box", "tag"))
-    except (KeyError, TypeError, ValueError):
-        raise _fail("COMMS_OFF_CONTRACT") from None
     want = hmac.new(key, b"lifeos-comms-tag" + nonce + box, hashlib.sha256).digest()[:16]
     if len(nonce) != 16 or not hmac.compare_digest(want, tag):
         raise _fail("COMMS_SCRAMBLE_INVALID")
-    try:
+    with fixed(UnicodeDecodeError, _fail, "COMMS_SCRAMBLE_INVALID"):
         return bytes(a ^ b for a, b in zip(box, _keystream(key, nonce, len(box)))).decode("utf-8")
-    except UnicodeDecodeError:
-        raise _fail("COMMS_SCRAMBLE_INVALID") from None
 
 
 def _count(n):
@@ -93,11 +90,9 @@ def validate(raw, key, now):
     it is never partly used."""
     if not raw or len(raw) > MAX_REPLY:
         raise _fail("COMMS_UNREACHABLE")
-    try:
+    with fixed((ValueError, TypeError, KeyError, AttributeError), _fail, "COMMS_OFF_CONTRACT"):
         p = json.loads(raw)
         seen = datetime.fromisoformat(p["observed_at"].replace("Z", "+00:00"))
-    except (ValueError, TypeError, KeyError, AttributeError):
-        raise _fail("COMMS_OFF_CONTRACT") from None
     unread, state = p.get("unread_7d"), p.get("latest_state")
     if (set(p) != {"schema", "observed_at", "health", "unread_7d", "latest_state", "latest", *CHANNEL_BLOCKS} or p["schema"] != SCHEMA
             or p["health"] not in ("CURRENT", "DEGRADED") or state not in STATES or not _count(unread)
@@ -269,9 +264,7 @@ def run(limit, live, environ=os.environ, now=None, fetcher=fetch, client=None, k
         return counts
     report_region.require_configured({region: (environ.get(var) or "").strip() for var, region in PROTECTED}, _fail)
     scoped = report_region.ScopedClient(client, heading["id"], _fail).adopt(*(b["id"] for pair in blocks.values() for b in pair))      # LIFE-613: only the blocks located above can be written
-    try:
+    with fixed(NotionError, _fail, "COMMS_WRITE_FAILED"):
         write(scoped, heading, blocks, lines, heading_text)
-    except NotionError:
-        raise _fail("COMMS_WRITE_FAILED") from None
     counts["written"] = 2 * len(blocks) + 1
     return counts
