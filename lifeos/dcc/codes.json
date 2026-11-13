@@ -1,5 +1,7 @@
 {
   "CARD_UNREADABLE": ["dcc", "retry", false, "The card could not be read.", "None; retried."],
+  "COLUMNS_UNRECOGNIZED": ["dcc", "blocked", false, "The KPI row holds columns this card does not render and cannot tell which to remove.", "Remove the extra column by hand."],
+  "COLUMNS_VERIFY_FAILED": ["dcc", "degraded", false, "A removed KPI column did not read back as removed.", "Retried."],
   "HEADER_AMBIGUOUS": ["dcc", "blocked", false, "More than one header matches.", "Remove the extra header."],
   "HEADER_MISPLACED": ["dcc", "blocked", false, "The header is not where it should be.", "Move it back."],
   "HEADER_VERIFY_FAILED": ["dcc", "degraded", false, "The header did not read back as written.", "Retried."],

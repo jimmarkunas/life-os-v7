@@ -371,5 +371,109 @@ class RunTests(unittest.TestCase):
         self.assertEqual(entry.STAGES["dcc-card"].target, ("lifeos.dcc.card", "run"))
 
 
+class SurplusColumnTests(unittest.TestCase):
+    """LIFE-655: the live callout still holds the retired Attention KPI (4 columns), the card renders 3: the surplus column is removed first, then the normal sync runs."""
+
+    def live(self, notion, rename=None):
+        """The page as it stands after the LIFE-645 retirement: the first run's layout with the Attention KPI back as the third of four columns."""
+        go(notion)
+        row = notion.children["dcc-callout"][2]["id"]
+        attention = {"object": "block", "type": "column", "column": {"width_ratio": 0.25, "children": [card._b("callout", icon="arrow-up", children=[
+            card._b("heading_3", card._t("23")), card._b("paragraph", card._t(rename or "Attention items", bold=True)), card._b("paragraph", card._t("Attention · 10:05 PM CT", gray=True))])]}}
+        made = notion._make(attention)
+        notion.children[row].insert(2, made)
+        for column in notion.children[row]:
+            column["column"]["width_ratio"] = 0.25
+        return row, made["id"]
+
+    def names(self, notion, row):
+        return [report_region.plain(notion.children[notion.children[c["id"]][0]["id"]][1]) for c in notion.children[row]]
+
+    def test_four_live_columns_converge_to_three_and_nothing_else_on_the_page_is_touched(self):
+        notion = page()
+        row, attention = self.live(notion)
+        others = {k: notion.full_tree(k) for k in ("calendar-callout", "jira-callout", "bills-callout", "amazon-callout", "attention-callout", "mail-callout")}
+        mark = len(notion.log)
+        counts = go(notion)
+        self.assertEqual(self.names(notion, row), ["Bills due", "Jira Overdue / Blocked", "Mail waiting"])
+        self.assertEqual([p for m, p in notion.log[mark:] if m == "DELETE"], [f"/blocks/{attention}"])               # one DELETE, aimed at the Attention column
+        self.assertEqual(counts["columns_removed"], 1)
+        self.assertEqual({c["column"]["width_ratio"] for c in notion.children[row]}, {round(1 / 3, 4)})
+        mail = notion.children[notion.children[row][2]["id"]][0]
+        self.assertTrue(mail["callout"]["icon"]["external"]["url"].endswith("inbox_gray.svg"))                        # the Mail KPI kept its own icon, it was not rewritten into the Attention column
+        self.assertEqual({k: notion.full_tree(k) for k in others}, others)
+        mark = len(notion.log)
+        go(notion)
+        self.assertEqual(writes(notion, mark), [])
+
+    def test_three_live_columns_are_a_no_op(self):
+        notion = page()
+        go(notion)
+        mark = len(notion.log)
+        self.assertEqual(card.converge_columns(notion, "dcc-callout", ["Bills due", "Jira Overdue / Blocked", "Mail waiting"], {}, True), 0)
+        self.assertEqual(writes(notion, mark), [])
+        self.assertEqual(go(notion)["columns_removed"], 0)
+
+    def test_a_surplus_column_outside_the_cards_own_callout_is_never_touched_and_the_guard_refuses_it(self):
+        notion = page()
+        go(notion)
+        row = notion.children["dcc-callout"][2]["id"]
+        foreign = notion._make({"object": "block", "type": "column", "column": {"width_ratio": 0.25, "children": []}})
+        notion.children["jira-callout"].append({"id": "foreign-row", "type": "column_list", "has_children": True, "column_list": {}})
+        notion.children["foreign-row"] = [foreign, notion._make({"object": "block", "type": "column", "column": {"width_ratio": 0.25, "children": []}})]
+        before, mark = notion.full_tree("jira-callout"), len(notion.log)
+        go(notion)
+        self.assertEqual(notion.full_tree("jira-callout"), before)
+        self.assertEqual(len(notion.children["foreign-row"]), 2)
+        self.assertEqual([m for m, _ in notion.log[mark:] if m == "DELETE"], [])
+        scoped = report_region.ScopedClient(notion, "dcc-callout", card._fail)
+        scoped.call("GET", f"/blocks/{row}/children")
+        with self.assertRaises(NotionError) as error:
+            scoped.call("DELETE", f"/blocks/{foreign['id']}")
+        self.assertIn("WRITE_OUT_OF_SCOPE", str(error.exception))
+        self.assertEqual(len(notion.children["foreign-row"]), 2)
+
+    def test_a_delete_that_does_not_read_back_fails_with_the_fixed_code(self):
+        notion = page()
+        row, attention = self.live(notion)
+        real = notion.call
+
+        def call(method, path, body=None):
+            return {} if method == "DELETE" and attention in path else real(method, path, body)             # Notion acknowledges the delete but the column stays
+        notion.call = call
+        with self.assertRaises(NotionError) as error:
+            go(notion)
+        self.assertEqual(str(error.exception), "DCC_COLUMNS_VERIFY_FAILED")
+
+    def test_columns_that_are_not_the_rendered_ones_are_not_deleted_blind(self):
+        notion = page()
+        row, attention = self.live(notion, rename="Something Jim wrote")
+        notion.children[row][3]["column"]["width_ratio"] = 0.25
+        notion.children[notion.children[notion.children[row][0]["id"]][0]["id"]][1] = text_block(notion, "renamed", "paragraph", "Bills overdue")       # two unknown columns, three expected
+        mark = len(notion.log)
+        with self.assertRaises(NotionError) as error:
+            go(notion)
+        self.assertEqual(str(error.exception), "DCC_COLUMNS_UNRECOGNIZED")
+        self.assertEqual(writes(notion, mark), [])
+
+    def test_a_dry_run_reports_the_surplus_and_writes_nothing(self):
+        notion = page()
+        row, _ = self.live(notion)
+        mark = len(notion.log)
+        self.assertEqual(go(notion, live=False)["columns_removed"], 1)
+        self.assertEqual(writes(notion, mark), [])
+        self.assertEqual(len(notion.children[row]), 4)
+
+    def test_the_page_updated_line_is_still_written_when_the_callout_write_fails_but_not_for_a_wrong_target(self):
+        with mock.patch.object(card.header, "run", return_value="updated") as stamp, mock.patch.object(report_region, "replace_tree", side_effect=NotionError("DCC_CARD_STRUCTURE_CHANGED")):
+            with self.assertRaises(NotionError):
+                go(page())
+        self.assertEqual(stamp.call_count, 1)
+        with mock.patch.object(card.header, "run", return_value="updated") as stamp:
+            with self.assertRaises(NotionError):
+                go(page(), env={"DCC_CARD_BLOCK_ID": "jira-callout"})
+        self.assertEqual(stamp.call_count, 0)
+
+
 if __name__ == "__main__":
     unittest.main()
