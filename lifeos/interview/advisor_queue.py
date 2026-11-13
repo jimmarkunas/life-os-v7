@@ -8,6 +8,8 @@ from urllib.parse import quote
 from . import advisor, notion
 from .advisor_store import AdvisorStoreError, VerifiedPreview
 from .models import PrepEvidence
+from lifeos.platform import notion_pages
+from lifeos.platform.fixed_code import fixed
 from lifeos.platform.notion_client import NotionError
 
 _QUEUE_TITLE = "Advisor Queue"
@@ -63,12 +65,8 @@ def _bundle_value(bundle):
 
 
 def serialize_bundle(bundle):
-    try:
+    with fixed(Exception, AdvisorQueueError, "advisor_queue_invalid", keep=AdvisorQueueError):
         payload = _canonical(_bundle_value(bundle))
-    except AdvisorQueueError:
-        raise
-    except Exception:
-        raise AdvisorQueueError() from None
     _need(len(payload) <= _REQUEST_MAX, "advisor_queue_too_large")
     return payload
 
@@ -81,7 +79,7 @@ def _object(value, keys):
 def parse_bundle(payload):
     _need(isinstance(payload, str))
     _need(len(payload) <= _REQUEST_MAX, "advisor_queue_too_large")
-    try:
+    with fixed(Exception, AdvisorQueueError, "advisor_queue_invalid", keep=AdvisorQueueError):
         value = _object(json.loads(payload), _BUNDLE_KEYS)
         md = _object(value["manifest"], tuple(advisor.AdvisorManifest.__dataclass_fields__))
         manifest = advisor.AdvisorManifest(**md)
@@ -102,10 +100,6 @@ def parse_bundle(payload):
         _need(serialize_bundle(result) == payload)
         advisor.bundle_digest(result)
         return result
-    except AdvisorQueueError:
-        raise
-    except Exception:
-        raise AdvisorQueueError() from None
 
 
 @dataclass(frozen=True)
@@ -140,11 +134,9 @@ class QueueItem:
 
 
 def _plain(block):
-    try:
+    with fixed((KeyError, TypeError), AdvisorQueueError, "advisor_queue_incomplete"):
         return "".join(x.get("plain_text", x.get("text", {}).get("content", ""))
                        for x in block[block["type"]]["rich_text"])
-    except (KeyError, TypeError):
-        raise AdvisorQueueError("advisor_queue_incomplete") from None
 
 
 def _title(page):
@@ -156,18 +148,8 @@ def _title(page):
 def _call(client, budget, method, path, body=None, once=False):
     _need(budget[0] > 0, "advisor_queue_incomplete")
     budget[0] -= 1
-    try:
-        if once:
-            return client.call_once(method, path, body)
-        return client.call(method, path, body)
-    except AdvisorQueueError:
-        raise
-    except NotionError:
-        if once:
-            raise
-        raise AdvisorQueueError("advisor_queue_incomplete") from None
-    except Exception:
-        raise AdvisorQueueError("advisor_queue_incomplete") from None
+    with fixed(Exception, AdvisorQueueError, "advisor_queue_incomplete", keep=(AdvisorQueueError, NotionError) if once else AdvisorQueueError):
+        return (client.call_once if once else client.call)(method, path, body)
 
 
 def _page(client, budget, page_id, title, parent=None, unavailable="advisor_queue_incomplete"):
@@ -177,20 +159,10 @@ def _page(client, budget, page_id, title, parent=None, unavailable="advisor_queu
 
 
 def _children(client, budget, page_id):
-    blocks, cursor, seen = [], None, set()
-    while True:
+    def fetch(cursor):
         path = f"/blocks/{page_id}/children?page_size=100"
-        if cursor:
-            path += "&start_cursor=" + quote(cursor, safe="")
-        data = _call(client, budget, "GET", path)
-        _need(isinstance(data.get("results"), list) and type(data.get("has_more")) is bool,
-              "advisor_queue_incomplete")
-        blocks.extend(data["results"])
-        if not data["has_more"]:
-            return blocks
-        cursor = data.get("next_cursor")
-        _need(isinstance(cursor, str) and cursor and cursor not in seen, "advisor_queue_incomplete")
-        seen.add(cursor)
+        return _call(client, budget, "GET", path + ("&start_cursor=" + quote(cursor, safe="") if cursor else ""))
+    return [block for data in notion_pages.pages(fetch, AdvisorQueueError, "advisor_queue_incomplete") for block in data["results"]]
 
 
 def _queue(client, budget, queue_page_id):
@@ -291,7 +263,7 @@ def ensure_request(client, queue_page_id, bundle):
                                 else "advisor_queue_readback_failed") from None
     except Exception:
         raise AdvisorQueueError("advisor_queue_readback_failed") from None
-    try:
+    with fixed(Exception, AdvisorQueueError, "advisor_queue_readback_failed"):
         page_id = page.get("id")
         _need(isinstance(page_id, str) and re.fullmatch(
               r"(?:[0-9a-fA-F]{32}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})", page_id),
@@ -300,8 +272,6 @@ def ensure_request(client, queue_page_id, bundle):
         _need(not trailing and result.request_id == request_id and result.bundle_hash == bundle_hash
               and serialize_bundle(result.bundle) == payload, "advisor_queue_readback_failed")
         return result
-    except Exception:
-        raise AdvisorQueueError("advisor_queue_readback_failed") from None
 
 
 def _draft_value(draft):
@@ -310,7 +280,7 @@ def _draft_value(draft):
 
 
 def _parse_draft(payload):
-    try:
+    with fixed(Exception, AdvisorQueueError, "advisor_queue_response_invalid", keep=AdvisorQueueError):
         def unique(pairs):
             result = {}
             for key, value in pairs:
@@ -334,15 +304,11 @@ def _parse_draft(payload):
                     items.append(advisor.GroundedAdvice(item["text"], tuple(item["source_refs"])))
                 sections[key] = tuple(items)
         return advisor.AdvisorDraft(**sections)
-    except AdvisorQueueError:
-        raise
-    except Exception:
-        raise AdvisorQueueError("advisor_queue_response_invalid") from None
 
 
 def read_response(client, request, response_page_id, budget=None):
     budget = budget if budget is not None else [_CALLS]
-    try:
+    with fixed(Exception, AdvisorQueueError, "advisor_queue_response_invalid", keep=AdvisorQueueError):
         _page(client, budget, response_page_id, None, None, "advisor_queue_response_invalid")
         blocks = _children(client, budget, response_page_id)
         _need(len(blocks) == 2 and all(not b.get("has_children") for b in blocks), "advisor_queue_response_invalid")
@@ -354,10 +320,6 @@ def read_response(client, request, response_page_id, budget=None):
         draft = _parse_draft(payload)
         prep = advisor.compile_prep(request.bundle, draft)
         return QueueResponse(request.request_id, request.bundle_hash, draft, prep, response_page_id)
-    except AdvisorQueueError:
-        raise
-    except Exception:
-        raise AdvisorQueueError("advisor_queue_response_invalid") from None
 
 
 def _request_for_scan(client, budget, queue_page_id, block):

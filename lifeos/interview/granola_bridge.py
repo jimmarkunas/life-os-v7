@@ -6,6 +6,7 @@ contract check -> write the Full Transcript page and read it back -> only after 
 refresh the round's Transcript lines. Never loops to a second meeting. Returns codes and counts only; no title, name, address, id or transcript text leaves this module."""
 import os
 
+from lifeos.platform.fixed_code import fixed
 from lifeos.platform.notion_client import NotionError
 from lifeos.platform.names import split_title
 from lifeos.platform.runtime import DeadlineExceeded, RunContext
@@ -43,10 +44,8 @@ def rounds(client, environ, context, counts=None):
 
 
 def meetings(reply):
-    try:
+    with fixed((KeyError, TypeError, ValueError), Stop, "GRAN_REPLY_INVALID"):
         return [granola_match.Meeting(str(m["id"]), str(m["start"]), str(m.get("title") or ""), "", tuple(str(a) for a in (m.get("attendees") or ()))) for m in reply["meetings"]]
-    except (KeyError, TypeError, ValueError):
-        raise Stop("GRAN_REPLY_INVALID") from None
 
 
 def run(live, only_day, environ=os.environ, send=granola_oracle.exchange, client=None, context=None):
