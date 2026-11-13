@@ -56,7 +56,7 @@ class RenderTests(unittest.TestCase):
     def test_the_summary_never_says_a_number_of_days_and_counts_overdue_once(self):
         rows = STALE_FOUR + [row("Oct 11 Bill", "2026-10-11", "2026-10-11")]
         head = lines(card.render(saved(rows), now=NOW)[0])[0]
-        self.assertEqual(head, "Updated 12:10 PM CT · 5 bills due · 1 due through one week from now · $30 known · 4 overdue")
+        self.assertEqual(head, "5 bills due · 1 due through one week from now · $30 known · 4 overdue")
         self.assertNotRegex(head, r"next \d+ days")
 
     def test_the_four_unpaid_september_rows_stay_overdue_and_are_not_advanced(self):
@@ -78,7 +78,8 @@ class RenderTests(unittest.TestCase):
         rows = STALE_FOUR + [row("Water", "2026-10-06", "2026-10-06", amount=45.0), row("Power", "2026-10-08", "2026-10-08", amount=30.0)]
         blocks, counts = card.render(saved(rows), now=NOW)
         head = lines(blocks)[0]
-        self.assertTrue(head.startswith("Updated 12:10 PM CT"))
+        self.assertEqual(card.heading_text(saved(rows), False), "Bills: This Week (Updated 12:10 PM CT)")                  # LIFE-609: the stamp is in the heading
+        self.assertNotIn("Updated", head)
         self.assertIn("2 due through one week from now", head)
         self.assertIn("$75 known", head)
         self.assertIn("4 overdue", head)
@@ -87,7 +88,7 @@ class RenderTests(unittest.TestCase):
     def test_stale_snapshot_is_labelled_stale_with_its_own_timestamp_never_current(self):
         blocks, counts = card.render(saved(STALE_FOUR, "2026-10-04T05:00:00-05:00"), stale=True, now=NOW)
         head = lines(blocks)[0]
-        self.assertTrue(head.startswith("STALE · last accepted Oct 4 5:00 AM CT"))
+        self.assertEqual(card.heading_text(saved(STALE_FOUR, "2026-10-04T05:00:00-05:00"), True), "Bills: This Week (STALE · last accepted Oct 4 5:00 AM CT)")
         self.assertNotIn("Updated", head)
         self.assertEqual(counts["status"], "stale")
 
@@ -128,15 +129,15 @@ class WriteTests(unittest.TestCase):
         counts = self.run_card(notion)
         kids = notion.children["bills-callout"]
         self.assertEqual([k["id"] for k in kids][0], "heading-bills-callout")                 # the heading block itself is kept
-        self.assertEqual(report_region.plain(kids[0]), "Bills: This Week")
-        self.assertTrue(report_region.plain(kids[1]).startswith("Updated 12:10 PM CT"))                  # the summary sits right under the heading
+        self.assertEqual(report_region.plain(kids[0]), "Bills: This Week (Updated 12:10 PM CT)")          # LIFE-609: the stamp is in the heading
+        self.assertTrue(report_region.plain(kids[1]).startswith("4 bills due"))                          # the summary sits right under the heading
         self.assertEqual(kids[2]["id"], "bills-view-old")                                     # the Bills table is still there, below it, untouched
         self.assertEqual(kids[2], view_before)
         self.assertNotIn("last accepted 9/14", "\n".join(lines(kids)))
         self.assertEqual((counts["blocks_written"], counts["removed"]), (1, 0))                # the status line is rewritten in place, so nothing is removed
         self.assertEqual((notion.full_tree("calendar-callout"), notion.full_tree("jira-callout"), notion.full_tree("dcc-callout")),
                          (calendar_before, jira_before, dcc_before))
-        self.assertEqual({p.split("/")[2] for m, p in notion.log if m in ("APPEND", "DELETE", "PATCH")}, {"bills-status-old"})      # the one old status line is the only block touched
+        self.assertEqual({p.split("/")[2] for m, p in notion.log if m in ("APPEND", "DELETE", "PATCH")}, {"bills-status-old", "heading-bills-callout"})      # the one old status line and the heading (LIFE-609: it carries the stamp) are the only blocks touched
         self.assertFalse(any(p == f"/blocks/{notion.page_id}/children" for _, p in notion.log))
 
     def test_dry_run_writes_nothing_and_missing_config_is_not_an_error(self):
@@ -149,7 +150,7 @@ class WriteTests(unittest.TestCase):
     def test_stale_snapshot_is_written_as_stale(self):
         notion = BillsRegions()
         card.run(0, True, environ=ENV, client=notion, now=NOW, connect=lambda: BillsSnapshotDB(saved(STALE_FOUR, "2026-10-04T05:00:00-05:00")))
-        self.assertTrue(report_region.plain(notion.children["bills-callout"][1]).startswith("STALE · last accepted Oct 4 5:00 AM CT"))
+        self.assertEqual(report_region.plain(notion.children["bills-callout"][0]), "Bills: This Week (STALE · last accepted Oct 4 5:00 AM CT)")
 
     def test_tracker_link_is_preserved_and_wrong_target_refuses_before_writing(self):
         notion = BillsRegions()
@@ -193,7 +194,7 @@ class WriteTests(unittest.TestCase):
                 self.run_card(notion)
         self.assertEqual(str(caught.exception), "BILLS_WRITE_OUT_OF_SCOPE")
         self.assertEqual(notion.full_tree("jira-callout"), before)
-        self.assertEqual([m for m, _ in notion.log if m in ("PATCH", "APPEND", "DELETE")], [])
+        self.assertEqual([p for m, p in notion.log if m in ("PATCH", "APPEND", "DELETE")], ["/blocks/heading-bills-callout"])          # LIFE-609: only the card's own heading was written before the writer was refused
 
     def test_missing_protected_ids_refuse_a_live_write(self):
         for missing in ("CALENDAR_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID"):
