@@ -11,7 +11,7 @@ Read [AGENTS.md](AGENTS.md) and the [canonical LIFE OS Development Policy](docs/
 
 As an authorized coding session, self-resume the active claimed `LIFE` issue or self-pull the next live Agent Go issue for your approved lane after you move the previous one to Done. Verify blockers and Priority/Rank order rather than accepting creation-date Rank or a stale roadmap. If Jira is unavailable or the queue lacks authoritative readiness, return `QUEUE_NOT_READY` with the exact gap. A verified Tech Lead handoff can authorize a specific one-off task only; it cannot replace autonomous Jira access.
 
-Obey the policy's repository affinity, one-writer and permission gates. Moving a ticket to Agent Go is Jim's approval; you merge on green same-head CI and move the ticket to Done yourself after read-back (delegated closeout); Jim reopens it or files a Bug. Concord `start_work`/`finish_work` (see AGENTS.md) are optional. V7 is the active repository; V1/V2 are read-only references and have no live development-policy authority. This pointer does not grant Jira write access, OpenClaw permissions or merge authority.
+Obey the policy's repository affinity, one-writer and permission gates. Moving a ticket to Agent Go is Jim's approval; you merge on green same-head CI and move the ticket to Done yourself once merged on same-head green CI with local proof (delegated closeout); Jim reopens it or files a Bug. Concord `start_work`/`finish_work` (see AGENTS.md) are optional. V7 is the active repository; V1/V2 are read-only references and have no live development-policy authority. This pointer does not grant Jira write access, OpenClaw permissions or merge authority.
 
 ## Jim-directed Buzz channel checks and bounded handoff actions (LIFE-254 / BUZZ-17)
 

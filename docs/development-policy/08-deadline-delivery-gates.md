@@ -68,7 +68,7 @@ The following are not blockers by themselves: an unclean working tree whose chan
 
 `BLOCKED` must never mean “I stopped because proceeding required judgment.” When canonical authority already defines intended behavior and mutation scope, execute within that boundary.
 
-If deterministic implementation and targeted proof are complete but live/external acceptance is unavailable, report `LANDED — ACCEPTANCE PENDING`, not `BLOCKED`. If one narrow part is externally blocked but the remaining package can complete, complete the rest first and report `PARTIAL CANDIDATE — BLOCKED ON <exact external dependency>`.
+A live look that has not happened does not hold Done; report `DONE` and name the watch. If one narrow part is externally blocked but the remaining package can complete, complete the rest first and report `PARTIAL CANDIDATE — BLOCKED ON <exact external dependency>`.
 
 After one `BLOCKED` result, the next Tech Lead handoff must either remove the exact blocker or materially change the execution boundary. Do not resend substantially the same package and expect a different result.
 
