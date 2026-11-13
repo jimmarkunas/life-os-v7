@@ -20,7 +20,7 @@
       "Bash(git fetch:*)",
       "Bash(gh pr merge:*)",
       "Bash(python3 -m unittest:*)",
-      "Bash(python3 -m lifeos.codemap:*)",
+      "Bash(python3 -m lifeos.sources.devtools.codemap:*)",
       "mcp__github__create_pull_request",
       "mcp__github__update_pull_request",
       "mcp__github__merge_pull_request",
