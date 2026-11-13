@@ -1,0 +1,34 @@
+{
+"hourly.yml": [
+  {"conclusion": "success", "created_at": "2026-11-13T00:17:02Z", "display_title": "tick", "event": "workflow_dispatch", "status": "completed", "updated_at": "2026-11-13T00:26:56Z"},
+  {"conclusion": "cancelled", "created_at": "2026-11-13T00:00:10Z", "display_title": "tick", "event": "workflow_dispatch", "status": "completed", "updated_at": "2026-11-13T00:00:39Z"},
+  {"conclusion": "cancelled", "created_at": "2026-11-12T23:26:17Z", "display_title": "tick", "event": "schedule", "status": "completed", "updated_at": "2026-11-12T23:26:46Z"},
+  {"conclusion": "success", "created_at": "2026-11-12T23:17:02Z", "display_title": "tick", "event": "workflow_dispatch", "status": "completed", "updated_at": "2026-11-12T23:25:07Z"},
+  {"conclusion": "cancelled", "created_at": "2026-11-12T23:00:12Z", "display_title": "tick", "event": "workflow_dispatch", "status": "completed", "updated_at": "2026-11-12T23:00:44Z"},
+  {"conclusion": "success", "created_at": "2026-11-12T23:00:02Z", "display_title": "manual", "event": "workflow_dispatch", "status": "completed", "updated_at": "2026-11-12T23:04:29Z"}
+],
+"watchdog.yml": [
+  {"conclusion": "success", "created_at": "2026-11-13T00:25:30Z", "display_title": "watchdog", "event": "schedule", "status": "completed", "updated_at": "2026-11-13T00:25:42Z"},
+  {"conclusion": "success", "created_at": "2026-11-12T21:08:07Z", "display_title": "watchdog", "event": "schedule", "status": "completed", "updated_at": "2026-11-12T21:08:23Z"},
+  {"conclusion": "success", "created_at": "2026-11-12T18:56:45Z", "display_title": "watchdog", "event": "schedule", "status": "completed", "updated_at": "2026-11-12T18:56:58Z"},
+  {"conclusion": "success", "created_at": "2026-11-12T16:33:16Z", "display_title": "watchdog", "event": "workflow_dispatch", "status": "completed", "updated_at": "2026-11-12T16:33:29Z"},
+  {"conclusion": "success", "created_at": "2026-11-12T13:18:41Z", "display_title": "watchdog", "event": "schedule", "status": "completed", "updated_at": "2026-11-12T13:18:59Z"},
+  {"conclusion": "success", "created_at": "2026-11-12T11:12:17Z", "display_title": "watchdog", "event": "schedule", "status": "completed", "updated_at": "2026-11-12T11:12:29Z"}
+],
+"safety.yml": [
+  {"conclusion": "failure", "created_at": "2026-11-09T22:58:29Z", "display_title": "safety", "event": "schedule", "status": "completed", "updated_at": "2026-11-09T22:59:17Z"},
+  {"conclusion": "failure", "created_at": "2026-11-02T22:18:47Z", "display_title": "safety", "event": "schedule", "status": "completed", "updated_at": "2026-11-02T22:19:14Z"},
+  {"conclusion": "failure", "created_at": "2026-10-26T19:17:37Z", "display_title": "safety", "event": "schedule", "status": "completed", "updated_at": "2026-10-26T19:18:05Z"},
+  {"conclusion": "failure", "created_at": "2026-10-19T19:19:40Z", "display_title": "safety", "event": "schedule", "status": "completed", "updated_at": "2026-10-19T19:20:12Z"},
+  {"conclusion": "success", "created_at": "2026-10-13T20:05:59Z", "display_title": "safety", "event": "workflow_dispatch", "status": "completed", "updated_at": "2026-10-13T20:06:24Z"},
+  {"conclusion": "failure", "created_at": "2026-10-13T19:46:48Z", "display_title": "safety", "event": "workflow_dispatch", "status": "completed", "updated_at": "2026-10-13T19:47:07Z"}
+],
+"domains.yml": [
+  {"conclusion": "success", "created_at": "2026-11-13T00:26:59Z", "display_title": "domains (after tick)", "event": "workflow_run", "status": "completed", "updated_at": "2026-11-13T00:46:38Z"},
+  {"conclusion": "skipped", "created_at": "2026-11-13T00:00:42Z", "display_title": "domains (after tick)", "event": "workflow_run", "status": "completed", "updated_at": "2026-11-13T00:00:44Z"},
+  {"conclusion": "skipped", "created_at": "2026-11-12T23:26:48Z", "display_title": "domains (after tick)", "event": "workflow_run", "status": "completed", "updated_at": "2026-11-12T23:26:50Z"},
+  {"conclusion": "success", "created_at": "2026-11-12T23:25:10Z", "display_title": "domains (after tick)", "event": "workflow_run", "status": "completed", "updated_at": "2026-11-12T23:42:30Z"},
+  {"conclusion": "skipped", "created_at": "2026-11-12T23:04:32Z", "display_title": "domains (after tick)", "event": "workflow_run", "status": "completed", "updated_at": "2026-11-12T23:04:34Z"},
+  {"conclusion": "skipped", "created_at": "2026-11-12T23:00:48Z", "display_title": "domains (after tick)", "event": "workflow_run", "status": "completed", "updated_at": "2026-11-12T23:00:49Z"}
+]
+}
