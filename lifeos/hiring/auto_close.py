@@ -1,12 +1,13 @@
-"""Auto-close on a known rejection (Jim, Oct 24 2026): "Should these auto-close on known rejection and persist for 24 hours with a closed/rejected message?"
+"""Closes a Hiring Pipeline row on a known rejection mail that names the row's exact role and company (Jim, Oct 24 2026).
 
-A row closes itself only when the outcome mail (D190) is a REJECTION that names the row's exact role as well as its company, the row was computed this run from complete,
-fresh reads, and no other role Jim pursued at that company shares its words. A company-only match ("Possible rejection") stays a line Jim confirms. The close is the same checked write the private Close screen makes, through `decision.route`:
-the one Ledger row of the pursuit gets `Hiring Decision = Rejected` (re-read, written, read back; LIFE-353: Ledger rows only, no page moves). Anything the Close screen would
-refuse is refused here, counted by fixed code, and the row stays as it was. Nothing is deleted, sent or marked in the mailbox, and a Reopen undoes it.
-
-It runs only when the hourly run is live AND the HIRING_AUTO_CLOSE switch is on (lifeos/platform/switches.json; a repository variable "off" is Jim's kill switch). Off, the rows that would close are only counted.
-A closed row stays on the Hiring Pipeline for SHOW_HOURS as "Closed — rejection email received <day> · auto-closed <day>", then drops off. Counts and fixed codes only are logged."""
+A row closes only when the outcome mail (D190) is a REJECTION naming its exact role and company, the row was computed this run from complete, fresh reads, and no other role Jim pursued there shares its words.
+A company-only match ("Possible rejection") stays a line Jim confirms. The close is the Close screen's own checked write through `decision.route`: the one Ledger row gets `Hiring Decision = Rejected` (re-read, written,
+read back; LIFE-353: Ledger rows only). Anything the Close screen would refuse is refused here, counted by fixed code, and the row stays as it was. A Reopen undoes it.
+Runs only when the hourly run is live AND the HIRING_AUTO_CLOSE switch is on (lifeos/platform/switches.json; a repository variable "off" is the kill switch); off, the rows that would close are only counted.
+A closed row stays on the pipeline for SHOW_HOURS, then drops off. Counts and fixed codes only."""
+# Detail moved out of the docstring (LIFE-595):
+# Jim's request, Oct 24 2026: "Should these auto-close on known rejection and persist for 24 hours with a closed/rejected message?"
+# Nothing is deleted, sent or marked in the mailbox. A closed row shows as "Closed — rejection email received <day> · auto-closed <day>" for SHOW_HOURS.
 import hashlib
 from datetime import datetime, timedelta
 
