@@ -8,6 +8,7 @@ from html import escape as e
 
 from lifeos.hiring import close_screen as S, decision as D
 from lifeos.network import surface as N
+from lifeos.platform.fixed_code import fixed
 from lifeos.platform.notion_client import Client, NotionError
 from lifeos.recruiters import notion as store, outreach as O
 from lifeos.sources.apps.signed import HTML, gate, handler, invalid, mac as _mac, same as _same, stopper, written
@@ -27,10 +28,8 @@ _stop = stopper("A Mark as Sent counts only after the canonical record is read b
 def job(client, config, pid):
     """The ONE open Job Ledger job with this exact page id -> {id, company, role}, or a fixed refusal. Read only. Open follows the Close rules (D194): a recorded
     Hiring Decision closes the job (JOB_CLOSED); a Ledger page without the Hiring Decision property is not provably open and is refused (JOB_STATE_UNKNOWN)."""
-    try:
+    with fixed(NotionError, D.fail, "NOT_FOUND"):
         page = client.get_page(pid)
-    except NotionError:
-        raise D.fail("NOT_FOUND") from None
     parent = (page.get("parent") or {}).get("data_source_id") or ""
     props = page.get("properties") or {}
     company, role = D._text(props.get("Company"), "rich_text"), D._text(props.get("Job"), "title")

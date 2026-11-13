@@ -25,6 +25,7 @@ from lifeos.platform import ledger_body
 from lifeos.network import match, store, surface
 from lifeos.network.errors import NetworkError
 from lifeos.platform import db, limits
+from lifeos.platform.fixed_code import fixed
 from lifeos.platform.notion_client import Client, NotionError
 from lifeos.sources.network import network_leads
 
@@ -32,16 +33,13 @@ DEFAULT_PAGES = 300
 
 
 def _read(connection, now):
-    with connection.cursor() as cursor:
-        try:
-            cursor.execute("SELECT s.person_id, s.company_key, s.title, s.position_state, s.last_verified, s.id, s.company_name, p.display_name, p.url_key FROM v7_network_positions s "
-                           "JOIN v7_network_people p ON p.id = s.person_id WHERE p.status='ACTIVE'")
-            roster = cursor.fetchall()
-            cursor.execute("SELECT j.dedupe_key, j.notion_page_id, j.company, j.title, f.admission FROM v7_jobs j LEFT JOIN v7_job_fit f ON f.job_id = j.id "
-                           "WHERE j.status='PUBLISHED' AND j.notion_page_id IS NOT NULL")
-            jobs = cursor.fetchall()
-        except Exception:                                              # noqa: BLE001 - a driver message may carry names; only the fixed code leaves
-            raise NetworkError("NETWORK_MATCH_READ_FAILED") from None
+    with connection.cursor() as cursor, fixed(Exception, NetworkError, "NETWORK_MATCH_READ_FAILED"):          # a driver message may carry names; only the fixed code leaves
+        cursor.execute("SELECT s.person_id, s.company_key, s.title, s.position_state, s.last_verified, s.id, s.company_name, p.display_name, p.url_key FROM v7_network_positions s "
+                       "JOIN v7_network_people p ON p.id = s.person_id WHERE p.status='ACTIVE'")
+        roster = cursor.fetchall()
+        cursor.execute("SELECT j.dedupe_key, j.notion_page_id, j.company, j.title, f.admission FROM v7_jobs j LEFT JOIN v7_job_fit f ON f.job_id = j.id "
+                       "WHERE j.status='PUBLISHED' AND j.notion_page_id IS NOT NULL")
+        jobs = cursor.fetchall()
     try:
         pipeline = network_leads.hiring_snapshot.load(connection)
     except Exception:                                                  # noqa: BLE001
@@ -174,10 +172,8 @@ MAX_SHARDS = 8
 
 def parse_shard(raw, error, code):
     """A shard setting "i/n" -> (i, n); unset = (0, 1), everything. Anything else raises `error(code)`. The Ledger layout stage reads its own variable the same way."""
-    try:
+    with fixed(ValueError, error, code):
         index, count = (int(part) for part in (raw or "0/1").strip().split("/"))
-    except ValueError:
-        raise error(code) from None
     if not 0 < count <= MAX_SHARDS or not 0 <= index < count:
         raise error(code)
     return index, count
