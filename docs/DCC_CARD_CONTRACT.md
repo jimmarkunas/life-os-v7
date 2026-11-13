@@ -6,7 +6,9 @@ The ChatGPT-native `LIFE OS Daily Runs` task (D58) and V7 are independent schedu
 
 ## 1. Who writes what
 
-- V7 writes the regions it owns (Calendar, JIRA Execution, Bills: This Week, Mail Alerts, Amazon Orders, Attention, Hiring Pipeline), hourly, after every tick. The DCC never writes them.
+LIFE-645: V7 no longer writes the Attention callout (the Attention stage and card were retired); the callout stays on the page, protected, and is not a source for the DCC.
+
+- V7 writes the regions it owns (Calendar, JIRA Execution, Bills: This Week, Mail Alerts, Amazon Orders, Hiring Pipeline), hourly, after every tick. The DCC never writes them.
 - The DCC writes exactly one region: the callout whose first child heading is `ChatGPT · Daily Command Center`. It uses the procedure in D169 (`lifeos/platform/dcc_write.py` is the tested reference): fetch just before, replace only the lines that differ, fetch again, prove every other region is unchanged. One attempt, no retry.
 - Nothing else on the page belongs to either side. The old date heading, `Last refreshed` line, `9 AM Delta` and `Run history` were removed on Oct 12 (Jim); do not recreate or mention them.
 
@@ -19,9 +21,8 @@ Every V7 region carries a stamp of the form `Updated H:MM AM|PM CT` (Chicago tim
 | Calendar, JIRA Execution | in the heading: `Calendar (Updated 9:05 PM CT)` |
 | Bills: This Week, Mail Alerts, Amazon Orders | first line under the heading |
 | Hiring Pipeline | first line under its heading, then `· N active` |
-| Attention | the callout has no heading; its first line is `Updated … · N active exceptions` |
 
-A card is written only after its stage ran, and the write is read back. A card whose stage failed says so in the same first line and keeps the last good content below it: `DEGRADED · <what> sync failed at H:MM CT · showing last accepted …` (Amazon, Attention, Hiring Pipeline, Mail Alerts), or `STALE · last accepted <date> H:MM CT` (Bills, and cards whose saved snapshot is over 3 hours old). So a current `Updated` stamp means that stage ran and its write was verified in the last run; `DEGRADED` or `STALE` means it did not. A failure also pages the owner's phone (D164, D166, D173), so the DCC is not the alarm.
+A card is written only after its stage ran, and the write is read back. A card whose stage failed says so in the same first line and keeps the last good content below it: `DEGRADED · <what> sync failed at H:MM CT · showing last accepted …` (Amazon, Hiring Pipeline, Mail Alerts), or `STALE · last accepted <date> H:MM CT` (Bills, and cards whose saved snapshot is over 3 hours old). So a current `Updated` stamp means that stage ran and its write was verified in the last run; `DEGRADED` or `STALE` means it did not. A failure also pages the owner's phone (D164, D166, D173), so the DCC is not the alarm.
 
 ## 3. How the DCC reads a card
 

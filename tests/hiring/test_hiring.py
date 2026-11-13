@@ -737,9 +737,8 @@ class ReciprocalProtectionTests(unittest.TestCase):
 
     def test_every_existing_card_that_proves_its_neighbours_also_proves_the_hiring_region(self):
         from lifeos.amazon import card as amazon
-        from lifeos.attention import card as attention
         from lifeos.physmail import card as mail
-        for module in (amazon, attention, mail):
+        for module in (amazon, mail):
             self.assertIn(("HIRING_CARD_BLOCK_ID", router.HIRING_REGION), module.PROTECTED, module.__name__)
         for module in ("lifeos/bills/card.py", "lifeos/agenda/card.py", "lifeos/hiring/card.py"):          # LIFE-613: these no longer compare regions; each writes through the scope guard instead
             self.assertIn("ScopedClient", (ROOT / module).read_text(), module)
@@ -823,7 +822,7 @@ class RuntimePathTests(unittest.TestCase):
         import yaml
         doc = yaml.safe_load((ROOT / ".github/workflows/domains.yml").read_text())
         self.assertEqual(doc["jobs"]["hiring"]["needs"], ["gate"])                                 # LIFE-613: its writes reach only its own heading, table and rows (ScopedClient), so it waits for nobody
-        self.assertTrue({"jira", "agenda", "bills", "amazon", "attention", "mail", "hiring"} <= set(doc["jobs"]["dcc"]["needs"]))      # the Command Center runs after every writer, Hiring Pipeline included
+        self.assertTrue({"jira", "agenda", "bills", "amazon", "mail", "hiring"} <= set(doc["jobs"]["dcc"]["needs"]))      # the Command Center runs after every writer, Hiring Pipeline included
         for name in ("outlook", "megibow", "recruiters"):                                          # the three that never write the Daily Report page
             self.assertNotIn("hiring", doc["jobs"][name].get("needs", []))
         step = next(s for s in doc["jobs"]["hiring"]["steps"] if "lifeos.run hiring" in s.get("run", ""))      # EDGE-1.3: a Bitwarden loader step precedes it
