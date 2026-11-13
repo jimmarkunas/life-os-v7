@@ -171,12 +171,12 @@ class Relay(unittest.TestCase):
 
     def test_full_chain_through_the_oracle_wrapper(self):
         serve = FakeServe(self.port, ORACLE_V4)
-        out = w.attention(path=self.endpoint(serve.port))
+        out = w.run(["attention"], path=self.endpoint(serve.port))
         self.assertEqual(set(out), w.KEYS)
         self.assertEqual((out["attention"], out["health"], out["sync"], out["count"]), ("NEEDS_ATTENTION", "CURRENT", "UNVERIFIED", None))
         self.assertNotIn("SECRET", json.dumps(out))
         other = FakeServe(self.port, OTHER_V4)
-        self.assertEqual(w.attention(path=self.endpoint(other.port))["health"], "DISCONNECTED")      # an unauthorized source gets nothing
+        self.assertEqual(w.run(["attention"], path=self.endpoint(other.port))["health"], "DISCONNECTED")      # an unauthorized source gets nothing
         serve.listener.close()
         other.listener.close()
 
@@ -359,11 +359,11 @@ class Wrapper(unittest.TestCase):
         endpoint = os.path.join(tempfile.mkdtemp(), "endpoint")
         with open(endpoint, "w") as f:
             f.write("mac.example 47331\n")
-        self.assertEqual(w.attention(NOW, endpoint, offline)["health"], "DISCONNECTED")
-        self.assertEqual(w.attention(NOW, "/nonexistent/endpoint")["health"], "DISCONNECTED")
+        self.assertEqual(w.run(["attention"], NOW, endpoint, offline)["health"], "DISCONNECTED")
+        self.assertEqual(w.run(["attention"], NOW, "/nonexistent/endpoint")["health"], "DISCONNECTED")
         with open(endpoint, "w") as f:
             f.write("mac.example 99999\n")
-        self.assertEqual(w.attention(NOW, endpoint, offline)["health"], "DISCONNECTED")
+        self.assertEqual(w.run(["attention"], NOW, endpoint, offline)["health"], "DISCONNECTED")
 
     def test_only_the_single_attention_argument_runs(self):
         script = str(ROOT / "lifeos/imessage/openclaw_imessage.py")

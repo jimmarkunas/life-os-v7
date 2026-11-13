@@ -181,13 +181,17 @@ def last_id(channel="whatsapp"):
     return value
 
 
-def remember(message_id, channel="whatsapp"):
+def _store(path, text):
+    """The one atomic write: the state folder (0700), a 0600 temp file beside the target, then a rename."""
     os.makedirs(STATE, mode=0o700, exist_ok=True)
-    tmp = _position(channel) + ".tmp"
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    fd = os.open(path + ".tmp", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as f:
-        f.write(message_id)
-    os.replace(tmp, _position(channel))
+        f.write(text)
+    os.replace(path + ".tmp", path)
+
+
+def remember(message_id, channel="whatsapp"):
+    _store(_position(channel), message_id)
 
 
 def _attempts_path(channel):
@@ -214,18 +218,12 @@ def attempts(channel):
 
 
 def _write_attempts(channel, value):
-    os.makedirs(STATE, mode=0o700, exist_ok=True)
-    tmp = _attempts_path(channel) + ".tmp"
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as f:
-        json.dump(value, f)
-    os.replace(tmp, _attempts_path(channel))
+    _store(_attempts_path(channel), json.dumps(value))
 
 
 def diagnose(channel, message_id, outcome, cls, code=None, now=time.time):
     """One line per send outcome (no alert text), kept to the last DIAGNOSTICS_KEEP lines. Best effort: it never stops the relay."""
     try:
-        os.makedirs(STATE, mode=0o700, exist_ok=True)
         path = os.path.join(STATE, DIAGNOSTICS)
         try:
             with open(path) as f:
@@ -233,11 +231,7 @@ def diagnose(channel, message_id, outcome, cls, code=None, now=time.time):
         except OSError:
             lines = []
         lines.append(json.dumps({"at": int(now()), "channel": channel, "id": message_id, "outcome": outcome, "class": cls, "exit": code}, sort_keys=True))
-        tmp = path + ".tmp"
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w") as f:
-            f.write("\n".join(lines) + "\n")
-        os.replace(tmp, path)
+        _store(path, "\n".join(lines) + "\n")
     except OSError:
         pass
 
@@ -265,12 +259,7 @@ def rate_state(channel, now=time.time):
 
 
 def _write_rate(channel, value):
-    os.makedirs(STATE, mode=0o700, exist_ok=True)
-    tmp = _rate_path(channel) + ".tmp"
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as f:
-        json.dump(value, f)
-    os.replace(tmp, _rate_path(channel))
+    _store(_rate_path(channel), json.dumps(value))
 
 
 def _done(channel, message_id):
