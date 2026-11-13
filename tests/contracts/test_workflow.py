@@ -812,7 +812,7 @@ class BitwardenConsumerTests(unittest.TestCase):
     """LIFE-644 step 2: rules, not pins. Every workflow reads credentials through the pinned Bitwarden loader and nothing else, whatever steps, commands, timeouts or triggers it has.
     A test edit is needed only when a credential is added to a job (LOADED, DOMAIN_SECRETS) or created (UUIDS)."""
     ACTION = "./.github/actions/bws-load"                                  # LIFE-631: the one local loader; the pinned third-party action and its one retry live inside it (rules at the end of this class)
-    PINNED = "bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793"
+    PINNED = "./.github/actions/sm-action"
     OUTPUT = re.compile(r"\$\{\{ steps\.(\w+)\.outputs\.(\w+) \}\}")   # a loaded value, read from the loader's output
     PAUSE = "sleep $((30 + RANDOM % 45))"
 
