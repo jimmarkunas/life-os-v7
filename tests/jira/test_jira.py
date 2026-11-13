@@ -488,7 +488,7 @@ class WorkflowTests(unittest.TestCase):
     def test_failures_are_warnings_and_never_fail_the_run(self):
         job = self.job()
         self.assertNotIn("\n    continue-on-error:", job)
-        self.assertEqual(job.count("continue-on-error: true"), 8)            # JFM-221 added the Jim & Matt dashboard step; + the LIFE-85 tailnet join (the Bitwarden load and its retry are inside the local action, LIFE-631)
+        self.assertEqual(job.count("continue-on-error: true"), 7)            # the LIFE-85 tailnet join (the Bitwarden load and its retry are inside the local action, LIFE-631)
         self.assertIn("::warning", job)
 
     def test_database_secrets_reach_only_the_snapshot_and_card_steps(self):
