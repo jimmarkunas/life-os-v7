@@ -1,0 +1,6 @@
+ATTENTION_CARD_BLOCK_ID input Notion block id of the attention card on the Daily Report page
+ATTENTION_SYNC_OUTCOME input Outcome code a sync step hands to the next step (attention)
+HIRING_STATUS_BLOCK_ID input Notion block id (hiring status)
+NOTION_ATTENTION_DATA_SOURCE_ID input Notion data source id (attention)
+NTFY_TOPIC secret Phone push topic name (the topic name is the secret)
+OUTLOOK_CLIENT_ID input Outlook setting (client id)

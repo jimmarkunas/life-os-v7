@@ -1,0 +1,8 @@
+GRAN_PIN_DAY input Day the manual Granola run is pinned to
+HIRING_PIPELINE_PAGE_ID input Notion page id (hiring pipeline)
+INTERVIEW_ACCEPTANCE_JSON secret Interview OS setting (acceptance json)
+INTERVIEW_ADVISOR_ROOT_PAGE_ID input Notion page id of the interview advisor root
+NOTION_INTERVIEW_TOKEN secret Notion integration token for the interview integration
+NOTION_JOB_LEDGER_DATA_SOURCE_ID input Notion data source id (job_ledger)
+PROBE_CONFIRM flag Confirmation word a manual probe run needs
+V7_CLOSE_BASE_URL input Address of the Close service the stages call

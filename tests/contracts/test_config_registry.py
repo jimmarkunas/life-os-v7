@@ -1,8 +1,8 @@
-"""LIFE-560: the environment-variable registry (CONFIG in lifeos/platform/credential_list.py) must agree with the code and the workflows. Names only; no read site is changed.
+"""LIFE-560: the environment-variable registry (lifeos/<package>/config.txt, collected by credentials.config()) must agree with the code and the workflows. Names only; no read site is changed.
 
 Fails when: code reads a name the registry does not list; a workflow sets a name that is in neither the registry nor the provided group (GITHUB_*, RUNNER_*, CI and the host names);
 a registry name is neither read by code, set by a workflow, nor covered by a declared run-time pattern (stale); or a file reads a name built at run time without a declared pattern.
-The scanner is tests/config_scan.py (AST over lifeos/, YAML over .github/workflows). To add a variable, add one row to CONFIG; docs/platform/config-registry.md says how."""
+The scanner is tests/config_scan.py (AST over lifeos/, YAML over .github/workflows). To add a variable, add one line to its package's config.txt; docs/platform/config-registry.md says how."""
 import copy
 import re
 import tempfile

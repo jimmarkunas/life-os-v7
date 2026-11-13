@@ -2,7 +2,7 @@
 
 One checked list of every environment-variable **name** LIFE OS reads or sets. It lists names only: never a value, a secret id or a path. No read site was changed and there is no central getter.
 
-**Where it is.** The `CONFIG` constant in `lifeos/platform/credential_list.py`, the same module as the credential-expiry list (`CREDENTIALS`, LIFE-528). There is one registry file with two lists of different shapes; they are not merged. (LIFE-560's ticket text names `config_registry.json`; Jim's LIFE-522 comment 12565 says to extend the existing credential list and not add a second registry, and the Close service ships only `.py` files, so it is a Python constant.)
+**Where it is.** One row per name, in `lifeos/<owner package>/config.txt` (LIFE-644; it was the `CONFIG` constant in `lifeos/platform/credential_list.py`). A row is a line `NAME kind purpose`; `kind:owner` names an owner that is not a package (for example `workflow`). `credentials.config()` collects the files, sorted by name, together with the groups that stay in `credential_list.py` (`PROVIDED`, `PATTERNS`, `NOT_ENVIRONMENT`).
 
 **Kinds.**
 * `input`: read by code, set by a workflow or a person (ids, addresses, counts, dates).
@@ -14,7 +14,7 @@ GitHub- and host-provided names (`GITHUB_*`, `RUNNER_*`, `CI`, `PATH`, `SUDO_USE
 
 **Names built at run time** (for example `"LIFEOS_ACQ_" + field`) cannot be read from the code, so the file that builds them is declared under `patterns` with the name patterns it may read. A new run-time read in an undeclared file fails the test.
 
-**How to add a variable.** Add one row to `CONFIG["names"]` (keep the list sorted): `name`, `kind`, `owner` (the package that reads it, or `workflow`), and a one-line `purpose` in words. Then run `python -m unittest tests.contracts.test_config_registry`.
+**How to add a variable.** Add one line `NAME kind purpose` to the owner package's `config.txt` (create it if the package has none; a name no package owns goes in `lifeos/platform/config.txt` as `NAME kind:workflow purpose`). The collector sorts, so a merge is a one-line fix. Then run `python -m unittest tests.contracts.test_config_registry`.
 
 **What the test checks** (`tests/contracts/test_config_registry.py`, scanner `tests/config_scan.py`): every name read in `lifeos/` (AST: `os.environ[...]`, `.get`, `os.getenv`, `in os.environ`, and the same on any `environ` or `env` parameter) and every name in a workflow `env:` block is listed; no listed name is stale; every run-time read is declared; and each of those rules has a negative control that plants a fault and shows it fails.
 

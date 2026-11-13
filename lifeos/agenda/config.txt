@@ -1,0 +1,4 @@
+CALENDAR_CARD_BLOCK_ID input Notion block id of the calendar card on the Daily Report page
+HIRING_CARD_BLOCK_ID input Notion block id of the hiring card on the Daily Report page
+JIRA_CARD_BLOCK_ID input Notion block id of the jira card on the Daily Report page
+NOTION_JIRA_TOKEN secret Notion integration token for the jira integration

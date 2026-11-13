@@ -1,0 +1,5 @@
+MAIL_ALERTS_CARD_BLOCK_ID input Notion block id of the mail alerts card on the Daily Report page
+MAIL_SYNC_OUTCOME input Outcome code a sync step hands to the next step (mail)
+PHYSICAL_MAIL_ANCHOR input Physical-mail card setting (anchor)
+PHYSICAL_MAIL_EXPECT input Physical-mail card setting (expect)
+PHYSICAL_MAIL_TRACKING_ENTRY input Physical-mail card setting (tracking entry)

@@ -1,0 +1,5 @@
+AMAZON_CARD_BLOCK_ID input Notion block id of the amazon card on the Daily Report page
+AMAZON_SINCE input Earliest date the Amazon backfill reads from
+AMAZON_SYNC_OUTCOME input Outcome code a sync step hands to the next step (amazon)
+NOTION_AMAZON_DATA_SOURCE_ID input Notion data source id (amazon)
+NOTION_AMAZON_TOKEN secret Notion integration token for the amazon integration

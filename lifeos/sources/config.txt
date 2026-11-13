@@ -1,0 +1,27 @@
+BOARD_COMPANY input Company a single manual board check is limited to
+GRAN_UNMATCHED_TO input One-off instruction: where meetings that match nothing are filed
+HIRING_OUTCOME_STALE_HOURS input Hours after which a hiring outcome counts as stale
+INTERVIEW_CONVERT flag Interview OS setting (convert)
+INTERVIEW_CONVERT_CAP input Interview OS setting (convert cap)
+INTERVIEW_JOURNEY_PROOF flag Interview OS setting (journey proof)
+INTERVIEW_LEADS flag Interview OS setting (leads)
+INTERVIEW_MAIL_DAYS input Interview OS setting (mail days)
+INTERVIEW_OS_WRITER flag Interview OS setting (os writer)
+JOB_PAGE_OUTREACH flag Switch for outreach from a job page
+LAYOUT_SHARD input Which slice (i/n) of the Ledger pages a layout run moves
+MANUAL_JOB_COMPANY input Input of the manual add-a-job run (company)
+MANUAL_JOB_REQUEST_URL input Input of the manual add-a-job run (request url)
+MANUAL_JOB_ROUND_DAY input Input of the manual add-a-job run (round day)
+MANUAL_JOB_TITLE input Input of the manual add-a-job run (title)
+MANUAL_JOB_URL input Input of the manual add-a-job run (url)
+MEGIBOW_CUTOVER flag Switch for the MegIBOW cutover
+MEGIBOW_EXCLUDED_DOMAINS secret MegIBOW setting (excluded domains)
+MEGIBOW_REVIEW_DB_ID input MegIBOW setting (review db id)
+NOTION_API_TOKEN secret Notion integration token for the api integration
+NOTION_RECRUITERS_DATA_SOURCE_ID input Notion data source id (recruiters)
+NOTION_RECRUITERS_TOKEN secret Notion integration token for the recruiters integration
+OUTLOOK_NEWSLETTER_ACCOUNTS secret Outlook accounts the newsletter stage reads
+PROOF_CONFIRM flag Confirmation word a manual proof run needs
+SPONSORS_FORCE flag Manual switch: refresh the sponsor register now
+SURFACE_SHARD input Which slice (i/n) of the Ledger pages a surface run writes
+WEB_FORCE flag Manual switch: re-read the web sources now

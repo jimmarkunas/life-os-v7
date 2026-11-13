@@ -1,0 +1,1 @@
+OUTLOOK_ACCOUNT secret Outlook setting (account)
