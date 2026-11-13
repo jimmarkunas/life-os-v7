@@ -2,6 +2,7 @@
 nothing is live. A `Both` client stands for the one Notion integration (Ledger rows and Notes pages); GET gets it behind the gate's real `ReadOnly` facade."""
 import ast
 import html
+import importlib
 import os
 import re
 import tempfile
@@ -12,7 +13,7 @@ from unittest import mock
 from lifeos.edge import close_gate
 from lifeos.edge.oracle import close_release as rel
 from lifeos.hiring import close_screen, decision as D, models as M
-from lifeos.sources import close_app
+from lifeos.sources.apps import close_app
 from lifeos.sources.pipeline import hiring as hiring_source
 from tests.edge.support import github
 from tests.hiring import test_decision as TD, test_hiring as T
@@ -324,7 +325,7 @@ class Post(unittest.TestCase):
         smuggled = {"o": TD.TARGET, "step": "confirm", "action": "REOPEN", "reopen_hired": "true", "outcome": "Rejected"}
         self.assertEqual(h.call("POST", form=smuggled)[0], 403)
         self.assertEqual(h.world.source.decision(), {"name": "Hired"})
-        text = (ROOT / "lifeos/sources/close_app.py").read_text() + (ROOT / "lifeos/hiring/close_screen.py").read_text()
+        text = (ROOT / "lifeos/sources/apps/close_app.py").read_text() + (ROOT / "lifeos/hiring/close_screen.py").read_text()
         self.assertFalse(re.search(r"D\.REOPEN|reopen_hired|\"REOPEN\"", text))
         self.assertEqual(h.call("GET", "/manage")[0], 400)                                    # E14 (Jim, Oct 24): Manage and Reopen live in manage_app, with their own signed forms
 
@@ -367,8 +368,18 @@ class Contract(unittest.TestCase):
         unit = next(line for line in (ROOT / "lifeos/edge/oracle/install-close.sh").read_text().splitlines() if line.startswith("ExecStart="))
         self.assertIn("from lifeos.sources.close_app import handle; sys.exit(close_gate.main(handle))", unit)
         self.assertNotIn("lifeos.hiring.close_app", unit)
-        self.assertTrue(callable(close_app.handle) and close_app.handle.__module__ == "lifeos.sources.close_app")
+        self.assertTrue(callable(close_app.handle) and close_app.handle.__module__ == "lifeos.sources.apps.close_app")
         self.assertFalse((ROOT / "lifeos/hiring/close_app.py").exists())                              # no wrapper is left in the hiring package
+
+    def test_the_old_path_is_a_shim_that_ships_with_the_real_module_until_oracle_points_at_the_new_one(self):
+        """LIFE-624 step 1: the installed unit and `rel.APP` still name lifeos/sources/close_app.py; remove the shim only in step 3, after Oracle's unit points at lifeos.sources.apps.close_app."""
+        shim = importlib.import_module("lifeos.sources.close_app")                                        # what the installed unit and the release tool's import check import
+        self.assertIs(shim.handle, close_app.handle)
+        self.assertEqual(shim.handle.__module__, "lifeos.sources.apps.close_app")
+        self.assertEqual(shim.CLOSURE, close_app.CLOSURE)                                                  # the release tool reads the literal from the old path's source: it must match the real one
+        for path in ("lifeos/sources/close_app.py", "lifeos/sources/apps/close_app.py"):
+            self.assertIn(path, close_app.CLOSURE)
+            self.assertIn(path, rel.closure((ROOT / rel.APP).read_bytes()))
 
     def test_no_stage_workflow_or_schedule_reaches_the_application(self):
         for path in list((ROOT / ".github/workflows").glob("*.yml")) + [ROOT / "lifeos/run.py"]:
@@ -379,7 +390,7 @@ class Contract(unittest.TestCase):
         self.assertFalse([n for n, s in entry.STAGES.items() if "close_" in str(getattr(s, "target", ""))])
 
     def test_the_budget_and_the_files(self):
-        lines = sum(1 for p in ("lifeos/sources/close_app.py", "lifeos/hiring/close_screen.py") for line in (ROOT / p).read_text().splitlines() if line.strip())
+        lines = sum(1 for p in ("lifeos/sources/apps/close_app.py", "lifeos/hiring/close_screen.py") for line in (ROOT / p).read_text().splitlines() if line.strip())
         self.assertLessEqual(lines, 330)                               # E05 Mark Complete lives here too (Jim, Oct 23: the 300-line cap is suspended for the Jobs/Interview OS delivery)
 
 

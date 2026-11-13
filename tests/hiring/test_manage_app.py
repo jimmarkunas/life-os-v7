@@ -7,7 +7,7 @@ import unittest
 from unittest import mock
 
 from lifeos.hiring import decision as D
-from lifeos.sources import close_app
+from lifeos.sources.apps import close_app
 from lifeos.sources.apps import manage_app
 from tests.hiring import test_decision as TD
 from tests.hiring.test_close_app import STAGED, Both, Harness

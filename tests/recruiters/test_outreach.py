@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 from lifeos.network import match, surface
 from lifeos.platform import hidden
 from lifeos.recruiters import notion as store, outreach as O, stage
-from lifeos.sources import close_app
+from lifeos.sources.apps import close_app
 from lifeos.sources.apps import outreach_app
 from tests.recruiters.fakes import FakeRecruiters, mail, page
 

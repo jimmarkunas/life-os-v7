@@ -7,7 +7,7 @@ from lifeos.edge import close_gate
 from lifeos.jobs import hiring_pipeline
 from lifeos.platform.notion_client import NotionError
 from lifeos.recruiters import notion as store, outreach_card
-from lifeos.sources import close_app
+from lifeos.sources.apps import close_app
 from lifeos.sources.apps import outreach_app as A
 from tests.recruiters.fakes import page
 

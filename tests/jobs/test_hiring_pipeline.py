@@ -76,7 +76,7 @@ class Pipeline(unittest.TestCase):
 
     def test_the_lead_line_formats_are_the_writer_and_close_service_formats(self):
         from lifeos.interview import template
-        from lifeos.sources import close_app
+        from lifeos.sources.apps import close_app
         self.assertEqual(hp.DONE_LINE.pattern, template.DONE_LINE.pattern)
         self.assertTrue(hp.LEAD_ACTION.fullmatch(template.action_line(close_app.LEAD_ACTION + ".", "ctx")))
 

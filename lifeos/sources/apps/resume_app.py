@@ -14,7 +14,7 @@ from lifeos.platform import ledger_body as body
 from lifeos.platform import notion_files
 from lifeos.platform.notion_client import Client, NotionError
 from lifeos.sources.apps.signed import HTML, invalid, live, mac as _mac, same as _same, stopper
-from lifeos.sources.close_app import TTL, _now
+from lifeos.sources.apps.close_app import TTL, _now
 from .outreach_app import RELOAD, _fp, _job_section, job
 
 PATH = "Job Ledger / Build resume"

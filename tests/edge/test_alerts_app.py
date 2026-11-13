@@ -7,7 +7,7 @@ import urllib.error
 from unittest import mock
 
 from lifeos.platform import alert_registry as registry, alert_settings as settings, alerts
-from lifeos.sources import close_app as C
+from lifeos.sources.apps import close_app as C
 from lifeos.sources.apps import alerts_app as app
 
 LOGIN = "jim@example.com"

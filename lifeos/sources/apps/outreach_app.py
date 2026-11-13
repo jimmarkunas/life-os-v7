@@ -12,7 +12,7 @@ from lifeos.platform.fixed_code import fixed
 from lifeos.platform.notion_client import Client, NotionError
 from lifeos.recruiters import notion as store, outreach as O
 from lifeos.sources.apps.signed import HTML, gate, handler, invalid, mac as _mac, same as _same, stopper, written
-from lifeos.sources.close_app import TTL, _now
+from lifeos.sources.apps.close_app import TTL, _now
 
 PATH = "Daily Report / Job Outreach / Mark as Sent"
 PEOPLE_MAX = 10

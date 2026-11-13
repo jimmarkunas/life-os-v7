@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo
 
 from lifeos.hiring import close_screen as S
 from lifeos.platform import alert_registry as registry, alert_settings as settings, alerts, credentials
-from lifeos.sources import close_app as C
+from lifeos.sources.apps import close_app as C
 from lifeos.sources.apps.signed import invalid
 
 API = "https://api.github.com/repos/jimmarkunas/life-os-v7/actions/variables"
