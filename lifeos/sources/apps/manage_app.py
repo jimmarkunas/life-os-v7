@@ -1,13 +1,11 @@
-"""LIFE-88 E14 (Jim, Oct 24 2026; 12a + 12b): Manage on the private Close service, for ONE interview opportunity page.
-12a: GET /manage?o=<opportunity page id> is a read-only hub. It finds the record that carries this pursuit's decision (decision.route: its one Job Ledger row; LIFE-353,
-the decision lives on the row), says whether it is open or closed, and links the actions that already exist, each of which keeps its own signed review and confirm:
-Close, Mark Complete, Build résumé / I applied with this résumé, Mark as Sent. GET never writes.
-12b: Reopen a closed pursuit, from the same hub, through a signed review and confirm: a fresh read routes the REOPEN to the Ledger row that closed it, and
-decision.confirm_rejected clears Hiring Decision, appends one Reopened history line and reads it back; no page moves. Reopening a Hired outcome needs its
-own tick. LIFE-111 / LIFE-112 (Jim, Oct 25): on an open pursuit, set Paused, Waiting on employer or back to Active, or a next action and/or due date of Jim's own,
-through the same signed review and confirm: a fresh read routes it to the open record, and decision.set_hand writes one line on it and reads it back. LIFE-114 (Jim, Oct 29):
-record sent material the same way: an application form or portal answers (an optional link), or a Google Drive file (a project plan, an article) that must exist and not be
-in the trash when it is reviewed and again when it is confirmed. Fixed codes only."""
+"""Manage on the private Close service for ONE interview opportunity page: a read-only hub, Reopen, and hand-set fields (LIFE-88 E14).
+
+GET /manage?o=<opportunity page id> finds the record that carries the pursuit's decision (decision.route: its one Job Ledger row, LIFE-353), says whether it is open or closed, and links the existing actions (Close, Mark Complete, Build résumé / I applied with this résumé, Mark as Sent), each with its own signed review and
+confirm. GET never writes.
+Writes, each through a signed review and confirm on a fresh read: Reopen a closed pursuit (decision.confirm_rejected clears Hiring Decision, appends one Reopened line and reads it back; a Hired outcome needs its own tick); on an open pursuit, set Paused, Waiting on employer or Active, or a next action and/or due date
+(decision.set_hand, LIFE-111 / LIFE-112); record sent material (LIFE-114): an application form or portal answers with an optional link, or a Google Drive file that must exist and not be in the trash at review and again at confirm.
+Outputs: fixed codes only. Pointer: LIFE-88, LIFE-353."""
+# LIFE-88 E14 (Jim, Oct 24 2026): 12a was the read-only hub, 12b the Reopen. LIFE-111 / LIFE-112 (Jim, Oct 25) added Paused, Waiting on employer and next action; LIFE-114 (Jim, Oct 29) added sent material.
 import re
 from datetime import date
 from html import escape as e

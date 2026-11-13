@@ -1,6 +1,6 @@
-"""Status-aware board listing for the public ATS APIs. A listing is COMPLETE only when the provider answered with a valid,
-fully-read inventory; anything else is FAILED with a fixed reason. FAILED is never "zero jobs" and never implies a removal.
-(`resolve.ats_match.board` returns [] for both, which is fine for matching a title but not for acquisition.)"""
+"""Status-aware board listing for the public ATS APIs: COMPLETE only for a valid, fully-read inventory, otherwise FAILED with a fixed reason.
+
+FAILED is never "zero jobs" and never implies a removal. (`resolve.ats_match.board` returns [] for both, which is fine for matching a title but not for acquisition.)"""
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 import html as htmllib

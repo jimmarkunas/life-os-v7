@@ -1,6 +1,6 @@
-"""LinkedIn job-alert emails (jobalerts-noreply / jobs-noreply). One job = two links (image + text) to
-/comm/jobs/view/<id>?<tracking tokens>. The tracking query carries personal tokens, so the returned URL is the
-clean canonical https://www.linkedin.com/jobs/view/<id> - tokens are never kept."""
+"""LinkedIn job-alert emails (jobalerts-noreply / jobs-noreply): the parser, returning the clean canonical job URL.
+
+One job = two links (image + text) to /comm/jobs/view/<id>?<tracking tokens>. The tracking query carries personal tokens, so the returned URL is the clean canonical https://www.linkedin.com/jobs/view/<id>; tokens are never kept."""
 import re
 
 from lifeos.sources.newsletters.parsers import _anchors

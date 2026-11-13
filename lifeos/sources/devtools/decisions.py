@@ -1,14 +1,10 @@
-"""LIFE-89 (PLAT-GOV-2, Jim approved Oct 20 2026): claim a decision number before writing a decision, so parallel sessions never take the same one.
+"""Claim a decision number before writing a decision, so parallel sessions never take the same one (LIFE-89).
 
-`python -m lifeos.sources.devtools.decisions claim` finds the highest D-number in use (the `## D###` headings of docs/DECISIONS.md on the remote's main, plus every
-`decision-claim/D###` tag on the remote), then tries to create the tag for the next number on the remote. Creating a ref on the remote is atomic: when
-another session took that number first, the push is rejected and the next number is tried. Each claim is its own annotated tag object (a random claim id in
-its message), so a second claim of the same number can never look like an up-to-date push of the same tag. Prints the claimed number, e.g. `D242`, and
-nothing else. An unused claim leaves a gap, which is harmless. Fixed error codes only.
-
-`python -m lifeos.sources.devtools.decisions duplicates` lists any decision number used twice in docs/DECISIONS.md or docs/DECISIONS_INDEX.md (the contract test's check).
-
-`python -m lifeos.sources.devtools.decisions show D139` (LIFE-592) prints only that decision's section of docs/DECISIONS.md, with its amendments and advice, so a lookup loads one decision (about 1 KB) instead of the 367 KB log."""
+`python -m lifeos.sources.devtools.decisions claim` finds the highest D-number in use (the `## D###` headings of docs/DECISIONS.md on the remote's main, plus every `decision-claim/D###` tag on the remote) and creates the tag for the next number on the remote. Creating a ref there is atomic: when another session took the number
+first, the push is rejected and the next number is tried. Prints the claimed number, e.g. `D242`, and nothing else; an unused claim leaves a harmless gap. Fixed error codes only.
+`... duplicates` lists any decision number used twice in docs/DECISIONS.md or docs/DECISIONS_INDEX.md (the contract test's check).
+`... show D139` (LIFE-592) prints only that decision's section, with its amendments and advice, about 1 KB instead of the 367 KB log."""
+# LIFE-89 (PLAT-GOV-2, Jim approved Oct 20 2026). Each claim is its own annotated tag object (a random claim id in its message), so a second claim of the same number can never look like an up-to-date push of the same tag.
 import re
 import subprocess
 import sys

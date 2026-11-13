@@ -1,12 +1,8 @@
-"""Title watch (D123): roles a company's own careers site lists but its board listing does not carry (Revolut shows 334 roles on its list page while others
-are live on revolut.com only).
+"""Title watch: roles a company's own careers site lists but its board listing does not carry (D123).
 
-For each registry source with `title_watch`, search the company's own site (free TinyFish Search, restricted to its domains) for each watched title, keep the
-result pages that are job pages on that site, whose title matches a watched title and that V7 does not already hold, and add them to Jobs OS.
-
-The page text of such a role usually cannot be read from the runner (403), so what is stored is the title and the search snippet and the role is marked by its
-source (`web:titlewatch:<source id>`): Fit scores the title, the lane never lets it be a Go, and it reaches the board as Review ("found by title search;
-description not read") for Jim to decide from the link. A role not seen by the search for EXPIRE_DAYS is closed. Counts only in the log."""
+For each registry source with `title_watch`, search the company's own site (free TinyFish Search, restricted to its domains) for each watched title, keep the result pages that are job pages on that site, whose title matches a watched title and that V7 does not already hold, and add them to Jobs OS.
+The page text of such a role usually cannot be read from the runner (403), so the title and the search snippet are stored and the role is marked by its source (`web:titlewatch:<source id>`): Fit scores the title, the lane never lets it be a Go, and it reaches the board as Review ("found by title search; description not read")
+for Jim to decide from the link. A role not seen by the search for EXPIRE_DAYS is closed. Outputs: counts only in the log."""
 from datetime import datetime, timedelta, timezone
 import os
 import re

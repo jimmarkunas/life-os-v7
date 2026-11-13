@@ -1,11 +1,9 @@
-"""LIFE-88 E10 synthetic QA: the opportunity page's LinkedIn Contacts table, through the real V7 path, on native Notion QA surfaces. Manual only: interview-proof with
-`confirm = E10` (Interview token only). SYNTHETIC EVIDENCE, NOT a real-world hiring event and NOT a live-production E10 PASS.
+"""Synthetic QA proof: the opportunity page's LinkedIn Contacts table, through the real V7 path, on native Notion QA surfaces (LIFE-88 E10).
 
-Every write goes to a FRESH sandbox under the QA Interview OS parent: its own Job Ledger data source with synthetic rows (their Network Leads blocks written by the real
-surface writer, `surface.build_block`), a synthetic human page, and one QA opportunity page per case. The contacts are fictional ("... Synthetic", company and title marked
-SYNTHETIC, no profile links). The production Walmart Ledger row and the production Smith opportunity page are only READ, for the job's own description text and identity;
-no production page, Ledger row, roster, status or record is written. Real code under test: interview_evidence.network_contacts (the contact reader), view.opportunity,
-the UI 3c renderer and Notion writer (create), then an independent read-back with a NEW client. PASS/FAIL per assertion, counts only; no name, id or link is printed."""
+Manual only: interview-proof with `confirm = E10` (Interview token only). Synthetic evidence, not a real-world hiring event and not a live-production E10 PASS.
+Every write goes to a FRESH sandbox under the QA Interview OS parent: its own Job Ledger data source with synthetic rows (their Network Leads blocks written by the real surface writer, `surface.build_block`), a synthetic human page and one QA opportunity page per case. The contacts are fictional (company and title marked
+SYNTHETIC, no profile links). The production Walmart Ledger row and the production Smith opportunity page are only READ, for the job's description text and identity; no production page, Ledger row, roster, status or record is written.
+Code under test: interview_evidence.network_contacts, view.opportunity, the UI 3c renderer and Notion writer (create), then an independent read-back with a NEW client. Outputs: PASS/FAIL per assertion, counts only; no name, id or link is printed."""
 from datetime import datetime, timedelta
 from urllib.parse import quote
 

@@ -1,9 +1,9 @@
-"""LIFE-21 / LIFE-47 (D221): Mark as Sent on the private Close service (same Edge gate, same signed-form pattern as close_app). Jim confirms that he messaged one person
-about one exact Job Ledger job; only the confirm POST writes, through lifeos.recruiters.outreach.mark_sent, and success is shown only after its read-back.
-GET and Review never write; nothing is sent to anyone. Fixed codes only.
-The people offered are the job page's own Network Leads (lifeos.network.surface, read only, dismissed leads left out), signed into the form with the job so a tampered
-name is refused; "Other" takes a typed name. The person's employer is optional: typed, or the current employer the chosen lead's own line states ("Listed at ..."),
-shown on Review and signed with the person, and stored as the row's Recruiter Company; nothing is guessed."""
+"""Mark as Sent on the private Close service: Jim confirms he messaged one person about one exact Job Ledger job (D221).
+
+Same Edge gate and signed-form pattern as close_app. Only the confirm POST writes, through lifeos.recruiters.outreach.mark_sent, and success is shown only after its read-back. GET and Review never write; nothing is sent to anyone.
+The people offered are the job page's own Network Leads (lifeos.network.surface, read only, dismissed leads left out), signed into the form with the job so a tampered name is refused; "Other" takes a typed name. The employer is optional: typed, or the current employer the chosen lead's own line states ("Listed at ..."); it is
+shown on Review, signed with the person and stored as the row's Recruiter Company. Nothing is guessed.
+Outputs: fixed codes only. Pointer: D221, LIFE-21, LIFE-47."""
 from html import escape as e
 
 from lifeos.hiring import close_screen as S, decision as D

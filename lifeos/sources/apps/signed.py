@@ -1,5 +1,6 @@
-"""LIFE-645: what every signed Close page shares (a leaf module: it imports no app, so close_app and each app can use it). Signing, the one result-page shape, the
-refusal wrapper around a handler, the guard that opens a POST, and one write with its read-back. Fixed codes only; nothing here reads or writes Notion by itself."""
+"""What every signed Close page shares: signing, the result page, the refusal wrapper, the POST guard, and one write with its read-back (LIFE-645).
+
+A leaf module: it imports no app, so close_app and each app can use it. Outputs: fixed codes only; nothing here reads or writes Notion by itself."""
 import hashlib
 import hmac
 from html import escape as e

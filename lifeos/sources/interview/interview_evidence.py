@@ -1,12 +1,8 @@
-"""LIFE-88: Interview OS's normal path (the `interview` stage, in the V7 tick). Composes the accepted evidence V7 can read today into the
-existing writer's queries; it lives under sources because it reads the Ledger, the Calendar and Interview OS together.
+"""Interview OS's normal path (the `interview` stage): compose the accepted evidence V7 can read into the existing writer's queries (LIFE-88).
 
-Evidence, never inference. A machine UI 3c opportunity page names its job (Stable Job Key) and its request message in its own machine region;
-the exact Job Ledger row for that key links it (progression); an existing round page supplies the round identity; an accepted Calendar
-interview event adds a round only when its title states the round number and no round page already holds that number, or (LIFE-46 E07)
-dates the one Scheduling Pending Interview 1 page in place. Anything else is a fixed
-code for that item alone: nothing is guessed, no round is numbered from the pages that exist, and one gap never stops the others. Writes need
-INTERVIEW_OS_WRITER=v7 (Jim's activation switch); without it the run is a dry run. Counts and fixed codes only."""
+Lives under sources because it reads the Ledger, the Calendar and Interview OS together. Evidence, never inference: a machine UI 3c opportunity page names its job (Stable Job Key) and its request message in its own machine region; the exact Job Ledger row for that key links it (progression); an existing round page supplies the
+round identity; an accepted Calendar interview event adds a round only when its title states the round number and no round page already holds it, or (LIFE-46 E07) dates the one Scheduling Pending Interview 1 page in place.
+Anything else is a fixed code for that item alone: nothing is guessed, no round is numbered from the pages that exist, and one gap never stops the others. Writes need INTERVIEW_OS_WRITER=v7 (Jim's activation switch); without it the run is a dry run. Outputs: counts and fixed codes only."""
 import os
 import re
 from hashlib import sha1
