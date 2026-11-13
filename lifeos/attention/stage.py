@@ -9,6 +9,7 @@ from urllib.parse import quote
 from zoneinfo import ZoneInfo
 import os
 
+from lifeos.platform import stage_contract
 from lifeos.platform.notion_ids import notion_id
 from lifeos.attention import policy, reconcile
 from lifeos.platform.gmail import Gmail, GmailError
@@ -258,23 +259,13 @@ def fold_threads(admitted, candidates):
     return keep, folded
 
 
-def run(limit, live, environ=os.environ, gmail=None, notion=None, outlook_clients=None, now=None):
-    counts = {"gmail": 0, "outlook": 0, "outlook_accounts": 0, "admitted": 0, "owned_elsewhere": 0, "categories": {}, "created": 0, "carried": 0, "deactivated": 0, "reactivated": 0,
-              "reused": 0, "ambiguous": 0, "skipped_done": 0, "skipped_done_before": 0, "replied": 0, "fyi_skipped": 0, "retitled": 0, "retired": 0, "thread_folded": 0, "stale_closed": 0, "sources_failed": 0, "verified": False, "why": []}
-    source_id = (environ.get("NOTION_ATTENTION_DATA_SOURCE_ID") or SOURCE_ID).strip().replace("collection://", "")
-    if notion is None:
-        notion = Client({**environ, "NOTION_ATTENTION_DATA_SOURCE_ID": source_id}, token_name="NOTION_JIRA_TOKEN", source_name="NOTION_ATTENTION_DATA_SOURCE_ID")
-    today = _today(now)
-    this_week = reconcile.week_ending(today)
-    _schema(notion, source_id)
-    rows = read_week(notion, source_id, this_week) + read_week(notion, source_id, this_week - timedelta(days=7))
-    candidates, labeled, proofs, failed = [], set(), {}, 0
-    checkers = []                                                    # [(medium prefix, callable(medium) -> proof)]
-    repliers = []                                                    # [(medium prefix, callable(thread, since) -> Jim replied after it)]
+def _read_sources(gmail, outlook_clients, environ, limit, live, counts):
+    """READ: every mailbox source. -> (candidates, checkers [(medium prefix, proof fn)], repliers [(medium prefix, replied fn)], sources failed). A failed source only skips that source."""
+    candidates, checkers, repliers, failed = [], [], [], 0
     try:
         gmail = gmail or Gmail.from_env()
         found, present, label = _gmail_source(gmail, limit, live)
-        counts["gmail"], labeled = len(found), labeled | present
+        counts["gmail"] = len(found)
         candidates += found
         checkers.append(("Gmail:", lambda m, g=gmail, l=label, p=present: _gmail_proof(g, l, m, p)))
         repliers.append(("Gmail:", gmail.thread_replied_since))
@@ -290,14 +281,17 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, outlook_client
         try:
             found, present, folder = _outlook_source(client, account, limit, live)
             counts["outlook"] += len(found)
-            labeled |= present
             candidates += found
             checkers.append((f"Outlook:{account}:", lambda m, c=client, f=folder, p=present: _outlook_proof(c, f, m, p)))
             repliers.append((f"Outlook:{account}:", client.replied_since))
         except OutlookError as error:
             failed += 1
             counts["why"].append(f"outlook@{account}:" + str(error)[:90])
-    counts["sources_failed"] = failed
+    return candidates, checkers, repliers, failed
+
+
+def _admit(candidates, repliers, today, counts):
+    """READ (asks the source whether Jim replied) and admit by policy. -> (admitted, answered medium tags)."""
     admitted, answered = [], set()
     for c in candidates:
         verdict, detail = policy.decide(c["sender"], c["subject"])
@@ -313,15 +307,12 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, outlook_client
             counts["owned_elsewhere"] += 1
         else:
             counts["fyi_skipped"] += 1
-    admitted, folded = fold_threads(admitted, candidates)
-    counts["thread_folded"] = len(folded)
-    answered |= folded                                               # an older message of a thread whose newest message is already a row: its own row is retired, never carried
-    counts["admitted"] = len(admitted)
-    for row in rows:                                                 # proof of a stored source only from a source that was read completely this run
-        medium = row["medium"]
-        for prefix, check in checkers:
-            if medium.startswith(prefix):
-                proofs[medium] = check(medium)
+    return admitted, answered
+
+
+def decide(admitted, answered, rows, stale, done_media, row_proofs, this_week, today):
+    """PURE: what to write. `row_proofs` is the source proof of each stored row's medium. -> (plan, the counts the plan determines)."""
+    proofs = dict(row_proofs)
     for c in admitted:
         proofs[c["medium"]] = "present"
     for medium in answered:
@@ -334,59 +325,90 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, outlook_client
             if row and c["category"] != "Other":
                 row["category"] = c["category"]
                 recategorize.append((row["id"], c["category"], week == str(this_week)))
-    counts["recategorized"] = sum(1 for _, _, current in recategorize if current)
-    stale = read_stale(notion, source_id, this_week - timedelta(days=7))      # Jim, Oct 27: rows from older weeks never leave the table; close them (Active off, never Done)
-    counts["stale_closed"] = len(stale)
-    plan = reconcile.plan(admitted, rows, today, proofs, read_done_media(notion, source_id))
+    plan = reconcile.plan(admitted, rows, today, proofs, done_media)
     plan["recategorize"] = [(rid, cat) for rid, cat, current in recategorize if current]
     dates = {c["medium"]: c["received"] for c in admitted if c.get("received")}
     plan["backfill"] = [(r["id"], dates[r["medium"]]) for r in rows if not r["received"] and r["medium"] in dates]          # rows written before the column existed
-    counts["backfilled"] = len(plan["backfill"])
     plan["upgrade"] = [r for r in rows if r["url"] and not r["linked"]]                                                              # rows written before the title was a link
-    counts["linked"] = len(plan["upgrade"])
     wanted = {c["medium"]: c["item"] for c in admitted}
     plan["retitle"] = [(r["id"], wanted[r["medium"]], r["url"]) for r in rows if str(r["week"]) == str(this_week) and r["active"] and not r["done"]
                        and r["medium"] in wanted and r["item"] != wanted[r["medium"]]]
-    counts["retitled"] = len(plan["retitle"])
-    counts["retired"] = sum(1 for r in rows if str(r["week"]) == str(this_week) and r["active"] and not r["done"] and r["category"] == "FYI")
-    for name in ("ambiguous", "reused", "skipped_done", "skipped_done_before", "carried"):
-        counts[name] = plan[name]
+    derived = {"recategorized": len(plan["recategorize"]), "stale_closed": len(stale), "backfilled": len(plan["backfill"]), "linked": len(plan["upgrade"]), "retitled": len(plan["retitle"]),
+               "retired": sum(1 for r in rows if str(r["week"]) == str(this_week) and r["active"] and not r["done"] and r["category"] == "FYI")}
+    derived.update({name: plan[name] for name in ("ambiguous", "reused", "skipped_done", "skipped_done_before", "carried")})
+    return plan, derived
+
+
+def _apply(notion, source_id, plan, stale, counts):
+    """APPLY: the writes, in order."""
+    for create in plan["create"]:
+        body = {"parent": {"type": "data_source_id", "data_source_id": source_id}, "properties": _props(create)}
+        if create["url"]:
+            body["children"] = [_open_block(create["url"])]
+        notion.call_once("POST", "/pages", body)
+        counts["created"] += 1
+    for row_id in plan["deactivate"]:
+        notion.update_page_properties(row_id, {"Active": {"checkbox": False}})
+        counts["deactivated"] += 1
+    for r in stale:
+        notion.update_page_properties(r["id"], {"Active": {"checkbox": False}})
+    for row_id, category in plan["recategorize"]:
+        notion.update_page_properties(row_id, {"Category": {"select": {"name": category}}})
+    for row_id, received in plan["backfill"]:
+        notion.update_page_properties(row_id, {"Received": {"date": {"start": received}}})
+    for r in plan["upgrade"]:
+        notion.update_page_properties(r["id"], {"Item": {"title": _linked_title(r["item"], r["url"])}})
+        notion.call("PATCH", f"/blocks/{r['id']}/children", {"children": [_open_block(r["url"])]})
+    for row_id, title, url in plan["retitle"]:
+        notion.update_page_properties(row_id, {"Item": {"title": _linked_title(title, url)}})
+    for row_id in plan["reactivate"]:
+        notion.update_page_properties(row_id, {"Active": {"checkbox": True}})
+        counts["reactivated"] += 1
+
+
+def _confirm(notion, source_id, this_week, plan, done_before):
+    """CONFIRM: the authoritative read-back from the canonical source."""
+    after = read_week(notion, source_id, this_week)
+    seen = {}
+    for r in after:
+        seen.setdefault(reconcile.mkey(r["week"], r["medium"], r["category"], r["item"]), []).append(r)
+    ok = all(len(seen.get(reconcile.mkey(c["week"], c["medium"], c["category"], c["item"]), [])) == 1 for c in plan["create"])
+    ok = ok and all(not r["active"] for r in after if r["id"] in plan["deactivate"])
+    return ok and all(r["done"] == done_before[r["id"]] for r in after if r["id"] in done_before)
+
+
+def run(limit, live, environ=os.environ, gmail=None, notion=None, outlook_clients=None, now=None):
+    counts = {"gmail": 0, "outlook": 0, "outlook_accounts": 0, "admitted": 0, "owned_elsewhere": 0, "categories": {}, "created": 0, "carried": 0, "deactivated": 0, "reactivated": 0,
+              "reused": 0, "ambiguous": 0, "skipped_done": 0, "skipped_done_before": 0, "replied": 0, "fyi_skipped": 0, "retitled": 0, "retired": 0, "thread_folded": 0, "stale_closed": 0, "sources_failed": 0, "verified": False, "why": []}
+    source_id = (environ.get("NOTION_ATTENTION_DATA_SOURCE_ID") or SOURCE_ID).strip().replace("collection://", "")
+    if notion is None:
+        notion = Client({**environ, "NOTION_ATTENTION_DATA_SOURCE_ID": source_id}, token_name="NOTION_JIRA_TOKEN", source_name="NOTION_ATTENTION_DATA_SOURCE_ID")
+    today = _today(now)
+    this_week = reconcile.week_ending(today)
+    _schema(notion, source_id)
+    rows = read_week(notion, source_id, this_week) + read_week(notion, source_id, this_week - timedelta(days=7))
+    candidates, checkers, repliers, failed = _read_sources(gmail, outlook_clients, environ, limit, live, counts)
+    counts["sources_failed"] = failed
+    admitted, answered = _admit(candidates, repliers, today, counts)
+    admitted, folded = fold_threads(admitted, candidates)
+    counts["thread_folded"] = len(folded)
+    answered |= folded                                               # an older message of a thread whose newest message is already a row: its own row is retired, never carried
+    counts["admitted"] = len(admitted)
+    row_proofs = {}
+    for row in rows:                                                 # proof of a stored source only from a source that was read completely this run
+        for prefix, check in checkers:
+            if row["medium"].startswith(prefix):
+                row_proofs[row["medium"]] = check(row["medium"])
+    stale = read_stale(notion, source_id, this_week - timedelta(days=7))      # Jim, Oct 27: rows from older weeks never leave the table; close them (Active off, never Done)
+    plan, derived = decide(admitted, answered, rows, stale, read_done_media(notion, source_id), row_proofs, this_week, today)
+    counts.update(derived)
     if not live:
         counts.update(created=len(plan["create"]), deactivated=len(plan["deactivate"]), reactivated=len(plan["reactivate"]))
     else:
         done_before = {r["id"]: r["done"] for r in rows}
-        for create in plan["create"]:
-            body = {"parent": {"type": "data_source_id", "data_source_id": source_id}, "properties": _props(create)}
-            if create["url"]:
-                body["children"] = [_open_block(create["url"])]
-            notion.call_once("POST", "/pages", body)
-            counts["created"] += 1
-        for row_id in plan["deactivate"]:
-            notion.update_page_properties(row_id, {"Active": {"checkbox": False}})
-            counts["deactivated"] += 1
-        for r in stale:
-            notion.update_page_properties(r["id"], {"Active": {"checkbox": False}})
-        for row_id, category in plan["recategorize"]:
-            notion.update_page_properties(row_id, {"Category": {"select": {"name": category}}})
-        for row_id, received in plan["backfill"]:
-            notion.update_page_properties(row_id, {"Received": {"date": {"start": received}}})
-        for r in plan["upgrade"]:
-            notion.update_page_properties(r["id"], {"Item": {"title": _linked_title(r["item"], r["url"])}})
-            notion.call("PATCH", f"/blocks/{r['id']}/children", {"children": [_open_block(r["url"])]})
-        for row_id, title, url in plan["retitle"]:
-            notion.update_page_properties(row_id, {"Item": {"title": _linked_title(title, url)}})
-        for row_id in plan["reactivate"]:
-            notion.update_page_properties(row_id, {"Active": {"checkbox": True}})
-            counts["reactivated"] += 1
-        after = read_week(notion, source_id, this_week)               # authoritative read-back from the canonical source
-        seen = {}
-        for r in after:
-            seen.setdefault(reconcile.mkey(r["week"], r["medium"], r["category"], r["item"]), []).append(r)
-        ok = all(len(seen.get(reconcile.mkey(c["week"], c["medium"], c["category"], c["item"]), [])) == 1 for c in plan["create"])
-        ok = ok and all(not r["active"] for r in after if r["id"] in plan["deactivate"])
-        ok = ok and all(r["done"] == done_before[r["id"]] for r in after if r["id"] in done_before)
-        counts["verified"] = ok
-        if not ok:
+        _apply(notion, source_id, plan, stale, counts)
+        counts["verified"] = _confirm(notion, source_id, this_week, plan, done_before)
+        if not counts["verified"]:
             raise AttentionError("ATTENTION_READBACK_MISMATCH")
     new_items = counts["created"] - counts["carried"]
     if live and new_items > 0:                                          # counts only: no sender, subject or link ever leaves the private database
@@ -421,3 +443,12 @@ def _save(label, token):
     from lifeos.platform import db                                    # noqa: PLC0415
     with db.connect() as connection:
         store.save(connection, label, token)
+
+
+CONTRACT = stage_contract.Contract(      # LIFE-623: the stage declared; run() = read (_read_sources, _admit), decide (pure), _apply, _confirm
+    name="attention", run=run,
+    inputs=("the Gmail label LifeOS/Attention", "every signed-in Outlook account's Attention category", "the Attention data source: this and last week, older Active rows, every Done row"),
+    outputs=("gmail", "outlook", "outlook_accounts", "admitted", "owned_elsewhere", "categories", "created", "carried", "deactivated", "reactivated", "reused", "ambiguous", "skipped_done",
+             "skipped_done_before", "replied", "fyi_skipped", "retitled", "retired", "thread_folded", "stale_closed", "sources_failed", "verified", "why"),
+    dry_run="reads the mailboxes and the Attention weeks and counts what a live run would create, deactivate and reactivate; changes nothing",
+    write="creates, carries, retitles, recategorizes, links and deactivates Attention rows (never Done, never deletes), reads the week back, and sends a count-only notification")
