@@ -8,6 +8,7 @@ import unicodedata
 
 from lifeos.jobs import alerts, funnel, store
 from lifeos.platform import codes
+from lifeos.platform.fixed_code import fixed
 
 IN_FLIGHT, TERMINAL = ("NEW", "RESOLVED", "READY"), ("PUBLISHED", "CLOSED", "DUPLICATE", "PURGED")          # the newsletter finalize stage's sets (jobs cannot import sources; a test holds them equal)
 MESSAGE_REF = re.compile(r"[0-9a-f]{64}")
@@ -86,14 +87,9 @@ def trace(message_ref, now=None):
     (a source row with no job is "unlinked", never absent). Totals: associations, terminal, blockers. A repeat link belongs to the message that first carried it."""
     if not MESSAGE_REF.fullmatch(message_ref):
         raise store.StoreError("ALERT_STATE_MESSAGE_REF_INVALID")
-    try:
-        with store.connect() as connection, connection.cursor() as cursor:
-            rows = _select(cursor, "SELECT s.source, j.id IS NOT NULL, j.status, j.unresolved_reason, j.notion_page_id IS NOT NULL, j.verified_at IS NOT NULL FROM v7_job_sources s"
-                           " LEFT JOIN v7_jobs j ON j.id = s.job_id WHERE SHA2(s.gmail_message_id, 256) = %s ORDER BY s.id", (message_ref,))     # the id is matched inside the query, never held or printed
-    except store.StoreError:
-        raise
-    except Exception:
-        raise store.StoreError("ALERT_STATE_QUERY_FAILED") from None
+    with fixed(Exception, store.StoreError, "ALERT_STATE_QUERY_FAILED", keep=store.StoreError), store.connect() as connection, connection.cursor() as cursor:
+        rows = _select(cursor, "SELECT s.source, j.id IS NOT NULL, j.status, j.unresolved_reason, j.notion_page_id IS NOT NULL, j.verified_at IS NOT NULL FROM v7_job_sources s"
+                       " LEFT JOIN v7_jobs j ON j.id = s.job_id WHERE SHA2(s.gmail_message_id, 256) = %s ORDER BY s.id", (message_ref,))     # the id is matched inside the query, never held or printed
     vacancies, blockers = [], {}
     for n, (source, linked, status, reason, page, verified) in enumerate(rows, 1):
         status = status if isinstance(status, str) else None
