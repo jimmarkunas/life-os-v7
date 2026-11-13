@@ -1,0 +1,8 @@
+{
+  "codes": {
+    "NOT_DELIVERED": ["whatsapp", "state", false, "The alert was not delivered.", "None."],
+    "GAVE_UP": ["whatsapp", "state", false, "Delivery was given up after retries.", "None."],
+    "TOPIC_CHANGED": ["whatsapp", "state", false, "The relay read the ntfy topic again and it differed from the one it was polling; it now follows the new one.", "None."],
+    "RELAY_QUIET": ["whatsapp", "state", false, "No ntfy message of any kind reached the relay for hours.", "If alerts are expected, check that the relay follows the current topic."]
+  }
+}
