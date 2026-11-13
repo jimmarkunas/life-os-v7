@@ -100,20 +100,28 @@ def _jsonld_jobs(page, source):
     return rows
 
 
-def _path_jobs(text, source, pattern, reject=None):
+def _links(text, source, accept, jsonld=True):
+    """The shared walk of a careers page: the JSON-LD postings first (when the reader uses them), then every link `accept(url, href, title)` turns into a title
+    (None = not a job); the first sight of a URL wins. `title` is the link's label with its spaces collapsed."""
     page = parse_page(text)
-    rows = _jsonld_jobs(page, source)
+    rows = _jsonld_jobs(page, source) if jsonld else []
     seen = {r["url"] for r in rows}
-    rx = re.compile(pattern, re.I)
     for href, label in page.links:
         url = urljoin(source["url"], href)
-        path = urlparse(url).path.rstrip("/")
-        title = " ".join(label.split())
-        if not rx.fullmatch(path) or len(title) < 3 or NON_JOB.fullmatch(title) or (reject and reject.search(title)) or url in seen:
-            continue
-        rows.append(job(_sid(url), title, None, url))
-        seen.add(url)
+        title = accept(url, href, " ".join(label.split()))
+        if title is not None and url not in seen:
+            rows.append(job(_sid(url), title, None, url))
+            seen.add(url)
     return rows
+
+
+def _real(title):
+    return len(title) >= 3 and not NON_JOB.fullmatch(title)
+
+
+def _path_jobs(text, source, pattern, reject=None):
+    rx = re.compile(pattern, re.I)
+    return _links(text, source, lambda url, href, title: title if rx.fullmatch(urlparse(url).path.rstrip("/")) and _real(title) and not (reject and reject.search(title)) else None)
 
 
 STREAM_SLUG = re.compile(r"^(?P<role>.+)-(?P<city>london|new-york|arlington|manchester|dublin|edinburgh)-\d+$", re.I)
@@ -137,65 +145,35 @@ def _stream(text, source):
 
 
 def _generic(text, source):
-    page = parse_page(text)
-    rows = _jsonld_jobs(page, source)
-    seen = {r["url"] for r in rows}
     base_host = urlparse(source["url"]).netloc.replace("www.", "")
-    for href, label in page.links:
-        title = " ".join(label.split())
+
+    def accept(url, href, title):
         if not JOBISH.search(f"{href} {title}") or IGNORE.search(title) or NON_JOB.fullmatch(title):
-            continue
-        url = urljoin(source["url"], href)
+            return None
         host = urlparse(url).netloc.replace("www.", "")
         if host and base_host and host != base_host and not any(x in host for x in ATS_HOSTS):
-            continue
-        if len(title) >= 3 and url not in seen:
-            rows.append(job(_sid(url), title, None, url))
-            seen.add(url)
-    return rows
+            return None
+        return title if len(title) >= 3 else None
+    return _links(text, source, accept)
 
 
 def _join(text, source):
-    page = parse_page(text)
     base_path = urlparse(source["url"]).path.rstrip("/")
-    rows = _jsonld_jobs(page, source)
-    seen = {r["url"] for r in rows}
-    for href, label in page.links:
-        url = urljoin(source["url"], href)
-        path = urlparse(url).path.rstrip("/")
-        title = " ".join(label.split())
-        if path.startswith(base_path + "/") and len(title) >= 3 and not NON_JOB.fullmatch(title) and url not in seen:
-            rows.append(job(_sid(url), title, None, url))
-            seen.add(url)
-    return rows
+    return _links(text, source, lambda url, href, title: title if urlparse(url).path.rstrip("/").startswith(base_path + "/") and _real(title) else None)
 
 
 def _bluestonex(text, source):
-    rows, seen = [], set()
-    for href, label in parse_page(text).links:
-        title = " ".join(label.split())
+    def accept(url, href, title):
         if "full-time more information" not in title.casefold():
-            continue
-        title = re.split(r"\s*full-time more information", title, flags=re.I)[0].strip()     # the card's button text is not part of the role
-        url = urljoin(source["url"], href)
-        if url not in seen:
-            rows.append(job(_sid(url), title, None, url))
-            seen.add(url)
-    return rows
+            return None
+        return re.split(r"\s*full-time more information", title, flags=re.I)[0].strip()     # the card's button text is not part of the role
+    return _links(text, source, accept, jsonld=False)
 
 
 def _sixflow(text, source):
     plain = strip_html(text)
     zero = re.search(r"we don['’]?t have any live vacancies right now", plain, re.I)
-    rows, seen = [], set()
-    for href, label in parse_page(text).links:
-        url = urljoin(source["url"], href)
-        path = urlparse(url).path.rstrip("/")
-        title = " ".join(label.split())
-        if not re.fullmatch(r"/careers/(?!future-opportunities$)[^/]+", path, re.I) or len(title) < 3 or NON_JOB.fullmatch(title) or url in seen:
-            continue
-        rows.append(job(_sid(url), title, None, url))
-        seen.add(url)
+    rows = _links(text, source, lambda url, href, title: title if re.fullmatch(r"/careers/(?!future-opportunities$)[^/]+", urlparse(url).path.rstrip("/"), re.I) and _real(title) else None, jsonld=False)
     if zero and rows:
         raise ValueError("contradictory zero and live vacancy evidence")
     return [] if zero else rows or _fail("inventory is ambiguous")
