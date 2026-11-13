@@ -19,7 +19,7 @@ class StageTests(unittest.TestCase):
         serialized = json.dumps(result)
         for private in ("Example", "Program Manager", "private human notes", "synthetic", "root", "http"):
             self.assertNotIn(private, serialized)
-        self.assertTrue(all(type(v) in (int, bool) for k, v in result.items() if k != "why"))
+        self.assertTrue(all(type(v) in (int, bool) for k, v in result.items() if k not in ("why", "blocked_why")))
 
     def test_dry_run_creation_is_only_eligibility(self):
         evidence = [(ParentQuery("Example", "Program Manager"), RoundQuery(True, "2026-10-01", ordinal=1))]
@@ -59,6 +59,7 @@ class StageTests(unittest.TestCase):
         self.assertEqual(result["observed"], 2)
         self.assertEqual(result["blocked"], 2)
         self.assertEqual(result["why"], {"parent_ambiguous": 2})
+        self.assertEqual(result["blocked_why"], {"parent_ambiguous": 2})
         for count in ("valid_parents", "with_rounds", "machine_pages", "human_pages", "writes_planned", "writes"):
             self.assertEqual(result[count], 0)
         self.assertEqual(client.calls, [("GET", "/pages/root"), ("GET", "/blocks/root/children?page_size=100")])
@@ -84,6 +85,7 @@ class StageTests(unittest.TestCase):
         self.assertEqual(result["matched"], 1)
         self.assertEqual(result["human_pages"], 2)
         self.assertEqual(result["why"]["human_page"], 1)
+        self.assertEqual(result["blocked_why"], {"human_page": 1})           # LIFE-664: each block names its fixed code
         self.assertEqual(result["writes"], 0)
         self.assertTrue(all(method == "GET" for method, _ in client.calls))
 

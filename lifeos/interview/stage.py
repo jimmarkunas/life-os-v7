@@ -24,6 +24,7 @@ def _reason(counts, code):
 def _block(counts, code):
     counts["blocked"] += 1
     _reason(counts, code)
+    counts["blocked_why"][code] = counts["blocked_why"].get(code, 0) + 1       # LIFE-664: the fixed code of each block, so a red run names its cause
 
 
 def _tally(counts, cause):
@@ -106,6 +107,8 @@ def _apply_evidence(client, environ, evidence, limit, live, context, probe, coun
         bump, stop = evidence_outcome(result)
         if bump:
             counts[bump] += 1
+        if bump == "blocked":
+            counts["blocked_why"][result["code"]] = counts["blocked_why"].get(result["code"], 0) + 1
         if stop:
             break
 
@@ -125,6 +128,8 @@ def _apply_prep(client, environ, prep_evidence, limit, live, context, counts):
         _reason(counts, result["code"])
         blocked, stop = prep_outcome(result)
         counts["blocked"] += int(blocked)
+        if blocked:
+            counts["blocked_why"][result["code"]] = counts["blocked_why"].get(result["code"], 0) + 1
         if stop:
             break
 
@@ -133,7 +138,7 @@ def run(limit, live, environ=os.environ, client=None, evidence=(), context=None,
     context = context or RunContext.start(60)
     counts = {key: 0 for key in ("observed", "valid_parents", "with_rounds", "matched", "not_found", "blocked",
         "human_pages", "machine_pages", "writes_planned", "writes", "derived_created", "derived_match")}
-    counts["why"] = {}
+    counts["why"], counts["blocked_why"] = {}, {}
     try:
         context.require_time()
         if not environ.get("NOTION_INTERVIEW_TOKEN") or not environ.get("HIRING_PIPELINE_PAGE_ID"):
@@ -166,6 +171,6 @@ def probe(limit, live, **kwargs):
 CONTRACT = stage_contract.Contract(      # LIFE-623: the stage declared; run() = target check, read (_survey), apply (_apply_evidence, _apply_prep; each is write then read-back inside create/prep.apply), decide (evidence_outcome, prep_outcome: pure)
     name="interview-stage", run=run,
     inputs=("the Hiring Pipeline page and the Job Ledger (parents and rounds)", "page ownership markers", "the evidence items and prep items the caller passes"),
-    outputs=("observed", "valid_parents", "with_rounds", "matched", "not_found", "blocked", "human_pages", "machine_pages", "writes_planned", "writes", "derived_created", "derived_match", "why"),
+    outputs=("observed", "valid_parents", "with_rounds", "matched", "not_found", "blocked", "human_pages", "machine_pages", "writes_planned", "writes", "derived_created", "derived_match", "why", "blocked_why"),
     dry_run="reads the pipeline and counts what each evidence item would create or change (writes_planned); changes nothing",
     write="creates or updates machine-owned Interview parents and rounds and their derived prep sections, reading each back; human-owned pages are never written")

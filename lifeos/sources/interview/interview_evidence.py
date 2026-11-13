@@ -25,6 +25,7 @@ from lifeos.platform.notion_client import Client, NotionError
 from lifeos.platform.runtime import RunContext
 from lifeos.sources.pipeline import hiring as pipeline, manual_job
 from lifeos.sources.interview import interview_sweep as sweep
+from lifeos.sources.interview import unreadable_streak as streaks
 
 TZ = ZoneInfo("America/Chicago")
 ROUND = re.compile(r"\b(?:interview|round)\s+(\d{1,2})\b|\b(\d{1,2})(?:st|nd|rd|th)\s+(?:interview|round)\b", re.I)
@@ -32,6 +33,7 @@ REQUEST = "Request message ↗"
 LEAD_LANE = "Recruiter"                # the Job Ledger's Visible Lane for a recruiter lead (Notion adds the option on first write)
 HEADLINE_AT = re.compile(r"(?:\bat\b|@)\s+(?P<c>[A-Z][A-Za-z0-9&'’.\-]*(?:\s+[A-Za-z0-9&'’.\-]+){0,3}?)\s*(?:[|,·(\n]|$)")
 STAGE_SECONDS = 720                    # the budget of the Notion write stage, started after the mail has been read: run 39556923423 spent 300 s on page scans and wrote nothing; the recruiters job limit is 30 minutes
+HELD_BLOCKS = ("human_page",)          # LIFE-664: a request for a page Jim wrote himself: nothing is written to it (his `LIFE OS: adopt` line changes that), so the block is `permanent`, not `failed`
 LEADS_PER_RUN = 5                      # new lead pages per tick, newest first: the first live run drains a 14-day backlog over a few ticks instead of in one burst
 ASKS = re.compile(r"\b(?:schedul\w*|set up|arrange|book)\b[^.?!\n]{0,60}\b(?:interview|call|conversation|chat|meeting|time)\b|\binterview (?:invitation|request|availability)\b|"
                   r"\binvit\w+ you to (?:an? )?(?:interview|call|chat)\b|\bselect (?:a|your) (?:time|slot)\b|\b(?:share|send|provide|confirm) your availability\b", re.I)
@@ -224,10 +226,19 @@ GMAIL_THREAD = re.compile(r"https://mail\.google\.com/mail/u/0/#all/([0-9a-f]{8,
 SENT_SHOWN = 10
 
 
-def sent_mail(environ, evidence, gmail=None):
+def gmail_cause(error):
+    """LIFE-664: a Gmail error as a fixed code, never its text: `http_404`, or the error's own fixed code in lower case, else `other`."""
+    text = str(error)
+    status = re.search(r"HTTP (\d{3})\b", text)
+    fixed = re.fullmatch(r"[A-Z][A-Z0-9_]{2,47}", text)
+    return f"http_{status.group(1)}" if status else fixed.group(0).lower() if fixed else "other"
+
+
+def sent_mail(environ, evidence, gmail=None, report=None):
     """LIFE-114 (Jim, Oct 29): Jim's own messages (follow-ups, thank-yous) on each request's Gmail thread, matched only by the exact thread in the request link; read only,
     metadata only. -> (evidence with sent_mail on each Gmail request, failed?). No Gmail credential in this step leaves the evidence unchanged (not connected).
-    LIFE-657: a thread Gmail answers 404 for stays unreadable (the page says so, nothing a retry fixes), so it is not `failed?`; any other error (a rate limit, a 5xx, a token or a malformed reply) could clear and is."""
+    LIFE-657: a thread Gmail answers 404 for stays unreadable (the page says so, nothing a retry fixes), so it is not `failed?`; any other error (a rate limit, a 5xx, a token or a malformed reply) could clear and is.
+    LIFE-664: `report`, when given, is filled with each unreadable thread's fixed cause code (see gmail_cause), so run can print it and count how long the thread has stayed so."""
     threads = sorted({m.group(1) for _, q in evidence if (m := GMAIL_THREAD.fullmatch((q.source or "").strip()))})
     if not threads:
         return evidence, False
@@ -240,8 +251,13 @@ def sent_mail(environ, evidence, gmail=None):
     for thread in threads:
         try:
             found[thread] = (tuple((at.isoformat(timespec="seconds"), subject) for at, subject in gmail.thread_sent(thread)[-SENT_SHOWN:]), "read")
+            if report is not None:
+                report[thread] = None
         except GmailError as error:                                          # unknown is never "none sent": this request reads DEGRADED this run
-            found[thread], failed = ((), "unreadable"), failed or not re.search(r"HTTP 404\b", str(error))
+            cause = gmail_cause(error)
+            found[thread], failed = ((), "unreadable"), failed or cause != "http_404"
+            if report is not None:
+                report[thread] = cause
     out = []
     for p, q in evidence:
         m = GMAIL_THREAD.fullmatch((q.source or "").strip())
@@ -276,7 +292,7 @@ def network_contacts(client, evidence, context=None, seconds=60):
     return out, failed
 
 
-def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, ledger_rows=None, context=None, ledger=None, records=None, gmail=None, outlook_accounts=None, writer=None, recruiters=None):
+def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, ledger_rows=None, context=None, ledger=None, records=None, gmail=None, outlook_accounts=None, writer=None, recruiters=None, connect=None):
     if (environ.get("INTERVIEW_JOURNEY_PROOF") or "").strip():                 # LIFE-78: the manual synthetic journey proof on a fresh QA sandbox, never the real pipeline
         from lifeos.sources.proofs import interview_journey_proof
         return interview_journey_proof.run(environ, live, now=now, client=client)
@@ -552,12 +568,23 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
     evidence, unreadable = network_contacts(client, evidence)
     if unreadable:
         flag("network_unreadable")
-    evidence, unreadable = sent_mail(environ, evidence, gmail)
-    if unreadable or any(q.sent_mail_state == "unreadable" for _, q in evidence):
-        flag("sent_mail_unreadable", stays=not unreadable)
+    reads, causes = {}, {}
+    evidence, _ = sent_mail(environ, evidence, gmail, reads)
+    unreadable = {thread: cause for thread, cause in reads.items() if cause}
+    before = streaks.previous(connect) if reads else None                     # LIFE-664: the runs in a row each thread has been unreadable, in the private daily counts
+    runs = {streaks.label(thread): (before or {}).get(streaks.label(thread), 0) + 1 for thread in unreadable}
+    for thread, cause in sorted(unreadable.items()):                          # each thread alone: a 404 stays unreadable at once; any other cause is `failed` for its first runs, then `permanent` (still counted, still on the page)
+        flag("sent_mail_unreadable", stays=cause == "http_404" or runs[streaks.label(thread)] > streaks.FAILED_RUNS)
+        causes[cause] = causes.get(cause, 0) + 1
+    kept = not reads or not live or streaks.save(runs, before, connect)       # a dry run writes no streak
     counts = stage.run(limit, live, environ, client=client, evidence=evidence, context=injected or RunContext.start(STAGE_SECONDS))      # a fresh clock: the mail read above can take minutes, and the writes need their own budget
     if where:
         counts["where"] = where
+    if causes:                                                               # LIFE-664: the fixed cause of each unreadable thread, never an id or the error's text
+        counts["sent_mail_causes"], counts["sent_mail_runs"] = causes, max(runs.values())
+    if (before is None or not kept) and any(cause != "http_404" for cause in causes):
+        counts["streak_store"] = "unavailable"                               # the streak could not be read or kept: such a thread stays `failed`, never quietly permanent
+    held = {code: counts["blocked_why"][code] for code in HELD_BLOCKS if counts.get("blocked_why", {}).get(code)}      # LIFE-664: a block that is Jim's own state, counted on its own
     counts["why"], counts["requests"], counts["leads"], counts["lead_rows"], counts["lead_jobs"] = {**counts["why"], **why}, counts_requests, len(fresh), made_rows, made_jobs
     counts["leads_this_run"] = len(chosen)
     counts["lead_review"] = review
@@ -570,6 +597,6 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
     for row, *_ in [v for v in leads if v[0]["id"] not in handled]:
         label = sha1(row["title"].encode()).hexdigest()[:6]
         counts["lead_requests"][label] = counts["lead_requests"].get(label, 0) + 1
-    counts["permanent"] = permanent
-    counts["failed"] = sum(why.values()) - sum(permanent.values()) + counts["blocked"] + counts.get("sweep", {}).get("failed", 0)      # a UI 3b page waiting for migration is DEGRADED too: it is not refreshed
+    counts["permanent"] = {**permanent, **held}
+    counts["failed"] = sum(why.values()) - sum(permanent.values()) + counts["blocked"] - sum(held.values()) + counts.get("sweep", {}).get("failed", 0)      # a UI 3b page waiting for migration is DEGRADED too: it is not refreshed
     return counts
