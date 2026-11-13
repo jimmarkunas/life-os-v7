@@ -102,8 +102,16 @@ class Fixture:
 
     def stop_server(self):
         if self.server is not None:
+            try:
+                self.server.shutdown(socket.SHUT_RDWR)             # wakes the accept loop on Linux, where close() alone leaves the listener open
+            except OSError:
+                pass
             self.server.close()
             self.server = None
+            try:
+                self.sock_path.unlink()
+            except OSError:
+                pass
 
     def listing(self):
         return sorted(str(p.relative_to(self.tmp)) for p in self.root.rglob("*") if not p.is_socket())
