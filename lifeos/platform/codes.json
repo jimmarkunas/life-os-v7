@@ -69,6 +69,7 @@
   "OUTLOOK_NETWORK": ["outlook", "retry", false, "The network call to Microsoft failed.", "None; retried."],
   "OUTLOOK_SIGNIN_TIMEOUT": ["outlook", "blocked", false, "The device sign-in was not completed in time.", "Start the sign-in again."],
   "OUTLOOK_UNAUTHORIZED": ["outlook", "blocked", false, "Microsoft rejected the token.", "Sign in again."],
+  "OUTLOOK_UNAVAILABLE_THIS_JOB": ["outlook", "degraded", false, "This mailbox already failed with a server error or no answer earlier in this job, so the call was skipped.", "None; retried next run."],
   "BAD_JSON": ["platform", "bug", false, "A provider reply was not JSON.", "Retried."],
   "BAD_RESPONSE": ["platform", "bug", false, "A provider reply was not the expected shape.", "Retried."],
   "CAPACITY_READ_FAILED": ["capacity-card", "degraded", false, "The capacity card's data could not be read.", "Retried next run."],

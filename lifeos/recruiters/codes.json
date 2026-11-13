@@ -1,6 +1,6 @@
 {
   "RECRUITERS_CLOSE_INVALID": ["recruiters", "terminal", false, "A close request is not valid, so nothing is closed.", "Open the Close screen again."],
-  "RECRUITERS_DEGRADED_SOURCE_INCOMPLETE": ["recruiters", "degraded", false, "The recruiter source was only partly read.", "None; retried next run."],
+  "RECRUITERS_DEGRADED_SOURCE_INCOMPLETE": ["recruiters", "degraded", false, "No recruiter mail source could be read (a source that fails while another is read no longer stops the run: the heading names it).", "None; retried next run."],
   "RECRUITERS_NOTION_PAGINATION_INCOMPLETE": ["recruiters", "degraded", false, "A Notion list did not finish paging.", "None; retried."],
   "RECRUITERS_NOTION_PAGINATION_INVALID": ["recruiters", "bug", false, "Notion paging repeated a cursor.", "Retried."],
   "RECRUITERS_NOTION_QUERY_FAILED": ["recruiters", "retry", false, "A Notion query failed.", "None; retried."],

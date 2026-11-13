@@ -1,12 +1,15 @@
 """RECR-1.2: configured Gmail and Outlook mail (Inbox and Junk, last 14 days, read in memory) -> deterministic classification -> the existing Recruiters data source.
 
-Dry run unless live; counts and fixed codes only (no name, address, subject, id or URL ever leaves this function). Mail is never changed. If any source listing is incomplete the run is
-DEGRADED: classification counts are reported, nothing is written, and the run fails instead of reporting a trustworthy zero.
+Dry run unless live; counts and fixed codes only (no name, address, subject, id or URL ever leaves this function). Mail is never changed. If every source listing is incomplete the run is
+DEGRADED: classification counts are reported, nothing is written, and the run fails instead of reporting a trustworthy zero. If only some sources are incomplete (LIFE-646: one Outlook
+account returning server errors) the run is PARTIAL: what the readable sources hold is written (every write rests on a message that was read), nothing is concluded from the unread
+source, the heading and the counts name it (`unread`), and the ledger records only what was read, so the next run reads the unread source's mail as new.
 
 A LinkedIn notification with no recruiting evidence is UNRESOLVED (counted, no row; D193). An existing row made from such a notification is changed only when its exact message
 link is passed in `quarantine_sources` (nothing passes it today: a sweep over past rows is a separate decision); it is then set inactive only if nobody else has touched it."""
 import json
 import os
+import re
 import time
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
@@ -27,12 +30,19 @@ def _client(environ):
     return Client(environ, token_name="NOTION_RECRUITERS_TOKEN", source_name="NOTION_RECRUITERS_DATA_SOURCE_ID")
 
 
-def _announce(environ, kind, moment):
-    """The kind and Central time of the mail read the Recruiter Outreach heading reports, passed to the next steps as step outputs (a skipped read reports the last one)."""
+def _announce(environ, kind, moment, unread=()):
+    """The kind and Central time of the mail read the Recruiter Outreach heading reports, passed to the next steps as step outputs (a skipped read reports the last one).
+    A partial read names the unread sources in the kind, e.g. `14-day scan (Outlook personal unread)`."""
     path = environ.get("GITHUB_OUTPUT")
     if path and kind and moment:
+        shown = f"{kind} ({', '.join(unread)} unread)" if unread else kind
         with open(path, "a") as handle:
-            handle.write(f"scan_kind={kind}\nscan_at={scan.clock(moment)}\n")
+            handle.write(f"scan_kind={shown}\nscan_at={scan.clock(moment)}\n")
+
+
+def _source(label):
+    """A fixed, lower-case name for an Outlook account label, safe to print."""
+    return "Outlook " + (re.sub(r"[^a-z0-9_-]", "", str(label).lower())[:24] or "account")
 
 
 def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, notion=None, now=None, quarantine_sources=(), ledger=AUTO):
@@ -57,29 +67,32 @@ def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, noti
               "would_create": 0, "would_update": 0, "existing": 0, "done_kept": 0, "ambiguous": 0, "created": 0, "updated": 0, "failed": 0, "excluded_why": {}, "unresolved_why": {}, "would_quarantine": 0, "quarantined": 0, "quarantine_skipped": 0,
               "waiting": 0, "would_schedule": 0, "scheduled": 0, "would_reopen_due": 0, "reopened_due": 0, "notion": "ok",
               "scan": kind, "scan_why": why, "ledger": ledger_status}
-    records = []
+    records, unread = [], []
 
-    def take(read):
+    def take(read, name):
         try:
             found, bad = read()
-        except (mail.MailError, GmailError) as error:
+        except (mail.MailError, GmailError):
             counts["sources_failed"] += 1
+            unread.append(name)
             return
         records.extend(found)
         counts["unreadable"] += bad
 
     try:
         gm = gmail or Gmail.from_env()
-        take(lambda: mail.gmail_records(gm, now, known=known, stats=stats))
+        take(lambda: mail.gmail_records(gm, now, known=known, stats=stats), "Gmail")
     except GmailError:
         counts["sources_failed"] += 1
+        unread.append("Gmail")
     accounts = list(outlook_accounts if outlook_accounts is not None else mail.outlook_accounts(environ))
     counts["outlook_accounts"] = len(accounts)
     for label, client in accounts:
         if client is None:
             counts["sources_failed"] += 1
+            unread.append(_source(label))
             continue
-        take(lambda c=client, l=label: mail.outlook_records(c, l, now, known=known, stats=stats))
+        take(lambda c=client, l=label: mail.outlook_records(c, l, now, known=known, stats=stats), _source(label))
     counts["messages"] = len(records)
     counts["scanned"], counts["new"] = (stats["scanned"], stats["new"]) if incremental else (len(records), len(records))      # a 14-day scan reads everything it lists
     candidates, unverified, quarantine_sources = [], [], set(quarantine_sources)
@@ -99,6 +112,8 @@ def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, noti
             counts["needs_review"] += 1 if detail["needs_review"] else 0
             candidates.append(detail)
     degraded = counts["sources_failed"] > 0
+    partial = degraded and len(unread) < 1 + len(accounts)                # LIFE-646: some source was read, some was not
+    write = live and (not degraded or partial)
     try:
         notion = notion or _client(environ)
         store.check_schema(notion)
@@ -108,12 +123,14 @@ def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, noti
         counts["notion"] = "unavailable"
         notion = None
     if notion is not None:
-        _apply(candidates, notion, live and not degraded, counts)
-        _quarantine(unverified, notion, live and not degraded, counts)
-        _follow_ups(notion, live and not degraded, counts, now.astimezone(CHICAGO).date())
-    if degraded and live:
-        counts["notion"] = "not_written_degraded"
+        _apply(candidates, notion, write, counts)                          # every candidate is a message that was read; an unread source adds none
+        _quarantine(unverified, notion, live and not degraded, counts)     # a sweep over past rows concludes things from the mail: only on a complete read
+        _follow_ups(notion, write, counts, now.astimezone(CHICAGO).date())
     if degraded:
+        counts["unread"] = unread
+    if degraded and not partial:
+        if live:
+            counts["notion"] = "not_written_degraded"
         print("recruiters:", json.dumps(counts, sort_keys=True))        # counts only: so a degraded run still says what it saw
         raise store.RecruitersError("RECRUITERS_DEGRADED_SOURCE_INCOMPLETE")
     if live and counts["failed"]:                                     # a write or its read-back failed: not a success, whatever the other rows did (stage-local: D182's publish-only exit is untouched)
@@ -125,7 +142,7 @@ def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, noti
         except seen.LedgerError:
             counts["ledger"] = "not_saved"
     counts["seconds"] = int(time.monotonic() - began)
-    _announce(environ, kind, now)
+    _announce(environ, kind, now, unread)
     return counts
 
 

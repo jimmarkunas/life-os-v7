@@ -36,6 +36,8 @@ REPLY_DAYS = 1                                                   # Jim, Oct 24: 
 CHANNELS = (("mail.google.com", "Gmail"), ("outlook.office.com", "Outlook"), ("outlook.office365.com", "Outlook"), ("outlook.live.com", "Outlook"), ("linkedin.com", "LinkedIn"))
 SKIP = (router.DCC_REGION,)                                      # as for the Hiring Pipeline: the DCC callout is recorded by id only
 CHICAGO = ZoneInfo("America/Chicago")
+_SOURCE = r"(?:Gmail|Outlook [a-z0-9_-]{1,24})"
+KIND = re.compile(rf"(?:new mail|14-day scan)(?: \({_SOURCE}(?:, {_SOURCE})* unread\))?")          # LIFE-646: the heading names only fixed words, never an address
 
 
 class OutreachError(NotionError):
@@ -323,6 +325,6 @@ def run(limit, live, environ=os.environ, notion=None, client=None, now=None):
         return [cells(r, today, f, environ.get("V7_CLOSE_BASE_URL")) for r, f in zip(shown, firsts)]
     stamp = "Redrawn" if stage == "skipped" else "Updated"         # skipped: a Close screen refresh ran no mail stage on purpose, so the heading never claims mail was read (Jim, Oct 24)
     scan_kind, scan_at = (environ.get("RECRUITERS_SCAN") or "").strip(), (environ.get("RECRUITERS_SCAN_AT") or "").strip()
-    mail_read = f", mail: {scan_kind} {scan_at}" if stage == "success" and scan_kind in ("new mail", "14-day scan") and scan_at.endswith(" CT") else ""          # LIFE-610: which mail read the rows come from, and when
+    mail_read = f", mail: {scan_kind} {scan_at}" if stage == "success" and KIND.fullmatch(scan_kind) and scan_at.endswith(" CT") else ""          # LIFE-610: which mail read the rows come from, and when; LIFE-646: and which source was unread
     counts.update(present(target, environ, build, f"{TITLE} ({stamp} {clock}{mail_read})", write))
     return counts
