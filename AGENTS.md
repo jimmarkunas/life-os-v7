@@ -6,7 +6,7 @@ V7 is the active LIFE OS implementation. V1 (`life-os-automation`) and V2 (`life
 
 1. **Pick.** Jim named a ticket → that one. Else the top `Agent Go` leaf ticket in your lane (`lane-*` label) by Priority, then Rank. Moving a ticket to Agent Go IS the approval. Start with transition ID 14; resuming from blocked, UAT, Done or Cancelled uses "Resume work".
 2. **Gate.** `python -m lifeos.sources.devtools.readiness` (`issue-key LIFE-nnn`, or `issue-mcp FILE KEY` on an MCP read saved unmodified) checks exactly three things: the key is valid, the ticket has a Done-when line (any Given/When/Then row or bullet under "Done when"), and every `Blocks` predecessor is Done. Anything else prints a `warn` and exits 0; exit 2 only on those three.
-3. **Build.** One branch `life/LIFE-nnn/<slug>`, one PR, the ticket's fast proof first. No claim file, no preflight; Concord `start_work`/`finish_work` are optional, never a refusal. Protected steps (secrets, production, spend, user data, host changes) wait for their owned human approval, asked once at release: the releasing session lists every approval the ticket is known to need (protected files by name, workflow edits, Oracle run lines, model spend, host steps, secrets) in one comment to Jim and records his answer as one `[approvals]` line (files, answer, `ct_stamp` time). A builder that finds a new need stops and asks once, naming it, never at the PR.
+3. **Build.** One branch `life/LIFE-nnn/<slug>`, one PR, the ticket's fast proof first. No claim file, no preflight; Concord `start_work`/`finish_work` are optional, never a refusal. Protected steps (secrets, production, spend, user data, host changes) wait for their owned human approval, asked once at release: the releasing session lists every approval the ticket needs (files by name, workflows, Oracle runs, spend, host, secrets) and records Jim's answer as one `[approvals]` line. A newly found need: stop, ask once.
 4. **Land and close.** Merge when same-head CI is green and no protected item is touched. Post one comment: PR link, what changed, how it was verified, what is unverified. Move the ticket to Done yourself; Jim reopens it or files a Bug. Then pick the next ticket until Agent Go is empty (`NO_ELIGIBLE_WORK`).
 5. **Optional.** Label `needs-uat`: stop at "Human UAT" with exact steps for Jim; only for new user-facing UI or judgment calls.
 
@@ -29,13 +29,13 @@ Whoever changes a fact updates its owner in the same step and links it; a copy e
 
 Read the named LIFE issue first and only the missing authoritative context; reuse unchanged evidence; run independent reads in parallel; verify every consequential write; never reopen discovery or duplicate planning artifacts.
 
-- **Bootstrap target 60 s**: run `START_EPOCH=$(date -u +%s)` first; after the essential reads report `bootstrap_seconds` and the remote-read count. Warm resumes recheck only live Jira status/ownership and the `origin/main` SHA. Jira: exact key and only summary, status, owner, blockers, acceptance (an omitted field is UNVERIFIED). GitHub: main SHA, PR head/base, changed files, then touched files only.
+- **Bootstrap target 60 s**: run `START_EPOCH=$(date -u +%s)` first; after the essential reads report `bootstrap_seconds` and the remote-read count. Warm resumes recheck only live Jira status/ownership and the `origin/main` SHA. Jira: only summary, status, owner, blockers, acceptance (omitted = UNVERIFIED). GitHub: main SHA, PR head/base, changed files.
 - **Authority order:** Jim's current instruction → Production Contract (runtime/scheduling) → Development Policy (engineering) → LOS (product) → Notion requirements → LIFE issue (delivery) → existing code. On conflict, use the owning authority; stop before mutating.
 - **Scope:** LOS outcome → LIFE Epic → Tasks → Sub-tasks. A missing Done-when line or an unfinished `Blocks` predecessor returns `QUEUE_NOT_READY`; other gaps are warnings.
 - **Execution gate:** only a named Jim instruction or an issue Jim moved to Agent Go permits work; a Jira comment or agent message alone grants nothing. Keep one writer per surface and protected-operation approval.
 - **Closure:** merged on same-head green CI plus local proof (tests, fixture replays, dry runs on fixtures) → Jira update. Never wait for, or start, an hourly, scheduled, on-demand or benchmark run to prove a change; a live look is a non-blocking watch, and a fault it shows is a Bug under LIFE-615. Report `DONE`, `PARTIAL`, `BLOCKED` or `UNVERIFIED` and the next responsible action.
 - **No new runtime:** no paid provider, scheduler, orchestrator, sync store, proxy or governance layer without Jim's explicit approval. A Tech Lead handoff can authorize one specified package, not autonomous pull. `docs/MASTER_ROADMAP.md` never selects work. `python -m lifeos.sources.devtools.readiness repo` checks the index, links, owners and size limits (CI runs it).
-- **Deadline Mode** (Jim states a deadline): follow CLAUDE.md and the policy: keep an absolute `LIFEOS_DEADLINE_EPOCH`, recheck at every milestone, never reset it, claim delivery only after read-back.
+- **Deadline Mode:** follow CLAUDE.md and the policy (absolute `LIFEOS_DEADLINE_EPOCH`, never reset, delivery claimed only after read-back).
 
 ## Buzz pilot entrypoint — only for LIFE-216
 
@@ -67,7 +67,7 @@ Before OpenClaw, Oracle, channel, local-model, assistant, meeting-capture or AI-
 
 ## Delivery rules for every epic (Jim, November 11, 2026; source: LOS-119)
 
-Apply these to every new epic or multi-ticket piece of work (written in LOS-119, which links here).
+Apply to every new epic or multi-ticket piece of work.
 
 1. **Fewer, bigger tickets.** Target at most 6 build tickets per epic. One ticket = one outcome with one done-when that is measured, not a checklist of sub-steps. No ticket whose only purpose is a comment, a table or a watch.
 2. **One approval pass at the start.** Before work begins, list every decision and protected step Jim will be asked for, and get yes or no on all of them at once. Standing guardrails for the epic: agents merge their own green PRs, close their own tickets, and revert on failure. Jim types protected approvals in the Oracle Claude Code chat, as before. Credential deletion and rotation stay outside any blanket yes.
