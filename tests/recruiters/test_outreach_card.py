@@ -1,6 +1,7 @@
 """LIFE-20: the Daily Report's one Recruiter Outreach table (lifeos/recruiters/outreach_card.py), against the synthetic block tree and a fake Recruiters data source.
 Synthetic names and example.test links only."""
 import unittest
+from unittest import mock
 from datetime import date
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -410,12 +411,43 @@ class ProtectionTests(unittest.TestCase):
         touched = {path.split("/")[2] for method, path in writes(t)}
         self.assertLessEqual(touched, {"ro-h", "ro-t"} | {i for i in t.kids["ro-t"]} | {f"ro-t-r{n}" for n in range(3)})
 
-    def test_a_neighbour_changed_during_the_write_fails_closed(self):
+    def test_another_cards_write_during_ours_no_longer_fails_the_run(self):
+        """LIFE-656: the page is not compared before and after our write (the other domain jobs write it at the same time), so a change elsewhere cannot fail this step."""
+        def edit(tree, victim):
+            block = tree.blocks[victim]
+            part = block["table_row"]["cells"][1][0] if block["type"] == "table_row" else block[block["type"]]["rich_text"][0]
+            part["plain_text"] = "changed by another card"
+
+        for victim in ("jira-p", "ro-link", "hist-t-r1"):
+            t = report(old_rows=2)
+            t.trip = ("ro-t-r1", lambda tree, v=victim: edit(tree, v))
+            self.assertTrue(go(t, Source(MIXED))["verified"], victim)
         t = report(old_rows=2)
-        t.trip = ("ro-t-r1", lambda tree: tree.blocks[f"{HIRING_T}-r1"]["table_row"]["cells"][1][0].update(plain_text="Rejected"))
+        t.trip = ("ro-t-r1", lambda tree: tree.add("sneaky", "paragraph", "col", text="new"))
+        self.assertTrue(go(t, Source(MIXED))["verified"])
+
+    def test_our_own_rows_that_do_not_read_back_as_written_fail_with_the_fixed_code(self):
+        t = report(old_rows=2)
+        t.trip = ("ro-t-r1", lambda tree: tree.blocks["ro-t-r1"]["table_row"]["cells"][0][0].update(plain_text="tampered"))
         with self.assertRaises(card.OutreachError) as caught:
             go(t, Source(MIXED))
-        self.assertEqual(str(caught.exception), "RECRUITER_OUTREACH_PROTECTED_REGION_CHANGED")
+        self.assertEqual(str(caught.exception), "RECRUITER_OUTREACH_READBACK_MISMATCH")
+
+    def test_a_write_outside_the_region_is_refused_before_it_is_sent_and_nothing_changes(self):
+        """LIFE-656 mutation proof: a writer aimed at another card's block (the Jira paragraph) or at our header row fails with the fixed code and sends nothing. Without the scope guard the write goes through."""
+        for target in ("jira-p", "ro-t-r0", "hist-t-r1"):
+            t = report(old_rows=2)
+            before = deepcopy(t.blocks[target])
+
+            def buggy_writer(client, region, status, rows, fail, target=target):
+                client.call("PATCH", f"/blocks/{target}", {"paragraph": {"rich_text": []}})
+
+            with mock.patch.object(R, "write_floating", buggy_writer):
+                with self.assertRaises(card.OutreachError) as caught:
+                    go(t, Source(MIXED))
+            self.assertEqual(str(caught.exception), "RECRUITER_OUTREACH_WRITE_OUT_OF_SCOPE", target)
+            self.assertEqual(t.blocks[target], before, target)
+            self.assertEqual(writes(t), [], target)
 
     def test_a_failed_write_marks_the_heading_degraded(self):
         t = report(old_rows=2)
