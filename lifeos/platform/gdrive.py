@@ -117,10 +117,6 @@ class Drive:
     def get(self, file_id):
         return self._send("GET", f"{API}/{urllib.parse.quote(file_id, safe='')}?fields={FIELDS}")
 
-    def tagged(self, key, value):
-        """LIFE OS's own files carrying this tag (e.g. every résumé built for one job), oldest first."""
-        return self.find(f"appProperties has {{ key='{_quote(key)}' and value='{_quote(value)}' }}")
-
     def lock(self, file_id, reason):
         """Make the file read-only in Drive (a content restriction): what was sent cannot change afterwards. -> the file's metadata."""
         return self._json("PATCH", f"{API}/{urllib.parse.quote(file_id, safe='')}?fields={FIELDS}",

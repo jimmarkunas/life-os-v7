@@ -3,7 +3,6 @@ Rule: every outbound call path stays UNDER the provider's published limit, with 
 of retrying harder. Change a number here only after re-reading the provider's current docs."""
 
 # TinyFish (Jim's plan; wallet is $35 and must never be spent)
-TINYFISH_FETCH_PER_MINUTE = 150          # provider limit
 TINYFISH_FETCH_PER_DAY = 1000            # provider limit
 TINYFISH_FETCH_DAILY_CAP = 900           # ours (budget.FETCH_DAILY_CAP)
 TINYFISH_FETCH_BATCH = 10                # max URLs per call
@@ -11,7 +10,6 @@ TINYFISH_SEARCH_PER_MINUTE = 30          # provider limit (free, needs Search AP
 TINYFISH_SEARCH_PER_HOUR = 500           # provider limit
 TINYFISH_SEARCH_LANES = 2                # resolve lanes that run at the same time and share the one key
 TINYFISH_SEARCH_GAP_SECONDS = 2.2 * TINYFISH_SEARCH_LANES   # ours: 13.6/min per lane, 27/min across both
-TINYFISH_SEARCH_GAP_SOLO = 2.2             # ours: 27/min when a lane has the key to itself (the 30/min provider limit)
 TINYFISH_SEARCH_PER_RUN_LINKEDIN = 100
 TINYFISH_AGENT_ALLOWED = False           # $0.016/step - forbidden
 
@@ -27,7 +25,6 @@ BILLS_PAID_PER_RUN = 20                  # paid commands are individually read b
 
 # LinkedIn (public guest pages only; never logged in)
 LINKEDIN_GUEST_GAP_SECONDS = 1.2         # ours; stop the stage on the first HTTP 429
-LINKEDIN_PER_RUN = 150
 LINKEDIN_SEARCH_PAGES_PER_RUN = 4          # D203: guest search pages per run (10 cards each), one per LINKEDIN_GUEST_GAP_SECONDS; LinkedIn answered 429 after about 12 quick requests (Oct 17)
 LINKEDIN_SEARCH_NEW_PER_RUN = 40           # D203: new rows per run, so search never crowds the newsletter in the shared resolve lane
 DICE_GAP_SECONDS = 1.0                   # polite spacing between anonymous tracking-link requests
@@ -35,10 +32,6 @@ DICE_PER_RUN = 15                        # Dice is low value: a small bounded ba
 DICE_DEADLINE_MINUTES = 3                # stop starting batches after this; the workflow step is also capped at 4 minutes
 DICE_TIMEOUT_SECONDS = 6                 # per request
 DICE_MAX_HOPS = 4                        # redirects followed per link
-
-# Jobright (logged in with saved secrets)
-JOBRIGHT_PER_RUN = 40                    # one login per run
-JOBRIGHT_PAUSE_MS = 1500
 
 # Public ATS board APIs (Greenhouse, Lever, Ashby, SmartRecruiters, Workable): unauthenticated
 ATS_WORKERS = 8
@@ -63,13 +56,6 @@ BOARDS_INGEST_PER_RUN = 1000             # postings admitted per run; the rest s
 BOARDS_WORKERS = 4                       # most seed boards share the Greenhouse, Ashby and Lever API hosts
 BOARDS_RATE_LIMIT_STOP = 3               # this many 429 answers from one ATS stops reading that ATS for the run
 BOARDS_BACKFILL_PER_RUN = 450            # D217: never-read seed boards a backfill run reads (only when BOARDS_BACKFILL=on): ~10,500 drain in about a day of ticks
-
-# Gmail (REST, gmail.modify): per-user quota 250 units/s; list/get = 5 units, batchModify = 50
-GMAIL_REQUESTS_PER_SECOND = 10
-
-# GitHub Actions
-ACTIONS_CRON = "hourly"
-ACTIONS_JOB_MINUTES = 40                 # workflow timeout-minutes (platform max is far higher)
 
 # Retry rule for jobs whose final link cannot be found yet: try again on later runs, then HOLD (kept, never dropped)
 RESOLVE_MAX_ATTEMPTS = 6
