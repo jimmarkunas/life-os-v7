@@ -4,6 +4,7 @@ Fit fields when its stored score is newer than the last sync: LIFE OS Fit, Why I
 and runs only after the Job Ledger target check. Counts only."""
 
 from lifeos.jobs import lanes, ledger, meta, store
+from lifeos.platform import notion_text
 from lifeos.platform.notion_client import NotionError, rich_text
 
 PICK = ("SELECT j.id, j.notion_page_id, f.score, f.line, f.admission, f.admission_reason, f.work_mode, f.lane, f.eligible,"
@@ -49,7 +50,7 @@ def _plain(page_id):
 
 
 def _text(page, name):
-    return "".join(part.get("plain_text", "") for part in ((page.get("properties") or {}).get(name) or {}).get("rich_text") or []).strip()
+    return notion_text.plain(((page.get("properties") or {}).get(name) or {}).get("rich_text")).strip()
 
 
 def _empty_roles(client, counts):

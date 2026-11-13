@@ -19,6 +19,8 @@ import re
 
 from lifeos.jobs import store
 from lifeos.jobs.fit.profile import Profile, ProfileError
+from lifeos.platform import notion_text
+from lifeos.platform.fixed_code import fixed
 from lifeos.platform.notion_client import Client, NotionError
 
 OWNER = "nsync"
@@ -50,7 +52,7 @@ def read_page(client, page_id):
     for block in children.get("results") or []:
         kind = block.get("type")
         payload = block.get(kind) or {}
-        plain = "".join(piece.get("plain_text", "") for piece in payload.get("rich_text") or [])
+        plain = notion_text.plain(payload.get("rich_text"))
         if kind == "code" and payload.get("language") == "json" and text is None:
             text = plain
         elif kind == "paragraph":
@@ -66,10 +68,8 @@ def parse(text):
     """The managed block, validated by shape only (the secret it lands in is checked separately). Raises SyncError with a fixed code."""
     if len(text.encode()) > MAX_BYTES:
         raise SyncError("SYNC_BLOCK_TOO_LARGE")
-    try:
+    with fixed(ValueError, SyncError, "SYNC_BLOCK_NOT_JSON"):
         block = json.loads(text)
-    except ValueError:
-        raise SyncError("SYNC_BLOCK_NOT_JSON") from None
     if not isinstance(block, dict) or set(block) - set(ALLOWED_KEYS):
         raise SyncError("SYNC_BLOCK_KEYS")
     entries = [*(block.get("capabilities") or []), *(block.get("functions") or [])]
@@ -80,10 +80,8 @@ def parse(text):
             raise SyncError("SYNC_CAPABILITY_ID")
     block = {"capabilities": list(block.get("capabilities") or []),
              "functions": [{**row, "owner": OWNER} for row in block.get("functions") or []]}
-    try:
+    with fixed((ValueError, TypeError, KeyError, ProfileError), SyncError, "SYNC_BLOCK_INVALID"):
         Profile({"years": 1, **block})
-    except (ValueError, TypeError, KeyError, ProfileError):
-        raise SyncError("SYNC_BLOCK_INVALID") from None
     return block
 
 
@@ -143,10 +141,8 @@ def run(limit, live, environ=os.environ, notion=None, vault=None):
         digest = content_hash(block)
         out["entries"] = len(block["capabilities"]) + len(block["functions"])
         vault = vault or Store()
-        try:
+        with fixed(Exception, SyncError, "SYNC_STORE_UNAVAILABLE"):
             stored_digest, _ = vault.read()
-        except Exception:
-            raise SyncError("SYNC_STORE_UNAVAILABLE") from None
         if approved != digest:
             out["code"] = "SYNC_NOT_APPROVED"
             return out
@@ -156,11 +152,9 @@ def run(limit, live, environ=os.environ, notion=None, vault=None):
         if not live:
             out["code"] = "SYNC_WOULD_WRITE"
             return out
-        try:
+        with fixed(Exception, SyncError, "SYNC_STORE_UNAVAILABLE"):
             vault.write(block)
             readback, saved = vault.read()
-        except Exception:
-            raise SyncError("SYNC_STORE_UNAVAILABLE") from None
         if readback != digest or saved != block:
             raise SyncError("SYNC_READBACK_MISMATCH")
         out["code"] = "SYNC_WRITTEN"

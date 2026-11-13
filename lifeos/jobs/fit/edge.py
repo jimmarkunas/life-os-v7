@@ -14,6 +14,7 @@ from types import SimpleNamespace
 
 from lifeos.jobs.fit import judge
 from lifeos.platform import socket_exchange
+from lifeos.platform.fixed_code import fixed
 
 PORT, MAX_REQUEST, MAX_REPLY, WAIT = 47341, 16384, 4096, 90                      # Oracle answers one JSON line under 4 KiB
 MANIFEST = Path(__file__).with_name("edge_fixtures.json")        # the Oracle operator's export, synthetic only: {"fixtures": [{"id", "request", "request_sha256"}]}
@@ -109,11 +110,9 @@ def _answer(host, data, send, wait, status_ok):
         raise EdgeError("FIT_EDGE_NO_REPLY")
     if len(raw) > MAX_REPLY:
         raise EdgeError("FIT_EDGE_REPLY_TOO_LARGE")
-    try:
+    with fixed((ValueError, KeyError, AssertionError, TypeError), EdgeError, "FIT_EDGE_OFF_CONTRACT"):
         reply = json.loads(raw)
         assert isinstance(reply, dict) and reply["schema"] == "lifeos.fit.v1" and status_ok(reply["status"])
-    except (ValueError, KeyError, AssertionError, TypeError):
-        raise EdgeError("FIT_EDGE_OFF_CONTRACT") from None
     return reply
 
 
@@ -128,7 +127,7 @@ def limits(host, send=None, wait=LIMIT_WAIT, backlog=None):
     reply = _answer(host, b"fit1 %d\n" % len(body) + body, send or exchange, wait, lambda status: status == "LIMITS")      # looked up at call time, so a patched sender is the one used
     if reply.get("nonce") != nonce:
         raise EdgeError("FIT_EDGE_NONCE_MISMATCH")
-    try:
+    with fixed((KeyError, TypeError, AssertionError), EdgeError, "FIT_EDGE_LIMITS_OFF_CONTRACT"):
         pools = []
         for p in reply["pools"]:
             assert isinstance(p["provider"], str) and NAME.match(p["provider"]) and isinstance(p["windows"], list) and len(p["windows"]) <= 6
@@ -148,8 +147,6 @@ def limits(host, send=None, wait=LIMIT_WAIT, backlog=None):
         assert isinstance(signins, dict) and set(signins) <= {"fit", "meter"}
         signins = {k: {"state": v["state"], "expires": v.get("expires")} for k, v in signins.items()}
         assert all(v["state"] in SIGNIN_STATES and (v["expires"] is None or (isinstance(v["expires"], str) and len(v["expires"]) <= 40)) for v in signins.values())
-    except (KeyError, TypeError, AssertionError):
-        raise EdgeError("FIT_EDGE_LIMITS_OFF_CONTRACT") from None
     return {"read_at": read_at, "pools": pools, "unavailable": unavailable, "safety_cap": cap and {"runs_today": cap["runs_today"], "limit": cap["limit"]},
             **({"signins": signins} if signins else {})}
 
