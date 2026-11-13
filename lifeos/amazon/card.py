@@ -8,7 +8,8 @@ from urllib.parse import quote
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from lifeos.platform import report_region, router
+from lifeos.platform import notion_pages, report_region, router
+from lifeos.platform.fixed_code import fixed
 from lifeos.platform.gmail import Gmail, GmailError
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 from . import packages as packages_mod, stage
@@ -42,30 +43,12 @@ def _query_body(since):
 
 def read_rows(client, source_id, since):
     """Every open, review and recently delivered order, or a fixed error: a partial list is never rendered as the whole."""
-    rows, cursor, seen = [], None, set()
-    for _ in range(MAX_PAGES):
-        body = _query_body(since)
-        if cursor:
-            if cursor in seen:
-                raise _fail("CARD_PAGINATION_INVALID")
-            seen.add(cursor)
-            body["start_cursor"] = cursor
-        try:
-            page = client.query_data_source(source_id, body)
-        except NotionError:
-            raise _fail("CARD_READ_FAILED") from None
-        if not isinstance(page, dict) or not isinstance(page.get("results"), list) or not isinstance(page.get("has_more"), bool):
-            raise _fail("CARD_READ_INCOMPLETE")
-        try:
+    rows = []
+    for page in notion_pages.query(client, source_id, _query_body(since), _fail, incomplete="CARD_READ_INCOMPLETE", repeat="CARD_PAGINATION_INVALID",
+                                   capped="CARD_PAGINATION_INCOMPLETE", limit=MAX_PAGES, read="CARD_READ_FAILED"):
+        with fixed(NotionError, _fail, "CARD_ROW_INVALID"):
             rows.extend(stage._row_from_page(item) for item in page["results"])
-        except NotionError:
-            raise _fail("CARD_ROW_INVALID") from None
-        if not page["has_more"]:
-            return rows
-        cursor = page.get("next_cursor")
-        if not isinstance(cursor, str) or not cursor:
-            raise _fail("CARD_READ_INCOMPLETE")
-    raise _fail("CARD_PAGINATION_INCOMPLETE")
+    return rows
 
 
 def _when(value):
