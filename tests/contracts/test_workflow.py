@@ -340,7 +340,7 @@ class PullRequestTestsWorkflow(unittest.TestCase):
     def test_it_reuses_the_shared_python_action_and_runs_the_accepted_command_with_the_runtime_limits(self):
         doc = yaml.safe_load(self.path.read_text())
         steps = doc["jobs"]["unit-tests"]["steps"]
-        self.assertEqual([s.get("uses") for s in steps[:2]], ["actions/checkout@v5", "./.github/actions/python"])
+        self.assertEqual([s.get("uses") for s in steps[:2]], ["actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09", "./.github/actions/python"])
         run = [s["run"] for s in steps if "Unit tests" in s.get("name", "")][0]
         self.assertIn("python -m tests.shard 1 2", run)                      # Jim, Oct 26 2026: two parallel shards of whole test modules; tests/contracts/test_shards.py proves every test runs in exactly one
         self.assertIn("python -m tests.shard 2 2", run)
@@ -357,7 +357,7 @@ class PullRequestTestsWorkflow(unittest.TestCase):
         room = next(i for i, n in enumerate(names) if "Concord Room plugin tests" in n)
         self.assertGreater(room, python_suite)                                       # the 45 s / 90 s limits above stay about the Python suite alone
         self.assertEqual(steps[room]["run"], "node --test tools/orca-concord-room/test/worker.test.mjs")
-        self.assertEqual(steps[room - 1]["uses"], "actions/setup-node@v5")
+        self.assertEqual(steps[room - 1]["uses"], "actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444")
         self.assertEqual(steps[room - 1]["with"], {"node-version": "24"})
         self.assertTrue(pathlib.Path(__file__).resolve().parents[2].joinpath("tools/orca-concord-room/test/worker.test.mjs").is_file())
 
@@ -455,11 +455,11 @@ class UnitTestGateTests(unittest.TestCase):
         inner = action["runs"]["steps"]
         inner_ids = [s.get("id") for s in inner]
         cache = inner[inner_ids.index("chromium_cache")]
-        self.assertEqual((cache["uses"], cache["with"]["path"]), ("actions/cache@v4", "~/.cache/ms-playwright"))
+        self.assertEqual((cache["uses"], cache["with"]["path"]), ("actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830", "~/.cache/ms-playwright"))
         self.assertIn("hashFiles('requirements-browser.lock')", cache["with"]["key"])
         self.assertIn("inputs.cache_bust", cache["with"]["key"])
         libs = inner[inner_ids.index("libs_cache")]                                                   # LIFE-576: the system libraries are cached next to Chromium
-        self.assertEqual((libs["uses"], libs["with"]["path"]), ("actions/cache@v4", "~/apt-debs"))
+        self.assertEqual((libs["uses"], libs["with"]["path"]), ("actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830", "~/apt-debs"))
         self.assertIn("steps.runner_image.outputs.version", libs["with"]["key"])                      # a restored copy can never meet a different runner image
         self.assertIn("hashFiles('requirements-browser.lock')", libs["with"]["key"])
         self.assertLess(inner_ids.index("runner_image"), inner_ids.index("libs_cache"))
@@ -846,7 +846,7 @@ class BitwardenConsumerTests(unittest.TestCase):
                 steps, names = doc["jobs"][job]["steps"], self.loaded(name, job)
                 self.assertTrue(names and names <= set(UUIDS), (name, job))
                 self.assertTrue(names <= DOMAIN_SECRETS[job] | TS if name == "domains" else names == LOADED[name][job], (name, job, sorted(names)))
-                self.assertEqual(steps[0]["uses"], "actions/checkout@v5", (name, job))
+                self.assertEqual(steps[0]["uses"], "actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09", (name, job))
                 self.assertEqual(loader["with"]["access_token"], "${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}", (name, job))
                 self.assertEqual(sorted(re.findall(r"^([0-9a-f-]{36}) > (\w+)$", loader["with"]["secrets"], re.M)), sorted((UUIDS[n], n) for n in names), (name, job))
                 self.assertEqual(len(re.findall(r" > ", loader["with"]["secrets"])), len(names), (name, job))
