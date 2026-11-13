@@ -14,7 +14,6 @@ UUID = re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 MAPPING_LINE = re.compile(r">|secrets?:")
 ALLOWED = {                                                          # path: (most copies it may hold, why)
     "tests/contracts/test_workflow.py": (45, "pins the exact bws mappings each workflow loads (existing contract; the ids are the thing under test)"),
-    "tests/contracts/test_guardrails.py": (11, "pins which secrets moved to Bitwarden and the watchdog's one mapping (existing contract)"),
     "docs/NOTION_INTEGRATIONS.md": (6, "the integrations table names the Bitwarden id each Notion token is loaded from (identifiers only, already public in the workflows)"),
 }
 

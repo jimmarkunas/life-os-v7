@@ -23,7 +23,6 @@
   "tests.contracts.test_boundaries": 0.58,
   "tests.contracts.test_buzz_roadmap": 0.01,
   "tests.contracts.test_bws_helper": 1.1,
-  "tests.contracts.test_bws_pairs": 0.8,
   "tests.contracts.test_codemap": 0.67,
   "tests.contracts.test_codes": 1.1,
   "tests.contracts.test_config_registry": 1.83,
