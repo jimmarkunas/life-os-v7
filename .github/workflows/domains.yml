@@ -1,6 +1,6 @@
 name: domains
 run-name: ${{ github.event_name == 'workflow_run' && 'domains (after tick)' || 'domains (manual)' }}
-# The V7 domain jobs: Jira, Outlook (newsletters + calendar sync), Bills, Agenda (Calendar card) and Amazon Orders. Each reads or writes ONE provider and none
+# The V7 domain jobs: Jira, Outlook (calendar sync), Bills, Agenda (Calendar card) and Amazon Orders. Each reads or writes ONE provider and none
 # touches the Jobs pipeline, so they live apart from hourly.yml: this workflow declares NO secrets at the top, so a job can only see what its own steps pass it
 # (isolation by construction, not by blanking). Failures are warnings. Runs by itself a few minutes after every hourly TICK (not after a manual hourly run or one the gate cancelled), and by hand with the inputs below.
 on:
@@ -325,7 +325,7 @@ jobs:
 
 
   outlook:
-    # Outlook (read-only) on every scheduled or tick run: job newsletters into Jobs OS, and meeting invites into your Google calendar. Its own
+    # Outlook (read-only) on every scheduled or tick run: meeting invites into your Google calendar. Its own
     # job like Jira and Interview: every other credential is blanked, the Outlook/calendar/database secrets reach only the steps that need
     # them, and a failure is a warning that never fails the Jobs run.
     needs: [gate]
@@ -366,25 +366,6 @@ jobs:
           oauth-secret: ${{ steps.bws_outlook.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
           use-cache: "false"
-      - id: outnews
-        continue-on-error: true
-        if: ${{ !inputs.calendar_sync || (inputs.all || inputs.benchmark) }}
-        name: Outlook newsletters (job alerts to Jobs OS; counts only; writes only when live)
-        env:
-          OUTLOOK_CLIENT_ID: ${{ secrets.OUTLOOK_CLIENT_ID }}
-          LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
-          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KEY: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
-          LIFEOS_ACQ_SSH_JUMP_HOST: ${{ vars.V7_STORE_JUMP_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: ${{ vars.V7_STORE_JUMP_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_VIA: ${{ vars.V7_STORE_VIA }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_SSH_USER }}
-        run: python -m lifeos.run outlook-newsletters $([ "$LIVE" = "true" ] && echo --live)
       - id: calsync
         continue-on-error: true
         name: Calendar sync (Outlook invites to Google; counts only; writes only when live; pages the phone when it has not worked for 3 hours)
@@ -408,7 +389,7 @@ jobs:
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_SSH_USER }}
         run: python -m lifeos.run calendar-sync $([ "$LIVE" = "true" ] && echo --live)
       - name: Outlook warning (does not fail the run)
-        if: ${{ always() && (steps.outnews.outcome == 'failure' || steps.calsync.outcome == 'failure') }}
+        if: ${{ always() && steps.calsync.outcome == 'failure' }}
         run: echo "::warning title=Outlook::an Outlook step failed; the Jobs pipeline is unaffected"
 
 
