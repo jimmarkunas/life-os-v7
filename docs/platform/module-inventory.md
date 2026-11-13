@@ -16,46 +16,106 @@ Report only. Nothing was deleted or changed. Taken from origin/main at c7ad41a o
 4. **Test-suite time.** AGENTS.md says the suite takes "about 2 s". Observed today on the Mac: **Ran 4185 tests in 122.6 s** (OK, 28 skipped). PR CI runs it in two parallel shards with a warning at 45 s and failure at 90 s; the last PR run passed. The Notion Platform Canon target is under 60 s. Three different numbers; I do not claim any target is met on one machine.
 5. **The Mac worktree and branch counts do not reproduce.** The Mac report (comments 12401 and 12412) says 94 registered worktrees and 216 unmerged branches. From this checkout today I see **11 worktrees and 7 local branches not in main** (Appendix A). I do not know why (a different path, a prune since 8:25 PM CT, or a different counting method). Appendix A lists what I can see; the Mac report's numbers remain unconfirmed.
 
+## Where each module runs (LIFE-620)
+
+Generated from `lifeos/platform/runtime.json`; do not edit by hand. The drift check's surface list and the ticker installer's module list are tested against the same file.
+
+<!-- runtime-manifest:begin (generated: edit lifeos/platform/runtime.json, then python -m tests.contracts.test_runtime_manifest --write) -->
+| Module | Runs on | Installed as | Activated by |
+|---|---|---|---|
+| lifeos/agenda | github |  |  |
+| lifeos/amazon | github |  |  |
+| lifeos/attention | github |  |  |
+| lifeos/bench | github |  |  |
+| lifeos/bills | github |  |  |
+| lifeos/buzz | oracle |  |  |
+| lifeos/buzz_auth.py | oracle |  |  |
+| lifeos/buzz_mcp.py | oracle |  |  |
+| lifeos/buzz_nip98.py | oracle |  |  |
+| lifeos/buzz_relay.py | oracle |  |  |
+| lifeos/calendar_bridge | github |  |  |
+| lifeos/codemap.py | github |  |  |
+| lifeos/dcc | github |  |  |
+| lifeos/decisions.py | dev |  |  |
+| lifeos/delivery | github |  |  |
+| lifeos/edge | oracle |  |  |
+| lifeos/hermes_requests.py | github |  |  |
+| lifeos/hiring | github, oracle |  |  |
+| lifeos/imessage | github, oracle, mac |  |  |
+| lifeos/interview | github |  |  |
+| lifeos/jira | github |  |  |
+| lifeos/jobs | github |  |  |
+| lifeos/megibow | github |  |  |
+| lifeos/network | github |  |  |
+| lifeos/oraclecloud | github, oracle |  |  |
+| lifeos/outlook | github |  |  |
+| lifeos/physmail | github |  |  |
+| lifeos/platform | github, oracle |  |  |
+| lifeos/probe.py | github |  |  |
+| lifeos/profile_runs.py | dev |  |  |
+| lifeos/profile_tickets.py | dev |  |  |
+| lifeos/readiness.py | github, dev |  |  |
+| lifeos/recruiters | github |  |  |
+| lifeos/run.py | github |  |  |
+| lifeos/sources | github, oracle |  |  |
+| lifeos/telegram | oracle |  |  |
+| lifeos/whatsapp | oracle |  |  |
+| lifeos/edge/ticker/ticker.py | oracle | /opt/lifeos-ticker/ticker.py | lifeos-ticker-watch.timer |
+| lifeos/platform/gate.py | oracle | /opt/lifeos-ticker/lifeos/platform/gate.py | lifeos-ticker-watch.timer |
+| lifeos/platform/alerts.py | oracle | /opt/lifeos-ticker/lifeos/platform/alerts.py | lifeos-ticker-watch.timer |
+| lifeos/platform/alert_registry.py | oracle | /opt/lifeos-ticker/lifeos/platform/alert_registry.py | lifeos-ticker-watch.timer |
+| lifeos/platform/alert_settings.py | oracle | /opt/lifeos-ticker/lifeos/platform/alert_settings.py | lifeos-ticker-watch.timer |
+| lifeos/platform/redact.py | oracle | /opt/lifeos-ticker/lifeos/platform/redact.py | lifeos-ticker-watch.timer |
+| lifeos/platform/drift.py | oracle | /opt/lifeos-ticker/lifeos/platform/drift.py | lifeos-ticker-watch.timer |
+| lifeos/edge/backup/offsite_backup.py | oracle | /opt/lifeos-offsite/offsite_backup.py | lifeos-offsite-backup.timer |
+| lifeos/edge/ticker/oracle/install-ticker.sh | oracle | /opt/lifeos-ticker/install-ticker.sh | lifeos-ticker-watch.timer |
+| lifeos/edge/backup/oracle/install-offsite.sh | oracle | /opt/lifeos-offsite/install-offsite.sh | lifeos-offsite-backup.timer |
+| lifeos/edge/oracle/close_release.py | oracle | /opt/lifeos-close/bin/close_release.py | lifeos-close-release.timer |
+| lifeos/edge/oracle/install-close.sh | oracle | /opt/lifeos-close/bin/install-close.sh | lifeos-close-release.timer |
+| lifeos/imessage/mac/ai.lifeos.imessage-attention.plist | mac | ~/Library/LaunchAgents/ai.lifeos.imessage-attention.plist | ai.lifeos.imessage-attention |
+| lifeos/imessage/mac/ai.lifeos.imessage-relay.plist | mac | ~/Library/LaunchAgents/ai.lifeos.imessage-relay.plist | ai.lifeos.imessage-relay |
+<!-- runtime-manifest:end -->
+
 ## A. lifeos/ (34 units)
 
-Columns: lines = Python lines; tests = test files / test lines that mention the module; PII = handles personal data (judged from purpose and docs, not scanned); Class = LIVE / DEAD-PROVEN (every row has one; LIFE-591).
+Columns: lines = Python lines; tests = test files / test lines that mention the module; PII = handles personal data (judged from purpose and docs, not scanned); where it runs: the generated table above (LIFE-620); Class = LIVE / DEAD-PROVEN (every row has one; LIFE-591).
 
-| Unit | Files | Lines | Last commit | Tests | PII | Host that runs it | Class | Proposed action | Reason |
-|---|---|---|---|---|---|---|---|---|---|
-| lifeos/sources | 58 | 8,832 | 2026-11-08 | 63 / 14,533 | mixed | GitHub, Oracle (close_app) | LIVE | keep; merge candidates inside (29 loose files) | 24 of 27 stages named in workflows; close_app runs on Oracle |
-| lifeos/jobs | 65 | 8,564 | 2026-11-08 | 80 / 19,303 | yes | GitHub | LIVE | keep | 22 of 30 stages named in workflows |
-| lifeos/platform | 41 | 5,596 | 2026-11-09 | 127 / 33,719 | mixed | GitHub, Oracle (gate, alerts, redact) | LIVE | keep; shared base | imported by nearly every package; gate runs on Oracle |
-| lifeos/interview | 21 | 5,159 | 2026-11-08 | 39 / 11,544 | yes | GitHub | LIVE | keep | 4 of 4 stages named in workflows |
-| lifeos/edge | 48 | 2,692 | 2026-11-08 | 15 / 4,421 | mixed | Oracle | LIVE | keep | ticker, backup, close, botstudio, granola helper run on Oracle (3 ticker files older there, see LIFE-530 report) |
-| lifeos/jira | 12 | 1,617 | 2026-11-09 | 9 / 3,266 | no | GitHub | LIVE | keep | 7 of 7 stages named in workflows |
-| lifeos/imessage | 15 | 1,575 | 2026-10-26 | 9 / 2,342 | yes | GitHub, Oracle (alerts_endpoint); Mac launchd plists not checked | LIVE | keep | 2 stages in workflows; alerts_endpoint.py on Oracle |
-| lifeos/recruiters | 9 | 1,360 | 2026-10-25 | 7 / 2,119 | yes | GitHub | LIVE | keep | 2 of 2 stages in workflows |
-| lifeos/hiring | 10 | 1,355 | 2026-11-08 | 11 / 4,455 | yes | GitHub, Oracle (close_screen via close_app) | LIVE | keep | 1 stage in workflows; used by Oracle Close |
-| lifeos/synthetic | 13 | 1,335 | 2026-11-09 | 9 / 1,547 | no | none found | DEAD-PROVEN | DELETED by LIFE-608 on Jim's typed yes (five shared result codes kept in codes.py under platform) | no import outside itself and its tests, no stage, no workflow; none of the Oracle units, cron entries, installed trees or role files, nor this Mac's launchd, cron or processes names it; only strings in platform/codes.py and the credential list point at it. Rollback if wanted: the code stays in Git history |
-| lifeos/amazon | 10 | 1,319 | 2026-10-26 | 8 / 3,417 | yes | GitHub | LIVE | keep | 3 of 5 stages named in workflows |
-| lifeos/network | 10 | 1,231 | 2026-11-08 | 9 / 2,978 | yes | GitHub | LIVE | keep | imported by run.py and sources; its stages network-inspect, -import, -audit and -match are run by the manual workflow network.yml (input `stage`), network-surface and -layout by network.yml and (surface) by hourly.yml |
-| lifeos/bills | 5 | 892 | 2026-10-26 | 4 / 1,789 | yes | GitHub | LIVE | keep | 3 of 3 stages in workflows |
-| lifeos/megibow | 11 | 822 | 2026-11-07 | 2 / 454 | yes | GitHub (via sources.megibow stage) | LIVE | keep | imported by sources/megibow.py; stage "megibow" named in a workflow |
-| lifeos/attention | 5 | 721 | 2026-11-06 | 5 / 2,858 | yes | GitHub | LIVE | keep | 2 of 2 stages in workflows |
-| lifeos/physmail | 6 | 640 | 2026-10-25 | 2 / 1,982 | yes | GitHub | LIVE | keep | 2 of 2 stages in workflows |
-| lifeos/probe | 1 | 603 | 2026-10-26 | 2 / 143 | no | GitHub | LIVE | keep | stage "probe" in a workflow |
-| lifeos/agenda | 3 | 587 | 2026-10-19 | 2 / 1,552 | yes | GitHub | LIVE | keep | 2 of 2 stages in workflows |
-| lifeos/delivery | 3 | 361 | 2026-11-01 | 2 / 352 | no | GitHub (manual) | LIVE | keep | its one stage, amazon-census, is the `census` option of the manual workflow amazon.yml (run line `amazon-$STAGE`); no Oracle or Mac caller (and none needed) |
-| lifeos/whatsapp | 8 | 356 | 2026-10-25 | 3 / 699 | yes | Oracle (forward_alerts.py, attention.mjs, state.mjs) | LIVE | keep | Oracle report lists lifeos/whatsapp/oracle as live |
-| lifeos/buzz_mcp | 1 | 333 | 2026-11-07 | 0 / 0 | no | Oracle (lifeos-buzz-mcp.service) | LIVE | keep | Oracle report: lifeos.buzz_mcp live |
-| lifeos/telegram | 2 | 332 | 2026-10-15 | 1 / 123 | yes | Oracle (installed copy, identical to main) | LIVE | keep | called by path from imessage/alerts_endpoint.py (LIFE-530 report); Jim: Telegram alerting |
-| lifeos/oraclecloud | 5 | 328 | 2026-10-28 | 3 / 393 | no | Oracle (stats.mjs), GitHub (oracle-card stage) | LIVE | keep | Oracle report lists oraclecloud/oracle/stats.mjs; imported by sources/oracle_card.py |
-| lifeos/dcc | 3 | 321 | 2026-10-29 | 3 / 1,621 | mixed | GitHub | LIVE | keep | stage dcc-card in workflows |
-| lifeos/buzz_relay | 1 | 285 | 2026-11-07 | 5 / 1,695 | no | Oracle | LIVE | keep | Oracle report: buzz_relay is part of the live Buzz MCP |
-| lifeos/run | 1 | 241 | 2026-11-06 | 20 / 9,546 | no | GitHub | LIVE | keep | entry point of every stage (18 workflows) |
-| lifeos/calendar_bridge | 3 | 230 | 2026-10-25 | 2 / 485 | yes | GitHub | LIVE | keep | stage calendar-sync in workflows |
-| lifeos/readiness | 1 | 216 | 2026-11-09 | 3 / 417 | no | GitHub, every agent session | LIVE | keep | used by readiness-live.yml and AGENTS.md gate |
-| lifeos/decisions | 1 | 109 | 2026-10-20 | 2 / 412 | no | developer tool | LIVE | keep | AGENTS.md: new decision numbers only from this tool |
-| lifeos/hermes_requests | 1 | 101 | 2026-11-05 | 1 / 166 | no | GitHub (hermes-stage.yml) | LIVE | keep | stage "hermes" in a workflow |
-| lifeos/codemap | 1 | 97 | 2026-10-05 | 1 / 20 | no | CI | LIVE | keep | AGENTS.md: a test fails when the generated codemap is stale |
-| lifeos/outlook | 3 | 91 | 2026-10-02 | 1 / 332 | yes | GitHub | LIVE | keep (91 lines; could merge into platform.outlook) | stage outlook-probe in workflows |
-| lifeos/buzz_nip98 | 1 | 79 | 2026-11-01 | 0 / 0 | no | Oracle | LIVE | keep | Oracle report names buzz_nip98 as live; no repo test |
-| lifeos/buzz_auth | 1 | 77 | 2026-11-02 | 1 / 478 | no | Oracle | LIVE | keep | Oracle report names buzz_auth as live |
+| Unit | Files | Lines | Last commit | Tests | PII | Class | Proposed action | Reason |
+|---|---|---|---|---|---|---|---|---|
+| lifeos/sources | 58 | 8,832 | 2026-11-08 | 63 / 14,533 | mixed | LIVE | keep; merge candidates inside (29 loose files) | 24 of 27 stages named in workflows; close_app runs on Oracle |
+| lifeos/jobs | 65 | 8,564 | 2026-11-08 | 80 / 19,303 | yes | LIVE | keep | 22 of 30 stages named in workflows |
+| lifeos/platform | 41 | 5,596 | 2026-11-09 | 127 / 33,719 | mixed | LIVE | keep; shared base | imported by nearly every package; gate runs on Oracle |
+| lifeos/interview | 21 | 5,159 | 2026-11-08 | 39 / 11,544 | yes | LIVE | keep | 4 of 4 stages named in workflows |
+| lifeos/edge | 48 | 2,692 | 2026-11-08 | 15 / 4,421 | mixed | LIVE | keep | ticker, backup, close, botstudio, granola helper run on Oracle (3 ticker files older there, see LIFE-530 report) |
+| lifeos/jira | 12 | 1,617 | 2026-11-09 | 9 / 3,266 | no | LIVE | keep | 7 of 7 stages named in workflows |
+| lifeos/imessage | 15 | 1,575 | 2026-10-26 | 9 / 2,342 | yes | LIVE | keep | 2 stages in workflows; alerts_endpoint.py on Oracle |
+| lifeos/recruiters | 9 | 1,360 | 2026-10-25 | 7 / 2,119 | yes | LIVE | keep | 2 of 2 stages in workflows |
+| lifeos/hiring | 10 | 1,355 | 2026-11-08 | 11 / 4,455 | yes | LIVE | keep | 1 stage in workflows; used by Oracle Close |
+| lifeos/synthetic | 13 | 1,335 | 2026-11-09 | 9 / 1,547 | no | DEAD-PROVEN | DELETED by LIFE-608 on Jim's typed yes (five shared result codes kept in codes.py under platform) | no import outside itself and its tests, no stage, no workflow; none of the Oracle units, cron entries, installed trees or role files, nor this Mac's launchd, cron or processes names it; only strings in platform/codes.py and the credential list point at it. Rollback if wanted: the code stays in Git history |
+| lifeos/amazon | 10 | 1,319 | 2026-10-26 | 8 / 3,417 | yes | LIVE | keep | 3 of 5 stages named in workflows |
+| lifeos/network | 10 | 1,231 | 2026-11-08 | 9 / 2,978 | yes | LIVE | keep | imported by run.py and sources; its stages network-inspect, -import, -audit and -match are run by the manual workflow network.yml (input `stage`), network-surface and -layout by network.yml and (surface) by hourly.yml |
+| lifeos/bills | 5 | 892 | 2026-10-26 | 4 / 1,789 | yes | LIVE | keep | 3 of 3 stages in workflows |
+| lifeos/megibow | 11 | 822 | 2026-11-07 | 2 / 454 | yes | LIVE | keep | imported by sources/megibow.py; stage "megibow" named in a workflow |
+| lifeos/attention | 5 | 721 | 2026-11-06 | 5 / 2,858 | yes | LIVE | keep | 2 of 2 stages in workflows |
+| lifeos/physmail | 6 | 640 | 2026-10-25 | 2 / 1,982 | yes | LIVE | keep | 2 of 2 stages in workflows |
+| lifeos/probe | 1 | 603 | 2026-10-26 | 2 / 143 | no | LIVE | keep | stage "probe" in a workflow |
+| lifeos/agenda | 3 | 587 | 2026-10-19 | 2 / 1,552 | yes | LIVE | keep | 2 of 2 stages in workflows |
+| lifeos/delivery | 3 | 361 | 2026-11-01 | 2 / 352 | no | LIVE | keep | its one stage, amazon-census, is the `census` option of the manual workflow amazon.yml (run line `amazon-$STAGE`); no Oracle or Mac caller (and none needed) |
+| lifeos/whatsapp | 8 | 356 | 2026-10-25 | 3 / 699 | yes | LIVE | keep | Oracle report lists lifeos/whatsapp/oracle as live |
+| lifeos/buzz_mcp | 1 | 333 | 2026-11-07 | 0 / 0 | no | LIVE | keep | Oracle report: lifeos.buzz_mcp live |
+| lifeos/telegram | 2 | 332 | 2026-10-15 | 1 / 123 | yes | LIVE | keep | called by path from imessage/alerts_endpoint.py (LIFE-530 report); Jim: Telegram alerting |
+| lifeos/oraclecloud | 5 | 328 | 2026-10-28 | 3 / 393 | no | LIVE | keep | Oracle report lists oraclecloud/oracle/stats.mjs; imported by sources/oracle_card.py |
+| lifeos/dcc | 3 | 321 | 2026-10-29 | 3 / 1,621 | mixed | LIVE | keep | stage dcc-card in workflows |
+| lifeos/buzz_relay | 1 | 285 | 2026-11-07 | 5 / 1,695 | no | LIVE | keep | Oracle report: buzz_relay is part of the live Buzz MCP |
+| lifeos/run | 1 | 241 | 2026-11-06 | 20 / 9,546 | no | LIVE | keep | entry point of every stage (18 workflows) |
+| lifeos/calendar_bridge | 3 | 230 | 2026-10-25 | 2 / 485 | yes | LIVE | keep | stage calendar-sync in workflows |
+| lifeos/readiness | 1 | 216 | 2026-11-09 | 3 / 417 | no | LIVE | keep | used by readiness-live.yml and AGENTS.md gate |
+| lifeos/decisions | 1 | 109 | 2026-10-20 | 2 / 412 | no | LIVE | keep | AGENTS.md: new decision numbers only from this tool |
+| lifeos/hermes_requests | 1 | 101 | 2026-11-05 | 1 / 166 | no | LIVE | keep | stage "hermes" in a workflow |
+| lifeos/codemap | 1 | 97 | 2026-10-05 | 1 / 20 | no | LIVE | keep | AGENTS.md: a test fails when the generated codemap is stale |
+| lifeos/outlook | 3 | 91 | 2026-10-02 | 1 / 332 | yes | LIVE | keep (91 lines; could merge into platform.outlook) | stage outlook-probe in workflows |
+| lifeos/buzz_nip98 | 1 | 79 | 2026-11-01 | 0 / 0 | no | LIVE | keep | Oracle report names buzz_nip98 as live; no repo test |
+| lifeos/buzz_auth | 1 | 77 | 2026-11-02 | 1 / 478 | no | LIVE | keep | Oracle report names buzz_auth as live |
 
 Evidence notes: "stages named in workflows" means the stage name from docs/codemap.json appears in at least one file under .github/workflows (a manual-only workflow counts as live, per the ticket). A string reference in lifeos/platform/codes.py is not counted as a caller. Invisible callers checked: the stage loader in lifeos/run.py, absolute-path calls in lifeos/imessage/alerts_endpoint.py, systemd units under the five oracle/ folders, the two Mac launchd plists (definitions only, loaded state unchecked), workflow schedules and dispatch, and lifeos/sources/web/registry.py (not mapped row by row: **unchecked**).
 
