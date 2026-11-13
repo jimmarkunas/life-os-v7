@@ -159,7 +159,7 @@
       ]
     }
   ],
-  "reassembled_sha256": "4429078e2cb96617c7ef0130821a40b6b58b8ad37654c70806d37c28ebbf5995",
+  "reassembled_sha256": "3c9967a60cb468093dd3c8d1225c074fd9abd56731ac5416bb3ec3daaa7bd547",
   "amendments": [
     {
       "date": "2026-11-02",
@@ -238,6 +238,12 @@
       "pr": "https://github.com/jimmarkunas/life-os-v7/pull/1149",
       "approval": "Jim Markunas, November 13, 2026 CT, LIFE-662 measurement comment 13122, typed in the Claude Code chat: 'Approve all three' (LIFE-665)",
       "part": "docs/development-policy/04 (one-ticket-one-approval bullet: every approval a ticket needs is listed to Jim once at release; what needs approval is unchanged), with the matching AGENTS.md line"
+    },
+    {
+      "date": "2026-11-13",
+      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/1150",
+      "approval": "Jim Markunas, November 13, 2026 CT, LIFE-662 measurement comment 13122, typed in the Claude Code chat: 'Approve all three' (LIFE-666)",
+      "part": "docs/development-policy/04 (Ticket truth bullet: [claim] and [waiting on] stamps so no 60-minute stretch on an Agent Go ticket is unexplained; no workflow status changed), with the matching AGENTS.md line"
     }
   ]
 }

@@ -10,9 +10,9 @@ V7 is the active LIFE OS implementation. V1 (`life-os-automation`) and V2 (`life
 4. **Land and close.** Merge when same-head CI is green and no protected item is touched. Post one comment: PR link, what changed, how it was verified, what is unverified. Move the ticket to Done yourself; Jim reopens it or files a Bug. Then pick the next ticket until Agent Go is empty (`NO_ELIGIBLE_WORK`).
 5. **Optional.** Label `needs-uat`: stop at "Human UAT" with exact steps for Jim; only for new user-facing UI or judgment calls.
 
-**Scoping.** A scoping note is one page, at most 2,000 characters: Outcome, 3 to 5 Done-when checks, Not in scope. The agent cuts execution tickets from it in the same step. One execution ticket is one PR (or one sheet edit), pasteable into Claude Code with no questions: exact targets, steps, done-when. Interview answers and discovery logs go in a linked page or comments, never the description (over 4,000 characters draws a `warn`).
+**Scoping.** A scoping note is one page, at most 2,000 characters: Outcome, 3 to 5 Done-when checks, Not in scope. The agent cuts execution tickets from it in the same step. One execution ticket is one PR (or sheet edit), pasteable with no questions: exact targets, steps, done-when. Interview answers and discovery logs go in a linked page or comments, never the description (over 4,000 characters draws a `warn`).
 
-**Ticket truth and identity.** A plan change is an edit to the ticket plus one line `Scope change: <what> — Jim, <time CT>`; the description beats comments. The claiming agent fixes the ticket's text in the session reality changes; a superseded ticket is Cancelled with a line naming its replacement. Add one label (`agent-claude-code`, `agent-hermes`, `agent-chatgpt`) and start Jira comments with `[agent-…]`.
+**Ticket truth and identity.** A plan change is an edit to the ticket plus one line `Scope change: <what> — Jim, <time CT>`; the description beats comments. The claiming agent fixes the ticket's text in the session reality changes; a superseded ticket is Cancelled with a line naming its replacement. Add one label (`agent-claude-code`, `agent-hermes`, `agent-chatgpt`) and start Jira comments with `[agent-…]`. Stamp the record: `[claim] <session> <ct_stamp time>` on claiming; `[waiting on] <Jim, CI, a key, host step, no free session>, <CT time>` on any pause, so no 60-minute stretch is unexplained (`python -m lifeos.sources.devtools.record_gaps FILE` lists them from a saved Jira export). No timer or watcher.
 
 ## Where truth lives (one owner each)
 
@@ -34,7 +34,7 @@ Read the named LIFE issue first and only the missing authoritative context; reus
 - **Scope:** LOS outcome → LIFE Epic → Tasks → Sub-tasks. A missing Done-when line or an unfinished `Blocks` predecessor returns `QUEUE_NOT_READY`; other gaps are warnings.
 - **Execution gate:** only a named Jim instruction or an issue Jim moved to Agent Go permits work; a Jira comment or agent message alone grants nothing. Keep one writer per surface and protected-operation approval.
 - **Closure:** merged on same-head green CI plus local proof (tests, fixture replays, dry runs on fixtures) → Jira update. Never wait for, or start, an hourly, scheduled, on-demand or benchmark run to prove a change; a live look is a non-blocking watch, and a fault it shows is a Bug under LIFE-615. Report `DONE`, `PARTIAL`, `BLOCKED` or `UNVERIFIED` and the next responsible action.
-- **No new runtime:** no paid provider, scheduler, orchestrator, sync store, proxy or governance layer without Jim's explicit approval. A Tech Lead handoff can authorize one specified package, not autonomous pull. `docs/MASTER_ROADMAP.md` never selects work. `python -m lifeos.sources.devtools.readiness repo` checks the index, links, owners and size limits (CI runs it).
+- **No new runtime:** no paid provider, scheduler, orchestrator, sync store, proxy or governance layer without Jim's explicit approval. A Tech Lead handoff can authorize one specified package, not autonomous pull. `docs/MASTER_ROADMAP.md` never selects work. CI runs `python -m lifeos.sources.devtools.readiness repo` (index, links, owners, size limits).
 - **Deadline Mode:** follow CLAUDE.md and the policy (absolute `LIFEOS_DEADLINE_EPOCH`, never reset, delivery claimed only after read-back).
 
 ## Buzz pilot entrypoint — only for LIFE-216
@@ -51,9 +51,9 @@ Before OpenClaw, Oracle, channel, local-model, assistant, meeting-capture or AI-
 
 ## Map
 
-- **Start with `python -m lifeos.sources.devtools.codemap`** (about 1 s; writes the untracked routing page `docs/CODEMAP.md`: every stage, one line per package), then read it. Ask one question instead of reading maps: `python -m lifeos.sources.devtools.codemap find <text>`; the full map is `docs/codemap.json`, also generated and not committed (LIFE-644).
+- **Start with `python -m lifeos.sources.devtools.codemap`** (about 1 s; writes the untracked page `docs/CODEMAP.md`: every stage, one line per package), then read it. Ask one question instead of reading maps: `python -m lifeos.sources.devtools.codemap find <text>`; the full map is `docs/codemap.json`, also generated and not committed (LIFE-644).
 - `lifeos/platform/` shared clients (imports nothing above it); `lifeos/jobs|interview|jira|outlook|calendar_bridge/` one OS per package (platform only); `lifeos/sources/` producers (any OS); `lifeos/run.py` stage registry, one `lazy("module", "function")` line per stage; `.github/workflows/hourly.yml` runs stages (`workflow_dispatch` is at the 25-input limit: add none). `tests/` mirrors `lifeos/`; fakes in `tests/kit`; `tests/contracts/` enforce the rules below.
-- Docs: `docs/DECISIONS_INDEX.md` (find), `python -m lifeos.sources.devtools.decisions show D<n>` (one decision; never read `docs/DECISIONS.md` whole; new numbers only from `python -m lifeos.sources.devtools.decisions claim`), `docs/SETUP.md` (secrets, manual steps), `docs/MASTER_ROADMAP.md` (dated WBS and evidence, not a live plan: priorities are in Jira `LOS`, delivery status in `LIFE`); `docs/ROADMAP.md` is legacy.
+- Docs: `docs/DECISIONS_INDEX.md` (find), `python -m lifeos.sources.devtools.decisions show D<n>` (one decision; never read `docs/DECISIONS.md` whole; new numbers only from `python -m lifeos.sources.devtools.decisions claim`), `docs/SETUP.md` (secrets, manual steps), `docs/MASTER_ROADMAP.md` (dated evidence, not a live plan: priorities in Jira `LOS`, status in `LIFE`); `docs/ROADMAP.md` is legacy.
 
 ## Commands
 
@@ -61,7 +61,7 @@ Before OpenClaw, Oracle, channel, local-model, assistant, meeting-capture or AI-
 - **Jira reads and searches:** always pass `fields` (docs/platform/agent-jira-settings.md). **Receipts:** docs/platform/receipt-template.md.
 - `git add` new files BEFORE running the suite (the privacy test checks staged files only).
 - **GitHub from a session** (where GraphQL is blocked, `gh pr create` and `gh pr ready` fail): open a PR with `gh api repos/jimmarkunas/life-os-v7/pulls --input pr.json`; draft to ready with `gh api -X POST repos/jimmarkunas/life-os-v7/pulls/N/ccr/ready_for_review`; merge with `gh api -X PUT repos/jimmarkunas/life-os-v7/pulls/N/merge -f merge_method=squash`.
-- **Updating your own pushed branch (LIFE-663):** after a rebase or amend of your `life/...` branch run `sh tools/push_life_branch.sh`; it fetches the branch and pushes with a lease on the tip it saw, only for the current `life/*` branch, ignoring any argument. Use plain `git push` for ordinary pushes. `--force`, `-f`, `--force-with-lease`, `--delete`, `+refspec` and `git branch -d/-D` stay denied. Changing the script needs Jim's typed yes and the `protected-file-approved` label.
+- **Updating your own pushed branch (LIFE-663):** after a rebase or amend of your `life/...` branch run `sh tools/push_life_branch.sh` (a lease on the tip it fetched, current `life/*` branch only, arguments ignored); plain `git push` otherwise. `--force`, `-f`, `--force-with-lease`, `--delete`, `+refspec` and `git branch -d/-D` stay denied. Changing the script needs Jim's typed yes and the `protected-file-approved` label.
 - **After a squash merge** the Stop hook warns about "unpushed commits"; they are in main: `git fetch origin main && git checkout -B main origin/main` clears it. A warning on an unmerged branch is real.
 - **Jira workflows** cannot be edited through the Atlassian connection: use the Jira admin page in Chrome once; do not retry through the API. Jira search lags after a write: read the issue by key.
 
@@ -72,7 +72,7 @@ Apply to every new epic or multi-ticket piece of work.
 1. **Fewer, bigger tickets.** Target at most 6 build tickets per epic. One ticket = one outcome with one done-when that is measured, not a checklist of sub-steps. No ticket whose only purpose is a comment, a table or a watch.
 2. **One approval pass at the start.** Before work begins, list every decision and protected step Jim will be asked for, and get yes or no on all of them at once. Standing guardrails: agents merge their own green PRs, close their own tickets, revert on failure; Jim types protected approvals in the Oracle Claude Code chat. Credential deletion and rotation stay outside any blanket yes.
 3. **Measurement never waits on the hourly schedule.** Any before/after measurement is a manual workflow dispatch with a stated run count and deadline (default: 3 back-to-back runs). A scheduled run is only used when the thing being measured is the schedule itself.
-4. **Watches live outside the epic.** A time-gated check (for example a read scheduled for a later date) is its own scheduled item with a date. It never keeps an epic open.
+4. **Watches live outside the epic.** A time-gated check is its own scheduled item with a date. It never keeps an epic open.
 5. **An epic closes only when its done-when is measured.** If follow-up work remains, it is named up front as a second epic, not discovered after closing.
 6. **Dependency pre-flight per ticket.** Before release, one line: what outside our control can fail this ticket (mirrors, third-party sites, sign-ins, rate limits), and the fallback (cache, retry, skip).
 7. **Estimate in gates, not effort.** Every epic plan states the critical path: build time, gated waits (runs, approvals, time-gated checks), and external risks, with a wall-clock total.
@@ -87,7 +87,7 @@ Apply to every new epic or multi-ticket piece of work.
 - Fail closed: a full result or an error, never partial. Dry run is the default; writes need live.
 - Isolated jobs (Interview, Jira, Outlook) blank every workflow-level secret they do not use.
 - Keep diffs small. No new framework or dependency without asking. Stop and report on a schema change.
-- **Net size.** A ticket that adds code states in its description the lines it expects to add and what it removes. The pull request's Net size section pastes `python -m lifeos.platform.net_size`; if lifeos/ net is above zero it says what the change removes or why nothing can be removed (LIFE-625).
+- **Net size.** A ticket that adds code states the lines it expects to add and remove. The PR's Net size section pastes `python -m lifeos.platform.net_size`; with lifeos/ net above zero it says what is removed or why nothing can be (LIFE-625).
 
 ## Reporting
 
