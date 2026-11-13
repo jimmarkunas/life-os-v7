@@ -5,6 +5,7 @@ from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 from lifeos.platform import db, limits
+from lifeos.platform.fixed_code import fixed
 from lifeos.platform.notion_client import Client, NotionError
 from lifeos.platform.snapshot_store import Store
 from . import snapshot, state
@@ -57,7 +58,7 @@ ROW_CODES = ("BILLS_PAGE_INVALID", "BILLS_PROPERTY_INVALID")     # a bad row is 
 
 def _query(client, source):
     rows, cursor, seen_cursor, seen_ids, invalid = [], None, set(), set(), 0
-    try:
+    with fixed(Exception, PaidError, "BILLS_READ_FAILED", keep=(NotionError, PaidError)):
         while True:
             body = {"page_size": 100}
             if cursor:
@@ -90,26 +91,14 @@ def _query(client, source):
             cursor = result.get("next_cursor")
             if not isinstance(cursor, str) or not cursor:
                 raise PaidError("BILLS_PAGE_INCOMPLETE")
-    except NotionError:
-        raise
-    except PaidError:
-        raise
-    except Exception:
-        raise PaidError("BILLS_READ_FAILED") from None
 
 
 def _fresh(client, page_id, source):
-    try:
+    with fixed(Exception, PaidError, "BILLS_READ_FAILED", keep=(NotionError, PaidError)):
         page = client.get_page(page_id)
         if page.get("id") != page_id:
             raise PaidError("BILLS_PAGE_ID_MISMATCH")
         return _compact_page(page, source), page
-    except NotionError:
-        raise
-    except PaidError:
-        raise
-    except Exception:
-        raise PaidError("BILLS_READ_FAILED") from None
 
 
 def _write(client, page_id, properties, counts):
@@ -128,10 +117,8 @@ def _ledger_all(connection):
         raw = cursor.fetchall()
     result = {}
     for page_id, payload in raw:
-        try:
+        with fixed((TypeError, ValueError), PaidError, "BILLS_LEDGER_INVALID"):
             entry = json.loads(payload)
-        except (TypeError, ValueError):
-            raise PaidError("BILLS_LEDGER_INVALID") from None
         if not isinstance(entry, dict) or entry.get("page_id") != page_id or entry.get("step") not in (
                 "prepared", "advanced", "verified", "complete"):
             raise PaidError("BILLS_LEDGER_INVALID")
@@ -140,15 +127,11 @@ def _ledger_all(connection):
 
 
 def _ledger_save(connection, entry):
-    try:
+    with fixed(Exception, PaidError, "BILLS_LEDGER_WRITE_FAILED", keep=PaidError):
         entry["schema"] = 1
         entry["taken_at"] = datetime.now(LOCAL_TZ).isoformat()
         LEDGER.save_verified(connection, entry["page_id"], entry,
                              lambda code: PaidError("BILLS_LEDGER_" + code))
-    except PaidError:
-        raise
-    except Exception:
-        raise PaidError("BILLS_LEDGER_WRITE_FAILED") from None
 
 
 def _date_property(value):
@@ -261,7 +244,7 @@ def _process(client, connection, row, source, today, entry, counts, live):
         target_due = due.isoformat()
         need_write = fresh.get("Last Paid") != entry["today"] or _day(fresh.get("Due Date")) != due
         if need_write:
-            ok = _write(client, row["page_id"], {
+            _write(client, row["page_id"], {
                 "Last Paid": _date_property(entry["today"]), "Due Date": _date_property(target_due)}, counts)
             try:
                 fresh, page = _verify_source(client, row["page_id"], source, entry, True, True)
@@ -332,7 +315,7 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
             else:
                 counts["advanced" if row.get("Cycle") in state.SUPPORTED_CYCLES else "one_time"] += 1
         return counts
-    try:
+    with fixed(Exception, PaidError, "BILLS_PAID_FAILED", keep=(NotionError, PaidError)):
         with (connect or db.connect)() as connection:
             LEDGER.ensure(connection)
             ledger = _ledger_all(connection)
@@ -352,10 +335,4 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
                     _process(client, connection, row, source, today, ledger.get(page_id), counts, True)
                 except Exception:
                     counts["failed"] += 1
-    except NotionError:
-        raise
-    except PaidError:
-        raise
-    except Exception:
-        raise PaidError("BILLS_PAID_FAILED") from None
     return counts
