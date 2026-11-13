@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 
 from lifeos.network import identity
 from lifeos.network.errors import NetworkError
+from lifeos.platform.fixed_code import fixed
 
 SOURCE_KIND = "SHEET_VIA_CHATGPT"
 CHUNK = 500
@@ -76,14 +77,11 @@ SURFACE_EXPECTED = {"v7_network_dismissals": "id,job_key,person_id,evidence_hash
 
 def _ensure(connection, statements, expected):
     """Create the tables if missing and prove their columns are the ones this code writes; a different table fails closed."""
-    try:
-        with connection.cursor() as cursor:
-            for statement in statements:
-                cursor.execute(statement)
-            for table, columns in expected.items():
-                cursor.execute(f"SELECT {columns} FROM {table} LIMIT 0")
-    except Exception:                                                  # noqa: BLE001 - a driver message may carry names; only the fixed code leaves
-        raise NetworkError("NETWORK_SCHEMA_MISMATCH") from None
+    with fixed(Exception, NetworkError, "NETWORK_SCHEMA_MISMATCH"), connection.cursor() as cursor:          # a driver message may carry names; only the fixed code leaves
+        for statement in statements:
+            cursor.execute(statement)
+        for table, columns in expected.items():
+            cursor.execute(f"SELECT {columns} FROM {table} LIMIT 0")
 
 
 def ensure_surface_schema(connection):

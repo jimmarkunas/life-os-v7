@@ -9,6 +9,7 @@ import urllib.parse
 import urllib.request
 
 from lifeos.network.errors import NetworkError
+from lifeos.platform import notion_pages
 
 MAX_FILE_BYTES = 20 * 1024 * 1024           # a 5,000-row export is well under 1 MB; this only stops a wrong file
 MAX_CHILD_PAGES = 20
@@ -25,12 +26,8 @@ def clean_page_id(value):
 
 def csv_file_blocks(client, page_id):
     """Every CSV file block on the page, with its name, time and address. Incomplete listings raise rather than guess."""
-    path = f"/blocks/{clean_page_id(page_id)}/children?page_size=100"
-    out, cursor = [], None
-    for _ in range(MAX_CHILD_PAGES):
-        reply = client.call("GET", path + (f"&start_cursor={urllib.parse.quote(cursor, safe='')}" if cursor else ""))
-        if not isinstance(reply, dict) or not isinstance(reply.get("results"), list) or not isinstance(reply.get("has_more"), bool):
-            raise NetworkError("NETWORK_PAGE_INCOMPLETE")
+    out = []
+    for reply in notion_pages.children(client, clean_page_id(page_id), NetworkError, incomplete="NETWORK_PAGE_INCOMPLETE", limit=MAX_CHILD_PAGES):
         for block in reply["results"]:
             if not isinstance(block, dict) or block.get("type") != "file":
                 continue
@@ -41,12 +38,7 @@ def csv_file_blocks(client, page_id):
             name = attached.get("name") or urllib.parse.unquote(urllib.parse.urlparse(url).path.rsplit("/", 1)[-1])
             if name.lower().endswith(".csv") and url:
                 out.append({"name": name, "url": url, "created": block.get("created_time") or ""})
-        if not reply["has_more"]:
-            return out
-        cursor = reply.get("next_cursor")
-        if not isinstance(cursor, str) or not cursor:
-            raise NetworkError("NETWORK_PAGE_INCOMPLETE")
-    raise NetworkError("NETWORK_PAGE_INCOMPLETE")
+    return out
 
 
 def newest(blocks):
