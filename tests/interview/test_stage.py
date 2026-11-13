@@ -86,3 +86,26 @@ class StageTests(unittest.TestCase):
         self.assertEqual(result["why"]["human_page"], 1)
         self.assertEqual(result["writes"], 0)
         self.assertTrue(all(method == "GET" for method, _ in client.calls))
+
+
+class OutcomeTests(unittest.TestCase):
+    """LIFE-623: the pure outcome rules, called directly with plain dicts (no fakes)."""
+    def result(self, code, readback_failed=False, writes=0):
+        return {"code": code, "readback_failed": readback_failed, "writes": writes}
+
+    def test_evidence_outcome_counts_a_match_a_not_found_a_quiet_code_and_a_block(self):
+        self.assertEqual(stage.evidence_outcome(self.result("child_match")), ("matched", False))
+        self.assertEqual(stage.evidence_outcome(self.result("create_allowed")), ("not_found", False))
+        self.assertEqual(stage.evidence_outcome(self.result("parent_created")), (None, False))
+        self.assertEqual(stage.evidence_outcome(self.result("human_page")), ("blocked", False))
+
+    def test_evidence_outcome_stops_on_a_failed_readback_or_write(self):
+        self.assertEqual(stage.evidence_outcome(self.result("round_created", readback_failed=True)), (None, True))
+        self.assertEqual(stage.evidence_outcome(self.result("write_failed")), ("blocked", True))
+
+    def test_prep_outcome_blocks_unknown_codes_and_stops_after_a_protected_change_or_an_unexpected_write(self):
+        self.assertEqual(stage.prep_outcome(self.result("derived_allowed")), (False, False))
+        self.assertEqual(stage.prep_outcome(self.result("derived_created", writes=2)), (False, False))
+        self.assertEqual(stage.prep_outcome(self.result("derived_match", writes=1)), (False, True))
+        self.assertEqual(stage.prep_outcome(self.result("readback_protected_changed")), (True, True))
+        self.assertEqual(stage.prep_outcome(self.result("human_page")), (True, False))
