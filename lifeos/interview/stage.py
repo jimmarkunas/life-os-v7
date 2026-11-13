@@ -21,6 +21,16 @@ def _reason(counts, code):
     counts["why"][code] = counts["why"].get(code, 0) + 1
 
 
+def _block(counts, code):
+    counts["blocked"] += 1
+    _reason(counts, code)
+
+
+def _tally(counts, cause):
+    causes = counts.setdefault("causes", {})                       # counts only: a fixed code or the exception's class name
+    causes[cause] = causes.get(cause, 0) + 1
+
+
 def evidence_outcome(result):
     """PURE: how one evidence result moves the counts. -> (the count it adds one to, or None; stop the loop)."""
     code = result["code"]
@@ -40,8 +50,7 @@ def _survey(client, environ, context, counts):
     counts["observed"] = len(scan.items)
     counts["parents_ledger"], counts["parents_tree_only"] = scan.ledger, scan.tree_only        # LIFE-360: proof the Ledger path ran (ledger > 0), not the page-tree fallback alone
     if not scan.complete:
-        counts["blocked"] += 1
-        _reason(counts, "pipeline_incomplete")
+        _block(counts, "pipeline_incomplete")
         return False
     for parent in scan.items:
         if not parent.active:
@@ -49,31 +58,26 @@ def _survey(client, environ, context, counts):
         context.require_time()
         company, role = split_title(parent.title)
         if not company.strip() or not role.strip():
-            counts["blocked"] += 1
-            _reason(counts, "identity_invalid")
+            _block(counts, "identity_invalid")
             continue
         resolved = resolve_parent(ParentQuery(company, role), scan)
         if resolved.state == State.BLOCKED:
-            counts["blocked"] += 1
-            _reason(counts, resolved.code)
+            _block(counts, resolved.code)
             continue
         counts["valid_parents"] += 1
         owner = notion.ownership(client, parent.page_id, "opportunity")
         counts["machine_pages" if owner == Ownership.MACHINE else "human_pages"] += int(owner != Ownership.UNKNOWN)
         if owner == Ownership.UNKNOWN:
-            counts["blocked"] += 1
-            _reason(counts, "ownership_unknown")
+            _block(counts, "ownership_unknown")
         children = notion.child_scan(client, parent.page_id, context)
         if not children.complete:
-            counts["blocked"] += 1
-            _reason(counts, "child_scan_incomplete")
+            _block(counts, "child_scan_incomplete")
             continue
         counts["with_rounds"] += int(bool(children.items))
         for child in children.items:
             owner = notion.ownership(client, child.page_id, "round")
             if owner == Ownership.UNKNOWN:
-                counts["blocked"] += 1
-                _reason(counts, "ownership_unknown")
+                _block(counts, "ownership_unknown")
             else:
                 counts["machine_pages" if owner == Ownership.MACHINE else "human_pages"] += 1
     return True
@@ -86,8 +90,7 @@ def _apply_evidence(client, environ, evidence, limit, live, context, probe, coun
     for index, (parent_query, round_query) in enumerate(evidence):
         if index >= max(0, limit):
             if any(not q.refresh_only for _, q in evidence[index:]):
-                counts["blocked"] += 1
-                _reason(counts, "pipeline_incomplete")
+                _block(counts, "pipeline_incomplete")
             else:                                                   # E05: refresh-only items come last; the ones past the limit are counted, not an alarm
                 counts["why"]["refresh_deferred"] = len(evidence) - index
             break
@@ -98,8 +101,7 @@ def _apply_evidence(client, environ, evidence, limit, live, context, probe, coun
             if key not in ("code", "cause"):
                 counts[key] = counts.get(key, 0) + value
         if result.get("cause"):
-            causes = counts.setdefault("causes", {})
-            causes[result["cause"]] = causes.get(result["cause"], 0) + 1
+            _tally(counts, result["cause"])
         _reason(counts, result["code"])
         bump, stop = evidence_outcome(result)
         if bump:
@@ -113,8 +115,7 @@ def _apply_prep(client, environ, prep_evidence, limit, live, context, counts):
     from .prep import apply as apply_prep
     for index, (parent_query, round_query, prep) in enumerate(prep_evidence):
         if index >= max(0, limit):
-            _reason(counts, "pipeline_incomplete")
-            counts["blocked"] += 1
+            _block(counts, "pipeline_incomplete")
             break
         result = apply_prep(client, environ, parent_query, round_query, prep, live, context)
         counts["writes_planned"] += result["writes_planned"]
@@ -141,8 +142,7 @@ def run(limit, live, environ=os.environ, client=None, evidence=(), context=None,
             client = client or notion.make_client(environ)
             target = notion.target_check(client, environ)
         if target != "target_ok":
-            counts["blocked"] += 1
-            _reason(counts, target)
+            _block(counts, target)
             return counts
         if _probe:                                                      # LIFE-361: creation needs the Ledger's Stage (six options) and Manual source, not a container page
             shape = notion.ledger_shape(client, (environ.get("NOTION_JOB_LEDGER_DATA_SOURCE_ID") or "").strip(), context)
@@ -154,10 +154,8 @@ def run(limit, live, environ=os.environ, client=None, evidence=(), context=None,
         return counts
     except (NotionError, DeadlineExceeded, KeyError, TypeError, ValueError) as error:
         from .create import cause_of
-        counts["blocked"] += 1
-        _reason(counts, "pipeline_incomplete")
-        causes = counts.setdefault("causes", {})                       # counts only: a fixed code or the exception's class name
-        causes[cause_of(error)] = causes.get(cause_of(error), 0) + 1
+        _block(counts, "pipeline_incomplete")
+        _tally(counts, cause_of(error))
         return counts
 
 

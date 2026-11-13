@@ -20,7 +20,6 @@
   "TRANSCRIPT_EMPTY_SEGMENT_TEXT": ["interview", "terminal", false, "A Granola transcript failed its contract check (empty segment text).", "None; the transcript is not written. Fix the source or skip it."],
   "TRANSCRIPT_END_PRECEDES_START": ["interview", "terminal", false, "A Granola transcript failed its contract check (end precedes start).", "None; the transcript is not written. Fix the source or skip it."],
   "TRANSCRIPT_INVALID_CHANNEL": ["interview", "terminal", false, "A Granola transcript failed its contract check (invalid channel).", "None; the transcript is not written. Fix the source or skip it."],
-  "TRANSCRIPT_INVALID_CONTENT_DIGEST": ["interview", "terminal", false, "A Granola transcript failed its contract check (invalid content digest).", "None; the transcript is not written. Fix the source or skip it."],
   "TRANSCRIPT_INVALID_DOCUMENT_UUID": ["interview", "terminal", false, "A Granola transcript failed its contract check (invalid document uuid).", "None; the transcript is not written. Fix the source or skip it."],
   "TRANSCRIPT_INVALID_IS_FINAL": ["interview", "terminal", false, "A Granola transcript failed its contract check (invalid is final).", "None; the transcript is not written. Fix the source or skip it."],
   "TRANSCRIPT_INVALID_JSON": ["interview", "terminal", false, "A Granola transcript failed its contract check (invalid json).", "None; the transcript is not written. Fix the source or skip it."],

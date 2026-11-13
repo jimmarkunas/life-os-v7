@@ -37,13 +37,6 @@ def run(client, result, copies=1, live=True):
     return stage.run(10, live, environ=ENV, client=client, evidence=[(result.parent, result.round)] * copies)
 
 
-def _all_text(blocks):
-    for b in blocks:
-        body = b[b["type"]]
-        yield "".join(r["text"]["content"] for r in body.get("rich_text", []))
-        yield from _all_text(body.get("children", []))
-
-
 def all_blocks(client, block_id):
     for b in client.blocks.get(block_id, []):
         yield b
