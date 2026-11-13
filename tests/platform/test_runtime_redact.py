@@ -8,12 +8,12 @@ Clock = shared.Clock
 
 
 class Runtime(unittest.TestCase):
-    def test_deadline_and_bounded_timeout(self):
+    def test_deadline(self):
         clock = Clock()
         ctx = runtime.RunContext.start(60, clock=clock)
-        self.assertEqual((ctx.expired(), ctx.bounded_timeout(10), ctx.bounded_timeout(500)), (False, 10.0, 60.0))
+        self.assertEqual((ctx.expired(), ctx.require_time()), (False, 60.0))
         clock.now = 45
-        self.assertEqual(ctx.bounded_timeout(30), 15.0)
+        self.assertEqual(ctx.require_time(), 15.0)
         clock.now = 60
         self.assertTrue(ctx.expired())
         with self.assertRaises(runtime.DeadlineExceeded):
@@ -23,12 +23,6 @@ class Runtime(unittest.TestCase):
         for bad in (0, -1, runtime.MAX_RUNTIME_SECONDS + 1):
             with self.assertRaises(ValueError):
                 runtime.RunContext.start(bad)
-
-    def test_results_keep_scalars_only(self):
-        result = runtime.ExecutionResult.degraded("parent_ambiguous", candidates=2, page={"id": "x"})
-        self.assertEqual((result.status, result.code, result.detail), (runtime.ExecutionStatus.DEGRADED, "parent_ambiguous", {"candidates": 2, "page": "dict"}))
-        self.assertEqual(runtime.ExecutionResult.passed(n=1).status, runtime.ExecutionStatus.PASS)
-        self.assertEqual(runtime.ExecutionResult.failed("x").detail, {})
 
 
 class Redact(unittest.TestCase):

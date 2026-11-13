@@ -31,25 +31,24 @@ def save(connection, account, refresh_token, fingerprint=None):
                        (account, refresh_token, datetime.now(timezone.utc).replace(tzinfo=None), fingerprint))
 
 
-def fingerprint_of(connection, account):
+def _first(connection, sql, value):
+    """The first column of the first row, or None."""
     with connection.cursor() as cursor:
-        cursor.execute("SELECT fingerprint FROM v7_outlook_token WHERE account=%s", (account,))
+        cursor.execute(sql, (value,))
         row = cursor.fetchone()
     return row[0] if row else None
+
+
+def fingerprint_of(connection, account):
+    return _first(connection, "SELECT fingerprint FROM v7_outlook_token WHERE account=%s", account)
 
 
 def label_with(connection, fingerprint):
-    with connection.cursor() as cursor:
-        cursor.execute("SELECT account FROM v7_outlook_token WHERE fingerprint=%s", (fingerprint,))
-        row = cursor.fetchone()
-    return row[0] if row else None
+    return _first(connection, "SELECT account FROM v7_outlook_token WHERE fingerprint=%s", fingerprint)
 
 
 def load(connection, account):
-    with connection.cursor() as cursor:
-        cursor.execute("SELECT refresh_token FROM v7_outlook_token WHERE account=%s", (account,))
-        row = cursor.fetchone()
-    return row[0] if row else None
+    return _first(connection, "SELECT refresh_token FROM v7_outlook_token WHERE account=%s", account)
 
 
 def accounts(connection):

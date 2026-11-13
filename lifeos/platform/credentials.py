@@ -20,7 +20,8 @@ OPTIONAL = ("source_label",)                      # Nov 11 2026: the stated reas
 
 
 def load():
-    return copy.deepcopy(CREDENTIALS)
+    """Every entry with the three keys most entries omit filled in: no expiry source, no date, nothing to renew."""
+    return [{"expiry_source": "none", "expires": None, "renew": "", **copy.deepcopy(entry)} for entry in CREDENTIALS]
 
 
 def config(root=Path(__file__).resolve().parents[1]):
