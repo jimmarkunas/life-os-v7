@@ -1,7 +1,5 @@
 {
-  "codes": {
-    "OUTLOOK_LABEL_HOLDS_A_DIFFERENT_MAILBOX": ["outlook", "blocked", false, "The label already belongs to another mailbox.", "Use another label or replace on purpose."],
-    "OUTLOOK_MAILBOX_ALREADY_SIGNED_IN_AS_OTHER_LABEL": ["outlook", "blocked", false, "This mailbox is already signed in under another label.", "Use the existing label."],
-    "OUTLOOK_NO_MAILBOX_ID": ["outlook", "blocked", false, "The signed-in account has no mailbox id.", "Sign in again."]
-  }
+  "OUTLOOK_LABEL_HOLDS_A_DIFFERENT_MAILBOX": ["outlook", "blocked", false, "The label already belongs to another mailbox.", "Use another label or replace on purpose."],
+  "OUTLOOK_MAILBOX_ALREADY_SIGNED_IN_AS_OTHER_LABEL": ["outlook", "blocked", false, "This mailbox is already signed in under another label.", "Use the existing label."],
+  "OUTLOOK_NO_MAILBOX_ID": ["outlook", "blocked", false, "The signed-in account has no mailbox id.", "Sign in again."]
 }

@@ -1,4 +1,4 @@
-"""The outcome-code registry (LIFE-72): one checked-in definition of every fixed code the pipeline can emit. LIFE-644: each package declares its own in lifeos/<package>/codes.json (`codes`, stored `reasons`, and the `not_codes` names); this file only collects them.
+"""The outcome-code registry (LIFE-72): one checked-in definition of every fixed code the pipeline can emit. LIFE-644: each package declares its own in lifeos/<package>/codes.json (plus reasons.json for stored reasons and not_codes.json for configuration names); this file only collects them.
 A code is a fixed UPPER_SNAKE word that names a result: a refusal, a failure, a skip, a normal stop or a state. For each one the registry says which stage owns it,
 what kind of result it is (CLASSES), whether it counts as an attempt against the job's retry budget, what it means in plain words, what to do next, and whether it
 may ever alert (SEVERITIES: none, info, page). tests/contracts/test_codes.py fails when the code emits a code-shaped string that is neither here nor in NOT_CODES, so a new code cannot appear without a definition. No code pages yet: turning any severity up is Jim's call (LIFE-71, alerts are suspended).
@@ -31,15 +31,12 @@ def _r(stage, klass, attempt, meaning, action, severity="none", public=False):
 
 
 def declared(root=Path(__file__).resolve().parents[1]):
-    """-> (codes, reasons, not_codes) collected from every lifeos/<package>/codes.json, in file order. A code is declared in exactly one file (tests/contracts/test_codes.py).
-    A code row is [stage, class, attempt, meaning, action[, severity]]; a reason row is [stage, class, attempt, meaning, action, public]."""
-    found, reasons, names = {}, {}, set()
-    for path in sorted(root.glob("*/codes.json")):
-        data = json.loads(path.read_text())
-        found.update({code: _r(*row) for code, row in data.get("codes", {}).items()})
-        reasons.update({word: _r(*row[:5], public=row[5]) for word, row in data.get("reasons", {}).items()})
-        names.update(data.get("not_codes", ()))
-    return found, reasons, names
+    """-> (codes, reasons, not_codes) collected from every lifeos/<package>/codes.json (a flat {CODE: [stage, class, attempt, meaning, action[, severity]]}), reasons.json
+    ({word: [stage, class, attempt, meaning, action, public]}) and not_codes.json (a list of configuration names). A code is declared in exactly one file (tests/contracts/test_codes.py)."""
+    def read(name):
+        return [json.loads(path.read_text()) for path in sorted(root.glob("*/" + name))]
+    return ({code: _r(*row) for data in read("codes.json") for code, row in data.items()}, {word: _r(*row[:5], public=row[5]) for data in read("reasons.json") for word, row in data.items()},
+            {name for data in read("not_codes.json") for name in data})
 
 
 CODES, REASONS, _NAMES = declared()

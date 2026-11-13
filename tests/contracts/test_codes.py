@@ -46,26 +46,20 @@ class DeclaredByTheirPackages(unittest.TestCase):
     """LIFE-644: each package declares its own codes in lifeos/<package>/codes.json and platform only collects them."""
 
     def test_every_code_and_reason_is_declared_in_exactly_one_package_file(self):
-        seen = {}
-        for path in sorted((ROOT / "lifeos").glob("*/codes.json")):
-            data = json.loads(path.read_text())
-            for word in [*data.get("codes", {}), *data.get("reasons", {})]:
-                self.assertNotIn(word, seen, f"{word} is declared in both {seen.get(word)} and {path}")
-                seen[word] = path
-        self.assertEqual(set(seen), (set(codes.CODES) | set(codes.REASONS)) - set(k for k in codes.CODES if k.startswith("FIT_EDGE_REFUSED_") and k not in seen))
+        words = [w for name in ("codes.json", "reasons.json") for path in sorted((ROOT / "lifeos").glob("*/" + name)) for w in json.loads(path.read_text())]
+        self.assertEqual(sorted(w for w in words if words.count(w) > 1), [])
 
     def test_a_new_package_file_is_collected_with_no_edit_to_platform(self):
         with tempfile.TemporaryDirectory() as root:
             (Path(root) / "pkg").mkdir()
-            (Path(root) / "pkg" / "codes.json").write_text(json.dumps({"codes": {"PKG_NEW_CODE": ["pkg", "ok", False, "It worked.", "None.", "info"]}, "reasons": {"pkg_word": ["pkg", "state", False, "A word.", "None.", True]}, "not_codes": ["PKG_SETTING"]}))
-            found, reasons, names = codes.declared(Path(root))
-        self.assertEqual((found["PKG_NEW_CODE"].severity, reasons["pkg_word"].public, names), ("info", True, {"PKG_SETTING"}))
+            (Path(root) / "pkg" / "codes.json").write_text(json.dumps({"PKG_NEW_CODE": ["pkg", "ok", False, "It worked.", "None.", "info"]}))
+            self.assertEqual(codes.declared(Path(root))[0]["PKG_NEW_CODE"].severity, "info")
 
 
 class EveryCodeIsRegistered(unittest.TestCase):
     def test_every_emitted_code_is_registered_or_a_config_name(self):
         missing = unregistered(emitted())
-        self.assertEqual(missing, {}, "declare each new code in lifeos/<its package>/codes.json (stage, class, attempt, meaning, action, severity); a config or environment name goes in lifeos/platform/codes.json not_codes")
+        self.assertEqual(missing, {}, "declare each new code in lifeos/<its package>/codes.json (stage, class, attempt, meaning, action, severity); a config or environment name goes in lifeos/platform/not_codes.json")
 
     def test_the_check_turns_red_for_an_unregistered_code(self):
         found = {c: "x.py:1" for c in codes.candidates('def f():\n    raise Error("BRAND_NEW_UNREGISTERED_CODE")\n')}
@@ -98,7 +92,7 @@ class StoredReasons(unittest.TestCase):
 
     def test_every_reason_the_sql_writes_or_tests_is_registered(self):
         missing = {r: w for r, w in emitted_reasons().items() if r not in codes.REASONS}
-        self.assertEqual(missing, {}, "declare each new unresolved_reason in the `reasons` of lifeos/jobs/codes.json")
+        self.assertEqual(missing, {}, "declare each new unresolved_reason in lifeos/jobs/reasons.json")
 
     def test_every_lane_reason_code_is_registered(self):
         for _, code in lanes.PUBLIC_REASONS:

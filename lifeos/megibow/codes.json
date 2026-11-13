@@ -1,10 +1,8 @@
 {
-  "codes": {
-    "MEGIBOW_FREEZE_READBACK_MISMATCH": ["megibow", "bug", false, "A freeze write did not read back as written.", "Retried."],
-    "MEGIBOW_LEGACY_READBACK_MISMATCH": ["megibow", "bug", false, "A legacy write did not read back as written.", "Retried."],
-    "MEGIBOW_OVERRIDE_READBACK_MISMATCH": ["megibow", "bug", false, "An override write did not read back as written.", "Retried."],
-    "MEGIBOW_REVIEW_READ_INCOMPLETE": ["megibow", "degraded", false, "The review read did not finish.", "None; retried."],
-    "MEGIBOW_REVIEW_SCHEMA_MISMATCH": ["megibow", "blocked", false, "The review database schema changed.", "Restore the properties."],
-    "MEGIBOW_STORE_READ_FAILED": ["megibow", "retry", false, "The Megibow store could not be read.", "None; retried."]
-  }
+  "MEGIBOW_FREEZE_READBACK_MISMATCH": ["megibow", "bug", false, "A freeze write did not read back as written.", "Retried."],
+  "MEGIBOW_LEGACY_READBACK_MISMATCH": ["megibow", "bug", false, "A legacy write did not read back as written.", "Retried."],
+  "MEGIBOW_OVERRIDE_READBACK_MISMATCH": ["megibow", "bug", false, "An override write did not read back as written.", "Retried."],
+  "MEGIBOW_REVIEW_READ_INCOMPLETE": ["megibow", "degraded", false, "The review read did not finish.", "None; retried."],
+  "MEGIBOW_REVIEW_SCHEMA_MISMATCH": ["megibow", "blocked", false, "The review database schema changed.", "Restore the properties."],
+  "MEGIBOW_STORE_READ_FAILED": ["megibow", "retry", false, "The Megibow store could not be read.", "None; retried."]
 }

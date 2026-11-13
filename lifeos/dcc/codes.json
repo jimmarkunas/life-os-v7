@@ -1,10 +1,8 @@
 {
-  "codes": {
-    "CARD_UNREADABLE": ["dcc", "retry", false, "The card could not be read.", "None; retried."],
-    "DECISIONS_NOT_IN_ATTENTION": ["dcc", "blocked", false, "The decisions block is not in the Attention region, so it is never deleted.", "Check the page."],
-    "HEADER_AMBIGUOUS": ["dcc", "blocked", false, "More than one header matches.", "Remove the extra header."],
-    "HEADER_MISPLACED": ["dcc", "blocked", false, "The header is not where it should be.", "Move it back."],
-    "HEADER_VERIFY_FAILED": ["dcc", "degraded", false, "The header did not read back as written.", "Retried."],
-    "NO_EVIDENCE": ["dcc", "blocked", false, "No evidence could be found for the DCC write.", "Check the source."]
-  }
+  "CARD_UNREADABLE": ["dcc", "retry", false, "The card could not be read.", "None; retried."],
+  "DECISIONS_NOT_IN_ATTENTION": ["dcc", "blocked", false, "The decisions block is not in the Attention region, so it is never deleted.", "Check the page."],
+  "HEADER_AMBIGUOUS": ["dcc", "blocked", false, "More than one header matches.", "Remove the extra header."],
+  "HEADER_MISPLACED": ["dcc", "blocked", false, "The header is not where it should be.", "Move it back."],
+  "HEADER_VERIFY_FAILED": ["dcc", "degraded", false, "The header did not read back as written.", "Retried."],
+  "NO_EVIDENCE": ["dcc", "blocked", false, "No evidence could be found for the DCC write.", "Check the source."]
 }
