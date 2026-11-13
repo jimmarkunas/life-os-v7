@@ -24,6 +24,7 @@
     {"name": "newsletter-trace", "module": "lifeos.sources.newsletters.cardtrace"},
     {"name": "notion-sandbox-access", "module": "lifeos.sources.proofs.notion_sandbox_access"},
     {"name": "notion-sandbox-outreach-proof", "module": "lifeos.sources.proofs.notion_sandbox_outreach_proof"},
-    {"name": "oracle-card", "module": "lifeos.sources.cards.oracle_card"}
+    {"name": "oracle-card", "module": "lifeos.sources.cards.oracle_card"},
+    {"name": "outlook-newsletters", "module": "lifeos.sources.newsletters.outlook"}
   ]
 }
