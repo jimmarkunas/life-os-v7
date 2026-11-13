@@ -8,7 +8,11 @@ the received time and whether the role matched as well as the company.
 
 Matching is deterministic. A message belongs to an opportunity only if the company's words appear in order in the sender's name, the subject, the sender's domain or the first part of the body, it arrived
 after the opportunity's last evidence (its latest event, else its Applied date), and it contains outcome wording. A message that names two pipeline companies, or two roles of one company that the text
-cannot tell apart, is ambiguous and is counted, never guessed."""
+cannot tell apart, is ambiguous and is counted, never guessed.
+
+Failure is per source (LIFE-648, as LIFE-646 did for Recruiters). A source that could not be listed, or that listed with a message that could not be read, is `unread`: what the other sources hold is saved over the
+prior outcomes (an outcome already accepted is never dropped or turned into "no outcome" because a source was unread), the record names the unread source in fixed words, and `scanned_at` advances, so the next due
+scan (12 hours), not the next hourly tick, reads the whole window again. If no source could be listed the stage fails closed and saves nothing."""
 import json
 import os
 import re
@@ -183,16 +187,17 @@ def _exists(connection):
 
 
 def load(connection):
-    """The stored outcomes ({row key: {...}}), when they were last fully read, and LIFE-26's last direct contact per row ({row key: time}), or ({}, None, {})."""
+    """The stored outcomes ({row key: {...}}), when they were last scanned, LIFE-26's last direct contact per row ({row key: time}) and the sources that scan could not read in full (LIFE-648), or ({}, None, {}, [])."""
     if not _exists(connection):
-        return {}, None, {}
+        return {}, None, {}, []
     with fixed((TypeError, ValueError), fail, "STORE_INVALID"):
         stored = STORE.load(connection, KEY)
     if stored is None:
-        return {}, None, {}
-    if stored.get("schema") != SCHEMA_V or not isinstance(stored.get("outcomes"), dict) or not isinstance(stored.get("contacts", {}), dict):
+        return {}, None, {}, []
+    if (stored.get("schema") != SCHEMA_V or not isinstance(stored.get("outcomes"), dict) or not isinstance(stored.get("contacts", {}), dict)
+            or not isinstance(stored.get("unread", []), list)):
         raise fail("STORE_INVALID")
-    return stored["outcomes"], stored.get("scanned_at"), stored.get("contacts", {})
+    return stored["outcomes"], stored.get("scanned_at"), stored.get("contacts", {}), stored.get("unread", [])
 
 
 def _roster(prior):
@@ -203,6 +208,11 @@ def _roster(prior):
 def _terms(roster):
     quoted = sorted({'"' + re.sub(r'["\\]', "", row["company"]).strip() + '"' for row in roster if len(row["company"].strip()) >= 3})
     return "(" + " OR ".join(quoted) + ")" if quoted else ""
+
+
+def _merge(prior, new, newest):
+    """LIFE-648: what was accepted before, with each find laid over it unless the accepted one is newer; nothing accepted is dropped because a source was unread."""
+    return {**prior, **{key: value for key, value in new.items() if key not in prior or newest(value) >= newest(prior[key])}}
 
 
 def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, connection=None, now=None):
@@ -216,7 +226,7 @@ def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, conn
         prior = hiring_snapshot.load(conn)
         roster = _roster(prior)
         counts["roster"] = len(roster)
-        _, scanned, _ = load(conn)
+        accepted, scanned, accepted_contacts, _ = load(conn)
         if scanned and datetime.fromisoformat(scanned) > now - timedelta(hours=SCAN_EVERY_HOURS):
             return counts
         if not roster:
@@ -224,38 +234,48 @@ def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, conn
             return counts
         days = window_days(roster, now)
         counts["window_days"] = days
-        records, failed = [], 0
+        records, unread, failed = [], [], 0
 
-        def take(read):
+        def take(read, name):
             nonlocal failed
             try:
                 found, bad = read()
             except (mail.MailError, GmailError):
                 failed += 1
+                unread.append(name)
                 return
             records.extend(found)
             counts["unreadable"] += bad
+            if bad:                                                # a listing that is complete but had a message that could not be read is just as incomplete
+                unread.append(name)
 
         try:
             gm = gmail or Gmail.from_env()
-            take(lambda: mail.gmail_records(gm, now, days=days, terms=_terms(roster), limit=500))
+            take(lambda: mail.gmail_records(gm, now, days=days, terms=_terms(roster), limit=500), "Gmail")
         except GmailError:
             failed += 1
-        for label, client in (outlook_accounts if outlook_accounts is not None else mail.outlook_accounts(environ)):
+            unread.append("Gmail")
+        accounts = list(outlook_accounts if outlook_accounts is not None else mail.outlook_accounts(environ))
+        for label, client in accounts:
             if client is None:
                 failed += 1
+                unread.append(mail.source_name(label))
                 continue
-            take(lambda c=client, l=label: mail.outlook_records(c, l, now, days=days))
+            take(lambda c=client, l=label: mail.outlook_records(c, l, now, days=days), mail.source_name(label))
         counts["messages"], counts["sources_failed"] = len(records), failed
         outcomes, stats = find(records, roster)
         heard = contacts(records, roster)
         counts.update(stats, matched=len(outcomes), rejected=sum(1 for o in outcomes.values() if o["kind"] == REJECTED), offers=sum(1 for o in outcomes.values() if o["kind"] == OFFER), contacts=len(heard))
-        if failed or counts["unreadable"]:                       # a listing that is complete but had a message that could not be read is just as incomplete
-            counts["status"] = "degraded"                         # a source that could not be read in full is never a trustworthy "no outcome": nothing is saved, the last accepted outcomes stay
+        if failed == 1 + len(accounts):                          # no source could be listed: nothing was read, so nothing is saved and the last accepted outcomes stay
+            counts["status"] = "degraded"
             print("hiring-outcomes:", json.dumps(counts, sort_keys=True))
             raise fail("DEGRADED_SOURCE_INCOMPLETE")
-        counts["status"] = "fresh"
+        counts["status"] = "partial" if unread else "fresh"
+        if unread:                                                # never a trustworthy "no outcome" from a source that was not read in full: keep what was accepted, add what was found
+            counts["unread"] = list(dict.fromkeys(unread))
+            outcomes, heard = _merge(accepted, outcomes, lambda o: o.get("received", "")), _merge(accepted_contacts, heard, str)
         if live:
-            STORE.save_verified(conn, KEY, {"schema": SCHEMA_V, "taken_at": now.isoformat(), "scanned_at": now.isoformat(), "outcomes": outcomes, "contacts": heard}, fail)
+            STORE.save_verified(conn, KEY, {"schema": SCHEMA_V, "taken_at": now.isoformat(), "scanned_at": now.isoformat(), "outcomes": outcomes, "contacts": heard,
+                                            "unread": counts.get("unread", [])}, fail)
             counts["saved"] = 1
     return counts
