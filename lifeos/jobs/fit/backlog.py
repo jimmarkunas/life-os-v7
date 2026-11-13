@@ -35,6 +35,11 @@ def _whole(raw, default=0):
         return 0                                                        # an explicit value that is not a whole number fails closed
 
 
+def _refused(counts, code):
+    counts.update(cloud_fit=f"DEGRADED({code})", cloud_degraded=1, failed=1)
+    return counts
+
+
 def remaining(cursor):
     """-> the never-asked candidates by {published|unpublished}_{admit|review} (fixed keys, counts only)."""
     cursor.execute(REMAINING, (fit_cloud.PUBLIC_SOURCES,))
@@ -52,20 +57,17 @@ def run(limit, live, environ=os.environ, client=None):
     with store.connect() as connection, connection.cursor() as cursor:
         counts["remaining_before"] = remaining(cursor)
     if calls == 0:
-        counts.update(cloud_fit="DEGRADED(BACKLOG_NOT_AUTHORIZED)", cloud_degraded=1, failed=1)      # no approved ceiling or no request: nothing is asked
-        return counts
+        return _refused(counts, "BACKLOG_NOT_AUTHORIZED")      # no approved ceiling or no request: nothing is asked
     page = (environ.get("V7_CLOUD_FIT_BACKLOG_PAGE") or "").strip().replace("-", "").lower()
     if page and not re.fullmatch(r"[0-9a-f]{32}", page):
-        counts.update(cloud_fit="DEGRADED(BACKLOG_TARGET_INVALID)", cloud_degraded=1, failed=1)      # a malformed target never widens to the ranked backlog
-        return counts
+        return _refused(counts, "BACKLOG_TARGET_INVALID")      # a malformed target never widens to the ranked backlog
     if page:
         calls = counts["backlog_calls_allowed"] = 1
         counts["backlog_targeted"] = 1
     try:
         profile = fit_profile.load(environ, profile_sync.stored_block(environ))
     except fit_profile.ProfileError:
-        counts.update(cloud_fit="DEGRADED(PROFILE_MISSING)", cloud_degraded=1, failed=1)
-        return counts
+        return _refused(counts, "PROFILE_MISSING")
     ledger_check, target = None, ledger.OK
     if live:
         if client is None:

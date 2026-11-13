@@ -93,9 +93,6 @@ class PropertyTests(unittest.TestCase):
         self.assertEqual(k("https://careers.example.com/jobs/director-ta"), __import__("hashlib").sha256(b"careers.example.com/jobs/director-ta").hexdigest())  # no id: key unchanged
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class VisibleLaneLabel(unittest.TestCase):
     def test_scale_up_uses_the_ledgers_existing_option_spelling(self):

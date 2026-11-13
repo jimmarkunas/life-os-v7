@@ -1,6 +1,7 @@
-"""LIFE-60 (Jim's approval, Jira 10361): the dormant V7 side of Oracle's synthetic-only `fit1` verb. The hourly pipeline never imports this; only the manual fit-edge-test workflow runs it, on the existing
-ephemeral tag:v7-runner node, over the existing private endpoint (TCP 47341). V7 holds no Gateway credential and chooses no model, agent, tool or instruction: it sends one framed synthetic request whose
-sha256 is in the committed manifest, checks the echoed request hash, nonce and receipt (pinned model, no fallback), and hands the raw judgment to the unchanged judge.accept. A doubt is a fixed code, never a retry."""
+"""LIFE-60 (Jim's approval, Jira 10361): the V7 client of Oracle's synthetic-only `fit1` verb and its `limits` reading. The Cloud Fit stage (cloud.py), the backlog batch (backlog.py), the AI Capacity card
+(capacity_card.py), the Oracle Cloud card (lifeos/sources/cards/oracle_card.py) and the stage table (lifeos/run.py) use it; the manual fit-edge-test workflow also runs it, on the existing
+ephemeral tag:v7-runner node, over the existing private endpoint (TCP 47341). V7 holds no Gateway credential and chooses no model, agent, tool or instruction: it sends one framed request whose
+sha256 is in the committed manifest (the synthetic test) or a real job's, checks the echoed request hash, nonce and receipt (pinned model, no fallback), and hands the raw judgment to the unchanged judge.accept. A doubt is a fixed code, never a retry."""
 import hashlib
 import json
 import os
@@ -31,9 +32,11 @@ AGENTS = {"fit", "fit2", "fit3"}                                                
 class EdgeError(RuntimeError):
     """Fixed codes only. `detail` (when set) names the first receipt field that was not as contracted: a fixed field name, never content. `receipt` (FIT_EDGE_PURGE_FAILED only):
     the validated Oracle receipt, kept privately as provenance."""
-    detail = ""
-    receipt = None
     quota = None                     # LIFE-77: Oracle's meter reading on a QUOTA_RESERVE refusal (quota_reading's shape), so the run can say which window and when it resets
+
+    def __init__(self, code, detail="", receipt=None):
+        super().__init__(code)
+        self.detail, self.receipt = detail, receipt
 
 
 def digest(request):
@@ -99,6 +102,21 @@ def _estimate(raw):
     return {"proposed": raw["proposed"], "reported_at": raw["reported_at"], "windows": windows}
 
 
+def _answer(host, data, send, wait, status_ok):
+    """The checks `limits` and `invoke` share: one request, no reply, an oversize reply (before any parsing), and JSON that is a fit1 reply whose status is acceptable -> the reply dict."""
+    raw = send(host, data, wait=wait)
+    if not raw:
+        raise EdgeError("FIT_EDGE_NO_REPLY")
+    if len(raw) > MAX_REPLY:
+        raise EdgeError("FIT_EDGE_REPLY_TOO_LARGE")
+    try:
+        reply = json.loads(raw)
+        assert isinstance(reply, dict) and reply["schema"] == "lifeos.fit.v1" and status_ok(reply["status"])
+    except (ValueError, KeyError, AssertionError, TypeError):
+        raise EdgeError("FIT_EDGE_OFF_CONTRACT") from None
+    return reply
+
+
 def limits(host, send=None, wait=LIMIT_WAIT, backlog=None):
     """LIFE-77: Oracle's `limits` request (no model run, no in-flight lock) -> {"read_at", "pools": [{"provider", "windows": [{"label", "used", "reset_at"}], "stop"?}],
     "unavailable": [provider], "safety_cap": {"runs_today", "limit"} | None}, labels and numbers only; or an EdgeError fixed code. backlog (the Cloud Fit
@@ -107,16 +125,7 @@ def limits(host, send=None, wait=LIMIT_WAIT, backlog=None):
         raise EdgeError("FIT_EDGE_NO_HOST")
     nonce = secrets.token_hex(16)
     body = json.dumps({"limits": True, "nonce": nonce, **({"backlog": backlog} if backlog is not None else {})}, separators=(",", ":")).encode()
-    raw = (send or exchange)(host, b"fit1 %d\n" % len(body) + body, wait=wait)      # looked up at call time, so a patched sender is the one used
-    if not raw:
-        raise EdgeError("FIT_EDGE_NO_REPLY")
-    if len(raw) > MAX_REPLY:
-        raise EdgeError("FIT_EDGE_REPLY_TOO_LARGE")
-    try:
-        reply = json.loads(raw)
-        assert isinstance(reply, dict) and reply["schema"] == "lifeos.fit.v1" and reply["status"] == "LIMITS"
-    except (ValueError, KeyError, AssertionError, TypeError):
-        raise EdgeError("FIT_EDGE_OFF_CONTRACT") from None
+    reply = _answer(host, b"fit1 %d\n" % len(body) + body, send or exchange, wait, lambda status: status == "LIMITS")      # looked up at call time, so a patched sender is the one used
     if reply.get("nonce") != nonce:
         raise EdgeError("FIT_EDGE_NONCE_MISMATCH")
     try:
@@ -150,17 +159,8 @@ def invoke(host, request, base, title, nonce=None, send=exchange, wait=WAIT):
     if not host:
         raise EdgeError("FIT_EDGE_NO_HOST")
     nonce, want = nonce or secrets.token_hex(16), digest(request)
-    raw = send(host, frame(request, nonce), wait=wait)
-    if not raw:
-        raise EdgeError("FIT_EDGE_NO_REPLY")
-    if len(raw) > MAX_REPLY:
-        raise EdgeError("FIT_EDGE_REPLY_TOO_LARGE")                          # before any parsing
-    try:
-        reply = json.loads(raw)
-        assert isinstance(reply, dict) and reply["schema"] == "lifeos.fit.v1" and isinstance(reply["status"], str)
-        receipt, status = reply.get("receipt"), reply["status"]
-    except (ValueError, KeyError, AssertionError, TypeError):
-        raise EdgeError("FIT_EDGE_OFF_CONTRACT") from None
+    reply = _answer(host, frame(request, nonce), send, wait, lambda status: isinstance(status, str))
+    receipt, status = reply.get("receipt"), reply["status"]
     if status == "BUSY":                                                  # LIFE-41 10504 C2: Oracle's in-flight refusal carries no hash or nonce; no run was counted
         raise EdgeError("FIT_EDGE_BUSY")
     if reply.get("request_hash") != want:
@@ -173,17 +173,11 @@ def invoke(host, request, base, title, nonce=None, send=exchange, wait=WAIT):
         raise error
     field = bad_receipt_field(receipt) or (None if isinstance(reply.get("judgment_raw"), str) else "judgment_raw")
     if field:
-        error = EdgeError("FIT_EDGE_RECEIPT_REJECTED")
-        error.detail = field
-        raise error
+        raise EdgeError("FIT_EDGE_RECEIPT_REJECTED", detail=field)
     if reply.get("fixture") == "REAL" and receipt.get("purge") not in ("ok", "failed"):
-        error = EdgeError("FIT_EDGE_RECEIPT_REJECTED")                  # a real run must say whether its transcript was purged
-        error.detail = "purge"
-        raise error
+        raise EdgeError("FIT_EDGE_RECEIPT_REJECTED", detail="purge")        # a real run must say whether its transcript was purged
     if receipt.get("purge") == "failed":                                  # LIFE-41 10504 C5: the deletion control failed, so this is not a clean result; Oracle refuses further real requests
-        error = EdgeError("FIT_EDGE_PURGE_FAILED")
-        error.receipt = receipt
-        raise error
+        raise EdgeError("FIT_EDGE_PURGE_FAILED", receipt=receipt)
     judgment = judge.accept(reply["judgment_raw"], base, title, request)
     if judgment is None:
         raise EdgeError("FIT_EDGE_JUDGMENT_REJECTED")

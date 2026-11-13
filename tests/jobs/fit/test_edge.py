@@ -1,4 +1,4 @@
-"""LIFE-60: the dormant V7 side of Oracle's synthetic-only fit1 verb, against a fake endpoint that follows the Oracle operator's wire contract and one real loopback socket. No live call, no model, no cutover."""
+"""LIFE-60: the V7 side of Oracle's fit1 verb, against a fake endpoint that follows the Oracle operator's wire contract and one real loopback socket. No live call, no model, no cutover."""
 import json
 import re
 import socket
@@ -325,10 +325,6 @@ class Dormant(unittest.TestCase):
         self.assertEqual(re.findall(r"V7_CLOUD_FIT_PROFILE_REF: (\S.*?\}\})", hourly), ["${{ secrets.V7_CLOUD_FIT_PROFILE_REF }}"] * 2)   # the tick and the D219 manual backlog step, both the masked secret
         for path in (self.ROOT / ".github/workflows").glob("*.y*ml"):
             self.assertNotIn("vars.V7_CLOUD_FIT_PROFILE_REF", path.read_text(), path.name)
-
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 class ConnectRetry(unittest.TestCase):
