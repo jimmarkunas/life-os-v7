@@ -255,6 +255,15 @@ def summary_table(outcome, timings, total):
     return "\n".join(lines) + "\n"
 
 
+def planned(environ=None):
+    """LIFE-653: PLAN without the stages TICK_SKIP_STAGES names (space-separated; an unknown name is ignored). The workflow names resolve-jobright when the browser install failed, so that one lane is red and the rest runs."""
+    skip = set((os.environ if environ is None else environ).get("TICK_SKIP_STAGES", "").split())
+    for step in PLAN:
+        if step.name in skip:
+            print(f"stage {step.name}: not run (TICK_SKIP_STAGES)", flush=True)
+    return tuple(step for step in PLAN if step.name not in skip)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--live", action="store_true")
@@ -267,7 +276,7 @@ def main(argv=None):
         from lifeos.platform import read_slots                                         # noqa: PLC0415
         read_slots.configure("ats", concurrency["caps"]["ats"])
         print("tick: concurrency on, caps", json.dumps(concurrency["caps"], sort_keys=True), "parallel", concurrency["parallel"], flush=True)
-    outcome = tick(args.live, args.quick, timings=timings, concurrency=concurrency)
+    outcome = tick(args.live, args.quick, plan=planned(), timings=timings, concurrency=concurrency)
     print("tick:", json.dumps(outcome, sort_keys=True))
     wall = time.monotonic() - begun
     path = os.environ.get("GITHUB_STEP_SUMMARY")
