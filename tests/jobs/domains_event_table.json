@@ -317,12 +317,6 @@
  "dispatch: jira=card + live": [
   "jira"
  ],
- "dispatch: jira=dashboard": [
-  "jira"
- ],
- "dispatch: jira=dashboard + live": [
-  "jira"
- ],
  "dispatch: jira=none": [],
  "dispatch: jira=probe": [
   "jira"
