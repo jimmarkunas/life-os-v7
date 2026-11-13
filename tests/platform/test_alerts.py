@@ -80,6 +80,12 @@ class Delivery(unittest.TestCase):
         plan = alerts.reconcile([A, I], {}, NOW)
         self.assertEqual(alerts.deliver(plan, "t", send=lambda *a: a[3] == alerts.PAGE), {"sent": 1, "failed": 1})
 
+    def test_deliver_names_each_failed_push_and_sends_in_plan_order(self):
+        plan, titles, failed = alerts.reconcile([A, I], {}, NOW), [], set()
+        sent = alerts.deliver(plan, "t", send=lambda *a: titles.append(a[1]) or a[3] == alerts.PAGE, failed_keys=failed)
+        self.assertEqual((sent, failed), ({"sent": 1, "failed": 1}, {"k2"}))
+        self.assertEqual(titles, [alerts.render(kind, item)[0] for kind, item in plan.notify])
+
     def test_the_push_cli_exits_1_when_the_push_is_not_accepted(self):
         import contextlib, io
 

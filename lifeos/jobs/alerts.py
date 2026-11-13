@@ -214,7 +214,8 @@ def run(limit, live, environ=os.environ, now=None, send=None):
         plan = alerts.reconcile(active, load_state(connection), now)
         if not live:
             return {"active": len(active), "would_notify": len(plan.notify), "opened": len(plan.opened), "resolved": len(plan.resolved), "monitors": {**monitors, **daily_monitors(counts["daily"], now.date())}}
-        sent = alerts.deliver(plan, environ.get("NTFY_TOPIC", ""), send)
-        delivered = {item.key for kind, item in plan.notify if kind != "resolved"} if sent["failed"] == 0 else set()
+        failed = set()
+        sent = alerts.deliver(plan, environ.get("NTFY_TOPIC", ""), send, failed)
+        delivered = {item.key for kind, item in plan.notify if kind != "resolved"} - failed          # LIFE-653: one failed push no longer un-records the ones that went; only it is retried
         save(connection, plan, delivered, now)
     return {"active": len(active), "opened": len(plan.opened), "resolved": len(plan.resolved), "monitors": {**monitors, **daily_monitors(counts["daily"], now.date())}, **sent}

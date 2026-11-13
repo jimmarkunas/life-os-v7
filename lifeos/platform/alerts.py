@@ -148,9 +148,11 @@ def push(key: str, title: str, body: str, topic: str | None = None, post: Callab
     return ntfy((topic if topic is not None else os.environ.get("NTFY_TOPIC", "")).strip(), redact.redact(title), redact.redact(body), spec.severity, post, chosen)
 
 
-def deliver(plan: Plan, topic: str, send: Callable[..., bool] | None = None) -> dict[str, int]:
-    """Send the plan's notifications; -> counts. INFO opens and reminders still push (low priority, no sound). `send` is a test fake; the default is the gateway."""
+def deliver(plan: Plan, topic: str, send: Callable[..., bool] | None = None, failed_keys: set[str] | None = None) -> dict[str, int]:
+    """Send the plan's notifications; -> counts. INFO opens and reminders still push (low priority, no sound). `send` is a test fake; the default is the gateway.
+    `failed_keys` (LIFE-653) is filled with the key of each failed push, so the caller records every other one as delivered."""
     sent = failed = skipped = 0
+    failed_keys = set() if failed_keys is None else failed_keys
     for kind, item in plan.notify:
         title, body, severity = render(kind, item)
         key = item if isinstance(item, str) else item.key                                     # a resolved notification carries only its key
@@ -165,6 +167,7 @@ def deliver(plan: Plan, topic: str, send: Callable[..., bool] | None = None) -> 
             sent += 1
         else:
             failed += 1
+            failed_keys.add(key)
     return {"sent": sent, "failed": failed, **({"skipped": skipped} if skipped else {})}
 
 
