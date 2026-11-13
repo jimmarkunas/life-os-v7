@@ -8,7 +8,6 @@ A protected row is left exactly as it is (PUBLISHED, page untouched) and only co
 With V7_FIT_GATE=true the audit also clears out published pages whose lane decision is EXCLUDE (published before they were scored, or re-scored since): the page is
 trashed (recoverable 30 days) under the same guard, the job becomes EXCLUDED_FIT and keeps its ledger hash so it is never published again.
 """
-from datetime import datetime, timezone
 import os
 
 from lifeos.jobs import guard, hiring_pipeline, lanes, ledger, quality, store
@@ -17,8 +16,7 @@ from lifeos.jobs.publish import AGGREGATOR
 from lifeos.platform import limits, notion_client
 
 
-def _now():
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+_now = store.now
 
 
 def judge(url, full_text, proven=False, title_only=False, thin_ok=False):
@@ -50,6 +48,11 @@ def twins(groups, places, skip):
     return out
 
 
+def _ids(cursor, where, params=()):
+    cursor.execute("SELECT id FROM v7_jobs WHERE (" + where + ") AND status IN ('READY','PUBLISHED')", params)
+    return {r[0] for r in cursor.fetchall()}
+
+
 def run(limit, live, environ=os.environ, ready_only=False):
     """ready_only (LIFE-76): the gate before publish - only the READY rows about to be published, judged with the same guards; no page is read or trashed,
     so it takes seconds. The full pass (published pages, duplicates, Exclude clean-up) runs after publish."""
@@ -69,13 +72,9 @@ def run(limit, live, environ=os.environ, ready_only=False):
                                " JOIN v7_job_fit f ON f.job_id=j.id WHERE j.status='PUBLISHED' AND j.notion_page_id IS NOT NULL"
                                " AND f.admission='EXCLUDE' ORDER BY j.id LIMIT %s", (limit,))
                 excluded = cursor.fetchall()
-            cursor.execute("SELECT id FROM v7_jobs WHERE link_proof='title' AND status IN ('READY','PUBLISHED')")
-            proven = {r[0] for r in cursor.fetchall()}
-            cursor.execute("SELECT id FROM v7_jobs WHERE source LIKE %s AND status IN ('READY','PUBLISHED')", ("web:titlewatch:%",))
-            watched = {r[0] for r in cursor.fetchall()}
-            cursor.execute("SELECT id FROM v7_jobs WHERE (" + " OR ".join(["source LIKE %s"] * len(lanes.THIN_REVIEW_PREFIXES)) + ") AND status IN ('READY','PUBLISHED')",
-                           tuple(p + "%" for p in lanes.THIN_REVIEW_PREFIXES))
-            thin_ok = {r[0] for r in cursor.fetchall()}
+            proven = _ids(cursor, "link_proof='title'")
+            watched = _ids(cursor, "source LIKE %s", ("web:titlewatch:%",))
+            thin_ok = _ids(cursor, " OR ".join(["source LIKE %s"] * len(lanes.THIN_REVIEW_PREFIXES)), tuple(p + "%" for p in lanes.THIN_REVIEW_PREFIXES))
             cursor.execute("SELECT id, company, title FROM v7_jobs WHERE status IN ('READY','PUBLISHED')")
             watched |= {r[0] for r in cursor.fetchall() if lanes.on_keep_list(r[1], r[2])}          # D124: Jim's keep list is judged on title and link too (its pages answer 403, so no description may be stored)
             pages, places = [], {}

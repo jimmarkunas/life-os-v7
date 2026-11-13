@@ -6,7 +6,6 @@ Properties written (all exist in the Ledger): Job, Company, Apply URL, Source Pr
 First Surfaced, Posting Date, Freshness Status, Liveness, Visible Lane, Admission Status. LIFE OS Fit / Why It Fits are written when the fit stage scored the job; with V7_FIT_GATE=true only jobs the lane policy admits (or sends to Review) publish.
 The job description goes in the page BODY (contract v7.jd.1, docs/PLAN.md).
 """
-from datetime import datetime, timezone
 import os
 
 from lifeos.jobs import classify, meta, lanes, ledger, store
@@ -19,8 +18,7 @@ SECTIONS = (("summary", "Summary"), ("responsibilities", "Responsibilities"), ("
             ("qualifications", "Qualifications"))
 
 
-def _now():
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+_now = store.now
 
 
 def _block(kind, content):
@@ -49,9 +47,6 @@ def body_blocks(key, description):
     return body.legacy_blocks(key, description)
 
 
-VISIBLE_LANE_LABEL = {"Scale-Up": "Scale-up"}        # the Ledger's Visible Lane option is spelled "Scale-up" (Eligible Lanes uses "Scale-Up")
-
-
 def properties(row):
     """row: dict with title, company, url, provider (or source), lane, key, first_seen (date), posted (date|None)."""
     provider = row.get("provider") or row["source"]
@@ -66,7 +61,7 @@ def properties(row):
         "First Surfaced": {"date": {"start": row["first_seen"].isoformat()}},
         "Freshness Status": {"select": {"name": "Fresh"}},
         "Liveness": {"select": {"name": "Live"}},
-        "Visible Lane": {"select": {"name": VISIBLE_LANE_LABEL.get(lanes.lane_for(row["lane"]), lanes.lane_for(row["lane"]))}},
+        "Visible Lane": {"select": {"name": meta.VISIBLE_LANE_LABEL.get(lanes.lane_for(row["lane"]), lanes.lane_for(row["lane"]))}},
         "Eligible Lanes": {"multi_select": [{"name": n} for n in (row.get("eligible") or [lanes.lane_for(row["lane"])])]},
         "Admission Status": {"select": {"name": lanes.ADMISSION_LABEL.get(row.get("admission"), "Passed / Review")}},
     }

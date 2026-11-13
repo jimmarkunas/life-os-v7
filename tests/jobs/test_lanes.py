@@ -365,9 +365,9 @@ class ThinBoardAdmitTests(unittest.TestCase):
 
     def test_only_a_scale_up_or_ats_board_source_counts(self):
         for source in ("web:su-acme", "web:gh-acme", "web:lv-acme", "web:ab-acme"):
-            self.assertTrue(lanes.thin_admit_source(source), source)
+            self.assertTrue(lanes.thin_review_source(source), source)
         for source in ("web:openjobs", "web:titlewatch:su-acme", "jobright", "", None):
-            self.assertFalse(lanes.thin_admit_source(source), source)
+            self.assertFalse(lanes.thin_review_source(source), source)
 
 
 class KeepListTests(unittest.TestCase):

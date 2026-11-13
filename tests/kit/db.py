@@ -45,6 +45,33 @@ class FakeConn:
         return False
 
 
+class RoutedRows:
+    """A connection that is its own cursor (and a context manager, like store.connect()): execute() keeps the statement, then fetchall() returns the canned rows of
+    the FIRST route (needle, rows) whose needle is inside it, else `default`."""
+
+    def __init__(self, routes=(), default=()):
+        self.routes, self.default, self.sql, self.rows = list(routes), default, [], default
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def cursor(self):
+        return self
+
+    def execute(self, sql, args=()):
+        self.sql.append(sql)
+        self.rows = next((rows for needle, rows in self.routes if needle in sql), self.default)
+
+    def fetchall(self):
+        return self.rows
+
+    def verbs(self):
+        return [sql.split()[0] for sql in self.sql]
+
+
 class RecorderCursor:
     """LIFE-551: keeps every statement in full as (sql, args) in `statements`; fetchall() returns the canned `rows`; execute() raises the error whose
     needle is inside the statement (after recording it); `driver_format=True` also checks the statement survives pymysql-style % formatting first."""

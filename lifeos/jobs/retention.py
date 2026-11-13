@@ -9,7 +9,7 @@ LIFE-212 (Jim, Oct 31 2026): a lane whose policy judges employer-board jobs by a
 Applied jobs are never destructively retired by Jobs until the Interview progression handoff (INT-7.1A) exists: they resolve UNKNOWN and are kept.
 No legacy Lifecycle / Liveness value is read for a decision or written. One filtered Notion query per page of 100 (the approved weekly read). Counts only.
 """
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta
 import os
 
 from lifeos.jobs import hiring_pipeline, lanes, ledger, progression, store, tombstone
@@ -26,8 +26,7 @@ KNOWN_LANES = ("Newsletter", "US Web", "US Remote", "Scale-Up", "Scale-up", "Ski
 WRITES_PER_RUN = 150
 
 
-def _now():
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+_now = store.now
 
 
 def query_filter(cutoff, lane):
@@ -74,20 +73,19 @@ def action(posted, first_surfaced, applied, saturn, today, days=RETIRE_DAYS):
 
 def purge_database(live, now):
     counts = {"descriptions": 0, "job_rows": 0, "tombstones_expired": 0}
+    old_descriptions = "FROM v7_job_descriptions d JOIN v7_jobs j ON j.id=d.job_id WHERE j.first_seen < %s"
+    old_jobs = "first_seen < %s AND (notion_page_id IS NULL OR status='PURGED')"
+    descriptions, jobs = (now - timedelta(days=DESC_DAYS),), (now - timedelta(days=JOB_ROW_DAYS),)
     with store.connect() as connection, connection.cursor() as cursor:
-        cursor.execute("SELECT COUNT(*) FROM v7_job_descriptions d JOIN v7_jobs j ON j.id=d.job_id WHERE j.first_seen < %s",
-                       (now - timedelta(days=DESC_DAYS),))
+        cursor.execute("SELECT COUNT(*) " + old_descriptions, descriptions)
         counts["descriptions"] = cursor.fetchone()[0]
-        cursor.execute("SELECT COUNT(*) FROM v7_jobs WHERE first_seen < %s AND (notion_page_id IS NULL OR status='PURGED')",
-                       (now - timedelta(days=JOB_ROW_DAYS),))
+        cursor.execute("SELECT COUNT(*) FROM v7_jobs WHERE " + old_jobs, jobs)
         counts["job_rows"] = cursor.fetchone()[0]
         if live:
-            cursor.execute("DELETE d FROM v7_job_descriptions d JOIN v7_jobs j ON j.id=d.job_id WHERE j.first_seen < %s",
-                           (now - timedelta(days=DESC_DAYS),))
+            cursor.execute("DELETE d " + old_descriptions, descriptions)
             cursor.execute("DELETE s FROM v7_job_sources s JOIN v7_jobs j ON j.id=s.job_id WHERE j.first_seen < %s"
-                           " AND (j.notion_page_id IS NULL OR j.status='PURGED')", (now - timedelta(days=JOB_ROW_DAYS),))
-            cursor.execute("DELETE FROM v7_jobs WHERE first_seen < %s AND (notion_page_id IS NULL OR status='PURGED')",
-                           (now - timedelta(days=JOB_ROW_DAYS),))
+                           " AND (j.notion_page_id IS NULL OR j.status='PURGED')", jobs)
+            cursor.execute("DELETE FROM v7_jobs WHERE " + old_jobs, jobs)
             counts["tombstones_expired"] = tombstone.expire(cursor, now)
     return counts
 

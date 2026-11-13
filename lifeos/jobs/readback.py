@@ -4,7 +4,6 @@ the Stable Job Key, a title, the Fit being present when one was scored, and the 
 D212 (Jim, LIFE-76 10451): every page is verified by reading Notion. The properties come from ONE data-source query per KEY_CHUNK Stable Job Keys (an OR of
 exact-key filters) instead of a GET per page; the body marker is still read per page. A page the query does not return is `page_gone`; two pages with one key is
 `key_ambiguous`. A create response is never a read-back."""
-from datetime import datetime, timezone
 
 from lifeos.jobs import store
 from lifeos.platform import ledger_body as body
@@ -15,8 +14,7 @@ BATCH = 60
 KEY_CHUNK = 25          # exact-key filters per Ledger query (one OR); a batch of 60 is three queries instead of 60 page GETs
 
 
-def _now():
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+_now = store.now
 
 
 def _text(prop, kind):
@@ -36,19 +34,6 @@ def properties_match(page, key, url, fit):
         return "no_title"
     if fit is not None and (props.get("LIFE OS Fit") or {}).get("number") is None:
         return "fit_missing"                                                  # a later re-score may change the number; it must be present
-    return None
-
-
-def check(client, page_id, key, url, fit):
-    """-> None when the page matches, else a fixed reason."""
-    why = properties_match(client.call("GET", f"/pages/{page_id}"), key, url, fit)
-    if why:
-        return why
-    children = client.call("GET", f"/blocks/{page_id}/children?page_size=3").get("results") or []
-    if not children or not body.is_marker(children[0]) or len(children) < 2:
-        return "no_description"                                                      # either layout: the hidden marker (v7.jd.2) or the visible line (v7.jd.1)
-    if children[1].get("type") == "column_list" and not (body.find(client, page_id, children, key) or {}).get("toggle"):
-        return "no_description"                                                      # the two-column layout must hold its Overview column and the Full job description toggle
     return None
 
 
@@ -82,7 +67,7 @@ def ledger_pages(client, keys):
 
 
 def check_listed(client, page_id, key, url, fit, pages):
-    """check() for a page whose properties came from ledger_pages(): -> None when it matches, else a fixed reason."""
+    """-> None when a page whose properties came from ledger_pages() matches what was sent, else a fixed reason."""
     mine = [page for page in pages if _bare(page.get("id")) == _bare(page_id)]
     if not mine:
         return "page_gone"                                                  # trashed, archived or moved out of the Ledger: the query does not return it

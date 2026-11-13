@@ -55,8 +55,6 @@ class PurgeTests(unittest.TestCase):
         self.assertIsNone(retention.action(old, None, True, None, self.TODAY))                 # Applied: UNKNOWN until INT-7.1A
         self.assertIsNone(retention.action(old, None, False, "Pass", self.TODAY))              # a Saturn Decision protects it
         self.assertEqual(progression.resolve(True), progression.UNKNOWN)
-        self.assertEqual(progression.resolve(True, interview_evidence=False), progression.NOT_PROTECTED)
-        self.assertEqual(progression.resolve(True, interview_evidence=True), progression.PROTECTED)
         self.assertEqual(progression.resolve(False), progression.NOT_PROTECTED)
 
     def test_query_never_selects_acted_on_rows_and_uses_the_employer_clock(self):

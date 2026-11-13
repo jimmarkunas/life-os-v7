@@ -21,8 +21,21 @@ CLOSED_TEXT = re.compile(r"no longer accepting|no longer available|position (has
                          r"posting (has )?expired|this job has expired|not accepting applications", re.I)
 
 
-def _now():
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+_now = store.now
+
+
+GONE = {"closed": True}                                  # the board's API no longer knows the job
+
+
+def _board_json(url):
+    """One board-API read -> its JSON, GONE (404 / 410), or None (any other answer, or not JSON)."""
+    page = fetch(url, timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=2)
+    if page.status in (404, 410):
+        return GONE
+    try:
+        return json.loads(page.html) if page.status == 200 else None
+    except ValueError:
+        return None
 
 
 def _api_job(url):
@@ -33,32 +46,20 @@ def _api_job(url):
         board = (re.search(r"(?:^|&)for=([^&]+)", parts.query) or [None, segs[0] if segs else ""])[1]
         ident = (re.search(r"(?:^|&)token=(\d+)", parts.query) or [None, None])[1] or next(
             (s for s in reversed(segs) if s.isdigit()), None)
-        if board and ident:
-            page = fetch(f"https://boards-api.greenhouse.io/v1/boards/{board}/jobs/{ident}", timeout=limits.ATS_TIMEOUT_SECONDS,
-                         max_hops=2)
-            if page.status in (404, 410):
-                return {"closed": True}                        # the board's API no longer knows the job
-            if page.status == 200:
-                try:
-                    data = json.loads(page.html)
-                except ValueError:
-                    return None
-                posted = str(data.get("first_published") or data.get("updated_at") or "")[:10]
-                return {"title": data.get("title"), "html": htmllib.unescape(data.get("content") or ""), "posted": posted}     # the API escapes its HTML (&lt;p&gt;), as the board lister unescapes it
+        data = _board_json(f"https://boards-api.greenhouse.io/v1/boards/{board}/jobs/{ident}") if board and ident else None
+        if data is None or data is GONE:
+            return data
+        posted = str(data.get("first_published") or data.get("updated_at") or "")[:10]
+        return {"title": data.get("title"), "html": htmllib.unescape(data.get("content") or ""), "posted": posted}     # the API escapes its HTML (&lt;p&gt;), as the board lister unescapes it
     if host == "jobs.lever.co" and len(segs) >= 2:
-        page = fetch(f"https://api.lever.co/v0/postings/{segs[0]}/{segs[1]}", timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=2)
-        if page.status in (404, 410):
-            return {"closed": True}
-        if page.status == 200:
-            try:
-                data = json.loads(page.html)
-            except ValueError:
-                return None
-            created = data.get("createdAt")
-            posted = datetime.fromtimestamp(created / 1000, timezone.utc).date().isoformat() if created else ""
-            lists = "".join(f"<h3>{x.get('text') or ''}</h3><ul>{x.get('content') or ''}</ul>" for x in (data.get("lists") or []))
-            return {"title": data.get("text"), "html": (data.get("description") or "") + lists + (data.get("additional") or ""),
-                    "posted": posted}         # Lever keeps the duties and requirements in `lists` and the closing in `additional`: the opening alone read as jd_thin
+        data = _board_json(f"https://api.lever.co/v0/postings/{segs[0]}/{segs[1]}")
+        if data is None or data is GONE:
+            return data
+        created = data.get("createdAt")
+        posted = datetime.fromtimestamp(created / 1000, timezone.utc).date().isoformat() if created else ""
+        lists = "".join(f"<h3>{x.get('text') or ''}</h3><ul>{x.get('content') or ''}</ul>" for x in (data.get("lists") or []))
+        return {"title": data.get("text"), "html": (data.get("description") or "") + lists + (data.get("additional") or ""),
+                "posted": posted}         # Lever keeps the duties and requirements in `lists` and the closing in `additional`: the opening alone read as jd_thin
     return None
 
 
@@ -292,9 +293,6 @@ def save(connection, job_id, result):
 
 
 DAILY_SLOT = "MOD(CRC32(id), 24) = HOUR(UTC_TIMESTAMP())"          # stateless "once a day": every row has one hour of the day, and the pipeline ticks hourly
-THIN_BOARD_REQUEUE_UNTIL = datetime(2026, 10, 26, 7, 30)           # Jim, Oct 25 2026 ("figure it out and rerun"): the roles held as jd_thin on a board's own feed (web:gh-, web:lv-, web:ab-) before the thin-board rule (#570, #575)
-                                                                   # are read again NOW, all of them, on the ticks before this UTC time (1:00 and 2:00 AM CT), not one hour slot a day over 24 ticks; one failure parks a role again
-THIN_BOARD_NOW = "(unresolved_reason='jd_thin' AND (source LIKE 'web:gh-%%' OR source LIKE 'web:lv-%%' OR source LIKE 'web:ab-%%'))"
 
 
 def _first_party_over_age(now):
@@ -315,7 +313,6 @@ def relink_first_party(cursor, now=None):
     (a stale reason, a 403 now readable as Chrome) it stayed stuck for good. Put it back to RESOLVED with its own URL when that URL passes the link test.
     Bounded: a mismatch counts resolve_attempts, and a HOLD is retried at most once a day. Returns the number requeued."""
     now = now or _now()
-    slot = DAILY_SLOT if now >= THIN_BOARD_REQUEUE_UNTIL else "(" + DAILY_SLOT + " OR " + THIN_BOARD_NOW + ")"
     cursor.execute("SELECT id, source_url FROM v7_jobs WHERE source LIKE 'web:%%' AND source<>'web:openjobs' AND final_apply_url IS NULL AND source_url IS NOT NULL AND (resolve_attempts < %s OR status='HOLD') AND "
                    "((status='NEW' AND resolve_attempts < %s AND (unresolved_reason LIKE 'audit_%%' OR unresolved_reason IN ('link_mismatch', 'no_job_id', 'listing_url') OR unresolved_reason LIKE 'Fit %% below 72')) OR "
                    "(status='HOLD' AND (unresolved_reason LIKE 'http_40%%' OR unresolved_reason IN ('link_mismatch', 'jd_listing', 'jd_template')) AND " + DAILY_SLOT + ")) LIMIT 500",   # a hold is read again once a day, each row in its own hour: the reader improves, the hold never did (updated_at cannot say "a day ago": the daily listing refresh touches it)
@@ -330,7 +327,7 @@ def relink_first_party(cursor, now=None):
                        (url, proof, limits.RESOLVE_MAX_ATTEMPTS - 1, now, job_id))
     cursor.execute("UPDATE v7_jobs SET status='RESOLVED', unresolved_reason=NULL, enrich_attempts=LEAST(enrich_attempts, %s), updated_at=%s WHERE status='HOLD' AND final_apply_url IS NOT NULL"
                    " AND source LIKE 'web:%%' AND source<>'web:openjobs' AND notion_page_id IS NULL AND (unresolved_reason LIKE 'http_40%%' OR unresolved_reason IN ('jd_thin', 'description_empty', 'description_empty_tf'))"
-                   " AND " + slot, (limits.ENRICH_MAX_ATTEMPTS - 1, now))                 # an employer's own role parked after failed reads (a closed page, a thin page) is read once more a day; one failure parks it again
+                   " AND " + DAILY_SLOT, (limits.ENRICH_MAX_ATTEMPTS - 1, now))                 # an employer's own role parked after failed reads (a closed page, a thin page) is read once more a day; one failure parks it again
     reread = int(cursor.rowcount or 0)
     aged, params = _first_party_over_age(now)
     cursor.execute("UPDATE v7_jobs SET status='RESOLVED', unresolved_reason='requeued_age', enrich_attempts=0, updated_at=%s WHERE status='EXCLUDED_STALE'"
@@ -349,16 +346,18 @@ def host_family(url):
     return "employer_site"
 
 
+def _bump(table, key):
+    table[key] = table.get(key, 0) + 1
+
+
 def blocked_report(results, urls):
     """Why pages stayed blocked, as counts: {'reasons': {code: n}, 'families': {host family: n}}."""
     reasons, families, sources = {}, {}, {}
     for job_id, result in results:
         if result["outcome"] == "blocked":
-            kind = result.get("source_kind") or "none"
-            sources[kind] = sources.get(kind, 0) + 1
-            reasons[result.get("reason") or "blocked"] = reasons.get(result.get("reason") or "blocked", 0) + 1
-            family = host_family(urls.get(job_id))
-            families[family] = families.get(family, 0) + 1
+            _bump(sources, result.get("source_kind") or "none")
+            _bump(reasons, result.get("reason") or "blocked")
+            _bump(families, host_family(urls.get(job_id)))
     return {"reasons": reasons, "families": families, "by_source": sources}
 
 
@@ -369,11 +368,9 @@ def mismatch_report(results, urls, source_of, previous):
     for job_id, result in results:
         if result["outcome"] != "mismatch":
             continue
-        reason = result.get("reason") or "title"
-        reasons[reason] = reasons.get(reason, 0) + 1
-        sources[source_of.get(job_id) or "unknown"] = sources.get(source_of.get(job_id) or "unknown", 0) + 1
-        family = host_family(urls.get(job_id))
-        families[family] = families.get(family, 0) + 1
+        _bump(reasons, result.get("reason") or "title")
+        _bump(sources, source_of.get(job_id) or "unknown")
+        _bump(families, host_family(urls.get(job_id)))
         repeat += previous.get(job_id) == (result.get("reason") or "link_mismatch")
     return {"reasons": reasons, "by_source": sources, "families": families, "repeat": repeat}
 
@@ -414,9 +411,9 @@ def run(limit, live, drain=False):
             result["reason"] = TRIED_REASON                          # stays marked: the rendered fetch already tried it
         result["final_url"] = url
         results.append((job_id, result))
-        counts["outcome"][result["outcome"]] = counts["outcome"].get(result["outcome"], 0) + 1
+        _bump(counts["outcome"], result["outcome"])
         if result.get("source_kind"):
-            counts["source"][result["source_kind"]] = counts["source"].get(result["source_kind"], 0) + 1
+            _bump(counts["source"], result["source_kind"])
     if drain:
         left = [job_id for job_id, r in results if r["outcome"] == "blocked"]
         results = [(job_id, r) for job_id, r in results if r["outcome"] != "blocked"]
@@ -459,6 +456,18 @@ def _strict(job_id, titles, unproven_ids):
     return job_id in unproven_ids and bool(quality.link_problem(titles[job_id][0]))
 
 
+def _mark_tried(result):
+    if result.get("reason") == "description_empty":
+        result["reason"] = TRIED_REASON                          # stays marked: the rendered fetch already tried it
+
+
+def _swap(results, counts, i, result):
+    """A page the rendered fallback read replaces its blocked result, and the outcome counts follow."""
+    results[i] = (results[i][0], result)
+    counts["outcome"]["blocked"] -= 1
+    _bump(counts["outcome"], result["outcome"])
+
+
 def _fallback(results, rows, counts, lane_of=None, unproven_ids=(), first_party_ids=()):
     """Rendered-fetch fallback (D12 amendment): ONE free TinyFish Fetch of an ALREADY-RESOLVED final URL when plain HTTP / the ATS API gave no usable page.
     It reads JD, date and liveness evidence only: no clicking, signing in, searching, link traversal, or choosing another vacancy, and it never
@@ -488,27 +497,19 @@ def _fallback(results, rows, counts, lane_of=None, unproven_ids=(), first_party_
         for i, url in zip(batch, urls):
             item = found.get(url)
             text = item.get("text") if item and isinstance(item.get("text"), str) else ""
-            if asked[i] and text:
-                job = ats_detail.parse_workday(text)
-                if job:
-                    job_id = results[i][0]
-                    desc = jd.describe(job["html"], is_html=True)
-                    results[i] = (job_id, finish(titles[job_id][1], desc, job["title"] or desc["full_text"][:300],
+            job_id = results[i][0]
+            job = ats_detail.parse_workday(text) if asked[i] and text else None
+            if job:
+                desc = jd.describe(job["html"], is_html=True)
+                _swap(results, counts, i, finish(titles[job_id][1], desc, job["title"] or desc["full_text"][:300],
                                                  _parse_date(job["posted"]), "ats_api", None, (lane_of or {}).get(job_id),
                                                  _strict(job_id, titles, unproven_ids), job_id in first_party_ids))
-                    counts["outcome"]["blocked"] -= 1
-                    counts["outcome"][results[i][1]["outcome"]] = counts["outcome"].get(results[i][1]["outcome"], 0) + 1
-                    done += 1
-                    continue
-            if not text and results[i][1].get("reason") == "description_empty":
-                results[i][1]["reason"] = TRIED_REASON
-            if text:
-                job_id = results[i][0]
-                results[i] = (job_id, parse_html(url, titles[job_id][1], text, (lane_of or {}).get(job_id),
-                                                    _strict(job_id, titles, unproven_ids), job_id in first_party_ids))
-                if results[i][1].get("reason") == "description_empty":
-                    results[i][1]["reason"] = TRIED_REASON
-                counts["outcome"]["blocked"] -= 1
-                counts["outcome"][results[i][1]["outcome"]] = counts["outcome"].get(results[i][1]["outcome"], 0) + 1
-                done += 1
+            elif text:
+                _swap(results, counts, i, parse_html(url, titles[job_id][1], text, (lane_of or {}).get(job_id),
+                                                     _strict(job_id, titles, unproven_ids), job_id in first_party_ids))
+                _mark_tried(results[i][1])
+            else:
+                _mark_tried(results[i][1])
+                continue
+            done += 1
     counts["tinyfish_recovered"] = done
