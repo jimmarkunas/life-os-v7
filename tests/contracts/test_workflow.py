@@ -357,8 +357,7 @@ class PullRequestTestsWorkflow(unittest.TestCase):
         room = next(i for i, n in enumerate(names) if "Concord Room plugin tests" in n)
         self.assertGreater(room, python_suite)                                       # the 45 s / 90 s limits above stay about the Python suite alone
         self.assertEqual(steps[room]["run"], "node --test tools/orca-concord-room/test/worker.test.mjs")
-        self.assertEqual(steps[room - 1]["uses"], "actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444")
-        self.assertEqual(steps[room - 1]["with"], {"node-version": "24"})
+        self.assertEqual(steps[room - 1]["uses"], "./.github/actions/node")          # LIFE-639: our checked Node 24 download, not a third-party setup action
         self.assertTrue(pathlib.Path(__file__).resolve().parents[2].joinpath("tools/orca-concord-room/test/worker.test.mjs").is_file())
 
 
