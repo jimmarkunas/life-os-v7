@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from lifeos.platform import db, report_region, router
+from lifeos.platform.fixed_code import fixed
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 from . import snapshot as bills_snapshot, state
 
@@ -46,10 +47,8 @@ def _valid(saved):
         if (not isinstance(row, dict) or not isinstance(row.get("Name"), str) or not row["Name"].strip()
                 or not isinstance(row.get("Paid"), bool) or any(field not in row for field in bills_snapshot.CRITICAL)):
             raise CardError("BILLS_CARD_SNAPSHOT_INVALID")
-    try:
+    with fixed((KeyError, TypeError, ValueError), CardError, "BILLS_CARD_SNAPSHOT_INVALID"):
         _instant(saved["taken_at"])
-    except (KeyError, TypeError, ValueError):
-        raise CardError("BILLS_CARD_SNAPSHOT_INVALID") from None
     return saved
 
 
@@ -139,13 +138,9 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
     block_id = (environ.get("BILLS_CARD_BLOCK_ID") or "").strip()
     if not block_id:
         return {"rows": 0, "active": 0, "overdue": 0, "due_window": 0, "amount_missing": 0, "blocks_written": 0, "status": "not_configured"}
-    try:
+    with fixed(Exception, CardError, "BILLS_CARD_STORE_FAILED", keep=NotionError):
         with (connect or db.connect)() as connection:
             saved = bills_snapshot.load(connection)
-    except NotionError:
-        raise
-    except Exception:
-        raise CardError("BILLS_CARD_STORE_FAILED") from None
     if saved is None:
         raise CardError("BILLS_CARD_SNAPSHOT_MISSING")
     now = _now(now)
