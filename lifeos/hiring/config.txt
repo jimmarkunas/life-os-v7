@@ -1,1 +1,2 @@
+HIRING_STATUS_BLOCK_ID input Notion block id (hiring status)
 HIRING_TABLE_BLOCK_ID input Notion block id (hiring table)
