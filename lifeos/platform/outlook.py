@@ -157,24 +157,26 @@ class Outlook:
         self._request("POST", f"/me/messages/{quoted}/move", None, {"destinationId": folder_id})
         return self.get(f"/me/messages/{quoted}", {"$select": "id,parentFolderId"}).get("parentFolderId") == folder_id
 
+    def _pages(self, url: str, params: dict[str, Any], limit: int, prefer: str = "") -> list[Any]:
+        """Every row of a Graph listing, following each @odata.nextLink. A listing that cannot be proven complete (page cap hit, or `limit` rows with more to come) raises instead of returning a partial census."""
+        out: list[Any] = []
+        for page in range(MAX_PAGES):
+            reply = self.get(url, params if page == 0 else None, prefer)
+            out += reply.get("value") or []
+            url = reply.get("@odata.nextLink")
+            if not url:
+                return out
+            if len(out) >= limit:
+                break
+        raise OutlookError("OUTLOOK_LISTING_INCOMPLETE")
+
     def messages(self, folder: str = "inbox", since: str | None = None, limit: int = 5000, fields: str | None = None, time_field: str = "receivedDateTime", prefer: str = "") -> list[Any]:
         """Every message in a folder received at or after `since` (ISO 8601), newest first, following every page. A listing that
         cannot be proven complete (page cap hit with more to come) raises instead of returning a partial census."""
         params = {"$select": fields or MESSAGE_FIELDS, "$top": PAGE_SIZE, "$orderby": f"{time_field} desc"}
         if since:
             params["$filter"] = f"{time_field} ge {since}"
-        out: list[Any]
-        out, url = [], f"/me/mailFolders/{urllib.parse.quote(folder)}/messages"
-        for page in range(MAX_PAGES):
-            reply = self.get(url, params if page == 0 else None, prefer)
-            out += reply.get("value") or []
-            link = reply.get("@odata.nextLink")
-            if not link:
-                return out[:limit]
-            if len(out) >= limit:
-                raise OutlookError("OUTLOOK_LISTING_INCOMPLETE")
-            url = link
-        raise OutlookError("OUTLOOK_LISTING_INCOMPLETE")
+        return self._pages(f"/me/mailFolders/{urllib.parse.quote(folder)}/messages", params, limit, prefer)[:limit]
 
     def replied_since(self, conversation_id: str, since_iso: str) -> bool:
         """True when Jim sent a message in this conversation after `since_iso` (Sent Items, compared here so the query stays a plain equality). Read-only; ids and times only."""
@@ -197,19 +199,7 @@ class Outlook:
         for name in names:
             quoted = name.replace("'", "''")
             params = {"$select": MESSAGE_FIELDS + ",categories", "$top": PAGE_SIZE, "$filter": f"categories/any(c:c eq '{quoted}')"}
-            found: list[Any]
-            url, found = "/me/messages", []
-            for page in range(MAX_PAGES):
-                reply = self.get(url, params if page == 0 else None)
-                found += reply.get("value") or []
-                link = reply.get("@odata.nextLink")
-                if not link:
-                    break
-                if len(found) >= limit:
-                    raise OutlookError("OUTLOOK_LISTING_INCOMPLETE")
-                url = link
-            else:
-                raise OutlookError("OUTLOOK_LISTING_INCOMPLETE")
+            found = self._pages("/me/messages", params, limit)
             for message in found:
                 merged.setdefault(message["id"], message)
         return list(merged.values())[:limit]
@@ -219,18 +209,7 @@ class Outlook:
         Like the mail listing, an incomplete enumeration raises."""
         params = {"startDateTime": start, "endDateTime": end, "$top": 100, "$select": fields or EVENT_FIELDS,
                   "$orderby": "start/dateTime"}
-        out: list[Any]
-        out, url = [], "/me/calendarView"
-        for page in range(MAX_PAGES):
-            reply = self.get(url, params if page == 0 else None, prefer='outlook.timezone="UTC"')
-            out += reply.get("value") or []
-            link = reply.get("@odata.nextLink")
-            if not link:
-                return out
-            if len(out) >= limit:
-                raise OutlookError("OUTLOOK_LISTING_INCOMPLETE")
-            url = link
-        raise OutlookError("OUTLOOK_LISTING_INCOMPLETE")
+        return self._pages("/me/calendarView", params, limit, 'outlook.timezone="UTC"')
 
     def message_html(self, message_id: str) -> str:
         """The HTML body of one message (content stays in memory only)."""
