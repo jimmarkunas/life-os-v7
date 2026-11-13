@@ -5,7 +5,6 @@ it never reads or writes the Bill Tracker, and it never advances a Due Date (the
 render time from the America/Chicago date, [today, today + 7] (the same boundary as the Bills view's native 'one week from now' filter); no calendar date is stored anywhere. Counts-only logs, fixed error codes."""
 import os
 from datetime import datetime, timedelta
-from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 from lifeos.platform import db, report_region, router
@@ -17,58 +16,16 @@ STALE_HOURS = 3
 WINDOW_DAYS = 8                                  # [today, today + 7]: today through one week from now, 8 calendar dates inclusive
 CARD_TITLE = router.BILLS_REGION
 MODULE = router.OWNERS[CARD_TITLE]
-HEADINGS = ("heading_2", "heading_3", "heading_4")
 # D117: the card owns only the TEXT in the callout (the summary line). The linked Bills table inside it is Jim's interactive view (it is where he ticks
-# Paid), so it is never removed or rewritten: only these plain text kinds are replaced; every other block stays exactly where it is.
-TEXT_KINDS = ("paragraph", "bulleted_list_item", "numbered_list_item", "to_do")
+# Paid), so it is never removed or rewritten: report_region.replace_text replaces only the plain text kinds; every other block stays exactly where it is.
 
 
 class CardError(NotionError):
     """Fixed codes only; never expose bill names, amounts or IDs."""
 
 
-def _plain(block):
-    inner = block.get(block.get("type")) or {}
-    return "".join((part.get("plain_text") or (part.get("text") or {}).get("content") or "")
-                   for part in inner.get("rich_text") or [] if isinstance(part, dict))
-
-
-def _children(client, block_id):
-    results, cursor, seen = [], None, set()
-    for _ in range(50):
-        path = f"/blocks/{quote(block_id, safe='')}/children?page_size=100"
-        if cursor:
-            if cursor in seen:
-                raise CardError("BILLS_NOTION_PAGINATION_INVALID")
-            seen.add(cursor)
-            path += f"&start_cursor={quote(cursor, safe='')}"
-        page = client.call("GET", path)
-        if (not isinstance(page, dict) or not isinstance(page.get("results"), list) or not isinstance(page.get("has_more"), bool)
-                or any(not isinstance(block, dict) or not isinstance(block.get("id"), str) for block in page["results"])):
-            raise CardError("BILLS_NOTION_PAGE_INCOMPLETE")
-        results.extend(page["results"])
-        if not page["has_more"]:
-            return results
-        cursor = page.get("next_cursor")
-        if not isinstance(cursor, str) or not cursor:
-            raise CardError("BILLS_NOTION_PAGE_INCOMPLETE")
-    raise CardError("BILLS_NOTION_PAGINATION_INCOMPLETE")
-
-
-def _same_id(left, right):
-    return isinstance(left, str) and isinstance(right, str) and left.replace("-", "").lower() == right.replace("-", "").lower()
-
-
-def _insert_after(client, block_id, after_id, blocks):
-    """Insert the new text right under the heading, so the table below it keeps its place."""
-    result = client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": blocks, "after": after_id})
-    # Notion's reply to an insert-after can list the following blocks as well as the new ones, so the count is only a floor; the read-back is the proof.
-    if not isinstance(result, dict) or not isinstance(result.get("results"), list) or len(result["results"]) < len(blocks):
-        raise CardError("BILLS_CARD_APPEND_MISMATCH")
-
-
-def _owned(blocks):
-    return bool(blocks) and blocks[0].get("type") in HEADINGS and _plain(blocks[0]).strip() == CARD_TITLE
+def _fail(code):
+    return CardError("BILLS_" + code)
 
 
 def _now(now):
@@ -107,11 +64,6 @@ def _amount(row):
 
 def _money(value):
     return f"${value:,.0f}" if float(value).is_integer() else f"${value:,.2f}"
-
-
-def _short(value):
-    day = state._day(value)
-    return f"{day.strftime('%b')} {day.day}" if day else "date unset"
 
 
 def _window(rows, today):
@@ -157,15 +109,6 @@ def _paragraph(content, url_label=None, url=None):
     return {"object": "block", "type": "paragraph", "paragraph": {"rich_text": parts}}
 
 
-def _bullet(content):
-    return {"object": "block", "type": "bulleted_list_item", "bulleted_list_item": {"rich_text": _text(content)}}
-
-
-def _line(row, field):
-    amount = _amount(row)
-    return f"{row['Name']} · {'due' if field == 'Due Date' else 'next due'} {_short(row.get(field))} · {_money(amount) if amount is not None else 'amount missing'}"
-
-
 def render(saved, stale=False, now=None, tracker_url=None):
     """-> (blocks, counts). Pure: the window comes from `now` in America/Chicago, the rows from the saved snapshot."""
     now = _now(now)
@@ -176,31 +119,6 @@ def render(saved, stale=False, now=None, tracker_url=None):
               "due_window": len(due), "amount_missing": sum(_amount(row) is None for row in overdue + due),
               "status": "stale" if stale else "fresh", "blocks_written": 0}
     return blocks, counts
-
-
-def _configured(environ):
-    """The Jira and Calendar callouts must still be configured (a missing one means the page is not set up as expected); nothing is read from them. LIFE-613: the proof that this card writes only
-    inside its own region is the scope guard on the client, which refuses any other block before the write is sent, not a comparison of the other cards' regions afterwards."""
-    if not ((environ.get("JIRA_CARD_BLOCK_ID") or "").strip() and (environ.get("CALENDAR_CARD_BLOCK_ID") or "").strip()):
-        raise CardError("BILLS_PROTECTED_REGION_UNAVAILABLE")
-
-
-def _target(client, block_id):
-    meta = client.call("GET", f"/blocks/{quote(block_id, safe='')}")
-    if not isinstance(meta, dict) or meta.get("type") != "callout" or not _same_id(meta.get("id"), block_id):
-        raise CardError("BILLS_CARD_NOT_OWNED")
-    blocks = _children(client, block_id)
-    if not _owned(blocks):
-        raise CardError("BILLS_CARD_NOT_OWNED")
-    try:
-        router.check_write(MODULE, [CARD_TITLE])
-    except router.RouterError:
-        raise CardError("BILLS_CARD_NOT_OWNED") from None
-    return blocks
-
-
-def _replaceable(block):
-    return block.get("type") in TEXT_KINDS
 
 
 def _tracker_link(existing):
@@ -233,34 +151,16 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
     now = _now(now)
     _valid(saved)
     stale = now - _instant(saved["taken_at"]) > timedelta(hours=STALE_HOURS)
-    client = report_region.ScopedClient(client or _client(environ), block_id, lambda code: CardError("BILLS_" + code))       # LIFE-613: every write is checked against this card's own callout first
-    existing = _target(client, block_id)
+    protected_ids = {router.JIRA_REGION: (environ.get("JIRA_CARD_BLOCK_ID") or "").strip(), router.CALENDAR_REGION: (environ.get("CALENDAR_CARD_BLOCK_ID") or "").strip()}
+    client = client or _client(environ)
+
+    def write(blocks, live):
+        return report_region.replace_text(client, block_id, CARD_TITLE, MODULE, blocks, protected_ids, _fail, "bills", live)
+
+    existing, _ = write([], False)                              # the dry run checks the callout is ours and returns what it holds, so the Bill Tracker link can be kept
     blocks, counts = render(saved, stale, now, _tracker_link(existing))
     if not live:
         return counts
-    old_text = [block for block in existing[1:] if _replaceable(block)]
-    kept = [block["id"] for block in existing[1:] if not _replaceable(block)]            # the interactive table and anything else stays untouched, in order
-    _configured(environ)
-    try:
-        router.check_write(MODULE, [CARD_TITLE])
-    except router.RouterError:
-        raise CardError("BILLS_CARD_NOT_OWNED") from None
-    _insert_after(client, block_id, existing[0]["id"], blocks)   # new text first: a failed write leaves the old text
-    removed = 0
-    for old in old_text:
-        try:
-            router.check_write(MODULE, [CARD_TITLE])
-        except router.RouterError:
-            raise CardError("BILLS_CARD_NOT_OWNED") from None
-        try:
-            client.call("DELETE", f"/blocks/{quote(old['id'], safe='')}")
-            removed += 1
-        except NotionError as error:
-            if str(error) != "NOTION_HTTP_404":
-                raise
-    after = _children(client, block_id)                   # authoritative read-back of the configured Bills region
-    if (not _owned(after) or after[0].get("id") != existing[0].get("id") or len(after) != 1 + len(blocks) + len(kept)
-            or [_plain(b) for b in after[1:1 + len(blocks)]] != [_plain(b) for b in blocks] or [b.get("id") for b in after[1 + len(blocks):]] != kept):
-        raise CardError("BILLS_CARD_VERIFY_FAILED")
+    _, removed = write(blocks, True)
     counts["blocks_written"], counts["removed"] = len(blocks), removed
     return counts

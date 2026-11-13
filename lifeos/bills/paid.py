@@ -8,6 +8,7 @@ from lifeos.platform import db, limits
 from lifeos.platform.notion_client import Client, NotionError
 from lifeos.platform.snapshot_store import Store
 from . import snapshot, state
+from .state import _day
 
 LOCAL_TZ = ZoneInfo("America/Chicago")
 LEDGER = Store("v7_bills_paid_ledger", key_column="page_id", key_type="VARCHAR(64)")
@@ -21,15 +22,6 @@ class PaidError(NotionError):
 def _today(value=None):
     value = value or datetime.now(LOCAL_TZ)
     return value.astimezone(LOCAL_TZ).date() if value.tzinfo else value.date()
-
-
-def _day(value):
-    if not isinstance(value, str) or not value:
-        return None
-    try:
-        return date.fromisoformat(value[:10])
-    except ValueError:
-        return None
 
 
 def _source_id(client):

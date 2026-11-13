@@ -741,7 +741,8 @@ class ReciprocalProtectionTests(unittest.TestCase):
         from lifeos.physmail import card as mail
         for module in (amazon, attention, mail):
             self.assertIn(("HIRING_CARD_BLOCK_ID", router.HIRING_REGION), module.PROTECTED, module.__name__)
-        for module in ("lifeos/bills/card.py", "lifeos/agenda/card.py", "lifeos/hiring/card.py"):          # LIFE-613: these no longer compare regions; each writes through the scope guard instead
+        self.assertIn("report_region.replace_text", (ROOT / "lifeos/bills/card.py").read_text())                                      # the Bills card writes through the shared writer, which holds the scope guard
+        for module in ("lifeos/agenda/card.py", "lifeos/hiring/card.py"):          # LIFE-613: these no longer compare regions; each writes through the scope guard instead
             self.assertIn("ScopedClient", (ROOT / module).read_text(), module)
 
 

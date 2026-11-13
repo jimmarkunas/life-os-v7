@@ -8,7 +8,7 @@ from unittest import mock
 from zoneinfo import ZoneInfo
 
 from lifeos.bills import card, paid, snapshot
-from lifeos.platform import router
+from lifeos.platform import report_region, router
 from tests.bills.test_bills import page
 from tests.kit.db import BillsSnapshotDB
 from tests.kit.notion import BillsRegions
@@ -33,7 +33,7 @@ def saved(rows, taken="2026-10-04T12:10:00-05:00"):
 
 
 def lines(blocks):
-    return [card._plain(b) for b in blocks]
+    return [report_region.plain(b) for b in blocks]
 
 
 class RenderTests(unittest.TestCase):
@@ -128,25 +128,16 @@ class WriteTests(unittest.TestCase):
         counts = self.run_card(notion)
         kids = notion.children["bills-callout"]
         self.assertEqual([k["id"] for k in kids][0], "heading-bills-callout")                 # the heading block itself is kept
-        self.assertEqual(card._plain(kids[0]), "Bills: This Week")
-        self.assertTrue(card._plain(kids[1]).startswith("Updated 12:10 PM CT"))                  # the summary sits right under the heading
+        self.assertEqual(report_region.plain(kids[0]), "Bills: This Week")
+        self.assertTrue(report_region.plain(kids[1]).startswith("Updated 12:10 PM CT"))                  # the summary sits right under the heading
         self.assertEqual(kids[2]["id"], "bills-view-old")                                     # the Bills table is still there, below it, untouched
         self.assertEqual(kids[2], view_before)
         self.assertNotIn("last accepted 9/14", "\n".join(lines(kids)))
-        self.assertEqual((counts["blocks_written"], counts["removed"]), (1, 1))
+        self.assertEqual((counts["blocks_written"], counts["removed"]), (1, 0))                # the status line is rewritten in place, so nothing is removed
         self.assertEqual((notion.full_tree("calendar-callout"), notion.full_tree("jira-callout"), notion.full_tree("dcc-callout")),
                          (calendar_before, jira_before, dcc_before))
-        ops = [m for m, _ in notion.log]
-        self.assertLess(ops.index("APPEND"), ops.index("DELETE"))                             # new text first, so a failed write leaves the old text
+        self.assertEqual({p.split("/")[2] for m, p in notion.log if m in ("APPEND", "DELETE", "PATCH")}, {"bills-status-old"})      # the one old status line is the only block touched
         self.assertFalse(any(p == f"/blocks/{notion.page_id}/children" for _, p in notion.log))
-
-    def test_nothing_but_the_old_status_text_is_deleted(self):
-        notion = BillsRegions()
-        self.run_card(notion)
-        deleted = {p.split("/")[2] for m, p in notion.log if m == "DELETE"}
-        self.assertEqual(deleted, {"bills-status-old"})
-        touched = {p.split("/")[2] for m, p in notion.log if m in ("APPEND", "DELETE")}
-        self.assertLessEqual(touched, {"bills-callout", "bills-status-old"})
 
     def test_dry_run_writes_nothing_and_missing_config_is_not_an_error(self):
         notion = BillsRegions()
@@ -158,12 +149,12 @@ class WriteTests(unittest.TestCase):
     def test_stale_snapshot_is_written_as_stale(self):
         notion = BillsRegions()
         card.run(0, True, environ=ENV, client=notion, now=NOW, connect=lambda: BillsSnapshotDB(saved(STALE_FOUR, "2026-10-04T05:00:00-05:00")))
-        self.assertTrue(card._plain(notion.children["bills-callout"][1]).startswith("STALE · last accepted Oct 4 5:00 AM CT"))
+        self.assertTrue(report_region.plain(notion.children["bills-callout"][1]).startswith("STALE · last accepted Oct 4 5:00 AM CT"))
 
     def test_tracker_link_is_preserved_and_wrong_target_refuses_before_writing(self):
         notion = BillsRegions()
         self.run_card(notion)
-        self.assertEqual(card._plain(notion.children["bills-callout"][1]).count("Bill Tracker"), 1)
+        self.assertEqual(report_region.plain(notion.children["bills-callout"][1]).count("Bill Tracker"), 1)
         for env in ({**ENV, "BILLS_CARD_BLOCK_ID": "calendar-callout"}, {**ENV, "BILLS_CARD_BLOCK_ID": "jira-callout"}):
             fresh = BillsRegions()
             with self.assertRaises(card.CardError) as caught:
@@ -194,10 +185,10 @@ class WriteTests(unittest.TestCase):
         foreign = notion.children["jira-callout"][0]["id"]
         before = notion.full_tree("jira-callout")
 
-        def buggy_writer(client, block_id, after_id, blocks, *rest):
+        def buggy_writer(client, *rest):
             client.call("PATCH", f"/blocks/{foreign}", {"heading_2": {"rich_text": [{"type": "text", "text": {"content": "overwritten"}}]}})
 
-        with mock.patch.object(card, "_insert_after", buggy_writer):
+        with mock.patch.object(report_region, "_write_in_place", buggy_writer):
             with self.assertRaises(card.CardError) as caught:
                 self.run_card(notion)
         self.assertEqual(str(caught.exception), "BILLS_WRITE_OUT_OF_SCOPE")

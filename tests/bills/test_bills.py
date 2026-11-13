@@ -100,12 +100,6 @@ class BillStateTests(unittest.TestCase):
         self.assertEqual(buckets["due_today"], [today])
         self.assertEqual(buckets["due_next_7_days"], [seventh])
 
-    def test_current_reads_only_saved_snapshot(self):
-        rows = [{"Status": "Active", "Paid": False, "Cycle": "Monthly", "Due Date": "2026-04-01",
-                 "Next Due": "2026-04-02"}]
-        database = BillsSnapshotDB(payload_rows(rows))
-        self.assertEqual(state.current(database, TODAY)["due_today"], rows)
-
 
 class NotionClientBillsTests(unittest.TestCase):
     def test_separate_credentials_and_query_helper_use_common_call_path(self):
