@@ -45,6 +45,7 @@ def statements(root=ROOT):
         tree = ast.parse(path.read_text())
         inner = {id(child) for node in ast.walk(tree) if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add)
                  for child in (node.left, node.right)}                               # a join is reported once, as a whole
+        inner |= {id(part) for node in ast.walk(tree) if isinstance(node, ast.JoinedStr) for part in node.values}   # LIFE-634: the pieces of an f-string are not statements (their tail is cut at the `{...}`)
         for node in ast.walk(tree):
             if id(node) in inner:
                 continue
