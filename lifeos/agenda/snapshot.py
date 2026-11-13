@@ -5,6 +5,7 @@ from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from lifeos.platform import db
+from lifeos.platform.fixed_code import fixed
 from lifeos.platform.gcal import GcalError, GoogleCalendar
 from lifeos.platform.notion_client import NotionError
 from lifeos.platform.snapshot_store import Store
@@ -141,10 +142,8 @@ def build(calendar, now=None):
 
 
 def load(connection):
-    try:
+    with fixed((TypeError, ValueError), AgendaError, "AGENDA_SNAPSHOT_INVALID"):
         return STORE.load(connection, 1)
-    except (TypeError, ValueError):
-        raise AgendaError("AGENDA_SNAPSHOT_INVALID") from None
 
 
 def run(limit, live, environ=os.environ, calendar=None, now=None, connect=None):

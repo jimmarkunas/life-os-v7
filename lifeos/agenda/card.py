@@ -7,6 +7,7 @@ from urllib.parse import quote, urlparse
 from zoneinfo import ZoneInfo
 
 from lifeos.platform import db, report_region, router
+from lifeos.platform.fixed_code import fixed
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 from lifeos.platform.report_region import plain
 from . import snapshot as agenda_snapshot
@@ -49,10 +50,8 @@ def _target(client, block_id):
     blocks = report_region.children(client, block_id, _fail)
     if not _owned(blocks):
         raise CardError("AGENDA_CARD_NOT_OWNED")
-    try:
+    with fixed(router.RouterError, CardError, "AGENDA_CARD_NOT_OWNED"):
         router.check_write(MODULE, [CARD_TITLE])
-    except router.RouterError:
-        raise CardError("AGENDA_CARD_NOT_OWNED") from None
     return blocks
 
 
@@ -153,10 +152,8 @@ def _event_block(event, marker=None):
 
 
 def _status(snapshot, stale):
-    try:
+    with fixed((KeyError, TypeError, ValueError), CardError, "AGENDA_SNAPSHOT_INVALID"):
         taken = _instant(snapshot["taken_at"])
-    except (KeyError, TypeError, ValueError):
-        raise CardError("AGENDA_SNAPSHOT_INVALID") from None
     return (f"STALE · last accepted {taken.strftime('%b %-d %-I:%M %p')} CT" if stale
             else f"Updated {taken.strftime('%-I:%M %p')} CT")
 
@@ -178,15 +175,13 @@ def _snapshot_counts(snapshot, stale):
                 or not isinstance(event.get("start"), str) or not isinstance(event.get("end"), str)
                 or any(event.get(key) is not None and not isinstance(event[key], str) for key in ("location", "meeting_link", "calendar_link"))):      # calendar_link is optional: snapshots saved before it existed stay valid
             raise CardError("AGENDA_SNAPSHOT_INVALID")
-        try:
+        with fixed((TypeError, ValueError), CardError, "AGENDA_SNAPSHOT_INVALID"):
             if event["all_day"]:
                 datetime.fromisoformat(event["start"])
                 datetime.fromisoformat(event["end"])
             else:
                 if _instant(event["end"]) <= _instant(event["start"]):
                     raise ValueError
-        except (TypeError, ValueError):
-            raise CardError("AGENDA_SNAPSHOT_INVALID") from None
     return {"events": len(events), "all_day": sum(bool(event.get("all_day")) for event in events),
             "today": sum(today in event["days"] for event in events),
             "tomorrow": sum(tomorrow in event["days"] for event in events),
@@ -237,10 +232,8 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
     if saved is None:
         raise CardError("AGENDA_SNAPSHOT_MISSING")
     now = agenda_snapshot.local_now(now)
-    try:
+    with fixed((KeyError, TypeError, ValueError), CardError, "AGENDA_SNAPSHOT_INVALID"):
         taken = _instant(saved["taken_at"])
-    except (KeyError, TypeError, ValueError):
-        raise CardError("AGENDA_SNAPSHOT_INVALID") from None
     stale = now - taken > timedelta(hours=STALE_HOURS)
     blocks, counts = render(saved, stale, now)
     client = report_region.ScopedClient(client or _client(environ), block_id, _fail)      # LIFE-613: every write is checked against this card's own callout first
