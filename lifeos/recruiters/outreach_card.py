@@ -3,8 +3,9 @@
 
 The region is anchored on the already pinned Hiring Pipeline table (HIRING_TABLE_BLOCK_ID): the block right after it, in the same parent, must be a heading_3 titled exactly
 `🤝 Recruiter Outreach` or `🤝 Recruiter Outreach (stamp)`, then one four-column table whose header row is exactly HEADERS, then anything but another table. Only the heading's
-stamp and the table's data rows are ever written; the header row, the link under the table, the Historical Snapshot and every other block on the page are digested before the
-write and must be identical after it. Anything else raises: nothing is created, moved or guessed.
+stamp and the table's data rows are ever written, and every write goes through `report_region.ScopedClient` (LIFE-656), which refuses any other block (the header row, the link under the
+table, the Historical Snapshot, another card's region) before the write is sent (WRITE_OUT_OF_SCOPE). The page is no longer digested before and after the write: other cards write the same
+page at the same time. The read-back proves the heading, the header row and the data rows. Anything else raises: nothing is created, moved or guessed.
 
 One table, four columns, open rows only (Action Status Needs Action or Waiting, not Done, Active): Needs Action first, then Waiting, each by Follow-up Date (none last), then the
 latest contact first. A row with any other status, including a blank one, is not an action item and is not shown.
@@ -242,7 +243,7 @@ def region(client, environ):
 
 
 def validate(client, environ):
-    """-> (region, digest of the whole page outside the two owned blocks)."""
+    """-> the region, after proving it is the only one of its title on the page (one read; nothing is compared afterwards)."""
     found = region(client, environ)
     own = [found["heading"]["id"], found["table"]["id"]]
     digest = _step("DIGEST", lambda: R.page_digest(client, found["page_id"], own, fail, SKIP))
@@ -252,7 +253,7 @@ def validate(client, environ):
         router.check_write(MODULE, [TITLE])
     except router.RouterError:
         raise fail("NOT_OWNED") from None
-    return found, digest
+    return found
 
 
 def _retitle(client, block_id, text):
@@ -260,9 +261,8 @@ def _retitle(client, block_id, text):
 
 
 def present(client, environ, build, heading, live):
-    """Dry run: validate only. Live: rewrite the data rows and the heading, read back, prove the rest of the page unchanged. build(current data rows) -> the new rows,
-    or build None keeps them."""
-    found, before = validate(client, environ)
+    """Dry run: validate only. Live: rewrite the data rows and the heading through the scope guard, read back. build(current data rows) -> the new rows, or build None keeps them."""
+    found = validate(client, environ)
     rows = build(found["rows"][1:]) if build else None
     counts = {"rows_changed": 0, "rows_added": 0, "rows_removed": 0, "verified": False}
     if rows is not None:
@@ -270,24 +270,22 @@ def present(client, environ, build, heading, live):
         counts["would_change"] = sum(a != R.want_view(b) for a, b in zip(have, rows)) + abs(len(have) - len(rows))
     if not live:
         return counts
-    own = [found["heading"]["id"], found["table"]["id"]]
+    scoped = R.ScopedClient(client, found["heading"]["id"], fail).adopt(found["table"]["id"], *(r["id"] for r in found["rows"][1:]))      # LIFE-656: the heading, the table and its data rows only
     try:
-        counts.update(R.write_floating(client, found, None, rows, fail))
+        counts.update(R.write_floating(scoped, found, None, rows, fail))
         if R.plain(found["heading"]).strip() != heading:
-            _retitle(client, found["heading"]["id"], heading)
-    except Exception:
+            _retitle(scoped, found["heading"]["id"], heading)
+    except Exception as error:
+        if str(error) == str(fail("WRITE_OUT_OF_SCOPE")):          # the guard refused a block that is not ours before anything was sent; keep its code
+            raise
         try:                                                     # a half-written table must not look current: the heading says so, best effort
-            _retitle(client, found["heading"]["id"], f"{TITLE} (DEGRADED)")
+            _retitle(scoped, found["heading"]["id"], f"{TITLE} (DEGRADED)")
         except Exception:
             pass
         raise fail("WRITE_FAILED") from None
     again = region(client, environ)                                                  # authoritative read-back
-    after = R.page_digest(client, again["page_id"], own, fail, SKIP)
     if not R.same_id(again["heading"]["id"], found["heading"]["id"]) or not R.same_id(again["table"]["id"], found["table"]["id"]) or R.plain(again["heading"]).strip() != heading:
         raise fail("HEADING_CHANGED")
-    if before["nodes"] != after["nodes"] or before["layout"] != after["layout"]:
-        print("recruiter-outreach: protected content changed", json.dumps(R.page_changed(before, after)))
-        raise fail("PROTECTED_REGION_CHANGED")
     if rows is not None and [R.live_view(r) for r in again["rows"][1:]] != [R.want_view(r) for r in rows]:
         raise fail("READBACK_MISMATCH")
     counts["verified"] = True
