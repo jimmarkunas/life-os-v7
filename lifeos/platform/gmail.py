@@ -13,6 +13,8 @@ import urllib.request
 from collections.abc import Iterable
 from typing import Any, Self
 
+from lifeos.platform.fixed_code import fixed
+
 API = "https://gmail.googleapis.com/gmail/v1/users/me"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 MAX_LIST_PAGES = 100
@@ -167,10 +169,8 @@ class Gmail:
             if isinstance(name, str) and isinstance(value, str):
                 values.setdefault(name.lower(), value)
         raw_date = full.get("internalDate")
-        try:
+        with fixed((TypeError, ValueError, OverflowError, OSError), GmailError, "GMAIL_MESSAGE_INCOMPLETE"):
             received = datetime.fromtimestamp(int(raw_date) / 1000, timezone.utc).isoformat()    # type: ignore[arg-type]  # a missing date is None: int(None) raises TypeError, caught below
-        except (TypeError, ValueError, OverflowError, OSError):
-            raise GmailError("GMAIL_MESSAGE_INCOMPLETE") from None
         labels = full.get("labelIds") or []
         if not isinstance(labels, list) or any(not isinstance(label, str) for label in labels):
             raise GmailError("GMAIL_MESSAGE_INCOMPLETE")
@@ -189,10 +189,8 @@ class Gmail:
         for header in full["payload"].get("headers") or []:
             if isinstance(header, dict) and isinstance(header.get("name"), str) and isinstance(header.get("value"), str):
                 values.setdefault(header["name"].lower(), header["value"])
-        try:
+        with fixed((TypeError, ValueError, OverflowError, OSError), GmailError, "GMAIL_MESSAGE_INCOMPLETE"):
             received = datetime.fromtimestamp(int(full.get("internalDate")) / 1000, timezone.utc).isoformat()    # type: ignore[arg-type]  # as above
-        except (TypeError, ValueError, OverflowError, OSError):
-            raise GmailError("GMAIL_MESSAGE_INCOMPLETE") from None
         labels = full.get("labelIds") if isinstance(full.get("labelIds"), list) else []
         return {"id": str(message_id), "received_at": received, "headers": {k: values[k] for k in (h.lower() for h in self.MAIL_HEADERS) if k in values},
                 "body_text": _find_text(full["payload"]), "label_ids": labels, "thread": str(full.get("threadId") or "")}
@@ -210,10 +208,8 @@ class Gmail:
         for header in full["payload"].get("headers") or []:
             if isinstance(header, dict) and isinstance(header.get("name"), str) and isinstance(header.get("value"), str):
                 values.setdefault(header["name"].lower(), header["value"])
-        try:
+        with fixed((TypeError, ValueError, OverflowError, OSError), GmailError, "GMAIL_MESSAGE_INCOMPLETE"):
             sent = datetime.fromtimestamp(int(full.get("internalDate")) / 1000, timezone.utc)    # type: ignore[arg-type]  # as above
-        except (TypeError, ValueError, OverflowError, OSError):
-            raise GmailError("GMAIL_MESSAGE_INCOMPLETE") from None
         labels = full.get("labelIds") if isinstance(full.get("labelIds"), list) else []
         return {"id": str(message_id), "thread": str(full.get("threadId") or ""), "sender": values.get("from", ""), "to": values.get("to", ""), "cc": values.get("cc", ""),
                 "subject": values.get("subject", ""), "snippet": str(full.get("snippet") or ""), "sent_at": sent, "labels": labels,
@@ -265,10 +261,8 @@ class Gmail:
         for m in messages:
             if not isinstance(m, dict) or "SENT" not in (m.get("labelIds") or []):
                 continue
-            try:
+            with fixed((TypeError, ValueError, OverflowError, OSError), GmailError, "GMAIL_THREAD_INCOMPLETE"):
                 sent = datetime.fromtimestamp(int(m.get("internalDate")) / 1000, timezone.utc)    # type: ignore[arg-type]  # as above
-            except (TypeError, ValueError, OverflowError, OSError):
-                raise GmailError("GMAIL_THREAD_INCOMPLETE") from None
             headers = ((m.get("payload") or {}).get("headers") or []) if isinstance(m.get("payload"), dict) else []
             subject = next((h["value"] for h in headers if isinstance(h, dict) and str(h.get("name", "")).lower() == "subject" and isinstance(h.get("value"), str)), "")
             out.append((sent, " ".join(subject.split())))
@@ -356,10 +350,8 @@ def _find_text(part: Any, keep_lines: bool = False) -> str:
         mime = node.get("mimeType")
         data = (node.get("body") or {}).get("data")
         if mime in ("text/plain", "text/html") and data:
-            try:
+            with fixed((ValueError, TypeError), GmailError, "GMAIL_BODY_DECODE_FAILED"):
                 decoded = base64.urlsafe_b64decode(data + "=" * (-len(data) % 4)).decode("utf-8", "replace")
-            except (ValueError, TypeError):
-                raise GmailError("GMAIL_BODY_DECODE_FAILED") from None
             (plain if mime == "text/plain" else html).append(decoded)
         for child in node.get("parts") or []:
             visit(child)
@@ -370,11 +362,9 @@ def _find_text(part: Any, keep_lines: bool = False) -> str:
     if not html:
         return ""
     parser = _TextFromHtml()
-    try:
+    with fixed(Exception, GmailError, "GMAIL_BODY_DECODE_FAILED"):
         parser.feed("\n".join(html))
         parser.close()
-    except Exception:
-        raise GmailError("GMAIL_BODY_DECODE_FAILED") from None
     if keep_lines:
         lines = (" ".join(line.split()) for line in " ".join(parser.pieces).split("\n"))
         return "\n".join([line for line in lines if line] + parser.links)           # link targets close the text, one per line (Physical Mail finds the mailbox page in one)
