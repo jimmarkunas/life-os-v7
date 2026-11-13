@@ -98,10 +98,6 @@ def requirement_units(units):
     return [u for u in units if gated(u)][:60]
 
 
-def duty_units(units):
-    return [u for u in units if u.section == "duty"][:40]
-
-
 def platform_hits(units):
     """Distinct technology terms in requirement-bearing sections, in order of appearance, required first.
     Returns [(term, optional)]; a term is required when any required-section, non-optional unit names it."""

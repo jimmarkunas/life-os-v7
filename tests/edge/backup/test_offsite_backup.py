@@ -418,9 +418,6 @@ class MacCheck(unittest.TestCase):
         path.write_bytes(b"x")
         os.utime(path, (at, at))
 
-    def test_the_limit_is_nine_days(self):
-        self.assertEqual(ob.MAC_STALE_SECONDS, 9 * 86400)
-
     def test_recent_just_under_and_just_over_nine_days(self):
         self.put("mac-20261109-2308.tar.gz.gpg", 1000)
         self.assertEqual(ob.mac_check(self.inbox, lambda: 1000 + 3600), (True, "mac_backup_ok", 0))

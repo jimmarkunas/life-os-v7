@@ -250,9 +250,6 @@ class ScheduledBatch(unittest.TestCase):
         self.assertNotIn("tick", self.names(plan(self.doc, "workflow_dispatch", variables, cloud_backlog="1", live=True)))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class TheHourIsFilled(unittest.TestCase):
     """LIFE-41 (Jim, Oct 20 2026: "fill every hour"): a tick's batch runs until about :55, never past the code's 45-minute cap (D238) or the finish job's 58 minutes,

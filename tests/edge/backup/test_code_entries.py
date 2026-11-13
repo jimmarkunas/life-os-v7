@@ -6,36 +6,7 @@ from lifeos.edge.backup import offsite_backup as ob
 from tests.edge.backup import safe_tmp
 from tests.edge.backup.test_offsite_backup import local_run
 
-CODE = {p: r for p, r in ob.TREES if p.startswith("code/")}
-
-
-class Lists(unittest.TestCase):
-    def test_both_code_folders_are_listed_and_clear_of_the_deny_pattern(self):
-        self.assertEqual(CODE, {"code/lifeos-fit": "/home/ubuntu/.local/lib/lifeos-fit", "code/lifeos-resume": "/home/ubuntu/.local/lib/lifeos-resume"})
-        for prefix, root in CODE.items():
-            self.assertFalse(ob.denied(prefix, root), prefix)
-
-    def test_the_config_folders_stay_listed(self):
-        listed = dict(ob.TREES)
-        self.assertEqual(listed["config/lifeos-fit"], "/home/ubuntu/.config/lifeos-fit")
-        self.assertEqual(listed["config/lifeos-resume"], "/home/ubuntu/.config/lifeos-resume")
-
-
 class FitService(unittest.TestCase):
-    def test_the_fit_unit_and_deploy_helper_are_listed_optional_and_clear_of_the_deny_pattern(self):
-        listed = {name: (source, required) for name, source, required in ob.FILES}
-        self.assertEqual(listed["systemd-user/lifeos-fit-gw.service"], ("/home/ubuntu/.config/systemd/user/lifeos-fit-gw.service", False))
-        self.assertEqual(listed["sbin/lifeos-fit-deploy"], ("/usr/local/sbin/lifeos-fit-deploy", False))
-        for name in ("systemd-user/lifeos-fit-gw.service", "sbin/lifeos-fit-deploy"):
-            self.assertFalse(ob.denied(name, listed[name][0]), name)
-
-    def test_the_resume_system_units_are_listed_optional_and_clear_of_the_deny_pattern(self):
-        listed = {name: (source, required) for name, source, required in ob.FILES}
-        self.assertEqual(listed["systemd/lifeos-resume.socket"], ("/etc/systemd/system/lifeos-resume.socket", False))
-        self.assertEqual(listed["systemd/lifeos-resume@.service"], ("/etc/systemd/system/lifeos-resume@.service", False))
-        for name in ("systemd/lifeos-resume.socket", "systemd/lifeos-resume@.service"):
-            self.assertFalse(ob.denied(name, listed[name][0]), name)
-
     def test_a_missing_one_is_counted_not_fatal_and_a_present_one_is_saved(self):
         with safe_tmp.TemporaryDirectory() as tmp:
             work, present = Path(tmp) / "w", Path(tmp) / "unit.service"

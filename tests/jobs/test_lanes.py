@@ -165,9 +165,6 @@ class Parsing(unittest.TestCase):
         self.assertEqual(lanes.detect_work_mode("Denver, CO"), "unknown")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class MarketTests(unittest.TestCase):
     def test_market_detection(self):
