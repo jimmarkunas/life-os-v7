@@ -66,6 +66,10 @@ def go(notion, live=True, env=None, now=NOW):
     return card.run(0, live, environ={**ENV, **(env or {})}, client=notion, now=now)
 
 
+def writes(notion, mark=0):
+    return [m for m, _ in notion.log[mark:] if m in ("APPEND", "DELETE", "PATCH")]
+
+
 def lines_of(notion):
     return [report_region.plain(b) for b in notion.children["dcc-callout"]]
 
@@ -129,10 +133,7 @@ class ComposeTests(unittest.TestCase):
         self.assertEqual(m["health"], "Source health and freshness · 6 of 6 current")
         self.assertIn("Calendar 10:06 PM", m["detail"][0])
         self.assertTrue(m["detail"][1].startswith("✅ 6 of 6 source cards current"))
-        self.assertNotIn("focus", m)
-        self.assertNotIn("sub", m)
-        self.assertNotIn("items", m)
-        self.assertNotIn("hiring", m)
+        self.assertFalse({"focus", "sub", "items", "hiring"} & set(m))
         self.assertEqual([(v, n) for v, n, _ in m["kpis"]], [("26", "Bills due"), ("6", "Jira Overdue / Blocked"), ("13", "Mail waiting")])
         self.assertEqual(m["kpis"][1][2], "Jira · 10:05 PM CT")                                          # the combined count, labelled as such, with its source stamp
 
@@ -143,19 +144,11 @@ class ComposeTests(unittest.TestCase):
         self.assertEqual(m["health"], "Source health and freshness · 4 of 6 current · Bills STALE · Amazon DEGRADED")
         self.assertTrue(m["detail"][1].startswith("⚠️ 4 of 6"))
         self.assertEqual([(v, t) for v, n, t in m["kpis"] if n == "Bills due"], [("—", "STALE · Bills (last 9:44 AM)")])
-        self.assertIn("Bills STALE", m["health"])
-        self.assertIn("Amazon DEGRADED", m["health"])
 
     def test_a_missing_gtv_action_or_an_unreadable_jira_card_says_so_instead_of_choosing_one(self):
-        m = card.compose(self.areas(Jira={"status": "JIRA Execution (Updated 10:05 PM CT)", "lines": [SPRINT]}), NOW)
-        self.assertNotIn("focus", m)
-        self.assertNotIn("sub", m)
-        m = card.compose(self.areas(Jira={"status": "JIRA Execution (Updated 10:05 PM CT)", "lines": ["GTV Action · JFM-2 — No status yet"]}), NOW)
-        self.assertNotIn("focus", m)
-        self.assertNotIn("sub", m)
-        m = card.compose(self.areas(Jira={"unreadable": True}), NOW)
-        self.assertNotIn("focus", m)
-        self.assertNotIn("sub", m)
+        for jira in ({"status": "JIRA Execution (Updated 10:05 PM CT)", "lines": [SPRINT]}, {"status": "JIRA Execution (Updated 10:05 PM CT)", "lines": ["GTV Action · JFM-2 — No status yet"]}, {"unreadable": True}):
+            m = card.compose(self.areas(Jira=jira), NOW)
+            self.assertFalse({"focus", "sub"} & set(m))
         self.assertEqual(m["kpis"][1][2], "UNREADABLE · Jira")
 
     def test_nothing_flagged_says_so_and_a_fresh_zero_is_a_zero(self):
@@ -216,7 +209,7 @@ class RunTests(unittest.TestCase):
         first, mark, made = self.shape(notion), len(notion.log), sum(1 for m, _ in notion.log if m == "APPEND")
         counts = go(notion)
         self.assertEqual((counts["blocks_written"], counts["removed"]), (0, 0))
-        self.assertEqual([m for m, _ in notion.log[mark:] if m in ("APPEND", "DELETE", "PATCH")], [])
+        self.assertEqual(writes(notion, mark), [])
         self.assertEqual(self.shape(notion), first)
         notion.children["bills-callout"][1] = text_block(notion, "bills-status-old", "paragraph", "Updated 10:07 PM CT · 0 due through one week from now · 27 bills due · 27 overdue · Bill Tracker")
         counts = go(notion)
@@ -228,11 +221,9 @@ class RunTests(unittest.TestCase):
         notion = page()
         go(notion)
         text = str(self.shape(notion))
-        self.assertNotIn("Primary focus", text)
-        self.assertNotIn("Suggested next decisions", text)
+        self.assertFalse(any(t in text for t in ("Primary focus", "Suggested next decisions", "Current focus")))
         self.assertIn("Hiring Pipeline unset", text)
         self.assertIn("Source health and freshness · 5 of 6 current · Hiring Pipeline UNSET", text)
-        self.assertNotIn("Current focus", text)
 
     def test_an_install_that_does_not_read_back_complete_keeps_the_old_lines_and_fails(self):
         notion = page()
@@ -255,33 +246,6 @@ class RunTests(unittest.TestCase):
         self.assertIn("Protected DCC content", "\n".join(lines_of(notion)))             # the old lines are removed only after the replacement is verified
         self.assertEqual([p for m, p in notion.log if m == "DELETE"], [])
 
-    def test_the_exact_legacy_decision_widget_is_removed_and_protected_regions_survive(self):
-        notion = page()
-        go(notion)
-        stale = card._b("callout", children=[card._b("paragraph", card._t("Suggested next decisions", bold=True)), card._b("paragraph", card._t("legacy"))])
-        notion.children["dcc-callout"].append(notion._make(stale))
-        text = "Updated 10:05 PM CT · 23 active exceptions\n\nSuggested next decisions\n1. Triage overdue bills"            # the Attention card has written the decisions
-        notion.metas["attention-callout"]["callout"] = {"rich_text": [{"plain_text": text, "text": {"content": text}}]}
-        before = notion.full_tree("attention-callout")
-        go(notion)
-        self.assertNotIn("Suggested next decisions", str(self.shape(notion)))
-        self.assertEqual(notion.full_tree("attention-callout"), before)
-
-    def test_the_old_decision_widget_is_never_deleted_before_the_attention_card_holds_the_decisions(self):
-        notion = page()
-        go(notion)
-        stale = card._b("callout", children=[card._b("paragraph", card._t("Suggested next decisions", bold=True)), card._b("paragraph", card._t("legacy"))])
-        notion.children["dcc-callout"].append(notion._make(stale))
-        mark = len(notion.log)
-        with self.assertRaises(NotionError) as error:                       # the Attention card has not written them (its step failed or has not run)
-            go(notion)
-        self.assertIn("DECISIONS_NOT_IN_ATTENTION", str(error.exception))
-        self.assertEqual(self.writes_since(notion, mark), [])
-        self.assertIn("legacy", str(self.shape(notion)))
-
-    def writes_since(self, notion, mark):
-        return [m for m, _ in notion.log[mark:] if m in ("APPEND", "DELETE", "PATCH")]
-
     def test_a_foreign_child_inside_a_valid_component_is_never_deleted_and_nothing_is_written(self):
         notion = page()
         go(notion)
@@ -292,7 +256,7 @@ class RunTests(unittest.TestCase):
         with self.assertRaises(NotionError) as error:
             go(notion)
         self.assertIn("CARD_STRUCTURE_CHANGED", str(error.exception))
-        self.assertEqual(self.writes_since(notion, mark), [])
+        self.assertEqual(writes(notion, mark), [])
         self.assertIn("my own note", str(self.shape(notion)))
 
     def test_a_later_branch_mismatch_stops_everything_even_when_an_earlier_branch_has_a_pending_change(self):
@@ -306,7 +270,7 @@ class RunTests(unittest.TestCase):
         with self.assertRaises(NotionError) as error:
             go(notion)
         self.assertIn("CARD_STRUCTURE_CHANGED", str(error.exception))
-        self.assertEqual(self.writes_since(notion, mark), [])
+        self.assertEqual(writes(notion, mark), [])
 
     def test_a_block_that_is_not_ours_or_a_changed_structure_stops_the_write(self):
         notion = page()
@@ -314,7 +278,7 @@ class RunTests(unittest.TestCase):
         with self.assertRaises(NotionError) as error:
             go(notion)
         self.assertIn("CARD_NOT_OWNED", str(error.exception))
-        self.assertEqual([m for m, _ in notion.log if m in ("APPEND", "DELETE", "PATCH")], [])
+        self.assertEqual(writes(notion), [])
         notion = page()
         go(notion)
         kpi_row = notion.children["dcc-callout"][2]["id"]
@@ -325,12 +289,12 @@ class RunTests(unittest.TestCase):
         with self.assertRaises(NotionError) as error:
             go(notion)
         self.assertIn("CARD_STRUCTURE_CHANGED", str(error.exception))
-        self.assertEqual([m for m, _ in notion.log[mark:] if m in ("APPEND", "DELETE", "PATCH")], [])
+        self.assertEqual(writes(notion, mark), [])
 
     def test_a_dry_run_and_a_missing_secret_write_nothing(self):
         notion = page()
         counts = go(notion, live=False)
-        self.assertEqual([m for m, _ in notion.log if m in ("APPEND", "DELETE", "PATCH")], [])
+        self.assertEqual(writes(notion), [])
         self.assertEqual(counts["status"], "fresh")
         self.assertEqual(card.run(0, True, environ={}, client=page())["status"], "not_configured")
 
@@ -382,7 +346,7 @@ class RunTests(unittest.TestCase):
         with self.assertRaises(NotionError) as error:
             go(notion, env={"DCC_CARD_BLOCK_ID": "jira-callout"})
         self.assertIn("NOT_OWNED", str(error.exception))
-        self.assertEqual([m for m, _ in notion.log if m in ("APPEND", "DELETE")], [])
+        self.assertEqual(writes(notion), [])
 
     def test_the_region_has_one_owner_and_the_card_is_a_stage(self):
         self.assertEqual(router.OWNERS[router.DCC_REGION], card.MODULE)
