@@ -229,7 +229,7 @@
     },
     {
       "date": "2026-11-12",
-      "pr": "PR_NUMBER_PLACEHOLDER",
+      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/1038",
       "approval": "Jim Markunas, November 12, 2026 CT, typed in the Claude Code chat: 'approve the readiness and decisions shim edits' (LIFE-631)",
       "part": "docs/development-policy/04 and 10 (the commands `python -m lifeos.readiness` and `python -m lifeos.decisions` become `python -m lifeos.sources.devtools.readiness` and `.decisions`; no rule changed)"
     }
