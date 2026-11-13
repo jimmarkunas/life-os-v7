@@ -1,6 +1,6 @@
-"""The MegIBOW block writer (D134). Writes only inside the one machine-owned callout whose id is MEGIBOW_BLOCK_ID: the callout's own text (status line, warnings) and the cells of the
-one table it holds. Every edit is in place (a PATCH of an existing block): nothing is inserted, deleted, moved or reordered, so nothing around the block can change.
-A block that is not the expected shape is DEGRADED and nothing is written; a write is read back and compared exactly."""
+"""The MegIBOW block writer: edits only the machine-owned callout (MEGIBOW_BLOCK_ID) and its one table, in place, and reads every write back (D134).
+
+Nothing around the block can change: nothing is inserted, deleted, moved or reordered. A block that is not the expected shape is DEGRADED and nothing is written."""
 from urllib.parse import quote
 
 from lifeos.platform import readback, report_region
