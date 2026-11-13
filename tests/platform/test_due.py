@@ -219,3 +219,44 @@ class TableMatchesTheWorkflow(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StageRows(unittest.TestCase):
+    """LIFE-617: the Jobs-tick board stages use the same table and the same rules; only the history reader (run logs) is new."""
+    def test_a_log_names_the_stages_that_finished_ok(self):
+        text = "2026-11-13T19:18:03Z stage resolve-linkedin: ok 4.9s\n2026-11-13T19:18:04Z stage boards: failed 3.0s\n2026-11-13T19:18:05Z stage web: ok 34.4s\n"
+        self.assertEqual(due.stages_ok(text), {"resolve-linkedin", "web"})
+
+    def test_a_slower_stage_is_skipped_until_due_and_its_last_ok_comes_from_the_newest_tick_run(self):
+        table = {"web-titlewatch": {"every_hours": 3, "providers": ["tinyfish"]}, "boards": {"every_hours": 1, "providers": ["ats"]}}
+        logs = {0: "stage boards: ok 1.0s\n", 1: "stage web-titlewatch: ok 60.0s\n"}
+
+        def api(path):
+            return {"workflow_runs": [{"id": 0, "display_title": "tick", "run_started_at": ago(1).strftime(STAMP), "created_at": ago(1).strftime(STAMP)},
+                                      {"id": 9, "display_title": "manual", "run_started_at": ago(2).strftime(STAMP), "created_at": ago(2).strftime(STAMP)},
+                                      {"id": 1, "display_title": "tick", "run_started_at": ago(2).strftime(STAMP), "created_at": ago(2).strftime(STAMP)}]}
+        result, ok = due.stage_decisions(table, now=NOW, api=api, log_text=lambda run_id: logs[run_id])
+        self.assertTrue(ok)
+        self.assertEqual({k: v[0] for k, v in result.items()}, {"web-titlewatch": False, "boards": True})      # 2 h < 3 h minus slack; hourly always due
+        result, _ = due.stage_decisions(table, now=NOW + dt.timedelta(hours=2), api=api, log_text=lambda run_id: logs[run_id])
+        self.assertTrue(result["web-titlewatch"][0])
+
+    def test_every_row_hourly_reads_no_history(self):
+        table = {"web": {"every_hours": 1, "providers": ["ats"]}}
+
+        def api(path):
+            raise AssertionError("no history is read when every row is hourly")
+        result, ok = due.stage_decisions(table, now=NOW, api=api)
+        self.assertTrue(ok and result["web"][0])
+
+    def test_unreadable_history_runs_every_stage(self):
+        table = {"web": {"every_hours": 6, "providers": ["ats"]}}
+        result, ok = due.stage_decisions(table, now=NOW, api=History([], fail=True))
+        self.assertFalse(ok)
+        self.assertTrue(result["web"][0])
+
+    def test_the_redirect_to_the_log_archive_never_carries_the_token(self):
+        import urllib.request
+        request = urllib.request.Request("https://api.github.com/x", headers={"Authorization": "Bearer t"})
+        new = due._NoAuthRedirect().redirect_request(request, None, 302, "Found", {}, "https://blob.example/log.zip")
+        self.assertNotIn("Authorization", {k.title() for k in new.headers})

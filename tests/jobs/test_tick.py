@@ -2,6 +2,7 @@ import unittest
 from unittest import mock
 
 from lifeos.jobs import tick
+from lifeos.platform import due
 from lifeos.jobs.tick import Step
 from lifeos.platform import source_registry as registry
 from tests.kit import shared
@@ -413,3 +414,36 @@ class AtsSlots(unittest.TestCase):
                 self.assertGreater(seen["max"], 2)
             else:
                 self.assertEqual(seen["max"], 2)
+
+
+class StageDueTests(unittest.TestCase):
+    """LIFE-617: the board stages read their rows from lifeos/platform/due_table.json; every row hourly = today's plan; a stage not due is skipped, not red; every board has a provider cap."""
+    def test_with_every_row_hourly_the_plan_is_unchanged_and_no_history_is_read(self):
+        plan, left = due.split_plan(tick.planned({}), {})
+        self.assertEqual(plan, tick.planned({}))
+        self.assertEqual(left, [])
+
+    def test_a_stage_not_due_is_left_out_and_named_with_its_rule(self):
+        decisions = {"web-titlewatch": (False, "every 3 h")}
+        table = {"web-titlewatch": {"every_hours": 3, "providers": ["tinyfish"]}}
+        with mock.patch("lifeos.platform.due.load_stages", return_value=table):
+            plan, left = due.split_plan(tick.PLAN, decisions=decisions)
+        self.assertNotIn("web-titlewatch", [s.name for s in plan])
+        self.assertEqual([(s.name, why) for s, why in left], [("web-titlewatch", "every 3 h")])
+        self.assertEqual(len(plan), len(tick.PLAN) - 1)
+
+    def test_every_board_has_a_row_and_every_provider_of_a_row_has_a_cap(self):
+        table = due.load_stages()
+        caps = set(tick.CAP_DEFAULTS) | {"ats"}
+        for step in tick.PLAN:
+            if step.providers:
+                self.assertIn(step.name, table, f"board stage {step.name} has no row in due_table.json")
+        for name, row in table.items():
+            self.assertIn("providers", row, f"{name} lists no providers (use [] for none)")
+            self.assertTrue(set(row["providers"]) <= caps, f"{name} names a provider with no cap")
+            step = next((s for s in tick.PLAN if s.name == name), None)
+            if step is not None:
+                self.assertEqual(set(row["providers"]), set(step.providers), name)
+
+    def test_linkedin_has_the_lowest_cap(self):
+        self.assertEqual(tick.CAP_DEFAULTS["linkedin"], min(tick.CAP_DEFAULTS.values()))
