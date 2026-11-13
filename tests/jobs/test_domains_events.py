@@ -18,7 +18,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github" / "workflows" / "domains.yml"
 TABLE = pathlib.Path(__file__).resolve().parent / "domains_event_table.json"
 GATES = ("bench_gate", "gate")                          # the benchmark gate before item 11, the one gate job after it; compared separately (see test_the_gate_runs_exactly_...)
-TRIGGER_INPUTS = ("all", "amazon", "attention", "benchmark", "bills_paid", "calendar_sync", "dcc", "hiring", "imessage", "jira", "live", "megibow", "physical_mail", "recruiters", "refresh")
+TRIGGER_INPUTS = ("all", "amazon", "benchmark", "bills_paid", "calendar_sync", "dcc", "hiring", "imessage", "jira", "live", "megibow", "physical_mail", "recruiters", "refresh")
 
 
 def load():
@@ -117,7 +117,7 @@ class DomainsEventTable(unittest.TestCase):
 
     def test_a_clean_tick_runs_the_chain_a_failure_adds_the_report_and_a_cancelled_or_manual_run_runs_nothing(self):
         current = table()
-        chain = {"jira", "agenda", "bills", "amazon", "amazon_retention", "mail", "hiring", "dcc", "attention", "megibow", "recruiters", "outlook", "granola"}
+        chain = {"jira", "agenda", "bills", "amazon", "amazon_retention", "mail", "hiring", "dcc", "megibow", "recruiters", "outlook", "granola"}
         self.assertEqual(chain, set(domain_jobs(current["after hourly: tick, success"])))
         self.assertEqual(set(domain_jobs(current["after hourly: tick, success, jira fails"])), chain | {"report"})        # the report job exists to name a failed job
         for label in ("after hourly: tick, cancelled", "after hourly: manual, success", "after hourly: quick, success", "dispatch: no input"):
