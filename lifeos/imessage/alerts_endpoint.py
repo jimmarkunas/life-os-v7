@@ -241,23 +241,15 @@ def scan(hours, wrapper, secret, now=None):
 def telegram(key, run=subprocess.run):
     """The TDLib adapter's one observation, re-shaped: counts and states pass through, the name only scrambled. A missing, slow or malformed adapter is
     UNAVAILABLE with null counts, never a zero."""
-    blank = {"health": "UNAVAILABLE", "auth": "ADAPTER_UNAVAILABLE", "error": None, "observed_at": None, "latest_state": "UNAVAILABLE", "latest": None,
-             **{k: None for k in TG_COUNTS}}
     try:
         done = run(["/usr/bin/python3", "-I", TELEGRAM, "attention"], capture_output=True, text=True, timeout=TELEGRAM_TIMEOUT)
         got = json.loads(done.stdout) if done.returncode == 0 else None
     except (OSError, ValueError, subprocess.SubprocessError):
         got = None
-    if not isinstance(got, dict) or got.get("channel") != "telegram" or got.get("health") not in ("CURRENT", "DEGRADED", "UNAVAILABLE"):
-        return blank
-    current = got["health"] == "CURRENT"
-    counts = {k: got.get(k) if current and type(got.get(k)) is int and got.get(k) >= 0 else None for k in TG_COUNTS}
-    name = got.get("latest_name") if current and got.get("latest_state") == "PRESENT" and isinstance(got.get("latest_name"), str) else None
-    state = got.get("latest_state") if current and got.get("latest_state") in ("PRESENT", "NONE") else "UNAVAILABLE"
-    if state == "PRESENT" and not name:
-        state = "UNAVAILABLE"
-    return {**blank, **counts, "health": got["health"], "auth": str(got.get("auth") or "")[:40] or None, "error": str(got.get("error") or "")[:40] or None,
-            "observed_at": got.get("observed_at"), "latest_state": state, "latest": scramble(key, name[:MAX_NAME]) if name else None}
+    healths = ("CURRENT", "DEGRADED", "UNAVAILABLE")
+    got = got if isinstance(got, dict) and got.get("channel") == "telegram" else None
+    block = _attention_block(got, key, healths)
+    return {**block, "auth": None} if got and got.get("health") in healths and not got.get("auth") else block       # an adapter that omits auth stays null, not the health word
 
 
 def _attention_block(got, key, healths):
@@ -295,12 +287,8 @@ def _wa_snapshot(path):
 
 
 def whatsapp(key, path=None):
-    """One snapshot from the always-on WhatsApp attention service; not running, slow or malformed is UNAVAILABLE, never zero. Without `path`: the lifeos-wa socket first, then the old user unit's."""
-    got = None
-    for candidate in ((path,) if path else (WHATSAPP_SOCKET_WA,)):
-        got = _wa_snapshot(candidate)
-        if got is not None:
-            break
+    """One snapshot from the always-on WhatsApp attention service; not running, slow or malformed is UNAVAILABLE, never zero. Without `path`: the lifeos-wa socket."""
+    got = _wa_snapshot(path or WHATSAPP_SOCKET_WA)
     if isinstance(got, dict) and got.get("channel") != "whatsapp":
         got = None
     if isinstance(got, dict) and "chats_known" in got:
