@@ -8,7 +8,7 @@ raises: nothing is created, moved or guessed. Fixed codes only."""
 import re
 
 from lifeos.platform import report_region as R, router
-from lifeos.platform.fixed_code import fixed
+from lifeos.platform.fixed_code import fixed, note_cause
 from lifeos.platform.notion_client import Client
 from . import models as M
 from lifeos.platform.notion_client import NotionError
@@ -30,6 +30,16 @@ def _step(name, call):
         if isinstance(error, HiringError):
             raise
         raise fail(f"{name}:{error}") from None
+
+
+def _digest(client, page_id, own):
+    """LIFE-654: a block another writer rewrote while the page was being read answers 404 mid-walk; read the page again once from its root. A second failure keeps the same fixed code."""
+    try:
+        return R.page_digest(client, page_id, own, fail, SKIP)
+    except NotionError as error:
+        if "NOTION_HTTP_404" not in str(error):
+            raise
+        return R.page_digest(client, page_id, own, fail, SKIP)
 
 
 def validate(client, environ):
@@ -58,7 +68,7 @@ def validate(client, environ):
     if R.cells_of(region["rows"][0]) not in (list(M.HEADERS), list(M.OLD_HEADERS)):      # LIFE-47: exactly the old or the new header; anything else writes nothing
         raise fail("HEADERS_CHANGED")
     own = [region["heading"]["id"], region["table"]["id"]]
-    digest = _step("DIGEST", lambda: R.page_digest(client, region["page_id"], own, fail, SKIP))
+    digest = _step("DIGEST", lambda: _digest(client, region["page_id"], own))
     if any(R.titled(text, M.TITLE) for text in digest["h3"]):         # the owned heading is outside the digest: any other heading with the title is a second region
         raise fail("HEADING_NOT_UNIQUE")
     with fixed(router.RouterError, fail, "NOT_OWNED"):
@@ -85,6 +95,7 @@ def present(client, environ, text, cells, live):
     except Exception as error:
         if str(error) == str(fail("WRITE_OUT_OF_SCOPE")):          # LIFE-613: the guard refused a block that is not ours before anything was sent; keep its code
             raise
+        note_cause(error)
         try:                                                     # a half-written table must not look current: the heading says so, best effort
             scoped.call("PATCH", f"/blocks/{region['heading']['id']}", {"heading_3": {"rich_text": [{"type": "text", "text": {"content": M.heading_text("DEGRADED")}}]}})
         except Exception:

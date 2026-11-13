@@ -1,8 +1,9 @@
-"""Notion API transport (platform: free API only, paced under 3 req/s, 429 retry). Fixed error codes, no job knowledge."""
+"""Notion API transport (platform: free API only, paced under 3 req/s, 429 retry, 409 conflict retry). Fixed error codes, no job knowledge."""
 from __future__ import annotations
 
 import json
 import os
+import random
 import re
 import time
 import urllib.error
@@ -56,12 +57,12 @@ def _pieces(content: str, limit: int) -> list[str]:
 
 class Client:
     def __init__(self, environ: Mapping[str, str] = os.environ, clock: Callable[[], float] = time.monotonic, sleep: Callable[[float], None] = time.sleep,
-                 token_name: str = "NOTION_API_TOKEN", source_name: str = "NOTION_JOB_LEDGER_DATA_SOURCE_ID") -> None:
+                 jitter: Callable[[], float] = random.random, token_name: str = "NOTION_API_TOKEN", source_name: str = "NOTION_JOB_LEDGER_DATA_SOURCE_ID") -> None:
         self.token = (environ.get(token_name) or "").strip()
         self.source = (environ.get(source_name) or "").strip().replace("collection://", "")
         if not self.token or not self.source:
             raise NotionError("NOTION_CONFIG_MISSING")
-        self._clock, self._sleep, self._last = clock, sleep, 0.0
+        self._clock, self._sleep, self._jitter, self._last = clock, sleep, jitter, 0.0
         self.calls = 0
 
     def call(self, method: str, path: str, body: Any = None) -> Any:
@@ -96,7 +97,8 @@ class Client:
         return self.call_once("PATCH", f"/pages/{self._page_id(page_id)}", {"properties": properties})
 
     def _call(self, method: str, path: str, body: Any, attempts: int, version: str | None = None) -> Any:
-        for attempt in range(attempts):
+        rate = flaky = 0
+        for _ in range(attempts + len(limits.NOTION_RETRY_BACKOFF)):
             wait = limits.NOTION_GAP_SECONDS - (self._clock() - self._last)
             if wait > 0:
                 self._sleep(wait)
@@ -109,8 +111,15 @@ class Client:
                 with urllib.request.urlopen(request, timeout=30) as response:
                     return json.loads(response.read() or b"{}")
             except urllib.error.HTTPError as error:
-                if error.code == 429 and attempt < attempts - 1:
+                if error.code == 429 and rate < attempts - 1:
+                    rate += 1
                     self._sleep(min(float(error.headers.get("Retry-After") or 2), 30))
+                    continue
+                if flaky < len(limits.NOTION_RETRY_BACKOFF) and (error.code == 409 or (error.code in (502, 503, 504) and method == "GET")):
+                    # LIFE-654: a 409 means another request was editing the same page and this one was NOT applied, so any method may retry it, even `call_once`.
+                    # A 5xx may have been applied, so only a read repeats it; every write that reaches here is read back by its caller before any repeat.
+                    self._sleep(limits.NOTION_RETRY_BACKOFF[flaky] * (1 + self._jitter()))
+                    flaky += 1
                     continue
                 refused = NotionError(f"NOTION_HTTP_{error.code}")
                 refused.detail = _detail(error)

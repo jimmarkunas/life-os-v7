@@ -23,6 +23,7 @@ from urllib.parse import quote, urlparse
 from zoneinfo import ZoneInfo
 
 from lifeos.platform import report_region as R, router
+from lifeos.platform.fixed_code import note_cause
 from lifeos.platform.notion_client import Client, NotionError
 from . import notion as store
 
@@ -275,7 +276,8 @@ def present(client, environ, build, heading, live):
         counts.update(R.write_floating(client, found, None, rows, fail))
         if R.plain(found["heading"]).strip() != heading:
             _retitle(client, found["heading"]["id"], heading)
-    except Exception:
+    except Exception as error:
+        note_cause(error)
         try:                                                     # a half-written table must not look current: the heading says so, best effort
             _retitle(client, found["heading"]["id"], f"{TITLE} (DEGRADED)")
         except Exception:
