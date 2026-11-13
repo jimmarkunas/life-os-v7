@@ -1,7 +1,6 @@
 ALERTS_ENABLED flag Alert switch read from a repository variable (alerts enabled)
 ALERTS_MUTED_UNTIL input Alert switch read from a repository variable (alerts muted until)
 ALERT_SETTINGS input Alert switch read from a repository variable (alert settings)
-BENCH_SNAPSHOT input:workflow Path of the frozen benchmark input (LIFE-577); set only by a benchmark dispatch, empty on every other run
 BUZZ_STAGE_KEY secret:hermes Buzz setting (stage key)
 CLOUD_BACKLOG workflow_only:workflow Input of a manual hourly run: how many Cloud Fit jobs to ask for (0 means none)
 CODES workflow_only:workflow Failure codes collected by an earlier workflow step, read by a later shell step

@@ -261,14 +261,7 @@ def main(argv=None):
     parser.add_argument("--quick", action="store_true", help="small caps for a manual end-to-end proof (D206)")
     args = parser.parse_args(argv)
     sys.stdout.reconfigure(line_buffering=True)                                     # each stage's counts line reaches the log when it is printed, not at exit
-    from lifeos.platform import bench                                                # noqa: PLC0415 - LIFE-604: all benchmark logic lives there; this file only calls it
     concurrency = concurrency_from_env()
-    settings = bench.tick_settings(concurrency)
-    if settings:                                                                     # LIFE-577: benchmark mode is always a dry run, and says what is in force before any stage starts
-        if args.live:
-            print("tick: BENCHMARK_REFUSED_LIVE", file=sys.stderr)
-            return 2
-        print("benchmark: settings in force:", json.dumps(settings, sort_keys=True), flush=True)
     timings, begun = {}, time.monotonic()
     if concurrency:                                                                    # LIFE-569: the global limit on board reads is set before any stage runs
         from lifeos.platform import read_slots                                         # noqa: PLC0415
@@ -277,14 +270,10 @@ def main(argv=None):
     outcome = tick(args.live, args.quick, timings=timings, concurrency=concurrency)
     print("tick:", json.dumps(outcome, sort_keys=True))
     wall = time.monotonic() - begun
-    if settings:
-        print(bench.tick_totals(outcome, timings, wall), flush=True)
     path = os.environ.get("GITHUB_STEP_SUMMARY")
     if path:                                                                         # LIFE-569: a short table in the finish job summary
         try:
             with open(path, "a") as handle:
-                if settings:
-                    handle.write(bench.tick_summary(settings, outcome, timings, wall))
                 handle.write(summary_table(outcome, timings, wall))
         except OSError:
             pass
