@@ -1,5 +1,6 @@
 """LIFE-643 row 5: the slim npm tree. Proven from the committed lockfile (no network, no npm): the omit rules leave 64 packages, the only install-script packages are baileys and protobufjs, no image library
-survives, and the build step carries exactly the three npm flags (a copy of the step without them fails the same check). The pack builds and passes the runner's own check."""
+survives, and the build step PRUNES a copy of the installed tree (it never runs npm: the only npm on the host is in the ubuntu account's private home). A fixture tree is pruned and verified; a build step or tree that skips the prune
+fails the same check. The pack builds and passes the runner's own check."""
 import json
 import subprocess
 import sys
@@ -11,9 +12,6 @@ ROOT = Path(__file__).resolve().parents[3]
 ORACLE = ROOT / "lifeos" / "whatsapp" / "oracle"
 PACK = ROOT / "lifeos" / "edge" / "whatsapp" / "pack_row5"
 BUILD_STEP = PACK / "pack" / "steps" / "20-build.sh"
-FLAGS = ("--omit=optional", "--omit=peer", "--ignore-scripts")
-
-
 def lock_packages():
     return {name: meta for name, meta in json.loads((ORACLE / "package-lock.json").read_text())["packages"].items() if name}
 
@@ -21,16 +19,6 @@ def lock_packages():
 def kept(packages):
     """What `npm ci --omit=optional --omit=peer` installs: everything not flagged optional or peer-only."""
     return {name for name, meta in packages.items() if not meta.get("optional") and not meta.get("peer")}
-
-
-def npm_ci_line(script):
-    lines = [line for line in script.splitlines() if " ci " in line and not line.lstrip().startswith("#")]
-    return lines[0] if len(lines) == 1 else ""
-
-
-def has_all_flags(script):
-    line = npm_ci_line(script)
-    return bool(line) and all(flag in line.split() for flag in FLAGS)
 
 
 class LockfileTests(unittest.TestCase):
@@ -51,13 +39,19 @@ class LockfileTests(unittest.TestCase):
 
 
 class StepTests(unittest.TestCase):
-    def test_the_build_step_runs_npm_ci_with_exactly_the_three_flags(self):
-        self.assertTrue(has_all_flags(BUILD_STEP.read_text()))
+    def test_the_build_step_copies_and_prunes_and_never_runs_npm_or_the_network(self):
+        script = BUILD_STEP.read_text()
+        code = "\n".join(line for line in script.splitlines() if not line.lstrip().startswith("#"))
+        for word in (" npm ", "npm ci", "npm install", "curl", "wget", "as_user \"$NEW_USER\" env \"HOME=$NEW_HOME\" \"PATH"):
+            self.assertNotIn(word, code)
+        self.assertIn("cp -a", code)
+        self.assertIn("slim.py\" prune", code)
 
-    def test_removing_any_flag_from_the_step_fails_the_check(self):
-        text = BUILD_STEP.read_text()
-        for flag in FLAGS:
-            self.assertFalse(has_all_flags(text.replace(" " + flag, "")), flag)
+    def test_a_build_step_without_the_prune_fails_the_same_check(self):
+        def prunes(script):
+            return any('slim.py" prune' in line for line in script.splitlines() if not line.lstrip().startswith("#"))
+        self.assertTrue(prunes(BUILD_STEP.read_text()))
+        self.assertFalse(prunes("\n".join(line for line in BUILD_STEP.read_text().splitlines() if 'slim.py" prune' not in line)))
 
     def test_the_pack_builds_and_passes_the_runners_own_check(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -73,25 +67,50 @@ class StepTests(unittest.TestCase):
 
 
 class SlimHelperTests(unittest.TestCase):
-    def tree(self, tmp, names, extra=()):
+    SLIM = str(PACK / "pack" / "files" / "slim.py")
+
+    def fixture(self, tmp, drop=()):
+        """A copy of what the host has: the lockfile's packages minus the platform-specific optional ones npm skips there (70 of 95), each folder with a package.json, the hidden lockfile, a dangling .bin link."""
+        packages = lock_packages()
+        installed = {n for n, m in packages.items() if not (m.get("optional") and ("darwin" in n or "win32" in n or "musl" in n or "arm" in n or "ppc" in n or "s390x" in n or "riscv" in n or "wasm" in n or "freebsd" in n or "ia32" in n))} - set(drop)
         modules = Path(tmp) / "node_modules"
-        modules.mkdir()
-        (modules / ".package-lock.json").write_text(json.dumps({"packages": {n: {} for n in names}}))
-        for e in extra:
-            (modules / e).mkdir()
-        return tmp
+        for name in installed:
+            folder = Path(tmp) / name
+            folder.mkdir(parents=True, exist_ok=True)
+            (folder / "package.json").write_text("{}")
+        (modules / ".package-lock.json").write_text(json.dumps({"packages": {n: {} for n in sorted(installed)}}))
+        (modules / ".bin").mkdir()
+        (modules / ".bin" / "gone").symlink_to("../sharp/bin/none.js")
+        return installed
 
-    def verify(self, tmp):
-        return subprocess.run([sys.executable, "-I", str(PACK / "pack" / "files" / "slim.py"), "verify", tmp, str(ORACLE / "package-lock.json")], capture_output=True, text=True)
+    def slim(self, command, tmp):
+        return subprocess.run([sys.executable, "-I", self.SLIM, command, tmp, str(ORACLE / "package-lock.json")], capture_output=True, text=True)
 
-    def test_the_right_set_passes_and_a_missing_package_or_an_image_library_fails(self):
+    def test_pruning_a_copy_of_the_installed_tree_leaves_exactly_the_64_and_verify_passes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            installed = self.fixture(tmp)
+            self.assertIn("sharp", " ".join(installed))                                    # the fixture really has the image libraries
+            self.assertEqual(self.slim("verify", tmp).stdout.strip(), "image_library_present")      # before the prune it fails
+            done = self.slim("prune", tmp)
+            self.assertEqual(done.returncode, 0, done.stdout)
+            self.assertIn("dangling_links_removed=1", done.stdout)
+            self.assertEqual(self.slim("verify", tmp).stdout.strip(), "packages=64 want=64 image_libraries=0")
+            self.assertFalse((Path(tmp) / "node_modules" / "@img").exists())
+            self.assertFalse((Path(tmp) / "node_modules" / ".bin" / "gone").is_symlink())
+
+    def test_a_tree_missing_a_needed_package_or_still_holding_an_omitted_one_fails(self):
         want = sorted(kept(lock_packages()))
         with tempfile.TemporaryDirectory() as tmp:
-            self.assertEqual(self.verify(self.tree(tmp, want)).stdout.strip(), "packages=64 want=64 image_libraries=0")
+            self.fixture(tmp, drop=[want[5]])
+            self.slim("prune", tmp)
+            self.assertIn("count_differs", self.slim("verify", tmp).stdout)
         with tempfile.TemporaryDirectory() as tmp:
-            self.assertIn("count_differs", self.verify(self.tree(tmp, want[1:])).stdout)
-        with tempfile.TemporaryDirectory() as tmp:
-            self.assertEqual(self.verify(self.tree(tmp, want, ["sharp"])).stdout.strip(), "image_library_present")
+            self.fixture(tmp)
+            self.slim("prune", tmp)
+            leftover = Path(tmp) / "node_modules" / "detect-libc"                          # an omitted peer-only package that survived the prune
+            leftover.mkdir()
+            (leftover / "package.json").write_text("{}")
+            self.assertEqual(self.slim("verify", tmp).stdout.strip(), "omitted_package_present")
 
 
 if __name__ == "__main__":
