@@ -49,7 +49,7 @@ class Report:
             return {"results": [deepcopy(self.blocks[i]) for i in self.kids.get(parts[1], [])], "has_more": False}
         raise AssertionError((method, path))
 
-    def call_once(self, method, path, body=None):
+    def call_once(self, method, path, body=None, **_):
         parts = path.strip("/").split("/")
         if method != "PATCH" or len(parts) != 2:
             raise AssertionError((method, path))

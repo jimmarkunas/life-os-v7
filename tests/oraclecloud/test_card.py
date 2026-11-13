@@ -4,13 +4,15 @@ import datetime as dt
 import io
 import json
 import unittest
+import urllib.request
 from unittest import mock
 
 from lifeos.imessage import alerts_endpoint as ep
 from lifeos.oraclecloud import card
-from lifeos.platform import report_region
+from lifeos.platform import notion_client, report_region
 from tests.imessage.support import RUNNER, OTHER, v2, whois
 from tests.kit.comms import Report, text
+from tests.kit.http import Response, http_error
 
 NOW = dt.datetime(2026, 10, 15, 13, 5, 0, tzinfo=dt.timezone.utc)                # 8:05 AM in Chicago
 SVC = {"gateway": True, "telegram": True, "whatsapp": True, "alerts": True}
@@ -48,7 +50,7 @@ class Card(unittest.TestCase):
         answer = answer or (lambda host: json.dumps(stats()).encode())
         out = io.StringIO()
         with mock.patch.object(report_region, "require_configured", lambda ids, fail: None), contextlib.redirect_stdout(out):
-            counts = card.run(0, live, env or self.ENV, now, answer, rep, **kw)
+            counts = card.run(0, live, env or self.ENV, now, answer, kw.pop("client", rep), **kw)
         return counts, out.getvalue()
 
     def test_live_writes_the_lines_with_bars_and_the_stamp_keeping_jims_bold(self):
@@ -213,14 +215,58 @@ class Card(unittest.TestCase):
         rep = report()
         write = rep.call_once
 
-        def busy(method, path, body=None):
-            result = write(method, path, body)
+        def busy(method, path, body=None, **kw):
+            result = write(method, path, body, **kw)
             rep.blocks["bills"]["callout"] = {"rich_text": [text("Bills (another card wrote this)")]}
             return result
 
         rep.call_once = busy
         counts, _ = self.run_card(rep)
         self.assertEqual(counts["written"], 2)
+
+    def test_an_unchanged_card_makes_zero_writes_and_a_changed_one_writes_only_the_differing_blocks(self):
+        """LIFE-661: read, compare, write only the difference. The same readings at the same minute: no PATCH and no read-back. A later hour: only the stamp. New readings in the minute just written: only the paragraph."""
+        rep = report()
+        self.assertEqual(self.run_card(rep)[0]["written"], 2)
+        rep.patches.clear()
+        counts, _ = self.run_card(rep)
+        self.assertEqual((counts["written"], rep.patches), (0, []))
+        later = NOW + dt.timedelta(hours=1)
+
+        def fresh(**over):
+            return lambda host: json.dumps(stats(observed_at="2026-10-15T14:04:30Z", **over)).encode()
+        counts, _ = self.run_card(rep, now=later, answer=fresh())
+        self.assertEqual((counts["written"], [p[0] for p in rep.patches]), (1, ["ohead"]))
+        rep.patches.clear()
+        counts, _ = self.run_card(rep, now=later, answer=fresh(cpu_24h_pct=9.9))
+        self.assertEqual((counts["written"], [p[0] for p in rep.patches]), (1, ["obody"]))
+        self.assertIn("avg 9.9%", rep.plain("obody"))
+
+    def test_a_429_on_the_card_write_is_retried_and_forever_fails_with_the_same_fixed_code(self):
+        """LIFE-661: the card writes with call_once, which used to give up on the first 429 (the Nov 13 failures). Through the real client: 429 then success writes; 429 forever is ORACLE_WRITE_FAILED."""
+        def run_with(rep, refusals):
+            left = [refusals]
+
+            def opener(request, timeout=0):
+                path = request.full_url.removeprefix(notion_client.API)
+                if request.get_method() == "PATCH":
+                    if left[0]:
+                        left[0] -= 1
+                        raise http_error(request, 429, headers={"Retry-After": "1"})
+                    return Response(rep.call_once("PATCH", path, json.loads(request.data)))
+                return Response(rep.call(request.get_method(), path))
+
+            client = notion_client.Client({"NOTION_API_TOKEN": "t", "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "s"}, sleep=lambda s: None)
+            with mock.patch.object(urllib.request, "urlopen", opener):
+                return self.run_card(rep, client=client)[0]
+
+        rep = report()
+        self.assertEqual(run_with(rep, 2)["written"], 2)
+        self.assertEqual(rep.plain("ohead"), "Oracle Cloud (Updated Oct 15 · 8:05 AM CT)")
+        rep = report()
+        with self.assertRaises(card.OracleCardError) as error:
+            run_with(rep, 99)
+        self.assertEqual((str(error.exception), rep.patches), ("ORACLE_WRITE_FAILED", []))
 
     def test_a_write_into_another_cards_block_is_refused_before_it_is_sent_and_nothing_changes(self):
         """LIFE-613 mutation proof. A writer aimed at another card's block (the Attention callout) must fail with the fixed code and leave that block untouched. On the old code the write went

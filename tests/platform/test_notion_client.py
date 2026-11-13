@@ -49,9 +49,9 @@ class RefusedRequest(unittest.TestCase):
 
 
 class RetryTests(unittest.TestCase):
-    """LIFE-654: a 409 conflict (not applied) is retried on any method, a 502/503/504 only on a read; both with capped, jittered backoff; the 429 path is unchanged."""
+    """LIFE-654: a 409 conflict (not applied) is retried on any method, a 502/503/504 only on a read; both with capped, jittered backoff; LIFE-661: a call_once that asks for rate_retries repeats a 429 too."""
 
-    def run_calls(self, method, *answers, once=False):
+    def run_calls(self, method, *answers, once=False, rate_retries=0):
         import urllib.request
         from types import SimpleNamespace
         from unittest import mock
@@ -67,7 +67,7 @@ class RetryTests(unittest.TestCase):
         send = client.call_once if once else client.call
         with mock.patch.object(urllib.request, "urlopen", opener):
             try:
-                result = send(method, "/blocks/b")
+                result = send(method, "/blocks/b", rate_retries=rate_retries) if once else send(method, "/blocks/b")
             except notion_client.NotionError as error:
                 result = str(error)
         return result, [s for s in sleeps if s > 0.45], len(items), client.calls
@@ -89,11 +89,18 @@ class RetryTests(unittest.TestCase):
             result, waits, left, _ = self.run_calls(method, (502,), None)
             self.assertEqual((result, waits, left), ("NOTION_HTTP_502", [], 1))
 
-    def test_a_429_still_waits_the_retry_after_and_call_once_never_retries_it(self):
-        self.assertEqual(self.run_calls("GET", (429, {"Retry-After": "7"}), None)[:3], ({"ok": 1}, [7.0], 0))
-        self.assertEqual(self.run_calls("GET", (429,), None, once=True)[:3], ("NOTION_HTTP_429", [], 1))
-        result, waits, left, calls = self.run_calls("GET", (429,), (429,), (429,), (429,), None)
-        self.assertEqual((result, left, calls), ("NOTION_HTTP_429", 1, 4))
+    def test_a_429_waits_the_retry_after_with_jitter_and_call_once_repeats_it_only_when_asked(self):
+        self.assertEqual(self.run_calls("GET", (429, {"Retry-After": "8"}), None)[:3], ({"ok": 1}, [10.0], 0))                  # 8 s x (1 + 0.5 / 2)
+        self.assertEqual(self.run_calls("GET", (429,), None, once=True)[:3], ("NOTION_HTTP_429", [], 1))                          # the default: one try
+        result, waits, left, calls = self.run_calls("PATCH", (429,), (429,), None, once=True, rate_retries=6)
+        self.assertEqual((result, waits, left, calls), ({"ok": 1}, [2.5, 2.5], 0, 3))
+        self.assertEqual(self.run_calls("PATCH", (429, {"Retry-After": "900"}), None, once=True, rate_retries=6)[1], [37.5])      # capped at 30 s before jitter
+
+    def test_a_429_forever_gives_up_after_the_capped_retries_with_the_same_fixed_code(self):
+        result, waits, left, calls = self.run_calls("PATCH", *[(429,)] * 9, once=True, rate_retries=6)
+        self.assertEqual((result, waits, left, calls), ("NOTION_HTTP_429", [2.5] * 6, 2, 7))
+        result, waits, left, calls = self.run_calls("GET", *[(429,)] * 6)
+        self.assertEqual((result, left, calls), ("NOTION_HTTP_429", 2, 4))
 
 
 if __name__ == "__main__":
