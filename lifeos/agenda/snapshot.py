@@ -19,13 +19,24 @@ class AgendaError(NotionError):
     """Fixed codes only; calendar content and identifiers never enter errors."""
 
 
-def _local_now(now=None):
+def _invalid():
+    return AgendaError("AGENDA_EVENT_INVALID")
+
+
+def _of(value, kind):
+    """`value` when it is None or a `kind` (a missing field); anything else is an invalid event."""
+    if value is not None and not isinstance(value, kind):
+        raise _invalid()
+    return value
+
+
+def local_now(now=None):
     now = now or datetime.now(TZ)
     return now.replace(tzinfo=TZ) if now.tzinfo is None else now.astimezone(TZ)
 
 
 def window(now=None):
-    today = _local_now(now).date()
+    today = local_now(now).date()
     start = datetime.combine(today, time.min, TZ)
     end = datetime.combine(today + timedelta(days=2), time.min, TZ)  # API timeMax is exclusive
     return start.isoformat(), end.isoformat(), today, today + timedelta(days=1)
@@ -34,47 +45,47 @@ def window(now=None):
 def _instant(part):
     raw = part.get("dateTime")
     if not isinstance(raw, str) or not raw:
-        raise AgendaError("AGENDA_EVENT_INVALID")
+        raise _invalid()
     try:
         value = datetime.fromisoformat(raw.replace("Z", "+00:00"))
         if value.tzinfo is None:
             value = value.replace(tzinfo=ZoneInfo(part.get("timeZone") or LOCAL_TZ))
         return value.astimezone(TZ)
     except Exception:
-        raise AgendaError("AGENDA_EVENT_INVALID") from None
+        raise _invalid() from None
 
 
 def compact(event, today, tomorrow):
     """Keep only report fields; omit cancelled, declined, and working-location records."""
     if event.get("status") == "cancelled" or event.get("eventType") == "workingLocation":
         return None
-    attendees = event.get("attendees") or []
-    if not isinstance(attendees, list) or any(not isinstance(attendee, dict) for attendee in attendees):
-        raise AgendaError("AGENDA_EVENT_INVALID")
+    attendees = _of(event.get("attendees") or [], list)
+    if any(not isinstance(attendee, dict) for attendee in attendees):
+        raise _invalid()
     if any(attendee.get("self") is True and attendee.get("responseStatus") == "declined" for attendee in attendees):
         return None
     start, end = event.get("start"), event.get("end")
     if not isinstance(start, dict) or not isinstance(end, dict):
-        raise AgendaError("AGENDA_EVENT_INVALID")
+        raise _invalid()
     all_day = isinstance(start.get("date"), str) and not start.get("dateTime")
     days = []
     if all_day:
         try:
             start_day, end_day = date.fromisoformat(start["date"]), date.fromisoformat(end["date"])
         except ValueError:
-            raise AgendaError("AGENDA_EVENT_INVALID") from None
+            raise _invalid() from None
         if end_day <= start_day:
-            raise AgendaError("AGENDA_EVENT_INVALID")
+            raise _invalid()
         start_value, end_value = start_day.isoformat(), end_day.isoformat()
         for day in (today, tomorrow):
             if start_day <= day < end_day:
                 days.append(day.isoformat())
     else:
         if start.get("date") or end.get("date"):
-            raise AgendaError("AGENDA_EVENT_INVALID")
+            raise _invalid()
         start_at, end_at = _instant(start), _instant(end)
         if end_at < start_at:                                     # zero-length events are legal in Google
-            raise AgendaError("AGENDA_EVENT_INVALID")
+            raise _invalid()
         start_value, end_value = start_at.isoformat(), end_at.isoformat()
         for day in (today, tomorrow):
             day_start = datetime.combine(day, time.min, TZ)
@@ -83,30 +94,15 @@ def compact(event, today, tomorrow):
                 days.append(day.isoformat())
     if not days:
         return None
-    event_id, title = event.get("id"), event.get("summary")
+    event_id, title = event.get("id"), _of(event.get("summary"), str)
     if not isinstance(event_id, str) or not event_id:
-        raise AgendaError("AGENDA_EVENT_INVALID")
-    if title is not None and not isinstance(title, str):
-        raise AgendaError("AGENDA_EVENT_INVALID")
+        raise _invalid()
     title = (title or "").strip() or "(no title)"             # untitled events are normal on a shared calendar
-    extended = event.get("extendedProperties") or {}
-    if not isinstance(extended, dict):
-        raise AgendaError("AGENDA_EVENT_INVALID")
-    private = extended.get("private") or {}
-    if not isinstance(private, dict):
-        raise AgendaError("AGENDA_EVENT_INVALID")
-    conference = event.get("conferenceData") or {}
-    if not isinstance(conference, dict):
-        raise AgendaError("AGENDA_EVENT_INVALID")
-    entry_points = conference.get("entryPoints") or [] if isinstance(conference, dict) else []
+    private = _of(_of(event.get("extendedProperties") or {}, dict).get("private") or {}, dict)
+    entry_points = _of(event.get("conferenceData") or {}, dict).get("entryPoints") or []
     meeting = event.get("hangoutLink") or next((point.get("uri") for point in entry_points
                                                 if isinstance(point, dict) and isinstance(point.get("uri"), str)), None)
-    location = event.get("location")
-    if location is not None and not isinstance(location, str):
-        raise AgendaError("AGENDA_EVENT_INVALID")
-    html_link = event.get("htmlLink")
-    if html_link is not None and not isinstance(html_link, str):
-        raise AgendaError("AGENDA_EVENT_INVALID")
+    location, html_link = _of(event.get("location"), str), _of(event.get("htmlLink"), str)
     calendar_link = html_link if html_link and html_link.startswith(("https://", "http://")) else None     # the event's own page in Google Calendar (the title's link)
     return {"id": event_id, "title": title, "start": start_value, "end": end_value, "all_day": all_day,
             "location": location or None, "meeting_link": meeting or None, "calendar_link": calendar_link,
@@ -114,7 +110,7 @@ def compact(event, today, tomorrow):
 
 
 def build(calendar, now=None):
-    now = _local_now(now)
+    now = local_now(now)
     time_min, time_max, today, tomorrow = window(now)
     try:
         raw_events = calendar.list_events(time_min, time_max)
@@ -133,7 +129,7 @@ def build(calendar, now=None):
         except AgendaError:
             raise
         except Exception:
-            raise AgendaError("AGENDA_EVENT_INVALID") from None
+            raise _invalid() from None
         if item is None:
             continue
         if item["id"] in seen:
@@ -142,10 +138,6 @@ def build(calendar, now=None):
         events.append(item)
     return {"schema": SCHEMA_V, "taken_at": now.isoformat(), "timezone": LOCAL_TZ,
             "today": today.isoformat(), "tomorrow": tomorrow.isoformat(), "events": events}
-
-
-def save(connection, snapshot):
-    STORE.save(connection, 1, snapshot)
 
 
 def load(connection):

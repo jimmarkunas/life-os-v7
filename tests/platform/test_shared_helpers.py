@@ -43,11 +43,12 @@ class Paging(unittest.TestCase):
 
     def test_a_page_that_is_not_whole_is_the_incomplete_code(self):
         for bad in (None, [], {"results": [], "has_more": "no"}, {"has_more": False}, {"results": None, "has_more": False}):
-            self.assertEqual(codes(lambda: list(notion_pages.pages(lambda c: bad, Boom, "BAD"))), "BAD")
+            self.assertEqual(codes(lambda bad=bad: list(notion_pages.pages(lambda c: bad, Boom, "BAD"))), "BAD")
 
     def test_a_missing_or_empty_or_non_text_cursor_is_the_incomplete_code(self):
         for cursor in (None, "", 5):
-            self.assertEqual(codes(lambda: list(notion_pages.pages(lambda c: {"results": [], "has_more": True, "next_cursor": cursor}, Boom, "BAD", repeat="AGAIN"))), "BAD")
+            reply = {"results": [], "has_more": True, "next_cursor": cursor}
+            self.assertEqual(codes(lambda reply=reply: list(notion_pages.pages(lambda c: reply, Boom, "BAD", repeat="AGAIN"))), "BAD")
 
     def test_a_repeated_cursor_is_the_repeat_code_and_defaults_to_the_incomplete_one(self):
         fetch = lambda cursor: page(1, more="same")

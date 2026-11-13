@@ -20,12 +20,7 @@ class FakeGmail:
     def message(self, i):
         return ("", self.html.get(i, ""), 0)
 
-    html = {}
-
-    def trash(self, *a):
-        raise AssertionError("the census never writes")
-
-    relabel = apply_amazon = trash
+    html = {}                       # no write method exists on this fake: any trash, label or Notion call from the census fails
 
 
 class NumbersTests(unittest.TestCase):
