@@ -40,6 +40,14 @@ class Consent(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 G.exchange("cid", "cs", "code", "r", "v", lambda req, timeout, b=bad: Reply(b))
 
+    def test_a_narrower_scope_can_be_asked_for_and_demanded_exactly(self):
+        narrow, grant = G.SCOPE + ".file", lambda scope: (lambda req, timeout: Reply({"scope": scope, "refresh_token": "rt"}))     # noqa: E731
+        self.assertIn("auth%2Fdrive.file", G.auth_url("c", "http://127.0.0.1:1", "s", "v", narrow))
+        G.exchange("c", "s", "x", "r", "v", grant(narrow + " " + G.SCOPE), scope=narrow)                    # extra scopes pass unless the grant must be exact
+        with self.assertRaises(SystemExit) as refused:
+            G.exchange("c", "s", "x", "r", "v", grant(narrow + " " + G.SCOPE), scope=narrow, exact=True)
+        self.assertIn("exactly the drive.file scope", str(refused.exception))
+
     def test_only_a_redirect_with_the_right_state_yields_the_code(self):
         for state, want in (("good", "abc"), ("forged", None)):
             server = http.server.HTTPServer(("127.0.0.1", 0), http.server.BaseHTTPRequestHandler)

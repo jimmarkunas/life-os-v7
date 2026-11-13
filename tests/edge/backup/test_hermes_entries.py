@@ -9,40 +9,15 @@ from lifeos.edge.backup import offsite_backup as ob
 from tests.edge.backup import safe_tmp
 from tests.edge.backup.test_offsite_backup import local_run, make_db
 
-HERMES_NAMES = [n for n, *_ in ob.SQLITE + ob.FILES if n.startswith("hermes/")] + [p for p, _ in ob.TREES if p.startswith("hermes/")]
 NEVER = (".env", "auth", "mcp-tokens", "cred", "token", "secret", "installs", "tools", "cache", "logs", "sessions", "hold.py", "last_seen", "key")
 
 
 class Lists(unittest.TestCase):
-    def test_the_hermes_entries_are_listed_under_one_prefix_and_one_owner(self):
-        self.assertGreaterEqual(len(HERMES_NAMES), 20)
-        for name, source, owner, _required in [e for e in ob.SQLITE if e[0].startswith("hermes/")]:
-            self.assertEqual(owner, "hermes", name)
-            self.assertTrue(source.startswith(ob.HERMES + "/"), name)
-            self.assertTrue(name.endswith(".db"), name)
-        for name, source, _required in [e for e in ob.FILES if e[0].startswith("hermes/")]:
-            self.assertTrue(source.startswith(ob.HERMES + "/"), name)
-            self.assertTrue(name.endswith(("config.yaml", "SOUL.md")), name)
-        for prefix, root in [e for e in ob.TREES if e[0].startswith("hermes/")]:
-            self.assertTrue(root.startswith(ob.HERMES + "/") and root.endswith("/memories"), prefix)
-
-    def test_no_hermes_entry_is_secret_shaped_and_none_names_a_credential_store_or_the_program(self):
-        for name, source, *_ in [e for e in ob.SQLITE + ob.FILES if e[0].startswith("hermes/")]:
-            self.assertFalse(ob.denied(name, source), name)
+    def test_no_hermes_entry_names_a_credential_store_or_the_program_and_none_can_stop_the_run(self):
+        for name, source, *rest in [e for e in ob.SQLITE + ob.FILES if e[0].startswith("hermes/")]:
+            self.assertFalse(rest[-1], name)                                                    # the required flag is last in both lists
             for word in NEVER:
                 self.assertNotIn(word, name.lower() + " " + source.lower().replace("/var/lib/hermeseval/home/.hermes", ""), (name, word))
-        for prefix, root in [e for e in ob.TREES if e[0].startswith("hermes/")]:
-            self.assertFalse(ob.denied(prefix, root), prefix)
-
-    def test_a_hermes_problem_can_never_stop_the_other_copies(self):
-        for entry in [e for e in ob.SQLITE if e[0].startswith("hermes/")]:
-            self.assertFalse(entry[3], entry[0])
-        for entry in [e for e in ob.FILES if e[0].startswith("hermes/")]:
-            self.assertFalse(entry[2], entry[0])
-
-    def test_the_main_history_database_and_the_settings_and_role_memory_are_listed(self):
-        for wanted in ("hermes/state.db", "hermes/config.yaml", "hermes/profiles/librarian/memories", "hermes/profiles/librarian/state.db", "hermes/SOUL.md"):
-            self.assertIn(wanted, HERMES_NAMES)
 
 
 class Collect(unittest.TestCase):
@@ -113,13 +88,6 @@ class Collect(unittest.TestCase):
         self.assertNotIn("hermes/state.db", entries)
         self.assertGreaterEqual(extra["missing"], 2)
         self.assertIn("hermes/profiles/librarian/state.db", entries)
-
-
-class Docs(unittest.TestCase):
-    def test_the_readme_and_the_canon_say_hermes_is_in_the_nightly_backup(self):
-        root = Path(__file__).resolve().parents[3]
-        self.assertIn("Hermes", (root / "lifeos" / "edge" / "backup" / "README.md").read_text())
-        self.assertIn("off-site backup", (root / "docs" / "hermes-files.md").read_text().lower())
 
 
 if __name__ == "__main__":

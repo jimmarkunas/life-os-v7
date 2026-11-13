@@ -1,18 +1,15 @@
-"""LIFE-577: temp folders for the backup tests whose paths go through the secret guard (offsite_backup.DENY).
-tempfile picks 8 random characters; once in a few thousand names holds a guarded word ("key", "bws", "auth", ...), and the guard then refuses the run with backup_secret_path.
-That made test_a_secret_folder_is_never_a_way_around_the_rest fail on a clean checkout. These helpers draw again until the whole path is clear of the guard."""
-import shutil
+"""LIFE-577: temp folders whose whole path is clear of the backup secret guard (offsite_backup.denied). tempfile's random 8 characters once in a few thousand names hold a guarded word
+("key", "auth"), and the guard then refuses the run with backup_secret_path. These draw again until the path is clear."""
+import os
 import tempfile
 
 from lifeos.edge.backup import offsite_backup as ob
 
 
 def mkdtemp(**kwargs):
-    while True:
-        path = tempfile.mkdtemp(**kwargs)
-        if not ob.denied(path):
-            return path
-        shutil.rmtree(path, ignore_errors=True)
+    while ob.denied(path := tempfile.mkdtemp(**kwargs)):
+        os.rmdir(path)
+    return path
 
 
 class TemporaryDirectory(tempfile.TemporaryDirectory):
