@@ -141,10 +141,10 @@ def snapshot(source, dest, owner, run=subprocess.run):
 
 
 def collect(work, run=subprocess.run, sqlite=None, files=None, trees=None, chown=None, secret_trees=None, mac_inbox=None):
-    """Everything on the list -> {archive name: file in `work`}, plus counts. A missing REQUIRED source stops the run (nothing is uploaded); a missing optional one is counted."""
+    """Everything on the list -> {archive name: file in `work`}, plus counts. A missing REQUIRED source stops the run (nothing is uploaded); a missing optional one is counted, and an optional database that cannot be snapshotted is counted as `optional_db_failed`."""
     sqlite, files, trees, chown = SQLITE if sqlite is None else sqlite, FILES if files is None else files, TREES if trees is None else trees, chown or shutil.chown
     secret_trees = SECRET_TREES if secret_trees is None else secret_trees
-    out, missing, skipped, credentials = {}, 0, 0, 0
+    out, missing, skipped, credentials, db_failed = {}, 0, 0, 0, 0
     for name, source, owner, required in sqlite:
         if denied(name, source):
             raise BackupError("backup_secret_path")
@@ -157,7 +157,15 @@ def collect(work, run=subprocess.run, sqlite=None, files=None, trees=None, chown
         os.makedirs(holder, mode=0o700, exist_ok=True)
         chown(holder, user=owner)
         dest = os.path.join(holder, hashlib.sha256(name.encode()).hexdigest()[:16] + ".sqlite")
-        snapshot(source, dest, owner, run)
+        try:
+            snapshot(source, dest, owner, run)
+        except (BackupError, subprocess.TimeoutExpired):       # LIFE-652: a corrupt, locked or hung OPTIONAL database is counted and skipped; a required one still stops the run
+            if required:
+                raise
+            db_failed += 1
+            if os.path.exists(dest):
+                os.unlink(dest)                                  # a half-made copy is never archived
+            continue
         out[name] = dest
     for name, source, required in files:
         if denied(name, source):
@@ -204,7 +212,10 @@ def collect(work, run=subprocess.run, sqlite=None, files=None, trees=None, chown
         missing += 1                                                                # the folder exists but holds no archive (the Mac stopped pushing): shows as `missing` in the status
     if not out:
         raise BackupError("backup_nothing_to_save")
-    return out, {"missing": missing, "skipped": skipped, "credentials": credentials}
+    counts = {"missing": missing, "skipped": skipped, "credentials": credentials}
+    if db_failed:
+        counts["optional_db_failed"] = db_failed                    # LIFE-652: present only when it happened, so the status record is otherwise identical
+    return out, counts
 
 
 def build_archive(entries, dest):
@@ -445,7 +456,7 @@ def main(argv=None, environ=None):
             record = run("", state_dir=scratch, dry=True)
         finally:
             shutil.rmtree(scratch, ignore_errors=True)
-        print(record["code"], "files=%s bytes=%s missing=%s skipped=%s credentials=%s" % tuple(record.get(k, 0) for k in ("files", "bytes", "missing", "skipped", "credentials")))
+        print(record["code"], "files=%s bytes=%s missing=%s skipped=%s credentials=%s optional_db_failed=%s" % tuple(record.get(k, 0) for k in ("files", "bytes", "missing", "skipped", "credentials", "optional_db_failed")))
         return 0 if record["ok"] else 1
     if argv[:1] != ["run"]:
         print("usage: offsite_backup.py run|check|mac-check|dry")
