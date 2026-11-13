@@ -71,7 +71,6 @@ STAGES = {
     "resolve-linkedin": _linkedin,
     "resolve-dice": lazy("lifeos.jobs.resolve.aggregators.dice"),
     "hermes": lazy("lifeos.hermes_requests"),          # LIFE-307: one signed Buzz request per new `hermes`-labelled Agent Go issue; dry run unless --live
-    "boards-preview": lazy("lifeos.sources.web.boards", "preview"),     # D202 acceptance: read-only, counts only
     "alerts": lazy("lifeos.jobs.alerts"),
     "interview-probe": lazy("lifeos.interview.stage", "probe"),
     "interview": lazy("lifeos.sources.interview.interview_evidence"),      # LIFE-88: the normal path (accepted evidence to the Interview OS writer); writes need INTERVIEW_OS_WRITER=v7
