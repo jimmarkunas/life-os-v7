@@ -340,7 +340,7 @@ class PullRequestTestsWorkflow(unittest.TestCase):
     def test_it_reuses_the_shared_python_action_and_runs_the_accepted_command_with_the_runtime_limits(self):
         doc = yaml.safe_load(self.path.read_text())
         steps = doc["jobs"]["unit-tests"]["steps"]
-        self.assertEqual([s.get("uses") for s in steps[:2]], ["actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09", "./.github/actions/python"])
+        self.assertEqual([s.get("name") or s.get("uses") for s in steps[:2]], ["Checkout the exact commit (own git fetch; the token is passed once and never stored)", "./.github/actions/python"])
         run = [s["run"] for s in steps if "Unit tests" in s.get("name", "")][0]
         self.assertIn("python -m tests.shard 1 2", run)                      # Jim, Oct 26 2026: two parallel shards of whole test modules; tests/contracts/test_shards.py proves every test runs in exactly one
         self.assertIn("python -m tests.shard 2 2", run)
@@ -732,7 +732,7 @@ class DomainsWorkflowTests(unittest.TestCase):
         condition = job["if"]
         for part in ("always()", "needs.gate.outputs.tick == 'true'", "contains(needs.*.result, 'failure')"):
             self.assertIn(part, condition)
-        (step,) = [s for s in job["steps"] if "run" in s]
+        (step,) = [s for s in job["steps"] if "run" in s and not str(s.get("name", "")).startswith("Checkout the exact commit")]
         self.assertIn("lifeos.platform.alerts push --key domain_jobs_failed", step["run"])
         self.assertFalse(step.get("continue-on-error"))                                                           # a push the provider refuses turns the job red
         self.assertEqual(sorted(re.findall(r"needs\.(\w+)\.result", step["run"])), sorted(n for n in job["needs"] if n != "gate"))         # every domain job is named in the failed list (the gate is not a domain job)
@@ -844,7 +844,7 @@ class BitwardenConsumerTests(unittest.TestCase):
                 steps, names = doc["jobs"][job]["steps"], self.loaded(name, job)
                 self.assertTrue(names and names <= set(UUIDS), (name, job))
                 self.assertTrue(names <= DOMAIN_SECRETS[job] | TS if name == "domains" else names == LOADED[name][job], (name, job, sorted(names)))
-                self.assertEqual(steps[0]["uses"], "actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09", (name, job))
+                self.assertEqual(steps[0].get("name"), "Checkout the exact commit (own git fetch; the token is passed once and never stored)", (name, job))
                 self.assertEqual(loader["with"]["access_token"], "${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}", (name, job))
                 self.assertEqual(sorted(re.findall(r"^([0-9a-f-]{36}) > (\w+)$", loader["with"]["secrets"], re.M)), sorted((UUIDS[n], n) for n in names), (name, job))
                 self.assertEqual(len(re.findall(r" > ", loader["with"]["secrets"])), len(names), (name, job))
