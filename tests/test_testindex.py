@@ -63,6 +63,12 @@ class Select(unittest.TestCase):
     def test_a_production_file_runs_the_tests_the_index_maps_plus_the_contracts(self):
         self.assertEqual(self.pick("lifeos/jobs/a.py"), sorted(CONTRACTS + ["tests.jobs.test_a"]))
 
+    def test_a_test_file_the_change_deleted_is_not_a_target_even_when_a_stale_index_still_maps_it(self):
+        (self.root / "tests/jobs/test_b.py").unlink()                                         # the change deletes it; the index (days old) still lists its test
+        picked = ti.select(["lifeos/jobs/b.py"], index({"jobs/b.py": [1]}), self.root)
+        self.assertNotIn("tests.jobs.test_b", picked)
+        self.assertFalse([t for t in picked if t.startswith("tests.jobs.test_b")])
+
     def test_a_test_inside_a_selected_module_is_not_listed_twice(self):
         picked = self.pick("lifeos/jobs/a.py")
         self.assertIn("tests.jobs.test_a", picked)
