@@ -6,6 +6,7 @@ cards did not already state. It runs last in V7's tick, so no other card is bein
 import os
 import re
 from datetime import datetime, timedelta
+from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 from lifeos.dcc import header
@@ -190,6 +191,56 @@ def render(model):
                          for icon, (value, name, text) in zip(ICONS, model["kpis"])])]
 
 
+def _kpi_name(client, column):
+    """The KPI's name line (the bold paragraph under its number) in a live column, or "" when the column does not look like one of ours."""
+    for callout in report_region.children(client, column["id"], _fail)[:1]:
+        lines = [b for b in report_region.children(client, callout["id"], _fail) if b.get("type") == "paragraph"]
+        return report_region.plain(lines[0]).strip() if lines else ""
+    return ""
+
+
+def converge_columns(client, block_id, names, protected_ids, live):
+    """LIFE-655: the sync refuses to shrink a row of columns, so when the callout's KPI row holds more columns than the card now renders (LIFE-645 retired the Attention KPI: 4 live, 3 rendered),
+    the surplus columns are removed here first, through a client scoped to this callout (any other block is refused before it is sent). A surplus column is one whose KPI name is not rendered
+    any more; what is left must be exactly the rendered names in order, or nothing is deleted. Each delete is read back, then the remaining columns get the balanced width. -> columns removed (0: nothing to do)."""
+    scoped = report_region.ScopedClient(client, block_id, _fail)
+    meta, existing = scoped.call("GET", f"/blocks/{quote(block_id, safe='')}"), report_region.children(scoped, block_id, _fail)
+    ours = ("toggle", "column_list", *report_region.TEXT_KINDS)
+    if (not isinstance(meta, dict) or meta.get("type") != "callout" or not existing or report_region.plain(existing[0]).strip() != TITLE or any(b.get("type") not in ours for b in existing[1:])):
+        return 0                                                                      # not our callout as the sync expects it: it raises CARD_NOT_OWNED itself, before any write
+    rows = [b for b in existing if b.get("type") == "column_list"]
+    columns = report_region.children(scoped, rows[0]["id"], _fail) if len(rows) == 1 else []
+    if len(columns) <= len(names):
+        return 0
+    live_names = [_kpi_name(scoped, column) for column in columns]
+    surplus = [column for column, name in zip(columns, live_names) if name not in names]
+    if [name for name in live_names if name in names] != list(names):
+        raise _fail("COLUMNS_UNRECOGNIZED")
+    if not live:
+        return len(surplus)
+    report_region.require_configured(protected_ids, _fail)
+    for column in surplus:
+        scoped.call("DELETE", f"/blocks/{quote(column['id'], safe='')}")
+    left = report_region.children(scoped, rows[0]["id"], _fail)
+    if [b["id"] for b in left] != [b["id"] for b in columns if b not in surplus]:
+        raise _fail("COLUMNS_VERIFY_FAILED")
+    ratio = round(1 / len(names), 4)
+    for column in left:
+        if (column.get("column") or {}).get("width_ratio") != ratio:
+            try:
+                scoped.call("PATCH", f"/blocks/{quote(column['id'], safe='')}", {"column": {"width_ratio": ratio}})
+            except NotionError:
+                pass                                                                  # the width is cosmetic: the next sync still fills the columns in place
+    return len(surplus)
+
+
+def _stamp(client, block_id, now, live):
+    try:
+        return header.run(client, report_region.clean_id(block_id), now, live, _fail)
+    except NotionError as error:
+        return str(error)[:60]
+
+
 def run(limit, live, environ=os.environ, client=None, now=None):
     block_id = (environ.get("DCC_CARD_BLOCK_ID") or "").strip()
     if not block_id:
@@ -202,14 +253,18 @@ def run(limit, live, environ=os.environ, client=None, now=None):
         raise _fail("NO_EVIDENCE")                         # nothing could be read: say nothing rather than write an empty summary
     by_area = {label: classify(area, now, fresh_minutes(label))[0] for label, area in areas.items()}
     states = list(by_area.values())
-    spec = render(compose(areas, now))
+    model = compose(areas, now)
+    spec = render(model)
     protected_ids = {region: (environ.get(name) or "").strip() for name, region in PROTECTED}
-    changed, removed = report_region.replace_tree(client, block_id, TITLE, MODULE, spec, protected_ids, _fail, "dcc", live)
-    counts = {"areas": len(areas), "fresh": states.count("fresh"), "not_current": len(states) - states.count("fresh"), "states": by_area, "status": "fresh", "blocks_written": 0}
+    try:
+        trimmed = converge_columns(client, block_id, [name for _, name, _ in model["kpis"]], protected_ids, live)
+        changed, removed = (0, 0) if trimmed and not live else report_region.replace_tree(client, block_id, TITLE, MODULE, spec, protected_ids, _fail, "dcc", live)       # a dry run cannot preflight a tree it has not yet trimmed
+    except NotionError as error:
+        if "CARD_NOT_OWNED" not in str(error):                       # LIFE-655: a failed callout write no longer freezes the page's Updated line; a wrong target still writes nothing
+            print("dcc: header", _stamp(client, block_id, now, live))
+        raise
+    counts = {"areas": len(areas), "fresh": states.count("fresh"), "not_current": len(states) - states.count("fresh"), "states": by_area, "status": "fresh", "blocks_written": 0, "columns_removed": trimmed}
     if live:
         counts["blocks_written"], counts["removed"] = changed, removed
-    try:
-        counts["header"] = header.run(client, report_region.clean_id(block_id), now, live, _fail)                      # D183: never changes the Command Center's own result
-    except NotionError as error:
-        counts["header"] = str(error)[:60]
+    counts["header"] = _stamp(client, block_id, now, live)                                                              # D183: never changes the Command Center's own result
     return counts
