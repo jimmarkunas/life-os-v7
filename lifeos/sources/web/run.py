@@ -1,7 +1,6 @@
-"""US Remote web acquisition, one bounded run: pick the due boards, list them (no database connection held), classify against the
-accepted state, drop unequivocal misses cheaply, and admit the rest into Jobs OS through intake.add_job. Counts only in the log.
-The accepted state only advances on a COMPLETE listing; a FAILED board keeps its state and can never imply a removal.
-"""
+"""US Remote web acquisition, one bounded run: list the due boards, classify against the accepted state, admit the rest into Jobs OS.
+
+Picks the due boards, lists them (no database connection held), classifies against the accepted state, drops unequivocal misses cheaply and admits the rest through intake.add_job. The accepted state only advances on a COMPLETE listing; a FAILED board keeps its state and can never imply a removal. Outputs: counts only in the log."""
 from concurrent.futures import ThreadPoolExecutor
 import json
 import os

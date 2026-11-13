@@ -1,8 +1,9 @@
-"""Hiring Pipeline stage (HIRE-1.2, no mail): the one place that composes the canonical Job Ledger Applied state, the read-only Hiring Pipeline pages and accepted Calendar evidence
-into the pure compiler, keeps one private prior-state row and writes the floating Daily Report region.
+"""Hiring Pipeline stage (HIRE-1.2, no mail): compose the Ledger Applied state, Hiring Pipeline pages and Calendar evidence into the Daily Report region.
 
-Lives under sources because it may read the Jobs reader; `lifeos/hiring` itself imports platform only. Read-only toward every source except one: the Hiring Decision action (D194 / LIFE-353, `confirm_rejected`, the only Ledger write, two properties of one confirmed row); no mail, no Calendar write, no Jira, no Interview page write. A source read that is not provably complete counts as unavailable, and the run shows DEGRADED with the last accepted state, never an empty table.
-Counts and fixed codes only."""
+Composes the canonical Job Ledger Applied state, the read-only Hiring Pipeline pages and accepted Calendar evidence into the pure compiler, keeps one private prior-state row and writes the floating Daily Report region. Lives under sources because it may read the Jobs reader; `lifeos/hiring` itself imports platform only.
+Read-only toward every source except the Hiring Decision action (D194 / LIFE-353, `confirm_rejected`, the only Ledger write, two properties of one confirmed row); no mail, no Calendar write, no Jira, no Interview page write. A source read that is not provably complete counts as unavailable, and the run shows DEGRADED with the
+last accepted state, never an empty table.
+Outputs: counts and fixed codes only. Pointer: D194."""
 import contextlib
 import os
 from datetime import datetime, timedelta

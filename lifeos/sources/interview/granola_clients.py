@@ -1,11 +1,10 @@
-"""LIFE-164 / LIFE-166 (Jim, Oct 27 2026): every Granola meeting that is not an interview lives as one row of the Meetings database (a row's page holds the word-for-word transcript, notes and
-summary above it). A page elsewhere shows a filtered view of the same table, so there is no second page and no link to keep in step.
+"""Granola meetings that are not interviews: each becomes one row of the Meetings database, routed by attendees, then title (LIFE-164, LIFE-166).
 
-Routing of a meeting that matches no Interview OS round (granola_match): a client attendee gives TGP (whoever else is on the call), only Bytalos people (and personal mailboxes) gives Bytalos,
-with no attendee evidence the title decides (Jim: "By the attendees, then the title"). Anything these rules cannot decide (another company on a Bytalos call, a title naming both sides, nothing at
-all) becomes an Unfiled row: Jim picks "File as" (TGP, Bytalos, Personal, Interview or Delete) and the hourly job files it. The caller (granola_auto) owns the catalog, the purge and the per-run cap,
-so a meeting leaves Oracle only after its row is written and read back and the catalog row is saved and read back. A row that carries a transcript that is not ours is never touched.
-Titles, names and addresses are compared here and never logged: callers get codes and counts only."""
+A row's page holds the word-for-word transcript, notes and summary above it; a page elsewhere shows a filtered view of the same table, so there is no second page and no link to keep in step.
+Routing of a meeting that matches no Interview OS round (granola_match): a client attendee gives TGP (whoever else is on the call), only Bytalos people (and personal mailboxes) gives Bytalos, with no attendee evidence the title decides. Anything these rules cannot decide (another company on a Bytalos call, a title naming both
+sides, nothing at all) becomes an Unfiled row: Jim picks "File as" (TGP, Bytalos, Personal, Interview or Delete) and the hourly job files it. A row that carries a transcript that is not ours is never touched.
+The caller (granola_auto) owns the catalog, the purge and the per-run cap. Outputs: codes and counts only; titles, names and addresses are compared here and never logged."""
+# LIFE-164 / LIFE-166 (Jim, Oct 27 2026; routing rule in his words: "By the attendees, then the title"). A meeting leaves Oracle only after its row is written and read back and the catalog row is saved and read back.
 import re
 
 from lifeos.platform.notion_ids import notion_id

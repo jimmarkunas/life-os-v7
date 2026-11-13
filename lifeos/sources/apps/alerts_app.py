@@ -1,9 +1,11 @@
-"""LIFE-75 (Jim, Oct 26 2026): the Alert settings screen on the private Close service (Oracle; only Jim's iPhone and MBP are admitted by the Edge gate). GET /alerts shows the master
-switch (alerts on or off), the mute, and one row per registered alert with a Page/Info badge and three channel boxes (Phone, Telegram, WhatsApp). Saving is a signed review and
-confirm, like the other screens: the proposed change is shown against a fresh read, and the write is reported only after the three GitHub repository variables read back as sent.
-The settings live in repository variables, so every run already receives them as environment: ALERTS_ENABLED ("on" or "off"), ALERTS_MUTED_UNTIL (a time, or "off"), ALERT_SETTINGS
-(lifeos/platform/alert_settings.py: only the choices that differ from the registry). The Edge gate passes the optional `ghvars` credential (a token that can edit this repository's
-variables and nothing else) to this path only; without it the screen says so and changes nothing. A PAGE alert's phone box is fixed on. Fixed codes only; no alert text, topic or token is shown."""
+"""The Alert settings screen on the private Close service: GET /alerts, saved by a signed review and confirm (LIFE-75).
+
+Shows the master switch (alerts on or off), the mute, and one row per registered alert with a Page/Info badge and three channel boxes (Phone, Telegram, WhatsApp). Saving shows the proposed change against a fresh read, and the write is reported only after the three GitHub repository variables read back as sent. A PAGE alert's
+phone box is fixed on.
+Inputs: the variables ALERTS_ENABLED ("on" or "off"), ALERTS_MUTED_UNTIL (a time, or "off") and ALERT_SETTINGS (lifeos/platform/alert_settings.py: only the choices that differ from the registry), already in every run's environment; the optional `ghvars` credential, passed by the Edge gate to this path only (without it the screen
+says so and changes nothing).
+Outputs: the screen, or a fixed code; no alert text, topic or token is shown. Pointer: LIFE-75."""
+# LIFE-75 (Jim, Oct 26 2026). Only Jim's iPhone and MBP are admitted by the Edge gate on the Oracle host. `ghvars` is a token that can edit this repository's variables and nothing else.
 import hashlib
 import json
 import urllib.error

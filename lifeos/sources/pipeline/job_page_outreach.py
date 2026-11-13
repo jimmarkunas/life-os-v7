@@ -1,14 +1,9 @@
-"""LIFE-10 §2 / LIFE-47: the outreach table on each Job Ledger job page, in the Recruiter Outreach style (Jim accepted the synthetic preview on Oct 20, 2026).
+"""The outreach table on each Job Ledger job page, in the Recruiter Outreach style: one V7-owned region per page (LIFE-10 §2, D225).
 
-One V7-owned region per job page: a heading_3 `🤝 Outreach (Updated 10/20 @ 9:40 PM CT)` directly followed by a native four-column table (Person — Employer · Channel · Role ·
-Initial outreach · Conversation · Next step · Due), one row per conversation recorded against that exact job by Mark as Sent (D221). Cells are a bold primary line over a
-gray detail line, and only recorded facts are shown: a reply that cannot be verified reads "reply unknown", never "no reply". A job with no recorded conversation gets no region.
-
-Writes are bounded to the region. The page must be an open Job Ledger page (the Ledger data source, not archived). A new region is appended right after the Network Leads
-block (else at the end of the page) with one non-retried call and read back. An existing region is edited row by row in place, and the heading stamp changes only when a row
-changes. Every other block on the page is digested before and after and must be identical. Live writes need JOB_PAGE_OUTREACH=on as well as --live; otherwise the stage
-reports what it would do. The table stays on the job page until an interview; moving the job to the Hiring Pipeline is LIFE-42 / LIFE-46, not this stage. Fixed codes and
-counts only."""
+A heading_3 `🤝 Outreach (Updated 10/20 @ 9:40 PM CT)` directly followed by a native table (Person — Employer · Channel · Role · Initial outreach · Conversation · Next step · Due), one row per conversation recorded against that exact job by Mark as Sent (D221). Only recorded facts are shown: a reply that cannot be verified reads
+"reply unknown", never "no reply". A job with no recorded conversation gets no region.
+Writes are bounded to the region, on an open Job Ledger page (the Ledger data source, not archived). A new region is appended right after the Network Leads block (else at the end of the page) with one non-retried call and read back; an existing region is edited row by row in place, and the heading stamp changes only when a row
+changes. Every other block on the page is digested before and after and must be identical. Live writes need JOB_PAGE_OUTREACH=on as well as --live; otherwise the stage reports what it would do. Outputs: fixed codes and counts only. Pointer: D225, D221."""
 import os
 from datetime import date, datetime
 from urllib.parse import quote

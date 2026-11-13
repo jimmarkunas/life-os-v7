@@ -1,19 +1,11 @@
-"""NET-2.3 (D160): surface network leads as one marker-owned "Network Leads (n)" block on the Job Ledger page of each target job. Dry unless live; counts only.
+"""Surface network leads as one marker-owned "Network Leads (n)" block on the Job Ledger page of each target job (NET-2.3, D160).
 
-Targets: published jobs whose stored Fit admission is ADMIT, plus applied opportunities and upcoming interviews (from the accepted Hiring Pipeline snapshot) that resolve to exactly one
-published Ledger page by the pipeline's own company-and-role rule. The human-owned Hiring Pipeline and Interview pages are never written; a pursuit target with no safe Ledger page
-writes nothing and is counted as having no safe surface. REVIEW jobs get no block unless they are an active pursuit.
-
-Per page, in this order: read the Ledger page and prove it is the canonical page for the job (data source, not archived, Stable Job Key equals the job's dedupe key, the v7-jd description
-marker still opens the body); read Jim's Dismiss and Same company ticks from the owned block and persist them (live) before anything is replaced; recompute the leads (dismissals and learned
-aliases applied, five at most); then create, replace, leave or REMOVE the owned block (no leads removes an existing block, never an empty placeholder) and read it back, proving nothing
-outside it changed. Any failed read, guard, write or read-back is counted and the run ends DEGRADED (NETWORK_SURFACE_DEGRADED): it is never turned into zero leads or a silent success.
-The tables v7_network_dismissals and v7_network_aliases are created only by a live run. A page budget (`limit`) bounds one run.
-
-LIFE-116: with the stored page state (v7_network_page_state: the hash of the block each page was last PROVEN to show, empty for none) a page is read only when it is dirty (no state, a
-different page, or a different wanted hash: a new job, a roster change, an alias or a dismissal), pages with leads first. The pages that hold a block are still re-read on a rotation
-(Jim's Dismiss and Same company ticks live in the block) and a small sweep of the settled no-block pages catches drift. Without the table (a dry run before the first live run) every
-page is dirty."""
+Dry unless live; counts only. Targets: published jobs whose stored Fit admission is ADMIT, plus applied opportunities and upcoming interviews (accepted Hiring Pipeline snapshot) that resolve to exactly one published Ledger page. The human-owned Hiring Pipeline and Interview pages are never written.
+Per page: prove it is the canonical Ledger page for the job; read Jim's Dismiss and Same company ticks from the owned block and persist them (live) before anything is replaced; recompute the leads (five at most); then create, replace, leave or REMOVE the owned block and read it back, proving nothing outside it changed. Any
+failed read, guard, write or read-back is counted and the run ends DEGRADED (NETWORK_SURFACE_DEGRADED), never zero leads or a silent success.
+Tables v7_network_dismissals, v7_network_aliases and v7_network_page_state are created only by a live run; a page budget (`limit`) bounds one run. LIFE-116: a page is read only when dirty (no state, a different page, or a different wanted hash), pages with leads first. Pointer: D160."""
+# LIFE-116 (v7_network_page_state: the hash of the block each page was last PROVEN to show, empty for none): pages that hold a block are still re-read on a rotation (Jim's Dismiss and Same company ticks live in the block) and a small sweep of the settled no-block pages catches drift. Without the table
+# (a dry run before the first live run) every page is dirty.
 import json
 import os
 import time

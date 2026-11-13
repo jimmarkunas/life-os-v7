@@ -1,12 +1,11 @@
-"""LIFE-556: how long ordinary tickets take from first commit to merge, read-only, from data that already exists (GitHub pull requests and their `pr-tests` runs, Jira transitions).
+"""How long ordinary tickets take from first commit to merge, read-only, from GitHub pull requests and Jira times (LIFE-556).
 
   python -m lifeos.sources.devtools.profile_tickets --last 20 [--jira jira.json] [--json]
 
-Per merged pull request titled `[LIFE-nnn]`: files changed, lines added and removed, minutes from the first commit to the merge, number of `pr-tests` runs on the PR branch, how many failed before
-the first green on the final head, minutes from the first run to that first green, and (when a Jira file is given) the minutes from the Jira move "To Do -> Agent Go" (the start of agent work)
-to Done. Numbers and issue keys only: no ticket text, log text or personal data is read into the output. It changes nothing: it calls `gh` for reads and writes to stdout.
-
-The Jira file is {"LIFE-nnn": {"start": ISO time, "done": ISO time}}; Jira has no key in this repo, so a person (or an agent with Jira access) exports those two times per ticket."""
+Per merged pull request titled `[LIFE-nnn]`: files changed, lines added and removed, minutes from the first commit to the merge, number of `pr-tests` runs on the PR branch, how many failed before the first green on the final head, minutes from the first run to that first green, and (with a Jira file) the minutes from the Jira
+move "To Do -> Agent Go" (the start of agent work) to Done.
+The Jira file is {"LIFE-nnn": {"start": ISO time, "done": ISO time}}; Jira has no key in this repo, so a person (or an agent with Jira access) exports those two times per ticket.
+Outputs: numbers and issue keys only (no ticket text, log text or personal data); it calls `gh` for reads and writes to stdout, changing nothing."""
 import argparse
 import datetime as dt
 import json

@@ -1,5 +1,7 @@
-"""LIFE-121 London coverage, step 1 (Jim, Oct 26: "Do them!"): read-only comparison of the CURRENT official sponsor register against V7's Scale-Up registry. Counts in the clear; the names of
-London Scale-up-route sponsors V7 does not hold go to ONE private Notion page (lifeos.jobs.private_report), only when live; a dry run writes nothing."""
+"""Read-only comparison of the CURRENT official sponsor register with V7's Scale-Up registry (LIFE-121 London coverage, step 1).
+
+Counts in the clear; the names of London Scale-up-route sponsors V7 does not hold go to ONE private Notion page (lifeos.jobs.private_report), only when live; a dry run writes nothing."""
+# LIFE-121 (Jim, Oct 26 2026: "Do them!").
 import json
 import pathlib
 

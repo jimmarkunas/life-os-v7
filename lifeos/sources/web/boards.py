@@ -1,9 +1,7 @@
-"""D202: the employer-board pass. About 10,700 Greenhouse, Ashby and Lever boards (the Open Jobs board list, CC0, plus the extras in
-boards.json) read through the same web run as the priority boards: the same states, diff, FAILED-is-never-a-removal rule and admission.
-Differences, all bounded: more boards per run on fewer workers, a slower refresh unless the board lists a target job, a smaller admission
-budget, only shown targets stored (`screen` names every other job's reason; a job screened out while its employer still lists it is not
-a removal), and an ATS that answers 429 three times is not read
-again this run (its boards are FAILED `skipped_after_rate_limit_429` and retried later)."""
+"""The employer-board pass: about 10,700 Greenhouse, Ashby and Lever boards read through the same web run as the priority boards (D202).
+
+The board list is the Open Jobs list (CC0) plus the extras in boards.json. Same states, diff, FAILED-is-never-a-removal rule and admission as the priority boards. Differences, all bounded: more boards per run on fewer workers; a slower refresh unless the board lists a target job; a smaller admission budget; only shown targets
+stored (`screen` names every other job's reason, and a job screened out while its employer still lists it is not a removal); an ATS that answers 429 three times is not read again this run (its boards are FAILED `skipped_after_rate_limit_429` and retried later). Pointer: D202."""
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 import os

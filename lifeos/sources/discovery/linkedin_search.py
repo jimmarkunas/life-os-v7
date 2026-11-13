@@ -1,23 +1,9 @@
-"""D203: LinkedIn job search (the public guest search, no login, no browser) as a source that works in concert with the LinkedIn job-alert
-newsletter instead of colliding with it:
+"""LinkedIn job search (the public guest search: no login, no browser) as a source that works alongside the LinkedIn job-alert newsletter (D203).
 
-- One identity. A search card becomes the same canonical URL the newsletter parser emits, https://www.linkedin.com/jobs/view/<id>, so a job
-  both find is ONE row (intake's dedupe key). A job already known (from the alerts or an earlier search) is left untouched: the search sees
-  the same job hourly for a day, and bumping seen_count each time would make a real job look like a ghost (repost.is_ghost).
-- One resolver. Search rows (source `linkedin-search`) are read by the same LinkedIn resolve lane as the newsletter's, under its one budget,
-  newsletter rows first (resolve/stage.SHARED), so search can never crowd out the alerts or spend a second search allowance.
-- LinkedIn's patience goes to the alerts first: the hourly step runs AFTER the resolver (both read LinkedIn's guest pages, which answer 429
-  after a dozen quick requests), with a small page allowance; the first refusal stops it and is named (`rate_limited_429`,
-  `blocked_<status>`, `http_<status>`, `network`, `unreadable_page`).
-- No remote claim from a card. The guest search ignores LinkedIn's remote filter (identical results with and without f_WT=2, measured
-  Oct 17), and a card has no description, so a card cannot show remote. A target-family card in the US is admitted as a candidate with its
-  place as LinkedIn gives it when that place is the whole US (or plain remote); the approved US Remote lane decides once the description is
-  read (unknown work mode -> Review, not remote -> Excluded), exactly as for an alert row. A card that says onsite or hybrid, names a non-US
-  place, or is outside the family is not admitted; one with no office requirement is admitted as `remote assumed` (D204),
-  and each reason is counted; cards that do show remote take the per-run room first.
-- No TinyFish. A search row is resolved by the guest page and the employer board match only; the lane's free-search step is skipped for it
-  (linkedin.match_rows), so this source adds no TinyFish use.
-"""
+Rows have source `linkedin-search` and the same canonical URL the newsletter parser emits, https://www.linkedin.com/jobs/view/<id>, so a job both find is ONE row; a job already known is left untouched (no seen_count bump). They are read by the same LinkedIn resolve lane as the newsletter's, under its one budget, newsletter rows
+first (resolve/stage.SHARED); the hourly step runs AFTER the resolver with a small page allowance, and the first refusal stops it and is named (`rate_limited_429`, `blocked_<status>`, `http_<status>`, `network`, `unreadable_page`).
+A card is admitted only as a target-family job in the US (or plain remote) with no office requirement (`remote assumed`, D204); onsite, hybrid, non-US and out-of-family cards are not admitted, and each reason is counted. The approved US Remote lane decides once the description is read. No TinyFish use (linkedin.match_rows skips
+the free-search step for these rows). Pointer: D203, D204."""
 from datetime import date, datetime, timezone
 import html as htmllib
 import re

@@ -1,11 +1,11 @@
-"""LIFE-10 §2 (TL comment 10754, Jim's plan approval on LIFE-10 comment 10773): a one-time, synthetic proof of the job-page outreach writer (D225) against the real Notion
-API, confined to the sandbox Job Ledger. Manual only (diag.yml, stage notion-sandbox-outreach-proof, typed confirmation SYNTHETIC); never on a tick.
+"""One-time synthetic proof of the job-page outreach writer (D225) on the real Notion API, confined to the sandbox Job Ledger (LIFE-10 §2).
 
-One page, `TEST — ServiceNow Outreach (SYNTHETIC)`, in the sandbox data source: created with synthetic neighbour blocks when no page has that title, reused when exactly one
-does and it carries no outreach region yet, refused otherwise. Fictional conversations ("Avery Synthetic", then "Blake Synthetic") come from an in-memory adapter, so the
-production Recruiters store is never read or written. The real `job_page_outreach.run` then runs four times against the sandbox client, each step proven by its own
-read-back: create, unchanged replay, an in-place update that keeps the region's block ids and puts the Needs Action row first, unchanged replay. Without --live it only
-reports whether the page exists. Fixed codes and counts only; the page id and every name stay out of the log."""
+Manual only (diag.yml, stage notion-sandbox-outreach-proof, typed confirmation SYNTHETIC); never on a tick. One page, `TEST — ServiceNow Outreach (SYNTHETIC)`, in the sandbox data source: created with synthetic neighbour blocks when no page has that title, reused when exactly one does and it carries no outreach region yet,
+refused otherwise.
+Fictional conversations ("Avery Synthetic", then "Blake Synthetic") come from an in-memory adapter, so the production Recruiters store is never read or written. The real `job_page_outreach.run` then runs four times against the sandbox client, each step proven by its own read-back: create, unchanged replay, an in-place update
+that keeps the region's block ids and puts the Needs Action row first, unchanged replay. Without --live it only reports whether the page exists.
+Outputs: fixed codes and counts only; the page id and every name stay out of the log."""
+# TL comment 10754 on LIFE-10; Jim's plan approval on LIFE-10 comment 10773.
 import os
 from datetime import timedelta
 

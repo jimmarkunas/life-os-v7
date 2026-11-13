@@ -1,13 +1,9 @@
-"""LIFE-78 synthetic journey proof on real Notion. Manual only: the interview-proof workflow with `confirm = QA` (the Interview token only, its own queue,
-no mail read), or a domains dispatch with `interview_journey_proof = QA` and Actually write UNticked, so every other step in that job stays a dry run.
-The QA confirmation is this proof's only write switch.
+"""Synthetic journey proof on real Notion: the real Interview runner and Notion writer, tick after tick, against a fresh sandbox (LIFE-78).
 
-It drives the REAL Interview runner (`interview_evidence.run`) and the REAL Notion writer with the Interview token, tick after tick, against a FRESH
-sandbox made for this run under the QA Interview OS parent: a container page, its own "Hiring Pipeline" and "Active Opportunities", and (LIFE-361) its own
-small Job Ledger data source where the Interview step makes each pursuit's row. LIFE-353: the journey ends with Confirm Rejected and then Reopen on the
-ExampleCo row of that sandbox Ledger (the production `hiring.decision` writer, each repeated to prove it is a no-op), read back. Mail, Google Calendar and the Jobs side of the Ledger are synthetic and held
-in memory (ExampleCo / SampleCorp, invented requisitions, example.test links): no real mailbox, calendar, Ledger row or Hiring Pipeline page is read or written. Prints fixed codes and counts per step only. Proves the machine on real Notion; it
-is not M1/M2 evidence."""
+Manual only: the interview-proof workflow with `confirm = QA` (Interview token only, its own queue, no mail read), or a domains dispatch with `interview_journey_proof = QA` and Actually write UNticked, so every other step in that job stays a dry run. The QA confirmation is this proof's only write switch.
+It drives `interview_evidence.run` against a FRESH sandbox under the QA Interview OS parent: a container page, its own "Hiring Pipeline" and "Active Opportunities", and (LIFE-361) its own small Job Ledger data source. LIFE-353: it ends with Confirm Rejected and then Reopen on the ExampleCo row of that Ledger (the production
+`hiring.decision` writer, each repeated to prove a no-op), read back.
+Mail, Google Calendar and the Jobs side of the Ledger are synthetic and in memory (ExampleCo / SampleCorp, invented requisitions, example.test links): nothing real is read or written. Outputs: fixed codes and counts per step. Proves the machine on real Notion; it is not M1/M2 evidence."""
 from datetime import datetime, timedelta
 from lifeos.hiring import decision as D
 from lifeos.interview import create, notion
