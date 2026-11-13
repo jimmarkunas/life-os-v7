@@ -1,0 +1,20 @@
+name: Join the tailnet
+description: "LIFE-637. Our own join, replacing tailscale/github-action: installs Tailscale 1.94.2 from pkgs.tailscale.com after checking the download against the SHA-256 recorded in tailscale.sha256, starts the daemon in memory, and joins as an ephemeral, pre-authorized node with the given tag (the tailnet policy is unchanged). The OAuth secret is masked first and never printed."
+inputs:
+  oauth-client-id: {description: "Tailscale OAuth client id (kept for call-site compatibility; the join uses the secret)", required: true}
+  oauth-secret: {description: "Tailscale OAuth client secret", required: true}
+  tags: {description: "Tag for the node, for example tag:v7-runner", required: true}
+runs:
+  using: composite
+  steps:
+    - name: Install Tailscale (checked against the recorded SHA-256)
+      shell: bash
+      env:
+        TS_SHA256_FILE: ${{ github.action_path }}/tailscale.sha256
+      run: bash "$GITHUB_ACTION_PATH/install.sh"
+    - name: Start the daemon and join
+      shell: bash
+      env:
+        TS_OAUTH_SECRET: ${{ inputs.oauth-secret }}
+        TS_TAGS: ${{ inputs.tags }}
+      run: bash "$GITHUB_ACTION_PATH/join.sh"
