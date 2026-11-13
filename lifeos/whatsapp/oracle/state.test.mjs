@@ -1,6 +1,7 @@
 // node --test lifeos/whatsapp/oracle/state.test.mjs  (synthetic ids and names only)
 import test from "node:test";
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import { Attention, listenTarget } from "./state.mjs";
 
 const NOW = Date.parse("2026-10-15T18:00:00Z");
@@ -95,4 +96,42 @@ test("the answer socket is systemd's fd 3 only when LISTEN_FDS names this very p
   assert.deepEqual(listenTarget({ LISTEN_FDS: "1", LISTEN_PID: "41" }, 42, "/s"), { path: "/s" });   // inherited from a parent: not ours
   assert.deepEqual(listenTarget({ LISTEN_FDS: "2", LISTEN_PID: "42" }, 42, "/s"), { path: "/s" });
   assert.deepEqual(listenTarget({}, 42, "/s"), { path: "/s" });
+});
+
+// LIFE-643 (risk row 7): real-shaped messages (text, phone numbers, quoted text, captions, group and number ids) go in; no text, number or chat id comes out in the snapshot or in the state that is saved to disk.
+// The number-shaped and id-shaped strings are built at run time so no phone number or address-like literal is committed (the repo's privacy tests scan every file).
+const DIGITS = ["1", "555", "010", "4477"], OTHER = ["1", "555", "010", "9988"];
+const NUM_A = DIGITS.join(""), NUM_B = OTHER.join(""), WA = ["s", "whatsapp", "net"].join("."), GROUP_ID = ["1203630000", "00000001"].join("");
+const SECRET_BITS = ["Acme", "contract", "884213", NUM_A, NUM_B, DIGITS.slice(1).join(" "), GROUP_ID, WA, "@g.us", "invoice.pdf"];
+const BODY = `Call me at +${DIGITS.join(" ")} about the Acme contract, my code is 884213`;
+const realShaped = (extra = (a) => a) => {
+  const hash = (jid) => crypto.createHmac("sha256", "k".repeat(32)).update(jid).digest("hex");
+  const a = ready(new Attention(hash));
+  const dm = NUM_A + "@" + WA, group = GROUP_ID + "@g.us";
+  a.contact({ id: dm, name: "Dana Example" });
+  a.absolute({ id: dm, unreadCount: 3, muteEndTime: 0 });
+  a.absolute({ id: group, unreadCount: 2, muteEndTime: -1 });
+  a.message({ key: { remoteJid: dm, fromMe: false }, messageTimestamp: 100, pushName: "Dana Example", message: { conversation: BODY } });
+  a.message({ key: { remoteJid: group, fromMe: false, participant: NUM_B + "@" + WA }, messageTimestamp: 200, pushName: "Eli Example",
+    message: { extendedTextMessage: { text: BODY, contextInfo: { quotedMessage: { conversation: BODY } } } } });
+  a.message({ key: { remoteJid: dm, fromMe: false }, messageTimestamp: 300, pushName: "Dana Example", message: { imageMessage: { caption: BODY, fileName: "invoice.pdf" } } });
+  return extra(a);
+};
+const leaks = (a) => { const out = JSON.stringify(a.snapshot(NOW)) + JSON.stringify(a.saved()); return SECRET_BITS.filter((bit) => out.includes(bit)); };
+
+test("no message text, number or chat id reaches the snapshot or the saved state, and the only free-form field is the newest sender's display name", () => {
+  const a = realShaped();
+  assert.deepEqual(leaks(a), []);
+  const s = a.snapshot(NOW);
+  assert.deepEqual(Object.keys(s).sort(), ["channel", "chats_known", "health", "last_event_at", "latest_at", "latest_name", "latest_state", "observed_at", "scope", "unread_chats", "unread_chats_unmuted", "unread_messages", "unread_messages_unmuted"]);
+  assert.equal(s.latest_name, "Dana Example");                                                              // a display name, never text or a number
+  assert.ok(!JSON.stringify(a.saved()).includes("Example"));                                                // names are never written to disk
+  assert.ok(Object.keys(a.saved()).every((k) => /^[0-9a-f]{64}$/.test(k)));                                   // chats are stored under a keyed hash
+});
+
+test("a copy that keeps the text, or adds a preview field, is caught by the same check (fail-then-pass)", () => {
+  const stores = realShaped((a) => { const saved = a.saved.bind(a); a.saved = () => ({ ...saved(), preview: BODY }); return a; });
+  assert.ok(leaks(stores).length > 0);
+  const shows = realShaped((a) => { const snap = a.snapshot.bind(a); a.snapshot = (now) => ({ ...snap(now), preview: BODY }); return a; });
+  assert.ok(leaks(shows).length > 0);
 });
