@@ -72,7 +72,7 @@ def render(reading, now):
     cells = cells[:ROWS - 1] + [[""] * COLS] * max(0, ROWS - 1 - len(cells))
     near = sum(1 for c in cells if c[5] in ("NEAR LIMIT", "RESERVE REACHED"))
     exhausted = sum(1 for c in cells if c[5] == "EXHAUSTED")
-    text = f"AI Capacity · Updated {now.strftime('%-I:%M %p')} CT · {near} near limit · {exhausted} exhausted"
+    text = f"AI Capacity (Updated {now.strftime('%-I:%M %p')} CT) · {near} near limit · {exhausted} exhausted"          # LIFE-609: the stamp shares the title, like Calendar's heading
     cap = reading.get("safety_cap")
     if extra:
         text += f" · {extra} more not shown"
@@ -287,7 +287,7 @@ def run(limit, live, environ=os.environ, client=None, read=None, now=None):
     try:
         reading = (read or (lambda: edge.limits((environ.get("IMESSAGE_ALERTS_HOST") or "").strip())))()
     except edge.EdgeError as error:
-        text = f"AI Capacity · DEGRADED · Oracle limits read failed at {now.strftime('%-I:%M %p')} CT ({error}) · showing the last reading"
+        text = f"AI Capacity (DEGRADED at {now.strftime('%-I:%M %p')} CT) · Oracle limits read failed ({error}) · showing the last reading"
         result = write(client, block_id, text, None, live)
         return {**result, "status": "degraded", "code": str(error), "failed": 1}           # a failed read is a failed stage, by name; the old card stays until a fresh reading is verified
     text, table = render(reading, now)

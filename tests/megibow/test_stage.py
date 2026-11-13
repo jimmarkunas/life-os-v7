@@ -151,7 +151,7 @@ class Stage(unittest.TestCase):
         self.assertEqual(n.rows["r6"][-1], "3")           # the total is the LAST row
         self.assertTrue(n.bold["r6"])                     # and it is bold
         self.assertFalse(any(n.bold.get(r) for r in ("r1", "r2", "r3", "r4", "r5")))
-        self.assertTrue(n.callout.startswith("Updated Wed Oct 7, 1:00 PM CT"))
+        self.assertTrue(n.callout.startswith("MegIBOW (Updated 1:00 PM CT)"))
 
     def test_review_row_created_once_and_answer_applied(self):
         mon = datetime(2026, 10, 5, 15, 0, tzinfo=UTC)
@@ -178,7 +178,7 @@ class Stage(unittest.TestCase):
         with self.assertRaises(stage.MegibowError):
             run(FakeGmail({}), Boom([]), n)
         self.assertEqual(n.rows, before)
-        self.assertTrue(n.callout.startswith("DEGRADED"))
+        self.assertTrue(n.callout.startswith("MegIBOW (DEGRADED at "))
         self.assertIn("incomplete", n.callout)
 
     def test_jims_phone_call_line_is_added_once_and_his_counts_reach_the_week_and_the_totals(self):
