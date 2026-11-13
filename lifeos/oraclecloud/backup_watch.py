@@ -1,10 +1,11 @@
-"""LIFE-129 (Jim, Oct 28 2026): a failed or missed off-site backup night must reach the phone, quietly. The backup job on Oracle (lifeos/edge/backup) sends nothing itself: the
-platform alerts gateway is the one sender. Every tick the Oracle Cloud card stage already reads Oracle's `oracle1` answer, which carries the backup's last result
-({"ok", "code", "age_h"}, from stats.mjs); this decides from that reading and pushes `offsite_backup_failed` (INFO: phone only, reminded every 24 h while it stays broken,
-platform alerts D53). A reading that cannot be had (Oracle unreachable) is unknown and changes nothing: it neither opens nor resolves the alert. State is one private row.
-Counts and fixed codes only; it never raises, so the card's own result never depends on it.
-`make` is also the machinery of worker_watch (LIFE-531): a watch says whether a reading is `healthy` (True, False, or None for a reading that cannot be had, which changes nothing) and what its one Alert is; `make` holds the rest: reconcile,
-push through the gateway, keep the one private row (alert_open, last_notified)."""
+"""Pages the phone when the off-site backup on Oracle fails or is missed (LIFE-129), from the `oracle1` reading the Oracle Cloud card already makes.
+
+The backup job on Oracle (lifeos/edge/backup) sends nothing itself: the platform alerts gateway (D53) is the one sender. Input: the backup's last result {"ok", "code", "age_h"} in Oracle's `oracle1` answer (stats.mjs).
+Output: pushes `offsite_backup_failed` (INFO: phone only, reminded every 24 h while it stays broken). A reading that cannot be had (Oracle unreachable) is unknown and changes nothing. State: one private row.
+Counts and fixed codes only; it never raises, so the card's own result never depends on it. `make` is also the machinery of worker_watch (LIFE-531): a watch says whether a reading is `healthy` (True, False, or None) and what its one Alert is."""
+# Detail moved out of the docstring (LIFE-595):
+# LIFE-129 (Jim, Oct 28 2026): a failed or missed off-site backup night must reach the phone, quietly.
+# `make` holds the rest of what a watch needs: reconcile, push through the gateway, keep the one private row (alert_open, last_notified). A `healthy` of None (a reading that cannot be had) changes nothing.
 import json
 import os
 from datetime import timezone

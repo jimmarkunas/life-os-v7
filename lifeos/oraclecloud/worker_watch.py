@@ -1,7 +1,8 @@
-"""LIFE-531: duplicate Codex workers piling up on Oracle must reach the phone, quietly. OpenClaw starts one Codex app-server worker per agent; upstream bug 196499 leaks extra ones
-that never exit. Every tick the Oracle Cloud card already reads Oracle's `oracle1` answer, which carries {"count", "agents"} (from stats.mjs: the gateway's app-server children, and the
-agent folders). More workers than agents is the leak. This pushes `openclaw_workers_leaking` (INFO: phone only, reminded every 24 h while it stays true) through the platform alerts
-gateway (D53). A reading that cannot be had is unknown and changes nothing. State is one private row. Counts and fixed codes only; it never raises, so the card's result never depends on it."""
+"""Pages the phone when duplicate Codex workers pile up on Oracle (LIFE-531): more app-server workers than agents is the leak.
+
+OpenClaw starts one Codex app-server worker per agent; upstream bug 196499 leaks extra ones that never exit. Input: {"count", "agents"} in Oracle's `oracle1` answer (stats.mjs: the gateway's app-server children, and the agent folders),
+read every tick by the Oracle Cloud card. Output: pushes `openclaw_workers_leaking` (INFO: phone only, reminded every 24 h while it stays true) through the platform alerts gateway (D53).
+A reading that cannot be had is unknown and changes nothing. State: one private row. Counts and fixed codes only; it never raises, so the card's result never depends on it."""
 from lifeos.oraclecloud.backup_watch import make
 from lifeos.platform import alerts
 

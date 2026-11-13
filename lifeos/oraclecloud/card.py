@@ -1,14 +1,12 @@
-"""The Daily Report's Oracle Cloud callout, written every tick (Jim's approval Oct 15 2026: Option B, OCI's own data; the callout under Communications Attention, or under the JIRA card where Jim moved it; Oct 24 2026: refreshed every tick so its Codex lines match the AI Capacity card).
+"""The Daily Report's Oracle Cloud callout, written every tick from Oracle's `oracle1` numbers and the AI Capacity card's Codex limits.
 
-hourly tick -> domains.yml `imessage` job (already on the tailnet as tag:v7-runner) -> Oracle's private endpoint, request `oracle1` -> this stage -> Notion.
-Oracle answers numbers only (lifeos/oraclecloud/oracle/stats.mjs): month-to-date cost from OCI billing, CPU from OCI Monitoring, the Always Free A1 core
-headroom from OCI Limits, Oracle's idle-reclaim rule, local memory and disk and service health. The two Codex windows are not Oracle's own plan read: the stage
-lifeos.sources.cards.oracle_card passes in the same `limits` reading the AI Capacity card shows (`plan`, left = 100 - used), so the two cards cannot disagree. Every tick
-writes the card; a Codex reading that cannot be had is shown as unavailable and marks the card DEGRADED, as AI Capacity does.
-
-Live, it changes exactly two blocks of the callout Jim made: the heading's stamp (`Oracle Cloud (Updated Oct 15 · 7:05 AM CT)`, with `DEGRADED · ` in front
-when any reading is missing) and the one paragraph under it (one line per reading, text bars for memory, disk and the ChatGPT plan). Both are read back and
-every other V7 region is proven unchanged. Counts and fixed codes only in the log."""
+Flow: hourly tick -> domains.yml `imessage` job -> Oracle's private endpoint (request `oracle1`) -> this stage -> Notion. Oracle answers numbers only (lifeos/oraclecloud/oracle/stats.mjs).
+The two Codex windows come from the same `limits` reading as the AI Capacity card (passed in by lifeos.sources.cards.oracle_card), so the two cards cannot disagree; a Codex reading that cannot be had shows as unavailable and marks the card DEGRADED.
+Output: live, exactly two blocks of the callout: the heading's stamp (`Oracle Cloud (Updated Oct 15 · 7:05 AM CT)`, `DEGRADED · ` in front when any reading is missing) and the one paragraph under it. Both are read back; every other V7 region is proven unchanged. Counts and fixed codes only."""
+# Detail moved out of the docstring (LIFE-595):
+# Approved by Jim on Oct 15 2026 (Option B, OCI's own data): the callout sits under Communications Attention, or under the JIRA card where Jim moved it. Oct 24 2026: refreshed every tick so its Codex lines match the AI Capacity card.
+# Oracle's numbers: month-to-date cost from OCI billing, CPU from OCI Monitoring, the Always Free A1 core headroom from OCI Limits, Oracle's idle-reclaim rule, local memory and disk and service health.
+# The Codex reading is `plan`, left = 100 - used. The paragraph has one line per reading, with text bars for memory, disk and the ChatGPT plan. The `imessage` job is already on the tailnet as tag:v7-runner.
 import json
 import os
 import re
