@@ -22,7 +22,7 @@ def clean_env(**more):
 
 def git(cwd, *args, check=True, env=None):
     env = env or clean_env()
-    done = subprocess.run(["git", "-c", "user.name=T", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main", *args],
+    done = subprocess.run(["git", "-c", "user.name=T", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main", *args],
                           cwd=cwd, env=env, capture_output=True, text=True)
     if check and done.returncode:
         raise AssertionError(f"git {args}: {done.stderr}")
