@@ -225,7 +225,6 @@ def _run(limit, live, environ, connection, client, now, today):
         counts["degraded"] = True
         counts["guard_failed"]["ledger_target"] = counts["guard_failed"].get("ledger_target", 0) + 1
         return _finish(counts)
-    close_base = (environ.get("V7_CLOSE_BASE_URL") or "").strip()
     wanted = {k: surface.set_hash(_leads(company, title, index, details, today, aliases, dismissed, k)[0])
               for k, (page, company, title, classes) in surfaced.items()}       # what each target page should show now, as the hash of its block ("" = none): pure and in memory
     state, counts["state_table"] = store.load_page_state(connection)
@@ -240,7 +239,7 @@ def _run(limit, live, environ, connection, client, now, today):
         began = timing.start()
         label = "failed"
         try:
-            label = _page(notion, connection, key, page, company, title, target, index, details, today, aliases, dismissed, live, counts, close_base, recorded, skip) or "none"
+            label = _page(notion, connection, key, page, company, title, target, index, details, today, aliases, dismissed, live, counts, recorded, skip) or "none"
         except (NotionError, NetworkError) as error:
             counts["failed"] += 1
             counts["degraded"] = True
@@ -354,7 +353,7 @@ class Skip:
 WRITES = ("created", "replaced", "converged", "removed")
 
 
-def _page(notion, connection, key, page_id, company, title, target, index, details, today, aliases, dismissed, live, counts, close_base="", recorded=None, skip=None):
+def _page(notion, connection, key, page_id, company, title, target, index, details, today, aliases, dismissed, live, counts, recorded=None, skip=None):
     page = notion.call("GET", f"/pages/{page_id}")
     edited = page.get("last_edited_time")
     if skip is not None and live and skip.may_skip(key, edited):
@@ -392,11 +391,10 @@ def _page(notion, connection, key, page_id, company, title, target, index, detai
         aliases.update(dict(new_aliases))
     shown, _ = _leads(company, title, index, details, today, local_aliases, local_dismissed, key)
     counts["with_leads"] += bool(shown)
-    link = None                                                         # the approved card block (Jim, Oct 28) carries no Mark as Sent line
-    action = surface.apply(notion, page_id, top, owned, shown, live, link)
+    action = surface.apply(notion, page_id, top, owned, shown, live)
     counts["blocks"][action] = counts["blocks"].get(action, 0) + 1
     if recorded is not None and live and not action.startswith("would_"):
-        recorded[key] = (page_id, surface.set_hash(shown, link))           # the block (or its absence) that apply just proved on the page
+        recorded[key] = (page_id, surface.set_hash(shown))           # the block (or its absence) that apply just proved on the page
         _note_edit(notion, skip, key, page_id, action, edited)
     return action
 

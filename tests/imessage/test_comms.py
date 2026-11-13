@@ -8,7 +8,6 @@ import unittest
 from unittest import mock
 
 from lifeos.imessage import alerts_endpoint as ep, comms_card as card
-from lifeos.platform import report_region
 from tests.imessage.test_alerts import RUNNER, OTHER, SECRET_HANDLE, SECRET_TEXT, message, v2, whois
 from tests.kit.comms import LAUNCH, Report, text
 

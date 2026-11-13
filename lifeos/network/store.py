@@ -74,16 +74,21 @@ SURFACE_EXPECTED = {"v7_network_dismissals": "id,job_key,person_id,evidence_hash
                     "v7_network_page_state": "job_key,page_id,written_hash,checked_at", "v7_network_page_edit": "job_key,edited,recorded_at"}
 
 
-def ensure_surface_schema(connection):
-    """Live only: create the two surface tables if missing and prove their columns; a different table fails closed."""
+def _ensure(connection, statements, expected):
+    """Create the tables if missing and prove their columns are the ones this code writes; a different table fails closed."""
     try:
         with connection.cursor() as cursor:
-            for statement in SURFACE_SCHEMA:
+            for statement in statements:
                 cursor.execute(statement)
-            for table, columns in SURFACE_EXPECTED.items():
+            for table, columns in expected.items():
                 cursor.execute(f"SELECT {columns} FROM {table} LIMIT 0")
-    except Exception:                                                  # noqa: BLE001
+    except Exception:                                                  # noqa: BLE001 - a driver message may carry names; only the fixed code leaves
         raise NetworkError("NETWORK_SCHEMA_MISMATCH") from None
+
+
+def ensure_surface_schema(connection):
+    """Live only: create the surface tables if missing and prove their columns; a different table fails closed."""
+    _ensure(connection, SURFACE_SCHEMA, SURFACE_EXPECTED)
 
 
 def load_decisions(connection):
@@ -127,7 +132,7 @@ def _rollback(connection):
         pass
 
 
-def _revive(connection):
+def revive(connection):
     """The page-state save comes after a long stretch of Notion reads; the store may have dropped an idle connection meanwhile. Reconnect if the driver can; otherwise carry on and fail normally."""
     ping = getattr(connection, "ping", None)
     if ping is not None:
@@ -137,67 +142,57 @@ def _revive(connection):
             pass
 
 
-def load_page_state(connection):
-    """-> ({job_key: (page_id, written_hash)}, present). A missing table reads as no state (a dry run before the first live run): the caller then keeps the plain rotation."""
+def _rows(connection, sql, shape):
+    """-> (shape(rows), present). A missing table reads as nothing recorded ({}, False)."""
     try:
         with connection.cursor() as cursor:
-            cursor.execute("SELECT job_key, page_id, written_hash FROM v7_network_page_state")
-            return {k: (p, h) for k, p, h in cursor.fetchall()}, True
+            cursor.execute(sql)
+            return shape(cursor.fetchall()), True
     except Exception:                                                  # noqa: BLE001
         return {}, False
+
+
+def load_page_state(connection):
+    """-> ({job_key: (page_id, written_hash)}, present). A missing table reads as no state (a dry run before the first live run): the caller then keeps the plain rotation."""
+    return _rows(connection, "SELECT job_key, page_id, written_hash FROM v7_network_page_state", lambda rows: {k: (p, h) for k, p, h in rows})
 
 
 def load_page_edits(connection):
     """LIFE-572 -> ({job_key: (last_edited_time string, recorded_at)}, present). A missing table reads as nothing recorded: every page is then read exactly as before."""
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT job_key, edited, recorded_at FROM v7_network_page_edit")
-            return {k: (e, r) for k, e, r in cursor.fetchall()}, True
-    except Exception:                                                  # noqa: BLE001
-        return {}, False
+    return _rows(connection, "SELECT job_key, edited, recorded_at FROM v7_network_page_edit", lambda rows: {k: (e, r) for k, e, r in rows})
 
 
 def load_page_checked(connection):
     """LIFE-572 -> ({job_key: checked_at}, present): when each page's state was last saved after its proof. Used to trust a page that has no recorded edit time yet (see Skip)."""
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT job_key, checked_at FROM v7_network_page_state")
-            return {k: c for k, c in cursor.fetchall()}, True
-    except Exception:                                                  # noqa: BLE001
-        return {}, False
+    return _rows(connection, "SELECT job_key, checked_at FROM v7_network_page_state", lambda rows: {k: c for k, c in rows})
 
 
-def save_page_edits(connection, rows, clock=lambda: datetime.now(timezone.utc).replace(tzinfo=None)):
-    """LIFE-572: record each page's last-edited time as read right after its own proof (job_key -> edited string). Losing this loses only a shortcut: the page is read again next run."""
-    if not rows:
-        return
-    now = clock().isoformat(sep=" ", timespec="seconds")
-    _revive(connection)
+def _replace(connection, sql, params):
+    """One transaction of REPLACE rows. Losing it loses only a shortcut: the page is read again next run."""
+    revive(connection)
     try:
         connection.begin()
         with connection.cursor() as cursor:
-            cursor.executemany("REPLACE INTO v7_network_page_edit (job_key, edited, recorded_at) VALUES (%s,%s,%s)", [(k, e, now) for k, e in rows.items()])
+            cursor.executemany(sql, params)
         connection.commit()
     except Exception:                                                  # noqa: BLE001
         _rollback(connection)
         raise NetworkError("NETWORK_STORE_FAILED") from None
+
+
+def save_page_edits(connection, rows, clock=lambda: datetime.now(timezone.utc).replace(tzinfo=None)):
+    """LIFE-572: record each page's last-edited time as read right after its own proof (job_key -> edited string)."""
+    if rows:
+        now = clock().isoformat(sep=" ", timespec="seconds")
+        _replace(connection, "REPLACE INTO v7_network_page_edit (job_key, edited, recorded_at) VALUES (%s,%s,%s)", [(k, e, now) for k, e in rows.items()])
 
 
 def save_page_state(connection, rows, clock=lambda: datetime.now(timezone.utc).replace(tzinfo=None)):
     """LIFE-116: record what pages were just proven to show (job_key -> (page_id, written_hash)). Called only after a page's own read-back passed; a failure here loses nothing but a
     shortcut (the page is simply read again next run)."""
-    if not rows:
-        return
-    now = clock().isoformat(sep=" ", timespec="seconds")
-    _revive(connection)
-    try:
-        connection.begin()
-        with connection.cursor() as cursor:
-            cursor.executemany("REPLACE INTO v7_network_page_state (job_key, page_id, written_hash, checked_at) VALUES (%s,%s,%s,%s)", [(k, p, h, now) for k, (p, h) in rows.items()])
-        connection.commit()
-    except Exception:                                                  # noqa: BLE001
-        _rollback(connection)
-        raise NetworkError("NETWORK_STORE_FAILED") from None
+    if rows:
+        now = clock().isoformat(sep=" ", timespec="seconds")
+        _replace(connection, "REPLACE INTO v7_network_page_state (job_key, page_id, written_hash, checked_at) VALUES (%s,%s,%s,%s)", [(k, p, h, now) for k, (p, h) in rows.items()])
 
 
 def _marks(n):
@@ -205,15 +200,7 @@ def _marks(n):
 
 
 def ensure_schema(connection):
-    """Create the tables if missing and prove the columns are the ones this code writes; a different table fails closed."""
-    try:
-        with connection.cursor() as cursor:
-            for statement in SCHEMA:
-                cursor.execute(statement)
-            for table, columns in EXPECTED.items():
-                cursor.execute(f"SELECT {columns} FROM {table} LIMIT 0")
-    except Exception:                                                  # noqa: BLE001 - a driver message may carry names; only the fixed code leaves
-        raise NetworkError("NETWORK_SCHEMA_MISMATCH") from None
+    _ensure(connection, SCHEMA, EXPECTED)
 
 
 def totals(connection):
