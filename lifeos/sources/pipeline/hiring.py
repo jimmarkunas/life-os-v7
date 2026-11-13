@@ -60,33 +60,6 @@ def _day(value):
     return render.local(value).strftime("%b %-d")
 
 
-def decide(request, live, environ=os.environ, ledger_client=None, now=None, **refresh):
-    """D194 / LIFE-353, one confirmed action end to end for ONE pursuit: `decision.route` finds its Job Ledger row by page id (a fresh read of the Ledger's pursuit rows) and
-    `decision.confirm_rejected` writes it with read-back; no page is moved. THEN the Hiring Pipeline projection is refreshed, so a pursuit leaves the queue only after the decision was
-    verified, and `cleared` needs the exact pursuit absent from the rendered table. Any decision error is raised before the projection is touched; a refresh that fails after a verified
-    write is reported as `projection: FAILED` with the decision standing."""
-    now = (now or datetime.now(TZ)).astimezone(TZ)
-    client = ledger_client or Client(environ)
-    if ledger.verify(client) != ledger.OK:
-        raise NotionError("HIRING_LEDGER_TARGET")
-    want = decision.parse(request)
-    target = decision.route(decision.rows(decision.ledger_pages(client)), want)
-    if decision._page_id(target["id"]) != want["id"]:
-        raise decision.fail("STALE_IDENTITY")
-    done = decision.confirm_rejected(client, request, live, now)
-    done["cleared"] = False                                            # the queue is cleared only when the refreshed projection is fresh, its write verified and the exact pursuit is gone
-    try:
-        counts = run(0, live, environ, ledger_client=client, now=now, target=(request["company"], request["role"]), **refresh)
-        done["projection"] = {k: counts[k] for k in ("status", "rows", "closed", "verified", "target_listed")}
-        done["cleared"] = bool(live) and counts["status"] == "fresh" and counts["verified"] is True and counts["target_listed"] is False
-    except Exception:                                                  # noqa: BLE001 - the verified decision must still be reported
-        done["projection"] = "FAILED"
-    return done
-
-
-confirm_rejected = decide                                              # the D194 name
-
-
 def read_parents(client, root_id, ledger_client=None):
     """Opportunity pages under Active and Retired Opportunities (read only) -> [{"id", "company", "role", "rounds", "retired"}]. D189: a page under Retired Opportunities means that pursuit is closed.
     LIFE-352: with `ledger_client`, pursuits come from Job Ledger rows with Stage set first (the page tree fills in the rest); a Ledger pursuit keeps its matching page-tree page id as "id"
@@ -185,7 +158,7 @@ def _stale_hours(environ):
     return int(raw) if raw.isdigit() and int(raw) < outcome_mail.STALE_HOURS else outcome_mail.STALE_HOURS
 
 
-def run(limit, live, environ=os.environ, ledger_client=None, pipeline_client=None, calendar=None, connection=None, client=None, now=None, target=None):
+def run(limit, live, environ=os.environ, ledger_client=None, pipeline_client=None, calendar=None, connection=None, client=None, now=None):
     now = (now or datetime.now(TZ)).astimezone(TZ)
     ok, applied, parents, events = {"ledger": True, "parents": True, "calendar": True}, [], [], []
     ledger_stats = {}
@@ -234,9 +207,6 @@ def run(limit, live, environ=os.environ, ledger_client=None, pipeline_client=Non
         counts["auto_close"] = {"due": auto["due"], "closed": len(auto["closed"]), "refused": auto["refused"], "switch": auto["switch"], "shown": len(recent)}
         counts.update({"applied": len(applied), "opportunities": sum(1 for p in parents if not p.get("retired")), "mail_outcomes": len(heard), "retired_pages": sum(1 for p in parents if p.get("retired")), "closed": result["closed"], "events": len(events), "unsupported": result["unsupported"],
                        "unmatched_events": result["unmatched_events"], "untitled_pages": result["untitled_pages"], "ledger": ledger_stats, "saved": 0, "blocks_written": 0, "sources": dict(ok)})
-        if target:                                                # D194: is the requested pursuit still in the table this run renders? (company and role never leave this function)
-            shown = {c[0][0] for c in (cells or [])}                                   # the first cell is "Company — Role"
-            counts["target_listed"] = None if cells is None else any(M.label(r["company"], r["role"]) in shown for r in result["rows"] or [] if M.same(r["company"], r["role"], *target))
         new = snapshot.build(result, prior, now)
         if new is not None:
             new["auto_closed"] = recent

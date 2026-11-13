@@ -7,7 +7,7 @@ from lifeos.recruiters import notion as store, outreach as O
 from lifeos.sources.pipeline import job_page_outreach as JP
 from lifeos.sources.apps import outreach_app
 from tests.recruiters.fakes import FakeRecruiters, page
-from tests.recruiters.test_outreach import (JOB_A, JOB_B, LEDGER, SCHEMA, NOW, Ledger, Service, fields, ledger_page, mark)
+from tests.recruiters.test_outreach import (JOB_A, JOB_B, LEDGER, SCHEMA, NOW, Ledger, Service, fields, ledger_page, mark, walk)
 
 OPTIONS = {"Action Status": {"type": "select", "select": {"options": [{"name": n} for n in ("Needs Action", "Waiting", *store.CONVERSATION, store.DECLINED)]}}}
 JOB = {"id": JOB_A, "company": "Northwind Labs", "role": "Senior Technical Program Manager"}
@@ -34,11 +34,7 @@ def _row(action):
 
 
 def record(svc, person_index, status):
-    st, _, body, _ = svc("GET", "/referral", {"j": JOB_A})
-    assert st == 200, body
-    review = svc("POST", "/referral", form={**fields(body), "who": person_index, "status": status, "step": "review"})
-    assert review[0] == 200, review[2]
-    return svc("POST", "/referral", form={**fields(review[2]), "step": "confirm"})
+    return walk(svc, "/referral", {"j": JOB_A}, who=person_index, status=status)
 
 
 class SetConversation(unittest.TestCase):

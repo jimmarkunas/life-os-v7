@@ -12,8 +12,8 @@ The tables v7_network_dismissals and v7_network_aliases are created only by a li
 
 LIFE-116: with the stored page state (v7_network_page_state: the hash of the block each page was last PROVEN to show, empty for none) a page is read only when it is dirty (no state, a
 different page, or a different wanted hash: a new job, a roster change, an alias or a dismissal), pages with leads first. The pages that hold a block are still re-read on a rotation
-(Jim's Dismiss and Same company ticks live in the block) and a small sweep of the settled no-block pages catches drift. Without the table (a dry run before the first live run) the
-plain hourly rotation applies, exactly as before."""
+(Jim's Dismiss and Same company ticks live in the block) and a small sweep of the settled no-block pages catches drift. Without the table (a dry run before the first live run) every
+page is dirty."""
 import json
 import os
 import time
@@ -160,27 +160,6 @@ def _queue_state(surfaced, others, wanted, state, budget, now):
     return [(k,) + pages[k] for k in picks], total, len(dirty)
 
 
-def _queue(surfaced, others, with_leads, budget, now):
-    """-> (pages to read this run, number of candidate pages). Two pools rotate by the hour: targets that have leads to show, and every other page (targets with nothing to show and pages that
-    stopped being targets, whose old blocks must still be found and removed). The budget is split in proportion to the pool sizes (at least one page each while a pool is not empty), so both pools
-    complete a full cycle in the same time: every page is reached within ceil(candidates / budget) runs (40 hours for 1,600 pages at 40 an hour; a larger --limit shortens it). A leads-bearing target
-    is therefore revisited no faster than any other page; there is no priority that could starve the cleanup pool."""
-    hour = int(now.timestamp() // 3600)
-    shown = sorted(k for k in surfaced if k in with_leads)
-    rest = sorted(k for k in surfaced if k not in with_leads) + sorted(o[0] for o in others)
-    total = len(shown) + len(rest)
-    if not budget or not total:
-        return [], total
-    if not shown or not rest:
-        first = budget if shown else 0
-    else:
-        first = min(len(shown), max(1, round(budget * len(shown) / total)), budget - 1) if budget > 1 else 1
-    picks = _window(shown, first, hour) + _window(rest, budget - first, hour)
-    pages = {k: (v[0], v[1], v[2], True) for k, v in surfaced.items()}
-    pages.update({o[0]: (o[1], o[2], o[3], False) for o in others})
-    return [(k,) + pages[k] for k in picks], total
-
-
 def run(limit, live, environ=os.environ, connection=None, client=None, now=None, today=None):
     now = (now or datetime.now(timezone.utc))
     today = today or now.date()
@@ -193,16 +172,20 @@ def run(limit, live, environ=os.environ, connection=None, client=None, now=None,
 MAX_SHARDS = 8
 
 
+def parse_shard(raw, error, code):
+    """A shard setting "i/n" -> (i, n); unset = (0, 1), everything. Anything else raises `error(code)`. The Ledger layout stage reads its own variable the same way."""
+    try:
+        index, count = (int(part) for part in (raw or "0/1").strip().split("/"))
+    except ValueError:
+        raise error(code) from None
+    if not 0 < count <= MAX_SHARDS or not 0 <= index < count:
+        raise error(code)
+    return index, count
+
+
 def shard_of(environ):
     """SURFACE_SHARD "i/n" -> (i, n). Unset = (0, 1), every page."""
-    raw = (environ.get("SURFACE_SHARD") or "0/1").strip()
-    try:
-        index, count = (int(part) for part in raw.split("/"))
-    except ValueError:
-        raise NetworkError("NETWORK_SURFACE_SHARD_INVALID") from None
-    if not 0 < count <= MAX_SHARDS or not 0 <= index < count:
-        raise NetworkError("NETWORK_SURFACE_SHARD_INVALID")
-    return index, count
+    return parse_shard(environ.get("SURFACE_SHARD"), NetworkError, "NETWORK_SURFACE_SHARD_INVALID")
 
 
 def _run(limit, live, environ, connection, client, now, today):
@@ -248,10 +231,7 @@ def _run(limit, live, environ, connection, client, now, today):
     state, counts["state_table"] = store.load_page_state(connection)
     edits, counts["edit_table"] = store.load_page_edits(connection) if counts["state_table"] else ({}, False)
     checked = store.load_page_checked(connection)[0] if counts["state_table"] else {}
-    if counts["state_table"]:
-        queue, candidates, counts["pages_dirty"] = _queue_state(surfaced, others, wanted, state, budget, now)
-    else:
-        queue, candidates = _queue(surfaced, others, {k for k, h in wanted.items() if h}, budget, now)
+    queue, candidates, counts["pages_dirty"] = _queue_state(surfaced, others, wanted, state, budget, now)
     recorded, seen_edits = {}, {}
     clean = {k for k in (q[0] for q in queue) if counts["state_table"] and k in state and state[k][1] == wanted.get(k, "")}      # LIFE-572: proven to show exactly what it should; the only pages that may be skipped
     skip = Skip(edits, clean, seen_edits, now, checked) if (environ.get("NETWORK_SURFACE_SKIP") or "on").strip().lower() != "off" else None      # LIFE-572: one repository variable turns the skip off
