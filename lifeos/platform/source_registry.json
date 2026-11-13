@@ -15,6 +15,7 @@
     {"name": "hiring", "module": "lifeos.sources.pipeline.hiring"},
     {"name": "interview", "module": "lifeos.sources.interview.interview_evidence"},
     {"name": "job-page-outreach", "module": "lifeos.sources.pipeline.job_page_outreach"},
-    {"name": "mail-filing", "module": "lifeos.sources.cards.mail_filing", "floor": 200}
+    {"name": "mail-filing", "module": "lifeos.sources.cards.mail_filing", "floor": 200},
+    {"name": "manual-job", "module": "lifeos.sources.pipeline.manual_job"}
   ]
 }

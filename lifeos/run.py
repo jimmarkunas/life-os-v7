@@ -75,7 +75,6 @@ STAGES = {
     "interview-probe": lazy("lifeos.interview.stage", "probe"),
     "interview-acceptance": lazy("lifeos.interview.acceptance"),
     "granola": lazy("lifeos.interview.granola_bridge", "stage"),     # LIFE-37 Step 2: carry ONE pinned Granola meeting (GRAN_PIN_DAY) from Oracle into its round; manual only, no schedule
-    "manual-job": lazy("lifeos.sources.pipeline.manual_job"),     # LIFE-37: ONE job Jim names by hand (MANUAL_JOB_*) into Jobs OS and the Interview OS writer; manual only (manual-job.yml), dry run unless live
     "jira-snapshot": lazy("lifeos.jira.snapshot"),
     "bills-snapshot": lazy("lifeos.bills.snapshot"),
     "bills-paid": lazy("lifeos.bills.paid"),
