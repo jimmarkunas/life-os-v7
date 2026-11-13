@@ -13,7 +13,7 @@ export const SCHEMA = "lifeos.oracle.stats.v1";
 const SDK = path.join(os.homedir(), ".local/share/lifeos-oci/package.json");
 const OPENCLAW = path.join(os.homedir(), ".openclaw/tools/node/bin/openclaw");
 const IMDS = "http://169.254.169.254/opc/v2/instance/";
-const UNITS = { gateway: "openclaw-gateway.service", whatsapp: "lifeos-whatsapp-attention.service", alerts: "lifeos-alerts-whatsapp.service" };
+const UNITS = { gateway: "openclaw-gateway.service", alerts: "lifeos-alerts-whatsapp.service" };
 const AGENTS_DIR = `${process.env.HOME}/.openclaw/agents`;   // LIFE-531: one folder per OpenClaw agent
 const BACKUP_STATUS = "/var/lib/lifeos-offsite/status.json";   // LIFE-129: the nightly off-site backup's last result (root-written, world-readable; counts and a fixed code)
 const IDLE_PCT = 20;                                    // Oracle's Always Free idle rule: 7-day CPU p95, network and (A1) memory all below 20%
@@ -139,8 +139,8 @@ async function oci() {
 
 async function services() {
   const active = async (unit) => (await run("systemctl", ["--user", "is-active", unit], 10000))?.trim() === "active";
-  // LIFE-643 row 1: WhatsApp attention is a SYSTEM unit of its own user (lifeos-wa-attention.service) once moved; the old ubuntu user unit counts too, so the card is right on either side of the move.
-  const whatsappActive = async () => (await active(UNITS.whatsapp)) || (await run("systemctl", ["is-active", "lifeos-wa-attention.service"], 10000))?.trim() === "active";
+  // LIFE-643: WhatsApp attention is a SYSTEM unit of its own user (lifeos-wa-attention.service); the old ubuntu user unit is gone.
+  const whatsappActive = async () => (await run("systemctl", ["is-active", "lifeos-wa-attention.service"], 10000))?.trim() === "active";
   const [gateway, whatsapp, alerts, channels] = await Promise.all([active(UNITS.gateway), whatsappActive(), active(UNITS.alerts),
     run(OPENCLAW, ["channels", "status", "--json"], 45000)]);
   let telegram = null;
