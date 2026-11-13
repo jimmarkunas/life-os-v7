@@ -118,29 +118,20 @@ class Select(unittest.TestCase):
 
 
 class Check(unittest.TestCase):
-    def setUp(self):
-        self.root = tree(["lifeos/jobs/a.py", "lifeos/jobs/__init__.py", "lifeos/x.py"])
-
-    def test_a_fresh_complete_index_passes(self):
-        idx = index({"jobs/a.py": [0], "x.py": [1]})
-        self.assertEqual(ti.check(idx, self.root, NOW), [])
+    def test_a_fresh_index_passes(self):
+        self.assertEqual(ti.check(index({"jobs/a.py": [0], "x.py": [1]}), NOW), [])
 
     def test_an_old_index_is_reported_with_its_age(self):
         idx = index({"jobs/a.py": [0], "x.py": [1]}, made=NOW - datetime.timedelta(days=8))
-        self.assertEqual(ti.check(idx, self.root, NOW), ["the test index is 8 days old (limit 7)"])
-        self.assertEqual(ti.check(index({"jobs/a.py": [0], "x.py": [1]}, made=NOW - datetime.timedelta(days=7)), self.root, NOW), [])
+        self.assertEqual(ti.check(idx, NOW), ["the test index is 8 days old (limit 7)"])
+        self.assertEqual(ti.check(index({"jobs/a.py": [0], "x.py": [1]}, made=NOW - datetime.timedelta(days=7)), NOW), [])
 
-    def test_production_files_missing_from_the_index_are_reported(self):
-        problems = ti.check(index({"jobs/a.py": [0]}), self.root, NOW)
-        self.assertEqual(problems, ["1 production file(s) are not in the index (first: x.py)"])
-        self.assertEqual(ti.check(index({"jobs/a.py": [0]}, uncovered=["x.py"]), self.root, NOW), [])        # listed as uncovered is fine
-
-    def test_files_listed_in_the_index_that_no_longer_exist_are_reported(self):
-        problems = ti.check(index({"jobs/a.py": [0], "x.py": [1], "jobs/deleted.py": [0]}), self.root, NOW)
-        self.assertEqual(problems, ["1 file(s) in the index no longer exist (first: jobs/deleted.py)"])
+    def test_production_files_added_or_deleted_since_the_build_are_not_a_problem(self):
+        """LIFE-588: adding a source must not need a rebuild of the index; `select` sends an unlisted file to its mirror folder, or to FULL."""
+        self.assertEqual(ti.check(index({"jobs/a.py": [0], "jobs/deleted.py": [0]}), NOW), [])
 
     def test_a_missing_index_is_reported(self):
-        self.assertEqual(ti.check(None, self.root, NOW), ["the test index is missing or unreadable"])
+        self.assertEqual(ti.check(None, NOW), ["the test index is missing or unreadable"])
 
 
 @unittest.skipUnless(os.environ.get("LIFEOS_TEST_INDEX_FRESH") == "1", "only the hourly full run enforces index freshness (a PR must not fail because the index aged)")

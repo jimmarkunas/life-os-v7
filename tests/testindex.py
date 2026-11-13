@@ -2,7 +2,7 @@
 
   python -m tests.testindex build [--out docs/test-index.json]     run the whole suite once with per-test coverage contexts and write the index (needs `coverage`)
   python -m tests.testindex select --base HEAD^1                   print the unittest targets for the files changed since BASE; the single word FULL means "run everything"
-  python -m tests.testindex check [--max-age-days 7]               exit 1 (with the reason) when the committed index is older than that, misses production files that exist, or lists files that are gone
+  python -m tests.testindex check [--max-age-days 7]               exit 1 (with the reason) when the committed index is older than that or unreadable
 
 Safety first: when in doubt the selector says FULL. tests/contracts ALWAYS runs. Changes to the shared test kit, the test tooling, workflows, locks, config, the shared
 platform layer, privacy files, or any file the selector does not know are FULL. A production file missing from the index falls back to its mirror test folder (tests/<package>),
@@ -168,28 +168,18 @@ def module_set(root=ROOT):
 _MODULES = {}
 
 
-def check(index, root=ROOT, now=None, max_age_days=MAX_AGE_DAYS):
-    """-> list of problems (empty = fresh): too old, or production files that exist but are in neither `covers` nor `uncovered`."""
+def check(index, now=None, max_age_days=MAX_AGE_DAYS):
+    """-> list of problems (empty = usable): unreadable, or too old. A production file the index does not list (new, renamed or deleted since the build) is NOT a problem (LIFE-588): `select` sends it to its
+    mirror test folder, or to FULL, so adding a source never needs a rebuild of the index."""
     if index is None:
         return ["the test index is missing or unreadable"]
-    problems = []
     now = now or datetime.datetime.now(datetime.timezone.utc)
     try:
         made = datetime.datetime.strptime(index["generated_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=datetime.timezone.utc)
         age = (now - made).days
-        if age > max_age_days:
-            problems.append("the test index is %d days old (limit %d)" % (age, max_age_days))
+        return ["the test index is %d days old (limit %d)" % (age, max_age_days)] if age > max_age_days else []
     except (KeyError, ValueError):
-        problems.append("the test index has no readable generated_at")
-    known = set(index.get("covers", {})) | set(index.get("uncovered", []))
-    on_disk = set(production_files(root))
-    missing = sorted(on_disk - known)
-    if missing:
-        problems.append("%d production file(s) are not in the index (first: %s)" % (len(missing), ", ".join(missing[:3])))
-    gone = sorted(known - on_disk)
-    if gone:
-        problems.append("%d file(s) in the index no longer exist (first: %s)" % (len(gone), ", ".join(gone[:3])))
-    return problems
+        return ["the test index has no readable generated_at"]
 
 
 def all_tests(root=ROOT):

@@ -1,6 +1,6 @@
 """One entry point for every pipeline stage:  python -m lifeos.run <stage> [--limit N] [--live]
 
-A stage is a function (limit, live) -> counts. Add a stage by adding one line to STAGES: lazy("package.module", "function") calls
+A stage is a function (limit, live) -> counts. A job source is one row in lifeos/platform/source_registry.json (see lifeos/platform/source_registry.py); any other stage is one line in STAGES: lazy("package.module", "function") calls
 function(limit, live), with `floor` raising the limit and any other keyword passed through; the module is imported only when the stage runs.
 Errors from a stage are fixed codes only. Output is one counts-only line (public repo, D7).
 """
@@ -127,8 +127,9 @@ STAGES.update(registry.stages(lazy))                                    # LIFE-6
 
 
 # D182: a stage whose counts carry `failed > 0` exits 1 with this fixed code (counts are still printed), so the workflow step reports failure, the
-# finish job's lane list names it, and the existing report job pushes it. Only the stages listed here; every other stage keeps its exit behavior.
-PARTIAL_FAILURE = {"capacity-card": "CAPACITY_READ_FAILED", "job-page-outreach": "JOB_PAGE_OUTREACH_PAGES_FAILED", "notion-sandbox-access": "NOTION_SANDBOX_ACCESS_DENIED", "notion-sandbox-outreach-proof": "NOTION_SANDBOX_PROOF_FAILED", "publish": "PUBLISH_RECORDS_FAILED", "fit": "FIT_CLOUD_DEGRADED", "fit-cloud-backlog": "FIT_CLOUD_DEGRADED", "interview": "INTERVIEW_OS_DEGRADED", "manual-job": "MANUAL_JOB_FAILED", "granola-auto": "GRAN_AUTO_FAILED", "mail-filing": "PHYSMAIL_FILING_FAILED", "scale-up-exclusion-review": "PRIVATE_REPORT_FAILED", "scale-up-register": "PRIVATE_REPORT_FAILED", "jobs-backlog": "PRIVATE_REPORT_FAILED"}      # fit: D214, only when the cloud shadow is enabled and failed; jobs-backlog: LIFE-212 (a), the backlog report page
+# finish job's lane list names it, and the existing report job pushes it. Only the stages listed here; every other stage keeps its exit behavior. A registered source adds its own through `partial_failure` in its registry row.
+PARTIAL_FAILURE = {"capacity-card": "CAPACITY_READ_FAILED", "publish": "PUBLISH_RECORDS_FAILED", "fit": "FIT_CLOUD_DEGRADED", "fit-cloud-backlog": "FIT_CLOUD_DEGRADED", "scale-up-exclusion-review": "PRIVATE_REPORT_FAILED", "jobs-backlog": "PRIVATE_REPORT_FAILED"}      # fit: D214, only when the cloud shadow is enabled and failed; jobs-backlog: LIFE-212 (a), the backlog report page
+PARTIAL_FAILURE.update(registry.partial_failures())
 
 
 def _step_code(counts):

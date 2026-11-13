@@ -1,5 +1,5 @@
 {
-  "_how_to_read": "LIFE-618: the one list of job sources. One object per source: name (the stage: python -m lifeos.run <name>), module, function (default run), floor (raise a smaller --limit to this), tick (the Jobs-tick step: budget, limit, bulk, group, providers; leave out when the source does not run in the tick) with after (the tick step it follows), and codes ({CODE: [class, counts as an attempt, meaning, action]}) for its own outcome codes. Data, not code, so no layer imports another (D17).",
+  "_how_to_read": "LIFE-618: the one list of job sources. One object per source: name (the stage: python -m lifeos.run <name>), module, function (default run), floor (raise a smaller --limit to this), tick (the Jobs-tick step: budget, limit, bulk, group, providers; leave out when the source does not run in the tick) with after (the tick step it follows), and codes ({CODE: [class, counts as an attempt, meaning, action]}) for its own outcome codes, partial_failure (a code: a run whose counts carry failed > 0 exits 1 with it). Data, not code, so no layer imports another (D17).",
   "sources": [
     {"name": "boards", "module": "lifeos.sources.web.boards", "tick": {"budget": 1080, "limit": 900, "bulk": true, "group": "B", "providers": ["ats"]}, "after": "finalize"},
     {"name": "web-scale-up", "module": "lifeos.sources.web.run", "args": {"lane": "Scale-Up"}, "tick": {"budget": 300, "limit": 12, "bulk": true, "group": "B", "providers": ["ats"]}, "after": "boards"},
@@ -11,21 +11,21 @@
     {"name": "boards-backfill", "module": "lifeos.sources.web.boards", "function": "backfill", "tick": {"budget": 600, "limit": 450, "bulk": true}, "after": "sponsors"},
     {"name": "board-check", "module": "lifeos.sources.web.boardcheck"},
     {"name": "boards-preview", "module": "lifeos.sources.web.boards", "function": "preview"},
-    {"name": "granola-auto", "module": "lifeos.sources.interview.granola_auto", "function": "stage"},
+    {"name": "granola-auto", "module": "lifeos.sources.interview.granola_auto", "function": "stage", "partial_failure": "GRAN_AUTO_FAILED"},
     {"name": "hiring", "module": "lifeos.sources.pipeline.hiring"},
-    {"name": "interview", "module": "lifeos.sources.interview.interview_evidence"},
-    {"name": "job-page-outreach", "module": "lifeos.sources.pipeline.job_page_outreach"},
-    {"name": "mail-filing", "module": "lifeos.sources.cards.mail_filing", "floor": 200},
-    {"name": "manual-job", "module": "lifeos.sources.pipeline.manual_job"},
+    {"name": "interview", "module": "lifeos.sources.interview.interview_evidence", "partial_failure": "INTERVIEW_OS_DEGRADED"},
+    {"name": "job-page-outreach", "module": "lifeos.sources.pipeline.job_page_outreach", "partial_failure": "JOB_PAGE_OUTREACH_PAGES_FAILED"},
+    {"name": "mail-filing", "module": "lifeos.sources.cards.mail_filing", "floor": 200, "partial_failure": "PHYSMAIL_FILING_FAILED"},
+    {"name": "manual-job", "module": "lifeos.sources.pipeline.manual_job", "partial_failure": "MANUAL_JOB_FAILED"},
     {"name": "megibow", "module": "lifeos.sources.cards.megibow"},
     {"name": "network-layout", "module": "lifeos.sources.network.ledger_layout"},
     {"name": "network-match", "module": "lifeos.sources.network.network_leads"},
     {"name": "network-surface", "module": "lifeos.sources.network.network_surface"},
     {"name": "newsletter-trace", "module": "lifeos.sources.newsletters.cardtrace"},
-    {"name": "notion-sandbox-access", "module": "lifeos.sources.proofs.notion_sandbox_access"},
-    {"name": "notion-sandbox-outreach-proof", "module": "lifeos.sources.proofs.notion_sandbox_outreach_proof"},
+    {"name": "notion-sandbox-access", "module": "lifeos.sources.proofs.notion_sandbox_access", "partial_failure": "NOTION_SANDBOX_ACCESS_DENIED"},
+    {"name": "notion-sandbox-outreach-proof", "module": "lifeos.sources.proofs.notion_sandbox_outreach_proof", "partial_failure": "NOTION_SANDBOX_PROOF_FAILED"},
     {"name": "oracle-card", "module": "lifeos.sources.cards.oracle_card"},
     {"name": "scale-up-boards", "module": "lifeos.sources.web.boardstate"},
-    {"name": "scale-up-register", "module": "lifeos.sources.discovery.scale_up_register"}
+    {"name": "scale-up-register", "module": "lifeos.sources.discovery.scale_up_register", "partial_failure": "PRIVATE_REPORT_FAILED"}
   ]
 }
