@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           persist-credentials: false
           fetch-depth: 2                    # the merge commit and its two parents, enough to list what the pull request changes
@@ -87,7 +87,7 @@ jobs:
           } | tee -a "$GITHUB_STEP_SUMMARY"
           exit 0
       # Jim, Nov 8 2026: the Concord Room Orca plugin (tools/orca-concord-room) is production, so its own Node tests run on every PR and every merge. Node's built-in test runner, no install, no network, no secret; outside the 90 s Python suite limit above.
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
           node-version: "24"
       - name: Concord Room plugin tests (node:test)
