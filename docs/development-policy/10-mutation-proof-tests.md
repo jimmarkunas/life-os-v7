@@ -16,7 +16,7 @@ This is a **repeatable safeguard using existing LIFE Jira and PR review**, not a
 
 ### Decision numbers are claimed, never picked — Jim-approved October 20, 2026 (LIFE-89)
 
-Before writing a new decision in `docs/DECISIONS.md`, run `python -m lifeos.decisions claim` and use only the number it prints. It claims the number on GitHub as the tag `decision-claim/D###`; GitHub creates a tag atomically, so two parallel sessions can never get the same number. Never take "the next number" from a local copy of the log: that is how D229, D231, D235 and D236 were each taken twice on October 20. A claim that ends up unused leaves a harmless gap. An amendment or advice to an existing decision keeps that decision's number (`## D12 amendment …`). The contract test `DecisionNumberTests` fails any PR that reuses a number.
+Before writing a new decision in `docs/DECISIONS.md`, run `python -m lifeos.sources.devtools.decisions claim` and use only the number it prints. It claims the number on GitHub as the tag `decision-claim/D###`; GitHub creates a tag atomically, so two parallel sessions can never get the same number. Never take "the next number" from a local copy of the log: that is how D229, D231, D235 and D236 were each taken twice on October 20. A claim that ends up unused leaves a harmless gap. An amendment or advice to an existing decision keeps that decision's number (`## D12 amendment …`). The contract test `DecisionNumberTests` fails any PR that reuses a number.
 
 ### Jobs incremental architecture stress gate
 

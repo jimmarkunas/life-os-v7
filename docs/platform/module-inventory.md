@@ -31,7 +31,6 @@ Generated from `lifeos/platform/runtime.json`; do not edit by hand. The drift ch
 | lifeos/buzz | oracle |  |  |
 | lifeos/calendar_bridge | github |  |  |
 | lifeos/dcc | github |  |  |
-| lifeos/decisions.py | dev |  |  |
 | lifeos/delivery | github |  |  |
 | lifeos/edge | oracle |  |  |
 | lifeos/hermes_requests.py | github |  |  |
@@ -47,7 +46,6 @@ Generated from `lifeos/platform/runtime.json`; do not edit by hand. The drift ch
 | lifeos/physmail | github |  |  |
 | lifeos/platform | github, oracle |  |  |
 | lifeos/probe.py | github |  |  |
-| lifeos/readiness.py | github, dev |  |  |
 | lifeos/recruiters | github |  |  |
 | lifeos/run.py | github |  |  |
 | lifeos/sources | github, oracle |  |  |

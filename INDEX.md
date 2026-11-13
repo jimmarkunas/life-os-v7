@@ -34,4 +34,4 @@ Project-specific context (requirements, workflows, configuration) is not here. I
 
 ## Keeping this index true
 
-Adding, renaming or retiring a global source updates this index in the same PR. Other files under `docs/` are not listed: find them by listing the folder, each starts with its own heading (LIFE-644). `python -m lifeos.readiness repo` and `tests/contracts/test_development_policy_split.py` fail when a listed path is missing, has no owner or authority, or is over the size limit.
+Adding, renaming or retiring a global source updates this index in the same PR. Other files under `docs/` are not listed: find them by listing the folder, each starts with its own heading (LIFE-644). `python -m lifeos.sources.devtools.readiness repo` and `tests/contracts/test_development_policy_split.py` fail when a listed path is missing, has no owner or authority, or is over the size limit.
