@@ -1,8 +1,8 @@
-"""The Jira card in the Daily Report (Phase B). V7 owns exactly one Notion block - the "JIRA Execution" callout named by
-JIRA_CARD_BLOCK_ID - and nothing else on the page. Content comes only from the private database snapshot (never live Jira, so a
-report refresh cannot be broken by Jira being down) and is rendered with V1's buckets: Overdue / Blocked, Today (capacity 3),
-This Week, Done. A snapshot older than STALE_HOURS is never shown as current: only the status line changes, to STALE.
-Output is counts and fixed codes only."""
+"""The Jira card in the Daily Report (Phase B): the one Notion block V7 owns, rendered from the private database snapshot.
+
+Block: the "JIRA Execution" callout named by JIRA_CARD_BLOCK_ID, and nothing else on the page. Input: the snapshot only, never live Jira, so a report refresh cannot break when Jira is down.
+Buckets (V1's): Overdue / Blocked, Today (capacity 3), This Week, Done. A snapshot older than STALE_HOURS is never shown as current: only the status line changes, to STALE.
+Output: counts and fixed codes only."""
 import os
 import re
 from datetime import datetime, timedelta
