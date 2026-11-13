@@ -256,11 +256,8 @@ def summary_table(outcome, timings, total):
 
 
 def planned(environ=None):
-    """LIFE-653: PLAN without the stages TICK_SKIP_STAGES names (space-separated; an unknown name is ignored). The workflow names resolve-jobright when the browser install failed, so that one lane is red and the rest runs."""
-    skip = set((os.environ if environ is None else environ).get("TICK_SKIP_STAGES", "").split())
-    for step in PLAN:
-        if step.name in skip:
-            print(f"stage {step.name}: not run (TICK_SKIP_STAGES)", flush=True)
+    """LIFE-653: PLAN without the stages TICK_SKIP_STAGES names (the workflow names resolve-jobright when the browser install failed, so that one lane is red and the rest runs)."""
+    skip = (os.environ if environ is None else environ).get("TICK_SKIP_STAGES", "").split()
     return tuple(step for step in PLAN if step.name not in skip)
 
 
