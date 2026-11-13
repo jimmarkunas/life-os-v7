@@ -29,6 +29,7 @@ import tempfile
 import uuid
 
 from lifeos.edge.backup import verify_restore as vr
+from lifeos.platform.fixed_code import fixed
 
 ID_FILE = os.path.expanduser("~/.config/life-os/offsite-key-secret-id")        # one line: the Bitwarden Secrets Manager id of the backup key, kept only on the machine that runs the check (never in Jira or the repo)
 MAC_INNER = re.compile(r"^mac/mac-\d{8}-\d{4}\.tar\.gz\.gpg$")
@@ -75,19 +76,15 @@ def fetch_key(source, run=subprocess.run):
     """-> the ASCII-armoured private key as bytes, straight from Bitwarden. `source` is ("bws", secret id) or ("bw", item name). The value never touches disk, argv or the environment."""
     kind, ref = source
     if kind == "prompt":                                                                 # Jim types it: hidden, read from the terminal itself, never an argument, an environment value or history
-        try:
+        with fixed(OSError, CheckError, "restore_no_tty"):
             open("/dev/tty").close()
-        except OSError:
-            raise CheckError("restore_no_tty") from None
         return getpass.getpass("Backup key passphrase (typing is hidden): ").encode()
     if kind == "bws":
         done = run(["bws", "secret", "get", ref, "--output", "json"], capture_output=True, timeout=60)
         if done.returncode != 0:
             raise CheckError("restore_key_fetch")
-        try:
+        with fixed((ValueError, KeyError), CheckError, "restore_key_fetch"):
             return json.loads(done.stdout)["value"].encode()
-        except (ValueError, KeyError):
-            raise CheckError("restore_key_fetch") from None
     if kind == "bw":
         done = run(["bw", "get", "notes", ref], capture_output=True, timeout=60)
         if done.returncode != 0 or not done.stdout.strip():

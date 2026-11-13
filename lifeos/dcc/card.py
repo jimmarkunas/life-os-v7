@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 from lifeos.dcc import header
 from lifeos.platform import due, report_region, router
 from lifeos.platform.notion_client import Client, NotionError
+from lifeos.platform.notion_text import plain
 
 TZ = ZoneInfo("America/Chicago")
 TITLE = router.DCC_REGION
@@ -54,7 +55,7 @@ def _held(row):
     """LIFE-111: a row Jim paused or set to waiting reads "No to-do · ..." in its Next step cell; it is listed, never counted as active."""
     cells = (row.get("table_row") or {}).get("cells") or []
     step = cells[2] if len(cells) > 2 else []
-    return "".join(p.get("plain_text") or (p.get("text") or {}).get("content") or "" for p in step if isinstance(p, dict)).startswith("No to-do")
+    return plain(step).startswith("No to-do")
 
 
 def _text_of(client, block_id, kind, region):

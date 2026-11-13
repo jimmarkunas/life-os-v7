@@ -19,6 +19,7 @@ from zoneinfo import ZoneInfo
 
 from lifeos.oraclecloud import backup_watch, worker_watch
 from lifeos.platform import report_region, router
+from lifeos.platform.fixed_code import fixed
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 
 TZ = ZoneInfo("America/Chicago")
@@ -82,11 +83,9 @@ def validate(raw, now):
     """-> the readings ({key: value or None}). Off-contract or stale raises; a reply is used whole or not at all."""
     if not raw or len(raw) > MAX_REPLY:
         raise _fail("ORACLE_UNREACHABLE")
-    try:
+    with fixed((ValueError, TypeError, KeyError, AttributeError), _fail, "ORACLE_OFF_CONTRACT"):
         p = json.loads(raw)
         seen = datetime.fromisoformat(p["observed_at"].replace("Z", "+00:00"))
-    except (ValueError, TypeError, KeyError, AttributeError):
-        raise _fail("ORACLE_OFF_CONTRACT") from None
     cost, a1, svc, plan = p.get("cost"), p.get("a1_cores"), p.get("services"), p.get("chatgpt")
     if (not KEYS <= set(p) <= KEYS | OPTIONAL or p["schema"] != SCHEMA or not all(_pct(p[k]) for k in ("cpu_24h_pct", "memory_pct", "disk_pct"))
             or not (cost is None or (isinstance(cost, dict) and set(cost) == {"amount", "currency"} and type(cost["amount"]) in (int, float)
@@ -233,9 +232,7 @@ def run(limit, live, environ=os.environ, now=None, fetcher=fetch, client=None, p
     (workers_watch or worker_watch.record)(readings["workers"], environ, now)     # LIFE-531: same: never raises
     report_region.require_configured({region: (environ.get(var) or "").strip() for var, region in PROTECTED}, _fail)
     scoped = report_region.ScopedClient(client, heading["id"], _fail).adopt(paragraph["id"])           # LIFE-613: only the two blocks located above can be written
-    try:
+    with fixed(NotionError, _fail, "ORACLE_WRITE_FAILED"):
         write(scoped, heading, paragraph, segments, heading_text)
-    except NotionError:
-        raise _fail("ORACLE_WRITE_FAILED") from None
     counts["written"] = 2
     return counts
