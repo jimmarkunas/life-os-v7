@@ -1,7 +1,6 @@
 {
   "about": "Every piece of code this repo borrows from outside (LIFE-635). tests/contracts/test_borrowed_code.py fails on any action, download or installer not listed here. level a = remove (replace with our own), b = vendor and pin, c = accepted exception.",
   "actions": [
-    {"name": "actions/checkout", "owner": "Jim", "level": "a", "reason": "replaced by our own git fetch step in LIFE-638", "review": "2026-12-13"},
     {"name": "actions/cache", "owner": "Jim", "level": "c", "reason": "GitHub's own cache service has no other client; pinned by fingerprint (LIFE-640)", "review": "2026-12-13"},
     {"name": "actions/setup-python", "owner": "Jim", "level": "a", "reason": "replaced by the runner image's Python 3.12 in LIFE-639", "review": "2026-12-13"},
     {"name": "actions/setup-node", "owner": "Jim", "level": "a", "reason": "replaced by a checked Node download in LIFE-639", "review": "2026-12-13"},

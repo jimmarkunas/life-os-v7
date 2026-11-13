@@ -29,11 +29,12 @@ jobs:
     permissions:
       contents: write                       # deleting the merged branch in this repository only; the archive push uses its own narrow token
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
-        with:
-          ref: main                         # main's code decides, never the pull request's
-          fetch-depth: 0
-          persist-credentials: false
+      - name: Checkout the exact commit (own git fetch; the token is passed once and never stored)
+        run: |
+          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
+          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --tags origin '+refs/heads/*:refs/remotes/origin/*'
+          git checkout -q -B main origin/main   # main's code decides, never the pull request's
       - uses: ./.github/actions/python
       - name: Archive the merged branch (tag in life-os-automation, read back) and delete it only when safe
         env:
@@ -48,7 +49,12 @@ jobs:
       contents: read
       pull-requests: read
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - name: Checkout the exact commit (own git fetch; the token is passed once and never stored)
+        run: |
+          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
+          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
+          git checkout -q --detach FETCH_HEAD
       - uses: ./.github/actions/python
       - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
         uses: ./.github/actions/bws-helper
