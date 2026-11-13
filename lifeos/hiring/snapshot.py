@@ -4,6 +4,7 @@ It holds only what safe carry-forward and freshness need: the compiled rows (str
 projection state, not a hiring database: the canonical sources are the Job Ledger, the Notion pages and the Calendar."""
 from datetime import datetime
 
+from lifeos.platform.fixed_code import fixed
 from lifeos.platform.notion_client import NotionError
 from lifeos.platform.snapshot_store import Store
 
@@ -29,10 +30,8 @@ def build(result, prior, now):
 
 
 def load(connection):
-    try:
+    with fixed((TypeError, ValueError), fail, "SNAPSHOT_INVALID"):
         stored = STORE.load(connection, KEY)
-    except (TypeError, ValueError):
-        raise fail("SNAPSHOT_INVALID") from None
     if stored is not None and (stored.get("schema") != SCHEMA_V or not isinstance(stored.get("rows"), list)):
         raise fail("SNAPSHOT_INVALID")
     return stored

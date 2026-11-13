@@ -15,6 +15,7 @@ import re
 from datetime import datetime, timedelta, timezone
 
 from lifeos.platform import mail, names
+from lifeos.platform.fixed_code import fixed
 from lifeos.platform.gmail import Gmail, GmailError
 from lifeos.platform.notion_client import NotionError
 from lifeos.platform.snapshot_store import Store
@@ -185,10 +186,8 @@ def load(connection):
     """The stored outcomes ({row key: {...}}), when they were last fully read, and LIFE-26's last direct contact per row ({row key: time}), or ({}, None, {})."""
     if not _exists(connection):
         return {}, None, {}
-    try:
+    with fixed((TypeError, ValueError), fail, "STORE_INVALID"):
         stored = STORE.load(connection, KEY)
-    except (TypeError, ValueError):
-        raise fail("STORE_INVALID") from None
     if stored is None:
         return {}, None, {}
     if stored.get("schema") != SCHEMA_V or not isinstance(stored.get("outcomes"), dict) or not isinstance(stored.get("contacts", {}), dict):
