@@ -21,7 +21,7 @@ from lifeos.interview.models import Ownership, ParentQuery, RoundQuery
 from lifeos.interview.progression import Invite, progress
 from lifeos.platform import mail
 from lifeos.platform.gcal import GoogleCalendar
-from lifeos.platform.gmail import Gmail, GmailError, error_code
+from lifeos.platform.gmail import Gmail, GmailError
 from lifeos.platform.names import same_company, same_role, split_title, tokens
 from lifeos.recruiters import classify, qualify
 from lifeos.recruiters import notion as recruiters_store
@@ -245,7 +245,7 @@ def sent_mail(environ, evidence, gmail=None):
         try:
             found[thread] = (tuple((at.isoformat(timespec="seconds"), subject) for at, subject in gmail.thread_sent(thread)[-SENT_SHOWN:]), "read")
         except GmailError as error:                                          # unknown is never "none sent": this request reads DEGRADED this run
-            found[thread], failed = ((), "unreadable"), failed or not error_code(error).startswith("HTTP_404")
+            found[thread], failed = ((), "unreadable"), failed or not re.search(r"HTTP 404\b", str(error))
     out = []
     for p, q in evidence:
         m = GMAIL_THREAD.fullmatch((q.source or "").strip())
