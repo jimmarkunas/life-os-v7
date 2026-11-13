@@ -73,7 +73,7 @@ Run each on a clean checkout of main by one agent, write down the three times, a
 
 1. **Add an environment variable read to a stage.** Pick a stage in `lifeos/jobs` that reads one variable; add a second optional variable with a default, use it, add a test. Time: (a) to the first green local test of the changed test file, (b) to a pushed branch, (c) to the first green `pr-tests` run. Count: files touched and commands run.
 2. **Add a field to a platform record.** In `lifeos/platform`, add one optional field to a record that is already written and read (for example in `credentials.py`'s row), update every reader, add a test. Same three times and counts.
-3. **Add a registered error code with its test.** Add one new fixed code to `lifeos/platform/codes.py` for a stage that already raises a similar one, use it at one call site and test it. Same three times and counts; also note whether the contract tests (codes, code map, test index) needed a separate regeneration step.
+3. **Add a registered error code with its test.** Add one new fixed code to its package's `codes.json` (LIFE-644; it was `lifeos/platform/codes.py`) for a stage that already raises a similar one, use it at one call site and test it. Same three times and counts; also note whether the contract tests (codes, code map, test index) needed a separate regeneration step.
 
 ## Scorecard numbers asked for in LIFE-522 comment 12549
 

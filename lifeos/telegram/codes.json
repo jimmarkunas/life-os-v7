@@ -1,0 +1,9 @@
+{
+  "CHAT_LIST_INCOMPLETE": ["telegram", "degraded", false, "The chat list did not finish loading.", "None; retried."],
+  "CREDENTIALS_UNAVAILABLE": ["telegram", "blocked", false, "The Telegram credentials are not available.", "Install the credentials."],
+  "DATABASE_UNAVAILABLE": ["telegram", "blocked", false, "The Telegram database is locked or the key is wrong.", "Close the running login or fix the key."],
+  "NOT_CONNECTED": ["telegram", "retry", false, "Telegram is not connected yet.", "None; retried."],
+  "NOT_SIGNED_IN": ["telegram", "blocked", false, "Telegram is not signed in.", "Sign in on the Mac."],
+  "REQUEST_NOT_ALLOWED": ["telegram", "blocked", false, "The request is not on the allowed list.", "None; the reader is read-only by design."],
+  "TDLIB_NOT_STARTED": ["telegram", "retry", false, "The Telegram library has not started.", "None; retried."]
+}
