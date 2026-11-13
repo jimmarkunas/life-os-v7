@@ -1,4 +1,5 @@
-"""LIFE-531: more Codex workers than agents on Oracle raises one quiet phone alert, through the gateway; an unreadable reading changes nothing."""
+"""LIFE-531: more Codex workers than agents on Oracle raises one quiet phone alert, through the gateway; an unreadable reading changes nothing. The reminder, close and refused-push rules are
+the shared watch's, proven in test_backup_watch."""
 import contextlib
 import datetime as dt
 import io
@@ -34,14 +35,6 @@ class Decide(unittest.TestCase):
         self.assertFalse(ww.healthy({"count": 9, "agents": 8}))
         self.assertFalse(ww.healthy({"count": 1, "agents": 0}))
 
-    def test_it_reminds_once_a_day_and_closes_quietly_when_the_count_is_back(self):
-        open_state = {"alert_open": True, "last_notified": NOW - dt.timedelta(hours=23)}
-        self.assertEqual(ww.decide(open_state, LEAK, NOW)[1].notify, [])
-        open_state["last_notified"] = NOW - dt.timedelta(hours=24)
-        self.assertEqual(ww.decide(open_state, LEAK, NOW)[1].notify[0][0], "remind")
-        state, plan = ww.decide(open_state, FINE, NOW)
-        self.assertEqual((state["alert_open"], plan.resolved, plan.notify), (False, [ww.KEY], []))
-
 
 class Record(unittest.TestCase):
     def go(self, reading, store, send):
@@ -58,15 +51,7 @@ class Record(unittest.TestCase):
         self.assertEqual(sent, [("OpenClaw has 6 Codex workers for 5 agents", alerts.INFO)])
         self.assertEqual(store.row, (1, NOW))
 
-    def test_a_healthy_count_sends_nothing(self):
-        sent = []
-        self.go(FINE, Store(), lambda *a: sent.append(a) or True)
-        self.assertEqual(sent, [])
-
-    def test_a_refused_push_is_retried_and_a_broken_store_never_raises(self):
-        store = Store()
-        self.go(LEAK, store, lambda *a: False)
-        self.assertEqual(store.row, (1, None))
+    def test_a_broken_store_never_raises_and_an_unknown_reading_touches_no_store(self):
         self.assertIn("state_unavailable", self.go(LEAK, Store(broken=True), lambda *a: True))
         self.assertIn("unknown", self.go(None, Store(broken=True), lambda *a: True))
 
