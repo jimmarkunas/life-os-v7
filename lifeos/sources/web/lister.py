@@ -29,17 +29,18 @@ class Listing:
     validators: dict = field(default_factory=dict)  # D216: the board answer's ETag / Last-Modified (CONDITIONAL kinds only)
 
 
+def refusal(status):
+    """Why a board answer is FAILED, never zero jobs: 429 throttled, 403 refused (named apart, D202), 404 gone, else http_<status> or network; None for 200."""
+    if status == 200:
+        return None
+    return {429: "rate_limited_429", 403: "blocked_403", 404: "not_found"}.get(status) or (f"http_{status}" if status else "network")
+
+
 def _json(url, fetcher, body=None):
     extra = {"data": json.dumps(body).encode(), "headers": {"Content-Type": "application/json", "Accept": "application/json"}} if body is not None else {}
     page = fetcher(url, timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=2, max_bytes=MAX_BYTES, **extra)
-    if page.status == 429:
-        return None, "rate_limited_429"
-    if page.status == 403:
-        return None, "blocked_403"               # refused, not throttled: named apart (D202)
-    if page.status == 404:
-        return None, "not_found"
-    if page.status != 200:
-        return None, f"http_{page.status}" if page.status else "network"
+    if refusal(page.status):
+        return None, refusal(page.status)
     try:
         return json.loads(page.html), None
     except ValueError:
@@ -228,12 +229,8 @@ def _jibe(source, fetcher):
 def _teamtailor(source, fetcher):
     """Teamtailor career sites publish every open job as an RSS feed at <jobs url>.rss (found by the shape probe; the HTML list has no JSON-LD)."""
     page = fetcher(source["url"].rstrip("/") + ".rss", timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=2, max_bytes=MAX_BYTES)
-    if page.status in (403, 429):
-        return Listing(FAILED, reason="rate_limited_429" if page.status == 429 else "blocked_403")
-    if page.status == 404:
-        return Listing(FAILED, reason="not_found")
-    if page.status != 200:
-        return Listing(FAILED, reason=f"http_{page.status}" if page.status else "network")
+    if refusal(page.status):
+        return Listing(FAILED, reason=refusal(page.status))
     if "<!DOCTYPE" in page.html[:2000].upper() or "<!ENTITY" in page.html.upper():
         return Listing(FAILED, reason="bad_shape")                   # never expand entities from a third-party feed
     try:
@@ -282,12 +279,8 @@ def _first_party_html(source, fetcher):
         page = impersonate.fetch(source["url"], warm_url=source.get("warm_url"), alt_urls=source.get("alt_urls", ()), must_contain=source.get("must_contain", ""))
     else:
         page = fetcher(source["url"], timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=3, max_bytes=MAX_BYTES)
-    if page.status in (403, 429):
-        return Listing(FAILED, reason="rate_limited_429" if page.status == 429 else "blocked_403")
-    if page.status == 404:
-        return Listing(FAILED, reason="not_found")
-    if page.status != 200:
-        return Listing(FAILED, reason=f"http_{page.status}" if page.status else "network")
+    if refusal(page.status):
+        return Listing(FAILED, reason=refusal(page.status))
     try:
         rows = html_readers.READERS[source["kind"]](page.html, source, fetch_text)
     except (ValueError, KeyError, TypeError, AttributeError):

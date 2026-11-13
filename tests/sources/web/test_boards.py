@@ -8,7 +8,7 @@ from pathlib import Path
 
 from lifeos.jobs import lanes
 from lifeos.platform import limits
-from lifeos.sources.web import boards, boards_seed, lister, registry, run
+from lifeos.sources.web import boards, lister, registry, run
 from tests.sources.web.test_web import MemRepo
 
 NOW = datetime(2026, 10, 17, 12, 0)
@@ -79,15 +79,6 @@ class Screen(unittest.TestCase):
         for title, where, text, want in cases:
             with self.subTest(title=title, where=where):
                 self.assertEqual(boards.screen({"title": title, "location": where, "posted": None, "content": text}), want)
-                self.assertEqual(boards.keep({"title": title, "location": where, "posted": None, "content": text}), want.startswith("kept_"))
-
-
-class SeedBuilder(unittest.TestCase):
-    def test_keeps_extras_and_skip_and_only_safe_short_slugs(self):
-        slugs = {"generated_at": "2026-09-09", "ats": {"greenhouse": ["b", "a", "bad/slug", "x" * 34, 7], "ashby": ["z"], "workday": ["w"]}}
-        out = boards_seed.build(slugs, {"about": "x", "extras": [{"kind": "ashby", "slug": "surge-ai", "company": "Surge AI"}], "skip": ["lever:q"]})
-        self.assertEqual(out["seed"], {"greenhouse": ["a", "b"], "ashby": ["z"], "lever": []})
-        self.assertEqual((out["seed_generated_at"], out["extras"][0]["slug"], out["skip"]), ("2026-09-09", "surge-ai", ["lever:q"]))
 
 
 SOURCES = [{"id": f"gh-b{i}", "company": f"B{i}", "tier": "employer", "kind": "greenhouse", "status": "ready", "enabled": True, "slug": f"b{i}",

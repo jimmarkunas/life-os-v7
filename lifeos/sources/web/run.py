@@ -71,12 +71,6 @@ def forced_ids(sources, force):
     return {s["id"] for s in sources if any(n in s["id"].lower() or n in (s.get("company") or "").lower() for n in names)}
 
 
-def unforced(states, sources, force):
-    """The states of the forced sources (`forced_ids`) are dropped, so they are due now."""
-    hit = forced_ids(sources, force)
-    return {k: v for k, v in states.items() if k not in hit} if hit else states
-
-
 def skip_allowed(state):
     """D216: a board may be skipped (304 or an identical fingerprint) only after a quiet full read (nothing added, changed, removed, admitted or pending), and
     never on every WEB_FULL_EVERY-th read, so a backlog, a changed screen or a policy change is always seen within a few reads."""

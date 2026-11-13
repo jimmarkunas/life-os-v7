@@ -1,7 +1,5 @@
 """LIFE-121 London coverage, step 1 (Jim, Oct 26: "Do them!"): read-only comparison of the CURRENT official sponsor register against V7's Scale-Up registry. Counts in the clear; the names of
 London Scale-up-route sponsors V7 does not hold go to ONE private Notion page (lifeos.jobs.private_report), only when live; a dry run writes nothing."""
-import csv
-import io
 import json
 import pathlib
 
@@ -14,21 +12,9 @@ REGISTRY = pathlib.Path(__file__).parent.parent / "web" / "scale_up.json"
 
 def rows_of(text):
     """-> ([(name, town, county)] on the Scale-up route, reason). By header name, never by position."""
-    reader = csv.DictReader(io.StringIO(text.lstrip("﻿")))
-    fields = {(f or "").strip().lower(): f for f in (reader.fieldnames or [])}
-    name_col, route_col = fields.get("organisation name"), fields.get("route")
-    if not name_col or not route_col:
-        return [], "bad_columns"
-    town_col, county_col = fields.get("town/city"), fields.get("county")
-    out = {}
-    for row in reader:
-        if (row.get(route_col) or "").strip().lower() != "scale-up":
-            continue
-        name = (row.get(name_col) or "").strip()
-        key = tuple(names.core(name))
-        if key:
-            out.setdefault(key, (name, (row.get(town_col) or "").strip() if town_col else "", (row.get(county_col) or "").strip() if county_col else ""))
-    return list(out.values()), None
+    def entry(name, row, cols):
+        return (name, *((row.get(cols[k]) or "").strip() if k in cols else "" for k in ("town/city", "county")))
+    return sponsor_register.read(text, "scale-up", entry)
 
 
 def held_keys(path=REGISTRY):

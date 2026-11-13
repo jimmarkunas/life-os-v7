@@ -38,25 +38,30 @@ def csv_url(fetcher=fetch):
     return (found[0], None) if found else (None, "no_csv_link")
 
 
-def parse(text):
-    """-> (names, reason). Skilled Worker route, A-rated (when the rating column exists), unique by distinctive tokens."""
+def read(text, route, entry, rated=False):
+    """-> ([entry(name, row, cols)], reason): the register rows on one route (lower case), read by header name (never by position), one per distinctive-token name.
+    `rated` keeps A-rated licences only (when the rating column exists). Shared with scale_up_register."""
     reader = csv.DictReader(io.StringIO(text.lstrip("﻿")))
-    fields = {(f or "").strip().lower(): f for f in (reader.fieldnames or [])}
-    name_col, route_col = fields.get("organisation name"), fields.get("route")
+    cols = {(f or "").strip().lower(): f for f in (reader.fieldnames or [])}
+    name_col, route_col = cols.get("organisation name"), cols.get("route")
     if not name_col or not route_col:
         return [], "bad_columns"
-    rating_col = next((f for k, f in fields.items() if "rating" in k), None)
+    rating_col = next((f for k, f in cols.items() if "rating" in k), None) if rated else None
     found = {}
     for row in reader:
-        if (row.get(route_col) or "").strip().lower() != "skilled worker":
-            continue
-        if rating_col and "a rating" not in (row.get(rating_col) or "").lower() and "a (premium)" not in (row.get(rating_col) or "").lower():
+        rating = (row.get(rating_col) or "").lower() if rating_col else "a rating"
+        if (row.get(route_col) or "").strip().lower() != route or ("a rating" not in rating and "a (premium)" not in rating):
             continue
         name = (row.get(name_col) or "").strip()
         key = tuple(names.core(name))
         if key:
-            found.setdefault(key, name[:200])
+            found.setdefault(key, entry(name, row, cols))
     return list(found.values()), None
+
+
+def parse(text):
+    """-> (names, reason). Skilled Worker route, A-rated (when the rating column exists), unique by distinctive tokens."""
+    return read(text, "skilled worker", lambda name, row, cols: name[:200], rated=True)
 
 
 def run(limit, live, now=None, fetcher=fetch, environ=os.environ):
