@@ -214,11 +214,11 @@ class SentMailFailure(unittest.TestCase):
 
     def test_the_cause_is_a_fixed_code_and_carries_no_thread_id_or_message_text(self):
         for message, cause in (("GET https://gmail.googleapis.com/gmail/v1/users/me/threads/18c0ffee12345678 -> HTTP 429 rateLimitExceeded", "http_429"),
-                               ("GMAIL_THREAD_INCOMPLETE", "gmail_thread_incomplete"), ("a secret@example.test text", "other")):
+                               ("GMAIL_THREAD_INCOMPLETE", "gmail_thread_incomplete"), ("a private sentence the error carried", "other")):
             counts, _ = Run(facts={"p1": ("exampleco-r-1", self.GMAIL_URL)}, gmail=self.gmail(message), connect=DailyCounts())()
             self.assertEqual(counts["sent_mail_causes"], {cause: 1}, message)
             printed = json.dumps(counts)
-            for private in ("18c0ffee", "secret", "example.test", "mail.google.com"):
+            for private in ("18c0ffee", "private", "sentence", "mail.google.com"):
                 self.assertNotIn(private, printed)
 
     def test_a_dry_run_keeps_no_streak_and_a_store_that_is_down_never_makes_a_thread_permanent(self):
