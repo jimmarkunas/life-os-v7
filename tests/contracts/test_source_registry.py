@@ -14,7 +14,7 @@ from lifeos.platform import source_registry as registry
 # source_registry.json; a new source is never added here.
 NOT_YET_MIGRATED = frozenset((
     
-    "network-match", "network-surface", "newsletter-trace", "notion-sandbox-access", "notion-sandbox-outreach-proof", "oracle-card", "outlook-newsletters",
+    "network-surface", "newsletter-trace", "notion-sandbox-access", "notion-sandbox-outreach-proof", "oracle-card", "outlook-newsletters",
     "scale-up-boards", "scale-up-register"))
 
 
