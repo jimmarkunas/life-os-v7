@@ -7,7 +7,8 @@ from unittest import mock
 from lifeos.hiring import outcomes, render
 from tests.hiring import test_hiring as hiring
 from tests.hiring.support import FakeStore
-from tests.hiring.test_outcomes import NOW, REJECTION, UBER, WALMART, BrokenOutlook, EntryPointTests, FakeGmail, RunTests, msg
+from tests.hiring import test_outcomes as base                # module import: a class imported by name would be collected and run here again
+from tests.hiring.test_outcomes import NOW, REJECTION, UBER, WALMART, msg
 from tests.recruiters.fakes import ReadOnlyOutlook
 
 STORED = ("v7_hiring_outcomes", 1)
@@ -20,7 +21,7 @@ def outlook_rejection(days_ago=2):
 
 
 class PartialSourceTests(unittest.TestCase):
-    Tables, PIPELINE, go, REC = EntryPointTests.Tables, EntryPointTests.PIPELINE, EntryPointTests.go, EntryPointTests.REC
+    Tables, PIPELINE, go, REC = base.EntryPointTests.Tables, base.EntryPointTests.PIPELINE, base.EntryPointTests.go, base.EntryPointTests.REC
 
     def accepted(self, outcome_map, scanned_hours_ago=30):
         tables = self.Tables()
@@ -31,7 +32,7 @@ class PartialSourceTests(unittest.TestCase):
         return json.loads(tables.rows[STORED])
 
     def test_one_outlook_account_down_still_saves_what_gmail_found_and_names_the_unread_source(self):
-        for down in (None, BrokenOutlook()):
+        for down in (None, base.BrokenOutlook()):
             code, counts, err, _, tables, _ = self.go(self.REC, accounts=[("work", down)])
             self.assertEqual((code, err, counts["status"], counts["saved"], counts["sources_failed"], counts["unread"], counts["matched"]), (0, "", "partial", 1, 1, ["Outlook work"], 1))
             record = self.stored(tables)
@@ -44,7 +45,7 @@ class PartialSourceTests(unittest.TestCase):
 
     def test_nothing_is_concluded_from_the_unread_source_so_prior_outcomes_stay(self):
         tables = self.accepted({UBER["key"]: OLD_UBER})
-        code, counts, *_ = self.go([], tables=tables, accounts=[("work", BrokenOutlook())])           # Gmail read fine and holds no outcome mail
+        code, counts, *_ = self.go([], tables=tables, accounts=[("work", base.BrokenOutlook())])           # Gmail read fine and holds no outcome mail
         self.assertEqual((code, counts["status"], counts["matched"]), (0, "partial", 0))
         self.assertEqual(self.stored(tables)["outcomes"], {UBER["key"]: OLD_UBER})                  # not turned into "no outcome"
 
@@ -86,11 +87,11 @@ class PartialSourceTests(unittest.TestCase):
 
     def test_the_next_scan_is_due_in_twelve_hours_not_the_next_hour(self):
         store = FakeStore()
-        with mock.patch.object(outcomes, "STORE", store), mock.patch.object(outcomes, "_exists", lambda c: True), mock.patch.object(outcomes.hiring_snapshot, "load", lambda c: RunTests.PRIOR):
-            first = outcomes.run(0, True, environ={}, gmail=FakeGmail(list(self.REC)), outlook_accounts=[("work", None)], connection=object(), now=NOW)
+        with mock.patch.object(outcomes, "STORE", store), mock.patch.object(outcomes, "_exists", lambda c: True), mock.patch.object(outcomes.hiring_snapshot, "load", lambda c: base.RunTests.PRIOR):
+            first = outcomes.run(0, True, environ={}, gmail=base.FakeGmail(list(self.REC)), outlook_accounts=[("work", None)], connection=object(), now=NOW)
             self.assertEqual((first["status"], store.saves, store.row["unread"]), ("partial", 1, ["Outlook work"]))
             for hours, status in ((1, "not_due"), (11, "not_due"), (13, "partial")):
-                gmail = FakeGmail(list(self.REC))
+                gmail = base.FakeGmail(list(self.REC))
                 counts = outcomes.run(0, True, environ={}, gmail=gmail, outlook_accounts=[("work", None)], connection=object(), now=NOW + timedelta(hours=hours))
                 self.assertEqual((counts["status"], bool(gmail.queries)), (status, status != "not_due"), hours)
 
@@ -105,7 +106,7 @@ class PartialSourceTests(unittest.TestCase):
 
 class CardTests(unittest.TestCase):
     """The Hiring card reads the record: DEGRADED naming the unread source, not fresh, and not OUTCOME_MAIL_STALE while the other sources keep succeeding."""
-    base = hiring.OutcomeConsumerTests
+    consumer = hiring.OutcomeConsumerTests
 
     def card(self, unread, scanned=None):
         """-> (the status line the stage rendered on its last run, its counts)."""
@@ -116,7 +117,7 @@ class CardTests(unittest.TestCase):
             lines.append(out[0])
             return out
         with mock.patch.object(hiring.stage.render, "render", spy):
-            _, _, counts = self.base.seeded(self, lambda conn: (self.base.FOUND, scanned or self.base.SCANNED, {}, unread))
+            _, _, counts = self.consumer.seeded(self, lambda conn: (self.consumer.FOUND, scanned or self.consumer.SCANNED, {}, unread))
         return lines[-1], counts
 
     def test_a_partial_record_shows_degraded_with_the_unread_source_named_in_fixed_words(self):
