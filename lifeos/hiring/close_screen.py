@@ -1,5 +1,7 @@
-"""LIFE-47 S2 (Career): the accepted Close Opportunity screen as server-rendered pages (reason, review, result) plus its stylesheet. Pure: strings in, bytes out; every dynamic value is HTML-escaped.
-The Edge gate's CSP is `default-src 'self'`, so there is no inline script, no <style> and no style attribute: the stylesheet is served at /close.css, the one script at /close.js, and the three panes are three responses (the prototype's own markup and CSS).
+"""LIFE-47 S2 (Career): the accepted Close Opportunity screen as server-rendered pages (reason, review, result) plus its stylesheet.
+
+Pure: strings in, bytes out; every dynamic value is HTML-escaped. The Edge gate's CSP is `default-src 'self'`, so there is no inline script, no <style> and no style attribute: the stylesheet is served at /close.css,
+the one script at /close.js, and the three panes are three responses (the prototype's own markup and CSS).
 The script marks the pressed button busy (a spinner) and ignores a second press while the page loads; a data-wait button (Build resume) also counts "M:SS of about M:SS" until its reply arrives. Every page works the same without it."""
 from html import escape as e
 

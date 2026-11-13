@@ -1,18 +1,14 @@
-"""Outcome mail for the Hiring Pipeline (D190): a rejection or an offer that reached Gmail or Outlook after the pipeline last heard from an opportunity.
+"""Outcome mail for the Hiring Pipeline (D190): finds a rejection or an offer in Gmail and Outlook that arrived after the pipeline last heard from an opportunity.
 
-The pipeline's stages come from the Job Ledger, the Notes pages and the Calendar, so an interview that ended in a rejection email stayed "Awaiting outcome" forever. This stage reads mail
-(read only: nothing is marked, moved, labelled, deleted, sent or forwarded) for the companies already in the pipeline, decides by fixed wording whether a message is a rejection or an offer, and
-keeps one private row of what it found. The Hiring Pipeline reads that row and says "Rejection email Sep 12 · confirm, then move the Notes page to Retired". It never closes anything itself: a
-wrong match costs a line of text, never an opportunity. Counts and fixed codes only; no company, sender, subject, address or message text is logged or stored, only the pipeline's own row key, the kind,
-the received time and whether the role matched as well as the company.
-
-Matching is deterministic. A message belongs to an opportunity only if the company's words appear in order in the sender's name, the subject, the sender's domain or the first part of the body, it arrived
-after the opportunity's last evidence (its latest event, else its Applied date), and it contains outcome wording. A message that names two pipeline companies, or two roles of one company that the text
-cannot tell apart, is ambiguous and is counted, never guessed.
-
-Failure is per source (LIFE-648, as LIFE-646 did for Recruiters). A source that could not be listed, or that listed with a message that could not be read, is `unread`: what the other sources hold is saved over the
-prior outcomes (an outcome already accepted is never dropped or turned into "no outcome" because a source was unread), the record names the unread source in fixed words, and `scanned_at` advances, so the next due
-scan (12 hours), not the next hourly tick, reads the whole window again. If no source could be listed the stage fails closed and saves nothing."""
+Input: mail read only (nothing marked, moved, labelled, deleted, sent or forwarded) for the companies already in the pipeline. Output: one private row of what it found, which the Hiring Pipeline reads; this stage never closes anything itself.
+Matching is deterministic: the company's words in order in the sender's name, subject, sender's domain or start of the body; after the opportunity's last evidence; outcome wording present.
+A message naming two companies, or two roles of one company it cannot tell apart, is ambiguous and counted, never guessed.
+Failure is per source (LIFE-648): an `unread` source keeps what the other sources hold and any outcome already accepted, is named in fixed words, and `scanned_at` advances; no source listed fails closed and saves nothing. Counts and fixed codes only."""
+# Detail moved out of the docstring (LIFE-595):
+# The Hiring Pipeline says, for example, "Rejection email Sep 12 · confirm, then move the Notes page to Retired". A wrong match costs a line of text, never an opportunity.
+# No company, sender, subject, address or message text is logged or stored: only the pipeline's own row key, the kind, the received time and whether the role matched as well as the company.
+# The pipeline's stages come from the Job Ledger, the Notes pages and the Calendar. As LIFE-646 did for Recruiters, a source that could not be listed, or listed with a message that could not be read, does not drop an outcome already accepted
+# or turn it into "no outcome"; the next due scan (12 hours), not the next hourly tick, reads the whole window again.
 import json
 import os
 import re
