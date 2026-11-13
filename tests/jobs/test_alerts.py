@@ -237,6 +237,39 @@ class YieldMonitors(unittest.TestCase):
         self.assertEqual(out["monitors"], {"stuck": {}, "low_yield": {}})
 
 
+class Delivered(unittest.TestCase):
+    """LIFE-653: each successful push is recorded as delivered; only a failed one stays undelivered and is retried."""
+
+    def run_live(self, accepted):
+        pushes, saved = [], []
+        found = [alerts.Alert("k1", alerts.PAGE, "One", "b", ""), alerts.Alert("k2", alerts.INFO, "Two", "b", ""), alerts.Alert("k3", alerts.PAGE, "Three", "b", "")]
+        def send(topic, title, body, severity):
+            pushes.append((topic, title))
+            return accepted(title)
+        with mock.patch.object(jobs_alerts.store, "connect"), mock.patch.object(jobs_alerts.store, "ensure_schema"), mock.patch.object(jobs_alerts, "snapshot_hold"), \
+                mock.patch.object(jobs_alerts, "gather", return_value={"yield_72h": {}, "yield_7d": {}, "daily": {}}), mock.patch.object(jobs_alerts, "detect", return_value=found), \
+                mock.patch.object(jobs_alerts, "load_state", return_value={}), mock.patch.object(jobs_alerts, "save", side_effect=lambda c, plan, delivered, now: saved.append(delivered)):
+            out = jobs_alerts.run(0, True, environ={"NTFY_TOPIC": "t"}, now=NOW, send=send)
+        return out, pushes, saved[0]
+
+    def test_one_failed_push_leaves_only_that_alert_undelivered(self):
+        out, pushes, delivered = self.run_live(lambda title: "Two" not in title)
+        self.assertEqual((out["sent"], out["failed"], delivered, len(pushes)), (2, 1, {"k1", "k3"}, 3))
+
+    def test_all_pushes_accepted_records_every_alert(self):
+        out, pushes, delivered = self.run_live(lambda title: True)
+        self.assertEqual((out["sent"], out["failed"], delivered), (3, 0, {"k1", "k2", "k3"}))
+
+    def test_all_pushes_failing_records_none(self):
+        out, pushes, delivered = self.run_live(lambda title: False)
+        self.assertEqual((out["sent"], out["failed"], delivered), (0, 3, set()))
+
+    def test_pushes_keep_the_plan_order_and_the_topic(self):
+        _, pushes, _ = self.run_live(lambda title: "One" not in title)
+        self.assertEqual([title.rsplit(" ", 1)[-1] for _, title in pushes], ["One", "Two", "Three"])
+        self.assertEqual({topic for topic, _ in pushes}, {"t"})
+
+
 class MessageTraceTests(unittest.TestCase):
     """LIFE-59: ALERTS_MESSAGE_REF (the SHA-256 of one Gmail message id) turns alerts-open into a read-only, allowlisted, per-vacancy trace of that message, over the real v7_job_sources / v7_jobs SQL."""
 
