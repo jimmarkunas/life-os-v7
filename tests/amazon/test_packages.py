@@ -7,6 +7,7 @@ from lifeos.amazon import card, packages
 from lifeos.platform import gmail as gmail_mod, report_region
 from lifeos.platform.gmail import GmailError
 from tests.amazon.test_card import ENV, ROWS, Reader
+from tests.amazon.fakes import AmazonGmail
 from tests.kit.notion import AmazonRegions
 
 NOW = datetime(2026, 10, 27, 12, 0, tzinfo=ZoneInfo("America/Chicago"))
@@ -26,18 +27,12 @@ def record(subject, text, days_ago, sender=STORE):
     return {"id": f"m{days_ago}{subject[:3]}", "sender": sender, "subject": subject, "body_text": text, "received_at": (NOW.astimezone(timezone.utc) - timedelta(days=days_ago)).isoformat()}
 
 
-class FakeGmail:
-    def __init__(self, records=(), fail=False):
-        self.records, self.fail, self.queries = list(records), fail, []
+def mailbox(records=(), fail=False):
+    return AmazonGmail({r["id"]: r for r in records}, fail_list=GmailError("GMAIL_LISTING_INCOMPLETE") if fail else None)
 
-    def list_ids_complete(self, query, limit):
-        self.queries.append(query)
-        if self.fail:
-            raise GmailError("GMAIL_LISTING_INCOMPLETE")
-        return [str(i) for i in range(len(self.records))]
 
-    def message_record(self, message_id, keep_lines=False):
-        return self.records[int(message_id)]
+def queries(gmail):
+    return [call[1] for call in gmail.calls if call[0] == "list"]
 
 
 class ExtractTests(unittest.TestCase):
@@ -92,7 +87,7 @@ class FoldTests(unittest.TestCase):
         self.assertNotIn("@fedex", q.replace(packages.FEDEX_FOLLOW, ""))
 
     def test_a_failed_read_is_none_with_a_code_not_an_empty_list(self):
-        self.assertEqual(packages.safe_read(FakeGmail(fail=True), NOW), (None, "PACKAGES_GMAIL_FAILED"))
+        self.assertEqual(packages.safe_read(mailbox(fail=True), NOW), (None, "PACKAGES_GMAIL_FAILED"))
 
 
 class CardSectionTests(unittest.TestCase):
@@ -131,15 +126,15 @@ class RunTests(unittest.TestCase):
         return notion, counts
 
     def test_packages_are_written_under_the_amazon_lines_in_the_same_region(self):
-        gmail = FakeGmail([record("Your order is on its way", body_of(TABLE_HTML), 6)])
+        gmail = mailbox([record("Your order is on its way", body_of(TABLE_HTML), 6)])
         notion, counts = self.go(gmail)
         text = "\n".join(report_region.plain(b) for b in notion.children["amazon-callout"])
         self.assertIn("Other packages · 1 in transit", text)
         self.assertEqual(counts["packages_in_transit"], 1)
-        self.assertEqual(len(gmail.queries), 1)
+        self.assertEqual(len(queries(gmail)), 1)
 
     def test_a_failed_mail_read_never_breaks_the_amazon_part(self):
-        notion, counts = self.go(FakeGmail(fail=True))
+        notion, counts = self.go(mailbox(fail=True))
         text = "\n".join(report_region.plain(b) for b in notion.children["amazon-callout"])
         self.assertIn("Other packages · unavailable", text)
         self.assertIn("in transit", text)
