@@ -89,12 +89,17 @@ def fields(body):
     return {k: html.unescape(v) for k, v in re.findall(r'name="([^"]+)" value="([^"]*)"', body.decode())}
 
 
-def mark(svc, job_id, person):
-    status, _, body, _ = svc("GET", "/sent", {"j": job_id})
+def walk(svc, path, query, **chosen):
+    """GET, review, confirm: a browser's three steps on one Close page, the signed fields carried from each page to the next."""
+    status, _, body, _ = svc("GET", path, query)
     assert status == 200, body
-    review = svc("POST", "/sent", form={**fields(body), "person": person, "step": "review"})
+    review = svc("POST", path, form={**fields(body), **chosen, "step": "review"})
     assert review[0] == 200, review[2]
-    return svc("POST", "/sent", form={**fields(review[2]), "step": "confirm"})
+    return svc("POST", path, form={**fields(review[2]), "step": "confirm"})
+
+
+def mark(svc, job_id, person):
+    return walk(svc, "/sent", {"j": job_id}, person=person)
 
 
 class MarkAsSent(unittest.TestCase):
