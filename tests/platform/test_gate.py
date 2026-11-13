@@ -183,6 +183,12 @@ class Failing(unittest.TestCase):
         runs = [ago(1, title="manual"), ago(2, "cancelled"), ago(3, "cancelled"), ago(25), ago(26), ago(27)]
         self.assertIs(gate.failing(runs, NOW), False)
 
+    def test_failed_domain_runs_never_open_the_incident_or_hold_back_a_tick(self):
+        """LIFE-649: a failed stage now ends its domain job red, so the domains run fails. Only the daily check-in counts those runs (`health`); the incident, the stall check and the tick decision read hourly runs titled `tick`."""
+        domains = [ago(h, title=gate.DOMAINS_TITLE, rid=h) for h in (1, 2, 3, 4, 5)]
+        self.assertIs(gate.failing(domains, NOW), False)
+        self.assertEqual(gate.decide(domains, NOW, 99, gap=45), "run")
+
     def test_two_missed_hourly_runs_are_detected(self):
         self.assertTrue(gate.stale([ago(3, "success")], NOW, 0))                  # 180 min since the last success
         self.assertFalse(gate.stale([ago(2.05, "success")], NOW, 0))             # the longest gap seen in a bad week (124 min) is not a stall
