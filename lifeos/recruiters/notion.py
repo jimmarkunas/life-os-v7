@@ -217,28 +217,6 @@ def _same_instant(a, b):
         return False
 
 
-def quarantine_eligible(row, source_url):
-    """True only for a row the automation itself created from THIS message and nobody has touched since: not Done, still Active and flagged for review, every human-maintained
-    field blank, and the page's last editor is the actor that created it. Anything else is a human's row and is left alone."""
-    return bool(source_url and row["source_url"] == source_url and not row["done"] and row["active"] and row["needs_review"]
-                and all(_blank(row[f]) for f in ("company", "client", "role", "what")) and row["medium"] == "Email"
-                and row["created_by"] and row["created_by"] == row["edited_by"])
-
-
-def quarantine(notion, row, week):
-    """Set Active false on one eligible row (nothing else), then prove it: same page, one row, Active false, every other value unchanged. Not deleted, not Done."""
-    try:
-        notion.update_page_properties(row["page_id"], {"Active": {"checkbox": False}})
-    except NotionError:
-        raise RecruitersError("RECRUITERS_NOTION_WRITE_FAILED") from None
-    after = [r for r in week_rows(notion, week) if r["page_id"] == row["page_id"]]
-    if len(after) != 1:
-        raise RecruitersError("RECRUITERS_READBACK_MISMATCH")
-    unchanged = {k: v for k, v in row.items() if k not in ("active", "edited_by")}
-    if after[0]["active"] or {k: v for k, v in after[0].items() if k not in ("active", "edited_by")} != unchanged:
-        raise RecruitersError("RECRUITERS_READBACK_MISMATCH")
-
-
 def add_business_days(day, n):
     while n:
         day += timedelta(days=1)
