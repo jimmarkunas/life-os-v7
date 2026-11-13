@@ -28,7 +28,7 @@ const AUTH = path.join(STATE, "auth");
 const SOCKET = path.join(STATE, "attention.sock");
 const SAVED = path.join(STATE, "chats.json");
 const HASH_KEY = path.join(os.homedir(), ".config/lifeos-whatsapp/hash-key");
-import { Attention } from "./state.mjs";
+import { Attention, listenTarget } from "./state.mjs";
 
 const quiet = process.env.LIFEOS_WA_DEBUG === "1"
   ? pino({ level: "debug" }, { write: (line) => { try { const o = JSON.parse(line); process.stderr.write("baileys " + o.level + " " + String(o.msg || "").replace(/[0-9]{6,}/g, "<n>").slice(0, 120) + "\n"); } catch { /* skip */ } } })
@@ -41,9 +41,11 @@ function socketFor(auth) {
 
 function serveSnapshots(att) {
   fs.mkdirSync(STATE, { recursive: true, mode: 0o700 });
-  try { fs.unlinkSync(SOCKET); } catch { /* none yet */ }
+  const target = listenTarget(process.env, process.pid, SOCKET);
+  if (target.path) try { fs.unlinkSync(SOCKET); } catch { /* none yet */ }
   const server = net.createServer((conn) => { conn.end(JSON.stringify(att.snapshot()) + "\n"); });
-  server.listen(SOCKET, () => fs.chmodSync(SOCKET, 0o600));
+  if (target.path) server.listen(SOCKET, () => fs.chmodSync(SOCKET, 0o600));
+  else server.listen(target);                    // systemd socket activation (LIFE-643 row 1): the socket unit sets owner, group and mode
 }
 
 function hasher() {
