@@ -22,6 +22,7 @@
     {"name": "network-match", "module": "lifeos.sources.network.network_leads"},
     {"name": "network-surface", "module": "lifeos.sources.network.network_surface"},
     {"name": "newsletter-trace", "module": "lifeos.sources.newsletters.cardtrace"},
-    {"name": "notion-sandbox-access", "module": "lifeos.sources.proofs.notion_sandbox_access"}
+    {"name": "notion-sandbox-access", "module": "lifeos.sources.proofs.notion_sandbox_access"},
+    {"name": "notion-sandbox-outreach-proof", "module": "lifeos.sources.proofs.notion_sandbox_outreach_proof"}
   ]
 }
