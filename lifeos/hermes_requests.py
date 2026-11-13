@@ -13,7 +13,7 @@ import re
 
 from lifeos.buzz import nip98
 from lifeos.buzz.relay import HEX, URL, UUID, BuzzError, Relay
-from lifeos.jira.dash_data import search
+from lifeos.jira.search import search
 from lifeos.platform.jira import Jira, JiraError
 
 COMMUNITY, ALIAS, ETYPE = "life-os", "hermes", "handoff_request"

@@ -118,7 +118,6 @@
   "tests.interview.test_ui3c": 0.35,
   "tests.interview.test_ui_probe": 0.01,
   "tests.jira.test_card": 0.01,
-  "tests.jira.test_dashboard": 0.01,
   "tests.jira.test_jira": 0.01,
   "tests.jira.test_readiness_mcp": 1.02,
   "tests.jira.test_readiness_record": 1.09,
