@@ -7,6 +7,7 @@ failing(): three or more failed ticks in the last 24 hours -> open; none in 24 h
 The watchdog owns the incident record (one GitHub issue per kind): it pushes first, and an incident whose push was not accepted stays labelled
 `push-pending` and is pushed again on the next watchdog run (every 30 minutes) until the phone service accepts it."""
 import datetime as dt
+import importlib
 import json
 import os
 import sys
@@ -128,7 +129,7 @@ def coverage(observed, window_hours=24):
     return observed, window_hours, max(0, window_hours - observed)
 
 
-def health(runs, domain_runs, now, window_hours=24):
+def health(runs, domain_runs, now, window_hours=24, late=()):
     """-> (title, body): the daily check-in, counts only. Its absence is the alarm: if the watchdog or the phone path is dead, no check-in arrives."""
     cutoff = now - dt.timedelta(hours=window_hours)
     recent = [r for r in runs if r.get("display_title") == TICK_TITLE and r.get("conclusion") in ("success", "failure")
@@ -142,7 +143,8 @@ def health(runs, domain_runs, now, window_hours=24):
     last = "no good run" if since is None else f"last good run {since} min ago"
     return (f"V7 daily check: {'OK' if ok else 'DEGRADED'}",
             f"Last 24 h: {len(recent)} hourly runs, {len(good)} ok, {failed} failed; {last}; {domains} failed domain run(s). "
-            f"Coverage: {len(recent)} of {window_hours} expected, {coverage(len(recent), window_hours)[2]} missed.")
+            f"Coverage: {len(recent)} of {window_hours} expected, {coverage(len(recent), window_hours)[2]} missed."
+            + (f" Late or missing scheduled jobs ({len(late)}): {', '.join(late)}." if late else ""))      # LIFE-627
 
 
 def _api(path, method="GET", body=None):
@@ -241,7 +243,12 @@ def watch(now=None, push=None, checkin=True):
             domain_runs = _api("actions/workflows/domains.yml/runs?per_page=60")["workflow_runs"]
         except Exception:                                          # the check-in must still go out, and say what it could not read
             domain_runs = []
-        title, body = health(runs, domain_runs, now)
+        try:                                                       # LIFE-627: late or missing scheduled jobs ride in the same check-in; an unreadable history adds nothing
+            scheduled_jobs = importlib.import_module("lifeos.platform.scheduled_jobs")       # GitHub watchdog only: the Oracle ticker never runs the check-in, so its installer does not copy this module
+            late = scheduled_jobs.late_names(scheduled_jobs.evaluate(now, scheduled_jobs.fetch(_api)))
+        except Exception:                                          # noqa: BLE001
+            late = ()
+        title, body = health(runs, domain_runs, now, late=late)
         sent = (push or _push)(title, body, "info", "daily_check")          # LIFE-603: _push takes the registered alert key; the call without it crashed every real check-in
     print(f"watchdog: stale={is_stale} failing={fail_signal} changes={changes} checkin={sent}")
     return 0
