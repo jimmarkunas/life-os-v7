@@ -29,17 +29,24 @@ class Stream:
         return self.data
 
 
-class ForwardTests(unittest.TestCase):
+class StateDir(unittest.TestCase):
+    """A temp STATE directory (and its last-id file) for every test; the diagnostics file read back as parsed lines."""
+
     def setUp(self):
-        d = tempfile.mkdtemp()
-        self.patches = [mock.patch.object(fa, "STATE", d), mock.patch.object(fa, "LAST", os.path.join(d, "last-id"))]
-        for p in self.patches:
-            p.start()
+        self.dir = tempfile.mkdtemp()
+        for patch in (mock.patch.object(fa, "STATE", self.dir), mock.patch.object(fa, "LAST", os.path.join(self.dir, "last-id"))):
+            patch.start()
+            self.addCleanup(patch.stop)
 
-    def tearDown(self):
-        for p in self.patches:
-            p.stop()
+    def diagnostics(self):
+        path = os.path.join(self.dir, fa.DIAGNOSTICS)
+        if not os.path.exists(path):
+            return []
+        with open(path) as f:
+            return [json.loads(x) for x in f.read().splitlines()]
 
+
+class ForwardTests(StateDir):
     def test_text_carries_the_redacted_alert_with_an_icon_by_priority(self):
         self.assertEqual(fa.text({"title": "2 texts need you", "message": "Open Messages", "priority": 5}), "🚨 2 texts need you\nOpen Messages")
         self.assertEqual(fa.text({"message": "Mail Alerts degraded", "priority": 3}), "🔔 LIFE OS\nMail Alerts degraded")
@@ -113,36 +120,26 @@ class Relay:
         return lambda to, body: fa.send(to, body, run=self, channel=channel)
 
 
-class ReplaySafetyTests(unittest.TestCase):
-    """LIFE-71: a delivered alert is never re-sent (whatever the exit code), an ambiguous one at most once, an explicit failure at most MAX_ATTEMPTS times;
-    a restart never replays; every outcome is visible in the diagnostics file. Nothing here sends anything: the CLI is a script."""
+class Polling(StateDir):
+    """Two scripted ntfy alerts, polled through the real follow() with a scripted sender."""
 
     def setUp(self):
-        self.dir = tempfile.mkdtemp()
-        self.patches = [mock.patch.object(fa, "STATE", self.dir), mock.patch.object(fa, "LAST", os.path.join(self.dir, "last-id"))]
-        for p in self.patches:
-            p.start()
+        super().setUp()
         self.cache = [{"event": "message", "id": "a1", "title": "V7 domain jobs failed"}, {"event": "message", "id": "a2", "title": "Second"}]
-
-    def tearDown(self):
-        for p in self.patches:
-            p.stop()
 
     def poll(self, relay, channel="telegram", times=1, cache=None):
         for _ in range(times):
             since = fa.last_id(channel)
-            seen = [e for e in (cache or self.cache)]
+            seen = list(cache or self.cache)
             if since:                                                                            # ntfy returns only what follows `since`
                 ids = [e["id"] for e in seen]
                 seen = seen[ids.index(since) + 1:] if since in ids else seen
             fa.follow("topic", "123456789", Stream(stream(*seen)), relay.sender(channel), channel=channel)
 
-    def diagnostics(self):
-        path = os.path.join(self.dir, fa.DIAGNOSTICS)
-        if not os.path.exists(path):
-            return []
-        with open(path) as f:
-            return [json.loads(x) for x in f.read().splitlines()]
+
+class ReplaySafetyTests(Polling):
+    """LIFE-71: a delivered alert is never re-sent (whatever the exit code), an ambiguous one at most once, an explicit failure at most MAX_ATTEMPTS times;
+    a restart never replays; every outcome is visible in the diagnostics file. Nothing here sends anything: the CLI is a script."""
 
     def test_only_verified_evidence_is_delivered_and_only_a_proven_refusal_is_retried(self):
         """Career TL review 5576359134: the exit code proves nothing either way; a generic failure is never retried."""
@@ -188,12 +185,10 @@ class ReplaySafetyTests(unittest.TestCase):
     def test_an_explicit_failure_is_retried_a_bounded_number_of_times_in_order_then_given_up(self):
         relay = Relay(REFUSED)
         self.poll(relay, times=10)
-        a1 = [r for r in relay.runs]
         self.assertEqual(len(relay.runs), 2 * fa.MAX_ATTEMPTS)                                   # a1 three times, then a2 three times: bounded, never forever
         self.assertEqual(fa.last_id("telegram"), "a2")
         outcomes = [(d["id"], d["outcome"]) for d in self.diagnostics()]
         self.assertEqual(outcomes, [("a1", fa.NOT_DELIVERED)] * 3 + [("a1", fa.GAVE_UP)] + [("a2", fa.NOT_DELIVERED)] * 3 + [("a2", fa.GAVE_UP)])
-        self.assertTrue(a1)
 
     def test_a_transient_failure_then_success_delivers_once_and_keeps_order(self):
         relay = Relay(REFUSED, OK, OK)
@@ -221,7 +216,7 @@ class ReplaySafetyTests(unittest.TestCase):
         self.assertEqual(fa.attempts("telegram"), {"id": "a1", "count": 1, "pending": True})
         after = Relay(OK)
         self.poll(after)
-        self.assertEqual([r for r in after.runs].__len__(), 1)                                   # only a2: a1 may have gone out, so it is not replayed
+        self.assertEqual(len(after.runs), 1)                                   # only a2: a1 may have gone out, so it is not replayed
         self.assertEqual([(d["id"], d["outcome"], d["class"]) for d in self.diagnostics()][:1], [("a1", fa.AMBIGUOUS, "interrupted")])
         self.assertEqual(fa.last_id("telegram"), "a2")
 
@@ -247,11 +242,9 @@ class ReplaySafetyTests(unittest.TestCase):
 
 
 
-class CorruptStateFailsClosedTests(unittest.TestCase):
+class CorruptStateFailsClosedTests(Polling):
     """Career TL review 5576359134: saved state that EXISTS but is unreadable or invalid holds that channel (no poll, no send, no 10-minute fallback, one HELD
     line); an ABSENT file is a fresh start; the other channel keeps working."""
-
-    setUp, tearDown, poll, diagnostics = ReplaySafetyTests.setUp, ReplaySafetyTests.tearDown, ReplaySafetyTests.poll, ReplaySafetyTests.diagnostics
 
     def held(self, channel="telegram"):
         opener, relay = Stream(stream(*self.cache)), Relay(OK)
@@ -312,15 +305,8 @@ class CorruptStateFailsClosedTests(unittest.TestCase):
         self.assertEqual((len(relay.runs), fa.last_id("telegram"), fa.attempts("telegram")), (2, "a2", {}))
 
 
-class ChannelTagTests(unittest.TestCase):
+class ChannelTagTests(StateDir):
     """LIFE-75: a copy goes to a channel only when the push carries that channel's tag (what Jim ticks on the Alert settings page)."""
-
-    def setUp(self):
-        self.dir = tempfile.mkdtemp()
-        self.patches = [mock.patch.object(fa, "STATE", self.dir), mock.patch.object(fa, "LAST", os.path.join(self.dir, "last-id"))]
-        for p in self.patches:
-            p.start()
-            self.addCleanup(p.stop)
 
     def follow(self, tags, channel):
         sent = []
@@ -336,7 +322,7 @@ class ChannelTagTests(unittest.TestCase):
     def test_an_untagged_push_is_copied_nowhere_and_the_position_moves_on(self):
         self.assertEqual(self.follow([], "telegram"), [])
         self.assertEqual(fa.last_id("telegram"), "m0002")                       # skipped, not retried
-        self.assertFalse(os.path.exists(os.path.join(self.dir, fa.DIAGNOSTICS)))      # silent: no diagnostics line per skipped push
+        self.assertEqual(self.diagnostics(), [])      # silent: no diagnostics line per skipped push
 
     def test_a_missing_tags_field_counts_as_untagged(self):
         sent = []
@@ -344,17 +330,13 @@ class ChannelTagTests(unittest.TestCase):
         self.assertEqual(sent, [])
 
 
-class HourlyCapTests(unittest.TestCase):
+class HourlyCapTests(StateDir):
     """LIFE-73: at most RELAY_CAP copies per channel per clock hour, then ONE paused notice and the rest dropped (ntfy keeps the originals)."""
 
     HOUR = 1_800_000_000 // 3600 * 3600                                    # a clock hour start
 
     def setUp(self):
-        self.dir = tempfile.mkdtemp()
-        self.patches = [mock.patch.object(fa, "STATE", self.dir), mock.patch.object(fa, "LAST", os.path.join(self.dir, "last-id"))]
-        for p in self.patches:
-            p.start()
-            self.addCleanup(p.stop)
+        super().setUp()
         self.sent = []
 
     def sender(self, to, body):
@@ -379,9 +361,9 @@ class HourlyCapTests(unittest.TestCase):
 
     def test_the_diagnostics_record_the_cap_without_alert_text(self):
         self.flood(10)
-        lines = [json.loads(x) for x in open(os.path.join(self.dir, fa.DIAGNOSTICS)).read().splitlines()]
-        self.assertEqual([x["outcome"] for x in lines].count(fa.CAPPED), 10 - fa.RELAY_CAP)
-        self.assertEqual([x["outcome"] for x in lines].count(fa.PAUSED), 1)
+        lines = self.diagnostics()
+        outcomes = [x["outcome"] for x in lines]
+        self.assertEqual((outcomes.count(fa.CAPPED), outcomes.count(fa.PAUSED)), (10 - fa.RELAY_CAP, 1))
         self.assertNotIn("A9", json.dumps(lines))
 
     def test_the_next_clock_hour_starts_at_zero(self):
@@ -404,7 +386,7 @@ class HourlyCapTests(unittest.TestCase):
             f.write("not json")
         self.flood(3)
         self.assertEqual(self.sent, [])
-        self.assertEqual(json.loads(open(os.path.join(self.dir, fa.DIAGNOSTICS)).read().splitlines()[-1])["class"], "invalid_rate")
+        self.assertEqual(self.diagnostics()[-1]["class"], "invalid_rate")
 
     def test_the_count_is_written_before_the_send(self):
         seen = []
@@ -416,17 +398,14 @@ class HourlyCapTests(unittest.TestCase):
         self.assertEqual(seen, [1])
 
 
-class TopicRereadAndQuietTests(unittest.TestCase):
+class TopicRereadAndQuietTests(StateDir):
     """LIFE-608: the relay read the ntfy topic once at start and kept it for weeks, so a changed topic secret silenced it. These run the real step() and the real follow() with real
     state files; only the ntfy network call (an opener that answers per topic) and the sender are replaced."""
 
     START = 1_800_000_000
 
     def setUp(self):
-        self.dir = tempfile.mkdtemp()
-        for patch in (mock.patch.object(fa, "STATE", self.dir), mock.patch.object(fa, "LAST", os.path.join(self.dir, "last-id"))):
-            patch.start()
-            self.addCleanup(patch.stop)
+        super().setUp()
         self.clock = [self.START]
         self.topics = {}                                   # topic name -> the ntfy events that topic holds
         self.polled = []                                   # topic names the relay asked ntfy for
@@ -448,13 +427,6 @@ class TopicRereadAndQuietTests(unittest.TestCase):
         fa.step(self.state, now=lambda: self.clock[0], resolve=resolve or (lambda: self.secret[0]), lookup=lambda channel: "+15550100001",
                 poll=lambda name, to, sender, channel: fa.follow(name, to, self.opener, sender, channel, now=lambda: self.clock[0]), send_to=lambda to, body, channel: self.sender(to, body))
 
-    def lines(self):
-        path = os.path.join(self.dir, fa.DIAGNOSTICS)
-        if not os.path.exists(path):
-            return []
-        with open(path) as f:
-            return [json.loads(x) for x in f.read().splitlines()]
-
     def test_a_changed_topic_is_picked_up_within_the_refresh_period_and_the_missed_copies_go_out(self):
         self.topics["new-topic"] = [{"event": "message", "id": "m0001", "title": "Missed"}]
         self.cycle()                                                    # starts on the old topic, which is empty
@@ -464,15 +436,15 @@ class TopicRereadAndQuietTests(unittest.TestCase):
         self.cycle(advance=fa.TOPIC_REFRESH)
         self.assertIn("new-topic", self.polled)
         self.assertEqual(self.sent, ["🔔 Missed", "🔔 Missed"])         # one copy per channel
-        changed = [x for x in self.lines() if x["outcome"] == fa.TOPIC_CHANGED]
+        changed = [x for x in self.diagnostics() if x["outcome"] == fa.TOPIC_CHANGED]
         self.assertEqual(len(changed), 1)
 
     def test_the_topic_is_never_written_to_the_diagnostics(self):
         self.cycle()
         self.secret[0] = "new-topic"
         self.cycle(advance=fa.TOPIC_REFRESH + 1)
-        with open(os.path.join(self.dir, fa.DIAGNOSTICS)) as f:
-            text = f.read()
+        text = json.dumps(self.diagnostics())
+        self.assertIn(fa.TOPIC_CHANGED, text)
         self.assertNotIn("old-topic", text)
         self.assertNotIn("new-topic", text)
 
@@ -480,7 +452,7 @@ class TopicRereadAndQuietTests(unittest.TestCase):
         self.cycle()
         self.cycle(advance=fa.TOPIC_REFRESH, resolve=lambda: None)      # the secret store is down at refresh time
         self.assertEqual(self.polled[-1], "old-topic")                  # still polling the topic that worked
-        self.assertEqual([x for x in self.lines() if x["outcome"] == fa.TOPIC_CHANGED], [])
+        self.assertEqual([x for x in self.diagnostics() if x["outcome"] == fa.TOPIC_CHANGED], [])
         self.secret[0] = "new-topic"
         self.cycle(advance=fa.TOPIC_RETRY)                              # retried after the short retry delay, not a full refresh period
         self.assertEqual(self.polled[-1], "new-topic")
@@ -488,17 +460,17 @@ class TopicRereadAndQuietTests(unittest.TestCase):
     def test_an_unchanged_topic_writes_no_changed_line(self):
         self.cycle()
         self.cycle(advance=fa.TOPIC_REFRESH + 1)
-        self.assertEqual([x for x in self.lines() if x["outcome"] == fa.TOPIC_CHANGED], [])
+        self.assertEqual([x for x in self.diagnostics() if x["outcome"] == fa.TOPIC_CHANGED], [])
 
     def test_hours_without_any_message_write_one_quiet_line_per_period(self):
         self.cycle()
         self.cycle(advance=fa.QUIET_AFTER - 100)
-        self.assertEqual([x for x in self.lines() if x["outcome"] == fa.QUIET], [])
+        self.assertEqual([x for x in self.diagnostics() if x["outcome"] == fa.QUIET], [])
         self.cycle(advance=200)                                         # past the limit
         self.cycle(advance=fa.POLL)                                     # polling on does not repeat it
-        self.assertEqual(len([x for x in self.lines() if x["outcome"] == fa.QUIET]), 1)
+        self.assertEqual(len([x for x in self.diagnostics() if x["outcome"] == fa.QUIET]), 1)
         self.cycle(advance=fa.QUIET_AFTER)                              # a whole further quiet period: one more
-        self.assertEqual(len([x for x in self.lines() if x["outcome"] == fa.QUIET]), 2)
+        self.assertEqual(len([x for x in self.diagnostics() if x["outcome"] == fa.QUIET]), 2)
 
     def test_a_message_of_any_kind_resets_the_quiet_clock_even_when_it_is_not_forwarded(self):
         self.cycle()
@@ -507,7 +479,7 @@ class TopicRereadAndQuietTests(unittest.TestCase):
         self.topics["old-topic"] = []
         self.cycle(advance=fa.QUIET_AFTER - 10)                         # still inside a period counted from that message
         self.assertEqual(self.sent, [])
-        self.assertEqual([x for x in self.lines() if x["outcome"] == fa.QUIET], [])
+        self.assertEqual([x for x in self.diagnostics() if x["outcome"] == fa.QUIET], [])
 
 
 if __name__ == "__main__":
