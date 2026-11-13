@@ -10,6 +10,7 @@ from lifeos.hiring import render as hiring_render, snapshot as hiring_snapshot
 from lifeos.network import match, parse
 from lifeos.network.errors import NetworkError
 from lifeos.platform import db, names
+from lifeos.platform.fixed_code import fixed
 
 ADMITTED_JOB, APPLIED, INTERVIEW = "admitted_job", "applied", "interview"
 CLASSES = (ADMITTED_JOB, APPLIED, INTERVIEW)
@@ -21,14 +22,11 @@ def _today():
 
 
 def _read(connection):
-    with connection.cursor() as cursor:
-        try:
-            cursor.execute("SELECT s.person_id, s.company_key, s.title, s.position_state, s.last_verified FROM v7_network_positions s JOIN v7_network_people p ON p.id = s.person_id WHERE p.status='ACTIVE'")
-            rows = [(pid, key, title, state, verified if isinstance(verified, date) else date.fromisoformat(str(verified)[:10])) for pid, key, title, state, verified in cursor.fetchall()]
-            cursor.execute("SELECT j.id, j.company, j.title FROM v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id WHERE j.status='PUBLISHED' AND j.notion_page_id IS NOT NULL AND f.admission='ADMIT'")
-            jobs = cursor.fetchall()
-        except Exception:                                              # noqa: BLE001 - a driver message may carry names; only the fixed code leaves
-            raise NetworkError("NETWORK_MATCH_READ_FAILED") from None
+    with connection.cursor() as cursor, fixed(Exception, NetworkError, "NETWORK_MATCH_READ_FAILED"):          # a driver message may carry names; only the fixed code leaves
+        cursor.execute("SELECT s.person_id, s.company_key, s.title, s.position_state, s.last_verified FROM v7_network_positions s JOIN v7_network_people p ON p.id = s.person_id WHERE p.status='ACTIVE'")
+        rows = [(pid, key, title, state, verified if isinstance(verified, date) else date.fromisoformat(str(verified)[:10])) for pid, key, title, state, verified in cursor.fetchall()]
+        cursor.execute("SELECT j.id, j.company, j.title FROM v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id WHERE j.status='PUBLISHED' AND j.notion_page_id IS NOT NULL AND f.admission='ADMIT'")
+        jobs = cursor.fetchall()
     try:
         pipeline = hiring_snapshot.load(connection)
     except Exception:                                                  # noqa: BLE001 - the pursuit source is reported unavailable; the job class still counts
