@@ -159,7 +159,7 @@
       ]
     }
   ],
-  "reassembled_sha256": "1f37f1a08966100043422014f17458e21cad1e5eb22d399715ebe6fc1c0c9686",
+  "reassembled_sha256": "8209ecac1880eb06a85ca86f1fe957ecaec3d4c0ef2a35000f39fa9f9fdeb34b",
   "amendments": [
     {
       "date": "2026-11-02",
@@ -220,6 +220,12 @@
       "pr": "https://github.com/jimmarkunas/life-os-v7/pull/862",
       "approval": "Jim, chat, Nov 9, 2026, 6:03 PM CT",
       "part": "docs/development-policy/03, 04, 05, 07, 10, 11 (delivery flow v3: readiness reduced to three checks, delegated closeout by default, Done-when parser, no claim/preflight, no phase gate B/C, CI limit 90 s)"
+    },
+    {
+      "date": "2026-11-12",
+      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/1029",
+      "approval": "Jim Markunas, November 12, 2026 CT 7:31 PM, LIFE-633 comment 12888, typed in the Claude Code chat: 'Approve the wording'",
+      "part": "docs/development-policy/03, 04, 08 (Done = merged on same-head green CI with local proof; no live-run gate), with the matching AGENTS.md and CLAUDE.md lines"
     }
   ]
 }
