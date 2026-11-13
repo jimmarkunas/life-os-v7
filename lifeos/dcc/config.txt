@@ -1,1 +1,2 @@
+ATTENTION_CARD_BLOCK_ID input Notion block id of the Attention callout on the Daily Report page (V7 no longer writes it; the Command Center, Oracle Cloud, Communications, AI Capacity and Mail Alerts cards anchor on or protect it)
 DCC_CARD_BLOCK_ID input Notion block id of the dcc card on the Daily Report page
