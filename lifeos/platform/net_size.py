@@ -6,9 +6,11 @@ Prints one block to paste into the pull request's "Net size" section: lines adde
 ends with a reminder to say what the change removes, or why nothing can be removed. Counts only (no file names); stdlib only; a binary file counts as zero lines."""
 import subprocess
 import sys
+from pathlib import Path
 
 AREAS = (("lifeos/", ("lifeos/",)), ("tests/", ("tests/",)), ("docs/", ("docs/",)), ("workflows", (".github/workflows/", ".github/actions/")), ("other", ()))
 REMINDER = "lifeos/ net is above zero: say what this change removes, or why nothing can be removed."
+CEILINGS = {"sources": 9400, "jobs": 8250, "platform": 7050, "interview": 4900, "edge": 3200, "jira": 1550}   # LIFE-631 (Jim, Nov 12 2026): Python lines per lifeos/ package; ADVISORY, a warning and never a failure
 
 
 def area_of(path):
@@ -51,6 +53,22 @@ def render(rows):
     return "\n".join(lines)
 
 
+def package_lines(root, package):
+    """Python lines under lifeos/<package>/ in the working tree."""
+    return sum(len(p.read_text().splitlines()) for p in (Path(root) / "lifeos" / package).rglob("*.py"))
+
+
+def ceiling_warnings(rows, root=".", ceilings=CEILINGS):
+    """LIFE-631, advisory: a line for each package that this change makes bigger while it is over its ceiling. Never an error."""
+    grown = {}
+    for added, removed, path in rows:
+        parts = path.split("/")
+        if len(parts) > 2 and parts[0] == "lifeos" and parts[1] in ceilings and path.endswith(".py"):
+            grown[parts[1]] = grown.get(parts[1], 0) + added - removed
+    return [f"warning (advisory): lifeos/{name} is {package_lines(root, name):,} lines against its ceiling of {ceilings[name]:,} and this change adds {net:+d}"
+            for name, net in sorted(grown.items()) if net > 0 and package_lines(root, name) > ceilings[name]]
+
+
 def diff(base, cwd=None, run=subprocess.run):
     """The branch's numstat against its merge base with `base` (renames are counted as a delete plus an add, so no path format has to be parsed)."""
     done = run(["git", "diff", "--numstat", "--no-renames", f"{base}...HEAD"], capture_output=True, text=True, check=True, cwd=cwd)
@@ -65,7 +83,10 @@ def main(argv=None):
     except (subprocess.CalledProcessError, OSError):
         print("net_size: git diff failed; is the base branch fetched (git fetch origin main)?")
         return 2
-    print(render(parse_numstat(text)))
+    rows = parse_numstat(text)
+    print(render(rows))
+    for line in ceiling_warnings(rows):
+        print(line)
     return 0
 
 
