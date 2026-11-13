@@ -1,17 +1,10 @@
-"""Fit profile sync: Jim's Notion page is the authority; this stage copies its approved evidence block into one small table of the private store (v7_fit_profile_sync), and the Fit
-profile loader merges that block in (profile.load(..., synced=stored_block())). Bitwarden stays read-only for everyone and nothing here writes a secret.
+"""Fit profile sync: Jim's Notion page is the authority; this stage copies its approved evidence block into one small private-store table (v7_fit_profile_sync).
 
-Runs in its own isolated job (profile-sync.yml): it holds the store credentials and one Notion read token for the one page, and nothing else. Nothing about the page content is ever printed:
-the log carries one fixed code and counts.
-
-The page (NOTION_FIT_SYNC_PAGE_ID) carries two things, written by Jim or by a prompt:
-  * one JSON code block, the managed evidence block: {"capabilities": [...], "functions": [...]} in the shape of profile.py. Every capability id starts with "nsync_" and every
-    function carries "owner": "nsync", so the block can never replace an entry of the secret profile;
-  * one paragraph that is exactly "APPROVED HASH: <16 hex>": the content hash of the block Jim approved. A block whose hash differs is NOT adopted, so a stray edit never reaches scoring.
-
-Adoption is: read page -> parse -> validate (strict keys, size, loads as a Profile) -> approved? -> changed? -> write the row -> read it back. Any failure keeps the stored row exactly as it was.
-The reader returns the block only when the stored hash matches the block's own recomputed hash; a store that cannot be read raises ProfileError (the Fit stage then does nothing that run,
-never scoring against a profile without its block). A dry run (the default) does everything except the write."""
+The Fit profile loader merges that block in (profile.load(..., synced=stored_block())). Runs in its own isolated job (profile-sync.yml) with the store credentials and one Notion read token for the one page (NOTION_FIT_SYNC_PAGE_ID). Nothing writes a secret.
+Input: one JSON code block ({"capabilities": [...], "functions": [...]}, ids "nsync_*", every function "owner": "nsync") and one paragraph "APPROVED HASH: <16 hex>", the content hash of the block Jim approved. A block whose hash differs is NOT adopted.
+Adoption: read page -> parse -> validate (strict keys, size, loads as a Profile) -> approved? -> changed? -> write the row -> read it back. Any failure keeps the stored row as it was. A dry run (the default) does everything except the write.
+Output: one fixed code and counts; the page content is never printed. The reader returns the block only when the stored hash matches the block's recomputed hash; an unreadable store raises ProfileError and the Fit stage then does nothing that run."""
+# Bitwarden stays read-only for everyone. The block's reserved ids and owner mean it can never replace an entry of the secret profile; a stray edit never reaches scoring.
 from hashlib import sha256
 import json
 import os

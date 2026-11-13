@@ -1,7 +1,9 @@
-"""LIFE-60 (Jim's approval, Jira 10361): the V7 client of Oracle's synthetic-only `fit1` verb and its `limits` reading. The Cloud Fit stage (cloud.py), the backlog batch (backlog.py), the AI Capacity card
-(capacity_card.py), the Oracle Cloud card (lifeos/sources/cards/oracle_card.py) and the stage table (lifeos/run.py) use it; the manual fit-edge-test workflow also runs it, on the existing
-ephemeral tag:v7-runner node, over the existing private endpoint (TCP 47341). V7 holds no Gateway credential and chooses no model, agent, tool or instruction: it sends one framed request whose
-sha256 is in the committed manifest (the synthetic test) or a real job's, checks the echoed request hash, nonce and receipt (pinned model, no fallback), and hands the raw judgment to the unchanged judge.accept. A doubt is a fixed code, never a retry."""
+"""V7 client of Oracle's synthetic-only `fit1` verb and its `limits` reading (LIFE-60).
+
+Used by the Cloud Fit stage (cloud.py), the backlog batch (backlog.py), the AI Capacity card (capacity_card.py), the Oracle Cloud card (lifeos/sources/cards/oracle_card.py), the stage table (lifeos/run.py)
+and the manual fit-edge-test workflow. V7 holds no Gateway credential and chooses no model, agent, tool or instruction: it sends one framed request, checks the echoed request hash, nonce and receipt (pinned model, no fallback)
+and hands the raw judgment to the unchanged judge.accept. A doubt is a fixed code, never a retry."""
+# LIFE-60 (Jim's approval, Jira 10361). The workflow runs it on the existing ephemeral tag:v7-runner node, over the existing private endpoint (TCP 47341). The request's sha256 is in the committed manifest (the synthetic test) or is a real job's.
 import hashlib
 import json
 import os

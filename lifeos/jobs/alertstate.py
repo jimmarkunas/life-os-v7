@@ -1,6 +1,7 @@
-"""Read-only diagnostic: which alerts are open and why. Prints open alert keys (source names only), per source the new jobs in the last 24 hours against the 14-day daily baseline,
-the jobs the stuck_jobs alert counts, grouped by status, whether a link and a Notion page exist, the Fit admission and the stop reason code, and the shape of the page body publish would send for the admitted jobs that have no page (lengths and character counts). Counts only. Writes nothing.
-With ALERTS_MESSAGE_REF (the SHA-256 of one Gmail message id, never the id itself) it returns only that message's trace instead: see trace()."""
+"""Read-only diagnostic: which alerts are open and why. Counts only; writes nothing (D53)."""
+# Prints: open alert keys (source names only); per source the new jobs in the last 24 hours against the 14-day daily baseline; the jobs the stuck_jobs alert counts, grouped by status;
+# whether a link and a Notion page exist; the Fit admission and the stop reason code; the shape of the page body publish would send for the admitted jobs that have no page (lengths and character counts).
+# With ALERTS_MESSAGE_REF (the SHA-256 of one Gmail message id, never the id itself) it returns only that message's trace instead: see trace().
 import datetime as dt
 import os
 import re

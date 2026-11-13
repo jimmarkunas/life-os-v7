@@ -1,7 +1,7 @@
 """Pipeline funnel report (D82): where each provider's jobs end up, and how Fit and the lane policy sort them. Read-only, counts only.
-For jobs first seen in the last 24 hours and the last 7 days: per source the count by job status (found -> resolved -> ready -> published, or the
-terminal reason), per source the Fit admission by score band and lane reason, and per source how long since a job was last found and last published
-(a provider that stops finding or publishing shows up as a growing number). Sources, statuses and reasons are fixed codes; no title, company or link."""
+
+For jobs first seen in the last 24 hours and the last 7 days: per source the count by status (found -> resolved -> ready -> published, or the terminal reason), the Fit admission by score band and lane reason,
+and how long since a job was last found and last published (a provider that stops finding or publishing shows up as a growing number). Sources, statuses and reasons are fixed codes; no title, company or link."""
 import json
 import re
 from datetime import timedelta
