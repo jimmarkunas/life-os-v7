@@ -173,17 +173,21 @@ def run(limit, live, environ=os.environ, ledger_client=None, pipeline_client=Non
         conn = connection if connection is not None else stack.enter_context(db.connect())
         snapshot.STORE.ensure(conn)
         prior = snapshot.load(conn)
-        outcome_reason = None
+        outcome_reasons, unread = [], []
         try:
             heard, scanned, *rest = outcome_mail.load(conn)           # D190: what the mail scan last found; unavailable never stops the pipeline
             contacts = rest[0] if rest else {}                         # LIFE-26: each row's last direct contact (a scan saved before LIFE-26 has none)
+            unread = rest[1] if len(rest) > 1 else []                  # LIFE-648: the fixed names of the sources the last scan could not read in full
             if prior and prior.get("rows") and (scanned is None or datetime.fromisoformat(scanned) < now - timedelta(hours=_stale_hours(environ))):
-                outcome_reason = "OUTCOME_MAIL_STALE"                 # E13: a failed or incomplete outcome-mail save is never shown as a fresh "no outcome"
+                outcome_reasons.append("OUTCOME_MAIL_STALE")          # E13: a failed or incomplete outcome-mail save is never shown as a fresh "no outcome"
+            if unread:
+                outcome_reasons.append("OUTCOME_MAIL_PARTIAL")        # LIFE-648: the last scan read some sources and not others: DEGRADED, naming the unread source
         except Exception:                                             # noqa: BLE001
-            heard, contacts, outcome_reason = {}, {}, "OUTCOME_MAIL_UNREADABLE"
+            heard, contacts, outcome_reasons, unread = {}, {}, ["OUTCOME_MAIL_UNREADABLE"], []
         result = C.compile_rows(applied, parents, events, prior, ok, now, outcomes=heard, contacts=contacts)
-        if outcome_reason:                                            # DEGRADED, with the last accepted outcomes (none when the store cannot be read) and rows kept
-            result["reasons"] = sorted({*result["reasons"], outcome_reason})
+        if outcome_reasons:                                           # DEGRADED, with the last accepted outcomes (none when the store cannot be read) and rows kept
+            result["reasons"] = sorted({*result["reasons"], *outcome_reasons})
+            result["outcome_unread"] = unread
         auto = {"due": 0, "closed": [], "refused": {}, "switch": False}
         if all(ok.values()) and not result["reasons"] and result["rows"]:     # Jim, Oct 24: a known rejection closes itself, only when every source was read and nothing is degraded
             auto = auto_close.run(result["rows"], environ, live, now, ledger_client, _day)

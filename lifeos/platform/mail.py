@@ -109,6 +109,11 @@ def outlook_records(client, account, now, limit=MAX_MESSAGES, days=WINDOW_DAYS, 
     return out, unreadable
 
 
+def source_name(label):
+    """A fixed, lower-case name for an Outlook account label, safe to print (LIFE-646, LIFE-648)."""
+    return "Outlook " + (re.sub(r"[^a-z0-9_-]", "", str(label).lower())[:24] or "account")
+
+
 def outlook_accounts(environ=os.environ):
     """[(label, client or None)] for every signed-in Outlook account (tokens live in the private database; reading only, no schema is created)."""
     client_id = (environ.get("OUTLOOK_CLIENT_ID") or "").strip()

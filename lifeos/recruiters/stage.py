@@ -8,7 +8,6 @@ source, the heading and the counts name it (`unread`), and the ledger records on
 A LinkedIn notification with no recruiting evidence is UNRESOLVED (counted, no row; D193). Rows already made from such a notification are never changed here: a sweep over past rows is a separate decision."""
 import json
 import os
-import re
 import time
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
@@ -36,11 +35,6 @@ def _announce(environ, kind, moment, unread=()):
         shown = f"{kind} ({', '.join(unread)} unread)" if unread else kind
         with open(path, "a") as handle:
             handle.write(f"scan_kind={shown}\nscan_at={scan.clock(moment)}\n")
-
-
-def _source(label):
-    """A fixed, lower-case name for an Outlook account label, safe to print."""
-    return "Outlook " + (re.sub(r"[^a-z0-9_-]", "", str(label).lower())[:24] or "account")
 
 
 def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, notion=None, now=None, ledger=AUTO):
@@ -88,9 +82,9 @@ def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, noti
     for label, client in accounts:
         if client is None:
             counts["sources_failed"] += 1
-            unread.append(_source(label))
+            unread.append(mail.source_name(label))
             continue
-        take(lambda c=client, l=label: mail.outlook_records(c, l, now, known=known, stats=stats), _source(label))
+        take(lambda c=client, l=label: mail.outlook_records(c, l, now, known=known, stats=stats), mail.source_name(label))
     counts["messages"] = len(records)
     counts["scanned"], counts["new"] = (stats["scanned"], stats["new"]) if incremental else (len(records), len(records))      # a 14-day scan reads everything it lists
     candidates = []
