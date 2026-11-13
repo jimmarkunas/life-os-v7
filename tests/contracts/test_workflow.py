@@ -721,7 +721,57 @@ class DomainsWorkflowTests(unittest.TestCase):
                 used |= {k for k, v in (step.get("env") or {}).items() if "secrets." in str(v) or ".outputs." in str(v)}   # a migrated value counts when it arrives as a loader output
             self.assertLessEqual(used, DOMAIN_SECRETS[name], f"{name}: {sorted(used - DOMAIN_SECRETS[name])}")
 
-    def test_a_failing_domain_step_is_a_warning_never_a_failed_run(self):
+    @staticmethod
+    def uncovered_stage_steps(job):
+        """LIFE-649: -> what a job's final step fails to surface. A stage step is every `continue-on-error` step; the tailnet join is the one allowed to fail quietly (a failed join only loses the Oracle fallback).
+        The final step must run always(), fail the job (`exit 1`), and cover every stage step: by the wildcard `steps.*.outcome` (every step with an id) or by naming each stage id."""
+        steps, problems = job["steps"], []
+        stage = [s for s in steps if s.get("continue-on-error")]
+        for step in stage:
+            if not step.get("id") and step.get("uses") != "./.github/actions/tailscale":
+                problems.append(f"stage step without an id: {step.get('name')}")
+        last = steps[-1]
+        condition, ids = last.get("if", ""), [s["id"] for s in stage if s.get("id")]
+        if not str(condition).startswith("${{ always() &&") or not str(last.get("run", "")).rstrip().endswith("exit 1") or last.get("continue-on-error"):
+            problems.append("the last step does not fail the job after every stage")
+        elif "contains(steps.*.outcome, 'failure')" not in condition:
+            problems += [f"{i} not covered" for i in ids if f"steps.{i}.outcome == 'failure'" not in condition]
+        return problems
+
+    def test_a_failed_stage_step_ends_its_job_red_after_every_stage_ran_and_never_skips_another_job(self):
+        """LIFE-649: every continue-on-error stage step is covered by its job's final step, so the job result is `failure` and the report job pushes the phone once; nothing else changes."""
+        jobs = {n: j for n, j in self.doc["jobs"].items() if n not in ("gate", "report")}
+        self.assertEqual(len(jobs), 15)
+        for name, job in jobs.items():
+            self.assertEqual(self.uncovered_stage_steps(job), [], name)
+            self.assertNotIn("continue-on-error", job)                                                    # the job itself never swallows the failure
+            self.assertTrue(any(s.get("continue-on-error") and s.get("id") for s in job["steps"]), name)
+            if name != "granola":
+                self.assertIn(f"::error title={name}::", job["steps"][-1]["run"])                        # names the job only, never a value
+            condition = job["if"]                                                                         # independence: a red job never skips another one
+            self.assertTrue("always()" in condition or "!cancelled()" in condition, name)
+            self.assertIn("needs.gate.result != 'failure'", condition, name)
+            self.assertLessEqual(set(job.get("needs") or []) - {"gate"}, {"jira", "agenda", "bills", "amazon", "mail", "hiring", "imessage", "interview"}, name)
+            if set(job.get("needs") or []) - {"gate"}:
+                self.assertIn("always()", condition, name)                                                # a job that waits for another writer still runs when that writer is red
+        self.assertEqual(self.doc["concurrency"]["cancel-in-progress"], False)
+
+    def test_a_stage_step_added_without_the_surfacing_step_is_caught(self):
+        """LIFE-649: the check above fails when a stage step is added to a job that does not surface it, or when the surfacing step goes."""
+        import copy
+        job = copy.deepcopy(self.doc["jobs"]["bills"])
+        self.assertEqual(self.uncovered_stage_steps(job), [])
+        gone = copy.deepcopy(job)
+        gone["steps"].pop()
+        self.assertTrue(self.uncovered_stage_steps(gone))                                                 # surfacing step removed
+        quiet = copy.deepcopy(job)
+        quiet["steps"].insert(-1, {"name": "New stage", "continue-on-error": True, "run": "true"})
+        self.assertTrue(self.uncovered_stage_steps(quiet))                                                # a new continue-on-error step with no id cannot be seen by `steps.*.outcome`
+        listed = copy.deepcopy(self.doc["jobs"]["granola"])
+        listed["steps"].insert(-1, {"id": "extra", "name": "Another stage", "continue-on-error": True, "run": "true"})
+        self.assertEqual(self.uncovered_stage_steps(listed), ["extra not covered"])                       # a job that lists its stage ids must list the new one
+
+    def test_a_failing_domain_step_is_a_warning_never_a_failed_run(self):   # the stage step itself never stops the steps after it; LIFE-649: the job then ends red through its final step (the tests above)
         for name, job in self.doc["jobs"].items():
             if name in ("report", "gate"):                                                                       # the failure-push job (see the next test) is the alarm, not a domain stage; the gate only decides
                 continue

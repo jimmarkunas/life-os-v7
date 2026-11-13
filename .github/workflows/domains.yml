@@ -2,7 +2,7 @@ name: domains
 run-name: ${{ github.event_name == 'workflow_run' && 'domains (after tick)' || 'domains (manual)' }}
 # The V7 domain jobs: Jira, Outlook (calendar sync), Bills, Agenda (Calendar card) and Amazon Orders. Each reads or writes ONE provider and none
 # touches the Jobs pipeline, so they live apart from hourly.yml: this workflow declares NO secrets at the top, so a job can only see what its own steps pass it
-# (isolation by construction, not by blanking). Failures are warnings. Runs by itself a few minutes after every hourly TICK (not after a manual hourly run or one the gate cancelled), and by hand with the inputs below.
+# (isolation by construction, not by blanking). A failed stage step is a warning while the stages run, then its job ends red (LIFE-649) and the report job pushes the phone. Runs by itself a few minutes after every hourly TICK (not after a manual hourly run or one the gate cancelled), and by hand with the inputs below.
 on:
   workflow_run:
     workflows: ["hourly"]
@@ -291,6 +291,9 @@ jobs:
       - name: Jira warning (does not fail the run)
         if: ${{ always() && (steps.jsnap.outcome == 'failure' || steps.jcard.outcome == 'failure' || steps.jrollauto.outcome == 'failure' || steps.jrollwatch.outcome == 'failure' || steps.jroll.outcome == 'failure' || steps.jprobe.outcome == 'failure') }}
         run: echo "::warning title=Jira::a Jira step failed; the Jobs pipeline is unaffected"
+      - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+        if: ${{ always() && contains(steps.*.outcome, 'failure') }}
+        run: echo "::error title=jira::a stage step failed in the jira job (see the step marked failed above)"; exit 1
 
 
   outlook:
@@ -364,6 +367,9 @@ jobs:
       - name: Outlook warning (does not fail the run)
         if: ${{ always() && steps.calsync.outcome == 'failure' }}
         run: echo "::warning title=Outlook::an Outlook step failed; the Jobs pipeline is unaffected"
+      - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+        if: ${{ always() && contains(steps.*.outcome, 'failure') }}
+        run: echo "::error title=outlook::a stage step failed in the outlook job (see the step marked failed above)"; exit 1
 
 
   bills:
@@ -476,6 +482,9 @@ jobs:
       - name: Bills warning (does not fail the Jobs run)
         if: ${{ always() && (steps.bsnap.outcome == 'failure' || steps.bpaid.outcome == 'failure' || steps.bcard.outcome == 'failure') }}
         run: echo "::warning title=Bills::the Bill Tracker snapshot or card failed; the Jobs pipeline is unaffected"
+      - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+        if: ${{ always() && contains(steps.*.outcome, 'failure') }}
+        run: echo "::error title=bills::a stage step failed in the bills job (see the step marked failed above)"; exit 1
 
 
   agenda:
@@ -566,6 +575,9 @@ jobs:
       - name: Agenda warning (does not fail the Jobs run)
         if: ${{ always() && (steps.asnap.outcome == 'failure' || steps.acard.outcome == 'failure') }}
         run: echo "::warning title=Agenda::the Calendar snapshot or card failed; the Jobs pipeline is unaffected"
+      - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+        if: ${{ always() && contains(steps.*.outcome, 'failure') }}
+        run: echo "::error title=agenda::a stage step failed in the agenda job (see the step marked failed above)"; exit 1
 
 
 
@@ -636,6 +648,9 @@ jobs:
   # LIFE-571: Amazon retention (D139) runs in its OWN job. It reads and trashes Gmail and reads the saved Amazon orders; it never writes the Daily Report page, so it does not belong in the
   # serial chain of page writers (jira, agenda, bills, amazon, mail, ...). It starts when the amazon job (Orders saved, card written) is over and runs beside the rest of the chain. A failure
   # is a warning only, exactly as before. Same 30-day rule, same 200-a-run limit, same live switch.
+      - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+        if: ${{ always() && contains(steps.*.outcome, 'failure') }}
+        run: echo "::error title=amazon::a stage step failed in the amazon job (see the step marked failed above)"; exit 1
   amazon_retention:
     needs: [amazon, gate]
     if: ${{ always() && needs.gate.result != 'failure' && (needs.gate.outputs.due_amazon_retention == 'true' || inputs.amazon) }}
@@ -677,6 +692,9 @@ jobs:
       - name: Amazon retention warning (does not fail the Jobs run)
         if: ${{ always() && steps.aretain.outcome == 'failure' }}
         run: echo "::warning title=Amazon retention::the Amazon retention stage failed; the Jobs pipeline is unaffected"
+      - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+        if: ${{ always() && contains(steps.*.outcome, 'failure') }}
+        run: echo "::error title=amazon_retention::a stage step failed in the amazon_retention job (see the step marked failed above)"; exit 1
 
   mail:
     # MAIL-1.2 (D143): V7 is the sole owner and writer of the Daily Report "Mail Alerts" region (Production Contract v2.15.12). Gmail read-only evidence -> private state row -> the callout.
@@ -789,6 +807,9 @@ jobs:
       - name: Mail Alerts warning (does not fail the Jobs run)
         if: ${{ always() && (steps.mail.outcome == 'failure' || steps.mcard.outcome == 'failure' || steps.mfile.outcome == 'failure') }}
         run: echo "::warning title=Mail Alerts::the Physical Mail stage failed; the Jobs pipeline is unaffected"
+      - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+        if: ${{ always() && contains(steps.*.outcome, 'failure') }}
+        run: echo "::error title=mail::a stage step failed in the mail job (see the step marked failed above)"; exit 1
 
   hiring:
     # HIRE-1.2: V7 is the sole writer of the floating Daily Report "Hiring Pipeline" region (a heading and a four-column table; never a callout). Read-only toward the Ledger, the Notion pages and the Calendar; no mail.
@@ -871,6 +892,9 @@ jobs:
       - name: Hiring Pipeline warning (does not fail the Jobs run)
         if: ${{ always() && steps.hiring.outcome == 'failure' }}
         run: echo "::warning title=Hiring Pipeline::the Hiring Pipeline stage failed; the region keeps its last accepted content and the Jobs pipeline is unaffected"
+      - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+        if: ${{ always() && contains(steps.*.outcome, 'failure') }}
+        run: echo "::error title=hiring::a stage step failed in the hiring job (see the step marked failed above)"; exit 1
 
   megibow:
     # D134: MegIBOW is its own job. It reads sent mail and calendars (read only) and writes only its one Notion block, its review list and two tiny private tables; a failure is a
@@ -952,6 +976,9 @@ jobs:
       - name: MegIBOW warning (does not fail the Jobs run)
         if: ${{ always() && steps.megibow.outcome == 'failure' }}
         run: echo "::warning title=MegIBOW::the MegIBOW stage failed or a source was unread; the table shows DEGRADED and the Jobs pipeline is unaffected"
+      - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+        if: ${{ always() && contains(steps.*.outcome, 'failure') }}
+        run: echo "::error title=megibow::a stage step failed in the megibow job (see the step marked failed above)"; exit 1
 
   dcc:
     # D175: V7 writes the Daily Command Center callout (it was the ChatGPT task's, which could only edit page markdown). It runs after EVERY other Daily Report writer, so no card changes while it reads
@@ -999,6 +1026,9 @@ jobs:
       - name: Daily Command Center warning (does not fail the Jobs run)
         if: ${{ always() && steps.dcccard.outcome == 'failure' }}
         run: echo "::warning title=Daily Command Center::the Command Center could not be written; its callout keeps the last text and the Jobs pipeline is unaffected"
+      - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+        if: ${{ always() && contains(steps.*.outcome, 'failure') }}
+        run: echo "::error title=dcc::a stage step failed in the dcc job (see the step marked failed above)"; exit 1
 
   recruiters:
     # RECR-1.2 runs on every tick (Jim, Oct 12; it had been manual-only and the Recruiters table stopped updating on Oct 7). It only READS Gmail and Outlook and writes the existing
@@ -1101,6 +1131,9 @@ jobs:
       - name: Recruiters warning (does not fail the Jobs run)
         if: ${{ always() && (steps.recruiters.outcome == 'failure' || steps.routreach.outcome == 'failure' || steps.jpoutreach.outcome == 'failure') }}
         run: echo "::warning title=Recruiters::the Recruiters stage, the Recruiter Outreach table or the job-page outreach tables failed or a source was unread; the Jobs pipeline is unaffected"
+      - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+        if: ${{ always() && contains(steps.*.outcome, 'failure') }}
+        run: echo "::error title=recruiters::a stage step failed in the recruiters job (see the step marked failed above)"; exit 1
 
   hiring_outcomes:
     # LIFE-632: the D190 Hiring outcome mail scan had run after the Recruiters mail read in the `recruiters` job (211 s). It reads Gmail and Outlook and saves one record to the store; it reads nothing the
@@ -1172,6 +1205,9 @@ jobs:
       - name: Hiring outcome mail warning (does not fail the Jobs run)
         if: ${{ always() && steps.houtcomes.outcome == 'failure' }}
         run: echo "::warning title=Hiring outcome mail::the hiring outcome-mail scan failed or a source was unread; the Hiring card keeps the last accepted outcomes"
+      - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+        if: ${{ always() && contains(steps.*.outcome, 'failure') }}
+        run: echo "::error title=hiring_outcomes::a stage step failed in the hiring_outcomes job (see the step marked failed above)"; exit 1
   interview:
     # LIFE-632: Interview OS (LIFE-88) had run after the Recruiters mail read and the hiring outcome scan in the `recruiters` job (about 570 s after about 400 s plus 211 s), which made that job the
     # critical path of the whole run. It reads its own mail and only READS the Recruiters rows (recruiter threads by the exact request message), so it runs beside the Recruiters job: a brand-new
@@ -1267,6 +1303,9 @@ jobs:
       - name: Interview OS warning (does not fail the Jobs run)
         if: ${{ always() && steps.interview.outcome == 'failure' }}
         run: echo "::warning title=Interview OS::the Interview OS stage (DEGRADED or failed) or a source was unread; the Jobs pipeline is unaffected"
+      - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+        if: ${{ always() && contains(steps.*.outcome, 'failure') }}
+        run: echo "::error title=interview::a stage step failed in the interview job (see the step marked failed above)"; exit 1
 
   imessage:
     # COMM-1.4b (LIFE-31, Jim's approval in comment 10136): urgent iMessage alerts. The runner joins the tailnet as an ephemeral tag:v7-runner node, which the
@@ -1405,6 +1444,9 @@ jobs:
       - name: AI Capacity card warning (does not fail the run)
         if: ${{ always() && steps.capacity.outcome == 'failure' }}
         run: echo "::warning title=AI Capacity card::the AI Capacity card was not updated; it keeps its previous reading"
+      - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+        if: ${{ always() && contains(steps.*.outcome, 'failure') }}
+        run: echo "::error title=imessage::a stage step failed in the imessage job (see the step marked failed above)"; exit 1
 
   granola:
     # LIFE-122 (Jim, Oct 26 2026: "Approved, go"): the Granola bridge, automatic. After every tick it carries each synced meeting that has not been carried before into its Interview OS
