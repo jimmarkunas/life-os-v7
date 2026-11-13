@@ -99,6 +99,8 @@ class PartialSourceTests(unittest.TestCase):
         store = FakeStore({"schema": 1, "scanned_at": NOW.isoformat(), "outcomes": {}})
         with mock.patch.object(outcomes, "STORE", store), mock.patch.object(outcomes, "_exists", lambda c: True):
             self.assertEqual(outcomes.load(object()), ({}, NOW.isoformat(), {}, []))
+            store.row["unread"] = ["pat@example.com", "Outlook Work Name", 7, "Outlook work", "Gmail"]       # only fixed source names are ever returned, so only they can reach the card
+            self.assertEqual(outcomes.load(object())[3], ["Outlook work", "Gmail"])
             store.row["unread"] = "Gmail"
             with self.assertRaises(outcomes.OutcomeError):
                 outcomes.load(object())
@@ -131,12 +133,6 @@ class CardTests(unittest.TestCase):
     def test_an_old_partial_record_is_both_partial_and_stale(self):
         stale = (hiring.NOW - timedelta(hours=19)).astimezone(hiring.timezone.utc).isoformat()
         self.assertEqual(self.card(["Outlook work"], stale)[1]["reasons"], ["OUTCOME_MAIL_PARTIAL", "OUTCOME_MAIL_STALE"])
-
-    def test_only_fixed_source_names_ever_reach_the_card(self):
-        text, _ = self.card(["pat@example.com", "Outlook Work Name", 7, "Gmail"])
-        self.assertIn("(Gmail unread)", text)
-        self.assertNotIn("example.com", text)
-        self.assertEqual(self.card(["pat@example.com"])[1]["status"], "fresh")
 
 
 if __name__ == "__main__":
