@@ -1,4 +1,4 @@
-"""LIFE-595: the docstring standard (lifeos/platform/docstyle.py): the rules, the pilot package that already follows it, and the rest of the repo counted but never failed."""
+"""LIFE-595: the docstring standard (lifeos/platform/docstyle.py): the rules, and the blocking check over every package (Oracle-installed files exempt, each with a reason)."""
 import unittest
 from pathlib import Path
 
@@ -31,10 +31,25 @@ class Rules(unittest.TestCase):
         self.assertEqual(docstyle.problems("__all__ = []\n", is_init=True), ["NO_DOCSTRING"])
 
 
-class PilotPackage(unittest.TestCase):
-    def test_every_enforced_package_follows_the_standard(self):
-        for package in docstyle.ENFORCED:
-            self.assertEqual(docstyle.check(ROOT / package), {}, package)
+class EveryPackage(unittest.TestCase):
+    def test_every_enforced_package_follows_the_standard_except_the_exempt_files(self):
+        self.assertEqual(docstyle.enforced_problems(), {})
+
+    def test_every_package_is_enforced_so_a_new_package_cannot_skip_the_standard(self):
+        packages = sorted(f"lifeos/{p.name}" for p in (ROOT / "lifeos").iterdir() if p.is_dir() and (p / "__init__.py").exists())
+        self.assertEqual(sorted(docstyle.ENFORCED), packages)
+
+    def test_an_exempt_entry_is_still_needed_and_names_a_real_file_or_folder(self):
+        for key in docstyle.EXEMPT:
+            target = ROOT / key
+            self.assertTrue(target.exists(), key)
+            if key.endswith("/"):
+                continue                                                                       # a folder entry stays while the folder holds any Oracle-installed file
+            self.assertTrue(docstyle.check(target), f"{key} now follows the standard: delete its EXEMPT entry")
+
+    def test_a_file_outside_the_exempt_list_is_not_exempt(self):
+        self.assertTrue(docstyle.exempt("lifeos/edge/runner/runner.py") and docstyle.exempt(ROOT / "lifeos/platform/gate.py"))
+        self.assertFalse(docstyle.exempt("lifeos/platform/gate_other.py") or docstyle.exempt("lifeos/jobs/tick.py") or docstyle.exempt("lifeos/edgewise/x.py"))
 
     def test_negative_control_a_regression_in_a_pilot_file_would_be_found(self):
         import tempfile
@@ -46,14 +61,6 @@ class PilotPackage(unittest.TestCase):
     def test_the_code_map_lists_the_package_summary(self):
         page = codemap.render()[0]
         self.assertIn("- `lifeos/buzz/` (4 modules): The Buzz remote MCP", page)
-
-
-class RestOfTheRepoIsOnlyCounted(unittest.TestCase):
-    def test_the_advisory_count_runs_over_every_package_and_never_fails(self):
-        total = 0
-        for package in sorted(p for p in (ROOT / "lifeos").iterdir() if p.is_dir() and (p / "__init__.py").exists()):
-            total += len(docstyle.check(package))
-        self.assertIsInstance(total, int)                                                      # the number goes down as packages are done; the last PR makes ENFORCED every package
 
 
 if __name__ == "__main__":
