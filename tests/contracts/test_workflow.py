@@ -771,7 +771,7 @@ class DomainsWorkflowTests(unittest.TestCase):
         listed["steps"].insert(-1, {"id": "extra", "name": "Another stage", "continue-on-error": True, "run": "true"})
         self.assertEqual(self.uncovered_stage_steps(listed), ["extra not covered"])                       # a job that lists its stage ids must list the new one
 
-    def test_a_failing_domain_stage_step_never_stops_the_steps_after_it(self):   # LIFE-649: the job still ends red through its final step (the test above)
+    def test_a_failing_domain_step_is_a_warning_never_a_failed_run(self):   # the stage step itself never stops the steps after it; LIFE-649: the job then ends red through its final step (the tests above)
         for name, job in self.doc["jobs"].items():
             if name in ("report", "gate"):                                                                       # the failure-push job (see the next test) is the alarm, not a domain stage; the gate only decides
                 continue
