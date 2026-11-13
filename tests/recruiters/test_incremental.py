@@ -4,6 +4,7 @@ import io
 import json
 import tempfile
 import unittest
+import unittest.mock
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -76,8 +77,8 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(scan.plan(AFTERNOON, ROW, state, False)[:2], ("read", seen.NEW_MAIL))
         self.assertEqual(scan.plan(AFTERNOON, ROW, (AFTERNOON - timedelta(hours=2, minutes=50), seen.NEW_MAIL, MORNING), True)[0], "read")      # 15 minutes of slack, as the due table
 
-    def test_the_row_is_in_the_due_table(self):
-        self.assertEqual(scan.step_row(), ROW)
+    def test_the_row_is_in_the_due_table_and_hourly_since_life_630(self):
+        self.assertEqual(scan.step_row(), {"every_hours": 1, "full_scan_ct": ["09:00"]})              # the 3-hour ROW above is a fixture: the skip mechanism stays proven on it
 
 
 class IncrementalTests(unittest.TestCase):
@@ -150,7 +151,7 @@ class NineAmScanTests(unittest.TestCase):
 class SkipTests(unittest.TestCase):
     def test_a_scheduled_tick_inside_three_hours_reads_no_mail_and_reports_the_last_read(self):
         ledger = FakeLedger({seen.key("gmail", "a")}, last_read=AFTERNOON - timedelta(hours=1), kind=seen.NEW_MAIL, last_full=MORNING)
-        with tempfile.TemporaryDirectory() as folder:
+        with tempfile.TemporaryDirectory() as folder, unittest.mock.patch.object(scan, "step_row", lambda: ROW):
             out = Path(folder) / "out"
             counts, gmail, notion = go([signed("a")], ledger, environ={"GITHUB_EVENT_NAME": "workflow_run", "GITHUB_OUTPUT": str(out)})
             text = out.read_text()

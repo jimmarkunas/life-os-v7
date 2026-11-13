@@ -77,7 +77,7 @@ class Rules(unittest.TestCase):
 
 class BillsEverySixHours(unittest.TestCase):
     """LIFE-612: the Bills job runs on the first tick after 12:00 AM, 6:00 AM, 12:00 PM and 6:00 PM CT."""
-    ROW = due.load_table()["bills"]
+    ROW = {"slots_ct": ["00:00", "06:00", "12:00", "18:00"]}               # a fixture: LIFE-630 put the real row back to hourly, the slot mechanism stays proven here
 
     def due_ticks(self, start, hours, last, failing=()):
         found, now = [], start
@@ -89,8 +89,8 @@ class BillsEverySixHours(unittest.TestCase):
             now += dt.timedelta(hours=1)
         return found
 
-    def test_the_real_row_is_the_four_slots(self):
-        self.assertEqual(self.ROW, {"slots_ct": ["00:00", "06:00", "12:00", "18:00"]})
+    def test_the_real_row_is_hourly_since_life_630(self):
+        self.assertEqual(due.load_table()["bills"], {"every_hours": 1})
 
     def test_a_day_of_hourly_ticks_runs_it_four_times_and_skips_the_other_twenty(self):
         found = self.due_ticks(dt.datetime(2026, 11, 12, 6, 17, tzinfo=UTC), 24, dt.datetime(2026, 11, 11, 23, 17, tzinfo=UTC))          # 12:17 AM CT on, after the 6:17 PM run
@@ -106,7 +106,7 @@ class BillsEverySixHours(unittest.TestCase):
 
 class Retention(unittest.TestCase):
     """LIFE-611: the Amazon retention job runs once a day, on the first tick after 3:00 AM CT."""
-    ROW = due.load_table()["amazon_retention"]
+    ROW = {"slots_ct": ["03:00"]}                                           # a fixture: LIFE-630 put the real row back to hourly, the slot mechanism stays proven here
 
     def ticks(self, start, hours, last, dropped=()):
         """Hourly ticks at :17 from `start`; -> (the tick times at which the job was due, its last start). A tick in `dropped` runs the gate but the job fails, so it is not a success."""
@@ -119,8 +119,8 @@ class Retention(unittest.TestCase):
             now += dt.timedelta(hours=1)
         return found, last
 
-    def test_the_real_row_is_a_daily_slot_at_3_am_central(self):
-        self.assertEqual(self.ROW, {"slots_ct": ["03:00"]})
+    def test_the_real_row_is_hourly_since_life_630(self):
+        self.assertEqual(due.load_table()["amazon_retention"], {"every_hours": 1})
 
     def test_over_two_days_of_ticks_it_is_due_exactly_once_every_24_hours(self):
         start = dt.datetime(2026, 11, 12, 6, 17, tzinfo=UTC)               # 12:17 AM CT, after yesterday's run at 3:17 AM CT
@@ -210,11 +210,11 @@ class TableMatchesTheWorkflow(unittest.TestCase):
             else:
                 self.assertTrue(all(len(s) == 5 and s[2] == ":" for s in row["slots_ct"]), job)
 
-    def test_jims_confirmed_rows_are_in_the_table_and_the_three_with_their_own_tickets_are_still_hourly(self):
+    def test_every_job_and_the_recruiters_mail_step_run_every_hour_since_life_630(self):
         table = due.load_table()
-        self.assertEqual((table["mail"], table["amazon"], table["megibow"]), ({"every_hours": 6}, {"every_hours": 3}, {"every_hours": 3}))     # comment 12803
-        for job in ("agenda", "hiring", "recruiters"):
-            self.assertEqual(table[job], {"every_hours": 1}, job)                      # LIFE-611 and 612 flipped retention and bills; the recruiters JOB stays hourly (it also runs Interview OS and the outreach cards): LIFE-610 puts its 3-hour schedule on the mail step, in the table's `steps`; agenda and hiring stay hourly by Jim's answer
+        self.assertEqual({job: row for job, row in table.items() if row != {"every_hours": 1}}, {})                 # Jim, Nov 12 2026: everything hourly until the codebase has shrunk
+        self.assertEqual(len(table), 14)
+        self.assertEqual(json.loads(due.TABLE.read_text())["steps"]["recruiters_mail"]["every_hours"], 1)
 
 
 if __name__ == "__main__":
