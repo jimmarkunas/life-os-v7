@@ -1,6 +1,7 @@
-"""LIFE-88 QA acceptance probe. Manual only (diag.yml, stage interview-ui-probe, typed confirmation QA); never on a tick. Interview token.
-Writes only under the QA Interview OS / Opportunity Parent: the QA render of Walmart's real, read-only evidence (_render), its pages created
-from the Full width template the way production creates them. Prints fixed codes, block-type outlines and counts only; never content or ids."""
+"""LIFE-88 QA acceptance probe: the QA render of Walmart's real, read-only evidence, under the QA Interview OS / Opportunity Parent only.
+
+Manual only (diag.yml, stage interview-ui-probe, typed confirmation QA); never on a tick. Interview token. Its pages (_render) are created from the Full width template the way production creates them.
+Prints fixed codes, block-type outlines and counts only; never content or ids."""
 import difflib
 import os
 from lifeos.platform.notion_ids import notion_id

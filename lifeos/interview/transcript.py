@@ -1,7 +1,10 @@
-"""LIFE-37 (Jim's consent, Oct 25 2026): the contract for one Granola transcript as `grans show <uuid> --transcript --json` returns it.
-Pure: no network, no Granola login, no Notion, no files. Ported from the LIFE-97 MEET-POC-1 prototype (19 tests) with the error codes registered in lifeos/platform/codes.py (TRANSCRIPT_*).
-It validates and hashes; it does not move a transcript anywhere. How a transcript reaches V7 and where it is written is a separate, Jim-gated step on LIFE-37.
-Source inspected for the shape: dmwyatt/granz v2026.10.3, src/commands/meetings.rs, src/models.rs (TranscriptUtterance). Its --json export is {"transcript": [...]}."""
+"""LIFE-37: the contract for one Granola transcript as `grans show <uuid> --transcript --json` returns it; validates and hashes it.
+
+Pure: no network, no Granola login, no Notion, no files. Failure codes: TRANSCRIPT_* (registered in lifeos/platform/codes.py).
+It does not move a transcript anywhere: how a transcript reaches V7 and where it is written is a separate, Jim-gated step on LIFE-37."""
+# Detail moved out of the docstring (LIFE-595):
+# LIFE-37 was approved by Jim's consent on Oct 25 2026. Ported from the LIFE-97 MEET-POC-1 prototype (19 tests).
+# Source inspected for the shape: dmwyatt/granz v2026.10.3, src/commands/meetings.rs, src/models.rs (TranscriptUtterance). Its --json export is {"transcript": [...]}.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass

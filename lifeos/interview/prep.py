@@ -1,5 +1,6 @@
-"""Deterministic, append-once Interview Derived content. LIFE-88: on a UI 4 interview page it is the Prepare tab, written once
-from its not-run state; its hashes sit in the collapsed LIFE OS toggle instead of on the page. Older pages keep "Derived"."""
+"""Deterministic, append-once Interview Derived content (LIFE-88).
+
+On a UI 4 interview page it is the Prepare tab, written once from its not-run state; its hashes sit in the collapsed LIFE OS toggle instead of on the page. Older pages keep "Derived"."""
 import hashlib
 import json
 from lifeos.platform.notion_client import NotionError, rich_text
