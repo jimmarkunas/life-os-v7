@@ -87,10 +87,6 @@ on:
         type: choice
         options: ["none", "hiring", "recruiters"]
         default: "none"
-      benchmark:
-        description: "Benchmark (LIFE-577, manual only): runs every domain job like `all` in DRY mode (nothing is written, `live` is ignored), refuses to start while another hourly or domains run is in progress, and ends with a summary of seconds per job, the run's wall time and an overlap check, so two runs are comparable."
-        type: boolean
-        default: false
       live:
         description: "Actually write (saves snapshots, writes Notion, moves mail). Unticked = dry run, counts only. Automatic runs follow the repo variable V7_LIVE."
         type: boolean
@@ -99,7 +95,7 @@ env:
   ALERTS_MUTED_UNTIL: ${{ vars.ALERTS_MUTED_UNTIL }}      # LIFE-73: silences every alert channel until this time (lifeos.platform.alerts.muted); empty = not muted
   ALERTS_ENABLED: ${{ vars.ALERTS_ENABLED }}      # LIFE-75: the master switch from the Alert settings page; anything but "on" means alerts are OFF (lifeos.platform.alert_settings)
   ALERT_SETTINGS: ${{ vars.ALERT_SETTINGS }}      # LIFE-75: per-alert channel choices from the Alert settings page; empty = the registry defaults
-  LIVE: ${{ ((github.event_name == 'workflow_run' && vars.V7_LIVE == 'true') || (github.event_name == 'workflow_dispatch' && inputs.live && !inputs.benchmark)) && 'true' || 'false' }}
+  LIVE: ${{ ((github.event_name == 'workflow_run' && vars.V7_LIVE == 'true') || (github.event_name == 'workflow_dispatch' && inputs.live)) && 'true' || 'false' }}
 permissions:
   contents: read
 concurrency:
@@ -112,13 +108,11 @@ concurrency:
   cancel-in-progress: false
 jobs:
   gate:
-    # LIFE-604 item 11: the ONE place that decides whether this run does the domain work, and the benchmark's overlap refusal (LIFE-577). It runs only for a completed tick, `all`, or a
-    # benchmark; a manual run of one domain skips it, and then a domain job runs only on its own input. Outputs: due_<job> (LIFE-609: one per domain job, from lifeos/platform/due_table.json; for a tick a job is due when its row says
-    # so, for `all` or a benchmark every job is due), tick (only a tick: imessage, granola and the failure push depend on that) and all (only `all` or a benchmark). A benchmark refuses to start while another hourly or domains run is queued or
-    # running; a refusal fails this job and every domain job then skips (their `needs.gate.result != 'failure'`).
+    # LIFE-604 item 11: the ONE place that decides whether this run does the domain work. It runs only for a completed tick or `all`; a manual run of one domain skips it, and then a domain job runs only on its own input. Outputs: due_<job> (LIFE-609: one per domain job, from lifeos/platform/due_table.json; for a tick a job is due when its row says
+    # so, for `all` every job is due), tick (only a tick: imessage, granola and the failure push depend on that) and all (only `all`). A failed gate makes every domain job skip (their `needs.gate.result != 'failure'`).
     # Why each domain job uses always() or !cancelled(): a job that waits for other page writers (needs: ...) uses always() so one failed writer never stops the next card; a job with
     # no writer to wait for uses !cancelled(). Both skip when the gate failed or the run was cancelled, and both run on their own manual input without the gate.
-    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || (inputs.all || inputs.benchmark) }}
+    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || inputs.all }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -126,7 +120,7 @@ jobs:
       actions: read
     outputs:
       tick: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') }}
-      all: ${{ (inputs.all || inputs.benchmark) }}
+      all: ${{ inputs.all }}
       due_jira: ${{ steps.due.outputs.due_jira }}
       due_outlook: ${{ steps.due.outputs.due_outlook }}
       due_bills: ${{ steps.due.outputs.due_bills }}
@@ -142,11 +136,6 @@ jobs:
       due_granola: ${{ steps.due.outputs.due_granola }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
-      - name: Benchmark gate (LIFE-577) - refuses while another run is in progress
-        if: ${{ inputs.benchmark }}
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: python3 -m lifeos.platform.bench_gate before
       - id: due
         name: Which domain jobs are due (LIFE-609) - one table, each job's last successful run; an unreadable history makes every job due
         env:
@@ -432,7 +421,7 @@ jobs:
       - id: bpaid
         continue-on-error: true
         name: Bills Paid processor (before the snapshot; writes Notion only when live; counts only)
-        if: ${{ github.event_name == 'workflow_run' || (inputs.all || inputs.benchmark) || inputs.bills_paid }}
+        if: ${{ github.event_name == 'workflow_run' || inputs.all || inputs.bills_paid }}
         env:
           NOTION_BILLS_DATA_SOURCE_ID: ${{ secrets.NOTION_BILLS_DATA_SOURCE_ID }}
           LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
@@ -1390,19 +1379,3 @@ jobs:
             [ "${pair#*=}" = "failure" ] && failed="$failed ${pair%=*}"
           done
           python3 -m lifeos.platform.alerts push --key domain_jobs_failed --title "V7 domain jobs failed" --body "Failed domain jobs:$failed. Their cards keep the last good content. Open the Actions tab."
-
-  bench_report:
-    # LIFE-577: the run summary for a benchmark: seconds per job, the run's wall time, and whether another run overlapped it. Reads this run's own job records; writes nothing else.
-    needs: [jira, outlook, bills, agenda, amazon, amazon_retention, mail, hiring, megibow, dcc, recruiters, imessage, granola, report]
-    if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.benchmark }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: read
-      actions: read
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
-      - name: Benchmark summary (LIFE-577) - seconds per job, wall time, overlap check
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: python3 -m lifeos.platform.bench_gate jobs
