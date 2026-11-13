@@ -1,6 +1,6 @@
 name: readiness-live
 # LIFE-324 (Jim, Nov 6, 2026: option 2 after the Oracle live check on LIFE-313 was BLOCKED: no host job holds the Jira values). MANUAL run only, no schedule, no timer, no loop: it proves that
-# `python -m lifeos.readiness issue-key KEY` works against live Jira through the real HTTP client (lifeos/platform/jira.py). Read-only: one GET per command, no Jira write.
+# `python -m lifeos.sources.devtools.readiness issue-key KEY` works against live Jira through the real HTTP client (lifeos/platform/jira.py). Read-only: one GET per command, no Jira write.
 # It holds the same Jira credentials the hermes-stage job holds (from Bitwarden, same ids, same pinned action) and nothing else. It prints the readiness result, the exit codes and a leak check,
 # never a credential value; if any of the three values appears in the command output the job fails BEFORE anything is printed.
 on:
@@ -45,8 +45,8 @@ jobs:
           set +e
           if ! printf '%s' "$KEY" | grep -E -q '^(LIFE|LOS)-[0-9]{1,6}$'; then echo "REFUSED: the key must look like LIFE-123"; exit 1; fi
           for name in JIRA_BASE_URL JIRA_EMAIL JIRA_API_TOKEN; do eval "v=\${$name}"; [ -n "$v" ] || { echo "REFUSED: $name is empty (not loaded)"; exit 1; }; done
-          python -m lifeos.readiness issue-key "$KEY" > "$RUNNER_TEMP/a.out" 2>&1; A=$?
-          python -m lifeos.readiness issue-key LIFE-999999 > "$RUNNER_TEMP/b.out" 2>&1; B=$?
+          python -m lifeos.sources.devtools.readiness issue-key "$KEY" > "$RUNNER_TEMP/a.out" 2>&1; A=$?
+          python -m lifeos.sources.devtools.readiness issue-key LIFE-999999 > "$RUNNER_TEMP/b.out" 2>&1; B=$?
           leak=pass
           for name in JIRA_BASE_URL JIRA_EMAIL JIRA_API_TOKEN; do
             eval "v=\${$name}"

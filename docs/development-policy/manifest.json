@@ -159,7 +159,7 @@
       ]
     }
   ],
-  "reassembled_sha256": "8209ecac1880eb06a85ca86f1fe957ecaec3d4c0ef2a35000f39fa9f9fdeb34b",
+  "reassembled_sha256": "5466cebbe5a87762312328c0b9ef2a171ec24c12602a1488dffd537f4cbc0330",
   "amendments": [
     {
       "date": "2026-11-02",
@@ -226,6 +226,12 @@
       "pr": "https://github.com/jimmarkunas/life-os-v7/pull/1029",
       "approval": "Jim Markunas, November 12, 2026 CT 7:31 PM, LIFE-633 comment 12888, typed in the Claude Code chat: 'Approve the wording'",
       "part": "docs/development-policy/03, 04, 08 (Done = merged on same-head green CI with local proof; no live-run gate), with the matching AGENTS.md and CLAUDE.md lines"
+    },
+    {
+      "date": "2026-11-12",
+      "pr": "PR_NUMBER_PLACEHOLDER",
+      "approval": "Jim Markunas, November 12, 2026 CT, typed in the Claude Code chat: 'approve the readiness and decisions shim edits' (LIFE-631)",
+      "part": "docs/development-policy/04 and 10 (the commands `python -m lifeos.readiness` and `python -m lifeos.decisions` become `python -m lifeos.sources.devtools.readiness` and `.decisions`; no rule changed)"
     }
   ]
 }
