@@ -139,6 +139,51 @@ class Collect(Tmp):
             ob.collect(str(self.work), local_run, **lists)
         self.assertIn(str(raised.exception), ("backup_db_corrupt", "backup_db_snapshot"))
 
+    def fresh(self):
+        """lists() builds its folders once per test, so each case here starts in a new source/work pair."""
+        shutil.rmtree(self.src)
+        shutil.rmtree(self.work)
+        self.src.mkdir()
+        self.work.mkdir()
+
+    def breaker(self, how):
+        if how == "corrupt":
+            (self.src / "a.sqlite").write_bytes(b"not a database" * 100)
+            return local_run
+        if how == "hung":
+            def hung(command, **kwargs):
+                raise subprocess.TimeoutExpired(command, 300)
+            return hung
+        return lambda command, **kwargs: subprocess.CompletedProcess(command, 1)     # a locked database or a failing runuser: the snapshot program exits non-zero
+
+    def test_an_optional_database_that_is_corrupt_locked_or_hung_is_counted_and_skipped_while_the_rest_is_still_collected(self):     # LIFE-652
+        for how in ("corrupt", "locked", "hung"):
+            with self.subTest(how):
+                self.fresh()
+                lists = self.lists(required=False)
+                entries, extra = ob.collect(str(self.work), self.breaker(how), **lists)
+                self.assertEqual(extra["optional_db_failed"], 1)
+                self.assertNotIn("db/a.sqlite", entries)
+                self.assertIn("conf/conf.json", entries)                     # the other optional source and the trees are untouched
+                self.assertFalse(list(self.work.rglob("*.sqlite")))          # no half-made copy is left to be archived
+
+    def test_a_required_database_that_fails_still_stops_the_run_with_the_same_codes(self):
+        for how, expect in (("corrupt", ("backup_db_corrupt", "backup_db_snapshot")), ("locked", ("backup_db_snapshot",))):
+            with self.subTest(how):
+                self.fresh()
+                lists = self.lists(required=True)
+                with self.assertRaises(ob.BackupError) as raised:
+                    ob.collect(str(self.work), self.breaker(how), **lists)
+                self.assertIn(str(raised.exception), expect)
+        self.fresh()
+        with self.assertRaises(subprocess.TimeoutExpired):                   # a hung required snapshot is not swallowed either (the run then records backup_unexpected)
+            ob.collect(str(self.work), self.breaker("hung"), **self.lists(required=True))
+
+    def test_a_good_database_adds_no_new_field_to_the_status_counts(self):
+        entries, extra = ob.collect(str(self.work), local_run, **self.lists(required=False))
+        self.assertNotIn("optional_db_failed", extra)
+        self.assertIn("db/a.sqlite", entries)
+
     def test_a_live_wal_database_is_copied_consistently(self):
         live = make_db(self.src / "live.sqlite", rows=5)                                     # left OPEN, with its -wal in play
         live.execute("insert into t values ('late')")
@@ -350,8 +395,10 @@ class Retention(unittest.TestCase):
 
 
 class Run(Tmp):
-    def go(self, drive, **over):
-        lists = self.lists()
+    def go(self, drive, required=True, corrupt_db=False, **over):
+        lists = self.lists(required=required)
+        if corrupt_db:
+            (self.src / "a.sqlite").write_bytes(b"not a database" * 100)
         state = str(Path(self.tmp) / "state")
         patches = [mock.patch.object(ob, "SQLITE", lists["sqlite"]), mock.patch.object(ob, "FILES", lists["files"]), mock.patch.object(ob, "TREES", lists["trees"]), mock.patch.object(ob, "SECRET_TREES", lists["secret_trees"]),
                    mock.patch.object(ob.shutil, "chown", lambda *a, **k: None),
@@ -371,6 +418,21 @@ class Run(Tmp):
         for private in (self.tmp, "keep.md", "a.sqlite", "not-a-real"):
             self.assertNotIn(private, text)
         self.assertEqual(os.listdir(state), ["status.json"])                                 # the work folder, the snapshots and the plain archive are all gone
+
+    def test_a_corrupt_optional_database_still_gives_an_ok_night_that_names_the_skip_by_count(self):      # LIFE-652
+        fake = FakeDrive(files=15, folders=1)
+        record, state = self.go(ob.Drive(CRED, opener=fake), required=False, corrupt_db=True)
+        self.assertEqual((record["ok"], record["code"], record["optional_db_failed"]), (True, "ok", 1))
+        self.assertEqual(json.loads((Path(state) / "status.json").read_text())["optional_db_failed"], 1)
+        self.assertEqual(record["files"], 5)                                                              # the six files of a good night, minus the skipped database
+        self.assertTrue([1 for m, _ in fake.requests if m == "PUT"])                                      # the copy was uploaded
+
+    def test_a_corrupt_required_database_still_fails_the_night_and_uploads_nothing(self):
+        fake = FakeDrive(files=15, folders=1)
+        record, _ = self.go(ob.Drive(CRED, opener=fake), required=True, corrupt_db=True)
+        self.assertEqual(record["ok"], False)
+        self.assertIn(record["code"], ("backup_db_corrupt", "backup_db_snapshot"))
+        self.assertFalse([1 for m, _ in fake.requests if m == "PUT"])
 
     def test_the_plain_archive_is_deleted_before_the_upload_starts(self):
         order = []
