@@ -10,6 +10,7 @@
   "RENDER_SHAPE": ["capacity-card", "bug", false, "The rendered card is not the expected shape.", "A code defect."],
   "VERIFY_FAILED": ["capacity-card", "degraded", false, "The card read-back did not match what was written.", "Retried next run."],
   "ADAPTER_UNAVAILABLE": ["imessage", "state", false, "The WhatsApp adapter is unavailable.", "Check the adapter."],
+  "SOURCE_UNREADABLE": ["recruiters", "retry", false, "The card's source could not be read.", "None; retried next tick."],
   "EXCLUDED_STALE": ["alertstate", "state", false, "Job status: excluded as stale.", "None."],
   "JIRA_BAD_PAGE": ["jira", "bug", false, "A Jira page reply was not the expected shape.", "Retried next run."],
   "JIRA_CONFIG_INVALID": ["jira", "blocked", false, "The Jira board configuration is not valid.", "Fix the variables."],
