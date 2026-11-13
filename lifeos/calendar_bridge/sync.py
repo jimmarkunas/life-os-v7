@@ -73,14 +73,12 @@ def already_there(event):
 
 
 def plan(wanted, existing):
-    """wanted {id: body}; existing {id: google event}. -> (create, update, delete, same) lists of ids."""
+    """wanted {id: body}; existing {id: google event}. -> (create, update, delete) lists of ids; every other wanted id is already the same."""
     create = [i for i in wanted if i not in existing]
     update = [i for i in wanted if i in existing and
               ((existing[i].get("extendedProperties") or {}).get("private") or {}).get(HASH) !=
               wanted[i]["extendedProperties"]["private"][HASH]]
-    delete = [i for i in existing if i not in wanted]
-    same = [i for i in wanted if i in existing and i not in update]
-    return create, update, delete, same
+    return create, update, [i for i in existing if i not in wanted]
 
 
 def run(limit, live, environ=os.environ, connect=None, outlook_factory=None, gcal=None, now=None):
@@ -115,9 +113,9 @@ def run(limit, live, environ=os.environ, connect=None, outlook_factory=None, gca
     covered = [g for g in wanted if g not in existing and ident[g] in elsewhere]
     for gid in covered:
         del wanted[gid]
-    create, update, delete, same = plan(wanted, existing)
+    create, update, delete = plan(wanted, existing)
     out = {"outlook": seen, "skipped": skipped, "google": len(existing), "create": len(create), "update": len(update),
-           "already_in_google": len(covered), "delete": len(delete), "same": len(same), "applied": 0, "failed": 0}
+           "already_in_google": len(covered), "delete": len(delete), "same": len(wanted) - len(create) - len(update), "applied": 0, "failed": 0}
     floor = max(MASS_DELETE_FLOOR, len(existing) // 2)
     answered = len(wanted) + len(covered)                      # events Outlook returned that belong in the mirror (covered ones were taken out of `wanted` above)
     if len(delete) > floor and answered <= floor and not environ.get("CALENDAR_ALLOW_MASS_DELETE"):
@@ -125,29 +123,27 @@ def run(limit, live, environ=os.environ, connect=None, outlook_factory=None, gca
         raise BridgeError("CALENDAR_MASS_DELETE_GUARD")        # a half-empty Outlook answer must never wipe the mirror; a full answer whose event ids all changed (D172) is replaced, not refused
     if not live:
         return out
-    for gid in create:
+    def attempt(call, *args):
         try:
-            try:
-                gcal.insert({"id": gid, **wanted[gid]})
-            except GcalError as error:
-                if str(error) != "GCAL_HTTP_409":              # already there (a retried insert, or a previously deleted id): update it
-                    raise
-                gcal.update(gid, wanted[gid])
+            call(*args)
             out["applied"] += 1
         except GcalError:
             out["failed"] += 1
-    for gid in update:
+
+    def create_one(gid):
         try:
+            gcal.insert({"id": gid, **wanted[gid]})
+        except GcalError as error:
+            if str(error) != "GCAL_HTTP_409":              # already there (a retried insert, or a previously deleted id): update it
+                raise
             gcal.update(gid, wanted[gid])
-            out["applied"] += 1
-        except GcalError:
-            out["failed"] += 1
+
+    for gid in create:
+        attempt(create_one, gid)
+    for gid in update:
+        attempt(gcal.update, gid, wanted[gid])
     for gid in delete:
-        try:
-            gcal.delete(gid)
-            out["applied"] += 1
-        except GcalError:
-            out["failed"] += 1
+        attempt(gcal.delete, gid)
     if out["failed"]:
         raise BridgeError(f"CALENDAR_SYNC_FAILED:{out['failed']}")
     return out

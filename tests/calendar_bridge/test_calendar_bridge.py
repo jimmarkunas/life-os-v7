@@ -1,5 +1,9 @@
+import contextlib
+import io
 import json
+import os
 import re
+import subprocess
 import unittest
 import urllib.error
 from datetime import datetime, timezone
@@ -63,11 +67,12 @@ class FakeGcal:
         self.items.pop(gid, None)
 
 
-Db = shared.SelfCursorDb
+connect = shared.SelfCursorDb
 
 
-def connect():
-    return Db()
+def day(uid, i):
+    """An event on the i-th day after Oct 8 (one id per day, so a run holds many distinct occurrences)."""
+    return ev(uid, start=f"2026-10-{8 + i:02d}T15:00:00.0000000", end=f"2026-10-{8 + i:02d}T16:00:00.0000000")
 
 
 def go(events, g, live=True, token="R"):
@@ -140,9 +145,7 @@ class SyncTests(unittest.TestCase):
 
     def test_a_half_empty_outlook_answer_cannot_wipe_the_mirror(self):
         g = FakeGcal()
-        go([ev(str(i), start=f"2026-10-{8 + i:02d}T15:00:00.0000000", end=f"2026-10-{8 + i:02d}T16:00:00.0000000") for i in range(8)], g)
-        import contextlib
-        import io
+        go([day(str(i), i) for i in range(8)], g)
         printed = io.StringIO()
         with self.assertRaises(BridgeError) as error, contextlib.redirect_stdout(printed):
             go([], g)
@@ -154,29 +157,20 @@ class SyncTests(unittest.TestCase):
         self.assertEqual(set(line), {"outlook", "skipped", "google", "create", "update", "already_in_google", "delete", "same", "applied", "failed"})
 
     def many(self, uids, count):
-        return [ev(f"{uids}{i}", start=f"2026-10-{8 + i:02d}T15:00:00.0000000", end=f"2026-10-{8 + i:02d}T16:00:00.0000000") for i in range(count)]
-
-    def test_a_full_outlook_answer_whose_event_ids_all_changed_is_replaced_not_refused(self):
-        g = FakeGcal()
-        go(self.many("old", 8), g)
-        out = go(self.many("new", 8), g)                                   # same eight events, every id different (what happened on Oct 7)
-        self.assertEqual((out["create"], out["delete"], out["same"], out["applied"], out["failed"]), (8, 8, 0, 16, 0))
-        self.assertEqual(len(g.items), 8)
-        self.assertEqual(set(g.items), {sync.to_google("personal", e)[0] for e in self.many("new", 8)})      # only the new copies remain
+        return [day(f"{uids}{i}", i) for i in range(count)]
 
     def test_the_brake_still_refuses_when_outlook_answers_with_too_few_events_to_replace_what_is_there(self):
         g = FakeGcal()
         go(self.many("old", 14), g)                                         # floor = 7
-        import contextlib
-        import io
         with contextlib.redirect_stdout(io.StringIO()):
             with self.assertRaises(BridgeError):
                 go(self.many("new", 7), g)                                  # 7 answered, 14 to delete: not enough to trust
             with self.assertRaises(BridgeError):
                 go(self.many("old", 3), g)                                  # a partial answer with the same ids: 11 to delete
         self.assertEqual(len(g.items), 14)
-        out = go(self.many("new", 8), g)                                    # 8 answered (more than half of what is there): replaced
-        self.assertEqual((out["delete"], out["create"]), (14, 8))
+        out = go(self.many("new", 8), g)                                    # 8 answered (more than half of what is there; every id changed, as on Oct 7): replaced
+        self.assertEqual((out["delete"], out["create"], out["same"], out["applied"], out["failed"]), (14, 8, 0, 22, 0))
+        self.assertEqual(set(g.items), {sync.to_google("personal", e)[0] for e in self.many("new", 8)})      # only the new copies remain
 
     def test_events_v7_did_not_write_are_never_edited_or_deleted(self):
         g = FakeGcal()
@@ -199,7 +193,6 @@ class SyncTests(unittest.TestCase):
             go([ev("a")], FakeGcal(), token=None)
         with self.assertRaises(BridgeError):
             sync.run(1, False, environ={}, connect=connect, outlook_factory=FakeOutlook([]), gcal=FakeGcal(), now=NOW)
-
 
 
 class GcalClientTests(unittest.TestCase):
@@ -271,12 +264,11 @@ class GcalClientTests(unittest.TestCase):
         self.assertEqual(str(error.exception), "GCAL_AUTH_FAILED")
 
     def test_openssl_signing_uses_a_private_temp_file_that_is_removed(self):
-        import subprocess
         calls = {}
 
         def run(cmd, input=None, **kw):
             calls["cmd"] = cmd
-            calls["mode"] = oct(__import__("os").stat(cmd[-1]).st_mode & 0o777)
+            calls["mode"] = oct(os.stat(cmd[-1]).st_mode & 0o777)
             calls["exists"] = Path(cmd[-1])
             return subprocess.CompletedProcess(cmd, 0, stdout=b"SIG")
 

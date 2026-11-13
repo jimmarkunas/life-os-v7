@@ -11,9 +11,9 @@ from lifeos.platform import alerts, db
 
 KEY = "calendar_sync_stuck"
 STUCK_HOURS = 3                    # three hourly runs without a success
-SCHEMA = ("""CREATE TABLE IF NOT EXISTS v7_calendar_sync (
+SCHEMA = """CREATE TABLE IF NOT EXISTS v7_calendar_sync (
         k VARCHAR(16) NOT NULL PRIMARY KEY, last_ok DATETIME NOT NULL, alert_open TINYINT NOT NULL DEFAULT 0, last_notified DATETIME NULL
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"""
 
 
 def decide(state, ok, now, code=""):
@@ -51,8 +51,7 @@ def _record(connect, environ, now, ok, code, send):
     try:
         with connect() as connection:
             with connection.cursor() as cursor:
-                for statement in SCHEMA:
-                    cursor.execute(statement)
+                cursor.execute(SCHEMA)
             state, plan = decide(_load(connection), ok, now, code)
             sent = alerts.deliver(plan, environ.get("NTFY_TOPIC", ""), send)
             if plan.notify and sent["failed"] == 0 and state["alert_open"]:
