@@ -13,7 +13,7 @@ from urllib.parse import urlencode
 
 from lifeos.platform.notion_client import Client, NotionError
 from lifeos.hiring import close_screen as S, decision as D, models as M
-from lifeos.sources import close_app as C
+from lifeos.sources.apps import close_app as C
 from lifeos.sources.apps.signed import handler, invalid, live, stopper, unverified
 
 PATH, TAB = "Daily Report / Active Opportunities / Manage", "Manage opportunity"

@@ -6,7 +6,7 @@ import unittest
 from dataclasses import replace
 
 from lifeos.interview import create, notion, template, view
-from lifeos.sources import close_app
+from lifeos.sources.apps import close_app
 from tests.hiring.test_close_app import Harness, LOGIN, WHO
 from tests.hiring.test_notes_decision import COMPANY, ROLE
 

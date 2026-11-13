@@ -17,7 +17,7 @@ from unittest import mock
 from lifeos.edge import close_gate
 from lifeos.platform import gdrive, notion_files
 from lifeos.platform.notion_client import NotionError
-from lifeos.sources import close_app
+from lifeos.sources.apps import close_app
 from lifeos.sources.apps import resume_app
 
 SECRET, TOKEN, LEDGER = b"link-signing-key-0123456789abcdef", b"notion-token-secret", "11111111-2222-3333-4444-555555555555"
