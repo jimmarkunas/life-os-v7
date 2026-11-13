@@ -18,6 +18,7 @@ TICK_CAP_JOBRIGHT flag how many Jobright stages run at once when stages run side
 TICK_CAP_LINKEDIN flag how many LinkedIn stages run at once when stages run side by side (default 1: resolve-linkedin, linkedin-search and discover-jobs take turns)
 TICK_CAP_TINYFISH flag how many TinyFish stages run at once when stages run side by side (default 1: title watch and discover-jobs take turns)
 TICK_MAX_PARALLEL flag how many Jobs tick stages run at once at most when stages run side by side (default 4)
+TICK_SKIP_STAGES flag Jobs tick stage names left out of one run, set by the workflow when the browser install failed (resolve-jobright)
 V7_AI_CAPACITY_CARD flag Switch for the AI capacity card
 V7_CLOUD_FIT flag Cloud Fit setting for the hourly batch (cloud fit)
 V7_CLOUD_FIT_BACKLOG_BUDGET input Cloud Fit setting for the hourly batch (cloud fit backlog budget)
