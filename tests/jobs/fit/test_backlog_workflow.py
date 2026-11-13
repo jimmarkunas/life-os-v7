@@ -154,7 +154,7 @@ class CloudBacklogRunsAlone(unittest.TestCase):
         ran = [s for _, steps in p.values() for s in steps]
         names = [s.get("id") or s.get("name") or s.get("uses") for s in ran]
         self.assertIn("fit_cloud_backlog", names)
-        for absent in ("Stage 1 - sweep", "extract", "tick", "fit", "audit", "publish", "web", "discover", "enrich", "boards", "titlewatch", "sponsors", "finalize"):
+        for absent in ("sweep", "extract", "tick", "fit", "audit", "publish", "web", "discover", "enrich", "boards", "titlewatch", "sponsors", "finalize"):
             self.assertNotIn(absent, names)
         for step in ran:
             run = str(step.get("run") or "")
@@ -187,13 +187,13 @@ class CloudBacklogRunsAlone(unittest.TestCase):
         for shape in ({"event": "schedule"}, {"event": "workflow_dispatch", "tick": True, "live": True}):
             event = shape.pop("event")
             p = plan(self.doc, event, **shape)
-            self.assertIn("Stage 1 - sweep", names(p, "prep"))
+            self.assertIn("sweep", names(p, "prep"))
             self.assertIn("extract", names(p, "prep"))
             self.assertIn("tick", names(p, "finish"))
             self.assertNotIn("fit_cloud_backlog", names(p, "finish"))
         for given in ({"fit": True, "publish": True, "live": True}, {"discover": True}, {"quick": True, "live": True}, {"cloud_backlog": "0", "fit": True}, {"cloud_backlog": "", "web": True}):
             p = plan(self.doc, "workflow_dispatch", **given)
-            self.assertIn("Stage 1 - sweep", names(p, "prep"), given)
+            self.assertIn("sweep", names(p, "prep"), given)
             self.assertNotIn("Cloud Fit backlog runs alone", " ".join(str(n) for n in names(p, "prep")), given)
             self.assertNotIn("fit_cloud_backlog", names(p, "finish"), given)
             if not given.get("quick"):
