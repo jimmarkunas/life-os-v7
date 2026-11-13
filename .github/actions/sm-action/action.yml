@@ -1,0 +1,13 @@
+name: "Bitwarden Secrets Manager (vendored)"
+description: "LIFE-636. Vendored from bitwarden/sm-action v3.0.1 (commit 1238aae8fc64b212641190a9227c8a734ab1a793, GPL-3.0, see LICENSE). index.js is reviewed and cut to run the checked helper program and nothing else: no download, no build from source. The program itself is seeded and SHA-256 checked by ../bws-helper."
+inputs:
+  access_token: {description: "The machine account access token", required: true}
+  secrets: {description: "One 'secret-id > NAME' per line", required: true}
+  cloud_region: {description: "Optional: us or eu", required: false}
+  base_url: {description: "Optional", required: false, default: ""}
+  identity_url: {description: "Optional", required: false, default: ""}
+  api_url: {description: "Optional", required: false, default: ""}
+  set_env: {description: "Set the secrets as environment variables", required: false, default: "true"}
+runs:
+  using: "node24"
+  main: "index.js"
