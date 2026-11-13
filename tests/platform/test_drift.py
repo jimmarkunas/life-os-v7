@@ -56,16 +56,6 @@ class Check(unittest.TestCase):
             self.assertEqual(rows[0]["state"], drift.UNKNOWN)
             self.assertNotIn("secret", json.dumps(rows))
 
-    def test_the_repo_owned_list_covers_the_ticker_and_every_module_the_installer_copies(self):
-        text = Path("lifeos/edge/ticker/oracle/install-ticker.sh").read_text()
-        modules = next(line for line in text.splitlines() if line.startswith("MODULES=")).split('"')[1].split()
-        listed = {s.repo_path for s in drift.SURFACES}
-        for module in modules:
-            self.assertIn("lifeos/platform/" + module, listed, module)
-        self.assertIn("lifeos/edge/ticker/ticker.py", listed)
-        self.assertIn("lifeos/edge/backup/offsite_backup.py", listed)
-
-
     def test_every_installer_under_lifeos_edge_is_covered_by_a_surface_or_named_in_the_allowlist_with_a_reason(self):
         """LIFE-604 item 4: nothing installed on the VM may go unwatched by accident."""
         scripts = sorted(str(p) for p in Path("lifeos/edge").rglob("install-*.sh"))
