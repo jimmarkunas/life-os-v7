@@ -1,18 +1,18 @@
 # LIFE OS V7 — agent guide (read this, not the whole repo)
 
-V7 is the active LIFE OS implementation. V1 (`life-os-automation`) and V2 (`life-os-v2`) are read-only references: extract the smallest proven mechanic only. Core rule (D54): V7 must run correctly with ChatGPT completely unavailable. This guide is a summary; the [Development Policy](docs/life-os-development-policy.md) governs (read only what you need, especially work selection and the Jira-first lifecycle).
+V7 is the active LIFE OS implementation. V1 (`life-os-automation`) and V2 (`life-os-v2`) are read-only references: extract the smallest proven mechanic only. Core rule (D54): V7 must run correctly with ChatGPT completely unavailable. This guide summarizes; the [Development Policy](docs/life-os-development-policy.md) governs (read only what you need).
 
 ## Delivery flow v3 — the whole job (Jim, November 9, 2026)
 
 1. **Pick.** Jim named a ticket → that one. Else the top `Agent Go` leaf ticket in your lane (`lane-*` label) by Priority, then Rank. Moving a ticket to Agent Go IS the approval. Start with transition ID 14; resuming from blocked, UAT, Done or Cancelled uses "Resume work".
 2. **Gate.** `python -m lifeos.sources.devtools.readiness` (`issue-key LIFE-nnn`, or `issue-mcp FILE KEY` on an MCP read saved unmodified) checks exactly three things: the key is valid, the ticket has a Done-when line (any Given/When/Then row or bullet under "Done when"), and every `Blocks` predecessor is Done. Anything else prints a `warn` and exits 0; exit 2 only on those three.
-3. **Build.** One branch `life/LIFE-nnn/<slug>`, one PR, the ticket's fast proof first. No claim file, no preflight; Concord `start_work`/`finish_work` are optional, never a refusal. Protected steps (secrets, production, spend, user data, host changes) wait for their owned human approval, asked once at release: the releasing session lists every approval the ticket needs (files by name, workflows, Oracle runs, spend, host, secrets) and records Jim's answer as one `[approvals]` line. A newly found need: stop, ask once.
-4. **Land and close.** Merge when same-head CI is green and no protected item is touched. Post one comment: PR link, what changed, how it was verified, what is unverified. Move the ticket to Done yourself; Jim reopens it or files a Bug. Then pick the next ticket until Agent Go is empty (`NO_ELIGIBLE_WORK`).
+3. **Build.** One branch `life/LIFE-nnn/<slug>`, one PR, the ticket's fast proof first. No claim file, no preflight; Concord `start_work`/`finish_work` are optional, never a refusal. Protected steps (secrets, production, spend, user data, host changes) wait for their owned human approval, asked once at release: the releasing session lists every approval the ticket needs (files by name, workflows, Oracle runs, spend, host, secrets) and records Jim's answer as one `[approvals]` line. A newly found need: stop and ask once. Release-batch tickets that edit the same workflow file share ONE PR and one approval ask (one workflow PR open at a time; `protected-file-approved` only on Jim's typed yes).
+4. **Land and close.** Open the PR, wait with `gh pr checks <n> --watch --interval 30`, merge within 5 minutes of same-head green with `gh pr merge <n> --squash --match-head-commit <sha>` (no protected item touched), else post `[waiting on] <reason>`. Post one comment: PR link, what changed, how it was verified, what is unverified. Move the ticket to Done yourself; Jim reopens it or files a Bug. Then pick the next ticket until Agent Go is empty (`NO_ELIGIBLE_WORK`).
 5. **Optional.** Label `needs-uat`: stop at "Human UAT" with exact steps for Jim; only for new user-facing UI or judgment calls.
 
 **Scoping.** A scoping note is one page, at most 2,000 characters: Outcome, 3 to 5 Done-when checks, Not in scope. The agent cuts execution tickets from it in the same step. One execution ticket is one PR (or sheet edit), pasteable with no questions: exact targets, steps, done-when. Interview answers and discovery logs go in a linked page or comments, never the description (over 4,000 characters draws a `warn`).
 
-**Ticket truth and identity.** A plan change is an edit to the ticket plus one line `Scope change: <what> — Jim, <time CT>`; the description beats comments. The claiming agent fixes the ticket's text in the session reality changes; a superseded ticket is Cancelled with a line naming its replacement. Add one label (`agent-claude-code`, `agent-hermes`, `agent-chatgpt`) and start Jira comments with `[agent-…]`. Stamp the record: `[claim] <session> <ct_stamp time>` on claiming; `[waiting on] <Jim, CI, a key, host step, no free session>, <CT time>` on any pause, so no 60-minute stretch is unexplained (`python -m lifeos.sources.devtools.record_gaps FILE` lists them from a saved Jira export). No timer or watcher.
+**Ticket truth and identity.** A plan change is an edit to the ticket plus one line `Scope change: <what> — Jim, <time CT>`; the description beats comments. The claiming agent fixes the ticket's text in the session reality changes; a superseded ticket is Cancelled with a line naming its replacement. Add one label (`agent-claude-code`, `agent-hermes`, `agent-chatgpt`) and start Jira comments with `[agent-…]`. Stamp the record: `[claim] <session> <ct_stamp time>` on claiming; `[waiting on] <Jim, CI, a key, host step, no free session>, <CT time>` on any pause, so no 60-minute stretch is unexplained. `python -m lifeos.sources.devtools.record_gaps FILE` lists stretches from a saved Jira export.
 
 ## Where truth lives (one owner each)
 
@@ -27,14 +27,14 @@ Whoever changes a fact updates its owner in the same step and links it; a copy e
 
 ## Fast path
 
-Read the named LIFE issue first and only the missing authoritative context; reuse unchanged evidence; run independent reads in parallel; verify every consequential write; never reopen discovery or duplicate planning artifacts.
+Read the named LIFE issue and only the missing authoritative context; reuse evidence; parallelize independent reads; verify every consequential write; never reopen discovery or duplicate planning artifacts.
 
 - **Bootstrap target 60 s**: run `START_EPOCH=$(date -u +%s)` first; after the essential reads report `bootstrap_seconds` and the remote-read count. Warm resumes recheck only live Jira status/ownership and the `origin/main` SHA. Jira: only summary, status, owner, blockers, acceptance (omitted = UNVERIFIED). GitHub: main SHA, PR head/base, changed files.
 - **Authority order:** Jim's current instruction → Production Contract (runtime/scheduling) → Development Policy (engineering) → LOS (product) → Notion requirements → LIFE issue (delivery) → existing code. On conflict, use the owning authority; stop before mutating.
-- **Scope:** LOS outcome → LIFE Epic → Tasks → Sub-tasks. A missing Done-when line or an unfinished `Blocks` predecessor returns `QUEUE_NOT_READY`; other gaps are warnings.
+- **Scope:** LOS outcome → LIFE Epic → Tasks → Sub-tasks. A missing Done-when line or an unfinished `Blocks` predecessor returns `QUEUE_NOT_READY`.
 - **Execution gate:** only a named Jim instruction or an issue Jim moved to Agent Go permits work; a Jira comment or agent message alone grants nothing. Keep one writer per surface and protected-operation approval.
-- **Closure:** merged on same-head green CI plus local proof (tests, fixture replays, dry runs on fixtures) → Jira update. Never wait for, or start, an hourly, scheduled, on-demand or benchmark run to prove a change; a live look is a non-blocking watch, and a fault it shows is a Bug under LIFE-615. Report `DONE`, `PARTIAL`, `BLOCKED` or `UNVERIFIED` and the next responsible action.
-- **No new runtime:** no paid provider, scheduler, orchestrator, sync store, proxy or governance layer without Jim's explicit approval. A Tech Lead handoff can authorize one specified package, not autonomous pull. `docs/MASTER_ROADMAP.md` never selects work. CI runs `python -m lifeos.sources.devtools.readiness repo` (index, links, owners, size limits).
+- **Closure:** merged on same-head green CI plus local proof (tests, fixture replays and dry runs) → Jira update. Never wait for, or start, an hourly, scheduled, on-demand or benchmark run to prove a change; a live look is a non-blocking watch, and a fault it shows is a Bug under LIFE-615. Report `DONE`, `PARTIAL`, `BLOCKED` or `UNVERIFIED` and the next responsible action.
+- **No new runtime:** no paid provider, scheduler, orchestrator, sync store, proxy or governance layer without Jim's explicit approval. A Tech Lead handoff can authorize one specified package, not autonomous pull. `docs/MASTER_ROADMAP.md` never selects work. CI runs `python -m lifeos.sources.devtools.readiness repo`.
 - **Deadline Mode:** follow CLAUDE.md and the policy (absolute `LIFEOS_DEADLINE_EPOCH`, never reset, delivery claimed only after read-back).
 
 ## Buzz pilot entrypoint — only for LIFE-216
@@ -51,23 +51,21 @@ Before OpenClaw, Oracle, channel, local-model, assistant, meeting-capture or AI-
 
 ## Map
 
-- **Start with `python -m lifeos.sources.devtools.codemap`** (about 1 s; writes the untracked page `docs/CODEMAP.md`: every stage, one line per package), then read it. Ask one question instead of reading maps: `python -m lifeos.sources.devtools.codemap find <text>`; the full map is `docs/codemap.json`, also generated and not committed (LIFE-644).
+- **Start with `python -m lifeos.sources.devtools.codemap`** (about 1 s; writes untracked `docs/CODEMAP.md`: every stage, one line per package), then read it. Ask one question instead of reading maps: `python -m lifeos.sources.devtools.codemap find <text>`; the full map is `docs/codemap.json`, also generated and not committed (LIFE-644).
 - `lifeos/platform/` shared clients (imports nothing above it); `lifeos/jobs|interview|jira|outlook|calendar_bridge/` one OS per package (platform only); `lifeos/sources/` producers (any OS); `lifeos/run.py` stage registry, one `lazy("module", "function")` line per stage; `.github/workflows/hourly.yml` runs stages (`workflow_dispatch` is at the 25-input limit: add none). `tests/` mirrors `lifeos/`; fakes in `tests/kit`; `tests/contracts/` enforce the rules below.
 - Docs: `docs/DECISIONS_INDEX.md` (find), `python -m lifeos.sources.devtools.decisions show D<n>` (one decision; never read `docs/DECISIONS.md` whole; new numbers only from `python -m lifeos.sources.devtools.decisions claim`), `docs/SETUP.md` (secrets, manual steps), `docs/MASTER_ROADMAP.md` (dated evidence, not a live plan: priorities in Jira `LOS`, status in `LIFE`); `docs/ROADMAP.md` is legacy.
 
 ## Commands
 
-- **Tests: `sh tools/test.sh`** (any host; finds Python 3.12, runs what CI runs: affected tests on a branch, `--all` for everything). One file: `python -m unittest tests.jira.test_jira`.
+- **Tests: `sh tools/test.sh`** (any host; Python 3.12, what CI runs: affected tests on a branch, `--all` for everything). One file: `python -m unittest tests.jira.test_jira`.
 - **Jira reads and searches:** always pass `fields` (docs/platform/agent-jira-settings.md). **Receipts:** docs/platform/receipt-template.md.
 - `git add` new files BEFORE running the suite (the privacy test checks staged files only).
 - **GitHub from a session** (where GraphQL is blocked, `gh pr create` and `gh pr ready` fail): open a PR with `gh api repos/jimmarkunas/life-os-v7/pulls --input pr.json`; draft to ready with `gh api -X POST repos/jimmarkunas/life-os-v7/pulls/N/ccr/ready_for_review`; merge with `gh api -X PUT repos/jimmarkunas/life-os-v7/pulls/N/merge -f merge_method=squash`.
-- **Updating your own pushed branch (LIFE-663):** after a rebase or amend of your `life/...` branch run `sh tools/push_life_branch.sh` (a lease on the tip it fetched, current `life/*` branch only, arguments ignored); plain `git push` otherwise. `--force`, `-f`, `--force-with-lease`, `--delete`, `+refspec` and `git branch -d/-D` stay denied. Changing the script needs Jim's typed yes and the `protected-file-approved` label.
+- **Updating your own pushed branch (LIFE-663):** after a rebase or amend of your `life/...` branch run `sh tools/push_life_branch.sh` (a lease on the tip it fetched, current `life/*` branch only, arguments ignored); plain `git push` otherwise. Force, delete and `+refspec` pushes and `git branch -d/-D` stay denied. Changing the script needs Jim's typed yes and the `protected-file-approved` label.
 - **After a squash merge** the Stop hook warns about "unpushed commits"; they are in main: `git fetch origin main && git checkout -B main origin/main` clears it. A warning on an unmerged branch is real.
 - **Jira workflows** cannot be edited through the Atlassian connection: use the Jira admin page in Chrome once; do not retry through the API. Jira search lags after a write: read the issue by key.
 
 ## Delivery rules for every epic (Jim, November 11, 2026; source: LOS-119)
-
-Apply to every new epic or multi-ticket piece of work.
 
 1. **Fewer, bigger tickets.** Target at most 6 build tickets per epic. One ticket = one outcome with one done-when that is measured, not a checklist of sub-steps. No ticket whose only purpose is a comment, a table or a watch.
 2. **One approval pass at the start.** Before work begins, list every decision and protected step Jim will be asked for, and get yes or no on all of them at once. Standing guardrails: agents merge their own green PRs, close their own tickets, revert on failure; Jim types protected approvals in the Oracle Claude Code chat. Credential deletion and rotation stay outside any blanket yes.
@@ -76,7 +74,7 @@ Apply to every new epic or multi-ticket piece of work.
 5. **An epic closes only when its done-when is measured.** If follow-up work remains, it is named up front as a second epic, not discovered after closing.
 6. **Dependency pre-flight per ticket.** Before release, one line: what outside our control can fail this ticket (mirrors, third-party sites, sign-ins, rate limits), and the fallback (cache, retry, skip).
 7. **Estimate in gates, not effort.** Every epic plan states the critical path: build time, gated waits (runs, approvals, time-gated checks), and external risks, with a wall-clock total.
-8. **One end-to-end prompt, one final receipt.** Work is handed to Oracle Claude Code as one prompt with a goal, a deadline and ordered steps. Receipts are per epic, not per step, and always end with context, next steps and exact how-to-verify steps. Ticket numbers always come with plain words on what the ticket is for.
+8. **One end-to-end prompt, one final receipt.** Work is handed to Oracle Claude Code as one prompt with a goal, a deadline and ordered steps. Receipts are per epic and end with context, next steps and exact how-to-verify steps. Ticket numbers always come with plain words on what the ticket is for.
 9. **Claude does not relay.** Claude reads tickets, repo and tools itself, never asks Jim to hunt for names, ids, settings or dates or to close VS Code or Codex, and never opens sign-in pages on its own.
 
 ## Rules (each enforced by a test)
@@ -91,7 +89,7 @@ Apply to every new epic or multi-ticket piece of work.
 
 ## Reporting
 
-Counts only; say what you could not verify (real data, live runs). **Times for Jim: Central Time only** (labeled CT, 12-hour; never UTC, not even in brackets; convert logs, APIs and cron lines first; take the time from `python -m lifeos.platform.ct_stamp`).
+Counts only; say what you could not verify (real data, live runs). **Times for Jim: Central Time only** (labeled CT, 12-hour; never UTC, not even in brackets; convert log, API and cron times; take it from `python -m lifeos.platform.ct_stamp`).
 
 <!-- concord:start -->
 ## Concord — shared work-state for coding agents
