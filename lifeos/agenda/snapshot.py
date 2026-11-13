@@ -1,10 +1,10 @@
 """Read the complete Chicago today/tomorrow calendar window into a private snapshot."""
-import json
 import os
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from lifeos.platform import db
+from lifeos.platform.fixed_code import fixed
 from lifeos.platform.gcal import GcalError, GoogleCalendar
 from lifeos.platform.notion_client import NotionError
 from lifeos.platform.snapshot_store import Store
@@ -112,12 +112,8 @@ def compact(event, today, tomorrow):
 def build(calendar, now=None):
     now = local_now(now)
     time_min, time_max, today, tomorrow = window(now)
-    try:
+    with fixed(Exception, AgendaError, "AGENDA_READ_FAILED", keep=GcalError):
         raw_events = calendar.list_events(time_min, time_max)
-    except GcalError:
-        raise
-    except Exception:
-        raise AgendaError("AGENDA_READ_FAILED") from None
     if not isinstance(raw_events, list):
         raise AgendaError("AGENDA_LISTING_INCOMPLETE")
     events, seen = [], set()
@@ -141,10 +137,8 @@ def build(calendar, now=None):
 
 
 def load(connection):
-    try:
+    with fixed((TypeError, ValueError), AgendaError, "AGENDA_SNAPSHOT_INVALID"):
         return STORE.load(connection, 1)
-    except (TypeError, ValueError):
-        raise AgendaError("AGENDA_SNAPSHOT_INVALID") from None
 
 
 def run(limit, live, environ=os.environ, calendar=None, now=None, connect=None):
@@ -156,12 +150,8 @@ def run(limit, live, environ=os.environ, calendar=None, now=None, connect=None):
               "tomorrow": sum(snapshot["tomorrow"] in event["days"] for event in events),
               "saved": 0, "blocks_written": 0, "status": "fresh"}
     if live:
-        try:
+        with fixed(Exception, AgendaError, "AGENDA_STORE_FAILED", keep=AgendaError):
             with (connect or db.connect)() as connection:
                 STORE.save_verified(connection, 1, snapshot, lambda code: AgendaError("AGENDA_" + code))
             counts["saved"] = 1
-        except AgendaError:
-            raise
-        except Exception:
-            raise AgendaError("AGENDA_STORE_FAILED") from None
     return counts
