@@ -372,15 +372,15 @@ class Contract(unittest.TestCase):
         self.assertTrue(callable(close_app.handle) and close_app.handle.__module__ == "lifeos.sources.apps.close_app")
         self.assertFalse((ROOT / "lifeos/hiring/close_app.py").exists())                              # no wrapper is left in the hiring package
 
-    def test_the_old_path_is_a_shim_that_ships_with_the_real_module_until_oracle_points_at_the_new_one(self):
-        """LIFE-624: the old path is a shim and still ships with the real module (a unit installed before step 2 imports it); remove it only in step 3, after the read-back of Oracle's unit."""
-        shim = importlib.import_module("lifeos.sources.close_app")                                        # what the installed unit and the release tool's import check import
-        self.assertIs(shim.handle, close_app.handle)
-        self.assertEqual(shim.handle.__module__, "lifeos.sources.apps.close_app")
-        self.assertEqual(shim.CLOSURE, close_app.CLOSURE)                                                  # the release tool reads the literal from the old path's source: it must match the real one
-        for path in ("lifeos/sources/close_app.py", "lifeos/sources/apps/close_app.py"):
-            self.assertIn(path, close_app.CLOSURE)
-            self.assertIn(path, rel.closure((ROOT / rel.APP).read_bytes()))
+    def test_the_old_path_is_gone_and_the_release_closure_ships_only_the_real_module(self):
+        """LIFE-624 step 3: the shim at lifeos/sources/close_app.py is removed (Oracle's unit and the release tool already name lifeos.sources.apps.close_app)."""
+        self.assertFalse((ROOT / "lifeos/sources/close_app.py").exists())
+        self.assertNotIn("close_app", importlib.import_module("lifeos.sources").__all__)
+        self.assertNotIn("lifeos/sources/close_app.py", close_app.CLOSURE)
+        self.assertIn("lifeos/sources/apps/close_app.py", close_app.CLOSURE)
+        shipped = set(rel.closure((ROOT / rel.APP).read_bytes()))                                          # the release tool reads the literal CLOSURE from the real module
+        self.assertLessEqual(set(close_app.CLOSURE), shipped)
+        self.assertNotIn("lifeos/sources/close_app.py", shipped)
 
     def test_no_stage_workflow_or_schedule_reaches_the_application(self):
         for path in list((ROOT / ".github/workflows").glob("*.yml")) + [ROOT / "lifeos/run.py"]:
