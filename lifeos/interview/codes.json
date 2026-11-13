@@ -39,6 +39,7 @@
   "TRANSCRIPT_UNFINALIZED_SEGMENT": ["interview", "terminal", false, "A Granola transcript failed its contract check (unfinalized segment).", "None; the transcript is not written. Fix the source or skip it."],
   "INTERVIEW_DERIVED_MISSING": ["interview", "bug", false, "A derived block expected on the Interview page is missing.", "Retried; check the page."],
   "INTERVIEW_LEDGER_UNREADABLE": ["interview", "retry", false, "The Ledger could not be read for acceptance.", "None; retried next run."],
+  "INTERVIEW_PRESERVE_FAILED": ["interview", "blocked", false, "The text of an edit in a machine-written section could not be copied into the Preserved edits toggle, so nothing is rewritten.", "None; the page is unchanged and the next run tries again."],
   "INTERVIEW_PROTECTED_BUDGET": ["interview", "blocked", false, "Reading the protected region ran out of its call budget, so no write is made.", "None; retried next run."],
   "INTERVIEW_PROTECTED_DEPTH": ["interview", "blocked", false, "The protected region is nested deeper than the read allows, so no write is made.", "None; nothing of Jim's is overwritten."],
   "INTERVIEW_PROTECTED_READ": ["interview", "retry", false, "The protected region could not be read, so no write is made.", "None; retried next run."],

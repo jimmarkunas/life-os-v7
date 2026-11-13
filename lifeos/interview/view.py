@@ -64,6 +64,7 @@ class Opportunity:
     resume: tuple = ()                           # E10: (file name, stable link or None) from the exact row's Submitted Résumé field
     resume_state: str | None = None              # None = Job Ledger row not verified; "recorded" | "not_recorded" | "not_connected" (no such field)
     hand: tuple = ()                             # LIFE-111/112: the hand-set lines Manage wrote in this page's fold, carried forward as written
+    repaired: str = ""                           # LIFE-658: the one "Repaired <time> CT" line a self-repair wrote into this page's machine region (template.REPAIRED_LINE), carried forward as written
     hand_ledger: tuple = ()                      # LIFE-111/112: the hand-set lines on the exact Job Ledger row (read only here)
     sent_mail: tuple = ()                        # LIFE-114: (sent time ISO, subject) of Jim's own messages on this job's request thread, read only from Gmail
     sent_mail_state: str | None = None           # None = not connected this run; "read" | "unreadable"
