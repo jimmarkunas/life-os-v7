@@ -29,7 +29,7 @@ def layer_imports(layer):
                     yield path.name, name.split(".")[1]
 
 
-APPS = {"lifeos.sources.apps", "lifeos.sources.close_app"}      # the Oracle Close service's screens and its front door; every other lifeos/sources module is a stage, a registry or a proof
+APPS = {"lifeos.sources.apps"}      # the Oracle Close service's screens and its front door (lifeos.sources.apps.close_app); every other lifeos/sources module is a stage, a registry or a proof
 
 
 def sources_targets(source, module):
@@ -73,8 +73,8 @@ class BoundaryTests(unittest.TestCase):
         with mock.patch.object(Path, "read_text", return_value="from lifeos.sources.pipeline import hiring\nfrom lifeos.sources import web\nimport lifeos.sources.apps.signed\nfrom .signed import mac\n"):
             self.assertEqual(list(app_boundary_breaks(fake)), [("fake_app.py", "lifeos.sources.pipeline"), ("fake_app.py", "lifeos.sources.pipeline.hiring"), ("fake_app.py", "lifeos.sources.web")])
         stage = ROOT / "sources" / "web" / "fake_stage.py"
-        with mock.patch.object(Path, "read_text", return_value="from lifeos.sources.apps import signed\nfrom lifeos.sources import close_app\n"):
-            self.assertEqual(list(app_boundary_breaks(stage)), [("fake_stage.py", "lifeos.sources.apps"), ("fake_stage.py", "lifeos.sources.apps.signed"), ("fake_stage.py", "lifeos.sources.close_app")])
+        with mock.patch.object(Path, "read_text", return_value="from lifeos.sources.apps import signed\n"):
+            self.assertEqual(list(app_boundary_breaks(stage)), [("fake_stage.py", "lifeos.sources.apps"), ("fake_stage.py", "lifeos.sources.apps.signed")])
 
     def test_imports_only_point_downward(self):
         for layer in LAYERS:
