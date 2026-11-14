@@ -35,6 +35,7 @@ Generated from `lifeos/platform/runtime.json`; do not edit by hand. The drift ch
 | lifeos/hiring | github, oracle |  |  |
 | lifeos/imessage | github, oracle, mac |  |  |
 | lifeos/interview | github |  |  |
+| lifeos/inbox | github |  |  |
 | lifeos/jira | github |  |  |
 | lifeos/jobs | github |  |  |
 | lifeos/megibow | github |  |  |

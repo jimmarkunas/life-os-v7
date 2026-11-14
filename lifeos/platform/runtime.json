@@ -11,6 +11,7 @@
   {"module": "lifeos/hiring", "host": ["github", "oracle"]},
   {"module": "lifeos/imessage", "host": ["github", "oracle", "mac"]},
   {"module": "lifeos/interview", "host": ["github"]},
+  {"module": "lifeos/inbox", "host": ["github"]},
   {"module": "lifeos/jira", "host": ["github"]},
   {"module": "lifeos/jobs", "host": ["github"]},
   {"module": "lifeos/megibow", "host": ["github"]},
