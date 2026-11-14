@@ -179,6 +179,13 @@ class Failing(unittest.TestCase):
         self.assertIsNone(gate.failing([ago(1), ago(9)], NOW))
         self.assertIs(gate.failing([ago(1, "success"), ago(30)], NOW), False)
 
+    def test_the_newest_finished_tick_decides_whether_reminders_go_out(self):
+        """LIFE-675: Nov 13 2026, the pipeline was green again but the open incident re-paged every 3 hours until its failures aged out of the 24-hour window."""
+        self.assertTrue(gate.last_tick_passed([ago(0.5, "success"), ago(1), ago(2), ago(3)]))
+        self.assertFalse(gate.last_tick_passed([ago(0.5), ago(1, "success"), ago(2)]))
+        self.assertFalse(gate.last_tick_passed([ago(0.2, "cancelled"), ago(0.4, "success", title="manual"), ago(1)]))
+        self.assertFalse(gate.last_tick_passed([]))
+
     def test_manual_cancelled_and_old_runs_never_count(self):
         runs = [ago(1, title="manual"), ago(2, "cancelled"), ago(3, "cancelled"), ago(25), ago(26), ago(27)]
         self.assertIs(gate.failing(runs, NOW), False)
@@ -265,6 +272,30 @@ class Incident(unittest.TestCase):
         pushed, api = [], FakeGitHub([self.issue(opened_h=12, quiet_h=10)])
         self.assertEqual(self.sync(api, False, lambda *a: pushed.append(a) or True), "closed")            # recovered: the recovery push only
         self.assertEqual(pushed, [self.CLOSE])
+
+    def test_an_info_incident_is_never_re_paged(self):
+        """LIFE-675: the deploy-drift incident (INFO) re-paged every 3 hours for 76 hours."""
+        pushed, api = [], FakeGitHub([self.issue(opened_h=76, quiet_h=10)])
+        old = gate._api
+        gate._api = api
+        try:
+            got = gate.sync_incident("lbl", "title", "body", True, ("T", "B", "info"), ("C", "R", "info"), push=lambda *a: pushed.append(a) or True, now=NOW)
+        finally:
+            gate._api = old
+        self.assertIsNone(got)
+        self.assertEqual((pushed, api.writes()), ([], []))
+
+    def test_a_failing_incident_is_not_re_paged_once_a_tick_has_passed(self):
+        pushed, api = [], FakeGitHub([self.issue(opened_h=19, quiet_h=3.5, labels=(gate.FAIL_LABEL,))])
+        runs = [ago(0.5, "success", rid=1), ago(2, rid=2), ago(3, rid=3), ago(4, rid=4)]
+        old = (gate._api, gate._push)
+        gate._api = lambda path, *a, **k: {"workflow_runs": runs} if "workflows/hourly" in path else api(path, *a, **k)
+        gate._push = lambda *a: pushed.append(a[0]) or True
+        try:
+            gate.watch(NOW, checkin=False)
+        finally:
+            gate._api, gate._push = old
+        self.assertNotIn("Still open: V7 hourly runs failing repeatedly", pushed)
 
     def test_a_refused_reminder_writes_nothing_so_the_next_run_tries_again(self):
         api = FakeGitHub([self.issue(opened_h=5, quiet_h=4)])
