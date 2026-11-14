@@ -1,6 +1,7 @@
 """LIFE-10 §2, synthetic only: the outreach table on a Job Ledger job page, fed by Mark as Sent (D221). Every name, id and date is invented; nothing is live."""
 import unittest
 from datetime import timedelta
+from unittest import mock
 
 from lifeos.network import surface
 from lifeos.platform import report_region as R
@@ -9,6 +10,7 @@ from lifeos.sources.pipeline import job_page_outreach as P
 from tests.hiring.support import writes
 from tests.recruiters.fakes import FakeRecruiters
 from tests.kit.tree import Tree
+from tests.platform.test_isolate import main_exit
 from tests.recruiters.test_outreach import JOB_A, JOB_B, LEDGER, NOW, SCHEMA, Ledger, Service, ledger_page, mark
 
 ON = {"JOB_PAGE_OUTREACH": "on"}
@@ -145,6 +147,42 @@ class JobPageOutreach(unittest.TestCase):
         t = job_page()
         done = self.run_it(t)
         self.assertEqual((done["jobs"], done["codes"], writes(t)), (0, {}, []))
+
+    def test_one_page_failing_never_fails_the_run_but_every_page_failing_does(self):
+        """LIFE-689: a page that fails is counted under its fixed code and the other pages still sync; the stage exits 1 only when every page failed."""
+        mark(self.svc, JOB_A, "Avery Synthetic")
+        mark(self.svc, JOB_B, "Avery Synthetic")
+        self.ledger.pages[JOB_B]["parent"]["data_source_id"] = "9" * 32                       # JOB_B is refused; JOB_A syncs
+        t = job_page()
+
+        def stage(limit, live):
+            return P.run(limit, live, environ=ON, recruiters=self.rec, ledger=self.ledger, client=t, now=NOW)
+        code, err, out = main_exit(stage, "job-page-outreach", "JOB_PAGE_OUTREACH_PAGES_FAILED")
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(len(region(t, JOB_A)[2]), 1)                                          # the good page was written
+        self.assertIn('"item_codes": {"JOB_PAGE_OUTREACH_NOT_A_LEDGER_PAGE": 1}', out)
+        self.ledger.pages[JOB_A]["parent"]["data_source_id"] = "9" * 32                       # now both are refused
+        code, err, _ = main_exit(stage, "job-page-outreach", "JOB_PAGE_OUTREACH_PAGES_FAILED")
+        self.assertEqual((code, err.strip()), (1, "JOB-PAGE-OUTREACH FAILED: JOB_PAGE_OUTREACH_PAGES_FAILED"))
+
+    def test_a_page_error_that_is_not_a_notion_error_is_that_pages_failure_not_the_runs(self):
+        mark(self.svc, JOB_A, "Avery Synthetic")
+        mark(self.svc, JOB_B, "Avery Synthetic")
+        real = P.sync_page
+
+        def flaky(client, ledger, source, jid, *rest):
+            if jid == JOB_B:
+                raise ValueError("boom")
+            return real(client, ledger, source, jid, *rest)
+        with mock.patch.object(P, "sync_page", flaky):
+            done = self.run_it(job_page())
+        self.assertEqual((done["failed"], done["item_failed"], done["items"]), (1, 1, 2))
+        self.assertEqual(done["codes"].get("JOB_PAGE_OUTREACH_NOTION_ERROR"), 1)
+
+    def test_when_every_page_syncs_the_counts_carry_no_item_keys(self):
+        mark(self.svc, JOB_A, "Avery Synthetic")
+        done = self.run_it(job_page())
+        self.assertEqual(set(done), {"job_page_outreach", "jobs", "conversations", "failed", "codes"})
 
     def test_an_unreadable_recruiters_source_fails_the_whole_run(self):
         mark(self.svc, JOB_A, "Avery Synthetic")
