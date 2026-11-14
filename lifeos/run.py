@@ -174,11 +174,15 @@ def main(argv=None):
     parser.add_argument("--limit", type=int, default=40)
     parser.add_argument("--live", action="store_true", help="write results (default: dry run, counts only)")
     args = parser.parse_args(argv)
+    from lifeos.platform import settings                                               # noqa: PLC0415 - LIFE-699: the Notion settings page, shadow rule; never fails a stage
+    loaded = settings.apply(os.environ)
     try:
         counts = STAGES[args.stage](args.limit, args.live)
     except (StoreError, NotionError, JiraError, OutlookError, GcalError, BridgeError, NetworkError) as error:
         print(f"{args.stage.upper()} FAILED: {error}", file=sys.stderr)
         return 1
+    if isinstance(counts, dict):
+        counts["settings"] = loaded
     _announce(args.stage, counts)
     print(f"{args.stage}:", json.dumps(counts, sort_keys=True))
     if args.live:
