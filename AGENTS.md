@@ -58,6 +58,7 @@ Before OpenClaw, Oracle, channel, local-model, assistant, meeting-capture or AI-
 ## Commands
 
 - **Tests: `sh tools/test.sh`** (any host; Python 3.12, what CI runs: affected tests on a branch, `--all` for everything). One file: `python -m unittest tests.jira.test_jira`.
+- **Jira connector (LIFE-683):** only the Atlassian MCP connector (`mcp__claude_ai_Atlassian_MCP__*`, v2, cloudId `jimmarkunas.atlassian.net`). The two Rovo connectors are retired: deprecated /v1 endpoint (removal 2027-03-01), 403 on this site, denied by the Buzz guard.
 - **Jira reads and searches:** always pass `fields` (docs/platform/agent-jira-settings.md). **Receipts:** docs/platform/receipt-template.md.
 - `git add` new files BEFORE running the suite (the privacy test checks staged files only).
 - **GitHub from a session** (where GraphQL is blocked, `gh pr create` and `gh pr ready` fail): open a PR with `gh api repos/jimmarkunas/life-os-v7/pulls --input pr.json`; draft to ready with `gh api -X POST repos/jimmarkunas/life-os-v7/pulls/N/ccr/ready_for_review`; merge with `gh api -X PUT repos/jimmarkunas/life-os-v7/pulls/N/merge -f merge_method=squash`.
