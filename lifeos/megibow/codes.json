@@ -4,5 +4,14 @@
   "MEGIBOW_OVERRIDE_READBACK_MISMATCH": ["megibow", "bug", false, "An override write did not read back as written.", "Retried."],
   "MEGIBOW_REVIEW_READ_INCOMPLETE": ["megibow", "degraded", false, "The review read did not finish.", "None; retried."],
   "MEGIBOW_REVIEW_SCHEMA_MISMATCH": ["megibow", "blocked", false, "The review database schema changed.", "Restore the properties."],
-  "MEGIBOW_STORE_READ_FAILED": ["megibow", "retry", false, "The Megibow store could not be read.", "None; retried."]
+  "MEGIBOW_STORE_READ_FAILED": ["megibow", "retry", false, "The Megibow store could not be read.", "None; retried."],
+  "MEGIBOW_MATT_DEGRADED": ["megibow", "degraded", false, "Jim's Megibow callout was written but Matt's could not be (his database unreadable or his callout not found); his callout keeps its last accepted rows.", "Check that the V7 Notion connection can see Matt's database and the V3 page."],
+  "MEGIBOW_V3_BLOCK_NOT_FOUND": ["megibow", "blocked", false, "A V3 Megibow callout could not be found by its id (or the V7 Notion connection cannot see the V3 page); nothing was written.", "Add the V7 connection on the V3 page (page menu, Connections) or check the block id."],
+  "MEGIBOW_V3_BLOCK_SHAPE": ["megibow", "blocked", false, "A V3 Megibow callout is not heading, stamp, 7 x 10 table, notes, summary link; nothing was written.", "Restore the callout layout."],
+  "MEGIBOW_V3_RENDER_SHAPE": ["megibow", "bug", false, "The rendered V3 table is not 7 x 10.", "Fix the renderer."],
+  "MEGIBOW_V3_VERIFY_FAILED": ["megibow", "retry", false, "A V3 Megibow write did not read back as written.", "None; the next run retries."],
+  "MEGIBOW_V3_SUMMARY_SHAPE": ["megibow", "blocked", false, "A V3 Megibow summary page is not one paragraph; it was not written.", "Restore the summary page to one paragraph."],
+  "MEGIBOW_V3_TARGET_NOT_FOUND": ["megibow", "blocked", false, "The V3 block ID register, its matt.megibow row or Matt's database was not found by its exact title.", "Check the register row and the database title, and the V7 Notion connection."],
+  "MEGIBOW_V3_MATT_SCHEMA": ["megibow", "blocked", false, "Matt's Megibow database no longer has Week Start and the five number columns.", "Restore the columns."],
+  "MEGIBOW_V3_MATT_READ_INCOMPLETE": ["megibow", "degraded", false, "Matt's Megibow database read did not finish.", "None; the next run retries."]
 }
