@@ -15,7 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 FIRST_LINE_MAX = 170
 TOTAL_MAX = 1200
-ENFORCED = ("lifeos/agenda", "lifeos/amazon", "lifeos/bills", "lifeos/buzz", "lifeos/calendar_bridge", "lifeos/dcc", "lifeos/delivery", "lifeos/hiring", "lifeos/imessage", "lifeos/interview", "lifeos/jira",
+ENFORCED = ("lifeos/agenda", "lifeos/amazon", "lifeos/bills", "lifeos/buzz", "lifeos/calendar_bridge", "lifeos/dcc", "lifeos/delivery", "lifeos/hiring", "lifeos/imessage", "lifeos/inbox", "lifeos/interview", "lifeos/jira",
             "lifeos/jobs", "lifeos/megibow", "lifeos/network", "lifeos/oraclecloud", "lifeos/outlook", "lifeos/physmail", "lifeos/platform", "lifeos/recruiters", "lifeos/sources", "lifeos/telegram")   # every package with an __init__.py
 # Files that are installed on the Oracle VM (or protected): a docstring edit changes the file's hash, so the deploy-drift check would show DRIFT until a script pack is run with Jim's typed `run` line. They are exempt until
 # such a pack touches them anyway (then conform them and delete the entry; the test fails if an entry becomes unnecessary). A path ending in "/" exempts the whole folder.
