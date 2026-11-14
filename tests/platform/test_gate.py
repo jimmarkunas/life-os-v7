@@ -363,7 +363,7 @@ class StuckTickAlert(unittest.TestCase):
         created = (NOW - dt.timedelta(minutes=minutes)).strftime("%Y-%m-%dT%H:%M:%SZ")
         return {"id": rid, "display_title": title, "status": status, "conclusion": conclusion, "created_at": created, "run_started_at": created, "updated_at": created}
 
-    def watch(self, runs, open_stuck=False):
+    def watch(self, runs, open_stuck=False, refuse_cancel=False):
         pushed, calls = [], []
         runs = runs + [self.run_(5, status="completed", conclusion="success", rid=99)]            # a healthy recent tick, so the separate "no successful run" incident stays quiet
 
@@ -371,6 +371,8 @@ class StuckTickAlert(unittest.TestCase):
             if "workflows/hourly" in path:
                 return {"workflow_runs": runs}
             calls.append((method, path.split("?")[0]))
+            if method == "POST" and path.endswith("/cancel") and refuse_cancel:
+                raise OSError("HTTP 409")                                         # GitHub refused, as it did on Nov 11 2026
             if method == "GET" and "issues?" in path:
                 return [{"number": 7, "labels": [{"name": gate.STUCK_LABEL}], "updated_at": NOW.strftime("%Y-%m-%dT%H:%M:%SZ"), "created_at": NOW.strftime("%Y-%m-%dT%H:%M:%SZ")}] if (open_stuck and f"labels={gate.STUCK_LABEL}" in path) else []
             return {}
@@ -383,19 +385,53 @@ class StuckTickAlert(unittest.TestCase):
         return pushed, calls
 
     def test_a_tick_queued_for_41_minutes_pages_once_and_opens_one_issue(self):
-        pushed, calls = self.watch([self.run_(41)])
+        pushed, calls = self.watch([self.run_(41)], refuse_cancel=True)                     # LIFE-691: GitHub refuses the cancel
         self.assertEqual([p[3] for p in pushed], ["tick_run_stuck"])
+        self.assertIn(("POST", "actions/runs/1/cancel"), calls)
         self.assertEqual(pushed[0][2], "info")                                   # phone only, like the other edge alerts; the paging set stays exactly what Jim approved
         self.assertEqual([c for c in calls if c[0] == "POST" and c[1] == "issues"], [("POST", "issues")])
 
     def test_an_open_incident_does_not_page_again_on_the_next_watch(self):
-        pushed, calls = self.watch([self.run_(55)], open_stuck=True)
+        pushed, calls = self.watch([self.run_(55)], open_stuck=True, refuse_cancel=True)
         self.assertEqual(pushed, [])
         self.assertEqual([c for c in calls if c[0] == "POST" and c[1] == "issues"], [])
 
     def test_a_running_tick_is_stuck_too(self):
-        pushed, _ = self.watch([self.run_(45, status="in_progress")])
+        pushed, _ = self.watch([self.run_(45, status="in_progress")], refuse_cancel=True)
         self.assertEqual([p[3] for p in pushed], ["tick_run_stuck"])
+
+    def test_a_cancel_github_accepts_raises_no_alert_and_the_gate_still_ignores_the_stuck_run(self):
+        """LIFE-691: the watchdog cancels a tick queued 41 minutes; GitHub accepts, so nobody is paged, and the gate's skip rule (LIFE-580) still lets the next tick run meanwhile."""
+        runs = [self.run_(41)]
+        pushed, calls = self.watch(runs)
+        self.assertEqual(pushed, [])
+        self.assertEqual([c for c in calls if c[0] == "POST" and c[1] == "issues"], [])
+        self.assertIn(("POST", "actions/runs/1/cancel"), calls)
+        self.assertEqual(gate.decide(runs, NOW, 9), "run")
+
+    def test_a_cancel_github_accepted_that_did_not_end_the_run_pages_once_after_the_grace_period(self):
+        pushed, calls = self.watch([self.run_(gate.STUCK_MINUTES + gate.REAP_GRACE_MINUTES + 1)])
+        self.assertEqual([p[3] for p in pushed], ["tick_run_stuck"])
+        self.assertIn(("POST", "actions/runs/1/cancel"), calls)
+
+    def test_nothing_stuck_means_no_cancel_is_attempted(self):
+        pushed, calls = self.watch([self.run_(30), self.run_(90, title="manual", rid=2)])
+        self.assertEqual([c for c in calls if c[1].endswith("/cancel")], [])
+
+    def test_reap_reports_what_was_cancelled_refused_and_still_stuck(self):
+        asked = []
+
+        def api(path, method="GET", body=None):
+            asked.append((method, path))
+            if "/runs/2/" in path:
+                raise OSError("refused")
+        runs = [self.run_(41, rid=1), self.run_(50, rid=2), self.run_(70, rid=3), self.run_(10, rid=4)]
+        out = gate.reap(runs, NOW, call=api)
+        self.assertEqual(out, {"found": 3, "cancelled": [1, 3], "refused": [2], "still_stuck": [3]})
+        self.assertEqual([p for m, p in asked], ["actions/runs/1/cancel", "actions/runs/2/cancel", "actions/runs/3/cancel"])
+        self.assertIs(gate.reaper_alerts(out), True)
+        self.assertIsNone(gate.reaper_alerts({"found": 1, "cancelled": [1], "refused": [], "still_stuck": []}))      # accepted, not yet ended: the incident is left as it is
+        self.assertIs(gate.reaper_alerts({"found": 0, "cancelled": [], "refused": [], "still_stuck": []}), False)
 
     def test_a_tick_younger_than_the_limit_a_manual_run_and_a_finished_run_are_not_stuck(self):
         pushed, _ = self.watch([self.run_(30), self.run_(90, title="manual", rid=2), self.run_(90, status="completed", conclusion="success", rid=3)])

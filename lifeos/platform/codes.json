@@ -219,5 +219,6 @@
   "SETTINGS_SEED_VERIFY_FAILED": ["platform", "retry", false, "Addresses copied onto the V7 settings page did not read back.", "None; the next run copies them again."],
   "SETTINGS_REMEMBER_READBACK": ["platform", "retry", false, "The last accepted V7 settings did not read back from the private store.", "None; the next good read saves them again."],
   "ITEM_FAILED": ["platform", "degraded", false, "One item of a stage failed with an error that carries no fixed code of its own; the other items were kept.", "None for one item; the stage fails only if every item failed."],
-  "STATE_KEY_INVALID": ["platform", "terminal", false, "An alert state key was empty or malformed, so the alert was not built.", "None; fix the caller."]
+  "STATE_KEY_INVALID": ["platform", "terminal", false, "An alert state key was empty or malformed, so the alert was not built.", "None; fix the caller."],
+  "STAGE_BUDGET_EXCEEDED": ["platform", "degraded", false, "A stage spent its time budget (lifeos/platform/stage_budgets.json), stopped its own work and recorded this code; a required stage fails the run, an optional stage lets it pass.", "None for one run; if it repeats, the stage is slower than its budget: read its measured seconds in docs/platform/timeouts.md."]
 }

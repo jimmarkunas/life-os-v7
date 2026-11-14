@@ -1,0 +1,491 @@
+{
+ "default_seconds": 600,
+ "rule": "docs/platform/timeouts.md",
+ "stages": {
+  "agenda-card": {
+   "basis": "twice its slowest measured step (77 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 180
+  },
+  "agenda-snapshot": {
+   "basis": "twice its slowest measured step (58 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 120
+  },
+  "alerts": {
+   "basis": "twice its slowest measured step (11 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 120
+  },
+  "alerts-open": {
+   "basis": "no workflow runs this stage (manual or developer use): the table default",
+   "required": false,
+   "seconds": 600
+  },
+  "amazon-backfill": {
+   "basis": "no workflow runs this stage (manual or developer use): the table default",
+   "required": false,
+   "seconds": 600
+  },
+  "amazon-card": {
+   "basis": "twice its slowest measured step (15 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 120
+  },
+  "amazon-census": {
+   "basis": "no workflow runs this stage (manual or developer use): the table default",
+   "required": false,
+   "seconds": 600
+  },
+  "amazon-orders": {
+   "basis": "twice its slowest measured step (5 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 120
+  },
+  "amazon-retention": {
+   "basis": "twice its slowest measured step (547 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 780
+  },
+  "amazon-review-reset": {
+   "basis": "no workflow runs this stage (manual or developer use): the table default",
+   "required": false,
+   "seconds": 600
+  },
+  "audit": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "required": true,
+   "seconds": 180
+  },
+  "audit-fresh": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "required": true,
+   "seconds": 60
+  },
+  "audit-ready": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "required": true,
+   "seconds": 60
+  },
+  "bills-card": {
+   "basis": "twice its slowest measured step (9 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 120
+  },
+  "bills-paid": {
+   "basis": "twice its slowest measured step (61 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 150
+  },
+  "bills-snapshot": {
+   "basis": "twice its slowest measured step (7 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 120
+  },
+  "board-check": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 600
+  },
+  "boards": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "required": false,
+   "seconds": 1080
+  },
+  "boards-backfill": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "required": false,
+   "seconds": 600
+  },
+  "boards-preview": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 600
+  },
+  "calendar-sync": {
+   "basis": "twice its slowest measured step (113 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": true,
+   "seconds": 240
+  },
+  "capacity-card": {
+   "basis": "twice its slowest measured step (44 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 120
+  },
+  "dcc-card": {
+   "basis": "twice its slowest measured step (41 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 120
+  },
+  "discover-jobs": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "required": false,
+   "seconds": 300
+  },
+  "drain-audit-ready": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "required": false,
+   "seconds": 60
+  },
+  "drain-enrich": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "required": false,
+   "seconds": 480
+  },
+  "drain-fit": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "required": false,
+   "seconds": 240
+  },
+  "drain-publish": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "required": false,
+   "seconds": 720
+  },
+  "enrich": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "required": true,
+   "seconds": 480
+  },
+  "expire-holds": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "required": true,
+   "seconds": 120
+  },
+  "explain": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 600
+  },
+  "fit": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "required": true,
+   "seconds": 240
+  },
+  "fit-cloud-backlog": {
+   "basis": "twice its slowest measured step (83 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 180
+  },
+  "fit-edge-test": {
+   "basis": "twice its slowest measured step (23 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": true,
+   "seconds": 120
+  },
+  "fit-profile-sync": {
+   "basis": "twice its slowest measured step (234 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": true,
+   "seconds": 420
+  },
+  "fit-review": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 600
+  },
+  "funnel": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 600
+  },
+  "granola": {
+   "basis": "twice its slowest measured step (27 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": true,
+   "seconds": 120
+  },
+  "granola-auto": {
+   "basis": "twice its slowest measured step (98 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": true,
+   "seconds": 180
+  },
+  "hermes": {
+   "basis": "twice its slowest measured step (3 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": true,
+   "seconds": 120
+  },
+  "hiring": {
+   "basis": "twice its slowest measured step (107 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 180
+  },
+  "hiring-outcomes": {
+   "basis": "twice its slowest measured step (8 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 120
+  },
+  "imessage-alerts": {
+   "basis": "twice its slowest measured step (59 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 120
+  },
+  "imessage-comms": {
+   "basis": "twice its slowest measured step (46 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 120
+  },
+  "interview": {
+   "basis": "twice its slowest measured step (1604 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": true,
+   "seconds": 1680
+  },
+  "interview-acceptance": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 600
+  },
+  "interview-probe": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 600
+  },
+  "interview-ui-probe": {
+   "basis": "twice its slowest measured step (296 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": true,
+   "seconds": 300
+  },
+  "jira-card": {
+   "basis": "twice its slowest measured step (70 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 150
+  },
+  "jira-probe": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 180
+  },
+  "jira-rollover": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 180
+  },
+  "jira-rollover-scheduled": {
+   "basis": "twice its slowest measured step (4 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 120
+  },
+  "jira-rollover-watch": {
+   "basis": "twice its slowest measured step (53 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 120
+  },
+  "jira-snapshot": {
+   "basis": "twice its slowest measured step (29 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 120
+  },
+  "job-page-outreach": {
+   "basis": "twice its slowest measured step (5 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 120
+  },
+  "jobs-backlog": {
+   "basis": "no workflow runs this stage (manual or developer use): the table default",
+   "required": false,
+   "seconds": 600
+  },
+  "linkedin-search": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "required": true,
+   "seconds": 180
+  },
+  "mail-alerts": {
+   "basis": "twice its slowest measured step (60 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 120
+  },
+  "mail-card": {
+   "basis": "twice its slowest measured step (12 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 120
+  },
+  "mail-filing": {
+   "basis": "twice its slowest measured step (3 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 120
+  },
+  "manual-job": {
+   "basis": "twice its slowest measured step (57 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": true,
+   "seconds": 120
+  },
+  "megibow": {
+   "basis": "twice its slowest measured step (318 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 600
+  },
+  "network-audit": {
+   "basis": "no workflow runs this stage (manual or developer use): the table default",
+   "required": false,
+   "seconds": 600
+  },
+  "network-import": {
+   "basis": "no workflow runs this stage (manual or developer use): the table default",
+   "required": false,
+   "seconds": 600
+  },
+  "network-inspect": {
+   "basis": "no workflow runs this stage (manual or developer use): the table default",
+   "required": false,
+   "seconds": 600
+  },
+  "network-layout": {
+   "basis": "no workflow runs this stage (manual or developer use): the table default",
+   "required": false,
+   "seconds": 600
+  },
+  "network-match": {
+   "basis": "no workflow runs this stage (manual or developer use): the table default",
+   "required": false,
+   "seconds": 600
+  },
+  "network-surface": {
+   "basis": "twice its slowest measured step (100 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 210
+  },
+  "newsletter-trace": {
+   "basis": "no workflow runs this stage (manual or developer use): the table default",
+   "required": false,
+   "seconds": 600
+  },
+  "notion-sandbox-access": {
+   "basis": "twice its slowest measured step (1 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": true,
+   "seconds": 120
+  },
+  "notion-sandbox-outreach-proof": {
+   "basis": "twice its slowest measured step (23 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": true,
+   "seconds": 120
+  },
+  "oracle-card": {
+   "basis": "twice its slowest measured step (82 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 180
+  },
+  "outlook-auth": {
+   "basis": "twice its slowest measured step (218 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": true,
+   "seconds": 360
+  },
+  "outlook-probe": {
+   "basis": "twice its slowest measured step (2 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": true,
+   "seconds": 120
+  },
+  "probe": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 600
+  },
+  "publish": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "required": true,
+   "seconds": 720
+  },
+  "publish-fresh": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "required": true,
+   "seconds": 300
+  },
+  "purge": {
+   "basis": "twice its slowest measured step (240 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 480
+  },
+  "recruiter-outreach": {
+   "basis": "twice its slowest measured step (87 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 180
+  },
+  "recruiters": {
+   "basis": "twice its slowest measured step (605 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": true,
+   "seconds": 1230
+  },
+  "resolve-dice": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "required": true,
+   "seconds": 180
+  },
+  "resolve-jobright": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "required": true,
+   "seconds": 600
+  },
+  "resolve-linkedin": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "required": true,
+   "seconds": 420
+  },
+  "safety-fit-capture": {
+   "basis": "twice its slowest measured step (10 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": true,
+   "seconds": 120
+  },
+  "safety-fit-golden": {
+   "basis": "twice its slowest measured step (12 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 120
+  },
+  "safety-sql-smoke": {
+   "basis": "twice its slowest measured step (19 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 120
+  },
+  "scale-up-boards": {
+   "basis": "no workflow runs this stage (manual or developer use): the table default",
+   "required": false,
+   "seconds": 600
+  },
+  "scale-up-exclusion-review": {
+   "basis": "no workflow runs this stage (manual or developer use): the table default",
+   "required": false,
+   "seconds": 600
+  },
+  "scale-up-exclusions": {
+   "basis": "no workflow runs this stage (manual or developer use): the table default",
+   "required": false,
+   "seconds": 600
+  },
+  "scale-up-holds": {
+   "basis": "no workflow runs this stage (manual or developer use): the table default",
+   "required": false,
+   "seconds": 600
+  },
+  "scale-up-links": {
+   "basis": "no workflow runs this stage (manual or developer use): the table default",
+   "required": false,
+   "seconds": 600
+  },
+  "scale-up-register": {
+   "basis": "no workflow runs this stage (manual or developer use): the table default",
+   "required": false,
+   "seconds": 600
+  },
+  "sponsors": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "required": false,
+   "seconds": 120
+  },
+  "sync-seen": {
+   "basis": "twice its slowest measured step (86 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 180
+  },
+  "web": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "required": true,
+   "seconds": 180
+  },
+  "web-scale-up": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "required": false,
+   "seconds": 300
+  },
+  "web-titlewatch": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "required": false,
+   "seconds": 240
+  }
+ }
+}

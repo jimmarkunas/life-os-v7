@@ -5,7 +5,7 @@
 Order: the resolvers -> US Remote boards -> publish READY jobs (gated) -> enrich -> fit -> publish the fresh ones (gated) -> audit -> hold expiry -> finalize; then bulk discovery while time lasts (employer boards D202, the Scale-Up lane D206,
 title watch, discovery search, the sponsor register). Input: the prep job has already swept and extracted the mail.
 Each stage has a wall-clock budget cut to the run's remaining time (a fast-path stage never below FAST_FLOOR_SECONDS); a stage over it is counted `timeout`, a bulk stage that cannot start in time is counted `skipped`, a failing stage never stops the next.
-Output: the stages' own counts-only `<stage>: {...}` lines, then one `tick:` line; exit 1 when any stage failed or timed out."""
+Output: the stages' own counts-only `<stage>: {...}` lines, then one `tick:` line; exit 1 when any stage failed or a required (not bulk) stage timed out."""
 import argparse
 import ctypes
 from dataclasses import dataclass
@@ -288,7 +288,13 @@ def main(argv=None):
                 handle.write(summary_table(outcome, timings, wall))
         except OSError:
             pass
-    return 1 if any(v in ("failed", "timeout") for v in outcome.values()) else 0
+    return 1 if failing_stages(outcome, full) else 0
+
+
+def failing_stages(outcome, plan):
+    """LIFE-691: the stages that fail the tick: any stage that failed, and a REQUIRED stage that ran out of its budget. A bulk (optional) stage that timed out is counted `timeout` and printed, and the tick passes."""
+    optional = {step.name for step in plan if step.bulk}
+    return [name for name, result in outcome.items() if result == "failed" or (result == "timeout" and name not in optional)]
 
 
 if __name__ == "__main__":

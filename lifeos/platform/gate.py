@@ -63,6 +63,34 @@ def stuck_ticks(runs, now):
     return [r for r in runs if r.get("display_title") == TICK_TITLE and r.get("status") in ACTIVE and stuck(r, now)]
 
 
+REAP_GRACE_MINUTES = 20        # LIFE-691: a cancel GitHub accepted should have ended the run within one watchdog cycle; a tick run still active this long after the stuck limit is one the reaper cannot end
+
+
+def reap(runs, now, call=None):
+    """LIFE-691: ask GitHub to cancel every stuck tick run (queued or running more than STUCK_MINUTES). -> {"found": n, "cancelled": [ids GitHub accepted], "refused": [ids it refused, as it did on Nov 11 2026],
+    "still_stuck": [ids still active STUCK_MINUTES + REAP_GRACE_MINUTES after they were created]}. `call(path, method)` is the GitHub API (injected in tests). Never raises: a refusal is data."""
+    call = call or _api
+    out = {"found": 0, "cancelled": [], "refused": [], "still_stuck": []}
+    for run in stuck_ticks(runs, now):
+        out["found"] += 1
+        try:
+            call(f"actions/runs/{run['id']}/cancel", "POST")
+            out["cancelled"].append(run["id"])
+        except Exception:                                          # noqa: BLE001 - GitHub refused, or the call failed: the incident (once) and the skip rule cover it
+            out["refused"].append(run["id"])
+        if stuck(run, now, STUCK_MINUTES + REAP_GRACE_MINUTES):
+            out["still_stuck"].append(run["id"])
+    return out
+
+
+def reaper_alerts(reaped):
+    """The stuck-run incident signal: True (open it) when GitHub refused a cancel or a run it accepted a cancel for is still active after the grace period; None (leave the incident as it is) while
+    accepted cancels have not taken effect yet; False when no tick run is stuck. A cancel that worked raises no alert."""
+    if reaped["refused"] or reaped["still_stuck"]:
+        return True
+    return None if reaped["found"] else False
+
+
 def decide(runs, now, current_id, gap=None):
     """-> 'run' | 'skip'. Cancelled (including skipped) runs and manual runs do not count. LIFE-580: nor does a tick run that has had no conclusion for more than
     STUCK_MINUTES (GitHub left run 43095033439 queued for good on Nov 11 2026 and refused every cancel): one stuck run must not stop every later tick."""
@@ -253,7 +281,8 @@ def watch(now=None, push=None, checkin=True):
     Never touches job data."""
     runs = _api("actions/workflows/hourly.yml/runs?per_page=60")["workflow_runs"]
     now = now or dt.datetime.now(dt.timezone.utc)
-    is_stale, fail_signal, stuck_signal = stalled(runs, now, 0), failing(runs, now), bool(stuck_ticks(runs, now))
+    reaped = reap(runs, now)                                       # LIFE-691: cancel what is stuck; alert (once, below) only when GitHub refuses or the run survives
+    is_stale, fail_signal, stuck_signal = stalled(runs, now, 0), failing(runs, now), reaper_alerts(reaped)
     changes = [
         sync_incident(LABEL, ISSUE_TITLE, "The newest successful hourly run finished more than 2.5 hours ago. Scheduled triggers may be dropped by GitHub, "
                       "or a stage is failing. Open the Actions tab. This issue closes itself when the last 3 hourly runs have passed.", is_stale,
@@ -264,7 +293,7 @@ def watch(now=None, push=None, checkin=True):
                       ("V7 hourly runs failing repeatedly", "3+ failed runs in 24 hours. Open the Actions tab.", "page", "pipeline_failing"),
                       ("V7 hourly runs recovered", "The last 3 hourly runs passed.", "info", "pipeline_failing_recovered"), push, now, remind=not last_tick_passed(runs)),
         sync_incident(STUCK_LABEL, STUCK_TITLE, "An hourly tick run has been queued or running for more than 40 minutes. A real tick takes 5 to 20 minutes and GitHub ends the prep job at 45, so this run is stuck "
-                      "(it happened on Nov 11 2026 and GitHub refused every cancel). Later ticks are not blocked: the gate and the ticker ignore it. Open the Actions tab; if the run cannot be cancelled, "
+                      "(it happened on Nov 11 2026 and GitHub refused every cancel). The watchdog asks GitHub to cancel it; this issue opens only when GitHub refuses or the run survives the cancel. Later ticks are not blocked: the gate and the ticker ignore it. Open the Actions tab; if the run cannot be cancelled, "
                       "report it to GitHub support. This issue closes itself when no tick run is stuck.", stuck_signal,
                       ("V7 tick run stuck", "An hourly tick run has had no conclusion for over 40 minutes. Later ticks still run. Open the Actions tab.", "info", "tick_run_stuck"),
                       ("V7 stuck tick run cleared", "No hourly tick run is stuck.", "info", "tick_run_stuck_recovered"), push, now),
@@ -282,7 +311,7 @@ def watch(now=None, push=None, checkin=True):
             late = ()
         title, body = health(runs, domain_runs, now, late=late)
         sent = (push or _push)(title, body, "info", "daily_check")          # LIFE-603: _push takes the registered alert key; the call without it crashed every real check-in
-    print(f"watchdog: stale={is_stale} failing={fail_signal} changes={changes} checkin={sent}")
+    print(f"watchdog: stale={is_stale} failing={fail_signal} changes={changes} checkin={sent} reaper={reaped['found']}/{len(reaped['cancelled'])}/{len(reaped['refused'])}/{len(reaped['still_stuck'])}")
     return 0
 
 
