@@ -33,13 +33,8 @@ def _step(name, call):
 
 
 def _digest(client, page_id, own):
-    """LIFE-654: a block another writer rewrote while the page was being read answers 404 mid-walk; read the page again once from its root. A second failure keeps the same fixed code."""
-    try:
-        return R.page_digest(client, page_id, own, fail, SKIP)
-    except NotionError as error:
-        if "NOTION_HTTP_404" not in str(error):
-            raise
-        return R.page_digest(client, page_id, own, fail, SKIP)
+    """LIFE-654 / LIFE-680: a block another writer rewrote while the page was being read answers 404 mid-walk; page_digest itself reads the page again once from its root."""
+    return R.page_digest(client, page_id, own, fail, SKIP)
 
 
 def validate(client, environ):

@@ -20,6 +20,7 @@ from lifeos.platform.notion_client import NotionError
 
 HEADINGS = ("heading_2", "heading_3", "heading_4")
 TEXT_KINDS = ("paragraph", "bulleted_list_item", "numbered_list_item", "to_do")
+WALK_ATTEMPTS, WALK_RETRY_SECONDS = 2, 2                                    # LIFE-680: another card writer can rewrite blocks while the page is read; one more walk, then fail as before
 VOLATILE = {"last_edited_time", "last_edited_by", "request_id", "expiry_time"}      # metadata that changes without the content changing
 
 
@@ -567,8 +568,21 @@ def page_digest(client, page_id, own_ids, fail, skip_titles=(), budget=400):
     Owned blocks (and everything under them) appear only as ids, so the owner's own edits never register. A callout whose first child is a heading in `skip_titles`
     (a region another system writes on its own schedule) is recorded by id only. Separate pages and views are never entered."""
     own = {i.replace("-", "").lower() for i in own_ids}
-    nodes, layout, titles, left, kinds = {}, {}, {}, [budget], {}
+    for attempt in range(WALK_ATTEMPTS):
+        nodes, layout, titles, left, kinds = {}, {}, {}, [budget], {}
+        try:
+            return _walk_page(client, page_id, own, fail, skip_titles, nodes, layout, titles, left, kinds)
+        except _PageChanged as moved:
+            if attempt == WALK_ATTEMPTS - 1:
+                raise fail(f"PAGE_WALK_{moved}") from None
+            time.sleep(WALK_RETRY_SECONDS)
 
+
+class _PageChanged(Exception):
+    """A block listed a moment ago is gone (Notion 404): another writer rewrote the page during the walk. Carries the fixed code and the block kind only."""
+
+
+def _walk_page(client, page_id, own, fail, skip_titles, nodes, layout, titles, left, kinds):
     def walk(parent_id):
         left[0] -= 1
         if left[0] < 0:
@@ -576,6 +590,8 @@ def page_digest(client, page_id, own_ids, fail, skip_titles=(), budget=400):
         try:
             kids = children(client, parent_id, fail)
         except NotionError as error:
+            if str(error) == "NOTION_HTTP_404" and parent_id != page_id:
+                raise _PageChanged(f"{error}:{kinds.get(parent_id, 'page')}") from None             # LIFE-680: a block under the page vanished mid-walk; the caller walks again once
             raise fail(f"PAGE_WALK_{error}:{kinds.get(parent_id, 'page')}") from None             # the kind of block that could not be listed, never its id or text
         layout[parent_id] = [k["id"] for k in kids]
         for position, kid in enumerate(kids):
@@ -590,7 +606,12 @@ def page_digest(client, page_id, own_ids, fail, skip_titles=(), budget=400):
                 titles[plain(kid).strip()] = titles.get(plain(kid).strip(), 0) + 1
             if kid.get("has_children") and kid.get("type") not in LEAVES:
                 if kid.get("type") == "callout" and skip_titles:
-                    first = (children(client, kid["id"], fail) or [None])[0]
+                    try:
+                        first = (children(client, kid["id"], fail) or [None])[0]
+                    except NotionError as error:
+                        if str(error) == "NOTION_HTTP_404":
+                            raise _PageChanged(f"{error}:callout") from None
+                        raise
                     if first and plain(first).strip() in skip_titles:
                         continue
                 walk(kid["id"])
