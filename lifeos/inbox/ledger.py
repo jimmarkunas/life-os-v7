@@ -2,7 +2,7 @@
 
 `Ledger(connect)`: `connect` is a context manager yielding a connection, `lifeos.platform.db.connect` in production (autocommit: every statement below is one atomic statement) or a test shim.
 Atomicity comes from unique keys with `INSERT IGNORE` (a claim) and compare-and-set `UPDATE ... WHERE state = ...` (a transition); no lock is held, so any number of workers and restarts agree.
-Tables v7_inbox_events, v7_inbox_intents, v7_inbox_actions are created by `ensure_schema`, which is NOT run by anything yet (a live schema change needs Jim's approval).
+Tables v7_inbox_events, v7_inbox_intents, v7_inbox_actions and v7_inbox_access are created by `ensure_schema`, which is NOT run by anything yet (a live schema change needs Jim's approval).
 Stored: ids, states, fixed reason words, hashes and UTC times. Never a title, description, credential, challenge code or exception text. Action states: claimed, in_progress, uncertain,
 completed, not_applied, expired; intent states: pending, confirmed, expired, invalidated, locked, superseded."""
 import hashlib
@@ -27,7 +27,12 @@ SCHEMA = (
         slot CHAR(4) NULL, state VARCHAR(12) NOT NULL, reason VARCHAR(60) NOT NULL, needs_human TINYINT NOT NULL, claimed_at VARCHAR(24) NOT NULL, updated_at VARCHAR(24) NOT NULL,
         PRIMARY KEY (request_id), UNIQUE KEY uq_inbox_action_nonce (nonce), UNIQUE KEY uq_inbox_action_slot (record_id, action, revision, slot)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+    """CREATE TABLE IF NOT EXISTS v7_inbox_access (
+        request_id CHAR(64) NOT NULL, principal_id VARCHAR(80) NOT NULL, source VARCHAR(20) NOT NULL, workspace VARCHAR(20) NOT NULL, account VARCHAR(80) NOT NULL,
+        decision VARCHAR(8) NOT NULL, reason VARCHAR(40) NOT NULL, outcome VARCHAR(24) NOT NULL, at VARCHAR(24) NOT NULL, PRIMARY KEY (request_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
 )
+ACCESS_COLUMNS = ("request_id", "principal_id", "source", "workspace", "account", "decision", "reason", "outcome", "at")
 INTENT_COLUMNS = ("intent_id", "event_id", "principal_id", "source", "workspace", "account", "record_id", "row_id", "action", "revision", "event_at", "nonce", "code_mac", "expires_at", "attempts",
                   "state")
 ACTION_COLUMNS = ("request_id", "principal_id", "source", "workspace", "account", "record_id", "action", "revision", "status_before", "nonce", "slot", "state", "reason", "needs_human",
@@ -135,3 +140,19 @@ class Ledger:
         """Request ids still in `state` since before `older_than` (a crashed worker leaves these behind)."""
         rows = self._run("SELECT request_id FROM v7_inbox_actions WHERE state=%s AND updated_at<%s", (state, stamp(older_than)), "all")
         return [row[0] for row in rows]
+
+    # ---- read access receipts (LIFE-707): who asked to read which source, the decision, and how the read ended ----------------------------------------------------------------------------
+
+    def record_access(self, fields, now):
+        """Write the receipt BEFORE any read: True the first time a request id is seen, False for a repeat (so a repeat never reads again). `fields`: the ACCESS_COLUMNS except outcome and at."""
+        columns = [c for c in ACCESS_COLUMNS if c not in ("outcome", "at")]
+        return self._run(f"INSERT IGNORE INTO v7_inbox_access ({', '.join(columns)}, outcome, at) VALUES ({', '.join(['%s'] * len(columns))}, '', %s)",
+                         [fields[c] for c in columns] + [stamp(now)]) == 1
+
+    def settle_access(self, request_id, outcome):
+        """Record how an allowed read ended (a fixed word), once; an unsettled receipt means the process stopped mid-read."""
+        return self._run("UPDATE v7_inbox_access SET outcome=%s WHERE request_id=%s AND outcome=''", (outcome, request_id)) == 1
+
+    def access_receipts(self, principal_id):
+        rows = self._run(f"SELECT {', '.join(ACCESS_COLUMNS)} FROM v7_inbox_access WHERE principal_id=%s ORDER BY at, request_id", (principal_id,), "all")
+        return [dict(zip(ACCESS_COLUMNS, row, strict=True)) for row in rows]
