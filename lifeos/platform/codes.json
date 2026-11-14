@@ -216,5 +216,6 @@
   "DENY_ACCOUNT_AMBIGUOUS": ["platform", "terminal", false, "The account is missing, ambiguous, unknown or not this tool's account.", "Name the exact account."],
   "SETTINGS_PAGE_NOT_FOUND": ["platform", "degraded", false, "The V7 settings page (machine read) was not found by its exact title; every value stayed as the environment had it.", "Check the page title and that the V7 Notion connection can see it."],
   "SETTINGS_SEED_TARGET_MISSING": ["platform", "blocked", false, "The V7 settings page has no single code block starting with '# Notion addresses', so no address was copied onto it.", "Restore that block on the page."],
-  "SETTINGS_SEED_VERIFY_FAILED": ["platform", "retry", false, "Addresses copied onto the V7 settings page did not read back.", "None; the next run copies them again."]
+  "SETTINGS_SEED_VERIFY_FAILED": ["platform", "retry", false, "Addresses copied onto the V7 settings page did not read back.", "None; the next run copies them again."],
+  "SETTINGS_REMEMBER_READBACK": ["platform", "retry", false, "The last accepted V7 settings did not read back from the private store.", "None; the next good read saves them again."]
 }

@@ -3,6 +3,7 @@
 The page holds `NAME value` lines in code blocks (a line starting with # is a comment). Only names in MOVABLE are read; a SAFETY name is refused, an unknown one counted.
 Shadow rule (until a GitHub value is deleted): Notion only fills a name the step declares empty (`X: ${{ vars.X }}` with X deleted); held names are compared.
 Deleting a GitHub value is therefore the switch that makes Notion the source. Never raises: an unreadable page leaves the environment as it was (`status`).
+LIFE-702: with the private store, a good read is remembered and an unreadable page falls back to it (`last_accepted`, never a SAFETY name or credential).
 LIFE-701: a production run also copies the addresses its environment holds and the page lacks into the "# Notion addresses" block (`seeded`); never a switch or credential."""
 import os
 import re
@@ -13,6 +14,7 @@ ADDRESS = re.compile(r"^[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA
 ADDRESS_SUFFIXES = ("_BLOCK_ID", "_PAGE_ID", "_DATA_SOURCE_ID", "_DB_ID")
 NOTION_IDS, NOTION_PREFIX = "LIFEOS_NOTION_IDS", "LIFEOS_NOTION_"           # notion_ids.py: one id per name, as LIFEOS_NOTION_<NAME> or inside the LIFEOS_NOTION_IDS map
 ADDRESS_HEADER = "# notion addresses"
+SNAPSHOT_KEY = "settings:last-accepted"                                  # one row in the existing v7_private_reports table (stored_pages.STORE); keys there are prefixed
 TOKENS = ("NOTION_JIRA_TOKEN", "NOTION_API_TOKEN")
 
 # Notion block, page and database addresses, and plain switches and lists (LIFE-699 inventory). Adding a name here is the only way Notion can set it.
@@ -157,27 +159,9 @@ def seed(client, lines):
     return names
 
 
-def apply(environ=os.environ, client=None, copy=None):
-    """Fill the environment from the page under the shadow rule; `copy` (default: production runs) also copies missing addresses onto the page. -> counts (names only)."""
-    out = {"status": "off", "filled": [], "matched": 0, "mismatched": []}
-    switch = (environ.get("LIFEOS_SETTINGS") or "").strip().lower()
-    copy = (client is None and environ.get("GITHUB_ACTIONS") == "true") if copy is None else copy
-    if switch == "off" or (client is None and switch != "on" and environ.get("GITHUB_ACTIONS") != "true"):     # production runs and an explicit "on" only; tests and local runs stay as they are
-        return out
-    token = next((environ.get(t).strip() for t in TOKENS if (environ.get(t) or "").strip()), "")
-    if client is None and not token:
-        out["status"] = "no_token"
-        return out
-    try:
-        if client is None:
-            from lifeos.platform.notion_client import Client                # noqa: PLC0415
-            client = Client({"NOTION_API_TOKEN": token, "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused"})
-        found, counts = parse(read(client))
-    except Exception as error:                                             # noqa: BLE001 - settings never fail a stage; the environment stays as it was
-        out["status"] = "unreadable:" + (str(error) if re.fullmatch(r"[A-Z0-9_]{3,60}", str(error)) else type(error).__name__)
-        return out
-    out.update(counts, status="ok")
-    for name, value in sorted(found.items()):
+def _fill(environ, values, out):
+    """The shadow rule: fill a name the step declares empty, compare a held one, count an undeclared one."""
+    for name, value in sorted(values.items()):
         have = held(environ, name)
         if not have and name not in environ:                              # a step that never declares a name never receives it
             out["undeclared"] = out.get("undeclared", 0) + 1
@@ -188,6 +172,87 @@ def apply(environ=os.environ, client=None, copy=None):
             out["matched"] += 1
         else:
             out["mismatched"].append(name)
+
+
+def _store_connect(environ):
+    """The private store's connect(), or None when this step has no store access."""
+    if not (environ.get("LIFEOS_ACQ_DB_NAME") or "").strip():
+        return None
+    from lifeos.platform import db                                        # noqa: PLC0415
+    return db.connect
+
+
+def remember(connect, values, now=None):
+    """Save the accepted map when it differs from the saved one, with read-back. -> True when written."""
+    from datetime import datetime, timezone                               # noqa: PLC0415
+    from lifeos.platform.stored_pages import STORE                       # noqa: PLC0415
+    values = {n: v for n, v in values.items() if movable(n) and n not in SAFETY}
+    with connect() as connection:
+        STORE.ensure(connection)
+        saved = STORE.load(connection, SNAPSHOT_KEY)
+        if (saved or {}).get("values") == values:
+            return False
+        snapshot = {"taken_at": (now or datetime.now(timezone.utc)).isoformat(), "schema": 1, "values": values}
+        STORE.save(connection, SNAPSHOT_KEY, snapshot)
+        if STORE.load(connection, SNAPSHOT_KEY) != snapshot:
+            raise SettingsError("SETTINGS_REMEMBER_READBACK")
+    return True
+
+
+def recall(connect):
+    """-> (values, taken_at) of the last accepted map, or ({}, None)."""
+    from lifeos.platform.stored_pages import STORE                       # noqa: PLC0415
+    with connect() as connection:
+        saved = STORE.load(connection, SNAPSHOT_KEY)
+    values = (saved or {}).get("values") or {}
+    return {n: v for n, v in values.items() if isinstance(v, str) and movable(n) and n not in SAFETY}, (saved or {}).get("taken_at")
+
+
+def _fallback(environ, connect, out):
+    """The page could not be read: fill from the last accepted map, if this step has the store."""
+    if connect is None:
+        return
+    try:
+        values, taken = recall(connect)
+    except Exception as error:                                             # noqa: BLE001 - the store is a fallback; never fail a stage for it
+        out["recall_status"] = str(error) if re.fullmatch(r"[A-Z0-9_]{3,60}", str(error)) else type(error).__name__
+        return
+    if values:
+        from datetime import datetime                                     # noqa: PLC0415
+        from lifeos.platform import ct_stamp                              # noqa: PLC0415
+        out["last_accepted"] = ct_stamp.when(datetime.fromisoformat(taken)) if taken else "unknown"
+        _fill(environ, values, out)
+
+
+def apply(environ=os.environ, client=None, copy=None, connect=None):
+    """Fill the environment from the page under the shadow rule; `copy` (default: production runs) also copies missing addresses onto the page. -> counts (names only)."""
+    out = {"status": "off", "filled": [], "matched": 0, "mismatched": []}
+    switch = (environ.get("LIFEOS_SETTINGS") or "").strip().lower()
+    copy = (client is None and environ.get("GITHUB_ACTIONS") == "true") if copy is None else copy
+    if switch == "off" or (client is None and switch != "on" and environ.get("GITHUB_ACTIONS") != "true"):     # production runs and an explicit "on" only; tests and local runs stay as they are
+        return out
+    connect = connect if connect is not None else (_store_connect(environ) if copy else None)
+    token = next((environ.get(t).strip() for t in TOKENS if (environ.get(t) or "").strip()), "")
+    if client is None and not token:
+        out["status"] = "no_token"
+        _fallback(environ, connect, out)
+        return out
+    try:
+        if client is None:
+            from lifeos.platform.notion_client import Client                # noqa: PLC0415
+            client = Client({"NOTION_API_TOKEN": token, "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused"})
+        found, counts = parse(read(client))
+    except Exception as error:                                             # noqa: BLE001 - settings never fail a stage; the environment stays as it was
+        out["status"] = "unreadable:" + (str(error) if re.fullmatch(r"[A-Z0-9_]{3,60}", str(error)) else type(error).__name__)
+        _fallback(environ, connect, out)
+        return out
+    out.update(counts, status="ok")
+    _fill(environ, found, out)
+    if connect is not None:
+        try:
+            out["remembered"] = remember(connect, found)
+        except Exception as error:                                         # noqa: BLE001 - remembering is best effort; the next good read tries again
+            out["remember_status"] = str(error) if re.fullmatch(r"[A-Z0-9_]{3,60}", str(error)) else type(error).__name__
     if copy:
         try:
             out["seeded"] = seed(client, wanted(environ, found, counts["invalid"]))
