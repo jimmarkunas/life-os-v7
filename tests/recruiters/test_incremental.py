@@ -89,6 +89,17 @@ class IncrementalTests(unittest.TestCase):
         self.assertEqual((counts["scan"], counts["scanned"], counts["new"], counts["messages"], counts["ledger"]), ("new mail", 3, 1, 1, "ok"))
         self.assertEqual(counts["created"], 1)
 
+    def test_the_manual_full_rescan_switch_reads_all_14_days_even_right_after_a_full_scan(self):
+        """LIFE-715: after a classifier fix, mail already seen must be read again today, not at the next 9 AM scan; the switch is for that one run only."""
+        ledger = after_a_full_scan_at_9(["old1", "old2"])
+        counts, gmail, _ = go([signed("old1"), signed("old2"), signed("new1", received="2026-10-08T15:00:00+00:00")], ledger, live=True, environ={"RECRUITERS_FULL_SCAN": "on"})
+        self.assertEqual(sorted(gmail.fetched), ["new1", "old1", "old2"])                  # the seen list is ignored
+        self.assertEqual((counts["scan"], counts["scan_why"]), (seen.FULL_SCAN, "manual full scan"))
+        self.assertEqual(ledger.commits[0][1], seen.FULL_SCAN)                             # recorded as a 14-day scan, like the 9 AM one
+        for off in ({}, {"RECRUITERS_FULL_SCAN": "off"}):                                  # unset or off: the plan decides, as before
+            counts, gmail, _ = go([signed("old1"), signed("new1")], after_a_full_scan_at_9(["old1"]), environ=off)
+            self.assertEqual((gmail.fetched, counts["scan"]), (["new1"], seen.NEW_MAIL))
+
     def test_a_read_message_that_is_new_to_the_system_is_included_unread_status_is_not_used(self):          # the reader never looks at read or unread, only at the id
         ledger = after_a_full_scan_at_9(["old1"])
         counts, gmail, _ = go([signed("old1"), signed("read-but-new")], ledger)

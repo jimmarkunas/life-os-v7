@@ -7,6 +7,10 @@ on:
         description: "Write Recruiters rows (unticked = dry run, counts only)"
         type: boolean
         default: false
+      full_scan:
+        description: "Full rescan: read all 14 days again, ignoring the mail already seen (LIFE-715); rows are still written only when live is ticked"
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -61,4 +65,5 @@ jobs:
           LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_SSH_USER }}
           NOTION_RECRUITERS_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_RECRUITERS_TOKEN }}
+          RECRUITERS_FULL_SCAN: ${{ inputs.full_scan && 'on' || 'off' }}
         run: python -m lifeos.run recruiters --limit 0 $([ "${{ inputs.live }}" = "true" ] && echo --live)
