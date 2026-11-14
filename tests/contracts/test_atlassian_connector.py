@@ -36,7 +36,7 @@ class OnlyTheSupportedAtlassianConnector(unittest.TestCase):
     def test_agents_md_names_the_one_supported_connector(self):
         text = (ROOT / "AGENTS.md").read_text()
         self.assertIn("mcp__claude_ai_Atlassian_MCP__", text)
-        self.assertIn("The two Rovo connectors are retired", text)
+        self.assertIn("Rovo connectors are retired", text)
         for path in (ROOT / ".claude/settings.json", ROOT / ".claude/settings.local.json"):
             if path.is_file():
                 json.loads(path.read_text())                               # still valid JSON
