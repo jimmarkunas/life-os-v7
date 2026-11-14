@@ -702,6 +702,14 @@ class DomainsWorkflowTests(unittest.TestCase):
         self.assertEqual([name for name, job in self.doc["jobs"].items() if "concurrency" in job], ["interview", "granola"])
         self.assertEqual(self.doc["jobs"]["granola"]["needs"], ["interview", "gate"])                 # LIFE-632: Granola waits for the one Interview writer, no longer for the whole Recruiters job
 
+    def test_recruiters_takes_its_turn_after_the_jira_card_and_still_runs_when_jira_is_red(self):
+        """LIFE-680: the Recruiters job reads the whole Daily Report page while the Jira card removes and rewrites its blocks; it waits for the Jira job (always(): a red Jira job never stops it)."""
+        job = self.doc["jobs"]["recruiters"]
+        self.assertEqual(job["needs"], ["gate", "jira"])
+        self.assertIn("always()", job["if"])
+        self.assertNotIn("!cancelled()", job["if"])
+        self.assertIn("needs.gate.result != 'failure'", job["if"])
+
     def test_only_five_steps_read_the_close_origin_from_its_own_secret(self):
         """D198 S3 / LIFE-78 / LIFE-20 / E05: the links exist only when the V7_CLOSE_BASE_URL secret is set; five steps pass it (Hiring Pipeline Close links, the job-page Outreach links, the Recruiter Outreach table's action links, the Interview writer's Mark Complete link, and hourly's network-surface step for the Mark as Sent link in a Network Leads block), from that secret, and nothing else names it."""
         seen = [(job, step.get("id")) for job, spec in self.doc["jobs"].items() for step in spec.get("steps", []) if "V7_CLOSE_BASE_URL" in str(step)]

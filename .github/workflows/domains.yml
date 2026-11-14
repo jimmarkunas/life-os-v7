@@ -1033,8 +1033,10 @@ jobs:
   recruiters:
     # RECR-1.2 runs on every tick (Jim, Oct 12; it had been manual-only and the Recruiters table stopped updating on Oct 7). It only READS Gmail and Outlook and writes the existing
     # Recruiters data source (create only after absence is proven, read back). A failure is a warning and never touches another card or the Jobs run.
-    needs: [gate]
-    if: ${{ !cancelled() && needs.gate.result != 'failure' && (needs.gate.outputs.due_recruiters == 'true' || inputs.recruiters || inputs.refresh == 'recruiters') }}
+    # LIFE-680: it reads the whole Daily Report page (Recruiter Outreach and job-page outreach prove nothing else changed), and the Jira card removes and rewrites ~16 blocks at the same moment, so the read got Notion 404s
+    # every few hours. It takes its turn after the Jira card (always(): a red Jira job never stops it); a manual Recruiters run has no Jira job and starts at once.
+    needs: [gate, jira]
+    if: ${{ always() && needs.gate.result != 'failure' && (needs.gate.outputs.due_recruiters == 'true' || inputs.recruiters || inputs.refresh == 'recruiters') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
