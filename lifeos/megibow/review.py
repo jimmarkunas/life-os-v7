@@ -22,12 +22,15 @@ def _text(prop):
 
 
 def check_schema(notion, source_id):
+    """-> the data source (its parent names the database the V3 review line links to, LIFE-672)."""
     try:
-        props = notion.call("GET", f"/data_sources/{quote(source_id, safe='')}").get("properties")
+        source = notion.call("GET", f"/data_sources/{quote(source_id, safe='')}")
     except NotionError as error:
         raise ReviewError(f"MEGIBOW_REVIEW_SCHEMA_READ_FAILED:{error}") from None
+    props = source.get("properties") if isinstance(source, dict) else None
     if not isinstance(props, dict) or any((props.get(n) or {}).get("type") != t for n, t in SCHEMA.items()):
         raise ReviewError("MEGIBOW_REVIEW_SCHEMA_MISMATCH")
+    return source
 
 
 def read(notion, source_id):
