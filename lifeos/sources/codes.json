@@ -88,5 +88,7 @@
   "TITLEWATCH_SEARCH_FAILED": ["titlewatch", "degraded", false, "A title-watch search failed.", "None; retried."],
   "UNEXPECTED_QUERY": ["sandbox", "blocked", false, "The proof saw an unexpected query.", "Check the proof."],
   "WORKER_OFF_CONTRACT": ["resume", "bug", false, "The résumé worker's reply was not the expected shape.", "Compare the Edge service version."],
-  "WORKER_UNAVAILABLE": ["resume", "retry", false, "The résumé worker could not be reached.", "None; retried."]
+  "WORKER_UNAVAILABLE": ["resume", "retry", false, "The résumé worker could not be reached.", "None; retried."],
+  "FORM_EXPIRED": ["sources", "blocked", false, "A signed Close form was opened more than 15 minutes before it was sent; nothing was written.", "None; reload the form from its table."],
+  "FORM_ALTERED": ["sources", "blocked", false, "A signed Close form did not match its signature or its fields; nothing was written.", "None; reload the form from its table. Repeats mean a stale or edited page."]
 }

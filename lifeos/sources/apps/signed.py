@@ -3,6 +3,7 @@
 A leaf module: it imports no app, so close_app and each app can use it. Outputs: fixed codes only; nothing here reads or writes Notion by itself."""
 import hashlib
 import hmac
+import sys
 from html import escape as e
 
 from lifeos.hiring import close_screen as S, decision as D
@@ -28,8 +29,20 @@ def stopper(sub, path, tab):
     return stop
 
 
-def invalid(stop, reload, title="This form is no longer valid"):
+def refused(code):
+    """LIFE-684: the reason a form was refused goes to the service log as a fixed code (never a value), so the next report can name the cause."""
+    print(f"refused: {code}", file=sys.stderr, flush=True)
+
+
+def invalid(stop, reload, title="This form is no longer valid", code="FORM_ALTERED"):
+    refused(code)
     return stop(403, "Not accepted", title, reload, "Nothing was changed.", "danger")
+
+
+def expired_form(stop, reload):
+    """A good form that was opened more than 15 minutes ago (close_app.TTL; a test keeps the words and the number together)."""
+    refused("FORM_EXPIRED")
+    return stop(403, "Not accepted", "This form expired", f"Forms are good for 15 minutes. {reload}", "Nothing was changed.", "danger")
 
 
 def unverified(stop, title, done="it was recorded", code="not verified"):
@@ -57,15 +70,22 @@ def handler(get, post, stop, title):
     return handle
 
 
-def live(form, secret, tag, login, pid, st, now, steps=STEPS, mid=(), tail=()):
-    """True for a form still good: a page id, one of `steps` (None: any), a future whole-number expiry, and the token `t` signing (tag, login, pid, *mid, st, exp, *tail)."""
+def signed(form, secret, tag, login, pid, st, steps=STEPS, mid=(), tail=()):
+    """True for a form with a page id, one of `steps` (None: any), a whole-number expiry and the token `t` signing (tag, login, pid, *mid, st, exp, *tail), whatever the time."""
     exp = form.get("exp", "")
-    return bool(pid) and (steps is None or form.get("step") in steps) and exp.isascii() and exp.isdigit() and int(exp) >= now.timestamp() and same(form.get("t"), mac(secret, tag, login, pid, *mid, st, exp, *tail))
+    return bool(pid) and (steps is None or form.get("step") in steps) and exp.isascii() and exp.isdigit() and same(form.get("t"), mac(secret, tag, login, pid, *mid, st, exp, *tail))
+
+
+def live(form, secret, tag, login, pid, st, now, steps=STEPS, mid=(), tail=()):
+    """True for a form still good: `signed`, with an expiry that has not passed."""
+    return signed(form, secret, tag, login, pid, st, steps, mid, tail) and int(form.get("exp", "")) >= now.timestamp()
 
 
 def gate(form, secret, login, now, tag, key, stop, reload, cancel=("No changes made", "Nothing was recorded.")):
     """The first test of a signed three-step POST -> (pid, step, exp, st, None) for a live form, else (.., the response): stale or altered (403), or cancel (200, nothing written)."""
     pid, step, exp, st = D._page_id(form.get(key)), form.get("step"), form.get("exp", ""), form.get("st", "")
     if not live(form, secret, tag, login, pid, st, now):
+        if signed(form, secret, tag, login, pid, st):                                   # untouched and signed by us, only too old
+            return pid, step, exp, st, expired_form(stop, reload)
         return pid, step, exp, st, invalid(stop, reload)
     return pid, step, exp, st, stop(200, "Cancelled", cancel[0], cancel[1], "Nothing was written.", "") if step == "cancel" else None

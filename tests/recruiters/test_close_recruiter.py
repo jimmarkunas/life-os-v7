@@ -1,10 +1,14 @@
 """LIFE-20 (Jim, Oct 23 2026), synthetic only: Close recruiter record from the Daily Report's Recruiter Outreach table. One open row (Needs Action or Waiting) becomes
 Completed or Dismissed through the signed review-and-confirm screen; only Action Status is written, read back, and nothing else changes. GET and Review never write."""
+import contextlib
+import io
 import unittest
 from copy import deepcopy
+from datetime import timedelta
 
 from lifeos.platform.notion_client import NotionError
 from lifeos.recruiters import notion as store
+from lifeos.sources.apps import close_app
 from tests.recruiters.fakes import FakeRecruiters, page
 from tests.recruiters.test_outreach import RECRUITERS, Ledger, Service, fields, walk
 
@@ -107,6 +111,30 @@ class Screen(unittest.TestCase):
         confirm = fields(review[2])
         for patch in ({"status": "Dismissed"}, {"r": "d" * 32}, {"pe": "Mallory"}, {"ac": "Waiting"}, {"c": "bad"}, {"t": "bad"}, {"exp": "1"}):
             self.assertIn(svc("POST", "/recruiter", form={**confirm, **patch, "step": "confirm"})[0], (400, 403), patch)
+        self.assertEqual(rec.writes, [])
+
+    def test_a_form_older_than_fifteen_minutes_says_it_expired_and_logs_why(self):
+        """LIFE-684: Nov 14 2026, an old form showed 'no longer valid' with no reason; an expired form now says so, a tampered one keeps the old screen, and each logs a fixed code."""
+        self.assertEqual(close_app.TTL, 900)                                                  # the screen says 15 minutes
+        rec = world()
+        svc = Svc(Ledger(), rec)
+        _, _, body, _ = svc("GET", "/recruiter", {"r": ROW})
+        form = {**fields(body), "status": "Completed", "step": "review"}
+        svc.clock += timedelta(minutes=16)
+        log = io.StringIO()
+        with contextlib.redirect_stderr(log):
+            status, _, page, _ = svc("POST", "/recruiter", form=form)
+        self.assertEqual(status, 403)
+        self.assertIn(b"This form expired", page)
+        self.assertIn(b"15 minutes", page)
+        self.assertEqual(log.getvalue().strip(), "refused: FORM_EXPIRED")
+        svc.clock -= timedelta(minutes=16)
+        log = io.StringIO()
+        with contextlib.redirect_stderr(log):
+            status, _, page, _ = svc("POST", "/recruiter", form={**form, "t": "bad"})
+        self.assertEqual(status, 403)
+        self.assertIn(b"no longer valid", page)
+        self.assertEqual(log.getvalue().strip(), "refused: FORM_ALTERED")
         self.assertEqual(rec.writes, [])
 
     def test_a_row_changed_after_the_form_opened_is_a_conflict(self):
