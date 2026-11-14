@@ -175,7 +175,7 @@
   "fit-profile-sync": {
    "basis": "twice its slowest measured step (234 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
    "required": true,
-   "seconds": 420
+   "seconds": 480
   },
   "fit-review": {
    "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
@@ -195,7 +195,7 @@
   "granola-auto": {
    "basis": "twice its slowest measured step (98 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
    "required": true,
-   "seconds": 180
+   "seconds": 210
   },
   "hermes": {
    "basis": "twice its slowest measured step (3 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
@@ -205,7 +205,7 @@
   "hiring": {
    "basis": "twice its slowest measured step (107 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
    "required": false,
-   "seconds": 180
+   "seconds": 240
   },
   "hiring-outcomes": {
    "basis": "twice its slowest measured step (8 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
@@ -250,12 +250,12 @@
   "jira-probe": {
    "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
    "required": false,
-   "seconds": 180
+   "seconds": 600
   },
   "jira-rollover": {
    "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
    "required": false,
-   "seconds": 180
+   "seconds": 600
   },
   "jira-rollover-scheduled": {
    "basis": "twice its slowest measured step (4 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
@@ -310,7 +310,7 @@
   "megibow": {
    "basis": "twice its slowest measured step (318 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
    "required": false,
-   "seconds": 600
+   "seconds": 660
   },
   "network-audit": {
    "basis": "no workflow runs this stage (manual or developer use): the table default",
@@ -365,7 +365,7 @@
   "outlook-auth": {
    "basis": "twice its slowest measured step (218 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
    "required": true,
-   "seconds": 360
+   "seconds": 450
   },
   "outlook-probe": {
    "basis": "twice its slowest measured step (2 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",

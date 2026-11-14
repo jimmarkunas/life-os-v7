@@ -53,12 +53,12 @@
    "target": 15
   },
   "diag.yml::diag": {
-   "basis": "twice the slowest run (97 s) rounded up to whole minutes, 5-minute floor",
+   "basis": "twice the slowest run (97 s) rounds to 10 min, not below the current 10: unchanged",
    "current": 10,
    "median_seconds": 14,
    "runs_measured": 33,
    "slowest_seconds": 97,
-   "target": 5
+   "target": 10
   },
   "diag.yml::interview_ui": {
    "basis": "slowest run 302 s reached 90% of the current limit: keeps 5 min and is listed for Jim (the job is at its limit)",
@@ -69,12 +69,12 @@
    "target": 5
   },
   "diag.yml::report": {
-   "basis": "twice the slowest run (19 s) rounded up to whole minutes, 5-minute floor",
+   "basis": "twice the slowest run (19 s) rounds to 10 min, not below the current 10: unchanged",
    "current": 10,
    "median_seconds": 14,
    "runs_measured": 10,
    "slowest_seconds": 19,
-   "target": 5
+   "target": 10
   },
   "diag.yml::sandbox": {
    "basis": "kept: only 4 measured runs (fewer than 10), slowest 30 s",
@@ -93,20 +93,20 @@
    "target": 10
   },
   "domains.yml::agenda": {
-   "basis": "twice the slowest run (87 s) rounded up to whole minutes, 5-minute floor",
+   "basis": "twice the slowest run (87 s) rounds to 15 min, not below the current 15: unchanged",
    "current": 15,
    "median_seconds": 32,
    "runs_measured": 45,
    "slowest_seconds": 87,
-   "target": 5
+   "target": 15
   },
   "domains.yml::amazon": {
-   "basis": "twice the slowest run (30 s) rounded up to whole minutes, 5-minute floor",
+   "basis": "twice the slowest run (30 s) rounds to 15 min, not below the current 15: unchanged",
    "current": 15,
    "median_seconds": 19,
    "runs_measured": 45,
    "slowest_seconds": 30,
-   "target": 5
+   "target": 15
   },
   "domains.yml::amazon_retention": {
    "basis": "twice the slowest run (556 s) rounds to 19 min, not below the current 15: unchanged",
@@ -117,20 +117,20 @@
    "target": 15
   },
   "domains.yml::bills": {
-   "basis": "twice the slowest run (90 s) rounded up to whole minutes, 5-minute floor",
+   "basis": "twice the slowest run (90 s) rounds to 15 min, not below the current 15: unchanged",
    "current": 15,
    "median_seconds": 28,
    "runs_measured": 45,
    "slowest_seconds": 90,
-   "target": 5
+   "target": 15
   },
   "domains.yml::dcc": {
-   "basis": "twice the slowest run (57 s) rounded up to whole minutes, 5-minute floor",
+   "basis": "twice the slowest run (57 s) rounds to 10 min, not below the current 10: unchanged",
    "current": 10,
    "median_seconds": 31,
    "runs_measured": 45,
    "slowest_seconds": 57,
-   "target": 5
+   "target": 10
   },
   "domains.yml::gate": {
    "basis": "twice the slowest run (9 s) rounds to 5 min, not below the current 5: unchanged",
@@ -141,68 +141,68 @@
    "target": 5
   },
   "domains.yml::granola": {
-   "basis": "twice the slowest run (56 s) rounded up to whole minutes, 5-minute floor",
+   "basis": "twice the slowest run (56 s) rounds to 20 min, not below the current 20: unchanged",
    "current": 20,
    "median_seconds": 36,
    "runs_measured": 45,
    "slowest_seconds": 56,
-   "target": 5
+   "target": 20
   },
   "domains.yml::hiring": {
-   "basis": "twice the slowest run (124 s) rounded up to whole minutes, 5-minute floor",
+   "basis": "twice the slowest run (124 s) rounds to 15 min, not below the current 15: unchanged",
    "current": 15,
    "median_seconds": 92,
    "runs_measured": 46,
    "slowest_seconds": 124,
-   "target": 5
+   "target": 15
   },
   "domains.yml::hiring_outcomes": {
-   "basis": "twice the slowest run (22 s) rounded up to whole minutes, 5-minute floor",
+   "basis": "twice the slowest run (22 s) rounds to 30 min, not below the current 30: unchanged",
    "current": 30,
    "median_seconds": 18,
    "runs_measured": 31,
    "slowest_seconds": 22,
-   "target": 5
+   "target": 30
   },
   "domains.yml::imessage": {
-   "basis": "twice the slowest run (162 s) rounded up to whole minutes, 5-minute floor",
+   "basis": "twice the slowest run (162 s) rounds to 10 min, not below the current 10: unchanged",
    "current": 10,
    "median_seconds": 113,
    "runs_measured": 45,
    "slowest_seconds": 162,
-   "target": 6
+   "target": 10
   },
   "domains.yml::interview": {
-   "basis": "twice the slowest run (678 s) rounded up to whole minutes, 5-minute floor",
+   "basis": "twice the slowest run (678 s) rounds to 30 min, not below the current 30: unchanged",
    "current": 30,
    "median_seconds": 442,
    "runs_measured": 31,
    "slowest_seconds": 678,
-   "target": 23
+   "target": 30
   },
   "domains.yml::jira": {
-   "basis": "twice the slowest run (117 s) rounded up to whole minutes, 5-minute floor",
+   "basis": "twice the slowest run (117 s) rounds to 15 min, not below the current 15: unchanged",
    "current": 15,
    "median_seconds": 82,
    "runs_measured": 45,
    "slowest_seconds": 117,
-   "target": 5
+   "target": 15
   },
   "domains.yml::mail": {
-   "basis": "twice the slowest run (90 s) rounded up to whole minutes, 5-minute floor",
+   "basis": "twice the slowest run (90 s) rounds to 10 min, not below the current 10: unchanged",
    "current": 10,
    "median_seconds": 28,
    "runs_measured": 45,
    "slowest_seconds": 90,
-   "target": 5
+   "target": 10
   },
   "domains.yml::megibow": {
-   "basis": "twice the slowest run (334 s) rounded up to whole minutes, 5-minute floor",
+   "basis": "twice the slowest run (334 s) rounds to 20 min, not below the current 20: unchanged",
    "current": 20,
    "median_seconds": 36,
    "runs_measured": 45,
    "slowest_seconds": 334,
-   "target": 12
+   "target": 20
   },
   "domains.yml::outlook": {
    "basis": "twice the slowest run (498 s) rounds to 17 min, not below the current 10: unchanged",
@@ -237,12 +237,12 @@
    "target": 5
   },
   "granola-auto.yml::auto": {
-   "basis": "twice the slowest run (109 s) rounded up to whole minutes, 5-minute floor",
+   "basis": "twice the slowest run (109 s) rounds to 20 min, not below the current 20: unchanged",
    "current": 20,
    "median_seconds": 43,
    "runs_measured": 10,
    "slowest_seconds": 109,
-   "target": 5
+   "target": 20
   },
   "granola.yml::granola": {
    "basis": "kept: only 4 measured runs (fewer than 10), slowest 41 s",
@@ -261,12 +261,12 @@
    "target": 10
   },
   "hourly.yml::finish": {
-   "basis": "twice the slowest run (815 s) rounded up to whole minutes, 5-minute floor",
+   "basis": "the Bitwarden helper waits up to 600 s, so the limit is at least 30 min (3 x the wait; twice the slowest run, 815 s, would be 28 min)",
    "current": 58,
    "median_seconds": 116,
    "runs_measured": 100,
    "slowest_seconds": 815,
-   "target": 28
+   "target": 30
   },
   "hourly.yml::interview": {
    "basis": "not measured: no completed run in the last 100; keeps its current value",
@@ -301,12 +301,12 @@
    "target": 40
   },
   "hourly.yml::prep": {
-   "basis": "twice the slowest run (235 s) rounded up to whole minutes, 5-minute floor",
+   "basis": "the Bitwarden helper waits up to 600 s, so the limit is at least 30 min (3 x the wait; twice the slowest run, 235 s, would be 8 min)",
    "current": 45,
    "median_seconds": 25,
    "runs_measured": 100,
    "slowest_seconds": 235,
-   "target": 8
+   "target": 30
   },
   "hourly.yml::report": {
    "basis": "twice the slowest run (16 s) rounds to 5 min, not below the current 5: unchanged",
@@ -341,12 +341,12 @@
    "target": 30
   },
   "outlook.yml::outlook": {
-   "basis": "twice the slowest run (227 s) rounded up to whole minutes, 5-minute floor",
+   "basis": "twice the slowest run (227 s) rounds to 20 min, not below the current 20: unchanged",
    "current": 20,
    "median_seconds": 11,
    "runs_measured": 20,
    "slowest_seconds": 227,
-   "target": 8
+   "target": 20
   },
   "pr-tests.yml::test-index": {
    "basis": "twice the slowest run (305 s) rounded up to whole minutes, 5-minute floor",
@@ -365,12 +365,12 @@
    "target": 5
   },
   "profile-sync.yml::sync": {
-   "basis": "twice the slowest run (248 s) rounded up to whole minutes, 5-minute floor",
+   "basis": "twice the slowest run (248 s) rounds to 10 min, not below the current 10: unchanged",
    "current": 10,
    "median_seconds": 15,
    "runs_measured": 39,
    "slowest_seconds": 248,
-   "target": 9
+   "target": 10
   },
   "readiness-live.yml::readiness": {
    "basis": "kept: only 1 measured runs (fewer than 10), slowest 8 s",
@@ -389,12 +389,12 @@
    "target": 20
   },
   "safety.yml::safety": {
-   "basis": "twice the slowest run (44 s) rounded up to whole minutes, 5-minute floor",
+   "basis": "twice the slowest run (44 s) rounds to 20 min, not below the current 20: unchanged",
    "current": 20,
    "median_seconds": 22,
    "runs_measured": 12,
    "slowest_seconds": 44,
-   "target": 5
+   "target": 20
   },
   "suite-timing.yml::plan": {
    "basis": "kept: only 4 measured runs (fewer than 10), slowest 4 s",
@@ -432,28 +432,10 @@
  "measured": "the last 100 runs of each workflow on Nov 14 2026, timed-out jobs included",
  "pending": [
   "branches.yml::archive",
-  "diag.yml::diag",
-  "diag.yml::report",
-  "domains.yml::agenda",
-  "domains.yml::amazon",
-  "domains.yml::bills",
-  "domains.yml::dcc",
-  "domains.yml::granola",
-  "domains.yml::hiring",
-  "domains.yml::hiring_outcomes",
-  "domains.yml::imessage",
-  "domains.yml::interview",
-  "domains.yml::jira",
-  "domains.yml::mail",
-  "domains.yml::megibow",
-  "granola-auto.yml::auto",
   "hourly.yml::finish",
   "hourly.yml::prep",
-  "outlook.yml::outlook",
   "pr-tests.yml::test-index",
   "pr-tests.yml::unit-tests",
-  "profile-sync.yml::sync",
-  "safety.yml::safety",
   "suite-timing.yml::timing"
  ],
  "rule": "docs/platform/timeouts.md"
