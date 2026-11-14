@@ -60,9 +60,16 @@ class Writable(Page):
         self.patches += 1
 
 
+class DeclaredOnly(unittest.TestCase):
+    def test_a_name_the_step_never_declares_is_never_filled(self):
+        env = {"GRANOLA_AUTO": ""}
+        out = settings.apply(env, Page(["GRANOLA_AUTO on", "V7_PIPELINE true"]))
+        self.assertEqual((env, out["filled"], out["undeclared"]), ({"GRANOLA_AUTO": "on"}, ["GRANOLA_AUTO"], 1))
+
+
 class CopyAddresses(unittest.TestCase):
     def test_a_production_run_copies_the_addresses_it_holds_once_and_never_a_switch(self):
-        page = Writable(["HIRING_AUTO_CLOSE on"], [f"JIRA_CARD_BLOCK_ID {ID}"])
+        page = Writable(["HIRING_AUTO_CLOSE on"], [f"JIRA_CARD_BLOCK_ID {ID}"])                # the step does not declare HIRING_AUTO_CLOSE: never filled
         env = {"JIRA_CARD_BLOCK_ID": ID, "BILLS_CARD_BLOCK_ID": ID.replace("4", "5"), "NOTION_BILLS_DATA_SOURCE_ID": "collection://" + ID, "GRANOLA_AUTO": "on",
                "CLOUDFLARE_API_TOKEN": "secret", "LIFEOS_NOTION_IDS": '{"DASHBOARD_PAGE": "%s", "bad": "x"}' % ID.replace("-", ""), "AMAZON_CARD_BLOCK_ID": "not-an-id"}
         out = settings.apply(env, page, copy=True)
@@ -70,10 +77,11 @@ class CopyAddresses(unittest.TestCase):
         self.assertNotIn("GRANOLA_AUTO", page.blocks["a"])
         self.assertNotIn("secret", page.blocks["a"] + page.blocks["s"])
         again = settings.apply(env, page, copy=True)
-        self.assertEqual((again["seeded"], page.patches, again["matched"], again["mismatched"]), ([], 1, 5, []))                 # 4 addresses, plus the switch the first run filled
+        self.assertEqual((again["seeded"], page.patches, again["matched"], again["mismatched"], again["undeclared"]), ([], 1, 4, [], 1))
+        self.assertNotIn("HIRING_AUTO_CLOSE", env)
 
     def test_the_notion_ids_map_counts_as_held(self):
-        env = {"LIFEOS_NOTION_IDS": '{"DASHBOARD_PAGE": "%s"}' % ID}
+        env = {"LIFEOS_NOTION_IDS": '{"DASHBOARD_PAGE": "%s"}' % ID, "LIFEOS_NOTION_REVIEW_SOURCE": ""}
         out = settings.apply(env, Page([f"LIFEOS_NOTION_DASHBOARD_PAGE {ID}", f"LIFEOS_NOTION_REVIEW_SOURCE {ID}"]))
         self.assertEqual((out["matched"], out["filled"]), (1, ["LIFEOS_NOTION_REVIEW_SOURCE"]))
 
@@ -91,7 +99,7 @@ class CopyAddresses(unittest.TestCase):
 
 class ShadowRule(unittest.TestCase):
     def test_notion_fills_only_what_the_environment_lacks_and_compares_the_rest(self):
-        env = {"HIRING_AUTO_CLOSE": "on", "JIRA_CARD_BLOCK_ID": "x" * 32}
+        env = {"HIRING_AUTO_CLOSE": "on", "JIRA_CARD_BLOCK_ID": "x" * 32, "MEGIBOW_BLOCK_ID": "", "INTERVIEW_TEST_COMPANIES": ""}
         page = Page(["# addresses", f"MEGIBOW_BLOCK_ID {ID}", f"JIRA_CARD_BLOCK_ID {ID}", "# switches", "HIRING_AUTO_CLOSE on", "INTERVIEW_TEST_COMPANIES Smartsheet, Walmart"])
         out = settings.apply(env, page)
         self.assertEqual(env["MEGIBOW_BLOCK_ID"], ID)
@@ -100,7 +108,7 @@ class ShadowRule(unittest.TestCase):
         self.assertEqual((out["status"], out["filled"], out["matched"], out["mismatched"]), ("ok", ["INTERVIEW_TEST_COMPANIES", "MEGIBOW_BLOCK_ID"], 1, ["JIRA_CARD_BLOCK_ID"]))
 
     def test_safety_values_credentials_unknown_and_bad_addresses_are_never_applied(self):
-        env = {}
+        env = {"MEGIBOW_BLOCK_ID": ""}
         out = settings.apply(env, Page(["V7_LIVE true", "ALERTS_ENABLED off", "CLOUDFLARE_API_TOKEN abc", "SOMETHING_NEW 1", "MEGIBOW_BLOCK_ID not-an-id", "MEGIBOW_BLOCK_ID " + ID, "MEGIBOW_BLOCK_ID " + ID]))
         self.assertEqual(env, {"MEGIBOW_BLOCK_ID": ID})
         self.assertEqual((out["refused"], out["unknown"], out["invalid"], out["repeated"]), (["V7_LIVE", "ALERTS_ENABLED", "CLOUDFLARE_API_TOKEN"], 1, ["MEGIBOW_BLOCK_ID"], ["MEGIBOW_BLOCK_ID"]))
