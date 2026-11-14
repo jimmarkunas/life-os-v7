@@ -19,7 +19,7 @@ from lifeos.platform.jira import JiraError
 from lifeos.platform.notion_client import NotionError
 from lifeos.platform.gcal import GcalError
 from lifeos.platform.outlook import OutlookError
-from lifeos.platform import source_registry as registry
+from lifeos.platform import isolate, source_registry as registry
 
 
 def lazy(module, name="run", floor=0, live_only=False, **fixed):
@@ -190,6 +190,8 @@ def main(argv=None):
         daily.record(args.stage, counts)
     failed = counts.get("failed") if isinstance(counts, dict) else None
     if args.stage in PARTIAL_FAILURE and isinstance(failed, int) and failed > 0:
+        if isolate.stage_fails(counts) is False:                                       # LIFE-689: some items failed, the stage still did its job: the failures are in the counts under their fixed codes, the run is not failed
+            return 0
         print(f"{args.stage.upper()} FAILED: {PARTIAL_FAILURE[args.stage]}", file=sys.stderr)
         _step_code(counts)
         return 1

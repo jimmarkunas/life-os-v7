@@ -6,6 +6,7 @@ Runs after the read-only Physical Mail package (lifeos.physmail) in the mail job
 import os
 from email.utils import getaddresses
 
+from lifeos.platform import isolate
 from lifeos.platform.gmail import Gmail, GmailError
 
 _AT = chr(64)                                     # built apart so no address literal enters the repository text (privacy test)
@@ -17,6 +18,10 @@ DEFAULT_LIMIT = 200                         # per run; the hourly tick drains a 
 def _exact(header):
     parsed = getaddresses([header]) if isinstance(header, str) else []
     return len(parsed) == 1 and parsed[0][1].strip().lower() == SENDER
+
+
+class _Readback(Exception):
+    """The filed message did not read back as filed."""
 
 
 def run(limit, live, environ=os.environ, gmail=None):
@@ -33,19 +38,23 @@ def run(limit, live, environ=os.environ, gmail=None):
         if not ids or not live:
             return counts
         label_id = gmail.label_id(LABEL, create=True)
-        for message_id in ids:
-            try:
-                if not _exact(gmail.sender(message_id)):
-                    counts["skipped_sender"] += 1
-                    continue
-                gmail.file_read(message_id, label_id)
-                labels = gmail.message_labels(message_id)
-                if label_id not in labels or "INBOX" in labels or "UNREAD" in labels:
-                    fail("PHYSMAIL_FILING_READBACK_MISMATCH")
-                    continue
-                counts["filed"] += 1
-            except GmailError:
-                fail("PHYSMAIL_FILING_MOVE_FAILED")
+
+        def file_one(message_id):
+            if not _exact(gmail.sender(message_id)):
+                counts["skipped_sender"] += 1
+                return
+            gmail.file_read(message_id, label_id)
+            labels = gmail.message_labels(message_id)
+            if label_id not in labels or "INBOX" in labels or "UNREAD" in labels:
+                raise _Readback
+            counts["filed"] += 1
+
+        # LIFE-689: one message that cannot be filed is that message's failure, recorded by its fixed code; the others are still filed, and the stage fails only if every message failed
+        done = isolate.run_items(ids, file_one, code_of=lambda error: "PHYSMAIL_FILING_READBACK_MISMATCH" if isinstance(error, _Readback) else "PHYSMAIL_FILING_MOVE_FAILED")
+        for _, code in done.failures:
+            fail(code)
+        isolate.record(counts, done)
     except GmailError:
         fail("PHYSMAIL_FILING_GMAIL_FAILED")
+        counts["stage_failed"] = 1                     # the vendor's mail could not be listed or the label made: the stage itself failed
     return counts

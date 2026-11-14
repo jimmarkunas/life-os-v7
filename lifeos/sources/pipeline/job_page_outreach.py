@@ -10,7 +10,7 @@ from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 from lifeos.network import surface as N
-from lifeos.platform import hidden, report_region as R
+from lifeos.platform import hidden, isolate, report_region as R
 from lifeos.platform.notion_client import Client, NotionError
 from lifeos.recruiters import notion as store, outreach as O
 
@@ -239,12 +239,20 @@ def run(limit, live, environ=os.environ, recruiters=None, ledger=None, client=No
     counts = {"job_page_outreach": "live" if writing else "dry_run", "jobs": 0, "conversations": 0, "failed": 0, "codes": {}}
     jobs = by_job(outreach_rows(recruiters))
     counts["jobs"], counts["conversations"] = len(jobs), sum(len(v) for v in jobs.values())
-    for jid in sorted(jobs)[:limit or None]:
-        try:
-            base = environ.get("V7_CLOSE_BASE_URL")
-            result = sync_page(client, ledger, ledger.source, jid, jobs[jid], now, writing, action_link(base, jid), sent_link(base, jid))
-        except NotionError as error:
-            code = str(error)[:60]
-            result, counts["failed"] = code if code.startswith("JOB_PAGE_OUTREACH_") else "JOB_PAGE_OUTREACH_NOTION_ERROR", counts["failed"] + 1
+    base = environ.get("V7_CLOSE_BASE_URL")
+
+    def sync_one(jid):
+        return sync_page(client, ledger, ledger.source, jid, jobs[jid], now, writing, action_link(base, jid), sent_link(base, jid))
+
+    def code_of(error):
+        code = str(error)[:60]
+        return code if code.startswith("JOB_PAGE_OUTREACH_") else "JOB_PAGE_OUTREACH_NOTION_ERROR"
+
+    # LIFE-689: a page that fails is that page's failure under its fixed code (any error, not only Notion's); the other pages still sync, and the stage fails only if every page failed
+    done = isolate.run_items(sorted(jobs)[:limit or None], sync_one, code_of=code_of)
+    for _, result in done.results:
         counts["codes"][result] = counts["codes"].get(result, 0) + 1
-    return counts
+    for _, code in done.failures:
+        counts["failed"] += 1
+        counts["codes"][code] = counts["codes"].get(code, 0) + 1
+    return isolate.record(counts, done)
