@@ -49,6 +49,8 @@ def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, noti
         except seen.LedgerError:
             ledger_status = "unavailable"
     action, kind, why = scan.plan(now, scan.step_row(), state, environ.get("GITHUB_EVENT_NAME") == "workflow_run")
+    if action == "read" and environ.get("RECRUITERS_FULL_SCAN") == "on":
+        kind, why = seen.FULL_SCAN, "manual full scan"                    # LIFE-715: the manual workflow's "full rescan" box: read all 14 days this run, ignoring the seen list
     stats = {"scanned": 0, "new": 0}
     if action == "skip":
         _announce(environ, state[1], state[0])
