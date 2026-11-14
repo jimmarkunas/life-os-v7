@@ -17,8 +17,8 @@ from lifeos.sources.web import diff, lister, registry, suppress
 
 DEFAULT_LANE = "US Remote"
 SAVE_SECONDS = 20                  # LIFE-616 (Jim, Nov 12 2026): one board's save gets this long; past it the board is `save_timeout`, not the stage
-STAGE_FAILS_AT = 3                 # LIFE-616: the stage itself fails when at least this many boards failed AND at least half of the boards due did (boards that answer not_found do not count)
-NOT_SYSTEMIC = ("not_found", "save_blocked")   # Nov 13 2026: a board that never wrote because an earlier board's write was still stuck is that one stuck write, not more failures
+STAGE_FAILS_AT = 3                 # LIFE-616: the stage itself fails when at least this many boards failed AND at least half of the boards due did (not_found, save_blocked and save_timeout do not count: NOT_SYSTEMIC)
+NOT_SYSTEMIC = ("not_found", "save_blocked", "save_timeout")   # a board that never wrote behind a stuck write (Nov 13 2026) and a save past its limit (LIFE-676, Nov 14 2026) are the store being slow, not boards failing: counted and named in the output, never the stage's failure
 
 
 class BoardsFailing(RuntimeError):
