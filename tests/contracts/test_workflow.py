@@ -283,6 +283,29 @@ class WorkflowTests(unittest.TestCase):
 
 
 @unittest.skipIf(yaml is None, "PyYAML not installed")
+class SuiteTimingWorkflow(unittest.TestCase):
+    """LIFE-705: suite-timing.yml measures the full unit-test suite on fresh runners. Manual only, read-only, no secret, no loader, no database, nothing written; it runs the same shard command as pr-tests."""
+    path = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows" / "suite-timing.yml"
+
+    def test_it_is_dispatch_only_read_only_and_holds_no_secret(self):
+        text, doc = self.path.read_text(), yaml.safe_load(self.path.read_text())
+        self.assertEqual(list(doc[True]), ["workflow_dispatch"])                                   # no schedule, no push, no pull request
+        self.assertEqual(doc["permissions"], {"contents": "read", "actions": "read"})             # actions: read only so the report job can read this run's job timings
+        for word in ("secrets.", "bitwarden", "LIFEOS_", "NOTION_", "GMAIL_", "--live", "bws-load"):
+            self.assertNotIn(word, text)
+        self.assertEqual(list(doc["jobs"]), ["plan", "timing", "report"])
+        self.assertEqual(doc["jobs"]["timing"]["strategy"]["fail-fast"], False)                    # one slow or failed run never hides the others
+
+    def test_the_timing_job_runs_the_same_shard_command_as_pr_tests(self):
+        timing = next(s for s in yaml.safe_load(self.path.read_text())["jobs"]["timing"]["steps"] if s.get("name", "").startswith("Full suite"))["run"]
+        pr = (self.path.parent / "pr-tests.yml").read_text()
+        self.assertIn('python -m tests.shard "$k" "$n"', timing)
+        self.assertIn("python -m tests.shard", pr)                                                  # the same module, the same split rule; only the count of shards is a parameter here
+        self.assertIn("-ge 120", pr)                                                                # the CI limit the report compares against
+        self.assertIn("LIMIT = 120", (pathlib.Path(__file__).resolve().parents[2] / "tests" / "suite_timing.py").read_text())
+
+
+@unittest.skipIf(yaml is None, "PyYAML not installed")
 class PullRequestTestsWorkflow(unittest.TestCase):
     """pr-tests.yml is the secret-free pull request check (and, since Oct 25 2026, the check of every merge to main): read-only, no secret, no loader, no database, the one accepted test command and the 45 s / 90 s suite limits (90 since Jim, Nov 9 2026)."""
     path = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows" / "pr-tests.yml"
@@ -879,7 +902,7 @@ LOADED = {
     "diag": {"diag": DB, "trace": DB | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN"}, "sandbox": {"NOTION_API_TOKEN"}, "interview_ui": {"NOTION_INTERVIEW_TOKEN"}, "report": DB | {"NOTION_API_TOKEN"}},
 }
 PILOTS = ("watchdog", "safety", "amazon", "diag")
-SECRET_FREE = ("pr-tests",)         # workflows that read no secret at all, so they have no loader to pin (their own test below pins that)
+SECRET_FREE = ("pr-tests", "suite-timing")         # workflows that read no secret at all, so they have no loader to pin (their own tests pin that: pr-tests below, suite-timing in SuiteTimingWorkflow)
 
 
 @unittest.skipIf(yaml is None, "PyYAML not installed")

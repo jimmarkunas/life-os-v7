@@ -136,6 +136,53 @@ def merge(passes):
     return {name: round(seconds, 2) for name, seconds in sorted(best.items())}
 
 
+class TimedResult(unittest.TextTestResult):
+    """LIFE-705: wall seconds per test module inside this shard (module and class fixtures included, so the sum is the shard's time). Tests of a module run one after another, so a module's
+    time is the span from its first test starting to the next module's first test starting (the last one: to the end of the run)."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.module_seconds, self._module, self._since = {}, None, 0.0
+
+    def _close(self, now):
+        if self._module is not None:
+            self.module_seconds[self._module] = self.module_seconds.get(self._module, 0.0) + (now - self._since)
+
+    def startTest(self, test):
+        module, now = module_of(test) or "", time.perf_counter()
+        if module != self._module:
+            self._close(now)
+            self._module, self._since = module, now
+        super().startTest(test)
+
+    def stopTestRun(self):
+        self._close(time.perf_counter())
+        self._module = None
+        super().stopTestRun()
+
+
+def timing_report(k, n, seconds, floor=0.05, top=12):
+    """The lines a shard prints after its run: the slowest modules for people, and one `shard-seconds {...}` line that `--from-logs` turns into weights (modules under `floor` seconds are summed as 'rest')."""
+    kept = {m: round(v, 2) for m, v in sorted(seconds.items()) if v >= floor and m}
+    rest = round(sum(seconds.values()) - sum(kept.values()), 2)
+    slow = ", ".join(f"{m.rsplit('.', 1)[-1]} {v:.1f}s" for m, v in sorted(kept.items(), key=lambda kv: -kv[1])[:top])
+    return [f"shard {k}/{n} took {sum(seconds.values()):.1f} s; slowest modules: {slow}", "shard-seconds " + json.dumps({"k": k, "n": n, "seconds": kept, "rest": rest}, sort_keys=True)]
+
+
+def weights_from_logs(texts, known_modules):
+    """{module: seconds}: the mean over the given shard logs of each module's `shard-seconds` time, and 0.01 for a known module no log shows (it ran in under 0.05 s everywhere)."""
+    seen = {}
+    for text in texts:
+        for line in text.splitlines():
+            if line.startswith("shard-seconds "):
+                for module, seconds in json.loads(line[len("shard-seconds "):])["seconds"].items():
+                    seen.setdefault(module, []).append(seconds)
+    out = {m: sum(v) / len(v) for m, v in seen.items() if m in known_modules}
+    for module in known_modules:
+        out.setdefault(module, 0.01)
+    return out
+
+
 def write_weights(seconds, path=None):
     """Deterministic file: module names sorted, seconds rounded, no dates, no paths."""
     pathlib.Path(path or WEIGHTS).write_text(json.dumps({"v": 1, "seconds": {k: max(round(v, 2), 0.01) for k, v in sorted(seconds.items())}}, indent=1) + "\n")     # a module that ran in under 5 ms is listed at 0.01 s: a time of 0 would read as a bad entry
@@ -171,12 +218,21 @@ def main(argv=None):
         write_weights(seconds)
         print(f"wrote {WEIGHTS.relative_to(ROOT)}: {len(seconds)} modules, {sum(seconds.values()):.0f} s in all (fastest of {runs} passes)")
         return 0
+    if argv[:1] == ["--from-logs"]:                              # LIFE-705: weights from CI shard logs: python -m tests.shard --from-logs shard-1.log shard-2.log ...
+        everything = list(tests_of(unittest.defaultTestLoader.discover("tests", top_level_dir=str(ROOT))))
+        seconds = weights_from_logs([pathlib.Path(name).read_text() for name in argv[1:]], set(modules_in(everything)))
+        write_weights(seconds)
+        print(f"wrote {WEIGHTS.relative_to(ROOT)}: {len(seconds)} modules, {sum(seconds.values()):.0f} s in all (mean of {len(argv) - 1} shard logs)")
+        return 0
     k, n = (int(x) for x in argv)
     if not 1 <= k <= n:
-        raise SystemExit("usage: python -m tests.shard K N   (1 <= K <= N)   |   python -m tests.shard --measure")
+        raise SystemExit("usage: python -m tests.shard K N   (1 <= K <= N)   |   python -m tests.shard --measure   |   python -m tests.shard --from-logs LOG...")
     suite, total = shard_suite(k, n)
     print(f"shard {k}/{n}: {suite.countTestCases()} of {total} tests")
-    return 0 if unittest.TextTestRunner(verbosity=1).run(suite).wasSuccessful() else 1
+    result = unittest.TextTestRunner(verbosity=1, resultclass=TimedResult).run(suite)
+    for line in timing_report(k, n, result.module_seconds):
+        print(line)
+    return 0 if result.wasSuccessful() else 1
 
 
 if __name__ == "__main__":
