@@ -2,7 +2,6 @@
 
 Picks the due boards, lists them (no database connection held), classifies against the accepted state, drops unequivocal misses cheaply and admits the rest through intake.add_job. The accepted state only advances on a COMPLETE listing; a FAILED board keeps its state and can never imply a removal. Outputs: counts only in the log."""
 from concurrent.futures import ThreadPoolExecutor
-import json
 import os
 import sys
 import threading
@@ -17,12 +16,7 @@ from lifeos.sources.web import diff, lister, registry, suppress
 
 DEFAULT_LANE = "US Remote"
 SAVE_SECONDS = 20                  # LIFE-616 (Jim, Nov 12 2026): one board's save gets this long; past it the board is `save_timeout`, not the stage
-STAGE_FAILS_AT = 3                 # LIFE-616: the stage itself fails when at least this many boards failed AND at least half of the boards due did (not_found, save_blocked and save_timeout do not count: NOT_SYSTEMIC)
-NOT_SYSTEMIC = ("not_found", "save_blocked", "save_timeout")   # a board that never wrote behind a stuck write (Nov 13 2026) and a save past its limit (LIFE-676, Nov 14 2026) are the store being slow, not boards failing: counted and named in the output, never the stage's failure
-
-
-class BoardsFailing(RuntimeError):
-    """The stage-level failure of LIFE-616. The message is the fixed code."""
+# LIFE-678 (Jim, Nov 14 2026: "Never fail the run"): board failures of any kind never fail the stage or the tick. Each one is counted and named in the counts and the step summary, and retried on its own schedule.
 PROVIDER = {"greenhouse": "Greenhouse", "ashby": "Ashby", "lever": "Lever", "smartrecruiters": "SmartRecruiters", "workable": "Workable",
             "pinpoint": "Pinpoint", "workday": "Workday", "jibe": "Jibe", "teamtailor": "Teamtailor"}
 
@@ -440,8 +434,4 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
                 handle.write(summary_markdown(lane, rows))
         except OSError:
             pass                                                                  # a summary is a convenience; never fail a stage for it
-    real = counts["failed"] - sum(counts["failed_why"].get(why, 0) for why in NOT_SYSTEMIC)
-    if real >= STAGE_FAILS_AT and real * 2 >= counts["due"]:                      # LIFE-616: a systemic failure, not one bad board: the stage (and so the tick) fails, after its counts are printed
-        print(f"web ({lane}):", json.dumps(counts, sort_keys=True))
-        raise BoardsFailing("WEB_BOARDS_FAILING")
     return counts
