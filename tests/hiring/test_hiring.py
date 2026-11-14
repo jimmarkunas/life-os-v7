@@ -482,8 +482,9 @@ class RegionWriterTests(unittest.TestCase):
         self.assertEqual(t.blocks["0000000000000000000000000000a001"]["type"], "heading_3")
         self.assertEqual(len(t.kids["0000000000000000000000000000a003"]), 2)                                         # header + one row; the surplus rows were removed
 
-    def test_a_block_that_vanishes_mid_walk_is_read_again_once_from_the_page_root(self):
-        for block, final in (("left", "HIRING_PAGE_WALK_NOTION_HTTP_404:column"), ("cal-card", "HIRING_DIGEST:NOTION_HTTP_404")):      # a listing that fails, and the first-child check of a skipped callout
+    @mock.patch.object(R.time, "sleep")
+    def test_a_block_that_vanishes_mid_walk_is_read_again_once_from_the_page_root(self, _sleep):
+        for block, final in (("left", "HIRING_PAGE_WALK_NOTION_HTTP_404:column"), ("cal-card", "HIRING_PAGE_WALK_NOTION_HTTP_404:callout")):      # a listing that fails, and the first-child check of a skipped callout
             for failures in (1, 2):
                 t = page(extra_rows=1)
                 real, seen = t.call, []
