@@ -11,6 +11,7 @@ import json
 import os
 import re
 import sys
+import time
 
 from lifeos.calendar_bridge.sync import BridgeError
 from lifeos.network.errors import NetworkError
@@ -19,7 +20,7 @@ from lifeos.platform.jira import JiraError
 from lifeos.platform.notion_client import NotionError
 from lifeos.platform.gcal import GcalError
 from lifeos.platform.outlook import OutlookError
-from lifeos.platform import isolate, source_registry as registry
+from lifeos.platform import budget, isolate, source_registry as registry
 
 
 def lazy(module, name="run", floor=0, live_only=False, **fixed):
@@ -176,8 +177,16 @@ def main(argv=None):
     args = parser.parse_args(argv)
     from lifeos.platform import settings                                               # noqa: PLC0415 - LIFE-699: the Notion settings page, shadow rule; never fails a stage
     loaded = settings.apply(os.environ)
+    seconds, required = budget.budget_for(args.stage)                                 # LIFE-691: every stage has a budget (lifeos/platform/stage_budgets.json)
+    began = time.monotonic()
     try:
-        counts = STAGES[args.stage](args.limit, args.live)
+        with budget.guard(seconds):
+            counts = STAGES[args.stage](args.limit, args.live)
+    except budget.StageBudgetExceeded:
+        over, code = budget.over_budget(seconds, time.monotonic() - began, required)
+        print(f"{args.stage.upper()} {'FAILED' if required else 'STOPPED'}: {budget.CODE}", file=sys.stderr)      # fixed code only; an optional stage records it and the run passes
+        print(f"{args.stage}:", json.dumps(over, sort_keys=True))
+        return code
     except (StoreError, NotionError, JiraError, OutlookError, GcalError, BridgeError, NetworkError) as error:
         print(f"{args.stage.upper()} FAILED: {error}", file=sys.stderr)
         return 1

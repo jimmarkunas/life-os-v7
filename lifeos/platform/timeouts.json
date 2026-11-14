@@ -1,0 +1,460 @@
+{
+ "at_limit": [
+  "diag.yml::interview_ui",
+  "network.yml::network"
+ ],
+ "jobs": {
+  "agenda.yml::agenda": {
+   "basis": "kept: only 5 measured runs (fewer than 10), slowest 85 s",
+   "current": 15,
+   "median_seconds": 16,
+   "runs_measured": 5,
+   "slowest_seconds": 85,
+   "target": 15
+  },
+  "amazon.yml::amazon": {
+   "basis": "kept: the backfill stage reads every historical month and runs for hours by design (D140); the 330-minute limit is pinned on purpose",
+   "current": 330,
+   "median_seconds": 60,
+   "runs_measured": 28,
+   "slowest_seconds": 1037,
+   "target": 330
+  },
+  "bills.yml::bills": {
+   "basis": "kept: only 3 measured runs (fewer than 10), slowest 10 s",
+   "current": 15,
+   "median_seconds": 10,
+   "runs_measured": 3,
+   "slowest_seconds": 10,
+   "target": 15
+  },
+  "branches.yml::archive": {
+   "basis": "twice the slowest run (24 s) rounded up to whole minutes, 5-minute floor",
+   "current": 10,
+   "median_seconds": 14,
+   "runs_measured": 96,
+   "slowest_seconds": 24,
+   "target": 5
+  },
+  "branches.yml::report": {
+   "basis": "not measured: no completed run in the last 100; keeps its current value",
+   "current": 10,
+   "median_seconds": null,
+   "runs_measured": 0,
+   "slowest_seconds": null,
+   "target": 10
+  },
+  "calendar.yml::calendar": {
+   "basis": "kept: only 6 measured runs (fewer than 10), slowest 18 s",
+   "current": 15,
+   "median_seconds": 12,
+   "runs_measured": 6,
+   "slowest_seconds": 18,
+   "target": 15
+  },
+  "diag.yml::diag": {
+   "basis": "twice the slowest run (97 s) rounded up to whole minutes, 5-minute floor",
+   "current": 10,
+   "median_seconds": 14,
+   "runs_measured": 33,
+   "slowest_seconds": 97,
+   "target": 5
+  },
+  "diag.yml::interview_ui": {
+   "basis": "slowest run 302 s reached 90% of the current limit: keeps 5 min and is listed for Jim (the job is at its limit)",
+   "current": 5,
+   "median_seconds": 240,
+   "runs_measured": 10,
+   "slowest_seconds": 302,
+   "target": 5
+  },
+  "diag.yml::report": {
+   "basis": "twice the slowest run (19 s) rounded up to whole minutes, 5-minute floor",
+   "current": 10,
+   "median_seconds": 14,
+   "runs_measured": 10,
+   "slowest_seconds": 19,
+   "target": 5
+  },
+  "diag.yml::sandbox": {
+   "basis": "kept: only 4 measured runs (fewer than 10), slowest 30 s",
+   "current": 5,
+   "median_seconds": 10,
+   "runs_measured": 4,
+   "slowest_seconds": 30,
+   "target": 5
+  },
+  "diag.yml::trace": {
+   "basis": "kept: only 5 measured runs (fewer than 10), slowest 16 s",
+   "current": 10,
+   "median_seconds": 13,
+   "runs_measured": 5,
+   "slowest_seconds": 16,
+   "target": 10
+  },
+  "domains.yml::agenda": {
+   "basis": "twice the slowest run (87 s) rounded up to whole minutes, 5-minute floor",
+   "current": 15,
+   "median_seconds": 32,
+   "runs_measured": 45,
+   "slowest_seconds": 87,
+   "target": 5
+  },
+  "domains.yml::amazon": {
+   "basis": "twice the slowest run (30 s) rounded up to whole minutes, 5-minute floor",
+   "current": 15,
+   "median_seconds": 19,
+   "runs_measured": 45,
+   "slowest_seconds": 30,
+   "target": 5
+  },
+  "domains.yml::amazon_retention": {
+   "basis": "twice the slowest run (556 s) rounds to 19 min, not below the current 15: unchanged",
+   "current": 15,
+   "median_seconds": 255,
+   "runs_measured": 45,
+   "slowest_seconds": 556,
+   "target": 15
+  },
+  "domains.yml::bills": {
+   "basis": "twice the slowest run (90 s) rounded up to whole minutes, 5-minute floor",
+   "current": 15,
+   "median_seconds": 28,
+   "runs_measured": 45,
+   "slowest_seconds": 90,
+   "target": 5
+  },
+  "domains.yml::dcc": {
+   "basis": "twice the slowest run (57 s) rounded up to whole minutes, 5-minute floor",
+   "current": 10,
+   "median_seconds": 31,
+   "runs_measured": 45,
+   "slowest_seconds": 57,
+   "target": 5
+  },
+  "domains.yml::gate": {
+   "basis": "twice the slowest run (9 s) rounds to 5 min, not below the current 5: unchanged",
+   "current": 5,
+   "median_seconds": 4,
+   "runs_measured": 45,
+   "slowest_seconds": 9,
+   "target": 5
+  },
+  "domains.yml::granola": {
+   "basis": "twice the slowest run (56 s) rounded up to whole minutes, 5-minute floor",
+   "current": 20,
+   "median_seconds": 36,
+   "runs_measured": 45,
+   "slowest_seconds": 56,
+   "target": 5
+  },
+  "domains.yml::hiring": {
+   "basis": "twice the slowest run (124 s) rounded up to whole minutes, 5-minute floor",
+   "current": 15,
+   "median_seconds": 92,
+   "runs_measured": 46,
+   "slowest_seconds": 124,
+   "target": 5
+  },
+  "domains.yml::hiring_outcomes": {
+   "basis": "twice the slowest run (22 s) rounded up to whole minutes, 5-minute floor",
+   "current": 30,
+   "median_seconds": 18,
+   "runs_measured": 31,
+   "slowest_seconds": 22,
+   "target": 5
+  },
+  "domains.yml::imessage": {
+   "basis": "twice the slowest run (162 s) rounded up to whole minutes, 5-minute floor",
+   "current": 10,
+   "median_seconds": 113,
+   "runs_measured": 45,
+   "slowest_seconds": 162,
+   "target": 6
+  },
+  "domains.yml::interview": {
+   "basis": "twice the slowest run (678 s) rounded up to whole minutes, 5-minute floor",
+   "current": 30,
+   "median_seconds": 442,
+   "runs_measured": 31,
+   "slowest_seconds": 678,
+   "target": 23
+  },
+  "domains.yml::jira": {
+   "basis": "twice the slowest run (117 s) rounded up to whole minutes, 5-minute floor",
+   "current": 15,
+   "median_seconds": 82,
+   "runs_measured": 45,
+   "slowest_seconds": 117,
+   "target": 5
+  },
+  "domains.yml::mail": {
+   "basis": "twice the slowest run (90 s) rounded up to whole minutes, 5-minute floor",
+   "current": 10,
+   "median_seconds": 28,
+   "runs_measured": 45,
+   "slowest_seconds": 90,
+   "target": 5
+  },
+  "domains.yml::megibow": {
+   "basis": "twice the slowest run (334 s) rounded up to whole minutes, 5-minute floor",
+   "current": 20,
+   "median_seconds": 36,
+   "runs_measured": 45,
+   "slowest_seconds": 334,
+   "target": 12
+  },
+  "domains.yml::outlook": {
+   "basis": "twice the slowest run (498 s) rounds to 17 min, not below the current 10: unchanged",
+   "current": 10,
+   "median_seconds": 22,
+   "runs_measured": 45,
+   "slowest_seconds": 498,
+   "target": 10
+  },
+  "domains.yml::recruiters": {
+   "basis": "twice the slowest run (1501 s) rounds to 51 min, not below the current 30: unchanged",
+   "current": 30,
+   "median_seconds": 86,
+   "runs_measured": 54,
+   "slowest_seconds": 1501,
+   "target": 30
+  },
+  "domains.yml::report": {
+   "basis": "kept: only 8 measured runs (fewer than 10), slowest 10 s",
+   "current": 5,
+   "median_seconds": 8,
+   "runs_measured": 8,
+   "slowest_seconds": 10,
+   "target": 5
+  },
+  "fit-edge-test.yml::fit_edge": {
+   "basis": "twice the slowest run (76 s) rounds to 5 min, not below the current 5: unchanged",
+   "current": 5,
+   "median_seconds": 27,
+   "runs_measured": 12,
+   "slowest_seconds": 76,
+   "target": 5
+  },
+  "granola-auto.yml::auto": {
+   "basis": "twice the slowest run (109 s) rounded up to whole minutes, 5-minute floor",
+   "current": 20,
+   "median_seconds": 43,
+   "runs_measured": 10,
+   "slowest_seconds": 109,
+   "target": 5
+  },
+  "granola.yml::granola": {
+   "basis": "kept: only 4 measured runs (fewer than 10), slowest 41 s",
+   "current": 15,
+   "median_seconds": 28,
+   "runs_measured": 4,
+   "slowest_seconds": 41,
+   "target": 15
+  },
+  "hermes-stage.yml::hermes": {
+   "basis": "kept: only 5 measured runs (fewer than 10), slowest 12 s",
+   "current": 10,
+   "median_seconds": 10,
+   "runs_measured": 5,
+   "slowest_seconds": 12,
+   "target": 10
+  },
+  "hourly.yml::finish": {
+   "basis": "twice the slowest run (815 s) rounded up to whole minutes, 5-minute floor",
+   "current": 58,
+   "median_seconds": 116,
+   "runs_measured": 100,
+   "slowest_seconds": 815,
+   "target": 28
+  },
+  "hourly.yml::interview": {
+   "basis": "not measured: no completed run in the last 100; keeps its current value",
+   "current": 15,
+   "median_seconds": null,
+   "runs_measured": 0,
+   "slowest_seconds": null,
+   "target": 15
+  },
+  "hourly.yml::jobright": {
+   "basis": "not measured: no completed run in the last 100; keeps its current value",
+   "current": 40,
+   "median_seconds": null,
+   "runs_measured": 0,
+   "slowest_seconds": null,
+   "target": 40
+  },
+  "hourly.yml::lensa": {
+   "basis": "not measured: no completed run in the last 100; keeps its current value",
+   "current": 40,
+   "median_seconds": null,
+   "runs_measured": 0,
+   "slowest_seconds": null,
+   "target": 40
+  },
+  "hourly.yml::linkedin": {
+   "basis": "not measured: no completed run in the last 100; keeps its current value",
+   "current": 40,
+   "median_seconds": null,
+   "runs_measured": 0,
+   "slowest_seconds": null,
+   "target": 40
+  },
+  "hourly.yml::prep": {
+   "basis": "twice the slowest run (235 s) rounded up to whole minutes, 5-minute floor",
+   "current": 45,
+   "median_seconds": 25,
+   "runs_measured": 100,
+   "slowest_seconds": 235,
+   "target": 8
+  },
+  "hourly.yml::report": {
+   "basis": "twice the slowest run (16 s) rounds to 5 min, not below the current 5: unchanged",
+   "current": 5,
+   "median_seconds": 2,
+   "runs_measured": 100,
+   "slowest_seconds": 16,
+   "target": 5
+  },
+  "interview-proof.yml::proof": {
+   "basis": "twice the slowest run (1614 s) rounds to 54 min, not below the current 30: unchanged",
+   "current": 30,
+   "median_seconds": 506,
+   "runs_measured": 18,
+   "slowest_seconds": 1614,
+   "target": 30
+  },
+  "manual-job.yml::manual": {
+   "basis": "kept: only 4 measured runs (fewer than 10), slowest 71 s",
+   "current": 15,
+   "median_seconds": 47,
+   "runs_measured": 4,
+   "slowest_seconds": 71,
+   "target": 15
+  },
+  "network.yml::network": {
+   "basis": "slowest run 1818 s reached 90% of the current limit: keeps 30 min and is listed for Jim (the job is at its limit)",
+   "current": 30,
+   "median_seconds": 539,
+   "runs_measured": 100,
+   "slowest_seconds": 1818,
+   "target": 30
+  },
+  "outlook.yml::outlook": {
+   "basis": "twice the slowest run (227 s) rounded up to whole minutes, 5-minute floor",
+   "current": 20,
+   "median_seconds": 11,
+   "runs_measured": 20,
+   "slowest_seconds": 227,
+   "target": 8
+  },
+  "pr-tests.yml::test-index": {
+   "basis": "twice the slowest run (305 s) rounded up to whole minutes, 5-minute floor",
+   "current": 15,
+   "median_seconds": 247,
+   "runs_measured": 39,
+   "slowest_seconds": 305,
+   "target": 11
+  },
+  "pr-tests.yml::unit-tests": {
+   "basis": "twice the slowest run (136 s) rounded up to whole minutes, 5-minute floor",
+   "current": 10,
+   "median_seconds": 105,
+   "runs_measured": 99,
+   "slowest_seconds": 136,
+   "target": 5
+  },
+  "profile-sync.yml::sync": {
+   "basis": "twice the slowest run (248 s) rounded up to whole minutes, 5-minute floor",
+   "current": 10,
+   "median_seconds": 15,
+   "runs_measured": 39,
+   "slowest_seconds": 248,
+   "target": 9
+  },
+  "readiness-live.yml::readiness": {
+   "basis": "kept: only 1 measured runs (fewer than 10), slowest 8 s",
+   "current": 10,
+   "median_seconds": 8,
+   "runs_measured": 1,
+   "slowest_seconds": 8,
+   "target": 10
+  },
+  "recruiters.yml::recruiters": {
+   "basis": "kept: only 9 measured runs (fewer than 10), slowest 404 s",
+   "current": 20,
+   "median_seconds": 389,
+   "runs_measured": 9,
+   "slowest_seconds": 404,
+   "target": 20
+  },
+  "safety.yml::safety": {
+   "basis": "twice the slowest run (44 s) rounded up to whole minutes, 5-minute floor",
+   "current": 20,
+   "median_seconds": 22,
+   "runs_measured": 12,
+   "slowest_seconds": 44,
+   "target": 5
+  },
+  "suite-timing.yml::plan": {
+   "basis": "kept: only 4 measured runs (fewer than 10), slowest 4 s",
+   "current": 2,
+   "median_seconds": 3,
+   "runs_measured": 4,
+   "slowest_seconds": 4,
+   "target": 2
+  },
+  "suite-timing.yml::report": {
+   "basis": "kept: only 4 measured runs (fewer than 10), slowest 18 s",
+   "current": 5,
+   "median_seconds": 11,
+   "runs_measured": 4,
+   "slowest_seconds": 18,
+   "target": 5
+  },
+  "suite-timing.yml::timing": {
+   "basis": "twice the slowest run (135 s) rounded up to whole minutes, 5-minute floor",
+   "current": 10,
+   "median_seconds": 95,
+   "runs_measured": 40,
+   "slowest_seconds": 135,
+   "target": 5
+  },
+  "watchdog.yml::watch": {
+   "basis": "already under the 5-minute floor; slowest run 34 s",
+   "current": 3,
+   "median_seconds": 9,
+   "runs_measured": 100,
+   "slowest_seconds": 34,
+   "target": 3
+  }
+ },
+ "measured": "the last 100 runs of each workflow on Nov 14 2026, timed-out jobs included",
+ "pending": [
+  "branches.yml::archive",
+  "diag.yml::diag",
+  "diag.yml::report",
+  "domains.yml::agenda",
+  "domains.yml::amazon",
+  "domains.yml::bills",
+  "domains.yml::dcc",
+  "domains.yml::granola",
+  "domains.yml::hiring",
+  "domains.yml::hiring_outcomes",
+  "domains.yml::imessage",
+  "domains.yml::interview",
+  "domains.yml::jira",
+  "domains.yml::mail",
+  "domains.yml::megibow",
+  "granola-auto.yml::auto",
+  "hourly.yml::finish",
+  "hourly.yml::prep",
+  "outlook.yml::outlook",
+  "pr-tests.yml::test-index",
+  "pr-tests.yml::unit-tests",
+  "profile-sync.yml::sync",
+  "safety.yml::safety",
+  "suite-timing.yml::timing"
+ ],
+ "rule": "docs/platform/timeouts.md"
+}
