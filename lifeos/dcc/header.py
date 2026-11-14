@@ -1,21 +1,21 @@
 """The date and time line under the Daily Report's title (D183), written by V7.
 
-The line reads `Monday, Oct 12 · Updated 2:15 PM CT` and is refreshed by the Command Center job, which runs last in every tick. V7 finds the page from the Command Center callout's
+The line reads `Monday, 10/12 · 2:15 PM CT` (LIFE-679; the older `Monday, Oct 12 · Updated 2:15 PM CT` is still recognised and rewritten) and is refreshed by the Command Center job, which runs last in every tick. V7 finds the page from the Command Center callout's
 own block id (no new secret), looks for its line among the page's top-level blocks (a paragraph that matches the fixed shape), updates that one block, and creates it at the very
 top of the page the first time. It is created only when no line of that shape exists anywhere on the page, and a line that is somewhere other than the top, or two of them, stop
 the write (a fixed code, nothing created), so a Notion that ignored the position can never fill the page with copies. Every write is read back. Counts and fixed codes only."""
 import re
 from urllib.parse import quote
 
-from lifeos.platform import report_region
+from lifeos.platform import ct_stamp, report_region
 from lifeos.platform.notion_client import NotionError, rich_text
 
-LINE = re.compile(r"^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), [A-Z][a-z]{2} \d{1,2} · Updated \d{1,2}:\d{2} [AP]M CT$")
+LINE = re.compile(r"^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), (?:[A-Z][a-z]{2} \d{1,2} · Updated \d{1,2}:\d{2} [AP]M CT|\d{1,2}/\d{1,2} · \d{1,2}:\d{2} [AP]M CT)$")
 NEAR_TOP = 3                                              # the line is the first block under the title; a little room for a block a person adds above it
 
 
 def text(now):
-    return f"{now.strftime('%A, %b')} {now.day} · Updated {now.strftime('%-I:%M %p')} CT"
+    return f"{now.strftime('%A')}, {ct_stamp.when(now)}"
 
 
 def _paragraph(content):

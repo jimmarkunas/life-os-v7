@@ -78,7 +78,7 @@ class RenderTests(unittest.TestCase):
         rows = STALE_FOUR + [row("Water", "2026-10-06", "2026-10-06", amount=45.0), row("Power", "2026-10-08", "2026-10-08", amount=30.0)]
         blocks, counts = card.render(saved(rows), now=NOW)
         head = lines(blocks)[0]
-        self.assertEqual(card.heading_text(saved(rows), False), "Bills: This Week (Updated Oct 4 · 12:10 PM CT)")                  # LIFE-609: the stamp is in the heading
+        self.assertEqual(card.heading_text(saved(rows), False), "Bills: This Week (10/4 · 12:10 PM CT)")                  # LIFE-609: the stamp is in the heading
         self.assertNotIn("Updated", head)
         self.assertIn("2 due through one week from now", head)
         self.assertIn("$75 known", head)
@@ -88,7 +88,7 @@ class RenderTests(unittest.TestCase):
     def test_stale_snapshot_is_labelled_stale_with_its_own_timestamp_never_current(self):
         blocks, counts = card.render(saved(STALE_FOUR, "2026-10-04T05:00:00-05:00"), stale=True, now=NOW)
         head = lines(blocks)[0]
-        self.assertEqual(card.heading_text(saved(STALE_FOUR, "2026-10-04T05:00:00-05:00"), True), "Bills: This Week (STALE · last accepted Oct 4 · 5:00 AM CT)")
+        self.assertEqual(card.heading_text(saved(STALE_FOUR, "2026-10-04T05:00:00-05:00"), True), "Bills: This Week (STALE · last accepted 10/4 · 5:00 AM CT)")
         self.assertNotIn("Updated", head)
         self.assertEqual(counts["status"], "stale")
 
@@ -129,7 +129,7 @@ class WriteTests(unittest.TestCase):
         counts = self.run_card(notion)
         kids = notion.children["bills-callout"]
         self.assertEqual([k["id"] for k in kids][0], "heading-bills-callout")                 # the heading block itself is kept
-        self.assertEqual(report_region.plain(kids[0]), "Bills: This Week (Updated Oct 4 · 12:10 PM CT)")          # LIFE-609: the stamp is in the heading
+        self.assertEqual(report_region.plain(kids[0]), "Bills: This Week (10/4 · 12:10 PM CT)")          # LIFE-609: the stamp is in the heading
         self.assertTrue(report_region.plain(kids[1]).startswith("4 bills due"))                          # the summary sits right under the heading
         self.assertEqual(kids[2]["id"], "bills-view-old")                                     # the Bills table is still there, below it, untouched
         self.assertEqual(kids[2], view_before)
@@ -150,7 +150,7 @@ class WriteTests(unittest.TestCase):
     def test_stale_snapshot_is_written_as_stale(self):
         notion = BillsRegions()
         card.run(0, True, environ=ENV, client=notion, now=NOW, connect=lambda: BillsSnapshotDB(saved(STALE_FOUR, "2026-10-04T05:00:00-05:00")))
-        self.assertEqual(report_region.plain(notion.children["bills-callout"][0]), "Bills: This Week (STALE · last accepted Oct 4 · 5:00 AM CT)")
+        self.assertEqual(report_region.plain(notion.children["bills-callout"][0]), "Bills: This Week (STALE · last accepted 10/4 · 5:00 AM CT)")
 
     def test_tracker_link_is_preserved_and_wrong_target_refuses_before_writing(self):
         notion = BillsRegions()
