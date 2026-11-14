@@ -181,7 +181,7 @@ def main(argv=None):
     except (StoreError, NotionError, JiraError, OutlookError, GcalError, BridgeError, NetworkError) as error:
         print(f"{args.stage.upper()} FAILED: {error}", file=sys.stderr)
         return 1
-    if isinstance(counts, dict) and loaded["status"] != "off":                         # only when the page was looked for (production); tests and local runs print as before
+    if isinstance(counts, dict) and loaded["status"] not in ("off", "no_token"):       # only when the page was read (production); tests and local runs print as before
         counts["settings"] = loaded
     _announce(args.stage, counts)
     print(f"{args.stage}:", json.dumps(counts, sort_keys=True))
