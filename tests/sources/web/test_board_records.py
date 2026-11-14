@@ -43,8 +43,16 @@ class SaveLimit(unittest.TestCase):
             got = run.run(10, True, NOW, fixed({n: GOOD for n in ("s1", "s2", "s3")}), repo, boards("s1", "s2", "s3"), save_seconds=0.2)
         finally:
             repo.release.set()
-        self.assertEqual((got["complete"], got["failed"], got["failed_why"], got["save_timeout"]), (1, 2, {"save_timeout": 2}, 2))   # s3 waited its own limit for the stuck write, then failed the same way
+        self.assertEqual((got["complete"], got["failed"], got["failed_why"], got["save_timeout"], got["save_blocked"]), (1, 2, {"save_timeout": 1, "save_blocked": 1}, 1, 1))   # s3 waited its own limit for the stuck write, never wrote: save_blocked
         self.assertEqual([o.source["id"] for o, _ in repo.commits if o.source["id"] != "s2"], ["s1"])
+
+    def test_one_stuck_save_does_not_fail_the_stage_through_the_boards_queued_behind_it(self):
+        repo = SlowSave("s1")                                                     # Nov 13 2026: one slow Greenhouse save left 3 boards behind it red and failed every tick
+        try:
+            got = run.run(10, True, NOW, fixed({n: GOOD for n in ("s1", "s2", "s3", "s4", "s5", "s6")}), repo, boards("s1", "s2", "s3", "s4", "s5", "s6"), save_seconds=0.1)
+        finally:
+            repo.release.set()
+        self.assertEqual((got["failed_why"].get("save_timeout"), got["save_blocked"]), (1, 5))
 
     def test_once_the_stalled_save_finishes_the_next_board_commits_normally(self):
         repo = SlowSave("s2")
