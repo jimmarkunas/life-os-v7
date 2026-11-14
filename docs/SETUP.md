@@ -34,7 +34,7 @@ and `lifeos-ticker-watch` runs the watchdog's incident checks at :05 :20 :35 :50
 1. GitHub -> Settings -> Developer settings -> Personal access tokens -> Fine-grained tokens -> Generate. Resource owner: you. Repository access: **Only select repositories -> life-os-v7**.
    Permissions: **Actions: Read and write**, **Issues: Read and write**, **Variables: Read-only** (nothing else). Expiration: 1 year (put a reminder in your calendar).
 2. From your Mac, in an up-to-date checkout of life-os-v7 (copies only the ticker and the five watchdog modules it runs):
-   `tar czf - lifeos/edge/ticker lifeos/platform/{gate,alerts,alert_registry,alert_settings,redact}.py | ssh opc@lifeos-edge-01 "rm -rf /tmp/lifeos-ticker-src && mkdir /tmp/lifeos-ticker-src && tar xzf - -C /tmp/lifeos-ticker-src && sudo bash /tmp/lifeos-ticker-src/lifeos/edge/ticker/oracle/install-ticker.sh install /tmp/lifeos-ticker-src"`
+   `tar czf - lifeos/edge/ticker lifeos/platform/{gate,alerts,alert_registry,alert_settings,redact,drift}.py | ssh opc@lifeos-edge-01 "rm -rf /tmp/lifeos-ticker-src && mkdir /tmp/lifeos-ticker-src && tar xzf - -C /tmp/lifeos-ticker-src && sudo bash /tmp/lifeos-ticker-src/lifeos/edge/ticker/oracle/install-ticker.sh install /tmp/lifeos-ticker-src"`
 3. Store the two credentials (pasted into the pipe, never typed on a command line): `pbpaste | ssh opc@lifeos-edge-01 "sudo bash /opt/lifeos-ticker/install-ticker.sh credential github"`
    with the token on the clipboard, then the same with `credential ntfy` and the phone topic on the clipboard.
 4. `ssh opc@lifeos-edge-01 "sudo bash /opt/lifeos-ticker/install-ticker.sh dry"` must print `TICKER_DRY_OK`; then `run-now tick` must print `TICK_DISPATCHED`
