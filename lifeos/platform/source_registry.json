@@ -17,7 +17,7 @@
     {"name": "job-page-outreach", "module": "lifeos.sources.pipeline.job_page_outreach", "partial_failure": "JOB_PAGE_OUTREACH_PAGES_FAILED"},
     {"name": "mail-filing", "module": "lifeos.sources.cards.mail_filing", "floor": 200, "partial_failure": "PHYSMAIL_FILING_FAILED"},
     {"name": "manual-job", "module": "lifeos.sources.pipeline.manual_job", "partial_failure": "MANUAL_JOB_FAILED"},
-    {"name": "megibow", "module": "lifeos.sources.cards.megibow"},
+    {"name": "megibow", "module": "lifeos.sources.cards.megibow", "partial_failure": "MEGIBOW_MATT_DEGRADED"},
     {"name": "network-layout", "module": "lifeos.sources.network.ledger_layout"},
     {"name": "network-match", "module": "lifeos.sources.network.network_leads"},
     {"name": "network-surface", "module": "lifeos.sources.network.network_surface"},
