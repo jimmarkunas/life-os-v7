@@ -1,3 +1,4 @@
+import io
 import json
 import os
 import re
@@ -99,6 +100,34 @@ class ShardWeights(unittest.TestCase):
         first = shard.measure([Quick("test_a")], clock=lambda: next(ticks))
         self.assertEqual(first, {"tests.fake.test_quick": 2.0})
         self.assertEqual(shard.merge([first, {"tests.fake.test_quick": 0.5, "tests.fake.test_other": 1.234}]), {"tests.fake.test_other": 1.23, "tests.fake.test_quick": 0.5})
+
+    def test_a_shard_reports_seconds_per_module_and_weights_can_be_built_from_the_logs(self):
+        """LIFE-705: each CI shard prints its measured seconds per module, so the split can be balanced on CI time (not a laptop's)."""
+        class A(unittest.TestCase):
+            def test_a(self):
+                pass
+
+            def test_b(self):
+                pass
+
+        class B(unittest.TestCase):
+            def test_c(self):
+                pass
+        A.__module__, B.__module__ = "tests.fake.test_a", "tests.fake.test_b"
+        ticks = iter([10.0, 11.0, 14.0, 17.0])                                    # three test starts, then the end of the run
+        with mock.patch.object(shard.time, "perf_counter", lambda: next(ticks)):
+            result = shard.TimedResult(io.StringIO(), True, 0)
+            result.startTestRun()
+            for test in (A("test_a"), A("test_b"), B("test_c")):
+                result.startTest(test)
+                result.stopTest(test)
+            result.stopTestRun()
+        self.assertEqual({m: round(v, 1) for m, v in result.module_seconds.items()}, {"tests.fake.test_a": 4.0, "tests.fake.test_b": 3.0})       # the span of each module; the sum is the shard's time
+        lines = shard.timing_report(1, 3, {"tests.fake.test_a": 4.0, "tests.fake.test_b": 3.0, "tests.fake.test_tiny": 0.01})
+        self.assertIn("shard 1/3 took 7.0 s", lines[0])
+        self.assertEqual(json.loads(lines[1][len("shard-seconds "):]), {"k": 1, "n": 3, "rest": 0.01, "seconds": {"tests.fake.test_a": 4.0, "tests.fake.test_b": 3.0}})
+        weights = shard.weights_from_logs([lines[1], lines[1].replace("4.0", "6.0")], {"tests.fake.test_a", "tests.fake.test_b", "tests.fake.test_tiny", "tests.fake.test_new"})
+        self.assertEqual(weights, {"tests.fake.test_a": 5.0, "tests.fake.test_b": 3.0, "tests.fake.test_tiny": 0.01, "tests.fake.test_new": 0.01})      # the mean over logs; a module no log shows is 0.01
 
     def test_a_failing_module_stops_the_measurement(self):
         class Broken(unittest.TestCase):
