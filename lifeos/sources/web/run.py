@@ -18,6 +18,7 @@ from lifeos.sources.web import diff, lister, registry, suppress
 DEFAULT_LANE = "US Remote"
 SAVE_SECONDS = 20                  # LIFE-616 (Jim, Nov 12 2026): one board's save gets this long; past it the board is `save_timeout`, not the stage
 STAGE_FAILS_AT = 3                 # LIFE-616: the stage itself fails when at least this many boards failed AND at least half of the boards due did (boards that answer not_found do not count)
+NOT_SYSTEMIC = ("not_found", "save_blocked")   # Nov 13 2026: a board that never wrote because an earlier board's write was still stuck is that one stuck write, not more failures
 
 
 class BoardsFailing(RuntimeError):
@@ -328,7 +329,7 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
     unread = sum(s["id"] not in states for s in sources)
     states = {k: v for k, v in states.items() if k not in forced}           # a forced read is a full read: no validators, no skip
     counts = {"lane": lane, "sources": len(sources), "due": len(due), "complete": 0, "failed": 0, "added": 0, "changed": 0, "unchanged": 0,
-              "removed": 0, "suppressed": 0, "admit": 0, "pending": 0, "why": {}, "failed_why": {}, "failed_kind": {}, "failed_ids": [], "dead_ids": [], "not_modified": 0, "same_frontier": 0, "save_timeout": 0}
+              "removed": 0, "suppressed": 0, "admit": 0, "pending": 0, "why": {}, "failed_why": {}, "failed_kind": {}, "failed_ids": [], "dead_ids": [], "not_modified": 0, "same_frontier": 0, "save_timeout": 0, "save_blocked": 0}
     stuck_saves = []                                                                    # a save that outlived its limit; see save_bounded
     if select:
         counts["unread"] = unread                                               # D217: boards never read (before this run)
@@ -348,14 +349,16 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
             counts["dead_ids"].append(source["id"])                                       # Oct 25 2026: the boards that keep answering not_found, for the skip-list review (ids only)
 
     def save(source, outcome, failures, result):
-        """-> True when saved (or a dry run). A save past its limit is counted and reported as that board's failure, never the stage's."""
-        saved, took = True, 0.0
+        """-> None when saved (or a dry run), else the failure reason. A save past its limit is that board's failure, never the stage's.
+        `save_blocked`: the board never wrote because an earlier board's write was still running past its limit (the same stuck write, not a new one)."""
+        saved, took, before = True, 0.0, list(stuck_saves)
         if live:
             saved, took = save_bounded(lambda: repo.commit(outcome, failures, lane), save_seconds or SAVE_SECONDS, stuck_saves)
-        if not saved:
-            counts["save_timeout"] += 1
-        rows.append((source["id"], result if saved else "save_timeout", read_seconds.get(source["id"], 0.0), took))
-        return saved
+        reason = None if saved else ("save_blocked" if before and stuck_saves == before else "save_timeout")
+        if reason:
+            counts[reason] += 1
+        rows.append((source["id"], reason or result, read_seconds.get(source["id"], 0.0), took))
+        return reason
 
     pool = ThreadPoolExecutor(max_workers=workers or limits.ATS_WORKERS)          # priority boards are on different hosts; seed boards pass fewer workers
     try:
@@ -387,8 +390,9 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
                 outcome = Outcome(source, now, "UNCHANGED", skip, frontier=state.get("frontier"), validators=listing.validators,
                                   unchanged_runs=state.get("unchanged_runs", 0) + 1)
                 outcome.due_at = next_due(source["id"], now, True, 0, 0, source.get("hot_hours") or source.get("refresh_hours"), outcome.unchanged_runs)
-                if not save(source, outcome, failures, "UNCHANGED"):
-                    note_failure(source, "save_timeout", failures)
+                failed = save(source, outcome, failures, "UNCHANGED")
+                if failed:
+                    note_failure(source, failed, failures)
                     continue
                 counts["complete"] += 1
                 counts[skip] += 1
@@ -403,11 +407,11 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
             outcome.validators = listing.validators
             outcome.due_at = next_due(source["id"], now, outcome.status == "COMPLETE", failures, outcome.pending,
                                       (source.get("hot_hours") if hot else None) or source.get("refresh_hours"), outcome.unchanged_runs)
-            saved = save(source, outcome, failures, outcome.reason if outcome.status == "FAILED" else "COMPLETE")
+            failed = save(source, outcome, failures, outcome.reason if outcome.status == "FAILED" else "COMPLETE")
             if outcome.status == "FAILED":
                 note_failure(source, outcome.reason, failures)
-            elif not saved:
-                note_failure(source, "save_timeout", failures)
+            elif failed:
+                note_failure(source, failed, failures)
             else:
                 counts["complete"] += 1
                 budget -= len(outcome.admit)
@@ -432,7 +436,7 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
                 handle.write(summary_markdown(lane, rows))
         except OSError:
             pass                                                                  # a summary is a convenience; never fail a stage for it
-    real = counts["failed"] - counts["failed_why"].get("not_found", 0)
+    real = counts["failed"] - sum(counts["failed_why"].get(why, 0) for why in NOT_SYSTEMIC)
     if real >= STAGE_FAILS_AT and real * 2 >= counts["due"]:                      # LIFE-616: a systemic failure, not one bad board: the stage (and so the tick) fails, after its counts are printed
         print(f"web ({lane}):", json.dumps(counts, sort_keys=True))
         raise BoardsFailing("WEB_BOARDS_FAILING")
