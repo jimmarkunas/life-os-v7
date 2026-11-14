@@ -133,8 +133,8 @@ def package_blocks(packages, now, error=False):
 
 
 def heading_text(now, degraded=False):
-    """LIFE-609: the update time shares the heading, like Calendar: "Amazon Orders (Updated 2:30 PM CT)"; a failed sync says "Amazon Orders (DEGRADED at 2:30 PM CT)"."""
-    return f"{TITLE} ({'DEGRADED at ' + ct_stamp.when(now) if degraded else ct_stamp.updated(now)})"
+    """LIFE-609: the update time shares the heading, like Calendar: "Amazon Orders (11/13 · 2:30 PM CT)"; a failed sync says "Amazon Orders (DEGRADED at 11/13 · 2:30 PM CT)"."""
+    return f"{TITLE} ({'DEGRADED at ' + ct_stamp.when(now) if degraded else ct_stamp.when(now)})"
 
 
 def render(rows, now, degraded=False, url=None, packages=None, packages_error=False):

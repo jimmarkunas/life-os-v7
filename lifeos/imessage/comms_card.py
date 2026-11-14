@@ -121,7 +121,7 @@ def render(rows, now):
         if channel in KEEP_LAST and n is not None and state == "UNAVAILABLE":
             latest = None
         out[channel] = (f"{LABELS[channel]} ({count})", latest)
-    return out, f"{TITLE} ({ct_stamp.updated(now)})"
+    return out, f"{TITLE} ({ct_stamp.when(now)})"
 
 
 UNAVAILABLE = {c: (None, "UNAVAILABLE", None) for c in ("messages", *CHANNEL_BLOCKS)}

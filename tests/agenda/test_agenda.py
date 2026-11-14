@@ -152,7 +152,7 @@ class AgendaCardTests(unittest.TestCase):
         event = compacted(timed("one", "Example fresh"))
         saved = saved_snapshot([event])
         heading = card._heading_text(saved, False)
-        self.assertRegex(heading, r"^Calendar \(Updated [A-Z][a-z]{2} \d{1,2} · \d{1,2}:\d{2} (AM|PM) CT\)$")
+        self.assertRegex(heading, r"^Calendar \(\d{1,2}/\d{1,2} · \d{1,2}:\d{2} (AM|PM) CT\)$")
         self.assertNotRegex(heading, r"\b(1[3-9]|2[0-3]):\d{2}\b")                          # never 24-hour time
         blocks, _ = card.render(saved, now=NOW)
         self.assertFalse(any(plain(b).startswith("Updated") for b in blocks))
@@ -173,6 +173,11 @@ class AgendaCardTests(unittest.TestCase):
         with self.assertRaises(card.CardError) as caught:
             card.run(1, True, environ=self._env(), client=notion, now=NOW, connect=lambda: AgendaSnapshotDB(saved_snapshot([], NOW.replace(hour=4))))
         self.assertEqual(str(caught.exception), "AGENDA_CARD_STALE_NO_BASELINE")
+
+    def test_the_card_is_owned_under_the_new_heading_and_under_the_older_ones(self):
+        """LIFE-679: V7 keeps its card across the deploy: the new `Calendar (11/13 · 1:18 PM CT)`, the dated `Updated` heading and the time-only one."""
+        for text in ("Calendar", "Calendar (11/13 · 1:18 PM CT)", "Calendar (Updated Nov 13 · 1:18 PM CT)", "Calendar (Updated 1:18 PM CT)", "Calendar (STALE · last accepted 11/13 · 1:18 PM CT)"):
+            self.assertTrue(card._owned([{"type": "heading_3", "heading_3": {"rich_text": [{"plain_text": text}]}}]), text)
 
     def test_a_heading_that_only_starts_with_calendar_is_not_the_card(self):
         for text in ("Calendar notes", "Calendars (Updated 1:00 PM CT)", "Calendar (Updated 1:00 PM CT) extra"):
@@ -195,7 +200,7 @@ class AgendaCardTests(unittest.TestCase):
                 self.assertLess(append_at, delete_at)
                 self.assertLess(delete_at, final_read)
                 self.assertEqual(notion.children["calendar-callout"][0]["id"], before_heading["id"])
-                self.assertTrue(plain(notion.children["calendar-callout"][0]).startswith("Calendar (Updated "))
+                self.assertTrue(plain(notion.children["calendar-callout"][0]).startswith("Calendar ("))
                 self.assertNotIn("Foreign writer content", [plain(block) for block in notion.children["calendar-callout"]])
                 self.assertEqual(notion.full_tree("jira-callout"), before_jira)
                 self.assertEqual(counts["status"], "fresh")

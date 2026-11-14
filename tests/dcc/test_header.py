@@ -8,7 +8,8 @@ from lifeos.platform.notion_client import NotionError
 
 TZ = ZoneInfo("America/Chicago")
 NOW = datetime(2026, 10, 12, 14, 15, tzinfo=TZ)
-LINE = "Monday, Oct 12 · Updated 2:15 PM CT"
+LINE = "Monday, 10/12 · 2:15 PM CT"                       # LIFE-679: the numeric date, no word "Updated"
+OLD = "Monday, Oct 12 · Updated 2:15 PM CT"                # the line the page carries until the first run after the deploy rewrites it
 
 
 def para(block_id, content):
@@ -65,8 +66,9 @@ def run(page, live=True, now=NOW):
 class TextTests(unittest.TestCase):
     def test_the_line_names_the_day_and_the_time_in_central(self):
         self.assertEqual(header.text(NOW), LINE)
-        self.assertEqual(header.text(datetime(2026, 10, 5, 9, 5, tzinfo=TZ)), "Monday, Oct 5 · Updated 9:05 AM CT")
-        self.assertTrue(header.LINE.match(LINE))
+        self.assertEqual(header.text(datetime(2026, 10, 5, 9, 5, tzinfo=TZ)), "Monday, 10/5 · 9:05 AM CT")
+        self.assertTrue(header.LINE.match(LINE) and header.LINE.match(OLD))                                # both forms are the line; a half-new form is not
+        self.assertFalse(any(header.LINE.match(bad) for bad in ("Monday, Oct 12 · 2:15 PM CT", "Monday, 10/12 · Updated 2:15 PM CT", "Monday, 10/12/2026 · 2:15 PM CT")))
 
 
 class RunTests(unittest.TestCase):

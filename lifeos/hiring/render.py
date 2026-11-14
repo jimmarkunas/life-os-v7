@@ -144,5 +144,5 @@ def render(result, stored, now, close=(None, {})):
         when_text = ct_stamp.when(local(accepted)) if accepted else "never"
         text = f"DEGRADED · Hiring Pipeline {note} at {ct_stamp.when(now)} · showing last accepted state ({when_text}) · {len(rows) - held} active{tail}"
     else:
-        text = f"{ct_stamp.updated(now)} · {len(rows) - held} active{tail}" if rows else f"{ct_stamp.updated(now)} · no submitted or interviewing opportunities{tail}"
+        text = f"{ct_stamp.when(now)} · {len(rows) - held} active{tail}" if rows else f"{ct_stamp.when(now)} · no submitted or interviewing opportunities{tail}"
     return text, cells, {"status": "degraded" if reasons else "fresh", "rows": len(shown), "reasons": reasons}

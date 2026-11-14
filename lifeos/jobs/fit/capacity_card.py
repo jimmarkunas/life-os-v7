@@ -73,7 +73,7 @@ def render(reading, now):
     cells = cells[:ROWS - 1] + [[""] * COLS] * max(0, ROWS - 1 - len(cells))
     near = sum(1 for c in cells if c[5] in ("NEAR LIMIT", "RESERVE REACHED"))
     exhausted = sum(1 for c in cells if c[5] == "EXHAUSTED")
-    text = f"AI Capacity ({ct_stamp.updated(now)}) · {near} near limit · {exhausted} exhausted"          # LIFE-609: the stamp shares the title, like Calendar's heading
+    text = f"AI Capacity ({ct_stamp.when(now)}) · {near} near limit · {exhausted} exhausted"          # LIFE-609: the stamp shares the title, like Calendar's heading
     cap = reading.get("safety_cap")
     if extra:
         text += f" · {extra} more not shown"
@@ -96,14 +96,14 @@ def guard_line(reading):
     return f"Cloud Fit guard · {cap['runs_today']:,} of {cap['limit']:,} runs today (our own limit, not a provider's)" if cap else None
 
 
-HEAD = re.compile(r"AI Capacity \((?:Updated|DEGRADED at)[^)]*\)")
+HEAD = re.compile(r"AI Capacity \([^)]*\)")
 
 
 def rich(text):
     """The callout's rich text for `text`: the label before the first ' · ' of each line is bold, the rest plain. The plain text is exactly `text`."""
     out = []
     for i, line in enumerate(text.split("\n")):
-        head = HEAD.match(line)                                         # LIFE-660: the heading's stamp holds a middle dot of its own, so its bold label is the whole `AI Capacity (Updated Nov 13 · 3:31 PM CT)`
+        head = HEAD.match(line)                                         # LIFE-660: the heading's stamp holds a middle dot of its own, so its bold label is the whole `AI Capacity (11/13 · 3:31 PM CT)`
         cut = head.end() if head else 0
         label, sep, rest = line[cut:].partition(" · ")
         label = line[:cut] + label

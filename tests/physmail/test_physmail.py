@@ -262,7 +262,7 @@ class CardRenderTests(unittest.TestCase):
         self.assertEqual(counts["status"], "degraded")
         stale, _ = card.render(self.stored(accepted=(NOW - timedelta(hours=7)).isoformat()), NOW)
         self.assertIn("Physical Mail evidence stale", self.lines(stale)[0])
-        self.assertEqual((card.heading_text(NOW, True), card.heading_text(NOW)), ("Mail Alerts (DEGRADED at Oct 6 · 10:00 AM CT)", "Mail Alerts (Updated Oct 6 · 10:00 AM CT)"))
+        self.assertEqual((card.heading_text(NOW, True), card.heading_text(NOW)), ("Mail Alerts (DEGRADED at 10/6 · 10:00 AM CT)", "Mail Alerts (10/6 · 10:00 AM CT)"))
         for blocks in (failed, stale, none_state):
             self.assertNotIn("No physical mail waiting", self.lines(blocks))
 
@@ -297,7 +297,7 @@ class CardRunTests(unittest.TestCase):
         before = {k: notion.full_tree(k) for k in ("jira-callout", "calendar-callout", "bills-callout", "amazon-callout", "attention-callout")}
         _, counts = self.go(notion)
         kids = notion.children["mail-callout"]
-        self.assertEqual(report_region.plain(kids[0]), "Mail Alerts (Updated Oct 6 · 10:00 AM CT)")                  # LIFE-609: the stamp is in the heading
+        self.assertEqual(report_region.plain(kids[0]), "Mail Alerts (10/6 · 10:00 AM CT)")                  # LIFE-609: the stamp is in the heading
         self.assertTrue(report_region.plain(kids[1]).startswith("11 waiting"))
         self.assertEqual(kids[-1]["id"], "mail-table-old")
         self.assertEqual(kids[1]["id"], "mail-status-old")                                    # the old line is rewritten in place, never shown beside the new one
@@ -313,7 +313,7 @@ class CardRunTests(unittest.TestCase):
 
     def test_a_failed_ingest_writes_the_degraded_line_with_the_last_accepted_state(self):
         notion, counts = self.go(env={"MAIL_SYNC_OUTCOME": "failure"})
-        self.assertEqual(report_region.plain(notion.children["mail-callout"][0]), "Mail Alerts (DEGRADED at Oct 6 · 10:00 AM CT)")
+        self.assertEqual(report_region.plain(notion.children["mail-callout"][0]), "Mail Alerts (DEGRADED at 10/6 · 10:00 AM CT)")
         self.assertTrue(report_region.plain(notion.children["mail-callout"][1]).startswith("Physical Mail sync failed"))
         self.assertEqual(counts["status"], "degraded")
 
@@ -438,7 +438,7 @@ class RuntimePathTests(unittest.TestCase):
         out = card.run(0, True, environ={**ENV, "MAIL_SYNC_OUTCOME": "success"}, connection=object(), client=notion, now=NOW)
         self.assertEqual((out["status"], out["waiting"], out["blocks_written"] > 0), ("fresh", 14, True))      # the promised complete state: not DEGRADED
         kids = notion.children["mail-callout"]
-        self.assertEqual(report_region.plain(kids[0]), "Mail Alerts (Updated Oct 6 · 10:00 AM CT)")   # AUTHORITATIVE READ-BACK ran inside replace_text and passed
+        self.assertEqual(report_region.plain(kids[0]), "Mail Alerts (10/6 · 10:00 AM CT)")   # AUTHORITATIVE READ-BACK ran inside replace_text and passed
         self.assertTrue(report_region.plain(kids[1]).startswith("14 waiting"))
         self.assertEqual({k: notion.full_tree(k) for k in before}, before)                     # no other Daily Report region changed
 
@@ -478,7 +478,7 @@ class RuntimePathTests(unittest.TestCase):
         self.assertEqual(store.saves, 0)
         notion = MailRegions()
         card.run(0, True, environ={**ENV, "MAIL_SYNC_OUTCOME": "failure"}, connection=object(), client=notion, now=NOW)
-        self.assertEqual(report_region.plain(notion.children["mail-callout"][0]), "Mail Alerts (DEGRADED at Oct 6 · 10:00 AM CT)")
+        self.assertEqual(report_region.plain(notion.children["mail-callout"][0]), "Mail Alerts (DEGRADED at 10/6 · 10:00 AM CT)")
         self.assertTrue(report_region.plain(notion.children["mail-callout"][1]).startswith("Physical Mail starting state unknown"))
 
     def test_the_state_table_is_the_one_snapshot_table_with_one_row(self):
@@ -690,7 +690,7 @@ class ItemLevelTests(unittest.TestCase):
         before = {k: notion.full_tree(k) for k in ("jira-callout", "calendar-callout", "bills-callout", "amazon-callout", "attention-callout")}
         out = card.run(0, True, environ=dict(ENV), connection=object(), client=notion, now=NOW)
         kids = notion.children["mail-callout"]
-        self.assertEqual(report_region.plain(kids[0]), "Mail Alerts (Updated Oct 6 · 10:00 AM CT)")
+        self.assertEqual(report_region.plain(kids[0]), "Mail Alerts (10/6 · 10:00 AM CT)")
         written = [report_region.plain(k) for k in kids[1:]]
         self.assertEqual(sum(1 for t in written if t.startswith("#")), 10)
         self.assertEqual(kids[-1]["id"], "mail-table-old")                                              # Jim's own non-text block stays last

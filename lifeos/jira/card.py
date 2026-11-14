@@ -158,10 +158,10 @@ def gtv_blocks(snap, sticky, site, context_url):
 
 
 def heading_text(now, stale_at=None):
-    """D121: the update time shares the heading, like Calendar: "JIRA Execution (Updated 2:10 PM CT)"."""
+    """D121: the update time shares the heading, like Calendar: "JIRA Execution (11/13 · 2:10 PM CT)"."""
     if stale_at:
         return f"{CARD_TITLE} (STALE · last accepted {ct_stamp.when(stale_at)})"
-    return f"{CARD_TITLE} ({ct_stamp.updated(now)})"
+    return f"{CARD_TITLE} ({ct_stamp.when(now)})"
 
 
 def render(snaps, today, now, site, sticky=None, context_url=None):

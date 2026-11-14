@@ -24,7 +24,7 @@ class CardError(NotionError):
 
 
 def _owned(blocks):
-    """The first child is the Calendar heading: exactly "Calendar", or "Calendar (Updated 1:18 PM CT)" once the update time shares the heading (D119)."""
+    """The first child is the Calendar heading: exactly "Calendar", or "Calendar (11/13 · 1:18 PM CT)" (an older heading says "Updated 1:18 PM CT") once the update time shares the heading (D119)."""
     if not (blocks and blocks[0].get("type") in ("heading_3", "heading_4")):
         return False
     return report_region.titled(plain(blocks[0]), CARD_TITLE)
@@ -154,7 +154,7 @@ def _event_block(event, marker=None):
 def _status(snapshot, stale):
     with fixed((KeyError, TypeError, ValueError), CardError, "AGENDA_SNAPSHOT_INVALID"):
         taken = _instant(snapshot["taken_at"])
-    return f"STALE · last accepted {ct_stamp.when(taken)}" if stale else ct_stamp.updated(taken)
+    return f"STALE · last accepted {ct_stamp.when(taken)}" if stale else ct_stamp.when(taken)
 
 
 def _heading_text(snapshot, stale):

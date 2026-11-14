@@ -1,7 +1,7 @@
 """Write the Hiring Pipeline into the ONE existing floating region of the Daily Report (HIRE-1.2). V7 owns it exclusively (router.OWNERS; it is NOT a callout).
 
 HIRING_CARD_BLOCK_ID and HIRING_TABLE_BLOCK_ID name the existing heading_3 and the table right under it (no status paragraph); both must match the live shape. The writer may change only the heading's
-update stamp (D188: `📈 Hiring Pipeline (Updated Nov 13 · 2:00 PM CT)`, the way Calendar and Jira carry theirs; the title, the block and its place never change) and the table rows under it. Before a live
+update stamp (D188: `📈 Hiring Pipeline (11/13 · 2:00 PM CT)`, the way Calendar and Jira carry theirs; the title, the block and its place never change) and the table rows under it. Before a live
 write the page is read once to prove the heading is unique; every write then goes through `report_region.ScopedClient` (LIFE-613), which refuses any block other than the heading, the table and its rows
 before the write is sent, instead of comparing the whole page before and after (which made this card wait for every other card). Any wrong shape, any ambiguity
 raises: nothing is created, moved or guessed. Fixed codes only."""

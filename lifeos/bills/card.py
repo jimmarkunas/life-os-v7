@@ -78,11 +78,11 @@ def _window(rows, today):
 
 def _status(saved, stale):
     taken = _instant(saved["taken_at"])
-    return f"STALE · last accepted {ct_stamp.when(taken)}" if stale else ct_stamp.updated(taken)
+    return f"STALE · last accepted {ct_stamp.when(taken)}" if stale else ct_stamp.when(taken)
 
 
 def heading_text(saved, stale):
-    """LIFE-609: the update time shares the heading, like Calendar: "Bills: This Week (Updated 2:30 PM CT)"."""
+    """LIFE-609: the update time shares the heading, like Calendar: "Bills: This Week (11/13 · 2:30 PM CT)"."""
     return f"{CARD_TITLE} ({_status(saved, stale)})"
 
 

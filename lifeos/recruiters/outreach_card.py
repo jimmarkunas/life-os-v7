@@ -292,11 +292,11 @@ def present(client, environ, build, heading, live):
 
 
 def heading(moment, stage="success", scan_kind=""):
-    """LIFE-609: `<Title> (Updated Nov 13 · 3:31 PM CT)`, the form every Daily Report card heading takes. Skipped (a Close screen refresh ran no mail stage on purpose) says Redrawn, so the heading never
-    claims mail was read (Jim, Oct 24). A mail source that was not read (LIFE-646) is named by its fixed name, only then: `(Updated Nov 13 · 9:30 AM CT, Outlook personal unread)`."""
+    """LIFE-609: `<Title> (11/13 · 3:31 PM CT)`, the form every Daily Report card heading takes. Skipped (a Close screen refresh ran no mail stage on purpose) says Redrawn, so the heading never
+    claims mail was read (Jim, Oct 24). A mail source that was not read (LIFE-646) is named by its fixed name, only then: `(11/13 · 9:30 AM CT, Outlook personal unread)`."""
     scan_kind = (scan_kind or "").strip()
     unread = UNREAD.search(scan_kind) if stage == "success" and KIND.fullmatch(scan_kind) else None
-    return f"{TITLE} ({'Redrawn' if stage == 'skipped' else 'Updated'} {ct_stamp.when(moment)}{f', {unread.group(1)} unread' if unread else ''})"
+    return f"{TITLE} ({'Redrawn ' if stage == 'skipped' else ''}{ct_stamp.when(moment)}{f', {unread.group(1)} unread' if unread else ''})"
 
 
 def run(limit, live, environ=os.environ, notion=None, client=None, now=None):

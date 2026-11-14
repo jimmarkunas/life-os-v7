@@ -21,7 +21,7 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
-from lifeos.platform import report_region, router
+from lifeos.platform import ct_stamp, report_region, router
 
 API = "https://api.github.com"
 ARCHIVE_REPO = "https://github.com/jimmarkunas/life-os-automation.git"
@@ -166,7 +166,7 @@ def stale(branches, open_prs, now, days=STALE_DAYS, keep=KEEP):
 def lines(rows, now):
     """The callout's text: one status line, then one line per stale branch. Branch names and PR numbers only."""
     stale_rows = [r for r in rows if r["stale"]]
-    head = (f"Updated {now.astimezone(TZ).strftime('%a %b %-d, %-I:%M %p')} CT · {len(rows)} branches besides main · "
+    head = (f"{now.astimezone(TZ):%a}, {ct_stamp.when(now)} · {len(rows)} branches besides main · "
             f"{sum(1 for r in rows if r['pr'])} with an open PR · {len(stale_rows)} idle {STALE_DAYS}+ days")
     body = [f"{('PR #' + str(r['pr'])) if r['pr'] else 'no PR'} · {r['branch']} · idle {r['idle_days']} days" + (" · kept on purpose" if r["kept"] else "")
             for r in stale_rows]
