@@ -123,6 +123,22 @@ class DatedStampTests(unittest.TestCase):
         self.assertEqual(self.fresh("Updated Dec 31 · 11:45 PM CT", datetime(2027, 1, 1, 0, 10, tzinfo=TZ))[0], "fresh")
         self.assertEqual(self.fresh("Updated Dec 30 · 11:45 PM CT", datetime(2027, 1, 1, 0, 10, tzinfo=TZ))[0], "stale")
 
+    def test_the_numeric_form_reads_exactly_like_the_older_dated_form(self):
+        """LIFE-679: `11/13 · 3:31 PM CT` (no word Updated) is read as `Updated Nov 13 · 3:31 PM CT` is: same state, same clock, in a heading, after DEGRADED / STALE, across midnight, a month end and a year end."""
+        self.assertEqual(self.fresh("Calendar (10/12 · 10:06 PM CT)", NOW), ("fresh", "10:06 PM"))
+        self.assertEqual(self.fresh("10/12 · 10:06 PM CT · 26 bills due", NOW), ("fresh", "10:06 PM"))
+        self.assertEqual(self.fresh("DEGRADED · Amazon sync failed at 10/12 · 10:05 PM CT · x", NOW), ("degraded", "10:05 PM"))
+        self.assertEqual(self.fresh("STALE · last accepted 10/11 · 9:44 AM CT", NOW), ("stale", "9:44 AM"))
+        for old, new, now in (("Updated Oct 12 · 8:50 PM CT", "10/12 · 8:50 PM CT", NOW), ("Updated Oct 12 · 8:49 PM CT", "10/12 · 8:49 PM CT", NOW), ("Updated Oct 11 · 10:06 PM CT", "10/11 · 10:06 PM CT", NOW),
+                              ("Updated Oct 12 · 11:30 PM CT", "10/12 · 11:30 PM CT", datetime(2026, 10, 13, 0, 30, tzinfo=TZ)), ("Updated Oct 31 · 11:30 PM CT", "10/31 · 11:30 PM CT", datetime(2026, 11, 1, 0, 40, tzinfo=TZ)),
+                              ("Updated Dec 31 · 11:45 PM CT", "12/31 · 11:45 PM CT", datetime(2027, 1, 1, 0, 10, tzinfo=TZ)), ("Updated Dec 30 · 11:45 PM CT", "12/30 · 11:45 PM CT", datetime(2027, 1, 1, 0, 10, tzinfo=TZ)),
+                              ("Updated Jan 1 · 12:05 AM CT", "1/1 · 12:05 AM CT", datetime(2027, 1, 1, 0, 30, tzinfo=TZ))):
+            self.assertEqual(self.fresh(new, now), self.fresh(old, now), new)
+        self.assertEqual(self.fresh("1/1 · 12:05 AM CT", datetime(2027, 1, 1, 0, 30, tzinfo=TZ))[0], "fresh")
+        self.assertEqual(self.fresh("13/5 · 10:06 PM CT", NOW), ("unknown", None))
+        self.assertEqual(self.fresh("2/30 · 10:06 PM CT", NOW), ("unknown", None))
+        self.assertEqual(self.fresh("no stamp at all", NOW), ("unknown", None))
+
     def test_a_date_that_is_not_a_date_is_never_guessed_fresh(self):
         self.assertEqual(self.fresh("Updated Foo 12 · 10:06 PM CT", NOW), ("unknown", None))
         self.assertEqual(self.fresh("Updated Feb 30 · 10:06 PM CT", NOW), ("unknown", None))

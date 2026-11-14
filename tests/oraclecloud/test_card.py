@@ -71,7 +71,7 @@ class Card(unittest.TestCase):
         colors = [(i["plain_text"], i["annotations"].get("color")) for i in rep.blocks["obody"]["paragraph"]["rich_text"] if "█" in i["plain_text"] or "░" in i["plain_text"]]
         self.assertEqual(colors, [("██████", "green"), ("░░░░", "gray"), ("████", "green"), ("░░░░░░", "gray"),
                                   ("██████████", "green"), ("██████", "green"), ("░░░░", "gray")])          # the bars only; a full bar has no gray part
-        self.assertEqual(rep.plain("ohead"), "Oracle Cloud (Updated Oct 15 · 8:05 AM CT)")
+        self.assertEqual(rep.plain("ohead"), "Oracle Cloud (10/15 · 8:05 AM CT)")
         self.assertTrue(rep.blocks["ohead"]["heading_3"]["rich_text"][0]["annotations"]["bold"])
         self.assertEqual({b: rep.plain(b) for b in others}, others)                  # the Communications callout and the rest are untouched
 
@@ -79,7 +79,7 @@ class Card(unittest.TestCase):
         calls = []
         answer = lambda host: calls.append(host) or json.dumps(stats()).encode()
         early = dt.datetime(2026, 10, 15, 10, 30, tzinfo=dt.timezone.utc)            # 5:30 AM in Chicago: no 6 AM gate any more
-        for heading in ("Oracle Cloud", "Oracle Cloud (Updated Oct 15 · 6:07 AM CT)", "Oracle Cloud (DEGRADED · Updated Oct 15 · 6:07 AM CT)"):
+        for heading in ("Oracle Cloud", "Oracle Cloud (10/15 · 6:07 AM CT)", "Oracle Cloud (DEGRADED · 10/15 · 6:07 AM CT)"):
             for now in (early, NOW):
                 counts, _ = self.run_card(report(heading), answer=answer, now=now)
                 self.assertEqual((counts["written"], "due" in counts), (2, False))
@@ -106,14 +106,14 @@ class Card(unittest.TestCase):
         self.assertIn("Cost this month: unavailable", body)
         self.assertIn("Codex plan: unavailable", body)
         self.assertIn("Services: Gateway ✓ · Telegram ? · WhatsApp ✓ · Alerts ✗ · Backup ✓", body)
-        self.assertEqual(rep.plain("ohead"), "Oracle Cloud (DEGRADED · Updated Oct 15 · 8:05 AM CT)")
+        self.assertEqual(rep.plain("ohead"), "Oracle Cloud (DEGRADED · 10/15 · 8:05 AM CT)")
         self.assertEqual((counts["missing"], counts["services_down"]), (3, 1))
 
     def test_an_unreported_plan_under_sign_in_with_chatgpt_is_said_plainly_and_is_not_degraded(self):
         rep = report()
         counts, _ = self.run_card(rep, answer=lambda host: json.dumps(stats(chatgpt="unreported")).encode())
         self.assertEqual(rep.plain("obody").split("\n")[-1], "ChatGPT plan: not reported by Sign in with ChatGPT")
-        self.assertEqual((rep.plain("ohead"), counts["missing"]), ("Oracle Cloud (Updated Oct 15 · 8:05 AM CT)", 0))
+        self.assertEqual((rep.plain("ohead"), counts["missing"]), ("Oracle Cloud (10/15 · 8:05 AM CT)", 0))
         rep = report()
         self.run_card(rep, answer=lambda host: json.dumps(stats(chatgpt="anything else")).encode())     # any other string is off contract
         self.assertIn("DEGRADED", rep.plain("ohead"))
@@ -187,12 +187,12 @@ class Card(unittest.TestCase):
         rep.add("col2", "column", "root")
         rep.add("jira", "callout", "col2", [text("JIRA Execution")])
         rep.add("oracle", "callout", "col2", [])
-        rep.add("ohead", "heading_3", "oracle", [text("Oracle Cloud (Updated Oct 14 · 6:07 AM CT)")])
+        rep.add("ohead", "heading_3", "oracle", [text("Oracle Cloud (10/14 · 6:07 AM CT)")])
         rep.add("obody", "paragraph", "oracle", [])
         env = {**self.ENV, "JIRA_CARD_BLOCK_ID": "jira"}
         counts, _ = self.run_card(rep, env=env)
         self.assertEqual(counts["written"], 2)
-        self.assertEqual(rep.plain("ohead"), "Oracle Cloud (Updated Oct 15 · 8:05 AM CT)")
+        self.assertEqual(rep.plain("ohead"), "Oracle Cloud (10/15 · 8:05 AM CT)")
         with self.assertRaises(card.OracleCardError):                                  # without the JIRA anchor that column is not searched
             self.run_card(rep)
         both = report()                                                                 # a second card beside Attention makes it ambiguous
@@ -262,7 +262,7 @@ class Card(unittest.TestCase):
 
         rep = report()
         self.assertEqual(run_with(rep, 2)["written"], 2)
-        self.assertEqual(rep.plain("ohead"), "Oracle Cloud (Updated Oct 15 · 8:05 AM CT)")
+        self.assertEqual(rep.plain("ohead"), "Oracle Cloud (10/15 · 8:05 AM CT)")
         rep = report()
         with self.assertRaises(card.OracleCardError) as error:
             run_with(rep, 99)

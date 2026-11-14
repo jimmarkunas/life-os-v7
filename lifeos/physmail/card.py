@@ -108,8 +108,8 @@ GROUPS = ((chains.REVIEW, "⚠️ Needs a look — notices conflict"),
 
 
 def heading_text(now, degraded=False):
-    """LIFE-609: the update time shares the heading, like Calendar: "Mail Alerts (Updated 2:30 PM CT)"; a card that cannot show current mail says "Mail Alerts (DEGRADED at 2:30 PM CT)"."""
-    return f"{TITLE} ({'DEGRADED at ' + ct_stamp.when(now) if degraded else ct_stamp.updated(now)})"
+    """LIFE-609: the update time shares the heading, like Calendar: "Mail Alerts (11/13 · 2:30 PM CT)"; a card that cannot show current mail says "Mail Alerts (DEGRADED at 11/13 · 2:30 PM CT)"."""
+    return f"{TITLE} ({'DEGRADED at ' + ct_stamp.when(now) if degraded else ct_stamp.when(now)})"
 
 
 def render(stored, now, sync_failed=False):
@@ -122,8 +122,8 @@ def render(stored, now, sync_failed=False):
     stale = not accepted or _local(datetime.fromisoformat(accepted)) < now - timedelta(hours=STALE_HOURS)
     facts = state_mod.summary(stored, now)
     reason = "sync_failed" if sync_failed else "stale" if stale else facts["degraded_reason"].lower() if facts["degraded_reason"] else None
-    when = _local(datetime.fromisoformat(accepted)).strftime("%b %-d, %-I:%M %p") if accepted else "never"
-    head = f"Physical Mail {'sync failed' if sync_failed else 'evidence stale' if stale else 'needs a look'} · showing last accepted state ({when} CT) · " if reason else ""
+    when = ct_stamp.when(_local(datetime.fromisoformat(accepted))) if accepted else "never"
+    head = f"Physical Mail {'sync failed' if sync_failed else 'evidence stale' if stale else 'needs a look'} · showing last accepted state ({when}) · " if reason else ""
     portal = _origin(stored.get("portal"))
     items = state_mod.pieces(stored)
     delivered = [p for p in items if isinstance(p["tracking"], dict) and p["tracking"].get("delivered")]

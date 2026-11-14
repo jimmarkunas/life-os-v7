@@ -2,7 +2,7 @@
 
 Flow: hourly tick -> domains.yml `imessage` job -> Oracle's private endpoint (request `oracle1`) -> this stage -> Notion. Oracle answers numbers only (lifeos/oraclecloud/oracle/stats.mjs).
 The two Codex windows come from the same `limits` reading as the AI Capacity card (passed in by lifeos.sources.cards.oracle_card), so the two cards cannot disagree; a Codex reading that cannot be had shows as unavailable and marks the card DEGRADED.
-Output: live, exactly two blocks of the callout: the heading's stamp (`Oracle Cloud (Updated Oct 15 · 7:05 AM CT)`, `DEGRADED · ` in front when any reading is missing) and the one paragraph under it. Both are read back; every other V7 region is proven unchanged. Counts and fixed codes only."""
+Output: live, exactly two blocks of the callout: the heading's stamp (`Oracle Cloud (10/15 · 7:05 AM CT)`, `DEGRADED · ` in front when any reading is missing) and the one paragraph under it. Both are read back; every other V7 region is proven unchanged. Counts and fixed codes only."""
 # Detail moved out of the docstring (LIFE-595):
 # Approved by Jim on Oct 15 2026 (Option B, OCI's own data): the callout sits under Communications Attention, or under the JIRA card where Jim moved it. Oct 24 2026: refreshed every tick so its Codex lines match the AI Capacity card.
 # Oracle's numbers: month-to-date cost from OCI billing, CPU from OCI Monitoring, the Always Free A1 core headroom from OCI Limits, Oracle's idle-reclaim rule, local memory and disk and service health.
@@ -132,7 +132,7 @@ def render(r, now):
                _gauge("Codex 5h", plan["left_5h"]) + sep + _gauge("Codex week", plan["left_week"]))
     segments = ([(f"{first} · {cpu}\n\n", None)] + _gauge("Memory", r["memory_pct"]) + sep + _gauge("Disk", r["disk_pct"])
                 + [(f"\n\n{cores} · {reclaim}\n{services}\n\n", None)] + chatgpt)
-    return segments, f"{TITLE} ({'DEGRADED · ' if missing(r) else ''}{ct_stamp.updated(now)})"
+    return segments, f"{TITLE} ({'DEGRADED · ' if missing(r) else ''}{ct_stamp.when(now)})"
 
 
 def text_of(segments):
