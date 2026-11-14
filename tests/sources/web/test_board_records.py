@@ -1,5 +1,5 @@
-"""LIFE-616 (Jim approved the rule and the 20-second save limit, comment 12836): a board that fails, times out on its read or times out on its save is that board's red entry; the stage fails
-only when at least 3 boards AND at least half of the boards due failed. Per-board seconds are recorded and printed. Fake boards and an in-memory repo; counts and public ids only."""
+"""LIFE-616 (Jim approved the 20-second save limit, comment 12836): a board that fails, times out on its read or times out on its save is that board's red entry.
+LIFE-678 (Jim, Nov 14 2026: "Never fail the run"): board failures never fail the stage. Per-board seconds are recorded and printed. Fake boards and an in-memory repo; counts and public ids only."""
 import datetime as dt
 import io
 import json
@@ -80,32 +80,23 @@ class StageRule(unittest.TestCase):
         names = [f"g{i}" for i in range(ok)] + [f"b{i}" for i in range(bad)] + [f"d{i}" for i in range(dead)]
         lookup = {n: GOOD for n in names if n.startswith("g")} | {n: lister.Listing(lister.FAILED, reason=reason) for n in names if n.startswith("b")} \
             | {n: lister.Listing(lister.FAILED, reason="not_found") for n in names if n.startswith("d")}
-        out = io.StringIO()
-        with redirect_stdout(out):
-            try:
-                return run.run(50, True, NOW, fixed(lookup), MemRepo(), boards(*names)), out.getvalue()
-            except run.BoardsFailing as error:
-                return str(error), out.getvalue()
+        return run.run(50, True, NOW, fixed(lookup), MemRepo(), boards(*names))
 
-    def test_one_bad_board_among_many_does_not_fail_the_stage(self):
-        got, _ = self.fails(ok=4, bad=1)
+    def test_one_bad_board_among_many_is_that_boards_red_entry(self):
+        got = self.fails(ok=4, bad=1)
         self.assertEqual((got["failed"], got["failed_ids"]), (1, ["b0"]))
 
-    def test_three_failures_that_are_less_than_half_of_the_boards_due_do_not_fail_it(self):
-        got, _ = self.fails(ok=7, bad=3)
-        self.assertEqual(got["failed"], 3)
+    def test_board_failures_never_fail_the_stage_however_many(self):
+        """LIFE-678: Nov 13-14 2026, 3 flaky outside sites out of 5 or 6 due boards failed the tick and paged Jim twice in one night."""
+        for ok, bad, reason in ((3, 3, "http_521"), (2, 3, "bad_shape"), (0, 6, "save_timeout"), (0, 2, "rate_limited")):
+            got = self.fails(ok=ok, bad=bad, reason=reason)
+            self.assertEqual((got["failed"], got["failed_why"], got["complete"]), (bad, {reason: bad}, ok))
 
-    def test_two_failures_of_two_do_not_fail_it_because_three_is_the_minimum(self):
-        got, _ = self.fails(ok=0, bad=2)
-        self.assertEqual(got["failed"], 2)
+    def test_the_stage_failure_class_is_gone(self):
+        self.assertFalse(hasattr(run, "BoardsFailing"))
 
-    def test_at_least_three_failures_and_at_least_half_fail_the_stage_after_the_counts_are_printed(self):
-        code, printed = self.fails(ok=3, bad=3)
-        self.assertEqual(code, "WEB_BOARDS_FAILING")
-        self.assertIn('"failed": 3', printed)
-
-    def test_boards_that_answer_not_found_never_count_toward_the_stage_rule(self):
-        got, _ = self.fails(ok=1, bad=0, dead=5)
+    def test_boards_that_answer_not_found_are_counted(self):
+        got = self.fails(ok=1, bad=0, dead=5)
         self.assertEqual(got["failed_why"], {"not_found": 5})
 
 
