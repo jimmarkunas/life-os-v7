@@ -186,6 +186,17 @@ class Failing(unittest.TestCase):
         self.assertFalse(gate.last_tick_passed([ago(0.2, "cancelled"), ago(0.4, "success", title="manual"), ago(1)]))
         self.assertFalse(gate.last_tick_passed([]))
 
+    def test_three_passing_ticks_in_a_row_close_it_however_many_failures_are_left_in_the_window(self):
+        """LIFE-681: Nov 14 2026, the pipeline had passed for hours but the incident stayed open until its failures aged out of the 24-hour window."""
+        failures = [ago(h) for h in (4, 5, 6, 7, 8)]
+        self.assertIs(gate.failing([ago(1, "success"), ago(2, "success"), ago(3, "success")] + failures, NOW), False)   # closes, and never opens
+        self.assertIs(gate.failing([ago(1, "success"), ago(2, "success"), ago(3)] + failures, NOW), True)                 # one failure among the last three
+        self.assertIs(gate.failing([ago(1, "success"), ago(2), ago(3, "success")] + failures, NOW), True)
+        self.assertIs(gate.failing([ago(1, "success"), ago(2, "success")] + failures, NOW), True)                         # only two passes so far
+        self.assertIsNone(gate.failing([ago(1, "success"), ago(2, "success"), ago(3, "cancelled"), ago(5), ago(6)], NOW))   # fewer than three finished ticks pass: the 24-hour rule
+        runs = [ago(0.5, "success", title="manual"), ago(1, "success"), ago(1.5, "cancelled"), ago(2, "success"), ago(3, "success")] + failures
+        self.assertIs(gate.failing(runs, NOW), False)                                                                      # manual and cancelled runs neither count nor break the streak
+
     def test_manual_cancelled_and_old_runs_never_count(self):
         runs = [ago(1, title="manual"), ago(2, "cancelled"), ago(3, "cancelled"), ago(25), ago(26), ago(27)]
         self.assertIs(gate.failing(runs, NOW), False)

@@ -21,6 +21,7 @@ ISSUE_TITLE = "V7 pipeline: no successful run for over 2.5 hours"
 LABEL = "pipeline-stale"
 FAIL_WINDOW_HOURS = 24         # failed ticks counted over this window
 FAIL_OPEN = 3                  # this many failed ticks in the window opens the "failing" incident; zero closes it
+RECOVER_PASSES = 3             # LIFE-681: this many finished ticks in a row that succeeded close it (and keep it closed) whatever is left in the window
 FAIL_TITLE = "V7 pipeline: hourly runs failing repeatedly (3+ failed in 24 hours)"
 FAIL_LABEL = "pipeline-failing"
 STUCK_TITLE = "V7 pipeline: an hourly tick run has had no conclusion for over 40 minutes"      # LIFE-580 step 3
@@ -110,8 +111,18 @@ def stale(runs, now, current_id, minutes=STALE_MINUTES):
     return True
 
 
+def finished_ticks(runs):
+    """Finished hourly ticks (success or failure), newest first. Manual and cancelled runs never count."""
+    done = [run for run in runs if run.get("display_title") == TICK_TITLE and run.get("conclusion") in ("success", "failure")]
+    return sorted(done, key=lambda run: run.get("updated_at") or run.get("created_at") or "", reverse=True)
+
+
 def failing(runs, now, window_hours=FAIL_WINDOW_HOURS):
-    """-> True (open) | False (recovered) | None (unchanged). Counts failed ticks only: manual runs and cancelled runs never count."""
+    """-> True (open) | False (recovered) | None (unchanged). Counts failed ticks only: manual runs and cancelled runs never count.
+    LIFE-681: the last RECOVER_PASSES finished ticks all succeeded -> recovered at once (and never opened), however many failures are still inside the window."""
+    recent = finished_ticks(runs)[:RECOVER_PASSES]
+    if len(recent) == RECOVER_PASSES and all(run.get("conclusion") == "success" for run in recent):
+        return False
     cutoff = now - dt.timedelta(hours=window_hours)
     failed = sum(1 for run in runs if run.get("display_title") == TICK_TITLE and run.get("conclusion") == "failure"
                  and (_t(run.get("updated_at") or run.get("created_at")) or cutoff) > cutoff)
@@ -235,9 +246,9 @@ def watch(now=None, push=None, checkin=True):
                       ("V7 pipeline stalled", "No hourly run has succeeded for 2.5 hours. Check cron-job.org and the Actions tab.", "page", "pipeline_stalled"),
                       ("V7 pipeline recovered", "A run succeeded.", "info", "pipeline_stalled_recovered"), push, now),
         sync_incident(FAIL_LABEL, FAIL_TITLE, "Three or more hourly runs failed in the last 24 hours (each one also pushed 'V7 run failed'). Open the Actions tab. "
-                      "This issue closes itself after 24 hours with no failed run.", fail_signal,
+                      "This issue closes itself when the last 3 hourly runs have passed (or after 24 hours with no failed run).", fail_signal,
                       ("V7 hourly runs failing repeatedly", "3+ failed runs in 24 hours. Open the Actions tab.", "page", "pipeline_failing"),
-                      ("V7 hourly runs recovered", "No failed run in 24 hours.", "info", "pipeline_failing_recovered"), push, now, remind=not last_tick_passed(runs)),
+                      ("V7 hourly runs recovered", "The last 3 hourly runs passed.", "info", "pipeline_failing_recovered"), push, now, remind=not last_tick_passed(runs)),
         sync_incident(STUCK_LABEL, STUCK_TITLE, "An hourly tick run has been queued or running for more than 40 minutes. A real tick takes 5 to 20 minutes and GitHub ends the prep job at 45, so this run is stuck "
                       "(it happened on Nov 11 2026 and GitHub refused every cancel). Later ticks are not blocked: the gate and the ticker ignore it. Open the Actions tab; if the run cannot be cancelled, "
                       "report it to GitHub support. This issue closes itself when no tick run is stuck.", stuck_signal,
