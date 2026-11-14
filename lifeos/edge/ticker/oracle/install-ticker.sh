@@ -1,7 +1,7 @@
 #!/bin/bash
 # LIFE-330 on Oracle, run as root via `opc` (never `ubuntu`). The ticker (lifeos/edge/ticker): systemd timers that start the hourly pipeline and run the watchdog's
 # incident checks, replacing cron-job.org (D31). Same shape as LIFE-129's install-offsite.sh.
-#   install REPO        REPO is a life-os-v7 checkout; copies the ticker, the five watchdog modules it runs and the four units (changes nothing live: no timer is enabled)
+#   install REPO        REPO is a life-os-v7 checkout; copies the ticker, the six watchdog modules it runs and the four units (changes nothing live: no timer is enabled)
 #   credential github   pipe the fine-grained GitHub token in (life-os-v7 only: Actions read/write, Issues read/write, Variables read); stored encrypted, never shown
 #   credential ntfy     pipe the phone topic in; stored encrypted, never shown
 #   dry                 credentials present and the alert-switch variables readable; dispatches nothing, pushes nothing
@@ -16,7 +16,7 @@ set -euo pipefail
 OPT=/opt/lifeos-ticker; CREDS=/etc/credstore.encrypted; UNITS=/etc/systemd/system
 PROG="$OPT/ticker.py"; GH="$CREDS/lifeos-ticker.github"; NT="$CREDS/lifeos-ticker.ntfy"
 UNIT_FILES="lifeos-ticker-tick.service lifeos-ticker-tick.timer lifeos-ticker-watch.service lifeos-ticker-watch.timer"
-MODULES="gate.py alerts.py alert_registry.py alert_settings.py redact.py drift.py"
+MODULES="gate.py alerts.py alert_registry.py alert_settings.py redact.py drift.py health.py"
 say() { printf '%s\n' "$*"; }
 die() { say "STOP: $*"; exit 1; }
 [ "$(id -u)" = 0 ] || die "run as root via opc"

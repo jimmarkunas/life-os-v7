@@ -299,7 +299,7 @@ class Installer(unittest.TestCase):
         modules = set(re.search(r'MODULES="([^"]+)"', self.SCRIPT.read_text()).group(1).split())
         for m in modules:
             for dep in re.findall(r"from lifeos\.platform import ([\w, ]+)", (ROOT / "lifeos/platform" / m).read_text()):
-                for name in dep.replace(" as registry", "").split(","):
+                for name in re.sub(r" as \w+", "", dep).split(","):
                     self.assertIn(name.strip() + ".py", modules, m)
             self.assertNotRegex((ROOT / "lifeos/platform" / m).read_text(), r"from lifeos\.(?!platform)", m)
 

@@ -2,7 +2,7 @@
 keeps the effective cadence at about one run per hour. Counts only; no job data. Stdlib only.
 
 decide(): run when the newest earlier TICK run (title "tick": scheduled or timer, never a manual run; not cancelled) started at least MIN_GAP_MINUTES ago, else skip.
-stale(): the newest successful run finished more than STALE_MINUTES ago -> the pipeline needs a human.
+stale(): the newest successful run finished more than STALE_MINUTES ago -> the pipeline needs a human; stalled() closes that incident only after the last 3 finished ticks passed (LIFE-690).
 failing(): three or more failed ticks in the last 24 hours -> open; none in 24 hours -> recovered; in between -> unchanged (hysteresis, no flapping).
 The watchdog owns the incident record (one GitHub issue per kind): it pushes first, and an incident whose push was not accepted stays labelled
 `push-pending` and is pushed again on the next watchdog run (every 30 minutes) until the phone service accepts it."""
@@ -12,6 +12,8 @@ import json
 import os
 import sys
 import urllib.request
+
+from lifeos.platform import health as health_model          # gate.health() below is the daily check-in's own function
 
 TICK_TITLE = "tick"           # the workflow's run-name for scheduled and timer runs; manual runs are "manual" and never block a tick
 MIN_GAP_MINUTES = 50          # three crons (:07 :27 :47) -> at most one run per ~hour; a dropped slot is covered by the next
@@ -117,11 +119,23 @@ def finished_ticks(runs):
     return sorted(done, key=lambda run: run.get("updated_at") or run.get("created_at") or "", reverse=True)
 
 
+def passes(runs):
+    """LIFE-690: True when the last RECOVER_PASSES finished ticks all succeeded: the one rule every run-based incident closes on (docs/platform/health-model.md)."""
+    return health_model.recovered([run.get("conclusion") for run in finished_ticks(runs)], RECOVER_PASSES)
+
+
+def stalled(runs, now, current_id=0):
+    """LIFE-690: -> True (open) | False (recovered) | None (unchanged). Open while no tick has succeeded for STALE_MINUTES; once a tick succeeded it closes only after the last 3 finished ticks passed,
+    so a single lucky run cannot close the incident and the next failure reopen it (open and recovered pushes only on a real change of state)."""
+    if stale(runs, now, current_id):
+        return True
+    return False if passes(runs) else None
+
+
 def failing(runs, now, window_hours=FAIL_WINDOW_HOURS):
     """-> True (open) | False (recovered) | None (unchanged). Counts failed ticks only: manual runs and cancelled runs never count.
     LIFE-681: the last RECOVER_PASSES finished ticks all succeeded -> recovered at once (and never opened), however many failures are still inside the window."""
-    recent = finished_ticks(runs)[:RECOVER_PASSES]
-    if len(recent) == RECOVER_PASSES and all(run.get("conclusion") == "success" for run in recent):
+    if passes(runs):
         return False
     cutoff = now - dt.timedelta(hours=window_hours)
     failed = sum(1 for run in runs if run.get("display_title") == TICK_TITLE and run.get("conclusion") == "failure"
@@ -239,12 +253,12 @@ def watch(now=None, push=None, checkin=True):
     Never touches job data."""
     runs = _api("actions/workflows/hourly.yml/runs?per_page=60")["workflow_runs"]
     now = now or dt.datetime.now(dt.timezone.utc)
-    is_stale, fail_signal, stuck_signal = stale(runs, now, 0), failing(runs, now), bool(stuck_ticks(runs, now))
+    is_stale, fail_signal, stuck_signal = stalled(runs, now, 0), failing(runs, now), bool(stuck_ticks(runs, now))
     changes = [
         sync_incident(LABEL, ISSUE_TITLE, "The newest successful hourly run finished more than 2.5 hours ago. Scheduled triggers may be dropped by GitHub, "
-                      "or a stage is failing. Open the Actions tab. This issue closes itself when a run succeeds.", is_stale,
+                      "or a stage is failing. Open the Actions tab. This issue closes itself when the last 3 hourly runs have passed.", is_stale,
                       ("V7 pipeline stalled", "No hourly run has succeeded for 2.5 hours. Check cron-job.org and the Actions tab.", "page", "pipeline_stalled"),
-                      ("V7 pipeline recovered", "A run succeeded.", "info", "pipeline_stalled_recovered"), push, now),
+                      ("V7 pipeline recovered", "The last 3 hourly runs passed.", "info", "pipeline_stalled_recovered"), push, now),
         sync_incident(FAIL_LABEL, FAIL_TITLE, "Three or more hourly runs failed in the last 24 hours (each one also pushed 'V7 run failed'). Open the Actions tab. "
                       "This issue closes itself when the last 3 hourly runs have passed (or after 24 hours with no failed run).", fail_signal,
                       ("V7 hourly runs failing repeatedly", "3+ failed runs in 24 hours. Open the Actions tab.", "page", "pipeline_failing"),
