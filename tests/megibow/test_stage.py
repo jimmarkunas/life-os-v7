@@ -21,6 +21,8 @@ class FakeNotion:
         self.legacy = ""
 
     def call(self, method, path, body=None):
+        if method == "POST" and path == "/search":                       # LIFE-672: no V3 register here, so the MEGIBOW_BLOCK_ID fallback is used
+            return {"results": []}
         if method == "GET" and path.startswith("/blocks/page/children"):
             return {"results": [{"id": "para", "type": "paragraph"}, {"id": "cal", "type": "callout"}], "has_more": False}
         if method == "GET" and path.startswith("/blocks/para"):
