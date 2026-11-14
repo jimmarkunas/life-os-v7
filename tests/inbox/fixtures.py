@@ -1,8 +1,12 @@
 """Synthetic Action Inbox fixtures: fake native records for the six sources in two workspaces, fake sources and a fake executor. Nothing here is real data, a real account or a credential."""
+import sqlite3
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from lifeos.inbox import policy
+from lifeos.inbox.ledger import Ledger
+from tests.kit.mysqlite import MySQLite
 
 CT = ZoneInfo("America/Chicago")
 NOW = datetime(2026, 11, 14, 14, 0, tzinfo=CT)
@@ -81,3 +85,38 @@ class Executor:
             raise self.raises
         expected = sorted(policy.EXPECTED_STATUS[action])[0]
         return {"record_id": record.record_id, "revision": self.revision, "source_status": self.status or expected}
+
+
+class FileDb(MySQLite):
+    """The MySQL-shaped test connection over a sqlite FILE: every worker opens its own connection to the same file, so claims race for real and survive a 'restart'."""
+
+    def __init__(self, path):
+        self.raw = sqlite3.connect(path, isolation_level=None, check_same_thread=False, timeout=30)
+        self.fail_on, self.statements = None, []
+
+
+def memory_ledger():
+    """A ledger over one shared in-memory database (one process, no restart)."""
+    shared = MySQLite()
+
+    @contextmanager
+    def connect():
+        yield shared
+    ledger = Ledger(connect)
+    ledger.ensure_schema()
+    return ledger
+
+
+def file_ledger(path, create=True):
+    """A ledger over the file at `path`: a new call is a new worker (or a restarted process) seeing the same durable state."""
+    @contextmanager
+    def connect():
+        connection = FileDb(path)
+        try:
+            yield connection
+        finally:
+            connection.raw.close()
+    ledger = Ledger(connect)
+    if create:
+        ledger.ensure_schema()
+    return ledger
