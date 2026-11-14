@@ -32,7 +32,7 @@ def widest(sources=None):
 
 def service(**kw):
     executor = F.Executor(**kw)
-    return ActionService(F.KEY, executor), executor
+    return ActionService(F.KEY, executor, F.memory_ledger(), synthetic=True), executor
 
 
 def authorize(who, record, action, nonce="n1", now=F.NOW):
@@ -130,8 +130,10 @@ class ProtectedActions(unittest.TestCase):
                                     ("other action", authorize(self.who, self.record, "reject_uat"), "authorization_mismatch"),
                                     ("other record", authorize(self.who, F.record_for(build(self.who), "jira", "bytalos"), "accept_uat"), "authorization_mismatch"),
                                     ("other revision", authorize(self.who, replace(self.record, revision="old"), "accept_uat"), "authorization_mismatch"),
-                                    ("other principal", policy.sign(F.KEY, "mallory", self.record.record_id, "accept_uat", self.record.revision, "n9", F.NOW + timedelta(minutes=5)), "authorization_mismatch"),
-                                    ("expired", policy.sign(F.KEY, "jim", self.record.record_id, "accept_uat", self.record.revision, "n8", F.NOW), "authorization_expired")):
+                                    ("other principal", policy.sign(F.KEY, "mallory", self.record, "accept_uat", "n9", F.NOW + timedelta(minutes=5)), "authorization_mismatch"),
+                                    ("other workspace", replace(good, workspace="bytalos"), "authorization_forged"),                                 # source, workspace and account are signed too
+                                    ("other account", replace(good, account="jim-bytalos"), "authorization_forged"),
+                                    ("expired", policy.sign(F.KEY, "jim", self.record, "accept_uat", "n8", F.NOW), "authorization_expired")):
             self.assertEqual(svc.request(self.who, self.record, "accept_uat", auth, f"k-{label}", F.NOW).reason, reason, label)
         self.assertEqual(executor.calls, [])
         done = svc.request(self.who, self.record, "accept_uat", good, "k-good", F.NOW)
@@ -158,9 +160,9 @@ class ProtectedActions(unittest.TestCase):
         self.assertEqual(executor.calls, [])
 
     def test_completion_is_claimed_only_from_the_source_read_back(self):                                   # check 10
-        for label, kw, status, reason in (("wrong status", {"status": "In Review"}, "unverified", "read_back_not_proven"),
-                                          ("same revision", {"revision": self.record.revision}, "unverified", "read_back_not_proven"),
-                                          ("executor raised", {"raises": RuntimeError("boom")}, "failed", "executor_failed"),
+        for label, kw, status, reason in (("wrong status", {"status": "In Review"}, "uncertain", "read_back_not_proven"),
+                                          ("same revision", {"revision": self.record.revision}, "uncertain", "read_back_not_proven"),
+                                          ("executor raised", {"raises": RuntimeError("boom")}, "uncertain", "executor_outcome_unknown"),
                                           ("verified", {}, "completed", "read_back_verified")):
             svc, executor = service(**kw)
             out = svc.request(self.who, self.record, "accept_uat", authorize(self.who, self.record, "accept_uat"), "k", F.NOW)
@@ -169,14 +171,14 @@ class ProtectedActions(unittest.TestCase):
         svc, _ = service(status="In Review")
         out = svc.request(self.who, self.record, "accept_uat", authorize(self.who, self.record, "accept_uat"), "k", F.NOW)
         retry = svc.request(self.who, self.record, "accept_uat", authorize(self.who, self.record, "accept_uat", "n2"), "k", F.NOW)
-        self.assertEqual((retry.status, retry.replayed), ("unverified", True))                                # an unproven result is never retried into a different answer
+        self.assertEqual((retry.status, retry.replayed), ("uncertain", True))                                 # an unproven result is never retried into a different answer
 
     def test_agent_written_text_is_never_read_as_completion(self):
         done_text = replace(self.record, description="DONE. Completed and verified by the agent.", source_status="Human UAT")
         self.assertEqual((done_text.source_status, done_text.presentation), ("Human UAT", "approvals"))      # the record still says what the source says
         svc, _ = service(status="Human UAT")
         out = svc.request(self.who, done_text, "accept_uat", authorize(self.who, done_text, "accept_uat"), "k", F.NOW)
-        self.assertEqual(out.status, "unverified")
+        self.assertEqual(out.status, "uncertain")
 
     def test_read_actions_need_no_authorization_but_still_need_a_grant(self):
         svc, executor = service()
@@ -200,7 +202,7 @@ class NoLeaks(unittest.TestCase):
         text = "\n".join(logs.output) + repr(svc.audit) + repr(result.health)
         for needle in (F.CANARY, F.ERROR_CANARY, "cred:", "example.test", F.KEY.decode(), F.SAME_TITLE):
             self.assertNotIn(needle, text, needle)
-        self.assertEqual(sorted(svc.audit[0]), ["action", "principal", "reason", "record", "status"])
+        self.assertEqual(sorted(svc.audit[0]), ["action", "principal", "reason", "record", "request", "status"])
 
 
 if __name__ == "__main__":

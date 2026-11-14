@@ -4,7 +4,7 @@ Every answer is (allowed, reason) with a fixed lower-case reason word; fail clos
 workspace, account and action (a grant can only narrow the matrix), and the record's own eligibility proven by its adapter. Concord approve and resume are two actions with two grants."""
 import hashlib
 import hmac
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import timedelta
 
 from lifeos.inbox.model import UNRELEASED_WORKSPACES, WORKSPACES, SOURCES, InboxError
@@ -18,10 +18,13 @@ MATRIX = {
     "calendar": READ_ACTIONS,
     "asana": READ_ACTIONS,
 }
-EXPECTED_STATUS = {                                                                         # what the source's own read-back must show before anything is called done (synthetic until each source is verified live)
+EXPECTED_STATUS = {                                                                         # what the source's own read-back must show before anything is called done: SYNTHETIC until a source is in VERIFIED_COMPLETION
     "accept_uat": {"Done"}, "reject_uat": {"In Progress", "Agent Go"}, "complete_task": {"completed"}, "approve": {"approved"}, "reject": {"rejected"},
     "request_changes": {"changes_requested"}, "resume_work": {"running"}, "confirm_resolution": {"resolved"}, "update_checkpoint": {"open", "waiting"},
 }
+SOURCE_OF_ACTION = {action: source for source, actions in MATRIX.items() for action in actions - READ_ACTIONS}
+VERIFIED_COMPLETION = frozenset()                                                           # sources whose EXPECTED_STATUS Jim matched to the real workflow; empty: no live completion can be claimed (LIFE-697)
+LIVE_WRITES_ENABLED = False                                                                 # no real action runs until Jim separately authorizes it and a source is in VERIFIED_COMPLETION
 AUTH_TTL = timedelta(minutes=5)
 
 
@@ -113,26 +116,42 @@ class ExactAuthorization:
     nonce: str
     expires_at: object
     mac: str
+    source: str = ""                                                                        # LIFE-697: also bound, so an authorization cannot cross a source, workspace or account
+    workspace: str = ""
+    account: str = ""
 
 
 def _mac(key, parts):
     return hmac.new(key, "\x1f".join(str(p) for p in parts).encode(), hashlib.sha256).hexdigest()
 
 
-def sign(key, principal_id, record_id, action, revision, nonce, expires_at):
-    return ExactAuthorization(principal_id, record_id, action, revision, nonce, expires_at, _mac(key, (principal_id, record_id, action, revision, nonce, expires_at.isoformat())))
+def _parts(auth):
+    return (auth.principal_id, auth.source, auth.workspace, auth.account, auth.record_id, auth.action, auth.revision, auth.nonce, auth.expires_at.isoformat())
+
+
+def sign(key, principal_id, record, action, nonce, expires_at):
+    draft = ExactAuthorization(principal_id, record.record_id, action, record.revision, nonce, expires_at, "", record.source, record.workspace, record.account)
+    return replace(draft, mac=_mac(key, _parts(draft)))
 
 
 def verify(key, auth, principal, record, action, now):
-    """-> None when the authorization is for exactly this principal, record revision and action and is unexpired and untampered; else a fixed reason."""
+    """-> None when the authorization is for exactly this principal, source, workspace, account, record revision and action and is unexpired and untampered; else a fixed reason."""
     if not isinstance(auth, ExactAuthorization):
         return "authorization_missing"
-    expect = _mac(key, (auth.principal_id, auth.record_id, auth.action, auth.revision, auth.nonce, auth.expires_at.isoformat()))
-    if not hmac.compare_digest(expect, auth.mac):
+    if not hmac.compare_digest(_mac(key, _parts(auth)), auth.mac):
         return "authorization_forged"
-    if (auth.principal_id, auth.record_id, auth.action, auth.revision) != (principal.principal_id, record.record_id, action, record.revision):
+    bound = (auth.principal_id, auth.source, auth.workspace, auth.account, auth.record_id, auth.action, auth.revision)
+    if bound != (principal.principal_id, record.source, record.workspace, record.account, record.record_id, action, record.revision):
         return "authorization_mismatch"
     return "authorization_expired" if auth.expires_at <= now else None
+
+
+def completion_proven(record, action, readback, synthetic):
+    """True only when the source's own read-back is for this record, on a NEW revision, with the status this action must end in; a live claim also needs the source in VERIFIED_COMPLETION."""
+    if not synthetic and SOURCE_OF_ACTION.get(action) not in VERIFIED_COMPLETION:
+        return False
+    return (isinstance(readback, dict) and readback.get("record_id") == record.record_id and readback.get("revision") not in (None, record.revision)
+            and readback.get("source_status") in EXPECTED_STATUS.get(action, ()))
 
 
 def mint(key, principal, record, action, nonce, now, ttl=AUTH_TTL):
@@ -140,4 +159,4 @@ def mint(key, principal, record, action, nonce, now, ttl=AUTH_TTL):
     allowed, reason = decide(principal, record, action, now)
     if not allowed or action in READ_ACTIONS:
         raise InboxError(reason if not allowed else "action_not_protected")
-    return sign(key, principal.principal_id, record.record_id, action, record.revision, nonce, now + ttl)
+    return sign(key, principal.principal_id, record, action, nonce, now + ttl)
