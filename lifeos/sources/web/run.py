@@ -137,6 +137,14 @@ def plan(source, listing, previous, now, budget, lane=DEFAULT_LANE, listed=None)
     return out
 
 
+def update_in_chunks(cursor, head, lead, ids, size=500):
+    """LIFE-677: one UPDATE per `size` ids (a list), not one per id: the driver runs an UPDATE's executemany as one statement per row, each a round trip through the store tunnel.
+    `head` ends at the id column; the rows touched are the same."""
+    for start in range(0, len(ids), size):
+        part = ids[start:start + size]
+        cursor.execute(f"{head} IN ({','.join(['%s'] * len(part))})", (*lead, *part))
+
+
 class SqlRepo:
     """Short connections only: nothing is held across network calls."""
 
@@ -167,16 +175,12 @@ class SqlRepo:
                             " suppress_reason=VALUES(suppress_reason), last_seen=VALUES(last_seen),"
                             " job_id=COALESCE(VALUES(job_id), job_id)",
                             (sid, job["id"], digest, ingest, why, now, now, job_ids.get(job["id"])))
-                    if o.unchanged:
-                        cursor.executemany("UPDATE v7_source_items SET last_seen=%s WHERE source_id=%s AND provider_job_id=%s",
-                                           [(now, sid, i) for i in o.unchanged])
+                    update_in_chunks(cursor, "UPDATE v7_source_items SET last_seen=%s WHERE source_id=%s AND provider_job_id", (now, sid), o.unchanged)
                     if o.relocate:                                   # D104: one pass until every stored place carries all its offices
                         cursor.executemany("UPDATE v7_jobs j JOIN v7_source_items i ON i.job_id = j.id SET j.location_text=%s"
                                            " WHERE i.source_id=%s AND i.provider_job_id=%s AND CHAR_LENGTH(j.location_text) < %s",
                                            [(loc[:2000], sid, i, min(len(loc), 2000)) for i, loc in o.relocate.items()])
-                    if o.removed:
-                        cursor.executemany("UPDATE v7_source_items SET state='REMOVED', last_seen=%s WHERE source_id=%s AND provider_job_id=%s",
-                                           [(now, sid, i) for i in o.removed])
+                    update_in_chunks(cursor, "UPDATE v7_source_items SET state='REMOVED', last_seen=%s WHERE source_id=%s AND provider_job_id", (now, sid), o.removed)
             if o.status == "UNCHANGED":                                     # D216: confirmed unchanged (304 or the same fingerprint): no item read, no item write, no run row
                 with connection.cursor() as cursor:
                     cursor.execute("UPDATE v7_sources SET due_at=%s, last_status='COMPLETE', last_reason=%s, last_complete_at=%s, failures=0, unchanged_runs=%s,"
