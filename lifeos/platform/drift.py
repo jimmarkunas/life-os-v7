@@ -20,7 +20,7 @@ class Surface(NamedTuple):
     unit: str
 
 
-_TICKER_MODULES = ("gate.py", "alerts.py", "alert_registry.py", "alert_settings.py", "redact.py", "drift.py")      # the MODULES list in install-ticker.sh
+_TICKER_MODULES = ("gate.py", "alerts.py", "alert_registry.py", "alert_settings.py", "redact.py", "drift.py", "health.py")      # the MODULES list in install-ticker.sh
 SURFACES = (
     Surface("ticker", "lifeos/edge/ticker/ticker.py", "/opt/lifeos-ticker/ticker.py", "lifeos-ticker-watch.timer"),
     *(Surface("ticker/" + m, "lifeos/platform/" + m, "/opt/lifeos-ticker/lifeos/platform/" + m, "lifeos-ticker-watch.timer") for m in _TICKER_MODULES),

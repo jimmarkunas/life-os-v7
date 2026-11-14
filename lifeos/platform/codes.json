@@ -218,5 +218,6 @@
   "SETTINGS_SEED_TARGET_MISSING": ["platform", "blocked", false, "The V7 settings page has no single code block starting with '# Notion addresses', so no address was copied onto it.", "Restore that block on the page."],
   "SETTINGS_SEED_VERIFY_FAILED": ["platform", "retry", false, "Addresses copied onto the V7 settings page did not read back.", "None; the next run copies them again."],
   "SETTINGS_REMEMBER_READBACK": ["platform", "retry", false, "The last accepted V7 settings did not read back from the private store.", "None; the next good read saves them again."],
-  "ITEM_FAILED": ["platform", "degraded", false, "One item of a stage failed with an error that carries no fixed code of its own; the other items were kept.", "None for one item; the stage fails only if every item failed."]
+  "ITEM_FAILED": ["platform", "degraded", false, "One item of a stage failed with an error that carries no fixed code of its own; the other items were kept.", "None for one item; the stage fails only if every item failed."],
+  "STATE_KEY_INVALID": ["platform", "terminal", false, "An alert state key was empty or malformed, so the alert was not built.", "None; fix the caller."]
 }

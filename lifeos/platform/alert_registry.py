@@ -53,6 +53,7 @@ REGISTRY = {
     "pipeline_failing_recovered": _info("platform", "No failed hourly run in 24 hours."),
     "tick_run_stuck": _info("platform", "An hourly tick run has been queued or running for over 40 minutes (LIFE-580); later ticks still run, the run needs a look (phone only)."),
     "tick_run_stuck_recovered": _info("platform", "No hourly tick run is stuck any more."),
+    "known_state_expired_*": _page("platform", "A known failure (the same item, the same fixed code, shown as WARN and never paged) is still failing after 7 days: one page, once (LIFE-690)."),
     "daily_check": _info("platform", "The daily check-in (LIFE-603): OK or DEGRADED, with the last 24 hours of hourly runs (counts only). Its absence is the alarm."),
     # --- the edge host (lifeos/edge/ticker/ticker.py, LIFE-301; INFO: phone only, Jim approved the alarm Nov 7 2026)
     "hermes_disk_full": _info("edge", "The Hermes disk image is 80% full or more."),

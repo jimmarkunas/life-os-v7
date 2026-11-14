@@ -141,6 +141,8 @@ def ntfy(topic: str, title: str, body: str, severity: str, post: Callable[..., A
 def push(key: str, title: str, body: str, topic: str | None = None, post: Callable[..., Any] | None = None) -> bool:
     """Send one registered alert (LIFE-75): the severity comes from the registry (lifeos/platform/alert_registry.py), and a key that is not listed is refused (False, nothing sent).
     The master switch, the mute, the flood cap and the channels Jim set apply exactly as for `ntfy`, which this wraps. `topic` defaults to NTFY_TOPIC."""
+    if not isinstance(key, str) or not key:
+        return False                                                                            # LIFE-690: a push without a state key is never sent
     spec = alert_registry.lookup(key)
     chosen = alert_settings.channels(key)
     if spec is None or not chosen:
