@@ -295,6 +295,38 @@ class QuietRunRow(unittest.TestCase):
         self.assertEqual(self.commit({"id": "affirm", "kind": "greenhouse", "company": "Affirm"}, nothing), ["v7_sources", "v7_source_runs"])
 
 
+class TouchInChunks(unittest.TestCase):
+    """LIFE-677: touching a board's unchanged postings is one statement per 500 ids, not one per posting (each statement is a round trip through the store tunnel)."""
+
+    def test_twelve_hundred_unchanged_postings_are_three_statements_with_every_id_once(self):
+        sent = []
+
+        class Cur:
+            def execute(self, sql, args=None):
+                sent.append((sql, args))
+        ids = [f"j{i}" for i in range(1200)]
+        run.update_in_chunks(Cur(), "UPDATE v7_source_items SET last_seen=%s WHERE source_id=%s AND provider_job_id", (NOW, "s1"), ids)
+        self.assertEqual([len(a) - 2 for _, a in sent], [500, 500, 200])
+        self.assertEqual([i for _, a in sent for i in a[2:]], ids)
+        self.assertTrue(all(sql.count("%s") == len(a) for sql, a in sent))
+        run.update_in_chunks(Cur(), "UPDATE x SET y=%s WHERE z", (1,), [])
+        self.assertEqual(len(sent), 3)                                           # no ids: no statement
+
+    def test_the_same_rows_are_touched_on_a_real_engine(self):
+        from unittest import mock
+        from tests.jobs.fakes_jobsdb import JobsDB
+        db = JobsDB()
+        board = [{**SOURCES[0], "id": "gh-touch", "slug": "touch"}]
+        full = lister.Listing(lister.COMPLETE, [job(1, "Technical Program Manager"), job(2, "Program Manager"), job(3, "Program Manager")])
+        seen = lambda: dict(db.raw.execute("SELECT provider_job_id, last_seen FROM v7_source_items WHERE source_id='gh-touch'").fetchall())
+        with mock.patch.object(run.store, "connect", return_value=db), mock.patch.object(run.store, "ensure_schema"), mock.patch.object(run, "update_in_chunks", wraps=run.update_in_chunks) as spy:
+            boards.run(600, True, NOW, lambda s: full, None, board)
+            later = NOW + timedelta(days=1)
+            boards.run(600, True, later, lambda s: lister.Listing(lister.COMPLETE, full.jobs[:2] + [job(3, "Program Manager", "London, UK")]), None, board)
+        self.assertTrue(spy.called)
+        self.assertEqual({str(v)[:19] for v in seen().values()}, {str(later)[:19]})       # the two untouched postings were touched by the chunked UPDATE, the changed one by its insert
+
+
 class StillListedIsNotRemoved(unittest.TestCase):
     """Production-shaped (the real SqlRepo statements over the in-memory Jobs store): a stored job that the screen no longer keeps while the
     employer still lists it stays CURRENT; only a job gone from the complete listing is REMOVED."""
