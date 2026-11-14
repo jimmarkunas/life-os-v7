@@ -108,8 +108,27 @@ def relay_proof(message):
     return ""
 
 
+INMAIL_SENDERS = ("inmail-hit-reply", "hit-reply")                  # LIFE-706: LinkedIn's hiring-tool InMail templates (email_hire_inmail_initial_single_01, email_hire_inmail_reply_to_member_01)
+CREDENTIALS = re.compile(r",\s*[A-Z][A-Za-z.]{1,6}(?:,\s*[A-Z][A-Za-z.]{1,6})*$")
+
+
+def _is_inmail(address):
+    local, _, domain = address.partition("@")
+    return local in INMAIL_SENDERS and (domain == "linkedin.com" or domain.endswith(".linkedin.com"))
+
+
 def _relay(message):
     subject, body = message.get("subject", ""), message.get("body", "")
+    if _is_inmail(message["sender_address"]):
+        # LIFE-706: an InMail comes from LinkedIn's hiring tools with the sender's own display name; its subject is the sender's, not a notification phrase. The sender having used a hiring product
+        # is the recruiting evidence; the row is still Needs review like every relay row. Every other LinkedIn sender keeps the rules below (D193).
+        name = CREDENTIALS.sub("", message.get("sender_name", "").strip())
+        if not name:
+            found = RELAY_BODY_NAME.search(body[:600])
+            name = found.group("name").strip() if found else ""
+        if not name:
+            return HUMAN_NAMED_RELAY, "RELAY_NAME_UNREADABLE", {"name": "", "relay": True}
+        return HUMAN_NAMED_RELAY, "RELAY_NAMED", {"name": name, "relay": True, "proof": "LINKEDIN_RECRUITER_INMAIL"}
     if not (RELAY_PHRASE.search(subject) or RELAY_PHRASE.search(body[:1500]) or " via " in message.get("sender_name", "")):
         return OTHER, "RELAY_NOT_A_MESSAGE", {}                         # alerts, digests and acknowledgements from a board
     name = message.get("sender_name", "") if " via " in message.get("sender_name", "") else ""

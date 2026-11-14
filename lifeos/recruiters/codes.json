@@ -22,6 +22,7 @@
   "FIRST_PERSON": ["recruiters", "state", false, "Classifier reason: the sender writes in first person.", "None."],
   "HEADING_MISSING": ["recruiters", "blocked", false, "The expected heading is missing.", "Restore the heading."],
   "HEADLINE_TITLE": ["recruiters", "state", false, "Classifier reason: a headline title.", "None."],
+  "LINKEDIN_RECRUITER_INMAIL": ["recruiters", "state", false, "Classifier evidence: the message came from LinkedIn's hiring-tool InMail sender, so the person named is a recruiter-side sender.", "None."],
   "HIRING_MANAGER": ["recruiters", "state", false, "Classifier reason: the signature names a hiring manager.", "None."],
   "HUMAN_NAMED_RELAY": ["recruiters", "state", false, "Classifier class: a relay naming a human.", "None."],
   "NAME_UNREADABLE": ["recruiters", "state", false, "Classifier reason: the sender's name could not be read.", "None."],
