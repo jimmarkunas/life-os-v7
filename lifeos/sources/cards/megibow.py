@@ -169,10 +169,15 @@ def _finish(counts, live, environ, notion, connection, now, today, msgs, evs, ow
     excluded = {d.strip().lower() for d in (environ.get("MEGIBOW_EXCLUDED_DOMAINS") or "").split(",") if d.strip()}
     review_id = (environ.get("MEGIBOW_REVIEW_DB_ID") or REVIEW_SOURCE).strip().replace("collection://", "")
     notion = notion or _writer(environ)
-    block_id = (environ.get("MEGIBOW_BLOCK_ID") or "").strip()
+    try:                                                     # LIFE-672: the V3 block ID register (row jim.megibow) is the address; the MEGIBOW_BLOCK_ID secret is only the fallback
+        block_id, counts["block_source"] = v3.registered(notion, "jim.megibow"), "register"
+    except v3.V3Error as error:
+        if str(error) != "MEGIBOW_V3_TARGET_NOT_FOUND":
+            raise
+        block_id, counts["block_source"] = (environ.get("MEGIBOW_BLOCK_ID") or "").strip(), "secret"
     if not block_id:
         raise card._fail("BLOCK_NOT_FOUND")                  # LIFE-385 (D250-13): a fixed block id only, never found by the table's shape
-    layout_v3 = v3.is_v3(notion, block_id)                   # LIFE-672: the V3 callout (heading first) once Jim points MEGIBOW_BLOCK_ID at it; the V2 block until then
+    layout_v3 = v3.is_v3(notion, block_id)                   # the V3 callout (heading first); the V2 block while the register has no jim.megibow row
     if legacy is None:                                                    # the old sheet's totals, typed once into the block as "Legacy totals: ..."; read, then remembered
         legacy = card.read_legacy(notion, block_id)
         if legacy and live and connection is not None:
