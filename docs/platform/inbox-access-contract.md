@@ -44,3 +44,19 @@ Owner of every row below is Jim: a named account, a scoped credential in the cen
 | No receipt, no read; failures and receipts leak no text | `test_if_the_receipt_cannot_be_written_nothing_is_read`, `test_a_failed_read_is_recorded_as_its_type_only_and_hides_the_message`, `test_receipts_hold_ids_and_fixed_words_only` | Yes | No |
 | Oracle-local OpenClaw wrappers answer Jira, Calendar and Todoist reads | `docs/EDGE_GATEWAY_SCOPE.md` consumer status (Oct 11 and 13) | n/a | Accepted, but not an Inbox grant |
 | Any real Inbox grant, credential, or off-host path | none | n/a | Not proven |
+
+## F. Jira and Calendar reads (LIFE-708): what exists and what Jim must approve
+
+**Code (`lifeos/inbox/sources.py`, tests `tests/inbox/test_sources.py`).** `JiraSource` and `CalendarSource` plug into `inbox.build_inbox`. Each gets its data from ONE read function, never a client object: `Jira.board_issues` (GET) and `GoogleCalendar.list_events` (GET). A test records every call made through the real clients and sees only GET; another scans the module and finds no write name and no client construction. Records carry the canonical id, the source link, owner (Jira account id, or the calendar identity), the source's own status, a time zone and a revision that changes with the status; there is no description text and no shadow task store. A grant that is missing, revoked or expired, a TGP workspace, an erroring source, an incomplete listing and a malformed row each fail alone and show as health (`no_grant`, `refused`, `unavailable`, `degraded`) while the other sources keep their rows. The default reader refuses with `live_reads_not_authorized` and builds no client, so nothing can reach a provider today; `LIVE_READS_ENABLED` is False.
+
+**Proof required before any live fetch (all recorded by Jim, in Jira).**
+
+| Item | Jira | Calendar |
+|---|---|---|
+| Account, per workspace | Personal and Bytalos each named separately | Personal and Bytalos each named separately |
+| Data scope | the board per workspace, and the query: Human UAT issues, plus open issues assigned to Jim; fields: title, status, assignee id, due date, updated | the calendars per workspace, a 14 day window; fields: title, start, status, link, updated |
+| Credential | one scoped read token per workspace, held by name in the central secrets service | one credential per workspace with a READ-ONLY Google scope |
+| Gap found | none for reads; the Jira client also holds write methods, which the source never receives | the existing credential scope is `calendar.events`, which also allows writes at the provider; a read-only scope (`calendar.events.readonly`) credential is needed so no write is possible even by mistake |
+| Deployment | a read stage registered in the stage list and a grant record for the reading principal | same |
+
+**Not yet allowed.** A live stage runs inside the hourly pipeline, so under the LIFE-686 freeze it waits until that epic is Done, or until Jim approves it as a Jim-requested change. No Oracle work is needed for these two reads. Human UAT evidence is the issue's own link for now (its receipt comments live there); richer evidence such as linked pull requests belongs to the Human UAT workflow mapping in LIFE-714.
