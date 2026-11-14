@@ -137,6 +137,22 @@ class Screen(unittest.TestCase):
         self.assertEqual(log.getvalue().strip(), "refused: FORM_ALTERED")
         self.assertEqual(rec.writes, [])
 
+    def test_a_row_with_line_breaks_closes_when_the_browser_sends_them_as_crlf(self):
+        """LIFE-695: Nov 14 2026, closing an old recruiter always showed 'no longer valid': a browser submits line breaks in hidden fields as CR+LF, and the fingerprint of the person, company and role no longer matched."""
+        rec = Rows([page("Avery\nSynthetic", company="Example\nStaffing\nInc", role="Program Manager\n", action="Needs Action", pid=ROW)])
+        rec.source = RECRUITERS
+        svc = Svc(Ledger(), rec)
+
+        def browser(form):
+            return {k: v.replace("\r\n", "\n").replace("\n", "\r\n") for k, v in form.items()}
+        _, _, body, _ = svc("GET", "/recruiter", {"r": ROW})
+        review = svc("POST", "/recruiter", form=browser({**fields(body), "status": "Completed", "step": "review"}))
+        self.assertEqual(review[0], 200, review[2])
+        done = svc("POST", "/recruiter", form=browser({**fields(review[2]), "step": "confirm"}))
+        self.assertEqual(done[0], 200, done[2])
+        self.assertEqual(store.read(rec.pages[0])["action"], "Completed")
+        self.assertEqual(close_app._fingerprint("o", ROW, "A\r\nB", "C\rD", False), close_app._fingerprint("o", ROW, "A\nB", "C\nD", False))
+
     def test_a_row_changed_after_the_form_opened_is_a_conflict(self):
         rec = world()
         svc = Svc(Ledger(), rec)

@@ -14,7 +14,7 @@ from lifeos.jobs import hiring_pipeline
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 from lifeos.platform.notion_text import block_text as _plain
 from lifeos.hiring import close_screen as S, decision as D, models as M
-from lifeos.sources.apps.signed import HTML, gate, handler, invalid, live, mac as _mac, same as _same, stopper, unverified
+from lifeos.sources.apps.signed import HTML, gate, handler, invalid, live, mac as _mac, norm, same as _same, stopper, unverified
 
 CLOSURE = ("lifeos/hiring/close_screen.py", "lifeos/hiring/decision.py", "lifeos/hiring/models.py", "lifeos/jobs/__init__.py", "lifeos/jobs/hiring_pipeline.py", "lifeos/platform/names.py",
            "lifeos/sources/apps/close_app.py", "lifeos/sources/apps/__init__.py", "lifeos/sources/apps/signed.py", "lifeos/sources/apps/outreach_app.py", "lifeos/recruiters/__init__.py", "lifeos/recruiters/outreach.py", "lifeos/recruiters/notion.py", "lifeos/recruiters/identity.py",
@@ -57,7 +57,7 @@ def resolve(client, config, pid):
 
 
 def _fingerprint(kind, pid, company, role, closed):
-    return hashlib.sha256(f"{kind}|{pid}|{company}|{role}|{closed}".encode()).hexdigest()[:16]
+    return hashlib.sha256(norm(f"{kind}|{pid}|{company}|{role}|{closed}").encode()).hexdigest()[:16]
 
 
 def _fields(secret, login, opp, exp):
@@ -163,7 +163,7 @@ _complete_stop = stopper("A completion counts only after it is read back from th
 
 
 def _complete_fp(a):
-    return hashlib.sha256(f"{a['id']}|{a['key']}|{a['company']}|{a['role']}".encode()).hexdigest()[:16]
+    return hashlib.sha256(norm(f"{a['id']}|{a['key']}|{a['company']}|{a['role']}").encode()).hexdigest()[:16]
 
 
 def _complete_get(req, who, secrets):

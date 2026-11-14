@@ -13,8 +13,13 @@ HTML = "text/html; charset=utf-8"
 STEPS = ("cancel", "edit", "review", "confirm")
 
 
+def norm(value):
+    """LIFE-695: a browser submits every form value with its line breaks as CR+LF, so a text with a line break must enter a signature or a fingerprint the same on both sides: CR+LF and lone CR become LF."""
+    return str(value).replace("\r\n", "\n").replace("\r", "\n")
+
+
 def mac(secret, *parts):
-    return hmac.new(secret, "\x1f".join(map(str, parts)).encode(), hashlib.sha256).hexdigest()
+    return hmac.new(secret, "\x1f".join(map(norm, parts)).encode(), hashlib.sha256).hexdigest()
 
 
 def same(a, b):
