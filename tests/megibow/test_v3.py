@@ -17,6 +17,7 @@ DASHES = [["Activity", "Sep 21", "Sep 28", "Oct 5", "Oct 12", "Oct 19", "Oct 26"
 
 
 MATT_ID, GONE_ID = "4183c5a0-5926-8115-b53c-c45f6efd8ec2", "4183c5a0-5926-8115-b53c-000000000000"
+JIM_ID, ELSEWHERE_ID = "4183c5a0-5926-81be-9e19-e85714dc256f", "4183c5a0-5926-81be-9e19-111111111111"
 
 
 def para(i, text):
@@ -25,12 +26,12 @@ def para(i, text):
 
 class Page:
     """One V3 page: Jim's and Matt's callouts, their summary pages, the register and Matt's database. Any write outside a callout or summary page fails the test."""
-    def __init__(self, matt_rows=None, matt_down=False, register_block=MATT_ID):
+    def __init__(self, matt_rows=None, matt_down=False, register_block=MATT_ID, jim_block="jim"):
         self.blocks = {}
         self.kids = {}
         for who, note in (("jim", None), ("matt", "A dash means the week is not entered yet. It is never counted as zero.")):
             kids = [f"{who}-h", f"{who}-stamp", f"{who}-tbl"] + ([f"{who}-note"] if note else []) + [f"{who}-sum"]
-            self.blocks[who] = {"id": who, "type": "callout", "callout": {"rich_text": []}}
+            self.blocks[who] = {"id": who, "type": "callout", "parent": {"type": "page_id", "page_id": "v3page"}, "callout": {"rich_text": []}}
             self.blocks[f"{who}-h"] = {"id": f"{who}-h", "type": "heading_3", "heading_3": {"rich_text": CELL(f"Megibow ({who.title()})")}}
             self.blocks[f"{who}-stamp"] = para(f"{who}-stamp", "Not updated yet")
             self.blocks[f"{who}-tbl"] = {"id": f"{who}-tbl", "type": "table", "table": {"table_width": 10}}
@@ -46,8 +47,9 @@ class Page:
                 self.kids[f"{who}-tbl"].append(rid)
             self.blocks[f"{who}-page-p"] = para(f"{who}-page-p", "Machine page.")
             self.kids[f"{who}-page"] = [f"{who}-page-p"]
-        self.blocks["reg-code"] = {"id": "reg-code", "type": "code", "code": {"rich_text": CELL(f"R2  jim.megibow     jim\nR3  matt.megibow    {register_block}\nR4L jim.week x")}}
+        self.blocks["reg-code"] = {"id": "reg-code", "type": "code", "code": {"rich_text": CELL(f"R2  jim.megibow     {jim_block}\nR3  matt.megibow    {register_block}\nR4L jim.week x")}}
         self.kids["register"] = ["reg-code"]
+        self.blocks["elsewhere"] = {"id": "elsewhere", "type": "callout", "parent": {"type": "page_id", "page_id": "otherpage"}, "callout": {"rich_text": []}}
         self.matt_rows, self.matt_down = matt_rows or [], matt_down
         self.writes, self.inserted = [], 0
 
@@ -61,7 +63,7 @@ class Page:
         return [[c[0]["text"]["content"] for c in self.blocks[r]["table_row"]["cells"]] for r in self.kids[f"{who}-tbl"]]
 
     def call(self, method, path, body=None):
-        path = path.replace(MATT_ID, "matt")
+        path = path.replace(MATT_ID, "matt").replace(JIM_ID, "jim").replace(ELSEWHERE_ID, "elsewhere")
         if method == "POST" and path == "/search":
             kind = body["filter"]["value"]
             if kind == "page":
@@ -74,6 +76,9 @@ class Page:
             return {"properties": {"Week Start": {"type": "date"}, "Week": {"type": "title"}, **{a: {"type": "number"} for a in C.ACTIVITIES}}}
         if method == "GET" and path.startswith("/data_sources/"):
             return {"parent": {"type": "database_id", "database_id": "review-db"}, "properties": {n: {"type": t} for n, t in review.SCHEMA.items()}}
+        if method == "GET" and path.startswith("/pages/"):
+            name = v3.V3_PAGE_TITLE if path.endswith("v3page") else "Some other page"
+            return {"id": path.split("/")[2], "properties": {"title": {"type": "title", "title": [{"plain_text": name}]}}}
         if method == "GET" and "/children" in path:
             parent = path.split("/")[2]
             if parent not in self.kids:
@@ -87,7 +92,7 @@ class Page:
         raise AssertionError((method, path))
 
     def call_once(self, method, path, body=None):
-        path = path.replace(MATT_ID, "matt")
+        path = path.replace(MATT_ID, "matt").replace(JIM_ID, "jim").replace(ELSEWHERE_ID, "elsewhere")
         bid = path.split("/")[2]
         if path.endswith("/children"):
             assert bid in ("jim", "matt"), path                                  # a new paragraph only ever goes inside a callout
@@ -275,6 +280,19 @@ class Jim(unittest.TestCase):
             run(page, gcal=Down())
         self.assertEqual(page.cells("jim"), DASHES)
         self.assertTrue(page.text("jim-stamp").startswith("DEGRADED at"))
+
+    def test_the_register_row_names_jims_callout_so_no_github_value_is_needed(self):
+        page = Page([row(WEEKS[1], 3)], jim_block=JIM_ID)
+        counts = run(page, env=dict(ENV, MEGIBOW_BLOCK_ID="v2-block-that-must-not-be-touched"))
+        self.assertEqual((counts["block_source"], counts["layout"]), ("register", "v3"))
+        self.assertTrue(page.text("jim-stamp").startswith("Last refreshed"))
+
+    def test_a_register_row_pointing_off_the_v3_page_is_refused(self):
+        page = Page([row(WEEKS[1], 3)], register_block=ELSEWHERE_ID)
+        before = page.snapshot()
+        out = matt(page)
+        self.assertEqual((out["status"], out["code"]), ("DEGRADED", "MEGIBOW_V3_TARGET_NOT_FOUND"))
+        self.assertEqual(page.snapshot(), before)
 
     def test_jims_v3_totals_equal_the_v2_table_for_the_same_weeks(self):
         outcomes = [{"status": C.COUNTED, "activity": a, "week": w, "key": f"{a}{w}{i}", "reason": "x"} for i, (a, w) in enumerate(

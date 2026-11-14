@@ -20,7 +20,7 @@ SUMMARY_MAX = 1000
 MIN_ENTERED = 4
 REGISTER_TITLE = "V3 block ID register (Jim & Matt V3)"
 MATT_SOURCE_TITLE = "Matt — MegIBOW weekly (manual)"
-MATT_KEY = re.compile(r"\bmatt\.megibow\s+([0-9a-fA-F-]{32,36})\b")
+V3_PAGE_TITLE = "Jim & Matt V3"
 MATT_FIELDS = {"Week Start": "date", **{a: "number" for a in C.ACTIVITIES}}
 
 
@@ -185,14 +185,25 @@ def find(client, title, kind):
     return hits[0]
 
 
-def matt_block(client):
-    """Matt's callout id, read from the V3 block ID register row `matt.megibow`."""
+def registered(client, key):
+    """A callout id from the V3 block ID register row `key` (jim.megibow, matt.megibow), accepted only when that callout sits on the Jim & Matt V3 page,
+    so an edited register row can never point a write anywhere else. -> id; else MEGIBOW_V3_TARGET_NOT_FOUND."""
+    pattern = re.compile(r"(?:^|\s)" + re.escape(key) + r"\s+([0-9a-fA-F-]{32,36})\b")
     register = find(client, REGISTER_TITLE, "page")
     for block in report_region.children(client, register, V3Error):
-        match = MATT_KEY.search(report_region.plain(block))
+        match = pattern.search(report_region.plain(block))
         if match:
-            return match.group(1)
+            block_id = match.group(1)
+            parent = (_get_block(client, block_id).get("parent") or {}).get("page_id") or ""
+            if not parent or _title(client.call("GET", f"/pages/{quote(parent, safe='')}")).strip() != V3_PAGE_TITLE:
+                raise V3Error("MEGIBOW_V3_TARGET_NOT_FOUND")
+            return block_id
     raise V3Error("MEGIBOW_V3_TARGET_NOT_FOUND")
+
+
+def matt_block(client):
+    """Matt's callout id, from the register row `matt.megibow`."""
+    return registered(client, "matt.megibow")
 
 
 def matt_rows(client, source_id):
