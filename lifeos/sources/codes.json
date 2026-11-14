@@ -85,7 +85,7 @@
   "QUERY_INCOMPLETE": ["outreach", "degraded", false, "A Notion query returned an incomplete result.", "None; retried."],
   "REGION_NOT_UNIQUE": ["outreach", "blocked", false, "More than one region matches.", "Remove the extra region."],
   "REGION_SHAPE_INVALID": ["outreach", "bug", false, "The region is not the expected shape.", "Check the page."],
-  "WEB_BOARDS_FAILING": ["web", "retry", true, "At least three web boards failed and they are at least half of the boards due in this run.", "Read the boards line and the job summary table for the failing boards; the next run retries them.", "info"],
+  "WEB_BOARDS_FAILING": ["web", "retry", true, "At least three web boards failed (not counting not-found or slow saves) and they are at least half of the boards due in this run.", "Read the boards line and the job summary table for the failing boards; the next run retries them.", "info"],
   "TITLEWATCH_SEARCH_FAILED": ["titlewatch", "degraded", false, "A title-watch search failed.", "None; retried."],
   "UNEXPECTED_QUERY": ["sandbox", "blocked", false, "The proof saw an unexpected query.", "Check the proof."],
   "WORKER_OFF_CONTRACT": ["resume", "bug", false, "The résumé worker's reply was not the expected shape.", "Compare the Edge service version."],
