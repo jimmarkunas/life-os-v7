@@ -539,6 +539,39 @@ class RecruitmentTitle(unittest.TestCase):
         self.assertFalse(C.FIRST_PERSON.search("I am the recruitment lead for this hire"[:0] + "I am in recruitment marketing"))
         self.assertTrue(C.SIGNATURE.search("Recruitment Consultant | Acme"))
 
+class LinkedInInMailTests(unittest.TestCase):
+    """LIFE-706 (Jim, Nov 14 2026): recruiters' LinkedIn InMails arrive from LinkedIn's hiring-tool senders with the recruiter's own name and subject, no 'messaged you' phrase, and were dropped as 'not a message'."""
+    INMAIL = ("Jim, Senior AEM Business Consultant Opportunity - Remote !\n\n        Kayte Example\n\n        Reply\n        https://www.linkedin.com/messaging/thread/2-XXX/\n\nHi Jim,\n\n"
+              "Happy Friday! I'm with Example Select and am hiring for a client. If you're interested, please send your updated resume.\n\nAll the best,\nKayte Example\n\n"
+              "----------------------------------------\n\nThis email was intended for Jim Markunas (Technical Recruiter)\nYou are receiving LinkedIn notification emails.\n")
+
+    def verdict(self, **kw):
+        msg = mail(**kw)
+        shape, reason, evidence = C.classify(msg)
+        return shape, reason, evidence, qualify.qualify(msg, shape, reason, evidence)
+
+    def test_an_inmail_from_the_hiring_tool_becomes_a_needs_review_row(self):
+        shape, reason, evidence, (verdict, c) = self.verdict(sender_name="Kayte Example", address="inmail-hit-reply@linkedin.com", subject="Jim, Senior AEM Business Consultant Opportunity - Remote !", body=self.INMAIL)
+        self.assertEqual((shape, reason, evidence["proof"], verdict, c["person"], c["needs_review"]), (C.HUMAN_NAMED_RELAY, "RELAY_NAMED", "LINKEDIN_RECRUITER_INMAIL", "CANDIDATE", "Kayte Example", True))
+
+    def test_a_reply_notice_and_a_name_with_credentials_qualify_too(self):
+        body = "Message replied: Investment Firm Hiring Program Manager\nInMail: You have a new message\n\n        Will Example, MBA\n\n      Reply\n      https://www.linkedin.com/messaging/thread/2-YYY/\n\nJD attached\n"
+        shape, reason, evidence, (verdict, c) = self.verdict(sender_name="Will Example, MBA", address="hit-reply@linkedin.com", subject="Message replied: Investment Firm Hiring Program Manager", body=body)
+        self.assertEqual((shape, reason, verdict, c["person"]), (C.HUMAN_NAMED_RELAY, "RELAY_NAMED", "CANDIDATE", "Will Example"))
+
+    def test_an_inmail_with_no_readable_name_is_unresolved_and_makes_no_row(self):
+        shape, reason, evidence, (verdict, detail) = self.verdict(sender_name="", address="inmail-hit-reply@linkedin.com", subject="Opportunity", body="No header name here.")
+        self.assertEqual((shape, verdict), (C.HUMAN_NAMED_RELAY, "UNRESOLVED"))
+
+    def test_every_other_linkedin_sender_keeps_its_rule(self):
+        """D193 stays for ordinary members: invitations, job alerts, news and a digest with no recruiting evidence."""
+        for address, subject in (("invitations@linkedin.com", "I want to connect"), ("jobalerts-noreply@linkedin.com", "Manager role is hiring"), ("editors-noreply@linkedin.com", "These fans are not happy")):
+            self.assertEqual(self.verdict(sender_name="Pat Example", address=address, subject=subject, body="Hello")[:2], (C.OTHER, "RELAY_NOT_A_MESSAGE"), address)
+        shape, reason, _, (verdict, _) = self.verdict(sender_name="Pat Example via LinkedIn", address="messaging-digest-noreply@linkedin.com", subject="Pat just messaged you", body="1 new message awaits your response\n\nPat Example\n")
+        self.assertEqual((shape, reason, verdict), (C.HUMAN_NAMED_RELAY, "RELAY_RECRUITING_UNVERIFIED", "UNRESOLVED"))
+        self.assertEqual(self.verdict(sender_name="Pat Example", address="inmail-hit-reply@example.com", subject="Opportunity", body="Hello")[:2], (C.OTHER, "NO_RECRUITER_EVIDENCE"))      # only LinkedIn's own domain
+
+
 if __name__ == "__main__":
     unittest.main()
 
