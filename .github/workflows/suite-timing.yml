@@ -1,0 +1,91 @@
+name: suite-timing
+# LIFE-705: how long the full unit-test suite takes on fresh runners. Manual only, no secrets, nothing written: `runs` full-suite runs start together, each on its own runner with the same
+# command pr-tests runs (`shards` shards of whole test modules, tests/shard.py), then one report job prints min, median, p95 and max and fails if any run reaches the 120 s CI limit.
+# Runners started in the same minute measure runner-to-runner spread, not hour-to-hour drift. Every shard also prints its measured seconds per module (`shard-seconds`), the raw
+# material for tests/shard-weights.json (`python -m tests.shard --from-logs`).
+on:
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: "How many full-suite runs, each on its own runner, all at once (1 to 20)"
+        type: string
+        default: "10"
+      shards:
+        description: "How many shards each run uses (pr-tests uses the same number)"
+        type: string
+        default: "3"
+permissions:
+  contents: read
+  actions: read                                   # the report job reads this run's job timings and logs
+concurrency:
+  group: life-os-v7-suite-timing
+  cancel-in-progress: false
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - id: matrix
+        name: One entry per run (a whole number from 1 to 20, else the run stops)
+        env:
+          SUITE_TIMING_RUNS: ${{ inputs.runs }}
+        run: |
+          n="${SUITE_TIMING_RUNS:-10}"
+          case "$n" in ''|*[!0-9]*) echo "::error::runs must be a whole number"; exit 1;; esac
+          if [ "$n" -lt 1 ] || [ "$n" -gt 20 ]; then echo "::error::runs must be from 1 to 20"; exit 1; fi
+          echo "matrix=[$(seq -s, 1 "$n")]" >> "$GITHUB_OUTPUT"
+  timing:
+    needs: plan
+    name: timing (${{ matrix.run }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        run: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - name: Checkout the exact commit (own git fetch; the token is passed once and never stored)
+        run: |
+          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
+          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=2 origin "$GITHUB_SHA"
+          git checkout -q --detach FETCH_HEAD
+      - uses: ./.github/actions/python
+      - name: Test-only dependency (PyYAML, for the workflow contract tests)
+        run: pip install --require-hashes -r requirements-test.lock
+      - name: Full suite (the shards pr-tests runs, side by side; prints each shard's seconds)
+        env:
+          SUITE_TIMING_SHARDS: ${{ inputs.shards }}
+        run: |
+          n="${SUITE_TIMING_SHARDS:-3}"
+          start=$(date +%s)
+          pids=""
+          for k in $(seq 1 "$n"); do
+            python -m tests.shard "$k" "$n" > "shard-$k.log" 2>&1 &
+            pids="$pids $!"
+          done
+          status=0
+          for pid in $pids; do wait "$pid" || status=$?; done
+          elapsed=$(( $(date +%s) - start ))
+          grep -h '^shard' shard-*.log | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "full suite: exit ${status}, ${elapsed} s, ${n} shards" | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ "$status" -ne 0 ]; then tail -n 40 shard-*.log; exit "$status"; fi
+  report:
+    needs: timing
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout the exact commit (own git fetch; the token is passed once and never stored)
+        run: |
+          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
+          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=2 origin "$GITHUB_SHA"
+          git checkout -q --detach FETCH_HEAD
+      - uses: ./.github/actions/python
+      - name: Min, median, p95 and max of the suite's seconds (fails if any run is 120 s or more)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python -m tests.suite_timing

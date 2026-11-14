@@ -46,6 +46,8 @@ REPORT_CONFIRM flag:workflow Confirmation word a manual report run needs
 RETENTION_LIVE flag:workflow Lets the retention step delete for real
 STAGE workflow_only:workflow Which stage a manual run starts
 STAGES workflow_only:workflow List of stages a run starts
+SUITE_TIMING_RUNS workflow_only:workflow Input of the manual suite-timing workflow: how many full-suite runs, each on its own runner (1 to 20)
+SUITE_TIMING_SHARDS workflow_only:workflow Input of the manual suite-timing workflow: how many shards each run uses
 TEST_SEVERITY workflow_only:workflow Input of the watchdog test push: severity
 TICK flag True when the run was sent by the scheduler tick
 TINYFISH_API_KEY secret Search provider key (never printed)
