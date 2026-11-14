@@ -12,6 +12,7 @@ The ticket's rule: twice the slowest run of the last 100, rounded up to whole mi
 
 * A timeout is never raised; it is only tightened.
 * Floor of 5 minutes: a job's own set-up (checkout, Python, the Bitwarden helper that waits up to 400 s) varies.
+* A job whose Bitwarden helper waits W seconds keeps at least 3 x W: `tests/contracts/test_bws_helper.py` already requires that the helper's retry never takes more than a third of the job's limit, so those jobs (most domain jobs) stay at 15 to 30 minutes. The stage budgets below are what stops a slow stage early inside such a job.
 * A job whose slowest run reached 90% of its current limit keeps it and is listed for Jim below: it is at its limit and a smaller number would only cut real work.
 * A job with fewer than 10 measured runs, or none, keeps its value: too little evidence to tighten.
 * `amazon.yml` keeps 330 minutes: its backfill stage reads every historical month and runs for hours by design (D140).
@@ -30,49 +31,49 @@ The job timeouts in `.github/workflows` change in one separate workflow pull req
 | `branches.yml` | `archive` | 10 | 5 (pending) | 96 | 14 | 24 | twice the slowest run (24 s) rounded up to whole minutes, 5-minute floor |
 | `branches.yml` | `report` | 10 | 10 | 0 | - | - | not measured: no completed run in the last 100; keeps its current value |
 | `calendar.yml` | `calendar` | 15 | 15 | 6 | 12 | 18 | kept: only 6 measured runs (fewer than 10), slowest 18 s |
-| `diag.yml` | `diag` | 10 | 5 (pending) | 33 | 14 | 97 | twice the slowest run (97 s) rounded up to whole minutes, 5-minute floor |
+| `diag.yml` | `diag` | 10 | 10 | 33 | 14 | 97 | twice the slowest run (97 s) rounds to 10 min, not below the current 10: unchanged |
 | `diag.yml` | `interview_ui` | 5 | 5 | 10 | 240 | 302 | slowest run 302 s reached 90% of the current limit: keeps 5 min and is listed for Jim (the job is at its limit) |
-| `diag.yml` | `report` | 10 | 5 (pending) | 10 | 14 | 19 | twice the slowest run (19 s) rounded up to whole minutes, 5-minute floor |
+| `diag.yml` | `report` | 10 | 10 | 10 | 14 | 19 | twice the slowest run (19 s) rounds to 10 min, not below the current 10: unchanged |
 | `diag.yml` | `sandbox` | 5 | 5 | 4 | 10 | 30 | kept: only 4 measured runs (fewer than 10), slowest 30 s |
 | `diag.yml` | `trace` | 10 | 10 | 5 | 13 | 16 | kept: only 5 measured runs (fewer than 10), slowest 16 s |
-| `domains.yml` | `agenda` | 15 | 5 (pending) | 45 | 32 | 87 | twice the slowest run (87 s) rounded up to whole minutes, 5-minute floor |
-| `domains.yml` | `amazon` | 15 | 5 (pending) | 45 | 19 | 30 | twice the slowest run (30 s) rounded up to whole minutes, 5-minute floor |
+| `domains.yml` | `agenda` | 15 | 15 | 45 | 32 | 87 | twice the slowest run (87 s) rounds to 15 min, not below the current 15: unchanged |
+| `domains.yml` | `amazon` | 15 | 15 | 45 | 19 | 30 | twice the slowest run (30 s) rounds to 15 min, not below the current 15: unchanged |
 | `domains.yml` | `amazon_retention` | 15 | 15 | 45 | 255 | 556 | twice the slowest run (556 s) rounds to 19 min, not below the current 15: unchanged |
-| `domains.yml` | `bills` | 15 | 5 (pending) | 45 | 28 | 90 | twice the slowest run (90 s) rounded up to whole minutes, 5-minute floor |
-| `domains.yml` | `dcc` | 10 | 5 (pending) | 45 | 31 | 57 | twice the slowest run (57 s) rounded up to whole minutes, 5-minute floor |
+| `domains.yml` | `bills` | 15 | 15 | 45 | 28 | 90 | twice the slowest run (90 s) rounds to 15 min, not below the current 15: unchanged |
+| `domains.yml` | `dcc` | 10 | 10 | 45 | 31 | 57 | twice the slowest run (57 s) rounds to 10 min, not below the current 10: unchanged |
 | `domains.yml` | `gate` | 5 | 5 | 45 | 4 | 9 | twice the slowest run (9 s) rounds to 5 min, not below the current 5: unchanged |
-| `domains.yml` | `granola` | 20 | 5 (pending) | 45 | 36 | 56 | twice the slowest run (56 s) rounded up to whole minutes, 5-minute floor |
-| `domains.yml` | `hiring` | 15 | 5 (pending) | 46 | 92 | 124 | twice the slowest run (124 s) rounded up to whole minutes, 5-minute floor |
-| `domains.yml` | `hiring_outcomes` | 30 | 5 (pending) | 31 | 18 | 22 | twice the slowest run (22 s) rounded up to whole minutes, 5-minute floor |
-| `domains.yml` | `imessage` | 10 | 6 (pending) | 45 | 113 | 162 | twice the slowest run (162 s) rounded up to whole minutes, 5-minute floor |
-| `domains.yml` | `interview` | 30 | 23 (pending) | 31 | 442 | 678 | twice the slowest run (678 s) rounded up to whole minutes, 5-minute floor |
-| `domains.yml` | `jira` | 15 | 5 (pending) | 45 | 82 | 117 | twice the slowest run (117 s) rounded up to whole minutes, 5-minute floor |
-| `domains.yml` | `mail` | 10 | 5 (pending) | 45 | 28 | 90 | twice the slowest run (90 s) rounded up to whole minutes, 5-minute floor |
-| `domains.yml` | `megibow` | 20 | 12 (pending) | 45 | 36 | 334 | twice the slowest run (334 s) rounded up to whole minutes, 5-minute floor |
+| `domains.yml` | `granola` | 20 | 20 | 45 | 36 | 56 | twice the slowest run (56 s) rounds to 20 min, not below the current 20: unchanged |
+| `domains.yml` | `hiring` | 15 | 15 | 46 | 92 | 124 | twice the slowest run (124 s) rounds to 15 min, not below the current 15: unchanged |
+| `domains.yml` | `hiring_outcomes` | 30 | 30 | 31 | 18 | 22 | twice the slowest run (22 s) rounds to 30 min, not below the current 30: unchanged |
+| `domains.yml` | `imessage` | 10 | 10 | 45 | 113 | 162 | twice the slowest run (162 s) rounds to 10 min, not below the current 10: unchanged |
+| `domains.yml` | `interview` | 30 | 30 | 31 | 442 | 678 | twice the slowest run (678 s) rounds to 30 min, not below the current 30: unchanged |
+| `domains.yml` | `jira` | 15 | 15 | 45 | 82 | 117 | twice the slowest run (117 s) rounds to 15 min, not below the current 15: unchanged |
+| `domains.yml` | `mail` | 10 | 10 | 45 | 28 | 90 | twice the slowest run (90 s) rounds to 10 min, not below the current 10: unchanged |
+| `domains.yml` | `megibow` | 20 | 20 | 45 | 36 | 334 | twice the slowest run (334 s) rounds to 20 min, not below the current 20: unchanged |
 | `domains.yml` | `outlook` | 10 | 10 | 45 | 22 | 498 | twice the slowest run (498 s) rounds to 17 min, not below the current 10: unchanged |
 | `domains.yml` | `recruiters` | 30 | 30 | 54 | 86 | 1501 | twice the slowest run (1501 s) rounds to 51 min, not below the current 30: unchanged |
 | `domains.yml` | `report` | 5 | 5 | 8 | 8 | 10 | kept: only 8 measured runs (fewer than 10), slowest 10 s |
 | `fit-edge-test.yml` | `fit_edge` | 5 | 5 | 12 | 27 | 76 | twice the slowest run (76 s) rounds to 5 min, not below the current 5: unchanged |
-| `granola-auto.yml` | `auto` | 20 | 5 (pending) | 10 | 43 | 109 | twice the slowest run (109 s) rounded up to whole minutes, 5-minute floor |
+| `granola-auto.yml` | `auto` | 20 | 20 | 10 | 43 | 109 | twice the slowest run (109 s) rounds to 20 min, not below the current 20: unchanged |
 | `granola.yml` | `granola` | 15 | 15 | 4 | 28 | 41 | kept: only 4 measured runs (fewer than 10), slowest 41 s |
 | `hermes-stage.yml` | `hermes` | 10 | 10 | 5 | 10 | 12 | kept: only 5 measured runs (fewer than 10), slowest 12 s |
-| `hourly.yml` | `finish` | 58 | 28 (pending) | 100 | 116 | 815 | twice the slowest run (815 s) rounded up to whole minutes, 5-minute floor |
+| `hourly.yml` | `finish` | 58 | 30 (pending) | 100 | 116 | 815 | the Bitwarden helper waits up to 600 s, so the limit is at least 30 min (3 x the wait; twice the slowest run, 815 s, would be 28 min) |
 | `hourly.yml` | `interview` | 15 | 15 | 0 | - | - | not measured: no completed run in the last 100; keeps its current value |
 | `hourly.yml` | `jobright` | 40 | 40 | 0 | - | - | not measured: no completed run in the last 100; keeps its current value |
 | `hourly.yml` | `lensa` | 40 | 40 | 0 | - | - | not measured: no completed run in the last 100; keeps its current value |
 | `hourly.yml` | `linkedin` | 40 | 40 | 0 | - | - | not measured: no completed run in the last 100; keeps its current value |
-| `hourly.yml` | `prep` | 45 | 8 (pending) | 100 | 25 | 235 | twice the slowest run (235 s) rounded up to whole minutes, 5-minute floor |
+| `hourly.yml` | `prep` | 45 | 30 (pending) | 100 | 25 | 235 | the Bitwarden helper waits up to 600 s, so the limit is at least 30 min (3 x the wait; twice the slowest run, 235 s, would be 8 min) |
 | `hourly.yml` | `report` | 5 | 5 | 100 | 2 | 16 | twice the slowest run (16 s) rounds to 5 min, not below the current 5: unchanged |
 | `interview-proof.yml` | `proof` | 30 | 30 | 18 | 506 | 1614 | twice the slowest run (1614 s) rounds to 54 min, not below the current 30: unchanged |
 | `manual-job.yml` | `manual` | 15 | 15 | 4 | 47 | 71 | kept: only 4 measured runs (fewer than 10), slowest 71 s |
 | `network.yml` | `network` | 30 | 30 | 100 | 539 | 1818 | slowest run 1818 s reached 90% of the current limit: keeps 30 min and is listed for Jim (the job is at its limit) |
-| `outlook.yml` | `outlook` | 20 | 8 (pending) | 20 | 11 | 227 | twice the slowest run (227 s) rounded up to whole minutes, 5-minute floor |
+| `outlook.yml` | `outlook` | 20 | 20 | 20 | 11 | 227 | twice the slowest run (227 s) rounds to 20 min, not below the current 20: unchanged |
 | `pr-tests.yml` | `test-index` | 15 | 11 (pending) | 39 | 247 | 305 | twice the slowest run (305 s) rounded up to whole minutes, 5-minute floor |
 | `pr-tests.yml` | `unit-tests` | 10 | 5 (pending) | 99 | 105 | 136 | twice the slowest run (136 s) rounded up to whole minutes, 5-minute floor |
-| `profile-sync.yml` | `sync` | 10 | 9 (pending) | 39 | 15 | 248 | twice the slowest run (248 s) rounded up to whole minutes, 5-minute floor |
+| `profile-sync.yml` | `sync` | 10 | 10 | 39 | 15 | 248 | twice the slowest run (248 s) rounds to 10 min, not below the current 10: unchanged |
 | `readiness-live.yml` | `readiness` | 10 | 10 | 1 | 8 | 8 | kept: only 1 measured runs (fewer than 10), slowest 8 s |
 | `recruiters.yml` | `recruiters` | 20 | 20 | 9 | 389 | 404 | kept: only 9 measured runs (fewer than 10), slowest 404 s |
-| `safety.yml` | `safety` | 20 | 5 (pending) | 12 | 22 | 44 | twice the slowest run (44 s) rounded up to whole minutes, 5-minute floor |
+| `safety.yml` | `safety` | 20 | 20 | 12 | 22 | 44 | twice the slowest run (44 s) rounds to 20 min, not below the current 20: unchanged |
 | `suite-timing.yml` | `plan` | 2 | 2 | 4 | 3 | 4 | kept: only 4 measured runs (fewer than 10), slowest 4 s |
 | `suite-timing.yml` | `report` | 5 | 5 | 4 | 11 | 18 | kept: only 4 measured runs (fewer than 10), slowest 18 s |
 | `suite-timing.yml` | `timing` | 10 | 5 (pending) | 40 | 95 | 135 | twice the slowest run (135 s) rounded up to whole minutes, 5-minute floor |
@@ -167,13 +168,13 @@ Every call that leaves the process carries an explicit timeout. `tests/contracts
 | `fit` | 240 | yes | the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage |
 | `fit-cloud-backlog` | 180 | no | twice its slowest measured step (83 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `fit-edge-test` | 120 | yes | twice its slowest measured step (23 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
-| `fit-profile-sync` | 420 | yes | twice its slowest measured step (234 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
+| `fit-profile-sync` | 480 | yes | twice its slowest measured step (234 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `fit-review` | 600 | no | no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `funnel` | 600 | no | no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `granola` | 120 | yes | twice its slowest measured step (27 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
-| `granola-auto` | 180 | yes | twice its slowest measured step (98 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
+| `granola-auto` | 210 | yes | twice its slowest measured step (98 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `hermes` | 120 | yes | twice its slowest measured step (3 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
-| `hiring` | 180 | no | twice its slowest measured step (107 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
+| `hiring` | 240 | no | twice its slowest measured step (107 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `hiring-outcomes` | 120 | no | twice its slowest measured step (8 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `imessage-alerts` | 120 | no | twice its slowest measured step (59 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `imessage-comms` | 120 | no | twice its slowest measured step (46 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
@@ -182,8 +183,8 @@ Every call that leaves the process carries an explicit timeout. `tests/contracts
 | `interview-probe` | 600 | no | no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `interview-ui-probe` | 300 | yes | twice its slowest measured step (296 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `jira-card` | 150 | no | twice its slowest measured step (70 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
-| `jira-probe` | 180 | no | no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
-| `jira-rollover` | 180 | no | no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
+| `jira-probe` | 600 | no | no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
+| `jira-rollover` | 600 | no | no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `jira-rollover-scheduled` | 120 | no | twice its slowest measured step (4 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `jira-rollover-watch` | 120 | no | twice its slowest measured step (53 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `jira-snapshot` | 120 | no | twice its slowest measured step (29 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
@@ -194,7 +195,7 @@ Every call that leaves the process carries an explicit timeout. `tests/contracts
 | `mail-card` | 120 | no | twice its slowest measured step (12 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `mail-filing` | 120 | no | twice its slowest measured step (3 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `manual-job` | 120 | yes | twice its slowest measured step (57 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
-| `megibow` | 600 | no | twice its slowest measured step (318 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
+| `megibow` | 660 | no | twice its slowest measured step (318 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `network-audit` | 600 | no | no workflow runs this stage (manual or developer use): the table default |
 | `network-import` | 600 | no | no workflow runs this stage (manual or developer use): the table default |
 | `network-inspect` | 600 | no | no workflow runs this stage (manual or developer use): the table default |
@@ -205,7 +206,7 @@ Every call that leaves the process carries an explicit timeout. `tests/contracts
 | `notion-sandbox-access` | 120 | yes | twice its slowest measured step (1 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `notion-sandbox-outreach-proof` | 120 | yes | twice its slowest measured step (23 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `oracle-card` | 180 | no | twice its slowest measured step (82 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
-| `outlook-auth` | 360 | yes | twice its slowest measured step (218 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
+| `outlook-auth` | 450 | yes | twice its slowest measured step (218 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `outlook-probe` | 120 | yes | twice its slowest measured step (2 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `probe` | 600 | no | no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `publish` | 720 | yes | the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage |
