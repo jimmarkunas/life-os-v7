@@ -120,6 +120,13 @@ def failing(runs, now, window_hours=FAIL_WINDOW_HOURS):
     return False if failed == 0 else None
 
 
+def last_tick_passed(runs):
+    """LIFE-675: True when the newest finished tick succeeded. The failing incident then stays open until its failures age out, but is not re-paged."""
+    finished = [run for run in runs if run.get("display_title") == TICK_TITLE and run.get("conclusion") in ("success", "failure")]
+    newest = max(finished, key=lambda run: run.get("updated_at") or run.get("created_at") or "", default=None)
+    return bool(newest) and newest.get("conclusion") == "success"
+
+
 def digest_due(now):
     return now.hour == DIGEST_HOUR_UTC and now.minute < 30
 
@@ -175,7 +182,7 @@ def remind_due(issue, now, hours=REMIND_HOURS):
     return bool(quiet) and (now - quiet) >= dt.timedelta(hours=hours)
 
 
-def sync_incident(label, title, body, signal, open_push, close_push, push=None, now=None):
+def sync_incident(label, title, body, signal, open_push, close_push, push=None, now=None, remind=True):
     """One incident = one GitHub issue. signal: True open | False recovered | None unchanged. -> "opened" | "closed" | "retried" | "reminded" | None.
     Push first: an incident whose push is not accepted is still opened (the record must exist) but labelled `push-pending`, so the next run pushes again.
     LIFE-329: while the signal is still True, an open incident re-pages every REMIND_HOURS (one page on Nov 3 2026 at 4 AM went unseen for a 21-hour outage);
@@ -203,7 +210,7 @@ def sync_incident(label, title, body, signal, open_push, close_push, push=None, 
                 if push(*open_push):
                     _api(f"issues/{issue['number']}/labels/{PENDING}", "DELETE")
                 retried = "retried"
-            elif signal is True and remind_due(issue, now):
+            elif signal is True and remind and open_push[2] == "page" and remind_due(issue, now):    # LIFE-675: an INFO incident (drift, a stuck run) is pushed once, never re-paged
                 age = _hours_open(issue, now)
                 still = f"{open_push[1]} Still open after {age} h." if age is not None else open_push[1]
                 if push(f"Still open: {open_push[0]}", still, *open_push[2:]):
@@ -230,7 +237,7 @@ def watch(now=None, push=None, checkin=True):
         sync_incident(FAIL_LABEL, FAIL_TITLE, "Three or more hourly runs failed in the last 24 hours (each one also pushed 'V7 run failed'). Open the Actions tab. "
                       "This issue closes itself after 24 hours with no failed run.", fail_signal,
                       ("V7 hourly runs failing repeatedly", "3+ failed runs in 24 hours. Open the Actions tab.", "page", "pipeline_failing"),
-                      ("V7 hourly runs recovered", "No failed run in 24 hours.", "info", "pipeline_failing_recovered"), push, now),
+                      ("V7 hourly runs recovered", "No failed run in 24 hours.", "info", "pipeline_failing_recovered"), push, now, remind=not last_tick_passed(runs)),
         sync_incident(STUCK_LABEL, STUCK_TITLE, "An hourly tick run has been queued or running for more than 40 minutes. A real tick takes 5 to 20 minutes and GitHub ends the prep job at 45, so this run is stuck "
                       "(it happened on Nov 11 2026 and GitHub refused every cancel). Later ticks are not blocked: the gate and the ticker ignore it. Open the Actions tab; if the run cannot be cancelled, "
                       "report it to GitHub support. This issue closes itself when no tick run is stuck.", stuck_signal,
