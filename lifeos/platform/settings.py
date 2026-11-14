@@ -1,7 +1,7 @@
 """LIFE-699: V7's settings from one Notion page ("V7 settings (machine read)") instead of GitHub values; counts and names only, never a value in a log.
 
 The page holds `NAME value` lines in code blocks (a line starting with # is a comment). Only names in MOVABLE are read; a SAFETY name is refused, an unknown one counted.
-Shadow rule (until a GitHub value is deleted): Notion only fills a name the environment does not hold; where both exist they are compared (`matched`, `mismatched`).
+Shadow rule (until a GitHub value is deleted): Notion only fills a name the step declares empty (`X: ${{ vars.X }}` with X deleted); held names are compared.
 Deleting a GitHub value is therefore the switch that makes Notion the source. Never raises: an unreadable page leaves the environment as it was (`status`).
 LIFE-701: a production run also copies the addresses its environment holds and the page lacks into the "# Notion addresses" block (`seeded`); never a switch or credential."""
 import os
@@ -179,7 +179,9 @@ def apply(environ=os.environ, client=None, copy=None):
     out.update(counts, status="ok")
     for name, value in sorted(found.items()):
         have = held(environ, name)
-        if not have:
+        if not have and name not in environ:                              # a step that never declares a name never receives it
+            out["undeclared"] = out.get("undeclared", 0) + 1
+        elif not have:
             environ[name] = value
             out["filled"].append(name)
         elif _bare(have) == _bare(value) if is_address(name) else have == value:
