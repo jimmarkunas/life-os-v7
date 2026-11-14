@@ -1,5 +1,5 @@
 name: pr-tests
-# Secret-free pull request check: the same unit tests as the `prep` job of hourly.yml (here run as two parallel shards of whole test modules, tests/shard.py; hourly.yml runs them in one process), on the PR head merged with its base. Read-only, no secrets, no database, no network beyond installing
+# Secret-free pull request check: the same unit tests as the `prep` job of hourly.yml (here run as three parallel shards of whole test modules, tests/shard.py, balanced on CI-measured seconds: LIFE-705; hourly.yml runs them in one process), on the PR head merged with its base. Read-only, no secrets, no database, no network beyond installing
 # the pinned requirements, nothing dispatched or scheduled. Runtime contract of the deterministic suite: a warning at 90 seconds, a failure at 120 seconds (LIFE-596; Nov 9 2026: raised from 75, which was raised from 60 on Oct 25; hang guard: timeout-minutes).
 # Every merge to main runs the same suite too (Jim, Oct 25 2026), so the Edge's Close auto-release has a tested main commit within a minute of a merge instead of waiting for the next hourly run.
 on:
@@ -46,18 +46,21 @@ jobs:
             echo FULL > selected.txt
           fi
           if [ "$(head -n 1 selected.txt)" = "FULL" ]; then echo "tests picked: everything" | tee -a "$GITHUB_STEP_SUMMARY"; else echo "tests picked: $(wc -l < selected.txt) targets" | tee -a "$GITHUB_STEP_SUMMARY"; fi
-      - name: Unit tests (two parallel shards when everything runs; warn at 90 s, fail at 120 s)
+      - name: Unit tests (three parallel shards when everything runs, balanced on CI seconds; warn at 90 s, fail at 120 s)
         run: |
           start=$(date +%s)
           status=0
           if [ "$(head -n 1 selected.txt)" = "FULL" ]; then
-            python -m tests.shard 1 2 > shard-1.log 2>&1 &
+            python -m tests.shard 1 3 > shard-1.log 2>&1 &
             first=$!
-            python -m tests.shard 2 2 > shard-2.log 2>&1 &
+            python -m tests.shard 2 3 > shard-2.log 2>&1 &
             second=$!
+            python -m tests.shard 3 3 > shard-3.log 2>&1 &
+            third=$!
             wait "$first" || status=$?
             wait "$second" || status=$?
-            cat shard-1.log shard-2.log
+            wait "$third" || status=$?
+            cat shard-1.log shard-2.log shard-3.log
           else
             python -m unittest $(cat selected.txt) > shard-1.log 2>&1 || status=$?
             cat shard-1.log
@@ -65,7 +68,7 @@ jobs:
           elapsed=$(( $(date +%s) - start ))
           echo "unit tests: exit ${status}, ${elapsed} s" | tee -a "$GITHUB_STEP_SUMMARY"
           if [ "$status" -ne 0 ]; then exit "$status"; fi
-          if [ "$elapsed" -ge 120 ]; then echo "::error::The unit-test suite took ${elapsed} s; the limit is 120 s"; exit 1; fi
+          if [ "$elapsed" -ge 120 ]; then echo "TIME GATE ONLY: every test passed; the suite took ${elapsed} s and the limit is 120 s (LIFE-705)" | tee -a "$GITHUB_STEP_SUMMARY"; echo "::error::The unit-test suite took ${elapsed} s; the limit is 120 s"; exit 1; fi
           if [ "$elapsed" -ge 90 ]; then echo "::warning::The unit-test suite took ${elapsed} s; the warning level is 90 s"; fi
       - name: Ruff correctness rules (LIFE-596; BLOCKING on B023 loop variable in a closure, B904 raise without from, F811 redefinition and B017 blind assertRaises; every other rule stays advisory below)
         run: python -m ruff check --no-cache --select B023,B904,F811,B017 --output-format concise .
