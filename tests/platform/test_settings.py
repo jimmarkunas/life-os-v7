@@ -1,7 +1,9 @@
 """LIFE-699: V7 settings from one Notion page (shadow rule), and no new GitHub value."""
+import contextlib
 import re
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from lifeos.platform import settings
 
@@ -58,6 +60,68 @@ class Writable(Page):
         assert method == "PATCH" and path == "/blocks/a", path                    # only the addresses block is ever written
         self.blocks["a"] = "".join(p["text"]["content"] for p in body["code"]["rich_text"])
         self.patches += 1
+
+
+class FakeStore:
+    def __init__(self):
+        self.rows, self.saves = {}, 0
+
+    def ensure(self, connection):
+        pass
+
+    def load(self, connection, key):
+        return self.rows.get(key)
+
+    def save(self, connection, key, snapshot):
+        self.rows[key] = snapshot
+        self.saves += 1
+
+
+@contextlib.contextmanager
+def connect():
+    yield object()
+
+
+class LastAccepted(unittest.TestCase):
+    def setUp(self):
+        self.store = FakeStore()
+        patcher = mock.patch("lifeos.platform.stored_pages.STORE", self.store)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_a_good_read_is_remembered_once(self):
+        page = Page(["GRANOLA_AUTO on", f"JIRA_CARD_BLOCK_ID {ID}"])
+        self.assertTrue(settings.apply({}, page, connect=connect)["remembered"])
+        self.assertFalse(settings.apply({}, page, connect=connect)["remembered"])
+        self.assertEqual((self.store.saves, self.store.rows[settings.SNAPSHOT_KEY]["values"]), (1, {"GRANOLA_AUTO": "on", "JIRA_CARD_BLOCK_ID": ID}))
+
+    def test_an_unreadable_page_falls_back_to_the_last_accepted_map_and_says_so(self):
+        settings.apply({}, Page(["GRANOLA_AUTO on", f"JIRA_CARD_BLOCK_ID {ID}"]), connect=connect)
+        self.store.rows[settings.SNAPSHOT_KEY]["values"]["V7_LIVE"] = "false"             # a safety value that got into the store is never restored
+        env = {"GRANOLA_AUTO": "", "JIRA_CARD_BLOCK_ID": "", "V7_LIVE": ""}
+        out = settings.apply(env, Page([], broken=True), connect=connect)
+        self.assertEqual(env, {"GRANOLA_AUTO": "on", "JIRA_CARD_BLOCK_ID": ID, "V7_LIVE": ""})
+        self.assertEqual((out["status"], out["filled"]), ("unreadable:RuntimeError", ["GRANOLA_AUTO", "JIRA_CARD_BLOCK_ID"]))
+        self.assertRegex(out["last_accepted"], r"^\d+/\d+ · \d+:\d\d [AP]M CT$")
+
+    def test_no_saved_map_keeps_todays_behavior(self):
+        env = {"GRANOLA_AUTO": ""}
+        out = settings.apply(env, Page([], broken=True), connect=connect)
+        self.assertEqual((env, "last_accepted" in out), ({"GRANOLA_AUTO": ""}, False))
+
+    def test_a_step_without_a_notion_token_still_gets_the_last_accepted_map(self):
+        settings.apply({}, Page(["GRANOLA_AUTO on"]), connect=connect)
+        env = {"GITHUB_ACTIONS": "true", "GRANOLA_AUTO": ""}
+        out = settings.apply(env, connect=connect)
+        self.assertEqual((out["status"], env["GRANOLA_AUTO"]), ("no_token", "on"))
+
+    def test_a_broken_store_never_fails_the_run(self):
+        @contextlib.contextmanager
+        def down():
+            raise RuntimeError("STORE_SSH_TCP_TIMEOUT")
+            yield
+        out = settings.apply({}, Page(["GRANOLA_AUTO on"]), connect=down)
+        self.assertEqual((out["status"], out["remember_status"]), ("ok", "STORE_SSH_TCP_TIMEOUT"))
 
 
 class DeclaredOnly(unittest.TestCase):
