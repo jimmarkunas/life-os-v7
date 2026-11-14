@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
-from lifeos.platform import ct_stamp
+from lifeos.platform import ct_stamp, report_region
 from lifeos.platform.jira import JiraError
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 from .boards import boards
@@ -284,7 +284,7 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
         raise CardError("JIRA_CARD_NO_SNAPSHOT")
     taken = min(datetime.fromisoformat(s["taken_at"]) for s in snaps)
     stale = now - taken > timedelta(hours=STALE_HOURS)
-    client = client or _client(environ)
+    client = report_region.ScopedClient(client or _client(environ), block_id, lambda code: CardError("JIRA_CARD_" + code))      # LIFE-688: like every card, a write to any block outside this callout is refused before it is sent
     existing = children(client, block_id)
     if not _owned(existing):
         raise CardError("JIRA_CARD_NOT_OWNED")
