@@ -42,6 +42,53 @@ class Page:
         raise AssertionError(path)
 
 
+class Writable(Page):
+    """A page with a switches block and an addresses block that accepts the copy."""
+    def __init__(self, switches, addresses):
+        super().__init__([])
+        self.blocks = {"s": "\n".join(["# Switches"] + switches), "a": "\n".join(["# Notion addresses"] + addresses)}
+        self.patches = 0
+
+    def call(self, method, path, body=None):
+        if path.startswith("/blocks/p/children"):
+            return {"results": [{"id": k, "type": "code", "code": {"language": "plain text", "rich_text": [{"plain_text": v}]}} for k, v in self.blocks.items()], "has_more": False}
+        return super().call(method, path, body)
+
+    def call_once(self, method, path, body=None):
+        assert method == "PATCH" and path == "/blocks/a", path                    # only the addresses block is ever written
+        self.blocks["a"] = "".join(p["text"]["content"] for p in body["code"]["rich_text"])
+        self.patches += 1
+
+
+class CopyAddresses(unittest.TestCase):
+    def test_a_production_run_copies_the_addresses_it_holds_once_and_never_a_switch(self):
+        page = Writable(["HIRING_AUTO_CLOSE on"], [f"JIRA_CARD_BLOCK_ID {ID}"])
+        env = {"JIRA_CARD_BLOCK_ID": ID, "BILLS_CARD_BLOCK_ID": ID.replace("4", "5"), "NOTION_BILLS_DATA_SOURCE_ID": "collection://" + ID, "GRANOLA_AUTO": "on",
+               "CLOUDFLARE_API_TOKEN": "secret", "LIFEOS_NOTION_IDS": '{"DASHBOARD_PAGE": "%s", "bad": "x"}' % ID.replace("-", ""), "AMAZON_CARD_BLOCK_ID": "not-an-id"}
+        out = settings.apply(env, page, copy=True)
+        self.assertEqual(out["seeded"], ["BILLS_CARD_BLOCK_ID", "LIFEOS_NOTION_DASHBOARD_PAGE", "NOTION_BILLS_DATA_SOURCE_ID"])
+        self.assertNotIn("GRANOLA_AUTO", page.blocks["a"])
+        self.assertNotIn("secret", page.blocks["a"] + page.blocks["s"])
+        again = settings.apply(env, page, copy=True)
+        self.assertEqual((again["seeded"], page.patches, again["matched"], again["mismatched"]), ([], 1, 5, []))                 # 4 addresses, plus the switch the first run filled
+
+    def test_the_notion_ids_map_counts_as_held(self):
+        env = {"LIFEOS_NOTION_IDS": '{"DASHBOARD_PAGE": "%s"}' % ID}
+        out = settings.apply(env, Page([f"LIFEOS_NOTION_DASHBOARD_PAGE {ID}", f"LIFEOS_NOTION_REVIEW_SOURCE {ID}"]))
+        self.assertEqual((out["matched"], out["filled"]), (1, ["LIFEOS_NOTION_REVIEW_SOURCE"]))
+
+    def test_a_copy_that_cannot_be_written_never_fails_the_run(self):
+        page = Writable([], [])
+        page.blocks.pop("a")
+        out = settings.apply({"JIRA_CARD_BLOCK_ID": ID}, page, copy=True)
+        self.assertEqual((out["status"], out["seed_status"]), ("ok", "SETTINGS_SEED_TARGET_MISSING"))
+
+    def test_tests_and_local_runs_never_copy(self):
+        page = Writable([], [])
+        settings.apply({"JIRA_CARD_BLOCK_ID": ID}, page)
+        self.assertEqual(page.patches, 0)
+
+
 class ShadowRule(unittest.TestCase):
     def test_notion_fills_only_what_the_environment_lacks_and_compares_the_rest(self):
         env = {"HIRING_AUTO_CLOSE": "on", "JIRA_CARD_BLOCK_ID": "x" * 32}
