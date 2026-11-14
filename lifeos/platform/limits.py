@@ -14,10 +14,17 @@ TINYFISH_SEARCH_PER_RUN_LINKEDIN = 100
 TINYFISH_AGENT_ALLOWED = False           # $0.016/step - forbidden
 
 # Notion (free official API, integration token)
-NOTION_REQUESTS_PER_SECOND = 3           # provider average limit
-NOTION_GAP_SECONDS = 0.4                 # ours: 2.5/s
+NOTION_REQUESTS_PER_SECOND = 3           # provider average limit (docs/platform/notion-rate-limits.md: 180 requests per 60 s per connection on plans below Business)
+NOTION_BUDGET_PER_MINUTE = 180           # provider: the per-connection budget in a 60-second window (Business and Enterprise: 600)
+NOTION_GAP_SECONDS = 0.4                 # ours: 2.5/s in one process
 NOTION_RETRY_BACKOFF = (0.5, 1.0, 2.0)   # LIFE-654: waits (before jitter, which doubles at most) between tries after a 409 conflict, or a 502/503/504 on a read; capped at 3 retries
-NOTION_WRITE_RATE_RETRIES = 6            # LIFE-661: tries after a 429 for a write that asks for them (call_once rate_retries=): a 429 means Notion did not apply it; each waits Retry-After (cap 30 s) plus up to half again of jitter
+NOTION_RATE_RETRIES = 6                  # LIFE-682: tries after a 429 or 529 for EVERY call: Notion rejects a rate-limited request, and its documentation says to wait Retry-After and retry
+NOTION_WRITE_RATE_RETRIES = NOTION_RATE_RETRIES   # LIFE-661 name, kept for its caller
+NOTION_RETRY_AFTER_CAP_SECONDS = 60      # provider: Retry-After is whole seconds, at most 60 for a per-connection limit (a per-workspace wait can be longer: then the call gives up)
+NOTION_RATE_WAIT_BUDGET_SECONDS = 180    # ours: the most one call sleeps in total on 429/529 (with jitter) before it raises the fixed code
+NOTION_RATE_SLOWDOWN = 2.0               # ours: after a 429 this process doubles its gap between requests ("slow down"), up to NOTION_GAP_MAX_SECONDS
+NOTION_GAP_MAX_SECONDS = 3.2
+NOTION_IDEMPOTENT_METHODS = ("GET", "DELETE")   # provider: retry 500/502/503/504 only when the request is idempotent, such as GET or DELETE
 NOTION_MAX_CHILD_BLOCKS = 100            # per create/append call
 NOTION_MAX_RICH_TEXT_CHARS = 2000        # per rich_text item
 NOTION_PAGE_SIZE = 100                   # query page size

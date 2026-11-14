@@ -1,4 +1,5 @@
-"""Notion API transport (platform: free API only, paced under 3 req/s, 429 retry, 409 conflict retry). Fixed error codes, no job knowledge."""
+"""Notion API transport (platform: free API only, paced under 3 req/s, 429/529 retry per Retry-After, 409 conflict retry). Fixed error codes, no job knowledge.
+The rules and the provider numbers behind them are in docs/platform/notion-rate-limits.md; every Notion call in lifeos/ goes through this class (a contract test enforces it)."""
 from __future__ import annotations
 
 import json
@@ -63,14 +64,14 @@ class Client:
         if not self.token or not self.source:
             raise NotionError("NOTION_CONFIG_MISSING")
         self._clock, self._sleep, self._jitter, self._last = clock, sleep, jitter, 0.0
-        self.calls = 0
+        self.calls, self._gap = 0, limits.NOTION_GAP_SECONDS
 
     def call(self, method: str, path: str, body: Any = None) -> Any:
-        return self._call(method, path, body, 3)
+        return self._call(method, path, body, None)
 
-    def call_once(self, method: str, path: str, body: Any = None, version: str | None = None, rate_retries: int = 0) -> Any:
-        """Perform one request without retrying an operation with uncertain write outcome. `version` overrides the pinned API version for this one call.
-        `rate_retries` (LIFE-661): how many times to repeat it after a 429, which Notion answers before applying anything, so it is safe for any write; 0 (the default) never repeats it."""
+    def call_once(self, method: str, path: str, body: Any = None, version: str | None = None, rate_retries: int | None = None) -> Any:
+        """Perform one request without retrying an operation with uncertain write outcome (a 5xx on a write is never repeated). `version` overrides the pinned API version for this one call.
+        `rate_retries` (LIFE-661, LIFE-682): how many times to repeat it after a 429 or 529, which Notion rejects as over the limit, so it is safe for any write; None (the default) is limits.NOTION_RATE_RETRIES."""
         return self._call(method, path, body, rate_retries, version)
 
     def query_data_source(self, source_id: str | None = None, body: dict[str, Any] | None = None) -> Any:
@@ -97,10 +98,11 @@ class Client:
             raise NotionError("NOTION_PROPERTIES_INVALID")
         return self.call_once("PATCH", f"/pages/{self._page_id(page_id)}", {"properties": properties})
 
-    def _call(self, method: str, path: str, body: Any, rate_retries: int, version: str | None = None) -> Any:
-        rate = flaky = 0
+    def _call(self, method: str, path: str, body: Any, rate_retries: int | None, version: str | None = None) -> Any:
+        rate_retries = limits.NOTION_RATE_RETRIES if rate_retries is None else rate_retries
+        rate, flaky, slept = 0, 0, 0.0
         for _ in range(1 + rate_retries + len(limits.NOTION_RETRY_BACKOFF)):
-            wait = limits.NOTION_GAP_SECONDS - (self._clock() - self._last)
+            wait = self._gap - (self._clock() - self._last)
             if wait > 0:
                 self._sleep(wait)
             self._last, self.calls = self._clock(), self.calls + 1
@@ -112,13 +114,23 @@ class Client:
                 with urllib.request.urlopen(request, timeout=30) as response:
                     return json.loads(response.read() or b"{}")
             except urllib.error.HTTPError as error:
-                if error.code == 429 and rate < rate_retries:
-                    rate += 1                                                                  # jitter (LIFE-661): the parallel domain jobs share one integration, so they must not retry in step
-                    self._sleep(min(float(error.headers.get("Retry-After") or 2), 30) * (1 + self._jitter() / 2))
+                if error.code in (429, 529) and rate < rate_retries:
+                    # LIFE-682, from Notion's documentation: wait the Retry-After seconds (an integer, at most 60 per connection), with jitter because the parallel domain jobs share one integration and
+                    # must not retry in step; no header: exponential from 2 s; then slow this process down for the rest of the run; give up (fixed code) when the waits add up past the budget.
+                    try:
+                        advised = float(error.headers.get("Retry-After")) if error.headers.get("Retry-After") else None
+                    except (TypeError, ValueError):
+                        advised = None
+                    pause = min(advised if advised is not None else 2.0 * 2 ** rate, limits.NOTION_RETRY_AFTER_CAP_SECONDS) * (1 + self._jitter() / 2)
+                    if advised is not None and advised > limits.NOTION_RETRY_AFTER_CAP_SECONDS or slept + pause > limits.NOTION_RATE_WAIT_BUDGET_SECONDS:
+                        raise NotionError(f"NOTION_HTTP_{error.code}") from None
+                    self._sleep(pause)
+                    slept, rate = slept + pause, rate + 1
+                    self._gap = min(self._gap * limits.NOTION_RATE_SLOWDOWN, limits.NOTION_GAP_MAX_SECONDS)
                     continue
-                if flaky < len(limits.NOTION_RETRY_BACKOFF) and (error.code == 409 or (error.code in (502, 503, 504) and method == "GET")):
+                if flaky < len(limits.NOTION_RETRY_BACKOFF) and (error.code == 409 or (error.code in (502, 503, 504) and method in limits.NOTION_IDEMPOTENT_METHODS)):
                     # LIFE-654: a 409 means another request was editing the same page and this one was NOT applied, so any method may retry it, even `call_once`.
-                    # A 5xx may have been applied, so only a read repeats it; every write that reaches here is read back by its caller before any repeat.
+                    # A 5xx may have been applied, so only an idempotent request (GET, DELETE; Notion's own advice) repeats it; every write that reaches here is read back by its caller before any repeat.
                     self._sleep(limits.NOTION_RETRY_BACKOFF[flaky] * (1 + self._jitter()))
                     flaky += 1
                     continue

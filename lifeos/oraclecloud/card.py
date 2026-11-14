@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from urllib.parse import quote
 
 from lifeos.oraclecloud import backup_watch, worker_watch
-from lifeos.platform import ct_stamp, limits, report_region, router
+from lifeos.platform import ct_stamp, report_region, router
 from lifeos.platform.fixed_code import fixed
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 
@@ -176,7 +176,7 @@ def locate(client, anchor, jira=""):
 
 
 def _patch(client, block, items):
-    client.call_once("PATCH", f"/blocks/{quote(block['id'], safe='')}", {block["type"]: {"rich_text": items}}, rate_retries=limits.NOTION_WRITE_RATE_RETRIES)       # LIFE-661: a 429 is not applied, so it is repeated
+    client.call_once("PATCH", f"/blocks/{quote(block['id'], safe='')}", {block["type"]: {"rich_text": items}})       # LIFE-661: a 429 is not applied, so it is repeated
 
 
 def _shape(rich):
