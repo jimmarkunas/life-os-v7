@@ -1,11 +1,12 @@
 """LIFE-616 (Jim approved the rule and the 20-second save limit, comment 12836): a board that fails, times out on its read or times out on its save is that board's red entry; the stage fails
-only when at least 3 boards AND at least half of the boards due failed. Per-board seconds are recorded and printed. Fake boards and an in-memory repo; counts and public ids only."""
+only when at least 3 boards AND at least half of the boards due failed (LIFE-676: a slow save is counted and named but is not one of them). Per-board seconds are recorded and printed. Fake boards and an in-memory repo; counts and public ids only."""
 import datetime as dt
 import io
 import json
 import os
 import tempfile
 import threading
+import time
 import unittest
 from contextlib import redirect_stdout
 from datetime import datetime
@@ -103,6 +104,27 @@ class StageRule(unittest.TestCase):
         code, printed = self.fails(ok=3, bad=3)
         self.assertEqual(code, "WEB_BOARDS_FAILING")
         self.assertIn('"failed": 3', printed)
+
+    def saves(self, stalled, bad=()):
+        """Six boards due; the `stalled` ones each take longer than the save limit on their own (not queued behind one stuck write), the `bad` ones fail to read."""
+        names = [f"s{i}" for i in range(6)]
+        lookup = {n: lister.Listing(lister.FAILED, reason="http_521") if n in bad else GOOD for n in names}
+
+        class Stalls(MemRepo):
+            def commit(self, o, failures, lane="US Remote"):
+                if o.source["id"] in stalled:
+                    time.sleep(0.15)
+                super().commit(o, failures, lane)
+        return run.run(50, True, NOW, fixed(lookup), Stalls(), boards(*names), save_seconds=0.1)
+
+    def test_slow_saves_alone_never_fail_the_stage_but_are_counted_and_named(self):   # LIFE-676: 3 of 6 saves past the limit failed every tick on Nov 13 2026
+        got = self.saves({"s0", "s2", "s4"})
+        self.assertEqual((got["failed"], got["save_timeout"], got["failed_ids"], got["complete"]), (3, 3, ["s0", "s2", "s4"], 3))
+
+    def test_slow_saves_do_not_add_to_real_board_failures_but_three_real_ones_still_fail_the_stage(self):
+        self.assertEqual(self.saves({"s0", "s2"}, bad={"s1", "s3"})["failed"], 4)       # two real failures: under the minimum of three
+        with self.assertRaises(run.BoardsFailing):
+            self.saves({"s0"}, bad={"s1", "s3", "s4"})
 
     def test_boards_that_answer_not_found_never_count_toward_the_stage_rule(self):
         got, _ = self.fails(ok=1, bad=0, dead=5)
