@@ -1,5 +1,5 @@
-"""Notion API transport (platform: free API only, paced under 3 req/s, 429/529 retry per Retry-After, 409 conflict retry). Fixed error codes, no job knowledge.
-The rules and the provider numbers behind them are in docs/platform/notion-rate-limits.md; every Notion call in lifeos/ goes through this class (a contract test enforces it)."""
+"""Notion API transport (platform: free API only, paced under 3 req/s, 429/529 retry per Retry-After, 409 conflict retry); fixed error codes, no job knowledge."""
+# The documented rule and the provider numbers: docs/platform/notion-rate-limits.md. Every Notion call in lifeos/ goes through this class (tests/contracts/test_limits.py).
 from __future__ import annotations
 
 import json
@@ -71,7 +71,9 @@ class Client:
 
     def call_once(self, method: str, path: str, body: Any = None, version: str | None = None, rate_retries: int | None = None) -> Any:
         """Perform one request without retrying an operation with uncertain write outcome (a 5xx on a write is never repeated). `version` overrides the pinned API version for this one call.
-        `rate_retries` (LIFE-661, LIFE-682): how many times to repeat it after a 429 or 529, which Notion rejects as over the limit, so it is safe for any write; None (the default) is limits.NOTION_RATE_RETRIES."""
+        `rate_retries` (LIFE-661, LIFE-682): how many times to repeat it after a 429 or 529, which Notion rejects as over the limit, so it is safe for any write; None (the default) is limits.NOTION_RATE_RETRIES, except a POST, which is one attempt unless asked."""
+        if rate_retries is None and method == "POST":
+            rate_retries = 0                                                                   # a create is a single attempt unless its caller asks otherwise (the Interview advisor store relies on it)
         return self._call(method, path, body, rate_retries, version)
 
     def query_data_source(self, source_id: str | None = None, body: dict[str, Any] | None = None) -> Any:

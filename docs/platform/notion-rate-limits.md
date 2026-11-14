@@ -19,7 +19,7 @@ Sources: https://developers.notion.com/reference/request-limits and https://deve
 
 ## The rule in our code (every Notion call goes through `lifeos/platform/notion_client.py`)
 
-1. **429 and 529, every call (reads, writes, `call_once`):** wait the `Retry-After` seconds (60 at most) plus up to 50% jitter, then retry, up to 6 times. No header: 2, 4, 8 seconds and so on, with the same jitter. A `Retry-After` over 60 (a per-workspace wait) or total waits over 180 seconds in one call: stop with the fixed code `NOTION_HTTP_429` (or `_529`).
+1. **429 and 529, every call (reads, writes, `call_once`; the one exception: a `call_once` POST, a create, is a single attempt unless its caller passes `rate_retries`):** wait the `Retry-After` seconds (60 at most) plus up to 50% jitter, then retry, up to 6 times. No header: 2, 4, 8 seconds and so on, with the same jitter. A `Retry-After` over 60 (a per-workspace wait) or total waits over 180 seconds in one call: stop with the fixed code `NOTION_HTTP_429` (or `_529`).
 2. **Slow down:** after any 429 the process doubles its gap between requests for the rest of the run (0.4 s, up to 3.2 s).
 3. **409:** retried with a short jittered backoff on any method (the request was not applied).
 4. **500/502/503/504:** retried only on GET or DELETE; a write is never repeated blindly: its caller reads it back first.
