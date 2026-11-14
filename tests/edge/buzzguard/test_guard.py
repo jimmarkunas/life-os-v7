@@ -108,6 +108,13 @@ class Table(Base):
         for tool in ("Write", "Edit", "NotebookEdit", "WebFetch", "WebSearch", "Task", "Agent", "Glob", "Grep", "SomethingNew", "mcp__slack__post", ""):
             self.assertEqual(self.dec(tool, {"x": 1}), "deny", tool)
 
+    def test_the_retired_rovo_connectors_are_denied_for_reads_and_writes(self):
+        """LIFE-683: only the Atlassian MCP connector (v2) is supported; the two Rovo connectors (deprecated /v1 endpoint, removal 2027-03-01) match nothing and fall to the deny rule."""
+        for prefix in ("mcp__claude_ai_Atlassian_Rovo__", "mcp__claude_ai_Atlassian_Rovo_2__"):
+            for op, ti in (("getJiraIssue", {"issueIdOrKey": "LIFE-9"}), ("searchJiraIssuesUsingJql", {"jql": "project = LIFE"}), ("atlassianUserInfo", {}),
+                           ("addCommentToJiraIssue", {"issueIdOrKey": "LIFE-9", "commentBody": "x"}), ("transitionJiraIssue", {"issueIdOrKey": "LIFE-9", "transition": {"id": "15"}})):
+                self.assertEqual(self.dec(prefix + op, ti), "deny", (prefix, op))
+
     def test_jira_reads_are_allowed_and_writes_wait_for_approval(self):
         for op in ("getJiraIssue", "searchJiraIssuesUsingJql", "getTransitionsForJiraIssue", "getVisibleJiraProjects", "lookupJiraAccountId", "atlassianUserInfo"):
             self.assertEqual(self.dec(ATL + op, {"issueIdOrKey": "OTHER-5"}), "allow", op)

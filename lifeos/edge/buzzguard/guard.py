@@ -40,7 +40,7 @@ EVENT_ID = re.compile(r"[0-9a-f]{64}")
 IDENT = re.compile(r"[A-Za-z0-9_.:@-]{1,200}")
 SEND_MAX = 12000
 STOP_TEXT = ("STOPPED", "STOPPED by Jim")
-ATL = re.compile(r"mcp__(?:claude_ai_Atlassian_MCP|claude_ai_Atlassian_Rovo(?:_2)?|atlassian|jira)__(.+)", re.I)
+ATL = re.compile(r"mcp__(?:claude_ai_Atlassian_MCP|atlassian|jira)__(.+)", re.I)      # LIFE-683: the Rovo connectors (deprecated /v1 endpoint) are retired: not matched here, so the final rule denies them
 GH = re.compile(r"mcp__(?:github|claude_ai_GitHub)__(.+)", re.I)
 # LIFE-397 (Jim, Nov 8: the Buzz agents need Notion, GitHub and Jira): Notion is READ ONLY and an exact list (search, fetch, SQL/row queries, comments). Every other Notion tool, every write, is denied;
 # there is no "ask" path for Notion (the approval flow covers Jira and GitHub only).
