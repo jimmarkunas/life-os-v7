@@ -92,7 +92,7 @@ def _review(j, fields, person, employer):
 
 
 def _fp(j):
-    return _mac(b"fp", j["id"], j["company"], j["role"])[:16]
+    return _mac(b"fp", D._page_id(j["id"]) or j["id"], j["company"], j["role"])[:16]
 
 
 def _get(req, who, secrets):
@@ -272,7 +272,7 @@ def _recruiters(secrets):
 
 
 def _row_fp(r):
-    return _mac(b"fp", r["page_id"], r["person"], r["company"], r["role"], r["action"])[:16]
+    return _mac(b"fp", D._page_id(r["page_id"]) or r["page_id"], r["person"], r["company"], r["role"], r["action"])[:16]          # LIFE-698: Notion returns the id with dashes, the form carries it without
 
 
 def _row_section(r):

@@ -18,7 +18,7 @@ ROW = "c" * 32
 class Rows(FakeRecruiters):
     """The shared fake plus one exact page read, as Notion returns it (its parent is the data source)."""
     def get_page(self, page_id):
-        found = [p for p in self.pages if p["id"] == page_id]
+        found = [p for p in self.pages if p["id"].replace("-", "") == page_id.replace("-", "")]
         if not found:
             raise NotionError("NOTION_HTTP_404")
         return {"parent": {"type": "data_source_id", "data_source_id": self.source}, **found[0]}
@@ -152,6 +152,26 @@ class Screen(unittest.TestCase):
         self.assertEqual(done[0], 200, done[2])
         self.assertEqual(store.read(rec.pages[0])["action"], "Completed")
         self.assertEqual(close_app._fingerprint("o", ROW, "A\r\nB", "C\rD", False), close_app._fingerprint("o", ROW, "A\nB", "C\nD", False))
+
+    def test_a_row_whose_notion_id_has_dashes_closes(self):
+        """LIFE-698: Nov 14 2026, every recruiter close was refused: Notion returns the page id with dashes, the form carries it without, and the row fingerprint hashed one on each side. Earlier tests used ids with no dashes."""
+        dashed = "cccccccc-cccc-cccc-cccc-cccccccccccc"
+        rec = Rows([page("Avery Synthetic", company="Example Staffing", role="Program Manager", action="Needs Action", pid=dashed)])
+        rec.source = RECRUITERS
+        svc = Svc(Ledger(), rec)
+        _, _, body, _ = svc("GET", "/recruiter", {"r": dashed})
+        review = svc("POST", "/recruiter", form={**fields(body), "status": "Completed", "step": "review"})
+        self.assertEqual(review[0], 200, review[2])
+        done = svc("POST", "/recruiter", form={**fields(review[2]), "step": "confirm"})
+        self.assertEqual(done[0], 200, done[2])
+        self.assertEqual(store.read(rec.pages[0])["action"], "Completed")
+        _, _, body, _ = svc("GET", "/recruiter", {"r": dashed})                                   # now closed: no form
+        rec2 = Rows([page("Avery Synthetic", company="Example Staffing", role="Program Manager", action="Needs Action", pid=dashed)])
+        rec2.source = RECRUITERS
+        svc2 = Svc(Ledger(), rec2)
+        _, _, body, _ = svc2("GET", "/recruiter", {"r": dashed})
+        self.assertEqual(svc2("POST", "/recruiter", form={**fields(body), "pe": "Mallory", "status": "Completed", "step": "review"})[0], 403)   # a tampered field still fails closed
+        self.assertEqual(rec2.writes, [])
 
     def test_a_row_changed_after_the_form_opened_is_a_conflict(self):
         rec = world()
