@@ -247,6 +247,11 @@
    "required": false,
    "seconds": 120
   },
+  "inbox-schema-apply": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 600
+  },
   "inbox-schema-check": {
    "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
    "required": false,

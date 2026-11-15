@@ -71,6 +71,7 @@ Method: every stage target module was scanned for loops over accounts, sources, 
 | `hiring-outcomes` | `hiring.outcomes` | `guarded` | Loops over its items; each loop without error handling is reviewed below. | no |
 | `imessage-alerts` | `imessage.stage` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `imessage-comms` | `imessage.comms_card` | `guarded` | Loops over its items; each loop without error handling is reviewed below. | no |
+| `inbox-schema-apply` | `inbox.apply_schema` | `exempt` | A one-time DDL apply: a failed statement or a failed read-back must fail the stage, and no item may be skipped, because a half-applied schema is not a result. | no |
 | `inbox-schema-check` | `inbox.schema` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `interview` | `sources.interview.interview_evidence` | `partial-red` | Its `failed` adds unreadable threads, blocked pages and sweep failures together, which LIFE-690 turns into state-change alerts; moving it onto the helper before that would change what pages, so it waits for LIFE-690. | yes |
 | `interview-acceptance` | `interview.acceptance` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
@@ -132,6 +133,7 @@ Loops over external items with no `try` inside, read by hand on Nov 14 2026. Non
 
 | Module | Function | Iterable | Verdict |
 | --- | --- | --- | --- |
+| `inbox.apply_schema` | `apply` | `schema.TABLES` | The read-back after the create: a mismatch must fail the stage (INBOX_SCHEMA_VERIFY_FAILED). |
 | `hiring.outcomes` | `contacts` | `sorted(messages, key=_received)` | Pure: it attributes already-read messages to rows; no client is called (the scan matched `search`, a regex search). |
 | `imessage.comms_card` | `write` | `rows.items()` | The read-back after the writes: a mismatch must fail the stage, because a write that cannot be verified is not a write. |
 | `jobs.fit.stage` | `score_rows` | `rows` | Pure scoring of rows already read (`list` here is a list operation). |
