@@ -253,7 +253,7 @@
     },
     {
       "date": "2026-11-15",
-      "pr": "PR_URL_TO_FILL",
+      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/1210",
       "approval": "Jim Markunas, November 15, 2026 CT, typed in the Claude Code chat: 'Approved all five, start on 1 and get rid of this typed file approval' (LIFE-726)",
       "part": "docs/development-policy/04 (new Lean delivery amendment: approve by risk class, two Jira comments per ticket, lanes are hints, registries generated, one-page sheet), with the matching AGENTS.md lines"
     }
