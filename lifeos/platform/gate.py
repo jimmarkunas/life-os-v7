@@ -8,10 +8,15 @@ The watchdog owns the incident record (one GitHub issue per kind): it pushes fir
 `push-pending` and is pushed again on the next watchdog run (every 30 minutes) until the phone service accepts it."""
 import datetime as dt
 import importlib
+import io
 import json
 import os
+import re
 import sys
+import time
+import urllib.error
 import urllib.request
+import zipfile
 
 from lifeos.platform import health as health_model          # gate.health() below is the daily check-in's own function
 
@@ -32,6 +37,18 @@ DIGEST_HOUR_UTC = 13           # the daily check-in: 8 AM Chicago in summer time
 DOMAINS_TITLE = "domains (after tick)"
 PENDING = "push-pending"       # the incident exists but its phone push was not accepted yet; retried by the watchdog
 REMIND_HOURS = 3               # LIFE-328/329: an incident still open and still true re-pages after this long without activity on its issue
+CONFLICT_RUNS_MAX = 30         # LIFE-688: domains runs of the last 24 hours whose logs the daily check-in reads, newest first
+CONFLICT_BYTES_MAX = 40_000_000   # and the most log bytes it downloads in all (one compressed archive per run)
+CONFLICT_SECONDS_MAX = 90      # and the most time it spends: the watchdog job's own timeout is 3 minutes and its slowest run 34 seconds (docs/platform/timeouts.md)
+CONFLICT_COUNT_FROM = dt.datetime(2026, 11, 15, 6, 5, tzinfo=dt.timezone.utc)      # Jim decided the writer chain at 12:05 AM CT on Nov 15 2026: earlier conflicts are history, so the first check-in is not triggered by a run that predates the fixes
+CONFLICT_CODE = re.compile(r"NOTION_HTTP_409|[A-Z0-9_]*PAGE_WALK_NOTION_HTTP_404|PROTECTED_REGION_CHANGED|NOTION_HTTP_429")
+JOB_LOG = re.compile(r"\d+_(.+)\.txt")                 # a job's log file in a run archive
+CONFLICT_CODES = ("NOTION_HTTP_409", "PAGE_WALK_NOTION_HTTP_404", "PROTECTED_REGION_CHANGED")      # a write conflict; NOTION_HTTP_429 is a rate limit and counted apart
+RATE_LIMIT_CODE = "NOTION_HTTP_429"
+CONFLICT_LOGS_UNREADABLE = "WRITE_CONFLICT_LOGS_UNREADABLE"      # fixed codes of the count; they only ever appear in the check-in text and never page by themselves
+CONFLICT_CAP_REACHED = "WRITE_CONFLICT_CAP_REACHED"
+CONFLICT_UNAVAILABLE = "WRITE_CONFLICT_COUNT_UNAVAILABLE"
+CONFLICT_RULE = "rule: any write conflict moves the Daily Report writers to the full chain (option A, LIFE-688)"
 
 
 def _t(value):
@@ -48,7 +65,7 @@ def min_gap(environ=None):
     return int(raw) if raw.isdigit() and GAP_FLOOR_MINUTES <= int(raw) <= MIN_GAP_MINUTES else MIN_GAP_MINUTES
 
 
-STUCK_MINUTES = 40             # LIFE-580: a tick with no conclusion this long after it was created is stuck (a real tick takes 5 to 20 minutes; GitHub ends its prep job at 45)
+STUCK_MINUTES = 40             # LIFE-580: a tick with no conclusion this long after it was created is stuck (a real tick takes 5 to 20 minutes; the prep job's own timeout ends a run that is still going, so one this old is stuck)
 
 
 def stuck(run, now, minutes=STUCK_MINUTES):
@@ -189,7 +206,7 @@ def coverage(observed, window_hours=24):
     return observed, window_hours, max(0, window_hours - observed)
 
 
-def health(runs, domain_runs, now, window_hours=24, late=()):
+def health(runs, domain_runs, now, window_hours=24, late=(), conflicts=""):
     """-> (title, body): the daily check-in, counts only. Its absence is the alarm: if the watchdog or the phone path is dead, no check-in arrives."""
     cutoff = now - dt.timedelta(hours=window_hours)
     recent = [r for r in runs if r.get("display_title") == TICK_TITLE and r.get("conclusion") in ("success", "failure")
@@ -204,7 +221,8 @@ def health(runs, domain_runs, now, window_hours=24, late=()):
     return (f"V7 daily check: {'OK' if ok else 'DEGRADED'}",
             f"Last 24 h: {len(recent)} hourly runs, {len(good)} ok, {failed} failed; {last}; {domains} failed domain run(s). "
             f"Coverage: {len(recent)} of {window_hours} expected, {coverage(len(recent), window_hours)[2]} missed."
-            + (f" Late or missing scheduled jobs ({len(late)}): {', '.join(late)}." if late else ""))      # LIFE-627
+            + (f" Late or missing scheduled jobs ({len(late)}): {', '.join(late)}." if late else "")      # LIFE-627
+            + (f" {conflicts}" if conflicts else ""))                                                       # LIFE-688: the write-conflict line; nothing else in the check-in changes
 
 
 def _api(path, method="GET", body=None):
@@ -215,6 +233,101 @@ def _api(path, method="GET", body=None):
     with urllib.request.urlopen(request, timeout=30) as response:
         raw = response.read()
         return json.loads(raw) if raw else {}
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        return None                                                # hand the redirect back: the signed address must be fetched without the token
+
+
+def _logs(run_id, limit):
+    """LIFE-688: the log archive of one run, as bytes, at most `limit` of them (read-only: the token needs only actions: read). GitHub answers with a redirect to a signed address; that address is fetched
+    without the token. Raises when GitHub refuses or the archive is larger than `limit`."""
+    request = urllib.request.Request(f"https://api.github.com/repos/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{run_id}/logs",
+                                     headers={"Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}", "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"})
+    try:
+        urllib.request.build_opener(_NoRedirect).open(request, timeout=30)
+        raise ValueError(CONFLICT_LOGS_UNREADABLE)                  # an answer without a redirect has no archive
+    except urllib.error.HTTPError as answer:
+        target = answer.headers.get("Location") if answer.code in (301, 302, 303, 307, 308) else None
+        if not target:
+            raise
+    with urllib.request.urlopen(urllib.request.Request(target), timeout=30) as response:
+        data = response.read(limit + 1)
+    if len(data) > limit:
+        raise ValueError(CONFLICT_LOGS_UNREADABLE)
+    return data
+
+
+def conflict_codes_in(archive_bytes):
+    """-> {(job, code): 1} for the codes that surface in one run's job logs: each (job, fixed code) once per run, so a retry loop that prints a code twice counts once. A page-walk code with a job's prefix
+    (`HIRING_PAGE_WALK_NOTION_HTTP_404`) counts as PAGE_WALK_NOTION_HTTP_404. Fixed codes only: no log line, name or id is kept."""
+    found = {}
+    with zipfile.ZipFile(io.BytesIO(archive_bytes)) as archive:
+        for name in archive.namelist():
+            named = JOB_LOG.fullmatch(name)                        # GitHub stores each job's whole log as `<n>_<job>.txt`; the `<job>/system.txt` files are the runner's, not the job's
+            if not named:
+                continue
+            job = named.group(1).strip()
+            with archive.open(name) as handle:
+                text = handle.read(5_000_000).decode("utf-8", "replace")
+            for code in CONFLICT_CODE.findall(text):
+                found[(job, "PAGE_WALK_NOTION_HTTP_404" if code.endswith("PAGE_WALK_NOTION_HTTP_404") else code)] = 1
+    return found
+
+
+def write_conflicts(domain_runs, now, logs=None, clock=time.monotonic, window_hours=24, count_from=CONFLICT_COUNT_FROM):
+    """LIFE-688: the daily write-conflict count. Reads the logs of the domains runs finished in the last `window_hours` (newest first, at most CONFLICT_RUNS_MAX runs, CONFLICT_BYTES_MAX bytes and
+    CONFLICT_SECONDS_MAX seconds in all; one archive per run) and counts, per job, the fixed codes that surfaced: write conflicts (409, page-walk 404, protected region changed) and, apart, rate limits (429).
+    -> {"runs", "read", "unreadable", "capped", "conflicts": {job: n}, "rate_limits": {job: n}, "codes": {(job, code): n}}. Never raises for one run: an unreadable log is counted under the fixed code
+    CONFLICT_LOGS_UNREADABLE (lifeos.platform.isolate), and the count says it is incomplete instead of guessing. Counts only; it never pages by itself."""
+    isolate = importlib.import_module("lifeos.platform.isolate")    # GitHub watchdog only: the Oracle ticker never runs the check-in, so its installer does not copy isolate.py
+    logs = logs or _logs
+    cutoff = now - dt.timedelta(hours=window_hours)
+    clipped = bool(count_from) and count_from > cutoff                 # the count starts at `count_from`: until a full window has passed it covers less than 24 hours, and says so
+    cutoff = count_from if clipped else cutoff
+    runs = sorted((r for r in domain_runs if r.get("conclusion") in ("success", "failure") and (_t(r.get("updated_at") or r.get("created_at")) or cutoff) > cutoff),
+                  key=lambda r: r.get("created_at") or "", reverse=True)[:CONFLICT_RUNS_MAX]
+    out = {"runs": len(runs), "read": 0, "unreadable": 0, "capped": False, "conflicts": {}, "rate_limits": {}, "codes": {}, "since": count_from if clipped else None}
+    started, left = clock(), [CONFLICT_BYTES_MAX]
+
+    def one(run):
+        if clock() - started > CONFLICT_SECONDS_MAX or left[0] <= 0:
+            out["capped"] = True
+            return None
+        data = logs(run["id"], left[0])
+        left[0] -= len(data)
+        return conflict_codes_in(data)
+    done = isolate.run_items(runs, one, code_of=lambda error: CONFLICT_LOGS_UNREADABLE)
+    out["unreadable"] = len(done.failures)
+    for _, found in done.results:
+        if found is None:
+            continue
+        out["read"] += 1
+        for (job, code), n in found.items():
+            out["codes"][(job, code)] = out["codes"].get((job, code), 0) + n
+            kind = "rate_limits" if code == RATE_LIMIT_CODE else "conflicts"
+            out[kind][job] = out[kind].get(job, 0) + n
+    return out
+
+
+def conflict_line(result):
+    """The one line the daily check-in carries. N conflicts in the last 24 hours, per job, and rate limits apart; when N is above 0 the line states the rule plainly. An unreadable or capped count says
+    so under its fixed code. `result` None means the runs themselves could not be listed."""
+    if result is None:
+        return f"Notion write conflicts: unavailable ({CONFLICT_UNAVAILABLE})."
+
+    def by_job(counts):
+        return ", ".join(f"{job} {n}" for job, n in sorted(counts.items(), key=lambda item: (-item[1], item[0])))
+    n, m = sum(result["conflicts"].values()), sum(result["rate_limits"].values())
+    text = f"Notion write conflicts in the last 24 h: {n}" + (f" ({by_job(result['conflicts'])})" if n else "") + f"; rate limits: {m}" + (f" ({by_job(result['rate_limits'])})" if m else "") + "."
+    notes = ([f"{CONFLICT_LOGS_UNREADABLE} for {result['unreadable']} of {result['runs']} runs"] if result["unreadable"] else []) \
+        + ([f"{CONFLICT_CAP_REACHED} after {result['read']} of {result['runs']} runs"] if result["capped"] else [])
+    if notes:
+        text += " Count incomplete: " + "; ".join(notes) + "."
+    if result.get("since"):
+        text += " Counted since the writer-chain decision (Nov 15 2026, 12:05 AM CT)."          # a shorter window, said plainly, until 24 hours have passed
+    return text + (f" {CONFLICT_RULE}." if n else "")
 
 
 def _push(title, body, severity, key):
@@ -292,7 +405,7 @@ def watch(now=None, push=None, checkin=True):
                       "This issue closes itself when the last 3 hourly runs have passed (or after 24 hours with no failed run).", fail_signal,
                       ("V7 hourly runs failing repeatedly", "3+ failed runs in 24 hours. Open the Actions tab.", "page", "pipeline_failing"),
                       ("V7 hourly runs recovered", "The last 3 hourly runs passed.", "info", "pipeline_failing_recovered"), push, now, remind=not last_tick_passed(runs)),
-        sync_incident(STUCK_LABEL, STUCK_TITLE, "An hourly tick run has been queued or running for more than 40 minutes. A real tick takes 5 to 20 minutes and GitHub ends the prep job at 45, so this run is stuck "
+        sync_incident(STUCK_LABEL, STUCK_TITLE, "An hourly tick run has been queued or running for more than 40 minutes. A real tick takes 5 to 20 minutes and the prep job's own timeout ends a run that is still going, so this run is stuck "
                       "(it happened on Nov 11 2026 and GitHub refused every cancel). The watchdog asks GitHub to cancel it; this issue opens only when GitHub refuses or the run survives the cancel. Later ticks are not blocked: the gate and the ticker ignore it. Open the Actions tab; if the run cannot be cancelled, "
                       "report it to GitHub support. This issue closes itself when no tick run is stuck.", stuck_signal,
                       ("V7 tick run stuck", "An hourly tick run has had no conclusion for over 40 minutes. Later ticks still run. Open the Actions tab.", "info", "tick_run_stuck"),
@@ -302,14 +415,20 @@ def watch(now=None, push=None, checkin=True):
     if checkin and digest_due(now):                               # LIFE-330: the Oracle ticker runs incidents only; the check-in stays with the GitHub watchdog
         try:
             domain_runs = _api("actions/workflows/domains.yml/runs?per_page=60")["workflow_runs"]
+            listed = True
         except Exception:                                          # the check-in must still go out, and say what it could not read
-            domain_runs = []
+            domain_runs, listed = [], False
+        try:                                                       # LIFE-688: the daily write-conflict count; it can only add its line, never stop or change the rest of the check-in
+            conflicts = write_conflicts(domain_runs, now) if listed else None
+        except Exception:                                          # noqa: BLE001
+            conflicts = None
+        conflict_text = conflict_line(conflicts)
         try:                                                       # LIFE-627: late or missing scheduled jobs ride in the same check-in; an unreadable history adds nothing
             scheduled_jobs = importlib.import_module("lifeos.platform.scheduled_jobs")       # GitHub watchdog only: the Oracle ticker never runs the check-in, so its installer does not copy this module
             late = scheduled_jobs.late_names(scheduled_jobs.evaluate(now, scheduled_jobs.fetch(_api)))
         except Exception:                                          # noqa: BLE001
             late = ()
-        title, body = health(runs, domain_runs, now, late=late)
+        title, body = health(runs, domain_runs, now, late=late, conflicts=conflict_text)
         sent = (push or _push)(title, body, "info", "daily_check")          # LIFE-603: _push takes the registered alert key; the call without it crashed every real check-in
     print(f"watchdog: stale={is_stale} failing={fail_signal} changes={changes} checkin={sent} reaper={reaped['found']}/{len(reaped['cancelled'])}/{len(reaped['refused'])}/{len(reaped['still_stuck'])}")
     return 0
