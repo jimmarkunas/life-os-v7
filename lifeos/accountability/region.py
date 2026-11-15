@@ -210,3 +210,22 @@ def write_summary(client, page_id, content, live):
     if not ok:
         raise fail("ACCOUNTABILITY_VERIFY_FAILED")
     return True
+
+
+def append_bullet(client, block_id, content, live):
+    """Canon / Change Log: add one bullet after the last one; earlier lines are never edited, moved or removed. The middle must be bullets only. -> {appended, lines, last, summary_page}."""
+    found = locate(client, block_id)
+    if any(b.get("type") != "bulleted_list_item" for b in found["middle"]):
+        raise fail("ACCOUNTABILITY_SHAPE")
+    before = [text(b) for b in found["middle"]]
+    if content.strip() in before or not live:
+        return {"appended": 0, "lines": len(before), "last": before[-1] if before else "", "summary_page": found["summary"], "would_append": int(content.strip() not in before)}
+    after_id = found["middle"][-1]["id"] if found["middle"] else found["stamp"]["id"]
+    client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": [{"object": "block", "type": "bulleted_list_item", "bulleted_list_item": {"rich_text": _rich(content)}}], "after": after_id})
+
+    def matches(now):
+        return [text(b) for b in now["middle"]] == before + [content.strip()]
+    ok, _ = readback.confirmed(lambda: locate(client, block_id), matches)
+    if not ok:
+        raise fail("ACCOUNTABILITY_VERIFY_FAILED")
+    return {"appended": 1, "lines": len(before) + 1, "last": content.strip(), "summary_page": found["summary"]}

@@ -2,7 +2,7 @@
 import unittest
 from unittest import mock
 
-from lifeos.accountability import goals, region, render, review, week
+from lifeos.accountability import artifacts, changelog, goals, region, render, review, week
 from tests.accountability import fakes as F
 
 Q4_EPICS = [F.epic("JFM-9", "Career Q4 2026"), F.epic("JFM-102", "LIFE OS Q4 2026"), F.epic("MEJ-1", "Career Q4 2026"), F.epic("MEJ-3", "Health Q4 2026")]
@@ -17,6 +17,8 @@ def page(notion, middle_kind):
         if middle_kind == "goals":
             lane_rows = [("Career", "–"), ("Creative", "–"), ("Health, Finances & Travel" if who == "matt" else "Health", "–"), ("LIFE OS", "–")]
             notion.callout(block, f"Quarterly goals {who}", "Not updated yet · done / all tasks", [notion.table(f"t-{who}", lane_rows)], f"pg-{who}")
+        elif middle_kind == "artifacts":
+            notion.callout(block, f"Artifacts {who}", "Not updated yet", [F.para(f"art-{who}", "Nothing yet. old text")], f"pg-{who}")
         elif middle_kind == "review":
             notion.callout(block, f"Quarterly review {who}", "Not updated yet", [notion.toggle(f"tg-{who}", "Nothing yet."), F.para(f"past-{who}", "Past quarters appear here when each quarter closes.")], f"pg-{who}")
         else:
@@ -57,6 +59,70 @@ class Address(unittest.TestCase):
         self.assertEqual(str(caught.exception), "ACCOUNTABILITY_TARGET_NOT_FOUND")
         with self.assertRaises(region.AccountabilityError):
             region.address(self.client(), "jim.nothing")
+
+
+class Knowledge(unittest.TestCase):
+    def go(self, notion, fake, live=True):
+        with mock.patch.object(region, "address", lambda _n, key: f"b-{key.split('.')[0]}-artifacts"):
+            return artifacts.run(0, live, environ={}, jira=fake, notion=notion, now=F.NOW)
+
+    def test_an_artifact_with_a_link_is_listed_and_one_without_is_missing_a_link(self):
+        notion = F.Notion()
+        page(notion, "artifacts")
+        done_issue = {"key": "MEJ-74", "fields": {"summary": "Build Travel Tracker", "description": None}}
+        bare = {"key": "MEJ-75", "fields": {"summary": "Trip notes", "description": {"type": "doc", "content": [{"type": "text", "text": "no address here"}]}}}
+        in_text = {"key": "MEJ-76", "fields": {"summary": "Packing list", "description": {"type": "doc", "content": [{"type": "text", "text": "see https://example.com/pack for it"}]}}}
+        fake = F.Jira({'labels = "artifact"': [done_issue, bare, in_text]}, remote={"MEJ-74": ["https://example.com/travel"]})
+        self.go(notion, fake)
+        lines = notion.text("art-matt").split("\n")
+        self.assertEqual(lines[:2], ["Build Travel Tracker — https://example.com/travel", "Packing list — https://example.com/pack"])
+        self.assertEqual(lines[2], "Missing link: MEJ-75 Trip notes")
+        self.assertLessEqual(len(notion.text("pg-matt-p")), render.SUMMARY_MAX)
+
+    def test_no_artifacts_says_so_plainly(self):
+        notion = F.Notion()
+        page(notion, "artifacts")
+        self.go(notion, F.Jira({}))
+        self.assertEqual(notion.text("art-jim"), render.NO_ARTIFACTS)
+
+
+class Changelog(unittest.TestCase):
+    def build(self, lines):
+        notion = F.Notion()
+        bullets = [{"id": f"bl{i}", "type": "bulleted_list_item", "bulleted_list_item": {"rich_text": F.rich(t)}} for i, t in enumerate(lines)]
+        notion.callout("b-shared-log", "Canon / Change Log", "New lines are added; old ones never change", bullets, "pg-log")
+        return notion
+
+    def go(self, notion, now=F.NOW, live=True):
+        with mock.patch.object(region, "address", lambda _n, key: "b-shared-log"):
+            return changelog.run(0, live, environ={}, notion=notion, now=now)
+
+    def test_a_new_quarter_adds_one_dated_line_and_never_touches_earlier_ones(self):
+        old = ["Nov 14 2026 — V3 page built from the approved mockup", "V1 link: to be added"]
+        notion = self.build(old)
+        counts = self.go(notion)
+        self.assertEqual(counts["shared"]["appended"], 1)
+        kids = [notion.text(k) for k in notion.kids["b-shared-log"] if notion.blocks[k]["type"] == "bulleted_list_item"]
+        self.assertEqual(kids[:2], old)
+        self.assertEqual(kids[2], "Nov 18 2026 — Q4 2026 began; its quarter epics carry the label goals-2026-q4")
+        self.assertEqual(notion.writes.count("b-shared-log"), 1)
+
+    def test_a_second_run_in_the_same_quarter_appends_nothing(self):
+        notion = self.build(["x"])
+        self.go(notion)
+        notion.writes.clear()
+        self.go(notion)
+        self.assertEqual([w for w in notion.writes if w == "b-shared-log"], [])
+
+    def test_a_dry_run_writes_nothing_and_a_foreign_block_in_the_callout_stops_the_run(self):
+        notion = self.build(["x"])
+        self.go(notion, live=False)
+        self.assertEqual(notion.writes, [])
+        notion.kids["b-shared-log"].insert(3, "bl0")
+        notion.blocks["bl0"]["type"] = "paragraph"
+        notion.blocks["bl0"]["paragraph"] = notion.blocks["bl0"].pop("bulleted_list_item")
+        with self.assertRaises(region.AccountabilityError):
+            self.go(notion)
 
 
 class Stages(unittest.TestCase):

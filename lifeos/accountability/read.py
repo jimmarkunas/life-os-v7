@@ -2,6 +2,7 @@
 
 A quarter is a calendar quarter; its epics carry the label goals-<year>-q<n> (LIFE-670). Because an epic keeps its older Done tasks, a quarter counts only tasks that are open now or were
 completed inside that quarter. Output is plain dicts for the renderers; ticket text goes to Notion only, never to a log."""
+import json
 import re
 from datetime import date, timedelta
 
@@ -12,6 +13,7 @@ WEEK_FIELDS = "summary,status,duedate,issuetype"
 EPIC_FIELDS = "summary"
 CHILD_FIELDS = "status,parent,resolutiondate,issuetype"
 PAGE, MAX_PAGES = 100, 30
+URL = re.compile(r"https?://[^\s\"\\<>)]+")
 TAIL = re.compile(r"\s+Q[1-4]\s+\d{4}$")
 
 
@@ -127,3 +129,16 @@ def week(jira, project, today):
         fields = issue.get("fields") or {}
         rows.append({"key": issue["key"], "summary": fields.get("summary") or "", "status": (fields.get("status") or {}).get("name") or "Unknown", "due": fields.get("duedate")})
     return {"open": rows, "done": len(done), "week_end": sunday}
+
+
+def artifacts(jira, project):
+    """-> [{key, title, url}] for the project's issues labelled `artifact`, whatever their status (a finished tracker is still an artifact). The link is the issue's first web link,
+    else the first address in its description; None when there is neither (the Knowledge center lists those as missing a link)."""
+    out = []
+    for issue in search(jira, f'project = {project} AND labels = "artifact" ORDER BY key ASC', "summary,description"):
+        fields = issue.get("fields") or {}
+        links = jira.get(f"/rest/api/3/issue/{issue['key']}/remotelink")
+        urls = [((entry or {}).get("object") or {}).get("url") for entry in links] if isinstance(links, list) else []
+        found = next((u for u in urls if u), None) or next(iter(URL.findall(json.dumps(fields.get("description") or ""))), None)
+        out.append({"key": issue["key"], "title": fields.get("summary") or issue["key"], "url": found})
+    return out

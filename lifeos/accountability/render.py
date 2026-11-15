@@ -68,3 +68,21 @@ def progress(lanes):
 
 def closing(year, n, lanes):
     return f"Q{n} {year} — closed: " + progress(lanes)
+
+
+NO_ARTIFACTS = "Nothing yet. An issue labelled artifact in Jira shows up here with its link."
+MAX_ARTIFACTS = 25
+
+
+def artifact_lines(items):
+    """-> lines: "title — link" for each artifact with a link, then "Missing link: KEY title" for those without. None at all gives the plain empty line."""
+    if not items:
+        return [NO_ARTIFACTS]
+    linked = [f"{i['title']} — {i['url']}" for i in items if i["url"]]
+    missing = [f"Missing link: {i['key']} {i['title']}" for i in items if not i["url"]]
+    lines = (linked + missing)[:MAX_ARTIFACTS]
+    return lines + ([f"…and {len(linked) + len(missing) - MAX_ARTIFACTS} more in Jira"] if len(linked) + len(missing) > MAX_ARTIFACTS else [])
+
+
+def changelog_line(today, year, n):
+    return f"{today.strftime('%b')} {today.day} {today.year} — Q{n} {year} began; its quarter epics carry the label goals-{year}-q{n}"
