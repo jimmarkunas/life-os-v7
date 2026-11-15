@@ -265,7 +265,7 @@
     },
     {
       "date": "2026-11-15",
-      "pr": "PR_URL_TO_FILL",
+      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/1219",
       "approval": "Jim Markunas, November 15, 2026 CT, typed in the Claude Code chat: 'Build all three' (LIFE-662 proposals; LIFE-727, LIFE-728, LIFE-729)",
       "part": "docs/development-policy/04 (Lean delivery amendment: merge is Done, auto-merge by default, the stall check, auto-release of tickets in an epic Jim labels auto-release), with the matching AGENTS.md step 4"
     }
