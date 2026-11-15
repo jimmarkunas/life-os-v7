@@ -268,7 +268,7 @@ def main(argv=None, environ=None, client=None):
 
     Reads the page once and applies the shadow rule to a copy of the environment, then writes each name Notion filled to $GITHUB_ENV (so later steps see it) and each --output name's
     effective value to $GITHUB_OUTPUT (so a job condition can use `needs.<job>.outputs.NAME`). Only movable, non-safety names are ever written; a value with a line break is refused.
-    Prints counts and names only, masks every written value, and always exits 0: an unreadable page leaves everything as it was."""
+    Prints counts and names only, masks every written address (never a plain switch such as on or true), and always exits 0: an unreadable page leaves everything as it was."""
     import json                                                            # noqa: PLC0415
     import sys                                                             # noqa: PLC0415
     args = list(sys.argv[1:] if argv is None else argv)
@@ -287,7 +287,8 @@ def main(argv=None, environ=None, client=None):
             if path:
                 refused.append(name)
             return
-        print(f"::add-mask::{value}")
+        if is_address(name):                                             # an address is masked; a switch is not: GitHub drops a job output that contains any masked text, so masking "on" or "true" silently emptied every gate output (Nov 15 2026)
+            print(f"::add-mask::{value}")
         with open(path, "a", encoding="utf-8") as handle:
             handle.write(f"{name}={value}\n")
 
