@@ -60,3 +60,19 @@ Owner of every row below is Jim: a named account, a scoped credential in the cen
 | Deployment | a read stage registered in the stage list and a grant record for the reading principal | same |
 
 **Not yet allowed.** A live stage runs inside the hourly pipeline, so under the LIFE-686 freeze it waits until that epic is Done, or until Jim approves it as a Jim-requested change. No Oracle work is needed for these two reads. Human UAT evidence is the issue's own link for now (its receipt comments live there); richer evidence such as linked pull requests belongs to the Human UAT workflow mapping in LIFE-714.
+
+## G. Todoist and Asana reads (LIFE-709): what exists and what Jim must approve
+
+**Code (`lifeos/inbox/sources.py`, tests `tests/inbox/test_sources_tasks.py`).** `TodoistSource` and `AsanaSource` follow the same pattern as section F: one injected read function each, no V7 client exists for either provider, nothing is fetched live, and the default reader refuses with `live_reads_not_authorized`. A provider that cannot be reached for missing OAuth or permission shows as `unavailable` with the fixed word `integration_blocked`, never as a fake success; the other sources keep their rows. Todoist is Personal only (a Bytalos Todoist source refuses with `todoist_personal_only`) and reads only the approved projects. Asana is Bytalos only (`asana_bytalos_only`) and reads only the approved programme projects: a task sitting in none of them is out of scope and left out; a task sitting in an approved project AND any other project, or in no project, is ambiguous, so it is rejected, counted and the source shows `degraded`; TGP and client projects never show. No Todoist completion and no Asana write exist in the module, and a test scans it for write and client names.
+
+**Approvals Jim must record before any live fetch.**
+
+| Item | Todoist | Asana |
+|---|---|---|
+| Account | the Personal account, named | the Bytalos programme account, named |
+| Data scope | the approved project ids; fields: title, due, status, link, creation time | the approved programme project ids (a list that excludes every TGP and client project); fields: title, assignee, due, status, link, modified time |
+| Credential | a scoped read token held by name in the central secrets service | a scoped OAuth or personal token, read only, held by name in the central secrets service |
+| Gap found | no V7 client; Todoist's task listing has no update time, so a change to a task is not a new revision until the real shape is verified | no V7 client; the "which projects are Bytalos programme work" list must come from Jim, since a wrong list could show client work |
+| Shapes | taken from the providers' public API documentation, not a live read | same |
+
+**Not yet allowed.** Same as section F: no live stage in the hourly pipeline until the LIFE-686 freeze ends or Jim approves it as a requested change; no Oracle work is needed for these reads. Todoist completion is a separate later ticket (LIFE-717).
