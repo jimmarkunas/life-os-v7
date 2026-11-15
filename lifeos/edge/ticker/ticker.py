@@ -7,6 +7,7 @@
          never sent twice. Jim's alert switches (ALERTS_ENABLED, ALERTS_MUTED_UNTIL, ALERT_SETTINGS) are read from the repository variables on every run,
          so the Alert settings page stays the one place they are set; when they cannot be read the run stops (it never guesses "on" or "off").
          LIFE-301: it also raises one quiet incident (phone only) when the Hermes disk image is 80% full or more, and closes it when it drops below.
+         LIFE-693: it also proves each Close release: one dry quick proof run of hourly.yml per newly deployed commit (docs/platform/release-proof.md).
   dry    check that the credentials are present and the variables readable; dispatches nothing and pushes nothing.
 
 Credentials come only from systemd (LoadCredentialEncrypted): `github` (fine-grained token for this repository: Actions read/write, Issues read/write,
@@ -33,6 +34,7 @@ DISK_LABEL, DISK_TITLE = "hermes-disk-full", "Hermes disk is 80% full or more"
 STALL_FILE = "/etc/lifeos-close/auto.stalled"            # LIFE-562: written by the Close release timer after 2 hours without a green main head
 STALL_LABEL, STALL_TITLE = "deploy-stalled", "Close service release has not deployed for over 2 hours"
 DRIFT_LABEL, DRIFT_TITLE = "deploy-drift", "Installed files on the Oracle VM differ from main"
+RELEASE_MANIFEST, RELEASE_PREVIOUS = "/opt/lifeos-close/current/MANIFEST", "/opt/lifeos-close/previous/MANIFEST"      # LIFE-693: world-readable; the first line is `commit <40 hex>`, the deployed-version proof
 REFUSED = (401, 403, 404, 422)          # the token, its permissions, the workflow name or the inputs are wrong: a person must act
 
 
@@ -179,6 +181,68 @@ def drift_incident(token, opener=urllib.request.urlopen, sync=None, read=None, u
     return rows
 
 
+def release_proof(token, opener=urllib.request.urlopen, api=None, read=None, sync=None, logs=None, now=None):
+    """LIFE-693: one dry proof run after every Close release (lifeos/platform/release_proof.py decides, docs/platform/release-proof.md explains). Reads the deployed commit from the release tree's
+    MANIFEST (read-only), the record issue, the manual runs of hourly.yml and the pause flag; starts at most one proof run (the dispatch the ticker already makes for ticks, other inputs); keeps the
+    record in one issue; raises ONE page when a proof fails and opens the pause flag issue the release timer reads; lifts it on the first pass. Never raises: -> a fixed word for the tests."""
+    import datetime as dt                                          # noqa: PLC0415
+    from lifeos.platform import gate, release_proof as proof      # noqa: PLC0415 - only the watch command needs them
+    api = api or gate._api
+    now = now or dt.datetime.now(dt.timezone.utc)
+
+    def manifest(path):
+        try:
+            first = (Path(path).read_text() if read is None else read(path)).splitlines()[0].split()
+            return first[1] if len(first) == 2 and first[0] == "commit" and proof.SHA.fullmatch(first[1]) else None
+        except (OSError, IndexError):
+            return None
+
+    def failing_code(run_id):
+        try:
+            return proof.failing_code_in((logs or gate._logs)(run_id, 30_000_000))
+        except Exception:                                          # noqa: BLE001 - the log is a nicety: the alert falls back to the fixed code
+            return ""
+
+    try:
+        deployed, previous = manifest(RELEASE_MANIFEST), manifest(RELEASE_PREVIOUS)
+        records = api(f"issues?state=open&labels={proof.RECORD_LABEL}&per_page=1")
+        entries = proof.parse_record(records[0].get("body")) if records else []
+        listed = api(f"actions/workflows/{proof.PROOF_WORKFLOW}/runs?event=workflow_dispatch&per_page=30").get("workflow_runs") or []
+        runs = [r for r in listed if r.get("display_title") == proof.PROOF_TITLE]
+        paused = bool(api(f"issues?state=open&labels={proof.FLAG_LABEL}&per_page=1"))
+    except Exception:                                              # noqa: BLE001 - unreadable: nothing changes and nothing pages; the next watch reads again
+        return proof.UNREADABLE
+    if deployed is None:
+        return proof.UNREADABLE
+    decision = proof.decide(now, deployed, previous, entries, runs, paused, failing_code)
+    entries = list(decision.entries)
+    if decision.dispatch is not None:
+        try:
+            api(f"actions/workflows/{proof.PROOF_WORKFLOW}/dispatches", "POST", {"ref": "main", "inputs": proof.PROOF_INPUTS})
+        except Exception:                                          # noqa: BLE001 - not started: no pending entry, so a later watch starts it
+            entries = [e for e in entries if e is not decision.dispatch]
+    body = proof.render_record(entries)
+    try:
+        if records:
+            if records[0].get("body") != body:
+                api(f"issues/{records[0]['number']}", "PATCH", {"body": body})
+        elif entries:
+            api("labels", "POST", {"name": proof.RECORD_LABEL, "color": "0e8a16"})
+            api("issues", "POST", {"title": proof.RECORD_TITLE, "body": body, "labels": [proof.RECORD_LABEL]})
+    except Exception:                                              # noqa: BLE001 - the record is rewritten whole on the next watch
+        pass
+    if decision.flag is not None:
+        sync = sync or gate.sync_incident
+        failed = decision.failed or next((e for e in entries if e.status == proof.FAIL), None)
+        title, text = proof.failure_text(failed) if failed else ("Release proof failed", "A proof run failed after a Close release.")
+        good_title, good_text = proof.recovered_text(decision.recovered) if decision.recovered else ("Release proof passed", "A proof run passed; Close releases resume.")
+        try:
+            sync(proof.FLAG_LABEL, title, text, decision.flag, (title, text, "page", proof.FAILED_KEY), (good_title, good_text, "info", proof.RECOVERED_KEY))
+        except Exception:                                          # noqa: BLE001 - the flag issue is retried on the next watch
+            return "flag_not_synced"
+    return "dispatched" if decision.dispatch is not None else "failed" if decision.failed else "recovered" if decision.recovered else "ok"
+
+
 def watch(token, topic, opener=urllib.request.urlopen, run=None, environ=None, disk=None):
     """-> (code, status). Sets the switches, the token and the topic for this process only, then runs the watchdog's incident checks."""
     found, status = variables(token, opener)
@@ -206,6 +270,10 @@ def watch(token, topic, opener=urllib.request.urlopen, run=None, environ=None, d
             pass
         try:
             stall_incident()                                        # LIFE-562: same watchdog; the marker is world-readable under /etc/lifeos-close
+        except Exception:                                           # noqa: BLE001 - never fails the watchdog
+            pass
+        try:
+            release_proof(token, opener)                            # LIFE-693: same watchdog; one dry proof run per Close release, one page when it fails
         except Exception:                                           # noqa: BLE001 - never fails the watchdog
             pass
     return "WATCH_DONE", None
