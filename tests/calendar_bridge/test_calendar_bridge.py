@@ -286,7 +286,7 @@ class WorkflowTests(unittest.TestCase):
         direct = set(re.findall(r"secrets\.(\w+)", self.text)) - {"LIFEOS_BWS_RUNTIME_TOKEN"}
         self.assertEqual(sorted(direct | set(re.findall(r"steps\.\w+\.outputs\.(\w+)", self.text))),              # EDGE-1.3: migrated values arrive as masked Bitwarden loader outputs
                          sorted(["OUTLOOK_CLIENT_ID", "GCAL_SERVICE_ACCOUNT_JSON", "GCAL_CALENDAR_ID", "NOTION_JIRA_TOKEN"] + [f"LIFEOS_ACQ_{n}" for n in (
-                             "SSH_PRIVATE_KEY", "DB_PASSWORD", "SSH_HOST", "SSH_PORT", "SSH_USER", "SSH_KNOWN_HOSTS", "DB_NAME", "DB_USER")]))
+                             "SSH_PRIVATE_KEY", "DB_PASSWORD", "SSH_HOST", "SSH_USER", "SSH_KNOWN_HOSTS", "DB_NAME", "DB_USER")]))      # LIFE-704: the port comes from the plain-switch loader, not a secret
 
     def test_no_address_in_tracked_bridge_code(self):
         for path in list((ROOT / "lifeos" / "calendar_bridge").glob("*.py")) + [ROOT / "lifeos/platform/gcal.py"]:
@@ -315,7 +315,7 @@ class HourlyJobTests(unittest.TestCase):
         direct = set(re.findall(r"secrets\.(\w+)", steps)) - {"LIFEOS_BWS_RUNTIME_TOKEN"}
         self.assertEqual(sorted(direct | set(re.findall(r"steps\.\w+\.outputs\.(\w+)", steps))),                  # EDGE-1.3: migrated values arrive as masked Bitwarden loader outputs
                          sorted(["OUTLOOK_CLIENT_ID", "GCAL_SERVICE_ACCOUNT_JSON", "GCAL_CALENDAR_ID", "NOTION_JIRA_TOKEN", "NTFY_TOPIC", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET"] + [f"LIFEOS_ACQ_{n}" for n in (
-                             "SSH_PRIVATE_KEY", "DB_PASSWORD", "SSH_HOST", "SSH_PORT", "SSH_USER", "SSH_KNOWN_HOSTS", "DB_NAME", "DB_USER", "SSH_JUMP_KEY")]))   # LIFE-85: the Oracle relay key, and the Tailscale pair for the join only
+                             "SSH_PRIVATE_KEY", "DB_PASSWORD", "SSH_HOST", "SSH_USER", "SSH_KNOWN_HOSTS", "DB_NAME", "DB_USER", "SSH_JUMP_KEY", "SSH_JUMP_HOST", "SSH_JUMP_KNOWN_HOSTS")]))   # LIFE-85: the Oracle relay key, and the Tailscale pair for the join only
 
 
 if __name__ == "__main__":

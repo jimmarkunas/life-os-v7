@@ -469,7 +469,7 @@ class WorkflowTests(unittest.TestCase):
 
     def test_workflow_stays_within_githubs_25_dispatch_inputs(self):
         for text in (self.text, self.domains):
-            block = text[text.index("  workflow_dispatch:\n    inputs:\n"):text.index("\nenv:\n")]
+            block = text[text.index("  workflow_dispatch:\n    inputs:\n"):min(i for i in (text.find("\nenv:\n"), text.find("\npermissions:\n")) if i > 0)]
             self.assertLessEqual(len(re.findall(r"^      [a-z_]+:$", block, re.M)), 25)       # no yaml dependency in CI
         self.assertNotIn("\n      jira:\n", self.text)                                     # the Jira mode input moved with the job
 

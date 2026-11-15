@@ -171,14 +171,14 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(list(manual[True]), ["workflow_dispatch"])                                       # manual only: no schedule, push or other trigger
         self.assertEqual(inputs["stage"]["options"], ["orders", "backfill", "retention", "review-reset", "census"])
         self.assertEqual((inputs["since"]["default"], inputs["live"]["default"]), ("2015-01-01", False))   # dry run stays the default
-        self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", text))), ["GMAIL_OAUTH_CLIENT_ID", "LIFEOS_BWS_RUNTIME_TOKEN", "NOTION_AMAZON_DATA_SOURCE_ID"])
+        self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", text))), ["LIFEOS_BWS_RUNTIME_TOKEN", "NOTION_AMAZON_DATA_SOURCE_ID"])    # LIFE-704: the Gmail client id comes from Bitwarden too
         for moved in ("GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_AMAZON_TOKEN"):
             self.assertNotIn(f"secrets.{moved}", text)                                                    # no direct copy, so no fallback
         self.assertEqual(re.findall(r"uses:\s*(\S*bws-load)", text), ["./.github/actions/bws-load"] * 2)   # the one local credential loader (LIFE-631) plus the NOTION_JIRA_TOKEN-only settings loader (LIFE-703); the reviewed v3.0.1 commit and its one retry (D209) live in that action, pinned by the loader rules below
         mappings = re.findall(r"^\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\s*>\s*\w+)\s*$", text, re.M)
         self.assertEqual(sorted(mappings), sorted(["08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET", "672a44e9-235f-4121-a99d-b4db015a6987 > GMAIL_OAUTH_REFRESH_TOKEN",
-                                                   "46fe195b-82e2-416e-8272-b4db015eea12 > NOTION_AMAZON_TOKEN", UUIDS["NOTION_JIRA_TOKEN"] + " > NOTION_JIRA_TOKEN"]))
-        self.assertEqual(len(re.findall(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", text)), 4)                          # each once: the retry reuses the load's block by YAML alias (LIFE-541)
+                                                   "46fe195b-82e2-416e-8272-b4db015eea12 > NOTION_AMAZON_TOKEN", "8657d1ed-2cde-4298-bd62-b50301523e01 > GMAIL_OAUTH_CLIENT_ID", UUIDS["NOTION_JIRA_TOKEN"] + " > NOTION_JIRA_TOKEN"]))
+        self.assertEqual(len(re.findall(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", text)), 5)                          # each once: the retry reuses the load's block by YAML alias (LIFE-541)
         self.assertLess(text.index("bws-load"), text.index("python -m lifeos.run"))             # loaded before the Amazon command
         self.assertIn("--live", text)                                                                      # the existing live switch is still the only way to write
 
@@ -218,13 +218,13 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(diag["concurrency"], {"group": "life-os-v7-diag", "cancel-in-progress": False})
         self.assertEqual(job["timeout-minutes"], 10)
         self.assertEqual(job["steps"][-1]["run"], 'python -m lifeos.run "$STAGE"')
-        self.assertEqual(job["steps"][-1]["env"], {"LIFEOS_ACQ_SSH_PORT": "${{ secrets.LIFEOS_ACQ_SSH_PORT }}", "STAGE": "${{ inputs.stage }}", "SCHEMA_CONFIRM": "${{ inputs.confirm }}", "ALERTS_MESSAGE_REF": "${{ inputs.message_ref }}"})
+        self.assertEqual(job["steps"][-1]["env"], {"STAGE": "${{ inputs.stage }}", "SCHEMA_CONFIRM": "${{ inputs.confirm }}", "ALERTS_MESSAGE_REF": "${{ inputs.message_ref }}"})
         message = diag[True]["workflow_dispatch"]["inputs"]["message_ref"]                                  # LIFE-59: the optional opaque (SHA-256) message selector for alerts-open; an env value, never inlined in the command, and never a raw Gmail id
         self.assertEqual((message["type"], message["default"]), ("string", ""))
         self.assertNotIn("--live", text.split("\n  # LIFE-10:")[0])                                         # the database and Gmail diagnostics never write
         confirm = diag[True]["workflow_dispatch"]["inputs"]["confirm"]                                      # LIFE-10: the proof's typed confirmation, an env value, never inlined in the command
         self.assertEqual((confirm["type"], confirm["default"]), ("string", ""))
-        self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", text))), ["GMAIL_OAUTH_CLIENT_ID", "LIFEOS_ACQ_SSH_PORT", "LIFEOS_BWS_RUNTIME_TOKEN", "LIFEOS_NOTION_IDS", "NOTION_JOB_LEDGER_DATA_SOURCE_ID"])      # LIFE-121: the report job reads the Ledger's data source id to find its page; the Client ID is the trace job's only Gmail GitHub secret
+        self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", text))), ["LIFEOS_BWS_RUNTIME_TOKEN", "LIFEOS_NOTION_IDS", "NOTION_JOB_LEDGER_DATA_SOURCE_ID"])      # LIFE-121: the report job reads the Ledger's data source id to find its page; LIFE-704: the Gmail client id and the SSH port no longer come from GitHub
         for name in moved:
             self.assertNotIn(f"secrets.{name}", text)                                                      # no direct copy, so no fallback
         self.assertEqual(re.findall(r"uses:\s*(\S*bws-load)", text), ["./.github/actions/bws-load"] * 5)   # the one local loader, once per job (LIFE-631)
@@ -233,10 +233,10 @@ class WorkflowTests(unittest.TestCase):
         sandbox_text, ui_text = sandbox_text.split("\n  # LIFE-88:")                                        # then LIFE-88's UI 3c probe, the one job with the Interview token
         ui_text, report_text = ui_text.split("\n  # LIFE-121:")                                            # then LIFE-121's private reports: the database values and the Jobs Notion token, the one job that writes the report page
         uuid = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
-        gmail = {"GMAIL_OAUTH_CLIENT_SECRET": "08245c07-728f-438e-940b-b4db015a6967", "GMAIL_OAUTH_REFRESH_TOKEN": "672a44e9-235f-4121-a99d-b4db015a6987"}
+        gmail = {"GMAIL_OAUTH_CLIENT_SECRET": "08245c07-728f-438e-940b-b4db015a6967", "GMAIL_OAUTH_REFRESH_TOKEN": "672a44e9-235f-4121-a99d-b4db015a6987", "GMAIL_OAUTH_CLIENT_ID": "8657d1ed-2cde-4298-bd62-b50301523e01"}
         self.assertEqual(sorted(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", head, re.M)), sorted([f"{uuid_} > {name}" for name, uuid_ in moved.items()]))
         self.assertEqual(sorted(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", trace_text, re.M)), sorted([f"{uuid_} > {name}" for name, uuid_ in {**moved, **gmail}.items()]))
-        self.assertEqual((len(re.findall(uuid, head)), len(re.findall(uuid, trace_text))), (7, 9))                      # each once: the retry reuses the load's block by YAML alias (LIFE-541; D209 one retry)
+        self.assertEqual((len(re.findall(uuid, head)), len(re.findall(uuid, trace_text))), (7, 10))                      # each once: the retry reuses the load's block by YAML alias (LIFE-541; D209 one retry)
         self.assertNotIn("GMAIL", head)                                                                    # no Gmail value or secret in the database-only job
         self.assertEqual(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", sandbox_text, re.M), ["53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN"])   # LIFE-10: the Jobs Notion token alone (the retry is its alias)
         self.assertEqual(len(re.findall(uuid, sandbox_text)), 1)
@@ -261,7 +261,7 @@ class WorkflowTests(unittest.TestCase):
         report = diag["jobs"]["report"]                                                                    # LIFE-121: private reports to one Notion page; a dry run unless confirm = REPORT
         self.assertEqual((report["if"], report["timeout-minutes"]), ("${{ inputs.stage == 'scale-up-exclusion-review' || inputs.stage == 'scale-up-register' || inputs.stage == 'jobs-backlog' }}", 10))
         self.assertEqual(sorted(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", report_text, re.M)), sorted([f"{uuid_} > {name}" for name, uuid_ in {**moved, "NOTION_API_TOKEN": "53dc3d04-dbb2-45fe-8185-b4db015eedcb"}.items()]))
-        self.assertEqual(report["steps"][-1]["env"], {"LIFEOS_ACQ_SSH_PORT": "${{ secrets.LIFEOS_ACQ_SSH_PORT }}", "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}",
+        self.assertEqual(report["steps"][-1]["env"], {"NOTION_JOB_LEDGER_DATA_SOURCE_ID": "${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}",
                                                       "STAGE": "${{ inputs.stage }}", "REPORT_CONFIRM": "${{ inputs.confirm }}"})
         self.assertEqual(report["steps"][-1]["run"].count("--live"), 1)                                    # the only write path, behind the typed REPORT confirmation
         self.assertIn('[ "$REPORT_CONFIRM" = "REPORT" ]', report["steps"][-1]["run"])
@@ -279,7 +279,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual([s.get("env") for s in ui["steps"][:-1]], [None] * (len(ui["steps"]) - 1))
         self.assertEqual(trace["timeout-minutes"], 10)
         self.assertEqual(trace["steps"][-1]["run"], 'python -m lifeos.run "$STAGE"')
-        self.assertEqual(trace["steps"][-1]["env"], {"LIFEOS_ACQ_SSH_PORT": "${{ secrets.LIFEOS_ACQ_SSH_PORT }}", "GMAIL_OAUTH_CLIENT_ID": "${{ secrets.GMAIL_OAUTH_CLIENT_ID }}", "STAGE": "${{ inputs.stage }}", "ALERTS_MESSAGE_REF": "${{ inputs.message_ref }}"})
+        self.assertEqual(trace["steps"][-1]["env"], {"GMAIL_OAUTH_CLIENT_ID": "${{ steps.bws_trace.outputs.GMAIL_OAUTH_CLIENT_ID }}", "STAGE": "${{ inputs.stage }}", "ALERTS_MESSAGE_REF": "${{ inputs.message_ref }}"})
 
 
 @unittest.skipIf(yaml is None, "PyYAML not installed")
@@ -669,7 +669,7 @@ class IsolatedJobTests(unittest.TestCase):
         from pathlib import Path
         doc = yaml.safe_load((Path(__file__).resolve().parents[2] / ".github/workflows/hourly.yml").read_text())
         shared = {k: v for k, v in (doc.get("env") or {}).items() if "secrets." in str(v)}
-        self.assertEqual(sorted(shared), ["GMAIL_OAUTH_CLIENT_ID", "HIRING_PIPELINE_PAGE_ID", "LIFEOS_ACQ_SSH_PORT", "NOTION_JOB_LEDGER_DATA_SOURCE_ID"])   # EDGE-1.3: migrated values are no longer workflow level
+        self.assertEqual(sorted(shared), ["HIRING_PIPELINE_PAGE_ID", "NOTION_JOB_LEDGER_DATA_SOURCE_ID"])   # EDGE-1.3: migrated values are no longer workflow level
         needs = {"interview": {"HIRING_PIPELINE_PAGE_ID"}}                  # the Interview job reads the Hiring Pipeline page by id
         for name in ("interview",):
             env = doc["jobs"][name].get("env") or {}
@@ -683,7 +683,7 @@ class IsolatedJobTests(unittest.TestCase):
 
 
 DB = {"LIFEOS_ACQ_DB_NAME", "LIFEOS_ACQ_DB_PASSWORD", "LIFEOS_ACQ_DB_USER", "LIFEOS_ACQ_SSH_HOST", "LIFEOS_ACQ_SSH_KNOWN_HOSTS",
-      "LIFEOS_ACQ_SSH_PORT", "LIFEOS_ACQ_SSH_PRIVATE_KEY", "LIFEOS_ACQ_SSH_USER", "LIFEOS_ACQ_SSH_JUMP_KEY"}     # LIFE-85: the forward-only Oracle relay key, beside the store's own
+      "LIFEOS_ACQ_SSH_PORT", "LIFEOS_ACQ_SSH_PRIVATE_KEY", "LIFEOS_ACQ_SSH_USER", "LIFEOS_ACQ_SSH_JUMP_KEY", "LIFEOS_ACQ_SSH_JUMP_HOST", "LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS"}     # LIFE-704: the jump host and its known hosts now come from Bitwarden; LIFE-85: the forward-only Oracle relay key, beside the store's own
 # LIFE-703: a job that has to read the V7 settings page adds ONE more loader, and it loads nothing but the Notion token. It may fail without failing the job (the GitHub values then decide),
 # so it is the one `continue-on-error` loader; every other loader rule (one credential loader per job, fail closed) still holds for the credential loader and is asserted below.
 SETTINGS_LOADER_ID = "bws_settings"
@@ -908,9 +908,9 @@ class DomainsWorkflowTests(unittest.TestCase):
 
 
 DB = {f"LIFEOS_ACQ_{n}" for n in ("DB_NAME", "DB_PASSWORD", "DB_USER", "SSH_HOST", "SSH_KNOWN_HOSTS", "SSH_PRIVATE_KEY", "SSH_USER")}
-JUMP = {"LIFEOS_ACQ_SSH_JUMP_KEY"}                    # LIFE-85: every hourly / domains / network store step also gets the Oracle relay key
+JUMP = {"LIFEOS_ACQ_SSH_JUMP_KEY", "LIFEOS_ACQ_SSH_JUMP_HOST", "LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS"}                    # LIFE-85: every hourly / domains / network store step also gets the Oracle relay key
 TS = {"TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET"}   # loaded by those store jobs for their tailnet join; only the pinned join action receives them (TAILSCALE_WITH)
-HRL = {"FIT_PROFILE_EXTRA_JSON", "FIT_PROFILE_JSON", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "JOBRIGHT_EMAIL", "JOBRIGHT_PASSWORD", "NOTION_API_TOKEN", "OPEN_JOBS_CONTACT", "TINYFISH_API_KEY"}
+HRL = {"FIT_PROFILE_EXTRA_JSON", "FIT_PROFILE_JSON", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "JOBRIGHT_EMAIL", "JOBRIGHT_PASSWORD", "NOTION_API_TOKEN", "OPEN_JOBS_CONTACT", "TINYFISH_API_KEY", "GMAIL_OAUTH_CLIENT_ID"}
 # The 25 values verified value-for-value in Bitwarden by migration run 37532718917 (name -> secret id). Ids are not credentials.
 UUIDS = {
     "FIT_PROFILE_EXTRA_JSON": "3e264d79-3af4-4f2a-a86a-b4db015a68de",
@@ -943,32 +943,42 @@ UUIDS = {
     "TAILSCALE_OAUTH_CLIENT_SECRET": "e54f0a84-84c3-47d8-8b5b-b4e30052d6e9",
     "IMESSAGE_ALERTS_HOST": "6590208b-506d-4238-ab10-b4e30051b25f",
     "LIFEOS_ACQ_SSH_JUMP_KEY": "192db2d1-be66-4fca-b9b5-b4e900240507",        # LIFE-85 (Jim, Oct 19 2026): the v7-store-fwd relay key; id only, never the value
+    # LIFE-704 (Jira LIFE-704 comments 13319, 13320): copies of former GitHub values, read through the masking loader (identifiers and addresses, never a plain switch). Ids only.
+    "LIFEOS_ACQ_SSH_JUMP_HOST": "4d0c7449-ed0a-46c1-9c2c-b503015f8d54",
+    "LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS": "82efa413-6b9c-4c5c-b0d2-b503015f8e3d",
+    "GMAIL_OAUTH_CLIENT_ID": "8657d1ed-2cde-4298-bd62-b50301523e01",
+    "OUTLOOK_CLIENT_ID": "2b2c73a9-7a1e-44b9-95f0-b50301509b09",
+    "BUZZ_STAGE_KEY": "f92e4a37-0289-40a6-b31f-b503015f8824",
+    "BUZZ_STAGE_HERMES_PUBKEY": "486e59dc-2cfe-4ce1-80e4-b503015b80b0",
+    "BUZZ_URL_LIFE_OS": "6c067b5b-b2c6-4f6b-b6f2-b503015a2e3f",
+    "NOTION_FIT_SYNC_TOKEN": "bb1503dc-1603-43b8-a315-b5030156ca0d",
+    "V7_ARCHIVE_TOKEN": "c7b3ff1a-e0d9-456a-b8c6-b5030158f900",
 }
 # The one action that may receive loader outputs through `with:` (LIFE-31): the pinned Tailscale join, and only its two OAuth inputs.
 TAILSCALE_ACTION = "./.github/actions/tailscale"
 TAILSCALE_WITH = {"oauth-client-id": "TAILSCALE_OAUTH_CLIENT_ID", "oauth-secret": "TAILSCALE_OAUTH_CLIENT_SECRET"}
 # Least privilege: the credentials each job may load from Bitwarden (a conscious decision; domains.yml jobs are held to DOMAIN_SECRETS instead). Adding one is the only workflow edit that needs a test edit.
 LOADED = {
-    "branches": {"report": {"NOTION_JIRA_TOKEN"}},
+    "branches": {"report": {"NOTION_JIRA_TOKEN"}, "archive": {"V7_ARCHIVE_TOKEN"}},
     "agenda": {"agenda": DB | {"GCAL_SERVICE_ACCOUNT_JSON", "NOTION_JIRA_TOKEN"}},
     "bills": {"bills": DB | {"NOTION_BILLS_TOKEN"}},
-    "calendar": {"calendar": DB | {"GCAL_SERVICE_ACCOUNT_JSON"}},
+    "calendar": {"calendar": DB | {"GCAL_SERVICE_ACCOUNT_JSON", "OUTLOOK_CLIENT_ID"}},
     "hourly": {"prep": DB | JUMP | TS | HRL, "jobright": DB | JUMP | TS | HRL, "linkedin": DB | JUMP | TS | HRL, "lensa": DB | JUMP | TS | HRL, "finish": DB | JUMP | TS | HRL | {"NTFY_TOPIC", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"}, "interview": {"NOTION_INTERVIEW_TOKEN"}, "report": {"NTFY_TOPIC"}},
     "network": {"network": DB | JUMP | TS | {"NOTION_API_TOKEN"}},
-    "outlook": {"outlook": DB},
-    "profile-sync": {"sync": DB},
+    "outlook": {"outlook": DB | {"OUTLOOK_CLIENT_ID"}},
+    "profile-sync": {"sync": DB | {"NOTION_FIT_SYNC_TOKEN"}},
     "granola-auto": {"auto": DB - {"LIFEOS_ACQ_SSH_PORT"} | {"NOTION_INTERVIEW_TOKEN", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"}},
     "granola": {"granola": {"NOTION_INTERVIEW_TOKEN", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"}},
     "manual-job": {"manual": DB | {"NOTION_INTERVIEW_TOKEN"}},
-    "hermes-stage": {"hermes": {"JIRA_API_TOKEN", "JIRA_EMAIL"}},
+    "hermes-stage": {"hermes": {"JIRA_API_TOKEN", "JIRA_EMAIL", "BUZZ_STAGE_KEY", "BUZZ_STAGE_HERMES_PUBKEY", "BUZZ_URL_LIFE_OS"}},
     "readiness-live": {"readiness": {"JIRA_API_TOKEN", "JIRA_EMAIL"}},
     "interview-proof": {"proof": {"NOTION_INTERVIEW_TOKEN"}},
-    "recruiters": {"recruiters": DB | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_RECRUITERS_TOKEN"}},
+    "recruiters": {"recruiters": DB | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_RECRUITERS_TOKEN", "GMAIL_OAUTH_CLIENT_ID", "OUTLOOK_CLIENT_ID"}},
     "watchdog": {"watch": {"NTFY_TOPIC"}},
     "safety": {"safety": DB | {"FIT_PROFILE_EXTRA_JSON", "FIT_PROFILE_JSON", "NTFY_TOPIC"}},
-    "amazon": {"amazon": {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_AMAZON_TOKEN"}},
+    "amazon": {"amazon": {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_AMAZON_TOKEN", "GMAIL_OAUTH_CLIENT_ID"}},
     "fit-edge-test": {"fit_edge": {"TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"}},
-    "diag": {"diag": DB, "trace": DB | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN"}, "sandbox": {"NOTION_API_TOKEN"}, "interview_ui": {"NOTION_INTERVIEW_TOKEN"}, "report": DB | {"NOTION_API_TOKEN"}},
+    "diag": {"diag": DB, "trace": DB | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "GMAIL_OAUTH_CLIENT_ID"}, "sandbox": {"NOTION_API_TOKEN"}, "interview_ui": {"NOTION_INTERVIEW_TOKEN"}, "report": DB | {"NOTION_API_TOKEN"}},
 }
 PILOTS = ("watchdog", "safety", "amazon", "diag")
 SECRET_FREE = ("pr-tests", "suite-timing")         # workflows that read no secret at all, so they have no loader to pin (their own tests pin that: pr-tests below, suite-timing in SuiteTimingWorkflow)

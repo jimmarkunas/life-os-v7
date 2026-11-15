@@ -291,7 +291,7 @@ class WorkflowTests(unittest.TestCase):
         direct = set(re.findall(r"secrets\.(\w+)", self.text)) - {"LIFEOS_BWS_RUNTIME_TOKEN"}
         self.assertEqual(sorted(direct | set(re.findall(r"steps\.\w+\.outputs\.(\w+)", self.text))),              # EDGE-1.3: migrated values arrive as masked Bitwarden loader outputs
                          sorted(["OUTLOOK_CLIENT_ID"] + [f"LIFEOS_ACQ_{n}" for n in (
-                             "SSH_PRIVATE_KEY", "DB_PASSWORD", "SSH_HOST", "SSH_PORT", "SSH_USER", "SSH_KNOWN_HOSTS", "DB_NAME", "DB_USER")]))
+                             "SSH_PRIVATE_KEY", "DB_PASSWORD", "SSH_HOST", "SSH_USER", "SSH_KNOWN_HOSTS", "DB_NAME", "DB_USER")]))
 
     def test_no_mailbox_address_anywhere_in_tracked_outlook_code(self):
         for path in list((ROOT / "lifeos" / "outlook").glob("*.py")) + [ROOT / "lifeos/platform/outlook.py"]:

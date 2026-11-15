@@ -108,7 +108,8 @@ def context(doc, event, variables=None, **given):
     inputs = {k: v.get("default", "" if v.get("type") == "string" else False) for k, v in doc[True]["workflow_dispatch"]["inputs"].items()} if event == "workflow_dispatch" else {}
     inputs.update(given)
     ctx = {"github": {"event_name": event}, "inputs": inputs, "vars": {"V7_PIPELINE": "true", "V7_CLOUD_FIT": "off", "V7_FIT_GATE": "true", **(variables or {})}, "steps": {}}
-    ctx["env"] = {"PIPELINE": evaluate(doc["env"]["PIPELINE"], ctx)}
+    ctx["env"] = {"PIPELINE": evaluate(doc["env"]["PIPELINE"], ctx),
+                  **{k: v for k, v in ctx["vars"].items() if k.startswith("V7_CLOUD_FIT") and k != "V7_CLOUD_FIT_BACKLOG_PAGE"}}      # LIFE-704: the plain-switch loader exports the spend values to the job environment
     return ctx
 
 

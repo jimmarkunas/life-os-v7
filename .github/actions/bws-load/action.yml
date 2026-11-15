@@ -5,10 +5,14 @@ inputs:
   secrets: {description: "One 'secret-id > NAME' per line", required: true}
   set_env: {description: "Export the values to the job environment (the default of the loader); false keeps them as masked step outputs only", default: "true"}
 outputs:
+  BUZZ_STAGE_HERMES_PUBKEY: {value: "${{ steps.first.outputs.BUZZ_STAGE_HERMES_PUBKEY || steps.retry.outputs.BUZZ_STAGE_HERMES_PUBKEY }}"}
+  BUZZ_STAGE_KEY: {value: "${{ steps.first.outputs.BUZZ_STAGE_KEY || steps.retry.outputs.BUZZ_STAGE_KEY }}"}
+  BUZZ_URL_LIFE_OS: {value: "${{ steps.first.outputs.BUZZ_URL_LIFE_OS || steps.retry.outputs.BUZZ_URL_LIFE_OS }}"}
   DCC_CARD_BLOCK_ID: {value: "${{ steps.first.outputs.DCC_CARD_BLOCK_ID || steps.retry.outputs.DCC_CARD_BLOCK_ID }}"}
   FIT_PROFILE_EXTRA_JSON: {value: "${{ steps.first.outputs.FIT_PROFILE_EXTRA_JSON || steps.retry.outputs.FIT_PROFILE_EXTRA_JSON }}"}
   FIT_PROFILE_JSON: {value: "${{ steps.first.outputs.FIT_PROFILE_JSON || steps.retry.outputs.FIT_PROFILE_JSON }}"}
   GCAL_SERVICE_ACCOUNT_JSON: {value: "${{ steps.first.outputs.GCAL_SERVICE_ACCOUNT_JSON || steps.retry.outputs.GCAL_SERVICE_ACCOUNT_JSON }}"}
+  GMAIL_OAUTH_CLIENT_ID: {value: "${{ steps.first.outputs.GMAIL_OAUTH_CLIENT_ID || steps.retry.outputs.GMAIL_OAUTH_CLIENT_ID }}"}
   GMAIL_OAUTH_CLIENT_SECRET: {value: "${{ steps.first.outputs.GMAIL_OAUTH_CLIENT_SECRET || steps.retry.outputs.GMAIL_OAUTH_CLIENT_SECRET }}"}
   GMAIL_OAUTH_REFRESH_TOKEN: {value: "${{ steps.first.outputs.GMAIL_OAUTH_REFRESH_TOKEN || steps.retry.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}"}
   IMESSAGE_ALERTS_HOST: {value: "${{ steps.first.outputs.IMESSAGE_ALERTS_HOST || steps.retry.outputs.IMESSAGE_ALERTS_HOST }}"}
@@ -27,14 +31,19 @@ outputs:
   NOTION_AMAZON_TOKEN: {value: "${{ steps.first.outputs.NOTION_AMAZON_TOKEN || steps.retry.outputs.NOTION_AMAZON_TOKEN }}"}
   NOTION_API_TOKEN: {value: "${{ steps.first.outputs.NOTION_API_TOKEN || steps.retry.outputs.NOTION_API_TOKEN }}"}
   NOTION_BILLS_TOKEN: {value: "${{ steps.first.outputs.NOTION_BILLS_TOKEN || steps.retry.outputs.NOTION_BILLS_TOKEN }}"}
+  NOTION_FIT_SYNC_TOKEN: {value: "${{ steps.first.outputs.NOTION_FIT_SYNC_TOKEN || steps.retry.outputs.NOTION_FIT_SYNC_TOKEN }}"}
   NOTION_INTERVIEW_TOKEN: {value: "${{ steps.first.outputs.NOTION_INTERVIEW_TOKEN || steps.retry.outputs.NOTION_INTERVIEW_TOKEN }}"}
   NOTION_JIRA_TOKEN: {value: "${{ steps.first.outputs.NOTION_JIRA_TOKEN || steps.retry.outputs.NOTION_JIRA_TOKEN }}"}
   NOTION_RECRUITERS_TOKEN: {value: "${{ steps.first.outputs.NOTION_RECRUITERS_TOKEN || steps.retry.outputs.NOTION_RECRUITERS_TOKEN }}"}
   NTFY_TOPIC: {value: "${{ steps.first.outputs.NTFY_TOPIC || steps.retry.outputs.NTFY_TOPIC }}"}
   OPEN_JOBS_CONTACT: {value: "${{ steps.first.outputs.OPEN_JOBS_CONTACT || steps.retry.outputs.OPEN_JOBS_CONTACT }}"}
+  OUTLOOK_CLIENT_ID: {value: "${{ steps.first.outputs.OUTLOOK_CLIENT_ID || steps.retry.outputs.OUTLOOK_CLIENT_ID }}"}
   TAILSCALE_OAUTH_CLIENT_ID: {value: "${{ steps.first.outputs.TAILSCALE_OAUTH_CLIENT_ID || steps.retry.outputs.TAILSCALE_OAUTH_CLIENT_ID }}"}
   TAILSCALE_OAUTH_CLIENT_SECRET: {value: "${{ steps.first.outputs.TAILSCALE_OAUTH_CLIENT_SECRET || steps.retry.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}"}
   TINYFISH_API_KEY: {value: "${{ steps.first.outputs.TINYFISH_API_KEY || steps.retry.outputs.TINYFISH_API_KEY }}"}
+  V7_ARCHIVE_TOKEN: {value: "${{ steps.first.outputs.V7_ARCHIVE_TOKEN || steps.retry.outputs.V7_ARCHIVE_TOKEN }}"}
+  LIFEOS_ACQ_SSH_JUMP_HOST: {value: "${{ steps.first.outputs.LIFEOS_ACQ_SSH_JUMP_HOST || steps.retry.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}"}
+  LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: {value: "${{ steps.first.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS || steps.retry.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}"}
 runs:
   using: composite
   steps:
