@@ -28,7 +28,7 @@ The job timeouts in `.github/workflows` change in one separate workflow pull req
 | `agenda.yml` | `agenda` | 15 | 15 | 5 | 16 | 85 | kept: only 5 measured runs (fewer than 10), slowest 85 s |
 | `amazon.yml` | `amazon` | 330 | 330 | 28 | 60 | 1037 | kept: the backfill stage reads every historical month and runs for hours by design (D140); the 330-minute limit is pinned on purpose |
 | `bills.yml` | `bills` | 15 | 15 | 3 | 10 | 10 | kept: only 3 measured runs (fewer than 10), slowest 10 s |
-| `branches.yml` | `archive` | 10 | 5 (pending) | 96 | 14 | 24 | twice the slowest run (24 s) rounded up to whole minutes, 5-minute floor |
+| `branches.yml` | `archive` | 5 | 5 | 96 | 14 | 24 | twice the slowest run (24 s) rounded up to whole minutes, 5-minute floor |
 | `branches.yml` | `report` | 10 | 10 | 0 | - | - | not measured: no completed run in the last 100; keeps its current value |
 | `calendar.yml` | `calendar` | 15 | 15 | 6 | 12 | 18 | kept: only 6 measured runs (fewer than 10), slowest 18 s |
 | `diag.yml` | `diag` | 10 | 10 | 33 | 14 | 97 | twice the slowest run (97 s) rounds to 10 min, not below the current 10: unchanged |
@@ -57,26 +57,26 @@ The job timeouts in `.github/workflows` change in one separate workflow pull req
 | `granola-auto.yml` | `auto` | 20 | 20 | 10 | 43 | 109 | twice the slowest run (109 s) rounds to 20 min, not below the current 20: unchanged |
 | `granola.yml` | `granola` | 15 | 15 | 4 | 28 | 41 | kept: only 4 measured runs (fewer than 10), slowest 41 s |
 | `hermes-stage.yml` | `hermes` | 10 | 10 | 5 | 10 | 12 | kept: only 5 measured runs (fewer than 10), slowest 12 s |
-| `hourly.yml` | `finish` | 58 | 30 (pending) | 100 | 116 | 815 | the Bitwarden helper waits up to 600 s, so the limit is at least 30 min (3 x the wait; twice the slowest run, 815 s, would be 28 min) |
+| `hourly.yml` | `finish` | 58 | 58 | 100 | 116 | 815 | kept at Jim's decision (Nov 15 2026, approve, leave prep and finish): the tick's 35-minute budget and the D238 backlog batch to :55; revisit after a week of runs |
 | `hourly.yml` | `interview` | 15 | 15 | 0 | - | - | not measured: no completed run in the last 100; keeps its current value |
 | `hourly.yml` | `jobright` | 40 | 40 | 0 | - | - | not measured: no completed run in the last 100; keeps its current value |
 | `hourly.yml` | `lensa` | 40 | 40 | 0 | - | - | not measured: no completed run in the last 100; keeps its current value |
 | `hourly.yml` | `linkedin` | 40 | 40 | 0 | - | - | not measured: no completed run in the last 100; keeps its current value |
-| `hourly.yml` | `prep` | 45 | 30 (pending) | 100 | 25 | 235 | the Bitwarden helper waits up to 600 s, so the limit is at least 30 min (3 x the wait; twice the slowest run, 235 s, would be 8 min) |
+| `hourly.yml` | `prep` | 45 | 45 | 100 | 25 | 235 | kept at Jim's decision (Nov 15 2026, approve, leave prep and finish): up to 25 min gate wait for an older run (D210) plus the Bitwarden helper wait plus the tests; revisit after a week of runs |
 | `hourly.yml` | `report` | 5 | 5 | 100 | 2 | 16 | twice the slowest run (16 s) rounds to 5 min, not below the current 5: unchanged |
 | `interview-proof.yml` | `proof` | 30 | 30 | 18 | 506 | 1614 | twice the slowest run (1614 s) rounds to 54 min, not below the current 30: unchanged |
 | `manual-job.yml` | `manual` | 15 | 15 | 4 | 47 | 71 | kept: only 4 measured runs (fewer than 10), slowest 71 s |
 | `network.yml` | `network` | 30 | 30 | 100 | 539 | 1818 | slowest run 1818 s reached 90% of the current limit: keeps 30 min and is listed for Jim (the job is at its limit) |
 | `outlook.yml` | `outlook` | 20 | 20 | 20 | 11 | 227 | twice the slowest run (227 s) rounds to 20 min, not below the current 20: unchanged |
-| `pr-tests.yml` | `test-index` | 15 | 11 (pending) | 39 | 247 | 305 | twice the slowest run (305 s) rounded up to whole minutes, 5-minute floor |
-| `pr-tests.yml` | `unit-tests` | 10 | 5 (pending) | 99 | 105 | 136 | twice the slowest run (136 s) rounded up to whole minutes, 5-minute floor |
+| `pr-tests.yml` | `test-index` | 11 | 11 | 39 | 247 | 305 | twice the slowest run (305 s) rounded up to whole minutes, 5-minute floor |
+| `pr-tests.yml` | `unit-tests` | 5 | 5 | 99 | 105 | 136 | twice the slowest run (136 s) rounded up to whole minutes, 5-minute floor |
 | `profile-sync.yml` | `sync` | 10 | 10 | 39 | 15 | 248 | twice the slowest run (248 s) rounds to 10 min, not below the current 10: unchanged |
 | `readiness-live.yml` | `readiness` | 10 | 10 | 1 | 8 | 8 | kept: only 1 measured runs (fewer than 10), slowest 8 s |
 | `recruiters.yml` | `recruiters` | 20 | 20 | 9 | 389 | 404 | kept: only 9 measured runs (fewer than 10), slowest 404 s |
 | `safety.yml` | `safety` | 20 | 20 | 12 | 22 | 44 | twice the slowest run (44 s) rounds to 20 min, not below the current 20: unchanged |
 | `suite-timing.yml` | `plan` | 2 | 2 | 4 | 3 | 4 | kept: only 4 measured runs (fewer than 10), slowest 4 s |
 | `suite-timing.yml` | `report` | 5 | 5 | 4 | 11 | 18 | kept: only 4 measured runs (fewer than 10), slowest 18 s |
-| `suite-timing.yml` | `timing` | 10 | 5 (pending) | 40 | 95 | 135 | twice the slowest run (135 s) rounded up to whole minutes, 5-minute floor |
+| `suite-timing.yml` | `timing` | 5 | 5 | 40 | 95 | 135 | twice the slowest run (135 s) rounded up to whole minutes, 5-minute floor |
 | `watchdog.yml` | `watch` | 3 | 3 | 100 | 9 | 34 | already under the 5-minute floor; slowest run 34 s |
 
 ### At their limit (for Jim)
@@ -236,6 +236,7 @@ Every call that leaves the process carries an explicit timeout. `tests/contracts
 
 LIFE-580 made the gate and the ticker ignore a tick run that is queued or running for more than 40 minutes, so one stuck run cannot stop every later tick, and opened one incident (`tick_run_stuck`, INFO, state key in the alert registry). LIFE-691 adds the cancel: the watchdog (`lifeos/platform/gate.py`, run by the GitHub watchdog and by the Oracle ticker) asks GitHub to cancel each stuck tick run (`POST /actions/runs/<id>/cancel`).
 * GitHub accepts the cancel and the run ends: no alert; the stuck incident never opens.
+* The watchdog token stays `actions: read` (decided Nov 15 2026, no permissions change); until Jim grants more, GitHub refuses the cancel and the incident below is the signal.
 * GitHub refuses (as it did on Nov 11 2026), or the run is still active 20 minutes after the stuck limit (a cancel the next watchdog cycle should have finished): the one `tick_run_stuck` incident opens, once, through the alert gateway; the skip rule keeps later ticks running.
 * The incident closes when no tick run is stuck.
 

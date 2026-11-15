@@ -728,9 +728,11 @@ class DomainsWorkflowTests(unittest.TestCase):
         self.assertEqual(self.doc["jobs"]["granola"]["needs"], ["interview", "gate"])                 # LIFE-632: Granola waits for the one Interview writer, no longer for the whole Recruiters job
 
     def test_recruiters_takes_its_turn_after_the_jira_card_and_still_runs_when_jira_is_red(self):
-        """LIFE-680: the Recruiters job reads the whole Daily Report page while the Jira card removes and rewrites its blocks; it waits for the Jira job (always(): a red Jira job never stops it)."""
+        """LIFE-680 / LIFE-688: the Recruiters job reads the whole Daily Report page while the Jira card removes and rewrites its blocks; it waits for the Jira job and, option B (Jim, Nov 15 2026), for the Hiring job, the other whole-page walker (always(): a red job never stops it)."""
         job = self.doc["jobs"]["recruiters"]
-        self.assertEqual(job["needs"], ["gate", "jira"])
+        self.assertEqual(job["needs"], ["gate", "jira", "hiring"])
+        self.assertEqual(self.doc["jobs"]["hiring"]["needs"], ["gate"])                      # hiring goes first; it waits for nobody else
+        self.assertIn("always()", self.doc["jobs"]["hiring"]["if"])
         self.assertIn("always()", job["if"])
         self.assertNotIn("!cancelled()", job["if"])
         self.assertIn("needs.gate.result != 'failure'", job["if"])

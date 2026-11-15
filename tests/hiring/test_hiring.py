@@ -841,8 +841,9 @@ class RuntimePathTests(unittest.TestCase):
         doc = yaml.safe_load((ROOT / ".github/workflows/domains.yml").read_text())
         self.assertEqual(doc["jobs"]["hiring"]["needs"], ["gate"])                                 # LIFE-613: its writes reach only its own heading, table and rows (ScopedClient), so it waits for nobody
         self.assertTrue({"jira", "agenda", "bills", "amazon", "mail", "hiring"} <= set(doc["jobs"]["dcc"]["needs"]))      # the Command Center runs after every writer, Hiring Pipeline included
-        for name in ("outlook", "megibow", "recruiters"):                                          # the three that never write the Daily Report page
+        for name in ("outlook", "megibow"):                                                        # the two that never write the Daily Report page
             self.assertNotIn("hiring", doc["jobs"][name].get("needs", []))
+        self.assertIn("hiring", doc["jobs"]["recruiters"]["needs"])                                # LIFE-688 option B: the two whole-page walkers take turns, recruiters after hiring
         step = next(s for s in doc["jobs"]["hiring"]["steps"] if "lifeos.run hiring" in s.get("run", ""))      # EDGE-1.3: a Bitwarden loader step precedes it
         self.assertIn("lifeos.run hiring", step["run"])
         self.assertTrue(step["continue-on-error"])
