@@ -50,6 +50,14 @@ CONFLICT_CAP_REACHED = "WRITE_CONFLICT_CAP_REACHED"
 CONFLICT_UNAVAILABLE = "WRITE_CONFLICT_COUNT_UNAVAILABLE"
 CONFLICT_RULE = "rule: any write conflict moves the Daily Report writers to the full chain (option A, LIFE-688)"
 
+SCHEDULED_WORKFLOWS = {"safety.yml": 1, "watchdog.yml": 3}   # LIFE-692: each workflow with a `schedule:` trigger that no other alert covers -> how many finished scheduled runs in a row must pass to close its incident
+SCHEDULED_COVERED = {"hourly.yml": "its scheduled runs are ticks: pipeline_failing, pipeline_stalled and run_failed already page for them"}      # the other scheduled workflows and why none is checked twice
+SCHEDULED_OWN_ALERT = {"safety.yml": "Phone alert"}          # a failed run whose own alert step passed has already paged: the central check pushes no second alert for it
+SCHEDULED_RUNS_READ = 8        # finished scheduled runs read per workflow (one list call each)
+SCHEDULED_RED_FAMILY, SCHEDULED_OK_FAMILY = "scheduled_red", "scheduled_recovered"      # registry families scheduled_red_* (PAGE) and scheduled_recovered_* (INFO)
+SCHEDULED_UNREADABLE = "SCHEDULED_RUNS_UNREADABLE"          # fixed code shown in the watchdog line when a workflow's runs cannot be read; it never pages by itself
+SCHEDULED_FAILED = ("failure", "timed_out", "startup_failure")
+
 
 def _t(value):
     return dt.datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc) if value else None
@@ -388,6 +396,53 @@ def sync_incident(label, title, body, signal, open_push, close_push, push=None, 
         return None
 
 
+def scheduled_signal(runs, passes):
+    """LIFE-692: True when the newest finished SCHEDULED run of a workflow failed (open), False when its newest `passes` finished scheduled runs passed (recovered), else None (unchanged).
+    Cancelled, skipped and unfinished runs and manual runs never count; `runs` are the workflow's scheduled runs, any order."""
+    finished = sorted((r for r in runs if r.get("event", "schedule") == "schedule" and r.get("conclusion") in SCHEDULED_FAILED + ("success",)),
+                      key=lambda r: r.get("created_at") or "", reverse=True)
+    if not finished:
+        return None
+    if finished[0]["conclusion"] in SCHEDULED_FAILED:
+        return True
+    return False if health_model.recovered([r["conclusion"] for r in finished], passes) else None
+
+
+def _own_alert_fired(workflow, runs, api):
+    """True when the newest failed scheduled run of `workflow` already pushed its own alert (its named step passed), so the central check stays quiet for that run: one alert per failure."""
+    step = SCHEDULED_OWN_ALERT.get(workflow)
+    failed = [r for r in runs if r.get("conclusion") in SCHEDULED_FAILED]
+    if not step or not failed:
+        return False
+    newest = max(failed, key=lambda r: r.get("created_at") or "")
+    jobs = api(f"actions/runs/{newest['id']}/jobs").get("jobs") or []
+    return any(item.get("name") == step and item.get("conclusion") == "success" for job in jobs for item in job.get("steps") or [])
+
+
+def scheduled_checks(now, push=None, api=None):
+    """LIFE-692: every scheduled workflow that raises no alert of its own on failure pages ONCE when its newest scheduled run goes red and once (INFO) when it recovers: one GitHub issue per
+    workflow (label `scheduled-red-<name>`), a registry key per state change, no reminders (a second red run adds nothing). One list call per workflow; an unreadable workflow is skipped under
+    SCHEDULED_UNREADABLE and never pages by itself. It is self-contained on purpose: the Oracle ticker runs this module without isolate.py. -> {"changes": {workflow: change}, "unreadable": [workflow]}"""
+    api, out = api or _api, {"changes": {}, "unreadable": []}
+    for workflow, passes in SCHEDULED_WORKFLOWS.items():
+        try:
+            runs = api(f"actions/workflows/{workflow}/runs?event=schedule&per_page={SCHEDULED_RUNS_READ}")["workflow_runs"]
+            signal = scheduled_signal(runs, passes)
+            if signal is True and _own_alert_fired(workflow, runs, api):
+                signal = None
+            name = workflow.removesuffix(".yml")
+            word = name.replace("-", "_")
+            out["changes"][workflow] = sync_incident(
+                f"scheduled-red-{name}", f"V7 scheduled workflow red: {name}",
+                f"The newest scheduled run of the {name} workflow ({workflow}) failed. Open the Actions tab. This issue closes itself when its last {passes} finished scheduled run(s) passed.", signal,
+                (f"V7 scheduled workflow failed: {name}", f"The scheduled {name} workflow failed on its newest run. Open the Actions tab.", "page", health_model.state_key(SCHEDULED_RED_FAMILY, word)),
+                (f"V7 scheduled workflow recovered: {name}", f"The {name} workflow's scheduled runs pass again.", "info", health_model.state_key(SCHEDULED_OK_FAMILY, word)),
+                push, now, remind=False)
+        except Exception:                                          # noqa: BLE001 - one workflow's unreadable history is that workflow's gap, recorded by fixed code, never an alert
+            out["unreadable"].append(workflow)
+    return out
+
+
 def watch(now=None, push=None, checkin=True):
     """Independent watchdog (its own workflow): the gate only runs when an hourly run starts, so a total stall (no GitHub schedule, no timer tick)
     would stay silent. Two incidents, both raised from outside the pipeline: no successful run for 2.5 hours, and three or more failed ticks in 24 hours.
@@ -411,6 +466,7 @@ def watch(now=None, push=None, checkin=True):
                       ("V7 tick run stuck", "An hourly tick run has had no conclusion for over 40 minutes. Later ticks still run. Open the Actions tab.", "info", "tick_run_stuck"),
                       ("V7 stuck tick run cleared", "No hourly tick run is stuck.", "info", "tick_run_stuck_recovered"), push, now),
     ]
+    scheduled = scheduled_checks(now, push)                      # LIFE-692: the scheduled workflows that raise no alert of their own
     sent = None
     if checkin and digest_due(now):                               # LIFE-330: the Oracle ticker runs incidents only; the check-in stays with the GitHub watchdog
         try:
@@ -430,7 +486,7 @@ def watch(now=None, push=None, checkin=True):
             late = ()
         title, body = health(runs, domain_runs, now, late=late, conflicts=conflict_text)
         sent = (push or _push)(title, body, "info", "daily_check")          # LIFE-603: _push takes the registered alert key; the call without it crashed every real check-in
-    print(f"watchdog: stale={is_stale} failing={fail_signal} changes={changes} checkin={sent} reaper={reaped['found']}/{len(reaped['cancelled'])}/{len(reaped['refused'])}/{len(reaped['still_stuck'])}")
+    print(f"watchdog: stale={is_stale} failing={fail_signal} changes={changes} checkin={sent} reaper={reaped['found']}/{len(reaped['cancelled'])}/{len(reaped['refused'])}/{len(reaped['still_stuck'])}" + (f" {SCHEDULED_UNREADABLE}={','.join(scheduled['unreadable'])}" if scheduled["unreadable"] else ""))
     return 0
 
 

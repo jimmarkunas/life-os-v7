@@ -8,7 +8,7 @@ from unittest import mock
 from lifeos.platform import limits
 from lifeos.platform.http import Fetched
 from lifeos.sources.web import diff, lister, run, suppress
-from tests.kit import shared
+from tests.kit import clock, shared
 
 NOW = datetime(2026, 10, 1, 12, 0)
 
@@ -83,10 +83,11 @@ class WorkdayJibePinpoint(unittest.TestCase):
         pages[0]["jobPostings"].append({"title": "x", "externalPath": "/job/z_0", "locationsText": "", "postedOn": ""})
         src = {"kind": "workday", "url": "https://adobe.wd5.myworkdayjobs.com/wday/cxs/adobe/external/jobs",
                "public_job_base_url": "https://adobe.wd5.myworkdayjobs.com/en-US/external"}
-        got = lister.list_source(src, fake)
+        with mock.patch.object(lister, "date", clock.FrozenDate):                              # `Posted Today` is read against date.today(): the same test clock the assertion uses
+            got = lister.list_source(src, fake)
         self.assertEqual((got.status, len(got.jobs), len(seen)), (lister.COMPLETE, 3, 1))
         self.assertEqual(got.jobs[0]["url"], "https://adobe.wd5.myworkdayjobs.com/en-US/external/job/a_1")
-        self.assertEqual(got.jobs[0]["posted"], date.today())
+        self.assertEqual(got.jobs[0]["posted"], clock.today())
         self.assertIsNone(got.jobs[2]["posted"])
 
     def test_workday_incomplete_and_oversize_are_failed(self):
