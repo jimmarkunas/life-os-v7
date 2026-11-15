@@ -8,14 +8,17 @@ from lifeos.platform import gate
 # Every test here reads the default gap unless it sets GATE_MIN_GAP_MINUTES itself: the hourly run exports Jim's drain-mode variable to its own
 # unit-test step (Oct 25 2026: GATE_MIN_GAP_MINUTES=20 failed test_recent_run_means_skip in every run until the variable was deleted).
 _environ = mock.patch.dict(os.environ)
+_no_logs = mock.patch.object(gate, "_logs", side_effect=OSError("tests never download real run logs"))      # LIFE-688: the check-in's write-conflict count reads logs; a test must never reach GitHub
 
 
 def setUpModule():
     _environ.start()
+    _no_logs.start()
     os.environ.pop("GATE_MIN_GAP_MINUTES", None)
 
 
 def tearDownModule():
+    _no_logs.stop()
     _environ.stop()
 
 NOW = dt.datetime(2026, 10, 1, 17, 7, tzinfo=dt.timezone.utc)
