@@ -10,7 +10,7 @@ from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 from lifeos.dcc import header
-from lifeos.platform import ct_stamp, due, report_region, router
+from lifeos.platform import ct_stamp, due, report_region, router, stability
 from lifeos.platform.notion_client import Client, NotionError
 from lifeos.platform.notion_text import plain
 
@@ -145,9 +145,9 @@ def _number(text, pattern):
     return int(found.group(1)) if found else None
 
 
-def compose(areas, now):
+def compose(areas, now, clock=None):
     """-> the callout's content as plain data (the approved native layout, LIFE-57). Pure. A count is shown only from a card that is current: a stale, degraded or unreadable card shows
-    its own state in place of a number, never a zero."""
+    its own state in place of a number, never a zero. LIFE-694: `clock` (lifeos/platform/stability.py) adds the fourth card, Platform Stability; without it the three KPI cards are as before."""
     states = {label: classify(area, now, fresh_minutes(label)) for label, area in areas.items()}
     ok, bad = [l for l, (state, _) in states.items() if state == "fresh"], [(l, state) for l, (state, _) in states.items() if state != "fresh"]
 
@@ -172,7 +172,7 @@ def compose(areas, now):
     return {"health": f"Source health and freshness · {len(ok)} of {len(states)} current" + "".join(f" · {label} {state.upper()}" for label, state in bad),
             "detail": [freshness, ("✅" if not bad else "⚠️") + f" {len(ok)} of {len(states)} source cards current · This is source-card health, not proof that every task is complete."],
             "kpis": [kpi(bills_due, "Bills due", source("Bills")), kpi(combined, "Jira Overdue / Blocked", source("Jira") + (" · count not reported" if combined is None and states.get("Jira", ("unset",))[0] == "fresh" else "")),
-                     kpi(waiting, "Mail waiting", source("Mail Alerts"))]}
+                     kpi(waiting, "Mail waiting", source("Mail Alerts"))], **({"clock": clock} if clock is not None else {})}
 
 ICONS = ("credit-card", "arrow-right", "inbox")                  # the approved mockup's native icons, in card order
 
@@ -186,6 +186,26 @@ def _b(kind, *parts, children=None, icon=None):
                                                     **({"children": children} if children else {})}}
 
 
+CLOCK_NAME, CLOCK_ICON = "Platform Stability", "layers"        # LIFE-694: the fourth card; Jim's approved layout (Nov 14 2026): heading, one line, seven segments; no timestamp, no other text
+
+
+def _colored(text, color):
+    return {"type": "text", "text": {"content": text}, "annotations": {"color": color}}
+
+
+def clock_card(clock):
+    """The Platform Stability card from `stability.clock`: heading, `N of 7 clean days` (or `0 of 7 clean days · RESET`, or `Unverified`), then exactly seven segments (filled for completed clean days)."""
+    state, days = clock.get("state"), int(clock.get("days") or 0)
+    if state == "unverified":
+        line, filled = "Unverified", 0
+    elif state == "reset":
+        line, filled = f"0 of {stability.NEED} clean days · RESET", 0
+    else:
+        line, filled = f"{days} of {stability.NEED} clean days", max(0, min(days, stability.NEED))
+    parts = ([_colored(" ".join("■" * filled), "green" if filled == stability.NEED else "blue")] if filled else []) + ([_colored(("  " if filled else "") + " ".join("□" * (stability.NEED - filled)), "gray")] if filled < stability.NEED else [])
+    return _b("callout", icon=CLOCK_ICON, children=[_b("heading_3", _t(CLOCK_NAME)), _b("paragraph", _t(line, bold=True)), _b("paragraph", *parts)])
+
+
 def render(model):
     """Source health directly below the heading, then four equal KPI callouts."""
     def column(ratio, *kids):
@@ -195,14 +215,22 @@ def render(model):
         return {"object": "block", "type": "column_list", "column_list": {"children": list(cols)}}
 
     health = _b("toggle", _t(model["health"]), children=[_b("paragraph", _t(text)) for text in model["detail"]])
-    return [health, row(*[column(round(1 / len(model["kpis"]), 4), _b("callout", icon=icon, children=[_b("heading_3", _t(value)), _b("paragraph", _t(name, bold=True)), _b("paragraph", _t(text, gray=True))]))
-                         for icon, (value, name, text) in zip(ICONS, model["kpis"])])]
+    clock = model.get("clock")
+    ratio = round(1 / (len(model["kpis"]) + (clock is not None)), 4)
+    columns = [column(ratio, _b("callout", icon=icon, children=[_b("heading_3", _t(value)), _b("paragraph", _t(name, bold=True)), _b("paragraph", _t(text, gray=True))]))
+               for icon, (value, name, text) in zip(ICONS, model["kpis"])]
+    if clock is not None:
+        columns.append(column(ratio, clock_card(clock)))
+    return [health, row(*columns)]
 
 
 def _kpi_name(client, column):
     """The KPI's name line (the bold paragraph under its number) in a live column, or "" when the column does not look like one of ours."""
     for callout in report_region.children(client, column["id"], _fail)[:1]:
-        lines = [b for b in report_region.children(client, callout["id"], _fail) if b.get("type") == "paragraph"]
+        kids = report_region.children(client, callout["id"], _fail)
+        if any(b.get("type") == "heading_3" and report_region.plain(b).strip() == CLOCK_NAME for b in kids):
+            return CLOCK_NAME                                                         # LIFE-694: the stability card is recognised by its heading, its count line changes every day
+        lines = [b for b in kids if b.get("type") == "paragraph"]
         return report_region.plain(lines[0]).strip() if lines else ""
     return ""
 
@@ -261,17 +289,18 @@ def run(limit, live, environ=os.environ, client=None, now=None):
         raise _fail("NO_EVIDENCE")                         # nothing could be read: say nothing rather than write an empty summary
     by_area = {label: classify(area, now, fresh_minutes(label))[0] for label, area in areas.items()}
     states = list(by_area.values())
-    model = compose(areas, now)
+    clock = stability.clock(environ, now)                                     # LIFE-694: read-only GitHub history; unreadable is `unverified`, never a healthy 0
+    model = compose(areas, now, clock)
     spec = render(model)
     protected_ids = {region: (environ.get(name) or "").strip() for name, region in PROTECTED}
     try:
-        trimmed = converge_columns(client, block_id, [name for _, name, _ in model["kpis"]], protected_ids, live)
+        trimmed = converge_columns(client, block_id, [name for _, name, _ in model["kpis"]] + [CLOCK_NAME], protected_ids, live)
         changed, removed = (0, 0) if trimmed and not live else report_region.replace_tree(client, block_id, TITLE, MODULE, spec, protected_ids, _fail, "dcc", live)       # a dry run cannot preflight a tree it has not yet trimmed
     except NotionError as error:
         if "CARD_NOT_OWNED" not in str(error):                       # LIFE-655: a failed callout write no longer freezes the page's Updated line; a wrong target still writes nothing
             print("dcc: header", _stamp(client, block_id, now, live))
         raise
-    counts = {"areas": len(areas), "fresh": states.count("fresh"), "not_current": len(states) - states.count("fresh"), "states": by_area, "status": "fresh", "blocks_written": 0, "columns_removed": trimmed}
+    counts = {"areas": len(areas), "fresh": states.count("fresh"), "not_current": len(states) - states.count("fresh"), "states": by_area, "status": "fresh", "blocks_written": 0, "columns_removed": trimmed, "stability": clock}
     if live:
         counts["blocks_written"], counts["removed"] = changed, removed
     counts["header"] = _stamp(client, block_id, now, live)                                                              # D183: never changes the Command Center's own result
