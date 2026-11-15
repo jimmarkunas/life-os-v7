@@ -7,8 +7,8 @@ from lifeos.platform.jira import JiraError
 NOW = datetime(2026, 11, 18, 9, 5, tzinfo=ZoneInfo("America/Chicago"))        # a Wednesday in Q4 2026
 
 
-def rich(content):
-    return [{"type": "text", "plain_text": content, "text": {"content": content}}]
+def rich(content, url=None):
+    return [{"type": "text", "plain_text": content, "href": url, "text": {"content": content, "link": {"url": url} if url else None}}]
 
 
 def para(block_id, content):
@@ -83,8 +83,12 @@ class Notion:
         if block["type"] == "table_row":
             block["table_row"]["cells"] = [rich(c[0]["text"]["content"]) for c in body["table_row"]["cells"]]
         else:
-            block[block["type"]] = {"rich_text": rich(body[block["type"]]["rich_text"][0]["text"]["content"])}
+            block[block["type"]] = {"rich_text": [rich(n["text"]["content"], (n["text"].get("link") or {}).get("url"))[0] for n in body[block["type"]]["rich_text"]]}
         return block
+
+    def links(self, block_id):
+        """[(text, link)] the way a reader sees the block: pieces with their link."""
+        return [(i["plain_text"], i["href"]) for i in self.blocks[block_id][self.blocks[block_id]["type"]]["rich_text"]]
 
 
 class Jira:

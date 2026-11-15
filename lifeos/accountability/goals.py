@@ -10,7 +10,7 @@ def lanes(jira, person, year, n):
     return [(e["lane"], *counts[e["key"]]) for e in mine], [e["key"] for e in mine]
 
 
-def _build(client, block_id, person, project, jira, now, live):
+def _build(client, block_id, person, project, jira, now, live, site):
     year, n, _, _ = read.quarter(now.date())
     found, keys = lanes(jira, person, year, n)
     stamp = render.stamp(now)

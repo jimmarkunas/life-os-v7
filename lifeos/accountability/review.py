@@ -2,7 +2,7 @@
 from lifeos.accountability import common, goals, read, region, render
 
 
-def _build(client, block_id, person, project, jira, now, live):
+def _build(client, block_id, person, project, jira, now, live, site):
     year, n, _, _ = read.quarter(now.date())
     current, _ = goals.lanes(jira, person, year, n)
     stamp = render.stamp(now)

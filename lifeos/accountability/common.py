@@ -6,7 +6,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from lifeos.accountability import region
-from lifeos.accountability.read import PEOPLE
+from lifeos.accountability.read import PEOPLE, site_url
 from lifeos.accountability.render import degraded_stamp
 from lifeos.platform.jira import Jira, JiraError
 from lifeos.platform.notion_client import Client
@@ -19,17 +19,18 @@ def notion_writer(environ):
 
 
 def run_region(kind, build, environ=None, jira=None, notion=None, now=None, live=False):
-    """`build(client, block_id, person, project, jira, now, live)` reads Jira and writes the callout; it returns counts. kind is the register row suffix (week, goals, review)."""
+    """`build(client, block_id, person, project, jira, now, live, site)` reads Jira and writes the callout; it returns counts. kind is the register row suffix (week, goals, review)."""
     environ = os.environ if environ is None else environ
     now = now or datetime.now(CHI)
     notion = notion or notion_writer(environ)
     jira = jira or Jira.from_env(environ)
+    site = site_url(environ)
     counts, degraded = {}, []
     for person, project in PEOPLE:
         block_id = region.address(notion, f"{person.lower()}.{kind}")
         client = region.scoped(notion, block_id)
         try:
-            counts[person.lower()] = build(client, block_id, person, project, jira, now, live)
+            counts[person.lower()] = build(client, block_id, person, project, jira, now, live, site)
         except JiraError:
             counts[person.lower()] = {"degraded": True, "stamp_written": region.degrade(client, block_id, lambda old: degraded_stamp(old, now), live)}
             degraded.append(person.lower())
