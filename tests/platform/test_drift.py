@@ -234,5 +234,59 @@ class Journal(unittest.TestCase):
         self.assertNotIn("undecided", out)
 
 
+class UnitStateWithoutSystemd(unittest.TestCase):
+    """LIFE-725: inside the ticker's sandbox systemctl prints nothing; the enablement link stands in, and the journal says it is only "enabled"."""
+    def fake_run(self, out):
+        class Done:
+            stdout = out
+        return lambda *a, **k: Done()
+
+    def test_systemd_answer_wins_when_it_gives_one(self):
+        self.assertEqual(ticker.unit_state("u.timer", run=self.fake_run("inactive\n"), listdir=lambda d: self.fail("not asked")), "inactive")
+
+    def test_no_answer_falls_back_to_the_enablement_link_for_a_timer_and_a_service(self):
+        seen = []
+
+        def listing(path):
+            seen.append(path)
+            return ["a.timer", "b.service"]
+        run = self.fake_run("")
+        self.assertEqual(ticker.unit_state("a.timer", run=run, listdir=listing, base="/b"), drift.ENABLED)
+        self.assertEqual(ticker.unit_state("b.service", run=run, listdir=listing, base="/b"), drift.ENABLED)
+        self.assertEqual(seen, ["/b/timers.target.wants", "/b/multi-user.target.wants"])
+        self.assertEqual(ticker.unit_state("c.timer", run=run, listdir=listing, base="/b"), "disabled")
+
+    def test_a_systemctl_that_cannot_start_or_an_unreadable_directory_is_handled(self):
+        def broken(*a, **k):
+            raise FileNotFoundError("systemctl")
+
+        self.assertEqual(ticker.unit_state("a.timer", run=broken, listdir=lambda d: ["a.timer"]), drift.ENABLED)
+
+        def unreadable(path):
+            raise PermissionError("secret path")
+        with self.assertRaises(drift.Unreadable) as raised:
+            ticker.unit_state("a.timer", run=self.fake_run(""), listdir=unreadable)
+        self.assertEqual(raised.exception.code, drift.UNIT_UNREADABLE)
+
+    def test_enabled_is_deployed_and_says_which_method_decided(self):
+        rows = drift.check(lambda p: drift.blob_sha(GOOD), lambda p: GOOD, lambda u: drift.ENABLED, surfaces(2))
+        self.assertEqual([r["state"] for r in rows], [drift.DEPLOYED] * 2)
+        self.assertEqual({r["why"] for r in rows}, {drift.UNIT_STATE_FROM_ENABLED})
+        line = drift.explain(rows)
+        self.assertIn("signal=recovered", line)
+        self.assertIn("UNIT_STATE_FROM_ENABLED=2 (enabled, not proof the unit is running)", line)
+
+    def test_active_says_nothing_extra_and_a_unit_that_is_not_enabled_is_still_drift(self):
+        rows = drift.check(lambda p: drift.blob_sha(GOOD), lambda p: GOOD, lambda u: "active", surfaces(1))
+        self.assertEqual((rows[0]["state"], rows[0]["why"]), (drift.DEPLOYED, ""))
+        self.assertNotIn("UNIT_STATE", drift.explain(rows))
+        rows = drift.check(lambda p: drift.blob_sha(GOOD), lambda p: GOOD, lambda u: "disabled", surfaces(1))
+        self.assertEqual(rows[0]["state"], drift.DRIFT)
+
+    def test_a_changed_file_is_drift_even_when_the_unit_is_only_enabled(self):
+        rows = drift.check(lambda p: drift.blob_sha(GOOD), lambda p: b"other", lambda u: drift.ENABLED, surfaces(1))
+        self.assertEqual(rows[0]["state"], drift.DRIFT)
+
+
 if __name__ == "__main__":
     unittest.main()
