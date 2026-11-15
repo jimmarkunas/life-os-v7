@@ -175,6 +175,63 @@ class SettingsStepsNeverStopAJob(unittest.TestCase):
         self.assertNotIn("permissions", yaml.safe_load((WORKFLOWS / "profile-sync.yml").read_text())["jobs"]["settings"])
 
 
+# The only names a `needs.<job>.outputs.<name>` may carry: due flags and trigger facts, settings switches, fixed words (failed stage names, codes) and run facts. Never a credential.
+KNOWN_OUTPUTS = {"all", "codes", "due_agenda", "due_amazon", "due_amazon_retention", "due_bills", "due_dcc", "due_granola", "due_hiring", "due_hiring_outcomes", "due_imessage",
+                 "due_interview", "due_jira", "due_mail", "due_megibow", "due_outlook", "due_recruiters", "extract", "failed", "fit_profile_sync", "granola_auto", "imessage_alerts",
+                 "matrix", "sweep", "tick"}
+SECRET_NAME = re.compile(r"(_TOKEN|_KEY|_SECRET|_PASSWORD|_PRIVATE_KEY)$")
+
+
+def output_problems(docs, texts):
+    """LIFE-703: a credential must never travel through a job output (anything a later job can read). -> what breaks the rule, by file and job, never a value."""
+    problems = []
+    for file, doc in docs.items():
+        for job, body in (doc.get("jobs") or {}).items():
+            loaders = {s.get("id") for s in body.get("steps") or [] if str(s.get("uses", "")).endswith("bws-load") and s.get("id")}
+            for key, value in (body.get("outputs") or {}).items():
+                text = str(value)
+                if "secrets." in text:
+                    problems.append(f"{file}:{job}: output {key} carries a secrets value")
+                for step, name in re.findall(r"steps\.(\w+)\.outputs\.(\w+)", text):
+                    if step in loaders or SECRET_NAME.search(name):
+                        problems.append(f"{file}:{job}: output {key} carries a loaded credential")
+    for file, text in texts.items():
+        for name in sorted(set(re.findall(r"needs\.[\w-]+\.outputs\.(\w+)", text))):
+            if name not in KNOWN_OUTPUTS:
+                problems.append(f"{file}: needs.*.outputs.{name} is not a known switch name")
+    return problems
+
+
+@unittest.skipIf(yaml is None, "PyYAML not installed")
+class NoCredentialTravelsThroughAJobOutput(unittest.TestCase):
+    def test_no_job_output_carries_a_secret_and_every_needs_output_is_a_known_name(self):
+        texts = {p.name: p.read_text() for p in sorted(WORKFLOWS.glob("*.yml"))}
+        docs = {name: yaml.safe_load(text) for name, text in texts.items()}
+        self.assertEqual(output_problems(docs, texts), [])
+
+    def test_the_check_fails_on_a_deliberately_bad_fixture(self):
+        bad = """
+jobs:
+  gate:
+    outputs:
+      granola_auto: ${{ steps.settings.outputs.GRANOLA_AUTO || vars.GRANOLA_AUTO }}
+      leak_loader: ${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}
+      leak_secret: ${{ secrets.JIRA_BASE_URL }}
+      leak_named: ${{ steps.other.outputs.SOME_API_TOKEN }}
+    steps:
+      - id: bws_settings
+        uses: ./.github/actions/bws-load
+  later:
+    needs: [gate]
+    if: ${{ needs.gate.outputs.granola_auto == 'on' && needs.gate.outputs.mystery_switch == 'on' }}
+"""
+        problems = output_problems({"bad.yml": yaml.safe_load(bad)}, {"bad.yml": bad})
+        self.assertEqual(len(problems), 4, problems)
+        self.assertEqual(sorted(p.split(":")[-1].split(" carries")[0].strip() for p in problems if "carries" in p), ["output leak_loader", "output leak_named", "output leak_secret"])
+        self.assertTrue(any("mystery_switch" in p for p in problems))
+        self.assertFalse(any("granola_auto" in p for p in problems))                              # a settings step's switch output is allowed
+
+
 class _Page:
     def __init__(self, lines):
         self.lines = lines
