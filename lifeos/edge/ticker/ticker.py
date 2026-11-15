@@ -171,22 +171,27 @@ def drift_incident(token, opener=urllib.request.urlopen, sync=None, read=None, u
 
     def expected_for(path):
         status, body = _status(_request(f"repos/{REPO}/contents/{path}?ref=main", token), opener)
-        return body.get("sha") if status == 200 and isinstance(body, dict) else None
+        if status == 200 and isinstance(body, dict) and body.get("sha"):
+            return body["sha"]
+        raise drift.Unreadable(drift.EXPECTED_NETWORK if status is None else f"EXPECTED_HTTP_{status}")           # LIFE-725: say why main's blob could not be read
 
     def read_file(path):
         try:
             return Path(path).read_bytes()
         except FileNotFoundError:
             return drift.MISSING
-        except OSError:
-            return None
+        except OSError as error:
+            raise drift.Unreadable(drift.INSTALLED_UNREADABLE) from error
 
     def active(unit):
         done = subprocess.run(["systemctl", "is-active", unit], capture_output=True, text=True, timeout=15)
-        return done.stdout.strip() or None
+        if not done.stdout.strip():
+            raise drift.Unreadable(drift.UNIT_UNREADABLE)
+        return done.stdout.strip()
 
     rows = rows if rows is not None else drift.check(expected_for, read or read_file, unit_state or active)
     signal = drift.incident_signal(rows)
+    print(drift.explain(rows))                                      # LIFE-725: the journal says what the check decided and, for an UNKNOWN surface, why
     if signal is not None:
         counts, drifted = drift.summary(rows)
         if sync is None:
@@ -280,24 +285,24 @@ def watch(token, topic, opener=urllib.request.urlopen, run=None, environ=None, d
     if disk:
         try:
             disk()
-        except Exception:                                           # noqa: BLE001 - the disk check never fails the watchdog; the next run tries again
-            pass
+        except Exception as error:                                  # noqa: BLE001 - the disk check never fails the watchdog; the next run tries again
+            print(f"ticker: disk check failed ({type(error).__name__})")
         try:
             drift_incident(token, opener)                           # LIFE-528: inside the existing watchdog, no new scheduler
-        except Exception:                                           # noqa: BLE001 - the drift check never fails the watchdog either
-            pass
+        except Exception as error:                                  # noqa: BLE001 - the drift check never fails the watchdog either
+            print(f"ticker: drift check failed ({type(error).__name__})")          # LIFE-725: the class only, never the message
         try:
             stall_incident()                                        # LIFE-562: same watchdog; the marker is world-readable under /etc/lifeos-close
-        except Exception:                                           # noqa: BLE001 - never fails the watchdog
-            pass
+        except Exception as error:                                  # noqa: BLE001 - never fails the watchdog
+            print(f"ticker: stall check failed ({type(error).__name__})")
         try:
             proof_unreadable_incident()                             # LIFE-693: same watchdog; the marker is world-readable under /etc/lifeos-close
-        except Exception:                                           # noqa: BLE001 - never fails the watchdog
-            pass
+        except Exception as error:                                  # noqa: BLE001 - never fails the watchdog
+            print(f"ticker: proof flag check failed ({type(error).__name__})")
         try:
             release_proof(token, opener)                            # LIFE-693: same watchdog; one dry proof run per Close release, one page when it fails
-        except Exception:                                           # noqa: BLE001 - never fails the watchdog
-            pass
+        except Exception as error:                                  # noqa: BLE001 - never fails the watchdog
+            print(f"ticker: release proof check failed ({type(error).__name__})")
     return "WATCH_DONE", None
 
 
