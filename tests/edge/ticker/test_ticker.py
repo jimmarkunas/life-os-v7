@@ -170,6 +170,63 @@ class Stall(unittest.TestCase):
         stall.assert_called_once()
 
 
+class ProofUnreadable(unittest.TestCase):
+    """LIFE-693: the release timer deploys nothing when it cannot read the release-paused flag and writes a marker; the watch raises ONE PAGE from it, never reminds, and closes it with one INFO when the marker is gone."""
+    def test_the_marker_opens_one_page_and_its_absence_closes_it_with_one_recovered_push(self):
+        seen = []
+        record = lambda *a, **k: seen.append((a, k))
+        self.assertTrue(ticker.proof_unreadable_incident("/x/m", lambda p: True, record))
+        self.assertFalse(ticker.proof_unreadable_incident("/x/m", lambda p: False, record))
+        (first, kw), (second, _) = seen
+        self.assertEqual((first[0], first[3], second[3]), ("release-pause-unreadable", True, False))
+        self.assertEqual((first[4][2:], first[5][2:]), (("page", "release_pause_unreadable"), ("info", "release_pause_unreadable_recovered")))
+        self.assertIs(kw.get("remind"), False)                                                    # Jim: state-change pushes only, no 3-hour reminders
+        self.assertIn("lifts by itself", first[2])
+        from lifeos.platform import alert_registry
+        for key in ("release_pause_unreadable", "release_pause_unreadable_recovered"):
+            self.assertIn(key, alert_registry.REGISTRY)
+
+    def test_ten_unreadable_runs_page_once_a_readable_run_recovers_once_and_the_next_unreadable_run_pages_once_more(self):
+        """The real incident gateway over an in-memory GitHub: the push count is what the phone would see."""
+        issues, pushes = [], []
+
+        def api(path, method="GET", body=None):
+            if method == "GET":
+                return [i for i in issues if i["state"] == "open"]
+            if method == "POST" and path == "issues":
+                issues.append({"number": len(issues) + 1, "state": "open", "title": body["title"], "labels": [{"name": n} for n in body["labels"]],
+                               "created_at": "2026-11-15T08:00:00Z", "updated_at": "2026-11-15T08:00:00Z"})
+            elif method == "PATCH":
+                issues[int(path.split("/")[1]) - 1]["state"] = body["state"]
+            elif method == "POST" and path.endswith("/comments"):
+                pushes.append(("comment", path))
+            return {}
+
+        later = dt.datetime(2026, 11, 20, 8, 0, tzinfo=dt.timezone.utc)                           # five days open: a reminder would be due long ago
+        sync = lambda *a, **k: gate.sync_incident(*a, push=lambda title, body, severity, key: pushes.append((severity, key)) or True, now=later, **k)
+        with mock.patch.object(gate, "_api", api):
+            for _ in range(10):
+                ticker.proof_unreadable_incident("/x/m", lambda p: True, sync)
+            self.assertEqual(pushes, [("page", "release_pause_unreadable")])
+            ticker.proof_unreadable_incident("/x/m", lambda p: False, sync)
+            ticker.proof_unreadable_incident("/x/m", lambda p: False, sync)                       # nothing open: nothing more is sent
+            self.assertEqual(pushes[1:], [("info", "release_pause_unreadable_recovered")])
+            ticker.proof_unreadable_incident("/x/m", lambda p: True, sync)
+            self.assertEqual([p for p in pushes if p == ("page", "release_pause_unreadable")], [("page", "release_pause_unreadable")] * 2)
+            self.assertEqual(len(pushes), 3)
+
+    def test_the_marker_is_the_one_the_release_timer_writes(self):
+        script = Path(__file__).resolve().parents[3].joinpath("lifeos/edge/oracle/install-close.sh").read_text()
+        self.assertEqual(ticker.PROOF_FILE, "/etc/lifeos-close/auto.proof-unreadable")
+        self.assertIn('"$ETC/auto.proof-unreadable"', script)
+
+    def test_the_watch_runs_it_and_a_failure_never_fails_the_watchdog(self):
+        with mock.patch.object(ticker, "proof_unreadable_incident", side_effect=RuntimeError("x")) as incident:
+            code = ticker.watch(TOKEN, TOPIC, FakeGitHub(SWITCHES), run=lambda **k: None, environ={}, disk=lambda: None)
+        self.assertEqual(code[0], "WATCH_DONE")
+        incident.assert_called_once()
+
+
 class ReleaseProof(unittest.TestCase):
     """LIFE-693: the watch proves each Close release with one dry quick run and pages once when it fails."""
     DEPLOYED, PREVIOUS = "b" * 40, "a" * 40

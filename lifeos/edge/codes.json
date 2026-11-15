@@ -48,5 +48,7 @@
   "SECRET_BAD_REPLY": ["secrets", "degraded", false, "The service answered with something that is not the expected JSON, or too much.", "Check the service; nothing was returned."],
   "SECRET_FIELD_NOT_SCALAR": ["secrets", "degraded", false, "A listed field was not a short plain value, so nothing was returned.", "Fix the purpose's field list."],
   "SECRET_OUTPUT_TOO_LARGE": ["secrets", "bug", false, "The answer exceeded 4096 bytes, so nothing was returned.", "Shorten the purpose's field list."],
-  "SECRET_OUTPUT_CONTAINS_SECRET": ["secrets", "bug", false, "The answer would have contained the credential value in some spelling, so it was refused.", "Tell Oracle Claude; the purpose must not return that field."]
+  "SECRET_OUTPUT_CONTAINS_SECRET": ["secrets", "bug", false, "The answer would have contained the credential value in some spelling, so it was refused.", "Tell Oracle Claude; the purpose must not return that field."],
+  "PROOF_PAUSED": ["close-release", "blocked", false, "A failed proof run after a deploy paused Close releases: an open release-paused issue exists, so the timer deploys nothing.", "Read the alert; close the release-paused issue (a passing proof run closes it) to resume."],
+  "PROOF_STATE_UNREADABLE": ["close-release", "retry", false, "The release timer could not read the release-paused flag on GitHub, so it deploys nothing.", "None; it lifts by itself on the next timer run that can read the flag."]
 }

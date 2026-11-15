@@ -33,6 +33,8 @@ DISK_PATH, DISK_LIMIT = "/var/lib/hermeseval", 80        # LIFE-301: the Hermes 
 DISK_LABEL, DISK_TITLE = "hermes-disk-full", "Hermes disk is 80% full or more"
 STALL_FILE = "/etc/lifeos-close/auto.stalled"            # LIFE-562: written by the Close release timer after 2 hours without a green main head
 STALL_LABEL, STALL_TITLE = "deploy-stalled", "Close service release has not deployed for over 2 hours"
+PROOF_FILE = "/etc/lifeos-close/auto.proof-unreadable"   # LIFE-693: written by the Close release timer when it cannot read the release-paused flag (it then deploys nothing)
+PROOF_LABEL, PROOF_TITLE = "release-pause-unreadable", "Close release timer cannot read the release-paused flag"
 DRIFT_LABEL, DRIFT_TITLE = "deploy-drift", "Installed files on the Oracle VM differ from main"
 RELEASE_MANIFEST, RELEASE_PREVIOUS = "/opt/lifeos-close/current/MANIFEST", "/opt/lifeos-close/previous/MANIFEST"      # LIFE-693: world-readable; the first line is `commit <40 hex>`, the deployed-version proof
 REFUSED = (401, 403, 404, 422)          # the token, its permissions, the workflow name or the inputs are wrong: a person must act
@@ -144,6 +146,22 @@ def stall_incident(path=STALL_FILE, exists=os.path.exists, sync=None):
          ("Close release stalled", "No green main head for over 2 hours; screen changes are not deploying. Open the deploy-stalled issue.", "info", "deploy_stalled"),
          ("Close release moving again", "A green main head deployed.", "info", "deploy_stalled_recovered"))
     return stalled
+
+
+def proof_unreadable_incident(path=PROOF_FILE, exists=os.path.exists, sync=None):
+    """LIFE-693 (Jim, Nov 15 2026): the Close release timer reads the release-paused flag before every deploy and, when it cannot read it, deploys NOTHING (an unknown state never deploys) and writes
+    `path`. The timer has no alert credential, so this watch raises ONE PAGE incident through the gateway (remind=False: no reminders) with a state key and closes it, with one recovered push, when the marker is gone (the next
+    timer run that can read the flag removes it). Nothing here rolls anything back: the alert is the action."""
+    if sync is None:
+        from lifeos.platform import gate                           # noqa: PLC0415
+        sync = gate.sync_incident
+    unreadable = bool(exists(path))
+    sync(PROOF_LABEL, PROOF_TITLE, "The Close release timer on lifeos-edge-01 could not read the release-paused flag on GitHub (a network error, a rate limit or an answer it does not understand), so it is "
+         "deploying nothing: an unknown state never deploys. Nothing is broken on the VM; the live tree stays as it is. You do nothing: this lifts by itself on the next timer run (every 15 minutes) "
+         "that can read the flag, and this issue then closes itself. If it stays open for more than an hour, check that GitHub is reachable from lifeos-edge-01.", unreadable,
+         ("Close releases not deploying", "The release timer cannot read the release-paused flag, so nothing deploys. It lifts by itself when GitHub is readable again.", "page", "release_pause_unreadable"),
+         ("Close releases can deploy again", "The release timer can read the release-paused flag again.", "info", "release_pause_unreadable_recovered"), remind=False)    # Jim: state-change pushes only, no 3-hour reminders
+    return unreadable
 
 
 def drift_incident(token, opener=urllib.request.urlopen, sync=None, read=None, unit_state=None, rows=None):
@@ -270,6 +288,10 @@ def watch(token, topic, opener=urllib.request.urlopen, run=None, environ=None, d
             pass
         try:
             stall_incident()                                        # LIFE-562: same watchdog; the marker is world-readable under /etc/lifeos-close
+        except Exception:                                           # noqa: BLE001 - never fails the watchdog
+            pass
+        try:
+            proof_unreadable_incident()                             # LIFE-693: same watchdog; the marker is world-readable under /etc/lifeos-close
         except Exception:                                           # noqa: BLE001 - never fails the watchdog
             pass
         try:
