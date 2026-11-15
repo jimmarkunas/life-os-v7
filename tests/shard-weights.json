@@ -41,7 +41,6 @@
   "tests.contracts.test_net_size_rule": 0.01,
   "tests.contracts.test_node_install": 0.07,
   "tests.contracts.test_privacy": 1.56,
-  "tests.contracts.test_protected_files": 0.01,
   "tests.contracts.test_readiness": 1.66,
   "tests.contracts.test_ruff_advisory": 0.12,
   "tests.contracts.test_runtime_manifest": 0.01,
