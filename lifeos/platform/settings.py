@@ -161,6 +161,7 @@ def seed(client, lines):
 
 def _fill(environ, values, out):
     """The shadow rule: fill a name the step declares empty, compare a held one, count an undeclared one."""
+    out.setdefault("matched_names", [])                                    # LIFE-703: the NAMES whose GitHub value equalled the page (never a value), for a per-name 24 hour match list
     for name, value in sorted(values.items()):
         have = held(environ, name)
         if not have and name not in environ:                              # a step that never declares a name never receives it
@@ -170,6 +171,7 @@ def _fill(environ, values, out):
             out["filled"].append(name)
         elif _bare(have) == _bare(value) if is_address(name) else have == value:
             out["matched"] += 1
+            out["matched_names"].append(name)
         else:
             out["mismatched"].append(name)
 

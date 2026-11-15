@@ -171,6 +171,15 @@ class ShadowRule(unittest.TestCase):
         self.assertEqual(env["JIRA_CARD_BLOCK_ID"], "x" * 32)                   # GitHub still holds it: never overwritten, only compared
         self.assertEqual((out["status"], out["filled"], out["matched"], out["mismatched"]), ("ok", ["INTERVIEW_TEST_COMPANIES", "MEGIBOW_BLOCK_ID"], 1, ["JIRA_CARD_BLOCK_ID"]))
 
+    def test_the_counts_name_every_matched_setting_and_never_a_value(self):
+        """LIFE-703: a per-name 24 hour match list needs the NAMES; every older key keeps its meaning and no value reaches the counts."""
+        env = {"HIRING_AUTO_CLOSE": "on", "JIRA_CARD_BLOCK_ID": ID, "MEGIBOW_BLOCK_ID": "", "RECRUITER_OUTREACH": "off"}
+        out = settings.apply(env, Page(["MEGIBOW_BLOCK_ID " + ID, "JIRA_CARD_BLOCK_ID " + ID, "HIRING_AUTO_CLOSE on", "RECRUITER_OUTREACH on"]))
+        self.assertEqual((out["matched"], out["matched_names"], out["mismatched"], out["filled"]), (2, ["HIRING_AUTO_CLOSE", "JIRA_CARD_BLOCK_ID"], ["RECRUITER_OUTREACH"], ["MEGIBOW_BLOCK_ID"]))
+        self.assertEqual(out["matched"], len(out["matched_names"]))
+        self.assertNotIn(ID, repr(out))                                          # names only
+        self.assertEqual(settings.apply({}, Page(["HIRING_AUTO_CLOSE on"]))["matched_names"], [])      # nothing declared, nothing matched
+
     def test_safety_values_credentials_unknown_and_bad_addresses_are_never_applied(self):
         env = {"MEGIBOW_BLOCK_ID": ""}
         out = settings.apply(env, Page(["V7_LIVE true", "ALERTS_ENABLED off", "CLOUDFLARE_API_TOKEN abc", "SOMETHING_NEW 1", "MEGIBOW_BLOCK_ID not-an-id", "MEGIBOW_BLOCK_ID " + ID, "MEGIBOW_BLOCK_ID " + ID]))
