@@ -466,7 +466,7 @@ class RuntimePathTests(unittest.TestCase):
         for name in ("physical_mail", "physical_mail_anchor"):
             self.assertIn(name, domains[True]["workflow_dispatch"]["inputs"])
         self.assertIn("inputs.physical_mail", domains["jobs"]["dcc"]["if"])                          # LIFE-95: a mail-only run refreshes the Command Center in the same run, through the existing job
-        self.assertEqual(ingest["env"]["PHYSICAL_MAIL_EXPECT"], "${{ vars.PHYSICAL_MAIL_EXPECT }}")    # Jim's own tally (counts only) gates the one-time rebuild
+        self.assertEqual(ingest["env"]["PHYSICAL_MAIL_EXPECT"], "")    # Jim's own tally (counts only) gates the one-time rebuild; LIFE-703: declared empty, the V7 settings page can fill it (never set in GitHub, so no change when unset)
         self.assertNotIn("mail", yaml.safe_load((root / "hourly.yml").read_text())["jobs"])          # no second scheduler, workflow family or hourly step
         self.assertNotIn("schedule", domains[True])
 
