@@ -27,7 +27,9 @@ echo "rel $*" >> "$SIM/log"
 body() { tail -n +2 "$1/MANIFEST"; }
 case "$1" in
   serve-state) cat > /dev/null; echo "${SERVE:-ours}" ;;
-  latest) if [ -n "${HEAD:-}" ]; then echo "$HEAD"; else echo "REFUSED: NOT_GREEN" >&2; exit 1; fi ;;
+  latest) if [ "${PAUSE:-}" = 3 ]; then echo "REFUSED: PROOF_PAUSED" >&2; exit 3; fi      # LIFE-693: the real tool's exit statuses: 3 paused, 4 flag unreadable
+          if [ "${PAUSE:-}" = 4 ]; then echo "REFUSED: PROOF_STATE_UNREADABLE" >&2; exit 4; fi
+          if [ -n "${HEAD:-}" ]; then echo "$HEAD"; else echo "REFUSED: NOT_GREEN" >&2; exit 1; fi ;;
   head) if [ -n "${MAIN:-}" ]; then echo "$MAIN"; else echo "REFUSED: unreadable" >&2; exit 1; fi ;;
   stage)
     [ "${STAGE_FAIL:-}" = 1 ] && { echo "REFUSED: stage" >&2; exit 1; }
@@ -297,6 +299,39 @@ class AutoReleaseRun(unittest.TestCase):
         self.assertEqual((rc, self.etc("auto.stalled")), (0, self.etc("auto.waiting")), out)
         rc, out = self.run_("auto", HEAD=A, BODY="x lifeos/a.py")                                # green again: both markers go
         self.assertEqual((self.etc("auto.waiting"), self.etc("auto.stalled")), (None, None), out)
+
+    def test_a_paused_release_deploys_nothing_and_is_not_a_ci_wait(self):
+        """LIFE-693: main is green but a failed proof run holds an open release-paused issue (the tool exits 3): nothing is staged or switched, no wait marker is started."""
+        for name in ("auto.waiting", "auto.stalled", "auto.proof-unreadable"):
+            open(os.path.join(self.sim, "etc", name), "w").write("1")
+        before = self.at("current")
+        rc, out = self.run_("auto", HEAD=B, BODY="y lifeos/a.py", PAUSE="3")
+        self.assertEqual((rc, self.at("current"), self.stages()), (0, before, 0), out)
+        self.assertIn("paused", out)
+        self.assertEqual([self.etc(n) for n in ("auto.waiting", "auto.stalled", "auto.proof-unreadable")], [None] * 3)
+        rc, out = self.run_("auto", HEAD=B, BODY="y lifeos/a.py")                                  # the flag is closed: the very same head is now released
+        self.assertEqual((rc, self.at("current")), (0, B[:12]), out)
+
+    def test_a_flag_that_cannot_be_read_deploys_nothing_and_writes_one_marker_for_the_ticker(self):
+        """LIFE-693 fail safe (the tool exits 4): an unknown state never deploys; the marker is written once and the ticker's watch turns it into ONE page."""
+        before = self.at("current")
+        for _ in range(3):
+            rc, out = self.run_("auto", HEAD=B, BODY="y lifeos/a.py", PAUSE="4")
+            self.assertEqual((rc, self.at("current"), self.stages()), (0, before, 0), out)
+        first = self.etc("auto.proof-unreadable")
+        self.assertTrue(first and first[0].isdigit(), first)
+        self.assertEqual((self.etc("auto.waiting"), self.etc("auto.stalled")), (None, None))      # not a CI wait: no two-hour stall marker can come from it
+        marker = os.path.join(self.sim, "etc", "auto.proof-unreadable")
+        os.utime(marker, (1, 1))
+        self.run_("auto", HEAD=B, BODY="y lifeos/a.py", PAUSE="4")
+        self.assertEqual((self.etc("auto.proof-unreadable"), os.stat(marker).st_mtime), (first, 1))   # written once, never rewritten
+        rc, out = self.run_("auto", HEAD=B, BODY="y lifeos/a.py")                                  # readable again: the marker goes and the head is released
+        self.assertEqual((rc, self.at("current"), self.etc("auto.proof-unreadable")), (0, B[:12], None), out)
+
+    def test_a_plain_not_green_head_still_starts_the_ci_wait_and_never_the_proof_marker(self):
+        rc, out = self.run_("auto")
+        self.assertEqual((rc, self.etc("auto.proof-unreadable")), (0, None), out)
+        self.assertTrue(self.etc("auto.waiting"))
 
     def test_a_release_cut_off_after_the_switch_is_proven_or_undone_whatever_main_is_now(self):
         self.tree(B[:12], B)

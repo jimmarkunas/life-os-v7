@@ -118,8 +118,11 @@ class AutoRelease(unittest.TestCase):
     RUN = {"head_sha": C, "head_branch": "main", "path": ".github/workflows/pr-tests.yml", "event": "push", "status": "completed", "conclusion": "success", "id": 1, "run_attempt": 1}
     HOURLY = {"head_sha": C, "head_branch": "main", "path": ".github/workflows/hourly.yml", "event": "workflow_dispatch", "status": "completed", "conclusion": "failure", "id": 9, "run_attempt": 1}
 
-    def fetch(self, sha=C, runs=(RUN,), hourly=()):
-        urls = {f"https://api.github.com/repos/{rel.REPO}/commits/main": json.dumps({"sha": sha}).encode(),
+    FLAG_URL = f"https://api.github.com/repos/{rel.REPO}/issues?state=open&labels=release-paused&per_page=30"
+
+    def fetch(self, sha=C, runs=(RUN,), hourly=(), flag=()):
+        urls = {self.FLAG_URL: json.dumps(list(flag)).encode(),
+                f"https://api.github.com/repos/{rel.REPO}/commits/main": json.dumps({"sha": sha}).encode(),
                 f"https://api.github.com/repos/{rel.REPO}/actions/workflows/pr-tests.yml/runs?branch=main&head_sha={sha}&per_page=20": json.dumps({"workflow_runs": list(runs)}).encode(),
                 f"https://api.github.com/repos/{rel.REPO}/actions/workflows/hourly.yml/runs?branch=main&head_sha={sha}&per_page=20": json.dumps({"workflow_runs": list(hourly)}).encode()}
         return urls.__getitem__
@@ -135,6 +138,55 @@ class AutoRelease(unittest.TestCase):
                 rel.latest(self.fetch(**kw))
         with self.assertRaises(rel.Refused):
             rel.latest(self.fetch(sha="main"))
+
+    PAUSED = {"number": 7, "state": "open", "title": "Release paused", "labels": [{"name": "release-paused"}]}
+
+    def test_an_open_release_paused_issue_holds_a_green_head_and_none_lets_it_go(self):
+        """LIFE-693: a failed proof run opens the flag; while it is open the timer deploys nothing. A closed issue is not returned by the API, so an empty answer deploys."""
+        self.assertEqual(rel.latest(self.fetch(flag=())), C)
+        for flag in ((self.PAUSED,), (self.PAUSED, {**self.PAUSED, "number": 8})):          # one issue, or two: still paused
+            with self.assertRaises(rel.Refused) as held:
+                rel.latest(self.fetch(flag=flag))
+            self.assertEqual(str(held.exception), "PROOF_PAUSED")
+
+    def test_a_pull_request_that_carries_the_label_is_not_the_flag(self):
+        self.assertEqual(rel.latest(self.fetch(flag=({**self.PAUSED, "pull_request": {"url": "x"}},))), C)
+
+    def test_a_flag_that_cannot_be_read_never_deploys(self):
+        """An unknown state is not a clear state: a failed read, or an answer that is not a list of issues, refuses with PROOF_STATE_UNREADABLE."""
+        good = self.fetch()
+        full_page = json.dumps([{**self.PAUSED, "number": n, "pull_request": {"url": "x"}} for n in range(30)]).encode()
+        for answer in (OSError("down"), TimeoutError("slow"), b"not json", b"{}", b'{"message": "API rate limit exceeded"}', b"[1, 2]", b"null", full_page):
+            def fetch(url, answer=answer):
+                if url != self.FLAG_URL:
+                    return good(url)
+                if isinstance(answer, Exception):
+                    raise answer
+                return answer
+            with self.assertRaises(rel.Refused, msg=repr(answer)[:40]) as held:
+                rel.latest(fetch)
+            self.assertEqual(str(held.exception), "PROOF_STATE_UNREADABLE", repr(answer)[:40])
+
+    def test_a_head_that_is_not_green_is_still_just_not_green_whatever_the_flag_says(self):
+        with self.assertRaises(rel.Refused) as held:
+            rel.latest(self.fetch(runs=({**self.RUN, "conclusion": "failure"},), flag=(self.PAUSED,)))
+        self.assertEqual(str(held.exception), "NOT_GREEN")           # the CI wait and its two-hour stall marker keep their meaning
+
+    def test_latest_tells_the_shell_which_refusal_it_was_by_exit_status(self):
+        """install-close.sh auto reads status 3 (paused) and 4 (flag unreadable); every other refusal keeps the usual path."""
+        import io
+        from contextlib import redirect_stderr
+        from unittest import mock
+        for code, status in (("PROOF_PAUSED", 3), ("PROOF_STATE_UNREADABLE", 4)):
+            err = io.StringIO()
+            with mock.patch.object(rel, "latest", side_effect=rel.Refused(code)), redirect_stderr(err), self.assertRaises(SystemExit) as out:
+                rel.main(["latest"])
+            self.assertEqual((out.exception.code, err.getvalue().strip()), (status, f"REFUSED: {code}"))
+
+    def test_the_flag_label_is_the_one_the_proof_run_writes(self):
+        from lifeos.platform import release_proof
+        self.assertEqual(rel.FLAG_LABEL, release_proof.FLAG_LABEL)
+        self.assertEqual(rel.PROOF_EXIT, {"PROOF_PAUSED": 3, "PROOF_STATE_UNREADABLE": 4})
 
     def test_a_pull_request_run_never_counts(self):
         with self.assertRaises(rel.Refused):

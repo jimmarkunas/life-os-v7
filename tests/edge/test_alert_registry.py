@@ -14,7 +14,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 GATEWAY = "lifeos/platform/alerts.py"
 APPROVED_PAGE = {"source_stopped_*", "expiry_*", "jira_rollover_stuck", "calendar_sync_stuck", "imessage_action", "pipeline_stalled", "pipeline_failing", "megibow_stale",
                  "run_failed", "domain_jobs_failed", "purge_failed", "safety_failed", "test_push",
-                 "known_state_expired_*", "scheduled_red_*", "release_proof_failed"}          # LIFE-692 (Jim's epic text, Nov 14 2026): a scheduled workflow that goes red pages once; LIFE-693 (Jim's epic text and ticket step 2): a failed proof run after a Close release raises one PAGE. Jim, Oct 25 2026 (LIFE-75 comment 11182); everything else is INFO. LIFE-690 (Jim's epic text, Nov 14 2026): the one PAGE for a known state still failing after 7 days
+                 "known_state_expired_*", "scheduled_red_*", "release_proof_failed", "release_pause_unreadable"}          # LIFE-693 (Jim, Nov 15 2026): the release timer cannot read the release-paused flag, so it deploys nothing: one PAGE per state change, no reminders. LIFE-692 (Jim's epic text, Nov 14 2026): a scheduled workflow that goes red pages once; LIFE-693 (Jim's epic text and ticket step 2): a failed proof run after a Close release raises one PAGE. Jim, Oct 25 2026 (LIFE-75 comment 11182); everything else is INFO. LIFE-690 (Jim's epic text, Nov 14 2026): the one PAGE for a known state still failing after 7 days
 
 
 def sources():

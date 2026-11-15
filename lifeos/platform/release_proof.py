@@ -2,11 +2,11 @@
 
 See docs/platform/release-proof.md. Pure logic: the clock, the files and GitHub are passed in; stdlib only (the Oracle ticker runs its own copy).
 
-A deploy is a new commit in the Close release tree's MANIFEST on lifeos-edge-01 (the deployed-version proof, LIFE-528). The ticker's watch notices it, dispatches ONE dry quick proof run of hourly.yml
-(`PROOF_INPUTS`: exactly what a tick runs, small caps, nothing written) and keeps the result in one GitHub issue (`RECORD_LABEL`), the way every other record in this platform is kept: no store.
-A pass is recorded and nothing else happens. A failure raises ONE PAGE alert (the deployed commit, the previous good commit, the failing stage's fixed code and the one-line revert) and opens the pause flag:
-an open issue labelled `FLAG_LABEL`. The release timer reads that flag (a protected edit, see the doc) and deploys nothing until it is gone. While the flag is open a new proof run starts at most every
-`REPROOF_MINUTES` against main's head; the first pass closes the flag with one recovered push. There is no automatic rollback: the alert is the action."""
+A deploy is a new commit in the Close release tree's MANIFEST on lifeos-edge-01 (LIFE-528). The ticker's watch dispatches ONE dry quick proof run of hourly.yml (`PROOF_INPUTS`) and keeps the result in one
+GitHub issue (`RECORD_LABEL`). A pass is recorded and nothing else happens. A failure raises ONE PAGE alert (deployed commit, previous good commit, the failing stage's fixed code, the one-line revert) and opens
+the pause flag: an open issue labelled `FLAG_LABEL`, which the release timer reads (a protected edit). While it is open a new proof run starts at most every `REPROOF_MINUTES` on main's CURRENT head
+(ref main: what the timer would deploy next), so a fix merged to main passes, lifts the pause and gets deployed with nobody deploying by hand. The first pass closes the flag with one recovered push.
+No automatic rollback: the alert is the action."""
 import dataclasses
 import datetime as dt
 import io
@@ -183,7 +183,8 @@ def failure_text(entry):
     good = entry.previous[:12] if entry.previous else "none known"
     title = f"Release proof failed: deployed {entry.commit[:12]}, previous good {good}"
     body = (f"The dry proof run for deployed commit {entry.commit[:12]} failed ({code}). Previous good commit: {good}. Revert: {revert_line(entry)} (open it as a PR to main). "
-            "Further Close releases wait until a proof run passes: a new proof run starts at most every hour, and this issue closes itself on the first pass (closing it by hand lifts the pause too).")
+            "Further Close releases wait until a proof run passes. The proof re-runs at most every hour on main's current head: if a fix is on main it passes and the pause lifts without anyone deploying; "
+            "if main still fails it stays paused (no second page); or close this issue on GitHub (one click) if you judged it safe.")
     return title, body
 
 
