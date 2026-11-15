@@ -501,6 +501,110 @@ class DailyCheckin(unittest.TestCase):
         self.assertEqual(sent, [("topic", "V7 daily check: OK", "info", ("ntfy",))])          # info: the phone only, as the call site always meant
 
 
+class CheckinOncePerDay(unittest.TestCase):
+    """LIFE-724: on Nov 15 2026 GitHub started no watchdog run between 7:00 and 7:29 AM CT, so the daily check-in (and the first write-conflict count line) never came. It now goes out once per check-in day,
+    from the first watchdog run at or after the usual hour, and never twice. The record is the watchdog's own recent run list (read-only), so nothing new is stored."""
+    DAY = dt.datetime(2026, 11, 15, 13, 17, tzinfo=dt.timezone.utc)
+
+    @staticmethod
+    def wd(when, rid, conclusion="success", status="completed", name="watchdog"):
+        stamp = when.strftime("%Y-%m-%dT%H:%M:%SZ")
+        return {"id": rid, "name": name, "status": status, "conclusion": conclusion, "created_at": stamp, "run_started_at": stamp}
+
+    def at(self, hours, minutes):
+        return dt.datetime(2026, 11, 15, hours, minutes, tzinfo=dt.timezone.utc)
+
+    def test_the_normal_window_with_no_earlier_run_today_sends_without_a_note(self):
+        self.assertEqual(gate.checkin_decision(self.DAY, [self.wd(self.at(11, 32), 1)], own_id=9), (True, "", None))
+
+    def test_a_skipped_window_sends_once_at_the_first_later_run_and_says_it_is_late(self):
+        due, note, code = gate.checkin_decision(self.at(17, 11), [self.wd(self.at(11, 32), 1), self.wd(self.at(3, 27), 2)], own_id=9)
+        self.assertTrue(due)
+        self.assertIsNone(code)
+        self.assertIn("Sent late", note)
+        self.assertIn("11:11 AM CT", note)                          # 17:11 UTC is 11:11 AM CT on Nov 15 (standard time)
+        self.assertIn("7:00 AM CT", note)                           # the window GitHub skipped
+
+    def test_a_second_run_the_same_day_does_not_send_again(self):
+        earlier = self.wd(self.at(13, 17), 5)
+        for hours, minutes in ((13, 47), (14, 17), (17, 11), (23, 40)):
+            self.assertFalse(gate.checkin_decision(self.at(hours, minutes), [earlier, self.wd(self.at(11, 32), 1)], own_id=9)[0], (hours, minutes))
+
+    def test_a_run_still_going_counts_as_sending_and_this_run_does_not_count_itself(self):
+        going = self.wd(self.at(13, 2), 5, conclusion=None, status="in_progress")
+        self.assertFalse(gate.checkin_decision(self.at(13, 17), [going], own_id=9)[0])
+        me = self.wd(self.at(13, 17), 9, conclusion=None, status="in_progress")
+        self.assertTrue(gate.checkin_decision(self.at(13, 17), [me], own_id=9)[0])
+
+    def test_a_failed_or_cancelled_earlier_run_does_not_use_up_the_day(self):
+        runs = [self.wd(self.at(13, 2), 5, conclusion="failure"), self.wd(self.at(13, 10), 6, conclusion="cancelled")]
+        self.assertTrue(gate.checkin_decision(self.at(14, 17), runs, own_id=9)[0])
+
+    def test_the_next_day_sends_again(self):
+        today_run = self.wd(self.at(13, 17), 5)
+        tomorrow = self.at(13, 17) + dt.timedelta(days=1)
+        self.assertTrue(gate.checkin_decision(tomorrow, [today_run], own_id=9)[0])
+        self.assertFalse(gate.checkin_decision(tomorrow + dt.timedelta(hours=4), [self.wd(tomorrow, 6), today_run], own_id=9)[0])
+
+    def test_before_the_hour_nothing_is_sent(self):
+        self.assertEqual(gate.checkin_decision(self.at(12, 47), [], own_id=9), (False, "", None))
+        self.assertEqual(gate.checkin_decision(self.at(0, 5), [], own_id=9), (False, "", None))
+
+    def test_another_workflows_runs_in_the_list_are_ignored(self):
+        self.assertTrue(gate.checkin_decision(self.at(14, 17), [self.wd(self.at(13, 17), 5, name="hourly")], own_id=9)[0])
+
+    def test_an_unreadable_history_sends_in_the_normal_window_with_a_note_and_otherwise_stays_quiet_with_a_code(self):
+        due, note, code = gate.checkin_decision(self.DAY, None, own_id=9)
+        self.assertEqual((due, code), (True, gate.CHECKIN_UNREADABLE))
+        self.assertIn("unreadable", note)
+        self.assertEqual(gate.checkin_decision(self.at(17, 11), None, own_id=9), (False, "", gate.CHECKIN_UNREADABLE))
+
+    def watch(self, now, history, hourly_success_minutes_ago=10):
+        pushed, printed = [], []
+        tick = {"workflow_runs": [{"id": 1, "display_title": "tick", "conclusion": "success", "created_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                                   "updated_at": (now - dt.timedelta(minutes=hourly_success_minutes_ago)).strftime("%Y-%m-%dT%H:%M:%SZ")}]}
+
+        def api(path, *a, **k):
+            if path.startswith("actions/workflows/watchdog.yml/runs?per_page=30"):
+                if history is None:
+                    raise OSError("unreadable")
+                return {"workflow_runs": history}
+            return tick if "workflows/" in path else {}
+        with mock.patch.object(gate, "_api", api), mock.patch.dict(os.environ, {"GITHUB_RUN_ID": "9"}), mock.patch("builtins.print", side_effect=lambda *a, **k: printed.append(" ".join(map(str, a)))):
+            gate.watch(now, push=lambda *a: pushed.append(a) or True)
+        return pushed, printed
+
+    def test_watch_sends_the_late_checkin_once_with_its_normal_text(self):
+        pushed, printed = self.watch(self.at(17, 11), [self.wd(self.at(11, 32), 1)])
+        self.assertEqual([p[3] for p in pushed], ["daily_check"])
+        self.assertIn("V7 daily check", pushed[0][0])
+        self.assertIn("Last 24 h:", pushed[0][1])
+        self.assertIn("Sent late", pushed[0][1])
+        self.assertIn("checkin=True", printed[-1])
+
+    def test_watch_sends_nothing_when_the_day_already_has_its_checkin_and_logs_no_code(self):
+        pushed, printed = self.watch(self.at(17, 11), [self.wd(self.at(13, 17), 5)])
+        self.assertEqual(pushed, [])
+        self.assertIn("checkin=None", printed[-1])
+        self.assertNotIn(gate.CHECKIN_UNREADABLE, printed[-1])
+
+    def test_watch_with_an_unreadable_history_outside_the_window_sends_nothing_and_logs_the_code(self):
+        pushed, printed = self.watch(self.at(17, 11), None)
+        self.assertEqual(pushed, [])
+        self.assertIn(gate.CHECKIN_UNREADABLE, printed[-1])
+
+    def test_watch_with_an_unreadable_history_inside_the_window_sends_once_and_says_so_once(self):
+        pushed, _ = self.watch(self.DAY, None)
+        self.assertEqual([p[3] for p in pushed], ["daily_check"])
+        self.assertEqual(pushed[0][1].count("unreadable"), 1)
+
+    def test_the_ticker_never_sends_the_checkin(self):
+        pushed = []
+        with mock.patch.object(gate, "_api", lambda path, *a, **k: {"workflow_runs": []} if "workflows/" in path else {}):
+            gate.watch(self.at(17, 11), push=lambda *a: pushed.append(a) or True, checkin=False)
+        self.assertNotIn("daily_check", [p[3] for p in pushed])
+
+
 class PurgeIsNamed(unittest.TestCase):
     """D166: the Sunday purge failed twice and the push only said 'finish'. The workflow now names the stage and pushes the purge result itself."""
     text = (__import__("pathlib").Path(__file__).resolve().parents[2] / ".github/workflows/hourly.yml").read_text()
