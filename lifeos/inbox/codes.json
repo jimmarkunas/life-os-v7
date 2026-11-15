@@ -1,3 +1,6 @@
 {
-  "INBOX_LEDGER_UNAVAILABLE": ["inbox", "retry", true, "The Action Inbox ledger could not be read or written, so the request was neither claimed nor run.", "None; nothing ran. Retry the request with the same idempotency key."]
+  "INBOX_LEDGER_UNAVAILABLE": ["inbox", "retry", true, "The Action Inbox ledger could not be read or written, so the request was neither claimed nor run.", "None; nothing ran. Retry the request with the same idempotency key."],
+  "INBOX_SCHEMA_NOT_READY": ["inbox", "blocked", false, "The V7 database is not ready for the Action Inbox tables (row format or privileges).", "Run inbox-schema-check and fix what it reports."],
+  "INBOX_SCHEMA_TABLES_EXIST": ["inbox", "blocked", false, "One of the four Action Inbox tables already exists, so nothing was applied.", "Look at the existing table before anything else."],
+  "INBOX_SCHEMA_VERIFY_FAILED": ["inbox", "bug", false, "The tables were created but did not read back as planned (columns or rows).", "Inspect the tables; nothing is deleted automatically."]
 }

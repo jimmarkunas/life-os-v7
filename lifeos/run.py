@@ -68,6 +68,7 @@ STAGES = {
     "jira-rollover-watch": lazy("lifeos.jira.watch"),
     "jira-probe": lazy("lifeos.jira.snapshot", "probe"),
     "jira-card": lazy("lifeos.jira.card"),
+    "inbox-schema-apply": lazy("lifeos.inbox.apply_schema", "apply_stage"),      # LIFE-712: creates the four Action Inbox tables once, only when SCHEMA_CONFIRM is APPLY (diag.yml confirm input); Jim approved the exact DDL Nov 15 2026
     "inbox-schema-check": lazy("lifeos.inbox.schema"),                    # LIFE-712: read-only check of the V7 database for the Action Inbox tables (counts and flags only); creates nothing
     "accountability-week": lazy("lifeos.accountability.week"),            # LIFE-671: "This week" for Jim and Matt on Jim & Matt V3, read-only from Jira
     "accountability-goals": lazy("lifeos.accountability.goals"),          # LIFE-671: Quarterly goals, done / all per quarter epic

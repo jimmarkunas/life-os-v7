@@ -5,11 +5,12 @@ host, grant text or row): server kind and version, the default row format (the l
 the account may create and write them. The stage `inbox-schema-check` runs it; it creates nothing. Applying the DDL is a separate step that needs Jim's approval of the exact environment, database and DDL."""
 import re
 
-from lifeos.inbox.ledger import SCHEMA
+from lifeos.inbox.ledger import ACCESS_COLUMNS, ACTION_COLUMNS, INTENT_COLUMNS, SCHEMA
 from lifeos.platform import db
 
 TABLES = ("v7_inbox_events", "v7_inbox_intents", "v7_inbox_actions", "v7_inbox_access")
 NEEDED = ("CREATE", "SELECT", "INSERT", "UPDATE")              # no DELETE, DROP or ALTER: the ledger never removes a row
+COLUMNS = {"v7_inbox_events": 3, "v7_inbox_intents": len(INTENT_COLUMNS), "v7_inbox_actions": len(ACTION_COLUMNS), "v7_inbox_access": len(ACCESS_COLUMNS)}
 LARGEST_KEY_BYTES = 2096                                         # uq_inbox_action_slot: record_id 400 + action 40 + revision 80 + slot 4 characters at 4 bytes each, plus the slot flag
 
 

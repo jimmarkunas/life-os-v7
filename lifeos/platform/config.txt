@@ -46,6 +46,7 @@ PIPELINE flag:workflow True when the run is the full hourly pipeline
 PR_LABELS workflow_only:workflow Labels of the pull request, read by the protected-file check
 RECRUITERS_FULL_SCAN workflow_only:workflow Input of the manual Recruiters workflow: read all 14 days this run, ignoring the mail already seen (on / off)
 REPORT_CONFIRM flag:workflow Confirmation word a manual report run needs
+SCHEMA_CONFIRM flag:workflow Confirmation word (APPLY) the manual Action Inbox schema apply needs; without it the stage only checks
 RETENTION_LIVE flag:workflow Lets the retention step delete for real
 STAGE workflow_only:workflow Which stage a manual run starts
 STAGES workflow_only:workflow List of stages a run starts
