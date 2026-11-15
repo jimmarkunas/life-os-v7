@@ -75,7 +75,7 @@ class DocListsEverything(unittest.TestCase):
 
 class StageBudgets(unittest.TestCase):
     def test_every_stage_has_its_own_row_and_no_stage_relies_on_the_default(self):
-        self.assertEqual(sorted(BUDGETS["stages"]), sorted(run.STAGES))
+        self.assertEqual(sorted(BUDGETS["stages"]), sorted(run.STAGES), "run python tools/regen.py")
         for stage, row in BUDGETS["stages"].items():
             self.assertIsInstance(row["seconds"], int, stage)
             self.assertTrue(60 <= row["seconds"] <= 7200, stage)

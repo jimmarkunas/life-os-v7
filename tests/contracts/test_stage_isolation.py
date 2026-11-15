@@ -59,7 +59,7 @@ class StageIsolation(unittest.TestCase):
 
     def test_every_stage_has_exactly_one_row_and_no_row_is_stale(self):
         self.assertEqual(len(self.stages), len(table("Every stage")), "a stage appears twice")
-        self.assertEqual(sorted(set(run.STAGES) - set(self.stages)), [], "a stage has no row in docs/platform/stage-isolation.md: classify it")
+        self.assertEqual(sorted(set(run.STAGES) - set(self.stages)), [], "a stage has no row in docs/platform/stage-isolation.md: run python tools/regen.py (it adds the row; a loop with no try needs your verdict)")
         self.assertEqual(sorted(set(self.stages) - set(run.STAGES)), [], "a row names a stage that no longer exists")
 
     def test_every_status_is_known_and_none_is_marked_aborts(self):

@@ -37,7 +37,7 @@ class EveryPackage(unittest.TestCase):
 
     def test_every_package_is_enforced_so_a_new_package_cannot_skip_the_standard(self):
         packages = sorted(f"lifeos/{p.name}" for p in (ROOT / "lifeos").iterdir() if p.is_dir() and (p / "__init__.py").exists())
-        self.assertEqual(sorted(docstyle.ENFORCED), packages)
+        self.assertEqual(sorted(docstyle.ENFORCED), packages, "run python tools/regen.py")
 
     def test_an_exempt_entry_is_still_needed_and_names_a_real_file_or_folder(self):
         for key in docstyle.EXEMPT:
