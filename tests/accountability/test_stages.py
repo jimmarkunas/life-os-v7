@@ -2,7 +2,7 @@
 import unittest
 from unittest import mock
 
-from lifeos.accountability import artifacts, changelog, goals, region, render, review, week
+from lifeos.accountability import artifacts, changelog, goals, read, region, render, review, week
 from tests.accountability import fakes as F
 
 Q4_EPICS = [F.epic("JFM-9", "Career Q4 2026"), F.epic("JFM-102", "LIFE OS Q4 2026"), F.epic("MEJ-1", "Career Q4 2026"), F.epic("MEJ-3", "Health Q4 2026")]
@@ -79,11 +79,23 @@ class Knowledge(unittest.TestCase):
         self.assertEqual(lines[2], "Missing link: MEJ-75 Trip notes")
         self.assertLessEqual(len(notion.text("pg-matt-p")), render.SUMMARY_MAX)
 
+    def test_the_current_sprints_tasks_and_sub_tasks_are_listed_with_sub_tasks_under_their_task(self):
+        notion = F.Notion()
+        page(notion, "artifacts")
+        sprint = [{"key": "JFM-2", "fields": {"summary": "Sub one", "status": {"name": "To Do"}, "parent": {"key": "JFM-1"}, "issuetype": {"subtask": True}}},
+                  {"key": "JFM-1", "fields": {"summary": "The task", "status": {"name": "In Progress"}, "issuetype": {"subtask": False}}},
+                  {"key": "JFM-9", "fields": {"summary": "Orphan sub", "status": {"name": "Done"}, "parent": {"key": "JFM-8"}, "issuetype": {"subtask": True}}}]
+        self.go(notion, F.Jira({"sprint in openSprints()": sprint}))
+        lines = notion.text("art-jim").split("\n")
+        i = lines.index("To-do lists, this week's sprint (3):")
+        self.assertEqual(lines[i + 1:], ["JFM-1 The task (In Progress)", "  - JFM-2 Sub one (To Do)", "  - JFM-9 Orphan sub (Done)"])
+
     def test_no_artifacts_says_so_plainly(self):
         notion = F.Notion()
         page(notion, "artifacts")
         self.go(notion, F.Jira({}))
-        self.assertEqual(notion.text("art-jim"), render.NO_ARTIFACTS)
+        self.assertEqual(notion.text("art-jim").split("\n")[0], render.NO_ARTIFACTS)
+        self.assertIn("nothing in a sprint yet", notion.text("art-jim"))
 
 
 class Changelog(unittest.TestCase):
@@ -104,7 +116,7 @@ class Changelog(unittest.TestCase):
         self.assertEqual(counts["shared"]["appended"], 1)
         kids = [notion.text(k) for k in notion.kids["b-shared-log"] if notion.blocks[k]["type"] == "bulleted_list_item"]
         self.assertEqual(kids[:2], old)
-        self.assertEqual(kids[2], "Nov 18 2026 — Q4 2026 began; its quarter epics carry the label goals-2026-q4")
+        self.assertEqual(kids[2], "Oct 7 2026 — Q4 2026 began (first Wednesday of the quarter): Jim and Matt create the quarter's epics, labelled goals-2026-q4")
         self.assertEqual(notion.writes.count("b-shared-log"), 1)
 
     def test_a_second_run_in_the_same_quarter_appends_nothing(self):
@@ -123,6 +135,24 @@ class Changelog(unittest.TestCase):
         notion.blocks["bl0"]["paragraph"] = notion.blocks["bl0"].pop("bulleted_list_item")
         with self.assertRaises(region.AccountabilityError):
             self.go(notion)
+
+
+class QuarterSchedule(unittest.TestCase):
+    """A quarter begins on the first Wednesday of January, April, July and October (Jim, Nov 15 2026)."""
+
+    def test_the_first_wednesdays(self):
+        from datetime import date
+        self.assertEqual([read.first_wednesday(2026, m) for m in (1, 4, 7, 10)], [date(2026, 1, 7), date(2026, 4, 1), date(2026, 7, 1), date(2026, 10, 7)])
+        self.assertEqual(read.first_wednesday(2027, 1), date(2027, 1, 6))
+
+    def test_the_day_before_a_first_wednesday_still_belongs_to_the_old_quarter(self):
+        from datetime import date
+        self.assertEqual(read.quarter(date(2026, 10, 6))[:2], (2026, 3))
+        self.assertEqual(read.quarter(date(2026, 10, 7))[:2], (2026, 4))
+        self.assertEqual(read.quarter(date(2027, 1, 5))[:2], (2026, 4))
+        self.assertEqual(read.quarter(date(2027, 1, 6))[:2], (2027, 1))
+        self.assertEqual(read.quarter(date(2026, 11, 15)), (2026, 4, date(2026, 10, 7), date(2027, 1, 5)))
+        self.assertEqual(read.quarter_bounds(2026, 3), (date(2026, 7, 1), date(2026, 10, 6)))
 
 
 class Stages(unittest.TestCase):

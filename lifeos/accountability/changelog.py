@@ -11,13 +11,13 @@ def run(limit, live, environ=None, notion=None, now=None):
     notion = notion or common.notion_writer(environ)
     block_id = region.address(notion, "shared.changelog")
     client = region.scoped(notion, block_id)
-    year, n, _, _ = read.quarter(now.date())
+    year, n, first, _ = read.quarter(now.date())
     found = region.locate(client, block_id)
     marker = f"Q{n} {year} began"
     have = [region.text(b) for b in found["middle"]]
     out = {"appended": 0, "lines": len(have)}
     if not any(marker in line for line in have):
-        out.update(region.append_bullet(client, block_id, render.changelog_line(now.date(), year, n), live))
+        out.update(region.append_bullet(client, block_id, render.changelog_line(first, year, n), live))
     stamp = render.stamp(now)
     out["summary_page"] = out.pop("summary_page", found["summary"])
     last = out.get("last") or (have[-1] if have else "")

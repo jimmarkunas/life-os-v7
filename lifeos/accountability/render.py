@@ -84,5 +84,23 @@ def artifact_lines(items):
     return lines + ([f"…and {len(linked) + len(missing) - MAX_ARTIFACTS} more in Jira"] if len(linked) + len(missing) > MAX_ARTIFACTS else [])
 
 
-def changelog_line(today, year, n):
-    return f"{today.strftime('%b')} {today.day} {today.year} — Q{n} {year} began; its quarter epics carry the label goals-{year}-q{n}"
+def changelog_line(first, year, n):
+    return f"{first.strftime('%b')} {first.day} {first.year} — Q{n} {year} began (first Wednesday of the quarter): Jim and Matt create the quarter's epics, labelled goals-{year}-q{n}"
+
+
+TODO_SHOWN = 20
+
+
+def todo_lines(items):
+    """The current sprint's tasks, each followed by its sub-tasks (indented); a sub-task whose task is not in the sprint comes after them. Nothing yet is said plainly."""
+    if not items:
+        return ["To-do lists, this week's sprint: nothing in a sprint yet."]
+    tasks = [i for i in items if not i["subtask"]]
+    keys = {i["key"] for i in tasks}
+    ordered = []
+    for task in tasks:
+        ordered.append((task, False))
+        ordered += [(i, True) for i in items if i["subtask"] and i["parent"] == task["key"]]
+    ordered += [(i, True) for i in items if i["subtask"] and i["parent"] not in keys]
+    lines = [f"To-do lists, this week's sprint ({len(items)}):"] + [("  - " if sub else "") + f"{i['key']} {i['summary']} ({i['status']})" for i, sub in ordered[:TODO_SHOWN]]
+    return lines + ([f"…and {len(ordered) - TODO_SHOWN} more in Jira"] if len(ordered) > TODO_SHOWN else [])
