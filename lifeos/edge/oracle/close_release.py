@@ -108,6 +108,8 @@ def head(fetch=get):
 
 PR_TESTS = ".github/workflows/pr-tests.yml"
 HOURLY = ".github/workflows/hourly.yml"
+FLAG_LABEL = "release-paused"        # LIFE-693: the same word as lifeos/platform/release_proof.py FLAG_LABEL (a test keeps them equal; this file stays stdlib-only and imports nothing)
+PROOF_EXIT = {"PROOF_PAUSED": 3, "PROOF_STATE_UNREADABLE": 4}      # `latest` exits with these so install-close.sh can tell a paused release from a CI wait
 
 
 def _runs(workflow, commit, fetch):
@@ -116,16 +118,34 @@ def _runs(workflow, commit, fetch):
                   key=lambda r: (r.get("id") or 0, r.get("run_attempt") or 0), reverse=True)
 
 
+def proof_pause(fetch=get):
+    """LIFE-693 (Jim, Nov 15 2026): a failed proof run after a deploy opens an issue labelled `release-paused`; while one is open the timer deploys nothing. Read unauthenticated from the public
+    API like every other read here. -> None when no such issue is open. Raises Refused(PROOF_PAUSED) when one is, and Refused(PROOF_STATE_UNREADABLE) for ANYTHING it cannot read (network error,
+    rate limit, an answer that is not a list): never deploy on an unknown state. A pull request that carries the label is not the flag. There is no automatic rollback: the alert is the action."""
+    try:
+        issues = json.loads(fetch(f"https://api.github.com/repos/{REPO}/issues?state=open&labels={FLAG_LABEL}&per_page=30"))
+    except Exception:                                                   # noqa: BLE001 - any failure to read is an unknown state, which refuses
+        raise Refused("PROOF_STATE_UNREADABLE") from None
+    if not isinstance(issues, list) or not all(isinstance(i, dict) for i in issues):
+        raise Refused("PROOF_STATE_UNREADABLE")
+    if any("pull_request" not in i for i in issues):
+        raise Refused("PROOF_PAUSED")
+    if len(issues) >= 30:                                               # a full page of labelled pull requests: more than we read, so the state is not known
+        raise Refused("PROOF_STATE_UNREADABLE")
+
+
 def latest(fetch=get):
     """Edge auto-release (Jim, Oct 24; LIFE-562, Nov 11): main's head commit, once the required CI check on that exact commit is green: the `pr-tests` workflow's push run on main
     (the full unit-test suite, which includes the tests of every file the Close tree ships). The hourly data run no longer gates this deploy: a red or slow Cloud Fit step cannot hold a
     screen back (Nov 10: the Alert settings deploy waited hours on it). Runs are read from the Actions runs of the workflow on main for this commit (never a check run, which any branch's
-    workflow could post); the newest push run decides: queued or running decides nothing yet (NOT_GREEN), anything but success is NOT_GREEN, and no run at all is NOT_GREEN."""
+    workflow could post); the newest push run decides: queued or running decides nothing yet (NOT_GREEN), anything but success is NOT_GREEN, and no run at all is NOT_GREEN.
+    LIFE-693: a green head is still not released while a proof run's failure holds an open `release-paused` issue (PROOF_PAUSED), or when that flag cannot be read (PROOF_STATE_UNREADABLE)."""
     commit = head(fetch)
     for run in _runs("pr-tests.yml", commit, fetch):
         if run.get("event") not in (None, "push"):
             continue
         if run.get("status") == "completed" and run.get("conclusion") == "success":
+            proof_pause(fetch)                                          # LIFE-693: green is necessary, not enough
             return commit
         raise Refused("NOT_GREEN")                                      # the newest run is still going, failed or was cancelled: wait for a newer green one
     raise Refused("NOT_GREEN")                                          # no CI run of main tested this commit yet
@@ -204,7 +224,13 @@ def main(argv):
         elif argv[:1] == ["check"] and len(argv) == 2:
             check(argv[1])
         elif argv[:1] == ["latest"]:
-            sha = latest()
+            try:
+                sha = latest()
+            except Refused as e:
+                if str(e) in PROOF_EXIT:                                # LIFE-693: a paused or unknown-flag release is told apart from a CI wait by its exit status (3 paused, 4 unreadable)
+                    print(f"REFUSED: {e}", file=sys.stderr)
+                    sys.exit(PROOF_EXIT[str(e)])
+                raise
             print(f"hourly run on {sha[:12]}: {hourly_report(sha)} (reported, does not block)", file=sys.stderr)
             print(sha)
         elif argv[:1] == ["head"]:

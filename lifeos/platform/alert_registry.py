@@ -66,6 +66,8 @@ REGISTRY = {
     "deploy_stalled_recovered": _info("edge", "A green main head deployed; the Close release is moving again."),
     "release_proof_failed": _page("edge", "The dry proof run after a Close release failed: one page with the deployed and previous good commits, the failing stage code and the revert line; Close releases pause (LIFE-693)."),
     "release_proof_recovered": _info("edge", "A proof run passed after a failed one: the pause on Close releases is lifted (LIFE-693)."),
+    "release_pause_unreadable": _page("edge", "The Close release timer cannot read the release-paused flag, so it deploys nothing (an unknown state never deploys); lifts by itself when GitHub is readable (LIFE-693)."),
+    "release_pause_unreadable_recovered": _info("edge", "The release timer can read the release-paused flag again; Close releases can deploy (LIFE-693)."),
     # --- one-shot events
     "attention_new": _info("attention", "New items need your attention (counts only)."),
     "physmail_new": _info("physmail", "New physical mail arrived (counts only)."),

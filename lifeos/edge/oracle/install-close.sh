@@ -191,7 +191,15 @@ case "${1:-}" in
       fi
       rm -f "$ETC/auto.pending"; exit 0                                                   # the next tick starts from a settled tree
     fi
-    if ! commit="$(python3 -I "$REL" latest)"; then
+    latest_rc=0; commit="$(python3 -I "$REL" latest)" || latest_rc=$?
+    if [ "$latest_rc" = 3 ]; then                                                          # LIFE-693: main is green but a failed proof run paused releases (an open release-paused issue)
+      rm -f "$ETC/auto.waiting" "$ETC/auto.stalled" "$ETC/auto.proof-unreadable"            # a readable flag, and not a CI wait
+      say "auto: releases are paused (a release-paused issue is open: a proof run failed); nothing changed"; exit 0
+    elif [ "$latest_rc" = 4 ]; then                                                        # LIFE-693: the flag cannot be read: never deploy on an unknown state; one marker, the ticker's watch raises one page
+      rm -f "$ETC/auto.waiting" "$ETC/auto.stalled"
+      [ -e "$ETC/auto.proof-unreadable" ] || { date +%s > "$ETC/auto.proof-unreadable"; chmod 644 "$ETC/auto.proof-unreadable"; }
+      say "auto: the release-paused flag could not be read; not deploying; nothing changed"; exit 0
+    elif [ "$latest_rc" != 0 ]; then
       # LIFE-562: a head that is not green on CI, or unreadable, is waited out; after 2 hours of it the ticker's watch raises one quiet alert (reads this marker; nothing else does)
       now="$(date +%s)"; since="$(cat "$ETC/auto.waiting" 2>/dev/null || true)"
       read -r since stalled < <(python3 -I "$REL" wait "$now" "$since") || { since="$now"; stalled=0; }      # LIFE-604: close_release.py decides (unit-tested); a failure restarts the wait, never raises an alert
@@ -199,7 +207,7 @@ case "${1:-}" in
       if [ "$stalled" = 1 ]; then echo "$since" > "$ETC/auto.stalled"; chmod 644 "$ETC/auto.stalled"; fi
       say "auto: main not green or unreadable; nothing changed"; exit 0
     fi
-    rm -f "$ETC/auto.waiting" "$ETC/auto.stalled"                                         # green again: the wait is over
+    rm -f "$ETC/auto.waiting" "$ETC/auto.stalled" "$ETC/auto.proof-unreadable"            # green again, and the pause flag readable and clear: the wait is over
     if read -r held _ 2>/dev/null < "$ETC/auto.hold"; then                                 # Jim's hand: main's code at that moment counts as seen, so only newer code is ever released
       [ "$held" = unknown ] && { echo "$commit" > "$ETC/auto.hold"; exit 0; }              # main was unreadable when Jim acted: the first head read now is held
       [ "$held" = "$commit" ] && exit 0

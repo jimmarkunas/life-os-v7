@@ -102,6 +102,24 @@ class Pause(unittest.TestCase):
         self.assertEqual((d.dispatch.commit, d.flag), (B, None))                                # the flag stays open untouched until this run finishes
         self.assertEqual(rp.decide(NOW, B, A, [failed], [], False).dispatch, None)             # not paused: a failed commit is not retried
 
+    def test_a_paused_release_needs_no_new_deploy_to_re_proof_and_a_pass_lifts_the_flag(self):
+        """Jim, Nov 15 2026: no deadlock. Same deployed commit throughout (nothing is deployed while paused): after 60 minutes a proof is dispatched, and its pass lifts the flag."""
+        failed = rp.Entry(B, rp.FAIL, at(61), at(59), 11, A, rp.CODE_FAILED)
+        early = rp.Entry(B, rp.FAIL, at(59), at(57), 11, A, rp.CODE_FAILED)
+        self.assertIsNone(rp.decide(NOW, B, A, [early], [], True).dispatch)                        # 59 minutes: not yet
+        d = rp.decide(NOW, B, A, [failed], [], True)
+        self.assertEqual((d.dispatch.commit, d.dispatch.status, d.flag, d.failed), (B, rp.PENDING, None, None))
+        later = NOW + dt.timedelta(minutes=10)
+        d2 = rp.decide(later, B, A, [d.dispatch, failed], [run(12, -2)], True)                     # the run it dispatched has passed; still the same deployed commit
+        self.assertEqual((d2.flag, d2.recovered.commit, d2.dispatch, d2.failed), (False, B, None, None))
+
+    def test_the_failure_text_says_the_proof_runs_on_mains_current_head_and_how_the_pause_ends(self):
+        failed = rp.Entry(B, rp.FAIL, at(5), at(3), 11, A, rp.CODE_FAILED)
+        body = rp.failure_text(failed)[1]
+        for needle in ("at most every hour on main's current head", "if a fix is on main it passes and the pause lifts without anyone deploying", "if main still fails it stays paused (no second page)",
+                       "close this issue on GitHub (one click) if you judged it safe"):
+            self.assertIn(needle, body)
+
     def test_the_first_pass_lifts_the_pause_with_one_recovered_push(self):
         failed = rp.Entry(B, rp.FAIL, at(120), at(118), 11, A, rp.CODE_FAILED)
         retry = rp.Entry(C, rp.PENDING, at(10), previous=A)
