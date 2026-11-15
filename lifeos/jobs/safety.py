@@ -50,7 +50,7 @@ def statements(root=ROOT):
             if id(node) in inner:
                 continue
             text = _text(node)
-            if text and text.lstrip().upper().startswith(VERBS) and "v7_" in text:
+            if text and re.match(r"(%s)\b" % "|".join(VERBS), text.lstrip(), re.I) and "v7_" in text:      # LIFE-732: a whole word, so prose like "replaces v7_x with ..." is not a statement
                 found.append((str(path.relative_to(root.parent)), node.lineno, " ".join(text.split())))
     return found
 
