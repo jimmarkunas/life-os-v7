@@ -315,9 +315,22 @@ class PullRequestTestsWorkflow(unittest.TestCase):
         self.assertEqual(list(doc[True]), ["pull_request", "push"])
         self.assertEqual(doc[True]["push"], {"branches": ["main"]})                  # main only: a merge gives the Edge release a tested commit; no other branch, tag, schedule or dispatch
         self.assertEqual(doc["permissions"], {"contents": "read"})
-        for word in ("secrets.", "bitwarden", "LIFEOS_", "NOTION_", "GMAIL_", "--live"):
+        for word in ("secrets.", "bitwarden", "NOTION_", "GMAIL_", "--live"):
             self.assertNotIn(word, text)
-        self.assertEqual([j for j in doc["jobs"]], ["unit-tests", "test-index"])
+        self.assertEqual(sorted(set(re.findall(r"LIFEOS_[A-Z_]+", text))), ["LIFEOS_TEST_NOW"])     # LIFE-692: the only LIFEOS_ name is the test clock date, never a secret or a loader name
+        self.assertEqual([j for j in doc["jobs"]], ["unit-tests", "test-index", "unit-tests-second-date"])
+
+    def test_the_second_date_job_runs_the_same_tests_in_parallel_on_pull_requests_only(self):
+        """LIFE-692: today's date changing changes no test result. An additional check (never the required `unit-tests`), pull requests only so it can never turn a main run red and hold back the Close release."""
+        doc = yaml.safe_load(self.path.read_text())
+        job = doc["jobs"]["unit-tests-second-date"]
+        self.assertEqual((job["if"], job["timeout-minutes"], job.get("needs")), ("${{ github.event_name == 'pull_request' }}", 5, None))     # no needs: it runs beside unit-tests, the wall time does not grow
+        run = [s for s in job["steps"] if "env" in s and "LIFEOS_TEST_NOW" in s["env"]]
+        self.assertEqual(len(run), 1)
+        self.assertEqual(run[0]["env"], {"LIFEOS_TEST_NOW": "2027-03-09"})
+        self.assertIn("python -m tests.shard 1 3", run[0]["run"])                          # the same shard command as unit-tests
+        self.assertNotIn("permissions", job)                                               # the workflow's read-only default is all it gets
+        self.assertIn("unit-tests:", self.path.read_text())                                # the required check keeps its name
 
     def test_the_test_index_is_built_on_main_after_the_tests_and_only_restored_in_pull_requests(self):
         """LIFE-644: docs/test-index.json is not committed. The key holds a hash of the builder and the test lock, so an index made by other code or other pinned tools is never restored."""
@@ -683,7 +696,7 @@ DOMAIN_SECRETS = {         # the only secrets each domain job may see; adding on
     "bills": DB | {"BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "NOTION_BILLS_DATA_SOURCE_ID", "NOTION_BILLS_TOKEN", "NOTION_JIRA_TOKEN"},
     "agenda": DB | {"CALENDAR_CARD_BLOCK_ID", "GCAL_CALENDAR_ID", "GCAL_SERVICE_ACCOUNT_JSON", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "NOTION_JIRA_TOKEN"},
     "megibow": DB | {"GCAL_CALENDAR_ID", "GCAL_SERVICE_ACCOUNT_JSON", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "MEGIBOW_BLOCK_ID", "MEGIBOW_EXCLUDED_DOMAINS", "MEGIBOW_REVIEW_DB_ID", "NOTION_JIRA_TOKEN", "NTFY_TOPIC", "OUTLOOK_CLIENT_ID"},
-    "dcc": {"AMAZON_CARD_BLOCK_ID", "ATTENTION_CARD_BLOCK_ID", "BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "DCC_CARD_BLOCK_ID", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "MAIL_ALERTS_CARD_BLOCK_ID", "NOTION_JIRA_TOKEN"},
+    "dcc": {"AMAZON_CARD_BLOCK_ID", "ATTENTION_CARD_BLOCK_ID", "BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "DCC_CARD_BLOCK_ID", "GITHUB_TOKEN", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "MAIL_ALERTS_CARD_BLOCK_ID", "NOTION_JIRA_TOKEN"},   # LIFE-694: GITHUB_TOKEN is the run's own read-only token (job permissions: contents, actions, issues read), for the Platform Stability card
     "recruiters": DB | {"GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_RECRUITERS_DATA_SOURCE_ID", "NOTION_RECRUITERS_TOKEN", "OUTLOOK_CLIENT_ID",
                      "NOTION_API_TOKEN", "NOTION_JOB_LEDGER_DATA_SOURCE_ID", "V7_CLOSE_BASE_URL", "RECRUITERS_SCAN", "RECRUITERS_SCAN_AT",      # LIFE-610: step outputs, not secrets
                      "HIRING_TABLE_BLOCK_ID", "NOTION_JIRA_TOKEN"},   # LIFE-20: the Recruiter Outreach step (the Daily Report writer and the pinned Hiring Pipeline table it is anchored on); LIFE-10: the job-page outreach step reads and writes Job Ledger pages

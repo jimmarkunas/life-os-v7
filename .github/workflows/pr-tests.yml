@@ -126,3 +126,54 @@ jobs:
         with:
           path: docs/test-index.json
           key: test-index-v1-${{ hashFiles('tests/testindex.py', 'requirements-test.lock') }}-${{ github.sha }}
+  # LIFE-692 (Stability 5/7): "today's date changing changes no test result" is enforced here. The same tests as `unit-tests`, in a second job that runs in parallel (the wall time of the pull request check does not grow), with the test clock
+  # fixture (tests/kit/clock.py) set to a fixed second date through LIFEOS_TEST_NOW. A test that passes today but reads the real clock then fails on this date instead of failing months later (LIFE-349, LIFE-264). Pull requests only: a failing
+  # run here never turns a merge-to-main run red, so it can never hold back the Close release, which waits for main's own run. It is an additional check, not the required `unit-tests` check (branch protection is unchanged: docs/platform/branch-protection.md).
+  unit-tests-second-date:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout the exact commit (own git fetch; the token is passed once and never stored)
+        run: |
+          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
+          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=2 origin "$GITHUB_SHA"
+          git checkout -q --detach FETCH_HEAD
+      - uses: ./.github/actions/python
+      - name: Test-only dependency (PyYAML, for the workflow contract tests)
+        run: pip install --require-hashes -r requirements-test.lock
+      - name: Restore the newest test index main built (the same read-only restore as unit-tests; a missing or old file means FULL)
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830   # v4.3.0
+        with:
+          path: docs/test-index.json
+          key: test-index-v1-${{ hashFiles('tests/testindex.py', 'requirements-test.lock') }}-${{ github.sha }}
+          restore-keys: test-index-v1-${{ hashFiles('tests/testindex.py', 'requirements-test.lock') }}-
+      - name: Pick the tests (the same rule as unit-tests, the tests the change can affect plus tests/contracts; any trouble picking means everything)
+        run: |
+          python -m tests.testindex select --base HEAD^1 > selected.txt || echo FULL > selected.txt
+          if [ "$(head -n 1 selected.txt)" = "FULL" ]; then echo "tests picked (second date): everything" | tee -a "$GITHUB_STEP_SUMMARY"; else echo "tests picked (second date): $(wc -l < selected.txt) targets" | tee -a "$GITHUB_STEP_SUMMARY"; fi
+      - name: Unit tests on a second fixed date (LIFEOS_TEST_NOW; three parallel shards when everything runs)
+        env:
+          LIFEOS_TEST_NOW: "2027-03-09"
+        run: |
+          start=$(date +%s)
+          status=0
+          if [ "$(head -n 1 selected.txt)" = "FULL" ]; then
+            python -m tests.shard 1 3 > shard-1.log 2>&1 &
+            first=$!
+            python -m tests.shard 2 3 > shard-2.log 2>&1 &
+            second=$!
+            python -m tests.shard 3 3 > shard-3.log 2>&1 &
+            third=$!
+            wait "$first" || status=$?
+            wait "$second" || status=$?
+            wait "$third" || status=$?
+            cat shard-1.log shard-2.log shard-3.log
+          else
+            python -m unittest $(cat selected.txt) > shard-1.log 2>&1 || status=$?
+            cat shard-1.log
+          fi
+          echo "unit tests on ${LIFEOS_TEST_NOW}: exit ${status}, $(( $(date +%s) - start )) s" | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ "$status" -ne 0 ]; then echo "::error::The unit tests pass on today's date and fail with the test clock fixed at ${LIFEOS_TEST_NOW}: a test reads the real clock (see docs/platform/scheduled-checks.md)"; fi
+          exit "$status"
