@@ -48,8 +48,18 @@ jobs:
             b65dd2fc-2573-4bda-9e80-b4db015edec6 > LIFEOS_ACQ_SSH_KNOWN_HOSTS
             7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
             6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
+      - id: bws_settings
+        continue-on-error: true
+        name: Notion token from Bitwarden so this job can read the V7 settings page (LIFE-703; read only; if it fails the GitHub values stay as they are)
+        uses: ./.github/actions/bws-load
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
       - name: Calendar sync (counts only)
         env:
+          NOTION_JIRA_TOKEN: ${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}
           GCAL_SERVICE_ACCOUNT_JSON: ${{ steps.bws_calendar.outputs.GCAL_SERVICE_ACCOUNT_JSON }}
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_calendar.outputs.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_calendar.outputs.LIFEOS_ACQ_DB_PASSWORD }}

@@ -68,10 +68,16 @@ jobs:
           set_env: false
           secrets: |
             53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
+      - name: V7 settings page for the Weekly Review page address (LIFE-703; names and counts only; an unreadable page changes nothing)
+        continue-on-error: true
+        env:
+          NOTION_JIRA_TOKEN: ${{ steps.bws_report.outputs.NOTION_JIRA_TOKEN }}
+          WEEKLY_REVIEW_PAGE_ID: ${{ secrets.WEEKLY_REVIEW_PAGE_ID }}
+        run: python -m lifeos.platform.settings
       - name: Repository hygiene report (stale branches; run summary, and the Weekly Review callout when live)
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          WEEKLY_REVIEW_PAGE_ID: ${{ secrets.WEEKLY_REVIEW_PAGE_ID }}
+          WEEKLY_REVIEW_PAGE_ID: ${{ env.WEEKLY_REVIEW_PAGE_ID || secrets.WEEKLY_REVIEW_PAGE_ID }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_report.outputs.NOTION_JIRA_TOKEN }}
           LIVE: ${{ github.event_name == 'workflow_run' || inputs.live }}
         run: python -m lifeos.platform.branches report $([ "$LIVE" = "true" ] && echo --live)

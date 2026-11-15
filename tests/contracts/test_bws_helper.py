@@ -35,18 +35,26 @@ class WorkflowWiring(unittest.TestCase):
             if not loaders:
                 continue
             seen += 1
+            main = [i for i in loaders if steps[i].get("id") != "bws_settings"]        # LIFE-703: the NOTION_JIRA_TOKEN-only loader that lets a job read the V7 settings page is not the job's credential loader
+            extra = [i for i in loaders if steps[i].get("id") == "bws_settings"]
             first = loaders[0]
             self.assertGreater(first, 0, (file, name))
             seed = steps[first - 1]
             self.assertEqual(seed.get("uses"), "./.github/actions/bws-helper", (file, name))
             self.assertNotIn("id", seed, (file, name))                    # nothing downstream reads the helper step
-            self.assertNotIn("continue-on-error", seed, (file, name))     # a missing verified helper fails the job; no fallback
+            if main:
+                self.assertNotIn("continue-on-error", seed, (file, name))     # a missing verified helper fails the job; no fallback
+                self.assertEqual(loaders[0], main[0], (file, name))           # the credential loader is first; the settings loader, if any, follows it
+            else:
+                self.assertIs(seed.get("continue-on-error"), True, (file, name))   # a job that only reads the settings page (the gate, the profile-sync switch job) never fails on it
             wait = int(seed["with"]["wait_seconds"])
             self.assertTrue(0 < wait <= 600, (file, name, wait))          # about 10 minutes at most
             limit = job.get("timeout-minutes", 360)
             self.assertLessEqual(wait * 3, limit * 60, (file, name))      # the retry never takes more than a third of the job's time limit
             self.assertIn("ubuntu", str(job["runs-on"]), (file, name))    # the saved program is the Linux x86_64 build
-            self.assertEqual(len(loaders), 1, (file, name))               # one loader step per job: the load and its one retry (D209) live inside the local action (LIFE-631)
+            self.assertLessEqual(len(main), 1, (file, name))              # one credential loader step per job: the load and its one retry (D209) live inside the local action (LIFE-631)
+            self.assertLessEqual(len(extra), 1, (file, name))             # and at most one settings loader
+            self.assertEqual(len(main) + len(extra), len(loaders), (file, name))
         self.assertGreater(seen, 0)                                       # LIFE-644: every job that loads gets its one seed; the number of jobs is not pinned
 
     def test_the_helper_is_called_exactly_once_per_job(self):
