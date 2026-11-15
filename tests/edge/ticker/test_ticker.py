@@ -1,5 +1,6 @@
 """LIFE-330: the Oracle ticker (lifeos/edge/ticker) - the tick request, fixed codes, the fail-closed watch, the timers' minutes and the installer's reach."""
 import configparser
+import datetime as dt
 import io
 import json
 import re
@@ -167,6 +168,72 @@ class Stall(unittest.TestCase):
             code = ticker.watch(TOKEN, TOPIC, FakeGitHub(SWITCHES), run=lambda **k: None, environ={}, disk=lambda: None)
         self.assertEqual(code[0], "WATCH_DONE")
         stall.assert_called_once()
+
+
+class ReleaseProof(unittest.TestCase):
+    """LIFE-693: the watch proves each Close release with one dry quick run and pages once when it fails."""
+    DEPLOYED, PREVIOUS = "b" * 40, "a" * 40
+
+    def drive(self, runs=(), record="", paused=False, manifest=True, sync=None, logs=None):
+        calls = []
+
+        def api(path, method="GET", body=None):
+            calls.append((method, path, body))
+            if path.startswith("issues?state=open&labels=release-proof"):
+                return [{"number": 5, "body": record}] if record else []
+            if path.startswith("issues?state=open&labels=release-paused"):
+                return [{"number": 6}] if paused else []
+            if path.startswith("actions/workflows/hourly.yml/runs"):
+                return {"workflow_runs": [dict(r, display_title="manual") for r in runs]}
+            return {}
+
+        def read(path):
+            if not manifest:
+                raise OSError("gone")
+            return "commit %s\n" % (self.DEPLOYED if "current" in path else self.PREVIOUS)
+
+        now = dt.datetime(2026, 11, 15, 12, 0, tzinfo=dt.timezone.utc)
+        word = ticker.release_proof(TOKEN, api=api, read=read, sync=sync or (lambda *a: None), logs=logs or (lambda *a: b""), now=now)
+        return word, calls
+
+    def test_a_new_deploy_dispatches_one_dry_quick_proof_and_records_it(self):
+        word, calls = self.drive()
+        self.assertEqual(word, "dispatched")
+        dispatches = [c for c in calls if c[1] == "actions/workflows/hourly.yml/dispatches"]
+        self.assertEqual([c[2] for c in dispatches], [{"ref": "main", "inputs": {"quick": "true", "live": "false"}}])
+        written = [c for c in calls if c[1] == "issues" and c[0] == "POST"]
+        self.assertIn(self.DEPLOYED, written[0][2]["body"])
+
+    def test_the_same_deploy_is_never_proved_twice(self):
+        _, calls = self.drive()
+        record = [c for c in calls if c[1] == "issues" and c[0] == "POST"][0][2]["body"]
+        word, again = self.drive(record=record)
+        self.assertEqual(word, "ok")
+        self.assertFalse([c for c in again if c[1].endswith("dispatches")])
+
+    def test_a_failed_proof_syncs_one_page_with_both_commits_and_opens_the_flag(self):
+        from lifeos.platform import release_proof as rp
+        record = rp.render_record([rp.Entry(self.DEPLOYED, rp.PENDING, "2026-11-15T11:50:00Z", previous=self.PREVIOUS)])
+        seen = []
+        failing = {"id": 9, "created_at": "2026-11-15T11:51:00Z", "updated_at": "2026-11-15T11:55:00Z", "status": "completed", "conclusion": "failure"}
+        word, _ = self.drive(runs=[failing], record=record, sync=lambda *a: seen.append(a))
+        self.assertEqual(word, "failed")
+        label, title, text, signal, page, good = seen[0]
+        self.assertEqual((label, signal, page[2], page[3]), ("release-paused", True, "page", "release_proof_failed"))
+        self.assertIn(self.DEPLOYED[:12], title)
+        self.assertIn(self.PREVIOUS[:12], title)
+        self.assertIn("git revert --no-edit", text)
+
+    def test_an_unreadable_manifest_or_github_changes_nothing_and_pages_nothing(self):
+        word, calls = self.drive(manifest=False)
+        self.assertEqual(word, "RELEASE_PROOF_UNREADABLE")
+        self.assertFalse([c for c in calls if c[0] != "GET"])
+
+    def test_the_watch_runs_it_and_a_failure_never_fails_the_watchdog(self):
+        with mock.patch.object(ticker, "release_proof", side_effect=RuntimeError("x")) as proof:
+            code = ticker.watch(TOKEN, TOPIC, FakeGitHub(SWITCHES), run=lambda **k: None, environ={}, disk=lambda: None)
+        self.assertEqual(code[0], "WATCH_DONE")
+        proof.assert_called_once()
 
 
 class Watch(unittest.TestCase):
