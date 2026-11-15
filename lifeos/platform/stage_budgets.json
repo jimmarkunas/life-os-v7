@@ -287,6 +287,11 @@
    "required": false,
    "seconds": 600
   },
+  "jira-release": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 600
+  },
   "jira-rollover": {
    "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
    "required": false,
@@ -306,6 +311,11 @@
    "basis": "twice its slowest measured step (29 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
    "required": false,
    "seconds": 120
+  },
+  "jira-stalled": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 600
   },
   "job-page-outreach": {
    "basis": "twice its slowest measured step (5 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
