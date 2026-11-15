@@ -75,9 +75,25 @@ The ticket preferred a GitHub concurrency group around the Notion write step. Th
 
 - GitHub concurrency is per job or per workflow, never per step, so it would serialize the whole job, not just its write.
 - A concurrency group keeps one running and one waiting run; a newer waiting run replaces the older one. With nine writer jobs in one group, waiting jobs would be cancelled and skipped, the failure that `domains.yml` already warns about for its own run group.
-- In-run serialization is possible only with `needs:` chains. The writer jobs' measured medians (seconds) are jira 82, hiring 93, imessage 112, recruiters 48, megibow 35, agenda 31, dcc 30, bills 27, mail 27, amazon 19. Chained, they take about 470 seconds on the critical path, close to the 506 seconds the longest full run already takes (the `interview` job is 441 seconds), so the added time is estimated at 25 to 70 seconds. That is under the 90-second limit but adds a failure chain (one red job would delay or skip later cards unless every job keeps `always()`), for a problem that has not recurred since the merges.
+- In-run serialization is possible only with `needs:` chains. The writer jobs' measured medians (seconds) are jira 82, hiring 93, imessage 112, recruiters 48, megibow 35, agenda 31, dcc 30, bills 27, mail 27, amazon 19. Chained, they take about 470 seconds on the critical path, close to the 506 seconds the longest full run already takes (the `interview` job is 441 seconds), so the added time is estimated at 25 to 70 seconds. That adds a failure chain (one red job would delay or skip later cards unless every job keeps `always()`).
 
-Decision recorded for Jim: no workflow change in this ticket. If the three clean runs in the 7-day clock show a conflict again, the choice is `needs:` chaining of the writer jobs, in the one workflow PR with LIFE-691.
+**Decided by Jim (Nov 15 2026, about 12:05 AM CT): option B.** Only the hiring and recruiters writer jobs are chained (the two that walk the page to prove their heading is unique); the other writer jobs stay in parallel. A separate workflow PR makes that change. Option A is the full chain of every writer job.
+
+## The daily write-conflict count and the rule (LIFE-688)
+
+The daily check-in (the GitHub watchdog's once-a-day push, `lifeos/platform/gate.py`) carries one line:
+
+`Notion write conflicts in the last 24 h: N (hiring a, recruiters b); rate limits: M.`
+
+- **A write conflict** is one of these fixed codes surfacing in a domains-run job log in the last 24 hours: `NOTION_HTTP_409`, a page-walk 404 (`PAGE_WALK_NOTION_HTTP_404`, with or without a job's prefix such as `HIRING_`), or `PROTECTED_REGION_CHANGED`. Each (job, code) counts once per run, so a retry loop that prints a code twice is one conflict. N is the total; the parentheses give N per job.
+- **A rate limit** is `NOTION_HTTP_429`. It is counted apart (M) and is never a write conflict.
+- **Counts per job by fixed code only.** No log line, name, id or message is kept or shown.
+- **Read-only and bounded.** The count reads the logs of the domains runs finished in the last 24 hours through the GitHub API with the watchdog's existing token (`actions: read`; no permission change): newest first, at most 30 runs, at most 40 million bytes of log archive and at most 90 seconds in all (the watchdog job's own timeout is 3 minutes and its slowest run 34 seconds), one archive per run. One unreadable run is counted under `WRITE_CONFLICT_LOGS_UNREADABLE` (`lifeos/platform/isolate.py`) and the other runs are still counted; a reached cap says `WRITE_CONFLICT_CAP_REACHED`; runs that could not be listed say `WRITE_CONFLICT_COUNT_UNAVAILABLE`. These codes appear only in the check-in text: the count never pages by itself and never turns the check-in to DEGRADED (it is an INFO report under the health model's `daily_check` key).
+- **The rule.** When N is above 0 the line says so plainly and ends with: `rule: any write conflict moves the Daily Report writers to the full chain (option A, LIFE-688).` That is the standing decision: one conflict is enough to change from option B to option A. When N is 0 the check-in shows the count and nothing else in it changes.
+
+- **Counting starts at the decision.** Runs before Jim's decision (Nov 15 2026, 12:05 AM CT) are history, so a conflict from before the fixes cannot trigger the rule. Until 24 hours have passed since then the window is shorter, and the line ends with `Counted since the writer-chain decision (Nov 15 2026, 12:05 AM CT).` After that the count is a plain 24-hour window and says nothing about it (`gate.CONFLICT_COUNT_FROM`).
+
+The line is also listed in `docs/platform/health-model.md` (the `daily_check` row).
 
 ## Finding: the stamp is written first
 
