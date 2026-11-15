@@ -277,7 +277,7 @@
     },
     {
       "date": "2026-11-15",
-      "pr": "PR_URL_TO_FILL",
+      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/1223",
       "approval": "Jim Markunas, November 15, 2026 CT, typed in the Claude Code chat: 'And completely get rid of this protected-file-approved bullshit' (LIFE-726)",
       "part": "docs/development-policy/04 (Lean delivery amendment: the protected-file-approved label and its CI check are removed; four gated items remain), with the matching AGENTS.md lines"
     }
