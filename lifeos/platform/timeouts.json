@@ -372,6 +372,14 @@
    "slowest_seconds": null,
    "target": 5
   },
+  "profile-sync.yml::settings": {
+   "basis": "new job (LIFE-703): reads the V7 settings page once for the Fit profile sync switch; the slowest step is the Bitwarden helper (60 s wait); 5-minute floor; no run measured yet",
+   "current": 5,
+   "median_seconds": null,
+   "runs_measured": 0,
+   "slowest_seconds": null,
+   "target": 5
+  },
   "profile-sync.yml::sync": {
    "basis": "twice the slowest run (248 s) rounds to 10 min, not below the current 10: unchanged",
    "current": 10,
