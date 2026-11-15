@@ -77,7 +77,12 @@ The ticket preferred a GitHub concurrency group around the Notion write step. Th
 - A concurrency group keeps one running and one waiting run; a newer waiting run replaces the older one. With nine writer jobs in one group, waiting jobs would be cancelled and skipped, the failure that `domains.yml` already warns about for its own run group.
 - In-run serialization is possible only with `needs:` chains. The writer jobs' measured medians (seconds) are jira 82, hiring 93, imessage 112, recruiters 48, megibow 35, agenda 31, dcc 30, bills 27, mail 27, amazon 19. Chained, they take about 470 seconds on the critical path, close to the 506 seconds the longest full run already takes (the `interview` job is 441 seconds), so the added time is estimated at 25 to 70 seconds. That adds a failure chain (one red job would delay or skip later cards unless every job keeps `always()`).
 
-**Decided by Jim (Nov 15 2026, about 12:05 AM CT): option B.** Only the hiring and recruiters writer jobs are chained (the two that walk the page to prove their heading is unique); the other writer jobs stay in parallel. A separate workflow PR makes that change. Option A is the full chain of every writer job.
+**Decided by Jim (Nov 15 2026, about 12:05 AM CT): option B.** Only the hiring and recruiters writer jobs are chained (the two that walk the page to prove their heading is unique); the other writer jobs stay in parallel. Workflow PR #1191 makes that change (rule recorded: option B chosen by Jim Nov 15 2026, rule: any Notion write conflict in a day moves the Daily Report writers to the full chain (option A)). Option A is the full chain of every writer job.
+
+- Option B chains only the two jobs that read the whole Daily Report page: `hiring`, then `recruiters`. One `needs:` edge is added (`recruiters` needs `gate`, `jira`, `hiring`). Both jobs keep their own `if:`; `recruiters` keeps `always() && needs.gate.result != 'failure'`, so a red `hiring` job never stops it, and `hiring` still waits only for `gate`.
+- Order and why: `recruiters` already waited for `jira`, and `hiring` has the longest whole-page walk (median 93 s against 48 s), so it starts first with the others, and `recruiters` is the one that waits. Replaying the last 20 domains runs with the new edge, the added time is 0 s in the median and the 90th percentile, and 25 s in the single worst run.
+- Option A (the full chain jira, agenda, bills, mail, amazon, recruiters, hiring, imessage) stays prepared as the next step if the rule above fires.
+- No permissions change: the watchdog token stays `actions: read`.
 
 ## The daily write-conflict count and the rule (LIFE-688)
 
