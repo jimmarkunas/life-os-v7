@@ -46,12 +46,12 @@ class RuntimeManifest(unittest.TestCase):
     def test_every_top_level_lifeos_unit_has_exactly_one_row(self):
         rows = [m["module"] for m in load()["modules"] if m["module"].count("/") == 1]
         self.assertEqual(sorted(rows), sorted(set(rows)), "a unit is listed twice")
-        self.assertEqual(set(rows), units())
+        self.assertEqual(set(rows), units(), "run python tools/regen.py")
 
     def test_the_inventory_table_is_the_generated_one(self):
         found = block(INVENTORY.read_text())
         self.assertIsNotNone(found, "markers missing in module-inventory.md")
-        self.assertEqual(found.group(0), render(load()), "stale: run python -m tests.contracts.test_runtime_manifest --write")
+        self.assertEqual(found.group(0), render(load()), "stale: run python tools/regen.py")
 
     def test_drift_surfaces_equal_the_rows_that_name_a_surface(self):
         wanted = {(m["surface"], m["module"], m["installed"], m["unit"]) for m in load()["modules"] if "surface" in m}
