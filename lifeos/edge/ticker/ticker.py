@@ -27,6 +27,7 @@ sys.path.insert(0, str(HERE if (HERE / "lifeos").is_dir() else HERE.parents[2]))
 
 REPO = "jimmarkunas/life-os-v7"
 API = "https://api.github.com"
+SYSTEMD_DIR = "/etc/systemd/system"                      # LIFE-725: where a unit's enablement link lives (readable inside this service's sandbox)
 VARIABLES = ("ALERTS_ENABLED", "ALERTS_MUTED_UNTIL", "ALERT_SETTINGS")
 OK = {"TICK_DISPATCHED", "TICK_SKIPPED", "WATCH_DONE", "TICKER_DRY_OK"}
 DISK_PATH, DISK_LIMIT = "/var/lib/hermeseval", 80        # LIFE-301: the Hermes loop-mounted image (10 GB, 34% used on Nov 7 2026)
@@ -164,6 +165,29 @@ def proof_unreadable_incident(path=PROOF_FILE, exists=os.path.exists, sync=None)
     return unreadable
 
 
+def unit_state(unit, run=subprocess.run, listdir=os.listdir, base=SYSTEMD_DIR):
+    """LIFE-725: a unit's state for the drift check. systemd's own answer when it gives one; inside this service's sandbox (DynamicUser, ProtectSystem=strict) systemctl cannot reach systemd and
+    prints nothing, so the fallback reads the unit's enablement link (timers.target.wants for a timer, multi-user.target.wants for a service). That says "enabled" (drift.ENABLED), not
+    "running": a stopped but enabled timer is not caught, and the drift line says so (UNIT_STATE_FROM_ENABLED). A unit without its link is "disabled" (drift); an unreadable directory is unreadable."""
+    answer = ""
+    try:
+        answer = run(["systemctl", "is-active", unit], capture_output=True, text=True, timeout=15).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        answer = ""
+    if answer:
+        return answer
+    target = "timers.target.wants" if unit.endswith(".timer") else "multi-user.target.wants"
+    try:
+        return drift_module().ENABLED if unit in listdir(f"{base}/{target}") else "disabled"
+    except OSError as error:
+        raise drift_module().Unreadable(drift_module().UNIT_UNREADABLE) from error
+
+
+def drift_module():
+    from lifeos.platform import drift                              # noqa: PLC0415 - only the watch command needs it
+    return drift
+
+
 def drift_incident(token, opener=urllib.request.urlopen, sync=None, read=None, unit_state=None, rows=None):
     """LIFE-528: one GitHub issue + one quiet push while any repo-owned file installed on this VM differs from `main` (or its unit is not running); closes when every surface is
     DEPLOYED. A surface that cannot be read is UNKNOWN and changes nothing. Returns the check rows (counts and surface names only)."""
@@ -184,10 +208,7 @@ def drift_incident(token, opener=urllib.request.urlopen, sync=None, read=None, u
             raise drift.Unreadable(drift.INSTALLED_UNREADABLE) from error
 
     def active(unit):
-        done = subprocess.run(["systemctl", "is-active", unit], capture_output=True, text=True, timeout=15)
-        if not done.stdout.strip():
-            raise drift.Unreadable(drift.UNIT_UNREADABLE)
-        return done.stdout.strip()
+        return unit_state(unit)
 
     rows = rows if rows is not None else drift.check(expected_for, read or read_file, unit_state or active)
     signal = drift.incident_signal(rows)
