@@ -238,7 +238,9 @@ class RunTests(unittest.TestCase):
                 card.run(0, True, environ=ENV, reader=Reader(ROWS), client=notion, now=NOW)
         self.assertEqual(str(caught.exception), "AMAZON_WRITE_OUT_OF_SCOPE")
         self.assertEqual(notion.full_tree("jira-callout"), before)
-        self.assertEqual([p for m, p in notion.log if m in ("PATCH", "APPEND", "DELETE")], ["/blocks/heading-amazon-callout"])          # LIFE-609: only the card's own heading was written before the writer was refused
+        writes = [p for m, p in notion.log if m in ("PATCH", "APPEND", "DELETE")]
+        self.assertEqual(writes, ["/blocks/heading-amazon-callout", "/blocks/heading-amazon-callout"])          # LIFE-609: only the card's own heading was written before the writer was refused; LIFE-722: and it was put back (the stamp, then the old stamp)
+        self.assertEqual(report_region.plain(notion.children["amazon-callout"][0]), "Amazon Orders")           # the failed card does not claim to be current
 
 
 class OwnershipTests(unittest.TestCase):

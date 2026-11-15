@@ -220,45 +220,59 @@ def replace_text(client, block_id, title, module, blocks, protected_ids, fail, t
     old_text = [b for b in body if b.get("type") in TEXT_KINDS]
     kept = [b["id"] for b in body if b.get("type") not in TEXT_KINDS]                    # tables, databases, pages and anything else stay, in order
     require_configured(protected_ids, fail)
-    shown = title if heading is None else heading
-    if shown != plain(existing[0]).strip():
+    shown, was = title if heading is None else heading, plain(existing[0]).strip()
+    stamped = shown != was
+    if stamped:
         client.call("PATCH", f"/blocks/{quote(existing[0]['id'], safe='')}", {existing[0]["type"]: {"rich_text": [{"type": "text", "text": {"content": shown}}]}})
+    try:                                                                                 # LIFE-722: from here a failure must not leave the NEW stamp over the OLD content
+        def intact():
+            """Kept for the writers below; the proof is now the scope guard on the client, which acts before each write, so there is nothing to compare afterwards."""
 
-    def intact():
-        """Kept for the writers below; the proof is now the scope guard on the client, which acts before each write, so there is nothing to compare afterwards."""
-
-    if headless:
-        return existing, _write_headless(client, block_id, title, module, blocks, existing, kept, old_text, intact, fail)
-    if _in_place_ok(body, old_text, blocks):
-        return existing, _write_in_place(client, block_id, title, module, blocks, existing, kept, old_text, intact, fail, shown)
-    try:
-        placement = {"after": existing[0]["id"]}
-        result = client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": blocks, **placement})
-    finally:
-        intact()
-    # Notion's reply to an insert-after can list the following blocks as well as the new ones, so the count is only a floor; the read-back below is the proof.
-    if not isinstance(result, dict) or not isinstance(result.get("results"), list) or len(result["results"]) < len(blocks):
-        raise fail("CARD_APPEND_MISMATCH")
-    removed = 0
-    for old in old_text:
+        if headless:
+            return existing, _write_headless(client, block_id, title, module, blocks, existing, kept, old_text, intact, fail)
+        if _in_place_ok(body, old_text, blocks):
+            return existing, _write_in_place(client, block_id, title, module, blocks, existing, kept, old_text, intact, fail, shown)
         try:
-            router.check_write(module, [title])
-        except router.RouterError:
-            raise fail("CARD_NOT_OWNED") from None
-        try:
-            client.call("DELETE", f"/blocks/{quote(old['id'], safe='')}")
-            removed += 1
-        except NotionError as error:
-            if str(error) != "NOTION_HTTP_404":
-                raise
+            placement = {"after": existing[0]["id"]}
+            result = client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": blocks, **placement})
         finally:
             intact()
-    after = children(client, block_id, fail)                                             # authoritative read-back
-    intact()
-    if (not after or after[0].get("id") != existing[0].get("id") or plain(after[0]).strip() != shown or len(after) != 1 + len(blocks) + len(kept)
-            or [plain(b) for b in after[1:1 + len(blocks)]] != [plain(b) for b in blocks] or [b.get("id") for b in after[1 + len(blocks):]] != kept):
-        raise fail("CARD_VERIFY_FAILED")
-    return existing, removed
+        # Notion's reply to an insert-after can list the following blocks as well as the new ones, so the count is only a floor; the read-back below is the proof.
+        if not isinstance(result, dict) or not isinstance(result.get("results"), list) or len(result["results"]) < len(blocks):
+            raise fail("CARD_APPEND_MISMATCH")
+        removed = 0
+        for old in old_text:
+            try:
+                router.check_write(module, [title])
+            except router.RouterError:
+                raise fail("CARD_NOT_OWNED") from None
+            try:
+                client.call("DELETE", f"/blocks/{quote(old['id'], safe='')}")
+                removed += 1
+            except NotionError as error:
+                if str(error) != "NOTION_HTTP_404":
+                    raise
+            finally:
+                intact()
+        after = children(client, block_id, fail)                                             # authoritative read-back
+        intact()
+        if (not after or after[0].get("id") != existing[0].get("id") or plain(after[0]).strip() != shown or len(after) != 1 + len(blocks) + len(kept)
+                or [plain(b) for b in after[1:1 + len(blocks)]] != [plain(b) for b in blocks] or [b.get("id") for b in after[1 + len(blocks):]] != kept):
+            raise fail("CARD_VERIFY_FAILED")
+        return existing, removed
+    except Exception:
+        if stamped:
+            _restore_stamp(client, existing[0], was)
+        raise
+
+
+def _restore_stamp(client, heading_block, text):
+    """LIFE-722: the card's body write failed after its heading stamp was written, so the stamp goes back to what it was: a card that did not update must not look current (the stamp is how Jim and the
+    stale-card alert tell). Best effort and silent: if Notion refuses this too, the caller still sees the failure it already had, never this one. Same heading shape the stamp write itself uses."""
+    try:
+        client.call("PATCH", f"/blocks/{quote(heading_block['id'], safe='')}", {heading_block["type"]: {"rich_text": [{"type": "text", "text": {"content": text}}]}})
+    except Exception:                                                                    # noqa: BLE001 - the original failure is the one to report
+        pass
 
 
 def _in_place_ok(body, old_text, blocks):
