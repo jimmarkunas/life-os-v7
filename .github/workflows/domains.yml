@@ -376,8 +376,10 @@ jobs:
       - name: Jira warning (does not fail the run)
         if: ${{ always() && (steps.jsnap.outcome == 'failure' || steps.jcard.outcome == 'failure' || steps.acweek.outcome == 'failure' || steps.acgoals.outcome == 'failure' || steps.acreview.outcome == 'failure' || steps.acart.outcome == 'failure' || steps.acchange.outcome == 'failure' || steps.jrelease.outcome == 'failure' || steps.jstalled.outcome == 'failure' || steps.jrollauto.outcome == 'failure' || steps.jrollwatch.outcome == 'failure' || steps.jroll.outcome == 'failure' || steps.jprobe.outcome == 'failure') }}
         run: echo "::warning title=Jira::a Jira step failed; the Jobs pipeline is unaffected"
+      # LIFE-730 (temporary): the five V3 accountability stages (acweek, acgoals, acreview, acart, acchange; LIFE-671 and LIFE-673) still warn above but no longer end this job red, so they do not
+      # page the phone while they are being stabilised. Revert this step to `contains(steps.*.outcome, 'failure')` when LIFE-671 and LIFE-673 are stable; the contract test names the exempt ids.
       - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
-        if: ${{ always() && contains(steps.*.outcome, 'failure') }}
+        if: ${{ always() && (steps.bws_jira.outcome == 'failure' || steps.jrollauto.outcome == 'failure' || steps.jrollwatch.outcome == 'failure' || steps.jsnap.outcome == 'failure' || steps.jcard.outcome == 'failure' || steps.jrelease.outcome == 'failure' || steps.jstalled.outcome == 'failure' || steps.jprobe.outcome == 'failure' || steps.jroll.outcome == 'failure') }}
         run: echo "::error title=jira::a stage step failed in the jira job (see the step marked failed above)"; exit 1
 
 

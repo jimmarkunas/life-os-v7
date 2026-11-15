@@ -810,8 +810,10 @@ class DomainsWorkflowTests(unittest.TestCase):
                 used |= {k for k, v in (step.get("env") or {}).items() if "secrets." in str(v) or "steps." in str(v) and ".outputs." in str(v)}   # a migrated value counts when it arrives as a loader output (`steps.<loader>.outputs.<NAME>`); a gate switch (`needs.gate.outputs.<switch>`, LIFE-703) is not a secret
             self.assertLessEqual(used, DOMAIN_SECRETS[name], f"{name}: {sorted(used - DOMAIN_SECRETS[name])}")
 
+    V3_STAGES_THAT_ONLY_WARN = ("acweek", "acgoals", "acreview", "acart", "acchange")        # LIFE-730 (temporary): the only stage ids allowed off a final step's list, and only in the jira job
+
     @staticmethod
-    def uncovered_stage_steps(job):
+    def uncovered_stage_steps(job, exempt=()):
         """LIFE-649: -> what a job's final step fails to surface. A stage step is every `continue-on-error` step; the tailnet join is the one allowed to fail quietly (a failed join only loses the Oracle fallback).
         The final step must run always(), fail the job (`exit 1`), and cover every stage step: by the wildcard `steps.*.outcome` (every step with an id) or by naming each stage id."""
         steps, problems = job["steps"], []
@@ -824,7 +826,7 @@ class DomainsWorkflowTests(unittest.TestCase):
         if not str(condition).startswith("${{ always() &&") or not str(last.get("run", "")).rstrip().endswith("exit 1") or last.get("continue-on-error"):
             problems.append("the last step does not fail the job after every stage")
         elif "contains(steps.*.outcome, 'failure')" not in condition:
-            problems += [f"{i} not covered" for i in ids if f"steps.{i}.outcome == 'failure'" not in condition]
+            problems += [f"{i} not covered" for i in ids if i not in exempt and f"steps.{i}.outcome == 'failure'" not in condition]
         return problems
 
     def test_a_failed_stage_step_ends_its_job_red_after_every_stage_ran_and_never_skips_another_job(self):
@@ -832,7 +834,7 @@ class DomainsWorkflowTests(unittest.TestCase):
         jobs = {n: j for n, j in self.doc["jobs"].items() if n not in ("gate", "report")}
         self.assertEqual(len(jobs), 15)
         for name, job in jobs.items():
-            self.assertEqual(self.uncovered_stage_steps(job), [], name)
+            self.assertEqual(self.uncovered_stage_steps(job, self.V3_STAGES_THAT_ONLY_WARN if name == "jira" else ()), [], name)   # LIFE-730: only the jira job may leave the five V3 ids off its list
             self.assertNotIn("continue-on-error", job)                                                    # the job itself never swallows the failure
             self.assertTrue(any(s.get("continue-on-error") and s.get("id") for s in job["steps"]), name)
             if name != "granola":
@@ -859,6 +861,32 @@ class DomainsWorkflowTests(unittest.TestCase):
         listed = copy.deepcopy(self.doc["jobs"]["granola"])
         listed["steps"].insert(-1, {"id": "extra", "name": "Another stage", "continue-on-error": True, "run": "true"})
         self.assertEqual(self.uncovered_stage_steps(listed), ["extra not covered"])                       # a job that lists its stage ids must list the new one
+
+    def test_the_jira_job_ends_red_for_every_step_except_the_five_v3_stages_that_only_warn(self):
+        """LIFE-730 (temporary): the V3 accountability stages warn but do not end the jira job red; every other jira step id is on the red list, computed from the parsed job so a new jira step must be decided here."""
+        job = self.doc["jobs"]["jira"]
+        condition = job["steps"][-1]["if"]
+        ids = [s["id"] for s in job["steps"] if s.get("id")]
+        v3 = set(self.V3_STAGES_THAT_ONLY_WARN)
+        self.assertLessEqual(v3, set(ids))                                                                # the five exempt ids are real steps of this job
+        self.assertNotIn("contains(steps.*.outcome", condition)                                          # the wildcard would put the V3 stages back on the red list
+        on_list = set(re.findall(r"steps\.(\w+)\.outcome == 'failure'", condition))
+        self.assertEqual(on_list & v3, set(), "a V3 stage is on the red list")
+        self.assertEqual(on_list, set(ids) - v3, "a jira step is missing from, or extra on, the red list")
+        warn = next(s for s in job["steps"] if s.get("name") == "Jira warning (does not fail the run)")
+        for i in v3:                                                                                      # a failed V3 stage still prints its warning
+            self.assertIn(f"steps.{i}.outcome == 'failure'", warn["if"], i)
+        for name, other in self.doc["jobs"].items():                                                      # no other job gets an exemption: each ends red by the wildcard or lists every stage id
+            if name not in ("jira", "gate", "report"):
+                self.assertEqual(self.uncovered_stage_steps(other), [], name)
+
+    def test_a_new_jira_step_must_be_put_on_the_red_list_or_among_the_v3_stages(self):
+        import copy
+        job = copy.deepcopy(self.doc["jobs"]["jira"])
+        self.assertEqual(self.uncovered_stage_steps(job, self.V3_STAGES_THAT_ONLY_WARN), [])
+        job["steps"].insert(-1, {"id": "jnew", "name": "A new jira stage", "continue-on-error": True, "run": "true"})
+        self.assertEqual(self.uncovered_stage_steps(job, self.V3_STAGES_THAT_ONLY_WARN), ["jnew not covered"])   # it fails until the red list names it
+        self.assertEqual(self.uncovered_stage_steps(copy.deepcopy(self.doc["jobs"]["jira"])), [f"{i} not covered" for i in self.V3_STAGES_THAT_ONLY_WARN])   # without the exemption the V3 stages are uncovered
 
     def test_a_failing_domain_step_is_a_warning_never_a_failed_run(self):   # the stage step itself never stops the steps after it; LIFE-649: the job then ends red through its final step (the tests above)
         for name, job in self.doc["jobs"].items():
