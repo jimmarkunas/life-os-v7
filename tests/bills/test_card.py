@@ -194,7 +194,8 @@ class WriteTests(unittest.TestCase):
                 self.run_card(notion)
         self.assertEqual(str(caught.exception), "BILLS_WRITE_OUT_OF_SCOPE")
         self.assertEqual(notion.full_tree("jira-callout"), before)
-        self.assertEqual([p for m, p in notion.log if m in ("PATCH", "APPEND", "DELETE")], ["/blocks/heading-bills-callout"])          # LIFE-609: only the card's own heading was written before the writer was refused
+        writes = [p for m, p in notion.log if m in ("PATCH", "APPEND", "DELETE")]
+        self.assertEqual(writes, ["/blocks/heading-bills-callout", "/blocks/heading-bills-callout"])          # LIFE-609: only the card's own heading was written before the writer was refused; LIFE-722: and it was put back (the stamp, then the old stamp)
 
     def test_missing_protected_ids_refuse_a_live_write(self):
         for missing in ("CALENDAR_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID"):
