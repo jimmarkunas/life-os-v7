@@ -66,10 +66,13 @@ class Address(unittest.TestCase):
             region.address(self.client(), "jim.nothing")
 
 
+SITE = "https://jira.example.com"
+
+
 class Knowledge(unittest.TestCase):
     def go(self, notion, fake, live=True):
         with mock.patch.object(region, "address", lambda _n, key: f"b-{key.split('.')[0]}-artifacts"):
-            return artifacts.run(0, live, environ={}, jira=fake, notion=notion, now=F.NOW)
+            return artifacts.run(0, live, environ={"JIRA_SITE_URL": SITE}, jira=fake, notion=notion, now=F.NOW)
 
     def test_an_artifact_with_a_link_is_listed_and_one_without_is_missing_a_link(self):
         notion = F.Notion()
@@ -80,27 +83,32 @@ class Knowledge(unittest.TestCase):
         fake = F.Jira({'labels = "artifact"': [done_issue, bare, in_text]}, remote={"MEJ-74": ["https://example.com/travel"]})
         self.go(notion, fake)
         lines = notion.text("art-matt").split("\n")
-        self.assertEqual(lines[:2], ["Build Travel Tracker — https://example.com/travel", "Packing list — https://example.com/pack"])
-        self.assertEqual(lines[2], "Missing link: MEJ-75 Trip notes")
+        self.assertEqual(lines[:3], ["Build Travel Tracker", "Packing list", "Missing link: MEJ-75 Trip notes"])
+        links = dict(notion.links("art-matt"))
+        self.assertEqual((links["Build Travel Tracker"], links["Packing list"]), ("https://example.com/travel", "https://example.com/pack"))
+        self.assertEqual(links["MEJ-75"], f"{SITE}/browse/MEJ-75")                                       # a ticket is a link to Jira, not text
         self.assertLessEqual(len(notion.text("pg-matt-p")), render.SUMMARY_MAX)
 
-    def test_the_current_sprints_tasks_and_sub_tasks_are_listed_with_sub_tasks_under_their_task(self):
+    def test_the_sprints_tasks_are_linked_and_open_work_is_apart_from_done(self):
         notion = F.Notion()
         page(notion, "artifacts")
+        done = {"statusCategory": {"key": "done"}}
         sprint = [{"key": "JFM-2", "fields": {"summary": "Sub one", "status": {"name": "To Do"}, "parent": {"key": "JFM-1"}, "issuetype": {"subtask": True}}},
                   {"key": "JFM-1", "fields": {"summary": "The task", "status": {"name": "In Progress"}, "issuetype": {"subtask": False}}},
-                  {"key": "JFM-9", "fields": {"summary": "Orphan sub", "status": {"name": "Done"}, "parent": {"key": "JFM-8"}, "issuetype": {"subtask": True}}}]
+                  {"key": "JFM-9", "fields": {"summary": "Orphan sub", "status": {"name": "Done", **done}, "parent": {"key": "JFM-8"}, "issuetype": {"subtask": True}}}]
         self.go(notion, F.Jira({"sprint in openSprints()": sprint}))
         lines = notion.text("art-jim").split("\n")
-        i = lines.index("To-do lists, this week's sprint (3):")
-        self.assertEqual(lines[i + 1:], ["JFM-1 The task (In Progress)", "  - JFM-2 Sub one (To Do)", "  - JFM-9 Orphan sub (Done)"])
+        start = lines.index("To-do lists, this week's sprint")
+        self.assertEqual(lines[start + 1:], ["In progress / To do (2)", "JFM-1 The task (In Progress)", "  - JFM-2 Sub one (To Do)", "", "Done (1)", "  - JFM-9 Orphan sub (Done)"])
+        links = dict(notion.links("art-jim"))
+        self.assertEqual({k: links.get(k) for k in ("JFM-1", "  - JFM-2", "  - JFM-9")}, {"JFM-1": f"{SITE}/browse/JFM-1", "  - JFM-2": f"{SITE}/browse/JFM-2", "  - JFM-9": f"{SITE}/browse/JFM-9"})
 
     def test_no_artifacts_says_so_plainly(self):
         notion = F.Notion()
         page(notion, "artifacts")
         self.go(notion, F.Jira({}))
         self.assertEqual(notion.text("art-jim").split("\n")[0], render.NO_ARTIFACTS)
-        self.assertIn("nothing in a sprint yet", notion.text("art-jim"))
+        self.assertIn("Nothing in a sprint yet.", notion.text("art-jim"))
 
 
 class Changelog(unittest.TestCase):
@@ -164,7 +172,7 @@ class Stages(unittest.TestCase):
     def run_stage(self, module, kind, notion, fake, live=True):
         names = {"week": "week", "goals": "goals", "review": "review"}
         with mock.patch.object(region, "address", lambda _n, key: f"b-{key.split('.')[0]}-{names[kind]}"):
-            return module.run(0, live, environ={}, jira=fake, notion=notion, now=F.NOW)
+            return module.run(0, live, environ={"JIRA_SITE_URL": SITE}, jira=fake, notion=notion, now=F.NOW)
 
     def test_goals_show_done_over_all_counting_only_this_quarters_tasks(self):
         notion = F.Notion()
@@ -199,19 +207,29 @@ class Stages(unittest.TestCase):
         self.assertEqual(notion.text("b-jim-week-st"), "DEGRADED · Jira could not be read at 11/18 · 9:05 AM CT · showing last accepted 11/18 · 8:05 AM CT")
         self.assertEqual(notion.text("pg-jim-p"), "old summary")             # the summary page keeps its last accepted text too
 
-    def test_week_lists_open_work_overdue_first_and_a_dry_run_writes_nothing(self):
+    def test_week_links_every_ticket_and_keeps_open_work_apart_from_done(self):
         notion = F.Notion()
         page(notion, "week")
         open_issues = [{"key": "JFM-30", "fields": {"summary": "Send the note", "status": {"name": "To Do"}, "duedate": "2026-11-20"}},
                        {"key": "JFM-31", "fields": {"summary": "Book the call", "status": {"name": "In Progress"}, "duedate": "2026-11-10"}}]
-        fake = jira({"statusCategory != Done AND (sprint": open_issues, "statusCategory = Done": [{"key": "JFM-1"}]})
+        finished = [{"key": "JFM-1", "fields": {"summary": "Shipped it", "status": {"name": "Done", "statusCategory": {"key": "done"}}}}]
+        fake = jira({"statusCategory != Done AND (sprint": open_issues, "statusCategory = Done": finished})
         self.run_stage(week, "week", notion, fake, False)
         self.assertEqual(notion.writes, [])
         self.run_stage(week, "week", notion, fake, True)
         body = notion.text("body-jim").split("\n")
-        self.assertEqual(body[0], "2 open · 1 overdue · 0 blocked · 1 done this week")
-        self.assertEqual(body[1], "JFM-31 Book the call (In Progress, overdue)")
-        self.assertEqual(body[2], "JFM-30 Send the note (To Do)")
+        self.assertEqual(body, ["2 open · 1 overdue · 0 blocked · 1 done this week", "In progress / To do (2)", "JFM-31 Book the call (In Progress, overdue)",
+                                "JFM-30 Send the note (To Do)", "", "Done this week (1)", "JFM-1 Shipped it (Done)"])
+        links = dict(notion.links("body-jim"))
+        self.assertEqual([links[k] for k in ("JFM-31", "JFM-30", "JFM-1")], [f"{SITE}/browse/{k}" for k in ("JFM-31", "JFM-30", "JFM-1")])
+
+    def test_without_a_site_address_the_lines_are_plain_text_not_broken_links(self):
+        notion = F.Notion()
+        page(notion, "week")
+        open_issues = [{"key": "JFM-30", "fields": {"summary": "Send the note", "status": {"name": "To Do"}, "duedate": None}}]
+        with mock.patch.object(region, "address", lambda _n, key: f"b-{key.split('.')[0]}-week"):
+            week.run(0, True, environ={}, jira=jira({"statusCategory != Done AND (sprint": open_issues}), notion=notion, now=F.NOW)
+        self.assertEqual({url for _, url in notion.links("body-jim")}, {None})
 
     def test_a_second_identical_run_writes_nothing(self):
         notion = F.Notion()

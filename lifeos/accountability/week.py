@@ -1,12 +1,12 @@
-"""Stage `accountability-week` (LIFE-671): "This week (Jim)" and "This week (Matt)" on Jim & Matt V3, from the person's Jira project."""
+"""Stage `accountability-week` (LIFE-671): This week for Jim and Matt on V3; tickets link to Jira, open and done apart."""
 from lifeos.accountability import common, read, region, render
 
 
-def _build(client, block_id, person, project, jira, now, live):
+def _build(client, block_id, person, project, jira, now, live, site):
     today = now.date()
-    lines = render.week_lines(read.week(jira, project, today), today)
+    parts, lines = render.week_view(read.week(jira, project, today), today, site)
     stamp = render.stamp(now)
-    out = region.write_text(client, block_id, stamp, render.body(lines), live)
+    out = region.write_parts(client, block_id, stamp, render.fit(parts), live)
     page = out.pop("summary_page")
     out["summary_written"] = region.write_summary(client, page, render.summary(f"This week ({person})", stamp, lines), live)
     return out

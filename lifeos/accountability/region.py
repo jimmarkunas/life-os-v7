@@ -109,13 +109,48 @@ def _set(client, block, content, live, color=None):
     return 1
 
 
-def write_text(client, block_id, stamp, body, live):
-    """Weekly view: the middle is exactly one paragraph. -> {changed, summary_page}."""
+def _normalise(items):
+    """[(text, link)] with adjacent pieces that share a link merged, so two ways of cutting the same text compare equal."""
+    out = []
+    for content, url in items:
+        if out and out[-1][1] == url:
+            out[-1] = (out[-1][0] + content, url)
+        elif content:
+            out.append((content, url))
+    return out
+
+
+def signature(block):
+    """What a text block shows: [(text, link)] read from its rich text."""
+    pieces = []
+    for item in (block.get(block.get("type")) or {}).get("rich_text") or []:
+        link = (item.get("text") or {}).get("link") or {}
+        pieces.append((item.get("plain_text") or (item.get("text") or {}).get("content") or "", item.get("href") or link.get("url")))
+    return _normalise(pieces)
+
+
+def _nodes(parts):
+    out = []
+    for content, url, bold in parts:
+        node = {"type": "text", "text": {"content": content, **({"link": {"url": url}} if url else {})}}
+        if bold:
+            node["annotations"] = {"bold": True}
+        out.append(node)
+    return out
+
+
+def write_parts(client, block_id, stamp, parts, live):
+    """The body paragraph of a callout as linked, partly bold pieces [(text, link, bold)]: the middle is exactly one paragraph. -> {changed, summary_page}."""
     found = locate(client, block_id)
     _only(found, ["paragraph"])
-    changed = _set(client, found["stamp"], stamp, live, "gray") + _set(client, found["middle"][0], body, live)
+    want = _normalise([(content, url) for content, url, _ in parts])
+    changed = _set(client, found["stamp"], stamp, live, "gray")
+    if signature(found["middle"][0]) != want:
+        changed += 1
+        if live:
+            client.call_once("PATCH", f"/blocks/{quote(found['middle'][0]['id'], safe='')}", {"paragraph": {"rich_text": _nodes(parts)}})
     if live and changed:
-        ok, _ = readback.confirmed(lambda: locate(client, block_id), lambda a: text(a["stamp"]) == stamp.strip() and text(a["middle"][0]) == body.strip())
+        ok, _ = readback.confirmed(lambda: locate(client, block_id), lambda a: text(a["stamp"]) == stamp.strip() and signature(a["middle"][0]) == want)
         if not ok:
             raise fail("ACCOUNTABILITY_VERIFY_FAILED")
     return {"changed": changed, "summary_page": found["summary"]}
