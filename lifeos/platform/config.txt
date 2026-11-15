@@ -43,7 +43,6 @@ OUTLOOK_REPLACE flag:run Outlook setting (replace)
 OUTLOOK_WRITE flag:run Outlook setting (write)
 PAGES workflow_only:workflow Input of the network run: most pages one run may read
 PIPELINE flag:workflow True when the run is the full hourly pipeline
-PR_LABELS workflow_only:workflow Labels of the pull request, read by the protected-file check
 RECRUITERS_FULL_SCAN workflow_only:workflow Input of the manual Recruiters workflow: read all 14 days this run, ignoring the mail already seen (on / off)
 REPORT_CONFIRM flag:workflow Confirmation word a manual report run needs
 SCHEMA_CONFIRM flag:workflow Confirmation word (APPLY) the manual Action Inbox schema apply needs; without it the stage only checks

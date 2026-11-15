@@ -5,7 +5,7 @@
 # current branch, and only when that branch is life/<something>. It refuses main, master, any other branch and a detached HEAD. It never deletes and never
 # uses a plus refspec. For an existing remote branch it fetches that branch, then pushes with --force-with-lease pinned to the exact tip it just fetched,
 # so a commit someone else pushed after the fetch is never overwritten (git refuses and its message is shown). A branch not yet on origin gets a plain push -u.
-# This file is protected (.github/protected_files.py): a change needs Jim's typed yes and the label protected-file-approved.
+# Changing this script changes what agents may force-push: keep it to the one lease described above.
 set -u
 REMOTE=origin
 extra=$#
