@@ -36,13 +36,13 @@ class Address(unittest.TestCase):
     def client(self, parent_title="Jim & Matt V3"):
         CAL = "c" * 32
         blocks = {CAL: {"parent": {"type": "block_id", "block_id": "col"}}, "col": {"parent": {"type": "block_id", "block_id": "cols"}}, "cols": {"parent": {"type": "page_id", "page_id": "v3"}}}
-        pages = {"v3": {"title": F.rich(parent_title)}}
+        pages = {"v3": {"properties": {"title": {"type": "title", "title": F.rich(parent_title)}}}}          # a real page keeps its title in the title property
         register = [{"id": "r", "type": "code", "code": {"rich_text": F.rich("R4L jim.week        " + CAL + "\nR4R matt.week       " + CAL + "")}}]
 
         class Fake:
             def call(self, method, path, body=None, *args, **kwargs):
                 if method == "POST":
-                    return {"results": [{"id": "reg", "title": F.rich(region.REGISTER_TITLE)}]}
+                    return {"results": [{"id": "reg", "object": "page", "properties": {"title": {"type": "title", "title": F.rich(region.REGISTER_TITLE)}}}]}
                 if "/children" in path:
                     return {"results": register, "has_more": False}
                 if path.startswith("/pages/"):
