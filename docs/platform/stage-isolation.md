@@ -71,6 +71,7 @@ Method: every stage target module was scanned for loops over accounts, sources, 
 | `hiring-outcomes` | `hiring.outcomes` | `guarded` | Loops over its items; each loop without error handling is reviewed below. | no |
 | `imessage-alerts` | `imessage.stage` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `imessage-comms` | `imessage.comms_card` | `guarded` | Loops over its items; each loop without error handling is reviewed below. | no |
+| `inbox-schema-check` | `inbox.schema` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `interview` | `sources.interview.interview_evidence` | `partial-red` | Its `failed` adds unreadable threads, blocked pages and sweep failures together, which LIFE-690 turns into state-change alerts; moving it onto the helper before that would change what pages, so it waits for LIFE-690. | yes |
 | `interview-acceptance` | `interview.acceptance` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `interview-probe` | `interview.stage` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
