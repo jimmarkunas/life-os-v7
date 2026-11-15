@@ -9,6 +9,7 @@ import unittest
 from unittest import mock
 
 from tests import testindex as ti
+from tests.kit import clock
 
 NOW = datetime.datetime(2026, 11, 10, 12, 0, tzinfo=datetime.timezone.utc)
 
@@ -131,12 +132,13 @@ class SelectCommand(unittest.TestCase):
 
     def run_select(self, loaded, changed=("lifeos/sources/web/boards.py",)):
         out = io.StringIO()
-        with mock.patch.object(ti, "load", return_value=loaded), mock.patch.object(ti, "changed_files", return_value=list(changed)), contextlib.redirect_stdout(out):
+        with mock.patch.object(ti, "load", return_value=loaded), mock.patch.object(ti, "changed_files", return_value=list(changed)), contextlib.redirect_stdout(out), \
+                mock.patch.object(datetime, "datetime", clock.FrozenDateTime):                        # the staleness check asks datetime.now(): the same test clock the index is dated from
             self.assertEqual(ti.main(["select", "--base", "HEAD^1"]), 0)
         return out.getvalue().split()
 
     def test_no_index_an_old_one_or_a_damaged_one_prints_full(self):
-        fresh_now = datetime.datetime.now(datetime.timezone.utc)
+        fresh_now = clock.now()
         idx = index({"sources/web/boards.py": [0]}, tests=("tests.sources.web.test_boards.B.test_one",), made=fresh_now)
         self.assertNotEqual(self.run_select(idx), ["FULL"])                                       # control: a fresh, sound index gives a subset
         self.assertEqual(self.run_select(None), ["FULL"])                                         # no cache restored, no file, or a file load() rejected
