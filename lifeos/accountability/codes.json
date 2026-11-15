@@ -1,0 +1,58 @@
+{
+  "ACCOUNTABILITY_SHAPE": [
+    "accountability",
+    "blocked",
+    false,
+    "A V3 accountability callout does not have the expected shape (heading, stamp, body, summary line).",
+    "Restore the callout's shape; nothing was written."
+  ],
+  "ACCOUNTABILITY_VERIFY_FAILED": [
+    "accountability",
+    "bug",
+    false,
+    "A V3 accountability write did not read back as written.",
+    "Retried on the next run."
+  ],
+  "ACCOUNTABILITY_WRITE_OUT_OF_SCOPE": [
+    "accountability",
+    "bug",
+    false,
+    "A write outside the callout was refused before it was sent.",
+    "None; nothing was written."
+  ],
+  "ACCOUNTABILITY_DEGRADED": [
+    "accountability",
+    "degraded",
+    false,
+    "Jira could not be read for at least one person; that callout shows DEGRADED with its last accepted text.",
+    "None; retried on the next run."
+  ],
+  "ACCOUNTABILITY_TARGET_NOT_FOUND": [
+    "accountability",
+    "blocked",
+    false,
+    "A V3 register row is missing, or its callout is not on the Jim & Matt V3 page.",
+    "Restore the register row; nothing was written."
+  ],
+  "ACCOUNTABILITY_SUMMARY_SHAPE": [
+    "accountability",
+    "blocked",
+    false,
+    "A V3 summary page does not hold exactly one paragraph.",
+    "Restore the page; nothing was written."
+  ],
+  "ACCOUNTABILITY_JIRA_BAD_PAGE": [
+    "accountability",
+    "retry",
+    false,
+    "Jira returned a search page in an unexpected shape.",
+    "None; retried on the next run."
+  ],
+  "ACCOUNTABILITY_JIRA_TOO_MANY_PAGES": [
+    "accountability",
+    "degraded",
+    false,
+    "A Jira search needed more pages than the bound allows.",
+    "None; retried on the next run."
+  ]
+}

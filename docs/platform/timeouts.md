@@ -135,6 +135,9 @@ Every call that leaves the process carries an explicit timeout. `tests/contracts
 
 | Stage | Budget (s) | Required | Basis |
 | --- | ---: | --- | --- |
+| `accountability-goals` | 600 | no | no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
+| `accountability-review` | 600 | no | no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
+| `accountability-week` | 600 | no | no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `agenda-card` | 180 | no | twice its slowest measured step (77 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `agenda-snapshot` | 120 | no | twice its slowest measured step (58 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `alerts` | 120 | no | twice its slowest measured step (11 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
