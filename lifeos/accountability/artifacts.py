@@ -1,14 +1,15 @@
-"""Stage `accountability-artifacts` (LIFE-673): Knowledge center for Jim and Matt, artifact links and the current sprint's to-do lists."""
+"""Stage `accountability-artifacts` (LIFE-673): Knowledge center for Jim and Matt, linked artifacts and the current sprint's to-do lists (open and done apart)."""
 from lifeos.accountability import common, read, region, render
 
 
-def _build(client, block_id, person, project, jira, now, live):
+def _build(client, block_id, person, project, jira, now, live, site):
     shown = read.artifacts(jira, project)
-    lines = render.artifact_lines(shown) + [""] + render.todo_lines(read.todos(jira, project))
+    art_parts, art_lines = render.artifact_parts(shown, site)
+    todo_parts, todo_lines = render.todo_view(read.todos(jira, project), site, project)
     stamp = render.stamp(now)
-    out = region.write_text(client, block_id, stamp, render.body(lines), live)
+    out = region.write_parts(client, block_id, stamp, render.fit(art_parts + [render.NL] + todo_parts), live)
     page = out.pop("summary_page")
-    out["summary_written"] = region.write_summary(client, page, render.summary(f"Knowledge center ({person})", stamp, lines), live)
+    out["summary_written"] = region.write_summary(client, page, render.summary(f"Knowledge center ({person})", stamp, art_lines + todo_lines), live)
     out["artifacts"] = len(shown)
     return out
 

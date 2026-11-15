@@ -3,8 +3,10 @@
 A quarter is a calendar quarter; its epics carry the label goals-<year>-q<n> (LIFE-670). Because an epic keeps its older Done tasks, a quarter counts only tasks that are open now or were
 completed inside that quarter. Output is plain dicts for the renderers; ticket text goes to Notion only, never to a log."""
 import json
+import os
 import re
 from datetime import date, timedelta
+from urllib.parse import quote, urlparse
 
 from lifeos.platform.jira import JiraError
 
@@ -15,6 +17,24 @@ CHILD_FIELDS = "status,parent,resolutiondate,issuetype"
 PAGE, MAX_PAGES = 100, 30
 URL = re.compile(r"https?://[^\s\"\\<>)]+")
 TAIL = re.compile(r"\s+Q[1-4]\s+\d{4}$")
+
+
+def site_url(environ=None):
+    """The address Jira issue links are built from: JIRA_SITE_URL, else JIRA_BASE_URL unless it is a gateway address (host starting "api."); None gives plain text without links."""
+    environ = os.environ if environ is None else environ
+    for raw in (environ.get("JIRA_SITE_URL"), environ.get("JIRA_BASE_URL")):
+        value = (raw or "").strip().rstrip("/")
+        if value.startswith("https://") and not (urlparse(value).hostname or "").startswith("api."):
+            return value
+    return None
+
+
+def issue_url(site, key):
+    return f"{site}/browse/{key}" if site else None
+
+
+def jql_url(site, jql):
+    return f"{site}/issues/?jql={quote(jql, safe='')}" if site else None
 
 
 def search(jira, jql, fields):
@@ -126,24 +146,29 @@ def unparented(jira, project, epic_keys):
     return count
 
 
+def _row(issue, **extra):
+    fields = issue.get("fields") or {}
+    status = fields.get("status") or {}
+    return {"key": issue["key"], "summary": fields.get("summary") or "", "status": status.get("name") or "Unknown", "due": fields.get("duedate"),
+            "done": (status.get("statusCategory") or {}).get("key") == "done", **extra}
+
+
 def week(jira, project, today):
-    """-> {open: [{key, summary, status, category, due}], done: int, week_end} for one project: open work in an open sprint or due by Sunday (overdue included)."""
+    """-> {open, done, jql} for one project: open work in an open sprint or due by Sunday (overdue included), and what was finished since Monday; each a list of {key, summary, status, due}."""
     sunday = today + timedelta(days=6 - today.weekday())
     monday = today - timedelta(days=today.weekday())
     base = f"project = {project} AND issuetype != Epic AND statusCategory != Done AND "
     tail = " ORDER BY duedate ASC, key ASC"
+    clause = f'(sprint in openSprints() OR duedate <= "{sunday}")'
     try:
-        found = search(jira, base + f'(sprint in openSprints() OR duedate <= "{sunday}")' + tail, WEEK_FIELDS)
+        found = search(jira, base + clause + tail, WEEK_FIELDS)
     except JiraError as error:
         if not str(error).endswith("_400"):                # a project without sprints rejects the sprint clause (HTTP 400); any other failure is a real one
             raise
-        found = search(jira, base + f'(statusCategory = "In Progress" OR duedate <= "{sunday}")' + tail, WEEK_FIELDS)
-    done = search(jira, f'project = {project} AND issuetype != Epic AND statusCategory = Done AND statusCategoryChangedDate >= "{monday}"', "summary")
-    rows = []
-    for issue in found:
-        fields = issue.get("fields") or {}
-        rows.append({"key": issue["key"], "summary": fields.get("summary") or "", "status": (fields.get("status") or {}).get("name") or "Unknown", "due": fields.get("duedate")})
-    return {"open": rows, "done": len(done), "week_end": sunday}
+        clause = f'(statusCategory = "In Progress" OR duedate <= "{sunday}")'
+        found = search(jira, base + clause + tail, WEEK_FIELDS)
+    done = search(jira, f'project = {project} AND issuetype != Epic AND statusCategory = Done AND statusCategoryChangedDate >= "{monday}" ORDER BY key ASC', WEEK_FIELDS)
+    return {"open": [_row(i) for i in found], "done": [_row(i) for i in done], "jql": base + clause}
 
 
 def artifacts(jira, project):
@@ -160,20 +185,16 @@ def artifacts(jira, project):
 
 
 TODO_FIELDS = "summary,status,parent,issuetype"
+TODO_JQL = "project = {project} AND issuetype != Epic AND sprint in openSprints()"
 
 
 def todos(jira, project):
-    """-> [{key, summary, status, parent, subtask}] for the project's tasks and sub-tasks in the current sprint (a week, Monday to Sunday), done ones included. A project without
+    """-> [{key, summary, status, done, parent, subtask}] for the project's tasks and sub-tasks in the current sprint (a week, Monday to Sunday), done ones included. A project without
     sprints (HTTP 400 on the sprint clause) has no to-do list."""
     try:
-        found = search(jira, f"project = {project} AND issuetype != Epic AND sprint in openSprints() ORDER BY key ASC", TODO_FIELDS)
+        found = search(jira, TODO_JQL.format(project=project) + " ORDER BY key ASC", TODO_FIELDS)
     except JiraError as error:
         if not str(error).endswith("_400"):
             raise
         return []
-    out = []
-    for issue in found:
-        fields = issue.get("fields") or {}
-        out.append({"key": issue["key"], "summary": fields.get("summary") or "", "status": (fields.get("status") or {}).get("name") or "Unknown",
-                    "parent": (fields.get("parent") or {}).get("key"), "subtask": bool((fields.get("issuetype") or {}).get("subtask"))})
-    return out
+    return [_row(i, parent=((i.get("fields") or {}).get("parent") or {}).get("key"), subtask=bool((((i.get("fields") or {}).get("issuetype")) or {}).get("subtask"))) for i in found]
