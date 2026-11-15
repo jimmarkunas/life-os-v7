@@ -17,6 +17,7 @@ import yaml
 
 from lifeos.edge.ticker import ticker
 from lifeos.platform import codes, gate
+from tests.kit import clock
 
 ROOT = Path(__file__).resolve().parents[3]
 ORACLE = ROOT / "lifeos" / "edge" / "ticker" / "oracle"
@@ -93,9 +94,10 @@ class Tick(unittest.TestCase):
     def test_skipping_dispatches_nothing_and_any_doubt_still_dispatches(self):
         import datetime as dt
         recent = {"workflow_runs": [{"id": 1, "display_title": "tick", "conclusion": "success",
-                                     "run_started_at": (dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=17)).strftime("%Y-%m-%dT%H:%M:%SZ")}]}
+                                     "run_started_at": (clock.now() - dt.timedelta(minutes=17)).strftime("%Y-%m-%dT%H:%M:%SZ")}]}
         api = FakeGitHub({"per_page=15": (200, recent), "GATE_MIN_GAP_MINUTES": 404, "hourly.yml/dispatches": 204})
-        self.assertEqual(ticker.tick(TOKEN, api), ("TICK_SKIPPED", 200))
+        with mock.patch.object(dt, "datetime", clock.FrozenDateTime):                     # too_soon asks datetime.now(): the same test clock the run was dated from
+            self.assertEqual(ticker.tick(TOKEN, api), ("TICK_SKIPPED", 200))
         self.assertFalse([r for r in api.requests if r.get_method() == "POST"])
         for unreadable in (500, urllib.error.URLError("down")):
             api = FakeGitHub({"per_page=15": unreadable, "hourly.yml/dispatches": 204})
