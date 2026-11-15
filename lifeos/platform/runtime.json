@@ -1,4 +1,5 @@
 {"hosts": ["github", "oracle", "mac", "dev"], "modules": [
+  {"module": "lifeos/accountability", "host": ["github"]},
   {"module": "lifeos/agenda", "host": ["github"]},
   {"module": "lifeos/amazon", "host": ["github"]},
   {"module": "lifeos/bills", "host": ["github"]},

@@ -22,6 +22,9 @@ Method: every stage target module was scanned for loops over accounts, sources, 
 
 | Stage | Module | Status | Why | Exits 1 on any failed item |
 | --- | --- | --- | --- | --- |
+| `accountability-goals` | `accountability.goals` | `guarded` | One loop over two people (Jim, Matt); each person is handled on its own and a failed Jira read is recorded for that person only, then the stage fails after both were tried. | no |
+| `accountability-review` | `accountability.review` | `guarded` | One loop over two people (Jim, Matt); each person is handled on its own and a failed Jira read is recorded for that person only, then the stage fails after both were tried. | no |
+| `accountability-week` | `accountability.week` | `guarded` | One loop over two people (Jim, Matt); each person is handled on its own and a failed Jira read is recorded for that person only, then the stage fails after both were tried. | no |
 | `agenda-card` | `agenda.card` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `agenda-snapshot` | `agenda.snapshot` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `alerts` | `jobs.alerts` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
