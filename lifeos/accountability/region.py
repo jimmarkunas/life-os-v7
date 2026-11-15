@@ -3,7 +3,7 @@
 A region is: a heading, one gray stamp paragraph, the body, then the `Summary for Claude: <page>` line. Anything else raises ACCOUNTABILITY_SHAPE and writes nothing. V7 writes only the stamp,
 the body cells or text it owns and the summary page; text a person adds outside those blocks is never touched. A write outside the callout is refused (ScopedClient)."""
 import re
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 from lifeos.accountability import render
 from lifeos.platform import readback, report_region
@@ -110,9 +110,10 @@ def _set(client, block, content, live, color=None):
 
 
 def _normalise(items):
-    """[(text, link)] with adjacent pieces that share a link merged, so two ways of cutting the same text compare equal."""
+    """[(text, link)] with adjacent pieces that share a link merged, so two ways of cutting the same text compare equal. A link is compared decoded: Notion stores some characters of
+    an address unescaped (parentheses, "!") that were sent escaped, and the same address must still read back as written."""
     out = []
-    for content, url in items:
+    for content, url in ((c, unquote(u) if u else u) for c, u in items):
         if out and out[-1][1] == url:
             out[-1] = (out[-1][0] + content, url)
         elif content:

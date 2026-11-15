@@ -21,6 +21,11 @@ def summary_line(page_id):
         {"type": "mention", "plain_text": "page", "mention": {"type": "page", "page": {"id": page_id}}}]}}
 
 
+def canonical(url):
+    """What Notion does to an address it stores: characters it treats as safe come back unescaped (observed on the live page: %28 %29 %21 became ( ) !)."""
+    return url.replace("%28", "(").replace("%29", ")").replace("%21", "!") if url else url
+
+
 class Notion:
     """Just enough of the Notion API: blocks by id with children, PATCH of text and table rows, children insert."""
 
@@ -83,7 +88,7 @@ class Notion:
         if block["type"] == "table_row":
             block["table_row"]["cells"] = [rich(c[0]["text"]["content"]) for c in body["table_row"]["cells"]]
         else:
-            block[block["type"]] = {"rich_text": [rich(n["text"]["content"], (n["text"].get("link") or {}).get("url"))[0] for n in body[block["type"]]["rich_text"]]}
+            block[block["type"]] = {"rich_text": [rich(n["text"]["content"], canonical((n["text"].get("link") or {}).get("url")))[0] for n in body[block["type"]]["rich_text"]]}
         return block
 
     def links(self, block_id):
