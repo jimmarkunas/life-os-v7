@@ -159,7 +159,7 @@
       ]
     }
   ],
-  "reassembled_sha256": "2c2c1236de5634886428a70a0d754bffffc6a502d942fbd29affad7d2b4d927f",
+  "reassembled_sha256": "171154446696fde68ed1ca49f7b6055c106f3fd2b282382aba6b4137b915d6f7",
   "amendments": [
     {
       "date": "2026-11-02",
@@ -262,6 +262,12 @@
       "pr": "https://github.com/jimmarkunas/life-os-v7/pull/1211",
       "approval": "Jim Markunas, November 15, 2026 CT, typed in the Claude Code chat: 'Yes, one receipt only - approved, yes, go' (LIFE-726)",
       "part": "docs/development-policy/04 (Lean delivery amendment: one Jira receipt per ticket, the In Progress move is the claim, replacing 'two comments'), with the matching AGENTS.md line"
+    },
+    {
+      "date": "2026-11-15",
+      "pr": "PR_URL_TO_FILL",
+      "approval": "Jim Markunas, November 15, 2026 CT, typed in the Claude Code chat: 'Build all three' (LIFE-662 proposals; LIFE-727, LIFE-728, LIFE-729)",
+      "part": "docs/development-policy/04 (Lean delivery amendment: merge is Done, auto-merge by default, the stall check, auto-release of tickets in an epic Jim labels auto-release), with the matching AGENTS.md step 4"
     }
   ]
 }

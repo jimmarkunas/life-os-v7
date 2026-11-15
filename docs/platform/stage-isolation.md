@@ -79,10 +79,12 @@ Method: every stage target module was scanned for loops over accounts, sources, 
 | `interview-ui-probe` | `interview.ui_probe` | `guarded` | Loops over its items with error handling inside; one failed item does not stop the others. | no |
 | `jira-card` | `jira.card` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `jira-probe` | `jira.snapshot` | `guarded` | Loops over its items with error handling inside; one failed item does not stop the others. | no |
+| `jira-release` | `jira.release` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `jira-rollover` | `jira.rollover` | `guarded` | Loops over its items with error handling inside; one failed item does not stop the others. | no |
 | `jira-rollover-scheduled` | `jira.rollover` | `guarded` | Loops over its items with error handling inside; one failed item does not stop the others. | no |
 | `jira-rollover-watch` | `jira.watch` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `jira-snapshot` | `jira.snapshot` | `guarded` | Loops over its items with error handling inside; one failed item does not stop the others. | no |
+| `jira-stalled` | `jira.stalled` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `job-page-outreach` | `sources.pipeline.job_page_outreach` | `helper` | Items run through `isolate.run_items`; partial failure keeps the stage green, all-failed or an unreadable list fails it. | yes |
 | `jobs-backlog` | `jobs.backlog` | `exempt` | One private report page: a failed write is the stage's own failure. | yes |
 | `linkedin-search` | `sources.discovery.linkedin_search` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |

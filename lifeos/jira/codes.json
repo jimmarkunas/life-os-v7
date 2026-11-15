@@ -24,5 +24,6 @@
   "JIRA_TARGET_AMBIGUOUS": ["jira", "blocked", false, "More than one future sprint could be the target.", "Remove the extra sprint."],
   "JIRA_TARGET_NOT_FUTURE": ["jira", "blocked", false, "The target sprint is not a future sprint.", "Create the next sprint."],
   "JIRA_TARGET_NOT_STAGED": ["jira", "blocked", false, "The next two-week sprint is missing from the approved roadmap.", "Plan the next sprint in Jira before enabling rollover."],
-  "JIRA_UNSUPPORTED_CADENCE": ["jira", "blocked", false, "The sprint dates do not define a Monday-Sunday 7- or 14-day window.", "Correct the sprint dates in Jira."]
+  "JIRA_UNSUPPORTED_CADENCE": ["jira", "blocked", false, "The sprint dates do not define a Monday-Sunday 7- or 14-day window.", "Correct the sprint dates in Jira."],
+  "JIRA_RELEASE_FAILED": ["jira", "retry", false, "The auto-release rule could not move any ticket it found ready (a Jira write failed).", "None; retried next hour."]
 }
