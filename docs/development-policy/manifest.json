@@ -283,7 +283,7 @@
     },
     {
       "date": "2026-11-15",
-      "pr": "PENDING",
+      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/1225",
       "approval": "Jim Markunas, November 15, 2026 CT, typed in the Claude Code chat: 'Codex needs to be on parity with Claude. Can this be adjusted?' then 'Your plan is approved. Please implement' (LIFE-731)",
       "part": "docs/development-policy/11 (§8 Budgets: Codex gets Claude Code's file, line, test and usage budgets and milestone cadence; ChatGPT unchanged)"
     }
