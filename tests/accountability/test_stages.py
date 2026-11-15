@@ -51,6 +51,11 @@ class Address(unittest.TestCase):
     def test_a_callout_in_a_column_on_the_v3_page_is_found_by_its_register_row(self):
         self.assertEqual(region.address(self.client(), "jim.week"), "c" * 32)
 
+    def test_a_page_keeps_its_title_in_its_title_property_as_notion_returns_it(self):
+        page = {"id": "reg", "properties": {"Name": {"type": "title", "title": F.rich(region.REGISTER_TITLE)}}}
+        self.assertEqual(region._title(page).strip(), region.REGISTER_TITLE)
+        self.assertEqual(region._title({"properties": {"Other": {"type": "rich_text", "rich_text": []}}}), "")
+
     def test_a_row_pointing_off_the_v3_page_or_a_missing_row_is_refused(self):
         with self.assertRaises(region.AccountabilityError) as caught:
             region.address(self.client("Some other page"), "jim.week")

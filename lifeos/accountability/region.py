@@ -42,6 +42,9 @@ def _rich(content, color=None):
 def _title(obj):
     if isinstance(obj.get("title"), list):
         return "".join(p.get("plain_text") or "" for p in obj["title"])
+    for prop in (obj.get("properties") or {}).values():                # a Notion page keeps its title in its title property
+        if isinstance(prop, dict) and prop.get("type") == "title":
+            return "".join(p.get("plain_text") or "" for p in prop.get("title") or [])
     return ""
 
 
