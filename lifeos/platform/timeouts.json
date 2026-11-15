@@ -364,6 +364,14 @@
    "slowest_seconds": 136,
    "target": 5
   },
+  "pr-tests.yml::unit-tests-second-date": {
+   "basis": "new job (LIFE-692): the same tests as unit-tests (slowest 136 s), twice rounded up to whole minutes, 5-minute floor; no run measured yet",
+   "current": 5,
+   "median_seconds": null,
+   "runs_measured": 0,
+   "slowest_seconds": null,
+   "target": 5
+  },
   "profile-sync.yml::sync": {
    "basis": "twice the slowest run (248 s) rounds to 10 min, not below the current 10: unchanged",
    "current": 10,
