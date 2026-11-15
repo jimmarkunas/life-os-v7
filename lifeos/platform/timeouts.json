@@ -261,12 +261,12 @@
    "target": 10
   },
   "hourly.yml::finish": {
-   "basis": "the Bitwarden helper waits up to 600 s, so the limit is at least 30 min (3 x the wait; twice the slowest run, 815 s, would be 28 min)",
-   "current": 30,
+   "basis": "kept at Jim's decision (Nov 15 2026, approve, leave prep and finish): the tick's 35-minute budget and the D238 backlog batch to :55; revisit after a week of runs",
+   "current": 58,
    "median_seconds": 116,
    "runs_measured": 100,
    "slowest_seconds": 815,
-   "target": 30
+   "target": 58
   },
   "hourly.yml::interview": {
    "basis": "not measured: no completed run in the last 100; keeps its current value",
@@ -301,12 +301,12 @@
    "target": 40
   },
   "hourly.yml::prep": {
-   "basis": "the Bitwarden helper waits up to 600 s, so the limit is at least 30 min (3 x the wait; twice the slowest run, 235 s, would be 8 min)",
-   "current": 30,
+   "basis": "kept at Jim's decision (Nov 15 2026, approve, leave prep and finish): up to 25 min gate wait for an older run (D210) plus the Bitwarden helper wait plus the tests; revisit after a week of runs",
+   "current": 45,
    "median_seconds": 25,
    "runs_measured": 100,
    "slowest_seconds": 235,
-   "target": 30
+   "target": 45
   },
   "hourly.yml::report": {
    "basis": "twice the slowest run (16 s) rounds to 5 min, not below the current 5: unchanged",

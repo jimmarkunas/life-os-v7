@@ -57,12 +57,12 @@ The job timeouts in `.github/workflows` change in one separate workflow pull req
 | `granola-auto.yml` | `auto` | 20 | 20 | 10 | 43 | 109 | twice the slowest run (109 s) rounds to 20 min, not below the current 20: unchanged |
 | `granola.yml` | `granola` | 15 | 15 | 4 | 28 | 41 | kept: only 4 measured runs (fewer than 10), slowest 41 s |
 | `hermes-stage.yml` | `hermes` | 10 | 10 | 5 | 10 | 12 | kept: only 5 measured runs (fewer than 10), slowest 12 s |
-| `hourly.yml` | `finish` | 30 | 30 | 100 | 116 | 815 | the Bitwarden helper waits up to 600 s, so the limit is at least 30 min (3 x the wait; twice the slowest run, 815 s, would be 28 min) |
+| `hourly.yml` | `finish` | 58 | 58 | 100 | 116 | 815 | kept at Jim's decision (Nov 15 2026, approve, leave prep and finish): the tick's 35-minute budget and the D238 backlog batch to :55; revisit after a week of runs |
 | `hourly.yml` | `interview` | 15 | 15 | 0 | - | - | not measured: no completed run in the last 100; keeps its current value |
 | `hourly.yml` | `jobright` | 40 | 40 | 0 | - | - | not measured: no completed run in the last 100; keeps its current value |
 | `hourly.yml` | `lensa` | 40 | 40 | 0 | - | - | not measured: no completed run in the last 100; keeps its current value |
 | `hourly.yml` | `linkedin` | 40 | 40 | 0 | - | - | not measured: no completed run in the last 100; keeps its current value |
-| `hourly.yml` | `prep` | 30 | 30 | 100 | 25 | 235 | the Bitwarden helper waits up to 600 s, so the limit is at least 30 min (3 x the wait; twice the slowest run, 235 s, would be 8 min) |
+| `hourly.yml` | `prep` | 45 | 45 | 100 | 25 | 235 | kept at Jim's decision (Nov 15 2026, approve, leave prep and finish): up to 25 min gate wait for an older run (D210) plus the Bitwarden helper wait plus the tests; revisit after a week of runs |
 | `hourly.yml` | `report` | 5 | 5 | 100 | 2 | 16 | twice the slowest run (16 s) rounds to 5 min, not below the current 5: unchanged |
 | `interview-proof.yml` | `proof` | 30 | 30 | 18 | 506 | 1614 | twice the slowest run (1614 s) rounds to 54 min, not below the current 30: unchanged |
 | `manual-job.yml` | `manual` | 15 | 15 | 4 | 47 | 71 | kept: only 4 measured runs (fewer than 10), slowest 71 s |

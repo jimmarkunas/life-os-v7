@@ -124,7 +124,7 @@ concurrency:
 jobs:
   prep:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30                 # a run may wait up to 25 minutes in the gate for an older run of the other kind (D210)
+    timeout-minutes: 45                 # a run may wait up to 25 minutes in the gate for an older run of the other kind (D210)
     permissions:
       contents: read
       actions: write
@@ -583,7 +583,7 @@ jobs:
     permissions:
       contents: read
       actions: read                       # LIFE-617: a slower stage row reads earlier ticks' run logs (lifeos/platform/due.py)
-    timeout-minutes: 30                   # D208: the tick's 35-minute budget, setup (Chromium) and the maintenance steps; D238: the backlog batch fills the hour to :55
+    timeout-minutes: 58                   # D208: the tick's 35-minute budget, setup (Chromium) and the maintenance steps; D238: the backlog batch fills the hour to :55
     env:
       FASTEMBED_CACHE: ${{ github.workspace }}/.cache/fastembed
     steps:
