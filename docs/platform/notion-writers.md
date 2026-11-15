@@ -7,7 +7,7 @@ One card owns one region of the Daily Report page and writes only its own blocks
 1. **One owner per region.** `lifeos/platform/router.py` `OWNERS` names the owner of each region. A region has exactly one writer row below.
 2. **Own blocks only, enforced before the write is sent.** Every writer goes through `report_region.ScopedClient` (directly, or inside `report_region.replace_text` and `replace_tree`). A PATCH, POST or DELETE aimed at a block the card has not found under its own region is refused with `<CARD>_WRITE_OUT_OF_SCOPE` and never reaches Notion (LIFE-586, 613, 656; the Jira card joined in LIFE-688).
 3. **No before-and-after comparison of the whole page.** Writers do not compare other cards' regions around their write: a legitimate write by another card at the same moment looked like a violation (LIFE-656). The only whole-page reads are listed in "Whole-page reads" below, and none compares before and after on the Daily Report page.
-4. **A failed card write keeps the last accepted card.** A write that is refused or fails leaves the last card Notion accepted; nothing is invented. See the finding at the end about the stamp.
+4. **A failed card write keeps the last accepted card.** A write that is refused or fails leaves the last card Notion accepted; nothing is invented. A write that fails after its heading stamp puts the old stamp back (LIFE-722).
 5. **A new Notion writer adopts this by adding two entries:** one `OWNERS` entry in `lifeos/platform/router.py` and one row in the table below (module, region constant, owner, job and stage, how it finds its block, guard). The writer calls `ScopedClient` (or `replace_text`), so rule 2 holds. The contract test then passes. Source-health alerts for such a writer go through the alert gateway with a state key (LIFE-690).
 
 ## Daily Report writers
@@ -95,6 +95,8 @@ The daily check-in (the GitHub watchdog's once-a-day push, `lifeos/platform/gate
 
 The line is also listed in `docs/platform/health-model.md` (the `daily_check` row).
 
-## Finding: the stamp is written first
+## The stamp is written first, and put back on failure (LIFE-722)
 
-`replace_text` sets the heading (the stamp) first and the body after. A write that fails after the stamp PATCH leaves the new stamp over the old body. A write that fails on its first request leaves the old card and the old stamp untouched, and the tests pin that case. Restoring the old stamp when the body write fails is a small change to the Notion writers and is left as a follow-up, not made under the freeze.
+`replace_text` (used by the Bills, Amazon and Mail Alerts cards) sets the heading stamp first and the body after. Before LIFE-722, a write that failed after the stamp PATCH left the new stamp over the old body: a stale card looked fresh. Now, when anything after the stamp write fails (a refused body write, a read-back that does not match), `replace_text` puts the previous stamp back, once, best effort, and the caller still sees the failure the card already reported. If Notion refuses the restore too, the caller sees the original failure and the stamp stays as written (the same as before the fix).
+
+Chosen over "write the stamp last" because it changes nothing when every write succeeds (the same requests in the same order, the same card; no request is added) and is a small local change, while moving the stamp would reorder the writes of three cards and add a read-back request. Every other card writer (Jira, Calendar, Communications, Oracle Cloud) and the floating-region writers (Hiring, Recruiter Outreach, job-page outreach) already write the heading after the body; the floating writers also mark a half-written heading DEGRADED. A body that was written in part (some lines rewritten before a later one was refused) stays as it is; only the stamp is put back, so the card shows an old time over a partly new body rather than claiming to be current.
