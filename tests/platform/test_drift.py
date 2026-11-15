@@ -242,7 +242,7 @@ class UnitStateWithoutSystemd(unittest.TestCase):
         return lambda *a, **k: Done()
 
     def test_systemd_answer_wins_when_it_gives_one(self):
-        self.assertEqual(ticker.unit_state("u.timer", run=self.fake_run("inactive\n"), listdir=lambda d: self.fail("not asked")), "inactive")
+        self.assertEqual(ticker.read_unit_state("u.timer", run=self.fake_run("inactive\n"), listdir=lambda d: self.fail("not asked")), "inactive")
 
     def test_no_answer_falls_back_to_the_enablement_link_for_a_timer_and_a_service(self):
         seen = []
@@ -251,21 +251,21 @@ class UnitStateWithoutSystemd(unittest.TestCase):
             seen.append(path)
             return ["a.timer", "b.service"]
         run = self.fake_run("")
-        self.assertEqual(ticker.unit_state("a.timer", run=run, listdir=listing, base="/b"), drift.ENABLED)
-        self.assertEqual(ticker.unit_state("b.service", run=run, listdir=listing, base="/b"), drift.ENABLED)
+        self.assertEqual(ticker.read_unit_state("a.timer", run=run, listdir=listing, base="/b"), drift.ENABLED)
+        self.assertEqual(ticker.read_unit_state("b.service", run=run, listdir=listing, base="/b"), drift.ENABLED)
         self.assertEqual(seen, ["/b/timers.target.wants", "/b/multi-user.target.wants"])
-        self.assertEqual(ticker.unit_state("c.timer", run=run, listdir=listing, base="/b"), "disabled")
+        self.assertEqual(ticker.read_unit_state("c.timer", run=run, listdir=listing, base="/b"), "disabled")
 
     def test_a_systemctl_that_cannot_start_or_an_unreadable_directory_is_handled(self):
         def broken(*a, **k):
             raise FileNotFoundError("systemctl")
 
-        self.assertEqual(ticker.unit_state("a.timer", run=broken, listdir=lambda d: ["a.timer"]), drift.ENABLED)
+        self.assertEqual(ticker.read_unit_state("a.timer", run=broken, listdir=lambda d: ["a.timer"]), drift.ENABLED)
 
         def unreadable(path):
             raise PermissionError("secret path")
         with self.assertRaises(drift.Unreadable) as raised:
-            ticker.unit_state("a.timer", run=self.fake_run(""), listdir=unreadable)
+            ticker.read_unit_state("a.timer", run=self.fake_run(""), listdir=unreadable)
         self.assertEqual(raised.exception.code, drift.UNIT_UNREADABLE)
 
     def test_enabled_is_deployed_and_says_which_method_decided(self):
@@ -282,6 +282,38 @@ class UnitStateWithoutSystemd(unittest.TestCase):
         self.assertNotIn("UNIT_STATE", drift.explain(rows))
         rows = drift.check(lambda p: drift.blob_sha(GOOD), lambda p: GOOD, lambda u: "disabled", surfaces(1))
         self.assertEqual(rows[0]["state"], drift.DRIFT)
+
+    def test_the_real_check_with_no_injected_reader_uses_the_fallback_and_does_not_crash(self):
+        """LIFE-725: the host ran `drift_incident` with its own unit reader and every row failed with TypeError, because the parameter `unit_state` shadowed the reader of the same name."""
+        from unittest import mock
+        calls = []
+        with mock.patch("subprocess.run", return_value=mock.Mock(stdout="")), mock.patch("os.listdir", return_value=["lifeos-ticker-watch.timer", "lifeos-offsite-backup.timer", "lifeos-close-release.timer"]):
+            out = io.StringIO()
+
+            class Response:
+                status = 200
+
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *a):
+                    return False
+
+                def read(self):
+                    return json.dumps({"sha": drift.blob_sha(GOOD)}).encode()
+            with contextlib.redirect_stdout(out):
+                rows = ticker.drift_incident("t", opener=lambda request, timeout=0: Response(), sync=lambda *a: calls.append(a), read=lambda p: GOOD)
+        self.assertEqual({r["state"] for r in rows}, {drift.DEPLOYED})
+        self.assertNotIn("READER_FAILED", out.getvalue())
+        self.assertIn("UNIT_STATE_FROM_ENABLED=", out.getvalue())
+        self.assertEqual([c[3] for c in calls], [False])
+
+    def test_no_function_in_the_ticker_has_a_parameter_named_like_a_function_it_defines(self):
+        import ast
+        tree = ast.parse(Path(ticker.__file__).read_text())
+        names = {n.name for n in tree.body if isinstance(n, ast.FunctionDef)}
+        shadows = sorted(f"{n.name}({a.arg})" for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) for a in n.args.args + n.args.kwonlyargs if a.arg in names)
+        self.assertEqual(shadows, [], "a parameter that shares the name of a module function hides it inside that function (LIFE-725)")
 
     def test_a_changed_file_is_drift_even_when_the_unit_is_only_enabled(self):
         rows = drift.check(lambda p: drift.blob_sha(GOOD), lambda p: b"other", lambda u: drift.ENABLED, surfaces(1))
