@@ -10,7 +10,7 @@ from lifeos.jira.search import search
 from lifeos.platform.jira import Jira, JiraError
 
 EPIC_LABEL = "auto-release"
-SKIP = {"jim-only", "watch", "hold", "protected-file", "needs-approval"}
+SKIP = {"jim-only", "watch", "hold", "protected-file", "needs-approval", "planning-only"}
 RELEASE_LIMIT = 3
 AGENT_GO = "17"                                                  # the To Do to Agent Go transition
 DONE_WHEN = re.compile(r"done when", re.I)

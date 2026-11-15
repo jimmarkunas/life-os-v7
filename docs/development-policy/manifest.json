@@ -159,7 +159,7 @@
       ]
     }
   ],
-  "reassembled_sha256": "171154446696fde68ed1ca49f7b6055c106f3fd2b282382aba6b4137b915d6f7",
+  "reassembled_sha256": "04d4a9251c7b91dbb69b2ea8e5cff5d80832e50b00d0edce910e4f548e7f9203",
   "amendments": [
     {
       "date": "2026-11-02",
@@ -268,6 +268,12 @@
       "pr": "https://github.com/jimmarkunas/life-os-v7/pull/1219",
       "approval": "Jim Markunas, November 15, 2026 CT, typed in the Claude Code chat: 'Build all three' (LIFE-662 proposals; LIFE-727, LIFE-728, LIFE-729)",
       "part": "docs/development-policy/04 (Lean delivery amendment: merge is Done, auto-merge by default, the stall check, auto-release of tickets in an epic Jim labels auto-release), with the matching AGENTS.md step 4"
+    },
+    {
+      "date": "2026-11-15",
+      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/1221",
+      "approval": "Jim Markunas, November 15, 2026 CT, typed in the Claude Code chat: 'Build all three' and 'Pick one for me' (LIFE-727: planning-only tickets are never auto-released)",
+      "part": "docs/development-policy/04 (Lean delivery amendment: auto-release skips tickets labelled planning-only)"
     }
   ]
 }

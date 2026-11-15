@@ -46,11 +46,11 @@ class Release(unittest.TestCase):
         self.assertEqual(fake.posts[0][1], {"transition": {"id": "17"}})
 
     def test_nothing_is_released_for_an_open_blocker_a_missing_done_when_or_a_skip_label(self):
-        children = [issue("LIFE-11", blockers=[("LIFE-5", False)]), issue("LIFE-12", description=NO_DONE_WHEN), issue("LIFE-13", labels=["protected-file"]), issue("LIFE-14", labels=["jim-only"]),
+        children = [issue("LIFE-11", blockers=[("LIFE-5", False)]), issue("LIFE-12", description=NO_DONE_WHEN), issue("LIFE-13", labels=["protected-file"]), issue("LIFE-14", labels=["jim-only"]), issue("LIFE-16", labels=["planning-only"]),
                     issue("LIFE-15", blockers=[("LIFE-5", True)])]
         fake = FakeJira(["LIFE-10"], children)
         out = release.run(0, True, jira=fake)
-        self.assertEqual(out["skipped"], {"blocked": 1, "no_done_when": 1, "skip_label": 2})
+        self.assertEqual(out["skipped"], {"blocked": 1, "no_done_when": 1, "skip_label": 3})
         self.assertEqual((out["released"], [p for p, _ in fake.posts][0]), (1, "/rest/api/3/issue/LIFE-15/transitions"))
 
     def test_at_most_three_a_run_in_rank_order_and_a_dry_run_writes_nothing(self):
