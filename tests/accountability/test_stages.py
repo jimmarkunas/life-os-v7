@@ -223,6 +223,19 @@ class Stages(unittest.TestCase):
         links = dict(notion.links("body-jim"))
         self.assertEqual([links[k] for k in ("JFM-31", "JFM-30", "JFM-1")], [f"{SITE}/browse/{k}" for k in ("JFM-31", "JFM-30", "JFM-1")])
 
+    def test_a_more_in_jira_link_survives_notion_rewriting_its_escapes(self):
+        notion = F.Notion()
+        page(notion, "week")
+        many = [{"key": f"JFM-{n}", "fields": {"summary": f"Task {n}", "status": {"name": "To Do"}, "duedate": None}} for n in range(40, 56)]
+        fake = jira({"statusCategory != Done AND (sprint": many})
+        self.run_stage(week, "week", notion, fake, True)                      # a first run that cannot read its own write back raises ACCOUNTABILITY_VERIFY_FAILED
+        links = [url for text, url in notion.links("body-jim") if "more in Jira" in text]
+        self.assertEqual(len(links), 1)
+        self.assertIn("(", links[0])                                         # the stored address has the characters Notion unescapes
+        notion.writes.clear()
+        self.run_stage(week, "week", notion, fake, True)
+        self.assertEqual(notion.writes, [])                                   # and a second identical run still writes nothing
+
     def test_without_a_site_address_the_lines_are_plain_text_not_broken_links(self):
         notion = F.Notion()
         page(notion, "week")
