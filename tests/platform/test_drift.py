@@ -1,6 +1,9 @@
 """LIFE-528 step 0: the deploy drift check. UNKNOWN is never DEPLOYED; a changed, missing or stopped surface is DRIFT; one quiet incident opens and closes."""
+import contextlib
+import io
 import json
 import unittest
+import urllib.error
 from pathlib import Path
 
 from lifeos.edge.ticker import ticker
@@ -145,6 +148,90 @@ class TickerIncident(unittest.TestCase):
                                lambda p: ticker.Path(p).read_bytes() if ticker.Path(p).exists() else drift.MISSING, lambda u: "active", one)
         self.assertEqual([r["state"] for r in rows], ["DEPLOYED", "DRIFT"])
         self.assertTrue(all("?ref=main" in url for url in asked))
+
+
+class Why(unittest.TestCase):
+    """LIFE-725: an UNKNOWN surface says why, in fixed codes; a check that cannot decide is visible in the journal instead of silent."""
+    def ok(self, **kwargs):
+        args = {"expected_for": lambda p: drift.blob_sha(GOOD), "read": lambda p: GOOD, "unit_state_for": lambda u: "active", **kwargs}
+        return drift.check(surfaces=surfaces(1), **args)
+
+    def test_a_decided_row_has_no_why_and_an_unknown_one_names_the_unreadable_piece(self):
+        self.assertEqual(self.ok()[0]["why"], "")
+        self.assertEqual(self.ok(expected_for=lambda p: None)[0]["why"], "EXPECTED_UNREADABLE")
+        self.assertEqual(self.ok(read=lambda p: None)[0]["why"], "INSTALLED_UNREADABLE")
+        self.assertEqual(self.ok(unit_state_for=lambda u: None)[0]["why"], "UNIT_UNREADABLE")
+
+    def test_a_reader_code_and_a_reader_crash_are_kept_as_fixed_words_never_the_message(self):
+        def coded(_):
+            raise drift.Unreadable("EXPECTED_HTTP_403")
+
+        def crash(_):
+            raise RuntimeError("secret detail")
+        self.assertEqual(self.ok(expected_for=coded)[0]["why"], "EXPECTED_HTTP_403")
+        row = self.ok(read=crash)[0]
+        self.assertEqual((row["state"], row["why"]), (drift.UNKNOWN, "READER_FAILED:RuntimeError"))
+        self.assertNotIn("secret", json.dumps(row))
+
+    def test_a_row_that_drifts_is_decided_and_carries_no_why(self):
+        self.assertEqual(self.ok(read=lambda p: b"other")[0]["why"], "")
+
+    def test_explain_is_one_line_with_counts_names_and_codes_only(self):
+        rows = [{"surface": "a", "state": "DEPLOYED", "why": ""}, {"surface": "b", "state": "UNKNOWN", "why": "EXPECTED_HTTP_404"}, {"surface": "c", "state": "DRIFT", "why": ""}]
+        line = drift.explain(rows)
+        self.assertEqual(line, "drift: deployed=1 drift=1 unknown=1 signal=open drifted=c undecided=EXPECTED_HTTP_404:1(b)")
+        many = [{"surface": f"s{i}", "state": "UNKNOWN", "why": "EXPECTED_NETWORK"} for i in range(5)]
+        self.assertEqual(drift.explain(many), "drift: deployed=0 drift=0 unknown=5 signal=unchanged undecided=EXPECTED_NETWORK:5(s0,s1,s2,...)")
+        self.assertEqual(drift.explain([{"surface": "a", "state": "DEPLOYED", "why": ""}]), "drift: deployed=1 drift=0 unknown=0 signal=recovered")
+        self.assertIn("signal=unchanged", drift.explain([rows[1]]))
+
+
+class Journal(unittest.TestCase):
+    """The ticker's drift check prints its decision, whatever it decides."""
+    def run_it(self, opener):
+        calls, out = [], io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rows = ticker.drift_incident("t", opener=opener, sync=lambda *a: calls.append(a), read=lambda p: GOOD, unit_state=lambda u: "active")
+        return rows, calls, out.getvalue()
+
+    def answer(self, status, body=None):
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def read(self):
+                return json.dumps(body or {}).encode()
+        Response.status = status
+
+        def opener(request, timeout=0):
+            if status != 200:
+                raise urllib.error.HTTPError(request.full_url, status, "x", {}, None)
+            return Response()
+        return opener
+
+    def test_a_github_refusal_leaves_every_surface_unknown_says_so_and_changes_nothing(self):
+        rows, calls, out = self.run_it(self.answer(403))
+        self.assertEqual({r["state"] for r in rows}, {drift.UNKNOWN})
+        self.assertEqual(calls, [])
+        self.assertIn(f"unknown={len(rows)}", out)
+        self.assertIn("EXPECTED_HTTP_403", out)
+
+    def test_a_network_failure_is_named_too(self):
+        def down(request, timeout=0):
+            raise urllib.error.URLError("secret host")
+        rows, calls, out = self.run_it(down)
+        self.assertIn("EXPECTED_NETWORK", out)
+        self.assertNotIn("secret", out)
+
+    def test_every_surface_deployed_closes_the_incident_and_the_journal_says_recovered(self):
+        rows, calls, out = self.run_it(self.answer(200, {"sha": drift.blob_sha(GOOD)}))
+        self.assertEqual({r["state"] for r in rows}, {drift.DEPLOYED})
+        self.assertEqual([c[3] for c in calls], [False])
+        self.assertIn("signal=recovered", out)
+        self.assertNotIn("undecided", out)
 
 
 if __name__ == "__main__":

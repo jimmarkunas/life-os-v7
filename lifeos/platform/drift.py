@@ -13,6 +13,17 @@ DEPLOYED, DRIFT, UNKNOWN = "DEPLOYED", "DRIFT", "UNKNOWN"
 MISSING = object()          # the read said "no such file"; an unreadable file is None instead
 
 
+EXPECTED_NETWORK, INSTALLED_UNREADABLE, UNIT_UNREADABLE, EXPECTED_UNREADABLE = ("EXPECTED_NETWORK", "INSTALLED_UNREADABLE", "UNIT_UNREADABLE", "EXPECTED_UNREADABLE")     # the fixed `why` words (EXPECTED_HTTP_<status> is built)
+
+
+class Unreadable(Exception):
+    """LIFE-725: a reader raises this with a fixed code (EXPECTED_HTTP_404, EXPECTED_NETWORK, INSTALLED_UNREADABLE, UNIT_UNREADABLE) so an UNKNOWN row can say why. Never a message."""
+
+    def __init__(self, code):
+        super().__init__(code)
+        self.code = code
+
+
 class Surface(NamedTuple):
     name: str
     repo_path: str
@@ -61,16 +72,25 @@ def classify(expected, installed, unit_state):
 
 
 def check(expected_for, read, unit_state_for, surfaces=SURFACES):
-    """-> [{"surface", "state", "installed_hash", "unit", "unit_state"}], one per surface. The three callables do the reading; any of them raising reads as unknown."""
+    """-> [{"surface", "state", "installed_hash", "unit", "unit_state", "why"}], one per surface. The three callables do the reading; any of them raising reads as unknown.
+    LIFE-725: `why` is "" when decided, else a fixed code naming the piece that could not be read (the reader's own `Unreadable` code, or READER_FAILED:<exception class>)."""
+    def safe(why, call, *args):
+        try:
+            return call(*args)
+        except Unreadable as error:
+            why.append(error.code)
+            return None
+        except Exception as error:                                             # noqa: BLE001 - an unreadable piece is UNKNOWN, never a crash and never DEPLOYED
+            why.append("READER_FAILED:" + type(error).__name__)                # the class only, never the message
+            return None
     rows = []
     for s in surfaces:
-        def safe(call, *args):
-            try:
-                return call(*args)
-            except Exception:                                                  # noqa: BLE001 - an unreadable piece is UNKNOWN, never a crash and never DEPLOYED
-                return None
-        expected, installed, unit_state = safe(expected_for, s.repo_path), safe(read, s.installed), safe(unit_state_for, s.unit)
-        rows.append({"surface": s.name, "state": classify(expected, installed, unit_state), "unit": s.unit, "unit_state": unit_state or UNKNOWN,
+        why = []
+        expected, installed, unit_state = safe(why, expected_for, s.repo_path), safe(why, read, s.installed), safe(why, unit_state_for, s.unit)
+        state = classify(expected, installed, unit_state)
+        if state == UNKNOWN and not why:
+            why.append(EXPECTED_UNREADABLE if expected is None else INSTALLED_UNREADABLE if installed is None else UNIT_UNREADABLE)
+        rows.append({"surface": s.name, "state": state, "unit": s.unit, "unit_state": unit_state or UNKNOWN, "why": why[0] if state == UNKNOWN and why else "",
                      "installed_hash": blob_sha(installed)[:12] if isinstance(installed, bytes) else ("missing" if installed is MISSING else UNKNOWN)})
     return rows
 
@@ -87,3 +107,16 @@ def summary(rows):
     counts = {state: sum(1 for r in rows if r["state"] == state) for state in (DEPLOYED, DRIFT, UNKNOWN)}
     drifted = [r["surface"] for r in rows if r["state"] == DRIFT]
     return counts, drifted
+
+
+def explain(rows):
+    """LIFE-725: one short journal line for every check: the counts, then the surfaces that could not be decided grouped by fixed code (the first three names of each group). Names and codes only, never a value or a message."""
+    counts, drifted = summary(rows)
+    groups = {}
+    for r in rows:
+        if r["state"] == UNKNOWN:
+            groups.setdefault(r.get("why") or UNKNOWN, []).append(r["surface"])
+    undecided = [f"{code}:{len(names)}({','.join(names[:3])}{',...' if len(names) > 3 else ''})" for code, names in sorted(groups.items())]
+    signal = incident_signal(rows)
+    return (f"drift: deployed={counts[DEPLOYED]} drift={counts[DRIFT]} unknown={counts[UNKNOWN]} signal={'open' if signal else 'recovered' if signal is False else 'unchanged'}"
+            + (" drifted=" + ",".join(drifted) if drifted else "") + (" undecided=" + ";".join(undecided) if undecided else ""))
