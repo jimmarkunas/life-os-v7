@@ -70,6 +70,7 @@ The job timeouts in `.github/workflows` change in one separate workflow pull req
 | `outlook.yml` | `outlook` | 20 | 20 | 20 | 11 | 227 | twice the slowest run (227 s) rounds to 20 min, not below the current 20: unchanged |
 | `pr-tests.yml` | `test-index` | 11 | 11 | 39 | 247 | 305 | twice the slowest run (305 s) rounded up to whole minutes, 5-minute floor |
 | `pr-tests.yml` | `unit-tests` | 5 | 5 | 99 | 105 | 136 | twice the slowest run (136 s) rounded up to whole minutes, 5-minute floor |
+| `pr-tests.yml` | `unit-tests-second-date` | 5 | 5 | 0 | - | - | new job (LIFE-692): the same tests as `unit-tests` (slowest 136 s) with the test clock fixed at a second date, pull requests only; 5-minute floor; no run measured yet |
 | `profile-sync.yml` | `sync` | 10 | 10 | 39 | 15 | 248 | twice the slowest run (248 s) rounds to 10 min, not below the current 10: unchanged |
 | `readiness-live.yml` | `readiness` | 10 | 10 | 1 | 8 | 8 | kept: only 1 measured runs (fewer than 10), slowest 8 s |
 | `recruiters.yml` | `recruiters` | 20 | 20 | 9 | 389 | 404 | kept: only 9 measured runs (fewer than 10), slowest 404 s |

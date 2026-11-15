@@ -39,9 +39,9 @@ Each state has exactly seven segments (`■` filled, `□` empty), no timestamp,
 
 No phone push and no Jira call: no credential for Jira is allowed in CI. The run's counts carry `stability: {state: complete, days: 7}` (job log) and the card reads `7 of 7 clean days`. **The epic lead (a Claude Code session) posts the one comment on LIFE-686** after reading the real card; nothing in Jira changes automatically.
 
-## Setup the card needs (a workflow edit, protected: one approval, ridden in the combined workflow PR)
+## Setup the card needs (a workflow edit, protected: one approval, in the combined workflow PR of LIFE-686, Nov 15 2026)
 
-Until this lands the card shows `Unverified` (GitHub unreadable): the safe state. In `.github/workflows/domains.yml`, job `dcc`, add a job `permissions:` block (all read-only) and one env line on the `dcccard` step:
+The card shows `Unverified` whenever GitHub is unreadable: the safe state. In `.github/workflows/domains.yml`, job `dcc` has a job `permissions:` block (all read-only) and one env line on the `dcccard` step, so the card can read the run history and the incident issues:
 
 ```yaml
   dcc:
