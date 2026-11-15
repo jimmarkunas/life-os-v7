@@ -75,6 +75,7 @@ def run(limit, live, environ=os.environ, ready_only=False):
             proven = _ids(cursor, "link_proof='title'")
             watched = _ids(cursor, "source LIKE %s", ("web:titlewatch:%",))
             thin_ok = _ids(cursor, " OR ".join(["source LIKE %s"] * len(lanes.THIN_REVIEW_PREFIXES)), tuple(p + "%" for p in lanes.THIN_REVIEW_PREFIXES))
+            watched |= _ids(cursor, "link_proof=%s", (lanes.LISTING_PROOF,))            # LIFE-723: a listing lead is judged on title and link, its listing page is never read
             cursor.execute("SELECT id, company, title FROM v7_jobs WHERE status IN ('READY','PUBLISHED')")
             watched |= {r[0] for r in cursor.fetchall() if lanes.on_keep_list(r[1], r[2])}          # D124: Jim's keep list is judged on title and link too (its pages answer 403, so no description may be stored)
             pages, places = [], {}

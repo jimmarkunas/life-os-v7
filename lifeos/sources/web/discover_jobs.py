@@ -8,7 +8,8 @@ from datetime import datetime, timezone
 import re
 from urllib.parse import urlsplit
 
-from lifeos.jobs import classify, intake, quality, store
+from lifeos.jobs import classify, intake, jd, lanes, quality, store
+from lifeos.jobs.fit import exclusions as title_rules
 from lifeos.jobs.resolve import ats_match, stage
 from lifeos.jobs.resolve.aggregators import linkedin
 from lifeos.platform import tinyfish_search
@@ -64,8 +65,9 @@ def candidates(company, results):
         if not role or url in seen:
             continue
         seen.add(url)
-        place = "London, UK" if "london" in ats_match.norm(title + " " + (result.get("snippet") or "")) else ""
-        out.append({"url": url, "title": role, "location": place, "host": classify.host(url)})
+        snippet = " ".join((result.get("snippet") or "").split())[:300]
+        place = "London, UK" if lanes.geography_status(f"{title} {snippet}") == lanes.POSITIVE else ""      # London, or a UK-wide remote role (D96, D98)
+        out.append({"url": url, "title": role, "location": place, "host": classify.host(url), "snippet": snippet})
         if len(out) >= PER_SPONSOR:
             break
     return out
@@ -112,6 +114,36 @@ def _admit(cursor, source, job, now):
     return is_new
 
 
+LISTING_NOTE = "Found by web search; the listing page was not read."
+
+
+def promote_leads(cursor, snippets, now=None):
+    """LIFE-723 (Jim, Nov 15 2026; relaxes D1 and D36 for this one case): a Scale-Up sponsor with no employer board whose job the chain could not link to the employer (HOLD, no_match_*) is posted
+    from its listing page when it passes the Scale-Up rules: a London or UK-wide remote place (D96, D98) and no hard title exclusion (D95). The listing page is never fetched: only the search result's
+    own title, snippet and URL are used. The job becomes RESOLVED with link_proof `listing`; Fit and the lane gate then decide it (always Review, never Admit) and Publish posts it with Aggregator Link.
+    -> counts: promoted, not_london, title_excluded."""
+    now = now or _now()
+    counts = {"promoted": 0, "not_london": 0, "title_excluded": 0}
+    cursor.execute("SELECT id, source_url, title, company, location_text FROM v7_jobs WHERE source=%s AND status='HOLD' AND unresolved_reason LIKE 'no_match%%' AND notion_page_id IS NULL", (SOURCE,))
+    for job_id, url, title, company, place in cursor.fetchall():
+        if lanes.geography_status(place) != lanes.POSITIVE:
+            counts["not_london"] += 1                                                     # no stated place, or not London: never guessed
+            continue
+        if title_rules.check(title, company, "")[0]:
+            counts["title_excluded"] += 1
+            continue
+        cursor.execute("UPDATE v7_jobs SET final_apply_url=%s, apply_kind='aggregator', link_proof=%s, status='RESOLVED', unresolved_reason='listing_lead', updated_at=%s"
+                       " WHERE id=%s AND status='HOLD'", (url, lanes.LISTING_PROOF, now, job_id))
+        if not cursor.rowcount:
+            continue
+        d = jd.describe(f"{title}\n{(snippets or {}).get(url) or LISTING_NOTE}", is_html=False)
+        cursor.execute("INSERT INTO v7_job_descriptions (job_id, source_kind, full_text, summary, responsibilities, requirements, qualifications, fingerprint, fetched_at)"
+                       " VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE job_id=job_id",
+                       (job_id, "listing", d["full_text"], d["summary"], d["responsibilities"], d["requirements"], d["qualifications"], d["fingerprint"], now))
+        counts["promoted"] += 1
+    return counts
+
+
 def run(limit, live, search=None, sources=None):
     search = search or tinyfish_search.search
     sponsors = sources if sources is not None else [r for r in registry.load(registry.PATHS["Scale-Up"]) if r["enabled"] and r["status"] == "fallback"]
@@ -140,4 +172,8 @@ def run(limit, live, search=None, sources=None):
             counts["requeued"] = requeue_held(cursor)
     budget = {"left": RESOLVE_SEARCHES}
     counts["resolve"] = stage.run_rows(SOURCE, 60, True, lambda rows: _resolve(rows, budget))
+    snippets = {job["url"]: job["snippet"] for _, job in found if job.get("snippet")}
+    with store.connect() as connection:
+        with connection.cursor() as cursor:
+            counts["listing"] = promote_leads(cursor, snippets)                                   # LIFE-723: after the chain, so a real employer link always wins
     return counts
