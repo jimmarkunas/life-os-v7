@@ -265,7 +265,7 @@ class RunTests(unittest.TestCase):
         self.assertNotIn("Protected DCC content", str(self.shape(notion)))                                                  # the old flat line is gone
         health, kpi_row = (b["id"] for b in kids[1:])
         self.assertEqual(len(notion.children[health]), 2)
-        self.assertEqual([len(notion.children[c["id"]]) for c in notion.children[kpi_row]], [1, 1, 1])
+        self.assertEqual([len(notion.children[c["id"]]) for c in notion.children[kpi_row]], [1, 1, 1, 1])               # LIFE-694: the three KPI cards and the Platform Stability card
         self.assertEqual({k: notion.full_tree(k) for k in before}, before)
         self.assertEqual((counts["fresh"], counts["not_current"], counts["removed"]), (5, 1, 1))
         self.assertEqual({v for k, v in counts["states"].items() if k != "Hiring Pipeline"}, {"fresh"})
@@ -424,6 +424,93 @@ class RunTests(unittest.TestCase):
         self.assertEqual(entry.STAGES["dcc-card"].target, ("lifeos.dcc.card", "run"))
 
 
+CLOCK = {"state": "counting", "days": 4, "why": ""}
+
+
+def kpi_columns(notion):
+    row = next(b for b in notion.children["dcc-callout"] if b["type"] == "column_list")["id"]
+    return [notion.children[notion.children[c["id"]][0]["id"]] for c in notion.children[row]], row
+
+
+def go_with(notion, clock, **kw):
+    with mock.patch.object(card.stability, "clock", return_value=clock):
+        return go(notion, **kw)
+
+
+class StabilityCardTests(unittest.TestCase):
+    """LIFE-694: the Platform Stability card is the fourth of four equal cards, built by the same renderer; the other three are as before."""
+
+    def segments(self, clock):
+        kids = card.clock_card(clock)["callout"]["children"]
+        return kids[1]["paragraph"]["rich_text"][0]["text"]["content"], "".join(p["text"]["content"] for p in kids[2]["paragraph"]["rich_text"])
+
+    def test_the_four_states_read_exactly_as_approved(self):
+        for clock, line, segments in ((CLOCK, "4 of 7 clean days", "■ ■ ■ ■  □ □ □"), ({"state": "counting", "days": 0, "why": ""}, "0 of 7 clean days", "□ □ □ □ □ □ □"),
+                                      ({"state": "reset", "days": 0, "why": ""}, "0 of 7 clean days · RESET", "□ □ □ □ □ □ □"), ({"state": "complete", "days": 7, "why": ""}, "7 of 7 clean days", "■ ■ ■ ■ ■ ■ ■"),
+                                      ({"state": "unverified", "days": 0, "why": "STABILITY_NO_TOKEN"}, "Unverified", "□ □ □ □ □ □ □")):
+            shown, bar = self.segments(clock)
+            self.assertEqual((shown, bar), (line, segments), clock)
+            self.assertEqual(bar.count("■") + bar.count("□"), 7)                                              # exactly seven segments, always
+        kids = card.clock_card(CLOCK)["callout"]
+        self.assertEqual([k["type"] for k in kids["children"]], ["heading_3", "paragraph", "paragraph"])         # heading, one line, the segments: no timestamp, no explanation, no button
+        self.assertEqual(kids["children"][0]["heading_3"]["rich_text"][0]["text"]["content"], "Platform Stability")
+        self.assertTrue(kids["icon"]["external"]["url"].endswith("layers_gray.svg"))
+        colors = [p["annotations"]["color"] for p in kids["children"][2]["paragraph"]["rich_text"]]
+        self.assertEqual(colors, ["blue", "gray"])
+        self.assertEqual([p["annotations"]["color"] for p in card.clock_card({"state": "complete", "days": 7, "why": ""})["callout"]["children"][2]["paragraph"]["rich_text"]], ["green"])
+
+    def test_the_command_center_shows_four_equal_cards_and_the_first_three_are_unchanged(self):
+        notion = page()
+        before = card.compose(card.read_areas(notion, ENV), NOW)
+        go_with(notion, CLOCK)
+        columns, row = kpi_columns(notion)
+        self.assertEqual(len(columns), 4)
+        self.assertEqual({c["column"]["width_ratio"] for c in notion.children[row]}, {0.25})
+        self.assertEqual(card.compose(card.read_areas(notion, ENV), NOW, CLOCK)["kpis"], before["kpis"])             # the three KPI cards say what they said without the clock
+        names = [report_region.plain(k[1]) for k in columns[:3]]
+        self.assertEqual(names, ["Bills due", "Jira Overdue / Blocked", "Mail waiting"])
+        self.assertEqual(report_region.plain(columns[3][0]), "Platform Stability")
+        self.assertEqual(report_region.plain(columns[3][1]), "4 of 7 clean days")
+
+    def test_an_hourly_refresh_keeps_the_count_and_writes_nothing_until_it_changes(self):
+        notion = page()
+        go_with(notion, CLOCK)
+        mark = len(notion.log)
+        go_with(notion, CLOCK, now=NOW + timedelta(minutes=2))
+        self.assertEqual([m for m in writes(notion, mark) if m != "PATCH"], [])
+        self.assertEqual(report_region.plain(kpi_columns(notion)[0][3][1]), "4 of 7 clean days")
+        go_with(notion, {"state": "counting", "days": 5, "why": ""})                                            # the next completed day
+        self.assertEqual(report_region.plain(kpi_columns(notion)[0][3][1]), "5 of 7 clean days")
+        go_with(notion, {"state": "reset", "days": 0, "why": ""})
+        self.assertEqual(report_region.plain(kpi_columns(notion)[0][3][1]), "0 of 7 clean days · RESET")
+        self.assertEqual(len(kpi_columns(notion)[0]), 4)                                                        # the clock column is recognised each time, never deleted as a surplus column
+
+    def test_a_page_with_three_cards_grows_a_fourth_and_nothing_else_is_touched(self):
+        notion = page()
+        original = card.render
+        with mock.patch.object(card, "render", lambda m: original({**m, "clock": None})):
+            go(notion)                                                                                          # the page as it stood before LIFE-694: three KPI cards
+        self.assertEqual(len(kpi_columns(notion)[0]), 3)
+        others = {k: notion.full_tree(k) for k in ("calendar-callout", "jira-callout", "bills-callout", "amazon-callout", "attention-callout", "mail-callout")}
+        mark = len(notion.log)
+        counts = go_with(notion, CLOCK)
+        self.assertEqual(len(kpi_columns(notion)[0]), 4)
+        self.assertNotIn("DELETE", writes(notion, mark))
+        self.assertEqual({k: notion.full_tree(k) for k in others}, others)
+        self.assertEqual(counts["stability"], CLOCK)
+
+    def test_unreadable_github_shows_unverified_and_never_a_zero(self):
+        notion = page()
+        go(notion)                                                                                              # the real clock with no token in the environment
+        self.assertEqual(report_region.plain(kpi_columns(notion)[0][3][1]), "Unverified")
+
+    def test_seven_of_seven_stays_and_is_exposed_to_the_epic_lead_in_the_counts(self):
+        notion = page()
+        counts = go_with(notion, {"state": "complete", "days": 7, "why": ""})
+        self.assertEqual(report_region.plain(kpi_columns(notion)[0][3][1]), "7 of 7 clean days")
+        self.assertEqual((counts["stability"]["state"], counts["stability"]["days"]), ("complete", 7))           # the run's counts carry the fact: no push, no Jira call
+
+
 class SurplusColumnTests(unittest.TestCase):
     """LIFE-655: the live callout still holds the retired Attention KPI (4 columns), the card renders 3: the surplus column is removed first, then the normal sync runs."""
 
@@ -440,7 +527,10 @@ class SurplusColumnTests(unittest.TestCase):
         return row, made["id"]
 
     def names(self, notion, row):
-        return [report_region.plain(notion.children[notion.children[c["id"]][0]["id"]][1]) for c in notion.children[row]]
+        def name(column):
+            kids = notion.children[notion.children[column["id"]][0]["id"]]
+            return card.CLOCK_NAME if any(k["type"] == "heading_3" and report_region.plain(k) == card.CLOCK_NAME for k in kids) else report_region.plain(kids[1])
+        return [name(c) for c in notion.children[row]]
 
     def test_four_live_columns_converge_to_three_and_nothing_else_on_the_page_is_touched(self):
         notion = page()
@@ -448,10 +538,10 @@ class SurplusColumnTests(unittest.TestCase):
         others = {k: notion.full_tree(k) for k in ("calendar-callout", "jira-callout", "bills-callout", "amazon-callout", "attention-callout", "mail-callout")}
         mark = len(notion.log)
         counts = go(notion)
-        self.assertEqual(self.names(notion, row), ["Bills due", "Jira Overdue / Blocked", "Mail waiting"])
+        self.assertEqual(self.names(notion, row), ["Bills due", "Jira Overdue / Blocked", "Mail waiting", "Platform Stability"])
         self.assertEqual([p for m, p in notion.log[mark:] if m == "DELETE"], [f"/blocks/{attention}"])               # one DELETE, aimed at the Attention column
         self.assertEqual(counts["columns_removed"], 1)
-        self.assertEqual({c["column"]["width_ratio"] for c in notion.children[row]}, {round(1 / 3, 4)})
+        self.assertEqual({c["column"]["width_ratio"] for c in notion.children[row]}, {0.25})                                         # four equal columns
         mail = notion.children[notion.children[row][2]["id"]][0]
         self.assertTrue(mail["callout"]["icon"]["external"]["url"].endswith("inbox_gray.svg"))                        # the Mail KPI kept its own icon, it was not rewritten into the Attention column
         self.assertEqual({k: notion.full_tree(k) for k in others}, others)
@@ -463,7 +553,7 @@ class SurplusColumnTests(unittest.TestCase):
         notion = page()
         go(notion)
         mark = len(notion.log)
-        self.assertEqual(card.converge_columns(notion, "dcc-callout", ["Bills due", "Jira Overdue / Blocked", "Mail waiting"], {}, True), 0)
+        self.assertEqual(card.converge_columns(notion, "dcc-callout", ["Bills due", "Jira Overdue / Blocked", "Mail waiting", card.CLOCK_NAME], {}, True), 0)
         self.assertEqual(writes(notion, mark), [])
         self.assertEqual(go(notion)["columns_removed"], 0)
 
@@ -515,7 +605,7 @@ class SurplusColumnTests(unittest.TestCase):
         mark = len(notion.log)
         self.assertEqual(go(notion, live=False)["columns_removed"], 1)
         self.assertEqual(writes(notion, mark), [])
-        self.assertEqual(len(notion.children[row]), 4)
+        self.assertEqual(len(notion.children[row]), 5)                                                               # three KPI cards, the Platform Stability card and the surplus Attention column
 
     def test_the_page_updated_line_is_still_written_when_the_callout_write_fails_but_not_for_a_wrong_target(self):
         with mock.patch.object(card.header, "run", return_value="updated") as stamp, mock.patch.object(report_region, "replace_tree", side_effect=NotionError("DCC_CARD_STRUCTURE_CHANGED")):
