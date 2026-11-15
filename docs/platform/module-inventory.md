@@ -23,6 +23,7 @@ Generated from `lifeos/platform/runtime.json`; do not edit by hand. The drift ch
 <!-- runtime-manifest:begin (generated: edit lifeos/platform/runtime.json, then python -m tests.contracts.test_runtime_manifest --write) -->
 | Module | Runs on | Installed as | Activated by |
 |---|---|---|---|
+| lifeos/accountability | github |  |  |
 | lifeos/agenda | github |  |  |
 | lifeos/amazon | github |  |  |
 | lifeos/bills | github |  |  |
