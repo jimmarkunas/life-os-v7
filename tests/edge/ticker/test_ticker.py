@@ -152,6 +152,17 @@ class Disk(unittest.TestCase):
         ticker.watch(TOKEN, TOPIC, FakeGitHub(SWITCHES), run=lambda **k: order.append("gate"), environ={})
         self.assertEqual(order, ["gate"])                                         # an injected run alone never touches the real disk check
 
+    def test_a_failed_incident_check_is_named_in_the_journal_by_class_only_and_never_fails_the_watch(self):
+        import contextlib
+        import io
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), mock.patch.object(ticker, "drift_incident", side_effect=RuntimeError("secret detail")), mock.patch.object(ticker, "stall_incident", side_effect=KeyError("secret")):
+            code = ticker.watch(TOKEN, TOPIC, FakeGitHub(SWITCHES), run=lambda **k: None, environ={}, disk=lambda: None)[0]
+        self.assertEqual(code, "WATCH_DONE")
+        self.assertIn("ticker: drift check failed (RuntimeError)", out.getvalue())
+        self.assertIn("ticker: stall check failed (KeyError)", out.getvalue())
+        self.assertNotIn("secret", out.getvalue())
+
 
 class Stall(unittest.TestCase):
     """LIFE-562: the Close release timer writes a marker after 2 hours without a green main head; the watch opens one quiet issue and closes it when the marker is gone."""
