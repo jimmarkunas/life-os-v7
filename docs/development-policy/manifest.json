@@ -159,7 +159,7 @@
       ]
     }
   ],
-  "reassembled_sha256": "8c58cfe71678873810f1df116377a51a2731e79afd341beb6dc3f3ab11d863b8",
+  "reassembled_sha256": "8da654c9becfccf28b86aceff0c164bc948e1915d6093b15703e3ca6559f64e9",
   "amendments": [
     {
       "date": "2026-11-02",
@@ -250,6 +250,12 @@
       "pr": "https://github.com/jimmarkunas/life-os-v7/pull/1151",
       "approval": "Jim Markunas, November 13, 2026 CT, LIFE-662 measurement comment 13122, typed in the Claude Code chat: 'Approve all three' (LIFE-667)",
       "part": "docs/development-policy/04 (One ticket, one approval and One receipt bullets: workflow edits that touch the same file are batched into one PR and one ask; a builder merges within 5 minutes of same-head green or posts [waiting on]; the one-workflow-PR-at-a-time rule and the green-CI merge gate are unchanged), with the matching AGENTS.md lines"
+    },
+    {
+      "date": "2026-11-15",
+      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/1210",
+      "approval": "Jim Markunas, November 15, 2026 CT, typed in the Claude Code chat: 'Approved all five, start on 1 and get rid of this typed file approval' (LIFE-726)",
+      "part": "docs/development-policy/04 (new Lean delivery amendment: approve by risk class, two Jira comments per ticket, lanes are hints, registries generated, one-page sheet), with the matching AGENTS.md lines"
     }
   ]
 }
