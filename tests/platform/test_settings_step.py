@@ -38,6 +38,12 @@ class Step(unittest.TestCase):
         self.assertEqual(env, ["V7_PIPELINE=on"])                                                              # filled because it was empty
         self.assertEqual(out, ["V7_PIPELINE=on", "GRANOLA_AUTO=off"])                                          # a held value wins; the page's "on" is only a mismatch count
 
+    def test_a_plain_switch_is_never_masked_so_a_job_output_is_never_dropped(self):
+        """Nov 15 2026: masking the value "on" or "true" made GitHub skip every gate output that contained those letters, so every domain job was skipped."""
+        _, env, out, printed = self.run_step(["V7_PIPELINE on", "GRANOLA_AUTO true"], {"V7_PIPELINE": "", "GRANOLA_AUTO": ""}, "--output", "V7_PIPELINE", "--output", "GRANOLA_AUTO")
+        self.assertEqual((sorted(env), sorted(out)), (["GRANOLA_AUTO=true", "V7_PIPELINE=on"], ["GRANOLA_AUTO=true", "V7_PIPELINE=on"]))
+        self.assertNotIn("::add-mask::", printed)
+
     def test_a_safety_or_unknown_name_is_never_written(self):
         _, env, out, printed = self.run_step(["V7_LIVE on"], {"V7_LIVE": ""}, "--output", "V7_LIVE", "--output", "NOT_A_SETTING")
         self.assertEqual((env, out), ([], []))
