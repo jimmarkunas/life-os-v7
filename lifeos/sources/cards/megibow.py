@@ -11,7 +11,7 @@ import json
 import os
 
 from lifeos.platform.notion_ids import notion_id
-from lifeos.megibow import card, classify as C, evidence, history, project as P, render as R, review, store, v3, warnings as W
+from lifeos.megibow import card, classify as C, evidence, history, project as P, render as R, review, store, v3, warnings as W, weekly
 from lifeos.megibow.windows import CHI, chicago, monday, window_utc
 from lifeos.platform.gcal import GcalError, GoogleCalendar
 from lifeos.platform import ct_stamp, mail
@@ -89,7 +89,9 @@ def _matt(notion, now, live):
         warns, suppressed = v3.matt_warnings(proj, now)
         lines = warns or ([f"Warnings start once {v3.MIN_ENTERED} weeks are entered ({proj['entered']} so far)."] if suppressed else [W.HEALTHY])
         stamp = f"Last refreshed {when}"
-        out.update(v3.write(notion, block_id, stamp, v3.table(proj["weeks"], proj["counts"], proj["cumulative"]), [("\n".join(lines), None)], live))
+        link = v3.history_link(notion, "Matt")                                          # LIFE-687: the note line also links his Megibow history page
+        notes = [("\n".join(lines) + "\n", None), ("Megibow history", link)] if link else [("\n".join(lines), None)]
+        out.update(v3.write(notion, block_id, stamp, v3.table(proj["weeks"], proj["counts"], proj["cumulative"]), notes, live))
         out["summary_written"] = v3.write_summary(notion, out.pop("summary_page"), v3.summary("Matt", stamp, proj["weeks"], proj["counts"], proj["cumulative"], lines), live)
         out.update(status="OK", entered=proj["entered"], warnings=len(warns))
     except Exception as error:                                                       # noqa: BLE001 - isolation: Matt's failure never reaches Jim's result
@@ -261,7 +263,22 @@ def _finish(counts, live, environ, notion, connection, now, today, msgs, evs, ow
             review.write(notion, review_id, wanted)
         counts["review_created"] = len(wanted["create"])
     if layout_v3:
-        counts.update(_jim_v3(notion, block_id, proj, warns, degraded, review_db, now, live))
+        shown, weekly_error = proj, ""
+        try:                                                                     # LIFE-687: Jim's weekly database is the history and the source of his lifetime Cumulative
+            source_id = v3.find(notion, weekly.JIM_SOURCE_TITLE, "data_source")
+            rows, counts["weekly_ignored"] = weekly.read(notion, source_id)
+            if not degraded:
+                counts["weekly"] = weekly.close(notion, source_id, rows, proj, live)
+                if counts["weekly"]["created"] or counts["weekly"]["finalized"]:
+                    rows, counts["weekly_ignored"] = weekly.read(notion, source_id)
+            shown = weekly.project(proj, rows)
+        except v3.V3Error as error:
+            if str(error) != "MEGIBOW_V3_TARGET_NOT_FOUND":
+                raise
+            counts["weekly"] = "MISSING"                                         # no weekly database yet: the engine's own table and Cumulative, as before
+        except NotionError as error:
+            weekly_error = counts["weekly_code"] = _code(error)                  # unreadable: keep the last accepted table and say so
+        counts.update(_jim_v3(notion, block_id, shown, warns, degraded, review_db, now, live, weekly_error))
     else:
         status = R.status(now, degraded, len(proj["review"]), None)
         text = status + (("\n" + R.notes(warns, degraded)) if R.notes(warns, degraded) else "")
@@ -273,18 +290,23 @@ def _finish(counts, live, environ, notion, connection, now, today, msgs, evs, ow
     return counts
 
 
-def _jim_v3(notion, block_id, proj, warns, degraded, review_db, now, live):
-    """Jim's V3 callout (LIFE-672): stamp, the 8-week table with Cumulative last, warnings or the healthy line, the review-needed line, then the summary page."""
+def _jim_v3(notion, block_id, proj, warns, degraded, review_db, now, live, weekly_error=""):
+    """Jim's V3 callout (LIFE-672): stamp, the 8-week table with Cumulative last, warnings or the healthy line, the review-needed line, the Megibow history link, then the summary page."""
     when = ct_stamp.when(now)
+    if weekly_error and not degraded:
+        return v3.write(notion, block_id, f"DEGRADED at {ct_stamp.when(now)} — Jim's weekly database could not be read; showing the last accepted counts", None, None, live) | {"layout": "v3"}
     if degraded:
         stamp = f"DEGRADED at {ct_stamp.when(now)} — counts may be incomplete; showing the last accepted counts"
         return v3.write(notion, block_id, stamp, None, [(W.SOURCE_UNAVAILABLE, None)], live) | {"layout": "v3"}
     stamp, n = f"Last refreshed {when}", len(proj["review"])
-    lines = warns or [W.HEALTHY]
+    lines = (warns or [W.HEALTHY]) + ([v3.TYPED_NOTE] if any(proj.get("typed", {}).values()) else [])
     review_line = f"Review needed — {n} activity candidate{'s' if n != 1 else ''}" if n else "Review needed — none"
     link = f"https://www.notion.so/{review_db.replace('-', '')}" if review_db else None
     notes = [("\n".join(lines) + "\n", None), (review_line + " · ", None), ("MegIBOW Review", link)]
-    out = v3.write(notion, block_id, stamp, v3.table(proj["weeks"], proj["counts"], proj["cumulative"]), notes, live)
+    history_url = v3.history_link(notion, "Jim")
+    if history_url:
+        notes += [(" · ", None), ("Megibow history", history_url)]
+    out = v3.write(notion, block_id, stamp, v3.table(proj["weeks"], proj["counts"], proj["cumulative"], proj.get("typed")), notes, live)
     out["summary_written"] = v3.write_summary(notion, out.pop("summary_page"), v3.summary("Jim", stamp, proj["weeks"], proj["counts"], proj["cumulative"], lines + [review_line]), live)
     return out | {"layout": "v3"}
 
