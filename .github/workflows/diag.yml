@@ -51,9 +51,13 @@ jobs:
             b65dd2fc-2573-4bda-9e80-b4db015edec6 > LIFEOS_ACQ_SSH_KNOWN_HOSTS
             7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
             6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
+      - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
+        uses: ./.github/actions/bws-plain
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          names: LIFEOS_ACQ_SSH_PORT
       - name: Diagnostic (read-only; counts only)
         env:
-          LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
           STAGE: ${{ inputs.stage }}
           SCHEMA_CONFIRM: ${{ inputs.confirm }}
           ALERTS_MESSAGE_REF: ${{ inputs.message_ref }}
@@ -90,10 +94,15 @@ jobs:
             6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
             08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET
             672a44e9-235f-4121-a99d-b4db015a6987 > GMAIL_OAUTH_REFRESH_TOKEN
+            8657d1ed-2cde-4298-bd62-b50301523e01 > GMAIL_OAUTH_CLIENT_ID
+      - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
+        uses: ./.github/actions/bws-plain
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          names: LIFEOS_ACQ_SSH_PORT
       - name: Newsletter trace (read-only; counts only)
         env:
-          LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
-          GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
+          GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_trace.outputs.GMAIL_OAUTH_CLIENT_ID }}
           STAGE: ${{ inputs.stage }}
           ALERTS_MESSAGE_REF: ${{ inputs.message_ref }}
         run: python -m lifeos.run "$STAGE"
@@ -201,9 +210,13 @@ jobs:
             7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
             6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
             53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN
+      - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
+        uses: ./.github/actions/bws-plain
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          names: LIFEOS_ACQ_SSH_PORT
       - name: Private report (counts and fixed codes only; writes the one Notion page only with confirm = REPORT)
         env:
-          LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
           NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}
           STAGE: ${{ inputs.stage }}
           REPORT_CONFIRM: ${{ inputs.confirm }}

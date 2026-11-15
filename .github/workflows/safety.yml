@@ -14,10 +14,6 @@ on:
         type: choice
         options: ["all", "sql-smoke", "fit-golden", "fit-capture"]
         default: "all"
-env:
-  ALERTS_MUTED_UNTIL: ${{ vars.ALERTS_MUTED_UNTIL }}      # LIFE-73: silences every alert channel until this time (lifeos.platform.alerts.muted); empty = not muted
-  ALERTS_ENABLED: ${{ vars.ALERTS_ENABLED }}      # LIFE-75: the master switch from the Alert settings page; anything but "on" means alerts are OFF (lifeos.platform.alert_settings)
-  ALERT_SETTINGS: ${{ vars.ALERT_SETTINGS }}      # LIFE-75: per-alert channel choices from the Alert settings page; empty = the registry defaults
 permissions:
   contents: read
 concurrency:
@@ -28,7 +24,6 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}         # deliberately not in Bitwarden; the other values come from the Bitwarden step below
       STAGE: ${{ inputs.stage || 'all' }}
     steps:
       - name: Checkout the exact commit (own git fetch; the token is passed once and never stored)
@@ -58,6 +53,11 @@ jobs:
             7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
             6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
             83c553e9-23a6-45aa-9006-b4db015f00ac > NTFY_TOPIC
+      - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
+        uses: ./.github/actions/bws-plain
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT
       - id: smoke
         continue-on-error: true
         name: SQL smoke test (real driver, real database; EXPLAIN only)

@@ -80,6 +80,7 @@ The job timeouts in `.github/workflows` change in one separate workflow pull req
 | `suite-timing.yml` | `report` | 5 | 5 | 4 | 11 | 18 | kept: only 4 measured runs (fewer than 10), slowest 18 s |
 | `suite-timing.yml` | `timing` | 5 | 5 | 40 | 95 | 135 | twice the slowest run (135 s) rounded up to whole minutes, 5-minute floor |
 | `watchdog.yml` | `watch` | 3 | 3 | 100 | 9 | 34 | already under the 5-minute floor; slowest run 34 s |
+| `watchdog.yml` | `alarm` | 3 | 3 | 0 | n/a | n/a | new in LIFE-704: two GitHub API calls; kept at the 3-minute limit it is created with |
 
 ### At their limit (for Jim)
 

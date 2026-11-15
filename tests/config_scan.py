@@ -87,6 +87,12 @@ def workflow_sets(root=ROOT):
         for name in keys:
             if NAME.match(name):
                 found.setdefault(name, []).append(path.name)
+    loader = root / ".github" / "actions" / "bws-plain" / "plain.py"          # LIFE-704: the plain switches are exported to the job environment by this loader, not by an env: block
+    if loader.exists():
+        for name in re.findall(r'^    "([A-Z0-9_]+)": "[0-9a-f-]{36}",$', loader.read_text(), re.M) + ["LIVE"]:
+            if name in ("V7_LIVE", "V7_CLOUD_FIT_SCHEDULED"):        # read only inside workflow expressions (V7_LIVE becomes LIVE), never by code
+                continue
+            found.setdefault(name, []).append("bws-plain/plain.py")
     return found
 
 

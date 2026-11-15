@@ -19,10 +19,6 @@ on:
         type: choice
         options: ["normal", "fail"]
         default: "normal"
-env:
-  ALERTS_MUTED_UNTIL: ${{ vars.ALERTS_MUTED_UNTIL }}      # LIFE-73: silences every alert channel until this time (lifeos.platform.alerts.muted); empty = not muted
-  ALERTS_ENABLED: ${{ vars.ALERTS_ENABLED }}      # LIFE-75: the master switch from the Alert settings page; anything but "on" means alerts are OFF (lifeos.platform.alert_settings)
-  ALERT_SETTINGS: ${{ vars.ALERT_SETTINGS }}      # LIFE-75: per-alert channel choices from the Alert settings page; empty = the registry defaults
 permissions:
   contents: read
   actions: read
@@ -50,6 +46,11 @@ jobs:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           secrets: |
             83c553e9-23a6-45aa-9006-b4db015f00ac > NTFY_TOPIC
+      - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
+        uses: ./.github/actions/bws-plain
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS
       - name: Stale-pipeline check (counts only; no job data; the only secret is the push topic)
         run: python3 -m lifeos.platform.gate --watch
         env:
@@ -59,3 +60,35 @@ jobs:
         env:
           TEST_SEVERITY: ${{ inputs.test_severity }}
         run: python3 -m lifeos.platform.alerts push --key test_push --severity "$TEST_SEVERITY" --title "V7 test push ($TEST_SEVERITY)" --body "If this appeared on your lock screen, alerts work. If it is only in the ntfy app, check the phone's notification settings."
+  alarm:
+    # LIFE-704 step 2: the alarm must not depend on the systems it alarms about. The watch job needs Bitwarden for the push topic and fails (no fallback, D209) when Bitwarden cannot be read, so on its own it
+    # cannot tell Jim that pushes are down. This job reads NOTHING from Bitwarden or Notion: it uses only the run's own GitHub token, and opens ONE GitHub issue (label watchdog-failed) while the watch job fails
+    # for any reason (GitHub notifies Jim), and closes it again after the next successful watch run. Names only: it never reads or prints a value.
+    needs: [watch]
+    if: ${{ always() && (needs.watch.result == 'failure' || needs.watch.result == 'success') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions:
+      issues: write
+    steps:
+      - name: Open the watchdog-failed issue while the watch job fails; close it when the watch job passes (GitHub token only; no Bitwarden, no Notion)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          WATCH_RESULT='${{ needs.watch.result }}'
+          RUN_URL='${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+          TEST_RUN='${{ inputs.bws_test == 'fail' && ' (TEST RUN, Bitwarden forced unreadable)' || '' }}'
+          open=$(gh api "repos/$GITHUB_REPOSITORY/issues?state=open&labels=watchdog-failed&per_page=1" --jq '.[0].number // empty')
+          if [ "$WATCH_RESULT" = "failure" ]; then
+            body="The watchdog job failed. If Bitwarden cannot be read, the phone push topic is unavailable and no push can be sent, so this issue is the alert. Run: $RUN_URL. It closes itself after the next passing watchdog run."
+            if [ -z "$open" ]; then
+              gh api "repos/$GITHUB_REPOSITORY/issues" -f title="V7 watchdog failed, pushes may be down$TEST_RUN" -f body="$body" -f "labels[]=watchdog-failed" --jq '"WATCHDOG_ALERT opened issue " + (.number|tostring)'
+            else
+              gh api "repos/$GITHUB_REPOSITORY/issues/$open/comments" -f body="Still failing. $body" --jq '"WATCHDOG_ALERT commented on issue " + (.issue_url|split("/")|last)'
+            fi
+          elif [ -n "$open" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/$open" -f state=closed -f state_reason=completed --jq '"WATCHDOG_ALERT closed issue " + (.number|tostring)'
+          else
+            echo "WATCHDOG_ALERT none open"
+          fi

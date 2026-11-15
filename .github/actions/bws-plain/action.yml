@@ -1,0 +1,18 @@
+name: Plain switches from Bitwarden
+description: "LIFE-704. Reads an ALLOWLIST of non-secret switches and numbers (V7_LIVE, ALERTS_*, V7_CLOUD_FIT*, LIFEOS_ACQ_SSH_PORT) from Bitwarden WITHOUT masking them (bws-load masks every value, and a masked 'true' or '22' blanks every job output that contains it: the LIFE-703 outage). Runs the same fingerprint-checked helper with its output captured, validates every value, exports only the validated value to the job environment. Fixed fail modes: V7_LIVE dry run, V7_CLOUD_FIT* off, ALERTS_* on with defaults, LIFEOS_ACQ_SSH_PORT fails the job with a fixed code. Names and fixed codes only in the log."
+inputs:
+  access_token: {description: "The Bitwarden machine token (a GitHub secret)", required: true}
+  names: {description: "Comma list of allowlisted names; LIVE is the derived live decision (see live_mode)", required: true}
+  live_mode: {description: "For LIVE only: 'true' or 'false' = a person's input decides (Bitwarden is not read for it); 'follow' = V7_LIVE decides, dry run if it cannot be read", default: "false"}
+  test_unreadable: {description: "Test only. 'fail' behaves as if Bitwarden could not be read; anything else is normal", default: "normal"}
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        INPUT_ACCESS_TOKEN: ${{ inputs.access_token }}
+        PLAIN_NAMES: ${{ inputs.names }}
+        PLAIN_LIVE_MODE: ${{ inputs.live_mode }}
+        PLAIN_TEST_UNREADABLE: ${{ inputs.test_unreadable }}
+        PLAIN_HELPER: ${{ github.action_path }}/../sm-action/target/x86_64-unknown-linux-gnu/release/sm-action
+      run: python3 "$GITHUB_ACTION_PATH/plain.py"

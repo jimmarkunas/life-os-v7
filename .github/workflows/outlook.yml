@@ -32,11 +32,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      OUTLOOK_CLIENT_ID: ${{ secrets.OUTLOOK_CLIENT_ID }}
       OUTLOOK_ACCOUNT: ${{ inputs.account }}
       OUTLOOK_REPLACE: ${{ inputs.replace }}
       OUTLOOK_WRITE: ${{ inputs.action == 'auth-write' }}
-      LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
     steps:
       - name: Checkout the exact commit (own git fetch; the token is passed once and never stored)
         run: |
@@ -63,6 +61,12 @@ jobs:
             b65dd2fc-2573-4bda-9e80-b4db015edec6 > LIFEOS_ACQ_SSH_KNOWN_HOSTS
             7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
             6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
+            2b2c73a9-7a1e-44b9-95f0-b50301509b09 > OUTLOOK_CLIENT_ID
+      - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
+        uses: ./.github/actions/bws-plain
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          names: LIFEOS_ACQ_SSH_PORT
       - name: Outlook sign-in (live only)
         if: ${{ inputs.action == 'auth' || inputs.action == 'auth-write' }}
         env:
@@ -70,6 +74,7 @@ jobs:
           LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_DB_PASSWORD }}
           LIFEOS_ACQ_DB_USER: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_DB_USER }}
           LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_SSH_HOST }}
+          OUTLOOK_CLIENT_ID: ${{ steps.bws_outlook.outputs.OUTLOOK_CLIENT_ID }}
           LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
           LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_SSH_USER }}
@@ -81,6 +86,7 @@ jobs:
           LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_DB_PASSWORD }}
           LIFEOS_ACQ_DB_USER: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_DB_USER }}
           LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_SSH_HOST }}
+          OUTLOOK_CLIENT_ID: ${{ steps.bws_outlook.outputs.OUTLOOK_CLIENT_ID }}
           LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
           LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_SSH_USER }}

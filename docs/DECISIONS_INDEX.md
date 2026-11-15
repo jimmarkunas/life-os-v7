@@ -254,3 +254,4 @@ This index is checked by a test: add a line here with every new decision.
 - D253 — The readiness gate runs on an Atlassian MCP read and only Jim, in chat, can waive it for one task (2026-11-08, Jim; LIFE-365)
 - D254 — An edit in a machine-written section is preserved and repaired, never a permanent stop (2026-11-13, Jim; LIFE-658)
 - D255 — A no-board Scale-Up sponsor's job that passes the Scale-Up rules is posted from its listing page, as Review (2026-11-15, Jim; LIFE-723)
+- D256 — Credentials and safety values are read from Bitwarden by the workflows; plain switches are read without masking, with fixed fail modes (2026-11-15, Jim; LIFE-704)
