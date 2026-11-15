@@ -299,6 +299,22 @@ jobs:
           JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_jira.outputs.NOTION_JIRA_TOKEN }}
         run: python -m lifeos.run accountability-review $([ "$LIVE" = "true" ] && echo --live)
+      - id: acart
+        continue-on-error: true
+        name: V3 Knowledge center (LIFE-673; the callouts on Jim & Matt V3 are written only when live; counts only)
+        if: ${{ inputs.jira == 'card' || inputs.jira == 'report' || needs.gate.outputs.due_jira == 'true' }}
+        env:
+          JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
+          JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
+          NOTION_JIRA_TOKEN: ${{ steps.bws_jira.outputs.NOTION_JIRA_TOKEN }}
+        run: python -m lifeos.run accountability-artifacts $([ "$LIVE" = "true" ] && echo --live)
+      - id: acchange
+        continue-on-error: true
+        name: V3 Canon / Change Log (LIFE-673; the callouts on Jim & Matt V3 are written only when live; counts only)
+        if: ${{ inputs.jira == 'card' || inputs.jira == 'report' || needs.gate.outputs.due_jira == 'true' }}
+        env:
+          NOTION_JIRA_TOKEN: ${{ steps.bws_jira.outputs.NOTION_JIRA_TOKEN }}
+        run: python -m lifeos.run accountability-changelog $([ "$LIVE" = "true" ] && echo --live)
       - id: jprobe
         continue-on-error: true
         name: Jira layout probe (read-only; counts only)
@@ -316,7 +332,7 @@ jobs:
           JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
         run: python -m lifeos.run jira-rollover $([ "$LIVE" = "true" ] && echo --live)
       - name: Jira warning (does not fail the run)
-        if: ${{ always() && (steps.jsnap.outcome == 'failure' || steps.jcard.outcome == 'failure' || steps.acweek.outcome == 'failure' || steps.acgoals.outcome == 'failure' || steps.acreview.outcome == 'failure' || steps.jrollauto.outcome == 'failure' || steps.jrollwatch.outcome == 'failure' || steps.jroll.outcome == 'failure' || steps.jprobe.outcome == 'failure') }}
+        if: ${{ always() && (steps.jsnap.outcome == 'failure' || steps.jcard.outcome == 'failure' || steps.acweek.outcome == 'failure' || steps.acgoals.outcome == 'failure' || steps.acreview.outcome == 'failure' || steps.acart.outcome == 'failure' || steps.acchange.outcome == 'failure' || steps.jrollauto.outcome == 'failure' || steps.jrollwatch.outcome == 'failure' || steps.jroll.outcome == 'failure' || steps.jprobe.outcome == 'failure') }}
         run: echo "::warning title=Jira::a Jira step failed; the Jobs pipeline is unaffected"
       - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}

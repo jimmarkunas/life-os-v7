@@ -71,6 +71,8 @@ STAGES = {
     "accountability-week": lazy("lifeos.accountability.week"),            # LIFE-671: "This week" for Jim and Matt on Jim & Matt V3, read-only from Jira
     "accountability-goals": lazy("lifeos.accountability.goals"),          # LIFE-671: Quarterly goals, done / all per quarter epic
     "accountability-review": lazy("lifeos.accountability.review"),        # LIFE-671: Quarterly review; past quarters are written once
+    "accountability-artifacts": lazy("lifeos.accountability.artifacts"),    # LIFE-673: Knowledge center, Jira issues labelled artifact, as title and link
+    "accountability-changelog": lazy("lifeos.accountability.changelog"),    # LIFE-673: Canon / Change Log; one dated line when a quarter begins, nothing else is ever edited
     "agenda-snapshot": lazy("lifeos.agenda.snapshot"),
     "agenda-card": lazy("lifeos.agenda.card"),
     "fit-profile-sync": lazy("lifeos.jobs.fit.profile_sync"),     # Fit profile: the approved Notion block into the one Bitwarden extra secret (isolated job, profile-sync.yml)

@@ -2,6 +2,7 @@
 
 A quarter is a calendar quarter; its epics carry the label goals-<year>-q<n> (LIFE-670). Because an epic keeps its older Done tasks, a quarter counts only tasks that are open now or were
 completed inside that quarter. Output is plain dicts for the renderers; ticket text goes to Notion only, never to a log."""
+import json
 import re
 from datetime import date, timedelta
 
@@ -12,6 +13,7 @@ WEEK_FIELDS = "summary,status,duedate,issuetype"
 EPIC_FIELDS = "summary"
 CHILD_FIELDS = "status,parent,resolutiondate,issuetype"
 PAGE, MAX_PAGES = 100, 30
+URL = re.compile(r"https?://[^\s\"\\<>)]+")
 TAIL = re.compile(r"\s+Q[1-4]\s+\d{4}$")
 
 
@@ -30,17 +32,32 @@ def search(jira, jql, fields):
     raise JiraError("ACCOUNTABILITY_JIRA_TOO_MANY_PAGES")
 
 
+def first_wednesday(year, month):
+    day = date(year, month, 1)
+    return day + timedelta(days=(2 - day.weekday()) % 7)
+
+
+def starts(year):
+    """{n: first day of quarter n}: a quarter begins on the first Wednesday of January, April, July and October (Jim, Nov 15 2026), when Jim and Matt create its epics."""
+    return {n: first_wednesday(year, 3 * n - 2) for n in (1, 2, 3, 4)}
+
+
 def quarter(today):
-    """-> (year, n, first day, last day) of the calendar quarter holding `today`."""
-    n = (today.month - 1) // 3 + 1
-    first = date(today.year, 3 * n - 2, 1)
-    nxt = date(today.year + (n == 4), 1 if n == 4 else 3 * n + 1, 1)
-    return today.year, n, first, nxt - timedelta(days=1)
+    """-> (year, n, first day, last day) of the quarter `today` falls in; before January's first Wednesday it is still last year's quarter 4."""
+    for year in (today.year, today.year - 1):
+        for n in (4, 3, 2, 1):
+            if starts(year)[n] <= today:
+                return year, n, starts(year)[n], _next_start(year, n) - timedelta(days=1)
+    raise ValueError("date out of range")
+
+
+def _next_start(year, n):
+    return starts(year)[n + 1] if n < 4 else starts(year + 1)[1]
 
 
 def quarter_bounds(year, n):
     """-> (first day, last day) of quarter n of `year`."""
-    return quarter(date(year, 3 * n - 2, 1))[2:]
+    return starts(year)[n], _next_start(year, n) - timedelta(days=1)
 
 
 def previous(year, n):
@@ -127,3 +144,36 @@ def week(jira, project, today):
         fields = issue.get("fields") or {}
         rows.append({"key": issue["key"], "summary": fields.get("summary") or "", "status": (fields.get("status") or {}).get("name") or "Unknown", "due": fields.get("duedate")})
     return {"open": rows, "done": len(done), "week_end": sunday}
+
+
+def artifacts(jira, project):
+    """-> [{key, title, url}] for the project's issues labelled `artifact`, whatever their status (a finished tracker is still an artifact). The link is the issue's first web link,
+    else the first address in its description; None when there is neither (the Knowledge center lists those as missing a link)."""
+    out = []
+    for issue in search(jira, f'project = {project} AND labels = "artifact" ORDER BY key ASC', "summary,description"):
+        fields = issue.get("fields") or {}
+        links = jira.get(f"/rest/api/3/issue/{issue['key']}/remotelink")
+        urls = [((entry or {}).get("object") or {}).get("url") for entry in links] if isinstance(links, list) else []
+        found = next((u for u in urls if u), None) or next(iter(URL.findall(json.dumps(fields.get("description") or ""))), None)
+        out.append({"key": issue["key"], "title": fields.get("summary") or issue["key"], "url": found})
+    return out
+
+
+TODO_FIELDS = "summary,status,parent,issuetype"
+
+
+def todos(jira, project):
+    """-> [{key, summary, status, parent, subtask}] for the project's tasks and sub-tasks in the current sprint (a week, Monday to Sunday), done ones included. A project without
+    sprints (HTTP 400 on the sprint clause) has no to-do list."""
+    try:
+        found = search(jira, f"project = {project} AND issuetype != Epic AND sprint in openSprints() ORDER BY key ASC", TODO_FIELDS)
+    except JiraError as error:
+        if not str(error).endswith("_400"):
+            raise
+        return []
+    out = []
+    for issue in found:
+        fields = issue.get("fields") or {}
+        out.append({"key": issue["key"], "summary": fields.get("summary") or "", "status": (fields.get("status") or {}).get("name") or "Unknown",
+                    "parent": (fields.get("parent") or {}).get("key"), "subtask": bool((fields.get("issuetype") or {}).get("subtask"))})
+    return out

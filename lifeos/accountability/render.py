@@ -68,3 +68,39 @@ def progress(lanes):
 
 def closing(year, n, lanes):
     return f"Q{n} {year} — closed: " + progress(lanes)
+
+
+NO_ARTIFACTS = "Nothing yet. An issue labelled artifact in Jira shows up here with its link."
+MAX_ARTIFACTS = 25
+
+
+def artifact_lines(items):
+    """-> lines: "title — link" for each artifact with a link, then "Missing link: KEY title" for those without. None at all gives the plain empty line."""
+    if not items:
+        return [NO_ARTIFACTS]
+    linked = [f"{i['title']} — {i['url']}" for i in items if i["url"]]
+    missing = [f"Missing link: {i['key']} {i['title']}" for i in items if not i["url"]]
+    lines = (linked + missing)[:MAX_ARTIFACTS]
+    return lines + ([f"…and {len(linked) + len(missing) - MAX_ARTIFACTS} more in Jira"] if len(linked) + len(missing) > MAX_ARTIFACTS else [])
+
+
+def changelog_line(first, year, n):
+    return f"{first.strftime('%b')} {first.day} {first.year} — Q{n} {year} began (first Wednesday of the quarter): Jim and Matt create the quarter's epics, labelled goals-{year}-q{n}"
+
+
+TODO_SHOWN = 20
+
+
+def todo_lines(items):
+    """The current sprint's tasks, each followed by its sub-tasks (indented); a sub-task whose task is not in the sprint comes after them. Nothing yet is said plainly."""
+    if not items:
+        return ["To-do lists, this week's sprint: nothing in a sprint yet."]
+    tasks = [i for i in items if not i["subtask"]]
+    keys = {i["key"] for i in tasks}
+    ordered = []
+    for task in tasks:
+        ordered.append((task, False))
+        ordered += [(i, True) for i in items if i["subtask"] and i["parent"] == task["key"]]
+    ordered += [(i, True) for i in items if i["subtask"] and i["parent"] not in keys]
+    lines = [f"To-do lists, this week's sprint ({len(items)}):"] + [("  - " if sub else "") + f"{i['key']} {i['summary']} ({i['status']})" for i, sub in ordered[:TODO_SHOWN]]
+    return lines + ([f"…and {len(ordered) - TODO_SHOWN} more in Jira"] if len(ordered) > TODO_SHOWN else [])
