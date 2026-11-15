@@ -32,7 +32,7 @@ jobs:
         with:
           wait_seconds: "200"
       - id: bws_hermes
-        name: Load the Jira credentials from Bitwarden (exactly these 2; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        name: Load the Jira credentials and the stage's Buzz values from Bitwarden (exactly these 5; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
@@ -40,6 +40,9 @@ jobs:
           secrets: |
             3fa6f4f4-bd6d-45e7-8f2c-b4db015ec0c3 > JIRA_API_TOKEN
             e6466367-9a55-4899-ae1c-b4db015ec49f > JIRA_EMAIL
+            486e59dc-2cfe-4ce1-80e4-b503015b80b0 > BUZZ_STAGE_HERMES_PUBKEY
+            f92e4a37-0289-40a6-b31f-b503015f8824 > BUZZ_STAGE_KEY
+            6c067b5b-b2c6-4f6b-b6f2-b503015a2e3f > BUZZ_URL_LIFE_OS
       - id: bws_settings
         continue-on-error: true
         name: Notion token from Bitwarden so this job can read the V7 settings page (LIFE-703; read only; if it fails the GitHub values stay as they are)
@@ -55,9 +58,9 @@ jobs:
           JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
           JIRA_API_TOKEN: ${{ steps.bws_hermes.outputs.JIRA_API_TOKEN }}
           JIRA_EMAIL: ${{ steps.bws_hermes.outputs.JIRA_EMAIL }}
-          BUZZ_URL_LIFE_OS: ${{ secrets.BUZZ_URL_LIFE_OS }}
+          BUZZ_URL_LIFE_OS: ${{ steps.bws_hermes.outputs.BUZZ_URL_LIFE_OS }}
           BUZZ_STAGE_CHANNEL: ${{ secrets.BUZZ_STAGE_CHANNEL }}
-          BUZZ_STAGE_HERMES_PUBKEY: ${{ secrets.BUZZ_STAGE_HERMES_PUBKEY }}
-          BUZZ_STAGE_KEY: ${{ secrets.BUZZ_STAGE_KEY }}
+          BUZZ_STAGE_HERMES_PUBKEY: ${{ steps.bws_hermes.outputs.BUZZ_STAGE_HERMES_PUBKEY }}
+          BUZZ_STAGE_KEY: ${{ steps.bws_hermes.outputs.BUZZ_STAGE_KEY }}
           LIVE: ${{ inputs.live }}
         run: python -m lifeos.run hermes $([ "$LIVE" = "true" ] && echo --live)

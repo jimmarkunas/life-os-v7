@@ -317,7 +317,7 @@ class Dormant(unittest.TestCase):
         workflows = [p.name for p in (self.ROOT / ".github/workflows").glob("*.y*ml") if "V7_CLOUD_FIT" in p.read_text()]
         self.assertEqual(workflows, ["hourly.yml"])                                                        # D214: only the tick reads the switch, from the repository variable
         hourly = (self.ROOT / ".github/workflows/hourly.yml").read_text()
-        self.assertEqual(re.findall(r"V7_CLOUD_FIT: (\S.*?\}\})", hourly), ["${{ vars.V7_CLOUD_FIT || 'off' }}"])     # off unless Jim sets the variable (G6); never a dispatch input or a literal
+        self.assertEqual(re.findall(r"V7_CLOUD_FIT: (\S.*?\}\})", hourly), ["${{ env.V7_CLOUD_FIT || 'off' }}"])     # off unless Jim sets the variable (G6); never a dispatch input or a literal
         self.assertEqual(len(re.findall(r"vars\.V7_CLOUD_FIT == '(shadow|canary)'", hourly)), 0)         # LIFE-85: the tailnet join no longer depends on the Cloud Fit mode (the store fallback needs it every run);
         self.assertIn("LIFE-85: the store's Oracle fallback needs the tailnet on every run", hourly)          # a model call still needs V7_CLOUD_FIT or a Jim-set batch, checked by the stage itself
         # LIFE-41 (TL 10517/10524): the brief reference is masked. A repository variable is printed unmasked in the step's env header of a public repo's

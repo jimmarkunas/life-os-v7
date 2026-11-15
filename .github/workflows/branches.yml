@@ -36,10 +36,22 @@ jobs:
           git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --tags origin '+refs/heads/*:refs/remotes/origin/*'
           git checkout -q -B main origin/main   # main's code decides, never the pull request's
       - uses: ./.github/actions/python
+      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
+        uses: ./.github/actions/bws-helper
+        with:
+          wait_seconds: "60"
+      - id: bws_archive
+        name: Load the branch archive token from Bitwarden (LIFE-704; masked step output only, nothing exported job-wide; the job fails if retrieval fails, no fallback; nothing is archived or deleted then)
+        uses: ./.github/actions/bws-load
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            c7b3ff1a-e0d9-456a-b8c6-b5030158f900 > V7_ARCHIVE_TOKEN
       - name: Archive the merged branch (tag in life-os-automation, read back) and delete it only when safe
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          V7_ARCHIVE_TOKEN: ${{ secrets.V7_ARCHIVE_TOKEN }}
+          V7_ARCHIVE_TOKEN: ${{ steps.bws_archive.outputs.V7_ARCHIVE_TOKEN }}
         run: python -m lifeos.platform.branches archive
   report:
     if: ${{ github.event_name != 'pull_request' }}

@@ -116,7 +116,8 @@ class WorkflowsPassTheSwitchAndTheSettings(unittest.TestCase):
             text = path.read_text()
             for name in ("ALERTS_MUTED_UNTIL", "ALERTS_ENABLED", "ALERT_SETTINGS"):
                 with self.subTest(workflow=path.name, variable=name):
-                    self.assertIn(f"{name}: ${{{{ vars.{name} }}}}", text)
+                    self.assertRegex(text, rf"uses: \./\.github/actions/bws-plain\n\s+with:\n\s+access_token: .*\n\s+names: [A-Z_,]*\b{name}\b")      # LIFE-704: read from Bitwarden by the plain-switch loader (alerts fail open there), no longer from a GitHub variable
+                    self.assertNotIn(f"vars.{name}", text)
 
 
 if __name__ == "__main__":
