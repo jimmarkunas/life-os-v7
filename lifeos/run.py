@@ -68,6 +68,7 @@ STAGES = {
     "jira-rollover-watch": lazy("lifeos.jira.watch"),
     "jira-probe": lazy("lifeos.jira.snapshot", "probe"),
     "jira-card": lazy("lifeos.jira.card"),
+    "inbox-schema-check": lazy("lifeos.inbox.schema"),                    # LIFE-712: read-only check of the V7 database for the Action Inbox tables (counts and flags only); creates nothing
     "accountability-week": lazy("lifeos.accountability.week"),            # LIFE-671: "This week" for Jim and Matt on Jim & Matt V3, read-only from Jira
     "accountability-goals": lazy("lifeos.accountability.goals"),          # LIFE-671: Quarterly goals, done / all per quarter epic
     "accountability-review": lazy("lifeos.accountability.review"),        # LIFE-671: Quarterly review; past quarters are written once
