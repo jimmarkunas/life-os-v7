@@ -1,7 +1,7 @@
 """LIFE-528 step 0: the deployed-version drift check. A GitHub merge does not update the Oracle VM, so the watchdog compares each repo-owned deployed file with `main`.
 
 For every surface it records: the source blob on `main` (git's own sha1 of the file), the hash of the installed file, the systemd unit that activates it and that unit's state.
-DEPLOYED needs all three to agree and be known: installed hash equals main, and the unit is active. A piece that cannot be read (GitHub, the file, systemd) is UNKNOWN, never DEPLOYED.
+DEPLOYED needs all three to agree and be known: installed hash equals main, and the unit is active (LIFE-725: where the caller cannot ask systemd, enabled; the row then says UNIT_STATE_FROM_ENABLED, because a stopped but enabled unit is not caught). A piece that cannot be read (GitHub, the file, systemd) is UNKNOWN, never DEPLOYED.
 A hash that differs, a file that is gone, or a unit that is not running is DRIFT. Counts, names of repo files and fixed words only: no file content, no credential.
 
 The ticker's watch command calls `incident_signal` once per run and opens or closes one quiet issue through the existing incident helper (alert key `deploy_drift`, INFO, phone only).
@@ -10,6 +10,8 @@ import hashlib
 from typing import NamedTuple
 
 DEPLOYED, DRIFT, UNKNOWN = "DEPLOYED", "DRIFT", "UNKNOWN"
+ACTIVE, ENABLED = "active", "enabled"       # a unit state: systemd answered "active", or (inside the ticker's sandbox, which cannot reach systemd) its enablement link exists
+UNIT_STATE_FROM_ENABLED = "UNIT_STATE_FROM_ENABLED"       # LIFE-725 `why` word: the unit counted as running only because it is enabled; a stopped but enabled timer would not be caught
 MISSING = object()          # the read said "no such file"; an unreadable file is None instead
 
 
@@ -68,7 +70,7 @@ def classify(expected, installed, unit_state):
         return DRIFT
     if unit_state is None:
         return UNKNOWN
-    return DEPLOYED if unit_state == "active" else DRIFT
+    return DEPLOYED if unit_state in (ACTIVE, ENABLED) else DRIFT
 
 
 def check(expected_for, read, unit_state_for, surfaces=SURFACES):
@@ -88,9 +90,11 @@ def check(expected_for, read, unit_state_for, surfaces=SURFACES):
         why = []
         expected, installed, unit_state = safe(why, expected_for, s.repo_path), safe(why, read, s.installed), safe(why, unit_state_for, s.unit)
         state = classify(expected, installed, unit_state)
-        if state == UNKNOWN and not why:
+        if state == DEPLOYED and unit_state == ENABLED:
+            why.append(UNIT_STATE_FROM_ENABLED)                                # decided, but by the enablement link, not by asking systemd
+        elif state == UNKNOWN and not why:
             why.append(EXPECTED_UNREADABLE if expected is None else INSTALLED_UNREADABLE if installed is None else UNIT_UNREADABLE)
-        rows.append({"surface": s.name, "state": state, "unit": s.unit, "unit_state": unit_state or UNKNOWN, "why": why[0] if state == UNKNOWN and why else "",
+        rows.append({"surface": s.name, "state": state, "unit": s.unit, "unit_state": unit_state or UNKNOWN, "why": why[0] if why and (state == UNKNOWN or why[0] == UNIT_STATE_FROM_ENABLED) else "",
                      "installed_hash": blob_sha(installed)[:12] if isinstance(installed, bytes) else ("missing" if installed is MISSING else UNKNOWN)})
     return rows
 
@@ -118,5 +122,7 @@ def explain(rows):
             groups.setdefault(r.get("why") or UNKNOWN, []).append(r["surface"])
     undecided = [f"{code}:{len(names)}({','.join(names[:3])}{',...' if len(names) > 3 else ''})" for code, names in sorted(groups.items())]
     signal = incident_signal(rows)
+    enabled_only = sum(1 for r in rows if r.get("why") == UNIT_STATE_FROM_ENABLED)
     return (f"drift: deployed={counts[DEPLOYED]} drift={counts[DRIFT]} unknown={counts[UNKNOWN]} signal={'open' if signal else 'recovered' if signal is False else 'unchanged'}"
-            + (" drifted=" + ",".join(drifted) if drifted else "") + (" undecided=" + ";".join(undecided) if undecided else ""))
+            + (" drifted=" + ",".join(drifted) if drifted else "") + (" undecided=" + ";".join(undecided) if undecided else "")
+            + (f" {UNIT_STATE_FROM_ENABLED}={enabled_only} (enabled, not proof the unit is running)" if enabled_only else ""))
