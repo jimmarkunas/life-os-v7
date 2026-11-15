@@ -101,7 +101,7 @@ class FailClosed(unittest.TestCase):
 
     def test_an_incomplete_listing_is_an_error_not_a_smaller_list(self):
         result = run([jira_src("personal", rows={"issues": []}), cal_src("personal")])
-        self.assertEqual(next(h for h in result.health if h.source == "jira").reason, "inboxerror")
+        self.assertEqual(next(h for h in result.health if h.source == "jira").reason, "listing_incomplete")
         self.assertEqual(len(result.records), 1)
 
     def test_a_malformed_row_degrades_the_source_and_keeps_the_good_rows(self):
@@ -137,7 +137,7 @@ class NoLiveRead(unittest.TestCase):
     def test_without_an_injected_reader_nothing_is_fetched_and_no_client_is_built(self):
         with mock.patch.object(Jira, "from_env", side_effect=AssertionError), mock.patch.object(GoogleCalendar, "from_env", side_effect=AssertionError):
             result = run([sources.JiraSource("personal", "jim-personal", "jim", 7, BASE), sources.CalendarSource("personal", "jim-personal", "jim", F.NOW)])
-        self.assertEqual([(h.state, h.reason) for h in result.health], [("unavailable", "inboxerror")] * 2)
+        self.assertEqual([(h.state, h.reason) for h in result.health], [("unavailable", "live_reads_not_authorized")] * 2)
         self.assertEqual(result.records, ())
         self.assertFalse(sources.LIVE_READS_ENABLED)
 

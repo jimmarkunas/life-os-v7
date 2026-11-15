@@ -40,8 +40,8 @@ def build_inbox(sources, principal, now):
             continue
         try:
             raws = list(src.fetch(grant.credential_ref))
-        except Exception as error:                                                          # noqa: BLE001 - a connector failure is shown as its type only, never its message
-            health.append(SourceHealth(src.source, src.workspace, src.account, "unavailable", type(error).__name__.lower()))
+        except Exception as error:                                                          # noqa: BLE001 - a connector failure is shown as its type (or an InboxError's fixed reason word) only, never its message
+            health.append(SourceHealth(src.source, src.workspace, src.account, "unavailable", error.reason if isinstance(error, InboxError) else type(error).__name__.lower()))
             continue
         kept, rejected = [], 0
         for raw in raws:
