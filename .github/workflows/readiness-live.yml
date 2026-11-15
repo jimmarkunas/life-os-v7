@@ -40,9 +40,24 @@ jobs:
           secrets: |
             3fa6f4f4-bd6d-45e7-8f2c-b4db015ec0c3 > JIRA_API_TOKEN
             e6466367-9a55-4899-ae1c-b4db015ec49f > JIRA_EMAIL
+      - id: bws_settings
+        continue-on-error: true
+        name: Notion token from Bitwarden so this job can read the V7 settings page (LIFE-703; read only; if it fails the GitHub value stays as it is)
+        uses: ./.github/actions/bws-load
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
+      - name: V7 settings page for the Jira address (LIFE-703; names and counts only; an unreadable page changes nothing)
+        continue-on-error: true
+        env:
+          NOTION_JIRA_TOKEN: ${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+        run: python -m lifeos.platform.settings
       - name: Readiness against live Jira (the key, then the negative control; the leak check runs before anything is printed)
         env:
-          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_BASE_URL: ${{ env.JIRA_BASE_URL || secrets.JIRA_BASE_URL }}
           JIRA_API_TOKEN: ${{ steps.bws_readiness.outputs.JIRA_API_TOKEN }}
           JIRA_EMAIL: ${{ steps.bws_readiness.outputs.JIRA_EMAIL }}
           KEY: ${{ inputs.key }}
