@@ -131,6 +131,16 @@ Jim agreed to start the Notion table fresh at a cut-over Monday and seed the Cum
 - The sheet's weekly columns are labelled by sync dates (Wednesday to Thursday), not Monday-to-Sunday weeks, and no event-level data exists, so old weeks cannot be re-bucketed. The sheet stays as a read-only archive.
 - Trend warnings stay off until four trustworthy completed weeks exist (the page's rule), which is about a month after cut-over. Evidence and forward-pipeline warnings work from week one.
 
+### 8a. Weekly history database (LIFE-687, Nov 15 2026; supersedes the legacy-total rule above for Jim's V3 callout)
+
+Jim's and Matt's V3 callouts show real history. Each person has a Notion database with one row per week, never deleted: "Jim — MegIBOW weekly" and "Matt — MegIBOW weekly (manual)". It is a weekly summary, not an activity ledger.
+- **History as typed.** Jim's 16 sheet weeks (Jul 27 to Nov 9) were loaded exactly as typed, Source = Sheet (lifetime 24, 15, 12, 45, 15 = 111). Matt's four typed weeks (Oct 19 to Nov 9; lifetime 6, 5, 3, 6, 0 = 20) are his own rows; a week with no row shows a dash and is never counted as 0. The sheet is read once; nothing links to it at run time.
+- **Cumulative is lifetime.** It is the sum of every row's shown values, so it does not change when an old week leaves the 8-week table. The table still shows only the latest 8 weeks; older weeks are read on the "Megibow history" page linked from the callout's note line (not text the engine writes into the callout).
+- **Jim's shown number** per week and category: the typed override column if filled (marked with a star in the table), else for a finished week with a row the stored number (frozen), else the engine's reading (the open week, or a finished week with no row yet). The engine writes a finished week to its row once (Source = Engine) and never again; only a typed override changes it. The sheet's last week (Nov 9) was still open when loaded, so the engine finalizes it once, unless Jim typed an override on it. Late evidence still only flags "Historical review suggested".
+- **Matt's weeks are all typed**; the engine only reads them. The Cumulative of both people stays correct if rows are added, overridden or ever hidden by a view.
+- **Note on definitions.** The sheet's Recruiter definition (independent recruiter) is narrower than V7's (any recruiter); history is kept as typed.
+- Code: `lifeos/megibow/weekly.py`, `lifeos/sources/cards/megibow.py`; tests `tests/megibow/test_weekly.py`. If the weekly database is missing the engine's own table and legacy Cumulative show as before; if it is unreadable the callout says DEGRADED and keeps the last table.
+
 ## 9. How each measure is decided without a model
 
 The page's four steps (relevance, activity type, contact type, confidence) are kept. With no language model, "relevance" rests on structured evidence in tiers; the census slices (MEG-1a, 1b) measure how often each tier fires on Jim's real data before any rule is final.

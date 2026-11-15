@@ -21,6 +21,8 @@ MIN_ENTERED = 4
 REGISTER_TITLE = "V3 block ID register (Jim & Matt V3)"
 MATT_SOURCE_TITLE = "Matt — MegIBOW weekly (manual)"
 V3_PAGE_TITLE = "Jim & Matt V3"
+HISTORY_TITLE = {"Jim": "Megibow history (Jim)", "Matt": "Megibow history (Matt)"}          # LIFE-687: one history page per person, linked from the callout's note line
+TYPED_NOTE = "* typed over by Jim in the weekly database"
 MATT_FIELDS = {"Week Start": "date", **{a: "number" for a in C.ACTIVITIES}}
 
 
@@ -147,11 +149,14 @@ def _cell(value):
     return DASH if value is None else str(value)
 
 
-def table(weeks, counts, cumulative):
-    """7 rows x 10 columns: header (Activity, the 8 Mondays, Cumulative), the five activities, Total. A week that is None is a dash everywhere, never 0."""
+def table(weeks, counts, cumulative, typed=None):
+    """7 rows x 10 columns: header (Activity, the 8 Mondays, Cumulative), the five activities, Total. A week that is None is a dash everywhere, never 0.
+    `typed` {monday: activities} marks a number Jim typed over (LIFE-687) with a trailing star."""
+    typed = typed or {}
     rows = [["Activity"] + [f"{w.strftime('%b')} {w.day}" for w in weeks] + ["Cumulative"]]
     for activity, label in zip(C.ACTIVITIES, LABELS, strict=True):
-        rows.append([label] + [_cell(counts[w][activity] if counts[w] else None) for w in weeks] + [_cell(cumulative[activity] if cumulative else None)])
+        rows.append([label] + [_cell(counts[w][activity] if counts[w] else None) + ("*" if activity in typed.get(w, ()) else "") for w in weeks]
+                    + [_cell(cumulative[activity] if cumulative else None)])
     rows.append(["Total"] + [_cell(P.total(counts[w]) if counts[w] else None) for w in weeks] + [_cell(P.total(cumulative) if cumulative else None)])
     return rows
 
@@ -270,3 +275,11 @@ def matt_warnings(proj, now):
     if trend and med_calls >= 2 and ((weekday >= 5 and W.calls(current) < 0.5 * med_calls) or (weekday == 4 and W.calls(current) == 0 and med_calls >= 3)):
         out.append(W.CONVERSATION_DROP)
     return out[:W.MAX], False
+
+
+def history_link(client, who):
+    """-> the notion.so address of that person's "Megibow history" page, or None when it cannot be found (the note line then simply has no link; never an error)."""
+    try:
+        return "https://www.notion.so/" + find(client, HISTORY_TITLE[who], "page").replace("-", "")
+    except NotionError:
+        return None

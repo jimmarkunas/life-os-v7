@@ -13,5 +13,8 @@
   "MEGIBOW_V3_SUMMARY_SHAPE": ["megibow", "blocked", false, "A V3 Megibow summary page is not one paragraph; it was not written.", "Restore the summary page to one paragraph."],
   "MEGIBOW_V3_TARGET_NOT_FOUND": ["megibow", "blocked", false, "The V3 block ID register, its matt.megibow row or Matt's database was not found by its exact title.", "Check the register row and the database title, and the V7 Notion connection."],
   "MEGIBOW_V3_MATT_SCHEMA": ["megibow", "blocked", false, "Matt's Megibow database no longer has Week Start and the five number columns.", "Restore the columns."],
-  "MEGIBOW_V3_MATT_READ_INCOMPLETE": ["megibow", "degraded", false, "Matt's Megibow database read did not finish.", "None; the next run retries."]
+  "MEGIBOW_V3_MATT_READ_INCOMPLETE": ["megibow", "degraded", false, "Matt's Megibow database read did not finish.", "None; the next run retries."],
+  "MEGIBOW_WEEKLY_SCHEMA": ["megibow", "blocked", false, "Jim's weekly Megibow database no longer has Week Start, Source, the five number columns and the five override columns.", "Restore the columns."],
+  "MEGIBOW_WEEKLY_READ_INCOMPLETE": ["megibow", "degraded", false, "Jim's weekly Megibow database read did not finish.", "None; the next run retries."],
+  "MEGIBOW_WEEKLY_VERIFY_FAILED": ["megibow", "retry", false, "A weekly Megibow row write did not read back as written.", "None; the next run retries."]
 }
