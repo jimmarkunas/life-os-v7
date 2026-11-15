@@ -17,7 +17,7 @@ from lifeos.jobs.fit.score import evaluate
 
 ORDER = " ORDER BY (SUBSTR(j.source, 1, 4) = 'web:'), j.first_seen"   # Jim, Oct 24 (LIFE-76): mail and other non-board jobs first, then boards, oldest first in each
 PICK = ("SELECT j.id, j.title, j.company, d.full_text, d.fingerprint, j.lane, j.location_text, j.salary_text,"
-        " j.posted_date, j.first_seen, j.route_evidence, j.source FROM v7_jobs j"
+        " j.posted_date, j.first_seen, j.route_evidence, j.source, j.link_proof FROM v7_jobs j"
         " JOIN v7_job_descriptions d ON d.job_id = j.id LEFT JOIN v7_job_fit f ON f.job_id = j.id"
         " WHERE j.status IN (%s) AND (f.cloud_status IS NULL OR f.cloud_status <> 'CANARY')"     # D226: a cloud-Fit canary score is never overwritten by the static scorer
         " AND (f.job_id IS NULL OR f.model_version <> %s OR f.profile_hash <> %s"
@@ -88,15 +88,16 @@ def score_rows(rows, profile, today, semantic=None, register=None, fit=None):
     `fit` (D226 cloud-Fit canary): {job_id: score} replaces the static score in the lane decision; every other rule is the same code. Pure."""
     out = []
     for job_id, title, company, text, fingerprint, *rest in rows:
-        lane, location, salary, posted, first_seen, route, source = (list(rest) + [None] * 7)[:7]
+        lane, location, salary, posted, first_seen, route, source, proof = (list(rest) + [None] * 8)[:8]
+        listing = lanes.from_listing(proof)                                                    # LIFE-723
         result = evaluate(title, company, text, profile, today, semantic)
         thin = lanes.thin_review_source(source) and quality.jd_problem(text) == "thin"        # Jim, Oct 21: Review from the apply link, never held, never excluded for Fit alone
         if register is not None:
             route = lanes.join_routes(route, **{sponsors.ROUTE: register.state(company)})
         score = (fit or {}).get(job_id, result.score)
         facts = lanes.facts_for(score, title, location, text, salary, posted, first_seen or today, route=route, first_party=lanes.first_party_source(source),
-                                kept=lanes.on_keep_list(company, title) or lanes.title_watch_source(source) or thin,
-                                title_only=lanes.title_watch_source(source), thin=thin, thin_admit=lanes.thin_review_source(source))
+                                kept=lanes.on_keep_list(company, title) or lanes.title_watch_source(source) or thin or listing,
+                                title_only=lanes.title_watch_source(source), listing=listing, thin=thin, thin_admit=lanes.thin_review_source(source))
         exclusion = None if lanes.keep_overrides_exclusion(company, title) else result.exclusion       # a keep-list role Jim chose over a title rule
         decision, lane_name, eligible = lanes.decide_all(lane, facts, today, exclusion)
         out.append((job_id, fingerprint, result, decision, lane_name, facts.work_mode, eligible))
@@ -307,11 +308,11 @@ def promote_kept(cursor):
     """D124: a job on Jim's keep list or found by title search that is still RESOLVED, has a stored link, and whose stored Fit decision is ADMIT or REVIEW
     becomes READY. Its own page answers 403 to Enrich, so nothing else would ever move it. Judged on the stored decision, so it does not wait for a re-score.
     -> counts: promoted, and (counts only) how many kept RESOLVED jobs lack a stored link, a description or a Review/Admit decision, or already have a page."""
-    cursor.execute("SELECT j.id, j.company, j.title, j.source, j.final_apply_url IS NOT NULL, d.job_id IS NOT NULL, f.admission, j.notion_page_id IS NOT NULL, j.status"
+    cursor.execute("SELECT j.id, j.company, j.title, j.source, j.final_apply_url IS NOT NULL, d.job_id IS NOT NULL, f.admission, j.notion_page_id IS NOT NULL, j.status, j.link_proof"
                    " FROM v7_jobs j LEFT JOIN v7_job_fit f ON f.job_id = j.id LEFT JOIN v7_job_descriptions d ON d.job_id = j.id WHERE j.status IN ('RESOLVED', 'READY') LIMIT 5000")
     out = {"promoted": 0, "kept_resolved": 0, "no_link": 0, "no_description": 0, "no_decision": 0, "has_page": 0}
-    for job_id, company, title, source, link, text, admission, page, status in cursor.fetchall():
-        if not (lanes.on_keep_list(company, title) or lanes.title_watch_source(source)):
+    for job_id, company, title, source, link, text, admission, page, status, proof in cursor.fetchall():
+        if not (lanes.on_keep_list(company, title) or lanes.title_watch_source(source) or lanes.from_listing(proof)):
             continue
         if status == "READY":                                                        # already promoted: only the missing description row is added
             if not text and link:

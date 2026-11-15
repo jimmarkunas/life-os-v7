@@ -58,6 +58,8 @@
   "excluded_private_rule": ["lanes", "terminal", false, "A private rule excluded the job (the rule's text is never printed).", "None.", false],
   "pay_below_floor": ["lanes", "terminal", false, "Explicit pay is below the floor.", "None.", false],
   "title_only": ["fit", "state", false, "Found by title search; the description was not read.", "None.", false],
+  "listing_only": ["fit", "state", false, "Found by web search; the listing page was not read.", "None.", false],
+  "listing_lead": ["resolve", "state", false, "A no-board Scale-Up sponsor's job was posted from its listing page.", "None.", false],
   "geography_not_qualifying": ["lanes", "terminal", false, "The geography does not qualify.", "None.", false],
   "geography_unresolved": ["lanes", "state", false, "The geography is unresolved.", "None.", false],
   "lane_disabled": ["lanes", "terminal", false, "The lane is disabled.", "None.", false],

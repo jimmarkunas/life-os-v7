@@ -537,13 +537,15 @@ class HealthcareNeedsRealWeight(unittest.TestCase):
 class KeptPromotion(unittest.TestCase):
     def test_only_kept_and_title_watch_jobs_are_promoted_from_resolved(self):
         from lifeos.jobs.fit import stage
-        rows = [(1, "Revolut Ltd", "Product Designer (Platform)", "web:su-revolut-ltd", True, True, "REVIEW", False, "RESOLVED"),
-                (2, "Revolut Ltd", "Software Engineer", "web:su-revolut-ltd", True, True, "REVIEW", False, "RESOLVED"),
-                (3, "Otto Car", "Anything", "web:titlewatch:su-otto", True, True, "REVIEW", False, "RESOLVED"),
-                (4, "Other", "Product Designer (Platform)", "lensa", True, True, "REVIEW", False, "RESOLVED"),
-                (5, "Revolut Ltd", "Operations Manager (Revenue)", "web:su-revolut-ltd", False, False, "REVIEW", False, "RESOLVED"),
-                (6, "Revolut Ltd", "Partnerships Manager (Lifestyle)", "web:su-revolut-ltd", True, True, "REVIEW", True, "RESOLVED"),
-                (7, "Revolut Ltd", "Operations Manager (Revenue)", "web:su-revolut-ltd", True, False, "REVIEW", False, "READY")]
+        rows = [(1, "Revolut Ltd", "Product Designer (Platform)", "web:su-revolut-ltd", True, True, "REVIEW", False, "RESOLVED", None),
+                (2, "Revolut Ltd", "Software Engineer", "web:su-revolut-ltd", True, True, "REVIEW", False, "RESOLVED", None),
+                (3, "Otto Car", "Anything", "web:titlewatch:su-otto", True, True, "REVIEW", False, "RESOLVED", None),
+                (4, "Other", "Product Designer (Platform)", "lensa", True, True, "REVIEW", False, "RESOLVED", None),
+                (5, "Revolut Ltd", "Operations Manager (Revenue)", "web:su-revolut-ltd", False, False, "REVIEW", False, "RESOLVED", None),
+                (6, "Revolut Ltd", "Partnerships Manager (Lifestyle)", "web:su-revolut-ltd", True, True, "REVIEW", True, "RESOLVED", None),
+                (7, "Revolut Ltd", "Operations Manager (Revenue)", "web:su-revolut-ltd", True, False, "REVIEW", False, "READY", None),
+                (8, "Sixfold", "Product Manager", "discover", True, True, "REVIEW", False, "RESOLVED", "listing"),          # LIFE-723: a listing lead is promoted like a title-watch find
+                (9, "Sixfold", "Product Manager", "discover", True, True, "REVIEW", False, "RESOLVED", None)]            # a discover job with a real employer link is not
         updated = []
 
         class Cur:
@@ -553,8 +555,8 @@ class KeptPromotion(unittest.TestCase):
             def fetchall(self):
                 return rows
         out = stage.promote_kept(Cur())
-        self.assertEqual([u for u in updated if isinstance(u, int)], [1, 3])
-        self.assertEqual((out["promoted"], out["kept_resolved"], out["no_link"], out["has_page"]), (2, 4, 1, 1))
+        self.assertEqual([u for u in updated if isinstance(u, int)], [1, 3, 8])
+        self.assertEqual((out["promoted"], out["kept_resolved"], out["no_link"], out["has_page"]), (3, 5, 1, 1))
 
 
 class OffFamilyAndEmployerBoilerplate(unittest.TestCase):
