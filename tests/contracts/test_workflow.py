@@ -174,11 +174,11 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", text))), ["GMAIL_OAUTH_CLIENT_ID", "LIFEOS_BWS_RUNTIME_TOKEN", "NOTION_AMAZON_DATA_SOURCE_ID"])
         for moved in ("GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_AMAZON_TOKEN"):
             self.assertNotIn(f"secrets.{moved}", text)                                                    # no direct copy, so no fallback
-        self.assertEqual(re.findall(r"uses:\s*(\S*bws-load)", text), ["./.github/actions/bws-load"])   # the one local loader (LIFE-631); the reviewed v3.0.1 commit and its one retry (D209) live in that action, pinned by the loader rules below
+        self.assertEqual(re.findall(r"uses:\s*(\S*bws-load)", text), ["./.github/actions/bws-load"] * 2)   # the one local credential loader (LIFE-631) plus the NOTION_JIRA_TOKEN-only settings loader (LIFE-703); the reviewed v3.0.1 commit and its one retry (D209) live in that action, pinned by the loader rules below
         mappings = re.findall(r"^\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\s*>\s*\w+)\s*$", text, re.M)
         self.assertEqual(sorted(mappings), sorted(["08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET", "672a44e9-235f-4121-a99d-b4db015a6987 > GMAIL_OAUTH_REFRESH_TOKEN",
-                                                   "46fe195b-82e2-416e-8272-b4db015eea12 > NOTION_AMAZON_TOKEN"]))
-        self.assertEqual(len(re.findall(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", text)), 3)                          # each once: the retry reuses the load's block by YAML alias (LIFE-541)
+                                                   "46fe195b-82e2-416e-8272-b4db015eea12 > NOTION_AMAZON_TOKEN", UUIDS["NOTION_JIRA_TOKEN"] + " > NOTION_JIRA_TOKEN"]))
+        self.assertEqual(len(re.findall(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", text)), 4)                          # each once: the retry reuses the load's block by YAML alias (LIFE-541)
         self.assertLess(text.index("bws-load"), text.index("python -m lifeos.run"))             # loaded before the Amazon command
         self.assertIn("--live", text)                                                                      # the existing live switch is still the only way to write
 
@@ -684,10 +684,32 @@ class IsolatedJobTests(unittest.TestCase):
 
 DB = {"LIFEOS_ACQ_DB_NAME", "LIFEOS_ACQ_DB_PASSWORD", "LIFEOS_ACQ_DB_USER", "LIFEOS_ACQ_SSH_HOST", "LIFEOS_ACQ_SSH_KNOWN_HOSTS",
       "LIFEOS_ACQ_SSH_PORT", "LIFEOS_ACQ_SSH_PRIVATE_KEY", "LIFEOS_ACQ_SSH_USER", "LIFEOS_ACQ_SSH_JUMP_KEY"}     # LIFE-85: the forward-only Oracle relay key, beside the store's own
+# LIFE-703: a job that has to read the V7 settings page adds ONE more loader, and it loads nothing but the Notion token. It may fail without failing the job (the GitHub values then decide),
+# so it is the one `continue-on-error` loader; every other loader rule (one credential loader per job, fail closed) still holds for the credential loader and is asserted below.
+SETTINGS_LOADER_ID = "bws_settings"
+SETTINGS_CONSUMER = "${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}"
+SETTINGS_JOBS = {            # the exact jobs that carry the settings loader: nothing else may
+    "amazon": {"amazon"}, "bills": {"bills"}, "calendar": {"calendar"}, "granola": {"granola"}, "granola-auto": {"auto"}, "hermes-stage": {"hermes"}, "manual-job": {"manual"},
+    "profile-sync": {"settings", "sync"}, "recruiters": {"recruiters"}, "interview-proof": {"proof"}, "readiness-live": {"readiness"},
+    "domains": {"gate", "outlook", "amazon_retention", "hiring_outcomes", "granola"},
+}
+
+
+def settings_loader_with():
+    """The one `with:` the settings loader may have (the Notion token's id is read from UUIDS below, so this file never holds a second copy of it)."""
+    return {"access_token": "${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}", "set_env": False, "secrets": f"{UUIDS['NOTION_JIRA_TOKEN']} > NOTION_JIRA_TOKEN\n"}
+
+
+def is_settings_loader(step):
+    """The settings loader exactly as written: its id, the local loader, the one Notion token, nothing exported job-wide, and `continue-on-error` as its only extra key."""
+    return (step.get("id") == SETTINGS_LOADER_ID and step.get("uses") == "./.github/actions/bws-load" and step.get("with") == settings_loader_with()
+            and step.get("continue-on-error") is True and set(step) == {"id", "name", "uses", "with", "continue-on-error"})
+
+
 DOMAIN_SECRETS = {         # the only secrets each domain job may see; adding one here is a conscious decision
     "granola": DB | {"LIFEOS_ACQ_SSH_PORT", "NOTION_INTERVIEW_TOKEN", "HIRING_PIPELINE_PAGE_ID", "IMESSAGE_ALERTS_HOST", "NOTION_JOB_LEDGER_DATA_SOURCE_ID"},   # LIFE-360: the readers take opportunities from Ledger rows first;   # LIFE-122: the automatic Granola bridge; the Tailscale OAuth pair goes only to the pinned join action (see TAILSCALE_WITH)
     "report": {"NTFY_TOPIC"},   # the failure-push job: the phone topic and nothing else
-    "gate": set(),   # LIFE-604 item 11: the gate job holds no secret (the run's own token only)
+    "gate": {"NOTION_JIRA_TOKEN"},   # LIFE-604 item 11: the gate holds no credential of its own (the run's own token); LIFE-703: it also reads the V7 settings page with the Notion token from the settings loader
     "imessage": DB | {"LIFEOS_ACQ_SSH_PORT", "NTFY_TOPIC", "IMESSAGE_ALERTS_HOST", "NOTION_JIRA_TOKEN", "AMAZON_CARD_BLOCK_ID", "ATTENTION_CARD_BLOCK_ID",
                   "BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID"},   # LIFE-34 Communications card (Notion writer + region anchors). LIFE-31: the Tailscale OAuth pair goes only to the pinned join action (see TAILSCALE_WITH)
     "jira": DB | {"JIRA_API_TOKEN", "JIRA_BASE_URL", "JIRA_BOARDS", "JIRA_CARD_BLOCK_ID", "JIRA_CARD_PROJECTS", "JIRA_EMAIL",
@@ -711,6 +733,8 @@ DOMAIN_SECRETS = {         # the only secrets each domain job may see; adding on
                "GMAIL_OAUTH_REFRESH_TOKEN", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "NOTION_AMAZON_DATA_SOURCE_ID", "NOTION_AMAZON_TOKEN", "NOTION_JIRA_TOKEN"},
     "amazon_retention": {"GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_AMAZON_DATA_SOURCE_ID", "NOTION_AMAZON_TOKEN"},   # LIFE-571: retention in its own job
 }
+for _job in SETTINGS_JOBS["domains"] - {"gate"}:      # LIFE-703: a job that reads the V7 settings page gets the Notion token from its settings loader and nothing else new
+    DOMAIN_SECRETS[_job] = DOMAIN_SECRETS[_job] | {"NOTION_JIRA_TOKEN"}
 for _job in ("jira", "megibow", "dcc", "interview", "granola"):      # LIFE-338: the ids secret reaches only the steps that run Notion-id code
     DOMAIN_SECRETS[_job] = DOMAIN_SECRETS[_job] | {"LIFEOS_NOTION_IDS"}
 
@@ -781,9 +805,9 @@ class DomainsWorkflowTests(unittest.TestCase):
     def test_each_job_sees_only_its_own_secrets(self):
         self.assertEqual(set(self.doc["jobs"]), set(DOMAIN_SECRETS))
         for name, job in self.doc["jobs"].items():
-            used = {k for k, v in (job.get("env") or {}).items() if "secrets." in str(v) or ".outputs." in str(v)}
+            used = {k for k, v in (job.get("env") or {}).items() if "secrets." in str(v) or "steps." in str(v) and ".outputs." in str(v)}
             for step in job["steps"]:
-                used |= {k for k, v in (step.get("env") or {}).items() if "secrets." in str(v) or ".outputs." in str(v)}   # a migrated value counts when it arrives as a loader output
+                used |= {k for k, v in (step.get("env") or {}).items() if "secrets." in str(v) or "steps." in str(v) and ".outputs." in str(v)}   # a migrated value counts when it arrives as a loader output (`steps.<loader>.outputs.<NAME>`); a gate switch (`needs.gate.outputs.<switch>`, LIFE-703) is not a secret
             self.assertLessEqual(used, DOMAIN_SECRETS[name], f"{name}: {sorted(used - DOMAIN_SECRETS[name])}")
 
     @staticmethod
@@ -791,7 +815,7 @@ class DomainsWorkflowTests(unittest.TestCase):
         """LIFE-649: -> what a job's final step fails to surface. A stage step is every `continue-on-error` step; the tailnet join is the one allowed to fail quietly (a failed join only loses the Oracle fallback).
         The final step must run always(), fail the job (`exit 1`), and cover every stage step: by the wildcard `steps.*.outcome` (every step with an id) or by naming each stage id."""
         steps, problems = job["steps"], []
-        stage = [s for s in steps if s.get("continue-on-error")]
+        stage = [s for s in steps if s.get("continue-on-error") and not is_settings_loader(s)]       # LIFE-703: the settings loader may fail quietly; it is that exact step or it is a stage step like any other
         for step in stage:
             if not step.get("id") and step.get("uses") != "./.github/actions/tailscale":
                 problems.append(f"stage step without an id: {step.get('name')}")
@@ -938,10 +962,17 @@ class BitwardenConsumerTests(unittest.TestCase):
         cls.doc = {n: yaml.safe_load(t) for n, t in cls.text.items()}
 
     def loaders(self, name, job):
-        return [(i, s) for i, s in enumerate(self.doc[name]["jobs"][job]["steps"]) if s.get("uses") == self.ACTION]
+        """The job's credential loader (LIFE-703: the NOTION_JIRA_TOKEN-only settings loader is asserted separately, below)."""
+        return [(i, s) for i, s in enumerate(self.doc[name]["jobs"][job]["steps"]) if s.get("uses") == self.ACTION and s.get("id") != SETTINGS_LOADER_ID]
+
+    def settings_loaders(self, name, job):
+        return [(i, s) for i, s in enumerate(self.doc[name]["jobs"][job]["steps"]) if s.get("uses") == self.ACTION and s.get("id") == SETTINGS_LOADER_ID]
 
     def jobs_with_loaders(self, name):
         return [job for job in self.doc[name]["jobs"] if self.loaders(name, job)]
+
+    def settings_jobs(self, name):
+        return {job for job in self.doc[name]["jobs"] if self.settings_loaders(name, job)}
 
     def loaded(self, name, job):
         return {m.group(2) for m in re.finditer(r"^([0-9a-f-]{36}) > (\w+)$", self.loaders(name, job)[0][1]["with"]["secrets"], re.M)}
@@ -952,7 +983,7 @@ class BitwardenConsumerTests(unittest.TestCase):
             self.assertTrue(jobs, name)                                                                         # every workflow that reads a credential loads it through the one local loader
             self.assertIn("LIFEOS_BWS_RUNTIME_TOKEN", re.findall(r"secrets\.(\w+)", text), name)
             self.assertFalse([n for n in UUIDS if re.search(rf"secrets\.{n}\b", text)], name)                    # no migrated value is read from GitHub any more
-            self.assertEqual(re.findall(r"uses:\s*(\S*bws-load)", text), [self.ACTION] * len(jobs), name)       # one loader step per job: it holds the load and its one retry
+            self.assertEqual(re.findall(r"uses:\s*(\S*bws-load)", text), [self.ACTION] * (len(jobs) + len(SETTINGS_JOBS.get(name, ()))), name)       # one credential loader step per job (it holds the load and its one retry) plus, in exactly the jobs of SETTINGS_JOBS, the settings loader
             self.assertNotIn("bitwarden/", text, name)                                                           # the third-party action is named only inside the local action
             if name != "domains":
                 self.assertEqual(set(jobs), set(LOADED[name]), name)
@@ -999,8 +1030,13 @@ class BitwardenConsumerTests(unittest.TestCase):
             for job, body in doc["jobs"].items():
                 self.assertFalse([k for k, v in (body.get("env") or {}).items() if k in UUIDS and v != ""], (name, job))   # nothing at job level (the Interview job's blanks stay)
                 found = self.loaders(name, job)
-                if not found:                                                           # D244: a job with no loader may receive no migrated value at all
-                    self.assertFalse([k for step in body["steps"] for k in (step.get("env") or {}) if k in UUIDS], (name, job))
+                settings_at = min([i for i, _ in self.settings_loaders(name, job)], default=None)
+                if not found:                                                           # D244: a job with no loader may receive no migrated value at all (LIFE-703: but the Notion token from its settings loader, in steps after it)
+                    for i, step in enumerate(body["steps"]):
+                        for k, v in (step.get("env") or {}).items():
+                            if k in UUIDS:
+                                self.assertEqual((k, str(v).strip()), ("NOTION_JIRA_TOKEN", SETTINGS_CONSUMER), (name, job, step.get("name")))
+                                self.assertTrue(settings_at is not None and i > settings_at, (name, job, step.get("name")))
                     self.assertFalse([v for step in body["steps"] for v in (step.get("with") or {}).values() if "steps.bws_" in str(v)], (name, job))
                     continue
                 ((at, loader),) = found
@@ -1009,6 +1045,9 @@ class BitwardenConsumerTests(unittest.TestCase):
                     label = step.get("name") or step.get("uses")
                     got = set()
                     for key, value in (step.get("env") or {}).items():
+                        if key in UUIDS and str(value).strip() == SETTINGS_CONSUMER:             # LIFE-703: the Notion token for the settings page, from this job's settings loader, after it, only that name
+                            self.assertEqual((key, settings_at is not None and i > settings_at), ("NOTION_JIRA_TOKEN", True), (name, job, label))
+                            continue
                         if key in UUIDS:
                             m = self.OUTPUT.fullmatch(str(value).strip())
                             self.assertTrue(m and m.group(2) == key and m.group(1) == loader["id"], (name, job, label, key))
@@ -1028,6 +1067,22 @@ class BitwardenConsumerTests(unittest.TestCase):
                         self.assertEqual(got, set(), (name, job, label))                                           # checkout, setup, actions and installs never get a migrated value
                     seen |= got
                 self.assertEqual(seen, self.loaded(name, job), (name, job))                  # the loader carries exactly what its consumers use
+
+    def test_the_settings_loader_is_exactly_the_notion_token_in_exactly_the_jobs_that_read_the_settings_page(self):
+        """LIFE-703: one extra loader step, in these jobs only, loading nothing but NOTION_JIRA_TOKEN, never failing the job, after the credential loader and the checkout."""
+        for name in self.doc:
+            self.assertEqual(self.settings_jobs(name), SETTINGS_JOBS.get(name, set()), name)
+            for job in self.settings_jobs(name):
+                ((at, loader),) = self.settings_loaders(name, job)
+                steps = self.doc[name]["jobs"][job]["steps"]
+                self.assertTrue(is_settings_loader(loader), (name, job))
+                self.assertTrue(all(i < at for i, _ in self.loaders(name, job)), (name, job))              # after the credential loader: that one is first and keeps its helper seed
+                self.assertEqual(steps[0].get("name"), "Checkout the exact commit (own git fetch; the token is passed once and never stored)", (name, job))
+                consumers = [s for s in steps if SETTINGS_CONSUMER in str((s.get("env") or {}).values())]
+                self.assertTrue(consumers, (name, job))                                                    # a loader nobody uses is not there
+                for step in consumers:
+                    self.assertGreater(steps.index(step), at, (name, job))
+                    self.assertTrue("lifeos.platform.settings" in str(step.get("run")) or "lifeos.run" in str(step.get("run")), (name, job, step.get("name")))   # only a command that reads the page gets the token
 
     def test_every_workflow_is_read_only_queues_its_runs_and_bounds_every_job(self):
         for name, doc in self.doc.items():
@@ -1064,7 +1119,7 @@ class ProfileSyncWorkflowTests(unittest.TestCase):
     def test_nothing_in_it_can_write_to_bitwarden(self):
         self.assertNotIn("bws secret", self.text)
         self.assertNotIn("sdk-sm/releases", self.text)                         # no CLI is installed: the pinned read-only action is the only Bitwarden contact
-        self.assertEqual(re.findall(r"uses:\s*(\S*bws-load)", self.text), ["./.github/actions/bws-load"])
+        self.assertEqual(re.findall(r"uses:\s*(\S*bws-load)", self.text), ["./.github/actions/bws-load"] * 3)      # the sync job's credential loader and its settings loader, and the switch job's settings loader (LIFE-703)
 
     def test_only_it_can_see_the_notion_sync_token(self):
         for path in self.root.glob("*.yml"):
@@ -1081,7 +1136,13 @@ class ProfileSyncWorkflowTests(unittest.TestCase):
 
     def test_it_is_a_dry_run_unless_ticked_or_following_a_tick_with_the_variable_on(self):
         self.assertFalse(self.doc["on"]["workflow_dispatch"]["inputs"]["live"]["default"] if "on" in self.doc else self.doc[True]["workflow_dispatch"]["inputs"]["live"]["default"])
-        self.assertIn("vars.FIT_PROFILE_SYNC == 'on'", self.text)
+        job = self.doc["jobs"]["sync"]
+        self.assertEqual(job["needs"], ["settings"])
+        self.assertIn("needs.settings.outputs.fit_profile_sync == 'on'", job["if"])                              # LIFE-703: the switch now comes from the V7 settings page ...
+        self.assertIn("github.event.workflow_run.conclusion == 'success'", job["if"])
+        self.assertIn("github.event_name == 'workflow_dispatch'", job["if"])
+        self.assertEqual(self.doc["jobs"]["settings"]["outputs"]["fit_profile_sync"], "${{ steps.settings.outputs.FIT_PROFILE_SYNC || vars.FIT_PROFILE_SYNC }}")   # ... and GitHub's own value stays the fallback
+        self.assertNotIn("vars.FIT_PROFILE_SYNC", job["if"])
 
 
 class SweepFailureIsItsOwnLaneTests(unittest.TestCase):

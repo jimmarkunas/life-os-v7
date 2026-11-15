@@ -18,8 +18,44 @@ concurrency:
   group: life-os-v7-profile-sync                  # its own group: in a shared group a waiting run is cancelled by the next one, so this job could cancel a waiting domain run (and be cancelled by one)
   cancel-in-progress: false
 jobs:
+  settings:
+    # LIFE-703: a job's own `if` cannot read its own steps, so this small first job reads the V7 settings page and publishes the one switch the sync job's condition needs.
+    if: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      fit_profile_sync: ${{ steps.settings.outputs.FIT_PROFILE_SYNC || vars.FIT_PROFILE_SYNC }}      # the page's value when GitHub holds none; GitHub's own value when the page cannot be read
+    steps:
+      - name: Checkout the exact commit (own git fetch; the token is passed once and never stored)
+        run: |
+          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
+          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
+          git checkout -q --detach FETCH_HEAD
+      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
+        continue-on-error: true
+        uses: ./.github/actions/bws-helper
+        with:
+          wait_seconds: "60"
+      - id: bws_settings
+        continue-on-error: true
+        name: Notion token from Bitwarden so this job can read the V7 settings page (LIFE-703; read only; if it fails the GitHub value decides)
+        uses: ./.github/actions/bws-load
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
+      - id: settings
+        continue-on-error: true
+        name: V7 settings page for the Fit profile sync switch (LIFE-703; names and counts only; an unreadable page changes nothing)
+        env:
+          NOTION_JIRA_TOKEN: ${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}
+          FIT_PROFILE_SYNC: ${{ vars.FIT_PROFILE_SYNC }}
+        run: python3 -m lifeos.platform.settings --output FIT_PROFILE_SYNC
   sync:
-    if: ${{ github.event_name == 'workflow_dispatch' || (vars.FIT_PROFILE_SYNC == 'on' && github.event.workflow_run.conclusion == 'success') }}
+    needs: [settings]
+    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || (needs.settings.outputs.fit_profile_sync == 'on' && github.event.workflow_run.conclusion == 'success')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -48,8 +84,18 @@ jobs:
             b65dd2fc-2573-4bda-9e80-b4db015edec6 > LIFEOS_ACQ_SSH_KNOWN_HOSTS
             7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
             6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
+      - id: bws_settings
+        continue-on-error: true
+        name: Notion token from Bitwarden so this job can read the V7 settings page (LIFE-703; read only; if it fails the GitHub values stay as they are)
+        uses: ./.github/actions/bws-load
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
       - name: Fit profile sync (the approved Notion evidence block into the store; counts and one fixed code only)
         env:
+          NOTION_JIRA_TOKEN: ${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}
           NOTION_FIT_SYNC_TOKEN: ${{ secrets.NOTION_FIT_SYNC_TOKEN }}
           NOTION_FIT_SYNC_PAGE_ID: ${{ vars.NOTION_FIT_SYNC_PAGE_ID }}
           LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}

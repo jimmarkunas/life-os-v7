@@ -161,6 +161,7 @@ def seed(client, lines):
 
 def _fill(environ, values, out):
     """The shadow rule: fill a name the step declares empty, compare a held one, count an undeclared one."""
+    out.setdefault("matched_names", [])                                    # LIFE-703: the NAMES whose GitHub value equalled the page (never a value), for a per-name 24 hour match list
     for name, value in sorted(values.items()):
         have = held(environ, name)
         if not have and name not in environ:                              # a step that never declares a name never receives it
@@ -170,6 +171,7 @@ def _fill(environ, values, out):
             out["filled"].append(name)
         elif _bare(have) == _bare(value) if is_address(name) else have == value:
             out["matched"] += 1
+            out["matched_names"].append(name)
         else:
             out["mismatched"].append(name)
 
@@ -259,3 +261,45 @@ def apply(environ=os.environ, client=None, copy=None, connect=None):
         except Exception as error:                                         # noqa: BLE001 - copying is best effort; the next run tries again
             out["seed_status"] = str(error) if re.fullmatch(r"[A-Z0-9_]{3,60}", str(error)) else type(error).__name__
     return out
+
+
+def main(argv=None, environ=None, client=None):
+    """`python -m lifeos.platform.settings [--output NAME ...]` (LIFE-703): the pre-step for a workflow step that does not go through lifeos.run, and the gate job's reader.
+
+    Reads the page once and applies the shadow rule to a copy of the environment, then writes each name Notion filled to $GITHUB_ENV (so later steps see it) and each --output name's
+    effective value to $GITHUB_OUTPUT (so a job condition can use `needs.<job>.outputs.NAME`). Only movable, non-safety names are ever written; a value with a line break is refused.
+    Prints counts and names only, masks every written value, and always exits 0: an unreadable page leaves everything as it was."""
+    import json                                                            # noqa: PLC0415
+    import sys                                                             # noqa: PLC0415
+    args = list(sys.argv[1:] if argv is None else argv)
+    environ = os.environ if environ is None else environ
+    outputs = [args[i + 1] for i, a in enumerate(args) if a == "--output" and i + 1 < len(args)]
+    env = dict(environ)
+    counts = apply(env, client=client, copy=False)
+
+    def writable(name, value):
+        return movable(name) and name not in SAFETY and isinstance(value, str) and "\n" not in value and "\r" not in value
+
+    refused = []
+
+    def write(path, name, value):
+        if not (path and writable(name, value)):
+            if path:
+                refused.append(name)
+            return
+        print(f"::add-mask::{value}")
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write(f"{name}={value}\n")
+
+    for name in counts["filled"]:
+        write(environ.get("GITHUB_ENV"), name, env.get(name))
+    for name in outputs:
+        write(environ.get("GITHUB_OUTPUT"), name, held(env, name))
+    if refused:
+        counts["not_written"] = sorted(set(refused))
+    print("settings:", json.dumps(counts, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
