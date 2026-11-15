@@ -25,7 +25,7 @@ class Notion:
     """Just enough of the Notion API: blocks by id with children, PATCH of text and table rows, children insert."""
 
     def __init__(self):
-        self.blocks, self.kids, self.writes = {}, {}, []
+        self.blocks, self.kids, self.writes, self.made = {}, {}, [], 0
 
     def add(self, parent, block):
         self.blocks[block["id"]] = block
@@ -73,7 +73,8 @@ class Notion:
         self.writes.append(block_id)
         if path.endswith("/children"):
             for child in body["children"]:
-                new = {"id": block_id + "-new", "type": child["type"], child["type"]: {"rich_text": rich(child[child["type"]]["rich_text"][0]["text"]["content"])}}
+                self.made += 1
+                new = {"id": f"{block_id}-new{self.made}" if self.made > 1 else block_id + "-new", "type": child["type"], child["type"]: {"rich_text": rich(child[child["type"]]["rich_text"][0]["text"]["content"])}}
                 self.blocks[new["id"]] = new
                 order = self.kids[block_id]
                 order.insert(order.index(body["after"]) + 1, new["id"])
@@ -89,12 +90,14 @@ class Notion:
 class Jira:
     """JQL answered by substring of the query; `down` makes every read fail like an unreachable Jira."""
 
-    def __init__(self, answers, down=False):
-        self.answers, self.down, self.queries = answers, down, []
+    def __init__(self, answers, down=False, remote=None):
+        self.answers, self.down, self.queries, self.remote = answers, down, [], remote or {}
 
     def get(self, path, params=None):
         if self.down:
             raise JiraError("JIRA_NETWORK")
+        if path.endswith("/remotelink"):
+            return [{"object": {"url": u}} for u in self.remote.get(path.split("/")[-2], [])]
         jql = params["jql"]
         self.queries.append(jql)
         for needle, issues in self.answers.items():
