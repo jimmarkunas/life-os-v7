@@ -165,10 +165,11 @@ def proof_unreadable_incident(path=PROOF_FILE, exists=os.path.exists, sync=None)
     return unreadable
 
 
-def unit_state(unit, run=subprocess.run, listdir=os.listdir, base=SYSTEMD_DIR):
+def read_unit_state(unit, run=None, listdir=None, base=SYSTEMD_DIR):
     """LIFE-725: a unit's state for the drift check. systemd's own answer when it gives one; inside this service's sandbox (DynamicUser, ProtectSystem=strict) systemctl cannot reach systemd and
     prints nothing, so the fallback reads the unit's enablement link (timers.target.wants for a timer, multi-user.target.wants for a service). That says "enabled" (drift.ENABLED), not
     "running": a stopped but enabled timer is not caught, and the drift line says so (UNIT_STATE_FROM_ENABLED). A unit without its link is "disabled" (drift); an unreadable directory is unreadable."""
+    run, listdir = run or subprocess.run, listdir or os.listdir          # resolved at call time, so a test (or a later import) can swap them
     answer = ""
     try:
         answer = run(["systemctl", "is-active", unit], capture_output=True, text=True, timeout=15).stdout.strip()
@@ -208,7 +209,7 @@ def drift_incident(token, opener=urllib.request.urlopen, sync=None, read=None, u
             raise drift.Unreadable(drift.INSTALLED_UNREADABLE) from error
 
     def active(unit):
-        return unit_state(unit)
+        return read_unit_state(unit)
 
     rows = rows if rows is not None else drift.check(expected_for, read or read_file, unit_state or active)
     signal = drift.incident_signal(rows)
