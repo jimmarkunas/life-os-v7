@@ -30,7 +30,7 @@
   },
   "branches.yml::archive": {
    "basis": "twice the slowest run (24 s) rounded up to whole minutes, 5-minute floor",
-   "current": 10,
+   "current": 5,
    "median_seconds": 14,
    "runs_measured": 96,
    "slowest_seconds": 24,
@@ -262,7 +262,7 @@
   },
   "hourly.yml::finish": {
    "basis": "the Bitwarden helper waits up to 600 s, so the limit is at least 30 min (3 x the wait; twice the slowest run, 815 s, would be 28 min)",
-   "current": 58,
+   "current": 30,
    "median_seconds": 116,
    "runs_measured": 100,
    "slowest_seconds": 815,
@@ -302,7 +302,7 @@
   },
   "hourly.yml::prep": {
    "basis": "the Bitwarden helper waits up to 600 s, so the limit is at least 30 min (3 x the wait; twice the slowest run, 235 s, would be 8 min)",
-   "current": 45,
+   "current": 30,
    "median_seconds": 25,
    "runs_measured": 100,
    "slowest_seconds": 235,
@@ -350,7 +350,7 @@
   },
   "pr-tests.yml::test-index": {
    "basis": "twice the slowest run (305 s) rounded up to whole minutes, 5-minute floor",
-   "current": 15,
+   "current": 11,
    "median_seconds": 247,
    "runs_measured": 39,
    "slowest_seconds": 305,
@@ -358,7 +358,7 @@
   },
   "pr-tests.yml::unit-tests": {
    "basis": "twice the slowest run (136 s) rounded up to whole minutes, 5-minute floor",
-   "current": 10,
+   "current": 5,
    "median_seconds": 105,
    "runs_measured": 99,
    "slowest_seconds": 136,
@@ -414,7 +414,7 @@
   },
   "suite-timing.yml::timing": {
    "basis": "twice the slowest run (135 s) rounded up to whole minutes, 5-minute floor",
-   "current": 10,
+   "current": 5,
    "median_seconds": 95,
    "runs_measured": 40,
    "slowest_seconds": 135,
@@ -430,13 +430,6 @@
   }
  },
  "measured": "the last 100 runs of each workflow on Nov 14 2026, timed-out jobs included",
- "pending": [
-  "branches.yml::archive",
-  "hourly.yml::finish",
-  "hourly.yml::prep",
-  "pr-tests.yml::test-index",
-  "pr-tests.yml::unit-tests",
-  "suite-timing.yml::timing"
- ],
+ "pending": [],
  "rule": "docs/platform/timeouts.md"
 }

@@ -1035,7 +1035,8 @@ jobs:
     # Recruiters data source (create only after absence is proven, read back). A failure is a warning and never touches another card or the Jobs run.
     # LIFE-680: it reads the whole Daily Report page (Recruiter Outreach and job-page outreach prove nothing else changed), and the Jira card removes and rewrites ~16 blocks at the same moment, so the read got Notion 404s
     # every few hours. It takes its turn after the Jira card (always(): a red Jira job never stops it); a manual Recruiters run has no Jira job and starts at once.
-    needs: [gate, jira]
+    # LIFE-688 (Jim, Nov 15 2026: option B): hiring and recruiters are the two jobs that read the whole Daily Report page; they take turns (recruiters after hiring), each keeping its own if: and always(), so a red one never stops the other.
+    needs: [gate, jira, hiring]
     if: ${{ always() && needs.gate.result != 'failure' && (needs.gate.outputs.due_recruiters == 'true' || inputs.recruiters || inputs.refresh == 'recruiters') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
