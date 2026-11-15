@@ -34,6 +34,8 @@ FAIL_LABEL = "pipeline-failing"
 STUCK_TITLE = "V7 pipeline: an hourly tick run has had no conclusion for over 40 minutes"      # LIFE-580 step 3
 STUCK_LABEL = "pipeline-run-stuck"
 DIGEST_HOUR_UTC = 13           # the daily check-in: 8 AM Chicago in summer time (7 AM in winter); the :17 watchdog run sends it
+CHECKIN_WORKFLOW = "watchdog.yml"
+CHECKIN_UNREADABLE = "CHECKIN_HISTORY_UNREADABLE"      # LIFE-724: fixed code in the watchdog log line when the watchdog's own run list could not be read; it never pages by itself
 DOMAINS_TITLE = "domains (after tick)"
 PENDING = "push-pending"       # the incident exists but its phone push was not accepted yet; retried by the watchdog
 REMIND_HOURS = 3               # LIFE-328/329: an incident still open and still true re-pages after this long without activity on its issue
@@ -206,7 +208,43 @@ def last_tick_passed(runs):
 
 
 def digest_due(now):
+    """True only inside the normal send window (the first half hour of DIGEST_HOUR_UTC). `checkin_decision` is what `watch` uses; this stays as the window test."""
     return now.hour == DIGEST_HOUR_UTC and now.minute < 30
+
+
+def _ct(moment):
+    """US Central clock text for a note in the check-in ("7:00 AM CT"); an unusable zone database falls back to the plain hour so a note never stops the check-in."""
+    try:
+        from zoneinfo import ZoneInfo                              # noqa: PLC0415
+        local = moment.astimezone(ZoneInfo("America/Chicago"))
+        return f"{local.hour % 12 or 12}:{local.minute:02d} {'AM' if local.hour < 12 else 'PM'} CT"
+    except Exception:                                              # noqa: BLE001
+        return f"{moment.hour}:{moment.minute:02d} UTC"
+
+
+def checkin_decision(now, watchdog_runs, own_id=None):
+    """LIFE-724: the daily check-in goes out ONCE per check-in day even when GitHub skips the 7 AM CT window (it started no watchdog run between 7:00 and 7:29 AM CT on Nov 15 2026, so no check-in came).
+    The day opens at DIGEST_HOUR_UTC. The check-in is due when this run started at or after that hour and no OTHER watchdog run has started since it (each run that reaches this code sends it, so an earlier
+    run in the day is the record; nothing new is stored). A run that failed or was cancelled does not count, so a day whose only runs died still gets its check-in. `watchdog_runs` is None when the run list
+    could not be read: inside the normal window the check-in still goes (the old rule), outside it nothing is sent and the fixed code CHECKIN_HISTORY_UNREADABLE is logged.
+    -> (due, note, code): `note` is a sentence appended to the check-in (late or history unreadable), `code` a fixed word for the watchdog log line."""
+    start = now.replace(hour=DIGEST_HOUR_UTC, minute=0, second=0, microsecond=0)
+    if now < start:
+        return False, "", None
+    in_window = digest_due(now)
+    if watchdog_runs is None:
+        if in_window:
+            return True, " Check-in history was unreadable; sent in the normal window.", CHECKIN_UNREADABLE
+        return False, "", CHECKIN_UNREADABLE
+    for run in watchdog_runs:
+        if run.get("name") != "watchdog" or str(run.get("id")) == str(own_id):
+            continue
+        started = _t(run.get("run_started_at") or run.get("created_at"))
+        if started and started >= start and now >= started and (run.get("status") != "completed" or run.get("conclusion") == "success"):
+            return False, "", None                                  # an earlier run today already sent it (or is sending it)
+    if in_window:
+        return True, "", None
+    return True, f" Sent late: GitHub did not start the watchdog in the {_ct(start)} window; this is the first run today, at {_ct(now)}.", None
 
 
 def coverage(observed, window_hours=24):
@@ -467,8 +505,16 @@ def watch(now=None, push=None, checkin=True):
                       ("V7 stuck tick run cleared", "No hourly tick run is stuck.", "info", "tick_run_stuck_recovered"), push, now),
     ]
     scheduled = scheduled_checks(now, push)                      # LIFE-692: the scheduled workflows that raise no alert of their own
-    sent = None
-    if checkin and digest_due(now):                               # LIFE-330: the Oracle ticker runs incidents only; the check-in stays with the GitHub watchdog
+    sent, checkin_note, checkin_code = None, "", None
+    if checkin:                                                    # LIFE-330: the Oracle ticker runs incidents only; the check-in stays with the GitHub watchdog
+        try:                                                       # LIFE-724: one read of the watchdog's own recent runs tells whether today's check-in already went out
+            history = _api(f"actions/workflows/{CHECKIN_WORKFLOW}/runs?per_page=30")["workflow_runs"]
+        except Exception:                                          # noqa: BLE001 - unreadable: the decision falls back to the normal window only
+            history = None
+        due, checkin_note, checkin_code = checkin_decision(now, history, os.environ.get("GITHUB_RUN_ID"))
+    else:
+        due = False
+    if due:
         try:
             domain_runs = _api("actions/workflows/domains.yml/runs?per_page=60")["workflow_runs"]
             listed = True
@@ -485,8 +531,9 @@ def watch(now=None, push=None, checkin=True):
         except Exception:                                          # noqa: BLE001
             late = ()
         title, body = health(runs, domain_runs, now, late=late, conflicts=conflict_text)
+        body += checkin_note                                       # LIFE-724: a late or history-unreadable check-in says so, once, in its own text
         sent = (push or _push)(title, body, "info", "daily_check")          # LIFE-603: _push takes the registered alert key; the call without it crashed every real check-in
-    print(f"watchdog: stale={is_stale} failing={fail_signal} changes={changes} checkin={sent} reaper={reaped['found']}/{len(reaped['cancelled'])}/{len(reaped['refused'])}/{len(reaped['still_stuck'])}" + (f" {SCHEDULED_UNREADABLE}={','.join(scheduled['unreadable'])}" if scheduled["unreadable"] else ""))
+    print(f"watchdog: stale={is_stale} failing={fail_signal} changes={changes} checkin={sent} reaper={reaped['found']}/{len(reaped['cancelled'])}/{len(reaped['refused'])}/{len(reaped['still_stuck'])}" + (f" {SCHEDULED_UNREADABLE}={','.join(scheduled['unreadable'])}" if scheduled["unreadable"] else "") + (f" {checkin_code}" if checkin_code else ""))
     return 0
 
 
