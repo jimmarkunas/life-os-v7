@@ -16,6 +16,7 @@
   "JIRA_CLOSE_VERIFY_FAILED": ["jira", "degraded", false, "The old sprint did not show as closed.", "Retried next run."],
   "JIRA_EARLY_ROLLOVER": ["jira", "blocked", false, "The rollover was asked before the sprint's end.", "None; it waits."],
   "JIRA_ERROR": ["jira", "bug", false, "An unnamed Jira error; the board position is appended.", "Check the log."],
+  "JIRA_FILL_FAILED": ["jira", "retry", false, "The parent, Component or Fix Version fill could not write any ticket it found (a Jira write failed).", "None; retried next hour."],
   "JIRA_FINAL_VERIFY_FAILED": ["jira", "degraded", false, "The rollover's final check did not match.", "Retried next run."],
   "JIRA_NOT_MONDAY": ["jira", "state", false, "The rollover only runs on Mondays.", "None."],
   "JIRA_NO_END_DATE": ["jira", "blocked", false, "The active sprint has no end date.", "Set the sprint end date."],
