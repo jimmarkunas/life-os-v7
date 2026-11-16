@@ -26,8 +26,9 @@ class Fake:
             raise su.Refused("SECRET_CRED_UNREADABLE")
         return self.value
 
-    def fetch(self, url, bearer):
-        self.fetched.append((url, bearer == VALUE))
+    def fetch(self, url, bearer, auth="bearer"):
+        self.fetched.append((url, bearer == self.value))
+        self.auths = getattr(self, "auths", []) + [auth]
         return json.dumps(self.reply if self.reply is not None else {"data": {"limit": 100, "limit_remaining": 99.5, "usage": 0.5, "label": "x" * 5}}).encode()
 
 
@@ -70,6 +71,7 @@ class Working(Case):
         self.assertEqual((status, out["ok"]), (0, True))
         self.assertEqual(out["result"], {"data.limit": 100, "data.limit_remaining": 99.5, "data.usage": 0.5})     # "label" was in the reply and is not returned
         self.assertEqual(self.fake.fetched, [("https://openrouter.ai/api/v1/key", True)])
+        self.assertEqual(self.fake.auths, ["bearer"])                           # the default is unchanged: OpenRouter still gets a bearer token
         self.assertNotIn(VALUE, json.dumps(out))
 
     def test_credential_check_returns_name_length_and_a_short_hash_never_the_value(self):
@@ -197,6 +199,164 @@ class Redaction(Case):
             su.Broker = old
         self.assertEqual(len(out.getvalue().strip().splitlines()), 1)
         self.assertNotIn(VALUE, out.getvalue())
+
+
+EMAIL = "tester@example.com"                                  # synthetic: never a real address or token in the repo
+TOKEN = "ATATT-TEST-0123456789abcd"
+PAIR = EMAIL + ":" + TOKEN
+CLOUD = "11111111-2222-3333-4444-555555555555"
+JIRA_URL = "https://api.atlassian.com/ex/jira/" + CLOUD + "/rest/api/3/issue/LIFE-696?fields=summary,status,updated"
+JIRA_FIELDS = ["key", "fields.summary", "fields.status.name", "fields.updated"]
+ISSUE = {"key": "LIFE-696", "fields": {"summary": "Action Inbox", "status": {"name": "To Do", "id": "1"}, "updated": "2026-11-14T16:00:40.594-0600", "description": "D" * 500, "reporter": {"name": "x"}}}
+
+
+class Basic(Case):
+    """LIFE-754: a Basic purpose reads one fixed Jira issue with an `email:token` credential."""
+
+    def setUp(self):
+        super().setUp()
+        self.fake = Fake(value=PAIR, reply=ISSUE)
+        self.jira("jira_issue_read_claudecode", "jira_ro_claudecode", ["claude-svc"])
+        self.jira("jira_issue_read_codex", "jira_ro_codex", ["codex-svc"])
+
+    def jira(self, purpose, secret, callers, **change):
+        self.put(purpose, dict({"purpose": purpose, "secret": secret, "callers": callers, "action": "http_get_fields", "auth": "basic", "url": JIRA_URL, "fields": JIRA_FIELDS}, **change))
+
+    def test_a_basic_purpose_sends_basic_and_returns_only_the_four_fields(self):
+        status, out = self.call(["jira_issue_read_claudecode"], caller="claude-svc")
+        self.assertEqual((status, out["ok"]), (0, True))
+        self.assertEqual(out["result"], {"key": "LIFE-696", "fields.summary": "Action Inbox", "fields.status.name": "To Do", "fields.updated": "2026-11-14T16:00:40.594-0600"})
+        self.assertEqual((self.fake.fetched, self.fake.auths), ([(JIRA_URL, True)], ["basic"]))
+        self.assertEqual(self.fake.asked, ["jira_ro_claudecode"])
+        self.assertNotIn(TOKEN, json.dumps(out))
+
+    def test_two_clients_have_separate_purposes_credentials_and_audit_lines(self):
+        self.assertEqual(self.call(["jira_issue_read_claudecode"], caller="claude-svc")[0], 0)
+        self.assertEqual(self.call(["jira_issue_read_codex"], caller="codex-svc")[0], 0)
+        self.assertEqual(self.fake.asked, ["jira_ro_claudecode", "jira_ro_codex"])
+        done = [row for row in self.audit() if row["result"] == "OK"]
+        self.assertEqual([(r["caller"], r["purpose"], r["secret"]) for r in done],
+                         [("claude-svc", "jira_issue_read_claudecode", "jira_ro_claudecode"), ("codex-svc", "jira_issue_read_codex", "jira_ro_codex")])
+        asked = len(self.fake.asked)
+        status, out = self.call(["jira_issue_read_codex"], caller="claude-svc")           # the other client's purpose is refused and its credential is not touched
+        self.assertEqual((status, out["code"]), (1, "SECRET_CALLER_NOT_ALLOWED"))
+        self.assertEqual(len(self.fake.asked), asked)
+
+    def test_removing_one_purpose_refuses_that_client_and_leaves_the_other(self):
+        os.remove(os.path.join(self.reg, "jira_issue_read_codex.json"))
+        self.assertEqual(self.call(["jira_issue_read_codex"], caller="codex-svc")[1]["code"], "SECRET_UNKNOWN_PURPOSE")
+        self.assertEqual(self.call(["jira_issue_read_claudecode"], caller="claude-svc")[0], 0)
+
+    def test_a_basic_url_must_be_one_fixed_jira_issue_read_on_api_atlassian_com(self):
+        good = "https://api.atlassian.com/ex/jira/" + CLOUD + "/rest/api/3/issue/LIFE-696"
+        for url in ("https://example.com/ex/jira/" + CLOUD + "/rest/api/3/issue/LIFE-696", "http://api.atlassian.com/ex/jira/" + CLOUD + "/rest/api/3/issue/LIFE-696",
+                    "https://api.atlassian.com.evil.example/ex/jira/" + CLOUD + "/rest/api/3/issue/LIFE-696", "https://jimmarkunas.atlassian.net/rest/api/3/issue/LIFE-696",
+                    "https://api.atlassian.com/ex/jira/" + CLOUD + "/rest/api/3/myself", "https://api.atlassian.com/ex/jira/" + CLOUD + "/rest/api/3/issue/LIFE-696?fields=summary&x=1",
+                    "https://api.atlassian.com/ex/jira/" + CLOUD + "/rest/api/3/issue/LIFE-696/comment", "https://api.atlassian.com/ex/jira/not-a-uuid/rest/api/3/issue/LIFE-696"):
+            self.jira("jira_issue_read_claudecode", "jira_ro_claudecode", ["claude-svc"], url=url)
+            self.assertEqual(self.call(["jira_issue_read_claudecode"], caller="claude-svc")[1]["code"], "SECRET_REGISTRY_UNSAFE", url)
+        self.jira("jira_issue_read_claudecode", "jira_ro_claudecode", ["claude-svc"], url=good)
+        self.assertEqual(self.call(["jira_issue_read_claudecode"], caller="claude-svc")[0], 0)
+        self.assertEqual(self.fake.asked, ["jira_ro_claudecode"])                              # only the last, valid call touched the credential
+
+    def test_an_unknown_auth_kind_is_refused_and_bearer_may_be_named(self):
+        self.jira("jira_issue_read_claudecode", "jira_ro_claudecode", ["claude-svc"], auth="digest")
+        self.assertEqual(self.call(["jira_issue_read_claudecode"], caller="claude-svc")[1]["code"], "SECRET_REGISTRY_UNSAFE")
+        self.put("p_named", {"purpose": "p_named", "secret": "openrouter_api_key", "callers": ["opc"], "action": "http_get_fields", "auth": "bearer", "url": "https://openrouter.ai/api/v1/key", "fields": ["data.usage"]})
+        self.fake.value, self.fake.reply = VALUE, {"data": {"usage": 1}}
+        self.assertEqual(self.call(["p_named"])[0], 0)
+
+    def test_a_basic_credential_that_is_not_email_colon_token_is_refused_before_any_request(self):
+        for value in (TOKEN, "no-at:" + TOKEN, EMAIL + ":", EMAIL + ": " + TOKEN, EMAIL):
+            self.fake.value = value
+            self.assertEqual(self.call(["jira_issue_read_claudecode"], caller="claude-svc")[1]["code"], "SECRET_CRED_UNREADABLE", value)
+        self.assertEqual(self.fake.fetched, [])
+
+    def test_a_missing_credential_is_a_fixed_code_and_is_logged(self):
+        self.fake.value = None
+        self.assertEqual(self.call(["jira_issue_read_codex"], caller="codex-svc")[1]["code"], "SECRET_CRED_UNREADABLE")
+        self.assertEqual(self.audit()[-1]["result"], "SECRET_CRED_UNREADABLE")
+
+    def test_extra_arguments_are_refused_for_a_basic_purpose_too(self):
+        for argv in (["jira_issue_read_claudecode", "jira_ro_codex"], ["jira_issue_read_claudecode", "LIFE-1"], ["jira_issue_read_claudecode", "https://evil.example/"]):
+            self.assertEqual(self.call(argv, caller="claude-svc")[1]["code"], "SECRET_BAD_ARGS")
+        self.assertEqual(self.fake.asked + self.fake.fetched, [])
+
+    def test_the_scan_covers_the_token_the_pair_and_the_basic_header_in_every_spelling(self):
+        pair_b64 = base64.b64encode(PAIR.encode()).decode()
+        header = "Basic " + pair_b64
+        spellings = [TOKEN, base64.b64encode(TOKEN.encode()).decode(), base64.urlsafe_b64encode(TOKEN.encode()).decode().rstrip("="), urllib.parse.quote(TOKEN, safe=""), TOKEN.encode().hex(),
+                     json.dumps(TOKEN)[1:-1], PAIR, pair_b64, base64.urlsafe_b64encode(PAIR.encode()).decode().rstrip("="), urllib.parse.quote(PAIR, safe=""), PAIR.encode().hex(), header]
+        for spelling in spellings:
+            self.assertIn(spelling, su.secret_forms(PAIR, "basic"), spelling)
+        for spelling in [s for s in spellings if len(s) <= 100]:                                  # a longer string never reaches the scan: SECRET_FIELD_NOT_SCALAR
+            self.fake.reply = dict(ISSUE, fields=dict(ISSUE["fields"], summary=spelling))
+            status, out = self.call(["jira_issue_read_claudecode"], caller="claude-svc")
+            self.assertEqual((status, out), (1, {"ok": False, "code": "SECRET_OUTPUT_CONTAINS_SECRET"}), spelling)
+            self.assertEqual(self.audit()[-1]["result"], "SECRET_OUTPUT_CONTAINS_SECRET")
+
+    def test_a_bearer_purpose_does_not_scan_for_the_token_part_only(self):
+        self.assertEqual(su.secret_forms(VALUE), su.forms(VALUE))
+
+
+class Fetch(unittest.TestCase):
+    """The one real HTTPS call, with the network replaced."""
+
+    def seen(self, secret, auth):
+        captured = {}
+
+        class Opener:
+            def open(self, request, timeout=None):
+                captured["request"] = request
+
+                class Reply:
+                    def __enter__(self):
+                        return self
+
+                    def __exit__(self, *exc):
+                        return False
+
+                    def read(self, n):
+                        return b"{}"
+                return Reply()
+
+        def build(*handlers):
+            captured["handlers"] = handlers
+            return Opener()
+
+        with mock.patch.object(su.urllib.request, "build_opener", build):
+            su.http_fetch("https://api.atlassian.com/x", secret, auth) if auth else su.http_fetch("https://openrouter.ai/x", secret)
+        return captured
+
+    def test_basic_sends_base64_of_the_pair_and_bearer_sends_the_token(self):
+        basic = self.seen(PAIR, "basic")
+        self.assertEqual(basic["request"].get_header("Authorization"), "Basic " + base64.b64encode(PAIR.encode()).decode())
+        bearer = self.seen(VALUE, None)
+        self.assertEqual(bearer["request"].get_header("Authorization"), "Bearer " + VALUE)
+
+    def test_a_redirect_is_never_followed_so_the_credential_cannot_leave_the_registered_host(self):
+        self.assertEqual(self.seen(PAIR, "basic")["handlers"], (su.NoRedirect,))
+        self.assertIsNone(su.NoRedirect().redirect_request(mock.Mock(), None, 302, "Found", {}, "https://evil.example/"))
+
+
+class Runbook(Case):
+    """The purpose files printed in the Oracle runbook must be accepted by the program as written."""
+
+    def test_every_purpose_file_in_the_runbook_loads_and_reads_one_fixed_issue(self):
+        import re
+        path = os.path.join(os.path.dirname(HERE), "..", "..", "docs", "platform", "shared-read-oracle-runbook.md")
+        with open(path) as handle:
+            text = handle.read()
+        files = re.findall(r"tee /etc/lifeos-secrets/purposes\.d/([a-z_]+)\.json >/dev/null <<'EOF'\n(.*?)\nEOF", text, re.S)
+        self.assertEqual(sorted(name for name, _ in files), ["jira_issue_read_claudecode", "jira_issue_read_codex"])
+        self.fake = Fake(value=PAIR, reply=ISSUE)
+        for name, body in files:
+            spec = json.loads(body)
+            self.put(name, spec)
+            status, out = self.call([name], caller=spec["callers"][0])
+            self.assertEqual((status, out["ok"], spec["auth"], spec["action"]), (0, True, "basic", "http_get_fields"), name)
+        self.assertEqual({url for url, _ in self.fake.fetched}, {"https://api.atlassian.com/ex/jira/1efae544-c7e8-44fb-9201-ad978e31076c/rest/api/3/issue/LIFE-696?fields=summary,status,updated"})
+        self.assertEqual(sorted(self.fake.asked), ["jira_ro_claudecode", "jira_ro_codex"])
 
 
 class Shipped(unittest.TestCase):
