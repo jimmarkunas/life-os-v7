@@ -163,7 +163,7 @@ class Tick(unittest.TestCase):
         root = pathlib.Path(__file__).resolve().parents[2]
         text = (root / ".github/workflows/hourly.yml").read_text()
         self.assertIn("      tick:", text)
-        self.assertIn("inputs.tick", text.split("PIPELINE:")[1].split("\n")[0])
+        self.assertIn("inputs.tick", text.split("      - id: pipeline\n")[1].split("\n      - ")[0])      # LIFE-699: the prep job's Pipeline decision step
         self.assertIn("TICK: ${{ inputs.tick }}", text)
         self.assertIn('os.environ.get("TICK")', (root / "lifeos/platform/gate.py").read_text())
 

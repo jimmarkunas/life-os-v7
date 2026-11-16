@@ -12,7 +12,7 @@ ID = "[removed]"
 
 # Every GitHub secret or variable the workflows use (Nov 14, 2026; LIFE-703 removed 14 names that were never set in GitHub: their steps now declare them empty for the settings page to fill). This list may only shrink: LIFE-699 moves each one to the Notion settings page or Bitwarden,
 # and the end state is LIFEOS_BWS_RUNTIME_TOKEN alone (GITHUB_TOKEN is GitHub's own and never counted). Adding a name here needs Jim's typed approval.
-FROZEN = frozenset({"GATE_MIN_GAP_MINUTES", "INTERVIEW_ACCEPTANCE_JSON", "INTERVIEW_ACCEPTANCE_NEGATIVE_JSON", "LIFEOS_BWS_RUNTIME_TOKEN", "V7_CLOUD_FIT_BACKLOG_PAGE", "V7_PIPELINE", "V7_STORE_VIA"})
+FROZEN = frozenset({"LIFEOS_BWS_RUNTIME_TOKEN"})
 
 
 def used():
@@ -127,7 +127,7 @@ class LastAccepted(unittest.TestCase):
 class DeclaredOnly(unittest.TestCase):
     def test_a_name_the_step_never_declares_is_never_filled(self):
         env = {"GRANOLA_AUTO": ""}
-        out = settings.apply(env, Page(["GRANOLA_AUTO on", "V7_PIPELINE true"]))
+        out = settings.apply(env, Page(["GRANOLA_AUTO on", "HIRING_AUTO_CLOSE true"]))
         self.assertEqual((env, out["filled"], out["undeclared"]), ({"GRANOLA_AUTO": "on"}, ["GRANOLA_AUTO"], 1))
 
 
@@ -144,15 +144,15 @@ class CopyAddresses(unittest.TestCase):
         self.assertEqual((again["seeded"], page.patches, again["matched"], again["mismatched"], again["undeclared"]), ([], 1, 4, [], 1))
         self.assertNotIn("HIRING_AUTO_CLOSE", env)
 
-    def test_the_ten_non_address_settings_are_copied_once_to_the_switches_block_one_line_each(self):
+    def test_the_non_address_settings_are_copied_once_to_the_switches_block_one_line_each(self):
         """LIFE-699 phase 7: names only in the counts; a credential, an unlisted name and a value with a line break are never copied."""
         link = "https://www.notion.so/Hiring-Pipeline#" + ID.replace("-", "").upper()
         page = Writable(["GRANOLA_AUTO on"], [])
-        env = {"JIRA_SITE_URL": "https://example.com", "JIRA_BOARDS": "A,B", "INTERVIEW_ACCEPTANCE_JSON": "{\"a\": 1}", "INTERVIEW_ACCEPTANCE_NEGATIVE_JSON": "{\n\"a\": 1}",
+        env = {"JIRA_SITE_URL": "https://example.com", "JIRA_BOARDS": "A,B", "BUZZ_STAGE_CHANNEL": "{\"a\": 1}", "JIRA_GTV_EPIC": "{\n\"a\": 1}",
                "GCAL_CALENDAR_ID": "  ", "CLOUDFLARE_API_TOKEN": "secret", "HIRING_CARD_BLOCK_ID": link}
         out = settings.apply(env, page, copy=True)
-        self.assertEqual(out["seeded"], ["HIRING_CARD_BLOCK_ID", "INTERVIEW_ACCEPTANCE_JSON", "JIRA_BOARDS", "JIRA_SITE_URL"])
-        self.assertEqual(page.blocks["s"].splitlines()[1:], ["GRANOLA_AUTO on", 'INTERVIEW_ACCEPTANCE_JSON {"a": 1}', "JIRA_BOARDS A,B", "JIRA_SITE_URL https://example.com"])
+        self.assertEqual(out["seeded"], ["HIRING_CARD_BLOCK_ID", "BUZZ_STAGE_CHANNEL", "JIRA_BOARDS", "JIRA_SITE_URL"])
+        self.assertEqual(page.blocks["s"].splitlines()[1:], ["GRANOLA_AUTO on", 'BUZZ_STAGE_CHANNEL {"a": 1}', "JIRA_BOARDS A,B", "JIRA_SITE_URL https://example.com"])
         self.assertIn("HIRING_CARD_BLOCK_ID " + ID.replace("-", "").lower(), page.blocks["a"])         # a copied Notion link is written as its bare block id
         self.assertNotIn("secret", page.blocks["a"] + page.blocks["s"])
         again = settings.apply(env, page, copy=True)

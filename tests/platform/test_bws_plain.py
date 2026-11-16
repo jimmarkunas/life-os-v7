@@ -13,11 +13,55 @@ plain = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(plain)
 
 SWITCHES = ["V7_LIVE", "ALERTS_ENABLED", "ALERTS_MUTED_UNTIL", "ALERT_SETTINGS", "V7_CLOUD_FIT", "V7_CLOUD_FIT_SCHEDULED", "V7_CLOUD_FIT_BACKLOG_BUDGET",
-            "V7_CLOUD_FIT_BACKLOG_MAX", "V7_CLOUD_FIT_PARALLEL", "LIFEOS_ACQ_SSH_PORT"]
+            "V7_CLOUD_FIT_BACKLOG_MAX", "V7_CLOUD_FIT_PARALLEL", "LIFEOS_ACQ_SSH_PORT", "V7_PIPELINE", "GATE_MIN_GAP_MINUTES", "V7_STORE_VIA", "V7_CLOUD_FIT_BACKLOG_PAGE"]
 
 
 def run(names, bitwarden, live_mode="false"):
     return plain.decide(plain.requested(names, live_mode), live_mode, bitwarden)
+
+
+class LastFourSwitches(unittest.TestCase):
+    """LIFE-699: the hourly tick's master switch, the gap between ticks, the store route and the cloud-fit pilot page leave GitHub for Bitwarden's plain-switch path."""
+    PAGE = "[removed]"
+
+    def test_the_pipeline_switch_unreadable_parks_the_tick(self):
+        exports, report, failures = run("V7_PIPELINE", None)
+        self.assertEqual((exports, report, failures), ({"V7_PIPELINE": "false"}, {"V7_PIPELINE": "BWS_UNREADABLE"}, []))      # fail closed: a parked tick starts no Jobs job
+
+    def test_the_pipeline_switch_accepts_only_true_or_false(self):
+        self.assertEqual(run("V7_PIPELINE", {"V7_PIPELINE": "true"})[0], {"V7_PIPELINE": "true"})
+        self.assertEqual(run("V7_PIPELINE", {"V7_PIPELINE": "false"})[0], {"V7_PIPELINE": "false"})
+        self.assertEqual(run("V7_PIPELINE", {"V7_PIPELINE": "yes"}), ({"V7_PIPELINE": "false"}, {"V7_PIPELINE": "REFUSED_USED_DEFAULT"}, []))
+
+    def test_the_gap_between_ticks_is_a_whole_number_from_10_to_50_else_the_default(self):
+        self.assertEqual(run("GATE_MIN_GAP_MINUTES", {"GATE_MIN_GAP_MINUTES": "20"})[0], {"GATE_MIN_GAP_MINUTES": "20"})
+        for junk in ("9", "51", "x", "-5", "20.5"):
+            self.assertEqual(run("GATE_MIN_GAP_MINUTES", {"GATE_MIN_GAP_MINUTES": junk})[0], {"GATE_MIN_GAP_MINUTES": ""}, junk)           # empty: the gate keeps its 50-minute default
+        self.assertEqual(run("GATE_MIN_GAP_MINUTES", None)[0], {"GATE_MIN_GAP_MINUTES": ""})
+
+    def test_the_store_route_is_oracle_or_direct_and_anything_else_is_the_direct_default(self):
+        self.assertEqual(run("V7_STORE_VIA", {"V7_STORE_VIA": "oracle"})[0], {"V7_STORE_VIA": "oracle"})
+        self.assertEqual(run("V7_STORE_VIA", {"V7_STORE_VIA": "direct"})[0], {"V7_STORE_VIA": "direct"})
+        self.assertEqual(run("V7_STORE_VIA", {"V7_STORE_VIA": "elsewhere"})[0], {"V7_STORE_VIA": ""})
+        self.assertEqual(run("V7_STORE_VIA", None)[0], {"V7_STORE_VIA": ""})
+
+    def test_the_pilot_page_is_a_ledger_page_id_or_none_and_anything_else_is_unset(self):
+        self.assertEqual(run("V7_CLOUD_FIT_BACKLOG_PAGE", {"V7_CLOUD_FIT_BACKLOG_PAGE": self.PAGE})[0], {"V7_CLOUD_FIT_BACKLOG_PAGE": self.PAGE})
+        dashed = "[removed]"
+        self.assertEqual(run("V7_CLOUD_FIT_BACKLOG_PAGE", {"V7_CLOUD_FIT_BACKLOG_PAGE": dashed})[0], {"V7_CLOUD_FIT_BACKLOG_PAGE": self.PAGE})
+        for unset in ("none", "", "not a page"):
+            self.assertEqual(run("V7_CLOUD_FIT_BACKLOG_PAGE", {"V7_CLOUD_FIT_BACKLOG_PAGE": unset})[0], {"V7_CLOUD_FIT_BACKLOG_PAGE": ""}, unset)
+
+    def test_main_exports_the_store_route_under_the_name_the_code_reads(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env_file = os.path.join(tmp, "env")
+            open(env_file, "w").close()
+            fake = {"GITHUB_ENV": env_file, "PLAIN_NAMES": "V7_STORE_VIA,V7_PIPELINE", "PLAIN_LIVE_MODE": "false", "PLAIN_TEST_UNREADABLE": "fail", "PLAIN_HELPER": ""}
+            self.assertEqual(plain.main(fake), 0)
+            written = open(env_file).read().split("\n")
+        self.assertIn("V7_PIPELINE=false", written)
+        self.assertNotIn("V7_STORE_VIA=", "\n".join(written))                                   # the code reads LIFEOS_ACQ_SSH_VIA
+        self.assertIn("LIFEOS_ACQ_SSH_VIA=", written)
 
 
 class FailModes(unittest.TestCase):
