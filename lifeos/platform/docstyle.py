@@ -27,7 +27,8 @@ EXEMPT = {"lifeos/edge/": "installed on the Oracle VM and the Mac helper (runner
           "lifeos/imessage/attention_mcp.py": "hash-pinned for the Mac helper that holds Full Disk Access",
           "lifeos/platform/gate.py": "installed on the Oracle VM for the ticker (drift check)",
           "lifeos/platform/alert_registry.py": "installed on the Oracle VM for the ticker (drift check)",
-          "lifeos/platform/alert_settings.py": "installed on the Oracle VM for the ticker (drift check)"}
+          "lifeos/platform/alert_settings.py": "installed on the Oracle VM for the ticker (drift check)",
+          "lifeos/platform/alert_store.py": "installed on the Oracle VM for the ticker (reads the alert switches from Bitwarden)"}
 
 
 def problems(source, is_init=False):

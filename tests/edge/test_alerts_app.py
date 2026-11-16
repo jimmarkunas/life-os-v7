@@ -1,12 +1,11 @@
-"""LIFE-75: the Alert settings screen on the Close service: reads and saves repository variables through a signed review and confirm, and the saved values are exactly what the senders read."""
+"""LIFE-75: the Alert settings screen on the Close service: reads and saves the three Bitwarden items through a signed review and confirm, and the saved values are exactly what the senders read."""
 import datetime as dt
 import json
 import re
 import unittest
-import urllib.error
 from unittest import mock
 
-from lifeos.platform import alert_registry as registry, alert_settings as settings, alerts
+from lifeos.platform import alert_registry as registry, alert_settings as settings, alert_store, alerts
 from lifeos.sources.apps import close_app as C
 from lifeos.sources.apps import alerts_app as app
 
@@ -15,43 +14,28 @@ SECRET = b"s" * 32
 NOW = dt.datetime(2026, 10, 26, 9, 0, tzinfo=app.CENTRAL)
 
 
-class GitHub:
-    """A fake of the repository-variables API: GET one, PATCH one (404 when absent), POST to create."""
+class Bitwarden:
+    """A fake of the `bws` program: `secret get ID` and `secret edit ID --value V` on the three alert items (an item with no value reads as empty)."""
 
     def __init__(self, variables=None, fail=False, drop_writes=False):
         self.vars, self.fail, self.drop, self.log = dict(variables or {}), fail, drop_writes, []
 
-    def __call__(self, request, timeout=None):
-        self.log.append((request.get_method(), request.full_url.split("/variables")[1], request.get_header("Authorization")))
-        if self.fail:
-            raise OSError("down")
-        name = request.full_url.rsplit("/variables", 1)[1].lstrip("/")
-        body = json.loads(request.data) if request.data else None
-        method = request.get_method()
-        if method == "GET":
-            return self.reply({"name": name, "value": self.vars[name]}) if name in self.vars else self.missing(request)
-        if method == "PATCH":
-            if name not in self.vars:
-                return self.missing(request)
-            if not self.drop:
-                self.vars[name] = body["value"]
-            return self.reply({})
-        if method == "POST":
-            if not self.drop:
-                self.vars[body["name"]] = body["value"]
-            return self.reply({})
-        raise AssertionError(method)
-
-    def missing(self, request):
-        raise urllib.error.HTTPError(request.full_url, 404, "Not Found", {}, None)
-
-    @staticmethod
-    def reply(data):
-        return mock.MagicMock(__enter__=lambda s: mock.Mock(read=lambda: json.dumps(data).encode()), __exit__=lambda *a: False)
+    def __call__(self, argv, env=None, capture_output=True, text=True, timeout=None, check=False):
+        names = {item: name for name, item in alert_store.IDS.items()}
+        verb, item = argv[2], argv[3]
+        self.log.append(("GET" if verb == "get" else "EDIT", names.get(item), env["BWS_ACCESS_TOKEN"]))
+        if self.fail or item not in names:
+            return mock.Mock(returncode=1, stdout="", stderr="down")
+        name = names[item]
+        if verb == "get":
+            return mock.Mock(returncode=0, stdout=json.dumps({"id": item, "key": "lifeos/github-actions/" + name, "value": self.vars.get(name, "")}), stderr="")
+        if not self.drop:
+            self.vars[name] = argv[argv.index("--value") + 1]
+        return mock.Mock(returncode=0, stdout="", stderr="")
 
 
-def secrets(token=b"github_pat_synthetic"):
-    return {"link": SECRET, "ghvars": token} if token else {"link": SECRET}
+def secrets(token=b"bws-token-synthetic"):
+    return {"link": SECRET, "bwsalerts": token} if token else {"link": SECRET}
 
 
 def request(method="GET", form=None, path="/alerts"):
@@ -67,7 +51,7 @@ class Screen(unittest.TestCase):
         patcher = mock.patch.object(C, "_now", return_value=NOW)
         patcher.start()
         self.addCleanup(patcher.stop)
-        self.gh = GitHub()
+        self.gh = Bitwarden()
 
     def get(self, **kw):
         return app.handle(request(), {"login": LOGIN}, secrets(**kw), self.gh)
@@ -108,7 +92,7 @@ class Screen(unittest.TestCase):
         self.assertIn('name="ch:run_failed:ntfy" value="1" aria-label="Phone for run_failed" checked disabled>', text)     # a PAGE alert's phone box is fixed on
         self.assertIn('name="ch:quiet_24h:ntfy" value="1" aria-label="Phone for quiet_24h" checked', text)
         self.assertNotRegex(text, r'name="ch:quiet_24h:telegram" value="1" aria-label="Telegram for quiet_24h" checked')
-        self.assertNotIn("github_pat", text)
+        self.assertNotIn("bws-token", text)
 
     def test_without_the_credential_the_screen_says_so_and_changes_nothing(self):
         for result in (self.get(token=b""), self.post({"step": "review"}, token=b"")):
@@ -117,9 +101,9 @@ class Screen(unittest.TestCase):
         self.assertEqual(self.gh.log, [])
 
     def test_a_github_failure_is_a_fixed_message_with_no_detail(self):
-        result = app.handle(request(), {"login": LOGIN}, secrets(), GitHub(fail=True))
+        result = app.handle(request(), {"login": LOGIN}, secrets(), Bitwarden(fail=True))
         self.assertEqual(result[0], 503)
-        self.assertNotIn("github_pat", page_text(result))
+        self.assertNotIn("bws-token", page_text(result))
         self.assertNotIn("down", page_text(result))
 
     def test_a_saved_state_is_shown_back(self):
@@ -152,7 +136,7 @@ class Screen(unittest.TestCase):
         self.assertEqual(self.gh.vars["ALERTS_ENABLED"], "on")
         self.assertEqual(self.gh.vars["ALERTS_MUTED_UNTIL"], "2026-10-27T08:00:00-05:00")
         self.assertEqual(json.loads(self.gh.vars["ALERT_SETTINGS"]), {"v": 1, "channels": {"quiet_24h": ["ntfy", "telegram"], "stuck_jobs": []}})
-        self.assertTrue(all(auth == "Bearer github_pat_synthetic" for _, _, auth in self.gh.log))
+        self.assertTrue(all(auth == "bws-token-synthetic" for _, _, auth in self.gh.log))
 
     def test_what_is_saved_is_exactly_what_the_senders_read(self):
         review = self.post(self.propose(enabled=True, mute="2026-10-27T08:00", edit={"ch:quiet_24h:telegram": "1", "ch:run_failed:telegram": None}))
@@ -194,7 +178,7 @@ class Screen(unittest.TestCase):
         self.assertEqual([m for m, *_ in self.gh.log if m != "GET"], [])
 
     def test_a_save_that_does_not_read_back_is_reported_as_degraded(self):
-        self.gh = GitHub(drop_writes=True)
+        self.gh = Bitwarden(drop_writes=True)
         review = self.post(self.propose(enabled=True))
         result = self.post({**self.fields(page_text(review)), "step": "confirm"})
         self.assertEqual(result[0], 500)

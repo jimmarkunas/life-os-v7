@@ -1,5 +1,5 @@
 #!/bin/bash
-# LIFE-47 S2 on Oracle, run as root via `opc` (never `ubuntu`): policy LOGIN LEDGER PIPELINE NODE... | credential notion|link|github|github-off|ghvars|ghvars-off|gdrive|gdrive-off|picker|picker-off | units DIR |
+# LIFE-47 S2 on Oracle, run as root via `opc` (never `ubuntu`): policy LOGIN LEDGER PIPELINE NODE... | credential notion|link|github|github-off|bwsalerts|bwsalerts-off|ghvars-off|gdrive|gdrive-off|picker|picker-off | units DIR |
 #   (gdrive: pipe lifeos/platform/google_consent.py into it, see that file)
 #   install COMMIT (close_release.py stages and proves the approved commit before anything live changes) | verify | rollback | uninstall.
 #   auto (Edge auto-release, Jim Oct 24: main's green head, only when the Close closure changed, only while installed and serving; verify, else back to the tree that
@@ -95,8 +95,8 @@ EOF
   if [ -s "$CREDS/lifeos-close.github" ]; then                                       # optional (Jim, Oct 24): the post-close Hiring refresh; absent = never asked
     sed -i "/^LoadCredentialEncrypted=link:/a LoadCredentialEncrypted=github:$CREDS/lifeos-close.github" "$1/lifeos-close@.service"
   fi
-  if [ -s "$CREDS/lifeos-close.ghvars" ]; then                                       # optional (Jim, Oct 26): the Alert settings screen saves the master switch, the mute and the channel choices as repository variables; absent = the screen is read-only
-    sed -i "/^LoadCredentialEncrypted=link:/a LoadCredentialEncrypted=ghvars:$CREDS/lifeos-close.ghvars" "$1/lifeos-close@.service"
+  if [ -s "$CREDS/lifeos-close.bwsalerts" ]; then                                    # optional (LIFE-733): the Alert settings screen saves the master switch, the mute and the channel choices as Bitwarden items in LIFE OS ALERTS; absent = the screen is read-only
+    sed -i "/^LoadCredentialEncrypted=link:/a LoadCredentialEncrypted=bwsalerts:$CREDS/lifeos-close.bwsalerts" "$1/lifeos-close@.service"
   fi
   if [ -s "$CREDS/lifeos-close.picker" ]; then                                       # optional (LIFE-217, Jim Oct 31): the Manage Drive picker's browser identifiers; absent = no picker button
     sed -i "/^LoadCredentialEncrypted=link:/a LoadCredentialEncrypted=picker:$CREDS/lifeos-close.picker" "$1/lifeos-close@.service"
@@ -119,8 +119,9 @@ case "${1:-}" in
       link) python3 -I -c 'import secrets; print(secrets.token_hex(32))' | systemd-creds encrypt --name=link - "$CREDS/lifeos-close.link" ;;
       github) say "paste the fine-grained token (this repository, Actions read and write only), then Ctrl-D"; systemd-creds encrypt --name=github - "$CREDS/lifeos-close.github" ;;
       github-off) rm -f "$CREDS/lifeos-close.github"; [ ! -e "$UNITS/lifeos-close@.service" ] || { units "$UNITS"; systemctl daemon-reload; }; say "refresh credential removed; the Close screen no longer asks for refreshes"; exit 0 ;;
-      ghvars) say "paste the fine-grained token (this repository only, Variables read and write, nothing else), then Ctrl-D"; systemd-creds encrypt --name=ghvars - "$CREDS/lifeos-close.ghvars" ;;
-      ghvars-off) rm -f "$CREDS/lifeos-close.ghvars"; [ ! -e "$UNITS/lifeos-close@.service" ] || { units "$UNITS"; systemctl daemon-reload; }; say "settings credential removed; the Alert settings screen is read-only"; exit 0 ;;
+      bwsalerts) say "paste the Bitwarden access token (LIFE OS ALERTS only), then Ctrl-D"; systemd-creds encrypt --name=bwsalerts - "$CREDS/lifeos-close.bwsalerts" ;;
+      bwsalerts-off) rm -f "$CREDS/lifeos-close.bwsalerts"; [ ! -e "$UNITS/lifeos-close@.service" ] || { units "$UNITS"; systemctl daemon-reload; }; say "settings credential removed; the Alert settings screen is read-only"; exit 0 ;;
+      ghvars-off) rm -f "$CREDS/lifeos-close.ghvars"; [ ! -e "$UNITS/lifeos-close@.service" ] || { units "$UNITS"; systemctl daemon-reload; }; say "the old GitHub settings credential was removed (LIFE-733 replaced it with bwsalerts)"; exit 0 ;;
       gdrive) [ -t 0 ] && { say "pipe lifeos/platform/google_consent.py into this; the credential is never typed or shown"; exit 2; }
               value="$(cat)"                                                    # an aborted sign-in sends nothing: never replace a working credential with that
               printf '%s' "$value" | python3 -I -c 'import json, sys; d = json.load(sys.stdin); sys.exit(0 if all(isinstance(d.get(k), str) and d[k] for k in ("client_id", "client_secret", "refresh_token")) else 1)' 2>/dev/null \
@@ -133,10 +134,10 @@ case "${1:-}" in
               printf '%s' "$value" | systemd-creds encrypt --name=picker - "$CREDS/lifeos-close.picker"; value="" ;;
       picker-off) rm -f "$CREDS/lifeos-close.picker"; [ ! -e "$UNITS/lifeos-close@.service" ] || { units "$UNITS"; systemctl daemon-reload; }; say "picker credential removed; Manage shows no picker button"; exit 0 ;;
       gdrive-off) rm -f "$CREDS/lifeos-close.gdrive"; [ ! -e "$UNITS/lifeos-close@.service" ] || { units "$UNITS"; systemctl daemon-reload; }; say "Drive credential removed; Build resume uploads to Notion again"; exit 0 ;;
-      *) say "credential notion|link|github|github-off|ghvars|ghvars-off|gdrive|gdrive-off|picker|picker-off"; exit 2 ;;
+      *) say "credential notion|link|github|github-off|bwsalerts|bwsalerts-off|ghvars-off|gdrive|gdrive-off|picker|picker-off"; exit 2 ;;
     esac
     chmod 600 "$CREDS/lifeos-close.${2}"; say "encrypted credential ${2} stored (value not shown)"
-    if { [ "$2" = github ] || [ "$2" = ghvars ] || [ "$2" = gdrive ] || [ "$2" = picker ]; } && [ -e "$UNITS/lifeos-close@.service" ]; then units "$UNITS"; systemctl daemon-reload; say "the next connection loads it"; fi ;;   # never re-creates an uninstalled service
+    if { [ "$2" = github ] || [ "$2" = bwsalerts ] || [ "$2" = gdrive ] || [ "$2" = picker ]; } && [ -e "$UNITS/lifeos-close@.service" ]; then units "$UNITS"; systemctl daemon-reload; say "the next connection loads it"; fi ;;   # never re-creates an uninstalled service
   units) units "${2:?dir}" ;;
   install)
     commit="${2:?approved full commit sha}"

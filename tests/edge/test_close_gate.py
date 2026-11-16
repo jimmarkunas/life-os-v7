@@ -306,19 +306,19 @@ class Refresh(Gate):
         self.assertNotIn("gdrive", self.calls[2][2])                                           # absent: Build resume keeps the Notion upload
 
     def test_the_settings_credential_reaches_only_the_alerts_screen_on_get_and_post(self):
-        with open(os.path.join(self.creds, "ghvars"), "wb") as f:
-            f.write(b"github_pat_synthetic\n")
+        with open(os.path.join(self.creds, "bwsalerts"), "wb") as f:
+            f.write(b"bws-token-synthetic\n")
         self.run_gate(v2(RUNNER) + http(path="/alerts"), app=self.asking())
         self.run_gate(v2(RUNNER) + http("POST", path="/alerts", headers=POST_OK, body=b"a=b"), app=self.asking(409))
         self.run_gate(v2(RUNNER) + http(path="/close?l=abc"), app=self.asking())
         self.run_gate(v2(RUNNER) + http("POST", headers=POST_OK, body=b"a=b"), app=self.asking(409))
-        self.assertEqual(self.calls[0][2]["ghvars"], b"github_pat_synthetic")
-        self.assertEqual(self.calls[1][2]["ghvars"], b"github_pat_synthetic")
-        self.assertNotIn("ghvars", self.calls[2][2])                                          # no other screen ever sees it
-        self.assertNotIn("ghvars", self.calls[3][2])
-        os.remove(os.path.join(self.creds, "ghvars"))
+        self.assertEqual(self.calls[0][2]["bwsalerts"], b"bws-token-synthetic")
+        self.assertEqual(self.calls[1][2]["bwsalerts"], b"bws-token-synthetic")
+        self.assertNotIn("bwsalerts", self.calls[2][2])                                          # no other screen ever sees it
+        self.assertNotIn("bwsalerts", self.calls[3][2])
+        os.remove(os.path.join(self.creds, "bwsalerts"))
         self.run_gate(v2(RUNNER) + http(path="/alerts"), app=self.asking())
-        self.assertNotIn("ghvars", self.calls[4][2])                                          # absent: the screen is read-only
+        self.assertNotIn("bwsalerts", self.calls[4][2])                                          # absent: the screen is read-only
 
     def opener(self, runs, fail=False):
         sent = []

@@ -14,15 +14,16 @@
 # Tailscale, another user's files or any other credential.
 set -euo pipefail
 OPT=/opt/lifeos-ticker; CREDS=/etc/credstore.encrypted; UNITS=/etc/systemd/system
-PROG="$OPT/ticker.py"; GH="$CREDS/lifeos-ticker.github"; NT="$CREDS/lifeos-ticker.ntfy"
+PROG="$OPT/ticker.py"; GH="$CREDS/lifeos-ticker.github"; NT="$CREDS/lifeos-ticker.ntfy"; BW="$CREDS/lifeos-ticker.bwsalerts"; DROPIN=/etc/systemd/system/lifeos-ticker-watch.service.d/bwsalerts.conf     # LIFE-733: optional; present = the alert switches come from Bitwarden
 UNIT_FILES="lifeos-ticker-tick.service lifeos-ticker-tick.timer lifeos-ticker-watch.service lifeos-ticker-watch.timer"
-MODULES="gate.py alerts.py alert_registry.py alert_settings.py redact.py drift.py health.py release_proof.py"
+MODULES="gate.py alerts.py alert_registry.py alert_settings.py alert_store.py redact.py drift.py health.py release_proof.py"
 say() { printf '%s\n' "$*"; }
 die() { say "STOP: $*"; exit 1; }
 [ "$(id -u)" = 0 ] || die "run as root via opc"
 
 # a one-off run of the ticker with the stored credentials, exactly as the timer runs it
-ticker() { systemd-run --quiet --wait --pipe --collect -p DynamicUser=yes -p "LoadCredentialEncrypted=github:$GH" -p "LoadCredentialEncrypted=ntfy:$NT" \
+ticker() { local extra=(); [ ! -s "$BW" ] || extra=(-p "LoadCredentialEncrypted=bwsalerts:$BW" -E LIFEOS_BWS_BIN=/usr/local/bin/bws)
+  systemd-run --quiet --wait --pipe --collect -p DynamicUser=yes -p "LoadCredentialEncrypted=github:$GH" -p "LoadCredentialEncrypted=ntfy:$NT" "${extra[@]}" \
   /usr/bin/python3 -I "$PROG" "$1"; }
 
 case "${1:-}" in
@@ -44,19 +45,29 @@ case "${1:-}" in
     systemctl daemon-reload
     say "installed the ticker and its units at $(git -C "$src" rev-parse --short HEAD 2>/dev/null || echo unknown); no timer is enabled (credential github, credential ntfy, dry, enable come next)" ;;
   credential)
-    name="${2:-}"; [ "$name" = github ] || [ "$name" = ntfy ] || die "usage: credential github | credential ntfy"
+    name="${2:-}"; [ "$name" = github ] || [ "$name" = ntfy ] || [ "$name" = bwsalerts ] || die "usage: credential github | credential ntfy | credential bwsalerts"
     [ -t 0 ] && die "pipe the value in (it is never typed on the command line or shown)"
     value="$(cat | tr -d '\r\n ')"
     if [ "$name" = github ]; then
       [[ "$value" =~ ^github_pat_[A-Za-z0-9_]{20,}$ ]] || die "that is not a fine-grained GitHub token (github_pat_...); the stored one (if any) is unchanged"
       out="$GH"
+    elif [ "$name" = bwsalerts ]; then
+      [[ "$value" =~ ^0\.[0-9a-f-]{36}\.[A-Za-z0-9]+:[A-Za-z0-9+/=]+$ ]] || die "that is not a Bitwarden access token; the stored one (if any) is unchanged"
+      [ -x /usr/local/bin/bws ] || die "install the bws program at /usr/local/bin/bws first (the ticker runs without a home directory); nothing stored"
+      out="$BW"
     else
       [[ "$value" =~ ^[A-Za-z0-9_-]{8,64}$ ]] || die "that is not an ntfy topic name; the stored one (if any) is unchanged"
       out="$NT"
     fi
     install -d -m 700 "$CREDS"
     printf '%s' "$value" | systemd-creds encrypt --name="$name" - "$out"; value=""
-    chmod 600 "$out"; say "encrypted $name credential stored (value not shown)" ;;
+    chmod 600 "$out"; say "encrypted $name credential stored (value not shown)"
+    if [ "$name" = bwsalerts ]; then
+      install -d -m 755 "$(dirname "$DROPIN")"
+      printf '[Service]\nLoadCredentialEncrypted=bwsalerts:%s\nEnvironment=LIFEOS_BWS_BIN=/usr/local/bin/bws\n' "$BW" > "$DROPIN"; chmod 644 "$DROPIN"; systemctl daemon-reload
+      say "the watch run now reads the alert switches from Bitwarden"
+    fi ;;
+  bwsalerts-off) rm -f "$BW" "$DROPIN"; systemctl daemon-reload; say "Bitwarden credential removed; the watch run reads the repository variables again" ;;
   dry)
     [ -s "$GH" ] && [ -s "$NT" ] || die "both credentials must be stored first"
     ticker dry ;;
@@ -87,6 +98,6 @@ case "${1:-}" in
     systemctl disable --now lifeos-ticker-tick.timer lifeos-ticker-watch.timer >/dev/null 2>&1 || true
     for u in $UNIT_FILES; do rm -f "$UNITS/$u"; done; rm -rf "$OPT"; systemctl daemon-reload
     say "units and code removed (the credentials are kept; run forget to remove them)" ;;
-  forget) rm -f "$GH" "$NT"; say "stored credentials removed" ;;
-  *) say "usage: install-ticker.sh install REPO | credential github|ntfy | dry | run-now tick|watch | enable | verify | disable | uninstall | forget"; exit 2 ;;
+  forget) rm -f "$GH" "$NT" "$BW" "$DROPIN"; say "stored credentials removed" ;;
+  *) say "usage: install-ticker.sh install REPO | credential github|ntfy|bwsalerts | bwsalerts-off | dry | run-now tick|watch | enable | verify | disable | uninstall | forget"; exit 2 ;;
 esac

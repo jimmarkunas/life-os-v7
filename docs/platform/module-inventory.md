@@ -58,6 +58,7 @@ Generated from `lifeos/platform/runtime.json`; do not edit by hand. The drift ch
 | lifeos/platform/alerts.py | oracle | /opt/lifeos-ticker/lifeos/platform/alerts.py | lifeos-ticker-watch.timer |
 | lifeos/platform/alert_registry.py | oracle | /opt/lifeos-ticker/lifeos/platform/alert_registry.py | lifeos-ticker-watch.timer |
 | lifeos/platform/alert_settings.py | oracle | /opt/lifeos-ticker/lifeos/platform/alert_settings.py | lifeos-ticker-watch.timer |
+| lifeos/platform/alert_store.py | oracle | /opt/lifeos-ticker/lifeos/platform/alert_store.py | lifeos-ticker-watch.timer |
 | lifeos/platform/redact.py | oracle | /opt/lifeos-ticker/lifeos/platform/redact.py | lifeos-ticker-watch.timer |
 | lifeos/platform/drift.py | oracle | /opt/lifeos-ticker/lifeos/platform/drift.py | lifeos-ticker-watch.timer |
 | lifeos/edge/backup/offsite_backup.py | oracle | /opt/lifeos-offsite/offsite_backup.py | lifeos-offsite-backup.timer |

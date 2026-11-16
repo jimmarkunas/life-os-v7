@@ -1,4 +1,4 @@
-# LIFE-330: one watchdog check (stalled / failing incidents, LIFE-329 reminders; no daily check-in). Reads Jim's alert switches from the repository variables.
+# LIFE-330: one watchdog check (stalled / failing incidents, LIFE-329 reminders; no daily check-in). Reads Jim's alert switches from Bitwarden when the bwsalerts drop-in is installed (LIFE-733), else from the repository variables.
 [Unit]
 Description=LIFE OS ticker: watchdog incident check
 After=network-online.target
