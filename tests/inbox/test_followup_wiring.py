@@ -53,11 +53,11 @@ class Switch(unittest.TestCase):
 
     def test_without_the_fetchers_module_nothing_is_configured(self):
         with mock.patch.dict(sys.modules, {"lifeos.platform.followup_fetchers": None}):
-            self.assertEqual(set(W.credential_names()), {("jira", "personal"), ("jira", "bytalos"), ("outlook", "personal", 1), ("outlook", "personal", 2), ("outlook", "personal", 3)})        # only the existing Jira token and the Outlook client id are named
+            self.assertEqual(set(W.credential_names()), set(W.REUSED))        # the committed reuse table names every credential
             with mock.patch.object(W.db, "connect", shim()):
                 wiring = W.build(ON)
         self.assertEqual(wiring.fetchers, {})                                             # nothing can read: every source degraded, nothing crashed
-        self.assertTrue(all(g.credential_ref in ("JIRA_API_TOKEN", "OUTLOOK_CLIENT_ID") for g in wiring.grants))
+        self.assertTrue(all(g.credential_ref == W.REUSED[(g.source, g.tenant)][0] for g in wiring.grants))
         self.assertEqual({g.tenant for g in wiring.grants}, {"personal", "bytalos"})
 
 
@@ -69,7 +69,7 @@ class Build(unittest.TestCase):
         self.assertEqual({(s.workspace, s.account) for s in dry.scopes}, {("personal", "jira-personal"), ("personal", "gm"), ("bytalos", "jira-bytalos")})
         self.assertTrue(all("asana" not in s.sources for s in dry.scopes))
         self.assertEqual({(g.source, g.tenant, g.account) for g in dry.grants}, {("jira", "personal", "jira-personal"), ("jira", "bytalos", "jira-bytalos"), ("gmail", "personal", "gm")})
-        self.assertTrue(all(g.credential_ref in NAMES.values() and not g.revoked for g in dry.grants))
+        self.assertTrue(all(g.credential_ref in {n for n, _ in W.REUSED.values()} and not g.revoked for g in dry.grants))
         self.assertIsInstance(dry.store, W.DryStore)
         self.assertIsInstance(live.store, FollowupStore)
         self.assertEqual(set(dry.fetchers), {"jira"})
@@ -120,6 +120,22 @@ class Build(unittest.TestCase):
         table = W.expiry_table()
         self.assertEqual(table[("jira", "personal")], table[("jira", "bytalos")])
         self.assertRegex(table[("jira", "personal")], r"^\d{4}-\d{2}-\d{2}$")
+
+    def test_existing_credentials_are_reused_and_only_two_names_are_new(self):
+        names = W.credential_names()
+        self.assertEqual({names[k] for k in (("notion", "personal"), ("interview_os", "personal"))}, {"NOTION_API_TOKEN"})
+        self.assertEqual({names[("calendar", "personal")], names[("calendar", "bytalos")]}, {"GCAL_SERVICE_ACCOUNT_JSON"})
+        self.assertEqual(names[("gmail", "personal")], "GMAIL_OAUTH_REFRESH_TOKEN")
+        self.assertEqual({v for v in names.values() if v.startswith("FOLLOWUP_")}, {"FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH", "FOLLOWUP_TODOIST_PERSONAL_TOKEN"})
+        table = W.expiry_table()
+        self.assertTrue(all(key in table for key, (_, inventory) in W.REUSED.items() if inventory))       # each reused credential's date comes from its existing inventory row
+        self.assertFalse(any(key in table for key, (_, inventory) in W.REUSED.items() if not inventory))   # a new item has no row, so no grant until it exists
+        env = {**ON, "FOLLOWUP_ACCOUNT_CALENDAR_PERSONAL": "cp", "FOLLOWUP_ACCOUNT_CALENDAR_BYTALOS": "cb", "FOLLOWUP_ACCOUNT_NOTION_PERSONAL": "np",
+               "FOLLOWUP_ACCOUNT_GMAIL_BYTALOS": "gb", "FOLLOWUP_ACCOUNT_TODOIST_PERSONAL": "tp"}
+        grants = W.grants_for(env, names)
+        calendars = [g for g in grants if g.source == "calendar"]
+        self.assertEqual(sorted((g.tenant, g.account, g.credential_ref) for g in calendars), [("bytalos", "cb", "GCAL_SERVICE_ACCOUNT_JSON"), ("personal", "cp", "GCAL_SERVICE_ACCOUNT_JSON")])   # one item, two Grants
+        self.assertFalse([g for g in grants if g.source in ("todoist",) or (g.source == "gmail" and g.tenant == "bytalos")])
 
     def test_outlook_is_up_to_three_personal_accounts_and_never_bytalos(self):
         env = {**ON, **OUTLOOKS, "FOLLOWUP_ACCOUNT_OUTLOOK_PERSONAL_4": "ol4", "FOLLOWUP_ACCOUNT_OUTLOOK_BYTALOS": "no"}

@@ -23,9 +23,16 @@ BOTH = ("personal", "bytalos")
 SOURCE_WORKSPACES = {"jira": BOTH, "calendar": BOTH, "gmail": BOTH, "outlook": ("personal",), "todoist": ("personal",), "notion": ("personal",), "interview_os": ("personal",)}
 MAX_ACCOUNTS = {("outlook", "personal"): 3}                                       # every other (source, workspace) has one account
 FIXED_ACCOUNTS = {("jira", "personal"): "jira-personal", ("jira", "bytalos"): "jira-bytalos"}   # Jira is not a credential Jim names: these scope labels are committed, not read from the environment
-OUTLOOK_CREDENTIAL = "OUTLOOK_CLIENT_ID"                                           # Outlook tokens are read by the fetcher from v7_outlook_token by label followup-personal-1..3; only the client id is loaded
 JIRA_PROJECTS = {"personal": ("JFM", "LIFE", "LOS"), "bytalos": ("BAD", "BPP")}   # one Atlassian account, split by project key; passed to the fetchers as FOLLOWUP_JIRA_PROJECTS_<WORKSPACE>
-JIRA_CREDENTIAL = "JIRA_API_TOKEN"                                                # Jim, Nov 16 2026: reuse the existing Jira token (with JIRA_EMAIL) for BOTH Jira scopes; a name, never a value
+# Jim, Nov 16 2026: reuse an existing credential wherever one exists. (source, workspace[, n]) -> (credential NAME, key of its row in the credential inventory, or None for a new item). Names only.
+REUSED = {**{("jira", w): ("JIRA_API_TOKEN", "jira_api_token") for w in ("personal", "bytalos")},                    # with JIRA_EMAIL, loaded beside it
+          **{("outlook", "personal", n): ("OUTLOOK_CLIENT_ID", "outlook_sign_in") for n in (1, 2, 3)},             # the fetcher reads the tokens from v7_outlook_token by label followup-personal-1..3
+          ("calendar", "personal"): ("GCAL_SERVICE_ACCOUNT_JSON", "gcal_service_account"), ("calendar", "bytalos"): ("GCAL_SERVICE_ACCOUNT_JSON", "gcal_service_account"),
+          ("gmail", "personal"): ("GMAIL_OAUTH_REFRESH_TOKEN", "gmail_oauth_refresh_token"),                       # with GMAIL_OAUTH_CLIENT_ID and _SECRET, loaded beside it
+          ("notion", "personal"): ("NOTION_API_TOKEN", "notion_api_token"), ("interview_os", "personal"): ("NOTION_API_TOKEN", "notion_api_token"),
+          ("gmail", "bytalos"): ("FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH", None),                                  # new: no item yet, so no expiry row and no grant (degraded) until it exists
+          ("todoist", "personal"): ("FOLLOWUP_TODOIST_PERSONAL_TOKEN", None)}                                       # new, same
+NO_EXPIRY = "2099-12-31"                                                          # a credential the inventory says has no fixed expiry: a long date, withdrawn by removing the account or the name
 EXPIRES = {}                                                                      # {(source, workspace) or (source, workspace, n): "YYYY-MM-DD"}: filled when a credential is created
 TGP_DOMAINS = stage.TGP_DOMAINS
 
@@ -48,10 +55,10 @@ def _fetchers():
 
 
 def credential_names():
+    """The fetchers' names, overlaid by the committed reuse table (it wins): which existing or new credential NAME each (source, workspace[, n]) is granted."""
     module = _fetchers()
     names = dict(getattr(module, "CREDENTIAL_NAMES", {}) or {}) if module else {}
-    names.update({("jira", workspace): JIRA_CREDENTIAL for workspace in JIRA_PROJECTS})
-    names.update({("outlook", "personal", n): OUTLOOK_CREDENTIAL for n in range(1, MAX_ACCOUNTS[("outlook", "personal")] + 1)})   # committed here, so it wins: the two Jira scopes name one credential but keep separate grants
+    names.update({key: name for key, (name, _) in REUSED.items()})
     return names
 
 
@@ -95,15 +102,14 @@ def configured(environ):
 
 
 def expiry_table():
-    """EXPIRES plus the existing Jira token's date from the credential inventory (no second row to maintain): both Jira scopes expire when that token does."""
+    """EXPIRES plus the date of each reused credential from its existing inventory row (no new row to maintain); an inventory row with no fixed expiry gets NO_EXPIRY. A new credential has none."""
     from lifeos.platform.credential_list import CREDENTIALS                       # noqa: PLC0415
-    table = dict(EXPIRES)
-    day = next((row.get("expires") for row in CREDENTIALS if row.get("key") == "jira_api_token"), None)
-    for workspace in JIRA_PROJECTS:
-        if day:
-            table.setdefault(("jira", workspace), day)
-    for n in range(1, MAX_ACCOUNTS[("outlook", "personal")] + 1):                  # a delegated sign-in with no fixed expiry (inventory: outlook_sign_in): a long date, revoked by removing the account
-        table.setdefault(("outlook", "personal", n), "2099-12-31")
+    rows = {row.get("key"): row for row in CREDENTIALS}
+    table = {}
+    for key, (_, inventory) in REUSED.items():
+        if inventory in rows:
+            table[key] = rows[inventory].get("expires") or NO_EXPIRY
+    table.update(EXPIRES)
     return table
 
 
@@ -114,7 +120,7 @@ def grants_for(environ, names, expires=None):
     for (workspace, label), members in sorted(configured(environ).items()):
         for source, n in sorted(members, key=lambda m: (m[0], m[1] or 0)):
             name, day = _lookup(names, source, workspace, n), _lookup(expires, source, workspace, n)
-            if not name or not day:
+            if not name or not day or (n, label) not in accounts(environ, source, workspace):      # a source appended only to show DEGRADED has no account here: no grant
                 continue
             out.append(readers.Grant(source, workspace, label, name, datetime.fromisoformat(day + "T23:59:59+00:00")))
     return tuple(out)
