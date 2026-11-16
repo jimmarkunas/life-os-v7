@@ -1,18 +1,17 @@
-"""Read-only Concord source for the Action Inbox (LIFE-710).
-
-DURABLE BOUNDARY. Concord's own store (`.concord` in one repository, read through the CLI `concord -C <repo> messages --json`, the same read-only call the Orca Concord Room worker makes) is the only
-durable record: message id, sender, recipient, content, created time, status, reply-to id, receipt. Concord has NO native approval or resume state. This source therefore adds no store, bus or
-orchestrator and derives the Inbox view from messages alone, using an explicit envelope in the message content (a JSON object with `"lifeos_inbox": 1`). Free text is never mined: a message
-without the envelope is ignored.
-
-  approval_request  {"lifeos_inbox":1,"kind":"approval_request","workspace","title","source_url":"https://...","evidence":[https urls],"resume_after_approval":bool,"correlation_id"}
-  approval_decision {"lifeos_inbox":1,"kind":"approval_decision","decision":"approve|reject|request_changes"}  -- a REPLY to the request, from a `human:` sender only
-
-Status comes from the reply chain: no decision -> pending_approval; the newest human decision -> approved | rejected | changes_requested. An agent-sent decision never counts. Resume eligibility is
-separate from approval: approved AND the request asked for resume AND the requesting agent is live in `concord who` right now. Missing `who` means not eligible, never guessed.
-
-`open_reader(credential_ref)` returns `() -> (messages, live_agent_ids)`: the CLI's message records in its own field names and the ids from `concord who` (or None when it could not be read).
-Nothing is fetched live while LIVE_READS_ENABLED is False (sources.py): the default reader refuses. No send, reply, prompt, resume or any other write is reachable from this file; a test scans it."""
+"""Read-only Concord source for the Action Inbox (LIFE-710)."""
+# DURABLE BOUNDARY. Concord's own store (`.concord` in one repository, read through the CLI `concord -C <repo> messages --json`, the same read-only call the Orca Concord Room worker makes) is the only
+# durable record: message id, sender, recipient, content, created time, status, reply-to id, receipt. Concord has NO native approval or resume state. This source therefore adds no store, bus or
+# orchestrator and derives the Inbox view from messages alone, using an explicit envelope in the message content (a JSON object with `"lifeos_inbox": 1`). Free text is never mined: a message
+# without the envelope is ignored.
+#
+#   approval_request  {"lifeos_inbox":1,"kind":"approval_request","workspace","title","source_url":"https://...","evidence":[https urls],"resume_after_approval":bool,"correlation_id"}
+#   approval_decision {"lifeos_inbox":1,"kind":"approval_decision","decision":"approve|reject|request_changes"}  -- a REPLY to the request, from a `human:` sender only
+#
+# Status comes from the reply chain: no decision -> pending_approval; the newest human decision -> approved | rejected | changes_requested. An agent-sent decision never counts. Resume eligibility is
+# separate from approval: approved AND the request asked for resume AND the requesting agent is live in `concord who` right now. Missing `who` means not eligible, never guessed.
+#
+# `open_reader(credential_ref)` returns `() -> (messages, live_agent_ids)`: the CLI's message records in its own field names and the ids from `concord who` (or None when it could not be read).
+# Nothing is fetched live while LIVE_READS_ENABLED is False (sources.py): the default reader refuses. No send, reply, prompt, resume or any other write is reachable from this file; a test scans it.
 import json
 
 from lifeos.inbox.model import InboxError
