@@ -205,27 +205,27 @@ class NothingPlainIsMasked(unittest.TestCase):
         self.assertTrue(set(SWITCHES) <= set(plain.IDS), set(SWITCHES) - set(plain.IDS))                  # LIFE-758: no bare count; a switch this file tests may never lose its item, and new items may be added
         self.assertEqual(len(set(plain.IDS.values())), len(plain.IDS))                                     # one item per name
         self.assertTrue(all(re.fullmatch(r"[0-9a-f-]{36}", v) for v in plain.IDS.values()))
-        self.assertEqual(set(plain.IDS) & plain.PENDING, set())                                            # a name moves from pending to IDS, never both
 
 
-class PendingIdentifier(unittest.TestCase):
-    NAME = "FOLLOWUP_GCAL_BYTALOS_CALENDAR_ID"
+class CalendarIdentifiers(unittest.TestCase):
+    NAMES = ("FOLLOWUP_GCAL_BYTALOS_CALENDAR_ID", "FOLLOWUP_GCAL_PERSONAL_CALENDAR_ID")
 
-    def test_the_personal_calendar_id_is_the_same_kind_of_pending_identifier(self):
-        self.assertIn("FOLLOWUP_GCAL_PERSONAL_CALENDAR_ID", plain.PENDING)
-        self.assertEqual(run("FOLLOWUP_GCAL_PERSONAL_CALENDAR_ID", {})[0], {"FOLLOWUP_GCAL_PERSONAL_CALENDAR_ID": ""})
-
-    def test_a_pending_identifier_is_allowed_but_not_asked_for_and_falls_back_to_empty(self):
-        self.assertIn(self.NAME, plain.PENDING)
-        self.assertNotIn(self.NAME, plain.IDS)                                               # no Bitwarden item yet
-        exports, report, failures = run(self.NAME, {})
-        self.assertEqual((exports, failures), ({self.NAME: ""}, []))
-        self.assertEqual(report[self.NAME], "NOT_RETURNED")
+    def test_each_calendar_id_has_its_bitwarden_item_and_is_allowed(self):
+        for name in self.NAMES:
+            self.assertIn(name, plain.IDS)
+            self.assertIn(name, plain.ALLOWED)
 
     def test_the_identifier_is_validated_and_an_unreadable_store_still_never_fails_the_job(self):
-        self.assertEqual(run(self.NAME, {self.NAME: "cal@example.com"})[0][self.NAME], "cal@example.com")
-        self.assertEqual(run(self.NAME, {self.NAME: "two words"})[1][self.NAME], "REFUSED_USED_DEFAULT")
-        self.assertEqual(run(self.NAME, None)[2], [])
+        for name in self.NAMES:
+            self.assertEqual(run(name, {name: "cal@example.com"})[0][name], "cal@example.com")
+            self.assertEqual(run(name, {name: "two words"})[1][name], "REFUSED_USED_DEFAULT")
+            self.assertEqual(run(name, None)[2], [])                                                # an unreadable store: empty = not provisioned, never a failure
+
+    def test_a_missing_value_falls_back_to_empty(self):
+        for name in self.NAMES:
+            exports, report, failures = run(name, {})
+            self.assertEqual((exports, failures), ({name: ""}, []))
+            self.assertEqual(report[name], "NOT_RETURNED")
 
 
 if __name__ == "__main__":
