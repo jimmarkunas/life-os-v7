@@ -33,7 +33,7 @@ class Promote(unittest.TestCase):
     def test_a_london_job_with_a_clean_title_is_posted_from_its_listing_with_the_snippet(self):
         cur = Cursor([job()])
         counts = dj.promote_leads(cur, {URL: "Lead the product team in London"}, NOW)
-        self.assertEqual(counts, {"promoted": 1, "not_london": 0, "title_excluded": 0})
+        self.assertEqual(counts, {"promoted": 1, "not_london": 0, "title_excluded": 0, "sponsor_directory": 0, "not_a_job": 0})
         update = next(args for sql, args in cur.sql if sql.startswith("UPDATE"))
         self.assertEqual((update[0], update[1]), (URL, lanes.LISTING_PROOF))
         self.assertIn("apply_kind='aggregator'", next(sql for sql, _ in cur.sql if sql.startswith("UPDATE")))
@@ -75,6 +75,67 @@ class Promote(unittest.TestCase):
         self.assertIn("unresolved_reason LIKE 'no_match%%'", sql)
         self.assertIn("notion_page_id IS NULL", sql)
         self.assertEqual(cur.sql[0][1], (dj.SOURCE,))
+
+
+# LIFE-759: the real rows posted on Nov 15 (Public Web, Aggregator Link, Scale-Up, London UK): sponsor directories and pages that are not a job.
+DIRECTORY_ROWS = [
+    ("UK Sponsor Licence Status", "https://www.legitsponsors.co.uk/status/acme"),
+    ("LegitSponsors", "https://legitsponsors.co.uk/"),
+    ("Sama Talent Group", "https://www.sponsordirectory.co.uk/sama"),
+    ("licensed sponsor in London", "https://hirenza.com/licensed-sponsor-london"),
+    ("Quantum Group Jobs", "https://www.getborderless.co.uk/quantum"),
+    ("MyVisaJobs", "https://www.myvisajobs.co.uk/"),
+    ("Product Manager", "https://atlaspriorityservices.com/jobs/1"),                      # a job title on a directory host: the host alone excludes it
+    ("Engineer", "https://sub.jobvisaai.com/x"),                                           # a subdomain of a directory host
+]
+NOT_JOB_TITLES = ["UK Sponsor Licence Status", "LegitSponsors", "Sama Talent Group", "licensed sponsor in London", "Quantum Group Jobs", "MyVisaJobs",
+                  "TikTok LIVE Presenter / Host", "Jobs", "Sixfold Bioscience Limited", "Sponsor Licence Directory Manager"]
+REAL_TITLES = ["Product Manager", "Senior Backend Engineer", "Head of Growth", "Data Analyst", "Operations Lead", "Founding Designer", "VP Engineering"]
+
+
+class NotPosted(unittest.TestCase):
+    def test_a_known_sponsor_directory_host_is_never_posted_and_is_excluded_with_a_fixed_reason(self):
+        for n, (title, url) in enumerate(DIRECTORY_ROWS, 1):
+            cur = Cursor([job(n, url=url, title=title)])
+            counts = dj.promote_leads(cur, {}, NOW)
+            self.assertEqual((counts["promoted"], counts["sponsor_directory"]), (0, 1), (title, url))
+            self.assertEqual(cur.kinds(), ["SELECT", "UPDATE"], (title, url))                      # one guarded exclusion, no description row
+            sql, args = cur.sql[1]
+            self.assertIn("status='EXCLUDED_FIT'", sql)
+            self.assertIn("status='HOLD'", sql)
+            self.assertEqual(args[0], "sponsor_directory")
+
+    def test_a_title_that_is_not_a_job_is_never_posted_and_is_excluded_with_a_fixed_reason(self):
+        for n, title in enumerate(NOT_JOB_TITLES, 1):
+            cur = Cursor([job(n, title=title)])
+            counts = dj.promote_leads(cur, {}, NOW)
+            self.assertEqual((counts["promoted"], counts["not_a_job"]), (0, 1), title)
+            self.assertEqual(cur.kinds(), ["SELECT", "UPDATE"], title)
+            self.assertEqual(cur.sql[1][1][0], "not_a_job")
+
+    def test_a_directory_host_is_matched_by_host_not_by_substring(self):
+        self.assertTrue(dj.is_sponsor_directory("https://WWW.LegitSponsors.co.uk/x"))
+        self.assertTrue(dj.is_sponsor_directory("https://a.b.myvisajobs.co.uk/x"))
+        self.assertFalse(dj.is_sponsor_directory("https://notlegitsponsors.co.uk/x"))
+        self.assertFalse(dj.is_sponsor_directory("https://jobs.lever.co/legitsponsors.co.uk"))
+        self.assertFalse(dj.is_sponsor_directory(""))
+
+    def test_real_listings_still_post_exactly_as_before(self):
+        for n, title in enumerate(REAL_TITLES, 1):
+            self.assertFalse(dj.is_not_a_job(title, "Sixfold Bioscience Limited"), title)
+        cur = Cursor([job(n, url=f"https://talents.example.test/job/{n}", title=t) for n, t in enumerate(REAL_TITLES, 1)])
+        counts = dj.promote_leads(cur, {}, NOW)
+        self.assertEqual((counts["promoted"], counts["sponsor_directory"], counts["not_a_job"]), (len(REAL_TITLES), 0, 0))
+
+    def test_the_two_rules_run_before_the_place_and_title_rules_so_a_directory_row_is_one_reason_only(self):
+        cur = Cursor([job(1, url="https://legitsponsors.co.uk/x", title="Enterprise Sales Executive", place="Manchester, UK")])
+        counts = dj.promote_leads(cur, {}, NOW)
+        self.assertEqual((counts["sponsor_directory"], counts["not_london"], counts["title_excluded"]), (1, 0, 0))
+
+    def test_both_reasons_are_registered(self):
+        from lifeos.platform import codes
+        for reason in ("sponsor_directory", "not_a_job"):
+            self.assertIn(reason, codes.REASONS)
 
 
 class Place(unittest.TestCase):
