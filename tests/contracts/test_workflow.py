@@ -2,6 +2,8 @@ import pathlib
 import re
 import unittest
 
+from lifeos.platform import due
+
 try:
     import yaml
 except ImportError:          # PyYAML is a dev convenience, not a runtime dependency
@@ -236,7 +238,7 @@ class WorkflowTests(unittest.TestCase):
         gmail = {"GMAIL_OAUTH_CLIENT_SECRET": "08245c07-728f-438e-940b-b4db015a6967", "GMAIL_OAUTH_REFRESH_TOKEN": "672a44e9-235f-4121-a99d-b4db015a6987", "GMAIL_OAUTH_CLIENT_ID": "8657d1ed-2cde-4298-bd62-b50301523e01"}
         self.assertEqual(sorted(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", head, re.M)), sorted([f"{uuid_} > {name}" for name, uuid_ in moved.items()]))
         self.assertEqual(sorted(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", trace_text, re.M)), sorted([f"{uuid_} > {name}" for name, uuid_ in {**moved, **gmail}.items()]))
-        self.assertEqual((len(re.findall(uuid, head)), len(re.findall(uuid, trace_text))), (7, 10))                      # each once: the retry reuses the load's block by YAML alias (LIFE-541; D209 one retry)
+        self.assertEqual((len(re.findall(uuid, head)), len(re.findall(uuid, trace_text))), (len(moved), len(moved) + len(gmail)))                      # each once: the retry reuses the load's block by YAML alias (LIFE-541; D209 one retry)
         self.assertNotIn("GMAIL", head)                                                                    # no Gmail value or secret in the database-only job
         self.assertEqual(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", sandbox_text, re.M), ["53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN"])   # LIFE-10: the Jobs Notion token alone (the retry is its alias)
         self.assertEqual(len(re.findall(uuid, sandbox_text)), 1)
@@ -833,7 +835,7 @@ class DomainsWorkflowTests(unittest.TestCase):
     def test_a_failed_stage_step_ends_its_job_red_after_every_stage_ran_and_never_skips_another_job(self):
         """LIFE-649: every continue-on-error stage step is covered by its job's final step, so the job result is `failure` and the report job pushes the phone once; nothing else changes."""
         jobs = {n: j for n, j in self.doc["jobs"].items() if n not in ("gate", "report")}
-        self.assertEqual(len(jobs), 16)
+        self.assertEqual(set(jobs), set(due.load_table()))                                                 # LIFE-758: the schedule table is the source of truth for which domain jobs exist, not a bare count
         for name, job in jobs.items():
             self.assertEqual(self.uncovered_stage_steps(job, self.V3_STAGES_THAT_ONLY_WARN if name == "jira" else ()), [], name)   # LIFE-730: only the jira job may leave the five V3 ids off its list
             self.assertNotIn("continue-on-error", job)                                                    # the job itself never swallows the failure

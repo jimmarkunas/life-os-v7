@@ -153,8 +153,10 @@ class NothingPlainIsMasked(unittest.TestCase):
         self.assertEqual(hits, [])
 
     def test_the_plain_ids_are_the_items_in_the_ticket(self):
-        self.assertEqual(len(plain.IDS), 10)
+        self.assertTrue(set(SWITCHES) <= set(plain.IDS), set(SWITCHES) - set(plain.IDS))                  # LIFE-758: no bare count; a switch this file tests may never lose its item, and new items may be added
+        self.assertEqual(len(set(plain.IDS.values())), len(plain.IDS))                                     # one item per name
         self.assertTrue(all(re.fullmatch(r"[0-9a-f-]{36}", v) for v in plain.IDS.values()))
+        self.assertEqual(set(plain.IDS) & plain.PENDING, set())                                            # a name moves from pending to IDS, never both
 
 
 class PendingIdentifier(unittest.TestCase):

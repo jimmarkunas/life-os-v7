@@ -488,7 +488,11 @@ class WorkflowTests(unittest.TestCase):
     def test_failures_are_warnings_and_never_fail_the_run(self):
         job = self.job()
         self.assertNotIn("\n    continue-on-error:", job)
-        self.assertEqual(job.count("continue-on-error: true"), 15)           # the LIFE-85 tailnet join, plus the five LIFE-671 and LIFE-673 accountability steps (the Bitwarden load and its retry are inside the local action, LIFE-631)
+        blocks = job.split("\n      - ")[1:]                                    # LIFE-758: every stage step (it has an id; the Bitwarden load is the one exception) and the LIFE-85 tailnet join must be continue-on-error, whatever their number
+        stage = [b for b in blocks if re.search(r"^(        )?id: ", b, re.M) and "id: bws_jira" not in b]
+        self.assertTrue(stage)
+        for block in stage + [b for b in blocks if "LIFE-85" in b.split("\n")[0]]:
+            self.assertIn("continue-on-error: true", block, block.split("\n")[0])
         self.assertIn("::warning", job)
 
     def test_database_secrets_reach_only_the_snapshot_and_card_steps(self):
