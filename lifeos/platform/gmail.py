@@ -20,7 +20,7 @@ TOKEN_URL = "https://oauth2.googleapis.com/token"
 MAX_LIST_PAGES = 100
 
 
-RATE_REASONS = {"rateLimitExceeded", "userRateLimitExceeded", "backendError"}
+RATE_REASONS = {"rateLimitExceeded", "userRateLimitExceeded", "backendError", "failedPrecondition"}   # failedPrecondition: Gmail refused the 8:03 AM CT sweep list on Nov 16 2026 (HTTP 400) and answered the next hour; a retry rides it out
 RATE_LIMITED = {"rateLimitExceeded", "userRateLimitExceeded"}       # per-user quota shared by every hourly job reading the same mailbox
 TRIES, LIMITED_TRIES = 4, 6                                         # rate limits wait 2+4+8+16+32 s (+jitter) before giving up; other errors 2+4+8 s
 
