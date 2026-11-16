@@ -7,6 +7,7 @@
 # A thread created here has identity_key == outcome (a label of at most 120 characters), so a stored row can be re-derived without a second identity column. The payload's thread id is the store's
 # thread_id (64 hex), which is a safe Inbox id part; the label is the title. TGP and Asana are never read.
 import json
+import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable
@@ -19,11 +20,16 @@ from lifeos.platform import followup_readers as readers
 from lifeos.platform import isolate
 
 COMPONENT = "followup"
+TGP_DOMAINS = ("tgpinternational.com",)                    # TGP is excluded everywhere: an account label that names its domain is never a scope
 STATE_OF = {"needs_action_today": "needs_action", "waiting_aging": "waiting", "upcoming": "upcoming", "review_needed": "review"}
 KLASS_OF = {"waiting_on": "waiting", "promise": "owed", "deliverable": "owed", "jim_capture": "owed", "implied_promise": "owed", "value_add": "value_add", "outcome_thread": "outcome_thread"}
 KIND_OF = {"waiting": "waiting_on", "owed": "deliverable", "value_add": "value_add", "outcome_thread": "outcome_thread"}       # a stored thread's class back to an explicit evidence kind
 KLASS_ORDER = ("waiting_on", "promise", "deliverable", "jim_capture", "implied_promise", "value_add", "outcome_thread")
 OBSERVED = "observed"                       # not an explicit kind: it can never create, close or reopen a loop by itself
+
+
+def tgp_account(account):
+    return any(marker in str(account).lower() for marker in TGP_DOMAINS)
 
 
 def observe(item):
@@ -52,9 +58,10 @@ class Wiring:
     jira_base: str = ""
 
 
-def production_wiring():
-    """None until Jim approves the live store, grants and sink (D258, LIFE-751): the stage is then a no-op."""
-    return None
+def production_wiring(environ=None, live=False):
+    """The live wiring (lifeos/inbox/followup_wiring.py) while the switch FOLLOWUP_WIRING is on and a source is configured; otherwise None and the stage is a counts-only no-op."""
+    from lifeos.inbox import followup_wiring                                        # a function-level import: followup_wiring imports this module
+    return followup_wiring.build(os.environ if environ is None else environ, live)
 
 
 def _utc(text):
@@ -151,13 +158,13 @@ def reconcile(wiring, scope, live, now):
 
 def run(limit, live, wiring=None):
     """-> counts only. No wiring: a no-op. Dry run: compute, write nothing. Live: accept to the store and publish the payload, once per (workspace, account). One scope's failure never stops the other."""
-    wiring = wiring or production_wiring()
+    wiring = wiring or production_wiring(live=live)
     totals = {"unwired": 0, "scopes": 0, "refused": 0, "published": 0, "written": 0, "unchanged": 0, "suppressed": 0, "closed": 0, "sources_ok": 0, "sources_degraded": 0, "threads": 0, "review": 0}
     if wiring is None:
         totals["unwired"] = 1
         return totals
     now = wiring.clock()
-    allowed = [s for s in wiring.scopes if s.workspace in WORKSPACES and s.workspace not in UNRELEASED_WORKSPACES]
+    allowed = [s for s in wiring.scopes if s.workspace in WORKSPACES and s.workspace not in UNRELEASED_WORKSPACES and not tgp_account(s.account)]
     totals["refused"] = len(wiring.scopes) - len(allowed)                             # TGP and unknown workspaces: nothing is read, nothing is written
 
     def one(scope):
@@ -175,4 +182,4 @@ def run(limit, live, wiring=None):
     return isolate.record(totals, isolated)
 
 
-__all__ = ["Scope", "Wiring", "production_wiring", "reconcile", "run", "observe"]
+__all__ = ["Scope", "Wiring", "production_wiring", "reconcile", "run", "observe", "tgp_account"]

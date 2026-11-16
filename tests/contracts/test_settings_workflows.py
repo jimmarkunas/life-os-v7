@@ -139,7 +139,7 @@ class SettingsStepsNeverStopAJob(unittest.TestCase):
 
 
 # The only names a `needs.<job>.outputs.<name>` may carry: due flags and trigger facts, settings switches, fixed words (failed stage names, codes) and run facts. Never a credential.
-KNOWN_OUTPUTS = {"all", "codes", "due_agenda", "due_amazon", "due_amazon_retention", "due_bills", "due_dcc", "due_granola", "due_hiring", "due_hiring_outcomes", "due_imessage",
+KNOWN_OUTPUTS = {"all", "codes", "due_agenda", "due_amazon", "due_amazon_retention", "due_bills", "due_dcc", "due_followup", "due_granola", "due_hiring", "due_hiring_outcomes", "due_imessage",
                  "due_interview", "due_jira", "due_mail", "due_megibow", "due_outlook", "due_recruiters", "extract", "failed", "fit_profile_sync", "granola_auto", "imessage_alerts",
                  "matrix", "sweep", "tick"}
 SECRET_NAME = re.compile(r"(_TOKEN|_KEY|_SECRET|_PASSWORD|_PRIVATE_KEY)$")

@@ -8,5 +8,10 @@
     "state": "off",
     "bounds": "LIFE-76 first-pass board drainer: at most limits.BOARDS_BACKFILL_PER_RUN (450) never-read boards per tick, last bulk stage, hibernates at zero; no paid service. The workflow no longer passes a repository variable (LIFE-604 item 14): this file is the one place; to turn it on, change \"state\" here in a reviewed PR.",
     "turned_on": ""
+  },
+  "FOLLOWUP_WIRING": {
+    "state": "off",
+    "bounds": "LIFE-757: the `followup` stage's live wiring (store, grants, fetchers, access receipts, payload). Off: the stage is a counts-only no-op and the hourly job is skipped. On (the repository variable FOLLOWUP_WIRING = on, or this file in a reviewed PR) it runs as a DRY RUN until `--live` is added to its workflow step after the Followup tables exist; it reads only sources that have a credential and an expiry row, writes a receipt before every read, and never reads Asana or TGP.",
+    "turned_on": ""
   }
 }

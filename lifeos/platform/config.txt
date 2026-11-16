@@ -11,6 +11,7 @@ GCAL_SERVICE_ACCOUNT_JSON secret Google service account key for the calendar
 GMAIL_OAUTH_CLIENT_ID input Google sign-in value for Gmail reads (client id)
 GMAIL_OAUTH_CLIENT_SECRET secret Google sign-in value for Gmail reads (client secret)
 GMAIL_OAUTH_REFRESH_TOKEN secret Google sign-in value for Gmail reads (refresh token)
+FOLLOWUP_WIRING flag:workflow Turns on the hourly followup job: the stage reads the approved sources (dry run) and writes access receipts; off by default
 GRANOLA_AUTO workflow_only:workflow Switch for the automatic Granola bridge in the domains tick; the V7 settings page can set it, GitHub's value is the fallback
 GRANOLA_LIVE flag:workflow Lets the Granola run write instead of only counting
 HIRING_AUTO_CLOSE flag:workflow Lets the hiring stage close finished opportunities by itself

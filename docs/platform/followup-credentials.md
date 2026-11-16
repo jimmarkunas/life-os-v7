@@ -67,7 +67,7 @@ The agent adds the loader lines for these two existing items to the `followup` j
 
 ## 3. Notion: one read-only integration over all pages (Notion references and Interview OS, both workspaces)
 
-Nothing to create. The reader uses the existing `NOTION_API_TOKEN` through Notion search (a read), newest first, so every page shared with that integration is covered, for Notion references and Interview OS in both workspaces. If a page is missing later, share it with that integration in Notion (**...** menu, **Connections**).
+Nothing to create. The reader uses the existing `NOTION_API_TOKEN` through Notion search (a read), newest first, so every page shared with that integration is covered, for Notion references and Interview OS in both workspaces. This is the integration that already writes the Command Center, the Oracle Cloud, Communications and other cards under the LIFE OS page (`lifeos/dcc/card.py`, `lifeos/oraclecloud/card.py`, `lifeos/physmail/card.py`, `lifeos/amazon/card.py`; inventory row `notion_api_token`: "the job ledger and most pages"), so it already has access: there is no Notion connection step for you. If the dry run ever shows a page missing, the agent reports it; it is not a step you start.
 
 **Report:** nothing.
 
