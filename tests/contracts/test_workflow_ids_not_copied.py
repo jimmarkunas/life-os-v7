@@ -39,7 +39,7 @@ def copies(root, files=None, ids=None):
     ids = workflow_ids(root) if ids is None else ids
     found = {}
     for rel in (tracked(root) if files is None else files):
-        if rel.startswith(".github/workflows/"):
+        if rel.startswith((".github/workflows/", ".github/workflows-src/")):                    # LIFE-764: the fragments domains.yml is joined from are the workflow file's own text
             continue
         try:
             text = (Path(root) / rel).read_text(errors="ignore").lower()

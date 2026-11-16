@@ -1,0 +1,104 @@
+name: domains
+run-name: ${{ github.event_name == 'workflow_run' && 'domains (after tick)' || 'domains (manual)' }}
+# The V7 domain jobs: Jira, Outlook (calendar sync), Bills, Agenda (Calendar card) and Amazon Orders. Each reads or writes ONE provider and none
+# touches the Jobs pipeline, so they live apart from hourly.yml: this workflow declares NO secrets at the top, so a job can only see what its own steps pass it
+# (isolation by construction, not by blanking). A failed stage step is a warning while the stages run, then its job ends red (LIFE-649) and the report job pushes the phone. Runs by itself a few minutes after every hourly TICK (not after a manual hourly run or one the gate cancelled), and by hand with the inputs below.
+on:
+  workflow_run:
+    workflows: ["hourly"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      all:
+        description: "Run every domain job like an hourly tick does (Jira snapshot + card, Outlook, Bills, Agenda, Amazon, Physical Mail, Hiring Pipeline); dry run unless Actually write is ticked"
+        type: boolean
+        default: false
+      amazon:
+        description: "Amazon Orders only (replay from the last recorded order); dry run unless Actually write is ticked"
+        type: boolean
+        default: false
+      physical_mail:
+        description: "Physical Mail / Mail Alerts only (MAIL-1.2): read the vendor notices (Gmail, read-only) into the private state and render the Mail Alerts callout; dry run unless Actually write is ticked"
+        type: boolean
+        default: false
+      physical_mail_anchor:
+        description: "Physical Mail FIRST run only: how many items were waiting on October 4, 2026 (Jim's anchor). Ignored once the state row exists"
+        type: string
+        default: ""
+      physical_mail_tracking:
+        description: "Physical Mail, ONE piece only (temporary until a tracking reader is authorized): mail number | carrier | service | tracking number | bundle. Stored with that piece, not a standing setting"
+        type: string
+        default: ""
+      hiring:
+        description: "Hiring Pipeline only (HIRE-1.2, no mail): the Job Ledger Applied state, the Hiring Pipeline pages and the Calendar into the private state row and the floating Hiring Pipeline region; dry run unless Actually write is ticked"
+        type: boolean
+        default: false
+      hiring_outcome_stale_hours:
+        description: "Hiring Pipeline PROOF only (LIFE-19, E13): treat the last outcome-mail scan as stale after this many hours (0 to 17; blank = the real 18). 0 shows the DEGRADED banner with the last accepted rows kept; the next normal run clears it. Never loosens the real limit"
+        type: string
+        default: ""
+      imessage:
+        description: "iMessage urgent alerts only (COMM-1.4b, LIFE-31): metadata from the private Oracle endpoint over the tailnet; dry run unless Actually write is ticked"
+        type: boolean
+        default: false
+      dcc:
+        description: "Daily Command Center only (D175): V7 writes the Command Center callout from the first lines of the other cards; dry run unless Actually write is ticked"
+        type: boolean
+        default: false
+      recruiters:
+        description: "Recruiters only (RECR-1.2): Gmail and Outlook Inbox and Junk, last 14 days, into the Recruiters data source (counts only); dry run unless Actually write is ticked"
+        type: boolean
+        default: false
+      interview_convert:
+        description: "Interview OS page conversion (Jim, Oct 21): inventory = classify every opportunity page, write nothing; all = convert the legacy ones a few per run (cap INTERVIEW_CONVERT_CAP, default 2) with Jim's content proven unchanged, stopping at the first failure. Blank = the INTERVIEW_CONVERT repository variable"
+        type: string
+        default: ""
+      interview_mail_days:
+        description: "Interview OS dry run only (LIFE-88): read this many days of mail for scheduling requests, 14 to 90, instead of 14. Ignored when Actually write is ticked. Leave blank for the usual 14"
+        type: string
+        default: ""
+      interview_journey_proof:
+        description: "Synthetic Interview journey proof (LIFE-78): type QA, tick Recruiters, leave Actually write UNticked. Runs the real Interview OS runner on a fresh sandbox under the QA Interview OS page with invented mail, Calendar and Ledger; the real Hiring Pipeline, mailbox, calendar and Ledger are untouched. Blank = the normal Interview step"
+        type: string
+        default: ""
+      calendar_sync:
+        description: "Calendar sync only (Outlook invites to your Google calendar, counts only); dry run unless Actually write is ticked"
+        type: boolean
+        default: false
+      allow_mass_delete:
+        description: "Calendar sync only: skip the mass-delete brake for THIS run (use only when Outlook answered in full but every event id changed; the brake refuses to delete more than half of V7's copies)"
+        type: boolean
+        default: false
+      megibow:
+        description: "MegIBOW only: Jim's weekly job-search table (sent mail and calendars to the Notion block); dry run (counts) unless Actually write is ticked"
+        type: boolean
+        default: false
+      bills_paid:
+        description: "Bills: process Paid=true rows (advance Due Date, set Last Paid, clear Paid); also runs on every tick and under Run every domain job. Dry run (counts) unless Actually write is ticked"
+        type: boolean
+        default: false
+      jira:
+        description: "Jira only (unticked 'Run every domain job' above): snapshot, card, report (both), rollover, rollover+snapshot, or a read-only layout probe"
+        type: choice
+        options: ["none", "snapshot", "card", "report", "rollover", "both", "probe"]
+        default: "none"
+      refresh:
+        description: "Close screen refresh (Jim, Oct 24): hiring = redraw the Hiring Pipeline region right after a verified close; recruiters = redraw only the Recruiter Outreach table after a verified recruiter close, status or Mark as Sent (no mail read). It queues in the after-tick group, so it never runs beside another Daily Report writer; the Close service skips it when a run is already waiting"
+        type: choice
+        options: ["none", "hiring", "recruiters"]
+        default: "none"
+      live:
+        description: "Actually write (saves snapshots, writes Notion, moves mail). Unticked = dry run, counts only. Automatic runs follow the repo variable V7_LIVE."
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  # A run that will do nothing (a workflow_run after a manual hourly run, or after one the gate cancelled: every job below is skipped by its `if`) still joins its concurrency
+  # group, and a group holds only one WAITING run, so such a run cancels the real run that is waiting (the Oct 20-21 stall: no card refreshed for two and a half hours). It gets
+  # its own group, which nothing else uses, so it can only wait behind or replace other do-nothing runs. A manual (workflow_dispatch) run has its own group too: a string of manual
+  # runs (8-16 minutes each) otherwise kept the one slot busy and replaced the waiting after-tick runs (Oct 21). The manual Amazon and Recruiters workflows queue behind 'life-os-v7-domains'.
+  # A Close screen refresh (inputs.refresh) joins the after-tick group instead: it writes the Hiring Pipeline region, which only one Daily Report writer may change at a time.
+  group: ${{ (github.event_name == 'workflow_dispatch' && (inputs.refresh == 'hiring' || inputs.refresh == 'recruiters')) && 'life-os-v7-domains' || github.event_name != 'workflow_run' && 'life-os-v7-domains-manual' || ((github.event.workflow_run.conclusion == 'cancelled' || github.event.workflow_run.display_title != 'tick') && 'life-os-v7-domains-idle' || 'life-os-v7-domains') }}
+  cancel-in-progress: false
+jobs:

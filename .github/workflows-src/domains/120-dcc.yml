@@ -1,0 +1,61 @@
+  dcc:
+    # D175: V7 writes the Daily Command Center callout (it was the ChatGPT task's, which could only edit page markdown). It runs after EVERY other Daily Report writer, so no card changes while it reads
+    # or writes, reads only the first lines the cards already carry, writes only its own region and proves every other V7 region unchanged around the write. A failure is a warning.
+    # A mail-only manual run (physical_mail) also refreshes this job, so the Command Center never shows the Mail Alerts source it had before the run (LIFE-95).
+    needs: [jira, agenda, bills, amazon, mail, hiring, imessage, gate]
+    if: ${{ always() && needs.gate.result != 'failure' && (needs.gate.outputs.due_dcc == 'true' || inputs.dcc || inputs.physical_mail) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      issues: read
+    steps:
+      - name: Checkout the exact commit (own git fetch; the token is passed once and never stored)
+        run: |
+          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
+          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
+          git checkout -q --detach FETCH_HEAD
+      - uses: ./.github/actions/python
+      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
+        uses: ./.github/actions/bws-helper
+        with:
+          wait_seconds: "200"
+      - id: bws_dcc
+        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 2; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        uses: ./.github/actions/bws-load
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
+            b78d1476-663e-496d-9bc4-b4e1003b61b0 > DCC_CARD_BLOCK_ID
+      - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
+        uses: ./.github/actions/bws-plain
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIVE
+          live_mode: ${{ github.event_name == 'workflow_run' && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
+      - id: dcccard
+        continue-on-error: true
+        name: Daily Command Center (rules over the cards' first lines; writes only its own callout when live; every other region proven unchanged)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DCC_CARD_BLOCK_ID: ${{ steps.bws_dcc.outputs.DCC_CARD_BLOCK_ID }}
+          JIRA_CARD_BLOCK_ID: ""
+          CALENDAR_CARD_BLOCK_ID: ""
+          BILLS_CARD_BLOCK_ID: ""
+          AMAZON_CARD_BLOCK_ID: ""
+          ATTENTION_CARD_BLOCK_ID: ""
+          MAIL_ALERTS_CARD_BLOCK_ID: ""
+          HIRING_CARD_BLOCK_ID: ""
+          NOTION_JIRA_TOKEN: ${{ steps.bws_dcc.outputs.NOTION_JIRA_TOKEN }}
+        run: python -m lifeos.run dcc-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
+      - name: Daily Command Center warning (does not fail the Jobs run)
+        if: ${{ always() && steps.dcccard.outcome == 'failure' }}
+        run: echo "::warning title=Daily Command Center::the Command Center could not be written; its callout keeps the last text and the Jobs pipeline is unaffected"
+      - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+        if: ${{ always() && contains(steps.*.outcome, 'failure') }}
+        run: echo "::error title=dcc::a stage step failed in the dcc job (see the step marked failed above)"; exit 1
+
