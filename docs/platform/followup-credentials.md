@@ -10,17 +10,18 @@ Who: Jim only for every step that touches a secret. Authority: Jim, chat, Nov 16
 
 Blank means "not decided yet". A row with no account is skipped until you name one: nothing is built against a blank.
 
-| Source | Personal account | Bytalos account | Notes |
+| Source | Personal | Bytalos | Notes |
 |---|---|---|---|
-| Jira | Account: ______ | Account: ______ | Which Jira site and project(s) Followup may read: ______ |
-| Notion references | Account: ______ | Account: ______ | Pages or databases Followup may read (names only): ______ |
-| Interview OS | Account: ______ | Account: ______ | Which Interview OS pages or databases (names only): ______ |
-| Calendar | Account: ______ | Account: ______ | Which calendar(s): ______ |
-| Gmail | Account: ______ | Account: ______ | Which labels or the whole mailbox: ______ |
-| Outlook | Account: ______ | Account: ______ | Which mailbox label: ______ |
-| Todoist | Account: ______ | Account: ______ | Which projects: ______ |
+| Jira | The one Atlassian account; projects JFM, LIFE, LOS | The same account; projects BAD, BPP | Two tokens (one per workspace), same account. The fetcher adds `project in (...)` so each token's grant reads only its own projects. |
+| Notion references | One read-only integration; ALL pages under LIFE OS (Jim, Nov 16 2026: "all") | Bytalos pages inside the same workspace | Jim was told this includes the Lifehub pages (Medical, Therapy & Recovery, Dating & Style) and chose all. |
+| Interview OS | Covered by the Notion integration above | None | No separate credential. |
+| Calendar | Personal Google calendar account | Bytalos Google Workspace calendar account | Primary calendar of each unless Jim names others. |
+| Gmail | Personal Google account | Bytalos Google Workspace account | Whole mailbox. Messages from or forwarded from a TGP address are dropped (TGP mail is forwarded into these mailboxes). |
+| Outlook | Three personal Outlook mailboxes (an outlook.com one, a school one, a greatestpmever one) | None | One scope per mailbox. Forwarded or direct TGP mail is dropped. |
+| Todoist | The personal Todoist account | None | All projects. |
+| TGP | Not connected, by design | | Shown in the Action Inbox as "Tracked, not connected". No credential, scope or read of any TGP source. (Jim, Nov 16 2026: "I want TGP tracked, but not necessarily connected".) |
 
-The repository names no Bytalos account for any source, so every Bytalos cell is yours to fill or leave blank.
+Account identifiers are never committed: each is supplied by environment name when the job runs. Add to this table only descriptions, never addresses.
 
 ## 1. One-time: how a Bitwarden item is added (read once, nothing to do)
 
