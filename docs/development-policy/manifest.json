@@ -301,7 +301,7 @@
     },
     {
       "date": "2026-11-16",
-      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/PENDING",
+      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/1269",
       "approval": "Jim Markunas, November 16, 2026 CT, typed in the Claude Code chat: 'Implement all of this' (fast local gate, one-call Jira closeout, batching tickets that touch the same files; LIFE-760, LIFE-761, LIFE-762)",
       "part": "docs/development-policy/10 (a paragraph naming tools/preflight.sh, the closeout helper and same-file ticket batching), with the matching AGENTS.md Tests line and step 4"
     }
