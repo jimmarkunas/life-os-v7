@@ -714,7 +714,7 @@ DOMAIN_SECRETS = {         # the only secrets each domain job may see; adding on
                   "BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID"},   # LIFE-34 Communications card (Notion writer + region anchors). LIFE-31: the Tailscale OAuth pair goes only to the pinned join action (see TAILSCALE_WITH)
     "jira": DB | {"JIRA_API_TOKEN", "JIRA_BASE_URL", "JIRA_BOARDS", "JIRA_CARD_BLOCK_ID", "JIRA_CARD_PROJECTS", "JIRA_EMAIL",
                   "JIRA_GTV_CONTEXT_URL", "JIRA_GTV_EPIC", "JIRA_SITE_URL", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"},
-    "followup": DB | {"JIRA_BASE_URL"},   # LIFE-757: the Action Inbox followup job (dry run, switch FOLLOWUP_WIRING): the store credentials and the Jira site name, no source credential yet
+    "followup": DB | {"JIRA_BASE_URL", "JIRA_API_TOKEN", "JIRA_EMAIL"},   # LIFE-757: the Action Inbox followup job (dry run, switch FOLLOWUP_WIRING): the store credentials plus the existing Jira token, email and site name; no other source credential yet
     "outlook": DB | {"GCAL_CALENDAR_ID", "GCAL_SERVICE_ACCOUNT_JSON", "NTFY_TOPIC", "OUTLOOK_CLIENT_ID"},
     "bills": DB | {"BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "NOTION_BILLS_DATA_SOURCE_ID", "NOTION_BILLS_TOKEN", "NOTION_JIRA_TOKEN"},
     "agenda": DB | {"CALENDAR_CARD_BLOCK_ID", "GCAL_CALENDAR_ID", "GCAL_SERVICE_ACCOUNT_JSON", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "NOTION_JIRA_TOKEN"},

@@ -415,7 +415,7 @@ jobs:
         with:
           wait_seconds: "300"
       - id: bws_followup
-        name: Load the credentials from Bitwarden (LIFE-757, exactly these 12 - the store and its jump route; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        name: Load the credentials from Bitwarden (LIFE-757, exactly these 14 - the store and its jump route plus the existing Jira token and email; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
@@ -433,6 +433,8 @@ jobs:
             e54f0a84-84c3-47d8-8b5b-b4e30052d6e9 > TAILSCALE_OAUTH_CLIENT_SECRET
             4d0c7449-ed0a-46c1-9c2c-b503015f8d54 > LIFEOS_ACQ_SSH_JUMP_HOST
             82efa413-6b9c-4c5c-b0d2-b503015f8e3d > LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS
+            3fa6f4f4-bd6d-45e7-8f2c-b4db015ec0c3 > JIRA_API_TOKEN
+            e6466367-9a55-4899-ae1c-b4db015ec49f > JIRA_EMAIL
       - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, port fails - names and codes only)
         uses: ./.github/actions/bws-plain
         with:
@@ -450,6 +452,8 @@ jobs:
         continue-on-error: true
         name: Followup lane (LIFE-757; DRY RUN, no --live - counts only, nothing written; reads only sources that have a credential and an expiry row)
         env:
+          JIRA_API_TOKEN: ${{ steps.bws_followup.outputs.JIRA_API_TOKEN }}
+          JIRA_EMAIL: ${{ steps.bws_followup.outputs.JIRA_EMAIL }}
           FOLLOWUP_WIRING: ""              # lifeos/platform/switches.json decides (off) unless the repository variable says "off" (kill switch) or "on"
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_followup.outputs.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_followup.outputs.LIFEOS_ACQ_DB_PASSWORD }}

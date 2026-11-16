@@ -23,6 +23,7 @@ BOTH = ("personal", "bytalos")
 SOURCE_WORKSPACES = {"jira": BOTH, "calendar": BOTH, "gmail": BOTH, "outlook": ("personal",), "todoist": ("personal",), "notion": ("personal",), "interview_os": ("personal",)}
 MAX_ACCOUNTS = {("outlook", "personal"): 3}                                       # every other (source, workspace) has one account
 JIRA_PROJECTS = {"personal": ("JFM", "LIFE", "LOS"), "bytalos": ("BAD", "BPP")}   # one Atlassian account, split by project key; passed to the fetchers as FOLLOWUP_JIRA_PROJECTS_<WORKSPACE>
+JIRA_CREDENTIAL = "JIRA_API_TOKEN"                                                # Jim, Nov 16 2026: reuse the existing Jira token (with JIRA_EMAIL) for BOTH Jira scopes; a name, never a value
 EXPIRES = {}                                                                      # {(source, workspace) or (source, workspace, n): "YYYY-MM-DD"}: filled when a credential is created
 TGP_DOMAINS = stage.TGP_DOMAINS
 
@@ -46,7 +47,9 @@ def _fetchers():
 
 def credential_names():
     module = _fetchers()
-    return dict(getattr(module, "CREDENTIAL_NAMES", {}) or {}) if module else {}
+    names = dict(getattr(module, "CREDENTIAL_NAMES", {}) or {}) if module else {}
+    names.update({("jira", workspace): JIRA_CREDENTIAL for workspace in JIRA_PROJECTS})   # committed here, so it wins: the two Jira scopes name one credential but keep separate grants
+    return names
 
 
 def _lookup(table, source, workspace, n):
@@ -86,9 +89,20 @@ def configured(environ):
     return scopes
 
 
+def expiry_table():
+    """EXPIRES plus the existing Jira token's date from the credential inventory (no second row to maintain): both Jira scopes expire when that token does."""
+    from lifeos.platform.credential_list import CREDENTIALS                       # noqa: PLC0415
+    table = dict(EXPIRES)
+    day = next((row.get("expires") for row in CREDENTIALS if row.get("key") == "jira_api_token"), None)
+    for workspace in JIRA_PROJECTS:
+        if day:
+            table.setdefault(("jira", workspace), day)
+    return table
+
+
 def grants_for(environ, names, expires=None):
     """One Grant per configured (source, workspace, account) that has a credential NAME and an expiry row; Asana, TGP and a source outside its workspaces never get one."""
-    expires = EXPIRES if expires is None else expires
+    expires = expiry_table() if expires is None else expires
     out = []
     for (workspace, label), members in sorted(configured(environ).items()):
         for source, n in sorted(members, key=lambda m: (m[0], m[1] or 0)):
@@ -160,10 +174,13 @@ def payload_loader(store, workspace, account):
 
 
 def fetcher_environment(environ):
-    """The environment the fetchers see: the caller's, plus the committed Jira project split as FOLLOWUP_JIRA_PROJECTS_<WORKSPACE> unless the caller set one."""
+    """The environment the fetchers see: the caller's, plus each Jira scope's committed project allowlist as FOLLOWUP_JIRA_PROJECTS_<WORKSPACE>. A caller value can only narrow it: a key
+    outside the workspace's committed list (a Bytalos scope asking for a Personal project) is dropped, and an empty result falls back to the committed list."""
     out = dict(environ)
     for workspace, projects in JIRA_PROJECTS.items():
-        out.setdefault(f"FOLLOWUP_JIRA_PROJECTS_{workspace.upper()}", ",".join(projects))
+        name = f"FOLLOWUP_JIRA_PROJECTS_{workspace.upper()}"
+        asked = [p.strip().upper() for p in (environ.get(name) or "").split(",") if p.strip()]
+        out[name] = ",".join(p for p in asked if p in projects) or ",".join(projects)
     return out
 
 
