@@ -159,7 +159,7 @@
       ]
     }
   ],
-  "reassembled_sha256": "0b7194ca4b580704b402c731f30646e45a9acc3d16f810742fcd7d1bd98b2e4c",
+  "reassembled_sha256": "9cc7c6076b914de25909765e35c2cd96d92714e90687ce8a462a7c954f0dca39",
   "amendments": [
     {
       "date": "2026-11-02",
@@ -292,6 +292,12 @@
       "pr": "https://github.com/jimmarkunas/life-os-v7/pull/1244",
       "approval": "Jim Markunas, November 16, 2026 CT, typed in the Claude Code chat: 'I want agents to have the freedom to do so most of the time' (not be bottlenecked on moving tickets to Agent Go) and, asked which tickets, answered 'Everything but the scary list' (LIFE-742)",
       "part": "docs/development-policy/03 and 04 (agents may promote a ticket to Agent Go themselves unless it names a protected step; one comment per promotion, one receipt per ticket), with the matching AGENTS.md and CLAUDE.md lines"
+    },
+    {
+      "date": "2026-11-16",
+      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/PRNUM",
+      "approval": "Jim Markunas, November 16, 2026 CT, typed in the Claude Code chat: 'Yes, file it and build it' (a label and saved filter so every ask waiting on Jim is on one list; LIFE-753)",
+      "part": "docs/development-policy/04 (agent self-promotion bullet: `[waiting on] Jim` also adds the label `waiting-on-jim`, removed when Jim answers, no second comment restating the answer), with the matching AGENTS.md line"
     }
   ]
 }

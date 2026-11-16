@@ -5,6 +5,9 @@ import re
 
 from lifeos.jira.release import blockers_done, has_done_when, text_of
 
+# LIFE-753: the label an agent adds with every `[waiting on] Jim:` comment; the saved filter "Waiting on Jim" lists the tickets that carry it.
+WAITING_LABEL = "waiting-on-jim"
+
 # The scary list: a ticket whose description names one of these steps needs Jim's yes at the moment it arises. Each pattern reads the ticket text, case-insensitive.
 PROTECTED = {
     "credential": r"\b(credentials?|api[ _-]?keys?|access tokens?|oauth|bitwarden|secrets?|passwords?|rotat\w+ (a )?(token|key))\b",
@@ -59,3 +62,11 @@ def decide(issue):
     if needs:
         return "wait", needs
     return "promote", []
+
+
+def act(issue):
+    """-> {"decision", "reasons", "label", "comment"}: on `wait`, the label and exact comment to apply in one step (LIFE-753); otherwise both are None."""
+    decision, reasons = decide(issue)
+    if decision != "wait":
+        return {"decision": decision, "reasons": reasons, "label": None, "comment": None}
+    return {"decision": decision, "reasons": reasons, "label": WAITING_LABEL, "comment": f"[waiting on] Jim: approve {', '.join(r.replace('_', ' ') for r in reasons)} before this ticket moves to Agent Go"}
