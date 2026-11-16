@@ -21,20 +21,13 @@ PRINCIPAL = "followup-stage"
 RELEASED = tuple(w for w in WORKSPACES if w not in UNRELEASED_WORKSPACES)
 BOTH = ("personal", "bytalos")
 SOURCE_WORKSPACES = {"jira": BOTH, "calendar": BOTH, "gmail": BOTH, "outlook": ("personal",), "todoist": ("personal",), "notion": ("personal",), "interview_os": ("personal",)}
-MAX_ACCOUNTS = {("outlook", "personal"): 3}                                       # every other (source, workspace) has one account
-JIRA_SITE = "https://jimmarkunas.atlassian.net"                                     # the site hostname is not secret (it is in the docs and runbooks); a constant, so no GitHub value is read
+JIRA_SITE = "https://jimmarkunas.atlassian.net"                                     # the site hostname is not secret (it is in the docs and runbooks): a constant, so no GitHub value is read
 FIXED_ACCOUNTS = {("jira", "personal"): "jira-personal", ("jira", "bytalos"): "jira-bytalos"}   # Jira is not a credential Jim names: these scope labels are committed, not read from the environment
-JIRA_PROJECTS = {"personal": ("JFM", "LIFE", "LOS"), "bytalos": ("BAD", "BPP")}   # one Atlassian account, split by project key; passed to the fetchers as FOLLOWUP_JIRA_PROJECTS_<WORKSPACE>
-# Jim, Nov 16 2026: reuse an existing credential wherever one exists. (source, workspace[, n]) -> (credential NAME, key of its row in the credential inventory, or None for a new item). Names only.
-REUSED = {**{("jira", w): ("JIRA_API_TOKEN", "jira_api_token") for w in ("personal", "bytalos")},                    # with JIRA_EMAIL, loaded beside it
-          **{("outlook", "personal", n): ("OUTLOOK_CLIENT_ID", "outlook_sign_in") for n in (1, 2, 3)},             # the fetcher reads the tokens from v7_outlook_token by label followup-personal-1..3
-          ("calendar", "personal"): ("GCAL_SERVICE_ACCOUNT_JSON", "gcal_service_account"), ("calendar", "bytalos"): ("GCAL_SERVICE_ACCOUNT_JSON", "gcal_service_account"),
-          ("gmail", "personal"): ("GMAIL_OAUTH_REFRESH_TOKEN", "gmail_oauth_refresh_token"),                       # with GMAIL_OAUTH_CLIENT_ID and _SECRET, loaded beside it
-          ("notion", "personal"): ("NOTION_API_TOKEN", "notion_api_token"), ("interview_os", "personal"): ("NOTION_API_TOKEN", "notion_api_token"),
-          ("gmail", "bytalos"): ("FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH", None),                                  # new: no item yet, so no expiry row and no grant (degraded) until it exists
-          ("todoist", "personal"): ("FOLLOWUP_TODOIST_PERSONAL_TOKEN", None)}                                       # new, same
-NO_EXPIRY = "2099-12-31"                                                          # a credential the inventory says has no fixed expiry: a long date, withdrawn by removing the account or the name
-EXPIRES = {}                                                                      # {(source, workspace) or (source, workspace, n): "YYYY-MM-DD"}: filled when a credential is created
+# The credential inventory row (lifeos/platform/credential_list.py) whose expiry each reused credential follows; a new FOLLOWUP_ item has none, so no grant until it exists.
+INVENTORY = {"JIRA_API_TOKEN": "jira_api_token", "NOTION_API_TOKEN": "notion_api_token", "GCAL_SERVICE_ACCOUNT_JSON": "gcal_service_account", "GMAIL_OAUTH_REFRESH_TOKEN": "gmail_oauth_refresh_token"}
+OUTLOOK_INVENTORY = "outlook_sign_in"                                               # an Outlook credential is a label (followup-personal-N) whose token lives in the private store
+NO_EXPIRY = "2099-12-31"                                                          # an inventory row with no fixed expiry: a long date, withdrawn by removing the account or the name
+EXPIRES = {}                                                                      # {(source, workspace, slot): "YYYY-MM-DD"}: only for a credential with no inventory row
 TGP_DOMAINS = stage.TGP_DOMAINS
 
 
@@ -42,12 +35,8 @@ class WiringError(RuntimeError):
     """`str(error)` is a fixed code."""
 
 
-def account_env(source, workspace, n=None):
-    return f"FOLLOWUP_ACCOUNT_{source.upper()}_{workspace.upper()}" + (f"_{n}" if n else "")
-
-
 def _fetchers():
-    """The sibling module (LIFE-757 fetchers), or None until it is merged: then no source has a credential name and every source shows DEGRADED, never a crash."""
+    """The fetchers module (LIFE-757), or None if it cannot be imported: then no source has a credential and every source shows DEGRADED, never a crash."""
     try:
         from lifeos.platform import followup_fetchers
     except ImportError:
@@ -55,44 +44,42 @@ def _fetchers():
     return followup_fetchers
 
 
+def _keys(module, source, workspace):
+    return sorted((k for k in getattr(module, "CREDENTIAL_NAMES", {}) if k[:2] == (source, workspace)), key=lambda k: k[2]) if module else []
+
+
+def account_env(source, workspace, slot=1):
+    """The environment name that holds this scope's account LABEL (the fetchers' ACCOUNT_NAMES)."""
+    return (getattr(_fetchers(), "ACCOUNT_NAMES", {}) or {}).get((source, workspace, slot or 1), "")
+
+
 def credential_names():
-    """The fetchers' names, overlaid by the committed reuse table (it wins): which existing or new credential NAME each (source, workspace[, n]) is granted."""
-    module = _fetchers()
-    names = dict(getattr(module, "CREDENTIAL_NAMES", {}) or {}) if module else {}
-    names.update({key: name for key, (name, _) in REUSED.items()})
-    return names
-
-
-def _lookup(table, source, workspace, n):
-    """An account-specific row (source, workspace, n) first, then the (source, workspace) row."""
-    return table.get((source, workspace, n)) or table.get((source, workspace))
+    """{(source, workspace, slot): the NAME a grant carries}: the fetchers' GRANT_REFS, so a grant can only point its own fetcher at its own credential."""
+    return dict(getattr(_fetchers(), "GRANT_REFS", {}) or {})
 
 
 def accounts(environ, source, workspace):
-    """-> [(n, label)]: the labels named in the environment for this (source, workspace), in order; n is None for the single unnumbered one. A source that does not serve the workspace has none."""
+    """-> [(slot, label)]: Jira has its committed label; the others are the labels named in the environment, in slot order. A source that does not serve the workspace has none."""
     if workspace not in RELEASED or workspace not in SOURCE_WORKSPACES.get(source, ()):
         return []
     if (source, workspace) in FIXED_ACCOUNTS:
-        return [(None, FIXED_ACCOUNTS[(source, workspace)])]
-    limit = MAX_ACCOUNTS.get((source, workspace), 1)
+        return [(1, FIXED_ACCOUNTS[(source, workspace)])]
     out = []
-    for n in (None, *range(1, limit + 1)):
-        label = (environ.get(account_env(source, workspace, n)) or "").strip()[:80]
+    for key in _keys(_fetchers(), source, workspace):
+        label = (environ.get(account_env(*key)) or "").strip()[:80]
         if label and not stage.tgp_account(label) and all(label != seen for _, seen in out):
-            out.append((n, label))
-        if len(out) == limit:
-            break
+            out.append((key[2], label))
     return out
 
 
 def configured(environ):
-    """-> {(workspace, label): [(source, n), ...]}: one scope per workspace and account label. Sources the workspace serves but that have no account are added to the workspace's first scope so they
-    show DEGRADED (not provisioned) instead of vanishing from the payload."""
+    """-> {(workspace, label): [(source, slot), ...]}: one scope per workspace and account label. Sources the workspace serves but that have no account are added to the workspace's first scope so
+    they show DEGRADED (not provisioned) instead of vanishing from the payload."""
     scopes = {}
     for workspace in RELEASED:
         for source in SOURCES:
-            for n, label in accounts(environ, source, workspace):
-                scopes.setdefault((workspace, label), []).append((source, n))
+            for slot, label in accounts(environ, source, workspace):
+                scopes.setdefault((workspace, label), []).append((source, slot))
     for workspace in RELEASED:
         mine = sorted(key for key in scopes if key[0] == workspace)
         if not mine:
@@ -103,25 +90,28 @@ def configured(environ):
 
 
 def expiry_table():
-    """EXPIRES plus the date of each reused credential from its existing inventory row (no new row to maintain); an inventory row with no fixed expiry gets NO_EXPIRY. A new credential has none."""
+    """EXPIRES plus each reused credential's date from its existing inventory row (no new row to maintain). A new FOLLOWUP_ credential has none."""
     from lifeos.platform.credential_list import CREDENTIALS                       # noqa: PLC0415
     rows = {row.get("key"): row for row in CREDENTIALS}
     table = {}
-    for key, (_, inventory) in REUSED.items():
-        if inventory in rows:
-            table[key] = rows[inventory].get("expires") or NO_EXPIRY
+    for key, raw in (getattr(_fetchers(), "CREDENTIAL_NAMES", {}) or {}).items():
+        row = rows.get(OUTLOOK_INVENTORY if raw.startswith("followup-") else INVENTORY.get(raw))
+        if row:
+            table[key] = row.get("expires") or NO_EXPIRY
     table.update(EXPIRES)
     return table
 
 
 def grants_for(environ, names, expires=None):
-    """One Grant per configured (source, workspace, account) that has a credential NAME and an expiry row; Asana, TGP and a source outside its workspaces never get one."""
+    """One Grant per configured (source, workspace, account) that has a credential NAME and an expiry; Asana, TGP and a source outside its workspaces never get one. Each scope has its own Grant even
+    where two scopes share a credential item."""
     expires = expiry_table() if expires is None else expires
     out = []
     for (workspace, label), members in sorted(configured(environ).items()):
-        for source, n in sorted(members, key=lambda m: (m[0], m[1] or 0)):
-            name, day = _lookup(names, source, workspace, n), _lookup(expires, source, workspace, n)
-            if not name or not day or (n, label) not in accounts(environ, source, workspace):      # a source appended only to show DEGRADED has no account here: no grant
+        for source, slot in sorted(members, key=lambda m: (m[0], m[1] or 0)):
+            key = (source, workspace, slot or 1)
+            name, day = names.get(key), expires.get(key)
+            if not name or not day or (slot, label) not in accounts(environ, source, workspace):      # a source appended only to show DEGRADED has no account here: no grant
                 continue
             out.append(readers.Grant(source, workspace, label, name, datetime.fromisoformat(day + "T23:59:59+00:00")))
     return tuple(out)
@@ -188,13 +178,9 @@ def payload_loader(store, workspace, account):
 
 
 def fetcher_environment(environ):
-    """The environment the fetchers see: the caller's, plus each Jira scope's committed project allowlist as FOLLOWUP_JIRA_PROJECTS_<WORKSPACE>. A caller value can only narrow it: a key
-    outside the workspace's committed list (a Bytalos scope asking for a Personal project) is dropped, and an empty result falls back to the committed list."""
+    """The environment the fetchers see: the caller's, plus the Jira site (a constant, never a GitHub value) unless the caller set one. The Jira project split is fixed in the fetchers' code."""
     out = dict(environ)
-    for workspace, projects in JIRA_PROJECTS.items():
-        name = f"FOLLOWUP_JIRA_PROJECTS_{workspace.upper()}"
-        asked = [p.strip().upper() for p in (environ.get(name) or "").split(",") if p.strip()]
-        out[name] = ",".join(p for p in asked if p in projects) or ",".join(projects)
+    out.setdefault("JIRA_BASE_URL", JIRA_SITE)
     return out
 
 
