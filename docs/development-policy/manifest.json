@@ -307,13 +307,13 @@
     },
     {
       "date": "2026-11-16",
-      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/PRNUM",
+      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/1282",
       "approval": "Jim Markunas, November 16, 2026 CT, typed in the Claude Code chat: 'I want all 4' and 'nothing has moved in hours except for process theater' (freeze on new ticket-management stages, steps, labels, statuses and checks; LIFE-767)",
       "part": "docs/development-policy/03 (a bullet: no new ticket-management machinery unless Jim asks in chat; part 04 is at its size cap), with the matching AGENTS.md Always line"
     },
     {
       "date": "2026-11-16",
-      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/PRNUM",
+      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/1282",
       "approval": "Jim Markunas, November 16, 2026 CT, typed in the Claude Code chat: 'I want all 4' (a new stage needs no hand-run tools/regen.py; LIFE-765)",
       "part": "docs/development-policy/04 (the registries bullet: sh tools/preflight.sh runs tools/regen.py --commit), with the matching AGENTS.md Always line"
     }
