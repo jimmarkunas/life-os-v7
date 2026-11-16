@@ -22,7 +22,7 @@ def _bws(token, args, run, environ):
     """Run one `bws` call with the token in the environment only (never an argument) and a throwaway home; -> stdout text."""
     token = token.decode() if isinstance(token, bytes) else token
     with tempfile.TemporaryDirectory(prefix="lifeos-alerts-") as home:
-        env = {"PATH": (environ or os.environ).get("PATH", "/usr/local/bin:/usr/bin:/bin"), "HOME": home, "BWS_ACCESS_TOKEN": token, "BWS_CONFIG_FILE": os.path.join(home, "config")}
+        env = {"PATH": (environ or os.environ).get("PATH", "/usr/local/bin:/usr/bin:/bin"), "HOME": home, "BWS_ACCESS_TOKEN": token}      # no BWS_CONFIG_FILE: bws stops with "Config file doesn't exist" when that names a missing file (proved on Oracle, LIFE-733)
         done = run([(environ or os.environ).get("LIFEOS_BWS_BIN", "bws"), *args], env=env, capture_output=True, text=True, timeout=TIMEOUT, check=False)
     if done.returncode != 0:
         raise OSError("bws failed")
