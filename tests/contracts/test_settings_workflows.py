@@ -28,47 +28,22 @@ STATUS = {
 }
 # One line per movable name still read from GitHub (the whole list; phase 5 deletes the GitHub value). Adding a reference needs a line here and a status above.
 EXPECTED = {
-    "AMAZON_CARD_BLOCK_ID": "shadow",
-    "ATTENTION_CARD_BLOCK_ID": "shadow",
-    "BILLS_CARD_BLOCK_ID": "shadow",
     "BROWSER_CACHE_BUST": "shadow",
     "BUZZ_STAGE_CHANNEL": "shadow",
-    "CALENDAR_CARD_BLOCK_ID": "shadow",
-    "FIT_PROFILE_SYNC": "gate output",
     "GATE_MIN_GAP_MINUTES": "ticker",
     "GCAL_CALENDAR_ID": "shadow",
-    "GRANOLA_AUTO": "gate output",
-    "HIRING_AUTO_CLOSE": "shadow",
     "HIRING_CARD_BLOCK_ID": "shadow",
-    "HIRING_PIPELINE_PAGE_ID": "shadow",
-    "HIRING_STATUS_BLOCK_ID": "shadow",
-    "HIRING_TABLE_BLOCK_ID": "shadow",
     "INTERVIEW_ACCEPTANCE_JSON": "shadow",
     "INTERVIEW_ACCEPTANCE_NEGATIVE_JSON": "shadow",
-    "INTERVIEW_LEADS": "shadow",
-    "INTERVIEW_OS_WRITER": "shadow",
-    "INTERVIEW_TEST_COMPANIES": "shadow",
     "JIRA_BASE_URL": "shadow",
     "JIRA_BOARDS": "shadow",
-    "JIRA_CARD_BLOCK_ID": "shadow",
     "JIRA_GTV_EPIC": "shadow",
     "JIRA_SITE_URL": "shadow",
-    "JOB_PAGE_OUTREACH": "shadow",
-    "MAIL_ALERTS_CARD_BLOCK_ID": "shadow",
-    "MEGIBOW_BLOCK_ID": "shadow",
     "NETWORK_HANDOFF_PAGE_ID": "shadow",
-    "NOTION_AMAZON_DATA_SOURCE_ID": "shadow",
     "NOTION_BILLS_DATA_SOURCE_ID": "shadow",
-    "NOTION_FIT_SYNC_PAGE_ID": "shadow",
-    "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "shadow",
-    "NOTION_RECRUITERS_DATA_SOURCE_ID": "shadow",
-    "RECRUITER_OUTREACH": "shadow",
-    "V7_AI_CAPACITY_CARD": "shadow",
     "V7_CLOSE_BASE_URL": "shadow",
     "V7_CLOUD_FIT_BACKLOG_PAGE": "conditional",
     "V7_CLOUD_FIT_PROFILE_REF": "shadow",
-    "V7_FIT_GATE": "shadow",
-    "V7_IMESSAGE_ALERTS": "gate output",
     "V7_PIPELINE": "workflow env",
     "WEEKLY_REVIEW_PAGE_ID": "shadow",
 }
@@ -154,13 +129,14 @@ class SettingsStepsNeverStopAJob(unittest.TestCase):
                 self.assertEqual(len(lines), 1, file)
                 self.assertTrue(lines[0].endswith("> NOTION_JIRA_TOKEN"), file)
 
-    def test_the_gate_outputs_keep_the_github_value_as_the_fallback(self):
+    def test_the_gate_outputs_read_the_page_only(self):
+        """LIFE-699: GitHub no longer holds these switches, so the gate outputs are the settings step's output alone (no `|| vars.X` fallback)."""
         data = yaml.safe_load((WORKFLOWS / "domains.yml").read_text())
         out = data["jobs"]["gate"]["outputs"]
-        self.assertIn("|| vars.GRANOLA_AUTO", out["granola_auto"])
-        self.assertIn("|| vars.V7_IMESSAGE_ALERTS", out["imessage_alerts"])
+        self.assertEqual(out["granola_auto"].split("#")[0].strip(), "${{ steps.settings.outputs.GRANOLA_AUTO }}")
+        self.assertEqual(out["imessage_alerts"].split("#")[0].strip(), "${{ steps.settings.outputs.V7_IMESSAGE_ALERTS }}")
         sync = yaml.safe_load((WORKFLOWS / "profile-sync.yml").read_text())["jobs"]["settings"]["outputs"]["fit_profile_sync"]
-        self.assertIn("|| vars.FIT_PROFILE_SYNC", sync)
+        self.assertEqual(sync.split("#")[0].strip(), "${{ steps.settings.outputs.FIT_PROFILE_SYNC }}")
 
     def test_no_job_gets_a_permissions_block_from_this_change(self):
         """The gate keeps its two read permissions and the new jobs and steps declare none; any `write` permission anywhere is already in the baseline below."""

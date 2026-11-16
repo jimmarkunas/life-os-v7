@@ -77,7 +77,7 @@ jobs:
       - name: Network (reads the attached CSV through Notion; prints counts only)
         env:
           NETWORK_HANDOFF_PAGE_ID: ${{ secrets.NETWORK_HANDOFF_PAGE_ID }}
-          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}
+          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
           STAGE: ${{ inputs.stage }}
           LIVE: ${{ inputs.live }}
           PAGES: ${{ inputs.pages }}

@@ -460,7 +460,7 @@ class RuntimePathTests(unittest.TestCase):
         self.assertTrue(ingest["run"].startswith("python -m lifeos.run mail-alerts"))
         self.assertTrue(card_step["run"].startswith("python -m lifeos.run mail-card"))
         self.assertEqual(card_step["env"]["MAIL_SYNC_OUTCOME"], "${{ steps.mail.outcome }}")          # a failed ingest is carried to the card as DEGRADED
-        self.assertEqual(card_step["env"]["MAIL_ALERTS_CARD_BLOCK_ID"], "${{ secrets.MAIL_ALERTS_CARD_BLOCK_ID }}")
+        self.assertEqual(card_step["env"]["MAIL_ALERTS_CARD_BLOCK_ID"], "")   # LIFE-699: declared empty; the V7 settings page fills it
         self.assertEqual(ingest["env"]["PHYSICAL_MAIL_ANCHOR"], "${{ inputs.physical_mail_anchor }}")  # the first run's anchor is an input, never code
         self.assertTrue(ingest["continue-on-error"] and card_step["continue-on-error"])               # a failure is a warning, not a Jobs failure
         for name in ("physical_mail", "physical_mail_anchor"):

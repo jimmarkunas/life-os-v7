@@ -70,7 +70,7 @@ jobs:
           NOTION_JIRA_TOKEN: ${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}
           GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_recruiters.outputs.GMAIL_OAUTH_CLIENT_ID }}
           OUTLOOK_CLIENT_ID: ${{ steps.bws_recruiters.outputs.OUTLOOK_CLIENT_ID }}
-          NOTION_RECRUITERS_DATA_SOURCE_ID: ${{ secrets.NOTION_RECRUITERS_DATA_SOURCE_ID }}
+          NOTION_RECRUITERS_DATA_SOURCE_ID: ""
           GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_recruiters.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
           GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_recruiters.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_DB_NAME }}
