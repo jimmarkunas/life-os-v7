@@ -4,7 +4,7 @@
 #   sh tools/test.sh            the CI selection for the commits on this branch (needs the changes committed: CI also sees commits only)
 #   sh tools/test.sh --all      everything, like a merge to main
 #   sh tools/test.sh --list     only print which Python and which tests it would use
-#   sh tools/test.sh --setup    build ~/.venvs/lifeos-tests once from the locked versions (the Mac's own python3 is 3.9; never run this on the Oracle VM without Jim's typed yes)
+#   sh tools/test.sh --setup    same as `sh tools/setup-dev.sh`: build or repair ~/.venvs/lifeos-tests from the locked versions (the Mac's own python3 is 3.9; refuses on the Oracle VM)
 # Python is looked for in this order: $LIFEOS_PYTHON, the repo .venv (also the main checkout's, for a git worktree), ~/.venvs/lifeos-tests, python3.12, python3.13. It must be 3.12 or newer and import PyYAML.
 set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -23,19 +23,17 @@ done
 good() { "$1" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 12) else 1)' >/dev/null 2>&1 && "$1" -c 'import yaml' >/dev/null 2>&1; }
 
 if [ "${setup:-}" = 1 ]; then
-  command -v python3.12 >/dev/null || { echo "test.sh --setup: python3.12 is not installed on this host; install Python 3.12 first (on the Mac with Homebrew, the formula named python 3.12)" >&2; exit 3; }
-  [ -d "$HOME/.venvs/lifeos-tests" ] || { python3.12 -m venv "$HOME/.venvs/lifeos-tests" && grep -hE '^[A-Za-z0-9_.-]+==' requirements.lock requirements-test.lock | sed 's/ *\\$//' | "$HOME/.venvs/lifeos-tests/bin/pip" install -q -r /dev/stdin; } || exit 3
-  echo "test.sh: environment ready at $HOME/.venvs/lifeos-tests"; exit 0
+  exec bash "$ROOT/tools/setup-dev.sh"   # LIFE-743: the one setup command; also installs ruff and coverage from the locks
 fi
 
 common="$(git rev-parse --git-common-dir 2>/dev/null)"
 PY=""
-for candidate in "${LIFEOS_PYTHON:-}" "$ROOT/.venv/bin/python" "$common/../.venv/bin/python" "$HOME/.venvs/lifeos-tests/bin/python" "$(command -v python3.12 2>/dev/null)" "$(command -v python3.13 2>/dev/null)"; do
+for candidate in "${LIFEOS_PYTHON:-}" "$ROOT/.venv/bin/python" "$common/../.venv/bin/python" "$HOME/.venvs/lifeos-tests/bin/python" "$(command -v python3.12 2>/dev/null)" /opt/homebrew/bin/python3.12 "$(command -v python3.13 2>/dev/null)"; do
   [ -n "$candidate" ] && [ -x "$candidate" ] && good "$candidate" && { PY="$candidate"; break; }
 done
 if [ -z "$PY" ]; then
   echo "test.sh: no usable Python found. Needed: Python 3.12 or newer with PyYAML (CI uses 3.12). Looked at: \$LIFEOS_PYTHON, .venv, ~/.venvs/lifeos-tests, python3.12, python3.13." >&2
-  echo "test.sh: on the Mac run 'sh tools/test.sh --setup' once. On the Oracle VM install nothing without Jim's typed yes; name this missing piece to Jim." >&2
+  echo "test.sh: on the Mac run 'sh tools/setup-dev.sh' once. On the Oracle VM install nothing without Jim's typed yes; name this missing piece to Jim." >&2
   exit 3
 fi
 version="$("$PY" -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])')"

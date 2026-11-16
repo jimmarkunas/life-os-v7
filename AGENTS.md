@@ -58,6 +58,7 @@ Before OpenClaw, Oracle, channel, local-model, assistant, meeting-capture or AI-
 ## Commands
 
 - **Tests: `sh tools/test.sh`** (any host; Python 3.12, what CI runs: affected tests on a branch, `--all` for everything). One file: `python -m unittest tests.jira.test_jira`.
+- **Local setup and auto-merge (LIFE-743):** `sh tools/setup-dev.sh` once per machine (Python 3.12, PyYAML, ruff, coverage, shared by every worktree); `sh tools/automerge.sh <pr>` after each push (waits for GitHub to show your head, then arms squash auto-merge).
 - **Jira connector:** `mcp__claude_ai_Atlassian_MCP__*` only; Rovo connectors are retired.
 - **Jira reads and searches:** always pass `fields` (docs/platform/agent-jira-settings.md). **Receipts:** docs/platform/receipt-template.md.
 - **New tickets (LIFE-741):** Create every ticket under an epic (bugs under LIFE-615); Component and Fix Version are filled for you, set them only to override.
