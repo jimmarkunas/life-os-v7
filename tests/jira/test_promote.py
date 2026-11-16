@@ -59,6 +59,19 @@ class Decide(unittest.TestCase):
         self.assertEqual(promote.decide(issue(blockers=[("LIFE-2", True)])), ("promote", []))
 
 
+class WaitingLabel(unittest.TestCase):
+    def test_a_protected_step_gets_the_comment_and_the_label_in_one_step(self):
+        out = promote.act(issue(*READY, "Needs a read-only API key for Jira."))
+        self.assertEqual((out["decision"], out["label"]), ("wait", "waiting-on-jim"))
+        self.assertTrue(out["comment"].startswith("[waiting on] Jim: "))
+        self.assertIn("credential", out["comment"])
+
+    def test_a_promotable_or_skipped_ticket_gets_no_label_and_no_comment(self):
+        for case in (issue(), issue(blockers=[("LIFE-2", False)]), issue(labels=["hold"])):
+            out = promote.act(case)
+            self.assertEqual((out["label"], out["comment"]), (None, None))
+
+
 class SamePath(unittest.TestCase):
     def record(self, approved_by):
         return {"key": "LIFE-1", "blockers": [], "acceptance": [{"done_when": "Given X, then Y"}], "authorization": {"approved_by": approved_by, "provenance": "chat"}}
