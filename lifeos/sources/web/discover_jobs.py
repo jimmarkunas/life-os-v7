@@ -22,6 +22,13 @@ RESOLVE_SEARCHES = 40            # final-link searches per run (the shared per-h
 _SEPARATORS = re.compile(r"\s+[|\-–—·•]\s+|\s+at\s+|\s+@\s+", re.I)
 _SITE_WORD = re.compile(r"\b(jobs?|careers?|vacanc\w+|indeed|linkedin|startup|reed|totaljobs|glassdoor|adzuna|cv-?library|visa|sponsor\w*|apply|hiring|work (?:at|for)|uk|london)\b", re.I)
 _NOT_A_ROLE = re.compile(r"^(jobs?|careers?|vacancies|current vacancies|open positions?|work (?:at|for) .*|jobs? (?:in|at) .*)$", re.I)
+# LIFE-759: pages that are not a job. Sponsor-directory domains (kept here, one place) never post; a title with no role noun, or one that names a sponsor licence, is not a job title.
+SPONSOR_DIRECTORY_HOSTS = ("legitsponsors.co.uk", "sponsordirectory.co.uk", "hirenza.com", "getborderless.co.uk", "atlaspriorityservices.com", "jobvisaai.com", "myvisajobs.co.uk")
+_ROLE_NOUN = re.compile(r"\b(manager|engineer|developer|analyst|designer|director|lead|head|officer|executive|specialist|consultant|scientist|architect|coordinator|associate|assistant|administrator|"
+                        r"recruiter|marketer|writer|producer|technician|advis[eo]r|strategist|representative|researcher|programmer|accountant|president|vp|cto|cfo|coo|ceo|founder|owner|"
+                        r"partner|principal|intern|apprentice|trainee|operator|planner|buyer|controller|auditor|editor|copywriter|translator|lawyer|solicitor|counsel|paralegal|nurse|teacher|"
+                        r"tester|sdet|devops|sre|admin|agent|generalist|evangelist|ambassador)s?\b", re.I)
+_NOT_A_JOB_TITLE = re.compile(r"sponsor(?:s|ship)?\s+licen[cs]e|licen[cs]ed\s+sponsor|visa\s+sponsor|sponsor\s+(?:directory|list|register)|\bdirectory\b", re.I)
 _PROFILE_PATH = re.compile(r"/(company|companies|cmp|employers?|organisations?|profile)/[^/]+/?$", re.I)
 
 
@@ -117,15 +124,37 @@ def _admit(cursor, source, job, now):
 LISTING_NOTE = "Found by web search; the listing page was not read."
 
 
+def is_sponsor_directory(url):
+    """True when the listing URL's host is a known sponsor-directory domain or a subdomain of one (by host, never by substring)."""
+    host = (urlsplit(url or "").hostname or "").lower()
+    return any(host == d or host.endswith("." + d) for d in SPONSOR_DIRECTORY_HOSTS)
+
+
+def is_not_a_job(title, company):
+    """True when the search result's title is not a job title: it names a sponsor licence or a directory, is a bare company name, or has no role noun."""
+    text = re.sub(r"\s+", " ", title or "").strip()
+    if not text or _NOT_A_JOB_TITLE.search(text):
+        return True
+    if text.casefold() == (company or "").strip().casefold():
+        return True
+    return not _ROLE_NOUN.search(text)
+
+
 def promote_leads(cursor, snippets, now=None):
     """LIFE-723 (Jim, Nov 15 2026; relaxes D1 and D36 for this one case): a Scale-Up sponsor with no employer board whose job the chain could not link to the employer (HOLD, no_match_*) is posted
     from its listing page when it passes the Scale-Up rules: a London or UK-wide remote place (D96, D98) and no hard title exclusion (D95). The listing page is never fetched: only the search result's
     own title, snippet and URL are used. The job becomes RESOLVED with link_proof `listing`; Fit and the lane gate then decide it (always Review, never Admit) and Publish posts it with Aggregator Link.
-    -> counts: promoted, not_london, title_excluded."""
+    LIFE-759: a sponsor-directory host or a title that is not a job (see is_sponsor_directory, is_not_a_job) is excluded first, with the fixed reasons sponsor_directory and not_a_job.
+    -> counts: promoted, not_london, title_excluded, sponsor_directory, not_a_job."""
     now = now or _now()
-    counts = {"promoted": 0, "not_london": 0, "title_excluded": 0}
+    counts = {"promoted": 0, "not_london": 0, "title_excluded": 0, "sponsor_directory": 0, "not_a_job": 0}
     cursor.execute("SELECT id, source_url, title, company, location_text FROM v7_jobs WHERE source=%s AND status='HOLD' AND unresolved_reason LIKE 'no_match%%' AND notion_page_id IS NULL", (SOURCE,))
     for job_id, url, title, company, place in cursor.fetchall():
+        reason = "sponsor_directory" if is_sponsor_directory(url) else "not_a_job" if is_not_a_job(title, company) else None
+        if reason:
+            cursor.execute("UPDATE v7_jobs SET status='EXCLUDED_FIT', unresolved_reason=%s, updated_at=%s WHERE id=%s AND status='HOLD'", (reason, now, job_id))
+            counts[reason] += bool(cursor.rowcount)
+            continue
         if lanes.geography_status(place) != lanes.POSITIVE:
             counts["not_london"] += 1                                                     # no stated place, or not London: never guessed
             continue
