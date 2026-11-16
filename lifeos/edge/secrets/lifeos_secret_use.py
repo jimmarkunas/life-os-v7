@@ -7,9 +7,11 @@ value never appears in a prompt, chat, Jira, log or file an agent reads.
 One argument, a purpose name. Nothing else is accepted: no secret name, URL, command, header or value (anything extra is SECRET_BAD_ARGS). The purpose registry
 (/etc/lifeos-secrets/purposes.d/*.json, root-owned, not writable by anyone else) fixes, for each purpose, the ONE credential it may use (an encrypted systemd credential in
 /etc/hermes-eval/creds), the users who may call it, and one action from a closed list:
-  http_get_fields   GET one fixed https URL with the credential as a bearer token and return only the listed JSON fields (scalars only).
+  http_get_fields   GET one fixed https URL with the credential as a bearer token and return only the listed JSON fields (scalars only). A purpose may set "auth": "basic" (LIFE-754):
+                    the credential then holds `email:token`, the request sends HTTP Basic, and the URL must be one fixed Atlassian Jira issue read on api.atlassian.com.
   check_credential  return the credential's NAME, its length and the first 8 hex characters of its SHA-256. Never the value.
-Every output is searched for the value in raw, base64, URL-encoded, hex and JSON-escaped forms; a hit refuses the whole answer (SECRET_OUTPUT_CONTAINS_SECRET). Output is capped at 4096
+Every output is searched for the value in raw, base64, URL-encoded, hex and JSON-escaped forms (for Basic also the token alone and the whole Basic header); a hit refuses the whole answer (SECRET_OUTPUT_CONTAINS_SECRET).
+A redirect is never followed, so a credential is only ever sent to the one registered host. Output is capped at 4096
 bytes and a caller gets 20 calls per minute. Every call, refused or not, appends one line to /var/log/lifeos-secret-use.jsonl (epoch, Central Time, caller, pid, purpose, credential
 NAME, result code, bytes returned); if the log cannot be written the call is refused before anything is used (fail closed). No network listener, no timer, no daemon: it runs when called.
 
@@ -41,6 +43,9 @@ DECRYPT = "/usr/bin/systemd-creds"
 PURPOSE = re.compile(r"[a-z][a-z0-9_]{1,40}")
 NAME = re.compile(r"[a-z][a-z0-9_]{1,60}")
 HTTPS = re.compile(r"https://[a-z0-9.-]+(/[A-Za-z0-9._~/-]*)?")
+ATLASSIAN = re.compile(r"https://api\.atlassian\.com/ex/jira/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/rest/api/3/issue/[A-Z][A-Z0-9]{1,9}-[0-9]{1,7}(\?fields=[a-z,]+)?")
+BASIC_CRED = re.compile(r"[^:\s@]+@[^:\s@]+:[^\s]+")                  # email:token, the only shape a Basic credential may have
+AUTHS = ("bearer", "basic")
 MAX_OUT, PER_MINUTE, FETCH_WAIT, FETCH_MAX = 4096, 20, 15, 65536
 ACTIONS = ("http_get_fields", "check_credential")
 CT = ZoneInfo("America/Chicago")
@@ -64,6 +69,15 @@ def forms(value):
     return {f for f in out if f}
 
 
+def secret_forms(value, auth="bearer"):
+    """forms() of the value; for Basic also of the token alone and of the whole `Basic <base64>` header value."""
+    out = set(forms(value))
+    if auth == "basic":
+        token = value.split(":", 1)[1] if ":" in value else ""
+        out |= forms(token) | forms("Basic " + base64.b64encode(value.encode()).decode())
+    return out
+
+
 def systemd_decrypt(name):
     try:
         done = subprocess.run([DECRYPT, "decrypt", "--name=" + name, os.path.join(CREDS, name + ".cred"), "-"], capture_output=True, timeout=15, stdin=subprocess.DEVNULL)
@@ -77,10 +91,18 @@ def systemd_decrypt(name):
         raise Refused("SECRET_CRED_UNREADABLE") from None
 
 
-def http_fetch(url, bearer):
-    request = urllib.request.Request(url, headers={"Authorization": "Bearer " + bearer, "Accept": "application/json", "User-Agent": "lifeos-secret-use"})
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    """A credential goes to the one registered host only: a redirect is an error, never followed."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def http_fetch(url, secret, auth="bearer"):
+    header = ("Basic " + base64.b64encode(secret.encode()).decode()) if auth == "basic" else "Bearer " + secret
+    request = urllib.request.Request(url, headers={"Authorization": header, "Accept": "application/json", "User-Agent": "lifeos-secret-use"})
     try:
-        with urllib.request.urlopen(request, timeout=FETCH_WAIT) as reply:                 # nosec: https only, checked against the registry pattern
+        with urllib.request.build_opener(NoRedirect).open(request, timeout=FETCH_WAIT) as reply:      # nosec: https only, checked against the registry pattern
             return reply.read(FETCH_MAX + 1)
     except (urllib.error.URLError, OSError, ValueError):
         raise Refused("SECRET_FETCH_FAILED") from None
@@ -137,8 +159,11 @@ class Broker:
             raise Refused("SECRET_REGISTRY_UNSAFE") from None
         ok = (isinstance(spec, dict) and spec.get("purpose") == purpose and isinstance(spec.get("secret"), str) and NAME.fullmatch(spec["secret"])
               and spec.get("action") in ACTIONS and isinstance(spec.get("callers"), list) and spec["callers"] and all(isinstance(c, str) for c in spec["callers"]))
+        if ok and spec.get("auth", "bearer") not in AUTHS:
+            ok = False
         if ok and spec["action"] == "http_get_fields":
-            ok = (isinstance(spec.get("url"), str) and HTTPS.fullmatch(spec["url"]) and isinstance(spec.get("fields"), list) and spec["fields"]
+            pattern = ATLASSIAN if spec.get("auth") == "basic" else HTTPS                  # Basic only ever goes to one fixed Jira issue read on api.atlassian.com
+            ok = (isinstance(spec.get("url"), str) and pattern.fullmatch(spec["url"]) and isinstance(spec.get("fields"), list) and spec["fields"]
                   and all(isinstance(f, str) and re.fullmatch(r"[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)*", f) for f in spec["fields"]))
         if not ok:
             raise Refused("SECRET_REGISTRY_UNSAFE")
@@ -148,7 +173,12 @@ class Broker:
     def act(self, spec, value):
         if spec["action"] == "check_credential":
             return {"name": spec["secret"], "length": len(value), "sha256_prefix": hashlib.sha256(value.encode()).hexdigest()[:8]}
-        body = self.fetch(spec["url"], value)
+        if spec.get("auth") == "basic":
+            if not BASIC_CRED.fullmatch(value):
+                raise Refused("SECRET_CRED_UNREADABLE")
+            body = self.fetch(spec["url"], value, "basic")
+        else:
+            body = self.fetch(spec["url"], value)
         if len(body) > FETCH_MAX:
             raise Refused("SECRET_BAD_REPLY")
         try:
@@ -192,7 +222,7 @@ class Broker:
                 value = self.decrypt(spec["secret"])
                 result = self.act(spec, value)
                 text = json.dumps({"ok": True, "purpose": row["purpose"], "result": result}, sort_keys=True)
-                if any(f in text for f in forms(value)):
+                if any(f in text for f in secret_forms(value, spec.get("auth", "bearer"))):
                     raise Refused("SECRET_OUTPUT_CONTAINS_SECRET")
                 if len(text.encode()) > MAX_OUT:
                     raise Refused("SECRET_OUTPUT_TOO_LARGE")
