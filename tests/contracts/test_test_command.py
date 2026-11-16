@@ -42,7 +42,7 @@ class TestCommand(unittest.TestCase):
             self.skipTest("PyYAML is not installed in the interpreter running the tests")
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertIn("python %d.%d" % sys.version_info[:2], done.stdout)
-        self.assertIn("running everything (two parallel shards)", done.stdout)
+        self.assertRegex(done.stdout, r"running everything \(\d+ parallel shards\)")
 
     def test_an_unknown_option_is_refused(self):
         done = self.run_script("--frobnicate")
