@@ -27,6 +27,7 @@ FULL = "FULL"
 FULL_PREFIXES = ("tests/kit/", ".github/", ".claude/", "lifeos/platform/", "requirements")      # a change here can affect any test
 FULL_FILES = ("docs/PRIVACY.md", "pyproject.toml", "setup.cfg", "setup.py", "tox.ini", ".coveragerc", "conftest.py", ".gitignore")
 FULL_SUFFIXES = (".lock",)
+REPO_WIDE = ("tests.platform.test_docstyle",)       # LIFE-744: tests that scan every production file, so they must run for any change to one (PR 1235 added two long docstrings under lifeos/inbox, only tests/inbox ran, main failed)
 IGNORED_PREFIXES = ("docs/", "tools/")                                                         # docs run the contracts only; tools/ has its own node tests (separate CI step)
 
 
@@ -116,6 +117,8 @@ def select(changed, index, root=ROOT):
         return FULL
     changed = [c for c in changed if c]
     targets = set(contract_modules(root))
+    if any(c.startswith("lifeos/") and c.endswith(".py") for c in changed):
+        targets.update(REPO_WIDE)
     ids = index["tests"]
     for path in changed:
         if path in FULL_FILES or path.endswith(FULL_SUFFIXES) or path.startswith(FULL_PREFIXES):
