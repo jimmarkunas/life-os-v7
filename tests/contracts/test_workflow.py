@@ -224,7 +224,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn("--live", text.split("\n  # LIFE-10:")[0])                                         # the database and Gmail diagnostics never write
         confirm = diag[True]["workflow_dispatch"]["inputs"]["confirm"]                                      # LIFE-10: the proof's typed confirmation, an env value, never inlined in the command
         self.assertEqual((confirm["type"], confirm["default"]), ("string", ""))
-        self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", text))), ["LIFEOS_BWS_RUNTIME_TOKEN", "LIFEOS_NOTION_IDS"])      # LIFE-121: the report job reads the Ledger's data source id (LIFE-699: from the V7 settings page now) to find its page; LIFE-704: the Gmail client id and the SSH port no longer come from GitHub
+        self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", text))), ["LIFEOS_BWS_RUNTIME_TOKEN"])      # LIFE-699: the Notion ids map is declared empty and the LIFEOS_NOTION_<KEY> ids come from the settings page. LIFE-121: the report job reads the Ledger's data source id (LIFE-699: from the V7 settings page now) to find its page; LIFE-704: the Gmail client id and the SSH port no longer come from GitHub
         for name in moved:
             self.assertNotIn(f"secrets.{name}", text)                                                      # no direct copy, so no fallback
         self.assertEqual(re.findall(r"uses:\s*(\S*bws-load)", text), ["./.github/actions/bws-load"] * 5)   # the one local loader, once per job (LIFE-631)
@@ -253,9 +253,9 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(sandbox["timeout-minutes"], 5)
         token = "${{ steps.bws_sandbox.outputs.NOTION_API_TOKEN }}"
         read, proof = sandbox["steps"][-2:]
-        self.assertEqual((read["if"], read["run"], read["env"]), ("${{ inputs.stage == 'notion-sandbox-access' }}", "python -m lifeos.run notion-sandbox-access --limit 0", {"NOTION_API_TOKEN": token, "LIFEOS_NOTION_IDS": "${{ secrets.LIFEOS_NOTION_IDS }}"}))
+        self.assertEqual((read["if"], read["run"], read["env"]), ("${{ inputs.stage == 'notion-sandbox-access' }}", "python -m lifeos.run notion-sandbox-access --limit 0", {"NOTION_API_TOKEN": token, "LIFEOS_NOTION_IDS": ""}))   # LIFE-699: the ids map is declared empty; the LIFEOS_NOTION_<KEY> ids come from the V7 settings page
         self.assertEqual((proof["if"], proof["run"], proof["env"]), ("${{ inputs.stage == 'notion-sandbox-outreach-proof' }}", "python -m lifeos.run notion-sandbox-outreach-proof --limit 0 --live",
-                                                                    {"NOTION_API_TOKEN": token, "PROOF_CONFIRM": "${{ inputs.confirm }}", "LIFEOS_NOTION_IDS": "${{ secrets.LIFEOS_NOTION_IDS }}"}))   # the only write step; the stage itself refuses without SYNTHETIC
+                                                                    {"NOTION_API_TOKEN": token, "PROOF_CONFIRM": "${{ inputs.confirm }}", "LIFEOS_NOTION_IDS": ""}))   # the only write step; the stage itself refuses without SYNTHETIC
         self.assertEqual([s.get("env") for s in sandbox["steps"][:-2]], [None] * (len(sandbox["steps"]) - 2))   # only the two stage steps receive the token
         self.assertIs(next(s for s in sandbox["steps"] if s.get("id") == "bws_sandbox")["with"]["set_env"], False)                                       # a masked step output, never exported job-wide
         report = diag["jobs"]["report"]                                                                    # LIFE-121: private reports to one Notion page; a dry run unless confirm = REPORT
@@ -275,7 +275,7 @@ class WorkflowTests(unittest.TestCase):
         probe = ui["steps"][-1]
         self.assertEqual((probe["run"], probe["env"]), ("python -m lifeos.run interview-ui-probe --limit 0 --live", {
             "NOTION_INTERVIEW_TOKEN": "${{ steps.bws_interview.outputs.NOTION_INTERVIEW_TOKEN }}",
-            "PROBE_CONFIRM": "${{ inputs.confirm }}", "LIFEOS_NOTION_IDS": "${{ secrets.LIFEOS_NOTION_IDS }}"}))                                                    # the stage itself refuses without QA
+            "PROBE_CONFIRM": "${{ inputs.confirm }}", "LIFEOS_NOTION_IDS": ""}))                                                    # the stage itself refuses without QA
         self.assertEqual([s.get("env") for s in ui["steps"][:-1]], [None] * (len(ui["steps"]) - 1))
         self.assertEqual(trace["timeout-minutes"], 10)
         self.assertEqual(trace["steps"][-1]["run"], 'python -m lifeos.run "$STAGE"')
@@ -493,7 +493,7 @@ class UnitTestGateTests(unittest.TestCase):
         browser = next(s for s in steps if s.get("id") == "browser")
         tick = next(s for s in steps if s.get("id") == "tick")
         self.assertEqual(browser["uses"], "./.github/actions/browser")
-        self.assertEqual(browser["with"], {"cache_bust": "${{ vars.BROWSER_CACHE_BUST }}"})           # LIFE-573: one variable forces a cold-cache run
+        self.assertEqual(browser["with"], {"cache_bust": "life576a"})           # LIFE-573: changing this one value forces a cold-cache run (LIFE-699: a literal in the workflow, no GitHub variable)
         self.assertLess(ids.index("browser"), ids.index("tick"))                                      # its own step, before the tick, so its seconds show in the run log
         self.assertEqual(browser["if"], tick["if"])
         self.assertNotIn("playwright", tick["run"])                                                   # the tick step no longer installs anything
@@ -780,14 +780,14 @@ class DomainsWorkflowTests(unittest.TestCase):
         self.assertEqual(sorted(seen), [("hiring", "hiring"), ("interview", "interview"), ("recruiters", "jpoutreach"), ("recruiters", "routreach")])      # LIFE-20: the Recruiter Outreach table's action links; E05: Mark Complete
         for job, ident in seen:
             step = next(s for s in self.doc["jobs"][job]["steps"] if s.get("id") == ident)
-            self.assertEqual(step["env"]["V7_CLOSE_BASE_URL"], "${{ secrets.V7_CLOSE_BASE_URL }}")
+            self.assertEqual(step["env"]["V7_CLOSE_BASE_URL"], "")      # LIFE-699: declared empty; the V7 settings page fills it
         for path in (pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows").glob("*.y*ml"):
             if path.name not in ("domains.yml", "hourly.yml"):
                 self.assertNotIn("V7_CLOSE_BASE_URL", path.read_text(), path.name)
         hourly = yaml.safe_load((pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows" / "hourly.yml").read_text())
         named = [(job, step.get("id")) for job, spec in hourly["jobs"].items() for step in spec.get("steps", []) if "V7_CLOSE_BASE_URL" in str(step)]
         self.assertEqual(named, [("finish", "network_surface")])                                   # the Jobs pipeline's one reader: it never reaches the other finish steps
-        self.assertEqual(next(s for s in hourly["jobs"]["finish"]["steps"] if s.get("id") == "network_surface")["env"]["V7_CLOSE_BASE_URL"], "${{ secrets.V7_CLOSE_BASE_URL }}")
+        self.assertEqual(next(s for s in hourly["jobs"]["finish"]["steps"] if s.get("id") == "network_surface")["env"]["V7_CLOSE_BASE_URL"], "")      # LIFE-699: declared empty; the V7 settings page fills it, and still only this one step reads it
         self.assertNotIn("V7_CLOSE_BASE_URL", str(hourly.get("env")))
 
     def test_the_calendar_mass_delete_brake_is_skipped_only_by_a_manual_input_and_that_run_touches_nothing_else(self):

@@ -322,7 +322,7 @@ class Dormant(unittest.TestCase):
         self.assertIn("LIFE-85: the store's Oracle fallback needs the tailnet on every run", hourly)          # a model call still needs V7_CLOUD_FIT or a Jim-set batch, checked by the stage itself
         # LIFE-41 (TL 10517/10524): the brief reference is masked. A repository variable is printed unmasked in the step's env header of a public repo's
         # log, so it may only ever arrive as a secret, and only to the tick step.
-        self.assertEqual(re.findall(r"V7_CLOUD_FIT_PROFILE_REF: (\S.*?\}\})", hourly), ["${{ secrets.V7_CLOUD_FIT_PROFILE_REF }}"] * 2)   # the tick and the D219 manual backlog step, both the masked secret
+        self.assertEqual(re.findall(r'V7_CLOUD_FIT_PROFILE_REF: ("")', hourly), ['""'] * 2)   # LIFE-699: declared empty in the tick and the D219 manual backlog step; the V7 settings page fills it in memory, so no env header or log line ever prints it
         for path in (self.ROOT / ".github/workflows").glob("*.y*ml"):
             self.assertNotIn("vars.V7_CLOUD_FIT_PROFILE_REF", path.read_text(), path.name)
 

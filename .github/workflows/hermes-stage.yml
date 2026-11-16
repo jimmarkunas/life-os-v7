@@ -55,11 +55,11 @@ jobs:
       - name: Hermes stage (every Agent Go issue labelled hermes without a request; dry run unless live; counts and fixed codes only)
         env:
           NOTION_JIRA_TOKEN: ${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}
-          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_BASE_URL: ""
           JIRA_API_TOKEN: ${{ steps.bws_hermes.outputs.JIRA_API_TOKEN }}
           JIRA_EMAIL: ${{ steps.bws_hermes.outputs.JIRA_EMAIL }}
           BUZZ_URL_LIFE_OS: ${{ steps.bws_hermes.outputs.BUZZ_URL_LIFE_OS }}
-          BUZZ_STAGE_CHANNEL: ${{ secrets.BUZZ_STAGE_CHANNEL }}
+          BUZZ_STAGE_CHANNEL: ""
           BUZZ_STAGE_HERMES_PUBKEY: ${{ steps.bws_hermes.outputs.BUZZ_STAGE_HERMES_PUBKEY }}
           BUZZ_STAGE_KEY: ${{ steps.bws_hermes.outputs.BUZZ_STAGE_KEY }}
           LIVE: ${{ inputs.live }}

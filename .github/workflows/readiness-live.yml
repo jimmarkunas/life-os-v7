@@ -53,11 +53,11 @@ jobs:
         continue-on-error: true
         env:
           NOTION_JIRA_TOKEN: ${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}
-          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_BASE_URL: ""
         run: python -m lifeos.platform.settings
       - name: Readiness against live Jira (the key, then the negative control; the leak check runs before anything is printed)
         env:
-          JIRA_BASE_URL: ${{ env.JIRA_BASE_URL || secrets.JIRA_BASE_URL }}
+          JIRA_BASE_URL: ${{ env.JIRA_BASE_URL }}
           JIRA_API_TOKEN: ${{ steps.bws_readiness.outputs.JIRA_API_TOKEN }}
           JIRA_EMAIL: ${{ steps.bws_readiness.outputs.JIRA_EMAIL }}
           KEY: ${{ inputs.key }}

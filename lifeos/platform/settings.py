@@ -12,6 +12,7 @@ TITLE = "V7 settings (machine read)"
 LINE = re.compile(r"^([A-Z][A-Z0-9_]*)\s+(.+?)\s*$")
 ADDRESS = re.compile(r"^[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}$")
 ADDRESS_SUFFIXES = ("_BLOCK_ID", "_PAGE_ID", "_DATA_SOURCE_ID", "_DB_ID")
+PRIVATE_PLAIN = frozenset({"JIRA_BASE_URL", "JIRA_SITE_URL", "JIRA_BOARDS", "JIRA_GTV_EPIC", "GCAL_CALENDAR_ID", "V7_CLOSE_BASE_URL", "V7_CLOUD_FIT_PROFILE_REF", "BUZZ_STAGE_CHANNEL"})   # LIFE-699: plain settings that were masked secrets in a public repository; masked when exported, never a switch
 NOTION_IDS, NOTION_PREFIX = "LIFEOS_NOTION_IDS", "LIFEOS_NOTION_"           # notion_ids.py: one id per name, as LIFEOS_NOTION_<NAME> or inside the LIFEOS_NOTION_IDS map
 ADDRESS_HEADER = "# notion addresses"
 SWITCH_HEADER = "# switches and lists"
@@ -308,7 +309,7 @@ def main(argv=None, environ=None, client=None):
             if path:
                 refused.append(name)
             return
-        if is_address(name):                                             # an address is masked; a switch is not: GitHub drops a job output that contains any masked text, so masking "on" or "true" silently emptied every gate output (Nov 15 2026)
+        if is_address(name) or name in PRIVATE_PLAIN:                                             # an address is masked; a switch is not: GitHub drops a job output that contains any masked text, so masking "on" or "true" silently emptied every gate output (Nov 15 2026)
             print(f"::add-mask::{value}")
         with open(path, "a", encoding="utf-8") as handle:
             handle.write(f"{name}={value}\n")
