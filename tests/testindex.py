@@ -27,7 +27,7 @@ FULL = "FULL"
 FULL_PREFIXES = ("tests/kit/", ".github/", ".claude/", "lifeos/platform/", "requirements")      # a change here can affect any test
 FULL_FILES = ("docs/PRIVACY.md", "pyproject.toml", "setup.cfg", "setup.py", "tox.ini", ".coveragerc", "conftest.py", ".gitignore")
 FULL_SUFFIXES = (".lock",)
-REPO_WIDE = ("tests.platform.test_docstyle",)       # LIFE-744: tests that scan every production file, so they must run for any change to one (PR 1235 added two long docstrings under lifeos/inbox, only tests/inbox ran, main failed)
+REPO_WIDE = ("tests.platform.test_docstyle", "tests.platform.test_settings", "tests.platform.test_bws_plain", "tests.platform.test_switches", "tests.platform.test_due", "tests.jira.test_jira")       # LIFE-744: tests that scan every production file, so they must run for any change to one; LIFE-760 adds the settings, bws-plain, switches, due and workflow-shape tests PR 1261 failed on (PR 1235 added two long docstrings under lifeos/inbox, only tests/inbox ran, main failed)
 IGNORED_PREFIXES = ("docs/", "tools/")                                                         # docs run the contracts only; tools/ has its own node tests (separate CI step)
 
 
