@@ -122,7 +122,8 @@ jobs:
           restore-keys: test-index-v1-${{ hashFiles('tests/testindex.py', 'requirements-test.lock') }}-
       - name: Is the newest index under a day old? (LIFE-770; a missing, unreadable or older one means rebuild; a pull request already treats an index over 7 days old as FULL, and the selector sends any file the index does not list to its mirror folder or FULL)
         id: fresh
-        run: if python -m tests.testindex check --max-age-days 1; then echo "fresh=true" >> "$GITHUB_OUTPUT"; echo "test index: reused (under a day old), no rebuild" | tee -a "$GITHUB_STEP_SUMMARY"; else echo "fresh=false" >> "$GITHUB_OUTPUT"; echo "test index: rebuilding" | tee -a "$GITHUB_STEP_SUMMARY"; fi
+        run: |
+          if python -m tests.testindex check --max-age-days 1; then echo "fresh=true" >> "$GITHUB_OUTPUT"; echo "test index: reused (under a day old), no rebuild" | tee -a "$GITHUB_STEP_SUMMARY"; else echo "fresh=false" >> "$GITHUB_OUTPUT"; echo "test index: rebuilding" | tee -a "$GITHUB_STEP_SUMMARY"; fi
       - name: Build the test index
         if: ${{ steps.fresh.outputs.fresh != 'true' }}
         run: python -m tests.testindex build
@@ -148,7 +149,8 @@ jobs:
           git checkout -q --detach FETCH_HEAD
       - name: Does this change touch anything but docs? (LIFE-770; a change under docs/ or a top-level .md file cannot read the clock, and unit-tests still runs the contracts on it)
         id: scope
-        run: if git diff --name-only HEAD^1 HEAD | grep -qvE '^(docs/|[^/]+\.md$)'; then echo "docs_only=false" >> "$GITHUB_OUTPUT"; else echo "docs_only=true" >> "$GITHUB_OUTPUT"; echo "second date: skipped, docs-only change" | tee -a "$GITHUB_STEP_SUMMARY"; fi
+        run: |
+          if git diff --name-only HEAD^1 HEAD | grep -qvE '^(docs/|[^/]+\.md$)'; then echo "docs_only=false" >> "$GITHUB_OUTPUT"; else echo "docs_only=true" >> "$GITHUB_OUTPUT"; echo "second date: skipped, docs-only change" | tee -a "$GITHUB_STEP_SUMMARY"; fi
       - uses: ./.github/actions/python
         if: ${{ steps.scope.outputs.docs_only != 'true' }}
       - name: Test-only dependency (PyYAML, for the workflow contract tests)
