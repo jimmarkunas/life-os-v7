@@ -57,14 +57,14 @@ Before OpenClaw, Oracle, channel, local-model, assistant, meeting-capture or AI-
 
 ## Commands
 
-- **Tests: `sh tools/test.sh`** (any host; Python 3.12, what CI runs: affected tests on a branch, `--all` for everything). One file: `python -m unittest tests.jira.test_jira`.
+- **Tests: `sh tools/test.sh`** (any host; Python 3.12, what CI runs: affected tests on a branch, `--all` for all). One file: `python -m unittest tests.jira.test_jira`. Once: `sh tools/setup-dev.sh`; after each push: `sh tools/automerge.sh <pr>`.
 - **Jira connector:** `mcp__claude_ai_Atlassian_MCP__*` only; Rovo connectors are retired.
 - **Jira reads and searches:** always pass `fields` (docs/platform/agent-jira-settings.md). **Receipts:** docs/platform/receipt-template.md.
 - **New tickets (LIFE-741):** Create every ticket under an epic (bugs under LIFE-615); Component and Fix Version are filled for you, set them only to override.
 - `git add` new files BEFORE running the suite (the privacy test checks staged files only).
-- **GitHub from a session** (GraphQL blocked: `gh pr create`/`gh pr ready` fail): open a PR with `gh api repos/jimmarkunas/life-os-v7/pulls --input pr.json`; draft to ready with `gh api -X POST repos/jimmarkunas/life-os-v7/pulls/N/ccr/ready_for_review`; merge with `gh api -X PUT repos/jimmarkunas/life-os-v7/pulls/N/merge -f merge_method=squash`.
-- **Updating your own pushed branch (LIFE-663):** after a rebase or amend of your `life/...` branch run `sh tools/push_life_branch.sh` (a lease on the fetched tip, current `life/*` branch only); plain `git push` otherwise. Force, delete, `+refspec` pushes and `git branch -d/-D` stay denied.
-- **After a squash merge** the Stop hook warns about "unpushed commits"; they are in main: `git fetch origin main && git checkout -B main origin/main` clears it. A warning on an unmerged branch is real.
+- **GitHub from a session** (GraphQL blocked: `gh pr create`/`gh pr ready` fail): (R=repos/jimmarkunas/life-os-v7) open a PR with `gh api $R/pulls --input pr.json`; draft to ready with `gh api -X POST $R/pulls/N/ccr/ready_for_review`; merge with `gh api -X PUT $R/pulls/N/merge -f merge_method=squash`.
+- **Updating your own pushed branch (LIFE-663):** after a rebase or amend of your `life/...` branch run `sh tools/push_life_branch.sh` (lease on the fetched tip, current `life/*` branch only); else plain `git push`. Force, delete, `+refspec` pushes and `git branch -d/-D` stay denied.
+- **After a squash merge** the Stop hook's "unpushed commits" warning is stale (they are in main): `git fetch origin main && git checkout -B main origin/main`. Real on an unmerged branch.
 - **Jira workflows** cannot be edited through the Atlassian connection: use the Jira admin page once; do not retry via the API. Jira search lags after a write: read the issue by key.
 
 ## Delivery rules for every epic (Jim, November 11, 2026; source: LOS-119)
