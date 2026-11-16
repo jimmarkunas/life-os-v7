@@ -29,10 +29,11 @@ IDS = {  # Bitwarden item ids, project "LIFE OS GitHub Actions", lifeos/github-a
     "GATE_MIN_GAP_MINUTES": "4c76200c-a064-41b4-9594-b504015e855e",
     "V7_STORE_VIA": "f143e760-f52a-499f-a6be-b504015ea555",
     "V7_CLOUD_FIT_BACKLOG_PAGE": "10a984d9-e720-4012-b457-b504015ed0cb",
+    "FOLLOWUP_GCAL_BYTALOS_CALENDAR_ID": "7f144adc-14f8-42b7-898f-b5040184a962",   # LIFE-757 (Jim, Nov 16): plain calendar ids, same project and naming; a Secret ID is an identifier, not a secret
+    "FOLLOWUP_GCAL_PERSONAL_CALENDAR_ID": "6aac4a8e-309a-4c44-aa8d-b5040184cfe8",
 }
-PENDING = frozenset({"FOLLOWUP_GCAL_BYTALOS_CALENDAR_ID", "FOLLOWUP_GCAL_PERSONAL_CALENDAR_ID"})   # LIFE-757: a plain identifier whose Bitwarden item is not created yet; it has no id here, so it reads as NOT_RETURNED and falls back to empty (the Bytalos calendar then shows not provisioned). Add its id to IDS when the item exists.
 EXPORT_AS = {"V7_STORE_VIA": "LIFEOS_ACQ_SSH_VIA"}                    # the item is named for the switch; the code reads this variable
-ALLOWED = frozenset(IDS) | PENDING | {"LIVE"}
+ALLOWED = frozenset(IDS) | {"LIVE"}
 
 
 def _whole(low, high, default):
