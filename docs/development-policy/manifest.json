@@ -159,7 +159,7 @@
       ]
     }
   ],
-  "reassembled_sha256": "a46cfd30cb725cdb54b97b66a155b5471fc2bf5f26b5bebd1ec670e86f9d4400",
+  "reassembled_sha256": "0b7194ca4b580704b402c731f30646e45a9acc3d16f810742fcd7d1bd98b2e4c",
   "amendments": [
     {
       "date": "2026-11-02",
@@ -286,6 +286,12 @@
       "pr": "https://github.com/jimmarkunas/life-os-v7/pull/1225",
       "approval": "Jim Markunas, November 15, 2026 CT, typed in the Claude Code chat: 'Codex needs to be on parity with Claude. Can this be adjusted?' then 'Your plan is approved. Please implement' (LIFE-731)",
       "part": "docs/development-policy/11 (§8 Budgets: Codex gets Claude Code's file, line, test and usage budgets and milestone cadence; ChatGPT unchanged)"
+    },
+    {
+      "date": "2026-11-16",
+      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/1244",
+      "approval": "Jim Markunas, November 16, 2026 CT, typed in the Claude Code chat: 'I want agents to have the freedom to do so most of the time' (not be bottlenecked on moving tickets to Agent Go) and, asked which tickets, answered 'Everything but the scary list' (LIFE-742)",
+      "part": "docs/development-policy/03 and 04 (agents may promote a ticket to Agent Go themselves unless it names a protected step; one comment per promotion, one receipt per ticket), with the matching AGENTS.md and CLAUDE.md lines"
     }
   ]
 }

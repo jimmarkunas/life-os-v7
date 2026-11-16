@@ -64,8 +64,8 @@ class Contract(unittest.TestCase):
         query = 'project = LIFE AND status = "Agent Go" AND issuetype != Epic ORDER BY priority DESC, Rank ASC'
         self.assertIn(query, selector)                                   # the one selector query, Priority first and Rank as tie-breaker
         self.assertIn("Rank breaks ties", selector)
-        self.assertIn("never promotes work into `Agent Go`", selector)    # a newly started agent cannot authorize or promote its own ticket
-        self.assertIn("never promotes its own, a self-created or any unapproved issue into Agent Go", authorization)
+        self.assertIn("only under the self-promotion rule", selector)     # LIFE-742: an agent promotes only inside the Part 04 rule, never a ticket that names a protected step
+        self.assertIn("never promotes an issue that names a protected step", authorization)
         self.assertIn("not a technical guarantee", authorization)         # the org-admins restriction is not an agent-identity boundary
         self.assertIn("does not by itself start a dormant agent", selector)
         for skipped in ("incomplete incoming `Blocks` predecessor", "conflicting or already-claimed writer", "execution environment the agent does not support"):
