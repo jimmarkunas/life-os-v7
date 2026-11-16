@@ -25,11 +25,11 @@ class Regen(unittest.TestCase):
         code, out = self.check()
         self.assertEqual((code, out.strip()), (0, "registries are current"), "run python tools/regen.py")
 
-    def test_a_new_lazy_stage_is_reported_in_all_three_stage_tables(self):
+    def test_a_new_lazy_stage_adds_one_manifest_entry_and_is_rendered_into_all_three_stage_files(self):
         with mock.patch.dict(run.STAGES, {"brand-new": run.lazy("lifeos.accountability.changelog")}):
             code, out = self.check()
         self.assertEqual(code, 1)
-        for table in ("stage_budgets.json: added brand-new", "timeouts.md: added brand-new", "stage-isolation.md: added brand-new"):
+        for table in ("stages.json: added brand-new", "stage_budgets.json: rendered from stages.json", "timeouts.md: added brand-new", "stage-isolation.md: added brand-new"):
             self.assertIn(table, out)
 
 
