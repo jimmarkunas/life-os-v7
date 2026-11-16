@@ -9,7 +9,7 @@ from tests.inbox import fixtures as F
 from tests.kit.mysqlite import MySQLite
 
 NOW = F.NOW
-ACCOUNT = "jim@example.test"
+ACCOUNT = "jim@example.com"
 
 
 def make():
@@ -142,7 +142,7 @@ class Isolation(unittest.TestCase):
         accept(store, [item()], workspace="bytalos")
         self.assertTrue(store.resolve("bytalos", ACCOUNT, "loop-1", "closed", digest("x"), NOW))
         self.assertEqual(store.threads("personal", ACCOUNT)[0]["resolution"], "open")
-        self.assertFalse(store.set_override("personal", "other@example.test", "loop-1", "2026-12-01T15:00:00Z", "jim", NOW))      # a different account owns no such thread
+        self.assertFalse(store.set_override("personal", "other@example.com", "loop-1", "2026-12-01T15:00:00Z", "jim", NOW))      # a different account owns no such thread
         self.assertEqual(store.cursor_for("bytalos", ACCOUNT, "gmail"), store.cursor_for("bytalos", ACCOUNT, "gmail"))
 
     def test_tgp_and_unknown_workspaces_are_refused_everywhere(self):
