@@ -126,7 +126,7 @@ class WorkflowStep(unittest.TestCase):
         for step in (main, negative):
             self.assertIn('NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""', step)
             self.assertNotIn("NOTION_API_TOKEN", step)                                         # no Jobs Notion token: the step's own read-only Interview token is all it holds
-        self.assertIn("INTERVIEW_ACCEPTANCE_JSON: ${{ secrets.INTERVIEW_ACCEPTANCE_NEGATIVE_JSON }}", negative)
+        self.assertIn("INTERVIEW_ACCEPTANCE_JSON: ${{ steps.bws_interview.outputs.INTERVIEW_ACCEPTANCE_NEGATIVE_JSON }}", negative)
         self.assertNotIn("--live", negative)                                                    # D233: the negative case can never write
         self.assertNotIn("$LIVE", negative)
 

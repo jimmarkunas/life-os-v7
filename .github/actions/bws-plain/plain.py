@@ -25,8 +25,13 @@ IDS = {  # Bitwarden item ids, project "LIFE OS GitHub Actions", lifeos/github-a
     "V7_CLOUD_FIT_BACKLOG_MAX": "875eafd7-b718-4bcb-bf1c-b503015f916f",
     "V7_CLOUD_FIT_PARALLEL": "d58fac7a-9c4e-4678-8327-b503015f922b",
     "LIFEOS_ACQ_SSH_PORT": "53f91adc-5bb5-4a33-98a8-b5030155ac02",
+    "V7_PIPELINE": "90130d93-3843-44be-8c37-b504015e66e1",              # LIFE-699 (Jim, Nov 16): created that day, same project and naming
+    "GATE_MIN_GAP_MINUTES": "4c76200c-a064-41b4-9594-b504015e855e",
+    "V7_STORE_VIA": "f143e760-f52a-499f-a6be-b504015ea555",
+    "V7_CLOUD_FIT_BACKLOG_PAGE": "10a984d9-e720-4012-b457-b504015ed0cb",
 }
 PENDING = frozenset({"FOLLOWUP_GCAL_BYTALOS_CALENDAR_ID", "FOLLOWUP_GCAL_PERSONAL_CALENDAR_ID"})   # LIFE-757: a plain identifier whose Bitwarden item is not created yet; it has no id here, so it reads as NOT_RETURNED and falls back to empty (the Bytalos calendar then shows not provisioned). Add its id to IDS when the item exists.
+EXPORT_AS = {"V7_STORE_VIA": "LIFEOS_ACQ_SSH_VIA"}                    # the item is named for the switch; the code reads this variable
 ALLOWED = frozenset(IDS) | PENDING | {"LIVE"}
 
 
@@ -43,6 +48,14 @@ def _enum(choices, default):
 def _identifier(raw):
     """A calendar id: an email-shaped identifier, never logged and never committed. Anything with a space, quote or line break is refused."""
     return raw if re.fullmatch(r"[A-Za-z0-9._%+@#-]{3,200}", raw) else None
+
+
+def _page(raw):
+    """A Ledger page id (32 hex, dashes allowed) exported bare, or none/empty = unset; anything else is refused."""
+    if raw in ("", "none"):
+        return ""
+    bare = raw.replace("-", "").lower()
+    return bare if re.fullmatch(r"[0-9a-f]{32}", bare) else None
 
 
 def _muted(raw):
@@ -79,6 +92,10 @@ RULES = {
     "FOLLOWUP_GCAL_PERSONAL_CALENDAR_ID": (_identifier, ""),                     # fail closed: empty = the Personal calendar is not provisioned
     "FOLLOWUP_GCAL_BYTALOS_CALENDAR_ID": (_identifier, ""),                      # fail closed: empty = the Bytalos calendar is not provisioned
     "LIFEOS_ACQ_SSH_PORT": (_whole(1, 65535, None), None),                      # no default: the job fails with a fixed code
+    "V7_PIPELINE": (_enum({"true", "false"}, None), "false"),                   # fail closed: a parked tick starts no Jobs job (D208)
+    "GATE_MIN_GAP_MINUTES": (_whole(10, 50, None), ""),                         # empty: the gate keeps its 50-minute default (lifeos.platform.gate.min_gap)
+    "V7_STORE_VIA": (_enum({"oracle", "direct"}, None), ""),                    # empty: the direct route first; only oracle changes anything
+    "V7_CLOUD_FIT_BACKLOG_PAGE": (_page, ""),                                   # empty: the batch is not narrowed to one pilot job
 }
 
 
@@ -180,7 +197,7 @@ def main(env=os.environ):
         for name, value in exports.items():
             if "\n" in value or "\r" in value:
                 continue
-            handle.write(f"{name}={value}\n")
+            handle.write(f"{EXPORT_AS.get(name, name)}={value}\n")
     print("bws-plain: " + " ".join(f"{n}={c}" for n, c in report.items()))
     if failures:
         print(f"::error::BWS_PLAIN_{'_'.join(sorted(failures))}_{report[failures[0]]}: the value could not be read or was refused; no other source is used")

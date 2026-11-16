@@ -66,7 +66,7 @@ jobs:
         uses: ./.github/actions/bws-plain
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
-          names: LIFEOS_ACQ_SSH_PORT
+          names: LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA
       - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
         continue-on-error: true
         uses: ./.github/actions/tailscale
@@ -90,7 +90,6 @@ jobs:
           LIFEOS_ACQ_SSH_JUMP_KEY: ${{ steps.bws_network.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
           LIFEOS_ACQ_SSH_JUMP_HOST: ${{ steps.bws_network.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
           LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: ${{ steps.bws_network.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_VIA: ${{ vars.V7_STORE_VIA }}
           LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_network.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
           LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_network.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_network.outputs.LIFEOS_ACQ_SSH_USER }}
