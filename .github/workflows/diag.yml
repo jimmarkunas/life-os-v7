@@ -217,7 +217,7 @@ jobs:
           names: LIFEOS_ACQ_SSH_PORT
       - name: Private report (counts and fixed codes only; writes the one Notion page only with confirm = REPORT)
         env:
-          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}
+          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
           STAGE: ${{ inputs.stage }}
           REPORT_CONFIRM: ${{ inputs.confirm }}
         run: |

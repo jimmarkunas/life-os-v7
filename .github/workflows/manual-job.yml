@@ -88,8 +88,8 @@ jobs:
           MANUAL_JOB_TITLE: ${{ inputs.title }}
           MANUAL_JOB_ROUND_DAY: ${{ inputs.round_day }}
           MANUAL_JOB_REQUEST_URL: ${{ inputs.request_url }}
-          HIRING_PIPELINE_PAGE_ID: ${{ secrets.HIRING_PIPELINE_PAGE_ID }}
-          INTERVIEW_OS_WRITER: ${{ vars.INTERVIEW_OS_WRITER }}
+          HIRING_PIPELINE_PAGE_ID: ""
+          INTERVIEW_OS_WRITER: ""
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_manual.outputs.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_manual.outputs.LIFEOS_ACQ_DB_PASSWORD }}
           LIFEOS_ACQ_DB_USER: ${{ steps.bws_manual.outputs.LIFEOS_ACQ_DB_USER }}
@@ -98,6 +98,6 @@ jobs:
           LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_manual.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_manual.outputs.LIFEOS_ACQ_SSH_USER }}
           NOTION_INTERVIEW_TOKEN: ${{ steps.bws_manual.outputs.NOTION_INTERVIEW_TOKEN }}
-          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}   # LIFE-361 (Jim approved Nov 8): a new manual pursuit finds or creates its Ledger row
+          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""   # LIFE-361 (Jim approved Nov 8): a new manual pursuit finds or creates its Ledger row
           LIVE: ${{ inputs.live }}
         run: python -m lifeos.run manual-job --limit 5 $([ "$LIVE" = "true" ] && echo --live)

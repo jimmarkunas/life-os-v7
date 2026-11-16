@@ -12,7 +12,7 @@ ID = "4183c5a0-5926-81be-9e19-e85714dc256f"
 
 # Every GitHub secret or variable the workflows use (Nov 14, 2026; LIFE-703 removed 14 names that were never set in GitHub: their steps now declare them empty for the settings page to fill). This list may only shrink: LIFE-699 moves each one to the Notion settings page or Bitwarden,
 # and the end state is LIFEOS_BWS_RUNTIME_TOKEN alone (GITHUB_TOKEN is GitHub's own and never counted). Adding a name here needs Jim's typed approval.
-FROZEN = frozenset({"AMAZON_CARD_BLOCK_ID", "ATTENTION_CARD_BLOCK_ID", "BILLS_CARD_BLOCK_ID", "BROWSER_CACHE_BUST", "BUZZ_STAGE_CHANNEL", "CALENDAR_CARD_BLOCK_ID", "FIT_PROFILE_SYNC", "GATE_MIN_GAP_MINUTES", "GCAL_CALENDAR_ID", "GRANOLA_AUTO", "HIRING_AUTO_CLOSE", "HIRING_CARD_BLOCK_ID", "HIRING_PIPELINE_PAGE_ID", "HIRING_STATUS_BLOCK_ID", "HIRING_TABLE_BLOCK_ID", "INTERVIEW_ACCEPTANCE_JSON", "INTERVIEW_ACCEPTANCE_NEGATIVE_JSON", "INTERVIEW_LEADS", "INTERVIEW_OS_WRITER", "INTERVIEW_TEST_COMPANIES", "JIRA_BASE_URL", "JIRA_BOARDS", "JIRA_CARD_BLOCK_ID", "JIRA_GTV_EPIC", "JIRA_SITE_URL", "JOB_PAGE_OUTREACH", "LIFEOS_BWS_RUNTIME_TOKEN", "LIFEOS_NOTION_IDS", "MAIL_ALERTS_CARD_BLOCK_ID", "MEGIBOW_BLOCK_ID", "NETWORK_HANDOFF_PAGE_ID", "NOTION_AMAZON_DATA_SOURCE_ID", "NOTION_BILLS_DATA_SOURCE_ID", "NOTION_FIT_SYNC_PAGE_ID", "NOTION_JOB_LEDGER_DATA_SOURCE_ID", "NOTION_RECRUITERS_DATA_SOURCE_ID", "RECRUITER_OUTREACH", "V7_AI_CAPACITY_CARD", "V7_CLOSE_BASE_URL", "V7_CLOUD_FIT_BACKLOG_PAGE", "V7_CLOUD_FIT_PROFILE_REF", "V7_FIT_GATE", "V7_IMESSAGE_ALERTS", "V7_PIPELINE", "V7_STORE_VIA", "WEEKLY_REVIEW_PAGE_ID"})
+FROZEN = frozenset({"BROWSER_CACHE_BUST", "BUZZ_STAGE_CHANNEL", "GATE_MIN_GAP_MINUTES", "GCAL_CALENDAR_ID", "HIRING_CARD_BLOCK_ID", "INTERVIEW_ACCEPTANCE_JSON", "INTERVIEW_ACCEPTANCE_NEGATIVE_JSON", "JIRA_BASE_URL", "JIRA_BOARDS", "JIRA_GTV_EPIC", "JIRA_SITE_URL", "LIFEOS_BWS_RUNTIME_TOKEN", "LIFEOS_NOTION_IDS", "NETWORK_HANDOFF_PAGE_ID", "NOTION_BILLS_DATA_SOURCE_ID", "V7_CLOSE_BASE_URL", "V7_CLOUD_FIT_BACKLOG_PAGE", "V7_CLOUD_FIT_PROFILE_REF", "V7_PIPELINE", "V7_STORE_VIA", "WEEKLY_REVIEW_PAGE_ID"})
 
 
 def used():
@@ -215,6 +215,33 @@ class ShadowRule(unittest.TestCase):
         self.assertEqual(settings.apply(env, Page([], broken=True))["status"], "unreadable:RuntimeError")
         self.assertEqual(settings.apply(env, Page(["GRANOLA_AUTO on"], title="Something else"))["status"], "unreadable:SETTINGS_PAGE_NOT_FOUND")
         self.assertEqual(env, {"HIRING_AUTO_CLOSE": "on"})
+
+    def test_a_step_holding_only_another_notion_token_reads_the_page_but_never_writes_it(self):
+        """LIFE-699: the root page is shared with every connection, so a step's own token (the Interview, Amazon or Recruiters one) can read the settings page. It only reads: it never seeds."""
+        page, seen = Writable(["GRANOLA_AUTO on"], []), []
+
+        def factory(env):
+            seen.append(env["NOTION_API_TOKEN"])
+            return page
+        env = {"GITHUB_ACTIONS": "true", "NOTION_INTERVIEW_TOKEN": "i", "GRANOLA_AUTO": "", "AMAZON_CARD_BLOCK_ID": "3d63c5a05926800ab78affd56c135611"}
+        with mock.patch("lifeos.platform.notion_client.Client", factory):
+            out = settings.apply(env)
+        self.assertEqual((out["status"], env["GRANOLA_AUTO"], seen, page.patches, "seeded" in out, out["read_only_token"]), ("ok", "on", ["i"], 0, False, "NOTION_INTERVIEW_TOKEN"))
+
+    def test_the_jira_or_api_token_is_still_preferred_and_may_seed(self):
+        page, seen = Writable(["GRANOLA_AUTO on"], []), []
+
+        def factory(env):
+            seen.append(env["NOTION_API_TOKEN"])
+            return page
+        env = {"GITHUB_ACTIONS": "true", "NOTION_INTERVIEW_TOKEN": "i", "NOTION_API_TOKEN": "a", "AMAZON_CARD_BLOCK_ID": "3d63c5a05926800ab78affd56c135611"}
+        with mock.patch("lifeos.platform.notion_client.Client", factory):
+            out = settings.apply(env)
+        self.assertEqual((seen, "read_only_token" in out, page.patches > 0), (["a"], False, True))
+
+    def test_only_a_notion_token_name_counts_as_a_token(self):
+        env = {"GITHUB_ACTIONS": "true", "NOTION_TOKENIZER": "x", "TINYFISH_API_KEY": "y", "NOTION_AMAZON_DATA_SOURCE_ID": ""}
+        self.assertEqual(settings.apply(env)["status"], "no_token")
 
     def test_off_outside_production_and_without_a_token(self):
         self.assertEqual(settings.apply({"LIFEOS_SETTINGS": "off"}, Page(["GRANOLA_AUTO on"]))["status"], "off")
