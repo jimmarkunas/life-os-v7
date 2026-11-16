@@ -53,6 +53,14 @@ class RetryTests(unittest.TestCase):
         self.assertIn("HTTP 404", result)
         self.assertEqual(waits, [])
 
+    def test_a_failed_precondition_is_retried_and_a_lasting_one_still_fails_with_its_reason(self):
+        result, waits = self.call([http_error(400, "failedPrecondition")])
+        self.assertEqual(result, {"ok": 1})
+        self.assertEqual(waits, [2])
+        result, waits = self.call([http_error(400, "failedPrecondition") for _ in range(4)])
+        self.assertIn("HTTP 400 failedPrecondition", result)
+        self.assertEqual(waits, [2, 4, 8])
+
 
 if __name__ == "__main__":
     unittest.main()
