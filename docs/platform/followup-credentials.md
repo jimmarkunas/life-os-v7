@@ -10,7 +10,7 @@ Who: Jim only for every step that touches a secret. Authority: Jim, chat, Nov 16
 | Notion references and Interview OS | **Reused:** `NOTION_API_TOKEN` (the main integration). **Your step 1:** share the top-level `LIFE OS` page with it. | Same workspace, same token. Nothing more. |
 | Calendar | **Reused:** `GCAL_SERVICE_ACCOUNT_JSON` and the calendar the agenda job already reads. Nothing to do. | **Reused:** the same service account. **Your step 2:** share the Bytalos calendar with it. |
 | Gmail | **Reused:** the existing `GMAIL_OAUTH_*` items. Nothing to do. | **New, your step 3:** `FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH`. |
-| Todoist | **New, your step 4:** `FOLLOWUP_TODOIST_PERSONAL_TOKEN` (no Todoist credential exists in V7). | None (Personal only). |
+| Todoist | **Reused:** the existing OpenClaw OAuth app (`openclaw/todoist/clientId`, `clientSecret`). **New, your step 4:** a `data:read` token, `FOLLOWUP_TODOIST_PERSONAL_TOKEN`. | None (Personal only). |
 | Outlook | **Reused:** `OUTLOOK_CLIENT_ID`. **Your step 5, last:** three sign-ins; the tokens go to the private database. | None. |
 
 That is five steps, in this order. Everything not in the New column is the agent's work.
@@ -87,18 +87,19 @@ pbcopy < /dev/null; rm /tmp/followup-gmail-allowlist.json
 **Report:** the NAME, the Secret ID, expiry "none until revoked", and that it is the Bytalos mailbox.
 **Revoke:** https://myaccount.google.com/permissions , remove the LIFE OS app grant for that Bytalos account; delete the Bitwarden item.
 
-## 4. Todoist, Personal: the other new credential
+## 4. Todoist, Personal: a new token from the existing OpenClaw app
 
-V7 has no Todoist client or credential today; the existing Todoist token belongs to OpenClaw on Oracle and rotates (Bitwarden project **LIFE OS EDGE/OPENCLAW**). Do not reuse it. Todoist's personal **API token is not scope-limited** (it can change and delete tasks), so do not use it either. The new item is `FOLLOWUP_TODOIST_PERSONAL_TOKEN`.
+The Todoist OAuth app already exists, in Bitwarden project **LIFE OS EDGE/OPENCLAW** as `openclaw/todoist/clientId` and `openclaw/todoist/clientSecret`. **Do not create a new app.** Only the token is new: `FOLLOWUP_TODOIST_PERSONAL_TOKEN`, authorized with scope `data:read` only.
 
-1. Open https://developer.todoist.com/appconsole.html and **Create a new app**. Name `LIFE OS Followup Read`.
-2. Set the **OAuth redirect URL** to `http://127.0.0.1:8765/callback` (the agent's helper catches the reply on that loopback address). Save.
-3. Copy the app's **Client ID** and **Client Secret**. Keep them for the helper below.
-4. **Agent prerequisite (not yours):** the agent builds a small sign-in helper like the Gmail one (scope `data:read` only, the credential to a pipe) and tells you the exact command. If Todoist returns only a short-lived access token with a refresh token, the credential rotates and must live in the private database like the Outlook token, not in a read-only Bitwarden item, and the reader changes to take it from there. The agent confirms this from Todoist's current documentation before you run anything.
-5. Run the helper the agent gives you, open the link, click **Allow**, and store the result where the agent says: Bitwarden item `FOLLOWUP_TODOIST_PERSONAL_TOKEN` for a non-expiring token, or the database for a rotating one.
+**Never reuse `openclaw/todoist/token`.** It rotates and OpenClaw depends on it. Todoist's personal API token is not scope-limited either, so do not use that.
 
-**Report:** the NAME or "database row", the Secret ID if any, and the expiry.
-**Revoke:** Todoist, Settings, Integrations, **Connected apps**, remove **LIFE OS Followup Read**; delete the Bitwarden item or database row.
+**Agent first (not yours):** the agent builds a small sign-in helper under `lifeos/platform/` like the Gmail one (scope `data:read` only, the client id and secret read from Bitwarden on your Mac, the token to a pipe) and tells you the exact command. Before you run anything the agent also checks Todoist's current documentation that (a) the app's redirect and authorization settings accept `data:read` for a second token, and (b) issuing it does not invalidate OpenClaw's token. If the agent cannot confirm either, it says so and you do not proceed. If Todoist returns a short-lived token with a refresh token, the credential rotates and lives in the private database like Outlook, and the agent changes the reader to match.
+
+1. When the agent sends the command, run it. Open the link it prints, signed in to your Todoist, and click **Allow** (it must list only reading tasks).
+2. In Bitwarden create `lifeos/github-actions/FOLLOWUP_TODOIST_PERSONAL_TOKEN` in the project **LIFE OS GitHub Actions** and paste the clipboard. The GitHub runner cannot read the EDGE/OPENCLAW project, so the item must live in the GitHub Actions project.
+
+**Report:** the NAME (or "database row"), the Secret ID, and the expiry.
+**Revoke:** delete the Bitwarden item or database row. In Todoist, Settings, Integrations, **Connected apps**, revoke only if the agent says this grant is separately listed; otherwise leave it, since the same app serves OpenClaw.
 
 ## 5. Outlook, Personal, three mailboxes (your last step)
 
