@@ -70,6 +70,7 @@ STAGES = {
     "jira-card": lazy("lifeos.jira.card"),
     "jira-release": lazy("lifeos.jira.release"),                            # LIFE-727: To Do tickets of an epic Jim labelled auto-release move to Agent Go when ready (at most 3 an hour, rank order); dry run unless live
     "jira-fill": lazy("lifeos.jira.fill_defaults"),                         # LIFE-741: sets the parent epic, Component and Fix Version of LIFE tickets updated in the last 2 days that miss one (one [sweep] comment each); dry run unless --live
+    "followup": lazy("lifeos.inbox.followup_stage"),                        # LIFE-749 (D258): reconciles stored Followup threads with source deltas and publishes one component-state payload; unwired in production (a no-op) until the live-wiring step
     "jira-stalled": lazy("lifeos.jira.stalled"),                            # LIFE-729: names LIFE tickets idle with no [waiting on] note (read only, no phone push)
     "inbox-schema-apply": lazy("lifeos.inbox.apply_schema", "apply_stage"),      # LIFE-712: creates the four Action Inbox tables once, only when SCHEMA_CONFIRM is APPLY (diag.yml confirm input); Jim approved the exact DDL Nov 15 2026
     "inbox-schema-check": lazy("lifeos.inbox.schema"),                    # LIFE-712: read-only check of the V7 database for the Action Inbox tables (counts and flags only); creates nothing

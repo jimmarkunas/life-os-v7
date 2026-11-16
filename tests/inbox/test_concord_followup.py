@@ -135,10 +135,10 @@ def ev(kind, key, owner="jim", **kw):
 
 
 class FollowupVerdict(unittest.TestCase):
-    def test_no_live_followup_source_exists_and_the_reader_is_unavailable(self):
-        self.assertIsNone(followup.FOLLOWUP_PROJECTION_OWNER)
+    def test_the_default_followup_reader_refuses_while_live_reads_are_off(self):
+        self.assertEqual(followup.FOLLOWUP_PROJECTION_OWNER, "lifeos.inbox.followup_stage")          # LIFE-749: the stage owns the projection; nothing is wired in production
         result = run([followup.FollowupSource("personal", "jim-personal", "jim")])
-        self.assertEqual((result.records, result.health[0].state, result.health[0].reason), ((), "unavailable", "followup_projection_missing"))
+        self.assertEqual((result.records, result.health[0].state, result.health[0].reason), ((), "unavailable", "live_reads_not_authorized"))
 
     def test_other_sources_survive_an_unavailable_followup(self):
         result = run([followup.FollowupSource("personal", "jim-personal", "jim"), F.FakeSource("jira", "personal")])
