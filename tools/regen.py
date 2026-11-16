@@ -5,6 +5,7 @@ isolation single when the module has no loop over items, guarded when every loop
   lifeos/platform/stage_budgets.json     one budget row per stage
   docs/platform/timeouts.md              the "Stage budgets" row per stage
   docs/platform/stage-isolation.md       the "Every stage" row per stage
+  .github/workflows/domains.yml          the fragments in .github/workflows-src/domains joined in file-name order (LIFE-764: edit a domain's fragment, never this file)
 Edit a stage's numbers or wording in stages.json only; the three rendered files are overwritten from it.
 Rows the contract tests mirror from code (this writes the missing ones and drops the stale ones):
   lifeos/platform/docstyle.py            ENFORCED lists every package with an __init__.py
@@ -33,11 +34,18 @@ BUDGETS = ROOT / "lifeos/platform/stage_budgets.json"
 STAGES = ROOT / "lifeos/platform/stages.json"
 TIMEOUTS_DOC = ROOT / "docs/platform/timeouts.md"
 ISOLATION_DOC = ROOT / "docs/platform/stage-isolation.md"
+DOMAINS = ROOT / ".github/workflows/domains.yml"
+DOMAINS_PARTS = ROOT / ".github/workflows-src/domains"
 DOCSTYLE = ROOT / "lifeos/platform/docstyle.py"
 RUNTIME = ROOT / "lifeos/platform/runtime.json"
 DEFAULT_BASIS = "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values"
 SINGLE_WHY = "No loop over external items: one read or write unit, so its failure is the stage's own."
 GUARDED_WHY = "Loops over its items with error handling inside; one failed item does not stop the others."
+
+
+def domains_text():
+    """LIFE-764: the whole of domains.yml, joined from its fragments (000-header.yml, then one file per job) in file-name order."""
+    return "".join(path.read_text() for path in sorted(DOMAINS_PARTS.glob("*.yml")))
 
 
 def workflow_steps():
@@ -144,7 +152,7 @@ def runtime_text(changes):
 
 # LIFE-765: `--commit` is what `sh tools/preflight.sh` runs, so nobody runs this by hand: on a clean tree it writes what a new stage needs, then commits exactly the files below (added by name) as one commit.
 def targets():
-    return (STAGES, BUDGETS, TIMEOUTS_DOC, ISOLATION_DOC, DOCSTYLE, RUNTIME, manifest.INVENTORY)
+    return (STAGES, BUDGETS, TIMEOUTS_DOC, ISOLATION_DOC, DOCSTYLE, RUNTIME, manifest.INVENTORY, DOMAINS)
 
 
 def git(*args):
@@ -191,7 +199,10 @@ def main(argv):
     if block and block.group(0) != rendered:
         inventory = inventory.replace(block.group(0), rendered)
         changes.append("module-inventory.md: regenerated")
-    rendered_files = ((STAGES, manifest_text), (BUDGETS, budget_text), (TIMEOUTS_DOC, doc_timeouts), (ISOLATION_DOC, doc_isolation), (DOCSTYLE, style), (RUNTIME, runtime), (manifest.INVENTORY, inventory))
+    domains = domains_text()
+    if DOMAINS.read_text() != domains:
+        changes.append("domains.yml: joined from .github/workflows-src/domains")
+    rendered_files = ((STAGES, manifest_text), (BUDGETS, budget_text), (TIMEOUTS_DOC, doc_timeouts), (ISOLATION_DOC, doc_isolation), (DOCSTYLE, style), (RUNTIME, runtime), (manifest.INVENTORY, inventory), (DOMAINS, domains))
     for path, text in rendered_files:
         if path.read_text() != text and not check:
             path.write_text(text)
