@@ -59,7 +59,7 @@ def _page(raw):
 
 
 def _muted(raw):
-    if not raw:
+    if not raw or raw.strip().lower() == "off":                                # the Alert settings app writes "off" for not muted
         return ""
     try:
         dt.datetime.fromisoformat(raw.replace("Z", "+00:00"))
