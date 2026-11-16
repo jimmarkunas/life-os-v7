@@ -1,12 +1,12 @@
 # Followup credentials: one step at a time (LIFE-757, Nov 16 2026)
 
-Who: Jim only for every step that touches a secret. Authority: Jim, chat, Nov 16 2026: "I need a complete build. If we need to share or make new credentials, then so be it", for the six Followup sources (Gmail/Outlook, Calendar, Jira, Todoist, Notion references, Interview OS). Asana is not read. TGP is excluded. Personal and Bytalos credentials are separate, never shared, with one exception Jim chose on Nov 16 2026: Jira uses one universal token for both workspaces (see step 2).
+Who: Jim only for every step that touches a secret. Authority: Jim, chat, Nov 16 2026: "I need a complete build. If we need to share or make new credentials, then so be it", for the six Followup sources (Gmail/Outlook, Calendar, Jira, Todoist, Notion references, Interview OS). Asana is not read. TGP is excluded. Personal and Bytalos credentials are separate, never shared, except Jira, which creates no credential (see step 2).
 
 **Final names (read from the code in LIFE-757 PR-B and PR-A, Nov 16 2026).** Every secret is a Bitwarden item named `lifeos/github-actions/<NAME>` in the project **LIFE OS GitHub Actions**. If a name below ever changes, the agent edits this file and tells you before you create anything.
 
 | Source | Item name (the `<NAME>`) | What the value is |
 |---|---|---|
-| Jira, Personal and Bytalos | `FOLLOWUP_JIRA_TOKEN` | `email:token` of one universal (unscoped) Atlassian token; both workspaces use it, with separate project allowlists |
+| Jira, Personal and Bytalos | none to create | reuses the existing `JIRA_EMAIL` and `JIRA_API_TOKEN` items (step 2) |
 | Notion references, Personal | `FOLLOWUP_NOTION_PERSONAL_READONLY_TOKEN` | the one read-only Notion token |
 | Notion references, Bytalos | `FOLLOWUP_NOTION_BYTALOS_READONLY_TOKEN` | the same token again |
 | Interview OS, Personal | `FOLLOWUP_INTERVIEW_PERSONAL_READONLY_TOKEN` | the same token again |
@@ -15,7 +15,7 @@ Who: Jim only for every step that touches a secret. Authority: Jim, chat, Nov 16
 | Calendar, Bytalos | `FOLLOWUP_GCAL_BYTALOS_READONLY_SA_JSON` | the same, a separate service account |
 | Gmail, Personal | `FOLLOWUP_GMAIL_PERSONAL_READONLY_REFRESH` | the bare refresh token (not JSON) |
 | Gmail, Bytalos | `FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH` | the same, a separate sign-in |
-| Outlook, Personal (three mailboxes) | `FOLLOWUP_OUTLOOK_READONLY_PERSONAL_1`, `_2`, `_3` | ON HOLD, see step 10 |
+| Outlook, Personal (three mailboxes) | `FOLLOWUP_OUTLOOK_READONLY_PERSONAL_1`, `_2`, `_3` | ON HOLD, see step 9 |
 | Todoist, Personal | `FOLLOWUP_TODOIST_PERSONAL_TOKEN` | a `data:read` token |
 
 No Bytalos Outlook and no Bytalos Todoist exist, so nothing is created for them. No TGP credential exists anywhere.
@@ -24,26 +24,25 @@ No Bytalos Outlook and no Bytalos Todoist exist, so nothing is created for them.
 
 | Name | What it holds | Shape (example only) |
 |---|---|---|
-| `FOLLOWUP_JIRA_CLOUD_ID` | the Atlassian site's cloud id | a UUID |
 | `FOLLOWUP_GCAL_PERSONAL_CALENDAR_ID`, `FOLLOWUP_GCAL_BYTALOS_CALENDAR_ID` | the Calendar ID to read | an address-like id |
 | `FOLLOWUP_NOTION_PERSONAL_SOURCE_IDS`, `FOLLOWUP_NOTION_BYTALOS_SOURCE_IDS` | the Notion databases the reader queries | comma-separated database ids |
 | `FOLLOWUP_INTERVIEW_PERSONAL_SOURCE_IDS`, `FOLLOWUP_INTERVIEW_BYTALOS_SOURCE_IDS` | the Interview OS databases the reader queries | comma-separated database ids |
-| `FOLLOWUP_ACCOUNT_<SOURCE>_<WORKSPACE>` and, for Outlook, `FOLLOWUP_ACCOUNT_OUTLOOK_PERSONAL_1`, `_2`, `_3` | a short text label for each account (80 characters at most), never an address | `personal inbox` |
+| `FOLLOWUP_ACCOUNT_<SOURCE>_<WORKSPACE>` (the agent supplies the Jira ones itself) and, for Outlook, `FOLLOWUP_ACCOUNT_OUTLOOK_PERSONAL_1`, `_2`, `_3` | a short text label for each account (80 characters at most), never an address | `personal inbox` |
 | `GMAIL_OAUTH_CLIENT_ID`, `GMAIL_OAUTH_CLIENT_SECRET`, `OUTLOOK_CLIENT_ID` | the existing app ids the Gmail and Outlook readers reuse | already in Bitwarden, nothing for you to create |
 
 The Jira project split (Personal JFM, LIFE, LOS; Bytalos BAD, BPP) is fixed in code, so there is no item for it.
 
 **How to use this file.** Do only the step an agent sends you. Never paste a token, key or password into chat, Jira, GitHub or a note. After each step you report only: the **NAME**, the **Secret ID** (a UUID; it is an identifier, not a secret), the **expiry date** and the **account label**. The agent then adds the loader line and the expiry row for that item in code (you never edit YAML), so after each step you only report and wait.
 
-## 0. The fill-in table (Jim fills this once, before step 2)
+## 0. The fill-in table (Jim fills this once, before step 3)
 
 Blank means "not decided yet". A row with no account is skipped until you name one: nothing is built against a blank.
 
 | Source | Personal | Bytalos | Notes |
 |---|---|---|---|
-| Jira | The one Atlassian account; projects JFM, LIFE, LOS | The same account; projects BAD, BPP | One universal token for both workspaces (Jim, Nov 16 2026). Read-only is enforced in the Followup code (GET-only fetchers), and each workspace's reader adds `project in (...)` so it reads only its own projects. |
+| Jira | The one Atlassian account; projects JFM, LIFE, LOS | The same account; projects BAD, BPP | Reuses the existing Jira token (Jim, Nov 16 2026: "we have WAY too many jira tokens"). No new credential. Read-only is enforced in the Followup code and each workspace reads only its own projects. |
 | Notion references | One read-only integration; ALL pages under LIFE OS (Jim, Nov 16 2026: "all") | Bytalos pages inside the same workspace | Jim was told this includes the Lifehub pages (Medical, Therapy & Recovery, Dating & Style) and chose all. |
-| Interview OS | Read through the same Notion integration | None | Stored under its own two item names (same token), see step 4. |
+| Interview OS | Read through the same Notion integration | None | Stored under its own two item names (same token), see step 3. |
 | Calendar | Personal Google calendar account | Bytalos Google Workspace calendar account | Primary calendar of each unless Jim names others. |
 | Gmail | Personal Google account | Bytalos Google Workspace account | Whole mailbox. Messages from or forwarded from a TGP address are dropped (TGP mail is forwarded into these mailboxes). |
 | Outlook | Three personal Outlook mailboxes (an outlook.com one, a school one, a greatestpmever one) | None | One scope per mailbox. Forwarded or direct TGP mail is dropped. |
@@ -60,47 +59,17 @@ To add an item (Jim only): Bitwarden web app, **Secrets Manager**, **Secrets**, 
 
 How to check a value without showing it: copy the value from Bitwarden, then run the one check printed in that step. It prints only a length, a prefix and field names, never the secret itself. Clear the clipboard after.
 
-The real proof of every credential is the **dry run** of the `followup` job (step 14): it prints, per source, only `ok` or `degraded` and counts.
+The real proof of every credential is the **dry run** of the `followup` job (step 13): it prints, per source, only `ok` or `degraded` and counts.
 
-## 2. Jira: one universal API token (Personal and Bytalos both use it)
+## 2. Jira: nothing to do (reuses a token you already have)
 
-**Say it plainly:** this token is **not** read-only. It acts as your whole Atlassian account, so it **can write to Jira**. Jim chose a universal token with no scopes (Nov 16 2026). Read-only is enforced in the Followup code, not by the token: the Jira fetcher can only make GET requests, and a test enforces that it exposes no write call. Personal and Bytalos both use this one token, each with its own project allowlist in code (Personal JFM, LIFE, LOS; Bytalos BAD, BPP). Treat the Bitwarden item like a password and revoke it if it is ever exposed.
+No new token, no new Bitwarden item, nothing for you. Jim decided (Nov 16 2026: "we have WAY too many jira tokens. Let's reuse one we already have"). The Followup job reuses the existing Bitwarden items `JIRA_EMAIL` and `JIRA_API_TOKEN`, which the hourly jira job already loads (most likely the Atlassian token named `life-os-v7`; the agent confirms from the loader, by name only).
 
-1. Open https://id.atlassian.com/manage-profile/security/api-tokens (Atlassian asks you to verify with an emailed code).
-2. Click the plain **Create API token** (not "Create API token with scopes").
-3. Name `lifeos-followup-jira`. Expiry **1 year** (the maximum). Create.
-4. Copy the token once. Atlassian never shows it again.
-5. In Bitwarden create `lifeos/github-actions/FOLLOWUP_JIRA_TOKEN` in the project **LIFE OS GitHub Actions**, with the value typed as `your-atlassian-email:the-token` (one line, a colon between).
-6. Check (Jim only), with the value on your clipboard. It prints your email, the token length and its first 5 characters, never the token:
+**Say it plainly:** that token acts as your whole Atlassian account, so it **can write to Jira**. Read-only is enforced in the Followup code, not by the token: the Jira fetcher can only make GET requests, and a test enforces that it exposes no write call. Personal (JFM, LIFE, LOS) and Bytalos (BAD, BPP) share this one token, each with its own project allowlist in the code, so a workspace's read covers only its own projects.
 
-```bash
-pbpaste | awk -F: '{print "email:", $1; print "token length:", length($2); print "token starts:", substr($2,1,5)}'
-```
+The agent adds the loader lines for these two existing items to the `followup` job and supplies the Jira account labels itself. You do nothing until the next step.
 
-   Expect your email, a length well above 100 and a prefix such as `ATATT`.
-7. Clear the clipboard, then close the Atlassian token page:
-
-```bash
-pbcopy < /dev/null
-```
-
-**Report:** NAME (`FOLLOWUP_JIRA_TOKEN`), Secret ID, expiry date (the token page shows it; it usually expires a day short of a year), account.
-After you report, the agent adds the loader line and the expiry row for this item.
-**Revoke:** the same Atlassian page, **Revoke** on that token; delete the Bitwarden item.
-
-## 3. Jira, Bytalos
-
-Nothing to do. Bytalos reads Jira through the same token as Personal (step 2), limited in code to its own projects.
-
-## 3a. Jira identifiers (small, once)
-
-Two plain items, no secret in either. The agent gives you the Jira cloud id value in chat (it is the same identifier the Oracle runbook uses).
-1. In Bitwarden create `lifeos/github-actions/FOLLOWUP_JIRA_CLOUD_ID` with that value.
-2. Create `lifeos/github-actions/FOLLOWUP_ACCOUNT_JIRA_PERSONAL` with the text `personal` and `lifeos/github-actions/FOLLOWUP_ACCOUNT_JIRA_BYTALOS` with the text `bytalos`.
-
-**Report:** the three Secret IDs. The agent adds the loader lines.
-
-## 4. Notion: one read-only integration (Notion references and Interview OS, both workspaces)
+## 3. Notion: one read-only integration (Notion references and Interview OS, both workspaces)
 
 You have one Notion workspace and chose all pages (Jim, Nov 16 2026). So one integration covers every source. The code reads the same token under four item names so each grant names its own workspace and source.
 
@@ -123,11 +92,11 @@ pbpaste | awk '{print "length:", length($0); print "starts:", substr($0,1,4)}'
 After you report, the agent finds the database ids with you, records them as `FOLLOWUP_NOTION_*_SOURCE_IDS` and `FOLLOWUP_INTERVIEW_*_SOURCE_IDS`, and adds the loader lines and expiry rows.
 **Revoke:** Notion integrations page, delete the integration; delete the four Bitwarden items.
 
-## 5. Notion, Bytalos
+## 4. Notion, Bytalos
 
-Nothing to do. Bytalos reads the same workspace through its two item names created in step 4.
+Nothing to do. Bytalos reads the same workspace through its item names created in step 3.
 
-## 6. Calendar, Personal (Google service account, read-only share)
+## 5. Calendar, Personal (Google service account, read-only share)
 
 The existing calendar service account can change events. Followup gets its own, with a read-only share.
 
@@ -151,11 +120,11 @@ pbpaste | python3 -c "import json,sys; d=json.load(sys.stdin); print('type:', d.
 After you report, the agent adds the loader lines and the expiry row.
 **Revoke:** Cloud console, the service account's **Keys**, delete the key; delete the Bitwarden items; remove the share in Calendar.
 
-## 7. Calendar, Bytalos
+## 6. Calendar, Bytalos
 
-Repeat step 6 with the service account `lifeos-followup-calendar-bytalos-ro`, in the Google Cloud project and the Bytalos calendar account, with the items `FOLLOWUP_GCAL_BYTALOS_READONLY_SA_JSON`, `FOLLOWUP_GCAL_BYTALOS_CALENDAR_ID` and `FOLLOWUP_ACCOUNT_CALENDAR_BYTALOS` (the text `bytalos calendar`).
+Repeat step 5 with the service account `lifeos-followup-calendar-bytalos-ro`, in the Google Cloud project and the Bytalos calendar account, with the items `FOLLOWUP_GCAL_BYTALOS_READONLY_SA_JSON`, `FOLLOWUP_GCAL_BYTALOS_CALENDAR_ID` and `FOLLOWUP_ACCOUNT_CALENDAR_BYTALOS` (the text `bytalos calendar`).
 
-## 8. Gmail, Personal (read-only sign-in)
+## 7. Gmail, Personal (read-only sign-in)
 
 The repo already has the read-only sign-in helper `lifeos/platform/google_consent_readonly.py` (LIFE-423): scope `gmail.readonly` only, an allowlist, and the credential goes to a pipe, never the screen. It reuses the existing LIFE OS Gmail OAuth client, so no new Google client is created. The Followup reader takes the client id and secret from the existing `GMAIL_OAUTH_CLIENT_ID` and `GMAIL_OAUTH_CLIENT_SECRET` items, so the item you create here holds only the refresh token.
 
@@ -193,11 +162,11 @@ pbpaste | awk '{print "refresh length:", length($0)}'
 After you report, the agent adds the loader lines (including the two existing client items) and the expiry row.
 **Revoke:** https://myaccount.google.com/permissions , remove the LIFE OS app grant for that account (this also kills the other Gmail refresh tokens signed in with the same client: do it only with the agent); delete the Bitwarden items.
 
-## 9. Gmail, Bytalos
+## 8. Gmail, Bytalos
 
-Repeat step 8 with the Bytalos mailbox, `"tenant": "bytalos"` in the allowlist, the item `FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH` and the label item `FOLLOWUP_ACCOUNT_GMAIL_BYTALOS` (the text `bytalos inbox`).
+Repeat step 7 with the Bytalos mailbox, `"tenant": "bytalos"` in the allowlist, the item `FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH` and the label item `FOLLOWUP_ACCOUNT_GMAIL_BYTALOS` (the text `bytalos inbox`).
 
-## 10. Outlook, Personal, three mailboxes (ON HOLD: do not start)
+## 9. Outlook, Personal, three mailboxes (ON HOLD: do not start)
 
 **Hold reason (agent work first).** The Followup reader currently reads each Outlook credential as one fixed value from the job environment (`FOLLOWUP_OUTLOOK_READONLY_PERSONAL_1`, `_2`, `_3`). Microsoft rotates a refresh token every time it is used, so a fixed Bitwarden value would stop working after its first read. The token must live in the private database (`v7_outlook_token`) under a label, as the existing Outlook sign-in does. The agent changes the reader to take it from there by label, then tells you; until then you do nothing for Outlook.
 
@@ -216,11 +185,11 @@ The plan, once the agent says go: three labelled sign-ins, one per mailbox (your
 After you report, the agent adds the loader lines for the label items.
 **Revoke:** https://account.microsoft.com/privacy/app-access , remove the app for that mailbox; the agent deletes the label's row.
 
-## 11. Outlook, Bytalos
+## 10. Outlook, Bytalos
 
 Nothing to do. There is no Bytalos Outlook mailbox.
 
-## 12. Todoist, Personal (OAuth app with read-only scope)
+## 11. Todoist, Personal (OAuth app with read-only scope)
 
 V7 has no Todoist client or credential today; the existing Todoist token belongs to OpenClaw on Oracle and rotates (Bitwarden project **LIFE OS EDGE/OPENCLAW**, layout rule 4). Do not reuse it. Todoist's personal **API token is not scope-limited** (it can change and delete tasks), so do not use it either.
 
@@ -234,11 +203,11 @@ V7 has no Todoist client or credential today; the existing Todoist token belongs
 After you report, the agent adds the loader lines and the expiry row.
 **Revoke:** Todoist, Settings, Integrations, **Connected apps**, remove **LIFE OS Followup Read**; delete the Bitwarden items or database row.
 
-## 13. Todoist, Bytalos
+## 12. Todoist, Bytalos
 
 Nothing to do. Todoist is Personal only.
 
-## 14. What happens after your reports (the verification)
+## 13. What happens after your reports (the verification)
 
 1. The agent adds each Secret ID to the `bws-load` list of the new `followup` job, adds an entry per credential (name, provider, purpose, expiry, no value) to `lifeos/platform/credential_list.py` so the Alert settings screen shows days left, and puts a rotation reminder in your calendar 35 days before each expiry.
 2. The `followup` job runs as a **dry run** (no writes). Its log shows, per source and workspace, only `ok` or `degraded` and counts. A source that reports `degraded` with a fixed code means that credential or share is wrong; the agent tells you which step to repeat.
