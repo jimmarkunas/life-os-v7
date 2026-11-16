@@ -3,6 +3,9 @@
   "INBOX_SCHEMA_NOT_READY": ["inbox", "blocked", false, "The V7 database is not ready for the Action Inbox tables (row format or privileges).", "Run inbox-schema-check and fix what it reports."],
   "INBOX_SCHEMA_TABLES_EXIST": ["inbox", "blocked", false, "One of the four Action Inbox tables already exists, so nothing was applied.", "Look at the existing table before anything else."],
   "INBOX_SCHEMA_VERIFY_FAILED": ["inbox", "bug", false, "The tables were created but did not read back as planned (columns or rows).", "Inspect the tables; nothing is deleted automatically."],
+  "FOLLOWUP_SCHEMA_NOT_READY": ["inbox", "blocked", false, "The V7 database is not ready for the Followup tables (row format, key size or privileges).", "Run followup-schema-check and fix what it reports."],
+  "FOLLOWUP_SCHEMA_TABLES_EXIST": ["inbox", "blocked", false, "One of the five Followup tables already exists, so nothing was applied.", "Look at the existing table before anything else."],
+  "FOLLOWUP_SCHEMA_VERIFY_FAILED": ["inbox", "bug", false, "The Followup tables were created but did not read back as planned (columns or rows).", "Inspect the tables; nothing is deleted automatically."],
   "FOLLOWUP_STORE_UNAVAILABLE": ["inbox", "retry", true, "The Followup state store could not be read or written, so the batch was rolled back and the last known-good state and cursor are unchanged.", "None; nothing was kept. Retry the same batch."],
   "FOLLOWUP_READBACK_MISMATCH": ["inbox", "bug", false, "A Followup thread did not read back as written, so the batch was rolled back and the cursor did not advance.", "Inspect the Followup tables and the writer; nothing is deleted automatically."]
 }

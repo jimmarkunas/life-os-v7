@@ -64,6 +64,8 @@ Method: every stage target module was scanned for loops over accounts, sources, 
 | `fit-profile-sync` | `jobs.fit.profile_sync` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `fit-review` | `jobs.review` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `followup` | `inbox.followup_stage` | `helper` | Scopes (workspace and account) run through `isolate.run_items`; partial failure keeps the stage green, all-failed fails it. | no |
+| `followup-schema-apply` | `inbox.followup_apply` | `exempt` | A one-time DDL apply: a failed statement or a failed read-back must fail the stage, and no item may be skipped, because a half-applied schema is not a result. | no |
+| `followup-schema-check` | `inbox.followup_schema` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `funnel` | `jobs.funnel` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `granola` | `interview.granola_bridge` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `granola-auto` | `sources.interview.granola_auto` | `partial-red` | Each meeting that is left on Oracle with `failed` counts toward the stage's `failed`, and a stage-level stop (a Notion error, a deadline, a store failure) is a second path into the same count; one state machine, so moving it needs its own change (next ticket). | yes |
@@ -137,6 +139,7 @@ Loops over external items with no `try` inside, read by hand on Nov 14 2026. Non
 
 | Module | Function | Iterable | Verdict |
 | --- | --- | --- | --- |
+| `inbox.followup_apply` | `apply` | `TABLES` | The read-back after the create: a mismatch must fail the stage (FOLLOWUP_SCHEMA_VERIFY_FAILED). |
 | `inbox.apply_schema` | `apply` | `schema.TABLES` | The read-back after the create: a mismatch must fail the stage (INBOX_SCHEMA_VERIFY_FAILED). |
 | `hiring.outcomes` | `contacts` | `sorted(messages, key=_received)` | Pure: it attributes already-read messages to rows; no client is called (the scan matched `search`, a regex search). |
 | `imessage.comms_card` | `write` | `rows.items()` | The read-back after the writes: a mismatch must fail the stage, because a write that cannot be verified is not a write. |

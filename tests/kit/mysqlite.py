@@ -1,5 +1,5 @@
 """A MySQL-shaped connection over in-memory sqlite, so the Network store's real SQL (inserts, ignores, joins, transactions) runs in tests. Only the dialect differences the store uses are translated:
-%s placeholders, INSERT IGNORE, AUTO_INCREMENT keys, UNIQUE KEY / KEY clauses and the ENGINE suffix. begin/commit/rollback are real, so a failed chunk really rolls back."""
+%s placeholders, INSERT IGNORE, INSERT ... ON DUPLICATE KEY UPDATE, AUTO_INCREMENT keys, UNIQUE KEY / KEY clauses and the ENGINE suffix. begin/commit/rollback are real, so a failed chunk really rolls back."""
 import re
 import sqlite3
 
@@ -14,6 +14,9 @@ def translate_ddl(sql):
 
 def translate(sql):
     sql = sql.replace("%s", "?").replace("INSERT IGNORE", "INSERT OR IGNORE")
+    if "ON DUPLICATE KEY UPDATE" in sql:                                     # sqlite: ON CONFLICT DO UPDATE with no target is allowed on the last clause; VALUES(col) is excluded.col
+        head, tail = sql.split("ON DUPLICATE KEY UPDATE")
+        sql = head + "ON CONFLICT DO UPDATE SET" + re.sub(r"VALUES\((\w+)\)", r"excluded.\1", tail)
     if sql.lstrip().upper().startswith("CREATE TABLE"):
         sql = translate_ddl(sql)
     return sql

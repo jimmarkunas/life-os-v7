@@ -1,10 +1,11 @@
 """LIFE-747: the minimal state store for Followup threads (D258), in the existing V7 MySQL store; synthetic only, nothing here creates a table or runs on a schedule."""
 # `FollowupStore(connect)`: `connect` is a context manager yielding a connection (`lifeos.platform.db.connect` in production, a sqlite shim in tests).
-# Four tables, all created only by `ensure_schema` (NOT run by anything: a production schema change needs Jim's go at release, D258):
+# Five tables, all created only by `ensure_schema` (NOT run by anything: a production schema change needs Jim's go at release, D258):
 #   v7_followup_threads      one row per open-loop thread: identity hash, class, owner, derived state, checkpoint + basis, confidence, source links, evidence fingerprint, resolution
 #   v7_followup_checkpoints  one cursor per (workspace, account, source): advanced only after an accepted write
 #   v7_followup_overrides    a Jim checkpoint override per thread; it never edits a source due date
 #   v7_followup_suppressions fingerprints of dismissed or closed evidence, so the same evidence never reopens a thread
+#   v7_followup_payload      ONE component-state payload per (workspace, account) scope, replaced each live run and read back (Jim, complete build, Nov 16 2026); the Action Inbox reads it
 # One write path, `accept(batch)`: validate, write every thread and the cursor in ONE transaction, read every thread back and compare, commit; any failure rolls everything back and keeps the last known-good state.
 # Stored: hashes, fixed words, UTC times, bounded labels and source links. Never a mail body, a copied source payload, a credential or an exception text. TGP and unknown workspaces are refused first.
 import json
@@ -31,8 +32,12 @@ SCHEMA = (
     """CREATE TABLE IF NOT EXISTS v7_followup_suppressions (
         thread_id CHAR(64) NOT NULL, fingerprint CHAR(64) NOT NULL, reason VARCHAR(10) NOT NULL, at VARCHAR(24) NOT NULL, PRIMARY KEY (thread_id, fingerprint)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+    """CREATE TABLE IF NOT EXISTS v7_followup_payload (
+        scope_key VARCHAR(190) NOT NULL, payload MEDIUMTEXT NOT NULL, generated_at VARCHAR(32) NOT NULL, state VARCHAR(16) NOT NULL,
+        PRIMARY KEY (scope_key)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
 )
-TABLES = ("v7_followup_threads", "v7_followup_checkpoints", "v7_followup_overrides", "v7_followup_suppressions")
+TABLES = ("v7_followup_threads", "v7_followup_checkpoints", "v7_followup_overrides", "v7_followup_suppressions", "v7_followup_payload")
 SOURCES = ("gmail", "outlook", "calendar", "jira", "todoist", "notion", "interview_os")          # D258 first slice; Asana is excluded
 CLASSES = ("waiting", "owed", "value_add", "outcome_thread")
 OWNERS = ("jim", "external", "ambiguous")
@@ -40,6 +45,8 @@ STATES = ("needs_action", "waiting", "upcoming", "review")
 BASES = ("source", "suggested", "")
 CONFIDENCE = ("low", "medium", "high")
 RESOLUTIONS = ("open", "closed", "dismissed")
+PAYLOAD_STATES = ("PASS", "DEGRADED")
+PAYLOAD_MAX = 1_000_000                                     # characters of JSON per payload; the column is MEDIUMTEXT (16 MB)
 THREAD_COLUMNS = ("thread_id", "workspace", "account", "outcome", "klass", "owner", "state", "checkpoint_at", "checkpoint_basis", "confidence", "source_refs", "evidence_fp", "resolution", "version",
                   "first_seen", "last_accepted")
 CONTENT = ("outcome", "klass", "owner", "state", "checkpoint_at", "checkpoint_basis", "confidence", "source_refs", "evidence_fp")      # what a replay compares; time and version follow a change
@@ -91,6 +98,11 @@ def normalize(workspace, account, item):
     _need(isinstance(fingerprint, str) and len(fingerprint) == 64, "evidence_fp_invalid")
     return {"thread_id": thread_id(workspace, account, key), "workspace": workspace, "account": account, "outcome": outcome, "klass": item["klass"], "owner": item["owner"], "state": item["state"],
             "checkpoint_at": checkpoint, "checkpoint_basis": basis, "confidence": item["confidence"], "source_refs": json.dumps(sorted(set(refs)), separators=(",", ":")), "evidence_fp": fingerprint}
+
+
+def scope_key(workspace, account):
+    """The payload row key: one row per (workspace, account); a workspace name never contains the separator, so two scopes never share a key."""
+    return f"{workspace}|{account}"
 
 
 class FollowupStore:
@@ -240,5 +252,44 @@ class FollowupStore:
         row = self._read("SELECT cursor_value, accepted_at FROM v7_followup_checkpoints WHERE workspace=%s AND account=%s AND source=%s", (workspace, account, source), "one")
         return {"cursor": row[0], "accepted_at": row[1]} if row else None
 
+    # ---- the component-state payload (one row per scope) --------------------------------------------------------------------------------------------------------------------------------
 
-__all__ = ["FollowupStore", "FollowupRejected", "FollowupStoreError", "SCHEMA", "TABLES", "SOURCES", "thread_id", "normalize"]
+    def save_payload(self, workspace, account, payload):
+        """Validate, write ONE row for this scope in a single statement (insert or replace its values) and read it back. -> True when the stored payload equals what was given.
+        Refused first, nothing written: TGP or an unknown workspace, a payload that is not a dict, names another scope, has a state other than PASS or DEGRADED, has no generated_at of at most 32
+        characters, is not JSON, or is over one million characters. A failed write is FOLLOWUP_STORE_UNAVAILABLE; a row that does not read back equal is FOLLOWUP_READBACK_MISMATCH."""
+        _scope(workspace, account)
+        _need(isinstance(payload, dict), "payload_invalid")
+        _need(payload.get("workspace") == workspace and payload.get("account") == account, "payload_scope_mismatch")
+        _need(payload.get("state") in PAYLOAD_STATES, "payload_state_invalid")
+        generated = payload.get("generated_at")
+        _need(isinstance(generated, str) and 0 < len(generated) <= 32, "payload_time_invalid")
+        try:
+            text = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+        except (TypeError, ValueError):
+            raise FollowupRejected("payload_invalid") from None
+        _need(len(text) <= PAYLOAD_MAX, "payload_too_large")
+        with fixed(Exception, FollowupStoreError, "FOLLOWUP_STORE_UNAVAILABLE"), self._connect() as connection, connection.cursor() as cursor:
+            cursor.execute("INSERT INTO v7_followup_payload (scope_key, payload, generated_at, state) VALUES (%s,%s,%s,%s) "
+                           "ON DUPLICATE KEY UPDATE payload=VALUES(payload), generated_at=VALUES(generated_at), state=VALUES(state)",
+                           (scope_key(workspace, account), text, generated, payload["state"]))
+        if self.load_payload(workspace, account) != json.loads(text):
+            raise FollowupStoreError("FOLLOWUP_READBACK_MISMATCH")
+        return True
+
+    def load_payload(self, workspace, account):
+        """The stored payload of ONE scope, or None when none was saved. A row whose columns disagree with its own JSON is FOLLOWUP_READBACK_MISMATCH, never a guess."""
+        _scope(workspace, account)
+        row = self._read("SELECT payload, generated_at, state FROM v7_followup_payload WHERE scope_key=%s", (scope_key(workspace, account),), "one")
+        if not row:
+            return None
+        try:
+            payload = json.loads(row[0])
+        except ValueError:
+            raise FollowupStoreError("FOLLOWUP_READBACK_MISMATCH") from None
+        if not isinstance(payload, dict) or payload.get("generated_at") != row[1] or payload.get("state") != row[2]:
+            raise FollowupStoreError("FOLLOWUP_READBACK_MISMATCH")
+        return payload
+
+
+__all__ = ["FollowupStore", "FollowupRejected", "FollowupStoreError", "SCHEMA", "TABLES", "SOURCES", "thread_id", "scope_key", "normalize"]
