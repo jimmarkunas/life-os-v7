@@ -17,6 +17,7 @@ from lifeos.platform.fixed_code import fixed
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 API = "https://www.googleapis.com/calendar/v3"
 SCOPE = "https://www.googleapis.com/auth/calendar.events"
+SCOPE_READONLY = "https://www.googleapis.com/auth/calendar.readonly"       # LIFE-757: the Followup reader never gets a write scope
 MAX_PAGES = 40
 
 
@@ -47,14 +48,14 @@ def openssl_sign(private_key_pem, message):
 
 
 class GoogleCalendar:
-    def __init__(self, service_account_json, calendar_id, timeout=30, sleep=time.sleep, sign=openssl_sign, clock=time.time):
+    def __init__(self, service_account_json, calendar_id, timeout=30, sleep=time.sleep, sign=openssl_sign, clock=time.time, scope=SCOPE):
         with fixed((ValueError, KeyError, TypeError), GcalError, "GCAL_CONFIG_INVALID"):
             info = json.loads(service_account_json)
             self._email, self._key = info["client_email"], info["private_key"]
         if not calendar_id:
             raise GcalError("GCAL_CONFIG_INVALID")
         self._calendar = urllib.parse.quote(calendar_id, safe="")
-        self._timeout, self._sleep, self._sign, self._clock, self._token = timeout, sleep, sign, clock, None
+        self._timeout, self._sleep, self._sign, self._clock, self._token, self._scope = timeout, sleep, sign, clock, None, scope
 
     @classmethod
     def from_env(cls, environ=os.environ, **kwargs):
@@ -68,7 +69,7 @@ class GoogleCalendar:
         if self._token is None:
             now = int(self._clock())
             head = _b64(json.dumps({"alg": "RS256", "typ": "JWT"}).encode())
-            body = _b64(json.dumps({"iss": self._email, "scope": SCOPE, "aud": TOKEN_URL, "iat": now, "exp": now + 3000}).encode())
+            body = _b64(json.dumps({"iss": self._email, "scope": self._scope, "aud": TOKEN_URL, "iat": now, "exp": now + 3000}).encode())
             signing = head + b"." + body
             assertion = (signing + b"." + _b64(self._sign(self._key, signing))).decode()
             request = urllib.request.Request(TOKEN_URL, method="POST", headers={"Content-Type": "application/x-www-form-urlencoded"},

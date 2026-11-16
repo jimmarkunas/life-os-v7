@@ -58,3 +58,33 @@ TINYFISH_API_KEY secret Search provider key (never printed)
 V7_ARCHIVE_TOKEN secret Token the branch-archive workflow uses
 V7_IMESSAGE_ALERTS workflow_only:workflow Switch for the iMessage alert job in the domains tick; the V7 settings page can set it, GitHub's value is the fallback
 WEEKLY_REVIEW_PAGE_ID input Notion page id of the weekly review
+FOLLOWUP_GCAL_BYTALOS_CALENDAR_ID input Google calendar id the Followup calendar reader calls (bytalos)
+FOLLOWUP_GCAL_BYTALOS_READONLY_SA_JSON secret Read-only calendar credential for the Followup stage (bytalos); a name only, never a value
+FOLLOWUP_GCAL_BYTALOS_READONLY_SA_JSON_ACCOUNT input Account label for that Followup credential, shown in receipts; set in the environment, never in the repo
+FOLLOWUP_GCAL_PERSONAL_CALENDAR_ID input Google calendar id the Followup calendar reader calls (personal)
+FOLLOWUP_GCAL_PERSONAL_READONLY_SA_JSON secret Read-only calendar credential for the Followup stage (personal); a name only, never a value
+FOLLOWUP_GCAL_PERSONAL_READONLY_SA_JSON_ACCOUNT input Account label for that Followup credential, shown in receipts; set in the environment, never in the repo
+FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH secret Read-only gmail credential for the Followup stage (bytalos); a name only, never a value
+FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH_ACCOUNT input Account label for that Followup credential, shown in receipts; set in the environment, never in the repo
+FOLLOWUP_GMAIL_PERSONAL_READONLY_REFRESH secret Read-only gmail credential for the Followup stage (personal); a name only, never a value
+FOLLOWUP_GMAIL_PERSONAL_READONLY_REFRESH_ACCOUNT input Account label for that Followup credential, shown in receipts; set in the environment, never in the repo
+FOLLOWUP_INTERVIEW_BYTALOS_READONLY_TOKEN secret Read-only interview os credential for the Followup stage (bytalos); a name only, never a value
+FOLLOWUP_INTERVIEW_BYTALOS_READONLY_TOKEN_ACCOUNT input Account label for that Followup credential, shown in receipts; set in the environment, never in the repo
+FOLLOWUP_INTERVIEW_BYTALOS_SOURCE_IDS input Interview OS data sources the Followup stage may read (bytalos)
+FOLLOWUP_INTERVIEW_PERSONAL_READONLY_TOKEN secret Read-only interview os credential for the Followup stage (personal); a name only, never a value
+FOLLOWUP_INTERVIEW_PERSONAL_READONLY_TOKEN_ACCOUNT input Account label for that Followup credential, shown in receipts; set in the environment, never in the repo
+FOLLOWUP_INTERVIEW_PERSONAL_SOURCE_IDS input Interview OS data sources the Followup stage may read (personal)
+FOLLOWUP_NOTION_BYTALOS_READONLY_TOKEN secret Read-only notion credential for the Followup stage (bytalos); a name only, never a value
+FOLLOWUP_NOTION_BYTALOS_READONLY_TOKEN_ACCOUNT input Account label for that Followup credential, shown in receipts; set in the environment, never in the repo
+FOLLOWUP_NOTION_BYTALOS_SOURCE_IDS input Notion data sources the Followup stage may read (bytalos)
+FOLLOWUP_NOTION_PERSONAL_READONLY_TOKEN secret Read-only notion credential for the Followup stage (personal); a name only, never a value
+FOLLOWUP_NOTION_PERSONAL_READONLY_TOKEN_ACCOUNT input Account label for that Followup credential, shown in receipts; set in the environment, never in the repo
+FOLLOWUP_NOTION_PERSONAL_SOURCE_IDS input Notion data sources the Followup stage may read (personal)
+FOLLOWUP_OUTLOOK_READONLY_PERSONAL_1 secret Read-only outlook credential for the Followup stage (personal); a name only, never a value
+FOLLOWUP_OUTLOOK_READONLY_PERSONAL_1_ACCOUNT input Account label for that Followup credential, shown in receipts; set in the environment, never in the repo
+FOLLOWUP_OUTLOOK_READONLY_PERSONAL_2 secret Read-only outlook credential for the Followup stage (personal, account 2); a name only, never a value
+FOLLOWUP_OUTLOOK_READONLY_PERSONAL_2_ACCOUNT input Account label for that Followup credential, shown in receipts; set in the environment, never in the repo
+FOLLOWUP_OUTLOOK_READONLY_PERSONAL_3 secret Read-only outlook credential for the Followup stage (personal, account 3); a name only, never a value
+FOLLOWUP_OUTLOOK_READONLY_PERSONAL_3_ACCOUNT input Account label for that Followup credential, shown in receipts; set in the environment, never in the repo
+FOLLOWUP_TODOIST_PERSONAL_TOKEN secret Read-only todoist credential for the Followup stage (personal); a name only, never a value
+FOLLOWUP_TODOIST_PERSONAL_TOKEN_ACCOUNT input Account label for that Followup credential, shown in receipts; set in the environment, never in the repo
