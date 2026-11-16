@@ -22,6 +22,8 @@ RELEASED = tuple(w for w in WORKSPACES if w not in UNRELEASED_WORKSPACES)
 BOTH = ("personal", "bytalos")
 SOURCE_WORKSPACES = {"jira": BOTH, "calendar": BOTH, "gmail": BOTH, "outlook": ("personal",), "todoist": ("personal",), "notion": ("personal",), "interview_os": ("personal",)}
 MAX_ACCOUNTS = {("outlook", "personal"): 3}                                       # every other (source, workspace) has one account
+FIXED_ACCOUNTS = {("jira", "personal"): "jira-personal", ("jira", "bytalos"): "jira-bytalos"}   # Jira is not a credential Jim names: these scope labels are committed, not read from the environment
+OUTLOOK_CREDENTIAL = "OUTLOOK_CLIENT_ID"                                           # Outlook tokens are read by the fetcher from v7_outlook_token by label followup-personal-1..3; only the client id is loaded
 JIRA_PROJECTS = {"personal": ("JFM", "LIFE", "LOS"), "bytalos": ("BAD", "BPP")}   # one Atlassian account, split by project key; passed to the fetchers as FOLLOWUP_JIRA_PROJECTS_<WORKSPACE>
 JIRA_CREDENTIAL = "JIRA_API_TOKEN"                                                # Jim, Nov 16 2026: reuse the existing Jira token (with JIRA_EMAIL) for BOTH Jira scopes; a name, never a value
 EXPIRES = {}                                                                      # {(source, workspace) or (source, workspace, n): "YYYY-MM-DD"}: filled when a credential is created
@@ -48,7 +50,8 @@ def _fetchers():
 def credential_names():
     module = _fetchers()
     names = dict(getattr(module, "CREDENTIAL_NAMES", {}) or {}) if module else {}
-    names.update({("jira", workspace): JIRA_CREDENTIAL for workspace in JIRA_PROJECTS})   # committed here, so it wins: the two Jira scopes name one credential but keep separate grants
+    names.update({("jira", workspace): JIRA_CREDENTIAL for workspace in JIRA_PROJECTS})
+    names.update({("outlook", "personal", n): OUTLOOK_CREDENTIAL for n in range(1, MAX_ACCOUNTS[("outlook", "personal")] + 1)})   # committed here, so it wins: the two Jira scopes name one credential but keep separate grants
     return names
 
 
@@ -61,6 +64,8 @@ def accounts(environ, source, workspace):
     """-> [(n, label)]: the labels named in the environment for this (source, workspace), in order; n is None for the single unnumbered one. A source that does not serve the workspace has none."""
     if workspace not in RELEASED or workspace not in SOURCE_WORKSPACES.get(source, ()):
         return []
+    if (source, workspace) in FIXED_ACCOUNTS:
+        return [(None, FIXED_ACCOUNTS[(source, workspace)])]
     limit = MAX_ACCOUNTS.get((source, workspace), 1)
     out = []
     for n in (None, *range(1, limit + 1)):
@@ -97,6 +102,8 @@ def expiry_table():
     for workspace in JIRA_PROJECTS:
         if day:
             table.setdefault(("jira", workspace), day)
+    for n in range(1, MAX_ACCOUNTS[("outlook", "personal")] + 1):                  # a delegated sign-in with no fixed expiry (inventory: outlook_sign_in): a long date, revoked by removing the account
+        table.setdefault(("outlook", "personal", n), "2099-12-31")
     return table
 
 
@@ -107,7 +114,7 @@ def grants_for(environ, names, expires=None):
     for (workspace, label), members in sorted(configured(environ).items()):
         for source, n in sorted(members, key=lambda m: (m[0], m[1] or 0)):
             name, day = _lookup(names, source, workspace, n), _lookup(expires, source, workspace, n)
-            if not name or not day or not (environ.get(account_env(source, workspace, n)) or "").strip():
+            if not name or not day:
                 continue
             out.append(readers.Grant(source, workspace, label, name, datetime.fromisoformat(day + "T23:59:59+00:00")))
     return tuple(out)

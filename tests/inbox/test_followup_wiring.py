@@ -16,9 +16,9 @@ from tests.kit.mysqlite import MySQLite
 UTC = timezone.utc
 T0 = datetime(2026, 11, 16, 20, 0, tzinfo=UTC)
 NAMES = {("jira", "personal"): "JIRA_API_TOKEN", ("jira", "bytalos"): "JIRA_API_TOKEN", ("gmail", "personal"): "FOLLOWUP_GMAIL_PERSONAL_TOKEN",
-         ("outlook", "personal", 1): "FOLLOWUP_OUTLOOK_1", ("outlook", "personal", 2): "FOLLOWUP_OUTLOOK_2", ("outlook", "personal", 3): "FOLLOWUP_OUTLOOK_3"}
+         ("outlook", "personal", 1): "OUTLOOK_CLIENT_ID", ("outlook", "personal", 2): "OUTLOOK_CLIENT_ID", ("outlook", "personal", 3): "OUTLOOK_CLIENT_ID"}
 EXPIRES = {key: "2027-11-15" for key in NAMES}
-ON = {"FOLLOWUP_WIRING": "on", "FOLLOWUP_ACCOUNT_JIRA_PERSONAL": "main", "FOLLOWUP_ACCOUNT_JIRA_BYTALOS": "main", "FOLLOWUP_ACCOUNT_GMAIL_PERSONAL": "gm"}
+ON = {"FOLLOWUP_WIRING": "on", "FOLLOWUP_ACCOUNT_GMAIL_PERSONAL": "gm"}
 OUTLOOKS = {"FOLLOWUP_ACCOUNT_OUTLOOK_PERSONAL_1": "ol1", "FOLLOWUP_ACCOUNT_OUTLOOK_PERSONAL_2": "ol2", "FOLLOWUP_ACCOUNT_OUTLOOK_PERSONAL_3": "ol3"}
 
 
@@ -45,18 +45,19 @@ class Switch(unittest.TestCase):
             self.assertIsNone(S.production_wiring({}))
             self.assertEqual(S.run(0, False, None)["unwired"], 1)
 
-    def test_on_without_a_configured_account_is_still_a_no_op(self):
-        with fake_fetchers():
-            self.assertIsNone(W.build({"FOLLOWUP_WIRING": "on"}))
+    def test_on_with_only_the_fixed_jira_scopes_wires_just_those_and_off_still_wins(self):
+        with fake_fetchers(), mock.patch.object(W.db, "connect", shim()):
+            wiring = W.build({"FOLLOWUP_WIRING": "on"})
+            self.assertEqual({(s.workspace, s.account) for s in wiring.scopes}, {("personal", "jira-personal"), ("bytalos", "jira-bytalos")})
             self.assertIsNone(W.build({**ON, "FOLLOWUP_WIRING": "off"}))               # the kill switch wins
 
     def test_without_the_fetchers_module_nothing_is_configured(self):
         with mock.patch.dict(sys.modules, {"lifeos.platform.followup_fetchers": None}):
-            self.assertEqual(set(W.credential_names()), {("jira", "personal"), ("jira", "bytalos")})        # only the existing Jira token is named; the rest has no credential
+            self.assertEqual(set(W.credential_names()), {("jira", "personal"), ("jira", "bytalos"), ("outlook", "personal", 1), ("outlook", "personal", 2), ("outlook", "personal", 3)})        # only the existing Jira token and the Outlook client id are named
             with mock.patch.object(W.db, "connect", shim()):
                 wiring = W.build(ON)
         self.assertEqual(wiring.fetchers, {})                                             # nothing can read: every source degraded, nothing crashed
-        self.assertTrue(all(g.source == "jira" and g.credential_ref == "JIRA_API_TOKEN" for g in wiring.grants))
+        self.assertTrue(all(g.credential_ref in ("JIRA_API_TOKEN", "OUTLOOK_CLIENT_ID") for g in wiring.grants))
         self.assertEqual({g.tenant for g in wiring.grants}, {"personal", "bytalos"})
 
 
@@ -65,9 +66,9 @@ class Build(unittest.TestCase):
         with fake_fetchers(), mock.patch.object(W, "EXPIRES", EXPIRES), mock.patch.object(W.db, "connect", shim()):
             dry = W.build(ON, live=False, clock=lambda: T0)
             live = W.build(ON, live=True, clock=lambda: T0)
-        self.assertEqual({(s.workspace, s.account) for s in dry.scopes}, {("personal", "main"), ("personal", "gm"), ("bytalos", "main")})
+        self.assertEqual({(s.workspace, s.account) for s in dry.scopes}, {("personal", "jira-personal"), ("personal", "gm"), ("bytalos", "jira-bytalos")})
         self.assertTrue(all("asana" not in s.sources for s in dry.scopes))
-        self.assertEqual({(g.source, g.tenant, g.account) for g in dry.grants}, {("jira", "personal", "main"), ("jira", "bytalos", "main"), ("gmail", "personal", "gm")})
+        self.assertEqual({(g.source, g.tenant, g.account) for g in dry.grants}, {("jira", "personal", "jira-personal"), ("jira", "bytalos", "jira-bytalos"), ("gmail", "personal", "gm")})
         self.assertTrue(all(g.credential_ref in NAMES.values() and not g.revoked for g in dry.grants))
         self.assertIsInstance(dry.store, W.DryStore)
         self.assertIsInstance(live.store, FollowupStore)
@@ -81,8 +82,8 @@ class Build(unittest.TestCase):
         self.assertEqual(grants, ())                                                      # Asana never, TGP never
 
     def test_jira_is_two_scopes_of_one_account_with_separate_credentials_and_projects(self):
-        scopes = W.configured({"FOLLOWUP_WIRING": "on", "FOLLOWUP_ACCOUNT_JIRA_PERSONAL": "a", "FOLLOWUP_ACCOUNT_JIRA_BYTALOS": "a"})
-        self.assertEqual({k for k, members in scopes.items() if ("jira", None) in members}, {("personal", "a"), ("bytalos", "a")})
+        scopes = W.configured({"FOLLOWUP_WIRING": "on"})
+        self.assertEqual({k for k, members in scopes.items() if ("jira", None) in members}, {("personal", "jira-personal"), ("bytalos", "jira-bytalos")})
         grants = W.grants_for(ON, NAMES, EXPIRES)
         self.assertEqual({(g.tenant, g.credential_ref) for g in grants if g.source == "jira"}, {("personal", "JIRA_API_TOKEN"), ("bytalos", "JIRA_API_TOKEN")})
         self.assertEqual(len([g for g in grants if g.source == "jira"]), 2)                # one credential NAME, two separate Grant objects
@@ -110,10 +111,10 @@ class Build(unittest.TestCase):
             def fetcher(ref, since, tenant=tenant):
                 seen.append((tenant, ref, W.fetcher_environment({})[f"FOLLOWUP_JIRA_PROJECTS_{tenant.upper()}"]))
                 return []
-            R.read_delta("jira", tenant, "main", None, grants, fetcher, receipts.append, T0, "batch-0")
+            R.read_delta("jira", tenant, f"jira-{tenant}", None, grants, fetcher, receipts.append, T0, "batch-0")
         self.assertEqual(seen, [("personal", "JIRA_API_TOKEN", "JFM,LIFE,LOS"), ("bytalos", "JIRA_API_TOKEN", "BAD,BPP")])
         self.assertEqual({r["tenant"] for r in receipts}, {"personal", "bytalos"})                                                               # separate receipts per scope
-        self.assertEqual(R.read_delta("jira", "bytalos", "main", None, [g for g in grants if g.tenant == "personal"], fetch, lambda r: None, T0, "x").reason, "no_grant")
+        self.assertEqual(R.read_delta("jira", "bytalos", "jira-bytalos", None, [g for g in grants if g.tenant == "personal"], fetch, lambda r: None, T0, "x").reason, "no_grant")
 
     def test_the_jira_scopes_expire_with_the_existing_token_from_the_inventory(self):
         table = W.expiry_table()
@@ -125,7 +126,7 @@ class Build(unittest.TestCase):
         self.assertEqual(W.accounts(env, "outlook", "personal"), [(1, "ol1"), (2, "ol2"), (3, "ol3")])
         self.assertEqual(W.accounts(env, "outlook", "bytalos"), [])
         grants = [g for g in W.grants_for(env, NAMES, EXPIRES) if g.source == "outlook"]
-        self.assertEqual(sorted((g.account, g.credential_ref) for g in grants), [("ol1", "FOLLOWUP_OUTLOOK_1"), ("ol2", "FOLLOWUP_OUTLOOK_2"), ("ol3", "FOLLOWUP_OUTLOOK_3")])
+        self.assertEqual(sorted((g.account, g.credential_ref) for g in grants), [("ol1", "OUTLOOK_CLIENT_ID"), ("ol2", "OUTLOOK_CLIENT_ID"), ("ol3", "OUTLOOK_CLIENT_ID")])
 
     def test_todoist_notion_and_interview_os_are_personal_only(self):
         env = {"FOLLOWUP_WIRING": "on"}
@@ -152,19 +153,19 @@ class Build(unittest.TestCase):
         self.assertEqual(counts.get("refused"), 1)
 
     def test_an_unconfigured_source_a_workspace_serves_shows_up_as_degraded_not_missing(self):
-        scopes = W.configured({"FOLLOWUP_WIRING": "on", "FOLLOWUP_ACCOUNT_JIRA_PERSONAL": "a"})
-        members = {s for s, _ in scopes[("personal", "a")]}
+        scopes = W.configured({"FOLLOWUP_WIRING": "on"})
+        members = {s for s, _ in scopes[("personal", "jira-personal")]}
         self.assertEqual(members, {"jira", "calendar", "gmail", "outlook", "todoist", "notion", "interview_os"})
         self.assertIn("todoist", members)
-        self.assertEqual(W.grants_for({"FOLLOWUP_WIRING": "on", "FOLLOWUP_ACCOUNT_JIRA_PERSONAL": "a"}, {}, EXPIRES), ())
+        self.assertEqual(W.grants_for({"FOLLOWUP_WIRING": "on"}, {}, EXPIRES), ())
 
     def test_two_scopes_never_share_a_grant(self):
         seen = []
         grants = W.grants_for(ON, NAMES, EXPIRES)
         fetchers = {"jira": lambda ref, since: seen.append(ref) or []}
         audit = lambda receipt: None                                                      # noqa: E731
-        R.read_delta("jira", "personal", "main", None, grants, fetchers["jira"], audit, T0, "a")
-        R.read_delta("jira", "bytalos", "main", None, grants, fetchers["jira"], audit, T0, "b")
+        R.read_delta("jira", "personal", "jira-personal", None, grants, fetchers["jira"], audit, T0, "a")
+        R.read_delta("jira", "bytalos", "jira-bytalos", None, grants, fetchers["jira"], audit, T0, "b")
         self.assertEqual(seen, ["JIRA_API_TOKEN", "JIRA_API_TOKEN"])
         wrong = R.read_delta("jira", "personal", "stranger", None, grants, fetchers["jira"], audit, T0, "c")                # another workspace's account borrows nothing
         self.assertEqual((wrong.status, wrong.reason), ("refused", "no_grant"))
@@ -215,9 +216,9 @@ class Receipts(unittest.TestCase):
         audit = W.make_audit(ledger)
         grants = W.grants_for(ON, NAMES, EXPIRES)
         fetch = lambda ref, since: []                                                     # noqa: E731
-        R.read_delta("jira", "personal", "main", None, grants, fetch, audit, T0, "batch-0")
-        R.read_delta("jira", "personal", "main", None, grants, fetch, audit, T0 + timedelta(hours=1), "batch-0")      # the same reader id one hour later: a new receipt
-        R.read_delta("jira", "bytalos", "main", None, (), fetch, audit, T0, "batch-1")                                 # a refusal still leaves a deny receipt
+        R.read_delta("jira", "personal", "jira-personal", None, grants, fetch, audit, T0, "batch-0")
+        R.read_delta("jira", "personal", "jira-personal", None, grants, fetch, audit, T0 + timedelta(hours=1), "batch-0")      # the same reader id one hour later: a new receipt
+        R.read_delta("jira", "bytalos", "jira-bytalos", None, (), fetch, audit, T0, "batch-1")                                 # a refusal still leaves a deny receipt
         rows = ledger.access_receipts(W.PRINCIPAL)
         self.assertEqual(len(rows), 3)
         self.assertEqual(sorted(r["decision"] for r in rows), ["allow", "allow", "deny"])

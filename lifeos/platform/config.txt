@@ -10,8 +10,6 @@ FOLLOWUP_ACCOUNT_CALENDAR_PERSONAL input Account label (not an address) the foll
 FOLLOWUP_ACCOUNT_GMAIL_BYTALOS input Account label (not an address) the followup job reads gmail for in the bytalos workspace; unset means that source shows not provisioned
 FOLLOWUP_ACCOUNT_GMAIL_PERSONAL input Account label (not an address) the followup job reads gmail for in the personal workspace; unset means that source shows not provisioned
 FOLLOWUP_ACCOUNT_INTERVIEW_OS_PERSONAL input Account label (not an address) the followup job reads interview_os for in the personal workspace; unset means that source shows not provisioned
-FOLLOWUP_ACCOUNT_JIRA_BYTALOS input Account label (not an address) the followup job reads jira for in the bytalos workspace; unset means that source shows not provisioned
-FOLLOWUP_ACCOUNT_JIRA_PERSONAL input Account label (not an address) the followup job reads jira for in the personal workspace; unset means that source shows not provisioned
 FOLLOWUP_ACCOUNT_NOTION_PERSONAL input Account label (not an address) the followup job reads notion for in the personal workspace; unset means that source shows not provisioned
 FOLLOWUP_ACCOUNT_OUTLOOK_PERSONAL input Account label (not an address) the followup job reads outlook for in the personal workspace; unset means that source shows not provisioned
 FOLLOWUP_ACCOUNT_OUTLOOK_PERSONAL_2 input Second Personal Outlook account label for the followup job
