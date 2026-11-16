@@ -1,0 +1,997 @@
+{
+ "_how_to_read": "LIFE-768: the one place a stage's metadata is written by hand. seconds/required/basis are the stage's time budget (rule: docs/platform/timeouts.md); module/status/why/exits_1 are its isolation row (rule: docs/platform/stage-isolation.md). tools/regen.py renders lifeos/platform/stage_budgets.json and the two doc tables from this file; edit only here.",
+ "default_seconds": 600,
+ "rule": "docs/platform/timeouts.md",
+ "stages": {
+  "accountability-artifacts": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "accountability.artifacts",
+   "required": false,
+   "seconds": 600,
+   "status": "guarded",
+   "why": "One loop over two people (Jim, Matt); each person is handled on its own and a failed Jira read is recorded for that person only, then the stage fails after both were tried."
+  },
+  "accountability-changelog": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "accountability.changelog",
+   "required": false,
+   "seconds": 600,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "accountability-goals": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "accountability.goals",
+   "required": false,
+   "seconds": 600,
+   "status": "guarded",
+   "why": "One loop over two people (Jim, Matt); each person is handled on its own and a failed Jira read is recorded for that person only, then the stage fails after both were tried."
+  },
+  "accountability-review": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "accountability.review",
+   "required": false,
+   "seconds": 600,
+   "status": "guarded",
+   "why": "One loop over two people (Jim, Matt); each person is handled on its own and a failed Jira read is recorded for that person only, then the stage fails after both were tried."
+  },
+  "accountability-week": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "accountability.week",
+   "required": false,
+   "seconds": 600,
+   "status": "guarded",
+   "why": "One loop over two people (Jim, Matt); each person is handled on its own and a failed Jira read is recorded for that person only, then the stage fails after both were tried."
+  },
+  "agenda-card": {
+   "basis": "twice its slowest measured step (77 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "agenda.card",
+   "required": false,
+   "seconds": 180,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "agenda-snapshot": {
+   "basis": "twice its slowest measured step (58 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "agenda.snapshot",
+   "required": false,
+   "seconds": 120,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "alerts": {
+   "basis": "twice its slowest measured step (11 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "jobs.alerts",
+   "required": false,
+   "seconds": 120,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "alerts-open": {
+   "basis": "no workflow runs this stage (manual or developer use): the table default",
+   "exits_1": false,
+   "module": "jobs.alertstate",
+   "required": false,
+   "seconds": 600,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "amazon-backfill": {
+   "basis": "no workflow runs this stage (manual or developer use): the table default",
+   "exits_1": false,
+   "module": "amazon.backfill",
+   "required": false,
+   "seconds": 600,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "amazon-card": {
+   "basis": "twice its slowest measured step (15 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "amazon.card",
+   "required": false,
+   "seconds": 120,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "amazon-census": {
+   "basis": "no workflow runs this stage (manual or developer use): the table default",
+   "exits_1": false,
+   "module": "delivery.census",
+   "required": false,
+   "seconds": 600,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "amazon-orders": {
+   "basis": "twice its slowest measured step (5 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "amazon.stage",
+   "required": false,
+   "seconds": 120,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "amazon-retention": {
+   "basis": "twice its slowest measured step (547 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "amazon.retention",
+   "required": false,
+   "seconds": 780,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "amazon-review-reset": {
+   "basis": "no workflow runs this stage (manual or developer use): the table default",
+   "exits_1": false,
+   "module": "amazon.reset",
+   "required": false,
+   "seconds": 600,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "audit": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "exits_1": false,
+   "module": "jobs.audit",
+   "required": true,
+   "seconds": 180,
+   "status": "guarded",
+   "why": "Loops over its items with error handling inside; one failed item does not stop the others."
+  },
+  "audit-fresh": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "exits_1": false,
+   "module": "jobs.audit",
+   "required": true,
+   "seconds": 60,
+   "status": "guarded",
+   "why": "Loops over its items with error handling inside; one failed item does not stop the others."
+  },
+  "audit-ready": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "exits_1": false,
+   "module": "jobs.audit",
+   "required": true,
+   "seconds": 60,
+   "status": "guarded",
+   "why": "Loops over its items with error handling inside; one failed item does not stop the others."
+  },
+  "bills-card": {
+   "basis": "twice its slowest measured step (9 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "bills.card",
+   "required": false,
+   "seconds": 120,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "bills-paid": {
+   "basis": "twice its slowest measured step (61 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "bills.paid",
+   "required": false,
+   "seconds": 150,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "bills-snapshot": {
+   "basis": "twice its slowest measured step (7 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "bills.snapshot",
+   "required": false,
+   "seconds": 120,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "board-check": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "sources.web.boardcheck",
+   "required": false,
+   "seconds": 600,
+   "status": "guarded",
+   "why": "Loops over its items; each loop without error handling is reviewed below."
+  },
+  "boards": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "exits_1": false,
+   "module": "sources.web.boards",
+   "required": false,
+   "seconds": 1080,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "boards-backfill": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "exits_1": false,
+   "module": "sources.web.boards",
+   "required": false,
+   "seconds": 600,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "boards-preview": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "sources.web.boards",
+   "required": false,
+   "seconds": 600,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "calendar-sync": {
+   "basis": "twice its slowest measured step (113 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "calendar_bridge.watch",
+   "required": true,
+   "seconds": 240,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "capacity-card": {
+   "basis": "twice its slowest measured step (44 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": true,
+   "module": "jobs.fit.capacity_card",
+   "required": false,
+   "seconds": 120,
+   "status": "exempt",
+   "why": "One reading of Oracle's limits: a failed read is the stage's own failure and the old card stays until a fresh reading is verified."
+  },
+  "dcc-card": {
+   "basis": "twice its slowest measured step (41 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "dcc.card",
+   "required": false,
+   "seconds": 120,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "discover-jobs": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "exits_1": false,
+   "module": "sources.web.discover_jobs",
+   "required": false,
+   "seconds": 300,
+   "status": "guarded",
+   "why": "Loops over its items with error handling inside; one failed item does not stop the others."
+  },
+  "drain-audit-ready": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "exits_1": false,
+   "module": "jobs.audit",
+   "required": false,
+   "seconds": 60,
+   "status": "guarded",
+   "why": "Loops over its items with error handling inside; one failed item does not stop the others."
+  },
+  "drain-enrich": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "exits_1": false,
+   "module": "jobs.enrich",
+   "required": false,
+   "seconds": 480,
+   "status": "guarded",
+   "why": "Loops over its items with error handling inside; one failed item does not stop the others."
+  },
+  "drain-fit": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "exits_1": false,
+   "module": "jobs.fit.stage",
+   "required": false,
+   "seconds": 240,
+   "status": "exempt",
+   "why": "D214: the same stage as fit, run again in the drain pass."
+  },
+  "drain-publish": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "exits_1": false,
+   "module": "jobs.publish",
+   "required": false,
+   "seconds": 720,
+   "status": "exempt",
+   "why": "D212: the same stage as publish, run again later in the tick."
+  },
+  "enrich": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "exits_1": false,
+   "module": "jobs.enrich",
+   "required": true,
+   "seconds": 480,
+   "status": "guarded",
+   "why": "Loops over its items with error handling inside; one failed item does not stop the others."
+  },
+  "expire-holds": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "exits_1": false,
+   "module": "jobs.hold",
+   "required": true,
+   "seconds": 120,
+   "status": "guarded",
+   "why": "Loops over its items; each loop without error handling is reviewed below."
+  },
+  "explain": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "jobs.explain",
+   "required": false,
+   "seconds": 600,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "fit": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "exits_1": true,
+   "module": "jobs.fit.stage",
+   "required": true,
+   "seconds": 240,
+   "status": "exempt",
+   "why": "D214: only an enabled cloud shadow can degrade, and that is the stage's own state, not one item's."
+  },
+  "fit-cloud-backlog": {
+   "basis": "twice its slowest measured step (83 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": true,
+   "module": "jobs.fit.backlog",
+   "required": false,
+   "seconds": 180,
+   "status": "exempt",
+   "why": "D214: the same cloud-shadow degrade rule as fit, for the manual backlog batch."
+  },
+  "fit-edge-test": {
+   "basis": "twice its slowest measured step (23 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "jobs.fit.edge",
+   "required": true,
+   "seconds": 120,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "fit-profile-sync": {
+   "basis": "twice its slowest measured step (234 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "jobs.fit.profile_sync",
+   "required": true,
+   "seconds": 480,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "fit-review": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "jobs.review",
+   "required": false,
+   "seconds": 600,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "followup": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "inbox.followup_stage",
+   "required": false,
+   "seconds": 600,
+   "status": "helper",
+   "why": "Scopes (workspace and account) run through `isolate.run_items`; partial failure keeps the stage green, all-failed fails it."
+  },
+  "followup-schema-apply": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "inbox.followup_apply",
+   "required": false,
+   "seconds": 600,
+   "status": "exempt",
+   "why": "A one-time DDL apply: a failed statement or a failed read-back must fail the stage, and no item may be skipped, because a half-applied schema is not a result."
+  },
+  "followup-schema-check": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "inbox.followup_schema",
+   "required": false,
+   "seconds": 600,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "funnel": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "jobs.funnel",
+   "required": false,
+   "seconds": 600,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "granola": {
+   "basis": "twice its slowest measured step (27 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "interview.granola_bridge",
+   "required": true,
+   "seconds": 120,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "granola-auto": {
+   "basis": "twice its slowest measured step (98 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": true,
+   "module": "sources.interview.granola_auto",
+   "required": true,
+   "seconds": 210,
+   "status": "partial-red",
+   "why": "Each meeting that is left on Oracle with `failed` counts toward the stage's `failed`, and a stage-level stop (a Notion error, a deadline, a store failure) is a second path into the same count; one state machine, so moving it needs its own change (next ticket)."
+  },
+  "hermes": {
+   "basis": "twice its slowest measured step (3 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "hermes_requests",
+   "required": true,
+   "seconds": 120,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "hiring": {
+   "basis": "twice its slowest measured step (107 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "sources.pipeline.hiring",
+   "required": false,
+   "seconds": 240,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "hiring-outcomes": {
+   "basis": "twice its slowest measured step (8 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "hiring.outcomes",
+   "required": false,
+   "seconds": 120,
+   "status": "guarded",
+   "why": "Loops over its items; each loop without error handling is reviewed below."
+  },
+  "imessage-alerts": {
+   "basis": "twice its slowest measured step (59 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "imessage.stage",
+   "required": false,
+   "seconds": 120,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "imessage-comms": {
+   "basis": "twice its slowest measured step (46 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "imessage.comms_card",
+   "required": false,
+   "seconds": 120,
+   "status": "guarded",
+   "why": "Loops over its items; each loop without error handling is reviewed below."
+  },
+  "inbox-schema-apply": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "inbox.apply_schema",
+   "required": false,
+   "seconds": 600,
+   "status": "exempt",
+   "why": "A one-time DDL apply: a failed statement or a failed read-back must fail the stage, and no item may be skipped, because a half-applied schema is not a result."
+  },
+  "inbox-schema-check": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "inbox.schema",
+   "required": false,
+   "seconds": 600,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "interview": {
+   "basis": "twice its slowest measured step (1604 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": true,
+   "module": "sources.interview.interview_evidence",
+   "required": true,
+   "seconds": 1680,
+   "status": "partial-red",
+   "why": "Its `failed` adds unreadable threads, blocked pages and sweep failures together, which LIFE-690 turns into state-change alerts; moving it onto the helper before that would change what pages, so it waits for LIFE-690."
+  },
+  "interview-acceptance": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "interview.acceptance",
+   "required": false,
+   "seconds": 600,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "interview-probe": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "interview.stage",
+   "required": false,
+   "seconds": 600,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "interview-ui-probe": {
+   "basis": "twice its slowest measured step (296 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "interview.ui_probe",
+   "required": true,
+   "seconds": 300,
+   "status": "guarded",
+   "why": "Loops over its items with error handling inside; one failed item does not stop the others."
+  },
+  "jira-card": {
+   "basis": "twice its slowest measured step (70 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "jira.card",
+   "required": false,
+   "seconds": 150,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "jira-fill": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "jira.fill_defaults",
+   "required": false,
+   "seconds": 600,
+   "status": "guarded",
+   "why": "Loops over its items with error handling inside; one failed item does not stop the others."
+  },
+  "jira-probe": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "jira.snapshot",
+   "required": false,
+   "seconds": 600,
+   "status": "guarded",
+   "why": "Loops over its items with error handling inside; one failed item does not stop the others."
+  },
+  "jira-release": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "jira.release",
+   "required": false,
+   "seconds": 600,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "jira-rollover": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "jira.rollover",
+   "required": false,
+   "seconds": 600,
+   "status": "guarded",
+   "why": "Loops over its items with error handling inside; one failed item does not stop the others."
+  },
+  "jira-rollover-scheduled": {
+   "basis": "twice its slowest measured step (4 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "jira.rollover",
+   "required": false,
+   "seconds": 120,
+   "status": "guarded",
+   "why": "Loops over its items with error handling inside; one failed item does not stop the others."
+  },
+  "jira-rollover-watch": {
+   "basis": "twice its slowest measured step (53 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "jira.watch",
+   "required": false,
+   "seconds": 120,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "jira-snapshot": {
+   "basis": "twice its slowest measured step (29 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "jira.snapshot",
+   "required": false,
+   "seconds": 120,
+   "status": "guarded",
+   "why": "Loops over its items with error handling inside; one failed item does not stop the others."
+  },
+  "jira-stalled": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "jira.stalled",
+   "required": false,
+   "seconds": 600,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "job-page-outreach": {
+   "basis": "twice its slowest measured step (5 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": true,
+   "module": "sources.pipeline.job_page_outreach",
+   "required": false,
+   "seconds": 120,
+   "status": "helper",
+   "why": "Items run through `isolate.run_items`; partial failure keeps the stage green, all-failed or an unreadable list fails it."
+  },
+  "jobs-backlog": {
+   "basis": "no workflow runs this stage (manual or developer use): the table default",
+   "exits_1": true,
+   "module": "jobs.backlog",
+   "required": false,
+   "seconds": 600,
+   "status": "exempt",
+   "why": "One private report page: a failed write is the stage's own failure."
+  },
+  "linkedin-search": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "exits_1": false,
+   "module": "sources.discovery.linkedin_search",
+   "required": true,
+   "seconds": 180,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "mail-alerts": {
+   "basis": "twice its slowest measured step (60 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "physmail.stage",
+   "required": false,
+   "seconds": 120,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "mail-card": {
+   "basis": "twice its slowest measured step (12 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "physmail.card",
+   "required": false,
+   "seconds": 120,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "mail-filing": {
+   "basis": "twice its slowest measured step (3 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": true,
+   "module": "sources.cards.mail_filing",
+   "required": false,
+   "seconds": 120,
+   "status": "helper",
+   "why": "Items run through `isolate.run_items`; partial failure keeps the stage green, all-failed or an unreadable list fails it."
+  },
+  "manual-job": {
+   "basis": "twice its slowest measured step (57 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": true,
+   "module": "sources.pipeline.manual_job",
+   "required": true,
+   "seconds": 120,
+   "status": "exempt",
+   "why": "One job per run: its failure is the stage's failure."
+  },
+  "megibow": {
+   "basis": "twice its slowest measured step (318 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": true,
+   "module": "sources.cards.megibow",
+   "required": false,
+   "seconds": 660,
+   "status": "exempt",
+   "why": "One card: its failure is the stage's failure."
+  },
+  "network-audit": {
+   "basis": "no workflow runs this stage (manual or developer use): the table default",
+   "exits_1": false,
+   "module": "network.importer",
+   "required": false,
+   "seconds": 600,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "network-import": {
+   "basis": "no workflow runs this stage (manual or developer use): the table default",
+   "exits_1": false,
+   "module": "network.importer",
+   "required": false,
+   "seconds": 600,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "network-inspect": {
+   "basis": "no workflow runs this stage (manual or developer use): the table default",
+   "exits_1": false,
+   "module": "network.inspect",
+   "required": false,
+   "seconds": 600,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "network-layout": {
+   "basis": "no workflow runs this stage (manual or developer use): the table default",
+   "exits_1": false,
+   "module": "sources.network.ledger_layout",
+   "required": false,
+   "seconds": 600,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "network-match": {
+   "basis": "no workflow runs this stage (manual or developer use): the table default",
+   "exits_1": false,
+   "module": "sources.network.network_leads",
+   "required": false,
+   "seconds": 600,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "network-surface": {
+   "basis": "twice its slowest measured step (100 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "sources.network.network_surface",
+   "required": false,
+   "seconds": 210,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "newsletter-trace": {
+   "basis": "no workflow runs this stage (manual or developer use): the table default",
+   "exits_1": false,
+   "module": "sources.newsletters.cardtrace",
+   "required": false,
+   "seconds": 600,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "notion-sandbox-access": {
+   "basis": "twice its slowest measured step (1 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": true,
+   "module": "sources.proofs.notion_sandbox_access",
+   "required": true,
+   "seconds": 120,
+   "status": "exempt",
+   "why": "A one-shot proof of one sandbox page."
+  },
+  "notion-sandbox-outreach-proof": {
+   "basis": "twice its slowest measured step (23 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": true,
+   "module": "sources.proofs.notion_sandbox_outreach_proof",
+   "required": true,
+   "seconds": 120,
+   "status": "exempt",
+   "why": "A one-shot proof of one sandbox page."
+  },
+  "oracle-card": {
+   "basis": "twice its slowest measured step (82 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "sources.cards.oracle_card",
+   "required": false,
+   "seconds": 180,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "outlook-auth": {
+   "basis": "twice its slowest measured step (218 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "run (custom)",
+   "required": true,
+   "seconds": 450,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "outlook-probe": {
+   "basis": "twice its slowest measured step (2 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "outlook.stage",
+   "required": true,
+   "seconds": 120,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "probe": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "probe",
+   "required": false,
+   "seconds": 600,
+   "status": "guarded",
+   "why": "Loops over its items with error handling inside; one failed item does not stop the others."
+  },
+  "publish": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "exits_1": true,
+   "module": "jobs.publish",
+   "required": true,
+   "seconds": 720,
+   "status": "exempt",
+   "why": "D212: a page that does not read back fails the stage on purpose: a write that cannot be verified is not a write."
+  },
+  "publish-fresh": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "exits_1": false,
+   "module": "jobs.publish",
+   "required": true,
+   "seconds": 300,
+   "status": "exempt",
+   "why": "D212: the same stage as publish, run again later in the tick."
+  },
+  "purge": {
+   "basis": "twice its slowest measured step (240 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "jobs.retention",
+   "required": false,
+   "seconds": 480,
+   "status": "guarded",
+   "why": "Loops over its items with error handling inside; one failed item does not stop the others."
+  },
+  "recruiter-outreach": {
+   "basis": "twice its slowest measured step (87 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "recruiters.outreach_card",
+   "required": false,
+   "seconds": 180,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "recruiters": {
+   "basis": "twice its slowest measured step (605 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "recruiters.stage",
+   "required": true,
+   "seconds": 1230,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "resolve-dice": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "exits_1": false,
+   "module": "jobs.resolve.aggregators.dice",
+   "required": true,
+   "seconds": 180,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "resolve-jobright": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "exits_1": false,
+   "module": "run (custom)",
+   "required": true,
+   "seconds": 600,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "resolve-linkedin": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "exits_1": false,
+   "module": "run (custom)",
+   "required": true,
+   "seconds": 420,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "safety-fit-capture": {
+   "basis": "twice its slowest measured step (10 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "jobs.safety",
+   "required": true,
+   "seconds": 120,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "safety-fit-golden": {
+   "basis": "twice its slowest measured step (12 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "jobs.safety",
+   "required": false,
+   "seconds": 120,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "safety-sql-smoke": {
+   "basis": "twice its slowest measured step (19 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "jobs.safety",
+   "required": false,
+   "seconds": 120,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "scale-up-boards": {
+   "basis": "no workflow runs this stage (manual or developer use): the table default",
+   "exits_1": false,
+   "module": "sources.web.boardstate",
+   "required": false,
+   "seconds": 600,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "scale-up-exclusion-review": {
+   "basis": "no workflow runs this stage (manual or developer use): the table default",
+   "exits_1": true,
+   "module": "jobs.exclusions",
+   "required": false,
+   "seconds": 600,
+   "status": "exempt",
+   "why": "One private report page: a failed write is the stage's own failure."
+  },
+  "scale-up-exclusions": {
+   "basis": "no workflow runs this stage (manual or developer use): the table default",
+   "exits_1": false,
+   "module": "jobs.exclusions",
+   "required": false,
+   "seconds": 600,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "scale-up-holds": {
+   "basis": "no workflow runs this stage (manual or developer use): the table default",
+   "exits_1": false,
+   "module": "jobs.holds",
+   "required": false,
+   "seconds": 600,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "scale-up-links": {
+   "basis": "no workflow runs this stage (manual or developer use): the table default",
+   "exits_1": false,
+   "module": "jobs.linkcheck",
+   "required": false,
+   "seconds": 600,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "scale-up-register": {
+   "basis": "no workflow runs this stage (manual or developer use): the table default",
+   "exits_1": true,
+   "module": "sources.discovery.scale_up_register",
+   "required": false,
+   "seconds": 600,
+   "status": "exempt",
+   "why": "One private report page: a failed write is the stage's own failure."
+  },
+  "sponsors": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "exits_1": false,
+   "module": "sources.discovery.sponsor_register",
+   "required": false,
+   "seconds": 120,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "sync-seen": {
+   "basis": "twice its slowest measured step (86 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "exits_1": false,
+   "module": "jobs.repost",
+   "required": false,
+   "seconds": 180,
+   "status": "guarded",
+   "why": "Loops over its items with error handling inside; one failed item does not stop the others."
+  },
+  "web": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "exits_1": false,
+   "module": "sources.web.run",
+   "required": true,
+   "seconds": 180,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "web-scale-up": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "exits_1": false,
+   "module": "sources.web.run",
+   "required": false,
+   "seconds": 300,
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+  },
+  "web-titlewatch": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "exits_1": false,
+   "module": "sources.web.titlewatch",
+   "required": false,
+   "seconds": 240,
+   "status": "guarded",
+   "why": "Loops over its items with error handling inside; one failed item does not stop the others."
+  }
+ }
+}

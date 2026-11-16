@@ -128,13 +128,15 @@ Every call that leaves the process carries an explicit timeout. `tests/contracts
 
 ## Stage budgets
 
-`lifeos/platform/stage_budgets.json` has one row for each of the 97 stages in `lifeos/run.py`. `lifeos.run` arms an alarm of that many seconds around the stage. Rules:
+`lifeos/platform/stage_budgets.json` has one row for each of the 110 stages in `lifeos/run.py`. `lifeos.run` arms an alarm of that many seconds around the stage. Rules:
 
 * A stage within its budget behaves exactly as before.
 * A stage over it stops, prints the fixed code `STAGE_BUDGET_EXCEEDED` with the two numbers (counts only), and **a required stage exits 1, an optional stage exits 0** so the run passes and the code stays visible in the stage's counts line.
 * **Required** means the stage has a workflow step without `continue-on-error`; in the Jobs tick (`lifeos/jobs/tick.py`) every stage except the bulk drain stages. The Jobs tick keeps its own alarm and its fixed code `STAGE_TIMEOUT_<n>S`; its optional (bulk) stages now time out without failing the tick, a required stage still fails it.
 * A budget is the stage's slowest measured step times two, rounded up to 30 s, at least 120 s, and never above its job's limit minus two minutes, so the stage records its code before GitHub ends the whole job.
 * A stage no workflow runs gets the table default of 600 seconds.
+
+The table below is rendered from `lifeos/platform/stages.json` (LIFE-768): edit a stage's budget there, then run `python tools/regen.py`.
 
 | Stage | Budget (s) | Required | Basis |
 | --- | ---: | --- | --- |
