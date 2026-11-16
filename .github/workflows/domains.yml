@@ -181,10 +181,6 @@ jobs:
     if: ${{ !cancelled() && needs.gate.result != 'failure' && (needs.gate.outputs.due_jira == 'true' || (github.event_name == 'workflow_dispatch' && inputs.jira != 'none')) }}   # D212: an empty input (a workflow_run after a manual or cancelled hourly run) is not a request
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    env:
-      JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
-      JIRA_BOARDS: ${{ secrets.JIRA_BOARDS }}
-      JIRA_GTV_EPIC: ${{ secrets.JIRA_GTV_EPIC }}
     steps:
       - name: Checkout the exact commit (own git fetch; the token is passed once and never stored)
         run: |
@@ -233,6 +229,15 @@ jobs:
           oauth-client-id: ${{ steps.bws_jira.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ steps.bws_jira.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
+      - id: settings
+        continue-on-error: true
+        name: V7 settings page for the Jira base URL, boards and GTV epic (LIFE-699; names and counts only; an unreadable page changes nothing). Only this step holds the Notion token; the Jira steps get the values through the job environment
+        env:
+          NOTION_JIRA_TOKEN: ${{ steps.bws_jira.outputs.NOTION_JIRA_TOKEN }}
+          JIRA_BASE_URL: ""
+          JIRA_BOARDS: ""
+          JIRA_GTV_EPIC: ""
+        run: python3 -m lifeos.platform.settings
       - id: jrollauto
         continue-on-error: true
         name: Jira sprint rollover (scheduled; waits for the sprint to end and Monday 6 AM; live only when V7_LIVE)
@@ -286,7 +291,7 @@ jobs:
         env:
           JIRA_CARD_BLOCK_ID: ""
           JIRA_CARD_PROJECTS: ""   # LIFE-703: declared empty so the V7 settings page can fill it; the code's own default applies when both are empty
-          JIRA_SITE_URL: ${{ secrets.JIRA_SITE_URL }}
+          JIRA_SITE_URL: ""
           JIRA_GTV_CONTEXT_URL: ""   # LIFE-703: declared empty so the V7 settings page can fill it; the code's own default applies when both are empty
           JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
           JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
@@ -308,7 +313,7 @@ jobs:
         name: V3 This week for Jim and Matt (LIFE-671; read-only from Jira; the callouts on Jim & Matt V3 are written only when live; counts only)
         if: ${{ inputs.jira == 'card' || inputs.jira == 'report' || needs.gate.outputs.due_jira == 'true' }}
         env:
-          JIRA_SITE_URL: ${{ secrets.JIRA_SITE_URL }}
+          JIRA_SITE_URL: ""
           JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
           JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_jira.outputs.NOTION_JIRA_TOKEN }}
@@ -336,7 +341,7 @@ jobs:
         name: V3 Knowledge center (LIFE-673; the callouts on Jim & Matt V3 are written only when live; counts only)
         if: ${{ inputs.jira == 'card' || inputs.jira == 'report' || needs.gate.outputs.due_jira == 'true' }}
         env:
-          JIRA_SITE_URL: ${{ secrets.JIRA_SITE_URL }}
+          JIRA_SITE_URL: ""
           JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
           JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_jira.outputs.NOTION_JIRA_TOKEN }}
@@ -386,7 +391,7 @@ jobs:
       # LIFE-730 (temporary): the five V3 accountability stages (acweek, acgoals, acreview, acart, acchange; LIFE-671 and LIFE-673) still warn above but no longer end this job red, so they do not
       # page the phone while they are being stabilised. Revert this step to `contains(steps.*.outcome, 'failure')` when LIFE-671 and LIFE-673 are stable; the contract test names the exempt ids.
       - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
-        if: ${{ always() && (steps.bws_jira.outcome == 'failure' || steps.jrollauto.outcome == 'failure' || steps.jrollwatch.outcome == 'failure' || steps.jsnap.outcome == 'failure' || steps.jcard.outcome == 'failure' || steps.jrelease.outcome == 'failure' || steps.jstalled.outcome == 'failure' || steps.jprobe.outcome == 'failure' || steps.jroll.outcome == 'failure') }}
+        if: ${{ always() && (steps.bws_jira.outcome == 'failure' || steps.settings.outcome == 'failure' || steps.jrollauto.outcome == 'failure' || steps.jrollwatch.outcome == 'failure' || steps.jsnap.outcome == 'failure' || steps.jcard.outcome == 'failure' || steps.jrelease.outcome == 'failure' || steps.jstalled.outcome == 'failure' || steps.jprobe.outcome == 'failure' || steps.jroll.outcome == 'failure') }}
         run: echo "::error title=jira::a stage step failed in the jira job (see the step marked failed above)"; exit 1
 
 
@@ -460,7 +465,7 @@ jobs:
         env:
           NOTION_JIRA_TOKEN: ${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}
           OUTLOOK_CLIENT_ID: ${{ steps.bws_outlook.outputs.OUTLOOK_CLIENT_ID }}
-          GCAL_CALENDAR_ID: ${{ secrets.GCAL_CALENDAR_ID }}
+          GCAL_CALENDAR_ID: ""
           CALENDAR_ALLOW_MASS_DELETE: ${{ inputs.allow_mass_delete && 'true' || '' }}
           NTFY_TOPIC: ${{ steps.bws_outlook.outputs.NTFY_TOPIC }}
           GCAL_SERVICE_ACCOUNT_JSON: ${{ steps.bws_outlook.outputs.GCAL_SERVICE_ACCOUNT_JSON }}
@@ -542,7 +547,7 @@ jobs:
         name: Bills Paid processor (before the snapshot; writes Notion only when live; counts only)
         if: ${{ github.event_name == 'workflow_run' || inputs.all || inputs.bills_paid }}
         env:
-          NOTION_BILLS_DATA_SOURCE_ID: ${{ secrets.NOTION_BILLS_DATA_SOURCE_ID }}
+          NOTION_BILLS_DATA_SOURCE_ID: ""
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_PASSWORD }}
           LIFEOS_ACQ_DB_USER: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_USER }}
@@ -560,7 +565,7 @@ jobs:
         continue-on-error: true
         name: Bills snapshot (read-only; private snapshot saved only when live)
         env:
-          NOTION_BILLS_DATA_SOURCE_ID: ${{ secrets.NOTION_BILLS_DATA_SOURCE_ID }}
+          NOTION_BILLS_DATA_SOURCE_ID: ""
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_PASSWORD }}
           LIFEOS_ACQ_DB_USER: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_USER }}
@@ -582,7 +587,7 @@ jobs:
           BILLS_CARD_BLOCK_ID: ""
           CALENDAR_CARD_BLOCK_ID: ""
           JIRA_CARD_BLOCK_ID: ""
-          HIRING_CARD_BLOCK_ID: ${{ secrets.HIRING_CARD_BLOCK_ID }}
+          HIRING_CARD_BLOCK_ID: ""
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_PASSWORD }}
           LIFEOS_ACQ_DB_USER: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_USER }}
@@ -661,7 +666,8 @@ jobs:
         continue-on-error: true
         name: Agenda snapshot (read-only Google Calendar; private save only when live)
         env:
-          GCAL_CALENDAR_ID: ${{ secrets.GCAL_CALENDAR_ID }}
+          NOTION_JIRA_TOKEN: ${{ steps.bws_agenda.outputs.NOTION_JIRA_TOKEN }}
+          GCAL_CALENDAR_ID: ""
           GCAL_SERVICE_ACCOUNT_JSON: ${{ steps.bws_agenda.outputs.GCAL_SERVICE_ACCOUNT_JSON }}
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_DB_PASSWORD }}
@@ -681,7 +687,7 @@ jobs:
         env:
           CALENDAR_CARD_BLOCK_ID: ""
           JIRA_CARD_BLOCK_ID: ""
-          HIRING_CARD_BLOCK_ID: ${{ secrets.HIRING_CARD_BLOCK_ID }}
+          HIRING_CARD_BLOCK_ID: ""
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_DB_PASSWORD }}
           LIFEOS_ACQ_DB_USER: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_DB_USER }}
@@ -763,7 +769,7 @@ jobs:
           BILLS_CARD_BLOCK_ID: ""
           CALENDAR_CARD_BLOCK_ID: ""
           JIRA_CARD_BLOCK_ID: ""
-          HIRING_CARD_BLOCK_ID: ${{ secrets.HIRING_CARD_BLOCK_ID }}
+          HIRING_CARD_BLOCK_ID: ""
           AMAZON_SYNC_OUTCOME: ${{ steps.amazon.outcome }}
           GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_amazon.outputs.GMAIL_OAUTH_CLIENT_ID }}
           GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_amazon.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
@@ -943,7 +949,7 @@ jobs:
           BILLS_CARD_BLOCK_ID: ""
           CALENDAR_CARD_BLOCK_ID: ""
           JIRA_CARD_BLOCK_ID: ""
-          HIRING_CARD_BLOCK_ID: ${{ secrets.HIRING_CARD_BLOCK_ID }}
+          HIRING_CARD_BLOCK_ID: ""
           MAIL_SYNC_OUTCOME: ${{ steps.mail.outcome }}
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_DB_PASSWORD }}
@@ -1026,14 +1032,14 @@ jobs:
         env:
           NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
           HIRING_PIPELINE_PAGE_ID: ""
-          HIRING_CARD_BLOCK_ID: ${{ secrets.HIRING_CARD_BLOCK_ID }}
+          HIRING_CARD_BLOCK_ID: ""
           HIRING_OUTCOME_STALE_HOURS: ${{ inputs.hiring_outcome_stale_hours }}
           HIRING_STATUS_BLOCK_ID: ""
           HIRING_TABLE_BLOCK_ID: ""
-          V7_CLOSE_BASE_URL: ${{ secrets.V7_CLOSE_BASE_URL }}          # D198 S3: the private Close origin; unset, the Notes cell has no Close link
+          V7_CLOSE_BASE_URL: ""          # D198 S3: the private Close origin; unset, the Notes cell has no Close link
           HIRING_AUTO_CLOSE: ""              # lifeos/platform/switches.json decides unless this repository variable says "off" (Jim's kill switch) or "on"
           JIRA_CARD_BLOCK_ID: ""
-          GCAL_CALENDAR_ID: ${{ secrets.GCAL_CALENDAR_ID }}
+          GCAL_CALENDAR_ID: ""
           GCAL_SERVICE_ACCOUNT_JSON: ${{ steps.bws_hiring.outputs.GCAL_SERVICE_ACCOUNT_JSON }}
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_hiring.outputs.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_hiring.outputs.LIFEOS_ACQ_DB_PASSWORD }}
@@ -1119,10 +1125,10 @@ jobs:
         continue-on-error: true
         name: MegIBOW (Gmail, Outlook and calendars to the Notion table; counts only; writes only when live; a failed source is DEGRADED)
         env:
-          LIFEOS_NOTION_IDS: ${{ secrets.LIFEOS_NOTION_IDS }}
+          LIFEOS_NOTION_IDS: ""
           GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_megibow.outputs.GMAIL_OAUTH_CLIENT_ID }}
           OUTLOOK_CLIENT_ID: ${{ steps.bws_megibow.outputs.OUTLOOK_CLIENT_ID }}
-          GCAL_CALENDAR_ID: ${{ secrets.GCAL_CALENDAR_ID }}
+          GCAL_CALENDAR_ID: ""
           MEGIBOW_BLOCK_ID: ""
           MEGIBOW_REVIEW_DB_ID: ""   # LIFE-703: declared empty so the V7 settings page can fill it; the code's own default applies when both are empty
           MEGIBOW_EXCLUDED_DOMAINS: ""   # LIFE-703: declared empty so the V7 settings page can fill it; the code's own default applies when both are empty
@@ -1201,7 +1207,7 @@ jobs:
           AMAZON_CARD_BLOCK_ID: ""
           ATTENTION_CARD_BLOCK_ID: ""
           MAIL_ALERTS_CARD_BLOCK_ID: ""
-          HIRING_CARD_BLOCK_ID: ${{ secrets.HIRING_CARD_BLOCK_ID }}
+          HIRING_CARD_BLOCK_ID: ""
           NOTION_JIRA_TOKEN: ${{ steps.bws_dcc.outputs.NOTION_JIRA_TOKEN }}
         run: python -m lifeos.run dcc-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - name: Daily Command Center warning (does not fail the Jobs run)
@@ -1305,7 +1311,7 @@ jobs:
           RECRUITER_OUTREACH: ""
           NOTION_RECRUITERS_DATA_SOURCE_ID: ""
           HIRING_TABLE_BLOCK_ID: ""
-          V7_CLOSE_BASE_URL: ${{ secrets.V7_CLOSE_BASE_URL }}          # the private Close origin: each row gets its one action link (Close, or Record reply or referral); unset, no link
+          V7_CLOSE_BASE_URL: ""          # the private Close origin: each row gets its one action link (Close, or Record reply or referral); unset, no link
           NOTION_RECRUITERS_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_RECRUITERS_TOKEN }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_JIRA_TOKEN }}
         run: python -m lifeos.run recruiter-outreach --limit 0 $([ "$LIVE" = "true" ] && echo --live)
@@ -1317,7 +1323,7 @@ jobs:
           NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
           NOTION_RECRUITERS_DATA_SOURCE_ID: ""
           JOB_PAGE_OUTREACH: ""
-          V7_CLOSE_BASE_URL: ${{ secrets.V7_CLOSE_BASE_URL }}          # the private Close origin: each open conversation gets a "Record reply or referral" link; unset, no link
+          V7_CLOSE_BASE_URL: ""          # the private Close origin: each open conversation gets a "Record reply or referral" link; unset, no link
           NOTION_API_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_API_TOKEN }}
           NOTION_RECRUITERS_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_RECRUITERS_TOKEN }}
         run: python -m lifeos.run job-page-outreach --limit 0 $([ "$LIVE" = "true" ] && echo --live)
@@ -1488,7 +1494,7 @@ jobs:
         continue-on-error: true
         name: Interview OS (LIFE-88; V7 is the only Interview OS writer - scheduling requests in Gmail and Outlook for jobs Jim applied to, accepted Calendar rounds, and the refresh of machine pages from the Ledger and each page's own identity; a dry run unless INTERVIEW_OS_WRITER is v7)
         env:
-          LIFEOS_NOTION_IDS: ${{ secrets.LIFEOS_NOTION_IDS }}
+          LIFEOS_NOTION_IDS: ""
           GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_interview.outputs.GMAIL_OAUTH_CLIENT_ID }}
           OUTLOOK_CLIENT_ID: ${{ steps.bws_interview.outputs.OUTLOOK_CLIENT_ID }}
           GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_interview.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
@@ -1506,7 +1512,7 @@ jobs:
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_interview.outputs.LIFEOS_ACQ_SSH_USER }}
           NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
           HIRING_PIPELINE_PAGE_ID: ""
-          GCAL_CALENDAR_ID: ${{ secrets.GCAL_CALENDAR_ID }}
+          GCAL_CALENDAR_ID: ""
           GCAL_SERVICE_ACCOUNT_JSON: ${{ steps.bws_interview.outputs.GCAL_SERVICE_ACCOUNT_JSON }}
           NOTION_INTERVIEW_TOKEN: ${{ steps.bws_interview.outputs.NOTION_INTERVIEW_TOKEN }}
           NOTION_API_TOKEN: ${{ steps.bws_interview.outputs.NOTION_API_TOKEN }}
@@ -1519,7 +1525,7 @@ jobs:
           INTERVIEW_JOURNEY_PROOF: ${{ inputs.interview_journey_proof }}
           INTERVIEW_CONVERT: ${{ inputs.interview_convert }}   # LIFE-703: declared empty so the V7 settings page can fill it; the code's own default applies when both are empty
           INTERVIEW_CONVERT_CAP: ""   # LIFE-703: declared empty so the V7 settings page can fill it; the code's own default applies when both are empty
-          V7_CLOSE_BASE_URL: ${{ secrets.V7_CLOSE_BASE_URL }}          # E05: the private Close origin: each opportunity page's primary action gets its Mark Complete link; unset, it says unavailable
+          V7_CLOSE_BASE_URL: ""          # E05: the private Close origin: each opportunity page's primary action gets its Mark Complete link; unset, it says unavailable
         run: python -m lifeos.run interview --limit 20 $([ "$LIVE" = "true" ] && echo --live)
       - name: Interview OS warning (does not fail the Jobs run)
         if: ${{ always() && steps.interview.outcome == 'failure' }}
@@ -1619,7 +1625,7 @@ jobs:
           BILLS_CARD_BLOCK_ID: ""
           CALENDAR_CARD_BLOCK_ID: ""
           JIRA_CARD_BLOCK_ID: ""
-          HIRING_CARD_BLOCK_ID: ${{ secrets.HIRING_CARD_BLOCK_ID }}
+          HIRING_CARD_BLOCK_ID: ""
         run: python -m lifeos.run imessage-comms --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - name: Communications card warning (does not fail the run)
         if: ${{ always() && steps.comms.outcome == 'failure' }}
@@ -1651,7 +1657,7 @@ jobs:
           BILLS_CARD_BLOCK_ID: ""
           CALENDAR_CARD_BLOCK_ID: ""
           JIRA_CARD_BLOCK_ID: ""
-          HIRING_CARD_BLOCK_ID: ${{ secrets.HIRING_CARD_BLOCK_ID }}
+          HIRING_CARD_BLOCK_ID: ""
         run: python -m lifeos.run oracle-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - name: Oracle Cloud card warning (does not fail the run)
         if: ${{ always() && steps.oracle.outcome == 'failure' }}
@@ -1746,7 +1752,7 @@ jobs:
         name: Granola auto (every meeting not yet carried; counts and fixed codes only; writes only when live and GRANOLA_AUTO is on)
         env:
           NOTION_JIRA_TOKEN: ${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}
-          LIFEOS_NOTION_IDS: ${{ secrets.LIFEOS_NOTION_IDS }}
+          LIFEOS_NOTION_IDS: ""
           NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""   # LIFE-360 (Jim approved Nov 7, 4:17 PM CT): the readers take opportunities from Ledger rows first (read-only, Interview token)
           HIRING_PIPELINE_PAGE_ID: ""
           LIFEOS_ACQ_SSH_JUMP_HOST: ${{ steps.bws_granola.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
