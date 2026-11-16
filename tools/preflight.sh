@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# LIFE-760: the ONE gate to pass before `git push` and `sh tools/automerge.sh`. It runs what CI runs for this branch: the tests the change can affect (tools/test.sh: tests.testindex select) plus the repo-wide contract tests CI always runs
-# (docstyle, privacy, config registry, settings, workflows, bws-plain, the policy manifest hash; tests/testindex.py REPO_WIDE and tests/contracts). One short PASS or FAIL line with seconds.
+# LIFE-760: the ONE gate to pass before `git push` and `sh tools/automerge.sh`. LIFE-763: the default is the QUICK gate, a few seconds to about a minute in parallel processes: every contract test (docstyle, privacy, config registry, settings, workflows, net size,
+# ruff advisory, the policy manifest hash), the repo-wide scanners (tests/testindex.py REPO_WIDE) and the tests that name or mirror each changed file (tests/quickselect.py). It never runs the whole suite: CI does (Jim, Nov 16 2026). One short PASS or FAIL line with seconds.
 #   sh tools/preflight.sh        commit first (CI sees commits only); refuses on a dirty tree
-#   sh tools/preflight.sh --all  everything, like a merge to main
+#   sh tools/preflight.sh --all  everything in parallel shards, like a merge to main (only when you want it; CI runs it anyway)
 # LIFE-765: before testing it runs tools/regen.py --commit (a new stage's registry rows, one commit of generated files only), so a new stage is its code and its workflow step.
 # On PASS it writes the marker <git dir>/lifeos-preflight-ok holding the HEAD sha; tools/automerge.sh refuses to arm auto-merge unless the marker equals the current HEAD (any new commit needs a new preflight).
 set -u
@@ -26,7 +26,7 @@ fi
 git fetch -q origin main 2>/dev/null || echo "preflight: note: could not refresh origin/main; selecting against the last fetched copy"
 start="$(date +%s)"
 out="$(mktemp)"; trap 'rm -f "$out"' EXIT
-bash "$ROOT/tools/test.sh" "$@" > "$out" 2>&1; status=$?
+if [ "${1:-}" = --all ]; then bash "$ROOT/tools/test.sh" --all > "$out" 2>&1; status=$?; else bash "$ROOT/tools/test.sh" --quick > "$out" 2>&1; status=$?; fi
 grep -E '^test\.sh: (failing|[0-9]+ tests ran|note|no usable)' "$out"
 seconds=$(( $(date +%s) - start ))
 sha="$(git rev-parse HEAD)"
