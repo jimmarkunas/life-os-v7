@@ -157,5 +157,25 @@ class NothingPlainIsMasked(unittest.TestCase):
         self.assertTrue(all(re.fullmatch(r"[0-9a-f-]{36}", v) for v in plain.IDS.values()))
 
 
+class PendingIdentifier(unittest.TestCase):
+    NAME = "FOLLOWUP_GCAL_BYTALOS_CALENDAR_ID"
+
+    def test_the_personal_calendar_id_is_the_same_kind_of_pending_identifier(self):
+        self.assertIn("FOLLOWUP_GCAL_PERSONAL_CALENDAR_ID", plain.PENDING)
+        self.assertEqual(run("FOLLOWUP_GCAL_PERSONAL_CALENDAR_ID", {})[0], {"FOLLOWUP_GCAL_PERSONAL_CALENDAR_ID": ""})
+
+    def test_a_pending_identifier_is_allowed_but_not_asked_for_and_falls_back_to_empty(self):
+        self.assertIn(self.NAME, plain.PENDING)
+        self.assertNotIn(self.NAME, plain.IDS)                                               # no Bitwarden item yet
+        exports, report, failures = run(self.NAME, {})
+        self.assertEqual((exports, failures), ({self.NAME: ""}, []))
+        self.assertEqual(report[self.NAME], "NOT_RETURNED")
+
+    def test_the_identifier_is_validated_and_an_unreadable_store_still_never_fails_the_job(self):
+        self.assertEqual(run(self.NAME, {self.NAME: "cal@example.com"})[0][self.NAME], "cal@example.com")
+        self.assertEqual(run(self.NAME, {self.NAME: "two words"})[1][self.NAME], "REFUSED_USED_DEFAULT")
+        self.assertEqual(run(self.NAME, None)[2], [])
+
+
 if __name__ == "__main__":
     unittest.main()

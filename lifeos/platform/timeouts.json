@@ -180,6 +180,14 @@
    "slowest_seconds": 678,
    "target": 30
   },
+  "domains.yml::followup": {
+   "basis": "not measured: no completed run in the last 100; keeps its current value",
+   "current": 15,
+   "median_seconds": null,
+   "runs_measured": 0,
+   "slowest_seconds": null,
+   "target": 15
+  },
   "domains.yml::jira": {
    "basis": "twice the slowest run (117 s) rounds to 15 min, not below the current 15: unchanged",
    "current": 15,
