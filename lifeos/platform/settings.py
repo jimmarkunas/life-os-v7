@@ -14,6 +14,7 @@ ADDRESS = re.compile(r"^[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA
 ADDRESS_SUFFIXES = ("_BLOCK_ID", "_PAGE_ID", "_DATA_SOURCE_ID", "_DB_ID")
 NOTION_IDS, NOTION_PREFIX = "LIFEOS_NOTION_IDS", "LIFEOS_NOTION_"           # notion_ids.py: one id per name, as LIFEOS_NOTION_<NAME> or inside the LIFEOS_NOTION_IDS map
 ADDRESS_HEADER = "# notion addresses"
+SWITCH_HEADER = "# switches and lists"
 SNAPSHOT_KEY = "settings:last-accepted"                                  # one row in the existing v7_private_reports table (stored_pages.STORE); keys there are prefixed
 TOKENS = ("NOTION_JIRA_TOKEN", "NOTION_API_TOKEN")
 
@@ -31,6 +32,11 @@ MOVABLE = frozenset({
     "INTERVIEW_CONVERT_CAP", "PHYSICAL_MAIL_EXPECT", "MEGIBOW_EXCLUDED_DOMAINS", "JIRA_CARD_PROJECTS", "JIRA_GTV_CONTEXT_URL", "GATE_MIN_GAP_MINUTES",
     "V7_CLOUD_FIT_BACKLOG_PAGE",
 })
+# LIFE-699 phase 7: non-address settings a production run may copy onto the page from the step's environment (never a credential; a value with a line break is skipped).
+SEEDABLE = frozenset({
+    "BUZZ_STAGE_CHANNEL", "GCAL_CALENDAR_ID", "INTERVIEW_ACCEPTANCE_JSON", "INTERVIEW_ACCEPTANCE_NEGATIVE_JSON", "JIRA_BASE_URL", "JIRA_BOARDS", "JIRA_GTV_EPIC",
+    "JIRA_SITE_URL", "V7_CLOSE_BASE_URL", "V7_CLOUD_FIT_PROFILE_REF",
+})
 # Never from Notion: the production write switch, the alarm, the SSH route and model spend (LIFE-699), and every credential.
 SAFETY = frozenset({
     "V7_LIVE", "ALERTS_ENABLED", "ALERTS_MUTED_UNTIL", "ALERT_SETTINGS", "V7_STORE_JUMP_HOST", "V7_STORE_JUMP_KNOWN_HOSTS", "V7_CLOUD_FIT", "V7_CLOUD_FIT_SCHEDULED",
@@ -47,7 +53,8 @@ def movable(name):
 
 
 def _bare(value):
-    return value.strip().replace("collection://", "").replace("-", "").lower()
+    from lifeos.platform.report_region import clean_id                     # noqa: PLC0415 - a copied Notion link counts as its block id
+    return clean_id(value).strip().replace("collection://", "").replace("-", "").lower()
 
 
 def _plain(block):
@@ -127,21 +134,27 @@ def wanted(environ, found, invalid=()):
         names |= {NOTION_PREFIX + k for k in json.loads(environ.get(NOTION_IDS) or "{}") if str(k).replace("_", "").isalnum() and str(k).isupper()}
     except (ValueError, AttributeError, TypeError):
         pass
+    from lifeos.platform.report_region import clean_id                     # noqa: PLC0415 - a copied Notion link is written as its bare block id
     out = []
     for name in sorted(names - set(found) - set(invalid)):
-        value = held(environ, name)
+        value = clean_id(held(environ, name))
         if value and ADDRESS.match(value.replace("collection://", "")):
             out.append(f"{name} {value.replace('collection://', '')}")
     return out
 
 
-def seed(client, lines):
-    """Append address lines to the "# Notion addresses" code block, one per name (the first line for a name wins), then read it back. -> names written."""
+def wanted_settings(environ, found):
+    """The SEEDABLE `NAME value` lines the environment holds and the page lacks (one line each; never a credential)."""
+    return [f"{name} {value}" for name in sorted(SEEDABLE - set(found)) if (value := (environ.get(name) or "").strip()) and "\n" not in value and "\r" not in value]
+
+
+def seed(client, lines, header=ADDRESS_HEADER):
+    """Append lines to the code block that starts with `header` ("# Notion addresses" by default), one per name (the first line for a name wins), then read it back. -> names written."""
     if not lines:
         return []
     from lifeos.platform.notion_client import rich_text                    # noqa: PLC0415
     from urllib.parse import quote                                         # noqa: PLC0415
-    blocks = [(b, t) for b, t in _blocks(client) if t.strip().lower().startswith(ADDRESS_HEADER)]
+    blocks = [(b, t) for b, t in _blocks(client) if t.strip().lower().startswith(header)]
     if len(blocks) != 1:
         raise SettingsError("SETTINGS_SEED_TARGET_MISSING")
     block, text = blocks[0]
@@ -152,7 +165,7 @@ def seed(client, lines):
     body = text.rstrip("\n") + "\n" + "\n".join(new)
     language = (block.get("code") or {}).get("language") or "plain text"
     client.call_once("PATCH", f"/blocks/{quote(block['id'], safe='')}", {"code": {"rich_text": rich_text(body), "language": language}})
-    after = {m.group(1) for b, t in _blocks(client) if t.strip().lower().startswith(ADDRESS_HEADER) for m in (LINE.match(x.strip()) for x in t.splitlines()) if m}
+    after = {m.group(1) for b, t in _blocks(client) if t.strip().lower().startswith(header) for m in (LINE.match(x.strip()) for x in t.splitlines()) if m}
     names = [x.split(" ", 1)[0] for x in new]
     if not set(names) <= after:
         raise SettingsError("SETTINGS_SEED_VERIFY_FAILED")
@@ -164,7 +177,7 @@ def _fill(environ, values, out):
     out.setdefault("matched_names", [])                                    # LIFE-703: the NAMES whose GitHub value equalled the page (never a value), for a per-name 24 hour match list
     for name, value in sorted(values.items()):
         have = held(environ, name)
-        if not have and name not in environ:                              # a step that never declares a name never receives it
+        if not have and name not in environ and not (name.startswith(NOTION_PREFIX) and NOTION_IDS in environ):      # a step that never declares a name never receives it (a step that declares the LIFEOS_NOTION_IDS map receives its names, LIFE-699)
             out["undeclared"] = out.get("undeclared", 0) + 1
         elif not have:
             environ[name] = value
@@ -257,7 +270,7 @@ def apply(environ=os.environ, client=None, copy=None, connect=None):
             out["remember_status"] = str(error) if re.fullmatch(r"[A-Z0-9_]{3,60}", str(error)) else type(error).__name__
     if copy:
         try:
-            out["seeded"] = seed(client, wanted(environ, found, counts["invalid"]))
+            out["seeded"] = seed(client, wanted(environ, found, counts["invalid"])) + seed(client, wanted_settings(environ, found), SWITCH_HEADER)
         except Exception as error:                                         # noqa: BLE001 - copying is best effort; the next run tries again
             out["seed_status"] = str(error) if re.fullmatch(r"[A-Z0-9_]{3,60}", str(error)) else type(error).__name__
     return out
@@ -275,7 +288,7 @@ def main(argv=None, environ=None, client=None):
     environ = os.environ if environ is None else environ
     outputs = [args[i + 1] for i, a in enumerate(args) if a == "--output" and i + 1 < len(args)]
     env = dict(environ)
-    counts = apply(env, client=client, copy=False)
+    counts = apply(env, client=client)                                     # LIFE-699: a production run seeds here too (the branches job declares WEEKLY_REVIEW_PAGE_ID); tests pass a client, which never copies
 
     def writable(name, value):
         return movable(name) and name not in SAFETY and isinstance(value, str) and "\n" not in value and "\r" not in value
