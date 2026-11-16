@@ -108,8 +108,11 @@ def context(doc, event, variables=None, **given):
     inputs = {k: v.get("default", "" if v.get("type") == "string" else False) for k, v in doc[True]["workflow_dispatch"]["inputs"].items()} if event == "workflow_dispatch" else {}
     inputs.update(given)
     ctx = {"github": {"event_name": event}, "inputs": inputs, "vars": {"V7_PIPELINE": "true", "V7_CLOUD_FIT": "off", "V7_FIT_GATE": "true", **(variables or {})}, "steps": {}}
-    ctx["env"] = {"PIPELINE": evaluate(doc["env"]["PIPELINE"], ctx),
-                  **{k: v for k, v in ctx["vars"].items() if k.startswith("V7_CLOUD_FIT") and k != "V7_CLOUD_FIT_BACKLOG_PAGE"}}      # LIFE-704: the plain-switch loader exports the spend values to the job environment
+    tick = event == "schedule" or (event == "workflow_dispatch" and bool(inputs.get("tick")))
+    pipeline = "true" if tick and ctx["vars"].get("V7_PIPELINE") == "true" else "false"                                   # LIFE-699: what the prep job's "Pipeline decision" step computes from the Bitwarden switch
+    ctx["env"] = {"PIPELINE": pipeline,
+                  **{k: v for k, v in ctx["vars"].items() if k.startswith("V7_CLOUD_FIT")}}      # LIFE-704: the plain-switch loader exports the spend values (and, LIFE-699, the pilot page) to the job environment
+    ctx["needs"] = {"prep": {"result": "success", "outputs": {"pipeline": pipeline}}}                                        # the other jobs read the decision from the prep job
     return ctx
 
 
@@ -121,7 +124,7 @@ def plan(doc, event, variables=None, **given):
     for name, job in doc["jobs"].items():
         needs = job.get("needs") or []
         needs = [needs] if isinstance(needs, str) else needs
-        ctx["needs"] = {n: {"result": results.get(n, "skipped"), "outputs": {}} for n in needs}
+        ctx["needs"] = {n: {"result": results.get(n, "skipped"), "outputs": {"pipeline": ctx["env"]["PIPELINE"]} if n == "prep" else {}} for n in needs}
         runs = truthy(evaluate(str(job["if"]), ctx)) if job.get("if") else all(results.get(n) == "success" for n in needs)
         if not runs:
             results[name] = "skipped"
@@ -139,7 +142,7 @@ def plan(doc, event, variables=None, **given):
 
 
 LOADERS = ("bitwarden/sm-action",)
-ALLOWED_RUNS = ("git init -q .", "python3 -m lifeos.platform.gate", "pip install --require-hashes -r requirements-test.lock", "python -m unittest discover", "python -m lifeos.platform.testgate", "python -m unittest tests.test_testindex.CommittedIndexIsFresh", "python -m lifeos.run fit-cloud-backlog", "failed=\"\"", "alerts push")
+ALLOWED_RUNS = ("tick=${{ (github.event_name == 'schedule'", "git init -q .", "python3 -m lifeos.platform.gate", "pip install --require-hashes -r requirements-test.lock", "python -m unittest discover", "python -m lifeos.platform.testgate", "python -m unittest tests.test_testindex.CommittedIndexIsFresh", "python -m lifeos.run fit-cloud-backlog", "failed=\"\"", "alerts push")
 
 
 @unittest.skipIf(yaml is None, "PyYAML unavailable")
