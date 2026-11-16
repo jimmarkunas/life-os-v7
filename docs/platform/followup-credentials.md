@@ -15,7 +15,7 @@ Who: Jim only for every step that touches a secret. Authority: Jim, chat, Nov 16
 | Calendar, Bytalos | `FOLLOWUP_GCAL_BYTALOS_READONLY_SA_JSON` | the same, a separate service account |
 | Gmail, Personal | `FOLLOWUP_GMAIL_PERSONAL_READONLY_REFRESH` | the bare refresh token (not JSON) |
 | Gmail, Bytalos | `FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH` | the same, a separate sign-in |
-| Outlook, Personal (three mailboxes) | `FOLLOWUP_OUTLOOK_READONLY_PERSONAL_1`, `_2`, `_3` | ON HOLD, see step 9 |
+| Outlook, Personal (three mailboxes) | none to create | tokens live in the private database under the labels `followup-personal-1` to `-3` (step 11) |
 | Todoist, Personal | `FOLLOWUP_TODOIST_PERSONAL_TOKEN` | a `data:read` token |
 
 No Bytalos Outlook and no Bytalos Todoist exist, so nothing is created for them. No TGP credential exists anywhere.
@@ -25,8 +25,6 @@ No Bytalos Outlook and no Bytalos Todoist exist, so nothing is created for them.
 | Name | What it holds | Shape (example only) |
 |---|---|---|
 | `FOLLOWUP_GCAL_PERSONAL_CALENDAR_ID`, `FOLLOWUP_GCAL_BYTALOS_CALENDAR_ID` | the Calendar ID to read | an address-like id |
-| `FOLLOWUP_NOTION_PERSONAL_SOURCE_IDS`, `FOLLOWUP_NOTION_BYTALOS_SOURCE_IDS` | the Notion databases the reader queries | comma-separated database ids |
-| `FOLLOWUP_INTERVIEW_PERSONAL_SOURCE_IDS`, `FOLLOWUP_INTERVIEW_BYTALOS_SOURCE_IDS` | the Interview OS databases the reader queries | comma-separated database ids |
 | `FOLLOWUP_ACCOUNT_<SOURCE>_<WORKSPACE>` (the agent supplies the Jira ones itself) and, for Outlook, `FOLLOWUP_ACCOUNT_OUTLOOK_PERSONAL_1`, `_2`, `_3` | a short text label for each account (80 characters at most), never an address | `personal inbox` |
 | `GMAIL_OAUTH_CLIENT_ID`, `GMAIL_OAUTH_CLIENT_SECRET`, `OUTLOOK_CLIENT_ID` | the existing app ids the Gmail and Outlook readers reuse | already in Bitwarden, nothing for you to create |
 
@@ -69,9 +67,9 @@ No new token, no new Bitwarden item, nothing for you. Jim decided (Nov 16 2026: 
 
 The agent adds the loader lines for these two existing items to the `followup` job and supplies the Jira account labels itself. You do nothing until the next step.
 
-## 3. Notion: one read-only integration (Notion references and Interview OS, both workspaces)
+## 3. Notion: one read-only integration over all pages (Notion references and Interview OS, both workspaces)
 
-You have one Notion workspace and chose all pages (Jim, Nov 16 2026). So one integration covers every source. The code reads the same token under four item names so each grant names its own workspace and source.
+You have one Notion workspace and chose all pages (Jim, Nov 16 2026), so one integration covers every source and no database ids are needed. The code reads the same token under four item names so each grant names its own workspace and source.
 
 1. Open https://www.notion.so/profile/integrations and click **New integration**.
 2. Name `LIFE OS Followup Read`. Type **Internal**. Workspace: your workspace.
@@ -86,10 +84,10 @@ pbpaste | awk '{print "length:", length($0); print "starts:", substr($0,1,4)}'
 
    Expect a length around 50 and `ntn_` (or `secr`). Do not clear the clipboard yet.
 7. Create three more items with the same pasted value, one at a time: `lifeos/github-actions/FOLLOWUP_NOTION_BYTALOS_READONLY_TOKEN`, `lifeos/github-actions/FOLLOWUP_INTERVIEW_PERSONAL_READONLY_TOKEN`, `lifeos/github-actions/FOLLOWUP_INTERVIEW_BYTALOS_READONLY_TOKEN`. Then `pbcopy < /dev/null`.
-8. Share the integration with your top-level **LIFE OS** page: open it in Notion, **...** menu, **Connections**, add **LIFE OS Followup Read**. Notion applies it to every page beneath. Share nothing outside LIFE OS. You were told this includes the Lifehub pages and you chose all.
+8. Share the integration with your top-level **LIFE OS** page: open the page `LIFE OS` in Notion, click the **...** menu, **Connections**, and add **LIFE OS Followup Read**. Every page beneath it inherits the access, and you do not name databases or pages. This includes the Lifehub pages (Medical, Therapy & Recovery, Dating & Style), as you chose all. Share nothing outside LIFE OS.
 
-**Report:** the four NAMEs and Secret IDs, "no expiry" (Notion tokens do not expire), and the names (not links) of the Notion databases Followup should read for Notion references and for Interview OS. The reader queries only the databases listed, even though the integration can read every page.
-After you report, the agent finds the database ids with you, records them as `FOLLOWUP_NOTION_*_SOURCE_IDS` and `FOLLOWUP_INTERVIEW_*_SOURCE_IDS`, and adds the loader lines and expiry rows.
+**Report:** the four NAMEs and Secret IDs and "no expiry" (Notion tokens do not expire).
+After you report, the agent adds the loader lines and the expiry rows.
 **Revoke:** Notion integrations page, delete the integration; delete the four Bitwarden items.
 
 ## 4. Notion, Bytalos
@@ -166,30 +164,7 @@ After you report, the agent adds the loader lines (including the two existing cl
 
 Repeat step 7 with the Bytalos mailbox, `"tenant": "bytalos"` in the allowlist, the item `FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH` and the label item `FOLLOWUP_ACCOUNT_GMAIL_BYTALOS` (the text `bytalos inbox`).
 
-## 9. Outlook, Personal, three mailboxes (ON HOLD: do not start)
-
-**Hold reason (agent work first).** The Followup reader currently reads each Outlook credential as one fixed value from the job environment (`FOLLOWUP_OUTLOOK_READONLY_PERSONAL_1`, `_2`, `_3`). Microsoft rotates a refresh token every time it is used, so a fixed Bitwarden value would stop working after its first read. The token must live in the private database (`v7_outlook_token`) under a label, as the existing Outlook sign-in does. The agent changes the reader to take it from there by label, then tells you; until then you do nothing for Outlook.
-
-The plan, once the agent says go: three labelled sign-ins, one per mailbox (your outlook.com one, your school one and your greatestpmever one), labels `followup-personal-1`, `followup-personal-2`, `followup-personal-3`. TGP is not connected, and TGP mail forwarded into these mailboxes is dropped by the reader. Only `OUTLOOK_CLIENT_ID` is in Bitwarden, and it already exists.
-
-**Agent prerequisite (not yours):** the `outlook` workflow only offers the labels `personal` and `work`, and a label may already hold a sign-in that can move mail. The agent adds the three new labels to the `outlook.yml` options in a small PR first. Do not re-sign `personal` or `work`: that would replace a token another job uses.
-
-1. When the agent says the labels are in, open GitHub, **Actions**, workflow **outlook**, **Run workflow**.
-2. Action `auth` (never `auth-write`), account `followup-personal-1`, tick **live** (it needs the Save box), **Run workflow**.
-3. Open the run. It prints a short code and a Microsoft address. Open that address in Chrome, enter the code, sign in with the first mailbox, and approve **Read your mail** and **Read your calendars** only.
-4. Run the workflow again with action `probe`: it prints counts for the mailbox, by position, never a subject or address.
-5. Repeat steps 2 to 4 for `followup-personal-2` and `followup-personal-3`, one mailbox at a time.
-6. In Bitwarden create three plain label items, `FOLLOWUP_ACCOUNT_OUTLOOK_PERSONAL_1`, `_2` and `_3`, with the texts `outlook.com mailbox`, `school mailbox` and `greatestpmever mailbox`.
-
-**Report:** the three labels, "refresh token in the private database", and which mailbox each is.
-After you report, the agent adds the loader lines for the label items.
-**Revoke:** https://account.microsoft.com/privacy/app-access , remove the app for that mailbox; the agent deletes the label's row.
-
-## 10. Outlook, Bytalos
-
-Nothing to do. There is no Bytalos Outlook mailbox.
-
-## 11. Todoist, Personal (OAuth app with read-only scope)
+## 9. Todoist, Personal (OAuth app with read-only scope)
 
 V7 has no Todoist client or credential today; the existing Todoist token belongs to OpenClaw on Oracle and rotates (Bitwarden project **LIFE OS EDGE/OPENCLAW**, layout rule 4). Do not reuse it. Todoist's personal **API token is not scope-limited** (it can change and delete tasks), so do not use it either.
 
@@ -203,9 +178,31 @@ V7 has no Todoist client or credential today; the existing Todoist token belongs
 After you report, the agent adds the loader lines and the expiry row.
 **Revoke:** Todoist, Settings, Integrations, **Connected apps**, remove **LIFE OS Followup Read**; delete the Bitwarden items or database row.
 
-## 12. Todoist, Bytalos
+## 10. Todoist, Bytalos
 
 Nothing to do. Todoist is Personal only.
+
+## 11. Outlook, Personal, three mailboxes (your last step)
+
+This is your **last** credential step. The tokens are **not** Bitwarden items and there are no `FOLLOWUP_OUTLOOK_READONLY_PERSONAL_N` names. Microsoft rotates a refresh token every time it is used, so each token is saved in the private database (`v7_outlook_token`) under a label, as the existing Outlook sign-in does: `followup-personal-1`, `followup-personal-2`, `followup-personal-3`, one per mailbox (your outlook.com one, your school one and your greatestpmever one). Only `OUTLOOK_CLIENT_ID`, which already exists, is used. There is no Bytalos Outlook mailbox, and TGP is never connected (TGP mail forwarded into these mailboxes is dropped by the reader).
+
+**Agent first (not yours):** the `outlook` workflow only offers the labels `personal` and `work`, and a label may already hold a sign-in that can move mail. The agent adds `followup-personal-1`, `followup-personal-2` and `followup-personal-3` to the `outlook.yml` options in a small PR and tells you. Do not re-sign `personal` or `work`: that would replace a token another job uses.
+
+Then you sign in once per mailbox:
+1. When the agent says the labels are in, open GitHub, **Actions**, workflow **outlook**, **Run workflow**.
+2. Action `auth` (never `auth-write`), account `followup-personal-1`, tick **live** (it needs the Save box), **Run workflow**.
+3. Open the run. It prints a short code and a Microsoft address. Open that address in Chrome, enter the code, sign in with the first mailbox, and approve **Read your mail** and **Read your calendars** only.
+4. Run the workflow again with action `probe`: it prints counts for the mailbox, by position, never a subject or address.
+5. Repeat steps 2 to 4 for `followup-personal-2` and `followup-personal-3`, one mailbox at a time.
+6. In Bitwarden create three plain label items, `FOLLOWUP_ACCOUNT_OUTLOOK_PERSONAL_1`, `_2` and `_3`, with the texts `outlook.com mailbox`, `school mailbox` and `greatestpmever mailbox`.
+
+**Report:** the three labels, "refresh token in the private database", and which mailbox each is.
+After you report, the agent adds the loader lines for the label items.
+**Revoke:** https://account.microsoft.com/privacy/app-access , remove the app for that mailbox; the agent deletes the label's row.
+
+## 12. Outlook, Bytalos
+
+Nothing to do. There is no Bytalos Outlook mailbox.
 
 ## 13. What happens after your reports (the verification)
 
