@@ -3,6 +3,7 @@
 # (docstyle, privacy, config registry, settings, workflows, bws-plain, the policy manifest hash; tests/testindex.py REPO_WIDE and tests/contracts). One short PASS or FAIL line with seconds.
 #   sh tools/preflight.sh        commit first (CI sees commits only); refuses on a dirty tree
 #   sh tools/preflight.sh --all  everything, like a merge to main
+# LIFE-765: before testing it runs tools/regen.py --commit (a new stage's registry rows, one commit of generated files only), so a new stage is its code and its workflow step.
 # On PASS it writes the marker <git dir>/lifeos-preflight-ok holding the HEAD sha; tools/automerge.sh refuses to arm auto-merge unless the marker equals the current HEAD (any new commit needs a new preflight).
 set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -13,6 +14,14 @@ case "${1:-}" in ''|--all) ;; -h|--help) sed -n 2,7p "$0"; exit 0 ;; *) echo "pr
 if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
   echo "preflight: FAIL: uncommitted changes; CI sees commits only. Commit (add files by name), then run again." >&2
   exit 1
+fi
+if [ -f "$ROOT/tools/regen.py" ]; then   # LIFE-765: a new stage's registry rows are written and committed here, so nobody runs tools/regen.py by hand
+  if ! regen_out="$(bash "$ROOT/tools/test.sh" --regen 2>&1)"; then
+    echo "preflight: FAIL: tools/regen.py needs you (a stage with a loop and no try needs a verdict, or it could not commit):" >&2
+    printf '%s\n' "$regen_out" | tail -n 20 >&2
+    exit 1
+  fi
+  printf '%s\n' "$regen_out" | grep -E '^regen: committed' || true
 fi
 git fetch -q origin main 2>/dev/null || echo "preflight: note: could not refresh origin/main; selecting against the last fetched copy"
 start="$(date +%s)"

@@ -4,6 +4,7 @@
 #   sh tools/test.sh            the CI selection for the commits on this branch (needs the changes committed: CI also sees commits only)
 #   sh tools/test.sh --all      everything, like a merge to main
 #   sh tools/test.sh --list     only print which Python and which tests it would use
+#   sh tools/test.sh --regen    (preflight runs it) write and commit the registry rows a new stage needs, with the same Python; refuses a dirty tree
 #   sh tools/test.sh --setup    same as `sh tools/setup-dev.sh`: build or repair ~/.venvs/lifeos-tests from the locked versions (the Mac's own python3 is 3.9; refuses on the Oracle VM)
 # Python is looked for in this order: $LIFEOS_PYTHON, the repo .venv (also the main checkout's, for a git worktree), ~/.venvs/lifeos-tests, python3.12, python3.13. It must be 3.12 or newer and import PyYAML.
 set -u
@@ -14,6 +15,7 @@ for arg in "$@"; do
   case "$arg" in
     --all) mode=all ;;
     --list) list=1 ;;
+    --regen) regen=1 ;;
     --setup) setup=1 ;;
     -h|--help) sed -n 2,9p "$0"; exit 0 ;;
     *) echo "test.sh: unknown option $arg (try --help)" >&2; exit 2 ;;
@@ -38,6 +40,7 @@ if [ -z "$PY" ]; then
 fi
 version="$("$PY" -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])')"
 
+[ "${regen:-}" = 1 ] && exec "$PY" "$ROOT/tools/regen.py" --commit   # LIFE-765: what preflight runs so a new stage needs no hand-run regen
 branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
 selected="$(mktemp)"; trap 'rm -f "$selected" "$selected".*' EXIT
 if [ "$mode" = all ] || [ "$branch" = main ] || ! git rev-parse --verify -q origin/main >/dev/null 2>&1; then

@@ -17,6 +17,7 @@ Ask Jim only for: a new or wider workflow `permissions` block, a credential adde
 - Public repo: no personal data or secrets, ever; use example.com and invented names (docs/PRIVACY.md).
 - Times for Jim: Central Time only, from `python -m lifeos.platform.ct_stamp`.
 - Counts only in reports; say what you could not verify.
+- New stage: its code and its workflow step; preflight writes the registry rows. No new stage, step, label, status or check that only manages Jira tickets or process unless Jim asks in chat (LIFE-767).
 - Keep diffs small; no new framework without asking. A PR that adds code pastes `python -m lifeos.platform.net_size` in its Net size section.
 
 <!-- concord:start -->

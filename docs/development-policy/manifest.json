@@ -159,7 +159,7 @@
       ]
     }
   ],
-  "reassembled_sha256": "2e4ae2a36a4e36b183aa1e5179193181b07e504585d68ebbcdacd7856965c24f",
+  "reassembled_sha256": "53a0e3da159b4f97851bd91985a48423ef003b918c9b4b8adcf2c17100c391af",
   "amendments": [
     {
       "date": "2026-11-02",
@@ -304,6 +304,18 @@
       "pr": "https://github.com/jimmarkunas/life-os-v7/pull/1269",
       "approval": "Jim Markunas, November 16, 2026 CT, typed in the Claude Code chat: 'Implement all of this' (fast local gate, one-call Jira closeout, batching tickets that touch the same files; LIFE-760, LIFE-761, LIFE-762)",
       "part": "docs/development-policy/10 (a paragraph naming tools/preflight.sh, the closeout helper and same-file ticket batching), with the matching AGENTS.md Tests line and step 4"
+    },
+    {
+      "date": "2026-11-16",
+      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/PRNUM",
+      "approval": "Jim Markunas, November 16, 2026 CT, typed in the Claude Code chat: 'I want all 4' and 'nothing has moved in hours except for process theater' (freeze on new ticket-management stages, steps, labels, statuses and checks; LIFE-767)",
+      "part": "docs/development-policy/03 (a bullet: no new ticket-management machinery unless Jim asks in chat; part 04 is at its size cap), with the matching AGENTS.md Always line"
+    },
+    {
+      "date": "2026-11-16",
+      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/PRNUM",
+      "approval": "Jim Markunas, November 16, 2026 CT, typed in the Claude Code chat: 'I want all 4' (a new stage needs no hand-run tools/regen.py; LIFE-765)",
+      "part": "docs/development-policy/04 (the registries bullet: sh tools/preflight.sh runs tools/regen.py --commit), with the matching AGENTS.md Always line"
     }
   ]
 }

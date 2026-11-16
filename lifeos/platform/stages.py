@@ -2,7 +2,7 @@
 
 Each entry holds seconds, required, basis (the time budget), module, status, why and exits_1 (the isolation row). Everything the other registries say about a stage is rendered from it by tools/regen.py:
 lifeos/platform/stage_budgets.json (read by lifeos/platform/budget.py), the "Stage budgets" rows of docs/platform/timeouts.md and the "Every stage" rows of docs/platform/stage-isolation.md.
-Adding a stage is one entry here plus its code; `python tools/regen.py` adds a default entry for a stage that has none and renders the rest."""
+Adding a stage is its code and its workflow step; `sh tools/preflight.sh` runs tools/regen.py, which adds a default entry here for a stage that has none and renders the rest."""
 import json
 from pathlib import Path
 
