@@ -74,11 +74,6 @@ FOLLOWUP_INTERVIEW_BYTALOS_SOURCE_IDS input Interview OS data sources the Follow
 FOLLOWUP_INTERVIEW_PERSONAL_READONLY_TOKEN secret Read-only interview os credential for the Followup stage (personal); a name only, never a value
 FOLLOWUP_INTERVIEW_PERSONAL_READONLY_TOKEN_ACCOUNT input Account label for that Followup credential, shown in receipts; set in the environment, never in the repo
 FOLLOWUP_INTERVIEW_PERSONAL_SOURCE_IDS input Interview OS data sources the Followup stage may read (personal)
-FOLLOWUP_JIRA_BYTALOS_TOKEN secret Read-only jira credential for the Followup stage (bytalos); a name only, never a value
-FOLLOWUP_JIRA_BYTALOS_TOKEN_ACCOUNT input Account label for that Followup credential, shown in receipts; set in the environment, never in the repo
-FOLLOWUP_JIRA_CLOUD_ID input Atlassian cloud id the Followup Jira reader calls (an identifier, not a secret)
-FOLLOWUP_JIRA_PERSONAL_TOKEN secret Read-only jira credential for the Followup stage (personal); a name only, never a value
-FOLLOWUP_JIRA_PERSONAL_TOKEN_ACCOUNT input Account label for that Followup credential, shown in receipts; set in the environment, never in the repo
 FOLLOWUP_NOTION_BYTALOS_READONLY_TOKEN secret Read-only notion credential for the Followup stage (bytalos); a name only, never a value
 FOLLOWUP_NOTION_BYTALOS_READONLY_TOKEN_ACCOUNT input Account label for that Followup credential, shown in receipts; set in the environment, never in the repo
 FOLLOWUP_NOTION_BYTALOS_SOURCE_IDS input Notion data sources the Followup stage may read (bytalos)

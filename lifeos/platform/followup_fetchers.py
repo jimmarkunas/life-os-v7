@@ -5,7 +5,7 @@
 # A missing value or setting is a fixed code, which the reader turns into DEGRADED for that source alone. Rows carry only what the normalizers need (id, link, time, a title or subject); bodies,
 # snippets, descriptions, attendees and recipients are never kept. At most MAX_ROWS + 1 rows come back, so the reader sees a larger answer as truncated. Personal and Bytalos use separate names, and
 # Jira reads only that workspace's project keys. TGP is excluded: there is no TGP name, scope or credential here, and mail from or to a TGP address, or forwarded from one, is dropped.
-# The names below are the NEW read-only credentials Jim creates (Bitwarden, loaded by the hourly job); the existing write-capable tokens are never used here.
+# Jira creates NO new credential: it reads the existing JIRA_BASE_URL, JIRA_EMAIL and JIRA_API_TOKEN (grant refs are JIRA_API_TOKEN@personal / @bytalos). That token can write, so the Jira client is GET-only in code and a test pins it. Every other name below is a NEW read-only credential.
 from datetime import datetime, timedelta, timezone
 import math
 import re
@@ -21,7 +21,7 @@ LOOKBACK_DAYS = 7                    # a first read (no checkpoint) looks back t
 CALENDAR_AHEAD_DAYS = 30
 MARGIN = timedelta(minutes=5)        # the readers filter exactly on the checkpoint; this only keeps an API's coarse time filter from dropping a row
 MAX_PAGES = 10
-JIRA_CLOUD_ID = "FOLLOWUP_JIRA_CLOUD_ID"
+JIRA_ENV = ("JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN")             # the EXISTING Jira secrets the hourly jira job already loads; no new Jira credential (Jim, Nov 16 2026)
 JIRA_PROJECTS = {"personal": ("JFM", "LIFE", "LOS"), "bytalos": ("BAD", "BPP")}      # one Atlassian account; each workspace's grant reads only its own project keys (Jim, Nov 16 2026)
 GMAIL_APP = ("GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET")     # the existing OAuth app (not an account credential); the refresh token below is new and read-only
 OUTLOOK_APP = "OUTLOOK_CLIENT_ID"                                      # the existing public client id; the refresh token below is new and read-only
@@ -39,10 +39,11 @@ def _name(source, tenant, kind):
 
 
 def _credential_name(source, tenant, slot):
+    if source == "jira":
+        return "JIRA_API_TOKEN"                                                       # the existing secret, shared by both workspaces; JIRA_EMAIL and JIRA_BASE_URL are read beside it
     if source == "outlook":
         return f"FOLLOWUP_OUTLOOK_READONLY_{tenant.upper()}_{slot}"                   # refresh token from the Mail.Read + Calendars.Read sign-in, one per account
-    kind = {"jira": ("JIRA", "TOKEN"),                                                # email:token of a scoped Atlassian token (read:jira-work), one per workspace though the account is shared
-            "calendar": ("GCAL", "READONLY_SA_JSON"),                                 # service-account JSON, shared the one calendar read-only
+    kind = {"calendar": ("GCAL", "READONLY_SA_JSON"),                                 # service-account JSON, shared the one calendar read-only
             "gmail": ("GMAIL", "READONLY_REFRESH"),                                   # refresh token from a gmail.readonly consent
             "todoist": ("TODOIST", "TOKEN"),                                          # a data:read token
             "notion": ("NOTION", "READONLY_TOKEN"),                                   # the one read-only integration, stored under each workspace's name so a grant names its workspace
@@ -52,11 +53,12 @@ def _credential_name(source, tenant, slot):
 
 CREDENTIAL_NAMES = {(source, tenant, slot): _credential_name(source, tenant, slot) for source in SOURCES for tenant in TENANTS if (source, tenant) not in NOT_USED
                     for slot in range(1, SLOTS.get((source, tenant), 1) + 1)}
-ACCOUNT_NAMES = {key: name + "_ACCOUNT" for key, name in CREDENTIAL_NAMES.items()}   # the account label per credential comes from the environment (never from the repo)
+GRANT_REFS = {key: (f"{name}@{key[1]}" if key[0] == "jira" else name) for key, name in CREDENTIAL_NAMES.items()}   # what a grant names; both Jira workspaces share one secret, so the ref carries the workspace
+ACCOUNT_NAMES = {key: ("JIRA_EMAIL" if key[0] == "jira" else name + "_ACCOUNT") for key, name in CREDENTIAL_NAMES.items()}   # the account label per credential comes from the environment (never from the repo)
 CONFIG_NAMES = {                                                                      # settings that are identifiers, not secrets (templates; {T} is PERSONAL or BYTALOS)
-    "jira": (JIRA_CLOUD_ID,), "calendar": ("FOLLOWUP_GCAL_{T}_CALENDAR_ID",), "gmail": GMAIL_APP, "outlook": (OUTLOOK_APP,),
+    "jira": ("JIRA_BASE_URL", "JIRA_EMAIL"), "calendar": ("FOLLOWUP_GCAL_{T}_CALENDAR_ID",), "gmail": GMAIL_APP, "outlook": (OUTLOOK_APP,),
     "todoist": (), "notion": ("FOLLOWUP_NOTION_{T}_SOURCE_IDS",), "interview_os": ("FOLLOWUP_INTERVIEW_{T}_SOURCE_IDS",)}
-_BY_NAME = {name: key for key, name in CREDENTIAL_NAMES.items()}
+_BY_REF = {ref: key for key, ref in GRANT_REFS.items()}
 
 
 class FetchError(RuntimeError):
@@ -65,7 +67,7 @@ class FetchError(RuntimeError):
 
 def missing(environ):
     """Credential names not set, sorted; names only."""
-    return sorted(name for name in CREDENTIAL_NAMES.values() if not (environ.get(name) or "").strip())
+    return sorted({name for name in CREDENTIAL_NAMES.values() if not (environ.get(name) or "").strip()})
 
 
 def _refuse_write(*_args, **_kwargs):
@@ -119,9 +121,8 @@ class ReadOnlyNotion(notion_client.Client):
     call_once = _refuse_write
 
 
-def _make_jira(secret, cloud_id):
-    email, _, token = secret.partition(":")
-    return ReadOnlyJira(f"https://api.atlassian.com/ex/jira/{urllib.parse.quote(cloud_id, safe='')}", email, token)
+def _make_jira(base_url, email, token):
+    return ReadOnlyJira(base_url, email, token)                                       # basic auth is built from the two existing secrets at call time
 
 
 def _make_notion(secret, first_source):
@@ -161,7 +162,7 @@ def _is_tgp(*texts):
 
 
 def _read_jira(make, environ, tenant, secret, since, now):
-    client = make(secret, _config(environ, JIRA_CLOUD_ID))
+    client = make(_config(environ, "JIRA_BASE_URL"), _config(environ, "JIRA_EMAIL"), secret)
     keys = JIRA_PROJECTS[tenant]
     minutes = math.ceil((now - _start(since, now)).total_seconds() / 60)                  # a relative time: JQL accepts -Nm, so no date format is built here
     jql = f"project in ({', '.join(keys)}) AND (assignee = currentUser() OR reporter = currentUser()) AND updated >= -{minutes}m ORDER BY updated ASC"
@@ -275,10 +276,10 @@ def build_fetchers(environ, factories=None, clock=None):
 
     def wrap(source):
         def fetch(credential_ref, since):
-            key = _BY_NAME.get(credential_ref)
+            key = _BY_REF.get(credential_ref)
             if key is None or key[0] != source:
                 raise FetchError("FOLLOWUP_CREDENTIAL_NOT_ALLOWED")
-            secret = (environ.get(credential_ref) or "").strip()
+            secret = (environ.get(CREDENTIAL_NAMES[key]) or "").strip()
             if not secret:
                 raise FetchError("FOLLOWUP_CREDENTIAL_MISSING")
             rows = READ[source](make[source], environ, key[1], secret, since, now())[:MAX_ROWS + 1]
@@ -290,4 +291,4 @@ def build_fetchers(environ, factories=None, clock=None):
     return {source: wrap(source) for source in SOURCES}
 
 
-__all__ = ["SOURCES", "CREDENTIAL_NAMES", "ACCOUNT_NAMES", "CONFIG_NAMES", "JIRA_PROJECTS", "FetchError", "build_fetchers", "missing"]
+__all__ = ["SOURCES", "CREDENTIAL_NAMES", "GRANT_REFS", "ACCOUNT_NAMES", "CONFIG_NAMES", "JIRA_PROJECTS", "FetchError", "build_fetchers", "missing"]

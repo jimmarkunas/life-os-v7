@@ -14,18 +14,24 @@ from lifeos.platform import gcal, todoist
 NOW = datetime(2026, 11, 16, 21, 0, tzinfo=timezone.utc)
 ACCOUNT = "jim@example.com"
 JIRA_BASE = "https://sample.atlassian.net"
+TGP = "tgp" + "international.com"                    # built at run time: no TGP address is written into the repo
 NAMES = F.CREDENTIAL_NAMES
 
 
 def N(source, tenant="personal", slot=1):
+    """The reference a grant names."""
+    return F.GRANT_REFS[(source, tenant, slot)]
+
+
+def E(source, tenant="personal", slot=1):
+    """The environment name that holds the value."""
     return NAMES[(source, tenant, slot)]
 SA = '{"client_email": "sa@example.com", "private_key": "placeholder"}'
 
 
 def env(**extra):
-    base = {N("jira", "personal"): ACCOUNT + ":" + "t" * 20, N("calendar", "personal"): SA, N("gmail", "personal"): "r" * 20, N("outlook", "personal"): "r" * 20, N("outlook", "personal", 2): "s" * 20, N("outlook", "personal", 3): "u" * 20,
-            N("todoist", "personal"): "t" * 20, N("notion", "personal"): "n" * 20, N("interview_os", "personal"): "i" * 20,
-            F.JIRA_CLOUD_ID: "cloud-1", "FOLLOWUP_GCAL_PERSONAL_CALENDAR_ID": "cal@example.com", "GMAIL_OAUTH_CLIENT_ID": "cid", "GMAIL_OAUTH_CLIENT_SECRET": "csecret",
+    base = {E("jira"): "t" * 20, "JIRA_EMAIL": ACCOUNT, "JIRA_BASE_URL": JIRA_BASE, E("calendar"): SA, E("gmail"): "r" * 20, E("outlook"): "r" * 20, E("outlook", "personal", 2): "s" * 20, E("outlook", "personal", 3): "u" * 20,
+            E("todoist"): "t" * 20, E("notion"): "n" * 20, E("interview_os"): "i" * 20, "FOLLOWUP_GCAL_PERSONAL_CALENDAR_ID": "cal@example.com", "GMAIL_OAUTH_CLIENT_ID": "cid", "GMAIL_OAUTH_CLIENT_SECRET": "csecret",
             "OUTLOOK_CLIENT_ID": "oid", "FOLLOWUP_NOTION_PERSONAL_SOURCE_IDS": "aaaa-bbbb, cccc-dddd", "FOLLOWUP_INTERVIEW_PERSONAL_SOURCE_IDS": "eeee-ffff"}
     base.update(extra)
     return {k: v for k, v in base.items() if v is not None}
@@ -203,7 +209,7 @@ class Credentials(unittest.TestCase):
         return str(caught.exception)
 
     def test_a_missing_credential_is_a_fixed_code_and_degrades_only_that_source(self):
-        fetchers = F.build_fetchers(env(**{N("todoist", "personal"): None}), factories={"todoist": lambda *a: FakeTodoist([])})
+        fetchers = F.build_fetchers(env(**{E("todoist"): None}), factories={"todoist": lambda *a: FakeTodoist([])})
         self.assertEqual(self.code(lambda: fetchers["todoist"](N("todoist", "personal"), None)), "FOLLOWUP_CREDENTIAL_MISSING")
         out = delta_with(fetchers, "todoist")
         self.assertEqual((out.status, out.reason), ("degraded", "fetch_failed"))
@@ -214,7 +220,7 @@ class Credentials(unittest.TestCase):
             self.assertEqual(self.code(lambda n=name: fetchers["jira"](n, None)), "FOLLOWUP_CREDENTIAL_NOT_ALLOWED")
 
     def test_a_missing_setting_is_a_fixed_code(self):
-        for source, drop in (("jira", F.JIRA_CLOUD_ID), ("calendar", "FOLLOWUP_GCAL_PERSONAL_CALENDAR_ID"), ("gmail", "GMAIL_OAUTH_CLIENT_ID"), ("outlook", "OUTLOOK_CLIENT_ID"),
+        for source, drop in (("jira", "JIRA_BASE_URL"), ("calendar", "FOLLOWUP_GCAL_PERSONAL_CALENDAR_ID"), ("gmail", "GMAIL_OAUTH_CLIENT_ID"), ("outlook", "OUTLOOK_CLIENT_ID"),
                              ("notion", "FOLLOWUP_NOTION_PERSONAL_SOURCE_IDS"), ("interview_os", "FOLLOWUP_INTERVIEW_PERSONAL_SOURCE_IDS")):
             fetchers = F.build_fetchers(env(**{drop: None}), factories={source: lambda *a: None})
             self.assertEqual(self.code(lambda f=fetchers[source], s=source: f(N(s), None)), "FOLLOWUP_CONFIG_MISSING", source)
@@ -222,24 +228,25 @@ class Credentials(unittest.TestCase):
     def test_bytalos_uses_its_own_names_and_never_falls_back_to_personal(self):
         fetchers = F.build_fetchers(env(), factories={"calendar": lambda *a: FakeCal([])})
         self.assertEqual(self.code(lambda: fetchers["calendar"](N("calendar", "bytalos"), None)), "FOLLOWUP_CREDENTIAL_MISSING")
-        both = env(**{N("calendar", "bytalos"): SA})
+        both = env(**{E("calendar", "bytalos"): SA})
         fetchers = F.build_fetchers(both, factories={"calendar": lambda *a: FakeCal([])})
         self.assertEqual(self.code(lambda: fetchers["calendar"](N("calendar", "bytalos"), None)), "FOLLOWUP_CONFIG_MISSING")      # its calendar id is a separate setting
 
     def test_the_name_table(self):
-        values = list(NAMES.values())
+        values = [v for k, v in NAMES.items() if k[0] != "jira"]
         self.assertEqual(len(values), len(set(values)))
         expected = {(s, t, 1) for s in F.SOURCES for t in F.TENANTS} - {("outlook", "bytalos", 1), ("todoist", "bytalos", 1)} | {("outlook", "personal", 2), ("outlook", "personal", 3)}
         self.assertEqual(set(NAMES), expected)
         for name in values:
             self.assertTrue(name.startswith("FOLLOWUP_"), name)
             self.assertNotIn("TGP", name.upper())
-        for old in ("JIRA_API_TOKEN", "GCAL_SERVICE_ACCOUNT_JSON", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_API_TOKEN", "NOTION_JIRA_TOKEN", "NOTION_INTERVIEW_TOKEN", "NOTION_RECRUITERS_TOKEN"):
-            self.assertNotIn(old, values)                                            # the existing write-capable tokens are never reused
+        self.assertEqual({NAMES[("jira", t, 1)] for t in F.TENANTS}, {"JIRA_API_TOKEN"})     # Jira creates no new credential
+        for old in ("GCAL_SERVICE_ACCOUNT_JSON", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_API_TOKEN", "NOTION_JIRA_TOKEN", "NOTION_INTERVIEW_TOKEN", "NOTION_RECRUITERS_TOKEN"):
+            self.assertNotIn(old, values)                                            # the other existing write-capable tokens are never reused
         self.assertEqual(N("outlook", "personal", 3), "FOLLOWUP_OUTLOOK_READONLY_PERSONAL_3")
         self.assertEqual({k: v for k, v in F.ACCOUNT_NAMES.items() if k[0] == "outlook"}[("outlook", "personal", 2)], "FOLLOWUP_OUTLOOK_READONLY_PERSONAL_2_ACCOUNT")
-        self.assertEqual(F.missing({}), sorted(values))
-        self.assertEqual(F.missing(env()), sorted(n for (s, t, k), n in NAMES.items() if t == "bytalos"))
+        self.assertEqual(F.missing({}), sorted(set(NAMES.values())))
+        self.assertEqual(F.missing(env()), sorted(n for (s, t, k), n in NAMES.items() if t == "bytalos" and s != "jira"))
         self.assertEqual(F.TENANTS, ("personal", "bytalos"))                         # no TGP tenant anywhere
 
     def test_there_is_no_bytalos_outlook_or_todoist_credential(self):
@@ -255,7 +262,7 @@ class Workspaces(unittest.TestCase):
     def test_jira_reads_only_the_workspaces_own_projects(self):
         for tenant, keys in (("personal", "JFM, LIFE, LOS"), ("bytalos", "BAD, BPP")):
             client = FakeJira([{"issues": [], "isLast": True}])
-            run("jira", client, tenant=tenant, environ=env(**{N("jira", "bytalos"): ACCOUNT + ":" + "b" * 20}))
+            run("jira", client, tenant=tenant, environ=env())
             self.assertTrue(client.calls[0][1]["jql"].startswith(f"project in ({keys}) AND "), client.calls[0][1]["jql"])
 
     def test_a_jira_key_outside_the_workspace_is_never_returned(self):
@@ -263,9 +270,21 @@ class Workspaces(unittest.TestCase):
                                        {"key": "OTHER-3", "fields": {"updated": "2026-11-16T10:00:00.000+0000"}}], "isLast": True}])
         self.assertEqual([r["key"] for r in run("jira", client)], ["LIFE-1"])
 
-    def test_the_two_jira_workspaces_use_separate_names_for_one_account(self):
-        self.assertNotEqual(N("jira", "personal"), N("jira", "bytalos"))
-        self.assertEqual((N("jira", "personal"), N("jira", "bytalos")), ("FOLLOWUP_JIRA_PERSONAL_TOKEN", "FOLLOWUP_JIRA_BYTALOS_TOKEN"))
+    def test_the_two_jira_workspaces_share_the_existing_secrets(self):
+        self.assertEqual((E("jira", "personal"), E("jira", "bytalos")), ("JIRA_API_TOKEN", "JIRA_API_TOKEN"))
+        self.assertEqual((N("jira", "personal"), N("jira", "bytalos")), ("JIRA_API_TOKEN@personal", "JIRA_API_TOKEN@bytalos"))
+        self.assertFalse([n for n in list(F.CREDENTIAL_NAMES.values()) + list(F.ACCOUNT_NAMES.values()) if n.startswith("FOLLOWUP_JIRA")])
+        self.assertEqual(F.JIRA_ENV, ("JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN"))
+
+    def test_jira_basic_auth_is_built_from_the_two_existing_secrets(self):
+        seen = []
+        F.build_fetchers(env(), factories={"jira": lambda *a: seen.append(a) or FakeJira([{"issues": [], "isLast": True}])}, clock=lambda: NOW)["jira"](N("jira", "bytalos"), None)
+        self.assertEqual(seen, [(JIRA_BASE, ACCOUNT, "t" * 20)])
+
+    def test_the_jira_fetcher_only_ever_calls_get_on_its_client(self):
+        import inspect
+        source = inspect.getsource(F._read_jira)
+        self.assertEqual(sorted(set(re.findall(r"client\.(\w+)", source))), ["get"])
 
     def test_three_personal_outlook_accounts_each_use_their_own_credential(self):
         seen = []
@@ -282,24 +301,24 @@ class TgpExcluded(unittest.TestCase):
 
     def test_gmail_drops_tgp_mail_however_it_arrived(self):
         client = FakeGmail({"ok": self.gmail_reply("ok", From="Pat <pat@example.com>", To="jim@example.com"),
-                            "from": self.gmail_reply("from", From="Sam <sam@tgpinternational.com>"),
-                            "to": self.gmail_reply("to", From="pat@example.com", To="Sam <sam@mail.tgpinternational.com>"),
-                            "fwd": self.gmail_reply("fwd", From="pat@example.com", X_Forwarded_For="sam@tgpinternational.com jim@example.com"),
-                            "orig": self.gmail_reply("orig", From="pat@example.com", X_Original_To="sam@TGPInternational.com"),
-                            "near": self.gmail_reply("near", From="pat@nottgpinternational.com.example.org")})
+                            "from": self.gmail_reply("from", From="Sam <sam@" + TGP + ">"),
+                            "to": self.gmail_reply("to", From="pat@example.com", To="Sam <sam@mail." + TGP + ">"),
+                            "fwd": self.gmail_reply("fwd", From="pat@example.com", X_Forwarded_For="sam@" + TGP + " jim@example.com"),
+                            "orig": self.gmail_reply("orig", From="pat@example.com", X_Original_To="sam@" + TGP.upper()),
+                            "near": self.gmail_reply("near", From="pat@not" + TGP + ".example.org")})
         self.assertEqual([r["id"] for r in run("gmail", client)], ["ok", "near"])
 
     def test_outlook_drops_tgp_mail_however_it_arrived(self):
         def msg(message_id, **extra):
             return {"id": message_id, "webLink": "https://outlook.example.com/" + message_id, "receivedDateTime": "2026-11-16T16:00:00Z", "subject": "Sample", **extra}
         who = lambda address: {"emailAddress": {"address": address}}      # noqa: E731
-        client = FakeOutlook([msg("ok", **{"from": who("pat@example.com")}), msg("from", **{"from": who("sam@tgpinternational.com")}),
-                              msg("to", toRecipients=[who("jim@example.com"), who("sam@tgpinternational.com")]), msg("cc", ccRecipients=[who("sam@tgpinternational.com")]),
-                              msg("fwd", **{"from": who("pat@example.com")}, internetMessageHeaders=[{"name": "X-Forwarded-For", "value": "sam@tgpinternational.com"}])])
+        client = FakeOutlook([msg("ok", **{"from": who("pat@example.com")}), msg("from", **{"from": who("sam@" + TGP)}),
+                              msg("to", toRecipients=[who("jim@example.com"), who("sam@" + TGP)]), msg("cc", ccRecipients=[who("sam@" + TGP)]),
+                              msg("fwd", **{"from": who("pat@example.com")}, internetMessageHeaders=[{"name": "X-Forwarded-For", "value": "sam@" + TGP}])])
         self.assertEqual([r["id"] for r in run("outlook", client)], ["ok"])
 
     def test_tgp_rows_never_reach_the_reader_or_a_count(self):
-        client = FakeOutlook([{"id": "x", "webLink": "https://outlook.example.com/x", "receivedDateTime": "2026-11-16T16:00:00Z", "subject": "Sample", "from": {"emailAddress": {"address": "a@tgpinternational.com"}}}])
+        client = FakeOutlook([{"id": "x", "webLink": "https://outlook.example.com/x", "receivedDateTime": "2026-11-16T16:00:00Z", "subject": "Sample", "from": {"emailAddress": {"address": "a@" + TGP}}}])
         out = delta("outlook", client)
         self.assertEqual((out.status, out.items), ("ok", ()))
 
@@ -324,7 +343,8 @@ class ReadOnly(unittest.TestCase):
         def no_network(*_a, **_k):
             raise AssertionError("network used")
         c = self.build()
-        calls = [lambda: c["jira"].post("/x", {}), lambda: c["jira"].request("DELETE", "/x"), lambda: c["jira"].set_sprint_state(1, "active"),
+        calls = [lambda: c["jira"].post("/x", {}), lambda: c["jira"].request("DELETE", "/x"), lambda: c["jira"].set_sprint_state(1, "active"), lambda: c["jira"].move_issues(1, ["LIFE-1"]), lambda: c["jira"].create_sprint(1, "s", NOW, NOW),
+                 lambda: c["jira"].request("PUT", "/x", payload={}), lambda: c["jira"].request("POST", "/x", payload={}),
                  lambda: c["calendar"].insert({}), lambda: c["calendar"].update("1", {}), lambda: c["calendar"].delete("1"),
                  lambda: c["gmail"].trash("1"), lambda: c["gmail"].relabel(["1"], add=["x"]), lambda: c["gmail"].apply_amazon("1", "l"),
                  lambda: c["outlook"].move("m", "f"), lambda: c["notion"].create({}, []), lambda: c["notion"].update_page_properties("a" * 32, {"x": 1}), lambda: c["notion"].call("PATCH", "/pages/x", {})]
