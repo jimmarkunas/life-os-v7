@@ -26,7 +26,7 @@ IDS = {  # Bitwarden item ids, project "LIFE OS GitHub Actions", lifeos/github-a
     "V7_CLOUD_FIT_PARALLEL": "d58fac7a-9c4e-4678-8327-b503015f922b",
     "LIFEOS_ACQ_SSH_PORT": "53f91adc-5bb5-4a33-98a8-b5030155ac02",
 }
-PENDING = frozenset({"FOLLOWUP_GCAL_BYTALOS_CALENDAR_ID"})   # LIFE-757: a plain identifier whose Bitwarden item is not created yet; it has no id here, so it reads as NOT_RETURNED and falls back to empty (the Bytalos calendar then shows not provisioned). Add its id to IDS when the item exists.
+PENDING = frozenset({"FOLLOWUP_GCAL_BYTALOS_CALENDAR_ID", "FOLLOWUP_GCAL_PERSONAL_CALENDAR_ID"})   # LIFE-757: a plain identifier whose Bitwarden item is not created yet; it has no id here, so it reads as NOT_RETURNED and falls back to empty (the Bytalos calendar then shows not provisioned). Add its id to IDS when the item exists.
 ALLOWED = frozenset(IDS) | PENDING | {"LIVE"}
 
 
@@ -76,6 +76,7 @@ RULES = {
     "ALERTS_ENABLED": (_enum({"on", "off"}, None), "on"),                       # fail OPEN: the alarm must not depend on the system it alarms about
     "ALERTS_MUTED_UNTIL": (_muted, ""),                                         # fail open: not muted
     "ALERT_SETTINGS": (_settings, ""),                                          # fail open: the registry defaults
+    "FOLLOWUP_GCAL_PERSONAL_CALENDAR_ID": (_identifier, ""),                     # fail closed: empty = the Personal calendar is not provisioned
     "FOLLOWUP_GCAL_BYTALOS_CALENDAR_ID": (_identifier, ""),                      # fail closed: empty = the Bytalos calendar is not provisioned
     "LIFEOS_ACQ_SSH_PORT": (_whole(1, 65535, None), None),                      # no default: the job fails with a fixed code
 }

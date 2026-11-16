@@ -15,7 +15,6 @@ FOLLOWUP_ACCOUNT_OUTLOOK_PERSONAL input Account label (not an address) the follo
 FOLLOWUP_ACCOUNT_OUTLOOK_PERSONAL_2 input Second Personal Outlook account label for the followup job
 FOLLOWUP_ACCOUNT_OUTLOOK_PERSONAL_3 input Third Personal Outlook account label for the followup job
 FOLLOWUP_ACCOUNT_TODOIST_PERSONAL input Account label (not an address) the followup job reads todoist for in the personal workspace; unset means that source shows not provisioned
-FOLLOWUP_GCAL_PERSONAL_CALENDAR_ID workflow_only:workflow The Personal calendar id for the followup job, from the existing GCAL_CALENDAR_ID secret (an identifier, never committed)
 FOLLOWUP_JIRA_PROJECTS_BYTALOS input Jira project keys the followup job reads for the bytalos workspace (committed default in followup_wiring)
 FOLLOWUP_JIRA_PROJECTS_PERSONAL input Jira project keys the followup job reads for the personal workspace (committed default in followup_wiring)
 FOLLOWUP_WIRING flag:workflow Turns on the hourly followup job: the stage reads the approved sources (dry run) and writes access receipts; off by default

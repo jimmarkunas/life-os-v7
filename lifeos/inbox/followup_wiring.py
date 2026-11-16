@@ -22,6 +22,7 @@ RELEASED = tuple(w for w in WORKSPACES if w not in UNRELEASED_WORKSPACES)
 BOTH = ("personal", "bytalos")
 SOURCE_WORKSPACES = {"jira": BOTH, "calendar": BOTH, "gmail": BOTH, "outlook": ("personal",), "todoist": ("personal",), "notion": ("personal",), "interview_os": ("personal",)}
 MAX_ACCOUNTS = {("outlook", "personal"): 3}                                       # every other (source, workspace) has one account
+JIRA_SITE = "https://jimmarkunas.atlassian.net"                                     # the site hostname is not secret (it is in the docs and runbooks); a constant, so no GitHub value is read
 FIXED_ACCOUNTS = {("jira", "personal"): "jira-personal", ("jira", "bytalos"): "jira-bytalos"}   # Jira is not a credential Jim names: these scope labels are committed, not read from the environment
 JIRA_PROJECTS = {"personal": ("JFM", "LIFE", "LOS"), "bytalos": ("BAD", "BPP")}   # one Atlassian account, split by project key; passed to the fetchers as FOLLOWUP_JIRA_PROJECTS_<WORKSPACE>
 # Jim, Nov 16 2026: reuse an existing credential wherever one exists. (source, workspace[, n]) -> (credential NAME, key of its row in the credential inventory, or None for a new item). Names only.
@@ -211,7 +212,7 @@ def build(environ, live=False, clock=None):
     fetchers = module.build_fetchers(fetcher_environment(environ)) if module and hasattr(module, "build_fetchers") else {}
     made = tuple(stage.Scope(workspace, label, tuple(sorted({s for s, _ in members}))) for (workspace, label), members in sorted(scopes.items()))
     return stage.Wiring(store=store, scopes=made, grants=grants_for(environ, credential_names()), fetchers=fetchers, audit=make_audit(Ledger(db.connect)), sink=make_sink(real, clock), clock=clock,
-                        jira_base=(environ.get("JIRA_BASE_URL") or "").rstrip("/"))
+                        jira_base=JIRA_SITE)
 
 
 __all__ = ["EXPIRES", "WiringError", "account_env", "credential_names", "accounts", "configured", "grants_for", "receipt_id",

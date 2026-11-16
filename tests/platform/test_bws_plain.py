@@ -160,6 +160,10 @@ class NothingPlainIsMasked(unittest.TestCase):
 class PendingIdentifier(unittest.TestCase):
     NAME = "FOLLOWUP_GCAL_BYTALOS_CALENDAR_ID"
 
+    def test_the_personal_calendar_id_is_the_same_kind_of_pending_identifier(self):
+        self.assertIn("FOLLOWUP_GCAL_PERSONAL_CALENDAR_ID", plain.PENDING)
+        self.assertEqual(run("FOLLOWUP_GCAL_PERSONAL_CALENDAR_ID", {})[0], {"FOLLOWUP_GCAL_PERSONAL_CALENDAR_ID": ""})
+
     def test_a_pending_identifier_is_allowed_but_not_asked_for_and_falls_back_to_empty(self):
         self.assertIn(self.NAME, plain.PENDING)
         self.assertNotIn(self.NAME, plain.IDS)                                               # no Bitwarden item yet

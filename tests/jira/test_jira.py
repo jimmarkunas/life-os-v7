@@ -465,7 +465,7 @@ class WorkflowTests(unittest.TestCase):
 
     def job(self):
         start = self.domains.index("\n  jira:\n")
-        return self.domains[start:self.domains.index("\n  outlook:\n")]
+        return self.domains[start:self.domains.index("\n  followup:\n")]       # LIFE-757: the followup job sits between jira and outlook
 
     def test_workflow_stays_within_githubs_25_dispatch_inputs(self):
         for text in (self.text, self.domains):
