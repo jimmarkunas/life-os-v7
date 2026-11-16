@@ -6,7 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 ROADMAP = (ROOT / "docs" / "buzz-implementation-roadmap-v1.md").read_text()
-AGENTS = (ROOT / "AGENTS.md").read_text()
+AGENTS = (ROOT / "docs" / "agent-reference.md").read_text()      # LIFE-766: the full guide moved out of the one-page AGENTS.md
 
 EXPECTED_IDS = [f"BUZZ-{n:02d}" for n in range(1, 26)]
 ROW = re.compile(r"^\|\s*(BUZZ-\d+)\s*\|(.*)\|\s*$", re.M)

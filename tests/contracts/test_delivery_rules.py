@@ -1,9 +1,9 @@
-"""LIFE-606: Jim's nine delivery rules (LOS-119, November 11 2026) are in AGENTS.md exactly once, in order, each with its bold title."""
+"""LIFE-606: Jim's nine delivery rules (LOS-119, November 11 2026) are in docs/agent-reference.md (the full guide AGENTS.md points to) exactly once, in order, each with its bold title."""
 import pathlib
 import re
 import unittest
 
-AGENTS = pathlib.Path(__file__).resolve().parents[2] / "AGENTS.md"
+AGENTS = pathlib.Path(__file__).resolve().parents[2] / "docs" / "agent-reference.md"
 TITLES = ("Fewer, bigger tickets.", "One approval pass at the start.", "Measurement never waits on the hourly schedule.", "Watches live outside the epic.",
           "An epic closes only when its done-when is measured.", "Dependency pre-flight per ticket.", "Estimate in gates, not effort.",
           "One end-to-end prompt, one final receipt.", "Claude does not relay.")
