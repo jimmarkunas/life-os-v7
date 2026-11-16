@@ -1,5 +1,6 @@
 """LIFE-747 (synthetic): the Followup state store keeps replay, suppression, cursor and failure behavior safe. A sqlite shim stands in for MySQL; no real database is touched."""
 import unittest
+import unittest.mock
 from contextlib import contextmanager
 from datetime import timedelta
 
@@ -192,13 +193,17 @@ class Storage(unittest.TestCase):
             with self.assertRaises(S.FollowupRejected) as refused:
                 accept(store, [item(**bad)])
             self.assertEqual(str(refused.exception), reason)
-        columns = {c for table in S.SCHEMA for c in table.split("(", 1)[1].lower().split()}
+        columns = {c for table in S.SCHEMA[:4] for c in table.split("(", 1)[1].lower().split()}              # the four state tables never hold a source payload
         for forbidden in ("body", "snippet", "payload", "token", "password", "secret"):
             self.assertNotIn(forbidden, columns)
+        payload_table = S.SCHEMA[4].split("(", 1)[1].lower()                                                    # the fifth holds Followup's own derived payload, nothing else
+        for forbidden in ("body", "snippet", "token", "password", "secret"):
+            self.assertNotIn(forbidden, payload_table)
+        self.assertEqual([c.split()[0] for c in payload_table.split("primary key")[0].split(",") if c.strip()], ["scope_key", "payload", "generated_at", "state"])
 
-    def test_the_four_tables_are_defined_and_the_schema_is_never_run_by_import(self):
-        self.assertEqual(len(S.SCHEMA), 4)
-        self.assertEqual(S.TABLES, ("v7_followup_threads", "v7_followup_checkpoints", "v7_followup_overrides", "v7_followup_suppressions"))
+    def test_the_five_tables_are_defined_and_the_schema_is_never_run_by_import(self):
+        self.assertEqual(len(S.SCHEMA), 5)
+        self.assertEqual(S.TABLES, ("v7_followup_threads", "v7_followup_checkpoints", "v7_followup_overrides", "v7_followup_suppressions", "v7_followup_payload"))
         for statement, table in zip(S.SCHEMA, S.TABLES, strict=True):
             self.assertIn(f"CREATE TABLE IF NOT EXISTS {table} ", statement)
 
@@ -212,6 +217,97 @@ class Storage(unittest.TestCase):
         self.assertEqual(str(failed.exception), "FOLLOWUP_STORE_UNAVAILABLE")
         self.assertNotIn("CANARY", str(failed.exception))
         self.assertIsNone(failed.exception.__cause__)
+
+
+def payload(workspace="personal", account=ACCOUNT, state="PASS", **kw):
+    base = {"component": "followup", "state": state, "workspace": workspace, "account": account, "generated_at": "2026-11-16T20:00:00+00:00", "counts": {"needs_me": 1}, "threads": [], "review": []}
+    return {**base, **kw}
+
+
+class Payload(unittest.TestCase):
+    def test_a_payload_is_saved_replaced_and_read_back(self):
+        store, db = make()
+        self.assertIsNone(store.load_payload("personal", ACCOUNT))
+        self.assertTrue(store.save_payload("personal", ACCOUNT, payload()))
+        self.assertEqual(store.load_payload("personal", ACCOUNT), payload())
+        newer = payload(state="DEGRADED", generated_at="2026-11-16T21:00:00+00:00", counts={"needs_me": 2})
+        self.assertTrue(store.save_payload("personal", ACCOUNT, newer))
+        self.assertEqual(store.load_payload("personal", ACCOUNT), newer)
+        self.assertEqual(db.count("v7_followup_payload"), 1)                         # replaced in place: one row per scope, never a history
+
+    def test_the_write_is_one_statement(self):
+        store, db = make()
+        seen = []
+        original = db.cursor
+
+        def spy():
+            cursor = original()
+            run = cursor.execute
+
+            def execute(sql, args=()):
+                seen.append(sql.split()[0])
+                return run(sql, args)
+            cursor.execute = execute
+            return cursor
+        db.cursor = spy
+        store.save_payload("personal", ACCOUNT, payload())
+        self.assertEqual(seen, ["INSERT", "SELECT"])                                 # one write statement, then the read-back
+
+    def test_scopes_never_share_a_row_and_one_scope_never_reads_another(self):
+        store, db = make()
+        store.save_payload("personal", ACCOUNT, payload())
+        store.save_payload("bytalos", ACCOUNT, payload(workspace="bytalos", state="DEGRADED"))
+        store.save_payload("personal", "other@example.com", payload(account="other@example.com", counts={"needs_me": 9}))
+        self.assertEqual(db.count("v7_followup_payload"), 3)
+        self.assertEqual(store.load_payload("personal", ACCOUNT)["state"], "PASS")
+        self.assertEqual(store.load_payload("bytalos", ACCOUNT)["state"], "DEGRADED")
+        self.assertEqual(store.load_payload("personal", "other@example.com")["counts"], {"needs_me": 9})
+        self.assertNotEqual(S.scope_key("personal", ACCOUNT), S.scope_key("bytalos", ACCOUNT))
+        self.assertLessEqual(len(S.scope_key("bytalos", "a" * 80)), 190)             # fits the VARCHAR(190) key
+
+    def test_tgp_unknown_workspaces_and_bad_payloads_are_refused_before_a_write(self):
+        store, db = make()
+        for workspace in ("tgp", "unknown", "nobody"):
+            with self.assertRaises(S.FollowupRejected):
+                store.save_payload(workspace, ACCOUNT, payload(workspace=workspace))
+            with self.assertRaises(S.FollowupRejected):
+                store.load_payload(workspace, ACCOUNT)
+        for bad, reason in ((payload(workspace="bytalos"), "payload_scope_mismatch"), (payload(account="x@example.com"), "payload_scope_mismatch"), (payload(state="OK"), "payload_state_invalid"),
+                            (payload(generated_at=""), "payload_time_invalid"), (payload(generated_at="x" * 33), "payload_time_invalid"), (payload(generated_at=5), "payload_time_invalid"),
+                            ("not a dict", "payload_invalid"), (payload(threads=[object()]), "payload_invalid"), (payload(blob="x" * 1_000_001), "payload_too_large")):
+            with self.assertRaises(S.FollowupRejected) as refused:
+                store.save_payload("personal", ACCOUNT, bad)
+            self.assertEqual(str(refused.exception), reason)
+        self.assertEqual(db.count("v7_followup_payload"), 0)                         # nothing was written by any refusal
+
+    def test_a_row_that_disagrees_with_its_own_columns_is_a_fixed_mismatch(self):
+        store, db = make()
+        store.save_payload("personal", ACCOUNT, payload())
+        cursor = db.cursor()
+        cursor.execute("UPDATE v7_followup_payload SET state=%s WHERE scope_key=%s", ("DEGRADED", S.scope_key("personal", ACCOUNT)))
+        with self.assertRaises(S.FollowupStoreError) as failed:
+            store.load_payload("personal", ACCOUNT)
+        self.assertEqual(str(failed.exception), "FOLLOWUP_READBACK_MISMATCH")
+        cursor.execute("UPDATE v7_followup_payload SET payload=%s WHERE scope_key=%s", ("not json", S.scope_key("personal", ACCOUNT)))
+        with self.assertRaises(S.FollowupStoreError) as failed:
+            store.load_payload("personal", ACCOUNT)
+        self.assertEqual(str(failed.exception), "FOLLOWUP_READBACK_MISMATCH")
+
+    def test_a_save_whose_read_back_differs_is_a_fixed_mismatch_and_a_dead_store_a_fixed_code(self):
+        store, _ = make()
+        with unittest.mock.patch.object(S.FollowupStore, "load_payload", return_value=payload(counts={"needs_me": 99})):
+            with self.assertRaises(S.FollowupStoreError) as failed:
+                store.save_payload("personal", ACCOUNT, payload())
+        self.assertEqual(str(failed.exception), "FOLLOWUP_READBACK_MISMATCH")
+
+        @contextmanager
+        def broken():
+            raise RuntimeError("CANARY-ERROR-7733 host db.internal")
+            yield
+        with self.assertRaises(S.FollowupStoreError) as failed:
+            S.FollowupStore(broken).save_payload("personal", ACCOUNT, payload())
+        self.assertEqual(str(failed.exception), "FOLLOWUP_STORE_UNAVAILABLE")
+        self.assertNotIn("CANARY", str(failed.exception))
 
 
 if __name__ == "__main__":

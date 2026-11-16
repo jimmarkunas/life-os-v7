@@ -74,6 +74,8 @@ STAGES = {
     "jira-stalled": lazy("lifeos.jira.stalled"),                            # LIFE-729: names LIFE tickets idle with no [waiting on] note (read only, no phone push)
     "inbox-schema-apply": lazy("lifeos.inbox.apply_schema", "apply_stage"),      # LIFE-712: creates the four Action Inbox tables once, only when SCHEMA_CONFIRM is APPLY (diag.yml confirm input); Jim approved the exact DDL Nov 15 2026
     "inbox-schema-check": lazy("lifeos.inbox.schema"),                    # LIFE-712: read-only check of the V7 database for the Action Inbox tables (counts and flags only); creates nothing
+    "followup-schema-apply": lazy("lifeos.inbox.followup_apply", "apply_stage"),   # LIFE-756: creates the four v7_followup_* tables once, only when SCHEMA_CONFIRM is APPLY (diag.yml confirm input); Jim approved the table family Nov 16 2026 (D258)
+    "followup-schema-check": lazy("lifeos.inbox.followup_schema"),            # LIFE-756: read-only check of the V7 database for the Followup tables (counts and flags only); creates nothing
     "accountability-week": lazy("lifeos.accountability.week"),            # LIFE-671: "This week" for Jim and Matt on Jim & Matt V3, read-only from Jira
     "accountability-goals": lazy("lifeos.accountability.goals"),          # LIFE-671: Quarterly goals, done / all per quarter epic
     "accountability-review": lazy("lifeos.accountability.review"),        # LIFE-671: Quarterly review; past quarters are written once
