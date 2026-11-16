@@ -69,6 +69,36 @@ def world():
             epic("LIFE-585", labels=["los-118"]), epic("LIFE-590", labels=["los-118"]), epic("LIFE-580", labels=["los-118"], status="done"), epic("LIFE-700", labels=["epic-container"], summary="LIFE one-off tasks")]
 
 
+class Creation(unittest.TestCase):
+    """LIFE-773: a new ticket must name its parent epic and takes its Component and Fix Version from it."""
+
+    def test_component_and_version_come_from_the_parent_epic(self):
+        jira, sent = FakeJira(world(), []), []
+        jira.post = lambda path, payload, retry=False: sent.append(payload["fields"]) or {"key": "LIFE-901"}
+        fd.create_issue(jira, "New work", "Task", "LIFE-10")
+        fields = sent[0]
+        self.assertEqual(fields["parent"], {"key": "LIFE-10"})
+        self.assertEqual(fields["components"], [{"name": "Interview OS"}])
+        self.assertEqual(fields["fixVersions"], [{"name": "Interview OS 1.0.0"}])
+
+    def test_no_parent_is_a_one_line_refusal_and_nothing_is_written(self):
+        jira = FakeJira(world(), [])
+        for parent in (None, "", "  "):
+            with self.assertRaisesRegex(fd.ParentRequired, "^JIRA_PARENT_REQUIRED$"):
+                fd.create_issue(jira, "New work", "Task", parent)
+        self.assertEqual(jira.log, [])
+
+    def test_a_parent_that_is_not_an_epic_is_refused(self):
+        jira = FakeJira(world(), [ticket("LIFE-50")])
+        with self.assertRaisesRegex(fd.ParentRequired, "^JIRA_PARENT_NOT_AN_EPIC$"):
+            fd.create_issue(jira, "New work", "Task", "LIFE-50")
+
+    def test_an_epic_needs_no_parent(self):
+        jira = FakeJira(world(), [])
+        key = fd.create_issue(jira, "New epic", "Epic", None)
+        self.assertEqual(jira.items[key]["fields"]["components"], [{"name": fd.DEFAULT_COMPONENT}])
+
+
 class Rules(unittest.TestCase):
     def test_a_complete_ticket_is_left_alone(self):
         fake = FakeJira(world(), [ticket("LIFE-901", parent="LIFE-10", components=["Interview OS"], versions=["Interview OS 1.0.0"])])

@@ -29,6 +29,10 @@ class FillFailed(JiraError):
     """A Jira write failed (the message is the fixed code JIRA_FILL_FAILED)."""
 
 
+class ParentRequired(JiraError):
+    """A new non-epic ticket had no parent epic (JIRA_PARENT_REQUIRED) or the parent was not an epic (JIRA_PARENT_NOT_AN_EPIC)."""
+
+
 def names(items):
     return [x["name"] for x in items or [] if isinstance(x, dict) and x.get("name")]
 
@@ -174,6 +178,26 @@ def backfill(jira, live, sleep=time.sleep):
     return out
 
 
+def create_issue(jira, summary, issuetype, parent, description="", labels=()):
+    """LIFE-773: create a LIFE ticket whose Component and Fix Version come from its parent epic by the same rules as the fill; no parent epic is a one-line refusal. -> the new key."""
+    fields = {"project": {"key": "LIFE"}, "issuetype": {"name": issuetype}, "summary": summary, "labels": list(labels)}
+    if issuetype == "Epic":
+        component = DEFAULT_COMPONENT
+    else:
+        key = str(parent or "").strip()
+        if not key:
+            raise ParentRequired("JIRA_PARENT_REQUIRED")
+        found = (jira.get(f"/rest/api/3/issue/{key}", {"fields": FIELDS}).get("fields") or {})
+        if not is_epic(found):
+            raise ParentRequired("JIRA_PARENT_NOT_AN_EPIC")
+        component = (names(found.get("components")) or [DEFAULT_COMPONENT])[0]
+        fields["parent"] = {"key": key}
+    fields["components"], fields["fixVersions"] = [{"name": component}], [{"name": f"{component} 1.0.0"}]
+    if description:
+        fields["description"] = {"type": "doc", "version": 1, "content": [{"type": "paragraph", "content": [{"type": "text", "text": description}]}]}
+    return jira.post("/rest/api/3/issue", {"fields": fields})["key"]
+
+
 def plan_file(path):
     """Plan from a saved read of Jira (no network): -> {key: changes} for every issue that misses a field."""
     data = json.loads(Path(path).read_text())
@@ -195,7 +219,7 @@ def main(argv):
     return 0
 
 
-__all__ = ["FillFailed", "plan", "fill_key", "fill_many", "run", "backfill", "plan_file"]
+__all__ = ["FillFailed", "ParentRequired", "create_issue", "plan", "fill_key", "fill_many", "run", "backfill", "plan_file"]
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))
