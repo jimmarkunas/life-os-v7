@@ -77,7 +77,7 @@ jobs:
       - name: Granola auto (every meeting not yet carried; dry run unless live; counts and fixed codes only)
         env:
           NOTION_JIRA_TOKEN: ${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}
-          LIFEOS_NOTION_IDS: ${{ secrets.LIFEOS_NOTION_IDS }}
+          LIFEOS_NOTION_IDS: ""
           NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""   # LIFE-360 (Jim approved Nov 7, 4:17 PM CT): the readers take opportunities from Ledger rows first (read-only, Interview token)
           HIRING_PIPELINE_PAGE_ID: ""
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_auto.outputs.LIFEOS_ACQ_DB_NAME }}

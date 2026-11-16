@@ -391,7 +391,7 @@ jobs:
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.resolve_jobright) }}
         uses: ./.github/actions/browser
         with:
-          cache_bust: ${{ vars.BROWSER_CACHE_BUST }}
+          cache_bust: life576a
       - id: jobright
         name: Step 5 - resolve Jobright jobs (free Chromium, saves when live)
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.resolve_jobright) }}
@@ -695,7 +695,7 @@ jobs:
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.quick) }}
         uses: ./.github/actions/browser
         with:
-          cache_bust: ${{ vars.BROWSER_CACHE_BUST }}
+          cache_bust: life576a
       - id: tick
         continue-on-error: true
         name: Jobs tick - the whole chain in one process, fast path first, one store tunnel (LIFE-76 PR 4b, D208)
@@ -724,7 +724,7 @@ jobs:
           TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
           IMESSAGE_ALERTS_HOST: ${{ steps.bws_finish.outputs.IMESSAGE_ALERTS_HOST }}
           V7_CLOUD_FIT: ${{ env.V7_CLOUD_FIT || 'off' }}                 # D214: off unless the repository variable says shadow (G6) or canary (D226); on is refused in code
-          V7_CLOUD_FIT_PROFILE_REF: ${{ secrets.V7_CLOUD_FIT_PROFILE_REF }}   # LIFE-41: the 16-hex reference to Oracle's own brief (G5), a SECRET so it is masked: a repository variable is printed in this step's env header and the repo is public
+          V7_CLOUD_FIT_PROFILE_REF: ""   # LIFE-41: the 16-hex reference to Oracle's own brief (G5), a SECRET so it is masked: a repository variable is printed in this step's env header and the repo is public
           TICK_CAP_LINKEDIN: ""   # LIFE-703: declared empty so the V7 settings page can fill it; the code's own default applies when both are empty
           TICK_CAP_TINYFISH: ""   # LIFE-703: declared empty so the V7 settings page can fill it; the code's own default applies when both are empty
           TICK_CAP_JOBRIGHT: ""   # LIFE-703: declared empty so the V7 settings page can fill it; the code's own default applies when both are empty
@@ -843,7 +843,7 @@ jobs:
           V7_CLOUD_FIT_BACKLOG_MAX: ${{ env.PIPELINE == 'true' && env.V7_CLOUD_FIT_SCHEDULED || env.V7_CLOUD_FIT_BACKLOG_MAX || '0' }}     # Jim's approved ceiling (a tick: the scheduled count itself); 0 (unset) asks nothing
           V7_CLOUD_FIT_BACKLOG_BUDGET: ${{ env.PIPELINE != 'true' && env.V7_CLOUD_FIT_BACKLOG_BUDGET || '' }}     # a manual batch: Jim's variable; a tick: sized below to the time left in the hour
           V7_CLOUD_FIT_BACKLOG_PAGE: ${{ env.PIPELINE != 'true' && vars.V7_CLOUD_FIT_BACKLOG_PAGE || '' }}     # LIFE-41 G6: Jim's one preapproved Ledger page, manual runs only; a tick never narrows to it
-          V7_CLOUD_FIT_PROFILE_REF: ${{ secrets.V7_CLOUD_FIT_PROFILE_REF }}
+          V7_CLOUD_FIT_PROFILE_REF: ""
           V7_CLOUD_FIT_PARALLEL: ${{ env.V7_CLOUD_FIT_PARALLEL || '1' }}     # D232: calls in flight at once, one per Oracle lane (1-3); unset is 1, one at a time
         run: |
           if [ "$PIPELINE" = "true" ]; then
@@ -1092,7 +1092,7 @@ jobs:
           NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN }}
           OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
           TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
-          V7_CLOSE_BASE_URL: ${{ secrets.V7_CLOSE_BASE_URL }}          # the private Close origin: the Network Leads block gets a Mark as Sent link for its own job; unset, the block is unchanged
+          V7_CLOSE_BASE_URL: ""          # the private Close origin: the Network Leads block gets a Mark as Sent link for its own job; unset, the block is unchanged
           NETWORK_SURFACE_SKIP: ""   # LIFE-703: declared empty so the V7 settings page can fill it; the code's own default applies when both are empty   | was: LIFE-572: pages proven earlier and untouched since are not read again; set the repository variable to off to read every page in full
         run: python -m lifeos.run network-surface --limit 82 $([ "$LIVE" = "true" ] && echo --live)
       - name: Network surface warning (the annotation; the `network_surface` lane fails the run, LIFE-653)
@@ -1434,7 +1434,7 @@ jobs:
         name: Interview stage (live only when Actually move mail is ticked)
         if: ${{ inputs.interview }}
         env:
-          LIFEOS_NOTION_IDS: ${{ secrets.LIFEOS_NOTION_IDS }}
+          LIFEOS_NOTION_IDS: ""
           NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""   # LIFE-360 (Jim approved Nov 7, 4:17 PM CT): the readers take opportunities from Ledger rows first (read-only, Interview token)
           NOTION_INTERVIEW_TOKEN: ${{ steps.bws_interview.outputs.NOTION_INTERVIEW_TOKEN }}
         run: python -m lifeos.run interview --limit 20 $([ "$LIVE" = "true" ] && echo --live)

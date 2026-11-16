@@ -136,13 +136,13 @@ jobs:
       - name: Notion sandbox access (read-only; codes and counts only)
         if: ${{ inputs.stage == 'notion-sandbox-access' }}
         env:
-          LIFEOS_NOTION_IDS: ${{ secrets.LIFEOS_NOTION_IDS }}
+          LIFEOS_NOTION_IDS: ""
           NOTION_API_TOKEN: ${{ steps.bws_sandbox.outputs.NOTION_API_TOKEN }}
         run: python -m lifeos.run notion-sandbox-access --limit 0
       - name: Notion sandbox outreach proof (one synthetic sandbox page; typed confirmation; codes and counts only)
         if: ${{ inputs.stage == 'notion-sandbox-outreach-proof' }}
         env:
-          LIFEOS_NOTION_IDS: ${{ secrets.LIFEOS_NOTION_IDS }}
+          LIFEOS_NOTION_IDS: ""
           NOTION_API_TOKEN: ${{ steps.bws_sandbox.outputs.NOTION_API_TOKEN }}
           PROOF_CONFIRM: ${{ inputs.confirm }}
         run: python -m lifeos.run notion-sandbox-outreach-proof --limit 0 --live
@@ -174,7 +174,7 @@ jobs:
             092b44ae-32cb-453b-8cc2-b4db015ef571 > NOTION_INTERVIEW_TOKEN
       - name: Interview UI 3c REST capability probe (one QA probe page; typed confirmation; codes, block types and counts only)
         env:
-          LIFEOS_NOTION_IDS: ${{ secrets.LIFEOS_NOTION_IDS }}
+          LIFEOS_NOTION_IDS: ""
           NOTION_INTERVIEW_TOKEN: ${{ steps.bws_interview.outputs.NOTION_INTERVIEW_TOKEN }}
           PROBE_CONFIRM: ${{ inputs.confirm }}
         run: python -m lifeos.run interview-ui-probe --limit 0 --live

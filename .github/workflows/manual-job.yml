@@ -82,7 +82,7 @@ jobs:
       - name: Manual job (one job into Jobs OS and the Interview OS writer; dry run unless live is ticked; counts and fixed codes only)
         env:
           NOTION_JIRA_TOKEN: ${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}
-          LIFEOS_NOTION_IDS: ${{ secrets.LIFEOS_NOTION_IDS }}
+          LIFEOS_NOTION_IDS: ""
           MANUAL_JOB_URL: ${{ inputs.url }}
           MANUAL_JOB_COMPANY: ${{ inputs.company }}
           MANUAL_JOB_TITLE: ${{ inputs.title }}

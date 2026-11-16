@@ -28,24 +28,11 @@ STATUS = {
 }
 # One line per movable name still read from GitHub (the whole list; phase 5 deletes the GitHub value). Adding a reference needs a line here and a status above.
 EXPECTED = {
-    "BROWSER_CACHE_BUST": "shadow",
-    "BUZZ_STAGE_CHANNEL": "shadow",
     "GATE_MIN_GAP_MINUTES": "ticker",
-    "GCAL_CALENDAR_ID": "shadow",
-    "HIRING_CARD_BLOCK_ID": "shadow",
     "INTERVIEW_ACCEPTANCE_JSON": "shadow",
     "INTERVIEW_ACCEPTANCE_NEGATIVE_JSON": "shadow",
-    "JIRA_BASE_URL": "shadow",
-    "JIRA_BOARDS": "shadow",
-    "JIRA_GTV_EPIC": "shadow",
-    "JIRA_SITE_URL": "shadow",
-    "NETWORK_HANDOFF_PAGE_ID": "shadow",
-    "NOTION_BILLS_DATA_SOURCE_ID": "shadow",
-    "V7_CLOSE_BASE_URL": "shadow",
     "V7_CLOUD_FIT_BACKLOG_PAGE": "conditional",
-    "V7_CLOUD_FIT_PROFILE_REF": "shadow",
     "V7_PIPELINE": "workflow env",
-    "WEEKLY_REVIEW_PAGE_ID": "shadow",
 }
 
 

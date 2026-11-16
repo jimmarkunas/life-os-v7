@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
-      GCAL_CALENDAR_ID: ${{ secrets.GCAL_CALENDAR_ID }}
+      GCAL_CALENDAR_ID: ""
     steps:
       - name: Checkout the exact commit (own git fetch; the token is passed once and never stored)
         run: |

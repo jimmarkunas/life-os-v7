@@ -12,7 +12,7 @@ ID = "[removed]"
 
 # Every GitHub secret or variable the workflows use (Nov 14, 2026; LIFE-703 removed 14 names that were never set in GitHub: their steps now declare them empty for the settings page to fill). This list may only shrink: LIFE-699 moves each one to the Notion settings page or Bitwarden,
 # and the end state is LIFEOS_BWS_RUNTIME_TOKEN alone (GITHUB_TOKEN is GitHub's own and never counted). Adding a name here needs Jim's typed approval.
-FROZEN = frozenset({"BROWSER_CACHE_BUST", "BUZZ_STAGE_CHANNEL", "GATE_MIN_GAP_MINUTES", "GCAL_CALENDAR_ID", "HIRING_CARD_BLOCK_ID", "INTERVIEW_ACCEPTANCE_JSON", "INTERVIEW_ACCEPTANCE_NEGATIVE_JSON", "JIRA_BASE_URL", "JIRA_BOARDS", "JIRA_GTV_EPIC", "JIRA_SITE_URL", "LIFEOS_BWS_RUNTIME_TOKEN", "LIFEOS_NOTION_IDS", "NETWORK_HANDOFF_PAGE_ID", "NOTION_BILLS_DATA_SOURCE_ID", "V7_CLOSE_BASE_URL", "V7_CLOUD_FIT_BACKLOG_PAGE", "V7_CLOUD_FIT_PROFILE_REF", "V7_PIPELINE", "V7_STORE_VIA", "WEEKLY_REVIEW_PAGE_ID"})
+FROZEN = frozenset({"GATE_MIN_GAP_MINUTES", "INTERVIEW_ACCEPTANCE_JSON", "INTERVIEW_ACCEPTANCE_NEGATIVE_JSON", "LIFEOS_BWS_RUNTIME_TOKEN", "V7_CLOUD_FIT_BACKLOG_PAGE", "V7_PIPELINE", "V7_STORE_VIA"})
 
 
 def used():
@@ -242,6 +242,24 @@ class ShadowRule(unittest.TestCase):
     def test_only_a_notion_token_name_counts_as_a_token(self):
         env = {"GITHUB_ACTIONS": "true", "NOTION_TOKENIZER": "x", "TINYFISH_API_KEY": "y", "NOTION_AMAZON_DATA_SOURCE_ID": ""}
         self.assertEqual(settings.apply(env)["status"], "no_token")
+
+    def test_a_private_plain_value_written_to_the_job_environment_is_masked_but_a_switch_is_not(self):
+        """LIFE-699: the repository is public. The Jira boards, the epic and the other private plain settings were masked secrets, so the settings step masks them when it exports them; a switch such as `on` is never masked (it would empty every job output)."""
+        import contextlib
+        import io
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            path = folder + "/env"
+            env = {"GITHUB_ACTIONS": "true", "GITHUB_ENV": path, "JIRA_BOARDS": "", "JIRA_GTV_EPIC": "", "GRANOLA_AUTO": ""}
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                settings.main([], env, Page(["JIRA_BOARDS JFM:5,MEJ:38:all", "JIRA_GTV_EPIC JFM-165", "GRANOLA_AUTO on"]))
+            written = open(path).read()
+        printed = out.getvalue()
+        self.assertIn("::add-mask::JFM:5,MEJ:38:all", printed)
+        self.assertIn("::add-mask::JFM-165", printed)
+        self.assertNotIn("::add-mask::on", printed)                                       # a switch is never masked
+        self.assertEqual(sorted(written.strip().split("\n")), ["GRANOLA_AUTO=on", "JIRA_BOARDS=JFM:5,MEJ:38:all", "JIRA_GTV_EPIC=JFM-165"])
 
     def test_off_outside_production_and_without_a_token(self):
         self.assertEqual(settings.apply({"LIFEOS_SETTINGS": "off"}, Page(["GRANOLA_AUTO on"]))["status"], "off")

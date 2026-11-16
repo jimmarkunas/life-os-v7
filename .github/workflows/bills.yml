@@ -62,7 +62,7 @@ jobs:
         name: Bills snapshot (read-only; save only when live)
         env:
           NOTION_JIRA_TOKEN: ${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}
-          NOTION_BILLS_DATA_SOURCE_ID: ${{ secrets.NOTION_BILLS_DATA_SOURCE_ID }}
+          NOTION_BILLS_DATA_SOURCE_ID: ""
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_PASSWORD }}
           LIFEOS_ACQ_DB_USER: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_USER }}
