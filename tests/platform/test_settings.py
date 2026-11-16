@@ -243,6 +243,24 @@ class ShadowRule(unittest.TestCase):
         env = {"GITHUB_ACTIONS": "true", "NOTION_TOKENIZER": "x", "TINYFISH_API_KEY": "y", "NOTION_AMAZON_DATA_SOURCE_ID": ""}
         self.assertEqual(settings.apply(env)["status"], "no_token")
 
+    def test_a_private_plain_value_written_to_the_job_environment_is_masked_but_a_switch_is_not(self):
+        """LIFE-699: the repository is public. The Jira boards, the epic and the other private plain settings were masked secrets, so the settings step masks them when it exports them; a switch such as `on` is never masked (it would empty every job output)."""
+        import contextlib
+        import io
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            path = folder + "/env"
+            env = {"GITHUB_ACTIONS": "true", "GITHUB_ENV": path, "JIRA_BOARDS": "", "JIRA_GTV_EPIC": "", "GRANOLA_AUTO": ""}
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                settings.main([], env, Page(["JIRA_BOARDS JFM:5,MEJ:38:all", "JIRA_GTV_EPIC JFM-165", "GRANOLA_AUTO on"]))
+            written = open(path).read()
+        printed = out.getvalue()
+        self.assertIn("::add-mask::JFM:5,MEJ:38:all", printed)
+        self.assertIn("::add-mask::JFM-165", printed)
+        self.assertNotIn("::add-mask::on", printed)                                       # a switch is never masked
+        self.assertEqual(sorted(written.strip().split("\n")), ["GRANOLA_AUTO=on", "JIRA_BOARDS=JFM:5,MEJ:38:all", "JIRA_GTV_EPIC=JFM-165"])
+
     def test_off_outside_production_and_without_a_token(self):
         self.assertEqual(settings.apply({"LIFEOS_SETTINGS": "off"}, Page(["GRANOLA_AUTO on"]))["status"], "off")
         self.assertEqual(settings.apply({"NOTION_API_TOKEN": "t"})["status"], "off")             # not GitHub Actions, not switched on: no Notion call at all
