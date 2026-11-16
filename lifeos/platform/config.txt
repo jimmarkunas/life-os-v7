@@ -42,7 +42,6 @@ OUTLOOK_CLIENT_ID input Outlook setting (client id)
 OUTLOOK_REPLACE flag:run Outlook setting (replace)
 OUTLOOK_WRITE flag:run Outlook setting (write)
 PAGES workflow_only:workflow Input of the network run: most pages one run may read
-PIPELINE flag:workflow True when the run is the full hourly pipeline
 RECRUITERS_FULL_SCAN workflow_only:workflow Input of the manual Recruiters workflow: read all 14 days this run, ignoring the mail already seen (on / off)
 REPORT_CONFIRM flag:workflow Confirmation word a manual report run needs
 SCHEMA_CONFIRM flag:workflow Confirmation word (APPLY) the manual Action Inbox schema apply needs; without it the stage only checks
@@ -57,6 +56,7 @@ TICK flag True when the run was sent by the scheduler tick
 TINYFISH_API_KEY secret Search provider key (never printed)
 V7_ARCHIVE_TOKEN secret Token the branch-archive workflow uses
 V7_IMESSAGE_ALERTS workflow_only:workflow Switch for the iMessage alert job in the domains tick; the V7 settings page can set it, GitHub's value is the fallback
+V7_STORE_VIA workflow_only:workflow Bitwarden plain switch: oracle sends the store connection through Oracle first (exported as LIFEOS_ACQ_SSH_VIA)
 WEEKLY_REVIEW_PAGE_ID input Notion page id of the weekly review
 FOLLOWUP_ACCOUNT_CALENDAR_BYTALOS input Short account label for the Followup calendar source (bytalos), shown in receipts; never an address
 FOLLOWUP_ACCOUNT_CALENDAR_PERSONAL input Short account label for the Followup calendar source (personal), shown in receipts; never an address
