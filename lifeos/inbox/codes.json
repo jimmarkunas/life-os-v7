@@ -4,5 +4,8 @@
   "INBOX_SCHEMA_TABLES_EXIST": ["inbox", "blocked", false, "One of the four Action Inbox tables already exists, so nothing was applied.", "Look at the existing table before anything else."],
   "INBOX_SCHEMA_VERIFY_FAILED": ["inbox", "bug", false, "The tables were created but did not read back as planned (columns or rows).", "Inspect the tables; nothing is deleted automatically."],
   "FOLLOWUP_STORE_UNAVAILABLE": ["inbox", "retry", true, "The Followup state store could not be read or written, so the batch was rolled back and the last known-good state and cursor are unchanged.", "None; nothing was kept. Retry the same batch."],
-  "FOLLOWUP_READBACK_MISMATCH": ["inbox", "bug", false, "A Followup thread did not read back as written, so the batch was rolled back and the cursor did not advance.", "Inspect the Followup tables and the writer; nothing is deleted automatically."]
+  "FOLLOWUP_READBACK_MISMATCH": ["inbox", "bug", false, "A Followup thread did not read back as written, so the batch was rolled back and the cursor did not advance.", "Inspect the Followup tables and the writer; nothing is deleted automatically."],
+  "FOLLOWUP_AUDIT_UNAVAILABLE": ["inbox", "retry", true, "A Followup access receipt could not be written, so that source was not read.", "None; nothing was read. Retry on the next tick."],
+  "FOLLOWUP_PAYLOAD_STORE_MISSING": ["inbox", "blocked", false, "The Followup store has no payload table or writer, so the payload was not published.", "Create the payload table (activation [A]) and merge the payload writer."],
+  "FOLLOWUP_DRY_RUN_NO_WRITE": ["inbox", "bug", false, "A dry run tried to write to the Followup store, which it must never do.", "Fix the stage: a dry run computes and writes nothing."]
 }

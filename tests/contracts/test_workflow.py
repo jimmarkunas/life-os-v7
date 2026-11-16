@@ -714,6 +714,7 @@ DOMAIN_SECRETS = {         # the only secrets each domain job may see; adding on
                   "BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID"},   # LIFE-34 Communications card (Notion writer + region anchors). LIFE-31: the Tailscale OAuth pair goes only to the pinned join action (see TAILSCALE_WITH)
     "jira": DB | {"JIRA_API_TOKEN", "JIRA_BASE_URL", "JIRA_BOARDS", "JIRA_CARD_BLOCK_ID", "JIRA_CARD_PROJECTS", "JIRA_EMAIL",
                   "JIRA_GTV_CONTEXT_URL", "JIRA_GTV_EPIC", "JIRA_SITE_URL", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"},
+    "followup": DB | {"JIRA_BASE_URL"},   # LIFE-757: the Action Inbox followup job (dry run, switch FOLLOWUP_WIRING): the store credentials and the Jira site name, no source credential yet
     "outlook": DB | {"GCAL_CALENDAR_ID", "GCAL_SERVICE_ACCOUNT_JSON", "NTFY_TOPIC", "OUTLOOK_CLIENT_ID"},
     "bills": DB | {"BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "NOTION_BILLS_DATA_SOURCE_ID", "NOTION_BILLS_TOKEN", "NOTION_JIRA_TOKEN"},
     "agenda": DB | {"CALENDAR_CARD_BLOCK_ID", "GCAL_CALENDAR_ID", "GCAL_SERVICE_ACCOUNT_JSON", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "NOTION_JIRA_TOKEN"},
@@ -832,7 +833,7 @@ class DomainsWorkflowTests(unittest.TestCase):
     def test_a_failed_stage_step_ends_its_job_red_after_every_stage_ran_and_never_skips_another_job(self):
         """LIFE-649: every continue-on-error stage step is covered by its job's final step, so the job result is `failure` and the report job pushes the phone once; nothing else changes."""
         jobs = {n: j for n, j in self.doc["jobs"].items() if n not in ("gate", "report")}
-        self.assertEqual(len(jobs), 15)
+        self.assertEqual(len(jobs), 16)
         for name, job in jobs.items():
             self.assertEqual(self.uncovered_stage_steps(job, self.V3_STAGES_THAT_ONLY_WARN if name == "jira" else ()), [], name)   # LIFE-730: only the jira job may leave the five V3 ids off its list
             self.assertNotIn("continue-on-error", job)                                                    # the job itself never swallows the failure
