@@ -285,5 +285,26 @@ class Job(unittest.TestCase):
         self.assertEqual(json.loads((self.ROOT / "lifeos/platform/switches.json").read_text())["FOLLOWUP_WIRING"]["state"], "off")
 
 
+class DefaultLabels(unittest.TestCase):
+    """Jim creates no label item: each account has a committed label, used only where its credential is there to read."""
+
+    def test_every_default_names_a_real_scope_and_is_never_an_address_or_tgp(self):
+        self.assertEqual(set(W.DEFAULT_LABELS) - set(F.CREDENTIAL_NAMES), set())
+        for key, label in W.DEFAULT_LABELS.items():
+            self.assertTrue(label and len(label) <= 80 and "@" not in label and not S.tgp_account(label), key)
+
+    def test_a_credential_in_the_environment_brings_its_committed_label(self):
+        gmail, name = ("gmail", "bytalos", 1), F.CREDENTIAL_NAMES[("gmail", "bytalos", 1)]
+        self.assertEqual(W.accounts({}, "gmail", "bytalos"), [])                      # no credential, no scope
+        self.assertEqual(W.accounts({name: "x"}, "gmail", "bytalos"), [(1, W.DEFAULT_LABELS[gmail])])
+        self.assertEqual(W.accounts({name: "x", F.ACCOUNT_NAMES[gmail]: "mine"}, "gmail", "bytalos"), [(1, "mine")])   # an environment label still wins
+        self.assertEqual(W.accounts({name: "x", F.ACCOUNT_NAMES[gmail]: "a@" + "tgp" + "international.com"}, "gmail", "bytalos"), [])   # and a TGP one is refused, not replaced by the default
+
+    def test_outlook_is_judged_by_the_reader_so_its_client_id_is_enough(self):
+        self.assertEqual(W.accounts({}, "outlook", "personal"), [])
+        self.assertEqual([slot for slot, _ in W.accounts({"OUTLOOK_CLIENT_ID": "x"}, "outlook", "personal")], [1, 2, 3])
+        self.assertEqual(W.accounts({"OUTLOOK_CLIENT_ID": "x"}, "outlook", "bytalos"), [])
+
+
 if __name__ == "__main__":
     unittest.main()
