@@ -244,7 +244,7 @@ class AutoRelease(unittest.TestCase):
 
     def test_the_install_script_knows_the_settings_credential_and_loads_it_into_the_unit(self):
         script = open(os.path.join(ROOT, "lifeos/edge/oracle/install-close.sh")).read()
-        for text in ("ghvars)", "ghvars-off)", "LoadCredentialEncrypted=ghvars:$CREDS/lifeos-close.ghvars", "Variables read and write, nothing else"):
+        for text in ("bwsalerts)", "bwsalerts-off)", "ghvars-off)", "LoadCredentialEncrypted=bwsalerts:$CREDS/lifeos-close.bwsalerts", "LIFE OS ALERTS only"):
             self.assertIn(text, script)
 
     def test_the_auto_step_restores_the_live_tree_and_never_updates_the_updater(self):

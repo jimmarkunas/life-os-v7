@@ -4,7 +4,7 @@ Accept=yes) as a DynamicUser isolated from OpenClaw (`ubuntu`, no root); Tailsca
   2. PROXY v2 source -> tailscaled whois: the approved login, untagged, StableID on the approved list (iPhone, MacBook; never Oracle or the Mac mini);
   3. ONE bounded HTTP/1.1 request: GET or POST, exact Host, no duplicate header or chunked body; POST same-origin and form-encoded;
   4. GET never gets the Notion token, only a read-only client; POST gets the token. Refusals are fixed statuses; nothing is logged.
-  5. The optional `ghvars` credential (a GitHub token that can edit this repository's variables, nothing else) reaches the app only for the path /alerts (the Alert settings screen), on GET and POST.
+  5. The optional `bwsalerts` credential (a Bitwarden machine-account token for the LIFE OS ALERTS project, LIFE-733; it replaced the GitHub `ghvars` token) reaches the app only for the path /alerts (the Alert settings screen), on GET and POST.
 After a POST's response is written, a refresh the app asked for (Jim, Oct 24: closed rows should leave the Daily Report without waiting for the hour) is one GitHub
 workflow_dispatch made with the optional `github` credential, which the app never sees; without that credential nothing is asked."""
 import json
@@ -173,11 +173,11 @@ def main(app, stdin=None, stdout=None, lookup=ep.whois, uid=ep.loopback_peer_uid
         gdrive = open(drive, "rb").read().strip() if os.path.isfile(drive) else b""   # optional (Jim, Oct 24): résumés go to Google Drive; absent = the Notion upload
     except OSError:
         gdrive = b""
-    ghvars_path = os.path.join(creds, "ghvars")
+    bws_path = os.path.join(creds, "bwsalerts")
     try:
-        ghvars = open(ghvars_path, "rb").read().strip() if req["path"] == "/alerts" and os.path.isfile(ghvars_path) else b""      # optional (Jim, Oct 26): the Alert settings screen edits repository variables; ONLY /alerts ever gets it, GET and POST
+        bwsalerts = open(bws_path, "rb").read().strip() if req["path"] == "/alerts" and os.path.isfile(bws_path) else b""      # optional (Jim, Oct 26): the Alert settings screen edits the three alert items in Bitwarden; ONLY /alerts ever gets it, GET and POST
     except OSError:
-        ghvars = b""
+        bwsalerts = b""
     picker_path = os.path.join(creds, "picker")
     try:                                                                  # optional (LIFE-217, Jim Oct 31): the Drive picker's browser identifiers; ONLY GET /manage gets them
         picker = json.loads(open(picker_path, "rb").read()) if req["method"] == "GET" and req["path"] in PICKER_PATHS and os.path.isfile(picker_path) else None
@@ -196,8 +196,8 @@ def main(app, stdin=None, stdout=None, lookup=ep.whois, uid=ep.loopback_peer_uid
             secrets["after"] = after                                       # the app appends refresh names (REFRESH keys) after a verified write
             if gdrive:
                 secrets["gdrive"] = gdrive                                 # POST only, like the Notion token; GET never gets it
-        if ghvars:
-            secrets["ghvars"] = ghvars
+        if bwsalerts:
+            secrets["bwsalerts"] = bwsalerts
         status, ctype, body, extra = app({**req, "form": dict(parse_qsl(req["body"].decode("utf-8", "replace")))}, who, secrets)
     except Exception:                                                      # noqa: BLE001 - no failure detail ever leaves the gate
         status, ctype, body, extra = 500, "text/plain; charset=utf-8", b"", ()

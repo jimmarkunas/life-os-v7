@@ -1,25 +1,23 @@
 """The Alert settings screen on the private Close service: GET /alerts, saved by a signed review and confirm (LIFE-75).
 
-Shows the master switch (alerts on or off), the mute, and one row per registered alert with a Page/Info badge and three channel boxes (Phone, Telegram, WhatsApp). Saving shows the proposed change against a fresh read, and the write is reported only after the three GitHub repository variables read back as sent. A PAGE alert's
+Shows the master switch (alerts on or off), the mute, and one row per registered alert with a Page/Info badge and three channel boxes (Phone, Telegram, WhatsApp). Saving shows the proposed change against a fresh read, and the write is reported only after the three Bitwarden items (project LIFE OS ALERTS) read back as sent. A PAGE alert's
 phone box is fixed on.
-Inputs: the variables ALERTS_ENABLED ("on" or "off"), ALERTS_MUTED_UNTIL (a time, or "off") and ALERT_SETTINGS (lifeos/platform/alert_settings.py: only the choices that differ from the registry), already in every run's environment; the optional `ghvars` credential, passed by the Edge gate to this path only (without it the screen
+Inputs: the variables ALERTS_ENABLED ("on" or "off"), ALERTS_MUTED_UNTIL (a time, or "off") and ALERT_SETTINGS (lifeos/platform/alert_settings.py: only the choices that differ from the registry), read from Bitwarden; the optional `bwsalerts` credential (a Bitwarden machine-account token for LIFE OS ALERTS), passed by the Edge gate to this path only (without it the screen
 says so and changes nothing).
 Outputs: the screen, or a fixed code; no alert text, topic or token is shown. Pointer: LIFE-75."""
-# LIFE-75 (Jim, Oct 26 2026). Only Jim's iPhone and MBP are admitted by the Edge gate on the Oracle host. `ghvars` is a token that can edit this repository's variables and nothing else.
+# LIFE-75 (Jim, Oct 26 2026). Only Jim's iPhone and MBP are admitted by the Edge gate on the Oracle host. LIFE-733: `bwsalerts` is a Bitwarden access token that reaches the LIFE OS ALERTS project and nothing else the Close service uses; it replaced the GitHub `ghvars` token.
 import hashlib
 import json
-import urllib.error
-import urllib.request
+import subprocess
 from datetime import datetime
 from html import escape as e
 from zoneinfo import ZoneInfo
 
 from lifeos.hiring import close_screen as S
-from lifeos.platform import alert_registry as registry, alert_settings as settings, alerts, credentials
+from lifeos.platform import alert_registry as registry, alert_settings as settings, alert_store, alerts, credentials
 from lifeos.sources.apps import close_app as C
 from lifeos.sources.apps.signed import invalid
 
-API = "https://api.github.com/repos/jimmarkunas/life-os-v7/actions/variables"
 PATH, TAB = "LIFE OS / Command Center / Alert settings", "Alert settings"
 SWITCH, MUTE, DOC = settings.ENABLED_VARIABLE, alerts.MUTE_VARIABLE, settings.SETTINGS_VARIABLE
 LABELS = {"ntfy": "Phone", "telegram": "Telegram", "whatsapp": "WhatsApp"}
@@ -42,14 +40,14 @@ def _shell(html):
     """The Close screens' page, with this screen's own stylesheet and its own words in the header and footer."""
     return (html.replace(b'<link rel="stylesheet" href="/close.css">', b'<link rel="stylesheet" href="/close.css"><link rel="stylesheet" href="/alerts.css">')
             .replace(b"Hiring \xc2\xb7 Opportunity actions", b"Alerts \xc2\xb7 Settings")
-            .replace(b"LIFE OS \xc2\xb7 Closing a LinkedIn contact is separate from closing a hiring opportunity.", b"LIFE OS \xc2\xb7 Saved as repository variables; the next run uses them."))
+            .replace(b"LIFE OS \xc2\xb7 Closing a LinkedIn contact is separate from closing a hiring opportunity.", b"LIFE OS \xc2\xb7 Saved in Bitwarden; the next run uses them."))
 
 
 def _stop(status, eyebrow, title, text, detail, css="alert"):
     return status, C.HTML, _shell(S.result(eyebrow, title, text, detail, css)), ()
 
 
-NO_ANSWER = (503, "Unavailable", "GitHub did not answer", "The settings could not be read.", "Nothing was changed.", "danger")
+NO_ANSWER = (503, "Unavailable", "Bitwarden did not answer", "The settings could not be read.", "Nothing was changed.", "danger")
 RELOAD = "Reload Alert settings."
 
 
@@ -66,35 +64,14 @@ def handle_css(req, who, secrets):
     return 200, "text/css; charset=utf-8", CSS.encode(), ()
 
 
-def _call(token, method, name="", body=None, opener=urllib.request.urlopen):
-    request = urllib.request.Request(API + (f"/{name}" if name else ""), None if body is None else json.dumps(body).encode(), method=method, headers={
-        "Authorization": "Bearer " + token.decode(), "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "lifeos-close"})
-    with opener(request, timeout=10) as response:
-        return json.loads(response.read() or b"{}")
+def read(token, run=subprocess.run):
+    """-> {variable: value} for the three switches, from Bitwarden; any failure raises."""
+    return alert_store.read(token, run)
 
 
-def read(token, opener=urllib.request.urlopen):
-    """-> {variable: value or None} for the three variables; any GitHub failure other than 'not found' raises."""
-    out = {}
-    for name in (SWITCH, MUTE, DOC):
-        try:
-            out[name] = str(_call(token, "GET", name, opener=opener).get("value") or "")
-        except urllib.error.HTTPError as error:
-            if error.code != 404:
-                raise
-            out[name] = None
-    return out
-
-
-def write(token, values, opener=urllib.request.urlopen):
-    """Create or update each variable (update first, create on 'not found')."""
-    for name, value in values.items():
-        try:
-            _call(token, "PATCH", name, {"name": name, "value": value}, opener)
-        except urllib.error.HTTPError as error:
-            if error.code != 404:
-                raise
-            _call(token, "POST", "", {"name": name, "value": value}, opener)
+def write(token, values, run=subprocess.run):
+    """Save each value to its Bitwarden item."""
+    alert_store.write(token, values, run)
 
 
 def model(values, now):
@@ -219,19 +196,19 @@ def _page(state, secret, login, now, notice=""):
     return 200, C.HTML, _shell(S.page("Alert settings", "What gets sent, and where.", body, PATH, TAB)), ()
 
 
-def _get(req, who, secrets, opener):
-    token = secrets.get("ghvars")
+def _get(req, who, secrets, run):
+    token = secrets.get("bwsalerts")
     if not token:
         return _stop(503, "Not set up", "The settings credential is not installed", "This screen cannot read or save settings yet.", "Nothing was changed.")
     try:
-        values = read(token, opener)
+        values = read(token, run)
     except Exception:                                                              # noqa: BLE001 - fixed text only; never the token, URL or reply
         return _stop(*NO_ANSWER)
     return _page(model(values, C._now()), secrets["link"], who["login"], C._now())
 
 
-def _post(req, who, secrets, opener):
-    form, secret, login, token = req["form"], secrets["link"], who["login"], secrets.get("ghvars")
+def _post(req, who, secrets, run):
+    form, secret, login, token = req["form"], secrets["link"], who["login"], secrets.get("bwsalerts")
     exp, now = form.get("exp", ""), C._now()
     if not token:
         return _stop(503, "Not set up", "The settings credential is not installed", "This screen cannot save settings yet.", "Nothing was changed.")
@@ -245,7 +222,7 @@ def _post(req, who, secrets, opener):
         if not C._same(form.get("t"), C._mac(secret, "alerts", login, exp)):
             return invalid(_stop, RELOAD)
         try:
-            current = model(read(token, opener), now)
+            current = model(read(token, run), now)
         except Exception:                                                          # noqa: BLE001
             return _stop(*NO_ANSWER)
         lines = changes(current, state)
@@ -253,24 +230,24 @@ def _post(req, who, secrets, opener):
         shown = "".join(f"<li>{e(line)}</li>" for line in lines) or "<li>No change.</li>"
         return 200, C.HTML, _shell(S.page("Review changes", "Nothing is saved until you confirm.", (
             f'<form method="post" action="/alerts">{S._hidden(fields)}<section class="section"><div class="eyebrow">Review</div><ul class="lead">{shown}</ul>'
-            '<div class="notice alert">Confirming saves these as repository variables; the next run uses them. The change is shown as done only after GitHub reports the same values back.</div></section>'
+            '<div class="notice alert">Confirming saves these in Bitwarden; the next run uses them. The change is shown as done only after Bitwarden reports the same values back.</div></section>'
             '<div class="actions"><button class="btn link" name="step" value="cancel" formnovalidate>Cancel</button>'
             f'<button class="btn primary" name="step" value="confirm"{" disabled" if not lines else ""}>Save</button></div></form>'), PATH, TAB)), ()
     if step != "confirm" or not C._same(form.get("t"), C._mac(secret, "alerts-confirm", login, exp, digest(state))):
         return invalid(_stop, RELOAD)
     want = values_for(state)
     try:
-        write(token, want, opener)
-        got = read(token, opener)
+        write(token, want, run)
+        got = read(token, run)
     except Exception:                                                              # noqa: BLE001
-        return _unsaved("GitHub error")
+        return _unsaved("Bitwarden error")
     if any((got.get(name) or "") != value for name, value in want.items()):
         return _unsaved("not read back")
-    return _stop(200, "Saved", "Alert settings saved", "GitHub reports the same values back; the next run uses them.",
+    return _stop(200, "Saved", "Alert settings saved", "Bitwarden reports the same values back; the next run uses them.",
                  f"Alerts {'ON' if state['enabled'] else 'OFF'} · {('muted until ' + state['mute'].replace('T', ' ') + ' Central') if state['mute'] else 'no mute'}.", "ok")
 
 
-def handle(req, who, secrets, opener=urllib.request.urlopen):
+def handle(req, who, secrets, run=subprocess.run):
     if req["method"] == "GET":
-        return _get(req, who, secrets, opener)
-    return _post(req, who, secrets, opener)
+        return _get(req, who, secrets, run)
+    return _post(req, who, secrets, run)

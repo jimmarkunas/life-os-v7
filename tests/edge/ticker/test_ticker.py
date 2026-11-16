@@ -324,6 +324,36 @@ class Watch(unittest.TestCase):
             self.assertEqual(ticker.watch(TOKEN, TOPIC, FakeGitHub(answers), run=lambda calls=calls, **k: calls.append(k), environ={})[0], "TICKER_VARIABLES_UNREADABLE")
             self.assertEqual(calls, [], broken)
 
+    def test_with_a_bitwarden_store_the_switches_come_from_it_and_github_is_not_asked_for_them(self):
+        calls, env = [], {}
+        store = lambda: {"ALERTS_ENABLED": "on", "ALERTS_MUTED_UNTIL": "off", "ALERT_SETTINGS": "{}", "OTHER": "x"}      # noqa: E731
+        code, _ = ticker.watch(TOKEN, TOPIC, FakeGitHub({}), run=lambda calls=calls, **k: calls.append(k), environ=env, store=store)
+        self.assertEqual((code, calls), ("WATCH_DONE", [{"checkin": False}]))
+        self.assertEqual((env["ALERTS_ENABLED"], env["ALERTS_MUTED_UNTIL"], env["ALERT_SETTINGS"]), ("on", "off", "{}"))
+        self.assertNotIn("OTHER", env)
+
+    def test_a_bitwarden_store_that_cannot_be_read_stops_before_the_watchdog_runs_with_no_status(self):
+        def broken():
+            raise RuntimeError("down")
+        calls = []
+        self.assertEqual(ticker.watch(TOKEN, TOPIC, FakeGitHub(SWITCHES), run=lambda calls=calls, **k: calls.append(k), environ={}, store=broken), ("TICKER_VARIABLES_UNREADABLE", None))
+        self.assertEqual(calls, [])
+
+    def test_the_bwsalerts_credential_selects_bitwarden_and_its_absence_keeps_the_repository_variables(self):
+        folder = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, folder)
+        for name, value in (("github", TOKEN), ("ntfy", TOPIC), ("bwsalerts", "0.abc.def:ghi")):
+            Path(folder, name).write_text(value)
+        seen = []
+        with mock.patch("lifeos.platform.alert_store.read", side_effect=lambda token, **k: seen.append(token) or {"ALERTS_ENABLED": "on"}), redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(ticker.main(["dry"], opener=FakeGitHub({}), environ={"CREDENTIALS_DIRECTORY": folder}), 0)
+        self.assertEqual((seen, json.loads(out.getvalue())["code"]), (["0.abc.def:ghi"], "TICKER_DRY_OK"))
+        Path(folder, "bwsalerts").unlink()
+        with mock.patch("lifeos.platform.alert_store.read") as read, redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(ticker.main(["dry"], opener=FakeGitHub(SWITCHES), environ={"CREDENTIALS_DIRECTORY": folder}), 0)
+        read.assert_not_called()
+        self.assertEqual(json.loads(out.getvalue())["code"], "TICKER_DRY_OK")
+
     def test_a_watchdog_that_cannot_read_github_is_a_fixed_code(self):
         def boom(**k):
             raise urllib.error.URLError("down")
@@ -408,10 +438,10 @@ class Installer(unittest.TestCase):
     def test_it_only_removes_or_writes_its_own_paths(self):
         text = self.SCRIPT.read_text()
         self.assertIn("OPT=/opt/lifeos-ticker", text)
-        self.assertIn('GH="$CREDS/lifeos-ticker.github"; NT="$CREDS/lifeos-ticker.ntfy"', text)
+        self.assertIn('GH="$CREDS/lifeos-ticker.github"; NT="$CREDS/lifeos-ticker.ntfy"; BW="$CREDS/lifeos-ticker.bwsalerts"', text)
         for line in re.findall(r"rm -[rf]+ ([^;\n]+)", text):
             for target in line.split():
-                self.assertIn(target.strip('"'), ('$UNITS/$u', '$OPT', '$GH', '$NT'), line)
+                self.assertIn(target.strip('"'), ('$UNITS/$u', '$OPT', '$GH', '$NT', '$BW', '$DROPIN'), line)
 
     def test_every_file_it_installs_exists_in_the_repo(self):
         text = self.SCRIPT.read_text()
