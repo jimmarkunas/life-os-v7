@@ -52,6 +52,11 @@ class LastFourSwitches(unittest.TestCase):
         for unset in ("none", "", "not a page"):
             self.assertEqual(run("V7_CLOUD_FIT_BACKLOG_PAGE", {"V7_CLOUD_FIT_BACKLOG_PAGE": unset})[0], {"V7_CLOUD_FIT_BACKLOG_PAGE": ""}, unset)
 
+    def test_mute_off_means_not_muted_and_is_accepted(self):
+        for off in ("off", "OFF", " off "):
+            exports, report, _ = run("ALERTS_MUTED_UNTIL", {"ALERTS_MUTED_UNTIL": off})
+            self.assertEqual((exports, report), ({"ALERTS_MUTED_UNTIL": ""}, {"ALERTS_MUTED_UNTIL": "ok"}), off)   # the Alert settings app writes "off"; it is not a refusal
+
     def test_main_exports_the_store_route_under_the_name_the_code_reads(self):
         with tempfile.TemporaryDirectory() as tmp:
             env_file = os.path.join(tmp, "env")
