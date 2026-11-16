@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from lifeos.platform import db, outlook_tokens as store
 from lifeos.platform.outlook import Outlook, OutlookError, device_start, device_wait
 
-LABELS = ("personal", "work")
+LABELS = ("personal", "work", "followup-personal-1", "followup-personal-2", "followup-personal-3")
 
 
 def _label(environ):
