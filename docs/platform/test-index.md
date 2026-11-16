@@ -28,6 +28,10 @@ A pull request used to run all ~4,300 tests. It now runs the tests its change ca
 
 **Where the index comes from:** the job `test-index` runs on every push to main after `unit-tests` passes, but since LIFE-770 it only rebuilds when the newest index is over a day old (it restores the newest one and runs `python -m tests.testindex check --max-age-days 1`; a fresh one is reused and the 250 s build and the save are skipped). A rebuild installs the test lock (which holds `coverage`), runs `python -m tests.testindex build` and saves `docs/test-index.json` with the cache action under `test-index-v1-<hash of tests/testindex.py and requirements-test.lock>-<commit>`. A pull request restores the newest cache whose key starts with the same prefix (restore only, it never saves) before the selector runs. The first pull requests after a change to the builder or the lock, or after a failed build, find no index and run FULL.
 
+## Parked packages (LIFE-772)
+
+Job search and Interview OS (`lifeos/jobs`, `interview`, `hiring`, `recruiters`, `megibow`: about 18 % of the CI test seconds in `tests/shard-weights.json`) are imported only by `lifeos/sources` and the top-level entry points. So a pull request that changes any other package never selects their tests (measured with a built index: a change to `lifeos/inbox`, `jira` or `sources` selects none of them), and a change to `lifeos/platform`, `.github/**`, the shared test kit or a lock file is FULL, which runs them. `lifeos/run.py` selects the tests that cover it, which include some of theirs. `tests/contracts/test_parked_boundary.py` (always run) reads the real imports and fails if any other package starts importing one of the five, naming the importer, because then those tests must run when it changes. Main, the hourly run and `--all` still run everything.
+
 ## A wrong index cannot skip a test it should run
 
 * **Different builder or tools:** the cache key includes a hash of `tests/testindex.py` and `requirements-test.lock`; an index made by other code or other pinned tools is never restored. A pull request that edits either file is FULL anyway.
