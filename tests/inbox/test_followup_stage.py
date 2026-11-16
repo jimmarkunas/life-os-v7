@@ -146,7 +146,7 @@ class Stage(unittest.TestCase):
         self.assertEqual({r["tenant"] for r in rig.receipts}, {"personal"})
 
     def test_personal_and_bytalos_stay_separate_and_one_failing_scope_does_not_stop_the_other(self):
-        rig = Rig(scopes=(S.Scope("personal", ACCOUNT, ("gmail",)), S.Scope("bytalos", "jim@example.org", ("gmail",))))
+        rig = Rig(scopes=(S.Scope("personal", ACCOUNT, ("gmail",)), S.Scope("bytalos", "bytalos@example.com", ("gmail",))))
 
         def audit(receipt):
             if receipt["tenant"] == "bytalos":
@@ -156,7 +156,7 @@ class Stage(unittest.TestCase):
         counts = rig.run()
         self.assertEqual((counts["scopes"], counts["published"], counts.get("item_failed")), (1, 1, 1))
         self.assertEqual([p["workspace"] for p in rig.published], ["personal"])
-        self.assertEqual(rig.store.threads("bytalos", "jim@example.org"), [])
+        self.assertEqual(rig.store.threads("bytalos", "bytalos@example.com"), [])
 
     def test_proof_the_outcome_ended_closes_the_thread_and_the_same_evidence_never_reopens_it(self):
         rig = Rig()
