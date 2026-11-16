@@ -217,6 +217,7 @@
   "DENY_INPUT": ["platform", "terminal", false, "The tool request is malformed or a required field is missing.", "Fix the request."],
   "DENY_PRINCIPAL": ["platform", "terminal", false, "The agent, host or session is not a verified one, or the call did not come through the V7 adapter.", "Call through the adapter with a valid session."],
   "DENY_UNSUPPORTED_ACTION": ["platform", "terminal", false, "The tool is not registered, or the sandbox or workbench action is not supported.", "Use a registered tool."],
+  "DENY_ROTATING_TOKEN": ["platform", "terminal", false, "The Todoist app hands out a rotating (refresh) token, which a read-only item cannot follow; nothing was stored.", "Switch refresh tokens off for the app, or use the account's own API token."],
   "DENY_SECRET_EXPOSURE": ["platform", "terminal", false, "A secret-shaped value is in the request or in the tool output; the output is suppressed.", "Remove the secret and retry."],
   "DENY_ACCOUNT_AMBIGUOUS": ["platform", "terminal", false, "The account is missing, ambiguous, unknown or not this tool's account.", "Name the exact account."],
   "SETTINGS_PAGE_NOT_FOUND": ["platform", "degraded", false, "The V7 settings page (machine read) was not found by its exact title; every value stayed as the environment had it.", "Check the page title and that the V7 Notion connection can see it."],

@@ -65,7 +65,7 @@ def _default_label(environ, key):
     """The committed label, but only where the credential is there to read (a stored Outlook token is judged by the reader, which shows DEGRADED until the sign-in is done): no credential, no scope."""
     fetchers = _fetchers()
     name = (getattr(fetchers, "CREDENTIAL_NAMES", {}) or {}).get(key)
-    stored = key[0] in (getattr(fetchers, "STORED_TOKENS", None) or ())
+    stored = bool(fetchers) and key[0] in fetchers.STORED_TOKENS
     return DEFAULT_LABELS.get(key, "") if name and ((environ.get("OUTLOOK_CLIENT_ID") if stored else environ.get(name)) or "").strip() else ""
 
 
