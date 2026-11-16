@@ -1,20 +1,21 @@
-"""Followup source for the Action Inbox (LIFE-710): UNAVAILABLE live, plus a bounded SYNTHETIC projection."""
-# VERDICT (Nov 16 2026). No active canonical Followup source exists. Followup OS 8.1 is an approved future roadmap, not runtime; LIFE-180 is Cancelled; the repo holds only the synthetic
-# normalizer in adapters.py (LIFE-685); docs/platform/inbox-access-contract.md lists Followup as "no live source". Followup is also not a third-party API: it is a derived interpretation of Gmail,
-# Calendar, Jira, Notion, Todoist and Jim's instructions. So `FollowupSource` refuses every live read with a fixed word until a verified Followup-owned projection is named in
-# FOLLOWUP_PROJECTION_OWNER. Named human prerequisite: Jim decides which existing system owns the Followup projection (or approves promoting Followup OS 8.1 into the Daily Runs Production Contract).
-# No ledger, scheduler or store is created here.
+"""Followup source for the Action Inbox (LIFE-710, LIFE-749): reads the `followup` stage's payload; plus a bounded SYNTHETIC projection."""
+# LIFE-749 (Jim, D258): the owner of the Followup projection is now named: the `followup` stage (lifeos/inbox/followup_stage.py) derives thread state from the LIFE-747 store plus the LIFE-748
+# reader deltas with `project()` below and publishes ONE component-state payload. `FollowupSource` reads that payload through an injected loader. It still refuses while LIVE_READS_ENABLED is
+# False (the default reader), and a missing, stale, mismatched or degraded-and-empty payload is `unavailable`, never a trustworthy zero. Nothing is wired in production: no live read, store or schedule.
 #
 # `project()` is the bounded synthetic projection of the ticket's inherited MVP rules, over evidence items handed to it. It is a pure function: no storage, no provider, no network. Its output is native
 # dicts for `adapters.followup`, with provenance links only (never source payloads). Review-needed suggestions are returned apart and are excluded from active counts.
-from dataclasses import dataclass
-from datetime import datetime
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from lifeos.inbox.model import InboxError
+from lifeos.inbox import sources
 from lifeos.inbox.sources import _Source, refuse_live
+from lifeos.platform import ct_stamp
 
-FOLLOWUP_PROJECTION_OWNER = None            # set only when Jim names the existing system that owns a verified Followup projection
+FOLLOWUP_PROJECTION_OWNER = "lifeos.inbox.followup_stage"       # D258: the `followup` stage owns the projection; it is unwired in production until the live-wiring step
+STALE_AFTER = timedelta(hours=2)                                # a payload older than this is not evidence of anything current
 CLASSES = ("waiting_on_someone", "deliverable_owed", "post_interaction_value_add", "temporary_outcome_thread")
 CREATES_LOOP = frozenset({"promise", "waiting_on", "deliverable", "value_add", "outcome_thread", "jim_capture"})       # explicit evidence kinds
 IMPLIED = frozenset({"implied_promise"})                                                                               # strongly implied: needs Jim's confirmation, review only
@@ -25,24 +26,56 @@ ACTIVE = ("needs_action_today", "waiting_aging", "upcoming")
 
 
 def refuse_followup(credential_ref):
-    raise InboxError("followup_projection_missing" if FOLLOWUP_PROJECTION_OWNER is None else "live_reads_not_authorized")
+    """The default `open_reader`: no payload loader is wired, so a read is refused with the fixed live-read word and nothing is built."""
+    refuse_live(credential_ref)
+
+
+def payload_reader(load):
+    """An `open_reader` that reads the stage's payload through `load(credential_ref) -> payload dict or None` (the host side; none exists in production yet). Still refuses while LIVE_READS_ENABLED is False."""
+    def open_reader(credential_ref):
+        if not sources.LIVE_READS_ENABLED:
+            refuse_live(credential_ref)
+        return lambda: load(credential_ref)
+    return open_reader
 
 
 class FollowupSource(_Source):
-    """Live Followup reader: unavailable by design (see the module docstring). `open_reader` only matters once an owner is named and live reads are approved."""
+    """Reads the `followup` stage's component-state payload. `now` is an aware datetime (UTC when omitted). Output is native dicts for the active threads only: the Review Needed list stays out."""
     source = "followup"
 
-    def __init__(self, workspace, account, identity, open_reader=refuse_followup, **kwargs):
+    def __init__(self, workspace, account, identity, open_reader=refuse_followup, now=None, **kwargs):
         super().__init__(workspace, account, identity, open_reader=open_reader, **kwargs)
+        self._now = now
 
     def _read(self, read):
-        loops = read()
-        if not isinstance(loops, list):
+        payload = read()
+        if payload is None:
+            raise InboxError("followup_projection_missing")
+        threads = payload.get("threads") if isinstance(payload, dict) else None
+        if not isinstance(threads, list) or payload.get("component") != "followup" or payload.get("state") not in ("PASS", "DEGRADED"):
             raise InboxError("listing_incomplete")
-        return loops
+        if payload.get("workspace") != self.workspace or payload.get("account") != self.account:
+            raise InboxError("payload_scope_mismatch")                                      # another workspace's or account's payload is never shown here
+        try:
+            generated = _dt(payload.get("generated_at"))
+        except (TypeError, ValueError):
+            generated = None
+        now = self._now or datetime.now(timezone.utc)
+        if generated is None or generated > now + timedelta(minutes=5) or now - generated > STALE_AFTER:
+            raise InboxError("evidence_stale")                                              # old or undated: not a current read, never a trustworthy empty list
+        if payload["state"] == "DEGRADED":
+            if not threads:
+                raise InboxError("evidence_degraded")
+            try:
+                accepted = ct_stamp.when(_dt(payload.get("last_accepted")))                    # Central Time, the one shared form
+            except (TypeError, ValueError, AttributeError):
+                accepted = "an unknown time"
+            note = "; DEGRADED, last accepted " + accepted
+            return [{**t, "notes": f"{t.get('notes', '')}{note}"} for t in threads if isinstance(t, dict)]      # the last accepted threads stay visible, visibly degraded
+        return threads
 
     def _native(self, loop):
-        return loop
+        return {k: v for k, v in loop.items() if k != "state"}
 
 
 class SyntheticFollowupSource(_Source):
@@ -66,6 +99,7 @@ class Projection:
     review: list            # Review Needed suggestions: separate, never counted
     degraded: bool          # missing, stale or denied evidence: last trustworthy state is kept, a zero is never trustworthy
     counts: dict            # active counts by state
+    states: dict = field(default_factory=dict)      # LIFE-749: thread id -> state (needs_action_today, waiting_aging, upcoming, review_needed) for the stage's payload
 
 
 def _dt(text):
@@ -119,4 +153,5 @@ def project(evidence, now, workspace="personal"):
         loop["state"] = "waiting_aging" if loop["status"] == "waiting" else "needs_action_today" if due and due <= now else "upcoming"
         native.append(loop)
     counts = {s: sum(1 for loop in native if loop["state"] == s) for s in ACTIVE}
-    return Projection([{k: v for k, v in loop.items() if k != "state"} for loop in native], review, degraded, counts)
+    states = {**{loop["id"]: loop["state"] for loop in native}, **{loop["id"]: "review_needed" for loop in review}}
+    return Projection([{k: v for k, v in loop.items() if k != "state"} for loop in native], review, degraded, counts, states)
