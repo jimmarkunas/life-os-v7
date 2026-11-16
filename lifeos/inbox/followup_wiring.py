@@ -23,6 +23,9 @@ BOTH = ("personal", "bytalos")
 SOURCE_WORKSPACES = {"jira": BOTH, "calendar": BOTH, "gmail": BOTH, "outlook": ("personal",), "todoist": ("personal",), "notion": ("personal",), "interview_os": ("personal",)}
 JIRA_SITE = "https://jimmarkunas.atlassian.net"                                     # the site hostname is not secret (it is in the docs and runbooks): a constant, so no GitHub value is read
 FIXED_ACCOUNTS = {("jira", "personal"): "jira-personal", ("jira", "bytalos"): "jira-bytalos"}   # Jira is not a credential Jim names: these scope labels are committed, not read from the environment
+DEFAULT_LABELS = {("calendar", "personal", 1): "personal calendar", ("calendar", "bytalos", 1): "bytalos calendar", ("gmail", "personal", 1): "personal inbox", ("gmail", "bytalos", 1): "bytalos inbox",
+                  ("todoist", "personal", 1): "personal todoist", ("notion", "personal", 1): "personal notion", ("interview_os", "personal", 1): "interview os",
+                  ("outlook", "personal", 1): "outlook.com mailbox", ("outlook", "personal", 2): "school mailbox", ("outlook", "personal", 3): "greatestpmever mailbox"}   # not secrets and never an address: committed, so Jim creates no label item; an environment label still overrides
 # The credential inventory row (lifeos/platform/credential_list.py) whose expiry each reused credential follows; a new FOLLOWUP_ item has none, so no grant until it exists.
 INVENTORY = {"JIRA_API_TOKEN": "jira_api_token", "NOTION_API_TOKEN": "notion_api_token", "GCAL_SERVICE_ACCOUNT_JSON": "gcal_service_account", "GMAIL_OAUTH_REFRESH_TOKEN": "gmail_oauth_refresh_token"}
 OUTLOOK_INVENTORY = "outlook_sign_in"                                               # an Outlook credential is a label (followup-personal-N) whose token lives in the private store
@@ -58,6 +61,14 @@ def credential_names():
     return dict(getattr(_fetchers(), "GRANT_REFS", {}) or {})
 
 
+def _default_label(environ, key):
+    """The committed label, but only where the credential is there to read (a stored Outlook token is judged by the reader, which shows DEGRADED until the sign-in is done): no credential, no scope."""
+    fetchers = _fetchers()
+    name = (getattr(fetchers, "CREDENTIAL_NAMES", {}) or {}).get(key)
+    stored = key[0] in (getattr(fetchers, "STORED_TOKENS", None) or ())
+    return DEFAULT_LABELS.get(key, "") if name and ((environ.get("OUTLOOK_CLIENT_ID") if stored else environ.get(name)) or "").strip() else ""
+
+
 def accounts(environ, source, workspace):
     """-> [(slot, label)]: Jira has its committed label; the others are the labels named in the environment, in slot order. A source that does not serve the workspace has none."""
     if workspace not in RELEASED or workspace not in SOURCE_WORKSPACES.get(source, ()):
@@ -66,7 +77,7 @@ def accounts(environ, source, workspace):
         return [(1, FIXED_ACCOUNTS[(source, workspace)])]
     out = []
     for key in _keys(_fetchers(), source, workspace):
-        label = (environ.get(account_env(*key)) or "").strip()[:80]
+        label = ((environ.get(account_env(*key)) or "").strip() or _default_label(environ, key))[:80]
         if label and not stage.tgp_account(label) and all(label != seen for _, seen in out):
             out.append((key[2], label))
     return out
