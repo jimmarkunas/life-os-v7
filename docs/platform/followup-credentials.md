@@ -4,18 +4,16 @@ Who: Jim only for every step that touches a secret. Authority: Jim, chat, Nov 16
 
 **Final names (read from the code in LIFE-757 PR-B and PR-A, Nov 16 2026).** Every secret is a Bitwarden item named `lifeos/github-actions/<NAME>` in the project **LIFE OS GitHub Actions**. If a name below ever changes, the agent edits this file and tells you before you create anything.
 
+**Jim, Nov 16 2026: reuse an existing credential wherever one exists; create a new one only where none exists.** NEW secrets: only `FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH` and `FOLLOWUP_TODOIST_PERSONAL_TOKEN` (plus the short `FOLLOWUP_ACCOUNT_*` labels and the calendar ids). REUSED: `JIRA_EMAIL`, `JIRA_API_TOKEN`, `JIRA_BASE_URL`, `NOTION_API_TOKEN`, `GCAL_SERVICE_ACCOUNT_JSON`, `GMAIL_OAUTH_CLIENT_ID`, `GMAIL_OAUTH_CLIENT_SECRET`, `GMAIL_OAUTH_REFRESH_TOKEN`, `OUTLOOK_CLIENT_ID`. Because some of these tokens can write, every Followup client is GET-only (Notion search and a database query are the only POSTs) and tests pin that. Sections 3 to 7 are replaced by the short notes in them.
+
 | Source | Item name (the `<NAME>`) | What the value is |
 |---|---|---|
 | Jira, Personal and Bytalos | none to create | reuses the existing `JIRA_EMAIL` and `JIRA_API_TOKEN` items (step 2) |
-| Notion references, Personal | `FOLLOWUP_NOTION_PERSONAL_READONLY_TOKEN` | the one read-only Notion token |
-| Notion references, Bytalos | `FOLLOWUP_NOTION_BYTALOS_READONLY_TOKEN` | the same token again |
-| Interview OS, Personal | `FOLLOWUP_INTERVIEW_PERSONAL_READONLY_TOKEN` | the same token again |
-| Interview OS, Bytalos | `FOLLOWUP_INTERVIEW_BYTALOS_READONLY_TOKEN` | the same token again |
-| Calendar, Personal | `FOLLOWUP_GCAL_PERSONAL_READONLY_SA_JSON` | whole service-account JSON file |
-| Calendar, Bytalos | `FOLLOWUP_GCAL_BYTALOS_READONLY_SA_JSON` | the same, a separate service account |
-| Gmail, Personal | `FOLLOWUP_GMAIL_PERSONAL_READONLY_REFRESH` | the bare refresh token (not JSON) |
-| Gmail, Bytalos | `FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH` | the same, a separate sign-in |
-| Outlook, Personal (three mailboxes) | none to create | tokens live in the private database under the labels `followup-personal-1` to `-3` (step 11) |
+| Notion references and Interview OS, both workspaces | none to create | reuses the existing `NOTION_API_TOKEN` (the main integration) |
+| Calendar, Personal and Bytalos | none to create | reuses the existing `GCAL_SERVICE_ACCOUNT_JSON` (the agenda job's service account); the Bytalos calendar must be shared with it, read-only |
+| Gmail, Personal | none to create | reuses the existing `GMAIL_OAUTH_CLIENT_ID`, `GMAIL_OAUTH_CLIENT_SECRET` and `GMAIL_OAUTH_REFRESH_TOKEN` (read-only calls only, enforced in code) |
+| Gmail, Bytalos | `FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH` | NEW: the bare refresh token (not JSON); client id and secret are the existing ones |
+| Outlook, Personal (three mailboxes) | no Bitwarden item: labels `followup-personal-1`, `-2`, `-3` in the private database | step 11 (the agent's part is done) |
 | Todoist, Personal | `FOLLOWUP_TODOIST_PERSONAL_TOKEN` | a `data:read` token |
 
 No Bytalos Outlook and no Bytalos Todoist exist, so nothing is created for them. No TGP credential exists anywhere.
@@ -69,60 +67,30 @@ The agent adds the loader lines for these two existing items to the `followup` j
 
 ## 3. Notion: one read-only integration over all pages (Notion references and Interview OS, both workspaces)
 
-You have one Notion workspace and chose all pages (Jim, Nov 16 2026), so one integration covers every source and no database ids are needed. The code reads the same token under four item names so each grant names its own workspace and source.
+Nothing to create. The reader uses the existing `NOTION_API_TOKEN` through Notion search (a read), newest first, so every page shared with that integration is covered, for Notion references and Interview OS in both workspaces. If a page is missing later, share it with that integration in Notion (**...** menu, **Connections**).
 
-1. Open https://www.notion.so/profile/integrations and click **New integration**.
-2. Name `LIFE OS Followup Read`. Type **Internal**. Workspace: your workspace.
-3. Under **Capabilities** tick **Read content** only. Leave **Update content**, **Insert content** and **Read user information** off.
-4. Save, then copy the **Internal Integration Secret** (starts `ntn_` or `secret_`).
-5. In Bitwarden create the first item, `lifeos/github-actions/FOLLOWUP_NOTION_PERSONAL_READONLY_TOKEN`, and paste the secret.
-6. Check (Jim only), value on the clipboard:
-
-```bash
-pbpaste | awk '{print "length:", length($0); print "starts:", substr($0,1,4)}'
-```
-
-   Expect a length around 50 and `ntn_` (or `secr`). Do not clear the clipboard yet.
-7. Create three more items with the same pasted value, one at a time: `lifeos/github-actions/FOLLOWUP_NOTION_BYTALOS_READONLY_TOKEN`, `lifeos/github-actions/FOLLOWUP_INTERVIEW_PERSONAL_READONLY_TOKEN`, `lifeos/github-actions/FOLLOWUP_INTERVIEW_BYTALOS_READONLY_TOKEN`. Then `pbcopy < /dev/null`.
-8. Share the integration with your top-level **LIFE OS** page: open the page `LIFE OS` in Notion, click the **...** menu, **Connections**, and add **LIFE OS Followup Read**. Every page beneath it inherits the access, and you do not name databases or pages. This includes the Lifehub pages (Medical, Therapy & Recovery, Dating & Style), as you chose all. Share nothing outside LIFE OS.
-
-**Report:** the four NAMEs and Secret IDs and "no expiry" (Notion tokens do not expire).
-After you report, the agent adds the loader lines and the expiry rows.
-**Revoke:** Notion integrations page, delete the integration; delete the four Bitwarden items.
+**Report:** nothing.
 
 ## 4. Notion, Bytalos
 
-Nothing to do. Bytalos reads the same workspace through its item names created in step 3.
+Nothing to create (see step 3).
 
 ## 5. Calendar, Personal (Google service account, read-only share)
 
-The existing calendar service account can change events. Followup gets its own, with a read-only share.
-
-1. Open https://console.cloud.google.com/iam-admin/serviceaccounts in the same Google Cloud project that holds the other LIFE OS Google credentials.
-2. **Create service account**. Name `lifeos-followup-calendar-personal-ro`. Skip the optional role and user-access screens. Done.
-3. Open the new account, **Keys**, **Add key**, **Create new key**, **JSON**, **Create**. A file downloads. If the console refuses (an organization policy blocks key creation), stop and tell the agent.
-4. In Google Calendar for your personal account, open the calendar you named in step 0: **Settings and sharing**, **Share with specific people or groups**, **Add people**, paste the service account's email address (it ends in `.iam.gserviceaccount.com`), permission **See all event details** only. Send.
-5. In the same settings page, copy the **Calendar ID**.
-6. In Bitwarden create `lifeos/github-actions/FOLLOWUP_GCAL_PERSONAL_READONLY_SA_JSON` (the whole contents of the downloaded file).
-7. Check (Jim only), JSON on the clipboard:
-
-```bash
-pbpaste | python3 -c "import json,sys; d=json.load(sys.stdin); print('type:', d.get('type')); print('has private_key:', bool(d.get('private_key')), 'length', len(d.get('private_key','')))"
-```
-
-   Expect `type: service_account` and a private key length over 1,000. Then `pbcopy < /dev/null`.
-8. Delete the downloaded file: move it to the Trash and empty the Trash (the key now lives only in Bitwarden).
-9. In Bitwarden create two plain items: `lifeos/github-actions/FOLLOWUP_GCAL_PERSONAL_CALENDAR_ID` (the Calendar ID from step 5) and `lifeos/github-actions/FOLLOWUP_ACCOUNT_CALENDAR_PERSONAL` (the text `personal calendar`).
-
-**Report:** the three NAMEs and Secret IDs, expiry "none (key is valid until revoked)", the calendar name.
-After you report, the agent adds the loader lines and the expiry row.
-**Revoke:** Cloud console, the service account's **Keys**, delete the key; delete the Bitwarden items; remove the share in Calendar.
+Nothing to create. The reader uses the existing `GCAL_SERVICE_ACCOUNT_JSON` with the read-only calendar scope and only lists events. In Bitwarden create two plain items, `lifeos/github-actions/FOLLOWUP_GCAL_PERSONAL_CALENDAR_ID` (the Calendar ID) and `lifeos/github-actions/FOLLOWUP_ACCOUNT_CALENDAR_PERSONAL` (the text `personal calendar`). The Personal calendar is already shared with that service account.
 
 ## 6. Calendar, Bytalos
 
-Repeat step 5 with the service account `lifeos-followup-calendar-bytalos-ro`, in the Google Cloud project and the Bytalos calendar account, with the items `FOLLOWUP_GCAL_BYTALOS_READONLY_SA_JSON`, `FOLLOWUP_GCAL_BYTALOS_CALENDAR_ID` and `FOLLOWUP_ACCOUNT_CALENDAR_BYTALOS` (the text `bytalos calendar`).
+Share the Bytalos calendar with the same service account, read-only (calendar settings, **Share with specific people**, the service account's address, permission **See all event details**; the address is `client_email` inside the existing `GCAL_SERVICE_ACCOUNT_JSON`, and the agent gives it to you). Then create `lifeos/github-actions/FOLLOWUP_GCAL_BYTALOS_CALENDAR_ID` and `lifeos/github-actions/FOLLOWUP_ACCOUNT_CALENDAR_BYTALOS` (the text `bytalos calendar`).
 
 ## 7. Gmail, Personal (read-only sign-in)
+
+Nothing to sign in. The reader uses the existing `GMAIL_OAUTH_CLIENT_ID`, `GMAIL_OAUTH_CLIENT_SECRET` and `GMAIL_OAUTH_REFRESH_TOKEN` and only lists and reads messages (headers, never bodies). Create the plain item `lifeos/github-actions/FOLLOWUP_ACCOUNT_GMAIL_PERSONAL` with the text `personal inbox`.
+
+## 8. Gmail, Bytalos
+
+The one NEW Gmail secret. Do the sign-in below for the Bytalos mailbox (`"tenant": "bytalos"` in the allowlist), store the bare token as `FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH` and the label as `FOLLOWUP_ACCOUNT_GMAIL_BYTALOS` (the text `bytalos inbox`). (The steps are the old Personal ones; skip any Personal-only item name in them.)
+
 
 The repo already has the read-only sign-in helper `lifeos/platform/google_consent_readonly.py` (LIFE-423): scope `gmail.readonly` only, an allowlist, and the credential goes to a pipe, never the screen. It reuses the existing LIFE OS Gmail OAuth client, so no new Google client is created. The Followup reader takes the client id and secret from the existing `GMAIL_OAUTH_CLIENT_ID` and `GMAIL_OAUTH_CLIENT_SECRET` items, so the item you create here holds only the refresh token.
 
@@ -153,16 +121,12 @@ pbpaste | python3 -c "import json,sys; sys.stdout.write(json.load(sys.stdin)['re
 pbpaste | awk '{print "refresh length:", length($0)}'
 ```
 
-   Expect a length over 50. Then `pbcopy < /dev/null` and `rm /tmp/followup-gmail-allowlist.json`.
+   Expect a length over 50. (If you paste the helper's one-line JSON instead of the bare token, the reader accepts that too and takes its `refresh_token`.) Then `pbcopy < /dev/null` and `rm /tmp/followup-gmail-allowlist.json`.
 8. In Bitwarden create the plain item `lifeos/github-actions/FOLLOWUP_ACCOUNT_GMAIL_PERSONAL` with the text `personal inbox`.
 
 **Report:** NAMEs and Secret IDs, expiry "none until revoked", which mailbox.
 After you report, the agent adds the loader lines (including the two existing client items) and the expiry row.
 **Revoke:** https://myaccount.google.com/permissions , remove the LIFE OS app grant for that account (this also kills the other Gmail refresh tokens signed in with the same client: do it only with the agent); delete the Bitwarden items.
-
-## 8. Gmail, Bytalos
-
-Repeat step 7 with the Bytalos mailbox, `"tenant": "bytalos"` in the allowlist, the item `FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH` and the label item `FOLLOWUP_ACCOUNT_GMAIL_BYTALOS` (the text `bytalos inbox`).
 
 ## 9. Todoist, Personal (OAuth app with read-only scope)
 
@@ -186,10 +150,10 @@ Nothing to do. Todoist is Personal only.
 
 This is your **last** credential step. The tokens are **not** Bitwarden items and there are no `FOLLOWUP_OUTLOOK_READONLY_PERSONAL_N` names. Microsoft rotates a refresh token every time it is used, so each token is saved in the private database (`v7_outlook_token`) under a label, as the existing Outlook sign-in does: `followup-personal-1`, `followup-personal-2`, `followup-personal-3`, one per mailbox (your outlook.com one, your school one and your greatestpmever one). Only `OUTLOOK_CLIENT_ID`, which already exists, is used. There is no Bytalos Outlook mailbox, and TGP is never connected (TGP mail forwarded into these mailboxes is dropped by the reader).
 
-**Agent first (not yours):** the `outlook` workflow only offers the labels `personal` and `work`, and a label may already hold a sign-in that can move mail. The agent adds `followup-personal-1`, `followup-personal-2` and `followup-personal-3` to the `outlook.yml` options in a small PR and tells you. Do not re-sign `personal` or `work`: that would replace a token another job uses.
+**Agent part (done in the reader's pull request):** the `outlook` workflow now offers the labels `followup-personal-1`, `-2` and `-3` (an options list only). Do not re-sign `personal` or `work`: that would replace a token another job uses.
 
 Then you sign in once per mailbox:
-1. When the agent says the labels are in, open GitHub, **Actions**, workflow **outlook**, **Run workflow**.
+1. Once the labels are merged, open GitHub, **Actions**, workflow **outlook**, **Run workflow**.
 2. Action `auth` (never `auth-write`), account `followup-personal-1`, tick **live** (it needs the Save box), **Run workflow**.
 3. Open the run. It prints a short code and a Microsoft address. Open that address in Chrome, enter the code, sign in with the first mailbox, and approve **Read your mail** and **Read your calendars** only.
 4. Run the workflow again with action `probe`: it prints counts for the mailbox, by position, never a subject or address.

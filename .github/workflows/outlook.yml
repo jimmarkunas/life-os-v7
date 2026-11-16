@@ -12,7 +12,7 @@ on:
       account:
         description: "Which mailbox (used by auth)"
         type: choice
-        options: ["personal", "work"]
+        options: ["personal", "work", "followup-personal-1", "followup-personal-2", "followup-personal-3"]
         default: "personal"
       replace:
         description: "auth only: allow this label to switch to a different mailbox (normally refused, to stop a mix-up)"
