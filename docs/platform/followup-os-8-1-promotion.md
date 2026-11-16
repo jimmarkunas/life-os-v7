@@ -1,6 +1,6 @@
 # Followup OS 8.1: minimal Action Inbox slice and Production Contract promotion proposal (LIFE-737, Nov 16 2026)
 
-Status: PROPOSAL for Jim's approval. Planning only: no stage, scheduler, storage, credential or contract text is changed by this file. Sources read (read-only): the Notion pages "Followup OS" (product canon, incl. the production/runtime handoff contract) and "Domain: Followup OS (machine page)", and the merged `lifeos/inbox/followup.py` (LIFE-710). Why: LIFE-710 found no active Followup owner, so the Action Inbox sixth feed (LIFE-696) is synthetic until one exists.
+Status: decided (D258 in docs/DECISIONS.md, Jim, Nov 16 2026); the Production Contract text still needs his approval (LIFE-750). Planning only: no stage, scheduler, storage, credential or contract text is changed by this file. Sources read (read-only): the Notion pages "Followup OS" (product canon, incl. the production/runtime handoff contract) and "Domain: Followup OS (machine page)", and the merged `lifeos/inbox/followup.py` (LIFE-710). Why: LIFE-710 found no active Followup owner, so the Action Inbox sixth feed (LIFE-696) is synthetic until one exists.
 
 ## 1. The minimal slice (what the Inbox needs) versus roadmap
 

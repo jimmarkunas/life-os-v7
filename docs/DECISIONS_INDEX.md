@@ -256,3 +256,4 @@ This index is checked by a test: add a line here with every new decision.
 - D255 — A no-board Scale-Up sponsor's job that passes the Scale-Up rules is posted from its listing page, as Review (2026-11-15, Jim; LIFE-723)
 - D256 — Credentials and safety values are read from Bitwarden by the workflows; plain switches are read without masking, with fixed fail modes (2026-11-15, Jim; LIFE-704)
 - D257 — Bitwarden stays at three projects and three machine accounts; the alert switches live in LIFE OS ALERTS and the Alert settings app and the ticker use them (2026-11-16, Jim; LIFE-733)
+- D258 — Followup runs as a `followup` stage on V7's hourly tick, with a `v7_followup_*` table family in the V7 MySQL store and six first sources (2026-11-16, Jim; LIFE-737, LIFE-746)
