@@ -41,6 +41,8 @@ outputs:
   TAILSCALE_OAUTH_CLIENT_ID: {value: "${{ steps.first.outputs.TAILSCALE_OAUTH_CLIENT_ID || steps.retry.outputs.TAILSCALE_OAUTH_CLIENT_ID }}"}
   TAILSCALE_OAUTH_CLIENT_SECRET: {value: "${{ steps.first.outputs.TAILSCALE_OAUTH_CLIENT_SECRET || steps.retry.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}"}
   TINYFISH_API_KEY: {value: "${{ steps.first.outputs.TINYFISH_API_KEY || steps.retry.outputs.TINYFISH_API_KEY }}"}
+  INTERVIEW_ACCEPTANCE_JSON: {value: "${{ steps.first.outputs.INTERVIEW_ACCEPTANCE_JSON || steps.retry.outputs.INTERVIEW_ACCEPTANCE_JSON }}"}
+  INTERVIEW_ACCEPTANCE_NEGATIVE_JSON: {value: "${{ steps.first.outputs.INTERVIEW_ACCEPTANCE_NEGATIVE_JSON || steps.retry.outputs.INTERVIEW_ACCEPTANCE_NEGATIVE_JSON }}"}
   V7_ARCHIVE_TOKEN: {value: "${{ steps.first.outputs.V7_ARCHIVE_TOKEN || steps.retry.outputs.V7_ARCHIVE_TOKEN }}"}
   LIFEOS_ACQ_SSH_JUMP_HOST: {value: "${{ steps.first.outputs.LIFEOS_ACQ_SSH_JUMP_HOST || steps.retry.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}"}
   LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: {value: "${{ steps.first.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS || steps.retry.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}"}

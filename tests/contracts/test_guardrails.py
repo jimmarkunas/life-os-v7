@@ -261,7 +261,7 @@ class InterviewJobIsIsolated(unittest.TestCase):
         self.assertNotIn("secrets.NOTION_API_TOKEN", block)
         self.assertNotIn("secrets.NOTION_INTERVIEW_TOKEN", block)
         self.assertIn("steps.bws_interview.outputs.NOTION_INTERVIEW_TOKEN", block)                 # EDGE-1.3: its own token, as a masked output of its own loader
-        self.assertEqual(set(re.findall(r"outputs\.(\w+)", block)), {"NOTION_INTERVIEW_TOKEN"})   # and no other Jobs value reaches this job
+        self.assertEqual(set(re.findall(r"outputs\.(\w+)", block)), {"NOTION_INTERVIEW_TOKEN", "INTERVIEW_ACCEPTANCE_JSON", "INTERVIEW_ACCEPTANCE_NEGATIVE_JSON"})   # and no other Jobs value reaches this job (LIFE-699: the two private acceptance cases, used only by the manual acceptance steps)
 
     def test_dispatch_only_and_failure_is_a_warning(self):
         block = self.block()

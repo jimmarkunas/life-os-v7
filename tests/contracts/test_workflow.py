@@ -86,10 +86,10 @@ class WorkflowTests(unittest.TestCase):
         for lane in ("jobright", "linkedin", "lensa"):
             self.assertIn("github.event_name == 'workflow_dispatch' && !inputs.tick && !inputs.quick", data["jobs"][lane]["if"], lane)   # a quick proof runs the tick path instead
         finish = data["jobs"]["finish"]
-        self.assertIn("vars.V7_PIPELINE == 'true'", finish["if"])
+        self.assertIn("needs.prep.outputs.pipeline == 'true'", finish["if"])      # LIFE-699: the switch is read once, in the prep job, from Bitwarden
         steps = finish["steps"]
         step = next(s for s in steps if s.get("id") == "tick")
-        self.assertEqual(step["if"], "${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.quick) }}")   # a manual quick run proves exactly what a tick runs
+        self.assertEqual(step["if"], "${{ needs.prep.outputs.pipeline == 'true' || (github.event_name == 'workflow_dispatch' && inputs.quick) }}")   # a manual quick run proves exactly what a tick runs
         self.assertIn("${{ inputs.quick && '--quick' || '' }}", step["run"])
         self.assertTrue(step.get("continue-on-error"))
         self.assertIn("python -m lifeos.jobs.tick", step["run"])
@@ -934,6 +934,8 @@ UUIDS = {
     "NOTION_API_TOKEN": "53dc3d04-dbb2-45fe-8185-b4db015eedcb",
     "NOTION_BILLS_TOKEN": "815268ba-fa49-4461-afb3-b4db015ef189",
     "NOTION_INTERVIEW_TOKEN": "092b44ae-32cb-453b-8cc2-b4db015ef571",
+    "INTERVIEW_ACCEPTANCE_JSON": "1051e89d-233b-4050-b6ce-b50401674a4f",
+    "INTERVIEW_ACCEPTANCE_NEGATIVE_JSON": "881cd6f8-ee94-4e6d-a20d-b5040167732c",
     "DCC_CARD_BLOCK_ID": "b78d1476-663e-496d-9bc4-b4e1003b61b0",
     "NOTION_JIRA_TOKEN": "53f47cb9-f6bb-4cde-87f4-b4db015ef928",
     "NOTION_RECRUITERS_TOKEN": "b7b921fa-3f62-478a-a4f5-b4db015efcf7",
@@ -964,7 +966,7 @@ LOADED = {
     "agenda": {"agenda": DB | {"GCAL_SERVICE_ACCOUNT_JSON", "NOTION_JIRA_TOKEN"}},
     "bills": {"bills": DB | {"NOTION_BILLS_TOKEN"}},
     "calendar": {"calendar": DB | {"GCAL_SERVICE_ACCOUNT_JSON", "OUTLOOK_CLIENT_ID"}},
-    "hourly": {"prep": DB | JUMP | TS | HRL, "jobright": DB | JUMP | TS | HRL, "linkedin": DB | JUMP | TS | HRL, "lensa": DB | JUMP | TS | HRL, "finish": DB | JUMP | TS | HRL | {"NTFY_TOPIC", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"}, "interview": {"NOTION_INTERVIEW_TOKEN"}, "report": {"NTFY_TOPIC"}},
+    "hourly": {"prep": DB | JUMP | TS | HRL, "jobright": DB | JUMP | TS | HRL, "linkedin": DB | JUMP | TS | HRL, "lensa": DB | JUMP | TS | HRL, "finish": DB | JUMP | TS | HRL | {"NTFY_TOPIC", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"}, "interview": {"NOTION_INTERVIEW_TOKEN", "INTERVIEW_ACCEPTANCE_JSON", "INTERVIEW_ACCEPTANCE_NEGATIVE_JSON"}, "report": {"NTFY_TOPIC"}},
     "network": {"network": DB | JUMP | TS | {"NOTION_API_TOKEN"}},
     "outlook": {"outlook": DB | {"OUTLOOK_CLIENT_ID"}},
     "profile-sync": {"sync": DB | {"NOTION_FIT_SYNC_TOKEN"}},
@@ -1089,8 +1091,9 @@ class BitwardenConsumerTests(unittest.TestCase):
                             continue
                         if key in UUIDS:
                             m = self.OUTPUT.fullmatch(str(value).strip())
-                            self.assertTrue(m and m.group(2) == key and m.group(1) == loader["id"], (name, job, label, key))
-                            got.add(key)
+                            alias = {("interview", "INTERVIEW_ACCEPTANCE_JSON"): "INTERVIEW_ACCEPTANCE_NEGATIVE_JSON"}.get((job, key))     # LIFE-699: the negative acceptance step reads its own Bitwarden item under the name the stage expects
+                            self.assertTrue(m and m.group(2) in {key, alias} and m.group(1) == loader["id"], (name, job, label, key))
+                            got.add(m.group(2))
                             self.assertGreater(i, at, (name, job, label))                                          # the loader precedes every step that consumes its outputs
                     if step is loader:
                         continue
