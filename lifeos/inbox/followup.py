@@ -1,13 +1,13 @@
 """Followup source for the Action Inbox (LIFE-710): UNAVAILABLE live, plus a bounded SYNTHETIC projection.
 
-VERDICT (Nov 16 2026). No active canonical Followup source exists. Followup OS 8.1 is an approved future roadmap, not runtime; LIFE-180 is Cancelled; the repo holds only the synthetic
-normalizer in adapters.py (LIFE-685); docs/platform/inbox-access-contract.md lists Followup as "no live source". Followup is also not a third-party API: it is a derived interpretation of Gmail,
-Calendar, Jira, Notion, Todoist and Jim's instructions. So `FollowupSource` refuses every live read with a fixed word until a verified Followup-owned projection is named in
-FOLLOWUP_PROJECTION_OWNER. Named human prerequisite: Jim decides which existing system owns the Followup projection (or approves promoting Followup OS 8.1 into the Daily Runs Production Contract).
-No ledger, scheduler or store is created here.
-
-`project()` is the bounded synthetic projection of the ticket's inherited MVP rules, over evidence items handed to it. It is a pure function: no storage, no provider, no network. Its output is native
-dicts for `adapters.followup`, with provenance links only (never source payloads). Review-needed suggestions are returned apart and are excluded from active counts."""
+Inputs: `project()` takes the evidence items handed to it; it is a pure function with no storage, provider or network. `FollowupSource` refuses every live read with a fixed word until FOLLOWUP_PROJECTION_OWNER names a verified Followup-owned projection.
+Outputs: native dicts for `adapters.followup` with provenance links only (never source payloads); review-needed suggestions are returned apart and are excluded from active counts.
+Failures: InboxError with a fixed word. No ledger, scheduler or store is created here. Pointers: LIFE-710, LIFE-685, docs/platform/inbox-access-contract.md.
+"""
+# VERDICT (Nov 16 2026, LIFE-710). No active canonical Followup source exists. Followup OS 8.1 is an approved future roadmap, not runtime; LIFE-180 is Cancelled; the repo holds only the synthetic
+# normalizer in adapters.py (LIFE-685); docs/platform/inbox-access-contract.md lists Followup as "no live source". Followup is also not a third-party API: it is a derived interpretation of Gmail,
+# Calendar, Jira, Notion, Todoist and Jim's instructions. Named human prerequisite: Jim decides which existing system owns the Followup projection (or approves promoting Followup OS 8.1 into the Daily Runs
+# Production Contract). `project()` is the bounded synthetic projection of the ticket's inherited MVP rules.
 from dataclasses import dataclass
 from datetime import datetime
 from zoneinfo import ZoneInfo
