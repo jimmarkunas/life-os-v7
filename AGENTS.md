@@ -12,7 +12,7 @@ V7 is the active LIFE OS implementation. V1 (`life-os-automation`) and V2 (`life
 
 **Scoping.** A scoping note is one page, at most 2,000 characters: Outcome, 3 to 5 Done-when checks, Not in scope. One execution ticket is one PR (or sheet edit), pasteable: exact targets, steps, done-when. Interview answers and discovery logs go in a linked page or comments, never the description.
 
-**Ticket truth and identity.** A plan change is an edit to the ticket plus one line `Scope change: <what> — Jim, <time CT>`; the description beats comments. The claiming agent fixes the ticket's text when reality changes; a superseded ticket is Cancelled naming its replacement. Add one label (`agent-claude-code`, `agent-hermes`, `agent-chatgpt`) and start Jira comments with `[agent-…]`. One Jira receipt per ticket: moving it to In Progress is the claim; the receipt is the last comment. A mid-ticket comment only when waiting on Jim: `[waiting on] Jim: <the one thing>`. No pause stamps or takeover notes: a gone session's branch is continued by any session.
+**Ticket truth and identity.** A plan change is an edit to the ticket plus one line `Scope change: <what> — Jim, <time CT>`; the description beats comments. The claiming agent fixes the ticket's text when reality changes; a superseded ticket is Cancelled naming its replacement. Add one label (`agent-claude-code`, `agent-hermes`, `agent-chatgpt`) and start Jira comments with `[agent-…]`. One Jira receipt per ticket: moving it to In Progress is the claim; the receipt is the last comment. A mid-ticket comment only when waiting on Jim: `[waiting on] Jim: <the one thing>` and label `waiting-on-jim`. No pause stamps or takeover notes: any session continues a gone session's branch.
 
 ## Where truth lives (one owner each)
 
