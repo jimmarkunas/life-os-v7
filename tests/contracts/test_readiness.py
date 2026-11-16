@@ -154,7 +154,7 @@ class RepositoryIndex(Fixture):
                 shutil.rmtree(repo)
 
     def test_the_agent_entrypoint_names_the_validator(self):
-        agents = (ROOT / "AGENTS.md").read_text()
+        agents = (ROOT / "AGENTS.md").read_text() + (ROOT / "docs" / "agent-reference.md").read_text()      # LIFE-766: boot page plus the full guide
         for command in ("python -m lifeos.sources.devtools.readiness", "python -m lifeos.sources.devtools.readiness repo"):          # AGENTS.md (Jim-owned) names the real module (LIFE-631: the old-name shim is gone)
             self.assertIn(command, agents)
         self.assertNotIn("readiness preflight", agents)             # delivery flow v3: no claim file, no preflight

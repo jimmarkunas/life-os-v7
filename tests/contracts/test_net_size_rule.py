@@ -4,7 +4,8 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 COMMAND = "python -m lifeos.platform.net_size"
-AGENTS_CAP_BYTES = 15360
+AGENTS_CAP_BYTES = 4096          # LIFE-766: AGENTS.md is the one-page boot guide
+REFERENCE_CAP_BYTES = 15360
 
 
 def asks_for_net_size(template):
@@ -39,7 +40,7 @@ class NetSizeRule(unittest.TestCase):
         self.assertIn(COMMAND, line)
 
     def test_agents_md_states_the_rule_once_in_the_rules_section(self):
-        text = (ROOT / "AGENTS.md").read_text()
+        text = (ROOT / "docs" / "agent-reference.md").read_text()
         self.assertEqual(text.count("**Net size.**"), 1)
         rules = text.index("## Rules (each enforced by a test)")
         following = text.find("\n## ", rules + 5)
@@ -49,6 +50,7 @@ class NetSizeRule(unittest.TestCase):
 
     def test_agents_md_stays_under_the_byte_cap(self):
         self.assertLessEqual(len((ROOT / "AGENTS.md").read_bytes()), AGENTS_CAP_BYTES)
+        self.assertLessEqual(len((ROOT / "docs" / "agent-reference.md").read_bytes()), REFERENCE_CAP_BYTES)
 
 
 if __name__ == "__main__":
