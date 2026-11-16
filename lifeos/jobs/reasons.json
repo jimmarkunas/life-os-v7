@@ -14,6 +14,8 @@
   "hold_expired": ["jobs", "terminal", false, "The job sat on hold past the limit and was excluded.", "None.", true],
   "recovery_retry": ["jobs", "retry", false, "The job was released from hold for another try.", "None.", true],
   "unresolved_after_recovery": ["jobs", "terminal", false, "The link stayed unresolved after the recovery try.", "None.", true],
+  "sponsor_directory": ["jobs", "terminal", false, "The search result is a sponsor-directory page, not a job.", "None.", false],
+  "not_a_job": ["jobs", "terminal", false, "The search result's title is not a job title.", "None.", false],
   "lane_exclude": ["fit", "terminal", false, "The lane policy excluded the job.", "None; a policy change can requeue it.", true],
   "screen_pay": ["screen", "terminal", false, "The posted pay is below the floor.", "None.", true],
   "in_ledger": ["publish", "terminal", false, "A page for this job already exists in the Ledger.", "None.", true],
