@@ -46,8 +46,14 @@ def is_done(fields):
 
 
 def find_container(epics):
-    found = [k for k, e in epics.items() if CONTAINER_LABEL in ((e.get("fields") or {}).get("labels") or [])]
+    """The open epic titled CONTAINER_TITLE that carries CONTAINER_LABEL (several epics carry the label; only the title picks one); None when absent."""
+    found = [k for k, e in epics.items() if _is_container(e.get("fields") or {})]
     return min(found, key=number) if found else None
+
+
+def _is_container(fields):
+    return (CONTAINER_LABEL in (fields.get("labels") or []) and (fields.get("summary") or "").strip().lower() == CONTAINER_TITLE.lower()
+            and not is_done(fields))
 
 
 def pick_parent(fields, epics, container):
@@ -93,7 +99,7 @@ def ensure_container(jira, epics, live):
                                                        "components": [{"name": DEFAULT_COMPONENT}], "fixVersions": [{"name": f"{DEFAULT_COMPONENT} 1.0.0"}]}})
     except JiraError:
         raise FillFailed("JIRA_FILL_FAILED") from None
-    epics[made["key"]] = {"key": made["key"], "fields": {"issuetype": {"name": "Epic"}, "labels": [CONTAINER_LABEL], "components": [{"name": DEFAULT_COMPONENT}]}}
+    epics[made["key"]] = {"key": made["key"], "fields": {"issuetype": {"name": "Epic"}, "summary": CONTAINER_TITLE, "labels": [CONTAINER_LABEL], "components": [{"name": DEFAULT_COMPONENT}]}}
     return made["key"]
 
 
