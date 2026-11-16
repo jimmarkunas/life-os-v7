@@ -148,9 +148,17 @@ def check_repo(root):
 def jira_issue(mode, arg):
     """LIFE-313: normalize a Jira issue (live by key, or a saved REST v3 JSON file) and run the same issue check. Gaps in Jira data are QUEUE_NOT_READY."""
     from lifeos.jira import readiness_record as rr          # lazy: the offline modes never import or touch the network
+    from lifeos.jira import fill_defaults                    # LIFE-741: a live read first fills the parent, Component and Fix Version; a failed Jira write is the one `fill_failed` refusal
     try:
-        raw = rr.fetch(arg) if mode == "issue-key" else json.loads(Path(arg).read_text())
+        if mode == "issue-key":
+            client = rr.Jira.from_env()
+            fill_defaults.fill_key(client, arg)
+            raw = rr.fetch(arg, client)
+        else:
+            raw = json.loads(Path(arg).read_text())
         return (*check_issue(rr.normalize(raw)), None)
+    except fill_defaults.FillFailed:
+        return [refuse("fill_failed", "jira")], [], None
     except Exception as exc:                                  # noqa: BLE001  every failure is a fixed code, never a body, URL or value
         code = str(exc) if str(exc).startswith(("JIRA_", "INCOMPLETE:")) else type(exc).__name__
         return [], [], f"QUEUE_NOT_READY — {code}"
