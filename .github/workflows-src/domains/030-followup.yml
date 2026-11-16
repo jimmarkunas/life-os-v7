@@ -1,8 +1,8 @@
   followup:
     # LIFE-757: the Followup lane (Production Contract v2.15.16, FOLLOWUP LANE OWNERSHIP OVERRIDE): one full reconciliation of every approved source every hour (Jim, Nov 16 2026). DEFAULT OFF: the stage is a counts-only
     # no-op while the switch FOLLOWUP_WIRING (lifeos/platform/switches.json) is off, so merging this job cannot turn a run red; once on it is a DRY RUN: the step has no --live, so nothing is written until the
-    # Followup tables exist (LIFE-756) and a reviewed change adds --live. The source credentials are not loaded yet: each one is added to the bws-load below, with its expiry row in lifeos/inbox/followup_wiring.py
-    # EXPIRES, in the change that creates it; a source without one shows DEGRADED. Top-level permissions apply unchanged (contents: read).
+    # Followup tables exist (LIFE-756) and a reviewed change adds --live. Each source credential is one bws-load line below plus its inventory row in lifeos/platform/credential_list.py (named in
+    # lifeos/inbox/followup_wiring.py INVENTORY); a source without both shows DEGRADED. Top-level permissions apply unchanged (contents: read).
     needs: [gate]
     if: ${{ !cancelled() && needs.gate.result != 'failure' && needs.gate.outputs.due_followup == 'true' }}
     runs-on: ubuntu-24.04
@@ -20,7 +20,7 @@
         with:
           wait_seconds: "300"
       - id: bws_followup
-        name: Load the credentials from Bitwarden (LIFE-757, exactly these 20 - the store and its jump route plus the existing Jira token, email the Outlook client id and the existing Notion, Calendar and Gmail items; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        name: Load the credentials from Bitwarden (LIFE-757, the store and its jump route, the existing Jira token, email, Outlook client id and Notion, Calendar and Gmail items, plus the two new FOLLOWUP_ items (Bytalos Gmail refresh token, Todoist token; Jim, Nov 16 2026); masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
@@ -46,6 +46,8 @@
             8657d1ed-2cde-4298-bd62-b50301523e01 > GMAIL_OAUTH_CLIENT_ID
             08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET
             672a44e9-235f-4121-a99d-b4db015a6987 > GMAIL_OAUTH_REFRESH_TOKEN
+            c87d470c-b351-4004-a5ea-b50401885f98 > FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH
+            89238d39-3528-44b6-90f4-b5040188c384 > FOLLOWUP_TODOIST_PERSONAL_TOKEN
       - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, port fails - names and codes only)
         uses: ./.github/actions/bws-plain
         with:
@@ -71,6 +73,8 @@
           GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_followup.outputs.GMAIL_OAUTH_CLIENT_ID }}
           GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_followup.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
           GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_followup.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH: ${{ steps.bws_followup.outputs.FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH }}
+          FOLLOWUP_TODOIST_PERSONAL_TOKEN: ${{ steps.bws_followup.outputs.FOLLOWUP_TODOIST_PERSONAL_TOKEN }}
           FOLLOWUP_WIRING: ""              # lifeos/platform/switches.json decides (off) unless the repository variable says "off" (kill switch) or "on"
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_followup.outputs.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_followup.outputs.LIFEOS_ACQ_DB_PASSWORD }}
