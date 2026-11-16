@@ -58,8 +58,8 @@ class FakeGitHub:
         raise AssertionError(f"unexpected request {request.full_url}")
 
 
-SWITCHES = {f"variables/{n}": (200, {"name": n, "value": v}) for n, v in
-            (("ALERTS_ENABLED", "on"), ("ALERTS_MUTED_UNTIL", ""), ("ALERT_SETTINGS", '{"v":1}'))}
+SWITCH_VALUES = {"ALERTS_ENABLED": "on", "ALERTS_MUTED_UNTIL": "", "ALERT_SETTINGS": '{"v":1}'}
+STORE = lambda: dict(SWITCH_VALUES)      # noqa: E731 - what lifeos.platform.alert_store.read returns (LIFE-733)
 
 
 class Tick(unittest.TestCase):
@@ -143,13 +143,13 @@ class Disk(unittest.TestCase):
 
     def test_watch_runs_the_disk_check_after_the_watchdog_and_a_disk_failure_never_fails_it(self):
         order = []
-        code, _ = ticker.watch(TOKEN, TOPIC, FakeGitHub(SWITCHES), run=lambda **k: order.append("gate"), environ={}, disk=lambda: order.append("disk"))
+        code, _ = ticker.watch(TOKEN, TOPIC, FakeGitHub({}), store=STORE, run=lambda **k: order.append("gate"), environ={}, disk=lambda: order.append("disk"))
         self.assertEqual((code, order), ("WATCH_DONE", ["gate", "disk"]))
         def boom():
             raise RuntimeError("x")
-        self.assertEqual(ticker.watch(TOKEN, TOPIC, FakeGitHub(SWITCHES), run=lambda **k: None, environ={}, disk=boom)[0], "WATCH_DONE")
+        self.assertEqual(ticker.watch(TOKEN, TOPIC, FakeGitHub({}), store=STORE, run=lambda **k: None, environ={}, disk=boom)[0], "WATCH_DONE")
         order.clear()
-        ticker.watch(TOKEN, TOPIC, FakeGitHub(SWITCHES), run=lambda **k: order.append("gate"), environ={})
+        ticker.watch(TOKEN, TOPIC, FakeGitHub({}), store=STORE, run=lambda **k: order.append("gate"), environ={})
         self.assertEqual(order, ["gate"])                                         # an injected run alone never touches the real disk check
 
     def test_a_failed_incident_check_is_named_in_the_journal_by_class_only_and_never_fails_the_watch(self):
@@ -157,7 +157,7 @@ class Disk(unittest.TestCase):
         import io
         out = io.StringIO()
         with contextlib.redirect_stdout(out), mock.patch.object(ticker, "drift_incident", side_effect=RuntimeError("secret detail")), mock.patch.object(ticker, "stall_incident", side_effect=KeyError("secret")):
-            code = ticker.watch(TOKEN, TOPIC, FakeGitHub(SWITCHES), run=lambda **k: None, environ={}, disk=lambda: None)[0]
+            code = ticker.watch(TOKEN, TOPIC, FakeGitHub({}), store=STORE, run=lambda **k: None, environ={}, disk=lambda: None)[0]
         self.assertEqual(code, "WATCH_DONE")
         self.assertIn("ticker: drift check failed (RuntimeError)", out.getvalue())
         self.assertIn("ticker: stall check failed (KeyError)", out.getvalue())
@@ -176,7 +176,7 @@ class Stall(unittest.TestCase):
 
     def test_the_watch_runs_it_and_a_failure_never_fails_the_watchdog(self):
         with mock.patch.object(ticker, "stall_incident", side_effect=RuntimeError("x")) as stall:
-            code = ticker.watch(TOKEN, TOPIC, FakeGitHub(SWITCHES), run=lambda **k: None, environ={}, disk=lambda: None)
+            code = ticker.watch(TOKEN, TOPIC, FakeGitHub({}), store=STORE, run=lambda **k: None, environ={}, disk=lambda: None)
         self.assertEqual(code[0], "WATCH_DONE")
         stall.assert_called_once()
 
@@ -233,7 +233,7 @@ class ProofUnreadable(unittest.TestCase):
 
     def test_the_watch_runs_it_and_a_failure_never_fails_the_watchdog(self):
         with mock.patch.object(ticker, "proof_unreadable_incident", side_effect=RuntimeError("x")) as incident:
-            code = ticker.watch(TOKEN, TOPIC, FakeGitHub(SWITCHES), run=lambda **k: None, environ={}, disk=lambda: None)
+            code = ticker.watch(TOKEN, TOPIC, FakeGitHub({}), store=STORE, run=lambda **k: None, environ={}, disk=lambda: None)
         self.assertEqual(code[0], "WATCH_DONE")
         incident.assert_called_once()
 
@@ -299,30 +299,18 @@ class ReleaseProof(unittest.TestCase):
 
     def test_the_watch_runs_it_and_a_failure_never_fails_the_watchdog(self):
         with mock.patch.object(ticker, "release_proof", side_effect=RuntimeError("x")) as proof:
-            code = ticker.watch(TOKEN, TOPIC, FakeGitHub(SWITCHES), run=lambda **k: None, environ={}, disk=lambda: None)
+            code = ticker.watch(TOKEN, TOPIC, FakeGitHub({}), store=STORE, run=lambda **k: None, environ={}, disk=lambda: None)
         self.assertEqual(code[0], "WATCH_DONE")
         proof.assert_called_once()
 
 
 class Watch(unittest.TestCase):
-    def test_the_switches_come_from_the_repository_variables_and_no_checkin_is_sent(self):
+    def test_the_switches_come_from_the_store_and_no_checkin_is_sent(self):
         calls, env = [], {}
-        code, _ = ticker.watch(TOKEN, TOPIC, FakeGitHub(SWITCHES), run=lambda calls=calls, **k: calls.append(k), environ=env)
-        self.assertEqual((code, calls), ("WATCH_DONE", [{"checkin": False}]))
+        github = FakeGitHub({})
+        code, _ = ticker.watch(TOKEN, TOPIC, github, run=lambda calls=calls, **k: calls.append(k), environ=env, store=STORE)
+        self.assertEqual((code, calls, github.requests), ("WATCH_DONE", [{"checkin": False}], []))        # GitHub is never asked for a switch
         self.assertEqual((env["ALERTS_ENABLED"], env["ALERT_SETTINGS"], env["GITHUB_REPOSITORY"], env["NTFY_TOPIC"]), ("on", '{"v":1}', "jimmarkunas/life-os-v7", TOPIC))
-
-    def test_an_unset_variable_reads_empty_as_in_actions(self):
-        env = {}
-        answers = {**SWITCHES, "variables/ALERTS_MUTED_UNTIL": 404}
-        self.assertEqual(ticker.watch(TOKEN, TOPIC, FakeGitHub(answers), run=lambda **k: None, environ=env)[0], "WATCH_DONE")
-        self.assertEqual(env["ALERTS_MUTED_UNTIL"], "")
-
-    def test_unreadable_switches_stop_before_the_watchdog_runs(self):
-        for broken in (403, 500, urllib.error.URLError("down")):
-            calls = []
-            answers = {**SWITCHES, "variables/ALERTS_ENABLED": broken}
-            self.assertEqual(ticker.watch(TOKEN, TOPIC, FakeGitHub(answers), run=lambda calls=calls, **k: calls.append(k), environ={})[0], "TICKER_VARIABLES_UNREADABLE")
-            self.assertEqual(calls, [], broken)
 
     def test_with_a_bitwarden_store_the_switches_come_from_it_and_github_is_not_asked_for_them(self):
         calls, env = [], {}
@@ -336,10 +324,10 @@ class Watch(unittest.TestCase):
         def broken():
             raise RuntimeError("down")
         calls = []
-        self.assertEqual(ticker.watch(TOKEN, TOPIC, FakeGitHub(SWITCHES), run=lambda calls=calls, **k: calls.append(k), environ={}, store=broken), ("TICKER_VARIABLES_UNREADABLE", None))
+        self.assertEqual(ticker.watch(TOKEN, TOPIC, FakeGitHub({}), run=lambda calls=calls, **k: calls.append(k), environ={}, store=broken), ("TICKER_VARIABLES_UNREADABLE", None))
         self.assertEqual(calls, [])
 
-    def test_the_bwsalerts_credential_selects_bitwarden_and_its_absence_keeps_the_repository_variables(self):
+    def test_the_bwsalerts_credential_selects_bitwarden(self):
         folder = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, folder)
         for name, value in (("github", TOKEN), ("ntfy", TOPIC), ("bwsalerts", "0.abc.def:ghi")):
@@ -348,16 +336,28 @@ class Watch(unittest.TestCase):
         with mock.patch("lifeos.platform.alert_store.read", side_effect=lambda token, **k: seen.append(token) or {"ALERTS_ENABLED": "on"}), redirect_stdout(io.StringIO()) as out:
             self.assertEqual(ticker.main(["dry"], opener=FakeGitHub({}), environ={"CREDENTIALS_DIRECTORY": folder}), 0)
         self.assertEqual((seen, json.loads(out.getvalue())["code"]), (["0.abc.def:ghi"], "TICKER_DRY_OK"))
-        Path(folder, "bwsalerts").unlink()
-        with mock.patch("lifeos.platform.alert_store.read") as read, redirect_stdout(io.StringIO()) as out:
-            self.assertEqual(ticker.main(["dry"], opener=FakeGitHub(SWITCHES), environ={"CREDENTIALS_DIRECTORY": folder}), 0)
-        read.assert_not_called()
-        self.assertEqual(json.loads(out.getvalue())["code"], "TICKER_DRY_OK")
+
+    def test_without_the_bwsalerts_credential_watch_and_dry_stop_with_a_fixed_code_and_ask_nobody(self):
+        folder = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, folder)
+        for name, value in (("github", TOKEN), ("ntfy", TOPIC)):
+            Path(folder, name).write_text(value)
+        for command in ("watch", "dry"):
+            github, calls = FakeGitHub({}), []
+            with mock.patch("lifeos.platform.alert_store.read") as read, redirect_stdout(io.StringIO()) as out:
+                rc = ticker.main([command], opener=github, run=lambda calls=calls, **k: calls.append(k), environ={"CREDENTIALS_DIRECTORY": folder})
+            self.assertEqual((rc, json.loads(out.getvalue())["code"], github.requests, calls), (1, "TICKER_NO_CREDENTIAL", [], []), command)
+            read.assert_not_called()
+
+    def test_the_ticker_has_no_repository_variable_path_for_the_switches(self):
+        text = (ROOT / "lifeos/edge/ticker/ticker.py").read_text()
+        self.assertNotIn("actions/variables/{name}", text)
+        self.assertNotIn("from the repository variables", text)
 
     def test_a_watchdog_that_cannot_read_github_is_a_fixed_code(self):
         def boom(**k):
             raise urllib.error.URLError("down")
-        self.assertEqual(ticker.watch(TOKEN, TOPIC, FakeGitHub(SWITCHES), run=boom, environ={})[0], "TICKER_WATCH_FAILED")
+        self.assertEqual(ticker.watch(TOKEN, TOPIC, FakeGitHub({}), store=STORE, run=boom, environ={})[0], "TICKER_WATCH_FAILED")
 
     def test_gate_watch_without_checkin_sends_no_checkin_in_the_digest_hour(self):
         sent, now = [], gate.dt.datetime(2026, 11, 6, gate.DIGEST_HOUR_UTC, 5, tzinfo=gate.dt.timezone.utc)
@@ -386,15 +386,16 @@ class Main(unittest.TestCase):
     def test_output_is_one_line_with_a_code_and_never_a_credential(self):
         both = {"github": TOKEN, "ntfy": TOPIC}
         for argv, answers, want, rc_want in ((["tick"], {"dispatches": 204}, "TICK_DISPATCHED", 0), (["tick"], {"dispatches": 401}, "TICK_REFUSED", 1),
-                                             (["watch"], SWITCHES, "WATCH_DONE", 0), (["dry"], SWITCHES, "TICKER_DRY_OK", 0)):
-            rc, out = self.run_main(argv, both, answers)
+                                             (["watch"], {}, "WATCH_DONE", 0), (["dry"], {}, "TICKER_DRY_OK", 0)):
+            with mock.patch("lifeos.platform.alert_store.read", return_value=dict(SWITCH_VALUES)):
+                rc, out = self.run_main(argv, {**both, "bwsalerts": "0.abc.def:ghi"}, answers)
             self.assertEqual((rc, json.loads(out)["code"]), (rc_want, want), argv)
             self.assertNotIn(TOKEN, out)
             self.assertNotIn(TOPIC, out)
 
     def test_a_missing_credential_stops(self):
         self.assertEqual(self.run_main(["tick"], {}, {})[0], 1)
-        rc, out = self.run_main(["watch"], {"github": TOKEN}, SWITCHES)
+        rc, out = self.run_main(["watch"], {"github": TOKEN}, {})
         self.assertEqual((rc, json.loads(out)["code"]), (1, "TICKER_NO_CREDENTIAL"))
         self.assertEqual(self.run_main(["bogus"], {}, {})[0], 2)
 

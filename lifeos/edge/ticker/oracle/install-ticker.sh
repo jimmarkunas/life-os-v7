@@ -67,7 +67,7 @@ case "${1:-}" in
       printf '[Service]\nLoadCredentialEncrypted=bwsalerts:%s\nEnvironment=LIFEOS_BWS_BIN=/usr/local/bin/bws\n' "$BW" > "$DROPIN"; chmod 644 "$DROPIN"; systemctl daemon-reload
       say "the watch run now reads the alert switches from Bitwarden"
     fi ;;
-  bwsalerts-off) rm -f "$BW" "$DROPIN"; systemctl daemon-reload; say "Bitwarden credential removed; the watch run reads the repository variables again" ;;
+  bwsalerts-off) rm -f "$BW" "$DROPIN"; systemctl daemon-reload; say "Bitwarden credential removed; the watch run now stops with TICKER_NO_CREDENTIAL until it is installed again" ;;
   dry)
     [ -s "$GH" ] && [ -s "$NT" ] || die "both credentials must be stored first"
     ticker dry ;;

@@ -5,7 +5,7 @@
          remains the backstop for a second timer during the hand-over.
   watch  run the watchdog's incident checks (lifeos.platform.gate.watch) here, incidents only: the daily check-in stays with the GitHub watchdog so it is
          never sent twice. Jim's alert switches (ALERTS_ENABLED, ALERTS_MUTED_UNTIL, ALERT_SETTINGS) are read on every run from Bitwarden (project LIFE OS ALERTS, LIFE-733) when the
-         `bwsalerts` credential is installed, else from the repository variables, so the Alert settings page stays the one place they are set; when they cannot be read the run stops (it never guesses "on" or "off").
+         `bwsalerts` credential; without that credential, or when they cannot be read, the run stops with a fixed code (it never guesses "on" or "off").
          LIFE-301: it also raises one quiet incident (phone only) when the Hermes disk image is 80% full or more, and closes it when it drops below.
          LIFE-693: it also proves each Close release: one dry quick proof run of hourly.yml per newly deployed commit (docs/platform/release-proof.md).
   dry    check that the credentials are present and the variables readable; dispatches nothing and pushes nothing.
@@ -99,24 +99,12 @@ def tick(token, opener=urllib.request.urlopen):
     return ("TICK_REFUSED" if status in REFUSED else "TICK_GITHUB_ERROR"), status
 
 
-def variables(token, opener=urllib.request.urlopen, store=None):
-    """-> ({name: value}, None) or (None, status). LIFE-733: with a Bitwarden `store` the three switches come from the LIFE OS ALERTS project (any failure stops with no status); without one they
-    come from the repository variables as before. An unset GitHub variable (404) reads as "" exactly as it does inside Actions; anything else unreadable stops."""
-    if store is not None:
-        try:
-            return {name: str(value) for name, value in store().items() if name in VARIABLES}, 200
-        except Exception:                                           # noqa: BLE001 - a fixed code; never the token, a value or Bitwarden's reply
-            return None, None
-    found = {}
-    for name in VARIABLES:
-        status, body = _status(_request(f"repos/{REPO}/actions/variables/{name}", token), opener)
-        if status == 404:
-            found[name] = ""
-        elif status == 200 and isinstance(body, dict):
-            found[name] = str(body.get("value") or "")
-        else:
-            return None, status
-    return found, 200
+def variables(store):
+    """-> ({name: value}, 200) or (None, None) (no store is unreadable too). LIFE-733: the three switches come from Bitwarden (project LIFE OS ALERTS) through `store`; any failure stops with no status, never a value or Bitwarden's reply."""
+    try:
+        return {name: str(value) for name, value in store().items() if name in VARIABLES}, 200
+    except Exception:                                               # noqa: BLE001 - a fixed code; never the token, a value or Bitwarden's reply
+        return None, None
 
 
 def disk_percent(path=DISK_PATH, usage=shutil.disk_usage):
@@ -296,7 +284,7 @@ def release_proof(token, opener=urllib.request.urlopen, api=None, read=None, syn
 
 def watch(token, topic, opener=urllib.request.urlopen, run=None, environ=None, disk=None, store=None):
     """-> (code, status). Sets the switches, the token and the topic for this process only, then runs the watchdog's incident checks."""
-    found, status = variables(token, opener, store)
+    found, status = variables(store)
     if found is None:
         return "TICKER_VARIABLES_UNREADABLE", status
     environ = environ if environ is not None else os.environ
@@ -342,19 +330,19 @@ def main(argv=None, opener=urllib.request.urlopen, run=None, environ=None):
         return 2
     environ = environ if environ is not None else os.environ
     token, topic = credential("github", environ), credential("ntfy", environ)
+    bws = credential("bwsalerts", environ)                          # LIFE-733: the switches live in Bitwarden only; no credential, no watch or dry (tick never needs them)
     store = None
-    if credential("bwsalerts", environ):                            # LIFE-733: present = the switches are read from Bitwarden; absent = the repository variables, as before
+    if bws:
         from lifeos.platform import alert_store                     # noqa: PLC0415 - only this path needs it
-        bws = credential("bwsalerts", environ)
         store = lambda: alert_store.read(bws, environ=environ)      # noqa: E731
-    if not token or (command != "tick" and not topic):
+    if not token or (command != "tick" and not (topic and store)):
         code, status = "TICKER_NO_CREDENTIAL", None
     elif command == "tick":
         code, status = tick(token, opener)
     elif command == "watch":
         code, status = watch(token, topic, opener, run, environ, store=store)
     else:
-        found, status = variables(token, opener, store)
+        found, status = variables(store)
         code = "TICKER_DRY_OK" if found is not None else "TICKER_VARIABLES_UNREADABLE"
     print(json.dumps({"ticker": command, "code": code, "status": status}))
     return 0 if code in OK else 1
