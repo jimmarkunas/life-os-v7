@@ -1,9 +1,12 @@
-"""LIFE-726: add the registry rows a new stage or package needs, so a new stage is one line in lifeos/run.py plus `python tools/regen.py`.
+"""LIFE-726 / LIFE-768: add the registry rows a new stage or package needs, so a new stage is one line in lifeos/run.py plus `python tools/regen.py`.
 
-Rows the contract tests mirror from code (they keep checking them; this writes the missing ones and drops the stale ones, and never rewrites a row that already exists):
-  lifeos/platform/stage_budgets.json     one budget row per stage (default 600 s, capped by the job limit that runs it; required follows the workflow step)
-  docs/platform/timeouts.md              the "Stage budgets" row per stage, from that file
-  docs/platform/stage-isolation.md       the "Every stage" row per stage (single when the module has no loop over items, guarded when every loop has a try)
+A stage's metadata lives in lifeos/platform/stages.json (the manifest, lifeos/platform/stages.py). This adds a default entry for a stage that has none (budget 600 s capped by the job limit that runs it, required follows the workflow step;
+isolation single when the module has no loop over items, guarded when every loop has a try), drops the entry of a stage that no longer exists, and renders from the manifest:
+  lifeos/platform/stage_budgets.json     one budget row per stage
+  docs/platform/timeouts.md              the "Stage budgets" row per stage
+  docs/platform/stage-isolation.md       the "Every stage" row per stage
+Edit a stage's numbers or wording in stages.json only; the three rendered files are overwritten from it.
+Rows the contract tests mirror from code (this writes the missing ones and drops the stale ones):
   lifeos/platform/docstyle.py            ENFORCED lists every package with an __init__.py
   lifeos/platform/runtime.json           one row per top-level unit under lifeos/ (github host unless said otherwise by hand)
   docs/platform/module-inventory.md      regenerated from runtime.json
@@ -21,10 +24,12 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from lifeos import run                                                    # noqa: E402
+from lifeos.platform import stages as manifest_stages                       # noqa: E402
 from lifeos.jobs import tick                                               # noqa: E402
 from tests.contracts import test_runtime_manifest as manifest, test_stage_isolation as isolation   # noqa: E402
 
 BUDGETS = ROOT / "lifeos/platform/stage_budgets.json"
+STAGES = ROOT / "lifeos/platform/stages.json"
 TIMEOUTS_DOC = ROOT / "docs/platform/timeouts.md"
 ISOLATION_DOC = ROOT / "docs/platform/stage-isolation.md"
 DOCSTYLE = ROOT / "lifeos/platform/docstyle.py"
@@ -47,40 +52,42 @@ def workflow_steps():
     return found
 
 
-def budgets(changes):
-    data = json.loads(BUDGETS.read_text())
+def new_entry(name, steps, plan):
+    if name in plan:
+        return {"basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage", "required": not plan[name].bulk, "seconds": plan[name].budget}
+    limits = [limit for limit, _ in steps.get(name, [])]
+    return {"basis": DEFAULT_BASIS, "required": bool(steps.get(name)) and not all(flag for _, flag in steps[name]), "seconds": min(600, max(limits)) if limits else 600}
+
+
+def stage_manifest(changes, problems):
+    """The stages.json data with an entry added for every stage that has none (when its isolation row can be classified) and the entry of every vanished stage dropped."""
+    data = manifest_stages.load()
     rows, steps, plan = data["stages"], workflow_steps(), {s.name: s for s in tick.PLAN}
     for name in sorted(set(run.STAGES) - set(rows)):
-        if name in plan:
-            row = {"basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage", "required": not plan[name].bulk, "seconds": plan[name].budget}
-        else:
-            limits = [limit for limit, _ in steps.get(name, [])]
-            row = {"basis": DEFAULT_BASIS, "required": bool(steps.get(name)) and not all(flag for _, flag in steps[name]), "seconds": min(600, max(limits)) if limits else 600}
-        rows[name] = row
-        changes.append(f"stage_budgets.json: added {name}")
+        iso = isolation_entry(name, problems)
+        if iso:
+            rows[name] = {**new_entry(name, steps, plan), **iso}
+            changes.append(f"stages.json: added {name}")
     for name in sorted(set(rows) - set(run.STAGES)):
         del rows[name]
-        changes.append(f"stage_budgets.json: removed {name}")
-    data["stages"] = dict(sorted(rows.items()))
-    return json.dumps(data, indent=1, ensure_ascii=False) + "\n", data["stages"]
+        changes.append(f"stages.json: removed {name}")
+    return data
 
 
 def table_rewrite(path, heading, wanted, changes, label):
-    """The table under `## heading`: add a row for each name in `wanted` {name: new row} that it lacks, drop rows for names not in `wanted`, keep every existing row as it is."""
+    """The table under `## heading`: exactly the rows in `wanted` {name: row}, sorted; report each added or removed name."""
     lines = path.read_text().split("\n")
     start = next(i for i, line in enumerate(lines) if line.strip() == f"## {heading}")
     first = next(i for i in range(start, len(lines)) if lines[i].startswith("| ---")) + 1
     last = first
     while last < len(lines) and lines[last].startswith("| "):
         last += 1
-    have = {stage_key(line): line for line in lines[first:last]}
-    for name in sorted(set(wanted) - set(have)):
-        have[name] = wanted[name]
+    have = {stage_key(line) for line in lines[first:last]}
+    for name in sorted(set(wanted) - have):
         changes.append(f"{label}: added {name}")
-    for name in sorted(set(have) - set(wanted)):
-        del have[name]
+    for name in sorted(have - set(wanted)):
         changes.append(f"{label}: removed {name}")
-    lines[first:last] = [have[name] for name in sorted(have)]
+    lines[first:last] = [wanted[name] for name in sorted(wanted)]
     return "\n".join(lines)
 
 
@@ -88,10 +95,10 @@ def stage_key(line):
     return line.split("|")[1].strip().strip("`")
 
 
-def isolation_row(name, problems):
+def isolation_entry(name, problems):
     stage = run.STAGES[name]
     if not getattr(stage, "target", None):
-        problems.append(f"{name}: not a lazy stage, classify its row in stage-isolation.md by hand")
+        problems.append(f"{name}: not a lazy stage, classify it in stages.json by hand")
         return None
     module = stage.target[0]
     found = isolation.loops(module)
@@ -99,7 +106,7 @@ def isolation_row(name, problems):
         problems.append(f"{name}: {module} loops over items with no try inside; fix it or review the loop in stage-isolation.md ('Reviewed loops')")
         return None
     status, why = ("guarded", GUARDED_WHY) if found else ("single", SINGLE_WHY)
-    return f"| `{name}` | `{module.replace('lifeos.', '', 1)}` | `{status}` | {why} | {'yes' if name in run.PARTIAL_FAILURE else 'no'} |"
+    return {"module": module.replace("lifeos.", "", 1), "status": status, "why": why, "exits_1": name in run.PARTIAL_FAILURE}
 
 
 def docstyle_text():
@@ -137,13 +144,15 @@ def runtime_text(changes):
 def main(argv):
     check = "--check" in argv
     changes, problems = [], []
-    budget_text, stage_rows = budgets(changes)
-    timeouts_rows = {name: f"| `{name}` | {row['seconds']} | {'yes' if row['required'] else 'no'} | {row['basis']} |" for name, row in stage_rows.items()}
-    doc_timeouts = table_rewrite(TIMEOUTS_DOC, "Stage budgets", timeouts_rows, changes, "timeouts.md")
-    have_iso = {stage_key(line) for line in ISOLATION_DOC.read_text().split("## Every stage", 1)[1].split("\n## ", 1)[0].split("\n") if line.startswith("| `")}
-    iso_rows = {name: isolation_row(name, problems) for name in run.STAGES if name not in have_iso}
-    wanted_iso = {name: row for name, row in iso_rows.items() if row} | {name: "" for name in have_iso if name in run.STAGES}
-    doc_isolation = table_rewrite(ISOLATION_DOC, "Every stage", wanted_iso, changes, "stage-isolation.md")
+    data = stage_manifest(changes, problems)
+    manifest_text = manifest_stages.dump(data)
+    budget_text = manifest_stages.budgets_text(data)
+    doc_timeouts = table_rewrite(TIMEOUTS_DOC, "Stage budgets", manifest_stages.timeouts_rows(data), changes, "timeouts.md")
+    doc_timeouts = re.sub(r"has one row for each of the \d+ stages", f"has one row for each of the {len(data['stages'])} stages", doc_timeouts)
+    doc_isolation = table_rewrite(ISOLATION_DOC, "Every stage", manifest_stages.isolation_rows(data), changes, "stage-isolation.md")
+    for path, text, label in ((BUDGETS, budget_text, "stage_budgets.json"), (TIMEOUTS_DOC, doc_timeouts, "timeouts.md"), (ISOLATION_DOC, doc_isolation, "stage-isolation.md")):
+        if path.read_text() != text and not any(c.startswith(label) for c in changes):
+            changes.append(f"{label}: rendered from stages.json")
     style, packages = docstyle_text()
     if set(re.findall(r'"(lifeos/[^"]+)"', re.search(r"ENFORCED = \(.*?\)", DOCSTYLE.read_text(), re.S).group(0))) == set(packages):
         style = DOCSTYLE.read_text()                                          # same packages: keep the file's own wrapping
@@ -156,7 +165,7 @@ def main(argv):
     if block and block.group(0) != rendered:
         inventory = inventory.replace(block.group(0), rendered)
         changes.append("module-inventory.md: regenerated")
-    targets = ((BUDGETS, budget_text), (TIMEOUTS_DOC, doc_timeouts), (ISOLATION_DOC, doc_isolation), (DOCSTYLE, style), (RUNTIME, runtime), (manifest.INVENTORY, inventory))
+    targets = ((STAGES, manifest_text), (BUDGETS, budget_text), (TIMEOUTS_DOC, doc_timeouts), (ISOLATION_DOC, doc_isolation), (DOCSTYLE, style), (RUNTIME, runtime), (manifest.INVENTORY, inventory))
     for path, text in targets:
         if path.read_text() != text and not check:
             path.write_text(text)

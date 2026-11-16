@@ -20,6 +20,8 @@ Method: every stage target module was scanned for loops over accounts, sources, 
 
 ## Every stage
 
+This table is rendered from `lifeos/platform/stages.json` (LIFE-768): edit a stage's status or reason there, then run `python tools/regen.py`.
+
 | Stage | Module | Status | Why | Exits 1 on any failed item |
 | --- | --- | --- | --- | --- |
 | `accountability-artifacts` | `accountability.artifacts` | `guarded` | One loop over two people (Jim, Matt); each person is handled on its own and a failed Jira read is recorded for that person only, then the stage fails after both were tried. | no |
