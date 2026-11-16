@@ -11,8 +11,8 @@ from lifeos.sources.devtools import readiness
 from tests.jira.test_readiness_record import DESC
 
 
-def epic(key, labels=(), components=("Platform / Core OS",), status="new"):
-    return {"key": key, "fields": {"summary": key, "issuetype": {"name": "Epic"}, "labels": list(labels), "components": [{"name": c} for c in components],
+def epic(key, labels=(), components=("Platform / Core OS",), status="new", summary=None):
+    return {"key": key, "fields": {"summary": summary or key, "issuetype": {"name": "Epic"}, "labels": list(labels), "components": [{"name": c} for c in components],
                                    "fixVersions": [{"name": f"{c} 1.0.0"} for c in components], "status": {"statusCategory": {"key": status}}}}
 
 
@@ -66,7 +66,7 @@ class FakeJira:
 
 def world():
     return [epic("LIFE-10", components=("Interview OS",)), epic("LIFE-615", labels=["bugs"]), epic("LIFE-696", labels=["action-inbox"]), epic("LIFE-686"),
-            epic("LIFE-585", labels=["los-118"]), epic("LIFE-590", labels=["los-118"]), epic("LIFE-580", labels=["los-118"], status="done"), epic("LIFE-700", labels=["epic-container"])]
+            epic("LIFE-585", labels=["los-118"]), epic("LIFE-590", labels=["los-118"]), epic("LIFE-580", labels=["los-118"], status="done"), epic("LIFE-700", labels=["epic-container"], summary="LIFE one-off tasks")]
 
 
 class Rules(unittest.TestCase):
@@ -148,6 +148,36 @@ class Rules(unittest.TestCase):
             path = Path(tmp) / "read.json"
             path.write_text(json.dumps({"issues": [ticket("LIFE-930", kind="Bug"), ticket("LIFE-931", parent="LIFE-10", components=["Interview OS"], versions=["Interview OS 1.0.0"])], "epics": world()}))
             self.assertEqual(fd.plan_file(path), {"LIFE-930": {"parent": "LIFE-615", "components": "Platform / Core OS", "fixVersions": "Platform / Core OS 1.0.0"}})
+
+class Container(unittest.TestCase):
+    """LIFE-741: seven epics carry the label epic-container; only the open one titled `LIFE one-off tasks` is the container."""
+
+    def labelled(self):
+        return {e["key"]: e for e in [epic("LIFE-581", labels=["epic-container"], status="done", summary="V7 scalability"), epic("LIFE-615", labels=["epic-container"], summary="Bugs"),
+                                      epic("LIFE-668", labels=["epic-container"], status="done", summary="LIFE one-off tasks")]}
+
+    def test_a_done_or_other_titled_epic_with_the_label_is_never_the_container(self):
+        epics = self.labelled()
+        self.assertIsNone(fd.find_container(epics))
+        self.assertEqual(fd.plan(ticket("LIFE-950")["fields"], epics, fd.find_container(epics) or "(new container)")["parent"], "(new container)")
+
+    def test_the_open_epic_with_the_title_and_label_is_chosen_case_insensitively(self):
+        epics = self.labelled()
+        epics["LIFE-720"] = epic("LIFE-720", labels=["epic-container"], summary="  life ONE-OFF tasks ")
+        epics["LIFE-721"] = epic("LIFE-721", labels=["epic-container"], summary="LIFE one-off tasks")
+        self.assertEqual(fd.find_container(epics), "LIFE-720")
+        self.assertEqual(fd.plan(ticket("LIFE-951")["fields"], epics, "LIFE-720")["parent"], "LIFE-720")
+
+    def test_the_title_alone_without_the_label_is_not_enough(self):
+        self.assertIsNone(fd.find_container({"LIFE-730": epic("LIFE-730", summary="LIFE one-off tasks")}))
+
+    def test_a_dry_run_names_a_new_container_and_a_live_run_creates_it_once(self):
+        fake = FakeJira([epic("LIFE-581", labels=["epic-container"], status="done", summary="V7 scalability"), epic("LIFE-615", labels=["epic-container"], summary="Bugs")], [ticket("LIFE-952"), ticket("LIFE-953")])
+        fd.run(0, False, jira=fake)
+        self.assertEqual(fake.writes(), [])
+        fd.run(0, True, jira=fake)
+        self.assertEqual([x for x in fake.log if x[0] == "CREATE"], [("CREATE", "LIFE-901", "LIFE one-off tasks")])
+        self.assertEqual({fake.items[k]["fields"]["parent"]["key"] for k in ("LIFE-952", "LIFE-953")}, {"LIFE-901"})
 
 
 class ReadinessFill(unittest.TestCase):
