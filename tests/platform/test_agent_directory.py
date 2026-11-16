@@ -97,7 +97,7 @@ class FailClosed(unittest.TestCase):
                 build([row("buzz_lifeos_codex", **{field: "key " + nsec})])
             self.assertEqual(c.exception.reason, "secret_material")
             self.assertNotIn(nsec, str(c.exception))
-        for text in ("-----BEGIN OPENSSH PRIVATE KEY-----", "ghp_" + "a" * 30, "api_key = abcdefgh12345678"):
+        for text in ("-----" + "BEGIN OPENSSH PRIVATE KEY" + "-----", "ghp_" + "a" * 30, "api_key = abcdefgh12345678"):
             with self.assertRaises(D.DirectoryError):
                 build([row("buzz_lifeos_codex", Notes=text)])
 

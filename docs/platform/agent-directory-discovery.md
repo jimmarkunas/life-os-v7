@@ -31,7 +31,7 @@ Routable today: **none**. Unavailable/manual: all 24.
 
 Each step needs Jim's separate approval (named host, purpose, rollback = none, read-only) and none runs under LIFE-736 without it.
 
-1. **Notion read grant (needed to wire a real `fetch`).** Approve the Notion read of the Agent Directory data source (`collection://41a3c5a0-5926-8112-9f4e-000b55bc1248`) for one named principal through the existing credential/grant wrapper; add that principal's `notion: read` row to the access policy.
+1. **Notion read grant (needed to wire a real `fetch`).** Approve the Notion read of the Agent Directory data source (its id comes from `lifeos.platform.notion_ids`, never committed here) for one named principal through the existing credential/grant wrapper; add that principal's `notion: read` row to the access policy.
 2. **Mac / Orca / Concord (read-only):** `concord who` and `concord adapters status` in a local shell, saving only agent IDs, adapter names and session presence. Authorization: local Mac shell on Jim's machine.
 3. **Oracle / Hermes (read-only):** `bash hermes/check_profiles.sh` on `opc@lifeos-edge-01` (prints names and hashes only), plus listing profile folder names under the Hermes home. Authorization: SSH to the Oracle host.
 4. **Buzz (public keys only):** compare the community membership list of PUBLIC npubs with the directory's partial aliases through the existing scoped identity (`buzz_agent.py --as claudecode`, read). Never read or store an nsec. Authorization: Buzz read of the named channel/community.
