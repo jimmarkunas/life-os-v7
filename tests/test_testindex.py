@@ -93,6 +93,12 @@ class Select(unittest.TestCase):
         self.assertEqual(self.pick("lifeos/newpkg/z.py"), ti.FULL)                         # no mirror folder either: everything
         self.assertEqual(self.pick("lifeos/unknown_top.py"), ti.FULL)
 
+    def test_a_change_to_any_production_file_also_runs_the_repo_wide_docstyle_test(self):     # LIFE-744: PR 1235 passed with only tests/inbox, then main failed docstyle
+        root = tree(FILES + ["tests/platform/test_docstyle.py"])
+        self.assertIn("tests.platform.test_docstyle", ti.select(["lifeos/jobs/brand_new.py"], self.idx, root))
+        self.assertIn("tests.platform.test_docstyle", ti.select(["lifeos/jobs/a.py"], self.idx, root))
+        self.assertNotIn("tests.platform.test_docstyle", ti.select(["docs/x.md"], self.idx, root))
+
     def test_a_top_level_module_uses_its_top_level_test_and_unknown_files_run_everything(self):
         self.assertIn("tests.test_run", self.pick("lifeos/run.py"))
         self.assertEqual(self.pick("some_new_tool.sh"), ti.FULL)
