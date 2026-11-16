@@ -26,7 +26,8 @@ IDS = {  # Bitwarden item ids, project "LIFE OS GitHub Actions", lifeos/github-a
     "V7_CLOUD_FIT_PARALLEL": "d58fac7a-9c4e-4678-8327-b503015f922b",
     "LIFEOS_ACQ_SSH_PORT": "53f91adc-5bb5-4a33-98a8-b5030155ac02",
 }
-ALLOWED = frozenset(IDS) | {"LIVE"}
+PENDING = frozenset({"FOLLOWUP_GCAL_BYTALOS_CALENDAR_ID"})   # LIFE-757: a plain identifier whose Bitwarden item is not created yet; it has no id here, so it reads as NOT_RETURNED and falls back to empty (the Bytalos calendar then shows not provisioned). Add its id to IDS when the item exists.
+ALLOWED = frozenset(IDS) | PENDING | {"LIVE"}
 
 
 def _whole(low, high, default):
@@ -37,6 +38,11 @@ def _whole(low, high, default):
 
 def _enum(choices, default):
     return lambda raw: raw if raw in choices else default
+
+
+def _identifier(raw):
+    """A calendar id: an email-shaped identifier, never logged and never committed. Anything with a space, quote or line break is refused."""
+    return raw if re.fullmatch(r"[A-Za-z0-9._%+@#-]{3,200}", raw) else None
 
 
 def _muted(raw):
@@ -70,6 +76,7 @@ RULES = {
     "ALERTS_ENABLED": (_enum({"on", "off"}, None), "on"),                       # fail OPEN: the alarm must not depend on the system it alarms about
     "ALERTS_MUTED_UNTIL": (_muted, ""),                                         # fail open: not muted
     "ALERT_SETTINGS": (_settings, ""),                                          # fail open: the registry defaults
+    "FOLLOWUP_GCAL_BYTALOS_CALENDAR_ID": (_identifier, ""),                      # fail closed: empty = the Bytalos calendar is not provisioned
     "LIFEOS_ACQ_SSH_PORT": (_whole(1, 65535, None), None),                      # no default: the job fails with a fixed code
 }
 
@@ -96,6 +103,7 @@ def parse_commands(text):
 
 def read_bitwarden(wanted, env, helper, sleep=time.sleep):
     """Return {name: raw value} for the names the helper returned, or None when it could not be read. Its output is never shown."""
+    wanted = [n for n in wanted if n in IDS]            # a pending name has no item yet: it is not asked for
     if env.get("PLAIN_TEST_UNREADABLE") == "fail" or not wanted or not os.path.exists(helper):
         return None
     for attempt in (1, 2):

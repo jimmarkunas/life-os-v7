@@ -445,7 +445,7 @@ jobs:
         uses: ./.github/actions/bws-plain
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
-          names: LIFEOS_ACQ_SSH_PORT,LIVE
+          names: FOLLOWUP_GCAL_BYTALOS_CALENDAR_ID,LIFEOS_ACQ_SSH_PORT,LIVE
           live_mode: ${{ github.event_name == 'workflow_run' && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
       - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
         continue-on-error: true
@@ -461,6 +461,7 @@ jobs:
           JIRA_API_TOKEN: ${{ steps.bws_followup.outputs.JIRA_API_TOKEN }}
           JIRA_EMAIL: ${{ steps.bws_followup.outputs.JIRA_EMAIL }}
           OUTLOOK_CLIENT_ID: ${{ steps.bws_followup.outputs.OUTLOOK_CLIENT_ID }}
+          FOLLOWUP_GCAL_PERSONAL_CALENDAR_ID: ${{ secrets.GCAL_CALENDAR_ID }}     # the existing Personal calendar id (the agenda job's GitHub secret); Bytalos comes from the plain item above
           NOTION_API_TOKEN: ${{ steps.bws_followup.outputs.NOTION_API_TOKEN }}
           GCAL_SERVICE_ACCOUNT_JSON: ${{ steps.bws_followup.outputs.GCAL_SERVICE_ACCOUNT_JSON }}
           GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_followup.outputs.GMAIL_OAUTH_CLIENT_ID }}
