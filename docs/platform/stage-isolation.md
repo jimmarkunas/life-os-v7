@@ -63,6 +63,7 @@ Method: every stage target module was scanned for loops over accounts, sources, 
 | `fit-edge-test` | `jobs.fit.edge` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `fit-profile-sync` | `jobs.fit.profile_sync` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `fit-review` | `jobs.review` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
+| `followup` | `inbox.followup_stage` | `helper` | Scopes (workspace and account) run through `isolate.run_items`; partial failure keeps the stage green, all-failed fails it. | no |
 | `funnel` | `jobs.funnel` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `granola` | `interview.granola_bridge` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `granola-auto` | `sources.interview.granola_auto` | `partial-red` | Each meeting that is left on Oracle with `failed` counts toward the stage's `failed`, and a stage-level stop (a Notion error, a deadline, a store failure) is a second path into the same count; one state machine, so moving it needs its own change (next ticket). | yes |
