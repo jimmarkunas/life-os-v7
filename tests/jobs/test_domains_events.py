@@ -75,7 +75,7 @@ def runs(doc, event, not_due=()):
     """-> sorted names of the jobs that run for one trigger (every job that runs is taken to succeed)."""
     name, run_fields, inputs, variables, failing = event
     due = {f"due_{job}": ("false" if job in not_due and name == "workflow_run" else "true") for job in doc["jobs"]}        # the gate's due step: every job due unless the test says otherwise (a tick only)
-    ctx = {"github": {"event_name": name, "event": {"workflow_run": run_fields}}, "inputs": inputs, "vars": variables, "env": {}, "steps": {"due": {"outputs": due}}}
+    ctx = {"github": {"event_name": name, "event": {"workflow_run": run_fields}}, "inputs": inputs, "vars": {}, "env": {}, "steps": {"due": {"outputs": due}, "settings": {"outputs": variables}}}   # LIFE-699: the switches come from the V7 settings page (steps.settings.outputs), no longer from GitHub variables
     results = {}
     for job in order(doc["jobs"]):
         spec = doc["jobs"][job]

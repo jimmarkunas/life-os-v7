@@ -65,7 +65,7 @@ jobs:
         env:
           NOTION_JIRA_TOKEN: ${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}
           GRAN_PIN_DAY: ${{ inputs.day }}
-          HIRING_PIPELINE_PAGE_ID: ${{ secrets.HIRING_PIPELINE_PAGE_ID }}
+          HIRING_PIPELINE_PAGE_ID: ""
           IMESSAGE_ALERTS_HOST: ${{ steps.bws_granola.outputs.IMESSAGE_ALERTS_HOST }}
           NOTION_INTERVIEW_TOKEN: ${{ steps.bws_granola.outputs.NOTION_INTERVIEW_TOKEN }}
           LIVE: ${{ inputs.live }}

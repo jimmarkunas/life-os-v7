@@ -171,7 +171,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(list(manual[True]), ["workflow_dispatch"])                                       # manual only: no schedule, push or other trigger
         self.assertEqual(inputs["stage"]["options"], ["orders", "backfill", "retention", "review-reset", "census"])
         self.assertEqual((inputs["since"]["default"], inputs["live"]["default"]), ("2015-01-01", False))   # dry run stays the default
-        self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", text))), ["LIFEOS_BWS_RUNTIME_TOKEN", "NOTION_AMAZON_DATA_SOURCE_ID"])    # LIFE-704: the Gmail client id comes from Bitwarden too
+        self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", text))), ["LIFEOS_BWS_RUNTIME_TOKEN"])    # LIFE-704: the Gmail client id comes from Bitwarden too; LIFE-699: the Amazon data source id comes from the V7 settings page
         for moved in ("GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_AMAZON_TOKEN"):
             self.assertNotIn(f"secrets.{moved}", text)                                                    # no direct copy, so no fallback
         self.assertEqual(re.findall(r"uses:\s*(\S*bws-load)", text), ["./.github/actions/bws-load"] * 2)   # the one local credential loader (LIFE-631) plus the NOTION_JIRA_TOKEN-only settings loader (LIFE-703); the reviewed v3.0.1 commit and its one retry (D209) live in that action, pinned by the loader rules below
@@ -224,7 +224,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn("--live", text.split("\n  # LIFE-10:")[0])                                         # the database and Gmail diagnostics never write
         confirm = diag[True]["workflow_dispatch"]["inputs"]["confirm"]                                      # LIFE-10: the proof's typed confirmation, an env value, never inlined in the command
         self.assertEqual((confirm["type"], confirm["default"]), ("string", ""))
-        self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", text))), ["LIFEOS_BWS_RUNTIME_TOKEN", "LIFEOS_NOTION_IDS", "NOTION_JOB_LEDGER_DATA_SOURCE_ID"])      # LIFE-121: the report job reads the Ledger's data source id to find its page; LIFE-704: the Gmail client id and the SSH port no longer come from GitHub
+        self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", text))), ["LIFEOS_BWS_RUNTIME_TOKEN", "LIFEOS_NOTION_IDS"])      # LIFE-121: the report job reads the Ledger's data source id (LIFE-699: from the V7 settings page now) to find its page; LIFE-704: the Gmail client id and the SSH port no longer come from GitHub
         for name in moved:
             self.assertNotIn(f"secrets.{name}", text)                                                      # no direct copy, so no fallback
         self.assertEqual(re.findall(r"uses:\s*(\S*bws-load)", text), ["./.github/actions/bws-load"] * 5)   # the one local loader, once per job (LIFE-631)
@@ -261,7 +261,7 @@ class WorkflowTests(unittest.TestCase):
         report = diag["jobs"]["report"]                                                                    # LIFE-121: private reports to one Notion page; a dry run unless confirm = REPORT
         self.assertEqual((report["if"], report["timeout-minutes"]), ("${{ inputs.stage == 'scale-up-exclusion-review' || inputs.stage == 'scale-up-register' || inputs.stage == 'jobs-backlog' }}", 10))
         self.assertEqual(sorted(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", report_text, re.M)), sorted([f"{uuid_} > {name}" for name, uuid_ in {**moved, "NOTION_API_TOKEN": "53dc3d04-dbb2-45fe-8185-b4db015eedcb"}.items()]))
-        self.assertEqual(report["steps"][-1]["env"], {"NOTION_JOB_LEDGER_DATA_SOURCE_ID": "${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}",
+        self.assertEqual(report["steps"][-1]["env"], {"NOTION_JOB_LEDGER_DATA_SOURCE_ID": "",    # LIFE-699: declared empty, the V7 settings page fills it
                                                       "STAGE": "${{ inputs.stage }}", "REPORT_CONFIRM": "${{ inputs.confirm }}"})
         self.assertEqual(report["steps"][-1]["run"].count("--live"), 1)                                    # the only write path, behind the typed REPORT confirmation
         self.assertIn('[ "$REPORT_CONFIRM" = "REPORT" ]', report["steps"][-1]["run"])
@@ -669,7 +669,7 @@ class IsolatedJobTests(unittest.TestCase):
         from pathlib import Path
         doc = yaml.safe_load((Path(__file__).resolve().parents[2] / ".github/workflows/hourly.yml").read_text())
         shared = {k: v for k, v in (doc.get("env") or {}).items() if "secrets." in str(v)}
-        self.assertEqual(sorted(shared), ["HIRING_PIPELINE_PAGE_ID", "NOTION_JOB_LEDGER_DATA_SOURCE_ID"])   # EDGE-1.3: migrated values are no longer workflow level
+        self.assertEqual(sorted(shared), [])   # EDGE-1.3: migrated values are no longer workflow level; LIFE-699: the Hiring Pipeline and Ledger ids are declared empty (the V7 settings page fills them), so no secret is workflow level
         needs = {"interview": {"HIRING_PIPELINE_PAGE_ID"}}                  # the Interview job reads the Hiring Pipeline page by id
         for name in ("interview",):
             env = doc["jobs"][name].get("env") or {}
@@ -1179,7 +1179,7 @@ class ProfileSyncWorkflowTests(unittest.TestCase):
         self.assertIn("needs.settings.outputs.fit_profile_sync == 'on'", job["if"])                              # LIFE-703: the switch now comes from the V7 settings page ...
         self.assertIn("github.event.workflow_run.conclusion == 'success'", job["if"])
         self.assertIn("github.event_name == 'workflow_dispatch'", job["if"])
-        self.assertEqual(self.doc["jobs"]["settings"]["outputs"]["fit_profile_sync"], "${{ steps.settings.outputs.FIT_PROFILE_SYNC || vars.FIT_PROFILE_SYNC }}")   # ... and GitHub's own value stays the fallback
+        self.assertEqual(self.doc["jobs"]["settings"]["outputs"]["fit_profile_sync"], "${{ steps.settings.outputs.FIT_PROFILE_SYNC }}")   # ... and, since LIFE-699, only the page decides (GitHub no longer holds the switch)
         self.assertNotIn("vars.FIT_PROFILE_SYNC", job["if"])
 
 

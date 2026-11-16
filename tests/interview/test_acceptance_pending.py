@@ -112,18 +112,20 @@ class LedgerRead(unittest.TestCase):
 
 
 class WorkflowStep(unittest.TestCase):
-    def test_only_the_two_acceptance_steps_get_the_ledger_id_and_the_negative_case_never_runs_live(self):
+    def test_the_stage_and_acceptance_steps_declare_the_ledger_id_for_the_page_to_fill_and_the_negative_case_never_runs_live(self):
+        """LIFE-699: the Ledger id is no longer a GitHub secret. The job blanks it, the three steps that read Ledger rows declare it empty, and the V7 settings page fills it with the step's own read-only Interview token (a fallback token never writes the page)."""
         text = (Path(__file__).resolve().parents[2] / ".github/workflows/hourly.yml").read_text()
         job = text[text.index("\n  interview:\n"):text.index("\n  report:\n")]
+        self.assertNotIn("secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID", job)
         self.assertIn('      NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""', job)                       # blank for the whole job
-        self.assertEqual(job.count("NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}"), 3)   # LIFE-360: + the Interview stage step (read-only)
+        self.assertEqual(job.count('NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""'), 4)               # the job, plus the Interview stage step and the two acceptance steps
         stage = job[job.index("id: irun\n"):job.index("id: iacc\n")]
-        self.assertIn("NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}", stage)
+        self.assertIn('NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""', stage)
         main = job[job.index("id: iacc\n"):job.index("id: iaccneg")]
         negative = job[job.index("id: iaccneg"):job.index("Interview warning")]
         for step in (main, negative):
-            self.assertIn("NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}", step)
-            self.assertNotIn("NOTION_API_TOKEN", step)
+            self.assertIn('NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""', step)
+            self.assertNotIn("NOTION_API_TOKEN", step)                                         # no Jobs Notion token: the step's own read-only Interview token is all it holds
         self.assertIn("INTERVIEW_ACCEPTANCE_JSON: ${{ secrets.INTERVIEW_ACCEPTANCE_NEGATIVE_JSON }}", negative)
         self.assertNotIn("--live", negative)                                                    # D233: the negative case can never write
         self.assertNotIn("$LIVE", negative)

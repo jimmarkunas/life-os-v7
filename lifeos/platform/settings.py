@@ -17,6 +17,7 @@ ADDRESS_HEADER = "# notion addresses"
 SWITCH_HEADER = "# switches and lists"
 SNAPSHOT_KEY = "settings:last-accepted"                                  # one row in the existing v7_private_reports table (stored_pages.STORE); keys there are prefixed
 TOKENS = ("NOTION_JIRA_TOKEN", "NOTION_API_TOKEN")
+ANY_NOTION_TOKEN = re.compile(r"NOTION_[A-Z0-9_]*TOKEN")                 # LIFE-699: a step without the two above reads the page with its own Notion token (the root page is shared with every connection), read-only: it never seeds
 
 # Notion block, page and database addresses, and plain switches and lists (LIFE-699 inventory). Adding a name here is the only way Notion can set it.
 MOVABLE = frozenset({
@@ -246,8 +247,15 @@ def apply(environ=os.environ, client=None, copy=None, connect=None):
     copy = (client is None and environ.get("GITHUB_ACTIONS") == "true") if copy is None else copy
     if switch == "off" or (client is None and switch != "on" and environ.get("GITHUB_ACTIONS") != "true"):     # production runs and an explicit "on" only; tests and local runs stay as they are
         return out
-    connect = connect if connect is not None else (_store_connect(environ) if copy else None)
     token = next((environ.get(t).strip() for t in TOKENS if (environ.get(t) or "").strip()), "")
+    read_only = ""
+    if not token and client is None:
+        read_only = next((k for k in sorted(environ) if k not in TOKENS and ANY_NOTION_TOKEN.fullmatch(k) and (environ.get(k) or "").strip()), "")
+        token = environ.get(read_only, "").strip() if read_only else ""
+        copy = copy and not read_only                                      # a step's own token only reads the page; seeding stays with the two tokens above
+        if read_only:
+            out["read_only_token"] = read_only                             # the name only, never the value
+    connect = connect if connect is not None else (_store_connect(environ) if copy else None)
     if client is None and not token:
         out["status"] = "no_token"
         _fallback(environ, connect, out)
