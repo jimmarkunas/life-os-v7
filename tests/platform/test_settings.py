@@ -48,7 +48,7 @@ class Writable(Page):
     """A page with a switches block and an addresses block that accepts the copy."""
     def __init__(self, switches, addresses):
         super().__init__([])
-        self.blocks = {"s": "\n".join(["# Switches"] + switches), "a": "\n".join(["# Notion addresses"] + addresses)}
+        self.blocks = {"s": "\n".join(["# Switches and lists"] + switches), "a": "\n".join(["# Notion addresses"] + addresses)}
         self.patches = 0
 
     def call(self, method, path, body=None):
@@ -57,8 +57,8 @@ class Writable(Page):
         return super().call(method, path, body)
 
     def call_once(self, method, path, body=None):
-        assert method == "PATCH" and path == "/blocks/a", path                    # only the addresses block is ever written
-        self.blocks["a"] = "".join(p["text"]["content"] for p in body["code"]["rich_text"])
+        assert method == "PATCH" and path in ("/blocks/a", "/blocks/s"), path     # only the addresses and switches blocks are ever written
+        self.blocks[path[-1]] = "".join(p["text"]["content"] for p in body["code"]["rich_text"])
         self.patches += 1
 
 
@@ -143,6 +143,30 @@ class CopyAddresses(unittest.TestCase):
         again = settings.apply(env, page, copy=True)
         self.assertEqual((again["seeded"], page.patches, again["matched"], again["mismatched"], again["undeclared"]), ([], 1, 4, [], 1))
         self.assertNotIn("HIRING_AUTO_CLOSE", env)
+
+    def test_the_ten_non_address_settings_are_copied_once_to_the_switches_block_one_line_each(self):
+        """LIFE-699 phase 7: names only in the counts; a credential, an unlisted name and a value with a line break are never copied."""
+        link = "https://www.notion.so/Hiring-Pipeline#" + ID.replace("-", "").upper()
+        page = Writable(["GRANOLA_AUTO on"], [])
+        env = {"JIRA_SITE_URL": "https://example.com", "JIRA_BOARDS": "A,B", "INTERVIEW_ACCEPTANCE_JSON": "{\"a\": 1}", "INTERVIEW_ACCEPTANCE_NEGATIVE_JSON": "{\n\"a\": 1}",
+               "GCAL_CALENDAR_ID": "  ", "CLOUDFLARE_API_TOKEN": "secret", "HIRING_CARD_BLOCK_ID": link}
+        out = settings.apply(env, page, copy=True)
+        self.assertEqual(out["seeded"], ["HIRING_CARD_BLOCK_ID", "INTERVIEW_ACCEPTANCE_JSON", "JIRA_BOARDS", "JIRA_SITE_URL"])
+        self.assertEqual(page.blocks["s"].splitlines()[1:], ["GRANOLA_AUTO on", 'INTERVIEW_ACCEPTANCE_JSON {"a": 1}', "JIRA_BOARDS A,B", "JIRA_SITE_URL https://example.com"])
+        self.assertIn("HIRING_CARD_BLOCK_ID " + ID.replace("-", "").lower(), page.blocks["a"])         # a copied Notion link is written as its bare block id
+        self.assertNotIn("secret", page.blocks["a"] + page.blocks["s"])
+        again = settings.apply(env, page, copy=True)
+        self.assertEqual((again["seeded"], page.patches, again["mismatched"]), ([], 2, []))           # nothing left to copy; the link and the bare id compare equal
+
+    def test_the_seedable_names_are_settings_the_page_may_already_hold(self):
+        self.assertLessEqual(settings.SEEDABLE, settings.MOVABLE)
+        self.assertEqual(settings.SEEDABLE & settings.SAFETY, frozenset())
+        self.assertFalse([n for n in settings.SEEDABLE if n.endswith(("_TOKEN", "_SECRET", "_KEY", "_PASSWORD"))])
+
+    def test_a_step_that_declares_the_notion_ids_map_receives_its_names_from_the_page(self):
+        env = {"LIFEOS_NOTION_IDS": ""}
+        out = settings.apply(env, Page([f"LIFEOS_NOTION_DASHBOARD_PAGE {ID}", f"MEGIBOW_BLOCK_ID {ID}"]))
+        self.assertEqual((env, out["filled"], out["undeclared"]), ({"LIFEOS_NOTION_IDS": "", "LIFEOS_NOTION_DASHBOARD_PAGE": ID}, ["LIFEOS_NOTION_DASHBOARD_PAGE"], 1))
 
     def test_the_notion_ids_map_counts_as_held(self):
         env = {"LIFEOS_NOTION_IDS": '{"DASHBOARD_PAGE": "%s"}' % ID, "LIFEOS_NOTION_REVIEW_SOURCE": ""}
