@@ -1,4 +1,4 @@
-"""LIFE-726: tools/regen.py finds nothing to add or drop (the registries are current), and it does add the rows a new stage needs."""
+"""LIFE-726 / LIFE-765: tools/regen.py finds nothing to add or drop (the registries are current), adds the rows a new stage needs, and with --commit (what preflight runs) commits exactly those files."""
 import io
 import pathlib
 import sys
@@ -31,6 +31,30 @@ class Regen(unittest.TestCase):
         self.assertEqual(code, 1)
         for table in ("stages.json: added brand-new", "stage_budgets.json: rendered from stages.json", "timeouts.md: added brand-new", "stage-isolation.md: added brand-new"):
             self.assertIn(table, out)
+
+    def test_commit_mode_refuses_a_dirty_tree_and_a_check_run(self):
+        dirty = mock.Mock(stdout=" M a.txt\n", stderr="", returncode=0)
+        with mock.patch.object(regen, "git", return_value=dirty), redirect_stdout(io.StringIO()):
+            self.assertEqual(regen.main(["--commit"]), 2)
+        clean = mock.Mock(stdout="", stderr="", returncode=0)
+        with mock.patch.object(regen, "git", return_value=clean), redirect_stdout(io.StringIO()):
+            self.assertEqual(regen.main(["--commit", "--check"]), 2)
+
+    def test_the_commit_adds_the_generated_files_by_name_and_nothing_else(self):
+        calls = []
+
+        def fake_git(*args):
+            calls.append(args)
+            return mock.Mock(stdout="life/LIFE-9/x\n", stderr="", returncode=0)
+
+        with mock.patch.object(regen, "git", fake_git), redirect_stdout(io.StringIO()):
+            self.assertEqual(regen.commit_generated(["stages.json: added x"]), 0)
+        wanted = [str(path.relative_to(regen.ROOT)) for path in regen.targets()]
+        added = next(call for call in calls if call[0] == "add")
+        committed = next(call for call in calls if call[0] == "commit")
+        self.assertEqual(list(added[2:]), wanted)
+        self.assertEqual(list(committed[-len(wanted):]), wanted)
+        self.assertIn("[LIFE-9]", committed[3])
 
 
 if __name__ == "__main__":

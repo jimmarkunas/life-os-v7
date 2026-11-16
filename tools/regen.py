@@ -18,6 +18,7 @@ A stage whose module loops over external items with no try inside is not classif
 import json
 import pathlib
 import re
+import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -141,8 +142,33 @@ def runtime_text(changes):
     return "\n".join(lines)
 
 
+# LIFE-765: `--commit` is what `sh tools/preflight.sh` runs, so nobody runs this by hand: on a clean tree it writes what a new stage needs, then commits exactly the files below (added by name) as one commit.
+def targets():
+    return (STAGES, BUDGETS, TIMEOUTS_DOC, ISOLATION_DOC, DOCSTYLE, RUNTIME, manifest.INVENTORY)
+
+
+def git(*args):
+    return subprocess.run(["git", "-C", str(ROOT), *args], capture_output=True, text=True)
+
+
+def commit_generated(changes):
+    paths = [str(path.relative_to(ROOT)) for path in targets()]
+    added = git("add", "--", *paths)
+    key = re.search(r"LIFE-\d+", git("rev-parse", "--abbrev-ref", "HEAD").stdout)
+    done = git("commit", "-q", "-m", f"[{key.group(0) if key else 'regen'}] Registry rows written by tools/regen.py for a new or changed stage (run by preflight)\n\n" + "\n".join(changes), "--", *paths)
+    if added.returncode or done.returncode:
+        print("regen: could not commit the generated files: " + (added.stderr + done.stderr).strip())
+        return 1
+    print(f"regen: committed {len(paths)} registry paths ({len(changes)} changes)")
+    return 0
+
+
 def main(argv):
     check = "--check" in argv
+    commit = "--commit" in argv
+    if commit and (check or git("status", "--porcelain").stdout.strip()):
+        print("regen: --commit needs a clean tree and no --check")
+        return 2
     changes, problems = [], []
     data = stage_manifest(changes, problems)
     manifest_text = manifest_stages.dump(data)
@@ -165,14 +191,16 @@ def main(argv):
     if block and block.group(0) != rendered:
         inventory = inventory.replace(block.group(0), rendered)
         changes.append("module-inventory.md: regenerated")
-    targets = ((STAGES, manifest_text), (BUDGETS, budget_text), (TIMEOUTS_DOC, doc_timeouts), (ISOLATION_DOC, doc_isolation), (DOCSTYLE, style), (RUNTIME, runtime), (manifest.INVENTORY, inventory))
-    for path, text in targets:
+    rendered_files = ((STAGES, manifest_text), (BUDGETS, budget_text), (TIMEOUTS_DOC, doc_timeouts), (ISOLATION_DOC, doc_isolation), (DOCSTYLE, style), (RUNTIME, runtime), (manifest.INVENTORY, inventory))
+    for path, text in rendered_files:
         if path.read_text() != text and not check:
             path.write_text(text)
     for line in changes + [f"NEEDS A HUMAN: {p}" for p in problems]:
         print(line)
     if not changes and not problems:
         print("registries are current")
+    if commit and changes and not problems:
+        return commit_generated(changes)
     return 1 if (check and (changes or problems)) or problems else 0
 
 
