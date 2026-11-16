@@ -488,7 +488,7 @@ class WorkflowTests(unittest.TestCase):
     def test_failures_are_warnings_and_never_fail_the_run(self):
         job = self.job()
         self.assertNotIn("\n    continue-on-error:", job)
-        self.assertEqual(job.count("continue-on-error: true"), 14)           # the LIFE-85 tailnet join, plus the five LIFE-671 and LIFE-673 accountability steps (the Bitwarden load and its retry are inside the local action, LIFE-631)
+        self.assertEqual(job.count("continue-on-error: true"), 15)           # the LIFE-85 tailnet join, plus the five LIFE-671 and LIFE-673 accountability steps (the Bitwarden load and its retry are inside the local action, LIFE-631)
         self.assertIn("::warning", job)
 
     def test_database_secrets_reach_only_the_snapshot_and_card_steps(self):
@@ -503,7 +503,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn("secrets.", roll)
         self.assertNotIn("outputs.LIFEOS_ACQ", roll)                           # the sprint rollover still gets no database value
         self.assertNotIn("outputs.NOTION", roll)
-        self.assertEqual(sorted(re.findall(r"secrets\.(\w+)", head)), ["JIRA_BASE_URL", "JIRA_BOARDS", "JIRA_GTV_EPIC"])
+        self.assertEqual(sorted(re.findall(r"secrets\.(\w+)", head)), [])   # LIFE-699: no GitHub secret; the three Jira values come from the V7 settings page through one pre-step that alone holds the Notion token
         self.assertNotIn("outputs.", head.replace("needs.gate.outputs.", ""))     # nothing is exported job-wide (the gate's run flag is the only output this header reads)
 
     def test_no_jira_value_appears_anywhere_in_tracked_workflow_or_code(self):

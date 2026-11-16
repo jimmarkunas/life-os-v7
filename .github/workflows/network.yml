@@ -76,7 +76,7 @@ jobs:
           tags: tag:v7-runner
       - name: Network (reads the attached CSV through Notion; prints counts only)
         env:
-          NETWORK_HANDOFF_PAGE_ID: ${{ secrets.NETWORK_HANDOFF_PAGE_ID }}
+          NETWORK_HANDOFF_PAGE_ID: ""
           NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
           STAGE: ${{ inputs.stage }}
           LIVE: ${{ inputs.live }}

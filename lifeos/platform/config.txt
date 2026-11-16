@@ -71,3 +71,21 @@ TINYFISH_API_KEY secret Search provider key (never printed)
 V7_ARCHIVE_TOKEN secret Token the branch-archive workflow uses
 V7_IMESSAGE_ALERTS workflow_only:workflow Switch for the iMessage alert job in the domains tick; the V7 settings page can set it, GitHub's value is the fallback
 WEEKLY_REVIEW_PAGE_ID input Notion page id of the weekly review
+FOLLOWUP_ACCOUNT_CALENDAR_BYTALOS input Short account label for the Followup calendar source (bytalos), shown in receipts; never an address
+FOLLOWUP_ACCOUNT_CALENDAR_PERSONAL input Short account label for the Followup calendar source (personal), shown in receipts; never an address
+FOLLOWUP_ACCOUNT_GMAIL_BYTALOS input Short account label for the Followup gmail source (bytalos), shown in receipts; never an address
+FOLLOWUP_ACCOUNT_GMAIL_PERSONAL input Short account label for the Followup gmail source (personal), shown in receipts; never an address
+FOLLOWUP_ACCOUNT_INTERVIEW_BYTALOS input Short account label for the Followup interview os source (bytalos), shown in receipts; never an address
+FOLLOWUP_ACCOUNT_INTERVIEW_PERSONAL input Short account label for the Followup interview os source (personal), shown in receipts; never an address
+FOLLOWUP_ACCOUNT_JIRA_BYTALOS input Short account label for the Followup jira source (bytalos), shown in receipts; never an address
+FOLLOWUP_ACCOUNT_JIRA_PERSONAL input Short account label for the Followup jira source (personal), shown in receipts; never an address
+FOLLOWUP_ACCOUNT_NOTION_BYTALOS input Short account label for the Followup notion source (bytalos), shown in receipts; never an address
+FOLLOWUP_ACCOUNT_NOTION_PERSONAL input Short account label for the Followup notion source (personal), shown in receipts; never an address
+FOLLOWUP_ACCOUNT_OUTLOOK_PERSONAL_1 input Short account label for the Followup outlook source (personal), shown in receipts; never an address
+FOLLOWUP_ACCOUNT_OUTLOOK_PERSONAL_2 input Short account label for the Followup outlook source (personal, account 2), shown in receipts; never an address
+FOLLOWUP_ACCOUNT_OUTLOOK_PERSONAL_3 input Short account label for the Followup outlook source (personal, account 3), shown in receipts; never an address
+FOLLOWUP_ACCOUNT_TODOIST_PERSONAL input Short account label for the Followup todoist source (personal), shown in receipts; never an address
+FOLLOWUP_GCAL_BYTALOS_CALENDAR_ID input Google calendar id the Followup calendar reader calls (bytalos)
+FOLLOWUP_GCAL_PERSONAL_CALENDAR_ID input Google calendar id the Followup calendar reader calls (personal)
+FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH secret New read-only Gmail (Bytalos) credential for the Followup stage; a name only, never a value
+FOLLOWUP_TODOIST_PERSONAL_TOKEN secret New read-only Todoist (Personal) credential for the Followup stage; a name only, never a value

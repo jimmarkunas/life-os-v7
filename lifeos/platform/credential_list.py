@@ -311,6 +311,7 @@ PATTERNS = [{'file': 'lifeos/inbox/followup_wiring.py', 'match': ['FOLLOWUP_ACCO
  {'file': 'lifeos/oraclecloud/card.py', 'match': ['*_BLOCK_ID']},
  {'file': 'lifeos/physmail/card.py', 'match': ['*_BLOCK_ID']},
  {'file': 'lifeos/platform/db.py', 'match': ['LIFEOS_ACQ_*']},
+ {'file': 'lifeos/platform/followup_fetchers.py', 'match': ['FOLLOWUP_*', 'JIRA_*', 'NOTION_*', 'GCAL_*', 'GMAIL_*']},
  {'file': 'lifeos/platform/jira.py', 'match': ['JIRA_*']},
  {'file': 'lifeos/platform/notion_client.py', 'match': ['NOTION_*']},
  {'file': 'lifeos/platform/notion_ids.py', 'match': ['LIFEOS_NOTION_*']},

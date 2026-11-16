@@ -180,6 +180,8 @@ Every call that leaves the process carries an explicit timeout. `tests/contracts
 | `fit-profile-sync` | 480 | yes | twice its slowest measured step (234 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `fit-review` | 600 | no | no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `followup` | 600 | no | no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
+| `followup-schema-apply` | 600 | no | no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
+| `followup-schema-check` | 600 | no | no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `funnel` | 600 | no | no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `granola` | 120 | yes | twice its slowest measured step (27 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `granola-auto` | 210 | yes | twice its slowest measured step (98 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
