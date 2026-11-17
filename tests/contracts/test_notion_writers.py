@@ -82,6 +82,7 @@ class NotionWriters(unittest.TestCase):
 
     def test_each_job_and_stage_is_real(self):
         jobs = yaml.safe_load((ROOT / ".github/workflows/domains.yml").read_text())["jobs"]
+        jobs["capacity-card"] = yaml.safe_load((ROOT / ".github/workflows/capacity-card.yml").read_text())["jobs"]["capacitycard"]       # LIFE-793: the AI Capacity card runs in its own workflow
         for row in self.writers:
             job, stage = row[3].split(".")
             runs = " ".join(str(step.get("run", "")) for step in jobs[job]["steps"])
