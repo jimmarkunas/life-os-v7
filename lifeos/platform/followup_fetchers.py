@@ -20,6 +20,7 @@ SOURCES = ("jira", "calendar", "gmail", "outlook", "todoist", "notion", "intervi
 TENANTS = ("personal", "bytalos")
 MAX_ROWS = readers.MAX_ROWS
 LOOKBACK_DAYS = 7                    # a first read (no checkpoint) looks back this far
+NOTION_LOOKBACK_DAYS = 1             # Notion search returns every edited page, so a first read looks back one day; more than MAX_ROWS rows in the window reads as `truncated` and the checkpoint never advances
 CALENDAR_AHEAD_DAYS = 30
 MARGIN = timedelta(minutes=5)        # the readers filter exactly on the checkpoint; this only keeps an API's coarse time filter from dropping a row
 MAX_PAGES = 10
@@ -178,8 +179,18 @@ def _config(environ, name):
     return value
 
 
-def _start(since, now):
-    return (since - MARGIN) if since else now - timedelta(days=LOOKBACK_DAYS)
+def _start(since, now, days=LOOKBACK_DAYS):
+    return (since - MARGIN) if since else now - timedelta(days=days)
+
+
+def _own_id(client):
+    """The id of the bot behind this Notion token (one GET), or None when it cannot be read: then nothing is skipped."""
+    try:
+        me = client.call("GET", "/users/me")
+    except Exception:                                                                   # noqa: BLE001 - a failed lookup only means no self-edit filter
+        return None
+    ident = me.get("id") if isinstance(me, dict) else None
+    return ident if isinstance(ident, str) and ident else None
 
 
 def _utc(text):
@@ -291,7 +302,8 @@ def _title(page):
 
 def _read_notion_like(time_key, title_key):
     def read(make, environ, tenant, secret, since, now):
-        client, start = make(secret), _start(since, now)
+        client, start = make(secret), _start(since, now, NOTION_LOOKBACK_DAYS)
+        own = _own_id(client)                                                         # the integration's own edits (V7 refreshing its cards) are not Jim's activity
         body = {"page_size": 100, "filter": {"property": "object", "value": "page"}, "sort": {"direction": "descending", "timestamp": "last_edited_time"}}
         rows, cursor = [], None
         for _ in range(MAX_PAGES):
@@ -304,6 +316,8 @@ def _read_notion_like(time_key, title_key):
                     continue
                 if datetime.fromisoformat(edited) < start:                           # newest first: everything after this is older than the checkpoint
                     return rows
+                if own and ((item.get("last_edited_by") or {}).get("id") == own):
+                    continue
                 rows.append({"id": item.get("id"), "url": item.get("url"), time_key: edited, title_key: _title(item)})
                 if len(rows) > MAX_ROWS:
                     return rows
