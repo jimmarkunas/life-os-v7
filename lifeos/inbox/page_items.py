@@ -71,15 +71,16 @@ def _read(wiring, scope, source, request_id, now):
     except Exception:                                                                                            # noqa: BLE001 - a connector failure is recorded by outcome only, never its message
         wiring.audit(_receipt(source, scope.workspace, scope.account, request_id, "degraded", "fetch_failed", now))
         return {**entry, "status": "degraded", "reason": "fetch_failed"}, []
-    records, rejected = [], 0
+    records, why = [], {}
     for native in natives:
         try:
             records.append(adapters.normalize(source, scope.workspace, slug(scope.account), native, scope.account, now, now))
-        except (InboxError, KeyError, ValueError, TypeError):
-            rejected += 1
-    outcome, reason = ("degraded", "records_rejected") if rejected else ("ok", "ok")
+        except (InboxError, KeyError, ValueError, TypeError) as error:
+            word = error.reason if isinstance(error, InboxError) else type(error).__name__.lower()           # a fixed reason word or an exception type, never a message
+            why[word] = why.get(word, 0) + 1
+    outcome, reason = ("degraded", "records_rejected") if why else ("ok", "ok")
     wiring.audit(_receipt(source, scope.workspace, scope.account, request_id, outcome, reason, now))
-    return {**entry, "status": outcome, "reason": reason}, records
+    return {**entry, "status": outcome, "reason": reason, "rejected": why}, records
 
 
 def collect(wiring, now):
@@ -105,7 +106,8 @@ def lines(items):
     counts = {}
     for record in items["records"]:
         counts[(record.workspace, record.source)] = counts.get((record.workspace, record.source), 0) + 1
-    return [f"inbox-items {e['workspace']} {e['source']} {e['status']} {e['reason']} n={counts.get((e['workspace'], e['source']), 0)}" for e in items["sources"]]
+    return [f"inbox-items {e['workspace']} {e['source']} {e['status']} {e['reason']} n={counts.get((e['workspace'], e['source']), 0)}"
+            + "".join(f" {word}={n}" for word, n in sorted((e.get("rejected") or {}).items())) for e in items["sources"]]
 
 
 __all__ = ["BUCKET", "RANK", "SOURCES", "collect", "due_text", "lines", "rank", "row_of"]

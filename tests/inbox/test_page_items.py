@@ -1,11 +1,14 @@
 """LIFE-711: the real Jira, Calendar and Todoist items reach the Action Inbox list: read-only, receipted before every read, each source fails alone, TGP never read, a count only when every source read OK."""
+import contextlib
 import dataclasses
+import io
 import unittest
 from unittest import mock
 from datetime import datetime, timedelta, timezone
 
 from lifeos.inbox import followup_stage as stage
-from lifeos.inbox import page_items, page_view
+from lifeos.inbox import page_items, page_rows, page_view
+from lifeos.platform.notion_client import NotionError
 from lifeos.platform import followup_fetchers as F
 from lifeos.platform import followup_readers as readers
 
@@ -226,6 +229,16 @@ class FetcherTests(unittest.TestCase):
             fetchers["jira"](F.GRANT_REFS[("todoist", "personal", 1)])
         self.assertEqual(str(wrong.exception), "FOLLOWUP_CREDENTIAL_NOT_ALLOWED")
 
+    def test_the_calendar_reader_hands_back_record_safe_ids(self):
+        class Cal:
+            def list_events(self, lo, hi):
+                return [{"id": "a=b+c/d", "htmlLink": "https://calendar.google.com/x", "summary": "Odd id", "status": "confirmed", "updated": "2026-11-16T12:00:00.000Z", "start": {"date": "2026-11-18"}}]
+
+        row = self.run_fetch("calendar", Cal())[0]
+        self.assertRegex(row["id"], r"^[A-Za-z0-9_.@:-]{1,80}$")
+        record = page_items.adapters.normalize("calendar", "personal", "personal-calendar", row, "x", NOW, NOW)
+        self.assertEqual(record.native_id, row["id"])
+
     def test_the_item_readers_can_only_read(self):
         import inspect
         source = inspect.getsource(F)
@@ -264,6 +277,68 @@ class StageTests(unittest.TestCase):
             stage.run(0, True, wiring=wiring)
         self.assertEqual(seen, [None])
         self.assertFalse([e for e in wire.log if e[0] == "fetch"])                           # no receipt, no read
+
+
+class RowWriteTests(unittest.TestCase):
+    """A row Notion refuses must not take the others down, and its log line is a shape, never content."""
+
+    class Client:
+        def __init__(self, refuse):
+            self.refuse, self.calls = refuse, []
+
+        def call_once(self, method, path, body=None):
+            title = "".join(p["text"]["content"] for p in body["properties"]["Outcome"]["title"]) if method == "POST" else ""
+            self.calls.append(title)
+            if title in self.refuse:
+                raise NotionError("NOTION_HTTP_400")
+            return {"id": "x"}
+
+    def rows(self, *titles):
+        return [{"id": f"r{n}", "Outcome": t, "Workspace": "Personal", "Source": "Calendar", "Bucket": "Upcoming", "Rank": 4.5, "Owner": "You", "Next move": "Review the agenda", "Due": "Nov 20", "Freshness": "fresh",
+                 "Link": "https://calendar.google.com/secret-looking-path"} for n, t in enumerate(titles)]
+
+    def test_one_refused_row_is_counted_and_logged_by_shape_and_the_rest_are_written(self):
+        client = self.Client({"bad"})
+        ops = page_rows.plan([], self.rows("good one", "bad", "good two"), set())
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            done = page_rows.apply(client, "src", ops)
+        self.assertEqual((done["created"], done["failed"]), (2, 1))
+        log = out.getvalue()
+        self.assertIn("inbox-view-row-failed op=create code=notion_http_400 source=Calendar bucket=Upcoming", log)
+        self.assertIn("outcome=3", log)                                                       # lengths, so an empty or oversize field shows
+        for secret in ("bad", "calendar.google.com", "Review the agenda"):
+            self.assertNotIn(secret, log.replace("notion_http_400", ""))
+
+    def test_three_refusals_in_a_row_stop_the_run(self):
+        client = self.Client({"a", "b", "c", "d"})
+        ops = page_rows.plan([], self.rows("a", "b", "c", "d"), set())
+        with contextlib.redirect_stdout(io.StringIO()), self.assertRaises(NotionError):
+            page_rows.apply(client, "src", ops)
+        self.assertEqual(len(client.calls), 3)
+
+    def test_an_empty_title_is_written_as_a_placeholder_not_refused(self):
+        self.assertEqual(page_rows.props({"id": "x", "Outcome": "  ", "Workspace": "Personal", "Source": "Jira", "Bucket": "Needs me", "Rank": 1, "Owner": "You", "Next move": "", "Due": "", "Freshness": "fresh",
+                                           "Link": ""})["Outcome"]["title"][0]["text"]["content"], "(no title)")
+
+
+class IdTests(unittest.TestCase):
+    def test_a_calendar_event_id_the_record_id_cannot_hold_is_made_safe_stable_and_distinct(self):
+        self.assertEqual(F._safe_id("abc_20261117T150000Z"), "abc_20261117T150000Z")
+        odd, other = F._safe_id("a=b+c/d"), F._safe_id("a=b+c/e")
+        self.assertRegex(odd, r"^[A-Za-z0-9_.@:-]{1,80}$")
+        self.assertEqual(odd, F._safe_id("a=b+c/d"))
+        self.assertNotEqual(odd, other)
+        self.assertRegex(F._safe_id("x" * 300), r"^[A-Za-z0-9_.@:-]{1,80}$")
+        self.assertRegex(F._safe_id(None), r"^[A-Za-z0-9_.@:-]{1,80}$")
+
+    def test_the_reasons_a_row_was_rejected_are_counted_in_fixed_words(self):
+        bad = cal_native("e1")
+        bad["url"] = "http://not-https.example.com/x"
+        natives = {("calendar", "personal"): [cal_native("ok"), bad, {"id": "z"}]}
+        wire = Wire(natives, scopes=(stage.Scope("personal", "personal calendar", ("calendar",)),))
+        line = page_items.lines(page_items.collect(wire.wiring, NOW))[0]
+        self.assertEqual(line, "inbox-items personal calendar degraded records_rejected n=1 record_incomplete=1 source_url_invalid=1")
 
 
 if __name__ == "__main__":

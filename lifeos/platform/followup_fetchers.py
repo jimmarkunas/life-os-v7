@@ -8,6 +8,7 @@
 # Outlook tokens rotate, so each Outlook credential is a LABEL (the existing `personal` and `work` sign-ins, Nov 16 2026) whose token is read from, and rotated into, the private v7_outlook_token store. Jira creates NO new credential: it reads the existing JIRA_BASE_URL, JIRA_EMAIL and JIRA_API_TOKEN (grant refs are JIRA_API_TOKEN@personal / @bytalos). That token can write, so the Jira client is GET-only in code and a test pins it. Every other name below is a NEW read-only credential.
 from datetime import datetime, timedelta, timezone
 import functools
+import hashlib
 import json
 import math
 import re
@@ -400,12 +401,20 @@ def _items_jira(make, environ, tenant, secret, now):
     raise FetchError("FOLLOWUP_LISTING_INCOMPLETE")
 
 
+def _safe_id(value):
+    """An id as an Inbox record-id part: letters, digits and . _ @ : - only. One that has other characters keeps those it can and gets a short stable digest, so two different ids never meet."""
+    text = str(value or "")
+    if text and re.fullmatch(r"[A-Za-z0-9_.@:-]{1,80}", text):
+        return text
+    return (re.sub(r"[^A-Za-z0-9_.@:-]+", "-", text)[:60].strip("-") or "id") + "-" + hashlib.sha256(text.encode()).hexdigest()[:12]
+
+
 def _items_calendar(make, environ, tenant, secret, now):
     client = make(secret, _config(environ, f"FOLLOWUP_GCAL_{tenant.upper()}_CALENDAR_ID"))
     out = []
     for event in client.list_events(now.isoformat(), (now + timedelta(days=ITEM_WINDOW_DAYS)).isoformat()):
         start = event.get("start") or {}
-        out.append({"id": event.get("id"), "url": event.get("htmlLink"), "summary": event.get("summary"), "description": "", "status": event.get("status") or "confirmed",
+        out.append({"id": _safe_id(event.get("id")), "url": event.get("htmlLink"), "summary": event.get("summary"), "description": "", "status": event.get("status") or "confirmed",
                     "updated": _utc(event.get("updated")), "tz": start.get("timeZone") or ITEM_TZ, "start": start.get("dateTime") or start.get("date")})
     return out
 
