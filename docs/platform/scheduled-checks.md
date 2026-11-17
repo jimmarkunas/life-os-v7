@@ -9,6 +9,7 @@ Every workflow with a `cron:` trigger is in this table. `tests/contracts/test_sc
 | Workflow | Cadence | What it checks | Failure alert |
 |---|---|---|---|
 | `hourly.yml` | three slots an hour (7, 27, 47) | the pipeline tick: the gate picks one run an hour | Covered already: `pipeline_failing`, `pipeline_stalled` and `run_failed` page for it (`SCHEDULED_COVERED`). Its scheduled runs are ticks, so a red tick is not a second alert. |
+| `capacity-card.yml` | hourly (55) | the AI Capacity card, moved out of the hourly imessage job (LIFE-793) | Covered already (`SCHEDULED_COVERED`): the one stage only warns; no second alert. |
 | `v3-pages.yml` | hourly (40) | the five V3 accountability page stages, moved out of the hourly jira job (LIFE-793) | Covered already (`SCHEDULED_COVERED`): the stages only warn (LIFE-730), so the run does not go red from a stage; no second alert. |
 | `watchdog.yml` | hourly (17, 47) | the pipeline-stale issue, the alert sweep and the central scheduled check | `scheduled_red_watchdog` (PAGE). A watchdog cannot see its own failure from inside, so the Oracle ticker's copy of `gate.watch` runs the same check and covers it. Closes after 3 finished scheduled passes in a row. |
 | `safety.yml` | Mondays 8:17 AM CT | the smoke and golden checks | `scheduled_red_safety` (PAGE). Closes on one finished scheduled pass (weekly: three passes would take three weeks). |

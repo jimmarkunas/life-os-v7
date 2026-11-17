@@ -176,7 +176,7 @@ class QuarantineAndSchedulerAndRegistries(unittest.TestCase):
 
     def test_exactly_one_recurring_scheduler(self):
         scheduled = [p.name for p in (ROOT / ".github/workflows").glob("*.y*ml") if re.search(r"^\s*schedule:", p.read_text(), re.M)]
-        self.assertEqual(sorted(scheduled), ["hourly.yml", "safety.yml", "v3-pages.yml", "watchdog.yml"])    # the watchdog only raises an alert (D52); it never runs the pipeline. safety.yml is Jim's weekly read-only check (D142): it touches no pipeline state. v3-pages.yml (LIFE-793, Jim's go Nov 17) is the five V3 page stages moved out of the hourly jira job: read-only from Jira, writes only the V3 page callouts
+        self.assertEqual(sorted(scheduled), ["capacity-card.yml", "hourly.yml", "safety.yml", "v3-pages.yml", "watchdog.yml"])    # the watchdog only raises an alert (D52); it never runs the pipeline. safety.yml is Jim's weekly read-only check (D142): it touches no pipeline state. v3-pages.yml (LIFE-793, Jim's go Nov 17) is the five V3 page stages moved out of the hourly jira job: read-only from Jira, writes only the V3 page callouts
         safety = (ROOT / ".github/workflows/safety.yml").read_text()
         for word in ("--live", "NOTION_", "GMAIL_"):
             self.assertNotIn(word, safety)                                                          # the weekly check reads the database and prints counts; it writes nothing and holds no mailbox or Notion token
