@@ -9,7 +9,7 @@
 # digest of time, source, workspace, account and the reader's id. Dry run: store reads fall back to empty when the Followup tables do not exist yet; nothing is ever written.
 from datetime import datetime, timezone
 
-from lifeos.inbox import followup_stage as stage
+from lifeos.inbox import followup_classify, followup_stage as stage
 from lifeos.inbox.followup_store import FollowupStore, FollowupStoreError, SOURCES
 from lifeos.inbox.ledger import Ledger, digest
 from lifeos.inbox.model import UNRELEASED_WORKSPACES, WORKSPACES
@@ -213,7 +213,7 @@ def build(environ, live=False, clock=None):
     fetchers = module.build_fetchers(fetcher_environment(environ)) if module and hasattr(module, "build_fetchers") else {}
     made = tuple(stage.Scope(workspace, label, tuple(sorted({s for s, _ in members}))) for (workspace, label), members in sorted(scopes.items()))
     return stage.Wiring(store=store, scopes=made, grants=grants_for(environ, credential_names()), fetchers=fetchers, audit=make_audit(Ledger(db.connect)), sink=make_sink(real, clock), clock=clock, production=True, env=environ,
-                        jira_base=JIRA_SITE)
+                        jira_base=JIRA_SITE, classify=followup_classify.classify)
 
 
 __all__ = ["EXPIRES", "WiringError", "account_env", "credential_names", "accounts", "configured", "grants_for", "receipt_id",
