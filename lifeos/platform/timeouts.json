@@ -452,6 +452,14 @@
    "slowest_seconds": 135,
    "target": 5
   },
+  "v3-pages.yml::v3pages": {
+   "basis": "not measured: new job (LIFE-793); keeps its current value",
+   "current": 10,
+   "median_seconds": null,
+   "runs_measured": 0,
+   "slowest_seconds": null,
+   "target": 10
+  },
   "watchdog.yml::alarm": {
    "basis": "new in LIFE-704: two GitHub API calls; not measured yet, kept at the 3-minute limit it is created with",
    "current": 3,
