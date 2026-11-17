@@ -106,9 +106,11 @@ def expiry_table():
     """EXPIRES plus each credential's date from its inventory row (a row with no fixed expiry follows NO_EXPIRY)."""
     from lifeos.platform.credential_list import CREDENTIALS                       # noqa: PLC0415
     rows = {row.get("key"): row for row in CREDENTIALS}
+    fetchers = _fetchers()
+    stored = fetchers.STORED_TOKENS if fetchers else ()
     table = {}
-    for key, raw in (getattr(_fetchers(), "CREDENTIAL_NAMES", {}) or {}).items():
-        row = rows.get(OUTLOOK_INVENTORY if key[0] in (getattr(_fetchers(), "STORED_TOKENS", ()) or ()) else INVENTORY.get(raw))      # a stored (label) token follows the outlook sign-in row
+    for key, raw in (getattr(fetchers, "CREDENTIAL_NAMES", {}) or {}).items():
+        row = rows.get(OUTLOOK_INVENTORY if key[0] in stored else INVENTORY.get(raw))      # a stored (label) token follows the outlook sign-in row
         if row:
             table[key] = row.get("expires") or NO_EXPIRY
     table.update(EXPIRES)
