@@ -313,9 +313,13 @@ class Skip:
             return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
         return datetime.fromisoformat(str(value).replace("T", " ")[:19]).replace(tzinfo=timezone.utc)
 
-    def may_skip(self, key, edited):
-        if key not in self.clean or not edited:
-            return False
+    def miss(self, key, edited):
+        """None when the page may be skipped, else the one fixed word that says why not (LIFE-788: so a run's counts show why a page was read in full). The checks and their order are the
+        ones may_skip always made; nothing about when a page may be skipped changes."""
+        if key not in self.clean:
+            return "not_proven"                                        # no stored proof of exactly what it should show, or the wanted block changed since
+        if not edited:
+            return "no_edit_time"
         try:
             when = self._when(edited)
             recorded = self.edits.get(key)
@@ -325,13 +329,22 @@ class Skip:
             else:                                                      # 2. only the saved proof time exists (older pages)
                 saved = self.checked.get(key)
                 if not saved:
-                    return False
+                    return "no_proof_time"
                 proof = self._when(saved)
                 same = (proof - when).total_seconds() >= self.LEGACY_MARGIN_SECONDS
         except (ValueError, TypeError):
-            return False
+            return "unreadable_time"
         age = (self.now - proof).total_seconds()
-        return same and (self.now - when).total_seconds() >= self.SETTLE_SECONDS and 0 <= age < self.MAX_AGE_HOURS * 3600
+        if not same:
+            return "edited_since_proof"
+        if (self.now - when).total_seconds() < self.SETTLE_SECONDS:
+            return "edited_just_now"
+        if not 0 <= age < self.MAX_AGE_HOURS * 3600:
+            return "proof_too_old"
+        return None
+
+    def may_skip(self, key, edited):
+        return self.miss(key, edited) is None
 
     def note(self, key, edited):
         if edited and self.seen is not None:
@@ -344,9 +357,12 @@ WRITES = ("created", "replaced", "converged", "removed")
 def _page(notion, connection, key, page_id, company, title, target, index, details, today, aliases, dismissed, live, counts, recorded=None, skip=None):
     page = notion.call("GET", f"/pages/{page_id}")
     edited = page.get("last_edited_time")
-    if skip is not None and live and skip.may_skip(key, edited):
-        counts["unchanged_skipped"] = counts.get("unchanged_skipped", 0) + 1       # LIFE-572: proven earlier, untouched since: nothing to read, nothing to write
-        return "skipped_unchanged"
+    if skip is not None and live:
+        missed = skip.miss(key, edited)
+        if missed is None:
+            counts["unchanged_skipped"] = counts.get("unchanged_skipped", 0) + 1       # LIFE-572: proven earlier, untouched since: nothing to read, nothing to write
+            return "skipped_unchanged"
+        counts.setdefault("skip_missed", {})[missed] = counts.get("skip_missed", {}).get(missed, 0) + 1      # LIFE-788: why this page is read in full (a fixed word and a number, nothing identifying)
     top, owned = surface.read_page(notion, page_id, key=key)
     counts["pages_read"] += 1
     why = surface.guard(page, top, key, notion.source)
