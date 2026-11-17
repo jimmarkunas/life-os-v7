@@ -25,7 +25,7 @@ One card owns one region of the Daily Report page and writes only its own blocks
 | lifeos/oraclecloud/card.py | ORACLE_REGION | v7-oracle | imessage.oracle-card | its heading and one paragraph, found under the page | ScopedClient |
 | lifeos/dcc/card.py | DCC_REGION | daily-command-center | dcc.dcc-card | DCC_CARD_BLOCK_ID callout | ScopedClient |
 | lifeos/dcc/header.py | - | - | dcc.dcc-card | the page's date line: one top-level paragraph of a fixed shape, found among the page's top-level blocks; created at the top only if none exists | page-level, read back |
-| lifeos/jobs/fit/capacity_card.py | - | - | imessage.capacity-card | the AI Capacity callout, found among the page's top-level blocks by its table header; inserted after the last divider if absent; off unless V7_AI_CAPACITY_CARD is on | in place, read back |
+| lifeos/jobs/fit/capacity_card.py | - | - | capacity-card.capacity-card | the AI Capacity callout, found among the page's top-level blocks by its table header; inserted after the last divider if absent; off unless V7_AI_CAPACITY_CARD is on | in place, read back |
 
 The two rows with `-` are not regions in `OWNERS`: the date line is the page header and the AI Capacity card is a top-level callout outside the half-width column. Both are page-level writes (a top-level read and, at most, one insert); they run in jobs of their own (`dcc` runs last, after every card job; `imessage` also holds the Communications and Oracle cards, which write inside their own callouts), so their page-level operations do not overlap another card's blocks.
 
