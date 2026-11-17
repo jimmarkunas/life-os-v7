@@ -32,6 +32,7 @@ The job timeouts in `.github/workflows` change in one separate workflow pull req
 | `branches.yml` | `report` | 10 | 10 | 0 | - | - | not measured: no completed run in the last 100; keeps its current value |
 | `calendar.yml` | `calendar` | 15 | 15 | 6 | 12 | 18 | kept: only 6 measured runs (fewer than 10), slowest 18 s |
 | `diag.yml` | `diag` | 10 | 10 | 33 | 14 | 97 | twice the slowest run (97 s) rounds to 10 min, not below the current 10: unchanged |
+| `diag.yml` | `inbox_view_qa` | 10 | 10 | 0 | - | - | not measured: new job (LIFE-711); keeps its current value |
 | `diag.yml` | `interview_ui` | 5 | 5 | 10 | 240 | 302 | slowest run 302 s reached 90% of the current limit: keeps 5 min and is listed for Jim (the job is at its limit) |
 | `diag.yml` | `report` | 10 | 10 | 10 | 14 | 19 | twice the slowest run (19 s) rounds to 10 min, not below the current 10: unchanged |
 | `diag.yml` | `sandbox` | 5 | 5 | 4 | 10 | 30 | kept: only 4 measured runs (fewer than 10), slowest 30 s |

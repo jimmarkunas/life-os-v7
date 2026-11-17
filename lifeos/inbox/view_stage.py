@@ -16,14 +16,13 @@ from lifeos.platform.notion_client import Client, NotionError
 
 SWITCH = "ACTION_INBOX_VIEW"
 MODES = ("qa-proof", "qa-rollback")
-TOKEN = "NOTION_API_TOKEN"
 
 
 def _client(env):
-    token = (env.get(TOKEN) or "").strip()
+    token = (env.get("NOTION_API_TOKEN") or "").strip()
     if not token:
         raise InboxError("view_config_missing")
-    return Client({TOKEN: token, "NOTION_INBOX_VIEW_SOURCE": "0" * 32}, source_name="NOTION_INBOX_VIEW_SOURCE")        # the data source is found by search, not configured
+    return Client({"NOTION_API_TOKEN": token, "NOTION_INBOX_VIEW_SOURCE": "0" * 32}, source_name="NOTION_INBOX_VIEW_SOURCE")        # the data source is found by search, not configured
 
 
 def _flat(prefix, receipt):
@@ -72,4 +71,4 @@ def run(limit, live, environ=None, client=None, clock=None):
     return {"unwired": 1}
 
 
-__all__ = ["MODES", "SWITCH", "run"]
+__all__ = ["run"]

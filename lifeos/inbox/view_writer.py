@@ -254,4 +254,4 @@ def rollback(writer):
     return {"archived": len(rows), "remaining": len(remaining), "rolled_back": not remaining}
 
 
-__all__ = ["DB_TITLE", "MANAGED", "NotionError", "QA_PARENT_TITLE", "ScopeError", "ViewWriter", "canon", "create_view", "ensure_view", "find_parent", "find_view", "from_page", "reconcile", "rollback", "schema", "to_properties"]
+__all__ = ["NotionError", "ScopeError", "ViewWriter", "canon", "create_view", "ensure_view", "find_parent", "find_view", "from_page", "reconcile", "rollback", "schema", "to_properties"]

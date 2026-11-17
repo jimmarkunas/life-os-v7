@@ -1,4 +1,5 @@
-"""LIFE-711: synthetic Inbox rows for the QA proof of the view writer. Fictional titles and example.com links only; never registered as a source, so it can never stand in for a live feed."""
+"""LIFE-711: synthetic rows for the view writer QA proof: fictional titles, example.com links, never a source."""
+# Fictional titles and example.com links only; never registered as a source, so it can never stand in for a live feed.
 # Two scenarios on the same keys. A: every source clean except Concord Personal (degraded, last accepted shown) and Followup (not provisioned). B: the next hour: one title changed, one record gone from a clean
 # source (its row is archived), one source degraded (its rows stay), so one run exercises create, update, archive and keep. TGP is the fixed "tracked, not connected" row (`tgp_row`), never a source.
 from datetime import timedelta
@@ -50,4 +51,4 @@ def rows(now, scenario="a"):
     return (*view_rows.project_rows(_inbox(now, scenario), now, last_ok=last_ok), tgp_row())
 
 
-__all__ = ["TGP_ROW_ID", "rows", "tgp_row"]
+__all__ = ["rows", "tgp_row"]
