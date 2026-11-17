@@ -1,5 +1,5 @@
 """LIFE-711: writes the Action Inbox view into the blocks of Jim's approved page. The writer owns the blocks below one marker line and nothing else."""
-# Jim, Nov 16 2026: build the QA9 mockup as a full-width page inside the callout, live data in the same blocks, no database. The page (PAGE_ID) was laid out once with the QA9 blocks below MARKER (SHAPE: a
+# Jim, Nov 16 2026: build the QA9 mockup as a full-width page inside the callout, live data in the same blocks, no database. The page (found by its title and its marker, never by a committed id) was laid out once with the QA9 blocks below MARKER (SHAPE: a
 # header callout, five tiles in columns, the main table, a note, the six-source health callout, the Followup mapping callout, the Followup table and the Review Needed line). This writer changes only the
 # words in those blocks, so every icon, colour and layout stays as it was built. The Truly empty / Cannot say callout is the one block it adds and removes, at the very end, only when it applies.
 #
@@ -11,7 +11,7 @@ from lifeos.inbox import page_view
 from lifeos.inbox.model import InboxError
 from lifeos.platform.notion_client import Client, NotionError
 
-PAGE_ID = "41b3c5a0592680caac4bda7b06b9d767"
+TITLE = "Agent Inbox"
 MARKER = "— machine-written below this line (V7, LIFE-711): do not hand-edit —"
 SHAPE = ("callout", "column_list", "table", "paragraph", "divider", "callout", "divider", "callout", "table", "paragraph")
 STATE_ICON = {"Truly empty": ("📭", "gray_bg"), "Cannot say": ("⚠️", "red_bg")}
@@ -42,7 +42,7 @@ def _rich(block):
 class Page:
     """The page's tree below the marker, with the guarded write calls."""
 
-    def __init__(self, client, page_id=PAGE_ID):
+    def __init__(self, client, page_id):
         self.client, self.page_id, self.allowed, self.writes = client, page_id, {page_id}, 0
         top = _children(client, page_id)
         at = next((i for i, b in enumerate(top) if b.get("type") == "paragraph" and _plain(_rich(b)) == MARKER), None)
@@ -136,6 +136,16 @@ def apply(page, view):
     return {"text_blocks_written": text, "table_rows_written": rows, "state_callouts_changed": states, "unchanged": int(page.writes == 0)}
 
 
+def locate(client):
+    """The page's id: the one page titled `Agent Inbox` that holds the marker line. None or several is a refusal (`page_not_found`, `page_ambiguous`); no id is ever committed."""
+    found = client.call("POST", "/search", {"query": TITLE, "filter": {"property": "object", "value": "page"}, "page_size": 20}).get("results", [])
+    named = [r["id"] for r in found if "".join(t.get("plain_text", "") for t in (r.get("properties", {}).get("title") or {}).get("title", [])) == TITLE]
+    holders = [i for i in named if any(b.get("type") == "paragraph" and _plain(_rich(b)) == MARKER for b in _children(client, i))]
+    if len(holders) != 1:
+        raise InboxError("page_not_found" if not holders else "page_ambiguous")
+    return holders[0]
+
+
 def _client(env):
     token = (env.get("NOTION_API_TOKEN") or "").strip()
     if not token:
@@ -143,13 +153,14 @@ def _client(env):
     return Client({"NOTION_API_TOKEN": token, "NOTION_INBOX_VIEW_SOURCE": "0" * 32}, source_name="NOTION_INBOX_VIEW_SOURCE")
 
 
-def publish(payloads, now, environ=None, client=None, page_id=PAGE_ID):
+def publish(payloads, now, environ=None, client=None, page_id=None):
     """-> counts only; raises InboxError with a fixed reason word. The one entry point: read the page, render the words from the stored payloads, write what differs."""
     env = os.environ if environ is None else environ
     try:
-        return apply(Page(client or _client(env), page_id), page_view.render(payloads, now))
+        client = client or _client(env)
+        return apply(Page(client, page_id or locate(client)), page_view.render(payloads, now))
     except NotionError as error:
         raise InboxError(f"view_notion_{str(error).lower()[:40]}") from None
 
 
-__all__ = ["MARKER", "PAGE_ID", "SHAPE", "Page", "apply", "publish"]
+__all__ = ["MARKER", "SHAPE", "TITLE", "Page", "apply", "locate", "publish"]

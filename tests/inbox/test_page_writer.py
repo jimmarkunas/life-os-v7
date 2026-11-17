@@ -38,7 +38,7 @@ class FakeNotion:
 
     def _add(self, parent, kind, body):
         self.n += 1
-        block_id = page_writer.PAGE_ID if parent is None else f"b{self.n:031d}"
+        block_id = "p" * 32 if parent is None else f"b{self.n:031d}"
         self.blocks[block_id] = {"id": block_id, "type": kind, kind: body}
         self.kids[block_id] = []
         if parent:
@@ -75,6 +75,8 @@ class FakeNotion:
         return [{"type": "text", "plain_text": p["text"]["content"], "text": p["text"], "annotations": p.get("annotations", {})} for p in pieces]
 
     def call(self, method, path, body=None):
+        if method == "POST" and path == "/search":
+            return {"results": [{"id": self.page, "properties": {"title": {"title": [{"plain_text": "Agent Inbox"}]}}}]}
         path = path.split("?")[0]
         parts = path.strip("/").split("/")
         if method == "GET":
@@ -149,7 +151,7 @@ class PageWriterTests(unittest.TestCase):
 
     def test_asana_and_concord_say_not_connected_and_tgp_is_never_a_row(self):
         notion = FakeNotion()
-        tgp = payload("personal", "tgp@tgpinternational.com", threads=[dict(LOOP, title="TGP thing")])
+        tgp = payload("personal", "tgp inbox", threads=[dict(LOOP, title="TGP thing")])
         page_writer.publish([tgp, *BOTH(threads=[LOOP])], NOW, client=notion)
         line = notion.plain(notion.kids[notion.health][1])
         self.assertIn("Asana not connected (view only)", line)
@@ -163,12 +165,20 @@ class PageWriterTests(unittest.TestCase):
         page_writer.publish(BOTH(threads=[LOOP]), NOW, client=notion)
         known = set(notion.blocks)
         self.assertTrue(set(notion.touched) <= known)
-        page = page_writer.Page(notion)
+        page = page_writer.Page(notion, notion.page)
         with self.assertRaises(InboxError) as caught:
             page.set_text({"id": "f" * 32, "type": "paragraph", "paragraph": {"rich_text": rich("x")}}, [("y", False, False)])
         self.assertEqual(caught.exception.reason, "write_outside_page")
         self.assertNotIn(notion.marker, notion.touched)
         self.assertNotIn(notion.page, [t for t in notion.touched if t != notion.page])
+
+    def test_the_page_is_found_by_title_and_marker_never_by_a_committed_id(self):
+        notion = FakeNotion()
+        self.assertEqual(page_writer.locate(notion), notion.page)
+        notion.kids[notion.page].remove(notion.marker)
+        with self.assertRaises(InboxError) as caught:
+            page_writer.locate(notion)
+        self.assertEqual(caught.exception.reason, "page_not_found")
 
     def test_a_page_whose_shape_changed_or_has_no_marker_is_left_alone(self):
         notion = FakeNotion()
@@ -181,7 +191,19 @@ class PageWriterTests(unittest.TestCase):
         notion.kids[notion.page].remove(notion.marker)
         with self.assertRaises(InboxError) as caught:
             page_writer.publish(BOTH(), NOW, client=notion)
-        self.assertEqual(caught.exception.reason, "marker_missing")
+        self.assertEqual(caught.exception.reason, "page_not_found")
+
+    def test_the_followup_stage_publishes_after_a_live_run_never_fails_on_a_page_error_and_honours_the_switch(self):
+        from lifeos.inbox import followup_stage
+        seen = []
+        out = followup_stage.publish_page([payload()], NOW, environ={"ACTION_INBOX_VIEW": "on"}, writer=lambda p, n, e: seen.append(len(p)) or {"unchanged": 1})
+        self.assertEqual((out, seen), ({"unchanged": 1}, [1]))
+        self.assertIsNone(followup_stage.publish_page([payload()], NOW, environ={"ACTION_INBOX_VIEW": "off"}, writer=lambda p, n, e: seen.append(9)))
+        self.assertEqual(seen, [1])                                                          # off: the writer is never called
+
+        def refuse(payloads, now, env):
+            raise InboxError("page_shape_changed")
+        self.assertIsNone(followup_stage.publish_page([payload()], NOW, environ={"ACTION_INBOX_VIEW": "on"}, writer=refuse))   # a refusal prints a fixed word and never raises
 
     def test_no_payload_yet_is_not_read_yet_not_zero(self):
         view = page_view.render([], NOW)

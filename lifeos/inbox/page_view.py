@@ -114,4 +114,4 @@ def source_pieces(view):
     return out
 
 
-__all__ = ["BUCKET_OF", "CANNOT", "EMPTY", "NOT_CONNECTED", "SIX", "TILES", "render", "six_sources", "source_pieces"]
+__all__ = ["CANNOT", "EMPTY", "NOT_CONNECTED", "SIX", "TILES", "render", "six_sources", "source_pieces"]
