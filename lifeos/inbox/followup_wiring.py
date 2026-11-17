@@ -180,7 +180,7 @@ def make_sink(store, clock):
         save = getattr(store, "save_payload", None)
         if save is None:
             raise WiringError("FOLLOWUP_PAYLOAD_STORE_MISSING")
-        save(payload["workspace"], payload["account"], payload, clock())
+        save(payload["workspace"], payload["account"], payload)                       # FollowupStore.save_payload(workspace, account, payload): the payload carries its own generated_at
     return sink
 
 
