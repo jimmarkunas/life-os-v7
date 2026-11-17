@@ -6,6 +6,7 @@ Anything else is a fixed code for that item alone: nothing is guessed, no round 
 import os
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 from hashlib import sha1
 from dataclasses import replace
 from datetime import datetime
@@ -186,7 +187,7 @@ def lead_row(writer, company, role, key, url, today):
 def read_mail(environ, now, gmail=None, outlook_accounts=None, days=mail.WINDOW_DAYS):
     """-> (records, sources that could not be read in full). Read only; Gmail and Outlook are read whole, as the recruiters stage does, because a lead has no company on any roster."""
     records, down, limit = [], 0, mail.MAX_MESSAGES * -(-days // mail.WINDOW_DAYS)
-    reads = [lambda: mail.gmail_records(gmail or Gmail.from_env(), now, limit=limit, days=days)]
+    reads = [lambda: mail.gmail_records(gmail or Gmail.from_env(), now, limit=limit, days=days, workers=MAIL_WORKERS)]
     for label, account in outlook_accounts if outlook_accounts is not None else mail.outlook_accounts(environ):
         reads.append(lambda a=account, l=label: mail.outlook_records(a, l, now, limit=limit, days=days) if a else ([], 1))
     for read in reads:
@@ -225,6 +226,7 @@ def recruiter_threads(environ, evidence, recruiters=None):
 
 GMAIL_THREAD = re.compile(r"https://mail\.google\.com/mail/u/0/#all/([0-9a-f]{8,32})")      # the request link platform.mail writes for a Gmail thread
 SENT_SHOWN = 10
+MAIL_WORKERS = 4                     # LIFE-793: Gmail reads at once in this step (one by one before): well under Gmail's per-user concurrent-request limit; Outlook is listed in pages, not per message
 
 
 def gmail_cause(error):
@@ -249,12 +251,24 @@ def sent_mail(environ, evidence, gmail=None, report=None):
             return evidence, False
         gmail = Gmail(*(environ[n] for n in names))
     found, failed = {}, False
-    for thread in threads:
+
+    def read_thread(thread):
         try:
-            found[thread] = (tuple((at.isoformat(timespec="seconds"), subject) for at, subject in gmail.thread_sent(thread)[-SENT_SHOWN:]), "read")
+            return thread, tuple((at.isoformat(timespec="seconds"), subject) for at, subject in gmail.thread_sent(thread)[-SENT_SHOWN:]), None
+        except GmailError as error:
+            return thread, None, error
+    if len(threads) > 1:                                                     # LIFE-793: the same reads and the same results, at most MAIL_WORKERS at a time; the first goes alone so the access token is fetched once
+        first = [read_thread(threads[0])]
+        with ThreadPoolExecutor(max_workers=MAIL_WORKERS) as pool:
+            results = first + list(pool.map(read_thread, threads[1:]))
+    else:
+        results = [read_thread(thread) for thread in threads]
+    for thread, shown, error in results:
+        if error is None:
+            found[thread] = (shown, "read")
             if report is not None:
                 report[thread] = None
-        except GmailError as error:                                          # unknown is never "none sent": this request reads DEGRADED this run
+        else:                                                                # unknown is never "none sent": this request reads DEGRADED this run
             cause = gmail_cause(error)
             found[thread], failed = ((), "unreadable"), failed or cause != "http_404"
             if report is not None:
