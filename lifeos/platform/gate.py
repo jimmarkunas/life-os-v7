@@ -58,7 +58,8 @@ CONFLICT_UNAVAILABLE = "WRITE_CONFLICT_COUNT_UNAVAILABLE"
 CONFLICT_RULE = "rule: any write conflict moves the Daily Report writers to the full chain (option A, LIFE-688)"
 
 SCHEDULED_WORKFLOWS = {"safety.yml": 1, "watchdog.yml": 3}   # LIFE-692: each workflow with a `schedule:` trigger that no other alert covers -> how many finished scheduled runs in a row must pass to close its incident
-SCHEDULED_COVERED = {"hourly.yml": "its scheduled runs are ticks: pipeline_failing, pipeline_stalled and run_failed already page for them"}      # the other scheduled workflows and why none is checked twice
+SCHEDULED_COVERED = {"hourly.yml": "its scheduled runs are ticks: pipeline_failing, pipeline_stalled and run_failed already page for them",
+                     "v3-pages.yml": "its stages are continue-on-error and only warn (LIFE-730), so the run does not go red from a stage; no second alert"}      # the other scheduled workflows and why none is checked twice
 SCHEDULED_OWN_ALERT = {"safety.yml": "Phone alert"}          # a failed run whose own alert step passed has already paged: the central check pushes no second alert for it
 SCHEDULED_RUNS_READ = 8        # finished scheduled runs read per workflow (one list call each)
 SCHEDULED_RED_FAMILY, SCHEDULED_OK_FAMILY = "scheduled_red", "scheduled_recovered"      # registry families scheduled_red_* (PAGE) and scheduled_recovered_* (INFO)
