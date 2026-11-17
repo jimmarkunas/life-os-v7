@@ -8,6 +8,7 @@
 # thread_id (64 hex), which is a safe Inbox id part; the label is the title. TGP and Asana are never read.
 import json
 import os
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable
@@ -105,6 +106,15 @@ def _cursor(store, workspace, account, source):
     return datetime.fromisoformat(row["cursor"]) if row else None
 
 
+_WORD = re.compile(r"[^A-Za-z0-9_]+")
+
+
+def source_lines(workspace, report):
+    """What the log may show per source: `followup-source <workspace> <source> <status> <reason>`, every part reduced to letters, digits and underscores (the reason is a fixed word already)."""
+    clean = lambda value, width: _WORD.sub("_", str(value or "-"))[:width]
+    return [f"followup-source {clean(workspace, 20)} {clean(r.get('source'), 20)} {clean(r.get('status'), 12)} {clean(r.get('reason'), 60)}" for r in report]
+
+
 def reconcile(wiring, scope, live, now):
     """-> (payload, counts). `live` False computes everything and writes nothing (no store write, no sink)."""
     workspace, account = scope.workspace, scope.account
@@ -169,6 +179,8 @@ def run(limit, live, wiring=None):
 
     def one(scope):
         payload, counts = reconcile(wiring, scope, live, now)
+        for line in source_lines(scope.workspace, payload.get("sources") or ()):
+            print(line)                                                                # one fixed-word line per source: workspace, source, status, reason code. Never an account, a name, a subject or a count of items.
         if live:
             wiring.sink(payload)
             counts["published"] = 1

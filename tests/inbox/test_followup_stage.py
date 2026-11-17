@@ -79,6 +79,13 @@ class Stage(unittest.TestCase):
             counts = S.run(0, True)
         self.assertEqual((counts["unwired"], counts["scopes"], counts["published"], counts["written"]), (1, 0, 0, 0))
 
+    def test_the_source_log_lines_are_fixed_words_only(self):
+        lines = S.source_lines("personal", [{"source": "gmail", "status": "degraded", "reason": "DENY_EXPIRED"}, {"source": "jira", "status": "ok", "reason": "jim@example.com at 10 Main St"}, {"source": "todoist"}])
+        self.assertEqual(lines[0], "followup-source personal gmail degraded DENY_EXPIRED")
+        self.assertEqual(lines[2], "followup-source personal todoist - -")
+        for line in lines:
+            self.assertRegex(line, r"^followup-source [A-Za-z0-9_]+ [A-Za-z0-9_-]+ [A-Za-z0-9_-]+ [A-Za-z0-9_-]+$")   # no space-separated free text, no address characters
+
     def test_a_dry_run_computes_everything_and_writes_nothing(self):
         rig = Rig()
         counts = rig.run(live=False)
