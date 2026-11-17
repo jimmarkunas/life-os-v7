@@ -44,3 +44,7 @@ Job search and Interview OS (`lifeos/jobs`, `interview`, `hiring`, `recruiters`,
 
 * Coverage shows what a test *runs*, not everything it *depends on*: a test that only reads a file's text, or a change in a non-Python file the code loads, is not in the index. Those cases are covered by the always-run contracts, the mirror-folder rule and the FULL list above, and main always runs everything.
 * Node tests (`tools/orca-concord-room`) run in their own step on every pull request, unchanged.
+
+## The local quick gate follows imports (LIFE-763)
+
+`tools/preflight.sh` (`tests/quickselect.py`) adds two source-derived rules to "the tests that name or mirror a changed file": (1) a change to a lifeos module selects every test that imports or names it, or any lifeos module that imports it, transitively (the credentials screen tests for a change to `credential_list.py`); a module reached by more than `HUB_CLOSURE` (40) modules, such as `db`, follows its direct importers only; (2) a changed non-Python file selects the tests whose source names its repo path or distinctive file name. Measured: a `credential_list.py` change went from 57 to 81 modules (13 s), a docs-only change stays 57 modules (11 s), the `db.py` hub is 125 modules (26 s). CI still runs the full suite.
