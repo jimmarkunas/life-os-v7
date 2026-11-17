@@ -12,6 +12,7 @@ and with no mirror to FULL. Docs-only changes run just the contracts. The index 
 import argparse
 import datetime
 import json
+import re
 import os
 import pathlib
 import subprocess
@@ -160,8 +161,22 @@ def select(changed, index, root=ROOT):
         return FULL
     known = module_set(root)
     targets = {t for t in targets if t in known or any(t.startswith(m + ".") for m in known)}      # a stale index can still name a test file this change deleted: it is not a target
+    targets = {_current(t, known, root) for t in targets}                                            # ... and a test id whose method this change renamed or deleted runs as its whole module (a stale index must never name a test that no longer exists)
     modules = {t for t in targets if t in known}
     return sorted(t for t in targets if t in modules or not any(t.startswith(m + ".") for m in modules))     # a test id inside a selected module would run twice
+
+
+def _current(target, known, root=ROOT):
+    """-> the target when it is a module or a test id whose method still exists in its file; otherwise the longest known module it starts with (the whole module runs)."""
+    if target in known:
+        return target
+    module = max((m for m in known if target.startswith(m + ".")), key=len)
+    method = target.rsplit(".", 1)[-1]
+    try:
+        text = (pathlib.Path(root) / (module.replace(".", "/") + ".py")).read_text()
+    except OSError:
+        return module
+    return target if re.search(r"def %s\(" % re.escape(method), text) else module
 
 
 def module_set(root=ROOT):
