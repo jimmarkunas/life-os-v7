@@ -70,6 +70,16 @@ class Select(unittest.TestCase):
         self.assertNotIn("tests.jobs.test_b", picked)
         self.assertFalse([t for t in picked if t.startswith("tests.jobs.test_b")])
 
+    def test_a_test_id_whose_method_was_renamed_runs_as_its_module_and_a_live_one_stays_precise(self):
+        (self.root / "tests/jobs/test_b.py").write_text("class B:\n    def test_renamed(self):\n        pass\n")        # the change renamed test_two; the index (hours old) still lists the old id
+        (self.root / "tests/sources/test_c.py").write_text("class C:\n    def test_three(self):\n        pass\n")
+        picked = ti.select(["lifeos/jobs/b.py", "lifeos/sources/c.py"], self.idx, self.root)
+        self.assertIn("tests.jobs.test_b", picked)                                            # the whole module runs: no "module has no attribute" error from a stale id
+        self.assertFalse([t for t in picked if t.startswith("tests.jobs.test_b.")])
+        known = ti.module_set(self.root)
+        self.assertEqual(ti._current("tests.sources.test_c.C.test_three", known, self.root), "tests.sources.test_c.C.test_three")      # an id whose method still exists stays precise
+        self.assertEqual(ti._current("tests.jobs.test_b.B.test_two", known, self.root), "tests.jobs.test_b")                              # one that was renamed becomes its module
+
     def test_a_test_inside_a_selected_module_is_not_listed_twice(self):
         picked = self.pick("lifeos/jobs/a.py")
         self.assertIn("tests.jobs.test_a", picked)
