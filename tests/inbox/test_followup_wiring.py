@@ -272,7 +272,7 @@ class Payload(unittest.TestCase):
 class Job(unittest.TestCase):
     ROOT = Path(__file__).resolve().parents[2]
 
-    def test_the_followup_job_is_dry_run_only_and_loads_only_committed_names(self):
+    def test_the_followup_job_goes_live_only_through_the_live_guard_and_loads_only_committed_names(self):
         import json
         try:
             import yaml
@@ -286,8 +286,10 @@ class Job(unittest.TestCase):
         self.assertNotIn("vars.", job["if"])                                              # no new GitHub value: the switch is in switches.json, never a repository value
         self.assertIn("needs.gate.outputs.due_followup == 'true'", job["if"])
         runs = [step.get("run", "") for step in job["steps"]]
-        self.assertTrue(any("python -m lifeos.run followup" in r for r in runs))
-        self.assertFalse(any("--live" in r for r in runs))
+        stage = [r for r in runs if "python -m lifeos.run followup" in r]
+        self.assertEqual(len(stage), 1)
+        self.assertIn('$([ "$LIVE" = "true" ] && echo --live)', stage[0])                  # --live only through the V7_LIVE guard, exactly like the other stages
+        self.assertNotIn("--live", stage[0].replace('echo --live)', ""))                   # never a bare --live: a manual run with live false stays a dry run that writes nothing
         loaded = next(step for step in job["steps"] if str(step.get("uses", "")).endswith("bws-load") and step.get("id") == "bws_followup")
         self.assertTrue({"JIRA_API_TOKEN", "JIRA_EMAIL"} <= {line.split()[-1] for line in str(loaded["with"].get("secrets", "")).splitlines() if line.strip()})
         self.assertNotIn("FOLLOWUP_JIRA_", str(loaded["with"]))                          # no new Jira credential: the existing items are reused
@@ -300,7 +302,7 @@ class Job(unittest.TestCase):
         self.assertIn(switch["state"], ("off", "on"))
         if switch["state"] == "on":
             self.assertTrue(switch["turned_on"].strip())                                  # an "on" switch records when, by whom and on whose word
-            self.assertFalse(any("--live" in r for r in runs))                           # and is a dry run until a separate reviewed change adds --live
+            self.assertIn("Go Live", switch["bounds"])                                    # and the live flag is a recorded, reviewed decision (Jim, Nov 16 2026), guarded by V7_LIVE in the step
 
     def test_every_new_followup_credential_is_loaded_passed_and_has_an_inventory_row(self):
         """Derived from the code: each FOLLOWUP_ secret name the fetchers use needs a bws-load line, a step env entry and a credential inventory row, so a source never silently shows DEGRADED for a wiring gap."""
