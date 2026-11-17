@@ -220,7 +220,7 @@ class Stage(unittest.TestCase):
 
     def test_the_hourly_path_is_off_by_default_and_unwired_when_on_and_never_writes(self):
         fake = FakeNotion()
-        self.assertEqual(view_stage.run(0, True, environ={}, client=fake), {"off": 1})
+        self.assertEqual(view_stage.run(0, True, environ={"ACTION_INBOX_VIEW": "off"}, client=fake), {"off": 1})
         self.assertEqual(view_stage.run(0, True, environ={"ACTION_INBOX_VIEW": "on"}, client=fake), {"unwired": 1})
         self.assertEqual(fake.requests, [])
 
@@ -249,11 +249,11 @@ class Stage(unittest.TestCase):
         self.assertEqual(out["rollback_rolled_back"], 1)
         self.assertEqual(live_pages(fake), [])
 
-    def test_the_switch_file_has_the_view_switch_off(self):
+    def test_the_switch_file_has_the_page_switch_on(self):
         import json
         import pathlib
         data = json.loads((pathlib.Path(view_rows.__file__).parents[1] / "platform/switches.json").read_text())
-        self.assertEqual(data["ACTION_INBOX_VIEW"]["state"], "off")
+        self.assertEqual(data["ACTION_INBOX_VIEW"]["state"], "on")             # LIFE-711: the page writer runs after a live followup run (the old database view writer is withdrawn)
 
 
 if __name__ == "__main__":
