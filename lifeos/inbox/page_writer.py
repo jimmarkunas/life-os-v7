@@ -1,10 +1,11 @@
-"""LIFE-711: writes the Action Inbox view into the blocks of Jim's approved page. The writer owns the blocks below one marker line and nothing else."""
-# Jim, Nov 16 2026: a status dashboard with the list under it, as a full-width page inside the callout, QA9 look, live data in the same blocks (the list is an inline database). The page (found by its title and its marker, never by a committed id) was laid out once with the QA9 blocks below MARKER (SHAPE: a
-# header callout, five tiles in columns, the source health table, the list (an inline database), the Followup mapping callout, the Followup table and the Review Needed line). This writer changes only the
-# words in those blocks, so every icon, colour and layout stays as it was built. The Truly empty / Cannot say callout is the one block it adds and removes, at the very end, only when it applies.
+"""LIFE-711: writes the Action Inbox view into Jim's approved page: the five tiles, the list's owned rows, the Followup table, the Source health table and the last-refreshed line."""
+# Jim, Nov 16 2026: a status dashboard with the list under it, as a full-width page inside the callout, QA9 look, live data. The whole page body belongs to this writer and carries no marker, header or
+# explanatory text: SHAPE is the one expected block order (the five tiles, the inline list database, the Followup heading and table, the Review Needed line, the Source health heading and table, the
+# last-refreshed line, and at the very end the Truly empty / Cannot say callout only while it applies). The writer changes the words of those blocks and the owned rows of the list; it never recreates the list,
+# its views, or any block, and a page whose blocks are not exactly that shape is refused (`page_shape_changed`) and left alone, so a failed run leaves the previous page.
 #
-# Safety: it reads the page's block tree first and may PATCH or DELETE only a block id it read below the marker (anything else is `write_outside_page`, nothing written); a page whose blocks no longer
-# have the expected shape is refused (`page_shape_changed`) and left alone; it is idempotent (the same words write nothing); the title and every other page are never touched. Counts and fixed codes only.
+# Safety: it reads the page's block tree first and may PATCH or DELETE only a block id it read from that page (anything else is `write_outside_page`, nothing written); the page is found by its title and
+# its shape, never by a committed id (`page_not_found`, `page_ambiguous`); it is idempotent (the same words write nothing). Counts and fixed codes only.
 import os
 
 from lifeos.inbox import page_rows, page_view
@@ -12,8 +13,7 @@ from lifeos.inbox.model import InboxError
 from lifeos.platform.notion_client import Client, NotionError
 
 TITLE = "Agent Inbox"
-MARKER = "— machine-written below this line (V7, LIFE-711): do not hand-edit —"
-SHAPE = ("callout", "column_list", "heading_3", "table", "paragraph", "heading_3", "child_database", "callout", "table", "paragraph")
+SHAPE = ("column_list", "child_database", "heading_3", "table", "paragraph", "heading_3", "table", "paragraph")
 STATE_ICON = {"Truly empty": ("📭", "gray_bg"), "Cannot say": ("⚠️", "red_bg")}
 
 
@@ -44,11 +44,7 @@ class Page:
 
     def __init__(self, client, page_id):
         self.client, self.page_id, self.allowed, self.writes = client, page_id, {page_id}, 0
-        top = _children(client, page_id)
-        at = next((i for i, b in enumerate(top) if b.get("type") == "paragraph" and _plain(_rich(b)) == MARKER), None)
-        if at is None:
-            raise InboxError("marker_missing")
-        body = top[at + 1:]
+        body = _children(client, page_id)
         self.state_block = body[len(SHAPE)] if len(body) == len(SHAPE) + 1 and body[-1].get("type") == "callout" else None
         self.body = body[:len(SHAPE)]
         if tuple(b.get("type") for b in self.body) != SHAPE or len(body) not in (len(SHAPE), len(SHAPE) + 1) or (len(body) == len(SHAPE) + 1 and self.state_block is None):
@@ -122,14 +118,13 @@ def _kids(page, block, count):
 
 
 def apply(page, view):
-    """Write `view` (page_view.render) into the page's blocks and the list's rows. -> counts."""
-    header, columns, _, health, _, _, listing, _, followup, review = page.body
-    text = page.set_text(_kids(page, header, 3)[2], [(view["refreshed"], False, True)])
-    for column, (number, caption) in zip(_kids(page, columns, 5), [*view["tiles"], view["healthy"]]):
-        inner = _kids(page, _kids(page, column, 1)[0], 3)
-        text += page.set_text(inner[0], [(number, False, False)]) + page.set_text(inner[2], [(caption, False, True)])
+    """Write `view` (page_view.render) into the page's blocks and the list's rows. -> counts. Every tile is the same two blocks (the number, the label): only the number is ever written."""
+    columns, listing, _, followup, review, _, health, refreshed = page.body
+    text = 0
+    for column, number in zip(_kids(page, columns, 5), [*view["tiles"], view["healthy"]]):
+        text += page.set_text(_kids(page, _kids(page, column, 1)[0], 2)[0], [(number, False, False)])
     rows = page.replace_rows(health, view["health"]) + page.replace_rows(followup, view["followup"])
-    text += page.set_text(review, [(view["review"], False, True)])
+    text += page.set_text(review, [(view["review"], False, True)]) + page.set_text(refreshed, [(view["refreshed"], False, True)])
     page._guard(listing["id"])
     listed = page_rows.reconcile(page.client, listing["id"], view["rows"], {w.lower() for w in view["clean"]})
     page.writes += sum(listed.values())
@@ -139,10 +134,14 @@ def apply(page, view):
 
 
 def locate(client):
-    """The page's id: the one page titled `Agent Inbox` that holds the marker line. None or several is a refusal (`page_not_found`, `page_ambiguous`); no id is ever committed."""
+    """The page's id: the one page titled `Agent Inbox` whose blocks are exactly SHAPE (plus the optional state callout). None or several is a refusal; no id is ever committed."""
     found = client.call("POST", "/search", {"query": TITLE, "filter": {"property": "object", "value": "page"}, "page_size": 20}).get("results", [])
     named = [r["id"] for r in found if "".join(t.get("plain_text", "") for t in (r.get("properties", {}).get("title") or {}).get("title", [])) == TITLE]
-    holders = [i for i in named if any(b.get("type") == "paragraph" and _plain(_rich(b)) == MARKER for b in _children(client, i))]
+    holders = []
+    for page_id in named:
+        kinds = tuple(b.get("type") for b in _children(client, page_id))
+        if kinds[:len(SHAPE)] == SHAPE and len(kinds) in (len(SHAPE), len(SHAPE) + 1):
+            holders.append(page_id)
     if len(holders) != 1:
         raise InboxError("page_not_found" if not holders else "page_ambiguous")
     return holders[0]
@@ -165,4 +164,4 @@ def publish(payloads, now, environ=None, client=None, page_id=None):
         raise InboxError(f"view_notion_{str(error).lower()[:40]}") from None
 
 
-__all__ = ["MARKER", "SHAPE", "TITLE", "Page", "apply", "locate", "publish"]
+__all__ = ["SHAPE", "TITLE", "Page", "apply", "locate", "publish"]

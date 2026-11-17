@@ -108,4 +108,4 @@ def reconcile(client, database_id, desired, clean):
     return apply(client, source_id, plan(current(client, source_id), desired, clean))
 
 
-__all__ = ["FIELDS", "MANAGED_BY", "apply", "current", "data_source", "plan", "props", "read", "reconcile"]
+__all__ = ["FIELDS", "apply", "current", "data_source", "plan", "props", "read", "reconcile"]

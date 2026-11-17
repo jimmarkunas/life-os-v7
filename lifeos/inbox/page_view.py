@@ -122,7 +122,7 @@ def _loops(payloads, now):
 
 
 def render(payloads, now):
-    """-> {'refreshed', 'tiles': [(number, caption)] x4, 'healthy': (n of 6, caption), 'health': 16 rows, 'rows': [list rows], 'followup': [6-tuples], 'sources': [(name, text)], 'review': text, 'state': None | (title, text)}."""
+    """-> {'refreshed', 'tiles': [number or a dash] x4, 'healthy': 'n of 6', 'health': 16 rows, 'rows': [list rows], 'followup': [6-tuples], 'sources': [(name, text)], 'review': text, 'state': None | (title, text)}."""
     payloads = _allowed(payloads)
     sources = six_sources(payloads)
     seen = {p["workspace"] for p in payloads}
@@ -132,22 +132,18 @@ def render(payloads, now):
     reviews = sum(len(p.get("review") or ()) for p in payloads)
     tiles = []
     for bucket in TILES:
-        if bucket == "Approvals":
-            tiles.append(("—", "Not wired yet"))
-        elif complete:
-            tiles.append((str(sum(1 for r in loops if r["bucket"] == bucket)), "Followup loops only"))
+        if bucket == "Approvals" or not complete:
+            tiles.append("—")                                                         # no approvals source yet, or a source was not read: a dash, never a zero
         else:
-            tiles.append(("—", "Cannot say: a source is down" if payloads else "Not read yet"))
+            tiles.append(str(sum(1 for r in loops if r["bucket"] == bucket)))
     healthy = sum(1 for _, t in sources if t == "ok")
-    down = [n for n, t in connected if t != "ok"]
-    caption = "Asana, Concord not connected" + (f" · down: {', '.join(down)}" if down else "")
     main = [{"id": r["id"], "Outcome": r["title"], "Workspace": r["workspace"], "Source": "Followup", "Bucket": r["bucket"], "Rank": RANK[r["bucket"]], "Owner": r["owner"], "Next move": r["move"],
              "Due": r["due"], "Freshness": "fresh", "Link": r["link"]} for r in loops]
     followup = [(r["workspace"], r["title"], r["owner"], r["move"], r["checkpoint"], r["fresh"]) for r in loops] or [("—", "No Followup loops" if complete else "Cannot say: not every source was read", "—", "—", "—", "—")]
     state = None if not payloads else EMPTY if complete and not loops else CANNOT if not complete else None
     clean = sorted(p["workspace"] for p in payloads if p.get("state") == "PASS" and all(e.get("status") == "ok" for e in p.get("sources") or ()))
-    return {"clean": clean, "refreshed": f"Last refreshed: {ct_stamp.when(now)} · TGP is never shown" if payloads else "Last refreshed: waiting for the first live read · TGP is never shown",
-            "tiles": tiles, "healthy": (f"{healthy} of 6", caption), "health": health_table(payloads, loops), "rows": main, "followup": followup, "sources": sources,
+    return {"clean": clean, "refreshed": f"Last refreshed: {ct_stamp.when(now) if payloads else '—'}",
+            "tiles": tiles, "healthy": f"{healthy} of 6", "health": health_table(payloads, loops), "rows": main, "followup": followup, "sources": sources,
             "review": f"Review Needed (not counted): {reviews}" if payloads else "Review Needed (not counted): —", "state": state}
 
 

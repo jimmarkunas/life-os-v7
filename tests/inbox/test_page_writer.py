@@ -36,20 +36,17 @@ class FakeNotion:
     def __init__(self):
         self.blocks, self.kids, self.touched, self.n, self.rows, self.row_writes = {}, {}, [], 0, {}, []
         self.page = self._add(None, "page", {})
-        self.marker = self.top("paragraph", rich(page_writer.MARKER))
-        self.header = self.top("callout", [], [("heading_3", rich("Action Inbox")), ("paragraph", rich("Filters")), ("paragraph", rich("Last refreshed: waiting"))])
         cols = self.top("column_list", None)
         for name in ("Needs me", "Waiting", "Approvals", "Upcoming", "Sources healthy"):
             col = self._add(cols, "column", {})
-            self.child(self._add(col, "callout", {"rich_text": []}), [("heading_3", rich("—")), ("paragraph", rich(name)), ("paragraph", rich("Not read yet"))])
+            self.child(self._add(col, "callout", {"rich_text": []}), [("heading_3", rich("—")), ("paragraph", rich(name))])
+        self.listing = self.top("child_database", None)
+        self.top("heading_3", rich("Followup"))
+        self.followup = self.table(["Workspace", "Loop", "Owner", "Move", "Checkpoint", "Freshness"], ["—", "—", "—", "—", "—", "—"])
+        self.review = self.top("paragraph", rich("Review Needed (not counted): —"))
         self.top("heading_3", rich("Source health"))
         self.health = self.table(["Workspace", "Source", "Health", "Last OK", "Items"], ["Personal", "Jira", "⚪ not read yet", "—", "—"])
-        self.top("paragraph", rich("legend"))
-        self.top("heading_3", rich("The list"))
-        self.listing = self.top("child_database", None)
-        self.top("callout", rich("How Followup maps in."))
-        self.followup = self.table(["Workspace", "Loop", "Owner", "Move", "Checkpoint", "Freshness"], ["—", "No Followup rows yet", "—", "—", "—", "—"])
-        self.review = self.top("paragraph", rich("Review Needed (not counted): —"))
+        self.refreshed = self.top("paragraph", rich("Last refreshed: —"))
         self.touched = []
 
     def _add(self, parent, kind, body):
@@ -157,12 +154,19 @@ def tile_numbers(notion):
     return [notion.plain(notion.kids[notion.kids[c][0]][0]) for c in notion.kids[column_list]]
 
 
+def tile_shapes(notion):
+    """The child block types of each of the five tile callouts: they must all be the identical two blocks, so the tiles are always the same height."""
+    column_list = next(i for i, b in notion.blocks.items() if b["type"] == "column_list")
+    return [tuple(notion.blocks[k]["type"] for k in notion.kids[notion.kids[c][0]]) for c in notion.kids[column_list]]
+
+
 class PageWriterTests(unittest.TestCase):
     def test_a_live_payload_fills_every_part_and_the_second_run_writes_nothing(self):
         notion = FakeNotion()
         first = page_writer.publish(both([LOOP, WAIT]), NOW, client=notion)
         self.assertEqual((first["list_rows_created"], first["list_rows_updated"], first["list_rows_archived"]), (2, 0, 0))
         self.assertEqual(tile_numbers(notion), ["1", "1", "—", "0", "4 of 6"])
+        self.assertEqual(tile_shapes(notion), [("heading_3", "paragraph")] * 5)
         health = notion.table_rows(notion.health)
         self.assertEqual(len(health), 16)
         self.assertEqual(health[0][:3], ("Personal", "Jira", "🟢 ok"))
@@ -185,6 +189,7 @@ class PageWriterTests(unittest.TestCase):
         self.assertEqual(len(notion.list_rows()), 1)                                           # an unreadable source never empties the list
         self.assertTrue(notion.table_rows(notion.health)[0][2].startswith("🟡"))
         self.assertEqual(tile_numbers(notion)[:4], ["—", "—", "—", "—"])
+        self.assertEqual(tile_shapes(notion), [("heading_3", "paragraph")] * 5)             # a down source never adds a line to a tile
         self.assertTrue(notion.plain(notion.kids[notion.page][-1]).startswith("Cannot say."))
         page_writer.publish(both([]), NOW, client=notion)                                      # every source read and the record is gone
         self.assertEqual(len(notion.list_rows()), 0)
@@ -203,20 +208,19 @@ class PageWriterTests(unittest.TestCase):
         self.assertEqual(written, ["Send the revised quote"])
         self.assertFalse(any(key == "foreign" for _, key in notion.row_writes))
 
-    def test_it_writes_only_blocks_it_read_below_the_marker(self):
+    def test_it_writes_only_blocks_it_read_from_the_page(self):
         notion = FakeNotion()
         page_writer.publish(both([LOOP]), NOW, client=notion)
         self.assertTrue(set(notion.touched) <= set(notion.blocks))
-        self.assertNotIn(notion.marker, notion.touched)
         page = page_writer.Page(notion, notion.page)
         with self.assertRaises(InboxError) as caught:
             page.set_text({"id": "f" * 32, "type": "paragraph", "paragraph": {"rich_text": rich("x")}}, [("y", False, False)])
         self.assertEqual(caught.exception.reason, "write_outside_page")
 
-    def test_the_page_is_found_by_title_and_marker_never_by_a_committed_id(self):
+    def test_the_page_is_found_by_title_and_shape_never_by_a_committed_id(self):
         notion = FakeNotion()
         self.assertEqual(page_writer.locate(notion), notion.page)
-        notion.kids[notion.page].remove(notion.marker)
+        notion.kids[notion.page].remove(notion.review)
         with self.assertRaises(InboxError) as caught:
             page_writer.locate(notion)
         self.assertEqual(caught.exception.reason, "page_not_found")
@@ -225,7 +229,10 @@ class PageWriterTests(unittest.TestCase):
         notion = FakeNotion()
         notion.kids[notion.page].pop()
         with self.assertRaises(InboxError) as caught:
-            page_writer.publish(both(), NOW, client=notion)
+            page_writer.publish(both(), NOW, client=notion)                                    # the page is found by its shape, so a changed page is not found and nothing is written
+        self.assertEqual(caught.exception.reason, "page_not_found")
+        with self.assertRaises(InboxError) as caught:
+            page_writer.publish(both(), NOW, client=notion, page_id=notion.page)
         self.assertEqual(caught.exception.reason, "page_shape_changed")
         self.assertEqual((notion.touched, notion.row_writes), ([], []))
 
@@ -243,10 +250,22 @@ class PageWriterTests(unittest.TestCase):
 
     def test_no_payload_yet_is_not_read_yet_not_zero(self):
         view = page_view.render([], NOW)
-        self.assertEqual([t[0] for t in view["tiles"]], ["—", "—", "—", "—"])
-        self.assertEqual(view["healthy"][0], "0 of 6")
+        self.assertEqual(view["tiles"], ["—", "—", "—", "—"])
+        self.assertEqual(view["healthy"], "0 of 6")
         self.assertIsNone(view["state"])
         self.assertTrue(all(row[2].startswith("⚪") for row in view["health"][:11]))
+
+    def test_the_page_carries_no_marker_header_or_explanatory_text_and_ends_on_one_last_refreshed_line(self):
+        notion = FakeNotion()
+        page_writer.publish(both([LOOP]), NOW, client=notion)
+        texts = [notion.plain(i) for i, b in notion.blocks.items() if "rich_text" in b.get(b["type"], {})] + [c for t in (notion.health, notion.followup) for row in notion.table_rows(t) for c in row]
+        for banned in ("machine-written", "hand-edit", "Filters", "Most urgent", "How Followup maps", "TGP is never shown", "not wired", "waiting for the first", "Cannot say: a source"):
+            self.assertFalse([t for t in texts if banned.lower() in t.lower()], banned)
+        last = notion.kids[notion.page][-1]
+        self.assertEqual(notion.blocks[last]["type"], "paragraph")
+        self.assertEqual(notion.plain(last), "Last refreshed: 11/16 · 8:00 PM CT")
+        self.assertEqual(notion.blocks[notion.kids[notion.page][0]]["type"], "column_list")        # the page opens on the tiles, the list is directly under them
+        self.assertEqual(notion.blocks[notion.kids[notion.page][1]]["type"], "child_database")
 
     def test_the_list_plan_is_idempotent_and_archives_only_a_cleanly_read_workspace(self):
         desired = [{"id": "followup:personal:x:1", "Outcome": "A", "Workspace": "Personal", "Source": "Followup", "Bucket": "Needs me", "Rank": 1, "Owner": "You", "Next move": "n", "Due": "", "Freshness": "fresh", "Link": ""}]
