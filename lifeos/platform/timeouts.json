@@ -60,6 +60,14 @@
    "slowest_seconds": 97,
    "target": 10
   },
+  "diag.yml::inbox_view_qa": {
+   "basis": "new job (LIFE-711, Nov 16 2026), not yet measured: 10 min like the other diag jobs; keeps its current value",
+   "current": 10,
+   "median_seconds": 0,
+   "runs_measured": 0,
+   "slowest_seconds": 0,
+   "target": 10
+  },
   "diag.yml::interview_ui": {
    "basis": "slowest run 302 s reached 90% of the current limit: keeps 5 min and is listed for Jim (the job is at its limit)",
    "current": 5,
