@@ -4,7 +4,7 @@ V7 is the active LIFE OS repo (V1, V2 are read-only references). V7 must run wit
 
 ## The whole job
 
-1. **Pick** the ticket Jim named, else the top `Agent Go` leaf by Priority, then Rank. Moving a ticket to Agent Go is the approval; an agent may do it unless the ticket names a protected step. Start with transition 14. Gate: `python -m lifeos.sources.devtools.readiness issue-key LIFE-nnn`.
+1. **Pick** the ticket Jim named, else the top `Agent Go` leaf by Priority, then Rank. Moving a ticket to Agent Go is the approval; an agent may do it unless the ticket names a protected step. One recorded yes from Jim covers all of a ticket's steps: go on, never re-ask. Release no ticket that STOPs on a missing prerequisite. Start with transition 14. Gate: `python -m lifeos.sources.devtools.readiness issue-key LIFE-nnn`.
 2. **Build** on one branch `life/LIFE-nnn/<slug>`. Ticket rule: **Every ticket has a parent epic, a Component and a Fix Version; Jira enforces it.** Tickets on the same files may share one PR and one receipt (LIFE-762).
 3. **Test** with `sh tools/preflight.sh` before every push (quick, ~15 s: contracts plus tests for your files); CI is the full gate: fix once if red, never rerun the full suite by hand. `sh tools/automerge.sh <pr>` needs its PASS. `git add` new files first.
 4. **Land and close:** auto-merge on same-head green CI, then one call: `python -m lifeos.jira.closeout KEY... --pr N --sha S --run R --proof KEY=text --live` (CT stamp, receipt, Done, read-back). Merged on green CI with local proof IS Done. Then the next ticket (`NO_ELIGIBLE_WORK` if none).
