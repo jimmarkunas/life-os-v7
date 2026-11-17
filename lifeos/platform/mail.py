@@ -5,6 +5,7 @@ message when it is deterministic, else ""). Content stays in memory: nothing her
 import os
 import re
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta, timezone
 from email.utils import parseaddr
 
@@ -34,7 +35,7 @@ def _markers(headers, address):
             "noreply": bool(NOREPLY.search(address.split("@")[0] if address else ""))}
 
 
-def gmail_records(gmail, now, limit=MAX_MESSAGES, days=WINDOW_DAYS, terms="", known=None, stats=None):
+def gmail_records(gmail, now, limit=MAX_MESSAGES, days=WINDOW_DAYS, terms="", known=None, stats=None, workers=1):
     """Gmail Inbox and Spam, last `days` days (default WINDOW_DAYS), optionally only messages matching Gmail search `terms`. Returns (records, unreadable). A listing that cannot be proven complete raises MailError."""
     query = f"{{in:inbox in:spam}} newer_than:{days}d" + (f" {terms}" if terms else "")
     with fixed(GmailError, MailError, "MAIL_GMAIL_LISTING_INCOMPLETE"):
@@ -46,10 +47,20 @@ def gmail_records(gmail, now, limit=MAX_MESSAGES, days=WINDOW_DAYS, terms="", kn
         stats["scanned"] = stats.get("scanned", 0) + listed
         stats["new"] = stats.get("new", 0) + len(ids)
     out, unreadable = [], 0
-    for message_id in ids:
+
+    def read(message_id):
         try:
-            raw = gmail.mail_record(message_id)
+            return gmail.mail_record(message_id)
         except GmailError:
+            return None
+    if workers > 1 and len(ids) > 1:                                         # LIFE-793: the same reads, the same order and the same unreadable count, at most `workers` at a time; the first read goes alone so the access token is fetched once
+        first = [read(ids[0])]
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            raws = first + list(pool.map(read, ids[1:]))
+    else:
+        raws = [read(message_id) for message_id in ids]
+    for raw in raws:
+        if raw is None:
             unreadable += 1
             continue
         name, address = _sender(raw["headers"].get("from", ""))
