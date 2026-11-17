@@ -53,7 +53,7 @@ class Decide(unittest.TestCase):
         self.assertEqual(promote.decide(issue("Outcome", "Just do it.")), ("skip", ["no_done_when"]))
         self.assertEqual(promote.decide(issue(status="Agent Go")), ("skip", ["not_to_do"]))
         self.assertEqual(promote.decide(issue(kind="Epic")), ("skip", ["epic"]))
-        self.assertEqual(promote.decide(issue(labels=["hold"])), ("skip", ["skip_label"]))
+        self.assertEqual(promote.decide(issue(labels=["needs-jim"])), ("skip", ["skip_label"]))
 
     def test_a_done_blocker_does_not_block(self):
         self.assertEqual(promote.decide(issue(blockers=[("LIFE-2", True)])), ("promote", []))
@@ -62,12 +62,12 @@ class Decide(unittest.TestCase):
 class WaitingLabel(unittest.TestCase):
     def test_a_protected_step_gets_the_comment_and_the_label_in_one_step(self):
         out = promote.act(issue(*READY, "Needs a read-only API key for Jira."))
-        self.assertEqual((out["decision"], out["label"]), ("wait", "waiting-on-jim"))
+        self.assertEqual((out["decision"], out["label"]), ("wait", "needs-jim"))
         self.assertTrue(out["comment"].startswith("[waiting on] Jim: "))
         self.assertIn("credential", out["comment"])
 
     def test_a_promotable_or_skipped_ticket_gets_no_label_and_no_comment(self):
-        for case in (issue(), issue(blockers=[("LIFE-2", False)]), issue(labels=["hold"])):
+        for case in (issue(), issue(blockers=[("LIFE-2", False)]), issue(labels=["needs-jim"])):
             out = promote.act(case)
             self.assertEqual((out["label"], out["comment"]), (None, None))
 

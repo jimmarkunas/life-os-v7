@@ -1,7 +1,7 @@
 """LIFE-727: a ticket whose blockers are Done and whose epic Jim approved moves To Do to Agent Go by itself, in rank order.
 
 Jim approves an epic's list once with the label `auto-release` on the epic. A child is released only when ALL hold: its status is To Do; it was never in Agent Go before (so a ticket Jim moved back is never moved again);
-it has a Done-when line; every Blocks predecessor is Done; it has none of the SKIP labels; at most RELEASE_LIMIT per run, in Jira rank order. Each release is one short comment naming the epic. Dry run unless live.
+it has a Done-when line; every Blocks predecessor is Done; it does not carry `needs-jim`; at most RELEASE_LIMIT per run, in Jira rank order. Each release is one short comment naming the epic. Dry run unless live.
 Counts only in the output (ticket keys stay in Jira)."""
 import os
 import re
@@ -10,7 +10,8 @@ from lifeos.jira.search import search
 from lifeos.platform.jira import Jira, JiraError
 
 EPIC_LABEL = "auto-release"
-SKIP = {"jim-only", "watch", "hold", "protected-file", "needs-approval", "planning-only"}
+NEEDS_JIM = "needs-jim"                                          # LIFE-780 (Jim, Nov 16 2026: "needs Jim + blocking only"): the one workflow-control label; blocking is the Blocks links below
+SKIP = {NEEDS_JIM}
 RELEASE_LIMIT = 3
 AGENT_GO = "17"                                                  # the To Do to Agent Go transition
 DONE_WHEN = re.compile(r"done when", re.I)
