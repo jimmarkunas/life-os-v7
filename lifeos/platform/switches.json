@@ -16,7 +16,7 @@
   },
   "ACTION_INBOX_VIEW": {
     "state": "on",
-    "bounds": "LIFE-711: the Action Inbox page (the full-width page inside the home-page callout, Jim's approved QA9 layout). On: after a LIVE `followup` run, the stage writes the words of that page's blocks below its marker line from the stored Followup payloads (lifeos/inbox/page_writer.py): only those blocks, only their text and table rows, never the title, another page, or a database; a failure prints a fixed word and never fails the stage. Off: nothing is written to Notion. Jim approved the page and no second approval step, Nov 16 2026.",
+    "bounds": "LIFE-791: the Agent Inbox tile recount. On: after a LIVE `followup` run (and in the inbox-view stage), the five tile numbers of the Agent Inbox page are recounted from the inbox database: only those five tiles' number and label text, never a row, the title, another page or a database. Off: nothing is written to Notion. The inbox itself (rows written by agents and people) does not depend on this switch. Jim, Nov 16 2026: an inbox for agents and people to write to him, not a view of Jira, Todoist or Calendar.",
     "turned_on": "2026-11-16"
   }
 }
