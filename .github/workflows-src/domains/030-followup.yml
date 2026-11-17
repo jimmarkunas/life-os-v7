@@ -1,7 +1,7 @@
   followup:
     # LIFE-757: the Followup lane (Production Contract v2.15.16, FOLLOWUP LANE OWNERSHIP OVERRIDE): one full reconciliation of every approved source every hour (Jim, Nov 16 2026). DEFAULT OFF: the stage is a counts-only
-    # no-op while the switch FOLLOWUP_WIRING (lifeos/platform/switches.json) is off, so merging this job cannot turn a run red; once on it is a DRY RUN: the step has no --live, so nothing is written until the
-    # Followup tables exist (LIFE-756) and a reviewed change adds --live. Each source credential is one bws-load line below plus its inventory row in lifeos/platform/credential_list.py (named in
+    # no-op while the switch FOLLOWUP_WIRING (lifeos/platform/switches.json) is off, so merging this job cannot turn a run red; once on it runs LIVE on a scheduled or tick run while the V7_LIVE switch is on (the step adds --live
+    # exactly like the other stages; Jim, Nov 16 2026: "Go Live"; the tables exist, LIFE-756) and stays a dry run that writes nothing on a manual run with live false. Each source credential is one bws-load line below plus its inventory row in lifeos/platform/credential_list.py (named in
     # lifeos/inbox/followup_wiring.py INVENTORY); a source without both shows DEGRADED. Top-level permissions apply unchanged (contents: read).
     needs: [gate]
     if: ${{ !cancelled() && needs.gate.result != 'failure' && (needs.gate.outputs.due_followup == 'true' && needs.gate.outputs.early == 'true') }}
@@ -63,7 +63,7 @@
           tags: tag:v7-runner
       - id: followup
         continue-on-error: true
-        name: Followup lane (LIFE-757; DRY RUN, no --live - counts only, nothing written; reads only sources that have a credential and an expiry row)
+        name: Followup lane (LIFE-757; LIVE on a scheduled or tick run while V7_LIVE is on, otherwise a dry run that writes nothing; reads only sources that have a credential and an expiry row)
         env:
           JIRA_API_TOKEN: ${{ steps.bws_followup.outputs.JIRA_API_TOKEN }}
           JIRA_EMAIL: ${{ steps.bws_followup.outputs.JIRA_EMAIL }}
@@ -86,7 +86,7 @@
           LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_followup.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
           LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_followup.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_followup.outputs.LIFEOS_ACQ_SSH_USER }}
-        run: python -m lifeos.run followup
+        run: python -m lifeos.run followup $([ "$LIVE" = "true" ] && echo --live)
       - name: A failed stage step makes this job red after the stage has run (LIFE-649), so the report job pushes the phone
         if: ${{ always() && (steps.bws_followup.outcome == 'failure' || steps.followup.outcome == 'failure') }}
         run: echo "::error title=followup::a stage step failed in the followup job (see the step marked failed above)"; exit 1
