@@ -822,7 +822,7 @@ class DomainsWorkflowTests(unittest.TestCase):
                 used |= {k for k, v in (step.get("env") or {}).items() if "secrets." in str(v) or "steps." in str(v) and ".outputs." in str(v)}   # a migrated value counts when it arrives as a loader output (`steps.<loader>.outputs.<NAME>`); a gate switch (`needs.gate.outputs.<switch>`, LIFE-703) is not a secret
             self.assertLessEqual(used, DOMAIN_SECRETS[name], f"{name}: {sorted(used - DOMAIN_SECRETS[name])}")
 
-    V3_STAGES_THAT_ONLY_WARN = ("acweek", "acgoals", "acreview", "acart", "acchange")        # LIFE-730 (temporary): the only stage ids allowed off a final step's list, and only in the jira job
+    V3_STAGES_THAT_ONLY_WARN = ()        # LIFE-793: the five V3 stages (acweek, acgoals, acreview, acart, acchange) moved to v3-pages.yml, so the jira job has no exempt stage; the mechanism stays
 
     @staticmethod
     def uncovered_stage_steps(job, exempt=()):
