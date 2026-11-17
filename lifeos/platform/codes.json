@@ -247,6 +247,7 @@
   "FOLLOWUP_CREDENTIAL_MISSING": ["followup", "blocked", false, "The read-only credential for a Followup source is not loaded in this job, so that source is DEGRADED and the others still read (LIFE-757).", "Create the read-only credential in Bitwarden and load it in the job."],
   "FOLLOWUP_CONFIG_MISSING": ["followup", "blocked", false, "A setting a Followup source needs (a cloud id, a calendar id, a data source list or a client id) is not set, so that source is DEGRADED (LIFE-757).", "Set the missing identifier for that workspace."],
   "FOLLOWUP_LISTING_INCOMPLETE": ["followup", "retry", true, "A source's listing could not be proven complete (a page without a continuation or a loop), so nothing was kept (LIFE-757).", "None; the next hourly run reads again."],
+  "FOLLOWUP_TRUNCATED": ["followup", "retry", true, "A source returned more open items than the Action Inbox list may hold, so that source shows DEGRADED and none of its items were cut silently (LIFE-711).", "None; narrow the source or raise the cap in a reviewed change."],
   "FOLLOWUP_SECRET_IN_REPLY": ["followup", "bug", false, "A provider reply contained a secret-shaped value, so the whole answer was refused (LIFE-757).", "Look at the source; nothing was kept."],
   "TODOIST_CONFIG_INVALID": ["followup", "blocked", false, "The Todoist token is missing or empty (LIFE-757).", "Load the read-only Todoist token."],
   "TODOIST_LISTING_INCOMPLETE": ["followup", "retry", true, "The Todoist task listing could not be proven complete (LIFE-757).", "None; the next hourly run reads again."]
