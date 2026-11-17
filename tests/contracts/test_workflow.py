@@ -981,7 +981,8 @@ LOADED = {
     "calendar": {"calendar": DB | {"GCAL_SERVICE_ACCOUNT_JSON", "OUTLOOK_CLIENT_ID"}},
     "hourly": {"prep": DB | JUMP | TS | HRL, "jobright": DB | JUMP | TS | HRL, "linkedin": DB | JUMP | TS | HRL, "lensa": DB | JUMP | TS | HRL, "finish": DB | JUMP | TS | HRL | {"NTFY_TOPIC", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"}, "interview": {"NOTION_INTERVIEW_TOKEN", "INTERVIEW_ACCEPTANCE_JSON", "INTERVIEW_ACCEPTANCE_NEGATIVE_JSON"}, "report": {"NTFY_TOPIC"}},
     "network": {"network": DB | JUMP | TS | {"NOTION_API_TOKEN"}},
-    "v3-pages": {"v3pages": {"JIRA_API_TOKEN", "JIRA_EMAIL", "NOTION_JIRA_TOKEN"}},       # LIFE-793: the five V3 page stages, the same three credentials they used in the jira job
+    "v3-pages": {"v3pages": {"JIRA_API_TOKEN", "JIRA_EMAIL", "NOTION_JIRA_TOKEN"}},
+    "capacity-card": {"capacitycard": {"TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST", "NOTION_JIRA_TOKEN"}},       # LIFE-793: the AI Capacity card, the same four credentials it used in the imessage job       # LIFE-793: the five V3 page stages, the same three credentials they used in the jira job
     "outlook": {"outlook": DB | {"OUTLOOK_CLIENT_ID"}},
     "profile-sync": {"sync": DB | {"NOTION_FIT_SYNC_TOKEN"}},
     "granola-auto": {"auto": DB - {"LIFEOS_ACQ_SSH_PORT"} | {"NOTION_INTERVIEW_TOKEN", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"}},
