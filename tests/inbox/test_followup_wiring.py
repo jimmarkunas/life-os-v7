@@ -36,10 +36,12 @@ def fake_build(environ):
 
 
 class Switch(unittest.TestCase):
-    def test_off_by_default_and_the_stage_stays_a_no_op(self):
-        self.assertIsNone(W.build({}))
-        self.assertIsNone(S.production_wiring({}))
-        self.assertEqual(S.run(0, False, None)["unwired"], 1)
+    def test_the_kill_switch_keeps_the_stage_a_no_op_whatever_the_file_says(self):
+        off = {"FOLLOWUP_WIRING": "off"}                                               # the repository variable "off" wins over switches.json (on since the dry run was approved)
+        self.assertIsNone(W.build(off))
+        self.assertIsNone(S.production_wiring(off))
+        with mock.patch.dict("os.environ", off):
+            self.assertEqual(S.run(0, False, None)["unwired"], 1)
 
     def test_on_with_only_the_fixed_jira_scopes_wires_just_those_and_off_still_wins(self):
         with mock.patch.object(F, "build_fetchers", fake_build), mock.patch.object(W.db, "connect", shim()):
