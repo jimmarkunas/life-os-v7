@@ -73,8 +73,10 @@ class Rig:
 
 class Stage(unittest.TestCase):
     def test_without_production_wiring_the_stage_is_a_no_op(self):
-        self.assertIsNone(S.production_wiring())
-        counts = S.run(0, True)
+        off = {"FOLLOWUP_WIRING": "off"}                                               # the kill switch: independent of switches.json, which is on since the dry run was approved
+        self.assertIsNone(S.production_wiring(off))
+        with mock.patch.dict("os.environ", off):
+            counts = S.run(0, True)
         self.assertEqual((counts["unwired"], counts["scopes"], counts["published"], counts["written"]), (1, 0, 0, 0))
 
     def test_a_dry_run_computes_everything_and_writes_nothing(self):
