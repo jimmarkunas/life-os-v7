@@ -4,7 +4,7 @@
     # LIFE-586: it no longer waits for jira, agenda and bills. Its writes are checked against its own region BEFORE they are sent (report_region.ScopedClient), not by comparing the other cards' regions
     # afterwards, and none of those three compares the Amazon region. The cards that DO compare it (imessage, hiring) still wait for this job; tests/jobs/test_domains_order.py holds that rule.
     needs: [gate]
-    if: ${{ always() && needs.gate.result != 'failure' && (needs.gate.outputs.due_amazon == 'true' || inputs.amazon) }}
+    if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_amazon == 'true' && needs.gate.outputs.early == 'true') || inputs.amazon) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -36,7 +36,7 @@
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIVE
-          live_mode: ${{ github.event_name == 'workflow_run' && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
+          live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
       - id: amazon
         continue-on-error: true
         name: Amazon Orders (Gmail to Notion; archive only after read-back)

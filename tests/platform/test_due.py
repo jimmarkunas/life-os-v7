@@ -31,13 +31,13 @@ class History:
         if self.fail:
             raise OSError("GitHub unreachable")
         if "/runs?" in path:
-            return {"workflow_runs": [{"id": i, "created_at": r["at"].strftime(STAMP), "run_started_at": r["at"].strftime(STAMP)} for i, r in enumerate(self.runs)]}
+            return {"workflow_runs": [{"id": i, "created_at": r["at"].strftime(STAMP), "run_started_at": r["at"].strftime(STAMP), "display_title": r["title"]} for i, r in enumerate(self.runs)]}
         index = int(path.split("actions/runs/")[1].split("/")[0])
         return {"jobs": [{"name": name, "conclusion": result} for name, result in self.runs[index]["jobs"].items()]}
 
 
-def run(hours_ago, **jobs):
-    return {"at": ago(hours_ago), "jobs": jobs}
+def run(hours_ago, _title="domains (after tick)", **jobs):
+    return {"at": ago(hours_ago), "title": _title, "jobs": jobs}
 
 
 ROWS = {"mail": {"every_hours": 6}, "jira": {"every_hours": 1}, "retention": {"slots_ct": ["09:00"]}}
@@ -152,10 +152,21 @@ class History_(unittest.TestCase):
         self.assertEqual(due.fetch_last_success({"mail"}, api), {"mail": ago(5)})
         self.assertFalse(any("actions/runs/2/jobs" in p for p in api.paths))           # the third run was never read
 
-    def test_only_runs_started_by_a_tick_are_read(self):
-        api = History([run(1, mail="success")])
-        due.fetch_last_success({"mail"}, api)
-        self.assertIn("event=workflow_run", api.paths[0])                              # a manual run never makes a card look fresh
+    def test_only_runs_that_belong_to_a_tick_count_and_a_manual_run_never_makes_a_card_look_fresh(self):
+        api = History([run(1, "domains (manual)", mail="success"), run(3, mail="success")])
+        self.assertEqual(due.fetch_last_success({"mail"}, api), {"mail": ago(3)})      # the manual run an hour ago is not a success to count
+        self.assertNotIn("event=workflow_run", api.paths[0])                           # LIFE-775: the early run of a tick starts by dispatch, so the title (not the event) tells it from a manual run
+
+    def test_the_early_run_of_a_tick_counts_like_the_run_after_it(self):
+        api = History([run(1, mail="success")])                                         # same title as an after-tick run, whichever event started it
+        self.assertEqual(due.fetch_last_success({"mail"}, api), {"mail": ago(1)})
+
+    def test_the_early_run_with_phase_tick_is_a_tick(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = pathlib.Path(tmp, "out")
+            code = due.main({"GITHUB_EVENT_NAME": "workflow_dispatch", "DOMAINS_PHASE": "tick", "GITHUB_OUTPUT": str(out)}, api=History([run(2, mail="success")]), now=NOW, table=ROWS)
+            outputs = dict(line.split("=") for line in out.read_text().split())
+        self.assertEqual((code, outputs["due_mail"]), (0, "false"))                    # a six-hour row is skipped two hours after its last success: the rule applies, it is not "not a tick"
 
 
 class Main(unittest.TestCase):

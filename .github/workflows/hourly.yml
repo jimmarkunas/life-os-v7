@@ -215,6 +215,12 @@ jobs:
           OPEN_JOBS_CONTACT: ${{ steps.bws_prep.outputs.OPEN_JOBS_CONTACT }}
           TINYFISH_API_KEY: ${{ steps.bws_prep.outputs.TINYFISH_API_KEY }}
         run: python3 -m lifeos.platform.gate
+      - name: LIFE-775 - start the early domains run now (this tick passed its gate; every domain job that reads nothing the tick writes runs while the tick runs; the run that starts when the tick finishes does megibow, interview and granola, and every job if this dispatch fails, so a failure here costs only the time it saves)
+        if: ${{ (github.event_name == 'schedule' || inputs.tick) && github.run_attempt == 1 && !cancelled() }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X POST "repos/${GITHUB_REPOSITORY}/actions/workflows/domains.yml/dispatches" -f ref="${GITHUB_REF_NAME}" -f "inputs[phase]=tick"
       - uses: ./.github/actions/python
       - name: Unit-test gate (LIFE-570; fail closed - the tests are skipped only when pr-tests is green on this exact commit)
         id: testgate

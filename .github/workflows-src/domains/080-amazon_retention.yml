@@ -1,6 +1,6 @@
   amazon_retention:
     needs: [amazon, gate]
-    if: ${{ always() && needs.gate.result != 'failure' && (needs.gate.outputs.due_amazon_retention == 'true' || inputs.amazon) }}
+    if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_amazon_retention == 'true' && needs.gate.outputs.early == 'true') || inputs.amazon) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -31,7 +31,7 @@
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIVE
-          live_mode: ${{ github.event_name == 'workflow_run' && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
+          live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
       - id: bws_settings
         continue-on-error: true
         name: Notion token from Bitwarden so this job can read the V7 settings page (LIFE-703; read only; if it fails the GitHub values stay as they are)

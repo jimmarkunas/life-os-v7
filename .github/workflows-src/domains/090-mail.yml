@@ -3,7 +3,7 @@
     # LIFE-586: it no longer waits for the other writers. Its writes are checked against its own region before they are sent (report_region.ScopedClient), and the cards that compare the Mail
     # Alerts region (hiring, which digests the whole page) still wait for this job; tests/jobs/test_domains_order.py holds that rule. A failed ingest is a warning and the card shows DEGRADED with the last accepted state.
     needs: [gate]
-    if: ${{ always() && needs.gate.result != 'failure' && (needs.gate.outputs.due_mail == 'true' || inputs.physical_mail) }}
+    if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_mail == 'true' && needs.gate.outputs.early == 'true') || inputs.physical_mail) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -47,7 +47,7 @@
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
-          live_mode: ${{ github.event_name == 'workflow_run' && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
+          live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
       - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
         continue-on-error: true
         uses: ./.github/actions/tailscale

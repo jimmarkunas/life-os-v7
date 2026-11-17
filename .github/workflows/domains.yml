@@ -1,5 +1,5 @@
 name: domains
-run-name: ${{ github.event_name == 'workflow_run' && 'domains (after tick)' || 'domains (manual)' }}
+run-name: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'domains (after tick)' || 'domains (manual)' }}
 # The V7 domain jobs: Jira, Outlook (calendar sync), Bills, Agenda (Calendar card) and Amazon Orders. Each reads or writes ONE provider and none
 # touches the Jobs pipeline, so they live apart from hourly.yml: this workflow declares NO secrets at the top, so a job can only see what its own steps pass it
 # (isolation by construction, not by blanking). A failed stage step is a warning while the stages run, then its job ends red (LIFE-649) and the report job pushes the phone. Runs by itself a few minutes after every hourly TICK (not after a manual hourly run or one the gate cancelled), and by hand with the inputs below.
@@ -87,6 +87,11 @@ on:
         type: choice
         options: ["none", "hiring", "recruiters"]
         default: "none"
+      phase:
+        description: "LIFE-775, set only by the hourly prep job (do not set by hand): tick = the early run of a tick, started while the tick runs, with every domain job that reads nothing the tick writes; megibow, interview and granola stay with the run that starts when the tick finishes"
+        type: choice
+        options: ["none", "tick"]
+        default: "none"
       live:
         description: "Actually write (saves snapshots, writes Notion, moves mail). Unticked = dry run, counts only. Automatic runs follow the repo variable V7_LIVE."
         type: boolean
@@ -98,8 +103,11 @@ concurrency:
   # group, and a group holds only one WAITING run, so such a run cancels the real run that is waiting (the Oct 20-21 stall: no card refreshed for two and a half hours). It gets
   # its own group, which nothing else uses, so it can only wait behind or replace other do-nothing runs. A manual (workflow_dispatch) run has its own group too: a string of manual
   # runs (8-16 minutes each) otherwise kept the one slot busy and replaced the waiting after-tick runs (Oct 21). The manual Amazon and Recruiters workflows queue behind 'life-os-v7-domains'.
-  # A Close screen refresh (inputs.refresh) joins the after-tick group instead: it writes the Hiring Pipeline region, which only one Daily Report writer may change at a time.
-  group: ${{ (github.event_name == 'workflow_dispatch' && (inputs.refresh == 'hiring' || inputs.refresh == 'recruiters')) && 'life-os-v7-domains' || github.event_name != 'workflow_run' && 'life-os-v7-domains-manual' || ((github.event.workflow_run.conclusion == 'cancelled' || github.event.workflow_run.display_title != 'tick') && 'life-os-v7-domains-idle' || 'life-os-v7-domains') }}
+  # A Close screen refresh (inputs.refresh) joins the early group instead: it writes the Hiring Pipeline region, which only one Daily Report writer may change at a time.
+  # LIFE-775: a tick makes two runs. The EARLY run (phase tick, started by the hourly prep job) holds 'life-os-v7-domains' with the Hiring Pipeline, Amazon, Recruiters and Mail jobs, so the manual
+  # Amazon and Recruiters workflows still queue behind them. The run that starts when the tick FINISHES holds its own group, 'life-os-v7-domains-late' (megibow, interview, granola: they read what the tick
+  # writes), so it never waits for the early run; only a real after-tick run joins it, so a do-nothing run cannot replace it. With no early run (its dispatch failed or was cancelled) that run does every job.
+  group: ${{ (github.event_name == 'workflow_dispatch' && (inputs.refresh == 'hiring' || inputs.refresh == 'recruiters' || inputs.phase == 'tick')) && 'life-os-v7-domains' || github.event_name != 'workflow_run' && 'life-os-v7-domains-manual' || ((github.event.workflow_run.conclusion == 'cancelled' || github.event.workflow_run.display_title != 'tick') && 'life-os-v7-domains-idle' || 'life-os-v7-domains-late') }}
   cancel-in-progress: false
 jobs:
   gate:
@@ -107,14 +115,16 @@ jobs:
     # so, for `all` every job is due), tick (only a tick: imessage, granola and the failure push depend on that) and all (only `all`). A failed gate makes every domain job skip (their `needs.gate.result != 'failure'`).
     # Why each domain job uses always() or !cancelled(): a job that waits for other page writers (needs: ...) uses always() so one failed writer never stops the next card; a job with
     # no writer to wait for uses !cancelled(). Both skip when the gate failed or the run was cancelled, and both run on their own manual input without the gate.
-    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || inputs.all }}
+    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || (github.event_name == 'workflow_dispatch' && inputs.phase == 'tick') || inputs.all }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read
       actions: read
     outputs:
-      tick: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') }}
+      tick: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || (github.event_name == 'workflow_dispatch' && inputs.phase == 'tick') }}
+      early: ${{ inputs.all || inputs.phase == 'tick' || (github.event_name == 'workflow_run' && steps.cover.outputs.early_covered == 'false') }}      # LIFE-775: the jobs that read nothing the tick writes: the early run, `all`, or the after-tick run when it found no early run
+      late: ${{ inputs.all || github.event_name == 'workflow_run' }}      # LIFE-775: megibow, interview, granola: the after-tick run, or `all`
       all: ${{ inputs.all }}
       due_jira: ${{ steps.due.outputs.due_jira }}
       due_followup: ${{ steps.due.outputs.due_followup }}
@@ -145,7 +155,16 @@ jobs:
         name: Which domain jobs are due (LIFE-609) - one table, each job's last successful run; an unreadable history makes every job due
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          DOMAINS_PHASE: ${{ inputs.phase }}
         run: python3 -m lifeos.platform.due
+      - id: cover
+        name: LIFE-775 - is the early run of this tick already started (the after-tick run then leaves the early jobs to it; no early run means it runs every job; unreadable leaves them out)
+        if: ${{ github.event_name == 'workflow_run' }}
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TICK_STARTED: ${{ github.event.workflow_run.run_started_at }}
+        run: python3 -m lifeos.platform.phase
       - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
         continue-on-error: true
         uses: ./.github/actions/bws-helper
@@ -166,7 +185,7 @@ jobs:
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIVE
-          live_mode: ${{ github.event_name == 'workflow_run' && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
+          live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
       - id: settings
         continue-on-error: true
         name: V7 settings page for the two switches a job condition needs (LIFE-703; names and counts only; an unreadable page changes nothing)
@@ -179,7 +198,7 @@ jobs:
     # Jira runs in its OWN job, like Interview: scheduled and tick runs refresh the snapshot and the report card (rollover stays manual), only the Jira secrets (the database secrets are
     # re-supplied to the snapshot step alone), and a failure is a warning that never fails the Jobs run.
     needs: [gate]
-    if: ${{ !cancelled() && needs.gate.result != 'failure' && (needs.gate.outputs.due_jira == 'true' || (github.event_name == 'workflow_dispatch' && inputs.jira != 'none')) }}   # D212: an empty input (a workflow_run after a manual or cancelled hourly run) is not a request
+    if: ${{ !cancelled() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_jira == 'true' && needs.gate.outputs.early == 'true') || (github.event_name == 'workflow_dispatch' && inputs.jira != 'none')) }}   # D212: an empty input (a workflow_run after a manual or cancelled hourly run) is not a request
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -222,7 +241,7 @@ jobs:
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
-          live_mode: ${{ github.event_name == 'workflow_run' && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
+          live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
       - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
         continue-on-error: true
         uses: ./.github/actions/tailscale
@@ -407,7 +426,7 @@ jobs:
     # Followup tables exist (LIFE-756) and a reviewed change adds --live. Each source credential is one bws-load line below plus its inventory row in lifeos/platform/credential_list.py (named in
     # lifeos/inbox/followup_wiring.py INVENTORY); a source without both shows DEGRADED. Top-level permissions apply unchanged (contents: read).
     needs: [gate]
-    if: ${{ !cancelled() && needs.gate.result != 'failure' && needs.gate.outputs.due_followup == 'true' }}
+    if: ${{ !cancelled() && needs.gate.result != 'failure' && (needs.gate.outputs.due_followup == 'true' && needs.gate.outputs.early == 'true') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -456,7 +475,7 @@ jobs:
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: FOLLOWUP_GCAL_BYTALOS_CALENDAR_ID,FOLLOWUP_GCAL_PERSONAL_CALENDAR_ID,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
-          live_mode: ${{ github.event_name == 'workflow_run' && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
+          live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
       - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
         continue-on-error: true
         uses: ./.github/actions/tailscale
@@ -498,7 +517,7 @@ jobs:
     # job like Jira and Interview: every other credential is blanked, the Outlook/calendar/database secrets reach only the steps that need
     # them, and a failure is a warning that never fails the Jobs run.
     needs: [gate]
-    if: ${{ !cancelled() && needs.gate.result != 'failure' && (needs.gate.outputs.due_outlook == 'true' || inputs.calendar_sync) }}
+    if: ${{ !cancelled() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_outlook == 'true' && needs.gate.outputs.early == 'true') || inputs.calendar_sync) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -540,7 +559,7 @@ jobs:
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
-          live_mode: ${{ github.event_name == 'workflow_run' && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
+          live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
       - id: bws_settings
         continue-on-error: true
         name: Notion token from Bitwarden so this job can read the V7 settings page (LIFE-703; read only; if it fails the GitHub values stay as they are)
@@ -590,7 +609,7 @@ jobs:
     # Bills reads its own Notion source and saves only to the private snapshot database. The Paid processor (D85, D86) runs first, so the snapshot sees the advanced dates; on a tick it follows V7_LIVE like every other domain job.
     # D116: the Bills card then renders the saved snapshot into the Daily Report's "Bills: This Week" callout. LIFE-613: it no longer waits for the jira and agenda jobs; its writes are checked against its own callout before they are sent (report_region.ScopedClient).
     needs: [gate]
-    if: ${{ always() && needs.gate.result != 'failure' && (needs.gate.outputs.due_bills == 'true' || inputs.bills_paid) }}
+    if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_bills == 'true' && needs.gate.outputs.early == 'true') || inputs.bills_paid) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -631,7 +650,7 @@ jobs:
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
-          live_mode: ${{ github.event_name == 'workflow_run' && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
+          live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
       - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
         continue-on-error: true
         uses: ./.github/actions/tailscale
@@ -642,7 +661,7 @@ jobs:
       - id: bpaid
         continue-on-error: true
         name: Bills Paid processor (before the snapshot; writes Notion only when live; counts only)
-        if: ${{ github.event_name == 'workflow_run' || inputs.all || inputs.bills_paid }}
+        if: ${{ github.event_name == 'workflow_run' || inputs.phase == 'tick' || inputs.all || inputs.bills_paid }}      # LIFE-775: the early run of a tick processes Paid rows like any tick
         env:
           NOTION_BILLS_DATA_SOURCE_ID: ""
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_NAME }}
@@ -707,7 +726,7 @@ jobs:
     # Read the main Google Calendar and refresh its isolated Daily Report callout; failures are warnings only.
     # LIFE-613: it no longer waits for the jira job. Its writes are checked against its own callout before they are sent (report_region.ScopedClient), not by comparing the Jira region afterwards.
     needs: [gate]
-    if: ${{ always() && needs.gate.result != 'failure' && (needs.gate.outputs.due_agenda == 'true') }}
+    if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_agenda == 'true' && needs.gate.outputs.early == 'true')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -748,7 +767,7 @@ jobs:
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
-          live_mode: ${{ github.event_name == 'workflow_run' && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
+          live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
       - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
         continue-on-error: true
         uses: ./.github/actions/tailscale
@@ -808,7 +827,7 @@ jobs:
     # LIFE-586: it no longer waits for jira, agenda and bills. Its writes are checked against its own region BEFORE they are sent (report_region.ScopedClient), not by comparing the other cards' regions
     # afterwards, and none of those three compares the Amazon region. The cards that DO compare it (imessage, hiring) still wait for this job; tests/jobs/test_domains_order.py holds that rule.
     needs: [gate]
-    if: ${{ always() && needs.gate.result != 'failure' && (needs.gate.outputs.due_amazon == 'true' || inputs.amazon) }}
+    if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_amazon == 'true' && needs.gate.outputs.early == 'true') || inputs.amazon) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -840,7 +859,7 @@ jobs:
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIVE
-          live_mode: ${{ github.event_name == 'workflow_run' && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
+          live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
       - id: amazon
         continue-on-error: true
         name: Amazon Orders (Gmail to Notion; archive only after read-back)
@@ -881,7 +900,7 @@ jobs:
         run: echo "::error title=amazon::a stage step failed in the amazon job (see the step marked failed above)"; exit 1
   amazon_retention:
     needs: [amazon, gate]
-    if: ${{ always() && needs.gate.result != 'failure' && (needs.gate.outputs.due_amazon_retention == 'true' || inputs.amazon) }}
+    if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_amazon_retention == 'true' && needs.gate.outputs.early == 'true') || inputs.amazon) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -912,7 +931,7 @@ jobs:
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIVE
-          live_mode: ${{ github.event_name == 'workflow_run' && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
+          live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
       - id: bws_settings
         continue-on-error: true
         name: Notion token from Bitwarden so this job can read the V7 settings page (LIFE-703; read only; if it fails the GitHub values stay as they are)
@@ -946,7 +965,7 @@ jobs:
     # LIFE-586: it no longer waits for the other writers. Its writes are checked against its own region before they are sent (report_region.ScopedClient), and the cards that compare the Mail
     # Alerts region (hiring, which digests the whole page) still wait for this job; tests/jobs/test_domains_order.py holds that rule. A failed ingest is a warning and the card shows DEGRADED with the last accepted state.
     needs: [gate]
-    if: ${{ always() && needs.gate.result != 'failure' && (needs.gate.outputs.due_mail == 'true' || inputs.physical_mail) }}
+    if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_mail == 'true' && needs.gate.outputs.early == 'true') || inputs.physical_mail) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -990,7 +1009,7 @@ jobs:
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
-          live_mode: ${{ github.event_name == 'workflow_run' && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
+          live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
       - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
         continue-on-error: true
         uses: ./.github/actions/tailscale
@@ -1065,7 +1084,7 @@ jobs:
     # HIRE-1.2: V7 is the sole writer of the floating Daily Report "Hiring Pipeline" region (a heading and a four-column table; never a callout). Read-only toward the Ledger, the Notion pages and the Calendar; no mail.
     # LIFE-613: it no longer waits for every other Daily Report writer. Its writes can reach only its heading, its table and the table's rows (report_region.ScopedClient), checked before each write.
     needs: [gate]
-    if: ${{ always() && needs.gate.result != 'failure' && (needs.gate.outputs.due_hiring == 'true' || inputs.hiring || inputs.refresh == 'hiring') }}
+    if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_hiring == 'true' && needs.gate.outputs.early == 'true') || inputs.hiring || inputs.refresh == 'hiring') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -1108,7 +1127,7 @@ jobs:
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
-          live_mode: ${{ github.event_name == 'workflow_run' && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
+          live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
       - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
         continue-on-error: true
         uses: ./.github/actions/tailscale
@@ -1156,7 +1175,7 @@ jobs:
     # D134: MegIBOW is its own job. It reads sent mail and calendars (read only) and writes only its one Notion block, its review list and two tiny private tables; a failure is a
     # warning that never touches another card or the Jobs run, and a failed source leaves the last good table in place and says DEGRADED.
     needs: [gate]
-    if: ${{ !cancelled() && needs.gate.result != 'failure' && (needs.gate.outputs.due_megibow == 'true' || inputs.megibow) }}
+    if: ${{ !cancelled() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_megibow == 'true' && needs.gate.outputs.late == 'true') || inputs.megibow) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -1202,7 +1221,7 @@ jobs:
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
-          live_mode: ${{ github.event_name == 'workflow_run' && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
+          live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
       - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
         continue-on-error: true
         uses: ./.github/actions/tailscale
@@ -1249,7 +1268,7 @@ jobs:
     # or writes, reads only the first lines the cards already carry, writes only its own region and proves every other V7 region unchanged around the write. A failure is a warning.
     # A mail-only manual run (physical_mail) also refreshes this job, so the Command Center never shows the Mail Alerts source it had before the run (LIFE-95).
     needs: [jira, agenda, bills, amazon, mail, hiring, imessage, gate]
-    if: ${{ always() && needs.gate.result != 'failure' && (needs.gate.outputs.due_dcc == 'true' || inputs.dcc || inputs.physical_mail) }}
+    if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_dcc == 'true' && needs.gate.outputs.early == 'true') || inputs.dcc || inputs.physical_mail) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -1282,7 +1301,7 @@ jobs:
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIVE
-          live_mode: ${{ github.event_name == 'workflow_run' && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
+          live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
       - id: dcccard
         continue-on-error: true
         name: Daily Command Center (rules over the cards' first lines; writes only its own callout when live; every other region proven unchanged)
@@ -1312,7 +1331,7 @@ jobs:
     # every few hours. It takes its turn after the Jira card (always(): a red Jira job never stops it); a manual Recruiters run has no Jira job and starts at once.
     # LIFE-688 (Jim, Nov 15 2026: option B): hiring and recruiters are the two jobs that read the whole Daily Report page; they take turns (recruiters after hiring), each keeping its own if: and always(), so a red one never stops the other.
     needs: [gate, jira, hiring]
-    if: ${{ always() && needs.gate.result != 'failure' && (needs.gate.outputs.due_recruiters == 'true' || inputs.recruiters || inputs.refresh == 'recruiters') }}
+    if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_recruiters == 'true' && needs.gate.outputs.early == 'true') || inputs.recruiters || inputs.refresh == 'recruiters') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -1358,7 +1377,7 @@ jobs:
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
-          live_mode: ${{ github.event_name == 'workflow_run' && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
+          live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
       - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
         continue-on-error: true
         uses: ./.github/actions/tailscale
@@ -1371,6 +1390,7 @@ jobs:
         continue-on-error: true
         name: Recruiters (read-only mail to the Recruiters data source; counts only)
         env:
+          DOMAINS_PHASE: ${{ inputs.phase }}      # LIFE-775: the early run of a tick plans its mail scan as a tick does
           GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_recruiters.outputs.GMAIL_OAUTH_CLIENT_ID }}
           OUTLOOK_CLIENT_ID: ${{ steps.bws_recruiters.outputs.OUTLOOK_CLIENT_ID }}
           NOTION_RECRUITERS_DATA_SOURCE_ID: ""
@@ -1425,7 +1445,7 @@ jobs:
     # LIFE-632: the D190 Hiring outcome mail scan had run after the Recruiters mail read in the `recruiters` job (211 s). It reads Gmail and Outlook and saves one record to the store; it reads nothing the
     # Recruiters step writes, so it runs beside it. Same trigger as the Recruiters job (its own due row, the same manual input), skipped for a Close screen refresh, which redraws only the Recruiter Outreach table.
     needs: [gate]
-    if: ${{ !cancelled() && needs.gate.result != 'failure' && inputs.refresh != 'recruiters' && (needs.gate.outputs.due_hiring_outcomes == 'true' || inputs.recruiters) }}
+    if: ${{ !cancelled() && needs.gate.result != 'failure' && inputs.refresh != 'recruiters' && ((needs.gate.outputs.due_hiring_outcomes == 'true' && needs.gate.outputs.early == 'true') || inputs.recruiters) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -1468,7 +1488,7 @@ jobs:
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
-          live_mode: ${{ github.event_name == 'workflow_run' && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
+          live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
       - id: bws_settings
         continue-on-error: true
         name: Notion token from Bitwarden so this job can read the V7 settings page (LIFE-703; read only; if it fails the GitHub values stay as they are)
@@ -1517,7 +1537,7 @@ jobs:
     # critical path of the whole run. It reads its own mail and only READS the Recruiters rows (recruiter threads by the exact request message), so it runs beside the Recruiters job: a brand-new
     # recruiter message is linked to its opportunity one tick (one hour) later. This job is the one writer of the opportunity pages: it holds the group, and Granola, which writes the same pages, waits for it.
     needs: [gate]
-    if: ${{ !cancelled() && needs.gate.result != 'failure' && inputs.refresh != 'recruiters' && (needs.gate.outputs.due_interview == 'true' || inputs.recruiters) }}
+    if: ${{ !cancelled() && needs.gate.result != 'failure' && inputs.refresh != 'recruiters' && ((needs.gate.outputs.due_interview == 'true' && needs.gate.outputs.late == 'true') || inputs.recruiters) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     concurrency:
@@ -1567,7 +1587,7 @@ jobs:
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
-          live_mode: ${{ github.event_name == 'workflow_run' && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
+          live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
       - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
         continue-on-error: true
         uses: ./.github/actions/tailscale
@@ -1626,7 +1646,7 @@ jobs:
     # LIFE-613: it no longer follows the other writers. Its Communications and Oracle Cloud cards can write only the blocks they located (report_region.ScopedClient), checked before each write, so a write by
     # another card at the same time is no longer mistaken for a violation.
     needs: [gate]
-    if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.tick == 'true' && needs.gate.outputs.due_imessage == 'true' && needs.gate.outputs.imessage_alerts == 'true') || inputs.imessage) }}
+    if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.tick == 'true' && needs.gate.outputs.early == 'true' && needs.gate.outputs.due_imessage == 'true' && needs.gate.outputs.imessage_alerts == 'true') || inputs.imessage) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -1668,7 +1688,7 @@ jobs:
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
-          live_mode: ${{ github.event_name == 'workflow_run' && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
+          live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
       - name: Join the tailnet as an ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 47341)
         uses: ./.github/actions/tailscale
         with:
@@ -1770,7 +1790,7 @@ jobs:
     # on Oracle and counted. It writes only when the run is live AND the repository variable GRANOLA_AUTO is "on" (Jim's switch); otherwise it is a dry run that changes nothing.
     # It waits for the Interview job (LIFE-632), which holds the one-writer group of the Interview OS pages.
     needs: [interview, gate]
-    if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.tick == 'true' && needs.gate.outputs.due_granola == 'true' && needs.gate.outputs.granola_auto != 'off') || needs.gate.outputs.all == 'true') }}
+    if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.tick == 'true' && needs.gate.outputs.late == 'true' && needs.gate.outputs.due_granola == 'true' && needs.gate.outputs.granola_auto != 'off') || needs.gate.outputs.all == 'true') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     concurrency:
@@ -1814,7 +1834,7 @@ jobs:
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
-          live_mode: ${{ github.event_name == 'workflow_run' && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
+          live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
       - id: bws_settings
         continue-on-error: true
         name: Notion token from Bitwarden so this job can read the V7 settings page (LIFE-703; read only; if it fails the GitHub values stay as they are)
@@ -1890,7 +1910,7 @@ jobs:
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIVE
-          live_mode: ${{ github.event_name == 'workflow_run' && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
+          live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
       - name: Domain jobs report here (the run is already red; this pushes the phone)
         env:
           NTFY_TOPIC: ${{ steps.bws_report.outputs.NTFY_TOPIC }}

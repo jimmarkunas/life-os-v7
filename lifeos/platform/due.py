@@ -2,7 +2,7 @@
 
     python3 -m lifeos.platform.due        run by the gate job of domains.yml; writes due_<job>=true|false to $GITHUB_OUTPUT and a table to $GITHUB_STEP_SUMMARY
 
-For a tick (event workflow_run) a job is due when its row says so; for anything else (`all`) every job is due. "Last successful run" comes from the Actions API: the recent domains runs started by a tick, newest first, and each job's conclusion; a skipped job is not a success and a manual run never counts. A success is timed at the START of its run (the gate's time), not the job's end.
+For a tick (event workflow_run, or the early run with phase tick) a job is due when its row says so; for anything else (`all`) every job is due. "Last successful run" comes from the Actions API: the recent domains runs started by a tick, newest first, and each job's conclusion; a skipped job is not a success and a manual run never counts (the early run of a tick counts: its title is the after-tick title). A success is timed at the START of its run (the gate's time), not the job's end.
 every_hours: due when now minus that time >= hours minus SLACK; 1 means every tick, with no history read. slots_ct: due when a slot (CT, HH:MM) has passed since that time. No success in the history: due; several missed slots: due once. History unreadable: every job is due and "history unreadable" is printed (fail open). Counts and job names only."""
 # A manual run never counts because a dry run must not make a card look fresh; the time is the START of the run so an hourly job that ends late is not mistaken for a recent one.
 import datetime as dt
@@ -89,7 +89,8 @@ def needs_history(table):
 
 
 def fetch_last_success(wanted, api=gate._api):
-    runs = api(f"actions/workflows/domains.yml/runs?event=workflow_run&status=completed&per_page={HISTORY_RUNS}").get("workflow_runs", [])
+    runs = api(f"actions/workflows/domains.yml/runs?status=completed&per_page={HISTORY_RUNS}").get("workflow_runs", [])      # LIFE-775: after-tick runs start by workflow_run or, for the early phase, by dispatch; the title tells them from a manual run
+    runs = [run for run in runs if run.get("display_title") == gate.DOMAINS_TITLE]
     return last_success(runs, lambda run: api(f"actions/runs/{run['id']}/jobs?per_page=100").get("jobs", []), set(wanted))
 
 
@@ -175,7 +176,7 @@ def summary(result, last, failed_open):
 def main(environ=os.environ, api=gate._api, now=None, table=None):
     now = now or dt.datetime.now(dt.timezone.utc)
     table = table if table is not None else load_table()
-    tick = environ.get("GITHUB_EVENT_NAME") == "workflow_run"
+    tick = gate.is_tick_event(environ)                                      # LIFE-775: an after-tick run, or the early run the tick's prep job starts (phase tick)
     last, failed_open = {}, False
     if tick and needs_history(table):
         try:

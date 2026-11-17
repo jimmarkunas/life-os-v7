@@ -5,7 +5,7 @@
     # LIFE-613: it no longer follows the other writers. Its Communications and Oracle Cloud cards can write only the blocks they located (report_region.ScopedClient), checked before each write, so a write by
     # another card at the same time is no longer mistaken for a violation.
     needs: [gate]
-    if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.tick == 'true' && needs.gate.outputs.due_imessage == 'true' && needs.gate.outputs.imessage_alerts == 'true') || inputs.imessage) }}
+    if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.tick == 'true' && needs.gate.outputs.early == 'true' && needs.gate.outputs.due_imessage == 'true' && needs.gate.outputs.imessage_alerts == 'true') || inputs.imessage) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -47,7 +47,7 @@
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
-          live_mode: ${{ github.event_name == 'workflow_run' && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
+          live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
       - name: Join the tailnet as an ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 47341)
         uses: ./.github/actions/tailscale
         with:
