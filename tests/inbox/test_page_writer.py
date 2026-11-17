@@ -41,9 +41,6 @@ class FakeNotion:
             col = self._add(cols, "column", {})
             self.child(self._add(col, "callout", {"rich_text": []}), [("heading_3", rich("—")), ("paragraph", rich(name))])
         self.listing = self.top("child_database", None)
-        self.top("heading_3", rich("Followup"))
-        self.followup = self.table(["Workspace", "Loop", "Owner", "Move", "Checkpoint", "Freshness"], ["—", "—", "—", "—", "—", "—"])
-        self.review = self.top("paragraph", rich("Review Needed (not counted): —"))
         self.top("heading_3", rich("Source health"))
         self.health = self.table(["Workspace", "Source", "Health", "Last OK", "Items"], ["Personal", "Jira", "⚪ not read yet", "—", "—"])
         self.refreshed = self.top("paragraph", rich("Last refreshed: —"))
@@ -122,12 +119,24 @@ class FakeNotion:
                     ids.remove(parts[1])
             return {}
         if method == "PATCH" and len(parts) == 3:
+            before = len(self.kids[parts[1]])
             for child in body["children"]:
-                if child["type"] == "table_row":
+                kind = child["type"]
+                if kind == "table_row":
                     self._add(parts[1], "table_row", {"cells": [self._pieces(cell) for cell in child["table_row"]["cells"]]})
+                elif kind == "table":
+                    new = self._add(parts[1], "table", {})
+                    for row in child["table"]["children"]:
+                        self._add(new, "table_row", {"cells": [self._pieces(cell) for cell in row["table_row"]["cells"]]})
                 else:
-                    new = self._add(parts[1], "callout", {"rich_text": self._pieces(child["callout"]["rich_text"])})
-                    self.blocks[new]["callout"]["color"] = child["callout"]["color"]
+                    new = self._add(parts[1], kind, {"rich_text": self._pieces(child[kind]["rich_text"])})
+                    if "color" in child[kind]:
+                        self.blocks[new][kind]["color"] = child[kind]["color"]
+            if body.get("after"):
+                added = self.kids[parts[1]][before:]
+                del self.kids[parts[1]][before:]
+                at = self.kids[parts[1]].index(body["after"]) + 1
+                self.kids[parts[1]][at:at] = added
             return {}
         kind = self.blocks[parts[1]]["type"]
         self.blocks[parts[1]][kind]["rich_text"] = self._pieces(body[kind]["rich_text"])
@@ -154,6 +163,15 @@ def tile_numbers(notion):
     return [notion.plain(notion.kids[notion.kids[c][0]][0]) for c in notion.kids[column_list]]
 
 
+def kinds(notion):
+    return [notion.blocks[i]["type"] for i in notion.kids[notion.page]]
+
+
+def followup_table(notion):
+    ids = notion.kids[notion.page]
+    return next((ids[i + 1] for i, b in enumerate(ids) if notion.blocks[b]["type"] == "heading_3" and notion.plain(b) == "Followup"), None)
+
+
 def tile_shapes(notion):
     """The child block types of each of the five tile callouts: they must all be the identical two blocks, so the tiles are always the same height."""
     column_list = next(i for i, b in notion.blocks.items() if b["type"] == "column_list")
@@ -172,7 +190,8 @@ class PageWriterTests(unittest.TestCase):
         self.assertEqual(health[0][:3], ("Personal", "Jira", "🟢 ok"))
         self.assertIn(("All", "Concord", "⚪ not connected", "—", "—"), health)
         self.assertIn(("TGP", "Everything", "⚪ tracked, not connected (by design)", "—", "—"), health)
-        self.assertEqual(notion.table_rows(notion.followup)[0][:3], ("Personal", "Send the revised quote", "You"))
+        self.assertEqual(notion.table_rows(followup_table(notion))[0][:3], ("Personal", "Send the revised quote", "You"))
+        self.assertEqual(kinds(notion)[:5], ["column_list", "child_database", "heading_3", "table", "paragraph"])       # the Followup section sits directly under the list
         ranks = sorted(r["properties"]["Rank"]["number"] for r in notion.list_rows())
         self.assertEqual(ranks, [1, 3])                                                      # Needs me is rank 1, Waiting rank 3: the page sorts most urgent first
         notion.touched.clear()
@@ -220,14 +239,14 @@ class PageWriterTests(unittest.TestCase):
     def test_the_page_is_found_by_title_and_shape_never_by_a_committed_id(self):
         notion = FakeNotion()
         self.assertEqual(page_writer.locate(notion), notion.page)
-        notion.kids[notion.page].remove(notion.review)
+        notion.kids[notion.page].remove(notion.refreshed)
         with self.assertRaises(InboxError) as caught:
             page_writer.locate(notion)
         self.assertEqual(caught.exception.reason, "page_not_found")
 
     def test_a_page_whose_shape_changed_is_left_alone(self):
         notion = FakeNotion()
-        notion.kids[notion.page].pop()
+        notion.kids[notion.page].remove(notion.refreshed)
         with self.assertRaises(InboxError) as caught:
             page_writer.publish(both(), NOW, client=notion)                                    # the page is found by its shape, so a changed page is not found and nothing is written
         self.assertEqual(caught.exception.reason, "page_not_found")
@@ -255,10 +274,24 @@ class PageWriterTests(unittest.TestCase):
         self.assertIsNone(view["state"])
         self.assertTrue(all(row[2].startswith("⚪") for row in view["health"][:11]))
 
+    def test_the_followup_section_exists_only_while_it_has_a_row_or_a_review_item(self):
+        notion = FakeNotion()
+        page_writer.publish(both([]), NOW, client=notion)
+        self.assertEqual(kinds(notion), ["column_list", "child_database", "heading_3", "table", "paragraph", "callout"])       # no Followup heading, table or dashes; Source health and the last-refreshed line only
+        self.assertIsNone(followup_table(notion))
+        page_writer.publish(both([LOOP]), NOW, client=notion)
+        self.assertIsNotNone(followup_table(notion))
+        page_writer.publish(both([]), NOW, client=notion)
+        self.assertIsNone(followup_table(notion))
+        self.assertNotIn("Followup", [notion.plain(i) for i in notion.kids[notion.page] if notion.blocks[i]["type"] == "heading_3"])
+        review_only = both([], review=[{"id": "r1", "title": "Maybe follow up"}])
+        page_writer.publish(review_only, NOW, client=notion)
+        self.assertEqual(notion.plain(notion.kids[notion.page][4]), "Review Needed (not counted): 2")         # a review item alone brings the section (and its line) back
+
     def test_the_page_carries_no_marker_header_or_explanatory_text_and_ends_on_one_last_refreshed_line(self):
         notion = FakeNotion()
         page_writer.publish(both([LOOP]), NOW, client=notion)
-        texts = [notion.plain(i) for i, b in notion.blocks.items() if "rich_text" in b.get(b["type"], {})] + [c for t in (notion.health, notion.followup) for row in notion.table_rows(t) for c in row]
+        texts = [notion.plain(i) for i, b in notion.blocks.items() if "rich_text" in b.get(b["type"], {})] + [c for t in (notion.health, followup_table(notion)) for row in notion.table_rows(t) for c in row]
         for banned in ("machine-written", "hand-edit", "Filters", "Most urgent", "How Followup maps", "TGP is never shown", "not wired", "waiting for the first", "Cannot say: a source"):
             self.assertFalse([t for t in texts if banned.lower() in t.lower()], banned)
         last = notion.kids[notion.page][-1]
