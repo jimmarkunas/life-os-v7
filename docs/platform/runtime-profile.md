@@ -302,3 +302,32 @@ critical path (p50 job times): jira > agenda > bills > amazon > mail > hiring > 
     - Post Run actions/checkout@v5: n=10 p50 0 s, p95 1 s
     - Complete job: n=10 p50 0 s, p95 0 s
 ```
+
+## Runtime hotspots: five lanes and Network Leads reads (LIFE-788, Nov 17 2026)
+
+Measured from GitHub's run records on Nov 15 to 17 2026 (46 after-tick domains runs that did real work, 68 tick runs, Network Leads counts lines of the cited runs). Times are medians with p90. LIFE-775's early domains run started at 7:00 PM CT on Nov 16, so the domains numbers are mostly the serial layout; the modeled 19.9 minute chain of LIFE-775 is not a measured result and is not used here.
+
+| Lane | Where | Median | p90 | On the longest path? |
+|---|---|---|---|---|
+| Interview | domains `interview` | 432 s | 467 s | **yes** |
+| Amazon retention | domains `amazon_retention` (ran in 44 of 46 runs) | 260 s | 374 s | no, beside Interview since LIFE-571 |
+| Jira and Accountability | domains `jira` | 129 s | 143 s | no |
+| Hiring | domains `hiring` | 95 s | 112 s | no |
+| Network Leads | tick step 7c | 68 s | 215 s | in the tick's `finish` job |
+
+**Critical path of a domains run:** gate (10 s) > interview (432 s) > granola (39 s) = about 481 s, against a measured run wall of 488 s median, 540 s p90. A saving in any other domains job does not shorten the run.
+
+**Granola start delay, explained (it is not a scheduler delay).** Granola started a median of 2 s after Interview ended (59 runs). 8 of 59 started 38 to 454 s late, and in the three after-tick cases (339, 373, 454 s) a manual `domains (manual)` run began a few minutes after the tick run and its Interview job took the shared concurrency group `life-os-v7-interview-writer` the moment the tick run's Interview ended; Granola, in the same group, waited behind that whole second Interview. The cited 6:09 PM CT run (43985363280): Granola queued 00:17:52 and started 00:25:25 UTC, behind manual run 43986302579. Manual `all=true` runs are what take the group; nothing was changed.
+
+**Network Leads redundancy.** The skip of LIFE-572 works: 48 to 72 pages per tick cost one call each. The spikes are pages that show contact cards and cannot be skipped: in the cited tick (43984009794) 13 such pages were read in full and found unchanged, 330 of the 466 calls and 134 of the 195 seconds (25.4 calls a page at about 0.41 s a call, the pacing gap). The same pattern appears at 15:00 and 18:55 UTC (305 and 330 calls); the typical tick is 125 to 191 calls and 52 to 81 s. This change: the full read of a card page no longer reads each card's name and reason column, which only the leads reader uses; all five calls a card cost drop to four, every tick is still read. On the fixture an unchanged page costs 28 calls with five cards before and 23 after, 23 with four before and 19 after (17 to 18 percent). Projected for the cited run (about 58 cards): about 58 fewer calls, about 24 s; this is a projection, the first spike run after the merge gives the measurement. New counts `skip_missed` name, in fixed words, why a page was read in full (`not_proven`, `edited_since_proof`, `edited_just_now`, `proof_too_old`, `no_edit_time`, `no_proof_time`, `unreadable_time`); why the 13 pages were not skippable is not in the logs and stays unknown until a spike run shows it.
+
+**Next change per lane (each needs its own bounded ticket and evidence first):**
+
+| Lane | Next change |
+|---|---|
+| Interview (critical path) | Add the per-outcome call and second timing the Network Leads step has, find what the 432 s is, then apply the LIFE-572 skip-unchanged idea only if reads dominate. |
+| Amazon retention | LIFE-611 made the action daily, but the job ran in 44 of 46 runs at 260 s: check whether the mailbox read runs hourly and gate the read, not only the trash decision. Off the critical path, so it saves runner time, not wall time. |
+| Jira and Accountability | Add step timing; an incremental `updated` read since the last accepted one is the candidate. Not on the critical path. |
+| Hiring | Add step timing, then skip pages untouched since their proof. Not on the critical path. |
+
+**Existing fixes, reconciled (nothing duplicated):** LIFE-571 (Amazon retention off the serial chain) holds: it runs beside Interview. LIFE-572 (Network Leads skip) holds and is what this change builds on. LIFE-610 (Recruiters every 3 hours, full look-back at 9 AM CT) holds: median 54 s, the 503 s maximum is the daily look-back. LIFE-632 (Interview beside Recruiters) holds: they start together. LIFE-611 (Amazon retention once a day) is not visible in the job duration, see the table.

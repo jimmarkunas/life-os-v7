@@ -168,8 +168,10 @@ def _append_last(client, parent_id, block):
     return after[-1]["id"]
 
 
-def _cards(client, inner):
-    """The approved block's cards -> [{"name", "reason", "ticks": [(kind, person_id, evidence_hash, checked)]}] in page order. Reads each card's columns and its Referral status toggle."""
+def _cards(client, inner, names=True):
+    """The approved block's cards -> [{"name", "reason", "ticks": [(kind, person_id, evidence_hash, checked)]}] in page order. Reads each card's columns and its Referral status toggle.
+    names=False (LIFE-788): the left column's name and reason lines are not read: a caller that only needs the ticks (read_page: decisions and carried status) saves one Notion call per card,
+    and every tick is still read; name and reason come back empty."""
     out = []
     for card in inner:
         if card.get("type") != "callout":
@@ -178,7 +180,7 @@ def _cards(client, inner):
         columns = [b for b in children(client, lists[0]["id"]) if b.get("type") == "column"] if len(lists) == 1 else []
         if len(columns) != 2:
             continue                                                    # a card a cut-short write left unfinished carries no lead and no tick; its block is replaced (its hash is PENDING)
-        lines = [_plain(b) for b in children(client, columns[0]["id"]) if b.get("type") == "paragraph"]
+        lines = [_plain(b) for b in children(client, columns[0]["id"]) if b.get("type") == "paragraph"] if names else []
         ticks = []
         for toggle in [b for b in children(client, columns[1]["id"]) if b.get("type") == "toggle"]:
             ticks += [t for t in (_tick(c) for c in children(client, toggle["id"])) if t]
@@ -260,7 +262,7 @@ def read_page(client, page_id, deep=True, key=None):
             head = _owned_head(client, block)
             if head:
                 cards = [c for c in head[1] if c.get("type") == "callout"]         # the approved card block: its ticks sit inside each card's Referral status toggle
-                owned.append({"id": block["id"], "parent": parent, "hash": head[0], "ticks": [t for t in (_tick(c) for c in head[1]) if t] + ([t for card in _cards(client, cards) for t in card["ticks"]] if deep else [])})
+                owned.append({"id": block["id"], "parent": parent, "hash": head[0], "ticks": [t for t in (_tick(c) for c in head[1]) if t] + ([t for card in _cards(client, cards, names=False) for t in card["ticks"]] if deep else [])})
     return top, owned
 
 
