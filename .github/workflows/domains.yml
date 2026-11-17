@@ -661,7 +661,7 @@ jobs:
       - id: bpaid
         continue-on-error: true
         name: Bills Paid processor (before the snapshot; writes Notion only when live; counts only)
-        if: ${{ github.event_name == 'workflow_run' || inputs.all || inputs.bills_paid }}
+        if: ${{ github.event_name == 'workflow_run' || inputs.phase == 'tick' || inputs.all || inputs.bills_paid }}      # LIFE-775: the early run of a tick processes Paid rows like any tick
         env:
           NOTION_BILLS_DATA_SOURCE_ID: ""
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_NAME }}

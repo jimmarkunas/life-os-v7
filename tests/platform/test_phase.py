@@ -141,6 +141,19 @@ class Workflows(unittest.TestCase):
         self.assertEqual(inputs["phase"]["options"], ["none", "tick"])
         self.assertEqual(inputs["phase"]["default"], "none")
 
+    def test_every_condition_that_means_a_tick_also_accepts_the_early_run(self):
+        """A step or output that says `workflow_run` to mean "this is a tick" must say `inputs.phase == 'tick'` too, or the early run would treat the tick as a manual run (the Bills Paid-rows step is the kind that is easy to miss)."""
+        exceptions = ("if: ${{ github.event_name == 'workflow_run' }}",                       # the cover step: only the run after a tick looks for the early run
+                      "late: ${{ inputs.all || github.event_name == 'workflow_run' }}",       # the late jobs belong to the run after the tick
+                      "early: ${{ inputs.all || inputs.phase == 'tick' ||")                   # already names the phase
+        for number, line in enumerate((ROOT / ".github/workflows/domains.yml").read_text().splitlines(), 1):
+            code = line.split("      #")[0] if "${{" in line else line
+            if code.lstrip().startswith("#") or "github.event_name == 'workflow_run'" not in code or any(code.strip().startswith(e) for e in exceptions):
+                continue
+            if code.lstrip().startswith("group:"):
+                continue                                                                      # the group expression names the phases itself (tested above)
+            self.assertIn("inputs.phase == 'tick'", code, f"domains.yml:{number} treats only the run after a tick as a tick")
+
     def test_every_automatic_live_decision_treats_the_early_run_as_a_tick(self):
         text = (ROOT / ".github/workflows/domains.yml").read_text()
         self.assertEqual(text.count("github.event_name == 'workflow_run' && 'follow'"), 0)
