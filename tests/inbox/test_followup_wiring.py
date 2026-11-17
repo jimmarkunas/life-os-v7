@@ -119,7 +119,7 @@ class Build(unittest.TestCase):
         self.assertEqual({v for v in used if v.startswith("FOLLOWUP_")}, {"FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH", "FOLLOWUP_TODOIST_PERSONAL_TOKEN"})
         table = W.expiry_table()
         for key, name in raw.items():
-            self.assertEqual(key in table, name.startswith("followup-") or name in W.INVENTORY, key)       # a credential has an expiry exactly when it has an inventory row (derived from the map, never a count)
+            self.assertEqual(key in table, key[0] in F.STORED_TOKENS or name in W.INVENTORY, key)       # a credential has an expiry exactly when it has an inventory row (derived from the map, never a count)
         env = {**ON, "FOLLOWUP_ACCOUNT_CALENDAR_PERSONAL": "cp", "FOLLOWUP_ACCOUNT_CALENDAR_BYTALOS": "cb", "FOLLOWUP_ACCOUNT_NOTION_PERSONAL": "np",
                "FOLLOWUP_ACCOUNT_GMAIL_BYTALOS": "gb", "FOLLOWUP_ACCOUNT_TODOIST_PERSONAL": "tp"}
         grants = W.grants_for(env, W.credential_names())
