@@ -12,6 +12,7 @@ import json
 import math
 import re
 import urllib.parse
+from zoneinfo import ZoneInfo
 
 from lifeos.platform import followup_readers as readers
 from lifeos.platform import gcal, gmail, jira, notion_client, outlook, todoist
@@ -363,4 +364,98 @@ def build_fetchers(environ, factories=None, clock=None, token_store=None):
     return {source: wrap(source) for source in SOURCES}
 
 
-__all__ = ["SOURCES", "CREDENTIAL_NAMES", "GRANT_REFS", "NEW_NAMES", "REUSED_NAMES", "ACCOUNT_NAMES", "CONFIG_NAMES", "JIRA_PROJECTS", "FetchError", "build_fetchers", "missing"]
+# LIFE-711: what the Action Inbox LIST shows. The delta readers above carry only a key, a title and a time; the list also needs a status, a due moment and an owner cue. These read the CURRENT open items of
+# the three sources the list shows (Jira, Calendar, Todoist) with the SAME read-only clients and the SAME credentials the followup job already loads (no new secret), and hand back the native dicts that
+# `lifeos.inbox.adapters` normalizes. GET only; more than MAX_ROWS rows is `truncated`, never a silent cut.
+ITEM_SOURCES = ("jira", "calendar", "todoist")
+ITEM_TZ = "America/Chicago"
+ITEM_WINDOW_DAYS = 14                  # the Calendar window and how far ahead a Todoist due date still shows (overdue always shows)
+JIRA_ITEM_FIELDS = "summary,status,assignee,duedate,updated"
+
+
+def _items_jira(make, environ, tenant, secret, now):
+    base = _config(environ, "JIRA_BASE_URL").rstrip("/")
+    client = make(base, _config(environ, "JIRA_EMAIL"), secret)
+    keys = JIRA_PROJECTS[tenant]
+    jql = f'project in ({", ".join(keys)}) AND (status = "Human UAT" OR (assignee = currentUser() AND statusCategory != Done)) ORDER BY updated DESC'
+    out, token = [], None
+    for _ in range(MAX_PAGES):
+        page = client.get("/rest/api/3/search/jql", {"jql": jql, "fields": JIRA_ITEM_FIELDS, "maxResults": 100, **({"nextPageToken": token} if token else {})})
+        if not isinstance(page, dict) or not isinstance(page.get("issues"), list):
+            raise FetchError("FOLLOWUP_LISTING_INCOMPLETE")
+        for issue in page["issues"]:
+            key = issue.get("key") if isinstance(issue, dict) else None
+            if not isinstance(key, str) or key.split("-")[0] not in keys:               # defense in depth: a key outside this workspace's projects is never returned
+                continue
+            fields = issue.get("fields") or {}
+            status = (fields.get("status") or {}).get("name")
+            url = f"{base}/browse/{key}"
+            out.append({"key": key, "url": url, "summary": fields.get("summary"), "description": "", "assignee": (fields.get("assignee") or {}).get("accountId", ""), "status": status,
+                        "updated": _utc(fields.get("updated")), "tz": ITEM_TZ, "due": fields.get("duedate"), "evidence": [url] if status == "Human UAT" else []})
+        token = page.get("nextPageToken")
+        if len(out) > MAX_ROWS or page.get("isLast", not token):
+            return out
+        if not isinstance(token, str) or not token:
+            raise FetchError("FOLLOWUP_LISTING_INCOMPLETE")
+    raise FetchError("FOLLOWUP_LISTING_INCOMPLETE")
+
+
+def _items_calendar(make, environ, tenant, secret, now):
+    client = make(secret, _config(environ, f"FOLLOWUP_GCAL_{tenant.upper()}_CALENDAR_ID"))
+    out = []
+    for event in client.list_events(now.isoformat(), (now + timedelta(days=ITEM_WINDOW_DAYS)).isoformat()):
+        start = event.get("start") or {}
+        out.append({"id": event.get("id"), "url": event.get("htmlLink"), "summary": event.get("summary"), "description": "", "status": event.get("status") or "confirmed",
+                    "updated": _utc(event.get("updated")), "tz": start.get("timeZone") or ITEM_TZ, "start": start.get("dateTime") or start.get("date")})
+    return out
+
+
+def _items_todoist(make, environ, tenant, secret, now):
+    out = []
+    for task in make(secret).tasks(MAX_ROWS + 1):
+        due = task.get("due") or {}
+        when = due.get("datetime") or due.get("date")
+        if not when:                                                                    # a task with no due date is not something the Inbox shows
+            continue
+        try:
+            moment = datetime.fromisoformat(when.replace("Z", "+00:00"))
+        except ValueError:
+            raise FetchError("FOLLOWUP_LISTING_INCOMPLETE") from None
+        if moment.tzinfo is None:
+            moment = moment.replace(tzinfo=ZoneInfo(due.get("timezone") or ITEM_TZ))
+        if moment > now + timedelta(days=ITEM_WINDOW_DAYS):
+            continue
+        out.append({"id": str(task.get("id")), "url": f"https://app.todoist.com/app/task/{urllib.parse.quote(str(task.get('id')), safe='')}", "content": task.get("content"), "description": "",
+                    "assignee": "", "status": "completed" if task.get("is_completed") else "open", "updated": _utc(task.get("updated_at") or task.get("added_at")) or now.isoformat(),
+                    "tz": due.get("timezone") or ITEM_TZ, "due": when, "project_scope": "personal"})
+    return out
+
+
+READ_ITEMS = {"jira": _items_jira, "calendar": _items_calendar, "todoist": _items_todoist}
+
+
+def build_item_fetchers(environ, factories=None, clock=None):
+    """{source: fetch(credential_ref) -> native dicts} for the Action Inbox list (Jira, Calendar, Todoist). The credential comes from the grant's NAME exactly as in `build_fetchers`."""
+    make = {**FACTORIES, **(factories or {})}
+    now = clock or (lambda: datetime.now(timezone.utc))
+
+    def wrap(source):
+        def fetch(credential_ref):
+            key = _BY_REF.get(credential_ref)
+            if key is None or key[0] != source:
+                raise FetchError("FOLLOWUP_CREDENTIAL_NOT_ALLOWED")
+            secret = (environ.get(CREDENTIAL_NAMES[key]) or "").strip()
+            if not secret:
+                raise FetchError("FOLLOWUP_CREDENTIAL_MISSING")
+            rows = READ_ITEMS[source](make[source], environ, key[1], secret, now())
+            if len(rows) > MAX_ROWS:
+                raise FetchError("FOLLOWUP_TRUNCATED")
+            if readers.SECRET.search(repr(rows)):
+                raise FetchError("FOLLOWUP_SECRET_IN_REPLY")
+            return rows
+        return fetch
+
+    return {source: wrap(source) for source in ITEM_SOURCES}
+
+
+__all__ = ["SOURCES", "CREDENTIAL_NAMES", "GRANT_REFS", "NEW_NAMES", "REUSED_NAMES", "ACCOUNT_NAMES", "CONFIG_NAMES", "JIRA_PROJECTS", "FetchError", "build_fetchers", "build_item_fetchers", "ITEM_SOURCES", "missing"]

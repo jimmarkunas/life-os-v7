@@ -159,14 +159,14 @@ def _client(env):
     return Client({"NOTION_API_TOKEN": token, "NOTION_INBOX_VIEW_SOURCE": "0" * 32}, source_name="NOTION_INBOX_VIEW_SOURCE")
 
 
-def publish(payloads, now, environ=None, client=None, page_id=None):
+def publish(payloads, now, environ=None, client=None, page_id=None, items=None):
     """-> counts only; raises InboxError with a fixed reason word. The one entry point: read the page, render the words from the stored payloads, write what differs."""
     env = os.environ if environ is None else environ
     if any(page_view.is_synthetic(p) for p in payloads):
         raise InboxError("synthetic_payload_refused")
     try:
         client = client or _client(env)
-        return apply(Page(client, page_id or locate(client)), page_view.render(payloads, now))
+        return apply(Page(client, page_id or locate(client)), page_view.render(payloads, now, items))
     except NotionError as error:
         raise InboxError(f"view_notion_{str(error).lower()[:40]}") from None
 
