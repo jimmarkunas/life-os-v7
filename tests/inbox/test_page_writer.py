@@ -189,7 +189,8 @@ class PageWriterTests(unittest.TestCase):
         self.assertEqual(tile_shapes(notion), [("heading_3", "paragraph")] * 5)
         self.assertEqual(notion.plain(notion.refreshed), "Last refreshed: 11/16 · 8:00 PM CT")
         ranks = sorted(cell(r, "Rank")["number"] for r in notion.live("s_list"))
-        self.assertEqual(ranks, [1, 3])                                                      # Needs me is rank 1, Waiting rank 3: the list sorts most urgent first
+        self.assertEqual([int(r) for r in ranks], [1, 3])                                    # the whole part is the bucket (Needs me 1, Waiting 3); the fraction is the due moment, so one sort puts the most urgent first, then the earliest due
+        self.assertTrue(all(0 <= r - int(r) < 1 for r in ranks))
         due = sorted(text_of(r, "Due") for r in notion.live("s_list"))
         self.assertEqual(due, ["", "Nov 20 · 9:00 AM CT"])                                    # a readable Central time, never an ISO string
         names = {text_of(r, "Source"): cell(r, "Health")["select"]["name"] for r in notion.live("s_health")}
