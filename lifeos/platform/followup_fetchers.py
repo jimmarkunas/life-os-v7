@@ -210,7 +210,7 @@ def _read_jira(make, environ, tenant, secret, since, now):
     jql = f"project in ({', '.join(keys)}) AND (assignee = currentUser() OR reporter = currentUser()) AND updated >= -{minutes}m ORDER BY updated ASC"
     rows, token = [], None
     for _ in range(MAX_PAGES):
-        page = client.get("/rest/api/3/search/jql", {"jql": jql, "fields": "summary,updated", "maxResults": 100, **({"nextPageToken": token} if token else {})})
+        page = client.get("/rest/api/3/search/jql", {"jql": jql, "fields": "summary,updated,duedate", "maxResults": 100, **({"nextPageToken": token} if token else {})})
         if not isinstance(page, dict) or not isinstance(page.get("issues"), list):
             raise FetchError("FOLLOWUP_LISTING_INCOMPLETE")
         for issue in page["issues"]:
@@ -218,7 +218,7 @@ def _read_jira(make, environ, tenant, secret, since, now):
             if not isinstance(key, str) or key.split("-")[0] not in keys:                 # defense in depth: a key outside this workspace's projects is never returned
                 continue
             fields = issue.get("fields") or {}
-            rows.append({"key": key, "fields": {"updated": _utc(fields.get("updated")), "summary": fields.get("summary")}})
+            rows.append({"key": key, "fields": {"updated": _utc(fields.get("updated")), "summary": fields.get("summary"), "duedate": fields.get("duedate")}})
         token = page.get("nextPageToken")
         if len(rows) > MAX_ROWS or page.get("isLast", not token):
             return rows
@@ -290,7 +290,7 @@ def _read_outlook(make, environ, tenant, secret, since, now, save=None):
 def _read_todoist(make, environ, tenant, secret, since, now):
     tasks = make(secret).tasks(MAX_ROWS + 1)
     return [{"id": t.get("id"), "url": f"https://app.todoist.com/app/task/{urllib.parse.quote(str(t.get('id')), safe='')}", "updated_at": _utc(t.get("updated_at") or t.get("added_at")),
-             "content": t.get("content")} for t in tasks]
+             "content": t.get("content"), "due": (t.get("due") or {}).get("date") if isinstance(t.get("due"), dict) else None} for t in tasks]
 
 
 def _title(page):

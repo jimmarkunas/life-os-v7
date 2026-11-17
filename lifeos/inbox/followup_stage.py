@@ -100,7 +100,7 @@ def _row(key, group, state):
     owner = lead.get("owner") if lead.get("owner") in ("jim", "external", "ambiguous") else "ambiguous"
     confidence = "high" if dated else "medium" if kind != "implied_promise" else "low"
     return {"identity_key": key, "outcome": key, "klass": KLASS_OF[kind], "owner": owner, "state": STATE_OF[state], "checkpoint_at": _utc(stamped) if stamped else "", "checkpoint_basis": basis,
-            "confidence": confidence, "source_refs": links, "evidence_fp": digest(json.dumps([links, stamped, KLASS_OF[kind]], sort_keys=True))}
+            "confidence": confidence, "source_refs": links, "evidence_fp": digest(json.dumps([links, _utc(stamped) if stamped else "", KLASS_OF[kind]], sort_keys=True))}
 
 
 def _cursor(store, workspace, account, source):
@@ -142,13 +142,16 @@ def reconcile(wiring, scope, live, now):
     groups = _group(i for i in evidence if i.get("workspace") == workspace)
     rows = [_row(key, groups[key], state) for key, state in sorted(projection.states.items()) if key in groups]
     counts["threads"], counts["review"] = len(projection.native), len(projection.review)
-    failed = None
+    failed, closed = None, []
     if live:
         ok_sources = [r["source"] for r in report if r["status"] == "ok"]
         try:
             for key in sorted(k for k, g in groups.items() if {i["kind"] for i in g} & followup.OUTCOME_ENDED and k in {t["outcome"] for t in stored}):
                 proof = digest(json.dumps(sorted({i["link"] for i in groups[key]}) + ["closed"]))               # strong proof the OUTCOME ended: closed, and the same evidence never reopens it
-                counts["closed"] += wiring.store.resolve(workspace, account, key, "closed", proof, now)
+                shut = wiring.store.resolve(workspace, account, key, "closed", proof, now)
+                counts["closed"] += shut
+                if shut:
+                    closed.append(thread_id(workspace, account, key))                  # its Agent Inbox row (if still open) becomes Done
             first = (ok_sources or [s for s in wanted if s in SOURCES])[:1]
             for source in first:
                 cursor = (deltas[(source, workspace, account)].next_checkpoint or now).isoformat() if ok_sources else ""
@@ -163,9 +166,22 @@ def reconcile(wiring, scope, live, now):
             degraded = True
     payload = {"component": COMPONENT, "state": "DEGRADED" if degraded else "PASS", "workspace": workspace, "account": account, "generated_at": now.isoformat(),
                "last_accepted": max((r["last_accepted"] for r in report if r["last_accepted"]), default=None),
-               "counts": projection.counts, "threads": [{**t, "id": thread_id(workspace, account, t["id"]), "title": t["id"], "state": projection.states[t["id"]]} for t in projection.native], "review": projection.review,
+               "counts": projection.counts, "threads": [{**t, "id": thread_id(workspace, account, t["id"]), "title": t["id"], "state": projection.states[t["id"]]} for t in projection.native], "review": projection.review, "closed": closed,
                "sources": report, "provenance": {"store": "v7_followup", "readers": "lifeos.platform.followup_readers", "derived": "lifeos.inbox.followup.project", "write_error": failed}}
     return payload, counts
+
+
+def deliver_loops(payloads, now, environ=None, deliver=None):
+    """LIFE-716: after a live run, put each ACTIVE Followup loop in Jim's Agent Inbox as an item (From = Followup), behind the switch ACTION_INBOX_VIEW. Never fails the stage: one fixed-word line, counts only."""
+    env = os.environ if environ is None else environ
+    if not switches.state("ACTION_INBOX_VIEW", env):
+        return None
+    if deliver is None:
+        from lifeos.inbox import followup_deliver                                  # noqa: PLC0415
+        deliver = followup_deliver.deliver
+    counts = deliver(payloads, now=now, environ=env)
+    print("followup-inbox " + " ".join(f"{k}={v}" for k, v in sorted(counts.items())))
+    return counts
 
 
 def refresh_tiles(environ=None, refresh=None):
@@ -204,7 +220,9 @@ def run(limit, live, wiring=None):
 
     isolated = isolate.run_items(allowed, one)
     if live and published and wiring.production:
-        refresh_tiles(wiring.env if wiring.env is not None else {})
+        env = wiring.env if wiring.env is not None else {}
+        deliver_loops(published, now, env)
+        refresh_tiles(env)
     for _, counts in isolated.results:
         totals["scopes"] += 1
         for key, value in counts.items():
@@ -212,4 +230,4 @@ def run(limit, live, wiring=None):
     return isolate.record(totals, isolated)
 
 
-__all__ = ["Scope", "Wiring", "production_wiring", "refresh_tiles", "reconcile", "run", "observe", "tgp_account"]
+__all__ = ["Scope", "Wiring", "production_wiring", "deliver_loops", "refresh_tiles", "reconcile", "run", "observe", "tgp_account"]

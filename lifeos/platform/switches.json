@@ -16,7 +16,7 @@
   },
   "ACTION_INBOX_VIEW": {
     "state": "on",
-    "bounds": "LIFE-791: the Agent Inbox tile recount. On: after a LIVE `followup` run (and in the inbox-view stage), the five tile numbers of the Agent Inbox page are recounted from the inbox database: only those five tiles' number and label text, never a row, the title, another page or a database. Off: nothing is written to Notion. The inbox itself (rows written by agents and people) does not depend on this switch. Jim, Nov 16 2026: an inbox for agents and people to write to him, not a view of Jira, Todoist or Calendar.",
+    "bounds": "LIFE-791: the Agent Inbox tile recount. On: after a LIVE `followup` run (and in the inbox-view stage), the five tile numbers of the Agent Inbox page are recounted from the inbox database: only those five tiles' number and label text, never a row, the title, another page or a database. Off: nothing is written to Notion. The inbox itself (rows written by agents and people) does not depend on this switch. After a LIVE `followup` run it also adds, updates or (on strong closing proof) marks Done the inbox row of each ACTIVE Followup open loop (From = Followup, one row per loop keyed followup-<thread id>; Review Needed suggestions are never sent; a row Jim marked Done, Dismissed or Promoted is never touched; LIFE-716). Jim, Nov 16 2026: an inbox for agents and people to write to him, not a view of Jira, Todoist or Calendar.",
     "turned_on": "2026-11-16"
   }
 }
