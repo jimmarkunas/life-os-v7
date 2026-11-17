@@ -4,7 +4,7 @@
     # on Oracle and counted. It writes only when the run is live AND the repository variable GRANOLA_AUTO is "on" (Jim's switch); otherwise it is a dry run that changes nothing.
     # It waits for the Interview job (LIFE-632), which holds the one-writer group of the Interview OS pages.
     needs: [interview, gate]
-    if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.tick == 'true' && needs.gate.outputs.due_granola == 'true' && needs.gate.outputs.granola_auto != 'off') || needs.gate.outputs.all == 'true') }}
+    if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.tick == 'true' && needs.gate.outputs.late == 'true' && needs.gate.outputs.due_granola == 'true' && needs.gate.outputs.granola_auto != 'off') || needs.gate.outputs.all == 'true') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     concurrency:
@@ -48,7 +48,7 @@
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
-          live_mode: ${{ github.event_name == 'workflow_run' && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
+          live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
       - id: bws_settings
         continue-on-error: true
         name: Notion token from Bitwarden so this job can read the V7 settings page (LIFE-703; read only; if it fails the GitHub values stay as they are)

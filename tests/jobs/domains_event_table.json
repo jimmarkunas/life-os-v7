@@ -8,6 +8,7 @@
  "after hourly: quick, skipped": [],
  "after hourly: quick, success": [],
  "after hourly: tick, cancelled": [],
+ "after hourly: tick, cancelled, early run true": [],
  "after hourly: tick, failure": [
   "agenda",
   "amazon",
@@ -134,6 +135,18 @@
   "outlook",
   "recruiters",
   "report"
+ ],
+ "after hourly: tick, success, early run true": [
+  "gate",
+  "granola",
+  "interview",
+  "megibow"
+ ],
+ "after hourly: tick, success, early run unknown": [
+  "gate",
+  "granola",
+  "interview",
+  "megibow"
  ],
  "after hourly: tick, success, interview fails": [
   "agenda",
@@ -413,5 +426,52 @@
  ],
  "dispatch: refresh=recruiters + live": [
   "recruiters"
+ ],
+ "early run: phase=tick": [
+  "agenda",
+  "amazon",
+  "amazon_retention",
+  "bills",
+  "dcc",
+  "followup",
+  "gate",
+  "hiring",
+  "hiring_outcomes",
+  "jira",
+  "mail",
+  "outlook",
+  "recruiters"
+ ],
+ "early run: phase=tick, jira fails": [
+  "agenda",
+  "amazon",
+  "amazon_retention",
+  "bills",
+  "dcc",
+  "followup",
+  "gate",
+  "hiring",
+  "hiring_outcomes",
+  "jira",
+  "mail",
+  "outlook",
+  "recruiters",
+  "report"
+ ],
+ "early run: phase=tick, recruiters fails": [
+  "agenda",
+  "amazon",
+  "amazon_retention",
+  "bills",
+  "dcc",
+  "followup",
+  "gate",
+  "hiring",
+  "hiring_outcomes",
+  "jira",
+  "mail",
+  "outlook",
+  "recruiters",
+  "report"
  ]
 }

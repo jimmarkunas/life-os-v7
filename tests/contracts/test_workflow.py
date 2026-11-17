@@ -145,7 +145,8 @@ class WorkflowTests(unittest.TestCase):
         domains = yaml.safe_load((root / ".github/workflows/domains.yml").read_text())
         group = amazon["concurrency"]["group"]
         self.assertIn("inputs.stage == 'orders'", group)
-        self.assertIn("|| 'life-os-v7-domains') }}", domains["concurrency"]["group"])       # the domain jobs hold this group when they really run ...
+        self.assertIn("inputs.phase == 'tick')) && 'life-os-v7-domains' ||", domains["concurrency"]["group"])   # the EARLY run of a tick (LIFE-775) holds this group with the Amazon, Recruiters, Hiring and Mail jobs ...
+        self.assertIn("|| 'life-os-v7-domains-late') }}", domains["concurrency"]["group"])  # ... the run that starts when the tick finishes (megibow, interview, granola) has its own, so it never waits for the early run
         self.assertIn("'life-os-v7-domains-idle'", domains["concurrency"]["group"])         # ... a run that skips every job gets its own ...
         self.assertIn("'life-os-v7-domains-manual'", domains["concurrency"]["group"])       # ... and so does a manual run, so neither can replace a waiting real run
         self.assertIn("'life-os-v7-domains' ||", group)                                    # orders: the very group the real domain runs hold
@@ -1218,8 +1219,9 @@ class SweepFailureIsItsOwnLaneTests(unittest.TestCase):
             step = next(s for s in before if s.get("name", "").startswith(prefix))
             self.assertNotIn("continue-on-error", step, prefix)                        # a credential, gate or unit-test failure fails the job, as before
         tolerated = [s.get("name", "") for s in self.steps[:sweep_at] if s.get("continue-on-error")]
-        self.assertEqual(len(tolerated), 1)
-        self.assertIn("tailnet", tolerated[0])                                         # the only tolerated earlier step is the tailnet join
+        self.assertEqual(len(tolerated), 2)
+        self.assertEqual(sum("tailnet" in name for name in tolerated), 1)             # the tolerated earlier steps are the tailnet join ...
+        self.assertEqual(sum(name.startswith("LIFE-775 - start the early domains run") for name in tolerated), 1)   # ... and LIFE-775's dispatch of the early domains run: a failed dispatch costs only the time it saves
         finish = self.doc["jobs"]["finish"]
         self.assertEqual(finish["needs"], ["prep"])
         self.assertIn("needs.prep.result == 'success'", finish["if"])                  # prep red (credentials, gate, unit tests) still skips the Jobs work

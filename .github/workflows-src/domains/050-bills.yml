@@ -2,7 +2,7 @@
     # Bills reads its own Notion source and saves only to the private snapshot database. The Paid processor (D85, D86) runs first, so the snapshot sees the advanced dates; on a tick it follows V7_LIVE like every other domain job.
     # D116: the Bills card then renders the saved snapshot into the Daily Report's "Bills: This Week" callout. LIFE-613: it no longer waits for the jira and agenda jobs; its writes are checked against its own callout before they are sent (report_region.ScopedClient).
     needs: [gate]
-    if: ${{ always() && needs.gate.result != 'failure' && (needs.gate.outputs.due_bills == 'true' || inputs.bills_paid) }}
+    if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_bills == 'true' && needs.gate.outputs.early == 'true') || inputs.bills_paid) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -43,7 +43,7 @@
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
-          live_mode: ${{ github.event_name == 'workflow_run' && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
+          live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
       - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
         continue-on-error: true
         uses: ./.github/actions/tailscale
