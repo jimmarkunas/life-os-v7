@@ -216,7 +216,7 @@ class WorkflowTests(unittest.TestCase):
         job = diag["jobs"]["diag"]
         self.assertEqual(list(diag[True]), ["workflow_dispatch"])                                           # manual only: no schedule, workflow_run, push or repository_dispatch
         self.assertNotRegex(text, r"(?m)^\s*(schedule|workflow_run|repository_dispatch|push|pull_request\w*):")
-        self.assertEqual((stage["options"], stage["default"]), (["scale-up-holds", "scale-up-links", "scale-up-boards", "scale-up-exclusions", "scale-up-exclusion-review", "scale-up-register", "jobs-backlog", "alerts-open", "newsletter-trace", "notion-sandbox-access", "notion-sandbox-outreach-proof", "interview-ui-probe", "inbox-view-qa", "inbox-view-qa-rollback", "inbox-schema-check", "inbox-schema-apply", "followup-schema-check", "followup-schema-apply"], "scale-up-holds"))   # alerts-open arrived on main in #216 (read-only diagnostic); newsletter-trace is LIFE-64's Gmail-reading job; notion-sandbox-access is LIFE-10's Notion-reading job
+        self.assertEqual((stage["options"], stage["default"]), (["scale-up-holds", "scale-up-links", "scale-up-boards", "scale-up-exclusions", "scale-up-exclusion-review", "scale-up-register", "jobs-backlog", "alerts-open", "newsletter-trace", "notion-sandbox-access", "notion-sandbox-outreach-proof", "interview-ui-probe", "inbox-proof", "inbox-recount", "inbox-schema-check", "inbox-schema-apply", "followup-schema-check", "followup-schema-apply"], "scale-up-holds"))   # alerts-open arrived on main in #216 (read-only diagnostic); newsletter-trace is LIFE-64's Gmail-reading job; notion-sandbox-access is LIFE-10's Notion-reading job
         self.assertEqual(diag["permissions"], {"contents": "read"})
         self.assertEqual(diag["concurrency"], {"group": "life-os-v7-diag", "cancel-in-progress": False})
         self.assertEqual(job["timeout-minutes"], 10)
@@ -235,7 +235,7 @@ class WorkflowTests(unittest.TestCase):
         trace_text, sandbox_text = rest.split("\n  # LIFE-10:")                                              # then the one job that reads Notion
         sandbox_text, ui_text = sandbox_text.split("\n  # LIFE-88:")                                        # then LIFE-88's UI 3c probe, the one job with the Interview token
         ui_text, report_text = ui_text.split("\n  # LIFE-121:")                                            # then LIFE-121's private reports: the database values and the Jobs Notion token, the one job that writes the report page
-        report_text, qa_text = report_text.split("\n  # LIFE-711:")                                      # then LIFE-711's Action Inbox view QA proof: the one job that writes the view database
+        report_text, qa_text = report_text.split("\n  # LIFE-791:")                                      # then LIFE-791's Agent Inbox proof: the one job that writes the inbox database
         uuid = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
         gmail = {"GMAIL_OAUTH_CLIENT_SECRET": "08245c07-728f-438e-940b-b4db015a6967", "GMAIL_OAUTH_REFRESH_TOKEN": "672a44e9-235f-4121-a99d-b4db015a6987", "GMAIL_OAUTH_CLIENT_ID": "8657d1ed-2cde-4298-bd62-b50301523e01"}
         self.assertEqual(sorted(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", head, re.M)), sorted([f"{uuid_} > {name}" for name, uuid_ in moved.items()]))
@@ -251,7 +251,7 @@ class WorkflowTests(unittest.TestCase):
         trace = diag["jobs"]["trace"]
         sandbox = diag["jobs"]["sandbox"]
         self.assertEqual((job["if"], trace["if"], sandbox["if"]),
-                         ("${{ inputs.stage != 'scale-up-exclusion-review' && inputs.stage != 'scale-up-register' && inputs.stage != 'jobs-backlog' && inputs.stage != 'newsletter-trace' && inputs.stage != 'notion-sandbox-access' && inputs.stage != 'notion-sandbox-outreach-proof' && inputs.stage != 'interview-ui-probe' && inputs.stage != 'inbox-view-qa' && inputs.stage != 'inbox-view-qa-rollback' }}",
+                         ("${{ inputs.stage != 'scale-up-exclusion-review' && inputs.stage != 'scale-up-register' && inputs.stage != 'jobs-backlog' && inputs.stage != 'newsletter-trace' && inputs.stage != 'notion-sandbox-access' && inputs.stage != 'notion-sandbox-outreach-proof' && inputs.stage != 'interview-ui-probe' && inputs.stage != 'inbox-proof' && inputs.stage != 'inbox-recount' }}",
                           "${{ inputs.stage == 'newsletter-trace' }}",
                           "${{ inputs.stage == 'notion-sandbox-access' || inputs.stage == 'notion-sandbox-outreach-proof' }}"))   # exactly one of the three jobs runs
         self.assertEqual(sandbox["timeout-minutes"], 5)
@@ -276,7 +276,7 @@ class WorkflowTests(unittest.TestCase):
         for word in ("LIFEOS_ACQ", "GMAIL", "inputs.message_ref", "secrets.NOTION", "NOTION_API_TOKEN"):
             self.assertNotIn(word, ui_text)                                                                # nothing else reaches the probe, and it takes no target input
         qa = diag["jobs"]["inbox_view_qa"]                                                                 # LIFE-711: loads the existing main Notion token and nothing else; writes only with the typed QA confirmation
-        self.assertEqual(qa["if"], "${{ inputs.stage == 'inbox-view-qa' || inputs.stage == 'inbox-view-qa-rollback' }}")
+        self.assertEqual(qa["if"], "${{ inputs.stage == 'inbox-proof' || inputs.stage == 'inbox-recount' }}")
         self.assertEqual(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", qa_text, re.M), ["53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN"])
         self.assertEqual(qa_text.count("--live"), 1)
         self.assertIn("INBOX_VIEW_CONFIRM: ${{ inputs.confirm }}", qa_text)                                # the typed confirmation reaches the stage as an env value, never inlined
