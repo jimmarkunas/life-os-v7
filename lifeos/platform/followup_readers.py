@@ -16,6 +16,7 @@ TITLE_MAX = 120
 MAX_ROWS = 500                                                              # a larger answer is treated as truncated, never silently cut
 SECRET = re.compile(r"(?i)(?:api[_-]?key|secret|password|token)\s*[:=]\s*\S{8,}|-----BEGIN [A-Z ]*PRIVATE KEY|\b(?:ghp_|sk-|xox[abprs]-)[A-Za-z0-9_-]{10,}")
 LINK = re.compile(r"^https://[^\s]{4,500}$")
+DUE = re.compile(r"^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:?\d{2})?)?$")      # a date the SOURCE itself holds (a due date): metadata, never read from a body
 
 
 @dataclass(frozen=True)
@@ -47,14 +48,17 @@ def _when(text):
     return parsed
 
 
-def _item(source, native_id, link, observed, title):
+def _item(source, native_id, link, observed, title, due=None):
     if not isinstance(native_id, str) or not native_id or not isinstance(link, str) or not LINK.match(link):
         raise ValueError("row")
-    return {"source": source, "native_id": native_id[:80], "link": link, "kind": KINDS[source], "observed_at": _when(observed).isoformat(), "title": str(title or "")[:TITLE_MAX]}
+    item = {"source": source, "native_id": native_id[:80], "link": link, "kind": KINDS[source], "observed_at": _when(observed).isoformat(), "title": str(title or "")[:TITLE_MAX]}
+    if isinstance(due, str) and DUE.match(due.strip()):
+        item["due"] = due.strip()                                          # LIFE-716: only when the source has one; an item without a due date has no `due` key, so older evidence is unchanged
+    return item
 
 
 def _jira(row, base):
-    return _item("jira", row["key"], f"{base.rstrip('/')}/browse/{row['key']}", row["fields"]["updated"], row["fields"].get("summary"))
+    return _item("jira", row["key"], f"{base.rstrip('/')}/browse/{row['key']}", row["fields"]["updated"], row["fields"].get("summary"), row["fields"].get("duedate"))
 
 
 def _calendar(row):
@@ -66,7 +70,7 @@ def _mail(source):
 
 
 def _todoist(row):
-    return _item("todoist", row["id"], row.get("url"), row["updated_at"], row.get("content"))
+    return _item("todoist", row["id"], row.get("url"), row["updated_at"], row.get("content"), row.get("due"))
 
 
 def _notion(row):
