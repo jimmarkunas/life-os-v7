@@ -142,6 +142,22 @@ class Journey(JourneyFixture, unittest.TestCase):
         self.assertEqual((kids, counts["writes"]), ((), 0))
         self.assertGreater(counts["failed"], 0)                                       # visible, never a quiet zero
 
+    PHASES = {"pages_scan", "page_reads", "calendar", "round_reads", "ledger_roster", "mail", "ledger_requests", "decisions", "recruiters", "network", "sent_mail", "writer", "after_writer"}
+
+    def test_every_run_reports_seconds_per_fixed_phase_and_nothing_else_changes(self):
+        """LIFE-793: measurement only. The no-work, the writing and the failing run each carry counts-only seconds by fixed phase name; the writes and the failure counts stay what they were."""
+        quiet = self.tick()
+        wrote = self.tick(LEAD, NO_REQ)
+        wrong = {**REQUEST, "body": "Please select a time for a call. Requisition 999999.", "url": "https://example.test/thread/wrong"}
+        failed = self.tick(LEAD, wrong)
+        for counts in (quiet, wrote, failed):
+            seconds = counts["seconds"]
+            self.assertTrue(set(seconds) <= self.PHASES | {"total"} and {"pages_scan", "writer", "total"} <= set(seconds), sorted(seconds))     # fixed names only, never a title, id or address
+            self.assertTrue(all(isinstance(v, float) and v >= 0 for v in seconds.values()))
+            self.assertAlmostEqual(seconds["total"], sum(v for k, v in seconds.items() if k != "total"), delta=0.5)
+        self.assertEqual((quiet["writes"], wrote["lead_rows"]), (0, 1))                   # the measurement did not change what is written
+        self.assertGreater(failed["failed"], 0)                                           # and a failing run is still visibly failing
+
 
 if __name__ == "__main__":
     unittest.main()
