@@ -25,13 +25,14 @@ JIRA_SITE = "https://jimmarkunas.atlassian.net"                                 
 FIXED_ACCOUNTS = {("jira", "personal"): "jira-personal", ("jira", "bytalos"): "jira-bytalos"}   # Jira is not a credential Jim names: these scope labels are committed, not read from the environment
 DEFAULT_LABELS = {("calendar", "personal", 1): "personal calendar", ("calendar", "bytalos", 1): "bytalos calendar", ("gmail", "personal", 1): "personal inbox", ("gmail", "bytalos", 1): "bytalos inbox",
                   ("todoist", "personal", 1): "personal todoist", ("notion", "personal", 1): "personal notion", ("interview_os", "personal", 1): "interview os",
-                  ("outlook", "personal", 1): "outlook.com mailbox", ("outlook", "personal", 2): "school mailbox", ("outlook", "personal", 3): "greatestpmever mailbox"}   # not secrets and never an address: committed, so Jim creates no label item; an environment label still overrides
+                  ("outlook", "personal", 1): "personal outlook", ("outlook", "personal", 2): "work outlook"}   # not secrets and never an address: committed, so Jim creates no label item; an environment label still overrides
 # The credential inventory row (lifeos/platform/credential_list.py) whose expiry each credential follows; a credential with no row has no grant, so no read.
 INVENTORY = {"JIRA_API_TOKEN": "jira_api_token", "NOTION_API_TOKEN": "notion_api_token", "GCAL_SERVICE_ACCOUNT_JSON": "gcal_service_account", "GMAIL_OAUTH_REFRESH_TOKEN": "gmail_oauth_refresh_token",
              "FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH": "followup_gmail_bytalos_refresh", "FOLLOWUP_TODOIST_PERSONAL_TOKEN": "followup_todoist_personal_token"}
-OUTLOOK_INVENTORY = "outlook_sign_in"                                               # an Outlook credential is a label (followup-personal-N) whose token lives in the private store
+OUTLOOK_INVENTORY = "outlook_sign_in"                                               # an Outlook credential is an existing label (`personal`, `work`) whose token lives in the private store
 NO_EXPIRY = "2099-12-31"                                                          # an inventory row with no fixed expiry: a long date, withdrawn by removing the account or the name
 EXPIRES = {}                                                                      # {(source, workspace, slot): "YYYY-MM-DD"}: only for a credential with no inventory row
+NOT_CONNECTED = {("outlook", "personal", "school mailbox"): "its tenant needs an admin to approve the app; Jim chose not to request it (Nov 16 2026)"}   # tracked, not connected: no grant, no read, like TGP
 TGP_DOMAINS = stage.TGP_DOMAINS
 
 
@@ -107,7 +108,7 @@ def expiry_table():
     rows = {row.get("key"): row for row in CREDENTIALS}
     table = {}
     for key, raw in (getattr(_fetchers(), "CREDENTIAL_NAMES", {}) or {}).items():
-        row = rows.get(OUTLOOK_INVENTORY if raw.startswith("followup-") else INVENTORY.get(raw))
+        row = rows.get(OUTLOOK_INVENTORY if key[0] in (getattr(_fetchers(), "STORED_TOKENS", ()) or ()) else INVENTORY.get(raw))      # a stored (label) token follows the outlook sign-in row
         if row:
             table[key] = row.get("expires") or NO_EXPIRY
     table.update(EXPIRES)
