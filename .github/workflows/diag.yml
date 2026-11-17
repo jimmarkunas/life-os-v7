@@ -178,39 +178,6 @@ jobs:
           NOTION_INTERVIEW_TOKEN: ${{ steps.bws_interview.outputs.NOTION_INTERVIEW_TOKEN }}
           PROBE_CONFIRM: ${{ inputs.confirm }}
         run: python -m lifeos.run interview-ui-probe --limit 0 --live
-  # LIFE-711: the QA proof of the Action Inbox view writer. Its own job, so the main Notion integration reaches only this stage here. It finds LIFE OS QA Home, creates the "Agent Inbox (V7 view)" database under it if it is
-  # missing and writes only synthetic rows into that database, only with confirm = QA (Jim, Nov 16 2026: test page, existing integration, writer scope). Counts and fixed codes only.
-  inbox_view_qa:
-    if: ${{ inputs.stage == 'inbox-view-qa' || inputs.stage == 'inbox-view-qa-rollback' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - name: Checkout the exact commit (own git fetch; the token is passed once and never stored)
-        run: |
-          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
-          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
-          git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
-          git checkout -q --detach FETCH_HEAD
-      - uses: ./.github/actions/python
-      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
-        uses: ./.github/actions/bws-helper
-        with:
-          wait_seconds: "100"
-      - id: bws_inbox_view
-        name: Load the Notion token from Bitwarden (exactly this 1; masked step output only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
-        uses: ./.github/actions/bws-load
-        with:
-          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
-          set_env: false
-          secrets: |
-            53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN
-      - name: Action Inbox view writer, QA proof (synthetic rows in the QA view only; typed confirmation; counts and fixed codes only)
-        env:
-          LIFEOS_NOTION_IDS: ""
-          NOTION_API_TOKEN: ${{ steps.bws_inbox_view.outputs.NOTION_API_TOKEN }}
-          INBOX_VIEW_CONFIRM: ${{ inputs.confirm }}
-          INBOX_VIEW_MODE: ${{ inputs.stage == 'inbox-view-qa-rollback' && 'qa-rollback' || 'qa-proof' }}
-        run: python -m lifeos.run inbox-view --limit 0 --live
   # LIFE-121: the two private reports. Their own job: the Jobs Notion token reaches only these stages (and the sandbox job above), the database values only the review. The text is written straight to ONE private Notion page
   # (a child of the page that holds the Job Ledger) and never reaches a log; the log has counts and fixed codes. A dry run unless confirm = REPORT (Jim, Oct 26: "list the 59 in Notion").
   report:
@@ -255,3 +222,36 @@ jobs:
           REPORT_CONFIRM: ${{ inputs.confirm }}
         run: |
           if [ "$REPORT_CONFIRM" = "REPORT" ]; then python -m lifeos.run "$STAGE" --live; else python -m lifeos.run "$STAGE"; fi
+  # LIFE-711: the QA proof of the Action Inbox view writer. Its own job, so the main Notion integration reaches only this stage here. It finds LIFE OS QA Home, creates the "Agent Inbox (V7 view)" database under it if it is
+  # missing and writes only synthetic rows into that database, only with confirm = QA (Jim, Nov 16 2026: test page, existing integration, writer scope). Counts and fixed codes only.
+  inbox_view_qa:
+    if: ${{ inputs.stage == 'inbox-view-qa' || inputs.stage == 'inbox-view-qa-rollback' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout the exact commit (own git fetch; the token is passed once and never stored)
+        run: |
+          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
+          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
+          git checkout -q --detach FETCH_HEAD
+      - uses: ./.github/actions/python
+      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
+        uses: ./.github/actions/bws-helper
+        with:
+          wait_seconds: "100"
+      - id: bws_inbox_view
+        name: Load the Notion token from Bitwarden (exactly this 1; masked step output only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        uses: ./.github/actions/bws-load
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN
+      - name: Action Inbox view writer, QA proof (synthetic rows in the QA view only; typed confirmation; counts and fixed codes only)
+        env:
+          LIFEOS_NOTION_IDS: ""
+          NOTION_API_TOKEN: ${{ steps.bws_inbox_view.outputs.NOTION_API_TOKEN }}
+          INBOX_VIEW_CONFIRM: ${{ inputs.confirm }}
+          INBOX_VIEW_MODE: ${{ inputs.stage == 'inbox-view-qa-rollback' && 'qa-rollback' || 'qa-proof' }}
+        run: python -m lifeos.run inbox-view --limit 0 --live
