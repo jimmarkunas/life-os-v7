@@ -678,3 +678,141 @@ class UnchangedPagesAreSkipped(unittest.TestCase):
         counts = go(conn, ledger, live=True, environ=self.ON)
         self.assertEqual((counts.get("unchanged_skipped", 0), counts["ticks_dismiss"], counts["blocks"]), (0, 1, {"replaced": 1}))
 
+
+
+def five_leads(n=5):
+    """A settled page whose block shows n contact cards (n invented people, all current at one company)."""
+    people = [(i, "acme", "Acme Corp", "Director of Product", "CURRENT", "2026-09-20") for i in range(1, n + 1)]
+    conn, ledger = build(people=people), ledger_for()
+    go(conn, ledger, live=True)
+    return conn, ledger
+
+
+def card_list(client, page_id="page-1"):
+    """The owned block's card callouts, read the way read_page reads them."""
+    for block in surface.children(client, page_id):
+        head = surface._owned_head(client, block)
+        if head:
+            return [c for c in head[1] if c.get("type") == "callout"]
+    right = surface._right(client, surface.children(client, page_id), KEY1)
+    for block in surface.children(client, right):
+        head = surface._owned_head(client, block)
+        if head:
+            return [c for c in head[1] if c.get("type") == "callout"]
+    raise AssertionError("no owned block")
+
+
+class DeepReadCosts(unittest.TestCase):
+    """LIFE-788: a full read of a page that shows contact cards no longer reads each card's name and reason column, which only the leads reader uses; every tick is still read."""
+
+    def test_the_tick_read_costs_one_call_fewer_per_card_and_finds_exactly_the_same_ticks(self):
+        for count in (2, 5):
+            with self.subTest(cards=count):
+                _, ledger = five_leads(count)
+                cards = card_list(ledger)
+                self.assertEqual(len(cards), count)
+                start = ledger.calls
+                full = surface._cards(ledger, cards, names=True)
+                middle = ledger.calls
+                ticks_only = surface._cards(ledger, cards, names=False)
+                end = ledger.calls
+                self.assertEqual((middle - start) - (end - middle), count)                    # exactly the left column of every card
+                self.assertEqual([c["ticks"] for c in full], [c["ticks"] for c in ticks_only])
+                self.assertTrue(all(c["name"] for c in full) and not any(c["name"] for c in ticks_only))
+
+    def test_read_page_finds_every_tick_of_every_card_including_a_ticked_one(self):
+        _, ledger = five_leads(5)
+        ledger.tick("page-1", "Closed 5:")
+        _, owned = surface.read_page(ledger, "page-1", key=KEY1)
+        ticks = owned[0]["ticks"]
+        self.assertEqual(len([t for t in ticks if t[0] in ("Contacted", "Referral", "Closed")]), 15)           # three status ticks on each of five cards
+        self.assertEqual([t for t in ticks if t[3]], [("Closed", 5, ticks[-1][2], True)])
+
+    def test_a_decision_on_the_last_card_is_still_found_persisted_and_replaces_the_block(self):
+        conn, ledger = five_leads(5)
+        ledger.tick("page-1", "Closed 5:")
+        counts = go(conn, ledger, live=True)
+        self.assertEqual((counts["ticks_dismiss"], counts["blocks"]), (1, {"replaced": 1}))
+        self.assertEqual(conn.raw.execute("SELECT COUNT(*) FROM v7_network_dismissals").fetchone()[0], 1)
+
+    def test_the_leads_reader_still_reads_names_and_reasons(self):
+        _, ledger = five_leads(3)
+        found = surface.leads_on_page(ledger, "page-1")
+        self.assertEqual(len(found), 3)
+        self.assertTrue(all(lead["name"] and lead["reason"] for lead in found))
+
+    def test_an_incomplete_tick_read_still_fails_closed(self):
+        _, ledger = five_leads(2)
+        toggles = [b["id"] for b in ledger.blocks.values() if b["type"] == "toggle"]
+        real = ledger.call
+
+        def cut_short(method, path, body=None):
+            if method == "GET" and any(f"/blocks/{t}/children" in path for t in toggles):
+                return {"results": [], "has_more": True, "next_cursor": None}
+            return real(method, path, body)
+        ledger.call = cut_short
+        with self.assertRaises(surface.SurfaceError) as raised:
+            surface.read_page(ledger, "page-1", key=KEY1)
+        self.assertEqual(str(raised.exception), "NETWORK_SURFACE_PAGE_INCOMPLETE")
+
+    def test_a_full_page_read_never_reads_a_card_name_column_and_always_reads_every_tick_toggle(self):
+        conn, ledger = five_leads(5)
+        cards = card_list(ledger)
+        names = {ledger.kids[ledger.kids[card["id"]][0]][0] for card in cards}
+        toggles = {ledger.kids[ledger.kids[ledger.kids[card["id"]][0]][1]][0] for card in cards}
+        self.assertEqual((len(names), len(toggles)), (5, 5))
+        seen, real = [], ledger.call
+
+        def spy(method, path, body=None):
+            seen.append(path)
+            return real(method, path, body)
+        ledger.call = spy
+        counts = go(conn, ledger, live=True)
+        self.assertEqual(counts["blocks"], {"unchanged": 1})
+        self.assertFalse([p for p in seen if any(f"/blocks/{b}/children" in p for b in names)])
+        self.assertTrue(all(any(f"/blocks/{t}/children" in p for p in seen) for t in toggles))
+        self.assertEqual(counts["timing"]["by_outcome"]["unchanged"]["calls"], len(seen))
+
+
+class SkipMissReasons(unittest.TestCase):
+    """LIFE-788: a page read in full says why it was not skipped, in a fixed word and a number; when a page may be skipped is exactly what it was."""
+    ON = {}
+    PROOF = UnchangedPagesAreSkipped.PROOF
+
+    def settled(self):
+        return UnchangedPagesAreSkipped.settled(self)
+
+    def test_an_unproven_page_is_counted_as_not_proven(self):
+        conn, ledger = build(), ledger_for()
+        counts = go(conn, ledger, live=True, environ=self.ON)
+        self.assertEqual(counts["skip_missed"], {"not_proven": 1})
+
+    def test_a_page_edited_since_its_proof_is_counted_as_edited_since_proof(self):
+        conn, ledger = self.settled()
+        ledger.tick("page-1", "Closed ")
+        counts = go(conn, ledger, live=True, environ=self.ON)
+        self.assertEqual(counts["skip_missed"], {"edited_since_proof": 1})
+
+    def test_a_page_edited_a_moment_ago_and_an_old_proof_are_told_apart(self):
+        conn, ledger = self.settled()
+        edited = datetime.strptime(ledger.edited_time("page-1")[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
+        counts = network_surface.run(0, True, environ=self.ON, connection=conn, client=ledger, now=edited + timedelta(seconds=60), today=TODAY)
+        self.assertEqual(counts["skip_missed"], {"edited_just_now": 1})
+        conn.raw.execute("UPDATE v7_network_page_edit SET recorded_at='2026-09-29 12:00:00'")
+        counts = go(conn, ledger, live=True, environ=self.ON)
+        self.assertEqual(counts["skip_missed"], {"proof_too_old": 1})
+
+    def test_a_skipped_page_and_a_dry_run_or_the_off_switch_report_no_miss(self):
+        conn, ledger = self.settled()
+        self.assertNotIn("skip_missed", go(conn, ledger, live=True, environ=self.ON))
+        self.assertNotIn("skip_missed", go(conn, ledger, live=False, environ=self.ON))
+        self.assertNotIn("skip_missed", go(conn, ledger, live=True, environ=SKIP_OFF))
+
+    def test_the_reasons_are_a_closed_set_of_fixed_words(self):
+        words = {"not_proven", "no_edit_time", "no_proof_time", "edited_since_proof", "unreadable_time", "edited_just_now", "proof_too_old"}
+        skip = network_surface.Skip({}, {"k"}, None, NOW)
+        self.assertEqual(skip.miss("other", "2026-10-07T09:00:00.000Z"), "not_proven")
+        self.assertEqual(skip.miss("k", None), "no_edit_time")
+        self.assertEqual(skip.miss("k", "2026-10-07T09:00:00.000Z"), "no_proof_time")
+        self.assertEqual(skip.miss("k", "not a time"), "unreadable_time")
+        self.assertTrue({skip.miss("other", "x"), skip.miss("k", None), skip.miss("k", "x")} <= words)
