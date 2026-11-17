@@ -13,5 +13,10 @@
     "state": "on",
     "bounds": "LIFE-757: the `followup` stage's live wiring (store, grants, fetchers, access receipts, payload). Off: the stage is a counts-only no-op and the hourly job is skipped. On (the repository variable FOLLOWUP_WIRING = on, or this file in a reviewed PR) it runs as a DRY RUN until `--live` is added to its workflow step after the Followup tables exist; it reads only sources that have a credential and an expiry row, writes a receipt before every read, and never reads Asana or TGP.",
     "turned_on": "Nov 16, 2026, 6:07 PM CT, by Claude Code on Jim's chat approval ('Go on all 3', Nov 16 2026; the plan he approved is dry run first): runs as a DRY RUN (no --live in the workflow step), every connected source's credentials are in Bitwarden (LIFE-757 PRs 1281, 1285, 1287, 1288)."
+  },
+  "ACTION_INBOX_VIEW": {
+    "state": "off",
+    "bounds": "LIFE-711: the `inbox-view` stage's hourly path (the Notion Agent Inbox view). Off: a counts-only no-op. On it still returns `unwired` until the live row sources are released: it never writes a synthetic row. The QA proof of the writer is a separate manual run (diag.yml, confirm = QA) and does not use this switch; it writes only the QA area's view database.",
+    "turned_on": ""
   }
 }

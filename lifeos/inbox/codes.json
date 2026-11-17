@@ -10,5 +10,7 @@
   "FOLLOWUP_READBACK_MISMATCH": ["inbox", "bug", false, "A Followup thread did not read back as written, so the batch was rolled back and the cursor did not advance.", "Inspect the Followup tables and the writer; nothing is deleted automatically."],
   "FOLLOWUP_AUDIT_UNAVAILABLE": ["inbox", "retry", true, "A Followup access receipt could not be written, so that source was not read.", "None; nothing was read. Retry on the next tick."],
   "FOLLOWUP_PAYLOAD_STORE_MISSING": ["inbox", "blocked", false, "The Followup store has no payload table or writer, so the payload was not published.", "Create the payload table (activation [A]) and merge the payload writer."],
-  "FOLLOWUP_DRY_RUN_NO_WRITE": ["inbox", "bug", false, "A dry run tried to write to the Followup store, which it must never do.", "Fix the stage: a dry run computes and writes nothing."]
+  "FOLLOWUP_DRY_RUN_NO_WRITE": ["inbox", "bug", false, "A dry run tried to write to the Followup store, which it must never do.", "Fix the stage: a dry run computes and writes nothing."],
+  "INBOX_VIEW_WRITE_OUT_OF_SCOPE": ["inbox", "bug", false, "The view writer was asked to change a page that is not one of its own rows, so nothing was sent to Notion.", "None; nothing was written. Look at which caller passed the page."],
+  "INBOX_VIEW_OPERATION_UNKNOWN": ["inbox", "bug", false, "The view writer was handed an operation that is not create, update or archive, so nothing was sent to Notion.", "None; nothing was written."]
 }

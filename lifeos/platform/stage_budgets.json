@@ -272,6 +272,11 @@
    "required": false,
    "seconds": 600
   },
+  "inbox-view": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": true,
+   "seconds": 600
+  },
   "interview": {
    "basis": "twice its slowest measured step (1604 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
    "required": true,

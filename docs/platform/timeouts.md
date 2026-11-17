@@ -32,6 +32,7 @@ The job timeouts in `.github/workflows` change in one separate workflow pull req
 | `branches.yml` | `report` | 10 | 10 | 0 | - | - | not measured: no completed run in the last 100; keeps its current value |
 | `calendar.yml` | `calendar` | 15 | 15 | 6 | 12 | 18 | kept: only 6 measured runs (fewer than 10), slowest 18 s |
 | `diag.yml` | `diag` | 10 | 10 | 33 | 14 | 97 | twice the slowest run (97 s) rounds to 10 min, not below the current 10: unchanged |
+| `diag.yml` | `inbox_view_qa` | 10 | 10 | 0 | - | - | not measured: new job (LIFE-711); keeps its current value |
 | `diag.yml` | `interview_ui` | 5 | 5 | 10 | 240 | 302 | slowest run 302 s reached 90% of the current limit: keeps 5 min and is listed for Jim (the job is at its limit) |
 | `diag.yml` | `report` | 10 | 10 | 10 | 14 | 19 | twice the slowest run (19 s) rounds to 10 min, not below the current 10: unchanged |
 | `diag.yml` | `sandbox` | 5 | 5 | 4 | 10 | 30 | kept: only 4 measured runs (fewer than 10), slowest 30 s |
@@ -128,7 +129,7 @@ Every call that leaves the process carries an explicit timeout. `tests/contracts
 
 ## Stage budgets
 
-`lifeos/platform/stage_budgets.json` has one row for each of the 110 stages in `lifeos/run.py`. `lifeos.run` arms an alarm of that many seconds around the stage. Rules:
+`lifeos/platform/stage_budgets.json` has one row for each of the 111 stages in `lifeos/run.py`. `lifeos.run` arms an alarm of that many seconds around the stage. Rules:
 
 * A stage within its budget behaves exactly as before.
 * A stage over it stops, prints the fixed code `STAGE_BUDGET_EXCEEDED` with the two numbers (counts only), and **a required stage exits 1, an optional stage exits 0** so the run passes and the code stays visible in the stage's counts line.
@@ -194,6 +195,7 @@ The table below is rendered from `lifeos/platform/stages.json` (LIFE-768): edit 
 | `imessage-comms` | 120 | no | twice its slowest measured step (46 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `inbox-schema-apply` | 600 | no | no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `inbox-schema-check` | 600 | no | no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
+| `inbox-view` | 600 | yes | no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `interview` | 1680 | yes | twice its slowest measured step (1604 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `interview-acceptance` | 600 | no | no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `interview-probe` | 600 | no | no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
