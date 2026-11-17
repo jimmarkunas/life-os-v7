@@ -270,7 +270,7 @@ class Payload(unittest.TestCase):
 class Job(unittest.TestCase):
     ROOT = Path(__file__).resolve().parents[2]
 
-    def test_the_followup_job_is_dry_run_only_default_off_and_loads_only_committed_names(self):
+    def test_the_followup_job_is_dry_run_only_and_loads_only_committed_names(self):
         import json
         try:
             import yaml
@@ -281,7 +281,7 @@ class Job(unittest.TestCase):
         job = doc["jobs"]["followup"]
         self.assertEqual(doc["permissions"], {"contents": "read"})                       # unchanged
         self.assertEqual(job["needs"], ["gate"])
-        self.assertNotIn("vars.", job["if"])                                              # no new GitHub value: the switch is in switches.json (off), so the stage is a counts-only no-op until it is turned on
+        self.assertNotIn("vars.", job["if"])                                              # no new GitHub value: the switch is in switches.json, never a repository value
         self.assertIn("needs.gate.outputs.due_followup == 'true'", job["if"])
         runs = [step.get("run", "") for step in job["steps"]]
         self.assertTrue(any("python -m lifeos.run followup" in r for r in runs))
@@ -294,7 +294,11 @@ class Job(unittest.TestCase):
             self.assertRegex(name, r"^[A-Z0-9_]+$")
         self.assertFalse(any(marker in text for marker in W.stage.TGP_DOMAINS))
         self.assertEqual(json.loads((self.ROOT / "lifeos/platform/due_table.json").read_text())["jobs"]["followup"], {"every_hours": 1})
-        self.assertEqual(json.loads((self.ROOT / "lifeos/platform/switches.json").read_text())["FOLLOWUP_WIRING"]["state"], "off")
+        switch = json.loads((self.ROOT / "lifeos/platform/switches.json").read_text())["FOLLOWUP_WIRING"]
+        self.assertIn(switch["state"], ("off", "on"))
+        if switch["state"] == "on":
+            self.assertTrue(switch["turned_on"].strip())                                  # an "on" switch records when, by whom and on whose word
+            self.assertFalse(any("--live" in r for r in runs))                           # and is a dry run until a separate reviewed change adds --live
 
     def test_every_new_followup_credential_is_loaded_passed_and_has_an_inventory_row(self):
         """Derived from the code: each FOLLOWUP_ secret name the fetchers use needs a bws-load line, a step env entry and a credential inventory row, so a source never silently shows DEGRADED for a wiring gap."""
