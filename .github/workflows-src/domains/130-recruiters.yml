@@ -5,7 +5,7 @@
     # every few hours. It takes its turn after the Jira card (always(): a red Jira job never stops it); a manual Recruiters run has no Jira job and starts at once.
     # LIFE-688 (Jim, Nov 15 2026: option B): hiring and recruiters are the two jobs that read the whole Daily Report page; they take turns (recruiters after hiring), each keeping its own if: and always(), so a red one never stops the other.
     needs: [gate, jira, hiring]
-    if: ${{ always() && needs.gate.result != 'failure' && (needs.gate.outputs.due_recruiters == 'true' || inputs.recruiters || inputs.refresh == 'recruiters') }}
+    if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_recruiters == 'true' && needs.gate.outputs.early == 'true') || inputs.recruiters || inputs.refresh == 'recruiters') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -51,7 +51,7 @@
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
-          live_mode: ${{ github.event_name == 'workflow_run' && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
+          live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
       - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
         continue-on-error: true
         uses: ./.github/actions/tailscale
@@ -64,6 +64,7 @@
         continue-on-error: true
         name: Recruiters (read-only mail to the Recruiters data source; counts only)
         env:
+          DOMAINS_PHASE: ${{ inputs.phase }}      # LIFE-775: the early run of a tick plans its mail scan as a tick does
           GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_recruiters.outputs.GMAIL_OAUTH_CLIENT_ID }}
           OUTLOOK_CLIENT_ID: ${{ steps.bws_recruiters.outputs.OUTLOOK_CLIENT_ID }}
           NOTION_RECRUITERS_DATA_SOURCE_ID: ""

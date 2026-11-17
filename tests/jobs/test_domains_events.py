@@ -55,6 +55,12 @@ def events(doc):
     for broken in ("jira", "amazon", "recruiters", "interview"):                              # the report job runs only when some job failed
         out[f"after hourly: tick, success, {broken} fails"] = ("workflow_run", {"conclusion": "success", "display_title": "tick"}, {}, {}, (broken,))
         out[f"dispatch: all=True, {broken} fails"] = ("workflow_dispatch", {}, dict(base, all=True), {}, (broken,))
+    for covered in ("true", "unknown"):                                                                   # LIFE-775: the run after a tick when the early run exists (the early jobs are left to it) or could not be looked up (left out, never run twice)
+        out[f"after hourly: tick, success, early run {covered}"] = ("workflow_run", {"conclusion": "success", "display_title": "tick", "_early_covered": covered}, {}, {}, ())
+    out["after hourly: tick, cancelled, early run true"] = ("workflow_run", {"conclusion": "cancelled", "display_title": "tick", "_early_covered": "true"}, {}, {}, ())
+    out["early run: phase=tick"] = ("workflow_dispatch", {}, dict(base, phase="tick"), {}, ())
+    for broken in ("jira", "recruiters"):
+        out[f"early run: phase=tick, {broken} fails"] = ("workflow_dispatch", {}, dict(base, phase="tick"), {}, (broken,))
     out["dispatch: no input"] = ("workflow_dispatch", {}, dict(base), {}, ())
     for name in TRIGGER_INPUTS:
         if name not in spec:
@@ -75,7 +81,8 @@ def runs(doc, event, not_due=()):
     """-> sorted names of the jobs that run for one trigger (every job that runs is taken to succeed)."""
     name, run_fields, inputs, variables, failing = event
     due = {f"due_{job}": ("false" if job in not_due and name == "workflow_run" else "true") for job in doc["jobs"]}        # the gate's due step: every job due unless the test says otherwise (a tick only)
-    ctx = {"github": {"event_name": name, "event": {"workflow_run": run_fields}}, "inputs": inputs, "vars": {}, "env": {}, "steps": {"due": {"outputs": due}, "settings": {"outputs": variables}}}   # LIFE-699: the switches come from the V7 settings page (steps.settings.outputs), no longer from GitHub variables
+    covered = run_fields.get("_early_covered", "false")                                                                      # LIFE-775: what the gate's `cover` step found: "true" (an early run exists), "false" (none), "unknown" (unreadable); "false" is how it was before
+    ctx = {"github": {"event_name": name, "event": {"workflow_run": run_fields}}, "inputs": inputs, "vars": {}, "env": {}, "steps": {"due": {"outputs": due}, "cover": {"outputs": {"early_covered": covered}}, "settings": {"outputs": variables}}}   # LIFE-699: the switches come from the V7 settings page (steps.settings.outputs), no longer from GitHub variables
     results = {}
     for job in order(doc["jobs"]):
         spec = doc["jobs"][job]
@@ -98,7 +105,8 @@ def gate_expected(event):
     """The gate's trigger from the event alone, written out independently of the workflow text: a completed tick (not cancelled) or `all`."""
     name, run_fields, inputs, variables, failing = event
     tick = name == "workflow_run" and run_fields.get("conclusion") != "cancelled" and run_fields.get("display_title") == "tick"
-    return bool(tick or inputs.get("all"))
+    early = name == "workflow_dispatch" and inputs.get("phase") == "tick"                              # LIFE-775: the early run of a tick
+    return bool(tick or early or inputs.get("all"))
 
 
 def table(doc=None):
@@ -122,6 +130,25 @@ class DomainsEventTable(unittest.TestCase):
         self.assertEqual(set(domain_jobs(current["after hourly: tick, success, jira fails"])), chain | {"report"})        # the report job exists to name a failed job
         for label in ("after hourly: tick, cancelled", "after hourly: manual, success", "after hourly: quick, success", "dispatch: no input"):
             self.assertEqual(domain_jobs(current[label]), [], label)
+
+    def test_a_tick_makes_one_early_run_and_one_run_after_it_and_every_domain_job_runs_exactly_once(self):
+        """LIFE-775: the early run (phase tick) takes every job that reads nothing the tick writes; the run after the tick takes megibow, interview and granola. Together they run the old chain once.
+        With no early run the run after the tick does everything, as before; when the early run cannot be looked up it leaves the early jobs out (two runs must never write the same pages)."""
+        doc = load()
+        events_ = events(doc)
+        chain = set(domain_jobs(runs(doc, events_["after hourly: tick, success"])))
+        late = {"megibow", "interview", "granola"}
+        early = set(domain_jobs(runs(doc, events_["early run: phase=tick"])))
+        after = set(domain_jobs(runs(doc, events_["after hourly: tick, success, early run true"])))
+        self.assertEqual(late, after)
+        self.assertEqual(chain - late, early)
+        self.assertEqual(early & after, set())                                                      # no job runs twice
+        self.assertEqual(early | after, chain)                                                      # none is skipped
+        self.assertEqual(set(domain_jobs(runs(doc, events_["after hourly: tick, success, early run unknown"]))), late)
+        self.assertEqual(domain_jobs(runs(doc, events_["after hourly: tick, cancelled, early run true"])), [])   # a cancelled tick still runs nothing after it
+        self.assertEqual(domain_jobs(runs(doc, events_["dispatch: all=True"])), sorted(chain))      # `all` runs every job once
+        for broken in ("jira", "recruiters"):
+            self.assertIn("report", runs(doc, events_[f"early run: phase=tick, {broken} fails"]))   # the early run pushes its own failures
 
     def test_the_gate_runs_exactly_for_a_tick_or_all(self):
         doc = load()

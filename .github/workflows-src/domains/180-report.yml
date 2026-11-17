@@ -29,7 +29,7 @@
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIVE
-          live_mode: ${{ github.event_name == 'workflow_run' && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
+          live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
       - name: Domain jobs report here (the run is already red; this pushes the phone)
         env:
           NTFY_TOPIC: ${{ steps.bws_report.outputs.NTFY_TOPIC }}

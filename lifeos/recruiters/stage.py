@@ -12,7 +12,7 @@ import time
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
-from lifeos.platform import mail
+from lifeos.platform import gate, mail
 from lifeos.platform.gmail import Gmail, GmailError
 from lifeos.platform.notion_client import Client, NotionError
 from lifeos.platform import mail_seen as seen
@@ -48,7 +48,7 @@ def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, noti
             known_keys, state, ledger_status = keys, (last_read, last_kind, last_full), ("ok" if keys else "empty")
         except seen.LedgerError:
             ledger_status = "unavailable"
-    action, kind, why = scan.plan(now, scan.step_row(), state, environ.get("GITHUB_EVENT_NAME") == "workflow_run")
+    action, kind, why = scan.plan(now, scan.step_row(), state, gate.is_tick_event(environ))
     if action == "read" and environ.get("RECRUITERS_FULL_SCAN") == "on":
         kind, why = seen.FULL_SCAN, "manual full scan"                    # LIFE-715: the manual workflow's "full rescan" box: read all 14 days this run, ignoring the seen list
     stats = {"scanned": 0, "new": 0}

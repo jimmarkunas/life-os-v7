@@ -37,6 +37,11 @@ DIGEST_HOUR_UTC = 13           # the daily check-in: 8 AM Chicago in summer time
 CHECKIN_WORKFLOW = "watchdog.yml"
 CHECKIN_UNREADABLE = "CHECKIN_HISTORY_UNREADABLE"      # LIFE-724: fixed code in the watchdog log line when the watchdog's own run list could not be read; it never pages by itself
 DOMAINS_TITLE = "domains (after tick)"
+
+
+def is_tick_event(environ):
+    """LIFE-775: True for a domains run that belongs to a tick: the workflow_run after it, or the early run its prep job dispatches (DOMAINS_PHASE=tick, the workflow input)."""
+    return environ.get("GITHUB_EVENT_NAME") == "workflow_run" or environ.get("DOMAINS_PHASE") == "tick"
 PENDING = "push-pending"       # the incident exists but its phone push was not accepted yet; retried by the watchdog
 REMIND_HOURS = 3               # LIFE-328/329: an incident still open and still true re-pages after this long without activity on its issue
 CONFLICT_RUNS_MAX = 30         # LIFE-688: domains runs of the last 24 hours whose logs the daily check-in reads, newest first
