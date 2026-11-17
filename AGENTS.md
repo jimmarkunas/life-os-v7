@@ -9,7 +9,7 @@ V7 is the active LIFE OS repo (V1, V2 are read-only references). V7 must run wit
 3. **Test** with `sh tools/preflight.sh` before every push (quick, ~15 s); CI is the full gate: fix once if red, never rerun the full suite by hand. `sh tools/automerge.sh <pr>` needs its PASS. `git add` new files first.
 4. **Land and close:** auto-merge on same-head green CI, then one call: `python -m lifeos.jira.closeout KEY... --pr N --sha S --run R --proof KEY=text --live`. Merged on green CI with local proof IS Done. Then the next ticket (`NO_ELIGIBLE_WORK` if none).
 
-Ask Jim only for: a new or wider workflow `permissions` block, a credential added, moved or exposed, deleting a GitHub value or production data, spend beyond the ticket's budget. Record one `[approvals]` line; wait with `[waiting on] Jim: <the one thing>` and label `needs-jim`.
+Workflow edits are pre-approved; ask Jim only where `sh tools/preflight.sh` stops: wider `permissions`, new secret or credential, deleting GitHub values or data, spend beyond budget. Record one `[approvals]` line; wait with `[waiting on] Jim: <the one thing>` and label `needs-jim`.
 
 ## Always
 
