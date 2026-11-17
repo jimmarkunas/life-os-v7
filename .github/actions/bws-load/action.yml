@@ -11,6 +11,8 @@ outputs:
   DCC_CARD_BLOCK_ID: {value: "${{ steps.first.outputs.DCC_CARD_BLOCK_ID || steps.retry.outputs.DCC_CARD_BLOCK_ID }}"}
   FIT_PROFILE_EXTRA_JSON: {value: "${{ steps.first.outputs.FIT_PROFILE_EXTRA_JSON || steps.retry.outputs.FIT_PROFILE_EXTRA_JSON }}"}
   FIT_PROFILE_JSON: {value: "${{ steps.first.outputs.FIT_PROFILE_JSON || steps.retry.outputs.FIT_PROFILE_JSON }}"}
+  FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH: {value: "${{ steps.first.outputs.FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH || steps.retry.outputs.FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH }}"}
+  FOLLOWUP_TODOIST_PERSONAL_TOKEN: {value: "${{ steps.first.outputs.FOLLOWUP_TODOIST_PERSONAL_TOKEN || steps.retry.outputs.FOLLOWUP_TODOIST_PERSONAL_TOKEN }}"}
   GCAL_SERVICE_ACCOUNT_JSON: {value: "${{ steps.first.outputs.GCAL_SERVICE_ACCOUNT_JSON || steps.retry.outputs.GCAL_SERVICE_ACCOUNT_JSON }}"}
   GMAIL_OAUTH_CLIENT_ID: {value: "${{ steps.first.outputs.GMAIL_OAUTH_CLIENT_ID || steps.retry.outputs.GMAIL_OAUTH_CLIENT_ID }}"}
   GMAIL_OAUTH_CLIENT_SECRET: {value: "${{ steps.first.outputs.GMAIL_OAUTH_CLIENT_SECRET || steps.retry.outputs.GMAIL_OAUTH_CLIENT_SECRET }}"}

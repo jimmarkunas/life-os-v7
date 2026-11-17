@@ -26,8 +26,9 @@ FIXED_ACCOUNTS = {("jira", "personal"): "jira-personal", ("jira", "bytalos"): "j
 DEFAULT_LABELS = {("calendar", "personal", 1): "personal calendar", ("calendar", "bytalos", 1): "bytalos calendar", ("gmail", "personal", 1): "personal inbox", ("gmail", "bytalos", 1): "bytalos inbox",
                   ("todoist", "personal", 1): "personal todoist", ("notion", "personal", 1): "personal notion", ("interview_os", "personal", 1): "interview os",
                   ("outlook", "personal", 1): "outlook.com mailbox", ("outlook", "personal", 2): "school mailbox", ("outlook", "personal", 3): "greatestpmever mailbox"}   # not secrets and never an address: committed, so Jim creates no label item; an environment label still overrides
-# The credential inventory row (lifeos/platform/credential_list.py) whose expiry each reused credential follows; a new FOLLOWUP_ item has none, so no grant until it exists.
-INVENTORY = {"JIRA_API_TOKEN": "jira_api_token", "NOTION_API_TOKEN": "notion_api_token", "GCAL_SERVICE_ACCOUNT_JSON": "gcal_service_account", "GMAIL_OAUTH_REFRESH_TOKEN": "gmail_oauth_refresh_token"}
+# The credential inventory row (lifeos/platform/credential_list.py) whose expiry each credential follows; a credential with no row has no grant, so no read.
+INVENTORY = {"JIRA_API_TOKEN": "jira_api_token", "NOTION_API_TOKEN": "notion_api_token", "GCAL_SERVICE_ACCOUNT_JSON": "gcal_service_account", "GMAIL_OAUTH_REFRESH_TOKEN": "gmail_oauth_refresh_token",
+             "FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH": "followup_gmail_bytalos_refresh", "FOLLOWUP_TODOIST_PERSONAL_TOKEN": "followup_todoist_personal_token"}
 OUTLOOK_INVENTORY = "outlook_sign_in"                                               # an Outlook credential is a label (followup-personal-N) whose token lives in the private store
 NO_EXPIRY = "2099-12-31"                                                          # an inventory row with no fixed expiry: a long date, withdrawn by removing the account or the name
 EXPIRES = {}                                                                      # {(source, workspace, slot): "YYYY-MM-DD"}: only for a credential with no inventory row
@@ -101,7 +102,7 @@ def configured(environ):
 
 
 def expiry_table():
-    """EXPIRES plus each reused credential's date from its existing inventory row (no new row to maintain). A new FOLLOWUP_ credential has none."""
+    """EXPIRES plus each credential's date from its inventory row (a row with no fixed expiry follows NO_EXPIRY)."""
     from lifeos.platform.credential_list import CREDENTIALS                       # noqa: PLC0415
     rows = {row.get("key"): row for row in CREDENTIALS}
     table = {}
