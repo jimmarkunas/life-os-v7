@@ -1,19 +1,19 @@
 """LIFE-711: writes the Action Inbox view into the blocks of Jim's approved page. The writer owns the blocks below one marker line and nothing else."""
-# Jim, Nov 16 2026: build the QA9 mockup as a full-width page inside the callout, live data in the same blocks, no database. The page (found by its title and its marker, never by a committed id) was laid out once with the QA9 blocks below MARKER (SHAPE: a
-# header callout, five tiles in columns, the main table, a note, the six-source health callout, the Followup mapping callout, the Followup table and the Review Needed line). This writer changes only the
+# Jim, Nov 16 2026: a status dashboard with the list under it, as a full-width page inside the callout, QA9 look, live data in the same blocks (the list is an inline database). The page (found by its title and its marker, never by a committed id) was laid out once with the QA9 blocks below MARKER (SHAPE: a
+# header callout, five tiles in columns, the source health table, the list (an inline database), the Followup mapping callout, the Followup table and the Review Needed line). This writer changes only the
 # words in those blocks, so every icon, colour and layout stays as it was built. The Truly empty / Cannot say callout is the one block it adds and removes, at the very end, only when it applies.
 #
 # Safety: it reads the page's block tree first and may PATCH or DELETE only a block id it read below the marker (anything else is `write_outside_page`, nothing written); a page whose blocks no longer
 # have the expected shape is refused (`page_shape_changed`) and left alone; it is idempotent (the same words write nothing); the title and every other page are never touched. Counts and fixed codes only.
 import os
 
-from lifeos.inbox import page_view
+from lifeos.inbox import page_rows, page_view
 from lifeos.inbox.model import InboxError
 from lifeos.platform.notion_client import Client, NotionError
 
 TITLE = "Agent Inbox"
 MARKER = "— machine-written below this line (V7, LIFE-711): do not hand-edit —"
-SHAPE = ("callout", "column_list", "table", "paragraph", "divider", "callout", "divider", "callout", "table", "paragraph")
+SHAPE = ("callout", "column_list", "heading_3", "table", "paragraph", "heading_3", "child_database", "callout", "table", "paragraph")
 STATE_ICON = {"Truly empty": ("📭", "gray_bg"), "Cannot say": ("⚠️", "red_bg")}
 
 
@@ -122,18 +122,20 @@ def _kids(page, block, count):
 
 
 def apply(page, view):
-    """Write `view` (page_view.render) into the page's blocks. -> counts."""
-    header, columns, main, _, _, health, _, _, followup, review = page.body
+    """Write `view` (page_view.render) into the page's blocks and the list's rows. -> counts."""
+    header, columns, _, health, _, _, listing, _, followup, review = page.body
     text = page.set_text(_kids(page, header, 3)[2], [(view["refreshed"], False, True)])
-    cols = _kids(page, columns, 5)
-    for column, (number, caption) in zip(cols, [*view["tiles"], view["healthy"]]):
+    for column, (number, caption) in zip(_kids(page, columns, 5), [*view["tiles"], view["healthy"]]):
         inner = _kids(page, _kids(page, column, 1)[0], 3)
         text += page.set_text(inner[0], [(number, False, False)]) + page.set_text(inner[2], [(caption, False, True)])
-    rows = page.replace_rows(main, view["main"]) + page.replace_rows(followup, view["followup"])
-    text += page.set_text(_kids(page, health, 3)[1], page_view.source_pieces(view))
+    rows = page.replace_rows(health, view["health"]) + page.replace_rows(followup, view["followup"])
     text += page.set_text(review, [(view["review"], False, True)])
+    page._guard(listing["id"])
+    listed = page_rows.reconcile(page.client, listing["id"], view["rows"], {w.lower() for w in view["clean"]})
+    page.writes += sum(listed.values())
     states = page.set_state(view["state"])
-    return {"text_blocks_written": text, "table_rows_written": rows, "state_callouts_changed": states, "unchanged": int(page.writes == 0)}
+    return {"text_blocks_written": text, "table_rows_written": rows, "list_rows_created": listed["created"], "list_rows_updated": listed["updated"], "list_rows_archived": listed["archived"],
+            "state_callouts_changed": states, "unchanged": int(page.writes == 0)}
 
 
 def locate(client):
