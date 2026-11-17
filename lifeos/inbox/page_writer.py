@@ -130,10 +130,10 @@ def apply(page, view):
     text += page.set_text(page.refreshed, [(view["refreshed"], False, True)])
     listed = page_rows.reconcile(page.client, page.listing, view["rows"], {w.lower() for w in view["clean"]})
     healthy = page_rows.reconcile(page.client, page.health, view["health"], set(), page_rows.HEALTH, archive=False)
-    page.writes += sum(listed.values()) + sum(healthy.values())
+    page.writes += sum(v for k, v in listed.items() if k != "failed") + sum(v for k, v in healthy.items() if k != "failed")
     states = page.set_state(view["state"])
     return {"text_blocks_written": text, "list_rows_created": listed["created"], "list_rows_updated": listed["updated"], "list_rows_archived": listed["archived"],
-            "health_rows_created": healthy["created"], "health_rows_updated": healthy["updated"], "state_callouts_changed": states, "unchanged": int(page.writes == 0)}
+            "list_rows_failed": listed["failed"], "health_rows_created": healthy["created"], "health_rows_updated": healthy["updated"], "health_rows_failed": healthy["failed"], "state_callouts_changed": states, "unchanged": int(page.writes == 0)}
 
 
 def locate(client):
