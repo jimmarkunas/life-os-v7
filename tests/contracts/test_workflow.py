@@ -229,7 +229,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", text))), ["LIFEOS_BWS_RUNTIME_TOKEN"])      # LIFE-699: the Notion ids map is declared empty and the LIFEOS_NOTION_<KEY> ids come from the settings page. LIFE-121: the report job reads the Ledger's data source id (LIFE-699: from the V7 settings page now) to find its page; LIFE-704: the Gmail client id and the SSH port no longer come from GitHub
         for name in moved:
             self.assertNotIn(f"secrets.{name}", text)                                                      # no direct copy, so no fallback
-        self.assertEqual(re.findall(r"uses:\s*(\S*bws-load)", text), ["./.github/actions/bws-load"] * 5)   # the one local loader, once per job (LIFE-631)
+        self.assertEqual(re.findall(r"uses:\s*(\S*bws-load)", text), ["./.github/actions/bws-load"] * 6)   # the one local loader, once per job (LIFE-631; the Action Inbox view QA job is the sixth, LIFE-711)
         head, rest = text.split("\n  # LIFE-64:")                                                           # the database-only diagnostics, then the one job that reads Gmail,
         trace_text, sandbox_text = rest.split("\n  # LIFE-10:")                                              # then the one job that reads Notion
         sandbox_text, ui_text = sandbox_text.split("\n  # LIFE-88:")                                        # then LIFE-88's UI 3c probe, the one job with the Interview token

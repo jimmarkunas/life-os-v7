@@ -14,7 +14,6 @@ from lifeos.inbox.model import InboxError
 from lifeos.platform import switches
 from lifeos.platform.notion_client import Client, NotionError
 
-SWITCH = "ACTION_INBOX_VIEW"
 MODES = ("qa-proof", "qa-rollback")
 
 
@@ -66,7 +65,7 @@ def run(limit, live, environ=None, client=None, clock=None):
     mode = (env.get("INBOX_VIEW_MODE") or "").strip()
     if mode in MODES:
         return _qa(mode, bool(live) and (env.get("INBOX_VIEW_CONFIRM") or "").strip() == "QA", env, client, now)
-    if not switches.state(SWITCH, env):
+    if not switches.state("ACTION_INBOX_VIEW", env):
         return {"off": 1}
     return {"unwired": 1}
 
