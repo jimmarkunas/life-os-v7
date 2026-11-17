@@ -71,7 +71,6 @@ FOLLOWUP_ACCOUNT_NOTION_BYTALOS input Short account label for the Followup notio
 FOLLOWUP_ACCOUNT_NOTION_PERSONAL input Short account label for the Followup notion source (personal), shown in receipts; never an address
 FOLLOWUP_ACCOUNT_OUTLOOK_PERSONAL_1 input Short account label for the Followup outlook source (personal), shown in receipts; never an address
 FOLLOWUP_ACCOUNT_OUTLOOK_PERSONAL_2 input Short account label for the Followup outlook source (personal, account 2), shown in receipts; never an address
-FOLLOWUP_ACCOUNT_OUTLOOK_PERSONAL_3 input Short account label for the Followup outlook source (personal, account 3), shown in receipts; never an address
 FOLLOWUP_ACCOUNT_TODOIST_PERSONAL input Short account label for the Followup todoist source (personal), shown in receipts; never an address
 FOLLOWUP_GCAL_BYTALOS_CALENDAR_ID input Google calendar id the Followup calendar reader calls (bytalos)
 FOLLOWUP_GCAL_PERSONAL_CALENDAR_ID input Google calendar id the Followup calendar reader calls (personal)

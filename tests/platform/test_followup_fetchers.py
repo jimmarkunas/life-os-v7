@@ -7,6 +7,7 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from unittest import mock
 
+from lifeos.outlook import stage as outlook_stage
 from lifeos.platform import followup_fetchers as F
 from lifeos.platform import followup_readers as readers
 from lifeos.platform import gcal, notion_client, todoist
@@ -32,7 +33,7 @@ class FakeTokens:
 
 
 def build(environ, factories=None, clock=None, tokens=None):
-    return F.build_fetchers(environ, factories=factories, clock=clock, token_store=tokens or FakeTokens({"followup-personal-1": "r" * 20, "followup-personal-2": "s" * 20, "followup-personal-3": "u" * 20}))
+    return F.build_fetchers(environ, factories=factories, clock=clock, token_store=tokens or FakeTokens({F.OUTLOOK_LABELS[1]: "r" * 20, F.OUTLOOK_LABELS[2]: "s" * 20}))
 
 
 def N(source, tenant="personal", slot=1):
@@ -271,7 +272,7 @@ class Credentials(Codes):
         self.assertEqual(self.code(lambda: gmail_fetchers["gmail"](N("calendar", "personal"), None)), "FOLLOWUP_CREDENTIAL_NOT_ALLOWED")
 
     def test_the_name_table(self):
-        expected = {(s, t, 1) for s in F.SOURCES for t in F.TENANTS} - {("outlook", "bytalos", 1), ("todoist", "bytalos", 1)} | {("outlook", "personal", 2), ("outlook", "personal", 3)}
+        expected = {(s, t, 1) for s in F.SOURCES for t in F.TENANTS} - {("outlook", "bytalos", 1), ("todoist", "bytalos", 1)} | {("outlook", "personal", n) for n in range(2, F.SLOTS[("outlook", "personal")] + 1)}
         self.assertEqual(set(NAMES), expected)
         for name in NAMES.values():
             self.assertNotIn("tgp", name.lower())
@@ -282,12 +283,14 @@ class Credentials(Codes):
         self.assertEqual({NAMES[(s, t, 1)] for s in ("notion", "interview_os") for t in F.TENANTS}, {"NOTION_API_TOKEN"})
         self.assertEqual({NAMES[("calendar", t, 1)] for t in F.TENANTS}, {"GCAL_SERVICE_ACCOUNT_JSON"})
         self.assertEqual(NAMES[("gmail", "personal", 1)], "GMAIL_OAUTH_REFRESH_TOKEN")
-        self.assertEqual([NAMES[("outlook", "personal", n)] for n in (1, 2, 3)], ["followup-personal-1", "followup-personal-2", "followup-personal-3"])   # labels in v7_outlook_token
+        outlook_names = [NAMES[("outlook", "personal", n)] for n in range(1, F.SLOTS[("outlook", "personal")] + 1)]
+        self.assertEqual(outlook_names, [F.OUTLOOK_LABELS[n] for n in sorted(F.OUTLOOK_LABELS)])      # labels in v7_outlook_token
+        self.assertTrue(set(outlook_names) <= set(outlook_stage.LABELS))                            # only sign-ins the outlook workflow already offers: a second label for one mailbox is refused there
         self.assertEqual(len(set(F.GRANT_REFS.values())), len(F.GRANT_REFS))         # every grant names its own reference even when a secret is shared
         self.assertFalse([n for n in NAMES.values() if n.startswith("FOLLOWUP_OUTLOOK") or "SOURCE_IDS" in n or "_SA_JSON" in n or "READONLY_TOKEN" in n])
         self.assertEqual(F.ACCOUNT_NAMES[("outlook", "personal", 2)], "FOLLOWUP_ACCOUNT_OUTLOOK_PERSONAL_2")
         self.assertEqual(sorted(set(F.ACCOUNT_NAMES.values())), sorted(["FOLLOWUP_ACCOUNT_" + s for s in (
-            "JIRA_PERSONAL", "JIRA_BYTALOS", "CALENDAR_PERSONAL", "CALENDAR_BYTALOS", "GMAIL_PERSONAL", "GMAIL_BYTALOS", "OUTLOOK_PERSONAL_1", "OUTLOOK_PERSONAL_2", "OUTLOOK_PERSONAL_3",
+            "JIRA_PERSONAL", "JIRA_BYTALOS", "CALENDAR_PERSONAL", "CALENDAR_BYTALOS", "GMAIL_PERSONAL", "GMAIL_BYTALOS", *["OUTLOOK_PERSONAL_%d" % n for n in range(1, F.SLOTS[("outlook", "personal")] + 1)],
             "TODOIST_PERSONAL", "NOTION_PERSONAL", "NOTION_BYTALOS", "INTERVIEW_PERSONAL", "INTERVIEW_BYTALOS")]))
         self.assertEqual(F.missing({}), sorted(set(F.REUSED_NAMES) | set(F.NEW_NAMES)))
         self.assertEqual(F.missing(env()), ["FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH"])
@@ -330,22 +333,22 @@ class Workspaces(Codes):
         source = inspect.getsource(F._read_jira)
         self.assertEqual(sorted(set(re.findall(r"client\.(\w+)", source))), ["get"])
 
-    def test_three_personal_outlook_accounts_each_use_their_own_credential(self):
+    def test_each_connected_personal_outlook_account_uses_its_own_credential(self):
         seen = []
         fetchers = build(env(), factories={"outlook": lambda client_id, refresh, save=None: seen.append(refresh) or FakeOutlook([])})
-        for slot in (1, 2, 3):
+        for slot in range(1, F.SLOTS[("outlook", "personal")] + 1):
             fetchers["outlook"](N("outlook", "personal", slot), None)
-        self.assertEqual(seen, ["r" * 20, "s" * 20, "u" * 20])
+        self.assertEqual(seen, ["r" * 20, "s" * 20][:F.SLOTS[("outlook", "personal")]])
 
     def test_a_rotated_outlook_token_is_written_back_under_its_label_and_nothing_else_is(self):
-        tokens = FakeTokens({"followup-personal-2": "old" + "x" * 20})
+        tokens = FakeTokens({F.OUTLOOK_LABELS[2]: "old" + "x" * 20})
         saves = []
         fetchers = build(env(), factories={"outlook": lambda client_id, refresh, save=None: saves.append((refresh, save)) or FakeOutlook([])}, tokens=tokens)
         fetchers["outlook"](N("outlook", "personal", 2), None)
         refresh, save = saves[0]
         self.assertEqual(refresh, "old" + "x" * 20)
         save("new" + "y" * 20)
-        self.assertEqual(tokens.saved, [("followup-personal-2", "new" + "y" * 20)])
+        self.assertEqual(tokens.saved, [(F.OUTLOOK_LABELS[2], "new" + "y" * 20)])
         self.assertEqual(F.OUTLOOK_SCOPES, "offline_access Mail.Read Calendars.Read")
         self.assertEqual(self.code(lambda: build(env(), tokens=FakeTokens({}))["outlook"](N("outlook", "personal", 1), None)), "FOLLOWUP_CREDENTIAL_MISSING")
 
