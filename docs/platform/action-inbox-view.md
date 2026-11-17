@@ -39,17 +39,20 @@ A pure function: the same inputs give the same ordered plan of `create` (full ro
 - Health rows are never archived. A row whose key is not ours is left alone.
 - `view_plan.execute(ops, write)` hands each operation to `write`; the default `refuse_write` raises `notion_writes_not_authorized`. No second task store, scheduler or frontend exists: this is a plan and an injected writer.
 
-## D. What is not done, and the exact approvals still needed (Done-when item 4)
+## D. The Notion writer and its QA proof (LIFE-711, Nov 16 2026)
 
-Item 4 ("verify Notion projection and rollback with a read-back receipt on an approved test page") is NOT done here. It needs, from Jim, each stated exactly:
+Jim's recorded answers (chat, Nov 16 2026): **1** yes, the QA area (LIFE OS QA Home) is where the first real Notion write goes. **2** yes, the existing Notion integration (the one behind `NOTION_API_TOKEN`), no new integration or token. **3** yes, the writer may only create, update and archive the Agent Inbox rows it owns, tracked by a server-side row map, never any other page or block, and it is the only writer on that surface. **4** no to a separate reviewed change between QA and production: "This is unnecessary process theater. We should plan to retire QA as archive only, once this process is proved out." **5** yes, rollback is archiving the rows the writer created and restoring the "not connected" block text, with a read-back receipt each run.
 
-1. **A named test page or database** in Notion (disposable, not the production Command Center), whose id goes in the environment under a name such as `ACTION_INBOX_VIEW_TEST` (`lifeos.platform.notion_ids`), never in the repo.
-2. **The Notion integration and its token custody** for that page: which integration, which data scope (this page only), where the token lives (the existing Bitwarden layout), and who may read it.
-3. **A writer scope:** one row for the writer in `docs/platform/notion-writers.md` and, if it owns a page region, one `OWNERS` entry in `lifeos/platform/router.py`, so the one-writer contract test passes. This ticket adds neither because it writes nothing.
-4. **A release:** a stage in the V7 tick (or a manual run) and the host that runs it, approved separately; no live read is enabled by this change (`LIVE_READS_ENABLED` stays false).
-5. **A rollback and a read-back receipt:** the plan's reverse (archive what was created), and a read of the page after the write that equals the projection.
+What exists (`lifeos/inbox/view_writer.py`, `view_stage.py`, `view_synthetic.py`; tests `tests/inbox/test_view_writer.py`):
 
-Until then the projection and the plan are proven only on synthetic data, and the view does not count as live six-source acceptance (that stays with LIFE-720).
+- **The view** is one Notion database, "Agent Inbox (V7 view)", created by the writer under LIFE OS QA Home (found by exact title, so no page id is stored anywhere). Its properties are exactly `view_writer.PROPERTIES`, the ones section A lists plus `Managed by`.
+- **Ownership.** A row is ours only when it is in the view's data source and its `Managed by` property is `v7-inbox-writer`. `ViewWriter.current_rows()` returns only those rows and builds the row map (Record ID to page id). Updates and archives go through the map: a key outside it is refused with `INBOX_VIEW_WRITE_OUT_OF_SCOPE` before any request. A page in another data source, or a row someone added by hand, is never read into the map and never touched. Duplicate rows for one key keep the oldest and archive the rest.
+- **Reconcile and read back.** `reconcile` plans with `view_plan.plan`, writes, reads the rows back and plans again: `readback_equal` is true only when the second plan is empty. The receipt is counts and flags, never a title, link or id.
+- **TGP** is one fixed row, "Tracked, not connected". It is not a source and nothing is read for it.
+- **The QA proof** is a manual run: Actions, workflow diag, stage `inbox-view-qa`, confirm `QA`. It writes synthetic rows (titles start with SYNTHETIC, links on example.com) twice: scenario A creates every row, scenario B updates one, archives one whose source read cleanly and keeps the row of a degraded source. The rows stay in place for Jim to look at. `inbox-view-qa-rollback` (confirm `QA`) archives every row the writer owns and reads back that none remain.
+- **The hourly path** is the stage `inbox-view` behind the switch `ACTION_INBOX_VIEW` (switches.json), off. On, it still returns `unwired`: no synthetic row is ever written by the hourly path.
+
+What remains for LIFE-711, in order: a live row source (the Followup feed, then the other five readers; `LIVE_READS_ENABLED` and the grants are released with LIFE-716 and LIFE-720, not here), then pointing the writer at the production Agent Inbox block on the LIFE OS home page in the same ticket (no second approval step, per answer 4), then archiving the QA area. Rollback on production is the same archive plus restoring the "not connected" text.
 
 ## E. Known gaps
 

@@ -4,16 +4,16 @@ on:
   workflow_dispatch:
     inputs:
       stage:
-        description: "followup-schema-apply (LIFE-756, needs confirm = APPLY): creates the four Followup tables once and reads them back; without the confirm it is a dry run. followup-schema-check (LIFE-756): a read-only look at the V7 database for those four tables (flags and counts only; creates nothing). inbox-schema-apply (LIFE-712, needs confirm = APPLY): creates the four Action Inbox tables once and reads them back; without the confirm it is a dry run. inbox-schema-check (LIFE-712): a read-only look at the V7 database for the four Action Inbox tables: server kind and version, default row format, which tables exist, whether the account may create and write (flags and counts only; creates nothing). scale-up-holds: why parked Scale-Up roles do not move (counts from the Jobs store; writes nothing). scale-up-boards: for each Scale-Up board in the registry, its last read, how many vacancies it lists and what became of them, and the jobs created from it by status (counts and source ids only; writes nothing). scale-up-exclusions: why Scale-Up jobs are EXCLUDED_FIT, split by stored reason, Fit band and source (counts only; writes nothing). scale-up-exclusion-review: the Scale-Up jobs scored at or over the Fit floor that Jim's own exclusion rules removed (count in the clear; the list goes to one private Notion page, written only with confirm = REPORT; a dry run writes nothing). scale-up-register: the current official sponsor register against the Scale-Up registry, London Scale-up sponsors not held (counts in the clear; names go to one private Notion page, only with confirm = REPORT). scale-up-links: re-reads each parked role's own public page and counts why its link check fails (counts only; writes nothing). alerts-open: which alerts are open and the new jobs per source in the last 24 hours (source names and counts only; writes nothing). newsletter-trace (needs message_ref): reads ONE Newsletter message from Gmail (list and read only) and classifies each parsed card against the Jobs store: owned, collision, orphan, suppressed or missing (counts and fixed codes only; writes nothing). notion-sandbox-access: whether the existing Jobs Notion integration can read the synthetic sandbox Job Ledger (three fixed reads; HTTP and error codes only; writes nothing). notion-sandbox-outreach-proof (needs confirm = SYNTHETIC): the one-time LIFE-10 proof of the job-page outreach writer on ONE synthetic page in the sandbox Job Ledger, with fictional in-memory conversations (writes only that page; codes and counts only). interview-ui-probe (needs confirm = QA): LIFE-88's first gate, whether the V7 Notion REST transport can build the accepted UI 3c tree (tabs, tables in callouts, 63/37 columns, in-place updates); reads the UI 3c QA preview and writes only one probe page under the QA Interview OS parent (block types, check codes and counts only) jobs-backlog (LIFE-212): every job not on the Job Ledger yet and why it waits, to one dated private Notion page (type REPORT in confirm; blank is a dry run that counts only)."
+        description: "followup-schema-apply (LIFE-756, needs confirm = APPLY): creates the four Followup tables once and reads them back; without the confirm it is a dry run. followup-schema-check (LIFE-756): a read-only look at the V7 database for those four tables (flags and counts only; creates nothing). inbox-schema-apply (LIFE-712, needs confirm = APPLY): creates the four Action Inbox tables once and reads them back; without the confirm it is a dry run. inbox-schema-check (LIFE-712): a read-only look at the V7 database for the four Action Inbox tables: server kind and version, default row format, which tables exist, whether the account may create and write (flags and counts only; creates nothing). scale-up-holds: why parked Scale-Up roles do not move (counts from the Jobs store; writes nothing). scale-up-boards: for each Scale-Up board in the registry, its last read, how many vacancies it lists and what became of them, and the jobs created from it by status (counts and source ids only; writes nothing). scale-up-exclusions: why Scale-Up jobs are EXCLUDED_FIT, split by stored reason, Fit band and source (counts only; writes nothing). scale-up-exclusion-review: the Scale-Up jobs scored at or over the Fit floor that Jim's own exclusion rules removed (count in the clear; the list goes to one private Notion page, written only with confirm = REPORT; a dry run writes nothing). scale-up-register: the current official sponsor register against the Scale-Up registry, London Scale-up sponsors not held (counts in the clear; names go to one private Notion page, only with confirm = REPORT). scale-up-links: re-reads each parked role's own public page and counts why its link check fails (counts only; writes nothing). alerts-open: which alerts are open and the new jobs per source in the last 24 hours (source names and counts only; writes nothing). newsletter-trace (needs message_ref): reads ONE Newsletter message from Gmail (list and read only) and classifies each parsed card against the Jobs store: owned, collision, orphan, suppressed or missing (counts and fixed codes only; writes nothing). notion-sandbox-access: whether the existing Jobs Notion integration can read the synthetic sandbox Job Ledger (three fixed reads; HTTP and error codes only; writes nothing). notion-sandbox-outreach-proof (needs confirm = SYNTHETIC): the one-time LIFE-10 proof of the job-page outreach writer on ONE synthetic page in the sandbox Job Ledger, with fictional in-memory conversations (writes only that page; codes and counts only). interview-ui-probe (needs confirm = QA): LIFE-88's first gate, whether the V7 Notion REST transport can build the accepted UI 3c tree (tabs, tables in callouts, 63/37 columns, in-place updates); reads the UI 3c QA preview and writes only one probe page under the QA Interview OS parent (block types, check codes and counts only) jobs-backlog (LIFE-212): every job not on the Job Ledger yet and why it waits, to one dated private Notion page (type REPORT in confirm; blank is a dry run that counts only). inbox-view-qa (LIFE-711, needs confirm = QA): the QA proof of the Action Inbox view writer: creates the Agent Inbox (V7 view) database under LIFE OS QA Home if missing and writes synthetic rows to it only, twice (create, then update, archive and keep), reading back each time; the existing Notion integration, counts and fixed codes only. inbox-view-qa-rollback (needs confirm = QA): archives every row the writer owns in that view and reads back that none remain."
         type: choice
-        options: ["scale-up-holds", "scale-up-links", "scale-up-boards", "scale-up-exclusions", "scale-up-exclusion-review", "scale-up-register", "jobs-backlog", "alerts-open", "newsletter-trace", "notion-sandbox-access", "notion-sandbox-outreach-proof", "interview-ui-probe", "inbox-schema-check", "inbox-schema-apply", "followup-schema-check", "followup-schema-apply"]
+        options: ["scale-up-holds", "scale-up-links", "scale-up-boards", "scale-up-exclusions", "scale-up-exclusion-review", "scale-up-register", "jobs-backlog", "alerts-open", "newsletter-trace", "notion-sandbox-access", "notion-sandbox-outreach-proof", "interview-ui-probe", "inbox-view-qa", "inbox-view-qa-rollback", "inbox-schema-check", "inbox-schema-apply", "followup-schema-check", "followup-schema-apply"]
         default: "scale-up-holds"
       message_ref:
         description: "alerts-open (optional) and newsletter-trace (required): the SHA-256 (64 hex) of one Gmail message id, never the id itself. Returns only that message's per-vacancy trace (allowlisted status, source and reason codes, Ledger page and verification recorded, terminal and blocker totals); read-only, counts only."
         type: string
         default: ""
       confirm:
-        description: "notion-sandbox-outreach-proof: type SYNTHETIC; scale-up-exclusion-review, scale-up-register and jobs-backlog: type REPORT (writes the one private report page; blank is a dry run); interview-ui-probe: type QA (confirms that only the one sandbox or QA probe page is written)"
+        description: "notion-sandbox-outreach-proof: type SYNTHETIC; scale-up-exclusion-review, scale-up-register and jobs-backlog: type REPORT (writes the one private report page; blank is a dry run); interview-ui-probe: type QA (confirms that only the one sandbox or QA probe page is written); inbox-view-qa and inbox-view-qa-rollback: type QA (confirms that only the Agent Inbox view database in the QA area is written)"
         type: string
         default: ""
 permissions:
@@ -23,7 +23,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   diag:
-    if: ${{ inputs.stage != 'scale-up-exclusion-review' && inputs.stage != 'scale-up-register' && inputs.stage != 'jobs-backlog' && inputs.stage != 'newsletter-trace' && inputs.stage != 'notion-sandbox-access' && inputs.stage != 'notion-sandbox-outreach-proof' && inputs.stage != 'interview-ui-probe' }}
+    if: ${{ inputs.stage != 'scale-up-exclusion-review' && inputs.stage != 'scale-up-register' && inputs.stage != 'jobs-backlog' && inputs.stage != 'newsletter-trace' && inputs.stage != 'notion-sandbox-access' && inputs.stage != 'notion-sandbox-outreach-proof' && inputs.stage != 'interview-ui-probe' && inputs.stage != 'inbox-view-qa' && inputs.stage != 'inbox-view-qa-rollback' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -178,6 +178,39 @@ jobs:
           NOTION_INTERVIEW_TOKEN: ${{ steps.bws_interview.outputs.NOTION_INTERVIEW_TOKEN }}
           PROBE_CONFIRM: ${{ inputs.confirm }}
         run: python -m lifeos.run interview-ui-probe --limit 0 --live
+  # LIFE-711: the QA proof of the Action Inbox view writer. Its own job, so the main Notion integration reaches only this stage here. It finds LIFE OS QA Home, creates the "Agent Inbox (V7 view)" database under it if it is
+  # missing and writes only synthetic rows into that database, only with confirm = QA (Jim, Nov 16 2026: test page, existing integration, writer scope). Counts and fixed codes only.
+  inbox_view_qa:
+    if: ${{ inputs.stage == 'inbox-view-qa' || inputs.stage == 'inbox-view-qa-rollback' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout the exact commit (own git fetch; the token is passed once and never stored)
+        run: |
+          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
+          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
+          git checkout -q --detach FETCH_HEAD
+      - uses: ./.github/actions/python
+      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
+        uses: ./.github/actions/bws-helper
+        with:
+          wait_seconds: "100"
+      - id: bws_inbox_view
+        name: Load the Notion token from Bitwarden (exactly this 1; masked step output only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        uses: ./.github/actions/bws-load
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN
+      - name: Action Inbox view writer, QA proof (synthetic rows in the QA view only; typed confirmation; counts and fixed codes only)
+        env:
+          LIFEOS_NOTION_IDS: ""
+          NOTION_API_TOKEN: ${{ steps.bws_inbox_view.outputs.NOTION_API_TOKEN }}
+          INBOX_VIEW_CONFIRM: ${{ inputs.confirm }}
+          INBOX_VIEW_MODE: ${{ inputs.stage == 'inbox-view-qa-rollback' && 'qa-rollback' || 'qa-proof' }}
+        run: python -m lifeos.run inbox-view --limit 0 --live
   # LIFE-121: the two private reports. Their own job: the Jobs Notion token reaches only these stages (and the sandbox job above), the database values only the review. The text is written straight to ONE private Notion page
   # (a child of the page that holds the Job Ledger) and never reaches a log; the log has counts and fixed codes. A dry run unless confirm = REPORT (Jim, Oct 26: "list the 59 in Notion").
   report:
