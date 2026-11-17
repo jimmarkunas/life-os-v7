@@ -117,14 +117,14 @@ class Build(unittest.TestCase):
         self.assertEqual({v for v in used if v.startswith("FOLLOWUP_")}, {"FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH", "FOLLOWUP_TODOIST_PERSONAL_TOKEN"})
         table = W.expiry_table()
         for key, name in raw.items():
-            self.assertEqual(key in table, not name.startswith("FOLLOWUP_"), key)       # a reused credential takes its inventory date; a new item has none, so no grant until it exists
+            self.assertEqual(key in table, name.startswith("followup-") or name in W.INVENTORY, key)       # a credential has an expiry exactly when it has an inventory row (derived from the map, never a count)
         env = {**ON, "FOLLOWUP_ACCOUNT_CALENDAR_PERSONAL": "cp", "FOLLOWUP_ACCOUNT_CALENDAR_BYTALOS": "cb", "FOLLOWUP_ACCOUNT_NOTION_PERSONAL": "np",
                "FOLLOWUP_ACCOUNT_GMAIL_BYTALOS": "gb", "FOLLOWUP_ACCOUNT_TODOIST_PERSONAL": "tp"}
         grants = W.grants_for(env, W.credential_names())
         calendars = {g.tenant: g for g in grants if g.source == "calendar"}
         self.assertEqual({t: g.account for t, g in calendars.items()}, {"personal": "cp", "bytalos": "cb"})        # one item, two Grants, two scopes
         self.assertNotEqual(calendars["personal"].credential_ref, calendars["bytalos"].credential_ref)
-        self.assertFalse([g for g in grants if g.source == "todoist" or (g.source == "gmail" and g.tenant == "bytalos")])
+        self.assertEqual({(g.source, g.tenant) for g in grants if g.source == "todoist" or (g.source == "gmail" and g.tenant == "bytalos")}, {("todoist", "personal"), ("gmail", "bytalos")})   # both have a loader line and an inventory row now
 
     def test_outlook_is_up_to_three_personal_accounts_and_never_bytalos(self):
         env = {**ON, **OUTLOOKS, "FOLLOWUP_ACCOUNT_OUTLOOK_PERSONAL_4": "ol4", "FOLLOWUP_ACCOUNT_OUTLOOK_BYTALOS": "no"}
@@ -283,6 +283,29 @@ class Job(unittest.TestCase):
         self.assertFalse(any(marker in text for marker in W.stage.TGP_DOMAINS))
         self.assertEqual(json.loads((self.ROOT / "lifeos/platform/due_table.json").read_text())["jobs"]["followup"], {"every_hours": 1})
         self.assertEqual(json.loads((self.ROOT / "lifeos/platform/switches.json").read_text())["FOLLOWUP_WIRING"]["state"], "off")
+
+    def test_every_new_followup_credential_is_loaded_passed_and_has_an_inventory_row(self):
+        """Derived from the code: each FOLLOWUP_ secret name the fetchers use needs a bws-load line, a step env entry and a credential inventory row, so a source never silently shows DEGRADED for a wiring gap."""
+        try:
+            import yaml
+        except ImportError:
+            self.skipTest("PyYAML not installed")
+        from lifeos.platform.credential_list import CREDENTIALS
+        job = yaml.safe_load((self.ROOT / ".github/workflows/domains.yml").read_text())["jobs"]["followup"]
+        loaded = next(step for step in job["steps"] if step.get("id") == "bws_followup")
+        lines = [line.split() for line in str(loaded["with"].get("secrets", "")).splitlines() if line.strip()]
+        loaded_names = {parts[-1] for parts in lines}
+        ids = [parts[0] for parts in lines]
+        self.assertEqual(len(ids), len(set(ids)))                                          # one Bitwarden item per line
+        env = next(step for step in job["steps"] if step.get("id") == "followup")["env"]
+        rows = {row["key"] for row in CREDENTIALS}
+        self.assertTrue(F.NEW_NAMES)
+        for name in F.NEW_NAMES:
+            if name.startswith("FOLLOWUP_GCAL_") or name.startswith("FOLLOWUP_ACCOUNT_"):
+                continue                                                                   # plain identifiers and labels, read by bws-plain or committed, not credentials
+            self.assertIn(name, loaded_names)
+            self.assertIn(name, env)
+            self.assertIn(W.INVENTORY.get(name), rows)
 
 
 class DefaultLabels(unittest.TestCase):
