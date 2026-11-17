@@ -15,8 +15,8 @@
     "turned_on": "Nov 16, 2026, 6:07 PM CT, by Claude Code on Jim's chat approval ('Go on all 3', Nov 16 2026; the plan he approved is dry run first): runs as a DRY RUN (no --live in the workflow step), every connected source's credentials are in Bitwarden (LIFE-757 PRs 1281, 1285, 1287, 1288)."
   },
   "ACTION_INBOX_VIEW": {
-    "state": "off",
-    "bounds": "LIFE-711: the `inbox-view` stage's hourly path (the Notion Agent Inbox view). Off: a counts-only no-op. On it still returns `unwired` until the live row sources are released: it never writes a synthetic row. The QA proof of the writer is a separate manual run (diag.yml, confirm = QA) and does not use this switch; it writes only the QA area's view database.",
-    "turned_on": ""
+    "state": "on",
+    "bounds": "LIFE-711: the Action Inbox page (the full-width page inside the home-page callout, Jim's approved QA9 layout). On: after a LIVE `followup` run, the stage writes the words of that page's blocks below its marker line from the stored Followup payloads (lifeos/inbox/page_writer.py): only those blocks, only their text and table rows, never the title, another page, or a database; a failure prints a fixed word and never fails the stage. Off: nothing is written to Notion. Jim approved the page and no second approval step, Nov 16 2026.",
+    "turned_on": "2026-11-16"
   }
 }
