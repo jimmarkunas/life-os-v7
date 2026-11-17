@@ -46,12 +46,25 @@ class Release(unittest.TestCase):
         self.assertEqual(fake.posts[0][1], {"transition": {"id": "17"}})
 
     def test_nothing_is_released_for_an_open_blocker_a_missing_done_when_or_a_skip_label(self):
-        children = [issue("LIFE-11", blockers=[("LIFE-5", False)]), issue("LIFE-12", description=NO_DONE_WHEN), issue("LIFE-13", labels=["protected-file"]), issue("LIFE-14", labels=["jim-only"]), issue("LIFE-16", labels=["planning-only"]),
-                    issue("LIFE-15", blockers=[("LIFE-5", True)])]
+        children = [issue("LIFE-11", blockers=[("LIFE-5", False)]), issue("LIFE-12", description=NO_DONE_WHEN), issue("LIFE-13", labels=["needs-jim"]), issue("LIFE-15", blockers=[("LIFE-5", True)])]
         fake = FakeJira(["LIFE-10"], children)
         out = release.run(0, True, jira=fake)
-        self.assertEqual(out["skipped"], {"blocked": 1, "no_done_when": 1, "skip_label": 3})
+        self.assertEqual(out["skipped"], {"blocked": 1, "no_done_when": 1, "skip_label": 1})
         self.assertEqual((out["released"], [p for p, _ in fake.posts][0]), (1, "/rest/api/3/issue/LIFE-15/transitions"))
+
+    def test_needs_jim_is_the_only_label_that_stops_a_release_and_it_always_does(self):
+        """LIFE-780: one workflow-control label. Remove the SKIP check and this fails; a legacy label no longer blocks, a Blocks link still does."""
+        self.assertEqual(release.SKIP, {"needs-jim"})
+        out = release.run(0, True, jira=FakeJira(["LIFE-10"], [issue("LIFE-11", labels=["needs-jim", "lane-platform", "agent-claude-code"])]))
+        self.assertEqual((out["released"], out["skipped"]), (0, {"skip_label": 1}))
+        out = release.run(0, True, jira=FakeJira(["LIFE-10"], [issue("LIFE-12", labels=["lane-platform", "agent-claude-code"])]))
+        self.assertEqual(out["released"], 1)
+
+    def test_an_unfinished_blocking_link_always_stops_a_release_even_without_any_label(self):
+        """LIFE-780: blocking is by Blocks links only. Remove the blockers_done check and this fails."""
+        fake = FakeJira(["LIFE-10"], [issue("LIFE-13", blockers=[("LIFE-5", False)]), issue("LIFE-14", blockers=[("LIFE-5", True), ("LIFE-6", False)])])
+        out = release.run(0, True, jira=fake)
+        self.assertEqual((out["released"], out["skipped"], fake.posts), (0, {"blocked": 2}, []))
 
     def test_at_most_three_a_run_in_rank_order_and_a_dry_run_writes_nothing(self):
         children = [issue(f"LIFE-{n}") for n in range(20, 26)]
@@ -86,7 +99,7 @@ class Stalled(unittest.TestCase):
 
     def test_idle_in_progress_tickets_without_a_waiting_note_are_named_and_the_rest_are_not(self):
         found = [self.issue("LIFE-1", "In Progress", 45), self.issue("LIFE-2", "In Progress", 10), self.issue("LIFE-3", "In Progress", 90), self.issue("LIFE-4", "Agent Go", 60),
-                 self.issue("LIFE-5", "Agent Go", 200), self.issue("LIFE-6", "In Progress", 300, labels=["watch"])]
+                 self.issue("LIFE-5", "Agent Go", 200), self.issue("LIFE-6", "In Progress", 300, labels=["needs-jim"])]
         fake = FakeJira([], [], comments={"LIFE-3": "[waiting on] Jim: approve the label"}, found=found)
         out = stalled.run(0, False, jira=fake, now=self.NOW)
         self.assertEqual((out["stalled"], out["keys"]), (2, ["LIFE-1", "LIFE-5"]))

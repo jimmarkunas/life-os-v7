@@ -180,7 +180,7 @@ class Rules(unittest.TestCase):
             self.assertEqual(fd.plan_file(path), {"LIFE-930": {"parent": "LIFE-615", "components": "Platform / Core OS", "fixVersions": "Platform / Core OS 1.0.0"}})
 
 class Container(unittest.TestCase):
-    """LIFE-741: seven epics carry the label epic-container; only the open one titled `LIFE one-off tasks` is the container."""
+    """LIFE-741 and LIFE-780: only the open epic titled `LIFE one-off tasks` is the container; the title alone picks it, no label."""
 
     def labelled(self):
         return {e["key"]: e for e in [epic("LIFE-581", labels=["epic-container"], status="done", summary="V7 scalability"), epic("LIFE-615", labels=["epic-container"], summary="Bugs"),
@@ -191,15 +191,19 @@ class Container(unittest.TestCase):
         self.assertIsNone(fd.find_container(epics))
         self.assertEqual(fd.plan(ticket("LIFE-950")["fields"], epics, fd.find_container(epics) or "(new container)")["parent"], "(new container)")
 
-    def test_the_open_epic_with_the_title_and_label_is_chosen_case_insensitively(self):
+    def test_the_open_epic_with_the_title_is_chosen_case_insensitively_and_the_lowest_key_wins(self):
         epics = self.labelled()
         epics["LIFE-720"] = epic("LIFE-720", labels=["epic-container"], summary="  life ONE-OFF tasks ")
         epics["LIFE-721"] = epic("LIFE-721", labels=["epic-container"], summary="LIFE one-off tasks")
         self.assertEqual(fd.find_container(epics), "LIFE-720")
         self.assertEqual(fd.plan(ticket("LIFE-951")["fields"], epics, "LIFE-720")["parent"], "LIFE-720")
 
-    def test_the_title_alone_without_the_label_is_not_enough(self):
-        self.assertIsNone(fd.find_container({"LIFE-730": epic("LIFE-730", summary="LIFE one-off tasks")}))
+    def test_the_title_alone_is_enough_and_a_created_container_carries_no_label(self):
+        self.assertEqual(fd.find_container({"LIFE-730": epic("LIFE-730", summary="LIFE one-off tasks")}), "LIFE-730")
+        fake = FakeJira([epic("LIFE-615", summary="Bugs")], [ticket("LIFE-960")])
+        fd.run(0, True, jira=fake)
+        self.assertEqual([x for x in fake.log if x[0] == "CREATE"], [("CREATE", "LIFE-901", "LIFE one-off tasks")])
+        self.assertEqual(fake.items["LIFE-901"]["fields"].get("labels") or [], [])
 
     def test_a_dry_run_names_a_new_container_and_a_live_run_creates_it_once(self):
         fake = FakeJira([epic("LIFE-581", labels=["epic-container"], status="done", summary="V7 scalability"), epic("LIFE-615", labels=["epic-container"], summary="Bugs")], [ticket("LIFE-952"), ticket("LIFE-953")])

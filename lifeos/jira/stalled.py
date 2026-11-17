@@ -1,7 +1,7 @@
 """LIFE-729: name LIFE tickets idle in In Progress (30 minutes) or Agent Go (2 hours) with no `[waiting on]` last comment. Read only; no phone push.
 
 
-A ticket Jim is waited on carries `[waiting on] Jim: ...`; a ticket on a watch carries the `watch` label; both are not stalled. Only the LIFE project is read (its keys are public, unlike the personal boards)."""
+A ticket Jim is waited on carries `[waiting on] Jim: ...`; a ticket stopped on a decision only Jim can make carries `needs-jim` (LIFE-780); both are not stalled. Only the LIFE project is read (its keys are public, unlike the personal boards)."""
 import os
 from datetime import datetime, timedelta, timezone
 
@@ -29,7 +29,7 @@ def stalled(jira, now):
     out = []
     for issue in found:
         fields = issue.get("fields") or {}
-        if "watch" in (fields.get("labels") or []):
+        if "needs-jim" in (fields.get("labels") or []):
             continue
         limit = IN_PROGRESS_MINUTES if (fields.get("status") or {}).get("name") == "In Progress" else AGENT_GO_MINUTES
         try:
