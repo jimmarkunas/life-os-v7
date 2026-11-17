@@ -159,7 +159,7 @@
       ]
     }
   ],
-  "reassembled_sha256": "53a0e3da159b4f97851bd91985a48423ef003b918c9b4b8adcf2c17100c391af",
+  "reassembled_sha256": "00783c0cbbc239dbf9a3064b612805e6ffaec94b98c9b5c216d46de9c0e8f3be",
   "amendments": [
     {
       "date": "2026-11-02",
@@ -316,6 +316,12 @@
       "pr": "https://github.com/jimmarkunas/life-os-v7/pull/1282",
       "approval": "Jim Markunas, November 16, 2026 CT, typed in the Claude Code chat: 'I want all 4' (a new stage needs no hand-run tools/regen.py; LIFE-765)",
       "part": "docs/development-policy/04 (the registries bullet: sh tools/preflight.sh runs tools/regen.py --commit), with the matching AGENTS.md Always line"
+    },
+    {
+      "date": "2026-11-16",
+      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/1293",
+      "approval": "Jim Markunas, November 16, 2026, 5:37 PM CT, typed in the Claude Code chat: 'Approved' to the line 'any workflow change with no new secret and no widened permissions is pre-approved; it still stops for credentials, deleting data and spend' (LIFE-779)",
+      "part": "docs/development-policy/04 (Lean delivery amendment: standing pre-approval for workflow changes, enforced by tools/workflow_gate.py in preflight; the Delivery flow v3 clause that grouped workflow edits per file and kept one workflow PR open at a time is removed, as the protected-file label already was), with the matching docs/agent-reference.md lines"
     }
   ]
 }
