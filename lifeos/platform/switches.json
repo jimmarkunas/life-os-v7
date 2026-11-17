@@ -10,8 +10,8 @@
     "turned_on": ""
   },
   "FOLLOWUP_WIRING": {
-    "state": "off",
+    "state": "on",
     "bounds": "LIFE-757: the `followup` stage's live wiring (store, grants, fetchers, access receipts, payload). Off: the stage is a counts-only no-op and the hourly job is skipped. On (the repository variable FOLLOWUP_WIRING = on, or this file in a reviewed PR) it runs as a DRY RUN until `--live` is added to its workflow step after the Followup tables exist; it reads only sources that have a credential and an expiry row, writes a receipt before every read, and never reads Asana or TGP.",
-    "turned_on": ""
+    "turned_on": "Nov 16, 2026, 6:07 PM CT, by Claude Code on Jim's chat approval ('Go on all 3', Nov 16 2026; the plan he approved is dry run first): runs as a DRY RUN (no --live in the workflow step), every connected source's credentials are in Bitwarden (LIFE-757 PRs 1281, 1285, 1287, 1288)."
   }
 }
