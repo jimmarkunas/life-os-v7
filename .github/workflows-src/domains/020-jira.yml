@@ -129,51 +129,6 @@
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_USER }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_jira.outputs.NOTION_JIRA_TOKEN }}
         run: python -m lifeos.run jira-card $([ "$LIVE" = "true" ] && echo --live)
-      - id: acweek
-        continue-on-error: true
-        name: V3 This week for Jim and Matt (LIFE-671; read-only from Jira; the callouts on Jim & Matt V3 are written only when live; counts only)
-        if: ${{ inputs.jira == 'card' || inputs.jira == 'report' || needs.gate.outputs.due_jira == 'true' }}
-        env:
-          JIRA_SITE_URL: ""
-          JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
-          JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
-          NOTION_JIRA_TOKEN: ${{ steps.bws_jira.outputs.NOTION_JIRA_TOKEN }}
-        run: python -m lifeos.run accountability-week $([ "$LIVE" = "true" ] && echo --live)
-      - id: acgoals
-        continue-on-error: true
-        name: V3 Quarterly goals for Jim and Matt (LIFE-671; read-only from Jira; the callouts on Jim & Matt V3 are written only when live; counts only)
-        if: ${{ inputs.jira == 'card' || inputs.jira == 'report' || needs.gate.outputs.due_jira == 'true' }}
-        env:
-          JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
-          JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
-          NOTION_JIRA_TOKEN: ${{ steps.bws_jira.outputs.NOTION_JIRA_TOKEN }}
-        run: python -m lifeos.run accountability-goals $([ "$LIVE" = "true" ] && echo --live)
-      - id: acreview
-        continue-on-error: true
-        name: V3 Quarterly review for Jim and Matt (LIFE-671; read-only from Jira; the callouts on Jim & Matt V3 are written only when live; counts only)
-        if: ${{ inputs.jira == 'card' || inputs.jira == 'report' || needs.gate.outputs.due_jira == 'true' }}
-        env:
-          JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
-          JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
-          NOTION_JIRA_TOKEN: ${{ steps.bws_jira.outputs.NOTION_JIRA_TOKEN }}
-        run: python -m lifeos.run accountability-review $([ "$LIVE" = "true" ] && echo --live)
-      - id: acart
-        continue-on-error: true
-        name: V3 Knowledge center (LIFE-673; the callouts on Jim & Matt V3 are written only when live; counts only)
-        if: ${{ inputs.jira == 'card' || inputs.jira == 'report' || needs.gate.outputs.due_jira == 'true' }}
-        env:
-          JIRA_SITE_URL: ""
-          JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
-          JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
-          NOTION_JIRA_TOKEN: ${{ steps.bws_jira.outputs.NOTION_JIRA_TOKEN }}
-        run: python -m lifeos.run accountability-artifacts $([ "$LIVE" = "true" ] && echo --live)
-      - id: acchange
-        continue-on-error: true
-        name: V3 Canon / Change Log (LIFE-673; the callouts on Jim & Matt V3 are written only when live; counts only)
-        if: ${{ inputs.jira == 'card' || inputs.jira == 'report' || needs.gate.outputs.due_jira == 'true' }}
-        env:
-          NOTION_JIRA_TOKEN: ${{ steps.bws_jira.outputs.NOTION_JIRA_TOKEN }}
-        run: python -m lifeos.run accountability-changelog $([ "$LIVE" = "true" ] && echo --live)
       - id: jrelease
         continue-on-error: true
         name: Auto-release (LIFE-727; moves ready tickets of an epic labelled auto-release to Agent Go, at most 3 an hour; written only when live; counts only)
@@ -215,10 +170,9 @@
           JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
         run: python -m lifeos.run jira-rollover $([ "$LIVE" = "true" ] && echo --live)
       - name: Jira warning (does not fail the run)
-        if: ${{ always() && (steps.jsnap.outcome == 'failure' || steps.jcard.outcome == 'failure' || steps.acweek.outcome == 'failure' || steps.acgoals.outcome == 'failure' || steps.acreview.outcome == 'failure' || steps.acart.outcome == 'failure' || steps.acchange.outcome == 'failure' || steps.jrelease.outcome == 'failure' || steps.jstalled.outcome == 'failure' || steps.jfill.outcome == 'failure' || steps.jrollauto.outcome == 'failure' || steps.jrollwatch.outcome == 'failure' || steps.jroll.outcome == 'failure' || steps.jprobe.outcome == 'failure') }}
+        if: ${{ always() && (steps.jsnap.outcome == 'failure' || steps.jcard.outcome == 'failure' || steps.jrelease.outcome == 'failure' || steps.jstalled.outcome == 'failure' || steps.jfill.outcome == 'failure' || steps.jrollauto.outcome == 'failure' || steps.jrollwatch.outcome == 'failure' || steps.jroll.outcome == 'failure' || steps.jprobe.outcome == 'failure') }}
         run: echo "::warning title=Jira::a Jira step failed; the Jobs pipeline is unaffected"
-      # LIFE-730 (temporary): the five V3 accountability stages (acweek, acgoals, acreview, acart, acchange; LIFE-671 and LIFE-673) still warn above but no longer end this job red, so they do not
-      # page the phone while they are being stabilised. Revert this step to `contains(steps.*.outcome, 'failure')` when LIFE-671 and LIFE-673 are stable; the contract test names the exempt ids.
+      # LIFE-793: the five V3 accountability stages now run in their own workflow (v3-pages.yml), not in this job.
       - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
         if: ${{ always() && (steps.bws_jira.outcome == 'failure' || steps.settings.outcome == 'failure' || steps.jrollauto.outcome == 'failure' || steps.jrollwatch.outcome == 'failure' || steps.jsnap.outcome == 'failure' || steps.jcard.outcome == 'failure' || steps.jrelease.outcome == 'failure' || steps.jstalled.outcome == 'failure' || steps.jfill.outcome == 'failure' || steps.jprobe.outcome == 'failure' || steps.jroll.outcome == 'failure') }}
         run: echo "::error title=jira::a stage step failed in the jira job (see the step marked failed above)"; exit 1
