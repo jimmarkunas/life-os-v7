@@ -1,5 +1,6 @@
 {
   "OPENCLAW_WORKERS_LEAKING": ["oraclecloud", "degraded", false, "OpenClaw on Oracle has more Codex app-server workers than agents (the duplicate-worker leak, LIFE-531).", "Restart the OpenClaw gateway when no agent run is in progress; see LIFE-531.", "info"],
+  "ORACLE_BOOT_BACKUPS_FULL": ["oraclecloud", "degraded", false, "Oracle boot-volume backups are at their limit of 5, so the next weekly backup of the Edge would be refused (LIFE-808).", "Delete the oldest boot-volume backup you no longer need in the Oracle console.", "info"],
   "ORACLE_NOT_CONFIGURED": ["oraclecloud", "blocked", false, "The Oracle Cloud card has no configuration.", "Set the card variables."],
   "ORACLE_OFF_CONTRACT": ["oraclecloud", "bug", false, "Oracle's stats did not match the contract.", "Compare the Edge service version."],
   "ORACLE_READBACK_MISMATCH": ["oraclecloud", "bug", false, "The card did not read back as written.", "Check the page."],

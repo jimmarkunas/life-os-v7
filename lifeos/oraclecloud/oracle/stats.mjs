@@ -112,7 +112,7 @@ async function oci() {
   };
   const mean = (v) => (v.length ? v.reduce((a, b) => a + b, 0) / v.length : null);
   const settle = async (fn) => { try { return await fn(); } catch { return null; } };
-  const [cpu24, cpuP95, mem7, cost, a1] = await Promise.all([
+  const [cpu24, cpuP95, mem7, cost, a1, backups] = await Promise.all([
     settle(async () => pct(mean(await series("CpuUtilization", "mean()", 24)))),
     settle(async () => pct(percentile(await series("CpuUtilization", "percentile(0.95)", 168), 0.95))),
     settle(async () => pct(mean(await series("MemoryUtilization", "mean()", 168)))),
@@ -133,8 +133,20 @@ async function oci() {
       const { used, available } = r.resourceAvailability;
       return Number.isInteger(used) && Number.isInteger(available) && used >= 0 && available >= 0 ? { used, available } : null;
     }),
+    settle(async () => {                                                       // LIFE-808: a region-scoped limit, so no availability domain
+      const r = await new limits.LimitsClient({ authenticationDetailsProvider: auth }).getResourceAvailability({ serviceName: "block-storage",
+        limitName: "backup-count", compartmentId: md.tenantId });
+      return backupSlots(r.resourceAvailability);
+    }),
   ]);
-  return { cpu24, cpuP95, mem7, cost, a1 };
+  return { cpu24, cpuP95, mem7, cost, a1, backups };
+}
+
+// LIFE-808: Oracle's boot-volume backup slots, from the limits service (the same call as the A1 cores, no new package or permission): used and available are whole numbers or the
+// reading is null (unknown, never a guess). At 0 available the next weekly backup is refused.
+export function backupSlots(availability) {
+  const { used, available } = availability || {};
+  return Number.isInteger(used) && Number.isInteger(available) && used >= 0 && available >= 0 ? { used, available } : null;
 }
 
 async function services() {
@@ -150,7 +162,7 @@ async function services() {
 
 export async function collect() {
   const [cloud, svc, plan] = await Promise.all([
-    oci().catch(() => ({ cpu24: null, cpuP95: null, mem7: null, cost: null, a1: null })),
+    oci().catch(() => ({ cpu24: null, cpuP95: null, mem7: null, cost: null, a1: null, backups: null })),
     services(),
     run(OPENCLAW, ["models", "status"], 45000).then(parsePlan),
   ]);
@@ -169,6 +181,7 @@ export async function collect() {
     chatgpt: plan,
     backup: backup(),
     workers: await workers(),
+    backups: cloud.backups,
   };
 }
 
