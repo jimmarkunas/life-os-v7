@@ -6,7 +6,7 @@ import re
 from lifeos.jira.release import blockers_done, has_done_when, text_of
 
 # LIFE-753: the label an agent adds with every `[waiting on] Jim:` comment; the saved filter "Waiting on Jim" lists the tickets that carry it.
-WAITING_LABEL = "waiting-on-jim"
+WAITING_LABEL = "needs-jim"                                   # LIFE-780: the one workflow-control label (was waiting-on-jim, jim-only, hold, planning-only, needs-approval, protected-file)
 
 # The scary list: a ticket whose description names one of these steps needs Jim's yes at the moment it arises. Each pattern reads the ticket text, case-insensitive.
 PROTECTED = {
@@ -56,7 +56,7 @@ def decide(issue):
         return "skip", ["no_done_when"]
     if not blockers_done(fields.get("issuelinks")):
         return "skip", ["blocked"]
-    if "jim-only" in (fields.get("labels") or []) or "hold" in (fields.get("labels") or []):
+    if WAITING_LABEL in (fields.get("labels") or []):
         return "skip", ["skip_label"]
     needs = protected_steps(fields.get("description"))
     if needs:

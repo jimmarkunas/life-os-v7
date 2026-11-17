@@ -1,6 +1,6 @@
 """LIFE-741: fill the parent epic, Component and Fix Version of LIFE tickets by one set of rules; a value that is already set is never changed."""
 # Rules, in order (Jim, Nov 16 2026): (1) Parent: keep it; else a Bug goes under LIFE-615; else `action-inbox` goes to LIFE-696 and a title "Stability n/7" to LIFE-686; else the newest open epic
-# carrying the same `los-N` label; else the container epic "LIFE one-off tasks" (label epic-container, created once when absent). (2) Component: keep it; else the parent epic's; else Platform / Core OS.
+# carrying the same `los-N` label; else the container epic "LIFE one-off tasks" (found by its title alone, created once when absent). (2) Component: keep it; else the parent epic's; else Platform / Core OS.
 # (3) Fix Version: keep it; else "<Component> 1.0.0". Epics get rules 2 and 3 only. Nothing here creates a Component or a version, or changes a status.
 #   python -m lifeos.jira.fill_defaults [--backfill] [--live]     counts only; a dry run unless --live (the hourly stage is lifeos.run jira-fill)
 #   python -m lifeos.jira.fill_defaults --plan FILE              FILE = {"issues": [...], "epics": [...]} saved from Jira; prints the planned changes, writes nothing
@@ -15,7 +15,7 @@ from lifeos.jira.search import search
 from lifeos.platform.jira import Jira, JiraError
 
 BUGS_EPIC, INBOX_EPIC, STABILITY_EPIC = "LIFE-615", "LIFE-696", "LIFE-686"
-CONTAINER_TITLE, CONTAINER_LABEL = "LIFE one-off tasks", "epic-container"
+CONTAINER_TITLE = "LIFE one-off tasks"
 DEFAULT_COMPONENT = "Platform / Core OS"
 FIELDS = "summary,issuetype,labels,parent,components,fixVersions,status"
 GAPS = "project = LIFE AND (component is EMPTY OR fixVersion is EMPTY OR (issuetype != Epic AND parent is EMPTY))"
@@ -50,14 +50,13 @@ def is_done(fields):
 
 
 def find_container(epics):
-    """The open epic titled CONTAINER_TITLE that carries CONTAINER_LABEL (several epics carry the label; only the title picks one); None when absent."""
+    """The open epic titled CONTAINER_TITLE (LIFE-780: the title alone picks it, no label); the lowest key when several; None when absent."""
     found = [k for k, e in epics.items() if _is_container(e.get("fields") or {})]
     return min(found, key=number) if found else None
 
 
 def _is_container(fields):
-    return (CONTAINER_LABEL in (fields.get("labels") or []) and (fields.get("summary") or "").strip().lower() == CONTAINER_TITLE.lower()
-            and not is_done(fields))
+    return (fields.get("summary") or "").strip().lower() == CONTAINER_TITLE.lower() and not is_done(fields)
 
 
 def pick_parent(fields, epics, container):
@@ -99,11 +98,11 @@ def ensure_container(jira, epics, live):
     if key or not live:
         return key or "(new container)"
     try:
-        made = jira.post("/rest/api/3/issue", {"fields": {"project": {"key": "LIFE"}, "issuetype": {"name": "Epic"}, "summary": CONTAINER_TITLE, "labels": [CONTAINER_LABEL],
+        made = jira.post("/rest/api/3/issue", {"fields": {"project": {"key": "LIFE"}, "issuetype": {"name": "Epic"}, "summary": CONTAINER_TITLE,
                                                        "components": [{"name": DEFAULT_COMPONENT}], "fixVersions": [{"name": f"{DEFAULT_COMPONENT} 1.0.0"}]}})
     except JiraError:
         raise FillFailed("JIRA_FILL_FAILED") from None
-    epics[made["key"]] = {"key": made["key"], "fields": {"issuetype": {"name": "Epic"}, "summary": CONTAINER_TITLE, "labels": [CONTAINER_LABEL], "components": [{"name": DEFAULT_COMPONENT}]}}
+    epics[made["key"]] = {"key": made["key"], "fields": {"issuetype": {"name": "Epic"}, "summary": CONTAINER_TITLE, "labels": [], "components": [{"name": DEFAULT_COMPONENT}]}}
     return made["key"]
 
 
