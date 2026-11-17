@@ -4,6 +4,7 @@ A record: provider, id, received (ISO 8601 UTC), sender_name, sender_address, su
 message when it is deterministic, else ""). Content stays in memory: nothing here writes, logs, labels, moves, deletes, sends or forwards mail, and errors are fixed codes only."""
 import os
 import re
+import time
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta, timezone
@@ -35,18 +36,22 @@ def _markers(headers, address):
             "noreply": bool(NOREPLY.search(address.split("@")[0] if address else ""))}
 
 
-def gmail_records(gmail, now, limit=MAX_MESSAGES, days=WINDOW_DAYS, terms="", known=None, stats=None, workers=1):
+def gmail_records(gmail, now, limit=MAX_MESSAGES, days=WINDOW_DAYS, terms="", known=None, stats=None, workers=1, timing=None):
     """Gmail Inbox and Spam, last `days` days (default WINDOW_DAYS), optionally only messages matching Gmail search `terms`. Returns (records, unreadable). A listing that cannot be proven complete raises MailError."""
     query = f"{{in:inbox in:spam}} newer_than:{days}d" + (f" {terms}" if terms else "")
+    began = time.monotonic()
     with fixed(GmailError, MailError, "MAIL_GMAIL_LISTING_INCOMPLETE"):
         ids = gmail.list_ids_complete(query, limit, include_spam=True)
     listed = len(ids)
+    if timing is not None:                                                   # LIFE-793: where a Gmail read spends its time, counts and seconds only
+        timing["listed"], timing["list_s"] = listed, round(time.monotonic() - began, 1)
     if known is not None:                                                    # LIFE-610: only ids new to the system are read; `known(provider, id)` says which are not
         ids = [i for i in ids if not known("gmail", i)]
     if stats is not None:
         stats["scanned"] = stats.get("scanned", 0) + listed
         stats["new"] = stats.get("new", 0) + len(ids)
     out, unreadable = [], 0
+    read_began = time.monotonic()
 
     def read(message_id):
         try:
@@ -59,6 +64,8 @@ def gmail_records(gmail, now, limit=MAX_MESSAGES, days=WINDOW_DAYS, terms="", kn
             raws = first + list(pool.map(read, ids[1:]))
     else:
         raws = [read(message_id) for message_id in ids]
+    if timing is not None:
+        timing["read"], timing["read_s"] = len(ids), round(time.monotonic() - read_began, 1)
     for raw in raws:
         if raw is None:
             unreadable += 1
