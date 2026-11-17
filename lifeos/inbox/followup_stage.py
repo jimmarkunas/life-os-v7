@@ -16,9 +16,9 @@ from typing import Any, Callable
 from lifeos.inbox import followup
 from lifeos.inbox.followup_store import FollowupRejected, FollowupStoreError, SOURCES, thread_id
 from lifeos.inbox.ledger import digest
-from lifeos.inbox.model import UNRELEASED_WORKSPACES, WORKSPACES
+from lifeos.inbox.model import UNRELEASED_WORKSPACES, WORKSPACES, InboxError
 from lifeos.platform import followup_readers as readers
-from lifeos.platform import isolate
+from lifeos.platform import isolate, switches
 
 COMPONENT = "followup"
 TGP_DOMAINS = ("tgpinternational.com",)                    # TGP is excluded everywhere: an account label that names its domain is never a scope
@@ -166,6 +166,21 @@ def reconcile(wiring, scope, live, now):
     return payload, counts
 
 
+def publish_page(payloads, now, environ=None, writer=None):
+    """LIFE-711: after a live run, fill the Action Inbox page from the payloads just stored (switch ACTION_INBOX_VIEW). Never fails the stage: one fixed-word line either way; counts only."""
+    env = os.environ if environ is None else environ
+    if not switches.state("ACTION_INBOX_VIEW", env):
+        return None
+    from lifeos.inbox import page_writer                                           # noqa: PLC0415
+    try:
+        counts = (writer or page_writer.publish)(payloads, now, env)
+    except InboxError as error:
+        print(f"inbox-view-page failed {error.reason}")
+        return None
+    print("inbox-view-page " + " ".join(f"{k}={v}" for k, v in sorted(counts.items())))
+    return counts
+
+
 def run(limit, live, wiring=None):
     """-> counts only. No wiring: a no-op. Dry run: compute, write nothing. Live: accept to the store and publish the payload, once per (workspace, account). One scope's failure never stops the other."""
     wiring = wiring or production_wiring(live=live)
@@ -177,6 +192,8 @@ def run(limit, live, wiring=None):
     allowed = [s for s in wiring.scopes if s.workspace in WORKSPACES and s.workspace not in UNRELEASED_WORKSPACES and not tgp_account(s.account)]
     totals["refused"] = len(wiring.scopes) - len(allowed)                             # TGP and unknown workspaces: nothing is read, nothing is written
 
+    published = []
+
     def one(scope):
         payload, counts = reconcile(wiring, scope, live, now)
         for line in source_lines(scope.workspace, payload.get("sources") or ()):
@@ -184,9 +201,12 @@ def run(limit, live, wiring=None):
         if live:
             wiring.sink(payload)
             counts["published"] = 1
+            published.append(payload)
         return counts
 
     isolated = isolate.run_items(allowed, one)
+    if live and published:
+        publish_page(published, now)
     for _, counts in isolated.results:
         totals["scopes"] += 1
         for key, value in counts.items():
@@ -194,4 +214,4 @@ def run(limit, live, wiring=None):
     return isolate.record(totals, isolated)
 
 
-__all__ = ["Scope", "Wiring", "production_wiring", "reconcile", "run", "observe", "tgp_account"]
+__all__ = ["Scope", "Wiring", "production_wiring", "publish_page", "reconcile", "run", "observe", "tgp_account"]
