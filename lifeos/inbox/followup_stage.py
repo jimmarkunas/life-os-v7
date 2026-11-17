@@ -57,6 +57,8 @@ class Wiring:
     classify: Callable = observe                     # item -> evidence dict or None
     captures: Callable = lambda workspace, account: []      # Jim's explicit captures: evidence dicts
     jira_base: str = ""
+    env: Any = None                                  # the environment the wiring was built from (the page writer reads its Notion token from it, never from the process)
+    production: bool = False                         # True only for the wiring followup_wiring.build makes: the one that may write the Action Inbox page; a fixture wiring never does
 
 
 def production_wiring(environ=None, live=False):
@@ -205,8 +207,8 @@ def run(limit, live, wiring=None):
         return counts
 
     isolated = isolate.run_items(allowed, one)
-    if live and published:
-        publish_page(published, now)
+    if live and published and wiring.production:
+        publish_page(published, now, wiring.env if wiring.env is not None else {})
     for _, counts in isolated.results:
         totals["scopes"] += 1
         for key, value in counts.items():

@@ -27,6 +27,30 @@ def _ct(text):
         return str(text)
 
 
+MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+
+def due_text(text):
+    """A due moment as the page shows it: `Nov 20 · 9:00 AM CT` (Central, 12-hour); text that is not a time is shown as given, empty stays empty."""
+    try:
+        moment = datetime.fromisoformat(str(text))
+    except ValueError:
+        return str(text or "")
+    moment = moment.replace(tzinfo=ct_stamp.CENTRAL) if moment.tzinfo is None else moment.astimezone(ct_stamp.CENTRAL)
+    return f"{MONTHS[moment.month - 1]} {moment.day} · {moment.hour % 12 or 12}:{moment.minute:02d} {'AM' if moment.hour < 12 else 'PM'} CT"
+
+
+SYNTHETIC_HOSTS = (".test", "example.com", "example.org", "example.net", "localhost")
+
+
+def is_synthetic(payload):
+    """A fixture or test payload: it says so, or a link points at a reserved example host. Production never shows one (the writer refuses the whole run)."""
+    if payload.get("synthetic") or (payload.get("provenance") or {}).get("synthetic"):
+        return True
+    links = [str(t.get("url") or "") for t in payload.get("threads") or ()] + [str(r.get("url") or "") for r in payload.get("review") or ()]
+    return any(host in link.split("/")[2].lower() for link in links if "://" in link for host in SYNTHETIC_HOSTS) if links else False
+
+
 def _status(entry):
     if entry.get("status") == "ok":
         return "ok"
@@ -58,17 +82,14 @@ def six_sources(payloads):
 FIXED_HEALTH = (("Personal", "Jira", "jira"), ("Personal", "Calendar", "calendar"), ("Personal", "Gmail", "gmail"), ("Personal", "Notion", "notion"), ("Personal", "Interview OS", "interview_os"),
                 ("Personal", "Todoist", "todoist"), ("Personal", "Outlook (personal)", "outlook:personal"), ("Personal", "Outlook (work)", "outlook:work"), ("Bytalos", "Jira", "jira"),
                 ("Bytalos", "Calendar", "calendar"), ("Bytalos", "Gmail", "gmail"))
-NOT_CONNECTED_ROWS = (("All", "Concord", "⚪ not connected"), ("Bytalos", "Asana (view only)", "⚪ not connected"), ("Personal", "School Outlook", "⚪ not connected (admin approval required)"),
-                      ("TGP", "Everything", "⚪ tracked, not connected (by design)"))
-LIGHT = {"ok": "🟢 ok"}
+NOT_CONNECTED_ROWS = (("All", "Concord"), ("Bytalos", "Asana (view only)"), ("Personal", "School Outlook (admin approval required)"), ("TGP", "Everything (tracked, by design)"))
 
 
 def _light(entry):
+    """The health select option for one source read."""
     if entry.get("status") == "ok":
         return "🟢 ok"
-    if entry.get("status") == "degraded":
-        return "🟡 DEGRADED (stale)"
-    return f"🔴 UNAVAILABLE ({entry.get('reason') or 'not read'})"
+    return "🟡 degraded" if entry.get("status") == "degraded" else "🔴 unavailable"
 
 
 def _key(entry, account):
@@ -76,25 +97,24 @@ def _key(entry, account):
     return f"outlook:{str(account).split()[0].lower()}" if source == "outlook" else source
 
 
-def health_table(payloads, loops):
-    """-> 16 fixed rows (workspace, source/account, health, last OK, items): one per account and source Jim named, a traffic-light word each, never a guess; sources with no payload say not read yet."""
+def health_rows(payloads, loops):
+    """-> one row dict per account and source Jim named (the System health database): Workspace, Source, Health (a fixed select option), Last OK, Items. A source with no payload is not read yet; never a guess."""
     seen = {}
     for payload in payloads:
         for entry in payload.get("sources") or ():
             key = (payload["workspace"].title(), _key(entry, payload.get("account")))
-            text = _light(entry)
+            light = _light(entry)
             ok_at = _ct(payload.get("generated_at")) if entry.get("status") == "ok" else (_ct(entry["last_accepted"]) if entry.get("last_accepted") else "—")
-            if key not in seen or (seen[key][0].startswith("🟢") and not text.startswith("🟢")):
-                seen[key] = (text, ok_at)
+            if key not in seen or (seen[key][0] == "🟢 ok" and light != "🟢 ok"):
+                seen[key] = (light, ok_at)
     rows = []
     for workspace, label, key in FIXED_HEALTH:
-        text, ok_at = seen.get((workspace, key), ("⚪ not read yet", "—"))
-        rows.append((workspace, label, text, ok_at, "—"))
-    state = [(p, "ok" if p.get("state") == "PASS" else "degraded") for p in payloads]
-    follow = ("⚪ not read yet", "—") if not payloads else (("🟢 ok", _ct(max(p.get("generated_at", "") for p in payloads))) if all(s == "ok" for _, s in state)
-                                                          else ("🟡 DEGRADED (stale)", "—"))
-    rows.append(("All", "Followup", follow[0], follow[1], str(len(loops)) if payloads else "—"))
-    rows += [(w, name, text, "—", "—") for w, name, text in NOT_CONNECTED_ROWS]
+        light, ok_at = seen.get((workspace, key), ("⚪ not read yet", "—"))
+        rows.append({"id": f"health:{workspace.lower()}:{key}", "Source": label, "Workspace": workspace, "Health": light, "Last OK": ok_at, "Items": "—"})
+    ok = [p for p in payloads if p.get("state") == "PASS"]
+    follow = ("⚪ not read yet", "—") if not payloads else (("🟢 ok", _ct(max(p.get("generated_at", "") for p in ok))) if len(ok) == len(payloads) else ("🟡 degraded", "—"))
+    rows.append({"id": "health:all:followup", "Source": "Followup", "Workspace": "All", "Health": follow[0], "Last OK": follow[1], "Items": str(len(loops)) if payloads else "—"})
+    rows += [{"id": f"health:{w.lower()}:{name.split(' (')[0].lower().replace(' ', '_')}", "Source": name, "Workspace": w, "Health": "⚪ not connected", "Last OK": "—", "Items": "—"} for w, name in NOT_CONNECTED_ROWS]
     return rows
 
 
@@ -116,20 +136,20 @@ def _loops(payloads, now):
                 continue
             owner = "Them" if bucket == "Waiting" or thread.get("owner") in ("external", "them") else "You"
             due = thread.get("next_checkpoint") or ""
-            rows.append({"id": f"followup:{payload['workspace']}:{str(payload.get('account'))[:40]}:{thread.get('id')}", "due": due[:25], "link": str(thread.get("url") or ""), "workspace": payload["workspace"].title(), "bucket": bucket, "title": str(thread.get("title") or "")[:200], "owner": owner,
-                         "move": ("Check back " + _ct(due)) if due else "Open the source record", "checkpoint": _checkpoint(thread) + (f" · {_ct(due)}" if due else ""), "fresh": stamp})
-    return sorted(rows, key=lambda r: (RANK[r["bucket"]], r["due"] or "9", r["workspace"], r["title"]))
+            iso = due
+            rows.append({"id": f"followup:{payload['workspace']}:{str(payload.get('account'))[:40]}:{thread.get('id')}", "due": due_text(iso), "iso": iso, "link": str(thread.get("url") or ""), "workspace": payload["workspace"].title(), "bucket": bucket, "title": str(thread.get("title") or "")[:200], "owner": owner,
+                         "move": f"Check back {due_text(iso)}" if iso else "Open the source record", "checkpoint": _checkpoint(thread), "fresh": stamp})
+    return sorted(rows, key=lambda r: (RANK[r["bucket"]], r["iso"] or "9", r["workspace"], r["title"]))
 
 
 def render(payloads, now):
-    """-> {'refreshed', 'tiles': [number or a dash] x4, 'healthy': 'n of 6', 'health': 16 rows, 'rows': [list rows], 'followup': [6-tuples], 'sources': [(name, text)], 'review': text, 'show_followup': bool, 'state': None | (title, text)}."""
+    """-> {'refreshed', 'tiles': [number or a dash] x4, 'healthy': 'n of 6', 'health': 16 System health rows, 'rows': [list rows], 'sources': [(name, text)], 'state': None | (title, text)}."""
     payloads = _allowed(payloads)
     sources = six_sources(payloads)
     seen = {p["workspace"] for p in payloads}
     connected = [(n, t) for n, t in sources if n not in NOT_CONNECTED]
     complete = bool(payloads) and seen == set(WORKSPACES) and all(t == "ok" for _, t in connected)
     loops = _loops(payloads, now)
-    reviews = sum(len(p.get("review") or ()) for p in payloads)
     tiles = []
     for bucket in TILES:
         if bucket == "Approvals" or not complete:
@@ -139,12 +159,10 @@ def render(payloads, now):
     healthy = sum(1 for _, t in sources if t == "ok")
     main = [{"id": r["id"], "Outcome": r["title"], "Workspace": r["workspace"], "Source": "Followup", "Bucket": r["bucket"], "Rank": RANK[r["bucket"]], "Owner": r["owner"], "Next move": r["move"],
              "Due": r["due"], "Freshness": "fresh", "Link": r["link"]} for r in loops]
-    followup = [(r["workspace"], r["title"], r["owner"], r["move"], r["checkpoint"], r["fresh"]) for r in loops]            # empty: the page has no Followup section at all
     state = None if not payloads else EMPTY if complete and not loops else CANNOT if not complete else None
     clean = sorted(p["workspace"] for p in payloads if p.get("state") == "PASS" and all(e.get("status") == "ok" for e in p.get("sources") or ()))
     return {"clean": clean, "refreshed": f"Last refreshed: {ct_stamp.when(now) if payloads else '—'}",
-            "tiles": tiles, "healthy": f"{healthy} of 6", "health": health_table(payloads, loops), "rows": main, "followup": followup, "sources": sources,
-            "review": f"Review Needed (not counted): {reviews}", "show_followup": bool(loops or reviews), "state": state}
+            "tiles": tiles, "healthy": f"{healthy} of 6", "health": health_rows(payloads, loops), "rows": main, "sources": sources, "state": state}
 
 
 def source_pieces(view):
@@ -155,4 +173,4 @@ def source_pieces(view):
     return out
 
 
-__all__ = ["CANNOT", "EMPTY", "NOT_CONNECTED", "RANK", "SIX", "TILES", "health_table", "render", "six_sources", "source_pieces"]
+__all__ = ["CANNOT", "EMPTY", "NOT_CONNECTED", "RANK", "SIX", "TILES", "due_text", "health_rows", "is_synthetic", "render", "six_sources", "source_pieces"]
