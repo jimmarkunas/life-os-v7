@@ -4,7 +4,7 @@
     # exactly like the other stages; Jim, Nov 16 2026: "Go Live"; the tables exist, LIFE-756) and stays a dry run that writes nothing on a manual run with live false. Each source credential is one bws-load line below plus its inventory row in lifeos/platform/credential_list.py (named in
     # lifeos/inbox/followup_wiring.py INVENTORY); a source without both shows DEGRADED. Top-level permissions apply unchanged (contents: read).
     needs: [gate]
-    if: ${{ !cancelled() && needs.gate.result != 'failure' && (needs.gate.outputs.due_followup == 'true' && needs.gate.outputs.early == 'true') }}
+    if: ${{ !cancelled() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_followup == 'true' && needs.gate.outputs.early == 'true') || inputs.followup) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:

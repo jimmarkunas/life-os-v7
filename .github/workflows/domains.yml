@@ -41,6 +41,10 @@ on:
         description: "iMessage urgent alerts only (COMM-1.4b, LIFE-31): metadata from the private Oracle endpoint over the tailnet; dry run unless Actually write is ticked"
         type: boolean
         default: false
+      followup:
+        description: "Followup lane only (LIFE-789): the one full reconciliation of every approved source, on demand; dry run unless Actually write is ticked (then it saves the thread state, checkpoints and the payload). Needs no tick"
+        type: boolean
+        default: false
       dcc:
         description: "Daily Command Center only (D175): V7 writes the Command Center callout from the first lines of the other cards; dry run unless Actually write is ticked"
         type: boolean
@@ -426,7 +430,7 @@ jobs:
     # exactly like the other stages; Jim, Nov 16 2026: "Go Live"; the tables exist, LIFE-756) and stays a dry run that writes nothing on a manual run with live false. Each source credential is one bws-load line below plus its inventory row in lifeos/platform/credential_list.py (named in
     # lifeos/inbox/followup_wiring.py INVENTORY); a source without both shows DEGRADED. Top-level permissions apply unchanged (contents: read).
     needs: [gate]
-    if: ${{ !cancelled() && needs.gate.result != 'failure' && (needs.gate.outputs.due_followup == 'true' && needs.gate.outputs.early == 'true') }}
+    if: ${{ !cancelled() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_followup == 'true' && needs.gate.outputs.early == 'true') || inputs.followup) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
