@@ -32,7 +32,7 @@ jobs:
         uses: ./.github/actions/bws-helper
         with:
           wait_seconds: "200"
-      - id: bws_capacity
+      - id: bws_capacitycard
         name: Load the credentials the AI Capacity card uses from Bitwarden (exactly these 4, the same ids the imessage job loads; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails)
         uses: ./.github/actions/bws-load
         with:
@@ -52,15 +52,15 @@ jobs:
       - name: Join the tailnet as an ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 47341)
         uses: ./.github/actions/tailscale
         with:
-          oauth-client-id: ${{ steps.bws_capacity.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ steps.bws_capacity.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
+          oauth-client-id: ${{ steps.bws_capacitycard.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ steps.bws_capacitycard.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
       - id: capacity
         continue-on-error: true
         name: AI Capacity card (readings only, no model run; numbers only in the log; writes only when live)
         env:
-          IMESSAGE_ALERTS_HOST: ${{ steps.bws_capacity.outputs.IMESSAGE_ALERTS_HOST }}
-          NOTION_JIRA_TOKEN: ${{ steps.bws_capacity.outputs.NOTION_JIRA_TOKEN }}
+          IMESSAGE_ALERTS_HOST: ${{ steps.bws_capacitycard.outputs.IMESSAGE_ALERTS_HOST }}
+          NOTION_JIRA_TOKEN: ${{ steps.bws_capacitycard.outputs.NOTION_JIRA_TOKEN }}
           ATTENTION_CARD_BLOCK_ID: ""
           V7_AI_CAPACITY_CARD: ""
         run: python -m lifeos.run capacity-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
