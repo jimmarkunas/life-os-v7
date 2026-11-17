@@ -1,4 +1,3 @@
-ACTION_INBOX_VIEW flag:workflow Turns on the hourly Action Inbox view writer (inbox-view stage); off by default, and on it still writes nothing until a live row source is released
 ALERTS_ENABLED flag Alert switch read from a repository variable (alerts enabled)
 ALERTS_MUTED_UNTIL input Alert switch read from a repository variable (alerts muted until)
 ALERT_SETTINGS input Alert switch read from a repository variable (alert settings)
