@@ -243,7 +243,7 @@ class SideBySide(unittest.TestCase):
         """LIFE-793: `boards` starts at the beginning in its own thread; the plain steps do not wait for it, the rest of its group runs when it used to, and the step after the group starts only once it has ended."""
         import threading
         log, lock = [], threading.Lock()
-        seen = {"fast_done": threading.Event(), "boards_saw_fast": []}
+        seen = {"fast_done": threading.Event(), "boards_started": threading.Event(), "boards_saw_fast": [], "fast_saw_boards": []}
 
         def note(event, name):
             with lock:
@@ -251,12 +251,14 @@ class SideBySide(unittest.TestCase):
 
         def fast(limit, live):
             note("start", "fast")
+            seen["fast_saw_boards"].append(seen["boards_started"].wait(5))      # the fast path only goes on once boards is running: with the old order (boards after finalize) this would time out
             seen["fast_done"].set()
             note("end", "fast")
             return 0
 
         def boards(limit, live):
             note("start", "boards")
+            seen["boards_started"].set()
             seen["boards_saw_fast"].append(seen["fast_done"].wait(5))          # it is still running when the fast path has finished: they overlap
             note("end", "boards")
             return {"ok": 1}
@@ -273,8 +275,8 @@ class SideBySide(unittest.TestCase):
         plan = (Step("fast", 20), Step("boards", 20, bulk=True, group="B", providers=("ats",), early=True), Step("other", 20, bulk=True, group="B", providers=("ats",)), Step("after", 20))
         result, _ = self.run_tick(plan, {"fast": fast, "boards": boards, "other": other, "after": after})
         self.assertEqual(result, {"fast": "ok", "boards": "ok", "other": "ok", "after": "ok"})                  # the same results, in plan order
-        self.assertEqual(seen["boards_saw_fast"], [True])
-        self.assertLess(log.index(("start", "boards")), log.index(("start", "fast")) + 1)                       # it started with the run, not after the fast path
+        self.assertEqual((seen["boards_saw_fast"], seen["fast_saw_boards"]), ([True], [True]))                  # each was running while the other ran: they overlap
+        self.assertLess(log.index(("start", "boards")), log.index(("end", "fast")))                             # it started before the fast path ended
         self.assertLess(log.index(("end", "boards")), log.index(("start", "after")))                            # the step after the group never starts before the early step ends
         self.assertLess(log.index(("start", "other")), log.index(("start", "after")))                           # and the rest of the group still runs before it
 
@@ -286,9 +288,9 @@ class SideBySide(unittest.TestCase):
                 return {"ok": 1}
             plan = (Step("fast", 20), Step("boards", 20, bulk=True, group="B", providers=("ats",), early=True), Step("after", 20))
             seen = []
-            result, _ = self.run_tick(plan, {"fast": lambda limit, live: 0, "boards": boards, "after": lambda limit, live: seen.append(limit) or 0})
+            result, _ = self.run_tick(plan, {"fast": lambda limit, live: 0, "boards": boards, "after": lambda limit, live, seen=seen: seen.append(limit) or 0})
             self.assertEqual(result, {"fast": "ok", "boards": expected, "after": "ok"})                          # a failing early step never stops the next stage
-            self.assertEqual(seen, [20])
+            self.assertEqual(seen, [40])                                                                         # the next stage gets its own default limit, untouched
 
     def test_early_changes_nothing_when_concurrency_is_off_and_the_real_boards_step_is_early_and_grouped(self):
         calls = []
