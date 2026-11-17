@@ -184,19 +184,36 @@ def lead_row(writer, company, role, key, url, today):
     return "created"
 
 
-def read_mail(environ, now, gmail=None, outlook_accounts=None, days=mail.WINDOW_DAYS):
-    """-> (records, sources that could not be read in full). Read only; Gmail and Outlook are read whole, as the recruiters stage does, because a lead has no company on any roster."""
+def read_mail(environ, now, gmail=None, outlook_accounts=None, days=mail.WINDOW_DAYS, seconds=None):
+    """-> (records, sources that could not be read in full). Read only; Gmail and Outlook are read whole, as the recruiters stage does, because a lead has no company on any roster.
+    LIFE-793: the sources (Gmail, then each Outlook account) are read side by side, one thread each (one mailbox per thread), and their records are joined in that same order, so the result equals the
+    one-by-one read. `seconds`, when given, is filled with each source's elapsed seconds under a fixed name (gmail, outlook_1, outlook_2, ...): counts only, never an address or label."""
     records, down, limit = [], 0, mail.MAX_MESSAGES * -(-days // mail.WINDOW_DAYS)
-    reads = [lambda: mail.gmail_records(gmail or Gmail.from_env(), now, limit=limit, days=days, workers=MAIL_WORKERS)]
-    for label, account in outlook_accounts if outlook_accounts is not None else mail.outlook_accounts(environ):
-        reads.append(lambda a=account, l=label: mail.outlook_records(a, l, now, limit=limit, days=days) if a else ([], 1))
-    for read in reads:
+    reads = [("gmail", lambda: mail.gmail_records(gmail or Gmail.from_env(), now, limit=limit, days=days, workers=MAIL_WORKERS))]
+    for number, (label, account) in enumerate(outlook_accounts if outlook_accounts is not None else mail.outlook_accounts(environ), 1):
+        reads.append((f"outlook_{number}", lambda a=account, l=label: mail.outlook_records(a, l, now, limit=limit, days=days) if a else ([], 1)))
+
+    def timed(name, read):
+        began = time.monotonic()
         try:
-            got, bad = read()
-            records.extend(got)
-            down += bad
-        except (mail.MailError, GmailError):
+            return read()
+        finally:
+            if seconds is not None:
+                seconds[name] = round(time.monotonic() - began, 1)
+
+    def attempt(name, read):
+        try:
+            return timed(name, read), None
+        except (mail.MailError, GmailError) as error:
+            return None, error
+    with ThreadPoolExecutor(max_workers=len(reads)) as pool:
+        results = list(pool.map(lambda item: attempt(*item), reads))
+    for got, error in results:
+        if error is not None:
             down += 1
+        else:
+            records.extend(got[0])
+            down += got[1]
     return records, down
 
 
@@ -316,6 +333,7 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
     context, now, client = context or RunContext.start(120), (now or datetime.now(TZ)).astimezone(TZ), client or notion.make_client(environ)
     read_rows = ledger_rows or (lambda company: acceptance.ledger_rows(company, environ))
     why, evidence, ready, where, permanent = {}, [], {}, {}, {}
+    mail_seconds = {}
     laps, mark = {}, [time.monotonic()]                                     # LIFE-793: seconds per fixed phase, measurement only: no read, write or order changes; counts and fixed names, never an id, title or address
 
     def lap(name):
@@ -474,7 +492,7 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
     pursuits = [{"id": "page:" + p.page_id, "company": c, "role": r, "title": p.title, "pursuit": True} for p, c, r in titles
                 if c.strip() and r.strip() and not any(same_company(c, a["company"]) and same_role(r, a["role"]) for a in roster)]
     if records is None:
-        records, down = read_mail(environ, now, gmail, outlook_accounts, window(environ, live))
+        records, down = read_mail(environ, now, gmail, outlook_accounts, window(environ, live), mail_seconds)
         if down:
             flag("mail_unavailable")                                         # a source read in part is never a trustworthy "no request"
     lap("mail")
@@ -633,5 +651,6 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
     counts["permanent"] = {**permanent, **held}
     counts["failed"] = sum(why.values()) - sum(permanent.values()) + counts["blocked"] - sum(held.values()) + counts.get("sweep", {}).get("failed", 0)      # a UI 3b page waiting for migration is DEGRADED too: it is not refreshed
     lap("after_writer")
+    counts["mail_seconds"] = mail_seconds                                          # LIFE-793: each mail source's own seconds (inside the `mail` phase, not added to the total)
     counts["seconds"] = {**laps, "total": round(sum(laps.values()), 1)}                     # LIFE-793: where the Interview run's time goes, by fixed phase
     return counts
