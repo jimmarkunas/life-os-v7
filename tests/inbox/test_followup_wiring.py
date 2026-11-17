@@ -256,7 +256,7 @@ class Payload(unittest.TestCase):
         class Fake:
             saved = {}
 
-            def save_payload(self, workspace, account, payload, now):
+            def save_payload(self, workspace, account, payload):
                 self.saved[(workspace, account)] = payload
 
             def load_payload(self, workspace, account):
@@ -267,6 +267,19 @@ class Payload(unittest.TestCase):
         self.assertEqual(W.payload_loader(store, "personal", "jira-personal")("ignored"), payload)
         self.assertIsNone(W.payload_loader(store, "bytalos", "jira-bytalos")("ignored"))
         self.assertIsNone(W.payload_loader(object(), "personal", "jira-personal")("ignored"))
+
+
+    def test_the_sink_calls_the_real_store_with_arguments_that_bind_to_save_payload(self):
+        """LIFE-789: the first live run failed every scope because the sink passed one argument more than FollowupStore.save_payload takes; a fake with the wrong shape had hidden it."""
+        import inspect
+        seen = []
+
+        class Spy:
+            def save_payload(self, *args, **kwargs):
+                seen.append((args, kwargs))
+        W.make_sink(Spy(), lambda: T0)({"workspace": "personal", "account": "jira-personal", "state": "PASS", "generated_at": "2026-11-17T01:00:00+00:00"})
+        args, kwargs = seen[0]
+        inspect.signature(FollowupStore.save_payload).bind(object(), *args, **kwargs)           # raises TypeError when the sink's call does not fit the real method
 
 
 class Job(unittest.TestCase):
