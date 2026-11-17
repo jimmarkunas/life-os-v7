@@ -3,12 +3,13 @@
 # plan, and applying a plan then planning again gives nothing. A row is archived only when its record is gone from a payload that read cleanly (`clean` workspaces); a failed or missing read keeps the
 # last rows in place, so a down source never empties the list. Every write targets the data source the page's own database block names, or a row read from it through the owned-row filter.
 from lifeos.inbox.model import InboxError
+from lifeos.platform.notion_client import NotionError
 
 MANAGED_BY = "v7-inbox-writer"
 
 
 def _title(text):
-    return {"title": [{"type": "text", "text": {"content": str(text)[:200]}}]}
+    return {"title": [{"type": "text", "text": {"content": (str(text).strip() or "(no title)")[:200]}}]}              # Notion refuses an empty title
 
 
 def _select(name):
@@ -92,19 +93,37 @@ def current(client, source_id, spec=None):
         cursor = page.get("next_cursor")
 
 
+FAIL_STREAK = 3                                                                  # this many rows in a row refused: the write itself is broken (rate limit, network), so stop and say so
+
+
+def _shape(row, spec):
+    """Fixed words and lengths only, so a refused row can be diagnosed without a title, a link or a name in the log."""
+    word = lambda v: "".join(c for c in str(v or "") if c.isalnum() or c in " -")[:12].strip().replace(" ", "_") or "none"
+    return f"source={word(row.get('Source'))} bucket={word(row.get('Bucket'))} " + " ".join(f"{name.lower().replace(' ', '_')}={len(str(row.get(name) if row.get(name) is not None else ''))}" for name in (LIST if spec is None else spec))
+
+
 def apply(client, source_id, ops, spec=None):
-    """Execute the plan. -> {'created', 'updated', 'archived'}."""
-    done = {"created": 0, "updated": 0, "archived": 0}
+    """Execute the plan. -> {'created', 'updated', 'archived', 'failed'}. A row Notion refuses is counted and logged by shape (lengths, never content) and the other rows still go in; a streak of refusals stops the run."""
+    done = {"created": 0, "updated": 0, "archived": 0, "failed": 0}
+    streak = 0
     for op, _, row, page_id in ops:
-        if op == "create":
-            client.call_once("POST", "/pages", {"parent": {"type": "data_source_id", "data_source_id": source_id}, "properties": props(row, spec)})
-            done["created"] += 1
-        elif op == "update":
-            client.call_once("PATCH", f"/pages/{page_id}", {"properties": props(row, spec)})
-            done["updated"] += 1
-        else:
-            client.call_once("PATCH", f"/pages/{page_id}", {"in_trash": True})
-            done["archived"] += 1
+        try:
+            if op == "create":
+                client.call_once("POST", "/pages", {"parent": {"type": "data_source_id", "data_source_id": source_id}, "properties": props(row, spec)})
+                done["created"] += 1
+            elif op == "update":
+                client.call_once("PATCH", f"/pages/{page_id}", {"properties": props(row, spec)})
+                done["updated"] += 1
+            else:
+                client.call_once("PATCH", f"/pages/{page_id}", {"in_trash": True})
+                done["archived"] += 1
+            streak = 0
+        except NotionError as error:
+            done["failed"] += 1
+            streak += 1
+            print(f"inbox-view-row-failed op={op} code={str(error).lower()[:30]} {_shape(row, spec)}")
+            if streak >= FAIL_STREAK:
+                raise
     return done
 
 
