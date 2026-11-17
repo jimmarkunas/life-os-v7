@@ -85,46 +85,32 @@ if __name__ == "__main__":
     unittest.main()
 
 
-class SourcesSideBySide(unittest.TestCase):
-    """LIFE-793: Interview reads Gmail and each Outlook account side by side; the joined records, their order and the unreadable count equal the one-by-one read, and each source reports its own seconds."""
-    def run_read(self, parallel):
+class SourcesOneByOne(unittest.TestCase):
+    """LIFE-793: the sources are read one after another (the side-by-side read of PR 1318 is withdrawn); each source reports its seconds, and Gmail reports its listed and read counts with seconds."""
+    def test_records_order_and_count_and_the_fixed_second_names(self):
         from unittest import mock
-        gate = threading.Barrier(3, timeout=5) if parallel else None
-        started, order = [], []
 
-        def outlook(account, label, now, limit=None, days=None):
-            started.append(label)
-            if gate is not None:
-                gate.wait()                                                                       # all three sources are in flight at once, or this times out
-            if label == "bad":
-                raise mail.MailError("MAIL_OUTLOOK_LISTING_INCOMPLETE")
-            order.append(label)
-            return [{"id": label, "provider": "outlook"}], 0
-
-        def gmail_records(gm, now, limit=None, days=None, workers=1):
-            started.append("gmail")
-            if gate is not None:
-                gate.wait()
-            return [{"id": "g", "provider": "gmail"}], 1
-        seconds = {}
-        with mock.patch.object(mail, "outlook_records", outlook), mock.patch.object(mail, "gmail_records", gmail_records):
-            got = interview_evidence.read_mail({}, NOW, gmail=object(), outlook_accounts=[("one", object()), ("bad", object()), ("three", object())][:2 if parallel else 3], seconds=seconds)
-        return got, seconds, started
-
-    def test_all_sources_are_in_flight_together_and_the_result_keeps_the_source_order_and_counts(self):
-        (records, down), seconds, started = self.run_read(parallel=True)
-        self.assertEqual([r["id"] for r in records], ["g", "one"])                                  # gmail first, then the accounts in their order; the failing one adds no record
-        self.assertEqual(down, 2)                                                                  # gmail's one unreadable message and the failing account
-        self.assertEqual(set(seconds), {"gmail", "outlook_1", "outlook_2"})                         # fixed names, never a label
-        self.assertTrue(all(isinstance(v, float) and v >= 0 for v in seconds.values()))
-        self.assertEqual(sorted(started), ["bad", "gmail", "one"])
-
-    def test_the_old_one_by_one_result_is_the_same(self):
-        from unittest import mock
         def outlook(account, label, now, limit=None, days=None):
             if label == "bad":
                 raise mail.MailError("MAIL_OUTLOOK_LISTING_INCOMPLETE")
             return [{"id": label}], 0
-        with mock.patch.object(mail, "outlook_records", outlook), mock.patch.object(mail, "gmail_records", lambda gm, now, limit=None, days=None, workers=1: ([{"id": "g"}], 1)):
-            got = interview_evidence.read_mail({}, NOW, gmail=object(), outlook_accounts=[("one", object()), ("bad", object())])
-        self.assertEqual(got, ([{"id": "g"}, {"id": "one"}], 2))                                    # what the loop returned before: same records, same order, same count
+
+        def gmail_records(gm, now, limit=None, days=None, workers=1, timing=None):
+            if timing is not None:
+                timing.update(listed=12, list_s=1.5, read=12, read_s=3.0)
+            return [{"id": "g"}], 1
+        seconds, detail = {}, {}
+        with mock.patch.object(mail, "outlook_records", outlook), mock.patch.object(mail, "gmail_records", gmail_records):
+            got = interview_evidence.read_mail({}, NOW, gmail=object(), outlook_accounts=[("one", object()), ("bad", object())], seconds=seconds, detail=detail)
+        self.assertEqual(got, ([{"id": "g"}, {"id": "one"}], 2))                                    # Gmail first, then the accounts in order; the failing one adds no record and counts once
+        self.assertEqual(set(seconds), {"gmail", "outlook_1", "outlook_2"})                         # fixed names, never a label
+        self.assertTrue(all(isinstance(v, float) and v >= 0 for v in seconds.values()))
+        self.assertEqual(detail["gmail"], {"listed": 12, "list_s": 1.5, "read": 12, "read_s": 3.0})
+
+    def test_gmail_records_reports_listed_and_read_counts_with_seconds(self):
+        timing = {}
+        records, bad = mail.gmail_records(FakeGmail(), NOW, workers=4, timing=timing)
+        self.assertEqual((len(records), bad), (len(IDS) - len(BAD), len(BAD)))
+        self.assertEqual((timing["listed"], timing["read"]), (len(IDS), len(IDS)))
+        self.assertTrue(timing["list_s"] >= 0 and timing["read_s"] >= 0)
+        self.assertEqual(mail.gmail_records(FakeGmail(), NOW)[0], records)                          # the timing changes nothing it returns
