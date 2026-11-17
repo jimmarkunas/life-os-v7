@@ -286,7 +286,7 @@ class SideBySide(unittest.TestCase):
                 return {"ok": 1}
             plan = (Step("fast", 20), Step("boards", 20, bulk=True, group="B", providers=("ats",), early=True), Step("after", 20))
             seen = []
-            result, _ = self.run_tick(plan, {"fast": self.stage("fast"), "boards": boards, "after": lambda limit, live: seen.append(limit) or 0})
+            result, _ = self.run_tick(plan, {"fast": lambda limit, live: 0, "boards": boards, "after": lambda limit, live: seen.append(limit) or 0})
             self.assertEqual(result, {"fast": "ok", "boards": expected, "after": "ok"})                          # a failing early step never stops the next stage
             self.assertEqual(seen, [20])
 
