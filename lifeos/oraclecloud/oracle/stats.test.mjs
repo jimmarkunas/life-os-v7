@@ -1,7 +1,7 @@
 // node --test lifeos/oraclecloud/oracle/stats.test.mjs   (synthetic inputs; no network, no OCI)
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parsePlan, reclaimState, memoryPct, diskPct, backupState, workerState } from "./stats.mjs";
+import { parsePlan, reclaimState, memoryPct, diskPct, backupState, workerState, backupSlots } from "./stats.mjs";
 
 test("the ChatGPT plan line is read strictly; any other shape is unavailable", () => {
   assert.deepEqual(parsePlan("- openai usage: 5h 87% left ⏱4h 19m · Week 42% left ⏱6d 9h"), { left_5h: 87, left_week: 42 });
@@ -50,4 +50,10 @@ test("the Codex worker count is the gateway's own app-server children; extras be
   assert.equal(workerState(ps, NaN, ["main"]), null);
   assert.equal(workerState(null, 68602, ["main"]), null);
   assert.equal(workerState(ps, 68602, []), null);
+});
+
+test("the boot-volume backup slots are two whole numbers or unknown (LIFE-808)", () => {
+  assert.deepEqual(backupSlots({ used: 5, available: 0 }), { used: 5, available: 0 });
+  assert.deepEqual(backupSlots({ used: 4, available: 1, extra: "x" }), { used: 4, available: 1 });
+  for (const bad of [null, undefined, {}, { used: 5 }, { used: -1, available: 0 }, { used: 5, available: 0.5 }, { used: "5", available: 0 }]) assert.equal(backupSlots(bad), null, JSON.stringify(bad));
 });

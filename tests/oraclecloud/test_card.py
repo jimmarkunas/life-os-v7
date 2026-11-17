@@ -45,6 +45,10 @@ class Card(unittest.TestCase):
         patch2 = mock.patch.object(card.worker_watch, "record", lambda reading, environ, now: self.counted.append(reading))
         patch2.start()
         self.addCleanup(patch2.stop)
+        self.slots = []                                                              # LIFE-808: the same for the boot-volume backup-slot watch
+        patch3 = mock.patch.object(card.boot_backup_watch, "record", lambda reading, environ, now: self.slots.append(reading))
+        patch3.start()
+        self.addCleanup(patch3.stop)
 
     def run_card(self, rep, live=True, answer=None, env=None, now=NOW, **kw):
         answer = answer or (lambda host: json.dumps(stats()).encode())
@@ -145,6 +149,15 @@ class Card(unittest.TestCase):
         for bad in ({"count": 6}, {"count": -1, "agents": 5}, {"count": 6, "agents": 0}, {"count": "6", "agents": 5}, {"count": 6, "agents": 5, "pid": 1}, [6, 5]):
             self.run_card(report(), answer=lambda host, b=bad: json.dumps({**stats(), "workers": b}).encode())
             self.assertEqual(self.counted[-1], None)                                 # off-contract: the whole reply is refused, the card shows unavailable
+
+    def test_the_backup_slots_are_optional_on_the_wire_checked_and_handed_to_the_watch(self):
+        self.run_card(report())
+        self.assertEqual(self.slots[-1], None)                                       # an older stats.mjs sends no slots: unknown
+        self.run_card(report(), answer=lambda host: json.dumps({**stats(), "backups": {"used": 5, "available": 0}}).encode())
+        self.assertEqual(self.slots[-1], {"used": 5, "available": 0})
+        for bad in ({"used": 5}, {"used": -1, "available": 0}, {"used": "5", "available": 0}, {"used": 5, "available": 0.5}, {"used": 5, "available": 0, "id": "x"}, [5, 0]):
+            self.run_card(report(), answer=lambda host, b=bad: json.dumps({**stats(), "backups": b}).encode())
+            self.assertEqual(self.slots[-1], None)                                   # off-contract: the whole reply is refused, the card shows unavailable
 
     def test_reclaim_risk_is_shown_plainly(self):
         rep = report()

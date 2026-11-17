@@ -14,7 +14,7 @@ import socket
 from datetime import datetime, timezone
 from urllib.parse import quote
 
-from lifeos.oraclecloud import backup_watch, worker_watch
+from lifeos.oraclecloud import backup_watch, boot_backup_watch, worker_watch
 from lifeos.platform import ct_stamp, report_region, router
 from lifeos.platform.fixed_code import fixed
 from lifeos.platform.notion_client import Client, NotionError, rich_text
@@ -27,7 +27,7 @@ MAX_REPLY = 4096
 WAIT = 100                                                             # seconds: the endpoint itself stops at 90
 REPLY_TTL_SECONDS = 600
 KEYS = {"schema", "observed_at", "cost", "cpu_24h_pct", "memory_pct", "disk_pct", "a1_cores", "reclaim", "services", "chatgpt"}
-OPTIONAL = {"backup", "workers"}             # LIFE-129: the off-site backup's last result; optional so the card and Oracle's stats.mjs can be updated in either order
+OPTIONAL = {"backup", "workers", "backups"}             # LIFE-129: the off-site backup's last result; optional so the card and Oracle's stats.mjs can be updated in either order
 CODE = re.compile(r"[a-z0-9_]{1,40}")
 SERVICES = (("gateway", "Gateway"), ("telegram", "Telegram"), ("whatsapp", "WhatsApp"), ("alerts", "Alerts"))
 UNREPORTED = "unreported"         # the plan windows under Sign in with ChatGPT: OpenClaw prints none (Oct 16 2026), a known state, never counted as missing
@@ -35,7 +35,7 @@ BAR = 10
 PROTECTED = (("JIRA_CARD_BLOCK_ID", router.JIRA_REGION), ("CALENDAR_CARD_BLOCK_ID", router.CALENDAR_REGION), ("BILLS_CARD_BLOCK_ID", router.BILLS_REGION),
              ("AMAZON_CARD_BLOCK_ID", router.AMAZON_REGION), ("ATTENTION_CARD_BLOCK_ID", router.ATTENTION_REGION), ("HIRING_CARD_BLOCK_ID", router.HIRING_REGION))
 UNAVAILABLE = {"cost": None, "cpu_24h_pct": None, "memory_pct": None, "disk_pct": None, "a1_cores": None, "reclaim": None,
-               "services": {k: None for k, _ in SERVICES}, "chatgpt": None, "backup": None, "workers": None}
+               "services": {k: None for k, _ in SERVICES}, "chatgpt": None, "backup": None, "workers": None, "backups": None}
 
 
 class OracleCardError(Exception):
@@ -75,6 +75,11 @@ def _workers_ok(w):
     return w is None or (isinstance(w, dict) and set(w) == {"count", "agents"} and _whole(w["count"]) and _whole(w["agents"]) and w["agents"] >= 1 and w["count"] <= 1000)
 
 
+def _backups_ok(b):
+    """LIFE-808: Oracle's boot-volume backup slots, two whole numbers (or absent: Oracle's stats.mjs may be older)."""
+    return b is None or (isinstance(b, dict) and set(b) == {"used", "available"} and _whole(b["used"]) and _whole(b["available"]) and b["used"] + b["available"] <= 1000000)
+
+
 def validate(raw, now):
     """-> the readings ({key: value or None}). Off-contract or stale raises; a reply is used whole or not at all."""
     if not raw or len(raw) > MAX_REPLY:
@@ -89,12 +94,12 @@ def validate(raw, now):
             or not (a1 is None or (isinstance(a1, dict) and set(a1) == {"used", "available"} and _whole(a1["used"]) and _whole(a1["available"])))
             or p["reclaim"] not in (None, "NONE", "AT_RISK")
             or not (isinstance(svc, dict) and set(svc) == {k for k, _ in SERVICES} and all(v in (None, True, False) for v in svc.values()))
-            or not _backup_ok(p.get("backup")) or not _workers_ok(p.get("workers"))
+            or not _backup_ok(p.get("backup")) or not _workers_ok(p.get("workers")) or not _backups_ok(p.get("backups"))
             or not (plan in (None, UNREPORTED) or (isinstance(plan, dict) and set(plan) == {"left_5h", "left_week"} and all(_whole(v) and v <= 100 for v in plan.values())))):
         raise _fail("ORACLE_OFF_CONTRACT")
     if seen.tzinfo is None or abs((now - seen).total_seconds()) > REPLY_TTL_SECONDS:
         raise _fail("ORACLE_STALE")
-    return {**{k: p[k] for k in KEYS - {"schema", "observed_at"}}, "backup": p.get("backup"), "workers": p.get("workers")}
+    return {**{k: p[k] for k in KEYS - {"schema", "observed_at"}}, "backup": p.get("backup"), "workers": p.get("workers"), "backups": p.get("backups")}
 
 
 def bar(pct):
@@ -213,7 +218,7 @@ def _writer(environ):
     return Client({"NOTION_API_TOKEN": (environ.get("NOTION_JIRA_TOKEN") or "").strip(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused"})
 
 
-def run(limit, live, environ=os.environ, now=None, fetcher=fetch, client=None, plan=None, watch=None, workers_watch=None):
+def run(limit, live, environ=os.environ, now=None, fetcher=fetch, client=None, plan=None, watch=None, workers_watch=None, boot_watch=None):
     host = (environ.get("IMESSAGE_ALERTS_HOST") or "").strip()
     anchor = (environ.get("ATTENTION_CARD_BLOCK_ID") or "").strip()
     if not host or not anchor:
@@ -240,6 +245,7 @@ def run(limit, live, environ=os.environ, now=None, fetcher=fetch, client=None, p
         return counts
     (watch or backup_watch.record)(readings["backup"], environ, now)             # LIFE-129: never raises; the card's own result never depends on it
     (workers_watch or worker_watch.record)(readings["workers"], environ, now)     # LIFE-531: same: never raises
+    (boot_watch or boot_backup_watch.record)(readings["backups"], environ, now)   # LIFE-808: same: never raises
     report_region.require_configured({region: (environ.get(var) or "").strip() for var, region in PROTECTED}, _fail)
     scoped = report_region.ScopedClient(client, heading["id"], _fail).adopt(paragraph["id"])           # LIFE-613: only the two blocks located above can be written
     with fixed(NotionError, _fail, "ORACLE_WRITE_FAILED"):
