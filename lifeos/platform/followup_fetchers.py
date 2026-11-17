@@ -5,7 +5,7 @@
 # A missing value or setting is a fixed code, which the reader turns into DEGRADED for that source alone. Rows carry only what the normalizers need (id, link, time, a title or subject); bodies,
 # snippets, descriptions, attendees and recipients are never kept. At most MAX_ROWS + 1 rows come back, so the reader sees a larger answer as truncated. Personal and Bytalos use separate names, and
 # Jira reads only that workspace's project keys. TGP is excluded: there is no TGP name, scope or credential here, and mail from or to a TGP address, or forwarded from one, is dropped.
-# Outlook tokens rotate, so each Outlook credential is a LABEL (followup-personal-N) whose token is read from, and rotated into, the private v7_outlook_token store. Jira creates NO new credential: it reads the existing JIRA_BASE_URL, JIRA_EMAIL and JIRA_API_TOKEN (grant refs are JIRA_API_TOKEN@personal / @bytalos). That token can write, so the Jira client is GET-only in code and a test pins it. Every other name below is a NEW read-only credential.
+# Outlook tokens rotate, so each Outlook credential is a LABEL (the existing `personal` and `work` sign-ins, Nov 16 2026) whose token is read from, and rotated into, the private v7_outlook_token store. Jira creates NO new credential: it reads the existing JIRA_BASE_URL, JIRA_EMAIL and JIRA_API_TOKEN (grant refs are JIRA_API_TOKEN@personal / @bytalos). That token can write, so the Jira client is GET-only in code and a test pins it. Every other name below is a NEW read-only credential.
 from datetime import datetime, timedelta, timezone
 import functools
 import json
@@ -28,7 +28,9 @@ JIRA_PROJECTS = {"personal": ("JFM", "LIFE", "LOS"), "bytalos": ("BAD", "BPP")} 
 GMAIL_APP = ("GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET")     # the existing OAuth app (not an account credential); the refresh token below is new and read-only
 OUTLOOK_SCOPES = outlook.SCOPES                                         # Mail.Read + Calendars.Read only; the label sign-in never asks for more
 OUTLOOK_APP = "OUTLOOK_CLIENT_ID"                                      # the existing public client id; the refresh token below is new and read-only
-SLOTS = {("outlook", "personal"): 3}                                   # three Personal Outlook accounts; every other source has one account per workspace
+SLOTS = {("outlook", "personal"): 2}                                   # two connected Personal Outlook accounts (a third, the school mailbox, needs its tenant admin to approve the app: NOT CONNECTED); every other source has one account per workspace
+OUTLOOK_LABELS = {1: "personal", 2: "work"}                            # the labels already signed in (the sign-in refuses a second label for the same mailbox); which address holds which label is not recorded in the repo
+STORED_TOKENS = {"outlook"}                                                           # these credentials are labels whose token is read from (and rotated in) the private database, not the environment
 NOT_USED = {("outlook", "bytalos"), ("todoist", "bytalos")}            # no Bytalos Outlook, Todoist is Personal only
 TGP_ADDRESS = re.compile(r"(?<![a-z0-9-])(?:[a-z0-9-]+\.)*tgpinternational\.com(?![a-z0-9-])", re.I)
 GMAIL_HEADERS = ("Subject", "From", "To", "Cc", "Reply-To", "Sender", "Return-Path", "Resent-From", "Resent-To", "Delivered-To", "X-Forwarded-For", "X-Forwarded-To", "X-Original-From",
@@ -51,7 +53,7 @@ def _credential_name(source, tenant, slot):
     if source == "gmail" and tenant in EXISTING_GMAIL:
         return EXISTING_GMAIL[tenant]
     if source == "outlook":
-        return f"followup-{tenant}-{slot}"                                            # a LABEL in v7_outlook_token (Microsoft rotates the token, so it lives in the database, not in a secret)
+        return OUTLOOK_LABELS[slot]                                                   # an existing LABEL in v7_outlook_token (Microsoft rotates the token, so it lives in the database, not in a secret)
     return {"gmail": f"FOLLOWUP_GMAIL_{tenant.upper()}_READONLY_REFRESH", "todoist": f"FOLLOWUP_TODOIST_{tenant.upper()}_TOKEN"}[source]
 
 
@@ -60,7 +62,7 @@ CREDENTIAL_NAMES = {(source, tenant, slot): _credential_name(source, tenant, slo
 _SHARED = {name for name in CREDENTIAL_NAMES.values() if list(CREDENTIAL_NAMES.values()).count(name) > 1}
 GRANT_REFS = {key: (f"{name}:{key[0]}.{key[1]}" if name in _SHARED else name) for key, name in CREDENTIAL_NAMES.items()}   # what a grant names; a secret shared by several grants carries source.workspace so each grant is its own
 NEW_NAMES = sorted({name for name in CREDENTIAL_NAMES.values() if name.startswith("FOLLOWUP_")})
-REUSED_NAMES = sorted({name for name in CREDENTIAL_NAMES.values() if not name.startswith("FOLLOWUP_") and not name.startswith("followup-")})
+REUSED_NAMES = sorted({name for key, name in CREDENTIAL_NAMES.items() if key[0] not in STORED_TOKENS and not name.startswith("FOLLOWUP_")})
 ACCOUNT_SOURCE = {"calendar": "CALENDAR", "interview_os": "INTERVIEW"}
 
 
@@ -70,7 +72,6 @@ def _account_name(key):
 
 
 ACCOUNT_NAMES = {key: _account_name(key) for key in CREDENTIAL_NAMES}                # the short account label per credential comes from the environment (never from the repo)
-STORED_TOKENS = {"outlook"}                                                           # these credentials are labels whose token is read from (and rotated in) the private database, not the environment
 CONFIG_NAMES = {                                                                      # settings that are identifiers, not secrets (templates; {T} is PERSONAL or BYTALOS)
     "jira": ("JIRA_BASE_URL", "JIRA_EMAIL"), "calendar": ("FOLLOWUP_GCAL_{T}_CALENDAR_ID",), "gmail": GMAIL_APP, "outlook": (OUTLOOK_APP,),
     "todoist": (), "notion": (), "interview_os": ()}

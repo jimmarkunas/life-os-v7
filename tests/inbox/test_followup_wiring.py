@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest import mock
 
 from lifeos.inbox import followup_stage as S, followup_wiring as W
+from lifeos.outlook import stage as outlook_stage
 from lifeos.inbox.followup_store import FollowupStore
 from lifeos.inbox.ledger import Ledger
 from lifeos.platform import followup_fetchers as F, followup_readers as R
@@ -16,7 +17,8 @@ T0 = datetime(2026, 11, 16, 20, 0, tzinfo=UTC)
 REFS = F.GRANT_REFS                                                                   # what a grant names, from the fetchers' own table
 EXPIRES = {key: "2027-11-15" for key in REFS}
 ON = {"FOLLOWUP_WIRING": "on", "FOLLOWUP_ACCOUNT_GMAIL_PERSONAL": "gm"}
-OUTLOOKS = {"FOLLOWUP_ACCOUNT_OUTLOOK_PERSONAL_1": "ol1", "FOLLOWUP_ACCOUNT_OUTLOOK_PERSONAL_2": "ol2", "FOLLOWUP_ACCOUNT_OUTLOOK_PERSONAL_3": "ol3"}
+OUTLOOK_SLOTS = range(1, F.SLOTS[("outlook", "personal")] + 1)
+OUTLOOKS = {F.ACCOUNT_NAMES[("outlook", "personal", n)]: f"ol{n}" for n in OUTLOOK_SLOTS}
 JIRA = ("jira", "personal", 1), ("jira", "bytalos", 1)
 
 
@@ -117,7 +119,7 @@ class Build(unittest.TestCase):
         self.assertEqual({v for v in used if v.startswith("FOLLOWUP_")}, {"FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH", "FOLLOWUP_TODOIST_PERSONAL_TOKEN"})
         table = W.expiry_table()
         for key, name in raw.items():
-            self.assertEqual(key in table, name.startswith("followup-") or name in W.INVENTORY, key)       # a credential has an expiry exactly when it has an inventory row (derived from the map, never a count)
+            self.assertEqual(key in table, key[0] in F.STORED_TOKENS or name in W.INVENTORY, key)       # a credential has an expiry exactly when it has an inventory row (derived from the map, never a count)
         env = {**ON, "FOLLOWUP_ACCOUNT_CALENDAR_PERSONAL": "cp", "FOLLOWUP_ACCOUNT_CALENDAR_BYTALOS": "cb", "FOLLOWUP_ACCOUNT_NOTION_PERSONAL": "np",
                "FOLLOWUP_ACCOUNT_GMAIL_BYTALOS": "gb", "FOLLOWUP_ACCOUNT_TODOIST_PERSONAL": "tp"}
         grants = W.grants_for(env, W.credential_names())
@@ -126,12 +128,22 @@ class Build(unittest.TestCase):
         self.assertNotEqual(calendars["personal"].credential_ref, calendars["bytalos"].credential_ref)
         self.assertEqual({(g.source, g.tenant) for g in grants if g.source == "todoist" or (g.source == "gmail" and g.tenant == "bytalos")}, {("todoist", "personal"), ("gmail", "bytalos")})   # both have a loader line and an inventory row now
 
-    def test_outlook_is_up_to_three_personal_accounts_and_never_bytalos(self):
-        env = {**ON, **OUTLOOKS, "FOLLOWUP_ACCOUNT_OUTLOOK_PERSONAL_4": "ol4", "FOLLOWUP_ACCOUNT_OUTLOOK_BYTALOS": "no"}
-        self.assertEqual(W.accounts(env, "outlook", "personal"), [(1, "ol1"), (2, "ol2"), (3, "ol3")])
+    def test_outlook_reuses_the_existing_sign_in_labels_and_never_bytalos(self):
+        extra = len(OUTLOOKS) + 1                                                       # one slot past the connected accounts is ignored
+        env = {**ON, **OUTLOOKS, f"FOLLOWUP_ACCOUNT_OUTLOOK_PERSONAL_{extra}": "more", "FOLLOWUP_ACCOUNT_OUTLOOK_BYTALOS": "no"}
+        self.assertEqual(W.accounts(env, "outlook", "personal"), [(n, f"ol{n}") for n in OUTLOOK_SLOTS])
         self.assertEqual(W.accounts(env, "outlook", "bytalos"), [])
         grants = [g for g in W.grants_for(env, W.credential_names()) if g.source == "outlook"]
-        self.assertEqual(sorted((g.account, g.credential_ref) for g in grants), [("ol1", "followup-personal-1"), ("ol2", "followup-personal-2"), ("ol3", "followup-personal-3")])
+        self.assertEqual(sorted((g.account, g.credential_ref) for g in grants), sorted((f"ol{n}", F.OUTLOOK_LABELS[n]) for n in OUTLOOK_SLOTS))
+        self.assertTrue({g.credential_ref for g in grants} <= set(outlook_stage.LABELS))   # a label the outlook workflow already signs in, never a new one
+
+    def test_the_school_mailbox_is_tracked_not_connected(self):
+        self.assertEqual([key for key in W.NOT_CONNECTED], [("outlook", "personal", "school mailbox")])
+        self.assertTrue(all(reason for reason in W.NOT_CONNECTED.values()))
+        env = {**ON, "OUTLOOK_CLIENT_ID": "x"}
+        labels = [label for _, label in W.accounts(env, "outlook", "personal")]
+        self.assertFalse([label for label in labels if "school" in label])               # no scope, so no grant and no read
+        self.assertFalse([g for g in W.grants_for(env, W.credential_names()) if "school" in str(g.account).lower()])
 
     def test_todoist_notion_and_interview_os_are_personal_only(self):
         env = {"FOLLOWUP_WIRING": "on"}
@@ -325,7 +337,7 @@ class DefaultLabels(unittest.TestCase):
 
     def test_outlook_is_judged_by_the_reader_so_its_client_id_is_enough(self):
         self.assertEqual(W.accounts({}, "outlook", "personal"), [])
-        self.assertEqual([slot for slot, _ in W.accounts({"OUTLOOK_CLIENT_ID": "x"}, "outlook", "personal")], [1, 2, 3])
+        self.assertEqual([slot for slot, _ in W.accounts({"OUTLOOK_CLIENT_ID": "x"}, "outlook", "personal")], list(OUTLOOK_SLOTS))
         self.assertEqual(W.accounts({"OUTLOOK_CLIENT_ID": "x"}, "outlook", "bytalos"), [])
 
 
