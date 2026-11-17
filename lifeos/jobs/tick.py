@@ -32,6 +32,7 @@ class Step:
     module: str = ""                  # a module whose main(argv) is the stage (finalize); otherwise a lifeos.run stage
     group: str = ""                   # LIFE-569: consecutive steps with the same group run side by side (threads of this one process) (the caps below keep each outside service at its own limit)
     providers: tuple = ()             # LIFE-569: the outside services it calls; each has a cap (TICK_CAP_*), so no service sees more at once than today. "ats" is capped inside the reader
+    early: bool = False               # LIFE-793: a grouped step that starts with the run, in its own thread, while the fast path goes on; the run waits for it where its group ends, so nothing that followed it starts sooner
 
 
 PLAN = (
@@ -204,7 +205,14 @@ def tick(live, quick=False, plan=PLAN, stages=None, clock=time.monotonic, budget
     started, outcome = clock(), {}
     timings = {} if timings is None else timings
     previous = signal.signal(signal.SIGALRM, _alarm)
+    early = {}                                                                         # LIFE-793: name -> the thread running an `early` step (only with concurrency on, and only a grouped step)
     try:
+        if concurrency:
+            for step in plan:
+                if step.early and step.group:
+                    thread = threading.Thread(target=_run_group, args=([step], live, quick, stages, clock, lambda: budget - (clock() - started), concurrency, outcome, timings), name=f"tick-early-{step.name}", daemon=True)
+                    thread.start()
+                    early[step.name] = thread
         position = 0
         while position < len(plan):
             step = plan[position]
@@ -214,8 +222,13 @@ def tick(live, quick=False, plan=PLAN, stages=None, clock=time.monotonic, budget
                     if candidate.group != step.group:
                         break
                     run_of.append(candidate)
-                if len(run_of) > 1:
-                    _run_group(run_of, live, quick, stages, clock, lambda: budget - (clock() - started), concurrency, outcome, timings)
+                if len(run_of) > 1 or any(c.name in early for c in run_of):
+                    members = [c for c in run_of if c.name not in early]
+                    if members:
+                        _run_group(members, live, quick, stages, clock, lambda: budget - (clock() - started), concurrency, outcome, timings)
+                    for c in run_of:                                                   # the group is over only when its early step is: what follows it still starts after it, exactly as before
+                        if c.name in early:
+                            early[c.name].join()
                     position += len(run_of)
                     continue
             position += 1

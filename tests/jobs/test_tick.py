@@ -239,6 +239,69 @@ class SideBySide(unittest.TestCase):
         result, _ = self.run_tick(plan, {n: stage(n) for n in "abc"})
         self.assertEqual((result, state["max"]), ({"a": "ok", "b": "ok", "c": "ok"}, 2))                  # a and b share LinkedIn (cap 1): never both; c runs beside either
 
+    def test_an_early_step_starts_with_the_run_overlaps_the_fast_path_and_is_done_before_what_followed_its_group(self):
+        """LIFE-793: `boards` starts at the beginning in its own thread; the plain steps do not wait for it, the rest of its group runs when it used to, and the step after the group starts only once it has ended."""
+        import threading
+        log, lock = [], threading.Lock()
+        seen = {"fast_done": threading.Event(), "boards_saw_fast": []}
+
+        def note(event, name):
+            with lock:
+                log.append((event, name))
+
+        def fast(limit, live):
+            note("start", "fast")
+            seen["fast_done"].set()
+            note("end", "fast")
+            return 0
+
+        def boards(limit, live):
+            note("start", "boards")
+            seen["boards_saw_fast"].append(seen["fast_done"].wait(5))          # it is still running when the fast path has finished: they overlap
+            note("end", "boards")
+            return {"ok": 1}
+
+        def other(limit, live):
+            note("start", "other")
+            note("end", "other")
+            return 0
+
+        def after(limit, live):
+            note("start", "after")
+            note("end", "after")
+            return 0
+        plan = (Step("fast", 20), Step("boards", 20, bulk=True, group="B", providers=("ats",), early=True), Step("other", 20, bulk=True, group="B", providers=("ats",)), Step("after", 20))
+        result, _ = self.run_tick(plan, {"fast": fast, "boards": boards, "other": other, "after": after})
+        self.assertEqual(result, {"fast": "ok", "boards": "ok", "other": "ok", "after": "ok"})                  # the same results, in plan order
+        self.assertEqual(seen["boards_saw_fast"], [True])
+        self.assertLess(log.index(("start", "boards")), log.index(("start", "fast")) + 1)                       # it started with the run, not after the fast path
+        self.assertLess(log.index(("end", "boards")), log.index(("start", "after")))                            # the step after the group never starts before the early step ends
+        self.assertLess(log.index(("start", "other")), log.index(("start", "after")))                           # and the rest of the group still runs before it
+
+    def test_an_early_step_keeps_its_own_outcome_timings_and_budget_and_a_failure_is_one_red_stage(self):
+        for error, expected in ((None, "ok"), (RuntimeError("x"), "failed")):
+            def boards(limit, live, error=error):
+                if error:
+                    raise error
+                return {"ok": 1}
+            plan = (Step("fast", 20), Step("boards", 20, bulk=True, group="B", providers=("ats",), early=True), Step("after", 20))
+            seen = []
+            result, _ = self.run_tick(plan, {"fast": self.stage("fast"), "boards": boards, "after": lambda limit, live: seen.append(limit) or 0})
+            self.assertEqual(result, {"fast": "ok", "boards": expected, "after": "ok"})                          # a failing early step never stops the next stage
+            self.assertEqual(seen, [20])
+
+    def test_early_changes_nothing_when_concurrency_is_off_and_the_real_boards_step_is_early_and_grouped(self):
+        calls = []
+        plan = (Step("fast", 20), Step("boards", 20, bulk=True, group="B", early=True), Step("after", 20))
+        stages = {n: (lambda limit, live, n=n: calls.append(n) or 0) for n in ("fast", "boards", "after")}
+        tick.tick(False, plan=plan, stages=stages)                                                             # concurrency=None: the old sequential order
+        self.assertEqual(calls, ["fast", "boards", "after"])
+        boards = next(s for s in tick.PLAN if s.name == "boards")
+        self.assertTrue(boards.early and boards.group and boards.bulk and boards.providers == ("ats",))
+        self.assertEqual([s.name for s in tick.PLAN if s.early], ["boards"])                                    # only boards, and the drains still follow the whole group
+        names = [s.name for s in tick.PLAN]
+        self.assertLess(names.index("boards"), names.index("drain-audit-ready"))
+
     def test_the_stage_thread_limit_is_honoured(self):
         state, stage = self.gate()
         plan = tuple(Step(n, 20, group="G") for n in "abcd")
