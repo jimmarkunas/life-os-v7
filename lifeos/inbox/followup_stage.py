@@ -106,11 +106,11 @@ def _cursor(store, workspace, account, source):
     return datetime.fromisoformat(row["cursor"]) if row else None
 
 
-_WORD = re.compile(r"[^A-Za-z0-9_]+")
+_WORD = re.compile(r"[^A-Za-z0-9_-]+")
 
 
 def source_lines(workspace, report):
-    """What the log may show per source: `followup-source <workspace> <source> <status> <reason>`, every part reduced to letters, digits and underscores (the reason is a fixed word already)."""
+    """What the log may show per source: `followup-source <workspace> <source> <status> <reason>`, every part reduced to letters, digits, underscores and hyphens (the reason is a fixed word already)."""
     clean = lambda value, width: _WORD.sub("_", str(value or "-"))[:width]
     return [f"followup-source {clean(workspace, 20)} {clean(r.get('source'), 20)} {clean(r.get('status'), 12)} {clean(r.get('reason'), 60)}" for r in report]
 
