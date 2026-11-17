@@ -5,6 +5,7 @@
 #   sh tools/test.sh --all      everything, like a merge to main (parallel shards, one per core up to 8)
 #   sh tools/test.sh --quick    the contracts, the repo-wide scanners and the tests that name or mirror each changed file, in parallel (what preflight runs); --quick --list prints them
 #   sh tools/test.sh --list     only print which Python and which tests it would use
+#   sh tools/test.sh --workflow-gate   (preflight runs it) LIFE-779: the standing pre-approval check on the workflow files this branch changed (tools/workflow_gate.py); exit 5 = ask Jim once
 #   sh tools/test.sh --regen    (preflight runs it) write and commit the registry rows a new stage needs, with the same Python; refuses a dirty tree
 #   sh tools/test.sh --setup    same as `sh tools/setup-dev.sh`: build or repair ~/.venvs/lifeos-tests from the locked versions (the Mac's own python3 is 3.9; refuses on the Oracle VM)
 # Python is looked for in this order: $LIFEOS_PYTHON, the repo .venv (also the main checkout's, for a git worktree), ~/.venvs/lifeos-tests, python3.12, python3.13. It must be 3.12 or newer and import PyYAML.
@@ -18,6 +19,7 @@ for arg in "$@"; do
     --quick) mode=quick ;;   # LIFE-763: the contracts, the repo-wide scanners and the tests that name or mirror each changed file, in parallel processes; never the whole suite (CI runs that)
     --list) list=1 ;;
     --regen) regen=1 ;;
+    --workflow-gate) wfgate=1 ;;
     --setup) setup=1 ;;
     -h|--help) sed -n 2,9p "$0"; exit 0 ;;
     *) echo "test.sh: unknown option $arg (try --help)" >&2; exit 2 ;;
@@ -42,6 +44,11 @@ if [ -z "$PY" ]; then
 fi
 version="$("$PY" -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])')"
 
+if [ "${wfgate:-}" = 1 ]; then   # LIFE-779: a workflow change with no new secret and no wider permissions needs no approval; this says so, or names the one thing Jim must answer
+  wbase="$(git merge-base HEAD origin/main 2>/dev/null || true)"
+  [ -n "$wbase" ] || { echo "workflow gate: no origin/main to compare with"; exit 3; }
+  exec "$PY" "$ROOT/tools/workflow_gate.py" --base "$wbase" --head HEAD
+fi
 [ "${regen:-}" = 1 ] && exec "$PY" "$ROOT/tools/regen.py" --commit   # LIFE-765: what preflight runs so a new stage needs no hand-run regen
 branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
 cores="$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)"; [ "$cores" -gt 8 ] && cores=8; [ "$cores" -lt 2 ] && cores=2   # LIFE-763: shards = cores (2 to 8), not a fixed 2
