@@ -100,6 +100,12 @@ class Client:
             raise NotionError("NOTION_PROPERTIES_INVALID")
         return self.call_once("PATCH", f"/pages/{self._page_id(page_id)}", {"properties": properties})
 
+    def update_block(self, block_id: Any, kind: str, rich: list[dict[str, Any]]) -> Any:
+        """Replace the text of one heading, paragraph or callout block (one non-retried write; the caller reads back before any repeat)."""
+        if kind not in ("heading_1", "heading_2", "heading_3", "paragraph", "callout") or not isinstance(rich, list):
+            raise NotionError("NOTION_PROPERTIES_INVALID")
+        return self.call_once("PATCH", f"/blocks/{self._page_id(block_id)}", {kind: {"rich_text": rich}})
+
     def _call(self, method: str, path: str, body: Any, rate_retries: int | None, version: str | None = None) -> Any:
         rate_retries = limits.NOTION_RATE_RETRIES if rate_retries is None else rate_retries
         rate, flaky, slept = 0, 0, 0.0

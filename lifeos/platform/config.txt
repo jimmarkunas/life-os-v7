@@ -35,7 +35,7 @@ GRANOLA_AUTO workflow_only:workflow Switch for the automatic Granola bridge in t
 GRANOLA_LIVE flag:workflow Lets the Granola run write instead of only counting
 HIRING_AUTO_CLOSE flag:workflow Lets the hiring stage close finished opportunities by itself
 INBOX_VIEW_CONFIRM flag:workflow Confirmation word (QA) the manual Action Inbox view QA proof needs; without it the stage is a dry run that touches no network
-INBOX_VIEW_MODE workflow_only:workflow Which manual QA run the inbox-view stage does (qa-proof or qa-rollback); set by diag.yml from its stage input
+INBOX_VIEW_MODE workflow_only:workflow Which manual run the inbox-view stage does (proof or recount); set by diag.yml from its stage input
 INTERVIEW_TEST_COMPANIES workflow_only:workflow Interview OS setting (test companies)
 JIRA_API_TOKEN secret Jira setting (api token)
 JIRA_EMAIL secret Jira setting (email)

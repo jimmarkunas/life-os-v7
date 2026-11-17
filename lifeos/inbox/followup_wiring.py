@@ -211,10 +211,9 @@ def build(environ, live=False, clock=None):
     store = real if live else DryStore(real)
     module = _fetchers()
     fetchers = module.build_fetchers(fetcher_environment(environ)) if module and hasattr(module, "build_fetchers") else {}
-    items = module.build_item_fetchers(fetcher_environment(environ)) if module and hasattr(module, "build_item_fetchers") else None
     made = tuple(stage.Scope(workspace, label, tuple(sorted({s for s, _ in members}))) for (workspace, label), members in sorted(scopes.items()))
     return stage.Wiring(store=store, scopes=made, grants=grants_for(environ, credential_names()), fetchers=fetchers, audit=make_audit(Ledger(db.connect)), sink=make_sink(real, clock), clock=clock, production=True, env=environ,
-                        jira_base=JIRA_SITE, items=items)
+                        jira_base=JIRA_SITE)
 
 
 __all__ = ["EXPIRES", "WiringError", "account_env", "credential_names", "accounts", "configured", "grants_for", "receipt_id",

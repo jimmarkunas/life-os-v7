@@ -16,7 +16,7 @@ from typing import Any, Callable
 from lifeos.inbox import followup
 from lifeos.inbox.followup_store import FollowupRejected, FollowupStoreError, SOURCES, thread_id
 from lifeos.inbox.ledger import digest
-from lifeos.inbox.model import UNRELEASED_WORKSPACES, WORKSPACES, InboxError
+from lifeos.inbox.model import UNRELEASED_WORKSPACES, WORKSPACES
 from lifeos.platform import followup_readers as readers
 from lifeos.platform import isolate, switches
 
@@ -58,7 +58,6 @@ class Wiring:
     captures: Callable = lambda workspace, account: []      # Jim's explicit captures: evidence dicts
     jira_base: str = ""
     env: Any = None                                  # the environment the wiring was built from (the page writer reads its Notion token from it, never from the process)
-    items: Any = None                                # {source: fetch(credential_ref) -> native dicts} for the Action Inbox list (Jira, Calendar, Todoist); None: the list gets Followup rows only
     production: bool = False                         # True only for the wiring followup_wiring.build makes: the one that may write the Action Inbox page; a fixture wiring never does
 
 
@@ -169,20 +168,15 @@ def reconcile(wiring, scope, live, now):
     return payload, counts
 
 
-def publish_page(payloads, now, environ=None, writer=None, items=None):
-    """LIFE-711: after a live run, fill the Action Inbox page from the payloads just stored (switch ACTION_INBOX_VIEW). Never fails the stage: one fixed-word line either way; counts only."""
+def refresh_tiles(environ=None, refresh=None):
+    """LIFE-791: after a live run, recount the Agent Inbox tiles (switch ACTION_INBOX_VIEW). Reads only the inbox database; never fails the stage: one fixed-word line on a failure."""
     env = os.environ if environ is None else environ
     if not switches.state("ACTION_INBOX_VIEW", env):
         return None
-    from lifeos.inbox import page_writer                                           # noqa: PLC0415
-    try:
-        publish = writer or page_writer.publish
-        counts = publish(payloads, now, env) if items is None else publish(payloads, now, env, items=items)
-    except InboxError as error:
-        print(f"inbox-view-page failed {error.reason}")
-        return None
-    print("inbox-view-page " + " ".join(f"{k}={v}" for k, v in sorted(counts.items())))
-    return counts
+    if refresh is None:
+        from lifeos.inbox import agent_inbox_stage                                  # noqa: PLC0415
+        refresh = agent_inbox_stage.refresh
+    return refresh(env)
 
 
 def run(limit, live, wiring=None):
@@ -210,17 +204,7 @@ def run(limit, live, wiring=None):
 
     isolated = isolate.run_items(allowed, one)
     if live and published and wiring.production:
-        env = wiring.env if wiring.env is not None else {}
-        items = None
-        if switches.state("ACTION_INBOX_VIEW", env):
-            from lifeos.inbox import page_items                                      # noqa: PLC0415
-            try:
-                items = page_items.collect(wiring, now)
-            except Exception:                                                          # noqa: BLE001 - an audit failure or any surprise: the page then shows Followup rows only, and the stage still never fails
-                print("inbox-items failed audit_or_read")
-            for line in page_items.lines(items) if items else ():
-                print(line)
-        publish_page(published, now, env, items=items)
+        refresh_tiles(wiring.env if wiring.env is not None else {})
     for _, counts in isolated.results:
         totals["scopes"] += 1
         for key, value in counts.items():
@@ -228,4 +212,4 @@ def run(limit, live, wiring=None):
     return isolate.record(totals, isolated)
 
 
-__all__ = ["Scope", "Wiring", "production_wiring", "publish_page", "reconcile", "run", "observe", "tgp_account"]
+__all__ = ["Scope", "Wiring", "production_wiring", "refresh_tiles", "reconcile", "run", "observe", "tgp_account"]
