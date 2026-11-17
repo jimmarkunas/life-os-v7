@@ -5,6 +5,7 @@ round identity; an accepted Calendar interview event adds a round only when its 
 Anything else is a fixed code for that item alone: nothing is guessed, no round is numbered from the pages that exist, and one gap never stops the others. Writes need INTERVIEW_OS_WRITER=v7 (Jim's activation switch); without it the run is a dry run. Outputs: counts and fixed codes only."""
 import os
 import re
+import time
 from hashlib import sha1
 from dataclasses import replace
 from datetime import datetime
@@ -301,6 +302,12 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
     context, now, client = context or RunContext.start(120), (now or datetime.now(TZ)).astimezone(TZ), client or notion.make_client(environ)
     read_rows = ledger_rows or (lambda company: acceptance.ledger_rows(company, environ))
     why, evidence, ready, where, permanent = {}, [], {}, {}, {}
+    laps, mark = {}, [time.monotonic()]                                     # LIFE-793: seconds per fixed phase, measurement only: no read, write or order changes; counts and fixed names, never an id, title or address
+
+    def lap(name):
+        now_ = time.monotonic()
+        laps[name] = round(laps.get(name, 0.0) + now_ - mark[0], 1)
+        mark[0] = now_
 
     def flag(code, site=None, stays=False):
         why[code] = why.get(code, 0) + 1
@@ -317,6 +324,7 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
             flag(made.code, "progression_identity" if made.code == "round_identity_incomplete" else None)
 
     scan = notion.parents(client, environ, context)
+    lap("pages_scan")
     titles = [(p, *split_title(p.title)) for p in scan.items if p.active and scan.complete]
     convert = {"adopt": 0, "upgrade": 0, "awaiting_adopt_line": 0, "migrate": 0}
 
@@ -360,6 +368,7 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
                 ready[parent.page_id] = (company, role, *page, notion.child_scan(client, parent.page_id, context), read_rows(company))
             except Exception:                                                # noqa: BLE001 - a fixed code, never the exception text
                 flag("ledger_unreadable")
+    lap("page_reads")
     events, gone = [], []
     try:
         cancelled = []
@@ -373,6 +382,7 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
             keep(event, gone)
     except Exception:                                                        # noqa: BLE001
         flag("calendar_unavailable")
+    lap("calendar")
     recorded = {}
 
     def calendar_of(child):                                                  # the event reference a dated round page records, read only when an event needs it
@@ -439,18 +449,21 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
         company, role, job, url, kids, rows = ready[page_id]
         evidence.append((ParentQuery(company, role), RoundQuery(True, child.interview_date, child.interviewer, child.ordinal, explicit_child_page_id=child_id,
                                                                 stable_job_key=job, source=url, calendar_ref=calendar_of(child)[0], cancelled=True)))
+    lap("round_reads")
     roster = []
     try:
         ledger = ledger or Client(environ, token_name="NOTION_INTERVIEW_TOKEN", source_name="NOTION_JOB_LEDGER_DATA_SOURCE_ID")
         roster = pipeline.read_applied(ledger)
     except Exception:                                                        # noqa: BLE001
         flag("ledger_unreadable")
+    lap("ledger_roster")
     pursuits = [{"id": "page:" + p.page_id, "company": c, "role": r, "title": p.title, "pursuit": True} for p, c, r in titles
                 if c.strip() and r.strip() and not any(same_company(c, a["company"]) and same_role(r, a["role"]) for a in roster)]
     if records is None:
         records, down = read_mail(environ, now, gmail, outlook_accounts, window(environ, live))
         if down:
             flag("mail_unavailable")                                         # a source read in part is never a trustworthy "no request"
+    lap("mail")
     asked, codes = matches(records or [], roster + pursuits)
     for code in codes:
         flag(code)
@@ -482,6 +495,7 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
         elif not page or page_kids.complete:
             queue(row["company"], row["role"], key, message["url"], [{"page_id": row["id"], "company": row["company"], "role": row["role"], "stable_job_key": key, "requisition": None}],
                   None, None, None, req)
+    lap("ledger_requests")
     pursuit_requests, handled = 0, set()
     outreach = {m["url"] for m in records or [] if lead_of(m) and not ASKS.search(f"{m.get('subject', '')}\n{(m.get('body') or '')[:3000]}")}      # recruiter outreach in the mailbox that is provably not a request, by its own link
     for row, message, req in leads:                                          # M1 (LIFE-25): a request for a keyed V7 pursuit page with no Applied row is that page's Interview 1
@@ -562,10 +576,13 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
             # from its own key, and its request when one is recorded, never given a round. E14 (Jim, Oct 25: "Manage is not there"): no request link is no reason to skip it
             leads_refresh.append((ParentQuery(company, role), RoundQuery(True, None, None, None, source=url, stable_job_key=job, refresh_only=True)))
     evidence += [item for item in leads_refresh if (item[0].company, item[0].role) not in {(p.company, p.role) for p, _ in evidence}]
+    lap("decisions")
     evidence, unreadable = recruiter_threads(environ, evidence, recruiters)
+    lap("recruiters")
     if unreadable:
         flag("recruiters_unreadable")
     evidence, unreadable = network_contacts(client, evidence)
+    lap("network")
     if unreadable:
         flag("network_unreadable")
     reads, causes = {}, {}
@@ -577,7 +594,9 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
         flag("sent_mail_unreadable", stays=cause == "http_404" or runs[streaks.label(thread)] > streaks.FAILED_RUNS)
         causes[cause] = causes.get(cause, 0) + 1
     kept = not reads or not live or streaks.save(runs, before, connect)       # a dry run writes no streak
+    lap("sent_mail")
     counts = stage.run(limit, live, environ, client=client, evidence=evidence, context=injected or RunContext.start(STAGE_SECONDS))      # a fresh clock: the mail read above can take minutes, and the writes need their own budget
+    lap("writer")
     if where:
         counts["where"] = where
     if causes:                                                               # LIFE-664: the fixed cause of each unreadable thread, never an id or the error's text
@@ -599,4 +618,6 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
         counts["lead_requests"][label] = counts["lead_requests"].get(label, 0) + 1
     counts["permanent"] = {**permanent, **held}
     counts["failed"] = sum(why.values()) - sum(permanent.values()) + counts["blocked"] - sum(held.values()) + counts.get("sweep", {}).get("failed", 0)      # a UI 3b page waiting for migration is DEGRADED too: it is not refreshed
+    lap("after_writer")
+    counts["seconds"] = {**laps, "total": round(sum(laps.values()), 1)}                     # LIFE-793: where the Interview run's time goes, by fixed phase
     return counts
