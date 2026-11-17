@@ -1,4 +1,4 @@
-"""LIFE-716: the bounded Followup classifier. Turns an item Jim wrote himself into explicit follow-up evidence ONLY when its title carries an explicit marker; everything else is observation."""
+"""LIFE-716: the bounded Followup classifier: an item Jim wrote becomes follow-up evidence only when its title carries an explicit marker."""
 # Evidence: the delta readers' minimal items (source, id, link, observed time, a title of at most 120 characters, and a due date only when the SOURCE holds one). No body, snippet, recipient or
 # attendee is read, so mail and calendar items are observation only: an unread message, a finished meeting, an open Jira ticket or a plain Todoist task never creates a loop. A loop exists only for
 # an item in Jim's own task or notes systems (Todoist, Jira, Notion, Interview OS) whose title STARTS with one of the markers below. The marker is Jim's explicit capture; the text after it is the outcome.
