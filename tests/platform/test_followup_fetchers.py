@@ -104,10 +104,12 @@ class FakeTodoist:
 
 class FakeNotion:
     """Answers POST /search newest first, in pages of `size`."""
-    def __init__(self, pages, size=100):
-        self.data, self.size, self.calls = pages, size, []
+    def __init__(self, pages, size=100, me="bot-self"):
+        self.data, self.size, self.calls, self.me = pages, size, [], me
 
     def call(self, method, path, body=None):
+        if (method, path) == ("GET", "/users/me"):
+            return {"id": self.me}                                                      # the integration's own id; not counted as a search call
         self.calls.append((method, path, body))
         start = int((body or {}).get("start_cursor") or 0)
         chunk = self.data[start:start + self.size]
@@ -115,8 +117,8 @@ class FakeNotion:
         return {"results": chunk, "has_more": more, "next_cursor": str(start + self.size) if more else None}
 
 
-def page(page_id, edited, title):
-    return {"id": page_id, "url": "https://www.notion.so/" + page_id.replace("-", ""), "last_edited_time": edited, "properties": {"Name": {"type": "title", "title": [{"plain_text": title}]}, "Notes": {"type": "rich_text"}}}
+def page(page_id, edited, title, by="person-1"):
+    return {"id": page_id, "url": "https://www.notion.so/" + page_id.replace("-", ""), "last_edited_time": edited, "last_edited_by": {"object": "user", "id": by}, "properties": {"Name": {"type": "title", "title": [{"plain_text": title}]}, "Notes": {"type": "rich_text"}}}
 
 
 def run(source, client, environ=None, since=None, tenant="personal", **factory_kwargs):
@@ -182,6 +184,15 @@ class Mapping(unittest.TestCase):
         self.assertEqual(client.calls[0][2]["sort"], {"direction": "descending", "timestamp": "last_edited_time"})
         out = delta("interview_os", FakeNotion([page("33333333-3333-3333-3333-333333333333", "2026-11-16T14:00:00.000Z", "Interview page")]))
         self.assertEqual((out.status, out.items[0]["title"]), ("ok", "Interview page"))
+
+    def test_notion_skips_the_integrations_own_edits_and_looks_back_one_day_on_a_first_read(self):
+        recent, old = (NOW - timedelta(hours=3)).strftime("%Y-%m-%dT%H:%M:%S.000Z"), (NOW - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        client = FakeNotion([page("22222222-2222-2222-2222-222222222222", recent, "Mine", by="person-1"), page("33333333-3333-3333-3333-333333333333", recent, "Robot", by="bot-self"),
+                             page("11111111-1111-1111-1111-111111111111", old, "Two days old", by="person-1")])
+        self.assertEqual([r["title"] for r in run("notion", client)], ["Mine"])                   # the bot's own refresh is dropped, the two-day-old page is outside the first-read window
+        broken = FakeNotion([page("22222222-2222-2222-2222-222222222222", recent, "Robot", by="bot-self")])
+        broken.call = lambda method, path, body=None: (_ for _ in ()).throw(RuntimeError("no")) if method == "GET" else FakeNotion.call(broken, method, path, body)
+        self.assertEqual([r["title"] for r in run("notion", broken)], ["Robot"])                  # an unreadable own id means nothing is skipped
 
     def test_notion_search_stops_at_the_checkpoint(self):
         client = FakeNotion([page("22222222-2222-2222-2222-222222222222", "2026-11-16T20:30:00.000Z", "New"), page("11111111-1111-1111-1111-111111111111", "2026-11-16T10:00:00.000Z", "Old"),
