@@ -191,7 +191,7 @@ def read_mail(environ, now, gmail=None, outlook_accounts=None, days=mail.WINDOW_
     counts with their seconds: counts only, never an address or label."""
     records, down, limit = [], 0, mail.MAX_MESSAGES * -(-days // mail.WINDOW_DAYS)
     gmail_timing = {} if detail is not None else None
-    reads = [("gmail", lambda: mail.gmail_records(gmail or Gmail.from_env(), now, limit=limit, days=days, workers=MAIL_WORKERS, timing=gmail_timing))]
+    reads = [("gmail", lambda: mail.gmail_records(gmail or Gmail.from_env(), now, limit=limit, days=days, workers=MAIL_WORKERS, timing=gmail_timing, heal=True))]
     for number, (label, account) in enumerate(outlook_accounts if outlook_accounts is not None else mail.outlook_accounts(environ), 1):
         reads.append((f"outlook_{number}", lambda a=account, l=label: mail.outlook_records(a, l, now, limit=limit, days=days) if a else ([], 1)))
     for name, read in reads:
@@ -207,6 +207,7 @@ def read_mail(environ, now, gmail=None, outlook_accounts=None, days=mail.WINDOW_
                 seconds[name] = round(time.monotonic() - began, 1)
     if detail is not None:
         detail["gmail"] = gmail_timing
+        down -= len(gmail_timing.get("unreadable") or {})                    # messages that stay unreadable are handled one by one in run() (a streak, then permanent), exactly like an unreadable sent thread; a whole source down still counts here
     return records, down
 
 
@@ -236,6 +237,7 @@ def recruiter_threads(environ, evidence, recruiters=None):
 
 GMAIL_THREAD = re.compile(r"https://mail\.google\.com/mail/u/0/#all/([0-9a-f]{8,32})")      # the request link platform.mail writes for a Gmail thread
 SENT_SHOWN = 10
+STILL_UNREADABLE = {"gmail_message_incomplete"}      # LIFE-793: causes a retry cannot change (Gmail's reply has no payload or time): counted on their own, never `failed`
 MAIL_WORKERS = 4                     # LIFE-793: Gmail reads at once in this step (one by one before): well under Gmail's per-user concurrent-request limit; Outlook is listed in pages, not per message
 
 
@@ -612,10 +614,15 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
         flag("network_unreadable")
     reads, causes = {}, {}
     evidence, _ = sent_mail(environ, evidence, gmail, reads)
+    for message_id, code in ((mail_detail.get("gmail") or {}).get("unreadable") or {}).items():      # LIFE-793: a Gmail message that stays unreadable after its one more try is followed like an unreadable thread
+        reads["message:" + message_id] = code.lower()
     unreadable = {thread: cause for thread, cause in reads.items() if cause}
     before = streaks.previous(connect) if reads else None                     # LIFE-664: the runs in a row each thread has been unreadable, in the private daily counts
     runs = {streaks.label(thread): (before or {}).get(streaks.label(thread), 0) + 1 for thread in unreadable}
     for thread, cause in sorted(unreadable.items()):                          # each thread alone: a 404 stays unreadable at once; any other cause is `failed` for its first runs, then `permanent` (still counted, still on the page)
+        if thread.startswith("message:"):                                    # a message Gmail cannot parse never changes: permanent at once; any other cause (a rate limit, a 5xx) is `failed` for its first runs
+            flag("mail_message_unreadable", stays=cause in STILL_UNREADABLE or runs[streaks.label(thread)] > streaks.FAILED_RUNS)
+            continue
         flag("sent_mail_unreadable", stays=cause == "http_404" or runs[streaks.label(thread)] > streaks.FAILED_RUNS)
         causes[cause] = causes.get(cause, 0) + 1
     kept = not reads or not live or streaks.save(runs, before, connect)       # a dry run writes no streak
@@ -624,6 +631,10 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
     lap("writer")
     if where:
         counts["where"] = where
+    if mail_detail.get("gmail", {}).get("unreadable"):
+        counts["mail_causes"] = {}
+        for code in mail_detail["gmail"]["unreadable"].values():             # fixed codes only, never an id
+            counts["mail_causes"][code.lower()] = counts["mail_causes"].get(code.lower(), 0) + 1
     if causes:                                                               # LIFE-664: the fixed cause of each unreadable thread, never an id or the error's text
         counts["sent_mail_causes"], counts["sent_mail_runs"] = causes, max(runs.values())
     if (before is None or not kept) and any(cause != "http_404" for cause in causes):

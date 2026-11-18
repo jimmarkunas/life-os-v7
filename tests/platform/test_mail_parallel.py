@@ -114,3 +114,73 @@ class SourcesOneByOne(unittest.TestCase):
         self.assertEqual((timing["listed"], timing["read"]), (len(IDS), len(IDS)))
         self.assertTrue(timing["list_s"] >= 0 and timing["read_s"] >= 0)
         self.assertEqual(mail.gmail_records(FakeGmail(), NOW)[0], records)                          # the timing changes nothing it returns
+
+
+class HealingGmail(FakeGmail):
+    """m3 is gone since the listing (404), m5 fails once then reads, m8 never parses, m10 is rate limited every time."""
+    def __init__(self):
+        super().__init__()
+        self.calls, self.retries = {}, 7
+
+    def mail_record(self, message_id):
+        self.calls[message_id] = self.calls.get(message_id, 0) + 1
+        if message_id == "m3":
+            raise GmailError("GET https://gmail.googleapis.com/gmail/v1/users/me/messages -> HTTP 404 notFound")
+        if message_id == "m5" and self.calls[message_id] == 1:
+            raise GmailError("GET https://gmail.googleapis.com/gmail/v1/users/me/messages -> HTTP 500 backendError")
+        if message_id == "m8":
+            raise GmailError("GMAIL_MESSAGE_INCOMPLETE")
+        if message_id == "m10":
+            raise GmailError("GET https://gmail.googleapis.com/gmail/v1/users/me/messages -> HTTP 429 rateLimitExceeded")
+        return {"id": message_id, "received_at": "2026-11-17T10:00:00+00:00", "headers": {"from": f"P <{message_id}@example.test>", "subject": "s"}, "body_text": "b", "label_ids": ["INBOX"], "thread": "t"}
+
+
+class HealingReads(unittest.TestCase):
+    def test_the_default_read_is_unchanged_and_the_healing_read_tries_again_and_drops_the_deleted(self):
+        plain = mail.gmail_records(HealingGmail(), NOW)
+        self.assertEqual((len(plain[0]), plain[1]), (12 - 4, 4))                                    # the old behaviour: every failed read is unreadable
+        timing = {}
+        gm = HealingGmail()
+        records, unreadable = mail.gmail_records(gm, NOW, workers=4, timing=timing, heal=True)
+        ids = [r["id"] for r in records]
+        self.assertIn("m5", ids)                                                                    # the one more try read it
+        self.assertNotIn("m3", ids)
+        self.assertEqual(unreadable, 2)                                                             # m8 and m10 stay unreadable; the deleted m3 is not counted
+        self.assertEqual(timing["gone"], 1)
+        self.assertEqual(timing["unreadable"], {"m8": "GMAIL_MESSAGE_INCOMPLETE", "m10": "HTTP_429_RATELIMITEXCEEDED"})   # fixed codes, never text
+        self.assertEqual(timing["retries"], 7)
+        self.assertEqual(gm.calls["m5"], 2)                                                         # tried once more, no more
+        self.assertEqual([i for i in ids], [i for i in IDS if i not in ("m3", "m8", "m10")])        # order kept
+
+
+class InterviewMailMessages(unittest.TestCase):
+    """LIFE-793: a Gmail message that stays unreadable follows the same streak as an unreadable sent thread, and a message that can never parse is permanent at once, so the job is not red every hour for it."""
+    def run_stage(self, unreadable, before):
+        from unittest import mock
+        from tests.sources.support import LIVE, JourneyFixture
+        from lifeos.interview import create
+
+        class Case(JourneyFixture, unittest.TestCase):
+            def runTest(self):
+                pass
+        case = Case()
+        case.setUp()
+
+        def fake_read(environ, now, gmail=None, outlook_accounts=None, days=14, seconds=None, detail=None):
+            detail["gmail"] = {"listed": 3, "unreadable": dict(unreadable)}
+            return [], 0
+        calendar = type("Calendar", (), {"list_events": lambda s, a, b: [], "request": lambda s, m, p, params=None: {"items": []}})()
+        with mock.patch.object(interview_evidence, "read_mail", fake_read), mock.patch.object(interview_evidence.pipeline, "read_applied", return_value=[]), \
+                mock.patch.object(interview_evidence.streaks, "previous", return_value=before), mock.patch.object(interview_evidence.streaks, "save", return_value=True):
+            return interview_evidence.run(20, True, environ=LIVE, client=case.notion, calendar=calendar, now=NOW, ledger=object(), records=None, ledger_rows=case.ledger.for_company, writer=case.ledger, recruiters=case.recruiters)
+
+    def test_a_message_gmail_cannot_parse_is_permanent_at_once_and_a_transient_one_fails_then_turns_permanent(self):
+        permanent = self.run_stage({"m8": "GMAIL_MESSAGE_INCOMPLETE"}, {})
+        self.assertEqual((permanent["failed"], permanent["permanent"].get("mail_message_unreadable"), permanent["mail_causes"]), (0, 1, {"gmail_message_incomplete": 1}))
+        self.assertNotIn("mail_unavailable", permanent["why"])
+        first = self.run_stage({"m10": "HTTP_429_RATELIMITEXCEEDED"}, {})
+        self.assertGreater(first["failed"], 0)                                                      # a rate limit is not hidden: failed on its first runs
+        self.assertNotIn("mail_message_unreadable", first["permanent"])
+        label = interview_evidence.streaks.label("message:m10")
+        later = self.run_stage({"m10": "HTTP_429_RATELIMITEXCEEDED"}, {label: interview_evidence.streaks.FAILED_RUNS})
+        self.assertEqual((later["failed"], later["permanent"].get("mail_message_unreadable")), (0, 1))
