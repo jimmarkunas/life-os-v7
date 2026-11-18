@@ -170,16 +170,23 @@ def write_parts(client, block_id, stamp, parts, live):
 
 
 def write_directory(client, block_id, stamp, lines, bulleted, live):
-    """LIFE-840: the body of an Artifacts callout is one native block per line (`lines` [[(text, link, bold)]]): `bulleted` gives one bulleted_list_item per artifact, otherwise the one line is a plain paragraph
-    (a message such as "no verified artifacts"). Blocks of the right kind are rewritten in place, missing ones are added after the last, surplus or wrong-kind ones are removed (only after the new ones exist), and a legacy
-    `Summary for Claude:` line is removed (its summary page stays in Notion). Any other body raises ACCOUNTABILITY_SHAPE. -> {changed}."""
+    """LIFE-840: the body of an Artifacts callout. V7 owns only the trailing run of bulleted_list_item blocks (one per artifact, `lines` [[(text, link, bold)]]) or, when there are none, the last paragraph
+    (a message such as "no verified artifacts"); everything before that, such as a person's decorative link list, is never read as content and never written. Owned blocks of the right kind are rewritten in place,
+    missing ones are added after the last, surplus or wrong-kind ones are removed only after the new ones exist, and a legacy `Summary for Claude:` line is removed (its page stays in Notion).
+    A body that ends in anything else raises ACCOUNTABILITY_SHAPE. -> {changed}."""
     found = locate_combined(client, block_id)
     middle = found["middle"]
-    if not middle or {b.get("type") for b in middle} - {"paragraph", "bulleted_list_item"} or len({b.get("type") for b in middle}) != 1:
+    tail = []
+    for block in reversed(middle):
+        if block.get("type") != "bulleted_list_item":
+            break
+        tail.insert(0, block)
+    owned = tail or middle[-1:]
+    if not middle or any(b.get("type") not in ("paragraph", "bulleted_list_item") for b in owned) or (not tail and owned[0].get("type") != "paragraph"):
         raise fail("ACCOUNTABILITY_SHAPE")
     kind = "bulleted_list_item" if bulleted else "paragraph"
     want = [_normalise([(c, u) for c, u, _ in parts]) for parts in lines]
-    keep = middle if middle[0]["type"] == kind else []
+    keep = owned if owned[0]["type"] == kind else []
     changed = _set(client, found["stamp"], stamp, live, "gray")
     for block, parts, expected in zip(keep, lines, want):
         if signature(block) != expected:
@@ -191,17 +198,19 @@ def write_directory(client, block_id, stamp, lines, bulleted, live):
         changed += len(added)
         if live:
             client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": [{"object": "block", "type": kind, kind: {"rich_text": _nodes(parts)}} for parts in added], "after": middle[-1]["id"]})
-    removed = middle[len(lines):] if keep else middle
+    removed = owned[len(lines):] if keep else owned
     if found["legacy"] is not None:
         removed = removed + [found["legacy"]]
     for block in removed:
         changed += 1
         if live:
             client.call_once("DELETE", f"/blocks/{quote(block['id'], safe='')}")
+    lead = [b["id"] for b in middle[:len(middle) - len(owned)]]
 
     def matches(after):
-        return (after["legacy"] is None and text(after["stamp"]) == stamp.strip() and [b.get("type") for b in after["middle"]] == [kind] * len(lines)
-                and [signature(b) for b in after["middle"]] == want)
+        body = after["middle"][len(lead):]
+        return (after["legacy"] is None and text(after["stamp"]) == stamp.strip() and [b["id"] for b in after["middle"][:len(lead)]] == lead
+                and [b.get("type") for b in body] == [kind] * len(lines) and [signature(b) for b in body] == want)
     if live and changed:
         ok, _ = readback.confirmed(lambda: locate_combined(client, block_id), matches)
         if not ok:

@@ -116,6 +116,37 @@ class Knowledge(unittest.TestCase):
         self.assertEqual([b[0] for b in self.bullets(notion, "matt")], ["bulleted_list_item"] * 2)
         self.assertEqual(notion.kids["b-matt-artifacts"][2], "art-matt")          # the existing block is reused, not recreated
 
+    def test_a_persons_decorative_link_paragraph_above_the_bullets_is_never_touched(self):
+        notion = F.Notion()
+        page(notion, "artifacts")
+        deco = {"id": "deco-matt", "type": "paragraph", "paragraph": {"rich_text": F.rich("Board (MEJ)", "https://jira.example.com/board")}}
+        notion.blocks["deco-matt"] = deco
+        notion.kids["b-matt-artifacts"].insert(2, "deco-matt")                 # heading, stamp, decoration, then the body
+        for i in range(3):                                                      # the person's own placeholder bullets below it
+            notion.blocks[f"ph{i}"] = {"id": f"ph{i}", "type": "bulleted_list_item", "bulleted_list_item": {"rich_text": F.rich("Placeholder")}}
+        notion.kids["b-matt-artifacts"][3:4] = ["ph0", "ph1", "ph2"]            # replaces the legacy paragraph body
+        before = dict(notion.blocks["deco-matt"])
+        self.go(notion, F.Jira({}), self.MATT)
+        self.assertEqual(notion.blocks["deco-matt"], before)
+        self.assertNotIn("deco-matt", notion.writes)
+        self.assertEqual(notion.kids["b-matt-artifacts"][2], "deco-matt")
+        self.assertEqual([b[1][0][0] for b in self.bullets(notion, "matt")[1:]], ["Travel Tracker", "Band Sheet"])      # the placeholders became the artifacts; the decoration is still first
+        notion.writes.clear()
+        self.go(notion, F.Jira({}), self.MATT)
+        self.assertEqual(notion.writes, [])
+
+    def test_a_decorative_paragraph_survives_the_no_artifacts_message_and_the_switch_back(self):
+        notion = F.Notion()
+        page(notion, "artifacts")
+        notion.blocks["deco-jim"] = {"id": "deco-jim", "type": "paragraph", "paragraph": {"rich_text": F.rich("Board (JFM)", "https://jira.example.com/board")}}
+        notion.kids["b-jim-artifacts"].insert(2, "deco-jim")
+        self.go(notion, F.Jira({}), None)
+        self.assertEqual(notion.kids["b-jim-artifacts"][2], "deco-jim")
+        self.assertEqual(notion.text(notion.kids["b-jim-artifacts"][3]), render.NO_INDEX)
+        self.go(notion, F.Jira({}), indexed([("Jim", "Plan Doc", ID_C, "JFM-5", "Doc", "verified")]))
+        self.assertEqual(notion.kids["b-jim-artifacts"][2], "deco-jim")
+        self.assertNotIn("deco-jim", notion.writes)
+
     def test_a_second_identical_run_writes_nothing_and_a_removed_artifact_loses_its_bullet(self):
         notion = F.Notion()
         page(notion, "artifacts")
