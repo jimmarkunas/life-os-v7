@@ -52,6 +52,7 @@ class Gmail:
         self._creds = (client_id, client_secret, refresh_token)
         self._timeout = timeout
         self._token: str | None = None
+        self.retries = 0                                                    # LIFE-793: how many times a request waited and tried again (rate limit or 5xx), counts only
 
     @classmethod
     def from_env(cls) -> Self:
@@ -80,6 +81,7 @@ class Gmail:
                 limited = error.code == 429 or reason in RATE_LIMITED
                 transient = limited or error.code in (500, 502, 503, 504) or reason in RATE_REASONS
                 if transient and attempt < (LIMITED_TRIES if limited else TRIES) - 1:
+                    self.retries += 1
                     time.sleep(2 ** (attempt + 1) + (random.uniform(0, 1) if limited else 0))     # jitter so parallel jobs do not retry in step
                     continue
                 # only a short enumerated reason code is surfaced; bodies never reach logs

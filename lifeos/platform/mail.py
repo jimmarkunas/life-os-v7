@@ -11,7 +11,7 @@ from datetime import timedelta, timezone
 from email.utils import parseaddr
 
 from lifeos.platform.fixed_code import fixed
-from lifeos.platform.gmail import GmailError
+from lifeos.platform.gmail import GmailError, error_code
 from lifeos.platform.outlook import Outlook, OutlookError
 
 WINDOW_DAYS = 14
@@ -36,7 +36,7 @@ def _markers(headers, address):
             "noreply": bool(NOREPLY.search(address.split("@")[0] if address else ""))}
 
 
-def gmail_records(gmail, now, limit=MAX_MESSAGES, days=WINDOW_DAYS, terms="", known=None, stats=None, workers=1, timing=None):
+def gmail_records(gmail, now, limit=MAX_MESSAGES, days=WINDOW_DAYS, terms="", known=None, stats=None, workers=1, timing=None, heal=False):
     """Gmail Inbox and Spam, last `days` days (default WINDOW_DAYS), optionally only messages matching Gmail search `terms`. Returns (records, unreadable). A listing that cannot be proven complete raises MailError."""
     query = f"{{in:inbox in:spam}} newer_than:{days}d" + (f" {terms}" if terms else "")
     began = time.monotonic()
@@ -53,10 +53,15 @@ def gmail_records(gmail, now, limit=MAX_MESSAGES, days=WINDOW_DAYS, terms="", kn
     out, unreadable = [], 0
     read_began = time.monotonic()
 
+    failures, missing = {}, set()                                            # message id -> the fixed cause of its last failed read; the ids Gmail answered 404 for
+
     def read(message_id):
         try:
             return gmail.mail_record(message_id)
-        except GmailError:
+        except GmailError as error:
+            failures[message_id] = error_code(error)
+            if re.search(r"\bHTTP 404\b", str(error)):
+                missing.add(message_id)
             return None
     if workers > 1 and len(ids) > 1:                                         # LIFE-793: the same reads, the same order and the same unreadable count, at most `workers` at a time; the first read goes alone so the access token is fetched once
         first = [read(ids[0])]
@@ -64,11 +69,26 @@ def gmail_records(gmail, now, limit=MAX_MESSAGES, days=WINDOW_DAYS, terms="", kn
             raws = first + list(pool.map(read, ids[1:]))
     else:
         raws = [read(message_id) for message_id in ids]
+    gone = set()
+    if heal:                                                                 # LIFE-793: a read that failed gets one more try; a listed message Gmail then says does not exist was deleted after the listing (the
+        for position, message_id in enumerate(ids):                          # read takes minutes) and can hold no pending request: dropped, not "unreadable". Anything else still failing is counted and named by its fixed code
+            if raws[position] is None:
+                failures.pop(message_id, None)
+                missing.discard(message_id)
+                raws[position] = read(message_id)
+        gone = {m for m in failures if m in missing}
     if timing is not None:
         timing["read"], timing["read_s"] = len(ids), round(time.monotonic() - read_began, 1)
-    for raw in raws:
+        retries = getattr(gmail, "retries", None)
+        if retries is not None:
+            timing["retries"] = retries
+        if heal:
+            timing["gone"] = len(gone)
+            timing["unreadable"] = {m: code for m, code in failures.items() if m not in gone and raws[ids.index(m)] is None}
+    for message_id, raw in zip(ids, raws):
         if raw is None:
-            unreadable += 1
+            if message_id not in gone:
+                unreadable += 1
             continue
         name, address = _sender(raw["headers"].get("from", ""))
         labels = raw.get("label_ids") or []
