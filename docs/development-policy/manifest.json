@@ -159,7 +159,7 @@
       ]
     }
   ],
-  "reassembled_sha256": "00783c0cbbc239dbf9a3064b612805e6ffaec94b98c9b5c216d46de9c0e8f3be",
+  "reassembled_sha256": "207443cf4efc42622343517eb661d85388bd504d83d895c7c710248247bd4e55",
   "amendments": [
     {
       "date": "2026-11-02",
@@ -322,6 +322,12 @@
       "pr": "https://github.com/jimmarkunas/life-os-v7/pull/1293",
       "approval": "Jim Markunas, November 16, 2026, 5:37 PM CT, typed in the Claude Code chat: 'Approved' to the line 'any workflow change with no new secret and no widened permissions is pre-approved; it still stops for credentials, deleting data and spend' (LIFE-779)",
       "part": "docs/development-policy/04 (Lean delivery amendment: standing pre-approval for workflow changes, enforced by tools/workflow_gate.py in preflight; the Delivery flow v3 clause that grouped workflow edits per file and kept one workflow PR open at a time is removed, as the protected-file label already was), with the matching docs/agent-reference.md lines"
+    },
+    {
+      "date": "2026-11-18",
+      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/PRNUM",
+      "approval": "Jim Markunas, November 18, 2026 CT, typed in the chat: approved a narrowly scoped PR-only amendment of Parts 02, 04 and 06 (LIFE-834 under LIFE-791; no merge, no autonomous bug-pilot activation, no production change)",
+      "part": "docs/development-policy/02 (V7 modernization consolidation exception: the 49 historical terminal children are preserved and the Migration gate stays exact), 04 (V7 human release and seven-day Epic acceptance exception for LIFE-791 only; the protected-file quote clause is dropped to stay under the part size cap, still recorded in the Nov 15 amendment), 06 (retired Daily Runs scheduling authority replaced by the Production Contract and V7's existing GitHub scheduled workflows as sole executor)"
     }
   ]
 }
