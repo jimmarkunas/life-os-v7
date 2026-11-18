@@ -1,6 +1,4 @@
 """Pure text for the V3 accountability regions (LIFE-671): no Notion, no Jira, no clock. Every line is plain text; a summary page is at most SUMMARY_MAX characters."""
-import re
-
 from lifeos.accountability import read
 from lifeos.platform import ct_stamp
 
@@ -8,7 +6,6 @@ SUMMARY_MAX = 1000
 BODY_MAX = 1800                       # one Notion text item holds 2,000 characters
 SHOWN = 12
 NO_EPICS = "No quarter epics yet for this quarter."
-PAST_LINE = re.compile(r"^Q[1-4] \d{4} — closed")
 ACCEPTED = "showing last accepted "
 
 
@@ -80,45 +77,36 @@ def week_view(week, today, site):
     return [p(head)] + got_open + [NL] + got_done, [head] + lines_open + lines_done
 
 
-NO_ARTIFACTS = "Nothing yet. An issue labelled artifact in Jira shows up here with its link."
-MAX_ARTIFACTS = 6
+NO_INDEX = "The artifact index is not set up yet."
+NO_ARTIFACTS = "No verified artifacts indexed yet."
+REVIEWS_NONE = "Review pages are not indexed yet."
 
 
-def artifact_parts(items, site):
-    """-> (parts, plain lines): the artifact title linked to its address, or "Missing link: KEY title" with the key linked to Jira."""
+def artifact_directory(items):
+    """-> (parts, plain lines): one linked title per verified artifact, in index order; `None` (no index page) and an empty list each say so plainly."""
+    if items is None:
+        return [p(NO_INDEX)], [NO_INDEX]
     if not items:
         return [p(NO_ARTIFACTS)], [NO_ARTIFACTS]
-    ordered = [i for i in items if i["url"]] + [i for i in items if not i["url"]]
     parts, lines = [], []
-    for item in ordered[:MAX_ARTIFACTS]:
-        lead = [NL] if parts else []
-        if item["url"]:
-            parts += lead + [p(item["title"], item["url"])]
-            lines.append(f"{item['title']} — {item['url']}")
-        else:
-            parts += lead + [p("Missing link: "), p(item["key"], read.issue_url(site, item["key"])), p(f" {item['title']}")]
-            lines.append(f"Missing link: {item['key']} {item['title']}")
-    if len(ordered) > MAX_ARTIFACTS:
-        parts += [NL, p(f"…and {len(ordered) - MAX_ARTIFACTS} more labelled artifact in Jira", read.jql_url(site, 'labels = "artifact"'))]
-        lines.append(f"…and {len(ordered) - MAX_ARTIFACTS} more")
+    for item in items[:MAX_PARTS // 2]:
+        parts += ([NL] if parts else []) + [p(item["title"], item["url"])]
+        lines.append(f"{item['title']} — {item['url']}")
     return parts, lines
 
 
-def todo_view(items, site, project):
-    """The current sprint's tasks, each followed by its sub-tasks (indented), split into "In progress / To do" and "Done"; a sub-task whose task is not in the sprint comes last."""
-    more = read.jql_url(site, read.TODO_JQL.format(project=project))
-    title = [NL, p("To-do lists, this week's sprint", bold=True)]
-    if not items:
-        return title + [NL, p("Nothing in a sprint yet.")], ["To-do lists, this week's sprint: nothing in a sprint yet."]
-    keys = {i["key"] for i in items if not i["subtask"]}
-    ordered = []
-    for task in (i for i in items if not i["subtask"]):
-        ordered += [task] + [i for i in items if i["subtask"] and i["parent"] == task["key"]]
-    ordered += [i for i in items if i["subtask"] and i["parent"] not in keys]
-    indent = {i["key"]: "  - " for i in items if i["subtask"]}
-    got_open, lines_open = _group(SECTION_OPEN, [i for i in ordered if not i["done"]], OPEN_SHOWN, site, more, indent=indent)
-    got_done, lines_done = _group(SECTION_DONE, [i for i in ordered if i["done"]], DONE_SHOWN, site, more, indent=indent)
-    return title + got_open + [NL] + got_done, ["To-do lists, this week's sprint:"] + lines_open + lines_done
+def combined_heading(person, year, n):
+    return f"Quarterly Goals & Review — {person} · Q{n} {year}"
+
+
+def review_parts(links):
+    """-> the Quarterly Reviews toggle's paragraph: each review page linked, the current quarter first; None (no index) and an empty list say so plainly."""
+    if not links:
+        return [p(REVIEWS_NONE)]
+    parts = []
+    for label, url in links:
+        parts += ([NL] if parts else []) + [p(label, url)]
+    return parts
 
 
 def fit(parts):
@@ -131,15 +119,6 @@ def fit(parts):
 
 def summary(title, stamp_text, lines):
     return cut("\n".join([f"{title} · {stamp_text}"] + list(lines)), SUMMARY_MAX)
-
-
-def progress(lanes):
-    """[(lane, done, total)] -> "Career 12 / 20 · Creative 3 / 4"."""
-    return " · ".join(f"{name} {goal_cell(done, total)}" for name, done, total in lanes) or NO_EPICS
-
-
-def closing(year, n, lanes):
-    return f"Q{n} {year} — closed: " + progress(lanes)
 
 
 def changelog_line(first, year, n):

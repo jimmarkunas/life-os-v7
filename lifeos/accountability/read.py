@@ -171,30 +171,18 @@ def week(jira, project, today):
     return {"open": [_row(i) for i in found], "done": [_row(i) for i in done], "jql": base + clause}
 
 
-def artifacts(jira, project):
-    """-> [{key, title, url}] for the project's issues labelled `artifact`, whatever their status (a finished tracker is still an artifact). The link is the issue's first web link,
-    else the first address in its description; None when there is neither (the Knowledge center lists those as missing a link)."""
-    out = []
-    for issue in search(jira, f'project = {project} AND labels = "artifact" ORDER BY key ASC', "summary,description"):
+GOOGLE_FILE = re.compile(r"https://docs\.google\.com/(document|spreadsheets)/d/([A-Za-z0-9_-]{20,})")
+
+
+def google_files(jira, project):
+    """-> {Google file id: {kind, keys}} for every Google Doc or Sheet a project issue links directly in its description or comments (all issue types and statuses, whatever the label or sprint),
+    deduplicated by file id. Bounded paging; only the link text is read, nothing of a document, and nothing is written."""
+    out = {}
+    for issue in search(jira, f"project = {project} ORDER BY key ASC", "description,comment"):
         fields = issue.get("fields") or {}
-        links = jira.get(f"/rest/api/3/issue/{issue['key']}/remotelink")
-        urls = [((entry or {}).get("object") or {}).get("url") for entry in links] if isinstance(links, list) else []
-        found = next((u for u in urls if u), None) or next(iter(URL.findall(json.dumps(fields.get("description") or ""))), None)
-        out.append({"key": issue["key"], "title": fields.get("summary") or issue["key"], "url": found})
+        text = json.dumps([fields.get("description"), (fields.get("comment") or {}).get("comments")])
+        for kind, file_id in GOOGLE_FILE.findall(text):
+            row = out.setdefault(file_id, {"kind": "Doc" if kind == "document" else "Sheet", "keys": []})
+            if issue["key"] not in row["keys"]:
+                row["keys"].append(issue["key"])
     return out
-
-
-TODO_FIELDS = "summary,status,parent,issuetype"
-TODO_JQL = "project = {project} AND issuetype != Epic AND sprint in openSprints()"
-
-
-def todos(jira, project):
-    """-> [{key, summary, status, done, parent, subtask}] for the project's tasks and sub-tasks in the current sprint (a week, Monday to Sunday), done ones included. A project without
-    sprints (HTTP 400 on the sprint clause) has no to-do list."""
-    try:
-        found = search(jira, TODO_JQL.format(project=project) + " ORDER BY key ASC", TODO_FIELDS)
-    except JiraError as error:
-        if not str(error).endswith("_400"):
-            raise
-        return []
-    return [_row(i, parent=((i.get("fields") or {}).get("parent") or {}).get("key"), subtask=bool((((i.get("fields") or {}).get("issuetype")) or {}).get("subtask"))) for i in found]

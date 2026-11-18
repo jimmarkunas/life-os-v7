@@ -19,7 +19,7 @@ def notion_writer(environ):
 
 
 def run_region(kind, build, environ=None, jira=None, notion=None, now=None, live=False):
-    """`build(client, block_id, person, project, jira, now, live, site)` reads Jira and writes the callout; it returns counts. kind is the register row suffix (week, goals, review)."""
+    """`build(client, block_id, person, project, jira, now, live, site, notion)` reads Jira and writes the callout; it returns counts (`notion` is the unscoped client, for read-only index pages). kind is the register row suffix (week, goals, review)."""
     environ = os.environ if environ is None else environ
     now = now or datetime.now(CHI)
     notion = notion or notion_writer(environ)
@@ -30,7 +30,7 @@ def run_region(kind, build, environ=None, jira=None, notion=None, now=None, live
         block_id = region.address(notion, f"{person.lower()}.{kind}")
         client = region.scoped(notion, block_id)
         try:
-            counts[person.lower()] = build(client, block_id, person, project, jira, now, live, site)
+            counts[person.lower()] = build(client, block_id, person, project, jira, now, live, site, notion)
         except JiraError:
             counts[person.lower()] = {"degraded": True, "stamp_written": region.degrade(client, block_id, lambda old: degraded_stamp(old, now), live)}
             degraded.append(person.lower())

@@ -2,7 +2,7 @@
 from lifeos.accountability import common, read, region, render
 
 
-def _build(client, block_id, person, project, jira, now, live, site):
+def _build(client, block_id, person, project, jira, now, live, site, notion):
     today = now.date()
     parts, lines = render.week_view(read.week(jira, project, today), today, site)
     stamp = render.stamp(now)
