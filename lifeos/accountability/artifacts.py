@@ -1,5 +1,7 @@
-"""Stage `accountability-artifacts` (LIFE-673, LIFE-840): the Knowledge center callout of Jim and of Matt is a directory of real deliverables, the verified Google Docs and Sheets of the artifact index (child 05),
-not a task list. Jim's candidates are discovered from his JFM issues (descriptions and comments) and counted against the index; only an indexed, verified artifact is shown."""
+"""Stage `accountability-artifacts`: the Knowledge center callout of Jim and of Matt is a directory of verified Google Docs and Sheets (LIFE-673, LIFE-840).
+
+The links come from the artifact index (child 05 of the V3 master), not from a task list. Jim's candidates are discovered from his JFM issues and counted against the index; only an indexed, verified artifact is shown.
+"""
 from lifeos.accountability import common, index, read, region, render
 
 

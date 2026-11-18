@@ -29,6 +29,10 @@ def scoped(notion, block_id):
     return report_region.ScopedClient(notion, block_id, lambda code: AccountabilityError("ACCOUNTABILITY_" + code))
 
 
+def children_of(client, block_id):
+    return report_region.children(client, block_id, AccountabilityError)
+
+
 def text(block):
     return report_region.plain(block).strip()
 

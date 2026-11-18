@@ -1,5 +1,7 @@
-"""Stage `accountability-goals` (LIFE-671, LIFE-840): the one Quarterly Goals & Review callout of Jim and of Matt: title with the quarter, the refresh label, one row per quarter Epic (linked to Jira, done / all)
-and the Quarterly Reviews toggle linking the review pages. This stage is the only writer of that callout; `accountability-review` is retired."""
+"""Stage `accountability-goals`: the one Quarterly Goals & Review callout of Jim and of Matt on Jim & Matt V3 (LIFE-671, LIFE-840).
+
+Title with the quarter, the refresh label, one row per quarter Epic (linked to Jira, done / all) and the Quarterly Reviews toggle linking the review pages. This stage is the only writer of that callout.
+"""
 from lifeos.accountability import common, index, read, region, render
 
 

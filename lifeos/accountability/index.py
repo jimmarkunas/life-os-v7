@@ -1,12 +1,11 @@
-"""The two Notion index pages the V3 accountability stages READ (LIFE-840): the review-record index under child 02 and the artifact index under child 05 of the V3 master. Read only: a page is found by its
-V3 block ID register row (`index.reviews`, `index.artifacts`), accepted only when its title is the expected one, and its bullets are parsed. A missing row or page gives None, and the stage says so plainly.
+"""The two Notion index pages the V3 accountability stages read: the review index (child 02) and the artifact index (child 05) of the V3 master (LIFE-840).
 
-Review index bullet:  `<Person> | <Qn YYYY> | current or past`, the page link on the first piece. Artifact index bullet: `<Owner> | <Title> | <file id> | <Jira keys> | <Doc or Sheet> | <verified or unresolved> | <date>`,
-the Google link on the Title piece. Nothing here writes, and no document text is read or copied."""
+A page is found by its V3 block ID register row (`index.reviews`, `index.artifacts`) and accepted only with its expected title; a missing row or page gives None and the stage says so. Reads only.
+Review bullet: `<Person> | <Qn YYYY> | current or past`, the page link on the first piece. Artifact bullet: `<Owner> | <Title> | <file id> | <Jira keys> | <Doc or Sheet> | <verified or unresolved> | <date>`, the Google link on the Title.
+"""
 from urllib.parse import quote
 
 from lifeos.accountability import region
-from lifeos.platform import report_region
 
 TITLES = {"index.reviews": "V3 quarterly review index", "index.artifacts": "V3 artifact index"}
 SEP = " | "
@@ -31,7 +30,7 @@ def rows(notion, key):
     if not isinstance(page, dict) or page.get("in_trash") or page.get("archived") or region._title(page).strip() != TITLES[key]:
         return None
     out = []
-    for block in report_region.children(notion, page_id, region.AccountabilityError):
+    for block in region.children_of(notion, page_id):
         if block.get("type") == "bulleted_list_item":
             out.append(([c.strip() for c in region.text(block).split(SEP)], next(iter(_links(block)), None)))
     return out
