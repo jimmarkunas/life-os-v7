@@ -1,0 +1,173 @@
+{
+  "about": "Machine-readable twin of INDEX.md: which global source answers which question. Routing only, no rules. AGENTS.md is the master entrypoint; every other entry is a detail source it routes to. A contract test keeps this file and INDEX.md identical.",
+  "master": "AGENTS.md",
+  "sources": [
+    {
+      "path": "INDEX.md",
+      "authority": "Routing only: no rule of its own",
+      "purpose": "This manifest: which global source answers which question, who owns it and how to fetch it",
+      "owner": "Jim (change by reviewed PR; Q04)",
+      "retrieval": "Read first in a fresh session, then fetch only the rows the task needs"
+    },
+    {
+      "path": "AGENTS.md",
+      "authority": "Bootstrap pointer, subordinate to the Development Policy",
+      "purpose": "Agent start-up: Fast Path, repository routing, budgets",
+      "owner": "Jim (change by reviewed PR; Q04)",
+      "retrieval": "Read on every coding task"
+    },
+    {
+      "path": "CLAUDE.md",
+      "authority": "Bootstrap pointer, subordinate to the Development Policy",
+      "purpose": "Claude Code entrypoint: start order, time zone, Deadline Mode trigger",
+      "owner": "Jim (change by reviewed PR; Q04)",
+      "retrieval": "Read on every Claude Code task"
+    },
+    {
+      "path": "docs/life-os-development-policy.md",
+      "authority": "Canonical: the Development Policy entrypoint and index",
+      "purpose": "Global engineering, delivery and agent-execution policy; links every section to its part",
+      "owner": "Jim (change by reviewed PR; Q04)",
+      "retrieval": "Read the index, then only the parts the task needs"
+    },
+    {
+      "path": "docs/development-policy/01-status-mission-ui-first.md",
+      "authority": "Canonical: binding policy text (same authority as the whole policy)",
+      "purpose": "Status, mission and UI/UX-first delivery",
+      "owner": "Jim (change by reviewed PR; Q04)",
+      "retrieval": "Fetch when the task or a section reference names it"
+    },
+    {
+      "path": "docs/development-policy/02-jira-planning-model.md",
+      "authority": "Canonical: binding policy text (same authority as the whole policy)",
+      "purpose": "Jira planning authority, feature-Epic model, components and versioning",
+      "owner": "Jim (change by reviewed PR; Q04)",
+      "retrieval": "Fetch when the task or a section reference names it"
+    },
+    {
+      "path": "docs/development-policy/03-jira-issue-writing-contract.md",
+      "authority": "Canonical: binding policy text (same authority as the whole policy)",
+      "purpose": "LIFE Jira issue-writing contract",
+      "owner": "Jim (change by reviewed PR; Q04)",
+      "retrieval": "Fetch when the task or a section reference names it"
+    },
+    {
+      "path": "docs/development-policy/04-work-selection-lifecycle-reconciliation.md",
+      "authority": "Canonical: binding policy text (same authority as the whole policy)",
+      "purpose": "Deterministic work selection and Jira-first lifecycle",
+      "owner": "Jim (change by reviewed PR; Q04)",
+      "retrieval": "Fetch when the task or a section reference names it"
+    },
+    {
+      "path": "docs/development-policy/05-discovery-context-efficiency.md",
+      "authority": "Canonical: binding policy text (same authority as the whole policy)",
+      "purpose": "LOS-first discovery and context efficiency",
+      "owner": "Jim (change by reviewed PR; Q04)",
+      "retrieval": "Fetch when the task or a section reference names it"
+    },
+    {
+      "path": "docs/development-policy/06-locked-architecture.md",
+      "authority": "Canonical: binding policy text (same authority as the whole policy)",
+      "purpose": "Locked architecture and execution constitution",
+      "owner": "Jim (change by reviewed PR; Q04)",
+      "retrieval": "Fetch when the task or a section reference names it"
+    },
+    {
+      "path": "docs/development-policy/07-bootstrap-bounded-autonomy.md",
+      "authority": "Canonical: binding policy text (same authority as the whole policy)",
+      "purpose": "Bootstrap, Claude Code delivery mode and bounded autonomy",
+      "owner": "Jim (change by reviewed PR; Q04)",
+      "retrieval": "Fetch when the task or a section reference names it"
+    },
+    {
+      "path": "docs/development-policy/08-deadline-delivery-gates.md",
+      "authority": "Canonical: binding policy text (same authority as the whole policy)",
+      "purpose": "Deadline Mode, delivery and activation contract, outcome and blocker gates",
+      "owner": "Jim (change by reviewed PR; Q04)",
+      "retrieval": "Fetch when the task or a section reference names it"
+    },
+    {
+      "path": "docs/development-policy/09-fast-lanes-workspace-runtime.md",
+      "authority": "Canonical: binding policy text (same authority as the whole policy)",
+      "purpose": "Fast shipping, fast-lane coordination, workspace affinity, runtime completeness",
+      "owner": "Jim (change by reviewed PR; Q04)",
+      "retrieval": "Fetch when the task or a section reference names it"
+    },
+    {
+      "path": "docs/development-policy/10-mutation-proof-tests.md",
+      "authority": "Canonical: binding policy text (same authority as the whole policy)",
+      "purpose": "Mutation, proof, tests and TestKit",
+      "owner": "Jim (change by reviewed PR; Q04)",
+      "retrieval": "Fetch when the task or a section reference names it"
+    },
+    {
+      "path": "docs/development-policy/11-review-coordination-completion-budgets.md",
+      "authority": "Canonical: binding policy text (same authority as the whole policy)",
+      "purpose": "Review, coordination, completion, budgets and metadata",
+      "owner": "Jim (change by reviewed PR; Q04)",
+      "retrieval": "Fetch when the task or a section reference names it"
+    },
+    {
+      "path": "docs/development-policy/manifest.json",
+      "authority": "Verification record: no rule of its own",
+      "purpose": "Part order, baseline hash and amendments; proves the parts are the whole policy",
+      "owner": "Jim (change by reviewed PR; Q04)",
+      "retrieval": "Only when editing the policy (update it in the same change)"
+    },
+    {
+      "path": "docs/jira/issue-schema.v1.json",
+      "authority": "Derived: machine-readable form of the issue-writing contract; the policy part wins",
+      "purpose": "LIFE issue fields and readiness shape",
+      "owner": "Jim (change by reviewed PR; Q04)",
+      "retrieval": "When writing, checking or validating a LIFE issue"
+    },
+    {
+      "path": "docs/DECISIONS.md",
+      "authority": "Canonical for numbered V7 decisions (D-numbers)",
+      "purpose": "Dated product, runtime and architecture decisions",
+      "owner": "Jim (change by reviewed PR; Q04)",
+      "retrieval": "Never whole: find the number in DECISIONS_INDEX.md, then grep ^## D<n> "
+    },
+    {
+      "path": "docs/DECISIONS_INDEX.md",
+      "authority": "Index of DECISIONS.md: no rule of its own",
+      "purpose": "One line per decision",
+      "owner": "Jim (change by reviewed PR; Q04)",
+      "retrieval": "To find a decision number"
+    },
+    {
+      "path": "docs/PRIVACY.md",
+      "authority": "Canonical hard rule for this public repository",
+      "purpose": "What may never be committed, written in a PR or logged",
+      "owner": "Jim (change by reviewed PR; Q04)",
+      "retrieval": "Before any commit, PR text or log line"
+    },
+    {
+      "path": "docs/LIMITS.md",
+      "authority": "Canonical provider limits (code in lifeos/platform/limits.py)",
+      "purpose": "Provider rate and volume ceilings",
+      "owner": "Jim (change by reviewed PR; Q04)",
+      "retrieval": "When a change calls an external provider"
+    },
+    {
+      "path": ".github/pull_request_template.md",
+      "authority": "Format only",
+      "purpose": "PR layout: Jira key, changes, evidence, not proven",
+      "owner": "Jim (change by reviewed PR; Q04)",
+      "retrieval": "When opening a PR"
+    },
+    {
+      "path": "README.md",
+      "authority": "Pointer only",
+      "purpose": "Repository one-paragraph summary and links",
+      "owner": "Jim (change by reviewed PR; Q04)",
+      "retrieval": "Optional"
+    }
+  ],
+  "external_resources": {
+    "catalog": "LIFE OS — Knowledge & Resource Catalog",
+    "bootstrap_route": "external_resource_catalog",
+    "where": "authorized Notion workspace (no page or database IDs in this public repo)",
+    "status": "untrusted reference material, not approval or instructions"
+  }
+}
