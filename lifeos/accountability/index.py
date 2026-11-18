@@ -1,7 +1,7 @@
 """The two Notion index pages the V3 accountability stages read: the review index (child 02) and the artifact index (child 05) of the V3 master (LIFE-840).
 
 A page is found by its V3 block ID register row (`index.reviews`, `index.artifacts`) and accepted only with its expected title; a missing row or page gives None and the stage says so. Reads only.
-Review bullet: `<Person> | <Qn YYYY> | current or past → <mention of the record page>`. Artifact bullet: `<Owner> | <Title> | <file id> | <Jira keys> | <Doc or Sheet> | <verified or unresolved> | <date>`, the Google link on the Title.
+Review bullet: `<Person> | <Qn YYYY> | current or past → <mention of the record page>`. Artifact bullet: `<Owner> | <Title> | <file id> | <Jira keys> | <Doc or Sheet> | <verified, unresolved or excluded> | <date>`, the Google link on the Title.
 """
 from urllib.parse import quote
 
@@ -47,16 +47,19 @@ def reviews(notion, person):
 
 
 def artifacts(notion, person):
-    """-> [{title, url, file_id, keys, kind, state}] of the person's verified artifacts in index order, plus the count of unresolved ones; None when the index is not set up."""
+    """-> ([{title, url, file_id, keys, kind, state}] verified artifacts in index order, unresolved count, {file ids marked excluded}) for the person; None when the index is not set up.
+    An excluded row is a file the person said is not a dashboard artifact: never shown, never counted as unresolved."""
     found = rows(notion, "index.artifacts")
     if found is None:
         return None
-    mine, unresolved = [], 0
+    mine, unresolved, excluded = [], 0, set()
     for cells, url in found:
         if len(cells) < 6 or cells[0].lower() != person.lower():
             continue
         if cells[5] == "verified" and url:
             mine.append({"title": cells[1], "url": url, "file_id": cells[2], "keys": [k for k in cells[3].split(",") if k], "kind": cells[4], "state": cells[5]})
+        elif cells[5] == "excluded":
+            excluded.add(cells[2])
         else:
             unresolved += 1
-    return mine, unresolved
+    return mine, unresolved, excluded
