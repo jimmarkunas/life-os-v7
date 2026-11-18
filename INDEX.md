@@ -2,6 +2,8 @@
 
 Routing manifest for the global sources in this repository (LOS-74 decision Q11; LIFE-222). It says which file answers which question, what authority it has, who owns it and how to retrieve it. It contains no rules: every rule stays in the source it names, and the [Development Policy](docs/life-os-development-policy.md) decides precedence. GitHub `main` is canonical; record the commit SHA you read at task start (Q06).
 
+Machine-readable twin: [`docs/index.json`](docs/index.json) (kept identical by a contract test). AGENTS.md is the master entrypoint; every other source is detail it routes to.
+
 Project-specific context (requirements, workflows, configuration) is not here. It lives in the ChatGPT Project's Drive `PROJECT-INDEX.md` (LIFE-223); execution and status live in Jira `LIFE`, product decisions in Jira `LOS` (Q16).
 
 ## Global sources
