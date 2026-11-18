@@ -325,7 +325,7 @@
     },
     {
       "date": "2026-11-18",
-      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/PRNUM",
+      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/1321",
       "approval": "Jim Markunas, November 18, 2026 CT, typed in the chat: approved a narrowly scoped PR-only amendment of Parts 02, 04 and 06 (LIFE-834 under LIFE-791; no merge, no autonomous bug-pilot activation, no production change)",
       "part": "docs/development-policy/02 (V7 modernization consolidation exception: the 49 historical terminal children are preserved and the Migration gate stays exact), 04 (V7 human release and seven-day Epic acceptance exception for LIFE-791 only; the protected-file quote clause is dropped to stay under the part size cap, still recorded in the Nov 15 amendment), 06 (retired Daily Runs scheduling authority replaced by the Production Contract and V7's existing GitHub scheduled workflows as sole executor)"
     }
