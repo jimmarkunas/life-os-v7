@@ -77,22 +77,20 @@ def week_view(week, today, site):
     return [p(head)] + got_open + [NL] + got_done, [head] + lines_open + lines_done
 
 
+MAX_ARTIFACT_LINES = 40
 NO_INDEX = "The artifact index is not set up yet."
 NO_ARTIFACTS = "No verified artifacts indexed yet."
 REVIEWS_NONE = "Review pages are not indexed yet."
 
 
-def artifact_directory(items):
-    """-> (parts, plain lines): one linked title per verified artifact, in index order; `None` (no index page) and an empty list each say so plainly."""
+def artifact_lines(items):
+    """-> (lines, plain lines, bulleted): one line per verified artifact, its title linked, in index order, as bullets; `None` (no index page) and an empty list give one plain message line (not bulleted)."""
     if items is None:
-        return [p(NO_INDEX)], [NO_INDEX]
+        return [[p(NO_INDEX)]], [NO_INDEX], False
     if not items:
-        return [p(NO_ARTIFACTS)], [NO_ARTIFACTS]
-    parts, lines = [], []
-    for item in items[:MAX_PARTS // 2]:
-        parts += ([NL] if parts else []) + [p(item["title"], item["url"])]
-        lines.append(f"{item['title']} — {item['url']}")
-    return parts, lines
+        return [[p(NO_ARTIFACTS)]], [NO_ARTIFACTS], False
+    shown = items[:MAX_ARTIFACT_LINES]
+    return [[p(item["title"], item["url"])] for item in shown], [f"{item['title']} — {item['url']}" for item in shown], True
 
 
 def combined_heading(person, year, n):

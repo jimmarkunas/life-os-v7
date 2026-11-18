@@ -83,36 +83,76 @@ class Knowledge(unittest.TestCase):
         with mock.patch.object(region, "address", lambda _n, key: f"b-{key.split('.')[0]}-artifacts"), mock.patch.object(index, "rows", lambda _n, key: rows):
             return artifacts.run(0, live, environ={"JIRA_SITE_URL": SITE}, jira=fake, notion=notion, now=F.NOW)
 
-    def test_each_person_shows_only_their_verified_artifacts_once_and_no_task_lists(self):
+    def bullets(self, notion, who):
+        """[(type, [(text, link)])] of the body blocks between the stamp and the end of the callout."""
+        return [(notion.blocks[k]["type"], [(t, u) for t, u in notion.links(k)]) for k in notion.kids[f"b-{who}-artifacts"][2:]]
+
+    MATT = indexed([("Matt", "Travel Tracker", ID_A, "MEJ-74,MEJ-99", "Sheet", "verified"), ("Matt", "Band Sheet", ID_B, "MEJ-33", "Sheet", "verified")])
+
+    def test_each_artifact_is_its_own_native_bullet_with_its_own_link(self):
         notion = F.Notion()
         page(notion, "artifacts")
-        rows = indexed([("Matt", "Travel Tracker", ID_A, "MEJ-74,MEJ-99", "Sheet", "verified"), ("Matt", "Band Sheet", ID_B, "MEJ-33", "Sheet", "verified"),
-                        ("Jim", "Plan Doc", ID_C, "JFM-5", "Doc", "verified"), ("Jim", "Lost Doc", "d" * 25, "JFM-6", "Doc", "unresolved")])
+        rows = self.MATT + indexed([("Jim", "Plan Doc", ID_C, "JFM-5", "Doc", "verified"), ("Jim", "Lost Doc", "d" * 25, "JFM-6", "Doc", "unresolved")])
         counts = self.go(notion, F.Jira({}), rows)
-        self.assertEqual(notion.text("art-matt").split("\n"), ["Travel Tracker", "Band Sheet"])
-        self.assertEqual({k: v for k, v in notion.links("art-matt") if v}, {"Travel Tracker": SHEET.format(ID_A), "Band Sheet": SHEET.format(ID_B)})
-        self.assertEqual(notion.text("art-jim"), "Plan Doc")
-        self.assertNotIn("To-do", notion.text("art-jim") + notion.text("art-matt"))
+        self.assertEqual(self.bullets(notion, "matt"), [("bulleted_list_item", [("Travel Tracker", SHEET.format(ID_A))]), ("bulleted_list_item", [("Band Sheet", SHEET.format(ID_B))])])
+        self.assertEqual(self.bullets(notion, "jim"), [("bulleted_list_item", [("Plan Doc", SHEET.format(ID_C))])])
         self.assertEqual((counts["matt"]["artifacts"], counts["jim"]["artifacts"], counts["jim"]["unresolved"]), (2, 1, 1))
-        self.assertLessEqual(len(notion.text("pg-matt-p")), render.SUMMARY_MAX)
 
-    def test_a_body_a_person_turned_into_one_bullet_is_written_as_a_bullet(self):
+    def test_the_summary_for_claude_line_is_removed_and_nothing_task_like_remains(self):
         notion = F.Notion()
         page(notion, "artifacts")
-        notion.blocks["art-matt"] = {"id": "art-matt", "type": "bulleted_list_item", "bulleted_list_item": {"rich_text": F.rich("old text")}}
-        rows = indexed([("Matt", "Travel Tracker", ID_A, "MEJ-74", "Sheet", "verified")])
-        self.go(notion, F.Jira({}), rows)
-        self.assertEqual(notion.text("art-matt"), "Travel Tracker")
-        self.assertEqual(notion.blocks["art-matt"]["type"], "bulleted_list_item")
+        self.go(notion, F.Jira({}), self.MATT)
+        self.assertEqual(notion.deleted.count("s-pg-matt") + notion.deleted.count("s-pg-jim"), 2)
+        for who in ("matt", "jim"):
+            texts = [notion.text(k).lower() for k in notion.kids[f"b-{who}-artifacts"][1:]]
+            self.assertFalse([x for x in texts if "summary for claude" in x or "to-do" in x])
+        self.assertEqual(notion.text("pg-matt-p"), "old summary")                # the legacy summary page itself is untouched
 
-    def test_a_second_identical_run_writes_nothing(self):
+    def test_a_legacy_body_of_one_bullet_with_newlines_becomes_separate_bullets(self):
         notion = F.Notion()
         page(notion, "artifacts")
-        rows = indexed([("Matt", "Travel Tracker", ID_A, "MEJ-74", "Sheet", "verified")])
-        self.go(notion, F.Jira({}), rows)
+        notion.blocks["art-matt"] = {"id": "art-matt", "type": "bulleted_list_item", "bulleted_list_item": {"rich_text": F.rich("Travel Tracker\nBand Sheet\nTo-do lists")}}
+        self.go(notion, F.Jira({}), self.MATT)
+        self.assertEqual([b[0] for b in self.bullets(notion, "matt")], ["bulleted_list_item"] * 2)
+        self.assertEqual(notion.kids["b-matt-artifacts"][2], "art-matt")          # the existing block is reused, not recreated
+
+    def test_a_second_identical_run_writes_nothing_and_a_removed_artifact_loses_its_bullet(self):
+        notion = F.Notion()
+        page(notion, "artifacts")
+        self.go(notion, F.Jira({}), self.MATT)
         notion.writes.clear()
-        self.go(notion, F.Jira({}), rows)
+        self.go(notion, F.Jira({}), self.MATT)
         self.assertEqual(notion.writes, [])
+        self.go(notion, F.Jira({}), self.MATT[:1])
+        self.assertEqual([b[1][0][0] for b in self.bullets(notion, "matt")], ["Travel Tracker"])
+
+    def test_unrelated_blocks_are_never_written(self):
+        notion = F.Notion()
+        page(notion, "artifacts")
+        page(notion, "week")
+        before = {k: dict(v) for k, v in notion.blocks.items() if k.startswith(("b-jim-week", "body-", "pg-jim"))}
+        self.go(notion, F.Jira({}), self.MATT)
+        self.assertEqual([w for w in notion.writes if w.startswith(("b-jim-week", "body-"))], [])
+        self.assertEqual({k: notion.blocks[k] for k in before}, before)
+
+    def test_no_index_or_an_empty_one_is_one_plain_message_and_turns_bullets_back_into_it(self):
+        notion = F.Notion()
+        page(notion, "artifacts")
+        self.go(notion, F.Jira({}), self.MATT)
+        self.go(notion, F.Jira({}), None)
+        self.assertEqual(self.bullets(notion, "matt"), [("paragraph", [(render.NO_INDEX, None)])])
+        self.go(notion, F.Jira({}), [])
+        self.assertEqual(self.bullets(notion, "matt"), [("paragraph", [(render.NO_ARTIFACTS, None)])])
+
+    def test_jira_down_marks_the_stamp_degraded_and_keeps_the_body_with_no_summary_line_present(self):
+        notion = F.Notion()
+        page(notion, "artifacts")
+        self.go(notion, F.Jira({}), self.MATT)
+        before = self.bullets(notion, "matt")
+        with self.assertRaises(region.AccountabilityError) as caught:
+            self.go(notion, F.Jira({}, down=True), self.MATT)
+        self.assertEqual(str(caught.exception), "ACCOUNTABILITY_DEGRADED:jim")
+        self.assertEqual(self.bullets(notion, "matt"), before)
 
     def test_jims_jira_candidates_are_found_deduplicated_by_file_id_and_counted_against_the_index(self):
         notion = F.Notion()
@@ -126,14 +166,6 @@ class Knowledge(unittest.TestCase):
         rows = indexed([("Jim", "Plan Doc", ID_C, "JFM-5,JFM-6", "Doc", "verified")])
         counts = self.go(notion, F.Jira({"project = JFM": issues}), rows)
         self.assertEqual(counts["jim"]["unindexed_candidates"], 1)           # the second doc is a candidate nobody verified yet; it is counted, never shown
-
-    def test_a_missing_index_or_an_empty_one_says_so_plainly(self):
-        notion = F.Notion()
-        page(notion, "artifacts")
-        self.go(notion, F.Jira({}), None)
-        self.assertEqual(notion.text("art-jim"), render.NO_INDEX)
-        self.go(notion, F.Jira({}), [])
-        self.assertEqual(notion.text("art-jim"), render.NO_ARTIFACTS)
 
 
 class IndexPages(unittest.TestCase):
@@ -319,6 +351,18 @@ class Stages(unittest.TestCase):
         kids = notion.kids["b-jim-goals"]
         self.assertEqual(notion.text(kids[3]), render.NO_EPICS)
         self.assertEqual(notion.text(notion.kids[kids[4]][0]), render.REVIEWS_NONE)
+
+    def test_jira_down_on_the_combined_callout_marks_the_stamp_degraded_and_keeps_the_body(self):
+        notion = F.Notion()
+        page(notion, "goals")
+        self.combined(notion, jira(), [("Q4 2026 (current)", "https://www.notion.so/" + "2" * 32)])
+        before = [notion.text(k) for k in notion.kids["b-jim-goals"] if notion.blocks[k]["type"] == "paragraph"]
+        notion.blocks["b-jim-goals-st"]["paragraph"] = {"rich_text": F.rich("Last refreshed 11/18 · 8:05 AM CT")}
+        with self.assertRaises(region.AccountabilityError) as caught:
+            self.combined(notion, F.Jira({}, down=True))
+        self.assertEqual(str(caught.exception), "ACCOUNTABILITY_DEGRADED:jim,matt")
+        self.assertTrue(notion.text("b-jim-goals-st").startswith("DEGRADED · Jira could not be read"))
+        self.assertEqual([notion.text(k) for k in notion.kids["b-jim-goals"] if notion.blocks[k]["type"] == "paragraph"][1:], before[1:])
 
     def test_the_retired_review_stage_writes_nothing(self):
         notion = F.Notion()
