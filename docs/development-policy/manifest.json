@@ -159,7 +159,7 @@
       ]
     }
   ],
-  "reassembled_sha256": "7e9899ecb300dfb80b64435921fba7f50f569f2346326912941b682ef7a3e9d8",
+  "reassembled_sha256": "5ddd37e5bfd99a959e1f84abf06ae36fb13911558b7c73df4a976dd5d5afbd39",
   "amendments": [
     {
       "date": "2026-11-02",
@@ -326,8 +326,8 @@
     {
       "date": "2026-11-18",
       "pr": "https://github.com/jimmarkunas/life-os-v7/pull/1321",
-      "approval": "Jim Markunas, November 18, 2026 CT, typed in the chat: approved a narrowly scoped PR-only amendment of Parts 02, 04 and 06 (LIFE-834 under LIFE-791; no merge, no autonomous bug-pilot activation, no production change). Part 04 text is pending a size-cap decision and is not changed in this revision.",
-      "part": "docs/development-policy/02 (V7 modernization consolidation exception: consolidation follows the exact versioned migration map, terminal children stay under their own historical Epics LIFE-791, LIFE-763 and LIFE-686, Migration gate unchanged), 06 (retired Daily Runs scheduling authority replaced by the Production Contract and V7's existing GitHub scheduled workflows as sole executor; external timer tick removed)"
+      "approval": "Jim Markunas, November 18, 2026 CT, typed in the chat: approved a narrowly scoped PR-only amendment of Parts 02, 04 and 06 (LIFE-834 under LIFE-791; no merge, no autonomous bug-pilot activation, no production change); November 18, 2026 CT, chat 'Trim other text' to fit the Part 04 exception under the existing 15 KB cap",
+      "part": "docs/development-policy/02 (V7 modernization consolidation exception: consolidation follows the exact versioned migration map, terminal children stay under their own historical Epics LIFE-791, LIFE-763 and LIFE-686, Migration gate unchanged), 04 (LIFE-791-only human-release exception, no autonomous bug-pilot, technical delivery distinct from product acceptance with LIFE-793 and LIFE-686 needing their own seven-day evidence and Jim's approval; to fit the cap, lifecycle item 6 is condensed to refer to selection step 6, one sentence repeating the Jira-comment rule is removed and the AGENTS.md pointer is shortened, no rule changed), 06 (retired Daily Runs scheduling authority replaced by the Production Contract and V7's existing GitHub scheduled workflows as sole executor; external timer tick removed)"
     }
   ]
 }
