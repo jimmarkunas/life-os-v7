@@ -53,13 +53,15 @@ def gmail_records(gmail, now, limit=MAX_MESSAGES, days=WINDOW_DAYS, terms="", kn
     out, unreadable = [], 0
     read_began = time.monotonic()
 
-    failures = {}                                                            # message id -> the fixed cause of its last failed read
+    failures, missing = {}, set()                                            # message id -> the fixed cause of its last failed read; the ids Gmail answered 404 for
 
     def read(message_id):
         try:
             return gmail.mail_record(message_id)
         except GmailError as error:
             failures[message_id] = error_code(error)
+            if re.search(r"\bHTTP 404\b", str(error)):
+                missing.add(message_id)
             return None
     if workers > 1 and len(ids) > 1:                                         # LIFE-793: the same reads, the same order and the same unreadable count, at most `workers` at a time; the first read goes alone so the access token is fetched once
         first = [read(ids[0])]
@@ -72,8 +74,9 @@ def gmail_records(gmail, now, limit=MAX_MESSAGES, days=WINDOW_DAYS, terms="", kn
         for position, message_id in enumerate(ids):                          # read takes minutes) and can hold no pending request: dropped, not "unreadable". Anything else still failing is counted and named by its fixed code
             if raws[position] is None:
                 failures.pop(message_id, None)
+                missing.discard(message_id)
                 raws[position] = read(message_id)
-        gone = {m for m, code in failures.items() if code.startswith("HTTP_404")}
+        gone = {m for m in failures if m in missing}
     if timing is not None:
         timing["read"], timing["read_s"] = len(ids), round(time.monotonic() - read_began, 1)
         retries = getattr(gmail, "retries", None)

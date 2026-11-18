@@ -95,7 +95,7 @@ class SourcesOneByOne(unittest.TestCase):
                 raise mail.MailError("MAIL_OUTLOOK_LISTING_INCOMPLETE")
             return [{"id": label}], 0
 
-        def gmail_records(gm, now, limit=None, days=None, workers=1, timing=None):
+        def gmail_records(gm, now, limit=None, days=None, workers=1, timing=None, heal=False):
             if timing is not None:
                 timing.update(listed=12, list_s=1.5, read=12, read_s=3.0)
             return [{"id": "g"}], 1
