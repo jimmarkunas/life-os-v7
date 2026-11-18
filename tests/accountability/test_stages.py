@@ -96,6 +96,15 @@ class Knowledge(unittest.TestCase):
         self.assertEqual((counts["matt"]["artifacts"], counts["jim"]["artifacts"], counts["jim"]["unresolved"]), (2, 1, 1))
         self.assertLessEqual(len(notion.text("pg-matt-p")), render.SUMMARY_MAX)
 
+    def test_a_body_a_person_turned_into_one_bullet_is_written_as_a_bullet(self):
+        notion = F.Notion()
+        page(notion, "artifacts")
+        notion.blocks["art-matt"] = {"id": "art-matt", "type": "bulleted_list_item", "bulleted_list_item": {"rich_text": F.rich("old text")}}
+        rows = indexed([("Matt", "Travel Tracker", ID_A, "MEJ-74", "Sheet", "verified")])
+        self.go(notion, F.Jira({}), rows)
+        self.assertEqual(notion.text("art-matt"), "Travel Tracker")
+        self.assertEqual(notion.blocks["art-matt"]["type"], "bulleted_list_item")
+
     def test_a_second_identical_run_writes_nothing(self):
         notion = F.Notion()
         page(notion, "artifacts")

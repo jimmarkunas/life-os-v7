@@ -153,13 +153,15 @@ def _nodes(parts):
 def write_parts(client, block_id, stamp, parts, live):
     """The body paragraph of a callout as linked, partly bold pieces [(text, link, bold)]: the middle is exactly one paragraph. -> {changed, summary_page}."""
     found = locate(client, block_id)
-    _only(found, ["paragraph"])
+    if [b.get("type") for b in found["middle"]] not in (["paragraph"], ["bulleted_list_item"]):         # a person may have turned the one body paragraph into one bullet; it is written as the kind it is
+        raise fail("ACCOUNTABILITY_SHAPE")
+    kind = found["middle"][0]["type"]
     want = _normalise([(content, url) for content, url, _ in parts])
     changed = _set(client, found["stamp"], stamp, live, "gray")
     if signature(found["middle"][0]) != want:
         changed += 1
         if live:
-            client.call_once("PATCH", f"/blocks/{quote(found['middle'][0]['id'], safe='')}", {"paragraph": {"rich_text": _nodes(parts)}})
+            client.call_once("PATCH", f"/blocks/{quote(found['middle'][0]['id'], safe='')}", {kind: {"rich_text": _nodes(parts)}})
     if live and changed:
         ok, _ = readback.confirmed(lambda: locate(client, block_id), lambda a: text(a["stamp"]) == stamp.strip() and signature(a["middle"][0]) == want)
         if not ok:
