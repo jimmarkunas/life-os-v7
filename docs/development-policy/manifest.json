@@ -159,7 +159,7 @@
       ]
     }
   ],
-  "reassembled_sha256": "5ddd37e5bfd99a959e1f84abf06ae36fb13911558b7c73df4a976dd5d5afbd39",
+  "reassembled_sha256": "3740ac461c59d854d21c7a3fac5b594852bab219a444034da5847f1c4fd31596",
   "amendments": [
     {
       "date": "2026-11-02",
@@ -328,6 +328,12 @@
       "pr": "https://github.com/jimmarkunas/life-os-v7/pull/1321",
       "approval": "Jim Markunas, November 18, 2026 CT, typed in the chat: approved a narrowly scoped PR-only amendment of Parts 02, 04 and 06 (LIFE-834 under LIFE-791; no merge, no autonomous bug-pilot activation, no production change); November 18, 2026 CT, chat 'Trim other text' to fit the Part 04 exception under the existing 15 KB cap",
       "part": "docs/development-policy/02 (V7 modernization consolidation exception: consolidation follows the exact versioned migration map, terminal children stay under their own historical Epics LIFE-791, LIFE-763 and LIFE-686, Migration gate unchanged), 04 (LIFE-791-only human-release exception, no autonomous bug-pilot, technical delivery distinct from product acceptance with LIFE-793 and LIFE-686 needing their own seven-day evidence and Jim's approval; to fit the cap, lifecycle item 6 is condensed to refer to selection step 6, one sentence repeating the Jira-comment rule is removed and the AGENTS.md pointer is shortened, no rule changed), 06 (retired Daily Runs scheduling authority replaced by the Production Contract and V7's existing GitHub scheduled workflows as sole executor; external timer tick removed)"
+    },
+    {
+      "date": "2026-11-18",
+      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/PRNUM",
+      "approval": "Jim Markunas, November 18, 2026 CT, Approval A (LIFE-836 under LIFE-791): one scheduling authority with multiple independently scheduled bounded V7 GitHub Actions workloads; PR preparation only, non-activating, no merge",
+      "part": "docs/development-policy/06 (the opening second-scheduler phrase now says a second scheduler service; constitution item 2 replaced with the Production Contract as the single approving authority over multiple bounded V7 GitHub Actions workloads; items 1 and 3-8 unchanged)"
     }
   ]
 }
