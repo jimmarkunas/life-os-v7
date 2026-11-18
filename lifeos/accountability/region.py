@@ -169,6 +169,46 @@ def write_parts(client, block_id, stamp, parts, live):
     return {"changed": changed, "summary_page": found["summary"]}
 
 
+def write_directory(client, block_id, stamp, lines, bulleted, live):
+    """LIFE-840: the body of an Artifacts callout is one native block per line (`lines` [[(text, link, bold)]]): `bulleted` gives one bulleted_list_item per artifact, otherwise the one line is a plain paragraph
+    (a message such as "no verified artifacts"). Blocks of the right kind are rewritten in place, missing ones are added after the last, surplus or wrong-kind ones are removed (only after the new ones exist), and a legacy
+    `Summary for Claude:` line is removed (its summary page stays in Notion). Any other body raises ACCOUNTABILITY_SHAPE. -> {changed}."""
+    found = locate_combined(client, block_id)
+    middle = found["middle"]
+    if not middle or {b.get("type") for b in middle} - {"paragraph", "bulleted_list_item"} or len({b.get("type") for b in middle}) != 1:
+        raise fail("ACCOUNTABILITY_SHAPE")
+    kind = "bulleted_list_item" if bulleted else "paragraph"
+    want = [_normalise([(c, u) for c, u, _ in parts]) for parts in lines]
+    keep = middle if middle[0]["type"] == kind else []
+    changed = _set(client, found["stamp"], stamp, live, "gray")
+    for block, parts, expected in zip(keep, lines, want):
+        if signature(block) != expected:
+            changed += 1
+            if live:
+                client.call_once("PATCH", f"/blocks/{quote(block['id'], safe='')}", {kind: {"rich_text": _nodes(parts)}})
+    added = lines[len(keep):]
+    if added:
+        changed += len(added)
+        if live:
+            client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": [{"object": "block", "type": kind, kind: {"rich_text": _nodes(parts)}} for parts in added], "after": middle[-1]["id"]})
+    removed = middle[len(lines):] if keep else middle
+    if found["legacy"] is not None:
+        removed = removed + [found["legacy"]]
+    for block in removed:
+        changed += 1
+        if live:
+            client.call_once("DELETE", f"/blocks/{quote(block['id'], safe='')}")
+
+    def matches(after):
+        return (after["legacy"] is None and text(after["stamp"]) == stamp.strip() and [b.get("type") for b in after["middle"]] == [kind] * len(lines)
+                and [signature(b) for b in after["middle"]] == want)
+    if live and changed:
+        ok, _ = readback.confirmed(lambda: locate_combined(client, block_id), matches)
+        if not ok:
+            raise fail("ACCOUNTABILITY_VERIFY_FAILED")
+    return {"changed": changed}
+
+
 def _cells(row):
     return [report_region.plain({"type": "x", "x": {"rich_text": cell}}).strip() for cell in (row.get("table_row") or {}).get("cells") or []]
 
@@ -259,11 +299,11 @@ def _normalise_cells(cells):
 
 def degrade(client, block_id, make, live):
     """Jira could not be read: only the stamp changes, to DEGRADED with the last accepted stamp; the body stays. -> 1 when written."""
-    found = locate(client, block_id)
+    found = locate_combined(client, block_id)
     new = make(text(found["stamp"]))
     changed = _set(client, found["stamp"], new, live, "orange")
     if live and changed:
-        ok, _ = readback.confirmed(lambda: locate(client, block_id), lambda a: text(a["stamp"]) == new.strip())
+        ok, _ = readback.confirmed(lambda: locate_combined(client, block_id), lambda a: text(a["stamp"]) == new.strip())
         if not ok:
             raise fail("ACCOUNTABILITY_VERIFY_FAILED")
     return changed
