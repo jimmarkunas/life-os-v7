@@ -147,6 +147,16 @@ class Knowledge(unittest.TestCase):
         self.assertEqual(notion.kids["b-jim-artifacts"][2], "deco-jim")
         self.assertNotIn("deco-jim", notion.writes)
 
+    def test_an_excluded_file_is_never_shown_never_unresolved_and_never_a_new_candidate(self):
+        notion = F.Notion()
+        page(notion, "artifacts")
+        doc = {"type": "doc", "content": [{"type": "text", "text": "x", "marks": [{"type": "link", "attrs": {"href": f"https://docs.google.com/document/d/{'f' * 25}/edit"}}]}]}
+        issues = [{"key": "JFM-60", "fields": {"description": doc, "comment": {"comments": []}}}]
+        rows = indexed([("Jim", "Plan Doc", ID_C, "JFM-5", "Doc", "verified"), ("Jim", "Visa Doc", "f" * 25, "JFM-60", "Doc", "excluded"), ("Jim", "Lost Doc", "d" * 25, "JFM-6", "Doc", "unresolved")])
+        counts = self.go(notion, F.Jira({"project = JFM": issues}), rows)
+        self.assertEqual(self.bullets(notion, "jim"), [("bulleted_list_item", [("Plan Doc", SHEET.format(ID_C))])])
+        self.assertEqual((counts["jim"]["unresolved"], counts["jim"]["unindexed_candidates"]), (1, 0))
+
     def test_a_second_identical_run_writes_nothing_and_a_removed_artifact_loses_its_bullet(self):
         notion = F.Notion()
         page(notion, "artifacts")
