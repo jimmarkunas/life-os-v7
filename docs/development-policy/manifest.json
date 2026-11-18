@@ -159,7 +159,7 @@
       ]
     }
   ],
-  "reassembled_sha256": "3740ac461c59d854d21c7a3fac5b594852bab219a444034da5847f1c4fd31596",
+  "reassembled_sha256": "a3221866d927065af9e44228fbc50fddd97ef9e10fffead4150e7e6c244fd589",
   "amendments": [
     {
       "date": "2026-11-02",
@@ -333,7 +333,7 @@
       "date": "2026-11-18",
       "pr": "https://github.com/jimmarkunas/life-os-v7/pull/1322",
       "approval": "Jim Markunas, November 18, 2026 CT, Approval A (LIFE-836 under LIFE-791): one scheduling authority with multiple independently scheduled bounded V7 GitHub Actions workloads; PR preparation only, non-activating, no merge",
-      "part": "docs/development-policy/06 (the opening second-scheduler phrase now says a second scheduler service; constitution item 2 replaced with the Production Contract as the single approving authority over multiple bounded V7 GitHub Actions workloads; items 1 and 3-8 unchanged)"
+      "part": "docs/development-policy/06 (the opening second-scheduler phrase now says a second scheduler service; constitution item 2 replaced with the Production Contract as the single approving authority over multiple bounded V7 GitHub Actions workloads, each with one authoritative owner and exactly one canonical writer if it writes; items 1 and 3-8 unchanged)"
     }
   ]
 }
