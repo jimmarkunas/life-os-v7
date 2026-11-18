@@ -1,16 +1,23 @@
-"""Stage `accountability-artifacts` (LIFE-673): Knowledge center for Jim and Matt, linked artifacts and the current sprint's to-do lists (open and done apart)."""
-from lifeos.accountability import common, read, region, render
+"""Stage `accountability-artifacts`: the Knowledge center callout of Jim and of Matt is a directory of verified Google Docs and Sheets (LIFE-673, LIFE-840).
+
+The links come from the artifact index (child 05 of the V3 master), not from a task list. Jim's candidates are discovered from his JFM issues and counted against the index; only an indexed, verified artifact is shown.
+"""
+from lifeos.accountability import common, index, read, region, render
 
 
-def _build(client, block_id, person, project, jira, now, live, site):
-    shown = read.artifacts(jira, project)
-    art_parts, art_lines = render.artifact_parts(shown, site)
-    todo_parts, todo_lines = render.todo_view(read.todos(jira, project), site, project)
+def _build(client, block_id, person, project, jira, now, live, site, notion):
+    listed = index.artifacts(notion, person)
+    shown, unresolved = listed if listed is not None else (None, 0)
+    parts, lines = render.artifact_directory(shown)
     stamp = render.stamp(now)
-    out = region.write_parts(client, block_id, stamp, render.fit(art_parts + [render.NL] + todo_parts), live)
+    out = region.write_parts(client, block_id, stamp, render.fit(parts), live)
     page = out.pop("summary_page")
-    out["summary_written"] = region.write_summary(client, page, render.summary(f"Knowledge center ({person})", stamp, art_lines + todo_lines), live)
-    out["artifacts"] = len(shown)
+    out["summary_written"] = region.write_summary(client, page, render.summary(f"Knowledge center ({person})", stamp, lines), live)
+    out["artifacts"] = len(shown or [])
+    out["unresolved"] = unresolved
+    if person == "Jim":
+        known = {a["file_id"] for a in shown or []}
+        out["unindexed_candidates"] = len([f for f in read.google_files(jira, project) if f not in known])
     return out
 
 

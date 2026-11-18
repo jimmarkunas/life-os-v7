@@ -37,13 +37,14 @@ class Notion:
         self.kids.setdefault(parent, []).append(block["id"])
         return block
 
-    def callout(self, block_id, heading, stamp, middle, page):
+    def callout(self, block_id, heading, stamp, middle, page, legacy=True):
         self.blocks[block_id] = {"id": block_id, "type": "callout"}
         self.add(block_id, {"id": block_id + "-h", "type": "heading_3", "heading_3": {"rich_text": rich(heading)}})
         self.add(block_id, para(block_id + "-st", stamp))
         for block in middle:
             self.add(block_id, block)
-        self.add(block_id, summary_line(page))
+        if legacy:
+            self.add(block_id, summary_line(page))
         self.blocks[page] = {"id": page, "type": "page"}
         self.add(page, para(page + "-p", "old summary"))
 
@@ -60,6 +61,15 @@ class Notion:
         self.add(toggle_id, para(toggle_id + "-in", inner))
         return block
 
+    def index_page(self, key, title, lines):
+        """A register row `key` pointing at an index page titled `title` whose bullets are `lines` [(text, link)]."""
+        self.indexes = getattr(self, "indexes", {})
+        page = f"ix-{key}"
+        self.indexes[key] = page
+        self.blocks[page] = {"id": page, "type": "page", "object": "page", "properties": {"title": {"type": "title", "title": rich(title)}}}
+        for i, (content, url) in enumerate(lines):
+            self.add(page, {"id": f"{page}-b{i}", "type": "bulleted_list_item", "bulleted_list_item": {"rich_text": rich(content, url)}})
+
     def text(self, block_id):
         block = self.blocks[block_id]
         return "".join(p["plain_text"] for p in block[block["type"]]["rich_text"])
@@ -68,25 +78,40 @@ class Notion:
         if method == "GET" and "/children" in path:
             block_id = path.split("/blocks/")[1].split("/")[0]
             return {"results": [self.blocks[k] for k in self.kids.get(block_id, [])], "has_more": False}
+        if method == "GET" and path.startswith("/pages/"):
+            return self.blocks[path.split("/pages/")[1]]
         if method == "GET" and path.startswith("/blocks/"):
             return self.blocks[path.split("/blocks/")[1]]
         raise AssertionError((method, path))
 
     def call_once(self, method, path, body=None, *args, **kwargs):
-        assert method == "PATCH", (method, path)
+        assert method in ("PATCH", "DELETE"), (method, path)
         block_id = path.split("/blocks/")[1].split("/")[0]
         self.writes.append(block_id)
+        if method == "DELETE":
+            for order in self.kids.values():
+                if block_id in order:
+                    order.remove(block_id)
+            self.deleted = getattr(self, "deleted", []) + [block_id]
+            return {"id": block_id}
         if path.endswith("/children"):
+            after = body["after"]
             for child in body["children"]:
                 self.made += 1
-                new = {"id": f"{block_id}-new{self.made}" if self.made > 1 else block_id + "-new", "type": child["type"], child["type"]: {"rich_text": rich(child[child["type"]]["rich_text"][0]["text"]["content"])}}
+                new = {"id": f"{block_id}-new{self.made}", "type": child["type"], child["type"]: {"rich_text": [rich(n["text"]["content"], (n["text"].get("link") or {}).get("url"))[0] for n in child[child["type"]]["rich_text"]]}}
                 self.blocks[new["id"]] = new
                 order = self.kids[block_id]
-                order.insert(order.index(body["after"]) + 1, new["id"])
+                order.insert(order.index(after) + 1, new["id"])
+                after = new["id"]
+                for inner in child[child["type"]].get("children") or []:
+                    self.made += 1
+                    made = {"id": f"{new['id']}-in{self.made}", "type": inner["type"], inner["type"]: {"rich_text": [rich(n["text"]["content"], (n["text"].get("link") or {}).get("url"))[0] for n in inner[inner["type"]]["rich_text"]]}}
+                    self.blocks[made["id"]] = made
+                    self.kids.setdefault(new["id"], []).append(made["id"])
             return {"results": []}
         block = self.blocks[block_id]
         if block["type"] == "table_row":
-            block["table_row"]["cells"] = [rich(c[0]["text"]["content"]) for c in body["table_row"]["cells"]]
+            block["table_row"]["cells"] = [[rich(n["text"]["content"], canonical((n["text"].get("link") or {}).get("url")))[0] for n in c] for c in body["table_row"]["cells"]]
         else:
             block[block["type"]] = {"rich_text": [rich(n["text"]["content"], canonical((n["text"].get("link") or {}).get("url")))[0] for n in body[block["type"]]["rich_text"]]}
         return block

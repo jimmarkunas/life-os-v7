@@ -14,6 +14,7 @@ REGISTER_TITLE = "V3 block ID register (Jim & Matt V3)"
 V3_PAGE_TITLE = "Jim & Matt V3"
 SUMMARY_MAX = render.SUMMARY_MAX
 HEADINGS = ("heading_2", "heading_3")
+REVIEWS_TITLE = "Quarterly Reviews"
 
 
 class AccountabilityError(NotionError):
@@ -26,6 +27,10 @@ def fail(code):
 
 def scoped(notion, block_id):
     return report_region.ScopedClient(notion, block_id, lambda code: AccountabilityError("ACCOUNTABILITY_" + code))
+
+
+def children_of(client, block_id):
+    return report_region.children(client, block_id, AccountabilityError)
 
 
 def text(block):
@@ -61,9 +66,8 @@ def _page_of(notion, block_id):
     return ""
 
 
-def address(notion, key):
-    """The callout id from the V3 block ID register row `key` (jim.thisweek, matt.goals, ...), accepted only when that callout sits on the Jim & Matt V3 page,
-    so an edited register row can never point a write anywhere else. Anything else raises ACCOUNTABILITY_TARGET_NOT_FOUND."""
+def register_row(notion, key):
+    """The block id the V3 block ID register names for `key`, or None when the register has no such row. Exactly one register page must exist (else ACCOUNTABILITY_TARGET_NOT_FOUND)."""
     found = notion.call("POST", "/search", {"query": REGISTER_TITLE, "filter": {"property": "object", "value": "page"}, "page_size": 100})
     hits = [r["id"] for r in (found or {}).get("results") or [] if isinstance(r, dict) and _title(r).strip() == REGISTER_TITLE and not r.get("in_trash") and not r.get("archived")]
     if len(hits) != 1:
@@ -72,11 +76,17 @@ def address(notion, key):
     for block in report_region.children(notion, hits[0], AccountabilityError):
         match = pattern.search(report_region.plain(block))
         if match:
-            block_id = match.group(1)
-            if _page_of(notion, block_id) != V3_PAGE_TITLE:
-                raise fail("ACCOUNTABILITY_TARGET_NOT_FOUND")
-            return block_id
-    raise fail("ACCOUNTABILITY_TARGET_NOT_FOUND")
+            return match.group(1)
+    return None
+
+
+def address(notion, key):
+    """The callout id from the V3 block ID register row `key` (jim.thisweek, matt.goals, ...), accepted only when that callout sits on the Jim & Matt V3 page,
+    so an edited register row can never point a write anywhere else. Anything else raises ACCOUNTABILITY_TARGET_NOT_FOUND."""
+    block_id = register_row(notion, key)
+    if block_id is None or _page_of(notion, block_id) != V3_PAGE_TITLE:
+        raise fail("ACCOUNTABILITY_TARGET_NOT_FOUND")
+    return block_id
 
 
 def locate(client, block_id):
@@ -161,66 +171,88 @@ def _cells(row):
     return [report_region.plain({"type": "x", "x": {"rich_text": cell}}).strip() for cell in (row.get("table_row") or {}).get("cells") or []]
 
 
-def write_goals(client, block_id, stamp, values, extra, live):
-    """Quarterly goals: the middle is the two-column table (and, once written, one note paragraph). `values` {lane: "done / all"}; a table row is matched by the lane
-    name its first cell starts with (so "Health, Finances & Travel" is Health). A row whose lane has no epic shows a dash. `extra` is the note line under the table."""
-    found = locate(client, block_id)
-    kinds = [b.get("type") for b in found["middle"]]
-    if kinds not in (["table"], ["table", "paragraph"]) or (found["middle"][0].get("table") or {}).get("table_width") != 2:
+def _linked(content, url=None):
+    node = {"type": "text", "text": {"content": content, **({"link": {"url": url}} if url else {})}}
+    return [node]
+
+
+def locate_combined(client, block_id):
+    """-> {heading, stamp, middle, legacy}: the combined Quarterly Goals & Review callout is a heading, one gray stamp paragraph and the body; a trailing `Summary for Claude:` line (the shape before
+    LIFE-840) is returned as `legacy` and is not part of the body. Anything else raises ACCOUNTABILITY_SHAPE."""
+    kids = report_region.children(client, block_id, AccountabilityError)
+    if len(kids) < 3 or kids[0].get("type") not in HEADINGS or kids[1].get("type") != "paragraph":
         raise fail("ACCOUNTABILITY_SHAPE")
-    rows = report_region.children(client, found["middle"][0]["id"], AccountabilityError)[1:]
+    legacy = kids[-1] if text(kids[-1]).lower().startswith(SUMMARY) else None
+    return {"heading": kids[0], "stamp": kids[1], "middle": kids[2:-1] if legacy else kids[2:], "legacy": legacy}
+
+
+def write_combined(client, block_id, heading, stamp, lanes, extra, review_parts, live):
+    """LIFE-840: the one Quarterly Goals & Review callout of a person. Body: the two-column Epic table (`lanes` {lane: (done / all, issue url or None)}; a row is matched by the lane name its first
+    cell starts with, its first cell is linked to the Epic, a lane with no epic shows a dash), one note paragraph, then the toggle "Quarterly Reviews" whose one paragraph links the review pages
+    (`review_parts` [(text, link, bold)]). The title is set to `heading`. A legacy `Summary for Claude:` line is removed (its summary page stays in Notion, untouched). -> {changed}."""
+    found = locate_combined(client, block_id)
+    kinds = [b.get("type") for b in found["middle"]]
+    if kinds not in (["table"], ["table", "paragraph"], ["table", "paragraph", "toggle"]) or (found["middle"][0].get("table") or {}).get("table_width") != 2:
+        raise fail("ACCOUNTABILITY_SHAPE")
+    table, note = found["middle"][0], (found["middle"][1] if len(kinds) > 1 else None)
+    toggle = found["middle"][2] if len(kinds) == 3 else None
+    inner = report_region.children(client, toggle["id"], AccountabilityError) if toggle else []
+    if toggle and (len(inner) != 1 or inner[0].get("type") != "paragraph"):
+        raise fail("ACCOUNTABILITY_SHAPE")
+    rows = report_region.children(client, table["id"], AccountabilityError)[1:]
     wanted = []
     for row in rows:
         label = _cells(row)[0]
-        hit = next((v for lane, v in values.items() if label.lower().startswith(lane.lower())), "–")
-        wanted.append((row, [label, hit]))
-    changed = _set(client, found["stamp"], stamp, live, "gray")
+        value, url = next(((v, u) for lane, (v, u) in lanes.items() if label.lower().startswith(lane.lower())), ("–", None))
+        wanted.append((row, [(label, url), (value, None)]))
+    want_review = _normalise([(c, u) for c, u, _ in review_parts])
+    changed = _set(client, found["heading"], heading, live) + _set(client, found["stamp"], stamp, live, "gray")
     for row, cells in wanted:
-        if _cells(row) != cells:
+        if _row_signature(row) != _normalise_cells(cells):
             changed += 1
             if live:
-                client.call_once("PATCH", f"/blocks/{quote(row['id'], safe='')}", {"table_row": {"cells": [_rich(c) for c in cells]}})
-    note = found["middle"][1] if len(found["middle"]) == 2 else None
-    if note is None and live and extra:
-        client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": [{"object": "block", "type": "paragraph", "paragraph": {"rich_text": _rich(extra)}}], "after": found["middle"][0]["id"]})
-        changed += 1
-    elif note is not None:
+                client.call_once("PATCH", f"/blocks/{quote(row['id'], safe='')}", {"table_row": {"cells": [_linked(c, u) for c, u in cells]}})
+    pending = ([{"object": "block", "type": "paragraph", "paragraph": {"rich_text": _rich(extra or " ")}}] if note is None else []) + (
+        [{"object": "block", "type": "toggle", "toggle": {"rich_text": _rich(REVIEWS_TITLE), "children": [{"object": "block", "type": "paragraph", "paragraph": {"rich_text": _nodes(review_parts)}}]}}] if toggle is None else [])
+    if pending:
+        changed += len(pending)
+        if live:
+            client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": pending, "after": (note or table)["id"]})
+    if note is not None:
         changed += _set(client, note, extra or "", live)
+    if toggle is not None:
+        changed += _set(client, toggle, REVIEWS_TITLE, live)
+        if signature(inner[0]) != want_review:
+            changed += 1
+            if live:
+                client.call_once("PATCH", f"/blocks/{quote(inner[0]['id'], safe='')}", {"paragraph": {"rich_text": _nodes(review_parts)}})
+    if found["legacy"] is not None:
+        changed += 1
+        if live:
+            client.call_once("DELETE", f"/blocks/{quote(found['legacy']['id'], safe='')}")
 
     def matches(after):
-        rows_after = report_region.children(client, after["middle"][0]["id"], AccountabilityError)[1:]
-        note_after = after["middle"][1] if len(after["middle"]) == 2 else None
-        return (text(after["stamp"]) == stamp.strip() and [_cells(r) for r in rows_after] == [c for _, c in wanted]
-                and (not extra or (note_after is not None and text(note_after) == extra.strip())))
+        mid = after["middle"]
+        if after["legacy"] is not None or [b.get("type") for b in mid] != ["table", "paragraph", "toggle"]:
+            return False
+        rows_after = report_region.children(client, mid[0]["id"], AccountabilityError)[1:]
+        again = report_region.children(client, mid[2]["id"], AccountabilityError)
+        return (text(after["heading"]) == heading.strip() and text(after["stamp"]) == stamp.strip() and [_row_signature(r) for r in rows_after] == [_normalise_cells(c) for _, c in wanted]
+                and (not extra or text(mid[1]) == extra.strip()) and len(again) == 1 and signature(again[0]) == want_review)
     if live and changed:
-        ok, _ = readback.confirmed(lambda: locate(client, block_id), matches)
+        ok, _ = readback.confirmed(lambda: locate_combined(client, block_id), matches)
         if not ok:
             raise fail("ACCOUNTABILITY_VERIFY_FAILED")
-    return {"changed": changed, "summary_page": found["summary"]}
+    return {"changed": changed}
 
 
-def write_review(client, block_id, stamp, current, new_past, live):
-    """Quarterly review: the middle is the toggle (one paragraph inside it, the current quarter) then one paragraph for past quarters. Past lines already there are never rewritten;
-    a quarter that has no line yet gets one appended. -> {changed, past_added, summary_page}."""
-    found = locate(client, block_id)
-    _only(found, ["toggle", "paragraph"])
-    toggle, past = found["middle"]
-    inner = report_region.children(client, toggle["id"], AccountabilityError)
-    if len(inner) != 1 or inner[0].get("type") != "paragraph":
-        raise fail("ACCOUNTABILITY_SHAPE")
-    have = [line for line in text(past).split("\n") if render.PAST_LINE.match(line)]
-    add = [line for line in new_past if line.split(" — ")[0] not in {h.split(" — ")[0] for h in have}]
-    past_text = "\n".join(have + add) if (have or add) else text(past)
-    changed = _set(client, found["stamp"], stamp, live, "gray") + _set(client, inner[0], current, live) + _set(client, past, past_text, live)
+def _row_signature(row):
+    return [_normalise([(piece.get("plain_text") or (piece.get("text") or {}).get("content") or "", piece.get("href") or ((piece.get("text") or {}).get("link") or {}).get("url"))
+                        for piece in cell]) for cell in (row.get("table_row") or {}).get("cells") or []]
 
-    def matches(after):
-        again = report_region.children(client, after["middle"][0]["id"], AccountabilityError)
-        return (text(after["stamp"]) == stamp.strip() and len(again) == 1 and text(again[0]) == current.strip() and text(after["middle"][1]) == past_text.strip())
-    if live and changed:
-        ok, _ = readback.confirmed(lambda: locate(client, block_id), matches)
-        if not ok:
-            raise fail("ACCOUNTABILITY_VERIFY_FAILED")
-    return {"changed": changed, "past_added": len(add), "summary_page": found["summary"]}
+
+def _normalise_cells(cells):
+    return [_normalise([(c, u)]) for c, u in cells]
 
 
 def degrade(client, block_id, make, live):

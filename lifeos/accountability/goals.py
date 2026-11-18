@@ -1,16 +1,19 @@
-"""Stage `accountability-goals` (LIFE-671): Quarterly goals for Jim and Matt, done / all tasks under each quarter epic."""
-from lifeos.accountability import common, read, region, render
+"""Stage `accountability-goals`: the one Quarterly Goals & Review callout of Jim and of Matt on Jim & Matt V3 (LIFE-671, LIFE-840).
+
+Title with the quarter, the refresh label, one row per quarter Epic (linked to Jira, done / all) and the Quarterly Reviews toggle linking the review pages. This stage is the only writer of that callout.
+"""
+from lifeos.accountability import common, index, read, region, render
 
 
 def lanes(jira, person, year, n):
-    """-> ([(lane, done, total)], epic keys of this person)."""
+    """-> ([(lane, done, total, epic key)], epic keys of this person)."""
     first, last = read.quarter_bounds(year, n)
     mine = [e for e in read.epics(jira, year, n) if e["person"] == person]
     counts = read.tally(jira, mine, first, last)
-    return [(e["lane"], *counts[e["key"]]) for e in mine], [e["key"] for e in mine]
+    return [(e["lane"], *counts[e["key"]], e["key"]) for e in mine], [e["key"] for e in mine]
 
 
-def _build(client, block_id, person, project, jira, now, live, site):
+def _build(client, block_id, person, project, jira, now, live, site, notion):
     year, n, _, _ = read.quarter(now.date())
     found, keys = lanes(jira, person, year, n)
     stamp = render.stamp(now)
@@ -18,11 +21,11 @@ def _build(client, block_id, person, project, jira, now, live, site):
         extra = f"{read.unparented(jira, project, set(keys))} open tasks are not under a quarter epic."
     else:
         extra = render.NO_EPICS
-    values = {name: render.goal_cell(done, total) for name, done, total in found}
-    out = region.write_goals(client, block_id, stamp, values, extra, live)
-    page = out.pop("summary_page")
+    values = {name: (render.goal_cell(done, total), read.issue_url(site, key)) for name, done, total, key in found}
+    links = index.reviews(notion, person)
+    out = region.write_combined(client, block_id, render.combined_heading(person, year, n), stamp, values, extra, render.review_parts(links), live)
     out["epics"] = len(found)
-    out["summary_written"] = region.write_summary(client, page, render.summary(f"Quarterly goals Q{n} {year} ({person})", stamp, [render.progress(found), extra]), live)
+    out["review_pages"] = len(links or [])
     return out
 
 
