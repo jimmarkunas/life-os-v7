@@ -1,7 +1,7 @@
 """The two Notion index pages the V3 accountability stages read: the review index (child 02) and the artifact index (child 05) of the V3 master (LIFE-840).
 
 A page is found by its V3 block ID register row (`index.reviews`, `index.artifacts`) and accepted only with its expected title; a missing row or page gives None and the stage says so. Reads only.
-Review bullet: `<Person> | <Qn YYYY> | current or past`, the page link on the first piece. Artifact bullet: `<Owner> | <Title> | <file id> | <Jira keys> | <Doc or Sheet> | <verified or unresolved> | <date>`, the Google link on the Title.
+Review bullet: `<Person> | <Qn YYYY> | current or past → <mention of the record page>`. Artifact bullet: `<Owner> | <Title> | <file id> | <Jira keys> | <Doc or Sheet> | <verified or unresolved> | <date>`, the Google link on the Title.
 """
 from urllib.parse import quote
 
@@ -41,9 +41,9 @@ def reviews(notion, person):
     found = rows(notion, "index.reviews")
     if found is None:
         return None
-    mine = [(cells, url) for cells, url in found if len(cells) == 3 and cells[0].lower() == person.lower() and url]
-    mine.sort(key=lambda row: row[0][2] != "current")
-    return [(f"{cells[1]}" + (" (current)" if cells[2] == "current" else ""), url) for cells, url in mine]
+    mine = [(cells[0], cells[1], cells[2].split(" ")[0], url) for cells, url in found if len(cells) == 3 and cells[0].lower() == person.lower() and url]
+    mine.sort(key=lambda row: row[2] != "current")
+    return [(quarter + (" (current)" if status == "current" else ""), url) for _, quarter, status, url in mine]
 
 
 def artifacts(notion, person):

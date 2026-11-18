@@ -132,7 +132,7 @@ class IndexPages(unittest.TestCase):
 
     def make(self, title):
         notion = F.Notion()
-        notion.index_page("index.reviews", title, [("Jim | Q3 2026 | past", "https://www.notion.so/" + "1" * 32), ("Jim | Q4 2026 | current", "https://www.notion.so/" + "2" * 32), ("Matt | Q4 2026 | current", "https://www.notion.so/" + "3" * 32)])
+        notion.index_page("index.reviews", title, [("Jim | Q3 2026 | past → Quarterly review — Jim — Q3 2026", "https://www.notion.so/" + "1" * 32), ("Jim | Q4 2026 | current → Quarterly review — Jim — Q4 2026", "https://www.notion.so/" + "2" * 32), ("Matt | Q4 2026 | current → Quarterly review — Matt — Q4 2026", "https://www.notion.so/" + "3" * 32)])
         return notion
 
     def test_the_review_links_put_the_current_quarter_first_and_only_the_persons_own(self):
