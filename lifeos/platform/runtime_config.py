@@ -1,12 +1,9 @@
 """LIFE-844: a typed reader for a dedicated Notion Runtime Configuration data source, addressed by a stable ID, never by a title search. Code only: nothing calls it yet.
 
-Why: the V7 settings page (lifeos/platform/settings.py) lives in Product Requirements as REQ-52 and is found by its exact title; moving or renaming that page breaks every stage that reads it.
-This reader takes its source from the bootstrap name V7_RUNTIME_CONFIG_SOURCE_ID (an address that Bitwarden would hold at cutover, like any other address), so a rename or a move cannot hide it.
-
-Rows: Name (title, one settings name), Value (text), Kind (select: address | switch), Revision (number), Active (checkbox). It reuses the rules of settings.py and does not copy them:
-MOVABLE is the allowlist, SAFETY and every credential-shaped name are refused, an address must look like an address, the shadow rule (`_fill`) decides what is applied, and the existing
-`settings:last-accepted` private snapshot is the fallback. A name with two active rows is applied from neither row. Counts and names only, never a value; never raises (`status` says why).
-Cutover (protected, not done here): see docs/platform/runtime-config-cutover.md. Until then settings.apply() is the only reader that runs."""
+The V7 settings page (settings.py) is REQ-52 in Product Requirements and is found by its exact title; moving or renaming it breaks every stage that reads it. This reader takes its source from
+V7_RUNTIME_CONFIG_SOURCE_ID, so a rename or a move cannot hide it. Rows: Name, Value, Kind (address | switch), Revision, Active. It reuses settings.py's allowlist (MOVABLE), refusals (SAFETY and
+credential-shaped names), shadow rule (`_fill`) and last-accepted fallback; two active rows for a name apply neither. Counts and names only, never a value; never raises (`status` says why).
+Cutover is protected and not done here: docs/platform/runtime-config-cutover.md."""
 import os
 import re
 
@@ -26,7 +23,7 @@ class RuntimeConfigError(RuntimeError):
 
 def source_id(environ):
     """The bootstrap ID as bare hex-and-dashes (a `collection://` prefix is dropped), or a fixed error code."""
-    raw = (environ.get(SOURCE_NAME) or "").strip().replace("collection://", "")
+    raw = (environ.get("V7_RUNTIME_CONFIG_SOURCE_ID") or "").strip().replace("collection://", "")
     if not raw:
         raise RuntimeConfigError("RUNTIME_CONFIG_SOURCE_ID_MISSING")
     if not settings.ADDRESS.match(raw):
