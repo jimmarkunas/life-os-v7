@@ -9,6 +9,7 @@ from unittest import mock
 
 from lifeos import run
 from lifeos.jobs import tick
+from lifeos.jobs.fit import cloud
 from lifeos.platform import budget
 
 TABLE = {"default_seconds": 600, "stages": {"slow": {"seconds": 5, "required": True}, "quiet": {"seconds": 7, "required": False}}}
@@ -98,6 +99,24 @@ class TickRule(unittest.TestCase):
         self.assertEqual(tick.failing_stages({required: "timeout"}, plan), [required])
         self.assertEqual(tick.failing_stages({bulk: "failed"}, plan), [bulk])                 # a failure is a failure, bulk or not
         self.assertEqual(tick.failing_stages({required: "ok", bulk: "skipped"}, plan), [])
+
+
+class CloudBacklogStageAlarm(unittest.TestCase):
+    def test_the_backlog_stage_alarm_never_cuts_a_scheduled_batch_short(self):
+        """Nov 19 2026: the stage alarm was 180 s and cloud.remaining() honours it, so every hourly batch stopped after 2 calls (budget reached) and the backlog never drained.
+        The alarm must cover the batch's whole cap plus the one call still in flight."""
+        seconds, _ = budget.budget_for("fit-cloud-backlog")
+        self.assertGreaterEqual(seconds, cloud.BACKLOG_BUDGET_MAX + cloud.CALL_SECONDS)
+
+    def test_a_batch_with_the_stage_alarm_armed_still_has_time_for_many_calls_after_two(self):
+        seconds, _ = budget.budget_for("fit-cloud-backlog")
+        previous = signal.signal(signal.SIGALRM, lambda *a: None)
+        signal.setitimer(signal.ITIMER_REAL, seconds)
+        try:
+            self.assertGreaterEqual(cloud.remaining(120, cloud.BACKLOG_BUDGET_MAX), cloud.CALL_SECONDS)       # 120 s in (two calls done): the next call still starts
+        finally:
+            signal.setitimer(signal.ITIMER_REAL, 0)
+            signal.signal(signal.SIGALRM, previous)
 
 
 if __name__ == "__main__":
