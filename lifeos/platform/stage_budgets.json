@@ -188,9 +188,9 @@
    "seconds": 240
   },
   "fit-cloud-backlog": {
-   "basis": "twice its slowest measured step (83 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "basis": "LIFE-41 (Nov 19 2026): the scheduled batch runs up to the 45-minute cap of cloud.BACKLOG_BUDGET_MAX (2700 s, D238) plus one in-flight call to settle (165 s), rounded to 3000 s; the tick job's limit is 58 minutes. The Nov 14 value of 180 s was the alarm cloud.remaining() honours, so every batch stopped after 2 calls",
    "required": false,
-   "seconds": 180
+   "seconds": 3000
   },
   "fit-edge-test": {
    "basis": "twice its slowest measured step (23 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",

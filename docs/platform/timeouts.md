@@ -180,7 +180,7 @@ The table below is rendered from `lifeos/platform/stages.json` (LIFE-768): edit 
 | `expire-holds` | 120 | yes | the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage |
 | `explain` | 600 | no | no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `fit` | 240 | yes | the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage |
-| `fit-cloud-backlog` | 180 | no | twice its slowest measured step (83 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
+| `fit-cloud-backlog` | 3000 | no | LIFE-41 (Nov 19 2026): the scheduled batch runs up to the 45-minute cap of cloud.BACKLOG_BUDGET_MAX (2700 s, D238) plus one in-flight call to settle (165 s), rounded to 3000 s; the tick job's limit is 58 minutes. The Nov 14 value of 180 s was the alarm cloud.remaining() honours, so every batch stopped after 2 calls |
 | `fit-edge-test` | 120 | yes | twice its slowest measured step (23 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `fit-profile-sync` | 480 | yes | twice its slowest measured step (234 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `fit-review` | 600 | no | no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
