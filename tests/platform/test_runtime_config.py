@@ -218,5 +218,37 @@ class FallbackAndRollback(unittest.TestCase):
         self.assertEqual(env_a["GRANOLA_AUTO"], "on")
 
 
+class Both:
+    """Old page and new source behind one client, as the shadow read sees them."""
+    def __init__(self, page, source):
+        self.page, self.source = page, source
+
+    def call(self, method, path, body=None):
+        return (self.source if path.startswith("/data_sources/") else self.page).call(method, path, body)
+
+
+class Shadow(unittest.TestCase):
+    def test_no_bootstrap_id_or_no_token_reads_nothing(self):
+        self.assertEqual(rc.shadow({}), {"status": "off"})
+        self.assertEqual(rc.shadow(ENV), {"status": "off"})
+
+    def test_matching_sources_report_no_difference_and_change_nothing(self):
+        env, client = dict(ENV), Both(Page(OLD_LINES), Source(NEW_ROWS))
+        out = rc.shadow(env, client)
+        self.assertEqual((out["status"], out["matched"], out["blocking"]), ("ok", 4, False))
+        self.assertEqual(env, ENV)
+
+    def test_a_difference_is_counted_by_name_only(self):
+        rows = NEW_ROWS[:3] + [row("INTERVIEW_TEST_COMPANIES", SECRET)]
+        out = rc.shadow(dict(ENV), Both(Page(OLD_LINES), Source(rows)))
+        self.assertTrue(out["blocking"])
+        self.assertEqual(out["mismatched"], ["INTERVIEW_TEST_COMPANIES"])
+        self.assertNotIn(SECRET, str(out))
+
+    def test_an_unreadable_source_never_raises_and_leaks_nothing(self):
+        out = rc.shadow(dict(ENV), Both(Page(OLD_LINES), Source([], broken=True)))
+        self.assertEqual(out, {"status": "unreadable:RUNTIME_CONFIG_UNREADABLE"})
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -36,6 +36,7 @@ outputs:
   NOTION_FIT_SYNC_TOKEN: {value: "${{ steps.first.outputs.NOTION_FIT_SYNC_TOKEN || steps.retry.outputs.NOTION_FIT_SYNC_TOKEN }}"}
   NOTION_INTERVIEW_TOKEN: {value: "${{ steps.first.outputs.NOTION_INTERVIEW_TOKEN || steps.retry.outputs.NOTION_INTERVIEW_TOKEN }}"}
   NOTION_JIRA_TOKEN: {value: "${{ steps.first.outputs.NOTION_JIRA_TOKEN || steps.retry.outputs.NOTION_JIRA_TOKEN }}"}
+  V7_RUNTIME_CONFIG_SOURCE_ID: {value: "${{ steps.first.outputs.V7_RUNTIME_CONFIG_SOURCE_ID || steps.retry.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}"}
   NOTION_RECRUITERS_TOKEN: {value: "${{ steps.first.outputs.NOTION_RECRUITERS_TOKEN || steps.retry.outputs.NOTION_RECRUITERS_TOKEN }}"}
   NTFY_TOPIC: {value: "${{ steps.first.outputs.NTFY_TOPIC || steps.retry.outputs.NTFY_TOPIC }}"}
   OPEN_JOBS_CONTACT: {value: "${{ steps.first.outputs.OPEN_JOBS_CONTACT || steps.retry.outputs.OPEN_JOBS_CONTACT }}"}

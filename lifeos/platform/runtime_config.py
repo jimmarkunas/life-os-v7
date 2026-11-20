@@ -1,4 +1,6 @@
-"""LIFE-844: a typed reader for a dedicated Notion Runtime Configuration data source, addressed by a stable ID, never by a title search. Code only: nothing calls it yet.
+"""LIFE-844: the Runtime Configuration data source reader, addressed by a stable ID, never by title.
+
+`shadow` (compare-only) is called by lifeos.run next to settings.apply; the environment is still filled only from the old page.
 
 The V7 settings page (settings.py) is REQ-52 in Product Requirements and is found by its exact title; moving or renaming it breaks every stage that reads it. This reader takes its source from
 V7_RUNTIME_CONFIG_SOURCE_ID, so a rename or a move cannot hide it. Rows: Name, Value, Kind (address | switch), Revision, Active. It reuses settings.py's allowlist (MOVABLE), refusals (SAFETY and
@@ -151,3 +153,25 @@ def apply(environ=os.environ, client=None, connect=None, remember=False):
         except Exception as error:                                       # noqa: BLE001 - remembering is best effort, as in settings.apply
             out["remember_status"] = str(error) if CODE.fullmatch(str(error)) else type(error).__name__
     return out
+
+
+def shadow(environ=os.environ, client=None):
+    """Compare-only dual read (cutover step 4): the new source against the old V7 settings page. Changes nothing in the environment, writes nothing, never raises.
+    -> {"status": "off"} with no bootstrap ID or no token (nothing was read), else `compare` counts (names only) plus `status` ok, or `unreadable:<CODE>`."""
+    try:
+        source_id(environ)
+    except RuntimeConfigError as error:
+        return {"status": "off"} if str(error) == "RUNTIME_CONFIG_SOURCE_ID_MISSING" else {"status": "unreadable:" + str(error)}
+    try:
+        if client is None:
+            token = next((environ.get(t).strip() for t in settings.TOKENS if (environ.get(t) or "").strip()), "") \
+                or next((environ.get(k).strip() for k in sorted(environ) if settings.ANY_NOTION_TOKEN.fullmatch(k) and (environ.get(k) or "").strip()), "")
+            if not token:
+                return {"status": "off"}
+            from lifeos.platform.notion_client import Client                # noqa: PLC0415
+            client = Client({"NOTION_API_TOKEN": token, "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused"})
+        new, _ = read(client, environ)
+        old, _ = settings.parse(settings.read(client))
+    except Exception as error:                                           # noqa: BLE001 - a shadow read never fails a stage
+        return {"status": "unreadable:" + (str(error) if CODE.fullmatch(str(error)) else type(error).__name__)}
+    return {"status": "ok", **compare(old, new)}
