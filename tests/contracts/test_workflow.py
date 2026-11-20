@@ -1111,6 +1111,9 @@ class BitwardenConsumerTests(unittest.TestCase):
                         if key in UUIDS and str(value).strip() == SETTINGS_CONSUMER:             # LIFE-703: the Notion token for the settings page, from this job's settings loader, after it, only that name
                             self.assertEqual((key, settings_at is not None and i > settings_at), ("NOTION_JIRA_TOKEN", True), (name, job, label))
                             continue
+                        if key == "V7_RUNTIME_CONFIG_SOURCE_ID" and str(value).strip() == SETTINGS_CONSUMER.replace("NOTION_JIRA_TOKEN", key):     # LIFE-844: the Runtime Configuration bootstrap ID, from this job's settings loader, after it
+                            self.assertTrue(settings_at is not None and i > settings_at, (name, job, label))
+                            continue
                         if key in UUIDS:
                             m = self.OUTPUT.fullmatch(str(value).strip())
                             alias = {("interview", "INTERVIEW_ACCEPTANCE_JSON"): "INTERVIEW_ACCEPTANCE_NEGATIVE_JSON"}.get((job, key))     # LIFE-699: the negative acceptance step reads its own Bitwarden item under the name the stage expects

@@ -330,6 +330,7 @@ PATTERNS = [{'file': 'lifeos/inbox/followup_wiring.py', 'match': ['FOLLOWUP_ACCO
  {'file': 'lifeos/platform/notion_client.py', 'match': ['NOTION_*']},
  {'file': 'lifeos/platform/notion_ids.py', 'match': ['LIFEOS_NOTION_*']},
  {'file': 'lifeos/platform/settings.py', 'match': ['NOTION_*_TOKEN', '*_BLOCK_ID', '*_PAGE_ID', '*_DATA_SOURCE_ID', '*_DB_ID', 'FIT_*', 'GRANOLA_*', 'HIRING_*', 'INTERVIEW_*', 'JOB_*', 'RECRUITER_*', 'V7_*', 'MAIL_*', 'PHYSICAL_*', 'JIRA_*', 'GCAL_*', 'BUZZ_*']},
+ {'file': 'lifeos/platform/runtime_config.py', 'match': ['NOTION_*_TOKEN']},
  {'file': 'lifeos/platform/switches.py', 'match': ['ALERTS_*']},
  {'file': 'lifeos/sources/interview/interview_evidence.py', 'match': ['GMAIL_OAUTH_*']},
  {'file': 'lifeos/sources/pipeline/manual_job.py', 'match': ['MANUAL_JOB_*']}]

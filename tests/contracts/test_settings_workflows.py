@@ -108,8 +108,9 @@ class SettingsStepsNeverStopAJob(unittest.TestCase):
             if step.get("id") == "bws_settings":
                 self.assertEqual(step["with"]["set_env"], False, file)
                 lines = [x.strip() for x in step["with"]["secrets"].splitlines() if x.strip()]
-                self.assertEqual(len(lines), 1, file)
+                self.assertIn(len(lines), (1, 2), file)
                 self.assertTrue(lines[0].endswith("> NOTION_JIRA_TOKEN"), file)
+                self.assertTrue(len(lines) == 1 or lines[1].endswith("> V7_RUNTIME_CONFIG_SOURCE_ID"), file)      # LIFE-844: the bootstrap ID (an address) rides the same step in the lifeos.run jobs
 
     def test_the_gate_outputs_read_the_page_only(self):
         """LIFE-699: GitHub no longer holds these switches, so the gate outputs are the settings step's output alone (no `|| vars.X` fallback)."""
