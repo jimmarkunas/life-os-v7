@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "principals": [
+    {"id": "claude-code", "kind": "agent", "workspace": "v7-mac"},
+    {"id": "hermes", "kind": "agent", "workspace": "v7-oracle"}
+  ],
+  "accounts": [
+    {"alias": "jira-primary", "provider": "jira", "tenant": "primary"},
+    {"alias": "notion-primary", "provider": "notion", "tenant": "primary"},
+    {"alias": "gmail-primary", "provider": "gmail", "tenant": "primary"}
+  ],
+  "capabilities": [
+    {"principal": "claude-code", "tool": "jira", "action": "read", "provider": "jira", "account_alias": "jira-primary", "host": "mac-worktree", "source": "lifeos/platform/access_policy.py", "as_of": "2026-11-20", "max_age_days": 90, "status": "working"},
+    {"principal": "claude-code", "tool": "notion", "action": "write", "provider": "notion", "account_alias": "notion-primary", "host": "mac-worktree", "source": "lifeos/platform/access_policy.py", "as_of": "2026-11-20", "max_age_days": 90, "status": "working"},
+    {"principal": "claude-code", "tool": "buzz", "action": "read", "provider": "buzz", "account_alias": null, "host": "mac-worktree", "source": "lifeos/buzz/mcp.py", "as_of": "2026-11-20", "max_age_days": 90, "status": "working"},
+    {"principal": "hermes", "tool": "agent_directory", "action": "read", "provider": "notion", "account_alias": "notion-primary", "host": "oracle-edge", "source": "lifeos/platform/agent_directory.py", "as_of": "2026-11-20", "max_age_days": 90, "status": "working"},
+    {"principal": "hermes", "tool": "gmail", "action": "read", "provider": "gmail", "account_alias": "gmail-primary", "host": "oracle-edge", "source": "lifeos/platform/access_policy.py", "as_of": "2026-11-20", "max_age_days": 90, "status": "synthetic"},
+    {"principal": "claude-code", "tool": "doppler", "action": "read_secret", "provider": "doppler", "account_alias": null, "host": "mac-worktree", "source": "docs/platform/capability-catalog.md", "as_of": "2026-11-20", "max_age_days": 90, "status": "missing"}
+  ]
+}
