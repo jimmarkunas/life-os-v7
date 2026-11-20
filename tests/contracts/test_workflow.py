@@ -180,8 +180,8 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(re.findall(r"uses:\s*(\S*bws-load)", text), ["./.github/actions/bws-load"] * 2)   # the one local credential loader (LIFE-631) plus the NOTION_JIRA_TOKEN-only settings loader (LIFE-703); the reviewed v3.0.1 commit and its one retry (D209) live in that action, pinned by the loader rules below
         mappings = re.findall(r"^\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\s*>\s*\w+)\s*$", text, re.M)
         self.assertEqual(sorted(mappings), sorted(["08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET", "672a44e9-235f-4121-a99d-b4db015a6987 > GMAIL_OAUTH_REFRESH_TOKEN",
-                                                   "46fe195b-82e2-416e-8272-b4db015eea12 > NOTION_AMAZON_TOKEN", "8657d1ed-2cde-4298-bd62-b50301523e01 > GMAIL_OAUTH_CLIENT_ID", UUIDS["NOTION_JIRA_TOKEN"] + " > NOTION_JIRA_TOKEN"]))
-        self.assertEqual(len(re.findall(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", text)), 5)                          # each once: the retry reuses the load's block by YAML alias (LIFE-541)
+                                                   "46fe195b-82e2-416e-8272-b4db015eea12 > NOTION_AMAZON_TOKEN", "8657d1ed-2cde-4298-bd62-b50301523e01 > GMAIL_OAUTH_CLIENT_ID", UUIDS["NOTION_JIRA_TOKEN"] + " > NOTION_JIRA_TOKEN", UUIDS["V7_RUNTIME_CONFIG_SOURCE_ID"] + " > V7_RUNTIME_CONFIG_SOURCE_ID"]))
+        self.assertEqual(len(re.findall(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", text)), 6)                          # each once: the retry reuses the load's block by YAML alias (LIFE-541)
         self.assertLess(text.index("bws-load"), text.index("python -m lifeos.run"))             # loaded before the Amazon command
         self.assertIn("--live", text)                                                                      # the existing live switch is still the only way to write
 
@@ -711,9 +711,15 @@ def settings_loader_with():
     return {"access_token": "${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}", "set_env": False, "secrets": f"{UUIDS['NOTION_JIRA_TOKEN']} > NOTION_JIRA_TOKEN\n"}
 
 
+def settings_loader_withs():
+    """LIFE-844: the settings loader may also carry the Runtime Configuration bootstrap ID (an address, not a credential) in the steps that run lifeos.run; nothing else."""
+    base = settings_loader_with()
+    return [base, {**base, "secrets": base["secrets"] + f"{UUIDS['V7_RUNTIME_CONFIG_SOURCE_ID']} > V7_RUNTIME_CONFIG_SOURCE_ID\n"}]
+
+
 def is_settings_loader(step):
     """The settings loader exactly as written: its id, the local loader, the one Notion token, nothing exported job-wide, and `continue-on-error` as its only extra key."""
-    return (step.get("id") == SETTINGS_LOADER_ID and step.get("uses") == "./.github/actions/bws-load" and step.get("with") == settings_loader_with()
+    return (step.get("id") == SETTINGS_LOADER_ID and step.get("uses") == "./.github/actions/bws-load" and step.get("with") in settings_loader_withs()
             and step.get("continue-on-error") is True and set(step) == {"id", "name", "uses", "with", "continue-on-error"})
 
 
@@ -925,6 +931,7 @@ TS = {"TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET"}   # loaded b
 HRL = {"FIT_PROFILE_EXTRA_JSON", "FIT_PROFILE_JSON", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "JOBRIGHT_EMAIL", "JOBRIGHT_PASSWORD", "NOTION_API_TOKEN", "OPEN_JOBS_CONTACT", "TINYFISH_API_KEY", "GMAIL_OAUTH_CLIENT_ID"}
 # The 25 values verified value-for-value in Bitwarden by migration run 37532718917 (name -> secret id). Ids are not credentials.
 UUIDS = {
+    "V7_RUNTIME_CONFIG_SOURCE_ID": "0053654c-d504-4453-87f7-b5080113d136",
     "FIT_PROFILE_EXTRA_JSON": "3e264d79-3af4-4f2a-a86a-b4db015a68de",
     "FIT_PROFILE_JSON": "31a07198-aa35-450f-913c-b4db015a690d",
     "FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH": "c87d470c-b351-4004-a5ea-b50401885f98",
@@ -1103,6 +1110,9 @@ class BitwardenConsumerTests(unittest.TestCase):
                     for key, value in (step.get("env") or {}).items():
                         if key in UUIDS and str(value).strip() == SETTINGS_CONSUMER:             # LIFE-703: the Notion token for the settings page, from this job's settings loader, after it, only that name
                             self.assertEqual((key, settings_at is not None and i > settings_at), ("NOTION_JIRA_TOKEN", True), (name, job, label))
+                            continue
+                        if key == "V7_RUNTIME_CONFIG_SOURCE_ID" and str(value).strip() == SETTINGS_CONSUMER.replace("NOTION_JIRA_TOKEN", key):     # LIFE-844: the Runtime Configuration bootstrap ID, from this job's settings loader, after it
+                            self.assertTrue(settings_at is not None and i > settings_at, (name, job, label))
                             continue
                         if key in UUIDS:
                             m = self.OUTPUT.fullmatch(str(value).strip())

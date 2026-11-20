@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[2]
 UUID = re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.I)
 MAPPING_LINE = re.compile(r">|secrets?:")
 ALLOWED = {                                                          # path: (most copies it may hold, why)
-    "tests/contracts/test_workflow.py": (61, "pins the exact bws mappings each workflow loads (existing contract; the ids are the thing under test; 58 since LIFE-699 added the two private acceptance cases; 60 since LIFE-696 added the Bytalos Gmail refresh token and the Todoist token to the followup job); 61 since LIFE-711 added the Action Inbox view QA job's Notion token loader"),
+    "tests/contracts/test_workflow.py": (62, "pins the exact bws mappings each workflow loads (existing contract; the ids are the thing under test; 58 since LIFE-699 added the two private acceptance cases; 60 since LIFE-696 added the Bytalos Gmail refresh token and the Todoist token to the followup job); 61 since LIFE-711 added the Action Inbox view QA job's Notion token loader; 62 since LIFE-844 added the Runtime Configuration bootstrap ID"),
     "docs/NOTION_INTEGRATIONS.md": (6, "the integrations table names the Bitwarden id each Notion token is loaded from (identifiers only, already public in the workflows)"),
 }
 

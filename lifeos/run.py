@@ -191,6 +191,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
     from lifeos.platform import settings                                               # noqa: PLC0415 - LIFE-699: the Notion settings page, shadow rule; never fails a stage
     loaded = settings.apply(os.environ)
+    from lifeos.platform import runtime_config                                         # noqa: PLC0415 - LIFE-844: compare-only dual read of the new source; changes nothing, never fails a stage
+    shadowed = runtime_config.shadow(os.environ)
     seconds, required = budget.budget_for(args.stage)                                 # LIFE-691: every stage has a budget (lifeos/platform/stage_budgets.json)
     began = time.monotonic()
     try:
@@ -206,6 +208,8 @@ def main(argv=None):
         return 1
     if isinstance(counts, dict) and loaded["status"] not in ("off", "no_token"):       # only when the page was read (production); tests and local runs print as before
         counts["settings"] = loaded
+    if isinstance(counts, dict) and shadowed["status"] != "off":
+        counts["runtime_config"] = shadowed
     _announce(args.stage, counts)
     print(f"{args.stage}:", json.dumps(counts, sort_keys=True))
     if args.live:

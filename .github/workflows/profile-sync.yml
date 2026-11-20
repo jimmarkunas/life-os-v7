@@ -99,9 +99,11 @@ jobs:
           set_env: false
           secrets: |
             53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
+            0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
       - name: Fit profile sync (the approved Notion evidence block into the store; counts and one fixed code only)
         env:
           NOTION_JIRA_TOKEN: ${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_settings.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           NOTION_FIT_SYNC_TOKEN: ${{ steps.bws_sync.outputs.NOTION_FIT_SYNC_TOKEN }}
           NOTION_FIT_SYNC_PAGE_ID: ""
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_sync.outputs.LIFEOS_ACQ_DB_NAME }}
