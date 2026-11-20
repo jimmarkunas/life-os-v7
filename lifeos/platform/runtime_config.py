@@ -1,4 +1,6 @@
-"""LIFE-844: a typed reader for a dedicated Notion Runtime Configuration data source, addressed by a stable ID, never by a title search. `shadow` (compare-only) is called by lifeos.run next to settings.apply; the environment is still filled only from the old page.
+"""LIFE-844: the Runtime Configuration data source reader, addressed by a stable ID, never by title.
+
+`shadow` (compare-only) is called by lifeos.run next to settings.apply; the environment is still filled only from the old page.
 
 The V7 settings page (settings.py) is REQ-52 in Product Requirements and is found by its exact title; moving or renaming it breaks every stage that reads it. This reader takes its source from
 V7_RUNTIME_CONFIG_SOURCE_ID, so a rename or a move cannot hide it. Rows: Name, Value, Kind (address | switch), Revision, Active. It reuses settings.py's allowlist (MOVABLE), refusals (SAFETY and
