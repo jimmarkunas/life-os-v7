@@ -38,7 +38,7 @@
       ],
       "headings": [
         "### Jira product and development planning authority — Jim-approved October 13, 2026",
-        "### LIFE Jira feature-Epic and product-requirement model — Jim-approved October 26, 2026",
+        "### LIFE Jira project-Epic and product-requirement model",
         "### LIFE Jira OS component and release versioning — Jim-approved October 16, 2026"
       ]
     },
@@ -159,7 +159,7 @@
       ]
     }
   ],
-  "reassembled_sha256": "a3221866d927065af9e44228fbc50fddd97ef9e10fffead4150e7e6c244fd589",
+  "reassembled_sha256": "1160048f0ca8850be5c93061f279059d1d16afe9ca345cb52b856033ce2a9f76",
   "amendments": [
     {
       "date": "2026-11-02",
@@ -334,6 +334,12 @@
       "pr": "https://github.com/jimmarkunas/life-os-v7/pull/1322",
       "approval": "Jim Markunas, November 18, 2026 CT, Approval A (LIFE-836 under LIFE-791): one scheduling authority with multiple independently scheduled bounded V7 GitHub Actions workloads; PR preparation only, non-activating, no merge",
       "part": "docs/development-policy/06 (the opening second-scheduler phrase now says a second scheduler service; constitution item 2 replaced with the Production Contract as the single approving authority over multiple bounded V7 GitHub Actions workloads, each with one authoritative owner and exactly one canonical writer if it writes; items 1 and 3-8 unchanged)"
+    },
+    {
+      "date": "2026-11-20",
+      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/1337",
+      "approval": "Jim Markunas, November 20, 2026 CT, typed in the Claude Code chat: approved the exact eight substantive wording edits (REQ-56 Q04 project-Epic policy, LOS-103) and PR-only preparation via LIFE-845 under LIFE-791; no merge, no policy activation, no Jira migration, Part 06 unchanged; November 20, 2026 CT, typed in the Claude Code chat: narrowed the Part 04 phrase to 'the approved lead of a specifically authorized project Epic acts as planning owner' to fit the 15 KB part limit (no trim, no limit change)",
+      "part": "docs/development-policy/02 (file-header comment, section heading, Status paragraph and the Project ownership, Children and metadata, Empty and historical Epics and Migration gate bullets: finite feature-Epic model replaced by one active owning project Epic per approved project; V7 modernization consolidation exception unchanged), 04 (delegated planner: 'specifically authorized project Epic' replaces 'finite Epic'; new in-scope children only, no Agent Go release)"
     }
   ]
 }
