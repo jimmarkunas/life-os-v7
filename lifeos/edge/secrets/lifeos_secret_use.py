@@ -7,7 +7,8 @@ value never appears in a prompt, chat, Jira, log or file an agent reads.
 One argument, a purpose name. Nothing else is accepted: no secret name, URL, command, header or value (anything extra is SECRET_BAD_ARGS). The purpose registry
 (/etc/lifeos-secrets/purposes.d/*.json, root-owned, not writable by anyone else) fixes, for each purpose, the ONE credential it may use (an encrypted systemd credential in
 /etc/hermes-eval/creds), the users who may call it, and one action from a closed list:
-  http_get_fields   GET one fixed https URL with the credential as a bearer token and return only the listed JSON fields (scalars only). A purpose may set "auth": "basic" (LIFE-754):
+  http_get_fields   GET one fixed https URL with the credential as a bearer token and return only the listed JSON fields (scalars only). A purpose may set "auth": "x-api-key" (LIFE-889): the credential is sent as the x-api-key header (with anthropic-version) and the URL must be exactly https://api.anthropic.com/v1/models.
+                  A purpose may set "auth": "basic" (LIFE-754):
                     the credential then holds `email:token`, the request sends HTTP Basic, and the URL must be one fixed Atlassian Jira issue read on api.atlassian.com.
   check_credential  return the credential's NAME, its length and the first 8 hex characters of its SHA-256. Never the value.
 Every output is searched for the value in raw, base64, URL-encoded, hex and JSON-escaped forms (for Basic also the token alone and the whole Basic header); a hit refuses the whole answer (SECRET_OUTPUT_CONTAINS_SECRET).
@@ -44,8 +45,10 @@ PURPOSE = re.compile(r"[a-z][a-z0-9_]{1,40}")
 NAME = re.compile(r"[a-z][a-z0-9_]{1,60}")
 HTTPS = re.compile(r"https://[a-z0-9.-]+(/[A-Za-z0-9._~/-]*)?")
 ATLASSIAN = re.compile(r"https://api\.atlassian\.com/ex/jira/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/rest/api/3/issue/[A-Z][A-Z0-9]{1,9}-[0-9]{1,7}(\?fields=[a-z,]+)?")
+ANTHROPIC_URL = "https://api.anthropic.com/v1/models"                    # LIFE-889: the ONE URL an "x-api-key" purpose may read (the free model list: it proves a key works and costs nothing)
+ANTHROPIC_VERSION = "2023-06-01"
 BASIC_CRED = re.compile(r"[^:\s@]+@[^:\s@]+:[^\s]+")                  # email:token, the only shape a Basic credential may have
-AUTHS = ("bearer", "basic")
+AUTHS = ("bearer", "basic", "x-api-key")
 MAX_OUT, PER_MINUTE, FETCH_WAIT, FETCH_MAX = 4096, 20, 15, 65536
 ACTIONS = ("http_get_fields", "check_credential")
 CT = ZoneInfo("America/Chicago")
@@ -99,8 +102,12 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def http_fetch(url, secret, auth="bearer"):
-    header = ("Basic " + base64.b64encode(secret.encode()).decode()) if auth == "basic" else "Bearer " + secret
-    request = urllib.request.Request(url, headers={"Authorization": header, "Accept": "application/json", "User-Agent": "lifeos-secret-use"})
+    headers = {"Accept": "application/json", "User-Agent": "lifeos-secret-use"}
+    if auth == "x-api-key":                                                  # LIFE-889: Anthropic reads the key from x-api-key, not Authorization
+        headers.update({"x-api-key": secret, "anthropic-version": ANTHROPIC_VERSION})
+    else:
+        headers["Authorization"] = ("Basic " + base64.b64encode(secret.encode()).decode()) if auth == "basic" else "Bearer " + secret
+    request = urllib.request.Request(url, headers=headers)
     try:
         with urllib.request.build_opener(NoRedirect).open(request, timeout=FETCH_WAIT) as reply:      # nosec: https only, checked against the registry pattern
             return reply.read(FETCH_MAX + 1)
@@ -163,7 +170,8 @@ class Broker:
             ok = False
         if ok and spec["action"] == "http_get_fields":
             pattern = ATLASSIAN if spec.get("auth") == "basic" else HTTPS                  # Basic only ever goes to one fixed Jira issue read on api.atlassian.com
-            ok = (isinstance(spec.get("url"), str) and pattern.fullmatch(spec["url"]) and isinstance(spec.get("fields"), list) and spec["fields"]
+            url_ok = spec.get("url") == ANTHROPIC_URL if spec.get("auth") == "x-api-key" else (isinstance(spec.get("url"), str) and pattern.fullmatch(spec["url"]))      # x-api-key: exactly one URL
+            ok = (url_ok and isinstance(spec.get("fields"), list) and spec["fields"]
                   and all(isinstance(f, str) and re.fullmatch(r"[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)*", f) for f in spec["fields"]))
         if not ok:
             raise Refused("SECRET_REGISTRY_UNSAFE")
@@ -177,6 +185,8 @@ class Broker:
             if not BASIC_CRED.fullmatch(value):
                 raise Refused("SECRET_CRED_UNREADABLE")
             body = self.fetch(spec["url"], value, "basic")
+        elif spec.get("auth") == "x-api-key":
+            body = self.fetch(spec["url"], value, "x-api-key")
         else:
             body = self.fetch(spec["url"], value)
         if len(body) > FETCH_MAX:
