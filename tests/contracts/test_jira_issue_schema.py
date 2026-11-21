@@ -74,9 +74,9 @@ class Contract(unittest.TestCase):
         self.assertNotIn("Buzz or T3", POLICY)
 
     def test_los_first_discovery_and_description_first_contract_is_in_the_policy(self):
-        """New product outcomes start in an approved LOS idea; the description owns requirements; discovery answers are saved and read back."""
+        """Jim, Nov 21 2026: LOS is retired; a new outcome starts as a LIFE Epic in Scoping; the description owns requirements; discovery answers are saved and read back."""
         rule = POLICY.split("## 7. Writing tickets", 1)[1].split("## 8.", 1)[0]
-        for required in ("A parked LOS idea authorizes nothing", "need no LOS idea", "The description beats comments", "never a comment alone",
+        for required in ("starts as a LIFE Epic in Scoping", "Claude writes, ChatGPT reviews", "Only `ready` tickets move to Agent Go", "The description beats comments", "never a comment alone",
                          "`Given … when … then …`", "A tick without cited proof is not Done", "read back before the next question", "Link the Notion requirement"):
             self.assertIn(required, rule)
 
