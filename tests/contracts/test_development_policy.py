@@ -38,6 +38,8 @@ class OneFilePolicy(unittest.TestCase):
         self.assertIn("**Feasibility first:**", POLICY)
         self.assertIn("`research`", POLICY)
         self.assertIn("GO, GO WITH CHANGES or NO-GO", POLICY)
+        self.assertIn("makes bounded scoping writes only", POLICY)
+        self.assertIn("only then MCP rows or SQL queries, which count as metered", POLICY)
         self.assertIn("Every build ticket is blocked by its Epic's verdict.", POLICY)
 
     def test_done_needs_outcome_proof_and_one_natural_run_rule(self):
