@@ -8,6 +8,10 @@ Requires=docker.service
 User=root
 Environment=METER_BIND=172.28.0.1 METER_PORT=8081 METER_STATE_DIR=/var/lib/lifeos-honcho-meter METER_CAP_USD=0.90
 LoadCredentialEncrypted=honcho_proof_anthropic_api_key:/etc/hermes-eval/creds/honcho_proof_anthropic_api_key.cred
+# The host firewall rejects bridge-to-host traffic, so the containers could not reach this proxy. One rule, added here and removed when the unit stops: only the honcho-net subnet, only the
+# gateway address, only this port. Nothing public, nothing on the tailnet. (Checked first so a restart never adds it twice.)
+ExecStartPre=/bin/sh -c 'iptables -C INPUT -s 172.28.0.0/24 -d 172.28.0.1 -p tcp --dport 8081 -j ACCEPT 2>/dev/null || iptables -I INPUT 1 -s 172.28.0.0/24 -d 172.28.0.1 -p tcp --dport 8081 -j ACCEPT'
+ExecStopPost=/bin/sh -c 'iptables -D INPUT -s 172.28.0.0/24 -d 172.28.0.1 -p tcp --dport 8081 -j ACCEPT 2>/dev/null || true'
 ExecStart=/usr/bin/python3 -I /opt/lifeos-honcho/meter_proxy.py
 Restart=on-failure
 RestartSec=3
