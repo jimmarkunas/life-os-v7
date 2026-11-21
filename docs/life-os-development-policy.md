@@ -108,6 +108,7 @@ Keep the description under 4,000 characters. One execution ticket is one PR. Ref
 
 **Epic lifecycle (Jim, November 21, 2026):** `Scoping → Ready → In Progress → Done`.
 - A new product outcome starts as a LIFE Epic in Scoping. Children are written only while the Epic is in Scoping.
+- **Feasibility first:** every Epic proves itself before any build ticket runs. Its first children carry the label `research`: read-only checks that write nothing outside Jira comments, with Jim must do first `None`. They may move to Agent Go while the Epic is in Scoping; nothing else may. One verdict ticket per Epic (label `research` too; it edits only Jira tickets), blocked by all of them, posts GO, GO WITH CHANGES or NO-GO, then rewrites the build tickets from the findings before ChatGPT's review. Every build ticket is blocked by its Epic's verdict.
 - Each Epic links one Notion spec page for long rationale. Tickets stay self-contained: an agent builds from the ticket alone.
 - **Claude writes, ChatGPT reviews:** Claude writes the Epic's children; ChatGPT reviews each against this section and §4 before the Epic moves to Ready.
 - Every child carries exactly one readiness label:
