@@ -35,8 +35,9 @@ class WorkflowWiring(unittest.TestCase):
             if not loaders:
                 continue
             seen += 1
-            main = [i for i in loaders if steps[i].get("id") != "bws_settings"]        # LIFE-703: the NOTION_JIRA_TOKEN-only loader that lets a job read the V7 settings page is not the job's credential loader
-            extra = [i for i in loaders if steps[i].get("id") == "bws_settings"]
+            side = ("bws_settings", "bws_runtime_config")                                # LIFE-703: the NOTION_JIRA_TOKEN-only loader that lets a job read the V7 settings page; LIFE-858: the bootstrap-ID-only loader for the compare-only read. Neither is the job's credential loader
+            main = [i for i in loaders if steps[i].get("id") not in side]
+            extra = [i for i in loaders if steps[i].get("id") in side]
             first = loaders[0]
             self.assertGreater(first, 0, (file, name))
             seed = steps[first - 1]
