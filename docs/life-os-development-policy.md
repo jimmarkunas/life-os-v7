@@ -38,6 +38,7 @@ Link to the owner; never copy a fact into a second place.
 - **Land:** auto-merge on same-head green CI. No reviewer is required unless GitHub branch protection or the ticket says so; never invent an approval.
 - **Agent UAT:** after merge, the agent checks the delivered outcome where it lives (the natural run's receipt, the page, the read-back) against every Done when line. A merged PR on green is not Done by itself.
 - **Close:** `python -m lifeos.jira.closeout KEY... --pr N --sha S --run R --proof KEY=text --live` posts the one record (PR, SHA, CI run, outcome proof per Done when line) and moves the ticket to Done. Jim reopens it or files a Bug.
+- **Close a `research` ticket:** it has no PR, so skip closeout. Post one findings comment that answers every Done when line (UNCLEAR or UNVERIFIED with the reason is an answer), then move it to Done with transition 15. A `verdict` ticket closes the same way after its authorized writes are read back.
 - **Human UAT:** with label `needs-uat`, or when Who verifies names Jim on a live or protected outcome. Stop at Human UAT (transition 19) with exact click-through steps for Jim; Jim's check moves it to Done.
 - **Schedules:** adding, moving or changing the cadence of any scheduled workload is a Production Contract change: it is in the ticket's Jim must do first, per workload, before release.
 - **Scope:** never change or drop a ticket's stated scope, or swap a stated fix for a workaround, without asking Jim. Optional improvements become a proposal, not extra work.

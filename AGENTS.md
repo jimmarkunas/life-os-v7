@@ -12,7 +12,7 @@ Jim starts every run; no scheduler, timer or loop starts an agent. Once started,
 4. **Test:** `sh tools/preflight.sh` before every push; CI is the full gate.
 5. **Land:** auto-merge on green. A merge is not Done.
 6. **Agent UAT:** prove every Done when line on the delivered outcome (receipt, page, read-back).
-7. **Close:** `python -m lifeos.jira.closeout KEY... --pr N --sha S --run R --proof KEY=text --live`, or stop at Human UAT (transition 19) when the ticket has `needs-uat` or names Jim as verifier. Then the next ticket (`NO_ELIGIBLE_WORK` if none).
+7. **Close:** `python -m lifeos.jira.closeout KEY... --pr N --sha S --run R --proof KEY=text --live`, or stop at Human UAT (transition 19) when the ticket has `needs-uat` or names Jim as verifier. A `research` or `verdict` ticket has no PR: post the findings comment, then transition 15. Then the next ticket (`NO_ELIGIBLE_WORK` if none).
 
 ## Jim must do first
 
