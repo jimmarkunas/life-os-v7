@@ -15,7 +15,7 @@ class OneFilePolicy(unittest.TestCase):
         self.assertFalse((ROOT / "docs" / "development-policy").exists(), "the policy is one file; history lives in docs/archive/")
 
     def test_the_kept_guardrails_are_stated(self):
-        for kept in ("workflow `permissions`", "credential", "Bitwarden only", "Deleting a GitHub value or production data", "Spend or a paid model",
+        for kept in ("workflow `permissions`", "credential", "one bootstrap token per secrets manager", "Deleting a GitHub value or production data", "Spend or a paid model",
                      "metered Notion query", "sign-in", "Notion page or database IDs", "docs/PRIVACY.md", "ARCHITECTURAL DRIFT DETECTED — NO MUTATION",
                      "exactly one writer", "one writer per branch", "never invent an approval"):
             self.assertIn(kept, POLICY, kept)

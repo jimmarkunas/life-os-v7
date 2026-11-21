@@ -22,7 +22,7 @@ Epics go `Scoping → Ready → In Progress → Done`; every child carries one l
 
 ## Always
 
-- Stops for Jim: wider workflow `permissions`, a new or moved credential (Bitwarden only), deleting GitHub data, spend over budget.
+- Stops for Jim: wider workflow `permissions`, a new or moved credential (secrets manager only; GitHub holds just its bootstrap token), deleting GitHub data, spend over budget.
 - Public repo: no personal data or secrets, ever (docs/PRIVACY.md).
 - Jira connector: `mcp__claude_ai_Atlassian_MCP__*` only; Rovo connectors are retired. Pass `fields` on reads.
 - Times for Jim: Central Time, 12-hour, labeled CT.
