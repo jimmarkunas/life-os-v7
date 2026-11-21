@@ -159,7 +159,7 @@
       ]
     }
   ],
-  "reassembled_sha256": "1160048f0ca8850be5c93061f279059d1d16afe9ca345cb52b856033ce2a9f76",
+  "reassembled_sha256": "80237da6bb3e0ac112da30c0f41d40428d88743acbfab69eccc957b3707886a2",
   "amendments": [
     {
       "date": "2026-11-02",
@@ -340,6 +340,12 @@
       "pr": "https://github.com/jimmarkunas/life-os-v7/pull/1337",
       "approval": "Jim Markunas, November 20, 2026 CT, typed in the Claude Code chat: approved the exact eight substantive wording edits (REQ-56 Q04 project-Epic policy, LOS-103) and PR-only preparation via LIFE-845 under LIFE-791; no merge, no policy activation, no Jira migration, Part 06 unchanged; November 20, 2026 CT, typed in the Claude Code chat: narrowed the Part 04 phrase to 'the approved lead of a specifically authorized project Epic acts as planning owner' to fit the 15 KB part limit (no trim, no limit change)",
       "part": "docs/development-policy/02 (file-header comment, section heading, Status paragraph and the Project ownership, Children and metadata, Empty and historical Epics and Migration gate bullets: finite feature-Epic model replaced by one active owning project Epic per approved project; V7 modernization consolidation exception unchanged), 04 (delegated planner: 'specifically authorized project Epic' replaces 'finite Epic'; new in-scope children only, no Agent Go release)"
+    },
+    {
+      "date": "2026-11-21",
+      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/1339",
+      "approval": "Jim Markunas, November 21, 2026, 12:17 AM CT, typed in the Claude chat: 'Get rid of any and all freezes', 'I want both Oracle Claude Code and Mac Claude Code working in parallel' and 'Remove ALL stop blocks' (release of LIFE-793 as a named LIFE-686 exception).",
+      "part": "docs/development-policy/04 (the V7 modernization exception bullet replaced by one stating that all freezes and STOP gates are lifted, LIFE-791 children follow the normal pull rule, LIFE-793 exclusive writer Mac Claude Code); no other part changed"
     }
   ]
 }
