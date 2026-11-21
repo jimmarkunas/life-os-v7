@@ -85,16 +85,17 @@ class Contract(unittest.TestCase):
         return list(jsonschema.Draft202012Validator(SCHEMA).iter_errors(issue))
 
     @unittest.skipIf(jsonschema is None, "jsonschema not installed")
-    def test_a_new_product_outcome_needs_an_approved_los_origin_but_existing_epic_work_does_not(self):
+    def test_a_new_product_outcome_needs_a_scoping_epic_origin_and_los_is_refused(self):
         issue = {k: v for k, v in SCHEMA["examples"][0].items() if k != "product_origin"}
         self.assertTrue(list(jsonschema.Draft202012Validator(SCHEMA).iter_errors(issue)))                       # missing product origin
-        self.assertEqual(self._origin_errors({"kind": "los_idea", "los_key": "LOS-70", "approved_for_delivery": True, "approval_source": "Jim, 2026-11-01"}), [])
-        self.assertTrue(self._origin_errors({"kind": "los_idea", "los_key": "LOS-70", "approved_for_delivery": False, "approval_source": "parked"}))   # parked is not approved
-        self.assertTrue(self._origin_errors({"kind": "los_idea", "los_key": "LIFE-70", "approved_for_delivery": True, "approval_source": "x"}))          # not an LOS key
+        self.assertEqual(self._origin_errors({"kind": "scoping_epic", "epic_key": "LIFE-846", "spec_url": "https://example.com/spec", "approval_source": "Jim, 2026-11-21"}), [])
+        self.assertTrue(self._origin_errors({"kind": "scoping_epic", "epic_key": "LOS-70", "spec_url": "https://example.com/spec", "approval_source": "x"}))   # LOS is retired
+        self.assertTrue(self._origin_errors({"kind": "scoping_epic", "epic_key": "LIFE-846", "approval_source": "x"}))   # an Epic needs its spec link
+        self.assertTrue(self._origin_errors({"kind": "los_idea", "los_key": "LOS-70", "approved_for_delivery": True, "approval_source": "Jim"}))   # no LOS origin any more
         self.assertEqual(self._origin_errors({"kind": "approved_epic_child", "epic_key": "LIFE-100", "epic_approval_source": "Jim approved the finite Epic"}), [])
         self.assertEqual(self._origin_errors({"kind": "bug", "parent_ref": "LIFE-101", "approval_source": "approved Epic LIFE-100"}), [])
         self.assertTrue(self._origin_errors({"kind": "approved_epic_child", "epic_key": "LIFE-100"}))             # a claimed exception must cite its approval
-        self.assertTrue(self._origin_errors({"kind": "new_product"}))                                              # no unlisted way around LOS
+        self.assertTrue(self._origin_errors({"kind": "new_product"}))                                              # no unlisted origin
 
     @staticmethod
     def _unpersisted(answered, capture):
@@ -106,7 +107,7 @@ class Contract(unittest.TestCase):
     def test_every_answered_discovery_question_must_be_saved_and_read_back(self):
         validator = jsonschema.Draft202012Validator({"$ref": "#/$defs/discovery_capture", "$defs": DEFS})
         entry = lambda n, state="APPROVED DECISION": {"question_number": n, "owner_answer": "Jim's answer", "decision_state": state, "requirement_impact": "impact", "open_gap": "none"}
-        capture = {"los_key": "LOS-70", "tranche": 4, "owner_reply_date": "2026-11-01", "entries": [entry(13), entry(14, "UNRESOLVED")], "readback": {"verified": True, "saved_questions": [13, 14], "revision_after": "2026-11-01T12:00:00.000-0600"}}
+        capture = {"epic_key": "LIFE-846", "tranche": 4, "owner_reply_date": "2026-11-01", "entries": [entry(13), entry(14, "UNRESOLVED")], "readback": {"verified": True, "saved_questions": [13, 14], "revision_after": "2026-11-01T12:00:00.000-0600"}}
         self.assertEqual(list(validator.iter_errors(capture)), [])
         self.assertEqual(self._unpersisted([13, 14], capture), [])
         partial = dict(capture, entries=[entry(13)], readback={"verified": True, "saved_questions": [13], "revision_after": "r"})
