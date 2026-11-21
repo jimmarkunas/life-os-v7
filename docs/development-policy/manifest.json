@@ -343,7 +343,7 @@
     },
     {
       "date": "2026-11-21",
-      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/PENDING",
+      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/1339",
       "approval": "Jim Markunas, November 21, 2026, 12:17 AM CT, typed in the Claude chat: 'Get rid of any and all freezes', 'I want both Oracle Claude Code and Mac Claude Code working in parallel' and 'Remove ALL stop blocks' (release of LIFE-793 as a named LIFE-686 exception).",
       "part": "docs/development-policy/04 (the V7 modernization exception bullet replaced by one stating that all freezes and STOP gates are lifted, LIFE-791 children follow the normal pull rule, LIFE-793 exclusive writer Mac Claude Code); no other part changed"
     }
