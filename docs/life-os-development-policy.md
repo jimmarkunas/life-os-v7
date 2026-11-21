@@ -45,21 +45,12 @@ Link to the owner; never copy a fact into a second place.
 
 ## 4. Jim must do first (the release rule)
 
-Every LIFE ticket has a **Jim must do first** section. It lists every action only Jim can take, each as a checkbox line:
+Every LIFE ticket includes **Jim must do first** checkbox items for owner-only: secrets/Bitwarden, permissions/sign-in, spend/paid models, Mac/Oracle host steps, product decisions, Notion wireframe approval, and UAT setup. `None` means no prerequisites.
 
-- a credential or secret stored in Bitwarden;
-- a permission, account or sign-in;
-- spend or a paid model;
-- a host step on the Mac or Oracle;
-- a product decision;
-- approval of a Notion wireframe (required for any ticket that builds Notion UI);
-- UAT setup.
-
-`None` means nothing is needed.
-
-- **Release rule:** a ticket with an unchecked item, or with no section, does not move to Agent Go. `lifeos.jira.promote` and the auto-release stage refuse it, and `python -m lifeos.sources.devtools.readiness` refuses an unchecked item at start.
-- **Agent Go is the approval.** Jim clears the list, then moving the ticket to Agent Go approves everything inside its written scope. An agent never asks again.
-- **A need found mid-run** is a scoping miss. Add it to the section, add the label `needs-jim`, post one comment naming the one thing, and keep building any part that does not depend on it.
+- **Chat approval:** Jim's explicit ChatGPT instruction naming a LIFE ticket and approved scope is sufficient human authorization. ChatGPT records it in the Jira description, checks only proven owner items, verifies live readiness/dependencies/verdict, and moves an eligible ticket to `Agent Go`. No Jira UI click or repeat approval. Ambiguous consent does not count; it never waives safety/feasibility gates or starts an agent.
+- **Release:** A ticket with an unchecked item or no section does not move to Agent Go. `lifeos.jira.promote`, auto-release, and `python -m lifeos.sources.devtools.readiness` enforce this.
+- **Agent Go is the approval** of the written scope; agents do not re-ask.
+- **Mid-run need:** Add unmet checkbox, `needs-jim`, one comment; continue independent work.
 
 ## 5. What always stops for Jim
 
