@@ -27,6 +27,21 @@ class JimMustDoFirst(unittest.TestCase):
         cleared = issue("Outcome", "Add a pure helper.", "Jim must do first", "[x] Store the API key in Bitwarden", "Done when", "* Given X, then Y")
         self.assertEqual(promote.decide(cleared), ("promote", []))              # a cleared credential item is not re-asked by the protected-step scan
 
+    def test_the_section_ends_at_the_next_paragraph_or_heading(self):
+        """A ticked list followed by other text is clear: the text after the list is not an item (LIFE-793 shape, ADF and markdown)."""
+        def para(text, bold=False):
+            mark = [{"type": "strong"}] if bold else []
+            return {"type": "paragraph", "content": [{"type": "text", "text": text, "marks": mark}]}
+        def bullets(*items):
+            return {"type": "bulletList", "content": [{"type": "listItem", "content": [para(i)]} for i in items]}
+        ticked = {"type": "doc", "content": [para("Jim must do first:", True), bullets("[x] Choose freshness", "[x] Approve the schedule"),
+                                             para("Canonical detailed specification (REQ-53): https://example.com/spec"), {"type": "heading", "content": [{"type": "text", "text": "Exact boundary"}]}, para("Prose")]}
+        self.assertEqual(release.jim_first(ticked), (True, []))
+        open_one = {"type": "doc", "content": [para("Jim must do first:", True), bullets("[x] Choose freshness", "[ ] Approve the schedule"), para("More text")]}
+        self.assertEqual(release.jim_first(open_one), (True, ["- [ ] Approve the schedule"]))
+        self.assertEqual(release.jim_first("## Jim must do first\n\nNone (code-only scope)\n\n## Exact implementation boundary\n\nText"), (True, []))
+        self.assertEqual(release.jim_first("**Jim must do first:**\n\n- Sign in to the provider\n\n**Done when:**"), (True, ["- Sign in to the provider"]))   # a plain bullet is a need
+
     def test_a_ticket_without_the_section_is_not_promoted(self):
         self.assertEqual(promote.decide(issue("Outcome", "Add a pure helper.", "Done when", "* Given X, then Y")), ("skip", ["no_jim_first"]))
 
@@ -35,7 +50,7 @@ class JimMustDoFirst(unittest.TestCase):
             return {"type": "taskItem", "attrs": {"state": state}, "content": [{"type": "text", "text": text}]}
         body = {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Jim must do first"}]},
                                            {"type": "taskList", "content": [task("DONE", "Approve the Notion wireframe"), task("TODO", "Sign in to the provider")]}]}
-        self.assertEqual(release.jim_first(body), (True, ["[ ] Sign in to the provider"]))
+        self.assertEqual(release.jim_first(body), (True, ["- [ ] Sign in to the provider"]))
 
 
 class Decide(unittest.TestCase):
