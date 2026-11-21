@@ -1,9 +1,9 @@
 """LIFE-742: may an agent move this ticket to Agent Go itself, or must it wait for Jim? A pure check on a fetched Jira issue, no network and no write."""
-# Jim, Nov 16 2026: agents may promote tickets on their own, "everything but the scary list". The rule is written once in docs/development-policy/04-work-selection-lifecycle-reconciliation.md.
+# Jim, Nov 16 2026: agents may promote tickets on their own, "everything but the scary list". The rule is written once in docs/life-os-development-policy.md (section 4, Jim must do first).
 # This module only decides. The agent then makes transition 17 (To Do to Agent Go) and posts the one comment, or posts `[waiting on] Jim: <the one thing>`.
 import re
 
-from lifeos.jira.release import blockers_done, has_done_when, text_of
+from lifeos.jira.release import JIM_FIRST, blockers_done, has_done_when, jim_first, text_of
 
 # LIFE-753: the label an agent adds with every `[waiting on] Jim:` comment; the saved filter "Waiting on Jim" lists the tickets that carry it.
 WAITING_LABEL = "needs-jim"                                   # LIFE-780: the one workflow-control label (was waiting-on-jim, jim-only, hold, planning-only, needs-approval, protected-file)
@@ -30,7 +30,7 @@ def scanned_lines(description):
     for line in text_of(description).splitlines():
         if re.match(r"^\W*(outcome|done when|steps|scope|authority|release|facts|targets|who verifies)\b", line, re.I):
             skipping = False
-        if REFUSAL_HEADING.match(line):
+        if REFUSAL_HEADING.match(line) or JIM_FIRST.match(line):            # needs listed under Jim must do first are gated by its checkboxes, not by this scan
             skipping = True
             continue
         if not skipping:
@@ -58,6 +58,11 @@ def decide(issue):
         return "skip", ["blocked"]
     if WAITING_LABEL in (fields.get("labels") or []):
         return "skip", ["skip_label"]
+    present, open_items = jim_first(fields.get("description"))                 # Jim, Nov 21 2026: the release rule
+    if not present:
+        return "skip", ["no_jim_first"]
+    if open_items:
+        return "wait", ["jim_first"]
     needs = protected_steps(fields.get("description"))
     if needs:
         return "wait", needs
@@ -69,4 +74,4 @@ def act(issue):
     decision, reasons = decide(issue)
     if decision != "wait":
         return {"decision": decision, "reasons": reasons, "label": None, "comment": None}
-    return {"decision": decision, "reasons": reasons, "label": WAITING_LABEL, "comment": f"[waiting on] Jim: approve {', '.join(r.replace('_', ' ') for r in reasons)} before this ticket moves to Agent Go"}
+    return {"decision": decision, "reasons": reasons, "label": WAITING_LABEL, "comment": ("[waiting on] Jim: clear the Jim must do first items before this ticket moves to Agent Go" if reasons == ["jim_first"] else f"[waiting on] Jim: approve {', '.join(r.replace('_', ' ') for r in reasons)} before this ticket moves to Agent Go")}

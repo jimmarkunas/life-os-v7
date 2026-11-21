@@ -1,34 +1,153 @@
 # LIFE OS Development Policy
 
-**Canonical entrypoint and index.** This file is the canonical entrypoint of the LIFE OS Development Policy. The complete, binding policy text is held verbatim in the 11 parts under [`docs/development-policy/`](development-policy/), listed below in their original order. Read together, those parts **are** the Development Policy: each part, and every section, rule, dated approval, exception and safety boundary in it, has exactly the authority, owner, status and precedence that the policy's own **Status** paragraph states ([Part 01](development-policy/01-status-mission-ui-first.md)): owner Jim Markunas, and material changes require Jim's explicit approval. This index adds, removes, summarizes and overrides nothing; where it and a part ever differ, the part governs.
+**Owner:** Jim Markunas. This one file is the whole policy. Change it by PR with Jim's yes. Edit a rule in place: replace it, never append a dated amendment. Old text goes to [docs/archive/](archive/development-policy-2026-11-20.md), which has no authority and is not read by default. The file stays under 15 KB so an agent reads it once.
 
-A reference to this file, to "the Development Policy", or to a named section or numbered item (for example §1, §7, "Deterministic agent work selection", "Deadline Mode", "non-mutable execution constitution" item 2) means that section in its part below. Section headings and their anchors are unchanged from the original single file.
+## 1. Authority
 
-## How to read it
+1. Jim's current instruction.
+2. The Production Contract, for schedules and runtime.
+3. This policy, for how development works.
+4. Notion LIFE OS Platform canon, for architecture.
+5. Jira `LOS` for product priority; Jira `LIFE` for delivery status, blockers and order.
+6. The owning Notion product requirement.
+7. The code, for what exists.
 
-- Read the named LIFE issue first, then only the parts the task needs ([AGENTS.md](../AGENTS.md) **Fast Path**). Agent start-up and resumption: [Part 04](development-policy/04-work-selection-lifecycle-reconciliation.md) (**Deterministic agent work selection**, **Jira-first development lifecycle**). User deadlines: **Deadline Mode** in [Part 08](development-policy/08-deadline-delivery-gates.md).
-- The parts are one document split by topic, not separate policies: a rule in one part applies everywhere it says it does, and cross-references between sections keep their original meaning.
+Old chats, roadmap prose (`docs/MASTER_ROADMAP.md`) and the archive are background only. `AGENTS.md` and `CLAUDE.md` route to this file and never override it. On a conflict, use the owning authority and stop before changing anything.
 
-## Changing the policy
+| Thing | Owner |
+|---|---|
+| Ticket status, approval, acceptance | Jira LIFE |
+| Code, tests, CI, this policy | GitHub V7 |
+| Product requirements and decisions | Notion Product Requirements; Jira LOS for scoping |
+| Runtime schedule and secrets | Production Contract; Bitwarden |
 
-Edit the relevant part only with Jim's explicit approval, keeping it the single home of that rule (never a second, diverging copy here or elsewhere). In the same change, update [`manifest.json`](development-policy/manifest.json): its `reassembled_sha256` and one `amendments` entry (date, PR, approval). `tests/contracts/test_development_policy_split.py` fails otherwise, so no part changes silently.
+Link to the owner; never copy a fact into a second place.
 
-## Lossless migration record (LIFE-79)
+## 2. Mission
 
-The parts are the original single file (git blob `392cb93e4fefd3c138fec016545043859f50e6ff`, 102,529 characters, 448 lines, SHA-256 `0704d935c1f9d55642319acf158b219fcd3010ba37794b25a7bdd162e7551747`) cut at heading boundaries, unchanged except for one re-based relative link (`jira/issue-schema.v1.json` to `../jira/issue-schema.v1.json`, because the parts sit one folder deeper). Removing each part's two-line header, joining the parts in order and reversing that one link reproduces the original byte for byte; the contract test checks this, and checks the original blob too wherever git history is available.
+`user outcome → bounded change → targeted proof → land`. The process stays smaller than the product. If work turns exploratory, historical or process-heavy, stop and simplify.
 
-## Index
+## 3. Delivery
 
-| Part | Topic | Sections (original headings, in order) | Original lines |
-|---|---|---|---|
-| [01](development-policy/01-status-mission-ui-first.md) | Status, mission and UI/UX-first delivery | [LIFE OS Development Policy](development-policy/01-status-mission-ui-first.md#life-os-development-policy)<br>[1. Mission and authority](development-policy/01-status-mission-ui-first.md#1-mission-and-authority)<br>&nbsp;&nbsp;[UI/UX-first delivery — Jim-approved October 14, 2026](development-policy/01-status-mission-ui-first.md#uiux-first-delivery--jim-approved-october-14-2026)<br>&nbsp;&nbsp;[Deterministic UI-first applicability and proof gate — Jim-approved October 14, 2026](development-policy/01-status-mission-ui-first.md#deterministic-ui-first-applicability-and-proof-gate--jim-approved-october-14-2026) | 1–30 |
-| [02](development-policy/02-jira-planning-model.md) | Jira planning authority, feature-Epic model, components and versioning | &nbsp;&nbsp;[Jira product and development planning authority — Jim-approved October 13, 2026](development-policy/02-jira-planning-model.md#jira-product-and-development-planning-authority--jim-approved-october-13-2026)<br>&nbsp;&nbsp;[LIFE Jira project-Epic and product-requirement model](development-policy/02-jira-planning-model.md#life-jira-project-epic-and-product-requirement-model)<br>&nbsp;&nbsp;[LIFE Jira OS component and release versioning — Jim-approved October 16, 2026](development-policy/02-jira-planning-model.md#life-jira-os-component-and-release-versioning--jim-approved-october-16-2026) | 31–64 |
-| [03](development-policy/03-jira-issue-writing-contract.md) | LIFE Jira issue-writing contract | &nbsp;&nbsp;[LIFE Jira issue-writing contract — Jim-approved October 29, 2026 (LIFE-79)](development-policy/03-jira-issue-writing-contract.md#life-jira-issue-writing-contract--jim-approved-october-29-2026-life-79) | 65–82 |
-| [04](development-policy/04-work-selection-lifecycle-reconciliation.md) | Deterministic work selection and Jira-first lifecycle | &nbsp;&nbsp;[Deterministic agent work selection — mandatory when an authorized execution session starts or resumes](development-policy/04-work-selection-lifecycle-reconciliation.md#deterministic-agent-work-selection--mandatory-when-an-authorized-execution-session-starts-or-resumes)<br>&nbsp;&nbsp;[Jira-first development lifecycle — mandatory across ChatGPT, Claude Code, Codex and approved Edge implementers](development-policy/04-work-selection-lifecycle-reconciliation.md#jira-first-development-lifecycle--mandatory-across-chatgpt-claude-code-codex-and-approved-edge-implementers) | 83–119 |
-| [05](development-policy/05-discovery-context-efficiency.md) | LOS-first discovery and context efficiency | &nbsp;&nbsp;[LOS-first discovery and description-first requirements — Jim-approved November 1, 2026 (LIFE-79)](development-policy/05-discovery-context-efficiency.md#los-first-discovery-and-description-first-requirements--jim-approved-november-1-2026-life-79)<br>&nbsp;&nbsp;[Context efficiency — Jim-approved November 1, 2026 (LIFE-79)](development-policy/05-discovery-context-efficiency.md#context-efficiency--jim-approved-november-1-2026-life-79) | 120–143 |
-| [06](development-policy/06-locked-architecture.md) | Locked architecture and execution constitution | [2. Locked architecture and execution constitution](development-policy/06-locked-architecture.md#2-locked-architecture-and-execution-constitution) | 144–164 |
-| [07](development-policy/07-bootstrap-bounded-autonomy.md) | Bootstrap, Claude Code delivery mode and bounded autonomy | [3. Bootstrap and outcome-bounded execution](development-policy/07-bootstrap-bounded-autonomy.md#3-bootstrap-and-outcome-bounded-execution)<br>&nbsp;&nbsp;[Claude Code end-to-end delivery mode — Jim-directed October 17, 2026](development-policy/07-bootstrap-bounded-autonomy.md#claude-code-end-to-end-delivery-mode--jim-directed-october-17-2026)<br>&nbsp;&nbsp;[Bounded autonomy — one approval per delivery objective — Jim-approved October 23, 2026 (LIFE-79)](development-policy/07-bootstrap-bounded-autonomy.md#bounded-autonomy--one-approval-per-delivery-objective--jim-approved-october-23-2026-life-79) | 165–191 |
-| [08](development-policy/08-deadline-delivery-gates.md) | Deadline Mode, delivery and activation contract, outcome and blocker gates | &nbsp;&nbsp;[Deadline Mode — Jim-directed October 19, 2026](development-policy/08-deadline-delivery-gates.md#deadline-mode--jim-directed-october-19-2026)<br>&nbsp;&nbsp;[Delivery and activation contract — Jim-directed October 19, 2026](development-policy/08-deadline-delivery-gates.md#delivery-and-activation-contract--jim-directed-october-19-2026)<br>&nbsp;&nbsp;[User Outcome Gate](development-policy/08-deadline-delivery-gates.md#user-outcome-gate)<br>&nbsp;&nbsp;[Blocker Qualification Gate](development-policy/08-deadline-delivery-gates.md#blocker-qualification-gate) | 192–265 |
-| [09](development-policy/09-fast-lanes-workspace-runtime.md) | Fast shipping, fast-lane coordination, workspace affinity, runtime completeness | &nbsp;&nbsp;[Fast shipping mode](development-policy/09-fast-lanes-workspace-runtime.md#fast-shipping-mode)<br>&nbsp;&nbsp;[Fast-lane coordination mode](development-policy/09-fast-lanes-workspace-runtime.md#fast-lane-coordination-mode)<br>&nbsp;&nbsp;[Repository workspace affinity gate](development-policy/09-fast-lanes-workspace-runtime.md#repository-workspace-affinity-gate)<br>&nbsp;&nbsp;[Runtime Completeness Gate](development-policy/09-fast-lanes-workspace-runtime.md#runtime-completeness-gate) | 266–357 |
-| [10](development-policy/10-mutation-proof-tests.md) | Mutation, proof, tests and TestKit | [4. Mutation, proof, tests, and TestKit](development-policy/10-mutation-proof-tests.md#4-mutation-proof-tests-and-testkit)<br>&nbsp;&nbsp;[Standing composability / architecture-health phase gate — Jim-approved October 19, 2026 (LIFE-79)](development-policy/10-mutation-proof-tests.md#standing-composability--architecture-health-phase-gate--jim-approved-october-19-2026-life-79)<br>&nbsp;&nbsp;[Decision numbers are claimed, never picked — Jim-approved October 20, 2026 (LIFE-89)](development-policy/10-mutation-proof-tests.md#decision-numbers-are-claimed-never-picked--jim-approved-october-20-2026-life-89)<br>&nbsp;&nbsp;[Jobs incremental architecture stress gate](development-policy/10-mutation-proof-tests.md#jobs-incremental-architecture-stress-gate)<br>&nbsp;&nbsp;[Production-shaped regression gate](development-policy/10-mutation-proof-tests.md#production-shaped-regression-gate) | 358–411 |
-| [11](development-policy/11-review-coordination-completion-budgets.md) | Review, coordination, completion, budgets and metadata | [5. Review and workspace](development-policy/11-review-coordination-completion-budgets.md#5-review-and-workspace)<br>[6. Coordination, Notion safety, retry](development-policy/11-review-coordination-completion-budgets.md#6-coordination-notion-safety-retry)<br>[7. Completion](development-policy/11-review-coordination-completion-budgets.md#7-completion)<br>[8. Budgets and mandatory metadata](development-policy/11-review-coordination-completion-budgets.md#8-budgets-and-mandatory-metadata) | 412–448 |
+- **Jim starts every agent run.** No scheduler, timer, poller, `/loop`, watcher or dispatcher may start or wake an agent. A Jira status change starts nothing.
+- **Once started, an agent runs end to end:** finish the ticket, then pull the next, until the queue is empty (`NO_ELIGIBLE_WORK`) or a ticket truly needs Jim.
+- **Pick:** the ticket Jim named, else the top leaf of `project = LIFE AND status = "Agent Go" AND issuetype != Epic ORDER BY priority DESC, Rank ASC`. Skip a ticket already In Progress (another session has it) or with an unfinished `Blocks` predecessor. Lane labels are hints. Agents never reorder or reprioritize. Several sessions (Mac and Oracle Claude Code) may pull in parallel; one writer per branch and per mutation surface.
+- **Claim:** move the ticket to In Progress (transition ID 14). The status is the claim; no comment.
+- **Build:** one branch `life/LIFE-nnn/<slug>`, one PR titled `[LIFE-nnn] <outcome>`. Tickets that touch the same files may share one PR. Make the smallest change that delivers the outcome and remove the path it replaces.
+- **Test:** `sh tools/preflight.sh` before every push. CI is the full gate: fix once if red.
+- **Land:** auto-merge on same-head green CI. No reviewer is required unless GitHub branch protection or the ticket says so; never invent an approval.
+- **Close:** `python -m lifeos.jira.closeout KEY... --pr N --sha S --run R --proof KEY=text --live` posts the one record (PR, SHA, CI run, proof) and moves the ticket to Done. Merged on green with local proof is Done. Jim reopens it or files a Bug.
+- **Human UAT:** only with label `needs-uat` (new user-facing UI or a judgment call). Stop at Human UAT with exact click-through steps for Jim.
+- **Scope:** never change or drop a ticket's stated scope, or swap a stated fix for a workaround, without asking Jim. Optional improvements become a proposal, not extra work.
+
+## 4. Jim must do first (the release rule)
+
+Every LIFE ticket has a **Jim must do first** section. It lists every action only Jim can take, each as a checkbox line:
+
+- a credential or secret stored in Bitwarden;
+- a permission, account or sign-in;
+- spend or a paid model;
+- a host step on the Mac or Oracle;
+- a product decision;
+- approval of a Notion wireframe (required for any ticket that builds Notion UI);
+- UAT setup.
+
+`None` means nothing is needed.
+
+- **Release rule:** a ticket with an unchecked item, or with no section, does not move to Agent Go. `lifeos.jira.promote` and the auto-release stage refuse it, and `python -m lifeos.sources.devtools.readiness` refuses an unchecked item at start.
+- **Agent Go is the approval.** Jim clears the list, then moving the ticket to Agent Go approves everything inside its written scope. An agent never asks again.
+- **A need found mid-run** is a scoping miss. Add it to the section, add the label `needs-jim`, post one comment naming the one thing, and keep building any part that does not depend on it.
+
+## 5. What always stops for Jim
+
+These four need Jim's yes. Put them in **Jim must do first** whenever they are known. `tools/workflow_gate.py`, run by preflight, stops on them:
+
+1. Adding or widening a workflow `permissions` block or any write permission.
+2. Adding, moving or exposing a credential. Secrets live in Bitwarden only, never in GitHub's secret store, the repo, Jira or chat.
+3. Deleting a GitHub value or production data.
+4. Spend or a paid model beyond the ticket's budget.
+
+Everything else is pre-approved, including workflow edits and test or registry edits that follow from an approved change, as long as no check is loosened.
+
+Also never, without Jim:
+- send or delete mail or calendar events;
+- run a metered Notion query (needs a yes per query);
+- open a sign-in or account-picker page;
+- delete or rotate a credential (never covered by a blanket yes).
+
+## 6. Privacy (public repository)
+
+Never put any of these in code, tests, commits, PRs, issues, logs or errors:
+- personal email addresses, full personal names, phone numbers, or street or postal addresses;
+- employer or salary details;
+- resume or mailbox content;
+- secrets;
+- Notion page or database IDs.
+
+Use example.com and invented names. Output is counts and fixed codes. The full rule is [docs/PRIVACY.md](PRIVACY.md); the privacy test enforces it. Private embedded UI never goes to public URLs, public JSON, logs or artifacts.
+
+## 7. Writing tickets
+
+The field list is [`docs/jira/issue-schema.v1.json`](jira/issue-schema.v1.json). A ticket can be pasted into Claude Code and built with no questions:
+
+- **Statement:** a Story as `As a [user], I want [capability], so that [benefit].`, or a Task or Bug as one bounded outcome.
+- **Before-state and exact targets:** files, pages, fields, numbers.
+- **Done when:** one `Given … when … then …` line, or one bullet, per behavior. A tick without cited proof is not Done.
+- **Jim must do first:** see §4.
+- **Not in scope.**
+- **Who verifies,** by reading or clicking, never by running commands.
+
+Keep the description under 4,000 characters. One execution ticket is one PR. Reference secrets by identifier only. Link the Notion requirement instead of copying it. The description beats comments: a scope change is an edit to the description, never a comment alone.
+
+**UI first:** for new or changed UI, show the smallest working preview in the real surface (with synthetic data where live data is not authorized), and get Jim's acceptance before expanding the backend. For changed results in an existing UI, show current versus intended output. A UI-free change names its downstream outcome and proof.
+
+**Hierarchy:** LOS idea → LIFE Epic → Task → Sub-task.
+- Every ticket sits under an epic; Bugs go under LIFE-615.
+- Every ticket has exactly one Component (its owning OS) and the matching Fix Version `<component> X.Y.Z`. These are filled automatically (LIFE-741). Agents never invent a release.
+- A new product outcome starts in an LOS idea that Jim approves for delivery. A parked LOS idea authorizes nothing. Bugs, maintenance and in-scope children of an approved epic need no LOS idea.
+- Each approved product has one active owning LIFE Epic. Done and Cancelled issues stay on their historical parents.
+- Discovery answers go in a linked page or in comments on the LOS idea, and are read back before the next question.
+
+## 8. Locked architecture
+
+LIFE OS is one platform with one live implementation per behavior. Flows read as `Acquire → Normalize → Decide → Persist → Present`.
+- No framework, dispatcher, adapter layer or shared abstraction for a single consumer; a shared primitive needs two real consumers.
+- No second scheduler service, orchestrator, datastore or source of truth without Jim.
+- When a replacement works, remove the old path in the same change. Git is the archive.
+
+GitHub Actions in this repository are the only scheduled executor, and the Production Contract approves each schedule. Each scheduled workload has:
+- one owner and exactly one writer per target;
+- declared dependencies, a provider budget, bounded retries and idempotency;
+- a checkpoint with missed- and duplicate-run recovery;
+- complete, degraded and incomplete receipts, and a rollback.
+
+V7 must run with ChatGPT unavailable (D54). OpenClaw and Hermes run on the Oracle VM; Mac apps are thin clients.
+
+**Debug in order:** `trigger → runtime started → code ran → source reached → state persisted → read back`.
+- One retry per failure boundary; a second failure stops for diagnosis.
+- More than two cycles or about ten minutes on a simple operation means challenge the design instead of adding machinery.
+- Prefer subtraction over repair.
+
+A request that breaks these rules stops with `ARCHITECTURAL DRIFT DETECTED — NO MUTATION`.
+
+## 9. Proof and tests
+
+- **Prove deterministically:** a fixture or clock test, or a replay of one recorded real input. A live, scheduled or benchmark run never gates Done; a fault it shows is filed as a Bug under LIFE-615.
+- **Fix on the real failing shape.** A defect seen live is fixed and proved on that input, or on a fixture that keeps its structure, through the real path. For Jobs qualification: real job description → requirement rows → non-null Fit → correct disposition.
+- **Runtime-facing changes:** prove the production entry point calls the change, its inputs are loaded, the happy path completes, missing input fails closed, writes go through the existing owner, and read-back is wired.
+- **Jobs increments:** test toward the future source count before the pattern is copied (build at one, test toward many).
+- **Fail closed:** a full result or an error, never a partial one. Dry run is the default; writes need `--live`.
+- **Keep the suite fast:** under 90 seconds. Delete obsolete tests with the code they covered.
+- **Net size:** `python -m lifeos.platform.net_size` in every PR.
+- **Decision numbers:** only from `python -m lifeos.sources.devtools.decisions claim`.
+
+## 10. Exceptions in force
+
+- **V7 modernization consolidation exception (Jim, November 18, 2026; LIFE-834, Epic LIFE-791).** Only for the V7 modernization work, consolidation follows the exact versioned migration map. Terminal (Done or Cancelled) children stay attached to their own historical Epics (LIFE-791, LIFE-763, LIFE-686) and keep their keys, status, history and evidence: none is reopened, deleted, reparented or rewritten. No reparenting, Epic cancellation or pilot mutation happens until Jim approves the exact issue and field change list in chat.
+- **Freezes and STOP gates lifted (Jim, November 21, 2026, 12:17 AM CT).** The LIFE-686 freeze and all STOP blocks are removed; LIFE-791 children follow §3. LIFE-793 is a LIFE-686 exception, with Mac Claude Code as its exclusive writer. The seven-day LIFE-686 and LIFE-793 records are measurements, not gates.
+
+## 11. Read only when needed
+
+- `docs/DECISIONS.md`: only when a ticket cites a D-number. Use `python -m lifeos.sources.devtools.decisions show D<n>` and never read the whole file.
+- `docs/agent-reference.md`: the code map, commands and the nine epic delivery rules.
+- `docs/archive/`: history, no authority.
