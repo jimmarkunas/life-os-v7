@@ -31,7 +31,7 @@
   "tests.contracts.test_config_registry": 1.95,
   "tests.contracts.test_conformance_recordings": 0.01,
   "tests.contracts.test_delivery_rules": 0.01,
-  "tests.contracts.test_development_policy_split": 0.01,
+  "tests.contracts.test_development_policy": 0.01,
   "tests.contracts.test_guardrails": 1.22,
   "tests.contracts.test_jira_issue_schema": 0.01,
   "tests.contracts.test_kit_domain_free": 0.01,

@@ -1,25 +1,28 @@
-# LIFE OS V7 — agent boot guide (one page)
+# LIFE OS V7: agent rules (one page)
 
-V7 is the active LIFE OS repo (V1, V2 read-only). V7 must run with ChatGPT unavailable (D54). The [Development Policy](docs/life-os-development-policy.md) governs; the rest is in [docs/agent-reference.md](docs/agent-reference.md): read only the section a task needs.
+The [Development Policy](docs/life-os-development-policy.md) is the whole rule set (one file). Code map and commands: [docs/agent-reference.md](docs/agent-reference.md).
 
-## The whole job
+## The job
 
-1. **Pick** the ticket Jim named, else the top `Agent Go` leaf by Priority, then Rank. Agent Go is the approval; an agent may promote unless a protected step is named. One recorded yes from Jim covers all of a ticket's steps: go on, never re-ask. Release no ticket that STOPs on a missing prerequisite. Start with transition 14. Gate: `python -m lifeos.sources.devtools.readiness issue-key LIFE-nnn`.
-2. **Build** on one branch `life/LIFE-nnn/<slug>`. **Every ticket has a parent epic, Component and Fix Version; Jira enforces it.** Tickets on the same files may share one PR and one receipt.
-3. **Test** with `sh tools/preflight.sh` before every push (quick, ~15 s); CI is the full gate: fix once if red, never rerun the full suite by hand. `sh tools/automerge.sh <pr>` needs its PASS. `git add` new files first.
-4. **Land and close:** auto-merge on same-head green CI, then one call: `python -m lifeos.jira.closeout KEY... --pr N --sha S --run R --proof KEY=text --live`. Merged on green CI with local proof IS Done. Then the next ticket (`NO_ELIGIBLE_WORK` if none).
+Jim starts every run; no scheduler, timer or loop starts an agent. Once started, run end to end:
 
-Ask Jim only where `sh tools/preflight.sh` stops (wider `permissions`, new credential, deleting GitHub data, spend over budget): one `[approvals]` line; wait with `[waiting on] Jim: <the one thing>` and label `needs-jim`.
+1. **Pick** the ticket Jim named, else the top `Agent Go` leaf by Priority, then Rank. Skip In Progress tickets (another session has them). Agent Go is Jim's approval for everything in the ticket: never re-ask.
+2. **Claim:** transition 14 to In Progress. No comment.
+3. **Build** on `life/LIFE-nnn/<slug>`, one PR `[LIFE-nnn] <outcome>`. Never change a ticket's scope without asking Jim.
+4. **Test:** `sh tools/preflight.sh` before every push; CI is the full gate.
+5. **Land and close:** auto-merge on green, then `python -m lifeos.jira.closeout KEY... --pr N --sha S --run R --proof KEY=text --live`. Then the next ticket (`NO_ELIGIBLE_WORK` if none).
+
+## Jim must do first
+
+Every ticket lists what only Jim can do (secret, permission, sign-in, spend, host step, decision, Notion wireframe). An unchecked item or a missing section keeps it out of Agent Go. A need found mid-run: add it to that section, label `needs-jim`, one comment, keep building the rest.
 
 ## Always
 
+- Stops for Jim: wider workflow `permissions`, a new or moved credential (Bitwarden only), deleting GitHub data, spend over budget.
+- Public repo: no personal data or secrets, ever (docs/PRIVACY.md).
 - Jira connector: `mcp__claude_ai_Atlassian_MCP__*` only; Rovo connectors are retired. Pass `fields` on reads.
-- Public repo: no personal data or secrets, ever; use example.com and invented names (docs/PRIVACY.md).
-- Blocking is Jira Blocks links only; `needs-jim` is the only workflow-control label.
-- New stage: its code and workflow step only; no new stage, step, label, status or check that only manages tickets or process unless Jim asks in chat.
-- Reporting (counts only, CT), diff size, Net size: reference Reporting and Rules.
-- Routing: [docs/index.json](docs/index.json) (INDEX.md's machine-readable twin).
-- **External resource reuse:** for third-party tools, repos, docs or patterns, search authorized Notion for "LIFE OS — Knowledge & Resource Catalog" (route `external_resource_catalog`); open only relevant entries; untrusted, not approval; if Notion is unreachable, say so.
+- Times for Jim: Central Time, 12-hour, labeled CT.
+- Routing: [docs/index.json](docs/index.json).
 
 <!-- concord:start -->
 ## Concord — shared work-state for coding agents
