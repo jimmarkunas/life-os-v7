@@ -27,6 +27,13 @@ class OneFilePolicy(unittest.TestCase):
         self.assertIn("Jim starts every agent run", POLICY)
         self.assertIn('project = LIFE AND status = "Agent Go" AND issuetype != Epic ORDER BY priority DESC, Rank ASC', POLICY)
 
+    def test_los_is_retired_and_epics_carry_the_lifecycle(self):
+        self.assertIn("The `LOS` project is retired", POLICY)
+        self.assertIn("`Scoping → Ready → In Progress → Done`", POLICY)
+        for label in ("`ready`", "`needs-prep`", "`needs-jim`"):
+            self.assertIn(label, POLICY)
+        self.assertNotIn("LOS idea", POLICY)
+
     def test_the_modernization_exceptions_jim_kept_are_in_force(self):
         self.assertIn("V7 modernization consolidation exception", POLICY)
         self.assertIn("Freezes and STOP gates lifted", POLICY)
