@@ -34,6 +34,12 @@ class OneFilePolicy(unittest.TestCase):
             self.assertIn(label, POLICY)
         self.assertNotIn("LOS idea", POLICY)
 
+    def test_every_epic_proves_feasibility_before_any_build_ticket_runs(self):
+        self.assertIn("**Feasibility first:**", POLICY)
+        self.assertIn("`research`", POLICY)
+        self.assertIn("GO, GO WITH CHANGES or NO-GO", POLICY)
+        self.assertIn("Every build ticket is blocked by its Epic's verdict.", POLICY)
+
     def test_the_modernization_exceptions_jim_kept_are_in_force(self):
         self.assertIn("V7 modernization consolidation exception", POLICY)
         self.assertIn("Freezes and STOP gates lifted", POLICY)

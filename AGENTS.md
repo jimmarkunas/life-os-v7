@@ -16,7 +16,7 @@ Jim starts every run; no scheduler, timer or loop starts an agent. Once started,
 
 Every ticket lists what only Jim can do (secret, permission, sign-in, spend, host step, decision, Notion wireframe). An unchecked item or a missing section keeps it out of Agent Go. A need found mid-run: add it to that section, label `needs-jim`, one comment, keep building the rest.
 
-Epics go `Scoping → Ready → In Progress → Done`; every child carries one label (`ready`, `needs-prep` or `needs-jim`) and only `ready` tickets move to Agent Go. Claude writes tickets; ChatGPT reviews them. LOS is retired.
+Epics go `Scoping → Ready → In Progress → Done`; every child carries one label (`ready`, `needs-prep` or `needs-jim`) and only `ready` tickets move to Agent Go. Feasibility first: read-only `research` children (and the Epic's verdict ticket) run while the Epic is in Scoping; build tickets wait for the verdict. Claude writes tickets; ChatGPT reviews them. LOS is retired.
 
 ## Always
 
