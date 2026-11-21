@@ -8,6 +8,7 @@ credential-shaped names), shadow rule (`_fill`) and last-accepted fallback; two 
 Cutover is protected and not done here: docs/platform/runtime-config-cutover.md."""
 import os
 import re
+import time
 
 from lifeos.platform import settings
 
@@ -17,6 +18,7 @@ REQUIRED = {"Name": "title", "Value": "rich_text", "Kind": "select", "Revision":
 MAX_PAGES = 20                                                           # a settings source is a few dozen rows; more than 20 pages is a mistake, not data
 CODE = re.compile(r"[A-Z0-9_]{3,60}")
 NAME = re.compile(r"[A-Z][A-Z0-9_]*")
+PROOF_TOKENS = ("NOTION_JIRA_TOKEN", "NOTION_API_TOKEN", "NOTION_INTERVIEW_TOKEN", "NOTION_RECRUITERS_TOKEN", "NOTION_AMAZON_TOKEN", "NOTION_BILLS_TOKEN", "NOTION_FIT_SYNC_TOKEN")   # LIFE-858: the seven identities that must read the source
 
 
 class RuntimeConfigError(RuntimeError):
@@ -155,23 +157,59 @@ def apply(environ=os.environ, client=None, connect=None, remember=False):
     return out
 
 
-def shadow(environ=os.environ, client=None):
+def _client_for(token):
+    from lifeos.platform.notion_client import Client                    # noqa: PLC0415
+    return Client({"NOTION_API_TOKEN": token, "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused"})
+
+
+def probe(environ=os.environ, make_client=_client_for):
+    """LIFE-858 (Phase 1, read only): can each Notion token identity THIS step holds read the source? One read of the source per token present, by ID, through the same reader.
+    -> {TOKEN_NAME: "PASS" | "FAIL:<CODE>"}. A token the step does not hold is not listed (UNVERIFIED for that run); a name outside PROOF_TOKENS is never probed. Names and codes only: never a token, a value or a message."""
+    out = {}
+    for name in PROOF_TOKENS:
+        token = (environ.get(name) or "").strip()
+        if not token:
+            continue
+        try:
+            found, _ = read(make_client(token), environ)
+            out[name] = "PASS" if found else "FAIL:RUNTIME_CONFIG_EMPTY"
+        except RuntimeConfigError as error:
+            out[name] = "FAIL:" + str(error)
+        except Exception as error:                                       # noqa: BLE001 - a probe never fails a stage and never repeats a message
+            out[name] = "FAIL:" + type(error).__name__
+    return out
+
+
+def shadow(environ=os.environ, client=None, make_client=None):
     """Compare-only dual read (cutover step 4): the new source against the old V7 settings page. Changes nothing in the environment, writes nothing, never raises.
-    -> {"status": "off"} with no bootstrap ID or no token (nothing was read), else `compare` counts (names only) plus `status` ok, or `unreadable:<CODE>`."""
+    -> {"status": "off"} with no bootstrap ID or no token (nothing was read), else `compare` counts (names only) plus `status` ok, or `unreadable:<CODE>`.
+    LIFE-858 adds, to the ok receipt only: `rows` and `kinds` (counts), `new_counts` (names of rows the reader refused or found invalid or repeated, only when there are any), `seconds` (the read's own cost),
+    `tokens` (`probe`: one PASS/FAIL per Notion token this step holds, only in production or with `make_client`), and `names` (both sides' setting names, only on a manual dispatch)."""
     try:
         source_id(environ)
     except RuntimeConfigError as error:
         return {"status": "off"} if str(error) == "RUNTIME_CONFIG_SOURCE_ID_MISSING" else {"status": "unreadable:" + str(error)}
+    began = time.monotonic()
     try:
         if client is None:
             token = next((environ.get(t).strip() for t in settings.TOKENS if (environ.get(t) or "").strip()), "") \
                 or next((environ.get(k).strip() for k in sorted(environ) if settings.ANY_NOTION_TOKEN.fullmatch(k) and (environ.get(k) or "").strip()), "")
             if not token:
                 return {"status": "off"}
-            from lifeos.platform.notion_client import Client                # noqa: PLC0415
-            client = Client({"NOTION_API_TOKEN": token, "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused"})
-        new, _ = read(client, environ)
+            client = _client_for(token)
+            make_client = make_client or _client_for
+        new, new_counts = read(client, environ)
         old, _ = settings.parse(settings.read(client))
     except Exception as error:                                           # noqa: BLE001 - a shadow read never fails a stage
         return {"status": "unreadable:" + (str(error) if CODE.fullmatch(str(error)) else type(error).__name__)}
-    return {"status": "ok", **compare(old, new)}
+    out = {"status": "ok", **compare(old, new), "rows": {"old": len(old), "new": len(new)},
+           "kinds": {"address": sum(1 for n in new if settings.is_address(n)), "switch": sum(1 for n in new if not settings.is_address(n))}}
+    flagged = {key: value for key, value in new_counts.items() if value}
+    if flagged:
+        out["new_counts"] = flagged
+    if make_client is not None:
+        out["tokens"] = probe(environ, make_client)
+    if environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch":
+        out["names"] = {"old": sorted(old), "new": sorted(new)}
+    out["seconds"] = round(time.monotonic() - began, 2)
+    return out
