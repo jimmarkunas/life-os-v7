@@ -38,7 +38,7 @@ class Page:
         if self.broken:
             raise RuntimeError("down")
         if path == "/search":
-            return {"results": [{"id": "p", "properties": {"title": {"type": "title", "title": [{"plain_text": self.title}]}}}]}
+            return {"results": [{"id": "p", "properties": {"title": {"type": "title", "title": [{"plain_text": self.title}]}}}], "has_more": False}
         if path.startswith("/blocks/p/children"):
             return {"results": [{"id": "c", "type": "code", "code": {"rich_text": [{"plain_text": "\n".join(self.lines)}]}}], "has_more": False}
         raise AssertionError(path)

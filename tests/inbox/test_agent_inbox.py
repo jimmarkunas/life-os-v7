@@ -20,10 +20,11 @@ def ok_item(**over):
 class FakeClient:
     """A Notion double that keeps rows, answers the four calls the inbox makes, and remembers every write."""
 
-    def __init__(self, found=1, tiles=True, source=SOURCE):
+    def __init__(self, found=1, tiles=True, source=SOURCE, parent_is_page=False):
         self.source, self.rows, self.writes, self.blocks, self.calls_made = source, [], [], {}, []
         self.found = found
         self.tiles = tiles
+        self.parent_is_page = parent_is_page                    # LIFE-891: the database sits inside the Agent Inbox page
         self._build_page()
 
     def _build_page(self):
@@ -38,8 +39,14 @@ class FakeClient:
         self.calls_made.append((method, path))
         if path == "/search":
             if body["filter"]["value"] == "data_source":
-                return {"results": [{"object": "data_source", "id": SOURCE, "title": [{"plain_text": agent_inbox.DB_TITLE}]} for _ in range(self.found)]}
-            return {"results": [{"object": "page", "id": PAGE, "properties": {"title": {"title": [{"plain_text": agent_inbox.PAGE_TITLE}]}}}] if self.tiles else []}
+                return {"results": [{"object": "data_source", "id": SOURCE, "title": [{"plain_text": agent_inbox.DB_TITLE}]} for _ in range(self.found)], "has_more": False}
+            return {"results": [{"object": "page", "id": PAGE, "properties": {"title": {"title": [{"plain_text": agent_inbox.PAGE_TITLE}]}}}] if self.tiles else [], "has_more": False}
+        if method == "GET" and path.startswith("/data_sources/"):
+            return {"parent": {"type": "database_id", "database_id": "db"}}
+        if method == "GET" and path.startswith("/databases/"):
+            return {"parent": {"type": "page_id", "page_id": PAGE} if self.parent_is_page else {"type": "workspace"}}
+        if method == "GET" and path == f"/pages/{PAGE}":
+            return {"id": PAGE, "properties": {"title": {"title": [{"plain_text": agent_inbox.PAGE_TITLE}]}}}
         if method == "GET" and path.startswith(f"/blocks/{PAGE}/children"):
             return {"results": self.page_children, "has_more": False}
         if method == "GET" and path.startswith("/blocks/"):

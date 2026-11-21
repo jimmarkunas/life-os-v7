@@ -6,7 +6,7 @@ import re
 from urllib.parse import quote, unquote
 
 from lifeos.accountability import render
-from lifeos.platform import readback, report_region
+from lifeos.platform import notion_pages, readback, report_region
 from lifeos.platform.notion_client import NotionError
 
 SUMMARY = "summary for claude:"
@@ -68,8 +68,8 @@ def _page_of(notion, block_id):
 
 def register_row(notion, key):
     """The block id the V3 block ID register names for `key`, or None when the register has no such row. Exactly one register page must exist (else ACCOUNTABILITY_TARGET_NOT_FOUND)."""
-    found = notion.call("POST", "/search", {"query": REGISTER_TITLE, "filter": {"property": "object", "value": "page"}, "page_size": 100})
-    hits = [r["id"] for r in (found or {}).get("results") or [] if isinstance(r, dict) and _title(r).strip() == REGISTER_TITLE and not r.get("in_trash") and not r.get("archived")]
+    found = notion_pages.search_all(notion, REGISTER_TITLE, "page", fail, incomplete="ACCOUNTABILITY_TARGET_NOT_FOUND", capped="ACCOUNTABILITY_TARGET_NOT_FOUND")      # LIFE-891: every result page
+    hits = [r["id"] for r in found if isinstance(r, dict) and _title(r).strip() == REGISTER_TITLE and not r.get("in_trash") and not r.get("archived")]
     if len(hits) != 1:
         raise fail("ACCOUNTABILITY_TARGET_NOT_FOUND")
     pattern = re.compile(r"(?:^|\s)" + re.escape(key) + r"\s+([0-9a-fA-F-]{32,36})\b")

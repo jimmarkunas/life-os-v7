@@ -42,7 +42,7 @@ class Address(unittest.TestCase):
         class Fake:
             def call(self, method, path, body=None, *args, **kwargs):
                 if method == "POST":
-                    return {"results": [{"id": "reg", "object": "page", "properties": {"title": {"type": "title", "title": F.rich(region.REGISTER_TITLE)}}}]}
+                    return {"results": [{"id": "reg", "object": "page", "properties": {"title": {"type": "title", "title": F.rich(region.REGISTER_TITLE)}}}], "has_more": False}
                 if "/children" in path:
                     return {"results": register, "has_more": False}
                 if path.startswith("/pages/"):

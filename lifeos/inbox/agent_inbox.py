@@ -13,6 +13,7 @@ import re
 from datetime import datetime, timedelta, timezone
 
 from lifeos.inbox.model import InboxError
+from lifeos.platform import notion_pages
 from lifeos.platform.notion_client import Client, NotionError
 
 DB_TITLE = "Agent Inbox list"
@@ -116,8 +117,8 @@ def _plain_title(rich):
 
 def locate(client):
     """The data source id of the one database called DB_TITLE. None or several is a fixed refusal: a writer never guesses where to write."""
-    found = client.call("POST", "/search", {"query": DB_TITLE, "filter": {"property": "object", "value": "data_source"}, "page_size": 25})
-    hits = [r for r in found.get("results", []) if r.get("object") == "data_source" and not r.get("in_trash") and not r.get("archived") and _plain_title(r.get("title")) == DB_TITLE]
+    found = notion_pages.search_all(client, DB_TITLE, "data_source", InboxError, incomplete="inbox_not_found", capped="inbox_not_found")           # LIFE-891: every result page, not the first 25
+    hits = [r for r in found if r.get("object") == "data_source" and not r.get("in_trash") and not r.get("archived") and _plain_title(r.get("title")) == DB_TITLE]
     if len(hits) != 1:
         raise InboxError("inbox_not_found" if not hits else "inbox_ambiguous")
     return str(hits[0]["id"])
@@ -194,9 +195,33 @@ def _tiles(client, page_id):
     return out
 
 
-def locate_page(client):
-    """The one page titled PAGE_TITLE whose first block is the tile row. None or several is a fixed refusal; no id is ever committed."""
-    found = client.call("POST", "/search", {"query": PAGE_TITLE, "filter": {"property": "object", "value": "page"}, "page_size": 20}).get("results", [])
+def _parent_page(client, source):
+    """LIFE-891: the page that holds the inbox database the run already found (data source, then its database, then that database's parent page), accepted only when its title
+    is exactly PAGE_TITLE, it is live, and its first block is the tile row. None for anything else: the caller then falls back to the paged title search."""
+    try:
+        parent = (client.call("GET", f"/data_sources/{source}") or {}).get("parent") or {}
+        if parent.get("type") == "database_id":
+            parent = (client.call("GET", f"/databases/{parent['database_id']}") or {}).get("parent") or {}
+        if parent.get("type") != "page_id":
+            return None
+        page = client.call("GET", f"/pages/{parent['page_id']}") or {}
+        title = "".join(t.get("plain_text", "") for t in (page.get("properties", {}).get("title") or {}).get("title", []))
+        if title != PAGE_TITLE or page.get("in_trash") or page.get("archived"):
+            return None
+        _tiles(client, page["id"])
+        return page["id"]
+    except (NotionError, InboxError, KeyError, AttributeError, TypeError):
+        return None
+
+
+def locate_page(client, source=None):
+    """The one page titled PAGE_TITLE whose first block is the tile row. None or several is a fixed refusal; no id is ever committed.
+    LIFE-891: with `source` (the inbox database the run already located) its parent page is used first; otherwise, or when that is not the tile page, every result page of the title search is read."""
+    if source:
+        parent = _parent_page(client, source)
+        if parent:
+            return parent
+    found = notion_pages.search_all(client, PAGE_TITLE, "page", InboxError, incomplete="page_not_found", capped="page_not_found")
     holders = []
     for page in found:
         title = "".join(t.get("plain_text", "") for t in (page.get("properties", {}).get("title") or {}).get("title", []))
@@ -216,7 +241,7 @@ def recount_page(client, page_id=None, source=None):
     """Write the five tile numbers and labels from the database. Only the number and label text of the five tiles is ever patched, and only when it differs. -> {"tiles_changed": n, "tiles": 5}."""
     source = source or locate(client)
     numbers = counts(client, source)
-    tiles = _tiles(client, page_id or locate_page(client))
+    tiles = _tiles(client, page_id or locate_page(client, source))
     changed = 0
     for (label, _, _), (_, number_block, label_block) in zip(TILES, tiles, strict=True):
         want = str(numbers[label])

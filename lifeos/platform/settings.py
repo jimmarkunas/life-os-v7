@@ -108,9 +108,9 @@ def read(client):
 
 def _blocks(client):
     """-> [(block, text)] for every code block on the page, in order."""
-    from lifeos.platform import report_region                             # noqa: PLC0415
-    found = client.call("POST", "/search", {"query": TITLE, "filter": {"property": "object", "value": "page"}, "page_size": 100})
-    hits = [r["id"] for r in (found or {}).get("results") or [] if isinstance(r, dict) and _title(r).strip() == TITLE and not r.get("in_trash") and not r.get("archived")]
+    from lifeos.platform import notion_pages, report_region              # noqa: PLC0415
+    found = notion_pages.search_all(client, TITLE, "page", SettingsError, incomplete="SETTINGS_PAGE_NOT_FOUND", capped="SETTINGS_PAGE_NOT_FOUND")      # LIFE-891: every result page
+    hits = [r["id"] for r in found if isinstance(r, dict) and _title(r).strip() == TITLE and not r.get("in_trash") and not r.get("archived")]
     if len(hits) != 1:
         raise SettingsError("SETTINGS_PAGE_NOT_FOUND")
     return [(block, _plain(block)) for block in report_region.children(client, hits[0], SettingsError) if block.get("type") == "code"]
