@@ -48,8 +48,8 @@ Link to the owner; never copy a fact into a second place.
 Every LIFE ticket includes **Jim must do first** checkbox items for owner-only: secrets/Bitwarden, permissions/sign-in, spend/paid models, Mac/Oracle host steps, product decisions, Notion UI wireframe approval, and UAT setup. `None` means no prerequisites.
 
 - **Chat approval:** Jim's explicit ChatGPT instruction naming a LIFE ticket and approved scope is sufficient human authorization. ChatGPT records it in the Jira description, checks only proven owner items, verifies live readiness/dependencies/verdict, and moves an eligible ticket to `Agent Go`. No Jira UI click or repeat approval. Ambiguous consent does not count; chat approval never waives safety/feasibility gates or starts an agent.
-- **Release:** Missing section or unchecked item blocks `Agent Go`. `lifeos.jira.promote`, auto-release, and `python -m lifeos.sources.devtools.readiness` enforce this.
-- **Agent Go** authorizes the written scope; agents do not re-ask.
+- **Release:** A ticket with an unchecked item or no section does not move to Agent Go. `lifeos.jira.promote`, auto-release, and `python -m lifeos.sources.devtools.readiness` enforce this.
+- **Agent Go is the approval** of the written scope; agents do not re-ask.
 - **Mid-run need:** Add unmet checkbox, `needs-jim`, one comment; continue independent work.
 
 ## 5. What always stops for Jim
