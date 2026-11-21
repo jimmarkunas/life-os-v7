@@ -39,6 +39,7 @@ class OneFilePolicy(unittest.TestCase):
         self.assertIn("`research`", POLICY)
         self.assertIn("GO, GO WITH CHANGES or NO-GO", POLICY)
         self.assertIn("makes bounded scoping writes only", POLICY)
+        self.assertIn("**Close a `research` ticket:** it has no PR, so skip closeout.", POLICY)
         self.assertIn("only then MCP rows or SQL queries, which count as metered", POLICY)
         self.assertIn("Every build ticket is blocked by its Epic's verdict.", POLICY)
 
