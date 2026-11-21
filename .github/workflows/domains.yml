@@ -634,10 +634,20 @@ jobs:
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_USER }}
           NOTION_BILLS_TOKEN: ${{ steps.bws_bills.outputs.NOTION_BILLS_TOKEN }}
         run: python -m lifeos.run bills-paid $([ "$LIVE" = "true" ] && echo --live)
+      - id: bws_runtime_config
+        continue-on-error: true
+        name: Runtime Configuration source ID from Bitwarden for the compare-only read (LIFE-858; read only, an address not a secret; if it fails the step runs exactly as before)
+        uses: ./.github/actions/bws-load
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
       - id: bsnap
         continue-on-error: true
         name: Bills snapshot (read-only; private snapshot saved only when live)
         env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           NOTION_BILLS_DATA_SOURCE_ID: ""
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_PASSWORD }}
@@ -818,10 +828,20 @@ jobs:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIVE
           live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
+      - id: bws_runtime_config
+        continue-on-error: true
+        name: Runtime Configuration source ID from Bitwarden for the compare-only read (LIFE-858; read only, an address not a secret; if it fails the step runs exactly as before)
+        uses: ./.github/actions/bws-load
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
       - id: amazon
         continue-on-error: true
         name: Amazon Orders (Gmail to Notion; archive only after read-back)
         env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_amazon.outputs.GMAIL_OAUTH_CLIENT_ID }}
           NOTION_AMAZON_DATA_SOURCE_ID: ""
           GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_amazon.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
@@ -1343,11 +1363,22 @@ jobs:
           oauth-client-id: ${{ steps.bws_recruiters.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ steps.bws_recruiters.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
+      - id: bws_runtime_config
+        if: ${{ inputs.refresh != 'recruiters' }}
+        continue-on-error: true
+        name: Runtime Configuration source ID from Bitwarden for the compare-only read (LIFE-858; read only, an address not a secret; if it fails the step runs exactly as before)
+        uses: ./.github/actions/bws-load
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
       - id: recruiters
         if: ${{ inputs.refresh != 'recruiters' }}       # a Close screen refresh redraws only the Recruiter Outreach table
         continue-on-error: true
         name: Recruiters (read-only mail to the Recruiters data source; counts only)
         env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           DOMAINS_PHASE: ${{ inputs.phase }}      # LIFE-775: the early run of a tick plans its mail scan as a tick does
           GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_recruiters.outputs.GMAIL_OAUTH_CLIENT_ID }}
           OUTLOOK_CLIENT_ID: ${{ steps.bws_recruiters.outputs.OUTLOOK_CLIENT_ID }}
@@ -1553,11 +1584,22 @@ jobs:
           oauth-client-id: ${{ steps.bws_interview.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ steps.bws_interview.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
+      - id: bws_runtime_config
+        if: ${{ inputs.refresh != 'recruiters' }}
+        continue-on-error: true
+        name: Runtime Configuration source ID from Bitwarden for the compare-only read (LIFE-858; read only, an address not a secret; if it fails the step runs exactly as before)
+        uses: ./.github/actions/bws-load
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
       - id: interview
         if: ${{ inputs.refresh != 'recruiters' }}       # a Close screen refresh redraws only the Recruiter Outreach table
         continue-on-error: true
         name: Interview OS (LIFE-88; V7 is the only Interview OS writer - scheduling requests in Gmail and Outlook for jobs Jim applied to, accepted Calendar rounds, and the refresh of machine pages from the Ledger and each page's own identity; a dry run unless INTERVIEW_OS_WRITER is v7)
         env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           LIFEOS_NOTION_IDS: ""
           GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_interview.outputs.GMAIL_OAUTH_CLIENT_ID }}
           OUTLOOK_CLIENT_ID: ${{ steps.bws_interview.outputs.OUTLOOK_CLIENT_ID }}

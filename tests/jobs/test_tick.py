@@ -1,3 +1,8 @@
+import contextlib
+import io
+import json
+import threading
+import time
 import unittest
 from unittest import mock
 
@@ -512,3 +517,72 @@ class StageDueTests(unittest.TestCase):
 
     def test_linkedin_has_the_lowest_cap(self):
         self.assertEqual(tick.CAP_DEFAULTS["linkedin"], min(tick.CAP_DEFAULTS.values()))
+
+
+class _Out(io.StringIO):
+    def reconfigure(self, **kwargs):                       # tick.main asks stdout to line-buffer
+        pass
+
+
+class RuntimeConfigCompareOnTheTick(unittest.TestCase):
+    """LIFE-858 Phase 1: the real hourly path (lifeos.jobs.tick) makes the compare-only read of the Runtime Configuration source, off the critical path, and never fails or changes the tick."""
+    OK = {"status": "ok", "matched": 59, "mismatched": [], "only_old": [], "only_new": [], "blocking": False, "tokens": {"NOTION_API_TOKEN": "PASS"}}
+
+    def run_main(self, receipt=None, boom=None, hang=None, env=None):
+        out = _Out()
+
+        def fake(environ):
+            if hang:
+                hang.wait(5)
+            if boom:
+                raise boom
+            return receipt
+        with mock.patch.object(tick, "tick", return_value={"a": "ok"}), mock.patch("lifeos.platform.runtime_config.shadow", side_effect=fake), \
+                mock.patch.object(tick, "SHADOW_WAIT_SECONDS", 0.05), mock.patch.dict(tick.os.environ, env or {}), contextlib.redirect_stdout(out):
+            code = tick.main([])
+        return code, out.getvalue()
+
+    def test_the_receipt_is_printed_after_the_tick_line_and_the_exit_code_is_unchanged(self):
+        code, text = self.run_main(self.OK)
+        self.assertEqual(code, 0)
+        lines = text.splitlines()
+        tick_line = next(i for i, l in enumerate(lines) if l.startswith("tick: {"))
+        self.assertTrue(lines[tick_line + 1].startswith("runtime_config: "))
+        self.assertEqual(json.loads(lines[tick_line + 1].split(": ", 1)[1]), self.OK)
+
+    def test_off_prints_nothing(self):
+        code, text = self.run_main({"status": "off"})
+        self.assertEqual(code, 0)
+        self.assertNotIn("runtime_config:", text)
+
+    def test_a_failing_read_is_a_fixed_receipt_never_a_failed_tick_and_leaks_nothing(self):
+        code, text = self.run_main(boom=RuntimeError("synthetic-secret-123"))
+        self.assertEqual(code, 0)
+        self.assertIn('"status": "unreadable:RuntimeError"', text)
+        self.assertNotIn("synthetic-secret-123", text)
+
+    def test_a_read_that_never_answers_costs_at_most_the_wait_and_says_timeout(self):
+        gate = threading.Event()
+        began = time.monotonic()
+        code, text = self.run_main(self.OK, hang=gate)
+        gate.set()
+        self.assertLess(time.monotonic() - began, 3)
+        self.assertEqual(code, 0)
+        self.assertIn("unreadable:timeout", text)
+
+    def test_the_read_changes_no_environment_and_is_off_without_the_bootstrap_id(self):
+        before = dict(tick.os.environ)
+        self.run_main(self.OK)
+        self.assertEqual(dict(tick.os.environ), before)
+        collect = tick.shadow_in_background({})
+        self.assertEqual(collect(), {"status": "off"})
+
+    def test_the_stages_do_not_wait_for_the_read(self):
+        gate = threading.Event()
+        started = []
+        with mock.patch("lifeos.platform.runtime_config.shadow", side_effect=lambda e: started.append(1) or gate.wait(5)):
+            collect = tick.shadow_in_background({})
+            time.sleep(0.05)
+            self.assertEqual(started, [1])                      # the read has started and the caller is already free to run its stages
+            gate.set()
+            collect(1)
