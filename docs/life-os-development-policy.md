@@ -8,7 +8,7 @@
 2. The Production Contract, for schedules and runtime.
 3. This policy, for how development works.
 4. Notion LIFE OS Platform canon, for architecture.
-5. Jira `LOS` for product priority; Jira `LIFE` for delivery status, blockers and order.
+5. Jira `LIFE` for product priority, delivery status, blockers and order. The `LOS` project is retired and archived (Jim, November 21, 2026): history only.
 6. The owning Notion product requirement.
 7. The code, for what exists.
 
@@ -18,7 +18,7 @@ Old chats, roadmap prose (`docs/MASTER_ROADMAP.md`) and the archive are backgrou
 |---|---|
 | Ticket status, approval, acceptance | Jira LIFE |
 | Code, tests, CI, this policy | GitHub V7 |
-| Product requirements and decisions | Notion Product Requirements; Jira LOS for scoping |
+| Product requirements and decisions | Notion spec page linked from the owning LIFE Epic |
 | Runtime schedule and secrets | Production Contract; Bitwarden |
 
 Link to the owner; never copy a fact into a second place.
@@ -101,12 +101,23 @@ Keep the description under 4,000 characters. One execution ticket is one PR. Ref
 
 **UI first:** for new or changed UI, show the smallest working preview in the real surface (with synthetic data where live data is not authorized), and get Jim's acceptance before expanding the backend. For changed results in an existing UI, show current versus intended output. A UI-free change names its downstream outcome and proof.
 
-**Hierarchy:** LOS idea → LIFE Epic → Task → Sub-task.
+**Hierarchy:** LIFE Epic → Task → Sub-task.
 - Every ticket sits under an epic; Bugs go under LIFE-615.
 - Every ticket has exactly one Component (its owning OS) and the matching Fix Version `<component> X.Y.Z`. These are filled automatically (LIFE-741). Agents never invent a release.
-- A new product outcome starts in an LOS idea that Jim approves for delivery. A parked LOS idea authorizes nothing. Bugs, maintenance and in-scope children of an approved epic need no LOS idea.
-- Each approved product has one active owning LIFE Epic. Done and Cancelled issues stay on their historical parents.
-- Discovery answers go in a linked page or in comments on the LOS idea, and are read back before the next question.
+- Done and Cancelled issues stay on their historical parents.
+
+**Epic lifecycle (Jim, November 21, 2026):** `Scoping → Ready → In Progress → Done`.
+- A new product outcome starts as a LIFE Epic in Scoping. Children are written only while the Epic is in Scoping.
+- Each Epic links one Notion spec page for long rationale. Tickets stay self-contained: an agent builds from the ticket alone.
+- **Claude writes, ChatGPT reviews:** Claude writes the Epic's children; ChatGPT reviews each against this section and §4 before the Epic moves to Ready.
+- Every child carries exactly one readiness label:
+  - `ready`: no unchecked Jim must do first item and its dependencies are done;
+  - `needs-prep`: engineering scoping is still open, with no decision needed from Jim;
+  - `needs-jim`: blocked on a credential, host, spend or decision from Jim.
+
+  Only `ready` tickets move to Agent Go.
+- An Epic is Ready when every child has its label and its Jim must do first list. An approval that depends on an earlier ticket's result goes in the later ticket's list and is cleared between waves, never mid-ticket.
+- Discovery answers go in the Epic's Notion spec or its comments, and are read back before the next question.
 
 ## 8. Locked architecture
 
