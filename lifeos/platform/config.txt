@@ -55,6 +55,10 @@ LIFEOS_NOTION_IDS secret Mapping of private Notion ids, passed whole to stages t
 LIFEOS_SETTINGS flag LIFE-699: on reads the V7 settings page outside GitHub Actions, off never reads it (production runs read it by default)
 LIFEOS_TEST_NOW workflow_only:workflow The test clock date of the second-date unit-test job (an ISO date; tests read it through tests/kit/clock.py; LIFE-692)
 LIVE flag:workflow Run switch: write for real instead of a dry run
+METER_BIND input LIFE-889: the address the Honcho metering proxy binds (the honcho-net gateway; never public)
+METER_CAP_USD input LIFE-889: the metering proxy's hard spend cap in US dollars (default 0.90)
+METER_PORT input LIFE-889: the port the Honcho metering proxy listens on (default 8081)
+METER_STATE_DIR input LIFE-889: where the metering proxy keeps its spend ledger and audit lines
 NOTION_BILLS_DATA_SOURCE_ID input Notion data source id (bills)
 NOTION_BILLS_TOKEN secret Notion integration token for the bills integration
 NOTION_FIT_SYNC_TOKEN secret Notion integration token for the fit_sync integration
