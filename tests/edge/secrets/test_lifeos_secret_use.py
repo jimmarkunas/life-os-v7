@@ -299,6 +299,50 @@ class Basic(Case):
         self.assertEqual(su.secret_forms(VALUE), su.forms(VALUE))
 
 
+class XApiKey(Case):
+    """LIFE-889: an "x-api-key" purpose reads the free Anthropic model list with one proof-only credential, and nothing else."""
+    URL = "https://api.anthropic.com/v1/models"
+    KEY = "sk-ant-api03-TEST-0123456789abcdefghijklmnopqrstuvwxyz"
+
+    def setUp(self):
+        super().setUp()
+        self.fake = Fake(value=self.KEY, reply={"data": [{"id": "m"}], "first_id": "claude-test", "has_more": False, "last_id": "claude-test"})
+        self.purpose()
+
+    def purpose(self, **change):
+        spec = {"purpose": "life889_honcho_proof", "secret": "honcho_proof_anthropic_api_key", "callers": ["opc"], "action": "http_get_fields", "auth": "x-api-key", "url": self.URL, "fields": ["first_id", "has_more"]}
+        self.put("life889_honcho_proof", dict(spec, **change))
+
+    def test_the_purpose_sends_the_key_as_x_api_key_and_returns_only_scalar_fields(self):
+        status, out = self.call(["life889_honcho_proof"])
+        self.assertEqual((status, out["ok"], out["result"]), (0, True, {"first_id": "claude-test", "has_more": False}))
+        self.assertEqual((self.fake.fetched, self.fake.auths, self.fake.asked), ([(self.URL, True)], ["x-api-key"], ["honcho_proof_anthropic_api_key"]))
+        self.assertNotIn(self.KEY, json.dumps(out))
+        self.assertEqual([row["result"] for row in self.audit()], ["START", "OK"])
+
+    def test_the_url_must_be_exactly_the_model_list(self):
+        for url in (self.URL + "?limit=1", "https://api.anthropic.com/v1/messages", "https://api.anthropic.com/v1/models/x", "https://evil.example/v1/models", "http://api.anthropic.com/v1/models", "https://api.anthropic.com/v1/models/"):
+            self.purpose(url=url)
+            self.assertEqual(self.call(["life889_honcho_proof"])[1]["code"], "SECRET_REGISTRY_UNSAFE", url)
+        self.assertEqual(self.fake.fetched, [])
+
+    def test_a_list_field_is_refused_and_a_reply_that_echoes_the_key_is_refused(self):
+        self.purpose(fields=["data"])
+        self.assertEqual(self.call(["life889_honcho_proof"])[1]["code"], "SECRET_FIELD_NOT_SCALAR")
+        self.purpose()
+        self.fake.reply = {"first_id": self.KEY, "has_more": False}
+        self.assertEqual(self.call(["life889_honcho_proof"])[1]["code"], "SECRET_FIELD_NOT_SCALAR" if len(self.KEY) > 100 else "SECRET_OUTPUT_CONTAINS_SECRET")
+
+    def test_only_the_listed_caller_may_use_it_and_the_credential_is_not_touched_otherwise(self):
+        self.assertEqual(self.call(["life889_honcho_proof"], caller="claude-svc")[1]["code"], "SECRET_CALLER_NOT_ALLOWED")
+        self.assertEqual(self.fake.asked, [])
+
+    def test_a_bearer_purpose_keeps_its_generic_rules_and_sends_no_x_api_key(self):
+        self.purpose(auth="bearer")                       # unchanged: the generic https rule, a Bearer header
+        self.assertEqual(self.call(["life889_honcho_proof"])[0], 0)
+        self.assertEqual(self.fake.auths, ["bearer"])
+
+
 class Fetch(unittest.TestCase):
     """The one real HTTPS call, with the network replaced."""
 
@@ -333,6 +377,10 @@ class Fetch(unittest.TestCase):
         self.assertEqual(basic["request"].get_header("Authorization"), "Basic " + base64.b64encode(PAIR.encode()).decode())
         bearer = self.seen(VALUE, None)
         self.assertEqual(bearer["request"].get_header("Authorization"), "Bearer " + VALUE)
+
+    def test_x_api_key_sends_the_key_and_the_version_and_no_authorization_header(self):
+        sent = self.seen(VALUE, "x-api-key")["request"]
+        self.assertEqual((sent.get_header("X-api-key"), sent.get_header("Anthropic-version"), sent.get_header("Authorization")), (VALUE, "2023-06-01", None))
 
     def test_a_redirect_is_never_followed_so_the_credential_cannot_leave_the_registered_host(self):
         self.assertEqual(self.seen(PAIR, "basic")["handlers"], (su.NoRedirect,))
