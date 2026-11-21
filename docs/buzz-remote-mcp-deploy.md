@@ -8,7 +8,7 @@ Claude Chat ─┐                                                     ┌─ li
 ChatGPT Chat ┘                                                     └─ bytalos community (Block-hosted)
 ```
 
-Status: **code only. Nothing is deployed, no public ingress exists, and no real Claude/ChatGPT connection has been made.** Fixture tests are not client acceptance.
+Status (read on Oracle, Nov 21, 2026, LIFE-874 comment 13601): **the service is running and public.** `lifeos-buzz-mcp` listens on loopback 8787, and the separate userspace Tailscale node `lifeos-buzz` (daemon `tailscaled-buzz`) funnels its port 443 to it at `lifeos-buzz.tail96b07f.ts.net`. Not yet checked: that the URL answers from outside and that a real Claude/ChatGPT connection passes the auth layer. Fixture tests are not client acceptance.
 
 ## What the code does
 - `/mcp` Streamable HTTP, JSON replies, stateless (no `Mcp-Session-Id`), protocol `2025-06-18` with `2025-03-26`/`2024-11-05` negotiated, `MCP-Protocol-Version`, `Accept` and `Origin` checks, notifications and client replies answered `202`, GET/DELETE `405`.
@@ -22,7 +22,7 @@ Status: **code only. Nothing is deployed, no public ingress exists, and no real 
 
 ## Not supplied by this repo (gates)
 1. **Authorization server.** ChatGPT requires AS metadata advertising `S256` PKCE and sends `resource=` that must land in `aud`; it registers by CIMD (`https://chatgpt.com/oauth/client.json`), DCR or a predefined client. Claude offers its published identity, automatic registration (DCR) or your own client. No identity provider is installed on the host and none is approved. Jim must pick one that issues RS256 JWTs, supports the `resource` indicator, PKCE S256 and DCR or CIMD, and costs $0. This service validates tokens only.
-2. **Public HTTPS.** The host is tailnet-only (public iptables allows only SSH). Claude requires the server to be reachable from Anthropic's IP ranges, so tailnet-only will not work. The supported existing option is Tailscale Funnel on port 8443 (443 is the tailnet-only OpenClaw Serve): `tailscale funnel --bg --https=8443 http://127.0.0.1:8787`. It needs Funnel enabled in the tailnet policy and OCI security-list review. No second gateway is added.
+2. **Public HTTPS.** The host is tailnet-only (public iptables allows only SSH). Claude requires the server to be reachable from Anthropic's IP ranges, so tailnet-only will not work. The route in use is Tailscale Funnel on port **443 of the separate node `lifeos-buzz`** (daemon `tailscaled-buzz`), to `http://127.0.0.1:8787`. Claude's web connectors require 443, and a Funnel is all-or-nothing per port, so it must never go on `lifeos-edge-01`, whose 443 (OpenClaw, loopback 18789) and 8443 (Bot Studio, loopback 8788) stay tailnet-only. A further public endpoint gets its own Tailscale node the same way.
 3. **Four member keys.** Four non-owner Buzz identities, each enrolled in its own community and encrypted with `systemd-creds` into the four `.cred` files named in the unit. See "Onboarding the four identities".
 4. **Two IdP users, one OAuth client.** Oracle IAM has no dynamic registration and rejects both products' client-ID-document routes today, so one registered client (the resource application itself, configured as a client) serves both. Its sign-in for these users did not demand a second factor (tested for the Claude user with a direct authorization request); the console sign-in does, and that policy was not changed.
 
@@ -39,7 +39,7 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8787/mcp -d '{
 Capacity: unit caps memory at 256 MB and CPU at 50% of one core; the host has about 20 GB available. Does not restart OpenClaw or LIFE OS Close.
 
 ## Rollback
-`sudo tailscale funnel --https=8443 off` (closes public exposure first), `sudo systemctl disable --now lifeos-buzz-mcp`, remove the unit, `/etc/lifeos-buzz-mcp`, `/opt/lifeos-buzz-mcp` and the `buzz-mcp` user; remove the four member identities in Buzz and the OAuth client at the identity provider. To roll back only a release, repoint `current` to the previous `releases/<sha>` and restart the unit.
+`tailscale --socket=<tailscaled-buzz socket> funnel --https=443 off` (closes public exposure first; the socket path is in `systemctl cat tailscaled-buzz`), `sudo systemctl disable --now lifeos-buzz-mcp`, remove the unit, `/etc/lifeos-buzz-mcp`, `/opt/lifeos-buzz-mcp` and the `buzz-mcp` user; remove the four member identities in Buzz and the OAuth client at the identity provider. To roll back only a release, repoint `current` to the previous `releases/<sha>` and restart the unit.
 
 ## Enabling writes (separate approval, in order)
 1. Real read acceptance from both chats passes.
