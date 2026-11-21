@@ -15,9 +15,9 @@ SECRET = "fake-client-secret-not-real"
 ALLOW = [{"account": "acct-a-gmail", "tenant": "TENANT-A-TEST", "service": "gmail", "label": "INBOX", "size_cap": 1000},
          {"account": "acct-a-drive", "tenant": "TENANT-A-TEST", "service": "drive", "label": "Fake folder", "size_cap": 500},
          {"account": "acct-a-cal", "tenant": "TENANT-A-TEST", "service": "calendar", "label": "primary", "size_cap": 200}]
-GOOD = {"gmail": "https://www.googleapis.com/auth/gmail.readonly", "drive": "https://www.googleapis.com/auth/drive.metadata.readonly",
+GOOD = {"gmail": "https://www.googleapis.com/auth/gmail.readonly", "drive": "https://www.googleapis.com/auth/drive.readonly",
         "calendar": "https://www.googleapis.com/auth/calendar.readonly"}
-WRITE = ["https://www.googleapis.com/auth/drive", "https://www.googleapis.com/auth/drive.file", "https://www.googleapis.com/auth/gmail.modify",
+WRITE = ["https://www.googleapis.com/auth/drive", "https://www.googleapis.com/auth/drive.metadata.readonly", "https://www.googleapis.com/auth/drive.file", "https://www.googleapis.com/auth/gmail.modify",
          "https://www.googleapis.com/auth/gmail.send", "https://mail.google.com/", "https://www.googleapis.com/auth/calendar",
          "https://www.googleapis.com/auth/calendar.events", "https://www.googleapis.com/auth/gmail.compose"]
 
