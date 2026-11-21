@@ -68,8 +68,8 @@ class Page:
             kind = body["filter"]["value"]
             if kind == "page":
                 return {"results": [{"id": "register", "properties": {"Name": {"type": "title", "title": [{"plain_text": v3.REGISTER_TITLE}]}}},
-                                    {"id": "other", "properties": {"Name": {"type": "title", "title": [{"plain_text": v3.REGISTER_TITLE + " (old)"}]}}}]}
-            return {"results": [{"id": "mattdb", "title": [{"plain_text": v3.MATT_SOURCE_TITLE}]}]}
+                                    {"id": "other", "properties": {"Name": {"type": "title", "title": [{"plain_text": v3.REGISTER_TITLE + " (old)"}]}}}], "has_more": False}
+            return {"results": [{"id": "mattdb", "title": [{"plain_text": v3.MATT_SOURCE_TITLE}]}], "has_more": False}
         if method == "GET" and path == "/data_sources/mattdb":
             if self.matt_down:
                 raise NotionError("NOTION_HTTP_404")
