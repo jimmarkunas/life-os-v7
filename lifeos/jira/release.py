@@ -46,11 +46,10 @@ JIM_FIRST = re.compile(r"^[#*\s]*jim must do first\b", re.I)                   #
 OPEN_ITEM = re.compile(r"^\s*(?:[-*•]\s*)?\[ \]")
 DONE_ITEM = re.compile(r"^\s*(?:[-*•]\s*)?\[[xX]\]")
 NONE_ITEM = re.compile(r"^\s*(?:[-*•]\s*)?\(?none\)?\.?\s*$", re.I)
-NEXT_HEADING = re.compile(r"^[#*\s]*(outcome|done when|not in scope|steps|who verifies|scope|targets|before|statement|context|decisions|build|never|stop)\b", re.I)
 
 
 def checkbox_lines(node, out=None):
-    """The plain text lines of a Jira body, with a Jira task item written as `[x]` (done) or `[ ]` (open) so checklists read the same in ADF and in markdown."""
+    """The plain text lines of a Jira body: a heading as `# text`, a list item as `- text`, a Jira task item as `- [x] text` (done) or `- [ ] text` (open), so ADF and markdown read alike."""
     out = [] if out is None else out
     if isinstance(node, str):
         out.extend(node.splitlines())
@@ -58,34 +57,42 @@ def checkbox_lines(node, out=None):
         for child in node:
             checkbox_lines(child, out)
     elif isinstance(node, dict):
-        kind = node.get("type")
+        kind, inner = node.get("type"), node.get("content") or []
+        flat = lambda: text_of(inner).replace("\n", " ").strip()
         if kind == "taskItem":
-            mark = "[x] " if (node.get("attrs") or {}).get("state") == "DONE" else "[ ] "
-            out.append(mark + text_of(node.get("content") or []).replace("\n", " ").strip())
-        elif kind in ("paragraph", "heading") or (kind == "listItem" and not any(isinstance(c, dict) and c.get("type") in ("bulletList", "orderedList", "taskList") for c in node.get("content") or [])):
-            out.append(text_of(node.get("content") or []).replace("\n", " ").strip())
+            out.append(("- [x] " if (node.get("attrs") or {}).get("state") == "DONE" else "- [ ] ") + flat())
+        elif kind == "heading":
+            out.append("# " + flat())
+        elif kind == "paragraph":
+            out.append(flat())
+        elif kind == "listItem" and not any(isinstance(c, dict) and c.get("type") in ("bulletList", "orderedList", "taskList") for c in inner):
+            out.append("- " + flat())
         else:
-            checkbox_lines(node.get("content") or [], out)
+            checkbox_lines(inner, out)
     return out
 
 
+BULLET = re.compile(r"^\s*[-*•]\s+\S")
+
+
 def jim_first(description):
-    """-> (present, open items). The Jim must do first section: every line after its heading up to the next heading. An item is open when it is an unchecked box or a plain line
-    that is not `None`; a checked box is done. A missing section is (False, [])."""
+    """-> (present, open items) for the Jim must do first section (Jim, Nov 21 2026). Inside it an unchecked box or a plain bullet is open, a checked box or `None` is done,
+    and the first other non-empty line (a heading, a paragraph, the next bold label) ends the section. A missing section is (False, [])."""
     rows = checkbox_lines(description)
     for index, line in enumerate(rows):
         if not JIM_FIRST.match(line):
             continue
-        inline = line.split(":", 1)[1].strip() if ":" in line else ""
-        items = ([inline] if inline else []) + [r for r in rows[index + 1:index + 40]]
+        inline = line.split(":", 1)[1] if ":" in line else ""
         out = []
-        for item in items:
-            item = item.replace("\\", "").strip().strip("*").strip()             # markdown bold and escaped boxes read like plain text
-            if NEXT_HEADING.match(item) and not (OPEN_ITEM.match(item) or DONE_ITEM.match(item)):
-                break
-            if not item.strip() or DONE_ITEM.match(item) or NONE_ITEM.match(item):
+        for item in [inline] + rows[index + 1:]:
+            item = item.replace("\\", "").strip()
+            bare = item.strip("*").strip()                                    # markdown bold around an inline `None`
+            if not bare or DONE_ITEM.match(bare) or NONE_ITEM.match(bare):
                 continue
-            out.append(item.strip())
+            if OPEN_ITEM.match(bare) or BULLET.match(item):
+                out.append(bare)
+                continue
+            break
         return True, out
     return False, []
 
