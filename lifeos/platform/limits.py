@@ -58,6 +58,7 @@ WEB_INGEST_PER_RUN = 300                 # new or changed postings admitted into
 # Employer boards (D202): the Open Jobs board list (CC0) plus the extras, read by the same web pass; ours, polite to three shared hosts
 BOARDS_PER_RUN = 900                     # due seed boards read per run; Jim raised it from 600 on Oct 25 2026 (the drain read ~1,050 boards an hour for 19 ticks with 0 HTTP 429s)
 BOARDS_DEAD_AFTER = 5                    # a board that has answered not_found this many times in a row is listed in `dead_ids` (counts line) for a skip-list review; nothing is skipped by this number
+BOARDS_DEAD_RETRY_DAYS = 7              # LIFE-893: a board whose BOARDS_DEAD_AFTER-th failure in a row is not_found is retried this many days later, not daily (Open Jobs does the same after five failures); one successful read resets it
 BOARDS_DEAD_IDS_MAX = 600                # the most ids one pass prints
 BOARDS_REFRESH_HOURS = 24                # a COMPLETE board that lists no target job is due again after this (also caps a failing board's retry)
 BOARDS_HOT_HOURS = 6                     # a board that lists a target job is due again after this, like a priority board

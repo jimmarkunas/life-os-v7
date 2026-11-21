@@ -85,12 +85,14 @@ def slot_due(source_id, now, hours):
     return SLOT_EPOCH + timedelta(minutes=phase + -(-since // period) * period)      # ceil: the first phase at or after half a period from now
 
 
-def next_due(source_id, now, complete, failures, pending, hours=None, quiet_runs=0):
+def next_due(source_id, now, complete, failures, pending, hours=None, quiet_runs=0, dead=False):
     hours = (hours or limits.WEB_REFRESH_HOURS) * min(1 + max(quiet_runs - 1, 0), limits.WEB_BACKOFF_MAX)   # D202: a seed board carries its own refresh; D216: a quiet board backs off
     if pending:
         return now                                                      # a backlog drains on the next run
     if complete:
         return slot_due(source_id, now, hours)
+    if dead:
+        return now + timedelta(days=limits.BOARDS_DEAD_RETRY_DAYS)      # LIFE-893: five not_found in a row: a weekly retry, never a removal of anything the board held
     return now + timedelta(hours=min(limits.WEB_RETRY_HOURS * 2 ** failures, hours))
 
 
@@ -152,6 +154,16 @@ class SqlRepo:
         with store.connect() as connection, connection.cursor() as cursor:
             cursor.execute("SELECT provider_job_id, material_hash, ingest FROM v7_source_items WHERE source_id=%s AND state='CURRENT'", (source_id,))
             return {r[0]: (r[1], r[2]) for r in cursor.fetchall()}
+
+    def hot_ids(self, ids):
+        """LIFE-893: which of `ids` currently list a target job (a board with CURRENT items is hot): one query for the whole run, not one per board; no item is read."""
+        ids, hot = list(ids), set()
+        with store.connect() as connection, connection.cursor() as cursor:
+            for start in range(0, len(ids), 500):
+                part = ids[start:start + 500]
+                cursor.execute(f"SELECT DISTINCT source_id FROM v7_source_items WHERE state='CURRENT' AND source_id IN ({','.join(['%s'] * len(part))})", part)
+                hot.update(r[0] for r in cursor.fetchall())
+        return hot
 
     def commit(self, o, failures, lane=DEFAULT_LANE):
         now, sid = o.now, o.source["id"]
@@ -333,6 +345,8 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
         counts["unread"] = unread                                               # D217: boards never read (before this run)
     asked = [{**s, "if_etag": states[s["id"]].get("etag"), "if_modified": states[s["id"]].get("last_modified")}
              if skip_allowed(states.get(s["id"])) else s for s in due]          # D216: validators go out only when a skip is allowed
+    batch_hot = getattr(repo, "hot_ids", None)                                 # LIFE-893: a board skipped as unchanged is hot or quiet by the same rule as a full read, decided by one batched query
+    hot_now = set(batch_hot([s["id"] for s in due if skip_allowed(states.get(s["id"]))])) if batch_hot else None
     waiting = None
     read_seconds, rows = {}, []                                                # LIFE-616: per board, seconds of the read and of the save, and the result
 
@@ -387,7 +401,8 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
             if skip:
                 outcome = Outcome(source, now, "UNCHANGED", skip, frontier=state.get("frontier"), validators=listing.validators,
                                   unchanged_runs=state.get("unchanged_runs", 0) + 1)
-                outcome.due_at = next_due(source["id"], now, True, 0, 0, source.get("hot_hours") or source.get("refresh_hours"), outcome.unchanged_runs)
+                is_hot = source["id"] in hot_now if hot_now is not None else bool(repo.items(source["id"]))
+                outcome.due_at = next_due(source["id"], now, True, 0, 0, (source.get("hot_hours") if is_hot else None) or source.get("refresh_hours"), outcome.unchanged_runs)
                 failed = save(source, outcome, failures, "UNCHANGED")
                 if failed:
                     note_failure(source, failed, failures)
@@ -403,8 +418,9 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
             quiet = outcome.status == "COMPLETE" and not any(outcome.counts.get(k) for k in ("added", "changed", "removed", "admit", "pending"))
             outcome.unchanged_runs = state.get("unchanged_runs", 0) + 1 if quiet else 0
             outcome.validators = listing.validators
+            dead = outcome.status == "FAILED" and outcome.reason == "not_found" and failures + 1 >= limits.BOARDS_DEAD_AFTER
             outcome.due_at = next_due(source["id"], now, outcome.status == "COMPLETE", failures, outcome.pending,
-                                      (source.get("hot_hours") if hot else None) or source.get("refresh_hours"), outcome.unchanged_runs)
+                                      (source.get("hot_hours") if hot else None) or source.get("refresh_hours"), outcome.unchanged_runs, dead)
             failed = save(source, outcome, failures, outcome.reason if outcome.status == "FAILED" else "COMPLETE")
             if outcome.status == "FAILED":
                 note_failure(source, outcome.reason, failures)
