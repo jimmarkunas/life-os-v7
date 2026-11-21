@@ -1,0 +1,22 @@
+# LIFE-889: the spend guard. Binds the honcho-net gateway only (not public, not the tailnet). The Anthropic key arrives as an encrypted systemd credential and is never on disk in plaintext.
+[Unit]
+Description=LIFE OS Honcho metering proxy (cap $0.90)
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+User=root
+Environment=METER_BIND=172.28.0.1 METER_PORT=8081 METER_STATE_DIR=/var/lib/lifeos-honcho-meter METER_CAP_USD=0.90
+LoadCredentialEncrypted=honcho_proof_anthropic_api_key:/etc/hermes-eval/creds/honcho_proof_anthropic_api_key.cred
+ExecStart=/usr/bin/python3 -I /opt/lifeos-honcho/meter_proxy.py
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+StateDirectory=lifeos-honcho-meter
+MemoryMax=256M
+
+[Install]
+WantedBy=multi-user.target
