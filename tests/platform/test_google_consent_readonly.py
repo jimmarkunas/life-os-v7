@@ -129,6 +129,20 @@ class Refusals(unittest.TestCase):
         self.assertNotIn("https://", tty.getvalue())
 
 
+    def test_the_sign_in_link_uses_the_fixed_port_asked_for_and_any_free_port_by_default(self):   # the Web client registers only http://127.0.0.1:8765, so a random port is redirect_uri_mismatch
+        import socket
+        with socket.socket() as probe:
+            probe.bind(("127.0.0.1", 0))
+            port = probe.getsockname()[1]
+        for asked, expect in ((port, port), (0, None)):
+            with self.subTest(port=asked):
+                out, tty = io.StringIO(), io.StringIO()
+                R.run(ALLOW, "acct-a-gmail", "gmail", "cid", SECRET, out, tty, opener=token_endpoint(GOOD["gmail"]), catcher=lambda srv, state: None, port=asked)
+                redirect = urllib.parse.parse_qs(urllib.parse.urlparse(tty.getvalue().splitlines()[1]).query)["redirect_uri"][0]
+                self.assertEqual(redirect == f"http://127.0.0.1:{expect}", expect is not None)
+                self.assertTrue(redirect.startswith("http://127.0.0.1:"))
+
+
 class CredentialAndReceipt(unittest.TestCase):
     def test_gwt_t13_03_the_credential_goes_only_to_the_pipe_and_no_secret_is_shown(self):
         seen = []

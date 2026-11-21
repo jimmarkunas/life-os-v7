@@ -74,7 +74,7 @@ def receipt(entry, scopes, outcome, code=None):
             "scopes_granted": list(scopes), "stored": "pipe" if outcome == "stored" else "nothing"}
 
 
-def run(allowlist, account, service, client_id, client_secret, stdout, tty, opener=urllib.request.urlopen, server=None, catcher=base.catch, scopes=None):
+def run(allowlist, account, service, client_id, client_secret, stdout, tty, opener=urllib.request.urlopen, server=None, catcher=base.catch, scopes=None, port=0):
     """One sign-in. The link goes to `tty`; the credential only to `stdout` (a pipe); the receipt to `tty`. -> the receipt. A refusal writes nothing to `stdout`."""
     if stdout.isatty():
         tty.write("Refused: pipe this into the Edge credential command; the credential is never printed on screen.\n")
@@ -85,7 +85,7 @@ def run(allowlist, account, service, client_id, client_secret, stdout, tty, open
         tty.write(json.dumps(out) + "\n")
         return out                                                                # no link, no server, nothing stored
     entry, wanted = verdict["entry"], verdict["scopes"]
-    server = server or http.server.HTTPServer(("127.0.0.1", 0), http.server.BaseHTTPRequestHandler)
+    server = server or http.server.HTTPServer(("127.0.0.1", port), http.server.BaseHTTPRequestHandler)
     redirect, state, verifier = f"http://127.0.0.1:{server.server_port}", secrets.token_urlsafe(24), secrets.token_urlsafe(48)
     tty.write("Open this address yourself in the browser on this Mac and click Allow (read-only access to " + service + "):\n" + link(client_id, redirect, state, verifier, wanted) + "\n")
     tty.flush()
@@ -123,7 +123,8 @@ def main(argv=(), stdout=sys.stdout, tty=None):
         return 1
     client_id = base.input_tty("Client ID of the LIFE OS Gmail Web client (Bitwarden openclaw/gmail/clientId): ", tty).strip()
     client_secret = getpass.getpass("Its client secret (Bitwarden openclaw/gmail/clientSecret; not shown): ").strip()
-    return 0 if run(allowlist, account, service, client_id, client_secret, stdout, tty)["outcome"] == "stored" else 1
+    port = int(arg("--port") or 0)                                                # the Web client registers only http://127.0.0.1:8765 (docs/DRIVE_RESUMES.md); 0 = any free port
+    return 0 if run(allowlist, account, service, client_id, client_secret, stdout, tty, port=port)["outcome"] == "stored" else 1
 
 
 if __name__ == "__main__":
