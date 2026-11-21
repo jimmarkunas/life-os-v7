@@ -1,6 +1,6 @@
 # Runtime Configuration source: cutover map and rollback (LIFE-844)
 
-**Status: code only.** `lifeos/platform/runtime_config.py` is merged but called by nothing. `lifeos/platform/settings.py` and every workflow are unchanged. Nothing below is done, approved or scheduled; each protected step needs Jim's explicit yes on the concrete diff, and the LIFE-686 stability freeze stays in force until then.
+**Status (LIFE-858, Nov 21, 2026): Phase 1 (compare-only) code; Phase 2 (the switch) NOT started and not approved (LIFE-892).** `lifeos/platform/runtime_config.py` is called next to `settings.apply` in the `lifeos.run` steps that hold the bootstrap ID and, with LIFE-858, in the hourly tick and four domains jobs. It changes no environment and writes nothing. `lifeos/platform/settings.py` still reads the old page only and decides every value. Cutover steps 5 and 6 are protected: each needs Jim's explicit yes on the concrete diff.
 
 ## What the reader does
 
@@ -35,13 +35,32 @@
 
 Seeding: the new reader never writes the source. While both sources run, the old page keeps its seeding; after the cutover nothing seeds, and rows are edited in Notion.
 
+## Phase 1 evidence map (LIFE-858)
+
+Where the compare-only read runs (a `bws_runtime_config` step loads only the bootstrap ID, `continue-on-error`, `set_env: false`; an address, not a secret; if it fails the step runs exactly as before):
+
+| Path | Step | Notion tokens it holds (and so proves) |
+|---|---|---|
+| `lifeos.jobs.tick` (`hourly.yml`, finish job, the real hourly path) | the tick, read in a background thread: the stages do not wait for it | `NOTION_API_TOKEN` |
+| `domains.yml` bills job | `bills-snapshot` | `NOTION_BILLS_TOKEN` |
+| `domains.yml` amazon job | `amazon-orders` | `NOTION_AMAZON_TOKEN` |
+| `domains.yml` recruiters job | `recruiters` | `NOTION_RECRUITERS_TOKEN`, `NOTION_API_TOKEN` |
+| `domains.yml` interview job | `interview` | `NOTION_INTERVIEW_TOKEN`, `NOTION_API_TOKEN`, `NOTION_RECRUITERS_TOKEN` |
+| ten workflows wired by PR #1335 (`lifeos.run`) | unchanged | `profile-sync` proves `NOTION_JIRA_TOKEN` and, with this change, `NOTION_FIT_SYNC_TOKEN` |
+
+Receipt: `counts.runtime_config` in a `lifeos.run` line, or the `runtime_config:` line after `tick:` in the tick. Fields: `status`, `matched`, `mismatched`, `only_old`, `only_new`, `blocking`, `rows` (old and new counts), `kinds`, `seconds` (the read's own cost), `tokens` (`PASS` or `FAIL:<CODE>` for each of the seven names the step holds; a name it does not hold is not listed and is UNVERIFIED for that run), `new_counts` (names of rows refused, invalid or repeated, only when there are any) and, on a manual dispatch only, `names` (both sides' setting names; never a value).
+
+**Step count (current code).** Before LIFE-858 the compare ran in 10 `lifeos.run` steps in 10 workflows (amazon, bills, calendar, granola-auto, granola, hermes-stage, interview-proof, manual-job, profile-sync, recruiters); PR #1335's title said "14 steps in 11 workflows", which the merged diff does not support. With LIFE-858 it also runs in the hourly tick and four domains jobs (15 steps in 12 workflows).
+
+Run IDs, the seven-token matrix and the 59-versus-58 explanation are posted on LIFE-858. Nothing here proves Phase 2; the switch waits for Jim's separate approval.
+
 ## Cutover order (every step waits for Jim)
 
 1. Jim lifted the LIFE-686 freeze on November 21, 2026; this cutover is released as its own `Agent Go` ticket (LIFE-844).
 2. Create and share the data source (above). Fill it with `runtime_config.export_rows(<accepted map>)`, then edit by hand.
 3. Dry comparison: run `runtime_config.compare(old_page_values, new_source_values)`; `blocking: false` is required. Any difference stops here.
-4. Bitwarden: add `V7_RUNTIME_CONFIG_SOURCE_ID`. Workflow PR: declare it in the reading steps and call `runtime_config.apply` next to `settings.apply` in compare-only mode (apply from the old page, report counts from the new). Natural runs for 24 hours with every name matched.
-5. Switch: `settings.apply` uses the new source first (`remember=True`), the old page stays as the second source for 24 more hours.
+4. Bitwarden: add `V7_RUNTIME_CONFIG_SOURCE_ID`. Workflow PR: declare it in the reading steps and call `runtime_config.shadow` next to `settings.apply` in compare-only mode (apply from the old page, report counts from the new). Natural runs for 24 hours with every name matched. **Done (PRs #1334, #1335); extended to the hourly tick and the domains jobs by LIFE-858 Phase 1.**
+5. Switch: `settings.apply` uses the new source first (`remember=True`), the old page stays as the second source for 24 more hours. **Not started; LIFE-892, needs Jim's separate approval.**
 6. Retire the old page reader and REQ-52 only on Jim's separate yes.
 
 ## Rollback (works at every step before 6)

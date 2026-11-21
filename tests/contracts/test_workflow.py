@@ -699,6 +699,9 @@ DB = {"LIFEOS_ACQ_DB_NAME", "LIFEOS_ACQ_DB_PASSWORD", "LIFEOS_ACQ_DB_USER", "LIF
 # so it is the one `continue-on-error` loader; every other loader rule (one credential loader per job, fail closed) still holds for the credential loader and is asserted below.
 SETTINGS_LOADER_ID = "bws_settings"
 SETTINGS_CONSUMER = "${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}"
+RUNTIME_CONFIG_LOADER_ID = "bws_runtime_config"          # LIFE-858: the compare-only read's own loader: the bootstrap ID (an address) and nothing else, continue-on-error, never exported job-wide
+RUNTIME_CONFIG_JOBS = {"hourly": {"finish"}, "domains": {"bills", "amazon", "recruiters", "interview"}}     # the exact jobs that carry it: nothing else may
+RUNTIME_CONFIG_CONSUMER = "${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}"
 SETTINGS_JOBS = {            # the exact jobs that carry the settings loader: nothing else may
     "amazon": {"amazon"}, "bills": {"bills"}, "calendar": {"calendar"}, "granola": {"granola"}, "granola-auto": {"auto"}, "hermes-stage": {"hermes"}, "manual-job": {"manual"},
     "profile-sync": {"settings", "sync"}, "recruiters": {"recruiters"}, "interview-proof": {"proof"}, "readiness-live": {"readiness"},
@@ -733,21 +736,21 @@ DOMAIN_SECRETS = {         # the only secrets each domain job may see; adding on
                   "JIRA_GTV_CONTEXT_URL", "JIRA_GTV_EPIC", "JIRA_SITE_URL", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"},
     "followup": DB | {"JIRA_API_TOKEN", "JIRA_EMAIL", "OUTLOOK_CLIENT_ID", "NOTION_API_TOKEN", "GCAL_SERVICE_ACCOUNT_JSON", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH", "FOLLOWUP_TODOIST_PERSONAL_TOKEN"},   # LIFE-757: the Action Inbox followup job (dry run, switch FOLLOWUP_WIRING): the store credentials plus the existing Jira token, email and site name; no other source credential yet
     "outlook": DB | {"GCAL_CALENDAR_ID", "GCAL_SERVICE_ACCOUNT_JSON", "NTFY_TOPIC", "OUTLOOK_CLIENT_ID"},
-    "bills": DB | {"BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "NOTION_BILLS_DATA_SOURCE_ID", "NOTION_BILLS_TOKEN", "NOTION_JIRA_TOKEN"},
+    "bills": DB | {"V7_RUNTIME_CONFIG_SOURCE_ID", "BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "NOTION_BILLS_DATA_SOURCE_ID", "NOTION_BILLS_TOKEN", "NOTION_JIRA_TOKEN"},
     "agenda": DB | {"CALENDAR_CARD_BLOCK_ID", "GCAL_CALENDAR_ID", "GCAL_SERVICE_ACCOUNT_JSON", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "NOTION_JIRA_TOKEN"},
     "megibow": DB | {"GCAL_CALENDAR_ID", "GCAL_SERVICE_ACCOUNT_JSON", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "MEGIBOW_BLOCK_ID", "MEGIBOW_EXCLUDED_DOMAINS", "MEGIBOW_REVIEW_DB_ID", "NOTION_JIRA_TOKEN", "NTFY_TOPIC", "OUTLOOK_CLIENT_ID"},
     "dcc": {"AMAZON_CARD_BLOCK_ID", "ATTENTION_CARD_BLOCK_ID", "BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "DCC_CARD_BLOCK_ID", "GITHUB_TOKEN", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "MAIL_ALERTS_CARD_BLOCK_ID", "NOTION_JIRA_TOKEN"},   # LIFE-694: GITHUB_TOKEN is the run's own read-only token (job permissions: contents, actions, issues read), for the Platform Stability card
-    "recruiters": DB | {"GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_RECRUITERS_DATA_SOURCE_ID", "NOTION_RECRUITERS_TOKEN", "OUTLOOK_CLIENT_ID",
+    "recruiters": DB | {"V7_RUNTIME_CONFIG_SOURCE_ID", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_RECRUITERS_DATA_SOURCE_ID", "NOTION_RECRUITERS_TOKEN", "OUTLOOK_CLIENT_ID",
                      "NOTION_API_TOKEN", "NOTION_JOB_LEDGER_DATA_SOURCE_ID", "V7_CLOSE_BASE_URL", "RECRUITERS_SCAN", "RECRUITERS_SCAN_AT",      # LIFE-610: step outputs, not secrets
                      "HIRING_TABLE_BLOCK_ID", "NOTION_JIRA_TOKEN"},   # LIFE-20: the Recruiter Outreach step (the Daily Report writer and the pinned Hiring Pipeline table it is anchored on); LIFE-10: the job-page outreach step reads and writes Job Ledger pages
     "hiring_outcomes": DB | {"GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "OUTLOOK_CLIENT_ID"},   # LIFE-632: the Hiring outcome mail scan beside the Recruiters job; it reads mail and saves one store record
-    "interview": DB | {"GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "OUTLOOK_CLIENT_ID", "NOTION_RECRUITERS_DATA_SOURCE_ID", "NOTION_RECRUITERS_TOKEN",
+    "interview": DB | {"V7_RUNTIME_CONFIG_SOURCE_ID", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "OUTLOOK_CLIENT_ID", "NOTION_RECRUITERS_DATA_SOURCE_ID", "NOTION_RECRUITERS_TOKEN",
                        "NOTION_API_TOKEN", "NOTION_JOB_LEDGER_DATA_SOURCE_ID", "V7_CLOSE_BASE_URL", "GCAL_CALENDAR_ID", "GCAL_SERVICE_ACCOUNT_JSON", "HIRING_PIPELINE_PAGE_ID", "NOTION_INTERVIEW_TOKEN"},   # LIFE-632 (LIFE-88): the Interview OS step; the Recruiters token is read-only here (LIFE-78 E10)
     "mail": DB | {"AMAZON_CARD_BLOCK_ID", "ATTENTION_CARD_BLOCK_ID", "BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET",
                   "GMAIL_OAUTH_REFRESH_TOKEN", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "MAIL_ALERTS_CARD_BLOCK_ID", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"},
     "hiring": DB | {"GCAL_CALENDAR_ID", "GCAL_SERVICE_ACCOUNT_JSON", "HIRING_CARD_BLOCK_ID", "HIRING_PIPELINE_PAGE_ID", "HIRING_STATUS_BLOCK_ID", "HIRING_TABLE_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "NOTION_API_TOKEN",
                     "NOTION_INTERVIEW_TOKEN", "NOTION_JIRA_TOKEN", "NOTION_JOB_LEDGER_DATA_SOURCE_ID", "V7_CLOSE_BASE_URL"},
-    "amazon": {"AMAZON_CARD_BLOCK_ID", "BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET",
+    "amazon": {"V7_RUNTIME_CONFIG_SOURCE_ID", "AMAZON_CARD_BLOCK_ID", "BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET",
                "GMAIL_OAUTH_REFRESH_TOKEN", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "NOTION_AMAZON_DATA_SOURCE_ID", "NOTION_AMAZON_TOKEN", "NOTION_JIRA_TOKEN"},
     "amazon_retention": {"GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_AMAZON_DATA_SOURCE_ID", "NOTION_AMAZON_TOKEN"},   # LIFE-571: retention in its own job
 }
@@ -1026,7 +1029,7 @@ class BitwardenConsumerTests(unittest.TestCase):
 
     def loaders(self, name, job):
         """The job's credential loader (LIFE-703: the NOTION_JIRA_TOKEN-only settings loader is asserted separately, below)."""
-        return [(i, s) for i, s in enumerate(self.doc[name]["jobs"][job]["steps"]) if s.get("uses") == self.ACTION and s.get("id") != SETTINGS_LOADER_ID]
+        return [(i, s) for i, s in enumerate(self.doc[name]["jobs"][job]["steps"]) if s.get("uses") == self.ACTION and s.get("id") not in (SETTINGS_LOADER_ID, RUNTIME_CONFIG_LOADER_ID)]
 
     def settings_loaders(self, name, job):
         return [(i, s) for i, s in enumerate(self.doc[name]["jobs"][job]["steps"]) if s.get("uses") == self.ACTION and s.get("id") == SETTINGS_LOADER_ID]
@@ -1040,13 +1043,27 @@ class BitwardenConsumerTests(unittest.TestCase):
     def loaded(self, name, job):
         return {m.group(2) for m in re.finditer(r"^([0-9a-f-]{36}) > (\w+)$", self.loaders(name, job)[0][1]["with"]["secrets"], re.M)}
 
+    def test_the_runtime_config_loader_is_the_bootstrap_id_alone_in_exactly_its_jobs(self):
+        """LIFE-858 (Jim approved, Nov 21 2026): the compare-only read loads the one existing bootstrap ID (an address) through its own step, never exported job-wide, and a failed load only means no compare."""
+        for name, doc in self.doc.items():
+            carriers = {job for job, body in doc["jobs"].items() if any(st.get("id") == RUNTIME_CONFIG_LOADER_ID for st in body["steps"])}
+            self.assertEqual(carriers, RUNTIME_CONFIG_JOBS.get(name, set()), name)
+            for job in carriers:
+                (step,) = [st for st in doc["jobs"][job]["steps"] if st.get("id") == RUNTIME_CONFIG_LOADER_ID]
+                self.assertEqual(step["uses"], self.ACTION, (name, job))
+                self.assertIs(step.get("continue-on-error"), True, (name, job))
+                self.assertEqual(step["with"]["access_token"], "${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}", (name, job))
+                self.assertEqual(str(step["with"]["set_env"]).lower(), "false", (name, job))
+                self.assertEqual(step["with"]["secrets"].strip(), f"{UUIDS['V7_RUNTIME_CONFIG_SOURCE_ID']} > V7_RUNTIME_CONFIG_SOURCE_ID", (name, job))
+                self.assertNotIn("V7_RUNTIME_CONFIG_SOURCE_ID", doc["jobs"][job].get("env") or {}, (name, job))
+
     def test_every_loader_is_the_local_action_with_the_exact_ids_and_nothing_that_could_bypass_it(self):
         for name, doc in self.doc.items():
             text, jobs = self.text[name], self.jobs_with_loaders(name)
             self.assertTrue(jobs, name)                                                                         # every workflow that reads a credential loads it through the one local loader
             self.assertIn("LIFEOS_BWS_RUNTIME_TOKEN", re.findall(r"secrets\.(\w+)", text), name)
             self.assertFalse([n for n in UUIDS if re.search(rf"secrets\.{n}\b", text)], name)                    # no migrated value is read from GitHub any more
-            self.assertEqual(re.findall(r"uses:\s*(\S*bws-load)", text), [self.ACTION] * (len(jobs) + len(SETTINGS_JOBS.get(name, ()))), name)       # one credential loader step per job (it holds the load and its one retry) plus, in exactly the jobs of SETTINGS_JOBS, the settings loader
+            self.assertEqual(re.findall(r"uses:\s*(\S*bws-load)", text), [self.ACTION] * (len(jobs) + len(SETTINGS_JOBS.get(name, ())) + len(RUNTIME_CONFIG_JOBS.get(name, ()))), name)       # one credential loader step per job (it holds the load and its one retry) plus, in exactly the jobs of SETTINGS_JOBS, the settings loader
             self.assertNotIn("bitwarden/", text, name)                                                           # the third-party action is named only inside the local action
             if name != "domains":
                 self.assertEqual(set(jobs), set(LOADED[name]), name)
@@ -1110,6 +1127,10 @@ class BitwardenConsumerTests(unittest.TestCase):
                     for key, value in (step.get("env") or {}).items():
                         if key in UUIDS and str(value).strip() == SETTINGS_CONSUMER:             # LIFE-703: the Notion token for the settings page, from this job's settings loader, after it, only that name
                             self.assertEqual((key, settings_at is not None and i > settings_at), ("NOTION_JIRA_TOKEN", True), (name, job, label))
+                            continue
+                        if key == "V7_RUNTIME_CONFIG_SOURCE_ID" and str(value).strip() == RUNTIME_CONFIG_CONSUMER:                              # LIFE-858: the compare-only loader's output, only after that loader
+                            rc_at = min([j for j, st in enumerate(body["steps"]) if st.get("id") == RUNTIME_CONFIG_LOADER_ID], default=None)
+                            self.assertTrue(rc_at is not None and i > rc_at and job in RUNTIME_CONFIG_JOBS.get(name, ()), (name, job, label))
                             continue
                         if key == "V7_RUNTIME_CONFIG_SOURCE_ID" and str(value).strip() == SETTINGS_CONSUMER.replace("NOTION_JIRA_TOKEN", key):     # LIFE-844: the Runtime Configuration bootstrap ID, from this job's settings loader, after it
                             self.assertTrue(settings_at is not None and i > settings_at, (name, job, label))
@@ -1283,6 +1304,7 @@ class FinishFailuresAreSurfacedTests(unittest.TestCase):
         "boardcheck": "dispatch-only report: a person started it and reads the log",
         "funnel": "dispatch-only report: a person started it and reads the log",
         "boards_preview": "dispatch-only report: a person started it and reads the log",
+        "bws_runtime_config": "the compare-only source ID load (LIFE-858): a failed load only means no compare; the step after it runs exactly as before",
     }
 
     @classmethod

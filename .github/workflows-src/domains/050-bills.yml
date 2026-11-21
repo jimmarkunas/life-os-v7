@@ -69,10 +69,20 @@
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_USER }}
           NOTION_BILLS_TOKEN: ${{ steps.bws_bills.outputs.NOTION_BILLS_TOKEN }}
         run: python -m lifeos.run bills-paid $([ "$LIVE" = "true" ] && echo --live)
+      - id: bws_runtime_config
+        continue-on-error: true
+        name: Runtime Configuration source ID from Bitwarden for the compare-only read (LIFE-858; read only, an address not a secret; if it fails the step runs exactly as before)
+        uses: ./.github/actions/bws-load
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
       - id: bsnap
         continue-on-error: true
         name: Bills snapshot (read-only; private snapshot saved only when live)
         env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           NOTION_BILLS_DATA_SOURCE_ID: ""
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_PASSWORD }}

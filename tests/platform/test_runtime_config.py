@@ -250,5 +250,121 @@ class Shadow(unittest.TestCase):
         self.assertEqual(out, {"status": "unreadable:RUNTIME_CONFIG_UNREADABLE"})
 
 
+TOKENS7 = list(rc.PROOF_TOKENS)
+SENTINEL_TOKENS = {name: f"synthetic-token-{i}-{SECRET}" for i, name in enumerate(TOKENS7)}
+
+
+def clients(broken=(), empty=()):
+    """make_client(token) -> a source client per token; a token in `broken` cannot read it (Notion refuses), a token in `empty` reads nothing usable."""
+    def make(token):
+        if token in broken:
+            return Source([], broken=True)
+        return Source([] if token in empty else NEW_ROWS)
+    return make
+
+
+class Phase1TokenProof(unittest.TestCase):
+    """LIFE-858 Phase 1: each of the seven token identities is probed by name; PASS or FAIL only, never a token or a value."""
+
+    def test_the_seven_identities_are_exactly_the_ones_the_ticket_names(self):
+        self.assertEqual(TOKENS7, ["NOTION_JIRA_TOKEN", "NOTION_API_TOKEN", "NOTION_INTERVIEW_TOKEN", "NOTION_RECRUITERS_TOKEN", "NOTION_AMAZON_TOKEN", "NOTION_BILLS_TOKEN", "NOTION_FIT_SYNC_TOKEN"])
+
+    def test_every_token_the_step_holds_that_can_read_the_source_is_pass(self):
+        out = rc.probe({**ENV, **SENTINEL_TOKENS}, clients())
+        self.assertEqual(out, {name: "PASS" for name in TOKENS7})
+
+    def test_a_token_that_cannot_read_is_fail_with_a_fixed_code_and_the_others_still_pass(self):
+        bad = SENTINEL_TOKENS["NOTION_BILLS_TOKEN"]
+        out = rc.probe({**ENV, **SENTINEL_TOKENS}, clients(broken={bad}))
+        self.assertEqual(out["NOTION_BILLS_TOKEN"], "FAIL:RUNTIME_CONFIG_UNREADABLE")
+        self.assertEqual([n for n, v in out.items() if v == "PASS"], [n for n in TOKENS7 if n != "NOTION_BILLS_TOKEN"])
+
+    def test_a_source_with_no_usable_row_is_fail_not_pass(self):
+        out = rc.probe({**ENV, "NOTION_JIRA_TOKEN": "t1"}, clients(empty={"t1"}))
+        self.assertEqual(out, {"NOTION_JIRA_TOKEN": "FAIL:RUNTIME_CONFIG_EMPTY"})
+
+    def test_a_token_the_step_does_not_hold_is_not_listed_and_nothing_is_claimed_for_it(self):
+        out = rc.probe({**ENV, "NOTION_INTERVIEW_TOKEN": "t2", "NOTION_JIRA_TOKEN": "   "}, clients())
+        self.assertEqual(out, {"NOTION_INTERVIEW_TOKEN": "PASS"})
+        self.assertEqual(rc.probe(dict(ENV), clients()), {})
+
+    def test_a_name_outside_the_seven_is_never_probed(self):
+        calls = []
+        rc.probe({**ENV, "NOTION_OTHER_TOKEN": "x", "NOTION_JIRA_TOKEN": "t"}, lambda t: calls.append(t) or Source(NEW_ROWS))
+        self.assertEqual(calls, ["t"])
+
+    def test_no_token_value_or_error_message_ever_reaches_the_result(self):
+        out = rc.probe({**ENV, **SENTINEL_TOKENS}, clients(broken=set(SENTINEL_TOKENS.values())))
+        self.assertTrue(all(v == "FAIL:RUNTIME_CONFIG_UNREADABLE" for v in out.values()))
+        self.assertNotIn(SECRET, str(out))
+        self.assertNotIn("synthetic-token", str(out))
+
+    def test_a_client_that_cannot_even_be_built_is_a_fixed_fail_code(self):
+        def boom(token):
+            raise ValueError(SECRET)
+        out = rc.probe({**ENV, "NOTION_API_TOKEN": "t"}, boom)
+        self.assertEqual(out, {"NOTION_API_TOKEN": "FAIL:ValueError"})
+        self.assertNotIn(SECRET, str(out))
+
+
+class Phase1CompareReceipt(unittest.TestCase):
+    def shadow(self, rows=NEW_ROWS, env=None, **kw):
+        return rc.shadow({**ENV, **(env or {})}, Both(Page(OLD_LINES), Source(rows)), **kw)
+
+    def test_the_receipt_counts_rows_and_kinds_and_costs_and_leaks_no_value(self):
+        out = self.shadow()
+        self.assertEqual((out["status"], out["rows"], out["kinds"], out["blocking"]), ("ok", {"old": 4, "new": 4}, {"address": 2, "switch": 2}, False))
+        self.assertIsInstance(out["seconds"], float)
+        self.assertNotIn("names", out)
+        self.assertNotIn("tokens", out)
+        self.assertNotIn(ID, str(out))
+
+    def test_a_refused_invalid_or_repeated_row_is_named_in_the_receipt_and_blocks_nothing_by_itself(self):
+        rows = NEW_ROWS + [row("GITHUB_TOKEN", SECRET), row("DUP", "on"), row("DUP", "on")]
+        out = self.shadow(rows)
+        self.assertEqual(out["new_counts"]["refused"], ["GITHUB_TOKEN"])
+        self.assertNotIn(SECRET, str(out))
+
+    def test_a_missing_old_or_new_name_blocks_and_is_named(self):
+        out = self.shadow(NEW_ROWS[:3])
+        self.assertEqual((out["only_old"], out["blocking"]), (["INTERVIEW_TEST_COMPANIES"], True))
+
+    def test_token_proof_rides_the_receipt_only_when_asked_and_names_only_on_a_manual_dispatch(self):
+        out = self.shadow(env={"GITHUB_EVENT_NAME": "schedule", **SENTINEL_TOKENS}, make_client=clients())
+        self.assertEqual(out["tokens"], {name: "PASS" for name in TOKENS7})
+        self.assertNotIn("names", out)
+        manual = self.shadow(env={"GITHUB_EVENT_NAME": "workflow_dispatch"})
+        self.assertEqual(manual["names"], {"old": sorted(["JIRA_CARD_BLOCK_ID", "MEGIBOW_BLOCK_ID", "GRANOLA_AUTO", "INTERVIEW_TEST_COMPANIES"]), "new": sorted(r["id"].removeprefix("row-") for r in NEW_ROWS)})
+        self.assertNotIn(SECRET, str(manual))
+
+    def test_the_environment_is_unchanged_whatever_the_sources_say(self):
+        env = {**ENV, "GRANOLA_AUTO": "off", **SENTINEL_TOKENS}
+        before = dict(env)
+        rc.shadow(env, Both(Page(OLD_LINES), Source([row("GRANOLA_AUTO", "on")])), make_client=clients())
+        self.assertEqual(env, before)
+
+    def test_missing_credentials_or_an_unreadable_source_are_off_or_a_fixed_code(self):
+        self.assertEqual(rc.shadow(dict(ENV)), {"status": "off"})                                    # the ID but no Notion token: nothing was read
+        self.assertEqual(rc.shadow({rc.SOURCE_NAME: "not-an-id"}), {"status": "unreadable:RUNTIME_CONFIG_SOURCE_ID_INVALID"})
+        self.assertEqual(rc.shadow(dict(ENV), Both(Page(OLD_LINES), Source([], broken=True))), {"status": "unreadable:RUNTIME_CONFIG_UNREADABLE"})
+
+
+class Phase1SourcePrecedenceUnchanged(unittest.TestCase):
+    def test_settings_apply_still_reads_only_the_old_page_whatever_the_new_source_holds(self):
+        env_page = {"GRANOLA_AUTO": ""}
+        env_both = {"GRANOLA_AUTO": "", **ENV}
+        page = Page(OLD_LINES)
+        settings.apply(env_page, client=page)
+        settings.apply(env_both, client=Both(Page(OLD_LINES), Source([row("GRANOLA_AUTO", "off")])))
+        self.assertEqual(env_page["GRANOLA_AUTO"], env_both["GRANOLA_AUTO"])
+        self.assertEqual(env_both["GRANOLA_AUTO"], "on")
+
+    def test_settings_py_does_not_know_the_new_source_and_run_py_reads_the_page_before_the_compare(self):
+        self.assertNotIn("runtime_config", (ROOT / "lifeos/platform/settings.py").read_text())
+        text = (ROOT / "lifeos/run.py").read_text()
+        self.assertLess(text.index("settings.apply(os.environ)"), text.index("runtime_config.shadow(os.environ)"))
+        self.assertNotIn("runtime_config.apply", text)
+
+
 if __name__ == "__main__":
     unittest.main()
