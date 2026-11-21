@@ -8,7 +8,7 @@
 2. The Production Contract, for schedules and runtime.
 3. This policy, for how development works.
 4. Notion LIFE OS Platform canon, for architecture.
-5. Jira `LIFE` for product priority, delivery status, blockers and order. The `LOS` project is retired (Jim, November 21, 2026): history only. The Jira plan cannot archive it, so it stays in place, read-only by practice.
+5. Jira `LIFE` for product priority, delivery status, blockers and order. The `LOS` project is retired (Jim, Nov 21, 2026): history only. The Jira plan cannot archive it, so it stays in place, read-only by practice.
 6. The owning Notion product requirement.
 7. The code, for what exists.
 
@@ -29,7 +29,7 @@ Link to the owner; never copy a fact into a second place.
 
 ## 3. Delivery
 
-- **Jim starts every agent run.** No scheduler, timer, poller, `/loop`, watcher or dispatcher may start or wake an agent. A Jira status change starts nothing.
+- **Jim starts every agent run.** No scheduler, timer, poller, `/loop` or dispatcher may start or wake an agent outside a live session; inside one, it may watch its own CI and runs. A Jira status change starts nothing.
 - **Once started, an agent runs end to end:** finish the ticket, then pull the next, until the queue is empty (`NO_ELIGIBLE_WORK`) or a ticket truly needs Jim.
 - **Pick:** the ticket Jim named, else the top leaf of `project = LIFE AND status = "Agent Go" AND issuetype != Epic ORDER BY priority DESC, Rank ASC`. Skip a ticket already In Progress (another session has it) or with an unfinished `Blocks` predecessor. Lane labels are hints. Agents never reorder or reprioritize. Several sessions (Mac and Oracle Claude Code) may pull in parallel; one writer per branch and per mutation surface.
 - **Claim:** move the ticket to In Progress (transition ID 14). The status is the claim; no comment.
@@ -57,7 +57,7 @@ Every LIFE ticket includes **Jim must do first** checkbox items for owner-only: 
 These four need Jim's yes. Put them in **Jim must do first** whenever they are known. `tools/workflow_gate.py`, run by preflight, stops on them:
 
 1. Adding or widening a workflow `permissions` block or any write permission.
-2. Adding, moving or exposing a credential. Secrets live in a secrets manager (Bitwarden today; Doppler only if Jim picks it), never in the repo, Jira or chat. GitHub's secret store may hold only one bootstrap token per secrets manager, the one that unlocks it (today `LIFEOS_BWS_RUNTIME_TOKEN`); adding one is still Jim's decision (Jim, November 21, 2026).
+2. Adding, moving or exposing a credential. Secrets live in a secrets manager (Bitwarden today; Doppler only if Jim picks it), never in the repo, Jira or chat. GitHub's secret store may hold only one bootstrap token per secrets manager (today `LIFEOS_BWS_RUNTIME_TOKEN`); adding one is still Jim's decision (Jim, Nov 21, 2026).
 3. Deleting a GitHub value or production data.
 4. Spend or a paid model beyond the ticket's budget.
 
@@ -102,7 +102,7 @@ Keep the description under 4,000 characters. One execution ticket is one PR. Ref
 - Every ticket has exactly one Component (its owning OS) and the matching Fix Version `<component> X.Y.Z`. These are filled automatically (LIFE-741). Agents never invent a release.
 - Done and Cancelled issues stay on their historical parents.
 
-**Epic lifecycle (Jim, November 21, 2026):** `Scoping → Ready → In Progress → Done`.
+**Epic lifecycle (Jim, Nov 21, 2026):** `Scoping → Ready → In Progress → Done`.
 - A new product outcome starts as a LIFE Epic in Scoping. Children are written only while the Epic is in Scoping.
 - **Feasibility first:** every Epic proves itself before any build ticket runs. Its first children carry the label `research`: read-only checks that write nothing but comments on their own ticket, with Jim must do first `None`. One verdict ticket per Epic carries the label `verdict`, is blocked by all of them, and makes bounded scoping writes only: it posts GO, GO WITH CHANGES or NO-GO on the Epic, rewrites the descriptions, labels and Jim must do first of that Epic's own children, and adds a Feasibility section to that Epic's Notion spec. It changes no code, runtime, workflow, credential or other Notion page, never drops or narrows scope, and never moves a ticket's status. Moving research and verdict tickets to Agent Go is Jim's approval of exactly those writes; they may run while the Epic is in Scoping; nothing else may. Every build ticket is blocked by its Epic's verdict.
 - Each Epic links one Notion spec page for long rationale. Tickets stay self-contained: an agent builds from the ticket alone.
@@ -152,8 +152,8 @@ A request that breaks these rules stops with `ARCHITECTURAL DRIFT DETECTED — N
 
 ## 10. Exceptions in force
 
-- **V7 modernization consolidation exception (Jim, November 18, 2026; LIFE-834), applied as the fresh start (Jim, November 21, 2026, chat).** Jim approved cancelling every open ticket under the old initiatives (Epics LIFE-686, LIFE-763, LIFE-791, LIFE-809 and their open children) and the open LIFETMP holds. Their replacements are Epics LIFE-846 (Governance), LIFE-847 (Modernization) and LIFE-848 (Unified AI). Done and Cancelled tickets keep their parents, keys, status, history and evidence: none is reopened, deleted, reparented or rewritten, and the new tickets reuse their evidence (§7, Reuse). Any further reparenting or Epic cancellation needs Jim's yes on the exact list in chat.
-- **Freezes and STOP gates lifted (Jim, November 21, 2026, 12:17 AM CT).** The LIFE-686 freeze and all STOP blocks are removed. Mac Claude Code is the exclusive writer of `hourly.yml` while LIFE-854 or LIFE-856 is open.
+- **V7 modernization consolidation exception (Jim, Nov 18, 2026; LIFE-834), applied as the fresh start (Jim, Nov 21, 2026, chat).** Jim approved cancelling every open ticket under the old initiatives (Epics LIFE-686, LIFE-763, LIFE-791, LIFE-809 and their open children) and the open LIFETMP holds. Their replacements are Epics LIFE-846 (Governance), LIFE-847 (Modernization) and LIFE-848 (Unified AI). Done and Cancelled tickets keep their parents, keys, status, history and evidence: none is reopened, deleted, reparented or rewritten, and the new tickets reuse their evidence (§7, Reuse). Any further reparenting or Epic cancellation needs Jim's yes on the exact list in chat.
+- **Freezes and STOP gates lifted (Jim, Nov 21, 2026, 12:17 AM CT).** The LIFE-686 freeze and all STOP blocks are removed. Mac Claude Code is the exclusive writer of `hourly.yml` while LIFE-854 or LIFE-856 is open.
 
 ## 11. Read only when needed
 
