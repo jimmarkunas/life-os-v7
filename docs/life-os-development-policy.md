@@ -66,7 +66,7 @@ Every LIFE ticket has a **Jim must do first** section. It lists every action onl
 These four need Jim's yes. Put them in **Jim must do first** whenever they are known. `tools/workflow_gate.py`, run by preflight, stops on them:
 
 1. Adding or widening a workflow `permissions` block or any write permission.
-2. Adding, moving or exposing a credential. Secrets live in Bitwarden only, never in GitHub's secret store, the repo, Jira or chat.
+2. Adding, moving or exposing a credential. Secrets live in a secrets manager (Bitwarden today; Doppler only if Jim picks it), never in the repo, Jira or chat. GitHub's secret store may hold only one bootstrap token per secrets manager, the one that unlocks it (today `LIFEOS_BWS_RUNTIME_TOKEN`); adding one is still Jim's decision (Jim, November 21, 2026).
 3. Deleting a GitHub value or production data.
 4. Spend or a paid model beyond the ticket's budget.
 
