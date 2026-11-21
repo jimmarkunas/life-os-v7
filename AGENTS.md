@@ -6,17 +6,19 @@ The [Development Policy](docs/life-os-development-policy.md) is the whole rule s
 
 Jim starts every run; no scheduler, timer or loop starts an agent. Once started, run end to end:
 
-1. **Pick** the ticket Jim named, else the top `Agent Go` leaf by Priority, then Rank. Skip In Progress tickets (another session has them). Agent Go is Jim's approval for everything in the ticket: never re-ask.
+1. **Pick** the ticket Jim named, else the top `Agent Go` leaf by Priority, then Rank. Skip In Progress tickets (another session has them) and tickets with an unfinished `Blocks` predecessor. Agent Go is Jim's approval for everything in the ticket: never re-ask.
 2. **Claim:** transition 14 to In Progress. No comment.
 3. **Build** on `life/LIFE-nnn/<slug>`, one PR `[LIFE-nnn] <outcome>`. Never change a ticket's scope without asking Jim.
 4. **Test:** `sh tools/preflight.sh` before every push; CI is the full gate.
-5. **Land and close:** auto-merge on green, then `python -m lifeos.jira.closeout KEY... --pr N --sha S --run R --proof KEY=text --live`. Then the next ticket (`NO_ELIGIBLE_WORK` if none).
+5. **Land:** auto-merge on green. A merge is not Done.
+6. **Agent UAT:** prove every Done when line on the delivered outcome (receipt, page, read-back).
+7. **Close:** `python -m lifeos.jira.closeout KEY... --pr N --sha S --run R --proof KEY=text --live`, or stop at Human UAT (transition 19) when the ticket has `needs-uat` or names Jim as verifier. Then the next ticket (`NO_ELIGIBLE_WORK` if none).
 
 ## Jim must do first
 
 Every ticket lists what only Jim can do (secret, permission, sign-in, spend, host step, decision, Notion wireframe). An unchecked item or a missing section keeps it out of Agent Go. A need found mid-run: add it to that section, label `needs-jim`, one comment, keep building the rest.
 
-Epics go `Scoping → Ready → In Progress → Done`; every child carries one label (`ready`, `needs-prep` or `needs-jim`) and only `ready` tickets move to Agent Go. Feasibility first: read-only `research` children (and the Epic's verdict ticket) run while the Epic is in Scoping; build tickets wait for the verdict. Claude writes tickets; ChatGPT reviews them. LOS is retired.
+Epics go `Scoping → Ready → In Progress → Done`; every child carries one label (`ready`, `needs-prep` or `needs-jim`) and only `ready` tickets move to Agent Go. Feasibility first: `research` children (read-only) and the Epic's `verdict` ticket (bounded scoping writes, policy §7) run in Scoping; build tickets wait for the verdict. Claude writes tickets; ChatGPT reviews them. LOS is retired.
 
 ## Always
 
