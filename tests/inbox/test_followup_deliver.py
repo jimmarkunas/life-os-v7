@@ -51,7 +51,7 @@ class FakeNotion:
 
     def call(self, method, path, body=None):
         if path == "/search":
-            return {"results": [{"object": "data_source", "id": SOURCE, "title": [{"plain_text": agent_inbox.DB_TITLE}]}]}
+            return {"results": [{"object": "data_source", "id": SOURCE, "title": [{"plain_text": agent_inbox.DB_TITLE}]}], "has_more": False}
         raise AssertionError(f"unexpected call {method} {path}")
 
     def call_once(self, method, path, body=None):

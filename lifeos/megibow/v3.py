@@ -9,7 +9,7 @@ from urllib.parse import quote
 
 from lifeos.megibow import classify as C, project as P, warnings as W
 from lifeos.megibow.windows import chicago, elapsed_business_days, monday, visible_weeks
-from lifeos.platform import readback, report_region
+from lifeos.platform import notion_pages, readback, report_region
 from lifeos.platform.notion_client import NotionError
 
 DASH = "–"
@@ -182,9 +182,10 @@ def _title(obj):
 
 
 def find(client, title, kind):
-    """The one page or data source whose title is exactly `title` (no secret holds these ids). None or several -> MEGIBOW_V3_TARGET_NOT_FOUND."""
-    found = client.call("POST", "/search", {"query": title, "filter": {"property": "object", "value": kind}, "page_size": 100})
-    hits = [r["id"] for r in (found or {}).get("results") or [] if isinstance(r, dict) and _title(r).strip() == title and not r.get("in_trash") and not r.get("archived")]
+    """The one page or data source whose title is exactly `title` (no secret holds these ids). None or several -> MEGIBOW_V3_TARGET_NOT_FOUND.
+    LIFE-891: every page of the search is read (a short or capped read refuses with the same code); the first page alone lost the register once similarly named pages piled up."""
+    found = notion_pages.search_all(client, title, kind, V3Error, incomplete="MEGIBOW_V3_TARGET_NOT_FOUND", capped="MEGIBOW_V3_TARGET_NOT_FOUND")
+    hits = [r["id"] for r in found if isinstance(r, dict) and _title(r).strip() == title and not r.get("in_trash") and not r.get("archived")]
     if len(hits) != 1:
         raise V3Error("MEGIBOW_V3_TARGET_NOT_FOUND")
     return hits[0]

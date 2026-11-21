@@ -37,6 +37,21 @@ def query(client, source_id, body, fail, **codes):
     return pages(lambda cursor: client.query_data_source(source_id, {**body, **({"start_cursor": cursor} if cursor else {})}), fail, **codes)
 
 
+SEARCH_PAGE_LIMIT = 20                 # LIFE-891: a title lookup follows at most this many result pages; more is a fixed refusal, never a partial answer
+
+
+def search_all(client, query, kind, fail, **codes):
+    """LIFE-891: EVERY result of `POST /search` for `query` (kind: "page" or "data_source"), following next_cursor / start_cursor until has_more is false.
+    A lookup by exact title must see the whole result set: new pages with similar names push the real one past the first page. Same codes as `pages`
+    (`incomplete` is required; `repeat`, `capped`, `read` optional); `limit` defaults to SEARCH_PAGE_LIMIT pages and reaching it raises `capped`, never a short list."""
+    body = {"query": query, "filter": {"property": "object", "value": kind}, "page_size": limits.NOTION_PAGE_SIZE}
+    codes.setdefault("limit", SEARCH_PAGE_LIMIT)
+    found = []
+    for page in pages(lambda cursor: client.call("POST", "/search", {**body, **({"start_cursor": cursor} if cursor else {})}), fail, **codes):
+        found.extend(page["results"])
+    return found
+
+
 def children(client, block_id, fail, **codes):
     """The pages of a block's (or page's) children, page_size 100."""
     path = f"/blocks/{quote(block_id, safe='')}/children?page_size={limits.NOTION_PAGE_SIZE}"

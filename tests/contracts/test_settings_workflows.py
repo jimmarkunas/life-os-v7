@@ -197,7 +197,7 @@ class _Page:
 
     def call(self, method, path, body=None):
         if path == "/search":
-            return {"results": [{"id": "p", "properties": {"t": {"type": "title", "title": [{"plain_text": settings.TITLE}]}}}]}
+            return {"results": [{"id": "p", "properties": {"t": {"type": "title", "title": [{"plain_text": settings.TITLE}]}}}], "has_more": False}
         if path.endswith("/children") or "/blocks/" in path:
             return {"results": [{"id": "b1", "type": "code", "code": {"rich_text": [{"plain_text": "\n".join(self.lines)}], "language": "plain text"}}], "has_more": False}
         return {}
