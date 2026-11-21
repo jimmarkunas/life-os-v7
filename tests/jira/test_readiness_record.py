@@ -12,6 +12,8 @@ from lifeos.jira import readiness_record as rr
 ROOT = Path(__file__).resolve().parents[2]
 DESC = """**Origin / approval:** Example Owner, Jan 1, 2030, chat: example.
 
+**Jim must do first:** None
+
 **Done when:**
 
 * \\[ \\] **GWT-EX-01** Given a ready issue, when the check runs, then it reports ready.
@@ -32,6 +34,20 @@ def raw(desc=DESC, labels=("lane-career-v7",), components=({"name": "Example Com
 def entry(*args):
     done = subprocess.run([sys.executable, "-m", "lifeos.sources.devtools.readiness", *map(str, args)], cwd=ROOT, capture_output=True, text=True)
     return done.returncode, done.stdout, done.stderr
+
+
+class JimMustDoFirstAtStart(unittest.TestCase):
+    """Jim, Nov 21 2026: at start, an unchecked Jim must do first item refuses and a missing section warns."""
+
+    def test_an_unchecked_item_refuses_and_a_missing_section_warns(self):
+        from lifeos.sources.devtools import readiness
+        record = rr.normalize(raw(DESC.replace("**Jim must do first:** None", "**Jim must do first:**\n\n- [ ] Store the token in Bitwarden")))
+        refusals, _ = readiness.check_issue(record)
+        self.assertIn("jim_first_open", [r["code"] for r in refusals])
+        record = rr.normalize(raw(DESC.replace("**Jim must do first:** None\n\n", "")))
+        refusals, warnings = readiness.check_issue(record)
+        self.assertEqual([r["code"] for r in refusals], [])
+        self.assertIn("jim_first_missing", [w["code"] for w in warnings])
 
 
 class RecordTests(unittest.TestCase):

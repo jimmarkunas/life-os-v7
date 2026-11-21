@@ -2,10 +2,10 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/jimmarkunas/life-os-v7/blob/main/docs/jira/issue-schema.v1.json",
   "title": "LIFE Jira issue — writing contract v1",
-  "description": "Machine-readable form of the LIFE Jira issue-writing contract in docs/life-os-development-policy.md. LIFE workflow statuses include Agent UAT and Human UAT. Agent UAT and evidence are required before Done; Human UAT is conditional on human judgment and requires acceptance evidence when used. Jim's original issue-specific approval, or his human release of the issue into the Agent Go queue, authorizes the assigned agent to implement and open a PR on the approved issue and explicitly approved in-scope subtasks. Independent technical review is optional for routine PRs unless explicitly required by the Jira issue or enforceable GitHub rules. The assigned agent may merge ordinary authorized work after the necessary exact-head checks and proof pass if their GitHub permissions permit it. Never invent native approvals or override branch protections; protected operations and production access retain their separate authority gates. Non-production deployment remains subject to existing environment and agent permissions. Work intake is human-defined with agent/chat assistance; agents resume their own work, then select from the Agent Go queue within their lane by Jira Priority then Rank, and never promote work into Agent Go themselves. Only independent work runs in parallel, and blockers must be Done. Stop after acceptance criteria, required proof/UAT, and no material defect; additional polish requires new approval. Production access/writes, secret access, spending, and permission changes remain separately controlled. New product outcomes originate in an approved LOS Idea; maintenance, bugs and in-scope children of an approved Epic cite that parent instead. A checked acceptance item requires cited evidence, and a checklist tick is never Done. This schema is a read-back and test contract, not a native Jira validator. Secrets appear only as identifiers. Component and Fix Version follow the policy's OS-aligned scheme: fix_version is '<component> X.Y.Z'.",
+  "description": "Machine-readable form of the LIFE Jira issue-writing contract in docs/life-os-development-policy.md (section 7). Every ticket carries jim_must_do_first (section 4, the release rule). LIFE workflow statuses include Agent UAT and Human UAT. Agent UAT and evidence are required before Done; Human UAT is conditional on human judgment and requires acceptance evidence when used. Jim's original issue-specific approval, or his human release of the issue into the Agent Go queue, authorizes the assigned agent to implement and open a PR on the approved issue and explicitly approved in-scope subtasks. Independent technical review is optional for routine PRs unless explicitly required by the Jira issue or enforceable GitHub rules. The assigned agent may merge ordinary authorized work after the necessary exact-head checks and proof pass if their GitHub permissions permit it. Never invent native approvals or override branch protections; protected operations and production access retain their separate authority gates. Non-production deployment remains subject to existing environment and agent permissions. Work intake is human-defined with agent/chat assistance; agents resume their own work, then select from the Agent Go queue within their lane by Jira Priority then Rank, and never promote work into Agent Go themselves. Only independent work runs in parallel, and blockers must be Done. Stop after acceptance criteria, required proof/UAT, and no material defect; additional polish requires new approval. Production access/writes, secret access, spending, and permission changes remain separately controlled. New product outcomes originate in an approved LOS Idea; maintenance, bugs and in-scope children of an approved Epic cite that parent instead. A checked acceptance item requires cited evidence, and a checklist tick is never Done. This schema is a read-back and test contract, not a native Jira validator. Secrets appear only as identifiers. Component and Fix Version follow the policy's OS-aligned scheme: fix_version is '<component> X.Y.Z'.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["key", "issue_type", "statement", "product_origin", "acceptance_criteria", "component", "fix_version", "owner", "execution", "ui", "fast_proof", "human_uat", "authorization"],
+  "required": ["key", "issue_type", "statement", "product_origin", "acceptance_criteria", "jim_must_do_first", "component", "fix_version", "owner", "execution", "ui", "fast_proof", "human_uat", "authorization"],
   "properties": {
     "key": {"$ref": "#/$defs/issue_key"},
     "issue_type": {"enum": ["Epic", "Story", "Task", "Bug", "Sub-task"]},
@@ -85,6 +85,16 @@
         },
         "if": {"properties": {"state": {"const": "checked"}}, "required": ["state"]},
         "then": {"required": ["evidence"]}
+      }
+    },
+    "jim_must_do_first": {
+      "description": "Jim, Nov 21 2026: every action only Jim can take (a Bitwarden secret, a permission, a sign-in, spend, a host step, a decision, a Notion wireframe approval, UAT setup). An empty list means None. A ticket with an item not done, or without this section, never moves to Agent Go (lifeos.jira.promote, the auto-release stage and the readiness check enforce it).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["action", "done"],
+        "properties": {"action": {"type": "string", "minLength": 1}, "done": {"type": "boolean"}}
       }
     },
     "notion_requirement": {"description": "Link to the exact Notion requirement; the requirement itself is not copied into Jira.", "$ref": "#/$defs/https_url"},
@@ -286,6 +296,7 @@
       "key": "LIFE-79",
       "issue_type": "Task",
       "statement": {"kind": "outcome", "text": "LIFE issues follow one written contract and a machine-readable schema, adopted in the V7 development policy."},
+      "jim_must_do_first": [],
       "acceptance_criteria": [
         {"given": "the policy PR is merged", "when": "an agent writes a LIFE Story", "then": "the Story has a user story and separate Given/When/Then acceptance criteria"},
         {"given": "the policy PR is merged", "when": "an agent opens a code PR for a LIFE issue", "then": "the branch and PR title follow the contract's formats"}

@@ -5,8 +5,13 @@ from datetime import datetime, timezone
 from lifeos.jira import release, stalled
 from lifeos.platform.jira import JiraError
 
-DONE_WHEN = {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Done when"}]},
+DONE_WHEN = {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Jim must do first: None"}]},
+                                         {"type": "paragraph", "content": [{"type": "text", "text": "Done when"}]},
                                          {"type": "bulletList", "content": [{"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Given X, then Y"}]}]}]}]}
+OPEN_JIM_FIRST = {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Jim must do first"}]},
+                                              {"type": "paragraph", "content": [{"type": "text", "text": "[ ] Approve the spend"}]},
+                                              {"type": "paragraph", "content": [{"type": "text", "text": "Done when"}]},
+                                              {"type": "bulletList", "content": [{"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Given X, then Y"}]}]}]}]}
 NO_DONE_WHEN = {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Just do the thing."}]}]}
 
 
@@ -46,10 +51,11 @@ class Release(unittest.TestCase):
         self.assertEqual(fake.posts[0][1], {"transition": {"id": "17"}})
 
     def test_nothing_is_released_for_an_open_blocker_a_missing_done_when_or_a_skip_label(self):
-        children = [issue("LIFE-11", blockers=[("LIFE-5", False)]), issue("LIFE-12", description=NO_DONE_WHEN), issue("LIFE-13", labels=["needs-jim"]), issue("LIFE-15", blockers=[("LIFE-5", True)])]
+        children = [issue("LIFE-11", blockers=[("LIFE-5", False)]), issue("LIFE-12", description=NO_DONE_WHEN), issue("LIFE-13", labels=["needs-jim"]),
+                    issue("LIFE-14", description=OPEN_JIM_FIRST), issue("LIFE-15", blockers=[("LIFE-5", True)])]
         fake = FakeJira(["LIFE-10"], children)
         out = release.run(0, True, jira=fake)
-        self.assertEqual(out["skipped"], {"blocked": 1, "no_done_when": 1, "skip_label": 1})
+        self.assertEqual(out["skipped"], {"blocked": 1, "no_done_when": 1, "skip_label": 1, "jim_first_open": 1})       # Jim, Nov 21 2026: an unchecked Jim must do first item is never released
         self.assertEqual((out["released"], [p for p, _ in fake.posts][0]), (1, "/rest/api/3/issue/LIFE-15/transitions"))
 
     def test_needs_jim_is_the_only_label_that_stops_a_release_and_it_always_does(self):

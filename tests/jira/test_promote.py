@@ -1,7 +1,7 @@
 """LIFE-742 (synthetic): an agent promotes a ready ticket itself, waits for Jim only on a protected step, and readiness treats both promotions the same."""
 import unittest
 
-from lifeos.jira import promote
+from lifeos.jira import promote, release
 from lifeos.sources.devtools import readiness
 
 
@@ -9,12 +9,33 @@ def doc(*lines):
     return {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": line}]} for line in lines]}
 
 
-READY = ("Outcome", "Add a pure helper.", "Done when", "* Given X, then Y")
+READY = ("Outcome", "Add a pure helper.", "Jim must do first: None", "Done when", "* Given X, then Y")
 
 
 def issue(*lines, status="To Do", labels=(), blockers=(), kind="Task"):
     links = [{"type": {"name": "Blocks"}, "inwardIssue": {"key": b, "fields": {"status": {"statusCategory": {"key": "done" if ok else "new"}}}}} for b, ok in blockers]
     return {"key": "LIFE-1", "fields": {"description": doc(*(lines or READY)), "status": {"name": status}, "labels": list(labels), "issuelinks": links, "issuetype": {"name": kind}}}
+
+
+class JimMustDoFirst(unittest.TestCase):
+    """Jim, Nov 21 2026: a ticket with an unchecked Jim must do first item, or with no such section, never moves to Agent Go."""
+
+    def test_an_unchecked_item_waits_for_jim_and_a_cleared_list_promotes(self):
+        waiting = issue("Outcome", "Add a pure helper.", "Jim must do first", "[ ] Store the API key in Bitwarden", "Done when", "* Given X, then Y")
+        self.assertEqual(promote.decide(waiting), ("wait", ["jim_first"]))
+        self.assertEqual(promote.act(waiting)["label"], "needs-jim")
+        cleared = issue("Outcome", "Add a pure helper.", "Jim must do first", "[x] Store the API key in Bitwarden", "Done when", "* Given X, then Y")
+        self.assertEqual(promote.decide(cleared), ("promote", []))              # a cleared credential item is not re-asked by the protected-step scan
+
+    def test_a_ticket_without_the_section_is_not_promoted(self):
+        self.assertEqual(promote.decide(issue("Outcome", "Add a pure helper.", "Done when", "* Given X, then Y")), ("skip", ["no_jim_first"]))
+
+    def test_jira_task_items_read_their_checked_state(self):
+        def task(state, text):
+            return {"type": "taskItem", "attrs": {"state": state}, "content": [{"type": "text", "text": text}]}
+        body = {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Jim must do first"}]},
+                                           {"type": "taskList", "content": [task("DONE", "Approve the Notion wireframe"), task("TODO", "Sign in to the provider")]}]}
+        self.assertEqual(release.jim_first(body), (True, ["[ ] Sign in to the provider"]))
 
 
 class Decide(unittest.TestCase):
