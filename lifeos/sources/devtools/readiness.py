@@ -1,6 +1,6 @@
 """Offline readiness validator for coding agents and CI: is a LIFE issue ready to start (LIFE-225 ARCH-04, delivery flow v3).
 
-Versioned, deterministic, stdlib only, no network, no state of its own. Exactly three things refuse (exit 2): the key is valid, the ticket has at least one Done-when line, and every `Blocks` predecessor is Done. Anything else prints `warn v1 <code> <field>` on stderr and exits 0 (`ready v1`). Unreadable input or an error refuses
+Versioned, deterministic, stdlib only, no network, no state of its own. Four things refuse (exit 2): an invalid key, no Done-when line, a `Blocks` predecessor not Done, and an unchecked Jim must do first item (Jim, Nov 21 2026). Anything else prints `warn v1 <code> <field>` on stderr and exits 0 (`ready v1`). Unreadable input or an error refuses
 (exit 2) before the caller mutates anything.
 Usage: python -m lifeos.sources.devtools.readiness issue FILE | issue-key KEY | issue-json FILE | issue-mcp FILE KEY | repo [ROOT]   (FILE is JSON)
   issue      a normalized LIFE issue record; issue-key a LIVE issue read from Jira by key (read-only GET with JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN); issue-json a saved REST v3 issue
@@ -17,7 +17,7 @@ VERSION = 1
 LANES = ("lane-career-v7", "lane-edge-comm")
 DESCRIPTION_LIMIT = 4000                      # characters: a longer LIFE description is a warn
 KEY = re.compile(r"(LIFE|LOS)-\d+")
-SIZE_LIMIT = 15 * 1024                        # bytes: the policy-part limit (Q12), applied to every indexed global source
+SIZE_LIMIT = 15 * 1024                        # bytes: the one-file policy and the boot files stay one read each
 GWT = ("given", "when", "then")
 ISSUE_FIELDS = {"key", "labels", "origin", "blockers", "authorization", "permissions", "acceptance"}   # the lane label is the owner; owner, host and source are optional
 
@@ -30,7 +30,7 @@ def text(value):
     return isinstance(value, str) and bool(value.strip())
 
 
-HARD = {"issue_unreadable", "key_invalid", "blockers_unreadable", "blocker_not_done", "gwt_missing"}          # the only refusals; field_absent refuses only for the three inputs below
+HARD = {"issue_unreadable", "key_invalid", "blockers_unreadable", "blocker_not_done", "gwt_missing", "jim_first_open"}          # the only refusals; field_absent refuses only for the three inputs below
 HARD_FIELDS = {"key", "blockers", "acceptance"}
 
 
@@ -78,6 +78,12 @@ def findings(issue):
             out.append(refuse("authorization_missing", "authorization"))
     if "permissions" in issue and not (isinstance(issue["permissions"], list) and issue["permissions"] and all(text(p) for p in issue["permissions"])):
         out.append(refuse("permissions_missing", "permissions"))
+    if "jim_first" in issue:                                                   # Jim, Nov 21 2026: an unchecked Jim must do first item refuses; a missing section warns at start (release refuses it)
+        jf = issue["jim_first"]
+        if not isinstance(jf, dict) or not jf.get("present"):
+            out.append(refuse("jim_first_missing", "jim_first"))
+        elif jf.get("open"):
+            out.append(refuse("jim_first_open", "jim_first", f"{jf['open']} unchecked"))
     for name, code in (("needs", "prerequisite_open"), ("decisions", "decision_open")):
         if name in issue:
             rows = issue[name]
@@ -138,7 +144,7 @@ def check_repo(root):
             continue
         if is_global and not (row[1] and row[3]):
             out.append(refuse("owner_or_authority_missing", link.group(1)))
-    sized = [root / n for n in ("INDEX.md", "AGENTS.md", "CLAUDE.md")] + sorted((root / "docs" / "development-policy").glob("*.md"))
+    sized = [root / n for n in ("INDEX.md", "AGENTS.md", "CLAUDE.md", "docs/life-os-development-policy.md")]
     out += [refuse("size_over_limit", str(f.relative_to(root)), str(f.stat().st_size)) for f in sized if f.is_file() and f.stat().st_size > SIZE_LIMIT]
     if not set(("key", "acceptance_criteria", "owner", "authorization")) <= set(schema.get("required", [])):
         out.append(refuse("schema_fields_lost", "docs/jira/issue-schema.v1.json"))

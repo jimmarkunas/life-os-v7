@@ -5,11 +5,10 @@ import re
 import unittest
 from pathlib import Path
 
-from tests.contracts.test_development_policy_split import reassemble
 
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_PATH = ROOT / "docs" / "jira" / "issue-schema.v1.json"
-POLICY = reassemble()                                                    # LIFE-79 Nov 2: the whole policy, from its verbatim parts
+POLICY = (ROOT / "docs" / "life-os-development-policy.md").read_text()     # Jim, Nov 21 2026: the whole policy is one file
 SCHEMA = json.loads(SCHEMA_PATH.read_text())
 DEFS = SCHEMA["$defs"]
 
@@ -25,12 +24,12 @@ def matches(name, value):
 
 class Contract(unittest.TestCase):
     def test_the_policy_owns_the_contract_and_links_the_schema(self):
-        self.assertIn("### LIFE Jira issue-writing contract", POLICY)
+        self.assertIn("## 7. Writing tickets", POLICY)
         self.assertIn("(jira/issue-schema.v1.json)", POLICY)
         self.assertNotIn("As the Main User. Given:", POLICY)        # the old combined story/criteria format is reconciled away
 
     def test_the_policy_examples_match_the_schema_formats(self):
-        self.assertIn("Branch: `life/LIFE-nnn/<slug>`. PR title: `[LIFE-nnn] <outcome>`.", POLICY)        # delivery flow v3
+        self.assertIn("one branch `life/LIFE-nnn/<slug>`, one PR titled `[LIFE-nnn] <outcome>`", POLICY)
         self.assertTrue(matches("branch", "life/LIFE-79/delivery-flow-v3"))
         self.assertTrue(matches("pr_title", "[LIFE-79] Adopt the Jira issue-writing contract"))
 
@@ -51,47 +50,34 @@ class Contract(unittest.TestCase):
         self.assertEqual(set(refs), {"kind", "identifier"})
         self.assertIn("LIFE workflow statuses include Agent UAT and Human UAT", SCHEMA["description"])
         self.assertIs(SCHEMA["properties"]["fast_proof"]["properties"]["schedule_independent"]["const"], True)
-        self.assertIn("LIFE keeps the `Agent UAT` and `Human UAT` workflow statuses", POLICY)
-        self.assertIn("no compulsory independent Tech Lead review", POLICY)
-        self.assertNotIn("Assign an independent reviewer and merge operator before implementation", POLICY)
-        self.assertIn("Do not invent approvals", POLICY)
+        self.assertIn("Human UAT", POLICY)
+        self.assertIn("No reviewer is required", POLICY)
+        self.assertIn("never invent an approval", POLICY)
+        self.assertIn("Reference secrets by identifier only", POLICY)
         self.assertIn("Independent technical review is optional for routine PRs", SCHEMA["description"])
 
     def test_agent_go_is_the_human_released_priority_ordered_queue(self):
-        """LIFE-126 (Jim, Nov 1 2026): Agent Go is the explicit human-released agent queue, ordered by Priority then Rank."""
-        selector = POLICY.split("### Deterministic agent work selection", 1)[1].split("### Jira-first development lifecycle", 1)[0]
-        authorization = POLICY.split("- **Authorization, scope, assignment, and routing.**", 1)[1].split("- **Branch and PR names.**", 1)[0]   # the bullet and its numbered sub-points
-        query = 'project = LIFE AND status = "Agent Go" AND issuetype != Epic ORDER BY priority DESC, Rank ASC'
-        self.assertIn(query, selector)                                   # the one selector query, Priority first and Rank as tie-breaker
-        self.assertIn("Rank breaks ties", selector)
-        self.assertIn("only under the self-promotion rule", selector)     # LIFE-742: an agent promotes only inside the Part 04 rule, never a ticket that names a protected step
-        self.assertIn("never promotes an issue that names a protected step", authorization)
-        self.assertIn("not a technical guarantee", authorization)         # the org-admins restriction is not an agent-identity boundary
-        self.assertIn("does not by itself start a dormant agent", selector)
-        for skipped in ("incomplete incoming `Blocks` predecessor", "conflicting or already-claimed writer", "execution environment the agent does not support"):
-            self.assertIn(skipped, selector)                              # blocked or conflicting work is skipped without mutation
-        self.assertIn('transition Agent Go to In Progress (ID 14, "Start work (authorization receipt required)")', selector)
-        self.assertIn("transition ID 5 (To Do to Agent Go", authorization)
-        self.assertIn("empty `Agent Go` queue", selector)
-        for obsolete in ("unavailable on Jira Free", "queries its own lane **and** `pull-ready`", "even when labeled `pull-ready`", "readiness marker"):
-            self.assertNotIn(obsolete, POLICY)
+        """Agent Go is the released queue, ordered by Priority then Rank; a status change wakes nobody (Jim, Nov 21 2026)."""
+        delivery = POLICY.split("## 3. Delivery", 1)[1].split("## 4.", 1)[0]
+        self.assertIn('project = LIFE AND status = "Agent Go" AND issuetype != Epic ORDER BY priority DESC, Rank ASC', delivery)
+        self.assertIn("never reorder or reprioritize", delivery)
+        self.assertIn("A Jira status change starts nothing", delivery)
+        self.assertIn("unfinished `Blocks` predecessor", delivery)
+        self.assertIn("transition ID 14", delivery)
+        self.assertIn("`NO_ELIGIBLE_WORK`", delivery)
+        self.assertIn("Agent Go is the approval", POLICY)
         self.assertNotIn("unavailable Agent Go transition", SCHEMA["description"])
         self.assertNotIn("unavailable on Jira Free", json.dumps(SCHEMA))
-        for retained in ("Agent UAT", "Human UAT", "protected-action", "single-writer"):
-            self.assertIn(retained, POLICY)
 
     def test_requirement_change_reconciliation_is_retired_and_t3_stays_retired(self):
-        """Delivery flow v3 (Jim, Nov 9 2026): the requirement-change reconciliation section is deleted from the policy."""
-        self.assertNotIn("### Requirement-change reconciliation", POLICY)
-        self.assertNotIn("Buzz or T3", POLICY)                            # T3 is retired as an authorization channel
+        self.assertNotIn("Requirement-change reconciliation", POLICY)
+        self.assertNotIn("Buzz or T3", POLICY)
 
     def test_los_first_discovery_and_description_first_contract_is_in_the_policy(self):
-        """LIFE-79 (Jim, Nov 1 2026): new product outcomes start in an approved LOS Idea; answers persist before the next tranche; Description owns requirements."""
-        rule = POLICY.split("### LOS-first discovery and description-first requirements", 1)[1].split("## 2. Locked architecture", 1)[0]
-        for required in ("`DISCOVERY_NOT_READY", "`DISCOVERY_CAPTURE_BLOCKED`", "A parked LOS Idea is not delivery authorization", "**Exception without bypass:**",
-                         "cannot launder a new product outcome", "**NOT TECHNICALLY ENFORCED**", "never inferred from an assistant recommendation",
-                         "never comment-only", "A stale comment never outranks a current Description", "`Given / When / Then`", "**UNVERIFIED**",
-                         "is not an interactive Jira checklist", "is never Done", "`QUEUE_NOT_READY`", "Agent Go release, Priority order, claims, one-writer scope and protected-operation gates are unchanged"):
+        """New product outcomes start in an approved LOS idea; the description owns requirements; discovery answers are saved and read back."""
+        rule = POLICY.split("## 7. Writing tickets", 1)[1].split("## 8.", 1)[0]
+        for required in ("A parked LOS idea authorizes nothing", "need no LOS idea", "The description beats comments", "never a comment alone",
+                         "`Given … when … then …`", "A tick without cited proof is not Done", "read back before the next question", "Link the Notion requirement"):
             self.assertIn(required, rule)
 
     def _origin_errors(self, origin):
@@ -145,21 +131,10 @@ class Contract(unittest.TestCase):
         self.assertIn("not a native Jira validator", SCHEMA["description"])
 
     def test_context_efficiency_contract_is_in_the_policy(self):
-        """LIFE-79 (Jim, Nov 1 2026): minimal Jira-first retrieval, clear ownership, persisted interviews, budgets that never beat correctness, fresh-agent handoff."""
-        rule = POLICY.split("### Context efficiency", 1)[1].split("## 2. Locked architecture", 1)[0]
-        for required in ("Read the owning Jira issue first", "only the specific Notion section, GitHub file or related Jira issue", "Never pull whole conversation histories",
-                         "while its source revision is unchanged", "stop researching once sufficient authoritative evidence exists",
-                         "safety, authority, a contradiction, missing proof or verification",                                  # the exceptions to reuse
-                         "The LOS Description holds", "The LIFE Description holds", "Notion holds detailed product specifications", "GitHub holds code",
-                         "Comments hold active development findings and receipts, not requirements", "never move, delete, summarize away or overwrite",
-                         "do not re-fetch Notion during routine questioning",
-                         "independently read the change back before the next tranche", "`DISCOVERY_CAPTURE_BLOCKED` and stops the next tranche",
-                         "never overrides correctness", "from one Jira key and its authoritative links, without pasted conversation history",
-                         "rather than speculative implementation", "no task store, scheduler, dispatcher, index, context-sync service or agent relay",
-                         "cannot observe or limit an external agent's tool calls",
-                         "Agent Go release, Priority order, claims, one-writer scope and protected-operation gates are unchanged"):
-            self.assertIn(required, rule)
-        self.assertNotIn("token limit", rule.lower())                       # no artificial token budget
+        """One owner per fact, linked not copied; the policy is one short read; heavy files are read only when needed."""
+        for required in ("never copy a fact into a second place", "Read only when needed", "never read the whole file", "so an agent reads it once"):
+            self.assertIn(required, POLICY)
+        self.assertNotIn("token limit", POLICY.lower())
 
     def test_the_schema_lets_a_fresh_agent_recover_scope_from_one_key_without_chat_history(self):
         for needed in ("key", "product_origin", "acceptance_criteria", "execution", "authorization", "owner", "component", "fix_version"):

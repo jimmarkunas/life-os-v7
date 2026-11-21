@@ -1,7 +1,7 @@
 """LIFE-727: a ticket whose blockers are Done and whose epic Jim approved moves To Do to Agent Go by itself, in rank order.
 
 Jim approves an epic's list once with the label `auto-release` on the epic. A child is released only when ALL hold: its status is To Do; it was never in Agent Go before (so a ticket Jim moved back is never moved again);
-it has a Done-when line; every Blocks predecessor is Done; it does not carry `needs-jim`; at most RELEASE_LIMIT per run, in Jira rank order. Each release is one short comment naming the epic. Dry run unless live.
+it has a Done-when line; every Blocks predecessor is Done; its Jim must do first section exists and every item in it is checked (Jim, Nov 21 2026); it does not carry `needs-jim`; at most RELEASE_LIMIT per run, in Jira rank order. Each release is one short comment naming the epic. Dry run unless live.
 Counts only in the output (ticket keys stay in Jira)."""
 import os
 import re
@@ -42,6 +42,54 @@ def has_done_when(description):
     return False
 
 
+JIM_FIRST = re.compile(r"^[#*\s]*jim must do first\b", re.I)                   # Jim, Nov 21 2026 (the older "Needs before development" list stays a warning)
+OPEN_ITEM = re.compile(r"^\s*(?:[-*•]\s*)?\[ \]")
+DONE_ITEM = re.compile(r"^\s*(?:[-*•]\s*)?\[[xX]\]")
+NONE_ITEM = re.compile(r"^\s*(?:[-*•]\s*)?\(?none\)?\.?\s*$", re.I)
+NEXT_HEADING = re.compile(r"^[#*\s]*(outcome|done when|not in scope|steps|who verifies|scope|targets|before|statement|context|decisions|build|never|stop)\b", re.I)
+
+
+def checkbox_lines(node, out=None):
+    """The plain text lines of a Jira body, with a Jira task item written as `[x]` (done) or `[ ]` (open) so checklists read the same in ADF and in markdown."""
+    out = [] if out is None else out
+    if isinstance(node, str):
+        out.extend(node.splitlines())
+    elif isinstance(node, list):
+        for child in node:
+            checkbox_lines(child, out)
+    elif isinstance(node, dict):
+        kind = node.get("type")
+        if kind == "taskItem":
+            mark = "[x] " if (node.get("attrs") or {}).get("state") == "DONE" else "[ ] "
+            out.append(mark + text_of(node.get("content") or []).replace("\n", " ").strip())
+        elif kind in ("paragraph", "heading") or (kind == "listItem" and not any(isinstance(c, dict) and c.get("type") in ("bulletList", "orderedList", "taskList") for c in node.get("content") or [])):
+            out.append(text_of(node.get("content") or []).replace("\n", " ").strip())
+        else:
+            checkbox_lines(node.get("content") or [], out)
+    return out
+
+
+def jim_first(description):
+    """-> (present, open items). The Jim must do first section: every line after its heading up to the next heading. An item is open when it is an unchecked box or a plain line
+    that is not `None`; a checked box is done. A missing section is (False, [])."""
+    rows = checkbox_lines(description)
+    for index, line in enumerate(rows):
+        if not JIM_FIRST.match(line):
+            continue
+        inline = line.split(":", 1)[1].strip() if ":" in line else ""
+        items = ([inline] if inline else []) + [r for r in rows[index + 1:index + 40]]
+        out = []
+        for item in items:
+            item = item.replace("\\", "").strip().strip("*").strip()             # markdown bold and escaped boxes read like plain text
+            if NEXT_HEADING.match(item) and not (OPEN_ITEM.match(item) or DONE_ITEM.match(item)):
+                break
+            if not item.strip() or DONE_ITEM.match(item) or NONE_ITEM.match(item):
+                continue
+            out.append(item.strip())
+        return True, out
+    return False, []
+
+
 def blockers_done(links):
     """Every issue that blocks this one (the inward side of a Blocks link) is Done."""
     for link in links or []:
@@ -69,6 +117,11 @@ def eligible(issue):
         return "no_done_when"
     if not blockers_done(fields.get("issuelinks")):
         return "blocked"
+    present, open_items = jim_first(fields.get("description"))
+    if not present:
+        return "no_jim_first"
+    if open_items:
+        return "jim_first_open"
     return None
 
 
