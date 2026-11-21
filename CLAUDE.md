@@ -4,4 +4,4 @@ Read [AGENTS.md](AGENTS.md) and follow it. The [Development Policy](docs/life-os
 
 - **Times for Jim:** US Central Time only, labeled CT, 12-hour (for example 4:34 PM CT). Never show UTC; convert log, API and cron times first.
 - **Runs:** Jim starts each session. Once started, finish the ticket, then pull the next `Agent Go` ticket yourself until the queue is empty. Never add `/loop`, timers, watchers or scheduled Claude invocations.
-- **Approvals:** moving a ticket to Agent Go is the approval. Merge on same-head green CI and move the ticket to Done yourself; Jim reopens it or files a Bug. Anything only Jim can do belongs in the ticket's **Jim must do first** section before release.
+- **Approvals:** moving a ticket to Agent Go is the approval. Merge on same-head green CI, prove every Done when line on the delivered outcome (Agent UAT), then move the ticket to Done yourself (or to Human UAT when the ticket names Jim as verifier); Jim reopens it or files a Bug. Anything only Jim can do belongs in the ticket's **Jim must do first** section before release.

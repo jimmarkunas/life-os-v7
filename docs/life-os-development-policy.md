@@ -8,7 +8,7 @@
 2. The Production Contract, for schedules and runtime.
 3. This policy, for how development works.
 4. Notion LIFE OS Platform canon, for architecture.
-5. Jira `LIFE` for product priority, delivery status, blockers and order. The `LOS` project is retired and archived (Jim, November 21, 2026): history only.
+5. Jira `LIFE` for product priority, delivery status, blockers and order. The `LOS` project is retired (Jim, November 21, 2026): history only. The Jira plan cannot archive it, so it stays in place, read-only by practice.
 6. The owning Notion product requirement.
 7. The code, for what exists.
 
@@ -36,8 +36,10 @@ Link to the owner; never copy a fact into a second place.
 - **Build:** one branch `life/LIFE-nnn/<slug>`, one PR titled `[LIFE-nnn] <outcome>`. Tickets that touch the same files may share one PR. Make the smallest change that delivers the outcome and remove the path it replaces.
 - **Test:** `sh tools/preflight.sh` before every push. CI is the full gate: fix once if red.
 - **Land:** auto-merge on same-head green CI. No reviewer is required unless GitHub branch protection or the ticket says so; never invent an approval.
-- **Close:** `python -m lifeos.jira.closeout KEY... --pr N --sha S --run R --proof KEY=text --live` posts the one record (PR, SHA, CI run, proof) and moves the ticket to Done. Merged on green with local proof is Done. Jim reopens it or files a Bug.
-- **Human UAT:** only with label `needs-uat` (new user-facing UI or a judgment call). Stop at Human UAT with exact click-through steps for Jim.
+- **Agent UAT:** after merge, the agent checks the delivered outcome where it lives (the natural run's receipt, the page, the read-back) against every Done when line. A merged PR on green is not Done by itself.
+- **Close:** `python -m lifeos.jira.closeout KEY... --pr N --sha S --run R --proof KEY=text --live` posts the one record (PR, SHA, CI run, outcome proof per Done when line) and moves the ticket to Done. Jim reopens it or files a Bug.
+- **Human UAT:** with label `needs-uat`, or when Who verifies names Jim on a live or protected outcome. Stop at Human UAT (transition 19) with exact click-through steps for Jim; Jim's check moves it to Done.
+- **Schedules:** adding, moving or changing the cadence of any scheduled workload is a Production Contract change: it is in the ticket's Jim must do first, per workload, before release.
 - **Scope:** never change or drop a ticket's stated scope, or swap a stated fix for a workaround, without asking Jim. Optional improvements become a proposal, not extra work.
 
 ## 4. Jim must do first (the release rule)
@@ -97,6 +99,8 @@ The field list is [`docs/jira/issue-schema.v1.json`](jira/issue-schema.v1.json).
 - **Not in scope.**
 - **Who verifies,** by reading or clicking, never by running commands.
 
+**Reuse, never redo:** a ticket that replaces cancelled work reads the old tickets' comments, PRs and data first. Its Before section cites what already exists (merged PRs, live data, stored identifiers, Done evidence) and its steps resume from there.
+
 Keep the description under 4,000 characters. One execution ticket is one PR. Reference secrets by identifier only. Link the Notion requirement instead of copying it. The description beats comments: a scope change is an edit to the description, never a comment alone.
 
 **UI first:** for new or changed UI, show the smallest working preview in the real surface (with synthetic data where live data is not authorized), and get Jim's acceptance before expanding the backend. For changed results in an existing UI, show current versus intended output. A UI-free change names its downstream outcome and proof.
@@ -112,7 +116,7 @@ Keep the description under 4,000 characters. One execution ticket is one PR. Ref
 - Each Epic links one Notion spec page for long rationale. Tickets stay self-contained: an agent builds from the ticket alone.
 - **Claude writes, ChatGPT reviews:** Claude writes the Epic's children; ChatGPT reviews each against this section and §4 before the Epic moves to Ready.
 - Every child carries exactly one readiness label:
-  - `ready`: no unchecked Jim must do first item and its dependencies are done;
+  - `ready`: no unchecked Jim must do first item and no open scoping. Order between tickets is carried only by `Blocks` links: a `ready` ticket with an unfinished predecessor waits (Pick skips it; the release check refuses it);
   - `needs-prep`: engineering scoping is still open, with no decision needed from Jim;
   - `needs-jim`: blocked on a credential, host, spend or decision from Jim.
 
@@ -144,7 +148,8 @@ A request that breaks these rules stops with `ARCHITECTURAL DRIFT DETECTED — N
 
 ## 9. Proof and tests
 
-- **Prove deterministically:** a fixture or clock test, or a replay of one recorded real input. A live, scheduled or benchmark run never gates Done; a fault it shows is filed as a Bug under LIFE-615.
+- **Prove deterministically:** a fixture or clock test, or a replay of one recorded real input. Code is never accepted on a live run alone.
+- **Natural runs, one rule:** a natural run gates Done only when the ticket's Done when names it (a cutover, a soak or a measurement ticket); then that many runs are part of the proof. Otherwise a live, scheduled or benchmark run never gates Done, and a fault it shows is filed as a Bug under LIFE-615.
 - **Fix on the real failing shape.** A defect seen live is fixed and proved on that input, or on a fixture that keeps its structure, through the real path. For Jobs qualification: real job description → requirement rows → non-null Fit → correct disposition.
 - **Runtime-facing changes:** prove the production entry point calls the change, its inputs are loaded, the happy path completes, missing input fails closed, writes go through the existing owner, and read-back is wired.
 - **Jobs increments:** test toward the future source count before the pattern is copied (build at one, test toward many).
@@ -155,8 +160,8 @@ A request that breaks these rules stops with `ARCHITECTURAL DRIFT DETECTED — N
 
 ## 10. Exceptions in force
 
-- **V7 modernization consolidation exception (Jim, November 18, 2026; LIFE-834, Epic LIFE-791).** Only for the V7 modernization work, consolidation follows the exact versioned migration map. Terminal (Done or Cancelled) children stay attached to their own historical Epics (LIFE-791, LIFE-763, LIFE-686) and keep their keys, status, history and evidence: none is reopened, deleted, reparented or rewritten. No reparenting, Epic cancellation or pilot mutation happens until Jim approves the exact issue and field change list in chat.
-- **Freezes and STOP gates lifted (Jim, November 21, 2026, 12:17 AM CT).** The LIFE-686 freeze and all STOP blocks are removed; LIFE-791 children follow §3. LIFE-793 is a LIFE-686 exception, with Mac Claude Code as its exclusive writer. The seven-day LIFE-686 and LIFE-793 records are measurements, not gates.
+- **V7 modernization consolidation exception (Jim, November 18, 2026; LIFE-834), applied as the fresh start (Jim, November 21, 2026, chat).** Jim approved cancelling every open ticket under the old initiatives (Epics LIFE-686, LIFE-763, LIFE-791, LIFE-809 and their open children) and the open LIFETMP holds. Their replacements are Epics LIFE-846 (Governance), LIFE-847 (Modernization) and LIFE-848 (Unified AI). Done and Cancelled tickets keep their parents, keys, status, history and evidence: none is reopened, deleted, reparented or rewritten, and the new tickets reuse their evidence (§7, Reuse). Any further reparenting or Epic cancellation needs Jim's yes on the exact list in chat.
+- **Freezes and STOP gates lifted (Jim, November 21, 2026, 12:17 AM CT).** The LIFE-686 freeze and all STOP blocks are removed. Mac Claude Code is the exclusive writer of `hourly.yml` while LIFE-854 or LIFE-856 is open.
 
 ## 11. Read only when needed
 

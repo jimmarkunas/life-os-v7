@@ -40,6 +40,13 @@ class OneFilePolicy(unittest.TestCase):
         self.assertIn("GO, GO WITH CHANGES or NO-GO", POLICY)
         self.assertIn("Every build ticket is blocked by its Epic's verdict.", POLICY)
 
+    def test_done_needs_outcome_proof_and_one_natural_run_rule(self):
+        self.assertIn("A merged PR on green is not Done by itself.", POLICY)
+        self.assertIn("**Natural runs, one rule:**", POLICY)
+        self.assertNotIn("Merged on green with local proof is Done", POLICY)
+        self.assertIn("is a Production Contract change", POLICY)
+        self.assertIn("**Reuse, never redo:**", POLICY)
+
     def test_the_modernization_exceptions_jim_kept_are_in_force(self):
         self.assertIn("V7 modernization consolidation exception", POLICY)
         self.assertIn("Freezes and STOP gates lifted", POLICY)
