@@ -25,6 +25,7 @@ class OneFilePolicy(unittest.TestCase):
         self.assertIn("does not move to Agent Go", POLICY)
         self.assertIn("Notion wireframe", POLICY)
         self.assertIn("Jim starts every agent run", POLICY)
+        self.assertIn("agents use `ssh opc@lifeos-edge-01`; `sudo -u ubuntu` reads are read-only", POLICY)   # Jim, Nov 21 2026: Oracle access
         self.assertIn("inside one, it may watch its own CI and runs", POLICY)   # Jim, Nov 21 2026: in-session watching allowed
         self.assertIn('project = LIFE AND status = "Agent Go" AND issuetype != Epic ORDER BY priority DESC, Rank ASC', POLICY)
 

@@ -1,22 +1,22 @@
 # LIFE OS V7: agent rules (one page)
 
-The [Development Policy](docs/life-os-development-policy.md) is the whole rule set (one file). Code map and commands: [docs/agent-reference.md](docs/agent-reference.md).
+The [Development Policy](docs/life-os-development-policy.md) is the whole rule set. Code map and commands: [docs/agent-reference.md](docs/agent-reference.md).
 
 ## The job
 
 Jim starts every run; no scheduler, timer or loop starts an agent. Once started, run end to end:
 
-1. **Pick** the ticket Jim named, else the top `Agent Go` leaf by Priority, then Rank. Skip In Progress tickets (another session has them) and tickets with an unfinished `Blocks` predecessor. Agent Go is Jim's approval for everything in the ticket: never re-ask.
+1. **Pick** the ticket Jim named, else the top `Agent Go` leaf by Priority, then Rank. Skip In Progress tickets and tickets with an unfinished `Blocks` predecessor. Agent Go is Jim's approval for everything in the ticket: never re-ask.
 2. **Claim:** transition 14 to In Progress. No comment.
 3. **Build** on `life/LIFE-nnn/<slug>`, one PR `[LIFE-nnn] <outcome>`. Never change a ticket's scope without asking Jim.
 4. **Test:** `sh tools/preflight.sh` before every push; CI is the full gate.
 5. **Land:** auto-merge on green. A merge is not Done.
-6. **Agent UAT:** prove every Done when line on the delivered outcome (receipt, page, read-back).
+6. **Agent UAT:** prove every Done when line on the delivered outcome.
 7. **Close:** `python -m lifeos.jira.closeout KEY... --pr N --sha S --run R --proof KEY=text --live`, or stop at Human UAT (transition 19) when the ticket has `needs-uat` or names Jim as verifier. A `research` or `verdict` ticket has no PR: post the findings comment, then transition 15. Then the next ticket (`NO_ELIGIBLE_WORK` if none).
 
 ## Jim must do first
 
-Every ticket lists what only Jim can do (secret, permission, sign-in, spend, host step, decision, Notion wireframe). An unchecked item or a missing section keeps it out of Agent Go. A need found mid-run: add it to that section, label `needs-jim`, one comment, keep building the rest.
+Every ticket lists what only Jim can do (secret, permission, sign-in, spend, host step, decision, Notion wireframe). An unchecked item or a missing section keeps it out of Agent Go. A need found mid-run: add it to that section, label `needs-jim`, one comment, keep building.
 
 Epics go `Scoping → Ready → In Progress → Done`; every child carries one label (`ready`, `needs-prep` or `needs-jim`) and only `ready` tickets move to Agent Go. Feasibility first: `research` children (read-only) and the Epic's `verdict` ticket (bounded scoping writes, policy §7) run in Scoping; build tickets wait for the verdict. Claude writes tickets; ChatGPT reviews them. LOS is retired.
 
@@ -26,6 +26,7 @@ Epics go `Scoping → Ready → In Progress → Done`; every child carries one l
 - Public repo: no personal data or secrets, ever (docs/PRIVACY.md).
 - Jira connector: `mcp__claude_ai_Atlassian_MCP__*` only; Rovo connectors are retired. Pass `fields` on reads.
 - Times for Jim: Central Time, 12-hour, labeled CT.
+- Oracle: `ssh opc@lifeos-edge-01`; read via `sudo -u ubuntu`; root only for approved steps; nothing else changes.
 - Routing: [docs/index.json](docs/index.json).
 
 <!-- concord:start -->

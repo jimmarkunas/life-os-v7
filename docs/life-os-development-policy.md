@@ -8,7 +8,7 @@
 2. The Production Contract, for schedules and runtime.
 3. This policy, for how development works.
 4. Notion LIFE OS Platform canon, for architecture.
-5. Jira `LIFE` for product priority, delivery status, blockers and order. The `LOS` project is retired (Jim, Nov 21, 2026): history only. The Jira plan cannot archive it, so it stays in place, read-only by practice.
+5. Jira `LIFE` for product priority, delivery status, blockers and order. The `LOS` project is retired (Jim, Nov 21, 2026): history only. It stays, read-only.
 6. The owning Notion product requirement.
 7. The code, for what exists.
 
@@ -129,7 +129,7 @@ GitHub Actions in this repository are the only scheduled executor, and the Produ
 - a checkpoint with missed- and duplicate-run recovery;
 - complete, degraded and incomplete receipts, and a rollback.
 
-V7 must run with ChatGPT unavailable (D54). OpenClaw and Hermes run on the Oracle VM; Mac apps are thin clients.
+V7 must run with ChatGPT unavailable (D54). OpenClaw and Hermes run on the Oracle VM; Mac apps are thin clients. **Oracle access:** agents use `ssh opc@lifeos-edge-01`; `sudo -u ubuntu` reads are read-only; root only for a step the ticket approves; nothing else changes.
 
 **Debug in order:** `trigger → runtime started → code ran → source reached → state persisted → read back`.
 - One retry per failure boundary; a second failure stops for diagnosis.
@@ -152,8 +152,8 @@ A request that breaks these rules stops with `ARCHITECTURAL DRIFT DETECTED — N
 
 ## 10. Exceptions in force
 
-- **V7 modernization consolidation exception (Jim, Nov 18, 2026; LIFE-834), applied as the fresh start (Jim, Nov 21, 2026, chat).** Jim approved cancelling every open ticket under the old initiatives (Epics LIFE-686, LIFE-763, LIFE-791, LIFE-809 and their open children) and the open LIFETMP holds. Their replacements are Epics LIFE-846 (Governance), LIFE-847 (Modernization) and LIFE-848 (Unified AI). Done and Cancelled tickets keep their parents, keys, status, history and evidence: none is reopened, deleted, reparented or rewritten, and the new tickets reuse their evidence (§7, Reuse). Any further reparenting or Epic cancellation needs Jim's yes on the exact list in chat.
-- **Freezes and STOP gates lifted (Jim, Nov 21, 2026, 12:17 AM CT).** The LIFE-686 freeze and all STOP blocks are removed. Mac Claude Code is the exclusive writer of `hourly.yml` while LIFE-854 or LIFE-856 is open.
+- **V7 modernization consolidation exception (Jim, Nov 18, 2026; LIFE-834), applied as the fresh start (Jim, Nov 21, 2026, chat).** Every open ticket under Epics LIFE-686, LIFE-763, LIFE-791 and LIFE-809, and the open LIFETMP holds, were cancelled. Their replacements are Epics LIFE-846 (Governance), LIFE-847 (Modernization) and LIFE-848 (Unified AI). Done and Cancelled tickets stay untouched (parents, keys, status, history, evidence); new tickets reuse their evidence (§7). Any further reparenting or Epic cancellation needs Jim's yes on the exact list in chat.
+- **Freezes and STOP gates lifted (Jim, Nov 21, 2026, 12:17 AM CT).** All freezes and STOP blocks are removed. Mac Claude Code is the exclusive writer of `hourly.yml` while LIFE-854 or LIFE-856 is open.
 
 ## 11. Read only when needed
 
