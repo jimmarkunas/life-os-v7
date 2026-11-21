@@ -73,7 +73,7 @@ Everything else is pre-approved, including workflow edits and test or registry e
 
 Also never, without Jim:
 - send or delete mail or calendar events;
-- run a metered Notion query (needs a yes per query);
+- run a metered Notion query (needs a yes per query). Reads go in this order: an exact page or data source fetch, a saved view, the repository's own Notion API path (`lifeos` readers through the V7 integration), and only then MCP rows or SQL queries, which count as metered;
 - open a sign-in or account-picker page;
 - delete or rotate a credential (never covered by a blanket yes).
 
@@ -112,7 +112,7 @@ Keep the description under 4,000 characters. One execution ticket is one PR. Ref
 
 **Epic lifecycle (Jim, November 21, 2026):** `Scoping → Ready → In Progress → Done`.
 - A new product outcome starts as a LIFE Epic in Scoping. Children are written only while the Epic is in Scoping.
-- **Feasibility first:** every Epic proves itself before any build ticket runs. Its first children carry the label `research`: read-only checks that write nothing outside Jira comments, with Jim must do first `None`. They may move to Agent Go while the Epic is in Scoping; nothing else may. One verdict ticket per Epic (label `research` too; it edits only Jira tickets), blocked by all of them, posts GO, GO WITH CHANGES or NO-GO, then rewrites the build tickets from the findings before ChatGPT's review. Every build ticket is blocked by its Epic's verdict.
+- **Feasibility first:** every Epic proves itself before any build ticket runs. Its first children carry the label `research`: read-only checks that write nothing but comments on their own ticket, with Jim must do first `None`. One verdict ticket per Epic carries the label `verdict`, is blocked by all of them, and makes bounded scoping writes only: it posts GO, GO WITH CHANGES or NO-GO on the Epic, rewrites the descriptions, labels and Jim must do first of that Epic's own children, and adds a Feasibility section to that Epic's Notion spec. It changes no code, runtime, workflow, credential or other Notion page, never drops or narrows scope, and never moves a ticket's status. Moving research and verdict tickets to Agent Go is Jim's approval of exactly those writes; they may run while the Epic is in Scoping; nothing else may. Every build ticket is blocked by its Epic's verdict.
 - Each Epic links one Notion spec page for long rationale. Tickets stay self-contained: an agent builds from the ticket alone.
 - **Claude writes, ChatGPT reviews:** Claude writes the Epic's children; ChatGPT reviews each against this section and §4 before the Epic moves to Ready.
 - Every child carries exactly one readiness label:

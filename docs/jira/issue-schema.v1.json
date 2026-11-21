@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/jimmarkunas/life-os-v7/blob/main/docs/jira/issue-schema.v1.json",
   "title": "LIFE Jira issue — writing contract v1",
-  "description": "Machine-readable form of the LIFE Jira issue-writing contract in docs/life-os-development-policy.md (section 7). Every ticket carries jim_must_do_first (section 4, the release rule). LIFE workflow statuses include Agent UAT and Human UAT. Agent UAT and evidence are required before Done; Human UAT is conditional on human judgment and requires acceptance evidence when used. Jim's original issue-specific approval, or his human release of the issue into the Agent Go queue, authorizes the assigned agent to implement and open a PR on the approved issue and explicitly approved in-scope subtasks. Independent technical review is optional for routine PRs unless explicitly required by the Jira issue or enforceable GitHub rules. The assigned agent may merge ordinary authorized work after the necessary exact-head checks and proof pass if their GitHub permissions permit it. Never invent native approvals or override branch protections; protected operations and production access retain their separate authority gates. Non-production deployment remains subject to existing environment and agent permissions. Work intake is human-defined with agent/chat assistance; agents resume their own work, then select from the Agent Go queue within their lane by Jira Priority then Rank, and never promote work into Agent Go themselves. Only independent work runs in parallel, and blockers must be Done. Stop after acceptance criteria, required proof/UAT, and no material defect; additional polish requires new approval. Production access/writes, secret access, spending, and permission changes remain separately controlled. New product outcomes originate in an approved LOS Idea; maintenance, bugs and in-scope children of an approved Epic cite that parent instead. A checked acceptance item requires cited evidence, and a checklist tick is never Done. This schema is a read-back and test contract, not a native Jira validator. Secrets appear only as identifiers. Component and Fix Version follow the policy's OS-aligned scheme: fix_version is '<component> X.Y.Z'.",
+  "description": "Machine-readable form of the LIFE Jira issue-writing contract in docs/life-os-development-policy.md (section 7). Every ticket carries jim_must_do_first (section 4, the release rule). LIFE workflow statuses include Agent UAT and Human UAT. Agent UAT (the delivered outcome checked against every Done when line after merge) and evidence are required before Done; a merged PR on green is not Done by itself. Human UAT applies with label needs-uat or when Who verifies names Jim on a live or protected outcome, and requires his acceptance. Jim's original issue-specific approval, or his human release of the issue into the Agent Go queue, authorizes the assigned agent to implement and open a PR on the approved issue and explicitly approved in-scope subtasks. Independent technical review is optional for routine PRs unless explicitly required by the Jira issue or enforceable GitHub rules. The assigned agent may merge ordinary authorized work after the necessary exact-head checks and proof pass if their GitHub permissions permit it. Never invent native approvals or override branch protections; protected operations and production access retain their separate authority gates. Non-production deployment remains subject to existing environment and agent permissions. Work intake is human-defined with agent/chat assistance; agents resume their own work, then select from the Agent Go queue within their lane by Jira Priority then Rank, and never promote work into Agent Go themselves. Only independent work runs in parallel, and blockers must be Done. Stop after acceptance criteria, required proof/UAT, and no material defect; additional polish requires new approval. Production access/writes, secret access, spending, and permission changes remain separately controlled. New product outcomes originate as a LIFE Epic in Scoping with a linked Notion spec (LOS is retired, Jim, November 21, 2026); maintenance, bugs and in-scope children of an Epic cite that parent instead. A checked acceptance item requires cited evidence, and a checklist tick is never Done. This schema is a read-back and test contract, not a native Jira validator. Secrets appear only as identifiers. Component and Fix Version follow the policy's OS-aligned scheme: fix_version is '<component> X.Y.Z'.",
   "type": "object",
   "additionalProperties": false,
   "required": ["key", "issue_type", "statement", "product_origin", "acceptance_criteria", "jim_must_do_first", "component", "fix_version", "owner", "execution", "ui", "fast_proof", "human_uat", "authorization"],
@@ -33,16 +33,16 @@
       ]
     },
     "product_origin": {
-      "description": "Traceable origin. A new product outcome comes from an LOS Idea approved for delivery; maintenance, bugs, scoped technical tasks and in-scope children of an approved finite Epic cite that approved parent instead. Not enforced natively by Jira.",
+      "description": "Traceable origin. A new product outcome comes from a LIFE Epic created in Scoping with a linked Notion spec (LOS is retired; historical LOS keys stay only in Done tickets); maintenance, bugs, scoped technical tasks and in-scope children of an approved finite Epic cite that approved parent instead. Not enforced natively by Jira.",
       "oneOf": [
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["kind", "los_key", "approved_for_delivery", "approval_source"],
+          "required": ["kind", "epic_key", "spec_url", "approval_source"],
           "properties": {
-            "kind": {"const": "los_idea"},
-            "los_key": {"type": "string", "pattern": "^LOS-[0-9]+$"},
-            "approved_for_delivery": {"const": true},
+            "kind": {"const": "scoping_epic"},
+            "epic_key": {"type": "string", "pattern": "^LIFE-[0-9]+$"},
+            "spec_url": {"type": "string", "minLength": 1},
             "approval_source": {"type": "string", "minLength": 1}
           }
         },
@@ -244,12 +244,12 @@
   },
   "$defs": {
     "discovery_capture": {
-      "description": "One saved discovery tranche in the owning LOS Description after an owner reply. Used for read-back tests; Jira does not enforce it.",
+      "description": "One saved discovery tranche in the owning Epic's Notion spec or comments after an owner reply. Used for read-back tests; Jira does not enforce it.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["los_key", "tranche", "owner_reply_date", "entries", "readback"],
+      "required": ["epic_key", "tranche", "owner_reply_date", "entries", "readback"],
       "properties": {
-        "los_key": {"type": "string", "pattern": "^LOS-[0-9]+$"},
+        "epic_key": {"type": "string", "pattern": "^LIFE-[0-9]+$"},
         "tranche": {"type": "integer", "minimum": 1},
         "owner_reply_date": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
         "entries": {
@@ -301,7 +301,7 @@
         {"given": "the policy PR is merged", "when": "an agent writes a LIFE Story", "then": "the Story has a user story and separate Given/When/Then acceptance criteria"},
         {"given": "the policy PR is merged", "when": "an agent opens a code PR for a LIFE issue", "then": "the branch and PR title follow the contract's formats"}
       ],
-      "product_origin": {"kind": "los_idea", "los_key": "LOS-40", "approved_for_delivery": true, "approval_source": "LOS-40 October 19 approved permanent recurring composability gate"},
+      "product_origin": {"kind": "scoping_epic", "epic_key": "LIFE-846", "spec_url": "https://example.com/notion-spec", "approval_source": "Jim opened the Epic in Scoping, November 21"},
       "notion_requirement": "https://example.com/notion-found-by-title",
       "component": "Platform / Core OS",
       "fix_version": "Platform / Core OS 1.0.0",
