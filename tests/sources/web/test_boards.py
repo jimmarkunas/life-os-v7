@@ -104,9 +104,9 @@ class DeadBoards(unittest.TestCase):
                                 repo, sources, {"BOARDS_BACKFILL": "on"})
                 continue
             listed.append((repo.state["gh-s1"]["failures"], out["dead_ids"]))
-        self.assertEqual([ids for _, ids in listed if ids], [["gh-s1"]] * len([1 for f, _ in listed if f >= limits.BOARDS_DEAD_AFTER]))
+        self.assertEqual([(f, ids) for f, ids in listed if ids], [(limits.BOARDS_DEAD_AFTER, ["gh-s1"])])
         self.assertTrue(all(ids == [] for f, ids in listed if f < limits.BOARDS_DEAD_AFTER))        # not before BOARDS_DEAD_AFTER failures in a row
-        self.assertEqual(sum(1 for _, ids in listed if ids), 3)                                       # failures 5, 6 and 7 of the 7 reads
+        self.assertEqual(sum(1 for _, ids in listed if ids), 1)                                       # LIFE-893: listed on the fifth failure; its retry is then weekly, so the daily passes after it do not read it again
 
     def test_other_failures_and_healthy_boards_are_never_listed(self):
         repo = MemRepo()
