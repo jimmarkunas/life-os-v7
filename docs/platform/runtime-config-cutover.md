@@ -37,7 +37,7 @@ Seeding: the new reader never writes the source. While both sources run, the old
 
 ## Cutover order (every step waits for Jim)
 
-1. LIFE-686 stability window ends, or Jim lifts the freeze for this change.
+1. Jim lifted the LIFE-686 freeze on November 21, 2026; this cutover is released as its own `Agent Go` ticket (LIFE-844).
 2. Create and share the data source (above). Fill it with `runtime_config.export_rows(<accepted map>)`, then edit by hand.
 3. Dry comparison: run `runtime_config.compare(old_page_values, new_source_values)`; `blocking: false` is required. Any difference stops here.
 4. Bitwarden: add `V7_RUNTIME_CONFIG_SOURCE_ID`. Workflow PR: declare it in the reading steps and call `runtime_config.apply` next to `settings.apply` in compare-only mode (apply from the old page, report counts from the new). Natural runs for 24 hours with every name matched.

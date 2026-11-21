@@ -59,7 +59,7 @@ Owner of every row below is Jim: a named account, a scoped credential in the cen
 | Gap found | none for reads; the Jira client also holds write methods, which the source never receives | the existing credential scope is `calendar.events`, which also allows writes at the provider; a read-only scope (`calendar.events.readonly`) credential is needed so no write is possible even by mistake |
 | Deployment | a read stage registered in the stage list and a grant record for the reading principal | same |
 
-**Not yet allowed.** A live stage runs inside the hourly pipeline, so under the LIFE-686 freeze it waits until that epic is Done, or until Jim approves it as a Jim-requested change. No Oracle work is needed for these two reads. Human UAT evidence is the issue's own link for now (its receipt comments live there); richer evidence such as linked pull requests belongs to the Human UAT workflow mapping in LIFE-714.
+**Not yet allowed.** A live stage runs inside the hourly pipeline. Jim lifted the LIFE-686 freeze on November 21, 2026, so a live stage is released through its own `Agent Go` ticket. No Oracle work is needed for these two reads. Human UAT evidence is the issue's own link for now (its receipt comments live there); richer evidence such as linked pull requests belongs to the Human UAT workflow mapping in LIFE-714.
 
 ## G. Todoist and Asana reads (LIFE-709): what exists and what Jim must approve
 
@@ -75,4 +75,4 @@ Owner of every row below is Jim: a named account, a scoped credential in the cen
 | Gap found | no V7 client; Todoist's task listing has no update time, so a change to a task is not a new revision until the real shape is verified | no V7 client; the "which projects are Bytalos programme work" list must come from Jim, since a wrong list could show client work |
 | Shapes | taken from the providers' public API documentation, not a live read | same |
 
-**Not yet allowed.** Same as section F: no live stage in the hourly pipeline until the LIFE-686 freeze ends or Jim approves it as a requested change; no Oracle work is needed for these reads. Todoist completion is a separate later ticket (LIFE-717).
+**Not yet allowed.** Same as section F: a live stage in the hourly pipeline is released through its own `Agent Go` ticket (LIFE-686 freeze lifted November 21, 2026); no Oracle work is needed for these reads. Todoist completion is a separate later ticket (LIFE-717).
