@@ -25,6 +25,7 @@ class OneFilePolicy(unittest.TestCase):
         self.assertIn("does not move to Agent Go", POLICY)
         self.assertIn("Notion wireframe", POLICY)
         self.assertIn("Jim starts every agent run", POLICY)
+        self.assertIn("inside one, it may watch its own CI and runs", POLICY)   # Jim, Nov 21 2026: in-session watching allowed
         self.assertIn('project = LIFE AND status = "Agent Go" AND issuetype != Epic ORDER BY priority DESC, Rank ASC', POLICY)
 
     def test_los_is_retired_and_epics_carry_the_lifecycle(self):
