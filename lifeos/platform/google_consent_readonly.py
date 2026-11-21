@@ -1,7 +1,7 @@
 """Read-only Google sign-in helper (LIFE-423, LOS-86 T13): prints a sign-in link for Jim, catches the reply on loopback, writes the credential only to a pipe.
 
 Like `google_consent`, whose PKCE link builder and loopback catcher it reuses (nothing there is changed). The differences:
-* Scopes: the read-only set for ONE service (Gmail readonly, Drive readonly metadata, Calendar readonly); any other scope, or a reply that grants more, is refused in code.
+* Scopes: the read-only set for ONE service (Gmail readonly, Drive readonly (LIFE-875: file contents, matching the Oracle Drive grant), Calendar readonly); any other scope, or a reply that grants more, is refused in code.
 * A link only for an account on the allowlist (account, tenant, service, label or folder, size cap); an unlisted account gets no link and nothing is stored.
 * A refusal returns a named, machine-readable code and writes nothing to stdout or the credential pipe. The receipt shows the scopes granted, never a secret.
 Nothing here opens a browser, calls Google by itself or reads a credential store; tests use a fake token endpoint. Run on Jim's Mac (his choice, Nov 9 2026):
@@ -17,7 +17,7 @@ import urllib.request
 from lifeos.platform import google_consent as base
 
 READONLY_SCOPES = {"gmail": ("https://www.googleapis.com/auth/gmail.readonly",),
-                   "drive": ("https://www.googleapis.com/auth/drive.metadata.readonly",),
+                   "drive": ("https://www.googleapis.com/auth/drive.readonly",),
                    "calendar": ("https://www.googleapis.com/auth/calendar.readonly",)}
 ENTRY_FIELDS = ("account", "tenant", "service", "label", "size_cap")
 
