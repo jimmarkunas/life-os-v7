@@ -16,7 +16,7 @@ from pathlib import Path
 VERSION = 1
 LANES = ("lane-career-v7", "lane-edge-comm")
 DESCRIPTION_LIMIT = 4000                      # characters: a longer LIFE description is a warn
-KEY = re.compile(r"(LIFE|LOS)-\d+")
+KEY = re.compile(r"LIFE-\d+")
 SIZE_LIMIT = 15 * 1024                        # bytes: the one-file policy and the boot files stay one read each
 GWT = ("given", "when", "then")
 ISSUE_FIELDS = {"key", "labels", "origin", "blockers", "authorization", "permissions", "acceptance"}   # the lane label is the owner; owner, host and source are optional
@@ -43,13 +43,10 @@ def findings(issue):
         out.append(refuse("key_invalid", "key", str(issue.get("key", ""))))
     origin = issue.get("origin")
     if "origin" in issue:
-        los = origin.get("los") if isinstance(origin, dict) else None
         parent = origin.get("parent") if isinstance(origin, dict) else None
-        if not (los or parent):
-            out.append(refuse("origin_missing", "origin"))
-        elif los and not (re.fullmatch(r"LOS-\d+", str(los)) and origin.get("approved") is True):
-            out.append(refuse("origin_unapproved", "origin", str(los)))
-        elif parent and not los and not (re.fullmatch(r"LIFE-\d+", str(parent)) and origin.get("approved") is True):
+        if not parent:
+            out.append(refuse("origin_missing", "origin"))                 # LIFE-849: LOS is retired; the origin is a LIFE parent epic, nothing else
+        elif not (re.fullmatch(r"LIFE-\d+", str(parent)) and origin.get("approved") is True):
             out.append(refuse("origin_unapproved", "origin", str(parent)))
     if "owner" in issue and not text(issue["owner"]):
         out.append(refuse("owner_missing", "owner"))
@@ -95,8 +92,6 @@ def findings(issue):
         req = issue["requirement"]
         if not (isinstance(req, dict) and isinstance(req.get("pages"), list)):
             out.append(refuse("requirement_unreadable", "requirement"))
-        elif req.get("los") and not req["pages"]:
-            out.append(refuse("requirement_page_missing", "requirement", str(req["los"])))
     if "acceptance" in issue:
         items = issue["acceptance"]
         if not (isinstance(items, list) and items):

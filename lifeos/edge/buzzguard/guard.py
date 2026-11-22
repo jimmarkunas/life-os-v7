@@ -13,7 +13,7 @@ import sys
 import time
 import unicodedata
 
-JIRA_PROJECTS = {"LIFE", "LOS"}
+JIRA_PROJECTS = {"LIFE"}                                            # LIFE-849: LOS is retired; a Jira write names LIFE or is refused
 GITHUB_REPOS = {"jimmarkunas/life-os-v7", "jimmarkunas/bot-studio"}
 READ_ROOTS = (".buzz", "Developer/LIFEOS/life-os-v7")
 READ_EXT = {".md", ".txt", ".py", ".sh", ".json", ".yaml", ".yml", ".toml", ".html", ".css", ".js", ".ts", ".vue", ".rs", ".csv", ".rst", ".manifest"}

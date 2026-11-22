@@ -1,6 +1,6 @@
 # Concord Room for Orca — pilot v0.1.0
 
-**Product:** [LOS-95](https://jimmarkunas.atlassian.net/browse/LOS-95) · **Delivery:** [LIFE-411](https://jimmarkunas.atlassian.net/browse/LIFE-411)
+**Product:** [historical LOS-95](https://jimmarkunas.atlassian.net/browse/LOS-95) · **Delivery:** [LIFE-411](https://jimmarkunas.atlassian.net/browse/LIFE-411)
 
 A **live view of real messages** inside Orca, with a composer (v0.2.0) for sending prompts to agents that are present. It uses the existing Concord CLI and local work-state, not a duplicate backend, mock feed, second database, or other chat platform. Claude Code and Codex send and answer messages via Concord MCP in their Orca agent sessions. The panel displays their identities, content, receipt states, message IDs, and reply relationships. Plugin capability is limited to reading its own settings; its Node worker executes only a fixed, shell-free, read-only Concord CLI command.
 

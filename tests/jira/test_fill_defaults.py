@@ -121,11 +121,11 @@ class Rules(unittest.TestCase):
         self.assertEqual((fields["components"], fields["fixVersions"]), ([{"name": "Platform / Core OS"}], [{"name": "Platform / Core OS 1.0.0"}]))
         self.assertIn("[sweep] set parent, Component, Fix Version by rule", [x[2] for x in fake.log if x[0] == "COMMENT"])
 
-    def test_labels_and_titles_pick_the_epic_the_newest_open_one_wins_and_done_ones_are_skipped(self):
+    def test_titles_and_labels_pick_the_epic_and_the_retired_los_label_no_longer_routes(self):
         fake = FakeJira(world(), [ticket("LIFE-903", labels=["los-118"]), ticket("LIFE-904", labels=["action-inbox"]), ticket("LIFE-905", summary="Stability 3/7 clean days")])
         fd.run(0, True, jira=fake)
         got = {k: fake.items[k]["fields"]["parent"]["key"] for k in ("LIFE-903", "LIFE-904", "LIFE-905")}
-        self.assertEqual(got, {"LIFE-903": "LIFE-590", "LIFE-904": "LIFE-696", "LIFE-905": "LIFE-686"})
+        self.assertEqual(got, {"LIFE-903": "LIFE-700", "LIFE-904": "LIFE-696", "LIFE-905": "LIFE-686"})        # LIFE-849: los-118 no longer reaches LIFE-590; it falls to the container epic
 
     def test_no_match_goes_to_the_container_epic_and_it_is_created_once_when_absent(self):
         fake = FakeJira(world(), [ticket("LIFE-906")])

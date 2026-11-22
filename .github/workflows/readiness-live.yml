@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       key:
-        description: "LIFE or LOS issue key to check (read-only); the negative control LIFE-999999 always runs too"
+        description: "LIFE issue key to check (read-only); the negative control LIFE-999999 always runs too"
         type: string
         default: "LIFE-317"
 permissions:
@@ -63,7 +63,7 @@ jobs:
           KEY: ${{ inputs.key }}
         run: |
           set +e
-          if ! printf '%s' "$KEY" | grep -E -q '^(LIFE|LOS)-[0-9]{1,6}$'; then echo "REFUSED: the key must look like LIFE-123"; exit 1; fi
+          if ! printf '%s' "$KEY" | grep -E -q '^LIFE-[0-9]{1,6}$'; then echo "REFUSED: the key must look like LIFE-123"; exit 1; fi
           for name in JIRA_BASE_URL JIRA_EMAIL JIRA_API_TOKEN; do eval "v=\${$name}"; [ -n "$v" ] || { echo "REFUSED: $name is empty (not loaded)"; exit 1; }; done
           python -m lifeos.sources.devtools.readiness issue-key "$KEY" > "$RUNNER_TEMP/a.out" 2>&1; A=$?
           python -m lifeos.sources.devtools.readiness issue-key LIFE-999999 > "$RUNNER_TEMP/b.out" 2>&1; B=$?
