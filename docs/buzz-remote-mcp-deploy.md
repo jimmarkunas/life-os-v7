@@ -30,6 +30,7 @@ Status (read on Oracle, Nov 21, 2026, LIFE-874 comment 13601): **the service is 
 ```
 sudo useradd --system --home /nonexistent --shell /usr/sbin/nologin buzz-mcp
 sudo install -d -o root -g root /opt/lifeos-buzz-mcp/releases/<sha> /etc/lifeos-buzz-mcp
+# LIFE-865 (protected, NOT done): mcp.py now calls lifeos/platform/mcp_access.py; until the release also carries lifeos/platform/{mcp_access,authorization_gate,access_policy,capability_catalog}.py and mcp_access.json + capability_catalog.json, every tool call is refused (governance_unavailable). Adding them needs Jim's approval; the seeded grants (reads only) must be reviewed first.
 # copy lifeos/__init__.py and lifeos/buzz/*.py (nothing else; LIFE-631: the old-name shims lifeos/buzz_*.py are gone, the unit says `-m lifeos.buzz.mcp`; tests/buzz/test_remote_mcp.py::Startup runs the unit's ExecStart from exactly this layout) into releases/<sha>/lifeos/ ; ln -sfn releases/<sha> /opt/lifeos-buzz-mcp/current
 # /etc/lifeos-buzz-mcp/config.env (non-secret): BUZZ_MCP_PUBLIC_URL, BUZZ_OAUTH_ISSUER, BUZZ_OAUTH_JWKS_URL, BUZZ_OAUTH_CLIENTS, BUZZ_OAUTH_AS_URL (only if the IdP publishes its metadata away from the issuer, as Oracle IAM does), BUZZ_OAUTH_USERS (<sub>:<claude|chatgpt>:life-os+bytalos,...; the owner-approved users), BUZZ_URL_LIFE_OS, BUZZ_URL_BYTALOS, BUZZ_WRITE_CHANNELS=
 # the four key files are encrypted straight from stdin (no plaintext file on the VM): see "Onboarding the four identities", step 4

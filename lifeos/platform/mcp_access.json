@@ -1,0 +1,186 @@
+{
+ "version": 1,
+ "note": "LIFE-865: who may call the two LIFE OS MCP servers (lifeos/buzz/mcp.py, lifeos.inbox.send_to_jim --mcp). `clients` map one trusted fact (the verified OAuth client, or the OS user of a stdio server) to a client id; a caller-supplied id, header, argument or environment variable is never read. `grants` are authorization_gate.Grant rows seeded only with what each client does today (reads for the two chat clients; one inbox write for Mac Claude Code), each with an expiry; revoke = set `revoked` true. `policy` is the access_policy document they are checked against; its keys are fingerprints of the client ids, not secrets. Credentials are named, never held. Nothing here is live-proven.",
+ "tool_purpose": {
+  "buzz_capabilities": "buzz-read",
+  "buzz_read": "buzz-read",
+  "buzz_publish": "buzz-publish",
+  "send_to_jim": "agent-inbox-write"
+ },
+ "communities": {
+  "life-os": "personal",
+  "bytalos": "bytalos"
+ },
+ "policy": {
+  "version": 1,
+  "default": {},
+  "agents": {
+   "a30dfe04a1f81697c49e0eed5efa07707c6bc5f585074b729882eda33e3af7d0": {
+    "buzz": "write",
+    "notion": "write"
+   },
+   "7d4fa4108e914ff1958854ab529279c84e7063d649f6d1a65e9507af7aa176bc": {
+    "buzz": "write",
+    "notion": "write"
+   },
+   "e3004cee2bee990add283ff8a7e99517a13a3cf51e077b1e239ea8dc7b6356f6": {
+    "buzz": "write",
+    "notion": "write"
+   }
+  }
+ },
+ "clients": [
+  {
+   "id": "claude-chat",
+   "transport": "http",
+   "facts": {
+    "oauth_client": "claude"
+   },
+   "policy_key": "a30dfe04a1f81697c49e0eed5efa07707c6bc5f585074b729882eda33e3af7d0"
+  },
+  {
+   "id": "chatgpt-chat",
+   "transport": "http",
+   "facts": {
+    "oauth_client": "chatgpt"
+   },
+   "policy_key": "7d4fa4108e914ff1958854ab529279c84e7063d649f6d1a65e9507af7aa176bc"
+  },
+  {
+   "id": "claude-code-mac",
+   "transport": "stdio",
+   "facts": {
+    "os_user": "jimmarkunas"
+   },
+   "policy_key": "e3004cee2bee990add283ff8a7e99517a13a3cf51e077b1e239ea8dc7b6356f6"
+  }
+ ],
+ "grants": [
+  {
+   "id": "g-claude-chat-personal-buzz_capabilities",
+   "principal": "claude-chat",
+   "tenant": "personal",
+   "account": "buzz",
+   "tool": "buzz_capabilities",
+   "purpose": "buzz-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "buzz-scoped-member-key",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-claude-chat-personal-buzz_read",
+   "principal": "claude-chat",
+   "tenant": "personal",
+   "account": "buzz",
+   "tool": "buzz_read",
+   "purpose": "buzz-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "buzz-scoped-member-key",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-claude-chat-bytalos-buzz_capabilities",
+   "principal": "claude-chat-bytalos",
+   "tenant": "bytalos",
+   "account": "buzz",
+   "tool": "buzz_capabilities",
+   "purpose": "buzz-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "buzz-scoped-member-key",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-claude-chat-bytalos-buzz_read",
+   "principal": "claude-chat-bytalos",
+   "tenant": "bytalos",
+   "account": "buzz",
+   "tool": "buzz_read",
+   "purpose": "buzz-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "buzz-scoped-member-key",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-chatgpt-chat-personal-buzz_capabilities",
+   "principal": "chatgpt-chat",
+   "tenant": "personal",
+   "account": "buzz",
+   "tool": "buzz_capabilities",
+   "purpose": "buzz-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "buzz-scoped-member-key",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-chatgpt-chat-personal-buzz_read",
+   "principal": "chatgpt-chat",
+   "tenant": "personal",
+   "account": "buzz",
+   "tool": "buzz_read",
+   "purpose": "buzz-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "buzz-scoped-member-key",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-chatgpt-chat-bytalos-buzz_capabilities",
+   "principal": "chatgpt-chat-bytalos",
+   "tenant": "bytalos",
+   "account": "buzz",
+   "tool": "buzz_capabilities",
+   "purpose": "buzz-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "buzz-scoped-member-key",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-chatgpt-chat-bytalos-buzz_read",
+   "principal": "chatgpt-chat-bytalos",
+   "tenant": "bytalos",
+   "account": "buzz",
+   "tool": "buzz_read",
+   "purpose": "buzz-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "buzz-scoped-member-key",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-claude-code-mac-send-to-jim",
+   "principal": "claude-code-mac",
+   "tenant": "personal",
+   "account": "agent-inbox",
+   "tool": "send_to_jim",
+   "purpose": "agent-inbox-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "notion-v7-integration",
+   "expires": "2027-02-22",
+   "revoked": false
+  }
+ ]
+}

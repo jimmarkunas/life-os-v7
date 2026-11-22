@@ -9,6 +9,7 @@ from lifeos.buzz import nip98
 from lifeos.buzz.auth import AuthError, Verifier
 from lifeos.buzz.relay import Relay
 from tests.buzz.test_bridge import CHAN, KEY_A, KEY_B, OTHER, ROOT, URLS, FakeRelay
+from tests.platform.mcp_access_fixture import open_access
 
 BASE, ISS = "https://edge.example.test", "https://idp.example.test"
 CLIENTS = {"cid-one"}
@@ -51,12 +52,13 @@ def token(alg="RS256", kid="k1", sign=True, **over):
 
 
 class Server(unittest.TestCase):
-    def start(self, fake=None, writes=((("life-os", CHAN)),), fetch=None, origins=(), keys=None):
+    def start(self, fake=None, writes=((("life-os", CHAN)),), fetch=None, origins=(), keys=None, access=None):
         self.fake, keys = fake or FakeRelay(), KEYS if keys is None else keys
         self.relays = {i: Relay(URLS, {c: k for (ii, c), k in keys.items() if ii == i}, writes, self.fake) for i in ("claude", "chatgpt") if any(ii == i for ii, _ in keys)}
         self.audit = []
         verifier = Verifier(ISS, BASE + "/mcp", CLIENTS, ISS + "/jwks", USERS, fetch=fetch or (lambda url: JWKS), clock=lambda: NOW)
-        srv = ThreadingHTTPServer(("127.0.0.1", 0), buzz_mcp.handler(self.relays, verifier, BASE, origins, self.audit.append))
+        self.receipts = []
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), buzz_mcp.handler(self.relays, verifier, BASE, origins, self.audit.append, open_access() if access is None else (None if access is False else access), self.receipts.append))     # access=False: the handler loads the repo data itself
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         self.addCleanup(srv.server_close)
         self.addCleanup(srv.shutdown)
@@ -238,6 +240,71 @@ class DualClient(Server):
         [t.start() for t in threads]
         [t.join() for t in threads]
         self.assertEqual((sorted(out), len(self.fake.events)), (["already_delivered"] * 6 + ["sent_not_read_back"] * 2, 2))
+
+
+class Governed(Server):
+    """LIFE-865: every Buzz tool call goes through authorization_gate.execute, through the real HTTP handler; a refusal is before any relay request and carries the gate's fixed reason."""
+    def calls(self):
+        return [c for c in self.fake.calls] if hasattr(self.fake, "calls") else None
+
+    def test_a_granted_read_runs_and_the_receipt_names_client_tenant_and_purpose(self):
+        self.start()
+        tok = token(sub="user-claude")
+        status, out = self.tool(tok, "buzz_read", operation="list_channels", community="life-os")
+        self.assertEqual(status, 200)
+        self.assertTrue(out["ok"])
+        allow, done = self.receipts[-2:]
+        self.assertEqual((allow["outcome"], allow["tenant"], allow["tool"], allow["purpose"], allow["action"]), ("allow", "personal", "buzz_read", "buzz-read", "read"))
+        self.assertEqual(done["outcome"], "ok")
+        self.assertEqual(len(allow["principal_fp"]), 8)
+        self.assertNotIn("claude-chat", json.dumps(self.receipts))                     # fingerprints only
+
+    def refused(self, tok, name, reason, **args):
+        before = len(self.fake.posted) if hasattr(self.fake, "posted") else 0
+        status, out = self.tool(tok, name, **args)
+        self.assertEqual((status, out["error"], out["reason"]), (200, "access_denied", reason))
+        self.assertEqual(self.receipts[-1]["outcome"], "deny")
+        self.assertEqual(self.receipts[-1]["reason"], reason)
+
+    def test_an_ungranted_tool_is_refused_before_the_relay(self):
+        from tests.platform.mcp_access_fixture import build
+        self.start(access=build())                                                    # the seed: reads only, no publish grant
+        self.refused(token(sub="user-claude", **WR), "buzz_publish", "catalog_unknown_capability", operation="message", community="life-os", arguments={"channel": CHAN, "text": "hi", "idempotency_key": "k9"})
+
+    def test_revoked_expired_wrong_tenant_and_wrong_purpose_grants_are_refused_with_their_reason(self):
+        from tests.platform.mcp_access_fixture import build
+        def edit(**patch):
+            return build(grants=lambda seeded: [{**g, **patch} if g["principal"] == "claude-chat" and g["tool"] == "buzz_read" else g for g in seeded])
+        tok = token(sub="user-claude")
+        self.start(access=edit(revoked=True))
+        self.refused(tok, "buzz_read", "grant_revoked", operation="list_channels", community="life-os")
+        self.start(access=edit(expires="2026-11-01"))
+        self.refused(tok, "buzz_read", "grant_expired", operation="list_channels", community="life-os")
+        self.start(access=edit(purpose="something-else"))
+        self.refused(tok, "buzz_read", "purpose_mismatch", operation="list_channels", community="life-os")
+        self.start(access=build(grants=lambda seeded: [g for g in seeded if g["tenant"] != "bytalos"]))
+        self.refused(tok, "buzz_read", "no_grant", operation="list_channels", community="bytalos")                 # a Bytalos call with only Personal grants
+
+    def test_a_spoofed_identity_is_ignored_and_an_unregistered_client_is_refused(self):
+        from tests.platform.mcp_access_fixture import build
+        self.start()
+        tok = token(sub="user-chatgpt")
+        body = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "buzz_read", "arguments": {"operation": "list_channels", "community": "life-os", "principal": "claude-chat", "client": "claude"}, "principal": "claude-chat"}}
+        status, raw, _ = self.req("POST", "/mcp", body, tok, X_Client="claude", X_Principal="claude-chat", X_Lifeos_Client_Id="claude-chat")
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(json.loads(raw)["result"]["content"][0]["text"])["error"], "invalid_argument")       # an unknown argument never reaches identity at all
+        self.tool(tok, "buzz_read", operation="list_channels", community="life-os")
+        self.assertEqual(self.receipts[-2]["principal_fp"], __import__("lifeos.platform.authorization_gate", fromlist=["x"]).fingerprint("chatgpt-chat"))
+        self.start(access=build(clients=[c for c in __import__("tests.platform.mcp_access_fixture", fromlist=["x"]).DOC["clients"] if c["id"] != "chatgpt-chat"]))
+        status, out = self.tool(tok, "buzz_read", operation="list_channels", community="life-os")
+        self.assertEqual((status, out["error"], out["reason"]), (200, "access_denied", "identity_unknown"))
+
+    def test_without_readable_access_data_every_tool_call_is_refused(self):
+        self.start(access=False)
+        from unittest import mock
+        with mock.patch("lifeos.platform.mcp_access.load", side_effect=OSError("data file missing")):                 # a release without the platform files, or unreadable data
+            status, out = self.tool(token(sub="user-claude"), "buzz_read", operation="list_channels", community="life-os")
+        self.assertEqual((status, out["error"]), (200, "governance_unavailable"))
 
 
 class FourIdentities(Server):
