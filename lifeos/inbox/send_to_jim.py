@@ -10,6 +10,7 @@ import sys
 
 from lifeos.inbox import agent_inbox
 from lifeos.inbox.model import InboxError
+from lifeos.platform import mcp_access
 from lifeos.platform.notion_client import Client, NotionError
 
 FIELDS = {"from": "who is writing (an agent id or a person's name)", "subject": "what it is, one line (160 characters at most)", "urgency": "Now, Today, This week or FYI (default Today)",
@@ -51,8 +52,32 @@ def _reply(request_id, result=None, error=None):
     sys.stdout.flush()
 
 
-def serve(lines=None, environ=None, client=None):
-    """A minimal stdio MCP server: initialize, tools/list, tools/call (send_to_jim). One JSON-RPC message per line."""
+TENANT = {"Personal": "personal", "Bytalos": "bytalos"}
+
+
+def governed(arguments, environ, client, access, facts, audit, now):
+    """LIFE-865: send_to_jim through authorization_gate.execute. The client is the OS user of this process (never an argument), the tenant is the item's workspace; -> deliver's dict, or {"ok": false, "reason": a fixed word}."""
+    try:
+        access = access or mcp_access.load()
+        who = mcp_access.identify(access, "stdio", facts or mcp_access.stdio_facts())
+        tenant = TENANT.get(arguments.get("workspace") or "Personal")
+        if tenant is None:
+            raise mcp_access.AccessError("unknown_tenant")
+        out = mcp_access.call(access, who, tenant, "send_to_jim", "write", "agent-inbox", "notion", lambda: deliver(arguments, environ=environ, client=client, now=now), audit, now)
+    except mcp_access.AccessError as error:
+        return {"ok": False, "reason": str(error)}
+    except Exception:                                                                       # noqa: BLE001  an unwritable receipt or any failure: no effect, a fixed word
+        return {"ok": False, "reason": "governance_unavailable"}
+    return out.result if out.executed and isinstance(out.result, dict) else {"ok": False, "reason": "denied_" + out.reason if not out.executed else out.reason}
+
+
+def _receipt(record):
+    sys.stderr.write(json.dumps(record, separators=(",", ":")) + "\n")                       # stderr: stdout carries the protocol; the receipt is redacted by the gate
+    sys.stderr.flush()
+
+
+def serve(lines=None, environ=None, client=None, access=None, facts=None, audit=_receipt, now=None):
+    """A minimal stdio MCP server: initialize, tools/list, tools/call (send_to_jim). One JSON-RPC message per line. Every tool call goes through the authorization gate (LIFE-865)."""
     for line in lines if lines is not None else sys.stdin:
         line = line.strip()
         if not line:
@@ -70,7 +95,7 @@ def serve(lines=None, environ=None, client=None):
         elif method == "tools/list":
             _reply(request_id, {"tools": [TOOL]})
         elif method == "tools/call" and (message.get("params") or {}).get("name") == "send_to_jim":
-            result = deliver((message["params"].get("arguments") or {}), environ=environ, client=client)
+            result = governed((message["params"].get("arguments") or {}), environ, client, access, facts, audit, now)
             _reply(request_id, {"content": [{"type": "text", "text": json.dumps(result)}], "isError": not result["ok"]})
         else:
             _reply(request_id, error={"code": -32601, "message": "method_not_found"})
