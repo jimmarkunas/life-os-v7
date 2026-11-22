@@ -10,6 +10,8 @@ import unittest
 from datetime import datetime
 from pathlib import Path
 
+from contextlib import contextmanager
+
 from lifeos.jobs import alerts as jobs_alerts
 from lifeos.sources.web import lister, run
 from tests.sources.web.test_web import MemRepo, fixed
@@ -76,6 +78,115 @@ class SaveLost(unittest.TestCase):
         import pymysql
         with self.assertRaises(pymysql.err.OperationalError):
             run.run(10, True, NOW, fixed({"s1": GOOD}), repo, boards("s1"))
+
+
+REAL_PORT = os.environ.get("LIFEOS_TEST_MARIADB_PORT")                                       # LIFE-901: set only by a person running a throwaway local MariaDB; CI skips these
+
+
+@unittest.skipUnless(REAL_PORT, "no throwaway local MariaDB (set LIFEOS_TEST_MARIADB_PORT and LIFEOS_TEST_MARIADB_PASSWORD_FILE)")
+class RealDriverSessionLoss(unittest.TestCase):
+    """LIFE-901: the held connection of PR #1365 and the `save_lost` rule of PR #1368 on a REAL MariaDB through the real pymysql driver and the repository's own connection wrapper: a real server-side
+    KILL of the held session between two boards. The host is fixed to 127.0.0.1 and the database is created and dropped here, so this can never reach a production database."""
+
+    def setUp(self):
+        import pymysql
+        from lifeos.platform import db as platform_db
+        self.pymysql, self.platform_db = pymysql, platform_db
+        self.password = Path(os.environ["LIFEOS_TEST_MARIADB_PASSWORD_FILE"]).read_text().strip()
+        self.name = f"t_{os.getpid()}_{id(self) % 100000}"
+        self.admin = self.connect(None)
+        self.admin.cursor().execute(f"CREATE DATABASE {self.name}")
+        self.live_ids = []
+
+    def tearDown(self):
+        self.admin.cursor().execute(f"DROP DATABASE IF EXISTS {self.name}")
+        self.admin.close()
+
+    def connect(self, database):
+        return self.pymysql.connect(host="127.0.0.1", port=int(REAL_PORT), user="root", password=self.password, database=database, charset="utf8mb4", autocommit=True,
+                                    connect_timeout=5, read_timeout=10, write_timeout=10)
+
+    def store(self):
+        @contextmanager
+        def connect():
+            raw = self.connect(self.name)
+            try:
+                yield self.platform_db._Connection(raw)                                          # the repository's own wrapper (reconnect for reads), over a real socket
+            finally:
+                raw.close()
+        return connect
+
+    def repo(self, kill_after=None, pause=0.0):
+        outer = self
+
+        class Repo(run.SqlRepo):
+            def commit(self, o, failures, lane="US Remote"):
+                try:
+                    super().commit(o, failures, lane)
+                finally:
+                    outer.live_ids.append((o.source["id"], self._live[1].thread_id() if self._live else None))        # the real server session the board's save ended on (None: it was dropped)
+                if o.source["id"] == kill_after and self._live:
+                    victim = self._live[1].thread_id()
+                    outer.admin.cursor().execute(f"KILL {victim}")                              # a real server-side session loss, between two boards
+                    if pause:
+                        time.sleep(pause)
+        return Repo()
+
+    def seed(self, skip=False):
+        """Three boards already read once and now due (a board never read belongs to the backfill, not to this pass). `skip`: each also holds a quiet streak and an ETag, so the pass asks with a validator
+        and a 304 answer makes its save ONE cheap UPDATE, the common skip-path write that PR #1368 protects."""
+        from lifeos.jobs import store
+        with self.store()() as connection:
+            store.ensure_schema(connection)
+            for name in ("s1", "s2", "s3"):
+                connection.cursor().execute("INSERT INTO v7_sources (source_id, kind, due_at, last_status, unchanged_runs, etag) VALUES (%s,'greenhouse','2026-09-30 00:00:00','SEED',%s,%s)",
+                                            (name, 1 if skip else 0, "e1" if skip else None))
+
+    def run_pass(self, repo, skip=False):
+        from unittest import mock
+        from lifeos.sources.web import boards as board_pass
+        self.seed(skip)
+        listing = lister.Listing(lister.UNCHANGED) if skip else GOOD
+        seen = []
+        real_lost = run.db_lost
+
+        def spy(error):
+            seen.append(f"{type(error).__name__}{error.args[:1]}")
+            return real_lost(error)
+        with mock.patch.object(run.store, "connect", self.store()), mock.patch.object(run, "db_lost", spy):
+            counts = board_pass.run(600, True, NOW, fixed({n: listing for n in ("s1", "s2", "s3")}), repo, boards("s1", "s2", "s3"), {})
+        return counts, seen
+
+    def rows(self):
+        cursor = self.admin.cursor()
+        cursor.execute(f"SELECT source_id, last_status FROM {self.name}.v7_sources ORDER BY source_id")
+        return dict(cursor.fetchall())
+
+    def test_a_normal_pass_holds_one_real_session_for_every_board_and_writes_the_receipt(self):
+        counts, seen = self.run_pass(self.repo())
+        self.assertEqual((counts["complete"], counts.get("save_lost", 0), seen), (3, 0, []))
+        self.assertEqual(len({session for _, session in self.live_ids}), 1)                       # every board used the one real session the pass opened
+        self.assertEqual(set(self.rows().values()), {"COMPLETE"})
+        self.assertEqual(counts["timing"]["boards"], 3)
+        self.assertIn("receipt", counts)
+
+    def test_a_session_killed_between_boards_fails_only_the_next_board_and_the_pass_goes_on(self):
+        counts, seen = self.run_pass(self.repo(kill_after="s1"), skip=True)
+        print(f"\nreal-driver evidence: server-side KILL of the held session after board s1; driver error {seen}; sessions used {self.live_ids}")
+        self.assertEqual((counts["complete"], counts["failed"], counts["failed_why"], counts["save_lost"]), (2, 1, {"save_lost": 1}, 1))
+        self.assertEqual(len(seen), 1)
+        self.assertTrue(seen[0].startswith("OperationalError"))                                     # the real driver's lost-session error, code 2006 or 2013
+        self.assertEqual(self.rows(), {"s1": "COMPLETE", "s2": "SEED", "s3": "COMPLETE"})            # s2 was not advanced (still due, read again next window); s3 committed over a fresh session
+        by = dict(self.live_ids)
+        self.assertIsNone(by["s2"])                                                                 # the lost session was dropped, never reused
+        self.assertNotIn(by["s3"], (None, by["s1"]))                                                # s3 committed over a different, fresh real session
+        self.assertEqual(counts["timing"]["boards"], 3)                                             # the receipt and its timing are still written
+        self.assertIn("receipt", counts)
+
+    def test_a_session_idle_more_than_three_seconds_is_pinged_and_reconnected_without_losing_a_board(self):
+        counts, seen = self.run_pass(self.repo(kill_after="s1", pause=run.SqlRepo.HELD_IDLE_SECONDS + 0.7), skip=True)
+        self.assertEqual((counts["complete"], counts.get("save_lost", 0), seen), (3, 0, []))      # the 3 s ping found the dead session and reopened it before the write
+        self.assertEqual(set(self.rows().values()), {"COMPLETE"})
 
 
 class SaveLimit(unittest.TestCase):
