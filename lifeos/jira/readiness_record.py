@@ -135,6 +135,19 @@ def fetch(key, client=None):
     return client.get(f"/rest/api/3/issue/{key}", {"fields": FIELDS})
 
 
+def epic_bundle(key, client=None):
+    """LIFE-851: one Epic's status, comments and children's update times for `readiness epic-review`; read-only GETs, any gap raises INCOMPLETE:<field>."""
+    from lifeos.jira.search import search
+    client = client or Jira.from_env()
+    status = (((client.get(f"/rest/api/3/issue/{key}", {"fields": "status"}) or {}).get("fields") or {}).get("status") or {}).get("name")
+    got = client.get(f"/rest/api/3/issue/{key}/comment", {"maxResults": 100, "orderBy": "created"}) or {}
+    comments = got.get("comments")
+    if not status or not isinstance(comments, list) or (got.get("total") or len(comments)) > len(comments):
+        raise ValueError("INCOMPLETE:comments" if status else "INCOMPLETE:status")
+    return {"key": key, "status": status, "comments": [{"body": c.get("body"), "created": c.get("created")} for c in comments],
+            "children": [{"key": i.get("key"), "updated": (i.get("fields") or {}).get("updated")} for i in search(client, f"parent = {key}", "updated")]}
+
+
 def from_mcp(envelope, key):
     """LIFE-363 (REQ-6): unwrap the unmodified result of the Atlassian MCP getJiraIssue (issues.nodes, exactly one node) into the `{key, fields}` shape `normalize` reads.
     ValueError codes: INCOMPLETE:<field> (shape or a FIELDS entry missing), KEY_MISMATCH (the node is not `key`). `normalize` is unchanged."""
@@ -161,4 +174,4 @@ def used(raw):
     return {"key": raw["key"], "status": (f.get("status") or {}).get("name") or "unknown", "updated": f.get("updated") or "unknown", "blockers": ",".join(blockers) or "none"}
 
 
-__all__ = ["normalize", "fetch", "from_mcp", "used", "JiraError"]
+__all__ = ["normalize", "fetch", "epic_bundle", "from_mcp", "used", "JiraError"]

@@ -1,11 +1,12 @@
-"""Offline readiness validator: is a LIFE issue ready to start (LIFE-225, delivery flow v3).
+"""Offline readiness validator: is a LIFE issue ready to start (LIFE-225).
 
-Versioned, deterministic, stdlib only, no network, no state. Refuses (exit 2): an invalid key, no Done-when line, an open `Blocks` predecessor, an unchecked Jim must do first item, or a release-gate reason (LIFE-850). Anything else prints `warn v1 <code> <field>` on stderr and exits 0 (`ready v1`). Unreadable input refuses (exit 2).
-Usage: python -m lifeos.sources.devtools.readiness issue FILE | issue-key KEY | issue-json FILE | issue-mcp FILE KEY | open-gaps | open-gaps-mcp FILE | repo [ROOT]   (FILE is JSON)
-  issue      a normalized LIFE issue record; issue-key a LIVE issue read from Jira by key (read-only GET, JIRA_* settings); issue-json a saved REST v3 issue
-  issue-mcp  the unmodified Atlassian MCP getJiraIssue result saved to FILE (no Jira credential; prints SOURCE mcp-read; a file older than 15 minutes is a warn)
-  open-gaps  LIFE-850: a report of open issues missing parent, Component, Fix Version or readiness label (-mcp: a saved search)
-  repo       the global source index still points at real files with an owner and an authority, inside the size limit"""
+Refuses (exit 2): an invalid key, no Done-when line, an open `Blocks` predecessor, an unchecked Jim must do first item, or a release-gate reason (LIFE-850). Anything else prints `warn v1 <code> <field>` on stderr and exits 0 (`ready v1`). Unreadable input refuses (exit 2).
+Usage: python -m lifeos.sources.devtools.readiness issue FILE | issue-key KEY | issue-json FILE | issue-mcp FILE KEY | open-gaps | open-gaps-mcp FILE | epic-review FILE | epic-review-key KEY | repo [ROOT]   (FILE is JSON)
+  issue-key  a LIVE issue by key (read-only GET, JIRA_* settings); issue-json a saved REST v3 issue; issue a normalized record
+  issue-mcp  the unmodified Atlassian MCP getJiraIssue result in FILE (no credential; older than 15 minutes warns)
+  open-gaps  LIFE-850: open issues missing parent, Component, Fix Version or readiness label (-mcp: a saved search)
+  epic-review  LIFE-851: a Ready Epic needs a current `ChatGPT review: pass` comment (FILE: saved comments and children)
+  repo       the global source index points at real files with an owner and authority, inside the size limit"""
 # LIFE-225 (ARCH-04), simplified by delivery flow v3 (Jim, Nov 9 2026). A Done-when line is a Given/When/Then row with any id or none, or a bullet under "Done when".
 import json
 import re
@@ -31,7 +32,7 @@ def text(value):
 
 
 HARD = {"issue_unreadable", "key_invalid", "blockers_unreadable", "blocked_by_open", "gwt_missing", "jim_first_open",
-        "no_readiness_label", "two_readiness_labels", "not_ready_label", "epic_scoping", "epic_status_unread"}      # LIFE-850: the release gate's reasons are hard here too          # the only refusals; field_absent refuses only for the three inputs below
+        "no_readiness_label", "two_readiness_labels", "not_ready_label", "epic_scoping", "epic_status_unread", "epic_unreviewed"}      # LIFE-850: the release gate's reasons are hard here too; LIFE-851: so is an unreviewed Ready Epic          # the only refusals; field_absent refuses only for the three inputs below
 HARD_FIELDS = {"key", "blockers", "acceptance"}
 
 
@@ -188,6 +189,44 @@ def mcp_issue(path, key):
         return [], [], f"QUEUE_NOT_READY — {code}", shown
 
 
+REVIEW = re.compile(r"^[#*\s]*ChatGPT review:\s*(pass|changes)\b", re.I)
+
+
+def moment(value):
+    """A Jira timestamp as an aware datetime, or None when it cannot be read (an unreadable comment never counts as a review)."""
+    from datetime import datetime
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def epic_review(bundle):
+    """LIFE-851: -> None, or the reason an Epic in Ready has no current pass: "missing", "failed" (the newest review says changes) or "stale" (a child was edited after the newest pass). Any other Epic status is not judged.
+    bundle: {"key", "status", "comments": [{"body", "created"}], "children": [{"key", "updated"}]}."""
+    if (bundle.get("status") or "") != "Ready":
+        return None
+    from lifeos.jira.readiness_record import lines
+    found = []
+    for c in bundle.get("comments") or []:
+        first = next(iter(lines(c.get("body"))), "")
+        m, at = REVIEW.match(first), moment(c.get("created"))
+        if m and at:
+            found.append((at, m.group(1).lower()))
+    if not found:
+        return "missing"
+    at, kind = max(found)
+    if kind != "pass":
+        return "failed"
+    edits = [e for e in (moment(c.get("updated")) for c in bundle.get("children") or []) if e]
+    return "stale" if edits and max(edits) > at else None
+
+
+def review_report(bundle):
+    why = epic_review(bundle)
+    return report([refuse("epic_unreviewed", "review", f"{bundle.get('key')} {why}")] if why else [], [])
+
+
 GAPS_JQL = "project = LIFE AND statusCategory != Done AND issuetype != Epic ORDER BY key ASC"
 GAPS_FIELDS = "parent,components,fixVersions,labels"
 
@@ -234,6 +273,20 @@ def run(argv):
             print(gap, file=sys.stderr)
             return 2
         return report(refusals, warnings)
+    if argv[:1] == ["epic-review"] and len(argv) == 2 or argv[:1] == ["epic-review-key"] and len(argv) == 2:
+        try:
+            if argv[0] == "epic-review":
+                bundle = json.loads(Path(argv[1]).read_text())
+            else:
+                from lifeos.jira import readiness_record as rr
+                bundle = rr.epic_bundle(argv[1])
+            if not isinstance(bundle, dict):
+                raise ValueError("INCOMPLETE:bundle")
+        except Exception as exc:                                  # noqa: BLE001  a fixed code only, never a body, URL or value
+            code = str(exc) if str(exc).startswith(("JIRA_", "INCOMPLETE:", "JM_DASH_")) else type(exc).__name__
+            print(f"QUEUE_NOT_READY — {code}", file=sys.stderr)
+            return 2
+        return review_report(bundle)
     if argv[:1] == ["open-gaps"] and len(argv) == 1 or argv[:1] == ["open-gaps-mcp"] and len(argv) == 2:
         try:
             if argv[0] == "open-gaps":
