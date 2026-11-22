@@ -477,6 +477,15 @@ class Window(unittest.TestCase):
         self.assertEqual((r["window"], r["mode"], r["late_reason"], r["cap"]), ("1:00 AM CT", "window", "", limits.BOARDS_PER_RUN))
         self.assertTrue(r["started"].endswith("CT") and r["finished"].endswith("CT"))
 
+    def test_the_counts_say_where_the_time_went_reading_waiting_and_saving(self):
+        got = boards.run(5, True, NOW, quiet, self.waiting((9, 7, 5, 3, 1)), SEED, self.ENV)
+        t = got["timing"]
+        self.assertEqual(t["boards"], 5)
+        for key in ("wall_s", "waiting_for_reads_s", "saving_s"):
+            self.assertGreaterEqual(t[key], 0)
+        self.assertEqual(len(t["read_s_p50_p95"]), 2)
+        self.assertEqual(len(t["save_s_p50_p95"]), 2)
+
     def test_a_window_reads_at_most_the_window_cap_and_a_catch_up_the_larger_one_oldest_due_first(self):
         many = [{**SEED[0], "id": f"gh-m{i:04d}", "slug": f"m{i}"} for i in range(3000)]
         repo = MemRepo()

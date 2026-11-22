@@ -281,6 +281,15 @@ def save_bounded(commit, seconds, stuck=None):
     return True, took
 
 
+def timing(rows, waited, wall):
+    """LIFE-854: where a pass spent its time, in seconds: the loop's wall time, the part it sat waiting for a read, the part saving, and the middle and slow end (95th percentile) of one board's read and save."""
+    def spread(values):
+        values = sorted(values)
+        return [round(values[len(values) // 2], 2), round(values[min(len(values) - 1, int(len(values) * 0.95))], 2)]
+    return {"boards": len(rows), "wall_s": round(wall), "waiting_for_reads_s": round(waited), "saving_s": round(sum(r[3] for r in rows)),
+            "read_s_p50_p95": spread([r[2] for r in rows]), "save_s_p50_p95": spread([r[3] for r in rows])}
+
+
 def summary_markdown(lane, rows, limit=10):
     """LIFE-616: the per-board table for the job summary: the slowest boards and every failed one (public registry ids, result codes and seconds only)."""
     shown = sorted(rows, key=lambda r: -(r[2] + r[3]))[:limit]
@@ -351,7 +360,7 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
     if select:
         counts["unread"] = unread                                               # D217: boards never read (before this run)
         counts["due_total"], counts["oldest_due_hours"] = len(everyone), overdue_hours(everyone[0], states, now) if everyone else 0.0     # LIFE-854: the backlog at the start
-    attempted = 0
+    attempted, waited, began = 0, 0.0, time.monotonic()                        # LIFE-854: `waited` = seconds the loop sat waiting for a board's read, the rest of the wall time is saving
     asked = [{**s, "if_etag": states[s["id"]].get("etag"), "if_modified": states[s["id"]].get("last_modified")}
              if skip_allowed(states.get(s["id"])) else s for s in due]          # D216: validators go out only when a skip is allowed
     batch_hot = getattr(repo, "hot_ids", None)                                 # LIFE-893: a board skipped as unchanged is hot or quiet by the same rule as a full read, decided by one batched query
@@ -392,7 +401,9 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
                 counts["stopped_at_deadline"] = True
                 break
             waiting = source["id"]                                                # LIFE-567: a stage timeout names the board whose answer it was waiting for
+            asking = time.monotonic()
             listing = next(listings)
+            waited += time.monotonic() - asking
             attempted += 1
             listed = None
             raw = diff.frontier({j["id"]: diff.material_hash(j) for j in listing.jobs}) if listing.status == lister.COMPLETE else None   # D216: the WHOLE board, before the screen
@@ -458,6 +469,8 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
     if select:
         left = everyone[attempted:]                                               # LIFE-854: boards due and not read this pass (over the cap or past the deadline); the next pass reads them first
         counts["deferred"], counts["oldest_deferred_hours"] = len(left), overdue_hours(left[0], states, now) if left else 0.0
+    if select and rows:
+        counts["timing"] = timing(rows, waited, time.monotonic() - began)
     counts["slowest"] = [[r[0], r[2], r[3]] for r in sorted(rows, key=lambda r: -(r[2] + r[3]))[:10]]       # LIFE-616: the ten slowest boards, public registry ids with read and save seconds
     path = os.environ.get("GITHUB_STEP_SUMMARY")
     if path and rows:
