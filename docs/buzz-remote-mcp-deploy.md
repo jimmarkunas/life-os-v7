@@ -30,7 +30,7 @@ Status (read on Oracle, Nov 21, 2026, LIFE-874 comment 13601): **the service is 
 ```
 sudo useradd --system --home /nonexistent --shell /usr/sbin/nologin buzz-mcp
 sudo install -d -o root -g root /opt/lifeos-buzz-mcp/releases/<sha> /etc/lifeos-buzz-mcp
-# LIFE-865 (protected, NOT done): mcp.py now calls lifeos/platform/mcp_access.py; until the release also carries lifeos/platform/{mcp_access,authorization_gate,access_policy,capability_catalog}.py and mcp_access.json + capability_catalog.json, every tool call is refused (governance_unavailable). Adding them needs Jim's approval; the seeded grants (reads only) must be reviewed first.
+# LIFE-865 (protected, NOT done): mcp.py now calls lifeos/platform/mcp_access.py; use the exact procedure in "Governed release (LIFE-865)" below, after Jim's approval. Until the release carries the platform files every tool call is refused (governance_unavailable).
 # copy lifeos/__init__.py and lifeos/buzz/*.py (nothing else; LIFE-631: the old-name shims lifeos/buzz_*.py are gone, the unit says `-m lifeos.buzz.mcp`; tests/buzz/test_remote_mcp.py::Startup runs the unit's ExecStart from exactly this layout) into releases/<sha>/lifeos/ ; ln -sfn releases/<sha> /opt/lifeos-buzz-mcp/current
 # /etc/lifeos-buzz-mcp/config.env (non-secret): BUZZ_MCP_PUBLIC_URL, BUZZ_OAUTH_ISSUER, BUZZ_OAUTH_JWKS_URL, BUZZ_OAUTH_CLIENTS, BUZZ_OAUTH_AS_URL (only if the IdP publishes its metadata away from the issuer, as Oracle IAM does), BUZZ_OAUTH_USERS (<sub>:<claude|chatgpt>:life-os+bytalos,...; the owner-approved users), BUZZ_URL_LIFE_OS, BUZZ_URL_BYTALOS, BUZZ_WRITE_CHANNELS=
 # the four key files are encrypted straight from stdin (no plaintext file on the VM): see "Onboarding the four identities", step 4
@@ -106,3 +106,31 @@ Three tools are the permanent public contract: `buzz_capabilities` (read-only), 
 - **Live acceptance is separate from CI:** after an approved deploy, authenticated `tools/list` must show eight tools with the pinned fingerprints, then ChatGPT is refreshed once and must discover and call `buzz_capabilities`, `buzz_read` and `buzz_publish`; Claude Chat repeats it. Server tests never prove client discovery.
 
 Known limits: one process only (the write lock is in-process); the relay's read-after-write consistency is unverified; a new IdP client registration changes the `client_id`, so `BUZZ_OAUTH_CLIENTS` must be updated to match.
+
+## Governed release (LIFE-865): the exact protected procedure (prepared, NOT run)
+
+Same service, unit, user, port and Funnel endpoint: only the release directory changes. Needs Jim's explicit approval of the release SHA and the final grant list (`docs/platform/mcp-grants-proposed.md`). `$FULL` is the merged commit, `$SHA` its first 12 characters.
+
+```
+# 1. On the Mac: build the package from the merged commit and record hashes
+git -C ~/Developer/LIFEOS/life-os-v7 archive $FULL lifeos/__init__.py lifeos/buzz/__init__.py lifeos/buzz/auth.py lifeos/buzz/mcp.py lifeos/buzz/nip98.py lifeos/buzz/relay.py \
+  lifeos/platform/__init__.py lifeos/platform/mcp_access.py lifeos/platform/authorization_gate.py lifeos/platform/access_policy.py lifeos/platform/capability_catalog.py \
+  lifeos/platform/mcp_access.json lifeos/platform/capability_catalog.json | gzip > /tmp/governed-$SHA.tgz && shasum -a 256 /tmp/governed-$SHA.tgz
+scp /tmp/governed-$SHA.tgz opc@lifeos-edge-01:/tmp/
+# 2. On Oracle (ssh opc@lifeos-edge-01), root install into a NEW directory; the running release is untouched
+REL=/opt/lifeos-buzz-mcp/releases/$SHA
+sudo install -d -o root -g root -m 0755 $REL && sudo tar -xzf /tmp/governed-$SHA.tgz -C $REL --no-same-owner
+sudo chown -R root:root $REL && sudo find $REL -type d -exec chmod 755 {} + && sudo find $REL -type f -exec chmod 644 {} +
+( cd $REL && sudo find . -type f | sort | xargs sudo sha256sum ) > /tmp/governed-$SHA.sha256     # compare with the Mac's git hashes before going on
+# 3. Dry load as the service user, no restart: imports, data, and one allowed plus one refused gate decision on the real data
+sudo -u buzz-mcp env PYTHONPATH=$REL python3 -s -B -c "import lifeos.buzz.mcp; from lifeos.platform import mcp_access as m, authorization_gate as g; a=m.load(); print('clients',len(a.clients),'grants',len(a.grants))"
+# 4. Switch and restart (the only interruption)
+sudo ln -sfn releases/$SHA /opt/lifeos-buzz-mcp/current && sudo systemctl restart lifeos-buzz-mcp
+# 5. Verify
+systemctl is-active lifeos-buzz-mcp; curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8787/mcp -d '{}'     # active, 401
+```
+
+Expected interruption: the stateless Python service restarts in a few seconds (`Restart=on-failure`, `RestartSec=5` applies only to a crash); a request in flight during the restart fails once and the chat clients retry on their next call.
+
+**Rollback (verified the same way):** `sudo ln -sfn releases/a02c890fcbd4 /opt/lifeos-buzz-mcp/current && sudo systemctl restart lifeos-buzz-mcp`, then `systemctl is-active`, the 401 check, and one `buzz_capabilities` call from a chat client. Rolling back removes the gate (the pre-LIFE-865 behavior returns). The new release directory stays for inspection; remove it only with Jim's yes.
+

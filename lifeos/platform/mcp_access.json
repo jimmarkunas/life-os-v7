@@ -1,6 +1,6 @@
 {
  "version": 1,
- "note": "LIFE-865: who may call the two LIFE OS MCP servers (lifeos/buzz/mcp.py, lifeos.inbox.send_to_jim --mcp). `clients` map one trusted fact (the verified OAuth client, or the OS user of a stdio server) to a client id; a caller-supplied id, header, argument or environment variable is never read. `grants` are authorization_gate.Grant rows seeded only with what each client does today (reads for the two chat clients; one inbox write for Mac Claude Code), each with an expiry; revoke = set `revoked` true. `policy` is the access_policy document they are checked against; its keys are fingerprints of the client ids, not secrets. Credentials are named, never held. Nothing here is live-proven.",
+ "note": "LIFE-865: who may call the two LIFE OS MCP servers (lifeos/buzz/mcp.py, lifeos.inbox.send_to_jim --mcp). `clients` map one trusted fact (the verified OAuth client, or the OS user of a stdio server) to a client id; a caller-supplied id, header, argument or environment variable is never read. `grants` are authorization_gate.Grant rows seeded only with what each client does today (reads for the two chat clients; no `send_to_jim` grant, because no client has that MCP server configured), each with an expiry; revoke = set `revoked` true. `policy` is the access_policy document they are checked against; its keys are fingerprints of the client ids, not secrets. Credentials are named, never held. Nothing here is live-proven.",
  "tool_purpose": {
   "buzz_capabilities": "buzz-read",
   "buzz_read": "buzz-read",
@@ -165,20 +165,6 @@
     "read"
    ],
    "credential_ref": "buzz-scoped-member-key",
-   "expires": "2027-02-22",
-   "revoked": false
-  },
-  {
-   "id": "g-claude-code-mac-send-to-jim",
-   "principal": "claude-code-mac",
-   "tenant": "personal",
-   "account": "agent-inbox",
-   "tool": "send_to_jim",
-   "purpose": "agent-inbox-write",
-   "actions": [
-    "write"
-   ],
-   "credential_ref": "notion-v7-integration",
    "expires": "2027-02-22",
    "revoked": false
   }
