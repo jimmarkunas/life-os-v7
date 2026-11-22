@@ -154,22 +154,50 @@ def _row(issue, **extra):
 
 
 def week(jira, project, today):
-    """-> {open, done, jql} for one project: open work in an open sprint or due by Sunday (overdue included), and what was finished since Monday; each a list of {key, summary, status, due}."""
+    """Read this week's commitments and completions.
+
+    MEJ explicitly separates open sprint commitments from work due outside that
+    sprint. Sub-tasks remain visible through their parent Task in Jira rather
+    than inflating Matt's weekly commitment count. JFM retains its previously
+    approved query/summary contract (LIFE-914).
+    """
     sunday = today + timedelta(days=6 - today.weekday())
     monday = today - timedelta(days=today.weekday())
-    base = f"project = {project} AND issuetype != Epic AND statusCategory != Done AND "
     tail = " ORDER BY duedate ASC, key ASC"
+    if project == "MEJ":
+        base = f"project = {project} AND issuetype != Epic AND issuetype != Sub-task AND statusCategory != Done AND "
+        clause = "(sprint in openSprints())"
+        try:
+            active = search(jira, base + clause + tail, WEEK_FIELDS)
+        except JiraError as error:
+            if not str(error).endswith("_400"):
+                raise
+            # A board without sprints has no active sprint; retain an explicitly
+            # distinguishable in-progress fallback rather than fabricate one.
+            clause = '(statusCategory = "In Progress")'
+            active = search(jira, base + clause + tail, WEEK_FIELDS)
+        due_clause = f'(duedate <= "{sunday}")'
+        due = search(jira, base + due_clause + tail, WEEK_FIELDS)
+        active_keys = {i["key"] for i in active}
+        outside = [i for i in due if i["key"] not in active_keys]
+        done = search(jira, f'project = {project} AND issuetype != Epic AND issuetype != Sub-task AND statusCategory = Done AND statusCategoryChangedDate >= "{monday}" ORDER BY key ASC', WEEK_FIELDS)
+        return {"open": [_row(i) for i in active], "outside": [_row(i) for i in outside],
+                "done": [_row(i) for i in done], "jql": base + clause,
+                "outside_jql": base + due_clause}
+
+    # Preserve the existing Jim/JFM behavior until JFM's separate product
+    # requirement and approval changes; this delivery targets MEJ only.
+    base = f"project = {project} AND issuetype != Epic AND statusCategory != Done AND "
     clause = f'(sprint in openSprints() OR duedate <= "{sunday}")'
     try:
         found = search(jira, base + clause + tail, WEEK_FIELDS)
     except JiraError as error:
-        if not str(error).endswith("_400"):                # a project without sprints rejects the sprint clause (HTTP 400); any other failure is a real one
+        if not str(error).endswith("_400"):
             raise
         clause = f'(statusCategory = "In Progress" OR duedate <= "{sunday}")'
         found = search(jira, base + clause + tail, WEEK_FIELDS)
     done = search(jira, f'project = {project} AND issuetype != Epic AND statusCategory = Done AND statusCategoryChangedDate >= "{monday}" ORDER BY key ASC', WEEK_FIELDS)
     return {"open": [_row(i) for i in found], "done": [_row(i) for i in done], "jql": base + clause}
-
 
 GOOGLE_FILE = re.compile(r"https://docs\.google\.com/(document|spreadsheets)/d/([A-Za-z0-9_-]{20,})")
 
