@@ -159,6 +159,9 @@ def receipt_markdown(r):
             ("Backlog age at start (hours)", r["backlog_age_hours"]), ("Oldest carried board (hours overdue)", r["oldest_deferred_hours"]),
             ("Freshness ceiling for a hot board (hours)", r["freshness_ceiling_hours"]), ("Provider-limit answers (429)", r["provider_limit_hits"]["total"]),
             ("Late-window reason", r["late_reason"] or "none"), ("Stopped at the soft deadline", "yes" if r.get("stopped_at_deadline") else "no")]
+    if r.get("timing"):
+        t = r["timing"]
+        rows += [("Pass wall / waiting for reads / saving (s)", f"{t['wall_s']} / {t['waiting_for_reads_s']} / {t['saving_s']}"), ("Read s per board (p50, p95)", t["read_s_p50_p95"]), ("Save s per board (p50, p95)", t["save_s_p50_p95"])]
     return "### Employer boards: window receipt (LIFE-854)\n\n| Field | Value |\n|---|---|\n" + "\n".join(f"| {k} | {v} |" for k, v in rows) + "\n"
 
 
@@ -182,6 +185,8 @@ def receipt(counts, environ, started, finished, cap, catchup):
            "carry_forward": {"boards": deferred, "oldest_overdue_hours": oldest, "next_window": boards_window.label(boards_window.next_slot(slot))}}
     if counts.get("stopped_at_deadline"):
         out["stopped_at_deadline"] = True
+    if counts.get("timing"):
+        out["timing"] = counts["timing"]                                                   # LIFE-854: where the time went (wall, waiting for reads, saving, read and save p50/p95)
     return out
 
 

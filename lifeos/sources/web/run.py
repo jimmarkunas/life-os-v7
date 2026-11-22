@@ -14,6 +14,7 @@ from hashlib import sha1
 
 from lifeos.jobs import enrich, intake, quality, store
 from lifeos.platform import limits, read_slots
+from lifeos.platform.db import _lost as db_lost
 from lifeos.sources.web import diff, lister, registry, suppress
 
 DEFAULT_LANE = "US Remote"
@@ -432,13 +433,20 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
     def save(source, outcome, failures, result):
         """-> None when saved (or a dry run), else the failure reason. A save past its limit is that board's failure, never the stage's.
         `save_blocked`: the board never wrote because an earlier board's write was still running past its limit (the same stuck write, not a new one)."""
-        saved, took, before = True, 0.0, list(stuck_saves)
+        saved, took, before, lost = True, 0.0, list(stuck_saves), False
         if live:
-            saved, took = save_bounded(lambda: repo.commit(outcome, failures, lane), save_seconds or SAVE_SECONDS, stuck_saves)
-        reason = None if saved else ("save_blocked" if before and stuck_saves == before else "save_timeout")
+            try:
+                saved, took = save_bounded(lambda: repo.commit(outcome, failures, lane), save_seconds or SAVE_SECONDS, stuck_saves)
+            except Exception as error:                                                   # noqa: BLE001 - only a lost session on the held connection is tolerated; anything else raises as before
+                if not (getattr(repo, "_holding", False) and db_lost(error)):
+                    raise
+                repo.release()                                                           # LIFE-854: the held session dropped between boards; this board is not advanced (read again next window), the pass goes on over a fresh connection
+                saved, lost = False, True
+        reason = None if saved else ("save_lost" if lost else "save_blocked" if before and stuck_saves == before else "save_timeout")
         if reason:
-            counts[reason] += 1
-            getattr(repo, "detach", lambda: None)()                                      # the stuck write keeps its connection
+            counts[reason] = counts.get(reason, 0) + 1
+            if not lost:
+                getattr(repo, "detach", lambda: None)()                                  # the stuck write keeps its connection
         rows.append((source["id"], reason or result, read_seconds.get(source["id"], 0.0), took))
         return reason
 

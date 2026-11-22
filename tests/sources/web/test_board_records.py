@@ -35,6 +35,49 @@ class SlowSave(MemRepo):
         super().commit(o, failures, lane)
 
 
+class LostSession(MemRepo):
+    """A repo on a held connection whose session drops during one board's save (MySQL 2013, as the tunnel does)."""
+    _holding = True
+
+    def __init__(self, drops):
+        super().__init__()
+        self.drops, self.released = drops, 0
+
+    def release(self):
+        self.released += 1
+
+    def commit(self, o, failures, lane="US Remote"):
+        if o.source["id"] == self.drops:
+            import pymysql
+            raise pymysql.err.OperationalError(2013, "Lost connection to MySQL server during query")
+        super().commit(o, failures, lane)
+
+
+class SaveLost(unittest.TestCase):
+    """LIFE-854: with one held connection, a session lost between boards fails only that board (it is not advanced and is read again next window); the pass and its receipt go on."""
+
+    def test_a_lost_session_fails_that_board_drops_the_connection_and_the_pass_goes_on(self):
+        repo = LostSession("s2")
+        got = run.run(10, True, NOW, fixed({n: GOOD for n in ("s1", "s2", "s3")}), repo, boards("s1", "s2", "s3"))
+        self.assertEqual((got["complete"], got["failed"], got["failed_why"], got["save_lost"]), (2, 1, {"save_lost": 1}, 1))
+        self.assertEqual(repo.released, 1)
+        self.assertEqual(sorted(o.source["id"] for o, _ in repo.commits), ["s1", "s3"])
+
+    def test_any_other_write_error_still_stops_the_pass_as_before(self):
+        class Broken(LostSession):
+            def commit(self, o, failures, lane="US Remote"):
+                raise RuntimeError("syntax")
+        with self.assertRaises(RuntimeError):
+            run.run(10, True, NOW, fixed({"s1": GOOD}), Broken("none"), boards("s1"))
+
+    def test_without_a_held_connection_a_lost_session_still_raises_as_before(self):
+        repo = LostSession("s1")
+        repo._holding = False
+        import pymysql
+        with self.assertRaises(pymysql.err.OperationalError):
+            run.run(10, True, NOW, fixed({"s1": GOOD}), repo, boards("s1"))
+
+
 class SaveLimit(unittest.TestCase):
     def test_a_save_that_stalls_fails_that_board_and_is_never_run_beside_the_next_save(self):
         repo = SlowSave("s2")

@@ -568,6 +568,8 @@ class Window(unittest.TestCase):
         self.assertEqual((r["freshness_ceiling_hours"], r["carry_within_ceiling"]), (6, True))
         self.assertEqual((r["window"], r["mode"], r["late_reason"], r["cap"]), ("1:00 AM CT", "window", "", limits.BOARDS_PER_RUN))
         self.assertTrue(r["started"].endswith("CT") and r["finished"].endswith("CT"))
+        self.assertEqual(r["timing"]["boards"], 3)                                          # the receipt says where the time went, and so does its summary table
+        self.assertIn("Save s per board (p50, p95)", boards.receipt_markdown(r))
 
     def test_the_counts_say_where_the_time_went_reading_waiting_and_saving(self):
         got = boards.run(5, True, NOW, quiet, self.waiting((9, 7, 5, 3, 1)), SEED, self.ENV)
