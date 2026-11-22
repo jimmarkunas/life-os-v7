@@ -88,3 +88,4 @@ V7_STORE_VIA workflow_only:workflow Bitwarden plain switch: oracle sends the sto
 WEEKLY_REVIEW_PAGE_ID input Notion page id of the weekly review
 BOARDS_EVENT input Set from the boards workflow's trigger (github.event_name): a manual run skips the window gate (LIFE-854)
 BOARDS_MODE_INPUT input Set from the boards workflow's mode input: window or catchup, for a manual run (LIFE-854)
+BOARDS_AUTO input Set from the boards workflow's auto input: true when the hourly tick started the window, so the run follows the window gate like a scheduled one (LIFE-854)
