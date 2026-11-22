@@ -115,11 +115,11 @@ class DeadBoards(unittest.TestCase):
         out = self.pass_at(repo, 24 * 3, "http_500", SEED)                                           # a long run of 500s, not not_found
         self.assertEqual((out["failed"], out["dead_ids"]), (1, []))
 
-    def test_the_list_is_capped_and_the_hourly_cap_matches_the_tick_step(self):
+    def test_the_list_is_capped_and_the_tick_no_longer_reads_boards(self):
         from lifeos.jobs import tick
         self.assertEqual(limits.BOARDS_DEAD_IDS_MAX, 600)
-        step = next(s for s in tick.PLAN if s.name == "boards")
-        self.assertEqual((step.limit, limits.BOARDS_PER_RUN), (900, 900))                            # the stage reads min(step limit, cap): both must say 900
+        self.assertNotIn("boards", [s.name for s in tick.PLAN])                                      # LIFE-854: the four board windows (boards.yml) own the stage; the tick keeps the backfill
+        self.assertIn("boards-backfill", [s.name for s in tick.PLAN])
 
 
 class StoppedPass(unittest.TestCase):
@@ -139,10 +139,12 @@ class StoppedPass(unittest.TestCase):
                 boards.backfill(450, True, NOW, lambda s: lister.Listing(lister.COMPLETE, []), repo, SEED, {"BOARDS_BACKFILL": "on"})
         self.assertEqual(sorted(repo.state), ["gh-s0", "gh-s1"])                    # committed as they arrived, not lost with the stop
 
-    def test_the_boards_step_has_time_for_its_cap_at_a_slow_hours_pace(self):
-        from lifeos.jobs import tick
-        step = next(s for s in tick.PLAN if s.name == "boards")
-        self.assertLessEqual(min(step.limit, limits.BOARDS_PER_RUN) * 1.0, step.budget)     # Oct 25 2026: 600 boards took up to 588 s, about 1 s a board
+    def test_a_window_has_time_for_its_cap_at_a_slow_boards_pace(self):
+        from lifeos.platform import boards_window as bw
+        for mode, cap in (("window", limits.BOARDS_PER_RUN), ("catchup", limits.BOARDS_CATCHUP_PER_RUN)):
+            got = bw.plan(datetime(2026, 11, 22, 7), mode, "")
+            self.assertEqual(got["limit"], cap)
+            self.assertLessEqual(cap * 1.0, got["deadline_minutes"] * 60)                            # Oct 25 2026: 600 boards took up to 588 s, about 1 s a board, 4 workers read side by side
 
 
 class Backfill(unittest.TestCase):
@@ -192,7 +194,7 @@ class Backfill(unittest.TestCase):
         seen, repo = [], MemRepo()
         boards.backfill(450, True, NOW, self.read(seen), repo, SEED[:3], self.ON)               # gh-s0..s2 read before: known, not due for a day
         del seen[:]
-        steps = tuple(s for s in tick.PLAN if s.name in ("boards", "boards-backfill"))
+        steps = (tick.Step("boards", 600, 600, bulk=True), next(s for s in tick.PLAN if s.name == "boards-backfill"))     # the plan has only the backfill since LIFE-854: the hourly pass is a stage a plan may still run
         stages = {"boards": lambda limit, live: boards.run(limit, live, NOW + timedelta(hours=1), self.read(seen), repo, SEED),
                   "boards-backfill": lambda limit, live: boards.backfill(limit, live, NOW + timedelta(hours=1), self.read(seen), repo, SEED, self.ON)}
         with mock.patch.dict("os.environ", {"WEB_FORCE": "board:gh-s2"}):
@@ -448,3 +450,67 @@ class Preview(unittest.TestCase):
         self.assertEqual(list(got["by_evidence"]), ["remote_in_location"])                  # decisions split by remote stated / assumed
         self.assertEqual(sum(v for k, v in got["by_evidence"]["remote_in_location"].items() if not k.startswith("fit_")), 2)
         self.assertEqual(db.raw.execute("SELECT COUNT(*) FROM v7_jobs").fetchone()[0], before)
+
+
+def quiet(_source):
+    return lister.Listing(lister.COMPLETE, [])
+
+
+class Window(unittest.TestCase):
+    """LIFE-854: one board window. The receipt says what was due, read, left and how old the oldest waiting board is; a catch-up has the larger cap; the soft deadline stops new reads and still writes the receipt."""
+    ENV = {"BOARDS_SLOT_CT": "1:00 AM CT", "BOARDS_MODE": "window", "BOARDS_LATE_REASON": "", "BOARDS_SLOT": "2026-10-17T06:00:00Z"}
+
+    def waiting(self, hours):
+        repo = MemRepo()
+        repo.state = {s["id"]: {"due_at": NOW - timedelta(hours=h), "failures": 0} for s, h in zip(SEED, hours)}
+        return repo
+
+    def test_the_receipt_counts_due_processed_deferred_failed_and_the_age_of_the_backlog(self):
+        repo = self.waiting((9, 7, 5, 3, 1))
+        got = boards.run(3, True, NOW, lambda s: lister.Listing(lister.FAILED, reason="rate_limited_429") if s["id"] == "gh-s1" else lister.Listing(lister.COMPLETE, []), repo, SEED, self.ENV)
+        r = got["receipt"]
+        self.assertEqual((r["due"], r["processed"], r["deferred"], r["failed"]), (5, 3, 2, 1))
+        self.assertEqual((r["backlog_age_hours"], r["oldest_deferred_hours"]), (9.0, 3.0))
+        self.assertEqual(r["carry_forward"], {"boards": 2, "oldest_overdue_hours": 3.0, "next_window": "7:00 AM CT"})
+        self.assertEqual(r["provider_limit_hits"], {"rate_limited_429": 1, "skipped_after_rate_limit_429": 0, "total": 1})
+        self.assertEqual((r["freshness_ceiling_hours"], r["carry_within_ceiling"]), (6, True))
+        self.assertEqual((r["window"], r["mode"], r["late_reason"], r["cap"]), ("1:00 AM CT", "window", "", limits.BOARDS_PER_RUN))
+        self.assertTrue(r["started"].endswith("CT") and r["finished"].endswith("CT"))
+
+    def test_a_window_reads_at_most_the_window_cap_and_a_catch_up_the_larger_one_oldest_due_first(self):
+        many = [{**SEED[0], "id": f"gh-m{i:04d}", "slug": f"m{i}"} for i in range(3000)]
+        repo = MemRepo()
+        repo.state = {s["id"]: {"due_at": NOW - timedelta(minutes=3000 - i), "failures": 0} for i, s in enumerate(many)}
+        window = boards.run(5000, False, NOW, quiet, repo, many, self.ENV)
+        self.assertEqual((window["receipt"]["processed"], window["receipt"]["deferred"], window["receipt"]["cap"]), (limits.BOARDS_PER_RUN, 3000 - limits.BOARDS_PER_RUN, 1800))
+        catchup = boards.run(5000, False, NOW, quiet, repo, many, {**self.ENV, "BOARDS_MODE": "catchup"})
+        self.assertEqual((catchup["receipt"]["processed"], catchup["receipt"]["deferred"], catchup["receipt"]["cap"]), (limits.BOARDS_CATCHUP_PER_RUN, 3000 - limits.BOARDS_CATCHUP_PER_RUN, 2900))
+        self.assertEqual(catchup["slowest"] is not None, True)
+
+    def test_leftovers_come_first_in_the_next_window_and_nothing_due_is_lost(self):
+        repo = self.waiting((9, 7, 5, 3, 1))
+        seen = []
+
+        def read(source):
+            seen.append(source["id"])
+            return lister.Listing(lister.COMPLETE, [])
+        boards.run(3, True, NOW, read, repo, SEED, self.ENV)                                         # an interrupted window: 3 of 5 read
+        self.assertEqual(sorted(seen), ["gh-s0", "gh-s1", "gh-s2"])
+        del seen[:]
+        later = boards.run(1800, True, NOW, read, repo, SEED, self.ENV)                              # the next window finds its leftovers (the two oldest of what is left) and nothing else due
+        self.assertEqual(sorted(seen), ["gh-s3", "gh-s4"])
+        self.assertEqual((later["receipt"]["due"], later["receipt"]["deferred"]), (2, 0))
+
+    def test_the_soft_deadline_stops_new_reads_keeps_what_was_read_and_still_writes_the_receipt(self):
+        repo = self.waiting((9, 7, 5, 3, 1))
+        ticks = iter([0, 0, 0, 100, 100, 100, 100, 100])                                             # the first two boards start inside the deadline, the third after it
+        got = boards.run(1800, True, NOW, quiet, repo, SEED, {**self.ENV, "BOARDS_DEADLINE_MINUTES": "1"}, clock=lambda: next(ticks))
+        self.assertEqual(sorted(repo.state), sorted(s["id"] for s in SEED))
+        r = got["receipt"]
+        self.assertEqual((r["processed"], r["deferred"], r["stopped_at_deadline"]), (2, 3, True))
+        self.assertEqual(r["carry_forward"]["boards"], 3)
+
+    def test_without_a_window_environment_the_stage_still_runs_as_a_plain_window(self):
+        repo = self.waiting((2, 1, 1, 1, 1))
+        got = boards.run(1800, False, NOW, quiet, repo, SEED, {})
+        self.assertEqual((got["receipt"]["mode"], got["receipt"]["window"], got["receipt"]["cap"]), ("window", "", limits.BOARDS_PER_RUN))

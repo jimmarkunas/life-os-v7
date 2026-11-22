@@ -320,8 +320,14 @@ def bounded(lister_fn, seconds, timings=None):
     return call
 
 
+def overdue_hours(source, states, now):
+    """LIFE-854: how long a board has been due, in hours (0 for a board with no state row, which has no due time)."""
+    due_at = (states.get(source["id"]) or {}).get("due_at")
+    return round(max((now - due_at).total_seconds(), 0) / 3600, 1) if due_at else 0.0
+
+
 def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=None, lane=DEFAULT_LANE, cap=None, budget=None, screen=None, workers=None, select=None,
-        board_seconds=None, save_seconds=None):
+        board_seconds=None, save_seconds=None, stop=None):
     """D202: the employer-board pass reuses this run with its own cap, admission budget, workers and `screen` (job -> reason, applied to a
     COMPLETE listing before the diff; only "kept_" jobs are stored, and a stored job screened out while still listed stays CURRENT)."""
     now = now or _now()
@@ -335,7 +341,8 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
             store.ensure_schema(connection)
     states = repo.states({s["id"] for s in sources})
     forced = forced_ids(sources, os.environ.get("WEB_FORCE"))
-    due = pick_due(sources, states, now, min(limit, cap or limits.WEB_BOARDS_PER_RUN), select, forced)   # classified against the persisted states
+    everyone = pick_due(sources, states, now, None, select, forced)         # LIFE-854: every board that is due, oldest first, so the pass can say how many it left for the next one
+    due = everyone[:min(limit, cap or limits.WEB_BOARDS_PER_RUN)]            # classified against the persisted states
     unread = sum(s["id"] not in states for s in sources)
     states = {k: v for k, v in states.items() if k not in forced}           # a forced read is a full read: no validators, no skip
     counts = {"lane": lane, "sources": len(sources), "due": len(due), "complete": 0, "failed": 0, "added": 0, "changed": 0, "unchanged": 0,
@@ -343,6 +350,8 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
     stuck_saves = []                                                                    # a save that outlived its limit; see save_bounded
     if select:
         counts["unread"] = unread                                               # D217: boards never read (before this run)
+        counts["due_total"], counts["oldest_due_hours"] = len(everyone), overdue_hours(everyone[0], states, now) if everyone else 0.0     # LIFE-854: the backlog at the start
+    attempted = 0
     asked = [{**s, "if_etag": states[s["id"]].get("etag"), "if_modified": states[s["id"]].get("last_modified")}
              if skip_allowed(states.get(s["id"])) else s for s in due]          # D216: validators go out only when a skip is allowed
     batch_hot = getattr(repo, "hot_ids", None)                                 # LIFE-893: a board skipped as unchanged is hot or quiet by the same rule as a full read, decided by one batched query
@@ -379,8 +388,12 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
         if screen:
             counts["screen"], counts["still_listed"] = {}, 0
         for source in due:
+            if stop and stop():                                                   # LIFE-854: the window's soft deadline: no new board is started, so the receipt is always written; the rest stay due, oldest first
+                counts["stopped_at_deadline"] = True
+                break
             waiting = source["id"]                                                # LIFE-567: a stage timeout names the board whose answer it was waiting for
             listing = next(listings)
+            attempted += 1
             listed = None
             raw = diff.frontier({j["id"]: diff.material_hash(j) for j in listing.jobs}) if listing.status == lister.COMPLETE else None   # D216: the WHOLE board, before the screen
             if screen and listing.status == lister.COMPLETE:
@@ -442,6 +455,9 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
     finally:                                                                      # a pass stopped at its tick budget keeps every board it committed, and the boards
         pool.shutdown(wait=False, cancel_futures=True)                            # not yet asked are cancelled, never read after the stage has stopped
     counts["saved"] = bool(live)
+    if select:
+        left = everyone[attempted:]                                               # LIFE-854: boards due and not read this pass (over the cap or past the deadline); the next pass reads them first
+        counts["deferred"], counts["oldest_deferred_hours"] = len(left), overdue_hours(left[0], states, now) if left else 0.0
     counts["slowest"] = [[r[0], r[2], r[3]] for r in sorted(rows, key=lambda r: -(r[2] + r[3]))[:10]]       # LIFE-616: the ten slowest boards, public registry ids with read and save seconds
     path = os.environ.get("GITHUB_STEP_SUMMARY")
     if path and rows:

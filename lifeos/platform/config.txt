@@ -86,3 +86,5 @@ V7_IMESSAGE_ALERTS workflow_only:workflow Switch for the iMessage alert job in t
 V7_RUNTIME_CONFIG_SOURCE_ID input LIFE-844: the stable ID of the dedicated Runtime Configuration data source (an address, never a secret); empty means the V7 settings page stays the only source
 V7_STORE_VIA workflow_only:workflow Bitwarden plain switch: oracle sends the store connection through Oracle first (exported as LIFEOS_ACQ_SSH_VIA)
 WEEKLY_REVIEW_PAGE_ID input Notion page id of the weekly review
+BOARDS_EVENT input Set from the boards workflow's trigger (github.event_name): a manual run skips the window gate (LIFE-854)
+BOARDS_MODE_INPUT input Set from the boards workflow's mode input: window or catchup, for a manual run (LIFE-854)

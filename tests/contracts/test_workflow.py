@@ -97,7 +97,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("python -m lifeos.jobs.tick", step["run"])
         self.assertIn("tick=${{ steps.tick.outcome }}", next(s for s in steps if s.get("id") == "lanes")["run"])
         for s in steps:                                                           # no stage the tick runs runs a second time on a tick
-            if s.get("id") in ("web", "enrich", "fit", "audit", "publish", "holds", "finalize", "boards", "web_scale_up", "titlewatch", "sponsors"):
+            if s.get("id") in ("web", "enrich", "fit", "audit", "publish", "holds", "finalize", "web_scale_up", "titlewatch", "sponsors"):
                 self.assertNotIn("PIPELINE", s["if"], s["id"])
 
     def test_only_a_tick_or_a_domains_dispatch_starts_the_jira_job(self):
@@ -655,16 +655,16 @@ class FastPathFirstTests(unittest.TestCase):
     def test_bulk_discovery_runs_after_publish_and_finalize(self):
         ids = [s.get("id") for s in self.hourly["jobs"]["finish"]["steps"]]
         fast = [ids.index(i) for i in ("enrich", "fit", "audit", "publish", "holds", "finalize")]
-        bulk = [ids.index(i) for i in ("boards", "web_scale_up", "titlewatch", "sponsors")]
+        bulk = [ids.index(i) for i in ("web_scale_up", "titlewatch", "sponsors")]
         self.assertEqual(fast, sorted(fast))
         self.assertLess(max(fast), min(bulk))
 
-    def test_quick_caps_the_boards_read_and_a_tick_keeps_the_full_cap(self):
+    def test_quick_is_a_manual_boolean_and_the_hourly_workflow_no_longer_crawls_employer_boards(self):
         inputs = self.hourly[True]["workflow_dispatch"]["inputs"]
         self.assertEqual((inputs["quick"]["type"], inputs["quick"]["default"]), ("boolean", False))
-        step = next(s for s in self.hourly["jobs"]["finish"]["steps"] if s.get("id") == "boards")
-        self.assertIn("--limit ${{ inputs.quick && '50' || '600' }}", step["run"])        # a schedule event has no inputs, so a tick reads the full 600
-
+        self.assertNotIn("boards", [s.get("id") for s in self.hourly["jobs"]["finish"]["steps"]])           # LIFE-854: the employer boards run in boards.yml, in four daily windows
+        text = (pathlib.Path(__file__).resolve().parents[2] / ".github/workflows/hourly.yml").read_text()
+        self.assertNotIn("lifeos.run boards --limit", text)                                                   # the acceptance preview (boards-preview) and the board check stay
 
 if __name__ == "__main__":
     unittest.main()
@@ -991,6 +991,7 @@ LOADED = {
     "calendar": {"calendar": DB | {"GCAL_SERVICE_ACCOUNT_JSON", "OUTLOOK_CLIENT_ID"}},
     "hourly": {"prep": DB | JUMP | TS | HRL, "jobright": DB | JUMP | TS | HRL, "linkedin": DB | JUMP | TS | HRL, "lensa": DB | JUMP | TS | HRL, "finish": DB | JUMP | TS | HRL | {"NTFY_TOPIC", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"}, "interview": {"NOTION_INTERVIEW_TOKEN", "INTERVIEW_ACCEPTANCE_JSON", "INTERVIEW_ACCEPTANCE_NEGATIVE_JSON"}, "report": {"NTFY_TOPIC"}},
     "network": {"network": DB | JUMP | TS | {"NOTION_API_TOKEN"}},
+    "boards": {"boards": DB | JUMP | TS},        # LIFE-854: the employer-board windows load the store and tailnet credentials the hourly job's boards step used, and nothing else
     "v3-pages": {"v3pages": {"JIRA_API_TOKEN", "JIRA_EMAIL", "NOTION_JIRA_TOKEN"}},
     "capacity-card": {"capacitycard": {"TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST", "NOTION_JIRA_TOKEN"}},       # LIFE-793: the AI Capacity card, the same four credentials it used in the imessage job       # LIFE-793: the five V3 page stages, the same three credentials they used in the jira job
     "outlook": {"outlook": DB | {"OUTLOOK_CLIENT_ID"}},

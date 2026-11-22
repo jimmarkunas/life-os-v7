@@ -57,7 +57,7 @@ CONFLICT_CAP_REACHED = "WRITE_CONFLICT_CAP_REACHED"
 CONFLICT_UNAVAILABLE = "WRITE_CONFLICT_COUNT_UNAVAILABLE"
 CONFLICT_RULE = "rule: any write conflict moves the Daily Report writers to the full chain (option A, LIFE-688)"
 
-SCHEDULED_WORKFLOWS = {"safety.yml": 1, "watchdog.yml": 3}   # LIFE-692: each workflow with a `schedule:` trigger that no other alert covers -> how many finished scheduled runs in a row must pass to close its incident
+SCHEDULED_WORKFLOWS = {"safety.yml": 1, "watchdog.yml": 3, "boards.yml": 1}   # LIFE-692: each workflow with a `schedule:` trigger that no other alert covers -> how many finished scheduled runs in a row must pass to close its incident
 SCHEDULED_COVERED = {"hourly.yml": "its scheduled runs are ticks: pipeline_failing, pipeline_stalled and run_failed already page for them",
                      "v3-pages.yml": "its stages are continue-on-error and only warn (LIFE-730), so the run does not go red from a stage; no second alert",
                      "capacity-card.yml": "its one stage is continue-on-error and only warns, so the run does not go red from it; no second alert (LIFE-793)"}      # the other scheduled workflows and why none is checked twice
