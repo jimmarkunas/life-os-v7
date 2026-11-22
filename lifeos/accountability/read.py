@@ -183,7 +183,7 @@ def week(jira, project, today):
         done = search(jira, f'project = {project} AND issuetype != Epic AND issuetype != Sub-task AND statusCategory = Done AND statusCategoryChangedDate >= "{monday}" ORDER BY key ASC', WEEK_FIELDS)
         return {"open": [_row(i) for i in active], "outside": [_row(i) for i in outside],
                 "done": [_row(i) for i in done], "jql": base + clause,
-                "outside_jql": base + due_clause}
+                "outside_jql": base + due_clause + ' AND (sprint not in openSprints() OR sprint is EMPTY)'}
 
     # Preserve the existing Jim/JFM behavior until JFM's separate product
     # requirement and approval changes; this delivery targets MEJ only.
