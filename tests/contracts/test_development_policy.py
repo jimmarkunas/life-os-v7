@@ -69,6 +69,28 @@ class OneFilePolicy(unittest.TestCase):
                 self.assertNotIn(gone, text, name)
 
 
+class LosIsRetired(unittest.TestCase):
+    """LIFE-849: LOS is retired, so nothing live queries it. Historical `LOS-nnn` keys in comments and docs stay as history."""
+
+    PATTERN = re.compile(r"project\s*=\s*LOS\b|project\s+in\s*\([^)\n]*\bLOS\b", re.I)
+
+    def test_no_code_or_workflow_queries_the_los_project(self):
+        hits = []
+        for base in ("lifeos", ".github"):
+            for path in sorted((ROOT / base).rglob("*")):
+                if path.is_file() and path.suffix in {".py", ".yml", ".yaml", ".sh", ".json", ".mjs", ".js", ".md", ".txt"}:
+                    for n, line in enumerate(path.read_text(errors="ignore").splitlines(), 1):
+                        if self.PATTERN.search(line):
+                            hits.append(f"{path.relative_to(ROOT)}:{n}")
+        self.assertEqual(hits, [], "an active query names the retired LOS project")
+
+    def test_the_check_catches_the_query_shapes_it_is_for(self):
+        for bad in ("project = LOS", "project=LOS AND status = Done", "jql: project in (LIFE, LOS)", "PROJECT  =  los"):
+            self.assertTrue(self.PATTERN.search(bad), bad)
+        for fine in ("project = LIFE", "historical LOS-86", "project in (JFM, LIFE)", "project = LOSS"):
+            self.assertFalse(self.PATTERN.search(fine), fine)
+
+
 class GlobalIndex(unittest.TestCase):
     """LIFE-222 (LOS-74 Q11): the root INDEX.md routes every global source with its path, authority, purpose, owner and retrieval, and copies no policy text."""
     INDEX = ROOT / "INDEX.md"

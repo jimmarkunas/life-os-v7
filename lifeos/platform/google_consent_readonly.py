@@ -1,4 +1,4 @@
-"""Read-only Google sign-in helper (LIFE-423, LOS-86 T13): prints a sign-in link for Jim, catches the reply on loopback, writes the credential only to a pipe.
+"""Read-only Google sign-in helper (LIFE-423, historical LOS-86 T13): prints a sign-in link for Jim, catches the reply on loopback, writes the credential only to a pipe.
 
 Like `google_consent`, whose PKCE link builder and loopback catcher it reuses (nothing there is changed). The differences:
 * Scopes: the read-only set for ONE service (Gmail readonly, Drive readonly (LIFE-875: file contents, matching the Oracle Drive grant), Calendar readonly); any other scope, or a reply that grants more, is refused in code.

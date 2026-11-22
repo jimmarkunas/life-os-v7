@@ -166,7 +166,7 @@ async function answerMemberLocked(ctx, { messageId, text, from }) {
   return { id: m.id }
 }
 
-export const JIRA_KEY = /^(?:LIFE|LOS)-\d{1,6}$/u
+export const JIRA_KEY = /^LIFE-\d{1,6}$/u
 const HANDOFF_NAME = /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,59}$/u
 const slug = (t) => String(t).toLowerCase().replace(/[^a-z0-9]+/gu, '-').replace(/^-+|-+$/gu, '').slice(0, 40)
 
@@ -194,7 +194,7 @@ async function handoffReplyLocked(ctx, { messageId, agent, task, name, keys, mod
   const member = state.members.find((m) => m.id === answer.from)
   const asked = answer.taskId ? state.log.find((e) => e.k === 'q' && e.id === answer.taskId) : null
   const wanted = Array.isArray(keys) ? [...new Set(keys.map(String))] : []
-  for (const k of wanted) if (!JIRA_KEY.test(k)) ctx.fail('invalid_params', `${k} is not a LIFE or LOS Jira key.`)
+  for (const k of wanted) if (!JIRA_KEY.test(k)) ctx.fail('invalid_params', `${k} is not a LIFE Jira key.`)
   const worktreeName = String(name ?? '').trim() || `handoff-${slug(String(task || answer.text).split(/\s+/u).slice(0, 6).join(' ')) || 'council-reply'}`
   if (!HANDOFF_NAME.test(worktreeName)) ctx.fail('invalid_params', 'The worktree name may use letters, digits, spaces, dots, dashes and underscores (60 characters).')
   const prompt = handoffPrompt({ asker: asked?.from ?? 'human:you', question: asked?.text ?? '', memberLabel: member ? labelOf(state, member) : 'a council member', reply: answer.text, task })

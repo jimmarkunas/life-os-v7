@@ -318,7 +318,7 @@ class Credentials(Codes):
 
 class Workspaces(Codes):
     def test_jira_reads_only_the_workspaces_own_projects(self):
-        for tenant, keys in (("personal", "JFM, LIFE, LOS"), ("bytalos", "BAD, BPP")):
+        for tenant, keys in (("personal", "JFM, LIFE"), ("bytalos", "BAD, BPP")):
             client = FakeJira([{"issues": [], "isLast": True}])
             run("jira", client, tenant=tenant, environ=env())
             self.assertTrue(client.calls[0][1]["jql"].startswith(f"project in ({keys}) AND "), client.calls[0][1]["jql"])
@@ -327,6 +327,13 @@ class Workspaces(Codes):
         client = FakeJira([{"issues": [{"key": "LIFE-1", "fields": {"updated": "2026-11-16T10:00:00.000+0000"}}, {"key": "BAD-9", "fields": {"updated": "2026-11-16T10:00:00.000+0000"}},
                                        {"key": "OTHER-3", "fields": {"updated": "2026-11-16T10:00:00.000+0000"}}], "isLast": True}])
         self.assertEqual([r["key"] for r in run("jira", client)], ["LIFE-1"])
+
+    def test_a_retired_los_key_is_never_returned_and_the_other_personal_projects_are(self):
+        """LIFE-849: LOS is retired. The personal workspace still returns LIFE and JFM keys, and a LOS key that slips into a reply is dropped."""
+        row = lambda k: {"key": k, "fields": {"updated": "2026-11-16T10:00:00.000+0000"}}
+        client = FakeJira([{"issues": [row("LIFE-1"), row("JFM-2"), row("LOS-3"), row("BAD-4")], "isLast": True}])
+        self.assertEqual([r["key"] for r in run("jira", client)], ["LIFE-1", "JFM-2"])
+        self.assertNotIn("LOS", client.calls[0][1]["jql"])
 
     def test_the_two_jira_workspaces_share_the_existing_secrets(self):
         self.assertEqual((E("jira", "personal"), E("jira", "bytalos")), ("JIRA_API_TOKEN", "JIRA_API_TOKEN"))

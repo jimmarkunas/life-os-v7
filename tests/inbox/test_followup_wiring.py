@@ -85,7 +85,7 @@ class Build(unittest.TestCase):
         self.assertEqual({F.CREDENTIAL_NAMES[JIRA[0]], F.CREDENTIAL_NAMES[JIRA[1]]}, {"JIRA_API_TOKEN"})     # ... for the one existing item
         self.assertNotEqual(grants[0].credential_ref, grants[1].credential_ref)         # the grant names carry the workspace, so neither can read as the other
         self.assertEqual(W.fetcher_environment({})["JIRA_BASE_URL"], W.JIRA_SITE)
-        self.assertEqual(F.JIRA_PROJECTS["personal"], ("JFM", "LIFE", "LOS"))
+        self.assertEqual(F.JIRA_PROJECTS["personal"], ("JFM", "LIFE"))
         self.assertEqual(F.JIRA_PROJECTS["bytalos"], ("BAD", "BPP"))
 
     def test_a_bytalos_scope_can_never_be_given_personal_projects(self):

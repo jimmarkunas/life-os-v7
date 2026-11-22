@@ -3,7 +3,7 @@
 Source: the Notion Hiring Pipeline page (HIRING_PIPELINE_PAGE_ID), a page not a database: opportunity pages under Active / Retired Opportunities, one child page per interview round.
 Output: for one job, a Handoff with its evidence: protected human progression is TRUE only on a deterministic match (company AND role), never on a company name alone, never inferred by a model.
 Absence of a match proves nothing (a recruiter thread may exist only in Gmail), so this source can protect a pursuit but never unprotect one. Legacy Lifecycle / Liveness are never read.
-LIFE-352 (REQ-5, LOS-88): `from_ledger` reads the pursuits of every Ledger row whose Stage is set; `merge` puts them first and keeps a page-tree opportunity only when no Ledger pursuit matches (company AND role).
+LIFE-352 (REQ-5, historical LOS-88): `from_ledger` reads the pursuits of every Ledger row whose Stage is set; `merge` puts them first and keeps a page-tree opportunity only when no Ledger pursuit matches (company AND role).
 Failure: read only; an incomplete Ledger read raises (the caller fails closed), never a partial list."""
 # The Job Ledger row is the job record (LIFE-352); a row with Stage empty is still read from the page tree exactly as before.
 from dataclasses import dataclass, field

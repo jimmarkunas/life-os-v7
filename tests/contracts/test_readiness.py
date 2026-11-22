@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 
-ISSUE = {"key": "LIFE-901", "owner": "Example Owner", "labels": ["lane-career-v7", "example-label"], "origin": {"los": "LOS-901", "approved": True},
+ISSUE = {"key": "LIFE-901", "owner": "Example Owner", "labels": ["lane-career-v7", "example-label"], "origin": {"parent": "LIFE-800", "approved": True},
          "host": "isolated cloud worktree", "source": "docs/life-os-development-policy.md", "blockers": [{"key": "LIFE-900", "status": "Done"}],
          "authorization": {"approved_by": "Example Owner", "provenance": "issue description"}, "permissions": ["repo:write"],
          "acceptance": [{"given": "a ready issue", "when": "the validator runs", "then": "it reports ready"}]}
@@ -61,7 +61,7 @@ class IssueEligibility(Fixture):
         ok = {"what": "Bitwarden project slot", "proof": "plan shows a free slot", "status": "done"}
         cases = {
             "origin_missing": lambda d: d.update(origin={}),
-            "origin_unapproved": lambda d: d.update(origin={"los": "LOS-901", "approved": False}),
+            "origin_unapproved": lambda d: d.update(origin={"parent": "LIFE-800", "approved": False}),
             "owner_missing": lambda d: d.update(owner=" "),
             "lane_missing": lambda d: d.update(labels=["example-label"]),
             "lane_unknown": lambda d: d.update(labels=["lane-unknown"]),
@@ -74,7 +74,6 @@ class IssueEligibility(Fixture):
             "prerequisite_open": lambda d: d.update(needs=[{**ok, "status": "open"}]),
             "decision_open": lambda d: d.update(decisions=[{**ok, "proof": " "}]),
             "needs_unreadable": lambda d: d.update(needs="none"),
-            "requirement_page_missing": lambda d: d.update(requirement={"los": "LOS-901", "pages": []}),
             "gwt_incomplete": lambda d: d.update(acceptance=[{"given": "x", "when": "y", "then": ""}]),
             "field_absent": lambda d: d.pop("authorization"),
             "description_long": lambda d: d.update(description_chars=4001),
@@ -85,6 +84,18 @@ class IssueEligibility(Fixture):
                 self.assertEqual((status, out), (0, "ready v1\n"))
                 self.assertIn(f"warn v1 {code} ", err)
                 self.assertNotIn("refused", err)
+
+    def test_a_los_origin_is_no_origin_and_a_los_parent_is_unapproved(self):
+        """LIFE-849: LOS is retired. An origin that names only a LOS key is missing, and a LOS parent never approves; a LIFE parent still does."""
+        for origin, code in (({"los": "LOS-901", "approved": True}, "origin_missing"), ({"parent": "LOS-901", "approved": True}, "origin_unapproved")):
+            with self.subTest(origin=origin):
+                status, out, err = self.issue(lambda d, o=origin: d.update(origin=o))
+                self.assertEqual((status, out), (0, "ready v1\n"))
+                self.assertIn(f"warn v1 {code} ", err)
+        self.assertEqual(self.issue(lambda d: None), (0, "ready v1\n", ""))
+        status, out, err = self.issue(lambda d: d.update(key="LOS-901"))              # a LOS issue key is refused like any other non-LIFE key
+        self.assertEqual((status, out), (2, ""))
+        self.assertIn("refused v1 key_invalid key LOS-901", err)
 
     def test_delivery_flow_v3_acceptance_cases_a_to_c(self):
         """(a) key + one Done-when bullet + no blockers is ready; (b) an unfinished Blocks predecessor refuses; (c) no Done-when refuses."""
