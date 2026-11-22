@@ -452,6 +452,22 @@
    "slowest_seconds": 135,
    "target": 5
   },
+  "boards.yml::window": {
+   "basis": "not measured: new job (LIFE-854): one read of this workflow's own run history; 5-minute floor",
+   "current": 5,
+   "median_seconds": null,
+   "runs_measured": 0,
+   "slowest_seconds": null,
+   "target": 5
+  },
+  "boards.yml::boards": {
+   "basis": "not measured: new job (LIFE-854, Jim's sizing, comment 13632): the catch-up window's 60-minute crawl step plus checkout, the Bitwarden helper wait and the tailnet join",
+   "current": 70,
+   "median_seconds": null,
+   "runs_measured": 0,
+   "slowest_seconds": null,
+   "target": 70
+  },
   "capacity-card.yml::capacitycard": {
    "basis": "not measured: new job (LIFE-793); keeps its current value",
    "current": 10,
