@@ -1,8 +1,11 @@
 name: boards
+run-name: boards ${{ github.event_name }}${{ inputs.auto && ' auto' || '' }}     # the gate counts a run that ends in ` auto` (started by the hourly tick) as holding its window; a manual run holds nothing
 # LIFE-854 (Jim, Nov 21 2026, comment 13632): employer-board crawling in its own four daily windows, out of the hourly tick: 1:00 AM, 7:00 AM, 1:00 PM and 7:00 PM Central.
 # Daylight-saving safe: two UTC cron lines per window (standard time, then daylight time). One of the two opens the window; the other lands an hour off and is skipped as a duplicate by the `window` job
 # (lifeos.platform.boards_window), which also turns a window whose predecessor never finished into a catch-up (leftovers first: the board list is read oldest-due first). GitHub drops and delays scheduled runs;
 # the gate settles it from this workflow's own run history, and an unreadable history never stops a window.
+# GitHub's own cron never fired for this workflow (Nov 22 2026: no run at 12, 13 or 18 UTC), so the hourly tick (which the Oracle ticker starts reliably) starts the window: `boards_window dispatch` in hourly.yml's prep job,
+# which already holds actions: write for domains.yml. The cron lines stay as a backup. An auto run behaves like a scheduled one: the Bitwarden LIVE and V7_PIPELINE switches decide, not the manual inputs.
 # Window: up to BOARDS_PER_RUN (1,800) boards, step timeout 15 minutes. Catch-up: BOARDS_CATCHUP_PER_RUN (2,900), step timeout 25 minutes. The stage is the one the hourly tick ran (`lifeos.run boards`):
 # same reader, same provider protections (4 workers, 3 answers of 429 stop an ATS for the run). Each window prints one receipt (counts only) and writes it to the job summary.
 # Scheduled runs are live only when the Bitwarden switch LIVE is true, and parked when V7_PIPELINE is not true (the same switches the tick follows). Manual runs are a dry run unless "Actually write" is ticked.
@@ -26,6 +29,10 @@ on:
         default: "window"
       live:
         description: "Actually write (the boards' state and admissions). Unticked = dry run, counts only"
+        type: boolean
+        default: false
+      auto:
+        description: "Set by the hourly tick only: the run follows the scheduled rules (switches decide live and parked) and holds its window"
         type: boolean
         default: false
 permissions:
@@ -58,6 +65,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           BOARDS_EVENT: ${{ github.event_name }}
           BOARDS_MODE_INPUT: ${{ inputs.mode }}
+          BOARDS_AUTO: ${{ inputs.auto }}
         run: python3 -m lifeos.platform.boards_window
   boards:
     needs: window
@@ -100,11 +108,11 @@ jobs:
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: LIVE,V7_PIPELINE,V7_STORE_VIA,LIFEOS_ACQ_SSH_PORT
-          live_mode: ${{ github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'follow' }}
+          live_mode: ${{ github.event_name == 'workflow_dispatch' && !inputs.auto && (inputs.live && 'true' || 'false') || 'follow' }}
       - id: pipeline
-        name: Pipeline decision (the tick's rule - a scheduled window crawls only while the Bitwarden switch V7_PIPELINE is true; a manual run always crawls, a dry run unless live)
+        name: Pipeline decision (the tick's rule - a scheduled or auto window crawls only while the Bitwarden switch V7_PIPELINE is true; a manual run always crawls, a dry run unless live)
         run: |
-          if [ "${{ github.event_name }}" = workflow_dispatch ] || [ "$V7_PIPELINE" = true ]; then v=true; else v=false; fi
+          if { [ "${{ github.event_name }}" = workflow_dispatch ] && [ "${{ inputs.auto }}" != true ]; } || [ "$V7_PIPELINE" = true ]; then v=true; else v=false; fi
           echo "PIPELINE=$v" >> "$GITHUB_ENV"
           [ "$v" = true ] || { echo "boards: parked (V7_PIPELINE is not true); nothing read"; echo "### Employer boards: parked (V7_PIPELINE is not true); nothing read" >> "$GITHUB_STEP_SUMMARY"; }
       - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)

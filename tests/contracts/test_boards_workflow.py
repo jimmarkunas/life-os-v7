@@ -57,6 +57,16 @@ class BoardsWorkflow(unittest.TestCase):
         self.assertEqual((boards_window.WINDOW_TIMEOUT_MINUTES, boards_window.CATCHUP_TIMEOUT_MINUTES), (15, 25))
         self.assertGreater(self.doc["jobs"]["boards"]["timeout-minutes"], 25)
 
+    def test_the_hourly_tick_starts_the_window_with_the_permission_it_already_has_and_the_run_name_marks_an_auto_run(self):
+        prep = self.hourly["jobs"]["prep"]
+        step = next(x for x in prep["steps"] if x.get("name", "").startswith("LIFE-854 - start the employer-board window"))
+        self.assertEqual(step["run"], "python3 -m lifeos.platform.boards_window dispatch")
+        self.assertTrue(step["continue-on-error"])                                           # a failed dispatch never fails the tick
+        self.assertEqual(step["env"], {"GITHUB_TOKEN": "${{ github.token }}"})               # the workflow token only: no new secret
+        self.assertEqual(prep["permissions"]["actions"], "write")                            # already held for the domains dispatch
+        self.assertTrue(self.doc["run-name"].endswith("inputs.auto && ' auto' || '' }}"))
+        self.assertIn("auto", self.doc[True]["workflow_dispatch"]["inputs"])
+
     def test_no_new_secret_name_and_only_the_store_and_tailnet_credentials(self):
         text = BOARDS.read_text()
         loaded = re.findall(r"^\s+([0-9a-f-]{36}) > (\w+)$", text, re.M)
