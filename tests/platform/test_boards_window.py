@@ -17,9 +17,9 @@ def utc(*parts):
     return dt.datetime(*parts, tzinfo=UTC)
 
 
-def run(rid, started, outcome="success", event="schedule", job="boards"):
-    """One finished workflow run of boards.yml and the conclusion of its crawl job (None: the job never ran)."""
-    return {"id": rid, "event": event, "run_started_at": started.strftime("%Y-%m-%dT%H:%M:%SZ"), "created_at": started.strftime("%Y-%m-%dT%H:%M:%SZ"), "_job": outcome, "_name": job}
+def run(rid, started, outcome="success", event="schedule", job="boards", title="", status="completed"):
+    """One workflow run of boards.yml and the conclusion of its crawl job (None: the job never ran)."""
+    return {"id": rid, "event": event, "status": status, "display_title": title, "run_started_at": started.strftime("%Y-%m-%dT%H:%M:%SZ"), "created_at": started.strftime("%Y-%m-%dT%H:%M:%SZ"), "_job": outcome, "_name": job}
 
 
 def jobs_of(item):
@@ -131,6 +131,68 @@ class Decide(unittest.TestCase):
         self.assertEqual((limits.BOARDS_PER_RUN, limits.BOARDS_CATCHUP_PER_RUN), (1800, 2900))
 
 
+class Auto(unittest.TestCase):
+    """The hourly tick starts the window (GitHub's own cron never fired for boards.yml): a run it started holds its window, a manual one does not, and a window being crawled is not started twice."""
+    NOW = utc(2026, 11, 22, 13, 5)                                   # 7:05 AM CT
+
+    def test_a_run_the_tick_started_holds_its_window_and_a_manual_run_holds_nothing(self):
+        auto = run(2, utc(2026, 11, 22, 13, 1), event="workflow_dispatch", title="boards workflow_dispatch auto")
+        manual = run(3, utc(2026, 11, 22, 13, 2), event="workflow_dispatch", title="boards workflow_dispatch")
+        self.assertEqual(bw.decide(self.NOW, [auto, run(1, utc(2026, 11, 22, 7, 1))], jobs_of)["why"], "window_already_ran")
+        self.assertTrue(bw.decide(self.NOW, [manual, run(1, utc(2026, 11, 22, 7, 1))], jobs_of)["run"])
+
+    def test_a_window_still_being_crawled_is_not_started_twice(self):
+        going = run(2, utc(2026, 11, 22, 13, 1), event="workflow_dispatch", title="boards workflow_dispatch auto", status="in_progress", outcome=None)
+        self.assertFalse(bw.decide(self.NOW, [going], jobs_of)["run"])
+
+    def test_dispatch_starts_the_window_with_the_decided_mode_and_says_so(self):
+        posts, out = [], []
+
+        def api(path, method="GET", body=None):
+            if method == "POST":
+                posts.append((path, body))
+                return {}
+            return {"jobs": [{"name": "boards", "conclusion": "success", "status": "completed"}]} if "/jobs" in path else {"workflow_runs": [run(1, utc(2026, 11, 22, 7, 1))]}
+        self.assertEqual(bw.dispatch({"GITHUB_REF_NAME": "main"}, api=api, now=self.NOW, out=out.append), 0)
+        self.assertEqual(posts, [("actions/workflows/boards.yml/dispatches", {"ref": "main", "inputs": {"auto": "true", "mode": "window"}})])
+        self.assertIn("started the 7:00 AM CT window", out[0])
+
+    def test_dispatch_starts_a_catch_up_after_a_missed_window(self):
+        posts = []
+
+        def api(path, method="GET", body=None):
+            if method == "POST":
+                posts.append(body)
+                return {}
+            return {"jobs": [{"name": "boards", "conclusion": "success", "status": "completed"}]} if "/jobs" in path else {"workflow_runs": [run(1, utc(2026, 11, 21, 19, 1))]}
+        bw.dispatch({}, api=api, now=self.NOW, out=lambda _t: None)
+        self.assertEqual(posts[0]["inputs"], {"auto": "true", "mode": "catchup"})
+
+    def test_dispatch_starts_nothing_when_the_window_has_a_run(self):
+        posts = []
+
+        def api(path, method="GET", body=None):
+            if method == "POST":
+                posts.append(body)
+            return {"jobs": [{"name": "boards", "conclusion": "success", "status": "completed"}]} if "/jobs" in path else {"workflow_runs": [run(2, utc(2026, 11, 22, 13, 1))]}
+        bw.dispatch({}, api=api, now=self.NOW, out=lambda _t: None)
+        self.assertEqual(posts, [])
+
+    def test_a_failed_dispatch_never_fails_the_tick(self):
+        def api(path, method="GET", body=None):
+            if method == "POST":
+                raise OSError("refused")
+            return {"workflow_runs": []}
+        out = []
+        self.assertEqual(bw.dispatch({}, api=api, now=self.NOW, out=out.append), 0)
+        self.assertIn("dispatch failed", out[0])
+
+    def test_an_auto_run_decides_like_a_scheduled_one_and_a_manual_run_always_runs(self):
+        text = (ROOT / ".github/workflows/boards.yml").read_text()
+        self.assertIn("inputs.auto", text)
+        self.assertIn("BOARDS_AUTO", text)
+
+
 class Main(unittest.TestCase):
     def run_main(self, environ, runs):
         out, summary = [], []
@@ -161,6 +223,13 @@ class Main(unittest.TestCase):
         self.assertIn("run=true", written["out"])
         self.assertIn("mode=catchup", written["out"])
         self.assertIn(f"limit={limits.BOARDS_CATCHUP_PER_RUN}", written["out"])
+
+    def test_an_auto_dispatch_is_decided_from_the_history_like_a_scheduled_run(self):
+        env = {"BOARDS_EVENT": "workflow_dispatch", "BOARDS_AUTO": "true", "GITHUB_RUN_ID": "9"}
+        _, written, _ = self.run_main(env, [run(2, utc(2026, 11, 22, 7, 1))])
+        self.assertIn("run=false", written["out"])
+        _, written, _ = self.run_main({**env, "BOARDS_AUTO": "false"}, [run(2, utc(2026, 11, 22, 7, 1))])
+        self.assertIn("run=true", written["out"])                                          # a manual run always runs
 
     def test_a_duplicate_firing_writes_run_false(self):
         code, written, _ = self.run_main({"BOARDS_EVENT": "schedule", "GITHUB_RUN_ID": "9"}, [run(2, utc(2026, 11, 22, 7, 1))])
