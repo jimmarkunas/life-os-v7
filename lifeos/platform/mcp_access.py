@@ -1,4 +1,6 @@
-"""LIFE-865: the one adapter that puts authorization_gate.execute in front of every LIFE OS MCP tool call (lifeos/buzz/mcp.py, lifeos.inbox.send_to_jim --mcp). It adds no grant store, policy or gateway.
+"""LIFE-865: the adapter that puts authorization_gate.execute in front of every LIFE OS MCP tool call.
+
+It serves lifeos/buzz/mcp.py and lifeos.inbox.send_to_jim --mcp, and adds no grant store, policy or gateway.
 
 Identity is derived from a trusted fact only: the OAuth client a verified token names (HTTP), or the OS user of the stdio server process (the kernel's answer, never an argument, header or environment variable the caller sends).
 `clients` in mcp_access.json map one such fact to one client id; no match or two matches refuses. The purpose of a call is the tool's own, set server side. A client on a host it shares with another needs a fact only it holds
