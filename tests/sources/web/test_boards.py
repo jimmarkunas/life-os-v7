@@ -297,6 +297,98 @@ class QuietRunRow(unittest.TestCase):
         self.assertEqual(self.commit({"id": "affirm", "kind": "greenhouse", "company": "Affirm"}, nothing), ["v7_sources", "v7_source_runs"])
 
 
+class HeldConnection(unittest.TestCase):
+    """LIFE-854: a board pass reuses ONE store connection (a new one through the tunnel costs ~0.5 s, and the pass made one per board). Outside a pass every use still opens its own."""
+
+    class Cur:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def execute(self, sql, args=None):
+            pass
+
+        def fetchall(self):
+            return []
+
+    class Conn:
+        opened = closed = pings = 0
+
+        def __init__(self, owner):
+            self.owner = owner
+
+        def __enter__(self):
+            self.owner.opened += 1
+            return self
+
+        def __exit__(self, *a):
+            self.owner.closed += 1
+            return False
+
+        def cursor(self):
+            return HeldConnection.Cur()
+
+        def ping(self, reconnect=False):
+            self.owner.pings += 1
+
+    class Owner:
+        opened = closed = pings = 0
+
+    def repo_and_owner(self):
+        owner = self.Owner()
+        return run.SqlRepo(), owner
+
+    def uses(self, repo, owner, n):
+        from unittest import mock
+        with mock.patch.object(run.store, "connect", side_effect=lambda: HeldConnection.Conn(owner)):
+            for _ in range(n):
+                repo.items("x")
+
+    def test_outside_a_pass_every_use_opens_its_own_connection(self):
+        repo, owner = self.repo_and_owner()
+        self.uses(repo, owner, 5)
+        self.assertEqual((owner.opened, owner.closed), (5, 5))
+
+    def test_inside_a_pass_every_use_shares_one_connection_that_is_closed_at_the_end(self):
+        repo, owner = self.repo_and_owner()
+        with repo.holding():
+            self.uses(repo, owner, 5)
+            self.assertEqual((owner.opened, owner.closed), (1, 0))
+        self.assertEqual((owner.opened, owner.closed), (1, 1))
+
+    def test_a_failed_use_drops_the_connection_and_the_next_use_starts_clean(self):
+        from unittest import mock
+        repo, owner = self.repo_and_owner()
+        with repo.holding(), mock.patch.object(run.store, "connect", side_effect=lambda: HeldConnection.Conn(owner)):
+            repo.items("x")
+            with self.assertRaises(RuntimeError), repo._connection():
+                raise RuntimeError("lost")
+            repo.items("x")
+        self.assertEqual((owner.opened, owner.closed), (2, 2))
+
+    def test_a_timed_out_save_detaches_the_connection_without_closing_the_write_that_still_owns_it(self):
+        from unittest import mock
+        repo, owner = self.repo_and_owner()
+        with repo.holding(), mock.patch.object(run.store, "connect", side_effect=lambda: HeldConnection.Conn(owner)):
+            repo.items("x")
+            repo.detach()
+            repo.items("x")
+        self.assertEqual((owner.opened, owner.closed), (2, 1))
+
+    def test_a_connection_idle_for_a_few_seconds_is_pinged_before_the_next_use(self):
+        from unittest import mock
+        repo, owner = self.repo_and_owner()
+        with repo.holding(), mock.patch.object(run.store, "connect", side_effect=lambda: HeldConnection.Conn(owner)):
+            repo.items("x")
+            repo.items("x")
+            self.assertEqual(owner.pings, 0)
+            repo._live = (repo._live[0], repo._live[1], repo._live[2] - run.SqlRepo.HELD_IDLE_SECONDS - 1)
+            repo.items("x")
+        self.assertEqual((owner.opened, owner.pings), (1, 1))
+
+
 class TouchInChunks(unittest.TestCase):
     """LIFE-677: touching a board's unchanged postings is one statement per 500 ids, not one per posting (each statement is a round trip through the store tunnel)."""
 
@@ -476,6 +568,15 @@ class Window(unittest.TestCase):
         self.assertEqual((r["freshness_ceiling_hours"], r["carry_within_ceiling"]), (6, True))
         self.assertEqual((r["window"], r["mode"], r["late_reason"], r["cap"]), ("1:00 AM CT", "window", "", limits.BOARDS_PER_RUN))
         self.assertTrue(r["started"].endswith("CT") and r["finished"].endswith("CT"))
+
+    def test_the_counts_say_where_the_time_went_reading_waiting_and_saving(self):
+        got = boards.run(5, True, NOW, quiet, self.waiting((9, 7, 5, 3, 1)), SEED, self.ENV)
+        t = got["timing"]
+        self.assertEqual(t["boards"], 5)
+        for key in ("wall_s", "waiting_for_reads_s", "saving_s"):
+            self.assertGreaterEqual(t[key], 0)
+        self.assertEqual(len(t["read_s_p50_p95"]), 2)
+        self.assertEqual(len(t["save_s_p50_p95"]), 2)
 
     def test_a_window_reads_at_most_the_window_cap_and_a_catch_up_the_larger_one_oldest_due_first(self):
         many = [{**SEED[0], "id": f"gh-m{i:04d}", "slug": f"m{i}"} for i in range(3000)]
