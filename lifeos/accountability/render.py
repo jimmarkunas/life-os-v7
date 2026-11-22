@@ -65,8 +65,29 @@ def _group(title, rows, shown, site, more_url, flags=None, indent=None):
 
 
 def week_view(week, today, site):
-    """-> (parts, plain lines): the counts line, "In progress / To do" (overdue first), then "Done" this week; every key is a link to its Jira issue."""
+    """Render the legacy JFM weekly view or MEJ's separated sprint/due view."""
     open_rows, done_rows = week["open"], week["done"]
+    if "outside" in week:
+        outside = week["outside"]
+        combined = open_rows + outside
+        overdue = {r["key"] for r in combined if r["due"] and r["due"] < today.isoformat()}
+        blocked = [r for r in combined if r["status"].lower() == "blocked"]
+        head = (f"{len(open_rows)} sprint open · {len(outside)} due outside sprint · "
+                f"{len(overdue)} overdue · {len(blocked)} blocked · {len(done_rows)} done this week")
+        ordered = [r for r in open_rows if r["key"] in overdue] + [r for r in open_rows if r["key"] not in overdue]
+        more = read.jql_url(site, week["jql"] + " ORDER BY duedate ASC")
+        active_parts, active_lines = _group("Sprint commitments", ordered, OPEN_SHOWN, site, more,
+                                            flags={k: ", overdue" for k in overdue})
+        due_order = [r for r in outside if r["key"] in overdue] + [r for r in outside if r["key"] not in overdue]
+        due_more = read.jql_url(site, week["outside_jql"] + " ORDER BY duedate ASC")
+        due_parts, due_lines = _group("Due outside sprint", due_order, OPEN_SHOWN, site, due_more,
+                                      flags={k: ", overdue" for k in overdue})
+        done_more = read.jql_url(site, f'project = MEJ AND issuetype != Sub-task AND statusCategoryChangedDate >= startOfWeek() AND statusCategory = Done')
+        done_parts, done_lines = _group("Done this week", done_rows, DONE_SHOWN, site, done_more)
+        return ([p(head)] + active_parts + [NL] + due_parts + [NL] + done_parts,
+                [head] + active_lines + [""] + due_lines + [""] + done_lines)
+
+    # The previously approved JFM block and summary format are unchanged.
     overdue = {r["key"] for r in open_rows if r["due"] and r["due"] < today.isoformat()}
     blocked = [r for r in open_rows if r["status"].lower() == "blocked"]
     head = f"{len(open_rows)} open · {len(overdue)} overdue · {len(blocked)} blocked · {len(done_rows)} done this week"
@@ -75,7 +96,6 @@ def week_view(week, today, site):
     got_open, lines_open = _group(SECTION_OPEN, ordered, OPEN_SHOWN, site, more, flags={k: ", overdue" for k in overdue})
     got_done, lines_done = _group(SECTION_DONE + " this week", done_rows, DONE_SHOWN, site, read.jql_url(site, "statusCategoryChangedDate >= startOfWeek() AND statusCategory = Done"))
     return [p(head)] + got_open + [NL] + got_done, [head] + lines_open + lines_done
-
 
 MAX_ARTIFACT_LINES = 40
 NO_INDEX = "The artifact index is not set up yet."
