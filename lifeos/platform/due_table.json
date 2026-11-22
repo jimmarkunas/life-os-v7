@@ -22,7 +22,7 @@
     "recruiters_mail": {"every_hours": 1, "full_scan_ct": ["09:00"]}
   },
   "workflows": {
-    "boards.yml": {"owner": "Mac Claude Code (LIFE-854); Platform / Core OS", "windows_ct": ["01:00", "07:00", "13:00", "19:00"], "cap": 1800, "timeout_minutes": 35, "catchup_cap": 2900, "catchup_timeout_minutes": 60, "stage": "boards", "providers": ["ats"]}
+    "boards.yml": {"owner": "Mac Claude Code (LIFE-854); Platform / Core OS", "windows_ct": ["01:00", "07:00", "13:00", "19:00"], "cap": 1800, "timeout_minutes": 15, "catchup_cap": 2900, "catchup_timeout_minutes": 25, "stage": "boards", "providers": ["ats"]}
   },
   "stages": {
     "resolve-jobright": {"every_hours": 1, "providers": ["jobright"]},

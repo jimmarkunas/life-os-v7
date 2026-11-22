@@ -70,7 +70,7 @@ class Decide(unittest.TestCase):
     def test_a_clean_window_runs_with_the_window_cap_and_timeout(self):
         prev = run(1, utc(2026, 11, 22, 1, 3))                       # last night's 7 PM window ran
         got = self.decide([prev])
-        self.assertEqual((got["run"], got["mode"], got["limit"], got["timeout_minutes"]), (True, "window", limits.BOARDS_PER_RUN, 35))
+        self.assertEqual((got["run"], got["mode"], got["limit"], got["timeout_minutes"]), (True, "window", limits.BOARDS_PER_RUN, 15))
         self.assertEqual(got["late_reason"], "")
 
     def test_the_first_window_ever_has_no_history_and_is_a_normal_window(self):
@@ -88,7 +88,7 @@ class Decide(unittest.TestCase):
 
     def test_a_missed_window_makes_the_next_one_a_catch_up_with_leftovers_first_caps(self):
         got = self.decide([run(1, utc(2026, 11, 20, 19, 2))], now=utc(2026, 11, 21, 13, 2))        # the 7 AM and 1 PM... history stops the day before: the previous window never ran
-        self.assertEqual((got["mode"], got["limit"], got["timeout_minutes"]), ("catchup", limits.BOARDS_CATCHUP_PER_RUN, 60))
+        self.assertEqual((got["mode"], got["limit"], got["timeout_minutes"]), ("catchup", limits.BOARDS_CATCHUP_PER_RUN, 25))
         self.assertIn("previous_window_missed", got["late_reason"])
 
     def test_a_failed_or_timed_out_previous_window_also_makes_a_catch_up(self):
@@ -121,7 +121,7 @@ class Decide(unittest.TestCase):
         self.assertEqual((got["run"], got["mode"], got["late_reason"]), (True, "window", "history_unreadable"))
 
     def test_the_deadline_leaves_room_for_the_receipt_inside_the_step_timeout(self):
-        for mode, timeout in (("window", 35), ("catchup", 60)):
+        for mode, timeout in (("window", 15), ("catchup", 25)):
             got = bw.plan(utc(2026, 11, 22, 7), mode, "")
             self.assertEqual(got["timeout_minutes"], timeout)
             self.assertLess(got["deadline_minutes"], timeout)
@@ -151,7 +151,7 @@ class Main(unittest.TestCase):
     def test_a_scheduled_run_writes_the_decision_to_the_step_outputs(self):
         code, written, _ = self.run_main({"BOARDS_EVENT": "schedule", "GITHUB_RUN_ID": "9"}, [run(1, utc(2026, 11, 22, 1, 3))])
         self.assertEqual(code, 0)
-        for line in ("run=true", "mode=window", f"limit={limits.BOARDS_PER_RUN}", "timeout_minutes=35", "deadline_minutes=32"):
+        for line in ("run=true", "mode=window", f"limit={limits.BOARDS_PER_RUN}", "timeout_minutes=15", "deadline_minutes=12"):
             self.assertIn(line, written["out"])
         self.assertIn("1:00 AM CT", written["sum"])
 
