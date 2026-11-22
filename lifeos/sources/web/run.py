@@ -2,6 +2,8 @@
 
 Picks the due boards, lists them (no database connection held), classifies against the accepted state, drops unequivocal misses cheaply and admits the rest through intake.add_job. The accepted state only advances on a COMPLETE listing; a FAILED board keeps its state and can never imply a removal. Outputs: counts only in the log."""
 from concurrent.futures import ThreadPoolExecutor
+import contextlib
+from contextlib import ExitStack, contextmanager
 import os
 import sys
 import threading
@@ -142,23 +144,72 @@ def update_in_chunks(cursor, head, lead, ids, size=500):
 
 
 class SqlRepo:
-    """Short connections only: nothing is held across network calls."""
+    """Short connections: one per read or save, nothing held across network calls. `holding()` is the board pass's one exception (LIFE-854): every save and read of the pass reuses ONE connection,
+    because a new connection through the store tunnel costs about half a second and the pass makes one per board (1,800 saves took 16 minutes, the same reads 53 seconds). The same statements run;
+    a connection idle for a few seconds is pinged first, a failed use drops it so the next use opens a fresh one, and a timed-out save detaches it (that write still owns it) so nothing ever shares it."""
+    HELD_IDLE_SECONDS = 3
+    _holding = False
+    _live = None                                                                         # (context manager, connection, last use) while holding
+
+    @contextmanager
+    def holding(self):
+        self._holding, self._live = True, None
+        try:
+            yield self
+        finally:
+            self._holding = False
+            self.release()
+
+    def release(self):
+        live, self._live = self._live, None
+        if live:
+            with contextlib.suppress(Exception):
+                live[0].__exit__(None, None, None)
+
+    def detach(self):
+        self._live = None                                                                # the timed-out write keeps the connection it has; the next use opens its own
+
+    @contextmanager
+    def _connection(self):
+        if not self._holding:
+            with store.connect() as connection:
+                yield connection
+            return
+        if self._live and time.monotonic() - self._live[2] > self.HELD_IDLE_SECONDS:
+            ping = getattr(self._live[1], "ping", None)
+            try:
+                if ping:
+                    ping(reconnect=True)
+            except Exception:                                                            # noqa: BLE001 - a connection that will not answer is replaced
+                self.release()
+        if not self._live:
+            manager = store.connect()
+            self._live = (manager, manager.__enter__(), time.monotonic())
+        manager, connection = self._live[0], self._live[1]
+        try:
+            yield connection
+        except BaseException:
+            if self._live and self._live[1] is connection:
+                self.release()                                                           # whatever went wrong, the next use starts clean
+            raise
+        if self._live and self._live[1] is connection:
+            self._live = (manager, connection, time.monotonic())
 
     def states(self, ids):
-        with store.connect() as connection, connection.cursor() as cursor:
+        with self._connection() as connection, connection.cursor() as cursor:
             cursor.execute("SELECT source_id, due_at, failures, etag, last_modified, frontier_hash, unchanged_runs FROM v7_sources")
             return {r[0]: {"due_at": r[1], "failures": r[2], "etag": r[3], "last_modified": r[4], "frontier": r[5], "unchanged_runs": r[6] or 0}
                     for r in cursor.fetchall() if r[0] in ids}
 
     def items(self, source_id):
-        with store.connect() as connection, connection.cursor() as cursor:
+        with self._connection() as connection, connection.cursor() as cursor:
             cursor.execute("SELECT provider_job_id, material_hash, ingest FROM v7_source_items WHERE source_id=%s AND state='CURRENT'", (source_id,))
             return {r[0]: (r[1], r[2]) for r in cursor.fetchall()}
 
     def hot_ids(self, ids):
         """LIFE-893: which of `ids` currently list a target job (a board with CURRENT items is hot): one query for the whole run, not one per board; no item is read."""
         ids, hot = list(ids), set()
-        with store.connect() as connection, connection.cursor() as cursor:
+        with self._connection() as connection, connection.cursor() as cursor:
             for start in range(0, len(ids), 500):
                 part = ids[start:start + 500]
                 cursor.execute(f"SELECT DISTINCT source_id FROM v7_source_items WHERE state='CURRENT' AND source_id IN ({','.join(['%s'] * len(part))})", part)
@@ -167,7 +218,7 @@ class SqlRepo:
 
     def commit(self, o, failures, lane=DEFAULT_LANE):
         now, sid = o.now, o.source["id"]
-        with store.connect() as connection:
+        with self._connection() as connection:
             if o.status == "COMPLETE":
                 job_ids = {}
                 for job in o.admit:
@@ -387,9 +438,13 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
         reason = None if saved else ("save_blocked" if before and stuck_saves == before else "save_timeout")
         if reason:
             counts[reason] += 1
+            getattr(repo, "detach", lambda: None)()                                      # the stuck write keeps its connection
         rows.append((source["id"], reason or result, read_seconds.get(source["id"], 0.0), took))
         return reason
 
+    held = ExitStack()
+    if hasattr(repo, "holding"):
+        held.enter_context(repo.holding())                                          # LIFE-854: one connection for the whole pass
     pool = ThreadPoolExecutor(max_workers=workers or limits.ATS_WORKERS)          # priority boards are on different hosts; seed boards pass fewer workers
     try:
         listings = iter(pool.map(bounded(lister_fn, board_seconds or limits.WEB_BOARD_SECONDS, read_seconds), asked))                                     # Oct 25 2026: lazy, in order, so each board is committed as its answer arrives:
@@ -465,6 +520,7 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
         raise
     finally:                                                                      # a pass stopped at its tick budget keeps every board it committed, and the boards
         pool.shutdown(wait=False, cancel_futures=True)                            # not yet asked are cancelled, never read after the stage has stopped
+        held.close()
     counts["saved"] = bool(live)
     if select:
         left = everyone[attempted:]                                               # LIFE-854: boards due and not read this pass (over the cap or past the deadline); the next pass reads them first
