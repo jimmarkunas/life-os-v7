@@ -8,6 +8,7 @@ credential-shaped names), shadow rule (`_fill`) and last-accepted fallback; two 
 Cutover is protected and not done here: docs/platform/runtime-config-cutover.md."""
 import os
 import re
+import threading
 import time
 
 from lifeos.platform import settings
@@ -157,6 +158,15 @@ def apply(environ=os.environ, client=None, connect=None, remember=False):
     return out
 
 
+_ONCE = {}                                                               # LIFE-858: the process-wide receipt of `shadow(once=True)`, so the many stages of one tick process make one read, not one each
+_ONCE_LOCK = threading.Lock()
+
+
+def reset_once():
+    with _ONCE_LOCK:
+        _ONCE.clear()
+
+
 def _client_for(token):
     from lifeos.platform.notion_client import Client                    # noqa: PLC0415
     return Client({"NOTION_API_TOKEN": token, "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused"})
@@ -180,7 +190,26 @@ def probe(environ=os.environ, make_client=_client_for):
     return out
 
 
-def shadow(environ=os.environ, client=None, make_client=None):
+def shadow(environ=os.environ, client=None, make_client=None, once=False):
+    """With `once=True` (the `lifeos.run` hook and the tick) the first call in a process makes the read and every later call with the same bootstrap ID and token names returns a compact
+    `{"status", "matched", "blocking", "cached": True}` without touching Notion: the hourly tick runs about 23 stages in one process and each used to repeat the whole read (about 2.6 s each)."""
+    if not once:
+        return _shadow(environ, client, make_client)
+    try:
+        key = (source_id(environ), tuple(name for name in PROOF_TOKENS if (environ.get(name) or "").strip()))
+    except RuntimeConfigError:
+        return _shadow(environ, client, make_client)                          # off or invalid: nothing is read, nothing to cache
+    with _ONCE_LOCK:                                                         # a concurrent caller waits for the first read instead of repeating it
+        if key in _ONCE:
+            first = _ONCE[key]
+            return {"status": "ok", "matched": first["matched"], "blocking": first["blocking"], "cached": True}
+        receipt = _shadow(environ, client, make_client)
+        if receipt.get("status") == "ok":                                     # only a good read is remembered: a transient failure never poisons the later stages
+            _ONCE[key] = receipt
+        return receipt
+
+
+def _shadow(environ, client, make_client):
     """Compare-only dual read (cutover step 4): the new source against the old V7 settings page. Changes nothing in the environment, writes nothing, never raises.
     -> {"status": "off"} with no bootstrap ID or no token (nothing was read), else `compare` counts (names only) plus `status` ok, or `unreadable:<CODE>`.
     LIFE-858 adds, to the ok receipt only: `rows` and `kinds` (counts), `new_counts` (names of rows the reader refused or found invalid or repeated, only when there are any), `seconds` (the read's own cost),

@@ -362,8 +362,63 @@ class Phase1SourcePrecedenceUnchanged(unittest.TestCase):
     def test_settings_py_does_not_know_the_new_source_and_run_py_reads_the_page_before_the_compare(self):
         self.assertNotIn("runtime_config", (ROOT / "lifeos/platform/settings.py").read_text())
         text = (ROOT / "lifeos/run.py").read_text()
-        self.assertLess(text.index("settings.apply(os.environ)"), text.index("runtime_config.shadow(os.environ)"))
+        self.assertLess(text.index("settings.apply(os.environ)"), text.index("runtime_config.shadow(os.environ"))
         self.assertNotIn("runtime_config.apply", text)
+
+
+class ShadowOncePerProcess(unittest.TestCase):
+    """LIFE-858: the tick runs about 23 stages in one process; each used to repeat the whole compare (about 2.6 s each). `once=True` reads once and the rest are cached."""
+    def setUp(self):
+        rc.reset_once()
+        self.addCleanup(rc.reset_once)
+
+    def counting(self):
+        client = Both(Page(OLD_LINES), Source(NEW_ROWS))
+        calls = []
+        original = client.call
+        client.call = lambda *a, **k: calls.append(a[:2]) or original(*a, **k)
+        return client, calls
+
+    def test_the_second_call_in_a_process_makes_no_read_and_returns_a_compact_cached_receipt(self):
+        client, calls = self.counting()
+        first = rc.shadow(dict(ENV), client, once=True)
+        reads = len(calls)
+        self.assertGreater(reads, 0)
+        again = rc.shadow(dict(ENV), client, once=True)
+        self.assertEqual(len(calls), reads)                                          # zero more Notion reads
+        self.assertEqual(again, {"status": "ok", "matched": first["matched"], "blocking": first["blocking"], "cached": True})
+        self.assertNotIn("names", again)
+        self.assertNotIn("tokens", again)
+
+    def test_a_different_bootstrap_id_or_token_set_reads_again_and_without_once_every_call_reads(self):
+        client, calls = self.counting()
+        rc.shadow(dict(ENV), client, once=True)
+        before = len(calls)
+        rc.shadow(dict(ENV), client)                                                 # no once: always reads
+        self.assertGreater(len(calls), before)
+        after = len(calls)
+        rc.shadow({**ENV, "NOTION_JIRA_TOKEN": "t"}, client, once=True, make_client=lambda token: Source(NEW_ROWS))
+        self.assertGreater(len(calls), after)                                        # a different token set is a different key
+
+    def test_off_and_unreadable_are_not_cached_so_a_later_good_read_still_happens(self):
+        self.assertEqual(rc.shadow({}, once=True), {"status": "off"})
+        broken = Both(Page(OLD_LINES), Source([], broken=True))
+        self.assertEqual(rc.shadow(dict(ENV), broken, once=True), {"status": "unreadable:RUNTIME_CONFIG_UNREADABLE"})
+        client, calls = self.counting()
+        self.assertEqual(rc.shadow(dict(ENV), client, once=True)["status"], "ok")   # the failure did not poison the process
+        self.assertGreater(len(calls), 0)
+
+    def test_concurrent_callers_make_one_read(self):
+        import threading
+        client, calls = self.counting()
+        results = []
+        threads = [threading.Thread(target=lambda: results.append(rc.shadow(dict(ENV), client, once=True))) for _ in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        self.assertEqual(sum(1 for r in results if not r.get("cached")), 1)
+        self.assertEqual(len(results), 8)
 
 
 if __name__ == "__main__":

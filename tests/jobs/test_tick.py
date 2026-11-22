@@ -531,7 +531,7 @@ class RuntimeConfigCompareOnTheTick(unittest.TestCase):
     def run_main(self, receipt=None, boom=None, hang=None, env=None):
         out = _Out()
 
-        def fake(environ):
+        def fake(environ, **kwargs):
             if hang:
                 hang.wait(5)
             if boom:
@@ -580,7 +580,7 @@ class RuntimeConfigCompareOnTheTick(unittest.TestCase):
     def test_the_stages_do_not_wait_for_the_read(self):
         gate = threading.Event()
         started = []
-        with mock.patch("lifeos.platform.runtime_config.shadow", side_effect=lambda e: started.append(1) or gate.wait(5)):
+        with mock.patch("lifeos.platform.runtime_config.shadow", side_effect=lambda e, **k: started.append(1) or gate.wait(5)):
             collect = tick.shadow_in_background({})
             time.sleep(0.05)
             self.assertEqual(started, [1])                      # the read has started and the caller is already free to run its stages
