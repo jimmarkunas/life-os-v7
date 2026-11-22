@@ -149,21 +149,21 @@ class Main(unittest.TestCase):
         return code, written, out
 
     def test_a_scheduled_run_writes_the_decision_to_the_step_outputs(self):
-        code, written, _ = self.run_main({"EVENT": "schedule", "GITHUB_RUN_ID": "9"}, [run(1, utc(2026, 11, 22, 1, 3))])
+        code, written, _ = self.run_main({"BOARDS_EVENT": "schedule", "GITHUB_RUN_ID": "9"}, [run(1, utc(2026, 11, 22, 1, 3))])
         self.assertEqual(code, 0)
         for line in ("run=true", "mode=window", f"limit={limits.BOARDS_PER_RUN}", "timeout_minutes=35", "deadline_minutes=32"):
             self.assertIn(line, written["out"])
         self.assertIn("1:00 AM CT", written["sum"])
 
     def test_a_manual_run_always_runs_and_takes_its_mode_from_the_input(self):
-        code, written, _ = self.run_main({"EVENT": "workflow_dispatch", "MODE_INPUT": "catchup", "GITHUB_RUN_ID": "9"}, [])
+        code, written, _ = self.run_main({"BOARDS_EVENT": "workflow_dispatch", "BOARDS_MODE_INPUT": "catchup", "GITHUB_RUN_ID": "9"}, [])
         self.assertEqual(code, 0)
         self.assertIn("run=true", written["out"])
         self.assertIn("mode=catchup", written["out"])
         self.assertIn(f"limit={limits.BOARDS_CATCHUP_PER_RUN}", written["out"])
 
     def test_a_duplicate_firing_writes_run_false(self):
-        code, written, _ = self.run_main({"EVENT": "schedule", "GITHUB_RUN_ID": "9"}, [run(2, utc(2026, 11, 22, 7, 1))])
+        code, written, _ = self.run_main({"BOARDS_EVENT": "schedule", "GITHUB_RUN_ID": "9"}, [run(2, utc(2026, 11, 22, 7, 1))])
         self.assertIn("run=false", written["out"])
 
 

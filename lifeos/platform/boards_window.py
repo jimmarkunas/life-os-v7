@@ -1,13 +1,10 @@
-"""LIFE-854: the four employer-board windows (1:00 AM, 7:00 AM, 1:00 PM and 7:00 PM Central), decided from the run history of .github/workflows/boards.yml.
+"""LIFE-854: the four employer-board windows (1:00 AM, 7:00 AM, 1:00 PM, 7:00 PM Central), decided from boards.yml's own run history.
 
-    python3 -m lifeos.platform.boards_window      run by the `window` job of boards.yml; writes run, mode, limit, timeout_minutes, deadline_minutes, slot, slot_ct and late_reason to $GITHUB_OUTPUT
+    python3 -m lifeos.platform.boards_window      run by the `window` job; writes run, mode, limit, timeout_minutes, deadline_minutes, slot, slot_ct and late_reason to $GITHUB_OUTPUT
 
-The workflow carries two UTC cron lines per window (standard time and daylight time), so one firing opens the window and the other lands an hour off. GitHub also drops and delays scheduled runs. This gate settles it from the history:
-  * a moment belongs to the latest window that has opened (Central time, daylight saving included), so a firing an hour early or late maps to the right window;
-  * a window that already has a real run (its crawl job succeeded, failed or timed out) is a duplicate: skipped;
-  * a previous window with no successful run (dropped, failed, timed out) makes this one a catch-up (cap 2,900, about 60 minutes); the boards it left are first in line because the board list is read oldest-due first;
-  * an unreadable history never stops a window: a normal window runs and says so.
-A manual run always runs, in the mode its input names. Counts and fixed codes only; stdlib only."""
+Two UTC crons per window (standard and daylight time): one opens the window, the other lands an hour off. A moment belongs to the latest window that has opened (Central time); a window that already has a real run is a
+duplicate and skipped; a previous window with no successful run makes this one a catch-up (leftovers first: boards are read oldest due first); an unreadable history runs a normal window and says so. A manual run always runs.
+Counts and fixed codes only; stdlib only."""
 import datetime as dt
 import os
 import sys
@@ -120,8 +117,8 @@ def summary(result):
 
 def main(environ=os.environ, api=gate._api, now=None, out=print):
     now = now or dt.datetime.now(dt.timezone.utc)
-    if environ.get("EVENT") == "workflow_dispatch":
-        mode = "catchup" if environ.get("MODE_INPUT") == "catchup" else "window"
+    if environ.get("BOARDS_EVENT") == "workflow_dispatch":
+        mode = "catchup" if environ.get("BOARDS_MODE_INPUT") == "catchup" else "window"
         result = plan(current_slot(now), mode, "manual_run")
     else:
         try:

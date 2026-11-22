@@ -24,3 +24,8 @@ PROOF_CONFIRM flag Confirmation word a manual proof run needs
 SPONSORS_FORCE flag Manual switch: refresh the sponsor register now
 SURFACE_SHARD input Which slice (i/n) of the Ledger pages a surface run writes
 WEB_FORCE flag Manual switch: re-read the web sources now
+BOARDS_MODE input Set by the boards workflow: window (cap 1,800) or catchup (cap 2,900), the cap of this board window (LIFE-854)
+BOARDS_SLOT input Set by the boards workflow: the start of this board window (UTC), for the receipt (LIFE-854)
+BOARDS_SLOT_CT input Set by the boards workflow: this window's label in Central time, for the receipt (LIFE-854)
+BOARDS_LATE_REASON input Set by the boards workflow: why this window started late or is a catch-up (a fixed code), for the receipt (LIFE-854)
+BOARDS_DEADLINE_MINUTES input Set by the boards workflow: minutes after which the crawl starts no new board, 3 before the step timeout, so the receipt is always written (LIFE-854)

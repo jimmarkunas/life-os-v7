@@ -56,8 +56,8 @@ jobs:
         name: Window gate - which window this firing belongs to, whether it already ran, and whether it is a catch-up (reads this workflow's run history only; counts and codes)
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          EVENT: ${{ github.event_name }}
-          MODE_INPUT: ${{ inputs.mode }}
+          BOARDS_EVENT: ${{ github.event_name }}
+          BOARDS_MODE_INPUT: ${{ inputs.mode }}
         run: python3 -m lifeos.platform.boards_window
   boards:
     needs: window
