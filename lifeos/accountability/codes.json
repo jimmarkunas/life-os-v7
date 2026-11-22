@@ -54,5 +54,12 @@
     false,
     "A Jira search needed more pages than the bound allows.",
     "None; retried on the next run."
+  ],
+  "ACCOUNTABILITY_MEJ_GOAL_AMBIGUOUS": [
+    "accountability",
+    "blocked",
+    false,
+    "One MEJ project Epic is linked to multiple current-quarter goal Epics, so attribution is ambiguous.",
+    "Correct the Jira Relates links with Matt's approval; the V3 goal update was refused."
   ]
 }
