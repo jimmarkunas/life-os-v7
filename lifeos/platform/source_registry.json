@@ -58,6 +58,8 @@
     {"name": "granola-auto", "module": "lifeos.sources.interview.granola_auto", "function": "stage", "partial_failure": "GRAN_AUTO_FAILED"},
     {"name": "hiring", "module": "lifeos.sources.pipeline.hiring"},
     {"name": "interview", "module": "lifeos.sources.interview.interview_evidence", "partial_failure": "INTERVIEW_OS_DEGRADED"},
+    {"name": "interview-mail", "module": "lifeos.sources.interview.mail_snapshot", "function": "stage"},
+    {"name": "interview-mail-shadow", "module": "lifeos.sources.interview.mail_snapshot", "function": "shadow"},
     {"name": "job-page-outreach", "module": "lifeos.sources.pipeline.job_page_outreach", "partial_failure": "JOB_PAGE_OUTREACH_PAGES_FAILED"},
     {"name": "mail-filing", "module": "lifeos.sources.cards.mail_filing", "floor": 200, "partial_failure": "PHYSMAIL_FILING_FAILED"},
     {"name": "manual-job", "module": "lifeos.sources.pipeline.manual_job", "partial_failure": "MANUAL_JOB_FAILED"},

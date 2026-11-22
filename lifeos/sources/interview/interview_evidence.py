@@ -27,6 +27,7 @@ from lifeos.platform.notion_client import Client, NotionError
 from lifeos.platform.runtime import RunContext
 from lifeos.sources.pipeline import hiring as pipeline, manual_job
 from lifeos.sources.interview import interview_sweep as sweep
+from lifeos.sources.interview import mail_snapshot as snapshots
 from lifeos.sources.interview import unreadable_streak as streaks
 
 TZ = ZoneInfo("America/Chicago")
@@ -486,8 +487,17 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
     lap("ledger_roster")
     pursuits = [{"id": "page:" + p.page_id, "company": c, "role": r, "title": p.title, "pursuit": True} for p, c, r in titles
                 if c.strip() and r.strip() and not any(same_company(c, a["company"]) and same_role(r, a["role"]) for a in roster)]
+    snapshot_why = None
     if records is None:
-        records, down = read_mail(environ, now, gmail, outlook_accounts, window(environ, live), mail_seconds, mail_detail)
+        began = time.monotonic()                                             # LIFE-894: the early domains run of this tick may already have read this mail: used only when complete, for this window and taken after this tick started
+        taken = snapshots.take(environ, now, window(environ, live), connect) if gmail is None and outlook_accounts is None else {"why": "no_tick"}
+        if taken["why"] == "used":
+            records, down = taken["records"], taken["down"]
+            mail_detail.update(taken["detail"])
+            mail_seconds["snapshot"] = round(time.monotonic() - began, 1)
+        else:                                                                # no snapshot, or one not usable: the full read exactly as before
+            records, down = read_mail(environ, now, gmail, outlook_accounts, window(environ, live), mail_seconds, mail_detail)
+        snapshot_why = None if taken["why"] == "no_tick" else taken["why"]
         if down:
             flag("mail_unavailable")                                         # a source read in part is never a trustworthy "no request"
     lap("mail")
@@ -657,5 +667,7 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
     lap("after_writer")
     counts["mail_gmail"] = mail_detail.get("gmail") or {}                          # LIFE-793: Gmail listed, read and their seconds
     counts["mail_seconds"] = mail_seconds                                          # LIFE-793: each mail source's own seconds (inside the `mail` phase, not added to the total)
+    if snapshot_why:
+        counts["mail_snapshot"] = snapshot_why                                     # LIFE-894: `used`, or the fixed code of why this run read the mail itself; a measurement field, left out when comparing outputs
     counts["seconds"] = {**laps, "total": round(sum(laps.values()), 1)}                     # LIFE-793: where the Interview run's time goes, by fixed phase
     return counts
