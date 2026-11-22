@@ -25,7 +25,7 @@ CALENDAR_AHEAD_DAYS = 30
 MARGIN = timedelta(minutes=5)        # the readers filter exactly on the checkpoint; this only keeps an API's coarse time filter from dropping a row
 MAX_PAGES = 10
 JIRA_ENV = ("JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN")             # the EXISTING Jira secrets the hourly jira job already loads; no new Jira credential (Jim, Nov 16 2026)
-JIRA_PROJECTS = {"personal": ("JFM", "LIFE", "LOS"), "bytalos": ("BAD", "BPP")}      # one Atlassian account; each workspace's grant reads only its own project keys (Jim, Nov 16 2026)
+JIRA_PROJECTS = {"personal": ("JFM", "LIFE"), "bytalos": ("BAD", "BPP")}      # one Atlassian account; each workspace's grant reads only its own project keys (Jim, Nov 16 2026)
 GMAIL_APP = ("GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET")     # the existing OAuth app (not an account credential); the refresh token below is new and read-only
 OUTLOOK_SCOPES = outlook.SCOPES                                         # Mail.Read + Calendars.Read only; the label sign-in never asks for more
 OUTLOOK_APP = "OUTLOOK_CLIENT_ID"                                      # the existing public client id; the refresh token below is new and read-only
