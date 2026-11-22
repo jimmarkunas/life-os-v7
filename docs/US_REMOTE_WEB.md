@@ -9,12 +9,15 @@ cost JD fetches, Fit work or a Notion write. UNCHANGED costs nothing. A failed o
 One scheduler (the hourly workflow); no second cron.
 
 ## Coverage today (from the registry)
+Counts re-read from `lifeos/sources/web/us_remote.json` on Nov 22 2026 (LIFE-907); the `port` column is empty because Phase 2 ported Workday and Jibe.
 | | ready (V7 lists it today) | port (JSON API, small adapter) | bespoke (site parser) | discovery |
 |---|---|---|---|---|
-| Employers (30) | 25: 20 Greenhouse, 4 Ashby, ServiceNow (SmartRecruiters) | 3: Adobe, Postman (Workday CXS), GitHub (Jibe) | 2: Shopify, Atlassian | |
+| Employers (30) | 28: 20 Greenhouse, 4 Ashby, Adobe and Postman (Workday CXS), GitHub (Jibe), ServiceNow (SmartRecruiters) | 0 | 2: Shopify, Atlassian | |
 | Staffing (10) | 1: Apex (SmartRecruiters) | | 9: Insight Global, TEKsystems, Motion, Randstad, Akkodis, Kforce, Robert Half, Experis, Dexian | |
 | Helpers (3) | | | | LinkedIn Jobs, Built In, Dice |
-So 26 of 43 sources can be read with code V7 already has, 3 need a small port, 11 need site-specific parsers, 3 are discovery-only.
+So 29 of 43 sources can be read with code V7 already has, 0 need a port, 11 need site-specific parsers, 3 are discovery-only.
+
+**Dice status (LIFE-907, Nov 22 2026): parked, nothing feeds it.** The `dice` row is a discovery helper (`status: discovery`) that no stage reads, and Dice mail is no longer read (LIFE-645; `SENDER_RULES` in `lifeos/sources/newsletters/config.py` holds only Lensa, Jobright and LinkedIn alerts). Only the Dice resolver (`resolve-dice`, 15 links per run) still runs hourly, with no input. A feeder is a separate decision; none is added here.
 The browser is not an option for any of this (D12): free HTTP and the free fetch only.
 
 ## Hostinger state (new tables, all `v7_`)
@@ -56,7 +59,7 @@ This channel makes most of the 11 bespoke boards unnecessary: it covers the ATS 
 2. DONE: Workday listing (Adobe, Postman) and Jibe (GitHub), plus Pinpoint for Scale-Up. 28 of 30 employers are listable now.
 3. Open Jobs feed intake with the cursor and generation rules.
 4. Bespoke staffing parsers only where the feed does not cover the board and you still want that agency.
-5. Discovery helpers: LinkedIn (no login), Built In, Dice stay discovery-only: they can propose a candidate, never an Apply URL or a JD.
+5. Discovery helpers: LinkedIn (no login), Built In, Dice stay discovery-only: they can propose a candidate, never an Apply URL or a JD. Today only LinkedIn has a producer (`linkedin-search`); Built In and Dice have none (Dice: see the status under Coverage).
 
 ## Acceptance (the contract's 15 points, mapped)
 Frontier advances only on COMPLETE; a failed board keeps its state; NEW / MATERIAL_CHANGE / UNCHANGED / REMOVED classify correctly; junk is suppressed
