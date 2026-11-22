@@ -65,20 +65,24 @@ def project_snapshot(client, project, board_id, triage_all, now, keys=(), gtv_ep
     def issues(jql):
         return [compact(i) for i in client.board_issues(board_id, jql + " ORDER BY Rank ASC", FIELDS)]
 
+    # Keep JFM's existing snapshot semantics. Matt's MEJ execution summary
+    # counts Tasks/Stories/Bugs, with Sub-tasks reachable from their parents.
+    work_type = "issuetype != Epic AND issuetype != Sub-task" if project == "MEJ" else "issuetype != Epic"
+
     def tasks(sprint):
         if not sprint or sprint.get("id") is None:
             return []
-        return issues(f"sprint = {sprint['id']} AND issuetype != Epic AND statusCategory != Done")   # Tasks and Sub-tasks, whole sprint
+        return issues(f"sprint = {sprint['id']} AND {work_type} AND statusCategory != Done")
 
-    triage_type = "issuetype != Epic" if triage_all else "issuetype = Task"
+    triage_type = work_type if triage_all else "issuetype = Task"
     gtv = gtv_work(client, board_id, gtv_epic) if gtv_epic and gtv_epic.split("-")[0] == project else None   # None = not configured here
-    done = issues(f"issuetype != Epic AND sprint = {active[0]['id']} AND statusCategory = Done") if active else []
+    done = issues(f"{work_type} AND sprint = {active[0]['id']} AND statusCategory = Done") if active else []
     return {"schema": SCHEMA_V, "project": project, "taken_at": now.isoformat(), "timezone": LOCAL_TZ,
             "board": {"id": board_id, "name": board.get("name")},
             "current_sprint": _summary(current), "next_sprint": _summary(following),
             "current_tasks": tasks(current), "next_tasks": tasks(following),
-            "overdue": issues(f'project = {project} AND issuetype != Epic AND statusCategory != Done AND duedate < "{today}"'),
-            "blocked": issues(f"project = {project} AND issuetype != Epic AND status = blocked"),
+            "overdue": issues(f'project = {project} AND {work_type} AND statusCategory != Done AND duedate < "{today}"'),
+            "blocked": issues(f"project = {project} AND {work_type} AND status = blocked"),
             "triage": issues(f"project = {project} AND sprint is EMPTY AND {triage_type} AND statusCategory != Done"),
             "done": done, "gtv": gtv}
 
