@@ -118,7 +118,7 @@ class Workflows(unittest.TestCase):
         jobs = self.domains["jobs"]
         early = {n for n, j in jobs.items() if "needs.gate.outputs.early == 'true'" in str(j.get("if"))}
         late = {n for n, j in jobs.items() if "needs.gate.outputs.late == 'true'" in str(j.get("if"))}
-        self.assertEqual(late, {"megibow", "interview", "granola"})                    # LIFE-775 step 1: megibow reads v7_jobs and interview writes it, granola follows interview
+        self.assertEqual(late, {"megibow", "interview", "granola", "interview_shadow"})      # LIFE-775 step 1: megibow reads v7_jobs and interview writes it, granola follows interview; LIFE-894: the proof-week shadow read runs beside interview (it writes nothing)
         self.assertEqual(early & late, set())
         self.assertEqual(early | late | {"gate", "report", "chain"}, set(jobs))         # every job is in exactly one run; the report and chain jobs run in both (failures; the LIFE-904 clocks)
         for name in early | late:

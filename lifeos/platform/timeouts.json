@@ -188,12 +188,28 @@
    "slowest_seconds": 162,
    "target": 10
   },
+  "domains.yml::interview_mail": {
+   "basis": "not measured: no completed run in the last 100; keeps its current value",
+   "current": 30,
+   "median_seconds": null,
+   "runs_measured": 0,
+   "slowest_seconds": null,
+   "target": 30
+  },
   "domains.yml::interview": {
    "basis": "twice the slowest run (678 s) rounds to 30 min, not below the current 30: unchanged",
    "current": 30,
    "median_seconds": 442,
    "runs_measured": 31,
    "slowest_seconds": 678,
+   "target": 30
+  },
+  "domains.yml::interview_shadow": {
+   "basis": "not measured: no completed run in the last 100; keeps its current value",
+   "current": 30,
+   "median_seconds": null,
+   "runs_measured": 0,
+   "slowest_seconds": null,
    "target": 30
   },
   "domains.yml::followup": {

@@ -20,6 +20,16 @@ NOW = TICK + timedelta(minutes=30)                                 # the late ru
 RECORDS = [mail(subject="Schedule your interview - ExampleCo Program Manager", received="2026-11-20T15:00:00Z"),
            outreach(url="https://example.test/thread/lead", received="2026-11-21T09:00:00Z", extra="Requisition 777777."),
            {**mail(subject="Newsletter"), "provider": "outlook", "id": "acct:1", "received": "2026-11-22T11:00:00Z", "folder": "JUNK"}]
+STARTED = TICK.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+class Frozen(datetime):
+    """ev.run reads the clock once; it reads NOW, so the tick, the snapshot and the late run have fixed relative times."""
+    @classmethod
+    def now(cls, tz=None):
+        return NOW.astimezone(tz) if tz else NOW
+
+
 DETAIL = {"gmail": {"listed": 3, "list_s": 1.0, "read": 3, "read_s": 2.0, "retries": 0, "gone": 0, "unreadable": {}}}
 
 
@@ -182,13 +192,12 @@ class LateRun(unittest.TestCase):
     """ev.run with and without the snapshot: the same input gives the same output."""
 
     def fresh_tick(self):
-        """TICK_STARTED relative to the real clock ev.run reads: the tick began 30 minutes ago, its early read 26 minutes ago."""
-        now = datetime.now(UTC)
-        return (now - timedelta(minutes=30)).strftime("%Y-%m-%dT%H:%M:%SZ"), now - timedelta(minutes=26)
+        """TICK_STARTED and the time of the early read: the tick began at 12:07, its early read four minutes later, and ev.run's clock says 12:37."""
+        return STARTED, TAKEN
 
     def run_late(self, db, started, read=None, records=None):
         environ = {**ENV, "TICK_STARTED": started}
-        with patch.object(ev, "read_mail", side_effect=read or (lambda *a, **k: (list(RECORDS), 0))) as spy:
+        with patch.object(ev, "datetime", Frozen), patch.object(ev, "read_mail", side_effect=read or (lambda *a, **k: (list(RECORDS), 0))) as spy:
             counts, got = Run(parents=(), kids={}, roster=[APPLIED], records=records, environ=environ, connect=db)()
         return counts, got, spy
 
@@ -242,7 +251,7 @@ class LateRun(unittest.TestCase):
     def test_a_dry_run_with_a_longer_window_reads_for_itself(self):
         started, taken = self.fresh_tick()
         environ = {**ENV, "TICK_STARTED": started, "INTERVIEW_MAIL_DAYS": "30"}
-        with patch.object(ev, "read_mail", return_value=(list(RECORDS), 0)) as spy:
+        with patch.object(ev, "datetime", Frozen), patch.object(ev, "read_mail", return_value=(list(RECORDS), 0)) as spy:
             counts, _ = Run(parents=(), kids={}, roster=[APPLIED], records=None, environ=environ, live=False, connect=saved(Db(), taken=taken))()
         self.assertEqual((spy.call_count, counts["mail_snapshot"]), (1, "days"))
 
