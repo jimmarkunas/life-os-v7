@@ -81,7 +81,7 @@ class ComparingCardsAreOrdered(unittest.TestCase):
         self.assertEqual([s.get("id") for s in self.jobs["hiring_outcomes"]["steps"] if s.get("id") == "houtcomes"], ["houtcomes"])
 
     def test_every_job_that_can_fail_is_named_by_the_report_job(self):
-        self.assertTrue(set(self.jobs) - {"report", "chain"} <= self.graph["report"]      # LIFE-904: chain only reads the Actions API and always ends green, so the report never waits for it)
+        self.assertTrue(set(self.jobs) - {"report", "chain"} <= self.graph["report"])      # LIFE-904: chain only reads the Actions API and always ends green, so the report never waits for it
 
 
 if __name__ == "__main__":
