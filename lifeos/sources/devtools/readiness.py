@@ -1,7 +1,6 @@
-"""Offline readiness validator for coding agents and CI: is a LIFE issue ready to start (LIFE-225 ARCH-04, delivery flow v3).
+"""Offline readiness validator: is a LIFE issue ready to start (LIFE-225, delivery flow v3).
 
-Versioned, deterministic, stdlib only, no network, no state. Refuses (exit 2): an invalid key, no Done-when line, an open `Blocks` predecessor, an unchecked Jim must do first item, or a release-gate reason (LIFE-850). Anything else prints `warn v1 <code> <field>` on stderr and exits 0 (`ready v1`). Unreadable input or an error refuses
-(exit 2) before the caller mutates anything.
+Versioned, deterministic, stdlib only, no network, no state. Refuses (exit 2): an invalid key, no Done-when line, an open `Blocks` predecessor, an unchecked Jim must do first item, or a release-gate reason (LIFE-850). Anything else prints `warn v1 <code> <field>` on stderr and exits 0 (`ready v1`). Unreadable input refuses (exit 2).
 Usage: python -m lifeos.sources.devtools.readiness issue FILE | issue-key KEY | issue-json FILE | issue-mcp FILE KEY | open-gaps | open-gaps-mcp FILE | repo [ROOT]   (FILE is JSON)
   issue      a normalized LIFE issue record; issue-key a LIVE issue read from Jira by key (read-only GET, JIRA_* settings); issue-json a saved REST v3 issue
   issue-mcp  the unmodified Atlassian MCP getJiraIssue result saved to FILE (no Jira credential; prints SOURCE mcp-read; a file older than 15 minutes is a warn)
