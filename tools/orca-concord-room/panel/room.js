@@ -214,7 +214,7 @@
   }
 
   // Hand off a council reply: a new worktree with a fresh agent, the reply as its first message.
-  const JIRA_IN_TEXT = /\b(?:LIFE|LOS)-\d{1,6}\b/g
+  const JIRA_IN_TEXT = /\bLIFE-\d{1,6}\b/g
   let handing = null
   function openHandoff(m) {
     handing = m

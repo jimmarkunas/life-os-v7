@@ -118,23 +118,17 @@ class RecordTests(unittest.TestCase):
             self.assertEqual((code, out), (2, ""))
             self.assertTrue(err.startswith("QUEUE_NOT_READY — INCOMPLETE:"), err)
 
-    def test_a_los_origin_without_its_notion_requirement_page_only_warns(self):
-        """LIFE-319, relaxed by delivery flow v3: requirement_page_missing is a warn line, not a refusal."""
+    def test_a_los_key_is_no_longer_read_and_requirement_pages_stay_listed(self):
+        """LIFE-849: LOS is retired. A LOS key in the origin line adds no requirement check and no `los` field; a linked REQ page is still listed."""
         from_los = DESC.replace("chat: example.", "chat: example, from LOS-900.")
         page = "\n\n**Requirement:** REQ-7 https://app.notion.com/p/00000000000000000000000000000004"
-        code, out, err = self.check(raw(from_los))
-        self.assertEqual((code, out), (0, "ready v1\n"))
-        self.assertIn("warn v1 requirement_page_missing requirement LOS-900", err)
-        self.assertEqual(self.check(raw(from_los + page))[:2], (0, "ready v1\n"))
-        self.assertNotIn("requirement_page_missing", self.check(raw(from_los + page))[2])
-        self.assertEqual(self.check(raw())[:2], (0, "ready v1\n"))                                           # no LOS origin: the check is skipped
-        self.assertEqual(rr.normalize(raw())["requirement"], {"los": "", "pages": []})
-
-    def test_a_bare_notion_link_or_a_los_key_outside_the_origin_line_does_not_count(self):
-        from_los = DESC.replace("chat: example.", "chat: example, from LOS-900.")
-        self.assertIn("requirement_page_missing", self.check(raw(from_los + "\n\nSee https://app.notion.com/p/00000000000000000000000000000004"))[2])      # no REQ-n on the line
-        self.assertIn("requirement_page_missing", self.check(raw(from_los + "\n\nREQ-7 has no link yet"))[2])
-        self.assertEqual(self.check(raw(DESC + "\n\nBackground: LOS-900 was scoped earlier."))[:2], (0, "ready v1\n"))
+        for text in (from_los, from_los + "\n\nREQ-7 has no link yet", from_los + "\n\nSee https://app.notion.com/p/00000000000000000000000000000004"):
+            code, out, err = self.check(raw(text))
+            self.assertEqual((code, out), (0, "ready v1\n"))
+            self.assertNotIn("requirement_page_missing", err)
+            self.assertNotIn("LOS-900", err)
+            self.assertEqual(rr.normalize(raw(text))["requirement"], {"pages": []})
+        self.assertEqual(rr.normalize(raw(from_los + page))["requirement"], {"pages": ["https://app.notion.com/p/00000000000000000000000000000004"]})
 
     def test_a_malformed_requirement_record_only_warns(self):
         with tempfile.TemporaryDirectory() as tmp:

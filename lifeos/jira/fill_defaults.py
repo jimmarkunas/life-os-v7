@@ -1,6 +1,5 @@
 """LIFE-741: fill the parent epic, Component and Fix Version of LIFE tickets by one set of rules; a value that is already set is never changed."""
-# Rules, in order (Jim, Nov 16 2026): (1) Parent: keep it; else a Bug goes under LIFE-615; else `action-inbox` goes to LIFE-696 and a title "Stability n/7" to LIFE-686; else the newest open epic
-# carrying the same `los-N` label; else the container epic "LIFE one-off tasks" (found by its title alone, created once when absent). (2) Component: keep it; else the parent epic's; else Platform / Core OS.
+# Rules, in order (Jim, Nov 16 2026): (1) Parent: keep it; else a Bug goes under LIFE-615; else `action-inbox` goes to LIFE-696 and a title "Stability n/7" to LIFE-686; else the container epic "LIFE one-off tasks" (found by its title alone, created once when absent). (2) Component: keep it; else the parent epic's; else Platform / Core OS.
 # (3) Fix Version: keep it; else "<Component> 1.0.0". Epics get rules 2 and 3 only. Nothing here creates a Component or a version, or changes a status.
 #   python -m lifeos.jira.fill_defaults [--backfill] [--live]     counts only; a dry run unless --live (the hourly stage is lifeos.run jira-fill)
 #   python -m lifeos.jira.fill_defaults --plan FILE              FILE = {"issues": [...], "epics": [...]} saved from Jira; prints the planned changes, writes nothing
@@ -19,7 +18,6 @@ CONTAINER_TITLE = "LIFE one-off tasks"
 DEFAULT_COMPONENT = "Platform / Core OS"
 FIELDS = "summary,issuetype,labels,parent,components,fixVersions,status"
 GAPS = "project = LIFE AND (component is EMPTY OR fixVersion is EMPTY OR (issuetype != Epic AND parent is EMPTY))"
-LOS = re.compile(r"los-\d+")
 STABILITY = re.compile(r"\s*Stability \d+/7")
 BATCH, PAUSE = 50, 1.0
 LABEL_OF = {"components": "Component", "fixVersions": "Fix Version", "parent": "parent"}
@@ -67,9 +65,7 @@ def pick_parent(fields, epics, container):
         return INBOX_EPIC
     if STABILITY.match(fields.get("summary") or ""):
         return STABILITY_EPIC
-    wanted = {x for x in labels if LOS.fullmatch(x)}
-    same = [k for k, e in epics.items() if not is_done(e.get("fields") or {}) and wanted & set((e.get("fields") or {}).get("labels") or [])]
-    return max(same, key=number) if same else container
+    return container                                                            # LIFE-849: the `los-N` label match is retired; a ticket with no parent goes to the container epic
 
 
 def plan(fields, epics, container):
