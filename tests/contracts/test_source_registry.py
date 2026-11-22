@@ -1,6 +1,7 @@
 """LIFE-618 / LIFE-588: the job-source registry (lifeos/platform/source_registry.json) drives the stage table, the Jobs-tick plan and the source's own codes, and a stage under lifeos/sources/ that is neither registered nor on
 the short "not yet migrated" list fails here, by name."""
 import importlib
+import json
 import sys
 import types
 import unittest
@@ -124,6 +125,38 @@ class AFakeSourceNeedsOnlyItsModuleAndOneLine(unittest.TestCase):
         rows = registry.code_rows(codes._r, [self.fake])
         self.assertEqual(rows["FAKE_SOURCE_FAILED"], codes._r("fake-source", "degraded", False, "The fake source could not be read.", "Repeat the run."))
         self.assertIn(rows["FAKE_SOURCE_FAILED"].klass, codes.CLASSES)
+
+
+class StatusIsStated(unittest.TestCase):
+    """LIFE-907: every registered source carries one status word (the loader ignores the key, so a run never changes), and the words that name a limit match the code."""
+    RAW = json.loads(registry.FILE.read_text(encoding="utf-8"))
+    WORDS = {"active", "parked", "manual", "retired"}
+
+    def test_every_registered_source_has_a_status_word_and_no_stage_is_made_up(self):
+        status = self.RAW["status"]
+        names = {s.name for s in registry.SOURCES}
+        self.assertEqual(sorted(names - set(status)), [], "add a status word for each new source")
+        self.assertEqual(sorted(set(status) - names - {step.name for step in tick.PLAN}), [], "a status for a stage that does not exist")
+        self.assertEqual(sorted(w for w in status.values() if w not in self.WORDS), [])
+
+    def test_a_status_other_than_active_says_why(self):
+        status, notes = self.RAW["status"], self.RAW["status_notes"]
+        self.assertEqual(sorted(n for n, w in status.items() if w != "active" and not notes.get(n)), [])
+        self.assertEqual(sorted(set(notes) - set(status)), [])
+
+    def test_a_source_that_runs_in_the_jobs_tick_is_never_called_manual(self):
+        for s in registry.SOURCES:
+            if s.tick is not None:
+                self.assertNotEqual(self.RAW["status"][s.name], "manual", s.name)
+
+    def test_boards_backfill_is_parked_exactly_while_its_switch_is_off(self):
+        from lifeos.platform import switches
+        self.assertEqual(self.RAW["status"]["boards-backfill"] == "parked", not switches.state("BOARDS_BACKFILL", {}))
+
+    def test_dice_is_parked_while_no_sender_rule_feeds_it(self):
+        from lifeos.sources.newsletters import config
+        fed = any(name == "dice" for name, _ in config.SENDER_RULES)
+        self.assertEqual(self.RAW["status"]["resolve-dice"] == "parked", not fed)
 
 
 if __name__ == "__main__":
