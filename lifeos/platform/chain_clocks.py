@@ -1,12 +1,10 @@
-"""LIFE-904: the three end-to-end clocks of ONE logical tick (Jobs, career, full platform), printed as one `chain:` line from the Actions API and the tick's own `stage ...` lines.
+"""LIFE-904: the Jobs, career and full-platform clocks of one tick, printed as one `chain:` line.
 
-    python3 -m lifeos.platform.chain_clocks     run by the `chain` job of domains.yml (both the early run and the run after the tick); env CHAIN_TICK_ID, CHAIN_ROLE, GITHUB_TOKEN, GITHUB_REPOSITORY
+    python3 -m lifeos.platform.chain_clocks     run by the `chain` job of domains.yml; env CHAIN_TICK_ID, CHAIN_ROLE, GITHUB_TOKEN, GITHUB_REPOSITORY
 
-The correlation ID is the hourly tick's run ID. The early domains run receives it as the `tick_run` input and the run after the tick reads `workflow_run.id`; each one's gate job is named `gate (tick <id>)`, so this finds both runs by that name and no datastore or scheduler is added.
-Clocks run from the tick run's start: Jobs = the end of the last publish stage that printed `ok` (publish reads the Ledger page back before it ends), career = the end of the last hiring, hiring_outcomes, recruiters or interview job that succeeded,
-full platform = the end of the last job of every correlated domains run, and ONLY once all of them have ended (the tick cannot assert a finish that has not happened yet; whichever run ends last prints the final line).
-Status: OK, DEGRADED (a job failed, timed out or was cancelled, or a stage did not print ok) or UNVERIFIED (a job or run is missing or still running, or the history cannot be read): a clock that is not OK never shows a zero, and the full-platform time is shown only when UNVERIFIED does not apply.
-Counts, CT times, seconds, minutes and fixed codes only; it never fails the run."""
+The correlation ID is the hourly tick's run ID: the early domains run gets it as `tick_run`, the run after the tick as `workflow_run.id`, and both gate jobs are named `gate (tick <id>)`.
+Clocks run from the tick's start. Jobs ends at the last publish stage that printed ok; career at the last Hiring, Recruiters or Interview job that succeeded; full platform at the last job of both runs, printed only once all have ended.
+Status OK, DEGRADED (a job failed or a stage was not ok) or UNVERIFIED (missing or running); a clock without a real end shows no time, never zero. Counts, CT times and fixed codes only; it never fails the run."""
 import datetime as dt
 import json
 import os

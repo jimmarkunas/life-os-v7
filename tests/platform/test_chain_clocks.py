@@ -187,7 +187,7 @@ class Workflows(unittest.TestCase):
     def test_the_chain_job_runs_after_every_domain_job_reads_only_and_cannot_fail_the_run(self):
         domains = yaml.safe_load((ROOT / ".github/workflows/domains.yml").read_text())
         chain = domains["jobs"]["chain"]
-        self.assertEqual(set(chain["needs"]), set(domains["jobs"]["report"]["needs"]))
+        self.assertEqual(set(chain["needs"]) | {"chain"}, set(domains["jobs"]["report"]["needs"]))
         self.assertEqual(chain["permissions"], {"contents": "read", "actions": "read"})
         self.assertIn("always()", chain["if"])
         self.assertTrue(any("chain_clocks" in step.get("run", "") for step in chain["steps"]))

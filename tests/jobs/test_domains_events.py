@@ -17,7 +17,7 @@ from tests.jobs.fit.test_backlog_workflow import evaluate, truthy
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github" / "workflows" / "domains.yml"
 TABLE = pathlib.Path(__file__).resolve().parent / "domains_event_table.json"
-GATES = ("gate",)                                       # the one gate job; compared separately (see test_the_gate_runs_exactly_...)
+GATES = ("gate", "chain")  # LIFE-904: chain = the clock receipt, in every tick run, no domain work;                                       # the one gate job; compared separately (see test_the_gate_runs_exactly_...)
 TRIGGER_INPUTS = ("all", "amazon", "bills_paid", "calendar_sync", "dcc", "hiring", "imessage", "jira", "live", "megibow", "physical_mail", "recruiters", "refresh")
 
 
