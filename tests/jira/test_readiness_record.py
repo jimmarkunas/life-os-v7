@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 
 from lifeos.jira import readiness_record as rr
+from lifeos.sources.devtools import readiness
 
 ROOT = Path(__file__).resolve().parents[2]
 DESC = """**Origin / approval:** Example Owner, Jan 1, 2030, chat: example.
@@ -127,6 +128,49 @@ class RecordTests(unittest.TestCase):
             saved.write_text("{}")
             self.assertEqual(entry("open-gaps-mcp", saved)[0], 2)
         self.assertEqual(entry("open-gaps-mcp", "/nonexistent.json")[0], 2)
+
+    def test_a_ready_epic_needs_a_current_pass_review_and_every_other_state_refuses(self):
+        """LIFE-851: epic_unreviewed (HARD) for a missing, failed or stale review; a current pass is ready; an Epic not in Ready is not judged; a review is the first line of one comment (markdown or ADF)."""
+        def comment(text, created):
+            return {"body": text, "created": created}
+        def bundle(comments, children=(), status="Ready"):
+            return {"key": "LIFE-846", "status": status, "comments": comments, "children": [{"key": f"LIFE-{i}", "updated": u} for i, u in enumerate(children, 1)]}
+        passing = comment("ChatGPT review: pass \u2014 children LIFE-849 to LIFE-851\n\n* LIFE-849: pass", "2026-11-22T01:45:26.935-0600")
+        adf = comment({"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "**ChatGPT review: pass**"}]}]}, "2026-11-22T01:45:26.935-0600")
+        cases = (("missing", bundle([])), ("missing", bundle([comment("Governance verdict: GO", "2026-11-21T15:32:29.779-0600"), comment("The ChatGPT review: pass is coming", "2026-11-22T01:45:26.935-0600")])),
+                 ("failed", bundle([passing, comment("ChatGPT review: changes\n\n* LIFE-851: add the checklist", "2026-11-22T02:00:00.000-0600")])),
+                 ("failed", bundle([comment("ChatGPT review: changes", "2026-11-22T01:00:00.000-0600")])),
+                 ("stale", bundle([passing], children=["2026-11-22T01:00:00.000-0600", "2026-11-22T03:00:00.000-0600"])))
+        for why, data in cases:
+            self.assertEqual(readiness.epic_review(data), why, why)
+        for data in (bundle([passing]), bundle([adf], children=["2026-11-22T01:00:00.000-0600"]), bundle([comment("ChatGPT review: changes", "2026-11-21T01:00:00.000-0600"), passing], children=["2026-11-22T01:45:26.935-0600"]),
+                     bundle([], status="Scoping"), bundle([], status="In Progress")):
+            self.assertIsNone(readiness.epic_review(data))
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "epic.json"
+            path.write_text(json.dumps(cases[4][1]))
+            code, out, err = entry("epic-review", path)
+            self.assertEqual((code, out, err), (2, "", "refused v1 epic_unreviewed review LIFE-846 stale\n"))
+            path.write_text(json.dumps(bundle([passing])))
+            self.assertEqual(entry("epic-review", path)[:2], (0, "ready v1\n"))
+        self.assertEqual(entry("epic-review", "/nonexistent.json")[0], 2)
+        self.assertEqual(readiness.epic_review(bundle([comment("ChatGPT review: pass", "not a date")])), "missing")        # an unreadable time never counts as a review
+
+    def test_the_live_epic_bundle_reads_status_comments_and_child_updates_and_a_gap_is_a_fixed_code(self):
+        class Fake:
+            def __init__(self, comments=None, status="Ready"):
+                self.comments, self.status = [] if comments is None else comments, status
+            def get(self, path, params=None):
+                if path.endswith("/search/jql"):
+                    return {"issues": [{"key": "LIFE-1", "fields": {"updated": "2026-11-22T01:00:00.000-0600"}}], "isLast": True}
+                if path.endswith("/comment"):
+                    return {"comments": self.comments, "total": len(self.comments)}
+                return {"fields": {"status": {"name": self.status}}}
+        got = rr.epic_bundle("LIFE-846", Fake([{"body": "ChatGPT review: pass", "created": "2026-11-22T01:45:26.935-0600"}]))
+        self.assertEqual((got["status"], len(got["comments"]), got["children"]), ("Ready", 1, [{"key": "LIFE-1", "updated": "2026-11-22T01:00:00.000-0600"}]))
+        self.assertIsNone(readiness.epic_review(got))
+        with self.assertRaises(ValueError):
+            rr.epic_bundle("LIFE-846", Fake(status=None))
 
     def test_a_long_life_description_warns(self):
         code, _, err = self.check(raw(DESC + "\n\n" + "x" * 4000))
