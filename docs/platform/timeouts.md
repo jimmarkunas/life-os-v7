@@ -81,6 +81,8 @@ The job timeouts in `.github/workflows` change in one separate workflow pull req
 | `suite-timing.yml` | `plan` | 2 | 2 | 4 | 3 | 4 | kept: only 4 measured runs (fewer than 10), slowest 4 s |
 | `suite-timing.yml` | `report` | 5 | 5 | 4 | 11 | 18 | kept: only 4 measured runs (fewer than 10), slowest 18 s |
 | `suite-timing.yml` | `timing` | 5 | 5 | 40 | 95 | 135 | twice the slowest run (135 s) rounded up to whole minutes, 5-minute floor |
+| `boards.yml` | `window` | 5 | 5 | 0 | - | - | not measured: new job (LIFE-854): one read of this workflow's own run history; 5-minute floor |
+| `boards.yml` | `boards` | 70 | 70 | 0 | - | - | not measured: new job (LIFE-854, Jim's sizing, comment 13632): the catch-up window's 60-minute crawl step plus checkout, the Bitwarden helper wait and the tailnet join |
 | `capacity-card.yml` | `capacitycard` | 10 | 10 | 0 | - | - | not measured: new job (LIFE-793); keeps its current value |
 | `v3-pages.yml` | `v3pages` | 10 | 10 | 0 | - | - | not measured: new job (LIFE-793); keeps its current value |
 | `watchdog.yml` | `watch` | 3 | 3 | 100 | 9 | 34 | already under the 5-minute floor; slowest run 34 s |
@@ -96,7 +98,8 @@ The job timeouts in `.github/workflows` change in one separate workflow pull req
 | Workflow | Job | Step timeout (min) |
 | --- | --- | ---: |
 | `hourly.yml` | `linkedin` | 4 |
-| `hourly.yml` | `finish` | 15, 25, 10 |
+| `boards.yml` | `boards` | 35 (window), 60 (catch-up) |
+| `hourly.yml` | `finish` | 15, 10 |
 
 A step has no timeout of its own unless listed: it is bounded by its job's `timeout-minutes` and, for a stage, by its stage budget.
 
@@ -165,7 +168,7 @@ The table below is rendered from `lifeos/platform/stages.json` (LIFE-768): edit 
 | `bills-paid` | 150 | no | twice its slowest measured step (61 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `bills-snapshot` | 120 | no | twice its slowest measured step (7 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `board-check` | 600 | no | no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
-| `boards` | 1080 | no | the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage |
+| `boards` | 3480 | yes | the employer-board windows (boards.yml, LIFE-854): a catch-up window's 60-minute step with the soft deadline 3 minutes before it, the hard alarm 1 minute after the soft deadline's margin; a window that cannot finish turns the run red (required) |
 | `boards-backfill` | 600 | no | the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage |
 | `boards-preview` | 600 | no | no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `calendar-sync` | 240 | yes | twice its slowest measured step (113 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |

@@ -297,17 +297,13 @@ class SideBySide(unittest.TestCase):
             self.assertEqual(result, {"fast": "ok", "boards": expected, "after": "ok"})                          # a failing early step never stops the next stage
             self.assertEqual(seen, [40])                                                                         # the next stage gets its own default limit, untouched
 
-    def test_early_changes_nothing_when_concurrency_is_off_and_the_real_boards_step_is_early_and_grouped(self):
+    def test_early_changes_nothing_when_concurrency_is_off_and_the_real_plan_has_no_early_step(self):
         calls = []
         plan = (Step("fast", 20), Step("boards", 20, bulk=True, group="B", early=True), Step("after", 20))
         stages = {n: (lambda limit, live, n=n: calls.append(n) or 0) for n in ("fast", "boards", "after")}
         tick.tick(False, plan=plan, stages=stages)                                                             # concurrency=None: the old sequential order
         self.assertEqual(calls, ["fast", "boards", "after"])
-        boards = next(s for s in tick.PLAN if s.name == "boards")
-        self.assertTrue(boards.early and boards.group and boards.bulk and boards.providers == ("ats",))
-        self.assertEqual([s.name for s in tick.PLAN if s.early], ["boards"])                                    # only boards, and the drains still follow the whole group
-        names = [s.name for s in tick.PLAN]
-        self.assertLess(names.index("boards"), names.index("drain-audit-ready"))
+        self.assertEqual([s.name for s in tick.PLAN if s.early], [])                                            # LIFE-854: the real plan has no early step now (the boards stage moved to its own four windows); the mechanism stays proven by the plan above
 
     def test_the_stage_thread_limit_is_honoured(self):
         state, stage = self.gate()

@@ -8,9 +8,11 @@ import os
 import random
 import re
 import threading
+import time
+from datetime import datetime, timedelta, timezone
 
 from lifeos.jobs import lanes
-from lifeos.platform import switches
+from lifeos.platform import boards_window, ct_stamp, switches
 from lifeos.platform import limits
 from lifeos.sources.web import lister, registry, run as web, suppress
 
@@ -122,12 +124,65 @@ class StopOnRateLimit:
         return listing
 
 
-def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=None):
-    """The hourly pass (D217): re-reads boards already read once (plus the curated extras and a forced board); a board's first read is the backfill's."""
-    counts = web.run(limit, live, now, StopOnRateLimit(lister_fn), repo, registry.boards() if sources is None else sources, LANE,
-                     cap=limits.BOARDS_PER_RUN, budget=limits.BOARDS_INGEST_PER_RUN, screen=screen, workers=limits.BOARDS_WORKERS, select="known")
+def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=None, environ=None, clock=time.monotonic):
+    """The board pass (D202, D217): re-reads boards already read once (plus the curated extras and a forced board); a board's first read is the backfill's. Since LIFE-854 it runs in the four daily board windows
+    (.github/workflows/boards.yml): the cap is the window's (BOARDS_PER_RUN) or, in a catch-up (BOARDS_MODE=catchup), BOARDS_CATCHUP_PER_RUN; boards are read oldest-due first, so what one window leaves comes first in the
+    next; BOARDS_DEADLINE_MINUTES stops new reads shortly before the step timeout, so the receipt is always written. The counts carry the window's `receipt`."""
+    environ = os.environ if environ is None else environ
+    started = now or web._now()
+    began = clock()
+    catchup = environ.get("BOARDS_MODE") == "catchup"
+    cap = limits.BOARDS_CATCHUP_PER_RUN if catchup else limits.BOARDS_PER_RUN
+    try:
+        minutes = float(environ.get("BOARDS_DEADLINE_MINUTES") or 0)
+    except ValueError:
+        minutes = 0
+    end = began + minutes * 60
+    counts = web.run(limit, live, started, StopOnRateLimit(lister_fn), repo, registry.boards() if sources is None else sources, LANE,
+                     cap=cap, budget=limits.BOARDS_INGEST_PER_RUN, screen=screen, workers=limits.BOARDS_WORKERS, select="known", stop=(lambda: clock() >= end) if minutes > 0 else None)
     counts["pass"] = "employer boards"
+    counts["receipt"] = receipt(counts, environ, started, started + timedelta(seconds=max(clock() - began, 0)), cap, catchup)
+    path = environ.get("GITHUB_STEP_SUMMARY")
+    if path:
+        try:
+            with open(path, "a") as handle:
+                handle.write(receipt_markdown(counts["receipt"]))
+        except OSError:
+            pass                                                                  # a summary is a convenience; never fail a window for it
     return counts
+
+
+def receipt_markdown(r):
+    """LIFE-854: the receipt as the job summary table (the same fields, in the order the ticket names them)."""
+    rows = [("Window", f"{r['window'] or 'manual'} ({r['mode']}, cap {r['cap']})"), ("Started / finished", f"{r['started']} / {r['finished']}"), ("Due at start", r["due"]),
+            ("Processed", r["processed"]), ("Deferred (carried forward)", f"{r['carry_forward']['boards']} to the {r['carry_forward']['next_window']} window"), ("Failed", r["failed"]),
+            ("Backlog age at start (hours)", r["backlog_age_hours"]), ("Oldest carried board (hours overdue)", r["oldest_deferred_hours"]),
+            ("Freshness ceiling for a hot board (hours)", r["freshness_ceiling_hours"]), ("Provider-limit answers (429)", r["provider_limit_hits"]["total"]),
+            ("Late-window reason", r["late_reason"] or "none"), ("Stopped at the soft deadline", "yes" if r.get("stopped_at_deadline") else "no")]
+    return "### Employer boards: window receipt (LIFE-854)\n\n| Field | Value |\n|---|---|\n" + "\n".join(f"| {k} | {v} |" for k, v in rows) + "\n"
+
+
+def receipt(counts, environ, started, finished, cap, catchup):
+    """LIFE-854: the per-window receipt, counts and fixed codes only (public board ids never appear): what was due, read, left and failed, the age of the backlog, the freshness ceiling, the provider-limit answers,
+    when it started and finished (Central time), why it was late, and what it carries to the next window."""
+    failed_why = counts.get("failed_why") or {}
+    hits = {"rate_limited_429": failed_why.get("rate_limited_429", 0), "skipped_after_rate_limit_429": failed_why.get("skipped_after_rate_limit_429", 0)}
+    aware = started.replace(tzinfo=timezone.utc)
+    try:
+        slot = datetime.strptime(environ["BOARDS_SLOT"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except (KeyError, ValueError):
+        slot = boards_window.current_slot(aware)
+    deferred, oldest = counts.get("deferred", 0), counts.get("oldest_deferred_hours", 0.0)
+    out = {"window": environ.get("BOARDS_SLOT_CT", ""), "mode": "catchup" if catchup else "window", "cap": cap, "late_reason": environ.get("BOARDS_LATE_REASON", ""),
+           "due": counts.get("due_total", 0), "processed": counts["complete"] + counts["failed"], "deferred": deferred, "failed": counts["failed"],
+           "backlog_age_hours": counts.get("oldest_due_hours", 0.0), "oldest_deferred_hours": oldest,
+           "freshness_ceiling_hours": limits.BOARDS_HOT_HOURS, "carry_within_ceiling": oldest <= limits.BOARDS_HOT_HOURS,
+           "provider_limit_hits": {**hits, "total": sum(hits.values())},
+           "started": ct_stamp.stamp(aware), "finished": ct_stamp.stamp(finished.replace(tzinfo=timezone.utc)),
+           "carry_forward": {"boards": deferred, "oldest_overdue_hours": oldest, "next_window": boards_window.label(boards_window.next_slot(slot))}}
+    if counts.get("stopped_at_deadline"):
+        out["stopped_at_deadline"] = True
+    return out
 
 
 def backfill(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=None, environ=os.environ):
