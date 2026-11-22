@@ -1,10 +1,11 @@
 """LIFE-854: the four employer-board windows (1:00 AM, 7:00 AM, 1:00 PM, 7:00 PM Central), decided from boards.yml's own run history.
 
-    python3 -m lifeos.platform.boards_window      run by the `window` job; writes run, mode, limit, timeout_minutes, deadline_minutes, slot, slot_ct and late_reason to $GITHUB_OUTPUT
+    python3 -m lifeos.platform.boards_window            run by the `window` job; writes run, mode, limit, timeout_minutes, deadline_minutes, slot, slot_ct and late_reason to $GITHUB_OUTPUT
+    python3 -m lifeos.platform.boards_window dispatch   run by every hourly tick: starts boards.yml (auto) when a window has opened and holds no run yet
 
-Two UTC crons per window (standard and daylight time): one opens the window, the other lands an hour off. A moment belongs to the latest window that has opened (Central time); a window that already has a real run is a
-duplicate and skipped; a previous window with no successful run makes this one a catch-up (leftovers first: boards are read oldest due first); an unreadable history runs a normal window and says so. A manual run always runs.
-Counts and fixed codes only; stdlib only."""
+GitHub's own cron never fired for this workflow (Nov 22: no run at 12, 13 or 18 UTC), so the hourly tick, which the Oracle ticker starts reliably, starts the window. The two crons stay as a backup; the gate
+makes any extra firing a skip. A moment belongs to the latest window that has opened (Central time); a window with a run (scheduled, auto or still running) is a duplicate; a previous window with no successful
+run makes this one a catch-up (leftovers first); an unreadable history runs a normal window and says so. A manual run always runs and holds nothing. Counts and fixed codes only; stdlib only."""
 import datetime as dt
 import os
 import sys
@@ -16,7 +17,8 @@ CENTRAL = ZoneInfo("America/Chicago")
 SLOTS_CT = ((1, 0), (7, 0), (13, 0), (19, 0))
 WORKFLOW = "boards.yml"
 CRAWL_JOB = "boards"                      # the job that crawls; the gate job beside it is `window`
-HISTORY_RUNS = 16                         # four days of windows
+HISTORY_RUNS = 30                         # four days of windows, with room for manual runs between them
+RUNNING = ("queued", "in_progress", "waiting", "pending")
 LATE_MINUTES = 30                         # a start later than this after the window opened is named in the receipt
 REAL = ("success", "failure", "timed_out")
 WINDOW_TIMEOUT_MINUTES = 15               # Jim, Nov 22 2026 (LIFE-854; was 35: the measured window is about 5 minutes)
@@ -63,6 +65,11 @@ def _started(item):
     return dt.datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)
 
 
+def counts(item):
+    """Does this run hold a window? A scheduled run, or one the hourly tick started (its run name ends in ` auto`); a manual run holds nothing."""
+    return item.get("event") == "schedule" or (item.get("event") == "workflow_dispatch" and str(item.get("display_title") or "").endswith(" auto"))
+
+
 def plan(slot, mode, late_reason):
     """-> the numbers a window runs with: the cap, the step timeout and the soft deadline inside it."""
     catchup = mode == "catchup"
@@ -77,7 +84,10 @@ def decide(now, runs, jobs_of, current_id=0):
     held = {}                                                       # window start -> True when its run succeeded
     try:
         for item in runs:
-            if item.get("id") == current_id or item.get("event") != "schedule":
+            if item.get("id") == current_id or not counts(item):
+                continue
+            if item.get("status") in RUNNING:
+                held[current_slot(_started(item))] = True                   # a window already being crawled (or waiting its turn) is not started twice
                 continue
             crawl = [j for j in jobs_of(item) if j.get("name") == CRAWL_JOB]
             if not any(j.get("conclusion") in REAL for j in crawl):
@@ -101,7 +111,7 @@ def decide(now, runs, jobs_of, current_id=0):
 
 
 def fetch_history(api=gate._api):
-    runs = api(f"actions/workflows/{WORKFLOW}/runs?event=schedule&status=completed&per_page={HISTORY_RUNS}").get("workflow_runs", [])
+    runs = api(f"actions/workflows/{WORKFLOW}/runs?per_page={HISTORY_RUNS}").get("workflow_runs", [])
     return runs, lambda run: api(f"actions/runs/{run['id']}/jobs?per_page=100").get("jobs", [])
 
 
@@ -117,7 +127,7 @@ def summary(result):
 
 def main(environ=os.environ, api=gate._api, now=None, out=print):
     now = now or dt.datetime.now(dt.timezone.utc)
-    if environ.get("BOARDS_EVENT") == "workflow_dispatch":
+    if environ.get("BOARDS_EVENT") == "workflow_dispatch" and environ.get("BOARDS_AUTO") != "true":
         mode = "catchup" if environ.get("BOARDS_MODE_INPUT") == "catchup" else "window"
         result = plan(current_slot(now), mode, "manual_run")
     else:
@@ -137,5 +147,26 @@ def main(environ=os.environ, api=gate._api, now=None, out=print):
     return 0
 
 
+def dispatch(environ=os.environ, api=gate._api, now=None, out=print):
+    """Called by the hourly tick: start boards.yml (auto) when a window has opened and holds no run. Never fails the tick (a problem is a printed code and exit 0)."""
+    now = now or dt.datetime.now(dt.timezone.utc)
+    try:
+        runs, jobs_of = fetch_history(api)
+        result = decide(now, runs, jobs_of)
+    except Exception as error:                                              # noqa: BLE001 - an unreadable history starts a normal window; the gate in the run decides again
+        out(f"boards window: history unreadable ({type(error).__name__}); starting the window")
+        result = plan(current_slot(now), "window", "history_unreadable")
+    if not result["run"]:
+        out(f"boards window: {result['slot_ct']} already has a run; nothing to start")
+        return 0
+    try:
+        api(f"actions/workflows/{WORKFLOW}/dispatches", "POST", {"ref": environ.get("GITHUB_REF_NAME") or "main", "inputs": {"auto": "true", "mode": result["mode"]}})
+    except Exception as error:                                              # noqa: BLE001 - the backup crons or the next hourly tick start it; the tick itself must not fail
+        out(f"boards window: dispatch failed ({type(error).__name__}); the next tick tries again")
+        return 0
+    out(f"boards window: started the {result['slot_ct']} window ({result['mode']}{'; ' + result['late_reason'] if result['late_reason'] else ''})")
+    return 0
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(dispatch() if sys.argv[1:] == ["dispatch"] else main())

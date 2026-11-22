@@ -1261,7 +1261,8 @@ class SweepFailureIsItsOwnLaneTests(unittest.TestCase):
             step = next(s for s in before if s.get("name", "").startswith(prefix))
             self.assertNotIn("continue-on-error", step, prefix)                        # a credential, gate or unit-test failure fails the job, as before
         tolerated = [s.get("name", "") for s in self.steps[:sweep_at] if s.get("continue-on-error")]
-        self.assertEqual(len(tolerated), 2)
+        self.assertEqual(len(tolerated), 3)
+        self.assertEqual(sum(name.startswith("LIFE-854 - start the employer-board window") for name in tolerated), 1)   # ... LIFE-854's start of the board window (a failure never fails the tick) ...
         self.assertEqual(sum("tailnet" in name for name in tolerated), 1)             # the tolerated earlier steps are the tailnet join ...
         self.assertEqual(sum(name.startswith("LIFE-775 - start the early domains run") for name in tolerated), 1)   # ... and LIFE-775's dispatch of the early domains run: a failed dispatch costs only the time it saves
         finish = self.doc["jobs"]["finish"]
