@@ -4,8 +4,7 @@ Jim approves an epic's list once with the label `auto-release` on the epic. A ch
 it has a Done-when line; every Blocks predecessor is Done; its Jim must do first section exists and every item in it is checked (Jim, Nov 21 2026); it does not carry `needs-jim`; at most RELEASE_LIMIT per run, in Jira rank order. Each release is one short comment naming the epic. Dry run unless live.
 Counts only in the output (ticket keys stay in Jira).
 
-LIFE-850: the same fixed reasons stop a release and a promotion (`gate`): `no_readiness_label`, `two_readiness_labels` (exactly one of ready, needs-prep, needs-jim), `not_ready_label` (needs-prep or needs-jim), `epic_scoping` (the parent Epic is in Scoping and the child is neither `research` nor `verdict`), `epic_status_unread` (a parent whose status the read did not
-return is never assumed Ready) and `blocked_by_open` (an `is blocked by` issue that is not Done, so build work waits for its Epic's verdict ticket). Only a child labelled `ready` moves."""
+LIFE-850: `gate` adds the fixed reasons shared with promote and readiness: no_readiness_label, two_readiness_labels, not_ready_label, epic_scoping, epic_status_unread, blocked_by_open."""
 import os
 import re
 

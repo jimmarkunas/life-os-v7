@@ -5,7 +5,7 @@ Versioned, deterministic, stdlib only, no network, no state of its own. Four thi
 Usage: python -m lifeos.sources.devtools.readiness issue FILE | issue-key KEY | issue-json FILE | issue-mcp FILE KEY | open-gaps | open-gaps-mcp FILE | repo [ROOT]   (FILE is JSON)
   issue      a normalized LIFE issue record; issue-key a LIVE issue read from Jira by key (read-only GET with JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN); issue-json a saved REST v3 issue
   issue-mcp  the unmodified Atlassian MCP getJiraIssue result saved to FILE (no Jira credential; prints SOURCE mcp-read; a file older than 15 minutes is a warn)
-  open-gaps  LIFE-850, reporting only (exit 0): every open non-Epic LIFE issue missing its parent, Component, Fix Version or readiness label, read live (the same Jira settings as issue-key); open-gaps-mcp reads a saved Atlassian MCP search result instead. Nothing is filled or moved (LIFE-740 fills Component and Fix Version)
+  open-gaps  LIFE-850: open LIFE issues missing parent, Component, Fix Version or readiness label (reports only; open-gaps-mcp reads a saved MCP search)
   repo       the global source index still points at real files with an owner and an authority, inside the size limit"""
 # LIFE-225 (ARCH-04), simplified by delivery flow v3 (Jim, Nov 9 2026). A Done-when line is a Given/When/Then row with any id or none, or a bullet under "Done when".
 import json
