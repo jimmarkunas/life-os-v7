@@ -122,7 +122,7 @@ class Table(Base):
         self.assertEqual(self.dec(ATL + "addCommentToJiraIssue", w), "deny")                  # writes not enabled yet: fail closed
         self.set_mode("ask")
         self.assertEqual(self.dec(ATL + "addCommentToJiraIssue", w), "ask")                   # "Jim approved" in the text changes nothing
-        self.assertEqual(self.dec(ATL + "createJiraIssue", {"projectKey": "LOS", "summary": "x"}), "ask")
+        self.assertEqual(self.dec(ATL + "createJiraIssue", {"projectKey": "LIFE", "summary": "x"}), "ask")                 # LIFE-849: the LIFE project still waits for approval
         self.assertEqual(self.dec(ATL + "transitionJiraIssue", {"issueIdOrKey": "LIFE-326", "transitionId": "15"}), "ask")
         self.assertEqual(self.dec(ATL + "executeWrite", {"name": "addCommentToJiraIssue", "inputs": {"issueIdOrKey": "LIFE-9"}}), "ask")
         self.assertEqual(self.dec(ATL + "executeRead", {"name": "getJiraIssue", "inputs": {"issueIdOrKey": "LIFE-9"}}), "allow")
@@ -132,6 +132,8 @@ class Table(Base):
         self.set_mode("ask")
         for op, ti in (("addCommentToJiraIssue", {"issueIdOrKey": "PROJ-1", "commentBody": "x"}), ("addCommentToJiraIssue", {"issueIdOrKey": "LIFE-1", "commentBody": "see XYZ-2"}),
                        ("createJiraIssue", {"summary": "no project"}), ("createJiraIssue", {"projectKey": "BYT", "summary": "x"}),
+                       ("createJiraIssue", {"projectKey": "LOS", "summary": "x"}), ("addCommentToJiraIssue", {"issueIdOrKey": "LOS-5", "commentBody": "x"}),   # LIFE-849: the retired LOS project is refused
+                       ("addCommentToJiraIssue", {"issueIdOrKey": "LIFE-1", "commentBody": "see LOS-5"}), ("executeWrite", {"name": "createJiraIssue", "inputs": {"projectKey": "LOS"}}),
                        ("addCommentToJiraIssue", {"issueIdOrKey": "LIFE-1", "commentBody": "tskey-api-abc"}), ("executeDestructive", {"issueIdOrKey": "LIFE-1"}),
                        ("deleteJiraIssue", {"issueIdOrKey": "LIFE-1"}),
                        ("executeWrite", {"name": "deleteJiraIssue", "inputs": {"issueIdOrKey": "LIFE-1"}}), ("executeWrite", {"inputs": {"issueIdOrKey": "LIFE-1"}}),
