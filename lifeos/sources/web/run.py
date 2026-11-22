@@ -36,6 +36,7 @@ class Outcome:
     reason: str | None = None
     frontier: str | None = None
     items: list = field(default_factory=list)        # (job, hash, ingest, suppress_reason, is_new) to upsert
+    refreshed: int = 0                               # LIFE-902: stored descriptions rewritten because the posting's description really changed
     unchanged: list = field(default_factory=list)    # provider job ids to touch
     removed: list = field(default_factory=list)
     relocate: dict = field(default_factory=dict)     # D104: provider job id -> full location, for unchanged jobs whose stored place was cut at 200 characters
@@ -221,9 +222,10 @@ class SqlRepo:
         now, sid = o.now, o.source["id"]
         with self._connection() as connection:
             if o.status == "COMPLETE":
-                job_ids = {}
+                job_ids, refreshed = {}, []
                 for job in o.admit:
-                    job_ids[job["id"]] = self._admit(connection, o.source, job, now, lane)
+                    job_ids[job["id"]] = self._admit(connection, o.source, job, now, lane, refreshed)
+                o.refreshed = len(refreshed)
                 with connection.cursor() as cursor:
                     for job, digest, ingest, why, is_new in o.items:
                         cursor.execute(
@@ -267,7 +269,7 @@ class SqlRepo:
                      c.get("suppressed", 0), c.get("admit", 0)))
 
     @staticmethod
-    def _admit(connection, source, job, now, lane):
+    def _admit(connection, source, job, now, lane, refreshed=None):
         """One posting into Jobs OS: the employer's own URL is the final link; a description in the list is guarded by enrich.finish."""
         provider = PROVIDER.get(source["kind"], "Open Jobs")
         with connection.cursor() as cursor:
@@ -291,6 +293,9 @@ class SqlRepo:
                                " updated_at=%s WHERE id=%s AND notion_page_id IS NULL AND (title<>%s OR COALESCE(location_text, '')<>%s)", (title, place, now, job_id, title, place))
                 if cursor.rowcount:
                     cursor.execute("DELETE FROM v7_job_fit WHERE job_id=%s", (job_id,))
+                if job["content"] and refresh_description(cursor, job_id, job, lane):
+                    if refreshed is not None:
+                        refreshed.append(job_id)
         if is_new and job["content"]:
             from lifeos.jobs import jd                                              # noqa: PLC0415
             desc = jd.describe(job["content"], is_html=False)
@@ -299,6 +304,22 @@ class SqlRepo:
                 result["final_url"] = job["url"]
                 enrich.save(connection, job_id, result)
         return job_id
+
+
+def refresh_description(cursor, job_id, job, lane):
+    """LIFE-902: a posting we already hold whose description changed on the board gets its stored description rewritten, and ONLY when its fingerprint really differs from the stored one, so an unchanged
+    posting costs nothing. The Fit stage then re-scores the job on its own (a stored fingerprint that no longer matches the score, also for a profile or model change; D94), and nothing here touches a
+    status, link, posting date or Notion field, so a published or human-progressed job is never altered. -> True when the description was rewritten."""
+    from lifeos.jobs import jd                                                      # noqa: PLC0415
+    result = enrich.finish(job["title"], jd.describe(job["content"], is_html=False), job["title"], job["posted"], "ats_list", None, lane)
+    if result["outcome"] not in ("ready", "stale"):
+        return False                                                                # a description that does not pass the same checks as a new job's is not stored
+    cursor.execute("SELECT fingerprint FROM v7_job_descriptions WHERE job_id=%s", (job_id,))
+    held = cursor.fetchone()
+    if held and held[0] == result["description"]["fingerprint"]:
+        return False
+    enrich.save_description(cursor, job_id, result)
+    return True
 
 
 def save_bounded(commit, seconds, stuck=None):
@@ -515,6 +536,7 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
                 note_failure(source, failed, failures)
             else:
                 counts["complete"] += 1
+                counts["jd_reread"] = counts.get("jd_reread", 0) + outcome.refreshed
                 budget -= len(outcome.admit)
                 for k in ("added", "changed", "unchanged", "removed", "suppressed", "admit", "pending"):
                     counts[k] += outcome.counts[k]
@@ -533,6 +555,10 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
     if select:
         left = everyone[attempted:]                                               # LIFE-854: boards due and not read this pass (over the cap or past the deadline); the next pass reads them first
         counts["deferred"], counts["oldest_deferred_hours"] = len(left), overdue_hours(left[0], states, now) if left else 0.0
+    if select:
+        counts["jd_reread"] = counts.get("jd_reread", 0)                         # LIFE-902: descriptions rewritten (each one is also what Fit re-scores next)
+        counts["fit_rescore_due"] = counts["jd_reread"]
+        counts["cache_skips"] = counts["not_modified"] + counts["same_frontier"]    # boards skipped with zero per-posting work
     if select and rows:
         counts["timing"] = timing(rows, waited, time.monotonic() - began)
     counts["slowest"] = [[r[0], r[2], r[3]] for r in sorted(rows, key=lambda r: -(r[2] + r[3]))[:10]]       # LIFE-616: the ten slowest boards, public registry ids with read and save seconds
