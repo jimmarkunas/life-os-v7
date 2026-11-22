@@ -132,6 +132,14 @@
    "slowest_seconds": 90,
    "target": 15
   },
+  "domains.yml::chain": {
+   "basis": "kept: new job (LIFE-904), reads the Actions API only",
+   "current": 5,
+   "median_seconds": 0,
+   "runs_measured": 0,
+   "slowest_seconds": 0,
+   "target": 5
+  },
   "domains.yml::dcc": {
    "basis": "twice the slowest run (57 s) rounds to 10 min, not below the current 10: unchanged",
    "current": 10,

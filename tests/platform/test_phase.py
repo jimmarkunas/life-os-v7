@@ -110,7 +110,8 @@ class Workflows(unittest.TestCase):
         self.assertEqual(self.domains["permissions"], {"contents": "read"})
         grants = {name: job["permissions"] for name, job in self.domains["jobs"].items() if "permissions" in job}
         self.assertEqual(grants, {"gate": {"contents": "read", "actions": "read"},      # the gate already read Actions: it looks up the early run with that
-                                  "dcc": {"contents": "read", "actions": "read", "issues": "read"}})   # exactly the two grants the file had before LIFE-775; no job gained one
+                                  "dcc": {"contents": "read", "actions": "read", "issues": "read"},   # exactly the two grants the file had before LIFE-775; no job gained one
+                                  "chain": {"contents": "read", "actions": "read"}})   # LIFE-904: the chain receipt only reads the Actions API, the same two reads the gate has
         self.assertNotIn("secrets.", str(self.dispatch_step()[1]))
 
     def test_the_early_run_takes_exactly_the_jobs_that_read_nothing_the_tick_writes_and_the_late_run_the_rest(self):
@@ -119,7 +120,7 @@ class Workflows(unittest.TestCase):
         late = {n for n, j in jobs.items() if "needs.gate.outputs.late == 'true'" in str(j.get("if"))}
         self.assertEqual(late, {"megibow", "interview", "granola"})                    # LIFE-775 step 1: megibow reads v7_jobs and interview writes it, granola follows interview
         self.assertEqual(early & late, set())
-        self.assertEqual(early | late | {"gate", "report"}, set(jobs))                 # every job is in exactly one run; the report job runs in both and names that run's failures
+        self.assertEqual(early | late | {"gate", "report", "chain"}, set(jobs))         # every job is in exactly one run; the report and chain jobs run in both (failures; the LIFE-904 clocks)
         for name in early | late:
             for need in jobs[name].get("needs") or []:
                 if need != "gate":

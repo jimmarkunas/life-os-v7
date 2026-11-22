@@ -41,6 +41,7 @@ The job timeouts in `.github/workflows` change in one separate workflow pull req
 | `domains.yml` | `amazon` | 15 | 15 | 45 | 19 | 30 | twice the slowest run (30 s) rounds to 15 min, not below the current 15: unchanged |
 | `domains.yml` | `amazon_retention` | 15 | 15 | 45 | 255 | 556 | twice the slowest run (556 s) rounds to 19 min, not below the current 15: unchanged |
 | `domains.yml` | `bills` | 15 | 15 | 45 | 28 | 90 | twice the slowest run (90 s) rounds to 15 min, not below the current 15: unchanged |
+| `domains.yml` | `chain` | 5 | 5 | 0 | 0 | 0 | kept: new job (LIFE-904), reads the Actions API only |
 | `domains.yml` | `dcc` | 10 | 10 | 45 | 31 | 57 | twice the slowest run (57 s) rounds to 10 min, not below the current 10: unchanged |
 | `domains.yml` | `gate` | 5 | 5 | 45 | 4 | 9 | twice the slowest run (9 s) rounds to 5 min, not below the current 5: unchanged |
 | `domains.yml` | `granola` | 20 | 20 | 45 | 36 | 56 | twice the slowest run (56 s) rounds to 20 min, not below the current 20: unchanged |

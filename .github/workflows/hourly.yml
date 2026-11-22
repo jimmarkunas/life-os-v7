@@ -220,7 +220,7 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh api -X POST "repos/${GITHUB_REPOSITORY}/actions/workflows/domains.yml/dispatches" -f ref="${GITHUB_REF_NAME}" -f "inputs[phase]=tick"
+        run: gh api -X POST "repos/${GITHUB_REPOSITORY}/actions/workflows/domains.yml/dispatches" -f ref="${GITHUB_REF_NAME}" -f "inputs[phase]=tick" -f "inputs[tick_run]=${GITHUB_RUN_ID}"
       - name: LIFE-854 - start the employer-board window when one has opened and has no run (GitHub's own cron for boards.yml never fired; this tick is started reliably from Oracle; counts and codes only, a failure never fails the tick)
         if: ${{ (github.event_name == 'schedule' || inputs.tick) && github.run_attempt == 1 && !cancelled() }}
         continue-on-error: true

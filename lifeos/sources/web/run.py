@@ -559,7 +559,7 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
         counts["jd_reread"] = counts.get("jd_reread", 0)                         # LIFE-902: descriptions rewritten (each one is also what Fit re-scores next)
         counts["fit_rescore_due"] = counts["jd_reread"]
         counts["cache_skips"] = counts["not_modified"] + counts["same_frontier"]    # boards skipped with zero per-posting work
-    if select and rows:
+    if rows:                                                                      # LIFE-904: every pass (the tick's own `web` passes too), not only the boards window
         counts["timing"] = timing(rows, waited, time.monotonic() - began)
     counts["slowest"] = [[r[0], r[2], r[3]] for r in sorted(rows, key=lambda r: -(r[2] + r[3]))[:10]]       # LIFE-616: the ten slowest boards, public registry ids with read and save seconds
     path = os.environ.get("GITHUB_STEP_SUMMARY")
