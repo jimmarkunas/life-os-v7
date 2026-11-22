@@ -2,7 +2,10 @@
 
 Jim approves an epic's list once with the label `auto-release` on the epic. A child is released only when ALL hold: its status is To Do; it was never in Agent Go before (so a ticket Jim moved back is never moved again);
 it has a Done-when line; every Blocks predecessor is Done; its Jim must do first section exists and every item in it is checked (Jim, Nov 21 2026); it does not carry `needs-jim`; at most RELEASE_LIMIT per run, in Jira rank order. Each release is one short comment naming the epic. Dry run unless live.
-Counts only in the output (ticket keys stay in Jira)."""
+Counts only in the output (ticket keys stay in Jira).
+
+LIFE-850: the same fixed reasons stop a release and a promotion (`gate`): `no_readiness_label`, `two_readiness_labels` (exactly one of ready, needs-prep, needs-jim), `not_ready_label` (needs-prep or needs-jim), `epic_scoping` (the parent Epic is in Scoping and the child is neither `research` nor `verdict`), `epic_status_unread` (a parent whose status the read did not
+return is never assumed Ready) and `blocked_by_open` (an `is blocked by` issue that is not Done, so build work waits for its Epic's verdict ticket). Only a child labelled `ready` moves."""
 import os
 import re
 
@@ -11,7 +14,8 @@ from lifeos.platform.jira import Jira, JiraError
 
 EPIC_LABEL = "auto-release"
 NEEDS_JIM = "needs-jim"                                          # LIFE-780 (Jim, Nov 16 2026: "needs Jim + blocking only"): the one workflow-control label; blocking is the Blocks links below
-SKIP = {NEEDS_JIM}
+READINESS = ("ready", "needs-prep", NEEDS_JIM)                   # LIFE-850 (policy section 7): every child carries exactly one; only `ready` moves to Agent Go
+SCOPING_CHILD = {"research", "verdict"}                          # the only children allowed to be released while their Epic is in Scoping
 RELEASE_LIMIT = 3
 AGENT_GO = "17"                                                  # the To Do to Agent Go transition
 DONE_WHEN = re.compile(r"done when", re.I)
@@ -107,6 +111,38 @@ def blockers_done(links):
     return True
 
 
+def parent_status(fields):
+    """The parent Epic's status name from the fields already fetched ("" when no parent is present or the read did not return it)."""
+    return (((fields.get("parent") or {}).get("fields") or {}).get("status") or {}).get("name") or ""
+
+
+def label_reason(labels):
+    """None when exactly one readiness label is `ready`, else the fixed reason."""
+    held = [x for x in labels or [] if x in READINESS]
+    if not held:
+        return "no_readiness_label"
+    if len(held) > 1:
+        return "two_readiness_labels"
+    return None if held[0] == "ready" else "not_ready_label"
+
+
+def epic_reason(fields):
+    """The parent Epic's state refuses build work during Scoping; a research or verdict child is allowed (when otherwise eligible). No parent is not judged here (readiness reports it)."""
+    if not fields.get("parent"):
+        return None
+    status = parent_status(fields)
+    if not status:
+        return "epic_status_unread"
+    if status == "Scoping" and not (SCOPING_CHILD & set(fields.get("labels") or [])):
+        return "epic_scoping"
+    return None
+
+
+def gate(fields):
+    """LIFE-850: -> the first fixed reason this fetched issue may not move to Agent Go, or None. Pure: reads only the fields already fetched (labels, parent with its status, issuelinks)."""
+    return label_reason(fields.get("labels")) or epic_reason(fields) or (None if blockers_done(fields.get("issuelinks")) else "blocked_by_open")
+
+
 def candidates(jira):
     """-> (epic keys, children in rank order)."""
     epics = [i["key"] for i in search(jira, f'issuetype = Epic AND labels = "{EPIC_LABEL}"', "summary")]
@@ -118,12 +154,14 @@ def candidates(jira):
 
 def eligible(issue):
     fields = issue.get("fields") or {}
-    if SKIP & set(fields.get("labels") or []):
-        return "skip_label"
+    why = label_reason(fields.get("labels"))
+    if why:
+        return why
     if not has_done_when(fields.get("description")):
         return "no_done_when"
-    if not blockers_done(fields.get("issuelinks")):
-        return "blocked"
+    why = gate(fields)
+    if why:
+        return why
     present, open_items = jim_first(fields.get("description"))
     if not present:
         return "no_jim_first"

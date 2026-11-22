@@ -12,9 +12,10 @@ def doc(*lines):
 READY = ("Outcome", "Add a pure helper.", "Jim must do first: None", "Done when", "* Given X, then Y")
 
 
-def issue(*lines, status="To Do", labels=(), blockers=(), kind="Task"):
+def issue(*lines, status="To Do", labels=("ready",), blockers=(), kind="Task", epic=None):
     links = [{"type": {"name": "Blocks"}, "inwardIssue": {"key": b, "fields": {"status": {"statusCategory": {"key": "done" if ok else "new"}}}}} for b, ok in blockers]
-    return {"key": "LIFE-1", "fields": {"description": doc(*(lines or READY)), "status": {"name": status}, "labels": list(labels), "issuelinks": links, "issuetype": {"name": kind}}}
+    return {"key": "LIFE-1", "fields": {"description": doc(*(lines or READY)), "status": {"name": status}, "labels": list(labels), "issuelinks": links, "issuetype": {"name": kind},
+                       **({"parent": {"key": "LIFE-10", "fields": {"status": {"name": epic}}}} if epic else {})}}
 
 
 class JimMustDoFirst(unittest.TestCase):
@@ -85,11 +86,24 @@ class Decide(unittest.TestCase):
         self.assertEqual(promote.decide(issue(*text))[0], "wait")
 
     def test_unready_tickets_are_skipped_without_a_change(self):
-        self.assertEqual(promote.decide(issue(blockers=[("LIFE-2", False)])), ("skip", ["blocked"]))
+        self.assertEqual(promote.decide(issue(blockers=[("LIFE-2", False)])), ("skip", ["blocked_by_open"]))
         self.assertEqual(promote.decide(issue("Outcome", "Just do it.")), ("skip", ["no_done_when"]))
         self.assertEqual(promote.decide(issue(status="Agent Go")), ("skip", ["not_to_do"]))
         self.assertEqual(promote.decide(issue(kind="Epic")), ("skip", ["epic"]))
-        self.assertEqual(promote.decide(issue(labels=["needs-jim"])), ("skip", ["skip_label"]))
+        self.assertEqual(promote.decide(issue(labels=["needs-jim"])), ("skip", ["not_ready_label"]))
+
+    def test_every_release_gate_reason_and_the_allowed_exceptions(self):
+        """LIFE-850: one case per fixed reason, the same ones release.eligible uses; a research or verdict child passes under an Epic in Scoping, a build child passes under an Epic in Ready."""
+        cases = ((issue(labels=()), "no_readiness_label"), (issue(labels=["lane-platform"]), "no_readiness_label"), (issue(labels=["ready", "needs-prep"]), "two_readiness_labels"),
+                 (issue(labels=["needs-prep"]), "not_ready_label"), (issue(labels=["needs-jim"]), "not_ready_label"), (issue(epic="Scoping"), "epic_scoping"),
+                 (issue(blockers=[("LIFE-2", False)]), "blocked_by_open"))
+        for case, reason in cases:
+            self.assertEqual(promote.decide(case), ("skip", [reason]), reason)
+        self.assertEqual(promote.decide(issue(labels=["ready", "research"], epic="Scoping")), ("promote", []))
+        self.assertEqual(promote.decide(issue(labels=["ready", "verdict"], epic="Scoping")), ("promote", []))
+        self.assertEqual(promote.decide(issue(epic="Ready")), ("promote", []))
+        self.assertEqual(promote.decide(issue(epic="Ready", blockers=[("LIFE-2", True)])), ("promote", []))
+        self.assertEqual(promote.decide({"key": "LIFE-1", "fields": {**issue()["fields"], "parent": {"key": "LIFE-10"}}}), ("skip", ["epic_status_unread"]))   # the read did not return the Epic's status
 
     def test_a_done_blocker_does_not_block(self):
         self.assertEqual(promote.decide(issue(blockers=[("LIFE-2", True)])), ("promote", []))
