@@ -19,7 +19,7 @@ OPEN = {"type": {"name": "Blocks"}, "inwardIssue": {"key": "LIFE-3", "fields": {
 
 
 def envelope(links=(), desc=DESC, key="LIFE-1"):
-    fields = {"summary": "Example", "status": {"name": "Agent Go"}, "labels": ["lane-career-v7"], "parent": {"key": "LIFE-900"}, "components": [{"name": "Example Component"}],
+    fields = {"summary": "Example", "status": {"name": "Agent Go"}, "labels": ["lane-career-v7", "ready"], "parent": {"key": "LIFE-900", "fields": {"status": {"name": "Ready"}}}, "components": [{"name": "Example Component"}],
               "issuelinks": list(links), "description": desc, "updated": "2030-01-01T12:00:00.000-0600"}
     return {"issues": {"nodes": [{"id": "1", "key": key, "fields": fields}]}, "context": {"toolName": "getJiraIssue"}}
 
@@ -82,11 +82,11 @@ class IssueMcp(unittest.TestCase):
     def test_an_open_blocker_is_refused_with_the_same_code_as_issue_key(self):
         code, _, err = run(envelope([OPEN]))
         self.assertEqual(code, 2)
-        self.assertIn("blocker_not_done", err)
+        self.assertIn("blocked_by_open", err)
         self.assertIn("blockers=LIFE-3=To Do", run(envelope([OPEN]))[1])
         code, _, err2 = self.json_run(rr.from_mcp(envelope([OPEN]), "LIFE-1"))                                  # the same record through issue-json
         self.assertEqual(code, 2)
-        self.assertIn("blocker_not_done", err2)
+        self.assertIn("blocked_by_open", err2)
 
     def test_the_envelope_is_not_mutated(self):
         data = envelope([DONE])

@@ -1,10 +1,10 @@
-"""Offline readiness validator for coding agents and CI: is a LIFE issue ready to start (LIFE-225 ARCH-04, delivery flow v3).
+"""Offline readiness validator: is a LIFE issue ready to start (LIFE-225, delivery flow v3).
 
-Versioned, deterministic, stdlib only, no network, no state of its own. Four things refuse (exit 2): an invalid key, no Done-when line, a `Blocks` predecessor not Done, and an unchecked Jim must do first item (Jim, Nov 21 2026). Anything else prints `warn v1 <code> <field>` on stderr and exits 0 (`ready v1`). Unreadable input or an error refuses
-(exit 2) before the caller mutates anything.
-Usage: python -m lifeos.sources.devtools.readiness issue FILE | issue-key KEY | issue-json FILE | issue-mcp FILE KEY | repo [ROOT]   (FILE is JSON)
-  issue      a normalized LIFE issue record; issue-key a LIVE issue read from Jira by key (read-only GET with JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN); issue-json a saved REST v3 issue
+Versioned, deterministic, stdlib only, no network, no state. Refuses (exit 2): an invalid key, no Done-when line, an open `Blocks` predecessor, an unchecked Jim must do first item, or a release-gate reason (LIFE-850). Anything else prints `warn v1 <code> <field>` on stderr and exits 0 (`ready v1`). Unreadable input refuses (exit 2).
+Usage: python -m lifeos.sources.devtools.readiness issue FILE | issue-key KEY | issue-json FILE | issue-mcp FILE KEY | open-gaps | open-gaps-mcp FILE | repo [ROOT]   (FILE is JSON)
+  issue      a normalized LIFE issue record; issue-key a LIVE issue read from Jira by key (read-only GET, JIRA_* settings); issue-json a saved REST v3 issue
   issue-mcp  the unmodified Atlassian MCP getJiraIssue result saved to FILE (no Jira credential; prints SOURCE mcp-read; a file older than 15 minutes is a warn)
+  open-gaps  LIFE-850: a report of open issues missing parent, Component, Fix Version or readiness label (-mcp: a saved search)
   repo       the global source index still points at real files with an owner and an authority, inside the size limit"""
 # LIFE-225 (ARCH-04), simplified by delivery flow v3 (Jim, Nov 9 2026). A Done-when line is a Given/When/Then row with any id or none, or a bullet under "Done when".
 import json
@@ -30,7 +30,8 @@ def text(value):
     return isinstance(value, str) and bool(value.strip())
 
 
-HARD = {"issue_unreadable", "key_invalid", "blockers_unreadable", "blocker_not_done", "gwt_missing", "jim_first_open"}          # the only refusals; field_absent refuses only for the three inputs below
+HARD = {"issue_unreadable", "key_invalid", "blockers_unreadable", "blocked_by_open", "gwt_missing", "jim_first_open",
+        "no_readiness_label", "two_readiness_labels", "not_ready_label", "epic_scoping", "epic_status_unread"}      # LIFE-850: the release gate's reasons are hard here too          # the only refusals; field_absent refuses only for the three inputs below
 HARD_FIELDS = {"key", "blockers", "acceptance"}
 
 
@@ -66,7 +67,7 @@ def findings(issue):
         if not isinstance(blockers, list):
             out.append(refuse("blockers_unreadable", "blockers"))
         else:
-            out += [refuse("blocker_not_done", "blockers", f"{b.get('key')}={b.get('status')}") for b in blockers if not (isinstance(b, dict) and b.get("status") == "Done")]
+            out += [refuse("blocked_by_open", "blockers", f"{b.get('key')}={b.get('status')}") for b in blockers if not (isinstance(b, dict) and b.get("status") == "Done")]
     if "authorization" in issue:
         auth = issue["authorization"]
         if isinstance(auth, dict) and auth.get("denied") is True:
@@ -75,6 +76,10 @@ def findings(issue):
             out.append(refuse("authorization_missing", "authorization"))
     if "permissions" in issue and not (isinstance(issue["permissions"], list) and issue["permissions"] and all(text(p) for p in issue["permissions"])):
         out.append(refuse("permissions_missing", "permissions"))
+    if "gate" in issue:                                                        # LIFE-850: the release gate's label and Epic reasons (lifeos.jira.release.gate), read from the fields the record was built from
+        why = issue["gate"]
+        if why in ("no_readiness_label", "two_readiness_labels", "not_ready_label", "epic_scoping", "epic_status_unread"):
+            out.append(refuse(why, "gate"))
     if "jim_first" in issue:                                                   # Jim, Nov 21 2026: an unchecked Jim must do first item refuses; a missing section warns at start (release refuses it)
         jf = issue["jim_first"]
         if not isinstance(jf, dict) or not jf.get("present"):
@@ -183,6 +188,31 @@ def mcp_issue(path, key):
         return [], [], f"QUEUE_NOT_READY — {code}", shown
 
 
+GAPS_JQL = "project = LIFE AND statusCategory != Done AND issuetype != Epic ORDER BY key ASC"
+GAPS_FIELDS = "parent,components,fixVersions,labels"
+
+
+def open_gaps(issues):
+    """LIFE-850: -> [(key, [missing...])] for the issues that lack a parent, a Component, a Fix Version or a readiness label (`ready`, `needs-prep`, `needs-jim`). Pure; reporting only."""
+    from lifeos.jira.release import READINESS
+    out = []
+    for issue in issues:
+        f = issue.get("fields") or {}
+        missing = [name for name, absent in (("parent", not f.get("parent")), ("component", not f.get("components")), ("fix_version", not f.get("fixVersions")),
+                                             ("readiness_label", not any(x in READINESS for x in f.get("labels") or []))) if absent]
+        if missing:
+            out.append((issue.get("key", "?"), missing))
+    return out
+
+
+def gaps_report(issues):
+    found = open_gaps(issues)
+    print(f"gaps v{VERSION} {len(found)} of {len(issues)} open issues")
+    for key, missing in found:
+        print(f"gap {key} {','.join(missing)}")
+    return 0
+
+
 def report(refusals, warnings):
     """Warn lines first, then refusals; exit 0 with `ready` only when nothing refused."""
     for w in warnings:
@@ -204,6 +234,22 @@ def run(argv):
             print(gap, file=sys.stderr)
             return 2
         return report(refusals, warnings)
+    if argv[:1] == ["open-gaps"] and len(argv) == 1 or argv[:1] == ["open-gaps-mcp"] and len(argv) == 2:
+        try:
+            if argv[0] == "open-gaps":
+                from lifeos.jira import readiness_record as rr
+                from lifeos.jira.search import search
+                issues = search(rr.Jira.from_env(), GAPS_JQL, GAPS_FIELDS)
+            else:
+                nodes = ((json.loads(Path(argv[1]).read_text()) or {}).get("issues") or {}).get("nodes")
+                issues = nodes if isinstance(nodes, list) else None
+                if issues is None:
+                    raise ValueError("INCOMPLETE:issues")
+        except Exception as exc:                                  # noqa: BLE001  a fixed code only, never a body, URL or value
+            code = str(exc) if str(exc).startswith(("JIRA_", "INCOMPLETE:", "JM_DASH_")) else type(exc).__name__
+            print(f"QUEUE_NOT_READY — {code}", file=sys.stderr)
+            return 2
+        return gaps_report(issues)
     if argv[:1] in (["issue-key"], ["issue-json"]) and len(argv) == 2:
         refusals, warnings, gap = jira_issue(argv[0], argv[1])
         if gap:

@@ -4,7 +4,7 @@ Pure and offline except `fetch`, which does one read-only GET with the existing 
 A field that cannot be read from the issue is left out of the record, so the validator reports it; nothing here ever invents a pass."""
 import re
 
-from lifeos.jira.release import jim_first
+from lifeos.jira.release import gate, jim_first
 from lifeos.platform.jira import Jira, JiraError
 
 FIELDS = "summary,status,labels,parent,components,issuelinks,description"
@@ -122,6 +122,7 @@ def normalize(raw):
     record["needs"] = checklist(section(rows, "Needs before development"))
     present, open_items = jim_first(f.get("description"))                       # Jim, Nov 21 2026: the release rule
     record["jim_first"] = {"present": present, "open": len(open_items)}
+    record["gate"] = gate(f) or ""                                             # LIFE-850: the release gate's reason (labels, Epic state, blockers) from the same fetched fields
     record["decisions"] = checklist(section(rows, "Decisions"))
     if f.get("components") is not None:
         record["components"] = [c.get("name") for c in f["components"] if isinstance(c, dict) and c.get("name")]

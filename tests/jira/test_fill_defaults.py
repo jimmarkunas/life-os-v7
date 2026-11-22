@@ -222,7 +222,7 @@ class ReadinessFill(unittest.TestCase):
         def get(path, params=None):
             got = original(path, params)
             if path.endswith("/issue/LIFE-901"):
-                got["fields"] = {**got["fields"], "description": DESC, "labels": ["lane-career-v7"], "issuelinks": []}
+                got["fields"] = {**got["fields"], "description": DESC, "labels": ["lane-career-v7", "ready"], "issuelinks": [], "parent": {"key": "LIFE-10", "fields": {"status": {"name": "Ready"}}}}
             return got
         fake.get = get
         return fake
