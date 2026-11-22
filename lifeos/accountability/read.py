@@ -13,7 +13,7 @@ from lifeos.platform.jira import JiraError
 PEOPLE = (("Jim", "JFM"), ("Matt", "MEJ"))
 WEEK_FIELDS = "summary,status,duedate,issuetype"
 EPIC_FIELDS = "summary"
-CHILD_FIELDS = "status,parent,resolutiondate,issuetype"
+CHILD_FIELDS = "status,parent,resolutiondate,statuscategorychangedate,issuetype"
 PAGE, MAX_PAGES = 100, 30
 URL = re.compile(r"https?://[^\s\"\\<>)]+")
 TAIL = re.compile(r"\s+Q[1-4]\s+\d{4}$")
@@ -125,23 +125,95 @@ def _counts(children, first, last):
     return out
 
 
+def _mej_project_goals(jira, quarter_keys):
+    """Project Epic key -> quarter Epic key, by one explicit Jira Relates link.
+
+    Only opt-in project Epics labelled 'mej-project' participate. A Relates
+    link to a non-quarter issue cannot affect attribution. Multiple quarter
+    targets are ambiguous and fail closed rather than falsify V3 metrics.
+    The label and links are applied in MEJ only after Matt approves the exact
+    migration; this reader never writes Jira.
+    """
+    if not quarter_keys:
+        return {}
+    projects = search(jira, 'project = MEJ AND issuetype = Epic AND labels = "mej-project" ORDER BY key ASC',
+                      "issuetype,issuelinks,labels")
+    out = {}
+    for project in projects:
+        found = set()
+        for link in (project.get("fields") or {}).get("issuelinks") or []:
+            if ((link.get("type") or {}).get("name") or "").lower() != "relates":
+                continue
+            for side in ("inwardIssue", "outwardIssue"):
+                key = (link.get(side) or {}).get("key")
+                if key in quarter_keys:
+                    found.add(key)
+        if len(found) > 1:
+            raise JiraError("ACCOUNTABILITY_MEJ_GOAL_AMBIGUOUS")
+        if found:
+            out[project["key"]] = next(iter(found))
+    return out
+
+
+def _mej_project_tally(jira, project_goals, first, last):
+    """Count each deliverable Task once, never project Epics or Sub-tasks.
+
+    This is a new, explicitly versioned metric for project-linked quarter
+    goals. A Done child counts only when the status-category transition
+    occurred during the quarter, as the approved V3 source describes.
+    Existing direct-parent metrics are left untouched until cutover.
+    """
+    if not project_goals:
+        return {}
+    keys = ",".join(sorted(project_goals))
+    out = {}
+    for issue in search(jira, f"parent in ({keys})", CHILD_FIELDS):
+        fields = issue.get("fields") or {}
+        kind = fields.get("issuetype") or {}
+        if kind.get("subtask") or kind.get("name") == "Epic":
+            continue
+        parent = (fields.get("parent") or {}).get("key")
+        goal = project_goals.get(parent)
+        if not goal:
+            continue
+        done = ((fields.get("status") or {}).get("statusCategory") or {}).get("key") == "done"
+        if done:
+            stamp = (fields.get("statuscategorychangedate") or "")[:10]
+            if not stamp or not first.isoformat() <= stamp <= last.isoformat():
+                continue
+        row = out.setdefault(goal, [0, 0])
+        row[0] += int(done)
+        row[1] += 1
+    return out
+
+
 def tally(jira, found, first, last):
-    """-> {epic key: [done, all]} for every epic in `found` (an epic with no tasks is [0, 0])."""
+    """Quarterly direct-child counts plus opt-in MEJ linked-project Tasks."""
     if not found:
         return {}
     keys = ",".join(e["key"] for e in found)
     rows = _counts(search(jira, f"parent in ({keys})", CHILD_FIELDS), first, last)
-    return {e["key"]: rows.get(e["key"], [0, 0]) for e in found}
+    out = {e["key"]: rows.get(e["key"], [0, 0]) for e in found}
+    matt_keys = {e["key"] for e in found if e["person"] == "Matt"}
+    if matt_keys:
+        linked = _mej_project_tally(jira, _mej_project_goals(jira, matt_keys), first, last)
+        for key, (done, total) in linked.items():
+            out[key][0] += done
+            out[key][1] += total
+    return out
 
 
 def unparented(jira, project, epic_keys):
-    """How many open non-epic, non-sub-task issues of the project sit under none of the quarter's epics."""
+    """Count open standard work without an approved current-quarter mapping."""
+    allowed = set(epic_keys)
+    if project == "MEJ":
+        allowed.update(_mej_project_goals(jira, allowed))
     count = 0
     for issue in search(jira, f"project = {project} AND issuetype != Epic AND statusCategory != Done", "parent,issuetype"):
         fields = issue.get("fields") or {}
         if (fields.get("issuetype") or {}).get("subtask"):
             continue
-        if (fields.get("parent") or {}).get("key") not in epic_keys:
+        if (fields.get("parent") or {}).get("key") not in allowed:
             count += 1
     return count
 
