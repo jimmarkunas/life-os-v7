@@ -5,6 +5,7 @@
 #   sh tools/preflight.sh --all  everything in parallel shards, like a merge to main (only when you want it; CI runs it anyway)
 # LIFE-765: before testing it runs tools/regen.py --commit (a new stage's registry rows, one commit of generated files only), so a new stage is its code and its workflow step.
 # LIFE-779: it also runs the workflow gate (tools/workflow_gate.py): no new secret, no wider permissions = pre-approved, nothing to ask; otherwise it stops with `[waiting on] Jim: <the one thing>` until LIFEOS_JIM_APPROVED holds the recorded [approvals] line.
+# LIFE-908: a stop that is only a wider `permissions` block already recorded as a CHECKED item in the claimed ticket's Jim must do first section passes with no typed yes: the gate reads that ticket's live issue (Jira settings, or the unmodified Atlassian MCP result saved to a file named by LIFEOS_JIRA_READ, at most 15 minutes old). Anything the item does not name still stops.
 # On PASS it writes the marker <git dir>/lifeos-preflight-ok holding the HEAD sha; tools/automerge.sh refuses to arm auto-merge unless the marker equals the current HEAD (any new commit needs a new preflight).
 set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -28,7 +29,7 @@ git fetch -q origin main 2>/dev/null || echo "preflight: note: could not refresh
 start="$(date +%s)"
 if ! gate_out="$(bash "$ROOT/tools/test.sh" --workflow-gate 2>&1)"; then   # LIFE-779: the standing pre-approval; a workflow change stops only for a wider permission, a new secret or credential, a deletion or spend
   printf '%s\n' "$gate_out" >&2
-  echo "preflight: FAIL: a workflow change needs Jim's yes (the [waiting on] line above). Ask once, record one [approvals] line, then run: LIFEOS_JIM_APPROVED='<that line>' sh tools/preflight.sh" >&2
+  echo "preflight: FAIL: a workflow change needs Jim's yes (the [waiting on] line above). If the ticket's Jim must do first section already records it (checked, naming this path, job and scopes), read the ticket with the Atlassian MCP, save the unmodified result to a file and run: LIFEOS_JIRA_READ=<file> sh tools/preflight.sh. Otherwise ask once, record one [approvals] line, then run: LIFEOS_JIM_APPROVED='<that line>' sh tools/preflight.sh" >&2
   exit 1
 fi
 printf '%s\n' "$gate_out" | grep -E '^workflow gate: (ok|Jim approved)' || true
