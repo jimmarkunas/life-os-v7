@@ -144,7 +144,7 @@ class StoppedPass(unittest.TestCase):
         for mode, cap in (("window", limits.BOARDS_PER_RUN), ("catchup", limits.BOARDS_CATCHUP_PER_RUN)):
             got = bw.plan(datetime(2026, 11, 22, 7), mode, "")
             self.assertEqual(got["limit"], cap)
-            self.assertLessEqual(cap * 1.0, got["deadline_minutes"] * 60)                            # Oct 25 2026: 600 boards took up to 588 s, about 1 s a board, 4 workers read side by side
+            self.assertLessEqual(cap * 0.4, got["deadline_minutes"] * 60)                            # Nov 22 2026: 1,036 boards took 172 s over one held store connection, 0.17 s a board; 0.4 s a board is the margin (it was 0.55 s a board with a connection per save)
 
 
 class Backfill(unittest.TestCase):

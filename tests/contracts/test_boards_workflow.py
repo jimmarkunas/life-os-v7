@@ -45,7 +45,7 @@ class BoardsWorkflow(unittest.TestCase):
 
     def test_a_window_and_a_catch_up_have_the_approved_caps_and_timeouts(self):
         window, catchup = self.steps["crawl_window"], self.steps["crawl_catchup"]
-        self.assertEqual((window["timeout-minutes"], catchup["timeout-minutes"]), (35, 60))
+        self.assertEqual((window["timeout-minutes"], catchup["timeout-minutes"]), (15, 25))
         self.assertEqual((window["env"]["BOARDS_MODE"], catchup["env"]["BOARDS_MODE"]), ("window", "catchup"))
         self.assertIn("needs.window.outputs.mode == 'window'", window["if"])
         self.assertIn("needs.window.outputs.mode == 'catchup'", catchup["if"])
@@ -54,8 +54,8 @@ class BoardsWorkflow(unittest.TestCase):
             self.assertIn("$LIVE", step["run"])
             self.assertNotIn("continue-on-error", step)                                               # a failed window turns the run red: the next window is a catch-up and the watchdog pages
         self.assertEqual((limits.BOARDS_PER_RUN, limits.BOARDS_CATCHUP_PER_RUN), (1800, 2900))
-        self.assertEqual((boards_window.WINDOW_TIMEOUT_MINUTES, boards_window.CATCHUP_TIMEOUT_MINUTES), (35, 60))
-        self.assertGreater(self.doc["jobs"]["boards"]["timeout-minutes"], 60)
+        self.assertEqual((boards_window.WINDOW_TIMEOUT_MINUTES, boards_window.CATCHUP_TIMEOUT_MINUTES), (15, 25))
+        self.assertGreater(self.doc["jobs"]["boards"]["timeout-minutes"], 25)
 
     def test_no_new_secret_name_and_only_the_store_and_tailnet_credentials(self):
         text = BOARDS.read_text()
@@ -77,7 +77,7 @@ class BoardsWorkflow(unittest.TestCase):
     def test_the_table_the_production_contract_reads_lists_the_workflow_cadence_cap_and_timeout(self):
         row = json.loads((ROOT / "lifeos/platform/due_table.json").read_text())["workflows"]["boards.yml"]
         self.assertEqual(row["windows_ct"], list(f"{h:02d}:00" for h in (1, 7, 13, 19)))
-        self.assertEqual((row["cap"], row["timeout_minutes"], row["catchup_cap"], row["catchup_timeout_minutes"]), (limits.BOARDS_PER_RUN, 35, limits.BOARDS_CATCHUP_PER_RUN, 60))
+        self.assertEqual((row["cap"], row["timeout_minutes"], row["catchup_cap"], row["catchup_timeout_minutes"]), (limits.BOARDS_PER_RUN, 15, limits.BOARDS_CATCHUP_PER_RUN, 25))
         self.assertEqual(sorted(row["windows_ct"]), row["windows_ct"])
         slots = [f"{h:02d}:{m:02d}" for h, m in boards_window.SLOTS_CT]
         self.assertEqual(slots, row["windows_ct"])

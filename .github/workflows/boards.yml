@@ -3,7 +3,7 @@ name: boards
 # Daylight-saving safe: two UTC cron lines per window (standard time, then daylight time). One of the two opens the window; the other lands an hour off and is skipped as a duplicate by the `window` job
 # (lifeos.platform.boards_window), which also turns a window whose predecessor never finished into a catch-up (leftovers first: the board list is read oldest-due first). GitHub drops and delays scheduled runs;
 # the gate settles it from this workflow's own run history, and an unreadable history never stops a window.
-# Window: up to BOARDS_PER_RUN (1,800) boards, step timeout 35 minutes. Catch-up: BOARDS_CATCHUP_PER_RUN (2,900), step timeout 60 minutes. The stage is the one the hourly tick ran (`lifeos.run boards`):
+# Window: up to BOARDS_PER_RUN (1,800) boards, step timeout 15 minutes. Catch-up: BOARDS_CATCHUP_PER_RUN (2,900), step timeout 25 minutes. The stage is the one the hourly tick ran (`lifeos.run boards`):
 # same reader, same provider protections (4 workers, 3 answers of 429 stop an ATS for the run). Each window prints one receipt (counts only) and writes it to the job summary.
 # Scheduled runs are live only when the Bitwarden switch LIVE is true, and parked when V7_PIPELINE is not true (the same switches the tick follows). Manual runs are a dry run unless "Actually write" is ticked.
 # Rollback: revert the PR; the stage returns to the hourly tick.
@@ -20,7 +20,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "window (cap 1,800, 35 minutes) or catchup (cap 2,900, 60 minutes); a manual run needs no gate"
+        description: "window (cap 1,800, 15 minutes) or catchup (cap 2,900, 25 minutes); a manual run needs no gate"
         type: choice
         options: ["window", "catchup"]
         default: "window"
@@ -63,7 +63,7 @@ jobs:
     needs: window
     if: ${{ needs.window.outputs.run == 'true' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 70                 # the catch-up's 60-minute crawl step plus checkout, the Bitwarden helper wait and the tailnet join
+    timeout-minutes: 35                 # the catch-up's 25-minute crawl step plus checkout, the Bitwarden helper wait and the tailnet join
     steps:
       - name: Checkout the exact commit (own git fetch; the token is passed once and never stored)
         run: |
@@ -116,9 +116,9 @@ jobs:
           oauth-secret: ${{ steps.bws_boards.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
       - id: crawl_window
-        name: Employer boards, one window (up to 1,800 due boards, oldest due first; 35-minute step timeout; the receipt is printed and written to the job summary)
+        name: Employer boards, one window (up to 1,800 due boards, oldest due first; 15-minute step timeout; the receipt is printed and written to the job summary)
         if: ${{ env.PIPELINE == 'true' && needs.window.outputs.mode == 'window' }}
-        timeout-minutes: 35
+        timeout-minutes: 15
         env:
           BOARDS_MODE: window
           BOARDS_SLOT: ${{ needs.window.outputs.slot }}
@@ -137,9 +137,9 @@ jobs:
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_boards.outputs.LIFEOS_ACQ_SSH_USER }}
         run: python -m lifeos.run boards --limit ${{ needs.window.outputs.limit }} $([ "$LIVE" = "true" ] && echo --live)
       - id: crawl_catchup
-        name: Employer boards, catch-up window (up to 2,900 due boards, leftovers first; 60-minute step timeout; the receipt is printed and written to the job summary)
+        name: Employer boards, catch-up window (up to 2,900 due boards, leftovers first; 25-minute step timeout; the receipt is printed and written to the job summary)
         if: ${{ env.PIPELINE == 'true' && needs.window.outputs.mode == 'catchup' }}
-        timeout-minutes: 60
+        timeout-minutes: 25
         env:
           BOARDS_MODE: catchup
           BOARDS_SLOT: ${{ needs.window.outputs.slot }}
