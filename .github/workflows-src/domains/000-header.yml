@@ -96,6 +96,10 @@ on:
         type: choice
         options: ["none", "tick"]
         default: "none"
+      tick_run:
+        description: "LIFE-904, set only by the hourly prep job (do not set by hand): the run ID of the tick this early run belongs to, so the chain receipt can link both domains runs to it"
+        type: string
+        default: ""
       live:
         description: "Actually write (saves snapshots, writes Notion, moves mail). Unticked = dry run, counts only. Automatic runs follow the repo variable V7_LIVE."
         type: boolean

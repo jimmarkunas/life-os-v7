@@ -446,7 +446,7 @@ class AmazonRetentionOffTheChainTests(unittest.TestCase):
         self.assertEqual(retention["timeout-minutes"], 15)
         self.assertEqual(retention["if"].replace("due_amazon_retention", "due_amazon"), self.jobs["amazon"]["if"])      # runs for exactly the same triggers as the amazon job (each reads its own due output, LIFE-609)
         waiting = sorted(name for name, job in self.jobs.items() if "amazon_retention" in (job.get("needs") or []))
-        self.assertEqual(waiting, ["report"])                                            # no page writer waits for it (the failure-push job only watches)
+        self.assertEqual(waiting, ["chain", "report"])                                   # no page writer waits for it (the failure-push job and the LIFE-904 chain receipt only watch)
 
     def test_the_amazon_job_no_longer_runs_retention_and_the_command_is_unchanged_in_the_new_job(self):
         self.assertNotIn("aretain", [s.get("id") for s in self.jobs["amazon"]["steps"]])
@@ -729,6 +729,7 @@ def is_settings_loader(step):
 DOMAIN_SECRETS = {         # the only secrets each domain job may see; adding one here is a conscious decision
     "granola": DB | {"LIFEOS_ACQ_SSH_PORT", "NOTION_INTERVIEW_TOKEN", "HIRING_PIPELINE_PAGE_ID", "IMESSAGE_ALERTS_HOST", "NOTION_JOB_LEDGER_DATA_SOURCE_ID"},   # LIFE-360: the readers take opportunities from Ledger rows first;   # LIFE-122: the automatic Granola bridge; the Tailscale OAuth pair goes only to the pinned join action (see TAILSCALE_WITH)
     "report": {"NTFY_TOPIC"},   # the failure-push job: the phone topic and nothing else
+    "chain": set(),   # LIFE-904: the clock receipt reads the Actions API with the run's own token and holds no secret
     "gate": {"NOTION_JIRA_TOKEN"},   # LIFE-604 item 11: the gate holds no credential of its own (the run's own token); LIFE-703: it also reads the V7 settings page with the Notion token from the settings loader
     "imessage": DB | {"LIFEOS_ACQ_SSH_PORT", "NTFY_TOPIC", "IMESSAGE_ALERTS_HOST", "NOTION_JIRA_TOKEN", "AMAZON_CARD_BLOCK_ID", "ATTENTION_CARD_BLOCK_ID",
                   "BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID"},   # LIFE-34 Communications card (Notion writer + region anchors). LIFE-31: the Tailscale OAuth pair goes only to the pinned join action (see TAILSCALE_WITH)
@@ -852,7 +853,7 @@ class DomainsWorkflowTests(unittest.TestCase):
 
     def test_a_failed_stage_step_ends_its_job_red_after_every_stage_ran_and_never_skips_another_job(self):
         """LIFE-649: every continue-on-error stage step is covered by its job's final step, so the job result is `failure` and the report job pushes the phone once; nothing else changes."""
-        jobs = {n: j for n, j in self.doc["jobs"].items() if n not in ("gate", "report")}
+        jobs = {n: j for n, j in self.doc["jobs"].items() if n not in ("gate", "report", "chain")}
         self.assertEqual(set(jobs), set(due.load_table()))                                                 # LIFE-758: the schedule table is the source of truth for which domain jobs exist, not a bare count
         for name, job in jobs.items():
             self.assertEqual(self.uncovered_stage_steps(job, self.V3_STAGES_THAT_ONLY_WARN if name == "jira" else ()), [], name)   # LIFE-730: only the jira job may leave the five V3 ids off its list
@@ -898,7 +899,7 @@ class DomainsWorkflowTests(unittest.TestCase):
         for i in v3:                                                                                      # a failed V3 stage still prints its warning
             self.assertIn(f"steps.{i}.outcome == 'failure'", warn["if"], i)
         for name, other in self.doc["jobs"].items():                                                      # no other job gets an exemption: each ends red by the wildcard or lists every stage id
-            if name not in ("jira", "gate", "report"):
+            if name not in ("jira", "gate", "report", "chain"):
                 self.assertEqual(self.uncovered_stage_steps(other), [], name)
 
     def test_a_new_jira_step_must_be_put_on_the_red_list_or_among_the_v3_stages(self):
@@ -911,14 +912,14 @@ class DomainsWorkflowTests(unittest.TestCase):
 
     def test_a_failing_domain_step_is_a_warning_never_a_failed_run(self):   # the stage step itself never stops the steps after it; LIFE-649: the job then ends red through its final step (the tests above)
         for name, job in self.doc["jobs"].items():
-            if name in ("report", "gate"):                                                                       # the failure-push job (see the next test) is the alarm, not a domain stage; the gate only decides
+            if name in ("report", "gate", "chain"):                                                              # the chain receipt (LIFE-904) reads the Actions API and never fails; the failure-push job (see the next test) is the alarm, not a domain stage; the gate only decides
                 continue
             work = [s for s in job["steps"] if s.get("id") and not str(s.get("uses", "")).endswith("bws-load")]   # the Bitwarden loader is deliberately fail-closed: a failed load fails the job before its command
             self.assertTrue(work and all(s.get("continue-on-error") for s in work), name)
 
     def test_the_report_job_pushes_the_phone_only_for_a_failed_tick_triggered_run_and_writes_nothing(self):
         job = self.doc["jobs"]["report"]
-        self.assertEqual(set(job["needs"]), set(self.doc["jobs"]) - {"report"})                                    # it watches every domain job and the gate (whose `tick` output it reads)
+        self.assertEqual(set(job["needs"]), set(self.doc["jobs"]) - {"report", "chain"})                         # it watches every domain job and the gate (whose `tick` output it reads)
         condition = job["if"]
         for part in ("always()", "needs.gate.outputs.tick == 'true'", "contains(needs.*.result, 'failure')"):
             self.assertIn(part, condition)
