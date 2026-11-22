@@ -7,6 +7,7 @@ from unittest import mock
 
 from lifeos.inbox import agent_inbox, agent_inbox_stage, send_to_jim
 from lifeos.inbox.model import InboxError
+from tests.platform.mcp_access_fixture import open_access
 
 NOW = datetime(2026, 11, 17, 2, 0, tzinfo=timezone.utc)
 SOURCE = "a1" * 16
@@ -240,15 +241,16 @@ class Tool(unittest.TestCase):
                  json.dumps({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}),
                  json.dumps({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "send_to_jim", "arguments": ok_item()}}),
                  json.dumps({"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "something_else", "arguments": {}}})]
-        out = io.StringIO()
+        out, receipts = io.StringIO(), []
         with mock.patch("sys.stdout", out):
-            send_to_jim.serve(lines, client=client)
+            send_to_jim.serve(lines, client=client, access=open_access(), facts={"os_user": "jimmarkunas"}, audit=receipts.append, now=NOW)
         replies = [json.loads(line) for line in out.getvalue().splitlines()]
         self.assertEqual([r["id"] for r in replies], [1, 2, 3, 4])
         self.assertEqual([t["name"] for t in replies[1]["result"]["tools"]], ["send_to_jim"])
         self.assertFalse(replies[2]["result"]["isError"])
         self.assertEqual(replies[3]["error"]["message"], "method_not_found")
         self.assertEqual(len(client.rows), 1)
+        self.assertEqual([(r["outcome"], r["reason"]) for r in receipts], [("allow", "ok"), ("ok", "ok")])           # LIFE-865: the gate's receipt first, then the result
 
 
 class Stage(unittest.TestCase):

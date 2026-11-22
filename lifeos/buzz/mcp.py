@@ -72,7 +72,7 @@ READ = {  # operation: (summary, parameters {name: (type, required)}, handler(re
 }
 NEEDS_COMMUNITY = set(READ) - {"list_communities"}
 RETRYABLE = ("relay_error", "relay_unreachable", "precheck_unavailable")
-ERRORS = {"unsupported": ["unknown_operation", "unknown_tool", "page_boundary_unsupported"], "unauthorized": ["insufficient_scope", "community_not_authorized", "recipient_not_authorized", "recipient_not_channel_member", "write_disabled", "client_identity_not_configured"],
+ERRORS = {"unsupported": ["unknown_operation", "unknown_tool", "page_boundary_unsupported"], "unauthorized": ["insufficient_scope", "community_not_authorized", "recipient_not_authorized", "recipient_not_channel_member", "write_disabled", "client_identity_not_configured", "access_denied", "governance_unavailable"],
           "disabled": ["operation_disabled", "write_disabled", "recipient_not_authorized"], "degraded": list(RETRYABLE) + ["delivery_unknown", "relay_refused", "relay_bad_response"],
           "caller": ["invalid_argument", "invalid_cursor", "expired_cursor", "idempotency_conflict", "reply_target_not_found", "not_found", "community_required"]}
 
@@ -186,11 +186,38 @@ def _audit(rec):
     print(json.dumps(rec, separators=(",", ":")), file=sys.stderr, flush=True)  # fixed fields only: never a token, key, or message text
 
 
-def _fail(msg, code):
-    return {"jsonrpc": "2.0", "id": msg.get("id"), "result": {"content": [{"type": "text", "text": json.dumps({"error": code})}], "isError": True}}
+def _fail(msg, code, **extra):
+    return {"jsonrpc": "2.0", "id": msg.get("id"), "result": {"content": [{"type": "text", "text": json.dumps({"error": code, **extra})}], "isError": True}}
 
 
-def handler(relays, auth, base, origins=(), audit=_audit):
+GATE_TOOL = {n: "buzz_read" if ro else "buzz_publish" for n, (_, _, _, ro, *_) in TOOLS.items()}   # a legacy tool is gated as the read or publish tool it is
+
+
+def _receipt(record):
+    print(json.dumps(record, separators=(",", ":")), file=sys.stderr, flush=True)  # the gate's redacted allow or deny receipt: fingerprints, tenant, tool, action, purpose, outcome
+
+
+def governed(who, name, args, msg, effect, receipts, access=None, now=None):
+    """LIFE-865: the one gate in front of a Buzz tool call. -> effect()'s reply when authorization_gate.execute allowed it (receipt first), else a fixed error. The client is the verified OAuth client, never an argument;
+    the tenant is the requested community's; the purpose is the tool's. The platform modules load lazily: a release that carries lifeos/buzz alone refuses every tool call (governance_unavailable)."""
+    try:
+        from lifeos.platform import mcp_access
+        access = access or mcp_access.load()
+        client = mcp_access.identify(access, "http", {"oauth_client": who.get("client")})
+        arguments = args.get("arguments") if isinstance(args.get("arguments"), dict) else {}
+        community = args.get("community") if isinstance(args.get("community"), str) else arguments.get("community") if isinstance(arguments.get("community"), str) else None
+        tenant = access.communities.get(community, "personal") if community is not None else "personal"
+        read_only = {**TOOLS, **FROZEN}[name][3] if name in {**TOOLS, **FROZEN} else False
+        out = mcp_access.call(access, client, tenant, GATE_TOOL.get(name, name), "read" if read_only else "write", "buzz", "buzz", effect, receipts, now)
+    except Exception as error:                                                                # noqa: BLE001  a fixed code only
+        code = str(error) if type(error).__name__ == "AccessError" else "governance_unavailable"
+        return _fail(msg, "access_denied" if code in ("identity_unknown", "identity_ambiguous", "unknown_tool", "unknown_tenant") else "governance_unavailable", reason=code)
+    if not out.executed:
+        return _fail(msg, "access_denied", reason=out.reason)
+    return out.result if out.reason == "ok" else _fail(msg, "governance_unavailable", reason=out.reason)
+
+
+def handler(relays, auth, base, origins=(), audit=_audit, access=None, receipts=_receipt):
     """relays: {client label: Relay}. The signing key is chosen by the verified token's client label and the requested community; there is no fallback identity."""
     meta = base + "/.well-known/oauth-protected-resource"
     ids = {(c, k): nip98.pubkey(v)[:16] for c, r in relays.items() for k, v in r.keys.items()}  # published identity per pairing, for the audit line
@@ -252,7 +279,7 @@ def handler(relays, auth, base, origins=(), audit=_audit):
             elif spec and relay is None:  # this client has no configured identity at all: never borrow another client's
                 reply = _fail(msg, "client_identity_not_configured")
             else:
-                reply = rpc(relay, msg, who) if "method" in msg else None  # client-side JSON-RPC responses are accepted and ignored
+                reply = (governed(who, params["name"], args, msg, lambda: rpc(relay, msg, who), receipts, access) if spec else rpc(relay, msg, who)) if "method" in msg else None  # LIFE-865: a tool call runs only through the gate; client-side JSON-RPC responses are accepted and ignored
             if spec and reply:
                 inner = json.loads(reply["result"]["content"][0]["text"])
                 comm = args.get("community") if isinstance(args.get("community"), str) else None
