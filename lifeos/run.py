@@ -192,7 +192,7 @@ def main(argv=None):
     from lifeos.platform import settings                                               # noqa: PLC0415 - LIFE-699: the Notion settings page, shadow rule; never fails a stage
     loaded = settings.apply(os.environ)
     from lifeos.platform import runtime_config                                         # noqa: PLC0415 - LIFE-844: compare-only dual read of the new source; changes nothing, never fails a stage
-    shadowed = runtime_config.shadow(os.environ)
+    shadowed = runtime_config.shadow(os.environ, once=True)
     seconds, required = budget.budget_for(args.stage)                                 # LIFE-691: every stage has a budget (lifeos/platform/stage_budgets.json)
     began = time.monotonic()
     try:

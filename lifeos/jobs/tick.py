@@ -278,7 +278,7 @@ def shadow_in_background(environ=None):
     def work():
         try:
             from lifeos.platform import runtime_config                          # noqa: PLC0415
-            box["receipt"] = runtime_config.shadow(environ)
+            box["receipt"] = runtime_config.shadow(environ, once=True)
         except Exception as error:                                              # noqa: BLE001 - a compare-only read never fails the tick
             box["receipt"] = {"status": "unreadable:" + type(error).__name__}
     thread = threading.Thread(target=work, name="runtime-config-shadow", daemon=True)
