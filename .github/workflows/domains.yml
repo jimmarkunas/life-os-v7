@@ -1873,7 +1873,7 @@ jobs:
   report:
     # A failed domain job (a provider outage, a Bitwarden 503) used to be only a workflow warning, so a stale card and a red run reached nobody. This job pushes the phone once per
     # failed tick-triggered run, counts only; a manual run never pushes. It never writes anything.
-    needs: [gate, jira, followup, outlook, bills, agenda, amazon, amazon_retention, mail, hiring, megibow, recruiters, hiring_outcomes, interview, dcc, imessage, granola, chain]
+    needs: [gate, jira, followup, outlook, bills, agenda, amazon, amazon_retention, mail, hiring, megibow, recruiters, hiring_outcomes, interview, dcc, imessage, granola]
     if: ${{ always() && needs.gate.outputs.tick == 'true' && contains(needs.*.result, 'failure') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5

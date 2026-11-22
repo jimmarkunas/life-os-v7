@@ -211,7 +211,7 @@ class Main(unittest.TestCase):
 class TableMatchesTheWorkflow(unittest.TestCase):
     def test_every_domain_job_has_exactly_one_row_and_every_row_is_valid(self):
         jobs = yaml.safe_load((pathlib.Path(__file__).resolve().parents[2] / ".github/workflows/domains.yml").read_text())["jobs"]
-        domain = set(jobs) - {"gate", "report"}
+        domain = set(jobs) - {"gate", "report", "chain"}
         table = due.load_table()
         self.assertEqual(set(table), domain)
         for job, row in table.items():
