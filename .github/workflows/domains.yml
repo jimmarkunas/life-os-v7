@@ -96,6 +96,10 @@ on:
         type: choice
         options: ["none", "tick"]
         default: "none"
+      tick_run:
+        description: "LIFE-904, set only by the hourly prep job (do not set by hand): the run ID of the tick this early run belongs to, so the chain receipt can link both domains runs to it"
+        type: string
+        default: ""
       live:
         description: "Actually write (saves snapshots, writes Notion, moves mail). Unticked = dry run, counts only. Automatic runs follow the repo variable V7_LIVE."
         type: boolean
@@ -115,6 +119,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   gate:
+    name: ${{ (inputs.tick_run || github.event.workflow_run.id) && format('gate (tick {0})', inputs.tick_run || github.event.workflow_run.id) || 'gate' }}      # LIFE-904: the tick's run ID is the chain's correlation ID; the chain receipt finds this tick's domains runs by it
     # LIFE-604 item 11: the ONE place that decides whether this run does the domain work. It runs only for a completed tick or `all`; a manual run of one domain skips it, and then a domain job runs only on its own input. Outputs: due_<job> (LIFE-609: one per domain job, from lifeos/platform/due_table.json; for a tick a job is due when its row says
     # so, for `all` every job is due), tick (only a tick: imessage, granola and the failure push depend on that) and all (only `all`). A failed gate makes every domain job skip (their `needs.gate.result != 'failure'`).
     # Why each domain job uses always() or !cancelled(): a job that waits for other page writers (needs: ...) uses always() so one failed writer never stops the next card; a job with
@@ -1906,3 +1911,27 @@ jobs:
             [ "${pair#*=}" = "failure" ] && failed="$failed ${pair%=*}"
           done
           python3 -m lifeos.platform.alerts push --key domain_jobs_failed --title "V7 domain jobs failed" --body "Failed domain jobs:$failed. Their cards keep the last good content. Open the Actions tab."
+  chain:
+    # LIFE-904: the three end-to-end clocks (Jobs, career, full platform) of ONE logical tick, correlated by the tick's run ID (the hourly run ID; the early run gets it as `tick_run`, the run after the tick as
+    # `workflow_run.id`; both gate jobs are named `gate (tick <id>)`). It reads the Actions API only (actions: read, no secret, no write) and ALWAYS ends green: a missing, failed or still-running job is
+    # DEGRADED or UNVERIFIED in the printed `chain:` line, never zero and never Done. The full-platform clock prints only once the last required domain job of both runs has ended, so whichever of the two runs ends last prints the final line.
+    needs: [gate, jira, followup, outlook, bills, agenda, amazon, amazon_retention, mail, hiring, megibow, recruiters, hiring_outcomes, interview, dcc, imessage, granola]
+    if: ${{ always() && needs.gate.outputs.tick == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout the exact commit (own git fetch; the token is passed once and never stored)
+        run: |
+          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
+          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
+          git checkout -q --detach FETCH_HEAD
+      - name: The chain receipt - Jobs, career and full-platform clocks for this tick (counts, times and fixed codes only; never fails the run)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CHAIN_TICK_ID: ${{ inputs.tick_run || github.event.workflow_run.id }}
+          CHAIN_ROLE: ${{ inputs.phase == 'tick' && 'early' || 'late' }}
+        run: python3 -m lifeos.platform.chain_clocks

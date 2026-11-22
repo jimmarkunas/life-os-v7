@@ -319,6 +319,8 @@ def main(argv=None):
     if left_out:
         outcome = {step.name: outcome[step.name] for step in full if step.name in outcome}
     print("tick:", json.dumps(outcome, sort_keys=True))
+    if os.environ.get("GITHUB_RUN_ID"):                                              # LIFE-904: the correlation ID; the full-platform clock is printed by the domains run's `chain` job after its last job ends, never here
+        print("chain:", json.dumps({"tick": os.environ["GITHUB_RUN_ID"], "platform": "PENDING_DOMAINS_CHAIN"}, sort_keys=True), flush=True)
     shadowed = collect_shadow()
     if shadowed.get("status") != "off":
         print("runtime_config:", json.dumps(shadowed, sort_keys=True), flush=True)     # LIFE-858: counts, names and codes only
