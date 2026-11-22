@@ -46,10 +46,10 @@ class WeekFocus(unittest.TestCase):
         self.assertTrue(all("issuetype != Sub-task" in q for q in fake.queries))
         parts, lines = render.week_view(got, date(2026, 11, 18), "https://example.invalid")
         self.assertEqual(lines[0], "1 sprint open · 1 due outside sprint · 1 overdue · 1 blocked · 1 done this week")
-        self.assertIn("Sprint commitments (1)", lines)
-        self.assertIn("Due outside sprint (1)", lines)
+        self.assertIn("Sprint commitments (1):", lines)
+        self.assertIn("Due outside sprint (1):", lines)
         self.assertIn("MEJ-200 Synthetic MEJ-200 (blocked, overdue)", lines)
-        self.assertIn("Done this week (1)", lines)
+        self.assertIn("Done this week (1):", lines)
         self.assertEqual(len([p for p in parts if p[1] == "https://example.invalid/browse/MEJ-100"]), 1)
 
     def test_jfm_keeps_the_legacy_weekly_query_and_summary_shape(self):
@@ -68,7 +68,7 @@ class WeekFocus(unittest.TestCase):
         self.assertNotIn("issuetype != Sub-task", fake.queries[0])
         _, lines = render.week_view(got, date(2026, 11, 18), None)
         self.assertEqual(lines[0], "1 open · 0 overdue · 0 blocked · 0 done this week")
-        self.assertIn("In progress / To do (1)", lines)
+        self.assertIn("In progress / To do (1):", lines)
 
 
 class FakeBoard:
