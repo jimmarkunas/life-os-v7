@@ -245,19 +245,26 @@ def accepted_date(old, old_source, new, new_source="employer"):
 BOARD_HOST_COMPANY = r"(^| )(com|io|net|org|co|wd[0-9]+|myworkdayjobs)( |$)"
 
 
+def save_description(cursor, job_id, result, now=None):
+    """The one writer of a job's stored description (v7_job_descriptions). The Fit stage re-scores a job whose stored fingerprint no longer matches its score (LIFE-902), so this write alone is what
+    tells Fit a posting changed; it touches no status, link, date or Notion field."""
+    d = result["description"]
+    cursor.execute(
+        "INSERT INTO v7_job_descriptions (job_id, source_kind, full_text, summary, responsibilities, requirements,"
+        " qualifications, fingerprint, fetched_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE"
+        " source_kind=VALUES(source_kind), full_text=VALUES(full_text), summary=VALUES(summary),"
+        " responsibilities=VALUES(responsibilities), requirements=VALUES(requirements),"
+        " qualifications=VALUES(qualifications), fingerprint=VALUES(fingerprint), fetched_at=VALUES(fetched_at)",
+        (job_id, result["source_kind"], d["full_text"], d["summary"], d["responsibilities"], d["requirements"],
+         d["qualifications"], d["fingerprint"], now or _now()))
+
+
 def save(connection, job_id, result):
     now, outcome = _now(), result["outcome"]
     with connection.cursor() as cursor:
         if outcome in ("ready", "stale"):
             d = result["description"]
-            cursor.execute(
-                "INSERT INTO v7_job_descriptions (job_id, source_kind, full_text, summary, responsibilities, requirements,"
-                " qualifications, fingerprint, fetched_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE"
-                " source_kind=VALUES(source_kind), full_text=VALUES(full_text), summary=VALUES(summary),"
-                " responsibilities=VALUES(responsibilities), requirements=VALUES(requirements),"
-                " qualifications=VALUES(qualifications), fingerprint=VALUES(fingerprint), fetched_at=VALUES(fetched_at)",
-                (job_id, result["source_kind"], d["full_text"], d["summary"], d["responsibilities"], d["requirements"],
-                 d["qualifications"], d["fingerprint"], now))
+            save_description(cursor, job_id, result, now)
             if result.get("apply_kind"):
                 cursor.execute("UPDATE v7_jobs SET apply_kind=%s WHERE id=%s", (result["apply_kind"], job_id))
             if result.get("company"):                         # only a company that is really a board host (Com / Io / Net / Org / Co, wdN, myworkdayjobs)

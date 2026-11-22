@@ -440,6 +440,82 @@ class StillListedIsNotRemoved(unittest.TestCase):
         self.assertEqual([(g["removed"], g["still_listed"]) for g in got], [(0, 0), (0, 1), (1, 0)])
 
 
+class ChangedDescription(unittest.TestCase):
+    """LIFE-902 (production-shaped: the real SqlRepo statements over the in-memory Jobs store): a stored board job whose description changed on the board gets its stored description rewritten, once, and
+    the Fit stage's own rule (a stored fingerprint that no longer matches its score) then re-scores it; an unchanged posting costs nothing; no status, link or Notion field is ever touched."""
+    BODY = ("We are hiring a Technical Program Manager to lead cross-functional programs across engineering, product and operations. "
+            "You will own roadmaps, manage dependencies, run planning cycles and report to executives. Requirements: 7 years of program management experience, "
+            "strong communication, experience with cloud platforms and agile delivery. This is a fully remote role open to candidates in the United States. ")
+
+    def board(self, content):
+        listing = dict(job(7, "Technical Program Manager"), content=content, posted=None)
+        return lister.Listing(lister.COMPLETE, [listing])
+
+    def pass_(self, db, day, content):
+        from unittest import mock
+        with mock.patch.object(run.store, "connect", return_value=db), mock.patch.object(run.store, "ensure_schema"):
+            return boards.run(600, True, NOW + timedelta(days=day), lambda s: self.board(content), None, [{**SOURCES[0], "id": "gh-desc", "slug": "desc"}])
+
+    def stored(self, db):
+        return db.raw.execute("SELECT j.id, j.status, d.fingerprint FROM v7_jobs j JOIN v7_job_descriptions d ON d.job_id = j.id").fetchall()
+
+    def test_an_unchanged_posting_rewrites_nothing_and_a_changed_one_rewrites_once(self):
+        from tests.jobs.fakes_jobsdb import JobsDB
+        db = JobsDB()
+        first = self.pass_(db, 0, self.BODY)
+        self.assertEqual(first["jd_reread"], 0)                                                   # a new job is enriched by the existing path, not counted as a re-read
+        (job_id, status, fp1), = self.stored(db)
+        again = self.pass_(db, 2, self.BODY)
+        self.assertEqual((again["jd_reread"], again["fit_rescore_due"]), (0, 0))
+        changed = self.pass_(db, 4, self.BODY + "New: the role now also owns the data platform migration and vendor management. " * 3)
+        self.assertEqual((changed["jd_reread"], changed["fit_rescore_due"], changed["changed"]), (1, 1, 1))
+        (_, status2, fp2), = self.stored(db)
+        self.assertNotEqual(fp1, fp2)
+        self.assertEqual(status2, status)                                                         # no status is written by the refresh
+
+    def test_the_fit_stage_picks_the_job_up_because_its_stored_fingerprint_no_longer_matches_its_score(self):
+        from tests.jobs.fakes_jobsdb import JobsDB
+        db = JobsDB()
+        self.pass_(db, 0, self.BODY)
+        (job_id, _, fp1), = self.stored(db)
+        db.raw.execute("INSERT INTO v7_job_fit (job_id, score, decision, line, confidence, model_version, profile_hash, jd_fingerprint, scored_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                       (job_id, 80, "GO", "x", "high", "6", "p", fp1, "2026-10-01 00:00:00"))
+        self.pass_(db, 2, self.BODY)
+        self.assertEqual(db.raw.execute("SELECT COUNT(*) FROM v7_job_descriptions d JOIN v7_job_fit f ON f.job_id = d.job_id WHERE f.jd_fingerprint <> d.fingerprint").fetchone()[0], 0)
+        self.pass_(db, 4, self.BODY + "Changed duties: lead the migration of the data platform and manage vendors across three regions. " * 3)
+        self.assertEqual(db.raw.execute("SELECT COUNT(*) FROM v7_job_descriptions d JOIN v7_job_fit f ON f.job_id = d.job_id WHERE f.jd_fingerprint <> d.fingerprint").fetchone()[0], 1)
+
+    def test_a_published_job_keeps_its_status_and_notion_link_when_its_description_changes(self):
+        from tests.jobs.fakes_jobsdb import JobsDB
+        db = JobsDB()
+        self.pass_(db, 0, self.BODY)
+        (job_id, _, _), = self.stored(db)
+        db.raw.execute("UPDATE v7_jobs SET status='PUBLISHED', notion_page_id='page-1', final_apply_url='https://example.com/apply' WHERE id=?", (job_id,))
+        self.pass_(db, 4, self.BODY + "Duties changed: the role now also covers vendor management and budget ownership for the programs. " * 3)
+        row = db.raw.execute("SELECT status, notion_page_id, final_apply_url FROM v7_jobs WHERE id=?", (job_id,)).fetchone()
+        self.assertEqual(row, ("PUBLISHED", "page-1", "https://example.com/apply"))
+
+    def test_a_description_that_fails_the_new_job_checks_is_not_stored(self):
+        from tests.jobs.fakes_jobsdb import JobsDB
+        db = JobsDB()
+        self.pass_(db, 0, self.BODY)
+        (_, _, fp1), = self.stored(db)
+        got = self.pass_(db, 4, "too short")
+        self.assertEqual(got["jd_reread"], 0)
+        self.assertEqual(self.stored(db)[0][2], fp1)
+
+    def test_a_failed_read_changes_nothing(self):
+        from unittest import mock
+        from tests.jobs.fakes_jobsdb import JobsDB
+        db = JobsDB()
+        self.pass_(db, 0, self.BODY)
+        before = self.stored(db)
+        with mock.patch.object(run.store, "connect", return_value=db), mock.patch.object(run.store, "ensure_schema"):
+            got = boards.run(600, True, NOW + timedelta(days=4), lambda s: lister.Listing(lister.FAILED, reason="network"), None, [{**SOURCES[0], "id": "gh-desc", "slug": "desc"}])
+        self.assertEqual((got["failed"], got["jd_reread"]), (1, 0))
+        self.assertEqual(self.stored(db), before)
+
+
 class MissedJobs(unittest.TestCase):
     """The review's real cases (Oct 17), each as its employer board listed it: title, place and the work-mode sentence of its description."""
 
