@@ -19,8 +19,8 @@ CRAWL_JOB = "boards"                      # the job that crawls; the gate job be
 HISTORY_RUNS = 16                         # four days of windows
 LATE_MINUTES = 30                         # a start later than this after the window opened is named in the receipt
 REAL = ("success", "failure", "timed_out")
-WINDOW_TIMEOUT_MINUTES = 35               # Jim, Nov 21 2026 (LIFE-854, comment 13632)
-CATCHUP_TIMEOUT_MINUTES = 60
+WINDOW_TIMEOUT_MINUTES = 15               # Jim, Nov 22 2026 (LIFE-854; was 35: the measured window is about 5 minutes)
+CATCHUP_TIMEOUT_MINUTES = 25               # was 60
 DEADLINE_MARGIN_MINUTES = 3               # the crawl stops starting boards this long before its step timeout, so its receipt is always written
 
 

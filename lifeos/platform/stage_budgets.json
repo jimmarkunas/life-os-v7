@@ -113,9 +113,9 @@
    "seconds": 600
   },
   "boards": {
-   "basis": "the employer-board windows (boards.yml, LIFE-854): a catch-up window's 60-minute step with the soft deadline 3 minutes before it, the hard alarm 1 minute after the soft deadline's margin; a window that cannot finish turns the run red (required)",
+   "basis": "the employer-board windows (boards.yml, LIFE-854): a catch-up window's 25-minute step with the soft deadline 3 minutes before it, the hard alarm 1 minute after the soft deadline's margin; a window that cannot finish turns the run red (required)",
    "required": true,
-   "seconds": 3480
+   "seconds": 1380
   },
   "boards-backfill": {
    "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",

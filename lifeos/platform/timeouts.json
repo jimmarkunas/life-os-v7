@@ -461,12 +461,12 @@
    "target": 5
   },
   "boards.yml::boards": {
-   "basis": "not measured: new job (LIFE-854, Jim's sizing, comment 13632): the catch-up window's 60-minute crawl step plus checkout, the Bitwarden helper wait and the tailnet join",
-   "current": 70,
+   "basis": "not measured: new job (LIFE-854, Jim's sizing, lowered Nov 22 2026 after the measured 172 s per 1,036 boards): the catch-up window's 25-minute crawl step plus checkout, the Bitwarden helper wait and the tailnet join",
+   "current": 35,
    "median_seconds": null,
    "runs_measured": 0,
    "slowest_seconds": null,
-   "target": 70
+   "target": 35
   },
   "capacity-card.yml::capacitycard": {
    "basis": "not measured: new job (LIFE-793); keeps its current value",

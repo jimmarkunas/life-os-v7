@@ -202,11 +202,11 @@
    "why": "Loops over its items; each loop without error handling is reviewed below."
   },
   "boards": {
-   "basis": "the employer-board windows (boards.yml, LIFE-854): a catch-up window's 60-minute step with the soft deadline 3 minutes before it, the hard alarm 1 minute after the soft deadline's margin; a window that cannot finish turns the run red (required)",
+   "basis": "the employer-board windows (boards.yml, LIFE-854): a catch-up window's 25-minute step with the soft deadline 3 minutes before it, the hard alarm 1 minute after the soft deadline's margin; a window that cannot finish turns the run red (required)",
    "exits_1": false,
    "module": "sources.web.boards",
    "required": true,
-   "seconds": 3480,
+   "seconds": 1380,
    "status": "single",
    "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
   },
