@@ -11,11 +11,17 @@ from unittest import mock
 from lifeos.inbox import send_to_jim
 from lifeos.platform import authorization_gate as G
 from lifeos.platform import mcp_access as M
-from tests.inbox.test_agent_inbox import FakeClient, ok_item
+from tests.inbox.test_agent_inbox import FakeClient
+from tests.inbox.test_agent_inbox import ok_item as inbox_item
 from tests.platform.mcp_access_fixture import CATALOG, DOC, NOW, build, open_access
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 MAC = {"os_user": "jimmarkunas"}
+
+
+def ok_item(**over):
+    """LIFE-876: send_to_jim derives From from the authenticated client row, so a valid item names that client (the Mac client here) or omits From."""
+    return inbox_item(**{"from": "claude-code-mac", **over})
 
 
 def call(lines, access, facts=MAC, client=None, environ=None, now=NOW):
@@ -111,17 +117,21 @@ class SendToJim(unittest.TestCase):
     def test_a_spoofed_sender_or_environment_never_changes_who_the_client_is(self):
         other = [{"id": "other-agent", "transport": "stdio", "facts": {"os_user": "someoneelse"}, "policy_key": "d" * 64}]
         access = build(clients=DOC["clients"] + other)
-        item = ok_item(**{"from": "other-agent"})                                                      # the sender field is data, never identity
+        item = ok_item(**{"from": "other-agent"})                                                      # the sender field is data, never identity: a different From is refused before the gate and before any row
         replies, receipts, client = call(tool_call(item), access, environ={"LIFEOS_CLIENT_ID": "other-agent", "LIFEOS_PRINCIPAL": "other-agent"})
-        self.assertEqual(receipts[0]["principal_fp"], G.fingerprint("claude-code-mac"))
-        replies, receipts, client = call(tool_call(ok_item()), access, facts={"os_user": "someoneelse"}, environ={"LIFEOS_CLIENT_ID": "claude-code-mac"})
+        self.assertEqual((reason(replies), client.rows, receipts), ("from_spoofed", [], [{"tool": "send_to_jim", "principal_fp": G.fingerprint("claude-code-mac"), "outcome": "deny", "reason": "from_spoofed"}]))      # the refusal is audited under the real client
+        replies, receipts, client = call(tool_call(ok_item()), access, environ={"LIFEOS_CLIENT_ID": "other-agent", "LIFEOS_PRINCIPAL": "other-agent"})
+        self.assertEqual(receipts[0]["principal_fp"], G.fingerprint("claude-code-mac"))                   # the environment names another client; the gate still sees the OS user's own
+        replies, receipts, client = call(tool_call(ok_item(**{"from": "other-agent"})), access, facts={"os_user": "someoneelse"}, environ={"LIFEOS_CLIENT_ID": "claude-code-mac"})
         self.assertEqual((reason(replies), client.rows), ("denied_catalog_unknown_principal", []))                # the other OS user is its own client: the Mac client's id in the environment changes nothing
 
     def test_two_clients_on_one_host_cannot_impersonate_one_another(self):
         """Each client has its own OS user; hermes asking as the Mac client (by id, environment or sender) is still hermes, and hermes has no grant."""
         hermes = {"id": "hermes-default", "transport": "stdio", "facts": {"os_user": "hermes"}, "policy_key": "e" * 64}
         access = build(clients=DOC["clients"] + [hermes])
-        replies, receipts, client = call(tool_call(ok_item(**{"from": "claude-code-mac"})), access, facts={"os_user": "hermes"}, environ={"LIFEOS_CLIENT_ID": "claude-code-mac"})
+        replies, receipts, client = call(tool_call(ok_item()), access, facts={"os_user": "hermes"}, environ={"LIFEOS_CLIENT_ID": "claude-code-mac"})      # hermes sends From = the Mac client: refused before the gate, no row
+        self.assertEqual((reason(replies), client.rows, receipts[-1]["reason"], receipts[-1]["principal_fp"]), ("from_spoofed", [], "from_spoofed", G.fingerprint("hermes-default")))
+        replies, receipts, client = call(tool_call(ok_item(**{"from": "hermes-default"})), access, facts={"os_user": "hermes"}, environ={"LIFEOS_CLIENT_ID": "claude-code-mac"})
         self.assertTrue(replies[0]["result"]["isError"])
         self.assertEqual((client.rows, receipts[-1]["principal_fp"], receipts[-1]["outcome"]), ([], G.fingerprint("hermes-default"), "deny"))
         shared = DOC["clients"] + [{**hermes, "facts": {"os_user": "jimmarkunas"}}]                     # same OS user as the Mac client: neither can be told apart
