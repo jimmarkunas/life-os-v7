@@ -12,7 +12,7 @@ ID = "4183c5a0-5926-81be-9e19-e85714dc256f"
 
 # Every GitHub secret or variable the workflows use (Nov 14, 2026; LIFE-703 removed 14 names that were never set in GitHub: their steps now declare them empty for the settings page to fill). This list may only shrink: LIFE-699 moves each one to the Notion settings page or Bitwarden,
 # and the end state is LIFEOS_BWS_RUNTIME_TOKEN alone (GITHUB_TOKEN is GitHub's own and never counted). Adding a name here needs Jim's typed approval.
-FROZEN = frozenset({"LIFEOS_BWS_RUNTIME_TOKEN"})
+FROZEN = frozenset({"LIFEOS_BWS_RUNTIME_TOKEN", "DOPPLER_TOKEN"})                 # LIFE-863 (Jim, comment 13732): DOPPLER_TOKEN is the one Doppler bootstrap token, trial workflow capacity-card.yml only (tests/platform/test_doppler_compare.py); it goes with the trial
 
 
 def used():
