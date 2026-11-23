@@ -1,32 +1,240 @@
 {
-  "JM_DASH_JIRA_BAD_PAGE": ["jira", "retry", true, "Jira's search answered in an unexpected shape.", "None; retried next run."],
-  "JM_DASH_JIRA_TOO_MANY_PAGES": ["jira", "terminal", false, "A Jira search (the Hermes request stage) matched more issues than one run reads.", "Narrow the search."],
-  "JIRA_ACTIVE_AMBIGUOUS": ["jira", "blocked", false, "More than one active sprint was found on the board.", "Close the extra sprint."],
-  "JIRA_BOARD_NOT_SCRUM": ["jira", "blocked", false, "The configured board is not a Scrum board.", "Fix the board list."],
-  "JIRA_CARD_APPEND_MISMATCH": ["jira", "bug", false, "Blocks appended to the Jira card did not read back as written.", "Check the page; retried next run."],
-  "JIRA_CARD_CONFIG_INVALID": ["jira", "blocked", false, "The Jira card configuration is not valid.", "Fix the variables."],
-  "JIRA_CARD_CONFIG_MISSING": ["jira", "blocked", false, "The Jira card configuration is missing.", "Set the variables."],
-  "JIRA_CARD_NOT_OWNED": ["jira", "blocked", false, "The Jira card block is not one V7 owns, so nothing is changed.", "None; the card never edits what it does not own."],
-  "JIRA_CARD_NO_SNAPSHOT": ["jira", "retry", false, "No Jira snapshot is stored yet for the card.", "None; the snapshot stage runs first."],
-  "JIRA_CARD_STALE_NO_BASELINE": ["jira", "blocked", false, "The snapshot is stale and V7 has not written this card yet, so there is nothing known-good to keep showing.", "Run the Jira snapshot stage."],
-  "JIRA_CARD_TOO_MANY_BLOCKS": ["jira", "blocked", false, "The rendered card has more blocks than Notion accepts in one call.", "Reduce the card's content."],
-  "JIRA_CARD_VERIFY_FAILED": ["jira", "degraded", false, "The Jira card did not read back as written.", "Retried next run."],
-  "JIRA_CARRY_VERIFY_FAILED": ["jira", "retry", false, "Carried issues did not show in the new sprint yet; Jira reads can lag. Nothing was closed.", "None; the rollover retries."],
-  "JIRA_CATCHUP_FAILED": ["jira", "degraded", false, "The catch-up rollover step could not be verified.", "Retried next run."],
-  "JIRA_CLOSE_VERIFY_FAILED": ["jira", "degraded", false, "The old sprint did not show as closed.", "Retried next run."],
-  "JIRA_EARLY_ROLLOVER": ["jira", "blocked", false, "The rollover was asked before the sprint's end.", "None; it waits."],
-  "JIRA_ERROR": ["jira", "bug", false, "An unnamed Jira error; the board position is appended.", "Check the log."],
-  "JIRA_FILL_FAILED": ["jira", "retry", false, "The parent, Component or Fix Version fill could not write any ticket it found (a Jira write failed).", "None; retried next hour."],
-  "JIRA_PARENT_REQUIRED": ["jira", "blocked", false, "A new LIFE ticket was created without a parent epic.", "Name the parent epic and create it again."],
-  "JIRA_PARENT_NOT_AN_EPIC": ["jira", "blocked", false, "The named parent of a new LIFE ticket is not an epic.", "Name an epic as the parent and create it again."],
-  "JIRA_FINAL_VERIFY_FAILED": ["jira", "degraded", false, "The rollover's final check did not match.", "Retried next run."],
-  "JIRA_NOT_MONDAY": ["jira", "state", false, "The rollover only runs on Mondays.", "None."],
-  "JIRA_NO_END_DATE": ["jira", "blocked", false, "The active sprint has no end date.", "Set the sprint end date."],
-  "JIRA_NO_ROLLOVER_CANDIDATE": ["jira", "state", false, "There is no sprint to roll over.", "None."],
-  "JIRA_START_VERIFY_FAILED": ["jira", "degraded", false, "The new sprint did not show as active.", "Retried next run."],
-  "JIRA_TARGET_AMBIGUOUS": ["jira", "blocked", false, "More than one future sprint could be the target.", "Remove the extra sprint."],
-  "JIRA_TARGET_NOT_FUTURE": ["jira", "blocked", false, "The target sprint is not a future sprint.", "Create the next sprint."],
-  "JIRA_TARGET_NOT_STAGED": ["jira", "blocked", false, "The next two-week sprint is missing from the approved roadmap.", "Plan the next sprint in Jira before enabling rollover."],
-  "JIRA_UNSUPPORTED_CADENCE": ["jira", "blocked", false, "The sprint dates do not define a Monday-Sunday 7- or 14-day window.", "Correct the sprint dates in Jira."],
-  "JIRA_RELEASE_FAILED": ["jira", "retry", false, "The auto-release rule could not move any ticket it found ready (a Jira write failed).", "None; retried next hour."]
+  "JM_DASH_JIRA_BAD_PAGE": [
+    "jira",
+    "retry",
+    true,
+    "Jira's search answered in an unexpected shape.",
+    "None; retried next run."
+  ],
+  "JM_DASH_JIRA_TOO_MANY_PAGES": [
+    "jira",
+    "terminal",
+    false,
+    "A Jira search (the Hermes request stage) matched more issues than one run reads.",
+    "Narrow the search."
+  ],
+  "JIRA_ACTIVE_AMBIGUOUS": [
+    "jira",
+    "blocked",
+    false,
+    "More than one active sprint was found on the board.",
+    "Close the extra sprint."
+  ],
+  "JIRA_BOARD_NOT_SCRUM": [
+    "jira",
+    "blocked",
+    false,
+    "The configured board is not a Scrum board.",
+    "Fix the board list."
+  ],
+  "JIRA_CARD_APPEND_MISMATCH": [
+    "jira",
+    "bug",
+    false,
+    "Blocks appended to the Jira card did not read back as written.",
+    "Check the page; retried next run."
+  ],
+  "JIRA_CARD_CONFIG_INVALID": [
+    "jira",
+    "blocked",
+    false,
+    "The Jira card configuration is not valid.",
+    "Fix the variables."
+  ],
+  "JIRA_CARD_CONFIG_MISSING": [
+    "jira",
+    "blocked",
+    false,
+    "The Jira card configuration is missing.",
+    "Set the variables."
+  ],
+  "JIRA_CARD_NOT_OWNED": [
+    "jira",
+    "blocked",
+    false,
+    "The Jira card block is not one V7 owns, so nothing is changed.",
+    "None; the card never edits what it does not own."
+  ],
+  "JIRA_CARD_NO_SNAPSHOT": [
+    "jira",
+    "retry",
+    false,
+    "No Jira snapshot is stored yet for the card.",
+    "None; the snapshot stage runs first."
+  ],
+  "JIRA_CARD_STALE_NO_BASELINE": [
+    "jira",
+    "blocked",
+    false,
+    "The snapshot is stale and V7 has not written this card yet, so there is nothing known-good to keep showing.",
+    "Run the Jira snapshot stage."
+  ],
+  "JIRA_CARD_TOO_MANY_BLOCKS": [
+    "jira",
+    "blocked",
+    false,
+    "The rendered card has more blocks than Notion accepts in one call.",
+    "Reduce the card's content."
+  ],
+  "JIRA_CARD_VERIFY_FAILED": [
+    "jira",
+    "degraded",
+    false,
+    "The Jira card did not read back as written.",
+    "Retried next run."
+  ],
+  "JIRA_CARRY_VERIFY_FAILED": [
+    "jira",
+    "retry",
+    false,
+    "Carried issues did not show in the new sprint yet; Jira reads can lag. Nothing was closed.",
+    "None; the rollover retries."
+  ],
+  "JIRA_CATCHUP_FAILED": [
+    "jira",
+    "degraded",
+    false,
+    "The catch-up rollover step could not be verified.",
+    "Retried next run."
+  ],
+  "JIRA_CLOSE_VERIFY_FAILED": [
+    "jira",
+    "degraded",
+    false,
+    "The old sprint did not show as closed.",
+    "Retried next run."
+  ],
+  "JIRA_EARLY_ROLLOVER": [
+    "jira",
+    "blocked",
+    false,
+    "The rollover was asked before the sprint's end.",
+    "None; it waits."
+  ],
+  "JIRA_ERROR": [
+    "jira",
+    "bug",
+    false,
+    "An unnamed Jira error; the board position is appended.",
+    "Check the log."
+  ],
+  "JIRA_FILL_FAILED": [
+    "jira",
+    "retry",
+    false,
+    "The parent, Component or Fix Version fill could not write any ticket it found (a Jira write failed).",
+    "None; retried next hour."
+  ],
+  "JIRA_PARENT_REQUIRED": [
+    "jira",
+    "blocked",
+    false,
+    "A new LIFE ticket was created without a parent epic.",
+    "Name the parent epic and create it again."
+  ],
+  "JIRA_PARENT_NOT_AN_EPIC": [
+    "jira",
+    "blocked",
+    false,
+    "The named parent of a new LIFE ticket is not an epic.",
+    "Name an epic as the parent and create it again."
+  ],
+  "JIRA_FINAL_VERIFY_FAILED": [
+    "jira",
+    "degraded",
+    false,
+    "The rollover's final check did not match.",
+    "Retried next run."
+  ],
+  "JIRA_NOT_MONDAY": [
+    "jira",
+    "state",
+    false,
+    "The rollover only runs on Mondays.",
+    "None."
+  ],
+  "JIRA_NO_END_DATE": [
+    "jira",
+    "blocked",
+    false,
+    "The active sprint has no end date.",
+    "Set the sprint end date."
+  ],
+  "JIRA_NO_ROLLOVER_CANDIDATE": [
+    "jira",
+    "state",
+    false,
+    "There is no sprint to roll over.",
+    "None."
+  ],
+  "JIRA_START_VERIFY_FAILED": [
+    "jira",
+    "degraded",
+    false,
+    "The new sprint did not show as active.",
+    "Retried next run."
+  ],
+  "JIRA_TARGET_AMBIGUOUS": [
+    "jira",
+    "blocked",
+    false,
+    "More than one future sprint could be the target.",
+    "Remove the extra sprint."
+  ],
+  "JIRA_TARGET_NOT_FUTURE": [
+    "jira",
+    "blocked",
+    false,
+    "The target sprint is not a future sprint.",
+    "Create the next sprint."
+  ],
+  "JIRA_TARGET_NOT_STAGED": [
+    "jira",
+    "blocked",
+    false,
+    "The next two-week sprint is missing from the approved roadmap.",
+    "Plan the next sprint in Jira before enabling rollover."
+  ],
+  "JIRA_UNSUPPORTED_CADENCE": [
+    "jira",
+    "blocked",
+    false,
+    "The sprint dates do not define a Monday-Sunday 7- or 14-day window.",
+    "Correct the sprint dates in Jira."
+  ],
+  "JIRA_RELEASE_FAILED": [
+    "jira",
+    "retry",
+    false,
+    "The auto-release rule could not move any ticket it found ready (a Jira write failed).",
+    "None; retried next hour."
+  ],
+  "JIRA_MEJ_ROSTER_INVALID": [
+    "jira",
+    "blocked",
+    false,
+    "The MEJ carry roster does not exactly identify approved standard deliverables in the unfinished source sprint.",
+    "Obtain Matt's exact written roster and compare the frozen sprint inventory."
+  ],
+  "JIRA_MEJ_INVENTORY_INVALID": [
+    "jira",
+    "blocked",
+    false,
+    "The unfinished sprint inventory is incomplete, ambiguous or lacks required issue type.",
+    "Refresh Jira source inventory; no sprint was closed."
+  ],
+  "JIRA_MEJ_FINITE_NOT_CARRY": [
+    "jira",
+    "blocked",
+    false,
+    "A finite weekly occurrence is selected for automatic sprint carry.",
+    "Remove this occurrence from the approved next-sprint roster; preserve its truthful status."
+  ],
+  "JIRA_MEJ_BACKLOG_UNVERIFIED": [
+    "jira",
+    "blocked",
+    false,
+    "Unapproved unfinished MEJ work lacks a verified backlog destination before sprint close.",
+    "Verify the Jira Agile backlog REST operation and readback, then explicitly replan without blanket carry."
+  ]
 }
