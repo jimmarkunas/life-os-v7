@@ -1003,12 +1003,15 @@ UUIDS = {
 TAILSCALE_ACTION = "./.github/actions/tailscale"
 TAILSCALE_WITH = {"oauth-client-id": "TAILSCALE_OAUTH_CLIENT_ID", "oauth-secret": "TAILSCALE_OAUTH_CLIENT_SECRET"}
 # Least privilege: the credentials each job may load from Bitwarden (a conscious decision; domains.yml jobs are held to DOMAIN_SECRETS instead). Adding one is the only workflow edit that needs a test edit.
+# LIFE-861 (tools/secret_usage.py): `prep` only gates and sweeps, so it no longer loads the Fit profile, the Jobright login, TinyFish or the open-jobs contact; the three manual resolver lanes read none of the Gmail values or the open-jobs contact.
+HRL_PREP = HRL - {"FIT_PROFILE_EXTRA_JSON", "FIT_PROFILE_JSON", "JOBRIGHT_EMAIL", "JOBRIGHT_PASSWORD", "OPEN_JOBS_CONTACT", "TINYFISH_API_KEY"}
+HRL_LANE = HRL - {"GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "OPEN_JOBS_CONTACT"}
 LOADED = {
     "branches": {"report": {"NOTION_JIRA_TOKEN"}, "archive": {"V7_ARCHIVE_TOKEN"}},
     "agenda": {"agenda": DB | {"GCAL_SERVICE_ACCOUNT_JSON", "NOTION_JIRA_TOKEN"}},
     "bills": {"bills": DB | {"NOTION_BILLS_TOKEN"}},
     "calendar": {"calendar": DB | {"GCAL_SERVICE_ACCOUNT_JSON", "OUTLOOK_CLIENT_ID"}},
-    "hourly": {"prep": DB | JUMP | TS | HRL, "jobright": DB | JUMP | TS | HRL, "linkedin": DB | JUMP | TS | HRL, "lensa": DB | JUMP | TS | HRL, "finish": DB | JUMP | TS | HRL | {"NTFY_TOPIC", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"}, "interview": {"NOTION_INTERVIEW_TOKEN", "INTERVIEW_ACCEPTANCE_JSON", "INTERVIEW_ACCEPTANCE_NEGATIVE_JSON"}, "report": {"NTFY_TOPIC"}},
+    "hourly": {"prep": DB | JUMP | TS | HRL_PREP, "jobright": DB | JUMP | TS | HRL_LANE, "linkedin": DB | JUMP | TS | HRL_LANE, "lensa": DB | JUMP | TS | HRL_LANE, "finish": DB | JUMP | TS | HRL | {"NTFY_TOPIC", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"}, "interview": {"NOTION_INTERVIEW_TOKEN", "INTERVIEW_ACCEPTANCE_JSON", "INTERVIEW_ACCEPTANCE_NEGATIVE_JSON"}, "report": {"NTFY_TOPIC"}},
     "network": {"network": DB | JUMP | TS | {"NOTION_API_TOKEN"}},
     "boards": {"boards": DB | JUMP | TS},        # LIFE-854: the employer-board windows load the store and tailnet credentials the hourly job's boards step used, and nothing else
     "v3-pages": {"v3pages": {"JIRA_API_TOKEN", "JIRA_EMAIL", "NOTION_JIRA_TOKEN"}},
