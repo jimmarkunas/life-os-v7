@@ -7,6 +7,7 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import net from "node:net";
 import { createRequire } from "node:module";
 
 export const SCHEMA = "lifeos.oracle.stats.v1";
@@ -16,6 +17,13 @@ const IMDS = "http://169.254.169.254/opc/v2/instance/";
 const UNITS = { gateway: "openclaw-gateway.service", alerts: "lifeos-alerts-whatsapp.service" };
 const AGENTS_DIR = `${process.env.HOME}/.openclaw/agents`;   // LIFE-531: one folder per OpenClaw agent
 const BACKUP_STATUS = "/var/lib/lifeos-offsite/status.json";   // LIFE-129: the nightly off-site backup's last result (root-written, world-readable; counts and a fixed code)
+// LIFE-921: Honcho and the Anthropic report, read-only and names-and-numbers only. Each reading is independent: one that cannot be had is null, never a guess or a zero.
+const HONCHO_HEALTH = "http://127.0.0.1:8000/health";
+const METER_HEALTH = "http://172.28.0.1:8081/health";           // the metering proxy's own health (cap and RESERVED spend; never billed spend)
+const METER_DIR = "/var/lib/lifeos-honcho-meter";                // EXHAUSTED and STOP markers sit next to the ledger
+const BACKUP_DIR = "/var/lib/lifeos-honcho-backup";              // FAILED marker (removed by the next good backup)
+const BACKUP_UNIT = "lifeos-honcho-backup.service";
+const REPORT_SOCKET = "/run/lifeos-anthropic-report.sock";       // lifeos-anthropic-report.socket: the billed spend, read with the Admin key by the reader unit only
 const IDLE_PCT = 20;                                    // Oracle's Always Free idle rule: 7-day CPU p95, network and (A1) memory all below 20%
 
 const round1 = (n) => Math.round(n * 10) / 10;
@@ -160,6 +168,64 @@ async function services() {
   return { gateway, telegram, whatsapp, alerts };
 }
 
+const num = (v) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null);
+
+// "Mon 2026-11-23 09:30:27 UTC" (systemctl show) -> "2026-11-23T09:30:27Z"; anything else -> null.
+export function unitTime(text) {
+  const m = /^(?:\w{3} )?(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}) UTC$/.exec(String(text || "").trim());
+  return m ? `${m[1]}T${m[2]}Z` : null;
+}
+
+// A marker file: true (there), false (not there), null (cannot tell).
+function marker(file) {
+  try { fs.statSync(file); return true; } catch (e) { return e && e.code === "ENOENT" ? false : null; }
+}
+
+async function getJson(url, timeout = 8000) {
+  const reply = await fetch(url, { signal: AbortSignal.timeout(timeout) });
+  return { status: reply.status, body: await reply.json().catch(() => null) };
+}
+
+// What the Honcho line on the Oracle card needs; see lifeos/oraclecloud/honcho_status.py for the shape and the rules.
+export async function honcho(deps = {}) {
+  const { json = getJson, mark = marker, show = (u) => run("systemctl", ["show", u, "-p", "ExecMainExitTimestamp", "-p", "Result"], 10000) } = deps;
+  const [api, meter, shown] = await Promise.all([
+    json(HONCHO_HEALTH).catch(() => ({ status: 0 })), json(METER_HEALTH).catch(() => null), show(BACKUP_UNIT),
+  ]);
+  const m = meter && meter.status === 200 ? meter.body : null;
+  const failed = mark(`${BACKUP_DIR}/FAILED`);
+  const exhausted = mark(`${METER_DIR}/EXHAUSTED`);
+  const stopFile = mark(`${METER_DIR}/STOP`);
+  const stopped = m === null || stopFile === null ? null : stopFile === true || m.stopped === true || (m.blocked !== null && m.blocked !== undefined);
+  const props = Object.fromEntries(String(shown ?? "").split("\n").map((l) => l.split(/=(.*)/s).slice(0, 2)).filter((p) => p.length === 2));   // `Key=value` lines, in whatever order systemd prints them
+  const result = props.Result;
+  const at = unitTime(props.ExecMainExitTimestamp);
+  return {
+    health: api.status === 200 ? true : api.status === 0 ? false : false,
+    failed, exhausted, stopped,
+    backup: at ? { at, ok: result === "success" && failed === false } : null,
+    meter: m && num(m.cap_usd) !== null && num(m.spent_usd) !== null ? { cap: num(m.cap_usd), reserved: num(m.spent_usd) } : null,
+  };
+}
+
+// The billed Anthropic spend, from the report reader's socket: {billed_usd, honcho_usd, as_of} or null.
+export async function anthropic(socketPath = REPORT_SOCKET) {
+  const text = await new Promise((resolve) => {
+    let data = "";
+    const c = net.createConnection(socketPath);
+    const done = (v) => { clearTimeout(t); c.destroy(); resolve(v); };
+    const t = setTimeout(() => done(null), 60000);
+    c.on("data", (d) => { data += d; if (data.includes("\n")) done(data); });
+    c.on("end", () => done(data || null));
+    c.on("error", () => done(null));
+  });
+  try {
+    const r = JSON.parse(text);
+    const ok = (v) => v === null || num(v) !== null;
+    return ok(r.billed_usd) && ok(r.honcho_usd) && (r.as_of === null || typeof r.as_of === "string") && r.billed_usd !== undefined ? { billed_usd: r.billed_usd, honcho_usd: r.honcho_usd ?? null, as_of: r.as_of ?? null } : null;
+  } catch { return null; }
+}
+
 export async function collect() {
   const [cloud, svc, plan] = await Promise.all([
     oci().catch(() => ({ cpu24: null, cpuP95: null, mem7: null, cost: null, a1: null, backups: null })),
@@ -182,6 +248,8 @@ export async function collect() {
     backup: backup(),
     workers: await workers(),
     backups: cloud.backups,
+    honcho: await honcho().catch(() => null),
+    anthropic: await anthropic().catch(() => null),
   };
 }
 

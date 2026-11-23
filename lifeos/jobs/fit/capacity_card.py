@@ -13,12 +13,13 @@ import re
 import time
 
 from lifeos.jobs.fit import edge
-from lifeos.platform import ct_stamp, readback, report_region
+from lifeos.platform import ct_stamp, honcho_status, readback, report_region
 from lifeos.platform.notion_client import Client, NotionError
 
 TZ = ZoneInfo("America/Chicago")
 HEADER = ["Pool", "Remaining", "Used", "Window", "Resets", "Status"]
-ROWS, COLS = 7, 6                    # the header and six pool rows; the table is made once at setup and only its cells change
+ROWS, COLS = 9, 6                    # LIFE-921: the header, six pool rows and the two Anthropic rows; the table is made once at setup and only its cells change (OLD_ROWS: the 7-row table of before, grown in place)
+OLD_ROWS = 7
 NEAR_REMAINING = 25                  # NEAR LIMIT at or below this percent remaining (the preview's threshold; Jim can change it)
 NAMES = {"openai": "Codex allowance", "openrouter": "OpenRouter", "groq": "Groq", "google": "Gemini", "ollama": "Ollama on Oracle", "openclaw_usage": "Other providers"}
 WINDOWS = {"5h": ("5-hour", "5 hours"), "Week": ("weekly", "Week")}
@@ -46,7 +47,7 @@ def _reset(iso):
         return "—"
 
 
-def render(reading, now):
+def render(reading, now, honcho=None, anthropic=None):
     """reading: edge.limits() -> (the callout's text, ROWS x COLS cells). Pure. Tightest window first; the one with the least left is marked."""
     rows = []
     for pool in reading["pools"]:
@@ -65,6 +66,7 @@ def render(reading, now):
                 status = "AVAILABLE"
             used = f"{_bar(w['used'])} {w['used']:g}%" + (f" · Cloud Fit stops at {stop}%" if stop else "")
             rows.append([left, [f"{name} · {label}", f"{left:g}%", used, window, _reset(w["reset_at"]), status]])
+    rows += [[left, cells] for left, cells in honcho_status.ranked(honcho, anthropic, now)]                      # LIFE-921: the two Anthropic rows sort with the others by least remaining
     rows.sort(key=lambda r: r[0])
     if rows:
         rows[0][1][0] += " ◀ tightest"
@@ -77,7 +79,7 @@ def render(reading, now):
     cap = reading.get("safety_cap")
     if extra:
         text += f" · {extra} more not shown"
-    lines = [x for x in (codex_line(reading), guard_line(reading), proposed_line(reading), signin_line(reading)) if x]       # one short labelled line each
+    lines = [x for x in (codex_line(reading), guard_line(reading), proposed_line(reading), honcho_status.summary(honcho, anthropic, now), signin_line(reading)) if x]       # one short labelled line each
     return "\n".join([text, *lines]), [HEADER] + cells
 
 
@@ -167,7 +169,7 @@ def _callout_text(meta):
 
 
 def locate(client, block_id):
-    """-> (callout meta, table rows). Anything but one callout holding one 6-column, 7-row table raises: nothing is written."""
+    """-> (callout meta, table rows). Anything but one callout holding one 6-column table of 7 rows (before LIFE-921) or 9 rows raises: nothing is written."""
     meta = client.call("GET", f"/blocks/{quote(block_id, safe='')}")
     if not isinstance(meta, dict) or meta.get("type") != "callout":
         raise _fail("BLOCK_NOT_FOUND")
@@ -175,9 +177,16 @@ def locate(client, block_id):
     if len(tables) != 1 or (tables[0].get("table") or {}).get("table_width") != COLS:
         raise _fail("BLOCK_SHAPE")
     rows = report_region.children(client, tables[0]["id"], _fail)
-    if len(rows) != ROWS or any(len(_cells(r)) != COLS for r in rows):
+    if len(rows) not in (OLD_ROWS, ROWS) or any(len(_cells(r)) != COLS for r in rows):
         raise _fail("BLOCK_SHAPE")
     return meta, rows
+
+
+def _grow(client, block_id, count):
+    """LIFE-921: the 7-row table of before gets its two Anthropic rows appended in place (blank rows; nothing existing moves), then the write fills them."""
+    tables = [b for b in report_region.children(client, block_id, _fail) if b.get("type") == "table"]
+    blanks = [{"object": "block", "type": "table_row", "table_row": {"cells": [[] for _ in range(COLS)]}} for _ in range(count)]
+    client.call("PATCH", f"/blocks/{quote(tables[0]['id'], safe='')}/children", {"children": blanks})
 
 
 def _is_card(client, block):
@@ -252,10 +261,14 @@ def write(client, block_id, text, table, live, sleep=time.sleep):
     meta, rows = locate(client, block_id)
     if table is not None and (len(table) != ROWS or any(len(r) != COLS for r in table)):
         raise _fail("RENDER_SHAPE")
+    grown = ROWS - len(rows) if table is not None else 0
+    if grown and live:
+        _grow(client, block_id, grown)
+        meta, rows = locate(client, block_id)
     changed = [(r["id"], want) for r, want in zip(rows, table)] if table is not None else []
     changed = [(rid, want) for (rid, want), r in zip(changed, rows) if _cells(r) != want]
     text_changed = _callout_text(meta) != text
-    result = {"rows_written": 0, "text_written": False, "rows_changed": len(changed), "text_changed": text_changed}
+    result = {"rows_written": 0, "text_written": False, "rows_changed": len(changed) + (grown if not live else 0), "text_changed": text_changed, "rows_grown": grown}
     if not live or not (changed or text_changed):
         return result
     for row_id, want in changed:
@@ -276,7 +289,12 @@ def _writer(environ):
     return Client({"NOTION_API_TOKEN": (environ.get("NOTION_JIRA_TOKEN") or "").strip(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused"})
 
 
-def run(limit, live, environ=os.environ, client=None, read=None, now=None):
+def _stats(environ, now):
+    """LIFE-921: the `honcho` and `anthropic` readings from Oracle's own `oracle1` stats (the same private endpoint the Oracle card reads). -> (honcho, anthropic); (None, None) when they cannot be had, which the card prints as UNVERIFIED, never zero."""
+    return honcho_status.read((environ.get("IMESSAGE_ALERTS_HOST") or "").strip(), now)
+
+
+def run(limit, live, environ=os.environ, client=None, read=None, now=None, stats=None):
     anchor = (environ.get("ATTENTION_CARD_BLOCK_ID") or "").strip()
     if (environ.get("V7_AI_CAPACITY_CARD") or "").strip().lower() != "on" or not anchor:
         return {"status": "not_configured", "rows_written": 0}
@@ -297,7 +315,8 @@ def run(limit, live, environ=os.environ, client=None, read=None, now=None):
         text = f"AI Capacity (DEGRADED at {ct_stamp.when(now)}) · Oracle limits read failed ({error}) · showing the last reading"
         result = write(client, block_id, text, None, live)
         return {**result, "status": "degraded", "code": str(error), "failed": 1}           # a failed read is a failed stage, by name; the old card stays until a fresh reading is verified
-    text, table = render(reading, now)
+    honcho, anthropic = (stats or (lambda: _stats(environ, now)))()
+    text, table = render(reading, now, honcho, anthropic)
     result = write(client, block_id, text, table, live)
     removed = 0
     if old_id is not None and live:
