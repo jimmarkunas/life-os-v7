@@ -1,0 +1,74 @@
+#!/usr/bin/env python3
+"""LIFE-870 (Jim, S1 A, comment 13854): run the Hermes request sender on the Oracle host against the private Buzz relay pilot, for the Hermes developer pilot only.
+
+  sudo /opt/lifeos-buzz-mcp/current/bin/hermes-pilot [--live] [--limit N]
+
+Started by a person or an agent; it has no timer, no loop and never wakes anything. It is the same lifeos/hermes_requests.py the GitHub workflow runs (a dry run unless --live), with BUZZ_RELAY=pilot, so the
+sender reads and writes only the loopback pilot relay (127.0.0.1:3100); the GitHub workflow stays on the hosted relay. Settings live in /etc/lifeos-hermes-pilot/: plain files `channel` (the pilot channel UUID),
+`hermes_pubkey` (the approved recipient's public key) and `jira_base_url`; encrypted credentials (systemd-creds, root-only) `pilot_key.cred` (this sender's own pilot member key), `jira_email.cred` and
+`jira_api_token.cred`. Root decrypts them in memory and starts the sender as the unprivileged buzz-mcp user with them in its environment (never on a command line, in a file or in the output).
+Prints only the sender's counts as one JSON line, or one fixed code (`HERMES_...`, `JIRA_...`), or `not_ready <names of what is missing>` (exit 2). Rollback: do not run it; the GitHub workflow is untouched."""
+import json
+import os
+import pwd
+import subprocess
+import sys
+
+SETTINGS = os.environ.get("HERMES_PILOT_DIR", "/etc/lifeos-hermes-pilot")
+RUNAS = os.environ.get("HERMES_PILOT_USER", "buzz-mcp")
+RELEASE = os.environ.get("HERMES_PILOT_RELEASE", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+PLAIN = {"channel": "BUZZ_PILOT_CHANNEL", "hermes_pubkey": "BUZZ_PILOT_HERMES_PUBKEY", "jira_base_url": "JIRA_BASE_URL"}
+SECRET = {"pilot_key": "BUZZ_PILOT_KEY", "jira_email": "JIRA_EMAIL", "jira_api_token": "JIRA_API_TOKEN"}
+CODE = ("import json,sys\n"
+        "from lifeos import hermes_requests as h\n"
+        "try:\n"
+        "    print(json.dumps(h.run(int(sys.argv[1]), sys.argv[2] == 'live'), sort_keys=True))\n"
+        "except h.HermesError as error:\n"
+        "    print(str(error)); sys.exit(1)\n")
+
+
+def settings():
+    """-> (environment for the sender, names of what is missing)."""
+    env, missing = {"BUZZ_RELAY": "pilot", "BUZZ_PILOT_URL": "http://127.0.0.1:3100", "PYTHONPATH": RELEASE, "PYTHONDONTWRITEBYTECODE": "1", "PATH": "/usr/bin:/bin"}, []
+    for name, var in PLAIN.items():
+        try:
+            value = open(os.path.join(SETTINGS, name)).read().strip()
+        except OSError:
+            value = ""
+        env[var] = value
+        if not value:
+            missing.append(name)
+    for name, var in SECRET.items():
+        path = os.path.join(SETTINGS, name + ".cred")
+        done = subprocess.run(["systemd-creds", "decrypt", "--name=" + name, path, "-"], capture_output=True, check=False) if os.path.isfile(path) else None
+        value = done.stdout.decode().strip() if done is not None and done.returncode == 0 else ""
+        env[var] = value
+        if not value:
+            missing.append(name)
+    return env, missing
+
+
+def main(argv):
+    live, limit, rest = False, 5, list(argv)
+    while rest:
+        arg = rest.pop(0)
+        if arg == "--live":
+            live = True
+        elif arg == "--limit" and rest and rest[0].isdigit():
+            limit = int(rest.pop(0))
+        else:
+            print("usage: hermes-pilot [--live] [--limit N]", file=sys.stderr)
+            return 64
+    env, missing = settings()
+    if missing:
+        print("not_ready " + ",".join(missing))
+        return 2
+    kwargs = {"user": pwd.getpwnam(RUNAS).pw_uid, "group": pwd.getpwnam(RUNAS).pw_gid} if os.geteuid() == 0 and pwd.getpwnam(RUNAS).pw_uid != 0 else {}
+    done = subprocess.run([sys.executable, "-s", "-B", "-c", CODE, str(limit), "live" if live else "dry"], capture_output=True, text=True, env=env, cwd="/", check=False, **kwargs)
+    line = (done.stdout.strip().splitlines() or ["HERMES_NO_OUTPUT"])[-1]
+    print(line if line.startswith(("{", "HERMES_", "JIRA_")) else "HERMES_UNEXPECTED_OUTPUT")      # nothing else from the child is ever passed on: no traceback, no value
+    return 0 if done.returncode == 0 else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
