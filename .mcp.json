@@ -3,7 +3,8 @@
     "concord": {
       "command": "/Users/jimmarkunas/.local/bin/concord-mcp",
       "env": {
-        "CONCORD_REPO_ROOT": "/Users/jimmarkunas/Developer/LIFEOS/life-os-v7"
+        "CONCORD_REPO_ROOT": "/Users/jimmarkunas/Developer/LIFEOS/life-os-v7",
+        "CONCORD_TELEMETRY_DISABLED": "1"
       }
     }
   }
