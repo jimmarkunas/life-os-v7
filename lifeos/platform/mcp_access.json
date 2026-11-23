@@ -54,6 +54,9 @@
     "buzz": "read",
     "honcho": "write",
     "notion": "write"
+   },
+   "9d238d6471fc5568f5b54860d0c2e191a8948e63770ed36d124566595b9fc031": {
+    "notion": "write"
    }
   }
  },
@@ -113,6 +116,14 @@
     "credential": "hermes-librarian"
    },
    "policy_key": "5a10b1e50b771566e61f818b437d3224927e5bf2798b4157cbbeba420309e1fa"
+  },
+  {
+   "id": "honcho-alerts",
+   "transport": "http",
+   "facts": {
+    "credential": "honcho-alerts"
+   },
+   "policy_key": "9d238d6471fc5568f5b54860d0c2e191a8948e63770ed36d124566595b9fc031"
   }
  ],
  "grants": [
@@ -815,6 +826,20 @@
    "credential_ref": "notion-readonly-token",
    "expires": "2027-02-22",
    "revoked": false
+  },
+  {
+   "id": "g-honcho-alerts-personal-send_to_jim",
+   "principal": "honcho-alerts",
+   "tenant": "personal",
+   "account": "agent-inbox",
+   "tool": "send_to_jim",
+   "purpose": "agent-inbox",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "notion-readonly-token",
+   "expires": "2027-02-22",
+   "revoked": false
   }
  ],
  "credentials": [
@@ -851,6 +876,16 @@
   {
    "id": "hermes-librarian",
    "sha256": "3791acd3164efac7b055e987cb048635baf02903e6d5f73985c4069680cbec85",
+   "expires": "2027-02-22",
+   "revoked": false,
+   "buzz_identity": null,
+   "communities": [
+    "life-os"
+   ]
+  },
+  {
+   "id": "honcho-alerts",
+   "sha256": "a1ab07e94d8d65d84d2833eef418df9c4e508124d847aa833e50df5c1d5e678c",
    "expires": "2027-02-22",
    "revoked": false,
    "buzz_identity": null,

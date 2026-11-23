@@ -336,7 +336,7 @@ class Governed(Server):
 
 class Credentials(Server):
     """LIFE-873: scoped `lm1.` credentials for the local clients, through the real HTTP handler. Synthetic secrets only; the shipped data holds hashes, never a secret."""
-    SECRETS = {"mac-claude-code": "A" * 43, "oracle-claude-code": "B" * 43, "openclaw": "D" * 43, "hermes-librarian": "E" * 43}
+    SECRETS = {"mac-claude-code": "A" * 43, "oracle-claude-code": "B" * 43, "openclaw": "D" * 43, "hermes-librarian": "E" * 43, "honcho-alerts": "F" * 43}
 
     def access(self, edit=None, no_identity=False):
         import copy
@@ -356,7 +356,7 @@ class Credentials(Server):
 
     def test_each_credential_lists_only_its_granted_tools_and_completes_one_read_with_its_own_receipt(self):
         self.start(access=self.access())
-        for cid in (c for c in self.SECRETS if c not in ("openclaw", "hermes-librarian")):                                                # openclaw and hermes-librarian are capabilities only: their own tests below
+        for cid in (c for c in self.SECRETS if c not in ("openclaw", "hermes-librarian", "honcho-alerts")):                                                # openclaw and hermes-librarian are capabilities only: their own tests below
             status, out = self.rpc(self.tok(cid), "tools/list")
             names = {t["name"] for t in out["result"]["tools"]}
             self.assertEqual((status, {"buzz_capabilities", "buzz_read"} <= names, "buzz_publish" in names or "buzz_post_message" in names), (200, True, False), cid)
@@ -410,6 +410,19 @@ class Credentials(Server):
         status, out = self.tool(self.tok("oracle-claude-code"), "buzz_read", operation="list_channels", community="life-os")
         self.assertEqual((status, out["error"]), (200, "client_identity_not_configured"))
 
+    def test_honcho_alerts_may_send_to_jim_only_and_is_named_as_the_sender(self):
+        """LIFE-876 / LIFE-867 (Jim, comment 13853): the alert client holds one grant, send_to_jim; every other gate tool refuses it before any service runs."""
+        from datetime import datetime, timezone
+        from unittest import mock
+        sent = []
+        self.start(access=self.access(no_identity=True))
+        with mock.patch.dict(buzz_mcp.INBOX, {"client": object(), "now": lambda: datetime(2026, 11, 23, 12, 0, tzinfo=timezone.utc)}), mock.patch("lifeos.platform.inbox_send.deliver", lambda item, client, now=None: sent.append(item) or {"ok": True, "created": 1}):
+            status, out = self.tool(self.tok("honcho-alerts"), "buzz_read", operation="send_to_jim", community="life-os", arguments={"subject": "Honcho backup failed", "urgency": "Today"})
+            self.assertEqual((status, out.get("ok"), (out.get("data") or out).get("sender", out), sent[0]["from"] if sent else None), (200, True, "honcho-alerts", "honcho-alerts"))
+            status, out = self.tool(self.tok("honcho-alerts"), "buzz_read", operation="source_read", community="life-os", arguments={"source": "github", "path": "AGENTS.md"})
+            self.assertFalse(out.get("ok"), out)
+            self.assertEqual(len(sent), 1)
+
     def test_source_read_and_agent_lookup_are_their_own_gate_tools_for_every_proved_client_and_not_for_the_chat_clients(self):
         """LIFE-888 (Jim, Nov 22 2026, comment 13735): the two lookups are granted to the four proved clients only; no Buzz identity or relay is needed; the chat clients are refused at the gate."""
         from datetime import datetime, timedelta
@@ -421,7 +434,7 @@ class Credentials(Server):
         github = lambda path, ref: {"commit": "a" * 40, "last_change": "b" * 40, "blob": "c" * 40, "modified": now - timedelta(days=1), "text": "policy text"}
         self.start(access=self.access(no_identity=True))
         with mock.patch.dict(buzz_mcp.LOOKUP, {"fetchers": {"github": github}, "rows": lambda: F.rows(), "now": lambda: now}):
-            for cid in self.SECRETS:
+            for cid in (c for c in self.SECRETS if c != "honcho-alerts"):
                 status, out = self.tool(self.tok(cid), "buzz_read", operation="source_read", community="life-os", arguments={"source": "github", "path": "AGENTS.md"})
                 self.assertEqual((status, out["ok"], out["data"]["revision"]["commit_sha"], out["data"]["freshness"]), (200, True, "a" * 40, "fresh"), cid)
                 allow = self.receipts[-2]

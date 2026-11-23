@@ -1,0 +1,114 @@
+#!/usr/bin/env python3
+"""LIFE-876 / LIFE-867: the Honcho backup and budget alerts reach Jim's Agent Inbox through the governed send_to_jim, as the MCP client `honcho-alerts`.
+
+  sudo /opt/lifeos-buzz-mcp/current/bin/honcho-alert issue                       once: make the credential on Oracle; prints only its SHA-256 (not a secret) for mcp_access.json
+  /opt/lifeos-buzz-mcp/current/bin/honcho-alert send <subject> [details] [--urgency Now|Today|This week|FYI]    the one command an alert unit calls
+
+`issue` generates 256 random bits, forms the bearer credential `lm1.honcho-alerts.<secret>`, and hands it to `systemd-creds encrypt` through a pipe; it is written only as the root-only 0600 file
+/etc/lifeos-honcho/honcho_alerts_mcp.cred (a unit loads it with LoadCredentialEncrypted=honcho_alerts_mcp:/etc/lifeos-honcho/honcho_alerts_mcp.cred). It never overwrites: a second run prints the same
+hash with `exists`. Prints `honcho-alerts ok sha256=<hex>` or `honcho-alerts exists sha256=<hex>`, never the credential.
+`send` reads the credential from $CREDENTIALS_DIRECTORY/honcho_alerts_mcp (inside a unit) or, as root, by decrypting the file above in memory; it calls the loopback MCP service (127.0.0.1:8787) as that client.
+The sender in the Inbox is always `honcho-alerts`, and the same subject updates the same row, so a repeat never adds a second one. Prints `alert created|updated|duplicate` or `alert_failed <reason>`
+(exit 1) and nothing else: no subject text, no credential. Subjects and details must carry no secret and no personal data."""
+import base64
+import hashlib
+import json
+import os
+import secrets
+import subprocess
+import sys
+import urllib.error
+import urllib.request
+
+CRED_NAME = "honcho_alerts_mcp"
+CRED_FILE = os.environ.get("HONCHO_ALERT_CRED_FILE", "/etc/lifeos-honcho/honcho_alerts_mcp.cred")
+URL = os.environ.get("HONCHO_ALERT_URL", "http://127.0.0.1:8787/mcp")
+CLIENT = "honcho-alerts"
+URGENCY = ("Now", "Today", "This week", "FYI")
+
+
+def decrypt():
+    """-> the credential text, or None when it is not readable here."""
+    unit_dir = os.environ.get("CREDENTIALS_DIRECTORY")
+    if unit_dir and os.path.isfile(os.path.join(unit_dir, CRED_NAME)):
+        return open(os.path.join(unit_dir, CRED_NAME)).read().strip()
+    if not os.path.isfile(CRED_FILE):
+        return None
+    done = subprocess.run(["systemd-creds", "decrypt", "--name=" + CRED_NAME, CRED_FILE, "-"], capture_output=True, check=False)
+    return done.stdout.decode().strip() if done.returncode == 0 and done.stdout else None
+
+
+def digest(token):
+    return hashlib.sha256(token.split(".")[2].encode()).hexdigest()
+
+
+def issue():
+    existing = decrypt() if os.path.isfile(CRED_FILE) else None
+    if existing:
+        print(f"{CLIENT} exists sha256={digest(existing)}")
+        return 0
+    token = f"lm1.{CLIENT}." + base64.urlsafe_b64encode(secrets.token_bytes(32)).decode().rstrip("=")
+    tmp = CRED_FILE + ".part"
+    try:
+        os.makedirs(os.path.dirname(CRED_FILE), exist_ok=True)
+        done = subprocess.run(["systemd-creds", "encrypt", "--name=" + CRED_NAME, "-", tmp], input=token.encode(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        if done.returncode != 0:
+            print(f"{CLIENT} failed")
+            return 1
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, CRED_FILE)
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+    print(f"{CLIENT} ok sha256={digest(token)}")
+    return 0
+
+
+def send(subject, details, urgency):
+    token = decrypt()
+    if not token:
+        print("alert_failed no_credential")
+        return 1
+    args = {"subject": subject[:160], "urgency": urgency}
+    if details:
+        args["details"] = details[:1500]
+    body = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "buzz_read", "arguments": {"operation": "send_to_jim", "community": "life-os", "arguments": args}}}
+    request = urllib.request.Request(URL, json.dumps(body).encode(), {"Content-Type": "application/json", "Accept": "application/json", "Authorization": "Bearer " + token})
+    try:
+        with urllib.request.urlopen(request, timeout=20) as reply:
+            out = json.loads(json.loads(reply.read())["result"]["content"][0]["text"])
+    except urllib.error.HTTPError as error:
+        print(f"alert_failed http_{error.code}")
+        return 1
+    except (OSError, ValueError, KeyError, IndexError, TypeError):
+        print("alert_failed unreachable")
+        return 1
+    data = out.get("data") if isinstance(out, dict) and out.get("ok") else None
+    word = next((w for w in ("created", "updated", "duplicate") if isinstance(data, dict) and data.get(w)), None)
+    if word is None:
+        reason = str((out.get("error") or {}).get("code") if isinstance(out, dict) and isinstance(out.get("error"), dict) else out.get("error") if isinstance(out, dict) else "bad_reply")
+        print("alert_failed " + "".join(c for c in reason if c.isalnum() or c == "_")[:40])
+        return 1
+    print("alert " + word)
+    return 0
+
+
+def main(argv):
+    if argv[:1] == ["issue"]:
+        return issue()
+    if argv[:1] == ["send"] and len(argv) >= 2:
+        rest, urgency = argv[1:], "Today"
+        if "--urgency" in rest:
+            i = rest.index("--urgency")
+            urgency = rest[i + 1] if i + 1 < len(rest) else ""
+            rest = rest[:i] + rest[i + 2:]
+        if urgency not in URGENCY or not rest or not rest[0].strip():
+            print("usage: honcho-alert send <subject> [details] [--urgency Now|Today|This week|FYI]", file=sys.stderr)
+            return 64
+        return send(rest[0].strip(), rest[1] if len(rest) > 1 else "", urgency)
+    print("usage: honcho-alert issue | send <subject> [details] [--urgency ...]", file=sys.stderr)
+    return 64
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
