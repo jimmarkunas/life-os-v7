@@ -316,7 +316,7 @@ class Governed(Server):
             status, out = self.tool(tok, "buzz_read", operation="send_to_jim", community="life-os", arguments={"subject": "Muse synthetic test", "urgency": "FYI"})
         self.assertEqual((status, [i["from"] for i in sent]), (200, ["muse"]))                         # the sender is the verified client label
         self.refused(tok, "buzz_read", "no_grant", operation="gmail_search", community="life-os", arguments={"account": "personal", "query": "x"})
-        self.refused(tok, "buzz_read", "no_grant", operation="memory_recall", community="life-os", arguments={"workspace": "personal", "query": "x"})
+        self.refused(tok, "buzz_read", "no_grant", operation="memory_recall", community="life-os", arguments={"workspace": "Personal", "query": "x"})
         status, out = self.tool(tok, "buzz_read", operation="list_channels", community="bytalos")           # Muse's user lists only life-os
         self.assertEqual(out["error"], "community_not_authorized")
         status, _ = self.tool(token(sub="user-nobody"), "buzz_read", operation="list_channels", community="life-os")[0], None
