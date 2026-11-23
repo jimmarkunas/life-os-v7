@@ -10,7 +10,8 @@
     {"id": "claude-code-mac", "kind": "agent", "workspace": "personal"},
     {"id": "mac-claude-code", "kind": "agent", "workspace": "personal"},
     {"id": "oracle-claude-code", "kind": "agent", "workspace": "personal"},
-    {"id": "openclaw", "kind": "agent", "workspace": "personal"}
+    {"id": "openclaw", "kind": "agent", "workspace": "personal"},
+    {"id": "hermes-librarian", "kind": "agent", "workspace": "personal"}
   ],
   "accounts": [
     {"alias": "jira-primary", "provider": "jira", "tenant": "primary"},
@@ -41,6 +42,8 @@
     {"principal": "oracle-claude-code", "tool": "buzz_capabilities", "action": "read", "provider": "buzz", "account_alias": null, "host": "oracle-edge", "source": "lifeos/buzz/mcp.py", "as_of": "2026-11-22", "max_age_days": 90, "status": "synthetic"},
     {"principal": "oracle-claude-code", "tool": "buzz_read", "action": "read", "provider": "buzz", "account_alias": null, "host": "oracle-edge", "source": "lifeos/buzz/mcp.py", "as_of": "2026-11-22", "max_age_days": 90, "status": "synthetic"},
     {"principal": "openclaw", "tool": "buzz_capabilities", "action": "read", "provider": "buzz", "account_alias": null, "host": "oracle-edge", "source": "lifeos/buzz/mcp.py", "as_of": "2026-11-22", "max_age_days": 90, "status": "synthetic"},
-    {"principal": "openclaw", "tool": "buzz_read", "action": "read", "provider": "buzz", "account_alias": null, "host": "oracle-edge", "source": "lifeos/buzz/mcp.py", "as_of": "2026-11-22", "max_age_days": 90, "status": "synthetic"}
+    {"principal": "openclaw", "tool": "buzz_read", "action": "read", "provider": "buzz", "account_alias": null, "host": "oracle-edge", "source": "lifeos/buzz/mcp.py", "as_of": "2026-11-22", "max_age_days": 90, "status": "synthetic"},
+    {"principal": "hermes-librarian", "tool": "buzz_capabilities", "action": "read", "provider": "buzz", "account_alias": null, "host": "oracle-edge", "source": "lifeos/buzz/mcp.py", "as_of": "2026-11-22", "max_age_days": 90, "status": "synthetic"},
+    {"principal": "hermes-librarian", "tool": "buzz_read", "action": "read", "provider": "buzz", "account_alias": null, "host": "oracle-edge", "source": "lifeos/buzz/mcp.py", "as_of": "2026-11-22", "max_age_days": 90, "status": "synthetic"}
   ]
 }
