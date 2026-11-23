@@ -94,6 +94,14 @@ def add_members(base, owner, pubs, channel, say):
         say("member_" + pub[:8], ok and code2 == 200 and isinstance(ack2, dict) and ack2.get("accepted") is True, f"member HTTP {code}, channel HTTP {code2}")
 
 
+def set_roles(base, owner, pubs, role, say):
+    """The owner sets each public key's relay role (kind 9030, the member's p tag carrying the role: "admin" or "member"). Public keys only. Owner transfer is never done here."""
+    from lifeos.buzz import nip98
+    for pub in pubs:
+        code, ack = signed(base, "/events", owner, nip98.event(owner, 9030, [["p", pub, role]]))
+        say("role_" + pub[:8], code == 200 and isinstance(ack, dict) and ack.get("accepted") is True, f"{role} HTTP {code}")
+
+
 def run(base, owner, agent, say):
     from lifeos.buzz import nip98, relay as relay_mod
     agent_pub = nip98.pubkey(agent)
@@ -126,6 +134,8 @@ def run(base, owner, agent, say):
 
 
 def main(argv):
+    role = argv[1] if argv[:1] == ["role"] and argv[1:2] in (["admin"], ["member"]) else None          # `selfhost-probe role admin|member [relay URL]` with public keys on stdin (LIFE-927)
+    argv = argv[2:] if role else argv
     members = argv[:1] == ["members"]                                                # `selfhost-probe members <channel> [relay URL]` with public keys (64 hex, one per line) on stdin (LIFE-927)
     argv = argv[1:] if members else argv
     pilot_channel = argv.pop(0) if members and argv else None
@@ -149,6 +159,13 @@ def main(argv):
         print("keys fail (a pilot key is not in the vault)")
         return 1
     say("keys", True, "owner and agent keys read in memory only")
+    if role:
+        pubs = [x for x in (sys.stdin.read().split() if not sys.stdin.isatty() else []) if len(x) == 64 and all(c in "0123456789abcdef" for c in x)]
+        if not pubs:
+            print("role fail (at least one public key is required)")
+            return 1
+        set_roles(base, owner, pubs, role, say)
+        return 1 if failed else 0
     if members:
         pubs = [x for x in (sys.stdin.read().split() if not sys.stdin.isatty() else []) if len(x) == 64 and all(c in "0123456789abcdef" for c in x)]
         if not pubs or not pilot_channel:
