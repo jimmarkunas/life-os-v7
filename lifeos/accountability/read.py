@@ -177,12 +177,13 @@ def _mej_project_tally(jira, project_goals, first, last):
         if not goal:
             continue
         done = ((fields.get("status") or {}).get("statusCategory") or {}).get("key") == "done"
-        if done:
-            stamp = (fields.get("statuscategorychangedate") or "")[:10]
-            if not stamp or not first.isoformat() <= stamp <= last.isoformat():
-                continue
+        stamp = (fields.get("statuscategorychangedate") or "")[:10] if done else ""
+        if done and not stamp:
+            # A missing transition cannot silently erase a completed Task from
+            # the denominator or manufacture a quarter-specific completion.
+            raise JiraError("ACCOUNTABILITY_MEJ_COMPLETION_DATE_MISSING")
         row = out.setdefault(goal, [0, 0])
-        row[0] += int(done)
+        row[0] += int(done and first.isoformat() <= stamp <= last.isoformat())
         row[1] += 1
     return out
 
