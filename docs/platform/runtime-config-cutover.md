@@ -1,6 +1,6 @@
 # Runtime Configuration source: cutover map and rollback (LIFE-844)
 
-**Status (LIFE-858, Nov 21, 2026): Phase 1 (compare-only) code; Phase 2 (the switch) NOT started and not approved (LIFE-892).** `lifeos/platform/runtime_config.py` is called next to `settings.apply` in the `lifeos.run` steps that hold the bootstrap ID and, with LIFE-858, in the hourly tick and four domains jobs. It changes no environment and writes nothing. `lifeos/platform/settings.py` still reads the old page only and decides every value. Cutover steps 5 and 6 are protected: each needs Jim's explicit yes on the concrete diff.
+**Status (LIFE-892, Nov 22, 2026): Phase 2 (the switch) is in code: `settings.apply` reads the new source first and the old page second; rollback is an empty `V7_RUNTIME_CONFIG_SOURCE_ID`. Phase 1 (compare-only, LIFE-858) still runs next to it as the parity check.** `lifeos/platform/runtime_config.py` is called next to `settings.apply` in the `lifeos.run` steps that hold the bootstrap ID and, with LIFE-858, in the hourly tick and four domains jobs. It changes no environment and writes nothing. `lifeos/platform/settings.py` still reads the old page only and decides every value. Cutover steps 5 and 6 are protected: each needs Jim's explicit yes on the concrete diff.
 
 ## What the reader does
 
@@ -60,7 +60,7 @@ Run IDs, the seven-token matrix and the 59-versus-58 explanation are posted on L
 2. Create and share the data source (above). Fill it with `runtime_config.export_rows(<accepted map>)`, then edit by hand.
 3. Dry comparison: run `runtime_config.compare(old_page_values, new_source_values)`; `blocking: false` is required. Any difference stops here.
 4. Bitwarden: add `V7_RUNTIME_CONFIG_SOURCE_ID`. Workflow PR: declare it in the reading steps and call `runtime_config.shadow` next to `settings.apply` in compare-only mode (apply from the old page, report counts from the new). Natural runs for 24 hours with every name matched. **Done (PRs #1334, #1335); extended to the hourly tick and the domains jobs by LIFE-858 Phase 1.**
-5. Switch: `settings.apply` uses the new source first (`remember=True`), the old page stays as the second source for 24 more hours. **Not started; LIFE-892, needs Jim's separate approval.**
+5. Switch (LIFE-892, Jim approved Nov 22, 2026, 6:14 PM CT): `settings.apply` reads the new source first (`remember=True`, receipt `source: new`), the old page stays as the second source (`new_source: unreadable:<CODE>` when it is used because the new source failed). **In progress: code merged, then 24 hours of natural runs.**
 6. Retire the old page reader and REQ-52 only on Jim's separate yes.
 
 ## Rollback (works at every step before 6)
