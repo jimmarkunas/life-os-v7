@@ -1,6 +1,6 @@
-"""LIFE-921: the Honcho status line (Oracle card) and the two Anthropic rows with their summary line (AI Capacity card), from Oracle's `honcho` and `anthropic` readings. Pure: no network, no Notion.
+"""LIFE-921: the Honcho line (Oracle card) and the two Anthropic rows with a summary line (AI Capacity card), from Oracle's `honcho` and `anthropic` readings.
 
-Readings (names and numbers only, from Oracle's `oracle1` stats): honcho = {"health", "failed", "exhausted", "stopped": True|False|None, "backup": None | {"at": ISO, "ok": bool},
+Rendering is pure; `read` is the one network call (Oracle's private `oracle1` endpoint). Readings (names and numbers only, from the `oracle1` stats): honcho = {"health", "failed", "exhausted", "stopped": True|False|None, "backup": None | {"at": ISO, "ok": bool},
 "meter": None | {"cap": number, "reserved": number}}; anthropic = {"billed_usd": number|None, "honcho_usd": number|None, "as_of": ISO|None}. A reading that cannot be had is None and prints UNVERIFIED, never zero.
 RESERVED (a hold against the meter's cap, from the meter itself) and ACTUAL (billed spend, from Anthropic's own report) are never swapped and a reservation is never shown as spend.
 Red only for ALERT and STOPPED; UNVERIFIED stays neutral (Jim, Nov 23 2026, comment 13901)."""
