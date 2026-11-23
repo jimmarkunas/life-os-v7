@@ -72,6 +72,14 @@ class PlaceCredentials(unittest.TestCase):
         self.assertEqual(done.stdout.splitlines(), ["lifeos/edge/GMAIL_OAUTH_REFRESH_TOKEN ok", "lifeos/edge/FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH ok", "lifeos/edge/NOTION_READONLY_TOKEN ok", "lifeos/edge/NOTION_API_TOKEN missing"])
         self.assertEqual(sorted(p.name for p in creds.iterdir()), ["google_read_bytalos_gmail_refresh.cred", "google_read_personal_gmail_refresh.cred", "notion_readonly_token.cred"])      # the hourly write token is still not on the list
 
+    def test_the_private_relay_key_is_placed_for_the_pilot_but_never_loaded_by_the_mcp_service(self):
+        done, tmp, creds = self.run_script([{"key": "lifeos/edge/BUZZ_SELFHOST_RELAY_KEY", "value": SENTINEL}, {"key": "NOTION_READONLY_TOKEN", "value": SENTINEL}], "lifeos/edge/BUZZ_SELFHOST_RELAY_KEY", "NOTION_READONLY_TOKEN")
+        self.assertEqual(done.stdout.splitlines(), ["lifeos/edge/BUZZ_SELFHOST_RELAY_KEY ok", "NOTION_READONLY_TOKEN ok"])
+        self.assertEqual(sorted(p.name for p in creds.iterdir()), ["buzz_selfhost_relay_key.cred", "notion_readonly_token.cred"])
+        dropin = (tmp / "dropin.conf").read_text()
+        self.assertIn("notion_readonly_token", dropin)
+        self.assertNotIn("buzz_selfhost_relay_key", dropin)                                                        # the MCP service never loads the relay's key
+
     def test_list_names_prints_only_matching_names_never_a_value_and_places_nothing(self):
         secrets = [{"key": "GMAIL_OAUTH_REFRESH_TOKEN", "value": SENTINEL}, {"key": "gmail_other", "value": SENTINEL}, {"key": "NOTION_READONLY_TOKEN", "value": SENTINEL}]
         done, tmp, creds = self.run_script(secrets, "--list-names", "gmail")
