@@ -12,6 +12,7 @@
     {"id": "oracle-claude-code", "kind": "agent", "workspace": "personal"},
     {"id": "openclaw", "kind": "agent", "workspace": "personal"},
     {"id": "hermes-librarian", "kind": "agent", "workspace": "personal"},
+    {"id": "honcho-alerts", "kind": "agent", "workspace": "personal"},
     {"id": "hermes-librarian-bytalos", "kind": "agent", "workspace": "bytalos"}
   ],
   "accounts": [
@@ -73,6 +74,7 @@
     {"principal": "mac-claude-code", "tool": "send_to_jim", "action": "write", "provider": "notion", "account_alias": null, "host": "oracle-edge", "source": "lifeos/platform/inbox_send.py", "as_of": "2026-11-23", "max_age_days": 90, "status": "synthetic"},
     {"principal": "oracle-claude-code", "tool": "send_to_jim", "action": "write", "provider": "notion", "account_alias": null, "host": "oracle-edge", "source": "lifeos/platform/inbox_send.py", "as_of": "2026-11-23", "max_age_days": 90, "status": "synthetic"},
     {"principal": "openclaw", "tool": "send_to_jim", "action": "write", "provider": "notion", "account_alias": null, "host": "oracle-edge", "source": "lifeos/platform/inbox_send.py", "as_of": "2026-11-23", "max_age_days": 90, "status": "synthetic"},
+    {"principal": "honcho-alerts", "tool": "send_to_jim", "action": "write", "provider": "notion", "account_alias": null, "host": "oracle-edge", "source": "lifeos/platform/inbox_send.py", "as_of": "2026-11-23", "max_age_days": 90, "status": "synthetic"},
     {"principal": "hermes-librarian", "tool": "send_to_jim", "action": "write", "provider": "notion", "account_alias": null, "host": "oracle-edge", "source": "lifeos/platform/inbox_send.py", "as_of": "2026-11-23", "max_age_days": 90, "status": "synthetic"},
     {"principal": "claude-chat", "tool": "send_to_jim", "action": "write", "provider": "notion", "account_alias": null, "host": "oracle-edge", "source": "lifeos/platform/inbox_send.py", "as_of": "2026-11-23", "max_age_days": 90, "status": "synthetic"},
     {"principal": "chatgpt-chat", "tool": "send_to_jim", "action": "write", "provider": "notion", "account_alias": null, "host": "oracle-edge", "source": "lifeos/platform/inbox_send.py", "as_of": "2026-11-23", "max_age_days": 90, "status": "synthetic"}
