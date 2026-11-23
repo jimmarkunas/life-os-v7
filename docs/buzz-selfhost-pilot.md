@@ -16,3 +16,6 @@ Pack: `lifeos/edge/buzz/selfhost/` (compose file, control script, two systemd un
 
 ## Rollback
 `systemctl stop lifeos-buzz-selfhost` (volumes kept), disable the units, remove `/opt/lifeos-buzz-selfhost`; to discard all pilot data also `docker volume rm` the four `lifeos-buzz-selfhost_*` volumes and delete `/etc/lifeos-buzz-selfhost`. The existing Block-hosted communities, `lifeos-buzz-mcp`, Honcho and every `BUZZ_URL_*` setting are not touched by this pack.
+
+## Proving membership, authentication, post and read (LIFE-870)
+`sudo /opt/lifeos-buzz-mcp/current/bin/selfhost-probe` runs as `ubuntu` (like `store-credential`), reads the pilot owner and Claude agent keys from Bitwarden into memory only, and drives `lifeos/buzz/relay.py` against the loopback relay: `health`, `unauth_refused`, `non_member_refused`, `member_add` (the owner publishes kind 9030 for the agent: NIP-43, from `crates/sprout-relay/src/handlers/relay_admin.rs` at v0.3.0), `member_query_ok`, `channel_create` (kind 9007, then kind 9000 adds the agent), `post_ok`, `read_back`, `repeat_idempotent`. It prints only step names, HTTP codes, event ids and public-key prefixes, with synthetic text only.
