@@ -57,6 +57,10 @@
    },
    "9d238d6471fc5568f5b54860d0c2e191a8948e63770ed36d124566595b9fc031": {
     "notion": "write"
+   },
+   "1840bef71c723365fc1789ed9b4116171f9dba3851de0560608bd962e6064841": {
+    "buzz": "write",
+    "notion": "write"
    }
   }
  },
@@ -76,6 +80,14 @@
     "oauth_client": "chatgpt"
    },
    "policy_key": "7d4fa4108e914ff1958854ab529279c84e7063d649f6d1a65e9507af7aa176bc"
+  },
+  {
+   "id": "muse-chat",
+   "transport": "http",
+   "facts": {
+    "oauth_client": "muse"
+   },
+   "policy_key": "1840bef71c723365fc1789ed9b4116171f9dba3851de0560608bd962e6064841"
   },
   {
    "id": "claude-code-mac",
@@ -830,6 +842,62 @@
   {
    "id": "g-honcho-alerts-personal-send_to_jim",
    "principal": "honcho-alerts",
+   "tenant": "personal",
+   "account": "agent-inbox",
+   "tool": "send_to_jim",
+   "purpose": "agent-inbox",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "notion-readonly-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-muse-chat-personal-buzz_capabilities",
+   "principal": "muse-chat",
+   "tenant": "personal",
+   "account": "buzz",
+   "tool": "buzz_capabilities",
+   "purpose": "buzz-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "buzz-scoped-member-key",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-muse-chat-personal-buzz_read",
+   "principal": "muse-chat",
+   "tenant": "personal",
+   "account": "buzz",
+   "tool": "buzz_read",
+   "purpose": "buzz-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "buzz-scoped-member-key",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-muse-chat-personal-buzz_publish",
+   "principal": "muse-chat",
+   "tenant": "personal",
+   "account": "buzz",
+   "tool": "buzz_publish",
+   "purpose": "buzz-publish",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "buzz-scoped-member-key",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-muse-chat-personal-send_to_jim",
+   "principal": "muse-chat",
    "tenant": "personal",
    "account": "agent-inbox",
    "tool": "send_to_jim",
