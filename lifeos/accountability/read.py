@@ -167,15 +167,10 @@ def week(jira, project, today):
     if project == "MEJ":
         base = f"project = {project} AND issuetype != Epic AND issuetype != Sub-task AND statusCategory != Done AND "
         clause = "(sprint in openSprints())"
-        try:
-            active = search(jira, base + clause + tail, WEEK_FIELDS)
-        except JiraError as error:
-            if not str(error).endswith("_400"):
-                raise
-            # A board without sprints has no active sprint; retain an explicitly
-            # distinguishable in-progress fallback rather than fabricate one.
-            clause = '(statusCategory = "In Progress")'
-            active = search(jira, base + clause + tail, WEEK_FIELDS)
+        # An invalid active-sprint query is not evidence of sprint membership.
+        # Propagate any Jira failure so the V3 writer keeps the last accepted
+        # content and reports DEGRADED instead of inventing commitments.
+        active = search(jira, base + clause + tail, WEEK_FIELDS)
         due_clause = f'(duedate <= "{sunday}")'
         due = search(jira, base + due_clause + tail, WEEK_FIELDS)
         active_keys = {i["key"] for i in active}
