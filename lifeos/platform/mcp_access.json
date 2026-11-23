@@ -35,6 +35,9 @@
    },
    "2b7ba37fbdfcc2839223417b879d835df0eb9b51d886d6051bb5043694028d6f": {
     "buzz": "read"
+   },
+   "5a10b1e50b771566e61f818b437d3224927e5bf2798b4157cbbeba420309e1fa": {
+    "buzz": "read"
    }
   }
  },
@@ -86,6 +89,14 @@
     "credential": "openclaw"
    },
    "policy_key": "2b7ba37fbdfcc2839223417b879d835df0eb9b51d886d6051bb5043694028d6f"
+  },
+  {
+   "id": "hermes-librarian",
+   "transport": "http",
+   "facts": {
+    "credential": "hermes-librarian"
+   },
+   "policy_key": "5a10b1e50b771566e61f818b437d3224927e5bf2798b4157cbbeba420309e1fa"
   }
  ],
  "grants": [
@@ -340,6 +351,34 @@
    "credential_ref": "mcp-credential-openclaw",
    "expires": "2027-02-22",
    "revoked": false
+  },
+  {
+   "id": "g-hermes-librarian-personal-buzz_capabilities",
+   "principal": "hermes-librarian",
+   "tenant": "personal",
+   "account": "buzz",
+   "tool": "buzz_capabilities",
+   "purpose": "buzz-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "mcp-credential-hermes-librarian",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-hermes-librarian-personal-buzz_read",
+   "principal": "hermes-librarian",
+   "tenant": "personal",
+   "account": "buzz",
+   "tool": "buzz_read",
+   "purpose": "buzz-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "mcp-credential-hermes-librarian",
+   "expires": "2027-02-22",
+   "revoked": false
   }
  ],
  "credentials": [
@@ -366,6 +405,16 @@
   {
    "id": "openclaw",
    "sha256": "20a6074f75af9f67f7541734bcd796c196b58e93b3b64e1deb486064e482864a",
+   "expires": "2027-02-22",
+   "revoked": false,
+   "buzz_identity": null,
+   "communities": [
+    "life-os"
+   ]
+  },
+  {
+   "id": "hermes-librarian",
+   "sha256": "3791acd3164efac7b055e987cb048635baf02903e6d5f73985c4069680cbec85",
    "expires": "2027-02-22",
    "revoked": false,
    "buzz_identity": null,
