@@ -78,6 +78,19 @@ class StoreCredential(unittest.TestCase):
             self.assertNotIn(value, "".join(p.read_text(errors="replace") for p in self.tmp.rglob("*") if p.is_file() and p.name not in ("argv.log", "state.json")))   # nowhere else
         self.assertNotEqual(values["lifeos/edge/BUZZ_SELFHOST_OWNER_KEY"], values["lifeos/edge/BUZZ_SELFHOST_AGENT_CLAUDE"])
 
+    def test_the_muse_bearer_credential_is_stored_whole_once_and_only_the_hash_of_its_secret_is_printed(self):
+        """LIFE-923 (Jim, comment 13909): lifeos/edge/LIFEOS_MCP_MUSE holds lm1.muse.<secret>; the output carries the SHA-256 of the secret part (what mcp_access.json holds) and never the credential."""
+        import hashlib
+        done = self.run_script("LIFEOS_MCP_MUSE")
+        value = self.created_values()["lifeos/edge/LIFEOS_MCP_MUSE"]
+        self.assertRegex(value, r"^lm1\.muse\.[A-Za-z0-9_-]{43}$")
+        secret = value.split(".")[2]
+        self.assertRegex(done.stdout.strip(), rf"^LIFEOS_MCP_MUSE [0-9a-f-]{{36}} ok sha256={hashlib.sha256(secret.encode()).hexdigest()}$")
+        self.assertNotIn(secret, done.stdout + done.stderr)
+        before = dict(self.created_values())
+        self.assertEqual(self.run_script("LIFEOS_MCP_MUSE").stdout.strip(), "LIFEOS_MCP_MUSE exists")                # never regenerated
+        self.assertEqual(self.created_values(), before)
+
     def test_an_existing_name_is_never_overwritten_and_an_unknown_name_is_refused(self):
         self.run_script("BUZZ_SELFHOST_OWNER_KEY")
         before = dict(self.created_values())
@@ -98,7 +111,7 @@ class StoreCredential(unittest.TestCase):
     def test_the_closed_list_holds_pilot_keys_only_and_the_script_is_executable(self):
         text = SCRIPT.read_text()
         names = re.search(r"NAMES = \((.*?)\)", text, re.S).group(1)
-        self.assertEqual(re.findall(r'"(\w+)"', names), ["BUZZ_SELFHOST_OWNER_KEY", "BUZZ_SELFHOST_RELAY_KEY", "BUZZ_SELFHOST_AGENT_HERMES_DEVELOPER", "BUZZ_SELFHOST_AGENT_CLAUDE", "BUZZ_SELFHOST_AGENT_CHATGPT", "BUZZ_KEY_MUSE_LIFE_OS"])
+        self.assertEqual(re.findall(r'"(\w+)"', names), ["BUZZ_SELFHOST_OWNER_KEY", "BUZZ_SELFHOST_RELAY_KEY", "BUZZ_SELFHOST_AGENT_HERMES_DEVELOPER", "BUZZ_SELFHOST_AGENT_CLAUDE", "BUZZ_SELFHOST_AGENT_CHATGPT", "BUZZ_KEY_MUSE_LIFE_OS", "LIFEOS_MCP_MUSE"])
         self.assertEqual(stat.S_IMODE(SCRIPT.stat().st_mode) & 0o111, 0o111)
 
 
