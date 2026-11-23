@@ -488,6 +488,42 @@ class Credentials(Server):
         with mock.patch.dict(buzz_mcp.GOOGLE, {"creds": None, "opener": None}):
             self.assertEqual(self.tool(lib, "buzz_read", operation="gmail_search", arguments={"account": "personal", "query": "q"})[1]["error"], "not_configured")
 
+    def test_send_to_jim_is_governed_for_the_four_local_clients_and_the_oauth_chat_client_with_the_sender_always_the_verified_client(self):
+        """LIFE-876 (Jim, comments 13748 and 13823): the same governed operation for every granted client; From is the credential id or the OAuth client, never a field; a repeat updates the same row."""
+        from unittest import mock
+        from tests.inbox.test_agent_inbox import FakeClient
+        fp = __import__("lifeos.platform.authorization_gate", fromlist=["x"]).fingerprint
+        inbox = FakeClient()
+        self.start(access=self.access(no_identity=True))
+        with mock.patch.dict(buzz_mcp.INBOX, {"client": inbox, "now": None}):
+            for cid in ("mac-claude-code", "oracle-claude-code", "openclaw", "hermes-librarian"):
+                status, out = self.tool(self.tok(cid), "buzz_read", operation="send_to_jim", arguments={"subject": f"Synthetic LIFE-876 item from {cid}"})
+                self.assertEqual((status, out["ok"], out["data"]["created"], out["data"]["sender"]), (200, True, 1, cid), cid)
+                allow = self.receipts[-2]
+                self.assertEqual((allow["tool"], allow["purpose"], allow["tenant"], allow["action"], allow["outcome"], allow["principal_fp"]), ("send_to_jim", "agent-inbox", "personal", "write", "allow", fp(cid)))
+            status, out = self.tool(token(sub="user-claude"), "buzz_read", operation="send_to_jim", arguments={"subject": "Synthetic LIFE-876 item from the Claude chat client"})
+            self.assertEqual((out["ok"], out["data"]["sender"]), (True, "claude"))                                                  # the verified OAuth client is the sender
+            self.assertEqual(len(inbox.rows), 5)
+            status, again = self.tool(self.tok("mac-claude-code"), "buzz_read", operation="send_to_jim", arguments={"subject": "Synthetic LIFE-876 item from mac-claude-code"})
+            self.assertEqual((again["ok"], "updated" in again["data"], len(inbox.rows)), (True, True, 5))                           # a repeat updates the same row
+            status, other = self.tool(self.tok("oracle-claude-code"), "buzz_read", operation="send_to_jim", arguments={"subject": "x", "key": "k-own"})
+            status, taken = self.tool(self.tok("openclaw"), "buzz_read", operation="send_to_jim", arguments={"subject": "y", "key": "k-own"})
+            self.assertEqual(taken["error"], "key_other_sender")                                                                    # nobody takes another client's row
+            for args, error, reason in (({"subject": "x", "from": "claude-chat"}, "invalid_argument", None), ({"subject": "x", "workspace": "Bytalos"}, "access_denied", "catalog_unknown_principal"),
+                                        ({"subject": "x", "workspace": "TGP"}, "access_denied", "unknown_tenant")):
+                status, out = self.tool(self.tok("mac-claude-code"), "buzz_read", operation="send_to_jim", arguments=args)
+                self.assertEqual((out["error"], out.get("reason")), (error, reason), args)
+            rows = len(inbox.rows)
+            for cid in ("mac-claude-code",):
+                self.assertEqual(self.tool(self.tok(cid), "buzz_read", operation="send_to_jim", arguments={"subject": "x", "from": "someone"})[1]["error"], "invalid_argument")
+            self.assertEqual(len(inbox.rows), rows)                                                                                 # no refusal wrote a row
+
+    def test_send_to_jim_without_a_notion_client_says_inbox_not_configured(self):
+        from unittest import mock
+        self.start(access=self.access(no_identity=True))
+        with mock.patch.dict(buzz_mcp.INBOX, {"client": None, "now": None}):
+            self.assertEqual(self.tool(self.tok("mac-claude-code"), "buzz_read", operation="send_to_jim", arguments={"subject": "x"})[1]["error"], "inbox_not_configured")
+
     def test_hermes_librarian_ships_capabilities_only_like_openclaw_and_is_its_own_identity(self):
         self.start(access=self.access())
         tok = self.tok("hermes-librarian")

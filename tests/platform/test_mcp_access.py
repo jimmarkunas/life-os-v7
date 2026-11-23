@@ -81,7 +81,7 @@ class SendToJim(unittest.TestCase):
         self.assertFalse(replies[0]["result"]["isError"])
         self.assertEqual(len(client.rows), 1)
         allow = receipts[0]
-        self.assertEqual((allow["outcome"], allow["tenant"], allow["tool"], allow["purpose"], allow["action"], allow["principal_fp"]), ("allow", "personal", "send_to_jim", "agent-inbox-write", "write", G.fingerprint("claude-code-mac")))
+        self.assertEqual((allow["outcome"], allow["tenant"], allow["tool"], allow["purpose"], allow["action"], allow["principal_fp"]), ("allow", "personal", "send_to_jim", "agent-inbox", "write", G.fingerprint("claude-code-mac")))
 
     def test_every_refusal_reason_stops_before_the_inbox_row(self):
         def edit(**patch):
@@ -192,13 +192,15 @@ class SeededGrants(unittest.TestCase):
             self.assertRegex(g.credential_ref, r"^[a-z][a-z0-9-]+$")
             self.assertEqual(len(g.actions), 1, g.id)
             self.assertTrue(all((g.principal, g.tool, a) in rows for a in g.actions), g.id)
-        self.assertEqual(sorted({g.tool for g in access.grants}), ["agent_lookup", "buzz_capabilities", "buzz_publish", "buzz_read", "drive_read", "drive_search", "gmail_read", "gmail_search", "memory_correct", "memory_recall", "memory_revoke", "memory_store", "source_read"])
+        self.assertEqual(sorted({g.tool for g in access.grants}), ["agent_lookup", "buzz_capabilities", "buzz_publish", "buzz_read", "drive_read", "drive_search", "gmail_read", "gmail_search", "memory_correct", "memory_recall", "memory_revoke", "memory_store", "send_to_jim", "source_read"])
         writes = [g for g in access.grants if "write" in g.actions]                                                # Jim, Nov 22 2026 (option A): the only writes are today's Buzz publishing for the two chat clients, in the two communities each can write to
         self.assertEqual({(g.principal, g.tool, g.purpose, g.credential_ref) for g in writes},
                          {(p, "buzz_publish", "buzz-publish", "buzz-scoped-member-key") for p in ("claude-chat", "claude-chat-bytalos", "chatgpt-chat", "chatgpt-chat-bytalos")}
-                         | {(p, op, "synthetic-memory-test", "mcp-credential-" + p) for p in ("openclaw", "hermes-librarian") for op in ("memory_store", "memory_correct", "memory_revoke")})   # LIFE-868 (Jim, comment 13743): synthetic memory writes
-        self.assertEqual(len(writes), 10)                                                                           # and no inbox write
-        self.assertFalse([c for c in CATALOG["capabilities"] if c["tool"] == "send_to_jim"])                       # and no catalog row implies a send_to_jim client
+                         | {(p, op, "synthetic-memory-test", "mcp-credential-" + p) for p in ("openclaw", "hermes-librarian") for op in ("memory_store", "memory_correct", "memory_revoke")}   # LIFE-868 (Jim, comment 13743): synthetic memory writes
+                         | {(p, "send_to_jim", "agent-inbox", "notion-readonly-token") for p in ("mac-claude-code", "oracle-claude-code", "openclaw", "hermes-librarian", "claude-chat", "chatgpt-chat")})   # LIFE-876 (Jim, comments 13748 and 13823): the Agent Inbox, Personal only
+        self.assertEqual({g.tenant for g in writes if g.tool == "send_to_jim"}, {"personal"})
+        self.assertEqual(len(writes), 16)
+        self.assertEqual(sorted(c["principal"] for c in CATALOG["capabilities"] if c["tool"] == "send_to_jim"), sorted(["mac-claude-code", "oracle-claude-code", "openclaw", "hermes-librarian", "claude-chat", "chatgpt-chat"]))   # a catalog row for exactly the six granted clients, none for the stdio Mac row or a Bytalos principal
 
     def test_the_shipped_seed_lets_no_one_call_send_to_jim(self):
         """LIFE-865: no client has the send_to_jim MCP server configured, so the Mac client resolves but is refused before any inbox row."""

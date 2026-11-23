@@ -191,3 +191,8 @@ OPS = {"source_read": ("Canonical source lookup (LIFE-888): one GitHub file (sou
 def run(op, args, state):
     now = state["now"]() if state.get("now") else datetime.now(timezone.utc)
     return read_source(args, state["fetchers"], now) if op == "source_read" else lookup_agent(args, state["rows"], now)
+
+
+def route(op, args, tenant):
+    """-> (tenant, action, account, service) for the gate: a lookup is read-only and uses the community's tenant."""
+    return tenant, "read", "buzz", "buzz"
