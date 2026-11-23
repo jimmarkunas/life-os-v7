@@ -32,6 +32,9 @@
    },
    "5dbd6b29730a3a8a2ee16220a6565743559805e532145389d436b5d4bce512e5": {
     "buzz": "read"
+   },
+   "2b7ba37fbdfcc2839223417b879d835df0eb9b51d886d6051bb5043694028d6f": {
+    "buzz": "read"
    }
   }
  },
@@ -75,6 +78,14 @@
     "credential": "oracle-claude-code"
    },
    "policy_key": "5dbd6b29730a3a8a2ee16220a6565743559805e532145389d436b5d4bce512e5"
+  },
+  {
+   "id": "openclaw",
+   "transport": "http",
+   "facts": {
+    "credential": "openclaw"
+   },
+   "policy_key": "2b7ba37fbdfcc2839223417b879d835df0eb9b51d886d6051bb5043694028d6f"
   }
  ],
  "grants": [
@@ -301,6 +312,34 @@
    "credential_ref": "mcp-credential-oracle-claude-code",
    "expires": "2027-02-22",
    "revoked": false
+  },
+  {
+   "id": "g-openclaw-personal-buzz_capabilities",
+   "principal": "openclaw",
+   "tenant": "personal",
+   "account": "buzz",
+   "tool": "buzz_capabilities",
+   "purpose": "buzz-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "mcp-credential-openclaw",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-openclaw-personal-buzz_read",
+   "principal": "openclaw",
+   "tenant": "personal",
+   "account": "buzz",
+   "tool": "buzz_read",
+   "purpose": "buzz-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "mcp-credential-openclaw",
+   "expires": "2027-02-22",
+   "revoked": false
   }
  ],
  "credentials": [
@@ -320,6 +359,16 @@
    "expires": "2027-02-22",
    "revoked": false,
    "buzz_identity": "claude",
+   "communities": [
+    "life-os"
+   ]
+  },
+  {
+   "id": "openclaw",
+   "sha256": "20a6074f75af9f67f7541734bcd796c196b58e93b3b64e1deb486064e482864a",
+   "expires": "2027-02-22",
+   "revoked": false,
+   "buzz_identity": null,
    "communities": [
     "life-os"
    ]
