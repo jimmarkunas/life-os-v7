@@ -268,8 +268,17 @@ class Governed(Server):
 
     def test_an_ungranted_tool_is_refused_before_the_relay(self):
         from tests.platform.mcp_access_fixture import build
-        self.start(access=build())                                                    # the seed: reads only, no publish grant
-        self.refused(token(sub="user-claude", **WR), "buzz_publish", "catalog_unknown_capability", operation="message", community="life-os", arguments={"channel": CHAN, "text": "hi", "idempotency_key": "k9"})
+        self.start(access=build(grants=lambda seeded: [g for g in seeded if g["tool"] != "buzz_publish"]))      # the publish grants removed: the catalog row is there, the grant is not
+        self.refused(token(sub="user-claude", **WR), "buzz_publish", "no_grant", operation="message", community="life-os", arguments={"channel": CHAN, "text": "hi", "idempotency_key": "k9"})
+
+    def test_the_shipped_publish_grant_passes_the_gate_with_a_write_receipt_and_the_relay_allowlist_still_applies(self):
+        """LIFE-865 (Jim, option A, Nov 22 2026): the shipped seed grants buzz_publish to the two chat clients in the communities they can write to; the gate allows it and writes the receipt, the relay's channel allowlist is unchanged."""
+        from tests.platform.mcp_access_fixture import build
+        self.start(access=build())
+        status, out = self.tool(token(sub="user-claude", **WR), "buzz_publish", operation="message", community="life-os", arguments={"channel": CHAN, "text": "hi", "idempotency_key": "k9"})
+        self.assertEqual(status, 200)
+        allow = self.receipts[-2]
+        self.assertEqual((allow["outcome"], allow["tool"], allow["action"], allow["purpose"], allow["tenant"]), ("allow", "buzz_publish", "write", "buzz-publish", "personal"))
 
     def test_revoked_expired_wrong_tenant_and_wrong_purpose_grants_are_refused_with_their_reason(self):
         from tests.platform.mcp_access_fixture import build

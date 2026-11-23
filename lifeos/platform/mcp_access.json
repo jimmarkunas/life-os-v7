@@ -167,6 +167,62 @@
    "credential_ref": "buzz-scoped-member-key",
    "expires": "2027-02-22",
    "revoked": false
+  },
+  {
+   "id": "g-claude-chat-personal-buzz_publish",
+   "principal": "claude-chat",
+   "tenant": "personal",
+   "account": "buzz",
+   "tool": "buzz_publish",
+   "purpose": "buzz-publish",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "buzz-scoped-member-key",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-claude-chat-bytalos-buzz_publish",
+   "principal": "claude-chat-bytalos",
+   "tenant": "bytalos",
+   "account": "buzz",
+   "tool": "buzz_publish",
+   "purpose": "buzz-publish",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "buzz-scoped-member-key",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-chatgpt-chat-personal-buzz_publish",
+   "principal": "chatgpt-chat",
+   "tenant": "personal",
+   "account": "buzz",
+   "tool": "buzz_publish",
+   "purpose": "buzz-publish",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "buzz-scoped-member-key",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-chatgpt-chat-bytalos-buzz_publish",
+   "principal": "chatgpt-chat-bytalos",
+   "tenant": "bytalos",
+   "account": "buzz",
+   "tool": "buzz_publish",
+   "purpose": "buzz-publish",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "buzz-scoped-member-key",
+   "expires": "2027-02-22",
+   "revoked": false
   }
  ]
 }

@@ -182,8 +182,11 @@ class SeededGrants(unittest.TestCase):
             self.assertRegex(g.credential_ref, r"^[a-z][a-z0-9-]+$")
             self.assertEqual(len(g.actions), 1, g.id)
             self.assertTrue(all((g.principal, g.tool, a) in rows for a in g.actions), g.id)
-        self.assertEqual(sorted({g.tool for g in access.grants}), ["buzz_capabilities", "buzz_read"])
-        self.assertFalse([g for g in access.grants if "write" in g.actions])                                       # no write grant is seeded: no publish, no inbox
+        self.assertEqual(sorted({g.tool for g in access.grants}), ["buzz_capabilities", "buzz_publish", "buzz_read"])
+        writes = [g for g in access.grants if "write" in g.actions]                                                # Jim, Nov 22 2026 (option A): the only writes are today's Buzz publishing for the two chat clients, in the two communities each can write to
+        self.assertEqual({(g.principal, g.tool, g.purpose, g.credential_ref) for g in writes},
+                         {(p, "buzz_publish", "buzz-publish", "buzz-scoped-member-key") for p in ("claude-chat", "claude-chat-bytalos", "chatgpt-chat", "chatgpt-chat-bytalos")})
+        self.assertEqual(len(writes), 4)                                                                           # and no inbox write
         self.assertFalse([c for c in CATALOG["capabilities"] if c["tool"] == "send_to_jim"])                       # and no catalog row implies a send_to_jim client
 
     def test_the_shipped_seed_lets_no_one_call_send_to_jim(self):
@@ -200,24 +203,24 @@ class SeededGrants(unittest.TestCase):
 
 
 class ProposedPublishGrants(unittest.TestCase):
-    """The grants proposed for Jim's review (docs/platform/mcp-grants-proposed.md) are valid and exactly as wide as the read configuration, and none of them is active."""
+    """The four Buzz publish grants of docs/platform/mcp-grants-proposed.md (Jim's decision, option A, Nov 22 2026 6:14 PM CT) are active, valid, and exactly as wide as the read configuration: two clients by two tenants of buzz_publish, nothing else."""
     DOC = (ROOT / "docs/platform/mcp-grants-proposed.md").read_text()
     BLOCKS = re.findall(r"```json\n(.*?)\n```", DOC, re.S)
 
-    def test_they_are_not_active_and_nothing_wider_than_two_clients_by_two_tenants_of_buzz_publish(self):
+    def test_they_are_active_and_nothing_wider_than_two_clients_by_two_tenants_of_buzz_publish(self):
         grants, rows = json.loads(self.BLOCKS[0]), json.loads(self.BLOCKS[1])
         self.assertEqual(len(grants), 4)
         active = {g["id"] for g in DOC["grants"]}
-        self.assertFalse(active & {g["id"] for g in grants})
-        self.assertFalse([c for c in CATALOG["capabilities"] if c["tool"] == "buzz_publish"])
+        self.assertEqual(active & {g["id"] for g in grants}, {g["id"] for g in grants})
+        self.assertEqual([c for c in CATALOG["capabilities"] if c["tool"] == "buzz_publish"], rows)
+        self.assertEqual([g for g in DOC["grants"] if g["tool"] == "buzz_publish"], grants)                                   # exactly these, no other publish grant
         self.assertEqual({(g["principal"], g["tenant"], g["tool"], tuple(g["actions"]), g["purpose"], g["expires"]) for g in grants},
                          {(p, t, "buzz_publish", ("write",), "buzz-publish", "2027-02-22") for p, t in (("claude-chat", "personal"), ("claude-chat-bytalos", "bytalos"), ("chatgpt-chat", "personal"), ("chatgpt-chat-bytalos", "bytalos"))})
         self.assertEqual({r["status"] for r in rows}, {"synthetic"})
         self.assertEqual({r["tool"] for r in rows}, {"buzz_publish"})
 
     def test_activated_they_allow_exactly_those_four_and_nothing_else(self):
-        grants, rows = json.loads(self.BLOCKS[0]), json.loads(self.BLOCKS[1])
-        access = build(grants=lambda seeded: seeded + grants, catalog_rows=rows)
+        access = build()
         for client, tenant in (("claude-chat", "personal"), ("claude-chat", "bytalos"), ("chatgpt-chat", "personal"), ("chatgpt-chat", "bytalos")):
             row = M.identify(access, "http", {"oauth_client": client.split("-")[0]})
             out = M.call(access, row, tenant, "buzz_publish", "write", "buzz", "buzz", lambda: {"ok": True}, [].append, NOW)
