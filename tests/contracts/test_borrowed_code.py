@@ -37,13 +37,17 @@ def violations(files, inventory):
     return sorted(problems)
 
 
+ORACLE_PATH = "/home/concord/.npm-global/bin/concord-mcp"   # LIFE-872: the same 0.20.0 package, installed for the `concord` account on Oracle; a config may also launch it over ssh
+
+
 def unpinned_mcp_commands(files, inventory):
-    """LIFE-640: files {path: text}. -> problems for every Concord MCP config whose command is not the pinned absolute path."""
+    """LIFE-640: files {path: text}. -> problems for every Concord MCP config whose command is not the pinned absolute path (LIFE-872: or `ssh` running the pinned Oracle path, exactly once)."""
     problems = []
     for package in inventory["packages"]:
         for path in package["configs"]:
             commands = re.findall(r'(?:"command"\s*:\s*|^command\s*=\s*)"([^"]+)"', files[path], re.M)
-            if commands != [package["path"]]:
+            allowed = [package["path"]] + (["ssh"] if commands[1:] == ["ssh"] and files[path].count(ORACLE_PATH) == 1 else [])
+            if commands != allowed:
                 problems.append(f"{path} calls {commands} instead of the pinned {package['path']}")
     return sorted(problems)
 
@@ -81,6 +85,9 @@ class BorrowedCodeTests(unittest.TestCase):
         self.assertEqual(unpinned_mcp_commands(files, self.inventory), [])
         bare = {path: text.replace(self.inventory["packages"][0]["path"], "concord-mcp") for path, text in files.items()}          # fail-then-pass: the old PATH lookup
         self.assertEqual(len(unpinned_mcp_commands(bare, self.inventory)), 7)
+        mcp = files[".mcp.json"]
+        self.assertIn('"command": "ssh"', mcp)                                                                                    # LIFE-872: the Oracle entry is allowed only with the pinned Oracle path
+        self.assertEqual(len(unpinned_mcp_commands({**files, ".mcp.json": mcp.replace(ORACLE_PATH, "concord-mcp")}, self.inventory)), 1)
 
     def test_the_package_is_pinned_by_version_and_integrity_and_the_accepted_exceptions_are_written_down(self):
         package = self.inventory["packages"][0]
