@@ -82,10 +82,12 @@ class ReadByStableId(unittest.TestCase):
         self.assertNotIn("/search", code)
         self.assertNotIn("settings.TITLE", code)
 
-    def test_the_new_bootstrap_name_is_registered_and_the_old_reader_ignores_it(self):
+    def test_the_new_bootstrap_name_is_registered_and_an_unreadable_source_leaves_the_old_page_result_unchanged(self):   # LIFE-892: the old page is the second source
         self.assertIn(rc.SOURCE_NAME + " ", (ROOT / "lifeos/platform/config.txt").read_text())
         plain, with_id = {"GRANOLA_AUTO": ""}, {"GRANOLA_AUTO": "", rc.SOURCE_NAME: SOURCE}
-        self.assertEqual(settings.apply(plain, Page(OLD_LINES)), settings.apply(with_id, Page(OLD_LINES)))
+        got = settings.apply(with_id, Page(OLD_LINES))                                      # the page client cannot serve the source: it says so and the page is read
+        self.assertEqual(got.pop("new_source"), "unreadable:RUNTIME_CONFIG_UNREADABLE")
+        self.assertEqual(settings.apply(plain, Page(OLD_LINES)), got)
 
 
 class RefusedNeverApplied(unittest.TestCase):
@@ -349,18 +351,59 @@ class Phase1CompareReceipt(unittest.TestCase):
         self.assertEqual(rc.shadow(dict(ENV), Both(Page(OLD_LINES), Source([], broken=True))), {"status": "unreadable:RUNTIME_CONFIG_UNREADABLE"})
 
 
-class Phase1SourcePrecedenceUnchanged(unittest.TestCase):
-    def test_settings_apply_still_reads_only_the_old_page_whatever_the_new_source_holds(self):
-        env_page = {"GRANOLA_AUTO": ""}
-        env_both = {"GRANOLA_AUTO": "", **ENV}
-        page = Page(OLD_LINES)
-        settings.apply(env_page, client=page)
-        settings.apply(env_both, client=Both(Page(OLD_LINES), Source([row("GRANOLA_AUTO", "off")])))
-        self.assertEqual(env_page["GRANOLA_AUTO"], env_both["GRANOLA_AUTO"])
-        self.assertEqual(env_both["GRANOLA_AUTO"], "on")
+class Phase2SwitchNewSourceFirst(unittest.TestCase):
+    """LIFE-892 (Jim, Nov 22 2026, 6:14 PM CT): settings.apply reads the V7 Runtime Configuration source first, the old page second; rollback is an empty bootstrap ID."""
+    def setUp(self):
+        self.store = FakeStore()
+        patcher = mock.patch("lifeos.platform.stored_pages.STORE", self.store)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
-    def test_settings_py_does_not_know_the_new_source_and_run_py_reads_the_page_before_the_compare(self):
-        self.assertNotIn("runtime_config", (ROOT / "lifeos/platform/settings.py").read_text())
+    def test_the_new_source_wins_and_is_remembered_and_the_receipt_says_so(self):
+        env = {"GRANOLA_AUTO": "", **ENV}
+        page = Page(OLD_LINES)
+        out = settings.apply(env, client=Both(page, Source([row("GRANOLA_AUTO", "off")])), connect=connect)
+        self.assertEqual((env["GRANOLA_AUTO"], out["status"], out["source"], out["remembered"]), ("off", "ok", "new", True))
+        self.assertNotIn("new_source", out)
+        self.assertEqual(self.store.rows[settings.SNAPSHOT_KEY]["values"], {"GRANOLA_AUTO": "off"})
+
+    def test_the_old_page_is_not_read_while_the_new_source_is_good_and_does_not_seed(self):
+        class Spy(Both):
+            def call(self, method, path, body=None):
+                assert path.startswith("/data_sources/"), (method, path)                  # no page search, no block read, no seed write
+                return super().call(method, path, body)
+        env = {"GRANOLA_AUTO": "", **ENV}
+        out = settings.apply(env, client=Spy(Page(OLD_LINES), Source(NEW_ROWS)), copy=True, connect=connect)
+        self.assertEqual((out["source"], "seeded" in out), ("new", False))
+
+    def test_an_unreadable_or_empty_new_source_falls_to_the_old_page_second_and_names_why(self):
+        for rows, broken, code in (([], False, "RUNTIME_CONFIG_EMPTY"), (NEW_ROWS, True, "RUNTIME_CONFIG_UNREADABLE")):
+            env = {"GRANOLA_AUTO": "", **ENV}
+            out = settings.apply(env, client=Both(Page(OLD_LINES), Source(rows, broken=broken)), connect=connect)
+            self.assertEqual((env["GRANOLA_AUTO"], out["status"], out["new_source"], "source" in out), ("on", "ok", "unreadable:" + code, False))
+            self.assertNotIn(SECRET, repr(out))
+
+    def test_with_both_sources_unreadable_the_last_accepted_map_is_used(self):
+        settings.apply({}, Page(OLD_LINES), connect=connect)
+        env = {"GRANOLA_AUTO": "", **ENV}
+        out = settings.apply(env, client=Both(Page(OLD_LINES, broken=True), Source(NEW_ROWS, broken=True)), connect=connect)
+        self.assertEqual((env["GRANOLA_AUTO"], out["status"], out["new_source"]), ("on", "unreadable:RuntimeError", "unreadable:RUNTIME_CONFIG_UNREADABLE"))
+        self.assertRegex(out["last_accepted"], r"CT$")
+
+    def test_an_empty_bootstrap_id_is_the_rollback_and_reads_only_the_old_page(self):
+        for empty in ("", "  "):
+            env_a, env_b = {"GRANOLA_AUTO": "", rc.SOURCE_NAME: empty}, {"GRANOLA_AUTO": ""}
+            client = Both(Page(OLD_LINES), Source([row("GRANOLA_AUTO", "off")]))
+            out = settings.apply(env_a, client=client)
+            settings.apply(env_b, Page(OLD_LINES))
+            self.assertEqual((env_a["GRANOLA_AUTO"], env_a, "source" in out, "new_source" in out), ("on", env_b | {rc.SOURCE_NAME: empty}, False, False))
+
+    def test_the_shadow_rule_and_the_safety_refusals_apply_to_the_new_source_too(self):
+        env = {"GRANOLA_AUTO": "on", "V7_LIVE": "", **ENV}
+        out = settings.apply(env, client=Both(Page(OLD_LINES), Source([row("GRANOLA_AUTO", "off"), row("V7_LIVE", "on")])))
+        self.assertEqual((env["GRANOLA_AUTO"], env["V7_LIVE"], out["mismatched"], "V7_LIVE" in out["refused"]), ("on", "", ["GRANOLA_AUTO"], True))
+
+    def test_run_py_still_reports_the_compare_after_settings_apply(self):
         text = (ROOT / "lifeos/run.py").read_text()
         self.assertLess(text.index("settings.apply(os.environ)"), text.index("runtime_config.shadow(os.environ"))
         self.assertNotIn("runtime_config.apply", text)
