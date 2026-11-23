@@ -37,13 +37,21 @@ class OneFilePolicy(unittest.TestCase):
         self.assertNotIn("LOS idea", POLICY)
 
     def test_every_epic_proves_feasibility_before_any_build_ticket_runs(self):
-        self.assertIn("**Feasibility first:**", POLICY)
+        self.assertIn("**Feasibility first, new Epics only:**", POLICY)   # Jim, Nov 22 2026: feasibility only for a new Epic he asks for
         self.assertIn("`research`", POLICY)
-        self.assertIn("GO, GO WITH CHANGES or NO-GO", POLICY)
-        self.assertIn("makes bounded scoping writes only", POLICY)
-        self.assertIn("**Close a `research` ticket:** it has no PR, so skip closeout.", POLICY)
+        self.assertIn("GO / NO-GO comment", POLICY)
+        self.assertIn("A change inside an existing Epic goes straight to a build ticket.", POLICY)
+        self.assertIn("**Close a `research` ticket:** no PR, so no closeout script.", POLICY)
         self.assertIn("only then MCP rows or SQL queries, which count as metered", POLICY)
-        self.assertIn("Every build ticket is blocked by its Epic's verdict.", POLICY)
+        self.assertIn("Build tickets wait for the verdict.", POLICY)
+
+    def test_runs_do_not_stop_midway_for_pre_approvable_steps(self):   # Jim, "approve all", Nov 22 2026, 6:03 PM CT
+        self.assertIn("**Standing approvals (Jim, Nov 22, 2026):**", POLICY)
+        self.assertIn("a job reusing a secret or Bitwarden name its workflow already loads", POLICY)
+        self.assertIn("**Check before claiming:**", POLICY)
+        self.assertIn("**One ticket at a time** per session", POLICY)
+        self.assertIn("for at most 24 hours; a rare event (missed window, outage) is a watch note, not a blocker.", POLICY)
+        self.assertIn("only with label `needs-uat` or when Jim is the real user of the outcome", POLICY)
 
     def test_done_needs_outcome_proof_and_one_natural_run_rule(self):
         self.assertIn("A merged PR on green is not Done by itself.", POLICY)
