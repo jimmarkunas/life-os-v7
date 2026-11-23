@@ -177,16 +177,17 @@ class SeededGrants(unittest.TestCase):
         self.assertTrue(access.grants)
         rows = {(c["principal"], c["tool"], c["action"]) for c in CATALOG["capabilities"]}
         for g in access.grants:
-            self.assertTrue(g.expires.tzinfo and g.expires > datetime(2026, 11, 22, tzinfo=timezone.utc) and g.expires.year == 2027, g.id)
+            self.assertTrue(g.expires.tzinfo and g.expires > datetime(2026, 11, 22, tzinfo=timezone.utc) and (g.expires.year == 2027 or (g.tool.startswith("memory_") and g.expires.date().isoformat() == "2026-12-05")), g.id)   # LIFE-868: the synthetic memory grants end Dec 5 2026 (Jim, comment 13743), well before Feb 2027
             self.assertFalse(g.revoked, g.id)
             self.assertRegex(g.credential_ref, r"^[a-z][a-z0-9-]+$")
             self.assertEqual(len(g.actions), 1, g.id)
             self.assertTrue(all((g.principal, g.tool, a) in rows for a in g.actions), g.id)
-        self.assertEqual(sorted({g.tool for g in access.grants}), ["agent_lookup", "buzz_capabilities", "buzz_publish", "buzz_read", "drive_read", "drive_search", "gmail_read", "gmail_search", "source_read"])
+        self.assertEqual(sorted({g.tool for g in access.grants}), ["agent_lookup", "buzz_capabilities", "buzz_publish", "buzz_read", "drive_read", "drive_search", "gmail_read", "gmail_search", "memory_correct", "memory_recall", "memory_revoke", "memory_store", "source_read"])
         writes = [g for g in access.grants if "write" in g.actions]                                                # Jim, Nov 22 2026 (option A): the only writes are today's Buzz publishing for the two chat clients, in the two communities each can write to
         self.assertEqual({(g.principal, g.tool, g.purpose, g.credential_ref) for g in writes},
-                         {(p, "buzz_publish", "buzz-publish", "buzz-scoped-member-key") for p in ("claude-chat", "claude-chat-bytalos", "chatgpt-chat", "chatgpt-chat-bytalos")})
-        self.assertEqual(len(writes), 4)                                                                           # and no inbox write
+                         {(p, "buzz_publish", "buzz-publish", "buzz-scoped-member-key") for p in ("claude-chat", "claude-chat-bytalos", "chatgpt-chat", "chatgpt-chat-bytalos")}
+                         | {(p, op, "synthetic-memory-test", "mcp-credential-" + p) for p in ("openclaw", "hermes-librarian") for op in ("memory_store", "memory_correct", "memory_revoke")})   # LIFE-868 (Jim, comment 13743): synthetic memory writes
+        self.assertEqual(len(writes), 10)                                                                           # and no inbox write
         self.assertFalse([c for c in CATALOG["capabilities"] if c["tool"] == "send_to_jim"])                       # and no catalog row implies a send_to_jim client
 
     def test_the_shipped_seed_lets_no_one_call_send_to_jim(self):
