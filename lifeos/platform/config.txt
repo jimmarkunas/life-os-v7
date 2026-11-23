@@ -110,6 +110,7 @@ V7_ARCHIVE_TOKEN secret Token the branch-archive workflow uses
 V7_IMESSAGE_ALERTS workflow_only:workflow Switch for the iMessage alert job in the domains tick; the V7 settings page can set it, GitHub's value is the fallback
 V7_RUNTIME_CONFIG_SOURCE_ID input LIFE-844: the stable ID of the dedicated Runtime Configuration data source (an address, never a secret); empty means the V7 settings page stays the only source
 V7_STORE_VIA workflow_only:workflow Bitwarden plain switch: oracle sends the store connection through Oracle first (exported as LIFEOS_ACQ_SSH_VIA)
+WEEKLY_ARCHIVE_PAGE_ID input Notion page id of the Weekly Reports Archive, the page V7 writes the daily snapshots under (LIFE-933)
 WEEKLY_REVIEW_PAGE_ID input Notion page id of the weekly review
 GOOGLE_READ_CLIENT_ID secret Read-only Google credential for the governed MCP (LIFE-875); a name only, never a value
 GOOGLE_READ_CLIENT_SECRET secret Read-only Google credential for the governed MCP (LIFE-875); a name only, never a value

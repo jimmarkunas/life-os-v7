@@ -121,6 +121,7 @@ This table is rendered from `lifeos/platform/stages.json` (LIFE-768): edit a sta
 | `purge` | `jobs.retention` | `guarded` | Loops over its items with error handling inside; one failed item does not stop the others. | no |
 | `recruiter-outreach` | `recruiters.outreach_card` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `recruiters` | `recruiters.stage` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
+| `report-archive` | `dcc.weekly_archive` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `resolve-dice` | `jobs.resolve.aggregators.dice` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `resolve-jobright` | `run (custom)` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `resolve-linkedin` | `run (custom)` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
