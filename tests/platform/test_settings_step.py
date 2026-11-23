@@ -7,7 +7,6 @@ import unittest
 from pathlib import Path
 
 from lifeos.platform import settings
-from tests.platform.settings_fixture import ENV
 from tests.platform.test_settings import Page
 
 GOOD = "4183c5a0-5926-81be-9e19-e85714dc256f"
@@ -22,7 +21,7 @@ class Step(unittest.TestCase):
             Path(path).write_text("")
 
     def run_step(self, lines, environ, *argv, broken=False):
-        environ = {**ENV, "GITHUB_ENV": self.env_file, "GITHUB_OUTPUT": self.out_file, "LIFEOS_SETTINGS": "on", **environ}
+        environ = {"GITHUB_ENV": self.env_file, "GITHUB_OUTPUT": self.out_file, "LIFEOS_SETTINGS": "on", **environ}
         printed = io.StringIO()
         with contextlib.redirect_stdout(printed):
             code = settings.main(list(argv), environ, client=Page(lines, broken=broken))
@@ -55,7 +54,7 @@ class Step(unittest.TestCase):
         self.assertEqual(out, [])
         self.assertIn("not_written", printed)
 
-    def test_an_unreadable_source_exits_zero_and_changes_nothing(self):
+    def test_an_unreadable_page_exits_zero_and_changes_nothing(self):
         code, env, out, printed = self.run_step([], {"HIRING_AUTO_CLOSE": ""}, "--output", "HIRING_AUTO_CLOSE", broken=True)
         self.assertEqual((code, env), (0, []))
         self.assertIn("unreadable", printed)
