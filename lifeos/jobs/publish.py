@@ -11,7 +11,7 @@ import os
 from lifeos.jobs import classify, meta, lanes, ledger, store
 from lifeos.platform import ledger_body as body
 from lifeos.jobs.identity import aggregator_twin, norm, url_key, vacancy_id
-from lifeos.platform import limits
+from lifeos.platform import ledger_claim, limits
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 
 SECTIONS = (("summary", "Summary"), ("responsibilities", "Responsibilities"), ("requirements", "Requirements"),
@@ -29,12 +29,19 @@ def same_opening(cursor, job_id, company, title, url=None, location=None):
     """D90: the id of a PUBLISHED job with the same company and title (three words or more, so a generic title is never merged), else None.
     One opening posted under several locations or links is one page. D205: only when both links name the same ATS vacancy (identity.vacancy_id) or
     neither names one; different vacancies, or an id on one link only (identity not shown), are two openings, whatever their company and title.
-    LIFE-64: except an aggregator link with no id whose place (city and region) is the place the ATS vacancy's link or location names: the same opening."""
-    if len(norm(title).split()) < 3 or not norm(company):
+    LIFE-64: except an aggregator link with no id whose place (city and region) is the place the ATS vacancy's link or location names: the same opening.
+    LIFE-903: a title of fewer than three words is merged only on a PROVEN equivalence: both links name the same ATS vacancy id (never "neither names one", never an aggregator's place), so two cross-source twins
+    of a short title converge to one row in one run while two different short-title openings stay two."""
+    if not norm(company):
+        return None
+    short, mine = len(norm(title).split()) < 3, vacancy_id(url)
+    if short and mine is None:
         return None
     cursor.execute("SELECT id, final_apply_url, location_text FROM v7_jobs WHERE status='PUBLISHED' AND id<>%s AND LOWER(TRIM(company))=LOWER(TRIM(%s))"
                    " AND LOWER(TRIM(title))=LOWER(TRIM(%s)) ORDER BY id", (job_id, company, title))
-    mine, rows = vacancy_id(url), cursor.fetchall()
+    rows = cursor.fetchall()
+    if short:
+        return next((row[0] for row in rows if vacancy_id(row[1]) == mine), None)
     return next((row[0] for row in rows if vacancy_id(row[1]) == mine), None) or next(
         (row[0] for row in rows if aggregator_twin(url, location, row[1], row[2], AGGREGATOR)), None)
 
@@ -229,7 +236,8 @@ def release_kept_in_ledger(connection):
 def run(limit, live, environ=os.environ):
     gated = environ.get("V7_FIT_GATE") == "true"       # shadow mode: the lane decision is stored but not shown as Admission Status
     """No database connection is ever held across slow work (Notion calls): read, close, call, reconnect, write."""
-    counts = {"picked": 0, "created": 0, "duplicate": 0, "failed": 0, "seeded": 0, "calls": 0}
+    counts = {"picked": 0, "created": 0, "duplicate": 0, "failed": 0, "seeded": 0, "calls": 0, "claim_won": 0, "claim_held": 0, "claim_readbacks": 0}
+    claimant = ledger_claim.who("publish")
     client = Client(environ)
     counts["target"] = ledger.OK if not live else ledger.verify(client)           # a live run never writes to a data source that is not the Job Ledger
     if counts["target"] != ledger.OK:
@@ -284,13 +292,23 @@ def run(limit, live, environ=os.environ):
         if gated and fit_lane:                                           # the lane policy chose the visible lane (a UK job at a sponsor is Skilled Worker)
             row["lane"], row["eligible"] = fit_lane, [n for n in (eligible or "").split(",") if n]
         try:
-            page_id, created = (adopted(listed[key]) if listed is not None and key in listed else existing_page(client, key)), False   # slow: no connection open
+            page_id, created = (adopted(listed[key]) if listed is not None and key in listed else None), False                  # a page the batched lookup found is adopted without a claim
+            if not page_id:
+                state, recorded = ledger_claim.claim(key, claimant, store.connect)                  # LIFE-903: no create without the cross-process claim on this key
+                if state == ledger_claim.CREATED:
+                    page_id = recorded
+                else:
+                    counts["claim_won" if state == ledger_claim.WON else "claim_held"] += 1
+                    counts["claim_readbacks"] += 1
+                    page_id = existing_page(client, key)                              # the authoritative read-back by Stable Job Key (now, with the claim, nobody else may create); a held key is adopt-only
+                    if not page_id and state == ledger_claim.HELD:
+                        continue                                                      # another creator holds the key, or an earlier create is unresolved: nothing is created; the page is found by key next run
             if not page_id:
                 page_id, created = client.create(properties(row), body.build(key, desc)), True
                 body.fill(client, page_id, desc)                                    # the toggle's own blocks (a toggle inside a column cannot carry them at creation)
             else:
                 body.fill(client, page_id, desc, strict=False)                      # an adopted page whose fill never ran (the next run after a crash) is completed, never repeated
-        except NotionError as error:
+        except NotionError as error:                                                # the claim stays: an unresolved create is settled by read-back after the lease, never repeated
             counts["failed"] += 1
             counts["error"] = f"{error} {getattr(error, 'detail', '')}".strip()[:80]       # a fixed code (and Notion's own error code), so a job that fails every run says why
             if counts["failed"] >= 3:          # systemic (auth/schema/limit): stop instead of hammering
@@ -300,7 +318,7 @@ def run(limit, live, environ=os.environ):
         # publish never sets verified_at. A page this run created carries the Fit it was scored with, so it is recorded as synced and Fit sync does not write it again.
         synced = created and fit is not None
         with store.connect() as connection, connection.cursor() as cursor:  # record at once: a crash cannot duplicate
-            cursor.execute("UPDATE v7_jobs SET status='PUBLISHED', notion_page_id=%s, updated_at=%s, fit_synced_at=%s, meta_v=%s WHERE id=%s",
+            cursor.execute("UPDATE v7_jobs SET status='PUBLISHED', notion_page_id=%s, updated_at=%s, fit_synced_at=%s, meta_v=%s, ledger_claim_by=NULL, ledger_claim_at=NULL WHERE id=%s",
                            (page_id, _now(), _now() if synced else None, meta.META_VERSION if synced else None, job_id))
             cursor.execute("INSERT IGNORE INTO v7_ledger_urls (url_hash, source, seen_at) VALUES (%s,'v7',%s)",
                            (url_key(url), _now()))

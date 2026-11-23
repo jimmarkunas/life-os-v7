@@ -42,6 +42,11 @@ def machine_parent(client):
 
 
 class CreationTests(unittest.TestCase):
+
+    def setUp(self):
+        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        _claims, _stop = claim_store()
+        self.addCleanup(_stop)
     def run_evidence(self, client, live=True, parent=PARENT, query=ROUND, copies=1):
         return stage.run(10, live, environ=ENV, client=client, evidence=[(parent, query)] * copies)
 
@@ -167,6 +172,9 @@ class CreationTests(unittest.TestCase):
     def test_write_and_readback_failures_never_retry(self):
         for mode, code in (("post", "write_failed"), ("readback", "readback_marker_missing"), ("identity", "readback_identity_mismatch"), ("protected", "readback_protected_changed")):
             with self.subTest(mode=mode):
+                from tests.jobs.fakes_jobsdb import claim_store
+                _claims, stop = claim_store()                                 # an unresolved create keeps its claim by design, so each mode starts from a clean store
+                self.addCleanup(stop)
                 client = WritableFake()
                 if mode == "protected": machine_parent(client)
                 client.post_error = mode == "post"
@@ -212,6 +220,11 @@ class CreationTests(unittest.TestCase):
 
 class LedgerShapeTests(unittest.TestCase):
     """LIFE-361 GWT-IC-3: the probe reports creation supported through the Ledger schema, with no Active Opportunities container anywhere."""
+
+    def setUp(self):
+        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        _claims, _stop = claim_store()
+        self.addCleanup(_stop)
     def context(self):
         from lifeos.platform.runtime import RunContext
         return RunContext.start(60)
@@ -272,6 +285,11 @@ class LedgerShapeTests(unittest.TestCase):
 
 
 class RecognizedRegionTests(unittest.TestCase):
+
+    def setUp(self):
+        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        _claims, _stop = claim_store()
+        self.addCleanup(_stop)
     def test_orphans_before_and_after_container_are_ignored_untouched(self):
         from lifeos.interview.identity import resolve_parent
         client = WritableFake()
@@ -320,6 +338,11 @@ class RecognizedRegionTests(unittest.TestCase):
 
 
 class ConfiguredUuidTests(unittest.TestCase):
+
+    def setUp(self):
+        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        _claims, _stop = claim_store()
+        self.addCleanup(_stop)
     def test_compact_root_dashed_api_parent_allows_target_scan_and_probe(self):
         from lifeos.platform.runtime import RunContext
         compact = "abcdefabcdef4abc8defabcdefabcdef"
@@ -344,6 +367,11 @@ class ConfiguredUuidTests(unittest.TestCase):
 
 class Causes(unittest.TestCase):
     """Live runs 39556923423 and 39565054862 ended two conversions as the bare pipeline_incomplete with zero planned writes; the cause is now a fixed code in the counts."""
+
+    def setUp(self):
+        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        _claims, _stop = claim_store()
+        self.addCleanup(_stop)
     def test_a_cause_is_a_fixed_code_or_the_class_name_never_the_text(self):
         from lifeos.platform.runtime import DeadlineExceeded
         self.assertEqual(create.cause_of(NotionError("INTERVIEW_SCAN_INCOMPLETE")), "interview_scan_incomplete")
@@ -377,6 +405,11 @@ class Causes(unittest.TestCase):
 
 class ProtectedReadCauseTests(unittest.TestCase):
     """Runs 39627629137 and 39632692329: SH/FT and Smith ended interview_protected_incomplete with 400 reads available. Jim's Interview Notes list sits in his columns, so the interview child pages are nested blocks of the protected read, and the read walked into their own deep UI 4 trees."""
+
+    def setUp(self):
+        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        _claims, _stop = claim_store()
+        self.addCleanup(_stop)
 
     @staticmethod
     def block(ident, kind="callout", children=False):
@@ -443,6 +476,11 @@ class ProtectedReadCauseTests(unittest.TestCase):
 class HostedFileTests(unittest.TestCase):
     """Run 39637099250: Smith's page converted, then the read-back said readback_protected_changed although every block of Jim's was intact. Her page holds a Notion-hosted PDF (the submitted resume), whose signed URL and expiry are new on every read."""
 
+    def setUp(self):
+        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        _claims, _stop = claim_store()
+        self.addCleanup(_stop)
+
     @staticmethod
     def file_block(url, expiry, name="resume.pdf"):
         return {"id": "f1", "type": "file", "has_children": False,
@@ -461,6 +499,11 @@ class HostedFileTests(unittest.TestCase):
 
 class ProtectedDepth(unittest.TestCase):
     """Run 39627629137 (cause interview_protected_incomplete, writes_planned 0): SH/FT and Smith nest deeper than the 4 levels a page scan allows, and the digest of Jim's content refused them."""
+
+    def setUp(self):
+        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        _claims, _stop = claim_store()
+        self.addCleanup(_stop)
     def chain(self, levels):
         class Nested:
             def call(self, method, path, body=None):

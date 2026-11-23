@@ -87,6 +87,9 @@ class JourneyFixture:
     """The Interview journey harness: a fake Notion, a Job Ledger and one natural run of the Interview step. Shared by the Journey tests and the Through tests (another domain)."""
 
     def setUp(self):
+        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        _db, _stop = claim_store()
+        self.addCleanup(_stop)
         self.notion, self.ledger, self.events, self.recruiters = NotionLike(), Ledger(), [], None
         self.human = [dict(b) for b in self.notion.blocks["human"]]
         made = self.ledger.create                                       # LIFE-361: one Job Ledger: the row the lead writer makes is the row the Interview step finds
