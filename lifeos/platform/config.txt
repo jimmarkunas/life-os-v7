@@ -72,6 +72,7 @@ METER_STATE_DIR input LIFE-889: where the metering proxy keeps its spend ledger 
 NOTION_BILLS_DATA_SOURCE_ID input Notion data source id (bills)
 NOTION_BILLS_TOKEN secret Notion integration token for the bills integration
 NOTION_FIT_SYNC_TOKEN secret Notion integration token for the fit_sync integration
+NOTION_READONLY_TOKEN secret Dedicated read-content-only Notion integration token for the governed LIFE OS source lookup (LIFE-888), never the hourly write integration token
 NTFY_TOPIC secret Phone push topic name (the topic name is the secret)
 HONCHO_MEMORY_TOKEN secret:honcho A workspace-scoped Honcho token the Oracle LIFE OS MCP uses for the synthetic memory operations; unset means memory_not_configured (LIFE-868)
 HONCHO_URL input The Honcho API the memory operations call (default loopback 8000; LIFE-868)

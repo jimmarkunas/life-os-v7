@@ -53,16 +53,16 @@ class PlaceCredentials(unittest.TestCase):
             self.assertTrue(p.read_text().startswith("ENC:"))
 
     def test_the_drop_in_loads_exactly_the_credentials_that_exist(self):
-        done, tmp, _ = self.run_script([{"key": "openclaw/gmail/clientId", "value": SENTINEL}, {"key": "NOTION_API_TOKEN", "value": SENTINEL}], "openclaw/gmail/clientId", "NOTION_API_TOKEN")
+        done, tmp, _ = self.run_script([{"key": "openclaw/gmail/clientId", "value": SENTINEL}, {"key": "NOTION_READONLY_TOKEN", "value": SENTINEL}], "openclaw/gmail/clientId", "NOTION_READONLY_TOKEN")
         lines = (tmp / "dropin.conf").read_text().splitlines()
         self.assertEqual(lines[0], "[Service]")
-        self.assertEqual([line.split("=", 1)[1].split(":", 1)[0] for line in lines[1:]], ["google_read_client_id", "notion_api_token"])
+        self.assertEqual([line.split("=", 1)[1].split(":", 1)[0] for line in lines[1:]], ["google_read_client_id", "notion_readonly_token"])
 
     def test_an_empty_value_a_failing_encrypt_and_no_arguments_change_nothing_and_say_missing(self):
-        done, tmp, creds = self.run_script([{"key": "NOTION_API_TOKEN", "value": "  "}], "NOTION_API_TOKEN")
-        self.assertEqual((done.stdout.strip(), list(creds.iterdir())), ("NOTION_API_TOKEN missing", []))
-        done, tmp, creds = self.run_script([{"key": "NOTION_API_TOKEN", "value": SENTINEL}], "NOTION_API_TOKEN", creds_fails=True)
-        self.assertEqual((done.stdout.strip(), list(creds.iterdir())), ("NOTION_API_TOKEN missing", []))
+        done, tmp, creds = self.run_script([{"key": "NOTION_READONLY_TOKEN", "value": "  "}], "NOTION_READONLY_TOKEN")
+        self.assertEqual((done.stdout.strip(), list(creds.iterdir())), ("NOTION_READONLY_TOKEN missing", []))
+        done, tmp, creds = self.run_script([{"key": "NOTION_READONLY_TOKEN", "value": SENTINEL}], "NOTION_READONLY_TOKEN", creds_fails=True)
+        self.assertEqual((done.stdout.strip(), list(creds.iterdir())), ("NOTION_READONLY_TOKEN missing", []))
         self.assertNotIn(SENTINEL, done.stdout + done.stderr)
         self.assertEqual(self.run_script([])[0].returncode, 64)
 
