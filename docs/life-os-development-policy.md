@@ -31,7 +31,7 @@ Link to the owner; never copy a fact into a second place.
 
 - **Jim starts every agent run.** No scheduler, timer, poller, `/loop` or dispatcher may start or wake an agent outside a live session; inside one, it may watch its own CI and runs. A Jira status change starts nothing.
 - **Once started, an agent runs end to end:** finish the ticket, then pull the next, until the queue is empty (`NO_ELIGIBLE_WORK`) or a ticket truly needs Jim.
-- **Pick:** the ticket Jim named, else the top leaf of `project = LIFE AND status = "Agent Go" AND issuetype != Epic ORDER BY priority DESC, Rank ASC`. Skip a ticket already In Progress (another session has it) or with an unfinished `Blocks` predecessor. Lane labels are hints. Agents never reorder or reprioritize. Several sessions (Mac and Oracle Claude Code) may pull in parallel; one writer per branch and per mutation surface.
+- **Pick:** the ticket Jim named, else the top leaf of `project = LIFE AND status = "Agent Go" AND issuetype != Epic ORDER BY priority DESC, Rank ASC`. Skip a ticket already In Progress (another session has it) or with an unfinished `Blocks` predecessor. Lane labels are hints. Agents never reorder or reprioritize. Several sessions (OC and MC, CLAUDE.md) may pull in parallel; one writer per branch and per mutation surface.
 - **Claim:** move the ticket to In Progress (transition ID 14). The status is the claim; no comment.
 - **Build:** one branch `life/LIFE-nnn/<slug>`, one PR titled `[LIFE-nnn] <outcome>`. Tickets that touch the same files may share one PR. Make the smallest change that delivers the outcome and remove the path it replaces.
 - **Test:** `sh tools/preflight.sh` before every push. CI is the full gate: fix once if red.
@@ -156,7 +156,7 @@ A request that breaks these rules stops with `ARCHITECTURAL DRIFT DETECTED — N
 ## 10. Exceptions in force
 
 - **V7 modernization consolidation exception (Jim, Nov 18 and 21, 2026):** applied; the old open tickets were cancelled and replaced by Epics LIFE-846, LIFE-847 and LIFE-848, history untouched. Further reparenting or Epic cancellation needs Jim's yes on the exact list.
-- **Freezes and STOP gates lifted (Jim, Nov 21, 2026, 12:17 AM CT).** All freezes and STOP blocks are removed. Mac Claude Code is the exclusive writer of `hourly.yml` while LIFE-854 or LIFE-856 is open.
+- **Freezes and STOP gates lifted (Jim, Nov 21, 2026, 12:17 AM CT).** All freezes and STOP blocks are removed. The agent holding LIFE-856 In Progress is the sole writer of `hourly.yml`.
 
 ## 11. Read only when needed
 
