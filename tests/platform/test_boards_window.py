@@ -153,7 +153,7 @@ class Auto(unittest.TestCase):
                 posts.append((path, body))
                 return {}
             return {"jobs": [{"name": "boards", "conclusion": "success", "status": "completed"}]} if "/jobs" in path else {"workflow_runs": [run(1, utc(2026, 11, 22, 7, 1))]}
-        self.assertEqual(bw.dispatch({"GITHUB_REF_NAME": "main"}, api=api, now=self.NOW, out=out.append), 0)
+        self.assertEqual(bw.dispatch({"GITHUB_REF_NAME": "main", "BOARDS_IN_TICK": "off"}, api=api, now=self.NOW, out=out.append), 0)
         self.assertEqual(posts, [("actions/workflows/boards.yml/dispatches", {"ref": "main", "inputs": {"auto": "true", "mode": "window"}})])
         self.assertIn("started the 7:00 AM CT window", out[0])
 
@@ -165,7 +165,7 @@ class Auto(unittest.TestCase):
                 posts.append(body)
                 return {}
             return {"jobs": [{"name": "boards", "conclusion": "success", "status": "completed"}]} if "/jobs" in path else {"workflow_runs": [run(1, utc(2026, 11, 21, 19, 1))]}
-        bw.dispatch({}, api=api, now=self.NOW, out=lambda _t: None)
+        bw.dispatch({"BOARDS_IN_TICK": "off"}, api=api, now=self.NOW, out=lambda _t: None)
         self.assertEqual(posts[0]["inputs"], {"auto": "true", "mode": "catchup"})
 
     def test_dispatch_starts_nothing_when_the_window_has_a_run(self):
@@ -184,7 +184,7 @@ class Auto(unittest.TestCase):
                 raise OSError("refused")
             return {"workflow_runs": []}
         out = []
-        self.assertEqual(bw.dispatch({}, api=api, now=self.NOW, out=out.append), 0)
+        self.assertEqual(bw.dispatch({"BOARDS_IN_TICK": "off"}, api=api, now=self.NOW, out=out.append), 0)
         self.assertIn("dispatch failed", out[0])
 
     def test_an_auto_run_decides_like_a_scheduled_one_and_a_manual_run_always_runs(self):
@@ -211,7 +211,7 @@ class Main(unittest.TestCase):
         return code, written, out
 
     def test_a_scheduled_run_writes_the_decision_to_the_step_outputs(self):
-        code, written, _ = self.run_main({"BOARDS_EVENT": "schedule", "GITHUB_RUN_ID": "9"}, [run(1, utc(2026, 11, 22, 1, 3))])
+        code, written, _ = self.run_main({"BOARDS_EVENT": "schedule", "GITHUB_RUN_ID": "9", "BOARDS_IN_TICK": "off"}, [run(1, utc(2026, 11, 22, 1, 3))])
         self.assertEqual(code, 0)
         for line in ("run=true", "mode=window", f"limit={limits.BOARDS_PER_RUN}", "timeout_minutes=15", "deadline_minutes=12"):
             self.assertIn(line, written["out"])

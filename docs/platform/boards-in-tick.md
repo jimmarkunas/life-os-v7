@@ -14,7 +14,7 @@ The same reader as a window (`lifeos.sources.web.boards.run`): boards already re
 
 ## Flip and rollback
 
-- Flip: a reviewed PR changing `"state"` of `BOARDS_IN_TICK` to `on`, after three clean natural ticks of the shipped step observed (see LIFE-905).
+- Flip: a reviewed PR changing `"state"` of `BOARDS_IN_TICK` to `on`, after three clean natural ticks of the shipped step observed (see LIFE-905). Flipped Nov 23, 2026, 11:23 AM CT, after ten clean no-op ticks.
 - Rollback: a PR setting it back to `off` (or reverting). The windows resume from the same state tables; a window the tick era left unrun is a catch-up (leftovers first), and a board is read at most once per due time, so no frontier row is written twice.
 
 ## Production Contract amendment (draft for Jim)
