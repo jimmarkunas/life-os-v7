@@ -94,6 +94,56 @@ def split_unfinished(issues):
     return carry, stranded
 
 
+def preview_mej_selective_carry(issues, approved_keys, finite_keys=()):
+    """LIFE-915: pure preflight for a Matt-approved Task commitment roster.
+
+    Not connected to run()/execute() until Matt's exact roster and Jira's
+    backlog-placement/readback contract are live-proven. It never calls Jira.
+    An unresolved unfinished Task cannot be silently re-added, abandoned or
+    presumed in backlog. Existing JFM rollover remains untouched.
+    """
+    if not isinstance(issues, (list, tuple)) or not isinstance(approved_keys, (list, tuple, set, frozenset)) or not isinstance(finite_keys, (list, tuple, set, frozenset)):
+        raise JiraError("JIRA_MEJ_ROSTER_INVALID")
+    keys = list(approved_keys)
+    if len(keys) != len(set(keys)) or any(not isinstance(k, str) or not k.startswith("MEJ-") or not k[4:].isdigit() for k in keys):
+        raise JiraError("JIRA_MEJ_ROSTER_INVALID")
+    protected = set(finite_keys)
+    if any(not isinstance(k, str) for k in protected) or set(keys) & protected:
+        raise JiraError("JIRA_MEJ_FINITE_NOT_CARRY")
+    found = {}
+    for issue in issues:
+        if not isinstance(issue, dict) or not isinstance(issue.get("key"), str) or issue["key"] in found:
+            raise JiraError("JIRA_MEJ_INVENTORY_INVALID")
+        fields = issue.get("fields") or {}
+        typ = fields.get("issuetype") or {}
+        name = typ.get("name")
+        if not isinstance(name, str) or not name:
+            raise JiraError("JIRA_MEJ_INVENTORY_INVALID")
+        found[issue["key"]] = (name, bool(typ.get("subtask")), (fields.get("parent") or {}).get("key"))
+    if any(key not in found for key in keys):
+        raise JiraError("JIRA_MEJ_ROSTER_INVALID")
+    for key in keys:
+        name, subtask, _ = found[key]
+        if subtask or name not in ("Task", "Story"):
+            raise JiraError("JIRA_MEJ_ROSTER_INVALID")
+    # Without a verified backlog API/readback, an unfinished standard item
+    # outside the approved roster must block close, not vanish into Jira's
+    # provider-defined sprint-closure behavior.
+    for key, (name, subtask, _) in found.items():
+        if not subtask and key not in keys:
+            raise JiraError("JIRA_MEJ_BACKLOG_UNVERIFIED")
+    stranded = []
+    carry = list(keys)
+    for key, (_, subtask, parent) in found.items():
+        if not subtask:
+            continue
+        if parent in keys:
+            carry.append(key)                     # the child follows a carried parent
+        else:
+            stranded.append(key)                  # D181: parent Done/outside sprint
+    return carry, stranded
+
+
 def plan(client, project, board_id, now, tz, keys=(), auto=False):
     if str(client.board(board_id).get("type", "")).lower() != "scrum":
         raise JiraError("JIRA_BOARD_NOT_SCRUM")
