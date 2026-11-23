@@ -188,7 +188,7 @@ async function getJson(url, timeout = 8000) {
 
 // What the Honcho line on the Oracle card needs; see lifeos/oraclecloud/honcho_status.py for the shape and the rules.
 export async function honcho(deps = {}) {
-  const { json = getJson, mark = marker, show = (u) => run("systemctl", ["show", u, "-p", "ExecMainExitTimestamp", "-p", "Result", "--value"], 10000) } = deps;
+  const { json = getJson, mark = marker, show = (u) => run("systemctl", ["show", u, "-p", "ExecMainExitTimestamp", "-p", "Result"], 10000) } = deps;
   const [api, meter, shown] = await Promise.all([
     json(HONCHO_HEALTH).catch(() => ({ status: 0 })), json(METER_HEALTH).catch(() => null), show(BACKUP_UNIT),
   ]);
@@ -197,8 +197,9 @@ export async function honcho(deps = {}) {
   const exhausted = mark(`${METER_DIR}/EXHAUSTED`);
   const stopFile = mark(`${METER_DIR}/STOP`);
   const stopped = m === null || stopFile === null ? null : stopFile === true || m.stopped === true || (m.blocked !== null && m.blocked !== undefined);
-  const [result, stamp] = String(shown ?? "").trim().split("\n").reverse();                    // --value prints the properties in the order asked: timestamp, then result
-  const at = unitTime(stamp);
+  const props = Object.fromEntries(String(shown ?? "").split("\n").map((l) => l.split(/=(.*)/s).slice(0, 2)).filter((p) => p.length === 2));   // `Key=value` lines, in whatever order systemd prints them
+  const result = props.Result;
+  const at = unitTime(props.ExecMainExitTimestamp);
   return {
     health: api.status === 200 ? true : api.status === 0 ? false : false,
     failed, exhausted, stopped,

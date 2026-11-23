@@ -69,7 +69,7 @@ test("LIFE-921: a systemctl timestamp becomes an ISO time or null", () => {
 });
 
 const GOOD_METER = { status: 200, body: { ok: true, spent_usd: 0.40692, cap_usd: 0.9, stopped: false, blocked: null } };
-const deps = (over = {}) => ({ json: async (u) => (u.includes("8000") ? { status: 200 } : GOOD_METER), mark: () => false, show: async () => "Mon 2026-11-23 09:30:27 UTC\nsuccess\n", ...over });
+const deps = (over = {}) => ({ json: async (u) => (u.includes("8000") ? { status: 200 } : GOOD_METER), mark: () => false, show: async () => "Result=success\nExecMainExitTimestamp=Mon 2026-11-23 09:30:27 UTC\n", ...over });
 
 test("LIFE-921: a healthy Honcho reads healthy, with RESERVED from the meter and the last backup", async () => {
   assert.deepEqual(await honcho(deps()), { health: true, failed: false, exhausted: false, stopped: false, backup: { at: "2026-11-23T09:30:27Z", ok: true }, meter: { cap: 0.9, reserved: 0.40692 } });
@@ -83,6 +83,14 @@ test("LIFE-921: a FAILED marker, an EXHAUSTED marker and a meter that blocks are
   assert.equal(blocked.stopped, true);
   const dark = await honcho(deps({ json: async (u) => { if (u.includes("8000")) return { status: 200 }; throw new Error("down"); } }));
   assert.deepEqual([dark.stopped, dark.meter], [null, null]);
+});
+
+test("LIFE-921: the unit properties are read by name, in either order", async () => {
+  const a = await honcho(deps({ show: async () => "ExecMainExitTimestamp=Mon 2026-11-23 09:30:27 UTC\nResult=success\n" }));
+  assert.deepEqual(a.backup, { at: "2026-11-23T09:30:27Z", ok: true });
+  assert.equal((await honcho(deps({ show: async () => "Result=exit-code\nExecMainExitTimestamp=Mon 2026-11-23 09:30:27 UTC\n" }))).backup.ok, false);
+  assert.equal((await honcho(deps({ show: async () => "Result=success\nExecMainExitTimestamp=\n" }))).backup, null);
+  assert.equal((await honcho(deps({ show: async () => null }))).backup, null);
 });
 
 test("LIFE-921: Honcho that does not answer is health false; an unreadable marker is null", async () => {
