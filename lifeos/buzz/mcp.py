@@ -252,7 +252,7 @@ def governed(who, name, args, msg, effect, receipts, access=None, now=None):
         return _fail(msg, "access_denied" if code in ("identity_unknown", "identity_ambiguous", "unknown_tool", "unknown_tenant") else "governance_unavailable", reason=code)
     if not out.executed:
         return _fail(msg, "access_denied", reason=out.reason)
-    return out.result if out.reason == "ok" else _fail(msg, "governance_unavailable", reason=out.reason)
+    return mcp_access.capabilities_for_client(out.result, who, access, (*LOOKUP_OPS, *GOOGLE_OPS, *MEMORY_OPS), MAX_RESPONSE) if out.reason == "ok" and name == "buzz_capabilities" else out.result if out.reason == "ok" else _fail(msg, "governance_unavailable", reason=out.reason)
 
 
 def _only_granted(reply, who, access):

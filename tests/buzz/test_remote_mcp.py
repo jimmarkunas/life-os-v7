@@ -244,6 +244,22 @@ class DualClient(Server):
         self.assertEqual((sorted(out), len(self.fake.events)), (["already_delivered"] * 6 + ["sent_not_read_back"] * 2, 2))
 
 
+class GrantLimitedCapabilities(Server):
+    """Refusal-only tests: no Gmail or Drive adapter is invoked."""
+
+    def test_claude_sees_google_unavailable_and_gets_no_grant_without_a_read(self):
+        self.start(access=False)
+        tok = token(sub="user-claude")
+        status, caps = self.tool(tok, "buzz_capabilities")
+        self.assertEqual(status, 200)
+        for op in ("gmail_search", "gmail_read", "drive_search", "drive_read"):
+            self.assertEqual((caps["data"]["read"][op]["available"], caps["data"]["read"][op]["reason"]), (False, "no_grant"))
+        status, refused = self.tool(tok, "buzz_read", operation="gmail_search", arguments={"account": "personal", "query": "synthetic-refusal-only"})
+        self.assertEqual((status, refused), (200, {"error": "access_denied", "reason": "no_grant"}))
+        self.assertEqual(self.fake.calls, [])
+        self.assertEqual(self.receipts[-1]["reason"], "no_grant")
+
+
 class Governed(Server):
     """LIFE-865: every Buzz tool call goes through authorization_gate.execute, through the real HTTP handler; a refusal is before any relay request and carries the gate's fixed reason."""
     def calls(self):
@@ -450,7 +466,7 @@ class Credentials(Server):
             reached = len(fake.requests)
             for cid in ("mac-claude-code", "oracle-claude-code", "openclaw"):                                                    # granted to no other client
                 status, out = self.tool(self.tok(cid), "buzz_read", operation="gmail_search", arguments={"account": "personal", "query": "q"})
-                self.assertEqual((out["error"], out["reason"]), ("access_denied", "catalog_unknown_capability"), cid)
+                self.assertEqual((out["error"], out["reason"]), ("access_denied", "no_grant"), cid)
             status, out = self.tool(token(sub="user-claude"), "buzz_read", operation="drive_read", arguments={"account": "personal", "file_id": "file111111"})
             self.assertEqual(out["error"], "access_denied")                                                                        # nor to the chat clients
             for args, reason in (({"query": "q"}, "account_required"), ({"account": "work", "query": "q"}, "unknown_account")):
