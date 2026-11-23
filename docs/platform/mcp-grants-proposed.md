@@ -1,6 +1,6 @@
-# Proposed Buzz publish grants (LIFE-865) — NOT active
+# Buzz publish grants (LIFE-865) — active
 
-Status: **proposed for Jim's review; not in `lifeos/platform/mcp_access.json`, so nothing here is granted.** After approval they move into the active grants and catalog in one small PR, and only then is the release built.
+Status: **active as of the LIFE-865 activation PR** (Jim approved option A, Nov 22 2026, 6:14 PM CT, comments 13707 and 13711); the rows below are now in `lifeos/platform/mcp_access.json` and `capability_catalog.json`.
 
 ## Why these, and no more
 
