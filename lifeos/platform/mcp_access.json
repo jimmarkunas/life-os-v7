@@ -85,7 +85,7 @@
    "id": "muse-chat",
    "transport": "http",
    "facts": {
-    "oauth_client": "muse"
+    "credential": "muse"
    },
    "policy_key": "1840bef71c723365fc1789ed9b4116171f9dba3851de0560608bd962e6064841"
   },

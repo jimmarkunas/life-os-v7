@@ -213,10 +213,10 @@ class SeededGrants(unittest.TestCase):
         mine = [g for g in access.grants if g.principal == "muse-chat"]
         self.assertEqual(sorted(g.tool for g in mine), ["buzz_capabilities", "buzz_publish", "buzz_read", "send_to_jim"])
         self.assertEqual({(g.tenant, g.expires.date().isoformat(), g.revoked) for g in mine}, {("personal", "2027-02-22", False)})
-        self.assertEqual([c["facts"] for c in json.loads(M.FILE.read_text())["clients"] if c["id"] == "muse-chat"], [{"oauth_client": "muse"}])   # identified by the verified OAuth client label only
-        self.assertEqual(M.identify(access, "http", {"oauth_client": "muse"})["id"], "muse-chat")
+        self.assertEqual([c["facts"] for c in json.loads(M.FILE.read_text())["clients"] if c["id"] == "muse-chat"], [{"credential": "muse"}])   # identified by its own bearer credential row only (Jim chose the bearer route, comment 13906)
+        self.assertEqual(M.identify(access, "http", {"credential": "muse"})["id"], "muse-chat")
         with self.assertRaises(M.AccessError):                                                                    # an unknown client is refused
-            M.identify(access, "http", {"oauth_client": "muse2"})
+            M.identify(access, "http", {"credential": "muse2"})
 
     def test_only_the_catalog_rows_a_live_call_exercised_are_working_and_every_other_seeded_row_stays_synthetic(self):
         """LIFE-865 live proof (Nov 22 2026, through the claude.ai Buzz connector against release 52343c06da4e): Claude's capabilities and Personal read, and its Bytalos read, were called live. Nothing else was: not ChatGPT, not a publish, not send_to_jim."""

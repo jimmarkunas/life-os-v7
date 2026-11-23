@@ -307,7 +307,7 @@ def handler(relays, auth, base, origins=(), audit=_audit, access=None, receipts=
                     audit({"client": None, "identity": None, "sub": None, "tool": None, "community": None, "outcome": "invalid_credential", "reason": None})
                     return self._deny(401, "invalid_token")
                 return self._send(503, {"error": "governance_unavailable"})
-            return {"client": row["buzz_identity"], "facts": {"credential": row["id"]}, "scopes": {"buzz:read"}, "sub": "cred:" + row["id"], "communities": tuple(row["communities"]), "iat": None,
+            return {"client": row["buzz_identity"], "facts": {"credential": row["id"]}, "scopes": {"buzz:read", *(("buzz:write",) if row.get("write") is True else ())}, "sub": "cred:" + row["id"], "communities": tuple(row["communities"]), "iat": None,
                     "exp": datetime.fromisoformat(row["expires"] + "T23:59:59+00:00").timestamp(), "tid": hashlib.sha256(row["id"].encode()).hexdigest()[:8]}
 
         def do_POST(self):
