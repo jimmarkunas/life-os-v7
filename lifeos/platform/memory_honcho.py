@@ -175,3 +175,8 @@ def register(read, lift, state):
     """Add the four operations to the MCP's read registry (`lift` turns a module operation into a registry row) and wire the Honcho client from the environment (None until HONCHO_MEMORY_TOKEN is set)."""
     read.update({op: (text, params, lift(sys.modules[__name__], op, state)) for op, (text, params) in OPS.items()})
     state["client"] = client_from_env(os.environ)
+
+
+def route(op, args, tenant):
+    """-> (tenant, action, account, service) for the gate: the named workspace is the tenant (TGP or a typo is an unknown tenant); store, correct and revoke write, recall reads."""
+    return TENANT.get(args.get("workspace"), "unknown"), "write" if op in WRITE else "read", "honcho", "honcho"
