@@ -11,7 +11,7 @@ import os
 import sys
 from zoneinfo import ZoneInfo
 
-from lifeos.platform import gate, limits
+from lifeos.platform import gate, limits, switches
 
 CENTRAL = ZoneInfo("America/Chicago")
 SLOTS_CT = ((1, 0), (7, 0), (13, 0), (19, 0))
@@ -24,6 +24,23 @@ REAL = ("success", "failure", "timed_out")
 WINDOW_TIMEOUT_MINUTES = 15               # Jim, Nov 22 2026 (LIFE-854; was 35: the measured window is about 5 minutes)
 CATCHUP_TIMEOUT_MINUTES = 25               # was 60
 DEADLINE_MARGIN_MINUTES = 3               # the crawl stops starting boards this long before its step timeout, so its receipt is always written
+
+
+SWITCH = "BOARDS_IN_TICK"                 # LIFE-905: lifeos/platform/switches.json; off = the four windows own the crawl (today), on = the hourly tick does
+
+
+def owner(environ):
+    """-> "tick" or "windows": the one crawler that owns the employer boards. Each stands down while the other owns them; both read the same state tables, so a flip loses nothing."""
+    return "tick" if switches.state(SWITCH, environ) else "windows"
+
+
+def window_running(api=gate._api):
+    """-> True when a boards.yml run is queued or running (the tick then leaves boards alone), or when that cannot be read (fail closed: never two crawlers)."""
+    try:
+        runs = api(f"actions/workflows/{WORKFLOW}/runs?per_page=10").get("workflow_runs", [])
+        return any(item.get("status") in RUNNING for item in runs)
+    except Exception:                                               # noqa: BLE001 - an unreadable history means a crawler may be running
+        return True
 
 
 def _utc(day, hour, minute):
@@ -78,6 +95,10 @@ def plan(slot, mode, late_reason):
             "deadline_minutes": timeout - DEADLINE_MARGIN_MINUTES, "slot": slot.strftime("%Y-%m-%dT%H:%M:%SZ"), "slot_ct": label(slot), "late_reason": late_reason, "why": mode}
 
 
+def stand_down(slot, why):
+    return {"run": False, "why": why, "slot": slot.strftime("%Y-%m-%dT%H:%M:%SZ"), "slot_ct": label(slot), "mode": "none", "limit": 0, "timeout_minutes": 0, "deadline_minutes": 0, "late_reason": ""}
+
+
 def decide(now, runs, jobs_of, current_id=0):
     """-> the plan for this firing, or {"run": False, "why": "window_already_ran", ...}. `runs`: finished runs of the workflow, newest first; `jobs_of(run)` -> that run's job records (name, conclusion, status)."""
     slot = current_slot(now)
@@ -98,7 +119,7 @@ def decide(now, runs, jobs_of, current_id=0):
     except Exception:                                               # noqa: BLE001 - any failure to read history means a normal window, and says so
         return plan(slot, "window", "history_unreadable")
     if slot in held:
-        return {"run": False, "why": "window_already_ran", "slot": slot.strftime("%Y-%m-%dT%H:%M:%SZ"), "slot_ct": label(slot), "mode": "none", "limit": 0, "timeout_minutes": 0, "deadline_minutes": 0, "late_reason": ""}
+        return stand_down(slot, "window_already_ran")
     reasons = []
     mode = "window"
     if held and not held.get(previous_slot(slot), False):
@@ -130,6 +151,8 @@ def main(environ=os.environ, api=gate._api, now=None, out=print):
     if environ.get("BOARDS_EVENT") == "workflow_dispatch" and environ.get("BOARDS_AUTO") != "true":
         mode = "catchup" if environ.get("BOARDS_MODE_INPUT") == "catchup" else "window"
         result = plan(current_slot(now), mode, "manual_run")
+    elif owner(environ) == "tick":                                  # LIFE-905: the hourly tick crawls the boards; a scheduled or auto window stands down (a manual run above never does)
+        result = stand_down(current_slot(now), "tick_owns")
     else:
         try:
             runs, jobs_of = fetch_history(api)
@@ -150,6 +173,9 @@ def main(environ=os.environ, api=gate._api, now=None, out=print):
 def dispatch(environ=os.environ, api=gate._api, now=None, out=print):
     """Called by the hourly tick: start boards.yml (auto) when a window has opened and holds no run. Never fails the tick (a problem is a printed code and exit 0)."""
     now = now or dt.datetime.now(dt.timezone.utc)
+    if owner(environ) == "tick":
+        out("boards window: the hourly tick owns the boards; no window started")
+        return 0
     try:
         runs, jobs_of = fetch_history(api)
         result = decide(now, runs, jobs_of)

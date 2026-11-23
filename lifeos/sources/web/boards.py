@@ -152,6 +152,18 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
     return counts
 
 
+def tick(limit, live, now=None, environ=os.environ, running=boards_window.window_running, **kw):
+    """LIFE-905: the hourly due-only board pass inside the Jobs tick. It crawls only while the BOARDS_IN_TICK switch names the tick the owner (the windows stand down then) and no boards.yml run is queued or running;
+    otherwise it reads nothing and opens no store session. Same reader as a window: the due boards, oldest due first, the same caps, workers and provider protections; the soft deadline keeps the receipt inside the step budget."""
+    out = {"pass": "employer boards (tick)", "owner": boards_window.owner(environ)}
+    if out["owner"] != "tick":
+        return {**out, "skipped": True, "why": "windows_own"}
+    if running():
+        return {**out, "skipped": True, "why": "window_running"}
+    counts = run(min(limit, limits.BOARDS_PER_RUN), live, now, environ={**environ, "BOARDS_DEADLINE_MINUTES": str(limits.BOARDS_TICK_DEADLINE_MINUTES), "BOARDS_MODE": "window"}, **kw)
+    return {**counts, "owner": "tick", "pass": "employer boards (tick)"}
+
+
 def receipt_markdown(r):
     """LIFE-854: the receipt as the job summary table (the same fields, in the order the ticket names them)."""
     rows = [("Window", f"{r['window'] or 'manual'} ({r['mode']}, cap {r['cap']})"), ("Started / finished", f"{r['started']} / {r['finished']}"), ("Due at start", r["due"]),

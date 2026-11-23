@@ -36,6 +36,7 @@
     "web-titlewatch": {"every_hours": 1, "providers": ["tinyfish"]},
     "discover-jobs": {"every_hours": 1, "providers": ["tinyfish", "linkedin"]},
     "sponsors": {"every_hours": 1, "providers": []},
-    "boards-backfill": {"every_hours": 1, "providers": []}
+    "boards-backfill": {"every_hours": 1, "providers": []},
+    "boards-tick": {"every_hours": 1, "providers": ["ats"]}
   }
 }

@@ -49,6 +49,7 @@ This table is rendered from `lifeos/platform/stages.json` (LIFE-768): edit a sta
 | `boards` | `sources.web.boards` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `boards-backfill` | `sources.web.boards` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `boards-preview` | `sources.web.boards` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
+| `boards-tick` | `sources.web.boards` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `calendar-sync` | `calendar_bridge.watch` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `capacity-card` | `jobs.fit.capacity_card` | `exempt` | One reading of Oracle's limits: a failed read is the stage's own failure and the old card stays until a fresh reading is verified. | yes |
 | `dcc-card` | `dcc.card` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
