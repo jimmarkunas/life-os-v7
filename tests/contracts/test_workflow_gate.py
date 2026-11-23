@@ -67,9 +67,31 @@ class Stops(unittest.TestCase):
         reasons = check(head)
         self.assertTrue(any(r.startswith("new secret") and "NEW_THING" in r for r in reasons), reasons)
 
-    def test_an_existing_secret_reaching_another_job_stops(self):
+    def test_a_new_job_loading_a_name_new_to_the_workflow_stops(self):
+        head = BASE + "  extra:\n    runs-on: ubuntu-24.04\n    steps:\n      - id: bws\n        uses: ./.github/actions/bws-load\n        with:\n          secrets: |\n            33333333-3333-3333-3333-333333333333 > BRAND_NEW\n"
+        self.assertTrue(any(r.startswith("new credential") and "BRAND_NEW" in r for r in check(head)))
+
+
+class ReuseInSameWorkflow(unittest.TestCase):
+    """Standing approval (Jim, Nov 22 2026, 6:03 PM CT; gate change asked for at 6:14 PM CT): a name another job of the SAME workflow already loads may reach a new or existing job with no stop."""
+
+    def test_an_existing_secret_reaching_another_job_passes(self):
         head = BASE.replace("      - run: echo other", "      - run: echo other\n        env:\n          T: ${{ secrets.EXISTING }}")
-        self.assertTrue(any(r.startswith("new secret") and "other" in r for r in check(head)))
+        self.assertEqual(check(head), [])
+
+    def test_a_new_job_reusing_a_bitwarden_name_the_workflow_loads_passes(self):
+        head = BASE + "  extra:\n    runs-on: ubuntu-24.04\n    steps:\n      - id: bws\n        uses: ./.github/actions/bws-load\n        with:\n          secrets: |\n            11111111-1111-1111-1111-111111111111 > KNOWN_ITEM\n      - run: echo ${{ steps.bws.outputs.KNOWN_ITEM }}\n"
+        self.assertEqual(check(head), [])
+
+    def test_reuse_next_to_a_new_name_still_stops_for_the_new_name_only(self):
+        head = BASE.replace("      - run: echo other", "      - run: echo other\n        env:\n          T: ${{ secrets.EXISTING }}\n          U: ${{ secrets.NOT_IN_THIS_WORKFLOW }}")
+        reasons = check(head)
+        self.assertTrue(any("NOT_IN_THIS_WORKFLOW" in r for r in reasons), reasons)
+        self.assertFalse(any("EXISTING" in r for r in reasons), reasons)
+
+    def test_secrets_inherit_still_stops(self):
+        head = BASE + "  caller:\n    uses: ./.github/workflows/child.yml\n    secrets: inherit\n"
+        self.assertTrue(any("secrets: inherit" in r for r in check(head)))
 
     def test_secrets_inherit_stops(self):
         head = BASE + "  caller:\n    uses: ./.github/workflows/child.yml\n    secrets: inherit\n"
