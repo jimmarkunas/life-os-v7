@@ -57,6 +57,7 @@ class WeekFocus(unittest.TestCase):
         class InvalidSprint(FakeJira):
             def get(self, path, params):
                 if "sprint in openSprints()" in params["jql"]:
+                    self.queries.append(params["jql"])
                     raise JiraError("ACCOUNTABILITY_JIRA_HTTP_400")
                 return super().get(path, params)
         fake = InvalidSprint()
