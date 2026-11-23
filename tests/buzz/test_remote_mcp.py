@@ -4,6 +4,7 @@ import base64, hashlib, json, os, pathlib, random, shlex, shutil, socket, subpro
 from http.server import ThreadingHTTPServer
 
 from lifeos.buzz import mcp as buzz_mcp
+from lifeos.platform import call_limit
 
 from lifeos.buzz import nip98
 from lifeos.buzz.auth import AuthError, Verifier
@@ -53,6 +54,7 @@ def token(alg="RS256", kid="k1", sign=True, **over):
 
 class Server(unittest.TestCase):
     def start(self, fake=None, writes=((("life-os", CHAN)),), fetch=None, origins=(), keys=None, access=None):
+        call_limit.reset()                                                                    # LIFE-874: each test starts with a fresh call count
         self.fake, keys = fake or FakeRelay(), KEYS if keys is None else keys
         self.relays = {i: Relay(URLS, {c: k for (ii, c), k in keys.items() if ii == i}, writes, self.fake) for i in ("claude", "chatgpt") if any(ii == i for ii, _ in keys)}
         self.audit = []
@@ -500,6 +502,32 @@ class Credentials(Server):
         with mock.patch("lifeos.platform.mcp_access.load", side_effect=OSError("data file missing")):
             status, out = self.rpc(self.tok(), "tools/list")
         self.assertEqual((status, out), (503, {"error": "governance_unavailable"}))
+
+
+class RateLimit(Server):
+    """LIFE-874: a verified caller is limited per minute before any tool or gate runs; the log line names the caller and the outcome, never a value."""
+    def test_a_caller_over_the_limit_gets_429_and_a_sanitized_log_line_and_others_are_unaffected(self):
+        from unittest import mock
+        self.start()
+        with mock.patch.object(call_limit, "LIMIT", 3):
+            tok = token(sub="user-claude")
+            for _ in range(3):
+                self.assertEqual(self.rpc(tok, "tools/list")[0], 200)
+            status, raw, headers = self.req("POST", "/mcp", {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, tok)
+            self.assertEqual((status, json.loads(raw), headers["Retry-After"]), (429, {"error": "rate_limited"}, "60"))
+            line = self.audit[-1]
+            self.assertEqual((line["outcome"], line["sub"], line["tool"], set(line) - {"client", "identity", "sub", "tool", "community", "outcome", "reason"}), ("rate_limited", "user-claude", None, set()))
+            self.assertNotIn(tok, json.dumps(self.audit))
+            self.assertEqual(self.rpc(token(sub="user-chatgpt"), "tools/list")[0], 200)                  # another verified user has their own count
+            self.assertEqual(self.rpc("not-a-token", "tools/list")[0], 401)                              # an unauthenticated call is refused before it is ever counted
+
+    def test_the_window_slides_and_each_credential_has_its_own_count(self):
+        self.assertEqual([call_limit.allow("k", now=t) for t in (0.0, 1.0, 2.0)], [True] * 3)
+        with __import__("unittest.mock", fromlist=["x"]).patch.object(call_limit, "LIMIT", 3):
+            call_limit.reset()
+            self.assertEqual([call_limit.allow("a", now=t) for t in (0.0, 1.0, 2.0, 3.0)], [True, True, True, False])
+            self.assertTrue(call_limit.allow("a", now=60.5))                                              # the first call left the window
+            self.assertTrue(call_limit.allow("b", now=3.0))                                               # another key is untouched
 
 
 class FourIdentities(Server):
