@@ -59,7 +59,13 @@ class FakeClient:
         if method == "POST" and path == "/pages":
             props = body["properties"]
             self.rows.append({"id": f"row{len(self.rows)}", "status": props["Status"]["select"]["name"], "urgency": props["Urgency"]["select"]["name"], "key": props["Key"]["rich_text"][0]["text"]["content"],
-                              "from": props["From"]["rich_text"][0]["text"]["content"], "created": NOW})
+                              "from": props["From"]["rich_text"][0]["text"]["content"], "subject": props["Subject"]["title"][0]["text"]["content"], "created": NOW})
+        elif method == "PATCH" and body.get("properties"):
+            row = next(r for r in self.rows if f"/pages/{r['id']}" == path)
+            props = body["properties"]
+            row["subject"] = props["Subject"]["title"][0]["text"]["content"]
+            row["urgency"] = props["Urgency"]["select"]["name"]
+            row["from"] = props["From"]["rich_text"][0]["text"]["content"]
         elif method == "PATCH" and body.get("in_trash"):
             self.rows = [r for r in self.rows if f"/pages/{r['id']}" != path]
         return {}
@@ -150,8 +156,9 @@ class Sending(unittest.TestCase):
     def test_the_same_key_never_adds_a_second_row(self):
         client = FakeClient()
         agent_inbox.send(client, ok_item(key="k1"), now=NOW)
-        self.assertEqual(agent_inbox.send(client, ok_item(key="k1", subject="different words"), now=NOW), {"duplicate": 1})
-        self.assertEqual(len(client.rows), 1)
+        self.assertEqual(agent_inbox.send(client, ok_item(key="k1", subject="different words"), now=NOW), {"updated": 1})
+        self.assertEqual((len(client.rows), client.rows[0]["subject"]), (1, "different words"))
+        self.assertEqual([w[:2] for w in client.writes], [("POST", "/pages"), ("PATCH", "/pages/row0")])
 
     def test_a_sender_over_the_hourly_rate_is_refused(self):
         client = FakeClient()
@@ -239,7 +246,7 @@ class Tool(unittest.TestCase):
         client = FakeClient()
         lines = [json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}), json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}),
                  json.dumps({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}),
-                 json.dumps({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "send_to_jim", "arguments": ok_item()}}),
+                 json.dumps({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "send_to_jim", "arguments": {k: v for k, v in ok_item().items() if k != "from"}}}),
                  json.dumps({"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "something_else", "arguments": {}}})]
         out, receipts = io.StringIO(), []
         with mock.patch("sys.stdout", out):
@@ -249,7 +256,7 @@ class Tool(unittest.TestCase):
         self.assertEqual([t["name"] for t in replies[1]["result"]["tools"]], ["send_to_jim"])
         self.assertFalse(replies[2]["result"]["isError"])
         self.assertEqual(replies[3]["error"]["message"], "method_not_found")
-        self.assertEqual(len(client.rows), 1)
+        self.assertEqual((len(client.rows), client.rows[0]["from"]), (1, "claude-code-mac"))
         self.assertEqual([(r["outcome"], r["reason"]) for r in receipts], [("allow", "ok"), ("ok", "ok")])           # LIFE-865: the gate's receipt first, then the result
 
 
