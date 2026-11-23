@@ -71,6 +71,25 @@ class ProjectGoalAttribution(unittest.TestCase):
         self.assertEqual(read.tally(fake, GOALS, FIRST, LAST), {"MEJ-2": [1, 2]})
         self.assertEqual(read.unparented(fake, "MEJ", {"MEJ-2"}), 2)
 
+    def test_done_outside_quarter_keeps_denominator_but_not_quarter_numerator(self):
+        class Outside(Jira):
+            def get(self, path, params):
+                answer = super().get(path, params)
+                if "parent in (MEJ-147)" in params["jql"]:
+                    answer["issues"][1]["fields"]["statuscategorychangedate"] = "2026-09-20T12:00:00-05:00"
+                return answer
+        self.assertEqual(read.tally(Outside(), GOALS, FIRST, LAST), {"MEJ-2": [1, 4]})
+
+    def test_missing_done_status_transition_fails_closed(self):
+        class Missing(Jira):
+            def get(self, path, params):
+                answer = super().get(path, params)
+                if "parent in (MEJ-147)" in params["jql"]:
+                    answer["issues"][1]["fields"]["statuscategorychangedate"] = None
+                return answer
+        with self.assertRaisesRegex(JiraError, "ACCOUNTABILITY_MEJ_COMPLETION_DATE_MISSING"):
+            read.tally(Missing(), GOALS, FIRST, LAST)
+
     def test_multiple_quarter_goal_links_fail_closed(self):
         projects = [{"key": "MEJ-147", "fields": {"issuelinks": [
             {"type": {"name": "Relates"}, "inwardIssue": {"key": "MEJ-2"}},
