@@ -1,10 +1,12 @@
 """LIFE-875 (synthetic): read-only Gmail and Drive for two named accounts, with a fake Google. No network, no real token."""
 import base64
+import hashlib
 import io
 import json
 import re
 import unittest
 import urllib.error
+from unittest import mock
 import urllib.parse
 from pathlib import Path
 
@@ -12,7 +14,14 @@ from lifeos.platform import google_read as G
 
 ROOT = Path(__file__).resolve().parents[2]
 CREDS = {"client_id": "cid", "client_secret": "csecret-xxxxxxxx", "refresh_token": "rtoken-xxxxxxxx"}
-OWNERS = {"at-personal": "jimmarkunas@gmail.com", "at-bytalos": "jim@bytalos.com"}                         # the synthetic token of each account reports that account's address
+OWNERS = {"at-personal": "alice@example.com", "at-bytalos": "bob@example.org"}                              # the synthetic token of each account reports that account's (invented) address
+SYNTHETIC_OWNER_SHA256 = {"personal": hashlib.sha256(b"alice@example.com").hexdigest(), "bytalos": hashlib.sha256(b"bob@example.org").hexdigest()}
+
+
+def setUpModule():
+    patcher = mock.patch.dict(G.OWNER_SHA256, SYNTHETIC_OWNER_SHA256)                                 # the shipped hashes are the real accounts'; tests use invented addresses
+    patcher.start()
+    unittest.addModuleCleanup(patcher.stop)
 
 
 class FakeGoogle:
@@ -130,7 +139,6 @@ class Reads(unittest.TestCase):
         with self.assertRaises(G.GoogleError) as raised:
             stranger.drive_search("personal", "q")
         self.assertEqual(raised.exception.reason, "wrong_account")
-        self.assertEqual({G.OWNER_SHA256["personal"], G.OWNER_SHA256["bytalos"]} & {__import__("hashlib").sha256(e.encode()).hexdigest() for e in OWNERS.values()}, set(G.OWNER_SHA256.values()))
 
     def test_a_secret_in_a_body_is_refused_and_ids_are_validated(self):
         client, fake = google()
