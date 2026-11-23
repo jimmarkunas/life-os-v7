@@ -104,6 +104,23 @@ def row(taken, days=14, complete=True, records=None, corrupt=False):
     return (taken, days, complete, "0" * 64 if corrupt else snap.fingerprint(records), zlib.compress(json.dumps({"records": records}).encode()))
 
 
+class FullHours(unittest.TestCase):
+    def test_the_whole_window_is_read_in_the_full_read_hours_and_the_checkpoint_is_used_in_the_others(self):
+        from unittest import mock
+        from lifeos.sources.interview import interview_evidence as ev
+        seen = []
+
+        def fake_read(environ, now, gmail, outlook, days, seconds, detail, **kw):
+            seen.append(bool(kw.get("reuse")))
+            detail["gmail"] = {"listed": 1, "read": 0 if kw.get("reuse") else 1, "reused": 1 if kw.get("reuse") else 0, "retries": 0}
+            return [], 0
+        for hour, reused in ((12, False), (13, True), (18, False), (23, True)):
+            when = datetime(2026, 11, 23, hour, 5, tzinfo=ev.TZ)
+            with mock.patch.object(ev, "read_mail", fake_read), mock.patch.object(snap, "previous", return_value={"g1": {"id": "g1"}}), mock.patch.object(snap, "save", return_value=True):
+                counts = snap.stage(0, True, environ={}, now=when, connect=lambda: None)
+            self.assertEqual((seen[-1], counts["gmail"]["reused"]), (reused, 1 if reused else 0), hour)
+
+
 class Checkpoint(unittest.TestCase):
     def test_the_latest_complete_snapshot_of_this_window_is_the_checkpoint_gmail_only(self):
         got = snap.previous(Db([row(NOW - timedelta(minutes=50))]), NOW, 14)

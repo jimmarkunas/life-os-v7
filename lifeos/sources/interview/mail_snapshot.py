@@ -108,6 +108,7 @@ def load(connect, tick_started, now, days):
         return {"why": "corrupt"}
 
 
+FULL_EVERY_HOURS = 6                     # LIFE-906: at hours 0, 6, 12 and 18 Central the whole window is read, so a message whose folder changed after it was reused is corrected within six hours
 REUSE_MAX_AGE = timedelta(hours=3)       # LIFE-906: an earlier complete read older than this is not trusted as a checkpoint (the next read is the full window)
 
 
@@ -156,7 +157,7 @@ def stage(limit, live, environ=os.environ, now=None, connect=None, read=None):
     from lifeos.sources.interview import interview_evidence as evidence             # noqa: PLC0415 - that module imports this one
     now = (now or datetime.now(evidence.TZ)).astimezone(evidence.TZ)
     days, seconds, detail = evidence.window(environ, live), {}, {}
-    reuse = previous(connect or store.connect, now.astimezone(UTC), days) if live and read is None else {}          # LIFE-906: read only the mail the last complete snapshot does not hold
+    reuse = previous(connect or store.connect, now.astimezone(UTC), days) if live and read is None and now.hour % FULL_EVERY_HOURS else {}   # LIFE-906: read only the mail the last complete snapshot does not hold, except in the full-read hours
     try:
         records, down = (read or evidence.read_mail)(environ, now, None, None, days, seconds, detail, reuse=reuse) if reuse else (read or evidence.read_mail)(environ, now, None, None, days, seconds, detail)
     except Exception as error:                                                       # noqa: BLE001 - a fixed code, never the error's text
