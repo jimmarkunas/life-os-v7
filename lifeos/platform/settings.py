@@ -242,6 +242,29 @@ def _fallback(environ, connect, out):
         _fill(environ, values, out)
 
 
+def _from_new_source(environ, client, connect, out):
+    """LIFE-892 (Phase 2, the switch): with `V7_RUNTIME_CONFIG_SOURCE_ID` set, read the Runtime Configuration source by ID first and, on a good read, fill under the shadow rule, remember the map as last accepted
+    and say `source: new`. -> True when it was applied. No ID (rollback), or an unreadable, empty or malformed source: False with `new_source: unreadable:<CODE>`, and the caller reads the old page as the second source."""
+    if not (environ.get("V7_RUNTIME_CONFIG_SOURCE_ID") or "").strip():
+        return False
+    from lifeos.platform import runtime_config                             # noqa: PLC0415 - runtime_config imports this module
+    try:
+        found, counts = runtime_config.parse(runtime_config.fetch(client, runtime_config.source_id(environ)))
+        if not found:
+            raise runtime_config.RuntimeConfigError("RUNTIME_CONFIG_EMPTY")  # never an empty override
+    except Exception as error:                                             # noqa: BLE001 - the cause may hold a value; only a fixed code is kept
+        out["new_source"] = "unreadable:" + (str(error) if re.fullmatch(r"[A-Z0-9_]{3,60}", str(error)) else type(error).__name__)
+        return False
+    out.update(counts, status="ok", source="new")
+    _fill(environ, found, out)
+    if connect is not None:
+        try:
+            out["remembered"] = remember(connect, found)
+        except Exception as error:                                         # noqa: BLE001 - remembering is best effort; the next good read tries again
+            out["remember_status"] = str(error) if re.fullmatch(r"[A-Z0-9_]{3,60}", str(error)) else type(error).__name__
+    return True
+
+
 def apply(environ=os.environ, client=None, copy=None, connect=None):
     """Fill the environment from the page under the shadow rule; `copy` (default: production runs) also copies missing addresses onto the page. -> counts (names only)."""
     out = {"status": "off", "filled": [], "matched": 0, "mismatched": []}
@@ -266,6 +289,8 @@ def apply(environ=os.environ, client=None, copy=None, connect=None):
         if client is None:
             from lifeos.platform.notion_client import Client                # noqa: PLC0415
             client = Client({"NOTION_API_TOKEN": token, "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused"})
+        if _from_new_source(environ, client, connect, out):                # LIFE-892: the V7 Runtime Configuration source is read first; the old page below is the second source
+            return out
         found, counts = parse(read(client))
     except Exception as error:                                             # noqa: BLE001 - settings never fail a stage; the environment stays as it was
         out["status"] = "unreadable:" + (str(error) if re.fullmatch(r"[A-Z0-9_]{3,60}", str(error)) else type(error).__name__)
