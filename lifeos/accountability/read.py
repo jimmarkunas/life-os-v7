@@ -5,7 +5,9 @@ completed inside that quarter. Output is plain dicts for the renderers; ticket t
 import json
 import os
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from pathlib import Path
+from zoneinfo import ZoneInfo
 from urllib.parse import quote, urlparse
 
 from lifeos.platform.jira import JiraError
@@ -14,6 +16,7 @@ PEOPLE = (("Jim", "JFM"), ("Matt", "MEJ"))
 WEEK_FIELDS = "summary,status,duedate,issuetype"
 EPIC_FIELDS = "summary"
 CHILD_FIELDS = "status,parent,resolutiondate,statuscategorychangedate,issuetype"
+MEJ_MEMBERSHIP = Path(__file__).with_name("mej_quarter_membership.json")
 PAGE, MAX_PAGES = 100, 30
 URL = re.compile(r"https?://[^\s\"\\<>)]+")
 TAIL = re.compile(r"\s+Q[1-4]\s+\d{4}$")
@@ -155,52 +158,127 @@ def _mej_project_goals(jira, quarter_keys):
     return out
 
 
-def _mej_project_tally(jira, project_goals, first, last):
-    """Count each deliverable Task once, never project Epics or Sub-tasks.
+def _first_verified_done(jira, key, current_done_status_id=None):
+    """First historical transition INTO Done, including earlier Done/reopen cycles.
 
-    This is a new, explicitly versioned metric for project-linked quarter
-    goals. A Done child counts only when the status-category transition
-    occurred during the quarter, as the approved V3 source describes.
-    Existing direct-parent metrics are left untouched until cutover.
+    The live status-category-change field and resolutiondate are never proof.
+    Jira changelogs are read oldest-to-newest with complete, bounded paging;
+    absent/invalid/incomplete history is a degraded metric, not an estimate.
     """
-    if not project_goals:
+    start, first = 0, None
+    path = f"/rest/api/3/issue/{quote(key, safe='')}/changelog"
+    for _ in range(MAX_PAGES):
+        page = jira.get(path, {"startAt": start, "maxResults": PAGE})
+        values = page.get("values") if isinstance(page, dict) else None
+        if not isinstance(values, list):
+            raise JiraError("ACCOUNTABILITY_MEJ_COMPLETION_HISTORY_UNVERIFIED")
+        for change in values:
+            if not isinstance(change, dict) or not isinstance(change.get("items"), list):
+                raise JiraError("ACCOUNTABILITY_MEJ_COMPLETION_HISTORY_UNVERIFIED")
+            for item in change["items"]:
+                if not isinstance(item, dict) or (item.get("fieldId") != "status" and item.get("field") != "status"):
+                    continue
+                to_name = (item.get("toString") or "").strip().casefold()
+                if to_name != "done" and (not current_done_status_id or str(item.get("to")) != str(current_done_status_id)):
+                    continue
+                try:
+                    stamp = datetime.fromisoformat(change["created"])
+                    if stamp.tzinfo is None:
+                        raise ValueError("missing time zone")
+                    day = stamp.astimezone(ZoneInfo("America/Chicago")).date()
+                except (KeyError, TypeError, ValueError, OverflowError) as exc:
+                    raise JiraError("ACCOUNTABILITY_MEJ_COMPLETION_HISTORY_UNVERIFIED") from exc
+                if first is None or day < first:
+                    first = day
+        start += len(values)
+        if page.get("isLast") is True or (isinstance(page.get("total"), int) and start >= page["total"]):
+            if first is None:
+                raise JiraError("ACCOUNTABILITY_MEJ_COMPLETION_HISTORY_UNVERIFIED")
+            return first
+        if not values:
+            raise JiraError("ACCOUNTABILITY_MEJ_COMPLETION_HISTORY_UNVERIFIED")
+    raise JiraError("ACCOUNTABILITY_MEJ_COMPLETION_HISTORY_UNVERIFIED")
+
+
+def _frozen_mej_membership(first, manifest=None):
+    """Load an explicitly approved, version-controlled Task->parent->goal baseline.
+
+    A project Epic's live Relates link NEVER assigns its entire child backlog
+    to a quarter. Missing approval or a missing quarter fails closed. Historical
+    quarters can coexist in the same frozen manifest without being rewritten.
+    """
+    if manifest is None:
+        try:
+            manifest = json.loads(MEJ_MEMBERSHIP.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise JiraError("ACCOUNTABILITY_MEJ_MEMBERSHIP_NOT_APPROVED") from exc
+    if not isinstance(manifest, dict) or manifest.get("schema_version") != 1:
+        raise JiraError("ACCOUNTABILITY_MEJ_MEMBERSHIP_NOT_APPROVED")
+    quarter_id = f"{first.year}-q{(first.month - 1) // 3 + 1}"
+    row = (manifest.get("quarters") or {}).get(quarter_id)
+    if not isinstance(row, dict) or row.get("approved") is not True or not row.get("baseline_id") or not row.get("approval_ref") or not isinstance(row.get("tasks"), dict):
+        raise JiraError("ACCOUNTABILITY_MEJ_MEMBERSHIP_NOT_APPROVED")
+    for key, assignment in row["tasks"].items():
+        if not re.fullmatch(r"MEJ-\\d+", key) or not isinstance(assignment, dict) or not re.fullmatch(r"MEJ-\\d+", str(assignment.get("parent") or "")) or not re.fullmatch(r"MEJ-\\d+", str(assignment.get("goal") or "")):
+            raise JiraError("ACCOUNTABILITY_MEJ_MEMBERSHIP_NOT_APPROVED")
+    return row["tasks"]
+
+
+def _mej_v2_tally(jira, quarter_keys, first, last, manifest=None):
+    """K2/K3: quarter counts only frozen Task/Story membership, with verified Done history.
+
+    Keep the v1 reader separate and off-by-default. Missing or drifted entries
+    refuse the v2 projection rather than silently changing the denominator.
+    """
+    if not quarter_keys:
         return {}
-    keys = ",".join(sorted(project_goals))
-    out = {}
-    for issue in search(jira, f"parent in ({keys})", CHILD_FIELDS):
+    frozen = _frozen_mej_membership(first, manifest)
+    project_goals = _mej_project_goals(jira, quarter_keys)
+    parent_keys = sorted(set(quarter_keys) | set(project_goals))
+    tally = {goal: [0, 0] for goal in quarter_keys}
+    seen = set()
+    for issue in search(jira, f"parent in ({','.join(parent_keys)})", CHILD_FIELDS):
+        key = issue["key"]
+        if key not in frozen:
+            continue
         fields = issue.get("fields") or {}
         kind = fields.get("issuetype") or {}
-        if kind.get("subtask") or kind.get("name") == "Epic":
-            continue
+        if kind.get("subtask") or kind.get("name") not in ("Task", "Story"):
+            raise JiraError("ACCOUNTABILITY_MEJ_MEMBERSHIP_DRIFT")
         parent = (fields.get("parent") or {}).get("key")
-        goal = project_goals.get(parent)
-        if not goal:
-            continue
+        goal = parent if parent in quarter_keys else project_goals.get(parent)
+        expected = frozen[key]
+        if key in seen or goal not in quarter_keys or expected["goal"] != goal or expected["parent"] != parent:
+            raise JiraError("ACCOUNTABILITY_MEJ_MEMBERSHIP_DRIFT")
+        seen.add(key)
         done = ((fields.get("status") or {}).get("statusCategory") or {}).get("key") == "done"
-        stamp = (fields.get("statuscategorychangedate") or "")[:10] if done else ""
-        if done and not stamp:
-            # A missing transition cannot silently erase a completed Task from
-            # the denominator or manufacture a quarter-specific completion.
-            raise JiraError("ACCOUNTABILITY_MEJ_COMPLETION_DATE_MISSING")
-        row = out.setdefault(goal, [0, 0])
-        row[0] += int(done and first.isoformat() <= stamp <= last.isoformat())
-        row[1] += 1
-    return out
+        if done:
+            completed = _first_verified_done(jira, key, (fields.get("status") or {}).get("id"))
+            tally[goal][0] += int(first <= completed <= last)
+        tally[goal][1] += 1
+    if seen != set(frozen):
+        raise JiraError("ACCOUNTABILITY_MEJ_MEMBERSHIP_DRIFT")
+    return tally
 
 
-def tally(jira, found, first, last):
-    """Quarterly direct-child counts plus opt-in MEJ linked-project Tasks."""
+def tally(jira, found, first, last, *, mej_metric_version=None, frozen_membership=None):
+    """v1 historical direct-child metrics, or opt-in future MEJ v2 frozen metrics.
+
+    JFM always retains historical v1 behavior; a production v2 switch requires
+    an explicit environment gate AND an approved frozen quarter manifest.
+    """
     if not found:
         return {}
     keys = ",".join(e["key"] for e in found)
     rows = _counts(search(jira, f"parent in ({keys})", CHILD_FIELDS), first, last)
     out = {e["key"]: rows.get(e["key"], [0, 0]) for e in found}
-    matt_keys = {e["key"] for e in found if e["person"] == "Matt"}
-    if matt_keys:
-        linked = _mej_project_tally(jira, _mej_project_goals(jira, matt_keys), first, last)
-        for key, (done, total) in linked.items():
-            out[key][0] += done
-            out[key][1] += total
+    mode = mej_metric_version if mej_metric_version is not None else os.environ.get("ACCOUNTABILITY_MEJ_METRIC_VERSION", "v1")
+    if mode not in ("v1", "v2"):
+        raise JiraError("ACCOUNTABILITY_MEJ_METRIC_VERSION_INVALID")
+    if mode == "v2":
+        matt_keys = {e["key"] for e in found if e["person"] == "Matt"}
+        if matt_keys:
+            out.update(_mej_v2_tally(jira, matt_keys, first, last, frozen_membership))
     return out
 
 
