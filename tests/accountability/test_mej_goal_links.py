@@ -1,9 +1,9 @@
-"""LIFE-913: synthetic opt-in MEJ project-to-quarter attribution tests.
+"""LIFE-913 K2/K3: synthetic verified Done history and frozen quarter membership.
 
-These tests use no live Jira/Notion data and write nothing to any provider.
-The historical direct-child model remains the default until Matt approves
-the migration and a project Epic carries the 'mej-project' opt-in label.
+No real Jira or Notion requests, no provider writes. v1/JFM remain backward
+compatible; v2 is opt-in and fails closed without an approved quarter baseline.
 """
+import copy
 import unittest
 from datetime import date
 
@@ -12,43 +12,84 @@ from lifeos.platform.jira import JiraError
 
 FIRST, LAST = date(2026, 10, 7), date(2027, 1, 5)
 GOALS = [{"key": "MEJ-2", "person": "Matt", "lane": "Creative"}]
+FROZEN = {
+    "schema_version": 1,
+    "quarters": {
+        "2026-q4": {
+            "approved": True,
+            "baseline_id": "SYNTHETIC-Q4-TEST-ONLY",
+            "approval_ref": "SYNTHETIC-K1-K4-TEST-ONLY",
+            "tasks": {
+                "MEJ-10": {"parent": "MEJ-2", "goal": "MEJ-2"},
+                "MEJ-11": {"parent": "MEJ-2", "goal": "MEJ-2"},
+                "MEJ-500": {"parent": "MEJ-147", "goal": "MEJ-2"},
+                "MEJ-501": {"parent": "MEJ-147", "goal": "MEJ-2"},
+            },
+        }
+    },
+}
 
 
-def child(key, parent, done=False, kind="Task", completed=None, resolved=None):
+def child(key, parent, done=False, kind="Task", resolved=None, field_date=None):
     return {"key": key, "fields": {
         "parent": {"key": parent},
         "issuetype": {"name": kind, "subtask": kind == "Sub-task"},
-        "status": {"name": "Done" if done else "To Do",
+        "status": {"id": "10015" if done else "10014",
+                   "name": "Done" if done else "To Do",
                    "statusCategory": {"key": "done" if done else "new"}},
-        "statuscategorychangedate": completed,
+        "statuscategorychangedate": field_date,
         "resolutiondate": resolved,
     }}
 
 
+def status_change(when, before="To Do", after="Done"):
+    return {"created": when, "items": [
+        {"field": "status", "fieldId": "status", "fromString": before,
+         "toString": after, "to": "10015" if after == "Done" else "10014"}
+    ]}
+
+
 class Jira:
-    def __init__(self, projects=None):
+    def __init__(self, projects=None, histories=None):
         self.queries = []
         self.projects = projects if projects is not None else [
             {"key": "MEJ-147", "fields": {"issuelinks": [
                 {"type": {"name": "Relates"}, "outwardIssue": {"key": "MEJ-2"}}
             ]}}
         ]
+        self.children = [
+            child("MEJ-10", "MEJ-2"),
+            child("MEJ-11", "MEJ-2", done=True, resolved="2026-11-20"),
+            child("MEJ-500", "MEJ-147"),
+            child("MEJ-501", "MEJ-147", done=True,
+                  resolved="2026-09-01",
+                  field_date="2026-11-20T12:00:00-06:00"),
+            child("MEJ-502", "MEJ-147", done=True, kind="Sub-task"),
+            child("JFM-10", "JFM-2", done=True, resolved="2026-11-20"),
+            child("JFM-11", "JFM-2"),
+        ]
+        self.histories = histories if histories is not None else {
+            "MEJ-11": [status_change("2026-11-20T10:00:00.000-0600")],
+            "MEJ-501": [status_change("2026-11-20T10:00:00.000-0600")],
+        }
 
     def get(self, path, params):
+        if path.endswith("/changelog"):
+            key = path.split("/")[-2]
+            rows = self.histories.get(key, [])
+            start = params["startAt"]
+            page = rows[start:start + params["maxResults"]]
+            return {"values": page, "isLast": start + len(page) >= len(rows),
+                    "total": len(rows)}
         jql = params["jql"]
         self.queries.append(jql)
-        if "parent in (MEJ-2)" in jql:
-            rows = [child("MEJ-10", "MEJ-2"),
-                    child("MEJ-11", "MEJ-2", done=True, resolved="2026-11-20")]
+        if "parent in (" in jql:
+            inside = jql.split("parent in (", 1)[1].split(")", 1)[0]
+            parents = set(inside.split(","))
+            rows = [item for item in self.children
+                    if item["fields"]["parent"]["key"] in parents]
         elif 'issuetype = Epic AND labels = "mej-project"' in jql:
             rows = self.projects
-        elif "parent in (MEJ-147)" in jql:
-            rows = [child("MEJ-500", "MEJ-147"),
-                    child("MEJ-501", "MEJ-147", done=True,
-                          completed="2026-11-20T12:00:00-06:00",
-                          resolved="2026-09-01T12:00:00-05:00"),
-                    child("MEJ-502", "MEJ-147", done=True, kind="Sub-task",
-                          completed="2026-11-20T12:00:00-06:00")]
         elif "project = MEJ AND issuetype != Epic AND statusCategory != Done" in jql:
             rows = [child("MEJ-10", "MEJ-2"), child("MEJ-500", "MEJ-147"),
                     child("MEJ-800", "MEJ-999"),
@@ -58,39 +99,82 @@ class Jira:
         return {"issues": rows, "isLast": True}
 
 
-class ProjectGoalAttribution(unittest.TestCase):
-    def test_linked_project_deliverables_count_once_and_subtasks_do_not(self):
+class FrozenQuarterAndFirstDone(unittest.TestCase):
+    def v2(self, fake, baseline=None):
+        return read.tally(fake, GOALS, FIRST, LAST, mej_metric_version="v2",
+                          frozen_membership=FROZEN if baseline is None else baseline)
+
+    def test_v1_is_default_and_preserves_direct_parent_history(self):
         fake = Jira()
-        counts = read.tally(fake, GOALS, FIRST, LAST)
-        self.assertEqual(counts, {"MEJ-2": [2, 4]})
+        self.assertEqual(read.tally(fake, GOALS, FIRST, LAST,
+                                    mej_metric_version="v1"), {"MEJ-2": [1, 2]})
         self.assertEqual(read.unparented(fake, "MEJ", {"MEJ-2"}), 1)
-        self.assertTrue(any("issuelinks" in params for params in fake.queries) is False)  # JQL strings only
 
-    def test_no_opted_in_projects_keeps_old_direct_parent_semantics(self):
-        fake = Jira(projects=[])
-        self.assertEqual(read.tally(fake, GOALS, FIRST, LAST), {"MEJ-2": [1, 2]})
-        self.assertEqual(read.unparented(fake, "MEJ", {"MEJ-2"}), 2)
+    def test_explicit_v2_counts_only_frozen_standard_tasks(self):
+        fake = Jira()
+        fake.children.append(child("MEJ-503", "MEJ-147", done=True))
+        self.assertEqual(self.v2(fake), {"MEJ-2": [2, 4]})
+        self.assertEqual(read.unparented(fake, "MEJ", {"MEJ-2"}), 1)
 
-    def test_done_outside_quarter_keeps_denominator_but_not_quarter_numerator(self):
-        class Outside(Jira):
+    def test_first_verified_done_not_last_done_or_resolutiondate(self):
+        fake = Jira()
+        fake.histories["MEJ-501"] = [
+            status_change("2026-09-20T12:00:00-0500"),
+            status_change("2026-10-21T12:00:00-0500", "Done", "In Progress"),
+            status_change("2026-11-20T10:00:00-0600", "In Progress", "Done"),
+        ]
+        self.assertEqual(self.v2(fake), {"MEJ-2": [1, 4]})
+
+    def test_first_done_crosses_quarter_in_chicago_time(self):
+        fake = Jira()
+        fake.histories["MEJ-501"] = [
+            status_change("2027-01-06T03:00:00+00:00")
+        ]  # Jan 5 9 PM CT, inside Q4 boundary
+        self.assertEqual(self.v2(fake), {"MEJ-2": [2, 4]})
+
+    def test_paginated_history_is_fully_checked_for_earlier_done(self):
+        fake = Jira()
+        fake.histories["MEJ-501"] = (
+            [status_change("2026-09-20T12:00:00-0500")] +
+            [{"created": "2026-11-20T10:00:00-0600", "items": []}] * 104 +
+            [status_change("2026-11-20T10:00:00-0600")]
+        )
+        self.assertEqual(self.v2(fake), {"MEJ-2": [1, 4]})
+
+    def test_missing_done_history_refuses_even_with_resolutiondate(self):
+        fake = Jira()
+        fake.histories.pop("MEJ-501")
+        with self.assertRaisesRegex(JiraError, "ACCOUNTABILITY_MEJ_COMPLETION_HISTORY_UNVERIFIED"):
+            self.v2(fake)
+
+    def test_incomplete_history_page_refuses(self):
+        class Broken(Jira):
             def get(self, path, params):
-                answer = super().get(path, params)
-                if "parent in (MEJ-147)" in params["jql"]:
-                    answer["issues"][1]["fields"]["statuscategorychangedate"] = "2026-09-20T12:00:00-05:00"
-                return answer
-        self.assertEqual(read.tally(Outside(), GOALS, FIRST, LAST), {"MEJ-2": [1, 4]})
+                if path.endswith("/changelog"):
+                    return {"values": [], "isLast": False, "total": 10}
+                return super().get(path, params)
+        with self.assertRaisesRegex(JiraError, "ACCOUNTABILITY_MEJ_COMPLETION_HISTORY_UNVERIFIED"):
+            self.v2(Broken())
 
-    def test_missing_done_status_transition_fails_closed(self):
-        class Missing(Jira):
-            def get(self, path, params):
-                answer = super().get(path, params)
-                if "parent in (MEJ-147)" in params["jql"]:
-                    answer["issues"][1]["fields"]["statuscategorychangedate"] = None
-                return answer
-        with self.assertRaisesRegex(JiraError, "ACCOUNTABILITY_MEJ_COMPLETION_DATE_MISSING"):
-            read.tally(Missing(), GOALS, FIRST, LAST)
+    def test_no_approved_quarter_membership_fails_closed(self):
+        with self.assertRaisesRegex(JiraError, "ACCOUNTABILITY_MEJ_MEMBERSHIP_NOT_APPROVED"):
+            self.v2(Jira(), {"schema_version": 1, "quarters": {}})
 
-    def test_multiple_quarter_goal_links_fail_closed(self):
+    def test_membership_cannot_follow_a_changed_project_parent(self):
+        fake = Jira()
+        bad = copy.deepcopy(FROZEN)
+        bad["quarters"]["2026-q4"]["tasks"]["MEJ-501"]["parent"] = "MEJ-352"
+        with self.assertRaisesRegex(JiraError, "ACCOUNTABILITY_MEJ_MEMBERSHIP_DRIFT"):
+            self.v2(fake, bad)
+
+    def test_missing_frozen_task_fails_instead_of_silently_reducing_denominator(self):
+        bad = copy.deepcopy(FROZEN)
+        bad["quarters"]["2026-q4"]["tasks"]["MEJ-999"] = {
+            "parent": "MEJ-147", "goal": "MEJ-2"}
+        with self.assertRaisesRegex(JiraError, "ACCOUNTABILITY_MEJ_MEMBERSHIP_DRIFT"):
+            self.v2(Jira(), bad)
+
+    def test_ambiguous_project_goal_links_are_rejected(self):
         projects = [{"key": "MEJ-147", "fields": {"issuelinks": [
             {"type": {"name": "Relates"}, "inwardIssue": {"key": "MEJ-2"}},
             {"type": {"name": "Relates"}, "outwardIssue": {"key": "MEJ-3"}},
@@ -98,12 +182,24 @@ class ProjectGoalAttribution(unittest.TestCase):
         with self.assertRaisesRegex(JiraError, "ACCOUNTABILITY_MEJ_GOAL_AMBIGUOUS"):
             read._mej_project_goals(Jira(projects), {"MEJ-2", "MEJ-3"})
 
-    def test_other_link_types_and_unrelated_epics_do_not_establish_goals(self):
+    def test_other_link_types_cannot_assign_membership(self):
         projects = [{"key": "MEJ-147", "fields": {"issuelinks": [
             {"type": {"name": "Blocks"}, "outwardIssue": {"key": "MEJ-2"}},
             {"type": {"name": "Relates"}, "inwardIssue": {"key": "MEJ-999"}},
         ]}}]
-        self.assertEqual(read._mej_project_goals(Jira(projects), {"MEJ-2"}), {})
+        with self.assertRaisesRegex(JiraError, "ACCOUNTABILITY_MEJ_MEMBERSHIP_DRIFT"):
+            self.v2(Jira(projects))
+
+    def test_jfm_v1_count_unchanged_even_when_mej_v2_opted_in(self):
+        fake = Jira()
+        goals = GOALS + [{"key": "JFM-2", "person": "Jim", "lane": "Career"}]
+        counts = read.tally(fake, goals, FIRST, LAST, mej_metric_version="v2",
+                            frozen_membership=FROZEN)
+        self.assertEqual(counts, {"MEJ-2": [2, 4], "JFM-2": [1, 2]})
+
+    def test_unknown_kpi_version_is_blocked(self):
+        with self.assertRaisesRegex(JiraError, "ACCOUNTABILITY_MEJ_METRIC_VERSION_INVALID"):
+            read.tally(Jira(), GOALS, FIRST, LAST, mej_metric_version="v0")
 
 
 if __name__ == "__main__":
