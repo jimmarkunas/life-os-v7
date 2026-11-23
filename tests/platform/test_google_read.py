@@ -154,8 +154,10 @@ class Reads(unittest.TestCase):
             client.gmail_read("personal", "../x")
         self.assertEqual(raised.exception.reason, "bad_id")
         self.assertEqual(G._clean({"text": "short"})["truncated"], False)
-        with self.assertRaises(G.GoogleError):
-            G._clean({"text": "password = hunter2hunter2"})
+        out = G._clean({"text": "see https://x.example/a?token=abcdef123456 and password = hunter2hunter2", "snippet": "api_key: 0123456789abcdef", "headers": {"subject": "ok"}})
+        self.assertEqual((out["redacted"], out["headers"]), (3, {"subject": "ok"}))                                   # a secret-looking value is replaced, the rest is still returned
+        self.assertFalse(G.SECRET.search(json.dumps(out)))                                                            # so the gate's own output check finds nothing to refuse
+        self.assertNotIn("hunter2", json.dumps(out))
 
     def test_the_token_never_appears_in_an_error_or_a_result(self):
         client, _ = google(revoked=True)
