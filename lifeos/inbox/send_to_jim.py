@@ -17,7 +17,7 @@ FIELDS = {"from": "who is writing (an agent id or a person's name)", "subject": 
           "workspace": "Personal or Bytalos (default Personal)", "due": "optional date or date-time, ISO 8601", "link": "optional https link to the context (ticket, PR, page, thread)",
           "details": "optional short note (1,500 characters at most); never a secret or personal data", "key": "optional idempotency key: the same key never adds a second row"}
 TOOL = {"name": "send_to_jim", "description": "Put one item in Jim's Agent Inbox: something that needs his attention and is too small for a Jira ticket or a Todoist task. Never include secrets or personal data.",
-        "inputSchema": {"type": "object", "properties": {k: {"type": "string", "description": v} for k, v in FIELDS.items()}, "required": ["from", "subject"], "additionalProperties": False}}
+        "inputSchema": {"type": "object", "properties": {k: {"type": "string", "description": v} for k, v in FIELDS.items() if k != "from"}, "required": ["subject"], "additionalProperties": False}}
 
 
 def _client(env):
@@ -63,7 +63,13 @@ def governed(arguments, environ, client, access, facts, audit, now):
         tenant = TENANT.get(arguments.get("workspace") or "Personal")
         if tenant is None:
             raise mcp_access.AccessError("unknown_tenant")
-        out = mcp_access.call(access, who, tenant, "send_to_jim", "write", "agent-inbox", "notion", lambda: deliver(arguments, environ=environ, client=client, now=now), audit, now)
+        # A request's From is not identity. This server derives it from the one
+        # authenticated client row; a caller-supplied different From is refused.
+        sender = who["id"]
+        if arguments.get("from") not in (None, sender):
+            return {"ok": False, "reason": "from_spoofed"}
+        item = {**arguments, "from": sender}
+        out = mcp_access.call(access, who, tenant, "send_to_jim", "write", "agent-inbox", "notion", lambda: deliver(item, environ=environ, client=client, now=now), audit, now)
     except mcp_access.AccessError as error:
         return {"ok": False, "reason": str(error)}
     except Exception:                                                                       # noqa: BLE001  an unwritable receipt or any failure: no effect, a fixed word
