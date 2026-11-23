@@ -14,6 +14,8 @@ from zoneinfo import ZoneInfo
 
 CENTRAL = ZoneInfo("America/Chicago")
 WORKSPACES = {"Personal": "personal"}                      # Bytalos is a separate tenant and ungranted; TGP stays disabled (an unknown name is refused by the gate before this runs)
+TENANT = {"Personal": "personal", "Bytalos": "bytalos"}             # the gate decides which is granted (only Personal is); TGP and any other name are refused before anything runs
+WRITE = ("memory_store", "memory_correct", "memory_revoke")         # gate action write; recall is read
 PEER = "lifeos-memory"
 TEXT_MAX = 2000
 NOTICE = "This is memory, not a canonical fact. If Notion, Jira or GitHub holds the same fact, the canonical source wins."

@@ -185,8 +185,9 @@ class SeededGrants(unittest.TestCase):
         self.assertEqual(sorted({g.tool for g in access.grants}), ["agent_lookup", "buzz_capabilities", "buzz_publish", "buzz_read", "drive_read", "drive_search", "gmail_read", "gmail_search", "memory_correct", "memory_recall", "memory_revoke", "memory_store", "source_read"])
         writes = [g for g in access.grants if "write" in g.actions]                                                # Jim, Nov 22 2026 (option A): the only writes are today's Buzz publishing for the two chat clients, in the two communities each can write to
         self.assertEqual({(g.principal, g.tool, g.purpose, g.credential_ref) for g in writes},
-                         {(p, "buzz_publish", "buzz-publish", "buzz-scoped-member-key") for p in ("claude-chat", "claude-chat-bytalos", "chatgpt-chat", "chatgpt-chat-bytalos")})
-        self.assertEqual(len(writes), 4)                                                                           # and no inbox write
+                         {(p, "buzz_publish", "buzz-publish", "buzz-scoped-member-key") for p in ("claude-chat", "claude-chat-bytalos", "chatgpt-chat", "chatgpt-chat-bytalos")}
+                         | {(p, op, "synthetic-memory-test", "mcp-credential-" + p) for p in ("openclaw", "hermes-librarian") for op in ("memory_store", "memory_correct", "memory_revoke")})   # LIFE-868 (Jim, comment 13743): synthetic memory writes
+        self.assertEqual(len(writes), 10)                                                                           # and no inbox write
         self.assertFalse([c for c in CATALOG["capabilities"] if c["tool"] == "send_to_jim"])                       # and no catalog row implies a send_to_jim client
 
     def test_the_shipped_seed_lets_no_one_call_send_to_jim(self):

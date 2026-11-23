@@ -74,10 +74,7 @@ READ = {  # operation: (summary, parameters {name: (type, required)}, handler(re
 LOOKUP = {"fetchers": {}, "rows": None}                                             # LIFE-888: wired by main(); empty means source_unavailable / directory_unavailable, never a guess
 LOOKUP_OPS = ("source_read", "agent_lookup")                                         # operations that read a canonical source, not the relay: no Buzz identity is needed for them
 GOOGLE = {"creds": None, "opener": None}                                            # LIFE-875: wired by main(); None means not_configured, never a guess
-MEMORY = {"client": None, "now": None}                                               # LIFE-868: wired by main() from HONCHO_MEMORY_TOKEN; None means memory_not_configured, never a guess
-MEMORY_OPS = ("memory_store", "memory_recall", "memory_correct", "memory_revoke")     # governed shared memory on the retained Honcho: each its own gate tool, granted per client and workspace
-MEMORY_WRITE = ("memory_store", "memory_correct", "memory_revoke")
-MEMORY_TENANT = {"Personal": "personal", "Bytalos": "bytalos"}
+MEMORY, MEMORY_OPS = {"client": None, "now": None}, ("memory_store", "memory_recall", "memory_correct", "memory_revoke")   # LIFE-868: shared memory on the retained Honcho, each operation its own gate tool; MEMORY is wired by main() (memory_not_configured until HONCHO_MEMORY_TOKEN is set)
 GOOGLE_OPS = ("gmail_search", "gmail_read", "drive_search", "drive_read")           # each its own gate tool; the tenant is the named account's workspace, not a community
 ACCOUNT_TENANT = {"personal": "personal", "bytalos": "bytalos"}
 
@@ -243,13 +240,10 @@ def governed(who, name, args, msg, effect, receipts, access=None, now=None):
                 return _fail(msg, "access_denied", reason="account_required" if account is None else "unknown_account")
             tenant = ACCOUNT_TENANT[account]
         read_only = {**TOOLS, **FROZEN}[name][3] if name in {**TOOLS, **FROZEN} else False
-        if name == "buzz_read" and args.get("operation") in MEMORY_OPS:                   # LIFE-868: the named workspace is the tenant; an unknown one (TGP, a typo) is refused before anything runs
-            workspace = arguments.get("workspace")
-            if workspace not in MEMORY_TENANT:
-                return _fail(msg, "access_denied", reason="workspace_required" if workspace is None else "unknown_workspace")
-            tenant = MEMORY_TENANT[workspace]
+        if name == "buzz_read" and args.get("operation") in MEMORY_OPS and (tenant := memory_honcho.TENANT.get(arguments.get("workspace"))) is None:   # LIFE-868: the named workspace is the tenant; TGP or a typo is refused first
+            return _fail(msg, "access_denied", reason="unknown_workspace")
         gate_tool = args.get("operation") if name == "buzz_read" and args.get("operation") in (*LOOKUP_OPS, *GOOGLE_OPS, *MEMORY_OPS) else GATE_TOOL.get(name, name)   # LIFE-888: a lookup is its own gate tool, granted separately
-        action = "write" if gate_tool in MEMORY_WRITE else "read" if read_only else "write"
+        action = "write" if gate_tool in memory_honcho.WRITE else "read" if read_only else "write"
         out = mcp_access.call(access, client, tenant, gate_tool, action, tenant if gate_tool in GOOGLE_OPS else "honcho" if gate_tool in MEMORY_OPS else "buzz", "honcho" if gate_tool in MEMORY_OPS else "buzz", effect, receipts, now)
     except Exception as error:                                                                # noqa: BLE001  a fixed code only
         code = str(error) if type(error).__name__ == "AccessError" else "governance_unavailable"
