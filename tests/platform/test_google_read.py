@@ -12,6 +12,7 @@ from lifeos.platform import google_read as G
 
 ROOT = Path(__file__).resolve().parents[2]
 CREDS = {"client_id": "cid", "client_secret": "csecret-xxxxxxxx", "refresh_token": "rtoken-xxxxxxxx"}
+OWNERS = {"at-personal": "jimmarkunas@gmail.com", "at-bytalos": "jim@bytalos.com"}                         # the synthetic token of each account reports that account's address
 
 
 class FakeGoogle:
@@ -25,7 +26,11 @@ class FakeGoogle:
         if url == G.TOKEN_URL:
             if self.revoked:
                 raise urllib.error.HTTPError(url, 400, "bad", {}, io.BytesIO(b'{"error":"invalid_grant"}'))
-            return self._reply({"access_token": "at-123456789", "scope": self.scope})
+            refresh = urllib.parse.parse_qs(request.data.decode())["refresh_token"][0]
+            return self._reply({"access_token": "at-" + refresh, "scope": self.scope})
+        if url in G.WHO.values():                                                                  # who owns this token: the address of the account it was made for
+            email = OWNERS.get(request.get_header("Authorization", "").split(" ")[-1], "stranger@example.com")
+            return self._reply({"emailAddress": email} if "gmail" in url else {"user": {"emailAddress": email}})
         if "/messages?" in url:
             return self._reply({"messages": [{"id": "msg111111", "threadId": "thr222222"}]})
         if "/messages/" in url:
@@ -56,9 +61,13 @@ class FakeGoogle:
         return self._raw(json.dumps(body).encode())
 
 
+def creds_for(account, service):
+    return {**CREDS, "refresh_token": account}                                                  # the synthetic refresh token is the account name, so its access token reports that account
+
+
 def google(**kw):
     fake = FakeGoogle(**kw)
-    return G.Google(lambda account, service: CREDS, fake), fake
+    return G.Google(creds_for, fake), fake
 
 
 class Reads(unittest.TestCase):
@@ -73,7 +82,7 @@ class Reads(unittest.TestCase):
         self.assertIn("it%5C%27s", fake.requests[-1][1])                                                                                            # a quote in the query is escaped, not injected
         self.assertEqual(client.drive_read("bytalos", "file111111")["text"], "plain file")
         self.assertEqual(client.drive_read("bytalos", "docfile111")["text"], "doc text")                                                           # a Google Doc is exported as plain text
-        big = G.Google(lambda a, s: CREDS, FakeGoogle()).drive_read("personal", "file111111")
+        big = G.Google(creds_for, FakeGoogle()).drive_read("personal", "file111111")
         self.assertFalse(big["truncated"])
 
     def test_every_google_request_is_a_get_except_the_one_token_exchange(self):
@@ -109,6 +118,20 @@ class Reads(unittest.TestCase):
                 client.gmail_search("personal", "q")
             self.assertEqual(raised.exception.reason, reason)
 
+    def test_a_token_that_belongs_to_another_mailbox_is_wrong_account_and_no_data_is_read(self):
+        fake = FakeGoogle()
+        swapped = G.Google(lambda account, service: {**CREDS, "refresh_token": "bytalos" if account == "personal" else "personal"}, fake)
+        for call in (lambda: swapped.gmail_search("personal", "q"), lambda: swapped.drive_read("bytalos", "file111111")):
+            with self.assertRaises(G.GoogleError) as raised:
+                call()
+            self.assertEqual(raised.exception.reason, "wrong_account")
+        self.assertFalse([u for m, u, h in fake.requests if "/messages" in u or "/files" in u])                    # refused after the who-am-i check, before any data call
+        stranger = G.Google(lambda a, s: {**CREDS, "refresh_token": "nobody"}, FakeGoogle())
+        with self.assertRaises(G.GoogleError) as raised:
+            stranger.drive_search("personal", "q")
+        self.assertEqual(raised.exception.reason, "wrong_account")
+        self.assertEqual({G.OWNER_SHA256["personal"], G.OWNER_SHA256["bytalos"]} & {__import__("hashlib").sha256(e.encode()).hexdigest() for e in OWNERS.values()}, set(G.OWNER_SHA256.values()))
+
     def test_a_secret_in_a_body_is_refused_and_ids_are_validated(self):
         client, fake = google()
         with self.assertRaises(G.GoogleError) as raised:
@@ -125,7 +148,7 @@ class Reads(unittest.TestCase):
         except G.GoogleError as error:
             self.assertNotIn("rtoken", repr(error) + str(error))
         ok, _ = google()
-        self.assertNotIn("at-123456789", json.dumps(ok.gmail_search("personal", "q")))
+        self.assertNotIn("at-personal", json.dumps(ok.gmail_search("personal", "q")))
 
 
 if __name__ == "__main__":

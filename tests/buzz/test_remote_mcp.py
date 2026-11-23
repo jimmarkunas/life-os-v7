@@ -434,7 +434,7 @@ class Credentials(Server):
         fake = FakeGoogle()
         fp = __import__("lifeos.platform.authorization_gate", fromlist=["x"]).fingerprint
         self.start(access=self.access(no_identity=True))
-        creds = lambda account, service: {"client_id": "cid", "client_secret": "csecret-xxxxxxxx", "refresh_token": "rtoken-xxxxxxxx"}
+        creds = lambda account, service: {"client_id": "cid", "client_secret": "csecret-xxxxxxxx", "refresh_token": account}
         with mock.patch.dict(buzz_mcp.GOOGLE, {"creds": creds, "opener": fake}):
             lib = self.tok("hermes-librarian")
             for account in ("personal", "bytalos"):
@@ -461,7 +461,7 @@ class Credentials(Server):
         from tests.platform.test_google_read import FakeGoogle
         self.start(access=self.access(no_identity=True))
         lib = self.tok("hermes-librarian")
-        with mock.patch.dict(buzz_mcp.GOOGLE, {"creds": lambda a, s: {"client_id": "c", "client_secret": "s" * 10, "refresh_token": "r" * 10}, "opener": FakeGoogle(revoked=True)}):
+        with mock.patch.dict(buzz_mcp.GOOGLE, {"creds": lambda a, s: {"client_id": "c", "client_secret": "s" * 10, "refresh_token": a}, "opener": FakeGoogle(revoked=True)}):
             self.assertEqual(self.tool(lib, "buzz_read", operation="drive_search", arguments={"account": "bytalos", "query": "q"})[1]["error"], "consent_revoked")
         with mock.patch.dict(buzz_mcp.GOOGLE, {"creds": None, "opener": None}):
             self.assertEqual(self.tool(lib, "buzz_read", operation="gmail_search", arguments={"account": "personal", "query": "q"})[1]["error"], "not_configured")
