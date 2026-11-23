@@ -134,3 +134,8 @@ Expected interruption: the stateless Python service restarts in a few seconds (`
 
 **Rollback (verified the same way):** `sudo ln -sfn releases/a02c890fcbd4 /opt/lifeos-buzz-mcp/current && sudo systemctl restart lifeos-buzz-mcp`, then `systemctl is-active`, the 401 check, and one `buzz_capabilities` call from a chat client. Rolling back removes the gate (the pre-LIFE-865 behavior returns). The new release directory stays for inspection; remove it only with Jim's yes.
 
+
+
+## Local client credentials (LIFE-873)
+
+Mac Claude Code and Oracle Claude Code (and later one Hermes profile and OpenClaw) authenticate to this same service with a scoped bearer credential `lm1.<id>.<secret>` instead of OAuth. The secret is 256 random bits made on the Mac and kept in the Mac Keychain (service `lifeos-mcp-<id>`, account `lifeos-mcp`); `mcp_access.json` `credentials` holds only the SHA-256 of the secret, the expiry (2027-02-22), `revoked`, the existing Buzz identity the client reads as (`claude`, or null for capabilities only) and its communities. A bad, unknown, revoked or expired credential is one 401. The credential row names the client; no header, argument or environment variable is read. Read scope only, Personal only; the gate still decides every call (`no_grant` for anything outside the client's grants), and `tools/list` shows only the tools the client holds a grant for. Mac reaches the service through `ssh -L` to loopback 8787 on `opc@lifeos-edge-01`; Oracle Claude Code runs as `ubuntu` over loopback with a credential supplied per session from the Mac. Revoke: set `revoked` true and install a release.

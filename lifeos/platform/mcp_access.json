@@ -1,6 +1,6 @@
 {
  "version": 1,
- "note": "LIFE-865: who may call the two LIFE OS MCP servers (lifeos/buzz/mcp.py, lifeos.inbox.send_to_jim --mcp). `clients` map one trusted fact (the verified OAuth client, or the OS user of a stdio server) to a client id; a caller-supplied id, header, argument or environment variable is never read. `grants` are authorization_gate.Grant rows seeded only with what each client does today (reads for the two chat clients; no `send_to_jim` grant, because no client has that MCP server configured), each with an expiry; revoke = set `revoked` true. `policy` is the access_policy document they are checked against; its keys are fingerprints of the client ids, not secrets. Credentials are named, never held. Nothing here is live-proven.",
+ "note": "LIFE-865: who may call the two LIFE OS MCP servers (lifeos/buzz/mcp.py, lifeos.inbox.send_to_jim --mcp). `clients` map one trusted fact (the verified OAuth client, or the OS user of a stdio server) to a client id; a caller-supplied id, header, argument or environment variable is never read. `grants` are authorization_gate.Grant rows seeded only with what each client does today (reads for the two chat clients; no `send_to_jim` grant, because no client has that MCP server configured), each with an expiry; revoke = set `revoked` true. `policy` is the access_policy document they are checked against; its keys are fingerprints of the client ids, not secrets. Credentials are named, never held. Nothing here is live-proven. LIFE-873: `credentials` are scoped `lm1.<id>.<secret>` bearer credentials (Jim, Nov 22 2026, comments 13708): the service holds only the SHA-256 of the secret, never the secret; each names the one client it is and the existing Buzz identity it reads as (null = capabilities only). Read grants only; Personal only; expire 2027-02-22; revoke = set `revoked` true.",
  "tool_purpose": {
   "buzz_capabilities": "buzz-read",
   "buzz_read": "buzz-read",
@@ -26,6 +26,12 @@
    "e3004cee2bee990add283ff8a7e99517a13a3cf51e077b1e239ea8dc7b6356f6": {
     "buzz": "write",
     "notion": "write"
+   },
+   "2c8c6ccd88c3c2845a6d68fce3cfaa408e5aaebf35327550fc9d040177a53772": {
+    "buzz": "read"
+   },
+   "5dbd6b29730a3a8a2ee16220a6565743559805e532145389d436b5d4bce512e5": {
+    "buzz": "read"
    }
   }
  },
@@ -53,6 +59,22 @@
     "os_user": "jimmarkunas"
    },
    "policy_key": "e3004cee2bee990add283ff8a7e99517a13a3cf51e077b1e239ea8dc7b6356f6"
+  },
+  {
+   "id": "mac-claude-code",
+   "transport": "http",
+   "facts": {
+    "credential": "mac-claude-code"
+   },
+   "policy_key": "2c8c6ccd88c3c2845a6d68fce3cfaa408e5aaebf35327550fc9d040177a53772"
+  },
+  {
+   "id": "oracle-claude-code",
+   "transport": "http",
+   "facts": {
+    "credential": "oracle-claude-code"
+   },
+   "policy_key": "5dbd6b29730a3a8a2ee16220a6565743559805e532145389d436b5d4bce512e5"
   }
  ],
  "grants": [
@@ -223,6 +245,84 @@
    "credential_ref": "buzz-scoped-member-key",
    "expires": "2027-02-22",
    "revoked": false
+  },
+  {
+   "id": "g-mac-claude-code-personal-buzz_capabilities",
+   "principal": "mac-claude-code",
+   "tenant": "personal",
+   "account": "buzz",
+   "tool": "buzz_capabilities",
+   "purpose": "buzz-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "mcp-credential-mac-claude-code",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-mac-claude-code-personal-buzz_read",
+   "principal": "mac-claude-code",
+   "tenant": "personal",
+   "account": "buzz",
+   "tool": "buzz_read",
+   "purpose": "buzz-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "mcp-credential-mac-claude-code",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-oracle-claude-code-personal-buzz_capabilities",
+   "principal": "oracle-claude-code",
+   "tenant": "personal",
+   "account": "buzz",
+   "tool": "buzz_capabilities",
+   "purpose": "buzz-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "mcp-credential-oracle-claude-code",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-oracle-claude-code-personal-buzz_read",
+   "principal": "oracle-claude-code",
+   "tenant": "personal",
+   "account": "buzz",
+   "tool": "buzz_read",
+   "purpose": "buzz-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "mcp-credential-oracle-claude-code",
+   "expires": "2027-02-22",
+   "revoked": false
+  }
+ ],
+ "credentials": [
+  {
+   "id": "mac-claude-code",
+   "sha256": "cc56b2beb0e0129858c47d8be9af3d7be7c18a1eab8333cd1b1d4ca34b1da740",
+   "expires": "2027-02-22",
+   "revoked": false,
+   "buzz_identity": "claude",
+   "communities": [
+    "life-os"
+   ]
+  },
+  {
+   "id": "oracle-claude-code",
+   "sha256": "49a2c6b5f6568d98555bbaa567794f1c263fb4728926126f3f7b6dd754219c37",
+   "expires": "2027-02-22",
+   "revoked": false,
+   "buzz_identity": "claude",
+   "communities": [
+    "life-os"
+   ]
   }
  ]
 }
