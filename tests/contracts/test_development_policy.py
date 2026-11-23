@@ -50,7 +50,7 @@ class OneFilePolicy(unittest.TestCase):
         self.assertIn("a job reusing a secret or Bitwarden name its workflow already loads", POLICY)
         self.assertIn("**Check before claiming:**", POLICY)
         self.assertIn("**One ticket at a time** per session", POLICY)
-        self.assertIn("for at most 24 hours; a rare event (missed window, outage) is a watch note, not a blocker.", POLICY)
+        self.assertIn("a natural run never gates a build ticket's Done; its UAT ticket checks it", POLICY)             # LIFE-929 replaced the 24-hour natural-run gate
         self.assertIn("only with label `needs-uat` or when Jim is the real user of the outcome", POLICY)
 
     def test_done_needs_outcome_proof_and_one_natural_run_rule(self):
@@ -168,6 +168,26 @@ class AgentNames(unittest.TestCase):
             self.assertIn(must, text)
         self.assertNotIn("Mac and Oracle Claude Code", POLICY)
         self.assertNotIn("Mac Claude Code is the exclusive writer", POLICY)
+
+
+class CloseWhenShipped(unittest.TestCase):
+    """Jim, Nov 23 2026 (LIFE-929, "UAT rule yes"): a build ticket is Done when merged, live and first-proved; every wait becomes a `UAT for LIFE-nnn` Task under the Bug Epic."""
+
+    def test_the_policy_states_the_rule(self):
+        for phrase in ("a build ticket is Done once it is merged on same-head green CI, live, and first-proved", "UAT for LIFE-nnn", "LIFE-615", "label `uat`", "not before <time> CT", "Not before (CT)",
+                       "A merged PR on green is not Done by itself.", "Agent Go", "a successor starts once its predecessor is Done"):
+            self.assertIn(phrase, POLICY, phrase)
+        self.assertNotIn("gates Done only when the ticket's Done when names it", POLICY)                # the old 24-hour natural-run gate is gone
+
+    def test_the_boot_file_states_the_rule_and_no_longer_asks_for_every_done_when_line_before_done(self):
+        text = (ROOT / "CLAUDE.md").read_text()
+        for phrase in ("merged, live and first-proved", "UAT for LIFE-nnn", "LIFE-615", "`uat`", "Not before (CT)", "If it fails: file a Bug under LIFE-615", "a successor starts once its predecessor is Done"):
+            self.assertIn(phrase, text, phrase)
+        self.assertNotIn("prove every Done when line on the delivered outcome (Agent UAT), then move the ticket to Done", text)
+        self.assertNotIn("gets a watch note, not your session", text)
+
+    def test_the_fixture_catches_a_policy_without_the_rule(self):                                        # negative control: the check can fail
+        self.assertNotIn("UAT for LIFE-nnn", "- **Agent UAT:** after merge, the agent checks the delivered outcome. A merged PR on green is not Done by itself.")
 
 
 class NeverIdleOnAClock(unittest.TestCase):
