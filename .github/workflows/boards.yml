@@ -1,25 +1,11 @@
 name: boards
 run-name: boards ${{ github.event_name }}${{ inputs.auto && ' auto' || '' }}     # the gate counts a run that ends in ` auto` (started by the hourly tick) as holding its window; a manual run holds nothing
-# LIFE-854 (Jim, Nov 21 2026, comment 13632): employer-board crawling in its own four daily windows, out of the hourly tick: 1:00 AM, 7:00 AM, 1:00 PM and 7:00 PM Central.
-# Daylight-saving safe: two UTC cron lines per window (standard time, then daylight time). One of the two opens the window; the other lands an hour off and is skipped as a duplicate by the `window` job
-# (lifeos.platform.boards_window), which also turns a window whose predecessor never finished into a catch-up (leftovers first: the board list is read oldest-due first). GitHub drops and delays scheduled runs;
-# the gate settles it from this workflow's own run history, and an unreadable history never stops a window.
-# GitHub's own cron never fired for this workflow (Nov 22 2026: no run at 12, 13 or 18 UTC), so the hourly tick (which the Oracle ticker starts reliably) starts the window: `boards_window dispatch` in hourly.yml's prep job,
-# which already holds actions: write for domains.yml. The cron lines stay as a backup. An auto run behaves like a scheduled one: the Bitwarden LIVE and V7_PIPELINE switches decide, not the manual inputs.
-# Window: up to BOARDS_PER_RUN (1,800) boards, step timeout 15 minutes. Catch-up: BOARDS_CATCHUP_PER_RUN (2,900), step timeout 25 minutes. The stage is the one the hourly tick ran (`lifeos.run boards`):
-# same reader, same provider protections (4 workers, 3 answers of 429 stop an ATS for the run). Each window prints one receipt (counts only) and writes it to the job summary.
-# Scheduled runs are live only when the Bitwarden switch LIVE is true, and parked when V7_PIPELINE is not true (the same switches the tick follows). Manual runs are a dry run unless "Actually write" is ticked.
-# Rollback: revert the PR; the stage returns to the hourly tick.
+# LIFE-854 / LIFE-905 (Jim, Nov 23 2026): the four daily employer-board windows (1:00 AM, 7:00 AM, 1:00 PM, 7:00 PM Central) are RETIRED. The hourly tick crawls the due boards (`boards-tick`, switch BOARDS_IN_TICK, docs/platform/boards-in-tick.md)
+# after three clean natural ticks and a rollback proof (LIFE-905 comments 13881, 13904, 13914, 13946). This workflow has no schedule now and the hourly tick no longer dispatches it; it stays as the MANUAL run (a person starts it; a manual run always
+# crawls, a dry run unless "Actually write" is set) and keeps its `window` gate job, which still stands down for an automatic run while the tick owns the boards. Window: up to BOARDS_PER_RUN (1,800) boards, step timeout 15 minutes. Catch-up:
+# BOARDS_CATCHUP_PER_RUN (2,900), step timeout 25 minutes. The stage is the same reader the tick runs (`lifeos.run boards`), same provider protections (4 workers, 3 answers of 429 stop an ATS for the run). Each run prints one receipt (counts only).
+# Rollback: revert the LIFE-905 retire PR (it restores the cron lines and the tick's dispatch step); the windows then resume from the same state tables.
 on:
-  schedule:
-    - cron: "0 0 * * *"          # 7:00 PM CDT (daylight time)
-    - cron: "0 1 * * *"          # 7:00 PM CST (standard time)
-    - cron: "0 6 * * *"          # 1:00 AM CDT
-    - cron: "0 7 * * *"          # 1:00 AM CST
-    - cron: "0 12 * * *"         # 7:00 AM CDT
-    - cron: "0 13 * * *"         # 7:00 AM CST
-    - cron: "0 18 * * *"         # 1:00 PM CDT
-    - cron: "0 19 * * *"         # 1:00 PM CST
   workflow_dispatch:
     inputs:
       mode:
