@@ -59,7 +59,7 @@ class FakeClient:
         if method == "POST" and path == "/pages":
             props = body["properties"]
             self.rows.append({"id": f"row{len(self.rows)}", "status": props["Status"]["select"]["name"], "urgency": props["Urgency"]["select"]["name"], "key": props["Key"]["rich_text"][0]["text"]["content"],
-                              "from": props["From"]["rich_text"][0]["text"]["content"], "subject": props["Subject"]["title"][0]["text"]["content"], "created": NOW})
+                              "from": props["From"]["rich_text"][0]["text"]["content"], "properties": {"From": {"rich_text": [{"plain_text": props["From"]["rich_text"][0]["text"]["content"]}]}}, "subject": props["Subject"]["title"][0]["text"]["content"], "created": NOW})
         elif method == "PATCH" and body.get("properties"):
             row = next(r for r in self.rows if f"/pages/{r['id']}" == path)
             props = body["properties"]
@@ -159,6 +159,9 @@ class Sending(unittest.TestCase):
         self.assertEqual(agent_inbox.send(client, ok_item(key="k1", subject="different words"), now=NOW), {"updated": 1})
         self.assertEqual((len(client.rows), client.rows[0]["subject"]), (1, "different words"))
         self.assertEqual([w[:2] for w in client.writes], [("POST", "/pages"), ("PATCH", "/pages/row0")])
+        with self.assertRaises(InboxError) as caught:
+            agent_inbox.send(client, ok_item(**{"from": "other-agent"}, key="k1"), now=NOW)
+        self.assertEqual(caught.exception.reason, "key_other_sender")
 
     def test_a_sender_over_the_hourly_rate_is_refused(self):
         client = FakeClient()
@@ -258,6 +261,15 @@ class Tool(unittest.TestCase):
         self.assertEqual(replies[3]["error"]["message"], "method_not_found")
         self.assertEqual((len(client.rows), client.rows[0]["from"]), (1, "claude-code-mac"))
         self.assertEqual([(r["outcome"], r["reason"]) for r in receipts], [("allow", "ok"), ("ok", "ok")])           # LIFE-865: the gate's receipt first, then the result
+
+
+class SpoofedFrom(unittest.TestCase):
+    def test_mcp_refuses_forged_from_without_a_provider_call(self):
+        client, receipts = FakeClient(), []
+        result = send_to_jim.governed(ok_item(**{"from": "another-agent"}), {}, client, open_access(), {"os_user": "jimmarkunas"}, receipts.append, NOW)
+        self.assertEqual(result, {"ok": False, "reason": "from_spoofed"})
+        self.assertEqual(client.writes, [])
+        self.assertEqual([(r["outcome"], r["reason"]) for r in receipts], [("deny", "from_spoofed")])
 
 
 class Stage(unittest.TestCase):

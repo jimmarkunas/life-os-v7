@@ -153,6 +153,10 @@ def send(client, item, now=None, source=None):
         # target or reset Jim's own Status when an agent resubmits an item.
         if len(matched) != 1 or not matched[0].get("id"):
             raise InboxError("duplicate_key_ambiguous")
+        rich = matched[0].get("properties", {}).get("From", {}).get("rich_text", [])
+        owner = "".join(part.get("plain_text") or part.get("text", {}).get("content", "") for part in rich)
+        if owner != item["from"]:
+            raise InboxError("key_other_sender")
         props = properties(item)
         props.pop("Status")
         client.call_once("PATCH", f"/pages/{matched[0]['id']}", {"properties": props})
