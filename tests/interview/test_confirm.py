@@ -37,6 +37,11 @@ def snapshot(client, child):
 
 
 class Confirm(unittest.TestCase):
+
+    def setUp(self):
+        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        _claims, _stop = claim_store()
+        self.addCleanup(_stop)
     def test_the_pending_round_is_dated_in_place_with_its_event_reference_and_nothing_else_is_created(self):
         client, parent, child = pending_round()
         posts, notes = len(client.posts), notion.protected_snapshot(client, child, "round")
@@ -112,6 +117,11 @@ class Confirm(unittest.TestCase):
 
 
 class Reschedule(unittest.TestCase):
+
+    def setUp(self):
+        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        _claims, _stop = claim_store()
+        self.addCleanup(_stop)
     def dated(self):
         client, parent, child = pending_round()
         move(client, child)
@@ -135,6 +145,11 @@ class Reschedule(unittest.TestCase):
 
 
 class Cancel(unittest.TestCase):
+
+    def setUp(self):
+        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        _claims, _stop = claim_store()
+        self.addCleanup(_stop)
     def test_a_cancelled_event_marks_its_round_cancelled_and_keeps_its_date_and_identity(self):
         client, parent, child = pending_round()
         move(client, child)
@@ -160,6 +175,11 @@ class Cancel(unittest.TestCase):
 
 
 class Life43(unittest.TestCase):
+
+    def setUp(self):
+        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        _claims, _stop = claim_store()
+        self.addCleanup(_stop)
     def test_every_state_reads_as_the_same_valid_machine_identity(self):
         client, parent, child = pending_round()
         for step in ({}, {"date": LATER}, {"date": LATER, "cancelled": True}):

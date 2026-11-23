@@ -17,7 +17,7 @@ from lifeos.jobs import classify as job_site, identity, lanes, ledger as jobs_le
 from lifeos.interview import acceptance, create, notion, stage, view
 from lifeos.interview.models import Ownership, ParentQuery, RoundQuery
 from lifeos.interview.progression import Invite, progress
-from lifeos.platform import mail
+from lifeos.platform import ledger_claim, mail
 from lifeos.platform.gcal import GoogleCalendar
 from lifeos.platform.gmail import Gmail, GmailError
 from lifeos.platform.names import same_company, same_role, split_title, tokens
@@ -175,13 +175,23 @@ def lead_row(writer, company, role, key, url, today):
     -> 'created' | 'present'; a wrong target, an ambiguous key or a read-back that differs raises NotionError."""
     if jobs_ledger.verify(writer) != jobs_ledger.OK:
         raise NotionError("lead_row_target")
+    claimant = ledger_claim.who("lead")
+    state, _ = ledger_claim.claim(key, claimant)                  # LIFE-903: no create without the cross-process claim on this Stable Job Key
+    if state == ledger_claim.CREATED:
+        return "present"
+    if state == ledger_claim.HELD:                                              # adopt only: a held key may already have its page (a create that crashed after Notion accepted it)
+        if publish.existing_page(writer, key):
+            return "present"
+        raise NotionError("lead_row_held")                                      # another creator has the key, or an earlier create is unresolved: no row is made, so no page is queued; a fixed code
     if publish.existing_page(writer, key):
+        ledger_claim.release(key, claimant)
         return "present"
     page = writer.create(publish.properties({"title": role, "company": company, "url": url, "provider": "Recruiter outreach", "lane": LEAD_LANE, "key": key, "first_seen": today,
                                              "eligible": [LEAD_LANE], "admission": lanes.ADMIT}), [])
     props = writer.call("GET", f"/pages/{page}").get("properties") or {}
     if view._plain(props.get("Stable Job Key")) != key or ((props.get("Visible Lane") or {}).get("select") or {}).get("name") != LEAD_LANE:
-        raise NotionError("lead_row_readback")
+        raise NotionError("lead_row_readback")                                  # the claim stays until the lease passes: an unverified create is settled by read-back, never repeated
+    ledger_claim.release(key, claimant)
     return "created"
 
 

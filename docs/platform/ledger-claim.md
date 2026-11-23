@@ -1,0 +1,11 @@
+# Ledger creation claim (LIFE-903)
+
+Every path that can create a Job Ledger row (publish, the Interview lead row, the Interview opportunity row; manual jobs reach the Ledger through publish) takes the same claim first: `lifeos/platform/ledger_claim.py`.
+
+- **Why:** Notion has no unique constraint, so lookup-then-create can race. The store has one: `v7_jobs.dedupe_key` is UNIQUE, and `UPDATE ... WHERE dedupe_key=? AND notion_page_id IS NULL AND (claim empty or older than 15 minutes)` changes exactly one row for exactly one caller (InnoDB row lock). Jim approved this design (LIFE-903 comment 13809, D1, Nov 22 2026).
+- **Columns:** `ledger_claim_by VARCHAR(64) NULL`, `ledger_claim_at DATETIME NULL` on `v7_jobs`, added through `store.COLUMNS` (additive). A key with no job row (a lead found by requisition, an Interview row found by company and role) gets a `LEDGER` placeholder row; no stage picks that status.
+- **Protocol:** WON: read the Ledger by Stable Job Key (authoritative), adopt a page that is there, else create, read back, release (publish also records the page id). HELD: adopt-only, never create. CREATED: the page id is recorded, adopt it. A create that timed out or lost its answer keeps the claim for 15 minutes; after that the next winner reads by key first. An ambiguous create is never retried blindly.
+- **What it does not do:** it does not delete, merge or rewrite any row, and it does not touch Notion's schema. Cross-key twins (two keys, one opening) are handled by `publish.same_opening` (a short title only on a proven equal ATS vacancy id) and by finalize (a DUPLICATE mail closes only against a verified twin).
+- **Receipt (publish):** `claim_won`, `claim_held`, `claim_readbacks` beside `created` and `duplicate`; the Interview step reports `claim: held | unavailable | unreadable` when it creates nothing.
+- **Rollback:** revert the PR (the columns stay, unused), then if wanted: `ALTER TABLE v7_jobs DROP COLUMN ledger_claim_by, DROP COLUMN ledger_claim_at`. Nothing else changes.
+- **Proof limits:** the race test uses real OS processes on one on-disk sqlite file (the production SQL, translated); production is MariaDB/InnoDB, whose row-locked conditional UPDATE has the same single-winner behavior, but CI does not run MariaDB.

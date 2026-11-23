@@ -53,6 +53,11 @@ def depth(items, level=0):
 
 
 class OpportunityTemplateTests(unittest.TestCase):
+
+    def setUp(self):
+        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        _claims, _stop = claim_store()
+        self.addCleanup(_stop)
     def test_jim_notes_region_runs_to_the_end_and_rounds_never_touch_it(self):
         client = WritableFake()
         parent_id = machine_parent(client)
@@ -88,6 +93,11 @@ class OpportunityTemplateTests(unittest.TestCase):
 
 class LegacyRoundTests(unittest.TestCase):
     """Jim (Oct 21): for the pursuits he named, a hand-made round page's title ("Interview 1: Name (9/10/26)") is explicit evidence of its number and date."""
+
+    def setUp(self):
+        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        _claims, _stop = claim_store()
+        self.addCleanup(_stop)
     def client(self):
         client = AdoptFake()
         client.pages["kid1"] = page("Interview 1: Pat Example (9/10/26)", parent="human")
@@ -115,6 +125,11 @@ class LegacyRoundTests(unittest.TestCase):
 
 
 class AdoptTests(unittest.TestCase):
+
+    def setUp(self):
+        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        _claims, _stop = claim_store()
+        self.addCleanup(_stop)
     def test_dry_run_reports_and_never_writes(self):
         client = AdoptFake()
         self.assertEqual(notion.ownership(client, "human", "opportunity"), Ownership.ADOPT)
@@ -239,6 +254,11 @@ def legacy(client):
 
 
 class UpgradeTests(unittest.TestCase):
+
+    def setUp(self):
+        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        _claims, _stop = claim_store()
+        self.addCleanup(_stop)
     def test_dry_run_then_one_upgrade_then_the_existing_round_matches(self):
         client = AdoptFake()
         original = legacy(client)

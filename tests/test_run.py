@@ -250,7 +250,7 @@ class PublishThroughTheRealStageTests(unittest.TestCase):
         out, err = io.StringIO(), io.StringIO()
         with patch.object(publish, "Client", Client), patch.object(publish.ledger, "verify", return_value=publish.ledger.OK), \
                 patch.object(publish.store, "connect", lambda: self.Connection(rows, writes)), patch.object(publish.store, "ensure_schema", lambda c: None), \
-                patch.object(fit_sync, "run", return_value={"due": 0, "failed": 0, "synced": 0}), \
+                patch.object(fit_sync, "run", return_value={"due": 0, "failed": 0, "synced": 0}), patch.object(publish.ledger_claim, "claim", lambda *a, **k: ("won", None)), \
                 patch.object(readback, "run", return_value={"checked": 1, "failed": 0, "verified": 1}), patch.object(publish.body, "fill", return_value=0), \
                 contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             code = run.main(["publish", "--live"])

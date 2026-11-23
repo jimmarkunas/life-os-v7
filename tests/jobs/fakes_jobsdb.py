@@ -43,10 +43,10 @@ class JobsCursor(Cursor):
 
 
 class JobsDB(MySQLite):
-    def __init__(self):
+    def __init__(self, path=":memory:"):
         super().__init__()
         self.raw.close()                                                       # the base class opened a plain connection; this one parses column types
-        self.raw = sqlite3.connect(":memory:", isolation_level=None, detect_types=sqlite3.PARSE_DECLTYPES, check_same_thread=False)
+        self.raw = sqlite3.connect(path, timeout=60, isolation_level=None, detect_types=sqlite3.PARSE_DECLTYPES, check_same_thread=False)      # LIFE-903: a path lets two processes share one store file
         self.raw.create_function("IF", 3, lambda cond, a, b: a if cond else b)
         self.raw.create_function("UTC_TIMESTAMP", 0, lambda: datetime.now(timezone.utc).replace(tzinfo=None).isoformat(" "))      # the MySQL functions the stages' statements call
         self.raw.create_function("HOUR", 1, lambda value: datetime.fromisoformat(str(value)).hour if value else None)
@@ -75,3 +75,13 @@ class JobsDB(MySQLite):
 
     def insert(self, table, **columns):
         self.raw.execute(f"INSERT INTO {table} ({', '.join(columns)}) VALUES ({', '.join('?' * len(columns))})", tuple(columns.values()))
+
+
+def claim_store():
+    """LIFE-903: every Ledger creator takes its claim in the store (lifeos.platform.ledger_claim). -> (the in-memory store, a stop function) with that one seam pointed at it; call stop() in tearDown or tearDownModule."""
+    from unittest import mock
+    from lifeos.platform import ledger_claim
+    db = JobsDB()
+    patcher = mock.patch.object(ledger_claim.db, "connect", lambda: db)
+    patcher.start()
+    return db, patcher.stop

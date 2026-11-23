@@ -28,6 +28,11 @@ def run(client, query=ROUND, live=True, pursuit=PURSUIT):
 
 
 class FindOrCreateRow(unittest.TestCase):
+
+    def setUp(self):
+        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        _claims, _stop = claim_store()
+        self.addCleanup(_stop)
     def test_no_row_gets_exactly_one_manual_row_and_a_replay_creates_nothing(self):          # GWT-IC-2
         client = no_container(WritableFake())
         result = run(client)
