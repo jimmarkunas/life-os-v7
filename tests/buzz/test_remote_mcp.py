@@ -392,6 +392,41 @@ class Credentials(Server):
         status, out = self.tool(self.tok("oracle-claude-code"), "buzz_read", operation="list_channels", community="life-os")
         self.assertEqual((status, out["error"]), (200, "client_identity_not_configured"))
 
+    def test_source_read_and_agent_lookup_are_their_own_gate_tools_for_every_proved_client_and_not_for_the_chat_clients(self):
+        """LIFE-888 (Jim, Nov 22 2026, comment 13735): the two lookups are granted to the four proved clients only; no Buzz identity or relay is needed; the chat clients are refused at the gate."""
+        from datetime import datetime, timedelta
+        from unittest import mock
+        from lifeos.platform import agent_directory
+        from tests.platform import agent_directory_fixture as F
+        fp = __import__("lifeos.platform.authorization_gate", fromlist=["x"]).fingerprint
+        now = datetime(2026, 11, 16, 12, 0, tzinfo=agent_directory.CENTRAL)
+        github = lambda path, ref: {"commit": "a" * 40, "last_change": "b" * 40, "blob": "c" * 40, "modified": now - timedelta(days=1), "text": "policy text"}
+        self.start(access=self.access(no_identity=True))
+        with mock.patch.dict(buzz_mcp.LOOKUP, {"fetchers": {"github": github}, "rows": lambda: F.rows(), "now": lambda: now}):
+            for cid in self.SECRETS:
+                status, out = self.tool(self.tok(cid), "buzz_read", operation="source_read", community="life-os", arguments={"source": "github", "path": "AGENTS.md"})
+                self.assertEqual((status, out["ok"], out["data"]["revision"]["commit_sha"], out["data"]["freshness"]), (200, True, "a" * 40, "fresh"), cid)
+                allow = self.receipts[-2]
+                self.assertEqual((allow["tool"], allow["purpose"], allow["outcome"], allow["principal_fp"]), ("source_read", "source-read", "allow", fp(cid)))
+                status, out = self.tool(self.tok(cid), "buzz_read", operation="agent_lookup", community="life-os", arguments={"agent_id": "bot_hermes_claude-hermes"})
+                self.assertEqual((status, out["ok"], out["data"]["status"], out["data"]["authorizes"]), (200, True, "configured-untested", []), cid)
+                self.assertEqual((self.receipts[-2]["tool"], self.receipts[-2]["purpose"]), ("agent_lookup", "agent-lookup"))
+            status, out = self.tool(self.tok(), "buzz_read", operation="source_read", community="life-os", arguments={"source": "github", "path": "AGENTS.md", "max_age_seconds": 60})
+            self.assertEqual((status, out["error"]), (200, "stale_source"))                                                                       # the live refusal's shape: fixed reason, after the gate allowed it
+            status, out = self.tool(self.tok(), "buzz_read", operation="source_read", community="life-os", arguments={"source": "jira"})
+            self.assertEqual(out["error"], "unknown_source")
+            before = len(self.receipts)
+            status, out = self.tool(token(sub="user-claude"), "buzz_read", operation="source_read", community="life-os", arguments={"source": "github", "path": "AGENTS.md"})
+            self.assertEqual((out["error"], out["reason"], self.receipts[-1]["outcome"]), ("access_denied", "catalog_unknown_capability", "deny"))      # chat clients hold no lookup grant
+            self.assertEqual(len(self.receipts), before + 1)
+
+    def test_an_unwired_lookup_says_so_with_a_fixed_reason(self):
+        from unittest import mock
+        self.start(access=self.access())
+        with mock.patch.dict(buzz_mcp.LOOKUP, {"fetchers": {}, "rows": None}):
+            self.assertEqual(self.tool(self.tok(), "buzz_read", operation="source_read", community="life-os", arguments={"source": "notion", "page_id": "[removed]"})[1]["error"], "source_unavailable")
+            self.assertEqual(self.tool(self.tok(), "buzz_read", operation="agent_lookup", community="life-os", arguments={"agent_id": "bot_hermes_claude-hermes"})[1]["error"], "directory_unavailable")
+
     def test_hermes_librarian_ships_capabilities_only_like_openclaw_and_is_its_own_identity(self):
         self.start(access=self.access())
         tok = self.tok("hermes-librarian")
