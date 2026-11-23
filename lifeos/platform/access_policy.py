@@ -10,8 +10,8 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 LEVELS = ("off", "read", "write")
-SERVICES = ("jira", "notion", "github", "gmail", "drive", "calendar", "buzz")                # gmail, drive and calendar added Nov 9 (Jim, LIFE-374)
-CAP = {"jira": "read", "notion": "write", "github": "read", "gmail": "read", "drive": "read", "calendar": "read", "buzz": "write"}       # LIFE-865: buzz is the LIFE OS Buzz MCP; the most any agent can get in v1 (Jim, Nov 8; read only for the new three)
+SERVICES = ("jira", "notion", "github", "gmail", "drive", "calendar", "buzz", "honcho")                # LIFE-868: honcho is the retained shared-memory service (store, recall, correct, revoke), write at most; gmail, drive and calendar added Nov 9 (Jim, LIFE-374)
+CAP = {"jira": "read", "notion": "write", "github": "read", "gmail": "read", "drive": "read", "calendar": "read", "buzz": "write", "honcho": "write"}       # LIFE-865: buzz is the LIFE OS Buzz MCP; the most any agent can get in v1 (Jim, Nov 8; read only for the new three)
 KINDS = ("read", "write", "delete", "bulk")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 BULK_DEFAULT = 10

@@ -11,7 +11,11 @@
   "gmail_search": "governed-google-read",
   "gmail_read": "governed-google-read",
   "drive_search": "governed-google-read",
-  "drive_read": "governed-google-read"
+  "drive_read": "governed-google-read",
+  "memory_store": "synthetic-memory-test",
+  "memory_recall": "synthetic-memory-test",
+  "memory_correct": "synthetic-memory-test",
+  "memory_revoke": "synthetic-memory-test"
  },
  "communities": {
   "life-os": "personal",
@@ -40,10 +44,12 @@
     "buzz": "read"
    },
    "2b7ba37fbdfcc2839223417b879d835df0eb9b51d886d6051bb5043694028d6f": {
-    "buzz": "read"
+    "buzz": "read",
+    "honcho": "write"
    },
    "5a10b1e50b771566e61f818b437d3224927e5bf2798b4157cbbeba420309e1fa": {
-    "buzz": "read"
+    "buzz": "read",
+    "honcho": "write"
    }
   }
  },
@@ -608,6 +614,118 @@
    ],
    "credential_ref": "google-read-bytalos-drive",
    "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-openclaw-personal-memory_store",
+   "principal": "openclaw",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_store",
+   "purpose": "synthetic-memory-test",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "mcp-credential-openclaw",
+   "expires": "2026-12-05",
+   "revoked": false
+  },
+  {
+   "id": "g-openclaw-personal-memory_recall",
+   "principal": "openclaw",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_recall",
+   "purpose": "synthetic-memory-test",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "mcp-credential-openclaw",
+   "expires": "2026-12-05",
+   "revoked": false
+  },
+  {
+   "id": "g-openclaw-personal-memory_correct",
+   "principal": "openclaw",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_correct",
+   "purpose": "synthetic-memory-test",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "mcp-credential-openclaw",
+   "expires": "2026-12-05",
+   "revoked": false
+  },
+  {
+   "id": "g-openclaw-personal-memory_revoke",
+   "principal": "openclaw",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_revoke",
+   "purpose": "synthetic-memory-test",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "mcp-credential-openclaw",
+   "expires": "2026-12-05",
+   "revoked": false
+  },
+  {
+   "id": "g-hermes-librarian-personal-memory_store",
+   "principal": "hermes-librarian",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_store",
+   "purpose": "synthetic-memory-test",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "mcp-credential-hermes-librarian",
+   "expires": "2026-12-05",
+   "revoked": false
+  },
+  {
+   "id": "g-hermes-librarian-personal-memory_recall",
+   "principal": "hermes-librarian",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_recall",
+   "purpose": "synthetic-memory-test",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "mcp-credential-hermes-librarian",
+   "expires": "2026-12-05",
+   "revoked": false
+  },
+  {
+   "id": "g-hermes-librarian-personal-memory_correct",
+   "principal": "hermes-librarian",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_correct",
+   "purpose": "synthetic-memory-test",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "mcp-credential-hermes-librarian",
+   "expires": "2026-12-05",
+   "revoked": false
+  },
+  {
+   "id": "g-hermes-librarian-personal-memory_revoke",
+   "principal": "hermes-librarian",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_revoke",
+   "purpose": "synthetic-memory-test",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "mcp-credential-hermes-librarian",
+   "expires": "2026-12-05",
    "revoked": false
   }
  ],
