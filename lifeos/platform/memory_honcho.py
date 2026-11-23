@@ -7,6 +7,7 @@ and recall hides every tombstoned item at once (`include_history` shows them mar
 Honcho down or refusing is the fixed code memory_unavailable, never a guess. Counts, ids and fixed codes only in errors. Stdlib only."""
 import json
 import os
+import sys
 import urllib.error
 import urllib.request
 from datetime import datetime
@@ -168,3 +169,9 @@ def client_from_env(env):
     """-> a Honcho client from HONCHO_URL (default loopback) and HONCHO_MEMORY_TOKEN, or None when the token is not set (every memory operation then answers memory_not_configured)."""
     token = (env.get("HONCHO_MEMORY_TOKEN") or "").strip()
     return Honcho(env.get("HONCHO_URL") or "http://127.0.0.1:8000", token) if token else None
+
+
+def register(read, lift, state):
+    """Add the four operations to the MCP's read registry (`lift` turns a module operation into a registry row) and wire the Honcho client from the environment (None until HONCHO_MEMORY_TOKEN is set)."""
+    read.update({op: (text, params, lift(sys.modules[__name__], op, state)) for op, (text, params) in OPS.items()})
+    state["client"] = client_from_env(os.environ)
