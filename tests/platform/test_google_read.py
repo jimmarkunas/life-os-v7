@@ -14,8 +14,8 @@ from lifeos.platform import google_read as G
 
 ROOT = Path(__file__).resolve().parents[2]
 CREDS = {"client_id": "cid", "client_secret": "csecret-xxxxxxxx", "refresh_token": "rtoken-xxxxxxxx"}
-OWNERS = {"at-personal": "alice@example.com", "at-bytalos": "bob@example.org"}                              # the synthetic token of each account reports that account's (invented) address
-SYNTHETIC_OWNER_SHA256 = {"personal": hashlib.sha256(b"alice@example.com").hexdigest(), "bytalos": hashlib.sha256(b"bob@example.org").hexdigest()}
+OWNERS = {"at-personal": "alice@example.com", "at-bytalos": "bob@example.com"}                              # the synthetic token of each account reports that account's (invented) address
+SYNTHETIC_OWNER_SHA256 = {"personal": hashlib.sha256(b"alice@example.com").hexdigest(), "bytalos": hashlib.sha256(b"bob@example.com").hexdigest()}
 
 
 def setUpModule():
