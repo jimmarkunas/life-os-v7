@@ -73,7 +73,7 @@ BUZZ_REQUIRE_AUTH_TOKEN=true
 BUZZ_REQUIRE_RELAY_MEMBERSHIP=true
 BUZZ_ALLOW_NIP_OA_AUTH=true
 RELAY_URL=wss://lifeos-edge-01.tail96b07f.ts.net:3100
-BUZZ_CORS_ORIGINS=https://lifeos-edge-01.tail96b07f.ts.net:3100
+BUZZ_CORS_ORIGINS=https://lifeos-edge-01.tail96b07f.ts.net:3100,tauri://localhost,https://tauri.localhost
 RUST_LOG=buzz_relay=info,buzz_db=info,buzz_auth=info,buzz_pubsub=info,tower_http=info
 EOF
   chmod 600 "$tmp" && mv "$tmp" "$RUN_DIR/env" && echo "render_env ok"
