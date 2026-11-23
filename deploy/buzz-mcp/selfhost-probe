@@ -94,11 +94,17 @@ def add_members(base, owner, pubs, channel, say):
         say("member_" + pub[:8], ok and code2 == 200 and isinstance(ack2, dict) and ack2.get("accepted") is True, f"member HTTP {code}, channel HTTP {code2}")
 
 
-def set_roles(base, owner, pubs, role, say):
-    """The owner sets each public key's relay role (kind 9030, the member's p tag carrying the role: "admin" or "member"). Public keys only. Owner transfer is never done here."""
+ROLE_FORMS = (lambda pub, role: (9030, [["p", pub, role]]),                          # the relay accepted this form but kept the role (LIFE-927, Nov 23 2026); form 2 adds a role tag, form 3 is a kind 9000 put-user
+              lambda pub, role: (9030, [["p", pub], ["role", role]]),
+              lambda pub, role: (9000, [["p", pub, role]]))
+
+
+def set_roles(base, owner, pubs, role, say, form=1):
+    """The owner sets each public key's relay role ("admin" or "member"; never owner) with one signed event of the chosen form. Public keys only. The caller reads the role back from the relay."""
     from lifeos.buzz import nip98
     for pub in pubs:
-        code, ack = signed(base, "/events", owner, nip98.event(owner, 9030, [["p", pub, role]]))
+        kind, tags = ROLE_FORMS[form - 1](pub, role)
+        code, ack = signed(base, "/events", owner, nip98.event(owner, kind, tags))
         say("role_" + pub[:8], code == 200 and isinstance(ack, dict) and ack.get("accepted") is True, f"{role} HTTP {code}")
 
 
@@ -134,8 +140,9 @@ def run(base, owner, agent, say):
 
 
 def main(argv):
-    role = argv[1] if argv[:1] == ["role"] and argv[1:2] in (["admin"], ["member"]) else None          # `selfhost-probe role admin|member [relay URL]` with public keys on stdin (LIFE-927)
+    role = argv[1] if argv[:1] == ["role"] and argv[1:2] in (["admin"], ["member"]) else None          # `selfhost-probe role admin|member [form 1-3] [relay URL]` with public keys on stdin (LIFE-927)
     argv = argv[2:] if role else argv
+    form = int(argv.pop(0)) if role and argv[:1] in (["1"], ["2"], ["3"]) else 1
     members = argv[:1] == ["members"]                                                # `selfhost-probe members <channel> [relay URL]` with public keys (64 hex, one per line) on stdin (LIFE-927)
     argv = argv[1:] if members else argv
     pilot_channel = argv.pop(0) if members and argv else None
@@ -164,7 +171,7 @@ def main(argv):
         if not pubs:
             print("role fail (at least one public key is required)")
             return 1
-        set_roles(base, owner, pubs, role, say)
+        set_roles(base, owner, pubs, role, say, form)
         return 1 if failed else 0
     if members:
         pubs = [x for x in (sys.stdin.read().split() if not sys.stdin.isatty() else []) if len(x) == 64 and all(c in "0123456789abcdef" for c in x)]
