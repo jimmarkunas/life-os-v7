@@ -1,0 +1,14 @@
+# LIFE-921: Oracle's stats script (user ubuntu) asks this socket for the billed Anthropic spend; systemd starts one reader instance per connection. No clock, no port: a local unix socket only.
+[Unit]
+Description=LIFE OS Anthropic usage and cost report reader (socket)
+
+[Socket]
+ListenStream=/run/lifeos-anthropic-report.sock
+SocketMode=0660
+SocketUser=root
+SocketGroup=ubuntu
+Accept=yes
+MaxConnections=4
+
+[Install]
+WantedBy=sockets.target
