@@ -58,6 +58,28 @@ class Record(unittest.TestCase):
             self.assertFalse(stage_timing.emit({"stage": "a"}, {"STAGE_TIMING_FILE": str(path / "no" / "dir")}, io.StringIO()))
 
 
+class Standalone(unittest.TestCase):
+    def test_a_standalone_stage_prints_its_line_only_when_the_file_is_set_and_never_inside_the_tick(self):
+        import os
+        from unittest import mock
+        from lifeos import run
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp, "t.jsonl")
+            err = io.StringIO()
+            with mock.patch.dict(os.environ, {"STAGE_TIMING_FILE": ""}), contextlib.redirect_stderr(err):
+                run._timing("x", "ok", 0.0)
+            self.assertEqual(err.getvalue(), "")                                                    # off by default: no stderr line, so no existing stage changes
+            stage_timing._local.stage = None
+            with mock.patch.dict(os.environ, {"STAGE_TIMING_FILE": str(path)}), contextlib.redirect_stderr(err):
+                run._timing("x", "ok", 0.0, {"failed": 0})
+            self.assertEqual(json.loads(path.read_text())["stage"], "x")
+            stage_timing.begin("inside")
+            self.addCleanup(setattr, stage_timing._local, "stage", None)
+            with mock.patch.dict(os.environ, {"STAGE_TIMING_FILE": str(path)}), contextlib.redirect_stderr(io.StringIO()):
+                run._timing("y", "ok", 0.0)
+            self.assertEqual(len(path.read_text().splitlines()), 1)                                  # the tick prints a stage's line itself, so run.main stays silent there
+
+
 class Tick(unittest.TestCase):
     def test_every_stage_gets_a_line_and_the_existing_stage_lines_are_unchanged(self):
         plan = [Step("a", 60, 10), Step("b", 60, 10)]
