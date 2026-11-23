@@ -168,3 +168,12 @@ class AgentNames(unittest.TestCase):
             self.assertIn(must, text)
         self.assertNotIn("Mac and Oracle Claude Code", POLICY)
         self.assertNotIn("Mac Claude Code is the exclusive writer", POLICY)
+
+
+class NeverIdleOnAClock(unittest.TestCase):
+    """Jim, Nov 22, 2026: agents build successors while a predecessor only waits on runs or UAT."""
+
+    def test_boot_file_says_build_successors_during_waits(self):
+        text = (ROOT / "CLAUDE.md").read_text()
+        self.assertIn("**Never idle on a clock", text)
+        self.assertIn("move the successor to Done only after the predecessor is Done", text)
