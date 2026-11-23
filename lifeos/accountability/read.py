@@ -272,7 +272,7 @@ def tally(jira, found, first, last, *, mej_metric_version=None, frozen_membershi
     keys = ",".join(e["key"] for e in found)
     rows = _counts(search(jira, f"parent in ({keys})", CHILD_FIELDS), first, last)
     out = {e["key"]: rows.get(e["key"], [0, 0]) for e in found}
-    mode = mej_metric_version if mej_metric_version is not None else os.environ.get("ACCOUNTABILITY_MEJ_METRIC_VERSION", "v1")
+    mode = mej_metric_version if mej_metric_version is not None else "v1"
     if mode not in ("v1", "v2"):
         raise JiraError("ACCOUNTABILITY_MEJ_METRIC_VERSION_INVALID")
     if mode == "v2":
