@@ -10,5 +10,6 @@
   {"job": "off-site backup", "host": "oracle", "schedule": "daily 2:30 AM", "rule": "unknown", "unit": "lifeos-offsite-backup.timer"},
   {"job": "Close release", "host": "oracle", "schedule": "not in the repo", "rule": "unknown", "unit": "lifeos-close-release.timer"},
   {"job": "iMessage attention", "host": "mac", "schedule": "no clock (starts on demand)", "rule": "unknown", "unit": "ai.lifeos.imessage-attention"},
-  {"job": "iMessage relay", "host": "mac", "schedule": "no clock (starts on demand)", "rule": "unknown", "unit": "ai.lifeos.imessage-relay"}
+  {"job": "iMessage relay", "host": "mac", "schedule": "no clock (starts on demand)", "rule": "unknown", "unit": "ai.lifeos.imessage-relay"},
+  {"job": "private Buzz pilot health", "host": "oracle", "schedule": "every 5 minutes", "rule": "unknown", "unit": "lifeos-buzz-selfhost-health.timer"}
 ]}
