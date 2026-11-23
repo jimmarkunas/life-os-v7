@@ -255,6 +255,30 @@ def governed(who, name, args, msg, effect, receipts, access=None, now=None):
     return out.result if out.reason == "ok" else _fail(msg, "governance_unavailable", reason=out.reason)
 
 
+def _grant_limited_capabilities(reply, who, access):
+    """Never advertise a source, Google or memory operation as usable without a live grant.
+    The permanent top-level tool contract is unchanged. An unreadable gate hides all
+    grant-limited availability (fail closed); the gate checks again on each actual call."""
+    limited = (*LOOKUP_OPS, *GOOGLE_OPS, *MEMORY_OPS)
+    try:
+        from lifeos.platform import mcp_access
+        a = access or mcp_access.load()
+        client = mcp_access.identify(a, "http", who.get("facts") or {"oauth_client": who.get("client")})
+        granted = mcp_access.granted_tools(a, client)
+    except Exception:  # noqa: BLE001 - capabilities must never widen on lookup failure
+        granted = set()
+    payload = json.loads(reply["result"]["content"][0]["text"])
+    read = payload.get("data", {}).get("read", {})
+    for op in limited:
+        if op in read and op not in granted:
+            read[op]["available"] = False
+            read[op]["reason"] = "no_grant"
+    text = json.dumps(payload)
+    if len(text) > MAX_RESPONSE:
+        return _fail({"id": reply.get("id")}, "response_too_large")
+    return {**reply, "result": {**reply["result"], "content": [{"type": "text", "text": text}]}}
+
+
 def _only_granted(reply, who, access):
     """LIFE-873: a credential client lists only the tools it holds a live grant for (the gate still decides every call). Any problem lists nothing."""
     try:
@@ -350,6 +374,8 @@ def handler(relays, auth, base, origins=(), audit=_audit, access=None, receipts=
                 reply = _fail(msg, "client_identity_not_configured")
             else:
                 reply = (governed(who, params["name"], args, msg, lambda: rpc(relay, msg, who), receipts, access) if spec else rpc(relay, msg, who)) if "method" in msg else None  # LIFE-865: a tool call runs only through the gate; client-side JSON-RPC responses are accepted and ignored
+            if reply and msg.get("method") == "tools/call" and params.get("name") == "buzz_capabilities":
+                reply = _grant_limited_capabilities(reply, who, access)
             if reply and who.get("facts", {}).get("credential") and msg.get("method") == "tools/list":
                 reply = _only_granted(reply, who, access)
             if spec and reply:
