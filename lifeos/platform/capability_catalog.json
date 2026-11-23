@@ -11,7 +11,8 @@
     {"id": "mac-claude-code", "kind": "agent", "workspace": "personal"},
     {"id": "oracle-claude-code", "kind": "agent", "workspace": "personal"},
     {"id": "openclaw", "kind": "agent", "workspace": "personal"},
-    {"id": "hermes-librarian", "kind": "agent", "workspace": "personal"}
+    {"id": "hermes-librarian", "kind": "agent", "workspace": "personal"},
+    {"id": "hermes-librarian-bytalos", "kind": "agent", "workspace": "bytalos"}
   ],
   "accounts": [
     {"alias": "jira-primary", "provider": "jira", "tenant": "primary"},
@@ -52,6 +53,14 @@
     {"principal": "openclaw", "tool": "source_read", "action": "read", "provider": "buzz", "account_alias": null, "host": "oracle-edge", "source": "lifeos/platform/source_lookup.py", "as_of": "2026-11-22", "max_age_days": 90, "status": "synthetic"},
     {"principal": "openclaw", "tool": "agent_lookup", "action": "read", "provider": "buzz", "account_alias": null, "host": "oracle-edge", "source": "lifeos/platform/source_lookup.py", "as_of": "2026-11-22", "max_age_days": 90, "status": "synthetic"},
     {"principal": "hermes-librarian", "tool": "source_read", "action": "read", "provider": "buzz", "account_alias": null, "host": "oracle-edge", "source": "lifeos/platform/source_lookup.py", "as_of": "2026-11-22", "max_age_days": 90, "status": "synthetic"},
-    {"principal": "hermes-librarian", "tool": "agent_lookup", "action": "read", "provider": "buzz", "account_alias": null, "host": "oracle-edge", "source": "lifeos/platform/source_lookup.py", "as_of": "2026-11-22", "max_age_days": 90, "status": "synthetic"}
+    {"principal": "hermes-librarian", "tool": "agent_lookup", "action": "read", "provider": "buzz", "account_alias": null, "host": "oracle-edge", "source": "lifeos/platform/source_lookup.py", "as_of": "2026-11-22", "max_age_days": 90, "status": "synthetic"},
+    {"principal": "hermes-librarian", "tool": "gmail_search", "action": "read", "provider": "google", "account_alias": null, "host": "oracle-edge", "source": "lifeos/platform/google_read.py", "as_of": "2026-11-22", "max_age_days": 90, "status": "synthetic"},
+    {"principal": "hermes-librarian", "tool": "gmail_read", "action": "read", "provider": "google", "account_alias": null, "host": "oracle-edge", "source": "lifeos/platform/google_read.py", "as_of": "2026-11-22", "max_age_days": 90, "status": "synthetic"},
+    {"principal": "hermes-librarian", "tool": "drive_search", "action": "read", "provider": "google", "account_alias": null, "host": "oracle-edge", "source": "lifeos/platform/google_read.py", "as_of": "2026-11-22", "max_age_days": 90, "status": "synthetic"},
+    {"principal": "hermes-librarian", "tool": "drive_read", "action": "read", "provider": "google", "account_alias": null, "host": "oracle-edge", "source": "lifeos/platform/google_read.py", "as_of": "2026-11-22", "max_age_days": 90, "status": "synthetic"},
+    {"principal": "hermes-librarian-bytalos", "tool": "gmail_search", "action": "read", "provider": "google", "account_alias": null, "host": "oracle-edge", "source": "lifeos/platform/google_read.py", "as_of": "2026-11-22", "max_age_days": 90, "status": "synthetic"},
+    {"principal": "hermes-librarian-bytalos", "tool": "gmail_read", "action": "read", "provider": "google", "account_alias": null, "host": "oracle-edge", "source": "lifeos/platform/google_read.py", "as_of": "2026-11-22", "max_age_days": 90, "status": "synthetic"},
+    {"principal": "hermes-librarian-bytalos", "tool": "drive_search", "action": "read", "provider": "google", "account_alias": null, "host": "oracle-edge", "source": "lifeos/platform/google_read.py", "as_of": "2026-11-22", "max_age_days": 90, "status": "synthetic"},
+    {"principal": "hermes-librarian-bytalos", "tool": "drive_read", "action": "read", "provider": "google", "account_alias": null, "host": "oracle-edge", "source": "lifeos/platform/google_read.py", "as_of": "2026-11-22", "max_age_days": 90, "status": "synthetic"}
   ]
 }

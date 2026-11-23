@@ -97,3 +97,9 @@ V7_IMESSAGE_ALERTS workflow_only:workflow Switch for the iMessage alert job in t
 V7_RUNTIME_CONFIG_SOURCE_ID input LIFE-844: the stable ID of the dedicated Runtime Configuration data source (an address, never a secret); empty means the V7 settings page stays the only source
 V7_STORE_VIA workflow_only:workflow Bitwarden plain switch: oracle sends the store connection through Oracle first (exported as LIFEOS_ACQ_SSH_VIA)
 WEEKLY_REVIEW_PAGE_ID input Notion page id of the weekly review
+GOOGLE_READ_CLIENT_ID secret Read-only Google credential for the governed MCP (LIFE-875); a name only, never a value
+GOOGLE_READ_CLIENT_SECRET secret Read-only Google credential for the governed MCP (LIFE-875); a name only, never a value
+GOOGLE_READ_PERSONAL_GMAIL_REFRESH secret Read-only Google credential for the governed MCP (LIFE-875); a name only, never a value
+GOOGLE_READ_BYTALOS_GMAIL_REFRESH secret Read-only Google credential for the governed MCP (LIFE-875); a name only, never a value
+GOOGLE_READ_PERSONAL_DRIVE_REFRESH secret Read-only Google credential for the governed MCP (LIFE-875); a name only, never a value
+GOOGLE_READ_BYTALOS_DRIVE_REFRESH secret Read-only Google credential for the governed MCP (LIFE-875); a name only, never a value
