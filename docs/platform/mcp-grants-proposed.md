@@ -1,6 +1,6 @@
-# Proposed Buzz publish grants (LIFE-865) — NOT active
+# Buzz publish grants (LIFE-865) — ACTIVE in main from the activation PR
 
-Status: **proposed for Jim's review; not in `lifeos/platform/mcp_access.json`, so nothing here is granted.** After approval they move into the active grants and catalog in one small PR, and only then is the release built.
+Status: **active.** Jim decided option A (chat, Nov 22, 2026, 6:14 PM CT, LIFE-865 comment 13707): publish grants for `claude-chat` and `chatgpt-chat` only in the communities they can write to today, expiring Feb 22, 2027; the relay's channel allowlist still limits channels. The rows below were moved into `lifeos/platform/mcp_access.json` and `capability_catalog.json` (catalog status stays `synthetic` until the live proof). The release is built from that merge commit.
 
 ## Why these, and no more
 
