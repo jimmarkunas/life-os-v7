@@ -420,7 +420,7 @@ def main():
         sys.exit(f"config error: {e}")
     if google_read and source_lookup:
         GOOGLE["creds"] = google_read.creds_from_env(credentials(os.environ))      # LIFE-875: a read-only Google credential is read here by name only; None until the six names are set
-        LOOKUP["fetchers"]["github"] = source_lookup.github_fetch()                   # LIFE-888: public repository, no credential; Notion and the directory stay unwired until a credential is approved
+        source_lookup.wire(credentials(os.environ), LOOKUP)                           # LIFE-888: GitHub (public) always; Notion pages and the directory only when the service holds the credential and the source id
     ThreadingHTTPServer(("127.0.0.1", int(os.environ.get("buzz_mcp_port".upper(), "8787"))), handler(relays, auth, base, origins)).serve_forever()
 
 
