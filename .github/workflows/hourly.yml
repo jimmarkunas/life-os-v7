@@ -767,8 +767,17 @@ jobs:
           TICK_MAX_PARALLEL: ""   # LIFE-703: declared empty so the V7 settings page can fill it; the code's own default applies when both are empty
           GITHUB_TOKEN: ${{ github.token }}   # LIFE-617: the read-only run-history token for a slower stage row (due.py)
           TICK_SKIP_STAGES: ${{ steps.browser.outcome == 'failure' && 'resolve-jobright' || '' }}   # LIFE-653: no browser, so no Jobright stage; every other stage runs as before
+          STAGE_TIMING_FILE: ${{ runner.temp }}/stage-timing-${{ github.run_id }}.jsonl   # LIFE-855: one JSON line per stage (names and numbers only), uploaded below
         run: |
           python -m lifeos.jobs.tick $([ "$LIVE" = "true" ] && echo --live) ${{ inputs.quick && '--quick' || '' }}
+      - name: Stage timing receipt (LIFE-855; the tick's stage_timing lines, names and numbers only, kept 14 days; the pinned upload action, no new permission)
+        if: ${{ always() && !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02   # v4.6.2
+        with:
+          name: stage-timing-${{ github.run_id }}
+          path: ${{ runner.temp }}/stage-timing-${{ github.run_id }}.jsonl
+          retention-days: 14
+          if-no-files-found: ignore
       - id: web
         continue-on-error: true
         name: Step 5b - US Remote web acquisition (due ATS boards)
