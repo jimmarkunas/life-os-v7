@@ -137,6 +137,19 @@ class SelfhostProbe(unittest.TestCase):
         empty, _ = self.run_probe(FakeRelay(), mode=("members", channel), stdin="")
         self.assertEqual((empty.stdout.splitlines()[-1], empty.returncode), ("members fail (a channel id and at least one public key are required)", 1))
 
+    def test_role_mode_signs_one_member_event_per_public_key_with_the_role_and_refuses_anything_else(self):
+        """LIFE-927: the owner key signs the role change; the role is admin or member only (never owner) and nothing but the given public keys is touched."""
+        relay = FakeRelay()
+        done, _ = self.run_probe(relay, mode=("role", "admin"), stdin=f"{AGENT_PUB}\nnot-a-key\n")
+        self.assertEqual([line.split(" ")[:2] for line in done.stdout.splitlines()], [["keys", "ok"], ["role_" + AGENT_PUB[:8], "ok"]], done.stdout + done.stderr)
+        self.assertEqual((done.returncode, relay.members), (0, {OWNER_PUB, AGENT_PUB}))
+        for secret in (OWNER_HEX, AGENT_HEX):
+            self.assertNotIn(secret, done.stdout + done.stderr)
+        empty, _ = self.run_probe(FakeRelay(), mode=("role", "member"), stdin="")
+        self.assertEqual((empty.stdout.splitlines()[-1], empty.returncode), ("role fail (at least one public key is required)", 1))
+        owner, _ = self.run_probe(FakeRelay(), mode=("role", "owner"), stdin=f"{AGENT_PUB}\n")
+        self.assertNotIn("role_", owner.stdout)                                                          # "owner" is not a role this mode accepts
+
     def test_a_relay_that_does_not_add_the_member_fails_the_steps_after_it_and_exits_nonzero(self):
         done, _ = self.run_probe(FakeRelay(break_membership=True))
         self.assertIn("member_add fail", done.stdout)
