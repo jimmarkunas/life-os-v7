@@ -106,6 +106,68 @@ class LiveGitHubReader(unittest.TestCase):
             self.assertEqual(raised.exception.reason, reason)
 
 
+class FakeNotion:
+    """A Notion client that records every call and serves one page, its blocks and a two-row directory."""
+    def __init__(self, fail=None):
+        self.calls, self.fail = [], fail
+
+    def get_page(self, page_id):
+        self.calls.append(("GET", f"/pages/{page_id}"))
+        if self.fail:
+            raise S.NotionError(self.fail)
+        return {"last_edited_time": "2026-11-20T12:00:00.000Z", "properties": {"Name": {"type": "title", "title": [{"plain_text": "Spec"}]}, "Other": {"type": "rich_text", "rich_text": []}}}
+
+    def call(self, method, path, body=None):
+        self.calls.append((method, path))
+        return {"results": [{"type": "paragraph", "paragraph": {"rich_text": [{"plain_text": "line one"}]}}, {"type": "divider", "divider": {}}, {"type": "heading_1", "heading_1": {"rich_text": [{"plain_text": "Head"}]}}]}
+
+    def query_data_source(self, source_id, body):
+        self.calls.append(("QUERY", source_id))
+        page = lambda r: {"properties": {"Agent ID": {"type": "rich_text", "rich_text": [{"plain_text": r["Agent ID"]}]}, **{k: ({"type": "multi_select", "multi_select": [{"name": n} for n in json.loads(v)]} if k == "Space" else
+                          {"type": "select", "select": {"name": v}}) for k, v in r.items() if k in ("Platform", "Record Type", "Space", "Discovery State", "Reachability")},
+                          **{k: {"type": "rich_text", "rich_text": [{"plain_text": v}]} for k, v in r.items() if k in ("Agent", "Host", "Interface", "Evidence", "Identity Alias", "Invocation Route", "Permission Boundary")},
+                          "Last Checked": {"type": "date", "date": {"start": r["date:Last Checked:start"]}}}}
+        return {"results": [page(r) for r in F.rows()[:3]] + [{"archived": True, "properties": {}}], "has_more": False}
+
+
+class LiveNotion(unittest.TestCase):
+    def test_a_page_is_read_with_title_text_and_last_edited_time_using_reads_only(self):
+        client = FakeNotion()
+        out = S.read_source({"source": "notion", "page_id": PAGE}, {"notion": S.notion_fetch(client)}, NOW)
+        self.assertEqual((out["title"], out["content"], out["revision"]["last_edited_time"]), ("Spec", "line one\nHead", "2026-11-20T12:00:00+00:00"))
+        self.assertEqual([c[0] for c in client.calls], ["GET", "GET"])
+
+    def test_a_404_is_unknown_source_and_any_other_failure_is_source_unavailable(self):
+        for code, reason in (("NOTION_HTTP_404", "unknown_source"), ("NOTION_HTTP_403", "source_unavailable"), ("NOTION_NETWORK", "source_unavailable")):
+            self.assertEqual(refused({"source": "notion", "page_id": PAGE}, {"notion": S.notion_fetch(FakeNotion(fail=code))}), reason)
+
+    def test_directory_rows_become_native_rows_and_a_lookup_shows_the_directory_status(self):
+        client = FakeNotion()
+        rows = S.directory_rows(client, "[removed]")()
+        self.assertEqual(len(rows), 3)                                                          # the archived row is dropped
+        self.assertEqual(rows[0]["Space"], ["Personal"])
+        out = S.lookup_agent({"agent_id": rows[0]["Agent ID"]}, lambda: rows, datetime(2026, 11, 16, 12, 0, tzinfo=D.CENTRAL))
+        self.assertEqual((out["agent"]["agent_id"], out["status"], out["authorizes"]), (rows[0]["Agent ID"], "configured-untested", []))
+        self.assertEqual(client.calls, [("QUERY", "[removed]")])
+
+    def test_wire_turns_notion_on_only_with_the_token_and_the_directory_only_with_its_source_id(self):
+        state = {"fetchers": {}, "rows": None}
+        S.wire({}, state)
+        self.assertEqual((sorted(state["fetchers"]), state["rows"]), (["github"], None))
+        state = {"fetchers": {}, "rows": None}
+        S.wire({"NOTION_API_TOKEN": "tok-synthetic-12345"}, state)
+        self.assertEqual((sorted(state["fetchers"]), state["rows"]), (["github", "notion"], None))
+        state = {"fetchers": {}, "rows": None}
+        S.wire({"NOTION_API_TOKEN": "tok-synthetic-12345", "LIFEOS_NOTION_AGENT_DIRECTORY_SOURCE": "[removed]"}, state)
+        self.assertTrue(callable(state["rows"]))
+
+    def test_the_module_has_no_write_route_to_notion(self):
+        from pathlib import Path
+        code = "\n".join(line.split("#")[0] for line in (Path(S.__file__)).read_text().splitlines())
+        for word in ("update_page", "update_block", "create(", "PATCH", "DELETE", "\"PUT\"", "\"POST\""):
+            self.assertNotIn(word, code, word)
+
+
 class AgentLookup(unittest.TestCase):
     NOW = datetime(2026, 11, 16, 12, 0, tzinfo=D.CENTRAL)
 
