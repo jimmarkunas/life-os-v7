@@ -493,6 +493,71 @@ class Credentials(Server):
         self.assertEqual(self.tool(tok, "buzz_read", operation="list_channels", community="life-os")[1]["error"], "client_identity_not_configured")
         self.assertEqual(self.rpc(self.tok("openclaw", self.SECRETS["mac-claude-code"]), "tools/list")[0], 401)   # another client's secret is a 401
 
+    def memory(self, cid, op, **arguments):
+        return self.tool(self.tok(cid), "buzz_read", operation=op, arguments=arguments)
+
+    def with_memory(self):
+        """LIFE-868: the shipped grants and a fake Honcho behind the real handler."""
+        from unittest import mock
+        from tests.platform.test_memory_honcho import FakeHoncho
+        self.honcho = FakeHoncho()
+        patch = mock.patch.dict(buzz_mcp.MEMORY, {"client": self.honcho})
+        patch.start()
+        self.addCleanup(patch.stop)
+        self.start(access=self.access())
+
+    def test_memory_store_recall_correct_revoke_go_through_the_gate_for_the_two_granted_clients_only(self):
+        self.with_memory()
+        status, stored = self.memory("hermes-librarian", "memory_store", workspace="Personal", text="Synthetic fact: the demo bird is a kestrel.", source="uat")
+        self.assertEqual((status, stored["ok"], stored["data"]["client"]), (200, True, "hermes-librarian"))          # the verified credential is the provenance
+        fid = stored["data"]["id"]
+        _, recalled = self.memory("openclaw", "memory_recall", workspace="Personal", query="demo bird")
+        self.assertEqual([(i["id"], i["client"]) for i in recalled["data"]["items"]], [(fid, "hermes-librarian")])
+        _, corrected = self.memory("hermes-librarian", "memory_correct", workspace="Personal", id=fid, text="Synthetic fact: the demo bird is a heron.", source="uat")
+        self.assertEqual(corrected["data"]["supersedes"], fid)
+        _, seen = self.memory("openclaw", "memory_recall", workspace="Personal", query="demo bird")
+        self.assertEqual([i["text"] for i in seen["data"]["items"]], ["Synthetic fact: the demo bird is a heron."])
+        self.memory("hermes-librarian", "memory_revoke", workspace="Personal", id=corrected["data"]["id"])
+        self.assertEqual(self.memory("openclaw", "memory_recall", workspace="Personal", query="demo bird")[1]["data"]["items"], [])
+        receipts = [r for r in self.receipts if r.get("tool", "").startswith("memory_")]
+        self.assertEqual({r["tool"] for r in receipts}, {"memory_store", "memory_recall", "memory_correct", "memory_revoke"})
+
+    def test_memory_is_refused_for_a_client_without_a_grant_and_for_bytalos_and_tgp(self):
+        self.with_memory()
+        for cid in ("mac-claude-code", "oracle-claude-code"):
+            self.assertEqual(self.memory(cid, "memory_store", workspace="Personal", text="t", source="s")[1]["error"], "access_denied", cid)     # no memory grant
+        for workspace in ("Bytalos", "TGP", "personal"):
+            out = self.memory("openclaw", "memory_store", workspace=workspace, text="t", source="s")[1]
+            self.assertEqual(out["error"], "access_denied", workspace)                                                # Bytalos has no grant; TGP and a typo are unknown workspaces
+        self.assertEqual(self.honcho.rows, [])                                                                        # nothing reached Honcho
+
+    def test_a_credential_cannot_name_the_client_and_an_expired_grant_refuses(self):
+        self.with_memory()
+        status, out = self.tool(self.tok("openclaw"), "buzz_read", operation="memory_store", arguments={"workspace": "Personal", "text": "t", "source": "s", "_client": "someone-else"})
+        self.assertEqual(out["error"], "invalid_argument")                                                          # the schema has no client argument
+        from datetime import datetime, timezone
+        from lifeos.platform import mcp_access
+        self.start(access=self.access())
+        late = datetime(2026, 12, 6, 6, 0, tzinfo=timezone.utc)
+        import unittest.mock as um
+        with um.patch.object(mcp_access, "datetime", wraps=datetime) as clock:
+            clock.now.return_value = late
+            self.assertIn(self.memory("openclaw", "memory_store", workspace="Personal", text="t", source="s")[1]["error"], ("access_denied", "governance_unavailable"))
+
+    def test_memory_not_configured_and_honcho_down_are_fixed_codes(self):
+        from unittest import mock
+        self.start(access=self.access())
+        with mock.patch.dict(buzz_mcp.MEMORY, {"client": None}):
+            self.assertEqual(self.memory("openclaw", "memory_recall", workspace="Personal", query="x")[1]["error"], "memory_not_configured")
+        self.with_memory()
+        self.honcho.down = True
+        self.assertEqual(self.memory("openclaw", "memory_recall", workspace="Personal", query="x")[1]["error"], "memory_unavailable")
+
+    def test_the_memory_operations_are_listed_for_a_granted_credential_through_buzz_read(self):
+        self.with_memory()
+        names = {t["name"] for t in self.rpc(self.tok("hermes-librarian"), "tools/list")[1]["result"]["tools"]}
+        self.assertIn("buzz_read", names)
+
     def test_an_oauth_token_never_matches_a_credential_row_and_unreadable_data_fails_closed(self):
         from unittest import mock
         self.start(access=self.access())
