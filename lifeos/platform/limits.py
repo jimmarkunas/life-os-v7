@@ -57,6 +57,7 @@ WEB_INGEST_PER_RUN = 300                 # new or changed postings admitted into
 
 # Employer boards (D202): the Open Jobs board list (CC0) plus the extras, read by the same web pass; ours, polite to three shared hosts
 BOARDS_PER_RUN = 1800                    # due seed boards read per board window (LIFE-854: four windows a day); Jim set it from 900 on Nov 21 2026 (comment 13632)
+BOARDS_TICK_DEADLINE_MINUTES = 4          # LIFE-905: the hourly board pass stops starting boards this long into its 5-minute tick step, so its receipt is always written
 BOARDS_CATCHUP_PER_RUN = 2900            # LIFE-854: the cap of a catch-up window (the previous window did not finish), about 60 minutes
 BOARDS_DEAD_AFTER = 5                    # a board that has answered not_found this many times in a row is listed in `dead_ids` (counts line) for a skip-list review; nothing is skipped by this number
 BOARDS_DEAD_RETRY_DAYS = 7              # LIFE-893: a board whose BOARDS_DEAD_AFTER-th failure in a row is not_found is retried this many days later, not daily (Open Jobs does the same after five failures); one successful read resets it

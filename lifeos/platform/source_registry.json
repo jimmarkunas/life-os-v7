@@ -12,6 +12,7 @@
     "web": "active",
     "linkedin-search": "active",
     "boards-backfill": "parked",
+    "boards-tick": "parked",
     "board-check": "manual",
     "boards-preview": "manual",
     "granola-auto": "active",
@@ -33,6 +34,7 @@
     "resolve-dice": "parked"
   },
   "status_notes": {
+    "boards-tick": "A tick step that does nothing while the BOARDS_IN_TICK switch is off (lifeos/platform/switches.json, state off): the four windows own the boards (LIFE-905).",
     "boards-backfill": "A tick step that does nothing while the BOARDS_BACKFILL switch is off (lifeos/platform/switches.json, state off).",
     "resolve-dice": "Not a row in this file: a Jobs-tick step (lifeos/jobs/tick.py) that runs hourly with no input. No sender rule or source feeds Dice (SENDER_RULES holds only Lensa, Jobright and LinkedIn alerts; the dice row in us_remote.json is a discovery helper nothing reads). A feeder is a separate decision.",
     "board-check": "Run by a dispatch input of hourly.yml, not by a schedule.",
@@ -56,6 +58,7 @@
     {"name": "linkedin-search", "module": "lifeos.sources.discovery.linkedin_search", "tick": {"budget": 180, "limit": 40, "group": "A", "providers": ["linkedin"]}, "after": "resolve-linkedin"},
     {"name": "boards-backfill", "module": "lifeos.sources.web.boards", "function": "backfill", "tick": {"budget": 600, "limit": 450, "bulk": true}, "after": "sponsors"},
     {"name": "board-check", "module": "lifeos.sources.web.boardcheck"},
+    {"name": "boards-tick", "module": "lifeos.sources.web.boards", "function": "tick", "tick": {"budget": 300, "limit": 1800, "group": "A", "providers": ["ats"]}, "after": "web"},
     {"name": "boards-preview", "module": "lifeos.sources.web.boards", "function": "preview"},
     {"name": "granola-auto", "module": "lifeos.sources.interview.granola_auto", "function": "stage", "partial_failure": "GRAN_AUTO_FAILED"},
     {"name": "hiring", "module": "lifeos.sources.pipeline.hiring"},

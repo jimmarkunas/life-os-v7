@@ -127,6 +127,11 @@
    "required": false,
    "seconds": 600
   },
+  "boards-tick": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "required": true,
+   "seconds": 300
+  },
   "calendar-sync": {
    "basis": "twice its slowest measured step (113 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
    "required": true,

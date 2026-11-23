@@ -58,7 +58,7 @@ PLAN = (
     Step("drain-fit", 240, bulk=True),
 )
 PLAN = registry.with_tick_steps(PLAN, Step)                                # LIFE-618: the registered sources' steps (lifeos/platform/source_registry.json), each after the step it names
-QUICK_LIMITS = {"boards": 50, "publish": 10, "publish-fresh": 5, "boards-backfill": 50, "drain-publish": 10, "drain-enrich": 50}   # a manual quick proof run (D206, D208) reads few boards and publishes few pages
+QUICK_LIMITS = {"boards": 50, "publish": 10, "publish-fresh": 5, "boards-backfill": 50, "boards-tick": 50, "drain-publish": 10, "drain-enrich": 50}   # a manual quick proof run (D206, D208) reads few boards and publishes few pages
 
 
 class StageTimeout(BaseException):
