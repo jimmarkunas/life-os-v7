@@ -298,30 +298,6 @@ class Governed(Server):
         allow = self.receipts[-2]
         self.assertEqual((allow["outcome"], allow["tool"], allow["action"], allow["purpose"], allow["tenant"]), ("allow", "buzz_publish", "write", "buzz-publish", "personal"))
 
-    def test_muse_reads_and_sends_to_jim_in_life_os_and_every_other_call_is_refused_by_its_verified_identity_alone(self):
-        """LIFE-923 (Jim, M3, comment 13891): Muse is the OAuth label `muse` of its own user, with the shipped grants (Buzz read and publish, send_to_jim, Personal), no Gmail, Drive, memory or Bytalos; nothing the caller sends changes who it is."""
-        from datetime import datetime, timezone
-        from unittest import mock
-        USERS["user-muse"] = ("muse", ("life-os",))
-        self.addCleanup(USERS.pop, "user-muse", None)
-        self.start()
-        self.relays["muse"] = Relay(URLS, {"life-os": bytes([25]) * 32}, (("life-os", CHAN),), self.fake)
-        tok = token(sub="user-muse")
-        status, out = self.tool(tok, "buzz_read", operation="list_channels", community="life-os")
-        self.assertEqual((status, out["ok"], self.receipts[-2]["tenant"], self.receipts[-2]["purpose"]), (200, True, "personal", "buzz-read"))
-        sent = []
-        with mock.patch.dict(buzz_mcp.INBOX, {"client": object(), "now": lambda: datetime(2026, 11, 23, 12, 0, tzinfo=timezone.utc)}), mock.patch("lifeos.platform.inbox_send.deliver", lambda item, client, now=None: sent.append(item) or {"ok": True, "created": True, "id": "x"}):
-            status, out = self.tool(tok, "buzz_read", operation="send_to_jim", community="life-os", arguments={"subject": "Muse spoof", "urgency": "FYI", "from": "claude-chat"})
-            self.assertEqual((status, out.get("ok"), sent), (200, False, []))                               # a caller-named sender other than the verified client is refused before anything is written
-            status, out = self.tool(tok, "buzz_read", operation="send_to_jim", community="life-os", arguments={"subject": "Muse synthetic test", "urgency": "FYI"})
-        self.assertEqual((status, [i["from"] for i in sent]), (200, ["muse"]))                         # the sender is the verified client label
-        self.refused(tok, "buzz_read", "no_grant", operation="gmail_search", community="life-os", arguments={"account": "personal", "query": "x"})
-        self.refused(tok, "buzz_read", "no_grant", operation="drive_search", community="life-os", arguments={"account": "personal", "query": "x"})
-        status, out = self.tool(tok, "buzz_read", operation="list_channels", community="bytalos")           # Muse's user lists only life-os
-        self.assertEqual(out["error"], "community_not_authorized")
-        status, _ = self.tool(token(sub="user-nobody"), "buzz_read", operation="list_channels", community="life-os")[0], None
-        self.assertEqual(status, 403)
-
     def test_revoked_expired_wrong_tenant_and_wrong_purpose_grants_are_refused_with_their_reason(self):
         from tests.platform.mcp_access_fixture import build
         def edit(**patch):
@@ -360,13 +336,15 @@ class Governed(Server):
 
 class Credentials(Server):
     """LIFE-873: scoped `lm1.` credentials for the local clients, through the real HTTP handler. Synthetic secrets only; the shipped data holds hashes, never a secret."""
-    SECRETS = {"mac-claude-code": "A" * 43, "oracle-claude-code": "B" * 43, "openclaw": "D" * 43, "hermes-librarian": "E" * 43, "honcho-alerts": "F" * 43}
+    SECRETS = {"mac-claude-code": "A" * 43, "oracle-claude-code": "B" * 43, "openclaw": "D" * 43, "hermes-librarian": "E" * 43, "honcho-alerts": "F" * 43, "muse": "G" * 43}
 
     def access(self, edit=None, no_identity=False):
         import copy
         from lifeos.platform import mcp_access
         from tests.platform.mcp_access_fixture import CATALOG, DOC
         doc = copy.deepcopy(DOC)
+        if not any(r["id"] == "muse" for r in doc["credentials"]):                                      # LIFE-923: the shipped muse row carries a real hash; tests always use their own synthetic one
+            doc["credentials"].append({"id": "muse", "sha256": "0" * 64, "expires": "2027-02-22", "revoked": False, "buzz_identity": "muse", "communities": ["life-os"], "write": True})
         for row in doc["credentials"]:
             row["sha256"] = hashlib.sha256(self.SECRETS[row["id"]].encode()).hexdigest()
             if no_identity and row["id"] == "oracle-claude-code":
@@ -380,7 +358,7 @@ class Credentials(Server):
 
     def test_each_credential_lists_only_its_granted_tools_and_completes_one_read_with_its_own_receipt(self):
         self.start(access=self.access())
-        for cid in (c for c in self.SECRETS if c not in ("openclaw", "hermes-librarian", "honcho-alerts")):                                                # openclaw and hermes-librarian are capabilities only: their own tests below
+        for cid in (c for c in self.SECRETS if c not in ("openclaw", "hermes-librarian", "honcho-alerts", "muse")):                                                # openclaw and hermes-librarian are capabilities only: their own tests below
             status, out = self.rpc(self.tok(cid), "tools/list")
             names = {t["name"] for t in out["result"]["tools"]}
             self.assertEqual((status, {"buzz_capabilities", "buzz_read"} <= names, "buzz_publish" in names or "buzz_post_message" in names), (200, True, False), cid)
@@ -404,6 +382,46 @@ class Credentials(Server):
         self.assertEqual(status, 403)                                                       # read scope only
         status, out = self.tool(self.tok(), "buzz_read", operation="list_channels", community="bytalos")
         self.assertEqual((status, out["error"]), (200, "community_not_authorized"))
+
+    def test_muse_bearer_reads_sends_to_jim_and_publishes_to_the_allowlisted_channel_only_and_everything_else_is_refused(self):
+        """LIFE-923 (Jim, comments 13906 and 13908): the muse credential row alone may hold the write scope; its grants, the channel allowlist and its own Buzz identity still decide every call."""
+        from datetime import datetime, timezone
+        from unittest import mock
+        self.start(access=self.access())
+        self.relays["muse"] = Relay(URLS, {"life-os": bytes([25]) * 32}, (("life-os", CHAN),), self.fake)
+        tok = self.tok("muse")
+        status, out = self.rpc(tok, "tools/list")
+        self.assertEqual((status, {"buzz_capabilities", "buzz_read", "buzz_publish"} <= {t["name"] for t in out["result"]["tools"]}), (200, True))
+        status, out = self.tool(tok, "buzz_read", operation="list_channels", community="life-os")
+        self.assertEqual((status, out["ok"]), (200, True))
+        status, out = self.tool(tok, "buzz_publish", operation="message", community="life-os", arguments={"channel": CHAN, "text": "synthetic muse post", "idempotency_key": "muse-k1"})
+        self.assertEqual((status, out.get("ok"), self.receipts[-2]["action"], self.receipts[-2]["tool"]), (200, True, "write", "buzz_publish"))
+        status, out = self.tool(tok, "buzz_publish", operation="message", community="life-os", arguments={"channel": OTHER, "text": "x", "idempotency_key": "muse-k2"})
+        self.assertFalse(out.get("ok"), out)                                                                       # a channel outside the allowlist is refused
+        sent = []
+        with mock.patch.dict(buzz_mcp.INBOX, {"client": object(), "now": lambda: datetime(2026, 11, 23, 12, 0, tzinfo=timezone.utc)}), mock.patch("lifeos.platform.inbox_send.deliver", lambda item, client, now=None: sent.append(item) or {"ok": True, "created": True, "id": "x"}):
+            status, out = self.tool(tok, "buzz_read", operation="send_to_jim", community="life-os", arguments={"subject": "Muse synthetic test", "urgency": "FYI", "from": "claude-chat"})
+            self.assertEqual((out.get("ok"), sent), (False, []))                                                    # a caller-named sender is refused
+            status, out = self.tool(tok, "buzz_read", operation="send_to_jim", community="life-os", arguments={"subject": "Muse synthetic test", "urgency": "FYI"})
+        self.assertEqual((status, [i["from"] for i in sent]), (200, ["muse"]))
+        for op, args in (("gmail_search", {"account": "personal", "query": "x"}), ("drive_search", {"account": "personal", "query": "x"})):
+            status, out = self.tool(tok, "buzz_read", operation=op, community="life-os", arguments=args)
+            self.assertEqual((out["error"], out["reason"]), ("access_denied", "no_grant"), op)
+        status, out = self.tool(tok, "buzz_read", operation="list_channels", community="bytalos")
+        self.assertEqual(out["error"], "community_not_authorized")
+
+    def test_no_other_credential_can_hold_the_write_scope_and_the_file_refuses_to_load_if_one_tries(self):
+        from lifeos.platform import mcp_access
+        from tests.platform.mcp_access_fixture import CATALOG, DOC
+        self.start(access=self.access())
+        for cid in ("mac-claude-code", "oracle-claude-code", "openclaw", "hermes-librarian", "honcho-alerts"):
+            status, out = self.tool(self.tok(cid), "buzz_publish", operation="message", community="life-os", arguments={"channel": CHAN, "text": "x", "idempotency_key": "k1"})
+            self.assertEqual(status, 403, cid)                                                                       # read scope only, whatever the grants say
+            doc = json.loads(json.dumps(DOC))
+            next(r for r in doc["credentials"] if r["id"] == cid)["write"] = True
+            with self.assertRaises(mcp_access.AccessError, msg=cid):                                                 # the opt-in on any row but muse refuses the whole file
+                mcp_access.load(json.dumps(doc), json.dumps(CATALOG))
+        self.assertEqual([r["id"] for r in DOC["credentials"] if r.get("write")], ["muse"] if any(r["id"] == "muse" for r in DOC["credentials"]) else [])
 
     def test_bad_credentials_are_one_401_and_no_tool_runs(self):
         self.start(access=self.access(edit=lambda d: d["credentials"][1].update(revoked=True)))
@@ -458,7 +476,7 @@ class Credentials(Server):
         github = lambda path, ref: {"commit": "a" * 40, "last_change": "b" * 40, "blob": "c" * 40, "modified": now - timedelta(days=1), "text": "policy text"}
         self.start(access=self.access(no_identity=True))
         with mock.patch.dict(buzz_mcp.LOOKUP, {"fetchers": {"github": github}, "rows": lambda: F.rows(), "now": lambda: now}):
-            for cid in (c for c in self.SECRETS if c != "honcho-alerts"):
+            for cid in (c for c in self.SECRETS if c not in ("honcho-alerts", "muse")):
                 status, out = self.tool(self.tok(cid), "buzz_read", operation="source_read", community="life-os", arguments={"source": "github", "path": "AGENTS.md"})
                 self.assertEqual((status, out["ok"], out["data"]["revision"]["commit_sha"], out["data"]["freshness"]), (200, True, "a" * 40, "fresh"), cid)
                 allow = self.receipts[-2]
