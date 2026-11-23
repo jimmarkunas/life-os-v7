@@ -173,11 +173,11 @@ def directory_rows(client, source_id):
 
 
 def wire(environ, state):
-    """Fill the lookup state from the service's own environment: GitHub always (public); Notion pages when NOTION_API_TOKEN is set; the directory when its data-source id is too (LIFEOS_NOTION_AGENT_DIRECTORY_SOURCE)."""
+    """Fill the lookup state from the service's own environment: GitHub always (public); Notion pages when NOTION_READONLY_TOKEN is set; the directory when its data-source id is too (LIFEOS_NOTION_AGENT_DIRECTORY_SOURCE)."""
     state["fetchers"]["github"] = github_fetch()
-    token, source = (environ.get("NOTION_API_TOKEN") or "").strip(), configured_id("AGENT_DIRECTORY_SOURCE", environ)
+    token, source = (environ.get("NOTION_READONLY_TOKEN") or "").strip(), configured_id("AGENT_DIRECTORY_SOURCE", environ)
     if token:
-        client = Client({"NOTION_API_TOKEN": token, "LOOKUP_SOURCE": source or "unused"}, source_name="LOOKUP_SOURCE")
+        client = Client({"NOTION_READONLY_TOKEN": token, "LOOKUP_SOURCE": source or "unused"}, token_name="NOTION_READONLY_TOKEN", source_name="LOOKUP_SOURCE")
         state["fetchers"]["notion"] = notion_fetch(client)
         state["rows"] = directory_rows(client, source) if source else None
 

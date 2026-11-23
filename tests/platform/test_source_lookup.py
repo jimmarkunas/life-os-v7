@@ -155,10 +155,10 @@ class LiveNotion(unittest.TestCase):
         S.wire({}, state)
         self.assertEqual((sorted(state["fetchers"]), state["rows"]), (["github"], None))
         state = {"fetchers": {}, "rows": None}
-        S.wire({"NOTION_API_TOKEN": "tok-synthetic-12345"}, state)
+        S.wire({"NOTION_READONLY_TOKEN": "tok-synthetic-12345"}, state)
         self.assertEqual((sorted(state["fetchers"]), state["rows"]), (["github", "notion"], None))
         state = {"fetchers": {}, "rows": None}
-        S.wire({"NOTION_API_TOKEN": "tok-synthetic-12345", "LIFEOS_NOTION_AGENT_DIRECTORY_SOURCE": "[removed]"}, state)
+        S.wire({"NOTION_READONLY_TOKEN": "tok-synthetic-12345", "LIFEOS_NOTION_AGENT_DIRECTORY_SOURCE": "[removed]"}, state)
         self.assertTrue(callable(state["rows"]))
 
     def test_the_module_has_no_write_route_to_notion(self):
