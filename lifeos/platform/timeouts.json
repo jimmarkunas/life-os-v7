@@ -324,6 +324,14 @@
    "slowest_seconds": null,
    "target": 40
   },
+  "hourly.yml::unit-tests": {
+   "basis": "new job (LIFE-856 change 1): the unit tests took 125 to 235 s inside `prep` (slowest prep run 235 s); 20 minutes keeps generous room; revisit after a week of runs",
+   "current": 20,
+   "median_seconds": null,
+   "runs_measured": 0,
+   "slowest_seconds": null,
+   "target": 20
+  },
   "hourly.yml::prep": {
    "basis": "kept at Jim's decision (Nov 15 2026, approve, leave prep and finish): up to 25 min gate wait for an older run (D210) plus the Bitwarden helper wait plus the tests; revisit after a week of runs",
    "current": 45,
