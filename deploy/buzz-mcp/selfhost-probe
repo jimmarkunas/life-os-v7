@@ -108,6 +108,34 @@ def set_roles(base, owner, pubs, role, say, form=1):
         say("role_" + pub[:8], code == 200 and isinstance(ack, dict) and ack.get("accepted") is True, f"{role} HTTP {code}")
 
 
+def readd(base, owner, pubs, role, say):
+    """A relay keeps a member's role from the first add, so the owner removes the key (kind 9031) and adds it again with the role tag (kind 9030). Public keys only; the caller re-adds the channel."""
+    from lifeos.buzz import nip98
+    for pub in pubs:
+        code, ack = signed(base, "/events", owner, nip98.event(owner, 9031, [["p", pub]]))
+        gone = code == 200 and isinstance(ack, dict) and ack.get("accepted") is True
+        say("remove_" + pub[:8], gone, f"HTTP {code}")
+        if not gone:
+            continue
+        code, ack = signed(base, "/events", owner, nip98.event(owner, 9030, [["p", pub], ["role", role]]))
+        say("add_" + pub[:8], code == 200 and isinstance(ack, dict) and ack.get("accepted") is True, f"{role} HTTP {code}")
+
+
+def synthetic_readd(base, owner, say):
+    """A throwaway key (never stored) is added, removed, refused, and added again as admin, to prove the remove event before it touches a real member. Prints its public key."""
+    from lifeos.buzz import nip98
+    secret = os.urandom(32)
+    pub = nip98.pubkey(secret)
+    code, ack = signed(base, "/events", owner, nip98.event(owner, 9030, [["p", pub]]))
+    say("synthetic_add", code == 200 and isinstance(ack, dict) and ack.get("accepted") is True, f"HTTP {code}")
+    code, _ = signed(base, "/query", secret, [{"kinds": [9], "limit": 1}])
+    say("synthetic_member_reads", code == 200, f"HTTP {code}")
+    readd(base, owner, [pub], "admin", say)
+    code, _ = signed(base, "/query", secret, [{"kinds": [9], "limit": 1}])
+    say("synthetic_reads_again", code == 200, f"HTTP {code}")
+    print("synthetic_pub " + pub)
+
+
 def run(base, owner, agent, say):
     from lifeos.buzz import nip98, relay as relay_mod
     agent_pub = nip98.pubkey(agent)
@@ -140,6 +168,10 @@ def run(base, owner, agent, say):
 
 
 def main(argv):
+    test_readd = argv[:1] == ["synthetic-readd"]
+    argv = argv[1:] if test_readd else argv
+    readd_role = argv[1] if argv[:1] == ["readd"] and argv[1:2] in (["admin"], ["member"]) else None          # `selfhost-probe readd admin|member` with public keys on stdin (LIFE-927)
+    argv = argv[2:] if readd_role else argv
     role = argv[1] if argv[:1] == ["role"] and argv[1:2] in (["admin"], ["member"]) else None          # `selfhost-probe role admin|member [form 1-3] [relay URL]` with public keys on stdin (LIFE-927)
     argv = argv[2:] if role else argv
     form = int(argv.pop(0)) if role and argv[:1] in (["1"], ["2"], ["3"]) else 1
@@ -166,6 +198,16 @@ def main(argv):
         print("keys fail (a pilot key is not in the vault)")
         return 1
     say("keys", True, "owner and agent keys read in memory only")
+    if test_readd:
+        synthetic_readd(base, owner, say)
+        return 1 if failed else 0
+    if readd_role:
+        pubs = [x for x in (sys.stdin.read().split() if not sys.stdin.isatty() else []) if len(x) == 64 and all(c in "0123456789abcdef" for c in x)]
+        if not pubs:
+            print("readd fail (at least one public key is required)")
+            return 1
+        readd(base, owner, pubs, readd_role, say)
+        return 1 if failed else 0
     if role:
         pubs = [x for x in (sys.stdin.read().split() if not sys.stdin.isatty() else []) if len(x) == 64 and all(c in "0123456789abcdef" for c in x)]
         if not pubs:
