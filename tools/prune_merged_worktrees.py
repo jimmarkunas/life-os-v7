@@ -3,7 +3,7 @@
 
 Safe by construction: a worktree is removed only if ALL hold
   - it is not the primary checkout or the current directory's worktree
-  - it lives under /private/tmp/claude-501/, <LIFEOS>/wt-*, <LIFEOS>/worktrees/ or life-os-v7/.claude/worktrees/
+  - it lives under /private/tmp/claude-501/ or <LIFEOS>/wt-*
   - it is not locked, is on a named branch, and has no uncommitted/untracked files
   - the branch tip equals the head commit of a MERGED GitHub PR with that branch name
     (works for squash merges, which `git branch --merged` cannot see), or the tip
@@ -18,12 +18,7 @@ import os
 import subprocess
 import sys
 
-ALLOWED_PREFIXES = (
-    "/private/tmp/claude-501/",
-    "/Users/jimmarkunas/Developer/LIFEOS/wt-",
-    "/Users/jimmarkunas/Developer/LIFEOS/worktrees/",
-    "/Users/jimmarkunas/Developer/LIFEOS/life-os-v7/.claude/worktrees/",
-)
+ALLOWED_PREFIXES = ("/private/tmp/claude-501/", "/Users/jimmarkunas/Developer/LIFEOS/wt-")
 
 
 def run(*args, cwd=None, check=True):
