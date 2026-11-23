@@ -13,13 +13,13 @@ ON, OFF = {"BOARDS_IN_TICK": "on"}, {"BOARDS_IN_TICK": "off"}
 
 
 class Switch(unittest.TestCase):
-    def test_the_file_ships_with_the_windows_as_owner(self):
-        self.assertEqual(json.loads(switches.FILE.read_text())["BOARDS_IN_TICK"]["state"], "off")        # release PR: the switch stays on the windows
-        self.assertEqual(bw.owner({}), "windows")
+    def test_the_file_names_the_tick_as_owner(self):
+        self.assertEqual(json.loads(switches.FILE.read_text())["BOARDS_IN_TICK"]["state"], "on")         # flip PR: the tick crawls, the windows stand down
+        self.assertEqual(bw.owner({}), "tick")
 
     def test_a_repository_variable_flips_it_either_way(self):
         self.assertEqual((bw.owner(ON), bw.owner(OFF)), ("tick", "windows"))
-        self.assertEqual(bw.owner({"BOARDS_IN_TICK": "typo"}), "windows")                                # anything else defers to the file
+        self.assertEqual(bw.owner({"BOARDS_IN_TICK": "typo"}), "tick")                                   # anything else defers to the file (on)
 
 
 class WindowsStandDown(unittest.TestCase):

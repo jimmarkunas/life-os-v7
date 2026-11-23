@@ -10,9 +10,9 @@
     "turned_on": ""
   },
   "BOARDS_IN_TICK": {
-    "state": "off",
+    "state": "on",
     "bounds": "LIFE-905: the one crawler owner of the employer boards. Off: the four daily windows (boards.yml, LIFE-854) crawl and the tick's `boards-tick` step does nothing. On: the hourly tick crawls the due boards (oldest due first, the same caps, workers and provider protections) and the windows stand down. Never both: the tick also stands down while any boards.yml run is queued or running, or when that cannot be read. To flip, change \"state\" here in a reviewed PR; rollback is flipping it back, the windows resume from the same state tables.",
-    "turned_on": ""
+    "turned_on": "Nov 23, 2026, 11:23 AM CT, by Claude Code (MC) on Jim's Nov 22 2026 approval of the LIFE-905 flip (comment 13810): the shipped step was a clean no-op on ten natural ticks (LIFE-905 comments 13846 and 13861); rollback is setting this back to off."
   },
   "FOLLOWUP_WIRING": {
     "state": "on",
