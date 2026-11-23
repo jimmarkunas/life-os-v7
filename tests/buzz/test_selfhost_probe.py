@@ -159,6 +159,13 @@ class SelfhostProbe(unittest.TestCase):
         empty, _ = self.run_probe(FakeRelay(), mode=("readd", "member"), stdin="")
         self.assertEqual((empty.stdout.splitlines()[-1], empty.returncode), ("readd fail (at least one public key is required)", 1))
 
+    def test_names_mode_signs_one_name_only_profile_per_vault_key_and_prints_no_key(self):
+        """LIFE-927: the owner and connector keys each set their own display name."""
+        done, _ = self.run_probe(FakeRelay(), mode=("names",))
+        self.assertEqual(len(done.stdout.splitlines()), 3, done.stdout + done.stderr)                   # keys, then one step per key
+        for secret in (OWNER_HEX, AGENT_HEX):
+            self.assertNotIn(secret, done.stdout + done.stderr)
+
     def test_a_relay_that_does_not_add_the_member_fails_the_steps_after_it_and_exits_nonzero(self):
         done, _ = self.run_probe(FakeRelay(break_membership=True))
         self.assertIn("member_add fail", done.stdout)

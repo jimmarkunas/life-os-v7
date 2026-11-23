@@ -136,6 +136,15 @@ def synthetic_readd(base, owner, say):
     print("synthetic_pub " + pub)
 
 
+def names(base, owner, agent, say):
+    """Each of the two vault keys sets its own profile name (kind 0, signed by that key): the relay owner and the connector. Nothing but the name goes out."""
+    from lifeos.buzz import nip98
+    for label, key in (("Relay Owner", owner), ("LIFE OS Connector", agent)):
+        content = json.dumps({"name": label, "display_name": label}, separators=(",", ":"))
+        code, ack = signed(base, "/events", key, nip98.event(key, 0, [], content))
+        say("name_" + nip98.pubkey(key)[-4:], code == 200 and isinstance(ack, dict) and ack.get("accepted") is True, f"{label} HTTP {code}")
+
+
 def run(base, owner, agent, say):
     from lifeos.buzz import nip98, relay as relay_mod
     agent_pub = nip98.pubkey(agent)
@@ -168,6 +177,8 @@ def run(base, owner, agent, say):
 
 
 def main(argv):
+    set_names = argv[:1] == ["names"]                                                  # `selfhost-probe names`: the owner and connector keys name themselves (LIFE-927)
+    argv = argv[1:] if set_names else argv
     test_readd = argv[:1] == ["synthetic-readd"]
     argv = argv[1:] if test_readd else argv
     readd_role = argv[1] if argv[:1] == ["readd"] and argv[1:2] in (["admin"], ["member"]) else None          # `selfhost-probe readd admin|member` with public keys on stdin (LIFE-927)
@@ -198,6 +209,9 @@ def main(argv):
         print("keys fail (a pilot key is not in the vault)")
         return 1
     say("keys", True, "owner and agent keys read in memory only")
+    if set_names:
+        names(base, owner, agent, say)
+        return 1 if failed else 0
     if test_readd:
         synthetic_readd(base, owner, say)
         return 1 if failed else 0
