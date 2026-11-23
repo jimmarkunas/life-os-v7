@@ -1,0 +1,9 @@
+# LIFE-867: started by lifeos-honcho-meter-alert.path when the meter writes EXHAUSTED. One Agent Inbox alert through the one alert command (LIFE-876, honcho-alerts client); the leading `-` makes a failed alert
+# harmless. The EXHAUSTED file stays as the durable signal. No secret and no personal data in the subject or details.
+[Unit]
+Description=LIFE OS Honcho budget stopped: one Agent Inbox alert
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=-/opt/lifeos-buzz-mcp/current/bin/honcho-alert send "Honcho budget stopped (EXHAUSTED)" "The Honcho metering proxy refused a request because the budget is spent, cannot be verified, or the promotional credits ended. Reason and time are in /var/lib/lifeos-honcho-meter/EXHAUSTED. Inference is stopped; memory is untouched. Any raise or reset needs Jim's approval." --urgency Today

@@ -26,7 +26,7 @@ class Recorded(unittest.TestCase):
         rows = row(NOW)
         self.assertEqual({k: v["state"] for k, v in rows.items()}, {
             "hourly run": sj.ON_TIME, "watchdog": sj.ON_TIME, "weekly safety check": sj.ON_TIME, "domain jobs": sj.ON_TIME, "V3 pages": sj.UNKNOWN, "AI capacity card": sj.UNKNOWN, "employer board windows": sj.UNKNOWN, "ticker watch": sj.UNKNOWN,
-            "off-site backup": sj.UNKNOWN, "Close release": sj.UNKNOWN, "iMessage attention": sj.UNKNOWN, "iMessage relay": sj.UNKNOWN, "private Buzz pilot health": sj.UNKNOWN})
+            "off-site backup": sj.UNKNOWN, "Honcho nightly backup": sj.UNKNOWN, "Close release": sj.UNKNOWN, "iMessage attention": sj.UNKNOWN, "iMessage relay": sj.UNKNOWN, "private Buzz pilot health": sj.UNKNOWN})
         self.assertEqual(sj.late_names(list(rows.values())), [])
 
     def test_the_same_history_two_hours_on_reads_the_hourly_run_late_then_missing_and_the_watchdog_late(self):

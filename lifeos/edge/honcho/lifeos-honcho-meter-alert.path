@@ -1,0 +1,11 @@
+# LIFE-867: the meter leaves one EXHAUSTED file (reason and time) the first time it refuses a request for budget reasons and never overwrites it. This path unit starts the alert service when that file is written, so
+# the meter itself never runs a command and an alert problem can never block it. PathChanged, not PathExists: it fires on the write, never in a loop while the file stays. Jim removes the file after a decision, which re-arms it.
+[Unit]
+Description=LIFE OS Honcho budget stop: watch for the EXHAUSTED file
+
+[Path]
+PathChanged=/var/lib/lifeos-honcho-meter/EXHAUSTED
+Unit=lifeos-honcho-meter-alert.service
+
+[Install]
+WantedBy=multi-user.target

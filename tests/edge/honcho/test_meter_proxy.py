@@ -204,6 +204,58 @@ class Metering(Case):
         self.assertEqual(Upstream.seen, [])
 
 
+class FailClosed(Case):
+    """LIFE-867: a budget that cannot be verified, or credits that have ended, stop every Anthropic request; embeddings stay free; memory is never touched."""
+    MSG = {"max_tokens": 10, "messages": [{"role": "user", "content": "hi"}]}
+
+    def test_an_unreadable_ledger_refuses_every_request_and_nothing_is_forwarded(self):
+        with open(self.ledger.path, "w") as handle:
+            handle.write("not json")
+        self.start(0.90)
+        status, body = self.post("/v1/messages", self.MSG)
+        self.assertEqual(status, 400)
+        self.assertIn(b"budget cannot be verified", body)
+        self.assertEqual(self.post("/v1/messages/count_tokens", {"messages": []})[0], 400)
+        self.assertEqual([s for s in Upstream.seen if s["path"] != "/v1/embeddings"], [])
+        self.assertEqual(self.post("/v1/embeddings", {"input": "x"})[0], 200)                    # the local model is free and still answers
+
+    def test_a_missing_ledger_beside_an_audit_file_with_spend_is_unverified_but_a_fresh_start_is_fine(self):
+        self.post("/v1/messages", self.MSG)
+        os.remove(self.ledger.path)
+        self.assertEqual(mp.Ledger(state_dir=self.tmp, cap=0.90).unverified, "ledger missing while the audit file shows past spend")
+        with tempfile.TemporaryDirectory() as fresh:
+            self.assertEqual(mp.Ledger(state_dir=fresh, cap=0.90).unverified, "")
+
+    def test_a_ledger_that_cannot_be_written_stops_the_next_request(self):
+        with mock.patch.object(mp.Ledger, "save", side_effect=OSError("disk full")):
+            self.assertEqual(self.post("/v1/messages", self.MSG)[0], 200)                         # this reply was already on its way
+        self.assertEqual(self.ledger.unverified, "ledger unwritable")
+        self.assertEqual(self.post("/v1/messages", self.MSG)[0], 400)
+
+    def test_after_the_credits_end_nothing_is_forwarded_and_health_says_why(self):
+        self.ledger.clock = lambda: mp.STOP_AFTER + 1
+        status, body = self.post("/v1/messages", self.MSG)
+        self.assertEqual((status, b"promotional credits ended" in body), (400, True))
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
+        conn.request("GET", "/health")
+        self.assertEqual(json.loads(conn.getresponse().read())["blocked"], "promotional credits ended: spend would be paid")
+        self.assertEqual([s for s in Upstream.seen if s["path"] != "/v1/embeddings"], [])
+
+    def test_the_first_budget_refusal_leaves_one_exhausted_file_and_never_overwrites_it(self):
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "EXHAUSTED")))
+        open(self.ledger.stop_path, "w").close()
+        self.post("/v1/messages", self.MSG)
+        path = os.path.join(self.tmp, "EXHAUSTED")
+        first = open(path).read()
+        self.assertEqual(sorted(json.loads(first)), ["epoch", "reason"])
+        self.post("/v1/messages", self.MSG)
+        self.assertEqual(open(path).read(), first)
+
+    def test_a_healthy_ledger_is_unaffected(self):
+        self.assertEqual(self.post("/v1/messages", self.MSG)[0], 200)
+        self.assertEqual(self.ledger.why_blocked(), "")
+
+
 class Routes(Case):
     def test_embeddings_go_to_the_local_model_with_no_key_and_no_charge(self):
         status, body = self.post("/v1/embeddings", {"model": "nomic-embed-text", "input": "x"})
