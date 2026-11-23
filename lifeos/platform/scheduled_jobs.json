@@ -8,6 +8,7 @@
   {"job": "domain jobs", "host": "github", "schedule": "after each tick", "rule": "after", "source": "domains.yml", "after": "hourly.yml", "late": 30},
   {"job": "ticker watch", "host": "oracle", "schedule": "every hour at :05 :20 :35 :50", "rule": "unknown", "unit": "lifeos-ticker-watch.timer"},
   {"job": "off-site backup", "host": "oracle", "schedule": "daily 2:30 AM", "rule": "unknown", "unit": "lifeos-offsite-backup.timer"},
+  {"job": "Honcho nightly backup", "host": "oracle", "schedule": "daily 3:30 AM Central", "rule": "unknown", "unit": "lifeos-honcho-backup.timer"},
   {"job": "Close release", "host": "oracle", "schedule": "not in the repo", "rule": "unknown", "unit": "lifeos-close-release.timer"},
   {"job": "iMessage attention", "host": "mac", "schedule": "no clock (starts on demand)", "rule": "unknown", "unit": "ai.lifeos.imessage-attention"},
   {"job": "iMessage relay", "host": "mac", "schedule": "no clock (starts on demand)", "rule": "unknown", "unit": "ai.lifeos.imessage-relay"},
