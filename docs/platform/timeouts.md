@@ -72,6 +72,7 @@ The job timeouts in `.github/workflows` change in one separate workflow pull req
 | `hourly.yml` | `unit-tests` | 20 | 20 | 0 | - | - | new job (LIFE-856 change 1): the unit tests took 125 to 235 s inside `prep` (slowest prep run 235 s); 20 minutes keeps generous room; revisit after a week of runs |
 | `interview-proof.yml` | `proof` | 30 | 30 | 18 | 506 | 1614 | twice the slowest run (1614 s) rounds to 54 min, not below the current 30: unchanged |
 | `manual-job.yml` | `manual` | 15 | 15 | 4 | 47 | 71 | kept: only 4 measured runs (fewer than 10), slowest 71 s |
+| `mariadb-race.yml` | `race` | 10 | 10 | 0 | - | - | new job (LIFE-903): a MariaDB container start (about 30 s), pip install and a 10 s race; 10-minute guard, no run measured yet |
 | `network.yml` | `network` | 30 | 30 | 100 | 539 | 1818 | slowest run 1818 s reached 90% of the current limit: keeps 30 min and is listed for Jim (the job is at its limit) |
 | `outlook.yml` | `outlook` | 20 | 20 | 20 | 11 | 227 | twice the slowest run (227 s) rounds to 20 min, not below the current 20: unchanged |
 | `pr-tests.yml` | `test-index` | 11 | 11 | 39 | 247 | 305 | twice the slowest run (305 s) rounded up to whole minutes, 5-minute floor |
