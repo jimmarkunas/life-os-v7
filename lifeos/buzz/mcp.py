@@ -256,27 +256,8 @@ def governed(who, name, args, msg, effect, receipts, access=None, now=None):
 
 
 def _grant_limited_capabilities(reply, who, access):
-    """Never advertise a source, Google or memory operation as usable without a live grant.
-    The permanent top-level tool contract is unchanged. An unreadable gate hides all
-    grant-limited availability (fail closed); the gate checks again on each actual call."""
-    limited = (*LOOKUP_OPS, *GOOGLE_OPS, *MEMORY_OPS)
-    try:
-        from lifeos.platform import mcp_access
-        a = access or mcp_access.load()
-        client = mcp_access.identify(a, "http", who.get("facts") or {"oauth_client": who.get("client")})
-        granted = mcp_access.granted_tools(a, client)
-    except Exception:  # noqa: BLE001 - capabilities must never widen on lookup failure
-        granted = set()
-    payload = json.loads(reply["result"]["content"][0]["text"])
-    read = payload.get("data", {}).get("read", {})
-    for op in limited:
-        if op in read and op not in granted:
-            read[op]["available"] = False
-            read[op]["reason"] = "no_grant"
-    text = json.dumps(payload)
-    if len(text) > MAX_RESPONSE:
-        return _fail({"id": reply.get("id")}, "response_too_large")
-    return {**reply, "result": {**reply["result"], "content": [{"type": "text", "text": text}]}}
+    from lifeos.platform import mcp_access
+    return mcp_access.capabilities_for_client(reply, who, access, (*LOOKUP_OPS, *GOOGLE_OPS, *MEMORY_OPS), MAX_RESPONSE)
 
 
 def _only_granted(reply, who, access):
