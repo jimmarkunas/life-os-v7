@@ -252,12 +252,7 @@ def governed(who, name, args, msg, effect, receipts, access=None, now=None):
         return _fail(msg, "access_denied" if code in ("identity_unknown", "identity_ambiguous", "unknown_tool", "unknown_tenant") else "governance_unavailable", reason=code)
     if not out.executed:
         return _fail(msg, "access_denied", reason=out.reason)
-    return out.result if out.reason == "ok" else _fail(msg, "governance_unavailable", reason=out.reason)
-
-
-def _grant_limited_capabilities(reply, who, access):
-    from lifeos.platform import mcp_access
-    return mcp_access.capabilities_for_client(reply, who, access, (*LOOKUP_OPS, *GOOGLE_OPS, *MEMORY_OPS), MAX_RESPONSE)
+    return mcp_access.capabilities_for_client(out.result, who, access, (*LOOKUP_OPS, *GOOGLE_OPS, *MEMORY_OPS), MAX_RESPONSE) if out.reason == "ok" and name == "buzz_capabilities" else out.result if out.reason == "ok" else _fail(msg, "governance_unavailable", reason=out.reason)
 
 
 def _only_granted(reply, who, access):
@@ -355,8 +350,6 @@ def handler(relays, auth, base, origins=(), audit=_audit, access=None, receipts=
                 reply = _fail(msg, "client_identity_not_configured")
             else:
                 reply = (governed(who, params["name"], args, msg, lambda: rpc(relay, msg, who), receipts, access) if spec else rpc(relay, msg, who)) if "method" in msg else None  # LIFE-865: a tool call runs only through the gate; client-side JSON-RPC responses are accepted and ignored
-            if reply and msg.get("method") == "tools/call" and params.get("name") == "buzz_capabilities":
-                reply = _grant_limited_capabilities(reply, who, access)
             if reply and who.get("facts", {}).get("credential") and msg.get("method") == "tools/list":
                 reply = _only_granted(reply, who, access)
             if spec and reply:
