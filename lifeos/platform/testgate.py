@@ -1,7 +1,7 @@
-"""LIFE-570: should the hourly prep job re-run the unit tests?
+"""LIFE-570: should the hourly run's unit-tests job (beside the run since LIFE-856) re-run the unit tests?
 
 pr-tests already runs the full suite on every push to main. When the commit an hourly run is about to test already has a green `pr-tests` push run on main, re-running the same
-tests proves nothing new, so prep skips them and says why. FAIL CLOSED: anything but a confirmed green run on THIS exact commit (a lookup that fails, no run, a newer run that is not
+tests proves nothing new, so the job skips them and says why. FAIL CLOSED: anything but a confirmed green run on THIS exact commit (a lookup that fails, no run, a newer run that is not
 green, a run too old, a SHA that is not a full commit id) means the tests RUN. The age cap keeps the time-dependent tests (the index freshness check, date-based checks) running a few
 times a day even when main does not change.
 

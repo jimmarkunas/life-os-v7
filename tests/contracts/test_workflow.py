@@ -464,7 +464,7 @@ class AmazonRetentionOffTheChainTests(unittest.TestCase):
 
 
 class UnitTestGateTests(unittest.TestCase):
-    """LIFE-570: prep skips the unit tests only through the fail-closed gate; the cheap freshness check and every other step are unchanged."""
+    """LIFE-570: the unit tests are skipped only through the fail-closed gate; the cheap freshness check and every other step are unchanged. LIFE-856 change 1: they run in their own `unit-tests` job beside the run, not in `prep`."""
     @classmethod
     def setUpClass(cls):
         try:
@@ -473,10 +473,10 @@ class UnitTestGateTests(unittest.TestCase):
             raise unittest.SkipTest("pyyaml unavailable") from None
 
     def steps(self):
-        return {s.get("name", ""): s for s in self.doc["jobs"]["prep"]["steps"]}
+        return {s.get("name", ""): s for s in self.doc["jobs"]["unit-tests"]["steps"]}
 
     def test_the_gate_runs_first_and_only_it_can_skip_the_tests(self):
-        steps = self.doc["jobs"]["prep"]["steps"]
+        steps = self.doc["jobs"]["unit-tests"]["steps"]
         names = [s.get("name", "") for s in steps]
         gate = next(i for i, n in enumerate(names) if n.startswith("Unit-test gate"))
         tests = next(i for i, n in enumerate(names) if n == "Unit tests")
@@ -491,9 +491,27 @@ class UnitTestGateTests(unittest.TestCase):
     def test_the_gate_reads_the_token_the_job_already_has_and_pr_tests_is_untouched(self):
         gate = next(s for n, s in self.steps().items() if n.startswith("Unit-test gate"))
         self.assertEqual(gate["env"], {"GITHUB_TOKEN": "${{ github.token }}"})
-        self.assertEqual(self.doc["jobs"]["prep"]["permissions"].get("actions"), "write")
+        self.assertEqual(self.doc["jobs"]["prep"]["permissions"].get("actions"), "write")             # prep keeps what it had; the tests job adds no permission (it inherits the workflow's contents: read)
         pr = pathlib.Path(__file__).resolve().parents[2].joinpath(".github/workflows/pr-tests.yml").read_text()
         self.assertIn("unit-tests:", pr)                                                              # the required check name is unchanged
+
+    def test_the_tests_run_beside_the_run_in_their_own_job_and_a_failure_is_a_named_lane_in_the_report(self):
+        """LIFE-856 change 1: off the critical path (no needs, nothing waits for it but the report), no secret and no permission of its own, and prep no longer holds the tests."""
+        job = self.doc["jobs"]["unit-tests"]
+        self.assertNotIn("needs", job)                                                                  # it starts with the run and runs beside prep and finish
+        self.assertNotIn("permissions", job)                                                            # inherits the workflow's contents: read; nothing widened
+        text = str(job)
+        self.assertNotIn("secrets.", text)
+        self.assertNotIn("bws", text)                                                                   # no Bitwarden load, so no new secret name
+        self.assertEqual(job["timeout-minutes"], 20)
+        prep = [s.get("name", "") for s in self.doc["jobs"]["prep"]["steps"]]
+        self.assertFalse([n for n in prep if n.startswith("Unit-test gate") or n in ("Unit tests", "Test-only dependency (PyYAML, for the workflow contract tests; skipped if unavailable)")])
+        for name, j in self.doc["jobs"].items():
+            if name not in ("report", "unit-tests"):
+                self.assertNotIn("unit-tests", j.get("needs", []) if isinstance(j.get("needs"), list) else [j.get("needs")], name)   # nothing on the critical path waits for the tests
+        report = self.doc["jobs"]["report"]
+        self.assertIn("unit-tests", report["needs"])
+        self.assertIn("unit-tests=${{ needs.unit-tests.result }}", next(s for s in report["steps"] if "Resolver lanes" in s.get("name", ""))["run"])   # a failing test is named in the red run and the push
 
     def test_chromium_is_cached_on_the_browser_lock_and_the_browser_step_is_its_own_timed_step(self):
         """LIFE-604 item 13: ONE shared composite action installs the browser; the finish job and the manual Jobright job both use it."""
@@ -1255,12 +1273,12 @@ class SweepFailureIsItsOwnLaneTests(unittest.TestCase):
         for later in self.steps[self.steps.index(sweep) + 1:]:
             self.assertNotIn("steps.sweep", str(later.get("if", "")), later.get("name"))   # a failed sweep never skips the extract step or a later one
 
-    def test_credentials_gate_and_unit_tests_still_fail_prep_and_so_block_finish(self):
+    def test_credentials_and_gate_still_fail_prep_and_so_block_finish(self):
         sweep_at = next(i for i, s in enumerate(self.steps) if s.get("id") == "sweep")
         before = self.steps[:sweep_at]
-        for prefix in ("Load the migrated credentials", "Gate - skip", "Unit-test gate", "Unit tests"):
+        for prefix in ("Load the migrated credentials", "Gate - skip"):                 # LIFE-856: the unit tests moved to their own job beside the run (a failing test reds the run through the report lane)
             step = next(s for s in before if s.get("name", "").startswith(prefix))
-            self.assertNotIn("continue-on-error", step, prefix)                        # a credential, gate or unit-test failure fails the job, as before
+            self.assertNotIn("continue-on-error", step, prefix)                        # a credential or gate failure fails the job, as before
         tolerated = [s.get("name", "") for s in self.steps[:sweep_at] if s.get("continue-on-error")]
         self.assertEqual(len(tolerated), 3)
         self.assertEqual(sum(name.startswith("LIFE-854 - start the employer-board window") for name in tolerated), 1)   # ... LIFE-854's start of the board window (a failure never fails the tick) ...
