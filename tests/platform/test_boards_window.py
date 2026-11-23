@@ -42,18 +42,8 @@ class Slots(unittest.TestCase):
         self.assertEqual(bw.label(utc(2026, 11, 22, 19)), "1:00 PM CT")
         self.assertEqual(bw.label(utc(2026, 11, 22, 1)), "7:00 PM CT")
 
-    def test_every_cron_pair_has_exactly_one_firing_on_the_window_boundary_on_every_day_of_the_year(self):
-        crons = cron_hours()
-        self.assertEqual(len(crons), 8)
-        for start in (dt.date(2026, 1, 1), dt.date(2027, 1, 1)):
-            for offset in range(365):
-                day = start + dt.timedelta(days=offset)
-                on_boundary = 0
-                for hour in crons:
-                    moment = dt.datetime(day.year, day.month, day.day, hour, 0, tzinfo=UTC)
-                    on_boundary += bw.current_slot(moment) == moment
-                self.assertEqual(on_boundary, 4, day)                                              # one firing per window opens it; the other is an hour off
-
+    def test_the_retired_windows_leave_no_cron_line_in_the_workflow(self):
+        self.assertEqual(cron_hours(), [])                                                         # LIFE-905: the four windows are retired; boards.yml has no schedule now
 
 def cron_hours():
     """The eight UTC hours of the cron lines of .github/workflows/boards.yml."""

@@ -209,12 +209,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh api -X POST "repos/${GITHUB_REPOSITORY}/actions/workflows/domains.yml/dispatches" -f ref="${GITHUB_REF_NAME}" -f "inputs[phase]=tick" -f "inputs[tick_run]=${GITHUB_RUN_ID}"
-      - name: LIFE-854 - start the employer-board window when one has opened and has no run (GitHub's own cron for boards.yml never fired; this tick is started reliably from Oracle; counts and codes only, a failure never fails the tick)
-        if: ${{ (github.event_name == 'schedule' || inputs.tick) && github.run_attempt == 1 && !cancelled() }}
-        continue-on-error: true
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: python3 -m lifeos.platform.boards_window dispatch
       - uses: ./.github/actions/python
       - id: sweep
         continue-on-error: true      # LIFE-650: the sweep only moves mail between Gmail labels and nothing after it needs it (the extract step reads mail already under the label; unswept mail waits for the next run); a failure turns the report job's `sweep` lane red and pushes, but does not skip the finish job. Credentials, the gate and the unit tests above still fail prep
