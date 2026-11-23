@@ -380,6 +380,14 @@
    "slowest_seconds": 71,
    "target": 15
   },
+  "mariadb-race.yml::race": {
+   "basis": "new job (LIFE-903): a MariaDB container start (about 30 s), pip install and a 10 s race; 10-minute guard, no run measured yet",
+   "current": 10,
+   "median_seconds": null,
+   "runs_measured": 0,
+   "slowest_seconds": null,
+   "target": 10
+  },
   "network.yml::network": {
    "basis": "slowest run 1818 s reached 90% of the current limit: keeps 30 min and is listed for Jim (the job is at its limit)",
    "current": 30,

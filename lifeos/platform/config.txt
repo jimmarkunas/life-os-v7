@@ -67,9 +67,15 @@ LIFEOS_ACQ_SSH_PRIVATE_KEY secret Connection detail for the Hostinger job store 
 LIFEOS_ACQ_SSH_USER secret Connection detail for the Hostinger job store (read at run time through db.py)
 LIFEOS_ACQ_SSH_VIA flag Set to oracle to send the store connection through Oracle
 LIFEOS_NOTION_IDS secret Mapping of private Notion ids, passed whole to stages that read ids
+LIFEOS_RACE_DB_HOST workflow_only:workflow Host of the throwaway MariaDB service container the mariadb-race workflow races against; the test refuses anything but 127.0.0.1 or localhost (LIFE-903)
+LIFEOS_RACE_DB_NAME workflow_only:workflow Database name of that throwaway container (race_ledger); the test refuses any name not starting race_ (LIFE-903)
+LIFEOS_RACE_DB_PORT workflow_only:workflow Port of that throwaway MariaDB container (LIFE-903)
+LIFEOS_RACE_DB_USER workflow_only:workflow User of that throwaway MariaDB container (root, no password: the container has no secret and is reachable only from the runner; LIFE-903)
 LIFEOS_SETTINGS flag LIFE-699: on reads the V7 settings page outside GitHub Actions, off never reads it (production runs read it by default)
 LIFEOS_TEST_NOW workflow_only:workflow The test clock date of the second-date unit-test job (an ISO date; tests read it through tests/kit/clock.py; LIFE-692)
 LIVE flag:workflow Run switch: write for real instead of a dry run
+MARIADB_ALLOW_EMPTY_ROOT_PASSWORD workflow_only:workflow MariaDB image setting for the throwaway race container: no password because nothing in it is secret (LIFE-903)
+MARIADB_DATABASE workflow_only:workflow MariaDB image setting: creates race_ledger in the throwaway race container (LIFE-903)
 METER_BIND input LIFE-889: the address the Honcho metering proxy binds (the honcho-net gateway; never public)
 METER_CAP_USD input LIFE-889: the metering proxy's hard spend cap in US dollars (default 0.90)
 METER_PORT input LIFE-889: the port the Honcho metering proxy listens on (default 8081)
