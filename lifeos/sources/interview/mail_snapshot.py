@@ -108,6 +108,30 @@ def load(connect, tick_started, now, days):
         return {"why": "corrupt"}
 
 
+REUSE_MAX_AGE = timedelta(hours=3)       # LIFE-906: an earlier complete read older than this is not trusted as a checkpoint (the next read is the full window)
+
+
+def previous(connect, now, days):
+    """LIFE-906: the checkpoint for an incremental read: {Gmail message id: record} from the LATEST COMPLETE snapshot of this window taken within REUSE_MAX_AGE, else {}. A missing, stale, incomplete, other-window or
+    corrupt snapshot, or any store problem, is {} (the full window is read); a partial read never became a checkpoint because only complete rows are chosen. Never raises."""
+    try:
+        with connect() as connection, connection.cursor() as cursor:
+            cursor.execute(f"SELECT taken_at, days, fingerprint, payload FROM {TABLE} WHERE complete = 1 ORDER BY taken_at DESC LIMIT 1")
+            found = cursor.fetchone()
+        if not found:
+            return {}
+        taken, held_days, held_fingerprint, payload = found
+        taken = taken.replace(tzinfo=UTC) if taken.tzinfo is None else taken
+        if int(held_days) != days or not now - REUSE_MAX_AGE <= taken <= now:
+            return {}
+        records = json.loads(zlib.decompress(bytes(payload)))["records"]
+        if not isinstance(records, list) or fingerprint(records) != held_fingerprint:
+            return {}
+        return {r["id"]: r for r in records if isinstance(r, dict) and r.get("provider") == "gmail" and isinstance(r.get("id"), str)}
+    except Exception:                                                                            # noqa: BLE001 - any problem: read the whole window
+        return {}
+
+
 def take(environ, now, days, connect=None):
     """What the late job asks: a usable snapshot for the tick that just finished, or why not. Without TICK_STARTED (a manual run, `all`) it answers 'no_tick' and never touches the store."""
     started = (environ.get("TICK_STARTED") or "").strip()
@@ -132,11 +156,13 @@ def stage(limit, live, environ=os.environ, now=None, connect=None, read=None):
     from lifeos.sources.interview import interview_evidence as evidence             # noqa: PLC0415 - that module imports this one
     now = (now or datetime.now(evidence.TZ)).astimezone(evidence.TZ)
     days, seconds, detail = evidence.window(environ, live), {}, {}
+    reuse = previous(connect or store.connect, now.astimezone(UTC), days) if live and read is None else {}          # LIFE-906: read only the mail the last complete snapshot does not hold
     try:
-        records, down = (read or evidence.read_mail)(environ, now, None, None, days, seconds, detail)
+        records, down = (read or evidence.read_mail)(environ, now, None, None, days, seconds, detail, reuse=reuse) if reuse else (read or evidence.read_mail)(environ, now, None, None, days, seconds, detail)
     except Exception as error:                                                       # noqa: BLE001 - a fixed code, never the error's text
         return {"snapshot": "not_saved", "why": "read_" + type(error).__name__.lower()[:40]}
-    counts = {"records": len(records), "complete": down == 0, "down": down, "days": days, "sources": _sources(records), "seconds": seconds}
+    counts = {"records": len(records), "complete": down == 0, "down": down, "days": days, "sources": _sources(records), "seconds": seconds,
+              "gmail": {k: (detail.get("gmail") or {}).get(k) for k in ("listed", "read", "reused", "retries")}}      # LIFE-906: listed, read, skipped (reused) and retries, counts only
     if not live:
         return {"snapshot": "dry_run", **counts}
     try:

@@ -185,14 +185,14 @@ def lead_row(writer, company, role, key, url, today):
     return "created"
 
 
-def read_mail(environ, now, gmail=None, outlook_accounts=None, days=mail.WINDOW_DAYS, seconds=None, detail=None):
+def read_mail(environ, now, gmail=None, outlook_accounts=None, days=mail.WINDOW_DAYS, seconds=None, detail=None, reuse=None):
     """-> (records, sources that could not be read in full). Read only; Gmail and Outlook are read whole, as the recruiters stage does, because a lead has no company on any roster.
     LIFE-793: the sources are read one after another again (the first run of a side-by-side read, PR 1318, ended DEGRADED with a source read in part and measured nothing gained: Outlook took 1.2 s and
     1.4 s, Gmail 239 s). `seconds`, when given, is filled with each source's elapsed seconds under a fixed name (gmail, outlook_1, outlook_2, ...); `detail`, when given, gets Gmail's own listed and read
-    counts with their seconds: counts only, never an address or label."""
+    counts with their seconds: counts only, never an address or label. LIFE-906: `reuse` ({Gmail message id: record}) is mail an earlier complete read already holds; Gmail reads only the rest (Outlook is read whole, as it takes seconds)."""
     records, down, limit = [], 0, mail.MAX_MESSAGES * -(-days // mail.WINDOW_DAYS)
     gmail_timing = {} if detail is not None else None
-    reads = [("gmail", lambda: mail.gmail_records(gmail or Gmail.from_env(), now, limit=limit, days=days, workers=MAIL_WORKERS, timing=gmail_timing, heal=True))]
+    reads = [("gmail", lambda: mail.gmail_records(gmail or Gmail.from_env(), now, limit=limit, days=days, workers=MAIL_WORKERS, timing=gmail_timing, heal=True, **({"reuse": reuse} if reuse else {})))]
     for number, (label, account) in enumerate(outlook_accounts if outlook_accounts is not None else mail.outlook_accounts(environ), 1):
         reads.append((f"outlook_{number}", lambda a=account, l=label: mail.outlook_records(a, l, now, limit=limit, days=days) if a else ([], 1)))
     for name, read in reads:
