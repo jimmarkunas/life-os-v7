@@ -83,7 +83,7 @@ class FakeRelay(ThreadingHTTPServer):
 
 
 class SelfhostProbe(unittest.TestCase):
-    def run_probe(self, relay, secrets=None, mode=()):
+    def run_probe(self, relay, secrets=None, mode=(), stdin=None):
         tmp = Path(tempfile.mkdtemp())
         self.addCleanup(lambda: shutil.rmtree(tmp, ignore_errors=True))
         (tmp / "bin").mkdir()
@@ -92,7 +92,7 @@ class SelfhostProbe(unittest.TestCase):
         (tmp / "env").write_text("export BWS_ACCESS_TOKEN='synthetic'\n")
         (tmp / "secrets.json").write_text(json.dumps([{"key": "lifeos/edge/BUZZ_SELFHOST_OWNER_KEY", "value": OWNER_HEX}, {"key": "lifeos/edge/BUZZ_SELFHOST_AGENT_CLAUDE", "value": AGENT_HEX}] if secrets is None else secrets))
         env = {**os.environ, "PATH": f"{tmp / 'bin'}:{os.environ['PATH']}", "FAKE_SECRETS": str(tmp / "secrets.json"), "STORE_CREDENTIALS_ENV": str(tmp / "env"), "STORE_CREDENTIALS_USER": "nobody-not-used"}
-        done = subprocess.run([sys.executable, str(SCRIPT), *mode, f"http://127.0.0.1:{relay.server_address[1]}"], capture_output=True, text=True, env=env, cwd=tmp)
+        done = subprocess.run([sys.executable, str(SCRIPT), *mode, f"http://127.0.0.1:{relay.server_address[1]}"], capture_output=True, text=True, env=env, cwd=tmp, input=stdin)
         self.addCleanup(relay.server_close)
         self.addCleanup(relay.shutdown)
         return done, tmp
@@ -121,6 +121,21 @@ class SelfhostProbe(unittest.TestCase):
         self.assertEqual((done.returncode, AGENT_PUB in relay.members, relay.channels[channel] == {OWNER_PUB, AGENT_PUB}, [e for e in relay.events if e["kind"] == 9]), (0, True, True, []))   # one channel, the agent in it, no post, no health or refusal steps
         for secret in (OWNER_HEX, AGENT_HEX):
             self.assertNotIn(secret, done.stdout + done.stderr)
+
+    def test_members_mode_adds_exactly_the_given_public_keys_to_the_relay_and_the_channel_and_nothing_else(self):
+        """LIFE-927: the owner adds public keys only; no member private key is involved and nobody else is added."""
+        relay = FakeRelay()
+        channel = "11111111-2222-4333-8444-555555555555"
+        relay.channels[channel] = {OWNER_PUB}
+        other = nip98.pubkey(bytes.fromhex("33" * 32))
+        done, tmp = self.run_probe(relay, mode=("members", channel), stdin=f"{AGENT_PUB}\n{other}\nnot-a-key\n")
+        lines = done.stdout.splitlines()
+        self.assertEqual([line.split(" ")[:2] for line in lines], [["keys", "ok"], ["member_" + AGENT_PUB[:8], "ok"], ["member_" + other[:8], "ok"]], done.stdout + done.stderr)
+        self.assertEqual((done.returncode, relay.members, relay.channels[channel]), (0, {OWNER_PUB, AGENT_PUB, other}, {OWNER_PUB, AGENT_PUB, other}))
+        for secret in (OWNER_HEX, AGENT_HEX):
+            self.assertNotIn(secret, done.stdout + done.stderr)
+        empty, _ = self.run_probe(FakeRelay(), mode=("members", channel), stdin="")
+        self.assertEqual((empty.stdout.splitlines()[-1], empty.returncode), ("members fail (a channel id and at least one public key are required)", 1))
 
     def test_a_relay_that_does_not_add_the_member_fails_the_steps_after_it_and_exits_nonzero(self):
         done, _ = self.run_probe(FakeRelay(break_membership=True))
