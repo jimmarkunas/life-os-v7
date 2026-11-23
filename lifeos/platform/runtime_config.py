@@ -1,11 +1,9 @@
-"""LIFE-844: the Runtime Configuration data source reader, addressed by a stable ID, never by title.
+"""LIFE-844: the Runtime Configuration data source reader, addressed by a stable ID, never by title. It is V7's one settings source (LIFE-892 switched to it; LIFE-859 retired the old page, REQ-52).
 
-`shadow` (compare-only) is called by lifeos.run next to settings.apply; the environment is still filled only from the old page.
-
-The V7 settings page (settings.py) is REQ-52 in Product Requirements and is found by its exact title; moving or renaming it breaks every stage that reads it. This reader takes its source from
-V7_RUNTIME_CONFIG_SOURCE_ID, so a rename or a move cannot hide it. Rows: Name, Value, Kind (address | switch), Revision, Active. It reuses settings.py's allowlist (MOVABLE), refusals (SAFETY and
-credential-shaped names), shadow rule (`_fill`) and last-accepted fallback; two active rows for a name apply neither. Counts and names only, never a value; never raises (`status` says why).
-Cutover is protected and not done here: docs/platform/runtime-config-cutover.md."""
+`settings.apply` reads it and fills the environment; `shadow` is now a read-only health check of the source (rows, kinds, and which Notion tokens can read it), called by lifeos.run and the tick. It compares nothing.
+The source is addressed by V7_RUNTIME_CONFIG_SOURCE_ID, so a rename or a move cannot hide it. Rows: Name, Value, Kind (address | switch), Revision, Active. It reuses settings.py's allowlist (MOVABLE), refusals
+(SAFETY and credential-shaped names), shadow rule (`_fill`) and last-accepted fallback; two active rows for a name apply neither. Counts and names only, never a value; never raises (`status` says why).
+History: docs/platform/runtime-config-cutover.md."""
 import os
 import re
 import threading
@@ -67,7 +65,7 @@ def fetch(client, source):
 
 
 def parse(pages):
-    """Notion pages -> ({name: value}, counts). The counts match settings.parse (`refused`, `unknown`, `invalid`, `repeated`) plus `inactive`; none of them is applied."""
+    """Notion pages -> ({name: value}, counts). The counts are `refused`, `unknown`, `invalid`, `repeated` and `inactive`; none of them is applied."""
     counts = {"refused": [], "unknown": 0, "invalid": [], "repeated": [], "inactive": 0}
     seen, rows = {}, []
     for page in pages:
@@ -107,55 +105,10 @@ def read(client, environ=os.environ):
     return parse(fetch(client, source_id(environ)))
 
 
-def compare(old, new):
-    """The dual-read gate before any cutover: the old page's accepted values against the candidate source's. -> counts (names only) and `blocking`, true on any difference."""
-    out = {"matched": 0, "mismatched": [], "only_old": sorted(set(old) - set(new)), "only_new": sorted(set(new) - set(old))}
-    for name in sorted(set(old) & set(new)):
-        if settings._bare(old[name]) == settings._bare(new[name]) if settings.is_address(name) else old[name] == new[name]:
-            out["matched"] += 1
-        else:
-            out["mismatched"].append(name)
-    out["blocking"] = bool(out["mismatched"] or out["only_old"] or out["only_new"])
-    return out
-
-
 def export_rows(found):
     """The rows to create in the new source from an accepted settings map (a migration helper for the protected cutover; it writes nothing)."""
     return [{"Name": n, "Value": v, "Kind": "address" if settings.is_address(n) else "switch", "Revision": 1, "Active": True} for n, v in sorted(found.items())
             if settings.movable(n) and n not in settings.SAFETY]
-
-
-def apply(environ=os.environ, client=None, connect=None, remember=False):
-    """Fill the environment from the configured source under settings.py's shadow rule. -> counts (names only). Same fallbacks as settings.apply:
-    no bootstrap ID: nothing changes (`off`); an unreadable, malformed or empty source: the last accepted map when `connect` is given (`unreadable:<CODE>`, `last_accepted`);
-    `remember` (cutover only) saves a good read as the last accepted map."""
-    out = {"status": "off", "filled": [], "matched": 0, "mismatched": []}
-    try:
-        source = source_id(environ)
-    except RuntimeConfigError as error:
-        if str(error) != "RUNTIME_CONFIG_SOURCE_ID_MISSING":
-            out["status"] = "unreadable:" + str(error)
-            settings._fallback(environ, connect, out)
-        return out
-    try:
-        if client is None:
-            raise RuntimeConfigError("RUNTIME_CONFIG_UNREADABLE")
-        found, counts = parse(fetch(client, source))
-        if not found:
-            out.update(counts)
-            raise RuntimeConfigError("RUNTIME_CONFIG_EMPTY")             # nothing usable: never apply an empty override
-    except RuntimeConfigError as error:
-        out["status"] = "unreadable:" + str(error)
-        settings._fallback(environ, connect, out)
-        return out
-    out.update(counts, status="ok")
-    settings._fill(environ, found, out)
-    if remember and connect is not None:
-        try:
-            out["remembered"] = settings.remember(connect, found)
-        except Exception as error:                                       # noqa: BLE001 - remembering is best effort, as in settings.apply
-            out["remember_status"] = str(error) if CODE.fullmatch(str(error)) else type(error).__name__
-    return out
 
 
 _ONCE = {}                                                               # LIFE-858: the process-wide receipt of `shadow(once=True)`, so the many stages of one tick process make one read, not one each
@@ -202,7 +155,7 @@ def shadow(environ=os.environ, client=None, make_client=None, once=False):
     with _ONCE_LOCK:                                                         # a concurrent caller waits for the first read instead of repeating it
         if key in _ONCE:
             first = _ONCE[key]
-            return {"status": "ok", "matched": first["matched"], "blocking": first["blocking"], "cached": True}
+            return {"status": "ok", "rows": first["rows"], "cached": True}
         receipt = _shadow(environ, client, make_client)
         if receipt.get("status") == "ok":                                     # only a good read is remembered: a transient failure never poisons the later stages
             _ONCE[key] = receipt
@@ -210,10 +163,9 @@ def shadow(environ=os.environ, client=None, make_client=None, once=False):
 
 
 def _shadow(environ, client, make_client):
-    """Compare-only dual read (cutover step 4): the new source against the old V7 settings page. Changes nothing in the environment, writes nothing, never raises.
-    -> {"status": "off"} with no bootstrap ID or no token (nothing was read), else `compare` counts (names only) plus `status` ok, or `unreadable:<CODE>`.
-    LIFE-858 adds, to the ok receipt only: `rows` and `kinds` (counts), `new_counts` (names of rows the reader refused or found invalid or repeated, only when there are any), `seconds` (the read's own cost),
-    `tokens` (`probe`: one PASS/FAIL per Notion token this step holds, only in production or with `make_client`), and `names` (both sides' setting names, only on a manual dispatch)."""
+    """Read-only health check of the source. Changes nothing in the environment, writes nothing, never raises.
+    -> {"status": "off"} with no bootstrap ID or no token (nothing was read), else `status` ok or `unreadable:<CODE>` with `rows` and `kinds` (counts), `new_counts` (names of rows the reader refused or found invalid or
+    repeated, only when there are any), `seconds` (the read's own cost), `tokens` (`probe`: one PASS/FAIL per Notion token this step holds, only in production or with `make_client`) and `names` (only on a manual dispatch)."""
     try:
         source_id(environ)
     except RuntimeConfigError as error:
@@ -228,17 +180,15 @@ def _shadow(environ, client, make_client):
             client = _client_for(token)
             make_client = make_client or _client_for
         new, new_counts = read(client, environ)
-        old, _ = settings.parse(settings.read(client))
     except Exception as error:                                           # noqa: BLE001 - a shadow read never fails a stage
         return {"status": "unreadable:" + (str(error) if CODE.fullmatch(str(error)) else type(error).__name__)}
-    out = {"status": "ok", **compare(old, new), "rows": {"old": len(old), "new": len(new)},
-           "kinds": {"address": sum(1 for n in new if settings.is_address(n)), "switch": sum(1 for n in new if not settings.is_address(n))}}
+    out = {"status": "ok", "rows": len(new), "kinds": {"address": sum(1 for n in new if settings.is_address(n)), "switch": sum(1 for n in new if not settings.is_address(n))}}
     flagged = {key: value for key, value in new_counts.items() if value}
     if flagged:
         out["new_counts"] = flagged
     if make_client is not None:
         out["tokens"] = probe(environ, make_client)
     if environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch":
-        out["names"] = {"old": sorted(old), "new": sorted(new)}
+        out["names"] = sorted(new)
     out["seconds"] = round(time.monotonic() - began, 2)
     return out

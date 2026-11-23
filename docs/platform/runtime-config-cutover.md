@@ -1,5 +1,7 @@
 # Runtime Configuration source: cutover map and rollback (LIFE-844)
 
+**Status (LIFE-859, Nov 23, 2026): step 6 is done. The old settings page reader, its seeding and the fallback to that page are removed from code; the Runtime Configuration source is the one settings source. REQ-52 stays in Product Requirements as history, Superseded by this source. The recovery route is the last accepted map (below). The compare-only reader is now a read-only health check; the older notes below are history.**
+
 **Status (LIFE-892, Nov 22, 2026): Phase 2 (the switch) is in code: `settings.apply` reads the new source first and the old page second; rollback is an empty `V7_RUNTIME_CONFIG_SOURCE_ID`. Phase 1 (compare-only, LIFE-858) still runs next to it as the parity check.** `lifeos/platform/runtime_config.py` is called next to `settings.apply` in the `lifeos.run` steps that hold the bootstrap ID and, with LIFE-858, in the hourly tick and four domains jobs. It changes no environment and writes nothing. `lifeos/platform/settings.py` still reads the old page only and decides every value. Cutover steps 5 and 6 are protected: each needs Jim's explicit yes on the concrete diff.
 
 ## What the reader does
@@ -61,13 +63,15 @@ Run IDs, the seven-token matrix and the 59-versus-58 explanation are posted on L
 3. Dry comparison: run `runtime_config.compare(old_page_values, new_source_values)`; `blocking: false` is required. Any difference stops here.
 4. Bitwarden: add `V7_RUNTIME_CONFIG_SOURCE_ID`. Workflow PR: declare it in the reading steps and call `runtime_config.shadow` next to `settings.apply` in compare-only mode (apply from the old page, report counts from the new). Natural runs for 24 hours with every name matched. **Done (PRs #1334, #1335); extended to the hourly tick and the domains jobs by LIFE-858 Phase 1.**
 5. Switch (LIFE-892, Jim approved Nov 22, 2026, 6:14 PM CT): `settings.apply` reads the new source first (`remember=True`, receipt `source: new`), the old page stays as the second source (`new_source: unreadable:<CODE>` when it is used because the new source failed). **In progress: code merged, then 24 hours of natural runs.**
-6. Retire the old page reader and REQ-52 only on Jim's separate yes.
+6. **Done (LIFE-859, Jim's yes on Nov 23, 2026, 3:48 PM CT, comment 13958):** the old page reader, its seeding and the empty-ID fallback to that page are removed; REQ-52 is Superseded, not deleted.
 
-## Rollback (works at every step before 6)
+## Rollback and recovery (after step 6)
 
-1. Empty or remove `V7_RUNTIME_CONFIG_SOURCE_ID` in Bitwarden. The new reader returns `off` and reads nothing; `settings.apply` keeps reading the V7 settings page exactly as today (`test_rollback_is_removing_the_bootstrap_id_and_the_page_reader_is_unchanged`).
-2. If the source is unreadable or empty, the last accepted map is used and the receipt says `unreadable:<CODE>` and `last_accepted`.
-3. Revert the workflow PR. Nothing is deleted before step 6, so there is no data to restore; the data source can stay or be archived.
+The old rollback (empty `V7_RUNTIME_CONFIG_SOURCE_ID` returns to the old page) no longer exists; its safe replacement is the last accepted map, proved in `tests/platform/test_settings.py::OldPageRetired`:
+
+1. **A source that cannot be read** (unreadable, empty, malformed, or no `V7_RUNTIME_CONFIG_SOURCE_ID`): the environment is filled from the private `settings:last-accepted` map, written by the last good read (`remember`). The receipt says `status: unreadable:<CODE>` or `no_source_id`, and `last_accepted` with the time (CT); it never says `source: new`. With no saved map or no store access, the environment stays as it was.
+2. The last accepted map never holds a safety name or credential, and nothing reads or writes the retired page.
+3. To undo this change, revert the LIFE-859 PR (the old reader returns with its tests); the page itself was never edited or deleted.
 
 ## Verification receipt (code PR)
 

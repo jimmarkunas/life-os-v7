@@ -112,14 +112,6 @@ class Callers(unittest.TestCase):
                 v3.find(client, v3.REGISTER_TITLE, "page")
             self.assertEqual(str(caught.exception), "MEGIBOW_V3_TARGET_NOT_FOUND")
 
-    def test_the_settings_page_is_found_past_the_first_page(self):
-        children = {"results": [{"id": "c", "type": "code", "code": {"rich_text": [{"plain_text": "GRANOLA_AUTO on"}]}}], "has_more": False}
-        client = Search(JUNK + [page(settings.TITLE, "setp")], other={"/blocks/setp/children": children})
-        self.assertEqual(settings.read(client), ["GRANOLA_AUTO on"])
-        with self.assertRaises(settings.SettingsError) as caught:
-            settings.read(Search(JUNK))
-        self.assertEqual(str(caught.exception), "SETTINGS_PAGE_NOT_FOUND")
-
     def test_the_accountability_register_is_found_past_the_first_page(self):
         cal = "c" * 32
         children = {"results": [{"id": "r", "type": "code", "code": {"rich_text": [{"plain_text": f"R4L jim.week        {cal}"}]}}], "has_more": False}
