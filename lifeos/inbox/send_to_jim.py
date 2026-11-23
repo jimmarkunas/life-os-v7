@@ -10,12 +10,10 @@ import sys
 
 from lifeos.inbox import agent_inbox
 from lifeos.inbox.model import InboxError
-from lifeos.platform import mcp_access
+from lifeos.platform import inbox_send, mcp_access
 from lifeos.platform.notion_client import Client, NotionError
 
-FIELDS = {"from": "who is writing (an agent id or a person's name)", "subject": "what it is, one line (160 characters at most)", "urgency": "Now, Today, This week or FYI (default Today)",
-          "workspace": "Personal or Bytalos (default Personal)", "due": "optional date or date-time, ISO 8601", "link": "optional https link to the context (ticket, PR, page, thread)",
-          "details": "optional short note (1,500 characters at most); never a secret or personal data", "key": "optional idempotency key: the same key never adds a second row"}
+FIELDS = inbox_send.FIELDS
 TOOL = {"name": "send_to_jim", "description": "Put one item in Jim's Agent Inbox: something that needs his attention and is too small for a Jira ticket or a Todoist task. Never include secrets or personal data.",
         "inputSchema": {"type": "object", "properties": {k: {"type": "string", "description": v} for k, v in FIELDS.items() if k != "from"}, "required": ["subject"], "additionalProperties": False}}
 
@@ -28,21 +26,13 @@ def _client(env):
 
 
 def deliver(item, environ=None, client=None, now=None):
-    """-> {"ok": true, "created"|"duplicate": 1, "tiles_changed": n} or {"ok": false, "reason": word}. Never raises; never carries content."""
+    """-> {"ok": true, "created"|"duplicate": 1, "tiles_changed": n} or {"ok": false, "reason": word}. Never raises; never carries content. The delivery itself is lifeos.platform.inbox_send.deliver (shared with the governed MCP)."""
     env = os.environ if environ is None else environ
     try:
         client = client or _client(env)
-        source = agent_inbox.locate(client)
-        result = agent_inbox.send(client, item, now=now, source=source)
-        try:
-            result.update(agent_inbox.recount_page(client, source=source))                         # the tiles follow the row; a failure here never loses the row
-        except (InboxError, NotionError):
-            result["tiles_changed"] = -1
-        return {"ok": True, **result}
     except InboxError as error:
         return {"ok": False, "reason": error.reason}
-    except NotionError as error:
-        return {"ok": False, "reason": f"notion_{str(error).lower()[:40]}"}
+    return inbox_send.deliver(item, client, now)
 
 
 def _reply(request_id, result=None, error=None):

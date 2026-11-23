@@ -6,6 +6,8 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+from lifeos.platform.inbox_error import InboxError  # noqa: F401 - LIFE-876: defined in platform (shared with the governed MCP); this name keeps working
+
 SOURCES = ("jira", "todoist", "concord", "followup", "calendar", "asana")
 WORKSPACES = ("personal", "bytalos")                    # released together (Jim, Nov 13 2026); each is authorized, credentialed and read on its own
 UNRELEASED_WORKSPACES = ("tgp",)                        # excluded from this release: never loaded, never acted on
@@ -13,14 +15,6 @@ PRESENTATION = ("needs_me", "waiting", "approvals", "upcoming")
 HEALTH = ("ok", "degraded", "unavailable", "no_grant", "refused")
 FRESH_FOR = timedelta(minutes=15)                       # a record older than this since its retrieval is stale and can support no action or completion claim
 _PART = re.compile(r"^[A-Za-z0-9_.@:-]{1,80}$")
-
-
-class InboxError(ValueError):
-    """`reason` is a fixed word such as `workspace_not_released`; the message is the reason and nothing else."""
-
-    def __init__(self, reason):
-        super().__init__(reason)
-        self.reason = reason
 
 
 def record_id(source, workspace, account, native_id):
