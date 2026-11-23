@@ -8,6 +8,7 @@ from collections import Counter
 from dataclasses import replace
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from lifeos.platform import ledger_claim
 from lifeos.platform.names import core, norm, same_company, same_role, split_title
 from lifeos.platform.notion_client import NotionError, rich_text
 from lifeos.platform.runtime import DeadlineExceeded
@@ -582,8 +583,24 @@ def _create_in_row(client, environ, source, row, parent_query, query, current, b
     company, role = parent_query.company.strip(), parent_query.role.strip()
     try:
         if row is None:
-            row_id = notion.create_ledger_row(client, source, company, role, query.stable_job_key)
-            out["rows_created"] = 1
+            claim_key, claimant = query.stable_job_key or ledger_claim.role_key(company, role), ledger_claim.who("opportunity")
+            try:
+                state, _ = ledger_claim.claim(claim_key, claimant)                  # LIFE-903: no create without the cross-process claim (the store's unique job key)
+            except Exception:                                                       # noqa: BLE001 - no claim means no create; a fixed code, never the exception text
+                out["claim"] = "unavailable"
+                return "write_failed"
+            code, found = notion.ledger_row(client, source, company, role, query.stable_job_key)     # authoritative read-back by key (or name); with the claim nobody else may create
+            if code == "ledger_row_found":
+                row_id = found["id"]
+                if state == ledger_claim.WON:
+                    ledger_claim.release(claim_key, claimant)
+            elif code == "ledger_row_missing" and state == ledger_claim.WON:
+                row_id = notion.create_ledger_row(client, source, company, role, query.stable_job_key)
+                out["rows_created"] = 1
+                ledger_claim.release(claim_key, claimant)                           # the create answered with the page id; an unanswered create raises above and keeps the claim
+            else:
+                out["claim"] = "held" if code == "ledger_row_missing" else "unreadable"
+                return "write_failed"                                               # held by another creator, or unreadable or ambiguous: never create on a guess; the claim stays until the lease passes
         else:
             row_id = row["id"]
     except NotionError:

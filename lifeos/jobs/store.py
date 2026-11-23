@@ -180,6 +180,9 @@ COLUMNS = (
     ("v7_sources", "etag", "VARCHAR(200) NULL", None),
     ("v7_sources", "last_modified", "VARCHAR(64) NULL", None),
     ("v7_sources", "unchanged_runs", "SMALLINT NOT NULL DEFAULT 0", None),
+    # LIFE-903 (Jim, D1, Nov 22 2026): the cross-process claim every Ledger creator takes before it creates a row (lifeos/jobs/ledger_claim.py). Rollback: ALTER TABLE v7_jobs DROP COLUMN ledger_claim_by, DROP COLUMN ledger_claim_at
+    ("v7_jobs", "ledger_claim_by", "VARCHAR(64) NULL", None),
+    ("v7_jobs", "ledger_claim_at", "DATETIME NULL", None),
 )
 def existing_v7_tables(connection):
     with connection.cursor() as cursor:
