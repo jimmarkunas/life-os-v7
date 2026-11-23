@@ -20,3 +20,6 @@ Pinned Honcho v3.6.1, private (loopback only), every Anthropic call through a sp
 
 ## Stop spending at once
 `touch /var/lib/lifeos-honcho-meter/STOP` (the proxy refuses every request; nothing else changes). Remove the file to resume. Nothing is deleted without Jim's say-so.
+
+## Backup and scratch restore (LIFE-867)
+`backup.sh` (run as root) writes a logical dump of the running database, the settings file and the image digest to `/var/backups/lifeos-honcho/<UTC stamp>/` (0700 root), keeps the 7 newest and refuses under 3 GB free; nothing is stopped. `restore_check.sh` restores a backup into a throwaway container with no network and no volume, prints the table row counts, and removes the container; it never touches `honcho_pgdata`. No timer exists: a recurring backup is a new schedule and needs Jim's approval.
