@@ -74,7 +74,7 @@ class Cursor:
         self.args = args
 
     def fetchall(self):
-        return [r for r in self.rows if r[0] in self.args]
+        return [tuple(r) + (None,) * (4 - len(r)) for r in self.rows if r[0] in self.args]          # (message, status, unverified[, repost_of])
 
 
 class Conn:

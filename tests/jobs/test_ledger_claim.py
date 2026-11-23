@@ -76,9 +76,11 @@ class TwoProcessRace(unittest.TestCase):
             store_file, ledger_file = os.path.join(tmp, "store.db"), os.path.join(tmp, "ledger.txt")
             JobsDB(store_file)                                              # the schema, once
             open(ledger_file, "w").close()
-            start = time.time() + 2.0
-            procs = [subprocess.Popen([sys.executable, "-B", "-m", "tests.jobs.claim_race_worker", store_file, ledger_file, KEY, role, str(start), mode], cwd=ROOT, stdout=subprocess.PIPE, text=True)
+            go_file = os.path.join(tmp, "go")
+            procs = [subprocess.Popen([sys.executable, "-B", "-m", "tests.jobs.claim_race_worker", store_file, ledger_file, KEY, role, go_file, mode], cwd=ROOT, stdout=subprocess.PIPE, text=True)
                      for role in roles]
+            time.sleep(1.5)                                                 # every worker has started and is waiting for the go file
+            open(go_file, "w").close()
             outs = [p.communicate(timeout=120)[0].strip() for p in procs]
             return outs, pathlib.Path(ledger_file).read_text().split()
 

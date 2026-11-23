@@ -9,6 +9,7 @@ from lifeos.hiring import decision as D
 from lifeos.interview import create, notion
 from lifeos.interview.ui_probe import QA_PARENT
 from lifeos.jobs import ledger as jobs_ledger
+from lifeos.platform import ledger_claim
 from lifeos.platform.names import split_title
 from lifeos.platform.notion_client import NotionError
 from lifeos.sources.interview import interview_evidence as ev
@@ -215,7 +216,12 @@ def sandbox(client, now):
 
 
 def run(environ, live, now=None, client=None):
-    """-> counts only: per-step results, final read-back checks and `failed` (steps or checks that did not pass)."""
+    """-> counts only: per-step results, final read-back checks and `failed` (steps or checks that did not pass). LIFE-903: the sandbox Ledger has no store, so its creators claim in a table of this process only."""
+    with ledger_claim.memory():
+        return _run(environ, live, now, client)
+
+
+def _run(environ, live, now=None, client=None):
     if (environ.get("INTERVIEW_JOURNEY_PROOF") or "").strip() == "M1M2":            # LIFE-78: the bounded synthetic M1/M2 exit case, same switch and sandbox rules
         from lifeos.sources.proofs import m1m2_proof
         return m1m2_proof.run(environ, live, now=now, client=client)
