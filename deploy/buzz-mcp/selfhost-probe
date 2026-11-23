@@ -1,0 +1,132 @@
+#!/usr/bin/env python3
+"""LIFE-870: prove membership, authentication, post and read on the private Buzz relay pilot with our own client, without any agent seeing a key.
+
+  sudo /opt/lifeos-buzz-mcp/current/bin/selfhost-probe [relay URL, default http://127.0.0.1:3100]
+
+Runs as the vault owner (ubuntu, with that user's own env file; like store-credential it re-runs itself from root). It reads the pilot OWNER and AGENT (Claude) keys from Bitwarden into memory only, signs in this process, and drives
+lifeos/buzz/relay.py (the production client code: NIP-98 signing, POST /query, POST /events) against the pilot. Steps, each printed as `<step> ok|fail [public detail]`:
+  health, unauth_refused (no auth -> 401), non_member_refused (the agent before it is a member), member_add (the owner publishes kind 9030 for the agent), member_query_ok, channel_create (kind 9007 by the owner, kind 9000 adds the agent),
+  post_ok (Relay.post_message with a synthetic text), read_back (the same text read by event id), repeat_idempotent (the same key again is `already_delivered`).
+It prints only public things: step names, HTTP codes, event ids, public-key prefixes. SYNTHETIC text only; nothing is ever read from or written to any real community. The pilot relay is private (loopback) and disposable."""
+import json
+import os
+import pwd
+import secrets
+import subprocess
+import sys
+import urllib.error
+import urllib.request
+import uuid
+
+for up in ("..", "../.."):                                                           # installed as <release>/bin/selfhost-probe, or run from a checkout as deploy/buzz-mcp/selfhost-probe
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), up))
+
+ENVFILE = os.environ.get("STORE_CREDENTIALS_ENV", "/home/ubuntu/.config/bws/openclaw.env")
+RUNAS = os.environ.get("STORE_CREDENTIALS_USER", "ubuntu")
+OWNER, AGENT = "lifeos/edge/BUZZ_SELFHOST_OWNER_KEY", "lifeos/edge/BUZZ_SELFHOST_AGENT_CLAUDE"
+TEXT = "SYNTHETIC LIFE-870 pilot post: private relay compatibility test, no real content"
+
+
+def vault_keys():
+    """-> (owner secret bytes, agent secret bytes) from Bitwarden, in memory only; None for a name the vault does not return."""
+    env = dict(os.environ)
+    for line in open(ENVFILE).read().splitlines():
+        line = line.strip().removeprefix("export ")
+        if "=" in line and not line.startswith("#"):
+            key, _, value = line.partition("=")
+            env[key.strip()] = value.strip().strip("'\"")
+    done = subprocess.run(["bws", "secret", "list", "-o", "json"], capture_output=True, text=True, env=env, check=False)
+    from lifeos.buzz import nip98
+    try:
+        found = {s["key"]: s["value"] for s in json.loads(done.stdout) if s.get("key") in (OWNER, AGENT)} if done.returncode == 0 else {}
+    except (ValueError, KeyError, TypeError):
+        found = {}
+    return tuple(nip98.secret_from(found[n]) if n in found else None for n in (OWNER, AGENT))
+
+
+def http(method, url, headers=None, body=None):
+    request = urllib.request.Request(url, body, headers or {}, method=method)
+    try:
+        with urllib.request.urlopen(request, timeout=15) as reply:
+            return reply.status, reply.read()
+    except urllib.error.HTTPError as error:
+        return error.code, error.read()
+    except OSError:
+        return 0, b""
+
+
+def signed(base, path, secret, payload):
+    from lifeos.buzz import nip98
+    url, body = base + path, json.dumps(payload, separators=(",", ":")).encode()
+    headers = {"Authorization": nip98.auth_header(secret, "POST", url, body), "Content-Type": "application/json", "User-Agent": "lifeos-selfhost-probe"}
+    code, raw = http("POST", url, headers, body)
+    try:
+        return code, json.loads(raw)
+    except ValueError:
+        return code, None
+
+
+def run(base, owner, agent, say):
+    from lifeos.buzz import nip98, relay as relay_mod
+    owner_pub, agent_pub = nip98.pubkey(owner), nip98.pubkey(agent)
+    code, _ = http("GET", base.replace(":3100", ":3180") + "/_readiness")
+    say("health", code == 200, f"readiness {code}")
+    code, _ = http("POST", base + "/query", {"Content-Type": "application/json"}, b'[{"kinds":[9],"limit":1}]')
+    say("unauth_refused", code == 401, f"HTTP {code}")
+    code, _ = signed(base, "/query", agent, [{"kinds": [9], "limit": 1}])
+    say("non_member_refused", code in (401, 403), f"agent {agent_pub[:8]} HTTP {code}")
+    code, ack = signed(base, "/events", owner, nip98.event(owner, 9030, [["p", agent_pub]]))
+    say("member_add", code == 200 and isinstance(ack, dict) and ack.get("accepted") is True, f"owner {owner_pub[:8]} added agent {agent_pub[:8]} HTTP {code}")
+    code, rows = signed(base, "/query", agent, [{"kinds": [9], "limit": 1}])
+    say("member_query_ok", code == 200 and isinstance(rows, list), f"agent HTTP {code}")
+    channel = str(uuid.uuid4())
+    code, ack = signed(base, "/events", owner, nip98.event(owner, 9007, [["h", channel], ["name", "LIFE-870 synthetic pilot"]]))
+    created = code == 200 and isinstance(ack, dict) and ack.get("accepted") is True
+    code2, ack2 = signed(base, "/events", owner, nip98.event(owner, 9000, [["h", channel], ["p", agent_pub]])) if created else (0, None)
+    say("channel_create", created and code2 == 200 and isinstance(ack2, dict) and ack2.get("accepted") is True, f"channel {channel[:8]} HTTP {code}/{code2}")
+    if not created:
+        return
+    relay_mod.COMMUNITIES = ("pilot",)                                               # the production client code, pointed at the pilot (its hosted-community name list is a constant)
+    client = relay_mod.Relay({"pilot": base}, {"pilot": agent}, writes={("pilot", channel)})
+    key = "probe-" + secrets.token_hex(6)
+    try:
+        sent = client.post_message("pilot", channel, TEXT, key)
+        say("post_ok", sent.get("status") == "sent_not_read_back", f"event {sent.get('event_id')}")
+    except relay_mod.BuzzError as error:
+        say("post_ok", False, error.code)
+        return
+    code, rows = signed(base, "/query", agent, [{"kinds": [9], "#h": [channel], "limit": 5}])
+    back = [e for e in rows or [] if isinstance(e, dict) and e.get("id") == sent.get("event_id")]
+    say("read_back", code == 200 and len(back) == 1 and back[0].get("content") == TEXT and back[0].get("pubkey") == agent_pub, f"event {sent.get('event_id')} author {agent_pub[:8]}")
+    try:
+        again = client.post_message("pilot", channel, TEXT, key)
+        say("repeat_idempotent", again.get("status") == "already_delivered" and again.get("event_id") == sent.get("event_id"), "same key, no second event")
+    except relay_mod.BuzzError as error:
+        say("repeat_idempotent", False, error.code)
+
+
+def main(argv):
+    base = (argv[0] if argv else "http://127.0.0.1:3100").rstrip("/")
+    if os.geteuid() == 0 and pwd.getpwnam(RUNAS).pw_uid != 0:                       # re-run as the vault owner; root never sees the keys
+        os.execvp("sudo", ["sudo", "-u", RUNAS, "-H", "env", "PYTHONDONTWRITEBYTECODE=1", sys.executable, "-I", os.path.abspath(__file__), *argv])
+    failed = []
+
+    def say(step, ok, detail=""):
+        print(f"{step} {'ok' if ok else 'fail'}" + (f" ({detail})" if detail else ""))
+        if not ok:
+            failed.append(step)
+    try:
+        owner, agent = vault_keys()
+    except OSError:
+        print("keys fail (no vault)")
+        return 1
+    if owner is None or agent is None:
+        print("keys fail (a pilot key is not in the vault)")
+        return 1
+    say("keys", True, "owner and agent keys read in memory only")
+    run(base, owner, agent, say)
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
