@@ -58,6 +58,26 @@ class Record(unittest.TestCase):
             self.assertFalse(stage_timing.emit({"stage": "a"}, {"STAGE_TIMING_FILE": str(path / "no" / "dir")}, io.StringIO()))
 
 
+class DeclaredCounts(unittest.TestCase):
+    def test_a_declared_items_key_gives_the_count_and_an_undeclared_stage_stays_null(self):
+        self.assertEqual(stage_timing.items_key_for("web"), "due")
+        self.assertIsNone(stage_timing.items_key_for("fit"))                                       # no declared key: unknown, never zero
+        self.assertIsNone(stage_timing.items_key_for("no-such-stage"))
+
+    def test_every_declared_key_is_a_string_on_a_real_stage(self):
+        import json
+        table = json.loads((pathlib.Path(stage_timing.__file__).with_name("stages.json")).read_text())["stages"]
+        declared = {n: r["items_key"] for n, r in table.items() if "items_key" in r}
+        self.assertGreaterEqual(len(declared), 15)
+        self.assertTrue(all(isinstance(k, str) and k.isidentifier() for k in declared.values()))
+
+    def test_the_tick_line_carries_the_declared_count(self):
+        _, _, rows = run_tick([Step("web", 60, 10)], {"web": lambda limit, live: {"due": 7, "failed": 0}})
+        self.assertEqual((rows[0]["items"], rows[0]["outcome"]), (7, "complete"))
+        _, _, rows = run_tick([Step("fit", 60, 10)], {"fit": lambda limit, live: {"due": 7}})
+        self.assertIsNone(rows[0]["items"])
+
+
 class Standalone(unittest.TestCase):
     def test_a_standalone_stage_prints_its_line_only_when_the_file_is_set_and_never_inside_the_tick(self):
         import os

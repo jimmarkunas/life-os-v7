@@ -133,7 +133,7 @@ def _report(step, label, seconds, outcome, timings, lock=None, queued=0.0):
         timings[step.name] = seconds
         print(f"stage {step.name}: {label} {seconds:.1f}s", flush=True)
     waited, counts = stage_timing.take(step.name)
-    stage_timing.emit(stage_timing.record(step.name, label, seconds, queued + waited, counts, getattr(step, "items_key", None)))
+    stage_timing.emit(stage_timing.record(step.name, label, seconds, queued + waited, counts, stage_timing.items_key_for(step.name)))
 
 
 def _run_group(steps, live, quick, stages, clock, remaining, concurrency, outcome, timings):
