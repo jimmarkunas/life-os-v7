@@ -1,0 +1,11 @@
+# LIFE-867 (Jim, Nov 22 2026, "nightly backups"): once a day at 3:30 AM Central. Persistent, so a night the host was off runs at the next start. A backup timer only.
+[Unit]
+Description=LIFE OS Honcho nightly backup, 3:30 AM Central
+
+[Timer]
+OnCalendar=*-*-* 03:30:00 America/Chicago
+Persistent=true
+RandomizedDelaySec=0
+
+[Install]
+WantedBy=timers.target

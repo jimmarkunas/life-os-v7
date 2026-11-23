@@ -1,0 +1,9 @@
+# LIFE-867: runs only when the nightly backup fails. It writes one marker file and one journal line; it does nothing else (no network, no agent).
+[Unit]
+Description=LIFE OS Honcho backup failed (marker only)
+
+[Service]
+Type=oneshot
+User=root
+StateDirectory=lifeos-honcho-backup
+ExecStart=/bin/sh -c 'date -u +%%Y-%%m-%%dT%%H:%%M:%%SZ > /var/lib/lifeos-honcho-backup/FAILED; logger -t lifeos-honcho-backup "FAILED: the nightly Honcho backup did not complete"'
