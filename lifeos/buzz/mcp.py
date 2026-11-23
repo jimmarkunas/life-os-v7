@@ -78,7 +78,7 @@ LOOKUP_OPS = ("source_read", "agent_lookup")                                    
 def _lookup(op, args):
     from datetime import datetime, timezone
     from lifeos.platform import source_lookup                                         # lazy: a release without the platform files refuses at the gate first
-    now = datetime.now(timezone.utc)
+    now = LOOKUP["now"]() if LOOKUP.get("now") else datetime.now(timezone.utc)
     try:
         return source_lookup.read_source(args, LOOKUP["fetchers"], now) if op == "source_read" else source_lookup.lookup_agent(args, LOOKUP["rows"], now)
     except source_lookup.LookupError_ as error:
@@ -91,9 +91,9 @@ READ["agent_lookup"] = ("Find one agent in the agent directory by exact agent_id
                         {"agent_id": ("str", False), "alias": ("str", False)}, lambda r, c, a: (_lookup("agent_lookup", a), None))
 NEEDS_COMMUNITY = set(READ) - {"list_communities"}
 RETRYABLE = ("relay_error", "relay_unreachable", "precheck_unavailable")
-ERRORS = {"unsupported": ["unknown_operation", "unknown_tool", "page_boundary_unsupported"], "lookup": ["unknown_source", "stale_source", "source_unavailable", "output_has_secret", "bad_request", "directory_unavailable", "unknown_agent", "ambiguous_alias", "broadcast_refused", "workspace_not_granted", "cross_space_denied"], "unauthorized": ["insufficient_scope", "community_not_authorized", "recipient_not_authorized", "recipient_not_channel_member", "write_disabled", "client_identity_not_configured", "access_denied", "governance_unavailable"],
+ERRORS = {"unsupported": ["unknown_operation", "unknown_tool", "page_boundary_unsupported"], "unauthorized": ["insufficient_scope", "community_not_authorized", "recipient_not_authorized", "recipient_not_channel_member", "write_disabled", "client_identity_not_configured", "access_denied", "governance_unavailable"],
           "disabled": ["operation_disabled", "write_disabled", "recipient_not_authorized"], "degraded": list(RETRYABLE) + ["delivery_unknown", "relay_refused", "relay_bad_response"],
-          "caller": ["invalid_argument", "invalid_cursor", "expired_cursor", "idempotency_conflict", "reply_target_not_found", "not_found", "community_required"]}
+          "caller": ["invalid_argument", "invalid_cursor", "expired_cursor", "idempotency_conflict", "reply_target_not_found", "not_found", "community_required", "unknown_source", "stale_source", "source_unavailable", "output_has_secret", "bad_request", "directory_unavailable", "unknown_agent", "ambiguous_alias", "broadcast_refused", "workspace_not_granted", "cross_space_denied"]}
 
 
 def _page(res):

@@ -1,6 +1,6 @@
-"""LIFE-888: canonical source lookup for the governed MCP: one exact read of a GitHub file or a Notion page with its revision and freshness, and one agent lookup through the agent directory. Read only.
+"""LIFE-888: canonical source lookup for the governed MCP: a GitHub file or Notion page with revision and freshness, and an agent lookup.
 
-Authorization is the gate's (mcp_access.call); this module only shapes the answer. Every failure is a fixed word: unknown_source, stale_source, source_unavailable, output_has_secret, bad_request, plus the directory's own (unknown_agent, ambiguous_alias,
+Read only: one exact read of a GitHub file or a Notion page, and one lookup through the agent directory. Authorization is the gate's (mcp_access.call); this module only shapes the answer. Every failure is a fixed word: unknown_source, stale_source, source_unavailable, output_has_secret, bad_request, plus the directory's own (unknown_agent, ambiguous_alias,
 broadcast_refused, workspace_not_granted, cross_space_denied, directory_unavailable). A fetcher that is not wired is `source_unavailable`: nothing is guessed or cached. The directory status class comes straight from agent_directory and is never upgraded here."""
 import base64
 import json
@@ -10,7 +10,7 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
-from lifeos.platform import access_policy, agent_directory
+from lifeos.platform import access_policy, agent_directory, ct_stamp
 
 REPO = "jimmarkunas/life-os-v7"                                                      # the one repository a lookup may name (public)
 DEFAULT_MAX_AGE = {"github": timedelta(days=90), "notion": timedelta(days=90)}      # a source last edited longer ago than this is stale unless the caller asks for a different limit
@@ -30,7 +30,7 @@ class LookupError_(ValueError):
 
 
 def _ct(when):
-    return when.astimezone(agent_directory.CENTRAL).strftime("%b %d %Y, %I:%M %p CT")
+    return ct_stamp.when(when)
 
 
 def read_source(args, fetchers, now):

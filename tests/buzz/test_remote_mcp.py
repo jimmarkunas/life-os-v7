@@ -394,14 +394,15 @@ class Credentials(Server):
 
     def test_source_read_and_agent_lookup_are_their_own_gate_tools_for_every_proved_client_and_not_for_the_chat_clients(self):
         """LIFE-888 (Jim, Nov 22 2026, comment 13735): the two lookups are granted to the four proved clients only; no Buzz identity or relay is needed; the chat clients are refused at the gate."""
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime, timedelta
         from unittest import mock
+        from lifeos.platform import agent_directory
         from tests.platform import agent_directory_fixture as F
         fp = __import__("lifeos.platform.authorization_gate", fromlist=["x"]).fingerprint
-        now = datetime.now(timezone.utc)
+        now = datetime(2026, 11, 16, 12, 0, tzinfo=agent_directory.CENTRAL)
         github = lambda path, ref: {"commit": "a" * 40, "last_change": "b" * 40, "blob": "c" * 40, "modified": now - timedelta(days=1), "text": "policy text"}
         self.start(access=self.access(no_identity=True))
-        with mock.patch.dict(buzz_mcp.LOOKUP, {"fetchers": {"github": github}, "rows": lambda: F.rows()}):
+        with mock.patch.dict(buzz_mcp.LOOKUP, {"fetchers": {"github": github}, "rows": lambda: F.rows(), "now": lambda: now}):
             for cid in self.SECRETS:
                 status, out = self.tool(self.tok(cid), "buzz_read", operation="source_read", community="life-os", arguments={"source": "github", "path": "AGENTS.md"})
                 self.assertEqual((status, out["ok"], out["data"]["revision"]["commit_sha"], out["data"]["freshness"]), (200, True, "a" * 40, "fresh"), cid)
