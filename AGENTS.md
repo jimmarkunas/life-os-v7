@@ -4,7 +4,7 @@ The [Development Policy](docs/life-os-development-policy.md) is the whole rule s
 
 ## The job
 
-Jim starts every run; no scheduler, timer or loop starts an agent. Once started, run end to end:
+Jim starts every run; no scheduler, timer or loop. Once started, run end to end:
 
 1. **Pick** the ticket Jim named, else the top `Agent Go` leaf by Priority, then Rank. Skip In Progress tickets and tickets with an unfinished `Blocks` predecessor. Agent Go is Jim's approval for everything in the ticket: never re-ask.
 2. **Claim:** one ticket at a time. First list its stops (policy §4-5); any not checked or standing-approved: one approval table, `needs-jim`, next ticket. Else transition 14.
@@ -12,11 +12,11 @@ Jim starts every run; no scheduler, timer or loop starts an agent. Once started,
 4. **Test:** `sh tools/preflight.sh` before every push; CI is the full gate.
 5. **Land:** auto-merge on green. A merge is not Done.
 6. **Agent UAT:** prove every Done when line on the delivered outcome.
-7. **Close:** `python -m lifeos.jira.closeout KEY... --pr N --sha S --run R --proof KEY=text --live`, or stop at Human UAT (transition 19) when the ticket has `needs-uat` or names Jim as verifier. A `research` or `verdict` ticket has no PR: post the findings comment, then transition 15. Then the next ticket (`NO_ELIGIBLE_WORK` if none).
+7. **Close:** `python -m lifeos.jira.closeout KEY... --pr N --sha S --run R --proof KEY=text --live`, or stop at Human UAT (transition 19) when the ticket has `needs-uat` or names Jim as verifier. A `research`/`verdict` ticket has no PR: post findings, then transition 15. Then the next ticket (`NO_ELIGIBLE_WORK` if none).
 
 ## Jim must do first
 
-Every ticket lists what only Jim can do (secret, permission, sign-in, spend, host step, decision, Notion wireframe). An unchecked item or a missing section keeps it out of Agent Go. Found mid-run: the same.
+Every ticket lists what only Jim can do (secret, permission, sign-in, spend, host step, decision, Notion wireframe). An unchecked item or a missing section keeps it out of Agent Go.
 
 Epics go `Scoping → Ready → In Progress → Done`; every child carries one label (`ready`, `needs-prep` or `needs-jim`) and only `ready` tickets move to Agent Go. Feasibility (`research` + `verdict`) only for a new Epic Jim asks for. Claude writes tickets; ChatGPT reviews them. LOS is retired.
 
@@ -28,6 +28,7 @@ Epics go `Scoping → Ready → In Progress → Done`; every child carries one l
 - Times for Jim: Central Time, 12-hour, labeled CT.
 - Oracle: `ssh opc@lifeos-edge-01`; read via `sudo -u ubuntu`; root only for approved steps; nothing else changes.
 - Routing: [docs/index.json](docs/index.json).
+- Names: Claude Code is OC or MC (CLAUDE.md). ChatGPT signs `— ChatGPT` and never takes their claims.
 
 <!-- concord:start -->
 ## Concord — shared work-state for coding agents
