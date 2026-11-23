@@ -48,7 +48,9 @@ The job timeouts in `.github/workflows` change in one separate workflow pull req
 | `domains.yml` | `hiring` | 15 | 15 | 46 | 92 | 124 | twice the slowest run (124 s) rounds to 15 min, not below the current 15: unchanged |
 | `domains.yml` | `hiring_outcomes` | 30 | 30 | 31 | 18 | 22 | twice the slowest run (22 s) rounds to 30 min, not below the current 30: unchanged |
 | `domains.yml` | `imessage` | 10 | 10 | 45 | 113 | 162 | twice the slowest run (162 s) rounds to 10 min, not below the current 10: unchanged |
+| `domains.yml` | `interview_mail` | 30 | 30 | 0 | - | - | not measured: no completed run in the last 100; keeps its current value |
 | `domains.yml` | `interview` | 30 | 30 | 31 | 442 | 678 | twice the slowest run (678 s) rounds to 30 min, not below the current 30: unchanged |
+| `domains.yml` | `interview_shadow` | 30 | 30 | 0 | - | - | not measured: no completed run in the last 100; keeps its current value |
 | `domains.yml` | `followup` | 15 | 15 | 0 | - | - | not measured: no completed run in the last 100; keeps its current value |
 | `domains.yml` | `jira` | 15 | 15 | 45 | 82 | 117 | twice the slowest run (117 s) rounds to 15 min, not below the current 15: unchanged |
 | `domains.yml` | `mail` | 10 | 10 | 45 | 28 | 90 | twice the slowest run (90 s) rounds to 10 min, not below the current 10: unchanged |
@@ -136,7 +138,7 @@ Every call that leaves the process carries an explicit timeout. `tests/contracts
 
 ## Stage budgets
 
-`lifeos/platform/stage_budgets.json` has one row for each of the 111 stages in `lifeos/run.py`. `lifeos.run` arms an alarm of that many seconds around the stage. Rules:
+`lifeos/platform/stage_budgets.json` has one row for each of the 113 stages in `lifeos/run.py`. `lifeos.run` arms an alarm of that many seconds around the stage. Rules:
 
 * A stage within its budget behaves exactly as before.
 * A stage over it stops, prints the fixed code `STAGE_BUDGET_EXCEEDED` with the two numbers (counts only), and **a required stage exits 1, an optional stage exits 0** so the run passes and the code stays visible in the stage's counts line.
@@ -205,6 +207,8 @@ The table below is rendered from `lifeos/platform/stages.json` (LIFE-768): edit 
 | `inbox-view` | 600 | yes | no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `interview` | 1680 | yes | twice its slowest measured step (1604 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `interview-acceptance` | 600 | no | no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
+| `interview-mail` | 600 | no | no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
+| `interview-mail-shadow` | 600 | no | no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `interview-probe` | 600 | no | no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `interview-ui-probe` | 300 | yes | twice its slowest measured step (296 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `jira-card` | 150 | no | twice its slowest measured step (70 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
