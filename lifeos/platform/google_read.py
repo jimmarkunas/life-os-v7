@@ -14,7 +14,8 @@ import urllib.request
 ACCOUNTS = {"personal": "personal", "bytalos": "bytalos"}                       # account -> the gate tenant (workspace) it is checked in
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 GMAIL, DRIVE = "https://gmail.googleapis.com/gmail/v1/users/me", "https://www.googleapis.com/drive/v3/files"
-SCOPE = {"gmail": "https://www.googleapis.com/auth/gmail.readonly", "drive": "https://www.googleapis.com/auth/drive.readonly"}
+SCOPE = {"gmail": "https://www.googleapis.com/auth/gmail.readonly", "drive": "https://www.googleapis.com/auth/drive.readonly"}   # what this module asks for
+READ_SCOPES = {"gmail": {SCOPE["gmail"], "https://www.googleapis.com/auth/gmail.modify", "https://mail.google.com/"}, "drive": {SCOPE["drive"], "https://www.googleapis.com/auth/drive"}}   # a token that already holds a wider scope may be used: this module only ever sends GET requests, so the extra scope is never exercised
 MAX_TEXT, MAX_HITS = 4000, 10
 ID = re.compile(r"^[A-Za-z0-9_-]{6,128}$")
 SECRET = re.compile(r"(?i)(?:api[_-]?key|secret|password|token)\s*[:=]\s*\S{8,}|-----BEGIN [A-Z ]*PRIVATE KEY|\b(?:ghp_|sk-|xox[abprs]-)[A-Za-z0-9_-]{10,}")
@@ -76,7 +77,7 @@ class Google:
         if not isinstance(data, dict) or not isinstance(data.get("access_token"), str):
             raise GoogleError("consent_revoked")
         granted = str(data.get("scope", ""))
-        if granted and SCOPE[service] not in granted.split():
+        if granted and not READ_SCOPES[service] & set(granted.split()):
             raise GoogleError("scope_missing")
         return data["access_token"]
 

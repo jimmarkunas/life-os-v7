@@ -110,7 +110,7 @@ class Reads(unittest.TestCase):
         for word in ("/send", "/modify", "/trash", "/delete", "batchModify", "labels", "/upload", "permissions", "method=\"PUT\"", "method=\"DELETE\"", "method=\"PATCH\""):
             self.assertNotIn(word, code, word)
         self.assertEqual(sorted(set(re.findall(r"method=\"([A-Z]+)\"", code))), ["GET", "POST"])
-        self.assertNotIn("gmail.modify", code)
+        self.assertEqual(set(G.SCOPE.values()), {"https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/drive.readonly"})     # what is ASKED for is read-only; a wider scope already held by a token is only ever tolerated (READ_SCOPES), never requested
 
     def test_an_omitted_or_unknown_account_is_refused_before_google_is_called(self):
         client, fake = google()
@@ -120,6 +120,14 @@ class Reads(unittest.TestCase):
                     call()
                 self.assertEqual(raised.exception.reason, reason, account)
         self.assertEqual(fake.requests, [])
+
+    def test_a_token_with_a_wider_read_capable_scope_is_used_for_reads_only(self):
+        for scope in ("https://www.googleapis.com/auth/gmail.modify", "https://mail.google.com/", "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/userinfo.email"):
+            client, fake = google(scope=scope)
+            self.assertEqual(client.gmail_search("personal", "q")["account"], "personal")
+            self.assertEqual({m for m, u, h in fake.requests if u != G.TOKEN_URL}, {"GET"})                         # a wider scope is never exercised: nothing but GET is sent
+        client, _ = google(scope="https://www.googleapis.com/auth/drive")
+        self.assertEqual(client.drive_search("personal", "q")["account"], "personal")
 
     def test_a_revoked_consent_a_narrow_scope_and_no_credential_have_fixed_reasons(self):
         for client, reason in ((google(revoked=True)[0], "consent_revoked"), (google(scope="https://www.googleapis.com/auth/gmail.compose")[0], "scope_missing"), (G.Google(lambda a, s: None, FakeGoogle()), "not_configured")):
