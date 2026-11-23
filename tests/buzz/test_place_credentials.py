@@ -66,6 +66,12 @@ class PlaceCredentials(unittest.TestCase):
         self.assertNotIn(SENTINEL, done.stdout + done.stderr)
         self.assertEqual(self.run_script([])[0].returncode, 64)
 
+    def test_the_project_prefixed_names_place_the_same_credentials(self):
+        secrets = [{"key": "lifeos/edge/GMAIL_OAUTH_REFRESH_TOKEN", "value": SENTINEL}, {"key": "lifeos/edge/FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH", "value": SENTINEL}, {"key": "lifeos/edge/NOTION_READONLY_TOKEN", "value": SENTINEL}]
+        done, tmp, creds = self.run_script(secrets, "lifeos/edge/GMAIL_OAUTH_REFRESH_TOKEN", "lifeos/edge/FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH", "lifeos/edge/NOTION_READONLY_TOKEN", "lifeos/edge/NOTION_API_TOKEN")
+        self.assertEqual(done.stdout.splitlines(), ["lifeos/edge/GMAIL_OAUTH_REFRESH_TOKEN ok", "lifeos/edge/FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH ok", "lifeos/edge/NOTION_READONLY_TOKEN ok", "lifeos/edge/NOTION_API_TOKEN missing"])
+        self.assertEqual(sorted(p.name for p in creds.iterdir()), ["google_read_bytalos_gmail_refresh.cred", "google_read_personal_gmail_refresh.cred", "notion_readonly_token.cred"])      # the hourly write token is still not on the list
+
     def test_list_names_prints_only_matching_names_never_a_value_and_places_nothing(self):
         secrets = [{"key": "GMAIL_OAUTH_REFRESH_TOKEN", "value": SENTINEL}, {"key": "gmail_other", "value": SENTINEL}, {"key": "NOTION_READONLY_TOKEN", "value": SENTINEL}]
         done, tmp, creds = self.run_script(secrets, "--list-names", "gmail")
