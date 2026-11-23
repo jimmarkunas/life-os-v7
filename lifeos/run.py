@@ -186,7 +186,7 @@ def _announce(stage, counts):
 def _timing(stage, label, began, counts=None):
     """LIFE-855: a standalone stage (a domains job) prints its own `stage_timing` line when STAGE_TIMING_FILE is set (the workflow turns it on); inside the tick the tick prints it, so this stays silent there."""
     if os.environ.get("STAGE_TIMING_FILE") and not stage_timing.in_tick():
-        stage_timing.emit(stage_timing.record(stage, label, time.monotonic() - began, 0.0, counts, None))
+        stage_timing.emit(stage_timing.record(stage, label, time.monotonic() - began, 0.0, counts, stage_timing.items_key_for(stage)))
 
 
 def main(argv=None):

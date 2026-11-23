@@ -1,6 +1,6 @@
 # Stage timing receipts (LIFE-855)
 
-Every stage the hourly tick runs prints one `stage_timing: {json}` line to stderr beside its existing `stage <name>: <outcome> <seconds>s` line (that line is unchanged). A standalone stage (`lifeos.run` in a domains job) prints the same line when `STAGE_TIMING_FILE` is set; no domains job sets it yet (`domains.yml` waits for LIFE-894's PR). Names and numbers only; no identity or content.
+Every stage the hourly tick runs prints one `stage_timing: {json}` line to stderr beside its existing `stage <name>: <outcome> <seconds>s` line (that line is unchanged). A standalone stage (`lifeos.run` in a domains job) prints the same line when `STAGE_TIMING_FILE` is set; the domains workflow sets it for every job. Names and numbers only; no identity or content.
 
 | Field | Meaning |
 | --- | --- |
