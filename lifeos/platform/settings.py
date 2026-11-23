@@ -1,4 +1,6 @@
-"""LIFE-699: V7's settings from the Notion Runtime Configuration source (one row per setting; LIFE-892 switched to it, LIFE-859 retired the old settings page reader); counts and names only, never a value in a log.
+"""LIFE-699 / LIFE-859: V7's settings come from the Notion Runtime Configuration source; counts and names only, never a value in a log.
+
+One row per setting. LIFE-892 switched to it and LIFE-859 retired the old settings page reader.
 
 Only names in MOVABLE are read; a SAFETY name is refused. Shadow rule (until a GitHub value is deleted): Notion only fills a name the step declares empty (`X: ${{ vars.X }}` with X deleted); held names are compared.
 Deleting a GitHub value is therefore the switch that makes Notion the source. Never raises: an unreadable source leaves the environment as it was (`status`).

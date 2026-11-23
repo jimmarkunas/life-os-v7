@@ -1,4 +1,6 @@
-"""LIFE-844: the Runtime Configuration data source reader, addressed by a stable ID, never by title. It is V7's one settings source (LIFE-892 switched to it; LIFE-859 retired the old page, REQ-52).
+"""LIFE-844: the Runtime Configuration data source reader, addressed by a stable ID, never by title.
+
+It is V7's one settings source (LIFE-892 switched to it; LIFE-859 retired the old page, REQ-52).
 
 `settings.apply` reads it and fills the environment; `shadow` is now a read-only health check of the source (rows, kinds, and which Notion tokens can read it), called by lifeos.run and the tick. It compares nothing.
 The source is addressed by V7_RUNTIME_CONFIG_SOURCE_ID, so a rename or a move cannot hide it. Rows: Name, Value, Kind (address | switch), Revision, Active. It reuses settings.py's allowlist (MOVABLE), refusals
