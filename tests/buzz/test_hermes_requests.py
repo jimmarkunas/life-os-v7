@@ -151,30 +151,6 @@ class Config(unittest.TestCase):
                 hr.relay_from_env({**self.ENV, name: bad}, live=True)
             self.assertEqual(str(c.exception), "HERMES_CONFIG_INVALID")
 
-    PILOT = {"BUZZ_RELAY": "pilot", "BUZZ_PILOT_URL": "http://127.0.0.1:3100", "BUZZ_PILOT_KEY": "07" * 32, "BUZZ_PILOT_CHANNEL": CHAN, "BUZZ_PILOT_HERMES_PUBKEY": PK_HERMES}
-
-    def test_buzz_relay_pilot_reads_only_the_pilot_names_and_hosted_stays_the_default(self):
-        """LIFE-870 (Jim, S1 A): one setting picks the relay; the hosted names are ignored in pilot mode and the pilot names in hosted mode."""
-        relay, channel = hr.relay_from_env({**self.ENV, **self.PILOT}, live=True)
-        self.assertEqual((relay.urls, channel, relay.writes), ({"life-os": "http://127.0.0.1:3100"}, CHAN, {("life-os", CHAN)}))
-        for setting in ({}, {"BUZZ_RELAY": ""}, {"BUZZ_RELAY": "hosted"}, {"BUZZ_RELAY": " Hosted "}):
-            relay, _ = hr.relay_from_env({**self.ENV, **self.PILOT, **setting, **({} if setting else {"BUZZ_RELAY": ""})}, live=False)
-            self.assertEqual(relay.urls, {"life-os": self.ENV["BUZZ_URL_LIFE_OS"]})
-        with self.assertRaises(hr.HermesError) as c:
-            hr.relay_from_env({**self.PILOT, "BUZZ_PILOT_URL": ""}, live=True)
-        self.assertEqual(str(c.exception), "HERMES_CONFIG_MISSING:BUZZ_PILOT_URL")           # the hosted names are not a fallback
-
-    def test_pilot_mode_accepts_only_the_loopback_pilot_address_and_a_bad_setting_is_refused(self):
-        for bad in ("http://127.0.0.1:3101", "http://localhost:3100", "http://10.0.0.5:3100", "https://abc.communities.buzz.xyz", "http://127.0.0.1:3100/x"):
-            with self.assertRaises(hr.HermesError) as c:
-                hr.relay_from_env({**self.PILOT, "BUZZ_PILOT_URL": bad}, live=True)
-            self.assertEqual(str(c.exception), "HERMES_CONFIG_INVALID", bad)
-        hr.relay_from_env({**self.PILOT, "BUZZ_PILOT_URL": "http://127.0.0.1:3100/"}, live=True)      # a trailing slash is the same address
-        for bad in ("pilots", "production", "1"):
-            with self.assertRaises(hr.HermesError) as c:
-                hr.relay_from_env({**self.ENV, "BUZZ_RELAY": bad}, live=True)
-            self.assertEqual(str(c.exception), "HERMES_CONFIG_INVALID", bad)
-
     def test_only_a_live_run_gets_write_permission(self):
         dry, _ = hr.relay_from_env(self.ENV, live=False)
         live, channel = hr.relay_from_env(self.ENV, live=True)

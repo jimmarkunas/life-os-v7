@@ -4,11 +4,8 @@ ALERT_SETTINGS input Alert switch read from a repository variable (alert setting
 BOARDS_AUTO input Set from the boards workflow's auto input: true when the hourly tick started the window, so the run follows the window gate like a scheduled one (LIFE-854)
 BOARDS_EVENT input Set from the boards workflow's trigger (github.event_name): a manual run skips the window gate (LIFE-854)
 BOARDS_MODE_INPUT input Set from the boards workflow's mode input: window or catchup, for a manual run (LIFE-854)
-BUZZ_PILOT_CHANNEL input Pilot relay channel for the Hermes request sender, used only when BUZZ_RELAY is pilot (LIFE-870)
-BUZZ_PILOT_HERMES_PUBKEY secret Pilot relay: the approved recipient's public key for the Hermes request sender (LIFE-870)
-BUZZ_PILOT_KEY secret:hermes Pilot relay: the sender's own scoped member key; read only on the Oracle host (LIFE-870)
-BUZZ_PILOT_URL input Pilot relay address for the Hermes request sender; only the loopback pilot address is accepted (LIFE-870)
-BUZZ_RELAY input Which Buzz relay a sender uses: hosted (default) or pilot; rollback is setting it back to hosted (LIFE-870)
+BUZZ_PILOT_CHANNEL input The pilot relay channel the governed MCP service reads and posts to when BUZZ_RELAY is pilot (LIFE-870)
+BUZZ_RELAY input Whether the governed MCP service also serves the private relay pilot: hosted (default) or pilot; rollback is setting it back to hosted (LIFE-870)
 BUZZ_STAGE_KEY secret:hermes Buzz setting (stage key)
 BITWARDEN input Set from the doppler-load action's bitwarden input: a JSON object of the masked Bitwarden step outputs, compared by hash with Doppler's values (LIFE-863)
 CHAIN_ROLE workflow_only:workflow Set by the domains chain job: early (the run started with the tick) or late (the run after it), LIFE-904

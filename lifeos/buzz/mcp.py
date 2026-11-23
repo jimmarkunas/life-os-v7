@@ -88,12 +88,12 @@ def _lift(module, op, state):
 
 
 try:                                                                                 # a release without the platform files serves without these operations (the gate would refuse them anyway)
-    from lifeos.platform import call_limit, google_read, inbox_send, source_lookup
+    from lifeos.platform import call_limit, google_read, inbox_send, pilot_community, source_lookup
     for _module, _state in ((source_lookup, LOOKUP), (google_read, GOOGLE), (inbox_send, INBOX)):
         READ.update({op: (text, params, _lift(_module, op, _state)) for op, (text, params) in _module.OPS.items()})
         ROUTES.update({op: _module.route for op in _module.OPS})                      # each operation is its own gate tool, routed by its module
 except ImportError:
-    call_limit = google_read = inbox_send = source_lookup = None
+    call_limit = google_read = inbox_send = pilot_community = source_lookup = None
 try:                                                                                 # LIFE-868: separate from the lookups above, so a release that carries the memory file but not the Google and lookup files still serves memory
     from lifeos.platform import memory_honcho
     memory_honcho.register(READ, _lift, MEMORY)
@@ -422,6 +422,7 @@ def credentials(env):
 def main():
     try:
         relays, auth, base, origins = from_env(credentials(os.environ))
+        pilot_community and pilot_community.wire(credentials(os.environ), relays, nip98.secret_from)   # LIFE-870: the private relay pilot, only when BUZZ_RELAY=pilot
     except (ValueError, OSError) as e:
         sys.exit(f"config error: {e}")
     if google_read and source_lookup and inbox_send:

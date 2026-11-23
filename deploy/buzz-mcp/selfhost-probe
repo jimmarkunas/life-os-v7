@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """LIFE-870: prove membership, authentication, post and read on the private Buzz relay pilot with our own client, without any agent seeing a key.
 
-  sudo /opt/lifeos-buzz-mcp/current/bin/selfhost-probe [relay URL, default http://127.0.0.1:3100]
+  sudo /opt/lifeos-buzz-mcp/current/bin/selfhost-probe [channel] [relay URL, default http://127.0.0.1:3100]
+  `channel` skips the probe steps: the owner adds the Claude pilot member and creates the one durable pilot channel (LIFE-870); it prints `pilot_channel <uuid>` (a public id).
 
 Runs as the vault owner (ubuntu, with that user's own env file; like store-credential it re-runs itself from root). It reads the pilot OWNER and AGENT (Claude) keys from Bitwarden into memory only, signs in this process, and drives
 lifeos/buzz/relay.py (the production client code: NIP-98 signing, POST /query, POST /events) against the pilot. Steps, each printed as `<step> ok|fail [public detail]`:
@@ -66,25 +67,34 @@ def signed(base, path, secret, payload):
         return code, None
 
 
+def provision(base, owner, agent, say, name="LIFE-870 synthetic pilot"):
+    """The owner adds the agent as a relay member (NIP-43 kind 9030) and creates a channel with the agent in it (kinds 9007 and 9000). -> the channel id, or None when the relay refused."""
+    from lifeos.buzz import nip98
+    owner_pub, agent_pub = nip98.pubkey(owner), nip98.pubkey(agent)
+    code, ack = signed(base, "/events", owner, nip98.event(owner, 9030, [["p", agent_pub]]))
+    say("member_add", code == 200 and isinstance(ack, dict) and ack.get("accepted") is True, f"owner {owner_pub[:8]} added agent {agent_pub[:8]} HTTP {code}")
+    code, rows = signed(base, "/query", agent, [{"kinds": [9], "limit": 1}])
+    say("member_query_ok", code == 200 and isinstance(rows, list), f"agent HTTP {code}")
+    channel = str(uuid.uuid4())
+    code, ack = signed(base, "/events", owner, nip98.event(owner, 9007, [["h", channel], ["name", name]]))
+    created = code == 200 and isinstance(ack, dict) and ack.get("accepted") is True
+    code2, ack2 = signed(base, "/events", owner, nip98.event(owner, 9000, [["h", channel], ["p", agent_pub]])) if created else (0, None)
+    ok = created and code2 == 200 and isinstance(ack2, dict) and ack2.get("accepted") is True
+    say("channel_create", ok, f"channel {channel[:8]} HTTP {code}/{code2}")
+    return channel if ok else None
+
+
 def run(base, owner, agent, say):
     from lifeos.buzz import nip98, relay as relay_mod
-    owner_pub, agent_pub = nip98.pubkey(owner), nip98.pubkey(agent)
+    agent_pub = nip98.pubkey(agent)
     code, _ = http("GET", base.replace(":3100", ":3180") + "/_readiness")
     say("health", code == 200, f"readiness {code}")
     code, _ = http("POST", base + "/query", {"Content-Type": "application/json"}, b'[{"kinds":[9],"limit":1}]')
     say("unauth_refused", code == 401, f"HTTP {code}")
     code, _ = signed(base, "/query", agent, [{"kinds": [9], "limit": 1}])
     say("non_member_refused", code in (401, 403), f"agent {agent_pub[:8]} HTTP {code}")
-    code, ack = signed(base, "/events", owner, nip98.event(owner, 9030, [["p", agent_pub]]))
-    say("member_add", code == 200 and isinstance(ack, dict) and ack.get("accepted") is True, f"owner {owner_pub[:8]} added agent {agent_pub[:8]} HTTP {code}")
-    code, rows = signed(base, "/query", agent, [{"kinds": [9], "limit": 1}])
-    say("member_query_ok", code == 200 and isinstance(rows, list), f"agent HTTP {code}")
-    channel = str(uuid.uuid4())
-    code, ack = signed(base, "/events", owner, nip98.event(owner, 9007, [["h", channel], ["name", "LIFE-870 synthetic pilot"]]))
-    created = code == 200 and isinstance(ack, dict) and ack.get("accepted") is True
-    code2, ack2 = signed(base, "/events", owner, nip98.event(owner, 9000, [["h", channel], ["p", agent_pub]])) if created else (0, None)
-    say("channel_create", created and code2 == 200 and isinstance(ack2, dict) and ack2.get("accepted") is True, f"channel {channel[:8]} HTTP {code}/{code2}")
-    if not created:
+    channel = provision(base, owner, agent, say)
+    if channel is None:
         return
     relay_mod.COMMUNITIES = ("pilot",)                                               # the production client code, pointed at the pilot (its hosted-community name list is a constant)
     client = relay_mod.Relay({"pilot": base}, {"pilot": agent}, writes={("pilot", channel)})
@@ -106,9 +116,11 @@ def run(base, owner, agent, say):
 
 
 def main(argv):
+    channel_only = argv[:1] == ["channel"]                                           # `selfhost-probe channel`: add the Claude pilot member and create the one durable pilot channel (LIFE-870); prints its id
+    argv = argv[1:] if channel_only else argv
     base = (argv[0] if argv else "http://127.0.0.1:3100").rstrip("/")
     if os.geteuid() == 0 and pwd.getpwnam(RUNAS).pw_uid != 0:                       # re-run as the vault owner; root never sees the keys
-        os.execvp("sudo", ["sudo", "-u", RUNAS, "-H", "env", "PYTHONDONTWRITEBYTECODE=1", sys.executable, "-I", os.path.abspath(__file__), *argv])
+        os.execvp("sudo", ["sudo", "-u", RUNAS, "-H", "env", "PYTHONDONTWRITEBYTECODE=1", sys.executable, "-I", os.path.abspath(__file__), *sys.argv[1:]])
     failed = []
 
     def say(step, ok, detail=""):
@@ -124,6 +136,10 @@ def main(argv):
         print("keys fail (a pilot key is not in the vault)")
         return 1
     say("keys", True, "owner and agent keys read in memory only")
+    if channel_only:
+        channel = provision(base, owner, agent, say, "LIFE OS pilot (LIFE-870)")
+        print(f"pilot_channel {channel}" if channel else "pilot_channel fail")
+        return 0 if channel else 1
     run(base, owner, agent, say)
     return 1 if failed else 0
 

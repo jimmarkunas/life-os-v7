@@ -14,7 +14,6 @@ import re
 from lifeos.buzz import nip98
 from lifeos.buzz.relay import HEX, URL, UUID, BuzzError, Relay
 from lifeos.jira.search import search
-from lifeos.platform import relay_choice
 from lifeos.platform.jira import Jira, JiraError
 
 COMMUNITY, ALIAS, ETYPE = "life-os", "hermes", "handoff_request"
@@ -22,7 +21,6 @@ LABEL, STATUS = "hermes", "Agent Go"
 JQL = f'project = LIFE AND status = "{STATUS}" AND labels = "{LABEL}" ORDER BY key ASC'
 KEY = re.compile(r"LIFE-\d+")
 NAMES = ("BUZZ_URL_LIFE_OS", "BUZZ_STAGE_KEY", "BUZZ_STAGE_CHANNEL", "BUZZ_STAGE_HERMES_PUBKEY")
-PILOT_NAMES = ("BUZZ_PILOT_URL", "BUZZ_PILOT_KEY", "BUZZ_PILOT_CHANNEL", "BUZZ_PILOT_HERMES_PUBKEY")   # LIFE-870: the same four settings for the private pilot relay, chosen by BUZZ_RELAY=pilot
 TEXT = "REQUEST case={case} jira={key}: this LIFE issue is in {status}. Read it, then reply in this thread with the case id and ACK, or BLOCKED and one reason. No other action."
 
 
@@ -39,24 +37,19 @@ def idempotency_of(key):
 
 
 def relay_from_env(environ, live):
-    """(relay, channel) from the environment. A dry run gets a relay with no write permission at all. BUZZ_RELAY=pilot reads the four BUZZ_PILOT_* names and only the loopback pilot address; hosted (default) is unchanged."""
-    try:
-        pilot = relay_choice.mode(environ) == "pilot"
-    except ValueError:
-        raise HermesError("HERMES_CONFIG_INVALID") from None
-    names = PILOT_NAMES if pilot else NAMES
-    missing = [name for name in names if not (environ.get(name) or "").strip()]
+    """(relay, channel) from the environment. A dry run gets a relay with no write permission at all."""
+    missing = [name for name in NAMES if not (environ.get(name) or "").strip()]
     if missing:
         raise HermesError("HERMES_CONFIG_MISSING:" + ",".join(missing))            # setting names only, never values
-    url, channel, pubkey = (environ[name].strip() for name in (names[0], names[2], names[3]))
-    if not ((relay_choice.pilot_url_ok(url) if pilot else URL.match(url)) and UUID.match(channel) and HEX.match(pubkey)):
+    url, channel, pubkey = (environ[name].strip() for name in ("BUZZ_URL_LIFE_OS", "BUZZ_STAGE_CHANNEL", "BUZZ_STAGE_HERMES_PUBKEY"))
+    if not (URL.match(url) and UUID.match(channel) and HEX.match(pubkey)):
         raise HermesError("HERMES_CONFIG_INVALID")
     try:
-        secret = nip98.secret_from(environ[names[1]].strip())
+        secret = nip98.secret_from(environ["BUZZ_STAGE_KEY"].strip())
     except Exception:                                                              # noqa: BLE001 - whatever the key parser says, the caller sees one fixed code
         raise HermesError("HERMES_CONFIG_INVALID") from None
     writes = [(COMMUNITY, channel)] if live else []
-    return Relay({COMMUNITY: url.rstrip("/")}, {COMMUNITY: secret}, writes, recipients={(COMMUNITY, ALIAS): pubkey}, may_address=True), channel
+    return Relay({COMMUNITY: url}, {COMMUNITY: secret}, writes, recipients={(COMMUNITY, ALIAS): pubkey}, may_address=True), channel
 
 
 def _buzz(error):
