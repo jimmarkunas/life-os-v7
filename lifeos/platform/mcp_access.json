@@ -5,7 +5,9 @@
   "buzz_capabilities": "buzz-read",
   "buzz_read": "buzz-read",
   "buzz_publish": "buzz-publish",
-  "send_to_jim": "agent-inbox-write"
+  "send_to_jim": "agent-inbox-write",
+  "source_read": "source-read",
+  "agent_lookup": "agent-lookup"
  },
  "communities": {
   "life-os": "personal",
@@ -373,6 +375,118 @@
    "account": "buzz",
    "tool": "buzz_read",
    "purpose": "buzz-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "mcp-credential-hermes-librarian",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-mac-claude-code-personal-source_read",
+   "principal": "mac-claude-code",
+   "tenant": "personal",
+   "account": "buzz",
+   "tool": "source_read",
+   "purpose": "source-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "mcp-credential-mac-claude-code",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-mac-claude-code-personal-agent_lookup",
+   "principal": "mac-claude-code",
+   "tenant": "personal",
+   "account": "buzz",
+   "tool": "agent_lookup",
+   "purpose": "agent-lookup",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "mcp-credential-mac-claude-code",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-oracle-claude-code-personal-source_read",
+   "principal": "oracle-claude-code",
+   "tenant": "personal",
+   "account": "buzz",
+   "tool": "source_read",
+   "purpose": "source-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "mcp-credential-oracle-claude-code",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-oracle-claude-code-personal-agent_lookup",
+   "principal": "oracle-claude-code",
+   "tenant": "personal",
+   "account": "buzz",
+   "tool": "agent_lookup",
+   "purpose": "agent-lookup",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "mcp-credential-oracle-claude-code",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-openclaw-personal-source_read",
+   "principal": "openclaw",
+   "tenant": "personal",
+   "account": "buzz",
+   "tool": "source_read",
+   "purpose": "source-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "mcp-credential-openclaw",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-openclaw-personal-agent_lookup",
+   "principal": "openclaw",
+   "tenant": "personal",
+   "account": "buzz",
+   "tool": "agent_lookup",
+   "purpose": "agent-lookup",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "mcp-credential-openclaw",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-hermes-librarian-personal-source_read",
+   "principal": "hermes-librarian",
+   "tenant": "personal",
+   "account": "buzz",
+   "tool": "source_read",
+   "purpose": "source-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "mcp-credential-hermes-librarian",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-hermes-librarian-personal-agent_lookup",
+   "principal": "hermes-librarian",
+   "tenant": "personal",
+   "account": "buzz",
+   "tool": "agent_lookup",
+   "purpose": "agent-lookup",
    "actions": [
     "read"
    ],
