@@ -20,3 +20,8 @@ The same reader as a window (`lifeos.sources.web.boards.run`): boards already re
 ## Production Contract amendment (draft for Jim)
 
 > **Employer boards.** Employer boards are crawled hourly, due boards only, inside the Jobs tick, by exactly one crawler owner at a time. A board that lists a target job is read again within six hours; any other COMPLETE board within 24 hours; a FAILED board is retried per its backoff and is never a removal. The frontier moves only on a COMPLETE read. Provider protections are unchanged (4 workers, 3 answers of 429 stop that ATS for the run). A tick that finds a boards run in progress, or cannot tell, leaves boards to the next tick. The four daily board windows (1:00 AM, 7:00 AM, 1:00 PM, 7:00 PM Central) are retired once three consecutive natural ticks show due-only reads, freshness within six hours, no overlap and no save timeout; until then they are the fallback owner and the rollback target.
+
+
+## Windows retired (LIFE-905, Nov 23, 2026)
+
+The four daily windows are retired: `boards.yml` has no schedule, the hourly tick no longer dispatches it, `SCHEDULED_WORKFLOWS` and the scheduled-jobs table no longer watch it, and `due_table.json` lists no window slots. `boards.yml` stays as the manual run (a person starts it; a manual run always crawls). The rollback proof (LIFE-905 comment 13946) was done before this PR, with the windows still scheduled. **Rollback now:** revert the retire PR (it restores the cron lines, the tick's dispatch step and the watch rows); setting the switch off alone no longer starts the windows, it only makes the tick skip the pass.

@@ -23,10 +23,8 @@ class BoardsWorkflow(unittest.TestCase):
         cls.hourly = yaml.safe_load((ROOT / ".github/workflows/hourly.yml").read_text())
         cls.steps = {s.get("id"): s for s in cls.doc["jobs"]["boards"]["steps"] if s.get("id")}
 
-    def test_four_windows_with_two_crons_each_and_manual_runs_are_dry_unless_live(self):
-        crons = [c["cron"] for c in self.doc[True]["schedule"]]
-        self.assertEqual(len(crons), 8)
-        self.assertEqual(sorted(int(c.split()[1]) for c in crons), [0, 1, 6, 7, 12, 13, 18, 19])      # 7 PM, 1 AM, 7 AM, 1 PM Central in daylight and standard time
+    def test_the_four_windows_are_retired_so_there_is_no_schedule_and_manual_runs_are_dry_unless_live(self):
+        self.assertNotIn("schedule", self.doc[True])                                                  # LIFE-905: the hourly tick crawls the boards; this workflow is the manual run only
         inputs = self.doc[True]["workflow_dispatch"]["inputs"]
         self.assertEqual((inputs["live"]["default"], inputs["mode"]["default"]), (False, "window"))
 
@@ -57,13 +55,9 @@ class BoardsWorkflow(unittest.TestCase):
         self.assertEqual((boards_window.WINDOW_TIMEOUT_MINUTES, boards_window.CATCHUP_TIMEOUT_MINUTES), (15, 25))
         self.assertGreater(self.doc["jobs"]["boards"]["timeout-minutes"], 25)
 
-    def test_the_hourly_tick_starts_the_window_with_the_permission_it_already_has_and_the_run_name_marks_an_auto_run(self):
+    def test_the_hourly_tick_no_longer_starts_a_window_and_the_run_name_still_marks_an_auto_run(self):
         prep = self.hourly["jobs"]["prep"]
-        step = next(x for x in prep["steps"] if x.get("name", "").startswith("LIFE-854 - start the employer-board window"))
-        self.assertEqual(step["run"], "python3 -m lifeos.platform.boards_window dispatch")
-        self.assertTrue(step["continue-on-error"])                                           # a failed dispatch never fails the tick
-        self.assertEqual(step["env"], {"GITHUB_TOKEN": "${{ github.token }}"})               # the workflow token only: no new secret
-        self.assertEqual(prep["permissions"]["actions"], "write")                            # already held for the domains dispatch
+        self.assertEqual([x for x in prep["steps"] if "boards_window" in str(x.get("run", ""))], [])      # LIFE-905: no dispatch step; the windows are retired
         self.assertTrue(self.doc["run-name"].endswith("inputs.auto && ' auto' || '' }}"))
         self.assertIn("auto", self.doc[True]["workflow_dispatch"]["inputs"])
 
@@ -86,11 +80,9 @@ class BoardsWorkflow(unittest.TestCase):
 
     def test_the_table_the_production_contract_reads_lists_the_workflow_cadence_cap_and_timeout(self):
         row = json.loads((ROOT / "lifeos/platform/due_table.json").read_text())["workflows"]["boards.yml"]
-        self.assertEqual(row["windows_ct"], list(f"{h:02d}:00" for h in (1, 7, 13, 19)))
+        self.assertEqual(row["windows_ct"], [])                                                       # LIFE-905: retired Nov 23 2026
+        self.assertIn("LIFE-905", row["windows_retired"])
         self.assertEqual((row["cap"], row["timeout_minutes"], row["catchup_cap"], row["catchup_timeout_minutes"]), (limits.BOARDS_PER_RUN, 15, limits.BOARDS_CATCHUP_PER_RUN, 25))
-        self.assertEqual(sorted(row["windows_ct"]), row["windows_ct"])
-        slots = [f"{h:02d}:{m:02d}" for h, m in boards_window.SLOTS_CT]
-        self.assertEqual(slots, row["windows_ct"])
         self.assertTrue(row["owner"])
 
 
