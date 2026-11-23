@@ -50,10 +50,11 @@ class PilotCommunity(unittest.TestCase):
                 pilot_community.wire(env, relays([]), nip98.secret_from)
             self.assertEqual(str(caught.exception), name)
 
-    def test_the_pilot_address_is_fixed_and_loopback(self):
-        self.assertEqual(relay_choice.PILOT_URL, "http://127.0.0.1:3100")
-        self.assertTrue(relay_choice.pilot_url_ok("http://127.0.0.1:3100/"))
+    def test_the_pilot_address_is_fixed_and_on_the_tailnet(self):
+        self.assertEqual(relay_choice.PILOT_URL, "https://lifeos-edge-01.tail96b07f.ts.net:3100")
+        self.assertTrue(relay_choice.pilot_url_ok("https://lifeos-edge-01.tail96b07f.ts.net:3100/"))
         self.assertFalse(relay_choice.pilot_url_ok("https://life-os-dev.communities.buzz.xyz"))
+        self.assertFalse(relay_choice.pilot_url_ok("http://127.0.0.1:3100"))
 
 
 if __name__ == "__main__":
