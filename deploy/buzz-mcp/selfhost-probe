@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """LIFE-870: prove membership, authentication, post and read on the private Buzz relay pilot with our own client, without any agent seeing a key.
 
-  sudo /opt/lifeos-buzz-mcp/current/bin/selfhost-probe [channel] [relay URL, default http://127.0.0.1:3100]
+  sudo /opt/lifeos-buzz-mcp/current/bin/selfhost-probe [channel] [relay URL, default https://lifeos-edge-01.tail96b07f.ts.net:3100]
   `members <channel>` (public keys on stdin, one per line) has the owner add each key as a relay member and to that channel (LIFE-927); `channel` skips the probe steps: the owner adds the Claude pilot member and creates the one durable pilot channel (LIFE-870); it prints `pilot_channel <uuid>` (a public id).
 
 Runs as the vault owner (ubuntu, with that user's own env file; like store-credential it re-runs itself from root). It reads the pilot OWNER and AGENT (Claude) keys from Bitwarden into memory only, signs in this process, and drives
@@ -97,7 +97,7 @@ def add_members(base, owner, pubs, channel, say):
 def run(base, owner, agent, say):
     from lifeos.buzz import nip98, relay as relay_mod
     agent_pub = nip98.pubkey(agent)
-    code, _ = http("GET", base.replace(":3100", ":3180") + "/_readiness")
+    code, _ = http("GET", ("http://127.0.0.1:3180" if base.startswith("https://") else base.replace(":3100", ":3180")) + "/_readiness")        # the health port stays on loopback
     say("health", code == 200, f"readiness {code}")
     code, _ = http("POST", base + "/query", {"Content-Type": "application/json"}, b'[{"kinds":[9],"limit":1}]')
     say("unauth_refused", code == 401, f"HTTP {code}")
@@ -131,7 +131,7 @@ def main(argv):
     pilot_channel = argv.pop(0) if members and argv else None
     channel_only = argv[:1] == ["channel"]                                           # `selfhost-probe channel`: add the Claude pilot member and create the one durable pilot channel (LIFE-870); prints its id
     argv = argv[1:] if channel_only else argv
-    base = (argv[0] if argv else "http://127.0.0.1:3100").rstrip("/")
+    base = (argv[0] if argv else "https://lifeos-edge-01.tail96b07f.ts.net:3100").rstrip("/")
     if os.geteuid() == 0 and pwd.getpwnam(RUNAS).pw_uid != 0:                       # re-run as the vault owner; root never sees the keys
         os.execvp("sudo", ["sudo", "-u", RUNAS, "-H", "env", "PYTHONDONTWRITEBYTECODE=1", sys.executable, "-I", os.path.abspath(__file__), *sys.argv[1:]])
     failed = []

@@ -2,10 +2,10 @@
 
 Jim, comment 13867. Rollback is setting it back to hosted.
 
-hosted (the default, also when the setting is empty or absent) serves only the community relays, as today. pilot adds the private relay pilot on the Oracle host (loopback only, never a public
+hosted (the default, also when the setting is empty or absent) serves only the community relays, as today. pilot adds the private relay pilot on the Oracle host (reached over the tailnet only, never a public
 address) as one more community. Anything else is refused, so a typo never falls back to a different relay. The pilot address is fixed here, not a setting a caller can aim."""
 
-PILOT_URL = "http://127.0.0.1:3100"
+PILOT_URL = "https://lifeos-edge-01.tail96b07f.ts.net:3100"                 # LIFE-927 (Jim, comment 13971): the relay's one address, tailnet only; loopback is no longer accepted by the relay
 MODES = ("hosted", "pilot")
 
 
