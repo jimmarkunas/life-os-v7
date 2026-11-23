@@ -318,7 +318,7 @@ class Governed(Server):
 
 class Credentials(Server):
     """LIFE-873: scoped `lm1.` credentials for the local clients, through the real HTTP handler. Synthetic secrets only; the shipped data holds hashes, never a secret."""
-    SECRETS = {"mac-claude-code": "A" * 43, "oracle-claude-code": "B" * 43, "openclaw": "D" * 43}
+    SECRETS = {"mac-claude-code": "A" * 43, "oracle-claude-code": "B" * 43, "openclaw": "D" * 43, "hermes-librarian": "E" * 43}
 
     def access(self, edit=None, no_identity=False):
         import copy
@@ -338,7 +338,7 @@ class Credentials(Server):
 
     def test_each_credential_lists_only_its_granted_tools_and_completes_one_read_with_its_own_receipt(self):
         self.start(access=self.access())
-        for cid in (c for c in self.SECRETS if c != "openclaw"):                                                              # openclaw is capabilities only: its own test below
+        for cid in (c for c in self.SECRETS if c not in ("openclaw", "hermes-librarian")):                                                # openclaw and hermes-librarian are capabilities only: their own tests below
             status, out = self.rpc(self.tok(cid), "tools/list")
             names = {t["name"] for t in out["result"]["tools"]}
             self.assertEqual((status, {"buzz_capabilities", "buzz_read"} <= names, "buzz_publish" in names or "buzz_post_message" in names), (200, True, False), cid)
@@ -391,6 +391,17 @@ class Credentials(Server):
         self.assertEqual((status, caps["ok"], caps["data"]["identity"]["communities"]), (200, True, {}))
         status, out = self.tool(self.tok("oracle-claude-code"), "buzz_read", operation="list_channels", community="life-os")
         self.assertEqual((status, out["error"]), (200, "client_identity_not_configured"))
+
+    def test_hermes_librarian_ships_capabilities_only_like_openclaw_and_is_its_own_identity(self):
+        self.start(access=self.access())
+        tok = self.tok("hermes-librarian")
+        names = {t["name"] for t in self.rpc(tok, "tools/list")[1]["result"]["tools"]}
+        self.assertEqual((len(names), {"buzz_capabilities", "buzz_read"} <= names, "buzz_publish" in names or "buzz_post_message" in names), (6, True, False))
+        status, caps = self.tool(tok, "buzz_capabilities")
+        self.assertEqual((status, caps["ok"], caps["data"]["identity"]["communities"]), (200, True, {}))
+        self.assertEqual(self.receipts[-2]["principal_fp"], __import__("lifeos.platform.authorization_gate", fromlist=["x"]).fingerprint("hermes-librarian"))
+        self.assertEqual(self.tool(tok, "buzz_read", operation="list_channels", community="life-os")[1]["error"], "client_identity_not_configured")
+        self.assertEqual(self.rpc(self.tok("hermes-librarian", self.SECRETS["openclaw"]), "tools/list")[0], 401)                                   # another client's secret is a 401
 
     def test_openclaw_ships_capabilities_only_with_its_own_two_read_tools_and_no_buzz_key(self):
         self.start(access=self.access())
