@@ -1,0 +1,15 @@
+[Unit]
+Description=LIFE OS pinned Buzz relay pilot (LIFE-870): private, loopback only, synthetic posts
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=600
+ExecStart=/opt/lifeos-buzz-selfhost/lifeos-buzz-selfhost up
+ExecStop=/opt/lifeos-buzz-selfhost/lifeos-buzz-selfhost down
+
+[Install]
+WantedBy=multi-user.target

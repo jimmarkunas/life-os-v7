@@ -1,0 +1,7 @@
+[Unit]
+Description=Health check for the pinned Buzz relay pilot (LIFE-870): readiness and the disk floor
+After=lifeos-buzz-selfhost.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/lifeos-buzz-selfhost/lifeos-buzz-selfhost health
