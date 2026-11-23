@@ -139,7 +139,7 @@ Every call that leaves the process carries an explicit timeout. `tests/contracts
 
 ## Stage budgets
 
-`lifeos/platform/stage_budgets.json` has one row for each of the 114 stages in `lifeos/run.py`. `lifeos.run` arms an alarm of that many seconds around the stage. Rules:
+`lifeos/platform/stage_budgets.json` has one row for each of the 115 stages in `lifeos/run.py`. `lifeos.run` arms an alarm of that many seconds around the stage. Rules:
 
 * A stage within its budget behaves exactly as before.
 * A stage over it stops, prints the fixed code `STAGE_BUDGET_EXCEEDED` with the two numbers (counts only), and **a required stage exits 1, an optional stage exits 0** so the run passes and the code stays visible in the stage's counts line.
@@ -248,6 +248,7 @@ The table below is rendered from `lifeos/platform/stages.json` (LIFE-768): edit 
 | `purge` | 480 | no | twice its slowest measured step (240 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `recruiter-outreach` | 180 | no | twice its slowest measured step (87 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `recruiters` | 1230 | yes | twice its slowest measured step (605 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
+| `report-archive` | 600 | no | no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `resolve-dice` | 180 | yes | the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage |
 | `resolve-jobright` | 600 | yes | the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage |
 | `resolve-linkedin` | 420 | yes | the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage |

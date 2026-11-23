@@ -34,6 +34,7 @@ The two rows with `-` are not regions in `OWNERS`: the date line is the page hea
 | module | page | note |
 |---|---|---|
 | lifeos/platform/branches.py | the Weekly LIFE OS Review (REPO_REGION) | one writer; compares the page before and after because nothing else writes that page |
+| lifeos/dcc/weekly_archive.py | new child pages under the Weekly Reports Archive (WEEKLY_ARCHIVE_PAGE_ID); the Daily Report's Notes callout, only if the page has one | creates pages only; the one edit to the Daily Report is the Monday Notes reset, after the prior week's snapshot re-reads exactly equal; every write is read back |
 | lifeos/sources/pipeline/job_page_outreach.py | each job's page in the Job Ledger | one writer per job page; compares the page before and after for the same reason |
 | lifeos/accountability/region.py | the This week, Quarterly goals and Quarterly review callouts on Jim & Matt V3, found by the V3 block ID register (jim.thisweek, matt.goals, ...) | each callout and its summary page is read and written by block id inside the callout (ScopedClient) and read back |
 | lifeos/megibow/card.py, lifeos/megibow/v3.py | the MegIBOW callouts, found by MEGIBOW_BLOCK_ID and the V3 block ids | each callout is read and written by block id and read back |

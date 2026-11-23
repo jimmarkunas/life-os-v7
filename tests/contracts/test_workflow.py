@@ -718,7 +718,7 @@ DB = {"LIFEOS_ACQ_DB_NAME", "LIFEOS_ACQ_DB_PASSWORD", "LIFEOS_ACQ_DB_USER", "LIF
 SETTINGS_LOADER_ID = "bws_settings"
 SETTINGS_CONSUMER = "${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}"
 RUNTIME_CONFIG_LOADER_ID = "bws_runtime_config"          # LIFE-858: the compare-only read's own loader: the bootstrap ID (an address) and nothing else, continue-on-error, never exported job-wide
-RUNTIME_CONFIG_JOBS = {"hourly": {"finish"}, "domains": {"bills", "amazon", "recruiters", "interview"}}     # the exact jobs that carry it: nothing else may
+RUNTIME_CONFIG_JOBS = {"hourly": {"finish"}, "domains": {"bills", "amazon", "recruiters", "interview", "dcc"}}     # the exact jobs that carry it: nothing else may
 RUNTIME_CONFIG_CONSUMER = "${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}"
 SETTINGS_JOBS = {            # the exact jobs that carry the settings loader: nothing else may
     "amazon": {"amazon"}, "bills": {"bills"}, "calendar": {"calendar"}, "granola": {"granola"}, "granola-auto": {"auto"}, "hermes-stage": {"hermes"}, "manual-job": {"manual"},
@@ -758,7 +758,7 @@ DOMAIN_SECRETS = {         # the only secrets each domain job may see; adding on
     "bills": DB | {"V7_RUNTIME_CONFIG_SOURCE_ID", "BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "NOTION_BILLS_DATA_SOURCE_ID", "NOTION_BILLS_TOKEN", "NOTION_JIRA_TOKEN"},
     "agenda": DB | {"CALENDAR_CARD_BLOCK_ID", "GCAL_CALENDAR_ID", "GCAL_SERVICE_ACCOUNT_JSON", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "NOTION_JIRA_TOKEN"},
     "megibow": DB | {"GCAL_CALENDAR_ID", "GCAL_SERVICE_ACCOUNT_JSON", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "MEGIBOW_BLOCK_ID", "MEGIBOW_EXCLUDED_DOMAINS", "MEGIBOW_REVIEW_DB_ID", "NOTION_JIRA_TOKEN", "NTFY_TOPIC", "OUTLOOK_CLIENT_ID"},
-    "dcc": {"AMAZON_CARD_BLOCK_ID", "ATTENTION_CARD_BLOCK_ID", "BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "DCC_CARD_BLOCK_ID", "GITHUB_TOKEN", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "MAIL_ALERTS_CARD_BLOCK_ID", "NOTION_JIRA_TOKEN"},   # LIFE-694: GITHUB_TOKEN is the run's own read-only token (job permissions: contents, actions, issues read), for the Platform Stability card
+    "dcc": {"V7_RUNTIME_CONFIG_SOURCE_ID", "WEEKLY_ARCHIVE_PAGE_ID", "AMAZON_CARD_BLOCK_ID", "ATTENTION_CARD_BLOCK_ID", "BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "DCC_CARD_BLOCK_ID", "GITHUB_TOKEN", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "MAIL_ALERTS_CARD_BLOCK_ID", "NOTION_JIRA_TOKEN"},   # LIFE-694: GITHUB_TOKEN is the run's own read-only token (job permissions: contents, actions, issues read), for the Platform Stability card
     "recruiters": DB | {"V7_RUNTIME_CONFIG_SOURCE_ID", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_RECRUITERS_DATA_SOURCE_ID", "NOTION_RECRUITERS_TOKEN", "OUTLOOK_CLIENT_ID",
                      "NOTION_API_TOKEN", "NOTION_JOB_LEDGER_DATA_SOURCE_ID", "V7_CLOSE_BASE_URL", "RECRUITERS_SCAN", "RECRUITERS_SCAN_AT",      # LIFE-610: step outputs, not secrets
                      "HIRING_TABLE_BLOCK_ID", "NOTION_JIRA_TOKEN"},   # LIFE-20: the Recruiter Outreach step (the Daily Report writer and the pinned Hiring Pipeline table it is anchored on); LIFE-10: the job-page outreach step reads and writes Job Ledger pages
