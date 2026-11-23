@@ -4,6 +4,7 @@ GET requests only (one `_get`; the token exchange is the one POST and moves no d
 Authorization is the gate's (tenant = the account's workspace, tool = the operation, purpose `governed-google-read`); an omitted or unknown account is refused here before Google is called. A credential is a refresh token named by
 account and service, read by the caller and handed in as `creds(account, service)`; it is never returned, logged or put in an error. Results carry the account and the message or file id; text is trimmed. Fixed reasons only."""
 import base64
+import hashlib
 import json
 import re
 import urllib.error
@@ -19,6 +20,8 @@ ID = re.compile(r"^[A-Za-z0-9_-]{6,128}$")
 SECRET = re.compile(r"(?i)(?:api[_-]?key|secret|password|token)\s*[:=]\s*\S{8,}|-----BEGIN [A-Z ]*PRIVATE KEY|\b(?:ghp_|sk-|xox[abprs]-)[A-Za-z0-9_-]{10,}")
 TEXT_TYPES = ("text/", "application/json")
 GOOGLE_DOC = "application/vnd.google-apps.document"
+OWNER_SHA256 = {"personal": "46f409d1f24b8a492700db422d65ed2fa94cd8dfc1a2c7e80f8c8401f095a498", "bytalos": "cd72ab1e22b5e26f609ac8c9ed57d3ff3ec3db74c5c55a0be34cb35ea425f1d9"}   # SHA-256 of each account's own address: a token for another mailbox is refused, and no address is held here
+WHO = {"gmail": f"{GMAIL}/profile", "drive": "https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)"}
 
 
 class GoogleError(ValueError):
@@ -51,9 +54,20 @@ def _http(request, opener):
 class Google:
     """`creds(account, service)` -> {"client_id", "client_secret", "refresh_token"} or None (not configured). `opener` is urllib's urlopen, or a fake in tests."""
     def __init__(self, creds, opener=urllib.request.urlopen):
-        self.creds, self.opener = creds, opener
+        self.creds, self.opener, self.tokens = creds, opener, {}
 
     def _token(self, account, service):
+        """The access token for one account and service, checked once per client: the address Google reports for it must be the named account's (`wrong_account` otherwise, before any data is read)."""
+        if (account, service) not in self.tokens:
+            token = self._exchange(account, service)
+            who, _ = _http(urllib.request.Request(WHO[service], headers={"Authorization": "Bearer " + token, "Accept": "application/json"}, method="GET"), self.opener)
+            email = ((who or {}).get("user") or who or {}).get("emailAddress")
+            if not isinstance(email, str) or hashlib.sha256(email.strip().lower().encode()).hexdigest() != OWNER_SHA256[account]:
+                raise GoogleError("wrong_account")
+            self.tokens[(account, service)] = token
+        return self.tokens[(account, service)]
+
+    def _exchange(self, account, service):
         got = self.creds(account, service)
         if not isinstance(got, dict) or not all(isinstance(got.get(k), str) and got[k] for k in ("client_id", "client_secret", "refresh_token")):
             raise GoogleError("not_configured")
