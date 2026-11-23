@@ -61,5 +61,12 @@
     false,
     "One MEJ project Epic is linked to multiple current-quarter goal Epics, so attribution is ambiguous.",
     "Correct the Jira Relates links with Matt's approval; the V3 goal update was refused."
+  ],
+  "ACCOUNTABILITY_MEJ_COMPLETION_DATE_MISSING": [
+    "accountability",
+    "blocked",
+    false,
+    "A linked MEJ project Task is Done but Jira has no status-category transition date; quarter attribution cannot be proven.",
+    "Keep prior V3 summary; verify Jira status history before publishing a versioned metric."
   ]
 }
