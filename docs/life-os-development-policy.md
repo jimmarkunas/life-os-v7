@@ -41,7 +41,7 @@ Link to the owner; never copy a fact into a second place.
 - **Close a `research` ticket:** no PR, so no closeout script. Post one findings comment that answers every Done when line (UNCLEAR or UNVERIFIED with the reason is an answer), then move it to Done with transition 15. A `verdict` ticket closes the same way after its authorized writes are read back.
 - **Human UAT:** only with label `needs-uat` or when Jim is the real user of the outcome. Stop at Human UAT (transition 19) with exact click-through steps for Jim; Jim's check moves it to Done.
 - **Schedules:** adding, moving or changing the cadence of any scheduled workload is a Production Contract change: it is in the ticket's Jim must do first, per workload, before release.
-- **Scope:** never change or drop a ticket's stated scope, or swap a stated fix for a workaround, without asking Jim.
+- **Scope:** never change or drop a ticket's stated scope, or swap a stated fix for a workaround, without asking Jim. Optional improvements become a proposal, not extra work.
 
 ## 4. Jim must do first (the release rule)
 
@@ -147,9 +147,9 @@ A request that breaks these rules stops with `ARCHITECTURAL DRIFT DETECTED — N
 - **Natural runs, one rule:** a natural run never gates a build ticket's Done; its UAT ticket checks it, and a fault is filed as a Bug under LIFE-615.
 - **Fix on the real failing shape.** A defect seen live is fixed and proved on that input, or on a fixture that keeps its structure, through the real path. For Jobs qualification: real job description → requirement rows → non-null Fit → correct disposition.
 - **Runtime-facing changes:** prove the production entry point calls the change, its inputs are loaded, the happy path completes, missing input fails closed, writes go through the existing owner, and read-back is wired.
-- **Jobs increments:** test toward the future source count before the pattern is copied (build at one, test toward many).
+- **Jobs increments:** test toward the future source count before copying a pattern.
 - **Fail closed:** a full result or an error, never a partial one. Dry run is the default; writes need `--live`.
-- **Keep the suite fast:** under 90 seconds. Delete obsolete tests with the code they covered.
+- **Keep the suite under 90 seconds;** delete tests with the code they covered.
 - **Net size:** `python -m lifeos.platform.net_size` in every PR.
 - **Decision numbers:** only from `python -m lifeos.sources.devtools.decisions claim`.
 
@@ -161,5 +161,5 @@ A request that breaks these rules stops with `ARCHITECTURAL DRIFT DETECTED — N
 ## 11. Read only when needed
 
 - `docs/DECISIONS.md`: only when a ticket cites a D-number. Use `python -m lifeos.sources.devtools.decisions show D<n>` and never read the whole file.
-- `docs/agent-reference.md`: the code map, commands and the nine epic delivery rules.
+- `docs/agent-reference.md`: the code map, commands and epic delivery rules.
 - `docs/archive/`: history, no authority.
