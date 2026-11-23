@@ -89,11 +89,11 @@ def _lift(module, op, state):
 
 
 try:                                                                                 # a release without the platform files serves without these operations (the gate would refuse them anyway)
-    from lifeos.platform import google_read, source_lookup
+    from lifeos.platform import call_limit, google_read, source_lookup
     for _module, _state in ((source_lookup, LOOKUP), (google_read, GOOGLE)):
         READ.update({op: (text, params, _lift(_module, op, _state)) for op, (text, params) in _module.OPS.items()})
 except ImportError:
-    google_read = source_lookup = None
+    call_limit = google_read = source_lookup = None
 NEEDS_COMMUNITY = set(READ) - {"list_communities", *GOOGLE_OPS}
 RETRYABLE = ("relay_error", "relay_unreachable", "precheck_unavailable")
 ERRORS = {"unsupported": ["unknown_operation", "unknown_tool", "page_boundary_unsupported"], "unauthorized": ["insufficient_scope", "community_not_authorized", "recipient_not_authorized", "recipient_not_channel_member", "write_disabled", "client_identity_not_configured", "access_denied", "governance_unavailable"],
@@ -313,6 +313,9 @@ def handler(relays, auth, base, origins=(), audit=_audit, access=None, receipts=
             who = self._who()
             if who is None:
                 return
+            if call_limit and not call_limit.allow(who["sub"]):                          # LIFE-874: per verified caller, before any tool or gate; the log line names the caller and the outcome only
+                audit({"client": who["client"], "identity": None, "sub": who["sub"], "tool": None, "community": None, "outcome": "rate_limited", "reason": None})
+                return self._send(429, {"error": "rate_limited"}, Retry_After="60")
             accept = self.headers.get("Accept", "application/json")
             if self.headers.get("MCP-Protocol-Version", PROTOCOL) not in VERSIONS or not ("json" in accept or "*/*" in accept):
                 return self._send(400, {"error": "unsupported_protocol_or_accept"})
