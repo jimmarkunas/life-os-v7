@@ -78,6 +78,25 @@ def granted_tools(access, client, now=None):
     return {g.tool for g in access.grants if g.principal in principals and not g.revoked and g.expires > now}
 
 
+def capabilities_for_client(reply, who, access, limited, response_max):
+    """Grant-aware availability, without modifying the permanent MCP tool schema."""
+    try:
+        a = access or load()
+        client = identify(a, "http", who.get("facts") or {"oauth_client": who.get("client")})
+        granted = granted_tools(a, client)
+    except Exception:  # noqa: BLE001 - unreadable policy must never advertise granted access
+        granted = set()
+    payload = json.loads(reply["result"]["content"][0]["text"])
+    for operation in limited:
+        entry = payload.get("data", {}).get("read", {}).get(operation)
+        if entry is not None and operation not in granted:
+            entry.update(available=False, reason="no_grant")
+    result = json.dumps(payload)
+    if len(result) > response_max:
+        return {**reply, "result": {"content": [{"type": "text", "text": '{"error":"response_too_large"}'}], "isError": True}}
+    return {**reply, "result": {**reply["result"], "content": [{"type": "text", "text": result}]}}
+
+
 def stdio_facts():
     """The one trusted fact of a stdio server: the OS user it runs as, from the kernel. Nothing the caller sends is read."""
     return {"os_user": pwd.getpwuid(os.getuid()).pw_name}
@@ -107,4 +126,5 @@ def call(access, client, tenant, tool, action, account, service, effect, audit, 
         raise AccessError("unknown_tool")
     session = G.Session(principal_id(client, tenant), client["policy_key"], tenant, True)
     request = G.Request(tool, action, account, purpose, service, uuid.uuid4().hex[:16])
-    return G.execute(session, request, access.catalog, access.policy, access.grants, (), frozenset(), effect, audit, now or datetime.now(timezone.utc))
+    return G.execute(session, request, access.catalog, access.policy, access.grants, (), frozenset(), effect, audit, now or datetime.now(timezone.utc),
+                     pregrant_tools=("gmail_search", "gmail_read", "drive_search", "drive_read"))
