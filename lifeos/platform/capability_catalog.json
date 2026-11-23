@@ -4,6 +4,7 @@
     {"id": "claude-code", "kind": "agent", "workspace": "v7-mac"},
     {"id": "hermes", "kind": "agent", "workspace": "v7-oracle"},
     {"id": "claude-chat", "kind": "agent", "workspace": "personal"},
+    {"id": "muse-chat", "kind": "agent", "workspace": "personal"},
     {"id": "claude-chat-bytalos", "kind": "agent", "workspace": "bytalos"},
     {"id": "chatgpt-chat", "kind": "agent", "workspace": "personal"},
     {"id": "chatgpt-chat-bytalos", "kind": "agent", "workspace": "bytalos"},
@@ -77,6 +78,10 @@
     {"principal": "honcho-alerts", "tool": "send_to_jim", "action": "write", "provider": "notion", "account_alias": null, "host": "oracle-edge", "source": "lifeos/platform/inbox_send.py", "as_of": "2026-11-23", "max_age_days": 90, "status": "synthetic"},
     {"principal": "hermes-librarian", "tool": "send_to_jim", "action": "write", "provider": "notion", "account_alias": null, "host": "oracle-edge", "source": "lifeos/platform/inbox_send.py", "as_of": "2026-11-23", "max_age_days": 90, "status": "synthetic"},
     {"principal": "claude-chat", "tool": "send_to_jim", "action": "write", "provider": "notion", "account_alias": null, "host": "oracle-edge", "source": "lifeos/platform/inbox_send.py", "as_of": "2026-11-23", "max_age_days": 90, "status": "synthetic"},
+    {"principal": "muse-chat", "tool": "buzz_capabilities", "action": "read", "provider": "buzz", "account_alias": null, "host": "oracle-edge", "source": "lifeos/buzz/mcp.py", "as_of": "2026-11-22", "max_age_days": 90, "status": "synthetic"},
+    {"principal": "muse-chat", "tool": "buzz_read", "action": "read", "provider": "buzz", "account_alias": null, "host": "oracle-edge", "source": "lifeos/buzz/mcp.py", "as_of": "2026-11-22", "max_age_days": 90, "status": "synthetic"},
+    {"principal": "muse-chat", "tool": "buzz_publish", "action": "write", "provider": "buzz", "account_alias": null, "host": "oracle-edge", "source": "lifeos/buzz/mcp.py", "as_of": "2026-11-22", "max_age_days": 90, "status": "synthetic"},
+    {"principal": "muse-chat", "tool": "send_to_jim", "action": "write", "provider": "notion", "account_alias": null, "host": "oracle-edge", "source": "lifeos/platform/inbox_send.py", "as_of": "2026-11-23", "max_age_days": 90, "status": "synthetic"},
     {"principal": "chatgpt-chat", "tool": "send_to_jim", "action": "write", "provider": "notion", "account_alias": null, "host": "oracle-edge", "source": "lifeos/platform/inbox_send.py", "as_of": "2026-11-23", "max_age_days": 90, "status": "synthetic"}
   ]
 }

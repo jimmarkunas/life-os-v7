@@ -298,6 +298,30 @@ class Governed(Server):
         allow = self.receipts[-2]
         self.assertEqual((allow["outcome"], allow["tool"], allow["action"], allow["purpose"], allow["tenant"]), ("allow", "buzz_publish", "write", "buzz-publish", "personal"))
 
+    def test_muse_reads_and_sends_to_jim_in_life_os_and_every_other_call_is_refused_by_its_verified_identity_alone(self):
+        """LIFE-923 (Jim, M3, comment 13891): Muse is the OAuth label `muse` of its own user, with the shipped grants (Buzz read and publish, send_to_jim, Personal), no Gmail, Drive, memory or Bytalos; nothing the caller sends changes who it is."""
+        from datetime import datetime, timezone
+        from unittest import mock
+        USERS["user-muse"] = ("muse", ("life-os",))
+        self.addCleanup(USERS.pop, "user-muse", None)
+        self.start()
+        self.relays["muse"] = Relay(URLS, {"life-os": bytes([25]) * 32}, (("life-os", CHAN),), self.fake)
+        tok = token(sub="user-muse")
+        status, out = self.tool(tok, "buzz_read", operation="list_channels", community="life-os")
+        self.assertEqual((status, out["ok"], self.receipts[-2]["tenant"], self.receipts[-2]["purpose"]), (200, True, "personal", "buzz-read"))
+        sent = []
+        with mock.patch.dict(buzz_mcp.INBOX, {"client": object(), "now": lambda: datetime(2026, 11, 23, 12, 0, tzinfo=timezone.utc)}), mock.patch("lifeos.platform.inbox_send.deliver", lambda item, client, now=None: sent.append(item) or {"ok": True, "created": True, "id": "x"}):
+            status, out = self.tool(tok, "buzz_read", operation="send_to_jim", community="life-os", arguments={"subject": "Muse spoof", "urgency": "FYI", "from": "claude-chat"})
+            self.assertEqual((status, out.get("ok"), sent), (200, False, []))                               # a caller-named sender other than the verified client is refused before anything is written
+            status, out = self.tool(tok, "buzz_read", operation="send_to_jim", community="life-os", arguments={"subject": "Muse synthetic test", "urgency": "FYI"})
+        self.assertEqual((status, [i["from"] for i in sent]), (200, ["muse"]))                         # the sender is the verified client label
+        self.refused(tok, "buzz_read", "no_grant", operation="gmail_search", community="life-os", arguments={"account": "personal", "query": "x"})
+        self.refused(tok, "buzz_read", "no_grant", operation="memory_recall", community="life-os", arguments={"workspace": "personal", "query": "x"})
+        status, out = self.tool(tok, "buzz_read", operation="list_channels", community="bytalos")           # Muse's user lists only life-os
+        self.assertEqual(out["error"], "community_not_authorized")
+        status, _ = self.tool(token(sub="user-nobody"), "buzz_read", operation="list_channels", community="life-os")[0], None
+        self.assertEqual(status, 403)
+
     def test_revoked_expired_wrong_tenant_and_wrong_purpose_grants_are_refused_with_their_reason(self):
         from tests.platform.mcp_access_fixture import build
         def edit(**patch):
