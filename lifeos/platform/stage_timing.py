@@ -72,6 +72,20 @@ def outcome_of(label, counts):
     return "complete"
 
 
+_KEYS = {}
+
+
+def items_key_for(stage):
+    """-> the stage's declared items_key in lifeos/platform/stages.json, or None (not declared: the count is unknown)."""
+    if not _KEYS:
+        try:
+            table = json.load(open(os.path.join(os.path.dirname(__file__), "stages.json")))["stages"]
+            _KEYS.update({name: row["items_key"] for name, row in table.items() if isinstance(row, dict) and isinstance(row.get("items_key"), str)})
+        except (OSError, ValueError, KeyError):
+            _KEYS["__none__"] = None
+    return _KEYS.get(stage)
+
+
 def items_of(counts, key):
     """-> the declared item count, or None (unknown, never zero): only a whole number under the stage's own declared key counts."""
     value = counts.get(key) if isinstance(counts, dict) and key else None
