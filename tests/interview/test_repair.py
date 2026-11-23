@@ -47,6 +47,11 @@ def marks(client, block_id):
 
 
 class RoundRepair(unittest.TestCase):
+
+    def setUp(self):
+        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        _claims, _stop = claim_store()
+        self.addCleanup(_stop)
     def test_an_edited_machine_block_is_preserved_then_repaired_and_counted_on_its_own(self):
         client, parent, child = edited_round()
         notes = notion.protected_snapshot(client, child, "round")
@@ -134,6 +139,11 @@ class RoundRepair(unittest.TestCase):
 
 
 class ParentRepair(unittest.TestCase):
+
+    def setUp(self):
+        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        _claims, _stop = claim_store()
+        self.addCleanup(_stop)
     def edited(self):
         client, page_id = written()
         self.type_in(client, page_id, "Jim typed here")

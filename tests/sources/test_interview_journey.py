@@ -18,7 +18,6 @@ from tests.sources.support import JourneyFixture, LIVE, Ledger, NOW, NotionLike
 
 
 
-
 class Recruiters:
     """The Recruiters data source, read only: rows filtered by an exactly equal Source URL, as Notion answers."""
     def __init__(self, rows=(), broken=False):

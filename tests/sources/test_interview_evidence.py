@@ -26,7 +26,6 @@ LIVE = {**ENV, "INTERVIEW_OS_WRITER": "v7"}                         # the writer
 ROW = {"page_id": "ledger-1", "company": "ExampleCo", "role": "Program Manager", "stable_job_key": "exampleco-r-1", "requisition": None}
 
 
-
 class Calendar:
     def __init__(self, *events):
         self.events = list(events)
@@ -161,12 +160,12 @@ class DailyCounts:
 
 
 class SentMailFailure(unittest.TestCase):
+    """LIFE-657: a thread Gmail says is not found stays unreadable (the page says DEGRADED; nothing a retry fixes) and no longer fails the stage; every other Gmail error still does."""
+
     def setUp(self):
         from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
-        _db, _stop = claim_store()
+        _claims, _stop = claim_store()
         self.addCleanup(_stop)
-
-    """LIFE-657: a thread Gmail says is not found stays unreadable (the page says DEGRADED; nothing a retry fixes) and no longer fails the stage; every other Gmail error still does."""
     GMAIL_URL = "https://mail.google.com/mail/u/0/#all/18c0ffee12345678"
 
     @staticmethod
@@ -268,11 +267,11 @@ class SentMailFailure(unittest.TestCase):
 
 
 class Ordinal(unittest.TestCase):
+
     def setUp(self):
         from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
-        _db, _stop = claim_store()
+        _claims, _stop = claim_store()
         self.addCleanup(_stop)
-
     def test_only_an_explicit_single_round_number_counts(self):
         for title, want in (("ExampleCo Interview 2", 2), ("Round 3 - ExampleCo", 3), ("ExampleCo 2nd interview", 2), ("ExampleCo interview", None),
                             ("Interview 2 and Round 3", None), ("Interview 2026", None), ("", None), (None, None)):
@@ -280,11 +279,11 @@ class Ordinal(unittest.TestCase):
 
 
 class Refresh(unittest.TestCase):
+
     def setUp(self):
         from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
-        _db, _stop = claim_store()
+        _claims, _stop = claim_store()
         self.addCleanup(_stop)
-
     def test_an_existing_scheduling_pending_page_is_refreshed_from_its_own_facts(self):
         counts, got = Run()()
         (parent, query), = got["evidence"]
@@ -325,11 +324,11 @@ class Refresh(unittest.TestCase):
 
 
 class CalendarRounds(unittest.TestCase):
+
     def setUp(self):
         from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
-        _db, _stop = claim_store()
+        _claims, _stop = claim_store()
         self.addCleanup(_stop)
-
     def test_an_event_that_states_its_round_adds_that_round_before_the_refresh(self):
         counts, got = Run(calendar=Calendar(event("ExampleCo Program Manager Interview 2")))()
         (_, new), (_, refresh) = got["evidence"]
@@ -421,12 +420,12 @@ class CalendarRounds(unittest.TestCase):
 
 
 class SchedulingRequests(unittest.TestCase):
+    """E01a: a scheduling request in mail (a person's or an automated one) for a job Jim applied to becomes Interview 1, Scheduling Pending."""
+
     def setUp(self):
         from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
-        _db, _stop = claim_store()
+        _claims, _stop = claim_store()
         self.addCleanup(_stop)
-
-    """E01a: a scheduling request in mail (a person's or an automated one) for a job Jim applied to becomes Interview 1, Scheduling Pending."""
     def run_with(self, *records, parents=(), **kw):
         return Run(parents=parents, facts={} if not parents else None, kids={}, roster=[APPLIED], records=records, **kw)()
 
@@ -505,12 +504,12 @@ class SchedulingRequests(unittest.TestCase):
 
 
 class Leads(unittest.TestCase):
+    """E01b: every recruiter outreach that names a role is a lead; with no posting link, only the employer's requisition gives it a Stable Job Key (LIFE-25, Jim 10851)."""
+
     def setUp(self):
         from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
-        _db, _stop = claim_store()
+        _claims, _stop = claim_store()
         self.addCleanup(_stop)
-
-    """E01b: every recruiter outreach that names a role is a lead; with no posting link, only the employer's requisition gives it a Stable Job Key (LIFE-25, Jim 10851)."""
     def test_a_recruiters_first_message_names_a_client_a_role_and_a_minted_key(self):
         self.assertEqual(ev.lead_of(outreach()), ("ExampleCo", "Program Manager", None, None, "https://example.test/thread/5"))      # no requisition, no posting: no key, never the role
         company, role, req, key, _ = ev.lead_of(outreach(extra="Requisition 123456."))
@@ -559,12 +558,12 @@ REQ_TEXT, REQ_KEY = "Requisition 123456.", "recruiter-exampleco-123456"
 
 
 class LeadRows(unittest.TestCase):
+    """E01b: a lead is a Job Ledger row (Visible Lane Recruiter, Admitted, not Applied), written and read back before its page, once per Stable Job Key."""
+
     def setUp(self):
         from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
-        _db, _stop = claim_store()
+        _claims, _stop = claim_store()
         self.addCleanup(_stop)
-
-    """E01b: a lead is a Job Ledger row (Visible Lane Recruiter, Admitted, not Applied), written and read back before its page, once per Stable Job Key."""
     def go(self, writer, live=True, rows=(), extra=None):
         return Run(parents=(), kids={}, roster=[], rows=rows, records=[outreach(extra=REQ_TEXT if extra is None else extra)], environ=LIVE if live else ENV, writer=writer)()
 
@@ -601,12 +600,12 @@ class LeadRows(unittest.TestCase):
 
 
 class LeadRequisition(unittest.TestCase):
+    """LIFE-25 (Jim, comment 10851): a recruiter lead with no posting link creates a Ledger row only from the employer's requisition; anything less is REVIEW with no write."""
+
     def setUp(self):
         from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
-        _db, _stop = claim_store()
+        _claims, _stop = claim_store()
         self.addCleanup(_stop)
-
-    """LIFE-25 (Jim, comment 10851): a recruiter lead with no posting link creates a Ledger row only from the employer's requisition; anything less is REVIEW with no write."""
     def go(self, records, rows=(), writer=None):
         writer = writer or Writer()
         counts, got = Run(parents=(), kids={}, roster=[], rows=rows, records=records, environ=LIVE, writer=writer)()
@@ -652,12 +651,12 @@ class LeadRequisition(unittest.TestCase):
 
 
 class Exceptions(unittest.TestCase):
+    """Naming test pursuits never lengthens a live tick's mail read (run 907 hit the 20 minute job limit at 60 days)."""
+
     def setUp(self):
         from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
-        _db, _stop = claim_store()
+        _claims, _stop = claim_store()
         self.addCleanup(_stop)
-
-    """Naming test pursuits never lengthens a live tick's mail read (run 907 hit the 20 minute job limit at 60 days)."""
     NOW = ev.datetime(2026, 10, 21, 12, tzinfo=ev.TZ)
 
     def test_naming_pursuits_does_not_widen_a_live_or_dry_read_beyond_14_days(self):
@@ -678,12 +677,12 @@ Cursor = SqlLog
 
 
 class LinkLeads(unittest.TestCase):
+    """E01b: a recruiter's public posting link is a real job. It goes through Jobs OS (Enrich, Fit, Luna on the public posting, Publish); the email text never does."""
+
     def setUp(self):
         from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
-        _db, _stop = claim_store()
+        _claims, _stop = claim_store()
         self.addCleanup(_stop)
-
-    """E01b: a recruiter's public posting link is a real job. It goes through Jobs OS (Enrich, Fit, Luna on the public posting, Publish); the email text never does."""
     def message(self, *links):
         return outreach(extra=" ".join(links))
 
@@ -727,12 +726,12 @@ NAMED = {**ENV, "INTERVIEW_TEST_COMPANIES": "Alpha, SH/FT"}
 
 
 class Conversion(unittest.TestCase):
+    """The pursuits Jim named are converted through the page's own adopt / upgrade path; a page of his without his adopt line is never written."""
+
     def setUp(self):
         from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
-        _db, _stop = claim_store()
+        _claims, _stop = claim_store()
         self.addCleanup(_stop)
-
-    """The pursuits Jim named are converted through the page's own adopt / upgrade path; a page of his without his adopt line is never written."""
     def go(self, owner, title="SH/FT — Technical Program Manager", facts=None, environ=NAMED):
         return Run(parents=(("p1", title),), facts=facts or {}, kids={"p1": ()}, rows=(), roster=[], records=[], environ=environ, owner=owner)()
 
@@ -764,12 +763,12 @@ class Conversion(unittest.TestCase):
 
 
 class UiThreeBMigration(unittest.TestCase):
+    """A named pursuit's UI 3b page is migrated through the page's own refresh (create.refresh(migrate=True)); every other UI 3b page still waits."""
+
     def setUp(self):
         from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
-        _db, _stop = claim_store()
+        _claims, _stop = claim_store()
         self.addCleanup(_stop)
-
-    """A named pursuit's UI 3b page is migrated through the page's own refresh (create.refresh(migrate=True)); every other UI 3b page still waits."""
     KEY = "walmart-r-2612137"
 
     def go(self, environ={**ENV, "INTERVIEW_TEST_COMPANIES": "Walmart"}, legacy=True, title="Walmart — Senior Manager, Operations and Implementation", rows=None):
@@ -819,11 +818,11 @@ class UiThreeBMigration(unittest.TestCase):
 
 
 class LegacyRounds(unittest.TestCase):
+
     def setUp(self):
         from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
-        _db, _stop = claim_store()
+        _claims, _stop = claim_store()
         self.addCleanup(_stop)
-
     def test_a_hand_made_round_title_states_its_number_interviewer_and_date(self):
         child = Child("c1", "p1")
         got = notion.legacy_round({"child_page": {"title": "Interview 1: Pat Example (9/10/26)"}}, child)
@@ -855,12 +854,12 @@ def counts_only(value, path="counts"):
 
 
 class LeadCorrelation(unittest.TestCase):
+    """Each lead carries its own message and ATS link through the live loop; a different message in the mailbox never lends it a link or a date."""
+
     def setUp(self):
         from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
-        _db, _stop = claim_store()
+        _claims, _stop = claim_store()
         self.addCleanup(_stop)
-
-    """Each lead carries its own message and ATS link through the live loop; a different message in the mailbox never lends it a link or a date."""
     A = "https://boards.greenhouse.io/alphaco/jobs/1111111"
     B = "https://jobs.lever.co/betaco/22222222-2222-2222-2222-222222222222"
     C = "https://boards.greenhouse.io/gammaco/jobs/3333333"
@@ -927,12 +926,12 @@ class LeadCorrelation(unittest.TestCase):
 
 
 class StageClock(unittest.TestCase):
+    """Live run 39551231241: the mail read took minutes, the write stage inherited the clock started before it, and all four queued conversions failed pipeline_incomplete with zero writes."""
+
     def setUp(self):
         from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
-        _db, _stop = claim_store()
+        _claims, _stop = claim_store()
         self.addCleanup(_stop)
-
-    """Live run 39551231241: the mail read took minutes, the write stage inherited the clock started before it, and all four queued conversions failed pipeline_incomplete with zero writes."""
     def test_the_write_stage_gets_a_clock_started_after_the_mail_has_been_read(self):
         order = []
         real = ev.RunContext.start
@@ -947,11 +946,11 @@ class StageClock(unittest.TestCase):
 
 
 class Window(unittest.TestCase):
+
     def setUp(self):
         from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
-        _db, _stop = claim_store()
+        _claims, _stop = claim_store()
         self.addCleanup(_stop)
-
     def test_a_longer_mail_window_is_for_a_dry_run_only_and_never_beyond_90_days(self):
         for asked, live, want in (("", False, 14), ("60", False, 60), ("60", True, 14), ("5", False, 14), ("500", False, 90), ("abc", False, 14), ("-3", False, 14)):
             self.assertEqual(ev.window({"INTERVIEW_MAIL_DAYS": asked}, live), want, (asked, live))
@@ -959,12 +958,12 @@ class Window(unittest.TestCase):
 
 
 class Pursuits(unittest.TestCase):
+    """M1 (LIFE-25 handoff): a verified scheduling request for a V7 pursuit page that has no Applied Ledger row becomes that page's Interview 1, Scheduling Pending."""
+
     def setUp(self):
         from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
-        _db, _stop = claim_store()
+        _claims, _stop = claim_store()
         self.addCleanup(_stop)
-
-    """M1 (LIFE-25 handoff): a verified scheduling request for a V7 pursuit page that has no Applied Ledger row becomes that page's Interview 1, Scheduling Pending."""
     def test_a_request_for_a_keyed_pursuit_page_is_its_interview_1_scheduling_pending(self):
         counts, got = Run(parents=(("p1", "ExampleCo — Program Manager"),), kids={"p1": ()}, roster=[], records=[mail()])()
         (parent, query), = got["evidence"]
@@ -1021,11 +1020,11 @@ class Pursuits(unittest.TestCase):
 
 
 class Facts(unittest.TestCase):
+
     def setUp(self):
         from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
-        _db, _stop = claim_store()
+        _claims, _stop = claim_store()
         self.addCleanup(_stop)
-
     def regions(self, request_links, renders=1):
         run = lambda text, link=None: {"plain_text": text, "text": {"content": text, **({"link": {"url": link}} if link else {})}}
         callout = {"id": "k", "type": "callout", "callout": {"rich_text": [run(ev.REQUEST, link) for link in request_links]}}
@@ -1048,11 +1047,11 @@ class Facts(unittest.TestCase):
 
 
 class Registered(unittest.TestCase):
+
     def setUp(self):
         from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
-        _db, _stop = claim_store()
+        _claims, _stop = claim_store()
         self.addCleanup(_stop)
-
     def test_the_interview_stage_is_this_path_and_the_manual_ones_are_untouched(self):
         with patch.object(ev, "run", return_value={"failed": 0}) as run:
             self.assertEqual(STAGES["interview"](7, False), {"failed": 0})
@@ -1066,12 +1065,12 @@ if __name__ == "__main__":
 
 
 class NetworkContacts(unittest.TestCase):
+    """E10 (Jim, Oct 24): an opportunity's LinkedIn contacts are its job page's own Network Leads (the exact Ledger row linked), read only."""
+
     def setUp(self):
         from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
-        _db, _stop = claim_store()
+        _claims, _stop = claim_store()
         self.addCleanup(_stop)
-
-    """E10 (Jim, Oct 24): an opportunity's LinkedIn contacts are its job page's own Network Leads (the exact Ledger row linked), read only."""
 
     def test_each_requests_job_page_leads_are_carried_and_read_once(self):
         from lifeos.interview.models import ParentQuery, RoundQuery
