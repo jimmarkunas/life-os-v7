@@ -32,7 +32,7 @@ Generated from `lifeos/platform/runtime.json`; do not edit by hand. The drift ch
 | lifeos/dcc | github |  |  |
 | lifeos/delivery | github |  |  |
 | lifeos/edge | oracle |  |  |
-| lifeos/hermes_requests.py | github |  |  |
+| lifeos/hermes_requests.py | github, oracle |  |  |
 | lifeos/hiring | github, oracle |  |  |
 | lifeos/imessage | github, oracle, mac |  |  |
 | lifeos/interview | github |  |  |
