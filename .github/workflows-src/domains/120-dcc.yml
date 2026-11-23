@@ -52,6 +52,28 @@
           HIRING_CARD_BLOCK_ID: ""
           NOTION_JIRA_TOKEN: ${{ steps.bws_dcc.outputs.NOTION_JIRA_TOKEN }}
         run: python -m lifeos.run dcc-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
+      - id: bws_runtime_config
+        continue-on-error: true
+        name: Runtime Configuration source ID from Bitwarden for the archive step (LIFE-933; read only, an address not a secret; if it fails the archive step finds no page and writes nothing)
+        uses: ./.github/actions/bws-load
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
+      - id: archive
+        continue-on-error: true
+        name: Weekly Reports Archive (LIFE-933; the first run at or after 6 PM CT freezes one static Daily Report snapshot into the week's archive page and reads it back; Sunday also freezes the Notes, Monday resets them only after the snapshot re-verifies; the existing Notion token only)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DCC_CARD_BLOCK_ID: ${{ steps.bws_dcc.outputs.DCC_CARD_BLOCK_ID }}
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
+          WEEKLY_ARCHIVE_PAGE_ID: ""
+          NOTION_JIRA_TOKEN: ${{ steps.bws_dcc.outputs.NOTION_JIRA_TOKEN }}
+        run: python -m lifeos.run report-archive --limit 0 $([ "$LIVE" = "true" ] && echo --live)
+      - name: Weekly Reports Archive warning (does not fail the Jobs run)
+        if: ${{ always() && steps.archive.outcome == 'failure' }}
+        run: echo "::warning title=Weekly Reports Archive::today's snapshot could not be written or read back; the archive keeps its earlier pages and the next run tries again"
       - name: Daily Command Center warning (does not fail the Jobs run)
         if: ${{ always() && steps.dcccard.outcome == 'failure' }}
         run: echo "::warning title=Daily Command Center::the Command Center could not be written; its callout keeps the last text and the Jobs pipeline is unaffected"
