@@ -960,6 +960,17 @@
    "communities": [
     "life-os"
    ]
+  },
+  {
+   "id": "muse",
+   "sha256": "31f2e650ba5abf46d8f2a976e4aaa09c443318aa9a10478822bda9ce7a73c4e8",
+   "expires": "2027-02-22",
+   "revoked": false,
+   "buzz_identity": "muse",
+   "communities": [
+    "life-os"
+   ],
+   "write": true
   }
  ]
 }
