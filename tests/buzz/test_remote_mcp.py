@@ -427,6 +427,45 @@ class Credentials(Server):
             self.assertEqual(self.tool(self.tok(), "buzz_read", operation="source_read", community="life-os", arguments={"source": "notion", "page_id": "[removed]"})[1]["error"], "source_unavailable")
             self.assertEqual(self.tool(self.tok(), "buzz_read", operation="agent_lookup", community="life-os", arguments={"agent_id": "bot_hermes_claude-hermes"})[1]["error"], "directory_unavailable")
 
+    def test_google_reads_are_granted_to_hermes_librarian_only_per_account_and_the_named_account_is_the_boundary(self):
+        """LIFE-875 (Jim, comment 13747): read-only Gmail and Drive grants for the Hermes librarian credential, personal and bytalos; every other client is refused at the gate; an omitted account never reaches Google."""
+        from unittest import mock
+        from tests.platform.test_google_read import FakeGoogle
+        fake = FakeGoogle()
+        fp = __import__("lifeos.platform.authorization_gate", fromlist=["x"]).fingerprint
+        self.start(access=self.access(no_identity=True))
+        creds = lambda account, service: {"client_id": "cid", "client_secret": "csecret-xxxxxxxx", "refresh_token": "rtoken-xxxxxxxx"}
+        with mock.patch.dict(buzz_mcp.GOOGLE, {"creds": creds, "opener": fake}):
+            lib = self.tok("hermes-librarian")
+            for account in ("personal", "bytalos"):
+                for op, args, key in (("gmail_search", {"query": "q"}, "results"), ("gmail_read", {"message_id": "msg111111"}, "id"), ("drive_search", {"query": "q"}, "results"), ("drive_read", {"file_id": "file111111"}, "id")):
+                    status, out = self.tool(lib, "buzz_read", operation=op, arguments={"account": account, **args})
+                    self.assertEqual((status, out["ok"], out["data"]["account"]), (200, True, account), (account, op))
+                    allow = self.receipts[-2]
+                    self.assertEqual((allow["tool"], allow["purpose"], allow["tenant"], allow["outcome"], allow["principal_fp"]), (op, "governed-google-read", account, "allow", fp("hermes-librarian" if account == "personal" else "hermes-librarian-bytalos")))
+            reached = len(fake.requests)
+            for cid in ("mac-claude-code", "oracle-claude-code", "openclaw"):                                                    # granted to no other client
+                status, out = self.tool(self.tok(cid), "buzz_read", operation="gmail_search", arguments={"account": "personal", "query": "q"})
+                self.assertEqual((out["error"], out["reason"]), ("access_denied", "catalog_unknown_capability"), cid)
+            status, out = self.tool(token(sub="user-claude"), "buzz_read", operation="drive_read", arguments={"account": "personal", "file_id": "file111111"})
+            self.assertEqual(out["error"], "access_denied")                                                                        # nor to the chat clients
+            for args, reason in (({"query": "q"}, "account_required"), ({"account": "work", "query": "q"}, "unknown_account")):
+                status, out = self.tool(lib, "buzz_read", operation="gmail_search", arguments=args)
+                self.assertEqual((out["error"], out["reason"]), ("access_denied", reason))
+            self.assertEqual(len(fake.requests), reached)                                                                          # none of the refusals reached Google
+            names = {t["name"] for t in self.rpc(lib, "tools/list")[1]["result"]["tools"]}
+            self.assertFalse({n for n in names if "send" in n or "delete" in n or "modify" in n})                                  # no write tool exists
+
+    def test_a_revoked_google_consent_and_an_unwired_service_have_fixed_reasons(self):
+        from unittest import mock
+        from tests.platform.test_google_read import FakeGoogle
+        self.start(access=self.access(no_identity=True))
+        lib = self.tok("hermes-librarian")
+        with mock.patch.dict(buzz_mcp.GOOGLE, {"creds": lambda a, s: {"client_id": "c", "client_secret": "s" * 10, "refresh_token": "r" * 10}, "opener": FakeGoogle(revoked=True)}):
+            self.assertEqual(self.tool(lib, "buzz_read", operation="drive_search", arguments={"account": "bytalos", "query": "q"})[1]["error"], "consent_revoked")
+        with mock.patch.dict(buzz_mcp.GOOGLE, {"creds": None, "opener": None}):
+            self.assertEqual(self.tool(lib, "buzz_read", operation="gmail_search", arguments={"account": "personal", "query": "q"})[1]["error"], "not_configured")
+
     def test_hermes_librarian_ships_capabilities_only_like_openclaw_and_is_its_own_identity(self):
         self.start(access=self.access())
         tok = self.tok("hermes-librarian")
