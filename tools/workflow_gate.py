@@ -3,7 +3,7 @@
     python tools/workflow_gate.py [--base origin/main] [--head HEAD]
 
 Compares every changed `.github/workflows/*.yml` between the two commits. Exit 0 and one `ok` line: nothing to ask, merge on same-head green CI with no label and no typed yes. Exit 5: at least one line `[waiting on] Jim: <the one thing>`; ask once, record one `[approvals]` line, and
-re-run with LIFEOS_JIM_APPROVED set to that line (tools/preflight.sh does this for you). A change stops only for: a wider `permissions` scope, a `secrets.` reference reaching a job that had none of that name, a new Bitwarden load or credential reaching a job, a deletion of GitHub values or
+re-run with LIFEOS_JIM_APPROVED set to that line (tools/preflight.sh does this for you). A change stops only for: a wider `permissions` scope, a `secrets.` reference or Bitwarden load whose NAME no job of that workflow loaded before (a name another job of the same workflow already loads is pre-approved: Jim, Nov 22 2026), a deletion of GitHub values or
 production data, or paid-model spend. A new job inherits the workflow's own permissions, so only what it adds is judged.
 
 LIFE-908: an owner approval made in ChatGPT and recorded as a CHECKED item in the claimed ticket's "Jim must do first" section is read from Jira, not asked for again. The ticket is the one named by the branch (`life/LIFE-nnn/...`); its LIVE issue is read through the existing paths
@@ -108,6 +108,11 @@ def reasons_detail(path, base_text, head_text):
     """[(reason text, detail)]: detail is {"path", "job", "scopes": {scope: level}} for a wider-permissions reason and None for every other reason (LIFE-908 reads it to match a recorded approval)."""
     base_wf, head_wf = parse(base_text), parse(head_text)
     base_jobs, head_jobs = base_wf.get("jobs") or {}, head_wf.get("jobs") or {}
+    # Standing approval (Jim, Nov 22 2026, 6:03 PM CT; gate change asked for explicitly at 6:14 PM CT): a secret or
+    # Bitwarden name that some job of this same workflow already loads on the base may reach another job of it with no
+    # stop. Only a name new to the workflow is a new credential. `secrets: inherit`, permissions, deletion and spend are unchanged.
+    base_secrets = set(SECRET_REF.findall(job_text(base_jobs)))
+    base_loads = set(BWS_LOAD.findall("\n".join(_block_text(j) for j in base_jobs.values()))) | set(BWS_OUTPUT.findall(job_text(base_jobs)))
     out = []
     for name, job in head_jobs.items():
         before = job_text(base_jobs.get(name)) if name in base_jobs else ""
@@ -115,12 +120,12 @@ def reasons_detail(path, base_text, head_text):
         added = widening(base_wf, head_wf, name, job)
         if added:
             out.append(("wider permissions (%s: %s)" % (path, name), {"path": path, "job": name, "scopes": added}))
-        new_secrets = sorted(set(SECRET_REF.findall(now)) - set(SECRET_REF.findall(before)))
+        new_secrets = sorted(set(SECRET_REF.findall(now)) - set(SECRET_REF.findall(before)) - base_secrets)
         inherits = job.get("secrets") == "inherit" and (base_jobs.get(name) or {}).get("secrets") != "inherit"
         if new_secrets or inherits:
             out.append(("new secret (%s: %s: %s)" % (path, name, ", ".join(new_secrets) or "secrets: inherit"), None))
-        loads = sorted(set(BWS_LOAD.findall(_block_text(job))) - set(BWS_LOAD.findall(_block_text(base_jobs.get(name)))))
-        reach = sorted(set(BWS_OUTPUT.findall(now)) - set(BWS_OUTPUT.findall(before)))
+        loads = sorted(set(BWS_LOAD.findall(_block_text(job))) - set(BWS_LOAD.findall(_block_text(base_jobs.get(name)))) - base_loads)
+        reach = sorted(set(BWS_OUTPUT.findall(now)) - set(BWS_OUTPUT.findall(before)) - base_loads)
         if loads or reach:
             out.append(("new credential (%s: %s: %s)" % (path, name, ", ".join(sorted(set(loads + reach)))), None))
     added = [line for line in difflib.unified_diff(code_lines(base_text).splitlines(), code_lines(head_text).splitlines(), lineterm="", n=0) if line.startswith("+") and not line.startswith("+++")]
