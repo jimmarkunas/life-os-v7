@@ -78,7 +78,10 @@ class Reads(unittest.TestCase):
 
     def test_every_google_request_is_a_get_except_the_one_token_exchange(self):
         client, fake = google()
-        client.gmail_search("personal", "q"); client.gmail_read("personal", "msg111111"); client.drive_search("personal", "q"); client.drive_read("personal", "file111111")
+        client.gmail_search("personal", "q")
+        client.gmail_read("personal", "msg111111")
+        client.drive_search("personal", "q")
+        client.drive_read("personal", "file111111")
         methods = {(m, url == G.TOKEN_URL) for m, url, _ in fake.requests}
         self.assertEqual(methods, {("GET", False), ("POST", True)})
         self.assertTrue(all(h.get("Authorization", "").startswith("Bearer ") for m, u, h in fake.requests if m == "GET"))
@@ -94,7 +97,7 @@ class Reads(unittest.TestCase):
     def test_an_omitted_or_unknown_account_is_refused_before_google_is_called(self):
         client, fake = google()
         for account, reason in ((None, "account_required"), ("", "account_required"), ("work", "unknown_account"), ("PERSONAL", "unknown_account"), (["personal"], "account_required")):   # a list is not an account name
-            for call in (lambda: client.gmail_search(account, "q"), lambda: client.drive_read(account, "file111111")):
+            for call in (lambda a=account: client.gmail_search(a, "q"), lambda a=account: client.drive_read(a, "file111111")):
                 with self.assertRaises(G.GoogleError) as raised:
                     call()
                 self.assertEqual(raised.exception.reason, reason, account)

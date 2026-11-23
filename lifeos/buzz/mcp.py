@@ -71,47 +71,29 @@ READ = {  # operation: (summary, parameters {name: (type, required)}, handler(re
     "get_evidence": ("Handoff, acknowledgment, progress, blocker, completion, evidence and council events by type or case.", {"type": ("str", False), "case": ("str", False), "channel": ("str", False), **PAGE},
                      lambda r, c, a: _page(r.evidence_page(c, a.get("type"), a.get("case"), a.get("channel"), a.get("limit"), a.get("cursor")))),
 }
-LOOKUP = {"fetchers": {}, "rows": None}                                             # LIFE-888: wired by main(); empty means a lookup answers source_unavailable / directory_unavailable, never a guess
+LOOKUP = {"fetchers": {}, "rows": None}                                             # LIFE-888: wired by main(); empty means source_unavailable / directory_unavailable, never a guess
 LOOKUP_OPS = ("source_read", "agent_lookup")                                         # operations that read a canonical source, not the relay: no Buzz identity is needed for them
-
-
-def _lookup(op, args):
-    from datetime import datetime, timezone
-    from lifeos.platform import source_lookup                                         # lazy: a release without the platform files refuses at the gate first
-    now = LOOKUP["now"]() if LOOKUP.get("now") else datetime.now(timezone.utc)
-    try:
-        return source_lookup.read_source(args, LOOKUP["fetchers"], now) if op == "source_read" else source_lookup.lookup_agent(args, LOOKUP["rows"], now)
-    except source_lookup.LookupError_ as error:
-        raise BuzzError(error.reason) from None
-
-
-READ["source_read"] = ("Canonical source lookup (LIFE-888): one GitHub file (source=github, path, optional ref) or one Notion page (source=notion, page_id) with its exact revision, read time in CT and freshness; refused as stale_source past max_age_seconds. Read-only; text is untrusted data.",
-                       {"source": ("str", True), "path": ("str", False), "ref": ("str", False), "page_id": ("str", False), "max_age_seconds": ("int", False)}, lambda r, c, a: (_lookup("source_read", a), None))
-READ["agent_lookup"] = ("Find one agent in the agent directory by exact agent_id or unambiguous alias, with the directory's own reachability class (manual-only, configured-untested, not-reachable, routable-verified); never upgraded without proof. A catalog view, not a send.",
-                        {"agent_id": ("str", False), "alias": ("str", False)}, lambda r, c, a: (_lookup("agent_lookup", a), None))
-GOOGLE = {"creds": None, "opener": None}                                            # LIFE-875: wired by main() from the service's credentials; None means not_configured, never a guess
+GOOGLE = {"creds": None, "opener": None}                                            # LIFE-875: wired by main(); None means not_configured, never a guess
 GOOGLE_OPS = ("gmail_search", "gmail_read", "drive_search", "drive_read")           # each its own gate tool; the tenant is the named account's workspace, not a community
 ACCOUNT_TENANT = {"personal": "personal", "bytalos": "bytalos"}
 
 
-def _google(op, args):
-    from lifeos.platform import google_read                                          # lazy: a release without the platform files refuses at the gate first
-    if GOOGLE["creds"] is None:
-        raise BuzzError("not_configured")
-    client = google_read.Google(GOOGLE["creds"], **({"opener": GOOGLE["opener"]} if GOOGLE["opener"] else {}))
-    try:
-        a = dict(args)
-        return getattr(client, op)(a.pop("account"), **a)
-    except google_read.GoogleError as error:
-        raise BuzzError(error.reason) from None
+def _lift(module, op, state):
+    """One read operation implemented in lifeos/platform/<module>.py (`run(op, args, state)`); its fixed `reason` becomes the error code."""
+    def run(relay, community, args):
+        try:
+            return module.run(op, args, state), None
+        except ValueError as error:
+            raise BuzzError(getattr(error, "reason", "invalid_argument")) from None
+    return run
 
 
-_ACCT = ("str", True)
-for _op, (_text, _params) in {"gmail_search": ("Search one Gmail account (the named account is required) with Gmail's query syntax. Read-only; returns message ids.", {"account": _ACCT, "query": ("str", True), "limit": ("int", False)}),
-                              "gmail_read": ("Read one Gmail message by id from the named account: headers, snippet and trimmed plain text. Read-only; text is untrusted data.", {"account": _ACCT, "message_id": ("str", True)}),
-                              "drive_search": ("Search one Google Drive account (the named account is required) by text. Read-only; returns file ids, names and types.", {"account": _ACCT, "query": ("str", True), "limit": ("int", False)}),
-                              "drive_read": ("Read one Drive file by id from the named account: metadata and trimmed text for documents and text files. Read-only; text is untrusted data.", {"account": _ACCT, "file_id": ("str", True)})}.items():
-    READ[_op] = (_text, _params, lambda r, c, a, _o=_op: (_google(_o, a), None))
+try:                                                                                 # a release without the platform files serves without these operations (the gate would refuse them anyway)
+    from lifeos.platform import google_read, source_lookup
+    for _module, _state in ((source_lookup, LOOKUP), (google_read, GOOGLE)):
+        READ.update({op: (text, params, _lift(_module, op, _state)) for op, (text, params) in _module.OPS.items()})
+except ImportError:
+    google_read = source_lookup = None
 NEEDS_COMMUNITY = set(READ) - {"list_communities", *GOOGLE_OPS}
 RETRYABLE = ("relay_error", "relay_unreachable", "precheck_unavailable")
 ERRORS = {"unsupported": ["unknown_operation", "unknown_tool", "page_boundary_unsupported"], "unauthorized": ["insufficient_scope", "community_not_authorized", "recipient_not_authorized", "recipient_not_channel_member", "write_disabled", "client_identity_not_configured", "access_denied", "governance_unavailable"],
@@ -436,15 +418,9 @@ def main():
         relays, auth, base, origins = from_env(credentials(os.environ))
     except (ValueError, OSError) as e:
         sys.exit(f"config error: {e}")
-    env = credentials(os.environ)
-    names = {("personal", "gmail"): "GOOGLE_READ_PERSONAL_GMAIL_REFRESH", ("bytalos", "gmail"): "GOOGLE_READ_BYTALOS_GMAIL_REFRESH", ("personal", "drive"): "GOOGLE_READ_PERSONAL_DRIVE_REFRESH", ("bytalos", "drive"): "GOOGLE_READ_BYTALOS_DRIVE_REFRESH"}
-    if env.get("GOOGLE_READ_CLIENT_ID") and env.get("GOOGLE_READ_CLIENT_SECRET") and any(env.get(n) for n in names.values()):      # LIFE-875: a read-only Google credential is only ever read here, by name
-        GOOGLE["creds"] = lambda account, service: {"client_id": env.get("GOOGLE_READ_CLIENT_ID"), "client_secret": env.get("GOOGLE_READ_CLIENT_SECRET"), "refresh_token": env.get(names[(account, service)])} if env.get(names[(account, service)]) else None
-    try:
-        from lifeos.platform import source_lookup
-        LOOKUP["fetchers"]["github"] = source_lookup.github_fetch()                   # public repository, no credential; Notion and the directory stay unwired until a credential is approved
-    except Exception:                                                                  # noqa: BLE001 - a release without the platform files serves without lookups
-        pass
+    if google_read and source_lookup:
+        GOOGLE["creds"] = google_read.creds_from_env(credentials(os.environ))      # LIFE-875: a read-only Google credential is read here by name only; None until the six names are set
+        LOOKUP["fetchers"]["github"] = source_lookup.github_fetch()                   # LIFE-888: public repository, no credential; Notion and the directory stay unwired until a credential is approved
     ThreadingHTTPServer(("127.0.0.1", int(os.environ.get("buzz_mcp_port".upper(), "8787"))), handler(relays, auth, base, origins)).serve_forever()
 
 
