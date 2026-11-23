@@ -7,7 +7,7 @@ The [Development Policy](docs/life-os-development-policy.md) is the whole rule s
 Jim starts every run; no scheduler, timer or loop starts an agent. Once started, run end to end:
 
 1. **Pick** the ticket Jim named, else the top `Agent Go` leaf by Priority, then Rank. Skip In Progress tickets and tickets with an unfinished `Blocks` predecessor. Agent Go is Jim's approval for everything in the ticket: never re-ask.
-2. **Claim:** transition 14 to In Progress. No comment.
+2. **Claim:** one ticket at a time. First list its stops (policy §4-5); any not checked or standing-approved: one approval table, `needs-jim`, next ticket. Else transition 14.
 3. **Build** on `life/LIFE-nnn/<slug>`, one PR `[LIFE-nnn] <outcome>`. Never change a ticket's scope without asking Jim.
 4. **Test:** `sh tools/preflight.sh` before every push; CI is the full gate.
 5. **Land:** auto-merge on green. A merge is not Done.
@@ -16,9 +16,9 @@ Jim starts every run; no scheduler, timer or loop starts an agent. Once started,
 
 ## Jim must do first
 
-Every ticket lists what only Jim can do (secret, permission, sign-in, spend, host step, decision, Notion wireframe). An unchecked item or a missing section keeps it out of Agent Go. A need found mid-run: add it to that section, label `needs-jim`, one comment, keep building.
+Every ticket lists what only Jim can do (secret, permission, sign-in, spend, host step, decision, Notion wireframe). An unchecked item or a missing section keeps it out of Agent Go. Found mid-run: the same.
 
-Epics go `Scoping → Ready → In Progress → Done`; every child carries one label (`ready`, `needs-prep` or `needs-jim`) and only `ready` tickets move to Agent Go. Feasibility first: `research` children (read-only) and the Epic's `verdict` ticket (bounded scoping writes, policy §7) run in Scoping; build tickets wait for the verdict. Claude writes tickets; ChatGPT reviews them. LOS is retired.
+Epics go `Scoping → Ready → In Progress → Done`; every child carries one label (`ready`, `needs-prep` or `needs-jim`) and only `ready` tickets move to Agent Go. Feasibility (`research` + `verdict`) only for a new Epic Jim asks for. Claude writes tickets; ChatGPT reviews them. LOS is retired.
 
 ## Always
 
