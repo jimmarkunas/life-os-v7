@@ -189,3 +189,11 @@ def run(op, args, state):
         raise GoogleError("not_configured")
     given = dict(args)
     return getattr(Google(state["creds"], **({"opener": state["opener"]} if state.get("opener") else {})), op)(given.pop("account"), **given)
+
+
+def route(op, args, tenant):
+    """-> (tenant, action, account, service) for the gate: the named account is the boundary (its workspace is the tenant); an omitted or unknown one is refused before the gate and before Google."""
+    account = args.get("account")
+    if account not in ACCOUNTS:
+        raise GoogleError("account_required" if account is None else "unknown_account")
+    return ACCOUNTS[account], "read", ACCOUNTS[account], "buzz"

@@ -5,7 +5,7 @@
   "buzz_capabilities": "buzz-read",
   "buzz_read": "buzz-read",
   "buzz_publish": "buzz-publish",
-  "send_to_jim": "agent-inbox-write",
+  "send_to_jim": "agent-inbox",
   "source_read": "source-read",
   "agent_lookup": "agent-lookup",
   "gmail_search": "governed-google-read",
@@ -38,18 +38,22 @@
     "notion": "write"
    },
    "2c8c6ccd88c3c2845a6d68fce3cfaa408e5aaebf35327550fc9d040177a53772": {
-    "buzz": "read"
+    "buzz": "read",
+    "notion": "write"
    },
    "5dbd6b29730a3a8a2ee16220a6565743559805e532145389d436b5d4bce512e5": {
-    "buzz": "read"
+    "buzz": "read",
+    "notion": "write"
    },
    "2b7ba37fbdfcc2839223417b879d835df0eb9b51d886d6051bb5043694028d6f": {
     "buzz": "read",
-    "honcho": "write"
+    "honcho": "write",
+    "notion": "write"
    },
    "5a10b1e50b771566e61f818b437d3224927e5bf2798b4157cbbeba420309e1fa": {
     "buzz": "read",
-    "honcho": "write"
+    "honcho": "write",
+    "notion": "write"
    }
   }
  },
@@ -726,6 +730,90 @@
    ],
    "credential_ref": "mcp-credential-hermes-librarian",
    "expires": "2026-12-05",
+   "revoked": false
+  },
+  {
+   "id": "g-mac-claude-code-personal-send_to_jim",
+   "principal": "mac-claude-code",
+   "tenant": "personal",
+   "account": "agent-inbox",
+   "tool": "send_to_jim",
+   "purpose": "agent-inbox",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "notion-readonly-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-oracle-claude-code-personal-send_to_jim",
+   "principal": "oracle-claude-code",
+   "tenant": "personal",
+   "account": "agent-inbox",
+   "tool": "send_to_jim",
+   "purpose": "agent-inbox",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "notion-readonly-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-openclaw-personal-send_to_jim",
+   "principal": "openclaw",
+   "tenant": "personal",
+   "account": "agent-inbox",
+   "tool": "send_to_jim",
+   "purpose": "agent-inbox",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "notion-readonly-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-hermes-librarian-personal-send_to_jim",
+   "principal": "hermes-librarian",
+   "tenant": "personal",
+   "account": "agent-inbox",
+   "tool": "send_to_jim",
+   "purpose": "agent-inbox",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "notion-readonly-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-claude-chat-personal-send_to_jim",
+   "principal": "claude-chat",
+   "tenant": "personal",
+   "account": "agent-inbox",
+   "tool": "send_to_jim",
+   "purpose": "agent-inbox",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "notion-readonly-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-chatgpt-chat-personal-send_to_jim",
+   "principal": "chatgpt-chat",
+   "tenant": "personal",
+   "account": "agent-inbox",
+   "tool": "send_to_jim",
+   "purpose": "agent-inbox",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "notion-readonly-token",
+   "expires": "2027-02-22",
    "revoked": false
   }
  ],

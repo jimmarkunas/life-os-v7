@@ -72,11 +72,9 @@ READ = {  # operation: (summary, parameters {name: (type, required)}, handler(re
                      lambda r, c, a: _page(r.evidence_page(c, a.get("type"), a.get("case"), a.get("channel"), a.get("limit"), a.get("cursor")))),
 }
 LOOKUP = {"fetchers": {}, "rows": None}                                             # LIFE-888: wired by main(); empty means source_unavailable / directory_unavailable, never a guess
-LOOKUP_OPS = ("source_read", "agent_lookup")                                         # operations that read a canonical source, not the relay: no Buzz identity is needed for them
 GOOGLE = {"creds": None, "opener": None}                                            # LIFE-875: wired by main(); None means not_configured, never a guess
 MEMORY, MEMORY_OPS = {"client": None, "now": None}, ("memory_store", "memory_recall", "memory_correct", "memory_revoke")   # LIFE-868: shared memory on the retained Honcho, each operation its own gate tool; MEMORY is wired by main() (memory_not_configured until HONCHO_MEMORY_TOKEN is set)
-GOOGLE_OPS = ("gmail_search", "gmail_read", "drive_search", "drive_read")           # each its own gate tool; the tenant is the named account's workspace, not a community
-ACCOUNT_TENANT = {"personal": "personal", "bytalos": "bytalos"}
+INBOX, ROUTES = {"client": None, "now": None}, {}                                   # LIFE-876: the Agent Inbox write; ROUTES: operation -> route(op, args, tenant) -> (tenant, action, account, service) for the gate, filled by each operation module
 
 
 def _lift(module, op, state):
@@ -90,17 +88,19 @@ def _lift(module, op, state):
 
 
 try:                                                                                 # a release without the platform files serves without these operations (the gate would refuse them anyway)
-    from lifeos.platform import call_limit, google_read, source_lookup
-    for _module, _state in ((source_lookup, LOOKUP), (google_read, GOOGLE)):
+    from lifeos.platform import call_limit, google_read, inbox_send, source_lookup
+    for _module, _state in ((source_lookup, LOOKUP), (google_read, GOOGLE), (inbox_send, INBOX)):
         READ.update({op: (text, params, _lift(_module, op, _state)) for op, (text, params) in _module.OPS.items()})
+        ROUTES.update({op: _module.route for op in _module.OPS})                      # each operation is its own gate tool, routed by its module
 except ImportError:
-    call_limit = google_read = source_lookup = None
+    call_limit = google_read = inbox_send = source_lookup = None
 try:                                                                                 # LIFE-868: separate from the lookups above, so a release that carries the memory file but not the Google and lookup files still serves memory
     from lifeos.platform import memory_honcho
     memory_honcho.register(READ, _lift, MEMORY)
+    ROUTES.update({op: memory_honcho.route for op in memory_honcho.OPS})
 except ImportError:
     memory_honcho = None
-NEEDS_COMMUNITY = set(READ) - {"list_communities", *GOOGLE_OPS, *MEMORY_OPS}
+NEEDS_COMMUNITY = set(READ) - {"list_communities", *ROUTES}
 RETRYABLE = ("relay_error", "relay_unreachable", "precheck_unavailable")
 ERRORS = {"unsupported": ["unknown_operation", "unknown_tool", "page_boundary_unsupported"], "unauthorized": ["insufficient_scope", "community_not_authorized", "recipient_not_authorized", "recipient_not_channel_member", "write_disabled", "client_identity_not_configured", "access_denied", "governance_unavailable"],
           "disabled": ["operation_disabled", "write_disabled", "recipient_not_authorized"], "degraded": list(RETRYABLE) + ["delivery_unknown", "relay_refused", "relay_bad_response"],
@@ -149,7 +149,7 @@ def dispatch(relay, name, args, who):
         raise BuzzError("community_required")
     if comm is not None and comm not in who["communities"]:
         raise BuzzError("community_not_authorized")
-    a = {**a, "_client": (who.get("facts") or {}).get("credential") or who.get("client") or "unknown"} if op in MEMORY_OPS else a   # LIFE-868: the verified client is the provenance, injected after the argument check so a caller can never name it
+    a = {**a, "_client": (who.get("facts") or {}).get("credential") or who.get("client") or "unknown"} if op in (*MEMORY_OPS, "send_to_jim") else a   # LIFE-868, LIFE-876: the verified client is the provenance, injected after the argument check so a caller can never name it
     data, nxt = ([c for c in who["communities"] if c in relay.keys], None) if op == "list_communities" else READ[op][2](relay, comm, a)
     return {"ok": True, "contract": CONTRACT, "operation": op, "data": data, "next_cursor": nxt}
 
@@ -238,21 +238,16 @@ def governed(who, name, args, msg, effect, receipts, access=None, now=None):
         arguments = args.get("arguments") if isinstance(args.get("arguments"), dict) else {}
         community = args.get("community") if isinstance(args.get("community"), str) else arguments.get("community") if isinstance(arguments.get("community"), str) else None
         tenant = access.communities.get(community, "personal") if community is not None else "personal"
-        if name == "buzz_read" and args.get("operation") in GOOGLE_OPS:                    # LIFE-875: the named account is the boundary; an omitted or unknown one is refused before any Google call
-            account = arguments.get("account")
-            if account not in ACCOUNT_TENANT:
-                return _fail(msg, "access_denied", reason="account_required" if account is None else "unknown_account")
-            tenant = ACCOUNT_TENANT[account]
         read_only = {**TOOLS, **FROZEN}[name][3] if name in {**TOOLS, **FROZEN} else False
-        tenant = memory_honcho.TENANT.get(arguments.get("workspace"), "unknown") if name == "buzz_read" and args.get("operation") in MEMORY_OPS else tenant   # LIFE-868: the named workspace is the tenant; TGP or a typo is an unknown tenant, refused by the gate
-        gate_tool = args.get("operation") if name == "buzz_read" and args.get("operation") in (*LOOKUP_OPS, *GOOGLE_OPS, *MEMORY_OPS) else GATE_TOOL.get(name, name)   # LIFE-888: a lookup is its own gate tool, granted separately
-        out = mcp_access.call(access, client, tenant, gate_tool, "write" if gate_tool in memory_honcho.WRITE else "read" if read_only else "write", tenant if gate_tool in GOOGLE_OPS else "honcho" if gate_tool in MEMORY_OPS else "buzz", "honcho" if gate_tool in MEMORY_OPS else "buzz", effect, receipts, now)
+        op = args.get("operation") if name == "buzz_read" and args.get("operation") in ROUTES else None   # an operation of a module is its own gate tool, routed by that module (tenant, action, account, service)
+        tenant, action, account, service = ROUTES[op](op, arguments, tenant) if op else (tenant, "read" if read_only else "write", "buzz", "buzz")
+        out = mcp_access.call(access, client, tenant, op or GATE_TOOL.get(name, name), action, account, service, effect, receipts, now)
     except Exception as error:                                                                # noqa: BLE001  a fixed code only
-        code = str(error) if type(error).__name__ == "AccessError" else "governance_unavailable"
-        return _fail(msg, "access_denied" if code in ("identity_unknown", "identity_ambiguous", "unknown_tool", "unknown_tenant") else "governance_unavailable", reason=code)
+        code = getattr(error, "reason", None) or (str(error) if type(error).__name__ == "AccessError" else "governance_unavailable")      # a route's own fixed reason (account_required, unknown_account) or the access code
+        return _fail(msg, "access_denied" if code in ("identity_unknown", "identity_ambiguous", "unknown_tool", "unknown_tenant", "account_required", "unknown_account") else "governance_unavailable", reason=code)
     if not out.executed:
         return _fail(msg, "access_denied", reason=out.reason)
-    return mcp_access.capabilities_for_client(out.result, who, access, (*LOOKUP_OPS, *GOOGLE_OPS, *MEMORY_OPS), MAX_RESPONSE) if out.reason == "ok" and name == "buzz_capabilities" else out.result if out.reason == "ok" else _fail(msg, "governance_unavailable", reason=out.reason)
+    return mcp_access.capabilities_for_client(out.result, who, access, tuple(ROUTES), MAX_RESPONSE) if out.reason == "ok" and name == "buzz_capabilities" else out.result if out.reason == "ok" else _fail(msg, "governance_unavailable", reason=out.reason)
 
 
 def _only_granted(reply, who, access):
@@ -341,7 +336,7 @@ def handler(relays, auth, base, origins=(), audit=_audit, access=None, receipts=
                 return self._deny(403, "insufficient_scope", need)
             args = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
             relay = relays.get(who["client"])
-            if relay is None and who.get("facts", {}).get("credential") and (params.get("name") == "buzz_capabilities" or (params.get("name") == "buzz_read" and args.get("operation") in ("list_communities", *LOOKUP_OPS, *GOOGLE_OPS, *MEMORY_OPS))):
+            if relay is None and who.get("facts", {}).get("credential") and (params.get("name") == "buzz_capabilities" or (params.get("name") == "buzz_read" and args.get("operation") in ("list_communities", *ROUTES, *MEMORY_OPS))):
                 relay = Relay({}, {})                                                          # a credential with no Buzz identity: capabilities and the community list only, no relay call is possible
             legacy = params.get("name") in TOOLS
             if spec and (legacy or args.get("community") is not None) and args.get("community") not in who["communities"]:  # the user's own community boundary, enforced before any relay request
@@ -429,7 +424,8 @@ def main():
         relays, auth, base, origins = from_env(credentials(os.environ))
     except (ValueError, OSError) as e:
         sys.exit(f"config error: {e}")
-    if google_read and source_lookup:
+    if google_read and source_lookup and inbox_send:
+        inbox_send.wire(credentials(os.environ), INBOX)                              # LIFE-876: the Agent Inbox write, with the service's Notion integration (NOTION_READONLY_TOKEN, now Read, Insert and Update); None until it is placed
         GOOGLE["creds"] = google_read.creds_from_env(credentials(os.environ))      # LIFE-875: a read-only Google credential is read here by name only; None until the six names are set
         source_lookup.wire(credentials(os.environ), LOOKUP)                           # LIFE-888: GitHub (public) always; Notion pages and the directory only when the service holds the credential and the source id
     ThreadingHTTPServer(("127.0.0.1", int(os.environ.get("buzz_mcp_port".upper(), "8787"))), handler(relays, auth, base, origins)).serve_forever()
