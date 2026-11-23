@@ -17,7 +17,7 @@ import sys
 import threading
 import time
 
-from lifeos.platform import source_registry as registry
+from lifeos.platform import source_registry as registry, stage_timing
 
 RUN_BUDGET_SECONDS = 35 * 60          # the workflow job allows 45 minutes; the rest is setup and the fast-path floors
 FAST_FLOOR_SECONDS = 60               # a fast-path stage is never skipped: late in a run it still gets this long
@@ -70,12 +70,14 @@ def _alarm(_signum, _frame):
 
 
 def _run_step(step, live, limit, stages):
+    stage_timing.begin(step.name)                                                   # LIFE-855: waits in read_slots from this thread count toward this stage
     if step.module:
         argv = (["--live"] if live else []) + ["--limit", str(limit)]
         code = importlib.import_module(step.module).main(argv)
         return "ok" if code == 0 else "failed"
     from lifeos import run                                                          # noqa: PLC0415 - the one stage registry
     code = run.main([step.name, "--limit", str(limit)] + (["--live"] if live else [])) if stages is None else stages[step.name](limit, live)
+    stage_timing.note_counts(code)
     return "ok" if code in (0, None) or isinstance(code, dict) else "failed"
 
 
@@ -123,12 +125,15 @@ def _allot(step, left, quick):
     return allowed, (QUICK_LIMITS.get(step.name, step.limit) if quick else step.limit)
 
 
-def _report(step, label, seconds, outcome, timings, lock=None):
-    """LIFE-604: one stage's result in one place: the outcome, the seconds and the `stage <name>: <outcome> <seconds>s` line (LIFE-569). Every stage prints exactly one, skipped ones included."""
+def _report(step, label, seconds, outcome, timings, lock=None, queued=0.0):
+    """LIFE-604: one stage's result in one place: the outcome, the seconds and the `stage <name>: <outcome> <seconds>s` line (LIFE-569). Every stage prints exactly one, skipped ones included.
+    LIFE-855: and one `stage_timing` JSON line beside it (stderr and STAGE_TIMING_FILE; the line above is unchanged). `queued` is the time the stage waited for its services' slots before its budget started."""
     with lock or threading.Lock():
         outcome[step.name] = label
         timings[step.name] = seconds
         print(f"stage {step.name}: {label} {seconds:.1f}s", flush=True)
+    waited, counts = stage_timing.take(step.name)
+    stage_timing.emit(stage_timing.record(step.name, label, seconds, queued + waited, counts, getattr(step, "items_key", None)))
 
 
 def _run_group(steps, live, quick, stages, clock, remaining, concurrency, outcome, timings):
@@ -148,12 +153,14 @@ def _run_group(steps, live, quick, stages, clock, remaining, concurrency, outcom
         held = []
         flag = {"done": False, "lock": threading.Lock()}
         began = clock()
+        queued = 0.0
         label = None
         try:
             with parallel:
                 for name in sorted(p for p in step.providers if p in slots):                  # a fixed order, so two stages that need two services each can never wait on each other
                     slots[name].acquire()
                     held.append(name)
+                queued = clock() - began                                               # LIFE-855: the wait for the services' slots, before the budget starts
                 began = clock()
                 timer = threading.Timer(allowed, _stop_thread, args=(threading.current_thread(), flag))
                 timer.daemon = True
@@ -177,7 +184,7 @@ def _run_group(steps, live, quick, stages, clock, remaining, concurrency, outcom
                 slots[name].release()
             with shared:
                 if step.name not in abandoned:                                         # the run stopped waiting and already reported it: a late return changes nothing
-                    _report(step, label or "failed", clock() - began, outcome, timings, shared)
+                    _report(step, label or "failed", clock() - began, outcome, timings, shared, queued)
 
     for step in steps:
         plan_for = _allot(step, remaining(), quick)
