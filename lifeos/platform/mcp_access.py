@@ -5,8 +5,11 @@ It serves lifeos/buzz/mcp.py and lifeos.inbox.send_to_jim --mcp, and adds no gra
 Identity is derived from a trusted fact only: the OAuth client a verified token names (HTTP), or the OS user of the stdio server process (the kernel's answer, never an argument, header or environment variable the caller sends).
 `clients` in mcp_access.json map one such fact to one client id; no match or two matches refuses. The purpose of a call is the tool's own, set server side. A client on a host it shares with another needs a fact only it holds
 (its own OS user, tailnet node or scoped credential); two clients with the same fact are ambiguous and refused. Every failure here is a fixed code and refuses: an unreadable file means no call runs."""
+import hashlib
+import hmac
 import json
 import os
+import re
 import pwd
 import uuid
 from datetime import datetime, timezone
@@ -17,6 +20,12 @@ from lifeos.platform import access_policy, authorization_gate as G, capability_c
 
 FILE = Path(__file__).with_name("mcp_access.json")
 CATALOG = Path(__file__).with_name("capability_catalog.json")
+
+
+CRED_ID = re.compile(r"^[a-z][a-z0-9-]{2,31}$")
+HEX64 = re.compile(r"^[0-9a-f]{64}$")
+CRED_SECRET = re.compile(r"^[A-Za-z0-9_-]{43,86}$")
+_DUMMY = hashlib.sha256(b"no-such-credential").hexdigest()
 
 
 class AccessError(ValueError):
@@ -38,10 +47,35 @@ def load(text=None, catalog_text=None):
             raise ValueError("secret_in_data")
         if doc["version"] != 1 or any(not isinstance(c["facts"], dict) or not c["facts"] or not all(isinstance(v, str) and v for v in c["facts"].values()) for c in doc["clients"]):
             raise ValueError("bad_shape")
-        return SimpleNamespace(clients=tuple(doc["clients"]), grants=tuple(_grant(g) for g in doc["grants"]), policy=policy, catalog=catalog,
+        creds = tuple(doc.get("credentials", ()))
+        if any(not CRED_ID.match(c["id"]) or not HEX64.match(c["sha256"]) or c.get("revoked") not in (True, False) or datetime.fromisoformat(c["expires"]) is None
+               or not isinstance(c["communities"], list) or c["buzz_identity"] not in (None, "claude", "chatgpt") for c in creds) or len({c["id"] for c in creds}) != len(creds):
+            raise ValueError("bad_credentials")
+        return SimpleNamespace(credentials=creds, clients=tuple(doc["clients"]), grants=tuple(_grant(g) for g in doc["grants"]), policy=policy, catalog=catalog,
                                purpose=dict(doc["tool_purpose"]), communities=dict(doc["communities"]))
     except Exception:                                                                                                  # noqa: BLE001  a fixed code only
         raise AccessError("governance_unavailable") from None
+
+
+def verify_credential(access, header, now=None):
+    """LIFE-873: a scoped `lm1.<id>.<secret>` bearer credential -> its credential row. The service holds only the SHA-256 of the secret (a hash of 256 random bits is not a credential); it is compared in constant time,
+    whether or not the id exists, so neither timing nor the reply says which part was wrong. A malformed, unknown, wrong, expired or revoked credential is the one fixed code invalid_credential. Nothing else the caller sends is read."""
+    parts = header[len("Bearer "):].split(".") if isinstance(header, str) and header.startswith("Bearer lm1.") else []
+    ok = len(parts) == 3 and parts[0] == "lm1" and bool(CRED_ID.match(parts[1])) and bool(CRED_SECRET.match(parts[2]))
+    row = next((c for c in access.credentials if ok and c["id"] == parts[1]), None)
+    digest = hashlib.sha256(parts[2].encode()).hexdigest() if ok else _DUMMY
+    match = hmac.compare_digest(digest, row["sha256"] if row else _DUMMY)
+    live = row is not None and row["revoked"] is False and datetime.fromisoformat(row["expires"] + "T23:59:59+00:00") > (now or datetime.now(timezone.utc))
+    if not (ok and match and live and row is not None):
+        raise AccessError("invalid_credential")
+    return row
+
+
+def granted_tools(access, client, now=None):
+    """The gate tool names this client holds a live grant for in any tenant (what its tools/list may show). The gate still decides every call."""
+    now = now or datetime.now(timezone.utc)
+    principals = {principal_id(client, t) for t in G.TENANTS}
+    return {g.tool for g in access.grants if g.principal in principals and not g.revoked and g.expires > now}
 
 
 def stdio_facts():

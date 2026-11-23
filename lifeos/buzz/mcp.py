@@ -7,6 +7,7 @@ BUZZ_URL_<COMMUNITY>, BUZZ_KEY_<CLIENT>_<COMMUNITY> (four distinct scoped member
 optional BUZZ_RECIPIENTS, BUZZ_MENTION_SENDERS (addressing is off unless both are set), BUZZ_MCP_ORIGINS, BUZZ_OAUTH_AS_URL.
 Pointer: docs/buzz-remote-mcp-deploy.md (LIFE-216, LIFE-254)."""
 import hashlib, json, os, sys
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from lifeos.buzz import nip98
@@ -203,7 +204,7 @@ def governed(who, name, args, msg, effect, receipts, access=None, now=None):
     try:
         from lifeos.platform import mcp_access
         access = access or mcp_access.load()
-        client = mcp_access.identify(access, "http", {"oauth_client": who.get("client")})
+        client = mcp_access.identify(access, "http", who.get("facts") or {"oauth_client": who.get("client")})      # LIFE-873: a credential's facts name its own row; an OAuth token's name its client; never both
         arguments = args.get("arguments") if isinstance(args.get("arguments"), dict) else {}
         community = args.get("community") if isinstance(args.get("community"), str) else arguments.get("community") if isinstance(arguments.get("community"), str) else None
         tenant = access.communities.get(community, "personal") if community is not None else "personal"
@@ -215,6 +216,18 @@ def governed(who, name, args, msg, effect, receipts, access=None, now=None):
     if not out.executed:
         return _fail(msg, "access_denied", reason=out.reason)
     return out.result if out.reason == "ok" else _fail(msg, "governance_unavailable", reason=out.reason)
+
+
+def _only_granted(reply, who, access):
+    """LIFE-873: a credential client lists only the tools it holds a live grant for (the gate still decides every call). Any problem lists nothing."""
+    try:
+        from lifeos.platform import mcp_access
+        access = access or mcp_access.load()
+        allowed = mcp_access.granted_tools(access, mcp_access.identify(access, "http", who["facts"]))
+        tools = [t for t in reply["result"]["tools"] if GATE_TOOL.get(t["name"], t["name"]) in allowed]
+    except Exception:                                                                          # noqa: BLE001
+        tools = []
+    return {**reply, "result": {**reply["result"], "tools": tools}}
 
 
 def handler(relays, auth, base, origins=(), audit=_audit, access=None, receipts=_receipt):
@@ -243,12 +256,27 @@ def handler(relays, auth, base, origins=(), audit=_audit, access=None, receipts=
         def _who(self):
             if self.headers.get("Origin") and self.headers["Origin"] not in origins:
                 return self._send(403, {"error": "origin_not_allowed"})
+            if self.headers.get("Authorization", "").startswith("Bearer lm1."):
+                return self._credential()
             try:
                 return auth.verify(self.headers.get("Authorization", ""))
             except AuthError as e:
                 if e.code in ("user_not_authorized", "invalid_token") and e.status != 503:  # which `sub` to allowlist, and when clients present expired tokens (renewal evidence); ids are not secrets
                     audit({"client": None, "identity": None, "sub": e.sub, "tool": None, "community": None, "outcome": e.code, "reason": e.reason})
                 self._deny(e.status, e.code) if e.status != 503 else self._send(503, {"error": e.code})
+
+        def _credential(self):
+            """LIFE-873: a scoped `lm1.` credential (Mac or Oracle Claude Code, Hermes, OpenClaw). The identity is the credential row alone; the Buzz key it reads as is that row's `buzz_identity` (null: capabilities only). Read scope only."""
+            try:
+                from lifeos.platform import mcp_access
+                row = mcp_access.verify_credential(access or mcp_access.load(), self.headers.get("Authorization", ""))
+            except Exception as error:                                                          # noqa: BLE001  a fixed code only
+                if type(error).__name__ == "AccessError" and str(error) == "invalid_credential":
+                    audit({"client": None, "identity": None, "sub": None, "tool": None, "community": None, "outcome": "invalid_credential", "reason": None})
+                    return self._deny(401, "invalid_token")
+                return self._send(503, {"error": "governance_unavailable"})
+            return {"client": row["buzz_identity"], "facts": {"credential": row["id"]}, "scopes": {"buzz:read"}, "sub": "cred:" + row["id"], "communities": tuple(row["communities"]), "iat": None,
+                    "exp": datetime.fromisoformat(row["expires"] + "T23:59:59+00:00").timestamp(), "tid": hashlib.sha256(row["id"].encode()).hexdigest()[:8]}
 
         def do_POST(self):
             if self.path != "/mcp":
@@ -273,6 +301,8 @@ def handler(relays, auth, base, origins=(), audit=_audit, access=None, receipts=
                 return self._deny(403, "insufficient_scope", need)
             args = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
             relay = relays.get(who["client"])
+            if relay is None and who.get("facts", {}).get("credential") and (params.get("name") == "buzz_capabilities" or (params.get("name") == "buzz_read" and args.get("operation") == "list_communities")):
+                relay = Relay({}, {})                                                          # a credential with no Buzz identity: capabilities and the community list only, no relay call is possible
             legacy = params.get("name") in TOOLS
             if spec and (legacy or args.get("community") is not None) and args.get("community") not in who["communities"]:  # the user's own community boundary, enforced before any relay request
                 reply = _fail(msg, "community_not_authorized")
@@ -280,6 +310,8 @@ def handler(relays, auth, base, origins=(), audit=_audit, access=None, receipts=
                 reply = _fail(msg, "client_identity_not_configured")
             else:
                 reply = (governed(who, params["name"], args, msg, lambda: rpc(relay, msg, who), receipts, access) if spec else rpc(relay, msg, who)) if "method" in msg else None  # LIFE-865: a tool call runs only through the gate; client-side JSON-RPC responses are accepted and ignored
+            if reply and who.get("facts", {}).get("credential") and msg.get("method") == "tools/list":
+                reply = _only_granted(reply, who, access)
             if spec and reply:
                 inner = json.loads(reply["result"]["content"][0]["text"])
                 comm = args.get("community") if isinstance(args.get("community"), str) else None

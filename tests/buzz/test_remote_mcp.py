@@ -316,6 +316,93 @@ class Governed(Server):
         self.assertEqual((status, out["error"]), (200, "governance_unavailable"))
 
 
+class Credentials(Server):
+    """LIFE-873: scoped `lm1.` credentials for the local clients, through the real HTTP handler. Synthetic secrets only; the shipped data holds hashes, never a secret."""
+    SECRETS = {"mac-claude-code": "A" * 43, "oracle-claude-code": "B" * 43}
+
+    def access(self, edit=None, no_identity=False):
+        import copy
+        from lifeos.platform import mcp_access
+        from tests.platform.mcp_access_fixture import CATALOG, DOC
+        doc = copy.deepcopy(DOC)
+        for row in doc["credentials"]:
+            row["sha256"] = hashlib.sha256(self.SECRETS[row["id"]].encode()).hexdigest()
+            if no_identity and row["id"] == "oracle-claude-code":
+                row["buzz_identity"] = None
+        if edit:
+            edit(doc)
+        return mcp_access.load(json.dumps(doc), json.dumps(CATALOG))
+
+    def tok(self, cid="mac-claude-code", secret=None):
+        return f"lm1.{cid}." + (secret or self.SECRETS[cid])
+
+    def test_each_credential_lists_only_its_granted_tools_and_completes_one_read_with_its_own_receipt(self):
+        self.start(access=self.access())
+        for cid in self.SECRETS:
+            status, out = self.rpc(self.tok(cid), "tools/list")
+            names = {t["name"] for t in out["result"]["tools"]}
+            self.assertEqual((status, {"buzz_capabilities", "buzz_read"} <= names, "buzz_publish" in names or "buzz_post_message" in names), (200, True, False), cid)
+            status, caps = self.tool(self.tok(cid), "buzz_capabilities")
+            self.assertEqual((status, caps["ok"]), (200, True), cid)
+            allow, done = self.receipts[-2:]
+            self.assertEqual((allow["outcome"], allow["tenant"], allow["tool"], allow["purpose"], done["outcome"]), ("allow", "personal", "buzz_capabilities", "buzz-read", "ok"))
+            self.assertEqual(allow["principal_fp"], __import__("lifeos.platform.authorization_gate", fromlist=["x"]).fingerprint(cid))
+        self.assertNotIn("mac-claude-code", json.dumps(self.receipts))                    # fingerprints only
+
+    def test_a_call_outside_the_clients_grants_is_refused_no_grant_before_the_relay(self):
+        self.start(access=self.access(edit=lambda d: d.update(grants=[g for g in d["grants"] if not (g["principal"] == "mac-claude-code" and g["tool"] == "buzz_read")])))
+        status, out = self.tool(self.tok(), "buzz_read", operation="list_channels", community="life-os")
+        self.assertEqual((status, out["error"], out["reason"]), (200, "access_denied", "no_grant"))
+        self.assertEqual(self.receipts[-1]["outcome"], "deny")
+        self.assertEqual(self.fake.posted if hasattr(self.fake, "posted") else [], [])
+
+    def test_a_credential_cannot_publish_or_leave_its_community(self):
+        self.start(access=self.access())
+        status, out = self.tool(self.tok(), "buzz_publish", operation="message", community="life-os", arguments={"channel": CHAN, "text": "x", "idempotency_key": "k1"})
+        self.assertEqual(status, 403)                                                       # read scope only
+        status, out = self.tool(self.tok(), "buzz_read", operation="list_channels", community="bytalos")
+        self.assertEqual((status, out["error"]), (200, "community_not_authorized"))
+
+    def test_bad_credentials_are_one_401_and_no_tool_runs(self):
+        self.start(access=self.access(edit=lambda d: d["credentials"][1].update(revoked=True)))
+        expired = self.access(edit=lambda d: d["credentials"][0].update(expires="2026-11-01"))
+        bad = [self.tok(secret="C" * 43), self.tok("no-such-client", "A" * 43), self.tok("mac-claude-code", self.SECRETS["oracle-claude-code"]),    # wrong secret, unknown id, the other client's secret
+               self.tok("oracle-claude-code"), "lm1.mac-claude-code", "lm1.mac-claude-code.short", "lm1..x.y.z"]                                      # revoked, malformed
+        for tok in bad:
+            status, out = self.rpc(tok, "tools/call", {"name": "buzz_capabilities", "arguments": {}})
+            self.assertEqual((status, out), (401, {"error": "invalid_token"}), tok[:20])
+        self.assertEqual(self.receipts, [])
+        self.start(access=expired)
+        self.assertEqual(self.rpc(self.tok(), "tools/list")[0], 401)
+
+    def test_one_credential_never_becomes_another_client_whatever_the_caller_sends(self):
+        self.start(access=self.access())
+        status, raw, _ = self.req("POST", "/mcp", {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "buzz_capabilities", "arguments": {}}}, self.tok("oracle-claude-code"),
+                                  X_Client="mac-claude-code", X_Principal="mac-claude-code", X_Lifeos_Client_Id="mac-claude-code", X_Forwarded_User="jimmarkunas")
+        self.assertEqual(status, 200)
+        fp = __import__("lifeos.platform.authorization_gate", fromlist=["x"]).fingerprint
+        self.assertEqual(self.receipts[-2]["principal_fp"], fp("oracle-claude-code"))
+        self.tool(self.tok("mac-claude-code"), "buzz_capabilities")
+        self.assertNotEqual(self.receipts[-2]["principal_fp"], fp("oracle-claude-code"))                                                             # same host, two clients, two identities
+
+    def test_a_credential_with_no_buzz_identity_sees_capabilities_but_makes_no_relay_call(self):
+        self.start(access=self.access(no_identity=True))
+        status, caps = self.tool(self.tok("oracle-claude-code"), "buzz_capabilities")
+        self.assertEqual((status, caps["ok"], caps["data"]["identity"]["communities"]), (200, True, {}))
+        status, out = self.tool(self.tok("oracle-claude-code"), "buzz_read", operation="list_channels", community="life-os")
+        self.assertEqual((status, out["error"]), (200, "client_identity_not_configured"))
+
+    def test_an_oauth_token_never_matches_a_credential_row_and_unreadable_data_fails_closed(self):
+        from unittest import mock
+        self.start(access=self.access())
+        self.assertEqual(self.tool(token(sub="user-claude"), "buzz_capabilities")[1]["ok"], True)                                  # unchanged path
+        self.assertEqual(self.receipts[-2]["principal_fp"], __import__("lifeos.platform.authorization_gate", fromlist=["x"]).fingerprint("claude-chat"))
+        self.start(access=False)
+        with mock.patch("lifeos.platform.mcp_access.load", side_effect=OSError("data file missing")):
+            status, out = self.rpc(self.tok(), "tools/list")
+        self.assertEqual((status, out), (503, {"error": "governance_unavailable"}))
+
+
 class FourIdentities(Server):
     def test_each_client_and_community_pairing_signs_with_its_own_key_and_reads_back_independently(self):
         self.start(writes=BOTH)
