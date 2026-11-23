@@ -66,6 +66,14 @@ class PlaceCredentials(unittest.TestCase):
         self.assertNotIn(SENTINEL, done.stdout + done.stderr)
         self.assertEqual(self.run_script([])[0].returncode, 64)
 
+    def test_list_names_prints_only_matching_names_never_a_value_and_places_nothing(self):
+        secrets = [{"key": "GMAIL_OAUTH_REFRESH_TOKEN", "value": SENTINEL}, {"key": "gmail_other", "value": SENTINEL}, {"key": "NOTION_READONLY_TOKEN", "value": SENTINEL}]
+        done, tmp, creds = self.run_script(secrets, "--list-names", "gmail")
+        self.assertEqual((done.returncode, done.stdout.splitlines(), list(creds.iterdir())), (0, ["'GMAIL_OAUTH_REFRESH_TOKEN'", "'gmail_other'"], []))
+        self.assertNotIn(SENTINEL, done.stdout + done.stderr)
+        self.assertEqual(self.run_script(secrets, "--list-names", "nothing-matches")[0].stdout.strip(), "<none>")
+        self.assertEqual(self.run_script(secrets, "--list-names")[0].returncode, 64)
+
     def test_the_source_never_echoes_a_value_and_only_runs_bws_as_the_vault_owner(self):
         text = SCRIPT.read_text()
         code = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("#"))
