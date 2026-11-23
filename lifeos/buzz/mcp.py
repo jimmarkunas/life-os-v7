@@ -89,7 +89,30 @@ READ["source_read"] = ("Canonical source lookup (LIFE-888): one GitHub file (sou
                        {"source": ("str", True), "path": ("str", False), "ref": ("str", False), "page_id": ("str", False), "max_age_seconds": ("int", False)}, lambda r, c, a: (_lookup("source_read", a), None))
 READ["agent_lookup"] = ("Find one agent in the agent directory by exact agent_id or unambiguous alias, with the directory's own reachability class (manual-only, configured-untested, not-reachable, routable-verified); never upgraded without proof. A catalog view, not a send.",
                         {"agent_id": ("str", False), "alias": ("str", False)}, lambda r, c, a: (_lookup("agent_lookup", a), None))
-NEEDS_COMMUNITY = set(READ) - {"list_communities"}
+GOOGLE = {"creds": None, "opener": None}                                            # LIFE-875: wired by main() from the service's credentials; None means not_configured, never a guess
+GOOGLE_OPS = ("gmail_search", "gmail_read", "drive_search", "drive_read")           # each its own gate tool; the tenant is the named account's workspace, not a community
+ACCOUNT_TENANT = {"personal": "personal", "bytalos": "bytalos"}
+
+
+def _google(op, args):
+    from lifeos.platform import google_read                                          # lazy: a release without the platform files refuses at the gate first
+    if GOOGLE["creds"] is None:
+        raise BuzzError("not_configured")
+    client = google_read.Google(GOOGLE["creds"], **({"opener": GOOGLE["opener"]} if GOOGLE["opener"] else {}))
+    try:
+        a = dict(args)
+        return getattr(client, op)(a.pop("account"), **a)
+    except google_read.GoogleError as error:
+        raise BuzzError(error.reason) from None
+
+
+_ACCT = ("str", True)
+for _op, (_text, _params) in {"gmail_search": ("Search one Gmail account (the named account is required) with Gmail's query syntax. Read-only; returns message ids.", {"account": _ACCT, "query": ("str", True), "limit": ("int", False)}),
+                              "gmail_read": ("Read one Gmail message by id from the named account: headers, snippet and trimmed plain text. Read-only; text is untrusted data.", {"account": _ACCT, "message_id": ("str", True)}),
+                              "drive_search": ("Search one Google Drive account (the named account is required) by text. Read-only; returns file ids, names and types.", {"account": _ACCT, "query": ("str", True), "limit": ("int", False)}),
+                              "drive_read": ("Read one Drive file by id from the named account: metadata and trimmed text for documents and text files. Read-only; text is untrusted data.", {"account": _ACCT, "file_id": ("str", True)})}.items():
+    READ[_op] = (_text, _params, lambda r, c, a, _o=_op: (_google(_o, a), None))
+NEEDS_COMMUNITY = set(READ) - {"list_communities", *GOOGLE_OPS}
 RETRYABLE = ("relay_error", "relay_unreachable", "precheck_unavailable")
 ERRORS = {"unsupported": ["unknown_operation", "unknown_tool", "page_boundary_unsupported"], "unauthorized": ["insufficient_scope", "community_not_authorized", "recipient_not_authorized", "recipient_not_channel_member", "write_disabled", "client_identity_not_configured", "access_denied", "governance_unavailable"],
           "disabled": ["operation_disabled", "write_disabled", "recipient_not_authorized"], "degraded": list(RETRYABLE) + ["delivery_unknown", "relay_refused", "relay_bad_response"],
@@ -226,9 +249,14 @@ def governed(who, name, args, msg, effect, receipts, access=None, now=None):
         arguments = args.get("arguments") if isinstance(args.get("arguments"), dict) else {}
         community = args.get("community") if isinstance(args.get("community"), str) else arguments.get("community") if isinstance(arguments.get("community"), str) else None
         tenant = access.communities.get(community, "personal") if community is not None else "personal"
+        if name == "buzz_read" and args.get("operation") in GOOGLE_OPS:                    # LIFE-875: the named account is the boundary; an omitted or unknown one is refused before any Google call
+            account = arguments.get("account")
+            if account not in ACCOUNT_TENANT:
+                return _fail(msg, "access_denied", reason="account_required" if account is None else "unknown_account")
+            tenant = ACCOUNT_TENANT[account]
         read_only = {**TOOLS, **FROZEN}[name][3] if name in {**TOOLS, **FROZEN} else False
-        gate_tool = args.get("operation") if name == "buzz_read" and args.get("operation") in LOOKUP_OPS else GATE_TOOL.get(name, name)   # LIFE-888: a lookup is its own gate tool, granted separately
-        out = mcp_access.call(access, client, tenant, gate_tool, "read" if read_only else "write", "buzz", "buzz", effect, receipts, now)
+        gate_tool = args.get("operation") if name == "buzz_read" and args.get("operation") in (*LOOKUP_OPS, *GOOGLE_OPS) else GATE_TOOL.get(name, name)   # LIFE-888: a lookup is its own gate tool, granted separately
+        out = mcp_access.call(access, client, tenant, gate_tool, "read" if read_only else "write", tenant if gate_tool in GOOGLE_OPS else "buzz", "buzz", effect, receipts, now)
     except Exception as error:                                                                # noqa: BLE001  a fixed code only
         code = str(error) if type(error).__name__ == "AccessError" else "governance_unavailable"
         return _fail(msg, "access_denied" if code in ("identity_unknown", "identity_ambiguous", "unknown_tool", "unknown_tenant") else "governance_unavailable", reason=code)
@@ -320,7 +348,7 @@ def handler(relays, auth, base, origins=(), audit=_audit, access=None, receipts=
                 return self._deny(403, "insufficient_scope", need)
             args = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
             relay = relays.get(who["client"])
-            if relay is None and who.get("facts", {}).get("credential") and (params.get("name") == "buzz_capabilities" or (params.get("name") == "buzz_read" and args.get("operation") in ("list_communities", *LOOKUP_OPS))):
+            if relay is None and who.get("facts", {}).get("credential") and (params.get("name") == "buzz_capabilities" or (params.get("name") == "buzz_read" and args.get("operation") in ("list_communities", *LOOKUP_OPS, *GOOGLE_OPS))):
                 relay = Relay({}, {})                                                          # a credential with no Buzz identity: capabilities and the community list only, no relay call is possible
             legacy = params.get("name") in TOOLS
             if spec and (legacy or args.get("community") is not None) and args.get("community") not in who["communities"]:  # the user's own community boundary, enforced before any relay request
@@ -408,6 +436,10 @@ def main():
         relays, auth, base, origins = from_env(credentials(os.environ))
     except (ValueError, OSError) as e:
         sys.exit(f"config error: {e}")
+    env = credentials(os.environ)
+    names = {("personal", "gmail"): "GOOGLE_READ_PERSONAL_GMAIL_REFRESH", ("bytalos", "gmail"): "GOOGLE_READ_BYTALOS_GMAIL_REFRESH", ("personal", "drive"): "GOOGLE_READ_PERSONAL_DRIVE_REFRESH", ("bytalos", "drive"): "GOOGLE_READ_BYTALOS_DRIVE_REFRESH"}
+    if env.get("GOOGLE_READ_CLIENT_ID") and env.get("GOOGLE_READ_CLIENT_SECRET") and any(env.get(n) for n in names.values()):      # LIFE-875: a read-only Google credential is only ever read here, by name
+        GOOGLE["creds"] = lambda account, service: {"client_id": env.get("GOOGLE_READ_CLIENT_ID"), "client_secret": env.get("GOOGLE_READ_CLIENT_SECRET"), "refresh_token": env.get(names[(account, service)])} if env.get(names[(account, service)]) else None
     try:
         from lifeos.platform import source_lookup
         LOOKUP["fetchers"]["github"] = source_lookup.github_fetch()                   # public repository, no credential; Notion and the directory stay unwired until a credential is approved

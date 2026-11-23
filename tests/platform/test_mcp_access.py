@@ -182,7 +182,7 @@ class SeededGrants(unittest.TestCase):
             self.assertRegex(g.credential_ref, r"^[a-z][a-z0-9-]+$")
             self.assertEqual(len(g.actions), 1, g.id)
             self.assertTrue(all((g.principal, g.tool, a) in rows for a in g.actions), g.id)
-        self.assertEqual(sorted({g.tool for g in access.grants}), ["agent_lookup", "buzz_capabilities", "buzz_publish", "buzz_read", "source_read"])
+        self.assertEqual(sorted({g.tool for g in access.grants}), ["agent_lookup", "buzz_capabilities", "buzz_publish", "buzz_read", "drive_read", "drive_search", "gmail_read", "gmail_search", "source_read"])
         writes = [g for g in access.grants if "write" in g.actions]                                                # Jim, Nov 22 2026 (option A): the only writes are today's Buzz publishing for the two chat clients, in the two communities each can write to
         self.assertEqual({(g.principal, g.tool, g.purpose, g.credential_ref) for g in writes},
                          {(p, "buzz_publish", "buzz-publish", "buzz-scoped-member-key") for p in ("claude-chat", "claude-chat-bytalos", "chatgpt-chat", "chatgpt-chat-bytalos")})

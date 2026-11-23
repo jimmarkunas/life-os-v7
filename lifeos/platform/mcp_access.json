@@ -7,7 +7,11 @@
   "buzz_publish": "buzz-publish",
   "send_to_jim": "agent-inbox-write",
   "source_read": "source-read",
-  "agent_lookup": "agent-lookup"
+  "agent_lookup": "agent-lookup",
+  "gmail_search": "governed-google-read",
+  "gmail_read": "governed-google-read",
+  "drive_search": "governed-google-read",
+  "drive_read": "governed-google-read"
  },
  "communities": {
   "life-os": "personal",
@@ -491,6 +495,118 @@
     "read"
    ],
    "credential_ref": "mcp-credential-hermes-librarian",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-hermes-librarian-gmail_search",
+   "principal": "hermes-librarian",
+   "tenant": "personal",
+   "account": "personal",
+   "tool": "gmail_search",
+   "purpose": "governed-google-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "google-read-personal-gmail",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-hermes-librarian-gmail_read",
+   "principal": "hermes-librarian",
+   "tenant": "personal",
+   "account": "personal",
+   "tool": "gmail_read",
+   "purpose": "governed-google-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "google-read-personal-gmail",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-hermes-librarian-drive_search",
+   "principal": "hermes-librarian",
+   "tenant": "personal",
+   "account": "personal",
+   "tool": "drive_search",
+   "purpose": "governed-google-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "google-read-personal-drive",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-hermes-librarian-drive_read",
+   "principal": "hermes-librarian",
+   "tenant": "personal",
+   "account": "personal",
+   "tool": "drive_read",
+   "purpose": "governed-google-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "google-read-personal-drive",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-hermes-librarian-bytalos-gmail_search",
+   "principal": "hermes-librarian-bytalos",
+   "tenant": "bytalos",
+   "account": "bytalos",
+   "tool": "gmail_search",
+   "purpose": "governed-google-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "google-read-bytalos-gmail",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-hermes-librarian-bytalos-gmail_read",
+   "principal": "hermes-librarian-bytalos",
+   "tenant": "bytalos",
+   "account": "bytalos",
+   "tool": "gmail_read",
+   "purpose": "governed-google-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "google-read-bytalos-gmail",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-hermes-librarian-bytalos-drive_search",
+   "principal": "hermes-librarian-bytalos",
+   "tenant": "bytalos",
+   "account": "bytalos",
+   "tool": "drive_search",
+   "purpose": "governed-google-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "google-read-bytalos-drive",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-hermes-librarian-bytalos-drive_read",
+   "principal": "hermes-librarian-bytalos",
+   "tenant": "bytalos",
+   "account": "bytalos",
+   "tool": "drive_read",
+   "purpose": "governed-google-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "google-read-bytalos-drive",
    "expires": "2027-02-22",
    "revoked": false
   }
