@@ -773,7 +773,7 @@ DOMAIN_SECRETS = {         # the only secrets each domain job may see; adding on
                     "NOTION_INTERVIEW_TOKEN", "NOTION_JIRA_TOKEN", "NOTION_JOB_LEDGER_DATA_SOURCE_ID", "V7_CLOSE_BASE_URL"},
     "amazon": {"V7_RUNTIME_CONFIG_SOURCE_ID", "AMAZON_CARD_BLOCK_ID", "BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET",
                "GMAIL_OAUTH_REFRESH_TOKEN", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "NOTION_AMAZON_DATA_SOURCE_ID", "NOTION_AMAZON_TOKEN", "NOTION_JIRA_TOKEN"},
-    "amazon_retention": {"GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_AMAZON_DATA_SOURCE_ID", "NOTION_AMAZON_TOKEN"},   # LIFE-571: retention in its own job
+    "amazon_retention": DB | {"GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_AMAZON_DATA_SOURCE_ID", "NOTION_AMAZON_TOKEN"},   # LIFE-906: plus the store credentials the checkpoint reads and writes (the same names interview_mail loads, LIFE-894);   # LIFE-571: retention in its own job
 }
 for _job in SETTINGS_JOBS["domains"] - {"gate"}:      # LIFE-703: a job that reads the V7 settings page gets the Notion token from its settings loader and nothing else new
     DOMAIN_SECRETS[_job] = DOMAIN_SECRETS[_job] | {"NOTION_JIRA_TOKEN"}

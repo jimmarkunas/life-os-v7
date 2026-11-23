@@ -2,6 +2,7 @@
 from datetime import datetime, timezone
 import sys
 
+from lifeos.platform import mail_checkpoint
 from lifeos.platform.db import StoreError, connect          # noqa: F401 - the jobs facade for the database
 
 
@@ -131,8 +132,9 @@ SCHEMA = (
         fingerprint CHAR(64) NOT NULL,
         payload MEDIUMBLOB NOT NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+    mail_checkpoint.CREATE,                                                  # LIFE-906: the Amazon retention checkpoint (what an old mail's read concluded)
 )
-TABLES = ("v7_jobs", "v7_job_sources", "v7_job_descriptions", "v7_job_fit", "v7_sources", "v7_source_items", "v7_source_runs", "v7_alerts", "v7_feed", "v7_meeting_catalog", "v7_sponsors", "v7_tombstones", "v7_ledger_urls", "v7_spend", "v7_daily_counts", "v7_fit_profile_sync", "v7_interview_mail")
+TABLES = ("v7_jobs", "v7_job_sources", "v7_job_descriptions", "v7_job_fit", "v7_sources", "v7_source_items", "v7_source_runs", "v7_alerts", "v7_feed", "v7_meeting_catalog", "v7_sponsors", "v7_tombstones", "v7_ledger_urls", "v7_spend", "v7_daily_counts", "v7_fit_profile_sync", "v7_interview_mail", "v7_mail_checkpoint")
 # Columns added after the first release (checked via information_schema; portable across MySQL/MariaDB).
 COLUMNS = (
     ("v7_jobs", "fit_synced_at", "DATETIME NULL", None),
