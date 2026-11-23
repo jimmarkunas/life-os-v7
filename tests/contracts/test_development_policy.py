@@ -138,3 +138,33 @@ class GlobalIndex(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AgentNames(unittest.TestCase):
+    """Jim, Nov 22, 2026: OC is Claude Code in VS Code, MC is Claude Code in the Mac app; the app decides, never the machine."""
+
+    def run_with(self, **env):
+        import subprocess, os
+        base = {"PATH": os.environ["PATH"]}
+        base.update(env)
+        out = subprocess.run(["sh", str(ROOT / "tools/agent_name.sh")], env=base, capture_output=True, text=True, check=True)
+        return out.stdout.strip()
+
+    def test_vscode_is_oc(self):
+        self.assertEqual(self.run_with(VSCODE_PID="1"), "OC")
+        self.assertEqual(self.run_with(__CFBundleIdentifier="com.microsoft.VSCode"), "OC")
+        self.assertEqual(self.run_with(CLAUDE_CODE_ENTRYPOINT="claude-vscode"), "OC")
+
+    def test_mac_app_is_mc(self):
+        self.assertEqual(self.run_with(__CFBundleIdentifier="com.anthropic.claudefordesktop"), "MC")
+        self.assertEqual(self.run_with(CLAUDE_CODE_ENTRYPOINT="claude-desktop"), "MC")
+
+    def test_no_signal_is_unknown(self):
+        self.assertEqual(self.run_with(), "UNKNOWN")
+
+    def test_boot_file_and_policy_name_agents_by_app(self):
+        text = (ROOT / "CLAUDE.md").read_text()
+        for must in ("**OC** is Claude Code inside VS Code", "**MC** is Claude Code inside the Claude Mac app", "tools/agent_name.sh", "Claimed by OC"):
+            self.assertIn(must, text)
+        self.assertNotIn("Mac and Oracle Claude Code", POLICY)
+        self.assertNotIn("Mac Claude Code is the exclusive writer", POLICY)
