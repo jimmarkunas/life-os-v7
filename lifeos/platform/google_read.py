@@ -132,13 +132,28 @@ def _quote(value):
     return str(value).replace("\\", "\\\\").replace("'", "\\'")[:200]
 
 
+def _redact(value, count):
+    """Every secret-looking value in the result (a `token=...` tracking link, a pasted password) becomes `[redacted]`, in any string at any depth; `count[0]` counts them. The gate refuses a whole result that still looks like a secret, so a real mailbox would never read otherwise."""
+    if isinstance(value, str):
+        value, n = SECRET.subn("[redacted]", value)
+        count[0] += n
+        return value
+    if isinstance(value, dict):
+        return {k: _redact(v, count) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_redact(v, count) for v in value]
+    return value
+
+
 def _clean(out):
     text = out.get("text")
     if isinstance(text, str):
-        if SECRET.search(text):
-            raise GoogleError("output_has_secret")
         out["truncated"] = len(text) > MAX_TEXT
         out["text"] = text[:MAX_TEXT]
+    count = [0]
+    out = _redact(out, count)
+    if count[0]:
+        out["redacted"] = count[0]
     return out
 
 
