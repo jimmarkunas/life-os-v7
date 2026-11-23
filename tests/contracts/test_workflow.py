@@ -1034,7 +1034,7 @@ LOADED = {
     "diag": {"diag": DB, "trace": DB | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "GMAIL_OAUTH_CLIENT_ID"}, "sandbox": {"NOTION_API_TOKEN"}, "interview_ui": {"NOTION_INTERVIEW_TOKEN"}, "inbox_view_qa": {"NOTION_API_TOKEN"}, "report": DB | {"NOTION_API_TOKEN"}},
 }
 PILOTS = ("watchdog", "safety", "amazon", "diag")
-SECRET_FREE = ("pr-tests", "suite-timing")         # workflows that read no secret at all, so they have no loader to pin (their own tests pin that: pr-tests below, suite-timing in SuiteTimingWorkflow)
+SECRET_FREE = ("pr-tests", "suite-timing", "mariadb-race")         # workflows that read no secret at all, so they have no loader to pin (their own tests pin that: pr-tests below, suite-timing in SuiteTimingWorkflow)
 
 
 @unittest.skipIf(yaml is None, "PyYAML not installed")
