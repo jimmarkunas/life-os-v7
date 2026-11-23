@@ -107,4 +107,5 @@ def call(access, client, tenant, tool, action, account, service, effect, audit, 
         raise AccessError("unknown_tool")
     session = G.Session(principal_id(client, tenant), client["policy_key"], tenant, True)
     request = G.Request(tool, action, account, purpose, service, uuid.uuid4().hex[:16])
-    return G.execute(session, request, access.catalog, access.policy, access.grants, (), frozenset(), effect, audit, now or datetime.now(timezone.utc))
+    return G.execute(session, request, access.catalog, access.policy, access.grants, (), frozenset(), effect, audit, now or datetime.now(timezone.utc),
+                     pregrant_tools=("gmail_search", "gmail_read", "drive_search", "drive_read"))
