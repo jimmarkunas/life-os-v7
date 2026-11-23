@@ -23,6 +23,10 @@ class FakeMcp(ThreadingHTTPServer):
         self.reply, self.seen = reply, []
         threading.Thread(target=self.serve_forever, daemon=True).start()
 
+    def stop(self):
+        self.shutdown()                                                              # stop serve_forever before the socket closes, or the thread keeps polling a dead descriptor
+        self.server_close()
+
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *a):
             pass
@@ -73,7 +77,7 @@ class HonchoAlert(unittest.TestCase):
         self.run_script("issue")
         for reply, word in (({"ok": True, "data": {"created": 1}}, "alert created"), ({"ok": True, "data": {"updated": 1}}, "alert updated")):
             server = FakeMcp((200, reply))
-            self.addCleanup(server.server_close)
+            self.addCleanup(server.stop)
             done = self.run_script("send", "Honcho backup failed", "see journal", "--urgency", "Now", server=server)
             self.assertEqual((done.stdout.strip(), done.returncode), (word, 0))
             auth, args = server.seen[0]
@@ -88,7 +92,7 @@ class HonchoAlert(unittest.TestCase):
         unit.mkdir()
         (unit / "honcho_alerts_mcp").write_text("lm1.honcho-alerts." + "A" * 43 + "\n")
         server = FakeMcp((200, {"ok": True, "data": {"created": 1}}))
-        self.addCleanup(server.server_close)
+        self.addCleanup(server.stop)
         done = self.run_script("send", "Budget exhausted", server=server, unit_dir=unit)
         self.assertEqual(done.stdout.strip(), "alert created")
         self.assertEqual(server.seen[0][0], "Bearer lm1.honcho-alerts." + "A" * 43)
@@ -99,7 +103,7 @@ class HonchoAlert(unittest.TestCase):
         self.assertEqual(self.run_script("send", "x").stdout.strip(), "alert_failed unreachable")
         for code, reply, line in ((401, None, "alert_failed http_401"), (200, {"ok": False, "error": {"code": "not_granted"}}, "alert_failed not_granted")):
             server = FakeMcp((code, reply))
-            self.addCleanup(server.server_close)
+            self.addCleanup(server.stop)
             done = self.run_script("send", "x", server=server)
             self.assertEqual((done.stdout.strip(), done.returncode), (line, 1))
 
