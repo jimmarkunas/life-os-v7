@@ -83,7 +83,7 @@ class FakeRelay(ThreadingHTTPServer):
 
 
 class SelfhostProbe(unittest.TestCase):
-    def run_probe(self, relay, secrets=None):
+    def run_probe(self, relay, secrets=None, mode=()):
         tmp = Path(tempfile.mkdtemp())
         self.addCleanup(lambda: shutil.rmtree(tmp, ignore_errors=True))
         (tmp / "bin").mkdir()
@@ -92,7 +92,7 @@ class SelfhostProbe(unittest.TestCase):
         (tmp / "env").write_text("export BWS_ACCESS_TOKEN='synthetic'\n")
         (tmp / "secrets.json").write_text(json.dumps([{"key": "lifeos/edge/BUZZ_SELFHOST_OWNER_KEY", "value": OWNER_HEX}, {"key": "lifeos/edge/BUZZ_SELFHOST_AGENT_CLAUDE", "value": AGENT_HEX}] if secrets is None else secrets))
         env = {**os.environ, "PATH": f"{tmp / 'bin'}:{os.environ['PATH']}", "FAKE_SECRETS": str(tmp / "secrets.json"), "STORE_CREDENTIALS_ENV": str(tmp / "env"), "STORE_CREDENTIALS_USER": "nobody-not-used"}
-        done = subprocess.run([sys.executable, str(SCRIPT), f"http://127.0.0.1:{relay.server_address[1]}"], capture_output=True, text=True, env=env, cwd=tmp)
+        done = subprocess.run([sys.executable, str(SCRIPT), *mode, f"http://127.0.0.1:{relay.server_address[1]}"], capture_output=True, text=True, env=env, cwd=tmp)
         self.addCleanup(relay.server_close)
         self.addCleanup(relay.shutdown)
         return done, tmp
@@ -110,6 +110,17 @@ class SelfhostProbe(unittest.TestCase):
         for secret in (OWNER_HEX, AGENT_HEX):
             self.assertNotIn(secret, done.stdout + done.stderr)
             self.assertNotIn(secret, "".join(p.read_text(errors="replace") for p in tmp.rglob("*") if p.is_file() and p.name != "secrets.json"))
+
+    def test_channel_mode_adds_the_member_creates_one_channel_and_prints_only_its_public_id(self):
+        relay = FakeRelay()
+        done, tmp = self.run_probe(relay, mode=("channel",))
+        lines = done.stdout.splitlines()
+        self.assertEqual([line.split(" ")[:2] for line in lines[:4]], [["keys", "ok"], ["member_add", "ok"], ["member_query_ok", "ok"], ["channel_create", "ok"]], done.stdout + done.stderr)
+        self.assertRegex(lines[-1], r"^pilot_channel [0-9a-f-]{36}$")
+        channel = lines[-1].split(" ")[1]
+        self.assertEqual((done.returncode, AGENT_PUB in relay.members, relay.channels[channel] == {OWNER_PUB, AGENT_PUB}, [e for e in relay.events if e["kind"] == 9]), (0, True, True, []))   # one channel, the agent in it, no post, no health or refusal steps
+        for secret in (OWNER_HEX, AGENT_HEX):
+            self.assertNotIn(secret, done.stdout + done.stderr)
 
     def test_a_relay_that_does_not_add_the_member_fails_the_steps_after_it_and_exits_nonzero(self):
         done, _ = self.run_probe(FakeRelay(break_membership=True))
