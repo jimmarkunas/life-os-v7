@@ -147,8 +147,16 @@ def send(client, item, now=None, source=None):
     item = normalize(item)
     now = now or datetime.now(timezone.utc)
     source = source or locate(client)
-    if client.query_data_source(source, {"page_size": 1, "filter": {"property": "Key", "rich_text": {"equals": item["key"]}}}).get("results"):
-        return {"duplicate": 1}
+    matched = client.query_data_source(source, {"page_size": 2, "filter": {"property": "Key", "rich_text": {"equals": item["key"]}}}).get("results") or []
+    if matched:
+        # Fail closed if the same key already names multiple rows. Never guess a
+        # target or reset Jim's own Status when an agent resubmits an item.
+        if len(matched) != 1 or not matched[0].get("id"):
+            raise InboxError("duplicate_key_ambiguous")
+        props = properties(item)
+        props.pop("Status")
+        client.call_once("PATCH", f"/pages/{matched[0]['id']}", {"properties": props})
+        return {"updated": 1}
     since = (now - timedelta(hours=1)).isoformat()
     recent = _count(client, source, [{"property": "From", "rich_text": {"equals": item["from"]}}, {"timestamp": "created_time", "created_time": {"after": since}}], cap_pages=1)
     if recent >= RATE_PER_HOUR:
