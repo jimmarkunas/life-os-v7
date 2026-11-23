@@ -106,3 +106,7 @@ GOOGLE_READ_PERSONAL_GMAIL_REFRESH secret Read-only Google credential for the go
 GOOGLE_READ_BYTALOS_GMAIL_REFRESH secret Read-only Google credential for the governed MCP (LIFE-875); a name only, never a value
 GOOGLE_READ_PERSONAL_DRIVE_REFRESH secret Read-only Google credential for the governed MCP (LIFE-875); a name only, never a value
 GOOGLE_READ_BYTALOS_DRIVE_REFRESH secret Read-only Google credential for the governed MCP (LIFE-875); a name only, never a value
+BUZZ_SELFHOST_BW_ORG_ID input LIFE-870 Bitwarden organization ID for Oracle-only private Buzz pilot (identifier, not a secret)
+BUZZ_SELFHOST_BW_PROJECT_ID input LIFE-870 Bitwarden project ID for Oracle-only private Buzz pilot (identifier, not a secret)
+BW_API_URL input LIFE-870 Bitwarden Secrets Manager API endpoint for Oracle-only SDK writer
+BW_IDENTITY_URL input LIFE-870 Bitwarden Secrets Manager identity endpoint for Oracle-only SDK writer
