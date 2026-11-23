@@ -78,6 +78,7 @@ MARIADB_DATABASE workflow_only:workflow MariaDB image setting: creates race_ledg
 METER_BIND input LIFE-889: the address the Honcho metering proxy binds (the honcho-net gateway; never public)
 METER_CAP_USD input LIFE-889: the metering proxy's hard spend cap in US dollars (default 0.90)
 METER_PORT input LIFE-889: the port the Honcho metering proxy listens on (default 8081)
+METER_STOP_AFTER input LIFE-867: the UTC time after which the Honcho metering proxy refuses every Anthropic request (the promotional credits end; default 2026-12-06T00:00:00Z)
 METER_STATE_DIR input LIFE-889: where the metering proxy keeps its spend ledger and audit lines
 NOTION_BILLS_DATA_SOURCE_ID input Notion data source id (bills)
 NOTION_BILLS_TOKEN secret Notion integration token for the bills integration

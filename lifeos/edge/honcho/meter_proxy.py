@@ -17,6 +17,10 @@ a restart never forgets spend. A file named STOP next to the ledger refuses ever
 https://platform.claude.com/docs/en/about-claude/pricing on Nov 21 2026 (Haiku 5.5, over 100,000 tokens: input 0.50, 5m cache write 0.625, 1h cache write 1.00,
 cache read 0.05, output 2.50); every token class is charged at the dearest of them (1.00 in, 2.50 out) so an unexpected class can only overcount.
 
+LIFE-867, fail closed: a ledger that exists but cannot be read, a ledger that is missing while the audit file shows past spend, or a ledger that cannot be written, means the budget cannot be
+verified, so every Anthropic request is refused (embeddings stay free); so is every request after STOP_AFTER (the promotional credits end Dec 5 2026, 6:00 PM CT = Dec 6 00:00 UTC; after that spend would be
+paid, so only Jim's explicit change moves it). Memory is never touched. The first refusal for any of these reasons leaves an EXHAUSTED file next to the ledger (reason and time, nothing else): the hook for the Agent Inbox alert.
+
 The real key arrives as a systemd credential (CREDENTIALS_DIRECTORY/honcho_proof_anthropic_api_key); it is never logged, never put in a reply and never written. No request or reply
 body is ever logged: the audit file (JSON lines next to the ledger) holds time, route, status, token counts and cost only. Stdlib only; no shell; no other host is ever contacted."""
 import http.client
@@ -38,6 +42,14 @@ PRICES = {"input": 1.00, "cache_write": 1.00, "cache_read": 1.00, "output": 2.50
 BYTES_PER_TOKEN = 3
 MAX_BODY = 4_000_000
 DEFAULT_MAX_TOKENS = 4096
+
+
+def _epoch(text):
+    import calendar
+    return calendar.timegm(time.strptime(text, "%Y-%m-%dT%H:%M:%SZ"))
+
+
+STOP_AFTER = _epoch(os.environ.get("METER_STOP_AFTER", "2026-12-06T00:00:00Z"))      # the promotional credits' end; paid spend is a decision for Jim, so the proxy stops here unless the unit says otherwise
 
 
 def usd(tokens, kind):
@@ -71,12 +83,36 @@ class Ledger:
         self.path, self.audit_path, self.stop_path = (os.path.join(state_dir, n) for n in ("ledger.json", "audit.jsonl", "STOP"))
         os.makedirs(state_dir, mode=0o750, exist_ok=True)
         self.spent, self.reserved, self.calls = 0.0, 0.0, 0
+        self.unverified = ""                                                  # why the budget cannot be verified ("" when it can): every metered request is refused while this is set
         try:
             with open(self.path) as handle:
                 saved = json.load(handle)
             self.spent, self.calls = float(saved["spent_usd"]), int(saved["calls"])
-        except (OSError, ValueError, KeyError):
-            pass
+        except FileNotFoundError:
+            if os.path.exists(self.audit_path) and os.path.getsize(self.audit_path) > 0:
+                self.unverified = "ledger missing while the audit file shows past spend"
+        except (OSError, ValueError, KeyError, TypeError):
+            self.unverified = "ledger unreadable"
+
+    def why_blocked(self):
+        """-> "" when a metered request may be considered, else the fixed reason it is refused (STOP file, unverifiable budget, credits ended)."""
+        if self.stopped():
+            return "cap reached or stopped"
+        if self.unverified:
+            return "budget cannot be verified: " + self.unverified
+        if self.clock() >= STOP_AFTER:
+            return "promotional credits ended: spend would be paid"
+        return ""
+
+    def mark_exhausted(self, why):
+        """Leave one EXHAUSTED file (reason and time only) the first time a request is refused for budget reasons; never overwritten, never read by the proxy."""
+        path = os.path.join(self.dir, "EXHAUSTED")
+        if not os.path.exists(path):
+            try:
+                with open(path, "w") as handle:
+                    json.dump({"reason": why, "epoch": int(self.clock())}, handle)
+            except OSError:
+                pass
 
     def save(self):
         tmp = self.path + ".tmp"
@@ -92,7 +128,9 @@ class Ledger:
     def reserve(self, worst):
         """-> True and hold `worst` USD, or False (nothing held) when the cap or the STOP file forbids this request."""
         with self.lock:
-            if self.stopped() or self.spent + self.reserved + worst > self.cap:
+            if self.why_blocked():
+                return False
+            if self.spent + self.reserved + worst > self.cap:
                 return False
             self.reserved += worst
             return True
@@ -104,16 +142,27 @@ class Ledger:
             cost = worst if broke else actual
             self.spent += cost
             self.calls += 1
-            self.save()
+            try:
+                self.save()
+            except OSError:
+                self.unverified = "ledger unwritable"                         # spend can no longer be recorded: refuse everything after this reply
             row = {"epoch": int(self.clock()), "route": route, "status": status, "cost_usd": round(cost, 6), "broke": bool(broke), "spent_usd": round(self.spent, 6)}
             row.update({k: int((usage or {}).get(k) or 0) for k in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens")})
-            with open(self.audit_path, "a") as handle:
-                handle.write(json.dumps(row, sort_keys=True) + "\n")
+            try:
+                with open(self.audit_path, "a") as handle:
+                    handle.write(json.dumps(row, sort_keys=True) + "\n")
+            except OSError:
+                self.unverified = self.unverified or "audit unwritable"
 
     def refuse(self, route, why):
         with self.lock:
-            with open(self.audit_path, "a") as handle:
-                handle.write(json.dumps({"epoch": int(self.clock()), "route": route, "status": 400, "refused": why, "spent_usd": round(self.spent, 6)}, sort_keys=True) + "\n")
+            if why != "bad body size":
+                self.mark_exhausted(why)
+            try:
+                with open(self.audit_path, "a") as handle:
+                    handle.write(json.dumps({"epoch": int(self.clock()), "route": route, "status": 400, "refused": why, "spent_usd": round(self.spent, 6)}, sort_keys=True) + "\n")
+            except OSError:
+                pass
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -138,7 +187,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/health":
-            self.reply(200, {"ok": True, "spent_usd": round(self.ledger.spent, 6), "cap_usd": self.ledger.cap, "stopped": self.ledger.stopped()})
+            self.reply(200, {"ok": True, "spent_usd": round(self.ledger.spent, 6), "cap_usd": self.ledger.cap, "stopped": self.ledger.stopped(), "blocked": self.ledger.why_blocked() or None})
         else:
             self.reply(404, {"error": "not_found"})
 
@@ -159,13 +208,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if path == "/v1/embeddings":
             return self.forward_local(body)
         if path == "/v1/messages/count_tokens":
-            if self.ledger.stopped() or self.ledger.spent >= self.ledger.cap:
-                return self.refuse(path, "cap reached")
+            if self.ledger.why_blocked() or self.ledger.spent >= self.ledger.cap:
+                return self.refuse(path, self.ledger.why_blocked() or "cap reached")
             return self.forward_anthropic(path, body, 0.0, metered=False)
         if path == "/v1/messages":
             worst, _, _ = estimate(body)
             if not self.ledger.reserve(worst):
-                return self.refuse(path, "cap reached or stopped")
+                return self.refuse(path, self.ledger.why_blocked() or "cap reached or stopped")
             return self.forward_anthropic(path, body, worst, metered=True)
         self.reply(404, {"error": "not_found"})
 

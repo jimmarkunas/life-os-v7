@@ -1,0 +1,11 @@
+# LIFE-867: runs only when the nightly backup fails. It writes one marker file and one journal line, then asks the one alert command (LIFE-876, honcho-alerts client) to leave one Agent Inbox row. The `-` before the
+# alert command means a failed alert never fails this unit or the marker; the same subject updates the same Inbox row, so a repeat never adds another. No secret and no personal data in the subject or details.
+[Unit]
+Description=LIFE OS Honcho backup failed (marker, then one Agent Inbox alert)
+
+[Service]
+Type=oneshot
+User=root
+StateDirectory=lifeos-honcho-backup
+ExecStart=/bin/sh -c 'date -u +%%Y-%%m-%%dT%%H:%%M:%%SZ > /var/lib/lifeos-honcho-backup/FAILED; logger -t lifeos-honcho-backup "FAILED: the nightly Honcho backup did not complete"'
+ExecStart=-/opt/lifeos-buzz-mcp/current/bin/honcho-alert send "Honcho nightly backup failed" "The 3:30 AM Central Honcho backup did not complete. A FAILED marker is in /var/lib/lifeos-honcho-backup; the journal has the reason (lifeos-honcho-backup.service). Memory is untouched." --urgency Today
