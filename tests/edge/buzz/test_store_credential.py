@@ -3,7 +3,7 @@ import importlib.util
 from pathlib import Path
 import unittest
 
-PATH = Path(__file__).resolve().parents[2] / "lifeos" / "edge" / "buzz" / "selfhost" / "store_credential.py"
+PATH = Path(__file__).resolve().parents[3] / "lifeos" / "edge" / "buzz" / "selfhost" / "store_credential.py"
 SPEC = importlib.util.spec_from_file_location("life870_store", PATH)
 M = importlib.util.module_from_spec(SPEC)
 import sys
