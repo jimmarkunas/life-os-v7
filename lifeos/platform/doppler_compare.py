@@ -1,4 +1,4 @@
-"""LIFE-863: the Doppler trial. Read the same secret names from Doppler (project life-os, config prd, one read-only service token) and compare each with the value the job already loaded from Bitwarden.
+"""LIFE-863: the Doppler trial: read the same secret names from Doppler and compare each by hash with the value Bitwarden already loaded.
 
     python -m lifeos.platform.doppler_compare        env: DOPPLER_TOKEN, DOPPLER_PROJECT, DOPPLER_CONFIG, COMPARE_NAMES (comma list), BITWARDEN (JSON object name -> value, from the masked Bitwarden step outputs)
 
