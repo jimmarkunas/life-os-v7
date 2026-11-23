@@ -901,7 +901,7 @@ jobs:
         with:
           wait_seconds: "300"
       - id: bws_amazon_retention
-        name: Load the migrated credentials from Bitwarden (EDGE-1.3, these 4 plus the 10 store names the interview_mail job already loads, LIFE-906: the checkpoint of what an old mail's read concluded; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        name: Load the migrated credentials from Bitwarden (EDGE-1.3, these 4 plus the 10 store names the interview_mail job already loads (LIFE-906, the checkpoint of what an old mail's read concluded); masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
