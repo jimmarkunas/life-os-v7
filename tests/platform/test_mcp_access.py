@@ -177,7 +177,7 @@ class SeededGrants(unittest.TestCase):
         self.assertTrue(access.grants)
         rows = {(c["principal"], c["tool"], c["action"]) for c in CATALOG["capabilities"]}
         for g in access.grants:
-            self.assertTrue(g.expires.tzinfo and g.expires > datetime(2026, 11, 22, tzinfo=timezone.utc) and g.expires.year == 2027, g.id)
+            self.assertTrue(g.expires.tzinfo and g.expires > datetime(2026, 11, 22, tzinfo=timezone.utc) and (g.expires.year == 2027 or (g.tool.startswith("memory_") and g.expires.date().isoformat() == "2026-12-05")), g.id)   # LIFE-868: the synthetic memory grants end Dec 5 2026 (Jim, comment 13743), well before Feb 2027
             self.assertFalse(g.revoked, g.id)
             self.assertRegex(g.credential_ref, r"^[a-z][a-z0-9-]+$")
             self.assertEqual(len(g.actions), 1, g.id)
