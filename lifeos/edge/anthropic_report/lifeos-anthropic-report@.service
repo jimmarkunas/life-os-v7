@@ -1,0 +1,20 @@
+# LIFE-921: one connection, one JSON line of numbers (reader.py). The Anthropic Admin key is this unit's own encrypted credential: no other unit or user can read it. The reader may call only the two report endpoints (tests pin it).
+[Unit]
+Description=LIFE OS Anthropic usage and cost report reader
+
+[Service]
+Type=simple
+DynamicUser=yes
+LoadCredentialEncrypted=anthropic_admin_key:/etc/lifeos-anthropic-report/anthropic_admin_key.cred
+StandardInput=socket
+StandardOutput=socket
+StandardError=null
+ExecStart=/usr/bin/python3 -I /opt/lifeos-anthropic-report/reader.py
+TimeoutStartSec=60
+RuntimeMaxSec=90
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+MemoryMax=128M

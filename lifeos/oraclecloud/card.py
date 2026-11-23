@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from urllib.parse import quote
 
 from lifeos.oraclecloud import backup_watch, boot_backup_watch, worker_watch
-from lifeos.platform import ct_stamp, report_region, router
+from lifeos.platform import ct_stamp, honcho_status, report_region, router
 from lifeos.platform.fixed_code import fixed
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 
@@ -27,7 +27,7 @@ MAX_REPLY = 4096
 WAIT = 100                                                             # seconds: the endpoint itself stops at 90
 REPLY_TTL_SECONDS = 600
 KEYS = {"schema", "observed_at", "cost", "cpu_24h_pct", "memory_pct", "disk_pct", "a1_cores", "reclaim", "services", "chatgpt"}
-OPTIONAL = {"backup", "workers", "backups"}             # LIFE-129: the off-site backup's last result; optional so the card and Oracle's stats.mjs can be updated in either order
+OPTIONAL = {"backup", "workers", "backups", "honcho", "anthropic"}             # LIFE-129: the off-site backup's last result; optional so the card and Oracle's stats.mjs can be updated in either order
 CODE = re.compile(r"[a-z0-9_]{1,40}")
 SERVICES = (("gateway", "Gateway"), ("telegram", "Telegram"), ("whatsapp", "WhatsApp"), ("alerts", "Alerts"))
 UNREPORTED = "unreported"         # the plan windows under Sign in with ChatGPT: OpenClaw prints none (Oct 16 2026), a known state, never counted as missing
@@ -35,7 +35,7 @@ BAR = 10
 PROTECTED = (("JIRA_CARD_BLOCK_ID", router.JIRA_REGION), ("CALENDAR_CARD_BLOCK_ID", router.CALENDAR_REGION), ("BILLS_CARD_BLOCK_ID", router.BILLS_REGION),
              ("AMAZON_CARD_BLOCK_ID", router.AMAZON_REGION), ("ATTENTION_CARD_BLOCK_ID", router.ATTENTION_REGION), ("HIRING_CARD_BLOCK_ID", router.HIRING_REGION))
 UNAVAILABLE = {"cost": None, "cpu_24h_pct": None, "memory_pct": None, "disk_pct": None, "a1_cores": None, "reclaim": None,
-               "services": {k: None for k, _ in SERVICES}, "chatgpt": None, "backup": None, "workers": None, "backups": None}
+               "services": {k: None for k, _ in SERVICES}, "chatgpt": None, "backup": None, "workers": None, "backups": None, "honcho": None, "anthropic": None, "honcho_reported": False}
 
 
 class OracleCardError(Exception):
@@ -95,11 +95,13 @@ def validate(raw, now):
             or p["reclaim"] not in (None, "NONE", "AT_RISK")
             or not (isinstance(svc, dict) and set(svc) == {k for k, _ in SERVICES} and all(v in (None, True, False) for v in svc.values()))
             or not _backup_ok(p.get("backup")) or not _workers_ok(p.get("workers")) or not _backups_ok(p.get("backups"))
+            or not honcho_status.honcho_ok(p.get("honcho")) or not honcho_status.anthropic_ok(p.get("anthropic"))
             or not (plan in (None, UNREPORTED) or (isinstance(plan, dict) and set(plan) == {"left_5h", "left_week"} and all(_whole(v) and v <= 100 for v in plan.values())))):
         raise _fail("ORACLE_OFF_CONTRACT")
     if seen.tzinfo is None or abs((now - seen).total_seconds()) > REPLY_TTL_SECONDS:
         raise _fail("ORACLE_STALE")
-    return {**{k: p[k] for k in KEYS - {"schema", "observed_at"}}, "backup": p.get("backup"), "workers": p.get("workers"), "backups": p.get("backups")}
+    return {**{k: p[k] for k in KEYS - {"schema", "observed_at"}}, "backup": p.get("backup"), "workers": p.get("workers"), "backups": p.get("backups"),
+            "honcho": p.get("honcho"), "anthropic": p.get("anthropic"), "honcho_reported": "honcho" in p}
 
 
 def bar(pct):
@@ -136,7 +138,9 @@ def render(r, now):
     chatgpt = ([("Codex plan: unavailable", None)] if plan is None else [("ChatGPT plan: not reported by Sign in with ChatGPT", "gray")] if plan == UNREPORTED else
                _gauge("Codex 5h", plan["left_5h"]) + sep + _gauge("Codex week", plan["left_week"]))
     segments = ([(f"{first} · {cpu}\n\n", None)] + _gauge("Memory", r["memory_pct"]) + sep + _gauge("Disk", r["disk_pct"])
-                + [(f"\n\n{cores} · {reclaim}\n{services}\n\n", None)] + chatgpt)
+                + [(f"\n\n{cores} · {reclaim}\n{services}\n", None)]
+                + (honcho_status.line(r["honcho"], now) + [("\n", None)] if r.get("honcho_reported") else [])             # LIFE-921: one Honcho line under Services (Oracle's older stats may not report it: no line)
+                + [("\n", None)] + chatgpt)
     return segments, f"{TITLE} ({'DEGRADED · ' if missing(r) else ''}{ct_stamp.when(now)})"
 
 
