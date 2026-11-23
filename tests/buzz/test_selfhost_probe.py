@@ -150,6 +150,15 @@ class SelfhostProbe(unittest.TestCase):
         owner, _ = self.run_probe(FakeRelay(), mode=("role", "owner"), stdin=f"{AGENT_PUB}\n")
         self.assertNotIn("role_", owner.stdout)                                                          # "owner" is not a role this mode accepts
 
+    def test_readd_mode_removes_then_adds_each_given_key_with_the_role_and_the_synthetic_mode_prints_only_a_public_key(self):
+        """LIFE-927: remove (9031) then add with the role tag; never any key but the given public ones, never owner."""
+        relay = FakeRelay()
+        done, _ = self.run_probe(relay, mode=("readd", "admin"), stdin=f"{AGENT_PUB}\n")
+        self.assertEqual([line.split(" ")[:2] for line in done.stdout.splitlines()][:1], [["keys", "ok"]], done.stdout + done.stderr)
+        self.assertNotIn(OWNER_HEX, done.stdout + done.stderr)
+        empty, _ = self.run_probe(FakeRelay(), mode=("readd", "member"), stdin="")
+        self.assertEqual((empty.stdout.splitlines()[-1], empty.returncode), ("readd fail (at least one public key is required)", 1))
+
     def test_a_relay_that_does_not_add_the_member_fails_the_steps_after_it_and_exits_nonzero(self):
         done, _ = self.run_probe(FakeRelay(break_membership=True))
         self.assertIn("member_add fail", done.stdout)
