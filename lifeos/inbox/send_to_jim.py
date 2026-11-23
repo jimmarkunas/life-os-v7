@@ -67,6 +67,8 @@ def governed(arguments, environ, client, access, facts, audit, now):
         # authenticated client row; a caller-supplied different From is refused.
         sender = who["id"]
         if arguments.get("from") not in (None, sender):
+            from lifeos.platform.authorization_gate import fingerprint
+            audit({"tool": "send_to_jim", "principal_fp": fingerprint(sender), "outcome": "deny", "reason": "from_spoofed"})
             return {"ok": False, "reason": "from_spoofed"}
         item = {**arguments, "from": sender}
         out = mcp_access.call(access, who, tenant, "send_to_jim", "write", "agent-inbox", "notion", lambda: deliver(item, environ=environ, client=client, now=now), audit, now)
