@@ -2,6 +2,8 @@
   "_how_to_read": "LIFE-618: the one list of job sources. One object per source: name (the stage: python -m lifeos.run <name>), module, function (default run), floor (raise a smaller --limit to this), tick (the Jobs-tick step: budget, limit, bulk, group, providers; leave out when the source does not run in the tick) with after (the tick step it follows), and codes ({CODE: [class, counts as an attempt, meaning, action]}) for its own outcome codes, partial_failure (a code: a run whose counts carry failed > 0 exits 1 with it). Data, not code, so no layer imports another (D17).",
   "status_how_to_read": "LIFE-907 (Nov 22 2026): one word per stage, set against the code and the workflows, never by a guess. active = a scheduled workflow or the Jobs tick runs it; parked = it is wired but does no work (a switch is off or nothing feeds it); manual = only a dispatch input or a person runs it; retired = removed from use. The loader reads only `sources`, so this key never changes a run; tests/contracts/test_source_registry.py keeps it complete.",
   "status": {
+    "interview-mail": "active",
+    "interview-mail-shadow": "active",
     "boards": "active",
     "web-scale-up": "active",
     "web-titlewatch": "active",
