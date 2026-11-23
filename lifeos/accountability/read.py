@@ -219,7 +219,7 @@ def _frozen_mej_membership(first, manifest=None):
     if not isinstance(row, dict) or row.get("approved") is not True or not row.get("baseline_id") or not row.get("approval_ref") or not isinstance(row.get("tasks"), dict):
         raise JiraError("ACCOUNTABILITY_MEJ_MEMBERSHIP_NOT_APPROVED")
     for key, assignment in row["tasks"].items():
-        if not re.fullmatch(r"MEJ-\\d+", key) or not isinstance(assignment, dict) or not re.fullmatch(r"MEJ-\\d+", str(assignment.get("parent") or "")) or not re.fullmatch(r"MEJ-\\d+", str(assignment.get("goal") or "")):
+        if not re.fullmatch(r"MEJ-\d+", key) or not isinstance(assignment, dict) or not re.fullmatch(r"MEJ-\d+", str(assignment.get("parent") or "")) or not re.fullmatch(r"MEJ-\d+", str(assignment.get("goal") or "")):
             raise JiraError("ACCOUNTABILITY_MEJ_MEMBERSHIP_NOT_APPROVED")
     return row["tasks"]
 
