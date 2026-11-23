@@ -194,12 +194,16 @@ class SeededGrants(unittest.TestCase):
         replies, receipts, client = call(tool_call(ok_item()), M.load())
         self.assertEqual((reason(replies), client.rows, receipts[-1]["reason"]), ("denied_catalog_unknown_capability", [], "catalog_unknown_capability"))
 
-    def test_the_seeded_catalog_rows_stay_synthetic_until_a_live_proof_changes_them(self):
+    def test_only_the_catalog_rows_a_live_call_exercised_are_working_and_every_other_seeded_row_stays_synthetic(self):
+        """LIFE-865 live proof (Nov 22 2026, through the claude.ai Buzz connector against release 52343c06da4e): Claude's capabilities and Personal read, and its Bytalos read, were called live. Nothing else was: not ChatGPT, not a publish, not send_to_jim."""
         new = [c for c in CATALOG["capabilities"] if c["as_of"] == "2026-11-22"]
         self.assertTrue(new)
-        self.assertEqual({c["status"] for c in new}, {"synthetic"})
+        live = {(c["principal"], c["tool"]) for c in new if c["status"] == "working"}
+        self.assertEqual(live, {("claude-chat", "buzz_capabilities"), ("claude-chat", "buzz_read"), ("claude-chat-bytalos", "buzz_read")})
+        self.assertEqual({c["status"] for c in new if (c["principal"], c["tool"]) not in live}, {"synthetic"})
+        self.assertEqual({c["status"] for c in new if c["tool"] in ("buzz_publish", "send_to_jim")} - {"synthetic"}, set())       # no write is live-proven
         out = G.Outcome("allow", "ok", True)
-        self.assertFalse(out.live_proven)
+        self.assertFalse(out.live_proven)                                                                                         # the gate's own flag stays False: the catalog row status is the live-proof ledger
 
 
 class ProposedPublishGrants(unittest.TestCase):
