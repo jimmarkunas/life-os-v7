@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 
 from lifeos.accountability import read, render
 from lifeos.jira.snapshot import project_snapshot
+from lifeos.platform.jira import JiraError
 
 
 def issue(key, status="To Do", due=None, kind="Task"):
@@ -52,6 +53,17 @@ class WeekFocus(unittest.TestCase):
         self.assertIn("Done this week (1):", lines)
         self.assertEqual(len([p for p in parts if p[1] == "https://example.invalid/browse/MEJ-100"]), 1)
 
+    def test_mej_invalid_sprint_query_fails_closed_without_faking_commitments(self):
+        class InvalidSprint(FakeJira):
+            def get(self, path, params):
+                if "sprint in openSprints()" in params["jql"]:
+                    raise JiraError("ACCOUNTABILITY_JIRA_HTTP_400")
+                return super().get(path, params)
+        fake = InvalidSprint()
+        with self.assertRaises(JiraError):
+            read.week(fake, "MEJ", date(2026, 11, 18))
+        self.assertFalse(any('statusCategory = "In Progress"' in q for q in fake.queries))
+        
     def test_jfm_keeps_the_legacy_weekly_query_and_summary_shape(self):
         class JimFake(FakeJira):
             def get(self, path, params):
