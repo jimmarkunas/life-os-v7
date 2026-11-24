@@ -60,15 +60,23 @@ def _closed_rounds(client, parent, context, rounds):
 
 
 def _root_rounds(client, environ, context, rounds):
-    """LIFE-931: a machine opportunity page that sits directly under Hiring Pipeline (outside the Active and Retired containers, like Uber's) is not in the survey; its machine rounds are listed here. -> False when a read was incomplete."""
+    """LIFE-931: the machine opportunity pages the Job Ledger scan does not reach (Uber's page sits in a column under Hiring Pipeline, and the Ledger row that names it is another page) list their rounds here, found by the page-tree walk and the pages directly under Hiring Pipeline.
+    -> False when a read was incomplete."""
     root = (environ.get("HIRING_PIPELINE_PAGE_ID") or "").strip()
+    scan = notion.parent_scan(client, root, context)
+    if not scan.complete:
+        return False
     try:
-        pages = [b for b in notion.children(client, root, [notion.MAX_CALLS], context) if b.get("type") == "child_page"]
+        direct = [Parent(b["id"], (b.get("child_page") or {}).get("title", "")) for b in notion.children(client, root, [notion.MAX_CALLS], context) if b.get("type") == "child_page"]
     except NotionError:
         return False
-    for block in pages:
+    seen = set()
+    for parent in [*scan.items, *direct]:
+        if parent.page_id in seen:
+            continue
+        seen.add(parent.page_id)
         context.require_time()
-        if notion.ownership(client, block["id"], "opportunity") == Ownership.MACHINE and not _closed_rounds(client, Parent(block["id"], (block.get("child_page") or {}).get("title", "")), context, rounds):
+        if notion.ownership(client, parent.page_id, "opportunity") == Ownership.MACHINE and not _closed_rounds(client, parent, context, rounds):
             return False
     return True
 

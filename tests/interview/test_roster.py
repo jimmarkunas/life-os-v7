@@ -149,3 +149,18 @@ class RootPages(unittest.TestCase):
         rounds = []
         self.assertTrue(stage._root_rounds(client, ENVIRON, RunContext.start(60), rounds))
         self.assertEqual([(p.title, c.page_id, c.interview_date) for p, c in rounds], [("Uber — Technical Project Manager", "r", "2026-09-29")])
+
+    def test_a_machine_page_in_a_column_under_the_active_heading_lists_its_round(self):
+        from lifeos.interview import create, stage
+        from lifeos.interview.models import RoundQuery
+        from tests.interview.support import Fake, block, page
+        client = Fake()
+        client.blocks["root"] = [{"id": "cols", "type": "column_list", "has_children": True}]
+        client.blocks["cols"] = [{"id": "col", "type": "column", "has_children": True}]
+        client.blocks["col"] = [block("Active Opportunities", "heading_2", "hd"), {"id": "u", "type": "child_page", "child_page": {"title": "Uber — Technical Project Manager"}}]
+        client.pages.update({"u": page(parent="root"), "r": page(parent="u")})
+        client.blocks["u"] = [block(notion.MARKERS["opportunity"]), {"id": "r", "type": "child_page", "child_page": {"title": "Interview 1"}}]
+        client.blocks["r"] = [block(notion.MARKERS["round"]), block(create.identity_text(RoundQuery(True, "2026-09-29", None, 1)))]
+        rounds = []
+        self.assertTrue(stage._root_rounds(client, ENVIRON, RunContext.start(60), rounds))
+        self.assertEqual([(p.title, c.page_id) for p, c in rounds], [("Uber — Technical Project Manager", "r")])
