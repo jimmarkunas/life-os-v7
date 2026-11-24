@@ -278,7 +278,7 @@ class CardRenderTests(unittest.TestCase):
 
 
 ENV = {"MAIL_ALERTS_CARD_BLOCK_ID": "mail-callout", "JIRA_CARD_BLOCK_ID": "jira-callout", "CALENDAR_CARD_BLOCK_ID": "calendar-callout", "BILLS_CARD_BLOCK_ID": "bills-callout",
-       "AMAZON_CARD_BLOCK_ID": "amazon-callout", "ATTENTION_CARD_BLOCK_ID": "attention-callout"}
+       "AMAZON_CARD_BLOCK_ID": "amazon-callout"}
 
 
 class CardRunTests(unittest.TestCase):
@@ -319,7 +319,7 @@ class CardRunTests(unittest.TestCase):
 
     def test_wrong_target_or_missing_protected_ids_refuse_before_any_write(self):
         for env, code in (({"MAIL_ALERTS_CARD_BLOCK_ID": "bills-callout"}, "MAILALERTS_CARD_NOT_OWNED"), ({"MAIL_ALERTS_CARD_BLOCK_ID": "amazon-callout"}, "MAILALERTS_CARD_NOT_OWNED"),
-                          ({"JIRA_CARD_BLOCK_ID": ""}, "MAILALERTS_PROTECTED_REGION_UNAVAILABLE"), ({"ATTENTION_CARD_BLOCK_ID": ""}, "MAILALERTS_PROTECTED_REGION_UNAVAILABLE")):
+                          ({"JIRA_CARD_BLOCK_ID": ""}, "MAILALERTS_PROTECTED_REGION_UNAVAILABLE")):
             notion = MailRegions()
             with self.assertRaises(card.CardError) as caught:
                 self.go(notion, env=env)

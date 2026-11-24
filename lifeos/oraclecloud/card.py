@@ -33,7 +33,7 @@ SERVICES = (("gateway", "Gateway"), ("telegram", "Telegram"), ("whatsapp", "What
 UNREPORTED = "unreported"         # the plan windows under Sign in with ChatGPT: OpenClaw prints none (Oct 16 2026), a known state, never counted as missing
 BAR = 10
 PROTECTED = (("JIRA_CARD_BLOCK_ID", router.JIRA_REGION), ("CALENDAR_CARD_BLOCK_ID", router.CALENDAR_REGION), ("BILLS_CARD_BLOCK_ID", router.BILLS_REGION),
-             ("AMAZON_CARD_BLOCK_ID", router.AMAZON_REGION), ("ATTENTION_CARD_BLOCK_ID", router.ATTENTION_REGION), ("HIRING_CARD_BLOCK_ID", router.HIRING_REGION))
+             ("AMAZON_CARD_BLOCK_ID", router.AMAZON_REGION), ("HIRING_CARD_BLOCK_ID", router.HIRING_REGION))
 UNAVAILABLE = {"cost": None, "cpu_24h_pct": None, "memory_pct": None, "disk_pct": None, "a1_cores": None, "reclaim": None,
                "services": {k: None for k, _ in SERVICES}, "chatgpt": None, "backup": None, "workers": None, "backups": None, "honcho": None, "anthropic": None, "honcho_reported": False}
 
@@ -162,23 +162,18 @@ def _parent_of(client, anchor):
     return parent.get("block_id") if parent.get("type") == "block_id" else None
 
 
-def locate(client, anchor, jira=""):
-    """-> (heading block, paragraph block): exactly one Oracle Cloud callout, holding its heading and exactly one paragraph, in the column of the Attention
-    callout or in the column of the JIRA callout (Jim's placement, Oct 21 2026: under the JIRA card). Two cards, or none, is CARD_NOT_OWNED."""
+def locate(client, anchor):
+    """-> (heading block, paragraph block): exactly one Oracle Cloud callout, holding its heading and exactly one paragraph, in the column of the JIRA callout (Jim's placement, Oct 21 2026: under the
+    JIRA card; LIFE-969: the Attention callout is retired, so the Jira card is the anchor). Two cards, or none, is CARD_NOT_OWNED."""
     home = _parent_of(client, anchor)
     if not home:
         raise _fail("CARD_NOT_OWNED")
-    homes = [home]
-    other = _parent_of(client, jira) if jira else None
-    if other and other != home:
-        homes.append(other)
     found = []
-    for parent_id in homes:
-        for block in report_region.children(client, parent_id, _fail):
-            if block.get("type") == "callout":
-                kids = report_region.children(client, block["id"], _fail)
-                if kids and kids[0].get("type") in report_region.HEADINGS and report_region.titled(report_region.plain(kids[0]), TITLE):
-                    found.append(kids)
+    for block in report_region.children(client, home, _fail):
+        if block.get("type") == "callout":
+            kids = report_region.children(client, block["id"], _fail)
+            if kids and kids[0].get("type") in report_region.HEADINGS and report_region.titled(report_region.plain(kids[0]), TITLE):
+                found.append(kids)
     if len(found) != 1 or len(found[0]) != 2 or found[0][1].get("type") != "paragraph":
         raise _fail("CARD_NOT_OWNED")
     return found[0][0], found[0][1]
@@ -224,13 +219,13 @@ def _writer(environ):
 
 def run(limit, live, environ=os.environ, now=None, fetcher=fetch, client=None, plan=None, watch=None, workers_watch=None, boot_watch=None):
     host = (environ.get("IMESSAGE_ALERTS_HOST") or "").strip()
-    anchor = (environ.get("ATTENTION_CARD_BLOCK_ID") or "").strip()
+    anchor = (environ.get("JIRA_CARD_BLOCK_ID") or "").strip()                              # LIFE-969: any card block on the page finds the page; the Jira card is on it
     if not host or not anchor:
         raise _fail("ORACLE_NOT_CONFIGURED")
     router.check_write(MODULE, [TITLE])
     now = now or datetime.now(timezone.utc)
     client = client or _writer(environ)
-    heading, paragraph = locate(client, anchor, (environ.get("JIRA_CARD_BLOCK_ID") or "").strip())
+    heading, paragraph = locate(client, anchor)
     try:
         raw = fetcher(host)
     except OSError:

@@ -52,7 +52,7 @@ class Render(unittest.TestCase):
         self.assertIn("· 2 more not shown", text.split("\n")[0])
 
 
-ON = {"V7_AI_CAPACITY_CARD": "on", "ATTENTION_CARD_BLOCK_ID": "att"}
+ON = {"V7_AI_CAPACITY_CARD": "on", "JIRA_CARD_BLOCK_ID": "att"}
 GOOD_HONCHO = {"health": True, "failed": False, "exhausted": False, "stopped": False, "backup": {"at": "2026-10-20T09:30:27Z", "ok": True}, "meter": {"cap": 0.9, "reserved": 0.40692}}
 BILLED = {"billed_usd": 1.38, "honcho_usd": 0.02, "as_of": "2026-10-20T05:20:00Z"}
 
@@ -146,7 +146,7 @@ class Run(unittest.TestCase):
         self.assertEqual((getattr(notion, "grown", 0), out["rows_grown"]), (0, 2))
 
     def test_off_unless_jim_switched_it_on(self):
-        for environ in ({}, {"ATTENTION_CARD_BLOCK_ID": "att"}, {**ON, "V7_AI_CAPACITY_CARD": "off"}, {"V7_AI_CAPACITY_CARD": "on"}):
+        for environ in ({}, {"JIRA_CARD_BLOCK_ID": "att"}, {**ON, "V7_AI_CAPACITY_CARD": "off"}, {"V7_AI_CAPACITY_CARD": "on"}):
             out = card.run(0, True, environ=environ, client=object(), read=lambda: (_ for _ in ()).throw(AssertionError("no read")))
             self.assertEqual(out["status"], "not_configured", environ)
 

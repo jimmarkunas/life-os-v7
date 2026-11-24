@@ -103,7 +103,6 @@
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           MAIL_ALERTS_CARD_BLOCK_ID: ""
           AMAZON_CARD_BLOCK_ID: ""
-          ATTENTION_CARD_BLOCK_ID: ""
           BILLS_CARD_BLOCK_ID: ""
           CALENDAR_CARD_BLOCK_ID: ""
           JIRA_CARD_BLOCK_ID: ""
