@@ -718,7 +718,7 @@ DB = {"LIFEOS_ACQ_DB_NAME", "LIFEOS_ACQ_DB_PASSWORD", "LIFEOS_ACQ_DB_USER", "LIF
 SETTINGS_LOADER_ID = "bws_settings"
 SETTINGS_CONSUMER = "${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}"
 RUNTIME_CONFIG_LOADER_ID = "bws_runtime_config"          # LIFE-858: the compare-only read's own loader: the bootstrap ID (an address) and nothing else, continue-on-error, never exported job-wide
-RUNTIME_CONFIG_JOBS = {"agenda": {"agenda"}, "branches": {"report"}, "capacity-card": {"capacitycard"}, "diag": {"inbox_view_qa", "interview_ui", "sandbox"}, "domains": {"agenda", "amazon", "bills", "dcc", "followup", "hiring", "imessage", "interview", "jira", "mail", "megibow", "recruiters"}, "hourly": {"finish"}, "network": {"network"}, "v3-pages": {"v3pages"}}     # the exact jobs that carry it: nothing else may
+RUNTIME_CONFIG_JOBS = {"agenda": {"agenda"}, "branches": {"report"}, "capacity-card": {"capacitycard"}, "diag": {"inbox_view_qa", "interview_ui", "sandbox"}, "domains": {"agenda", "amazon", "bills", "dcc", "followup", "hiring", "imessage", "interview", "jira", "mail", "megibow", "recruiters"}, "hourly": {"finish", "interview", "jobright", "lensa", "linkedin"}, "network": {"network"}, "v3-pages": {"v3pages"}}     # the exact jobs that carry it: nothing else may
 RUNTIME_CONFIG_CONSUMER = "${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}"
 SETTINGS_JOBS = {            # the exact jobs that carry the settings loader: nothing else may
     "amazon": {"amazon"}, "bills": {"bills"}, "calendar": {"calendar"}, "granola": {"granola"}, "granola-auto": {"auto"}, "hermes-stage": {"hermes"}, "manual-job": {"manual"},
