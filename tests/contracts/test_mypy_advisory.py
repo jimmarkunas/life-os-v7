@@ -1,5 +1,5 @@
-"""LIFE-559: the type checker (mypy) is an ADVISORY check on lifeos/platform. It is configured in mypy.ini (pyproject.toml stays ruff-only, pinned by test_ruff_advisory.py), pinned
-with hashes in the test lock, its pull-request step can never fail the job or change the required check, and ten platform modules are fully annotated."""
+"""LIFE-559, LIFE-600: the type checker (mypy) is ADVISORY on lifeos/platform, except for the 42 modules in mypy-blocking.txt (Jim, "600 block", Nov 24 2026), where a type error fails the pull request check. It is configured in mypy.ini (pyproject.toml stays
+ruff-only, pinned by test_ruff_advisory.py), pinned with hashes in the test lock; the advisory step can never fail the job or change the required check, and ten platform modules are fully annotated."""
 import ast
 import re
 import unittest
@@ -102,6 +102,39 @@ class TenModulesAreTyped(unittest.TestCase):
                     continue
                 if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("lifeos"):
                     self.assertTrue((ROOT / (node.module.replace(".", "/") + ".py")).is_file() or (ROOT / node.module.replace(".", "/")).is_dir(), (module, node.module))
+
+
+@unittest.skipIf(yaml is None, "PyYAML not installed")
+class BlockingSet(unittest.TestCase):
+    """LIFE-600: exactly the modules Jim approved are blocking; every other module stays advisory."""
+    LISTED = [line for line in (ROOT / "mypy-blocking.txt").read_text().splitlines() if line.strip()]
+
+    def test_the_blocking_list_is_the_42_approved_platform_modules_sorted_unique_and_present(self):
+        self.assertEqual(len(self.LISTED), 42)
+        self.assertEqual(self.LISTED, sorted(set(self.LISTED)))
+        for path in self.LISTED:
+            self.assertRegex(path, r"^lifeos/platform/[a-z_0-9]+\.py$")
+            self.assertTrue((ROOT / path).is_file(), path)
+        self.assertNotIn("lifeos/platform/codes.py", self.LISTED)                            # an error module (or any newer module with under two weeks of history) is not in the set
+        for name in TYPED:
+            self.assertIn(f"lifeos/platform/{name}.py", self.LISTED, name)                  # the ten fully annotated LIFE-559 modules are all blocking
+
+    def test_the_blocking_step_fails_the_job_runs_exactly_the_list_and_comes_after_the_unit_tests(self):
+        job = yaml.safe_load((ROOT / ".github/workflows/pr-tests.yml").read_text())["jobs"]["unit-tests"]
+        names = [str(s.get("name", "")) for s in job["steps"]]
+        step = next(s for s in job["steps"] if str(s.get("name", "")).startswith("Type check blocking"))
+        self.assertNotIn("continue-on-error", step)
+        self.assertIn("python -m mypy --no-incremental $(cat mypy-blocking.txt)", step["run"])
+        self.assertNotIn("exit 0", step["run"])
+        self.assertNotIn("|| true", step["run"])
+        unit = next(i for i, n in enumerate(names) if n.startswith("Unit tests"))
+        self.assertGreater(names.index(step["name"]), unit)
+
+    def test_the_advisory_step_still_covers_every_changed_platform_file_and_cannot_fail(self):
+        job = yaml.safe_load((ROOT / ".github/workflows/pr-tests.yml").read_text())["jobs"]["unit-tests"]
+        step = next(s for s in job["steps"] if str(s.get("name", "")).startswith("Type check advisory"))
+        self.assertIs(step.get("continue-on-error"), True)
+        self.assertIn("lifeos/platform/*.py", step["run"])
 
 
 if __name__ == "__main__":

@@ -37,3 +37,7 @@ A scratch file (never committed) called `names.same_company(5, ["x"])`; the advi
 ## What comes next (Jim's decision)
 
 Making the checker blocking for the clean modules is a separate decision, after about two weeks of advisory runs.
+
+## LIFE-600: blocking for 42 clean modules (Jim, "600 block", Nov 24 2026)
+The checker stays advisory everywhere except for the modules listed in `mypy-blocking.txt` (one path per line, 42 of 97 `lifeos/platform` files): the modules that were at 0 errors in every replay of the checker at Nov 10, 13, 16, 19, 22 and 24 (the ten LIFE-559 modules are among them). The pull-request step **Type check blocking** runs `python -m mypy --no-incremental $(cat mypy-blocking.txt)` on every pull request and fails the job on a type error in one of those files; every other file keeps the advisory step above. To add a module, append its path to `mypy-blocking.txt` once it has been at 0 errors for about two weeks; to remove one, delete its line (rollback of the whole change: delete the step and the file). The checker is lenient, so the block guards annotated code only. Newer modules (under two weeks of history) and the six that had errors (codes, notion_client, read_slots, runtime_config, call_limit, stage_timing) stay advisory.
+
