@@ -166,6 +166,43 @@ class SelfhostProbe(unittest.TestCase):
         for secret in (OWNER_HEX, AGENT_HEX):
             self.assertNotIn(secret, done.stdout + done.stderr)
 
+    def test_duet_profile_signs_with_the_vault_key_inside_the_buzz_cli_only_and_reads_the_profile_back_without_printing_a_key(self):
+        """LIFE-922: Duet's own key (from the vault, in memory) reaches only the Buzz CLI subprocess's environment; a missing key, a non-PNG or a refused upload fails the step."""
+        DUET_HEX = "33" * 32
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: shutil.rmtree(tmp, ignore_errors=True))
+        image = tmp / "duet.png"
+        image.write_bytes(b"\x89PNG\r\n\x1a\n" + b"x" * 64)
+        fake = tmp / "buzz"
+        fake.write_text("""#!/usr/bin/env python3
+import json, os, sys
+a = sys.argv[1:]
+url = os.environ["BUZZ_RELAY_URL"]
+assert len(os.environ["BUZZ_PRIVATE_KEY"]) == 64
+if a[:2] == ["upload", "file"]:
+    print(json.dumps({"url": url + "/media/" + "ab" * 32 + ".png"}))
+elif a[:2] == ["users", "set-profile"]:
+    open(os.environ["FAKE_PROFILE"], "w").write(json.dumps({"name": a[3], "avatar": a[5]}))
+    print(json.dumps({"accepted": True}))
+elif a[:2] == ["users", "get"]:
+    print(json.dumps({"users": [json.loads(open(os.environ["FAKE_PROFILE"]).read())]}))
+""")
+        fake.chmod(0o755)
+        relay = FakeRelay()
+        secrets = [{"key": "lifeos/edge/BUZZ_KEY_DUET_LIFE_OS", "value": DUET_HEX}]
+        extra = {"SELFHOST_PROBE_BUZZ": str(fake), "FAKE_PROFILE": str(tmp / "profile.json")}
+        os.environ.update(extra)
+        self.addCleanup(lambda: [os.environ.pop(k, None) for k in extra])
+        done, _ = self.run_probe(relay, secrets=secrets, mode=("duet-profile", "life-os", str(image)))
+        self.assertEqual(done.stdout.splitlines()[-1], "duet_life-os ok (name Duet, picture ..." + ("ab" * 32 + ".png")[-12:] + ")", done.stdout + done.stderr)
+        self.assertNotIn(DUET_HEX, done.stdout + done.stderr)
+        missing, _ = self.run_probe(FakeRelay(), secrets=[], mode=("duet-profile", "bytalos", str(image)))
+        self.assertEqual((missing.stdout.splitlines()[-1].split(" (")[0], missing.returncode), ("duet_bytalos fail", 1))
+        notpng = tmp / "x.png"
+        notpng.write_bytes(b"not an image")
+        bad, _ = self.run_probe(FakeRelay(), secrets=secrets, mode=("duet-profile", "life-os", str(notpng)))
+        self.assertEqual((bad.stdout.splitlines()[-1].split(" (")[0], bad.returncode), ("duet_life-os fail", 1))
+
     def test_a_relay_that_does_not_add_the_member_fails_the_steps_after_it_and_exits_nonzero(self):
         done, _ = self.run_probe(FakeRelay(break_membership=True))
         self.assertIn("member_add fail", done.stdout)
@@ -177,9 +214,9 @@ class SelfhostProbe(unittest.TestCase):
         done, _ = self.run_probe(relay, secrets=[{"key": "lifeos/edge/BUZZ_SELFHOST_OWNER_KEY", "value": OWNER_HEX}])
         self.assertEqual((done.stdout.strip(), done.returncode, relay.events), ("keys fail (a pilot key is not in the vault)", 1, []))
 
-    def test_the_source_prints_no_key_and_asks_only_for_the_two_pilot_names(self):
+    def test_the_source_prints_no_key_and_asks_only_for_the_pilot_names_and_duets_three(self):
         text = SCRIPT.read_text()
-        self.assertEqual(sorted(set(__import__("re").findall(r'"lifeos/edge/(\w+)"', text))), ["BUZZ_SELFHOST_AGENT_CLAUDE", "BUZZ_SELFHOST_OWNER_KEY"])
+        self.assertEqual(sorted(set(__import__("re").findall(r'"lifeos/edge/(\w+)"', text))), ["BUZZ_KEY_DUET_BYTALOS", "BUZZ_KEY_DUET_LIFE_OS", "BUZZ_SELFHOST_AGENT_CLAUDE", "BUZZ_SELFHOST_AGENT_DUET", "BUZZ_SELFHOST_OWNER_KEY"])   # LIFE-922: Duet's own three member keys, to sign its own profile
         self.assertEqual(os.stat(SCRIPT).st_mode & 0o111, 0o111)
 
 

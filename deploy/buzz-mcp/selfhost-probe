@@ -28,8 +28,8 @@ OWNER, AGENT = "lifeos/edge/BUZZ_SELFHOST_OWNER_KEY", "lifeos/edge/BUZZ_SELFHOST
 TEXT = "SYNTHETIC LIFE-870 pilot post: private relay compatibility test, no real content"
 
 
-def vault_keys():
-    """-> (owner secret bytes, agent secret bytes) from Bitwarden, in memory only; None for a name the vault does not return."""
+def vault_named(names):
+    """-> {name: secret bytes} for the closed `names` from Bitwarden, in memory only; a name the vault does not return is absent."""
     env = dict(os.environ)
     for line in open(ENVFILE).read().splitlines():
         line = line.strip().removeprefix("export ")
@@ -39,10 +39,51 @@ def vault_keys():
     done = subprocess.run(["bws", "secret", "list", "-o", "json"], capture_output=True, text=True, env=env, check=False)
     from lifeos.buzz import nip98
     try:
-        found = {s["key"]: s["value"] for s in json.loads(done.stdout) if s.get("key") in (OWNER, AGENT)} if done.returncode == 0 else {}
+        found = {s["key"]: s["value"] for s in json.loads(done.stdout) if s.get("key") in names} if done.returncode == 0 else {}
     except (ValueError, KeyError, TypeError):
         found = {}
-    return tuple(nip98.secret_from(found[n]) if n in found else None for n in (OWNER, AGENT))
+    return {n: nip98.secret_from(found[n]) for n in names if n in found}
+
+
+def vault_keys():
+    """-> (owner secret bytes, agent secret bytes) from Bitwarden, in memory only; None for a name the vault does not return."""
+    got = vault_named((OWNER, AGENT))
+    return got.get(OWNER), got.get(AGENT)
+
+
+DUET = {"life-os": ("lifeos/edge/BUZZ_KEY_DUET_LIFE_OS", "https://life-os-dev.communities.buzz.xyz"), "bytalos": ("lifeos/edge/BUZZ_KEY_DUET_BYTALOS", "https://bytalos.communities.buzz.xyz"),
+        "pilot": ("lifeos/edge/BUZZ_SELFHOST_AGENT_DUET", "https://lifeos-edge-01.tail96b07f.ts.net:3100")}      # LIFE-922: Duet's own member key and relay per community (public relay addresses, no secret)
+BUZZ_CLI = os.environ.get("SELFHOST_PROBE_BUZZ", "/var/lib/hermeseval/bin/buzz")
+
+
+def duet_profile(community, image, say):
+    """Duet signs its own profile (name "Duet" and a picture) in one community: its key is read from the vault in memory and handed only to the Buzz CLI subprocess (never printed). The image is a stripped PNG under 2 MB uploaded
+    to that relay first. Reads the profile back and prints only the name and the picture's last 12 characters."""
+    from lifeos.buzz import nip98
+    name_key, url = DUET[community]
+    secret = vault_named((name_key,)).get(name_key)
+    data = open(image, "rb").read() if os.path.isfile(image) else b""
+    if secret is None or not data.startswith(b"\x89PNG") or len(data) > 2_000_000:
+        say("duet_" + community, False, "key or image missing, or the image is not a small PNG")
+        return
+    env = {**os.environ, "BUZZ_PRIVATE_KEY": secret.hex(), "BUZZ_RELAY_URL": url}
+
+    def cli(*args):
+        done = subprocess.run([BUZZ_CLI, *args], capture_output=True, text=True, env=env, check=False)
+        try:
+            return json.loads(done.stdout or done.stderr or "null")
+        except ValueError:
+            return None
+    up = cli("upload", "file", "--file", image)
+    picture = up.get("url") if isinstance(up, dict) else None
+    if not isinstance(picture, str) or not picture.startswith(url + "/media/"):
+        say("duet_" + community, False, "upload refused")
+        return
+    set_ = cli("users", "set-profile", "--name", "Duet", "--avatar", picture)
+    back = cli("users", "get", "--pubkey", nip98.pubkey(secret))
+    blob = json.dumps(back)
+    ok = isinstance(set_, dict) and set_.get("accepted") is True and '"Duet"' in blob and picture in blob
+    say("duet_" + community, ok, f"name Duet, picture ...{picture[-12:]}" if ok else "profile did not read back")
 
 
 def http(method, url, headers=None, body=None):
@@ -177,6 +218,8 @@ def run(base, owner, agent, say):
 
 
 def main(argv):
+    duet = argv[:3] if argv[:1] == ["duet-profile"] and argv[1:2] and argv[1] in ("life-os", "bytalos", "pilot") and argv[2:3] else None      # `selfhost-probe duet-profile <community> <png path>` (LIFE-922)
+    argv = argv[3:] if duet else argv
     set_names = argv[:1] == ["names"]                                                  # `selfhost-probe names`: the owner and connector keys name themselves (LIFE-927)
     argv = argv[1:] if set_names else argv
     test_readd = argv[:1] == ["synthetic-readd"]
@@ -200,6 +243,9 @@ def main(argv):
         print(f"{step} {'ok' if ok else 'fail'}" + (f" ({detail})" if detail else ""))
         if not ok:
             failed.append(step)
+    if duet:
+        duet_profile(duet[1], duet[2], say)
+        return 1 if failed else 0
     try:
         owner, agent = vault_keys()
     except OSError:
