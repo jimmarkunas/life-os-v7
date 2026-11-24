@@ -132,7 +132,7 @@ def _children(client, block_id):
 
 
 def locate(client, anchor):
-    """-> (heading block, {channel: (left paragraph, its right-column paragraph)}). Exactly one Communications callout beside the Attention callout, two
+    """-> (heading block, {channel: (left paragraph, its right-column paragraph)}). Exactly one Communications callout beside the Calendar callout, two
     columns, and for each channel exactly one row whose link opens its launch page with a paragraph at the same position on the right; else CARD_NOT_OWNED."""
     meta = client.call("GET", f"/blocks/{quote(report_region.clean_id(anchor), safe='')}")
     parent = (meta.get("parent") if isinstance(meta, dict) else None) or {}
@@ -235,7 +235,7 @@ def _writer(environ):
 
 def run(limit, live, environ=os.environ, now=None, fetcher=fetch, client=None, keygen=os.urandom):
     host = (environ.get("IMESSAGE_ALERTS_HOST") or "").strip()
-    anchor = (environ.get("JIRA_CARD_BLOCK_ID") or "").strip()                              # LIFE-969: any card block on the page finds the page; the Jira card is on it
+    anchor = (environ.get("CALENDAR_CARD_BLOCK_ID") or "").strip()                          # LIFE-969: the Communications callout sits in the Calendar card's column (the Attention card was its anchor before)
     if not host or not anchor:
         raise _fail("COMMS_NOT_CONFIGURED")
     router.check_write(MODULE, [TITLE])

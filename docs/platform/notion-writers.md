@@ -21,7 +21,7 @@ One card owns one region of the Daily Report page and writes only its own blocks
 | lifeos/physmail/card.py | MAIL_ALERTS_REGION | v7-mail-alerts | mail.mail-card | MAIL_ALERTS_CARD_BLOCK_ID callout | replace_text |
 | lifeos/hiring/card.py | HIRING_REGION | v7-hiring | hiring.hiring | HIRING_CARD_BLOCK_ID heading; its table found next to it | ScopedClient |
 | lifeos/recruiters/outreach_card.py | RECRUITER_OUTREACH_REGION | v7-recruiter-outreach | recruiters.recruiter-outreach | heading and table found by one read of the page (the table block id names the page) | ScopedClient |
-| lifeos/imessage/comms_card.py | COMMS_REGION | v7-comms | imessage.imessage-comms | the Communications callout's heading and Messages row, found on the page that JIRA_CARD_BLOCK_ID is on | ScopedClient |
+| lifeos/imessage/comms_card.py | COMMS_REGION | v7-comms | imessage.imessage-comms | the Communications callout's heading and Messages row, found in the column of CALENDAR_CARD_BLOCK_ID | ScopedClient |
 | lifeos/oraclecloud/card.py | ORACLE_REGION | v7-oracle | imessage.oracle-card | its heading and one paragraph, found under the page | ScopedClient |
 | lifeos/dcc/card.py | DCC_REGION | daily-command-center | dcc.dcc-card | DCC_CARD_BLOCK_ID callout | ScopedClient |
 | lifeos/dcc/header.py | - | - | dcc.dcc-card | the page's date line: one top-level paragraph of a fixed shape, found among the page's top-level blocks; created at the top only if none exists | page-level, read back |
