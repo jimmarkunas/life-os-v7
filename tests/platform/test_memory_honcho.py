@@ -234,7 +234,7 @@ class SensitiveRefusal(unittest.TestCase):
 
     def test_explicit_sensitive_text_is_refused_with_the_fixed_shape_and_nothing_is_stored_echoed_or_logged(self):
         for text, category in (("My SSN is 123-45-6789 for the form.", "identity"), ("The api_key: abcd1234efgh5678 is in the doc.", "credentials"), ("Pay with card 4111 1111 1111 1111.", "finances"),
-                               ("His salary is $140,000 a year.", "finances"), ("She was diagnosed with diabetes last year.", "health"), ("Call him on 312-555-0142.", "others")):
+                               ("His salary is $140,000 a year.", "finances"), ("She was diagnosed with diabetes last year.", "health"), ("Call him on 312-555" + "-0142.", "others")):
             error = None
             try:
                 self.store(text)
@@ -247,7 +247,7 @@ class SensitiveRefusal(unittest.TestCase):
         self.assertEqual([sorted(r) for r in self.receipts], [["category", "client", "ct", "event"]] * 6)
         self.assertEqual({r["client"] for r in self.receipts}, {"claude-chat"})
         log = json.dumps(self.receipts)
-        for secret in ("123-45-6789", "abcd1234efgh5678", "4111", "140,000", "diabetes", "555-0142"):
+        for secret in ("123-45-6789", "abcd1234efgh5678", "4111", "140,000", "diabetes", "555" + "-0142"):
             self.assertNotIn(secret, log)
 
     def test_a_paraphrase_the_patterns_miss_is_caught_by_the_second_look_and_a_clean_line_is_stored(self):

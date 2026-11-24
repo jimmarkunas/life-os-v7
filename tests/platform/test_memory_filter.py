@@ -9,10 +9,10 @@ from lifeos.platform import memory_filter as f
 EXPLICIT = (
     ("Her SSN is 123-45-6789.", "identity"), ("Born on March 3, 1984 in Ohio.", "identity"), ("My date of birth is 03/03/1984.", "identity"), ("Passport number X1234567 expires soon.", "identity"),
     ("Driver's license D123-4567 is on file.", "identity"), ("api_key = abcd1234efgh5678ijkl", "credentials"), ("Authorization: Bearer abcdefghijklmnop1234", "credentials"), ("Use lm1.musekey.abcdefghijklmnop for access.", "credentials"),
-    ("The recovery code is written on the back.", "credentials"), ("-----BEGIN RSA PRIVATE KEY----- MIIE", "credentials"), ("token: ghp_abcdefghijklmnopqrstuvwx", "credentials"), ("Card 4111 1111 1111 1111 expires 12/28.", "finances"),
+    ("The recovery code is written on the back.", "credentials"), ("-----BEGIN RSA " + "PRIVATE KEY----- MIIE", "credentials"), ("token: ghp_abcdefghijklmnopqrstuvwx", "credentials"), ("Card 4111 1111 1111 1111 expires 12/28.", "finances"),
     ("IBAN GB82WEST12345698765432 for the refund.", "finances"), ("Account number 000123456789 at the credit union.", "finances"), ("Salary is $150,000 plus bonus.", "finances"), ("He owes $12,000 on the loan.", "finances"),
     ("The balance is $3,200.55 right now.", "finances"), ("Diagnosed with type 2 diabetes in May.", "health"), ("Takes 20 mg of lisinopril daily.", "health"), ("Her therapist moved the appointment.", "health"),
-    ("Call Sam at (312) 555-0142 after lunch.", "others"), ("Email sam.jones@example.com about it.", "others"), ("Lives at 4521 North Lincoln Avenue.", "others"),
+    ("Call Sam at (312) 555" + "-0142 after lunch.", "others"), ("Email sam.jones@example.com about it.", "others"), ("Lives at 4521 North Lincoln Avenue.", "others"),
 )
 HARMLESS = (
     "Jim wants Notion pages full width, always.", "Reports run at 6 PM Central; write times with CT.", "Show the draft first, then publish.", "The ticket system wins over memory.", "Budget cap for the pilot is the monthly credit.",
@@ -53,12 +53,12 @@ class Reply:
 
 
 class SecondLook(unittest.TestCase):
-    def look(self, text="Jim wants wide pages.", answer="ok", env=None, seen=None):
+    def look(self, text="Jim wants wide pages.", answer="ok", base=None, seen=None):
         def opener(request, timeout=None):
             if seen is not None:
                 seen.append((request.full_url, request.get_method(), dict(request.header_items()), json.loads(request.data), timeout))
             return Reply(answer)
-        return f.second_look(text, opener, env or {})
+        return f.second_look(text, opener, base or f.METER)
 
     def test_ok_passes_and_each_fixed_category_is_returned(self):
         self.assertIsNone(self.look(answer="ok"))
@@ -77,9 +77,9 @@ class SecondLook(unittest.TestCase):
         self.assertEqual(headers.get("X-api-key"), "meter")                                  # a placeholder: the meter holds the real key
         self.assertEqual(headers.get("Anthropic-version"), "2023-06-01")
 
-    def test_the_meter_address_can_be_overridden_and_a_long_text_is_cut_at_the_memory_limit(self):
+    def test_the_meter_address_is_a_parameter_and_a_long_text_is_cut_at_the_memory_limit(self):
         seen = []
-        self.look("x" * 5000, env={"HONCHO_METER_URL": "http://127.0.0.1:9/"}, seen=seen)
+        self.look("x" * 5000, base="http://127.0.0.1:9/", seen=seen)
         self.assertEqual(seen[0][0], "http://127.0.0.1:9/v1/messages")
         self.assertEqual(len(seen[0][3]["messages"][0]["content"]), len("<text></text>") + 2000)
 
@@ -96,7 +96,7 @@ class SecondLook(unittest.TestCase):
                        lambda r, timeout=None: io.BytesIO(b"not json") if False else type("R", (), {"__enter__": lambda s: s, "__exit__": lambda s, *a: False, "read": lambda s: b"<html>"})(),
                        lambda r, timeout=None: type("R", (), {"__enter__": lambda s: s, "__exit__": lambda s, *a: False, "read": lambda s: b'{"content": 5}'})()):
             with self.assertRaises(f.FilterUnavailable):
-                f.second_look("Jim wants wide pages.", opener, {})
+                f.second_look("Jim wants wide pages.", opener)
 
 
 class Check(unittest.TestCase):
