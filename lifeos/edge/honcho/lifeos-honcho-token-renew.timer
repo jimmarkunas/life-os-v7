@@ -1,0 +1,11 @@
+# LIFE-950: once a day at 3:45 AM Central, after the 3:30 AM backup. Persistent, so a night the host was off runs at the next start. A renewal timer only.
+[Unit]
+Description=LIFE OS Honcho memory token renewal, 3:45 AM Central
+
+[Timer]
+OnCalendar=*-*-* 03:45:00 America/Chicago
+Persistent=true
+RandomizedDelaySec=0
+
+[Install]
+WantedBy=timers.target

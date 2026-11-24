@@ -32,6 +32,13 @@ class Units(unittest.TestCase):
         self.assertNotIn("honcho-alert", unit)
         self.assertNotIn("honcho-alert", pathlib.Path(meter_proxy.__file__).read_text())
 
+    def test_the_token_renewal_timer_runs_the_renew_program_once_a_day_after_the_backup_and_starts_no_agent(self):
+        timer = (DIR / "lifeos-honcho-token-renew.timer").read_text()
+        self.assertIn("OnCalendar=*-*-* 03:45:00 America/Chicago", timer)
+        unit = (DIR / "lifeos-honcho-token-renew.service").read_text()
+        self.assertEqual(lines("lifeos-honcho-token-renew.service"), ["ExecStart=/usr/bin/python3 -I /opt/lifeos-honcho/renew_token.py"])
+        self.assertIsNone(re.search(r"claude|agent run|openclaw", "\n".join(ln for ln in unit.splitlines() if not ln.startswith("#")), re.I))
+
     def test_no_secret_or_credential_text_is_in_any_alert_line(self):
         for name in ("lifeos-honcho-backup-failed.service", "lifeos-honcho-meter-alert.service"):
             for line in lines(name):

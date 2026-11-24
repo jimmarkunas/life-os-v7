@@ -67,6 +67,14 @@ class Reading(unittest.TestCase):
     def test_a_second_key_makes_the_attribution_unverified_but_keeps_billed(self):
         self.assertEqual(reader.reading(KEY, opener(keys=("k1", "k2")), NOW), {"billed_usd": 0.0227, "honcho_usd": None, "as_of": "2026-11-23T19:00:00Z"})
 
+    def test_the_report_counts_from_the_start_of_the_current_credit_window(self):
+        calls = []
+        reader.reading(KEY, opener(calls=calls), now=NOW)
+        self.assertTrue(calls and all("starting_at=2026-11-06T00%3A00%3A00Z" in c.full_url for c in calls), [c.full_url for c in calls])      # Nov 5 6:00 PM CT = Nov 6 00:00 UTC
+        calls.clear()
+        reader.reading(KEY, opener(calls=calls), now=datetime(2026, 12, 6, 0, 0, 1, tzinfo=timezone.utc))                                      # the new window: spend before it is not counted
+        self.assertTrue(calls and all("starting_at=2026-12-06T00%3A00%3A00Z" in c.full_url for c in calls))
+
     def test_no_spend_is_zero_dollars_not_unknown(self):
         self.assertEqual(reader.reading(KEY, opener(cost={"data": [], "has_more": False}, keys=()), NOW)["billed_usd"], 0.0)
 

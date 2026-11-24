@@ -6,4 +6,4 @@ Description=LIFE OS Honcho budget stopped: one Agent Inbox alert
 [Service]
 Type=oneshot
 User=root
-ExecStart=-/opt/lifeos-buzz-mcp/current/bin/honcho-alert send "Honcho budget stopped (EXHAUSTED)" "The Honcho metering proxy refused a request because the budget is spent, cannot be verified, or the promotional credits ended. Reason and time are in /var/lib/lifeos-honcho-meter/EXHAUSTED. Inference is stopped; memory is untouched. Any raise or reset needs Jim's approval." --urgency Today
+ExecStart=-/opt/lifeos-buzz-mcp/current/bin/honcho-alert send "Honcho budget stopped (EXHAUSTED)" "The Honcho metering proxy refused a request because this month's cap is spent or the budget cannot be verified. Reason, window and time are in /var/lib/lifeos-honcho-meter/EXHAUSTED. Inference is stopped until the next window starts (the 5th at 6:00 PM CT); memory is untouched. A raise of the cap needs Jim's approval." --urgency Today

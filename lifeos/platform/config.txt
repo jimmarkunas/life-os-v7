@@ -78,9 +78,9 @@ LIVE flag:workflow Run switch: write for real instead of a dry run
 MARIADB_ALLOW_EMPTY_ROOT_PASSWORD workflow_only:workflow MariaDB image setting for the throwaway race container: no password because nothing in it is secret (LIFE-903)
 MARIADB_DATABASE workflow_only:workflow MariaDB image setting: creates race_ledger in the throwaway race container (LIFE-903)
 METER_BIND input LIFE-889: the address the Honcho metering proxy binds (the honcho-net gateway; never public)
-METER_CAP_USD input LIFE-889: the metering proxy's hard spend cap in US dollars (default 0.90)
+METER_CAP_USD input LIFE-889: the metering proxy's hard spend cap in US dollars per monthly window, 5th 6:00 PM CT to the next 5th 6:00 PM CT (default 25, LIFE-950)
 METER_PORT input LIFE-889: the port the Honcho metering proxy listens on (default 8081)
-METER_STOP_AFTER input LIFE-867: the UTC time after which the Honcho metering proxy refuses every Anthropic request (the promotional credits end; default 2026-12-06T00:00:00Z)
+METER_STOP_AFTER input LIFE-867: optional UTC time after which the Honcho metering proxy refuses every Anthropic request: Jim's own hard stop if the monthly credit ever ends (unset by default; the window renews by itself, LIFE-950)
 METER_STATE_DIR input LIFE-889: where the metering proxy keeps its spend ledger and audit lines
 NOTION_BILLS_DATA_SOURCE_ID input Notion data source id (bills)
 NOTION_BILLS_TOKEN secret Notion integration token for the bills integration
