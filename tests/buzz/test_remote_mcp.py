@@ -410,6 +410,31 @@ class Credentials(Server):
         status, out = self.tool(tok, "buzz_read", operation="list_channels", community="bytalos")
         self.assertEqual(out["error"], "community_not_authorized")
 
+    def test_duet_is_the_oauth_label_of_its_own_user_with_claudes_grants_and_never_claude_or_a_spoofed_sender(self):
+        """LIFE-922 (Jim, B1, comment 13883): the Duet connector signs in as its own IdP user, labelled `duet`; identity comes only from that verified `sub`, the grants are claude's, and an ungranted tool is refused."""
+        from datetime import datetime, timezone
+        from unittest import mock
+        USERS["user-duet"] = ("duet", ("life-os", "bytalos"))
+        self.addCleanup(USERS.pop, "user-duet", None)
+        self.start(access=self.access())
+        self.relays["duet"] = Relay(URLS, {"life-os": bytes([26]) * 32, "bytalos": bytes([27]) * 32}, (("life-os", CHAN),), self.fake)
+        tok, web = token(sub="user-duet"), token(sub="user-claude")
+        self.assertEqual(self.tool(tok, "buzz_capabilities")[1]["data"]["identity"]["client"], "duet")            # Duet's own identity
+        self.assertEqual(self.tool(web, "buzz_capabilities")[1]["data"]["identity"]["client"], "claude")          # Claude web is unchanged
+        status, out = self.tool(tok, "buzz_read", operation="list_channels", community="bytalos")
+        self.assertEqual((status, out["ok"], self.receipts[-2]["tenant"], self.receipts[-2]["purpose"]), (200, True, "bytalos", "buzz-read"))
+        sent = []
+        with mock.patch.dict(buzz_mcp.INBOX, {"client": object(), "now": lambda: datetime(2026, 11, 23, 12, 0, tzinfo=timezone.utc)}), mock.patch("lifeos.platform.inbox_send.deliver", lambda item, client, now=None: sent.append(item) or {"ok": True}):
+            status, out = self.tool(tok, "buzz_read", operation="send_to_jim", community="life-os", arguments={"subject": "Duet spoof", "urgency": "FYI", "from": "claude-chat"})
+            self.assertEqual((out.get("ok"), sent), (False, []))                                                    # a caller-named sender is refused before anything is written
+            self.tool(tok, "buzz_read", operation="send_to_jim", community="life-os", arguments={"subject": "Duet synthetic test", "urgency": "FYI"})
+        self.assertEqual([i["from"] for i in sent], ["duet"])                                                      # the sender is the verified label
+        before = len(self.fake.calls)
+        for op, args in (("gmail_search", {"account": "personal", "query": "x"}), ("drive_search", {"account": "personal", "query": "x"})):
+            status, out = self.tool(tok, "buzz_read", operation=op, community="life-os", arguments=args)
+            self.assertEqual((out["error"], out["reason"]), ("access_denied", "no_grant"), op)                    # refused by the gate
+        self.assertEqual(len(self.fake.calls), before)                                                            # and before any request left the service
+
     def test_no_other_credential_can_hold_the_write_scope_and_the_file_refuses_to_load_if_one_tries(self):
         from lifeos.platform import mcp_access
         from tests.platform.mcp_access_fixture import CATALOG, DOC

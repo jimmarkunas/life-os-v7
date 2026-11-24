@@ -195,12 +195,12 @@ class SeededGrants(unittest.TestCase):
         self.assertEqual(sorted({g.tool for g in access.grants}), ["agent_lookup", "buzz_capabilities", "buzz_publish", "buzz_read", "drive_read", "drive_search", "gmail_read", "gmail_search", "memory_correct", "memory_recall", "memory_revoke", "memory_store", "send_to_jim", "source_read"])
         writes = [g for g in access.grants if "write" in g.actions]                                                # Jim, Nov 22 2026 (option A): the only writes are today's Buzz publishing for the two chat clients, in the two communities each can write to
         self.assertEqual({(g.principal, g.tool, g.purpose, g.credential_ref) for g in writes},
-                         {(p, "buzz_publish", "buzz-publish", "buzz-scoped-member-key") for p in ("claude-chat", "claude-chat-bytalos", "chatgpt-chat", "chatgpt-chat-bytalos", "muse-chat")}
+                         {(p, "buzz_publish", "buzz-publish", "buzz-scoped-member-key") for p in ("claude-chat", "claude-chat-bytalos", "chatgpt-chat", "chatgpt-chat-bytalos", "muse-chat", "duet-chat", "duet-chat-bytalos")}
                          | {(p, op, "synthetic-memory-test", "mcp-credential-" + p) for p in ("openclaw", "hermes-librarian") for op in ("memory_store", "memory_correct", "memory_revoke")}   # LIFE-868 (Jim, comment 13743): synthetic memory writes
-                         | {(p, "send_to_jim", "agent-inbox", "notion-readonly-token") for p in ("mac-claude-code", "oracle-claude-code", "openclaw", "hermes-librarian", "claude-chat", "chatgpt-chat", "honcho-alerts", "muse-chat")})   # LIFE-876 (Jim, comments 13748 and 13823): the Agent Inbox, Personal only
+                         | {(p, "send_to_jim", "agent-inbox", "notion-readonly-token") for p in ("mac-claude-code", "oracle-claude-code", "openclaw", "hermes-librarian", "claude-chat", "chatgpt-chat", "honcho-alerts", "muse-chat", "duet-chat")})   # LIFE-876 (Jim, comments 13748 and 13823): the Agent Inbox, Personal only
         self.assertEqual({g.tenant for g in writes if g.tool == "send_to_jim"}, {"personal"})
-        self.assertEqual(len(writes), 19)
-        self.assertEqual(sorted(c["principal"] for c in CATALOG["capabilities"] if c["tool"] == "send_to_jim"), sorted(["mac-claude-code", "oracle-claude-code", "openclaw", "hermes-librarian", "claude-chat", "chatgpt-chat", "honcho-alerts", "muse-chat"]))   # a catalog row for exactly the six granted clients, none for the stdio Mac row or a Bytalos principal
+        self.assertEqual(len(writes), 22)
+        self.assertEqual(sorted(c["principal"] for c in CATALOG["capabilities"] if c["tool"] == "send_to_jim"), sorted(["mac-claude-code", "oracle-claude-code", "openclaw", "hermes-librarian", "claude-chat", "chatgpt-chat", "honcho-alerts", "muse-chat", "duet-chat"]))   # a catalog row for exactly the six granted clients, none for the stdio Mac row or a Bytalos principal
 
     def test_the_shipped_seed_lets_no_one_call_send_to_jim(self):
         """LIFE-865: no client has the send_to_jim MCP server configured, so the Mac client resolves but is refused before any inbox row."""
@@ -217,6 +217,19 @@ class SeededGrants(unittest.TestCase):
         self.assertEqual(M.identify(access, "http", {"credential": "muse"})["id"], "muse-chat")
         with self.assertRaises(M.AccessError):                                                                    # an unknown client is refused
             M.identify(access, "http", {"credential": "muse2"})
+
+    def test_duet_holds_exactly_the_grants_claude_holds_under_its_own_client_and_nothing_wider(self):
+        """LIFE-922 (Jim, comment 13883): the claude client's Buzz read and publish in Personal and Bytalos plus send_to_jim in Personal, expiring Feb 22 2027; identified by the verified OAuth label `duet` only."""
+        access = M.load()
+        shape = lambda principal: sorted((g.tenant, g.tool, g.purpose, tuple(g.actions), g.credential_ref, g.expires.date().isoformat(), g.revoked) for g in access.grants if g.principal.startswith(principal))
+        self.assertEqual(shape("duet-chat"), shape("claude-chat"))                                               # the same rows, the same scope, no widening
+        self.assertEqual(sorted({g.tool for g in access.grants if g.principal.startswith("duet-chat")}), ["buzz_capabilities", "buzz_publish", "buzz_read", "send_to_jim"])
+        self.assertEqual([c["facts"] for c in json.loads(M.FILE.read_text())["clients"] if c["id"] == "duet-chat"], [{"oauth_client": "duet"}])
+        self.assertEqual(M.identify(access, "http", {"oauth_client": "duet"})["id"], "duet-chat")
+        self.assertEqual(M.identify(access, "http", {"oauth_client": "claude"})["id"], "claude-chat")              # the existing clients are unchanged
+        self.assertEqual(M.identify(access, "http", {"oauth_client": "chatgpt"})["id"], "chatgpt-chat")
+        with self.assertRaises(M.AccessError):
+            M.identify(access, "http", {"oauth_client": "duet2"})
 
     def test_only_the_catalog_rows_a_live_call_exercised_are_working_and_every_other_seeded_row_stays_synthetic(self):
         """LIFE-865 live proof (Nov 22 2026, through the claude.ai Buzz connector against release 52343c06da4e): Claude's capabilities and Personal read, and its Bytalos read, were called live. Nothing else was: not ChatGPT, not a publish, not send_to_jim."""
@@ -240,8 +253,8 @@ class ProposedPublishGrants(unittest.TestCase):
         self.assertEqual(len(grants), 4)
         active = {g["id"] for g in DOC["grants"]}
         self.assertEqual(active & {g["id"] for g in grants}, {g["id"] for g in grants})
-        self.assertEqual([c for c in CATALOG["capabilities"] if c["tool"] == "buzz_publish" and c["principal"] != "muse-chat"], rows)                    # Muse's own publish grant (LIFE-923, Jim's M3) is pinned by its own test
-        self.assertEqual([g for g in DOC["grants"] if g["tool"] == "buzz_publish" and g["principal"] != "muse-chat"], grants)                                   # exactly these, no other publish grant
+        self.assertEqual([c for c in CATALOG["capabilities"] if c["tool"] == "buzz_publish" and c["principal"] not in ("muse-chat", "duet-chat", "duet-chat-bytalos")], rows)                    # Muse's own publish grant (LIFE-923, Jim's M3) is pinned by its own test
+        self.assertEqual([g for g in DOC["grants"] if g["tool"] == "buzz_publish" and g["principal"] not in ("muse-chat", "duet-chat", "duet-chat-bytalos")], grants)                                   # exactly these, no other publish grant
         self.assertEqual({(g["principal"], g["tenant"], g["tool"], tuple(g["actions"]), g["purpose"], g["expires"]) for g in grants},
                          {(p, t, "buzz_publish", ("write",), "buzz-publish", "2027-02-22") for p, t in (("claude-chat", "personal"), ("claude-chat-bytalos", "bytalos"), ("chatgpt-chat", "personal"), ("chatgpt-chat-bytalos", "bytalos"))})
         self.assertEqual({r["status"] for r in rows}, {"synthetic"})
