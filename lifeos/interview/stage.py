@@ -5,7 +5,7 @@ from lifeos.platform.runtime import RunContext, DeadlineExceeded
 from lifeos.platform.notion_client import NotionError
 from . import notion
 from .identity import resolve_parent
-from .models import Ownership, ParentQuery, State
+from .models import Ownership, Parent, ParentQuery, State
 from lifeos.platform.names import split_title
 
 
@@ -56,6 +56,20 @@ def _closed_rounds(client, parent, context, rounds):
     for child in children.items:
         if child.identity_valid is True and notion.ownership(client, child.page_id, "round") == Ownership.MACHINE:
             rounds.append((parent, child))
+    return True
+
+
+def _root_rounds(client, environ, context, rounds):
+    """LIFE-931: a machine opportunity page that sits directly under Hiring Pipeline (outside the Active and Retired containers, like Uber's) is not in the survey; its machine rounds are listed here. -> False when a read was incomplete."""
+    root = (environ.get("HIRING_PIPELINE_PAGE_ID") or "").strip()
+    try:
+        pages = [b for b in notion.children(client, root, [notion.MAX_CALLS], context) if b.get("type") == "child_page"]
+    except NotionError:
+        return False
+    for block in pages:
+        context.require_time()
+        if notion.ownership(client, block["id"], "opportunity") == Ownership.MACHINE and not _closed_rounds(client, Parent(block["id"], (block.get("child_page") or {}).get("title", "")), context, rounds):
+            return False
     return True
 
 
@@ -156,6 +170,14 @@ def _apply_prep(client, environ, prep_evidence, limit, live, context, counts):
 def _roster(client, environ, rounds, live, context, counts):
     """LIFE-931: keep the Interviews list current. Only after a complete survey (an unreadable job leaves the list as it was); a list that is absent or unreadable is a code, never a block."""
     from . import roster
+    if not _root_rounds(client, environ, context, rounds):
+        rounds.append(None)
+    unique, seen = [], set()
+    for item in rounds:
+        if item is None or item[1].page_id not in seen:
+            unique.append(item)
+            seen.add(item[1].page_id if item else None)
+    rounds = unique
     if None in rounds:
         counts["why"]["roster_skipped"] = counts["why"].get("roster_skipped", 0) + 1
         return
