@@ -154,7 +154,7 @@ POINTER_PREFIX = "Latest review:"
 
 def _find_pointer(client, page_id):
     """The one paragraph or callout on the Dashboard page whose text starts `Latest review:` -> its id, or None; two of them stop the stage."""
-    found = [b["id"] for b in wl._flat(wl._tree(client, page_id)) if b.get("type") in POINTER_KINDS and wl.block_text(b).strip().startswith(POINTER_PREFIX)]
+    found = [b["id"] for b in wl._flat(wl._tree(client, page_id, limit=9)) if b.get("type") in POINTER_KINDS and wl.block_text(b).strip().startswith(POINTER_PREFIX)]
     if len(found) > 1:
         raise _fail("POINTER_AMBIGUOUS")
     return found[0] if found else None
