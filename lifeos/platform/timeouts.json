@@ -204,14 +204,6 @@
    "slowest_seconds": 678,
    "target": 30
   },
-  "domains.yml::interview_shadow": {
-   "basis": "not measured: no completed run in the last 100; keeps its current value",
-   "current": 30,
-   "median_seconds": null,
-   "runs_measured": 0,
-   "slowest_seconds": null,
-   "target": 30
-  },
   "domains.yml::followup": {
    "basis": "not measured: no completed run in the last 100; keeps its current value",
    "current": 15,

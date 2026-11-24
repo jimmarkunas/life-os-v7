@@ -264,66 +264,13 @@ class LateRun(unittest.TestCase):
         self.assertEqual(counts["mail_causes"], read_counts["mail_causes"])
 
 
-class Shadow(unittest.TestCase):
-    """The proof-week fingerprint: a fresh read restricted to mail received before the snapshot time, compared with the snapshot. Counts only."""
-
-    def go(self, db, fresh, now=NOW, started="2026-11-22T12:07:00Z"):
-        with contextlib.redirect_stdout(io.StringIO()):
-            return snap.shadow(20, False, environ={**ENV, "TICK_STARTED": started}, now=now, connect=db, read=read_of(fresh))
-
-    def test_an_identical_fresh_read_matches(self):
-        counts = self.go(saved(Db()), RECORDS)
-        self.assertEqual((counts["shadow"], counts["match"]), ("compared", True))
-        self.assertEqual(counts["snapshot_fp"], counts["fresh_fp"])
-
-    def test_mail_that_arrived_after_the_snapshot_is_left_out_of_the_comparison(self):
-        late = {**mail(subject="Arrived later"), "id": "later", "received": (TAKEN + timedelta(minutes=10)).strftime("%Y-%m-%dT%H:%M:%SZ")}
-        self.assertTrue(self.go(saved(Db()), RECORDS + [late])["match"])
-
-    def test_mail_older_than_the_window_edge_is_left_out_of_both_sides(self):
-        edge = {**mail(subject="Edge"), "id": "edge", "received": (NOW - timedelta(days=14) - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")}
-        self.assertTrue(self.go(saved(Db(), records=RECORDS + [edge]), RECORDS)["match"])
-
-    def test_a_difference_is_reported_by_count_never_by_content(self):
-        changed = [{**RECORDS[0], "body": "different"}, *RECORDS[1:2]]
-        counts = self.go(saved(Db()), changed)
-        self.assertEqual((counts["match"], counts["only_snapshot"], counts["only_fresh"], counts["changed"]), (False, 1, 0, 1))
-        self.assertNotIn("different", json.dumps(counts))
-        self.assertNotIn("example", json.dumps(counts))
-
-    def test_no_usable_snapshot_means_no_fresh_read(self):
-        def boom(*args):
-            raise AssertionError("a fresh read was made")
-        for db, why in ((Db(), "none"), (saved(Db(), complete=False), "incomplete"), (Db(down=True), "store")):
-            with contextlib.redirect_stdout(io.StringIO()):
-                counts = snap.shadow(20, False, environ={**ENV, "TICK_STARTED": "2026-11-22T12:07:00Z"}, now=NOW, connect=db, read=boom)
-            self.assertEqual((counts["shadow"], counts["why"]), ("skipped", why))
-
-    def test_a_run_without_a_tick_start_is_skipped(self):
-        with contextlib.redirect_stdout(io.StringIO()):
-            counts = snap.shadow(20, False, environ=ENV, now=NOW, connect=saved(Db()), read=read_of(RECORDS))
-        self.assertEqual((counts["shadow"], counts["why"]), ("skipped", "no_tick"))
-
-    def test_a_fresh_read_with_a_source_down_is_unverified_not_a_mismatch(self):
-        with contextlib.redirect_stdout(io.StringIO()):
-            counts = snap.shadow(20, False, environ={**ENV, "TICK_STARTED": "2026-11-22T12:07:00Z"}, now=NOW, connect=saved(Db()), read=read_of(RECORDS[:1], down=1))
-        self.assertEqual((counts["shadow"], counts["match"]), ("unverified", None))
-
-    def test_it_writes_nothing(self):
-        db = saved(Db())
-        before = len(db.sql)
-        self.go(db, RECORDS)
-        self.assertTrue(all(sql.startswith("SELECT") for sql in db.sql[before:]))
-
-
 class Wiring(unittest.TestCase):
-    def test_the_two_stages_are_registered_and_the_early_one_is_not_required(self):
+    def test_the_early_stage_is_registered_and_not_required(self):
         from lifeos import run
         from lifeos.platform import budget
-        self.assertEqual((run.STAGES["interview-mail"].target, run.STAGES["interview-mail-shadow"].target),
-                         (("lifeos.sources.interview.mail_snapshot", "stage"), ("lifeos.sources.interview.mail_snapshot", "shadow")))
+        self.assertEqual(run.STAGES["interview-mail"].target, ("lifeos.sources.interview.mail_snapshot", "stage"))
+        self.assertNotIn("interview-mail-shadow", run.STAGES)
         self.assertFalse(budget.budget_for("interview-mail")[1])                                 # a failed early read never fails the run
-        self.assertFalse(budget.budget_for("interview-mail-shadow")[1])
         self.assertTrue(budget.budget_for("interview")[1])                                       # the late writer is unchanged
 
 
