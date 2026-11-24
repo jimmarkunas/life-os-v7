@@ -80,6 +80,13 @@ class PlaceCredentials(unittest.TestCase):
         self.assertIn("notion_readonly_token", dropin)
         self.assertNotIn("buzz_selfhost_relay_key", dropin)                                                        # the MCP service never loads the relay's key
 
+    def test_the_claude_handoff_token_is_placed_for_hermes_but_never_loaded_by_the_mcp_service(self):
+        done, tmp, creds = self.run_script([{"key": "lifeos/edge/CLAUDE_CODE_OAUTH_TOKEN", "value": SENTINEL}, {"key": "NOTION_READONLY_TOKEN", "value": SENTINEL}], "lifeos/edge/CLAUDE_CODE_OAUTH_TOKEN", "NOTION_READONLY_TOKEN")      # LIFE-964
+        self.assertEqual(done.stdout.splitlines(), ["lifeos/edge/CLAUDE_CODE_OAUTH_TOKEN ok", "NOTION_READONLY_TOKEN ok"])
+        self.assertEqual(sorted(p.name for p in creds.iterdir()), ["claude_code_oauth_token.cred", "notion_readonly_token.cred"])
+        self.assertNotIn("claude_code_oauth_token", (tmp / "dropin.conf").read_text())                            # the MCP service never loads Hermes's Claude token
+        self.assertNotIn(SENTINEL, done.stdout + done.stderr + self.everything_written(tmp))
+
     def test_list_names_prints_only_matching_names_never_a_value_and_places_nothing(self):
         secrets = [{"key": "GMAIL_OAUTH_REFRESH_TOKEN", "value": SENTINEL}, {"key": "gmail_other", "value": SENTINEL}, {"key": "NOTION_READONLY_TOKEN", "value": SENTINEL}]
         done, tmp, creds = self.run_script(secrets, "--list-names", "gmail")
