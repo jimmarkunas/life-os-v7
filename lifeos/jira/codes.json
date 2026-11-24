@@ -236,5 +236,33 @@
     false,
     "Unapproved unfinished MEJ work lacks a verified backlog destination before sprint close.",
     "Verify the Jira Agile backlog REST operation and readback, then explicitly replan without blanket carry."
+  ],
+  "JIRA_MEJ_BACKLOG_FAILED": [
+      "jira",
+      "blocked",
+      false,
+      "The Jira backlog placement or its read-back failed (permission, rate limit, timeout or an unreadable reply); the sprint was not closed.",
+      "None until the backlog contract is verified (LIFE-918); nothing was changed beyond the verified carry."
+  ],
+  "JIRA_MEJ_BACKLOG_PARTIAL": [
+      "jira",
+      "retry",
+      false,
+      "Not every excluded MEJ issue was found in the backlog after the move; the sprint was not closed.",
+      "One bounded re-plan, then it stops; inspect the sprint before the next run."
+  ],
+  "JIRA_MEJ_DESTINATION_MISMATCH": [
+      "jira",
+      "blocked",
+      false,
+      "A carried issue and a backlogged issue ended up in the wrong destination (a child apart from its parent).",
+      "Do not close; inspect the source sprint, the target sprint and the backlog."
+  ],
+  "JIRA_MEJ_SPRINT_STALE": [
+      "jira",
+      "blocked",
+      false,
+      "The source sprint read is stale (already closed) or an issue reads as belonging to another sprint.",
+      "Refresh the Jira sprint inventory; no sprint was closed."
   ]
 }
