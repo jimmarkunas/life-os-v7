@@ -5,7 +5,6 @@ import stat
 import subprocess
 import tempfile
 import unittest
-from datetime import datetime, timedelta, timezone
 
 import yaml
 
@@ -13,7 +12,10 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 FAKE_GH = """#!/bin/sh
 echo "$*" >> "$GH_LOG"
 case "$*" in
-  *capacity-card.yml/runs*) [ "$LAST" = "FAIL" ] && exit 1; printf '%s' "$LAST" ;;
+  *capacity-card.yml/runs*)                                   # LAST: minutes since the last card run, "none" for no history, "FAIL" for an unreadable one
+    [ "$LAST" = "FAIL" ] && exit 1
+    [ "$LAST" = "none" ] && exit 0
+    python3 -c 'import sys, datetime as d; print((d.datetime.now(d.timezone.utc) - d.timedelta(minutes=int(sys.argv[1]))).strftime("%Y-%m-%dT%H:%M:%SZ"), end="")' "$LAST" ;;
   *domains.yml/dispatches*) exit "${DOMAINS_EXIT:-0}" ;;
   *capacity-card.yml/dispatches*) exit "${CARD_EXIT:-0}" ;;
 esac
@@ -39,39 +41,35 @@ def run_step(last, **extra):
         return done.returncode, log.read_text().splitlines() if log.exists() else []
 
 
-def ago(minutes):
-    return (datetime.now(timezone.utc) - timedelta(minutes=minutes)).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
 def started_card(calls):
     return [c for c in calls if "capacity-card.yml/dispatches" in c]
 
 
 class TickStartsTheCard(unittest.TestCase):
     def test_a_card_run_older_than_forty_minutes_is_started_by_the_tick_following_v7_live(self):
-        code, calls = run_step(ago(75))
+        code, calls = run_step("75")
         self.assertEqual(code, 0)
         self.assertEqual(len(started_card(calls)), 1)
         self.assertIn("inputs[tick]=true", started_card(calls)[0])
         self.assertNotIn("inputs[live]", started_card(calls)[0])                     # the tick never forces a live write: the card follows V7_LIVE
 
     def test_a_recent_run_from_the_cron_is_not_doubled(self):
-        code, calls = run_step(ago(6))                                               # the :55 cron fired five minutes before this tick
+        code, calls = run_step("6")                                               # the :55 cron fired five minutes before this tick
         self.assertEqual((code, started_card(calls)), (0, []))
 
     def test_no_history_or_an_unreadable_one_starts_the_card(self):
-        self.assertEqual(len(started_card(run_step("")[1])), 1)
+        self.assertEqual(len(started_card(run_step("none")[1])), 1)
         self.assertEqual(len(started_card(run_step("FAIL")[1])), 1)
 
     def test_the_early_domains_run_is_still_started_and_its_failure_still_fails_the_step(self):
-        code, calls = run_step(ago(75))
+        code, calls = run_step("75")
         self.assertEqual(len([c for c in calls if "domains.yml/dispatches" in c]), 1)
-        code, calls = run_step(ago(75), DOMAINS_EXIT="3")
+        code, calls = run_step("75", DOMAINS_EXIT="3")
         self.assertEqual(code, 3)                                                    # a failed domains dispatch is still reported by the step (it tolerates it as before) ...
         self.assertEqual(len(started_card(calls)), 1)                                # ... and does not stop the card from starting
 
     def test_a_failed_card_dispatch_costs_only_a_stale_card(self):
-        code, _ = run_step(ago(75), CARD_EXIT="1")
+        code, _ = run_step("75", CARD_EXIT="1")
         self.assertEqual(code, 0)
 
     def test_the_card_workflow_takes_the_tick_flag_and_a_tick_run_follows_v7_live_not_the_manual_box(self):
