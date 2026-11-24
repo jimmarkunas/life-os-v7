@@ -214,7 +214,7 @@ def automation(runs, now):
             _down(lane, "NO_RUNS_" + name.split(".")[0].upper())
             continue
         lane.lines.append(f"{name}: {len(rows)} runs, {bad} failed, latest {rows[0][0] or 'running'}")
-        if rows[0][0] not in ("success", "skipped", None):
+        if rows[0][0] not in ("success", "skipped", "cancelled", None):
             _down(lane, "LATEST_RUN_FAILED_" + name.split(".")[0].upper())
     if failed:
         lane.items.append(("System Maintenance", f"{failed} workflow runs failed in the review week: confirm each has a cause and a fix."))

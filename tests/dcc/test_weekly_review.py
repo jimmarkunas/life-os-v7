@@ -356,3 +356,18 @@ class DeepDashboard(unittest.TestCase):
         out = go(n, drive=drive_ok)
         self.assertEqual(out["pointer"], "updated")
         self.assertIn("week ending", n.blocks["b" * 32]["paragraph"]["rich_text"][0]["plain_text"])
+
+
+class AutomationLane(unittest.TestCase):
+    NOW = datetime(2026, 11, 24, 13, 30, tzinfo=CT)
+
+    def test_a_cancelled_latest_run_is_not_a_failure_but_a_failed_one_is_and_the_receipt_names_the_reason(self):
+        ok = {"hourly.yml": [("cancelled", self.NOW), ("failure", self.NOW)], "domains.yml": [("success", self.NOW)]}
+        lane = wl.automation(ok, self.NOW)
+        self.assertEqual(lane.health, "Healthy")
+        self.assertEqual(lane.items[0][0], "System Maintenance")                # the one failed run in the week is still a decision
+        bad = wl.automation({"hourly.yml": [("failure", self.NOW)], "domains.yml": [("success", self.NOW)]}, self.NOW)
+        self.assertEqual((bad.health, bad.reason), ("Degraded", "LATEST_RUN_FAILED_HOURLY"))
+        n = Notion(fresh=False)
+        out = go(n, drive=drive_ok, opener=runs(ok=False))
+        self.assertIn("Automation", out["weeks"][0]["reasons"])
