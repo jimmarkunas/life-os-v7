@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import patch
 from lifeos.interview import create, notion, stage
 from lifeos.interview.models import ParentQuery, RoundQuery
-from lifeos.platform.notion_client import NotionError
+from lifeos.platform.notion_client import NotionError, rich_text
 from tests.interview.test_create import WritableFake
 from tests.interview.test_notion import ENV
 
@@ -190,3 +190,57 @@ class Life43(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CarriedOver(unittest.TestCase):
+    """LIFE-931: callouts copied by hand from a human's older notes page (interviewers, time, transcript link) survive every hourly refresh."""
+
+    def setUp(self):
+        from tests.jobs.fakes_jobsdb import claim_store
+        _claims, _stop = claim_store()
+        self.addCleanup(_stop)
+
+    def carry(self, client, prefixes):
+        """Overwrite each paragraph that starts with a prefix with a carried-over line; -> {prefix: (block id, new text)}."""
+        kept = {}
+        for blocks in client.blocks.values():
+            for b in blocks:
+                text = notion.text(b)
+                for prefix in prefixes:
+                    if b.get("type") == "paragraph" and text.startswith(prefix) and prefix not in kept:
+                        new = f"{prefix}carried {create.CARRIED} (LIFE-931)"
+                        notion.set_text(client, b["id"], "paragraph", rich_text(new))
+                        kept[prefix] = (b["id"], new)
+        return kept
+
+    def read(self, client, kept):
+        return {p: next(notion.text(b) for bs in client.blocks.values() for b in bs if b["id"] == i) for p, (i, _) in kept.items()}
+
+    def test_a_calendar_move_keeps_every_carried_line_and_still_reads_back(self):
+        client, _, child = pending_round()
+        move(client, child)
+        kept = self.carry(client, ("Interviewer: ", "Date / time: ", "Meeting link / location: "))
+        self.assertEqual(len(kept), 3)
+        notes = notion.protected_snapshot(client, child, "round")
+        result = move(client, child, date=LATER)
+        self.assertEqual((result["why"].get("round_rescheduled"), result["readback_ok"], result.get("repaired_edits", 0)), (1, 1, 0))
+        self.assertEqual(self.read(client, kept), {p: t for p, (_, t) in kept.items()})
+        self.assertIn(f"{LATER} · accepted Calendar invite", snapshot(client, child))      # the uncarried lines still move
+        self.assertEqual(notion.protected_snapshot(client, child, "round"), notes)
+        self.assertEqual(create.round_calendar(client, child), (REF, False))
+
+    def test_the_transcript_link_lines_are_kept_when_the_page_has_no_marker(self):
+        client, _, child = pending_round()
+        client.blocks[child].append({"id": "ft", "type": "child_page", "child_page": {"title": "Full Transcript"}})
+        client.blocks["ft"] = [{"id": "ft-1", "type": "paragraph", "paragraph": {"rich_text": rich_text("Speaker A: copied word for word")}}]
+        kept = self.carry(client, ("Transcript: ", "Full Transcript page: "))
+        self.assertEqual(len(kept), 2)
+        out = {}
+        self.assertEqual(create.link_transcript(client, child, True, out), "transcript_unchanged")
+        self.assertEqual((out.get("writes", 0), self.read(client, kept)), (0, {p: t for p, (_, t) in kept.items()}))
+
+    def test_an_uncarried_stale_line_is_still_updated(self):
+        client, _, child = pending_round()
+        client.blocks[child].append({"id": "ft", "type": "child_page", "child_page": {"title": "Full Transcript"}})
+        client.blocks["ft"] = [{"id": "ft-1", "type": "paragraph", "paragraph": {"rich_text": rich_text(create.TRANSCRIPT_MARKER + "placeholder")}}]
+        self.assertEqual(create.link_transcript(client, child, True, {}), "transcript_linked")
