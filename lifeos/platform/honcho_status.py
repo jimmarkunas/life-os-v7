@@ -6,12 +6,13 @@ RESERVED (a hold against the meter's cap, from the meter itself) and ACTUAL (bil
 Red only for ALERT and STOPPED; UNVERIFIED stays neutral (Jim, Nov 23 2026, comment 13901)."""
 import json
 import socket
-from datetime import datetime, timezone
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from lifeos.platform import credit_window
+
 TZ = ZoneInfo("America/Chicago")
-PROMO_USD = 100.0
-PROMO_END = datetime(2026, 12, 6, 0, 0, tzinfo=timezone.utc)          # Dec 5 2026, 6:00 PM CT: the promotional credits end and the meter stops
+PROMO_USD = credit_window.PROMO_USD                                    # LIFE-950: the credit and the meter's cap both reset on the 5th at 6:00 PM CT, each month
 NEAR_REMAINING = 25                                                    # NEAR LIMIT at or below this percent of the credit left (the table's own threshold)
 PORT, MAX_REPLY, WAIT, TTL = 47341, 4096, 100, 600                      # Oracle's private `oracle1` endpoint (the one the Oracle card reads), its reply limit, wait and freshness in seconds
 FLAGS = ("health", "failed", "exhausted", "stopped")
@@ -100,27 +101,26 @@ def _money(v, places=2):
 
 def ranked(h, a, now):
     """-> [(percent left or 101 when unknown, cells)] for the promo credit and the Honcho meter. Cells are the table's six: Pool, Remaining, Used, Window, Resets, Status (its own words)."""
-    end = PROMO_END.astimezone(TZ)
+    end = credit_window.window(now)[1]
     resets = f"{end.strftime('%a %b')} {end.day}, {_clock(end)}"
-    expired = now.astimezone(timezone.utc) >= PROMO_END
     billed = a["billed_usd"] if a else None
     if billed is None:
-        promo = (101, ["Anthropic · promo credit", "UNVERIFIED", "UNVERIFIED", "until Dec 5", resets, "UNAVAILABLE"])
+        promo = (101, ["Anthropic · promo credit", "UNVERIFIED", "UNVERIFIED", "monthly", resets, "UNAVAILABLE"])
     else:
         left = max(0.0, PROMO_USD - billed)
-        status = "EXPIRED" if expired else "EXHAUSTED" if left <= 0 else "NEAR LIMIT" if left / PROMO_USD * 100 <= NEAR_REMAINING else "AVAILABLE"
-        promo = (left / PROMO_USD * 100, ["Anthropic · promo credit", f"{_money(left)} of ${PROMO_USD:.0f}", f"{_bar(billed / PROMO_USD * 100)} {_money(billed)} billed", "until Dec 5", resets, status])
+        status = "EXHAUSTED" if left <= 0 else "NEAR LIMIT" if left / PROMO_USD * 100 <= NEAR_REMAINING else "AVAILABLE"
+        promo = (left / PROMO_USD * 100, ["Anthropic · promo credit", f"{_money(left)} of ${PROMO_USD:.0f}", f"{_bar(billed / PROMO_USD * 100)} {_money(billed)} billed", "monthly", resets, status])
     meter = h["meter"] if h else None
     actual = a["honcho_usd"] if a else None
     if meter is None:
-        row = (101, ["Anthropic · Honcho meter", "UNVERIFIED", "UNVERIFIED", "meter cap", f"hard stop {resets}", "UNAVAILABLE"])
+        row = (101, ["Anthropic · Honcho meter", "UNVERIFIED", "UNVERIFIED", "monthly cap", resets, "UNAVAILABLE"])
     else:
         cap, reserved = meter["cap"], meter["reserved"]
         stopped = bool(h["exhausted"] or h["stopped"]) or reserved >= cap
         left = max(0.0, (cap - reserved) / cap * 100) if cap else 0.0
-        status = "EXPIRED" if expired else "EXHAUSTED" if stopped else "NEAR LIMIT" if left <= NEAR_REMAINING else "AVAILABLE"
+        status = "EXHAUSTED" if stopped else "NEAR LIMIT" if left <= NEAR_REMAINING else "AVAILABLE"
         used = f"{_bar(reserved / cap * 100 if cap else 100)} {_money(reserved, 3)} reserved · " + (f"{_money(actual)} actual" if actual is not None else "actual UNVERIFIED")
-        row = (left, ["Anthropic · Honcho meter", f"{_money(max(0.0, cap - reserved))} of {_money(cap)} cap", used, "meter cap", f"hard stop {resets}", status])
+        row = (left, ["Anthropic · Honcho meter", f"{_money(max(0.0, cap - reserved))} of {_money(cap)} cap", used, "monthly cap", resets, status])
     return [promo, row]
 
 
@@ -134,12 +134,12 @@ def summary(h, a, now):
     read = _clock(now.astimezone(TZ))
     billed = a["billed_usd"] if a else None
     meter = h["meter"] if h else None
-    first = f"{_money(billed)} billed of ${PROMO_USD:.0f} promo credit (Anthropic report, read {read})" if billed is not None else "billed spend UNVERIFIED (Anthropic report not read)"
+    first = f"{_money(billed)} billed of ${PROMO_USD:.0f} promo credit this window (Anthropic report, read {read})" if billed is not None else "billed spend UNVERIFIED (Anthropic report not read)"
     if meter is None:
         second = "Honcho meter UNVERIFIED"
     else:
         actual = a["honcho_usd"] if a else None
-        second = f"Honcho meter {_money(meter['reserved'], 3)} reserved, " + (f"{_money(actual)} actual" if actual is not None else "actual UNVERIFIED") + f" of {_money(meter['cap'])}"
+        second = f"Honcho meter {_money(meter['reserved'], 3)} reserved, " + (f"{_money(actual)} actual" if actual is not None else "actual UNVERIFIED") + f" of {_money(meter['cap'])} monthly cap"
     return f"Anthropic API · {first} · {second}"
 
 

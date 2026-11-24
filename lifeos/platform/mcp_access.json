@@ -654,7 +654,7 @@
     "write"
    ],
    "credential_ref": "mcp-credential-openclaw",
-   "expires": "2026-12-05",
+   "expires": "2099-12-31",
    "revoked": false
   },
   {
@@ -668,7 +668,7 @@
     "read"
    ],
    "credential_ref": "mcp-credential-openclaw",
-   "expires": "2026-12-05",
+   "expires": "2099-12-31",
    "revoked": false
   },
   {
@@ -682,7 +682,7 @@
     "write"
    ],
    "credential_ref": "mcp-credential-openclaw",
-   "expires": "2026-12-05",
+   "expires": "2099-12-31",
    "revoked": false
   },
   {
@@ -696,7 +696,7 @@
     "write"
    ],
    "credential_ref": "mcp-credential-openclaw",
-   "expires": "2026-12-05",
+   "expires": "2099-12-31",
    "revoked": false
   },
   {
@@ -710,7 +710,7 @@
     "write"
    ],
    "credential_ref": "mcp-credential-hermes-librarian",
-   "expires": "2026-12-05",
+   "expires": "2099-12-31",
    "revoked": false
   },
   {
@@ -724,7 +724,7 @@
     "read"
    ],
    "credential_ref": "mcp-credential-hermes-librarian",
-   "expires": "2026-12-05",
+   "expires": "2099-12-31",
    "revoked": false
   },
   {
@@ -738,7 +738,7 @@
     "write"
    ],
    "credential_ref": "mcp-credential-hermes-librarian",
-   "expires": "2026-12-05",
+   "expires": "2099-12-31",
    "revoked": false
   },
   {
@@ -752,7 +752,7 @@
     "write"
    ],
    "credential_ref": "mcp-credential-hermes-librarian",
-   "expires": "2026-12-05",
+   "expires": "2099-12-31",
    "revoked": false
   },
   {
