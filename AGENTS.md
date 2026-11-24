@@ -23,6 +23,7 @@ Epics go `Scoping → Ready → In Progress → Done`; every child carries one l
 ## Always
 
 - Stops for Jim: wider workflow `permissions`, a new or moved credential (secrets manager only; GitHub holds just its bootstrap token), deleting GitHub data, spend over budget.
+- Buzz MCP (`lifeos/buzz/mcp.py`): adding or changing an operation must never touch the tool names, descriptions or schemas of `buzz_capabilities`, `buzz_read` and `buzz_publish`; if a change would, stop and ask Jim. Operations are served by `buzz_capabilities` and the `valid` list in errors (docs/buzz-remote-mcp-deploy.md).
 - Public repo: no personal data or secrets, ever (docs/PRIVACY.md).
 - Jira connector: `mcp__claude_ai_Atlassian_MCP__*` only; Rovo connectors are retired. Pass `fields` on reads.
 - Times for Jim: Central Time, 12-hour, labeled CT.
