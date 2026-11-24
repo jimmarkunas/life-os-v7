@@ -107,6 +107,13 @@ class RecruiterScreen(unittest.TestCase):
         code, counts = run_roster(client, [(self.ROUND[0][0], Child("uber", "p1", "2026-10-13", "Mike, account director, staffing firm", 1, True))])
         self.assertEqual((cell(client.rows[0], "Interview"), cell(client.rows[0], "Round"), counts.get("roster_updated", 0)), ("Becton Dickinson · Recruiter screen (staffing firm)", None, 0))
 
+    def test_a_screen_with_ordinal_zero_keeps_its_title_and_empty_round_cell(self):
+        client = Pages(self.SNAP)
+        child = Child("uber", "p1", "2026-10-13", None, 0, True)
+        run_roster(client, [(self.ROUND[0][0], child)])
+        code, counts = run_roster(client, [(self.ROUND[0][0], child)])
+        self.assertEqual((cell(client.rows[0], "Interview"), cell(client.rows[0], "Round"), counts.get("roster_updated", 0)), ("Becton Dickinson · Recruiter screen (staffing firm)", None, 0))
+
     def test_a_round_without_the_marker_is_still_a_numbered_round(self):
         client = Pages(self.SNAP[:2])
         run_roster(client, [(self.ROUND[0][0], Child("uber", "p1", "2026-10-13", None, 1, True))])
