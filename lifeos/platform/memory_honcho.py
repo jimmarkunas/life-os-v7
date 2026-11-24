@@ -1,4 +1,4 @@
-"""LIFE-868, LIFE-949: governed shared memory on the retained Honcho (store, recall, correct, revoke, ask), five gate tools of the Oracle LIFE OS MCP; memory is never a canonical fact.
+"""LIFE-868, LIFE-949: governed shared memory on the retained Honcho (store, recall, correct, revoke, ask) in the Oracle LIFE OS MCP; never a canonical fact.
 
 Personal only, purpose personal-memory, per client; the client in every record is the verified one (injected as `_client`). Items are Honcho conclusions holding one JSON envelope (text, source, client, CT time, id).
 Store and the new text of correct go through lifeos/platform/memory_filter.py first: a flagged text is refused as {"error": "sensitive_refused", "category", "stored": false} and never stored, echoed or logged
