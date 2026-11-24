@@ -187,13 +187,21 @@ class CreationTests(unittest.TestCase):
                 self.assertEqual(len(client.posts), previous + 1)
                 self.assertEqual(result["writes"], 0 if mode == "post" else 1)
 
+    def test_an_identity_with_ordinal_zero_is_a_valid_pre_screen_and_round_trips(self):
+        """LIFE-958 (Jim, comment 14112): ordinal 0 marks a recruiter pre-screen; it parses, and re-writing it never turns it into 1."""
+        line = create.IDENTITY_PREFIX + '{"interview_date":"2026-10-13","interviewer":null,"ordinal":0}'
+        data = create.parse_identity(line)
+        self.assertEqual(data, {"interview_date": "2026-10-13", "interviewer": None, "ordinal": 0})
+        self.assertEqual(create.identity_text(RoundQuery(True, "2026-10-13", None, 0)), line)
+        self.assertIsNone(create.parse_identity(line.replace('"ordinal":0', '"ordinal":false')))
+
     def test_machine_identity_invalid_blocks_even_explicit_lookup(self):
         client = WritableFake()
         machine_parent(client)
         self.run_evidence(client)
         marker = client.blocks["created-2-block-0"][0]
         valid = create.identity_text(ROUND)
-        bad = [None, "not JSON", valid.replace(":1;", ":2;"), valid.replace("2026-10-01", "2026-99-99"), valid.replace('"ordinal":1', '"ordinal":0'), valid.replace('"ordinal":1', '"ordinal":null'), valid.replace('"ordinal":1', '"ordinal":true')]
+        bad = [None, "not JSON", valid.replace(":1;", ":2;"), valid.replace("2026-10-01", "2026-99-99"), valid.replace('"ordinal":1', '"ordinal":-1'), valid.replace('"ordinal":1', '"ordinal":null'), valid.replace('"ordinal":1', '"ordinal":true')]
         for value in bad:
             with self.subTest(value=value):
                 client.blocks["created-2-block-0"] = [marker] + ([block(value)] if value else [])
