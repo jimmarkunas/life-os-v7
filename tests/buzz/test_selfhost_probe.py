@@ -69,6 +69,8 @@ class FakeRelay(ThreadingHTTPServer):
                 kind = body["kind"]
                 if kind == 9030 and author == OWNER_PUB and not relay.break_membership:
                     relay.members.add(tags["p"])
+                elif kind == 9031 and author == OWNER_PUB:
+                    relay.members.discard(tags["p"])
                 elif kind == 9007 and author == OWNER_PUB:
                     relay.channels[tags["h"]] = {OWNER_PUB}
                 elif kind == 9000 and author == OWNER_PUB and tags["h"] in relay.channels:
@@ -158,6 +160,17 @@ class SelfhostProbe(unittest.TestCase):
         self.assertNotIn(OWNER_HEX, done.stdout + done.stderr)
         empty, _ = self.run_probe(FakeRelay(), mode=("readd", "member"), stdin="")
         self.assertEqual((empty.stdout.splitlines()[-1], empty.returncode), ("readd fail (at least one public key is required)", 1))
+
+    def test_remove_mode_removes_only_the_given_public_keys_and_refuses_the_owners_own(self):
+        """LIFE-956: kind 9031 for each given key; the owner key is refused; no key but a public one is involved."""
+        relay = FakeRelay()
+        relay.members.add(AGENT_PUB)
+        done, _ = self.run_probe(relay, mode=("remove",), stdin=f"{AGENT_PUB}\n{OWNER_PUB}\n")
+        self.assertEqual((AGENT_PUB in relay.members, OWNER_PUB in relay.members), (False, True), done.stdout)
+        self.assertIn("remove_" + OWNER_PUB[:8] + " fail", done.stdout)
+        self.assertNotIn(OWNER_HEX, done.stdout + done.stderr)
+        empty, _ = self.run_probe(FakeRelay(), mode=("remove",), stdin="")
+        self.assertEqual((empty.stdout.splitlines()[-1], empty.returncode), ("remove fail (at least one public key is required)", 1))
 
     def test_names_mode_signs_one_name_only_profile_per_vault_key_and_prints_no_key(self):
         """LIFE-927: the owner and connector keys each set their own display name."""
