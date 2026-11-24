@@ -98,6 +98,11 @@ jobs:
             printf '%s\n' "$found" | grep -E '^[[:space:]]*[0-9]+' || true
           } | tee -a "$GITHUB_STEP_SUMMARY"
           exit 0
+      - name: Type check blocking (LIFE-600, Jim "600 block" Nov 24 2026; exactly the 42 lifeos/platform modules listed in mypy-blocking.txt, clean in every advisory replay Nov 10 to Nov 24; a type error in one of them fails the job, every other module stays advisory above)
+        run: |
+          start=$(date +%s)
+          python -m mypy --no-incremental $(cat mypy-blocking.txt)
+          echo "mypy (blocking): $(wc -l < mypy-blocking.txt | tr -d ' ') modules clean, $(( $(date +%s) - start )) s" | tee -a "$GITHUB_STEP_SUMMARY"
       # Jim, Nov 8 2026: the Concord Room Orca plugin (tools/orca-concord-room) is production, so its own Node tests run on every PR and every merge. Node's built-in test runner, no install, no network, no secret; outside the 90 s Python suite limit above.
       - uses: ./.github/actions/node
       - name: Concord Room plugin tests (node:test)
