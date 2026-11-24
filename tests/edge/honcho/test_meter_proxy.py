@@ -71,7 +71,7 @@ class Case(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.tmp)
         Upstream.seen, Upstream.mode = [], "json"
         self.up = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Upstream)
-        threading.Thread(target=self.up.serve_forever, daemon=True).start()
+        threading.Thread(target=lambda: self.up.serve_forever(poll_interval=0.01), daemon=True).start()
         self.addCleanup(self.up.shutdown)
         port = self.up.server_address[1]
         real = http.client.HTTPSConnection
@@ -90,7 +90,7 @@ class Case(unittest.TestCase):
             pass
         H.ledger, H.key = self.ledger, REAL_KEY
         self.proxy = mp.Server(("127.0.0.1", 0), H)
-        threading.Thread(target=self.proxy.serve_forever, daemon=True).start()
+        threading.Thread(target=lambda: self.proxy.serve_forever(poll_interval=0.01), daemon=True).start()
         self.addCleanup(self.proxy.shutdown)
         self.port = self.proxy.server_address[1]
 

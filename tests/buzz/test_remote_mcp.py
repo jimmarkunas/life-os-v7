@@ -61,7 +61,7 @@ class Server(unittest.TestCase):
         verifier = Verifier(ISS, BASE + "/mcp", CLIENTS, ISS + "/jwks", USERS, fetch=fetch or (lambda url: JWKS), clock=lambda: NOW)
         self.receipts = []
         srv = ThreadingHTTPServer(("127.0.0.1", 0), buzz_mcp.handler(self.relays, verifier, BASE, origins, self.audit.append, open_access() if access is None else (None if access is False else access), self.receipts.append))     # access=False: the handler loads the repo data itself
-        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        threading.Thread(target=lambda: srv.serve_forever(poll_interval=0.01), daemon=True).start()
         self.addCleanup(srv.server_close)
         self.addCleanup(srv.shutdown)
         self.url = f"http://127.0.0.1:{srv.server_address[1]}"
@@ -442,7 +442,7 @@ class Credentials(Server):
         self.start()
         verifier = V(ISS, BASE + "/mcp", CLIENTS, ISS + "/jwks", USERS, fetch=lambda url: JWKS, clock=lambda: NOW, extra_audiences=(second + "/mcp",))
         srv = ThreadingHTTPServer(("127.0.0.1", 0), buzz_mcp.handler(self.relays, verifier, BASE, (), self.audit.append, open_access(), self.receipts.append))
-        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        threading.Thread(target=lambda: srv.serve_forever(poll_interval=0.01), daemon=True).start()
         self.addCleanup(srv.server_close)
         self.addCleanup(srv.shutdown)
         self.url = f"http://127.0.0.1:{srv.server_address[1]}"
