@@ -45,8 +45,23 @@ def prep_outcome(result):
     return code not in DERIVED_OK, code in ("derived_readback_failed", "readback_protected_changed") or (result["writes"] > 0 and code != "derived_created")
 
 
-def _survey(client, environ, context, counts):
-    """READ: every active parent and its rounds, and who owns each page. -> False when the pipeline could not be read completely."""
+ROSTER_STAGES = ("Interviewing", "Offer", "Working", "Ended")       # LIFE-931: a job that reached interviews keeps its rounds on the Interviews list after it is closed
+
+
+def _closed_rounds(client, parent, context, rounds):
+    """The machine rounds of a job that is no longer active, for the Interviews list only (nothing is counted, nothing is written)."""
+    children = notion.child_scan(client, parent.page_id, context)
+    if not children.complete:
+        return False
+    for child in children.items:
+        if child.identity_valid is True and notion.ownership(client, child.page_id, "round") == Ownership.MACHINE:
+            rounds.append((parent, child))
+    return True
+
+
+def _survey(client, environ, context, counts, rounds=None):
+    """READ: every active parent and its rounds, and who owns each page. -> False when the pipeline could not be read completely.
+    `rounds` (LIFE-931), when given, collects every machine round it meets as (parent, child) for the Interviews list."""
     scan = notion.parents(client, environ, context)
     counts["observed"] = len(scan.items)
     counts["parents_ledger"], counts["parents_tree_only"] = scan.ledger, scan.tree_only        # LIFE-360: proof the Ledger path ran (ledger > 0), not the page-tree fallback alone
@@ -55,6 +70,8 @@ def _survey(client, environ, context, counts):
         return False
     for parent in scan.items:
         if not parent.active:
+            if rounds is not None and parent.stage in ROSTER_STAGES and not _closed_rounds(client, parent, context, rounds):
+                rounds.append(None)                                  # an unreadable closed job: the list is not synced this run
             continue
         context.require_time()
         company, role = split_title(parent.title)
@@ -81,6 +98,8 @@ def _survey(client, environ, context, counts):
                 _block(counts, "ownership_unknown")
             else:
                 counts["machine_pages" if owner == Ownership.MACHINE else "human_pages"] += 1
+                if rounds is not None and owner == Ownership.MACHINE and child.identity_valid is True:
+                    rounds.append((parent, child))
     return True
 
 
@@ -134,7 +153,16 @@ def _apply_prep(client, environ, prep_evidence, limit, live, context, counts):
             break
 
 
-def run(limit, live, environ=os.environ, client=None, evidence=(), context=None, _probe=False, prep_evidence=()):
+def _roster(client, environ, rounds, live, context, counts):
+    """LIFE-931: keep the Interviews list current. Only after a complete survey (an unreadable job leaves the list as it was); a list that is absent or unreadable is a code, never a block."""
+    from . import roster
+    if None in rounds:
+        counts["why"]["roster_skipped"] = counts["why"].get("roster_skipped", 0) + 1
+        return
+    roster.sync(client, environ, rounds, live, context, counts)
+
+
+def run(limit, live, environ=os.environ, client=None, evidence=(), context=None, _probe=False, prep_evidence=(), roster=False):
     context = context or RunContext.start(60)
     counts = {key: 0 for key in ("observed", "valid_parents", "with_rounds", "matched", "not_found", "blocked",
         "human_pages", "machine_pages", "writes_planned", "writes", "derived_created", "derived_match")}
@@ -153,9 +181,12 @@ def run(limit, live, environ=os.environ, client=None, evidence=(), context=None,
             shape = notion.ledger_shape(client, (environ.get("NOTION_JOB_LEDGER_DATA_SOURCE_ID") or "").strip(), context)
             _reason(counts, shape.pop("code"))
             counts.update(shape)
-        if _survey(client, environ, context, counts):
+        rounds = [] if roster else None
+        if _survey(client, environ, context, counts, rounds):
             _apply_evidence(client, environ, evidence, limit, live, context, _probe, counts)
             _apply_prep(client, environ, prep_evidence, limit, live, context, counts)
+            if roster and not _probe:
+                _roster(client, environ, rounds, live, context, counts)       # a round created in this run is listed by the next one
         return counts
     except (NotionError, DeadlineExceeded, KeyError, TypeError, ValueError) as error:
         from .create import cause_of

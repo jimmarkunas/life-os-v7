@@ -179,7 +179,7 @@ def parents_from_ledger(client, source_id, context=None):
         for row in map(_ledger_row, rows):
             if not (row["company"] and row["role"] and row["stage"] and row["id"]):
                 continue                                                       # an unnamed row is not a pursuit
-            found.append(Parent(row["id"], f"{row['company']} - {row['role']}", row["stage"] in LEDGER_ACTIVE and not row["decision"]))
+            found.append(Parent(row["id"], f"{row['company']} - {row['role']}", row["stage"] in LEDGER_ACTIVE and not row["decision"], row["stage"]))
         return Scan(tuple(found), True)
     except (NotionError, DeadlineExceeded, KeyError, TypeError, ValueError, AttributeError):
         return Scan((), False)

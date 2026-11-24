@@ -58,6 +58,7 @@ class Parent:
     page_id: str
     title: str
     active: bool = True
+    stage: str = field(default="", compare=False)           # LIFE-931: the Ledger row's Stage ("" for a page-tree parent); the Interviews list also reads rounds of a job that is no longer active
 
 
 @dataclass(frozen=True)

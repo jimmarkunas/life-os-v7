@@ -107,7 +107,7 @@ class Run:
     def __call__(self):
         captured = {}
 
-        def fake_stage(limit, live, environ, client, evidence, context):
+        def fake_stage(limit, live, environ, client, evidence, context, roster=False):
             captured.update(evidence=list(evidence), live=live, context=context)
             return dict(self.stage_counts)
 
