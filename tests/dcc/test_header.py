@@ -115,7 +115,7 @@ class RunTests(unittest.TestCase):
         with self.assertRaises(NotionError) as error:
             run(two)
         self.assertEqual(str(error.exception), "DCC_HEADER_AMBIGUOUS")
-        low = FakePage([{"id": f"b{i}", "type": "child_database"} for i in range(4)] + [para("h", LINE)])
+        low = FakePage([{"id": f"b{i}", "type": "child_database"} for i in range(6)] + [para("h", LINE)])
         with self.assertRaises(NotionError) as error:
             run(low)
         self.assertEqual(str(error.exception), "DCC_HEADER_MISPLACED")
