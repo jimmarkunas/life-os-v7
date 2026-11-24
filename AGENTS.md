@@ -29,6 +29,7 @@ Epics go `Scoping → Ready → In Progress → Done`; every child carries one l
 - Oracle: `ssh opc@lifeos-edge-01`; read via `sudo -u ubuntu`; root only for approved steps; nothing else changes.
 - Routing: [docs/index.json](docs/index.json).
 - Names: Claude Code is OC or MC (CLAUDE.md). ChatGPT signs `— ChatGPT` and never takes their claims.
+- Memory: at the start of a task, recall relevant memory; when Jim states a decision, preference or fact about his work, store it (`memory_recall`, `memory_store` through the LIFE OS MCP; non-sensitive only, canonical sources win).
 
 <!-- concord:start -->
 ## Concord — shared work-state for coding agents

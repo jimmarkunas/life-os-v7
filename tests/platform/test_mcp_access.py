@@ -181,6 +181,11 @@ class EveryHandlerIsGated(unittest.TestCase):
             yield node
 
 
+MEMORY_TOOLS = ("memory_ask", "memory_correct", "memory_recall", "memory_revoke", "memory_store")
+MEMORY_CLIENTS = ("claude-chat", "chatgpt-chat", "muse-chat", "mac-claude-code", "oracle-claude-code", "hermes-librarian", "openclaw", "duet-chat")
+MEMORY_CREDENTIALS = ("openclaw", "hermes-librarian", "mac-claude-code", "oracle-claude-code")
+
+
 class SeededGrants(unittest.TestCase):
     def test_every_seed_is_complete_expiring_named_and_in_the_catalog(self):
         access = M.load()
@@ -192,14 +197,15 @@ class SeededGrants(unittest.TestCase):
             self.assertRegex(g.credential_ref, r"^[a-z][a-z0-9-]+$")
             self.assertEqual(len(g.actions), 1, g.id)
             self.assertTrue(all((g.principal, g.tool, a) in rows for a in g.actions), g.id)
-        self.assertEqual(sorted({g.tool for g in access.grants}), ["agent_lookup", "buzz_capabilities", "buzz_publish", "buzz_read", "drive_read", "drive_search", "gmail_read", "gmail_search", "memory_correct", "memory_recall", "memory_revoke", "memory_store", "send_to_jim", "source_read"])
+        self.assertEqual(sorted({g.tool for g in access.grants}), ["agent_lookup", "buzz_capabilities", "buzz_publish", "buzz_read", "drive_read", "drive_search", "gmail_read", "gmail_search", "memory_ask", "memory_correct", "memory_recall", "memory_revoke", "memory_store", "send_to_jim", "source_read"])
         writes = [g for g in access.grants if "write" in g.actions]                                                # Jim, Nov 22 2026 (option A): the only writes are today's Buzz publishing for the two chat clients, in the two communities each can write to
         self.assertEqual({(g.principal, g.tool, g.purpose, g.credential_ref) for g in writes},
                          {(p, "buzz_publish", "buzz-publish", "buzz-scoped-member-key") for p in ("claude-chat", "claude-chat-bytalos", "chatgpt-chat", "chatgpt-chat-bytalos", "muse-chat", "duet-chat", "duet-chat-bytalos")}
-                         | {(p, op, "synthetic-memory-test", "mcp-credential-" + p) for p in ("openclaw", "hermes-librarian") for op in ("memory_store", "memory_correct", "memory_revoke")}   # LIFE-868 (Jim, comment 13743): synthetic memory writes
+                         | {(p, op, "synthetic-memory-test", "mcp-credential-" + p) for p in ("openclaw", "hermes-librarian") for op in ("memory_store", "memory_correct", "memory_revoke")}   # LIFE-868 (Jim, comment 13743): synthetic memory writes (kept for tests; no tool uses that purpose now)
+                         | {(p, op, "personal-memory", "mcp-credential-" + p if p in MEMORY_CREDENTIALS else "honcho-memory-token") for p in MEMORY_CLIENTS for op in ("memory_store", "memory_correct", "memory_revoke")}   # LIFE-949 (Jim, Nov 23 and 24 2026): real non-sensitive Personal memory for every governed client
                          | {(p, "send_to_jim", "agent-inbox", "notion-readonly-token") for p in ("mac-claude-code", "oracle-claude-code", "openclaw", "hermes-librarian", "claude-chat", "chatgpt-chat", "honcho-alerts", "muse-chat", "duet-chat")})   # LIFE-876 (Jim, comments 13748 and 13823): the Agent Inbox, Personal only
         self.assertEqual({g.tenant for g in writes if g.tool == "send_to_jim"}, {"personal"})
-        self.assertEqual(len(writes), 22)
+        self.assertEqual(len(writes), 22 + 8 * 3)                                                                      # LIFE-949: three memory writes for each of eight clients
         self.assertEqual(sorted(c["principal"] for c in CATALOG["capabilities"] if c["tool"] == "send_to_jim"), sorted(["mac-claude-code", "oracle-claude-code", "openclaw", "hermes-librarian", "claude-chat", "chatgpt-chat", "honcho-alerts", "muse-chat", "duet-chat"]))   # a catalog row for exactly the six granted clients, none for the stdio Mac row or a Bytalos principal
 
     def test_the_shipped_seed_lets_no_one_call_send_to_jim(self):
@@ -207,12 +213,27 @@ class SeededGrants(unittest.TestCase):
         replies, receipts, client = call(tool_call(ok_item()), M.load())
         self.assertEqual((reason(replies), client.rows, receipts[-1]["reason"]), ("denied_catalog_unknown_capability", [], "catalog_unknown_capability"))
 
-    def test_muse_holds_exactly_the_four_personal_grants_jim_approved_and_nothing_on_gmail_drive_memory_or_bytalos(self):
+    def test_the_five_memory_tools_are_granted_to_eight_clients_in_personal_only_with_the_personal_memory_purpose(self):
+        """LIFE-949 (Jim, Nov 23 2026 7:24 and 7:28 PM CT, Nov 24 3:53 AM CT): all governed agents share real non-sensitive Personal memory; Bytalos and TGP stay refused; no expiry in practice, revocable any time."""
+        access = M.load()
+        mine = [g for g in access.grants if g.purpose == "personal-memory"]
+        self.assertEqual({(g.principal, g.tool) for g in mine}, {(p, t) for p in MEMORY_CLIENTS for t in MEMORY_TOOLS})
+        self.assertEqual(len(mine), 40)
+        self.assertEqual({(g.tenant, g.account, g.expires.date().isoformat(), g.revoked) for g in mine}, {("personal", "honcho", "2099-12-31", False)})
+        self.assertEqual({(g.tool, g.actions) for g in mine}, {("memory_ask", ("read",)), ("memory_recall", ("read",)), ("memory_store", ("write",)), ("memory_correct", ("write",)), ("memory_revoke", ("write",))})
+        self.assertEqual({g.tool: g.purpose for g in access.grants if g.tool.startswith("memory_") and g.purpose == "personal-memory"}, {t: "personal-memory" for t in MEMORY_TOOLS})
+        self.assertEqual(set(json.loads(M.FILE.read_text())["tool_purpose"][t] for t in MEMORY_TOOLS), {"personal-memory"})                 # every memory tool is called with that purpose, server side
+        self.assertEqual([g for g in access.grants if g.tool.startswith("memory_") and (g.tenant != "personal" or g.principal.endswith("bytalos"))], [])   # no Bytalos or TGP memory grant of any kind
+        rows = {(c["principal"], c["tool"]) for c in CATALOG["capabilities"] if c["tool"].startswith("memory_")}
+        self.assertEqual(rows, {(p, t) for p in MEMORY_CLIENTS for t in MEMORY_TOOLS})
+        self.assertEqual({c["status"] for c in CATALOG["capabilities"] if c["tool"].startswith("memory_") and c["as_of"] == "2026-11-24"}, {"synthetic"})   # until a live call proves each row
+
+    def test_muse_holds_the_four_personal_grants_jim_approved_plus_the_five_memory_tools_and_nothing_on_gmail_drive_or_bytalos(self):
         """LIFE-923 (Jim, M3, comment 13891): Buzz read and publish in life-os plus send_to_jim, Personal only, expiring Feb 22 2027."""
         access = M.load()
         mine = [g for g in access.grants if g.principal == "muse-chat"]
-        self.assertEqual(sorted(g.tool for g in mine), ["buzz_capabilities", "buzz_publish", "buzz_read", "send_to_jim"])
-        self.assertEqual({(g.tenant, g.expires.date().isoformat(), g.revoked) for g in mine}, {("personal", "2027-02-22", False)})
+        self.assertEqual(sorted(g.tool for g in mine), sorted(["buzz_capabilities", "buzz_publish", "buzz_read", "send_to_jim", *MEMORY_TOOLS]))      # LIFE-949 added the five memory tools for every client
+        self.assertEqual({(g.tenant, g.expires.date().isoformat(), g.revoked) for g in mine if not g.tool.startswith("memory_")}, {("personal", "2027-02-22", False)})
         self.assertEqual([c["facts"] for c in json.loads(M.FILE.read_text())["clients"] if c["id"] == "muse-chat"], [{"credential": "muse"}])   # identified by its own bearer credential row only (Jim chose the bearer route, comment 13906)
         self.assertEqual(M.identify(access, "http", {"credential": "muse"})["id"], "muse-chat")
         with self.assertRaises(M.AccessError):                                                                    # an unknown client is refused
@@ -223,7 +244,7 @@ class SeededGrants(unittest.TestCase):
         access = M.load()
         shape = lambda principal: sorted((g.tenant, g.tool, g.purpose, tuple(g.actions), g.credential_ref, g.expires.date().isoformat(), g.revoked) for g in access.grants if g.principal.startswith(principal))
         self.assertEqual(shape("duet-chat"), shape("claude-chat"))                                               # the same rows, the same scope, no widening
-        self.assertEqual(sorted({g.tool for g in access.grants if g.principal.startswith("duet-chat")}), ["buzz_capabilities", "buzz_publish", "buzz_read", "send_to_jim"])
+        self.assertEqual(sorted({g.tool for g in access.grants if g.principal.startswith("duet-chat")}), ["buzz_capabilities", "buzz_publish", "buzz_read", *MEMORY_TOOLS, "send_to_jim"])
         self.assertEqual([c["facts"] for c in json.loads(M.FILE.read_text())["clients"] if c["id"] == "duet-chat"], [{"oauth_client": "duet"}])
         self.assertEqual(M.identify(access, "http", {"oauth_client": "duet"})["id"], "duet-chat")
         self.assertEqual(M.identify(access, "http", {"oauth_client": "claude"})["id"], "claude-chat")              # the existing clients are unchanged
