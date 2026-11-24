@@ -29,7 +29,7 @@ class Render(unittest.TestCase):
         self.assertTrue(text.split("\n")[1].startswith("Codex allowance · 5-hour "))                               # the Codex numbers come first, right under the headline
         self.assertEqual(table[0], card.HEADER)
         self.assertEqual(table[1], ["OpenRouter · Monthly key budget ◀ tightest", "20%", "▰▰▰▰▰▰▰▰▱▱ 80%", "Monthly key budget", "—", "NEAR LIMIT"])
-        self.assertEqual(table[2], ["Codex allowance · 5-hour", "60%", "▰▰▰▰▱▱▱▱▱▱ 40% · Cloud Fit stops at 50%", "5 hours", "Tue Oct 20, 2:12 AM CDT", "AVAILABLE"])
+        self.assertEqual(table[2], ["Codex allowance · 5-hour", "60%", "▰▰▰▰▱▱▱▱▱▱ 40% · Cloud Fit stops at 50%", "5 hours", "Tue Oct 20, 2:12 AM CT", "AVAILABLE"])
         self.assertEqual(table[3][0:2], ["Codex allowance · weekly", "82%"])
         self.assertEqual([table[4][0], table[5][0]], ["Anthropic · promo credit", "Anthropic · Honcho meter"])      # LIFE-921: an unread Anthropic reading is UNVERIFIED and sorts after the known pools
         self.assertEqual(table[4][1:3], ["UNVERIFIED", "UNVERIFIED"])
@@ -330,7 +330,7 @@ class SignIns(unittest.TestCase):
     def test_each_sign_in_is_a_line_under_the_card_and_the_table_is_unchanged(self):
         ok = {**READING, "signins": {"meter": {"state": "OK", "expires": "2026-10-30T04:19:08+00:00"}, "fit": {"state": "EXPIRED", "expires": "1970-01-01T00:00:00+00:00"}}}
         text, table = card.render(ok, NOW)
-        self.assertEqual(text.splitlines()[-1], "Sign-ins · Cloud Fit sign-in: EXPIRED: sign in again on Oracle · Usage meter sign-in: OK until Thu Oct 29, 11:19 PM CDT")
+        self.assertEqual(text.splitlines()[-1], "Sign-ins · Cloud Fit sign-in: EXPIRED: sign in again on Oracle · Usage meter sign-in: OK until Thu Oct 29, 11:19 PM CT")
         self.assertEqual(table, card.render(READING, NOW)[1])
         self.assertEqual(card.signin_line({**READING, "signins": {"fit": {"state": "COOLDOWN", "expires": None}}}), "Sign-ins · Cloud Fit sign-in: FAILING: OpenAI refused its last refresh")
         self.assertIsNone(card.signin_line(READING))                                                        # an Oracle that does not report them: no line, nothing guessed
@@ -343,3 +343,26 @@ class SignIns(unittest.TestCase):
             with self.assertRaises(edge.EdgeError) as ctx:
                 edge.limits("oracle.example", send=Limits.reply(self, signins=bad))
             self.assertEqual(str(ctx.exception), "FIT_EDGE_LIMITS_OFF_CONTRACT", bad)
+
+
+class ResetTimes(unittest.TestCase):
+    """LIFE-957: reset times are Central, 12-hour, labelled CT, and never in the past."""
+
+    def test_a_reset_that_has_passed_rolls_forward_by_whole_windows_and_is_labelled_ct(self):
+        stale = {"read_at": "2026-10-20T05:30:00+00:00",
+                 "pools": [{"provider": "openai", "windows": [{"label": "5h", "used": 40, "reset_at": "2026-10-19T05:09:00+00:00"},       # Oct 19, 12:09 AM CDT, a day old
+                                                              {"label": "Week", "used": 18, "reset_at": "2026-10-19T05:09:00+00:00"},
+                                                              {"label": "Odd", "used": 5, "reset_at": "2026-10-19T05:09:00+00:00"}]}],
+                 "unavailable": [], "safety_cap": None}
+        _, table = card.render(stale, NOW)
+        by_window = {row[3]: row[4] for row in table[1:] if row[0].startswith("Codex")}
+        self.assertEqual(by_window["5 hours"], "Tue Oct 20, 1:09 AM CT")           # 12:09 AM Oct 19 + five 5-hour windows
+        self.assertEqual(by_window["Week"], "Mon Oct 26, 12:09 AM CT")             # a week on, not a day-old time
+        self.assertEqual(by_window["Odd"], "—")                                    # no known window length: no time is better than a past one
+        for shown in by_window.values():
+            self.assertNotIn("CST", shown)
+            self.assertNotIn("CDT", shown)
+
+    def test_a_future_reset_is_left_alone(self):
+        self.assertEqual(card._reset("2026-10-20T07:12:19+00:00", NOW, "5h"), "Tue Oct 20, 2:12 AM CT")
+        self.assertEqual(card._reset("2026-11-24T06:09:00+00:00"), "Tue Nov 24, 12:09 AM CT")      # a winter date: CT, never CST
