@@ -93,7 +93,6 @@
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           IMESSAGE_ALERTS_HOST: ${{ steps.bws_imessage.outputs.IMESSAGE_ALERTS_HOST }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_imessage.outputs.NOTION_JIRA_TOKEN }}
-          ATTENTION_CARD_BLOCK_ID: ""
           AMAZON_CARD_BLOCK_ID: ""
           BILLS_CARD_BLOCK_ID: ""
           CALENDAR_CARD_BLOCK_ID: ""
@@ -125,7 +124,6 @@
           NTFY_TOPIC: ${{ steps.bws_imessage.outputs.NTFY_TOPIC }}
           IMESSAGE_ALERTS_HOST: ${{ steps.bws_imessage.outputs.IMESSAGE_ALERTS_HOST }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_imessage.outputs.NOTION_JIRA_TOKEN }}
-          ATTENTION_CARD_BLOCK_ID: ""
           AMAZON_CARD_BLOCK_ID: ""
           BILLS_CARD_BLOCK_ID: ""
           CALENDAR_CARD_BLOCK_ID: ""

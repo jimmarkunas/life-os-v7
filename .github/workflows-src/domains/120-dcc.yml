@@ -57,7 +57,6 @@
           CALENDAR_CARD_BLOCK_ID: ""
           BILLS_CARD_BLOCK_ID: ""
           AMAZON_CARD_BLOCK_ID: ""
-          ATTENTION_CARD_BLOCK_ID: ""
           MAIL_ALERTS_CARD_BLOCK_ID: ""
           HIRING_CARD_BLOCK_ID: ""
           NOTION_JIRA_TOKEN: ${{ steps.bws_dcc.outputs.NOTION_JIRA_TOKEN }}

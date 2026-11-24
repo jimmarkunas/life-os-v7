@@ -13,7 +13,7 @@ from tests.kit.notion import MailRegions
 TZ = ZoneInfo("America/Chicago")
 NOW = datetime(2026, 10, 12, 22, 20, tzinfo=TZ)
 ENV = {"DCC_CARD_BLOCK_ID": "dcc-callout", "JIRA_CARD_BLOCK_ID": "jira-callout", "CALENDAR_CARD_BLOCK_ID": "calendar-callout", "BILLS_CARD_BLOCK_ID": "bills-callout",
-       "AMAZON_CARD_BLOCK_ID": "amazon-callout", "ATTENTION_CARD_BLOCK_ID": "attention-callout", "MAIL_ALERTS_CARD_BLOCK_ID": "mail-callout"}
+       "AMAZON_CARD_BLOCK_ID": "amazon-callout", "MAIL_ALERTS_CARD_BLOCK_ID": "mail-callout"}
 GTV = "GTV Action · JFM-1 — Example task · To Do"
 SPRINT = "JFM Sprint 15 · 6 Overdue/Blocked · 1 Today · 7 This Week · 2 Done"
 

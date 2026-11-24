@@ -27,7 +27,7 @@ AREAS = (("Calendar", "CALENDAR_CARD_BLOCK_ID", router.CALENDAR_REGION, "head"),
          ("Bills", "BILLS_CARD_BLOCK_ID", router.BILLS_REGION, "line"), ("Mail Alerts", "MAIL_ALERTS_CARD_BLOCK_ID", router.MAIL_ALERTS_REGION, "line"),
          ("Amazon", "AMAZON_CARD_BLOCK_ID", router.AMAZON_REGION, "line"),
          ("Hiring Pipeline", "HIRING_CARD_BLOCK_ID", router.HIRING_REGION, "floating"))
-PROTECTED = tuple((name, region) for _, name, region, _ in AREAS) + (("ATTENTION_CARD_BLOCK_ID", router.ATTENTION_REGION),)
+PROTECTED = tuple((name, region) for _, name, region, _ in AREAS)
 
 
 class CardError(NotionError):

@@ -34,7 +34,7 @@ def report(heading="Oracle Cloud"):
 
 
 class Card(unittest.TestCase):
-    ENV = {"IMESSAGE_ALERTS_HOST": "100.64.0.9", "ATTENTION_CARD_BLOCK_ID": "attn", "NOTION_JIRA_TOKEN": "unused"}
+    ENV = {"IMESSAGE_ALERTS_HOST": "100.64.0.9", "JIRA_CARD_BLOCK_ID": "attn", "NOTION_JIRA_TOKEN": "unused"}
 
     def setUp(self):
         self.watched = []                                                            # the backup watch never reaches a store in these tests; what it was handed is recorded
@@ -193,7 +193,7 @@ class Card(unittest.TestCase):
                 self.run_card(rep)
             self.assertEqual(rep.patches, [])
         with self.assertRaises(card.OracleCardError):
-            self.run_card(report(), env={**self.ENV, "ATTENTION_CARD_BLOCK_ID": ""})
+            self.run_card(report(), env={**self.ENV, "JIRA_CARD_BLOCK_ID": ""})
 
     def test_the_card_is_found_under_the_jira_card_where_jim_moved_it(self):
         rep = Report()
@@ -206,14 +206,15 @@ class Card(unittest.TestCase):
         counts, _ = self.run_card(rep, env=env)
         self.assertEqual(counts["written"], 2)
         self.assertEqual(rep.plain("ohead"), "Oracle Cloud (10/15 · 8:05 AM CT)")
-        with self.assertRaises(card.OracleCardError):                                  # without the JIRA anchor that column is not searched
-            self.run_card(rep)
-        both = report()                                                                 # a second card beside Attention makes it ambiguous
+        with self.assertRaises(card.OracleCardError):                                  # without the JIRA anchor nothing is searched
+            self.run_card(rep, env={**self.ENV, "JIRA_CARD_BLOCK_ID": ""})
+        both = Report()                                                                 # a second Oracle card in the Jira card's column makes it ambiguous
         both.add("col2", "column", "root")
         both.add("jira", "callout", "col2", [text("JIRA Execution")])
-        both.add("oracle2", "callout", "col2", [])
-        both.add("ohead2", "heading_3", "oracle2", [text("Oracle Cloud")])
-        both.add("obody2", "paragraph", "oracle2", [])
+        for n in ("oracle", "oracle2"):
+            both.add(n, "callout", "col2", [])
+            both.add("h" + n, "heading_3", n, [text("Oracle Cloud (10/14 · 6:07 AM CT)")])
+            both.add("b" + n, "paragraph", n, [])
         with self.assertRaises(card.OracleCardError):
             self.run_card(both, env=env)
         self.assertEqual(both.patches, [])

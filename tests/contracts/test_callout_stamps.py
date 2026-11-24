@@ -64,7 +64,6 @@ HEADINGS = {
 }
 # Not a Daily Report card heading, with the reason:
 EXEMPT = {
-    router.ATTENTION_REGION: "LIFE-645: V7 retired the card that wrote it; the callout stays on the page, protected, and nothing stamps it",
     router.DCC_REGION: "the Command Center's stamp is the page's first line (lifeos/dcc/header.py, `Friday, 11/13 · 1:35 PM CT`: it already carries the weekday and date), checked by the DCC tests",
     router.REPO_REGION: "the Weekly LIFE OS Review page, not the Daily Report (lifeos/platform/branches.py)",
 }
