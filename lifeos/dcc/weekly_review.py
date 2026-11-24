@@ -212,7 +212,7 @@ def write_week(client, source, environ, friday, kind, now, live, drive_read, exi
     lanes = collect(client, environ, friday, now, drive_read, opener)
     queue = wl.decisions(lanes)
     health = "Healthy" if all(lane.health == "Healthy" for lane in lanes) else "Degraded"
-    receipt = {"week_ending": friday.isoformat(), "kind": kind, "health": health, "open_decisions": len(queue), "degraded": [lane.name for lane in lanes if lane.health != "Healthy"]}
+    receipt = {"week_ending": friday.isoformat(), "kind": kind, "health": health, "open_decisions": len(queue), "degraded": [lane.name for lane in lanes if lane.health != "Healthy"], "reasons": {lane.name: lane.reason for lane in lanes if lane.health != "Healthy"}}
     if not live:
         receipt["action"] = "would_rebuild" if existing else "would_create"
         return receipt
