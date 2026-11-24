@@ -111,7 +111,7 @@ class StoreCredential(unittest.TestCase):
     def test_the_closed_list_holds_pilot_keys_only_and_the_script_is_executable(self):
         text = SCRIPT.read_text()
         names = re.search(r"NAMES = \((.*?)\)", text, re.S).group(1)
-        self.assertEqual(re.findall(r'"(\w+)"', names), ["BUZZ_SELFHOST_OWNER_KEY", "BUZZ_SELFHOST_RELAY_KEY", "BUZZ_SELFHOST_AGENT_HERMES_DEVELOPER", "BUZZ_SELFHOST_AGENT_CLAUDE", "BUZZ_SELFHOST_AGENT_CHATGPT", "BUZZ_KEY_MUSE_LIFE_OS", "LIFEOS_MCP_MUSE"])
+        self.assertEqual(re.findall(r'"(\w+)"', names), ["BUZZ_SELFHOST_OWNER_KEY", "BUZZ_SELFHOST_RELAY_KEY", "BUZZ_SELFHOST_AGENT_HERMES_DEVELOPER", "BUZZ_SELFHOST_AGENT_CLAUDE", "BUZZ_SELFHOST_AGENT_CHATGPT", "BUZZ_KEY_MUSE_LIFE_OS", "LIFEOS_MCP_MUSE", "BUZZ_KEY_DUET_LIFE_OS", "BUZZ_KEY_DUET_BYTALOS", "BUZZ_SELFHOST_AGENT_DUET"])
         self.assertEqual(stat.S_IMODE(SCRIPT.stat().st_mode) & 0o111, 0o111)
 
 
