@@ -6,6 +6,6 @@
 main: ALL
 claude-hermes: notion
 developer:
-librarian: notion
+librarian: notion, mcp:lifeos-buzz
 research: notion
 writer: notion
