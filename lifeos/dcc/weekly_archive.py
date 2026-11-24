@@ -285,6 +285,8 @@ def run(limit, live, environ=os.environ, client=None, now=None):
     client = client or _client(environ)
     page = _page_of(client, card)
     out = {"status": "ok", "date": label(now.date()), "live": bool(live)}
+    root = client.call("GET", f"/pages/{quote(archive_id, safe='')}")                        # LIFE-944: the archive root read by its id with this token, every run (an unreadable root fails the stage closed)
+    out["archive"] = {"root": "readable", "archived": bool(root.get("archived") or root.get("in_trash")), "weeks": sorted(t for t in _page_titles(client, archive_id) if t.startswith("Weekly Reports"))}
     notes_id = find_notes(client, page)
     out["notes"] = "present" if notes_id else "none"
     if now.weekday() == 0 and notes_id:                                       # Monday: the reset gate, before anything else is written
