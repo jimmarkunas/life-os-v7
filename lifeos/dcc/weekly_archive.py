@@ -151,13 +151,21 @@ def _write(client, parent_id, nodes):
     """Append `nodes` under `parent_id` in batches, then each node's children under the block just made (one non-retried write each; the caller reads everything back)."""
     for start in range(0, len(nodes), BATCH):
         batch = nodes[start:start + BATCH]
-        body = {"children": [{k: v for k, v in node.items() if k != "children"} for node in batch]}
+        body = {"children": [_create(node) for node in batch]}
         made = client.call_once("PATCH", f"/blocks/{quote(parent_id, safe='')}/children", body).get("results") or []
         if len(made) != len(batch):
             raise _fail("WRITE_COUNT")
         for node, block in zip(batch, made):
-            if node.get("children"):
+            if node.get("children") and node["type"] != "table":            # a table's rows went in with the table
                 _write(client, block["id"], node["children"])
+
+
+def _create(node):
+    """The create payload of one node: Notion refuses a table without its rows in the same request, so the rows travel inside it; every other node's children are appended afterwards."""
+    out = {k: v for k, v in node.items() if k != "children"}
+    if node["type"] == "table":
+        out["table"] = {**out["table"], "children": [_create(row) for row in node.get("children") or []]}
+    return out
 
 
 def _page_titles(client, page_id):
