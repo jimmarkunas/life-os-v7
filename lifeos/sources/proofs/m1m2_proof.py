@@ -16,7 +16,7 @@ from lifeos.interview.ui_probe import QA_PARENT
 from lifeos.jobs import enrich, identity, lanes, ledger as jobs_ledger, publish, quality
 from lifeos.jobs.fit.profile import Profile
 from lifeos.jobs.fit.score import evaluate
-from lifeos.platform import report_region as R
+from lifeos.platform import full_width, report_region as R
 from lifeos.platform.names import split_title
 from lifeos.platform.notion_client import NotionError, rich_text
 from lifeos.recruiters import notion as rstore, outreach
@@ -90,8 +90,7 @@ def report_page(client, container):
     header = {"object": "block", "type": "table_row", "table_row": {"cells": [rich_text(c) for c in HM.HEADERS]}}
     blocks = [_block("callout", "Synthetic anchor (stands in for the Jira card)"), _block("heading_3", HM.TITLE),
               {"object": "block", "type": "table", "table": {"table_width": 4, "has_column_header": True, "has_row_header": False, "children": [header]}}, _block("divider")]
-    page = client.call_once("POST", "/pages", {"parent": {"type": "page_id", "page_id": container}, "properties": {"title": {"title": rich_text("Daily Report (synthetic)")}},
-                                               "children": blocks})
+    page = full_width.create_page(client, container, "Daily Report (synthetic)", blocks)
     kids = notion.children(client, page["id"], [5])
     if [b.get("type") for b in kids][:4] != ["callout", "heading_3", "table", "divider"]:
         raise NotionError("M1M2_SANDBOX_REPORT_SHAPE")
@@ -100,10 +99,10 @@ def report_page(client, container):
 
 def sandbox(client, now, report=None):
     """A fresh sandbox under the QA parent. -> its ids: pipeline, human page, Ledger and Recruiters data sources, the report's pinned blocks."""
-    container = notion.write_tree(client, QA_PARENT, [], title=f"M1/M2 synthetic exit · {now.strftime('%Y-%m-%d %I:%M %p')} CT (synthetic)")
-    pipe = notion.write_tree(client, container, [], title="Hiring Pipeline")
-    active = notion.write_tree(client, pipe, [], title="Active Opportunities")
-    human = notion.write_tree(client, active, [_block("paragraph", "Synthetic human notes. LIFE OS must never change this page.")], title="HumanCo — Manager")
+    container = notion.write_tree(client, QA_PARENT, [], title=f"M1/M2 synthetic exit · {now.strftime('%Y-%m-%d %I:%M %p')} CT (synthetic)", template=notion.FULL_WIDTH)
+    pipe = notion.write_tree(client, container, [], title="Hiring Pipeline", template=notion.FULL_WIDTH)
+    active = notion.write_tree(client, pipe, [], title="Active Opportunities", template=notion.FULL_WIDTH)
+    human = notion.write_tree(client, active, [_block("paragraph", "Synthetic human notes. LIFE OS must never change this page.")], title="HumanCo — Manager", template=notion.FULL_WIDTH)
     led = _database(client, container, "Job Ledger (synthetic)", {n: {k: {}} for n, k in ledger_schema().items()})
     rprops = {**{n: {k: {}} for n, k in rstore.SCHEMA.items()}, "Action Status": {"select": {"options": [{"name": n} for n in ACTIONS]}},
               "Job": {"relation": {"data_source_id": led, "single_property": {}}}}

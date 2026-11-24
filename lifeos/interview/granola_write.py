@@ -7,6 +7,7 @@ codes and counts, and the text only ever goes to the private Notion page."""
 import hashlib
 from datetime import datetime
 
+from lifeos.platform import full_width
 from lifeos.platform.notion_client import NotionError, rich_text
 
 from . import create, notion
@@ -101,13 +102,9 @@ def write(client, round_id, envelope, live, header=()):
     if not live:
         return "TRANSCRIPT_PLANNED", counts
     try:
-        made = client.call("POST", "/pages", {"parent": {"type": "page_id", "page_id": round_id},
-                                              "properties": {"title": {"type": "title", "title": rich_text(TITLE)}}, "children": body[:FIRST_BATCH]})["id"]
-        counts["blocks_written"] = min(len(body), FIRST_BATCH)
-        for start in range(FIRST_BATCH, len(body), FIRST_BATCH):
-            client.call("PATCH", f"/blocks/{made}/children", {"children": body[start:start + FIRST_BATCH]})
-            counts["blocks_written"] = min(len(body), start + FIRST_BATCH)
-    except NotionError:
+        made = full_width.create_page(client, round_id, TITLE, body, post=client.call)["id"]                  # D16.1: a full width page, from the template
+        counts["blocks_written"] = len(body)
+    except (NotionError, full_width.FullWidthError):
         return "TRANSCRIPT_WRITE_FAILED", counts
     try:
         marker, got, total = _page_lines(client, made)

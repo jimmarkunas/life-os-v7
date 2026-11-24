@@ -4,8 +4,9 @@ Manual only (diag.yml, stage interview-ui-probe, typed confirmation QA); never o
 Prints fixed codes, block-type outlines and counts only; never content or ids."""
 import difflib
 import os
+from lifeos.platform import full_width
 from lifeos.platform.notion_ids import notion_id
-from lifeos.platform.notion_client import Client, NotionError, rich_text
+from lifeos.platform.notion_client import Client, NotionError
 from . import create, notion, template, view
 from .models import ParentQuery, RoundQuery
 
@@ -73,8 +74,7 @@ def _render(client):
     if round_page is None:
         round_page = notion.write_tree(client, page, template.round_page(before_rounds, query, page, create.identity_text(query)), title="Interview 1",
                                        icon=template.PAGE_ICONS["round"], template=notion.FULL_WIDTH)
-        client.call("POST", "/pages", {"parent": {"type": "page_id", "page_id": round_page},
-                                       "properties": {"title": {"type": "title", "title": rich_text("Full Transcript")}}, "children": [template.para(create.TRANSCRIPT_MARKER + "qa-placeholder")]})
+        full_width.create_page(client, round_page, "Full Transcript", [template.para(create.TRANSCRIPT_MARKER + "qa-placeholder")], post=client.call)
         tab, left = _round_parts(client, round_page)
         _seed(client, tab, notion.LIVE_PANE)
         raw = [b["id"] for i, b in enumerate(left) if i and notion.text(left[i - 1]) == notion.RAW_HEADING]
@@ -98,7 +98,7 @@ def _render(client):
     if control is None:
         other = view.Opportunity("QA Control", "Wrong-job control", "qa-control-not-this-job", None, None, "not_linked", None, QA_PARENT)
         blocks = create.rendered(other, tail=None)[0]
-        control = notion.write_tree(client, QA_PARENT, blocks, title=CONTROL_TITLE, icon=template.PAGE_ICONS["opportunity"])
+        control = notion.write_tree(client, QA_PARENT, blocks, title=CONTROL_TITLE, icon=template.PAGE_ICONS["opportunity"], template=notion.FULL_WIDTH)
         create.finalize(client, control, other, blocks)
     snap = notion.tree_digest(notion.read_tree(client, control, [notion.TREE_MAX_CALLS]))
     out["wrong_job"] = create.refresh(client, control, after_rounds, True, counts)

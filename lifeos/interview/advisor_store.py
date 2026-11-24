@@ -7,6 +7,7 @@ import re
 
 from . import advisor, notion
 from .models import PrepEvidence
+from lifeos.platform import full_width
 from lifeos.platform.fixed_code import fixed
 from lifeos.platform.notion_client import Client, NotionError
 
@@ -426,8 +427,7 @@ def create_preview(client, previews_page_id, generation_id, bundle, draft):
             _need(not (first and first[0].get("type") == "paragraph" and _plain(first[0]).startswith(marker)), "advisor_preview_conflict")
     # Once POST begins, never retry: a transport error may follow a committed insert.
     try:
-        page = post("POST", "/pages", {"parent": {"type": "page_id", "page_id": previews_page_id},
-            "properties": {"title": {"title": _rich(title)}}, "children": blocks})
+        page = full_width.create_page(client, previews_page_id, title, blocks, post=post)                    # D16.1: a full width page, from the template; a failed write archives its stub
     except NotionError as error:
         # Only a response that proves Notion rejected the request means nothing was created; everything else is uncertain.
         raise AdvisorStoreError("advisor_preview_write_failed" if str(error) in _DEFINITE
