@@ -106,17 +106,33 @@ class Case(unittest.TestCase):
 
 
 class Pricing(unittest.TestCase):
-    def test_cost_uses_the_dearest_classes_and_missing_classes_count_zero(self):
-        self.assertAlmostEqual(mp.usage_cost({"input_tokens": 1_000_000}), 1.00)
-        self.assertAlmostEqual(mp.usage_cost({"output_tokens": 1_000_000}), 2.50)
-        self.assertAlmostEqual(mp.usage_cost({"cache_creation_input_tokens": 1_000_000, "cache_read_input_tokens": 1_000_000}), 2.00)
+    def test_cost_uses_the_real_classes_and_missing_classes_count_zero(self):
+        self.assertAlmostEqual(mp.usage_cost({"input_tokens": 90_000}), 0.009)
+        self.assertAlmostEqual(mp.usage_cost({"output_tokens": 1_000_000}), 0.50)
+        self.assertAlmostEqual(mp.usage_cost({"cache_creation_input_tokens": 80_000, "cache_read_input_tokens": 10_000}), 0.01 + 0.0001)
         self.assertEqual(mp.usage_cost(None), 0.0)
+
+    def test_a_request_over_100k_input_tokens_is_priced_at_the_long_tier(self):
+        self.assertAlmostEqual(mp.usage_cost({"input_tokens": 100_000}), 0.01)
+        self.assertAlmostEqual(mp.usage_cost({"input_tokens": 100_001}), 100_001 * 0.50 / 1e6)
+        self.assertAlmostEqual(mp.usage_cost({"input_tokens": 50_000, "cache_read_input_tokens": 60_000, "output_tokens": 1000}), 50_000 * 0.50 / 1e6 + 60_000 * 0.05 / 1e6 + 1000 * 2.50 / 1e6)
+        big = json.dumps({"max_tokens": 1000, "messages": [{"role": "user", "content": "x" * 400_000}]}).encode()
+        worst, tokens_in, _ = mp.estimate(big)
+        self.assertGreater(tokens_in, 100_000)
+        self.assertAlmostEqual(worst, tokens_in * 0.50 / 1e6 + 1000 * 2.50 / 1e6)
+
+    def test_the_measured_live_run_costs_about_six_percent_of_the_old_dearest_rate_figure(self):
+        new, written, read, out = 157_338, 72_421, 396_850, 27_797                                                          # the live meter's 248 calls on Nov 24 2026 (token counts only; every call is under 100,000 tokens)
+        real = mp.usd(new, "input") + mp.usd(written, "cache_write") + mp.usd(read, "cache_read") + mp.usd(out, "output")
+        self.assertAlmostEqual(real, 0.0427, delta=0.0427 * 0.2)
+        dearest = (157_338 + 72_421 + 396_850) * 1.00 / 1e6 + 27_797 * 2.50 / 1e6
+        self.assertAlmostEqual(real / dearest, 0.06, delta=0.012)
 
     def test_worst_case_is_input_bytes_over_three_plus_max_tokens_at_the_output_price(self):
         body = json.dumps({"max_tokens": 1000, "messages": [{"role": "user", "content": "x" * 3000}]}).encode()
         worst, tokens_in, max_tokens = mp.estimate(body)
         self.assertEqual(max_tokens, 1000)
-        self.assertAlmostEqual(worst, tokens_in * 1.0 / 1e6 + 1000 * 2.5 / 1e6)
+        self.assertAlmostEqual(worst, tokens_in * 0.10 / 1e6 + 1000 * 0.50 / 1e6)
         self.assertGreater(tokens_in, 1000)
         self.assertEqual(mp.estimate(b"not json")[2], mp.DEFAULT_MAX_TOKENS)
 
@@ -133,7 +149,7 @@ class Metering(Case):
         self.assertEqual(status, 200)
         sent = Upstream.seen[0]
         self.assertEqual((sent["path"], sent["key"], sent["auth"], sent["version"]), ("/v1/messages", REAL_KEY, None, "2023-06-01"))
-        self.assertAlmostEqual(self.ledger.spent, 2000 / 1e6 + 100 * 2.5 / 1e6)
+        self.assertAlmostEqual(self.ledger.spent, 2000 * 0.10 / 1e6 + 100 * 0.50 / 1e6)
         self.assertEqual((self.ledger.reserved, self.ledger.calls), (0.0, 1))
         row = self.audit()[-1]
         self.assertEqual((row["route"], row["status"], row["input_tokens"], row["output_tokens"]), ("/v1/messages", 200, 2000, 100))
@@ -145,7 +161,7 @@ class Metering(Case):
         status, body = self.post("/v1/messages", {"max_tokens": 300, "stream": True, "messages": []})
         self.assertEqual(status, 200)
         self.assertIn(b"message_delta", body)
-        self.assertAlmostEqual(self.ledger.spent, 1000 / 1e6 + 500 / 1e6 + 200 * 2.5 / 1e6)
+        self.assertAlmostEqual(self.ledger.spent, 1000 * 0.10 / 1e6 + 500 * 0.01 / 1e6 + 200 * 0.50 / 1e6)
 
     def test_a_request_that_would_pass_the_cap_is_refused_and_nothing_is_forwarded(self):
         self.start(0.001)
@@ -157,14 +173,14 @@ class Metering(Case):
         self.assertEqual(self.audit()[-1]["refused"], "cap reached or stopped")
 
     def test_spend_stops_the_next_request_when_the_cap_is_reached_and_survives_a_restart(self):
-        self.start(0.0100)
+        self.start(0.0010)
         big = {"max_tokens": 100, "messages": [{"role": "user", "content": "x" * 6100}]}          # the fake replies with 2000 input tokens: the estimate covers them
         for _ in range(10):
             self.post("/v1/messages", big)
-        self.assertLessEqual(self.ledger.spent, 0.0100)
+        self.assertLessEqual(self.ledger.spent, 0.0010)
         calls = len(Upstream.seen)
         self.assertLess(calls, 10)
-        again = mp.Ledger(state_dir=self.tmp, cap=0.0100)
+        again = mp.Ledger(state_dir=self.tmp, cap=0.0010)
         self.assertAlmostEqual(again.spent, self.ledger.spent)
         self.assertFalse(again.reserve(0.01))
 
