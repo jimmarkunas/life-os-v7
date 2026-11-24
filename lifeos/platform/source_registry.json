@@ -2,6 +2,7 @@
   "_how_to_read": "LIFE-618: the one list of job sources. One object per source: name (the stage: python -m lifeos.run <name>), module, function (default run), floor (raise a smaller --limit to this), tick (the Jobs-tick step: budget, limit, bulk, group, providers; leave out when the source does not run in the tick) with after (the tick step it follows), and codes ({CODE: [class, counts as an attempt, meaning, action]}) for its own outcome codes, partial_failure (a code: a run whose counts carry failed > 0 exits 1 with it). Data, not code, so no layer imports another (D17).",
   "status_how_to_read": "LIFE-907 (Nov 22 2026): one word per stage, set against the code and the workflows, never by a guess. active = a scheduled workflow or the Jobs tick runs it; parked = it is wired but does no work (a switch is off or nothing feeds it); manual = only a dispatch input or a person runs it; retired = removed from use. The loader reads only `sources`, so this key never changes a run; tests/contracts/test_source_registry.py keeps it complete.",
   "status": {
+    "interview-mail": "active",
     "boards": "active",
     "web-scale-up": "active",
     "web-titlewatch": "active",
@@ -10,6 +11,7 @@
     "web": "active",
     "linkedin-search": "active",
     "boards-backfill": "parked",
+    "boards-tick": "parked",
     "board-check": "manual",
     "boards-preview": "manual",
     "granola-auto": "active",
@@ -31,6 +33,7 @@
     "resolve-dice": "parked"
   },
   "status_notes": {
+    "boards-tick": "A tick step that does nothing while the BOARDS_IN_TICK switch is off (lifeos/platform/switches.json, state off): the four windows own the boards (LIFE-905).",
     "boards-backfill": "A tick step that does nothing while the BOARDS_BACKFILL switch is off (lifeos/platform/switches.json, state off).",
     "resolve-dice": "Not a row in this file: a Jobs-tick step (lifeos/jobs/tick.py) that runs hourly with no input. No sender rule or source feeds Dice (SENDER_RULES holds only Lensa, Jobright and LinkedIn alerts; the dice row in us_remote.json is a discovery helper nothing reads). A feeder is a separate decision.",
     "board-check": "Run by a dispatch input of hourly.yml, not by a schedule.",
@@ -54,10 +57,12 @@
     {"name": "linkedin-search", "module": "lifeos.sources.discovery.linkedin_search", "tick": {"budget": 180, "limit": 40, "group": "A", "providers": ["linkedin"]}, "after": "resolve-linkedin"},
     {"name": "boards-backfill", "module": "lifeos.sources.web.boards", "function": "backfill", "tick": {"budget": 600, "limit": 450, "bulk": true}, "after": "sponsors"},
     {"name": "board-check", "module": "lifeos.sources.web.boardcheck"},
+    {"name": "boards-tick", "module": "lifeos.sources.web.boards", "function": "tick", "tick": {"budget": 300, "limit": 1800, "group": "A", "providers": ["ats"]}, "after": "web"},
     {"name": "boards-preview", "module": "lifeos.sources.web.boards", "function": "preview"},
     {"name": "granola-auto", "module": "lifeos.sources.interview.granola_auto", "function": "stage", "partial_failure": "GRAN_AUTO_FAILED"},
     {"name": "hiring", "module": "lifeos.sources.pipeline.hiring"},
     {"name": "interview", "module": "lifeos.sources.interview.interview_evidence", "partial_failure": "INTERVIEW_OS_DEGRADED"},
+    {"name": "interview-mail", "module": "lifeos.sources.interview.mail_snapshot", "function": "stage"},
     {"name": "job-page-outreach", "module": "lifeos.sources.pipeline.job_page_outreach", "partial_failure": "JOB_PAGE_OUTREACH_PAGES_FAILED"},
     {"name": "mail-filing", "module": "lifeos.sources.cards.mail_filing", "floor": 200, "partial_failure": "PHYSMAIL_FILING_FAILED"},
     {"name": "manual-job", "module": "lifeos.sources.pipeline.manual_job", "partial_failure": "MANUAL_JOB_FAILED"},

@@ -23,7 +23,7 @@ h12() { sha256sum "$1" | cut -c1-12; }
 pdir_of() { if [ "$1" = main ]; then echo "$HOME_DIR"; else echo "$HOME_DIR/profiles/$1"; fi; }
 want_of() { # sorted names for a profile from the table, or the word NOTABLE
   local row
-  row=$(sed 's/#.*//' "$TABLE" | awk -F: -v p="$1" '{n=$1; gsub(/[ \t]/,"",n); if (n==p) {print $2; found=1}} END{if(!found) print "@@NONE@@"}')
+  row=$(sed 's/#.*//' "$TABLE" | awk -F: -v p="$1" '{n=$1; gsub(/[ \t]/,"",n); if (n==p) {print substr($0, index($0,":")+1); found=1}} END{if(!found) print "@@NONE@@"}')
   [ "$row" = "@@NONE@@" ] && { echo NOTABLE; return; }
   echo "$row" | tr -d ' \t' | tr ',' '\n' | grep -v '^$' | sort | tr '\n' ' '
 }

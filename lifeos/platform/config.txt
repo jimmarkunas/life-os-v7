@@ -1,9 +1,25 @@
 ALERTS_ENABLED flag Alert switch read from a repository variable (alerts enabled)
 ALERTS_MUTED_UNTIL input Alert switch read from a repository variable (alerts muted until)
 ALERT_SETTINGS input Alert switch read from a repository variable (alert settings)
+BOARDS_AUTO input Set from the boards workflow's auto input: true when the hourly tick started the window, so the run follows the window gate like a scheduled one (LIFE-854)
+BOARDS_EVENT input Set from the boards workflow's trigger (github.event_name): a manual run skips the window gate (LIFE-854)
+BOARDS_MODE_INPUT input Set from the boards workflow's mode input: window or catchup, for a manual run (LIFE-854)
+BUZZ_KEY_CHATGPT_PILOT secret ChatGPT's own member key on the private relay pilot; read only when BUZZ_RELAY is pilot, unset means ChatGPT has no pilot identity (LIFE-870)
+BUZZ_KEY_CLAUDE_PILOT secret Claude's own member key on the private relay pilot, a systemd credential; read only when BUZZ_RELAY is pilot (LIFE-870)
+BUZZ_KEY_DUET_PILOT secret Duet's own member key on the private relay pilot, a systemd credential; read only when BUZZ_RELAY is pilot (LIFE-922)
+BUZZ_MCP_PUBLIC_URLS_EXTRA input More public origins of this same Oracle MCP service (comma list, https, origin only; LIFE-922): each names its own resource and challenge and is accepted as an audience
+BUZZ_PILOT_CHANNEL input The pilot relay channel the governed MCP service reads and posts to when BUZZ_RELAY is pilot (LIFE-870)
+BUZZ_RELAY input Whether the governed MCP service also serves the private relay pilot: hosted (default) or pilot; rollback is setting it back to hosted (LIFE-870)
 BUZZ_STAGE_KEY secret:hermes Buzz setting (stage key)
+BITWARDEN input Set from the doppler-load action's bitwarden input: a JSON object of the masked Bitwarden step outputs, compared by hash with Doppler's values (LIFE-863)
+CHAIN_ROLE workflow_only:workflow Set by the domains chain job: early (the run started with the tick) or late (the run after it), LIFE-904
+CHAIN_TICK_ID workflow_only:workflow Set by the domains chain job: the hourly tick's run ID, the correlation ID of the chain receipt (LIFE-904)
 CLOUD_BACKLOG workflow_only:workflow Input of a manual hourly run: how many Cloud Fit jobs to ask for (0 means none)
 CODES workflow_only:workflow Failure codes collected by an earlier workflow step, read by a later shell step
+COMPARE_NAMES input Set from the doppler-load action's names input: the secret names the Doppler trial compares (LIFE-863)
+DOPPLER_CONFIG input Set from the doppler-load action's config input: the Doppler config, prd (LIFE-863)
+DOPPLER_PROJECT input Set from the doppler-load action's project input: the Doppler project, life-os (LIFE-863)
+DOPPLER_TOKEN input Set from the GitHub secret DOPPLER_TOKEN (the one read-only Doppler service token, trial workflow capacity-card.yml only; LIFE-863)
 DOMAINS_PHASE input Set from the domains workflow's phase input: tick marks the early run of a tick (LIFE-775)
 FIT_PROFILE_SYNC workflow_only:workflow Switch for the Fit profile sync job; the V7 settings page can set it, GitHub's value is the fallback
 FOLLOWUP_ACCOUNT_CALENDAR_BYTALOS input Short account label for the Followup calendar source (bytalos), shown in receipts; never an address
@@ -52,17 +68,27 @@ LIFEOS_ACQ_SSH_PRIVATE_KEY secret Connection detail for the Hostinger job store 
 LIFEOS_ACQ_SSH_USER secret Connection detail for the Hostinger job store (read at run time through db.py)
 LIFEOS_ACQ_SSH_VIA flag Set to oracle to send the store connection through Oracle
 LIFEOS_NOTION_IDS secret Mapping of private Notion ids, passed whole to stages that read ids
+LIFEOS_RACE_DB_HOST workflow_only:workflow Host of the throwaway MariaDB service container the mariadb-race workflow races against; the test refuses anything but 127.0.0.1 or localhost (LIFE-903)
+LIFEOS_RACE_DB_NAME workflow_only:workflow Database name of that throwaway container (race_ledger); the test refuses any name not starting race_ (LIFE-903)
+LIFEOS_RACE_DB_PORT workflow_only:workflow Port of that throwaway MariaDB container (LIFE-903)
+LIFEOS_RACE_DB_USER workflow_only:workflow User of that throwaway MariaDB container (root, no password: the container has no secret and is reachable only from the runner; LIFE-903)
 LIFEOS_SETTINGS flag LIFE-699: on reads the V7 settings page outside GitHub Actions, off never reads it (production runs read it by default)
 LIFEOS_TEST_NOW workflow_only:workflow The test clock date of the second-date unit-test job (an ISO date; tests read it through tests/kit/clock.py; LIFE-692)
 LIVE flag:workflow Run switch: write for real instead of a dry run
+MARIADB_ALLOW_EMPTY_ROOT_PASSWORD workflow_only:workflow MariaDB image setting for the throwaway race container: no password because nothing in it is secret (LIFE-903)
+MARIADB_DATABASE workflow_only:workflow MariaDB image setting: creates race_ledger in the throwaway race container (LIFE-903)
 METER_BIND input LIFE-889: the address the Honcho metering proxy binds (the honcho-net gateway; never public)
-METER_CAP_USD input LIFE-889: the metering proxy's hard spend cap in US dollars (default 0.90)
+METER_CAP_USD input LIFE-889: the metering proxy's hard spend cap in US dollars per monthly window, 5th 6:00 PM CT to the next 5th 6:00 PM CT (default 25, LIFE-950)
 METER_PORT input LIFE-889: the port the Honcho metering proxy listens on (default 8081)
+METER_STOP_AFTER input LIFE-867: optional UTC time after which the Honcho metering proxy refuses every Anthropic request: Jim's own hard stop if the monthly credit ever ends (unset by default; the window renews by itself, LIFE-950)
 METER_STATE_DIR input LIFE-889: where the metering proxy keeps its spend ledger and audit lines
 NOTION_BILLS_DATA_SOURCE_ID input Notion data source id (bills)
 NOTION_BILLS_TOKEN secret Notion integration token for the bills integration
 NOTION_FIT_SYNC_TOKEN secret Notion integration token for the fit_sync integration
+NOTION_READONLY_TOKEN secret The governed LIFE OS service's Notion integration ('LIFE OS Oracle Read'): source lookup and directory reads (LIFE-888) and, since Nov 22 2026 (LIFE-876), Insert and Update on the Agent Inbox only; never the hourly pipeline's write token
 NTFY_TOPIC secret Phone push topic name (the topic name is the secret)
+HONCHO_MEMORY_TOKEN secret:honcho A workspace-scoped Honcho token the Oracle LIFE OS MCP uses for the synthetic memory operations; unset means memory_not_configured (LIFE-868)
+HONCHO_URL input The Honcho API the memory operations call (default loopback 8000; LIFE-868)
 OPEN_JOBS_CONTACT secret:probe Contact line sent with open-jobs requests
 OUTLOOK_CLIENT_ID input Outlook setting (client id)
 OUTLOOK_REPLACE flag:run Outlook setting (replace)
@@ -75,6 +101,7 @@ SCHEMA_CONFIRM flag:workflow Confirmation word (APPLY) the manual Action Inbox s
 STAGE workflow_only:workflow Which stage a manual run starts
 STAGES workflow_only:workflow List of stages a run starts
 STAGE_BUDGETS flag:run Switch: off disables the stage time budgets in lifeos.run (tests and local debugging; unset in every workflow)
+STAGE_TIMING_FILE input Set from the hourly finish step: the file the tick appends its one-line-per-stage JSON timing receipt to, uploaded as an artifact (LIFE-855)
 SUITE_TIMING_RUNS workflow_only:workflow Input of the manual suite-timing workflow: how many full-suite runs, each on its own runner (1 to 20)
 SUITE_TIMING_SHARDS workflow_only:workflow Input of the manual suite-timing workflow: how many shards each run uses
 TEST_SEVERITY workflow_only:workflow Input of the watchdog test push: severity
@@ -85,7 +112,14 @@ V7_ARCHIVE_TOKEN secret Token the branch-archive workflow uses
 V7_IMESSAGE_ALERTS workflow_only:workflow Switch for the iMessage alert job in the domains tick; the V7 settings page can set it, GitHub's value is the fallback
 V7_RUNTIME_CONFIG_SOURCE_ID input LIFE-844: the stable ID of the dedicated Runtime Configuration data source (an address, never a secret); empty means the V7 settings page stays the only source
 V7_STORE_VIA workflow_only:workflow Bitwarden plain switch: oracle sends the store connection through Oracle first (exported as LIFEOS_ACQ_SSH_VIA)
+WEEKLY_ARCHIVE_PAGE_ID input Notion page id of the Weekly Reports Archive, the page V7 writes the daily snapshots under (LIFE-933)
 WEEKLY_REVIEW_PAGE_ID input Notion page id of the weekly review
-BOARDS_EVENT input Set from the boards workflow's trigger (github.event_name): a manual run skips the window gate (LIFE-854)
-BOARDS_MODE_INPUT input Set from the boards workflow's mode input: window or catchup, for a manual run (LIFE-854)
-BOARDS_AUTO input Set from the boards workflow's auto input: true when the hourly tick started the window, so the run follows the window gate like a scheduled one (LIFE-854)
+WEEKLY_REVIEW_POINTER_PAGE_ID input Notion page id of the Dashboard whose one `Latest review:` line the Weekly Review stage updates (LIFE-945)
+NOTION_WEEKLY_REVIEWS_DATA_SOURCE_ID input Notion data source id of the Weekly Reviews database (LIFE-945)
+WEEKLY_REVIEW input Switch for the Weekly Review stage: on makes the Friday row, anything else does nothing (LIFE-945)
+GOOGLE_READ_CLIENT_ID secret Read-only Google credential for the governed MCP (LIFE-875); a name only, never a value
+GOOGLE_READ_CLIENT_SECRET secret Read-only Google credential for the governed MCP (LIFE-875); a name only, never a value
+GOOGLE_READ_PERSONAL_GMAIL_REFRESH secret Read-only Google credential for the governed MCP (LIFE-875); a name only, never a value
+GOOGLE_READ_BYTALOS_GMAIL_REFRESH secret Read-only Google credential for the governed MCP (LIFE-875); a name only, never a value
+GOOGLE_READ_PERSONAL_DRIVE_REFRESH secret Read-only Google credential for the governed MCP (LIFE-875); a name only, never a value
+GOOGLE_READ_BYTALOS_DRIVE_REFRESH secret Read-only Google credential for the governed MCP (LIFE-875); a name only, never a value

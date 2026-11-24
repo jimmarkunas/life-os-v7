@@ -9,6 +9,11 @@
     "bounds": "LIFE-76 first-pass board drainer: at most limits.BOARDS_BACKFILL_PER_RUN (450) never-read boards per tick, last bulk stage, hibernates at zero; no paid service. The workflow no longer passes a repository variable (LIFE-604 item 14): this file is the one place; to turn it on, change \"state\" here in a reviewed PR.",
     "turned_on": ""
   },
+  "BOARDS_IN_TICK": {
+    "state": "on",
+    "bounds": "LIFE-905: the one crawler owner of the employer boards. Off: the four daily windows (boards.yml, LIFE-854) crawl and the tick's `boards-tick` step does nothing. On: the hourly tick crawls the due boards (oldest due first, the same caps, workers and provider protections) and the windows stand down. Never both: the tick also stands down while any boards.yml run is queued or running, or when that cannot be read. To flip, change \"state\" here in a reviewed PR; rollback is flipping it back, the windows resume from the same state tables.",
+    "turned_on": "Nov 23, 2026, 11:59 AM CT (LIFE-905, Jim's Nov 22 approval, comment 13810); rolled back to off for one tick as the rollback proof (PR 1438, 2:15 PM CT) and turned on again right after it"
+  },
   "FOLLOWUP_WIRING": {
     "state": "on",
     "bounds": "LIFE-757: the `followup` stage's live wiring (store, grants, fetchers, access receipts, payload). Off: the stage is a counts-only no-op and the hourly job is skipped. On (the repository variable FOLLOWUP_WIRING = on, or this file in a reviewed PR) it runs live on a scheduled or tick run while V7_LIVE is on (the workflow step adds --live like the other stages; Jim, Nov 16 2026: 'Go Live') and as a dry run that writes nothing on a manual run with live false; it reads only sources that have a credential and an expiry row, writes a receipt before every read, and never reads Asana or TGP.",

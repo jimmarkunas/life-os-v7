@@ -1,5 +1,10 @@
 """LIFE-88 E10 synthetic QA (lifeos/sources/proofs/interview_contacts_proof.py), run exactly as the manual interview-proof dispatch runs it (confirm = E10), on the production-shaped fakes:
 the Interview pages on the journey's Notion fake and the sandbox Job Ledger as a Notion data source on the same client."""
+import os
+from lifeos.interview import notion as _notion
+from lifeos.platform import full_width as _full_width
+os.environ["LIFEOS_NOTION_FULL_WIDTH_TEMPLATE"] = "e" * 32          # D16.1: pages come from the Full Width template; the fakes apply it at once
+_notion.TEMPLATE_WAIT = _full_width.WAIT = 0
 import copy
 import json
 import unittest

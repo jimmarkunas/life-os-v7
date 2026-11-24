@@ -48,6 +48,8 @@ GRAN_SOCKET = "/run/lifeos-gran/gran.sock"
 GRAN_MAX_FRAME = 4096
 GRAN_MAX_REPLY = 25_004_096
 GRAN_WAIT = 82
+DRIVE_SOCKET = "/run/lifeos-drive/drive.sock"                  # LIFE-945: the read-only Drive weekly-count helper (lifeos/edge/drive/drive_helper.py), a local Unix socket only
+DRIVE_WAIT, DRIVE_MAX_REPLY = 60, 4096
 SCHEMA = "lifeos.imessage.alerts.v2"
 COMMS_SCHEMA = "lifeos.imessage.comms.v1"
 COMMS2_SCHEMA = "lifeos.imessage.comms.v2"
@@ -135,7 +137,7 @@ def authorized(ip, lookup=whois):
 
 
 def request(stream):
-    """-> ("alerts", hours) | ("comms", 32-byte key) | ("oracle1", None) | ("gran1", the whole frame) | None."""
+    """-> ("alerts", hours) | ("comms", 32-byte key) | ("oracle1", None) | ("gran1", the whole frame) | ("drive1", the request line) | None."""
     raw = b""
     while len(raw) < MAX_REQUEST:
         c = stream.read(1)
@@ -154,6 +156,9 @@ def request(stream):
             return None
         body = read_exact(stream, int(size))
         return ("gran1", raw + b"\n" + body) if body is not None else None
+    if raw.startswith(b"drive1 "):                                   # LIFE-945: `drive1 <1..14>`, forwarded unchanged to the Drive helper, which counts files and nothing else
+        days = raw[7:]
+        return ("drive1", raw + b"\n") if days.isdigit() and days[:1] != b"0" and 1 <= int(days) <= 14 else None
     parts = raw.split(b" ")
     if len(parts) != 2:
         return None
@@ -325,7 +330,25 @@ def gran1(frame, path=GRAN_SOCKET, wait=GRAN_WAIT):
     return data
 
 
-def main(stdin=None, stdout=None, lookup=whois, wrapper_path=WRAPPER, key_path=EVENT_KEY, now=None, uid=loopback_peer_uid, stats=oracle_stats, gran=gran1):
+def drive1(frame, path=DRIVE_SOCKET, wait=DRIVE_WAIT):
+    """LIFE-945: one round trip to the Drive helper: the request line goes in, its one JSON reply line comes back (or an exception, and the caller answers nothing)."""
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+        s.settimeout(wait)
+        s.connect(path)
+        s.sendall(frame)
+        s.shutdown(socket.SHUT_WR)
+        data = b""
+        while len(data) <= DRIVE_MAX_REPLY:
+            chunk = s.recv(4096)
+            if not chunk:
+                break
+            data += chunk
+    if len(data) > DRIVE_MAX_REPLY or not data.startswith(b"{") or not data.endswith(b"\n"):
+        raise ValueError("reply is not one JSON line")
+    return data
+
+
+def main(stdin=None, stdout=None, lookup=whois, wrapper_path=WRAPPER, key_path=EVENT_KEY, now=None, uid=loopback_peer_uid, stats=oracle_stats, gran=gran1, drive=drive1):
     stdin = stdin or sys.stdin.buffer
     stdout = stdout or sys.stdout.buffer
     try:
@@ -340,6 +363,14 @@ def main(stdin=None, stdout=None, lookup=whois, wrapper_path=WRAPPER, key_path=E
     if asked is None:
         return 1
     kind, arg = asked
+    if kind == "drive1":
+        try:
+            reply = drive(arg)
+        except Exception:
+            return 1                                               # no partial answer and no exception text
+        stdout.write(reply)
+        stdout.flush()
+        return 0
     if kind == "gran1":
         try:
             reply = gran(arg)

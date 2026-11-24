@@ -34,6 +34,7 @@ The two rows with `-` are not regions in `OWNERS`: the date line is the page hea
 | module | page | note |
 |---|---|---|
 | lifeos/platform/branches.py | the Weekly LIFE OS Review (REPO_REGION) | one writer; compares the page before and after because nothing else writes that page |
+| lifeos/dcc/weekly_archive.py | new child pages under the Weekly Reports Archive (WEEKLY_ARCHIVE_PAGE_ID); the Daily Report's Notes callout, only if the page has one | creates pages only; the one edit to the Daily Report is the Monday Notes reset, after the prior week's snapshot re-reads exactly equal; every write is read back |
 | lifeos/sources/pipeline/job_page_outreach.py | each job's page in the Job Ledger | one writer per job page; compares the page before and after for the same reason |
 | lifeos/accountability/region.py | the This week, Quarterly goals and Quarterly review callouts on Jim & Matt V3, found by the V3 block ID register (jim.thisweek, matt.goals, ...) | each callout and its summary page is read and written by block id inside the callout (ScopedClient) and read back |
 | lifeos/megibow/card.py, lifeos/megibow/v3.py | the MegIBOW callouts, found by MEGIBOW_BLOCK_ID and the V3 block ids | each callout is read and written by block id and read back |
@@ -110,3 +111,9 @@ Chosen over "write the stamp last" because it changes nothing when every write s
 ## Agent Inbox (LIFE-791)
 
 Not a Daily Report writer. Agents and people write rows into one database (the inline "Agent Inbox list" on Jim's Agent Inbox page); V7 only adds rows through `send_to_jim` (`lifeos/inbox/agent_inbox.py`) and rewrites the five tile numbers of that page (`recount_page`). It does not use `report_region` or `ScopedClient`, so the rules above do not apply to it; see `docs/platform/agent-inbox.md`.
+
+## Agent Inbox tiles on the merged page (LIFE-938)
+| module | region | owner | job.stage | how it finds its block | guard |
+|---|---|---|---|---|---|
+| lifeos/platform/agent_inbox.py `recount_page` | the Now and Today box and the This week, FYI and Snoozed tiles | agent-inbox | domains `agent-inbox` and every `send_to_jim` | the one live page titled `Daily LIFE OS Report (Hourly)` whose top blocks hold the four-column tile row (else the old `Agent Inbox` page); no id is committed | patches only the box's own children and the three tile numbers, only when they differ; a changed row shape is the fixed refusal `tiles_shape_changed`; none or two pages is `page_not_found` or `page_ambiguous` |
+

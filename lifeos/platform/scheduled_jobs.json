@@ -3,12 +3,14 @@
   {"job": "watchdog", "host": "github", "schedule": "every hour at :17 and :47", "rule": "gap", "source": "watchdog.yml", "late": 90, "missing": 150},
   {"job": "AI capacity card", "host": "github", "schedule": "every hour at :55 (LIFE-793)", "rule": "gap", "source": "capacity-card.yml", "late": 180, "missing": 360},
   {"job": "V3 pages", "host": "github", "schedule": "every hour at :40 (LIFE-793)", "rule": "gap", "source": "v3-pages.yml", "late": 180, "missing": 360},
-  {"job": "employer board windows", "host": "github", "schedule": "four windows a day: 1:00 AM, 7:00 AM, 1:00 PM and 7:00 PM CT (LIFE-854)", "rule": "gap", "source": "boards.yml", "late": 450, "missing": 720},
   {"job": "weekly safety check", "host": "github", "rule": "weekly", "source": "safety.yml", "weekday": 0, "utc": "13:17", "late": 720, "missing": 1440},
   {"job": "domain jobs", "host": "github", "schedule": "after each tick", "rule": "after", "source": "domains.yml", "after": "hourly.yml", "late": 30},
   {"job": "ticker watch", "host": "oracle", "schedule": "every hour at :05 :20 :35 :50", "rule": "unknown", "unit": "lifeos-ticker-watch.timer"},
   {"job": "off-site backup", "host": "oracle", "schedule": "daily 2:30 AM", "rule": "unknown", "unit": "lifeos-offsite-backup.timer"},
+  {"job": "Honcho nightly backup", "host": "oracle", "schedule": "daily 3:30 AM Central", "rule": "unknown", "unit": "lifeos-honcho-backup.timer"},
+  {"job": "Honcho token renewal", "host": "oracle", "schedule": "daily 3:45 AM Central", "rule": "unknown", "unit": "lifeos-honcho-token-renew.timer"},
   {"job": "Close release", "host": "oracle", "schedule": "not in the repo", "rule": "unknown", "unit": "lifeos-close-release.timer"},
   {"job": "iMessage attention", "host": "mac", "schedule": "no clock (starts on demand)", "rule": "unknown", "unit": "ai.lifeos.imessage-attention"},
-  {"job": "iMessage relay", "host": "mac", "schedule": "no clock (starts on demand)", "rule": "unknown", "unit": "ai.lifeos.imessage-relay"}
+  {"job": "iMessage relay", "host": "mac", "schedule": "no clock (starts on demand)", "rule": "unknown", "unit": "ai.lifeos.imessage-relay"},
+  {"job": "private Buzz pilot health", "host": "oracle", "schedule": "every 5 minutes", "rule": "unknown", "unit": "lifeos-buzz-selfhost-health.timer"}
 ]}

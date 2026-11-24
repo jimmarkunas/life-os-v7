@@ -230,7 +230,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", text))), ["LIFEOS_BWS_RUNTIME_TOKEN"])      # LIFE-699: the Notion ids map is declared empty and the LIFEOS_NOTION_<KEY> ids come from the settings page. LIFE-121: the report job reads the Ledger's data source id (LIFE-699: from the V7 settings page now) to find its page; LIFE-704: the Gmail client id and the SSH port no longer come from GitHub
         for name in moved:
             self.assertNotIn(f"secrets.{name}", text)                                                      # no direct copy, so no fallback
-        self.assertEqual(re.findall(r"uses:\s*(\S*bws-load)", text), ["./.github/actions/bws-load"] * 6)   # the one local loader, once per job (LIFE-631; the Action Inbox view QA job is the sixth, LIFE-711)
+        self.assertEqual(re.findall(r"uses:\s*(\S*bws-load)", text), ["./.github/actions/bws-load"] * 9)   # the one local loader, once per job (LIFE-631; the Action Inbox view QA job is the sixth, LIFE-711) plus the three runtime-configuration loaders (LIFE-859: sandbox, interview_ui, inbox_view_qa)
         head, rest = text.split("\n  # LIFE-64:")                                                           # the database-only diagnostics, then the one job that reads Gmail,
         trace_text, sandbox_text = rest.split("\n  # LIFE-10:")                                              # then the one job that reads Notion
         sandbox_text, ui_text = sandbox_text.split("\n  # LIFE-88:")                                        # then LIFE-88's UI 3c probe, the one job with the Interview token
@@ -242,8 +242,8 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(sorted(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", trace_text, re.M)), sorted([f"{uuid_} > {name}" for name, uuid_ in {**moved, **gmail}.items()]))
         self.assertEqual((len(re.findall(uuid, head)), len(re.findall(uuid, trace_text))), (len(moved), len(moved) + len(gmail)))                      # each once: the retry reuses the load's block by YAML alias (LIFE-541; D209 one retry)
         self.assertNotIn("GMAIL", head)                                                                    # no Gmail value or secret in the database-only job
-        self.assertEqual(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", sandbox_text, re.M), ["53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN"])   # LIFE-10: the Jobs Notion token alone (the retry is its alias)
-        self.assertEqual(len(re.findall(uuid, sandbox_text)), 1)
+        self.assertEqual(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", sandbox_text, re.M), ["53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN", f"{UUIDS['V7_RUNTIME_CONFIG_SOURCE_ID']} > V7_RUNTIME_CONFIG_SOURCE_ID"])   # LIFE-10: the Jobs Notion token (the retry is its alias) and, LIFE-859, the Runtime Configuration address in its own loader
+        self.assertEqual(len(re.findall(uuid, sandbox_text)), 2)
         self.assertNotIn("NOTION", head + trace_text)                                                      # no Notion value reaches the database or Gmail diagnostics
         for word in ("LIFEOS_ACQ", "GMAIL", "inputs.message_ref", "secrets.NOTION"):
             self.assertNotIn(word, sandbox_text)                                                           # nothing else reaches the Notion job, and it takes no target input
@@ -257,8 +257,8 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(sandbox["timeout-minutes"], 5)
         token = "${{ steps.bws_sandbox.outputs.NOTION_API_TOKEN }}"
         read, proof = sandbox["steps"][-2:]
-        self.assertEqual((read["if"], read["run"], read["env"]), ("${{ inputs.stage == 'notion-sandbox-access' }}", "python -m lifeos.run notion-sandbox-access --limit 0", {"NOTION_API_TOKEN": token, "LIFEOS_NOTION_IDS": ""}))   # LIFE-699: the ids map is declared empty; the LIFEOS_NOTION_<KEY> ids come from the V7 settings page
-        self.assertEqual((proof["if"], proof["run"], proof["env"]), ("${{ inputs.stage == 'notion-sandbox-outreach-proof' }}", "python -m lifeos.run notion-sandbox-outreach-proof --limit 0 --live",
+        self.assertEqual((read["if"], read["run"], without_address(read["env"])), ("${{ inputs.stage == 'notion-sandbox-access' }}", "python -m lifeos.run notion-sandbox-access --limit 0", {"NOTION_API_TOKEN": token, "LIFEOS_NOTION_IDS": ""}))   # LIFE-699: the ids map is declared empty; the LIFEOS_NOTION_<KEY> ids come from the V7 settings page
+        self.assertEqual((proof["if"], proof["run"], without_address(proof["env"])), ("${{ inputs.stage == 'notion-sandbox-outreach-proof' }}", "python -m lifeos.run notion-sandbox-outreach-proof --limit 0 --live",
                                                                     {"NOTION_API_TOKEN": token, "PROOF_CONFIRM": "${{ inputs.confirm }}", "LIFEOS_NOTION_IDS": ""}))   # the only write step; the stage itself refuses without SYNTHETIC
         self.assertEqual([s.get("env") for s in sandbox["steps"][:-2]], [None] * (len(sandbox["steps"]) - 2))   # only the two stage steps receive the token
         self.assertIs(next(s for s in sandbox["steps"] if s.get("id") == "bws_sandbox")["with"]["set_env"], False)                                       # a masked step output, never exported job-wide
@@ -272,19 +272,19 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn("GMAIL", report_text)
         ui = diag["jobs"]["interview_ui"]                                                                  # LIFE-88: the one job that holds the Interview token
         self.assertEqual((ui["if"], ui["timeout-minutes"]), ("${{ inputs.stage == 'interview-ui-probe' }}", 5))
-        self.assertEqual(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", ui_text, re.M), ["092b44ae-32cb-453b-8cc2-b4db015ef571 > NOTION_INTERVIEW_TOKEN"])
+        self.assertEqual(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", ui_text, re.M), ["092b44ae-32cb-453b-8cc2-b4db015ef571 > NOTION_INTERVIEW_TOKEN", f"{UUIDS['V7_RUNTIME_CONFIG_SOURCE_ID']} > V7_RUNTIME_CONFIG_SOURCE_ID"])   # LIFE-859: plus the address, in its own loader
         for word in ("LIFEOS_ACQ", "GMAIL", "inputs.message_ref", "secrets.NOTION", "NOTION_API_TOKEN"):
             self.assertNotIn(word, ui_text)                                                                # nothing else reaches the probe, and it takes no target input
         qa = diag["jobs"]["inbox_view_qa"]                                                                 # LIFE-711: loads the existing main Notion token and nothing else; writes only with the typed QA confirmation
         self.assertEqual(qa["if"], "${{ inputs.stage == 'inbox-proof' || inputs.stage == 'inbox-recount' }}")
-        self.assertEqual(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", qa_text, re.M), ["53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN"])
+        self.assertEqual(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", qa_text, re.M), ["53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN", f"{UUIDS['V7_RUNTIME_CONFIG_SOURCE_ID']} > V7_RUNTIME_CONFIG_SOURCE_ID"])   # LIFE-859: plus the address, in its own loader
         self.assertEqual(qa_text.count("--live"), 1)
         self.assertIn("INBOX_VIEW_CONFIRM: ${{ inputs.confirm }}", qa_text)                                # the typed confirmation reaches the stage as an env value, never inlined
         for word in ("LIFEOS_ACQ", "GMAIL", "NOTION_INTERVIEW_TOKEN", "inputs.message_ref"):
             self.assertNotIn(word, qa_text)
         self.assertNotIn("NOTION_INTERVIEW_TOKEN", head + trace_text + sandbox_text)
         probe = ui["steps"][-1]
-        self.assertEqual((probe["run"], probe["env"]), ("python -m lifeos.run interview-ui-probe --limit 0 --live", {
+        self.assertEqual((probe["run"], without_address(probe["env"])), ("python -m lifeos.run interview-ui-probe --limit 0 --live", {
             "NOTION_INTERVIEW_TOKEN": "${{ steps.bws_interview.outputs.NOTION_INTERVIEW_TOKEN }}",
             "PROBE_CONFIRM": "${{ inputs.confirm }}", "LIFEOS_NOTION_IDS": ""}))                                                    # the stage itself refuses without QA
         self.assertEqual([s.get("env") for s in ui["steps"][:-1]], [None] * (len(ui["steps"]) - 1))
@@ -339,7 +339,7 @@ class PullRequestTestsWorkflow(unittest.TestCase):
         run = [s for s in job["steps"] if "env" in s and "LIFEOS_TEST_NOW" in s["env"]]
         self.assertEqual(len(run), 1)
         self.assertEqual(run[0]["env"], {"LIFEOS_TEST_NOW": "2027-03-09"})
-        self.assertIn("python -m tests.shard 1 3", run[0]["run"])                          # the same shard command as unit-tests
+        self.assertIn("python -m tests.shard 1 4", run[0]["run"])                          # the same shard command as unit-tests
         self.assertNotIn("permissions", job)                                               # the workflow's read-only default is all it gets
         self.assertIn("unit-tests:", self.path.read_text())                                # the required check keeps its name
 
@@ -410,8 +410,8 @@ class PullRequestTestsWorkflow(unittest.TestCase):
         steps = doc["jobs"]["unit-tests"]["steps"]
         self.assertEqual([s.get("name") or s.get("uses") for s in steps[:2]], ["Checkout the exact commit (own git fetch; the token is passed once and never stored)", "./.github/actions/python"])
         run = [s["run"] for s in steps if "Unit tests" in s.get("name", "")][0]
-        for k in (1, 2, 3):                                                  # Jim, Oct 26 2026: parallel shards of whole test modules (three since LIFE-705, Nov 14 2026); tests/contracts/test_shards.py proves every test runs in exactly one
-            self.assertIn(f"python -m tests.shard {k} 3 > shard-{k}.log", run)
+        for k in (1, 2, 3, 4):                                               # Jim, Oct 26 2026: parallel shards of whole test modules (three since LIFE-705, four since LIFE-963, Nov 24 2026: the public runner has 4 vCPUs); tests/contracts/test_shards.py proves every test runs in exactly one
+            self.assertIn(f"python -m tests.shard {k} 4 > shard-{k}.log", run)
         self.assertNotIn("python -m tests.shard 1 2", run)
         self.assertNotIn("unittest discover", run)
         self.assertRegex(run, r'-ge 120 \]; then .*exit 1')
@@ -446,7 +446,7 @@ class AmazonRetentionOffTheChainTests(unittest.TestCase):
         self.assertEqual(retention["timeout-minutes"], 15)
         self.assertEqual(retention["if"].replace("due_amazon_retention", "due_amazon"), self.jobs["amazon"]["if"])      # runs for exactly the same triggers as the amazon job (each reads its own due output, LIFE-609)
         waiting = sorted(name for name, job in self.jobs.items() if "amazon_retention" in (job.get("needs") or []))
-        self.assertEqual(waiting, ["report"])                                            # no page writer waits for it (the failure-push job only watches)
+        self.assertEqual(waiting, ["chain", "report"])                                   # no page writer waits for it (the failure-push job and the LIFE-904 chain receipt only watch)
 
     def test_the_amazon_job_no_longer_runs_retention_and_the_command_is_unchanged_in_the_new_job(self):
         self.assertNotIn("aretain", [s.get("id") for s in self.jobs["amazon"]["steps"]])
@@ -464,7 +464,7 @@ class AmazonRetentionOffTheChainTests(unittest.TestCase):
 
 
 class UnitTestGateTests(unittest.TestCase):
-    """LIFE-570: prep skips the unit tests only through the fail-closed gate; the cheap freshness check and every other step are unchanged."""
+    """LIFE-570: the unit tests are skipped only through the fail-closed gate; the cheap freshness check and every other step are unchanged. LIFE-856 change 1: they run in their own `unit-tests` job beside the run, not in `prep`."""
     @classmethod
     def setUpClass(cls):
         try:
@@ -473,10 +473,10 @@ class UnitTestGateTests(unittest.TestCase):
             raise unittest.SkipTest("pyyaml unavailable") from None
 
     def steps(self):
-        return {s.get("name", ""): s for s in self.doc["jobs"]["prep"]["steps"]}
+        return {s.get("name", ""): s for s in self.doc["jobs"]["unit-tests"]["steps"]}
 
     def test_the_gate_runs_first_and_only_it_can_skip_the_tests(self):
-        steps = self.doc["jobs"]["prep"]["steps"]
+        steps = self.doc["jobs"]["unit-tests"]["steps"]
         names = [s.get("name", "") for s in steps]
         gate = next(i for i, n in enumerate(names) if n.startswith("Unit-test gate"))
         tests = next(i for i, n in enumerate(names) if n == "Unit tests")
@@ -491,9 +491,27 @@ class UnitTestGateTests(unittest.TestCase):
     def test_the_gate_reads_the_token_the_job_already_has_and_pr_tests_is_untouched(self):
         gate = next(s for n, s in self.steps().items() if n.startswith("Unit-test gate"))
         self.assertEqual(gate["env"], {"GITHUB_TOKEN": "${{ github.token }}"})
-        self.assertEqual(self.doc["jobs"]["prep"]["permissions"].get("actions"), "write")
+        self.assertEqual(self.doc["jobs"]["prep"]["permissions"].get("actions"), "write")             # prep keeps what it had; the tests job adds no permission (it inherits the workflow's contents: read)
         pr = pathlib.Path(__file__).resolve().parents[2].joinpath(".github/workflows/pr-tests.yml").read_text()
         self.assertIn("unit-tests:", pr)                                                              # the required check name is unchanged
+
+    def test_the_tests_run_beside_the_run_in_their_own_job_and_a_failure_is_a_named_lane_in_the_report(self):
+        """LIFE-856 change 1: off the critical path (no needs, nothing waits for it but the report), no secret and no permission of its own, and prep no longer holds the tests."""
+        job = self.doc["jobs"]["unit-tests"]
+        self.assertNotIn("needs", job)                                                                  # it starts with the run and runs beside prep and finish
+        self.assertNotIn("permissions", job)                                                            # inherits the workflow's contents: read; nothing widened
+        text = str(job)
+        self.assertNotIn("secrets.", text)
+        self.assertNotIn("bws", text)                                                                   # no Bitwarden load, so no new secret name
+        self.assertEqual(job["timeout-minutes"], 20)
+        prep = [s.get("name", "") for s in self.doc["jobs"]["prep"]["steps"]]
+        self.assertFalse([n for n in prep if n.startswith("Unit-test gate") or n in ("Unit tests", "Test-only dependency (PyYAML, for the workflow contract tests; skipped if unavailable)")])
+        for name, j in self.doc["jobs"].items():
+            if name not in ("report", "unit-tests"):
+                self.assertNotIn("unit-tests", j.get("needs", []) if isinstance(j.get("needs"), list) else [j.get("needs")], name)   # nothing on the critical path waits for the tests
+        report = self.doc["jobs"]["report"]
+        self.assertIn("unit-tests", report["needs"])
+        self.assertIn("unit-tests=${{ needs.unit-tests.result }}", next(s for s in report["steps"] if "Resolver lanes" in s.get("name", ""))["run"])   # a failing test is named in the red run and the push
 
     def test_chromium_is_cached_on_the_browser_lock_and_the_browser_step_is_its_own_timed_step(self):
         """LIFE-604 item 13: ONE shared composite action installs the browser; the finish job and the manual Jobright job both use it."""
@@ -700,7 +718,7 @@ DB = {"LIFEOS_ACQ_DB_NAME", "LIFEOS_ACQ_DB_PASSWORD", "LIFEOS_ACQ_DB_USER", "LIF
 SETTINGS_LOADER_ID = "bws_settings"
 SETTINGS_CONSUMER = "${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}"
 RUNTIME_CONFIG_LOADER_ID = "bws_runtime_config"          # LIFE-858: the compare-only read's own loader: the bootstrap ID (an address) and nothing else, continue-on-error, never exported job-wide
-RUNTIME_CONFIG_JOBS = {"hourly": {"finish"}, "domains": {"bills", "amazon", "recruiters", "interview"}}     # the exact jobs that carry it: nothing else may
+RUNTIME_CONFIG_JOBS = {"agenda": {"agenda"}, "branches": {"report"}, "capacity-card": {"capacitycard"}, "diag": {"inbox_view_qa", "interview_ui", "sandbox"}, "domains": {"agenda", "amazon", "bills", "dcc", "followup", "hiring", "imessage", "interview", "jira", "mail", "megibow", "recruiters"}, "hourly": {"finish", "interview", "jobright", "lensa", "linkedin"}, "network": {"network"}, "v3-pages": {"v3pages"}}     # the exact jobs that carry it: nothing else may
 RUNTIME_CONFIG_CONSUMER = "${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}"
 SETTINGS_JOBS = {            # the exact jobs that carry the settings loader: nothing else may
     "amazon": {"amazon"}, "bills": {"bills"}, "calendar": {"calendar"}, "granola": {"granola"}, "granola-auto": {"auto"}, "hermes-stage": {"hermes"}, "manual-job": {"manual"},
@@ -712,6 +730,11 @@ SETTINGS_JOBS = {            # the exact jobs that carry the settings loader: no
 def settings_loader_with():
     """The one `with:` the settings loader may have (the Notion token's id is read from UUIDS below, so this file never holds a second copy of it)."""
     return {"access_token": "${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}", "set_env": False, "secrets": f"{UUIDS['NOTION_JIRA_TOKEN']} > NOTION_JIRA_TOKEN\n"}
+
+
+def without_address(env):
+    """LIFE-859: every settings-reading step also carries the Runtime Configuration address (not a secret); the assertions that pin a step's exact env look past it."""
+    return {k: v for k, v in env.items() if k != "V7_RUNTIME_CONFIG_SOURCE_ID"}
 
 
 def settings_loader_withs():
@@ -729,6 +752,7 @@ def is_settings_loader(step):
 DOMAIN_SECRETS = {         # the only secrets each domain job may see; adding one here is a conscious decision
     "granola": DB | {"LIFEOS_ACQ_SSH_PORT", "NOTION_INTERVIEW_TOKEN", "HIRING_PIPELINE_PAGE_ID", "IMESSAGE_ALERTS_HOST", "NOTION_JOB_LEDGER_DATA_SOURCE_ID"},   # LIFE-360: the readers take opportunities from Ledger rows first;   # LIFE-122: the automatic Granola bridge; the Tailscale OAuth pair goes only to the pinned join action (see TAILSCALE_WITH)
     "report": {"NTFY_TOPIC"},   # the failure-push job: the phone topic and nothing else
+    "chain": set(),   # LIFE-904: the clock receipt reads the Actions API with the run's own token and holds no secret
     "gate": {"NOTION_JIRA_TOKEN"},   # LIFE-604 item 11: the gate holds no credential of its own (the run's own token); LIFE-703: it also reads the V7 settings page with the Notion token from the settings loader
     "imessage": DB | {"LIFEOS_ACQ_SSH_PORT", "NTFY_TOPIC", "IMESSAGE_ALERTS_HOST", "NOTION_JIRA_TOKEN", "AMAZON_CARD_BLOCK_ID", "ATTENTION_CARD_BLOCK_ID",
                   "BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID"},   # LIFE-34 Communications card (Notion writer + region anchors). LIFE-31: the Tailscale OAuth pair goes only to the pinned join action (see TAILSCALE_WITH)
@@ -739,20 +763,21 @@ DOMAIN_SECRETS = {         # the only secrets each domain job may see; adding on
     "bills": DB | {"V7_RUNTIME_CONFIG_SOURCE_ID", "BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "NOTION_BILLS_DATA_SOURCE_ID", "NOTION_BILLS_TOKEN", "NOTION_JIRA_TOKEN"},
     "agenda": DB | {"CALENDAR_CARD_BLOCK_ID", "GCAL_CALENDAR_ID", "GCAL_SERVICE_ACCOUNT_JSON", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "NOTION_JIRA_TOKEN"},
     "megibow": DB | {"GCAL_CALENDAR_ID", "GCAL_SERVICE_ACCOUNT_JSON", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "MEGIBOW_BLOCK_ID", "MEGIBOW_EXCLUDED_DOMAINS", "MEGIBOW_REVIEW_DB_ID", "NOTION_JIRA_TOKEN", "NTFY_TOPIC", "OUTLOOK_CLIENT_ID"},
-    "dcc": {"AMAZON_CARD_BLOCK_ID", "ATTENTION_CARD_BLOCK_ID", "BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "DCC_CARD_BLOCK_ID", "GITHUB_TOKEN", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "MAIL_ALERTS_CARD_BLOCK_ID", "NOTION_JIRA_TOKEN"},   # LIFE-694: GITHUB_TOKEN is the run's own read-only token (job permissions: contents, actions, issues read), for the Platform Stability card
+    "dcc": {"V7_RUNTIME_CONFIG_SOURCE_ID", "WEEKLY_ARCHIVE_PAGE_ID", "AMAZON_CARD_BLOCK_ID", "ATTENTION_CARD_BLOCK_ID", "BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "DCC_CARD_BLOCK_ID", "GITHUB_TOKEN", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "MAIL_ALERTS_CARD_BLOCK_ID", "NOTION_JIRA_TOKEN"},   # LIFE-694: GITHUB_TOKEN is the run's own read-only token (job permissions: contents, actions, issues read), for the Platform Stability card
     "recruiters": DB | {"V7_RUNTIME_CONFIG_SOURCE_ID", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_RECRUITERS_DATA_SOURCE_ID", "NOTION_RECRUITERS_TOKEN", "OUTLOOK_CLIENT_ID",
                      "NOTION_API_TOKEN", "NOTION_JOB_LEDGER_DATA_SOURCE_ID", "V7_CLOSE_BASE_URL", "RECRUITERS_SCAN", "RECRUITERS_SCAN_AT",      # LIFE-610: step outputs, not secrets
                      "HIRING_TABLE_BLOCK_ID", "NOTION_JIRA_TOKEN"},   # LIFE-20: the Recruiter Outreach step (the Daily Report writer and the pinned Hiring Pipeline table it is anchored on); LIFE-10: the job-page outreach step reads and writes Job Ledger pages
     "hiring_outcomes": DB | {"GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "OUTLOOK_CLIENT_ID"},   # LIFE-632: the Hiring outcome mail scan beside the Recruiters job; it reads mail and saves one store record
     "interview": DB | {"V7_RUNTIME_CONFIG_SOURCE_ID", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "OUTLOOK_CLIENT_ID", "NOTION_RECRUITERS_DATA_SOURCE_ID", "NOTION_RECRUITERS_TOKEN",
                        "NOTION_API_TOKEN", "NOTION_JOB_LEDGER_DATA_SOURCE_ID", "V7_CLOSE_BASE_URL", "GCAL_CALENDAR_ID", "GCAL_SERVICE_ACCOUNT_JSON", "HIRING_PIPELINE_PAGE_ID", "NOTION_INTERVIEW_TOKEN"},   # LIFE-632 (LIFE-88): the Interview OS step; the Recruiters token is read-only here (LIFE-78 E10)
+    "interview_mail": DB | {"GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "OUTLOOK_CLIENT_ID"},   # LIFE-894: the early, read-only Interview mail read: the interview job's own mail and store credentials, none of its Notion or Calendar ones
     "mail": DB | {"AMAZON_CARD_BLOCK_ID", "ATTENTION_CARD_BLOCK_ID", "BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET",
                   "GMAIL_OAUTH_REFRESH_TOKEN", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "MAIL_ALERTS_CARD_BLOCK_ID", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"},
     "hiring": DB | {"GCAL_CALENDAR_ID", "GCAL_SERVICE_ACCOUNT_JSON", "HIRING_CARD_BLOCK_ID", "HIRING_PIPELINE_PAGE_ID", "HIRING_STATUS_BLOCK_ID", "HIRING_TABLE_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "NOTION_API_TOKEN",
                     "NOTION_INTERVIEW_TOKEN", "NOTION_JIRA_TOKEN", "NOTION_JOB_LEDGER_DATA_SOURCE_ID", "V7_CLOSE_BASE_URL"},
     "amazon": {"V7_RUNTIME_CONFIG_SOURCE_ID", "AMAZON_CARD_BLOCK_ID", "BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET",
                "GMAIL_OAUTH_REFRESH_TOKEN", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "NOTION_AMAZON_DATA_SOURCE_ID", "NOTION_AMAZON_TOKEN", "NOTION_JIRA_TOKEN"},
-    "amazon_retention": {"GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_AMAZON_DATA_SOURCE_ID", "NOTION_AMAZON_TOKEN"},   # LIFE-571: retention in its own job
+    "amazon_retention": DB | {"GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_AMAZON_DATA_SOURCE_ID", "NOTION_AMAZON_TOKEN"},   # LIFE-906: plus the store credentials the checkpoint reads and writes (the same names interview_mail loads, LIFE-894);   # LIFE-571: retention in its own job
 }
 for _job in SETTINGS_JOBS["domains"] - {"gate"}:      # LIFE-703: a job that reads the V7 settings page gets the Notion token from its settings loader and nothing else new
     DOMAIN_SECRETS[_job] = DOMAIN_SECRETS[_job] | {"NOTION_JIRA_TOKEN"}
@@ -829,6 +854,7 @@ class DomainsWorkflowTests(unittest.TestCase):
             used = {k for k, v in (job.get("env") or {}).items() if "secrets." in str(v) or "steps." in str(v) and ".outputs." in str(v)}
             for step in job["steps"]:
                 used |= {k for k, v in (step.get("env") or {}).items() if "secrets." in str(v) or "steps." in str(v) and ".outputs." in str(v)}   # a migrated value counts when it arrives as a loader output (`steps.<loader>.outputs.<NAME>`); a gate switch (`needs.gate.outputs.<switch>`, LIFE-703) is not a secret
+            used -= {"V7_RUNTIME_CONFIG_SOURCE_ID"}                                                      # LIFE-859: an address, never a secret: every settings-reading step may carry it
             self.assertLessEqual(used, DOMAIN_SECRETS[name], f"{name}: {sorted(used - DOMAIN_SECRETS[name])}")
 
     V3_STAGES_THAT_ONLY_WARN = ()        # LIFE-793: the five V3 stages (acweek, acgoals, acreview, acart, acchange) moved to v3-pages.yml, so the jira job has no exempt stage; the mechanism stays
@@ -838,7 +864,7 @@ class DomainsWorkflowTests(unittest.TestCase):
         """LIFE-649: -> what a job's final step fails to surface. A stage step is every `continue-on-error` step; the tailnet join is the one allowed to fail quietly (a failed join only loses the Oracle fallback).
         The final step must run always(), fail the job (`exit 1`), and cover every stage step: by the wildcard `steps.*.outcome` (every step with an id) or by naming each stage id."""
         steps, problems = job["steps"], []
-        stage = [s for s in steps if s.get("continue-on-error") and not is_settings_loader(s)]       # LIFE-703: the settings loader may fail quietly; it is that exact step or it is a stage step like any other
+        stage = [s for s in steps if s.get("continue-on-error") and not is_settings_loader(s) and s.get("id") != RUNTIME_CONFIG_LOADER_ID]       # LIFE-703: the settings loader may fail quietly; it is that exact step or it is a stage step like any other
         for step in stage:
             if not step.get("id") and step.get("uses") != "./.github/actions/tailscale":
                 problems.append(f"stage step without an id: {step.get('name')}")
@@ -852,7 +878,7 @@ class DomainsWorkflowTests(unittest.TestCase):
 
     def test_a_failed_stage_step_ends_its_job_red_after_every_stage_ran_and_never_skips_another_job(self):
         """LIFE-649: every continue-on-error stage step is covered by its job's final step, so the job result is `failure` and the report job pushes the phone once; nothing else changes."""
-        jobs = {n: j for n, j in self.doc["jobs"].items() if n not in ("gate", "report")}
+        jobs = {n: j for n, j in self.doc["jobs"].items() if n not in ("gate", "report", "chain")}
         self.assertEqual(set(jobs), set(due.load_table()))                                                 # LIFE-758: the schedule table is the source of truth for which domain jobs exist, not a bare count
         for name, job in jobs.items():
             self.assertEqual(self.uncovered_stage_steps(job, self.V3_STAGES_THAT_ONLY_WARN if name == "jira" else ()), [], name)   # LIFE-730: only the jira job may leave the five V3 ids off its list
@@ -887,7 +913,7 @@ class DomainsWorkflowTests(unittest.TestCase):
         """LIFE-730 (temporary): the V3 accountability stages warn but do not end the jira job red; every other jira step id is on the red list, computed from the parsed job so a new jira step must be decided here."""
         job = self.doc["jobs"]["jira"]
         condition = job["steps"][-1]["if"]
-        ids = [s["id"] for s in job["steps"] if s.get("id")]
+        ids = [s["id"] for s in job["steps"] if s.get("id") and s["id"] != RUNTIME_CONFIG_LOADER_ID]      # LIFE-859: the address loader may fail quietly, like the settings loader
         v3 = set(self.V3_STAGES_THAT_ONLY_WARN)
         self.assertLessEqual(v3, set(ids))                                                                # the five exempt ids are real steps of this job
         self.assertNotIn("contains(steps.*.outcome", condition)                                          # the wildcard would put the V3 stages back on the red list
@@ -898,7 +924,7 @@ class DomainsWorkflowTests(unittest.TestCase):
         for i in v3:                                                                                      # a failed V3 stage still prints its warning
             self.assertIn(f"steps.{i}.outcome == 'failure'", warn["if"], i)
         for name, other in self.doc["jobs"].items():                                                      # no other job gets an exemption: each ends red by the wildcard or lists every stage id
-            if name not in ("jira", "gate", "report"):
+            if name not in ("jira", "gate", "report", "chain"):
                 self.assertEqual(self.uncovered_stage_steps(other), [], name)
 
     def test_a_new_jira_step_must_be_put_on_the_red_list_or_among_the_v3_stages(self):
@@ -911,14 +937,14 @@ class DomainsWorkflowTests(unittest.TestCase):
 
     def test_a_failing_domain_step_is_a_warning_never_a_failed_run(self):   # the stage step itself never stops the steps after it; LIFE-649: the job then ends red through its final step (the tests above)
         for name, job in self.doc["jobs"].items():
-            if name in ("report", "gate"):                                                                       # the failure-push job (see the next test) is the alarm, not a domain stage; the gate only decides
+            if name in ("report", "gate", "chain"):                                                              # the chain receipt (LIFE-904) reads the Actions API and never fails; the failure-push job (see the next test) is the alarm, not a domain stage; the gate only decides
                 continue
             work = [s for s in job["steps"] if s.get("id") and not str(s.get("uses", "")).endswith("bws-load")]   # the Bitwarden loader is deliberately fail-closed: a failed load fails the job before its command
             self.assertTrue(work and all(s.get("continue-on-error") for s in work), name)
 
     def test_the_report_job_pushes_the_phone_only_for_a_failed_tick_triggered_run_and_writes_nothing(self):
         job = self.doc["jobs"]["report"]
-        self.assertEqual(set(job["needs"]), set(self.doc["jobs"]) - {"report"})                                    # it watches every domain job and the gate (whose `tick` output it reads)
+        self.assertEqual(set(job["needs"]), set(self.doc["jobs"]) - {"report", "chain"})                         # it watches every domain job and the gate (whose `tick` output it reads)
         condition = job["if"]
         for part in ("always()", "needs.gate.outputs.tick == 'true'", "contains(needs.*.result, 'failure')"):
             self.assertIn(part, condition)
@@ -984,12 +1010,15 @@ UUIDS = {
 TAILSCALE_ACTION = "./.github/actions/tailscale"
 TAILSCALE_WITH = {"oauth-client-id": "TAILSCALE_OAUTH_CLIENT_ID", "oauth-secret": "TAILSCALE_OAUTH_CLIENT_SECRET"}
 # Least privilege: the credentials each job may load from Bitwarden (a conscious decision; domains.yml jobs are held to DOMAIN_SECRETS instead). Adding one is the only workflow edit that needs a test edit.
+# LIFE-861 (tools/secret_usage.py): `prep` only gates and sweeps, so it no longer loads the Fit profile, the Jobright login, TinyFish or the open-jobs contact; the three manual resolver lanes read none of the Gmail values or the open-jobs contact.
+HRL_PREP = HRL - {"FIT_PROFILE_EXTRA_JSON", "FIT_PROFILE_JSON", "JOBRIGHT_EMAIL", "JOBRIGHT_PASSWORD", "OPEN_JOBS_CONTACT", "TINYFISH_API_KEY"}
+HRL_LANE = HRL - {"GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "OPEN_JOBS_CONTACT"}
 LOADED = {
     "branches": {"report": {"NOTION_JIRA_TOKEN"}, "archive": {"V7_ARCHIVE_TOKEN"}},
     "agenda": {"agenda": DB | {"GCAL_SERVICE_ACCOUNT_JSON", "NOTION_JIRA_TOKEN"}},
     "bills": {"bills": DB | {"NOTION_BILLS_TOKEN"}},
     "calendar": {"calendar": DB | {"GCAL_SERVICE_ACCOUNT_JSON", "OUTLOOK_CLIENT_ID"}},
-    "hourly": {"prep": DB | JUMP | TS | HRL, "jobright": DB | JUMP | TS | HRL, "linkedin": DB | JUMP | TS | HRL, "lensa": DB | JUMP | TS | HRL, "finish": DB | JUMP | TS | HRL | {"NTFY_TOPIC", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"}, "interview": {"NOTION_INTERVIEW_TOKEN", "INTERVIEW_ACCEPTANCE_JSON", "INTERVIEW_ACCEPTANCE_NEGATIVE_JSON"}, "report": {"NTFY_TOPIC"}},
+    "hourly": {"prep": DB | JUMP | TS | HRL_PREP, "jobright": DB | JUMP | TS | HRL_LANE, "linkedin": DB | JUMP | TS | HRL_LANE, "lensa": DB | JUMP | TS | HRL_LANE, "finish": DB | JUMP | TS | HRL | {"NTFY_TOPIC", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"}, "interview": {"NOTION_INTERVIEW_TOKEN", "INTERVIEW_ACCEPTANCE_JSON", "INTERVIEW_ACCEPTANCE_NEGATIVE_JSON"}, "report": {"NTFY_TOPIC"}},
     "network": {"network": DB | JUMP | TS | {"NOTION_API_TOKEN"}},
     "boards": {"boards": DB | JUMP | TS},        # LIFE-854: the employer-board windows load the store and tailnet credentials the hourly job's boards step used, and nothing else
     "v3-pages": {"v3pages": {"JIRA_API_TOKEN", "JIRA_EMAIL", "NOTION_JIRA_TOKEN"}},
@@ -1010,7 +1039,7 @@ LOADED = {
     "diag": {"diag": DB, "trace": DB | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "GMAIL_OAUTH_CLIENT_ID"}, "sandbox": {"NOTION_API_TOKEN"}, "interview_ui": {"NOTION_INTERVIEW_TOKEN"}, "inbox_view_qa": {"NOTION_API_TOKEN"}, "report": DB | {"NOTION_API_TOKEN"}},
 }
 PILOTS = ("watchdog", "safety", "amazon", "diag")
-SECRET_FREE = ("pr-tests", "suite-timing")         # workflows that read no secret at all, so they have no loader to pin (their own tests pin that: pr-tests below, suite-timing in SuiteTimingWorkflow)
+SECRET_FREE = ("pr-tests", "suite-timing", "mariadb-race")         # workflows that read no secret at all, so they have no loader to pin (their own tests pin that: pr-tests below, suite-timing in SuiteTimingWorkflow)
 
 
 @unittest.skipIf(yaml is None, "PyYAML not installed")
@@ -1116,7 +1145,7 @@ class BitwardenConsumerTests(unittest.TestCase):
                     for i, step in enumerate(body["steps"]):
                         for k, v in (step.get("env") or {}).items():
                             if k in UUIDS:
-                                self.assertEqual((k, str(v).strip()), ("NOTION_JIRA_TOKEN", SETTINGS_CONSUMER), (name, job, step.get("name")))
+                                self.assertIn((k, str(v).strip()), (("NOTION_JIRA_TOKEN", SETTINGS_CONSUMER), ("V7_RUNTIME_CONFIG_SOURCE_ID", SETTINGS_CONSUMER.replace("NOTION_JIRA_TOKEN", "V7_RUNTIME_CONFIG_SOURCE_ID"))), (name, job, step.get("name")))
                                 self.assertTrue(settings_at is not None and i > settings_at, (name, job, step.get("name")))
                     self.assertFalse([v for step in body["steps"] for v in (step.get("with") or {}).values() if "steps.bws_" in str(v)], (name, job))
                     continue
@@ -1254,15 +1283,15 @@ class SweepFailureIsItsOwnLaneTests(unittest.TestCase):
         for later in self.steps[self.steps.index(sweep) + 1:]:
             self.assertNotIn("steps.sweep", str(later.get("if", "")), later.get("name"))   # a failed sweep never skips the extract step or a later one
 
-    def test_credentials_gate_and_unit_tests_still_fail_prep_and_so_block_finish(self):
+    def test_credentials_and_gate_still_fail_prep_and_so_block_finish(self):
         sweep_at = next(i for i, s in enumerate(self.steps) if s.get("id") == "sweep")
         before = self.steps[:sweep_at]
-        for prefix in ("Load the migrated credentials", "Gate - skip", "Unit-test gate", "Unit tests"):
+        for prefix in ("Load the migrated credentials", "Gate - skip"):                 # LIFE-856: the unit tests moved to their own job beside the run (a failing test reds the run through the report lane)
             step = next(s for s in before if s.get("name", "").startswith(prefix))
-            self.assertNotIn("continue-on-error", step, prefix)                        # a credential, gate or unit-test failure fails the job, as before
+            self.assertNotIn("continue-on-error", step, prefix)                        # a credential or gate failure fails the job, as before
         tolerated = [s.get("name", "") for s in self.steps[:sweep_at] if s.get("continue-on-error")]
-        self.assertEqual(len(tolerated), 3)
-        self.assertEqual(sum(name.startswith("LIFE-854 - start the employer-board window") for name in tolerated), 1)   # ... LIFE-854's start of the board window (a failure never fails the tick) ...
+        self.assertEqual(len(tolerated), 2)
+        self.assertEqual(sum(name.startswith("LIFE-854 - start the employer-board window") for name in tolerated), 0)   # ... LIFE-905 retired LIFE-854's start of the board window (the tick crawls the boards itself) ...
         self.assertEqual(sum("tailnet" in name for name in tolerated), 1)             # the tolerated earlier steps are the tailnet join ...
         self.assertEqual(sum(name.startswith("LIFE-775 - start the early domains run") for name in tolerated), 1)   # ... and LIFE-775's dispatch of the early domains run: a failed dispatch costs only the time it saves
         finish = self.doc["jobs"]["finish"]

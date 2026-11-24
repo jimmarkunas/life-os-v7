@@ -37,10 +37,20 @@
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIVE
           live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
+      - id: bws_runtime_config
+        continue-on-error: true
+        name: Runtime Configuration source ID from Bitwarden for the archive step (LIFE-933; read only, an address not a secret; if it fails the archive step finds no page and writes nothing)
+        uses: ./.github/actions/bws-load
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
       - id: dcccard
         continue-on-error: true
         name: Daily Command Center (rules over the cards' first lines; writes only its own callout when live; every other region proven unchanged)
         env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           GITHUB_TOKEN: ${{ github.token }}
           DCC_CARD_BLOCK_ID: ${{ steps.bws_dcc.outputs.DCC_CARD_BLOCK_ID }}
           JIRA_CARD_BLOCK_ID: ""
@@ -52,6 +62,37 @@
           HIRING_CARD_BLOCK_ID: ""
           NOTION_JIRA_TOKEN: ${{ steps.bws_dcc.outputs.NOTION_JIRA_TOKEN }}
         run: python -m lifeos.run dcc-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
+      - id: archive
+        continue-on-error: true
+        name: Weekly Reports Archive (LIFE-933; the first run at or after 6 PM CT freezes one static Daily Report snapshot into the week's archive page and reads it back; Sunday also freezes the Notes, Monday resets them only after the snapshot re-verifies; the existing Notion token only)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DCC_CARD_BLOCK_ID: ${{ steps.bws_dcc.outputs.DCC_CARD_BLOCK_ID }}
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
+          WEEKLY_ARCHIVE_PAGE_ID: ""
+          LIFEOS_NOTION_IDS: ""
+          NOTION_JIRA_TOKEN: ${{ steps.bws_dcc.outputs.NOTION_JIRA_TOKEN }}
+        run: python -m lifeos.run report-archive --limit 0 $([ "$LIVE" = "true" ] && echo --live)
+      - id: weeklyreview
+        continue-on-error: true
+        name: Weekly LIFE OS Review (LIFE-945; off unless WEEKLY_REVIEW is on; the first run at or after Friday 10 PM CT makes that week's one Weekly Reviews row from six read-only lanes, sets Status Generated, moves Current and the one pointer line; Jim's Reviewed and Applied are never written; the existing Notion token and the workflow's own GitHub token only)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DCC_CARD_BLOCK_ID: ${{ steps.bws_dcc.outputs.DCC_CARD_BLOCK_ID }}
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
+          WEEKLY_REVIEW: ""
+          WEEKLY_REVIEW_PAGE_ID: ""
+          WEEKLY_REVIEW_POINTER_PAGE_ID: ""
+          LIFEOS_NOTION_IDS: ""
+          NOTION_WEEKLY_REVIEWS_DATA_SOURCE_ID: ""
+          NOTION_JIRA_TOKEN: ${{ steps.bws_dcc.outputs.NOTION_JIRA_TOKEN }}
+        run: python -m lifeos.run weekly-review --limit 0 $([ "$LIVE" = "true" ] && echo --live)
+      - name: Weekly LIFE OS Review warning (does not fail the Jobs run)
+        if: ${{ always() && steps.weeklyreview.outcome == 'failure' }}
+        run: echo "::warning title=Weekly LIFE OS Review::the weekly row could not be written or read back; the week's row is made by the next run inside 48 hours"
+      - name: Weekly Reports Archive warning (does not fail the Jobs run)
+        if: ${{ always() && steps.archive.outcome == 'failure' }}
+        run: echo "::warning title=Weekly Reports Archive::today's snapshot could not be written or read back; the archive keeps its earlier pages and the next run tries again"
       - name: Daily Command Center warning (does not fail the Jobs run)
         if: ${{ always() && steps.dcccard.outcome == 'failure' }}
         run: echo "::warning title=Daily Command Center::the Command Center could not be written; its callout keeps the last text and the Jobs pipeline is unaffected"

@@ -2,6 +2,7 @@
 from datetime import datetime, timezone
 import sys
 
+from lifeos.platform import mail_checkpoint
 from lifeos.platform.db import StoreError, connect          # noqa: F401 - the jobs facade for the database
 
 
@@ -123,8 +124,17 @@ SCHEMA = (
         block MEDIUMTEXT NOT NULL,
         synced_at DATETIME NOT NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+    """CREATE TABLE IF NOT EXISTS v7_interview_mail (
+        tick_hour CHAR(13) NOT NULL PRIMARY KEY,
+        taken_at DATETIME NOT NULL,
+        days SMALLINT NOT NULL,
+        complete TINYINT NOT NULL,
+        fingerprint CHAR(64) NOT NULL,
+        payload MEDIUMBLOB NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+    mail_checkpoint.CREATE,                                                  # LIFE-906: the Amazon retention checkpoint (what an old mail's read concluded)
 )
-TABLES = ("v7_jobs", "v7_job_sources", "v7_job_descriptions", "v7_job_fit", "v7_sources", "v7_source_items", "v7_source_runs", "v7_alerts", "v7_feed", "v7_meeting_catalog", "v7_sponsors", "v7_tombstones", "v7_ledger_urls", "v7_spend", "v7_daily_counts", "v7_fit_profile_sync")
+TABLES = ("v7_jobs", "v7_job_sources", "v7_job_descriptions", "v7_job_fit", "v7_sources", "v7_source_items", "v7_source_runs", "v7_alerts", "v7_feed", "v7_meeting_catalog", "v7_sponsors", "v7_tombstones", "v7_ledger_urls", "v7_spend", "v7_daily_counts", "v7_fit_profile_sync", "v7_interview_mail", "v7_mail_checkpoint")
 # Columns added after the first release (checked via information_schema; portable across MySQL/MariaDB).
 COLUMNS = (
     ("v7_jobs", "fit_synced_at", "DATETIME NULL", None),
@@ -172,6 +182,9 @@ COLUMNS = (
     ("v7_sources", "etag", "VARCHAR(200) NULL", None),
     ("v7_sources", "last_modified", "VARCHAR(64) NULL", None),
     ("v7_sources", "unchanged_runs", "SMALLINT NOT NULL DEFAULT 0", None),
+    # LIFE-903 (Jim, D1, Nov 22 2026): the cross-process claim every Ledger creator takes before it creates a row (lifeos/jobs/ledger_claim.py). Rollback: ALTER TABLE v7_jobs DROP COLUMN ledger_claim_by, DROP COLUMN ledger_claim_at
+    ("v7_jobs", "ledger_claim_by", "VARCHAR(64) NULL", None),
+    ("v7_jobs", "ledger_claim_at", "DATETIME NULL", None),
 )
 def existing_v7_tables(connection):
     with connection.cursor() as cursor:

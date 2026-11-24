@@ -2,8 +2,13 @@
 from lifeos.interview import create, notion, prep, template, ui_probe, view
 from lifeos.interview.transcript import normalize_granz
 import json
+import os
+from lifeos.platform import full_width
 from lifeos.platform.notion_client import NotionError
 import copy
+
+os.environ["LIFEOS_NOTION_FULL_WIDTH_TEMPLATE"] = "e" * 32          # D16.1: pages are created from the Full Width template; no sleeping in tests
+full_width.WAIT = 0
 
 
 ENV = {"NOTION_INTERVIEW_TOKEN": "synthetic", "HIRING_PIPELINE_PAGE_ID": "root", "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "ds-synthetic"}     # LIFE-361: a new pursuit is created in the Ledger
@@ -61,24 +66,35 @@ class FakeNotion:
     def __init__(self, existing=(), fail_on=None, drop_last=False):
         self.pages = {ROUND: list(existing)}
         self.calls, self.fail_on, self.drop_last = [], fail_on, drop_last
+        self.templated, self.archived = [], []
 
     def call(self, method, path, body=None):
         self.calls.append((method, path))
         if self.fail_on == method:
             raise NotionError("NOTION_NETWORK")
-        if method == "POST" and path == "/pages":
+        if method == "POST" and path == "/pages":                      # D16.1: only a page made from the Full Width template is full width; it lands with one empty paragraph and takes no children
+            assert body.get("template") == {"type": "template_id", "template_id": "e" * 32} and "children" not in body, "page not created from the Full Width template"
             pid = f"page-{len(self.pages)}"
-            self.pages[pid] = list(body["children"])
+            self.pages[pid] = [{"id": f"filler-{pid}", "type": "paragraph", "paragraph": {"rich_text": []}}]
             title = body["properties"]["title"]["title"][0]["text"]["content"]
             self.pages[body["parent"]["page_id"]].append({"id": pid, "type": "child_page", "child_page": {"title": title}})
+            self.templated.append(pid)
             return {"id": pid}
+        if method == "PATCH" and path.startswith("/pages/"):           # a failed write archives the stub it made
+            self.archived.append(path.split("/")[2])
+            return {}
+        if method == "DELETE" and path.startswith("/blocks/"):
+            gone = path.split("/")[2]
+            for blocks in self.pages.values():
+                blocks[:] = [b for b in blocks if b.get("id") != gone]
+            return {}
         if method == "PATCH" and path.endswith("/children"):
             self.pages[path.split("/")[2]].extend(body["children"])
             return {"results": []}
         if method == "GET" and "/children" in path:
             blocks = self.pages[path.split("/")[2]]
             blocks = blocks[:-1] if self.drop_last and path.split("/")[2] != ROUND else blocks
-            return {"results": [dict(b, id=b.get("id", "b")) if b.get("type") == "child_page" else {"id": "b", "type": b["type"], b["type"]: b[b["type"]]} for b in blocks],
+            return {"results": [dict(b, id=b.get("id", "b")) if b.get("type") == "child_page" else {"id": b.get("id", "b"), "type": b["type"], b["type"]: b[b["type"]]} for b in blocks],
                     "has_more": False, "next_cursor": None}
         raise AssertionError((method, path))
 

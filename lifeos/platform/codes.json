@@ -254,5 +254,15 @@
   "FOLLOWUP_TRUNCATED": ["followup", "retry", true, "A source returned more open items than the Action Inbox list may hold, so that source shows DEGRADED and none of its items were cut silently (LIFE-711).", "None; narrow the source or raise the cap in a reviewed change."],
   "FOLLOWUP_SECRET_IN_REPLY": ["followup", "bug", false, "A provider reply contained a secret-shaped value, so the whole answer was refused (LIFE-757).", "Look at the source; nothing was kept."],
   "TODOIST_CONFIG_INVALID": ["followup", "blocked", false, "The Todoist token is missing or empty (LIFE-757).", "Load the read-only Todoist token."],
-  "TODOIST_LISTING_INCOMPLETE": ["followup", "retry", true, "The Todoist task listing could not be proven complete (LIFE-757).", "None; the next hourly run reads again."]
+  "TODOIST_LISTING_INCOMPLETE": ["followup", "retry", true, "The Todoist task listing could not be proven complete (LIFE-757).", "None; the next hourly run reads again."],
+  "AFTER_TICK_RUN_MISSING": ["platform", "degraded", false, "The chain receipt found no run after the tick for this tick ID yet, so the full-platform clock is unverified. (LIFE-904)", "None; the chain job of the run that ends last prints the final receipt."],
+  "CAREER_JOBS_MISSING": ["platform", "degraded", false, "The chain receipt found no Hiring, Recruiters or Interview job for this tick, so the career clock is unverified. (LIFE-904)", "None; the chain job of the run that ends last prints the final receipt."],
+  "CAREER_NOT_DUE": ["platform", "degraded", false, "No career job was due or ended successfully for this tick, so the career clock has no time. (LIFE-904)", "None; the chain job of the run that ends last prints the final receipt."],
+  "EARLY_RUN_ABSENT": ["platform", "degraded", false, "No early domains run belongs to this tick (its dispatch failed); the run after the tick did every job. (LIFE-904)", "None; the chain job of the run that ends last prints the final receipt."],
+  "NO_DOMAIN_JOB_ENDED": ["platform", "degraded", false, "No domain job of this tick ended with a time, so the full-platform clock has none. (LIFE-904)", "None; the chain job of the run that ends last prints the final receipt."],
+  "NO_PUBLISH_STAGE": ["platform", "degraded", false, "The tick log has no publish stage that printed ok, so the Jobs clock has no time. (LIFE-904)", "None; the chain job of the run that ends last prints the final receipt."],
+  "NO_TICK_ID": ["platform", "degraded", false, "The chain job received no tick run ID, so every clock is unverified. (LIFE-904)", "None; the chain job of the run that ends last prints the final receipt."],
+  "TICK_RUNNING": ["platform", "degraded", false, "The tick had not finished when the chain receipt was read, so the full-platform clock is unverified. (LIFE-904)", "None; the chain job of the run that ends last prints the final receipt."],
+  "TICK_STAGES_UNREADABLE": ["platform", "degraded", false, "The tick log's stage lines could not be read, so the Jobs clock is unverified. (LIFE-904)", "None; the chain job of the run that ends last prints the final receipt."],
+  "FULL_WIDTH_TEMPLATE_MISSING": ["platform", "blocked", false, "The Full Width page template is not configured, so no page was created (D16.1).", "Set FULL_WIDTH_TEMPLATE in the Notion ids."]
 }

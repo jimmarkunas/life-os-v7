@@ -20,7 +20,7 @@ class Render(unittest.TestCase):
         segments = card.rich(text)
         self.assertEqual("".join(x["text"]["content"] for x in segments), text)                                  # the read-back compares plain text, so nothing may be added or lost
         bold = [x["text"]["content"] for x in segments if x.get("annotations", {}).get("bold")]
-        self.assertEqual(bold, ["AI Capacity (10/20 · 12:30 AM CT)", "Codex allowance", "Cloud Fit guard"])
+        self.assertEqual(bold, ["AI Capacity (10/20 · 12:30 AM CT)", "Codex allowance", "Cloud Fit guard", "Anthropic API"])
 
     def test_the_approved_layout_tightest_first_remaining_large_used_as_a_bar_resets_in_central(self):
         text, table = card.render(READING, NOW)
@@ -29,10 +29,12 @@ class Render(unittest.TestCase):
         self.assertTrue(text.split("\n")[1].startswith("Codex allowance · 5-hour "))                               # the Codex numbers come first, right under the headline
         self.assertEqual(table[0], card.HEADER)
         self.assertEqual(table[1], ["OpenRouter · Monthly key budget ◀ tightest", "20%", "▰▰▰▰▰▰▰▰▱▱ 80%", "Monthly key budget", "—", "NEAR LIMIT"])
-        self.assertEqual(table[2], ["Codex allowance · 5-hour", "60%", "▰▰▰▰▱▱▱▱▱▱ 40% · Cloud Fit stops at 50%", "5 hours", "Tue Oct 20, 2:12 AM CDT", "AVAILABLE"])
+        self.assertEqual(table[2], ["Codex allowance · 5-hour", "60%", "▰▰▰▰▱▱▱▱▱▱ 40% · Cloud Fit stops at 50%", "5 hours", "Tue Oct 20, 2:12 AM CT", "AVAILABLE"])
         self.assertEqual(table[3][0:2], ["Codex allowance · weekly", "82%"])
-        self.assertEqual(table[4], ["Groq", "—", "▱▱▱▱▱▱▱▱▱▱ not exposed", "—", "—", "UNAVAILABLE"])           # unknown is never an empty or a full bar
-        self.assertEqual(table[5:], [[""] * card.COLS] * 2)
+        self.assertEqual([table[4][0], table[5][0]], ["Anthropic · promo credit", "Anthropic · Honcho meter"])      # LIFE-921: an unread Anthropic reading is UNVERIFIED and sorts after the known pools
+        self.assertEqual(table[4][1:3], ["UNVERIFIED", "UNVERIFIED"])
+        self.assertEqual(table[6], ["Groq", "—", "▱▱▱▱▱▱▱▱▱▱ not exposed", "—", "—", "UNAVAILABLE"])           # unknown is never an empty or a full bar
+        self.assertEqual(table[7:], [[""] * card.COLS] * 2)
         self.assertEqual((len(table), {len(r) for r in table}), (card.ROWS, {card.COLS}))
 
     def test_exhausted_and_the_reserve_are_named(self):
@@ -51,6 +53,8 @@ class Render(unittest.TestCase):
 
 
 ON = {"V7_AI_CAPACITY_CARD": "on", "ATTENTION_CARD_BLOCK_ID": "att"}
+GOOD_HONCHO = {"health": True, "failed": False, "exhausted": False, "stopped": False, "backup": {"at": "2026-10-20T09:30:27Z", "ok": True}, "meter": {"cap": 0.9, "reserved": 0.40692}}
+BILLED = {"billed_usd": 1.38, "honcho_usd": 0.02, "as_of": "2026-10-20T05:20:00Z"}
 
 
 def _rt(text):
@@ -77,6 +81,12 @@ class FakeNotion:
             self.text["capN0"] = ""
             self.rows["capN0"] = {f"capN0-r{j}": ([""] * card.COLS) for j in range(card.ROWS)}
             return {"results": [{"type": "callout", "id": "capN0"}]}
+        if method == "PATCH" and len(parts) == 4 and parts[3] == "children" and parts[2].endswith("-t"):          # LIFE-921: rows appended to the table in place
+            cap = parts[2][:-2]
+            for blank in body["children"]:
+                self.rows[cap][f"{cap}-r{len(self.rows[cap])}"] = [""] * self.cols
+            self.grown = getattr(self, "grown", 0) + len(body["children"])
+            return {}
         if method == "PATCH":
             bid = parts[2]
             if body == {"in_trash": True}:
@@ -116,8 +126,24 @@ class FakeNotion:
 
 
 class Run(unittest.TestCase):
-    def go(self, notion, live=True, read=lambda: READING):
-        return card.run(0, live, environ=ON, client=notion, read=read, now=NOW)
+    def go(self, notion, live=True, read=lambda: READING, stats=lambda: (None, None)):
+        return card.run(0, live, environ=ON, client=notion, read=read, now=NOW, stats=stats)
+
+    def test_the_seven_row_table_of_before_is_grown_in_place_and_the_anthropic_rows_are_filled(self):
+        notion = FakeNotion(new=1, rows=card.OLD_ROWS)
+        out = self.go(notion, stats=lambda: (GOOD_HONCHO, BILLED))
+        self.assertEqual((out["status"], notion.grown, len(notion.rows["capN0"])), ("fresh", 2, card.ROWS))
+        cells = list(notion.rows["capN0"].values())
+        self.assertIn(["Anthropic · promo credit", "$98.62 of $100", "▱▱▱▱▱▱▱▱▱▱ $1.38 billed", "monthly", "Thu Nov 5, 6:00 PM CT", "AVAILABLE"], cells)
+        self.assertEqual(sum(1 for c in cells if c[0].startswith("Anthropic")), 2)
+        self.assertIn("Anthropic API · $1.38 billed of $100 promo credit", notion.text["capN0"])
+        again = self.go(notion, stats=lambda: (GOOD_HONCHO, BILLED))                            # a second run changes nothing and grows nothing
+        self.assertEqual((again["rows_written"], notion.grown), (0, 2))
+
+    def test_a_dry_run_does_not_grow_the_table(self):
+        notion = FakeNotion(new=1, rows=card.OLD_ROWS)
+        out = self.go(notion, live=False)
+        self.assertEqual((getattr(notion, "grown", 0), out["rows_grown"]), (0, 2))
 
     def test_off_unless_jim_switched_it_on(self):
         for environ in ({}, {"ATTENTION_CARD_BLOCK_ID": "att"}, {**ON, "V7_AI_CAPACITY_CARD": "off"}, {"V7_AI_CAPACITY_CARD": "on"}):
@@ -132,7 +158,7 @@ class Run(unittest.TestCase):
         self.assertEqual((out["status"], out["installed"], out["old_card"]), ("fresh", True, 0))
         self.assertEqual(notion.top, ["cl", "div", "capN0", "par"])                                 # at the page's top level, right under the divider
         made = notion.inserted[0]["children"][0]
-        self.assertEqual((made["type"], made["callout"]["children"][0]["table"]["table_width"], len(made["callout"]["children"][0]["table"]["children"])), ("callout", 6, 7))
+        self.assertEqual((made["type"], made["callout"]["children"][0]["table"]["table_width"], len(made["callout"]["children"][0]["table"]["children"])), ("callout", 6, 9))
         self.assertEqual(notion.rows["capN0"]["capN0-r1"][5], "NEAR LIMIT")
         again = self.go(notion)
         self.assertEqual((again["installed"], again["rows_written"], again["text_written"], len(notion.inserted)), (False, 0, False, 1))     # never placed twice
@@ -186,7 +212,7 @@ class Run(unittest.TestCase):
     def test_a_fresh_reading_is_written_in_place_and_read_back(self):
         notion = FakeNotion(new=1)
         out = self.go(notion)
-        self.assertEqual((out["status"], out["installed"], out["rows_written"], out["text_written"]), ("fresh", False, 4, True))   # the header is already right
+        self.assertEqual((out["status"], out["installed"], out["rows_written"], out["text_written"]), ("fresh", False, 6, True))   # the header is already right
         again = self.go(notion)
         self.assertEqual((again["rows_written"], again["text_written"]), (0, False))
 
@@ -211,7 +237,7 @@ class Run(unittest.TestCase):
     def test_a_dry_run_writes_nothing(self):
         notion = FakeNotion(new=1)
         out = self.go(notion, live=False)
-        self.assertEqual((out["rows_written"], out["rows_changed"], notion.patches, notion.trashed), (0, 4, [], []))
+        self.assertEqual((out["rows_written"], out["rows_changed"], notion.patches, notion.trashed), (0, 6, [], []))
 
 
 class Limits(unittest.TestCase):
@@ -304,7 +330,7 @@ class SignIns(unittest.TestCase):
     def test_each_sign_in_is_a_line_under_the_card_and_the_table_is_unchanged(self):
         ok = {**READING, "signins": {"meter": {"state": "OK", "expires": "2026-10-30T04:19:08+00:00"}, "fit": {"state": "EXPIRED", "expires": "1970-01-01T00:00:00+00:00"}}}
         text, table = card.render(ok, NOW)
-        self.assertEqual(text.splitlines()[-1], "Sign-ins · Cloud Fit sign-in: EXPIRED: sign in again on Oracle · Usage meter sign-in: OK until Thu Oct 29, 11:19 PM CDT")
+        self.assertEqual(text.splitlines()[-1], "Sign-ins · Cloud Fit sign-in: EXPIRED: sign in again on Oracle · Usage meter sign-in: OK until Thu Oct 29, 11:19 PM CT")
         self.assertEqual(table, card.render(READING, NOW)[1])
         self.assertEqual(card.signin_line({**READING, "signins": {"fit": {"state": "COOLDOWN", "expires": None}}}), "Sign-ins · Cloud Fit sign-in: FAILING: OpenAI refused its last refresh")
         self.assertIsNone(card.signin_line(READING))                                                        # an Oracle that does not report them: no line, nothing guessed
@@ -317,3 +343,26 @@ class SignIns(unittest.TestCase):
             with self.assertRaises(edge.EdgeError) as ctx:
                 edge.limits("oracle.example", send=Limits.reply(self, signins=bad))
             self.assertEqual(str(ctx.exception), "FIT_EDGE_LIMITS_OFF_CONTRACT", bad)
+
+
+class ResetTimes(unittest.TestCase):
+    """LIFE-957: reset times are Central, 12-hour, labelled CT, and never in the past."""
+
+    def test_a_reset_that_has_passed_rolls_forward_by_whole_windows_and_is_labelled_ct(self):
+        stale = {"read_at": "2026-10-20T05:30:00+00:00",
+                 "pools": [{"provider": "openai", "windows": [{"label": "5h", "used": 40, "reset_at": "2026-10-19T05:09:00+00:00"},       # Oct 19, 12:09 AM CDT, a day old
+                                                              {"label": "Week", "used": 18, "reset_at": "2026-10-19T05:09:00+00:00"},
+                                                              {"label": "Odd", "used": 5, "reset_at": "2026-10-19T05:09:00+00:00"}]}],
+                 "unavailable": [], "safety_cap": None}
+        _, table = card.render(stale, NOW)
+        by_window = {row[3]: row[4] for row in table[1:] if row[0].startswith("Codex")}
+        self.assertEqual(by_window["5 hours"], "Tue Oct 20, 1:09 AM CT")           # 12:09 AM Oct 19 + five 5-hour windows
+        self.assertEqual(by_window["Week"], "Mon Oct 26, 12:09 AM CT")             # a week on, not a day-old time
+        self.assertEqual(by_window["Odd"], "—")                                    # no known window length: no time is better than a past one
+        for shown in by_window.values():
+            self.assertNotIn("CST", shown)
+            self.assertNotIn("CDT", shown)
+
+    def test_a_future_reset_is_left_alone(self):
+        self.assertEqual(card._reset("2026-10-20T07:12:19+00:00", NOW, "5h"), "Tue Oct 20, 2:12 AM CT")
+        self.assertEqual(card._reset("2026-11-24T06:09:00+00:00"), "Tue Nov 24, 12:09 AM CT")      # a winter date: CT, never CST

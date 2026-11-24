@@ -8,6 +8,7 @@ from collections import Counter
 from dataclasses import replace
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from lifeos.platform import ledger_claim
 from lifeos.platform.names import core, norm, same_company, same_role, split_title
 from lifeos.platform.notion_client import NotionError, rich_text
 from lifeos.platform.runtime import DeadlineExceeded
@@ -38,8 +39,8 @@ def parse_identity(value):
         who, ordinal = data["interviewer"], data["ordinal"]
         if who is not None and (not isinstance(who, str) or not who.strip()):
             return None
-        if ordinal is not None and (type(ordinal) is not int or ordinal <= 0):
-            return None
+        if ordinal is not None and (type(ordinal) is not int or ordinal < 0):
+            return None                                                     # LIFE-958: ordinal 0 is a pre-screen (a recruiter screen before the client's Interview 1); never produced from an invite
         if who is None and ordinal is None:
             return None
         if value != IDENTITY_PREFIX + json.dumps(data, separators=(",", ":"), ensure_ascii=False):
@@ -315,6 +316,13 @@ def refresh(client, page_id, current, live, out, context=None, migrate=False):
     return "parent_refreshed"
 
 
+CARRIED = "from the old notes page"      # LIFE-931: a machine callout line that holds this phrase was carried over by hand from a human's older page (interviewers, time, transcript link, recording); no refresh or transition ever rewrites it
+
+
+def carried(block):
+    return CARRIED in notion.text(block)
+
+
 TRANSCRIPT, ACCEPTED = "Full Transcript", "v7-transcript:1;accepted="
 TRANSCRIPT_MARKER = "v7-transcript:1;"          # LIFE-382 (D250-05): a transcript page is recognised by this machine marker in its first block, never by its title
 
@@ -352,7 +360,7 @@ def link_transcript(client, round_id, live, out):
              if b.get("type") == "paragraph" and notion.text(b).split(":")[0] in want]
     if len(found) != 2:
         return "transcript_unrecognized"
-    stale = [(b, rich) for b, rich in found if notion._plain(b["paragraph"].get("rich_text")) != notion._plain(rich)]
+    stale = [(b, rich) for b, rich in found if not carried(b) and notion._plain(b["paragraph"].get("rich_text")) != notion._plain(rich)]     # LIFE-931: a carried-over line is kept as written
     if not stale:
         return "transcript_unchanged"
     out["writes_planned"] = 1
@@ -436,7 +444,7 @@ def round_logistics(client, page_id, budget=None):
     found = [m for m in (CALENDAR_REF.match(line) for line in lines) if m]
     ref, cancelled = (found[0].group(2), found[0].group(1) == "Cancelled") if len(found) == 1 else (None, False)
     held = [b for b, line in zip(nodes, lines) if line.startswith(MEETING)]
-    value = notion.text(held[0])[len(MEETING):] if len(held) == 1 else "Unavailable"
+    value = notion.text(held[0])[len(MEETING):] if len(held) == 1 and not carried(held[0]) else "Unavailable"        # LIFE-931: a carried-over joining line is not the invite's joining details
     join = next(iter(_links(held[0])), None) if len(held) == 1 else None
     place = value.removeprefix("Join link ↗").removeprefix(" · ") if join else value
     return ref, cancelled, (join, place or None) if join or (place and place != "Unavailable") else None
@@ -521,6 +529,9 @@ def transition(client, parent_id, child_id, current, want, live, out, context=No
     if all(t[0]["id"] != lines[1]["id"] for t in targets) and notion.text(lines[1]) != identity_text(want):
         targets.append((lines[1], notion.paragraph(identity_text(source)), notion.paragraph(identity_text(want))))     # the identity line is part of the repair, and still written last
     snapshot = next(b for b in tops[1:] if b.get("type") == "callout")
+    kept = [t for t in targets if carried(t[0])]                          # LIFE-931: lines carried over from an old notes page are neither rewritten nor treated as a human edit
+    targets = [t for t in targets if not carried(t[0])]
+    meeting_kept = any(notion.text(t[1]).startswith(MEETING) for t in kept)
     edited = [t for t in targets if notion.text(t[0]) not in (notion.text(t[1]), notion.text(t[2]))]               # LIFE-658: a machine block that reads as neither render is a human edit: preserved, then repaired
     before = notion.protected_snapshot(client, child_id, "round")
     if before is None:
@@ -562,9 +573,9 @@ def transition(client, parent_id, child_id, current, want, live, out, context=No
     after = notion.explicit_child(client, child_id)
     check = _round_targets(client, child_id, edits, [notion.MAX_CALLS])
     if (after is None or after.identity_valid is not True or (after.interview_date, after.interviewer, after.ordinal) != (want.interview_date, want.interviewer, want.ordinal)
-            or check is None or any(notion.text(b) != notion.text(new) for b, _, new in check)
+            or check is None or any(notion.text(b) != notion.text(new) for b, _, new in check if not carried(b))
             or (edited and not any(REPAIRED_LINE.fullmatch(notion.text(b)) for b in notion.children(client, snapshot["id"], [notion.MAX_CALLS])))
-            or round_logistics(client, child_id) != (want.calendar_ref, want.cancelled, None if want.cancelled else want.meeting)):
+            or round_logistics(client, child_id) != (want.calendar_ref, want.cancelled, None if want.cancelled or meeting_kept else want.meeting)):
         return "readback_content_mismatch"
     if notion.protected_snapshot(client, child_id, "round") != before:
         return "readback_protected_changed"
@@ -582,8 +593,24 @@ def _create_in_row(client, environ, source, row, parent_query, query, current, b
     company, role = parent_query.company.strip(), parent_query.role.strip()
     try:
         if row is None:
-            row_id = notion.create_ledger_row(client, source, company, role, query.stable_job_key)
-            out["rows_created"] = 1
+            claim_key, claimant = query.stable_job_key or ledger_claim.role_key(company, role), ledger_claim.who("opportunity")
+            try:
+                state, _ = ledger_claim.claim(claim_key, claimant)                  # LIFE-903: no create without the cross-process claim (the store's unique job key)
+            except Exception:                                                       # noqa: BLE001 - no claim means no create; a fixed code, never the exception text
+                out["claim"] = "unavailable"
+                return "write_failed"
+            code, found = notion.ledger_row(client, source, company, role, query.stable_job_key)     # authoritative read-back by key (or name); with the claim nobody else may create
+            if code == "ledger_row_found":
+                row_id = found["id"]
+                if state == ledger_claim.WON:
+                    ledger_claim.release(claim_key, claimant)
+            elif code == "ledger_row_missing" and state == ledger_claim.WON:
+                row_id = notion.create_ledger_row(client, source, company, role, query.stable_job_key)
+                out["rows_created"] = 1
+                ledger_claim.release(claim_key, claimant)                           # the create answered with the page id; an unanswered create raises above and keeps the claim
+            else:
+                out["claim"] = "held" if code == "ledger_row_missing" else "unreadable"
+                return "write_failed"                                               # held by another creator, or unreadable or ambiguous: never create on a guess; the claim stays until the lease passes
         else:
             row_id = row["id"]
     except NotionError:

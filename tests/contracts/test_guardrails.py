@@ -176,7 +176,7 @@ class QuarantineAndSchedulerAndRegistries(unittest.TestCase):
 
     def test_exactly_one_recurring_scheduler(self):
         scheduled = [p.name for p in (ROOT / ".github/workflows").glob("*.y*ml") if re.search(r"^\s*schedule:", p.read_text(), re.M)]
-        self.assertEqual(sorted(scheduled), ["boards.yml", "capacity-card.yml", "hourly.yml", "safety.yml", "v3-pages.yml", "watchdog.yml"])    # the watchdog only raises an alert (D52); it never runs the pipeline. safety.yml is Jim's weekly read-only check (D142): it touches no pipeline state. v3-pages.yml (LIFE-793, Jim's go Nov 17) is the five V3 page stages moved out of the hourly jira job: read-only from Jira, writes only the V3 page callouts
+        self.assertEqual(sorted(scheduled), ["capacity-card.yml", "hourly.yml", "safety.yml", "v3-pages.yml", "watchdog.yml"])    # the watchdog only raises an alert (D52); it never runs the pipeline. safety.yml is Jim's weekly read-only check (D142): it touches no pipeline state. v3-pages.yml (LIFE-793, Jim's go Nov 17) is the five V3 page stages moved out of the hourly jira job: read-only from Jira, writes only the V3 page callouts
         safety = (ROOT / ".github/workflows/safety.yml").read_text()
         for word in ("--live", "NOTION_", "GMAIL_"):
             self.assertNotIn(word, safety)                                                          # the weekly check reads the database and prints counts; it writes nothing and holds no mailbox or Notion token
@@ -262,13 +262,13 @@ class InterviewJobIsIsolated(unittest.TestCase):
         self.assertNotIn("secrets.NOTION_API_TOKEN", block)
         self.assertNotIn("secrets.NOTION_INTERVIEW_TOKEN", block)
         self.assertIn("steps.bws_interview.outputs.NOTION_INTERVIEW_TOKEN", block)                 # EDGE-1.3: its own token, as a masked output of its own loader
-        self.assertEqual(set(re.findall(r"outputs\.(\w+)", block)), {"NOTION_INTERVIEW_TOKEN", "INTERVIEW_ACCEPTANCE_JSON", "INTERVIEW_ACCEPTANCE_NEGATIVE_JSON"})   # and no other Jobs value reaches this job (LIFE-699: the two private acceptance cases, used only by the manual acceptance steps)
+        self.assertEqual(set(re.findall(r"outputs\.(\w+)", block)), {"NOTION_INTERVIEW_TOKEN", "INTERVIEW_ACCEPTANCE_JSON", "INTERVIEW_ACCEPTANCE_NEGATIVE_JSON", "V7_RUNTIME_CONFIG_SOURCE_ID"})   # and no other Jobs value reaches this job (LIFE-699: the two private acceptance cases, used only by the manual acceptance steps)
 
     def test_dispatch_only_and_failure_is_a_warning(self):
         block = self.block()
         self.assertIn("github.event_name == 'workflow_dispatch'", block)
         self.assertNotIn("\n    continue-on-error:", block)                    # a job-level continue-on-error would hide the result from the report job
-        self.assertEqual(block.count("continue-on-error: true"), 4)            # the four steps (D233: + the negative acceptance case); the Bitwarden load and its retry are inside the local action (LIFE-631)
+        self.assertEqual(block.count("continue-on-error: true"), 5)            # the four steps (D233: + the negative acceptance case) plus the address loader (LIFE-859); the Bitwarden load and its retry are inside the local action (LIFE-631)
         self.assertIn("::warning", block)
 
 

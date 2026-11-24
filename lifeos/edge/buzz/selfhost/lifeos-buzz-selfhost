@@ -1,0 +1,99 @@
+#!/bin/sh
+# LIFE-870: control script for the pinned private Buzz relay pilot (compose.yml beside it). Run as root: sudo lifeos-buzz-selfhost <command>
+#   preflight            Docker, Compose, free disk above the floor, ports free, credentials present: one `<check> ok|fail` line each; exit 0 only when all pass
+#   init <owner-pubkey>  generate the five random service secrets on this host and store them encrypted (systemd-creds); record the owner's PUBLIC key (64 hex); prints `<name> ok|exists`, never a value
+#   render-env           write /run/lifeos-buzz-selfhost/env (tmpfs, 0600) from the encrypted credentials; any credential missing writes nothing
+#   up | down | status   compose up (after preflight and render-env), compose down (volumes kept), compose ps
+#   health               `healthy` (readiness answers 200 and disk above the floor), else `unhealthy` or `disk_low`; exit 0 only when healthy
+#   backup-hint          the volumes and the commands to back them up (names only)
+# Secrets live only as encrypted credentials under /etc/lifeos-buzz-selfhost and, while the service runs, in the tmpfs env file; the relay key is the one placed by place-credentials from Bitwarden
+# (lifeos/edge/BUZZ_SELFHOST_RELAY_KEY). Nothing here prints a value. The relay and its storage are on loopback only (127.0.0.1:3100 relay, 127.0.0.1:3180 health).
+set -u
+umask 077
+HERE="$(cd "$(dirname "$0")" && pwd)"
+COMPOSE="${SELFHOST_COMPOSE:-$HERE/compose.yml}"
+CRED_DIR="${SELFHOST_CRED_DIR:-/etc/lifeos-buzz-selfhost}"
+RELAY_CRED="${SELFHOST_RELAY_CRED:-/etc/lifeos-buzz-mcp/buzz_selfhost_relay_key.cred}"
+RUN_DIR="${SELFHOST_RUN_DIR:-/run/lifeos-buzz-selfhost}"
+FLOOR_GB="${SELFHOST_FLOOR_GB:-8}"                       # refuse to start, and report unhealthy, when the Docker disk has less than this free
+HEALTH_URL="${SELFHOST_HEALTH_URL:-http://127.0.0.1:3180/_readiness}"
+SECRETS="postgres_password redis_password s3_access_key s3_secret_key git_hook_hmac"
+
+env_name() {
+  case "$1" in
+    postgres_password) echo POSTGRES_PASSWORD ;; redis_password) echo REDIS_PASSWORD ;; s3_access_key) echo BUZZ_S3_ACCESS_KEY ;;
+    s3_secret_key) echo BUZZ_S3_SECRET_KEY ;; git_hook_hmac) echo BUZZ_GIT_HOOK_HMAC_SECRET ;;
+  esac
+}
+
+docker_root() { docker info -f '{{.DockerRootDir}}' 2>/dev/null || echo /var/lib/docker; }
+free_gb() { df -BG --output=avail "$(docker_root)" 2>/dev/null | tail -n 1 | tr -dc '0-9'; }
+disk_ok() { avail="$(free_gb)"; [ -n "$avail" ] && [ "$avail" -ge "$FLOOR_GB" ]; }
+port_free() { ! ss -ltn 2>/dev/null | awk '{print $4}' | grep -q ":$1\$"; }
+check() { if "$@"; then echo "$name ok"; else echo "$name fail"; failed=1; fi; }
+
+preflight() {
+  failed=0
+  name=docker; check docker version
+  name=compose; check docker compose version
+  name=disk_above_floor_${FLOOR_GB}gb; check disk_ok
+  name=port_3100_free; check port_free 3100
+  name=port_3180_free; check port_free 3180
+  for s in $SECRETS; do name="credential_$s"; check test -f "$CRED_DIR/$s.cred"; done
+  name=credential_relay_key; check test -f "$RELAY_CRED"
+  name=owner_pubkey; check test -f "$CRED_DIR/owner.pubkey"
+  return "$failed"
+}
+
+init() {
+  pub="${1:-}"
+  case "$pub" in *[!0-9a-f]*|"") echo "usage: lifeos-buzz-selfhost init <owner public key, 64 hex>" >&2; return 64 ;; esac
+  [ "${#pub}" -eq 64 ] || { echo "usage: lifeos-buzz-selfhost init <owner public key, 64 hex>" >&2; return 64; }
+  mkdir -p "$CRED_DIR" && chmod 700 "$CRED_DIR"
+  printf '%s\n' "$pub" > "$CRED_DIR/owner.pubkey"
+  for s in $SECRETS; do
+    if [ -f "$CRED_DIR/$s.cred" ]; then echo "$s exists"; continue; fi
+    if openssl rand -hex 24 | systemd-creds encrypt --name="$s" - "$CRED_DIR/$s.cred" >/dev/null 2>&1; then chmod 600 "$CRED_DIR/$s.cred"; echo "$s ok"; else rm -f "$CRED_DIR/$s.cred"; echo "$s fail"; fi
+  done
+  if [ -f "$RELAY_CRED" ]; then echo "relay_key present"; else echo "relay_key missing (run place-credentials lifeos/edge/BUZZ_SELFHOST_RELAY_KEY)"; fi
+}
+
+render_env() {
+  mkdir -p "$RUN_DIR" && chmod 700 "$RUN_DIR"
+  tmp="$RUN_DIR/env.part"; : > "$tmp"
+  for s in $SECRETS; do
+    value="$(systemd-creds decrypt --name="$s" "$CRED_DIR/$s.cred" - 2>/dev/null)" && [ -n "$value" ] || { rm -f "$tmp"; echo "render_env fail" >&2; return 1; }
+    printf '%s=%s\n' "$(env_name "$s")" "$value" >> "$tmp"
+  done
+  relay="$(systemd-creds decrypt --name=buzz_selfhost_relay_key "$RELAY_CRED" - 2>/dev/null)" && [ -n "$relay" ] || { rm -f "$tmp"; echo "render_env fail" >&2; return 1; }
+  printf 'BUZZ_RELAY_PRIVATE_KEY=%s\n' "$relay" >> "$tmp"
+  printf 'RELAY_OWNER_PUBKEY=%s\n' "$(cat "$CRED_DIR/owner.pubkey")" >> "$tmp"
+  cat >> "$tmp" <<'EOF'
+BUZZ_REQUIRE_AUTH_TOKEN=true
+BUZZ_REQUIRE_RELAY_MEMBERSHIP=true
+BUZZ_ALLOW_NIP_OA_AUTH=true
+RELAY_URL=wss://lifeos-edge-01.tail96b07f.ts.net:3100
+BUZZ_CORS_ORIGINS=https://lifeos-edge-01.tail96b07f.ts.net:3100,tauri://localhost,https://tauri.localhost
+RUST_LOG=buzz_relay=info,buzz_db=info,buzz_auth=info,buzz_pubsub=info,tower_http=info
+EOF
+  chmod 600 "$tmp" && mv "$tmp" "$RUN_DIR/env" && echo "render_env ok"
+}
+
+compose() { docker compose --env-file "$RUN_DIR/env" -f "$COMPOSE" "$@"; }
+
+case "${1:-}" in
+  preflight) preflight ;;
+  init) shift; init "$@" ;;
+  render-env) render_env ;;
+  up) preflight >/dev/null || { preflight; echo "up refused"; exit 3; }; render_env && compose up -d --wait ;;
+  down) compose down ;;
+  status) compose ps ;;
+  health)
+    if ! disk_ok; then echo disk_low; exit 2; fi
+    if curl -fsS -m 5 -o /dev/null "$HEALTH_URL" 2>/dev/null; then echo healthy; else echo unhealthy; exit 1; fi ;;
+  backup-hint)
+    echo "volumes: lifeos-buzz-selfhost_buzz-postgres-data lifeos-buzz-selfhost_buzz-redis-data lifeos-buzz-selfhost_buzz-minio-data lifeos-buzz-selfhost_buzz-git-data"
+    echo "postgres dump: docker compose -f $COMPOSE exec postgres pg_dump -U buzz buzz | gzip > <file>   (restore into a scratch copy before trusting it)"
+    echo "keys: the relay key is in Bitwarden (lifeos/edge/BUZZ_SELFHOST_RELAY_KEY); the five service secrets are the encrypted credentials in $CRED_DIR" ;;
+  *) echo "usage: lifeos-buzz-selfhost preflight|init <owner-pubkey>|render-env|up|down|status|health|backup-hint" >&2; exit 64 ;;
+esac

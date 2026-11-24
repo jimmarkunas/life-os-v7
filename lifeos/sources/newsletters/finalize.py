@@ -16,6 +16,23 @@ IN_FLIGHT = ("NEW", "RESOLVED", "READY")
 TERMINAL = ("PUBLISHED", "CLOSED", "DUPLICATE", "PURGED")       # plus EXCLUDED_*; anything else (HOLD included) keeps the mail open
 
 
+def survivor_verified(cursor, job_id, hops=3):
+    """LIFE-903: True when the job a DUPLICATE points at (repost_of) is PUBLISHED and read back from the Ledger (verified_at set), following a survivor that is itself a DUPLICATE for at most `hops` steps.
+    A survivor that is missing, unpublished or unverified is not a verified twin: the mail stays open."""
+    for _ in range(hops):
+        cursor.execute("SELECT status, verified_at IS NULL, repost_of FROM v7_jobs WHERE id=%s", (job_id,))
+        row = cursor.fetchone()
+        if not row:
+            return False
+        status, unverified, twin = row
+        if status == "PUBLISHED":
+            return not unverified
+        if status != "DUPLICATE" or not twin:
+            return False
+        job_id = twin
+    return False
+
+
 def blockers(connection, message_ids):
     """{message id: why it cannot close yet} for the given messages; a message absent from the result is complete."""
     if not message_ids:
@@ -24,9 +41,12 @@ def blockers(connection, message_ids):
     out = {}
     with connection.cursor() as cursor:
         cursor.execute(
-            "SELECT s.gmail_message_id, j.status, j.verified_at IS NULL FROM v7_job_sources s JOIN v7_jobs j ON j.id = s.job_id"
+            "SELECT s.gmail_message_id, j.status, j.verified_at IS NULL, j.repost_of FROM v7_job_sources s JOIN v7_jobs j ON j.id = s.job_id"
             f" WHERE s.gmail_message_id IN ({marks})", tuple(message_ids))
-        for message_id, status, unverified in cursor.fetchall():
+        for message_id, status, unverified, twin in cursor.fetchall():
+            if status == "DUPLICATE" and twin and not survivor_verified(cursor, twin):
+                out.setdefault(message_id, "twin_unverified")            # LIFE-903: a mail is finalized as DUPLICATE only once the job it duplicates has a Ledger row the read-back verified
+                continue
             if status in IN_FLIGHT:
                 out.setdefault(message_id, "in_flight")
             elif status == "HOLD":
@@ -46,7 +66,7 @@ def finalize(gmail, live, limit, connection_factory=store.connect):
             raise
         done_label = None                       # a dry run before the label exists: report what WOULD close, create nothing
     ids = gmail.list_ids(config.FINALIZE_QUERY, limit=limit)
-    counts = {"candidates": len(ids), "closed": 0, "in_flight": 0, "unverified": 0, "hold": 0, "other": 0}
+    counts = {"candidates": len(ids), "closed": 0, "in_flight": 0, "unverified": 0, "twin_unverified": 0, "hold": 0, "other": 0}
     if not ids:
         return counts
     with connection_factory() as connection:

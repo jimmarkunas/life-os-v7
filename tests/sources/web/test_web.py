@@ -271,6 +271,19 @@ RSS = """<?xml version="1.0"?><rss xmlns:tt="https://teamtailor.com/locations"><
 </channel></rss>"""
 
 
+class EveryPassTimesItself(unittest.TestCase):
+    """LIFE-904: the tick's own `web` passes (no `select`) print the same timing receipt the boards window does, with every PR #1365 field."""
+    def test_a_pass_without_select_carries_timing_with_every_field(self):
+        board = OneRun.listing((1, "Program Manager", "Remote - US"))
+        got = run.run(10, True, NOW, fixed({"s1": board, "s2": board}), MemRepo(), SOURCES)
+        self.assertEqual(set(got["timing"]), {"boards", "wall_s", "waiting_for_reads_s", "saving_s", "read_s_p50_p95", "save_s_p50_p95"})
+        self.assertEqual(got["timing"]["boards"], 2)
+        self.assertEqual((len(got["timing"]["read_s_p50_p95"]), len(got["timing"]["save_s_p50_p95"])), (2, 2))
+
+    def test_a_pass_that_read_no_board_has_no_timing_rather_than_a_zero_one(self):
+        self.assertNotIn("timing", run.run(10, True, NOW, fixed({}), MemRepo(), []))
+
+
 class Teamtailor(unittest.TestCase):
     def read(self, status, body):
         from lifeos.platform.http import Fetched

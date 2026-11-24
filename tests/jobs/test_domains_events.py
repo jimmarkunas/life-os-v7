@@ -17,7 +17,7 @@ from tests.jobs.fit.test_backlog_workflow import evaluate, truthy
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github" / "workflows" / "domains.yml"
 TABLE = pathlib.Path(__file__).resolve().parent / "domains_event_table.json"
-GATES = ("gate",)                                       # the one gate job; compared separately (see test_the_gate_runs_exactly_...)
+GATES = ("gate", "chain")  # LIFE-904: chain = the clock receipt, in every tick run, no domain work;                                       # the one gate job; compared separately (see test_the_gate_runs_exactly_...)
 TRIGGER_INPUTS = ("all", "amazon", "bills_paid", "calendar_sync", "dcc", "hiring", "imessage", "jira", "live", "megibow", "physical_mail", "recruiters", "refresh")
 
 
@@ -125,7 +125,7 @@ class DomainsEventTable(unittest.TestCase):
 
     def test_a_clean_tick_runs_the_chain_a_failure_adds_the_report_and_a_cancelled_or_manual_run_runs_nothing(self):
         current = table()
-        chain = {"jira", "followup", "agenda", "bills", "amazon", "amazon_retention", "mail", "hiring", "dcc", "megibow", "recruiters", "hiring_outcomes", "interview", "outlook", "granola"}
+        chain = {"jira", "followup", "agenda", "bills", "amazon", "amazon_retention", "mail", "hiring", "dcc", "megibow", "recruiters", "hiring_outcomes", "interview", "outlook", "granola"}      # LIFE-894: the early mail read (interview_mail) is in the early run only, so it is not part of this chain
         self.assertEqual(chain, set(domain_jobs(current["after hourly: tick, success"])))
         self.assertEqual(set(domain_jobs(current["after hourly: tick, success, jira fails"])), chain | {"report"})        # the report job exists to name a failed job
         for label in ("after hourly: tick, cancelled", "after hourly: manual, success", "after hourly: quick, success", "dispatch: no input"):
@@ -141,9 +141,10 @@ class DomainsEventTable(unittest.TestCase):
         early = set(domain_jobs(runs(doc, events_["early run: phase=tick"])))
         after = set(domain_jobs(runs(doc, events_["after hourly: tick, success, early run true"])))
         self.assertEqual(late, after)
-        self.assertEqual(chain - late, early)
+        early_only = {"interview_mail"}                                                             # LIFE-894: read only, beside the tick: the run after a tick (with or without an early run) never runs it, `all` does not either (interview reads its own mail there)
+        self.assertEqual(chain - late, early - early_only)
         self.assertEqual(early & after, set())                                                      # no job runs twice
-        self.assertEqual(early | after, chain)                                                      # none is skipped
+        self.assertEqual(early | after, chain | early_only)                                         # none is skipped
         self.assertEqual(set(domain_jobs(runs(doc, events_["after hourly: tick, success, early run unknown"]))), late)
         self.assertEqual(domain_jobs(runs(doc, events_["after hourly: tick, cancelled, early run true"])), [])   # a cancelled tick still runs nothing after it
         self.assertEqual(domain_jobs(runs(doc, events_["dispatch: all=True"])), sorted(chain))      # `all` runs every job once

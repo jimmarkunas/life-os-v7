@@ -26,10 +26,10 @@ def fetch_json(url):
 
 
 class Verifier:
-    def __init__(self, issuer, audience, clients, jwks_url, users, as_url=None, fetch=fetch_json, clock=time.time, ttl=300):
+    def __init__(self, issuer, audience, clients, jwks_url, users, as_url=None, fetch=fetch_json, clock=time.time, ttl=300, extra_audiences=()):
         self.issuer, self.audience, self.clients, self.jwks_url, self.users = issuer, audience, frozenset(clients), jwks_url, {k: (v[0], frozenset(v[1])) for k, v in users.items()}
         self.as_url = as_url or issuer  # where clients fetch authorization-server metadata; some IdPs (Oracle IAM) publish it away from the `iss` string
-        self.fetch, self.clock, self.ttl, self.keys, self.loaded, self.lock = fetch, clock, ttl, {}, -1e9, threading.Lock()
+        self.fetch, self.clock, self.ttl, self.keys, self.loaded, self.lock, self.extra_audiences = fetch, clock, ttl, {}, -1e9, threading.Lock(), tuple(extra_audiences)      # LIFE-922: more public hosts of the same service; a token may name any, scope names keep the primary prefix
 
     def _key(self, kid):
         with self.lock:
@@ -63,7 +63,7 @@ class Verifier:
             raise AuthError("invalid_token")
         now, aud, exp = self.clock(), claims.get("aud"), claims.get("exp")
         aud = [aud] if isinstance(aud, str) else aud if isinstance(aud, list) else []
-        if not isinstance(claims.get("iss"), str) or claims["iss"].rstrip("/") != self.issuer.rstrip("/") or self.audience not in aud or isinstance(exp, bool) or not isinstance(exp, (int, float)) \
+        if not isinstance(claims.get("iss"), str) or claims["iss"].rstrip("/") != self.issuer.rstrip("/") or not (self.audience in aud or any(a in aud for a in self.extra_audiences)) or isinstance(exp, bool) or not isinstance(exp, (int, float)) \
                 or (isinstance(claims.get("nbf"), (int, float)) and claims["nbf"] > now):
             raise AuthError("invalid_token")
         cid, sub = claims.get("client_id") or claims.get("azp"), claims.get("sub")
@@ -76,4 +76,4 @@ class Verifier:
             raise AuthError("user_not_authorized", 403, sub[:64] if isinstance(sub, str) else None)
         label, communities = self.users[sub]
         scope = claims.get("scope")  # Oracle IAM names scopes <audience><scope>; accept exactly that prefix and no other
-        return {"client": label, "scopes": {x[len(self.audience):] if x.startswith(self.audience) else x for x in scope.split()} if isinstance(scope, str) else set(), "sub": sub[:64], "communities": communities, "iat": claims.get("iat"), "exp": exp, "tid": hashlib.sha256(sig).hexdigest()[:8]}
+        return {"client": label, "scopes": {x[len(self.audience):] if x.startswith(self.audience) else next((x[len(a):] for a in self.extra_audiences if x.startswith(a)), x) for x in scope.split()} if isinstance(scope, str) else set(), "sub": sub[:64], "communities": communities, "iat": claims.get("iat"), "exp": exp, "tid": hashlib.sha256(sig).hexdigest()[:8]}

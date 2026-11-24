@@ -1,0 +1,25 @@
+name: Doppler trial read and compare
+description: "LIFE-863: read the same secret names from Doppler (project life-os, config prd; the one read-only service token a free-plan GitHub job needs) and compare each with the value Bitwarden already loaded, by hash in memory. Bitwarden stays the source of every value the job uses; this action only reports a match count and a fixed code, never a value. A Doppler outage is the code doppler_unreachable and never fails the job. No third-party action: stdlib Python from this repository (lifeos/platform/doppler_compare.py)."
+inputs:
+  token: {description: "The read-only Doppler service token (the GitHub secret DOPPLER_TOKEN)", required: true}
+  project: {description: "Doppler project", default: "life-os"}
+  config: {description: "Doppler config", default: "prd"}
+  names: {description: "Comma list of the secret names to compare", required: true}
+  bitwarden: {description: "JSON object name -> value from the masked Bitwarden step outputs (toJSON(steps.<id>.outputs))", required: true}
+outputs:
+  code: {value: "${{ steps.compare.outputs.code }}"}
+  matched: {value: "${{ steps.compare.outputs.matched }}"}
+  total: {value: "${{ steps.compare.outputs.total }}"}
+  doppler_ms: {value: "${{ steps.compare.outputs.doppler_ms }}"}
+runs:
+  using: composite
+  steps:
+    - id: compare
+      shell: bash
+      env:
+        DOPPLER_TOKEN: ${{ inputs.token }}
+        DOPPLER_PROJECT: ${{ inputs.project }}
+        DOPPLER_CONFIG: ${{ inputs.config }}
+        COMPARE_NAMES: ${{ inputs.names }}
+        BITWARDEN: ${{ inputs.bitwarden }}
+      run: python -m lifeos.platform.doppler_compare

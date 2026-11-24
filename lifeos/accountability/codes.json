@@ -54,5 +54,47 @@
     false,
     "A Jira search needed more pages than the bound allows.",
     "None; retried on the next run."
+  ],
+  "ACCOUNTABILITY_MEJ_GOAL_AMBIGUOUS": [
+    "accountability",
+    "blocked",
+    false,
+    "One MEJ project Epic is linked to multiple current-quarter goal Epics, so attribution is ambiguous.",
+    "Correct the Jira Relates links with Matt's approval; the V3 goal update was refused."
+  ],
+  "ACCOUNTABILITY_MEJ_COMPLETION_DATE_MISSING": [
+    "accountability",
+    "blocked",
+    false,
+    "A linked MEJ project Task is Done but Jira has no status-category transition date; quarter attribution cannot be proven.",
+    "Keep prior V3 summary; verify Jira status history before publishing a versioned metric."
+  ],
+  "ACCOUNTABILITY_MEJ_COMPLETION_HISTORY_UNVERIFIED": [
+    "accountability",
+    "blocked",
+    false,
+    "A v2 MEJ Done Task has no complete, verified first transition into Done in Jira history.",
+    "Keep previous KPI; inspect complete Jira changelog and reconcile the first Done transition."
+  ],
+  "ACCOUNTABILITY_MEJ_MEMBERSHIP_NOT_APPROVED": [
+    "accountability",
+    "blocked",
+    false,
+    "The quarter's frozen MEJ Task-to-goal baseline is missing, malformed or not approved.",
+    "Record and approve an exact immutable quarter membership matrix before enabling v2."
+  ],
+  "ACCOUNTABILITY_MEJ_MEMBERSHIP_DRIFT": [
+    "accountability",
+    "blocked",
+    false,
+    "A frozen MEJ Task's type, parent, goal link or existence differs from the approved quarter baseline.",
+    "Stop v2 KPI publishing; reconcile Jira with the approved frozen baseline."
+  ],
+  "ACCOUNTABILITY_MEJ_METRIC_VERSION_INVALID": [
+    "accountability",
+    "blocked",
+    false,
+    "MEJ metric mode must be v1 or v2; no other value is allowed.",
+    "Keep v1 until K2/K3 validation and approved v2 cutover are complete."
   ]
 }

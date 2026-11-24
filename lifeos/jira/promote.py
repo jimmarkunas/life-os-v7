@@ -3,7 +3,7 @@
 # This module only decides. The agent then makes transition 17 (To Do to Agent Go) and posts the one comment, or posts `[waiting on] Jim: <the one thing>`.
 import re
 
-from lifeos.jira.release import JIM_FIRST, blockers_done, has_done_when, jim_first, text_of
+from lifeos.jira.release import JIM_FIRST, gate, has_done_when, jim_first, text_of
 
 # LIFE-753: the label an agent adds with every `[waiting on] Jim:` comment; the saved filter "Waiting on Jim" lists the tickets that carry it.
 WAITING_LABEL = "needs-jim"                                   # LIFE-780: the one workflow-control label (was waiting-on-jim, jim-only, hold, planning-only, needs-approval, protected-file)
@@ -54,10 +54,9 @@ def decide(issue):
         return "skip", ["epic"]
     if not has_done_when(fields.get("description")):
         return "skip", ["no_done_when"]
-    if not blockers_done(fields.get("issuelinks")):
-        return "skip", ["blocked"]
-    if WAITING_LABEL in (fields.get("labels") or []):
-        return "skip", ["skip_label"]
+    why = gate(fields)                                                          # LIFE-850: one readiness label (only `ready` moves), an Epic out of Scoping (or a research / verdict child), every blocker Done
+    if why:
+        return "skip", [why]
     present, open_items = jim_first(fields.get("description"))                 # Jim, Nov 21 2026: the release rule
     if not present:
         return "skip", ["no_jim_first"]

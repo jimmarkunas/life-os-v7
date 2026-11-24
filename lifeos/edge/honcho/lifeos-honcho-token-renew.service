@@ -1,0 +1,12 @@
+# LIFE-950: renews the Honcho memory token (renew_token.py) when 30 days or fewer are left; otherwise does nothing. Runs only from lifeos-honcho-token-renew.timer; it never starts, wakes or prompts an agent.
+# A failure sends one Agent Inbox alert from inside the program (honcho-alert) and leaves the working token in place.
+[Unit]
+Description=LIFE OS Honcho memory token renewal
+After=docker.service lifeos-buzz-mcp.service
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/bin/python3 -I /opt/lifeos-honcho/renew_token.py
+TimeoutStartSec=300
+Nice=10

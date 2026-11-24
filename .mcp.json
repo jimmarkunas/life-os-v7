@@ -3,8 +3,32 @@
     "concord": {
       "command": "/Users/jimmarkunas/.local/bin/concord-mcp",
       "env": {
-        "CONCORD_REPO_ROOT": "/Users/jimmarkunas/Developer/LIFEOS/life-os-v7"
+        "CONCORD_REPO_ROOT": "/Users/jimmarkunas/Developer/LIFEOS/life-os-v7",
+        "CONCORD_TELEMETRY_DISABLED": "1"
       }
+    },
+    "concord-oracle": {
+      "command": "ssh",
+      "args": [
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "ConnectTimeout=10",
+        "-o",
+        "ServerAliveInterval=15",
+        "-o",
+        "ServerAliveCountMax=2",
+        "opc@lifeos-edge-01",
+        "sudo",
+        "-u",
+        "concord",
+        "env",
+        "HOME=/home/concord",
+        "CONCORD_REPO_ROOT=/home/concord/life-os-v7",
+        "CONCORD_TELEMETRY_DISABLED=1",
+        "DO_NOT_TRACK=1",
+        "/home/concord/.npm-global/bin/concord-mcp"
+      ]
     }
   }
 }

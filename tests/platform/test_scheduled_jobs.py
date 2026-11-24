@@ -25,8 +25,8 @@ class Recorded(unittest.TestCase):
     def test_the_recorded_history_reads_on_time_with_the_unreadable_jobs_unknown(self):
         rows = row(NOW)
         self.assertEqual({k: v["state"] for k, v in rows.items()}, {
-            "hourly run": sj.ON_TIME, "watchdog": sj.ON_TIME, "weekly safety check": sj.ON_TIME, "domain jobs": sj.ON_TIME, "V3 pages": sj.UNKNOWN, "AI capacity card": sj.UNKNOWN, "employer board windows": sj.UNKNOWN, "ticker watch": sj.UNKNOWN,
-            "off-site backup": sj.UNKNOWN, "Close release": sj.UNKNOWN, "iMessage attention": sj.UNKNOWN, "iMessage relay": sj.UNKNOWN})
+            "hourly run": sj.ON_TIME, "watchdog": sj.ON_TIME, "weekly safety check": sj.ON_TIME, "domain jobs": sj.ON_TIME, "V3 pages": sj.UNKNOWN, "AI capacity card": sj.UNKNOWN, "ticker watch": sj.UNKNOWN,
+            "off-site backup": sj.UNKNOWN, "Honcho nightly backup": sj.UNKNOWN, "Honcho token renewal": sj.UNKNOWN, "Close release": sj.UNKNOWN, "iMessage attention": sj.UNKNOWN, "iMessage relay": sj.UNKNOWN, "private Buzz pilot health": sj.UNKNOWN})
         self.assertEqual(sj.late_names(list(rows.values())), [])
 
     def test_the_same_history_two_hours_on_reads_the_hourly_run_late_then_missing_and_the_watchdog_late(self):
@@ -72,9 +72,9 @@ class Rules(unittest.TestCase):
                 raise OSError("down")
             return {"workflow_runs": [1]}
         runs = sj.fetch(api)
-        self.assertEqual(sorted(runs), ["boards.yml", "capacity-card.yml", "domains.yml", "hourly.yml", "safety.yml", "v3-pages.yml", "watchdog.yml"])
+        self.assertEqual(sorted(runs), ["capacity-card.yml", "domains.yml", "hourly.yml", "safety.yml", "v3-pages.yml", "watchdog.yml"])
         self.assertIsNone(runs["safety.yml"])
-        self.assertEqual(len(seen), 7)
+        self.assertEqual(len(seen), 6)
 
     def test_the_daily_check_names_late_jobs_and_says_nothing_when_none_are(self):
         stamp = NOW.strftime("%Y-%m-%dT%H:%M:%SZ")

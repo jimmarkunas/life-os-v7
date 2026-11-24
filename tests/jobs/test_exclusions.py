@@ -67,4 +67,4 @@ class Review(unittest.TestCase):
         self.assertEqual((set(cursor.verbs()), client.writes), ({"SELECT"}, []))                       # a dry run reads only
         report = ex.review(0, True, connect=lambda: Cursor(self.ROWS), client=client)
         self.assertEqual((report["rows"], report["page"]), (2, "new"))
-        self.assertIn("ExampleCo", str(client.writes[0][2]))                                       # the plaintext only ever went to Notion
+        self.assertIn("ExampleCo", str(client.written()[1]))                                       # the plaintext only ever went to Notion

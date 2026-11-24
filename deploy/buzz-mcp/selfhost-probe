@@ -1,0 +1,340 @@
+#!/usr/bin/env python3
+"""LIFE-870: prove membership, authentication, post and read on the private Buzz relay pilot with our own client, without any agent seeing a key.
+
+  sudo /opt/lifeos-buzz-mcp/current/bin/selfhost-probe [channel] [relay URL, default https://lifeos-edge-01.tail96b07f.ts.net:3100]
+  `members <channel>` (public keys on stdin, one per line) has the owner add each key as a relay member and to that channel (LIFE-927); `channel` skips the probe steps: the owner adds the Claude pilot member and creates the one durable pilot channel (LIFE-870); it prints `pilot_channel <uuid>` (a public id).
+
+Runs as the vault owner (ubuntu, with that user's own env file; like store-credential it re-runs itself from root). It reads the pilot OWNER and AGENT (Claude) keys from Bitwarden into memory only, signs in this process, and drives
+lifeos/buzz/relay.py (the production client code: NIP-98 signing, POST /query, POST /events) against the pilot. Steps, each printed as `<step> ok|fail [public detail]`:
+  health, unauth_refused (no auth -> 401), non_member_refused (the agent before it is a member), member_add (the owner publishes kind 9030 for the agent), member_query_ok, channel_create (kind 9007 by the owner, kind 9000 adds the agent),
+  post_ok (Relay.post_message with a synthetic text), read_back (the same text read by event id), repeat_idempotent (the same key again is `already_delivered`).
+It prints only public things: step names, HTTP codes, event ids, public-key prefixes. SYNTHETIC text only; nothing is ever read from or written to any real community. The pilot relay is private (loopback) and disposable."""
+import json
+import os
+import pwd
+import secrets
+import subprocess
+import sys
+import urllib.error
+import urllib.request
+import uuid
+
+for up in ("..", "../.."):                                                           # installed as <release>/bin/selfhost-probe, or run from a checkout as deploy/buzz-mcp/selfhost-probe
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), up))
+
+ENVFILE = os.environ.get("STORE_CREDENTIALS_ENV", "/home/ubuntu/.config/bws/openclaw.env")
+RUNAS = os.environ.get("STORE_CREDENTIALS_USER", "ubuntu")
+OWNER, AGENT = "lifeos/edge/BUZZ_SELFHOST_OWNER_KEY", "lifeos/edge/BUZZ_SELFHOST_AGENT_CLAUDE"
+TEXT = "SYNTHETIC LIFE-870 pilot post: private relay compatibility test, no real content"
+
+
+def vault_named(names):
+    """-> {name: secret bytes} for the closed `names` from Bitwarden, in memory only; a name the vault does not return is absent."""
+    env = dict(os.environ)
+    for line in open(ENVFILE).read().splitlines():
+        line = line.strip().removeprefix("export ")
+        if "=" in line and not line.startswith("#"):
+            key, _, value = line.partition("=")
+            env[key.strip()] = value.strip().strip("'\"")
+    done = subprocess.run(["bws", "secret", "list", "-o", "json"], capture_output=True, text=True, env=env, check=False)
+    from lifeos.buzz import nip98
+    try:
+        found = {s["key"]: s["value"] for s in json.loads(done.stdout) if s.get("key") in names} if done.returncode == 0 else {}
+    except (ValueError, KeyError, TypeError):
+        found = {}
+    return {n: nip98.secret_from(found[n]) for n in names if n in found}
+
+
+def vault_keys():
+    """-> (owner secret bytes, agent secret bytes) from Bitwarden, in memory only; None for a name the vault does not return."""
+    got = vault_named((OWNER, AGENT))
+    return got.get(OWNER), got.get(AGENT)
+
+
+DUET = {"life-os": ("lifeos/edge/BUZZ_KEY_DUET_LIFE_OS", "https://life-os-dev.communities.buzz.xyz"), "bytalos": ("lifeos/edge/BUZZ_KEY_DUET_BYTALOS", "https://bytalos.communities.buzz.xyz"),
+        "pilot": ("lifeos/edge/BUZZ_SELFHOST_AGENT_DUET", "https://lifeos-edge-01.tail96b07f.ts.net:3100")}      # LIFE-922: Duet's own member key and relay per community (public relay addresses, no secret)
+BUZZ_CLI = os.environ.get("SELFHOST_PROBE_BUZZ", "/var/lib/hermeseval/bin/buzz")
+
+
+def duet_profile(community, image, say):
+    """Duet signs its own profile (name "Duet" and a picture) in one community: its key is read from the vault in memory and handed only to the Buzz CLI subprocess (never printed). The image is a stripped PNG under 2 MB uploaded
+    to that relay first. Reads the profile back and prints only the name and the picture's last 12 characters."""
+    from lifeos.buzz import nip98
+    name_key, url = DUET[community]
+    secret = vault_named((name_key,)).get(name_key)
+    data = open(image, "rb").read() if os.path.isfile(image) else b""
+    if secret is None or not data.startswith(b"\x89PNG") or len(data) > 2_000_000:
+        say("duet_" + community, False, "key or image missing, or the image is not a small PNG")
+        return
+    env = {**os.environ, "BUZZ_PRIVATE_KEY": secret.hex(), "BUZZ_RELAY_URL": url}
+
+    def cli(*args):
+        done = subprocess.run([BUZZ_CLI, *args], capture_output=True, text=True, env=env, check=False)
+        try:
+            return json.loads(done.stdout or done.stderr or "null")
+        except ValueError:
+            return None
+    up = cli("upload", "file", "--file", image)
+    picture = up.get("url") if isinstance(up, dict) else None
+    if not isinstance(picture, str) or not picture.startswith(url + "/media/"):
+        say("duet_" + community, False, "upload refused")
+        return
+    set_ = cli("users", "set-profile", "--name", "Duet", "--avatar", picture)
+    back = cli("users", "get", "--pubkey", nip98.pubkey(secret))
+    blob = json.dumps(back)
+    ok = isinstance(set_, dict) and set_.get("accepted") is True and '"Duet"' in blob and picture in blob
+    say("duet_" + community, ok, f"name Duet, picture ...{picture[-12:]}" if ok else "profile did not read back")
+
+
+def http(method, url, headers=None, body=None):
+    request = urllib.request.Request(url, body, headers or {}, method=method)
+    try:
+        with urllib.request.urlopen(request, timeout=15) as reply:
+            return reply.status, reply.read()
+    except urllib.error.HTTPError as error:
+        return error.code, error.read()
+    except OSError:
+        return 0, b""
+
+
+def signed(base, path, secret, payload, agent="lifeos-selfhost-probe"):
+    from lifeos.buzz import nip98
+    url, body = base + path, json.dumps(payload, separators=(",", ":")).encode()
+    headers = {"Authorization": nip98.auth_header(secret, "POST", url, body), "Content-Type": "application/json", "User-Agent": agent}
+    code, raw = http("POST", url, headers, body)
+    try:
+        return code, json.loads(raw)
+    except ValueError:
+        return code, None
+
+
+def provision(base, owner, agent, say, name="LIFE-870 synthetic pilot"):
+    """The owner adds the agent as a relay member (NIP-43 kind 9030) and creates a channel with the agent in it (kinds 9007 and 9000). -> the channel id, or None when the relay refused."""
+    from lifeos.buzz import nip98
+    owner_pub, agent_pub = nip98.pubkey(owner), nip98.pubkey(agent)
+    code, ack = signed(base, "/events", owner, nip98.event(owner, 9030, [["p", agent_pub]]))
+    say("member_add", code == 200 and isinstance(ack, dict) and ack.get("accepted") is True, f"owner {owner_pub[:8]} added agent {agent_pub[:8]} HTTP {code}")
+    code, rows = signed(base, "/query", agent, [{"kinds": [9], "limit": 1}])
+    say("member_query_ok", code == 200 and isinstance(rows, list), f"agent HTTP {code}")
+    channel = str(uuid.uuid4())
+    code, ack = signed(base, "/events", owner, nip98.event(owner, 9007, [["h", channel], ["name", name]]))
+    created = code == 200 and isinstance(ack, dict) and ack.get("accepted") is True
+    code2, ack2 = signed(base, "/events", owner, nip98.event(owner, 9000, [["h", channel], ["p", agent_pub]])) if created else (0, None)
+    ok = created and code2 == 200 and isinstance(ack2, dict) and ack2.get("accepted") is True
+    say("channel_create", ok, f"channel {channel[:8]} HTTP {code}/{code2}")
+    return channel if ok else None
+
+
+def add_members(base, owner, pubs, channel, say):
+    """The owner adds each public key as a relay member (kind 9030) and to one channel (kind 9000). Public keys only: no member's private key is involved. Idempotent; adds exactly the keys given."""
+    from lifeos.buzz import nip98
+    for pub in pubs:
+        code, ack = signed(base, "/events", owner, nip98.event(owner, 9030, [["p", pub]]))
+        ok = code == 200 and isinstance(ack, dict) and ack.get("accepted") is True
+        code2, ack2 = signed(base, "/events", owner, nip98.event(owner, 9000, [["h", channel], ["p", pub]])) if ok else (0, None)
+        say("member_" + pub[:8], ok and code2 == 200 and isinstance(ack2, dict) and ack2.get("accepted") is True, f"member HTTP {code}, channel HTTP {code2}")
+
+
+ROLE_FORMS = (lambda pub, role: (9030, [["p", pub, role]]),                          # the relay accepted this form but kept the role (LIFE-927, Nov 23 2026); form 2 adds a role tag, form 3 is a kind 9000 put-user
+              lambda pub, role: (9030, [["p", pub], ["role", role]]),
+              lambda pub, role: (9000, [["p", pub, role]]))
+
+
+def set_roles(base, owner, pubs, role, say, form=1):
+    """The owner sets each public key's relay role ("admin" or "member"; never owner) with one signed event of the chosen form. Public keys only. The caller reads the role back from the relay."""
+    from lifeos.buzz import nip98
+    for pub in pubs:
+        kind, tags = ROLE_FORMS[form - 1](pub, role)
+        code, ack = signed(base, "/events", owner, nip98.event(owner, kind, tags))
+        say("role_" + pub[:8], code == 200 and isinstance(ack, dict) and ack.get("accepted") is True, f"{role} HTTP {code}")
+
+
+def readd(base, owner, pubs, role, say):
+    """A relay keeps a member's role from the first add, so the owner removes the key (kind 9031) and adds it again with the role tag (kind 9030). Public keys only; the caller re-adds the channel."""
+    from lifeos.buzz import nip98
+    for pub in pubs:
+        code, ack = signed(base, "/events", owner, nip98.event(owner, 9031, [["p", pub]]))
+        gone = code == 200 and isinstance(ack, dict) and ack.get("accepted") is True
+        say("remove_" + pub[:8], gone, f"HTTP {code}")
+        if not gone:
+            continue
+        code, ack = signed(base, "/events", owner, nip98.event(owner, 9030, [["p", pub], ["role", role]]))
+        say("add_" + pub[:8], code == 200 and isinstance(ack, dict) and ack.get("accepted") is True, f"{role} HTTP {code}")
+
+
+def remove_members(base, owner, pubs, say):
+    """The owner removes each given public key from the relay (kind 9031) and nothing else; its own key is refused. Public keys only (LIFE-956: retire an exposed admin key)."""
+    from lifeos.buzz import nip98
+    for pub in pubs:
+        if pub == nip98.pubkey(owner):
+            say("remove_" + pub[:8], False, "refused: the owner's own key")
+            continue
+        code, ack = signed(base, "/events", owner, nip98.event(owner, 9031, [["p", pub]]))
+        say("remove_" + pub[:8], code == 200 and isinstance(ack, dict) and ack.get("accepted") is True, f"HTTP {code}")
+
+
+OLD_OWNER = "lifeos/edge/BUZZ_OLD_OWNER_NSEC_TEMP"          # LIFE-956: the retired exposed owner key, used only on Oracle, in memory, to hand a hosted community to the new key; Jim deletes it from the vault after
+
+
+def hosted(base, what, pubs, say):
+    """The old owner key (vault, memory only) signs one member event per public key against a hosted community: `admin` adds the key as admin (kind 9030 with a role tag), `remove` removes it (9031). The hosted relays refuse an owner change over the API (kind 9032: "cannot set role to owner"), so ownership moves only through Buzz support. Public keys only; the relay's answer is printed, never a key."""
+    from lifeos.buzz import nip98
+    got = vault_named((OLD_OWNER,)).get(OLD_OWNER)
+    if got is None:
+        say("old_owner_key", False, "not in the vault")
+        return
+    say("old_owner_key", True, "read in memory only")
+    for pub in pubs:
+        kind, tags = (9031, [["p", pub]]) if what == "remove" else (9030, [["p", pub], ["role", "admin"]])
+        code, ack = signed(base, "/events", got, nip98.event(got, kind, tags), agent="life-os-buzz-bridge/0.2")
+        say(f"{what}_{pub[:8]}", code == 200 and isinstance(ack, dict) and ack.get("accepted") is True, f"HTTP {code}" + (f" {json.dumps(ack)[:120]}" if code != 200 or not (isinstance(ack, dict) and ack.get("accepted") is True) else ""))
+
+
+def synthetic_readd(base, owner, say):
+    """A throwaway key (never stored) is added, removed, refused, and added again as admin, to prove the remove event before it touches a real member. Prints its public key."""
+    from lifeos.buzz import nip98
+    secret = os.urandom(32)
+    pub = nip98.pubkey(secret)
+    code, ack = signed(base, "/events", owner, nip98.event(owner, 9030, [["p", pub]]))
+    say("synthetic_add", code == 200 and isinstance(ack, dict) and ack.get("accepted") is True, f"HTTP {code}")
+    code, _ = signed(base, "/query", secret, [{"kinds": [9], "limit": 1}])
+    say("synthetic_member_reads", code == 200, f"HTTP {code}")
+    readd(base, owner, [pub], "admin", say)
+    code, _ = signed(base, "/query", secret, [{"kinds": [9], "limit": 1}])
+    say("synthetic_reads_again", code == 200, f"HTTP {code}")
+    print("synthetic_pub " + pub)
+
+
+def names(base, owner, agent, say):
+    """Each of the two vault keys sets its own profile name (kind 0, signed by that key): the relay owner and the connector. Nothing but the name goes out."""
+    from lifeos.buzz import nip98
+    for label, key in (("Relay Owner", owner), ("LIFE OS Connector", agent)):
+        content = json.dumps({"name": label, "display_name": label}, separators=(",", ":"))
+        code, ack = signed(base, "/events", key, nip98.event(key, 0, [], content))
+        say("name_" + nip98.pubkey(key)[-4:], code == 200 and isinstance(ack, dict) and ack.get("accepted") is True, f"{label} HTTP {code}")
+
+
+def run(base, owner, agent, say):
+    from lifeos.buzz import nip98, relay as relay_mod
+    agent_pub = nip98.pubkey(agent)
+    code, _ = http("GET", ("http://127.0.0.1:3180" if base.startswith("https://") else base.replace(":3100", ":3180")) + "/_readiness")        # the health port stays on loopback
+    say("health", code == 200, f"readiness {code}")
+    code, _ = http("POST", base + "/query", {"Content-Type": "application/json"}, b'[{"kinds":[9],"limit":1}]')
+    say("unauth_refused", code == 401, f"HTTP {code}")
+    code, _ = signed(base, "/query", agent, [{"kinds": [9], "limit": 1}])
+    say("non_member_refused", code in (401, 403), f"agent {agent_pub[:8]} HTTP {code}")
+    channel = provision(base, owner, agent, say)
+    if channel is None:
+        return
+    relay_mod.COMMUNITIES = ("pilot",)                                               # the production client code, pointed at the pilot (its hosted-community name list is a constant)
+    client = relay_mod.Relay({"pilot": base}, {"pilot": agent}, writes={("pilot", channel)})
+    key = "probe-" + secrets.token_hex(6)
+    try:
+        sent = client.post_message("pilot", channel, TEXT, key)
+        say("post_ok", sent.get("status") == "sent_not_read_back", f"event {sent.get('event_id')}")
+    except relay_mod.BuzzError as error:
+        say("post_ok", False, error.code)
+        return
+    code, rows = signed(base, "/query", agent, [{"kinds": [9], "#h": [channel], "limit": 5}])
+    back = [e for e in rows or [] if isinstance(e, dict) and e.get("id") == sent.get("event_id")]
+    say("read_back", code == 200 and len(back) == 1 and back[0].get("content") == TEXT and back[0].get("pubkey") == agent_pub, f"event {sent.get('event_id')} author {agent_pub[:8]}")
+    try:
+        again = client.post_message("pilot", channel, TEXT, key)
+        say("repeat_idempotent", again.get("status") == "already_delivered" and again.get("event_id") == sent.get("event_id"), "same key, no second event")
+    except relay_mod.BuzzError as error:
+        say("repeat_idempotent", False, error.code)
+
+
+def main(argv):
+    duet = argv[:3] if argv[:1] == ["duet-profile"] and argv[1:2] and argv[1] in ("life-os", "bytalos", "pilot") and argv[2:3] else None      # `selfhost-probe duet-profile <community> <png path>` (LIFE-922)
+    argv = argv[3:] if duet else argv
+    set_names = argv[:1] == ["names"]                                                  # `selfhost-probe names`: the owner and connector keys name themselves (LIFE-927)
+    argv = argv[1:] if set_names else argv
+    test_readd = argv[:1] == ["synthetic-readd"]
+    argv = argv[1:] if test_readd else argv
+    readd_role = argv[1] if argv[:1] == ["readd"] and argv[1:2] in (["admin"], ["member"]) else None          # `selfhost-probe readd admin|member` with public keys on stdin (LIFE-927)
+    argv = argv[2:] if readd_role else argv
+    role = argv[1] if argv[:1] == ["role"] and argv[1:2] in (["admin"], ["member"]) else None          # `selfhost-probe role admin|member [form 1-3] [relay URL]` with public keys on stdin (LIFE-927)
+    argv = argv[2:] if role else argv
+    form = int(argv.pop(0)) if role and argv[:1] in (["1"], ["2"], ["3"]) else 1
+    hosted_what = argv[1] if argv[:1] == ["hosted"] and argv[1:2] in (["admin"], ["remove"]) else None          # `selfhost-probe hosted admin|remove <relay URL>` with public keys on stdin (LIFE-956)
+    argv = argv[2:] if hosted_what else argv
+    remove = argv[:1] == ["remove"]                                                  # `selfhost-probe remove [relay URL]` with public keys (64 hex, one per line) on stdin (LIFE-956)
+    argv = argv[1:] if remove else argv
+    members = argv[:1] == ["members"]                                                # `selfhost-probe members <channel> [relay URL]` with public keys (64 hex, one per line) on stdin (LIFE-927)
+    argv = argv[1:] if members else argv
+    pilot_channel = argv.pop(0) if members and argv else None
+    channel_only = argv[:1] == ["channel"]                                           # `selfhost-probe channel`: add the Claude pilot member and create the one durable pilot channel (LIFE-870); prints its id
+    argv = argv[1:] if channel_only else argv
+    base = (argv[0] if argv else "https://lifeos-edge-01.tail96b07f.ts.net:3100").rstrip("/")
+    if os.geteuid() == 0 and pwd.getpwnam(RUNAS).pw_uid != 0:                       # re-run as the vault owner; root never sees the keys
+        os.execvp("sudo", ["sudo", "-u", RUNAS, "-H", "env", "PYTHONDONTWRITEBYTECODE=1", sys.executable, "-I", os.path.abspath(__file__), *sys.argv[1:]])
+    failed = []
+
+    def say(step, ok, detail=""):
+        print(f"{step} {'ok' if ok else 'fail'}" + (f" ({detail})" if detail else ""))
+        if not ok:
+            failed.append(step)
+    if duet:
+        duet_profile(duet[1], duet[2], say)
+        return 1 if failed else 0
+    if hosted_what:
+        pubs = [x for x in (sys.stdin.read().split() if not sys.stdin.isatty() else []) if len(x) == 64 and all(c in "0123456789abcdef" for c in x)]
+        if not pubs or not argv:
+            print("hosted fail (a relay URL and at least one public key are required)")
+            return 1
+        hosted(base, hosted_what, pubs, say)
+        return 1 if failed else 0
+    try:
+        owner, agent = vault_keys()
+    except OSError:
+        print("keys fail (no vault)")
+        return 1
+    if owner is None or agent is None:
+        print("keys fail (a pilot key is not in the vault)")
+        return 1
+    say("keys", True, "owner and agent keys read in memory only")
+    if set_names:
+        names(base, owner, agent, say)
+        return 1 if failed else 0
+    if test_readd:
+        synthetic_readd(base, owner, say)
+        return 1 if failed else 0
+    if readd_role:
+        pubs = [x for x in (sys.stdin.read().split() if not sys.stdin.isatty() else []) if len(x) == 64 and all(c in "0123456789abcdef" for c in x)]
+        if not pubs:
+            print("readd fail (at least one public key is required)")
+            return 1
+        readd(base, owner, pubs, readd_role, say)
+        return 1 if failed else 0
+    if role:
+        pubs = [x for x in (sys.stdin.read().split() if not sys.stdin.isatty() else []) if len(x) == 64 and all(c in "0123456789abcdef" for c in x)]
+        if not pubs:
+            print("role fail (at least one public key is required)")
+            return 1
+        set_roles(base, owner, pubs, role, say, form)
+        return 1 if failed else 0
+    if remove:
+        pubs = [x for x in (sys.stdin.read().split() if not sys.stdin.isatty() else []) if len(x) == 64 and all(c in "0123456789abcdef" for c in x)]
+        if not pubs:
+            print("remove fail (at least one public key is required)")
+            return 1
+        remove_members(base, owner, pubs, say)
+        return 1 if failed else 0
+    if members:
+        pubs = [x for x in (sys.stdin.read().split() if not sys.stdin.isatty() else []) if len(x) == 64 and all(c in "0123456789abcdef" for c in x)]
+        if not pubs or not pilot_channel:
+            print("members fail (a channel id and at least one public key are required)")
+            return 1
+        add_members(base, owner, pubs, pilot_channel, say)
+        return 1 if failed else 0
+    if channel_only:
+        channel = provision(base, owner, agent, say, "LIFE OS pilot (LIFE-870)")
+        print(f"pilot_channel {channel}" if channel else "pilot_channel fail")
+        return 0 if channel else 1
+    run(base, owner, agent, say)
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

@@ -1,0 +1,63 @@
+name: mariadb-race
+# LIFE-903 (Jim, comment 13848): the two-process Ledger-creation race on a real MariaDB with the real v7_jobs schema, not sqlite. Secret-free and read-only: a throwaway MariaDB 10.11 service container
+# on the runner's own loopback with no password, no store secret, no network beyond the image pull and the pinned requirements. The production store is never reached; the test itself refuses any host but
+# 127.0.0.1 and any database not named race_.... Runs on a pull request or a merge that touches the claim, the store schema or this proof, and by hand.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - lifeos/platform/ledger_claim.py
+      - lifeos/jobs/store.py
+      - lifeos/platform/db.py
+      - tests/jobs/claim_race_worker.py
+      - tests/jobs/test_ledger_claim_mariadb.py
+      - .github/workflows/mariadb-race.yml
+  push:
+    branches: [main]
+    paths:
+      - lifeos/platform/ledger_claim.py
+      - lifeos/jobs/store.py
+      - tests/jobs/claim_race_worker.py
+      - tests/jobs/test_ledger_claim_mariadb.py
+      - .github/workflows/mariadb-race.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: life-os-v7-mariadb-race-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  race:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: "1"
+          MARIADB_DATABASE: race_ledger
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    steps:
+      - name: Checkout the exact commit (own git fetch; the token is passed once and never stored)
+        run: |
+          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
+          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
+          git checkout -q --detach FETCH_HEAD
+      - uses: ./.github/actions/python
+      - name: Two-process race on MariaDB (real v7_jobs schema built by store.ensure_schema; four real processes, exactly one winner; the same race without the claim makes two rows)
+        env:
+          LIFEOS_RACE_DB_HOST: 127.0.0.1
+          LIFEOS_RACE_DB_PORT: "3306"
+          LIFEOS_RACE_DB_USER: root
+          LIFEOS_RACE_DB_NAME: race_ledger
+        run: |
+          python -c "import pymysql, sys; c = pymysql.connect(host='127.0.0.1', user='root', database='race_ledger'); cur = c.cursor(); cur.execute('SELECT VERSION()'); print('mariadb', cur.fetchone()[0])" | tee -a "$GITHUB_STEP_SUMMARY"
+          python -B -m unittest -v tests.jobs.test_ledger_claim_mariadb 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+          test "${PIPESTATUS[0]}" -eq 0

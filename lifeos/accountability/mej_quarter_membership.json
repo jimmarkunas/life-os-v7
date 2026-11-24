@@ -1,0 +1,5 @@
+{
+  "schema_version": 1,
+  "description": "MEJ v2 quarter-frozen Task/Story membership baseline. Requires Jim approval per quarter; do not infer assignments from project Epic links. No approved per-task baseline is recorded yet.",
+  "quarters": {}
+}

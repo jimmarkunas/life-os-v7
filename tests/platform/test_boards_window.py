@@ -42,18 +42,8 @@ class Slots(unittest.TestCase):
         self.assertEqual(bw.label(utc(2026, 11, 22, 19)), "1:00 PM CT")
         self.assertEqual(bw.label(utc(2026, 11, 22, 1)), "7:00 PM CT")
 
-    def test_every_cron_pair_has_exactly_one_firing_on_the_window_boundary_on_every_day_of_the_year(self):
-        crons = cron_hours()
-        self.assertEqual(len(crons), 8)
-        for start in (dt.date(2026, 1, 1), dt.date(2027, 1, 1)):
-            for offset in range(365):
-                day = start + dt.timedelta(days=offset)
-                on_boundary = 0
-                for hour in crons:
-                    moment = dt.datetime(day.year, day.month, day.day, hour, 0, tzinfo=UTC)
-                    on_boundary += bw.current_slot(moment) == moment
-                self.assertEqual(on_boundary, 4, day)                                              # one firing per window opens it; the other is an hour off
-
+    def test_the_retired_windows_leave_no_cron_line_in_the_workflow(self):
+        self.assertEqual(cron_hours(), [])                                                         # LIFE-905: the four windows are retired; boards.yml has no schedule now
 
 def cron_hours():
     """The eight UTC hours of the cron lines of .github/workflows/boards.yml."""
@@ -153,7 +143,7 @@ class Auto(unittest.TestCase):
                 posts.append((path, body))
                 return {}
             return {"jobs": [{"name": "boards", "conclusion": "success", "status": "completed"}]} if "/jobs" in path else {"workflow_runs": [run(1, utc(2026, 11, 22, 7, 1))]}
-        self.assertEqual(bw.dispatch({"GITHUB_REF_NAME": "main"}, api=api, now=self.NOW, out=out.append), 0)
+        self.assertEqual(bw.dispatch({"GITHUB_REF_NAME": "main", "BOARDS_IN_TICK": "off"}, api=api, now=self.NOW, out=out.append), 0)
         self.assertEqual(posts, [("actions/workflows/boards.yml/dispatches", {"ref": "main", "inputs": {"auto": "true", "mode": "window"}})])
         self.assertIn("started the 7:00 AM CT window", out[0])
 
@@ -165,7 +155,7 @@ class Auto(unittest.TestCase):
                 posts.append(body)
                 return {}
             return {"jobs": [{"name": "boards", "conclusion": "success", "status": "completed"}]} if "/jobs" in path else {"workflow_runs": [run(1, utc(2026, 11, 21, 19, 1))]}
-        bw.dispatch({}, api=api, now=self.NOW, out=lambda _t: None)
+        bw.dispatch({"BOARDS_IN_TICK": "off"}, api=api, now=self.NOW, out=lambda _t: None)
         self.assertEqual(posts[0]["inputs"], {"auto": "true", "mode": "catchup"})
 
     def test_dispatch_starts_nothing_when_the_window_has_a_run(self):
@@ -184,7 +174,7 @@ class Auto(unittest.TestCase):
                 raise OSError("refused")
             return {"workflow_runs": []}
         out = []
-        self.assertEqual(bw.dispatch({}, api=api, now=self.NOW, out=out.append), 0)
+        self.assertEqual(bw.dispatch({"BOARDS_IN_TICK": "off"}, api=api, now=self.NOW, out=out.append), 0)
         self.assertIn("dispatch failed", out[0])
 
     def test_an_auto_run_decides_like_a_scheduled_one_and_a_manual_run_always_runs(self):
@@ -211,7 +201,7 @@ class Main(unittest.TestCase):
         return code, written, out
 
     def test_a_scheduled_run_writes_the_decision_to_the_step_outputs(self):
-        code, written, _ = self.run_main({"BOARDS_EVENT": "schedule", "GITHUB_RUN_ID": "9"}, [run(1, utc(2026, 11, 22, 1, 3))])
+        code, written, _ = self.run_main({"BOARDS_EVENT": "schedule", "GITHUB_RUN_ID": "9", "BOARDS_IN_TICK": "off"}, [run(1, utc(2026, 11, 22, 1, 3))])
         self.assertEqual(code, 0)
         for line in ("run=true", "mode=window", f"limit={limits.BOARDS_PER_RUN}", "timeout_minutes=15", "deadline_minutes=12"):
             self.assertIn(line, written["out"])
