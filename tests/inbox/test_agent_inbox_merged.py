@@ -110,20 +110,24 @@ class MergedTiles(unittest.TestCase):
         self.assertEqual((out["layout"], out["tiles"]), ("merged", 4))
         self.assertFalse([w for w in n.writes if OLD in w[1] or w[1].split("/")[2] in n.kids.get(OLD, [])])
         box, heading, tiles = self.box(n)
-        self.assertEqual(n.texts(box["id"]), [("heading_3", "Now 1 · Today 1"), ("bulleted_list_item", "Now: Approve the key plan"), ("bulleted_list_item", "Today: Read the weekly summary")])
+        self.assertEqual(n.texts(box["id"]), [("heading_3", "Now 1 · Today 1")])                   # Jim, Nov 24 2026 2:36 PM CT: a counter only, no item list
         self.assertEqual([agent_inbox._words(number) for _, number, _ in tiles], ["0", "0", "0"])      # This week, FYI, Snoozed counts
 
-    def test_a_line_carries_its_action_link_and_now_items_come_before_today_items(self):
+    def test_a_list_an_earlier_version_left_in_the_box_is_removed_and_the_same_heading_block_is_kept(self):
         n = build()
-        n.row("Today", "second", "https://example.test/t")
         n.row("Now", "first", "https://example.test/n")
-        agent_inbox.recount_page(n, source=SOURCE)
-        box, _, _ = self.box(n)
-        lines = [n.blocks[k] for k in n.kids[box["id"]][1:]]
-        self.assertEqual([agent_inbox._line_key(b["bulleted_list_item"]["rich_text"]) for b in lines],
-                         [[("Now: ", ""), ("first", "https://example.test/n")], [("Today: ", ""), ("second", "https://example.test/t")]])
+        box, heading, _ = self.box(n)
+        n.new(box["id"], "bulleted_list_item", "Now: first")
+        n.new(box["id"], "bulleted_list_item", "+3 more in the Agent Inbox list")
+        out = agent_inbox.recount_page(n, source=SOURCE)
+        self.assertEqual(n.texts(box["id"]), [("heading_3", "Now 1 · Today 0")])
+        self.assertEqual(sum(1 for w in n.writes if w[0] == "DELETE"), 2)                          # exactly the two list lines, nothing else
+        box2, heading2, _ = self.box(n)
+        self.assertEqual((box2["id"], heading2["id"]), (box["id"], heading["id"]))
+        self.assertEqual({w[0] for w in n.writes}, {"PATCH", "DELETE"})
+        self.assertFalse([w for w in n.writes if w[0] == "PATCH" and w[1].endswith("/children")])  # nothing is ever appended to the box
 
-    def test_a_second_run_with_nothing_new_writes_nothing_and_a_change_touches_only_the_changed_block(self):
+    def test_a_second_run_with_nothing_new_writes_nothing_and_a_change_touches_only_the_heading(self):
         n = build()
         n.row("Now", "one")
         n.row("Now", "two")
@@ -131,21 +135,19 @@ class MergedTiles(unittest.TestCase):
         n.writes.clear()
         self.assertEqual(agent_inbox.recount_page(n, source=SOURCE)["tiles_changed"], 0)
         self.assertEqual(n.writes, [])
-        n.rows[0]["status"] = "Done"                                                         # one resolved: the heading changes, one line is rewritten, the extra line is deleted
+        n.rows[0]["status"] = "Done"                                                         # one resolved: only the heading changes
         out = agent_inbox.recount_page(n, source=SOURCE)
-        self.assertEqual(out["tiles_changed"], 3)
+        self.assertEqual(out["tiles_changed"], 1)
         box, _, _ = self.box(n)
-        self.assertEqual(n.texts(box["id"]), [("heading_3", "Now 1 · Today 0"), ("bulleted_list_item", "Now: two")])
-        self.assertEqual({w[0] for w in n.writes}, {"PATCH", "DELETE"})
+        self.assertEqual(n.texts(box["id"]), [("heading_3", "Now 1 · Today 0")])
 
-    def test_the_box_is_capped_and_says_how_many_more_wait_in_the_list(self):
+    def test_many_items_still_give_only_the_counts_with_no_more_line(self):
         n = build()
         for i in range(15):
             n.row("Today", f"item {i}")
         agent_inbox.recount_page(n, source=SOURCE)
         box, _, _ = self.box(n)
-        lines = n.texts(box["id"])
-        self.assertEqual((len(lines), lines[0], lines[-1]), (agent_inbox.BOX_ITEMS_MAX + 2, ("heading_3", "Now 0 · Today 15"), ("bulleted_list_item", "+3 more in the Agent Inbox list")))
+        self.assertEqual(n.texts(box["id"]), [("heading_3", "Now 0 · Today 15")])
 
     def test_the_bare_row_without_a_wrapper_works_and_a_wrong_shape_falls_back_to_the_old_page(self):
         n = build(wrapped=False)

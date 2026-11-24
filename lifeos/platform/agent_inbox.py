@@ -21,7 +21,6 @@ PAGE_TITLE = "Agent Inbox"
 MERGED_TITLE = "Daily LIFE OS Report (Hourly)"                                    # LIFE-938/939: the one page after the merge; the old Agent Inbox page is archived, no pointer
 PAGE_TITLES = (MERGED_TITLE, PAGE_TITLE)
 MERGED_LABELS = ("This week", "FYI", "Snoozed")                                    # the three count tiles beside the Now and Today box
-BOX_ITEMS_MAX = 12
 URGENCY = ("Now", "Today", "This week", "FYI")
 WORKSPACES = ("Personal", "Bytalos")
 STATUSES = ("New", "Done", "Dismissed", "Snoozed", "Promoted")
@@ -298,31 +297,12 @@ def locate_page(client, source=None):
     return holders[0]
 
 
-def _box_lines(client, source):
-    """-> the Now items then the Today items (New status) as rich-text lists for the box, at most BOX_ITEMS_MAX, the last line saying how many more wait in the list. Subject and link only."""
-    lines, more = [], 0
-    for urgency in ("Now", "Today"):
-        body = {"page_size": 50, "filter": {"and": [_select("Status", "New"), _select("Urgency", urgency)]}, "sorts": [{"timestamp": "created_time", "direction": "ascending"}]}
-        for row in client.query_data_source(source, body).get("results", ()):
-            props = row.get("properties") or {}
-            subject = _plain_title((props.get("Subject") or {}).get("title")) or "(no subject)"
-            link = (props.get("Link") or {}).get("url") or ""
-            if len(lines) >= BOX_ITEMS_MAX:
-                more += 1
-                continue
-            text = {"type": "text", "text": {"content": subject[:300], **({"link": {"url": link}} if link else {})}}
-            lines.append([{"type": "text", "text": {"content": urgency + ": "}, "annotations": {"bold": True}}, text])
-    if more:
-        lines.append([{"type": "text", "text": {"content": f"+{more} more in the Agent Inbox list"}, "annotations": {"italic": True}}])
-    return lines
-
-
 def _line_key(rich):
     return [(piece.get("plain_text") or (piece.get("text") or {}).get("content", ""), piece.get("href") or ((piece.get("text") or {}).get("link") or {}).get("url") or "") for piece in rich]
 
 
 def _set_box(client, box, heading, lines, want_heading):
-    """Make the box exactly `heading` plus one bulleted line per item: change only what differs, append what is missing, delete what is extra. Only the box's own children are touched. -> blocks changed."""
+    """Make the box exactly `heading` plus the given bulleted lines (none for the merged page: a counter only): change only what differs, append what is missing, delete what is extra. Only the box's own children are touched. -> blocks changed."""
     changed = 0
     if _words(heading) != want_heading:
         client.update_block(heading["id"], "heading_3", [{"type": "text", "text": {"content": want_heading}}])
@@ -344,15 +324,14 @@ def _set_box(client, box, heading, lines, want_heading):
 
 
 def recount_page(client, page_id=None, source=None):
-    """Write the tiles from the database. Old page: the five tile numbers and labels. Merged page (LIFE-938): the Now and Today box (heading `Now N · Today M` and one line per item with its
-    link) and the This week, FYI and Snoozed tiles. Only those blocks are ever patched, and only when they differ. -> {"tiles": n, "tiles_changed": n}."""
+    """Write the tiles from the database. Old page: the five tile numbers and labels. Merged page (LIFE-938): the Now and Today box (the heading `Now N · Today M` and nothing else; a list left in it is removed) and the This week, FYI and Snoozed tiles. Only those blocks are ever patched, and only when they differ. -> {"tiles": n, "tiles_changed": n}."""
     source = source or locate(client)
     numbers = counts(client, source)
     page_id = page_id or locate_page(client, source)
     merged = _merged_row(client, page_id)
     if merged:
         box, heading, tiles = merged
-        changed = _set_box(client, box, heading, _box_lines(client, source), f"Now {numbers['Now']} · Today {numbers['Today']}")
+        changed = _set_box(client, box, heading, [], f"Now {numbers['Now']} · Today {numbers['Today']}")   # Jim, Nov 24 2026 2:36 PM CT: a counter only, no item list
         for label, (_, number_block, label_block) in zip(MERGED_LABELS, tiles, strict=True):
             if _words(number_block) != str(numbers[label]):
                 client.update_block(number_block["id"], "heading_3", [{"type": "text", "text": {"content": str(numbers[label])}}])
