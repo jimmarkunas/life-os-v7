@@ -17,11 +17,18 @@ def read(*parts):
 
 
 class RoleFiles(unittest.TestCase):
+    def test_every_role_carries_the_recall_first_line_exactly_once(self):
+        """LIFE-962 (Jim, Nov 24 2026, comment 14121): shared memory beats a profile's own notes, for every Hermes profile."""
+        line = "Before answering a question about Jim, his preferences or his work, call memory_recall (workspace Personal) and answer from it; shared memory beats your own notes."
+        for name in ("main", "claude-hermes", "developer", "librarian", "research", "writer"):
+            text = open(os.path.join(ROOT, "hermes", "roles", name, "SOUL.md")).read()
+            self.assertEqual(text.count(line), 1, name)
+
     def test_every_role_file_exists_is_short_and_has_no_secret(self):
         for name in ROLES:
             text = read("roles", name, "SOUL.md")
             self.assertTrue(text.strip() and text.endswith("\n"), name)
-            self.assertLessEqual(len(text.encode()), 2400, name)                      # the deploy script's own limit is 4096
+            self.assertLessEqual(len(text.encode()), 2600, name)                      # the deploy script's own limit is 4096; 2600 since the one recall-first line (Jim, Nov 24 2026, LIFE-962 comment 14121) was added to every role
             self.assertIsNone(SECRET.search(text), name)
 
     def test_the_librarian_points_at_the_notion_wiki_and_not_a_local_folder(self):
