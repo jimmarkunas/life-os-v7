@@ -680,35 +680,53 @@ class Credentials(Server):
         from unittest import mock
         from tests.platform.test_memory_honcho import FakeHoncho
         self.honcho = FakeHoncho()
-        patch = mock.patch.dict(buzz_mcp.MEMORY, {"client": self.honcho})
+        self.refusals = []
+        patch = mock.patch.dict(buzz_mcp.MEMORY, {"client": self.honcho, "look": lambda text: None, "receipt": self.refusals.append, "asks": {}})      # LIFE-949: no model second look in tests; refusal receipts are collected
         patch.start()
         self.addCleanup(patch.stop)
         self.start(access=self.access())
 
-    def test_memory_store_recall_correct_revoke_go_through_the_gate_for_the_two_granted_clients_only(self):
+    def test_memory_store_recall_correct_revoke_ask_go_through_the_gate_and_the_text_goes_when_it_is_revoked(self):
         self.with_memory()
         status, stored = self.memory("hermes-librarian", "memory_store", workspace="Personal", text="Synthetic fact: the demo bird is a kestrel.", source="uat")
         self.assertEqual((status, stored["ok"], stored["data"]["client"]), (200, True, "hermes-librarian"))          # the verified credential is the provenance
         fid = stored["data"]["id"]
         _, recalled = self.memory("openclaw", "memory_recall", workspace="Personal", query="demo bird")
         self.assertEqual([(i["id"], i["client"]) for i in recalled["data"]["items"]], [(fid, "hermes-librarian")])
+        _, asked = self.memory("mac-claude-code", "memory_ask", workspace="Personal", question="What is the demo bird?")
+        self.assertEqual((asked["ok"], asked["data"]["label"], "kestrel" in asked["data"]["answer"], [c["id"] for c in asked["data"]["considered"]]), (True, "memory-derived", True, [fid]))
         _, corrected = self.memory("hermes-librarian", "memory_correct", workspace="Personal", id=fid, text="Synthetic fact: the demo bird is a heron.", source="uat")
         self.assertEqual(corrected["data"]["supersedes"], fid)
         _, seen = self.memory("openclaw", "memory_recall", workspace="Personal", query="demo bird")
         self.assertEqual([i["text"] for i in seen["data"]["items"]], ["Synthetic fact: the demo bird is a heron."])
         self.memory("hermes-librarian", "memory_revoke", workspace="Personal", id=corrected["data"]["id"])
         self.assertEqual(self.memory("openclaw", "memory_recall", workspace="Personal", query="demo bird")[1]["data"]["items"], [])
+        after = self.memory("oracle-claude-code", "memory_ask", workspace="Personal", question="What is the demo bird?")[1]["data"]
+        self.assertEqual(("kestrel" in after["answer"], "heron" in after["answer"], after["considered"]), (False, False, []))      # the text is gone, so the ask cannot repeat it
+        self.assertNotIn("kestrel", json.dumps(self.honcho.rows))
         receipts = [r for r in self.receipts if r.get("tool", "").startswith("memory_")]
-        self.assertEqual({r["tool"] for r in receipts}, {"memory_store", "memory_recall", "memory_correct", "memory_revoke"})
+        self.assertEqual({r["tool"] for r in receipts}, {"memory_store", "memory_recall", "memory_correct", "memory_revoke", "memory_ask"})
+
+    def test_a_sensitive_store_is_refused_over_the_wire_with_the_fixed_shape_and_never_reaches_honcho(self):
+        self.with_memory()
+        status, out = self.memory("openclaw", "memory_store", workspace="Personal", text="Her SSN is 123-45-6789.", source="uat")
+        self.assertEqual((out["ok"], out["error"], out["category"], out["stored"]), (False, "sensitive_refused", "identity", False))
+        self.assertIn("Nothing was stored", out["hint"])
+        self.assertNotIn("123-45-6789", json.dumps(out))                                                              # never echoed
+        self.assertEqual((self.honcho.rows, self.honcho.peers), ([], 0))
+        self.assertEqual([sorted(r) for r in self.refusals], [["category", "client", "ct", "event"]])
+        self.assertEqual(self.refusals[0]["client"], "openclaw")
+        self.assertNotIn("123-45-6789", json.dumps(self.refusals) + json.dumps(self.receipts))
 
     def test_memory_is_refused_for_a_client_without_a_grant_and_for_bytalos_and_tgp(self):
         self.with_memory()
-        for cid in ("mac-claude-code", "oracle-claude-code"):
-            self.assertEqual(self.memory(cid, "memory_store", workspace="Personal", text="t", source="s")[1]["error"], "access_denied", cid)     # no memory grant
+        for op, args in (("memory_store", {"text": "t", "source": "s"}), ("memory_ask", {"question": "q"})):
+            self.assertEqual(self.memory("honcho-alerts", op, workspace="Personal", **args)[1]["error"], "access_denied", op)                  # a credential with no memory grant
         for workspace in ("Bytalos", "TGP", "personal"):
-            out = self.memory("openclaw", "memory_store", workspace=workspace, text="t", source="s")[1]
-            self.assertEqual(out["error"], "access_denied", workspace)                                                # Bytalos has no grant; TGP and a typo are unknown workspaces
-        self.assertEqual(self.honcho.rows, [])                                                                        # nothing reached Honcho
+            for op, args in (("memory_store", {"text": "t", "source": "s"}), ("memory_ask", {"question": "q"})):
+                out = self.memory("openclaw", op, workspace=workspace, **args)[1]
+                self.assertEqual(out["error"], "access_denied", (workspace, op))                                      # Bytalos has no grant; TGP and a typo are unknown workspaces
+        self.assertEqual((self.honcho.rows, self.honcho.chats), ([], []))                                             # nothing reached Honcho
 
     def test_a_credential_cannot_name_the_client_and_an_expired_grant_refuses(self):
         self.with_memory()
