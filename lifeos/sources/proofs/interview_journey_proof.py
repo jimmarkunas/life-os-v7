@@ -208,9 +208,9 @@ LEDGER_SCHEMA = {"Job": {"title": {}}, "Company": {"rich_text": {}}, "Stable Job
 def sandbox(client, now):
     """A fresh sandbox for this run under the QA parent: container -> "Hiring Pipeline" -> "Active Opportunities", and the container's own small Job Ledger
     (only the properties the Interview step reads and writes). -> (the pipeline page id, the Ledger data source id). A refused database fails the run closed."""
-    container = notion.write_tree(client, QA_PARENT, [], title=f"Interview journey proof · {now.strftime('%Y-%m-%d %I:%M %p')} CT (synthetic)")
-    pipeline = notion.write_tree(client, container, [], title="Hiring Pipeline")
-    notion.write_tree(client, pipeline, [], title="Active Opportunities")
+    container = notion.write_tree(client, QA_PARENT, [], title=f"Interview journey proof · {now.strftime('%Y-%m-%d %I:%M %p')} CT (synthetic)", template=notion.FULL_WIDTH)
+    pipeline = notion.write_tree(client, container, [], title="Hiring Pipeline", template=notion.FULL_WIDTH)
+    notion.write_tree(client, pipeline, [], title="Active Opportunities", template=notion.FULL_WIDTH)
     from lifeos.sources.proofs import m1m2_proof                                    # imported here: m1m2_proof imports this module
     return pipeline, m1m2_proof._database(client, container, "Job Ledger (synthetic)", LEDGER_SCHEMA, "JOURNEY_SANDBOX_LEDGER_UNREADABLE")
 

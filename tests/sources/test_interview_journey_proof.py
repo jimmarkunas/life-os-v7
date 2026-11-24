@@ -1,4 +1,9 @@
 """The LIFE-78 journey proof module, run exactly as the manual domains dispatch runs it, on the production-shaped Notion fake."""
+import os
+from lifeos.interview import notion as _notion
+from lifeos.platform import full_width as _full_width
+os.environ["LIFEOS_NOTION_FULL_WIDTH_TEMPLATE"] = "e" * 32          # D16.1: pages come from the Full Width template; the fakes apply it at once
+_notion.TEMPLATE_WAIT = _full_width.WAIT = 0
 import json
 import unittest
 from datetime import datetime

@@ -5,7 +5,7 @@ One page per title: a page that already exists is left untouched (delete it in N
 # LIFE-121 (Jim, Oct 26).
 
 from lifeos.platform.notion_ids import notion_id
-from lifeos.platform import limits, stored_pages
+from lifeos.platform import full_width, limits, stored_pages
 from lifeos.platform.notion_client import NotionError, rich_text
 
 ROWS_PER_TABLE = 90                      # a table's children are capped at 100 per request; one header row plus these
@@ -72,7 +72,7 @@ def publish(client, title, header, rows, live, links=(), intro=(), key=None, con
         blocks = ([{"object": "block", "type": "paragraph", "paragraph": {"rich_text": rich_text("\n".join(intro))}}] if intro else []) + tables(header, rows, links)
         if len(blocks) > limits.NOTION_MAX_CHILD_BLOCKS - 1:
             return _fail(counts, "PRIVATE_REPORT_TOO_LARGE")
-        page = client.call_once("POST", "/pages", {"parent": {"type": "page_id", "page_id": parent}, "properties": {"title": {"title": rich_text(title)}}, "children": blocks})
+        page = full_width.create_page(client, parent, title, blocks)                                  # D16.1: a full width page, from the template
         written = sum(len(_children(client, t["id"])) - 1 for t in _children(client, page["id"]) if t.get("type") == "table")
         if written != len(rows):
             return _fail(counts, "PRIVATE_REPORT_READBACK_MISMATCH")
