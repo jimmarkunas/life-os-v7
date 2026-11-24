@@ -452,11 +452,22 @@ class Credentials(Server):
             status, _, headers = self.req("POST", "/mcp", {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, Host=host)
             self.assertEqual(status, 401)
             self.assertIn(f'resource_metadata="{origin}/.well-known/oauth-protected-resource"', headers["WWW-Authenticate"], host)
+            both = f'scope="{BASE}/mcpbuzz:read {BASE}/mcpbuzz:write"'                                            # LIFE-922: a first sign-in on an extra host asks for read and write at once (Duet checks capabilities and never tries a write, so it would never be asked for the step-up)
+            self.assertEqual(both in headers["WWW-Authenticate"], origin != BASE, host)                            # the primary host's challenge is unchanged (read only)
         self.assertEqual(self.rpc(token(), "tools/list", Host="edge.example.test")[0], 200)                         # the primary audience still works on every host
         self.assertEqual(self.rpc(token(aud=second + "/mcp"), "tools/list", Host="second.example.test")[0], 200)     # the second audience works
         self.assertEqual(self.rpc(token(aud=[second + "/mcp"], scope=BASE + "/mcpbuzz:read"), "tools/list", Host="second.example.test")[0], 200)   # IAM's primary-prefixed scope names are understood for either audience
         self.assertEqual(self.rpc(token(aud="https://other.example.test/mcp"), "tools/list")[0], 401)                 # any other audience is refused
         self.assertEqual(self.rpc(token(aud=second + "/mcp", sub="user-nobody"), "tools/list")[0], 403)               # the allowlists are the same on both hosts
+
+    def test_duet_may_address_agents_when_it_is_a_mention_sender_and_claude_and_chatgpt_are_unchanged(self):
+        """LIFE-922: addressing is a per-identity flag (BUZZ_MENTION_SENDERS); Duet gets exactly the flag Claude has, nobody else changes."""
+        base = {"BUZZ_URL_LIFE_OS": "https://life-os.communities.buzz.xyz", "BUZZ_KEY_CLAUDE_LIFE_OS": "01" * 32, "BUZZ_KEY_CHATGPT_LIFE_OS": "02" * 32, "BUZZ_KEY_DUET_LIFE_OS": "03" * 32,
+                "BUZZ_OAUTH_ISSUER": ISS, "BUZZ_OAUTH_JWKS_URL": ISS + "/jwks", "BUZZ_OAUTH_CLIENTS": "cid-one", "BUZZ_MCP_PUBLIC_URL": BASE,
+                "BUZZ_OAUTH_USERS": "user-claude:claude:life-os,user-chatgpt:chatgpt:life-os,user-duet:duet:life-os", "BUZZ_RECIPIENTS": "hermes:life-os:" + "ab" * 32}
+        flags = lambda env: {i: r.may_address for i, r in buzz_mcp.from_env(env)[0].items()}
+        self.assertEqual(flags({**base, "BUZZ_MENTION_SENDERS": "claude,chatgpt"}), {"claude": True, "chatgpt": True, "duet": False})
+        self.assertEqual(flags({**base, "BUZZ_MENTION_SENDERS": "claude,chatgpt,duet"}), {"claude": True, "chatgpt": True, "duet": True})
 
     def test_the_extra_public_hosts_setting_is_origin_only_and_never_the_primary(self):
         env = {"BUZZ_MCP_PUBLIC_URL": BASE, "BUZZ_MCP_PUBLIC_URLS_EXTRA": "https://second.example.test/"}
