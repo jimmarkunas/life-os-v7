@@ -190,6 +190,7 @@ jobs:
           set_env: false
           secrets: |
             53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
+            0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
       - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
         continue-on-error: true
         uses: ./.github/actions/bws-plain
@@ -201,6 +202,7 @@ jobs:
         continue-on-error: true
         name: V7 settings page for the two switches a job condition needs (LIFE-703; names and counts only; an unreadable page changes nothing)
         env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_settings.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}
           GRANOLA_AUTO: ""
           V7_IMESSAGE_ALERTS: ""
@@ -260,10 +262,20 @@ jobs:
           oauth-client-id: ${{ steps.bws_jira.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ steps.bws_jira.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
+      - id: bws_runtime_config
+        continue-on-error: true
+        name: Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)
+        uses: ./.github/actions/bws-load
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
       - id: settings
         continue-on-error: true
         name: V7 settings page for the Jira base URL, boards and GTV epic (LIFE-699; names and counts only; an unreadable page changes nothing). Only this step holds the Notion token; the Jira steps get the values through the job environment
         env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_jira.outputs.NOTION_JIRA_TOKEN }}
           JIRA_BASE_URL: ""
           JIRA_BOARDS: ""
@@ -318,6 +330,7 @@ jobs:
         name: Jira card (Daily Report; counts only; the page is written only when live)
         if: ${{ inputs.jira == 'card' || inputs.jira == 'report' || needs.gate.outputs.due_jira == 'true' }}
         env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           JIRA_CARD_BLOCK_ID: ""
           JIRA_CARD_PROJECTS: ""   # LIFE-703: declared empty so the V7 settings page can fill it; the code's own default applies when both are empty
           JIRA_SITE_URL: ""
@@ -448,10 +461,20 @@ jobs:
           oauth-client-id: ${{ steps.bws_followup.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ steps.bws_followup.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
+      - id: bws_runtime_config
+        continue-on-error: true
+        name: Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)
+        uses: ./.github/actions/bws-load
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
       - id: followup
         continue-on-error: true
         name: Followup lane (LIFE-757; LIVE on a scheduled or tick run while V7_LIVE is on, otherwise a dry run that writes nothing; reads only sources that have a credential and an expiry row)
         env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           JIRA_API_TOKEN: ${{ steps.bws_followup.outputs.JIRA_API_TOKEN }}
           JIRA_EMAIL: ${{ steps.bws_followup.outputs.JIRA_EMAIL }}
           OUTLOOK_CLIENT_ID: ${{ steps.bws_followup.outputs.OUTLOOK_CLIENT_ID }}
@@ -534,6 +557,7 @@ jobs:
           set_env: false
           secrets: |
             53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
+            0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
       - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
         continue-on-error: true
         uses: ./.github/actions/tailscale
@@ -545,6 +569,7 @@ jobs:
         continue-on-error: true
         name: Calendar sync (Outlook invites to Google; counts only; writes only when live; pages the phone when it has not worked for 3 hours)
         env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_settings.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}
           OUTLOOK_CLIENT_ID: ${{ steps.bws_outlook.outputs.OUTLOOK_CLIENT_ID }}
           GCAL_CALENDAR_ID: ""
@@ -623,11 +648,21 @@ jobs:
           oauth-client-id: ${{ steps.bws_bills.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ steps.bws_bills.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
+      - id: bws_runtime_config
+        continue-on-error: true
+        name: Runtime Configuration source ID from Bitwarden for the compare-only read (LIFE-858; read only, an address not a secret; if it fails the step runs exactly as before)
+        uses: ./.github/actions/bws-load
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
       - id: bpaid
         continue-on-error: true
         name: Bills Paid processor (before the snapshot; writes Notion only when live; counts only)
         if: ${{ github.event_name == 'workflow_run' || inputs.phase == 'tick' || inputs.all || inputs.bills_paid }}      # LIFE-775: the early run of a tick processes Paid rows like any tick
         env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           NOTION_BILLS_DATA_SOURCE_ID: ""
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_PASSWORD }}
@@ -641,15 +676,6 @@ jobs:
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_USER }}
           NOTION_BILLS_TOKEN: ${{ steps.bws_bills.outputs.NOTION_BILLS_TOKEN }}
         run: python -m lifeos.run bills-paid $([ "$LIVE" = "true" ] && echo --live)
-      - id: bws_runtime_config
-        continue-on-error: true
-        name: Runtime Configuration source ID from Bitwarden for the compare-only read (LIFE-858; read only, an address not a secret; if it fails the step runs exactly as before)
-        uses: ./.github/actions/bws-load
-        with:
-          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
-          set_env: false
-          secrets: |
-            0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
       - id: bsnap
         continue-on-error: true
         name: Bills snapshot (read-only; private snapshot saved only when live)
@@ -673,6 +699,7 @@ jobs:
         name: Bills card (saved snapshot only; writes only when live; a stale snapshot is shown as STALE, never as current)
         if: ${{ always() }}
         env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           BILLS_CARD_BLOCK_ID: ""
           CALENDAR_CARD_BLOCK_ID: ""
           JIRA_CARD_BLOCK_ID: ""
@@ -750,10 +777,20 @@ jobs:
           oauth-client-id: ${{ steps.bws_agenda.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ steps.bws_agenda.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
+      - id: bws_runtime_config
+        continue-on-error: true
+        name: Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)
+        uses: ./.github/actions/bws-load
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
       - id: asnap
         continue-on-error: true
         name: Agenda snapshot (read-only Google Calendar; private save only when live)
         env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_agenda.outputs.NOTION_JIRA_TOKEN }}
           GCAL_CALENDAR_ID: ""
           GCAL_SERVICE_ACCOUNT_JSON: ${{ steps.bws_agenda.outputs.GCAL_SERVICE_ACCOUNT_JSON }}
@@ -772,6 +809,7 @@ jobs:
         continue-on-error: true
         name: Agenda card (saved snapshot only; writes only when live)
         env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           CALENDAR_CARD_BLOCK_ID: ""
           JIRA_CARD_BLOCK_ID: ""
           HIRING_CARD_BLOCK_ID: ""
@@ -860,6 +898,7 @@ jobs:
         name: Amazon card (reads the canonical orders and, read-only, other stores' shipping mail; writes only when live; a failed sync is shown as DEGRADED)
         if: ${{ always() }}
         env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           NOTION_AMAZON_DATA_SOURCE_ID: ""
           AMAZON_CARD_BLOCK_ID: ""
           BILLS_CARD_BLOCK_ID: ""
@@ -936,10 +975,12 @@ jobs:
           set_env: false
           secrets: |
             53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
+            0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
       - id: aretain
         continue-on-error: true
         name: Amazon retention (D139; mail older than 30 days to the Trash once its order is recorded; dry run unless live; counts only)
         env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_settings.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}
           GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_amazon_retention.outputs.GMAIL_OAUTH_CLIENT_ID }}
           NOTION_AMAZON_DATA_SOURCE_ID: ""
@@ -1053,11 +1094,21 @@ jobs:
           GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_mail.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
           GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_mail.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
         run: python -m lifeos.run mail-filing $([ "$LIVE" = "true" ] && echo --live)
+      - id: bws_runtime_config
+        continue-on-error: true
+        name: Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)
+        uses: ./.github/actions/bws-load
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
       - id: mcard
         continue-on-error: true
         name: Mail Alerts card (reads the stored state; writes only the Mail Alerts callout, with read-back; a failed ingest is shown as DEGRADED)
         if: ${{ always() }}
         env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           MAIL_ALERTS_CARD_BLOCK_ID: ""
           AMAZON_CARD_BLOCK_ID: ""
           ATTENTION_CARD_BLOCK_ID: ""
@@ -1140,10 +1191,20 @@ jobs:
           oauth-client-id: ${{ steps.bws_hiring.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ steps.bws_hiring.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
+      - id: bws_runtime_config
+        continue-on-error: true
+        name: Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)
+        uses: ./.github/actions/bws-load
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
       - id: hiring
         continue-on-error: true
         name: Hiring Pipeline (Ledger, Notion pages and Calendar to the private state and the floating region; read-back and whole-page proof; a failed source is DEGRADED)
         env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
           HIRING_PIPELINE_PAGE_ID: ""
           HIRING_CARD_BLOCK_ID: ""
@@ -1234,10 +1295,20 @@ jobs:
           oauth-client-id: ${{ steps.bws_megibow.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ steps.bws_megibow.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
+      - id: bws_runtime_config
+        continue-on-error: true
+        name: Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)
+        uses: ./.github/actions/bws-load
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
       - id: megibow
         continue-on-error: true
         name: MegIBOW (Gmail, Outlook and calendars to the Notion table; counts only; writes only when live; a failed source is DEGRADED)
         env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           LIFEOS_NOTION_IDS: ""
           GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_megibow.outputs.GMAIL_OAUTH_CLIENT_ID }}
           OUTLOOK_CLIENT_ID: ${{ steps.bws_megibow.outputs.OUTLOOK_CLIENT_ID }}
@@ -1307,10 +1378,20 @@ jobs:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIVE
           live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
+      - id: bws_runtime_config
+        continue-on-error: true
+        name: Runtime Configuration source ID from Bitwarden for the archive step (LIFE-933; read only, an address not a secret; if it fails the archive step finds no page and writes nothing)
+        uses: ./.github/actions/bws-load
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
       - id: dcccard
         continue-on-error: true
         name: Daily Command Center (rules over the cards' first lines; writes only its own callout when live; every other region proven unchanged)
         env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           GITHUB_TOKEN: ${{ github.token }}
           DCC_CARD_BLOCK_ID: ${{ steps.bws_dcc.outputs.DCC_CARD_BLOCK_ID }}
           JIRA_CARD_BLOCK_ID: ""
@@ -1322,15 +1403,6 @@ jobs:
           HIRING_CARD_BLOCK_ID: ""
           NOTION_JIRA_TOKEN: ${{ steps.bws_dcc.outputs.NOTION_JIRA_TOKEN }}
         run: python -m lifeos.run dcc-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
-      - id: bws_runtime_config
-        continue-on-error: true
-        name: Runtime Configuration source ID from Bitwarden for the archive step (LIFE-933; read only, an address not a secret; if it fails the archive step finds no page and writes nothing)
-        uses: ./.github/actions/bws-load
-        with:
-          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
-          set_env: false
-          secrets: |
-            0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
       - id: archive
         continue-on-error: true
         name: Weekly Reports Archive (LIFE-933; the first run at or after 6 PM CT freezes one static Daily Report snapshot into the week's archive page and reads it back; Sunday also freezes the Notes, Monday resets them only after the snapshot re-verifies; the existing Notion token only)
@@ -1450,6 +1522,7 @@ jobs:
         continue-on-error: true
         name: Recruiter Outreach (LIFE-20; the Daily Report's one Recruiter Outreach table from the Recruiters data source, after the Recruiters stage; writes only when live AND the repo variable RECRUITER_OUTREACH is on; read-back and whole-page proof)
         env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           RECRUITERS_STAGE_OUTCOME: ${{ steps.recruiters.outcome }}        # 'skipped' only on a Close screen refresh: the rows are redrawn and the heading says Redrawn
           RECRUITERS_SCAN: ${{ steps.recruiters.outputs.scan_kind }}        # LIFE-610: which mail read the rows come from
           RECRUITERS_SCAN_AT: ${{ steps.recruiters.outputs.scan_at }}
@@ -1465,6 +1538,7 @@ jobs:
         continue-on-error: true
         name: Job-page outreach (LIFE-10; the outreach table on each Job Ledger job page from Mark as Sent; writes only when live AND the repo variable JOB_PAGE_OUTREACH is on; page proof and read-back)
         env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
           NOTION_RECRUITERS_DATA_SOURCE_ID: ""
           JOB_PAGE_OUTREACH: ""
@@ -1536,6 +1610,7 @@ jobs:
           set_env: false
           secrets: |
             53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
+            0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
       - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
         continue-on-error: true
         uses: ./.github/actions/tailscale
@@ -1548,6 +1623,7 @@ jobs:
         continue-on-error: true
         name: Hiring outcome mail (D190; read-only Gmail and Outlook for the companies in the Hiring Pipeline, rejection or offer wording only; due every 12 hours; counts only)
         env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_settings.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}
           GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_hiring_outcomes.outputs.GMAIL_OAUTH_CLIENT_ID }}
           OUTLOOK_CLIENT_ID: ${{ steps.bws_hiring_outcomes.outputs.OUTLOOK_CLIENT_ID }}
@@ -1924,6 +2000,15 @@ jobs:
       - name: iMessage alerts warning (does not fail the run)
         if: ${{ always() && steps.imsg.outcome == 'failure' }}
         run: echo "::warning title=iMessage alerts::the iMessage alert stage failed; no alert was lost (undelivered alerts stay queued)"
+      - id: bws_runtime_config
+        continue-on-error: true
+        name: Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)
+        uses: ./.github/actions/bws-load
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
       - id: comms
         continue-on-error: true
         if: ${{ always() }}
@@ -1931,6 +2016,7 @@ jobs:
         # newest sender's name scrambled under this run's own key; the name is unscrambled only in memory for the Notion write and is never logged or stored.
         name: Communications card, Messages row (7-day unread count and latest sender; counts only in the log; writes only when live)
         env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           IMESSAGE_ALERTS_HOST: ${{ steps.bws_imessage.outputs.IMESSAGE_ALERTS_HOST }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_imessage.outputs.NOTION_JIRA_TOKEN }}
           ATTENTION_CARD_BLOCK_ID: ""
@@ -1951,6 +2037,7 @@ jobs:
         # LIFE-129 (Jim, Oct 28 2026): the store and the push topic for the off-site backup alert (lifeos/oraclecloud/backup_watch.py), the same values the iMessage alerts step uses.
         name: Oracle Cloud card (daily from 6 AM CT; numbers only in the log; writes only when live)
         env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_DB_PASSWORD }}
           LIFEOS_ACQ_DB_USER: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_DB_USER }}
@@ -2039,6 +2126,7 @@ jobs:
           set_env: false
           secrets: |
             53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
+            0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
       - name: Join the tailnet as an ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 22 and 47341)
         uses: ./.github/actions/tailscale
         with:
@@ -2049,6 +2137,7 @@ jobs:
         continue-on-error: true
         name: Granola auto (every meeting not yet carried; counts and fixed codes only; writes only when live and GRANOLA_AUTO is on)
         env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_settings.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}
           LIFEOS_NOTION_IDS: ""
           NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""   # LIFE-360 (Jim approved Nov 7, 4:17 PM CT): the readers take opportunities from Ledger rows first (read-only, Interview token)

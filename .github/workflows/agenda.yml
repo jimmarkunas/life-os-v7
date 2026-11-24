@@ -49,10 +49,20 @@ jobs:
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: LIFEOS_ACQ_SSH_PORT
+      - id: bws_runtime_config
+        continue-on-error: true
+        name: Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)
+        uses: ./.github/actions/bws-load
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
       - id: asnap
         continue-on-error: true
         name: Agenda snapshot (read-only Google Calendar)
         env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_agenda.outputs.NOTION_JIRA_TOKEN }}
           GCAL_CALENDAR_ID: ""
           GCAL_SERVICE_ACCOUNT_JSON: ${{ steps.bws_agenda.outputs.GCAL_SERVICE_ACCOUNT_JSON }}
@@ -68,6 +78,7 @@ jobs:
         continue-on-error: true
         name: Agenda card (saved snapshot only)
         env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           CALENDAR_CARD_BLOCK_ID: ""
           JIRA_CARD_BLOCK_ID: ""
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_DB_NAME }}

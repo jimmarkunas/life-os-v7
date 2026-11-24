@@ -133,15 +133,26 @@ jobs:
           set_env: false
           secrets: |
             53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN
+      - id: bws_runtime_config
+        continue-on-error: true
+        name: Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)
+        uses: ./.github/actions/bws-load
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
       - name: Notion sandbox access (read-only; codes and counts only)
         if: ${{ inputs.stage == 'notion-sandbox-access' }}
         env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           LIFEOS_NOTION_IDS: ""
           NOTION_API_TOKEN: ${{ steps.bws_sandbox.outputs.NOTION_API_TOKEN }}
         run: python -m lifeos.run notion-sandbox-access --limit 0
       - name: Notion sandbox outreach proof (one synthetic sandbox page; typed confirmation; codes and counts only)
         if: ${{ inputs.stage == 'notion-sandbox-outreach-proof' }}
         env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           LIFEOS_NOTION_IDS: ""
           NOTION_API_TOKEN: ${{ steps.bws_sandbox.outputs.NOTION_API_TOKEN }}
           PROOF_CONFIRM: ${{ inputs.confirm }}
@@ -172,8 +183,18 @@ jobs:
           set_env: false
           secrets: |
             092b44ae-32cb-453b-8cc2-b4db015ef571 > NOTION_INTERVIEW_TOKEN
+      - id: bws_runtime_config
+        continue-on-error: true
+        name: Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)
+        uses: ./.github/actions/bws-load
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
       - name: Interview UI 3c REST capability probe (one QA probe page; typed confirmation; codes, block types and counts only)
         env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           LIFEOS_NOTION_IDS: ""
           NOTION_INTERVIEW_TOKEN: ${{ steps.bws_interview.outputs.NOTION_INTERVIEW_TOKEN }}
           PROBE_CONFIRM: ${{ inputs.confirm }}
@@ -248,8 +269,18 @@ jobs:
           set_env: false
           secrets: |
             53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN
+      - id: bws_runtime_config
+        continue-on-error: true
+        name: Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)
+        uses: ./.github/actions/bws-load
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
       - name: Agent Inbox proof or tile recount (test rows only, removed again; typed confirmation; counts and fixed codes only)
         env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           LIFEOS_NOTION_IDS: ""
           NOTION_API_TOKEN: ${{ steps.bws_inbox_view.outputs.NOTION_API_TOKEN }}
           INBOX_VIEW_CONFIRM: ${{ inputs.confirm }}

@@ -230,7 +230,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", text))), ["LIFEOS_BWS_RUNTIME_TOKEN"])      # LIFE-699: the Notion ids map is declared empty and the LIFEOS_NOTION_<KEY> ids come from the settings page. LIFE-121: the report job reads the Ledger's data source id (LIFE-699: from the V7 settings page now) to find its page; LIFE-704: the Gmail client id and the SSH port no longer come from GitHub
         for name in moved:
             self.assertNotIn(f"secrets.{name}", text)                                                      # no direct copy, so no fallback
-        self.assertEqual(re.findall(r"uses:\s*(\S*bws-load)", text), ["./.github/actions/bws-load"] * 6)   # the one local loader, once per job (LIFE-631; the Action Inbox view QA job is the sixth, LIFE-711)
+        self.assertEqual(re.findall(r"uses:\s*(\S*bws-load)", text), ["./.github/actions/bws-load"] * 9)   # the one local loader, once per job (LIFE-631; the Action Inbox view QA job is the sixth, LIFE-711) plus the three runtime-configuration loaders (LIFE-859: sandbox, interview_ui, inbox_view_qa)
         head, rest = text.split("\n  # LIFE-64:")                                                           # the database-only diagnostics, then the one job that reads Gmail,
         trace_text, sandbox_text = rest.split("\n  # LIFE-10:")                                              # then the one job that reads Notion
         sandbox_text, ui_text = sandbox_text.split("\n  # LIFE-88:")                                        # then LIFE-88's UI 3c probe, the one job with the Interview token
@@ -242,8 +242,8 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(sorted(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", trace_text, re.M)), sorted([f"{uuid_} > {name}" for name, uuid_ in {**moved, **gmail}.items()]))
         self.assertEqual((len(re.findall(uuid, head)), len(re.findall(uuid, trace_text))), (len(moved), len(moved) + len(gmail)))                      # each once: the retry reuses the load's block by YAML alias (LIFE-541; D209 one retry)
         self.assertNotIn("GMAIL", head)                                                                    # no Gmail value or secret in the database-only job
-        self.assertEqual(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", sandbox_text, re.M), ["53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN"])   # LIFE-10: the Jobs Notion token alone (the retry is its alias)
-        self.assertEqual(len(re.findall(uuid, sandbox_text)), 1)
+        self.assertEqual(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", sandbox_text, re.M), ["53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN", f"{UUIDS['V7_RUNTIME_CONFIG_SOURCE_ID']} > V7_RUNTIME_CONFIG_SOURCE_ID"])   # LIFE-10: the Jobs Notion token (the retry is its alias) and, LIFE-859, the Runtime Configuration address in its own loader
+        self.assertEqual(len(re.findall(uuid, sandbox_text)), 2)
         self.assertNotIn("NOTION", head + trace_text)                                                      # no Notion value reaches the database or Gmail diagnostics
         for word in ("LIFEOS_ACQ", "GMAIL", "inputs.message_ref", "secrets.NOTION"):
             self.assertNotIn(word, sandbox_text)                                                           # nothing else reaches the Notion job, and it takes no target input
@@ -257,8 +257,8 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(sandbox["timeout-minutes"], 5)
         token = "${{ steps.bws_sandbox.outputs.NOTION_API_TOKEN }}"
         read, proof = sandbox["steps"][-2:]
-        self.assertEqual((read["if"], read["run"], read["env"]), ("${{ inputs.stage == 'notion-sandbox-access' }}", "python -m lifeos.run notion-sandbox-access --limit 0", {"NOTION_API_TOKEN": token, "LIFEOS_NOTION_IDS": ""}))   # LIFE-699: the ids map is declared empty; the LIFEOS_NOTION_<KEY> ids come from the V7 settings page
-        self.assertEqual((proof["if"], proof["run"], proof["env"]), ("${{ inputs.stage == 'notion-sandbox-outreach-proof' }}", "python -m lifeos.run notion-sandbox-outreach-proof --limit 0 --live",
+        self.assertEqual((read["if"], read["run"], without_address(read["env"])), ("${{ inputs.stage == 'notion-sandbox-access' }}", "python -m lifeos.run notion-sandbox-access --limit 0", {"NOTION_API_TOKEN": token, "LIFEOS_NOTION_IDS": ""}))   # LIFE-699: the ids map is declared empty; the LIFEOS_NOTION_<KEY> ids come from the V7 settings page
+        self.assertEqual((proof["if"], proof["run"], without_address(proof["env"])), ("${{ inputs.stage == 'notion-sandbox-outreach-proof' }}", "python -m lifeos.run notion-sandbox-outreach-proof --limit 0 --live",
                                                                     {"NOTION_API_TOKEN": token, "PROOF_CONFIRM": "${{ inputs.confirm }}", "LIFEOS_NOTION_IDS": ""}))   # the only write step; the stage itself refuses without SYNTHETIC
         self.assertEqual([s.get("env") for s in sandbox["steps"][:-2]], [None] * (len(sandbox["steps"]) - 2))   # only the two stage steps receive the token
         self.assertIs(next(s for s in sandbox["steps"] if s.get("id") == "bws_sandbox")["with"]["set_env"], False)                                       # a masked step output, never exported job-wide
@@ -272,19 +272,19 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn("GMAIL", report_text)
         ui = diag["jobs"]["interview_ui"]                                                                  # LIFE-88: the one job that holds the Interview token
         self.assertEqual((ui["if"], ui["timeout-minutes"]), ("${{ inputs.stage == 'interview-ui-probe' }}", 5))
-        self.assertEqual(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", ui_text, re.M), ["092b44ae-32cb-453b-8cc2-b4db015ef571 > NOTION_INTERVIEW_TOKEN"])
+        self.assertEqual(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", ui_text, re.M), ["092b44ae-32cb-453b-8cc2-b4db015ef571 > NOTION_INTERVIEW_TOKEN", f"{UUIDS['V7_RUNTIME_CONFIG_SOURCE_ID']} > V7_RUNTIME_CONFIG_SOURCE_ID"])   # LIFE-859: plus the address, in its own loader
         for word in ("LIFEOS_ACQ", "GMAIL", "inputs.message_ref", "secrets.NOTION", "NOTION_API_TOKEN"):
             self.assertNotIn(word, ui_text)                                                                # nothing else reaches the probe, and it takes no target input
         qa = diag["jobs"]["inbox_view_qa"]                                                                 # LIFE-711: loads the existing main Notion token and nothing else; writes only with the typed QA confirmation
         self.assertEqual(qa["if"], "${{ inputs.stage == 'inbox-proof' || inputs.stage == 'inbox-recount' }}")
-        self.assertEqual(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", qa_text, re.M), ["53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN"])
+        self.assertEqual(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", qa_text, re.M), ["53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN", f"{UUIDS['V7_RUNTIME_CONFIG_SOURCE_ID']} > V7_RUNTIME_CONFIG_SOURCE_ID"])   # LIFE-859: plus the address, in its own loader
         self.assertEqual(qa_text.count("--live"), 1)
         self.assertIn("INBOX_VIEW_CONFIRM: ${{ inputs.confirm }}", qa_text)                                # the typed confirmation reaches the stage as an env value, never inlined
         for word in ("LIFEOS_ACQ", "GMAIL", "NOTION_INTERVIEW_TOKEN", "inputs.message_ref"):
             self.assertNotIn(word, qa_text)
         self.assertNotIn("NOTION_INTERVIEW_TOKEN", head + trace_text + sandbox_text)
         probe = ui["steps"][-1]
-        self.assertEqual((probe["run"], probe["env"]), ("python -m lifeos.run interview-ui-probe --limit 0 --live", {
+        self.assertEqual((probe["run"], without_address(probe["env"])), ("python -m lifeos.run interview-ui-probe --limit 0 --live", {
             "NOTION_INTERVIEW_TOKEN": "${{ steps.bws_interview.outputs.NOTION_INTERVIEW_TOKEN }}",
             "PROBE_CONFIRM": "${{ inputs.confirm }}", "LIFEOS_NOTION_IDS": ""}))                                                    # the stage itself refuses without QA
         self.assertEqual([s.get("env") for s in ui["steps"][:-1]], [None] * (len(ui["steps"]) - 1))
@@ -718,7 +718,7 @@ DB = {"LIFEOS_ACQ_DB_NAME", "LIFEOS_ACQ_DB_PASSWORD", "LIFEOS_ACQ_DB_USER", "LIF
 SETTINGS_LOADER_ID = "bws_settings"
 SETTINGS_CONSUMER = "${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}"
 RUNTIME_CONFIG_LOADER_ID = "bws_runtime_config"          # LIFE-858: the compare-only read's own loader: the bootstrap ID (an address) and nothing else, continue-on-error, never exported job-wide
-RUNTIME_CONFIG_JOBS = {"hourly": {"finish"}, "domains": {"bills", "amazon", "recruiters", "interview", "dcc"}}     # the exact jobs that carry it: nothing else may
+RUNTIME_CONFIG_JOBS = {"agenda": {"agenda"}, "branches": {"report"}, "capacity-card": {"capacitycard"}, "diag": {"inbox_view_qa", "interview_ui", "sandbox"}, "domains": {"agenda", "amazon", "bills", "dcc", "followup", "hiring", "imessage", "interview", "jira", "mail", "megibow", "recruiters"}, "hourly": {"finish"}, "network": {"network"}, "v3-pages": {"v3pages"}}     # the exact jobs that carry it: nothing else may
 RUNTIME_CONFIG_CONSUMER = "${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}"
 SETTINGS_JOBS = {            # the exact jobs that carry the settings loader: nothing else may
     "amazon": {"amazon"}, "bills": {"bills"}, "calendar": {"calendar"}, "granola": {"granola"}, "granola-auto": {"auto"}, "hermes-stage": {"hermes"}, "manual-job": {"manual"},
@@ -730,6 +730,11 @@ SETTINGS_JOBS = {            # the exact jobs that carry the settings loader: no
 def settings_loader_with():
     """The one `with:` the settings loader may have (the Notion token's id is read from UUIDS below, so this file never holds a second copy of it)."""
     return {"access_token": "${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}", "set_env": False, "secrets": f"{UUIDS['NOTION_JIRA_TOKEN']} > NOTION_JIRA_TOKEN\n"}
+
+
+def without_address(env):
+    """LIFE-859: every settings-reading step also carries the Runtime Configuration address (not a secret); the assertions that pin a step's exact env look past it."""
+    return {k: v for k, v in env.items() if k != "V7_RUNTIME_CONFIG_SOURCE_ID"}
 
 
 def settings_loader_withs():
@@ -850,6 +855,7 @@ class DomainsWorkflowTests(unittest.TestCase):
             used = {k for k, v in (job.get("env") or {}).items() if "secrets." in str(v) or "steps." in str(v) and ".outputs." in str(v)}
             for step in job["steps"]:
                 used |= {k for k, v in (step.get("env") or {}).items() if "secrets." in str(v) or "steps." in str(v) and ".outputs." in str(v)}   # a migrated value counts when it arrives as a loader output (`steps.<loader>.outputs.<NAME>`); a gate switch (`needs.gate.outputs.<switch>`, LIFE-703) is not a secret
+            used -= {"V7_RUNTIME_CONFIG_SOURCE_ID"}                                                      # LIFE-859: an address, never a secret: every settings-reading step may carry it
             self.assertLessEqual(used, DOMAIN_SECRETS[name], f"{name}: {sorted(used - DOMAIN_SECRETS[name])}")
 
     V3_STAGES_THAT_ONLY_WARN = ()        # LIFE-793: the five V3 stages (acweek, acgoals, acreview, acart, acchange) moved to v3-pages.yml, so the jira job has no exempt stage; the mechanism stays
@@ -859,7 +865,7 @@ class DomainsWorkflowTests(unittest.TestCase):
         """LIFE-649: -> what a job's final step fails to surface. A stage step is every `continue-on-error` step; the tailnet join is the one allowed to fail quietly (a failed join only loses the Oracle fallback).
         The final step must run always(), fail the job (`exit 1`), and cover every stage step: by the wildcard `steps.*.outcome` (every step with an id) or by naming each stage id."""
         steps, problems = job["steps"], []
-        stage = [s for s in steps if s.get("continue-on-error") and not is_settings_loader(s)]       # LIFE-703: the settings loader may fail quietly; it is that exact step or it is a stage step like any other
+        stage = [s for s in steps if s.get("continue-on-error") and not is_settings_loader(s) and s.get("id") != RUNTIME_CONFIG_LOADER_ID]       # LIFE-703: the settings loader may fail quietly; it is that exact step or it is a stage step like any other
         for step in stage:
             if not step.get("id") and step.get("uses") != "./.github/actions/tailscale":
                 problems.append(f"stage step without an id: {step.get('name')}")
@@ -908,7 +914,7 @@ class DomainsWorkflowTests(unittest.TestCase):
         """LIFE-730 (temporary): the V3 accountability stages warn but do not end the jira job red; every other jira step id is on the red list, computed from the parsed job so a new jira step must be decided here."""
         job = self.doc["jobs"]["jira"]
         condition = job["steps"][-1]["if"]
-        ids = [s["id"] for s in job["steps"] if s.get("id")]
+        ids = [s["id"] for s in job["steps"] if s.get("id") and s["id"] != RUNTIME_CONFIG_LOADER_ID]      # LIFE-859: the address loader may fail quietly, like the settings loader
         v3 = set(self.V3_STAGES_THAT_ONLY_WARN)
         self.assertLessEqual(v3, set(ids))                                                                # the five exempt ids are real steps of this job
         self.assertNotIn("contains(steps.*.outcome", condition)                                          # the wildcard would put the V3 stages back on the red list
@@ -1140,7 +1146,7 @@ class BitwardenConsumerTests(unittest.TestCase):
                     for i, step in enumerate(body["steps"]):
                         for k, v in (step.get("env") or {}).items():
                             if k in UUIDS:
-                                self.assertEqual((k, str(v).strip()), ("NOTION_JIRA_TOKEN", SETTINGS_CONSUMER), (name, job, step.get("name")))
+                                self.assertIn((k, str(v).strip()), (("NOTION_JIRA_TOKEN", SETTINGS_CONSUMER), ("V7_RUNTIME_CONFIG_SOURCE_ID", SETTINGS_CONSUMER.replace("NOTION_JIRA_TOKEN", "V7_RUNTIME_CONFIG_SOURCE_ID"))), (name, job, step.get("name")))
                                 self.assertTrue(settings_at is not None and i > settings_at, (name, job, step.get("name")))
                     self.assertFalse([v for step in body["steps"] for v in (step.get("with") or {}).values() if "steps.bws_" in str(v)], (name, job))
                     continue
