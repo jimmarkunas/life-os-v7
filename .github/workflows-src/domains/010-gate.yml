@@ -26,6 +26,7 @@
       due_hiring: ${{ steps.due.outputs.due_hiring }}
       due_megibow: ${{ steps.due.outputs.due_megibow }}
       due_dcc: ${{ steps.due.outputs.due_dcc }}
+      due_weekly_review: ${{ steps.due.outputs.due_weekly_review }}
       due_recruiters: ${{ steps.due.outputs.due_recruiters }}
       due_hiring_outcomes: ${{ steps.due.outputs.due_hiring_outcomes }}
       due_interview: ${{ steps.due.outputs.due_interview }}
