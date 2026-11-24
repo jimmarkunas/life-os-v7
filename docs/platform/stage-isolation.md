@@ -138,6 +138,7 @@ This table is rendered from `lifeos/platform/stages.json` (LIFE-768): edit a sta
 | `web` | `sources.web.run` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `web-scale-up` | `sources.web.run` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `web-titlewatch` | `sources.web.titlewatch` | `guarded` | Loops over its items with error handling inside; one failed item does not stop the others. | no |
+| `weekly-review` | `dcc.weekly_review` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 
 ## Reviewed loops
 
