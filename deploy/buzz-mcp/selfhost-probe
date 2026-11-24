@@ -162,6 +162,17 @@ def readd(base, owner, pubs, role, say):
         say("add_" + pub[:8], code == 200 and isinstance(ack, dict) and ack.get("accepted") is True, f"{role} HTTP {code}")
 
 
+def remove_members(base, owner, pubs, say):
+    """The owner removes each given public key from the relay (kind 9031) and nothing else; its own key is refused. Public keys only (LIFE-956: retire an exposed admin key)."""
+    from lifeos.buzz import nip98
+    for pub in pubs:
+        if pub == nip98.pubkey(owner):
+            say("remove_" + pub[:8], False, "refused: the owner's own key")
+            continue
+        code, ack = signed(base, "/events", owner, nip98.event(owner, 9031, [["p", pub]]))
+        say("remove_" + pub[:8], code == 200 and isinstance(ack, dict) and ack.get("accepted") is True, f"HTTP {code}")
+
+
 def synthetic_readd(base, owner, say):
     """A throwaway key (never stored) is added, removed, refused, and added again as admin, to prove the remove event before it touches a real member. Prints its public key."""
     from lifeos.buzz import nip98
@@ -229,6 +240,8 @@ def main(argv):
     role = argv[1] if argv[:1] == ["role"] and argv[1:2] in (["admin"], ["member"]) else None          # `selfhost-probe role admin|member [form 1-3] [relay URL]` with public keys on stdin (LIFE-927)
     argv = argv[2:] if role else argv
     form = int(argv.pop(0)) if role and argv[:1] in (["1"], ["2"], ["3"]) else 1
+    remove = argv[:1] == ["remove"]                                                  # `selfhost-probe remove [relay URL]` with public keys (64 hex, one per line) on stdin (LIFE-956)
+    argv = argv[1:] if remove else argv
     members = argv[:1] == ["members"]                                                # `selfhost-probe members <channel> [relay URL]` with public keys (64 hex, one per line) on stdin (LIFE-927)
     argv = argv[1:] if members else argv
     pilot_channel = argv.pop(0) if members and argv else None
@@ -274,6 +287,13 @@ def main(argv):
             print("role fail (at least one public key is required)")
             return 1
         set_roles(base, owner, pubs, role, say, form)
+        return 1 if failed else 0
+    if remove:
+        pubs = [x for x in (sys.stdin.read().split() if not sys.stdin.isatty() else []) if len(x) == 64 and all(c in "0123456789abcdef" for c in x)]
+        if not pubs:
+            print("remove fail (at least one public key is required)")
+            return 1
+        remove_members(base, owner, pubs, say)
         return 1 if failed else 0
     if members:
         pubs = [x for x in (sys.stdin.read().split() if not sys.stdin.isatty() else []) if len(x) == 64 and all(c in "0123456789abcdef" for c in x)]
