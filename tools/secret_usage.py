@@ -44,7 +44,7 @@ def _imports(tree):
 
 class Graph:
     def __init__(self, root=ROOT):
-        self.root, self.cache, self.reads_cache = root, {}, {}
+        self.root, self.cache, self.reads_cache, self.imports_cache = root, {}, {}, {}      # LIFE-963: every cache is per module, so a module is parsed, walked and scanned once per run
 
     def parsed(self, name):
         if name not in self.cache:
@@ -61,7 +61,9 @@ class Graph:
             seen.add(name)
             parent = name.rsplit(".", 1)[0]
             todo.extend([parent] if parent != "lifeos" and parent not in seen else [])
-            todo.extend(_imports(self.parsed(name)[0]) - seen)
+            if name not in self.imports_cache:
+                self.imports_cache[name] = _imports(self.parsed(name)[0])
+            todo.extend(self.imports_cache[name] - seen)
         return seen
 
     def module_reads(self, name):
@@ -84,10 +86,15 @@ class Graph:
         return names, patterns
 
 
+_PATTERNS = {}
+
+
 def declared_patterns():
-    """-> {file: [patterns]} from the config registry: the names a module that builds names at run time may read (for example LIFEOS_ACQ_*)."""
-    from lifeos.platform import credentials
-    return {entry["file"]: entry["match"] for entry in credentials.config()["patterns"]}
+    """-> {file: [patterns]} from the config registry: the names a module that builds names at run time may read (for example LIFEOS_ACQ_*). Read once per process (LIFE-963: it was read 642 times a run)."""
+    if not _PATTERNS:
+        from lifeos.platform import credentials
+        _PATTERNS.update({entry["file"]: entry["match"] for entry in credentials.config()["patterns"]})
+    return _PATTERNS
 
 
 def stage_entries(stage, graph, dynamic=""):
