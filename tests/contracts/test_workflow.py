@@ -242,7 +242,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(sorted(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", trace_text, re.M)), sorted([f"{uuid_} > {name}" for name, uuid_ in {**moved, **gmail}.items()]))
         self.assertEqual((len(re.findall(uuid, head)), len(re.findall(uuid, trace_text))), (len(moved), len(moved) + len(gmail)))                      # each once: the retry reuses the load's block by YAML alias (LIFE-541; D209 one retry)
         self.assertNotIn("GMAIL", head)                                                                    # no Gmail value or secret in the database-only job
-        self.assertEqual(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", sandbox_text, re.M), ["53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN", "0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID"])   # LIFE-10: the Jobs Notion token (the retry is its alias) and, LIFE-859, the Runtime Configuration address in its own loader
+        self.assertEqual(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", sandbox_text, re.M), ["53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN", f"{UUIDS['V7_RUNTIME_CONFIG_SOURCE_ID']} > V7_RUNTIME_CONFIG_SOURCE_ID"])   # LIFE-10: the Jobs Notion token (the retry is its alias) and, LIFE-859, the Runtime Configuration address in its own loader
         self.assertEqual(len(re.findall(uuid, sandbox_text)), 2)
         self.assertNotIn("NOTION", head + trace_text)                                                      # no Notion value reaches the database or Gmail diagnostics
         for word in ("LIFEOS_ACQ", "GMAIL", "inputs.message_ref", "secrets.NOTION"):
@@ -272,12 +272,12 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn("GMAIL", report_text)
         ui = diag["jobs"]["interview_ui"]                                                                  # LIFE-88: the one job that holds the Interview token
         self.assertEqual((ui["if"], ui["timeout-minutes"]), ("${{ inputs.stage == 'interview-ui-probe' }}", 5))
-        self.assertEqual(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", ui_text, re.M), ["092b44ae-32cb-453b-8cc2-b4db015ef571 > NOTION_INTERVIEW_TOKEN", "0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID"])   # LIFE-859: plus the address, in its own loader
+        self.assertEqual(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", ui_text, re.M), ["092b44ae-32cb-453b-8cc2-b4db015ef571 > NOTION_INTERVIEW_TOKEN", f"{UUIDS['V7_RUNTIME_CONFIG_SOURCE_ID']} > V7_RUNTIME_CONFIG_SOURCE_ID"])   # LIFE-859: plus the address, in its own loader
         for word in ("LIFEOS_ACQ", "GMAIL", "inputs.message_ref", "secrets.NOTION", "NOTION_API_TOKEN"):
             self.assertNotIn(word, ui_text)                                                                # nothing else reaches the probe, and it takes no target input
         qa = diag["jobs"]["inbox_view_qa"]                                                                 # LIFE-711: loads the existing main Notion token and nothing else; writes only with the typed QA confirmation
         self.assertEqual(qa["if"], "${{ inputs.stage == 'inbox-proof' || inputs.stage == 'inbox-recount' }}")
-        self.assertEqual(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", qa_text, re.M), ["53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN", "0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID"])   # LIFE-859: plus the address, in its own loader
+        self.assertEqual(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", qa_text, re.M), ["53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN", f"{UUIDS['V7_RUNTIME_CONFIG_SOURCE_ID']} > V7_RUNTIME_CONFIG_SOURCE_ID"])   # LIFE-859: plus the address, in its own loader
         self.assertEqual(qa_text.count("--live"), 1)
         self.assertIn("INBOX_VIEW_CONFIRM: ${{ inputs.confirm }}", qa_text)                                # the typed confirmation reaches the stage as an env value, never inlined
         for word in ("LIFEOS_ACQ", "GMAIL", "NOTION_INTERVIEW_TOKEN", "inputs.message_ref"):
