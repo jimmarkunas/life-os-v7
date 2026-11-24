@@ -39,7 +39,7 @@ LABELS = {"messages": "Messages", "telegram": "Telegram", "whatsapp": "WhatsApp"
 CHANNEL_BLOCKS = ("telegram", "whatsapp")
 STATES = ("PRESENT", "NONE", "UNAVAILABLE")
 PROTECTED = (("JIRA_CARD_BLOCK_ID", router.JIRA_REGION), ("CALENDAR_CARD_BLOCK_ID", router.CALENDAR_REGION), ("BILLS_CARD_BLOCK_ID", router.BILLS_REGION),
-             ("AMAZON_CARD_BLOCK_ID", router.AMAZON_REGION), ("ATTENTION_CARD_BLOCK_ID", router.ATTENTION_REGION), ("HIRING_CARD_BLOCK_ID", router.HIRING_REGION))
+             ("AMAZON_CARD_BLOCK_ID", router.AMAZON_REGION), ("HIRING_CARD_BLOCK_ID", router.HIRING_REGION))
 
 
 class CommsError(Exception):
@@ -235,7 +235,7 @@ def _writer(environ):
 
 def run(limit, live, environ=os.environ, now=None, fetcher=fetch, client=None, keygen=os.urandom):
     host = (environ.get("IMESSAGE_ALERTS_HOST") or "").strip()
-    anchor = (environ.get("ATTENTION_CARD_BLOCK_ID") or "").strip()
+    anchor = (environ.get("JIRA_CARD_BLOCK_ID") or "").strip()                              # LIFE-969: any card block on the page finds the page; the Jira card is on it
     if not host or not anchor:
         raise _fail("COMMS_NOT_CONFIGURED")
     router.check_write(MODULE, [TITLE])

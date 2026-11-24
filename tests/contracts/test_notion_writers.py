@@ -15,7 +15,7 @@ INFRA = {"lifeos/platform/report_region.py", "lifeos/platform/readback.py", "lif
 PROOFS = "lifeos/sources/proofs/"
 GUARDS = ("ScopedClient", "replace_text", "replace_tree")
 HOW_TO = "a module that writes a Notion page needs one OWNERS entry in lifeos/platform/router.py and one row in docs/platform/notion-writers.md (see its 'The rules')"
-NOT_OWNED_HERE = {router.ATTENTION_REGION: "Jim's own view", router.REPO_REGION: "the Weekly Review page, listed under other writers"}
+NOT_OWNED_HERE = {router.REPO_REGION: "the Weekly Review page, listed under other writers"}
 
 
 def tables(text):

@@ -309,7 +309,7 @@ def _stats(environ, now):
 
 
 def run(limit, live, environ=os.environ, client=None, read=None, now=None, stats=None):
-    anchor = (environ.get("ATTENTION_CARD_BLOCK_ID") or "").strip()
+    anchor = (environ.get("JIRA_CARD_BLOCK_ID") or "").strip()                                  # LIFE-969: any card block on the page finds the page; the Jira card is on it
     if (environ.get("V7_AI_CAPACITY_CARD") or "").strip().lower() != "on" or not anchor:
         return {"status": "not_configured", "rows_written": 0}
     now = now or datetime.now(TZ)

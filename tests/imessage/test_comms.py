@@ -182,7 +182,7 @@ class Contract(unittest.TestCase):
 
 
 class Card(unittest.TestCase):
-    ENV = {"IMESSAGE_ALERTS_HOST": "100.64.0.9", "ATTENTION_CARD_BLOCK_ID": "attn", "JIRA_CARD_BLOCK_ID": "jira", "CALENDAR_CARD_BLOCK_ID": "cal", "BILLS_CARD_BLOCK_ID": "bills", "AMAZON_CARD_BLOCK_ID": "amz", "NOTION_JIRA_TOKEN": "unused"}
+    ENV = {"IMESSAGE_ALERTS_HOST": "100.64.0.9", "JIRA_CARD_BLOCK_ID": "attn", "CALENDAR_CARD_BLOCK_ID": "cal", "BILLS_CARD_BLOCK_ID": "bills", "AMAZON_CARD_BLOCK_ID": "amz", "NOTION_JIRA_TOKEN": "unused"}
 
     def run_card(self, report, live=True, answer=None, env=None):
         answer = answer or (lambda host, key: json.dumps({"schema": card.SCHEMA, "observed_at": "2026-10-14T15:00:00Z", "health": "CURRENT", "unread_7d": 45,
@@ -247,7 +247,7 @@ class Card(unittest.TestCase):
             self.run_card(report)
         self.assertEqual(report.patches, [])
         with self.assertRaises(card.CommsError):
-            self.run_card(Report(), env={**self.ENV, "ATTENTION_CARD_BLOCK_ID": ""})
+            self.run_card(Report(), env={**self.ENV, "JIRA_CARD_BLOCK_ID": ""})
 
     def add_row(self, report, name, links=False, own_links=False):
         """Another two-column row in the callout, as Jim added below a divider (Reminders | Todoist); with links=True it holds a launch link too (a channel's: ambiguous),
