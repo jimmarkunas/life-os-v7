@@ -83,7 +83,6 @@ This table is rendered from `lifeos/platform/stages.json` (LIFE-768): edit a sta
 | `interview` | `sources.interview.interview_evidence` | `partial-red` | Its `failed` adds unreadable threads, blocked pages and sweep failures together, which LIFE-690 turns into state-change alerts; moving it onto the helper before that would change what pages, so it waits for LIFE-690. | yes |
 | `interview-acceptance` | `interview.acceptance` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `interview-mail` | `sources.interview.mail_snapshot` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
-| `interview-mail-shadow` | `sources.interview.mail_snapshot` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `interview-probe` | `interview.stage` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `interview-ui-probe` | `interview.ui_probe` | `guarded` | Loops over its items with error handling inside; one failed item does not stop the others. | no |
 | `jira-card` | `jira.card` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |

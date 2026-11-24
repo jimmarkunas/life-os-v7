@@ -16,7 +16,6 @@
     "hiring_outcomes": {"every_hours": 1},
     "interview": {"every_hours": 1},
     "interview_mail": {"every_hours": 1},
-    "interview_shadow": {"every_hours": 1},
     "imessage": {"every_hours": 1},
     "granola": {"every_hours": 1}
   },
