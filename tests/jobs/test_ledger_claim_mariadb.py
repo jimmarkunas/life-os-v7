@@ -3,6 +3,7 @@
 Runs only when LIFEOS_RACE_DB_NAME is set, which only .github/workflows/mariadb-race.yml does, against a throwaway MariaDB service container on the runner's own loopback. It refuses any host that is not
 127.0.0.1 or localhost and any database not named `race_...`, so it can never touch the production store. The schema is built by the production `store.ensure_schema`. Four real OS processes (publish, Interview lead,
 opportunity, publish) race one key: exactly one WON and one row in the stand-in Ledger; the same race without the claim makes two rows, which proves the test bites."""
+import glob
 import os
 import pathlib
 import subprocess
@@ -52,9 +53,11 @@ class MariaDbRace(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             ledger_file, go_file = os.path.join(tmp, "ledger.txt"), os.path.join(tmp, "go")
             open(ledger_file, "w").close()
-            procs = [subprocess.Popen([sys.executable, "-B", "-m", "tests.jobs.claim_race_worker", "mariadb", ledger_file, KEY, role, go_file, mode], cwd=ROOT, stdout=subprocess.PIPE, text=True)
+            procs = [subprocess.Popen([sys.executable, "-B", "-m", "tests.jobs.claim_race_worker", "mariadb", ledger_file, KEY, role, go_file, mode, str(len(roles))], cwd=ROOT, stdout=subprocess.PIPE, text=True)
                      for role in roles]
-            time.sleep(2.5)                                                 # every worker has started and is waiting for the go file
+            deadline = time.monotonic() + 60                                     # LIFE-966: every worker is ready (no fixed sleep), then they are released together
+            while len(glob.glob(go_file + ".ready.*")) < len(roles) and time.monotonic() < deadline:
+                time.sleep(0.005)
             open(go_file, "w").close()
             outs = [p.communicate(timeout=120)[0].strip() for p in procs]
             return outs, pathlib.Path(ledger_file).read_text().split()
