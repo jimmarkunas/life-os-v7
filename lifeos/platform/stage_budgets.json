@@ -571,6 +571,11 @@
    "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
    "required": false,
    "seconds": 240
+  },
+  "weekly-review": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 600
   }
  }
 }
