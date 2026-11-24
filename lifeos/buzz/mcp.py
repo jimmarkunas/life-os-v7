@@ -7,7 +7,6 @@ BUZZ_URL_<COMMUNITY>, BUZZ_KEY_<CLIENT>_<COMMUNITY> (four distinct scoped member
 optional BUZZ_RECIPIENTS, BUZZ_MENTION_SENDERS (addressing is off unless both are set), BUZZ_MCP_ORIGINS, BUZZ_OAUTH_AS_URL.
 Pointer: docs/buzz-remote-mcp-deploy.md (LIFE-216, LIFE-254)."""
 import hashlib, json, os, sys
-from urllib.parse import urlsplit
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -265,7 +264,7 @@ def _only_granted(reply, who, access):
 
 def handler(relays, auth, base, origins=(), audit=_audit, access=None, receipts=_receipt):
     """relays: {client label: Relay}. The signing key is chosen by the verified token's client label and the requested community; there is no fallback identity."""
-    bases = {urlsplit(base).hostname: base, **{urlsplit(a).hostname: a[:-len("/mcp")] for a in auth.extra_audiences}}      # LIFE-922: the public host a request came in on names its own resource and metadata; an unknown host gets the primary
+    bases = {base[8:]: base, **{a[8:-4]: a[:-4] for a in auth.extra_audiences}}      # LIFE-922: the public host a request came in on names its own resource and metadata; an unknown host gets the primary
     ids = {(c, k): nip98.pubkey(v)[:16] for c, r in relays.items() for k, v in r.keys.items()}  # published identity per pairing, for the audit line
 
     class H(BaseHTTPRequestHandler):
@@ -282,11 +281,8 @@ def handler(relays, auth, base, origins=(), audit=_audit, access=None, receipts=
             self.end_headers()
             self.wfile.write(body)
 
-        def _base(self):
-            return bases.get((self.headers.get("Host") or "").split(":")[0].lower(), base)
-
         def _deny(self, code, err, scope="buzz:read"):
-            meta = self._base() + "/.well-known/oauth-protected-resource"
+            meta = bases.get((self.headers.get("Host") or "").split(":")[0].lower(), base) + "/.well-known/oauth-protected-resource"
             extra = "" if err == "missing_token" else f', error="{err}"'
             self._send(code, {"error": err}, WWW_Authenticate=f'Bearer resource_metadata="{meta}"{extra}, scope="{auth.audience}{scope}"')
 
@@ -362,7 +358,7 @@ def handler(relays, auth, base, origins=(), audit=_audit, access=None, receipts=
 
         def do_GET(self):
             if self.path in ("/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp"):
-                return self._send(200, {"resource": self._base() + "/mcp", "authorization_servers": [auth.as_url], "scopes_supported": [auth.audience + x for x in SCOPES], "bearer_methods_supported": ["header"]})
+                return self._send(200, {"resource": bases.get((self.headers.get("Host") or "").split(":")[0].lower(), base) + "/mcp", "authorization_servers": [auth.as_url], "scopes_supported": [auth.audience + x for x in SCOPES], "bearer_methods_supported": ["header"]})
             if self.path == "/mcp" and self._who() is not None:
                 self._send(405, {"error": "method not allowed"}, Allow="POST")
             elif self.path != "/mcp":
@@ -411,9 +407,7 @@ def from_env(env):
         users[sub] = (label, tuple(comms.split("+")))
     base = https(env, "BUZZ_MCP_PUBLIC_URL")
     extras = [https({"u": x.strip().rstrip("/")}, "u") for x in env.get("BUZZ_MCP_PUBLIC_URLS_EXTRA", "").split(",") if x.strip()]      # LIFE-922: more public origins of this same service (each its own audience)
-    if any("/" in x[8:] or x == base for x in extras):
-        raise ValueError("BUZZ_MCP_PUBLIC_URLS_EXTRA entries must be origin-only https URLs other than BUZZ_MCP_PUBLIC_URL")
-    if not pubs or not users or not all(sub and lab in IDENTITIES and c and set(c) <= set(COMMUNITIES) for sub, (lab, c) in users.items()) or not clients or "/" in base[8:]:
+    if not pubs or not users or not all(sub and lab in IDENTITIES and c and set(c) <= set(COMMUNITIES) for sub, (lab, c) in users.items()) or not clients or "/" in base[8:] or any("/" in x[8:] or x == base for x in extras):
         raise ValueError("at least one BUZZ_URL_<COMMUNITY> with a BUZZ_KEY_<CLIENT>_<COMMUNITY>, BUZZ_OAUTH_CLIENTS, BUZZ_OAUTH_USERS (<sub>:<claude|chatgpt>:<community>+...) and an origin-only BUZZ_MCP_PUBLIC_URL are required")
     auth = Verifier(https(env, "BUZZ_OAUTH_ISSUER"), base + "/mcp", clients, https(env, "BUZZ_OAUTH_JWKS_URL"), users, https(env, "BUZZ_OAUTH_AS_URL") if env.get("BUZZ_OAUTH_AS_URL") else None,
                     extra_audiences=tuple(x + "/mcp" for x in extras))

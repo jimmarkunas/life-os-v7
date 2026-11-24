@@ -27,10 +27,9 @@ def fetch_json(url):
 
 class Verifier:
     def __init__(self, issuer, audience, clients, jwks_url, users, as_url=None, fetch=fetch_json, clock=time.time, ttl=300, extra_audiences=()):
-        self.extra_audiences = tuple(extra_audiences)                 # LIFE-922: more public hosts of the same service; a token may name any of them, and scope names keep the primary audience prefix
         self.issuer, self.audience, self.clients, self.jwks_url, self.users = issuer, audience, frozenset(clients), jwks_url, {k: (v[0], frozenset(v[1])) for k, v in users.items()}
         self.as_url = as_url or issuer  # where clients fetch authorization-server metadata; some IdPs (Oracle IAM) publish it away from the `iss` string
-        self.fetch, self.clock, self.ttl, self.keys, self.loaded, self.lock = fetch, clock, ttl, {}, -1e9, threading.Lock()
+        self.fetch, self.clock, self.ttl, self.keys, self.loaded, self.lock, self.extra_audiences = fetch, clock, ttl, {}, -1e9, threading.Lock(), tuple(extra_audiences)      # LIFE-922: more public hosts of the same service; a token may name any, scope names keep the primary prefix
 
     def _key(self, kid):
         with self.lock:
