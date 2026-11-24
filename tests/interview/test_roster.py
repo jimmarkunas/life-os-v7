@@ -131,3 +131,21 @@ class Rows(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RootPages(unittest.TestCase):
+    """A machine opportunity page directly under Hiring Pipeline (not in the Active or Retired container) still lists its rounds."""
+    def test_a_machine_page_under_the_root_lists_its_round_and_a_human_page_does_not(self):
+        from lifeos.interview import create, stage
+        from lifeos.interview.models import RoundQuery
+        from tests.interview.support import Fake, block, page
+        client = Fake()
+        client.blocks["root"] += [{"id": "u", "type": "child_page", "child_page": {"title": "Uber — Technical Project Manager"}},
+                                  {"id": "h", "type": "child_page", "child_page": {"title": "Hand made"}}]
+        client.pages.update({"u": page(parent="root"), "r": page(parent="u"), "h": page(parent="root")})
+        client.blocks["u"] = [block(notion.MARKERS["opportunity"]), {"id": "r", "type": "child_page", "child_page": {"title": "Interview 1"}}]
+        client.blocks["r"] = [block(notion.MARKERS["round"]), block(create.identity_text(RoundQuery(True, "2026-09-29", None, 1)))]
+        client.blocks["h"] = [block("my own notes")]
+        rounds = []
+        self.assertTrue(stage._root_rounds(client, ENVIRON, RunContext.start(60), rounds))
+        self.assertEqual([(p.title, c.page_id, c.interview_date) for p, c in rounds], [("Uber — Technical Project Manager", "r", "2026-09-29")])
