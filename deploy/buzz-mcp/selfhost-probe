@@ -97,10 +97,10 @@ def http(method, url, headers=None, body=None):
         return 0, b""
 
 
-def signed(base, path, secret, payload):
+def signed(base, path, secret, payload, agent="lifeos-selfhost-probe"):
     from lifeos.buzz import nip98
     url, body = base + path, json.dumps(payload, separators=(",", ":")).encode()
-    headers = {"Authorization": nip98.auth_header(secret, "POST", url, body), "Content-Type": "application/json", "User-Agent": "lifeos-selfhost-probe"}
+    headers = {"Authorization": nip98.auth_header(secret, "POST", url, body), "Content-Type": "application/json", "User-Agent": agent}
     code, raw = http("POST", url, headers, body)
     try:
         return code, json.loads(raw)
@@ -173,6 +173,23 @@ def remove_members(base, owner, pubs, say):
         say("remove_" + pub[:8], code == 200 and isinstance(ack, dict) and ack.get("accepted") is True, f"HTTP {code}")
 
 
+OLD_OWNER = "lifeos/edge/BUZZ_OLD_OWNER_NSEC_TEMP"          # LIFE-956: the retired exposed owner key, used only on Oracle, in memory, to hand a hosted community to the new key; Jim deletes it from the vault after
+
+
+def hosted(base, what, pubs, say):
+    """The old owner key (vault, memory only) signs one member event per public key against a hosted community: `admin` adds the key as admin (kind 9030 with a role tag), `remove` removes it (9031). The hosted relays refuse an owner change over the API (kind 9032: "cannot set role to owner"), so ownership moves only through Buzz support. Public keys only; the relay's answer is printed, never a key."""
+    from lifeos.buzz import nip98
+    got = vault_named((OLD_OWNER,)).get(OLD_OWNER)
+    if got is None:
+        say("old_owner_key", False, "not in the vault")
+        return
+    say("old_owner_key", True, "read in memory only")
+    for pub in pubs:
+        kind, tags = (9031, [["p", pub]]) if what == "remove" else (9030, [["p", pub], ["role", "admin"]])
+        code, ack = signed(base, "/events", got, nip98.event(got, kind, tags), agent="life-os-buzz-bridge/0.2")
+        say(f"{what}_{pub[:8]}", code == 200 and isinstance(ack, dict) and ack.get("accepted") is True, f"HTTP {code}" + (f" {json.dumps(ack)[:120]}" if code != 200 or not (isinstance(ack, dict) and ack.get("accepted") is True) else ""))
+
+
 def synthetic_readd(base, owner, say):
     """A throwaway key (never stored) is added, removed, refused, and added again as admin, to prove the remove event before it touches a real member. Prints its public key."""
     from lifeos.buzz import nip98
@@ -240,6 +257,8 @@ def main(argv):
     role = argv[1] if argv[:1] == ["role"] and argv[1:2] in (["admin"], ["member"]) else None          # `selfhost-probe role admin|member [form 1-3] [relay URL]` with public keys on stdin (LIFE-927)
     argv = argv[2:] if role else argv
     form = int(argv.pop(0)) if role and argv[:1] in (["1"], ["2"], ["3"]) else 1
+    hosted_what = argv[1] if argv[:1] == ["hosted"] and argv[1:2] in (["admin"], ["remove"]) else None          # `selfhost-probe hosted admin|remove <relay URL>` with public keys on stdin (LIFE-956)
+    argv = argv[2:] if hosted_what else argv
     remove = argv[:1] == ["remove"]                                                  # `selfhost-probe remove [relay URL]` with public keys (64 hex, one per line) on stdin (LIFE-956)
     argv = argv[1:] if remove else argv
     members = argv[:1] == ["members"]                                                # `selfhost-probe members <channel> [relay URL]` with public keys (64 hex, one per line) on stdin (LIFE-927)
@@ -258,6 +277,13 @@ def main(argv):
             failed.append(step)
     if duet:
         duet_profile(duet[1], duet[2], say)
+        return 1 if failed else 0
+    if hosted_what:
+        pubs = [x for x in (sys.stdin.read().split() if not sys.stdin.isatty() else []) if len(x) == 64 and all(c in "0123456789abcdef" for c in x)]
+        if not pubs or not argv:
+            print("hosted fail (a relay URL and at least one public key are required)")
+            return 1
+        hosted(base, hosted_what, pubs, say)
         return 1 if failed else 0
     try:
         owner, agent = vault_keys()

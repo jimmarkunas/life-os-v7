@@ -170,6 +170,17 @@ class SelfhostProbe(unittest.TestCase):
         self.assertIn("remove_" + OWNER_PUB[:8] + " fail", done.stdout)
         self.assertNotIn(OWNER_HEX, done.stdout + done.stderr)
 
+    def test_hosted_mode_signs_with_the_old_owner_key_from_the_vault_and_prints_no_key(self):
+        """LIFE-956: the retired owner key (vault, memory only) adds and removes the given public keys on a hosted community; no key is printed; a missing vault key stops before any request."""
+        relay = FakeRelay()
+        secrets = [{"key": "lifeos/edge/BUZZ_OLD_OWNER_NSEC_TEMP", "value": OWNER_HEX}]
+        done, _ = self.run_probe(relay, secrets=secrets, mode=("hosted", "admin"), stdin=f"{AGENT_PUB}\n")
+        self.assertIn("admin_" + AGENT_PUB[:8] + " ok", done.stdout)
+        self.assertEqual((AGENT_PUB in relay.members, any(e["kind"] == 9030 and ["role", "admin"] in e["tags"] for e in relay.events)), (True, True), done.stdout)
+        self.assertNotIn(OWNER_HEX, done.stdout + done.stderr)
+        gone, _ = self.run_probe(FakeRelay(), secrets=[], mode=("hosted", "admin"), stdin=f"{AGENT_PUB}\n")
+        self.assertEqual((gone.stdout.splitlines()[-1], gone.returncode), ("old_owner_key fail (not in the vault)", 1))
+
     def test_names_mode_signs_one_name_only_profile_per_vault_key_and_prints_no_key(self):
         """LIFE-927: the owner and connector keys each set their own display name."""
         done, _ = self.run_probe(FakeRelay(), mode=("names",))
@@ -227,7 +238,7 @@ elif a[:2] == ["users", "get"]:
 
     def test_the_source_prints_no_key_and_asks_only_for_the_pilot_names_and_duets_three(self):
         text = SCRIPT.read_text()
-        self.assertEqual(sorted(set(__import__("re").findall(r'"lifeos/edge/(\w+)"', text))), ["BUZZ_KEY_DUET_BYTALOS", "BUZZ_KEY_DUET_LIFE_OS", "BUZZ_SELFHOST_AGENT_CLAUDE", "BUZZ_SELFHOST_AGENT_DUET", "BUZZ_SELFHOST_OWNER_KEY"])   # LIFE-922: Duet's own three member keys, to sign its own profile
+        self.assertEqual(sorted(set(__import__("re").findall(r'"lifeos/edge/(\w+)"', text))), ["BUZZ_KEY_DUET_BYTALOS", "BUZZ_KEY_DUET_LIFE_OS", "BUZZ_OLD_OWNER_NSEC_TEMP", "BUZZ_SELFHOST_AGENT_CLAUDE", "BUZZ_SELFHOST_AGENT_DUET", "BUZZ_SELFHOST_OWNER_KEY"])   # LIFE-922: Duet's own three member keys, to sign its own profile
         self.assertEqual(os.stat(SCRIPT).st_mode & 0o111, 0o111)
 
 
