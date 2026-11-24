@@ -276,7 +276,7 @@ SHADOW_WAIT_SECONDS = 20              # LIFE-858: how long the end of the run wa
 
 
 def shadow_in_background(environ=None):
-    """LIFE-858 (Phase 1, compare-only): the tick never read the settings page, so it never reached the compare that `lifeos.run` makes. This starts the same read beside the stages (a thread, so the
+    """LIFE-858 / LIFE-859: the tick does not go through `lifeos.run`, so it never reached the source health check that `lifeos.run` makes. This starts the same read beside the stages (a thread, so the
     critical path pays nothing) and returns a `collect()` that waits at most SHADOW_WAIT_SECONDS and gives the receipt (counts, names and codes only; never a value). It changes no environment
     and writes nothing; any failure is a receipt, never a failed tick."""
     environ = os.environ if environ is None else environ
