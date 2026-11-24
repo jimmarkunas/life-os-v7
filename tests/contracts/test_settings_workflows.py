@@ -66,8 +66,9 @@ class DefaultsWhenNothingIsSet(unittest.TestCase):
 
     def test_nothing_on_the_page_changes_nothing(self):
         env = {n: "" for n in ("INTERVIEW_CONVERT", "NETWORK_SURFACE_SKIP", "TICK_CAP_LINKEDIN", "TICK_CAP_ATS", "TICK_MAX_PARALLEL", "PHYSICAL_MAIL_EXPECT")}
-        out = settings.apply(env, _Page(["# nothing here"]))
-        self.assertEqual((out["status"], out["filled"], set(env.values())), ("ok", [], {""}))
+        before = dict(env)
+        out = settings.apply({**env, "V7_RUNTIME_CONFIG_SOURCE_ID": SOURCE_ID}, _Page(["GRANOLA_AUTO on"]))      # the source holds a name these steps never declare
+        self.assertEqual((out["status"], out["filled"], env), ("ok", [], before))
 
     def test_the_code_defaults_are_the_old_workflow_defaults(self):
         from lifeos.jobs import tick                                                       # noqa: PLC0415
@@ -80,7 +81,7 @@ class DefaultsWhenNothingIsSet(unittest.TestCase):
         self.assertIn('(environ.get("NETWORK_SURFACE_SKIP") or "on")', (ROOT / "lifeos/sources/network/network_surface.py").read_text())      # empty means on, as the workflow's `|| 'on'` did
 
     def test_the_page_can_set_the_two_switches_the_gate_and_the_network_stage_read(self):
-        env = {"INTERVIEW_CONVERT": "", "NETWORK_SURFACE_SKIP": ""}
+        env = {"INTERVIEW_CONVERT": "", "NETWORK_SURFACE_SKIP": "", "V7_RUNTIME_CONFIG_SOURCE_ID": SOURCE_ID}
         out = settings.apply(env, _Page(["INTERVIEW_CONVERT inventory", "NETWORK_SURFACE_SKIP off"]))
         self.assertEqual((env["INTERVIEW_CONVERT"], env["NETWORK_SURFACE_SKIP"], out["filled"]), ("inventory", "off", ["INTERVIEW_CONVERT", "NETWORK_SURFACE_SKIP"]))
 
@@ -192,13 +193,9 @@ jobs:
         self.assertFalse(any("granola_auto" in p for p in problems))                              # a settings step's switch output is allowed
 
 
-class _Page:
-    def __init__(self, lines):
-        self.lines = lines
+SOURCE_ID = "5a1c0e57-3b2d-4f6a-9c1d-0e2f3a4b5c6d"
 
-    def call(self, method, path, body=None):
-        if path == "/search":
-            return {"results": [{"id": "p", "properties": {"t": {"type": "title", "title": [{"plain_text": settings.TITLE}]}}}], "has_more": False}
-        if path.endswith("/children") or "/blocks/" in path:
-            return {"results": [{"id": "b1", "type": "code", "code": {"rich_text": [{"plain_text": "\n".join(self.lines)}], "language": "plain text"}}], "has_more": False}
-        return {}
+
+def _Page(lines):
+    from tests.platform.settings_fixture import from_lines                        # noqa: PLC0415
+    return from_lines(lines)
