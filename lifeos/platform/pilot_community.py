@@ -17,7 +17,7 @@ def wire(env, relays, decode):
     channel = (env.get("BUZZ_PILOT_CHANNEL") or "").strip().lower()
     if not UUID.match(channel):
         raise ValueError("BUZZ_PILOT_CHANNEL")
-    keys, wired = {"claude": env.get("BUZZ_KEY_CLAUDE_PILOT"), "chatgpt": env.get("BUZZ_KEY_CHATGPT_PILOT")}, []
+    keys, wired = {"claude": env.get("BUZZ_KEY_CLAUDE_PILOT"), "chatgpt": env.get("BUZZ_KEY_CHATGPT_PILOT"), "duet": env.get("BUZZ_KEY_DUET_PILOT")}, []
     for identity, relay in relays.items():
         value = keys.get(identity)
         if value:

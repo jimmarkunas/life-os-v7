@@ -14,7 +14,7 @@ from lifeos.buzz import nip98
 from lifeos.buzz.auth import SCOPES, AuthError, Verifier
 from lifeos.buzz.relay import ALIAS, COMMUNITIES, COUNCIL_TYPES, CURSOR_TTL, ETYPES, HEX, MAX_TEXT, RELAY_MAX, URL, BuzzError, Relay
 
-IDENTITIES = ("claude", "chatgpt", "muse")   # muse (LIFE-923): Meta-hosted, its own member key and grants; reads and posts in life-os only
+IDENTITIES = ("claude", "chatgpt", "muse", "duet")   # muse (LIFE-923): Meta-hosted, its own member key and grants; duet (LIFE-922): the Claude Duet app, the grants `claude` has, its own Buzz member keys
 ALIASES = ("ChatGPT-Chat", "Claude-Chat", "Claude-Code", "Codex")  # existing identities only; a recipient is one of these names, never a key
 PROTOCOL, VERSIONS, MAX_BODY, MAX_RESPONSE = "2025-06-18", ("2025-06-18", "2025-03-26", "2024-11-05"), 65536, 262144
 CONTRACT, VERSION = "1.0", "0.3.0"
