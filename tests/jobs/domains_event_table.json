@@ -26,7 +26,8 @@
   "mail",
   "megibow",
   "outlook",
-  "recruiters"
+  "recruiters",
+  "weekly_review"
  ],
  "after hourly: tick, skipped": [
   "agenda",
@@ -45,7 +46,8 @@
   "mail",
   "megibow",
   "outlook",
-  "recruiters"
+  "recruiters",
+  "weekly_review"
  ],
  "after hourly: tick, success": [
   "agenda",
@@ -64,7 +66,8 @@
   "mail",
   "megibow",
   "outlook",
-  "recruiters"
+  "recruiters",
+  "weekly_review"
  ],
  "after hourly: tick, success, GRANOLA_AUTO=off": [
   "agenda",
@@ -82,7 +85,8 @@
   "mail",
   "megibow",
   "outlook",
-  "recruiters"
+  "recruiters",
+  "weekly_review"
  ],
  "after hourly: tick, success, V7_IMESSAGE_ALERTS=true": [
   "agenda",
@@ -102,7 +106,8 @@
   "mail",
   "megibow",
   "outlook",
-  "recruiters"
+  "recruiters",
+  "weekly_review"
  ],
  "after hourly: tick, success, V7_IMESSAGE_ALERTS=true, GRANOLA_AUTO=off": [
   "agenda",
@@ -121,7 +126,8 @@
   "mail",
   "megibow",
   "outlook",
-  "recruiters"
+  "recruiters",
+  "weekly_review"
  ],
  "after hourly: tick, success, amazon fails": [
   "agenda",
@@ -141,7 +147,8 @@
   "megibow",
   "outlook",
   "recruiters",
-  "report"
+  "report",
+  "weekly_review"
  ],
  "after hourly: tick, success, early run true": [
   "chain",
@@ -175,7 +182,8 @@
   "megibow",
   "outlook",
   "recruiters",
-  "report"
+  "report",
+  "weekly_review"
  ],
  "after hourly: tick, success, jira fails": [
   "agenda",
@@ -195,7 +203,8 @@
   "megibow",
   "outlook",
   "recruiters",
-  "report"
+  "report",
+  "weekly_review"
  ],
  "after hourly: tick, success, recruiters fails": [
   "agenda",
@@ -215,7 +224,8 @@
   "megibow",
   "outlook",
   "recruiters",
-  "report"
+  "report",
+  "weekly_review"
  ],
  "dispatch: all=True": [
   "agenda",
@@ -233,7 +243,8 @@
   "mail",
   "megibow",
   "outlook",
-  "recruiters"
+  "recruiters",
+  "weekly_review"
  ],
  "dispatch: all=True + live": [
   "agenda",
@@ -251,7 +262,8 @@
   "mail",
   "megibow",
   "outlook",
-  "recruiters"
+  "recruiters",
+  "weekly_review"
  ],
  "dispatch: all=True, amazon fails": [
   "agenda",
@@ -269,7 +281,8 @@
   "mail",
   "megibow",
   "outlook",
-  "recruiters"
+  "recruiters",
+  "weekly_review"
  ],
  "dispatch: all=True, interview fails": [
   "agenda",
@@ -287,7 +300,8 @@
   "mail",
   "megibow",
   "outlook",
-  "recruiters"
+  "recruiters",
+  "weekly_review"
  ],
  "dispatch: all=True, jira fails": [
   "agenda",
@@ -305,7 +319,8 @@
   "mail",
   "megibow",
   "outlook",
-  "recruiters"
+  "recruiters",
+  "weekly_review"
  ],
  "dispatch: all=True, recruiters fails": [
   "agenda",
@@ -323,7 +338,8 @@
   "mail",
   "megibow",
   "outlook",
-  "recruiters"
+  "recruiters",
+  "weekly_review"
  ],
  "dispatch: amazon=True": [
   "amazon",
@@ -346,10 +362,12 @@
   "outlook"
  ],
  "dispatch: dcc=True": [
-  "dcc"
+  "dcc",
+  "weekly_review"
  ],
  "dispatch: dcc=True + live": [
-  "dcc"
+  "dcc",
+  "weekly_review"
  ],
  "dispatch: hiring=True": [
   "hiring"
@@ -454,7 +472,8 @@
   "jira",
   "mail",
   "outlook",
-  "recruiters"
+  "recruiters",
+  "weekly_review"
  ],
  "early run: phase=tick, jira fails": [
   "agenda",
@@ -472,7 +491,8 @@
   "mail",
   "outlook",
   "recruiters",
-  "report"
+  "report",
+  "weekly_review"
  ],
  "early run: phase=tick, recruiters fails": [
   "agenda",
@@ -490,6 +510,7 @@
   "mail",
   "outlook",
   "recruiters",
-  "report"
+  "report",
+  "weekly_review"
  ]
 }

@@ -111,6 +111,7 @@ class Workflows(unittest.TestCase):
         grants = {name: job["permissions"] for name, job in self.domains["jobs"].items() if "permissions" in job}
         self.assertEqual(grants, {"gate": {"contents": "read", "actions": "read"},      # the gate already read Actions: it looks up the early run with that
                                   "dcc": {"contents": "read", "actions": "read", "issues": "read"},   # exactly the two grants the file had before LIFE-775; no job gained one
+                                  "weekly_review": {"contents": "read", "actions": "read"},   # LIFE-945 (Jim, 945 workflow approve, comment 14158): the Actions API read for the Automation lane, nothing more
                                   "chain": {"contents": "read", "actions": "read"}})   # LIFE-904: the chain receipt only reads the Actions API, the same two reads the gate has
         self.assertNotIn("secrets.", str(self.dispatch_step()[1]))
 

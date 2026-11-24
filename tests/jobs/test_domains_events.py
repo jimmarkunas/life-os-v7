@@ -125,7 +125,7 @@ class DomainsEventTable(unittest.TestCase):
 
     def test_a_clean_tick_runs_the_chain_a_failure_adds_the_report_and_a_cancelled_or_manual_run_runs_nothing(self):
         current = table()
-        chain = {"jira", "followup", "agenda", "bills", "amazon", "amazon_retention", "mail", "hiring", "dcc", "megibow", "recruiters", "hiring_outcomes", "interview", "outlook", "granola"}      # LIFE-894: the early mail read (interview_mail) is in the early run only, so it is not part of this chain
+        chain = {"jira", "followup", "agenda", "bills", "amazon", "amazon_retention", "mail", "hiring", "dcc", "weekly_review", "megibow", "recruiters", "hiring_outcomes", "interview", "outlook", "granola"}      # LIFE-894: the early mail read (interview_mail) is in the early run only, so it is not part of this chain
         self.assertEqual(chain, set(domain_jobs(current["after hourly: tick, success"])))
         self.assertEqual(set(domain_jobs(current["after hourly: tick, success, jira fails"])), chain | {"report"})        # the report job exists to name a failed job
         for label in ("after hourly: tick, cancelled", "after hourly: manual, success", "after hourly: quick, success", "dispatch: no input"):

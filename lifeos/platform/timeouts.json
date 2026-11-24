@@ -260,6 +260,14 @@
    "slowest_seconds": 10,
    "target": 5
   },
+  "domains.yml::weekly_review": {
+   "basis": "new job (LIFE-945): no runs measured yet; 10 min like the other card jobs, the stage budget is 600 s",
+   "current": 10,
+   "median_seconds": 0,
+   "runs_measured": 0,
+   "slowest_seconds": 0,
+   "target": 10
+  },
   "fit-edge-test.yml::fit_edge": {
    "basis": "twice the slowest run (76 s) rounds to 5 min, not below the current 5: unchanged",
    "current": 5,
