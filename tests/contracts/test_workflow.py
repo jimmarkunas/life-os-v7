@@ -339,7 +339,7 @@ class PullRequestTestsWorkflow(unittest.TestCase):
         run = [s for s in job["steps"] if "env" in s and "LIFEOS_TEST_NOW" in s["env"]]
         self.assertEqual(len(run), 1)
         self.assertEqual(run[0]["env"], {"LIFEOS_TEST_NOW": "2027-03-09"})
-        self.assertIn("python -m tests.shard 1 3", run[0]["run"])                          # the same shard command as unit-tests
+        self.assertIn("python -m tests.shard 1 4", run[0]["run"])                          # the same shard command as unit-tests
         self.assertNotIn("permissions", job)                                               # the workflow's read-only default is all it gets
         self.assertIn("unit-tests:", self.path.read_text())                                # the required check keeps its name
 
@@ -410,8 +410,8 @@ class PullRequestTestsWorkflow(unittest.TestCase):
         steps = doc["jobs"]["unit-tests"]["steps"]
         self.assertEqual([s.get("name") or s.get("uses") for s in steps[:2]], ["Checkout the exact commit (own git fetch; the token is passed once and never stored)", "./.github/actions/python"])
         run = [s["run"] for s in steps if "Unit tests" in s.get("name", "")][0]
-        for k in (1, 2, 3):                                                  # Jim, Oct 26 2026: parallel shards of whole test modules (three since LIFE-705, Nov 14 2026); tests/contracts/test_shards.py proves every test runs in exactly one
-            self.assertIn(f"python -m tests.shard {k} 3 > shard-{k}.log", run)
+        for k in (1, 2, 3, 4):                                               # Jim, Oct 26 2026: parallel shards of whole test modules (three since LIFE-705, four since LIFE-963, Nov 24 2026: the public runner has 4 vCPUs); tests/contracts/test_shards.py proves every test runs in exactly one
+            self.assertIn(f"python -m tests.shard {k} 4 > shard-{k}.log", run)
         self.assertNotIn("python -m tests.shard 1 2", run)
         self.assertNotIn("unittest discover", run)
         self.assertRegex(run, r'-ge 120 \]; then .*exit 1')
