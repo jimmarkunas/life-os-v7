@@ -273,6 +273,23 @@ class ArchivePageText(unittest.TestCase):
             self.assertIn("Weekly Reports - Week Ending Sep 13, 2026", titles(n, ARCHIVE))      # the old week page stays listed, untouched
         self.assertEqual(len(set(outs)), 1)
 
+    def test_the_archive_is_found_by_its_page_id_wherever_its_parent_is(self):
+        """LIFE-944: moving the archive under the Reports & Archives hub changes nothing; the id alone finds it, and the week pages stay listed."""
+        outs = []
+        for hub in (False, True):
+            n = Notion()
+            n.add(n.new(), "child_page", ARCHIVE, {}, title="Weekly Reports - Week Ending Sep 13, 2026")
+            if hub:
+                hub_id = n.add("d" * 32, "page", None, title="Reports & Archives")
+                n.blocks[ARCHIVE]["parent"] = {"type": "page_id", "page_id": hub_id}
+                n.blocks[hub_id]["kids"].append(ARCHIVE)
+            report(n)
+            out = wa.run(0, True, ENV, n, TUE_6PM)
+            self.assertEqual(wa.run(0, True, ENV, n, TUE_6PM)["snapshot"], "exists")            # a second run does not duplicate
+            outs.append((out["snapshot"], sorted(titles(n, ARCHIVE))))
+        self.assertEqual(outs[0], outs[1])
+        self.assertIn("Weekly Reports - Week Ending Sep 13, 2026", outs[1][1])
+
 
 if __name__ == "__main__":
     unittest.main()
