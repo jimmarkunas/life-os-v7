@@ -31,7 +31,10 @@ class Private(unittest.TestCase):
         self.assertEqual((counts["page"], counts["failed"]), ("new", 0))
         method, path, body = client.writes[0]
         self.assertEqual((method, path, body["parent"]), ("POST", "/pages", {"type": "page_id", "page_id": PARENT}))
-        cells = body["children"][0]["table"]["children"][1]["table_row"]["cells"]
+        self.assertEqual(body["template"], {"type": "template_id", "template_id": "e" * 32})        # D16.1: created from the Full Width template
+        self.assertNotIn("children", body)                                                          # a template page takes no children: they follow by PATCH
+        self.assertEqual([m for m, _, _ in client.writes][:2], ["POST", "PATCH"])
+        cells = client.written()[1][0]["table"]["children"][1]["table_row"]["cells"]
         self.assertEqual(cells[1][0]["text"]["link"]["url"], "https://example.com/1")
 
     def test_a_keyed_report_is_remembered_by_page_id_and_left_alone_next_time(self):

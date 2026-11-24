@@ -9,6 +9,13 @@
       "review": "2026-12-13"
     },
     {
+      "name": "actions/upload-artifact",
+      "owner": "Jim",
+      "level": "c",
+      "reason": "accepted exception: GitHub's own artifact service has no other client; pinned by fingerprint (v4.6.2); keeps the hourly run's stage timing receipt (names and numbers only) 14 days (LIFE-855; standing approval, no new permission)",
+      "review": "2026-12-22"
+    },
+    {
       "name": "./.github/actions/sm-action",
       "owner": "Jim",
       "level": "b",

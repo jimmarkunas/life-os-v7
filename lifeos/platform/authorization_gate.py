@@ -103,7 +103,7 @@ def _shape_ok(session, request, now):
             and all(isinstance(v, str) and v for v in (session.principal, session.policy_key, request.tool, request.account, request.purpose, request.service, request.request_id)))
 
 
-def execute(session, request, catalog, policy, grants, approvals, human_approvers, effect, audit, now, excluded_tenants=()):
+def execute(session, request, catalog, policy, grants, approvals, human_approvers, effect, audit, now, excluded_tenants=(), pregrant_tools=()):
     """-> Outcome. `effect()` is the one side effect (the fake provider call in a fixture); it runs only after every check passed and the allow receipt was written.
     `audit(receipt)` raises when it cannot write. `human_approvers` is the host's set of human approver ids. `excluded_tenants` lets a caller refuse a tenant outright (shared_read excludes tgp)."""
     if not _shape_ok(session, request, now):
@@ -120,6 +120,10 @@ def execute(session, request, catalog, policy, grants, approvals, human_approver
         return refuse("tenant_excluded")
     if not session.trusted:
         return refuse("untrusted_session")
+    # Known registered operations can explicitly require a grant before catalog resolution.
+    # This produces an auditable no_grant refusal with no provider call for ungranted clients.
+    if request.tool in pregrant_tools and not any(g.principal == session.principal and g.tool == request.tool and g.account == request.account for g in grants):
+        return refuse("no_grant")
     found = capability_catalog.resolve(catalog, session.principal, request.tool, request.action, session.tenant, now)
     if not found["ok"]:
         return refuse("catalog_" + found["code"].removeprefix("catalog_"))

@@ -20,7 +20,7 @@ from lifeos.platform.jira import JiraError
 from lifeos.platform.notion_client import NotionError
 from lifeos.platform.gcal import GcalError
 from lifeos.platform.outlook import OutlookError
-from lifeos.platform import budget, isolate, source_registry as registry
+from lifeos.platform import budget, isolate, source_registry as registry, stage_timing
 
 
 def lazy(module, name="run", floor=0, live_only=False, **fixed):
@@ -113,6 +113,8 @@ STAGES = {
     "outlook-auth": _outlook_auth,
     "outlook-probe": lazy("lifeos.outlook.stage", "probe"),
     "dcc-card": lazy("lifeos.dcc.card"),
+    "report-archive": lazy("lifeos.dcc.weekly_archive"),                  # LIFE-933: one static Daily Report snapshot a day into the Weekly Reports Archive (first run at or after 6 PM CT); Notes freeze and Monday reset
+    "weekly-review": lazy("lifeos.dcc.weekly_review"),                   # LIFE-945: the Weekly LIFE OS Review row, Friday 10 PM CT (first run at or after it); off unless WEEKLY_REVIEW is on
     "calendar-sync": lazy("lifeos.calendar_bridge.watch"),
     "network-inspect": lazy("lifeos.network.inspect"),
     "network-import": lazy("lifeos.network.importer"),
@@ -183,15 +185,21 @@ def _announce(stage, counts):
             pass                                                                       # a summary is a convenience; never fail a stage for it
 
 
+def _timing(stage, label, began, counts=None):
+    """LIFE-855: a standalone stage (a domains job) prints its own `stage_timing` line when STAGE_TIMING_FILE is set (the workflow turns it on); inside the tick the tick prints it, so this stays silent there."""
+    if os.environ.get("STAGE_TIMING_FILE") and not stage_timing.in_tick():
+        stage_timing.emit(stage_timing.record(stage, label, time.monotonic() - began, 0.0, counts, stage_timing.items_key_for(stage)))
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("stage", choices=sorted(STAGES))
     parser.add_argument("--limit", type=int, default=40)
     parser.add_argument("--live", action="store_true", help="write results (default: dry run, counts only)")
     args = parser.parse_args(argv)
-    from lifeos.platform import settings                                               # noqa: PLC0415 - LIFE-699: the Notion settings page, shadow rule; never fails a stage
+    from lifeos.platform import settings                                               # noqa: PLC0415 - LIFE-699 / LIFE-859: the Runtime Configuration source, shadow rule; never fails a stage
     loaded = settings.apply(os.environ)
-    from lifeos.platform import runtime_config                                         # noqa: PLC0415 - LIFE-844: compare-only dual read of the new source; changes nothing, never fails a stage
+    from lifeos.platform import runtime_config                                         # noqa: PLC0415 - LIFE-844: read-only health check of the source; changes nothing, never fails a stage
     shadowed = runtime_config.shadow(os.environ, once=True)
     seconds, required = budget.budget_for(args.stage)                                 # LIFE-691: every stage has a budget (lifeos/platform/stage_budgets.json)
     began = time.monotonic()
@@ -200,12 +208,16 @@ def main(argv=None):
             counts = STAGES[args.stage](args.limit, args.live)
     except budget.StageBudgetExceeded:
         over, code = budget.over_budget(seconds, time.monotonic() - began, required)
+        _timing(args.stage, "timeout", began)
         print(f"{args.stage.upper()} {'FAILED' if required else 'STOPPED'}: {budget.CODE}", file=sys.stderr)      # fixed code only; an optional stage records it and the run passes
         print(f"{args.stage}:", json.dumps(over, sort_keys=True))
         return code
     except (StoreError, NotionError, JiraError, OutlookError, GcalError, BridgeError, NetworkError) as error:
         print(f"{args.stage.upper()} FAILED: {error}", file=sys.stderr)
+        _timing(args.stage, "failed", began)
         return 1
+    stage_timing.note_counts(counts)                                                   # LIFE-855: the tick reads these for the stage's item count; a standalone stage prints its own timing line below
+    _timing(args.stage, "ok", began, counts)
     if isinstance(counts, dict) and loaded["status"] not in ("off", "no_token"):       # only when the page was read (production); tests and local runs print as before
         counts["settings"] = loaded
     if isinstance(counts, dict) and shadowed["status"] != "off":

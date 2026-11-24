@@ -132,6 +132,14 @@
    "slowest_seconds": 90,
    "target": 15
   },
+  "domains.yml::chain": {
+   "basis": "kept: new job (LIFE-904), reads the Actions API only",
+   "current": 5,
+   "median_seconds": 0,
+   "runs_measured": 0,
+   "slowest_seconds": 0,
+   "target": 5
+  },
   "domains.yml::dcc": {
    "basis": "twice the slowest run (57 s) rounds to 10 min, not below the current 10: unchanged",
    "current": 10,
@@ -179,6 +187,14 @@
    "runs_measured": 45,
    "slowest_seconds": 162,
    "target": 10
+  },
+  "domains.yml::interview_mail": {
+   "basis": "not measured: no completed run in the last 100; keeps its current value",
+   "current": 30,
+   "median_seconds": null,
+   "runs_measured": 0,
+   "slowest_seconds": null,
+   "target": 30
   },
   "domains.yml::interview": {
    "basis": "twice the slowest run (678 s) rounds to 30 min, not below the current 30: unchanged",
@@ -316,6 +332,14 @@
    "slowest_seconds": null,
    "target": 40
   },
+  "hourly.yml::unit-tests": {
+   "basis": "new job (LIFE-856 change 1): the unit tests took 125 to 235 s inside `prep` (slowest prep run 235 s); 20 minutes keeps generous room; revisit after a week of runs",
+   "current": 20,
+   "median_seconds": null,
+   "runs_measured": 0,
+   "slowest_seconds": null,
+   "target": 20
+  },
   "hourly.yml::prep": {
    "basis": "kept at Jim's decision (Nov 15 2026, approve, leave prep and finish): up to 25 min gate wait for an older run (D210) plus the Bitwarden helper wait plus the tests; revisit after a week of runs",
    "current": 45,
@@ -347,6 +371,14 @@
    "runs_measured": 4,
    "slowest_seconds": 71,
    "target": 15
+  },
+  "mariadb-race.yml::race": {
+   "basis": "new job (LIFE-903): a MariaDB container start (about 30 s), pip install and a 10 s race; 10-minute guard, no run measured yet",
+   "current": 10,
+   "median_seconds": null,
+   "runs_measured": 0,
+   "slowest_seconds": null,
+   "target": 10
   },
   "network.yml::network": {
    "basis": "slowest run 1818 s reached 90% of the current limit: keeps 30 min and is listed for Jim (the job is at its limit)",

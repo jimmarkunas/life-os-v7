@@ -13,7 +13,8 @@ from tests.buzz import test_remote_mcp as remote
 from tests.buzz.test_bridge import CHAN, KEY_A, KEY_B, OTHER, ROOT, URLS, FakeRelay, verify
 from tests.buzz.test_mentions import KEY_CODE, KEY_CODEX, PK_CODE, PK_CODEX
 
-FINGERPRINT = "95105da65fe52d12cdb7fde8431e420133afb47b19485dea4c98cb5a50cf0a9e"       # THE permanent contract; a change here means ChatGPT would need a connector refresh
+FINGERPRINT = "04ddba1c8250ebd33a9fea89fc3d94d0f7bdecd34a76b7a859092e564c81a31f"       # THE permanent contract, re-worded once in LIFE-965 (Jim, Nov 24 2026; the old value was 95105da6...); a change here means ChatGPT would need a connector refresh
+SCHEMA_FINGERPRINT = "4a853612ef4e3962faddcbfa93beefab47371565e4f73d84fa7bafeb5d6398e5"      # the three tools' names, input schemas and read-only hints, without their text: never changes again
 LEGACY_FINGERPRINT = "be9f49cda63a327c73657fa84084c50edc28bd323effba29757cb0e46f0c0dfd"   # the five original tools exactly as deployed in 5ca9046; they stay indefinitely so no connector re-approval is ever forced
 PK_COUNCIL, PK_CODE_B = nip98.pubkey(bytes([34]) * 32), nip98.pubkey(bytes([33]) * 32)
 ALIASES = {("life-os", "claude-code"): PK_CODE, ("life-os", "codex"): PK_CODEX, ("life-os", "council-architect"): PK_COUNCIL, ("bytalos", "claude-code"): PK_CODE_B}
@@ -77,6 +78,28 @@ def walk(relay, op="get_messages", community="life-os", limit=50, **a):
         cursor = out["next_cursor"]
         if cursor is None or pages > 400:
             return seen, pages
+
+
+class PermanentWording(unittest.TestCase):
+    """LIFE-965: the three permanent tools never name an operation, so adding, renaming or changing an operation never touches them (and never forces a ChatGPT connector refresh)."""
+    ALLOWED = {"buzz_capabilities", "buzz_read", "buzz_publish", "unknown_operation", "idempotency_key"}
+
+    def test_no_description_names_an_operation_and_the_schemas_are_frozen(self):
+        import re
+        operations = {*buzz_mcp.READ, *buzz_mcp.PUBLISH, *buzz_mcp.MEMORY_OPS, *buzz_mcp.ROUTES, *buzz_mcp.DISABLED}
+        for name, (description, *_rest) in buzz_mcp.FROZEN.items():
+            self.assertFalse({w for w in operations if re.search(r"(?<![A-Za-z_])" + re.escape(w) + r"(?![A-Za-z_])", description) and "_" in w}, name)       # every operation with an underscore, by name
+            self.assertLessEqual(set(re.findall(r"[A-Za-z]+(?:_[A-Za-z]+)+", description)), self.ALLOWED, name)                                           # and any other identifier: a new operation name fails here too
+        schemas = [[n, {"type": "object", "properties": p, "required": r, "additionalProperties": False}, ro] for n, (_d, p, r, ro) in buzz_mcp.FROZEN.items()]
+        self.assertEqual(hashlib.sha256(json.dumps(schemas, sort_keys=True).encode()).hexdigest(), SCHEMA_FINGERPRINT)
+        self.assertEqual(list(buzz_mcp.FROZEN), ["buzz_capabilities", "buzz_read", "buzz_publish"])
+
+    def test_the_read_and_publish_wording_sends_a_bot_to_buzz_capabilities_and_the_valid_list(self):
+        for name in ("buzz_read", "buzz_publish"):
+            text = buzz_mcp.FROZEN[name][0]
+            self.assertIn("buzz_capabilities is a separate tool, never an operation", text)
+            self.assertIn("unknown_operation", text)
+            self.assertIn("valid list", text)
 
 
 class Discovery(unittest.TestCase):

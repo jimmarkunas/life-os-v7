@@ -145,7 +145,8 @@
    "required": true,
    "seconds": 180,
    "status": "guarded",
-   "why": "Loops over its items with error handling inside; one failed item does not stop the others."
+   "why": "Loops over its items with error handling inside; one failed item does not stop the others.",
+   "items_key": "checked"
   },
   "audit-fresh": {
    "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
@@ -154,7 +155,8 @@
    "required": true,
    "seconds": 60,
    "status": "guarded",
-   "why": "Loops over its items with error handling inside; one failed item does not stop the others."
+   "why": "Loops over its items with error handling inside; one failed item does not stop the others.",
+   "items_key": "checked"
   },
   "audit-ready": {
    "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
@@ -163,7 +165,8 @@
    "required": true,
    "seconds": 60,
    "status": "guarded",
-   "why": "Loops over its items with error handling inside; one failed item does not stop the others."
+   "why": "Loops over its items with error handling inside; one failed item does not stop the others.",
+   "items_key": "checked"
   },
   "bills-card": {
    "basis": "twice its slowest measured step (9 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
@@ -228,6 +231,15 @@
    "status": "single",
    "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
   },
+  "boards-tick": {
+   "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+   "required": true,
+   "seconds": 300,
+   "module": "sources.web.boards",
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own.",
+   "exits_1": false
+  },
   "calendar-sync": {
    "basis": "twice its slowest measured step (113 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
    "exits_1": false,
@@ -262,7 +274,8 @@
    "required": false,
    "seconds": 300,
    "status": "guarded",
-   "why": "Loops over its items with error handling inside; one failed item does not stop the others."
+   "why": "Loops over its items with error handling inside; one failed item does not stop the others.",
+   "items_key": "candidates"
   },
   "drain-audit-ready": {
    "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
@@ -271,7 +284,8 @@
    "required": false,
    "seconds": 60,
    "status": "guarded",
-   "why": "Loops over its items with error handling inside; one failed item does not stop the others."
+   "why": "Loops over its items with error handling inside; one failed item does not stop the others.",
+   "items_key": "checked"
   },
   "drain-enrich": {
    "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
@@ -280,7 +294,8 @@
    "required": false,
    "seconds": 480,
    "status": "guarded",
-   "why": "Loops over its items with error handling inside; one failed item does not stop the others."
+   "why": "Loops over its items with error handling inside; one failed item does not stop the others.",
+   "items_key": "picked"
   },
   "drain-fit": {
    "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
@@ -298,7 +313,8 @@
    "required": false,
    "seconds": 720,
    "status": "exempt",
-   "why": "D212: the same stage as publish, run again later in the tick."
+   "why": "D212: the same stage as publish, run again later in the tick.",
+   "items_key": "created"
   },
   "enrich": {
    "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
@@ -307,7 +323,8 @@
    "required": true,
    "seconds": 480,
    "status": "guarded",
-   "why": "Loops over its items with error handling inside; one failed item does not stop the others."
+   "why": "Loops over its items with error handling inside; one failed item does not stop the others.",
+   "items_key": "picked"
   },
   "expire-holds": {
    "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
@@ -516,6 +533,15 @@
    "status": "single",
    "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
   },
+  "interview-mail": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 600,
+   "module": "sources.interview.mail_snapshot",
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own.",
+   "exits_1": false
+  },
   "interview-probe": {
    "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
    "exits_1": false,
@@ -640,7 +666,8 @@
    "required": true,
    "seconds": 180,
    "status": "single",
-   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own.",
+   "items_key": "cards"
   },
   "mail-alerts": {
    "basis": "twice its slowest measured step (60 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
@@ -811,7 +838,8 @@
    "required": true,
    "seconds": 720,
    "status": "exempt",
-   "why": "D212: a page that does not read back fails the stage on purpose: a write that cannot be verified is not a write."
+   "why": "D212: a page that does not read back fails the stage on purpose: a write that cannot be verified is not a write.",
+   "items_key": "created"
   },
   "publish-fresh": {
    "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
@@ -820,7 +848,8 @@
    "required": true,
    "seconds": 300,
    "status": "exempt",
-   "why": "D212: the same stage as publish, run again later in the tick."
+   "why": "D212: the same stage as publish, run again later in the tick.",
+   "items_key": "created"
   },
   "purge": {
    "basis": "twice its slowest measured step (240 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
@@ -849,6 +878,15 @@
    "status": "single",
    "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
   },
+  "report-archive": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 600,
+   "module": "dcc.weekly_archive",
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own.",
+   "exits_1": false
+  },
   "resolve-dice": {
    "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
    "exits_1": false,
@@ -856,7 +894,8 @@
    "required": true,
    "seconds": 180,
    "status": "single",
-   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own.",
+   "items_key": "picked"
   },
   "resolve-jobright": {
    "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
@@ -865,7 +904,8 @@
    "required": true,
    "seconds": 600,
    "status": "single",
-   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own.",
+   "items_key": "picked"
   },
   "resolve-linkedin": {
    "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
@@ -874,7 +914,8 @@
    "required": true,
    "seconds": 420,
    "status": "single",
-   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own.",
+   "items_key": "picked"
   },
   "safety-fit-capture": {
    "basis": "twice its slowest measured step (10 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
@@ -973,7 +1014,8 @@
    "required": false,
    "seconds": 180,
    "status": "guarded",
-   "why": "Loops over its items with error handling inside; one failed item does not stop the others."
+   "why": "Loops over its items with error handling inside; one failed item does not stop the others.",
+   "items_key": "due"
   },
   "web": {
    "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
@@ -982,7 +1024,8 @@
    "required": true,
    "seconds": 180,
    "status": "single",
-   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own.",
+   "items_key": "due"
   },
   "web-scale-up": {
    "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
@@ -991,7 +1034,8 @@
    "required": false,
    "seconds": 300,
    "status": "single",
-   "why": "No loop over external items: one read or write unit, so its failure is the stage's own."
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own.",
+   "items_key": "due"
   },
   "web-titlewatch": {
    "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
@@ -1000,7 +1044,17 @@
    "required": false,
    "seconds": 240,
    "status": "guarded",
-   "why": "Loops over its items with error handling inside; one failed item does not stop the others."
+   "why": "Loops over its items with error handling inside; one failed item does not stop the others.",
+   "items_key": "queries"
+  },
+  "weekly-review": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 600,
+   "module": "dcc.weekly_review",
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own.",
+   "exits_1": false
   }
  }
 }

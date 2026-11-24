@@ -362,9 +362,9 @@ class AllProfiles(unittest.TestCase):
                 with open(os.path.join(dst, f)) as got, open(os.path.join(PLUGIN, f)) as want:
                     self.assertEqual(got.read(), want.read(), (name, f))
         with open(os.path.join(self.pdir("developer"), "plugins", "connector-allowlist", "allowlist.txt")) as handle:
-            self.assertEqual(handle.read(), "")                                                        # developer: nothing allowed
+            self.assertEqual(handle.read(), "mcp:lifeos-buzz\n")                                         # developer: only the governed LIFE OS MCP (LIFE-961)
         with open(os.path.join(self.pdir("librarian"), "plugins", "connector-allowlist", "allowlist.txt")) as handle:
-            self.assertEqual(handle.read(), "notion\n")
+            self.assertEqual(handle.read(), "notion\nmcp:lifeos-buzz\n")                           # LIFE-961: the librarian may use the governed LIFE OS MCP
         self.assertNotIn("       hermes plugins enable connector-allowlist", out)                         # main is never enabled
         for name in PROFILES:
             self.assertIn("hermes --profile %s plugins enable connector-allowlist" % name, out)
@@ -382,14 +382,14 @@ class AllProfiles(unittest.TestCase):
         with open(table) as handle:
             text = handle.read()
         with open(table, "w") as handle:
-            handle.write(text.replace("research: notion", "research: notion, mcp:todoist"))
+            handle.write(text.replace("research: notion, mcp:lifeos-buzz", "research: notion, mcp:lifeos-buzz, mcp:todoist"))
         status, out = self.deploy("--apply", "--backup", os.path.join(self.tmp, "b2"))
         self.assertEqual(status, 0, out)
         self.assertIn("1 file(s) would change", out)
         with open(os.path.join(self.tmp, "b2", "research", "allowlist.txt")) as handle:
-            self.assertEqual(handle.read(), "notion\n")
+            self.assertEqual(handle.read(), "notion\nmcp:lifeos-buzz\n")
         with open(os.path.join(self.pdir("research"), "plugins", "connector-allowlist", "allowlist.txt")) as handle:
-            self.assertEqual(handle.read(), "notion\nmcp:todoist\n")
+            self.assertEqual(handle.read(), "notion\nmcp:lifeos-buzz\nmcp:todoist\n")
         self.assertIn("ROLLBACK research/allowlist.txt", out)
 
     def test_a_bad_table_is_refused_before_anything_is_written(self):
@@ -434,8 +434,8 @@ class AllProfiles(unittest.TestCase):
         status, out = self.run_script("check_profiles.sh")
         self.assertEqual(status, 0, out)
         self.assertIn("PASS: every profile is limited", out)
-        self.assertIn("developer: OK (may use: nothing)", out)
-        self.assertIn("librarian: OK (may use: notion)", out)
+        self.assertIn("developer: OK (may use: mcp:lifeos-buzz)", out)
+        self.assertIn("librarian: OK (may use: mcp:lifeos-buzz notion)", out)
         self.assertIn("main: OK (not limited, by decision: ALL)", out)
 
     def test_a_main_bot_that_has_the_plugin_enabled_contradicts_the_table_and_fails(self):
@@ -468,7 +468,7 @@ class AllProfiles(unittest.TestCase):
         self.assertEqual(status, 1, out)
         self.assertIn("writer: FAIL; plugin is in plugins.disabled", out)
         self.assertIn("research: FAIL; __init__.py differs from the repo", out)
-        self.assertIn("librarian: FAIL; allowlist.txt holds [mcp:robinhood notion] but the table says [notion]", out)
+        self.assertIn("librarian: FAIL; allowlist.txt holds [mcp:robinhood notion] but the table says [mcp:lifeos-buzz notion]", out)
         self.assertIn("main: OK (not limited", out)
 
     def test_the_auditor_fails_when_a_table_profile_has_no_folder_and_writes_nothing(self):

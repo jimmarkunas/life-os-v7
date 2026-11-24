@@ -1,4 +1,5 @@
   gate:
+    name: ${{ (inputs.tick_run || github.event.workflow_run.id) && format('gate (tick {0})', inputs.tick_run || github.event.workflow_run.id) || 'gate' }}      # LIFE-904: the tick's run ID is the chain's correlation ID; the chain receipt finds this tick's domains runs by it
     # LIFE-604 item 11: the ONE place that decides whether this run does the domain work. It runs only for a completed tick or `all`; a manual run of one domain skips it, and then a domain job runs only on its own input. Outputs: due_<job> (LIFE-609: one per domain job, from lifeos/platform/due_table.json; for a tick a job is due when its row says
     # so, for `all` every job is due), tick (only a tick: imessage, granola and the failure push depend on that) and all (only `all`). A failed gate makes every domain job skip (their `needs.gate.result != 'failure'`).
     # Why each domain job uses always() or !cancelled(): a job that waits for other page writers (needs: ...) uses always() so one failed writer never stops the next card; a job with
@@ -67,6 +68,7 @@
           set_env: false
           secrets: |
             53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
+            0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
       - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
         continue-on-error: true
         uses: ./.github/actions/bws-plain
@@ -78,6 +80,7 @@
         continue-on-error: true
         name: V7 settings page for the two switches a job condition needs (LIFE-703; names and counts only; an unreadable page changes nothing)
         env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_settings.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}
           GRANOLA_AUTO: ""
           V7_IMESSAGE_ALERTS: ""

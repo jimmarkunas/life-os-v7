@@ -4,7 +4,7 @@ Pure and offline except `fetch`, which does one read-only GET with the existing 
 A field that cannot be read from the issue is left out of the record, so the validator reports it; nothing here ever invents a pass."""
 import re
 
-from lifeos.jira.release import jim_first
+from lifeos.jira.release import gate, jim_first
 from lifeos.platform.jira import Jira, JiraError
 
 FIELDS = "summary,status,labels,parent,components,issuelinks,description"
@@ -122,6 +122,7 @@ def normalize(raw):
     record["needs"] = checklist(section(rows, "Needs before development"))
     present, open_items = jim_first(f.get("description"))                       # Jim, Nov 21 2026: the release rule
     record["jim_first"] = {"present": present, "open": len(open_items)}
+    record["gate"] = gate(f) or ""                                             # LIFE-850: the release gate's reason (labels, Epic state, blockers) from the same fetched fields
     record["decisions"] = checklist(section(rows, "Decisions"))
     if f.get("components") is not None:
         record["components"] = [c.get("name") for c in f["components"] if isinstance(c, dict) and c.get("name")]
@@ -132,6 +133,19 @@ def fetch(key, client=None):
     """One read-only GET. Any failure is a fixed code; the caller reports QUEUE_NOT_READY."""
     client = client or Jira.from_env()
     return client.get(f"/rest/api/3/issue/{key}", {"fields": FIELDS})
+
+
+def epic_bundle(key, client=None):
+    """LIFE-851: one Epic's status, comments and children's update times for `readiness epic-review`; read-only GETs, any gap raises INCOMPLETE:<field>."""
+    from lifeos.jira.search import search
+    client = client or Jira.from_env()
+    status = (((client.get(f"/rest/api/3/issue/{key}", {"fields": "status"}) or {}).get("fields") or {}).get("status") or {}).get("name")
+    got = client.get(f"/rest/api/3/issue/{key}/comment", {"maxResults": 100, "orderBy": "created"}) or {}
+    comments = got.get("comments")
+    if not status or not isinstance(comments, list) or (got.get("total") or len(comments)) > len(comments):
+        raise ValueError("INCOMPLETE:comments" if status else "INCOMPLETE:status")
+    return {"key": key, "status": status, "comments": [{"body": c.get("body"), "created": c.get("created")} for c in comments],
+            "children": [{"key": i.get("key"), "updated": (i.get("fields") or {}).get("updated")} for i in search(client, f"parent = {key}", "updated")]}
 
 
 def from_mcp(envelope, key):
@@ -160,4 +174,4 @@ def used(raw):
     return {"key": raw["key"], "status": (f.get("status") or {}).get("name") or "unknown", "updated": f.get("updated") or "unknown", "blockers": ",".join(blockers) or "none"}
 
 
-__all__ = ["normalize", "fetch", "from_mcp", "used", "JiraError"]
+__all__ = ["normalize", "fetch", "epic_bundle", "from_mcp", "used", "JiraError"]

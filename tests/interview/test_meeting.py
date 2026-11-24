@@ -27,6 +27,11 @@ def logistics(client, child):
 
 
 class Joining(unittest.TestCase):
+
+    def setUp(self):
+        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        _claims, _stop = claim_store()
+        self.addCleanup(_stop)
     def test_the_confirmed_round_shows_the_invites_join_link_and_location_and_reads_them_back(self):
         client, _, child = pending_round()
         notes = notion.protected_snapshot(client, child, "round")
@@ -77,6 +82,11 @@ class Joining(unittest.TestCase):
 
 
 class FromTheInvite(unittest.TestCase):
+
+    def setUp(self):
+        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        _claims, _stop = claim_store()
+        self.addCleanup(_stop)
     def event(self, **extra):
         return {"id": "e1", "summary": "ExampleCo Interview", "status": "confirmed", "start": {"dateTime": "2026-10-28T15:00:00Z"}, **extra}
 
@@ -101,6 +111,8 @@ class FromTheInvite(unittest.TestCase):
 
 class Through(JourneyFixture, unittest.TestCase):
     """The real Interview runner tick after tick (the LIFE-78 journey harness): the invite's details reach the same round page, and only a change writes."""
+
+
     def test_the_accepted_invites_details_land_on_its_round_and_a_later_change_updates_it_in_place(self):
         self.settle(LEAD, NO_REQ, REQUEST)
         self.events.append(event(INVITE, hangoutLink=JOIN))

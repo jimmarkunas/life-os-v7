@@ -43,6 +43,11 @@ class PrepFake(WritableFake):
 
 
 class InputTests(unittest.TestCase):
+
+    def setUp(self):
+        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        _claims, _stop = claim_store()
+        self.addCleanup(_stop)
     def test_validation_normalization_hash_order_and_render(self):
         for value in (PrepEvidence(), PrepEvidence(focus=("  ",)), PrepEvidence(focus=("x" * 501,)),
                       PrepEvidence(focus=tuple(str(i) for i in range(6)))):
@@ -58,6 +63,11 @@ class InputTests(unittest.TestCase):
 
 
 class PrepTests(unittest.TestCase):
+
+    def setUp(self):
+        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        _claims, _stop = claim_store()
+        self.addCleanup(_stop)
     def apply(self, client, query, data, live=True):
         return prep.apply(client, ENV, PARENT, query, data, live, RunContext.start(60))
 
@@ -420,6 +430,11 @@ class PrepTests(unittest.TestCase):
 
 
 class DerivedScanTests(unittest.TestCase):
+
+    def setUp(self):
+        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        _claims, _stop = claim_store()
+        self.addCleanup(_stop)
     class Pages:
         def __init__(self, pages):
             self.pages, self.calls = pages, 0

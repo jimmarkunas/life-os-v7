@@ -4,8 +4,8 @@
 # `ALL` means Jim decided this bot is NOT limited (no plugin is installed or enabled in it; the audit fails if one is). An empty list means NO connector and NO MCP server. A profile that is NOT in this table is unprotected: hermes/check_profiles.sh reports it as a failure.
 # `main` is the default profile (the "Hermes" bot). Jim decides the lists; edit by pull request, then run hermes/deploy_plugin.sh --all.
 main: ALL
-claude-hermes: notion
-developer:
-librarian: notion
-research: notion
-writer: notion
+claude-hermes: notion, mcp:lifeos-buzz
+developer: mcp:lifeos-buzz
+librarian: notion, mcp:lifeos-buzz
+research: notion, mcp:lifeos-buzz
+writer: notion, mcp:lifeos-buzz

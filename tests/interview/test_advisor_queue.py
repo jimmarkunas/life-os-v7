@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 import unittest
 from dataclasses import replace
 from pathlib import Path
@@ -8,7 +9,11 @@ from unittest.mock import patch
 from lifeos.interview import advisor, advisor_queue as queue
 from lifeos.interview.advisor_store import VerifiedPreview
 from lifeos.interview.models import PrepEvidence
+from lifeos.platform import full_width
 from lifeos.platform.notion_client import NotionError
+
+os.environ["LIFEOS_NOTION_FULL_WIDTH_TEMPLATE"] = "e" * 32          # D16.1: every page is created from the Full Width template
+full_width.WAIT = 0
 
 
 def rt(value):
@@ -56,7 +61,7 @@ class FakeNotion:
     def __init__(self):
         self.pages = {"root": page("LIFE OS — Interview Advisor", "workspace", [], "root"),
                       "queue": page("Advisor Queue", "root", [block("paragraph", "v7-interview-advisor:1;kind=queue")], "queue")}
-        self.posts, self.methods, self.paths = 0, [], []
+        self.posts, self.methods, self.paths, self.template_pages = 0, [], [], []
         self.post_error = None
         self.pagination_incomplete = False
         self.first_page_envelope = None
@@ -80,17 +85,31 @@ class FakeNotion:
             if self.pagination_incomplete:
                 return {"results": blocks[:1], "has_more": True, "next_cursor": None}
             return {"results": blocks, "has_more": False, "next_cursor": None}
-        if method == "POST":
+        if method == "POST":                                        # D16.1: the page comes from the Full Width template: no children in the create request, one empty filler paragraph on top
             self.posts += 1
             if self.post_error:
                 raise self.post_error
+            assert body.get("template") == {"type": "template_id", "template_id": "e" * 32} and "children" not in body, "page not created from the Full Width template"
             pid = f"00000000-0000-0000-0000-{self.posts:012d}"
             title = "".join(x["text"]["content"] for x in body["properties"]["title"]["title"])
-            item = page(title, "queue", body["children"], pid)
+            filler = block("paragraph", "", title=f"filler-{pid}")
+            item = page(title, "queue", [filler], pid)
             self.pages[pid] = item
+            self.template_pages.append(pid)
             self.pages["queue"]["blocks"].append(block("child_page", title=title))
             self.pages["queue"]["blocks"][-1]["id"] = pid
             return item
+        if method == "PATCH" and path.endswith("/children"):
+            self.pages[path.split("/")[2]]["blocks"].extend(body["children"])
+            return {"results": body["children"]}
+        if method == "DELETE" and path.startswith("/blocks/"):
+            gone = path.split("/")[2]
+            for item in self.pages.values():
+                item["blocks"] = [b for b in item["blocks"] if b.get("id") != gone]
+            return {}
+        if method == "PATCH" and path.startswith("/pages/"):
+            self.pages[path.split("/")[2]]["archived"] = bool(body.get("archived"))
+            return {}
         raise AssertionError((method, path))
 
 
@@ -158,7 +177,10 @@ class AdvisorQueueTests(unittest.TestCase):
         client = FakeNotion(); first = queue.ensure_request(client, "queue", bundle())
         replay = queue.ensure_request(client, "queue", bundle())
         self.assertEqual(first, replay); self.assertEqual(client.posts, 1)
-        self.assertEqual(client.methods.count("POST"), 1); self.assertNotIn("PATCH", client.methods)
+        self.assertEqual(client.methods.count("POST"), 1)
+        self.assertEqual(client.template_pages, [first.page_id])                                             # D16.1: the page came from the Full Width template, and its filler paragraph is gone
+        self.assertNotIn(f"id-paragraph-filler-{first.page_id}", [b.get("id") for b in client.pages[first.page_id]["blocks"]])
+        self.assertEqual(client.methods.count("PATCH"), 1)                                                   # one append of the request blocks, nothing else
 
     def test_request_json_may_contain_quoted_reserved_marker_text(self):
         original = bundle()

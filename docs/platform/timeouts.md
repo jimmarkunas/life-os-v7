@@ -41,12 +41,14 @@ The job timeouts in `.github/workflows` change in one separate workflow pull req
 | `domains.yml` | `amazon` | 15 | 15 | 45 | 19 | 30 | twice the slowest run (30 s) rounds to 15 min, not below the current 15: unchanged |
 | `domains.yml` | `amazon_retention` | 15 | 15 | 45 | 255 | 556 | twice the slowest run (556 s) rounds to 19 min, not below the current 15: unchanged |
 | `domains.yml` | `bills` | 15 | 15 | 45 | 28 | 90 | twice the slowest run (90 s) rounds to 15 min, not below the current 15: unchanged |
+| `domains.yml` | `chain` | 5 | 5 | 0 | 0 | 0 | kept: new job (LIFE-904), reads the Actions API only |
 | `domains.yml` | `dcc` | 10 | 10 | 45 | 31 | 57 | twice the slowest run (57 s) rounds to 10 min, not below the current 10: unchanged |
 | `domains.yml` | `gate` | 5 | 5 | 45 | 4 | 9 | twice the slowest run (9 s) rounds to 5 min, not below the current 5: unchanged |
 | `domains.yml` | `granola` | 20 | 20 | 45 | 36 | 56 | twice the slowest run (56 s) rounds to 20 min, not below the current 20: unchanged |
 | `domains.yml` | `hiring` | 15 | 15 | 46 | 92 | 124 | twice the slowest run (124 s) rounds to 15 min, not below the current 15: unchanged |
 | `domains.yml` | `hiring_outcomes` | 30 | 30 | 31 | 18 | 22 | twice the slowest run (22 s) rounds to 30 min, not below the current 30: unchanged |
 | `domains.yml` | `imessage` | 10 | 10 | 45 | 113 | 162 | twice the slowest run (162 s) rounds to 10 min, not below the current 10: unchanged |
+| `domains.yml` | `interview_mail` | 30 | 30 | 0 | - | - | not measured: no completed run in the last 100; keeps its current value |
 | `domains.yml` | `interview` | 30 | 30 | 31 | 442 | 678 | twice the slowest run (678 s) rounds to 30 min, not below the current 30: unchanged |
 | `domains.yml` | `followup` | 15 | 15 | 0 | - | - | not measured: no completed run in the last 100; keeps its current value |
 | `domains.yml` | `jira` | 15 | 15 | 45 | 82 | 117 | twice the slowest run (117 s) rounds to 15 min, not below the current 15: unchanged |
@@ -66,8 +68,10 @@ The job timeouts in `.github/workflows` change in one separate workflow pull req
 | `hourly.yml` | `linkedin` | 40 | 40 | 0 | - | - | not measured: no completed run in the last 100; keeps its current value |
 | `hourly.yml` | `prep` | 45 | 45 | 100 | 25 | 235 | kept at Jim's decision (Nov 15 2026, approve, leave prep and finish): up to 25 min gate wait for an older run (D210) plus the Bitwarden helper wait plus the tests; revisit after a week of runs |
 | `hourly.yml` | `report` | 5 | 5 | 100 | 2 | 16 | twice the slowest run (16 s) rounds to 5 min, not below the current 5: unchanged |
+| `hourly.yml` | `unit-tests` | 20 | 20 | 0 | - | - | new job (LIFE-856 change 1): the unit tests took 125 to 235 s inside `prep` (slowest prep run 235 s); 20 minutes keeps generous room; revisit after a week of runs |
 | `interview-proof.yml` | `proof` | 30 | 30 | 18 | 506 | 1614 | twice the slowest run (1614 s) rounds to 54 min, not below the current 30: unchanged |
 | `manual-job.yml` | `manual` | 15 | 15 | 4 | 47 | 71 | kept: only 4 measured runs (fewer than 10), slowest 71 s |
+| `mariadb-race.yml` | `race` | 10 | 10 | 0 | - | - | new job (LIFE-903): a MariaDB container start (about 30 s), pip install and a 10 s race; 10-minute guard, no run measured yet |
 | `network.yml` | `network` | 30 | 30 | 100 | 539 | 1818 | slowest run 1818 s reached 90% of the current limit: keeps 30 min and is listed for Jim (the job is at its limit) |
 | `outlook.yml` | `outlook` | 20 | 20 | 20 | 11 | 227 | twice the slowest run (227 s) rounds to 20 min, not below the current 20: unchanged |
 | `pr-tests.yml` | `test-index` | 11 | 11 | 39 | 247 | 305 | twice the slowest run (305 s) rounded up to whole minutes, 5-minute floor |
@@ -134,7 +138,7 @@ Every call that leaves the process carries an explicit timeout. `tests/contracts
 
 ## Stage budgets
 
-`lifeos/platform/stage_budgets.json` has one row for each of the 111 stages in `lifeos/run.py`. `lifeos.run` arms an alarm of that many seconds around the stage. Rules:
+`lifeos/platform/stage_budgets.json` has one row for each of the 115 stages in `lifeos/run.py`. `lifeos.run` arms an alarm of that many seconds around the stage. Rules:
 
 * A stage within its budget behaves exactly as before.
 * A stage over it stops, prints the fixed code `STAGE_BUDGET_EXCEEDED` with the two numbers (counts only), and **a required stage exits 1, an optional stage exits 0** so the run passes and the code stays visible in the stage's counts line.
@@ -171,6 +175,7 @@ The table below is rendered from `lifeos/platform/stages.json` (LIFE-768): edit 
 | `boards` | 1380 | yes | the employer-board windows (boards.yml, LIFE-854): a catch-up window's 25-minute step with the soft deadline 3 minutes before it, the hard alarm 1 minute after the soft deadline's margin; a window that cannot finish turns the run red (required) |
 | `boards-backfill` | 600 | no | the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage |
 | `boards-preview` | 600 | no | no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
+| `boards-tick` | 300 | yes | the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage |
 | `calendar-sync` | 240 | yes | twice its slowest measured step (113 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `capacity-card` | 120 | no | twice its slowest measured step (44 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `dcc-card` | 120 | no | twice its slowest measured step (41 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
@@ -203,6 +208,7 @@ The table below is rendered from `lifeos/platform/stages.json` (LIFE-768): edit 
 | `inbox-view` | 600 | yes | no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `interview` | 1680 | yes | twice its slowest measured step (1604 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `interview-acceptance` | 600 | no | no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
+| `interview-mail` | 600 | no | no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `interview-probe` | 600 | no | no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `interview-ui-probe` | 300 | yes | twice its slowest measured step (296 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `jira-card` | 150 | no | twice its slowest measured step (70 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
@@ -240,6 +246,7 @@ The table below is rendered from `lifeos/platform/stages.json` (LIFE-768): edit 
 | `purge` | 480 | no | twice its slowest measured step (240 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `recruiter-outreach` | 180 | no | twice its slowest measured step (87 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `recruiters` | 1230 | yes | twice its slowest measured step (605 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
+| `report-archive` | 600 | no | no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 | `resolve-dice` | 180 | yes | the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage |
 | `resolve-jobright` | 600 | yes | the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage |
 | `resolve-linkedin` | 420 | yes | the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage |
@@ -257,6 +264,7 @@ The table below is rendered from `lifeos/platform/stages.json` (LIFE-768): edit 
 | `web` | 180 | yes | the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage |
 | `web-scale-up` | 300 | no | the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage |
 | `web-titlewatch` | 240 | no | the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage |
+| `weekly-review` | 600 | no | no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values |
 
 ## Stuck-run reaper
 

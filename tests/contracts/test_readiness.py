@@ -46,7 +46,7 @@ class IssueEligibility(Fixture):
     def test_only_the_three_checks_refuse(self):
         cases = {
             "key_invalid": lambda d: d.update(key="nonsense"),
-            "blocker_not_done": lambda d: d.update(blockers=[{"key": "LIFE-900", "status": "To Do"}]),
+            "blocked_by_open": lambda d: d.update(blockers=[{"key": "LIFE-900", "status": "To Do"}]),
             "gwt_missing": lambda d: d.update(acceptance=[]),
             "field_absent": lambda d: d.pop("acceptance"),
             "blockers_unreadable": lambda d: d.update(blockers="none"),
@@ -103,7 +103,7 @@ class IssueEligibility(Fixture):
         self.assertEqual(entry("issue", self.write("a.json", base))[:2], (0, "ready v1\n"))
         status, out, err = entry("issue", self.write("b.json", {**base, "blockers": [{"key": "LIFE-900", "status": "In Progress"}]}))
         self.assertEqual((status, out), (2, ""))
-        self.assertIn("refused v1 blocker_not_done blockers LIFE-900=In Progress", err)
+        self.assertIn("refused v1 blocked_by_open blockers LIFE-900=In Progress", err)
         status, out, err = entry("issue", self.write("c.json", {**base, "acceptance": []}))
         self.assertEqual((status, out), (2, ""))
         self.assertIn("refused v1 gwt_missing acceptance", err)

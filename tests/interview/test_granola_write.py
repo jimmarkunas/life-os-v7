@@ -1,5 +1,7 @@
 import json
+import os
 import unittest
+from unittest import mock
 
 from lifeos.interview import create, granola_write as gw
 from lifeos.interview.transcript import normalize_granz
@@ -36,12 +38,14 @@ class Write(unittest.TestCase):
         client = FakeNotion()
         code, counts = gw.write(client, ROUND, envelope(), True)
         self.assertEqual((code, counts["readback_ok"], counts["blocks_written"]), ("TRANSCRIPT_WRITTEN", 1, 5))
+        (page,) = client.templated                                                                              # D16.1: made from the Full Width template; the fake refuses anything else
+        self.assertFalse([b for b in client.pages[page] if b.get("id") == f"filler-{page}"])                    # and the template's empty paragraph is gone
 
     def test_more_than_one_batch_is_appended(self):
         client = FakeNotion()
         code, counts = gw.write(client, ROUND, envelope(250), True)
         self.assertEqual((code, counts["blocks_written"]), ("TRANSCRIPT_WRITTEN", 252))
-        self.assertEqual(len([c for c in client.calls if c[0] == "PATCH"]), 2)
+        self.assertEqual(len([c for c in client.calls if c[0] == "PATCH"]), 3)                                  # 252 blocks in batches of 90
 
     def test_a_replay_is_a_noop(self):
         client = FakeNotion()
@@ -81,6 +85,20 @@ class Write(unittest.TestCase):
 
     def test_a_failed_write_is_a_fixed_code(self):
         self.assertEqual(gw.write(FakeNotion(fail_on="POST"), ROUND, envelope(), True)[0], "TRANSCRIPT_WRITE_FAILED")
+
+    def test_a_failed_append_archives_the_stub_and_a_missing_template_makes_no_page(self):
+        class AppendFails(FakeNotion):
+            def call(self, method, path, body=None):
+                if method == "PATCH" and path.endswith("/children"):
+                    raise NotionError("NOTION_NETWORK")
+                return super().call(method, path, body)
+        client = AppendFails()
+        self.assertEqual(gw.write(client, ROUND, envelope(), True)[0], "TRANSCRIPT_WRITE_FAILED")
+        self.assertEqual(client.archived, client.templated)                                                     # the blank page made from the template is set aside
+        none = FakeNotion()
+        with mock.patch.dict(os.environ, {"LIFEOS_NOTION_FULL_WIDTH_TEMPLATE": ""}):
+            self.assertEqual(gw.write(none, ROUND, envelope(), True)[0], "TRANSCRIPT_WRITE_FAILED")
+        self.assertEqual(none.templated, [])
 
     def test_a_short_read_back_is_a_mismatch_not_a_success(self):
         code, counts = gw.write(FakeNotion(drop_last=True), ROUND, envelope(), True)

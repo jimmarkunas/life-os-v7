@@ -46,7 +46,8 @@ class ManifestShape(unittest.TestCase):
 
     def test_every_entry_has_the_same_fields_with_the_right_types_and_a_bounded_budget(self):
         for name, entry in ENTRIES.items():
-            self.assertEqual(sorted(entry), list(stages.ENTRY_KEYS), name)
+            self.assertEqual(sorted(k for k in entry if k not in stages.OPTIONAL_KEYS), list(stages.ENTRY_KEYS), name)
+            self.assertTrue(set(entry) - set(stages.ENTRY_KEYS) <= set(stages.OPTIONAL_KEYS), name)
             self.assertIsInstance(entry["seconds"], int, name)
             self.assertTrue(60 <= entry["seconds"] <= 7200, name)
             for flag in ("required", "exits_1"):

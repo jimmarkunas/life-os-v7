@@ -12,13 +12,14 @@ link resolution and the employer pages (canned), and Notion (a synthetic Ledger)
 import json
 import time
 import unittest
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from unittest import mock
 
 from lifeos.jobs import enrich, publish, store
 from lifeos.jobs.fit import stage as fit_stage
 from lifeos.jobs.resolve import stage as resolve_stage
 from lifeos.platform.http import Fetched
+from lifeos.platform.notion_client import NotionError
 from lifeos.sources.newsletters import config, finalize, ingest, sweep
 from tests.jobs.fit.test_fit import PROFILE as _PROFILE_OBJECT  # noqa: F401 - the same synthetic profile shape
 from tests.jobs.fakes_jobsdb import JobsDB
@@ -267,6 +268,39 @@ class GoldenPath(unittest.TestCase):
             j.tick()
         return j
 
+    def test_an_ambiguous_create_keeps_its_claim_and_the_next_run_adopts_the_page_it_made_never_a_second(self):
+        """LIFE-903: Notion accepted the create but the answer was lost. The claim stays; the next run finds the page by key (adopt only while the key is held) and creates nothing."""
+        j = self.journey(m1=mail("v1"))
+        j.resolve_all(["v1"])
+        made = j.ledger.create
+
+        def lost_answer(props, blocks):
+            made(props, blocks)
+            raise NotionError("NOTION_NETWORK")
+        j.ledger.create = lost_answer
+        published, _ = j.tick()
+        self.assertEqual((published["failed"], j.ledger.created, published["claim_won"]), (1, 1, 1))
+        self.assertEqual(j.db.raw.execute("SELECT ledger_claim_by IS NOT NULL, notion_page_id IS NULL FROM v7_jobs").fetchone(), (1, 1))       # unresolved: claim held, no page recorded
+        j.ledger.create = made
+        published, closed = j.tick()
+        self.assertEqual((published["failed"], j.ledger.created, published["claim_held"]), (0, 1, 0))                                      # still one page: the batched key lookup finds it, adopts it, and no claim is needed to adopt
+        self.assertEqual((j.table()["Acme"], j.db.raw.execute("SELECT ledger_claim_by IS NULL FROM v7_jobs").fetchone()), (("PUBLISHED", None, True, True), (1,)))
+
+    def test_a_create_that_made_nothing_is_not_retried_until_the_lease_passes_then_exactly_once(self):
+        j = self.journey(m1=mail("v1"))
+        j.resolve_all(["v1"])
+        made = j.ledger.create
+        j.ledger.create = lambda props, blocks: (_ for _ in ()).throw(NotionError("NOTION_NETWORK"))           # nothing was created
+        published, _ = j.tick()
+        self.assertEqual((published["failed"], j.ledger.created), (1, 0))
+        j.ledger.create = made
+        published, _ = j.tick()
+        self.assertEqual((published["failed"], published["claim_held"], j.ledger.created), (0, 1, 0))             # inside the lease: nothing is created on a guess
+        j.db.raw.execute("UPDATE v7_jobs SET ledger_claim_at = ?", (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=30),))
+        published, _ = j.tick()
+        self.assertEqual((published["failed"], published["claim_won"], j.ledger.created), (0, 1, 1))              # lease over, key read back empty: one create
+        self.assertEqual(j.table()["Acme"], ("PUBLISHED", None, True, True))
+
     def assertRefused(self, j, error):
         published, closed = j.tick()
         self.assertEqual((published["failed"], published["error"], j.ledger.created), (1, error, 1))        # nothing created, nothing adopted
@@ -311,7 +345,7 @@ class GoldenPath(unittest.TestCase):
                                                           if body and method == "POST" and path.endswith("/query") else None) or lookup(method, path, body)
         published, _ = j.tick()
         self.assertEqual((published["created"], published["failed"], j.ledger.created), (2, 0, 2))
-        self.assertNotIn("one", queries)
+        self.assertEqual(queries.count("one"), 2)                                     # LIFE-903: one authoritative per-key read-back per create, taken after the claim (the batched lookup still serves every found page)
         self.assertEqual(queries.count("or"), 2)                                      # the publish lookup, then the D212 read-back
 
 

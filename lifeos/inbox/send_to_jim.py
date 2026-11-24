@@ -10,13 +10,12 @@ import sys
 
 from lifeos.inbox import agent_inbox
 from lifeos.inbox.model import InboxError
+from lifeos.platform import inbox_send, mcp_access
 from lifeos.platform.notion_client import Client, NotionError
 
-FIELDS = {"from": "who is writing (an agent id or a person's name)", "subject": "what it is, one line (160 characters at most)", "urgency": "Now, Today, This week or FYI (default Today)",
-          "workspace": "Personal or Bytalos (default Personal)", "due": "optional date or date-time, ISO 8601", "link": "optional https link to the context (ticket, PR, page, thread)",
-          "details": "optional short note (1,500 characters at most); never a secret or personal data", "key": "optional idempotency key: the same key never adds a second row"}
+FIELDS = inbox_send.FIELDS
 TOOL = {"name": "send_to_jim", "description": "Put one item in Jim's Agent Inbox: something that needs his attention and is too small for a Jira ticket or a Todoist task. Never include secrets or personal data.",
-        "inputSchema": {"type": "object", "properties": {k: {"type": "string", "description": v} for k, v in FIELDS.items()}, "required": ["from", "subject"], "additionalProperties": False}}
+        "inputSchema": {"type": "object", "properties": {k: {"type": "string", "description": v} for k, v in FIELDS.items() if k != "from"}, "required": ["subject"], "additionalProperties": False}}
 
 
 def _client(env):
@@ -27,21 +26,13 @@ def _client(env):
 
 
 def deliver(item, environ=None, client=None, now=None):
-    """-> {"ok": true, "created"|"duplicate": 1, "tiles_changed": n} or {"ok": false, "reason": word}. Never raises; never carries content."""
+    """-> {"ok": true, "created"|"duplicate": 1, "tiles_changed": n} or {"ok": false, "reason": word}. Never raises; never carries content. The delivery itself is lifeos.platform.inbox_send.deliver (shared with the governed MCP)."""
     env = os.environ if environ is None else environ
     try:
         client = client or _client(env)
-        source = agent_inbox.locate(client)
-        result = agent_inbox.send(client, item, now=now, source=source)
-        try:
-            result.update(agent_inbox.recount_page(client, source=source))                         # the tiles follow the row; a failure here never loses the row
-        except (InboxError, NotionError):
-            result["tiles_changed"] = -1
-        return {"ok": True, **result}
     except InboxError as error:
         return {"ok": False, "reason": error.reason}
-    except NotionError as error:
-        return {"ok": False, "reason": f"notion_{str(error).lower()[:40]}"}
+    return inbox_send.deliver(item, client, now)
 
 
 def _reply(request_id, result=None, error=None):
@@ -51,8 +42,40 @@ def _reply(request_id, result=None, error=None):
     sys.stdout.flush()
 
 
-def serve(lines=None, environ=None, client=None):
-    """A minimal stdio MCP server: initialize, tools/list, tools/call (send_to_jim). One JSON-RPC message per line."""
+TENANT = {"Personal": "personal", "Bytalos": "bytalos"}
+
+
+def governed(arguments, environ, client, access, facts, audit, now):
+    """LIFE-865: send_to_jim through authorization_gate.execute. The client is the OS user of this process (never an argument), the tenant is the item's workspace; -> deliver's dict, or {"ok": false, "reason": a fixed word}."""
+    try:
+        access = access or mcp_access.load()
+        who = mcp_access.identify(access, "stdio", facts or mcp_access.stdio_facts())
+        tenant = TENANT.get(arguments.get("workspace") or "Personal")
+        if tenant is None:
+            raise mcp_access.AccessError("unknown_tenant")
+        # A request's From is not identity. This server derives it from the one
+        # authenticated client row; a caller-supplied different From is refused.
+        sender = who["id"]
+        if arguments.get("from") not in (None, sender):
+            from lifeos.platform.authorization_gate import fingerprint
+            audit({"tool": "send_to_jim", "principal_fp": fingerprint(sender), "outcome": "deny", "reason": "from_spoofed"})
+            return {"ok": False, "reason": "from_spoofed"}
+        item = {**arguments, "from": sender}
+        out = mcp_access.call(access, who, tenant, "send_to_jim", "write", "agent-inbox", "notion", lambda: deliver(item, environ=environ, client=client, now=now), audit, now)
+    except mcp_access.AccessError as error:
+        return {"ok": False, "reason": str(error)}
+    except Exception:                                                                       # noqa: BLE001  an unwritable receipt or any failure: no effect, a fixed word
+        return {"ok": False, "reason": "governance_unavailable"}
+    return out.result if out.executed and isinstance(out.result, dict) else {"ok": False, "reason": "denied_" + out.reason if not out.executed else out.reason}
+
+
+def _receipt(record):
+    sys.stderr.write(json.dumps(record, separators=(",", ":")) + "\n")                       # stderr: stdout carries the protocol; the receipt is redacted by the gate
+    sys.stderr.flush()
+
+
+def serve(lines=None, environ=None, client=None, access=None, facts=None, audit=_receipt, now=None):
+    """A minimal stdio MCP server: initialize, tools/list, tools/call (send_to_jim). One JSON-RPC message per line. Every tool call goes through the authorization gate (LIFE-865)."""
     for line in lines if lines is not None else sys.stdin:
         line = line.strip()
         if not line:
@@ -70,7 +93,7 @@ def serve(lines=None, environ=None, client=None):
         elif method == "tools/list":
             _reply(request_id, {"tools": [TOOL]})
         elif method == "tools/call" and (message.get("params") or {}).get("name") == "send_to_jim":
-            result = deliver((message["params"].get("arguments") or {}), environ=environ, client=client)
+            result = governed((message["params"].get("arguments") or {}), environ, client, access, facts, audit, now)
             _reply(request_id, {"content": [{"type": "text", "text": json.dumps(result)}], "isError": not result["ok"]})
         else:
             _reply(request_id, error={"code": -32601, "message": "method_not_found"})

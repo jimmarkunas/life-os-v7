@@ -20,7 +20,7 @@ class Switches(unittest.TestCase):
 
     def test_every_switch_states_its_bounds_and_only_the_known_ones_exist(self):
         doc = json.loads(switches.FILE.read_text())
-        self.assertEqual(sorted(doc), ["ACTION_INBOX_VIEW", "BOARDS_BACKFILL", "FOLLOWUP_WIRING", "HIRING_AUTO_CLOSE"])
+        self.assertEqual(sorted(doc), ["ACTION_INBOX_VIEW", "BOARDS_BACKFILL", "BOARDS_IN_TICK", "FOLLOWUP_WIRING", "HIRING_AUTO_CLOSE"])
         for name, entry in doc.items():
             self.assertIn(entry["state"], ("on", "off"), name)
             self.assertGreater(len(entry["bounds"]), 40, name)                              # a switch is never on without its written bounds

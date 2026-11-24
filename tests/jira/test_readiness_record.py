@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 
 from lifeos.jira import readiness_record as rr
+from lifeos.sources.devtools import readiness
 
 ROOT = Path(__file__).resolve().parents[2]
 DESC = """**Origin / approval:** Example Owner, Jan 1, 2030, chat: example.
@@ -27,8 +28,8 @@ DESC = """**Origin / approval:** Example Owner, Jan 1, 2030, chat: example.
 **Build:** code and tests, one PR."""
 
 
-def raw(desc=DESC, labels=("lane-career-v7",), components=({"name": "Example Component"},), links=()):
-    return {"key": "LIFE-901", "fields": {"description": desc, "labels": list(labels), "parent": {"key": "LIFE-900"}, "components": list(components), "issuelinks": list(links)}}
+def raw(desc=DESC, labels=("lane-career-v7", "ready"), components=({"name": "Example Component"},), links=(), epic="Ready"):
+    return {"key": "LIFE-901", "fields": {"description": desc, "labels": list(labels), "parent": {"key": "LIFE-900", "fields": {"status": {"name": epic}}}, "components": list(components), "issuelinks": list(links)}}
 
 
 def entry(*args):
@@ -89,16 +90,87 @@ class RecordTests(unittest.TestCase):
         blocker = [{"type": {"name": "Blocks"}, "inwardIssue": {"key": "LIFE-899", "fields": {"status": {"name": "To Do"}}}}]
         code, _, err = self.check(raw(links=blocker))
         self.assertEqual(code, 2)
-        self.assertIn("blocker_not_done blockers LIFE-899=To Do", err)
+        self.assertIn("blocked_by_open blockers LIFE-899=To Do", err)
 
     def test_every_old_gap_is_a_warning_and_the_ticket_stays_ready(self):
         """Delivery flow v3 (d): a ticket with only a Done-when bullet and no other field is ready."""
-        code, out, err = self.check(raw("## Done when\n\n* the cell holds the text", labels=(), components=()))
+        code, out, err = self.check(raw("## Done when\n\n* the cell holds the text", labels=("ready",), components=()))
         self.assertEqual((code, out), (0, "ready v1\n"))
         for warned in ("lane_missing", "component_missing", "origin_missing", "authorization_missing", "permissions_missing"):
             self.assertIn(f"warn v1 {warned}", err)
         self.assertNotIn("refused", err)
         self.assertIn("warn v1 authorization_missing", self.check(raw(DESC.replace("**Origin / approval:**", "**Origin:**")))[2])
+
+    def test_every_release_gate_reason_refuses_at_start_and_the_exceptions_pass(self):
+        """LIFE-850: the release gate's fixed reasons are HARD here too (one case each); a research or verdict child under an Epic in Scoping, and build work under an Epic in Ready, are ready."""
+        for kwargs, code in (({"labels": ("lane-career-v7",)}, "no_readiness_label"), ({"labels": ("ready", "needs-jim")}, "two_readiness_labels"), ({"labels": ("needs-prep",)}, "not_ready_label"),
+                             ({"labels": ("needs-jim",)}, "not_ready_label"), ({"epic": "Scoping"}, "epic_scoping"),
+                             ({"links": [{"type": {"name": "Blocks"}, "inwardIssue": {"key": "LIFE-899", "fields": {"status": {"name": "To Do", "statusCategory": {"key": "new"}}}}}]}, "blocked_by_open")):
+            result, _, err = self.check(raw(**kwargs))
+            self.assertEqual(result, 2, code)
+            self.assertIn(f"refused v1 {code}", err)
+        for kwargs in ({"labels": ("ready", "research"), "epic": "Scoping"}, {"labels": ("ready", "verdict"), "epic": "Scoping"}, {"epic": "Ready"}):
+            self.assertEqual(self.check(raw(**kwargs))[0], 0, kwargs)
+        no_status = raw()
+        no_status["fields"]["parent"] = {"key": "LIFE-900"}
+        self.assertIn("refused v1 epic_status_unread", self.check(no_status)[2])
+
+    def test_the_open_gaps_report_names_missing_parent_component_fix_version_or_readiness_label_and_writes_nothing(self):
+        """LIFE-850: reporting only (exit 0), from a saved Atlassian MCP search result; an unreadable file is QUEUE_NOT_READY."""
+        full = {"key": "LIFE-1", "fields": {"parent": {"key": "LIFE-10"}, "components": [{"name": "C"}], "fixVersions": [{"name": "C 1.0.0"}], "labels": ["ready"]}}
+        bare = {"key": "LIFE-2", "fields": {"parent": None, "components": [], "fixVersions": [], "labels": ["lane-platform"]}}
+        part = {"key": "LIFE-3", "fields": {"parent": {"key": "LIFE-10"}, "components": [{"name": "C"}], "fixVersions": [], "labels": ["needs-prep"]}}
+        with tempfile.TemporaryDirectory() as tmp:
+            saved = Path(tmp) / "search.json"
+            saved.write_text(json.dumps({"issues": {"nodes": [full, bare, part]}}))
+            code, out, err = entry("open-gaps-mcp", saved)
+            self.assertEqual((code, out), (0, "gaps v1 2 of 3 open issues\ngap LIFE-2 parent,component,fix_version,readiness_label\ngap LIFE-3 fix_version\n"))
+            saved.write_text("{}")
+            self.assertEqual(entry("open-gaps-mcp", saved)[0], 2)
+        self.assertEqual(entry("open-gaps-mcp", "/nonexistent.json")[0], 2)
+
+    def test_a_ready_epic_needs_a_current_pass_review_and_every_other_state_refuses(self):
+        """LIFE-851: epic_unreviewed (HARD) for a missing, failed or stale review; a current pass is ready; an Epic not in Ready is not judged; a review is the first line of one comment (markdown or ADF)."""
+        def comment(text, created):
+            return {"body": text, "created": created}
+        def bundle(comments, children=(), status="Ready"):
+            return {"key": "LIFE-846", "status": status, "comments": comments, "children": [{"key": f"LIFE-{i}", "updated": u} for i, u in enumerate(children, 1)]}
+        passing = comment("ChatGPT review: pass \u2014 children LIFE-849 to LIFE-851\n\n* LIFE-849: pass", "2026-11-22T01:45:26.935-0600")
+        adf = comment({"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "**ChatGPT review: pass**"}]}]}, "2026-11-22T01:45:26.935-0600")
+        cases = (("missing", bundle([])), ("missing", bundle([comment("Governance verdict: GO", "2026-11-21T15:32:29.779-0600"), comment("The ChatGPT review: pass is coming", "2026-11-22T01:45:26.935-0600")])),
+                 ("failed", bundle([passing, comment("ChatGPT review: changes\n\n* LIFE-851: add the checklist", "2026-11-22T02:00:00.000-0600")])),
+                 ("failed", bundle([comment("ChatGPT review: changes", "2026-11-22T01:00:00.000-0600")])),
+                 ("stale", bundle([passing], children=["2026-11-22T01:00:00.000-0600", "2026-11-22T03:00:00.000-0600"])))
+        for why, data in cases:
+            self.assertEqual(readiness.epic_review(data), why, why)
+        for data in (bundle([passing]), bundle([adf], children=["2026-11-22T01:00:00.000-0600"]), bundle([comment("ChatGPT review: changes", "2026-11-21T01:00:00.000-0600"), passing], children=["2026-11-22T01:45:26.935-0600"]),
+                     bundle([], status="Scoping"), bundle([], status="In Progress")):
+            self.assertIsNone(readiness.epic_review(data))
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "epic.json"
+            path.write_text(json.dumps(cases[4][1]))
+            code, out, err = entry("epic-review", path)
+            self.assertEqual((code, out, err), (2, "", "refused v1 epic_unreviewed review LIFE-846 stale\n"))
+            path.write_text(json.dumps(bundle([passing])))
+            self.assertEqual(entry("epic-review", path)[:2], (0, "ready v1\n"))
+        self.assertEqual(entry("epic-review", "/nonexistent.json")[0], 2)
+        self.assertEqual(readiness.epic_review(bundle([comment("ChatGPT review: pass", "not a date")])), "missing")        # an unreadable time never counts as a review
+
+    def test_the_live_epic_bundle_reads_status_comments_and_child_updates_and_a_gap_is_a_fixed_code(self):
+        class Fake:
+            def __init__(self, comments=None, status="Ready"):
+                self.comments, self.status = [] if comments is None else comments, status
+            def get(self, path, params=None):
+                if path.endswith("/search/jql"):
+                    return {"issues": [{"key": "LIFE-1", "fields": {"updated": "2026-11-22T01:00:00.000-0600"}}], "isLast": True}
+                if path.endswith("/comment"):
+                    return {"comments": self.comments, "total": len(self.comments)}
+                return {"fields": {"status": {"name": self.status}}}
+        got = rr.epic_bundle("LIFE-846", Fake([{"body": "ChatGPT review: pass", "created": "2026-11-22T01:45:26.935-0600"}]))
+        self.assertEqual((got["status"], len(got["comments"]), got["children"]), ("Ready", 1, [{"key": "LIFE-1", "updated": "2026-11-22T01:00:00.000-0600"}]))
+        self.assertIsNone(readiness.epic_review(got))
+        with self.assertRaises(ValueError):
+            rr.epic_bundle("LIFE-846", Fake(status=None))
 
     def test_a_long_life_description_warns(self):
         code, _, err = self.check(raw(DESC + "\n\n" + "x" * 4000))

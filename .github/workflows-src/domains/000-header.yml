@@ -96,6 +96,10 @@ on:
         type: choice
         options: ["none", "tick"]
         default: "none"
+      tick_run:
+        description: "LIFE-904, set only by the hourly prep job (do not set by hand): the run ID of the tick this early run belongs to, so the chain receipt can link both domains runs to it"
+        type: string
+        default: ""
       live:
         description: "Actually write (saves snapshots, writes Notion, moves mail). Unticked = dry run, counts only. Automatic runs follow the repo variable V7_LIVE."
         type: boolean
@@ -113,4 +117,6 @@ concurrency:
   # writes), so it never waits for the early run; only a real after-tick run joins it, so a do-nothing run cannot replace it. With no early run (its dispatch failed or was cancelled) that run does every job.
   group: ${{ (github.event_name == 'workflow_dispatch' && (inputs.refresh == 'hiring' || inputs.refresh == 'recruiters' || inputs.phase == 'tick')) && 'life-os-v7-domains' || github.event_name != 'workflow_run' && 'life-os-v7-domains-manual' || ((github.event.workflow_run.conclusion == 'cancelled' || github.event.workflow_run.display_title != 'tick') && 'life-os-v7-domains-idle' || 'life-os-v7-domains-late') }}
   cancel-in-progress: false
+env:
+  STAGE_TIMING_FILE: /tmp/stage-timing-domains.jsonl   # LIFE-855: each standalone stage prints its one `stage_timing` line (names and numbers only); a path, not a secret
 jobs:

@@ -7,7 +7,7 @@ import re
 import time
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
-from datetime import timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from email.utils import parseaddr
 
 from lifeos.platform.fixed_code import fixed
@@ -36,8 +36,18 @@ def _markers(headers, address):
             "noreply": bool(NOREPLY.search(address.split("@")[0] if address else ""))}
 
 
-def gmail_records(gmail, now, limit=MAX_MESSAGES, days=WINDOW_DAYS, terms="", known=None, stats=None, workers=1, timing=None, heal=False):
-    """Gmail Inbox and Spam, last `days` days (default WINDOW_DAYS), optionally only messages matching Gmail search `terms`. Returns (records, unreadable). A listing that cannot be proven complete raises MailError."""
+def _old_enough(record, now, fresh_hours):
+    """True when a held record may be reused: it was received more than `fresh_hours` ago (a newer message can still change folder). An unreadable time means read it again."""
+    try:
+        return (now - datetime.fromisoformat(record["received"])).total_seconds() > fresh_hours * 3600
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+def gmail_records(gmail, now, limit=MAX_MESSAGES, days=WINDOW_DAYS, terms="", known=None, stats=None, workers=1, timing=None, heal=False, reuse=None, fresh_hours=2):
+    """Gmail Inbox and Spam, last `days` days (default WINDOW_DAYS), optionally only messages matching Gmail search `terms`. Returns (records, unreadable). A listing that cannot be proven complete raises MailError.
+    LIFE-906: `reuse` ({message id: the record an earlier COMPLETE read made}) lets the read skip mail it already holds: a listed id in `reuse` is not read again unless it arrived in the last `fresh_hours` (its folder
+    can still change), and an id no longer listed is simply absent, so the result is the same records in the same listed order as a full read; `timing` gets `reused`."""
     query = f"{{in:inbox in:spam}} newer_than:{days}d" + (f" {terms}" if terms else "")
     began = time.monotonic()
     with fixed(GmailError, MailError, "MAIL_GMAIL_LISTING_INCOMPLETE"):
@@ -51,6 +61,9 @@ def gmail_records(gmail, now, limit=MAX_MESSAGES, days=WINDOW_DAYS, terms="", kn
         stats["scanned"] = stats.get("scanned", 0) + listed
         stats["new"] = stats.get("new", 0) + len(ids)
     out, unreadable = [], 0
+    listed_ids = ids
+    kept = {i for i in ids if reuse and i in reuse and _old_enough(reuse[i], now, fresh_hours)}
+    ids = [i for i in ids if i not in kept]                                  # LIFE-906: only mail this read does not already hold
     read_began = time.monotonic()
 
     failures, missing = {}, set()                                            # message id -> the fixed cause of its last failed read; the ids Gmail answered 404 for
@@ -85,7 +98,14 @@ def gmail_records(gmail, now, limit=MAX_MESSAGES, days=WINDOW_DAYS, terms="", kn
         if heal:
             timing["gone"] = len(gone)
             timing["unreadable"] = {m: code for m, code in failures.items() if m not in gone and raws[ids.index(m)] is None}
-    for message_id, raw in zip(ids, raws):
+    raw_of = dict(zip(ids, raws))
+    if timing is not None:
+        timing["reused"] = len(kept)
+    for message_id in listed_ids:
+        if message_id in kept:
+            out.append(dict(reuse[message_id]))
+            continue
+        raw = raw_of[message_id]
         if raw is None:
             if message_id not in gone:
                 unreadable += 1

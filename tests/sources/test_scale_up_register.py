@@ -28,8 +28,8 @@ class Register(unittest.TestCase):
 
     def test_the_registry_file_loads_and_the_log_gets_counts_only(self):
         self.assertGreaterEqual(len(reg.held_keys()), 40)
-        from tests.jobs.support import FakeClient, FakeStore, connect
         from unittest import mock
+        from tests.jobs.support import FakeClient, FakeStore, connect                                    # its fake models the Full Width template create (no children) and the append
         from lifeos.jobs import private_report, store
         from lifeos.platform import stored_pages
         self.enterContext(mock.patch.object(stored_pages, "STORE", FakeStore()))
@@ -41,7 +41,8 @@ class Register(unittest.TestCase):
         pages["https://assets.publishing.service.gov.uk/media/a.csv"] = Page(text)
         counts = reg.run(0, True, fetcher=lambda url, **kw: pages[url], client=client)
         self.assertEqual((counts["status"], counts["london"], counts["page"], counts["failed"]), ("OK", 13, "new", 0))
-        self.assertIn("ExampleCo Limited", str(client.writes[0][2]))
+        self.assertEqual(client.writes[0][:2], ("POST", "/pages"))
+        self.assertIn("ExampleCo Limited", str(client.writes[1][2]))
         self.assertEqual(reg.run(0, False, fetcher=lambda url, **kw: Page("{}", 503))["status"], "FAILED:http_503")
 
 

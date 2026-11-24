@@ -1,5 +1,5 @@
 {
-  "_how_to_read": "workflows (LIFE-854, Jim, Nov 21 2026): the scheduled workflows that run on fixed Central-Time windows instead of every tick; today boards.yml, the employer-board crawl: four windows a day, a per-window cap and step timeout, a larger cap and timeout for a catch-up window (lifeos/platform/boards_window.py reads the windows; the numbers live in lifeos/platform/limits.py). One row per domain job in .github/workflows/domains.yml. every_hours: the job runs when its last successful run (measured from the start of that run) was at least that long ago, minus 15 minutes of slack; 1 means every tick. slots_ct: fixed Central-Time slots (HH:MM); the job runs once after a slot has passed since its last success (no job uses slots today). LIFE-609; LIFE-630 (Jim, Nov 12 2026): every job and the Recruiters mail step run every hour until the codebase has shrunk, the mechanism stays so a slower interval is one number again. steps: a schedule kept inside one job (LIFE-610: the Recruiters mail step reads new mail only and does the full 14-day scan on the first read after 09:00 CT; the job itself stays hourly). stages (LIFE-617): the board stages of the Jobs tick (lifeos/jobs/tick.py), same rules per row; providers names the outside services a stage calls, each with a cap in tick.CAP_DEFAULTS (an empty list is an explicit none); every row is hourly until Jim approves another interval, and a slower row needs GITHUB_TOKEN in the tick step to read its history.",
+  "_how_to_read": "workflows (LIFE-854, Jim, Nov 21 2026): the scheduled workflows that run on fixed Central-Time windows instead of every tick; today boards.yml, the employer-board crawl: four windows a day until Nov 23 2026 (retired, LIFE-905: manual runs only), a per-window cap and step timeout, a larger cap and timeout for a catch-up window (lifeos/platform/boards_window.py reads the windows; the numbers live in lifeos/platform/limits.py). One row per domain job in .github/workflows/domains.yml. every_hours: the job runs when its last successful run (measured from the start of that run) was at least that long ago, minus 15 minutes of slack; 1 means every tick. slots_ct: fixed Central-Time slots (HH:MM); the job runs once after a slot has passed since its last success (no job uses slots today). LIFE-609; LIFE-630 (Jim, Nov 12 2026): every job and the Recruiters mail step run every hour until the codebase has shrunk, the mechanism stays so a slower interval is one number again. steps: a schedule kept inside one job (LIFE-610: the Recruiters mail step reads new mail only and does the full 14-day scan on the first read after 09:00 CT; the job itself stays hourly). stages (LIFE-617): the board stages of the Jobs tick (lifeos/jobs/tick.py), same rules per row; providers names the outside services a stage calls, each with a cap in tick.CAP_DEFAULTS (an empty list is an explicit none); every row is hourly until Jim approves another interval, and a slower row needs GITHUB_TOKEN in the tick step to read its history.",
   "jobs": {
     "jira": {"every_hours": 1},
     "followup": {"every_hours": 1},
@@ -15,6 +15,7 @@
     "recruiters": {"every_hours": 1},
     "hiring_outcomes": {"every_hours": 1},
     "interview": {"every_hours": 1},
+    "interview_mail": {"every_hours": 1},
     "imessage": {"every_hours": 1},
     "granola": {"every_hours": 1}
   },
@@ -22,7 +23,7 @@
     "recruiters_mail": {"every_hours": 1, "full_scan_ct": ["09:00"]}
   },
   "workflows": {
-    "boards.yml": {"owner": "Mac Claude Code (LIFE-854); Platform / Core OS", "windows_ct": ["01:00", "07:00", "13:00", "19:00"], "cap": 1800, "timeout_minutes": 15, "catchup_cap": 2900, "catchup_timeout_minutes": 25, "stage": "boards", "providers": ["ats"]}
+    "boards.yml": {"owner": "Mac Claude Code (LIFE-854); Platform / Core OS", "windows_ct": [], "windows_retired": "Nov 23 2026 (LIFE-905): the hourly tick crawls the due boards; boards.yml is the manual run only", "cap": 1800, "timeout_minutes": 15, "catchup_cap": 2900, "catchup_timeout_minutes": 25, "stage": "boards", "providers": ["ats"]}
   },
   "stages": {
     "resolve-jobright": {"every_hours": 1, "providers": ["jobright"]},
@@ -34,6 +35,7 @@
     "web-titlewatch": {"every_hours": 1, "providers": ["tinyfish"]},
     "discover-jobs": {"every_hours": 1, "providers": ["tinyfish", "linkedin"]},
     "sponsors": {"every_hours": 1, "providers": []},
-    "boards-backfill": {"every_hours": 1, "providers": []}
+    "boards-backfill": {"every_hours": 1, "providers": []},
+    "boards-tick": {"every_hours": 1, "providers": ["ats"]}
   }
 }

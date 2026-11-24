@@ -8,6 +8,7 @@ from pathlib import Path
 
 TABLE = Path(__file__).with_name("stages.json")
 ENTRY_KEYS = ("basis", "exits_1", "module", "required", "seconds", "status", "why")
+OPTIONAL_KEYS = ("items_key",)       # LIFE-855: the key in a stage's own counts that is its item count (a whole number); absent means the count is unknown (null in the timing line, never zero)
 
 
 def load(path=TABLE):

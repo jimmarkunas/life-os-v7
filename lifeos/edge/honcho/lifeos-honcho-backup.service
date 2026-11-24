@@ -1,0 +1,16 @@
+# LIFE-867: the nightly Honcho backup. A backup only: it runs backup.sh (a logical dump of the running database to /var/backups/lifeos-honcho/, 7 copies kept, refuses under 3 GB free) and nothing else.
+# It never starts, wakes or prompts an agent. A failure runs lifeos-honcho-backup-failed.service, which leaves a FAILED marker (see the README).
+[Unit]
+Description=LIFE OS Honcho nightly backup (backup only)
+After=docker.service
+Requires=docker.service
+OnFailure=lifeos-honcho-backup-failed.service
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/opt/lifeos-honcho/backup.sh
+ExecStartPost=/bin/rm -f /var/lib/lifeos-honcho-backup/FAILED
+StateDirectory=lifeos-honcho-backup
+TimeoutStartSec=600
+Nice=10

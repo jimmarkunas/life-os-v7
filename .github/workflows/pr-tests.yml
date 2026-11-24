@@ -1,5 +1,5 @@
 name: pr-tests
-# Secret-free pull request check: the same unit tests as the `prep` job of hourly.yml (here run as three parallel shards of whole test modules, tests/shard.py, balanced on CI-measured seconds: LIFE-705; hourly.yml runs them in one process), on the PR head merged with its base. Read-only, no secrets, no database, no network beyond installing
+# Secret-free pull request check: the same unit tests as the `prep` job of hourly.yml (here run as four parallel shards of whole test modules, tests/shard.py, balanced on CI-measured seconds: LIFE-705; hourly.yml runs them in one process), on the PR head merged with its base. Read-only, no secrets, no database, no network beyond installing
 # the pinned requirements, nothing dispatched or scheduled. Runtime contract of the deterministic suite: a warning at 90 seconds, a failure at 120 seconds (LIFE-596; Nov 9 2026: raised from 75, which was raised from 60 on Oct 25; hang guard: timeout-minutes).
 # Every merge to main runs the same suite too (Jim, Oct 25 2026), so the Edge's Close auto-release has a tested main commit within a minute of a merge instead of waiting for the next hourly run.
 on:
@@ -41,21 +41,26 @@ jobs:
             echo FULL > selected.txt
           fi
           if [ "$(head -n 1 selected.txt)" = "FULL" ]; then echo "tests picked: everything" | tee -a "$GITHUB_STEP_SUMMARY"; else echo "tests picked: $(wc -l < selected.txt) targets" | tee -a "$GITHUB_STEP_SUMMARY"; fi
-      - name: Unit tests (three parallel shards when everything runs, balanced on CI seconds; warn at 90 s, fail at 120 s)
+      - name: Unit tests (four parallel shards when everything runs, balanced on CI seconds; warn at 90 s, fail at 120 s)
         run: |
           start=$(date +%s)
           status=0
           if [ "$(head -n 1 selected.txt)" = "FULL" ]; then
-            python -m tests.shard 1 3 > shard-1.log 2>&1 &
+            ( t0=$(date +%s); python -m tests.shard 1 4 > shard-1.log 2>&1; rc=$?; echo $(( $(date +%s) - t0 )) > shard-1.sec; exit $rc ) &
             first=$!
-            python -m tests.shard 2 3 > shard-2.log 2>&1 &
+            ( t0=$(date +%s); python -m tests.shard 2 4 > shard-2.log 2>&1; rc=$?; echo $(( $(date +%s) - t0 )) > shard-2.sec; exit $rc ) &
             second=$!
-            python -m tests.shard 3 3 > shard-3.log 2>&1 &
+            ( t0=$(date +%s); python -m tests.shard 3 4 > shard-3.log 2>&1; rc=$?; echo $(( $(date +%s) - t0 )) > shard-3.sec; exit $rc ) &
             third=$!
+            ( t0=$(date +%s); python -m tests.shard 4 4 > shard-4.log 2>&1; rc=$?; echo $(( $(date +%s) - t0 )) > shard-4.sec; exit $rc ) &
+            fourth=$!
             wait "$first" || status=$?
             wait "$second" || status=$?
             wait "$third" || status=$?
-            cat shard-1.log shard-2.log shard-3.log
+            wait "$fourth" || status=$?
+            cat shard-1.log shard-2.log shard-3.log shard-4.log
+            echo "shard seconds: 1=$(cat shard-1.sec) 2=$(cat shard-2.sec) 3=$(cat shard-3.sec) 4=$(cat shard-4.sec)" | tee -a "$GITHUB_STEP_SUMMARY"
+            for k in 1 2 3 4; do if [ "$(cat shard-$k.sec)" -ge 100 ]; then echo "::warning::Shard $k took $(cat shard-$k.sec) s; the shard guard level is 100 s and the gate is 120 s (LIFE-963): rebalance tests/shard-weights.json (python -m tests.shard --from-logs) or fix the slow module before it reaches 120"; fi; done
           else
             python -m unittest $(cat selected.txt) > shard-1.log 2>&1 || status=$?
             cat shard-1.log
@@ -93,6 +98,11 @@ jobs:
             printf '%s\n' "$found" | grep -E '^[[:space:]]*[0-9]+' || true
           } | tee -a "$GITHUB_STEP_SUMMARY"
           exit 0
+      - name: Type check blocking (LIFE-600, Jim "600 block" Nov 24 2026; exactly the 42 lifeos/platform modules listed in mypy-blocking.txt, clean in every advisory replay Nov 10 to Nov 24; a type error in one of them fails the job, every other module stays advisory above)
+        run: |
+          start=$(date +%s)
+          python -m mypy --no-incremental $(cat mypy-blocking.txt)
+          echo "mypy (blocking): $(wc -l < mypy-blocking.txt | tr -d ' ') modules clean, $(( $(date +%s) - start )) s" | tee -a "$GITHUB_STEP_SUMMARY"
       # Jim, Nov 8 2026: the Concord Room Orca plugin (tools/orca-concord-room) is production, so its own Node tests run on every PR and every merge. Node's built-in test runner, no install, no network, no secret; outside the 90 s Python suite limit above.
       - uses: ./.github/actions/node
       - name: Concord Room plugin tests (node:test)
@@ -168,7 +178,7 @@ jobs:
         run: |
           python -m tests.testindex select --base HEAD^1 > selected.txt || echo FULL > selected.txt
           if [ "$(head -n 1 selected.txt)" = "FULL" ]; then echo "tests picked (second date): everything" | tee -a "$GITHUB_STEP_SUMMARY"; else echo "tests picked (second date): $(wc -l < selected.txt) targets" | tee -a "$GITHUB_STEP_SUMMARY"; fi
-      - name: Unit tests on a second fixed date (LIFEOS_TEST_NOW; three parallel shards when everything runs)
+      - name: Unit tests on a second fixed date (LIFEOS_TEST_NOW; four parallel shards when everything runs)
         if: ${{ steps.scope.outputs.docs_only != 'true' }}
         env:
           LIFEOS_TEST_NOW: "2027-03-09"
@@ -176,16 +186,21 @@ jobs:
           start=$(date +%s)
           status=0
           if [ "$(head -n 1 selected.txt)" = "FULL" ]; then
-            python -m tests.shard 1 3 > shard-1.log 2>&1 &
+            ( t0=$(date +%s); python -m tests.shard 1 4 > shard-1.log 2>&1; rc=$?; echo $(( $(date +%s) - t0 )) > shard-1.sec; exit $rc ) &
             first=$!
-            python -m tests.shard 2 3 > shard-2.log 2>&1 &
+            ( t0=$(date +%s); python -m tests.shard 2 4 > shard-2.log 2>&1; rc=$?; echo $(( $(date +%s) - t0 )) > shard-2.sec; exit $rc ) &
             second=$!
-            python -m tests.shard 3 3 > shard-3.log 2>&1 &
+            ( t0=$(date +%s); python -m tests.shard 3 4 > shard-3.log 2>&1; rc=$?; echo $(( $(date +%s) - t0 )) > shard-3.sec; exit $rc ) &
             third=$!
+            ( t0=$(date +%s); python -m tests.shard 4 4 > shard-4.log 2>&1; rc=$?; echo $(( $(date +%s) - t0 )) > shard-4.sec; exit $rc ) &
+            fourth=$!
             wait "$first" || status=$?
             wait "$second" || status=$?
             wait "$third" || status=$?
-            cat shard-1.log shard-2.log shard-3.log
+            wait "$fourth" || status=$?
+            cat shard-1.log shard-2.log shard-3.log shard-4.log
+            echo "shard seconds: 1=$(cat shard-1.sec) 2=$(cat shard-2.sec) 3=$(cat shard-3.sec) 4=$(cat shard-4.sec)" | tee -a "$GITHUB_STEP_SUMMARY"
+            for k in 1 2 3 4; do if [ "$(cat shard-$k.sec)" -ge 100 ]; then echo "::warning::Shard $k took $(cat shard-$k.sec) s; the shard guard level is 100 s and the gate is 120 s (LIFE-963): rebalance tests/shard-weights.json (python -m tests.shard --from-logs) or fix the slow module before it reaches 120"; fi; done
           else
             python -m unittest $(cat selected.txt) > shard-1.log 2>&1 || status=$?
             cat shard-1.log

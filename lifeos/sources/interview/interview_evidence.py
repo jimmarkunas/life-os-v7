@@ -17,7 +17,7 @@ from lifeos.jobs import classify as job_site, identity, lanes, ledger as jobs_le
 from lifeos.interview import acceptance, create, notion, stage, view
 from lifeos.interview.models import Ownership, ParentQuery, RoundQuery
 from lifeos.interview.progression import Invite, progress
-from lifeos.platform import mail
+from lifeos.platform import ledger_claim, mail
 from lifeos.platform.gcal import GoogleCalendar
 from lifeos.platform.gmail import Gmail, GmailError
 from lifeos.platform.names import same_company, same_role, split_title, tokens
@@ -27,6 +27,7 @@ from lifeos.platform.notion_client import Client, NotionError
 from lifeos.platform.runtime import RunContext
 from lifeos.sources.pipeline import hiring as pipeline, manual_job
 from lifeos.sources.interview import interview_sweep as sweep
+from lifeos.sources.interview import mail_snapshot as snapshots
 from lifeos.sources.interview import unreadable_streak as streaks
 
 TZ = ZoneInfo("America/Chicago")
@@ -174,24 +175,34 @@ def lead_row(writer, company, role, key, url, today):
     -> 'created' | 'present'; a wrong target, an ambiguous key or a read-back that differs raises NotionError."""
     if jobs_ledger.verify(writer) != jobs_ledger.OK:
         raise NotionError("lead_row_target")
+    claimant = ledger_claim.who("lead")
+    state, _ = ledger_claim.claim(key, claimant)                  # LIFE-903: no create without the cross-process claim on this Stable Job Key
+    if state == ledger_claim.CREATED:
+        return "present"
+    if state == ledger_claim.HELD:                                              # adopt only: a held key may already have its page (a create that crashed after Notion accepted it)
+        if publish.existing_page(writer, key):
+            return "present"
+        raise NotionError("lead_row_held")                                      # another creator has the key, or an earlier create is unresolved: no row is made, so no page is queued; a fixed code
     if publish.existing_page(writer, key):
+        ledger_claim.release(key, claimant)
         return "present"
     page = writer.create(publish.properties({"title": role, "company": company, "url": url, "provider": "Recruiter outreach", "lane": LEAD_LANE, "key": key, "first_seen": today,
                                              "eligible": [LEAD_LANE], "admission": lanes.ADMIT}), [])
     props = writer.call("GET", f"/pages/{page}").get("properties") or {}
     if view._plain(props.get("Stable Job Key")) != key or ((props.get("Visible Lane") or {}).get("select") or {}).get("name") != LEAD_LANE:
-        raise NotionError("lead_row_readback")
+        raise NotionError("lead_row_readback")                                  # the claim stays until the lease passes: an unverified create is settled by read-back, never repeated
+    ledger_claim.release(key, claimant)
     return "created"
 
 
-def read_mail(environ, now, gmail=None, outlook_accounts=None, days=mail.WINDOW_DAYS, seconds=None, detail=None):
+def read_mail(environ, now, gmail=None, outlook_accounts=None, days=mail.WINDOW_DAYS, seconds=None, detail=None, reuse=None):
     """-> (records, sources that could not be read in full). Read only; Gmail and Outlook are read whole, as the recruiters stage does, because a lead has no company on any roster.
     LIFE-793: the sources are read one after another again (the first run of a side-by-side read, PR 1318, ended DEGRADED with a source read in part and measured nothing gained: Outlook took 1.2 s and
     1.4 s, Gmail 239 s). `seconds`, when given, is filled with each source's elapsed seconds under a fixed name (gmail, outlook_1, outlook_2, ...); `detail`, when given, gets Gmail's own listed and read
-    counts with their seconds: counts only, never an address or label."""
+    counts with their seconds: counts only, never an address or label. LIFE-906: `reuse` ({Gmail message id: record}) is mail an earlier complete read already holds; Gmail reads only the rest (Outlook is read whole, as it takes seconds)."""
     records, down, limit = [], 0, mail.MAX_MESSAGES * -(-days // mail.WINDOW_DAYS)
     gmail_timing = {} if detail is not None else None
-    reads = [("gmail", lambda: mail.gmail_records(gmail or Gmail.from_env(), now, limit=limit, days=days, workers=MAIL_WORKERS, timing=gmail_timing, heal=True))]
+    reads = [("gmail", lambda: mail.gmail_records(gmail or Gmail.from_env(), now, limit=limit, days=days, workers=MAIL_WORKERS, timing=gmail_timing, heal=True, **({"reuse": reuse} if reuse else {})))]
     for number, (label, account) in enumerate(outlook_accounts if outlook_accounts is not None else mail.outlook_accounts(environ), 1):
         reads.append((f"outlook_{number}", lambda a=account, l=label: mail.outlook_records(a, l, now, limit=limit, days=days) if a else ([], 1)))
     for name, read in reads:
@@ -486,8 +497,17 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
     lap("ledger_roster")
     pursuits = [{"id": "page:" + p.page_id, "company": c, "role": r, "title": p.title, "pursuit": True} for p, c, r in titles
                 if c.strip() and r.strip() and not any(same_company(c, a["company"]) and same_role(r, a["role"]) for a in roster)]
+    snapshot_why = None
     if records is None:
-        records, down = read_mail(environ, now, gmail, outlook_accounts, window(environ, live), mail_seconds, mail_detail)
+        began = time.monotonic()                                             # LIFE-894: the early domains run of this tick may already have read this mail: used only when complete, for this window and taken after this tick started
+        taken = snapshots.take(environ, now, window(environ, live), connect) if gmail is None and outlook_accounts is None else {"why": "no_tick"}
+        if taken["why"] == "used":
+            records, down = taken["records"], taken["down"]
+            mail_detail.update(taken["detail"])
+            mail_seconds["snapshot"] = round(time.monotonic() - began, 1)
+        else:                                                                # no snapshot, or one not usable: the full read exactly as before
+            records, down = read_mail(environ, now, gmail, outlook_accounts, window(environ, live), mail_seconds, mail_detail)
+        snapshot_why = None if taken["why"] == "no_tick" else taken["why"]
         if down:
             flag("mail_unavailable")                                         # a source read in part is never a trustworthy "no request"
     lap("mail")
@@ -627,7 +647,7 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
         causes[cause] = causes.get(cause, 0) + 1
     kept = not reads or not live or streaks.save(runs, before, connect)       # a dry run writes no streak
     lap("sent_mail")
-    counts = stage.run(limit, live, environ, client=client, evidence=evidence, context=injected or RunContext.start(STAGE_SECONDS))      # a fresh clock: the mail read above can take minutes, and the writes need their own budget
+    counts = stage.run(limit, live, environ, client=client, evidence=evidence, context=injected or RunContext.start(STAGE_SECONDS), roster=True)      # a fresh clock: the mail read above can take minutes, and the writes need their own budget
     lap("writer")
     if where:
         counts["where"] = where
@@ -657,5 +677,7 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
     lap("after_writer")
     counts["mail_gmail"] = mail_detail.get("gmail") or {}                          # LIFE-793: Gmail listed, read and their seconds
     counts["mail_seconds"] = mail_seconds                                          # LIFE-793: each mail source's own seconds (inside the `mail` phase, not added to the total)
+    if snapshot_why:
+        counts["mail_snapshot"] = snapshot_why                                     # LIFE-894: `used`, or the fixed code of why this run read the mail itself; a measurement field, left out when comparing outputs
     counts["seconds"] = {**laps, "total": round(sum(laps.values()), 1)}                     # LIFE-793: where the Interview run's time goes, by fixed phase
     return counts

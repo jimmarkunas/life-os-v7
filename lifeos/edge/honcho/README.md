@@ -1,6 +1,6 @@
 # Honcho on lifeos-edge-01 (LIFE-889): the one durable stack
 
-Pinned Honcho v3.6.1, private (loopback only), every Anthropic call through a spend guard that refuses at $0.90. Jim, Nov 21 2026: "If we build it, and it works, it stays."
+Pinned Honcho v3.6.1, private (loopback only), authenticated (LIFE-867), every Anthropic call through a spend guard that refuses at the monthly cap ($25, LIFE-950). Jim, Nov 21 2026: "If we build it, and it works, it stays."
 
 | Piece | Where | Notes |
 |---|---|---|
@@ -20,3 +20,18 @@ Pinned Honcho v3.6.1, private (loopback only), every Anthropic call through a sp
 
 ## Stop spending at once
 `touch /var/lib/lifeos-honcho-meter/STOP` (the proxy refuses every request; nothing else changes). Remove the file to resume. Nothing is deleted without Jim's say-so.
+
+## Backup and scratch restore (LIFE-867)
+`backup.sh` (run as root) writes a logical dump of the running database, the settings file and the image digest to `/var/backups/lifeos-honcho/<UTC stamp>/` (0700 root), keeps the 7 newest and refuses under 3 GB free; nothing is stopped. `restore_check.sh` restores a backup into a throwaway container with no network and no volume, prints the table row counts, and removes the container; it never touches `honcho_pgdata`. No timer exists: a recurring backup is a new schedule and needs Jim's approval.
+
+## Hardening (LIFE-867)
+- **Authentication on.** `AUTH_USE_AUTH=true` in `honcho.env`; the signing secret is only in `/etc/lifeos-honcho/auth.env` (root 0600, read by `api` and `deriver` through `compose.yml`). No token: 401. A workspace-scoped token reaches only its own workspace. Mint with `docker exec honcho-api-1 /app/.venv/bin/python scripts/generate_jwt.py --admin --expires 1y` (or `--workspace NAME`); the one service credential is the Bitwarden item `HONCHO_ADMIN_JWT` (project `LIFE OS EDGE/OPENCLAW`). Rollback: restore `honcho.env.pre-auth` and `compose.yml.pre-auth`, `docker compose up -d`.
+- **Nightly backup.** `lifeos-honcho-backup.timer` (3:30 AM Central) runs `lifeos-honcho-backup.service` (`backup.sh`, 7 copies, 3 GB headroom check); a failure runs `lifeos-honcho-backup-failed.service`, which leaves `/var/lib/lifeos-honcho-backup/FAILED`. A backup only: it never starts an agent. Rollback: `systemctl disable --now lifeos-honcho-backup.timer`, remove the three unit files.
+- **Meter fails closed.** An unreadable, missing-with-spend or unwritable ledger, refuses every Anthropic request (embeddings stay free; memory untouched) and leaves one `EXHAUSTED` file next to the ledger, once per window. Rollback: `meter_proxy.py.pre-867`.
+- **Alerts (LIFE-876 H1).** Both signals also reach Jim's Agent Inbox through the one command `/opt/lifeos-buzz-mcp/current/bin/honcho-alert send <subject> [details] [--urgency ...]` (MCP client `honcho-alerts`, credential `/etc/lifeos-honcho/honcho_alerts_mcp.cred`, root 0600). `lifeos-honcho-backup-failed.service` writes the `FAILED` marker, then calls it ("Honcho nightly backup failed", Today). The meter never runs a command: `lifeos-honcho-meter-alert.path` watches the `EXHAUSTED` file and starts `lifeos-honcho-meter-alert.service` ("Honcho budget stopped (EXHAUSTED)", Today). Both alert calls start with `-`, so an alert failure never blocks a backup or the meter; the marker files stay as the durable signal. The same subject updates the same Inbox row. **Rollback:** `sudo systemctl disable --now lifeos-honcho-meter-alert.path`, remove the three alert lines/units, `sudo systemctl daemon-reload` (the `.pre-alert` copy of the failed unit is next to it).
+
+## Monthly window and token renewal (LIFE-950)
+- **Window.** Jim's Claude-plan promotional credit ($100) resets on the 5th at 6:00 PM CT. The meter's period is the same: 5th 6:00 PM CT to the next 5th 6:00 PM CT. The cap is **$25 per window** (Jim, Nov 23 2026). The first request after a boundary archives the old window as one line in `/var/lib/lifeos-honcho-meter/windows.jsonl` and starts the new one at zero, inside the meter service (no timer, no agent). `GET /health` names the window and the cap. A `STOP` file and an unverifiable ledger are never cleared by a new window. `METER_STOP_AFTER` is optional now (Jim's own hard stop). Rollback: `meter_proxy.py.pre-950` and `lifeos-honcho-meter.service.pre-950`, `systemctl daemon-reload && systemctl restart lifeos-honcho-meter`.
+- **Alerts.** Over the cap, or a budget that cannot be verified: inference stops, memory is untouched, and `EXHAUSTED` carries the window, so exactly one Agent Inbox alert goes out per window.
+- **Token.** `lifeos-honcho-token-renew.timer` (3:45 AM CT) runs `renew_token.py`: with 30 days or fewer left on `HONCHO_MEMORY_TOKEN` it mints a 60-day `personal` token, proves it on Honcho, swaps that one line of `/etc/lifeos-buzz-mcp/config.env`, restarts the MCP and checks 401; any failure puts the old line back and sends one alert. Manual run: `sudo python3 -I /opt/lifeos-honcho/renew_token.py`. Install: copy the script and the two units, `systemctl daemon-reload && systemctl enable --now lifeos-honcho-token-renew.timer`. Rollback: disable the timer.
+- **Grants.** The eight LIFE-868 memory grants in `lifeos/platform/mcp_access.json` no longer end Dec 5 2026 (expiry 2099-12-31, still revocable).

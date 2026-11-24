@@ -49,6 +49,7 @@ This table is rendered from `lifeos/platform/stages.json` (LIFE-768): edit a sta
 | `boards` | `sources.web.boards` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `boards-backfill` | `sources.web.boards` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `boards-preview` | `sources.web.boards` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
+| `boards-tick` | `sources.web.boards` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `calendar-sync` | `calendar_bridge.watch` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `capacity-card` | `jobs.fit.capacity_card` | `exempt` | One reading of Oracle's limits: a failed read is the stage's own failure and the old card stays until a fresh reading is verified. | yes |
 | `dcc-card` | `dcc.card` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
@@ -81,6 +82,7 @@ This table is rendered from `lifeos/platform/stages.json` (LIFE-768): edit a sta
 | `inbox-view` | `inbox.agent_inbox_stage` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `interview` | `sources.interview.interview_evidence` | `partial-red` | Its `failed` adds unreadable threads, blocked pages and sweep failures together, which LIFE-690 turns into state-change alerts; moving it onto the helper before that would change what pages, so it waits for LIFE-690. | yes |
 | `interview-acceptance` | `interview.acceptance` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
+| `interview-mail` | `sources.interview.mail_snapshot` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `interview-probe` | `interview.stage` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `interview-ui-probe` | `interview.ui_probe` | `guarded` | Loops over its items with error handling inside; one failed item does not stop the others. | no |
 | `jira-card` | `jira.card` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
@@ -118,6 +120,7 @@ This table is rendered from `lifeos/platform/stages.json` (LIFE-768): edit a sta
 | `purge` | `jobs.retention` | `guarded` | Loops over its items with error handling inside; one failed item does not stop the others. | no |
 | `recruiter-outreach` | `recruiters.outreach_card` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `recruiters` | `recruiters.stage` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
+| `report-archive` | `dcc.weekly_archive` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `resolve-dice` | `jobs.resolve.aggregators.dice` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `resolve-jobright` | `run (custom)` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `resolve-linkedin` | `run (custom)` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
@@ -135,6 +138,7 @@ This table is rendered from `lifeos/platform/stages.json` (LIFE-768): edit a sta
 | `web` | `sources.web.run` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `web-scale-up` | `sources.web.run` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `web-titlewatch` | `sources.web.titlewatch` | `guarded` | Loops over its items with error handling inside; one failed item does not stop the others. | no |
+| `weekly-review` | `dcc.weekly_review` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 
 ## Reviewed loops
 

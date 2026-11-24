@@ -1,0 +1,9 @@
+[Unit]
+Description=Every five minutes: health of the pinned Buzz relay pilot (LIFE-870)
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target

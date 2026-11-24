@@ -2,6 +2,7 @@
 
 Unconfigured (the default) a slot is a no-op, so nothing changes unless the tick configures it (the side-by-side runner always does). Stdlib only; no job knowledge."""
 import threading
+import time
 from contextlib import contextmanager
 
 _slots = {}
@@ -18,7 +19,10 @@ def slot(name):
     if semaphore is None:
         yield
         return
+    began = time.monotonic()
     semaphore.acquire()
+    from lifeos.platform import stage_timing                                          # noqa: PLC0415 - LIFE-855: the wait counts toward the stage whose thread waited
+    stage_timing.add_wait(time.monotonic() - began)
     try:
         yield
     finally:

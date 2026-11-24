@@ -4,7 +4,7 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 COMMAND = "python -m lifeos.platform.net_size"
-AGENTS_CAP_BYTES = 4096          # LIFE-766: AGENTS.md is the one-page boot guide
+AGENTS_CAP_BYTES = 4608          # LIFE-766: AGENTS.md is the one-page boot guide (4096 until LIFE-949, which adds the one memory line Jim asked for in its target 8; 4352 until LIFE-965, which adds the one Buzz contract line Jim asked for)
 REFERENCE_CAP_BYTES = 15360
 
 

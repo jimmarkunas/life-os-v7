@@ -29,7 +29,7 @@ services:
     entrypoint: ["sh", "docker/entrypoint.sh"]
     depends_on: {database: {condition: service_healthy}, redis: {condition: service_healthy}}
     ports: ["127.0.0.1:8000:8000"]
-    env_file: [./honcho.env, /etc/lifeos-honcho/db.env]
+    env_file: [./honcho.env, /etc/lifeos-honcho/db.env, /etc/lifeos-honcho/auth.env]
     environment: ["CACHE_URL=redis://redis:6379/0?suppress=true", "CACHE_ENABLED=true"]
     healthcheck:
       test: ["CMD", "/app/.venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2).read()"]
@@ -43,7 +43,7 @@ services:
     restart: unless-stopped
     entrypoint: ["/app/.venv/bin/python", "-m", "src.deriver"]
     depends_on: {api: {condition: service_healthy}}
-    env_file: [./honcho.env, /etc/lifeos-honcho/db.env]
+    env_file: [./honcho.env, /etc/lifeos-honcho/db.env, /etc/lifeos-honcho/auth.env]
     environment: ["CACHE_URL=redis://redis:6379/0?suppress=true", "CACHE_ENABLED=true"]
     networks: [honcho-net]
 volumes:

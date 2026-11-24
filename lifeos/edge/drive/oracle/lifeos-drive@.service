@@ -1,0 +1,20 @@
+# LIFE-945: one process per connection, as buzz-mcp (no sudo, no login). It loads the three Drive credentials Oracle already holds for the governed MCP (the same encrypted files, nothing new is stored or
+# issued) into its own private credentials directory for this one process. No log output (stderr discarded), a hard deadline shorter than the endpoint's, no new privileges, no writable place.
+[Unit]
+Description=LIFE OS Drive weekly-count helper (one connection)
+
+[Service]
+User=buzz-mcp
+ExecStart=/usr/bin/python3 -I /opt/lifeos-drive/drive_helper.py
+StandardInput=socket
+StandardOutput=socket
+StandardError=null
+LoadCredentialEncrypted=google_read_client_id:/etc/lifeos-buzz-mcp/google_read_client_id.cred
+LoadCredentialEncrypted=google_read_client_secret:/etc/lifeos-buzz-mcp/google_read_client_secret.cred
+LoadCredentialEncrypted=google_read_personal_drive_refresh:/etc/lifeos-buzz-mcp/google_read_personal_drive_refresh.cred
+RuntimeMaxSec=55
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+MemoryMax=256M
