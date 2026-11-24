@@ -70,6 +70,7 @@
           DCC_CARD_BLOCK_ID: ${{ steps.bws_dcc.outputs.DCC_CARD_BLOCK_ID }}
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           WEEKLY_ARCHIVE_PAGE_ID: ""
+          LIFEOS_NOTION_IDS: ""
           NOTION_JIRA_TOKEN: ${{ steps.bws_dcc.outputs.NOTION_JIRA_TOKEN }}
         run: python -m lifeos.run report-archive --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - name: Weekly Reports Archive warning (does not fail the Jobs run)

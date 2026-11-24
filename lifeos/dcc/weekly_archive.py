@@ -10,6 +10,7 @@ from datetime import date, datetime, timedelta
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
+from lifeos.platform import full_width
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 from lifeos.platform.notion_text import block_text
 
@@ -168,6 +169,12 @@ def _create(node):
     return out
 
 
+def _fill(client, page_id, nodes):
+    """Write `nodes` into a page made from the template, then remove the template's one empty paragraph (it can only go once there is another block under it)."""
+    _write(client, page_id, nodes)
+    full_width.clear_filler(client, page_id)
+
+
 def _page_titles(client, page_id):
     """{title: [child page ids]} for the child pages of `page_id`."""
     found = {}
@@ -184,9 +191,12 @@ def _one(found, title):
     return ids[0] if ids else None
 
 
-def _make_page(client, parent_id, title, emoji, children):
-    body = {"parent": {"page_id": parent_id}, "icon": {"type": "emoji", "emoji": emoji}, "properties": {"title": {"title": rich_text(title)}}, "children": children}
-    return client.call_once("POST", "/pages", body)["id"]
+def _make_page(client, parent_id, title, emoji):
+    """The empty page from the Full Width template (D16.1); its blocks are written after it. Fails closed, making nothing, when the template is not configured."""
+    try:
+        return full_width.create(client, parent_id, title, emoji)
+    except full_width.FullWidthError as error:
+        raise _fail("TEMPLATE_MISSING") from error
 
 
 def _complete(client, page_id):
@@ -196,32 +206,44 @@ def _complete(client, page_id):
 
 def _week_page(client, archive_id, found, end, live):
     page = _one(found, WEEK_TITLE.format(label(end)))
-    if page or not live:
+    if page and (not live or _kids(client, page)):
         return page
+    if not page and not live:
+        return None
     start = end - timedelta(days=6)
     intro = [{"type": "heading_2", "heading_2": {"rich_text": rich_text("Reporting Week")}},
              {"type": "bulleted_list_item", "bulleted_list_item": {"rich_text": rich_text(f"Start: {label(start)}")}},
              {"type": "bulleted_list_item", "bulleted_list_item": {"rich_text": rich_text(f"End: {label(end)}")}},
              {"type": "bulleted_list_item", "bulleted_list_item": {"rich_text": rich_text("Static Daily LIFE OS Report snapshots are stored below once each day (the first V7 run at or after 6 PM CT).")}},
              {"type": "bulleted_list_item", "bulleted_list_item": {"rich_text": rich_text("Live linked database views are not archived here.")}}]
-    return _make_page(client, archive_id, WEEK_TITLE.format(label(end)), "🗓️", intro)
+    page = page or _make_page(client, archive_id, WEEK_TITLE.format(label(end)), "🗓️")      # a week page left empty by an interrupted run is filled, not duplicated
+    _fill(client, page, intro)
+    if digest(read_tree(client, page)) != digest(intro):
+        raise _fail("READBACK_MISMATCH")
+    return page
 
 
-def _snapshot(client, parent_id, title, emoji, head, make_nodes, live):
-    """Make the page `title` under `parent_id` with `head` and the frozen `nodes`, finish it with the marker and read it all back. -> "created", "exists" or "would_create" (a dry run)."""
+def _snapshot(client, parent_id, title, emoji, head, make_nodes, live, may_be_empty=False):
+    """Make the page `title` under `parent_id` (full width) with `head` and the frozen `nodes`, finish it with the marker and read it all back. -> ("created" | "exists" | "would_create" | "empty", rows).
+    Fails closed on an empty body, or one with fewer top-level blocks than the source gave: a title with no content is never done. Frozen notes that are empty make no page (`may_be_empty`)."""
     found = _page_titles(client, parent_id)
     existing = _one(found, title)
     if existing and _complete(client, existing):
         return "exists", 0
     if not live:
         return "would_create", 0
+    nodes = make_nodes()
+    if not nodes:
+        if may_be_empty:
+            return "empty", 0
+        raise _fail("EMPTY_SNAPSHOT")
     if existing:
         client.call_once("PATCH", f"/pages/{quote(existing, safe='')}", {"archived": True})                      # an interrupted write: set it aside, never counted, then write it afresh
-    body = head + make_nodes()
-    page = _make_page(client, parent_id, title, emoji, [])
-    _write(client, page, body)
-    back = digest(read_tree(client, page))
-    if back != digest(body):
+    body = head + nodes
+    page = _make_page(client, parent_id, title, emoji)
+    _fill(client, page, body)
+    read = read_tree(client, page)
+    if len(read) < len(body) or digest(read) != digest(body):
         raise _fail("READBACK_MISMATCH")
     _write(client, page, [{"type": "paragraph", "paragraph": {"rich_text": rich_text(MARK)}}])
     if not _complete(client, page):
@@ -282,7 +304,7 @@ def run(limit, live, environ=os.environ, client=None, now=None):
     out["snapshot"], out["blocks"] = _snapshot(client, week, DAY_TITLE.format(label(now.date())), "📄", head, lambda: freeze(client, page, skipped), live)
     out["live_views_skipped"] = len(skipped)
     if now.weekday() == 6 and notes_id:                                       # Sunday: the one final weekly Notes snapshot, after the day's snapshot verified
-        out["weekly_notes"] = _snapshot(client, week, NOTES_TITLE.format(label(end)), "🗒️", [], lambda: _notes_nodes(client, notes_id), live)[0]
+        out["weekly_notes"] = _snapshot(client, week, NOTES_TITLE.format(label(end)), "🗒️", [], lambda: _notes_nodes(client, notes_id), live, may_be_empty=True)[0]
     return out
 
 

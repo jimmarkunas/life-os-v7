@@ -31,11 +31,11 @@ Link to the owner; never copy a fact into a second place.
 
 - **Jim starts every agent run.** No scheduler, timer, poller, `/loop` or dispatcher may start or wake an agent outside a live session; inside one, it may watch its own CI and runs. A Jira status change starts nothing.
 - **Once started, an agent runs end to end:** finish the ticket, then pull the next, until the queue is empty (`NO_ELIGIBLE_WORK`) or a ticket truly needs Jim.
-- **Pick:** the ticket Jim named, else the top leaf of `project = LIFE AND status = "Agent Go" AND issuetype != Epic ORDER BY priority DESC, Rank ASC`. Skip a ticket already In Progress (another session has it) or with an unfinished `Blocks` predecessor. Agents never reorder or reprioritize. Several sessions (OC and MC, CLAUDE.md) may pull in parallel; one writer per branch and per mutation surface.
+- **Pick:** the ticket Jim named, else the top leaf of `project = LIFE AND status = "Agent Go" AND issuetype != Epic ORDER BY priority DESC, Rank ASC`. Skip a ticket In Progress (another session has it) or with an unfinished `Blocks` predecessor. Agents never reorder or reprioritize. Several sessions (OC and MC, CLAUDE.md) may pull in parallel; one writer per branch and per mutation surface.
 - **Claim:** move the ticket to In Progress (transition ID 14). The status is the claim; no comment.
-- **Build:** one branch `life/LIFE-nnn/<slug>`, one PR titled `[LIFE-nnn] <outcome>`. Tickets that touch the same files may share one PR. Smallest change that delivers the outcome; remove the path it replaces.
+- **Build:** one branch `life/LIFE-nnn/<slug>`, one PR titled `[LIFE-nnn] <outcome>`. Tickets touching the same files may share one PR. Smallest change that delivers the outcome; remove the path it replaces.
 - **Test:** `sh tools/preflight.sh` before every push. CI is the full gate: fix once if red.
-- **Land:** auto-merge on same-head green CI. No reviewer is required unless GitHub branch protection or the ticket says so; never invent an approval.
+- **Land:** auto-merge on same-head green CI. No reviewer unless branch protection or the ticket says so; never invent an approval.
 - **Close when shipped:** a build ticket is Done once it is merged on same-head green CI, live, and first-proved. A merged PR on green is not Done by itself. A check that only waits (natural runs, a soak, a scheduled time, Jim's UAT) becomes its own Task under LIFE-615: `UAT for LIFE-nnn: <check> (not before <time> CT)`, label `uat` plus `ready` or `needs-jim`, Agent Go, with the build ticket, verifier, Not before (CT), steps, Done when and "If it fails: file a Bug under LIFE-615". The build ticket names it; a successor starts once its predecessor is Done.
 - **Close:** `python -m lifeos.jira.closeout KEY... --pr N --sha S --run R --proof KEY=text --live` posts the one record (PR, SHA, CI run, outcome proof per Done when line) and moves the ticket to Done. Jim reopens it or files a Bug.
 - **Close a `research` ticket:** no PR, so no closeout script. Post one findings comment that answers every Done when line (UNCLEAR or UNVERIFIED with the reason is an answer), then move it to Done with transition 15. A `verdict` ticket closes the same way after its authorized writes are read back.
@@ -101,8 +101,8 @@ Keep the description under 4,000 characters; one ticket is one PR. Reference sec
 
 **Hierarchy:** LIFE Epic → Task → Sub-task.
 - Every ticket sits under an epic; Bugs go under LIFE-615.
-- Every ticket has exactly one Component (its owning OS) and the matching Fix Version `<component> X.Y.Z`. These are filled automatically (LIFE-741). Agents never invent a release.
-- Done and Cancelled issues stay on their historical parents.
+- Every ticket has exactly one Component (its owning OS) and the matching Fix Version `<component> X.Y.Z`. These are filled automatically (LIFE-741). Agents never invent releases.
+- Done and Cancelled issues keep their parents.
 
 **Epic lifecycle (Jim, Nov 21, 2026):** `Scoping → Ready → In Progress → Done`.
 - A new product outcome starts as a LIFE Epic in Scoping. Children are written only while the Epic is in Scoping.
@@ -136,27 +136,28 @@ V7 must run with ChatGPT unavailable (D54). OpenClaw and Hermes run on the Oracl
 
 **Debug in order:** `trigger → runtime started → code ran → source reached → state persisted → read back`.
 - One retry per failure boundary; a second failure stops for diagnosis.
-- More than two cycles or about ten minutes on a simple operation means challenge the design instead of adding machinery.
+- Two cycles or ten minutes on a simple operation: challenge the design, don't add machinery.
 - Prefer subtraction over repair.
 
 A request that breaks these rules stops with `ARCHITECTURAL DRIFT DETECTED — NO MUTATION`.
 
 ## 9. Proof and tests
 
-- **Prove deterministically:** a fixture or clock test, or a replay of one recorded real input. Code is never accepted on a live run alone.
+- **Prove deterministically:** a fixture or clock test, or a replay of one recorded real input; never on a live run alone.
 - **Natural runs, one rule:** a natural run never gates a build ticket's Done; its UAT ticket checks it, and a fault is filed as a Bug under LIFE-615.
-- **Fix on the real failing shape.** A defect seen live is fixed and proved on that input, or on a fixture that keeps its structure, through the real path. For Jobs qualification: real job description → requirement rows → non-null Fit → correct disposition.
-- **Runtime-facing changes:** prove the production entry point calls the change, its inputs are loaded, the happy path completes, missing input fails closed, writes go through the existing owner, and read-back is wired.
-- **Jobs increments:** test toward the future source count before copying a pattern.
+- **Fix on the real failing shape.** A defect seen live is fixed and proved on that input or a structure-keeping fixture, through the real path. For Jobs qualification: real job description → requirement rows → non-null Fit → correct disposition.
+- **Runtime-facing changes:** prove the production entry point calls the change, its inputs load, the happy path completes, missing input fails closed, writes use the existing owner, and read-back is wired.
+- **Jobs increments:** test for the future source count before copying a pattern.
 - **Fail closed:** a full result or an error, never a partial one. Dry run is the default; writes need `--live`.
 - **Keep the suite under 90 seconds;** delete tests with the code they covered.
+- **Full width (D16.1):** a page V7 creates under a page uses `template=notion.FULL_WIDTH`; a repo-wide test enforces it.
 - **Net size:** `python -m lifeos.platform.net_size` in every PR.
 - **Decision numbers:** only from `python -m lifeos.sources.devtools.decisions claim`.
 
 ## 10. Exceptions in force
 
-- **V7 modernization consolidation exception (Jim, Nov 18 and 21, 2026):** applied; the old open tickets were cancelled and replaced by Epics LIFE-846, LIFE-847 and LIFE-848, history untouched. Further reparenting or Epic cancellation needs Jim's yes on the exact list.
-- **Freezes and STOP gates lifted (Jim, Nov 21, 2026, 12:17 AM CT).** All freezes and STOP blocks are removed. The agent holding LIFE-856 In Progress is the sole writer of `hourly.yml`.
+- **V7 modernization consolidation exception (Jim, Nov 18 and 21, 2026):** applied; old open tickets were cancelled and replaced by Epics LIFE-846, LIFE-847 and LIFE-848, history untouched. Further reparenting or Epic cancellation needs Jim's yes on the exact list.
+- **Freezes and STOP gates lifted (Jim, Nov 21, 2026, 12:17 AM CT).** All freezes and STOP blocks removed. The agent holding LIFE-856 In Progress is the sole writer of `hourly.yml`.
 
 ## 11. Read only when needed
 
