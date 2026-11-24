@@ -5,7 +5,7 @@ The card finds itself by its table's header row: the one top-level callout on th
 V7_AI_CAPACITY_CARD unset or not "on" -> not configured: nothing read or written. A reading that cannot be had is DEGRADED: the line says so and the table keeps the last reading; unreadable providers show UNAVAILABLE, never empty or full."""
 # Jim approved the design Oct 20 2026. Jim (Oct 21) moved the card out of the Daily Report's half-width column: it lives at the top level of the page, under the last full-width divider, so its table is full width.
 # Until it has moved, the card is also found as the one callout beside the Attention callout; a card still in the old column is removed, but only after the new one is written and read back.
-from datetime import datetime
+from datetime import datetime, timedelta
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 import os
@@ -38,13 +38,27 @@ def _bar(used):
     return "▰" * filled + "▱" * (10 - filled)
 
 
-def _reset(iso):
+ZONE = "CT"                          # LIFE-957: Central time is written CT, never the CST or CDT strftime gives
+WINDOW_LENGTH = {"5h": timedelta(hours=5), "Week": timedelta(days=7)}
+
+
+def _reset(iso, now=None, label=None):
+    """-> "Tue Nov 24, 3:09 AM CT" (Central, 12-hour, always the letters CT). LIFE-957: given `now` and the window's label, a reset already in the past rolls forward by whole windows to the next one, so the card never shows a time that has gone by; with no known window length a past time shows as "—"."""
     if not iso:
         return "—"
     try:
-        return datetime.fromisoformat(iso).astimezone(TZ).strftime("%a %b %-d, %-I:%M %p %Z")
+        at = datetime.fromisoformat(iso).astimezone(TZ)
     except ValueError:
         return "—"
+    if now is not None and now.tzinfo is None:
+        now = now.replace(tzinfo=TZ)
+    if now is not None and at <= now:
+        step = WINDOW_LENGTH.get(label)
+        if step is None:
+            return "—"
+        at += step * (int((now - at) / step) + 1)
+    clock = at.strftime("%a %b %-d, %-I:%M %p")
+    return f"{clock} {ZONE}"
 
 
 def render(reading, now, honcho=None, anthropic=None):
@@ -65,7 +79,7 @@ def render(reading, now, honcho=None, anthropic=None):
             else:
                 status = "AVAILABLE"
             used = f"{_bar(w['used'])} {w['used']:g}%" + (f" · Cloud Fit stops at {stop}%" if stop else "")
-            rows.append([left, [f"{name} · {label}", f"{left:g}%", used, window, _reset(w["reset_at"]), status]])
+            rows.append([left, [f"{name} · {label}", f"{left:g}%", used, window, _reset(w["reset_at"], now, w["label"]), status]])
     rows += [[left, cells] for left, cells in honcho_status.ranked(honcho, anthropic, now)]                      # LIFE-921: the two Anthropic rows sort with the others by least remaining
     rows.sort(key=lambda r: r[0])
     if rows:
