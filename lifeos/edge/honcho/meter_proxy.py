@@ -10,12 +10,12 @@ Honcho is pointed here (its per-feature base URL override), so no model call can
     anything else                  404
 
 The cap: before a request is forwarded, its WORST-CASE cost (input tokens estimated at one token per 3 bytes of body, plus max_tokens of output, both at the
-highest published price: the over-100,000-token Haiku 5.5 rates) is reserved against the ledger; if spent + in-flight reservations + this one would pass CAP_USD
+real Haiku 5.5 rate for its size: 0.10 in and 0.50 out per million tokens, or the over-100,000-token rates when the request is over 100,000 tokens, LIFE-950) is reserved against the ledger; if spent + in-flight reservations + this one would pass CAP_USD
 (default 25) the request is refused with HTTP 400 and no call is made. When the reply ends, the reservation is replaced by the actual usage (input, cache write,
-cache read, output tokens from the reply, at the same highest prices); a reply that breaks off keeps its full reservation. The ledger is saved after every request, so
+cache read, output tokens from the reply, at the same real rates and tier); a reply that breaks off keeps its full reservation. The ledger is saved after every request, so
 a restart never forgets spend. A file named STOP next to the ledger refuses everything (Jim's manual stop: a new window never removes it). Prices are a USD-per-million-token table: PRICES, read from
-https://platform.claude.com/docs/en/about-claude/pricing on Nov 21 2026 (Haiku 5.5, over 100,000 tokens: input 0.50, 5m cache write 0.625, 1h cache write 1.00,
-cache read 0.05, output 2.50); every token class is charged at the dearest of them (1.00 in, 2.50 out) so an unexpected class can only overcount.
+https://platform.claude.com/docs/en/about-claude/pricing on Nov 21 2026 (Haiku 5.5, 100,000 tokens or fewer: input 0.10, cache write 0.125, cache read 0.01, output 0.50; over 100,000 tokens: input 0.50, 1h cache write 1.00,
+cache read 0.05, output 2.50). The cap is in real dollars (LIFE-950; before it every token class was charged at the dearest rate, about 16 times the money spent).
 
 LIFE-950, monthly window: the cap is per window, and a window runs from the 5th at 6:00 PM CT to the next 5th at 6:00 PM CT (the Claude-plan promotional credit resets then). The ledger names its window; the first
 request after the boundary archives the old window as one line in windows.jsonl and starts the new one at zero, inside this service (no timer, no agent). Reservations in flight carry across. The cap is Jim's
@@ -45,7 +45,9 @@ PORT = int(os.environ.get("METER_PORT", "8081"))
 OLLAMA = ("127.0.0.1", 11434)
 UPSTREAM = "api.anthropic.com"
 KEY_NAME = "honcho_proof_anthropic_api_key"
-PRICES = {"input": 1.00, "cache_write": 1.00, "cache_read": 1.00, "output": 2.50}          # USD per million tokens: the dearest published class for input-like tokens, the output price
+PRICES = {"input": 0.10, "cache_write": 0.125, "cache_read": 0.01, "output": 0.50}          # LIFE-950: Haiku 5.5's real USD per million tokens for a request of 100,000 input tokens or fewer
+LONG_PRICES = {"input": 0.50, "cache_write": 1.00, "cache_read": 0.05, "output": 2.50}       # the over-100,000-token tier (the dearest published class of each kind: cache write at the 1-hour price)
+LONG_AT = 100_000                                                                            # input tokens (new, cache write and cache read together) above which the long tier prices the request
 BYTES_PER_TOKEN = 3
 MAX_BODY = 4_000_000
 DEFAULT_MAX_TOKENS = 4096
@@ -71,8 +73,13 @@ def window(epoch):
     return int(datetime(year, month, 5, 18, tzinfo=CENTRAL).timestamp()), int(datetime(nyear, nmonth, 5, 18, tzinfo=CENTRAL).timestamp())
 
 
-def usd(tokens, kind):
-    return tokens * PRICES[kind] / 1_000_000
+def table(input_tokens):
+    """-> the price table for a request whose input side (new, cache write and cache read tokens together) is `input_tokens` long."""
+    return LONG_PRICES if input_tokens > LONG_AT else PRICES
+
+
+def usd(tokens, kind, prices=PRICES):
+    return tokens * prices[kind] / 1_000_000
 
 
 def estimate(body):
@@ -83,14 +90,16 @@ def estimate(body):
     except (ValueError, TypeError, AttributeError):
         max_tokens = DEFAULT_MAX_TOKENS
     tokens_in = len(body) // BYTES_PER_TOKEN + 1
-    return usd(tokens_in, "input") + usd(max_tokens, "output"), tokens_in, max_tokens
+    prices = table(tokens_in)
+    return usd(tokens_in, "input", prices) + usd(max_tokens, "output", prices), tokens_in, max_tokens
 
 
 def usage_cost(usage):
     """-> USD for a usage object from a reply (any missing class counts as 0)."""
     u = usage or {}
-    return (usd(int(u.get("input_tokens") or 0), "input") + usd(int(u.get("cache_creation_input_tokens") or 0), "cache_write")
-            + usd(int(u.get("cache_read_input_tokens") or 0), "cache_read") + usd(int(u.get("output_tokens") or 0), "output"))
+    new, written, read, out = (int(u.get(k) or 0) for k in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens"))
+    prices = table(new + written + read)
+    return usd(new, "input", prices) + usd(written, "cache_write", prices) + usd(read, "cache_read", prices) + usd(out, "output", prices)
 
 
 class Ledger:
