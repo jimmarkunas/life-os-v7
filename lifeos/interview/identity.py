@@ -58,11 +58,12 @@ def resolve_child(parent, query, scan, explicit=None):
     else:
         if any(c.identity_valid is False for c in candidates):
             return Resolution(State.BLOCKED, "round_identity_incomplete")
+        numbered = [c for c in candidates if c.ordinal != 0]          # LIFE-958: a pre-screen (ordinal 0) is never Round 1, never ambiguous with it and never makes another round fail closed; only the same date still names it
         if scheduling_pending(query):
             # Interview 1 is the same child whether or not a time exists yet; a parent with unnumbered rounds is not guessed.
-            if any(type(c.ordinal) is not int or c.ordinal <= 0 for c in candidates):
+            if any(type(c.ordinal) is not int or c.ordinal <= 0 for c in numbered):
                 return Resolution(State.BLOCKED, "round_identity_incomplete")
-            candidates = [c for c in candidates if c.ordinal == 1]
+            candidates = [c for c in numbered if c.ordinal == 1]
         elif query.interview_date is not None:
             if not valid_date(query.interview_date):
                 return Resolution(State.BLOCKED, "round_identity_incomplete")
@@ -70,13 +71,13 @@ def resolve_child(parent, query, scan, explicit=None):
                 return Resolution(State.BLOCKED, "round_identity_incomplete")
             candidates = [c for c in candidates if c.interview_date == query.interview_date]
         elif query.interviewer and query.interviewer.strip():
-            if any(not c.interviewer for c in candidates):
+            if any(not c.interviewer for c in numbered):
                 return Resolution(State.BLOCKED, "round_identity_incomplete")
-            candidates = [c for c in candidates if norm(c.interviewer) == norm(query.interviewer)]
+            candidates = [c for c in numbered if norm(c.interviewer) == norm(query.interviewer)]
         elif type(query.ordinal) is int and query.ordinal > 0:
-            if any(type(c.ordinal) is not int or c.ordinal <= 0 for c in candidates):
+            if any(type(c.ordinal) is not int or c.ordinal <= 0 for c in numbered):
                 return Resolution(State.BLOCKED, "round_identity_incomplete")
-            candidates = [c for c in candidates if c.ordinal == query.ordinal]
+            candidates = [c for c in numbered if c.ordinal == query.ordinal]
         else:
             return Resolution(State.BLOCKED, "round_identity_incomplete")
     if not query.explicit_child_page_id and len(candidates) > 1 and query.interviewer and not scheduling_pending(query):

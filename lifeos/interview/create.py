@@ -39,8 +39,8 @@ def parse_identity(value):
         who, ordinal = data["interviewer"], data["ordinal"]
         if who is not None and (not isinstance(who, str) or not who.strip()):
             return None
-        if ordinal is not None and (type(ordinal) is not int or ordinal <= 0):
-            return None
+        if ordinal is not None and (type(ordinal) is not int or ordinal < 0):
+            return None                                                     # LIFE-958: ordinal 0 is a pre-screen (a recruiter screen before the client's Interview 1); never produced from an invite
         if who is None and ordinal is None:
             return None
         if value != IDENTITY_PREFIX + json.dumps(data, separators=(",", ":"), ensure_ascii=False):
