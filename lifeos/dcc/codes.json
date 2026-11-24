@@ -28,5 +28,15 @@
   "POINTER_KIND": ["dcc", "blocked", false, "The Dashboard pointer block is not a paragraph or callout.", "Point WEEKLY_REVIEW_POINTER_BLOCK_ID at a paragraph."],
   "POINTER_READBACK": ["dcc", "retry", false, "The Dashboard pointer line did not read back as written.", "None; the next run rewrites it."],
   "QUERY_LOOP": ["dcc", "retry", false, "The Weekly Reviews query never reported its end.", "None; retried."],
-  "READBACK_SHORT": ["dcc", "retry", false, "The new Weekly Reviews row's page body read back shorter than it was written.", "None; the next run inside 48 hours rebuilds a Degraded row."]
+  "READBACK_SHORT": ["dcc", "retry", false, "The new Weekly Reviews row's page body read back shorter than it was written.", "None; the next run inside 48 hours rebuilds a Degraded row."],
+  "DRIVE_LIST_INCOMPLETE": ["dcc", "degraded", false, "The Drive listing hit its page limit, so the Weekly Review's counts may be low.", "Narrow the window or raise the page limit."],
+  "DRIVE_HOST_NOT_SET": ["dcc", "degraded", false, "No Oracle address is set for the Weekly Review's Drive reader.", "Set IMESSAGE_ALERTS_HOST for the job."],
+  "DRIVE_ORACLE_UNREACHABLE": ["dcc", "degraded", false, "The Oracle Drive reader could not be reached over the tailnet.", "None; the Drive lane shows Degraded and the next run tries again."],
+  "DRIVE_ORACLE_REFUSED": ["dcc", "degraded", false, "The Oracle endpoint answered nothing to the Drive request.", "Check the Oracle Drive helper and the endpoint version."],
+  "DRIVE_REPLY_OFF_CONTRACT": ["dcc", "degraded", false, "The Oracle Drive reader's reply did not match its contract.", "Check the helper version on Oracle."],
+  "DRIVE_BAD_FRAME": ["dcc", "degraded", false, "The Drive helper refused the request line.", "Check the request."],
+  "DRIVE_NOT_CONFIGURED": ["dcc", "degraded", false, "The Drive helper on Oracle found no Drive credentials.", "Check the helper unit's credential lines."],
+  "DRIVE_WRONG_ACCOUNT": ["dcc", "degraded", false, "The Drive credential is not the personal account's.", "Check the stored Drive credential."],
+  "DRIVE_CONSENT_REVOKED": ["dcc", "degraded", false, "Google no longer accepts the stored Drive credential.", "Renew the Drive read consent."],
+  "DRIVE_UNAVAILABLE": ["dcc", "degraded", false, "The Drive helper could not read Google Drive.", "None; the next run tries again."]
 }

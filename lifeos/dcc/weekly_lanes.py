@@ -222,13 +222,17 @@ def automation(runs, now):
 
 
 def drive(read):
-    """`read` is the governed Oracle reader: a callable -> {"new": n, "missing_metadata": n} or raising OSError, ValueError or TimeoutError with a fixed code."""
+    """`read` is the governed Oracle reader: a callable -> {"new", "changed", "unfiled", "duplicates", "missing_metadata"} or raising OSError, ValueError or TimeoutError with a fixed code."""
     lane = Lane("Drive")
     try:
         got = read()
-        lane.lines.append(f"{got['new']} new or changed files; {got['missing_metadata']} without metadata.")
+        lane.lines.append(f"{got['new']} new and {got.get('changed', 0)} changed files in the review week; {got.get('unfiled', got['missing_metadata'])} new files sit unfiled at the top of My Drive; {got.get('duplicates', 0)} duplicate copies.")
         if got["missing_metadata"]:
-            lane.items.append(("System Maintenance", f"{got['missing_metadata']} Drive files lack metadata: decide who classifies them."))
+            lane.items.append(("System Maintenance", f"{got['missing_metadata']} new Drive files are unfiled: decide where they belong."))
+        if got.get("duplicates"):
+            lane.items.append(("Close / Drop", f"{got['duplicates']} Drive files are duplicate copies: decide which to keep."))
+        if got.get("complete") is False:
+            _down(lane, "DRIVE_LIST_INCOMPLETE")
     except (OSError, ValueError, TimeoutError, KeyError, TypeError) as error:
         _down(lane, str(error) if str(error).isupper() else "DRIVE_READER_UNAVAILABLE")
     return lane

@@ -10,7 +10,7 @@ from lifeos.platform.notion_client import rich_text
 
 CT = ZoneInfo("America/Chicago")
 SOURCE, REPORT, CARD, HUB, POINTER = "1" * 32, "2" * 32, "3" * 32, "4" * 32, "5" * 32
-ENV = {"WEEKLY_REVIEW": "on", "NOTION_WEEKLY_REVIEWS_DATA_SOURCE_ID": SOURCE, "DCC_CARD_BLOCK_ID": CARD, "WEEKLY_REVIEW_PAGE_ID": HUB, "WEEKLY_REVIEW_POINTER_BLOCK_ID": POINTER,
+ENV = {"WEEKLY_REVIEW": "on", "NOTION_WEEKLY_REVIEWS_DATA_SOURCE_ID": SOURCE, "JIRA_CARD_BLOCK_ID": CARD, "WEEKLY_REVIEW_PAGE_ID": HUB, "WEEKLY_REVIEW_POINTER_BLOCK_ID": POINTER,
        "NOTION_JIRA_TOKEN": "x", "GITHUB_REPOSITORY": "o/r", "GITHUB_TOKEN": "t"}
 TUE = datetime(2026, 11, 24, 13, 30, tzinfo=CT)
 FRI = datetime(2026, 11, 27, 22, 5, tzinfo=CT)
@@ -298,3 +298,34 @@ class Lanes(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OracleDrive(unittest.TestCase):
+    GOOD = b'{"changed":3,"complete":true,"duplicates":1,"missing_metadata":2,"new":5,"ok":true,"unfiled":2}\n'
+
+    def test_a_clean_reply_gives_counts_and_a_lane_with_its_two_decisions(self):
+        from lifeos.platform import oracle_drive
+        read = oracle_drive.reader("host", 7, fetcher=lambda host, days: self.GOOD)
+        self.assertEqual(read()["new"], 5)
+        lane = wl.drive(read)
+        self.assertEqual(lane.health, "Healthy")
+        self.assertEqual({g for g, _ in lane.items}, {"System Maintenance", "Close / Drop"})
+
+    def test_every_failure_is_a_fixed_code_and_degrades_only_the_drive_lane(self):
+        from lifeos.platform import oracle_drive
+
+        def down(host, days):
+            raise OSError("detail that must not appear")
+        for fetcher, code in ((down, "DRIVE_ORACLE_UNREACHABLE"), (lambda h, d: b"", "DRIVE_ORACLE_REFUSED"), (lambda h, d: b"not json", "DRIVE_REPLY_OFF_CONTRACT"),
+                              (lambda h, d: b'{"ok":false,"code":"DRIVE_CONSENT_REVOKED"}', "DRIVE_CONSENT_REVOKED"), (lambda h, d: b'{"ok":false,"code":"WHATEVER"}', "DRIVE_REPLY_OFF_CONTRACT"),
+                              (lambda h, d: b'{"ok":true,"new":"5"}', "DRIVE_REPLY_OFF_CONTRACT")):
+            lane = wl.drive(oracle_drive.reader("host", 7, fetcher=fetcher))
+            self.assertEqual((lane.health, lane.reason), ("Degraded", code))
+        self.assertEqual(wl.drive(oracle_drive.reader("", 7)).reason, "DRIVE_HOST_NOT_SET")
+
+    def test_the_stage_builds_the_reader_from_the_oracle_address_setting_and_a_down_oracle_leaves_the_other_five_lanes_healthy(self):
+        n = Notion()
+        out = go(n, env={"IMESSAGE_ALERTS_HOST": "127.0.0.1:1"})            # nothing listens: the connection fails
+        self.assertEqual(out["weeks"][0]["degraded"], ["Drive"])
+        text = " ".join(b[b["type"]]["rich_text"][0]["text"]["content"] for b in n.rows[-1]["blocks"] if b.get("type") in ("paragraph", "bulleted_list_item"))
+        self.assertIn("Drive: Degraded (DRIVE_ORACLE_UNREACHABLE)", text)
