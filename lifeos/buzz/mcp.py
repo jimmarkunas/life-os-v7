@@ -284,7 +284,7 @@ def handler(relays, auth, base, origins=(), audit=_audit, access=None, receipts=
         def _deny(self, code, err, scope="buzz:read"):
             meta = bases.get((self.headers.get("Host") or "").split(":")[0].lower(), base) + "/.well-known/oauth-protected-resource"
             extra = "" if err == "missing_token" else f', error="{err}"'
-            self._send(code, {"error": err}, WWW_Authenticate=f'Bearer resource_metadata="{meta}"{extra}, scope="{auth.audience}{scope}"')
+            self._send(code, {"error": err}, WWW_Authenticate=f'Bearer resource_metadata="{meta}"{extra}, scope="{auth.audience}{scope}{(" " + auth.audience + "buzz:write") if scope == "buzz:read" and not meta.startswith(base) else ""}"')
 
         def _who(self):
             if self.headers.get("Origin") and self.headers["Origin"] not in origins:
