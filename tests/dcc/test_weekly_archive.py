@@ -1,10 +1,13 @@
 """LIFE-933 (synthetic): the Weekly Reports Archive writer against an in-memory Notion. No network, no real page."""
 import itertools
+import os
 import unittest
+from unittest import mock
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from lifeos.dcc import weekly_archive as wa
+from lifeos.platform import full_width
 from lifeos.platform.notion_client import rich_text
 
 CT = ZoneInfo("America/Chicago")
@@ -15,7 +18,7 @@ PAGES = ("page", "child_page")
 class Notion:
     """Blocks and pages in one dict. Reads are by ID; the only writes allowed are the ones the archive may make."""
     def __init__(self):
-        self.blocks, self.ids, self.writes = {}, itertools.count(1), []
+        self.blocks, self.ids, self.writes, self.full_width = {}, itertools.count(1), [], []
         self.add(ARCHIVE, "page", None, title="Weekly Reports Archive")
         self.add(REPORT, "page", None, title="Daily LIFE OS Report (Hourly)")
 
@@ -56,6 +59,9 @@ class Notion:
             return {"results": [self.view(k) for k in self.live_kids(bid)], "has_more": False, "next_cursor": None}
         if method == "GET" and path.startswith("/blocks/"):
             return self.view(path.split("/blocks/")[1])
+        if method == "DELETE" and path.startswith("/blocks/"):
+            self.blocks[path.split("/blocks/")[1]]["archived"] = True
+            return {}
         raise AssertionError((method, path))
 
     def make(self, node, parent):
@@ -77,12 +83,13 @@ class Notion:
         if method == "PATCH" and path.endswith("/children"):
             parent = path.split("/blocks/")[1].split("/children")[0]
             return {"results": [{"id": self.make(node, parent)} for node in body["children"]]}
-        if method == "POST" and path == "/pages":
+        if method == "POST" and path == "/pages":                         # D16.1: only a page made from the Full Width template is full width; the template lands with one empty paragraph and takes no children
             assert body["parent"]["page_id"] in self.blocks
+            assert body.get("template") == {"type": "template_id", "template_id": "e" * 32} and "children" not in body, "page not created from the Full Width template"
             title = "".join(p["text"]["content"] for p in body["properties"]["title"]["title"])
             pid = self.add(self.new(), "child_page", body["parent"]["page_id"], {}, title=title)
-            for node in body["children"]:
-                self.add(self.new(), node["type"], pid, node[node["type"]])
+            self.full_width.append(pid)
+            self.text(pid, "paragraph", "")
             return {"id": pid}
         if method == "PATCH" and (path.startswith("/pages/") or path.startswith("/blocks/")):
             self.blocks[path.split("/")[2]]["archived"] = bool(body.get("archived"))
@@ -110,6 +117,8 @@ def report(n, with_notes=None):
     return box
 
 
+os.environ["LIFEOS_NOTION_FULL_WIDTH_TEMPLATE"] = "e" * 32
+full_width.WAIT = 0
 ENV = {"WEEKLY_ARCHIVE_PAGE_ID": ARCHIVE, "DCC_CARD_BLOCK_ID": CARD}
 TUE_6PM = datetime(2026, 11, 24, 18, 5, tzinfo=CT)
 
@@ -176,6 +185,43 @@ class DailySnapshot(unittest.TestCase):
         self.assertEqual(wa.run(0, True, {}, Notion(), TUE_6PM), {"status": "not_configured"})
         self.assertEqual(wa.week_end(datetime(2026, 9, 7).date()).isoformat(), "2026-09-13")
         self.assertEqual(wa.label(datetime(2026, 9, 13).date()), "Sep 13, 2026")
+
+
+class FullWidthAndFailClosed(unittest.TestCase):
+    def test_every_page_it_creates_comes_from_the_full_width_template_and_the_filler_is_gone(self):
+        n = Notion()
+        report(n)
+        wa.run(0, True, ENV, n, TUE_6PM)                                       # the fake refuses a page created without the template or with children in the create request
+        week = n.live_kids(ARCHIVE)[0]
+        snap = n.live_kids(week)[-1]
+        self.assertEqual(n.full_width, [week, snap])
+        for page in (week, snap):
+            first = n.blocks[n.live_kids(page)[0]]
+            self.assertNotEqual((first["type"], first["paragraph"]["rich_text"] if first["type"] == "paragraph" else None), ("paragraph", []))   # the template's empty paragraph is not left on top
+
+    def test_an_empty_body_fails_closed_and_makes_no_page(self):
+        n = Notion()
+        n.add(CARD, "child_database", REPORT, {"title": "Command Center"})                              # a report whose only content is a live view: nothing static to copy
+        with self.assertRaises(wa.ArchiveError) as caught:
+            wa.run(0, True, ENV, n, TUE_6PM)
+        self.assertEqual(str(caught.exception), "ARCHIVE_EMPTY_SNAPSHOT")
+        self.assertEqual([t for t in titles(n, n.live_kids(ARCHIVE)[0]) if t.startswith("Daily")], [])     # the week page exists, no daily page was made
+
+    def test_a_missing_template_makes_no_page_at_all(self):
+        n = Notion()
+        report(n)
+        with mock.patch.dict(os.environ, {"LIFEOS_NOTION_FULL_WIDTH_TEMPLATE": ""}):
+            with self.assertRaises(wa.ArchiveError) as caught:
+                wa.run(0, True, ENV, n, TUE_6PM)
+        self.assertEqual((str(caught.exception), titles(n, ARCHIVE), n.writes), ("ARCHIVE_TEMPLATE_MISSING", [], []))
+
+    def test_a_week_page_left_blank_by_an_interrupted_run_is_filled_not_duplicated(self):
+        n = Notion()
+        report(n)
+        blank = n.add(n.new(), "child_page", ARCHIVE, {}, title="Weekly Reports — Week Ending Nov 29, 2026")
+        wa.run(0, True, ENV, n, TUE_6PM)
+        self.assertEqual(titles(n, ARCHIVE), ["Weekly Reports — Week Ending Nov 29, 2026"])
+        self.assertTrue(n.live_kids(blank))
 
 
 class NotesFreezeAndMondayReset(unittest.TestCase):

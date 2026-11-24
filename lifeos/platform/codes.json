@@ -263,5 +263,6 @@
   "NO_PUBLISH_STAGE": ["platform", "degraded", false, "The tick log has no publish stage that printed ok, so the Jobs clock has no time. (LIFE-904)", "None; the chain job of the run that ends last prints the final receipt."],
   "NO_TICK_ID": ["platform", "degraded", false, "The chain job received no tick run ID, so every clock is unverified. (LIFE-904)", "None; the chain job of the run that ends last prints the final receipt."],
   "TICK_RUNNING": ["platform", "degraded", false, "The tick had not finished when the chain receipt was read, so the full-platform clock is unverified. (LIFE-904)", "None; the chain job of the run that ends last prints the final receipt."],
-  "TICK_STAGES_UNREADABLE": ["platform", "degraded", false, "The tick log's stage lines could not be read, so the Jobs clock is unverified. (LIFE-904)", "None; the chain job of the run that ends last prints the final receipt."]
+  "TICK_STAGES_UNREADABLE": ["platform", "degraded", false, "The tick log's stage lines could not be read, so the Jobs clock is unverified. (LIFE-904)", "None; the chain job of the run that ends last prints the final receipt."],
+  "FULL_WIDTH_TEMPLATE_MISSING": ["platform", "blocked", false, "The Full Width page template is not configured, so no page was created (D16.1).", "Set FULL_WIDTH_TEMPLATE in the Notion ids."]
 }
