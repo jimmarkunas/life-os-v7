@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 from copy import deepcopy
 from pathlib import Path
 import unittest
@@ -9,8 +10,11 @@ from unittest.mock import patch
 from lifeos.interview import advisor_store as store
 from lifeos.interview.advisor import AdvisorDraft, AdvisorInputBundle, AdvisorManifest, AdvisorSource, CandidateEvidence, EvidenceRef, GroundedAdvice, SourceKind
 from lifeos.interview.models import PrepEvidence
+from lifeos.platform import full_width
 from lifeos.platform.notion_client import Client, NotionError
 
+os.environ["LIFEOS_NOTION_FULL_WIDTH_TEMPLATE"] = "e" * 32          # D16.1: every page is created from the Full Width template
+full_width.WAIT = 0
 
 ROOT_ENV = {"INTERVIEW_ADVISOR_ROOT_PAGE_ID": "root"}
 
@@ -43,6 +47,7 @@ class FakeNotion:
         self.methods = []
         self.paths = []
         self.posts = 0
+        self.template_pages = []
 
     def call_once(self, method, path, body=None):
         return self.call(method, path, body)
@@ -55,16 +60,30 @@ class FakeNotion:
         if method == "GET" and path.startswith("/blocks/"):
             pid = path.split("/")[2]
             return {"results": self.pages[pid]["blocks"], "has_more": False, "next_cursor": None}
-        if method == "POST" and path == "/pages":
+        if method == "POST" and path == "/pages":                       # D16.1: from the Full Width template: no children in the create request, one empty filler paragraph on top
             self.posts += 1
+            assert body.get("template") == {"type": "template_id", "template_id": "e" * 32} and "children" not in body, "page not created from the Full Width template"
             pid = "00000000-0000-0000-0000-000000000001"
             title = "".join(x["text"]["content"] for x in body["properties"]["title"]["title"])
-            page_obj = page(title, body["parent"]["page_id"], body["children"], pid)
+            filler = block("paragraph", "", title="template-filler")
+            page_obj = page(title, body["parent"]["page_id"], [filler], pid)
             self.pages[pid] = page_obj
+            self.template_pages.append(pid)
             child = block("child_page", "", title)
             child["id"] = pid                                                   # the listed child is the page just created
             self.pages[body["parent"]["page_id"]]["blocks"].append(child)
             return page_obj
+        if method == "PATCH" and path.endswith("/children"):
+            self.pages[path.split("/")[2]]["blocks"].extend(body["children"])
+            return {"results": body["children"]}
+        if method == "DELETE" and path.startswith("/blocks/"):
+            gone = path.split("/")[2]
+            for item in self.pages.values():
+                item["blocks"] = [b for b in item["blocks"] if b.get("id") != gone]
+            return {}
+        if method == "PATCH" and path.startswith("/pages/"):
+            self.pages[path.split("/")[2]]["archived"] = bool(body.get("archived"))
+            return {}
         raise AssertionError((method, path))
 
 
@@ -322,7 +341,10 @@ class StoreTests(unittest.TestCase):
         b, d = bundle(), draft(); client = FakeNotion(build_tree())
         verified = store.create_preview(client, "advisor-previews", "00000000000000000000000000000004", b, d)
         self.assertIsInstance(verified.prep, PrepEvidence)
-        self.assertEqual(client.posts, 1); self.assertNotIn("PATCH", client.methods)
+        self.assertEqual(client.posts, 1)
+        self.assertEqual(len(client.template_pages), 1)                                                        # D16.1: the preview came from the Full Width template, its filler paragraph is gone
+        self.assertEqual(client.methods.count("PATCH"), 1)                                                   # one append of the preview blocks (a page is never patched otherwise)
+        self.assertNotIn("template-filler", str([blk.get("id") for blk in client.pages[client.template_pages[0]]["blocks"]]))
         same = store.FakeNotion if False else client
         with self.assertRaises(store.AdvisorStoreError) as error:
             store.create_preview(same, "advisor-previews", "00000000000000000000000000000004", b, d)

@@ -1,5 +1,10 @@
 """LIFE-78 M1/M2 synthetic exit (lifeos/sources/proofs/m1m2_proof.py), run exactly as the manual interview-proof dispatch runs it, on production-shaped fakes:
 the Interview pages on the journey's Notion fake, the sandbox Ledger and Recruiters as Notion data sources, the Daily Report region on the block-tree fake."""
+import os
+from lifeos.interview import notion as _notion
+from lifeos.platform import full_width as _full_width
+os.environ["LIFEOS_NOTION_FULL_WIDTH_TEMPLATE"] = "e" * 32          # D16.1: pages come from the Full Width template; the fakes apply it at once
+_notion.TEMPLATE_WAIT = _full_width.WAIT = 0
 import copy
 import json
 import unittest

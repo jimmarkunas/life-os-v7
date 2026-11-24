@@ -1,22 +1,13 @@
 """D16.1 (Jim verified Oct 21; widened Nov 23, 2026, LIFE-933): every page V7 creates under a page must come from Jim's Full Width template, because Notion's public API cannot read or set a page's width.
 The check reads the source (ast) of every module under lifeos/. A page creation is (a) `write_tree(...)` with `title=`, which must also pass `template=`, or (b) a POST to `/pages` whose parent is a `page_id`,
 whose body must carry a `template` key (or go through `full_width.create`). A row created in a database (parent `data_source_id`) is not a page body and is out of scope.
-KNOWN_NARROW is the shrink-only list of modules that still create narrow pages: the test fails when a module is added to it by accident or stays on it after it was fixed."""
+There is no exception list (Jim, Nov 23, 2026: "the guard allows zero exceptions"): QA control pages and synthetic proof pages are full width too."""
 import ast
 import pathlib
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-KNOWN_NARROW = {
-    "lifeos/interview/ui_probe.py": "QA control page: the narrow comparison for the render probe, on purpose",
-    "lifeos/sources/proofs/m1m2_proof.py": "synthetic proof pages in a QA container",
-    "lifeos/sources/proofs/interview_contacts_proof.py": "synthetic QA container page",
-    "lifeos/sources/proofs/interview_journey_proof.py": "synthetic QA container page",
-    "lifeos/interview/advisor_queue.py": "Advisor queue request page (once-only create with read-back); to move to the template",
-    "lifeos/interview/advisor_store.py": "Advisor preview page (once-only create with read-back); to move to the template",
-    "lifeos/interview/granola_write.py": "Granola transcript page under a round; to move to the template",
-    "lifeos/jobs/private_report.py": "private report page of tables; to move to the template",
-}
+KNOWN_NARROW = {}
 
 
 def _calls(source):
@@ -70,12 +61,11 @@ class FullWidth(unittest.TestCase):
             lines = pages_without_template(path.read_text())
             if lines:
                 offenders[rel] = lines
-        self.assertEqual(sorted(offenders), sorted(KNOWN_NARROW), f"a page is created without the Full Width template, or a fixed module is still listed: {offenders}")
+        self.assertEqual(offenders, {}, f"a page is created without the Full Width template: {offenders}")
 
-    def test_the_writers_that_must_be_full_width_are_not_on_the_narrow_list(self):
-        for module in ("lifeos/dcc/weekly_archive.py", "lifeos/platform/full_width.py", "lifeos/interview/create.py"):
-            self.assertNotIn(module, KNOWN_NARROW)
-        self.assertIn("full_width.create", (ROOT / "lifeos/dcc/weekly_archive.py").read_text())
+    def test_the_writers_that_create_pages_through_the_shared_helper_use_it(self):
+        for module in ("lifeos/dcc/weekly_archive.py", "lifeos/interview/advisor_queue.py", "lifeos/interview/advisor_store.py", "lifeos/interview/granola_write.py", "lifeos/jobs/private_report.py"):
+            self.assertIn("full_width.create", (ROOT / module).read_text(), module)
 
     def test_the_check_fails_on_a_creation_without_the_template(self):                                  # fail-then-pass: the checker itself
         self.assertEqual(pages_without_template("notion.write_tree(c, p, b, title=t)\n"), [1])

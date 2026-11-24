@@ -1,11 +1,15 @@
 """LIFE-544: test helpers that more than one test module (often in another domain) uses. Moved here out of test_*.py files, unchanged."""
+import os
 import time
 from lifeos.jobs import private_report as pr
+from lifeos.platform import full_width
 from contextlib import contextmanager
 from lifeos.platform.notion_client import NotionError
 
 
 PARENT = pr.REPORTS_PAGE
+os.environ["LIFEOS_NOTION_FULL_WIDTH_TEMPLATE"] = "e" * 32          # D16.1: reports are created from the Full Width template; the fake applies it at once
+full_width.WAIT = 0
 
 
 class FakeStore:
@@ -38,6 +42,10 @@ class FakeClient:
     def call(self, method, path, body=None):
         if self.fail:
             raise NotionError("NOTION_HTTP_500")
+        if method == "DELETE" and path.startswith("/blocks/"):                    # the template's empty first paragraph goes
+            for kids in self.blocks.values():
+                kids[:] = [b for b in kids if b.get("id") != path.split("/")[2]]
+            return {}
         if path.startswith("/data_sources/"):
             return {"parent": {"type": "database_id", "database_id": "d" * 32}}
         if path.startswith("/databases/"):
@@ -49,17 +57,28 @@ class FakeClient:
         base = path.split("?")[0]
         return {"results": self.blocks.get(base.split("/")[2], []), "has_more": False}
 
+    def written(self):
+        """-> (the page create body, the blocks written to the page by PATCH, in order)."""
+        create = next(b for m, p, b in self.writes if (m, p) == ("POST", "/pages"))
+        return create, [c for m, p, b in self.writes if m == "PATCH" and p.endswith("/children") for c in b["children"]]
+
     def call_once(self, method, path, body=None, version=None):
+        """Page create from the template (no children allowed, one empty filler paragraph), then the blocks by PATCH, as Notion does."""
         self.writes.append((method, path, body))
-        tables = []
+        if method == "POST" and path == "/pages":
+            assert body.get("template") and "children" not in body, "D16.1: a page without the Full Width template"
+            self.blocks["page1"] = [{"id": "filler", "type": "paragraph", "has_children": False, "paragraph": {"rich_text": []}}]
+            return {"id": "page1"}
+        if method == "PATCH" and path.startswith("/pages/"):
+            return {}
+        assert method == "PATCH" and path == "/blocks/page1/children", (method, path)
         for index, table in enumerate(body["children"]):
             if table.get("type") != "table":                       # LIFE-212: an intro paragraph above the tables
                 continue
             rows = table["table"]["children"]
             self.blocks[f"t{index}"] = [{"id": f"r{n}"} for n in range(len(rows) - self.lose_rows)]
-            tables.append({"id": f"t{index}", "type": "table"})
-        self.blocks["page1"] = tables
-        return {"id": "page1"}
+            self.blocks["page1"].append({"id": f"t{index}", "type": "table"})
+        return {"results": []}
 
 
 PM_BODY = ("<h2>Responsibilities</h2><ul><li>Own the program roadmap and drive delivery across multiple teams</li><li>Lead integration of NetSuite with the storefront and payment providers</li>"

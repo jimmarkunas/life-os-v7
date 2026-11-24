@@ -59,8 +59,8 @@ class Unreadable:
 
 def sandbox(client, now):
     """A fresh sandbox under the QA parent. -> its ids: the container, the synthetic human page, the synthetic Job Ledger data source."""
-    container = notion.write_tree(client, QA_PARENT, [], title=f"LIFE-88 E10 synthetic Network Leads QA · {now.strftime('%Y-%m-%d %I:%M %p')} CT (SYNTHETIC, QA-only)")
-    human = notion.write_tree(client, container, [base._block("paragraph", "Synthetic human notes. LIFE OS must never change this page.")], title=f"Human page {SYN}")
+    container = notion.write_tree(client, QA_PARENT, [], title=f"LIFE-88 E10 synthetic Network Leads QA · {now.strftime('%Y-%m-%d %I:%M %p')} CT (SYNTHETIC, QA-only)", template=notion.FULL_WIDTH)
+    human = notion.write_tree(client, container, [base._block("paragraph", "Synthetic human notes. LIFE OS must never change this page.")], title=f"Human page {SYN}", template=notion.FULL_WIDTH)
     ledger = base._database(client, container, "Job Ledger (synthetic)", {n: {k: {}} for n, k in base.ledger_schema().items()})
     return {"container": container, "human": human, "ledger": ledger}
 

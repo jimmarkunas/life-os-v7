@@ -45,7 +45,8 @@ class Report(unittest.TestCase):
         client = FakeClient()
         counts = backlog.run(0, True, connect=lambda: TwoQueries(ROWS, RELEASED), client=client, now=NOW)
         self.assertEqual((counts["page"], counts["rows"], counts["failed"]), ("new", 5, 0))
-        page = next(b for m, p, b in client.writes if m == "POST" and p == "/pages")
+        create, children = client.written()
+        page = {**create, "children": children}                                                  # the title arrives with the template create, the blocks by PATCH
         self.assertEqual(page["properties"]["title"]["title"][0]["text"]["content"], "LIFE-212 Jobs backlog — Oct 31, 2026 02:00 AM CT — 5 not on the board")
         intro = "".join(t["text"]["content"] for t in page["children"][0]["paragraph"]["rich_text"])
         self.assertIn("5 jobs are not on the Job Ledger yet", intro)

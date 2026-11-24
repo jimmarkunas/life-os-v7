@@ -8,7 +8,7 @@ from urllib.parse import quote
 from . import advisor, notion
 from .advisor_store import AdvisorStoreError, VerifiedPreview
 from .models import PrepEvidence
-from lifeos.platform import notion_pages
+from lifeos.platform import full_width, notion_pages
 from lifeos.platform.fixed_code import fixed
 from lifeos.platform.notion_client import NotionError
 
@@ -255,8 +255,7 @@ def ensure_request(client, queue_page_id, bundle):
         return existing
     request = QueueRequest(request_id, bundle_hash, bundle, "")
     try:
-        page = _call(client, budget, "POST", "/pages", {"parent": {"type": "page_id", "page_id": queue_page_id},
-            "properties": {"title": {"title": _rich(title)}}, "children": _request_blocks(request)}, once=True)
+        page = full_width.create_page(client, queue_page_id, title, _request_blocks(request))                # D16.1: a full width page, from the template; a failed write archives its stub
     except NotionError as error:
         status = re.fullmatch(r"NOTION_HTTP_(\d+)", str(error))
         raise AdvisorQueueError("advisor_queue_write_failed" if status and int(status.group(1)) in _DEFINITE
