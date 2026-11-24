@@ -179,3 +179,46 @@ class MergedTiles(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class JimsRearrangedLayout(unittest.TestCase):
+    """Jim, Nov 24 2026, 2:30 PM CT: the box is its own callout near the top; the three tiles sit in a row inside the Command Center callout with an empty first column."""
+    def make(self):
+        n = Notion()
+        n.pages[MERGED] = {"object": "page", "id": MERGED, "properties": {"title": {"title": [{"plain_text": "Daily LIFE OS Report (Hourly)"}]}}}
+        n.kids[MERGED] = []
+        dcc = n.new(MERGED, "callout")
+        n.new(dcc, "heading_3", "ChatGPT · Daily Command Center")
+        row = n.new(dcc, "column_list")
+        first = n.new(row, "column")
+        n.new(first, "paragraph", "")
+        for label in agent_inbox.MERGED_LABELS:
+            n.tile(n.new(row, "column"), "9", label)
+        box = n.new(MERGED, "callout")
+        n.new(box, "heading_3", "Now 0 · Today 0")
+        n.new(box, "bulleted_list_item", "Now: a list from the earlier layout")
+        return n, box
+
+    def test_the_box_and_tiles_are_found_by_what_they_say_wherever_they_are(self):
+        n, box = self.make()
+        found = agent_inbox._merged_row(n, MERGED)
+        self.assertEqual((found[0]["id"], [agent_inbox._words(t[2]) for t in found[2]]), (box, ["This week", "FYI", "Snoozed"]))
+
+    def test_a_run_writes_the_counter_into_the_standalone_box_and_the_three_tiles_and_nothing_else(self):
+        n, box = self.make()
+        n.row("Now", "one")
+        n.row("Now", "two")
+        out = agent_inbox.recount_page(n, source=SOURCE)
+        self.assertEqual(out["layout"], "merged")
+        self.assertEqual(n.texts(box), [("heading_3", "Now 2 · Today 0")])                             # counter only, the earlier list line is removed
+        self.assertEqual(agent_inbox.locate_page(n, SOURCE), MERGED)
+
+    def test_two_boxes_or_a_missing_tile_are_not_a_merged_page(self):
+        n, box = self.make()
+        again = n.new(MERGED, "callout")
+        n.new(again, "heading_3", "Now 1 · Today 1")
+        self.assertIsNone(agent_inbox._merged_row(n, MERGED))
+        m, _ = self.make()
+        callout = [k for k, b in m.blocks.items() if b["type"] == "paragraph" and agent_inbox._words(b) == "FYI"][0]
+        m.blocks[callout]["paragraph"] = {"rich_text": rich("Other")}
+        self.assertIsNone(agent_inbox._merged_row(m, MERGED))

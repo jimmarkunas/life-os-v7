@@ -11,7 +11,7 @@ from lifeos.platform import ct_stamp, report_region
 from lifeos.platform.notion_client import NotionError, rich_text
 
 LINE = re.compile(r"^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), (?:[A-Z][a-z]{2} \d{1,2} · Updated \d{1,2}:\d{2} [AP]M CT|\d{1,2}/\d{1,2} · \d{1,2}:\d{2} [AP]M CT)$")
-NEAR_TOP = 3                                              # the line is the first block under the title; a little room for a block a person adds above it
+NEAR_TOP = 5                                              # the line sits near the top: the Command Center, the Agent Inbox box and a spacer may be above it (Jim's layout, Nov 24 2026)
 
 
 def text(now):
