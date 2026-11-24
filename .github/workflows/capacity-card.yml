@@ -1,7 +1,7 @@
 name: capacity-card
 # LIFE-793 (Jim, Nov 17 2026): the AI Capacity card (LIFE-77, D228) in its own workflow, so the hourly imessage job no longer carries its ~33 s. Same stage, same command, same credentials as the imessage job's capacity step (the tailnet join and Oracle's no-model `limits` request, then the Notion card write).
 # The card stays off unless V7_AI_CAPACITY_CARD is "on". The old step stays in domains.yml until this workflow is proven; then it is removed there.
-# Hourly at minute 55: ticks run at :07/:27/:47, the watchdog at :17/:47, V3 pages at :40. Manual runs are a dry run unless "Actually write" is ticked; a scheduled run follows V7_LIVE (dry run if it cannot be read).
+# Hourly at minute 55 (GitHub's cron fires this only every 5 to 10 hours, so the hourly tick also starts it when the last run is 40 minutes or more old: LIFE-957): ticks run at :07/:27/:47, the watchdog at :17/:47, V3 pages at :40. Manual runs are a dry run unless "Actually write" is ticked; a scheduled run follows V7_LIVE (dry run if it cannot be read).
 on:
   schedule:
     - cron: "55 * * * *"
@@ -9,6 +9,10 @@ on:
     inputs:
       live:
         description: "Actually write the AI Capacity card. Unticked = dry run, counts only"
+        type: boolean
+        default: false
+      tick:
+        description: "Started by the hourly tick (LIFE-957): follows V7_LIVE like a scheduled run; the live box is ignored"
         type: boolean
         default: false
 permissions:
@@ -48,7 +52,7 @@ jobs:
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: LIVE
-          live_mode: ${{ github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'follow' }}
+          live_mode: ${{ github.event_name == 'workflow_dispatch' && !inputs.tick && (inputs.live && 'true' || 'false') || 'follow' }}
       - id: doppler_trial
         continue-on-error: true       # LIFE-863: a Doppler problem is a code in the log and never fails the job; Bitwarden's values above are the ones this job uses
         name: Doppler trial (LIFE-863; reads the same four names from Doppler and compares each with Bitwarden's value by hash; counts and a fixed code only, no value printed; production keeps Bitwarden)
