@@ -1423,7 +1423,7 @@ jobs:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           WEEKLY_REVIEW: ""
           WEEKLY_REVIEW_PAGE_ID: ""
-          WEEKLY_REVIEW_POINTER_BLOCK_ID: ""
+          WEEKLY_REVIEW_POINTER_PAGE_ID: ""
           LIFEOS_NOTION_IDS: ""
           NOTION_WEEKLY_REVIEWS_DATA_SOURCE_ID: ""
           NOTION_JIRA_TOKEN: ${{ steps.bws_dcc.outputs.NOTION_JIRA_TOKEN }}

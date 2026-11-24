@@ -38,5 +38,6 @@
   "DRIVE_NOT_CONFIGURED": ["dcc", "degraded", false, "The Drive helper on Oracle found no Drive credentials.", "Check the helper unit's credential lines."],
   "DRIVE_WRONG_ACCOUNT": ["dcc", "degraded", false, "The Drive credential is not the personal account's.", "Check the stored Drive credential."],
   "DRIVE_CONSENT_REVOKED": ["dcc", "degraded", false, "Google no longer accepts the stored Drive credential.", "Renew the Drive read consent."],
-  "DRIVE_UNAVAILABLE": ["dcc", "degraded", false, "The Drive helper could not read Google Drive.", "None; the next run tries again."]
+  "DRIVE_UNAVAILABLE": ["dcc", "degraded", false, "The Drive helper could not read Google Drive.", "None; the next run tries again."],
+  "POINTER_AMBIGUOUS": ["dcc", "blocked", false, "The Dashboard has two lines starting `Latest review:`.", "Delete the extra one by hand."]
 }

@@ -114,7 +114,7 @@ V7_RUNTIME_CONFIG_SOURCE_ID input LIFE-844: the stable ID of the dedicated Runti
 V7_STORE_VIA workflow_only:workflow Bitwarden plain switch: oracle sends the store connection through Oracle first (exported as LIFEOS_ACQ_SSH_VIA)
 WEEKLY_ARCHIVE_PAGE_ID input Notion page id of the Weekly Reports Archive, the page V7 writes the daily snapshots under (LIFE-933)
 WEEKLY_REVIEW_PAGE_ID input Notion page id of the weekly review
-WEEKLY_REVIEW_POINTER_BLOCK_ID input Notion block id of the one Dashboard line the Weekly Review stage updates (LIFE-945)
+WEEKLY_REVIEW_POINTER_PAGE_ID input Notion page id of the Dashboard whose one `Latest review:` line the Weekly Review stage updates (LIFE-945)
 NOTION_WEEKLY_REVIEWS_DATA_SOURCE_ID input Notion data source id of the Weekly Reviews database (LIFE-945)
 WEEKLY_REVIEW input Switch for the Weekly Review stage: on makes the Friday row, anything else does nothing (LIFE-945)
 GOOGLE_READ_CLIENT_ID secret Read-only Google credential for the governed MCP (LIFE-875); a name only, never a value

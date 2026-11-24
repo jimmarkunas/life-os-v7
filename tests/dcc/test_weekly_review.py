@@ -9,8 +9,8 @@ from lifeos.dcc import weekly_review as wr
 from lifeos.platform.notion_client import rich_text
 
 CT = ZoneInfo("America/Chicago")
-SOURCE, REPORT, CARD, HUB, POINTER = "1" * 32, "2" * 32, "3" * 32, "4" * 32, "5" * 32
-ENV = {"WEEKLY_REVIEW": "on", "NOTION_WEEKLY_REVIEWS_DATA_SOURCE_ID": SOURCE, "JIRA_CARD_BLOCK_ID": CARD, "WEEKLY_REVIEW_PAGE_ID": HUB, "WEEKLY_REVIEW_POINTER_BLOCK_ID": POINTER,
+SOURCE, REPORT, CARD, HUB, POINTER, DASH = "1" * 32, "2" * 32, "3" * 32, "4" * 32, "5" * 32, "6" * 32
+ENV = {"WEEKLY_REVIEW": "on", "NOTION_WEEKLY_REVIEWS_DATA_SOURCE_ID": SOURCE, "JIRA_CARD_BLOCK_ID": CARD, "WEEKLY_REVIEW_PAGE_ID": HUB, "WEEKLY_REVIEW_POINTER_PAGE_ID": DASH,
        "NOTION_JIRA_TOKEN": "x", "GITHUB_REPOSITORY": "o/r", "GITHUB_TOKEN": "t"}
 TUE = datetime(2026, 11, 24, 13, 30, tzinfo=CT)
 FRI = datetime(2026, 11, 27, 22, 5, tzinfo=CT)
@@ -23,7 +23,8 @@ class Notion:
         self.add(REPORT, "page", None)
         self.add(CARD, "callout", REPORT, "Calendar (11/24 · 1:20 PM CT)")
         self.add(HUB, "page", None)
-        self.add(POINTER, "paragraph", None, "Latest review: none")
+        self.add(DASH, "page", None)
+        self.add(POINTER, "paragraph", DASH, "Latest review: none")
         self.report_edited = "2026-11-24T19:20:00.000Z" if fresh else "2026-11-23T01:00:00.000Z"
         self.add_header(cards)
         self.card("JIRA Execution", "JIRA Execution (11/24 · 1:25 PM CT)", ["JFM Sprint 22 · 16 Overdue/Blocked · 8 Today · 87 This Week · 1 Done"], fresh)
@@ -329,3 +330,16 @@ class OracleDrive(unittest.TestCase):
         self.assertEqual(out["weeks"][0]["degraded"], ["Drive"])
         text = " ".join(b[b["type"]]["rich_text"][0]["text"]["content"] for b in n.rows[-1]["blocks"] if b.get("type") in ("paragraph", "bulleted_list_item"))
         self.assertIn("Drive: Degraded (DRIVE_ORACLE_UNREACHABLE)", text)
+
+
+class PointerLine(unittest.TestCase):
+    def test_a_missing_line_is_reported_not_made_and_two_lines_stop_the_stage(self):
+        n = Notion()
+        n.blocks[POINTER]["paragraph"] = {"rich_text": rich_text("something else")}
+        out = go(n, drive=drive_ok)
+        self.assertEqual(out["pointer"], "line_missing")
+        two = Notion()
+        two.add("9" * 32, "paragraph", DASH, "Latest review: also here")
+        with self.assertRaises(wr.ReviewError):
+            go(two, drive=drive_ok)
+        self.assertEqual(go(Notion(), drive=drive_ok, env={"WEEKLY_REVIEW_POINTER_PAGE_ID": ""})["pointer"], "not_configured")

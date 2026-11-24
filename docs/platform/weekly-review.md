@@ -10,7 +10,7 @@ V7 is the only writer of the Weekly Reviews database (the ChatGPT "LIFE OS Daily
 
 **Writes.** Only: the new row and its page body, the Current flag on the previous Current row, and the one Dashboard pointer line. Status is always `Generated`; `Reviewed` and `Applied` are Jim's. The Decision Queue comes from fixed rules over the lanes (no model call, no spend); `Open Decisions` is its length.
 
-**Settings (Runtime Configuration):** `WEEKLY_REVIEW` (switch; `on` or the stage does nothing), `NOTION_WEEKLY_REVIEWS_DATA_SOURCE_ID`, `WEEKLY_REVIEW_PAGE_ID`, `WEEKLY_REVIEW_POINTER_BLOCK_ID`.
+**Settings (Runtime Configuration):** `WEEKLY_REVIEW` (switch; `on` or the stage does nothing), `NOTION_WEEKLY_REVIEWS_DATA_SOURCE_ID`, `WEEKLY_REVIEW_PAGE_ID`, `WEEKLY_REVIEW_POINTER_PAGE_ID` (the Dashboard page; the stage finds its one line that starts `Latest review:`).
 
 **Rollback.** Set `WEEKLY_REVIEW` to off: the stage reads and writes nothing. Archive the created row in Notion. Put the pointer line back to its last text (the previous line is in the PR proof comment on LIFE-945).
 
