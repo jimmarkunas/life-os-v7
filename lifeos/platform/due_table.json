@@ -12,6 +12,7 @@
     "hiring": {"every_hours": 1},
     "megibow": {"every_hours": 1},
     "dcc": {"every_hours": 1},
+    "weekly_review": {"every_hours": 1},
     "recruiters": {"every_hours": 1},
     "hiring_outcomes": {"every_hours": 1},
     "interview": {"every_hours": 1},

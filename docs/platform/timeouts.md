@@ -57,6 +57,7 @@ The job timeouts in `.github/workflows` change in one separate workflow pull req
 | `domains.yml` | `outlook` | 10 | 10 | 45 | 22 | 498 | twice the slowest run (498 s) rounds to 17 min, not below the current 10: unchanged |
 | `domains.yml` | `recruiters` | 30 | 30 | 54 | 86 | 1501 | twice the slowest run (1501 s) rounds to 51 min, not below the current 30: unchanged |
 | `domains.yml` | `report` | 5 | 5 | 8 | 8 | 10 | kept: only 8 measured runs (fewer than 10), slowest 10 s |
+| `domains.yml` | `weekly_review` | 10 | 10 | 0 | - | - | new job (LIFE-945): not measured yet; 10 min like the other card jobs, the stage budget is 600 s |
 | `fit-edge-test.yml` | `fit_edge` | 5 | 5 | 12 | 27 | 76 | twice the slowest run (76 s) rounds to 5 min, not below the current 5: unchanged |
 | `granola-auto.yml` | `auto` | 20 | 20 | 10 | 43 | 109 | twice the slowest run (109 s) rounds to 20 min, not below the current 20: unchanged |
 | `granola.yml` | `granola` | 15 | 15 | 4 | 28 | 41 | kept: only 4 measured runs (fewer than 10), slowest 41 s |

@@ -148,6 +148,7 @@ jobs:
       due_hiring: ${{ steps.due.outputs.due_hiring }}
       due_megibow: ${{ steps.due.outputs.due_megibow }}
       due_dcc: ${{ steps.due.outputs.due_dcc }}
+      due_weekly_review: ${{ steps.due.outputs.due_weekly_review }}
       due_recruiters: ${{ steps.due.outputs.due_recruiters }}
       due_hiring_outcomes: ${{ steps.due.outputs.due_hiring_outcomes }}
       due_interview: ${{ steps.due.outputs.due_interview }}
@@ -1414,23 +1415,6 @@ jobs:
           LIFEOS_NOTION_IDS: ""
           NOTION_JIRA_TOKEN: ${{ steps.bws_dcc.outputs.NOTION_JIRA_TOKEN }}
         run: python -m lifeos.run report-archive --limit 0 $([ "$LIVE" = "true" ] && echo --live)
-      - id: weeklyreview
-        continue-on-error: true
-        name: Weekly LIFE OS Review (LIFE-945; off unless WEEKLY_REVIEW is on; the first run at or after Friday 10 PM CT makes that week's one Weekly Reviews row from six read-only lanes, sets Status Generated, moves Current and the one pointer line; Jim's Reviewed and Applied are never written; the existing Notion token and the workflow's own GitHub token only)
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          DCC_CARD_BLOCK_ID: ${{ steps.bws_dcc.outputs.DCC_CARD_BLOCK_ID }}
-          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
-          WEEKLY_REVIEW: ""
-          WEEKLY_REVIEW_PAGE_ID: ""
-          WEEKLY_REVIEW_POINTER_PAGE_ID: ""
-          LIFEOS_NOTION_IDS: ""
-          NOTION_WEEKLY_REVIEWS_DATA_SOURCE_ID: ""
-          NOTION_JIRA_TOKEN: ${{ steps.bws_dcc.outputs.NOTION_JIRA_TOKEN }}
-        run: python -m lifeos.run weekly-review --limit 0 $([ "$LIVE" = "true" ] && echo --live)
-      - name: Weekly LIFE OS Review warning (does not fail the Jobs run)
-        if: ${{ always() && steps.weeklyreview.outcome == 'failure' }}
-        run: echo "::warning title=Weekly LIFE OS Review::the weekly row could not be written or read back; the week's row is made by the next run inside 48 hours"
       - name: Weekly Reports Archive warning (does not fail the Jobs run)
         if: ${{ always() && steps.archive.outcome == 'failure' }}
         run: echo "::warning title=Weekly Reports Archive::today's snapshot could not be written or read back; the archive keeps its earlier pages and the next run tries again"
@@ -1441,6 +1425,83 @@ jobs:
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=dcc::a stage step failed in the dcc job (see the step marked failed above)"; exit 1
 
+  weekly_review:
+    # LIFE-945 (Jim, Nov 24 2026): the Weekly LIFE OS Review. It runs after the dcc job on the same ticks; the stage itself decides whether anything is due (the first run at or after Friday 10 PM CT makes that week's one row)
+    # and does nothing unless the WEEKLY_REVIEW setting is on. Its own job because the Drive lane reads through Oracle: it joins the tailnet as the ephemeral tag:v7-runner node (the policy admits it only to Oracle TCP 47341)
+    # with the credentials the iMessage job already uses, and holds the Notion token the other cards use; nothing new is stored or issued. A failure is a warning.
+    needs: [dcc, gate]
+    if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_weekly_review == 'true' && needs.gate.outputs.early == 'true') || inputs.dcc) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout the exact commit (own git fetch; the token is passed once and never stored)
+        run: |
+          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
+          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
+          git checkout -q --detach FETCH_HEAD
+      - uses: ./.github/actions/python
+      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
+        uses: ./.github/actions/bws-helper
+        with:
+          wait_seconds: "200"
+      - id: bws_weekly_review
+        name: Load the Weekly Review credentials from Bitwarden (exactly these 4, all already used by other jobs; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        uses: ./.github/actions/bws-load
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
+            454e12df-637f-4f65-9ec1-b4e30052942f > TAILSCALE_OAUTH_CLIENT_ID
+            e54f0a84-84c3-47d8-8b5b-b4e30052d6e9 > TAILSCALE_OAUTH_CLIENT_SECRET
+            6590208b-506d-4238-ab10-b4e30051b25f > IMESSAGE_ALERTS_HOST
+      - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
+        uses: ./.github/actions/bws-plain
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIVE
+          live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
+      - id: bws_runtime_config
+        continue-on-error: true
+        name: Runtime Configuration source ID from Bitwarden for the settings read (LIFE-859; read only, an address not a secret; if it fails the stage finds no settings and writes nothing)
+        uses: ./.github/actions/bws-load
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
+      - name: Join the tailnet as an ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 47341; a failed join only means the Drive lane shows Degraded)
+        continue-on-error: true
+        uses: ./.github/actions/tailscale
+        with:
+          oauth-client-id: ${{ steps.bws_weekly_review.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ steps.bws_weekly_review.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
+          tags: tag:v7-runner
+      - id: weeklyreview
+        continue-on-error: true
+        name: Weekly LIFE OS Review (LIFE-945; off unless WEEKLY_REVIEW is on; the first run at or after Friday 10 PM CT makes that week's one Weekly Reviews row from six read-only lanes, sets Status Generated, moves Current and the one pointer line; Reviewed and Applied are never written)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
+          JIRA_CARD_BLOCK_ID: ""
+          WEEKLY_REVIEW: ""
+          WEEKLY_REVIEW_PAGE_ID: ""
+          WEEKLY_REVIEW_POINTER_PAGE_ID: ""
+          LIFEOS_NOTION_IDS: ""
+          NOTION_WEEKLY_REVIEWS_DATA_SOURCE_ID: ""
+          NOTION_JIRA_TOKEN: ${{ steps.bws_weekly_review.outputs.NOTION_JIRA_TOKEN }}
+          IMESSAGE_ALERTS_HOST: ${{ steps.bws_weekly_review.outputs.IMESSAGE_ALERTS_HOST }}
+        run: python -m lifeos.run weekly-review --limit 0 $([ "$LIVE" = "true" ] && echo --live)
+      - name: Weekly LIFE OS Review warning (does not fail the Jobs run)
+        if: ${{ always() && steps.weeklyreview.outcome == 'failure' }}
+        run: echo "::warning title=Weekly LIFE OS Review::the weekly row could not be written or read back; the week's row is made by the next run inside 48 hours"
+      - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+        if: ${{ always() && contains(steps.*.outcome, 'failure') }}
+        run: echo "::error title=weekly_review::a stage step failed in the weekly_review job (see the step marked failed above)"; exit 1
   recruiters:
     # RECR-1.2 runs on every tick (Jim, Oct 12; it had been manual-only and the Recruiters table stopped updating on Oct 7). It only READS Gmail and Outlook and writes the existing
     # Recruiters data source (create only after absence is proven, read back). A failure is a warning and never touches another card or the Jobs run.
@@ -2105,7 +2166,7 @@ jobs:
   report:
     # A failed domain job (a provider outage, a Bitwarden 503) used to be only a workflow warning, so a stale card and a red run reached nobody. This job pushes the phone once per
     # failed tick-triggered run, counts only; a manual run never pushes. It never writes anything.
-    needs: [gate, jira, followup, outlook, bills, agenda, amazon, amazon_retention, mail, hiring, megibow, recruiters, hiring_outcomes, interview_mail, interview, dcc, imessage, granola]
+    needs: [gate, jira, followup, outlook, bills, agenda, amazon, amazon_retention, mail, hiring, megibow, recruiters, hiring_outcomes, interview_mail, interview, dcc, weekly_review, imessage, granola]
     if: ${{ always() && needs.gate.outputs.tick == 'true' && contains(needs.*.result, 'failure') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -2139,7 +2200,7 @@ jobs:
           NTFY_TOPIC: ${{ steps.bws_report.outputs.NTFY_TOPIC }}
         run: |
           failed=""
-          for pair in jira=${{ needs.jira.result }} followup=${{ needs.followup.result }} outlook=${{ needs.outlook.result }} bills=${{ needs.bills.result }} agenda=${{ needs.agenda.result }} amazon=${{ needs.amazon.result }} amazon_retention=${{ needs.amazon_retention.result }} mail=${{ needs.mail.result }} hiring=${{ needs.hiring.result }} megibow=${{ needs.megibow.result }} recruiters=${{ needs.recruiters.result }} hiring_outcomes=${{ needs.hiring_outcomes.result }} interview_mail=${{ needs.interview_mail.result }} interview=${{ needs.interview.result }} dcc=${{ needs.dcc.result }} imessage=${{ needs.imessage.result }} granola=${{ needs.granola.result }}; do
+          for pair in jira=${{ needs.jira.result }} followup=${{ needs.followup.result }} outlook=${{ needs.outlook.result }} bills=${{ needs.bills.result }} agenda=${{ needs.agenda.result }} amazon=${{ needs.amazon.result }} amazon_retention=${{ needs.amazon_retention.result }} mail=${{ needs.mail.result }} hiring=${{ needs.hiring.result }} megibow=${{ needs.megibow.result }} recruiters=${{ needs.recruiters.result }} hiring_outcomes=${{ needs.hiring_outcomes.result }} interview_mail=${{ needs.interview_mail.result }} interview=${{ needs.interview.result }} dcc=${{ needs.dcc.result }} weekly_review=${{ needs.weekly_review.result }} imessage=${{ needs.imessage.result }} granola=${{ needs.granola.result }}; do
             [ "${pair#*=}" = "failure" ] && failed="$failed ${pair%=*}"
           done
           python3 -m lifeos.platform.alerts push --key domain_jobs_failed --title "V7 domain jobs failed" --body "Failed domain jobs:$failed. Their cards keep the last good content. Open the Actions tab."
@@ -2147,7 +2208,7 @@ jobs:
     # LIFE-904: the three end-to-end clocks (Jobs, career, full platform) of ONE logical tick, correlated by the tick's run ID (the hourly run ID; the early run gets it as `tick_run`, the run after the tick as
     # `workflow_run.id`; both gate jobs are named `gate (tick <id>)`). It reads the Actions API only (actions: read, no secret, no write) and ALWAYS ends green: a missing, failed or still-running job is
     # DEGRADED or UNVERIFIED in the printed `chain:` line, never zero and never Done. The full-platform clock prints only once the last required domain job of both runs has ended, so whichever of the two runs ends last prints the final line.
-    needs: [gate, jira, followup, outlook, bills, agenda, amazon, amazon_retention, mail, hiring, megibow, recruiters, hiring_outcomes, interview_mail, interview, dcc, imessage, granola]
+    needs: [gate, jira, followup, outlook, bills, agenda, amazon, amazon_retention, mail, hiring, megibow, recruiters, hiring_outcomes, interview_mail, interview, dcc, weekly_review, imessage, granola]
     if: ${{ always() && needs.gate.outputs.tick == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5

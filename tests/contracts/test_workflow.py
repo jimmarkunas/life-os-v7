@@ -718,7 +718,7 @@ DB = {"LIFEOS_ACQ_DB_NAME", "LIFEOS_ACQ_DB_PASSWORD", "LIFEOS_ACQ_DB_USER", "LIF
 SETTINGS_LOADER_ID = "bws_settings"
 SETTINGS_CONSUMER = "${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}"
 RUNTIME_CONFIG_LOADER_ID = "bws_runtime_config"          # LIFE-858: the compare-only read's own loader: the bootstrap ID (an address) and nothing else, continue-on-error, never exported job-wide
-RUNTIME_CONFIG_JOBS = {"agenda": {"agenda"}, "branches": {"report"}, "capacity-card": {"capacitycard"}, "diag": {"inbox_view_qa", "interview_ui", "sandbox"}, "domains": {"agenda", "amazon", "bills", "dcc", "followup", "hiring", "imessage", "interview", "jira", "mail", "megibow", "recruiters"}, "hourly": {"finish", "interview", "jobright", "lensa", "linkedin"}, "network": {"network"}, "v3-pages": {"v3pages"}}     # the exact jobs that carry it: nothing else may
+RUNTIME_CONFIG_JOBS = {"agenda": {"agenda"}, "branches": {"report"}, "capacity-card": {"capacitycard"}, "diag": {"inbox_view_qa", "interview_ui", "sandbox"}, "domains": {"agenda", "amazon", "bills", "dcc", "followup", "hiring", "imessage", "interview", "jira", "mail", "megibow", "recruiters", "weekly_review"}, "hourly": {"finish", "interview", "jobright", "lensa", "linkedin"}, "network": {"network"}, "v3-pages": {"v3pages"}}     # the exact jobs that carry it: nothing else may
 RUNTIME_CONFIG_CONSUMER = "${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}"
 SETTINGS_JOBS = {            # the exact jobs that carry the settings loader: nothing else may
     "amazon": {"amazon"}, "bills": {"bills"}, "calendar": {"calendar"}, "granola": {"granola"}, "granola-auto": {"auto"}, "hermes-stage": {"hermes"}, "manual-job": {"manual"},
@@ -751,6 +751,7 @@ def is_settings_loader(step):
 
 DOMAIN_SECRETS = {         # the only secrets each domain job may see; adding one here is a conscious decision
     "granola": DB | {"LIFEOS_ACQ_SSH_PORT", "NOTION_INTERVIEW_TOKEN", "HIRING_PIPELINE_PAGE_ID", "IMESSAGE_ALERTS_HOST", "NOTION_JOB_LEDGER_DATA_SOURCE_ID"},   # LIFE-360: the readers take opportunities from Ledger rows first;   # LIFE-122: the automatic Granola bridge; the Tailscale OAuth pair goes only to the pinned join action (see TAILSCALE_WITH)
+    "weekly_review": {"NOTION_JIRA_TOKEN", "IMESSAGE_ALERTS_HOST", "JIRA_CARD_BLOCK_ID", "WEEKLY_REVIEW", "WEEKLY_REVIEW_PAGE_ID", "WEEKLY_REVIEW_POINTER_PAGE_ID", "NOTION_WEEKLY_REVIEWS_DATA_SOURCE_ID", "V7_RUNTIME_CONFIG_SOURCE_ID"},   # LIFE-945 (Jim, 945 workflow approve, comment 14158): the Weekly Review job; the Tailscale OAuth pair goes only to the pinned join action (see TAILSCALE_WITH)
     "report": {"NTFY_TOPIC"},   # the failure-push job: the phone topic and nothing else
     "chain": set(),   # LIFE-904: the clock receipt reads the Actions API with the run's own token and holds no secret
     "gate": {"NOTION_JIRA_TOKEN"},   # LIFE-604 item 11: the gate holds no credential of its own (the run's own token); LIFE-703: it also reads the V7 settings page with the Notion token from the settings loader
@@ -889,7 +890,7 @@ class DomainsWorkflowTests(unittest.TestCase):
             condition = job["if"]                                                                         # independence: a red job never skips another one
             self.assertTrue("always()" in condition or "!cancelled()" in condition, name)
             self.assertIn("needs.gate.result != 'failure'", condition, name)
-            self.assertLessEqual(set(job.get("needs") or []) - {"gate"}, {"jira", "agenda", "bills", "amazon", "mail", "hiring", "imessage", "interview"}, name)
+            self.assertLessEqual(set(job.get("needs") or []) - {"gate"}, {"jira", "agenda", "bills", "amazon", "mail", "hiring", "imessage", "interview", "dcc"}, name)
             if set(job.get("needs") or []) - {"gate"}:
                 self.assertIn("always()", condition, name)                                                # a job that waits for another writer still runs when that writer is red
         self.assertEqual(self.doc["concurrency"]["cancel-in-progress"], False)
