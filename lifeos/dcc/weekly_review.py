@@ -158,7 +158,7 @@ def _find_pointer(client, page_id):
     found = [b["id"] for b in blocks if b.get("type") in POINTER_KINDS and wl.block_text(b).strip().startswith(POINTER_PREFIX)]
     if len(found) > 1:
         raise _fail("POINTER_AMBIGUOUS")
-    return (found[0] if found else None), len(blocks)
+    return (found[0] if found else None), blocks
 
 
 def _set_pointer(client, block_id, friday, health, open_count):
@@ -274,9 +274,15 @@ def run(limit, live, environ=os.environ, client=None, now=None, drive_read=None,
         out["weeks"].append(write_week(client, source, environ, day, kind, now, live, drive_read, newest=newest, opener=opener))
     made = [w for w in out["weeks"] if w.get("action") in ("created", "rebuilt")]
     dash = weekly_archive._clean(environ.get("WEEKLY_REVIEW_POINTER_PAGE_ID"))
-    pointer, scanned = _find_pointer(client, dash) if dash else (None, 0)             # read-only: a dry run proves the line is there before any live write
+    pointer, scanned = _find_pointer(client, dash) if dash else (None, [])            # read-only: a dry run proves the line is there before any live write
     out["pointer_line"] = "found" if pointer else ("not_configured" if not dash else "missing")
-    out["pointer_scanned"] = scanned
+    out["pointer_scanned"] = len(scanned)
+    if dash and not pointer:                                                             # why: block kinds seen, and any block whose text mentions the line (kind and first 40 characters only)
+        kinds = {}
+        for b in scanned:
+            kinds[b.get("type")] = kinds.get(b.get("type"), 0) + 1
+        out["pointer_kinds"] = dict(sorted(kinds.items(), key=lambda kv: -kv[1])[:8])
+        out["pointer_near"] = [(b.get("type"), wl.block_text(b).strip()[:40]) for b in scanned if "latest" in wl.block_text(b).lower() or "weekly life os review" in wl.block_text(b).lower()][:5]
     if live and made:
         current = [r for r in _rows(client, source, {"property": "Current", "checkbox": {"equals": True}})]
         newest_made = max(made, key=lambda w: w["week_ending"])
