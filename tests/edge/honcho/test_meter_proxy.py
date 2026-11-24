@@ -232,14 +232,15 @@ class FailClosed(Case):
         self.assertEqual(self.ledger.unverified, "ledger unwritable")
         self.assertEqual(self.post("/v1/messages", self.MSG)[0], 400)
 
-    def test_after_the_credits_end_nothing_is_forwarded_and_health_says_why(self):
-        self.ledger.clock = lambda: mp.STOP_AFTER + 1
-        status, body = self.post("/v1/messages", self.MSG)
-        self.assertEqual((status, b"promotional credits ended" in body), (400, True))
-        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
-        conn.request("GET", "/health")
-        self.assertEqual(json.loads(conn.getresponse().read())["blocked"], "promotional credits ended: spend would be paid")
-        self.assertEqual([s for s in Upstream.seen if s["path"] != "/v1/embeddings"], [])
+    def test_jims_optional_hard_stop_refuses_everything_and_health_says_why(self):
+        with mock.patch.object(mp, "STOP_AFTER", self.ledger.clock() + 10):
+            self.ledger.clock = lambda: mp.STOP_AFTER + 1
+            status, body = self.post("/v1/messages", self.MSG)
+            self.assertEqual((status, b"promotional credits ended" in body), (400, True))
+            conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
+            conn.request("GET", "/health")
+            self.assertEqual(json.loads(conn.getresponse().read())["blocked"], "promotional credits ended: spend would be paid")
+            self.assertEqual([s for s in Upstream.seen if s["path"] != "/v1/embeddings"], [])
 
     def test_the_first_budget_refusal_leaves_one_exhausted_file_and_never_overwrites_it(self):
         self.assertFalse(os.path.exists(os.path.join(self.tmp, "EXHAUSTED")))
@@ -247,7 +248,7 @@ class FailClosed(Case):
         self.post("/v1/messages", self.MSG)
         path = os.path.join(self.tmp, "EXHAUSTED")
         first = open(path).read()
-        self.assertEqual(sorted(json.loads(first)), ["epoch", "reason"])
+        self.assertEqual(sorted(json.loads(first)), ["epoch", "reason", "window"])
         self.post("/v1/messages", self.MSG)
         self.assertEqual(open(path).read(), first)
 
@@ -292,3 +293,95 @@ class Source(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MonthlyWindow(Case):
+    """LIFE-950: the cap is per window (5th, 6:00 PM CT to the next 5th, 6:00 PM CT); the next window starts by itself; a window never rescues a budget that cannot be verified."""
+    MSG = {"max_tokens": 10, "messages": [{"role": "user", "content": "hi"}]}
+
+    def at(self, year, month, day, hour, minute=0):
+        from datetime import datetime as D
+        return int(D(year, month, day, hour, minute, tzinfo=mp.CENTRAL).timestamp())
+
+    def test_the_window_runs_from_the_5th_at_6pm_ct_to_the_next_5th_at_6pm_ct(self):
+        for moment, start, end in ((self.at(2026, 11, 23, 12), self.at(2026, 11, 5, 18), self.at(2026, 12, 5, 18)),
+                                   (self.at(2026, 12, 5, 17, 59), self.at(2026, 11, 5, 18), self.at(2026, 12, 5, 18)),
+                                   (self.at(2026, 12, 5, 18), self.at(2026, 12, 5, 18), self.at(2027, 1, 5, 18)),
+                                   (self.at(2027, 1, 2, 9), self.at(2026, 12, 5, 18), self.at(2027, 1, 5, 18)),
+                                   (self.at(2027, 3, 5, 17, 59), self.at(2027, 2, 5, 18), self.at(2027, 3, 5, 18)),
+                                   (self.at(2027, 3, 5, 18), self.at(2027, 3, 5, 18), self.at(2027, 4, 5, 18))):          # across the March 2027 daylight-time change
+            self.assertEqual(mp.window(moment), (start, end))
+        self.assertEqual(self.at(2026, 12, 5, 18), 1796515200)                                          # Dec 6 2026 00:00 UTC: the boundary the old stop date named
+
+    def test_the_new_window_starts_at_zero_by_itself_and_the_old_one_is_archived(self):
+        self.start(25)
+        self.ledger.clock = lambda: self.at(2026, 11, 23, 12)
+        self.ledger.start, self.ledger.end = mp.window(self.ledger.clock())
+        self.ledger.spent, self.ledger.calls = 24.99, 40
+        self.ledger.save()
+        self.assertEqual(self.post("/v1/messages", self.MSG)[0], 200)                                     # inside the old window: spend is tiny but the cap is not
+        self.ledger.clock = lambda: self.at(2026, 12, 5, 18, 1)
+        self.assertEqual(self.ledger.why_blocked(), "")
+        self.assertEqual((self.ledger.spent, self.ledger.calls, self.ledger.start), (0.0, 0, self.at(2026, 12, 5, 18)))
+        saved = json.load(open(self.ledger.path))
+        self.assertEqual((saved["window_start"], saved["window_end"], saved["spent_usd"]), (self.at(2026, 12, 5, 18), self.at(2027, 1, 5, 18), 0.0))
+        old = [json.loads(line) for line in open(self.ledger.windows_path)]
+        self.assertEqual((len(old), old[0]["start"], old[0]["end"], old[0]["cap_usd"]), (1, self.at(2026, 11, 5, 18), self.at(2026, 12, 5, 18), 25))
+        self.assertGreater(old[0]["spent_usd"], 24.99)
+
+    def test_over_the_cap_stops_inference_until_the_next_window_then_resumes(self):
+        self.start(25)
+        self.ledger.clock = lambda: self.at(2026, 11, 23, 12)
+        self.ledger.start, self.ledger.end = mp.window(self.ledger.clock())
+        self.ledger.spent = 24.999
+        self.assertEqual(self.post("/v1/messages", {"max_tokens": 4000, "messages": [{"role": "user", "content": "hi"}]})[0], 400)
+        self.assertEqual([s for s in Upstream.seen if s["path"] != "/v1/embeddings"], [])
+        self.assertTrue(os.path.exists(os.path.join(self.tmp, "EXHAUSTED")))
+        self.ledger.clock = lambda: self.at(2026, 12, 5, 18, 0)
+        self.assertEqual(self.post("/v1/messages", self.MSG)[0], 200)
+
+    def test_the_alert_file_is_written_once_per_window_not_once_forever(self):
+        self.ledger.clock = lambda: self.at(2026, 11, 23, 12)
+        self.ledger.start, self.ledger.end = mp.window(self.ledger.clock())
+        open(self.ledger.stop_path, "w").close()
+        self.post("/v1/messages", self.MSG)
+        path = os.path.join(self.tmp, "EXHAUSTED")
+        first = open(path).read()
+        self.post("/v1/messages", self.MSG)
+        self.assertEqual(open(path).read(), first)
+        self.ledger.clock = lambda: self.at(2026, 12, 5, 18, 5)
+        self.post("/v1/messages", self.MSG)                                                                # STOP still stands: a refusal in the NEW window writes a new alert
+        self.assertEqual(json.loads(open(path).read())["window"], self.at(2026, 12, 5, 18))
+
+    def test_the_stop_file_survives_a_new_window(self):
+        self.ledger.clock = lambda: self.at(2026, 11, 23, 12)
+        self.ledger.start, self.ledger.end = mp.window(self.ledger.clock())
+        open(self.ledger.stop_path, "w").close()
+        self.ledger.clock = lambda: self.at(2026, 12, 6, 12)
+        self.assertEqual(self.ledger.why_blocked(), "cap reached or stopped")
+
+    def test_an_unverifiable_ledger_is_not_reset_by_a_new_window(self):
+        with open(self.ledger.path, "w") as handle:
+            handle.write("not json")
+        ledger = mp.Ledger(state_dir=self.tmp, cap=25, clock=lambda: self.at(2026, 12, 6, 12))
+        self.assertEqual(ledger.why_blocked(), "budget cannot be verified: ledger unreadable")
+        self.assertFalse(os.path.exists(ledger.windows_path))
+
+    def test_a_ledger_from_before_the_window_change_is_adopted_into_the_current_window_with_its_spend(self):
+        with open(self.ledger.path, "w") as handle:
+            json.dump({"spent_usd": 0.40692, "calls": 12, "cap_usd": 0.9, "saved": 1}, handle)
+        ledger = mp.Ledger(state_dir=self.tmp, cap=25, clock=lambda: self.at(2026, 11, 23, 12))
+        self.assertEqual((ledger.spent, ledger.calls, ledger.start, ledger.unverified), (0.40692, 12, self.at(2026, 11, 5, 18), ""))
+
+    def test_a_restart_after_the_boundary_starts_the_new_window(self):
+        with open(self.ledger.path, "w") as handle:
+            json.dump({"spent_usd": 3.0, "calls": 5, "cap_usd": 25, "window_start": self.at(2026, 11, 5, 18), "window_end": self.at(2026, 12, 5, 18), "saved": 1}, handle)
+        ledger = mp.Ledger(state_dir=self.tmp, cap=25, clock=lambda: self.at(2026, 12, 20, 9))
+        self.assertEqual((ledger.spent, ledger.calls, ledger.start, ledger.end), (0.0, 0, self.at(2026, 12, 5, 18), self.at(2027, 1, 5, 18)))
+
+    def test_health_names_the_window_and_the_cap(self):
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
+        conn.request("GET", "/health")
+        doc = json.loads(conn.getresponse().read())
+        self.assertEqual(sorted(doc), ["blocked", "cap_usd", "ok", "spent_usd", "stopped", "window"])
+        self.assertEqual(sorted(doc["window"]), ["end", "start"])

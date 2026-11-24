@@ -49,14 +49,14 @@ class Line(unittest.TestCase):
 class Rows(unittest.TestCase):
     def test_the_two_rows_match_the_wireframe(self):
         promo, meter = hs.rows(GOOD, BILLED, READ)
-        self.assertEqual(promo, ["Anthropic · promo credit", "$98.62 of $100", "▱▱▱▱▱▱▱▱▱▱ $1.38 billed", "until Dec 5", "Sat Dec 5, 6:00 PM CT", "AVAILABLE"])
-        self.assertEqual(meter, ["Anthropic · Honcho meter", "$0.49 of $0.90 cap", "▰▰▰▰▰▱▱▱▱▱ $0.407 reserved · $0.02 actual", "meter cap", "hard stop Sat Dec 5, 6:00 PM CT", "AVAILABLE"])
+        self.assertEqual(promo, ["Anthropic · promo credit", "$98.62 of $100", "▱▱▱▱▱▱▱▱▱▱ $1.38 billed", "monthly", "Sat Dec 5, 6:00 PM CT", "AVAILABLE"])
+        self.assertEqual(meter, ["Anthropic · Honcho meter", "$0.49 of $0.90 cap", "▰▰▰▰▰▱▱▱▱▱ $0.407 reserved · $0.02 actual", "monthly cap", "Sat Dec 5, 6:00 PM CT", "AVAILABLE"])
 
     def test_reserved_and_actual_are_never_swapped(self):
         _, meter = hs.rows(GOOD, {**BILLED, "honcho_usd": 0.50}, READ)
         self.assertIn("$0.407 reserved · $0.50 actual", meter[2])
         self.assertNotIn("$0.407 actual", meter[2])
-        self.assertEqual(hs.summary(GOOD, BILLED, READ), "Anthropic API · $1.38 billed of $100 promo credit (Anthropic report, read 12:40 PM CT) · Honcho meter $0.407 reserved, $0.02 actual of $0.90")
+        self.assertEqual(hs.summary(GOOD, BILLED, READ), "Anthropic API · $1.38 billed of $100 promo credit this window (Anthropic report, read 12:40 PM CT) · Honcho meter $0.407 reserved, $0.02 actual of $0.90 monthly cap")
 
     def test_unknown_values_are_UNVERIFIED_never_zero(self):
         promo, meter = hs.rows(None, None, READ)
@@ -69,8 +69,9 @@ class Rows(unittest.TestCase):
         self.assertEqual(hs.rows(GOOD, {**BILLED, "billed_usd": 80.0}, READ)[0][5], "NEAR LIMIT")
         self.assertEqual(hs.rows(GOOD, {**BILLED, "billed_usd": 100.0}, READ)[0][5], "EXHAUSTED")
         self.assertEqual(hs.rows({**GOOD, "exhausted": True}, BILLED, READ)[1][5], "EXHAUSTED")
-        after = dt.datetime(2026, 12, 6, 0, 1, tzinfo=UTC)                          # just after Dec 5, 6:00 PM CT
-        self.assertEqual((hs.rows(GOOD, BILLED, after)[0][5], hs.rows(GOOD, BILLED, after)[1][5]), ("EXPIRED", "EXPIRED"))
+        after = dt.datetime(2026, 12, 6, 0, 1, tzinfo=UTC)                          # just after Dec 5, 6:00 PM CT: a new window, never EXPIRED (LIFE-950)
+        self.assertEqual((hs.rows(GOOD, BILLED, after)[0][5], hs.rows(GOOD, BILLED, after)[1][5]), ("AVAILABLE", "AVAILABLE"))
+        self.assertEqual(hs.rows(GOOD, BILLED, after)[0][4], "Tue Jan 5, 6:00 PM CT")                  # the reset date moves to the next 5th
 
     def test_the_readings_are_validated_whole(self):
         self.assertTrue(hs.honcho_ok(GOOD) and hs.honcho_ok(None) and hs.anthropic_ok(BILLED) and hs.anthropic_ok(None))

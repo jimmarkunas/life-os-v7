@@ -134,7 +134,7 @@ class Run(unittest.TestCase):
         out = self.go(notion, stats=lambda: (GOOD_HONCHO, BILLED))
         self.assertEqual((out["status"], notion.grown, len(notion.rows["capN0"])), ("fresh", 2, card.ROWS))
         cells = list(notion.rows["capN0"].values())
-        self.assertIn(["Anthropic · promo credit", "$98.62 of $100", "▱▱▱▱▱▱▱▱▱▱ $1.38 billed", "until Dec 5", "Sat Dec 5, 6:00 PM CT", "AVAILABLE"], cells)
+        self.assertIn(["Anthropic · promo credit", "$98.62 of $100", "▱▱▱▱▱▱▱▱▱▱ $1.38 billed", "monthly", "Thu Nov 5, 6:00 PM CT", "AVAILABLE"], cells)
         self.assertEqual(sum(1 for c in cells if c[0].startswith("Anthropic")), 2)
         self.assertIn("Anthropic API · $1.38 billed of $100 promo credit", notion.text["capN0"])
         again = self.go(notion, stats=lambda: (GOOD_HONCHO, BILLED))                            # a second run changes nothing and grows nothing

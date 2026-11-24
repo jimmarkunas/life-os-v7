@@ -717,11 +717,11 @@ class Credentials(Server):
         from datetime import datetime, timezone
         from lifeos.platform import mcp_access
         self.start(access=self.access())
-        late = datetime(2026, 12, 6, 6, 0, tzinfo=timezone.utc)
+        late = datetime(2100, 1, 1, 6, 0, tzinfo=timezone.utc)                                                    # LIFE-950: the memory grants no longer end Dec 5 2026 (expiry 2099-12-31)
         import unittest.mock as um
         with um.patch.object(mcp_access, "datetime", wraps=datetime) as clock:
             clock.now.return_value = late
-            self.assertIn(self.memory("openclaw", "memory_store", workspace="Personal", text="t", source="s")[1]["error"], ("access_denied", "governance_unavailable"))
+            self.assertIn(self.memory("openclaw", "memory_store", workspace="Personal", text="t", source="s")[1]["error"], ("access_denied", "governance_unavailable", "invalid_token"))   # past every end date the credential (2027-02-22) ends first
 
     def test_memory_not_configured_and_honcho_down_are_fixed_codes(self):
         from unittest import mock

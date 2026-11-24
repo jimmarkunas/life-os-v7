@@ -11,15 +11,20 @@ Honcho is pointed here (its per-feature base URL override), so no model call can
 
 The cap: before a request is forwarded, its WORST-CASE cost (input tokens estimated at one token per 3 bytes of body, plus max_tokens of output, both at the
 highest published price: the over-100,000-token Haiku 5.5 rates) is reserved against the ledger; if spent + in-flight reservations + this one would pass CAP_USD
-(default 0.90) the request is refused with HTTP 400 and no call is made. When the reply ends, the reservation is replaced by the actual usage (input, cache write,
+(default 25) the request is refused with HTTP 400 and no call is made. When the reply ends, the reservation is replaced by the actual usage (input, cache write,
 cache read, output tokens from the reply, at the same highest prices); a reply that breaks off keeps its full reservation. The ledger is saved after every request, so
-a restart never forgets spend. A file named STOP next to the ledger refuses everything. Prices are a USD-per-million-token table: PRICES, read from
+a restart never forgets spend. A file named STOP next to the ledger refuses everything (Jim's manual stop: a new window never removes it). Prices are a USD-per-million-token table: PRICES, read from
 https://platform.claude.com/docs/en/about-claude/pricing on Nov 21 2026 (Haiku 5.5, over 100,000 tokens: input 0.50, 5m cache write 0.625, 1h cache write 1.00,
 cache read 0.05, output 2.50); every token class is charged at the dearest of them (1.00 in, 2.50 out) so an unexpected class can only overcount.
 
+LIFE-950, monthly window: the cap is per window, and a window runs from the 5th at 6:00 PM CT to the next 5th at 6:00 PM CT (the Claude-plan promotional credit resets then). The ledger names its window; the first
+request after the boundary archives the old window as one line in windows.jsonl and starts the new one at zero, inside this service (no timer, no agent). Reservations in flight carry across. The cap is Jim's
+monthly Honcho share of the $100 credit ($25, Nov 23 2026).
+
 LIFE-867, fail closed: a ledger that exists but cannot be read, a ledger that is missing while the audit file shows past spend, or a ledger that cannot be written, means the budget cannot be
-verified, so every Anthropic request is refused (embeddings stay free); so is every request after STOP_AFTER (the promotional credits end Dec 5 2026, 6:00 PM CT = Dec 6 00:00 UTC; after that spend would be
-paid, so only Jim's explicit change moves it). Memory is never touched. The first refusal for any of these reasons leaves an EXHAUSTED file next to the ledger (reason and time, nothing else): the hook for the Agent Inbox alert.
+verified, so every Anthropic request is refused (embeddings stay free), and an unverifiable ledger is never reset by a new window. METER_STOP_AFTER (optional, UTC, unset by default) is Jim's own hard stop
+if the monthly credit ever ends. Memory is never touched. The first refusal in a window for any of these reasons leaves an EXHAUSTED file next to the ledger (reason, window and time, nothing else): the hook for
+the Agent Inbox alert, once per window.
 
 The real key arrives as a systemd credential (CREDENTIALS_DIRECTORY/honcho_proof_anthropic_api_key); it is never logged, never put in a reply and never written. No request or reply
 body is ever logged: the audit file (JSON lines next to the ledger) holds time, route, status, token counts and cost only. Stdlib only; no shell; no other host is ever contacted."""
@@ -30,8 +35,10 @@ import os
 import socketserver
 import threading
 import time
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
-CAP_USD = float(os.environ.get("METER_CAP_USD", "0.90"))
+CAP_USD = float(os.environ.get("METER_CAP_USD", "25"))
 STATE_DIR = os.environ.get("METER_STATE_DIR", "/var/lib/lifeos-honcho-meter")
 BIND = os.environ.get("METER_BIND", "172.28.0.1")
 PORT = int(os.environ.get("METER_PORT", "8081"))
@@ -49,7 +56,19 @@ def _epoch(text):
     return calendar.timegm(time.strptime(text, "%Y-%m-%dT%H:%M:%SZ"))
 
 
-STOP_AFTER = _epoch(os.environ.get("METER_STOP_AFTER", "2026-12-06T00:00:00Z"))      # the promotional credits' end; paid spend is a decision for Jim, so the proxy stops here unless the unit says otherwise
+STOP_AFTER = _epoch(os.environ["METER_STOP_AFTER"]) if os.environ.get("METER_STOP_AFTER") else None       # Jim's optional hard stop (UTC); unset: the monthly window renews on its own
+CENTRAL = ZoneInfo("America/Chicago")
+
+
+def window(epoch):
+    """-> (start, end) epochs of the window holding `epoch`: the 5th at 6:00 PM CT to the next 5th at 6:00 PM CT (CT = America/Chicago, daylight time included).
+    The same rule is in lifeos/platform/credit_window.py and lifeos/edge/anthropic_report/reader.py; a test pins that all three agree."""
+    now = datetime.fromtimestamp(epoch, CENTRAL)
+    year, month = now.year, now.month
+    if now < datetime(year, month, 5, 18, tzinfo=CENTRAL):
+        year, month = (year - 1, 12) if month == 1 else (year, month - 1)
+    nyear, nmonth = (year + 1, 1) if month == 12 else (year, month + 1)
+    return int(datetime(year, month, 5, 18, tzinfo=CENTRAL).timestamp()), int(datetime(nyear, nmonth, 5, 18, tzinfo=CENTRAL).timestamp())
 
 
 def usd(tokens, kind):
@@ -79,45 +98,73 @@ class Ledger:
 
     def __init__(self, state_dir=STATE_DIR, cap=CAP_USD, clock=time.time):
         self.dir, self.cap, self.clock = state_dir, cap, clock
-        self.lock = threading.Lock()
-        self.path, self.audit_path, self.stop_path = (os.path.join(state_dir, n) for n in ("ledger.json", "audit.jsonl", "STOP"))
+        self.lock = threading.RLock()
+        self.path, self.audit_path, self.stop_path, self.windows_path = (os.path.join(state_dir, n) for n in ("ledger.json", "audit.jsonl", "STOP", "windows.jsonl"))
         os.makedirs(state_dir, mode=0o750, exist_ok=True)
         self.spent, self.reserved, self.calls = 0.0, 0.0, 0
+        self.start, self.end = window(self.clock())                           # the window the spend below belongs to (a ledger from before LIFE-950 has none: it is adopted into the current one)
         self.unverified = ""                                                  # why the budget cannot be verified ("" when it can): every metered request is refused while this is set
         try:
             with open(self.path) as handle:
                 saved = json.load(handle)
             self.spent, self.calls = float(saved["spent_usd"]), int(saved["calls"])
+            if saved.get("window_start") is not None:
+                self.start = int(saved["window_start"])
+                self.end = window(self.start)[1]
         except FileNotFoundError:
             if os.path.exists(self.audit_path) and os.path.getsize(self.audit_path) > 0:
                 self.unverified = "ledger missing while the audit file shows past spend"
         except (OSError, ValueError, KeyError, TypeError):
             self.unverified = "ledger unreadable"
+        self.roll()
+
+    def roll(self):
+        """Start the current window when the saved one has ended: archive the old one, spend and calls back to zero. Never on an unverifiable ledger; never touches STOP, reservations or memory."""
+        with self.lock:
+            if self.unverified or self.clock() < self.end:
+                return
+            try:
+                with open(self.windows_path, "a") as handle:
+                    handle.write(json.dumps({"start": self.start, "end": self.end, "spent_usd": round(self.spent, 6), "calls": self.calls, "cap_usd": self.cap}, sort_keys=True) + "\n")
+            except OSError:
+                pass
+            self.start, self.end = window(self.clock())
+            self.spent, self.calls = 0.0, 0
+            try:
+                self.save()
+            except OSError:
+                self.unverified = "ledger unwritable"
 
     def why_blocked(self):
-        """-> "" when a metered request may be considered, else the fixed reason it is refused (STOP file, unverifiable budget, credits ended)."""
+        """-> "" when a metered request may be considered, else the fixed reason it is refused (STOP file, unverifiable budget, Jim's hard stop)."""
+        self.roll()
         if self.stopped():
             return "cap reached or stopped"
         if self.unverified:
             return "budget cannot be verified: " + self.unverified
-        if self.clock() >= STOP_AFTER:
+        if STOP_AFTER is not None and self.clock() >= STOP_AFTER:
             return "promotional credits ended: spend would be paid"
         return ""
 
     def mark_exhausted(self, why):
-        """Leave one EXHAUSTED file (reason and time only) the first time a request is refused for budget reasons; never overwritten, never read by the proxy."""
+        """Leave one EXHAUSTED file (reason, window and time only) the first time a request is refused for budget reasons in a window; not overwritten inside that window, so one alert per window; never read by the proxy."""
         path = os.path.join(self.dir, "EXHAUSTED")
-        if not os.path.exists(path):
-            try:
-                with open(path, "w") as handle:
-                    json.dump({"reason": why, "epoch": int(self.clock())}, handle)
-            except OSError:
-                pass
+        try:
+            with open(path) as handle:
+                if json.load(handle).get("window") == self.start:
+                    return
+        except (OSError, ValueError, AttributeError):
+            pass
+        try:
+            with open(path, "w") as handle:
+                json.dump({"reason": why, "window": self.start, "epoch": int(self.clock())}, handle)
+        except OSError:
+            pass
 
     def save(self):
         tmp = self.path + ".tmp"
         with open(tmp, "w") as handle:
-            json.dump({"spent_usd": round(self.spent, 6), "calls": self.calls, "cap_usd": self.cap, "saved": int(self.clock())}, handle)
+            json.dump({"spent_usd": round(self.spent, 6), "calls": self.calls, "cap_usd": self.cap, "window_start": self.start, "window_end": self.end, "saved": int(self.clock())}, handle)
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(tmp, self.path)
@@ -138,6 +185,7 @@ class Ledger:
     def settle(self, worst, actual, route, status, usage=None, broke=False):
         """Replace the reservation with the actual cost (or keep the whole reservation when the reply broke off) and append one audit line."""
         with self.lock:
+            self.roll()
             self.reserved = max(0.0, self.reserved - worst)
             cost = worst if broke else actual
             self.spent += cost
@@ -187,7 +235,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/health":
-            self.reply(200, {"ok": True, "spent_usd": round(self.ledger.spent, 6), "cap_usd": self.ledger.cap, "stopped": self.ledger.stopped(), "blocked": self.ledger.why_blocked() or None})
+            blocked = self.ledger.why_blocked() or None                                           # first: it starts a new window when the old one has ended
+            self.reply(200, {"ok": True, "spent_usd": round(self.ledger.spent, 6), "cap_usd": self.ledger.cap, "stopped": self.ledger.stopped(), "blocked": blocked,
+                             "window": {"start": datetime.fromtimestamp(self.ledger.start, CENTRAL).isoformat(), "end": datetime.fromtimestamp(self.ledger.end, CENTRAL).isoformat()}})
         else:
             self.reply(404, {"error": "not_found"})
 
