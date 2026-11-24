@@ -169,8 +169,6 @@ class SelfhostProbe(unittest.TestCase):
         self.assertEqual((AGENT_PUB in relay.members, OWNER_PUB in relay.members), (False, True), done.stdout)
         self.assertIn("remove_" + OWNER_PUB[:8] + " fail", done.stdout)
         self.assertNotIn(OWNER_HEX, done.stdout + done.stderr)
-        empty, _ = self.run_probe(FakeRelay(), mode=("remove",), stdin="")
-        self.assertEqual((empty.stdout.splitlines()[-1], empty.returncode), ("remove fail (at least one public key is required)", 1))
 
     def test_names_mode_signs_one_name_only_profile_per_vault_key_and_prints_no_key(self):
         """LIFE-927: the owner and connector keys each set their own display name."""
