@@ -80,14 +80,25 @@ jobs:
           set_env: false
           secrets: |
             53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
+      - id: bws_runtime_config
+        continue-on-error: true
+        name: Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)
+        uses: ./.github/actions/bws-load
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
       - name: V7 settings page for the Weekly Review page address (LIFE-703; names and counts only; an unreadable page changes nothing)
         continue-on-error: true
         env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_report.outputs.NOTION_JIRA_TOKEN }}
           WEEKLY_REVIEW_PAGE_ID: ""
         run: python -m lifeos.platform.settings
       - name: Repository hygiene report (stale branches; run summary, and the Weekly Review callout when live)
         env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           GITHUB_TOKEN: ${{ github.token }}
           WEEKLY_REVIEW_PAGE_ID: ${{ env.WEEKLY_REVIEW_PAGE_ID }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_report.outputs.NOTION_JIRA_TOKEN }}

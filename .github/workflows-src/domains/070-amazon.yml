@@ -62,6 +62,7 @@
         name: Amazon card (reads the canonical orders and, read-only, other stores' shipping mail; writes only when live; a failed sync is shown as DEGRADED)
         if: ${{ always() }}
         env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           NOTION_AMAZON_DATA_SOURCE_ID: ""
           AMAZON_CARD_BLOCK_ID: ""
           BILLS_CARD_BLOCK_ID: ""

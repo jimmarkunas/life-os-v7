@@ -97,6 +97,7 @@
         continue-on-error: true
         name: Recruiter Outreach (LIFE-20; the Daily Report's one Recruiter Outreach table from the Recruiters data source, after the Recruiters stage; writes only when live AND the repo variable RECRUITER_OUTREACH is on; read-back and whole-page proof)
         env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           RECRUITERS_STAGE_OUTCOME: ${{ steps.recruiters.outcome }}        # 'skipped' only on a Close screen refresh: the rows are redrawn and the heading says Redrawn
           RECRUITERS_SCAN: ${{ steps.recruiters.outputs.scan_kind }}        # LIFE-610: which mail read the rows come from
           RECRUITERS_SCAN_AT: ${{ steps.recruiters.outputs.scan_at }}
@@ -112,6 +113,7 @@
         continue-on-error: true
         name: Job-page outreach (LIFE-10; the outreach table on each Job Ledger job page from Mark as Sent; writes only when live AND the repo variable JOB_PAGE_OUTREACH is on; page proof and read-back)
         env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
           NOTION_RECRUITERS_DATA_SOURCE_ID: ""
           JOB_PAGE_OUTREACH: ""

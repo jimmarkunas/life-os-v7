@@ -74,6 +74,15 @@
       - name: iMessage alerts warning (does not fail the run)
         if: ${{ always() && steps.imsg.outcome == 'failure' }}
         run: echo "::warning title=iMessage alerts::the iMessage alert stage failed; no alert was lost (undelivered alerts stay queued)"
+      - id: bws_runtime_config
+        continue-on-error: true
+        name: Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)
+        uses: ./.github/actions/bws-load
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
       - id: comms
         continue-on-error: true
         if: ${{ always() }}
@@ -81,6 +90,7 @@
         # newest sender's name scrambled under this run's own key; the name is unscrambled only in memory for the Notion write and is never logged or stored.
         name: Communications card, Messages row (7-day unread count and latest sender; counts only in the log; writes only when live)
         env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           IMESSAGE_ALERTS_HOST: ${{ steps.bws_imessage.outputs.IMESSAGE_ALERTS_HOST }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_imessage.outputs.NOTION_JIRA_TOKEN }}
           ATTENTION_CARD_BLOCK_ID: ""
@@ -101,6 +111,7 @@
         # LIFE-129 (Jim, Oct 28 2026): the store and the push topic for the off-site backup alert (lifeos/oraclecloud/backup_watch.py), the same values the iMessage alerts step uses.
         name: Oracle Cloud card (daily from 6 AM CT; numbers only in the log; writes only when live)
         env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_DB_PASSWORD }}
           LIFEOS_ACQ_DB_USER: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_DB_USER }}
