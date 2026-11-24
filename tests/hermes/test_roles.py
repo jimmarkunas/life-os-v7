@@ -19,7 +19,7 @@ def read(*parts):
 class RoleFiles(unittest.TestCase):
     def test_every_role_carries_the_recall_first_line_exactly_once(self):
         """LIFE-962 (Jim, Nov 24 2026, comment 14121): shared memory beats a profile's own notes, for every Hermes profile."""
-        line = "Before answering a question about Jim, his preferences or his work, call memory_recall (workspace Personal; tool lifeos-buzz buzz_read, operation memory_recall) and answer from it; shared memory beats your own notes."
+        line = 'Before answering about Jim, his preferences or his work, call lifeos-buzz buzz_read with operation "memory_recall" and arguments {"workspace": "Personal", "query": "<the question>"}; answer from it, not your own notes.'
         for name in ("main", "claude-hermes", "developer", "librarian", "research", "writer"):
             text = open(os.path.join(ROOT, "hermes", "roles", name, "SOUL.md")).read()
             self.assertEqual(text.count(line), 1, name)
