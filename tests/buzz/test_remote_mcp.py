@@ -435,6 +435,42 @@ class Credentials(Server):
             self.assertEqual((out["error"], out["reason"]), ("access_denied", "no_grant"), op)                    # refused by the gate
         self.assertEqual(len(self.fake.calls), before)                                                            # and before any request left the service
 
+    def test_a_second_public_host_names_its_own_resource_and_challenge_and_accepts_its_own_audience_and_nothing_else_changes(self):
+        """LIFE-922 (Jim, host A): the same service answers on a second public origin; the host a request came in on names its resource, metadata and challenge; a token for either audience works; any other audience is refused."""
+        from lifeos.buzz.auth import Verifier as V
+        second = "https://second.example.test"
+        self.start()
+        verifier = V(ISS, BASE + "/mcp", CLIENTS, ISS + "/jwks", USERS, fetch=lambda url: JWKS, clock=lambda: NOW, extra_audiences=(second + "/mcp",))
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), buzz_mcp.handler(self.relays, verifier, BASE, (), self.audit.append, open_access(), self.receipts.append))
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.server_close)
+        self.addCleanup(srv.shutdown)
+        self.url = f"http://127.0.0.1:{srv.server_address[1]}"
+        for host, origin in (("edge.example.test", BASE), ("second.example.test", second), ("unknown.example.test", BASE)):
+            status, raw, _ = self.req("GET", "/.well-known/oauth-protected-resource", Host=host)
+            self.assertEqual((status, json.loads(raw)["resource"], json.loads(raw)["scopes_supported"][0]), (200, origin + "/mcp", BASE + "/mcpbuzz:read"), host)       # scope names keep the primary prefix
+            status, _, headers = self.req("POST", "/mcp", {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, Host=host)
+            self.assertEqual(status, 401)
+            self.assertIn(f'resource_metadata="{origin}/.well-known/oauth-protected-resource"', headers["WWW-Authenticate"], host)
+        self.assertEqual(self.rpc(token(), "tools/list", Host="edge.example.test")[0], 200)                         # the primary audience still works on every host
+        self.assertEqual(self.rpc(token(aud=second + "/mcp"), "tools/list", Host="second.example.test")[0], 200)     # the second audience works
+        self.assertEqual(self.rpc(token(aud=[second + "/mcp"], scope=BASE + "/mcpbuzz:read"), "tools/list", Host="second.example.test")[0], 200)   # IAM's primary-prefixed scope names are understood for either audience
+        self.assertEqual(self.rpc(token(aud="https://other.example.test/mcp"), "tools/list")[0], 401)                 # any other audience is refused
+        self.assertEqual(self.rpc(token(aud=second + "/mcp", sub="user-nobody"), "tools/list")[0], 403)               # the allowlists are the same on both hosts
+
+    def test_the_extra_public_hosts_setting_is_origin_only_and_never_the_primary(self):
+        env = {"BUZZ_MCP_PUBLIC_URL": BASE, "BUZZ_MCP_PUBLIC_URLS_EXTRA": "https://second.example.test/"}
+        self.assertEqual(self.extras(env), ("https://second.example.test/mcp",))
+        for bad in ("https://second.example.test/path", BASE, "http://second.example.test"):
+            with self.assertRaises(ValueError):
+                self.extras({**env, "BUZZ_MCP_PUBLIC_URLS_EXTRA": bad})
+
+    @staticmethod
+    def extras(env):
+        full = {"BUZZ_URL_LIFE_OS": "https://life-os.communities.buzz.xyz", "BUZZ_KEY_CLAUDE_LIFE_OS": "01" * 32, "BUZZ_OAUTH_ISSUER": ISS, "BUZZ_OAUTH_JWKS_URL": ISS + "/jwks", "BUZZ_OAUTH_CLIENTS": "cid-one",
+                "BUZZ_OAUTH_USERS": "user-claude:claude:life-os", **env}
+        return buzz_mcp.from_env(full)[1].extra_audiences
+
     def test_no_other_credential_can_hold_the_write_scope_and_the_file_refuses_to_load_if_one_tries(self):
         from lifeos.platform import mcp_access
         from tests.platform.mcp_access_fixture import CATALOG, DOC
