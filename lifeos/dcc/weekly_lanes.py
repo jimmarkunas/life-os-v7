@@ -53,11 +53,11 @@ def kids(client, block_id):
 CONTAINERS = ("callout", "column_list", "column", "toggle", "table")
 
 
-def _tree(client, block_id, depth=0):
-    """[(block, [children...])] under a block, each block read once."""
+def _tree(client, block_id, depth=0, limit=5):
+    """[(block, [children...])] under a block, each block read once, containers followed `limit` levels down."""
     out = []
     for block in kids(client, block_id):
-        sub = _tree(client, block["id"], depth + 1) if block.get("has_children") and depth < 5 and block.get("type") in CONTAINERS else []
+        sub = _tree(client, block["id"], depth + 1, limit) if block.get("has_children") and depth < limit and block.get("type") in CONTAINERS else []
         out.append((block, sub))
     return out
 
