@@ -1,6 +1,6 @@
 {
  "version": 1,
- "note": "LIFE-865: who may call the two LIFE OS MCP servers (lifeos/buzz/mcp.py, lifeos.inbox.send_to_jim --mcp). `clients` map one trusted fact (the verified OAuth client, or the OS user of a stdio server) to a client id; a caller-supplied id, header, argument or environment variable is never read. `grants` are authorization_gate.Grant rows seeded only with what each client does today (reads for the two chat clients; no `send_to_jim` grant, because no client has that MCP server configured), each with an expiry; revoke = set `revoked` true. `policy` is the access_policy document they are checked against; its keys are fingerprints of the client ids, not secrets. Credentials are named, never held. Nothing here is live-proven. LIFE-873: `credentials` are scoped `lm1.<id>.<secret>` bearer credentials (Jim, Nov 22 2026, comments 13708): the service holds only the SHA-256 of the secret, never the secret; each names the one client it is and the existing Buzz identity it reads as (null = capabilities only). Read grants only; Personal only; expire 2027-02-22; revoke = set `revoked` true.",
+ "note": "LIFE-865: who may call the two LIFE OS MCP servers (lifeos/buzz/mcp.py, lifeos.inbox.send_to_jim --mcp). `clients` map one trusted fact (the verified OAuth client, or the OS user of a stdio server) to a client id; a caller-supplied id, header, argument or environment variable is never read. `grants` are authorization_gate.Grant rows seeded only with what each client does today (reads for the two chat clients; no `send_to_jim` grant, because no client has that MCP server configured), each with an expiry; revoke = set `revoked` true. `policy` is the access_policy document they are checked against; its keys are fingerprints of the client ids, not secrets. Credentials are named, never held. Nothing here is live-proven. LIFE-873: `credentials` are scoped `lm1.<id>.<secret>` bearer credentials (Jim, Nov 22 2026, comments 13708): the service holds only the SHA-256 of the secret, never the secret; each names the one client it is and the existing Buzz identity it reads as (null = capabilities only). Read grants only; Personal only; expire 2027-02-22; revoke = set `revoked` true. LIFE-949 (Jim, Nov 23 and 24 2026): the five memory tools (store, recall, correct, revoke, ask) are granted to eight clients, Personal only, purpose personal-memory, real non-sensitive data, no expiry in practice (2099-12-31), revocable any time (set `revoked` true); the old synthetic-memory-test rows stay for tests but no tool uses that purpose now.",
  "tool_purpose": {
   "buzz_capabilities": "buzz-read",
   "buzz_read": "buzz-read",
@@ -12,10 +12,11 @@
   "gmail_read": "governed-google-read",
   "drive_search": "governed-google-read",
   "drive_read": "governed-google-read",
-  "memory_store": "synthetic-memory-test",
-  "memory_recall": "synthetic-memory-test",
-  "memory_correct": "synthetic-memory-test",
-  "memory_revoke": "synthetic-memory-test"
+  "memory_store": "personal-memory",
+  "memory_recall": "personal-memory",
+  "memory_correct": "personal-memory",
+  "memory_revoke": "personal-memory",
+  "memory_ask": "personal-memory"
  },
  "communities": {
   "life-os": "personal",
@@ -27,10 +28,12 @@
   "agents": {
    "a30dfe04a1f81697c49e0eed5efa07707c6bc5f585074b729882eda33e3af7d0": {
     "buzz": "write",
+    "honcho": "write",
     "notion": "write"
    },
    "7d4fa4108e914ff1958854ab529279c84e7063d649f6d1a65e9507af7aa176bc": {
     "buzz": "write",
+    "honcho": "write",
     "notion": "write"
    },
    "e3004cee2bee990add283ff8a7e99517a13a3cf51e077b1e239ea8dc7b6356f6": {
@@ -39,10 +42,12 @@
    },
    "2c8c6ccd88c3c2845a6d68fce3cfaa408e5aaebf35327550fc9d040177a53772": {
     "buzz": "read",
+    "honcho": "write",
     "notion": "write"
    },
    "5dbd6b29730a3a8a2ee16220a6565743559805e532145389d436b5d4bce512e5": {
     "buzz": "read",
+    "honcho": "write",
     "notion": "write"
    },
    "2b7ba37fbdfcc2839223417b879d835df0eb9b51d886d6051bb5043694028d6f": {
@@ -60,10 +65,12 @@
    },
    "1840bef71c723365fc1789ed9b4116171f9dba3851de0560608bd962e6064841": {
     "buzz": "write",
+    "honcho": "write",
     "notion": "write"
    },
    "76c7b5bcbe54ac0a8e0d71be5d5d86beb430a5042eb0717843f75d115a30c7ea": {
     "buzz": "write",
+    "honcho": "write",
     "notion": "write"
    }
   }
@@ -764,6 +771,566 @@
     "write"
    ],
    "credential_ref": "mcp-credential-hermes-librarian",
+   "expires": "2099-12-31",
+   "revoked": false
+  },
+  {
+   "id": "g-claude-chat-personal-memory_store-pm",
+   "principal": "claude-chat",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_store",
+   "purpose": "personal-memory",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "honcho-memory-token",
+   "expires": "2099-12-31",
+   "revoked": false
+  },
+  {
+   "id": "g-claude-chat-personal-memory_recall-pm",
+   "principal": "claude-chat",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_recall",
+   "purpose": "personal-memory",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "honcho-memory-token",
+   "expires": "2099-12-31",
+   "revoked": false
+  },
+  {
+   "id": "g-claude-chat-personal-memory_correct-pm",
+   "principal": "claude-chat",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_correct",
+   "purpose": "personal-memory",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "honcho-memory-token",
+   "expires": "2099-12-31",
+   "revoked": false
+  },
+  {
+   "id": "g-claude-chat-personal-memory_revoke-pm",
+   "principal": "claude-chat",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_revoke",
+   "purpose": "personal-memory",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "honcho-memory-token",
+   "expires": "2099-12-31",
+   "revoked": false
+  },
+  {
+   "id": "g-claude-chat-personal-memory_ask-pm",
+   "principal": "claude-chat",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_ask",
+   "purpose": "personal-memory",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "honcho-memory-token",
+   "expires": "2099-12-31",
+   "revoked": false
+  },
+  {
+   "id": "g-chatgpt-chat-personal-memory_store-pm",
+   "principal": "chatgpt-chat",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_store",
+   "purpose": "personal-memory",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "honcho-memory-token",
+   "expires": "2099-12-31",
+   "revoked": false
+  },
+  {
+   "id": "g-chatgpt-chat-personal-memory_recall-pm",
+   "principal": "chatgpt-chat",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_recall",
+   "purpose": "personal-memory",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "honcho-memory-token",
+   "expires": "2099-12-31",
+   "revoked": false
+  },
+  {
+   "id": "g-chatgpt-chat-personal-memory_correct-pm",
+   "principal": "chatgpt-chat",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_correct",
+   "purpose": "personal-memory",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "honcho-memory-token",
+   "expires": "2099-12-31",
+   "revoked": false
+  },
+  {
+   "id": "g-chatgpt-chat-personal-memory_revoke-pm",
+   "principal": "chatgpt-chat",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_revoke",
+   "purpose": "personal-memory",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "honcho-memory-token",
+   "expires": "2099-12-31",
+   "revoked": false
+  },
+  {
+   "id": "g-chatgpt-chat-personal-memory_ask-pm",
+   "principal": "chatgpt-chat",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_ask",
+   "purpose": "personal-memory",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "honcho-memory-token",
+   "expires": "2099-12-31",
+   "revoked": false
+  },
+  {
+   "id": "g-muse-chat-personal-memory_store-pm",
+   "principal": "muse-chat",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_store",
+   "purpose": "personal-memory",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "honcho-memory-token",
+   "expires": "2099-12-31",
+   "revoked": false
+  },
+  {
+   "id": "g-muse-chat-personal-memory_recall-pm",
+   "principal": "muse-chat",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_recall",
+   "purpose": "personal-memory",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "honcho-memory-token",
+   "expires": "2099-12-31",
+   "revoked": false
+  },
+  {
+   "id": "g-muse-chat-personal-memory_correct-pm",
+   "principal": "muse-chat",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_correct",
+   "purpose": "personal-memory",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "honcho-memory-token",
+   "expires": "2099-12-31",
+   "revoked": false
+  },
+  {
+   "id": "g-muse-chat-personal-memory_revoke-pm",
+   "principal": "muse-chat",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_revoke",
+   "purpose": "personal-memory",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "honcho-memory-token",
+   "expires": "2099-12-31",
+   "revoked": false
+  },
+  {
+   "id": "g-muse-chat-personal-memory_ask-pm",
+   "principal": "muse-chat",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_ask",
+   "purpose": "personal-memory",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "honcho-memory-token",
+   "expires": "2099-12-31",
+   "revoked": false
+  },
+  {
+   "id": "g-duet-chat-personal-memory_store-pm",
+   "principal": "duet-chat",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_store",
+   "purpose": "personal-memory",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "honcho-memory-token",
+   "expires": "2099-12-31",
+   "revoked": false
+  },
+  {
+   "id": "g-duet-chat-personal-memory_recall-pm",
+   "principal": "duet-chat",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_recall",
+   "purpose": "personal-memory",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "honcho-memory-token",
+   "expires": "2099-12-31",
+   "revoked": false
+  },
+  {
+   "id": "g-duet-chat-personal-memory_correct-pm",
+   "principal": "duet-chat",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_correct",
+   "purpose": "personal-memory",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "honcho-memory-token",
+   "expires": "2099-12-31",
+   "revoked": false
+  },
+  {
+   "id": "g-duet-chat-personal-memory_revoke-pm",
+   "principal": "duet-chat",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_revoke",
+   "purpose": "personal-memory",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "honcho-memory-token",
+   "expires": "2099-12-31",
+   "revoked": false
+  },
+  {
+   "id": "g-duet-chat-personal-memory_ask-pm",
+   "principal": "duet-chat",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_ask",
+   "purpose": "personal-memory",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "honcho-memory-token",
+   "expires": "2099-12-31",
+   "revoked": false
+  },
+  {
+   "id": "g-mac-claude-code-personal-memory_store-pm",
+   "principal": "mac-claude-code",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_store",
+   "purpose": "personal-memory",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "mcp-credential-mac-claude-code",
+   "expires": "2099-12-31",
+   "revoked": false
+  },
+  {
+   "id": "g-mac-claude-code-personal-memory_recall-pm",
+   "principal": "mac-claude-code",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_recall",
+   "purpose": "personal-memory",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "mcp-credential-mac-claude-code",
+   "expires": "2099-12-31",
+   "revoked": false
+  },
+  {
+   "id": "g-mac-claude-code-personal-memory_correct-pm",
+   "principal": "mac-claude-code",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_correct",
+   "purpose": "personal-memory",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "mcp-credential-mac-claude-code",
+   "expires": "2099-12-31",
+   "revoked": false
+  },
+  {
+   "id": "g-mac-claude-code-personal-memory_revoke-pm",
+   "principal": "mac-claude-code",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_revoke",
+   "purpose": "personal-memory",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "mcp-credential-mac-claude-code",
+   "expires": "2099-12-31",
+   "revoked": false
+  },
+  {
+   "id": "g-mac-claude-code-personal-memory_ask-pm",
+   "principal": "mac-claude-code",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_ask",
+   "purpose": "personal-memory",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "mcp-credential-mac-claude-code",
+   "expires": "2099-12-31",
+   "revoked": false
+  },
+  {
+   "id": "g-oracle-claude-code-personal-memory_store-pm",
+   "principal": "oracle-claude-code",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_store",
+   "purpose": "personal-memory",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "mcp-credential-oracle-claude-code",
+   "expires": "2099-12-31",
+   "revoked": false
+  },
+  {
+   "id": "g-oracle-claude-code-personal-memory_recall-pm",
+   "principal": "oracle-claude-code",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_recall",
+   "purpose": "personal-memory",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "mcp-credential-oracle-claude-code",
+   "expires": "2099-12-31",
+   "revoked": false
+  },
+  {
+   "id": "g-oracle-claude-code-personal-memory_correct-pm",
+   "principal": "oracle-claude-code",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_correct",
+   "purpose": "personal-memory",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "mcp-credential-oracle-claude-code",
+   "expires": "2099-12-31",
+   "revoked": false
+  },
+  {
+   "id": "g-oracle-claude-code-personal-memory_revoke-pm",
+   "principal": "oracle-claude-code",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_revoke",
+   "purpose": "personal-memory",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "mcp-credential-oracle-claude-code",
+   "expires": "2099-12-31",
+   "revoked": false
+  },
+  {
+   "id": "g-oracle-claude-code-personal-memory_ask-pm",
+   "principal": "oracle-claude-code",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_ask",
+   "purpose": "personal-memory",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "mcp-credential-oracle-claude-code",
+   "expires": "2099-12-31",
+   "revoked": false
+  },
+  {
+   "id": "g-hermes-librarian-personal-memory_store-pm",
+   "principal": "hermes-librarian",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_store",
+   "purpose": "personal-memory",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "mcp-credential-hermes-librarian",
+   "expires": "2099-12-31",
+   "revoked": false
+  },
+  {
+   "id": "g-hermes-librarian-personal-memory_recall-pm",
+   "principal": "hermes-librarian",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_recall",
+   "purpose": "personal-memory",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "mcp-credential-hermes-librarian",
+   "expires": "2099-12-31",
+   "revoked": false
+  },
+  {
+   "id": "g-hermes-librarian-personal-memory_correct-pm",
+   "principal": "hermes-librarian",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_correct",
+   "purpose": "personal-memory",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "mcp-credential-hermes-librarian",
+   "expires": "2099-12-31",
+   "revoked": false
+  },
+  {
+   "id": "g-hermes-librarian-personal-memory_revoke-pm",
+   "principal": "hermes-librarian",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_revoke",
+   "purpose": "personal-memory",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "mcp-credential-hermes-librarian",
+   "expires": "2099-12-31",
+   "revoked": false
+  },
+  {
+   "id": "g-hermes-librarian-personal-memory_ask-pm",
+   "principal": "hermes-librarian",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_ask",
+   "purpose": "personal-memory",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "mcp-credential-hermes-librarian",
+   "expires": "2099-12-31",
+   "revoked": false
+  },
+  {
+   "id": "g-openclaw-personal-memory_store-pm",
+   "principal": "openclaw",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_store",
+   "purpose": "personal-memory",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "mcp-credential-openclaw",
+   "expires": "2099-12-31",
+   "revoked": false
+  },
+  {
+   "id": "g-openclaw-personal-memory_recall-pm",
+   "principal": "openclaw",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_recall",
+   "purpose": "personal-memory",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "mcp-credential-openclaw",
+   "expires": "2099-12-31",
+   "revoked": false
+  },
+  {
+   "id": "g-openclaw-personal-memory_correct-pm",
+   "principal": "openclaw",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_correct",
+   "purpose": "personal-memory",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "mcp-credential-openclaw",
+   "expires": "2099-12-31",
+   "revoked": false
+  },
+  {
+   "id": "g-openclaw-personal-memory_revoke-pm",
+   "principal": "openclaw",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_revoke",
+   "purpose": "personal-memory",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "mcp-credential-openclaw",
+   "expires": "2099-12-31",
+   "revoked": false
+  },
+  {
+   "id": "g-openclaw-personal-memory_ask-pm",
+   "principal": "openclaw",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_ask",
+   "purpose": "personal-memory",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "mcp-credential-openclaw",
    "expires": "2099-12-31",
    "revoked": false
   },

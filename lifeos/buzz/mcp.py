@@ -73,7 +73,7 @@ READ = {  # operation: (summary, parameters {name: (type, required)}, handler(re
 }
 LOOKUP = {"fetchers": {}, "rows": None}                                             # LIFE-888: wired by main(); empty means source_unavailable / directory_unavailable, never a guess
 GOOGLE = {"creds": None, "opener": None}                                            # LIFE-875: wired by main(); None means not_configured, never a guess
-MEMORY, MEMORY_OPS = {"client": None, "now": None}, ("memory_store", "memory_recall", "memory_correct", "memory_revoke")   # LIFE-868: shared memory on the retained Honcho, each operation its own gate tool; MEMORY is wired by main() (memory_not_configured until HONCHO_MEMORY_TOKEN is set)
+MEMORY, MEMORY_OPS = {"client": None, "now": None}, ("memory_store", "memory_recall", "memory_correct", "memory_revoke", "memory_ask")   # LIFE-868, LIFE-949 (memory_ask): shared memory on the retained Honcho, each operation its own gate tool; MEMORY is wired by main() (memory_not_configured until HONCHO_MEMORY_TOKEN is set)
 INBOX, ROUTES = {"client": None, "now": None}, {}                                   # LIFE-876: the Agent Inbox write; ROUTES: operation -> route(op, args, tenant) -> (tenant, action, account, service) for the gate, filled by each operation module
 
 
@@ -83,7 +83,7 @@ def _lift(module, op, state):
         try:
             return module.run(op, args, state), None
         except ValueError as error:
-            raise BuzzError(getattr(error, "reason", "invalid_argument")) from None
+            raise BuzzError(getattr(error, "reason", "invalid_argument"), **getattr(error, "detail", {})) from None      # LIFE-949: a refusal may carry fixed fields (sensitive_refused: category, stored, hint)
     return run
 
 
