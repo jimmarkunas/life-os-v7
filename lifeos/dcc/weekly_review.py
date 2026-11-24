@@ -9,7 +9,7 @@ from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 from lifeos.dcc import weekly_archive, weekly_lanes as wl
-from lifeos.platform import branches
+from lifeos.platform import branches, oracle_drive
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 
 TZ = ZoneInfo("America/Chicago")
@@ -181,7 +181,7 @@ def _row_date(row):
 def collect(client, environ, friday, now, drive_read, opener=None):
     """Read the six lanes for one week. -> [Lane in the page's order]"""
     try:
-        page = weekly_archive._page_of(client, weekly_archive._clean(environ.get("DCC_CARD_BLOCK_ID")))
+        page = weekly_archive._page_of(client, weekly_archive._clean(environ.get("JIRA_CARD_BLOCK_ID")))
         regions, header = wl.read_regions(client, page)
         report = client.call("GET", f"/pages/{quote(page, safe='')}")
         edited = datetime.fromisoformat(report["last_edited_time"].replace("Z", "+00:00")).astimezone(TZ)
@@ -229,7 +229,7 @@ def run(limit, live, environ=os.environ, client=None, now=None, drive_read=None,
     if not _on(environ.get("WEEKLY_REVIEW")):
         return {"status": "off"}
     source = weekly_archive._clean(environ.get("NOTION_WEEKLY_REVIEWS_DATA_SOURCE_ID"))
-    if not source or not weekly_archive._clean(environ.get("DCC_CARD_BLOCK_ID")) or not weekly_archive._clean(environ.get("WEEKLY_REVIEW_PAGE_ID")):
+    if not source or not weekly_archive._clean(environ.get("JIRA_CARD_BLOCK_ID")) or not weekly_archive._clean(environ.get("WEEKLY_REVIEW_PAGE_ID")):
         return {"status": "not_configured"}
     now = (now or datetime.now(TZ))
     now = now.replace(tzinfo=TZ) if now.tzinfo is None else now.astimezone(TZ)
@@ -246,7 +246,8 @@ def run(limit, live, environ=os.environ, client=None, now=None, drive_read=None,
         out["status"] = "duplicate_weeks"
         out["duplicates"] = duplicates
         return out
-    drive_read = drive_read or _unavailable
+    host = (environ.get("IMESSAGE_ALERTS_HOST") or "").strip()
+    drive_read = drive_read or (oracle_drive.reader(host) if host else _unavailable)
     todo = wanted(now, have)
     friday = latest_friday(now)
     prior = have.get(friday)
