@@ -4,6 +4,7 @@ No real Jira or Notion requests, no provider writes. v1/JFM remain backward
 compatible; v2 is opt-in and fails closed without an approved quarter baseline.
 """
 import copy
+import json
 import unittest
 from datetime import date
 
@@ -108,13 +109,13 @@ class FrozenQuarterAndFirstDone(unittest.TestCase):
         fake = Jira()
         self.assertEqual(read.tally(fake, GOALS, FIRST, LAST,
                                     mej_metric_version="v1"), {"MEJ-2": [1, 2]})
-        self.assertEqual(read.unparented(fake, "MEJ", {"MEJ-2"}), 1)
+        self.assertEqual(read.unparented(fake, "MEJ", {"MEJ-2"}), 2)          # v1: a project Epic is not a quarter epic, exactly as on main
 
     def test_explicit_v2_counts_only_frozen_standard_tasks(self):
         fake = Jira()
         fake.children.append(child("MEJ-503", "MEJ-147", done=True))
         self.assertEqual(self.v2(fake), {"MEJ-2": [2, 4]})
-        self.assertEqual(read.unparented(fake, "MEJ", {"MEJ-2"}), 1)
+        self.assertEqual(read.unparented(fake, "MEJ", {"MEJ-2"}, mej_metric_version="v2"), 1)
 
     def test_first_verified_done_not_last_done_or_resolutiondate(self):
         fake = Jira()
@@ -196,6 +197,31 @@ class FrozenQuarterAndFirstDone(unittest.TestCase):
         counts = read.tally(fake, goals, FIRST, LAST, mej_metric_version="v2",
                             frozen_membership=FROZEN)
         self.assertEqual(counts, {"MEJ-2": [2, 4], "JFM-2": [1, 2]})
+
+    def test_v1_issues_exactly_main_requests_and_never_reads_history_or_project_labels(self):
+        """Parity with main: the default path asks Jira only for the quarter epics' children (main's field list) and the open-work scan; no changelog, no project-label search, for MEJ and JFM alike."""
+        self.assertEqual(read.CHILD_FIELDS, "status,parent,resolutiondate,issuetype")
+        for goals, project, keys in ((GOALS, "MEJ", {"MEJ-2"}), ([{"key": "JFM-2", "person": "Jim"}], "JFM", {"JFM-2"})):
+            fake = Jira()
+            fake.get_paths = []
+            original = fake.get
+            fake.get = lambda path, params, original=original, paths=fake.get_paths: (paths.append(path), original(path, params))[1]
+            read.tally(fake, goals, FIRST, LAST)
+            if project == "MEJ":
+                read.unparented(fake, project, keys)
+            self.assertFalse([p for p in fake.get_paths if p.endswith("/changelog")])
+            self.assertFalse([q for q in fake.queries if "mej-project" in q])
+
+    def test_v2_never_activates_without_the_explicit_argument(self):
+        fake = Jira()
+        self.assertEqual(read.tally(fake, GOALS, FIRST, LAST, frozen_membership=FROZEN), read.tally(Jira(), GOALS, FIRST, LAST))
+
+    def test_the_shipped_membership_manifest_is_empty_and_invents_nothing(self):
+        manifest = json.loads(read.MEJ_MEMBERSHIP.read_text(encoding="utf-8"))
+        self.assertEqual(manifest["quarters"], {})
+        with self.assertRaises(JiraError) as caught:
+            read.tally(Jira(), GOALS, FIRST, LAST, mej_metric_version="v2")
+        self.assertIn("ACCOUNTABILITY_MEJ_MEMBERSHIP_NOT_APPROVED", str(caught.exception))
 
     def test_unknown_kpi_version_is_blocked(self):
         with self.assertRaisesRegex(JiraError, "ACCOUNTABILITY_MEJ_METRIC_VERSION_INVALID"):

@@ -15,7 +15,7 @@ from lifeos.platform.jira import JiraError
 PEOPLE = (("Jim", "JFM"), ("Matt", "MEJ"))
 WEEK_FIELDS = "summary,status,duedate,issuetype"
 EPIC_FIELDS = "summary"
-CHILD_FIELDS = "status,parent,resolutiondate,statuscategorychangedate,issuetype"
+CHILD_FIELDS = "status,parent,resolutiondate,issuetype"
 MEJ_MEMBERSHIP = Path(__file__).with_name("mej_quarter_membership.json")
 PAGE, MAX_PAGES = 100, 30
 URL = re.compile(r"https?://[^\s\"\\<>)]+")
@@ -264,8 +264,9 @@ def _mej_v2_tally(jira, quarter_keys, first, last, manifest=None):
 def tally(jira, found, first, last, *, mej_metric_version=None, frozen_membership=None):
     """v1 historical direct-child metrics, or opt-in future MEJ v2 frozen metrics.
 
-    JFM always retains historical v1 behavior; a production v2 switch requires
-    an explicit environment gate AND an approved frozen quarter manifest.
+    JFM always retains historical v1 behavior; v2 is reachable only through the
+    explicit `mej_metric_version="v2"` code argument AND an approved frozen
+    quarter manifest (no environment variable, no default).
     """
     if not found:
         return {}
@@ -282,10 +283,12 @@ def tally(jira, found, first, last, *, mej_metric_version=None, frozen_membershi
     return out
 
 
-def unparented(jira, project, epic_keys):
-    """Count open standard work without an approved current-quarter mapping."""
+def unparented(jira, project, epic_keys, *, mej_metric_version=None):
+    """How many open non-epic, non-sub-task issues of the project sit under none of the quarter's epics.
+
+    v1 (the default, and always for JFM) is the historical count. Only an explicit MEJ v2 call also accepts a labelled project Epic linked to a quarter Epic as a parent."""
     allowed = set(epic_keys)
-    if project == "MEJ":
+    if project == "MEJ" and mej_metric_version == "v2":
         allowed.update(_mej_project_goals(jira, allowed))
     count = 0
     for issue in search(jira, f"project = {project} AND issuetype != Epic AND statusCategory != Done", "parent,issuetype"):
