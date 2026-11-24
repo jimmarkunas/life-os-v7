@@ -89,8 +89,8 @@ class Notion:
     def call_once(self, method, path, body=None):
         target = path.split("/")[2]
         self.writes.append((method, path))
-        if path.startswith("/blocks/") and target == POINTER:
-            self.blocks[POINTER][self.blocks[POINTER]["type"]] = {"rich_text": [{"type": "text", "plain_text": "".join(t["text"]["content"] for t in body["paragraph"]["rich_text"])}]}
+        if path.startswith("/blocks/") and "paragraph" in body:
+            self.blocks[target]["paragraph"] = {"rich_text": [{"type": "text", "plain_text": "".join(t["text"]["content"] for t in body["paragraph"]["rich_text"])}]}
             return {}
         if path.startswith("/blocks/") and body.get("archived"):
             self.blocks[target]["archived"] = True
@@ -343,3 +343,16 @@ class PointerLine(unittest.TestCase):
         with self.assertRaises(wr.ReviewError):
             go(two, drive=drive_ok)
         self.assertEqual(go(Notion(), drive=drive_ok, env={"WEEKLY_REVIEW_POINTER_PAGE_ID": ""})["pointer"], "not_configured")
+
+
+class DeepDashboard(unittest.TestCase):
+    def test_the_line_is_found_six_containers_down_like_the_real_dashboard(self):
+        n = Notion()
+        parent = DASH
+        for i, kind in enumerate(("callout", "column_list", "column", "callout", "column_list", "column")):
+            parent = n.add(f"{0xA00 + i:032x}", kind, parent)
+        n.blocks[POINTER]["paragraph"] = {"rich_text": rich_text("something else")}
+        n.add("b" * 32, "paragraph", parent, "Latest review: none yet")
+        out = go(n, drive=drive_ok)
+        self.assertEqual(out["pointer"], "updated")
+        self.assertIn("week ending", n.blocks["b" * 32]["paragraph"]["rich_text"][0]["plain_text"])
