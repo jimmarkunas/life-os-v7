@@ -1,6 +1,7 @@
 """LIFE-903 (AC04, AC07, AC08): one Stable Job Key makes at most one Ledger row from every creator; an unresolved create is settled by read-back, never repeated; a mail is finalized as DUPLICATE only against a
 verified twin; the short-title twin converges; the update paths never touch human state. The claim runs over the production SQL (in-memory sqlite for the unit tests, one on-disk file shared by real OS processes
 for the race). The store in production is MariaDB/InnoDB: the claim is one conditional UPDATE on a UNIQUE key, which InnoDB row-locks; sqlite proves the statement, not InnoDB itself."""
+import glob
 import os
 import pathlib
 import subprocess
@@ -77,9 +78,11 @@ class TwoProcessRace(unittest.TestCase):
             JobsDB(store_file)                                              # the schema, once
             open(ledger_file, "w").close()
             go_file = os.path.join(tmp, "go")
-            procs = [subprocess.Popen([sys.executable, "-B", "-m", "tests.jobs.claim_race_worker", store_file, ledger_file, KEY, role, go_file, mode], cwd=ROOT, stdout=subprocess.PIPE, text=True)
+            procs = [subprocess.Popen([sys.executable, "-B", "-m", "tests.jobs.claim_race_worker", store_file, ledger_file, KEY, role, go_file, mode, str(len(roles))], cwd=ROOT, stdout=subprocess.PIPE, text=True)
                      for role in roles]
-            time.sleep(1.5)                                                 # every worker has started and is waiting for the go file
+            deadline = time.monotonic() + 60                                     # LIFE-966: wait until every worker says it is ready (not a fixed 1.5 s: on a loaded runner a worker can start late), then release them together
+            while len(glob.glob(go_file + ".ready.*")) < len(roles) and time.monotonic() < deadline:
+                time.sleep(0.005)
             open(go_file, "w").close()
             outs = [p.communicate(timeout=120)[0].strip() for p in procs]
             return outs, pathlib.Path(ledger_file).read_text().split()
