@@ -65,7 +65,7 @@ def patterns(text):
 
 def second_look(text, opener=urllib.request.urlopen, base=METER):
     """-> None when the model says ok, else a category word. Raises FilterUnavailable on any failure or any answer that is not one of the fixed words (fail closed)."""
-    body = {"model": MODEL, "max_tokens": MAX_TOKENS, "temperature": 0, "system": SYSTEM, "messages": [{"role": "user", "content": "<text>" + text[:TEXT_CAP] + "</text>"}]}
+    body = {"model": MODEL, "max_tokens": MAX_TOKENS, "system": SYSTEM, "messages": [{"role": "user", "content": "<text>" + text[:TEXT_CAP] + "</text>"}]}
     request = urllib.request.Request(base.rstrip("/") + "/v1/messages", data=json.dumps(body).encode(), method="POST", headers={"content-type": "application/json", "anthropic-version": "2023-06-01", "x-api-key": "meter"})
     try:
         with opener(request, timeout=20) as reply:
