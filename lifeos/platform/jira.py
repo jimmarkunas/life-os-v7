@@ -97,3 +97,12 @@ class Jira:
     def move_issues(self, sprint_id: int | str, keys: list[str]) -> None:
         for index in range(0, len(keys), 50):
             self.post(f"/rest/agile/1.0/sprint/{int(sprint_id)}/issue", {"issues": keys[index:index + 50]}, retry=True)
+
+    # LIFE-915: the Jira Agile backlog primitive. UNVERIFIED against the live tenant (permissions, board semantics, returned shape): nothing calls it live. run() never passes it; the gated MEJ
+    # rollover only uses an object like this one that a test injects, and refuses to close a sprint with unapproved work and no such object. LIFE-918 proves the live contract before any activation.
+    def move_to_backlog(self, keys: list[str]) -> None:
+        for index in range(0, len(keys), 50):
+            self.post("/rest/agile/1.0/backlog/issue", {"issues": keys[index:index + 50]}, retry=True)
+
+    def backlog_issues(self, board_id: int | str, jql: str, fields: str) -> list[Any]:
+        return self.pages(f"/rest/agile/1.0/board/{int(board_id)}/backlog", {"jql": jql, "fields": fields}, "issues")
