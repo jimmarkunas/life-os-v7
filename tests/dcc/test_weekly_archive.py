@@ -257,6 +257,22 @@ class NotesFreezeAndMondayReset(unittest.TestCase):
         self.assertEqual(wa.run(0, True, ENV, n, self.MON_8AM)["reset"], "kept_duplicate_snapshot")
         self.assertEqual(len(n.live_kids(box)), 2)                                                           # nothing was removed
 
+class ArchivePageText(unittest.TestCase):
+    """LIFE-954: the writer lists only the archive page's child pages; no heading or paragraph on it is read."""
+    def test_the_same_snapshots_are_made_with_the_old_sections_or_the_trimmed_page(self):
+        outs = []
+        for lines in (("Archive Model", "Production Owner", "Production Status", "Gap: No snapshots Sep 14 to Nov 22, 2026"),
+                      ("One page per week.", "Rules: Weekly Reports Archive - machine contract"), ()):
+            n = Notion()
+            for text in lines:
+                n.text(ARCHIVE, "heading_2" if text.startswith(("Archive", "Production")) else "paragraph", text)
+            n.add(n.new(), "child_page", ARCHIVE, {}, title="Weekly Reports - Week Ending Sep 13, 2026")
+            report(n)
+            out = wa.run(0, True, ENV, n, TUE_6PM)
+            outs.append((out["snapshot"], titles(n, ARCHIVE)[-1]))
+            self.assertIn("Weekly Reports - Week Ending Sep 13, 2026", titles(n, ARCHIVE))      # the old week page stays listed, untouched
+        self.assertEqual(len(set(outs)), 1)
+
 
 if __name__ == "__main__":
     unittest.main()
