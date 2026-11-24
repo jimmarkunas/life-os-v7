@@ -24,7 +24,7 @@ class FakeRelay(ThreadingHTTPServer):
     def __init__(self, break_membership=False):
         super().__init__(("127.0.0.1", 0), self.Handler)
         self.members, self.channels, self.events, self.break_membership = {OWNER_PUB}, {}, [], break_membership
-        threading.Thread(target=self.serve_forever, daemon=True).start()
+        threading.Thread(target=lambda: self.serve_forever(poll_interval=0.01), daemon=True).start()
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *a):

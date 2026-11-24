@@ -21,7 +21,7 @@ class FakeMcp(ThreadingHTTPServer):
     def __init__(self, reply):
         super().__init__(("127.0.0.1", 0), self.Handler)
         self.reply, self.seen = reply, []
-        threading.Thread(target=self.serve_forever, daemon=True).start()
+        threading.Thread(target=lambda: self.serve_forever(poll_interval=0.01), daemon=True).start()
 
     def stop(self):
         self.shutdown()                                                              # stop serve_forever before the socket closes, or the thread keeps polling a dead descriptor

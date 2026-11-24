@@ -46,16 +46,18 @@ jobs:
           start=$(date +%s)
           status=0
           if [ "$(head -n 1 selected.txt)" = "FULL" ]; then
-            python -m tests.shard 1 3 > shard-1.log 2>&1 &
+            ( t0=$(date +%s); python -m tests.shard 1 3 > shard-1.log 2>&1; rc=$?; echo $(( $(date +%s) - t0 )) > shard-1.sec; exit $rc ) &
             first=$!
-            python -m tests.shard 2 3 > shard-2.log 2>&1 &
+            ( t0=$(date +%s); python -m tests.shard 2 3 > shard-2.log 2>&1; rc=$?; echo $(( $(date +%s) - t0 )) > shard-2.sec; exit $rc ) &
             second=$!
-            python -m tests.shard 3 3 > shard-3.log 2>&1 &
+            ( t0=$(date +%s); python -m tests.shard 3 3 > shard-3.log 2>&1; rc=$?; echo $(( $(date +%s) - t0 )) > shard-3.sec; exit $rc ) &
             third=$!
             wait "$first" || status=$?
             wait "$second" || status=$?
             wait "$third" || status=$?
             cat shard-1.log shard-2.log shard-3.log
+            echo "shard seconds: 1=$(cat shard-1.sec) 2=$(cat shard-2.sec) 3=$(cat shard-3.sec)" | tee -a "$GITHUB_STEP_SUMMARY"
+            for k in 1 2 3; do if [ "$(cat shard-$k.sec)" -ge 100 ]; then echo "::warning::Shard $k took $(cat shard-$k.sec) s; the shard guard level is 100 s and the gate is 120 s (LIFE-963): rebalance tests/shard-weights.json (python -m tests.shard --from-logs) or fix the slow module before it reaches 120"; fi; done
           else
             python -m unittest $(cat selected.txt) > shard-1.log 2>&1 || status=$?
             cat shard-1.log
@@ -176,16 +178,18 @@ jobs:
           start=$(date +%s)
           status=0
           if [ "$(head -n 1 selected.txt)" = "FULL" ]; then
-            python -m tests.shard 1 3 > shard-1.log 2>&1 &
+            ( t0=$(date +%s); python -m tests.shard 1 3 > shard-1.log 2>&1; rc=$?; echo $(( $(date +%s) - t0 )) > shard-1.sec; exit $rc ) &
             first=$!
-            python -m tests.shard 2 3 > shard-2.log 2>&1 &
+            ( t0=$(date +%s); python -m tests.shard 2 3 > shard-2.log 2>&1; rc=$?; echo $(( $(date +%s) - t0 )) > shard-2.sec; exit $rc ) &
             second=$!
-            python -m tests.shard 3 3 > shard-3.log 2>&1 &
+            ( t0=$(date +%s); python -m tests.shard 3 3 > shard-3.log 2>&1; rc=$?; echo $(( $(date +%s) - t0 )) > shard-3.sec; exit $rc ) &
             third=$!
             wait "$first" || status=$?
             wait "$second" || status=$?
             wait "$third" || status=$?
             cat shard-1.log shard-2.log shard-3.log
+            echo "shard seconds: 1=$(cat shard-1.sec) 2=$(cat shard-2.sec) 3=$(cat shard-3.sec)" | tee -a "$GITHUB_STEP_SUMMARY"
+            for k in 1 2 3; do if [ "$(cat shard-$k.sec)" -ge 100 ]; then echo "::warning::Shard $k took $(cat shard-$k.sec) s; the shard guard level is 100 s and the gate is 120 s (LIFE-963): rebalance tests/shard-weights.json (python -m tests.shard --from-logs) or fix the slow module before it reaches 120"; fi; done
           else
             python -m unittest $(cat selected.txt) > shard-1.log 2>&1 || status=$?
             cat shard-1.log
