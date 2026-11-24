@@ -62,7 +62,7 @@ class Fake:
 
 
 ROUNDS = [(Parent("p1", "Uber - Technical Project Manager"), Child("uber", "p1", "2026-09-29", None, 1, True)),
-          (Parent("p2", "Walmart - Senior Manager, Operations and Implementation", False, "Interviewing"), Child("walmart", "p2", None, None, 1, True))]
+          (Parent("p2", "Walmart - Senior Manager, Operations and Implementation", True, "Interviewing"), Child("walmart", "p2", None, None, 1, True))]
 ENVIRON = {**ENV, "HIRING_PIPELINE_PAGE_ID": "root"}
 
 

@@ -430,6 +430,9 @@ def meeting_parts(join, place):
     return [p for p in (("Join link ↗", False, join) if join else None, " · " if join and place else None, place) if p] or ["Unavailable"]
 
 
+VERIFY_SCHEDULING = "Verify scheduling and interview details before treating this round as confirmed."     # the machine's Next action when no Calendar event is linked; lifeos/interview/held.py replaces it once the round is Held (LIFE-958)
+
+
 def round_page(view, query, parent_id, identity, prep=None, transcript=("absent", None)):
     pending = not query.interview_date
     who = (query.interviewer or "").strip() or None
@@ -455,7 +458,7 @@ def round_page(view, query, parent_id, identity, prep=None, transcript=("absent"
                         para(("Next action: ", True), "Confirm an interview time with the recruiter." if pending
                              else "Ask the recruiter whether the interview moves to a new time." if cancelled
                              else "Prepare; joining details come from the Calendar invite." if ref
-                             else "Verify scheduling and interview details before treating this round as confirmed."),
+                             else VERIFY_SCHEDULING),
                         para(("Objective (derived): ", True), "Not run." if not prep else "See Prepare."), note(ROUND_MACHINE_NOTE)],
                        "🎯", "blue_background", ("Interview snapshot", True))
     live = [note("Your notes. Type directly beneath each heading; automated updates never touch these blocks.")]
