@@ -8,12 +8,13 @@ from zoneinfo import ZoneInfo
 from lifeos.platform import ct_stamp
 from lifeos.platform.names import split_title
 from lifeos.platform.notion_client import NotionError, rich_text
-from . import notion
+from . import held, notion
 
 TITLE = "Interviews"
 NV = "Not verified"
 PROPERTIES = {"Interview": "title", "Company": "rich_text", "Role": "rich_text", "Round": "number", "Date (CT)": "date", "When": "rich_text", "Interviewer": "rich_text",
               "Status": "select", "Transcript": "checkbox", "Round page": "url", "Updated (CT)": "rich_text"}
+SCREEN = re.compile(r"^Round type: (?P<kind>Recruiter screen(?: \(.*\))?)$")      # LIFE-958: the one marker line a round's snapshot carries when the call was a screen, not a numbered round (set once, read here, never rewritten)
 SNAPSHOT_WHO = re.compile(r"^Interviewer: (?P<who>.*?) · Status: (?P<status>.*)$")
 LIMIT = 100
 
@@ -76,19 +77,22 @@ def facts(client, parent, child, context=None, today=None):
     if status is None:
         return None
     when = next((line[len("When: "):] for line in lines if line.startswith("When: ")), NV)
+    screen = next((m.group("kind") for m in (SCREEN.match(line) for line in lines) if m), None)
     transcript = False
     for block in tops:
         if block.get("type") == "child_page" and (block.get("child_page") or {}).get("title") == "Full Transcript":
             transcript = any(notion.text(b).strip() for b in notion.children(client, block["id"], [notion.MAX_CALLS], context))
     company, role = split_title(parent.title)
     date = child.interview_date
-    return {"company": company, "role": role, "round": child.ordinal, "date": date, "when": when, "who": who,
-            "status": status_of(status, date, today or _today()), "transcript": transcript, "url": page_url(child.page_id)}
+    natural = status_of(status, date, today or _today())
+    state = "Retired" if parent.active is False else natural               # LIFE-958: a round of an opportunity under Retired Opportunities (or no longer active) is Retired, so it leaves the Newest first view
+    return {"company": company, "role": role, "round": None if screen else child.ordinal, "kind": screen, "date": date, "when": when, "who": who,
+            "status": state, "held": natural == "Held" and state != "Retired", "transcript": transcript, "url": page_url(child.page_id)}
 
 
 def properties(row, stamp):
     """The Notion properties of a row (the round page's own URL is its key)."""
-    title = f"{row['company']} · Interview {row['round']}" if row["round"] else f"{row['company']} · Interview"
+    title = f"{row['company']} · {row['kind']}" if row.get("kind") else f"{row['company']} · Interview {row['round']}" if row["round"] else f"{row['company']} · Interview"
     props = {"Interview": {"title": rich_text(title)}, "Company": {"rich_text": rich_text(row["company"])}, "Role": {"rich_text": rich_text(row["role"])},
              "Round": {"number": row["round"]}, "Date (CT)": {"date": {"start": row["date"]} if row["date"] else None}, "When": {"rich_text": rich_text(row["when"])},
              "Interviewer": {"rich_text": rich_text(row["who"])}, "Status": {"select": {"name": row["status"]}}, "Transcript": {"checkbox": bool(row["transcript"])},
@@ -155,6 +159,8 @@ def sync(client, environ, rounds, live, context, counts, stamp=None, today=None)
                 counts["roster_skipped"] = counts.get("roster_skipped", 0) + 1
                 continue
             wanted[row["url"]] = row
+            if row["held"]:
+                held.repair(client, child.page_id, live, counts, context)                      # LIFE-958: a Held round's Verify-scheduling sentence becomes the page's own follow-up, or None
         for url, row in wanted.items():
             props = properties(row, stamp)
             old = have.get(url)
