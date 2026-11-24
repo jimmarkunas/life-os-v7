@@ -18,6 +18,10 @@ from lifeos.platform.notion_client import Client, NotionError
 
 DB_TITLE = "Agent Inbox list"
 PAGE_TITLE = "Agent Inbox"
+MERGED_TITLE = "Daily LIFE OS Report (Hourly)"                                    # LIFE-938/939: the one page after the merge; the old Agent Inbox page is archived, no pointer
+PAGE_TITLES = (MERGED_TITLE, PAGE_TITLE)
+MERGED_LABELS = ("This week", "FYI", "Snoozed")                                    # the three count tiles beside the Now and Today box
+BOX_ITEMS_MAX = 12
 URGENCY = ("Now", "Today", "This week", "FYI")
 WORKSPACES = ("Personal", "Bytalos")
 STATUSES = ("New", "Done", "Dismissed", "Snoozed", "Promoted")
@@ -207,6 +211,45 @@ def _tiles(client, page_id):
     return out
 
 
+def _merged_row(client, page_id):
+    """LIFE-938: the merged page's tile row as (box callout, box heading block, [(callout id, number block, label block)] for This week, FYI and Snoozed), or None. The row is a column_list among the
+    first blocks of the page, or the first column_list inside the callout that wraps it: four columns, the first a callout headed `Now N · Today M`, then one `N` / label callout each."""
+    for block in _children(client, page_id)[:6]:
+        kind = block.get("type")
+        if kind == "callout":
+            row = next((b for b in _children(client, block["id"]) if b.get("type") == "column_list"), None)
+        else:
+            row = block if kind == "column_list" else None
+        if row is None:
+            continue
+        columns = _children(client, row["id"])
+        if len(columns) != 4:
+            continue
+        parts = []
+        for column in columns:
+            callouts = [b for b in _children(client, column["id"]) if b.get("type") == "callout"]
+            if len(callouts) != 1:
+                break
+            parts.append((callouts[0], _children(client, callouts[0]["id"])))
+        else:
+            box, inner = parts[0]
+            if not inner or inner[0].get("type") != "heading_3" or not (_words(inner[0]).startswith("Now") and "Today" in _words(inner[0])):
+                continue
+            tiles = []
+            for (callout, kids), label in zip(parts[1:], MERGED_LABELS, strict=True):
+                if [b.get("type") for b in kids[:2]] != ["heading_3", "paragraph"] or _words(kids[1]).strip() != label:
+                    break
+                tiles.append((callout["id"], kids[0], kids[1]))
+            else:
+                return box, inner[0], tiles
+    return None
+
+
+def _live_titled(page, titles):
+    title = "".join(t.get("plain_text", "") for t in (page.get("properties", {}).get("title") or {}).get("title", []))
+    return title in titles and not page.get("in_trash") and not page.get("archived")
+
+
 def _parent_page(client, source):
     """LIFE-891: the page that holds the inbox database the run already found (data source, then its database, then that database's parent page), accepted only when its title
     is exactly PAGE_TITLE, it is live, and its first block is the tile row. None for anything else: the caller then falls back to the paged title search."""
@@ -217,8 +260,7 @@ def _parent_page(client, source):
         if parent.get("type") != "page_id":
             return None
         page = client.call("GET", f"/pages/{parent['page_id']}") or {}
-        title = "".join(t.get("plain_text", "") for t in (page.get("properties", {}).get("title") or {}).get("title", []))
-        if title != PAGE_TITLE or page.get("in_trash") or page.get("archived"):
+        if not _live_titled(page, (PAGE_TITLE,)):
             return None
         _tiles(client, page["id"])
         return page["id"]
@@ -227,17 +269,24 @@ def _parent_page(client, source):
 
 
 def locate_page(client, source=None):
-    """The one page titled PAGE_TITLE whose first block is the tile row. None or several is a fixed refusal; no id is ever committed.
-    LIFE-891: with `source` (the inbox database the run already located) its parent page is used first; otherwise, or when that is not the tile page, every result page of the title search is read."""
+    """The page that holds the tiles: the one live page titled MERGED_TITLE with the merged tile row (LIFE-938), else the one live page titled PAGE_TITLE whose first block is the old tile row.
+    None or several of the winning kind is a fixed refusal; no id is ever committed. A merged page always wins, so the old Agent Inbox page (archived, tiles frozen) is never written after the merge.
+    LIFE-891: with `source` the old page's database parent is tried first (only before the merge); otherwise every result page of the title searches is read."""
+    merged = []
+    for page in notion_pages.search_all(client, MERGED_TITLE, "page", InboxError, incomplete="page_not_found", capped="page_not_found"):
+        if _live_titled(page, (MERGED_TITLE,)) and _merged_row(client, page["id"]):
+            merged.append(page["id"])
+    if merged:
+        if len(merged) != 1:
+            raise InboxError("page_ambiguous")
+        return merged[0]
     if source:
         parent = _parent_page(client, source)
         if parent:
             return parent
-    found = notion_pages.search_all(client, PAGE_TITLE, "page", InboxError, incomplete="page_not_found", capped="page_not_found")
     holders = []
-    for page in found:
-        title = "".join(t.get("plain_text", "") for t in (page.get("properties", {}).get("title") or {}).get("title", []))
-        if title != PAGE_TITLE or page.get("in_trash") or page.get("archived"):
+    for page in notion_pages.search_all(client, PAGE_TITLE, "page", InboxError, incomplete="page_not_found", capped="page_not_found"):
+        if not _live_titled(page, (PAGE_TITLE,)):
             continue
         try:
             _tiles(client, page["id"])
@@ -249,11 +298,67 @@ def locate_page(client, source=None):
     return holders[0]
 
 
+def _box_lines(client, source):
+    """-> the Now items then the Today items (New status) as rich-text lists for the box, at most BOX_ITEMS_MAX, the last line saying how many more wait in the list. Subject and link only."""
+    lines, more = [], 0
+    for urgency in ("Now", "Today"):
+        body = {"page_size": 50, "filter": {"and": [_select("Status", "New"), _select("Urgency", urgency)]}, "sorts": [{"timestamp": "created_time", "direction": "ascending"}]}
+        for row in client.query_data_source(source, body).get("results", ()):
+            props = row.get("properties") or {}
+            subject = _plain_title((props.get("Subject") or {}).get("title")) or "(no subject)"
+            link = (props.get("Link") or {}).get("url") or ""
+            if len(lines) >= BOX_ITEMS_MAX:
+                more += 1
+                continue
+            text = {"type": "text", "text": {"content": subject[:300], **({"link": {"url": link}} if link else {})}}
+            lines.append([{"type": "text", "text": {"content": urgency + ": "}, "annotations": {"bold": True}}, text])
+    if more:
+        lines.append([{"type": "text", "text": {"content": f"+{more} more in the Agent Inbox list"}, "annotations": {"italic": True}}])
+    return lines
+
+
+def _line_key(rich):
+    return [(piece.get("plain_text") or (piece.get("text") or {}).get("content", ""), piece.get("href") or ((piece.get("text") or {}).get("link") or {}).get("url") or "") for piece in rich]
+
+
+def _set_box(client, box, heading, lines, want_heading):
+    """Make the box exactly `heading` plus one bulleted line per item: change only what differs, append what is missing, delete what is extra. Only the box's own children are touched. -> blocks changed."""
+    changed = 0
+    if _words(heading) != want_heading:
+        client.update_block(heading["id"], "heading_3", [{"type": "text", "text": {"content": want_heading}}])
+        changed += 1
+    existing = [b for b in _children(client, box["id"]) if b["id"] != heading["id"]]
+    for index, rich in enumerate(lines):
+        if index < len(existing) and existing[index].get("type") == "bulleted_list_item":
+            have = _line_key((existing[index].get("bulleted_list_item") or {}).get("rich_text") or ())
+            if have != _line_key(rich):
+                client.update_block(existing[index]["id"], "bulleted_list_item", rich)
+                changed += 1
+        else:
+            client.call_once("PATCH", f"/blocks/{box['id']}/children", {"children": [{"object": "block", "type": "bulleted_list_item", "bulleted_list_item": {"rich_text": rich}}]})
+            changed += 1
+    for extra in existing[len(lines):]:
+        client.call_once("DELETE", f"/blocks/{extra['id']}")
+        changed += 1
+    return changed
+
+
 def recount_page(client, page_id=None, source=None):
-    """Write the five tile numbers and labels from the database. Only the number and label text of the five tiles is ever patched, and only when it differs. -> {"tiles_changed": n, "tiles": 5}."""
+    """Write the tiles from the database. Old page: the five tile numbers and labels. Merged page (LIFE-938): the Now and Today box (heading `Now N · Today M` and one line per item with its
+    link) and the This week, FYI and Snoozed tiles. Only those blocks are ever patched, and only when they differ. -> {"tiles": n, "tiles_changed": n}."""
     source = source or locate(client)
     numbers = counts(client, source)
-    tiles = _tiles(client, page_id or locate_page(client, source))
+    page_id = page_id or locate_page(client, source)
+    merged = _merged_row(client, page_id)
+    if merged:
+        box, heading, tiles = merged
+        changed = _set_box(client, box, heading, _box_lines(client, source), f"Now {numbers['Now']} · Today {numbers['Today']}")
+        for label, (_, number_block, label_block) in zip(MERGED_LABELS, tiles, strict=True):
+            if _words(number_block) != str(numbers[label]):
+                client.update_block(number_block["id"], "heading_3", [{"type": "text", "text": {"content": str(numbers[label])}}])
+                changed += 1
+        return {"tiles": 4, "tiles_changed": changed, "layout": "merged"}
+    tiles = _tiles(client, page_id)
     changed = 0
     for (label, _, _), (_, number_block, label_block) in zip(TILES, tiles, strict=True):
         want = str(numbers[label])
