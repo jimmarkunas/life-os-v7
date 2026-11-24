@@ -156,11 +156,18 @@ def _minutes(hour, minute, ampm):
 def calendar(regions, now):
     lane = Lane("Calendar")
     lines = _card(lane, regions, router.CALENDAR_REGION, CARD_FRESH, now)
-    spans = [(_minutes(*m[:3]), _minutes(*m[3:]), t) for t in _texts(lines) for m in RANGE.findall(t)[:1]]
-    lane.lines.append(f"{len(spans)} timed commitments on the Calendar card.")
-    overlaps = sum(1 for i, a in enumerate(spans) for b in spans[i + 1:] if a[0] < b[1] and b[0] < a[1])
+    days, spans = [[]], 0
+    for block in lines or []:
+        if block.get("type", "").startswith("heading"):
+            days.append([])                                           # a day heading: overlaps are only ever within one day
+            continue
+        for m in RANGE.findall(block_text(block))[:1]:
+            days[-1].append((_minutes(*m[:3]), _minutes(*m[3:])))
+            spans += 1
+    lane.lines.append(f"{spans} timed commitments on the Calendar card.")
+    overlaps = sum(1 for day in days for i, a in enumerate(day) for b in day[i + 1:] if a[0] < b[1] and b[0] < a[1])
     if overlaps:
-        lane.items.append(("Schedule", f"{overlaps} overlapping calendar commitments on the card: decide whether each overlap is intended."))
+        lane.items.append(("Schedule", f"{overlaps} overlapping calendar commitments within a day on the card: decide whether each overlap is intended."))
     return lane
 
 
@@ -179,7 +186,7 @@ def mail(regions, now):
             rows = max(0, sum(1 for b in got[1] if b.get("type") == "table_row") - 1)
     lane.lines.append("Recruiter, Mail Alerts and Hiring Pipeline cards read; open recruiter rows are listed on the Daily Report.")
     if rows:
-        lane.items.append(("Waiting On", "Recruiter Outreach rows are open on the Daily Report: answer, pass or mark each one."))
+        lane.items.append(("Waiting On", f"{rows} Recruiter Outreach rows are open on the Daily Report: answer, pass or mark each one."))
     return lane
 
 

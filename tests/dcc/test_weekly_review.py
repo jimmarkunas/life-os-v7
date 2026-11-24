@@ -371,3 +371,25 @@ class AutomationLane(unittest.TestCase):
         n = Notion(fresh=False)
         out = go(n, drive=drive_ok, opener=runs(ok=False))
         self.assertIn("Automation", out["weeks"][0]["reasons"])
+
+
+class RowQuality(unittest.TestCase):
+    NOW = datetime(2026, 11, 24, 13, 30, tzinfo=CT)
+
+    def test_overlaps_are_counted_within_a_day_only_and_the_recruiter_item_carries_its_number(self):
+        def blocks(*rows):
+            return [{"type": kind, kind: {"rich_text": rich_text(text)}} for kind, text in rows]
+        two_days = blocks(("heading_3", "Today"), ("paragraph", "2:00 PM–3:00 PM — A"), ("heading_3", "Tomorrow"), ("paragraph", "2:30 PM–3:30 PM — B"))
+        self.assertEqual(wl.calendar({"Calendar": ("Calendar (11/24 · 1:20 PM CT)", two_days)}, self.NOW).items, [])
+        same_day = blocks(("heading_3", "Today"), ("paragraph", "2:00 PM–3:00 PM — A"), ("paragraph", "2:30 PM–3:30 PM — B"))
+        self.assertEqual(wl.calendar({"Calendar": ("Calendar (11/24 · 1:20 PM CT)", same_day)}, self.NOW).items[0][0], "Schedule")
+        n = Notion()
+        out = go(n, drive=drive_ok)
+        self.assertEqual(out["pointer_line"], "found")
+        text = " ".join(b["to_do"]["rich_text"][0]["text"]["content"] for b in n.rows[-1]["blocks"] if b["type"] == "to_do")
+        self.assertIn("2 Recruiter Outreach rows", text)
+
+    def test_a_dry_run_reports_whether_the_pointer_line_is_there_without_writing(self):
+        n = Notion()
+        out = go(n, live=False, drive=drive_ok)
+        self.assertEqual((out["pointer_line"], out["pointer_scanned"] > 0, n.writes), ("found", True, []))
