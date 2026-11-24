@@ -235,13 +235,29 @@ def _kpi_name(client, column):
     return ""
 
 
-def converge_columns(client, block_id, names, protected_ids, live):
+def foreign_ids(client, block_id, names):
+    """LIFE-938: the ids of the blocks inside the Command Center callout that are not this card's: a divider, and any row of columns none of whose columns is one of our KPI names (the Agent Inbox tile row
+    Jim put in the callout on Nov 24 2026). Read-only. They are left exactly as they are by every write below."""
+    kids = report_region.children(client, block_id, _fail)
+    out = set()
+    for b in kids[1:]:
+        if b.get("type") == "divider":
+            out.add(b["id"])
+        elif b.get("type") == "column_list":
+            columns = report_region.children(client, b["id"], _fail)
+            if not any(_kpi_name(client, column) in names for column in columns):
+                out.add(b["id"])
+    return out
+
+
+def converge_columns(client, block_id, names, protected_ids, live, skip=frozenset()):
     """LIFE-655: the sync refuses to shrink a row of columns, so when the callout's KPI row holds more columns than the card now renders (LIFE-645 retired the Attention KPI: 4 live, 3 rendered),
     the surplus columns are removed here first, through a client scoped to this callout (any other block is refused before it is sent). A surplus column is one whose KPI name is not rendered
     any more; what is left must be exactly the rendered names in order, or nothing is deleted. Each delete is read back, then the remaining columns get the balanced width. -> columns removed (0: nothing to do)."""
     scoped = report_region.ScopedClient(client, block_id, _fail)
     meta, existing = scoped.call("GET", f"/blocks/{quote(block_id, safe='')}"), report_region.children(scoped, block_id, _fail)
     ours = ("toggle", "column_list", *report_region.TEXT_KINDS)
+    existing = existing[:1] + [b for b in existing[1:] if b.get("id") not in skip]
     if (not isinstance(meta, dict) or meta.get("type") != "callout" or not existing or report_region.plain(existing[0]).strip() != TITLE or any(b.get("type") not in ours for b in existing[1:])):
         return 0                                                                      # not our callout as the sync expects it: it raises CARD_NOT_OWNED itself, before any write
     rows = [b for b in existing if b.get("type") == "column_list"]
@@ -294,8 +310,10 @@ def run(limit, live, environ=os.environ, client=None, now=None):
     spec = render(model)
     protected_ids = {region: (environ.get(name) or "").strip() for name, region in PROTECTED}
     try:
-        trimmed = converge_columns(client, block_id, [name for _, name, _ in model["kpis"]] + [CLOCK_NAME], protected_ids, live)
-        changed, removed = (0, 0) if trimmed and not live else report_region.replace_tree(client, block_id, TITLE, MODULE, spec, protected_ids, _fail, "dcc", live)       # a dry run cannot preflight a tree it has not yet trimmed
+        kpi_names = [name for _, name, _ in model["kpis"]] + [CLOCK_NAME]
+        skip = foreign_ids(client, block_id, kpi_names)
+        trimmed = converge_columns(client, block_id, kpi_names, protected_ids, live, skip)
+        changed, removed = (0, 0) if trimmed and not live else report_region.replace_tree(client, block_id, TITLE, MODULE, spec, protected_ids, _fail, "dcc", live, skip)       # a dry run cannot preflight a tree it has not yet trimmed
     except NotionError as error:
         if "CARD_NOT_OWNED" not in str(error):                       # LIFE-655: a failed callout write no longer freezes the page's Updated line; a wrong target still writes nothing
             print("dcc: header", _stamp(client, block_id, now, live))

@@ -424,8 +424,9 @@ def _sync(client, parent, old, new, anchor, fail, live):
     return count
 
 
-def replace_tree(client, block_id, title, module, spec, protected_ids, fail, tag, live):
-    """The owner's callout keeps its heading and holds exactly `spec` under it: preflight, sync, read back (a second sync finds nothing), then remove the old flat lines. -> (changes, removed)."""
+def replace_tree(client, block_id, title, module, spec, protected_ids, fail, tag, live, skip=frozenset()):
+    """The owner's callout keeps its heading and holds exactly `spec` under it: preflight, sync, read back (a second sync finds nothing), then remove the old flat lines. -> (changes, removed).
+    `skip` (LIFE-938, Jim's Nov 24 rearrangement): ids of blocks inside the callout that belong to another writer (the Agent Inbox tile row, a divider); they are never read as ours, never synced, never deleted."""
     meta = client.call("GET", f"/blocks/{quote(block_id, safe='')}")
     if not isinstance(meta, dict) or meta.get("type") != "callout" or not same_id(meta.get("id"), block_id):
         raise fail("CARD_NOT_OWNED")
@@ -433,6 +434,7 @@ def replace_tree(client, block_id, title, module, spec, protected_ids, fail, tag
     existing = children(client, block_id, fail)
     if not (existing and existing[0].get("type") in HEADINGS and plain(existing[0]).strip() == title):
         raise fail("CARD_NOT_OWNED")
+    existing = existing[:1] + [b for b in existing[1:] if b.get("id") not in skip]
     old_text, ours = [b for b in existing[1:] if b.get("type") in TEXT_KINDS], [b for b in existing[1:] if b.get("type") not in TEXT_KINDS]
     try:
         router.check_write(module, [title])
@@ -446,7 +448,7 @@ def replace_tree(client, block_id, title, module, spec, protected_ids, fail, tag
     _sync(client, block_id, ours, spec, existing[0]["id"], fail, False)                   # preflight: the whole tree is checked before the first write
     require_configured(protected_ids, fail)
     changes = _sync(client, block_id, ours, spec, existing[0]["id"], fail, True)
-    if _sync(client, block_id, [b for b in children(client, block_id, fail)[1:] if b.get("type") not in TEXT_KINDS], spec, None, fail, False):
+    if _sync(client, block_id, [b for b in children(client, block_id, fail)[1:] if b.get("type") not in TEXT_KINDS and b.get("id") not in skip], spec, None, fail, False):
         raise fail("CARD_VERIFY_FAILED")
     removed = 0
     for old in old_text:
@@ -457,6 +459,7 @@ def replace_tree(client, block_id, title, module, spec, protected_ids, fail, tag
             if str(error) != "NOTION_HTTP_404":
                 raise
     after = children(client, block_id, fail)
+    after = after[:1] + [b for b in after[1:] if b.get("id") not in skip]
     if [b.get("id") for b in after[:1]] != [existing[0]["id"]] or [b.get("type") for b in after[1:]] != [b.get("type") for b in spec]:
         raise fail("CARD_VERIFY_FAILED")
     return changes, removed

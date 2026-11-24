@@ -211,37 +211,31 @@ def _tiles(client, page_id):
 
 
 def _merged_row(client, page_id):
-    """LIFE-938: the merged page's tile row as (box callout, box heading block, [(callout id, number block, label block)] for This week, FYI and Snoozed), or None. The row is a column_list among the
-    first blocks of the page, or the first column_list inside the callout that wraps it: four columns, the first a callout headed `Now N · Today M`, then one `N` / label callout each."""
-    for block in _children(client, page_id)[:6]:
-        kind = block.get("type")
-        if kind == "callout":
-            row = next((b for b in _children(client, block["id"]) if b.get("type") == "column_list"), None)
-        else:
-            row = block if kind == "column_list" else None
-        if row is None:
-            continue
-        columns = _children(client, row["id"])
-        if len(columns) != 4:
-            continue
-        parts = []
-        for column in columns:
-            callouts = [b for b in _children(client, column["id"]) if b.get("type") == "callout"]
-            if len(callouts) != 1:
-                break
-            parts.append((callouts[0], _children(client, callouts[0]["id"])))
-        else:
-            box, inner = parts[0]
-            if not inner or inner[0].get("type") != "heading_3" or not (_words(inner[0]).startswith("Now") and "Today" in _words(inner[0])):
-                continue
-            tiles = []
-            for (callout, kids), label in zip(parts[1:], MERGED_LABELS, strict=True):
-                if [b.get("type") for b in kids[:2]] != ["heading_3", "paragraph"] or _words(kids[1]).strip() != label:
-                    break
-                tiles.append((callout["id"], kids[0], kids[1]))
-            else:
-                return box, inner[0], tiles
-    return None
+    """LIFE-938: the merged page's blocks as (box callout, box heading block, [(callout id, number block, label block)] for This week, FYI and Snoozed), or None.
+    They are found by what they say, wherever Jim put them among the page's first blocks and the containers inside them (callouts, columns): the box is the one callout headed `Now N · Today M`,
+    each tile is the one callout whose first block is its number and whose second is its label. Two of a kind, or a missing one, is None (the caller then falls back to the old page)."""
+    boxes, tiles = [], {}
+
+    def scan(blocks, depth):
+        for block in blocks:
+            kind = block.get("type")
+            if kind == "callout":
+                kids = _children(client, block["id"])
+                if kids and kids[0].get("type") == "heading_3":
+                    head = _words(kids[0])
+                    if head.startswith("Now") and "Today" in head:
+                        boxes.append((block, kids[0]))
+                    elif len(kids) > 1 and kids[1].get("type") == "paragraph" and _words(kids[1]).strip() in MERGED_LABELS:
+                        tiles.setdefault(_words(kids[1]).strip(), []).append((block["id"], kids[0], kids[1]))
+                if depth < 3:
+                    scan(kids, depth + 1)
+            elif kind in ("column_list", "column") and depth < 4:
+                scan(_children(client, block["id"]), depth + 1)
+
+    scan(_children(client, page_id)[:6], 0)
+    if len(boxes) != 1 or any(len(tiles.get(label, ())) != 1 for label in MERGED_LABELS):
+        return None
+    return boxes[0][0], boxes[0][1], [tiles[label][0] for label in MERGED_LABELS]
 
 
 def _live_titled(page, titles):

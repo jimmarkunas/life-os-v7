@@ -342,6 +342,28 @@ class RunTests(unittest.TestCase):
         self.assertIn("CARD_STRUCTURE_CHANGED", str(error.exception))
         self.assertEqual(writes(notion, mark), [])
 
+    def test_a_tile_row_and_a_divider_inside_the_callout_are_left_exactly_as_they_are(self):
+        """LIFE-938: Jim put the Agent Inbox tile row and a divider inside the Command Center callout (Nov 24 2026); they are another writer's, so this card never reads them as its own, writes to them or deletes them."""
+        notion = page()
+        go(notion)
+        def rich(text):
+            return {"rich_text": [{"type": "text", "text": {"content": text}}]}
+        notion.children["tile-row"] = [{"id": "tile-col", "type": "column", "has_children": True, "column": {}}]
+        notion.children["tile-col"] = [{"id": "tile-callout", "type": "callout", "has_children": True, "callout": rich("")}]
+        notion.children["tile-callout"] = [{"id": "tile-n", "type": "heading_3", "has_children": False, "heading_3": rich("3")}, {"id": "tile-l", "type": "paragraph", "has_children": False, "paragraph": rich("FYI")}]
+        kids = notion.children["dcc-callout"]
+        kids.insert(2, {"id": "tile-row", "type": "column_list", "has_children": True, "column_list": {}})
+        kids.insert(3, {"id": "tile-divider", "type": "divider", "has_children": False, "divider": {}})
+        import copy
+        keep = ("tile-row", "tile-col", "tile-callout")
+        before = {k: copy.deepcopy(notion.children[k]) for k in keep}
+        mark = len(notion.log)
+        counts = go(notion)
+        self.assertEqual(counts["status"], "fresh")
+        self.assertEqual(writes(notion, mark), [])                                                  # the KPI row is unchanged and nothing was aimed at the foreign blocks
+        self.assertEqual([b["id"] for b in notion.children["dcc-callout"]][2:4], ["tile-row", "tile-divider"])
+        self.assertEqual({k: notion.children[k] for k in keep}, before)
+
     def test_a_block_that_is_not_ours_or_a_changed_structure_stops_the_write(self):
         notion = page()
         notion.children["dcc-callout"].append({"id": "extra-view", "type": "child_database", "has_children": False, "child_database": {}})
