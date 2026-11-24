@@ -1,5 +1,6 @@
-"""D16.1 (Jim verified Oct 21): Notion's API cannot set a page's width, so a page V7 creates under a page is created from Jim's blank "Full Width Page" template.
-Notion applies the template after the create returns, so the caller writes its blocks once `WAIT` seconds have passed and the template's empty filler paragraph is gone."""
+"""Creates a page under a page from Jim's Full Width template (D16.1): the API cannot set a page width.
+
+Jim verified the rule on Oct 21. Notion applies the template after the create returns, so the caller writes its blocks once `WAIT` seconds have passed and the template's empty filler paragraph is gone."""
 import time
 from urllib.parse import quote
 

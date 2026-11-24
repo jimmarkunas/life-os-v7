@@ -11,7 +11,6 @@
   "WRITE_COUNT": ["dcc", "degraded", false, "Notion returned a different number of blocks than were written.", "Retried at the next run."],
   "PAGE_INCOMPLETE": ["dcc", "degraded", false, "A Notion page listing was cut short or looped.", "Retried at the next run."],
   "PAGE_UNRESOLVED": ["dcc", "blocked", false, "The Daily Report page could not be found from the Command Center card.", "Check DCC_CARD_BLOCK_ID."],
-  "READBACK_MISMATCH": ["dcc", "degraded", false, "A new archive page did not read back as written.", "Retried at the next run; the incomplete page is set aside."],
   "EMPTY_SNAPSHOT": ["dcc", "degraded", false, "The Daily Report gave no static blocks to archive; no page was made complete.", "Retried at the next run."],
   "TEMPLATE_MISSING": ["dcc", "blocked", false, "The Full Width page template is not configured, so no archive page was made (D16.1).", "Set FULL_WIDTH_TEMPLATE in the Notion ids."]
 }
