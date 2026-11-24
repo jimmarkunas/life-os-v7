@@ -146,18 +146,28 @@ def _children(client, page_id):
 
 
 def _pointer_text(friday, health, open_count):
-    return f"Latest review: week ending {short(friday)} · Generated · Source Health {health} · {open_count} open decisions"
+    return f"{POINTER_PREFIX} week ending {short(friday)} · Generated · Source Health {health} · {open_count} open decisions"
 
 
-def _set_pointer(client, block_id, friday, health, open_count, link):
+POINTER_PREFIX = "Latest review:"
+
+
+def _find_pointer(client, page_id):
+    """The one paragraph or callout on the Dashboard page whose text starts `Latest review:` -> its id, or None; two of them stop the stage."""
+    found = [b["id"] for b in wl._flat(wl._tree(client, page_id)) if b.get("type") in POINTER_KINDS and wl.block_text(b).strip().startswith(POINTER_PREFIX)]
+    if len(found) > 1:
+        raise _fail("POINTER_AMBIGUOUS")
+    return found[0] if found else None
+
+
+def _set_pointer(client, block_id, friday, health, open_count):
     block = client.call("GET", f"/blocks/{quote(block_id, safe='')}")
     kind = block.get("type")
     if kind not in POINTER_KINDS:
         raise _fail("POINTER_KIND")
-    rich = [{"type": "text", "text": {"content": _pointer_text(friday, health, open_count), "link": {"url": link} if link else None}}]
-    client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}", {kind: {"rich_text": rich}})
+    client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}", {kind: {"rich_text": rich_text(_pointer_text(friday, health, open_count))}})
     again = client.call("GET", f"/blocks/{quote(block_id, safe='')}")
-    if _pointer_text(friday, health, open_count) not in "".join(t.get("plain_text", "") for t in (again.get(kind) or {}).get("rich_text", [])):
+    if _pointer_text(friday, health, open_count) not in "".join(t.get("plain_text", "") or (t.get("text") or {}).get("content", "") for t in (again.get(kind) or {}).get("rich_text", [])):
         raise _fail("POINTER_READBACK")
 
 
@@ -268,10 +278,11 @@ def run(limit, live, environ=os.environ, client=None, now=None, drive_read=None,
         for row in current:
             if row["id"].replace("-", "") != newest_made["page"].replace("-", "") and (_row_date(row) or date.min) < date.fromisoformat(newest_made["week_ending"]):
                 client.call_once("PATCH", f"/pages/{quote(row['id'], safe='')}", {"properties": {"Current": {"checkbox": False}}})
-        pointer = weekly_archive._clean(environ.get("WEEKLY_REVIEW_POINTER_BLOCK_ID"))
+        dash = weekly_archive._clean(environ.get("WEEKLY_REVIEW_POINTER_PAGE_ID"))
+        pointer = _find_pointer(client, dash) if dash else None
         if pointer:
-            _set_pointer(client, pointer, date.fromisoformat(newest_made["week_ending"]), newest_made["health"], newest_made["open_decisions"], "")
+            _set_pointer(client, pointer, date.fromisoformat(newest_made["week_ending"]), newest_made["health"], newest_made["open_decisions"])
             out["pointer"] = "updated"
         else:
-            out["pointer"] = "not_configured"
+            out["pointer"] = "not_configured" if not dash else "line_missing"
     return out
