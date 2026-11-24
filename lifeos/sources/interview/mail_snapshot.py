@@ -3,10 +3,9 @@
 The early domains run of a tick (phase tick) reads the same Gmail and Outlook window the late job reads today (interview_evidence.read_mail) and files the records, the per-source status and a fingerprint under the tick's hour;
 it writes nothing to Notion, the Ledger or anywhere else, and a failed read files nothing. The late Interview job (the one writer of the opportunity pages) uses the snapshot only when it is complete, for the same window
 and taken after THIS tick started (the same two-minute grace lifeos.platform.phase gives a dispatch run); a stale, wrong-hour, incomplete, corrupt or missing snapshot, or a store that cannot be read, means it reads mail itself exactly as before.
-The shadow stage (proof week only) compares a fresh read, restricted to mail received before the snapshot time, with the snapshot. Output is counts and fixed codes only: never an address, subject, id or body."""
+The proof-week shadow that compared a fresh read with the snapshot is removed (Jim accepted it, LIFE-894 comment 14099). Output is counts and fixed codes only: never an address, subject, id or body."""
 import json
 import os
-import time
 import zlib
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
@@ -18,7 +17,6 @@ TABLE = "v7_interview_mail"
 GRACE = timedelta(minutes=2)             # a snapshot taken this long before the tick started still belongs to it (the grace lifeos.platform.phase gives the early run)
 KEEP = timedelta(hours=6)                # older rows are removed whenever a new one is filed
 MAX_BYTES = 12_000_000                   # a compressed payload above this is not filed (the late job then reads for itself); MySQL's MEDIUMBLOB holds 16 MB
-EDGE = timedelta(days=1)                 # the shadow compares only mail newer than the window's moving edge plus this, so a message that ages out between the two reads is never a mismatch
 
 
 def hour_key(moment):
@@ -172,36 +170,3 @@ def stage(limit, live, environ=os.environ, now=None, connect=None, read=None):
         return {"snapshot": "not_saved", "why": "store", **counts}
     return {"snapshot": "saved" if filed else "saved_incomplete", **counts}
 
-
-def shadow(limit, live, environ=os.environ, now=None, connect=None, read=None):
-    """Proof week: a fresh read, restricted to mail received before the snapshot time and newer than the window's moving edge, against the snapshot restricted the same way. Read only; counts and hash prefixes only."""
-    from lifeos.sources.interview import interview_evidence as evidence             # noqa: PLC0415 - that module imports this one
-    now = (now or datetime.now(evidence.TZ)).astimezone(evidence.TZ)
-    days = evidence.window(environ, live)
-    taken = take(environ, now, days, connect)
-    if taken["why"] != "used":
-        return {"shadow": "skipped", "why": taken["why"]}
-    began = time.monotonic()
-    try:
-        fresh, down = (read or evidence.read_mail)(environ, now, None, None, days, {}, {})
-    except Exception as error:                                                       # noqa: BLE001 - a fixed code, never the error's text
-        return {"shadow": "unverified", "match": None, "why": "read_" + type(error).__name__.lower()[:40]}
-    if down:
-        return {"shadow": "unverified", "match": None, "why": "fresh_read_incomplete", "down": down}
-    low, high = now.astimezone(UTC) - timedelta(days=days) + EDGE, taken["taken_at"]
-
-    def inside(records):
-        out = {}
-        for record in records:
-            try:
-                keep = low <= parse(record["received"]) < high
-            except ValueError:
-                keep = True
-            if keep:
-                out[(record["provider"], record["id"])] = record
-        return out
-    before, after = inside(taken["records"]), inside(fresh)
-    changed = sum(1 for key in before.keys() & after.keys() if _canon([before[key]]) != _canon([after[key]]))
-    one, two = fingerprint(list(before.values())), fingerprint(list(after.values()))
-    return {"shadow": "compared", "match": one == two, "snapshot_fp": one[:16], "fresh_fp": two[:16], "snapshot": _sources(list(before.values())), "fresh": _sources(list(after.values())),
-            "only_snapshot": len(before.keys() - after.keys()), "only_fresh": len(after.keys() - before.keys()), "changed": changed, "days": days, "fresh_read_s": round(time.monotonic() - began, 1)}

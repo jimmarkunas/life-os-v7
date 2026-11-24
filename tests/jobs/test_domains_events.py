@@ -125,7 +125,7 @@ class DomainsEventTable(unittest.TestCase):
 
     def test_a_clean_tick_runs_the_chain_a_failure_adds_the_report_and_a_cancelled_or_manual_run_runs_nothing(self):
         current = table()
-        chain = {"jira", "followup", "agenda", "bills", "amazon", "amazon_retention", "mail", "hiring", "dcc", "megibow", "recruiters", "hiring_outcomes", "interview", "interview_shadow", "outlook", "granola"}      # LIFE-894: the proof-week shadow runs after the tick; the early mail read (interview_mail) is in the early run only, so it is not part of this chain
+        chain = {"jira", "followup", "agenda", "bills", "amazon", "amazon_retention", "mail", "hiring", "dcc", "megibow", "recruiters", "hiring_outcomes", "interview", "outlook", "granola"}      # LIFE-894: the early mail read (interview_mail) is in the early run only, so it is not part of this chain
         self.assertEqual(chain, set(domain_jobs(current["after hourly: tick, success"])))
         self.assertEqual(set(domain_jobs(current["after hourly: tick, success, jira fails"])), chain | {"report"})        # the report job exists to name a failed job
         for label in ("after hourly: tick, cancelled", "after hourly: manual, success", "after hourly: quick, success", "dispatch: no input"):
@@ -137,7 +137,7 @@ class DomainsEventTable(unittest.TestCase):
         doc = load()
         events_ = events(doc)
         chain = set(domain_jobs(runs(doc, events_["after hourly: tick, success"])))
-        late = {"megibow", "interview", "granola", "interview_shadow"}      # LIFE-894: interview_shadow reads and writes nothing; it runs beside interview
+        late = {"megibow", "interview", "granola"}
         early = set(domain_jobs(runs(doc, events_["early run: phase=tick"])))
         after = set(domain_jobs(runs(doc, events_["after hourly: tick, success, early run true"])))
         self.assertEqual(late, after)

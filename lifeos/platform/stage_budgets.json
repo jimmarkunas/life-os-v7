@@ -297,11 +297,6 @@
    "required": false,
    "seconds": 600
   },
-  "interview-mail-shadow": {
-   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
-   "required": false,
-   "seconds": 600
-  },
   "interview-probe": {
    "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
    "required": false,
