@@ -1,9 +1,11 @@
-"""LIFE-931: the Interviews list on Hiring Pipeline. One row per machine round page, newest first, kept current by the Interview job with the Interview integration (no new token).
-The database is a child of the Hiring Pipeline page named `Interviews`, found by that title (never by a configured id). Every cell is read from the round page's own snapshot, so a fact the page does not
-hold reads `Not verified`; the list never writes a round page and never lists a page Jim made by hand. Jim does not type in it: a row it no longer finds a round for is marked Retired, never deleted."""
+"""LIFE-931: the Interviews list on Hiring Pipeline, one row per machine round, kept current by the Interview job.
+
+The database is a child of the Hiring Pipeline page titled `Interviews`, found by that title and written with the Interview integration (no new token). Every cell is read from the round page's own snapshot, so a fact the page does not hold reads `Not verified`.
+The list never writes a round page and never lists a page Jim made by hand. Jim does not type in it: a row whose round is gone is marked Retired, never deleted."""
 import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from lifeos.platform import ct_stamp
 from lifeos.platform.names import split_title
 from lifeos.platform.notion_client import NotionError, rich_text
 from . import notion
@@ -141,7 +143,7 @@ def sync(client, environ, rounds, live, context, counts, stamp=None, today=None)
     counts["why"][code] = counts["why"].get(code, 0) + 1
     if source is None:
         return code
-    stamp = stamp or datetime.now(ZoneInfo("America/Chicago")).strftime("%b %d, %Y, %I:%M %p CT").replace(" 0", " ")
+    stamp = stamp or ct_stamp.stamp()
     try:
         have = existing_rows(client, source, context)
         wanted, seen = {}, {page_url(child.page_id) for _, child in rounds}
