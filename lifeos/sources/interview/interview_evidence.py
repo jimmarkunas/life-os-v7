@@ -647,7 +647,7 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
         causes[cause] = causes.get(cause, 0) + 1
     kept = not reads or not live or streaks.save(runs, before, connect)       # a dry run writes no streak
     lap("sent_mail")
-    counts = stage.run(limit, live, environ, client=client, evidence=evidence, context=injected or RunContext.start(STAGE_SECONDS))      # a fresh clock: the mail read above can take minutes, and the writes need their own budget
+    counts = stage.run(limit, live, environ, client=client, evidence=evidence, context=injected or RunContext.start(STAGE_SECONDS), roster=True)      # a fresh clock: the mail read above can take minutes, and the writes need their own budget
     lap("writer")
     if where:
         counts["where"] = where
