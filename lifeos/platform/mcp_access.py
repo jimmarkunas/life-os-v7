@@ -79,6 +79,17 @@ def granted_tools(access, client, now=None):
     return {g.tool for g in access.grants if g.principal in principals and not g.revoked and g.expires > now}
 
 
+def valid_operations(who, tool, read, routes, publish, disabled, access=None):
+    """LIFE-965: the operations of the Buzz tool `tool` this caller may use, for an unknown_operation answer (its grants decide; any problem lists nothing)."""
+    try:
+        allowed = granted_tools(access or load(), identify(access or load(), "http", who.get("facts") or {"oauth_client": who.get("client")}))
+        if tool == "buzz_publish":
+            return sorted(op for op in publish if "buzz_publish" in allowed and op not in disabled)
+        return sorted(op for op in read if (op in allowed if op in routes else "buzz_read" in allowed))
+    except Exception:  # noqa: BLE001  a fixed answer only
+        return []
+
+
 def capabilities_for_client(reply, who, access, limited, response_max):
     """Grant-aware availability, without modifying the permanent MCP tool schema."""
     try:

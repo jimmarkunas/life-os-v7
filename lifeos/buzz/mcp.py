@@ -88,12 +88,12 @@ def _lift(module, op, state):
 
 
 try:                                                                                 # a release without the platform files serves without these operations (the gate would refuse them anyway)
-    from lifeos.platform import call_limit, google_read, inbox_send, pilot_community, source_lookup
+    from lifeos.platform import call_limit, google_read, inbox_send, mcp_access, pilot_community, source_lookup
     for _module, _state in ((source_lookup, LOOKUP), (google_read, GOOGLE), (inbox_send, INBOX)):
         READ.update({op: (text, params, _lift(_module, op, _state)) for op, (text, params) in _module.OPS.items()})
         ROUTES.update({op: _module.route for op in _module.OPS})                      # each operation is its own gate tool, routed by its module
 except ImportError:
-    call_limit = google_read = inbox_send = pilot_community = source_lookup = None
+    call_limit = google_read = inbox_send = mcp_access = pilot_community = source_lookup = None
 try:                                                                                 # LIFE-868: separate from the lookups above, so a release that carries the memory file but not the Google and lookup files still serves memory
     from lifeos.platform import memory_honcho
     memory_honcho.register(READ, _lift, MEMORY)
@@ -131,7 +131,7 @@ def dispatch(relay, name, args, who):
         return {"ok": True, "contract": CONTRACT, "operation": "capabilities", "data": capabilities(relay, who)}
     op, comm, a = args.get("operation"), args.get("community"), args.get("arguments", {})
     if set(args) - set(FROZEN[name][1]) or not isinstance(op, str) or op not in (READ if name == "buzz_read" else PUBLISH):
-        raise BuzzError("unknown_operation" if isinstance(op, str) and not set(args) - set(FROZEN[name][1]) else "invalid_argument")
+        raise BuzzError("unknown_operation", operation=op[:64], valid=mcp_access.valid_operations(who, name, READ, ROUTES, PUBLISH, DISABLED)) if isinstance(op, str) and not set(args) - set(FROZEN[name][1]) else BuzzError("invalid_argument")   # LIFE-965
     if name == "buzz_publish":
         if op in DISABLED:
             raise BuzzError("operation_disabled", reason=DISABLED[op])
@@ -337,7 +337,7 @@ def handler(relays, auth, base, origins=(), audit=_audit, access=None, receipts=
                 return self._deny(403, "insufficient_scope", need)
             args = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
             relay = relays.get(who["client"])
-            if relay is None and who.get("facts", {}).get("credential") and (params.get("name") == "buzz_capabilities" or (params.get("name") == "buzz_read" and args.get("operation") in ("list_communities", *ROUTES, *MEMORY_OPS))):
+            if relay is None and who.get("facts", {}).get("credential") and (params.get("name") == "buzz_capabilities" or (params.get("name") == "buzz_read" and (args.get("operation") not in READ or args.get("operation") in ("list_communities", *ROUTES, *MEMORY_OPS)))):
                 relay = Relay({}, {})                                                          # a credential with no Buzz identity: capabilities and the community list only, no relay call is possible
             legacy = params.get("name") in TOOLS
             if spec and (legacy or args.get("community") is not None) and args.get("community") not in who["communities"]:  # the user's own community boundary, enforced before any relay request
