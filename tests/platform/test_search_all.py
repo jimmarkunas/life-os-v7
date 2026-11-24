@@ -152,10 +152,10 @@ class TilePage(unittest.TestCase):
         self.assertEqual(agent_inbox.locate_page(client), "pg")
         self.assertGreaterEqual(len(client.searches), 8)                       # 4 pages a call, two calls
 
-    def test_the_parent_page_is_used_without_any_search(self):
+    def test_the_parent_page_is_used_without_any_search_for_the_old_page_title(self):
         client = Search(JUNK, other=self.tree())
         self.assertEqual(agent_inbox.locate_page(client, "src"), "pg")
-        self.assertEqual(client.searches, [])
+        self.assertEqual({body["query"] for body in client.searches}, {agent_inbox.MERGED_TITLE})      # LIFE-938: the merged page is looked for first; the old page is then found by its database's parent, no title search for it
 
     def test_a_parent_with_another_title_or_a_failed_read_falls_back_to_the_search(self):
         for over in ({"/pages/pg": page("Some other page", "pg")}, {"/pages/pg": lambda path: (_ for _ in ()).throw(NotionError("NOTION_HTTP_404"))}):

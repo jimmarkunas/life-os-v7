@@ -111,3 +111,9 @@ Chosen over "write the stamp last" because it changes nothing when every write s
 ## Agent Inbox (LIFE-791)
 
 Not a Daily Report writer. Agents and people write rows into one database (the inline "Agent Inbox list" on Jim's Agent Inbox page); V7 only adds rows through `send_to_jim` (`lifeos/inbox/agent_inbox.py`) and rewrites the five tile numbers of that page (`recount_page`). It does not use `report_region` or `ScopedClient`, so the rules above do not apply to it; see `docs/platform/agent-inbox.md`.
+
+## Agent Inbox tiles on the merged page (LIFE-938)
+| module | region | owner | job.stage | how it finds its block | guard |
+|---|---|---|---|---|---|
+| lifeos/platform/agent_inbox.py `recount_page` | the Now and Today box and the This week, FYI and Snoozed tiles | agent-inbox | domains `agent-inbox` and every `send_to_jim` | the one live page titled `Daily LIFE OS Report (Hourly)` whose top blocks hold the four-column tile row (else the old `Agent Inbox` page); no id is committed | patches only the box's own children and the three tile numbers, only when they differ; a changed row shape is the fixed refusal `tiles_shape_changed`; none or two pages is `page_not_found` or `page_ambiguous` |
+
