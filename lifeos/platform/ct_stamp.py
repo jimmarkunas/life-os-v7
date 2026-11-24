@@ -52,3 +52,7 @@ def main(argv=None):
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+def _scratch_life600() -> int:
+    return "not an int"
