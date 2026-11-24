@@ -524,6 +524,29 @@ class Credentials(Server):
         status, out = self.tool(self.tok("oracle-claude-code"), "buzz_read", operation="list_channels", community="life-os")
         self.assertEqual((status, out["error"]), (200, "client_identity_not_configured"))
 
+    def test_an_unknown_operation_is_named_with_the_callers_own_valid_operations_not_an_identity_error(self):
+        """LIFE-965: a guessed operation (even the tool name buzz_capabilities) is unknown_operation with the caller's granted list, before any identity check; a real operation without an identity is unchanged."""
+        self.start(access=self.access(no_identity=True))
+        tok = self.tok("oracle-claude-code")
+        for wrong in ("nonsense", "buzz_capabilities", "memory_recll"):
+            status, out = self.tool(tok, "buzz_read", operation=wrong)
+            self.assertEqual((status, out["error"], out["operation"]), (200, "unknown_operation", wrong))
+            self.assertIn("list_channels", out["valid"])
+            self.assertNotIn("buzz_capabilities", out["valid"])
+        status, out = self.tool(tok, "buzz_publish", operation="buzz_capabilities")
+        self.assertEqual(out["error"], "insufficient_scope")                                                       # no write scope: refused before the operation is looked at, as before
+        out = self.tool(self.tok("honcho-alerts"), "buzz_read", operation="nonsense")[1]
+        self.assertEqual((out["error"], "valid" in out), ("access_denied", False))                                   # a client with no buzz_read grant is refused as before, and told nothing
+        self.assertEqual(self.tool(tok, "buzz_read", operation="list_channels", community="life-os")[1]["error"], "client_identity_not_configured")   # a real operation that needs an identity: unchanged
+        self.assertEqual(self.tool(tok, "buzz_read", operation="list_channels", community="bytalos")[1]["error"], "community_not_authorized")        # refusals unchanged
+
+    def test_a_memory_client_is_told_its_memory_operations_when_it_guesses_wrong(self):
+        self.start(access=self.access())
+        status, out = self.tool(self.tok("openclaw"), "buzz_read", operation="buzz_capabilities")
+        self.assertEqual((status, out["error"]), (200, "unknown_operation"))
+        self.assertTrue({"memory_recall", "memory_store"} <= set(out["valid"]), out["valid"])
+        self.assertNotIn("buzz_capabilities", out["valid"])
+
     def test_honcho_alerts_may_send_to_jim_only_and_is_named_as_the_sender(self):
         """LIFE-876 / LIFE-867 (Jim, comment 13853): the alert client holds one grant, send_to_jim; every other gate tool refuses it before any service runs."""
         from datetime import datetime, timezone
