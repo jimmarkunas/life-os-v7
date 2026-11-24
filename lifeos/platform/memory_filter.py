@@ -1,12 +1,9 @@
-"""LIFE-949: the sensitive filter in front of every shared-memory write (memory_store, and the new text of memory_correct). Refused before any write; never the model's choice to write.
+"""LIFE-949: the sensitive filter in front of every shared-memory write (store, and the new text of correct); refused before any write.
 
-Two layers, refuse if either flags, fail closed (design and measured results: LIFE-909 comment 14017):
-  1. deterministic patterns: credentials (the gate's SECRET pattern, bearer tokens, `lm1.` credentials, private-key and recovery-code phrases), identity numbers and dates of birth, finance (account and IBAN numbers,
-     Luhn-valid card numbers, salary, debt and balance amounts), health words, phone numbers, emails and street addresses;
-  2. a Haiku 5.5 second look through the Honcho meter (the spend guard in front of every Anthropic call, lifeos/edge/honcho/meter_proxy.py: it holds the real key and the cap) for what patterns cannot see: health, finances,
-     identity, credentials and other people's private data. It catches paraphrases ("short on money") that patterns miss.
-`check` returns None (clean) or a one-word category; it raises FilterUnavailable when the second look cannot answer (the meter at its cap, an error, a reply that is not one of the fixed words), and the caller then
-refuses the write as memory_unavailable. The text is never logged, echoed or stored by this module. Stdlib only."""
+Two layers, either one refuses, fail closed: (1) deterministic patterns for credentials, identity numbers, finance, health, phone numbers, emails and street addresses; (2) a Haiku 5.5 second look through the
+Honcho meter (it holds the real key and the cap) for what patterns miss, such as paraphrases. `check` returns None or a one-word category; `FilterUnavailable` means the second look could not answer (the meter at
+its cap, an error, an answer outside the fixed words) and the caller refuses the write as memory_unavailable. The text is never logged or stored here. Design and measured results: LIFE-909 comment 14017.
+"""
 import json
 import re
 import urllib.error

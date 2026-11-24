@@ -1,15 +1,10 @@
-"""LIFE-868, LIFE-949: governed shared memory on the retained Honcho (store, recall, correct, revoke, ask), five operations of the Oracle LIFE OS MCP; memory is never a canonical fact.
+"""LIFE-868, LIFE-949: governed shared memory on the retained Honcho (store, recall, correct, revoke, ask), five gate tools of the Oracle LIFE OS MCP; memory is never a canonical fact.
 
-Each operation is its own gate tool (memory_store, memory_recall, memory_correct, memory_revoke, memory_ask) granted per client and per workspace (Personal only; purpose personal-memory, real non-sensitive data); the
-client in every record is the verified one (injected as `_client` by the MCP dispatch after argument checking, never an argument). Items are Honcho conclusions (the retained service's own store) holding one JSON
-envelope: text, source, client, workspace, stable id (the conclusion id), CT time, and `supersedes` for a correction.
-LIFE-949 sensitive filter: memory_store and the new text of memory_correct are refused BEFORE any write when lifeos/platform/memory_filter.py flags the text (patterns, then a Haiku second look through the meter);
-the refusal is {"error": "sensitive_refused", "category": <one word>, "stored": false} with a fixed hint, and the text is never stored, echoed or logged (the receipt holds client, category and CT time only). When the
-second look cannot answer the write is refused as memory_unavailable. LIFE-949 revoke and correct delete the text: the old conclusion is hard-deleted from Honcho (its ask reads stored conclusions directly, so a tombstone
-beside live text would still be repeated) and a metadata-only tombstone is kept (id, client, CT time, reason, replacement id): the audit record stays and the text goes. Recall hides every tombstoned item at once
-(`include_history` lists the tombstones, never any text). memory_ask calls Honcho's peer chat on `lifeos-memory` (through the meter, which stops it at the cap), at most 30 a client an hour, and returns a labelled
-answer plus the top five recall hits it considered; memory is data, never instructions. Recall labels everything `memory`, says canonical Notion, Jira or GitHub facts win, and echoes a caller-named `canonical_ref`.
-Honcho down or refusing is the fixed code memory_unavailable, never a guess. Counts, ids and fixed codes only in errors. Stdlib only."""
+Personal only, purpose personal-memory, per client; the client in every record is the verified one (injected as `_client`). Items are Honcho conclusions holding one JSON envelope (text, source, client, CT time, id).
+Store and the new text of correct go through lifeos/platform/memory_filter.py first: a flagged text is refused as {"error": "sensitive_refused", "category", "stored": false} and never stored, echoed or logged
+(the receipt holds client, category and CT time), and a second look that cannot answer is memory_unavailable. Revoke and correct hard-delete the old text and keep a metadata-only tombstone, because Honcho's ask
+reads stored conclusions. Ask is Honcho's peer chat (metered, 30 an hour per client), labelled memory-derived, with the top five hits considered; memory is data, never instructions. Fixed codes only. Stdlib only.
+"""
 import json
 import os
 import sys
