@@ -57,6 +57,8 @@ class Notion:
         if method == "GET" and "/children" in path:
             bid = path.split("/blocks/")[1].split("/children")[0]
             return {"results": [self.view(k) for k in self.live_kids(bid)], "has_more": False, "next_cursor": None}
+        if method == "GET" and path.startswith("/pages/"):
+            return {"id": path.split("/pages/")[1], "object": "page", "archived": bool(self.blocks[path.split("/pages/")[1]].get("archived"))}
         if method == "GET" and path.startswith("/blocks/"):
             return self.view(path.split("/blocks/")[1])
         if method == "DELETE" and path.startswith("/blocks/"):
@@ -287,6 +289,7 @@ class ArchivePageText(unittest.TestCase):
             out = wa.run(0, True, ENV, n, TUE_6PM)
             self.assertEqual(wa.run(0, True, ENV, n, TUE_6PM)["snapshot"], "exists")            # a second run does not duplicate
             outs.append((out["snapshot"], sorted(titles(n, ARCHIVE))))
+            self.assertEqual((out["archive"]["root"], out["archive"]["archived"], out["archive"]["weeks"]), ("readable", False, ["Weekly Reports - Week Ending Sep 13, 2026"]))
         self.assertEqual(outs[0], outs[1])
         self.assertIn("Weekly Reports - Week Ending Sep 13, 2026", outs[1][1])
 
