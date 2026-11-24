@@ -58,11 +58,25 @@ class Notion:
             return self.view(path.split("/blocks/")[1])
         raise AssertionError((method, path))
 
+    def make(self, node, parent):
+        """Notion's rule: a table is created with its rows in the same request (a bare table is a 400)."""
+        payload = dict(node[node["type"]])
+        rows = payload.pop("children", None)
+        if node["type"] == "table":
+            if not rows:
+                raise AssertionError("NOTION_HTTP_400: table created without rows")
+        elif rows:
+            raise AssertionError("children inside a non-table payload")
+        block = self.add(self.new(), node["type"], parent, payload)
+        for row in rows or []:
+            self.make(row, block)
+        return block
+
     def call_once(self, method, path, body=None):
         self.writes.append((method, path))
         if method == "PATCH" and path.endswith("/children"):
             parent = path.split("/blocks/")[1].split("/children")[0]
-            return {"results": [{"id": self.add(self.new(), node["type"], parent, node[node["type"]])} for node in body["children"]]}
+            return {"results": [{"id": self.make(node, parent)} for node in body["children"]]}
         if method == "POST" and path == "/pages":
             assert body["parent"]["page_id"] in self.blocks
             title = "".join(p["text"]["content"] for p in body["properties"]["title"]["title"])
