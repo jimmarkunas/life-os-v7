@@ -114,6 +114,7 @@ STAGES = {
     "outlook-probe": lazy("lifeos.outlook.stage", "probe"),
     "dcc-card": lazy("lifeos.dcc.card"),
     "report-archive": lazy("lifeos.dcc.weekly_archive"),                  # LIFE-933: one static Daily Report snapshot a day into the Weekly Reports Archive (first run at or after 6 PM CT); Notes freeze and Monday reset
+    "weekly-review": lazy("lifeos.dcc.weekly_review"),                   # LIFE-945: the Weekly LIFE OS Review row, Friday 10 PM CT (first run at or after it); off unless WEEKLY_REVIEW is on
     "calendar-sync": lazy("lifeos.calendar_bridge.watch"),
     "network-inspect": lazy("lifeos.network.inspect"),
     "network-import": lazy("lifeos.network.importer"),
