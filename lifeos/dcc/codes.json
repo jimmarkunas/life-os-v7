@@ -25,8 +25,6 @@
   "GITHUB_UNREADABLE": ["dcc", "degraded", false, "The workflow runs could not be read from GitHub for the Weekly Review.", "None; the next run tries again."],
   "DRIVE_READER_UNAVAILABLE": ["dcc", "degraded", false, "The governed Oracle Drive reader gave no usable answer for the Weekly Review.", "Check the Oracle reader."],
   "DRIVE_ROUTE_NOT_CONNECTED": ["dcc", "degraded", false, "No Drive reader is connected to the Weekly Review stage yet.", "Install the Oracle Drive route (LIFE-945)."],
-  "POINTER_KIND": ["dcc", "blocked", false, "The Dashboard pointer block is not a paragraph or callout.", "Point WEEKLY_REVIEW_POINTER_BLOCK_ID at a paragraph."],
-  "POINTER_READBACK": ["dcc", "retry", false, "The Dashboard pointer line did not read back as written.", "None; the next run rewrites it."],
   "QUERY_LOOP": ["dcc", "retry", false, "The Weekly Reviews query never reported its end.", "None; retried."],
   "READBACK_SHORT": ["dcc", "retry", false, "The new Weekly Reviews row's page body read back shorter than it was written.", "None; the next run inside 48 hours rebuilds a Degraded row."],
   "DRIVE_LIST_INCOMPLETE": ["dcc", "degraded", false, "The Drive listing hit its page limit, so the Weekly Review's counts may be low.", "Narrow the window or raise the page limit."],
@@ -38,6 +36,5 @@
   "DRIVE_NOT_CONFIGURED": ["dcc", "degraded", false, "The Drive helper on Oracle found no Drive credentials.", "Check the helper unit's credential lines."],
   "DRIVE_WRONG_ACCOUNT": ["dcc", "degraded", false, "The Drive credential is not the personal account's.", "Check the stored Drive credential."],
   "DRIVE_CONSENT_REVOKED": ["dcc", "degraded", false, "Google no longer accepts the stored Drive credential.", "Renew the Drive read consent."],
-  "DRIVE_UNAVAILABLE": ["dcc", "degraded", false, "The Drive helper could not read Google Drive.", "None; the next run tries again."],
-  "POINTER_AMBIGUOUS": ["dcc", "blocked", false, "The Dashboard has two lines starting `Latest review:`.", "Delete the extra one by hand."]
+  "DRIVE_UNAVAILABLE": ["dcc", "degraded", false, "The Drive helper could not read Google Drive.", "None; the next run tries again."]
 }
