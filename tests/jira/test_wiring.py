@@ -522,6 +522,37 @@ class Writers(unittest.TestCase):
         self.assertEqual(out["why"]["cleanup_clone"], "JIRA_HTTP_403")
         self.assertEqual(client.deleted, [("sprint", 777)])
 
+    def test_keep_mode_keeps_the_clone_deletes_the_sprint_and_needs_no_delete_permission(self):
+        client = self.Client()
+        client.missing = ("DELETE_ISSUES",)                                                            # the Free plan: nobody may delete issues
+        out = jw.verify(client, self.BOARDS, "JFM", "JFM-1", True, now=at(2026, 11, 25, 9), sleep=lambda s: None, keep=True)
+        self.assertTrue(out["ok"], out)
+        self.assertEqual(out["kept"], ["JFM-900"])
+        self.assertEqual(client.deleted, [("sprint", 777)])
+        self.assertEqual(out["cleaned_parts"], {"clone": True, "sprint": True})
+        self.assertIn(("POST", "link", "Cloners", "JFM-900", "JFM-1"), client.calls)
+
+    def test_keep_mode_is_refused_without_live_and_default_mode_still_needs_delete(self):
+        with self.assertRaises(JiraError) as error:
+            jw.verify(self.Client(), self.BOARDS, "JFM", "JFM-1", False, keep=True)
+        self.assertEqual(str(error.exception), "JIRA_VERIFY_ARGUMENTS_INVALID")
+        client = self.Client()
+        client.missing = ("DELETE_ISSUES",)
+        with self.assertRaises(JiraError) as error:
+            jw.verify(client, self.BOARDS, "JFM", "JFM-1", True, now=at(2026, 11, 25, 9))
+        self.assertEqual(str(error.exception), "JIRA_VERIFY_NO_DELETE_PERMISSION")
+
+    def test_keep_mode_reports_a_failed_sprint_delete_and_still_names_the_kept_clone(self):
+        client = self.Client()
+
+        def refuse(sprint_id):
+            raise JiraError("JIRA_HTTP_403")
+        client.delete_sprint = refuse
+        out = jw.verify(client, self.BOARDS, "JFM", "JFM-1", True, now=at(2026, 11, 25, 9), sleep=lambda s: None, keep=True)
+        self.assertFalse(out["ok"])
+        self.assertEqual(out["kept"], ["JFM-900"])
+        self.assertEqual(out["why"]["cleanup_sprint"], "JIRA_HTTP_403")
+
 
 if __name__ == "__main__":
     unittest.main()
