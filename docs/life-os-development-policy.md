@@ -29,7 +29,7 @@ Link to the owner; never copy a fact into a second place.
 
 ## 3. Delivery
 
-- **Jim starts every agent run.** No scheduler, timer, poller, `/loop` or dispatcher may start or wake an agent outside a live session; inside one, it may watch its own CI and runs. A Jira status change starts nothing.
+- **Jim starts every agent run.** No scheduler, timer, poller or `/loop` may start or wake an agent outside a live session; inside one, it may watch its own CI and runs. A Jira status change starts nothing. The one exception (LIFE-987, Jim, Nov 25 2026): an orchestrator `agent_dispatch` from `claude`, `chatgpt` or Jim, for a ticket in Agent Go or In Progress, may start that agent's own session; kill switch `ORCHESTRATOR_CAN_START`.
 - **Once started, an agent runs end to end:** finish the ticket, then pull the next, until the queue is empty (`NO_ELIGIBLE_WORK`) or a ticket truly needs Jim.
 - **Pick:** the ticket Jim named, else the top leaf of `project = LIFE AND status = "Agent Go" AND issuetype != Epic ORDER BY priority DESC, Rank ASC`. Skip a ticket In Progress (another session has it) or with an unfinished `Blocks` predecessor. Agents never reorder or reprioritize. Several sessions (OC and MC, CLAUDE.md) may pull in parallel; one writer per branch and per mutation surface.
 - **Claim:** move the ticket to In Progress (transition ID 14). The status is the claim; no comment.
