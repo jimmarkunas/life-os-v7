@@ -265,6 +265,13 @@
     "A sprint is not one Monday-to-Sunday week, two sprints share a week, or a future sprint is off the weekly grid, so the board's sprints are left unchanged.",
     "Fix or close the odd sprint."
   ],
+  "JIRA_RECONCILE_TRANSITION_AMBIGUOUS": [
+    "jira",
+    "blocked",
+    false,
+    "An issue has no single Done transition, so the automatic close was not made.",
+    "Check the workflow of the project; retried next run."
+  ],
   "JIRA_RECONCILE_VERIFY_FAILED": [
     "jira",
     "retry",
@@ -285,6 +292,13 @@
     false,
     "The auto-release rule could not move any ticket it found ready (a Jira write failed).",
     "None; retried next hour."
+  ],
+  "JIRA_ROLLOVER_UNKNOWN_TYPE": [
+    "jira",
+    "blocked",
+    false,
+    "The ending sprint holds an unfinished issue of a type the carry rule does not know.",
+    "Move or retype that issue; retried next run."
   ],
   "JIRA_START_VERIFY_FAILED": [
     "jira",
@@ -320,6 +334,20 @@
     false,
     "The sprint dates do not define a Monday-Sunday 7- or 14-day window.",
     "Correct the sprint dates in Jira."
+  ],
+  "JIRA_VERIFY_ARGUMENTS_INVALID": [
+    "jira",
+    "blocked",
+    false,
+    "The writers verification was given a board that is not configured or a malformed issue key.",
+    "Fix the board name or the issue key."
+  ],
+  "JIRA_VERIFY_CONTRACT_FAILED": [
+    "jira",
+    "blocked",
+    false,
+    "The read-only contract check failed, so the throwaway verification wrote nothing.",
+    "Run the contract check and read which check failed."
   ],
   "JM_DASH_JIRA_BAD_PAGE": [
     "jira",

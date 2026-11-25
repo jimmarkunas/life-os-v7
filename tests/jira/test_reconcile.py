@@ -298,7 +298,6 @@ class Stage(unittest.TestCase):
         self.assertEqual(board.log, [])
 
     def test_the_stage_is_registered_and_its_default_call_is_off(self):
-        self.assertEqual(entry.STAGES["jira-reconcile-daily"].target, ("lifeos.jira.reconcile_stage", "run"))
         with patch.dict("os.environ", {}, clear=False):
             self.assertEqual(entry.STAGES["jira-reconcile-daily"](5, False), {"enabled": 0})
 

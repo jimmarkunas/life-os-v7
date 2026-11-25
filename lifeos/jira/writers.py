@@ -116,9 +116,9 @@ def contract_check(client, configured):
         except Exception:                                                   # noqa: BLE001 - a failed read is a failed check
             checks[name] = False
     for position, (_, board_id, _, readonly) in enumerate(configured, 1):
-        attempt(f"board{position}_scrum", lambda: str(client.board(board_id).get("type", "")).lower() == "scrum")
-        attempt(f"board{position}_sprints", lambda: isinstance(client.sprints(board_id, "future"), list) and isinstance(client.sprints(board_id, "active"), list))
-        attempt(f"board{position}_backlog", lambda: isinstance(client.backlog_issues(board_id, "statusCategory != Done", "summary"), list))
+        attempt(f"board{position}_scrum", lambda b=board_id: str(client.board(b).get("type", "")).lower() == "scrum")
+        attempt(f"board{position}_sprints", lambda b=board_id: isinstance(client.sprints(b, "future"), list) and isinstance(client.sprints(b, "active"), list))
+        attempt(f"board{position}_backlog", lambda b=board_id: isinstance(client.backlog_issues(b, "statusCategory != Done", "summary"), list))
     attempt("cloners_link_type", lambda: any(t.get("name") == CLONE_LINK and t.get("outward") == "clones" for t in client.link_types()))
     names = set()
     attempt("fields", lambda: names.update(f.get("name") for f in client.field_list()) or {"Sprint", "Labels", "Linked Issues", "Due date"} <= names)

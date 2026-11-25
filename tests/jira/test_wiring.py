@@ -7,6 +7,7 @@ from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 from lifeos import run as entry
+from lifeos.accountability import promotion_call
 from lifeos.jira import card, reconcile as rc, reconcile_stage as stage, recurrence, rollover, writers as jw
 from lifeos.platform.jira import JiraError
 
@@ -231,7 +232,8 @@ class Stage(unittest.TestCase):
     def test_off_by_default_nothing_is_built_or_read(self):
         with patch("lifeos.platform.jira.Jira.from_env", side_effect=AssertionError("built a client")), patch("lifeos.platform.db.connect", side_effect=AssertionError("opened the database")):
             self.assertEqual(stage.run(5, True, environ=OFF), {"enabled": 0})
-        self.assertEqual(entry.STAGES["jira-reconcile-daily"].target, ("lifeos.jira.reconcile_stage", "run"))
+        with patch.dict("os.environ", {}, clear=False):
+            self.assertEqual(entry.STAGES["jira-reconcile-daily"](5, False), {"enabled": 0})
 
     def test_dry_run_plans_the_sprints_and_the_clone_and_writes_nothing(self):
         db, world, pushes = FakeDb(), self.world(), []
@@ -240,7 +242,7 @@ class Stage(unittest.TestCase):
         self.assertEqual(world.log, [])
         self.assertIn("would add", out["summary"])
         self.assertEqual((db.rows, db.snapshots), ({}, {}))                                           # a dry run marks nothing and saves nothing
-        self.assertEqual(out["promotion"], {"status": "not_enabled"})
+        self.assertNotIn("promotion", out)                                                              # no hook given in this test; the hook itself is covered below
 
     def test_live_with_mock_writers_creates_the_four_sprints_and_the_clone_then_marks_the_day(self):
         db, world, pushes = FakeDb(), self.world(), []
@@ -283,6 +285,14 @@ class Stage(unittest.TestCase):
         self.assertTrue(callable(jw.live_writers(Writers.Client(), {"JIRA_WRITERS_VERIFIED": " YES "}).need("create_clone")))
 
 
+class Glue(unittest.TestCase):
+    def test_the_registered_stage_hands_the_promotion_call_site_to_the_stage(self):
+        with patch("lifeos.jira.reconcile_stage.run", return_value={"enabled": 0}) as run:
+            entry.STAGES["jira-reconcile-daily"](5, True)
+        self.assertIs(run.call_args.kwargs["after"], promotion_call.promotion)
+        self.assertEqual(run.call_args.args, (5, True))
+
+
 class Counts(unittest.TestCase):
     def test_the_split_starts_at_activation_and_earlier_closures_count_only_in_the_total(self):
         def done(key, when, labels=()):
@@ -321,7 +331,7 @@ class Promotion(unittest.TestCase):
         class Setter:
             pass
         with patch("lifeos.accountability.official_setter.official_setter", return_value=lambda: setter_calls.append(1)):
-            out = stage.promotion(env, now or self.BOUNDARY, True, lambda subject, details, key=None, once=False: alerts.append((key, once)), client_factory=lambda env: object(), readers=readers)
+            out = promotion_call.promotion(env, now or self.BOUNDARY, True, lambda subject, details, key=None, once=False: alerts.append((key, once)), client_factory=lambda env: object(), readers=readers)
         return out, alerts, setter_calls
 
     def passing(self):
