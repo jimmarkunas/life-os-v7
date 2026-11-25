@@ -216,6 +216,48 @@ class InboxAlerter(unittest.TestCase):
             send(p.alert_item({"quarter": "2027Q1", "reasons": []}))
 
 
+class OneUnit(unittest.TestCase):
+    """Jim, "918 uniform new" (comment 14228): JFM and MEJ promote together or not at all; one deduped alert names the failing board."""
+
+    def both(self, jfm=None, mej=None):
+        return {"quarter": "2027Q1", "boards": {"JFM": board(**(jfm or {})), "MEJ": board(**(mej or {}))}}
+
+    def test_both_boards_passing_promote_once_with_no_alert(self):
+        calls = Calls(self.both())
+        out = calls.run()
+        self.assertEqual((out["status"], calls.sets, calls.alerts), ("promoted", 1, []))
+
+    def test_jfm_failing_keeps_both_on_legacy_with_one_alert_naming_jfm_only(self):
+        calls = Calls(self.both(jfm={"history": {"before": 1, "after": 2}}))
+        out = calls.run()
+        self.assertEqual((out["status"], calls.sets, len(calls.alerts)), ("kept_legacy", 0, 1))
+        self.assertIn("failing board: JFM.", calls.alerts[0]["details"])
+        self.assertNotIn("MEJ", calls.alerts[0]["details"].split("reasons:")[0])
+
+    def test_mej_failing_keeps_both_on_legacy_with_one_alert_naming_mej_only(self):
+        calls = Calls(self.both(mej={"discrepancies": [{"key": "MEJ-1"}, {"key": "MEJ-2"}]}))
+        out = calls.run()
+        self.assertEqual((out["status"], calls.sets, len(calls.alerts)), ("kept_legacy", 0, 1))
+        self.assertIn("failing board: MEJ.", calls.alerts[0]["details"])
+
+    def test_either_list_missing_fails_and_names_that_board(self):
+        for name, jfm, mej in (("JFM", {"frozen": None}, None), ("MEJ", None, {"frozen": []})):
+            calls = Calls(self.both(jfm=jfm, mej=mej))
+            out = calls.run()
+            self.assertEqual((out["status"], calls.sets, len(calls.alerts)), ("kept_legacy", 0, 1), name)
+            self.assertIn(f"failing board: {name}.", calls.alerts[0]["details"])
+
+    def test_both_failing_is_still_one_alert_naming_both(self):
+        calls = Calls(self.both(jfm={"frozen": None}, mej={"frozen": None}))
+        calls.run()
+        self.assertEqual(len(calls.alerts), 1)
+        self.assertIn("failing board: JFM, MEJ.", calls.alerts[0]["details"])
+
+    def test_the_kill_switch_covers_both_boards(self):
+        calls = Calls(self.both())
+        self.assertEqual((calls.run(promotion=False)["status"], calls.reads, calls.sets), ("not_enabled", 0, 0))
+
+
 class NotWired(unittest.TestCase):
     def test_only_the_one_call_site_calls_the_promotion(self):
         root = Path(__file__).resolve().parents[2]

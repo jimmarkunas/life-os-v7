@@ -9,13 +9,13 @@ PROMOTION_ALERT_KEY = "v2_promotion_failed"
 
 def promotion(environ, now, live, alert, client_factory=None, readers=None):
     """The AC6 call site: V2_PROMOTION off is a no-op; before the boundary or when already official nothing happens; on a pass the LIFE-976 setter runs exactly once (dry run unless live); a fail keeps legacy official and
-    sends one alert. The inputs of AC11/AC12 come from `readers`; the shipped default is the empty frozen membership, so it fails closed with MEMBERSHIP_MISSING until the Q1 2027 list is approved and a reader is built."""
+    sends one alert. The inputs of AC11/AC12 come from `readers`; the shipped default is the empty frozen membership of both boards, so it fails closed naming JFM and MEJ until the Q1 2027 list is approved and a reader is built."""
     state = switches.snapshot(environ)
     if not state["V2_PROMOTION"]:
         return {"status": "not_enabled"}
 
     def missing():
-        raise check.PromotionError(check.MEMBERSHIP_MISSING)
+        return {"quarter": "2027-Q1", "boards": {name: {} for name in check.BOARDS}}                    # no approved frozen list for either board yet: both fail closed and the alert names them
 
     def send(item):
         alert(item["subject"], item["details"], PROMOTION_ALERT_KEY, True)

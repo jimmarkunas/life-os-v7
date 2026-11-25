@@ -1,6 +1,6 @@
 """LIFE-918 AC4/AC5 (synthetic, no network, no provider write): the v2 quarterly preview inside the existing Quarterly Goals & Review blocks (Jim, comment 14216: no separate block).
 
-Off by default and exactly the old two-column table when off; on, the table is upgraded in place to Lane, Progress, Done / all, New count (preview), Status; JFM shows a dash and OK; Matt shows NEEDS Q1 MEMBER LIST
+Off by default and exactly the old two-column table when off; on, the table is upgraded in place to Lane, Progress, Done / all, New count (preview), Status; JFM and Matt alike show NEEDS Q1 MEMBER LIST
 with the shipped empty membership, the v2 count with an approved fixture list, DATA MISSING when the list and Jira disagree; legacy figures stay official; the second run writes nothing."""
 import contextlib
 import io
@@ -22,6 +22,10 @@ EPICS = [F.epic("JFM-9", "Career Q4 2026"), F.epic("MEJ-2", "Creative Q4 2026")]
 
 def approved(tasks, ref="SYNTHETIC-TEST-ONLY"):
     return {"schema_version": 1, "quarters": {"2026-q4": {"approved": True, "baseline_id": "SYNTHETIC-Q4", "approval_ref": ref, "tasks": tasks}}}
+
+
+def approved_both(mej, jfm, ref="SYNTHETIC-TEST-ONLY"):
+    return {"schema_version": 1, "quarters": {"2026-q4": {"boards": {name: {"approved": True, "baseline_id": "SYNTHETIC-Q4", "approval_ref": ref, "tasks": tasks} for name, tasks in (("MEJ", mej), ("JFM", jfm))}}}}
 
 
 def kid(key, parent, done=False, kind="Task"):
@@ -107,9 +111,9 @@ class Switches(unittest.TestCase):
 
 
 class Table(unittest.TestCase):
-    def test_on_upgrades_the_table_in_place_and_jfm_has_no_v2(self):
+    def test_on_upgrades_the_table_in_place_and_jfm_needs_its_list_like_matt(self):
         out, notion, jira = run_goals([kid("JFM-20", "JFM-9", True), kid("JFM-21", "JFM-9")])
-        self.assertEqual(table(notion, "jim"), [["Lane", "Progress", "Done / all", "New count (preview)", "Status"], ["Career", "█████░░░░░", "1 / 2", "—", "OK"]])
+        self.assertEqual(table(notion, "jim"), [["Lane", "Progress", "Done / all", "New count (preview)", "Status"], ["Career", "█████░░░░░", "1 / 2", "—", "NEEDS Q1 MEMBER LIST"]])
         order = notion.kids["b-jim-goals"]
         self.assertEqual([notion.blocks[k]["type"] for k in order[2:]], ["table", "paragraph", "toggle"])               # lanes, note and toggle kept; no second block anywhere
         self.assertEqual(notion.text("b-jim-goals-h"), "Quarterly Goals & Review — Jim · Q4 2026")
@@ -118,6 +122,20 @@ class Table(unittest.TestCase):
         self.assertEqual(notion.text("fixed-st"), "Not updated yet")
         link = notion.blocks[notion.kids[order[2]][1]]["table_row"]["cells"][0][0]["href"]
         self.assertEqual(link, "https://jira.example.com/browse/JFM-9")                                                  # the lane stays linked to its Epic
+
+    def test_both_blocks_render_the_same_columns_and_jfm_shows_its_real_v2_count_with_an_approved_list(self):
+        frozen = approved_both({"MEJ-20": {"parent": "MEJ-2", "goal": "MEJ-2"}}, {"JFM-20": {"parent": "JFM-9", "goal": "JFM-9"}, "JFM-21": {"parent": "JFM-9", "goal": "JFM-9"}})
+        _, notion, _ = run_goals([kid("JFM-20", "JFM-9", True), kid("JFM-21", "JFM-9"), kid("JFM-22", "JFM-9"), kid("MEJ-20", "MEJ-2", True)], membership=frozen)
+        jim, matt = table(notion, "jim"), table(notion, "matt")
+        self.assertEqual(jim[0], matt[0])
+        self.assertEqual(jim[1], ["Career", "███░░░░░░░", "1 / 3", "1 / 2", "OK"])
+        self.assertEqual(matt[1][3:], ["1 / 1", "OK"])
+
+    def test_jfm_without_its_own_list_reads_needs_q1_member_list_in_red_even_when_mej_is_approved(self):
+        frozen = approved({"MEJ-20": {"parent": "MEJ-2", "goal": "MEJ-2"}})
+        _, notion, _ = run_goals([kid("JFM-20", "JFM-9", True), kid("MEJ-20", "MEJ-2", True)], membership=frozen)
+        self.assertEqual(table(notion, "jim")[1][3:], ["—", "NEEDS Q1 MEMBER LIST"])
+        self.assertEqual(table(notion, "matt")[1][3:], ["1 / 1", "OK"])
 
     def test_matt_needs_the_q1_member_list_while_none_is_approved_and_legacy_stays_official(self):
         _, notion, _ = run_goals([kid("MEJ-20", "MEJ-2", True), kid("MEJ-21", "MEJ-2")])
@@ -189,7 +207,7 @@ class Render(unittest.TestCase):
         with contextlib.redirect_stdout(out), mock.patch("socket.socket", side_effect=AssertionError("network")):
             self.assertEqual(preview.main(["--synthetic"]), 0)
         text = out.getvalue()
-        self.assertIn("██░░░░░░░░ · 5 / 26 · — · OK", text)
+        self.assertIn("██░░░░░░░░ · 5 / 26 · — · NEEDS Q1 MEMBER LIST", text)
         self.assertIn("████░░░░░░ · 12 / 29 · — · NEEDS Q1 MEMBER LIST", text)
 
     def test_any_other_argument_is_refused(self):
