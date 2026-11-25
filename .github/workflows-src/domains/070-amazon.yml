@@ -31,6 +31,15 @@
             46fe195b-82e2-416e-8272-b4db015eea12 > NOTION_AMAZON_TOKEN
             53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
             8657d1ed-2cde-4298-bd62-b50301523e01 > GMAIL_OAUTH_CLIENT_ID
+      - id: doppler_bws_amazon
+        if: ${{ steps.bws_amazon.outcome == 'success' }}
+        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
+        name: Doppler parity compare (LIFE-981; the same 5 names read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
+        uses: ./.github/actions/doppler-load
+        with:
+          token: ${{ secrets.DOPPLER_TOKEN }}
+          names: GMAIL_OAUTH_CLIENT_SECRET,GMAIL_OAUTH_REFRESH_TOKEN,NOTION_AMAZON_TOKEN,NOTION_JIRA_TOKEN,GMAIL_OAUTH_CLIENT_ID
+          bitwarden: ${{ toJSON(steps.bws_amazon.outputs) }}
       - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
         uses: ./.github/actions/bws-plain
         with:
@@ -46,6 +55,15 @@
           set_env: false
           secrets: |
             0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
+      - id: doppler_bws_runtime_config
+        if: ${{ steps.bws_runtime_config.outcome == 'success' }}
+        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
+        name: Doppler parity compare (LIFE-981; the same 1 name read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
+        uses: ./.github/actions/doppler-load
+        with:
+          token: ${{ secrets.DOPPLER_TOKEN }}
+          names: V7_RUNTIME_CONFIG_SOURCE_ID
+          bitwarden: ${{ toJSON(steps.bws_runtime_config.outputs) }}
       - id: amazon
         continue-on-error: true
         name: Amazon Orders (Gmail to Notion; archive only after read-back)

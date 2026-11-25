@@ -51,6 +51,15 @@ jobs:
             b7b921fa-3f62-478a-a4f5-b4db015efcf7 > NOTION_RECRUITERS_TOKEN
             8657d1ed-2cde-4298-bd62-b50301523e01 > GMAIL_OAUTH_CLIENT_ID
             2b2c73a9-7a1e-44b9-95f0-b50301509b09 > OUTLOOK_CLIENT_ID
+      - id: doppler_bws_recruiters
+        if: ${{ steps.bws_recruiters.outcome == 'success' }}
+        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
+        name: Doppler parity compare (LIFE-981; the same 12 names read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
+        uses: ./.github/actions/doppler-load
+        with:
+          token: ${{ secrets.DOPPLER_TOKEN }}
+          names: GMAIL_OAUTH_CLIENT_SECRET,GMAIL_OAUTH_REFRESH_TOKEN,LIFEOS_ACQ_DB_NAME,LIFEOS_ACQ_DB_PASSWORD,LIFEOS_ACQ_DB_USER,LIFEOS_ACQ_SSH_HOST,LIFEOS_ACQ_SSH_KNOWN_HOSTS,LIFEOS_ACQ_SSH_PRIVATE_KEY,LIFEOS_ACQ_SSH_USER,NOTION_RECRUITERS_TOKEN,GMAIL_OAUTH_CLIENT_ID,OUTLOOK_CLIENT_ID
+          bitwarden: ${{ toJSON(steps.bws_recruiters.outputs) }}
       - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
         uses: ./.github/actions/bws-plain
         with:
@@ -66,6 +75,15 @@ jobs:
           secrets: |
             53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
             0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
+      - id: doppler_bws_settings
+        if: ${{ steps.bws_settings.outcome == 'success' }}
+        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
+        name: Doppler parity compare (LIFE-981; the same 2 names read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
+        uses: ./.github/actions/doppler-load
+        with:
+          token: ${{ secrets.DOPPLER_TOKEN }}
+          names: NOTION_JIRA_TOKEN,V7_RUNTIME_CONFIG_SOURCE_ID
+          bitwarden: ${{ toJSON(steps.bws_settings.outputs) }}
       - name: Recruiters (read-only mail to the Recruiters data source; counts only)
         env:
           NOTION_JIRA_TOKEN: ${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}

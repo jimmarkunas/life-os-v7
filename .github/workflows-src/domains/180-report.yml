@@ -24,6 +24,15 @@
           set_env: false
           secrets: |
             83c553e9-23a6-45aa-9006-b4db015f00ac > NTFY_TOPIC
+      - id: doppler_bws_report
+        if: ${{ steps.bws_report.outcome == 'success' }}
+        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
+        name: Doppler parity compare (LIFE-981; the same 1 name read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
+        uses: ./.github/actions/doppler-load
+        with:
+          token: ${{ secrets.DOPPLER_TOKEN }}
+          names: NTFY_TOPIC
+          bitwarden: ${{ toJSON(steps.bws_report.outputs) }}
       - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
         uses: ./.github/actions/bws-plain
         with:
