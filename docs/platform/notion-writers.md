@@ -21,12 +21,11 @@ One card owns one region of the Daily Report page and writes only its own blocks
 | lifeos/physmail/card.py | MAIL_ALERTS_REGION | v7-mail-alerts | mail.mail-card | MAIL_ALERTS_CARD_BLOCK_ID callout | replace_text |
 | lifeos/hiring/card.py | HIRING_REGION | v7-hiring | hiring.hiring | HIRING_CARD_BLOCK_ID heading; its table found next to it | ScopedClient |
 | lifeos/recruiters/outreach_card.py | RECRUITER_OUTREACH_REGION | v7-recruiter-outreach | recruiters.recruiter-outreach | heading and table found by one read of the page (the table block id names the page) | ScopedClient |
-| lifeos/imessage/comms_card.py | COMMS_REGION | v7-comms | imessage.imessage-comms | the Communications callout's heading and Messages row, found in the column of CALENDAR_CARD_BLOCK_ID | ScopedClient |
-| lifeos/oraclecloud/card.py | ORACLE_REGION | v7-oracle | imessage.oracle-card | its heading and one paragraph, found under the page | ScopedClient |
+| lifeos/imessage/comms_card.py | COMMS_REGION | v7-comms | imessage.imessage-comms | the Communications callout's heading and Messages row, found anywhere on the page through CALENDAR_CARD_BLOCK_ID's page; also the one Todoist launcher paragraph's link text (`Todoist (N)`, LIFE-975 step 4d) | ScopedClient |
+| lifeos/oraclecloud/card.py | ORACLE_REGION | v7-oracle | imessage.oracle-card | the System callout (heading `System`) at the top level of the page (found through JIRA_CARD_BLOCK_ID's page, by its heading); only its heading and the cells of its one 5-column, 17-row table are written, in place (LIFE-975 step 4d; rows built by lifeos/oraclecloud/system_table.py, orchestrated by lifeos/sources/cards/oracle_card.py) | ScopedClient |
 | lifeos/dcc/card.py | DCC_REGION | daily-command-center | dcc.dcc-card | DCC_CARD_BLOCK_ID callout; its heading carries the run time (`ChatGPT · Daily Command Center · Tue 11/24 · 11:02 PM CT`, LIFE-975); the page's dated line is retired | ScopedClient |
-| lifeos/jobs/fit/capacity_card.py | - | - | capacity-card.capacity-card | the AI Capacity callout, found among the page's top-level blocks by its table header; inserted after the last divider if absent; off unless V7_AI_CAPACITY_CARD is on | in place, read back |
 
-The row with `-` is not a region in `OWNERS`: the AI Capacity card is a top-level callout outside the half-width column. It is a page-level write (a top-level read and, at most, one insert); it runs in jobs of their own (`dcc` runs last, after every card job; `imessage` also holds the Communications and Oracle cards, which write inside their own callouts), so its page-level operations do not overlap another card's blocks.
+LIFE-975 step 4d retired the AI Capacity card: `lifeos/jobs/fit/capacity_card.py` is a no-op stub (its workflow stays disabled), and its readings are rows of the System table. The Command Center's source-health toggle has no writer either.
 
 ## Other writers of Notion pages (not the Daily Report)
 

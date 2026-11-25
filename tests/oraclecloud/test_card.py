@@ -1,18 +1,15 @@
 import contextlib
-from copy import deepcopy
 import datetime as dt
 import io
 import json
 import unittest
-import urllib.request
 from unittest import mock
 
 from lifeos.imessage import alerts_endpoint as ep
-from lifeos.oraclecloud import card
+from lifeos.oraclecloud import card, system_table as st
 from lifeos.platform import notion_client, report_region
 from tests.imessage.support import RUNNER, OTHER, v2, whois
-from tests.kit.comms import Report, text
-from tests.kit.http import Response, http_error
+from tests.oraclecloud.support import SystemPage, plain_row
 
 NOW = dt.datetime(2026, 10, 15, 13, 5, 0, tzinfo=dt.timezone.utc)                # 8:05 AM in Chicago
 SVC = {"gateway": True, "telegram": True, "whatsapp": True, "alerts": True}
@@ -24,279 +21,103 @@ def stats(**over):
             "chatgpt": {"left_5h": 100, "left_week": 64}, "backup": {"ok": True, "code": "ok", "age_h": 3}, **over}
 
 
-def report(heading="Oracle Cloud"):
-    r = Report()
-    r.add("oracle", "callout", "col", [])
-    bold = {**text(heading), "annotations": {"bold": True, "color": "default"}}
-    r.add("ohead", "heading_3", "oracle", [bold])
-    r.add("obody", "paragraph", "oracle", [])
-    return r
+class Validate(unittest.TestCase):
+    """The Oracle contract is unchanged by LIFE-975: a reply is used whole or not at all."""
 
+    def test_a_good_reply_is_used_and_the_optional_readings_are_kept(self):
+        r = card.validate(json.dumps({**stats(), "workers": {"count": 6, "agents": 5}, "backups": {"used": 5, "available": 0}}), NOW)
+        self.assertEqual((r["memory_pct"], r["workers"], r["backups"], r["honcho_reported"]), (55.2, {"count": 6, "agents": 5}, {"used": 5, "available": 0}, False))
 
-class Card(unittest.TestCase):
-    ENV = {"IMESSAGE_ALERTS_HOST": "100.64.0.9", "JIRA_CARD_BLOCK_ID": "attn", "NOTION_JIRA_TOKEN": "unused"}
-
-    def setUp(self):
-        self.watched = []                                                            # the backup watch never reaches a store in these tests; what it was handed is recorded
-        patch = mock.patch.object(card.backup_watch, "record", lambda reading, environ, now: self.watched.append(reading))
-        patch.start()
-        self.addCleanup(patch.stop)
-        self.counted = []                                                            # LIFE-531: the same for the worker-count watch
-        patch2 = mock.patch.object(card.worker_watch, "record", lambda reading, environ, now: self.counted.append(reading))
-        patch2.start()
-        self.addCleanup(patch2.stop)
-        self.slots = []                                                              # LIFE-808: the same for the boot-volume backup-slot watch
-        patch3 = mock.patch.object(card.boot_backup_watch, "record", lambda reading, environ, now: self.slots.append(reading))
-        patch3.start()
-        self.addCleanup(patch3.stop)
-
-    def run_card(self, rep, live=True, answer=None, env=None, now=NOW, **kw):
-        answer = answer or (lambda host: json.dumps(stats()).encode())
-        out = io.StringIO()
-        with mock.patch.object(report_region, "require_configured", lambda ids, fail: None), contextlib.redirect_stdout(out):
-            counts = card.run(0, live, env or self.ENV, now, answer, kw.pop("client", rep), **kw)
-        return counts, out.getvalue()
-
-    def test_live_writes_the_lines_with_bars_and_the_stamp_keeping_jims_bold(self):
-        rep = report()
-        others = {b: rep.plain(b) for b in ("head", "l0", "r0", "attn", "bills")}
-        counts, _ = self.run_card(rep)
-        self.assertEqual((counts["missing"], counts["reclaim"], counts["written"]), (0, "none", 2))
-        self.assertEqual([p[0] for p in rep.patches], ["obody", "ohead"])
-        self.assertEqual(rep.plain("obody").split("\n"), [                           # Jim's layout (Oct 15)
-            "Cost this month: $0.00 (Oracle billing) · CPU, last 24 h: avg 5.7%",
-            "",
-            "Memory ██████░░░░ 55% · Disk ████░░░░░░ 39%",
-            "",
-            "Always Free A1 cores: 2 of 2 in use · no headroom · Reclaim risk: none",
-            "Services: Gateway ✓ · Telegram ✓ · WhatsApp ✓ · Alerts ✓ · Backup ✓",
-            "",
-            "Codex 5h ██████████ 100% · Codex week ██████░░░░ 64%"])
-        colors = [(i["plain_text"], i["annotations"].get("color")) for i in rep.blocks["obody"]["paragraph"]["rich_text"] if "█" in i["plain_text"] or "░" in i["plain_text"]]
-        self.assertEqual(colors, [("██████", "green"), ("░░░░", "gray"), ("████", "green"), ("░░░░░░", "gray"),
-                                  ("██████████", "green"), ("██████", "green"), ("░░░░", "gray")])          # the bars only; a full bar has no gray part
-        self.assertEqual(rep.plain("ohead"), "Oracle Cloud (10/15 · 8:05 AM CT)")
-        self.assertTrue(rep.blocks["ohead"]["heading_3"]["rich_text"][0]["annotations"]["bold"])
-        self.assertEqual({b: rep.plain(b) for b in others}, others)                  # the Communications callout and the rest are untouched
-
-    def test_every_tick_writes_the_card_and_asks_oracle(self):
-        calls = []
-        answer = lambda host: calls.append(host) or json.dumps(stats()).encode()
-        early = dt.datetime(2026, 10, 15, 10, 30, tzinfo=dt.timezone.utc)            # 5:30 AM in Chicago: no 6 AM gate any more
-        for heading in ("Oracle Cloud", "Oracle Cloud (10/15 · 6:07 AM CT)", "Oracle Cloud (DEGRADED · 10/15 · 6:07 AM CT)"):
-            for now in (early, NOW):
-                counts, _ = self.run_card(report(heading), answer=answer, now=now)
-                self.assertEqual((counts["written"], "due" in counts), (2, False))
-        self.assertEqual(len(calls), 6)                                              # Oracle is asked on every tick
-
-    def test_the_codex_lines_are_the_plan_passed_in_not_oracles_own_plan_read(self):
-        rep, calls = report(), []
-        plan = lambda: calls.append(1) or {"left_5h": 100, "left_week": 98}           # Oracle's own stats() says 100 and 64
-        counts, _ = self.run_card(rep, plan=plan)
-        self.assertEqual((counts["missing"], counts["written"], len(calls)), (0, 2, 1))
-        self.assertEqual(rep.plain("obody").split("\n")[-1], "Codex 5h ██████████ 100% · Codex week ██████████ 98%")
-
-    def test_a_plan_that_cannot_be_had_is_unavailable_and_degrades_the_card(self):
-        rep = report()
-        counts, _ = self.run_card(rep, plan=lambda: None)
-        self.assertEqual((counts["missing"], counts["written"]), (1, 2))
-        self.assertEqual(rep.plain("obody").split("\n")[-1], "Codex plan: unavailable")
-        self.assertTrue(rep.plain("ohead").startswith("Oracle Cloud (DEGRADED · "))
-
-    def test_a_missing_reading_says_unavailable_and_marks_the_card_degraded(self):
-        rep = report()
-        counts, _ = self.run_card(rep, answer=lambda host: json.dumps(stats(cost=None, chatgpt=None, services={**SVC, "telegram": None, "alerts": False})).encode())
-        body = rep.plain("obody")
-        self.assertIn("Cost this month: unavailable", body)
-        self.assertIn("Codex plan: unavailable", body)
-        self.assertIn("Services: Gateway ✓ · Telegram ? · WhatsApp ✓ · Alerts ✗ · Backup ✓", body)
-        self.assertEqual(rep.plain("ohead"), "Oracle Cloud (DEGRADED · 10/15 · 8:05 AM CT)")
-        self.assertEqual((counts["missing"], counts["services_down"]), (3, 1))
-
-    def test_an_unreported_plan_under_sign_in_with_chatgpt_is_said_plainly_and_is_not_degraded(self):
-        rep = report()
-        counts, _ = self.run_card(rep, answer=lambda host: json.dumps(stats(chatgpt="unreported")).encode())
-        self.assertEqual(rep.plain("obody").split("\n")[-1], "ChatGPT plan: not reported by Sign in with ChatGPT")
-        self.assertEqual((rep.plain("ohead"), counts["missing"]), ("Oracle Cloud (10/15 · 8:05 AM CT)", 0))
-        rep = report()
-        self.run_card(rep, answer=lambda host: json.dumps(stats(chatgpt="anything else")).encode())     # any other string is off contract
-        self.assertIn("DEGRADED", rep.plain("ohead"))
-
-    def test_the_backup_reading_is_shown_handed_to_the_watch_and_optional_on_the_wire(self):
-        rep = report()
-        self.run_card(rep, answer=lambda host: json.dumps(stats(backup={"ok": False, "code": "backup_drive_http_403", "age_h": 2})).encode())
-        self.assertIn("Alerts ✓ · Backup ✗", rep.plain("obody"))
-        self.assertEqual(self.watched[-1], {"ok": False, "code": "backup_drive_http_403", "age_h": 2})
-        rep = report()
-        self.run_card(rep, answer=lambda host: json.dumps(stats(backup={"ok": True, "code": "ok", "age_h": 40})).encode())    # a missed night
-        self.assertIn("Backup ✗", rep.plain("obody"))
-        rep = report()
+    def test_the_backup_reading_is_optional_on_the_wire_and_checked(self):
         old = stats()
-        del old["backup"]                                                            # Oracle's stats.mjs from before LIFE-129: still on contract, the backup is unknown
-        counts, log = self.run_card(rep, answer=lambda host: json.dumps(old).encode())
-        self.assertNotIn("source refused", log)
-        self.assertIn("Backup ?", rep.plain("obody"))
-        self.assertEqual((counts["missing"], self.watched[-1]), (1, None))
+        del old["backup"]
+        self.assertIsNone(card.validate(json.dumps(old), NOW)["backup"])
         for bad in ({"ok": True, "code": "a /path", "age_h": 1}, {"ok": 1, "code": "ok", "age_h": 1}, {"ok": True, "code": "ok", "age_h": -1}, {"ok": True, "code": "ok"}):
-            counts, log = self.run_card(report(), answer=lambda host, bad=bad: json.dumps(stats(backup=bad)).encode())
-            self.assertIn("source refused", log, bad)
+            with self.assertRaises(card.OracleCardError, msg=bad):
+                card.validate(json.dumps(stats(backup=bad)), NOW)
 
-    def test_the_worker_count_is_optional_on_the_wire_checked_and_handed_to_the_watch(self):
-        self.run_card(report())
-        self.assertEqual(self.counted[-1], None)                                     # an older stats.mjs sends no workers: unknown
-        self.run_card(report(), answer=lambda host: json.dumps({**stats(), "workers": {"count": 6, "agents": 5}}).encode())
-        self.assertEqual(self.counted[-1], {"count": 6, "agents": 5})
-        for bad in ({"count": 6}, {"count": -1, "agents": 5}, {"count": 6, "agents": 0}, {"count": "6", "agents": 5}, {"count": 6, "agents": 5, "pid": 1}, [6, 5]):
-            self.run_card(report(), answer=lambda host, b=bad: json.dumps({**stats(), "workers": b}).encode())
-            self.assertEqual(self.counted[-1], None)                                 # off-contract: the whole reply is refused, the card shows unavailable
+    def test_the_worker_count_and_the_backup_slots_are_optional_and_checked(self):
+        for key, bads in (("workers", ({"count": 6}, {"count": -1, "agents": 5}, {"count": 6, "agents": 0}, {"count": "6", "agents": 5}, {"count": 6, "agents": 5, "pid": 1}, [6, 5])),
+                          ("backups", ({"used": 5}, {"used": -1, "available": 0}, {"used": "5", "available": 0}, {"used": 5, "available": 0.5}, {"used": 5, "available": 0, "id": "x"}, [5, 0]))):
+            for bad in bads:
+                with self.assertRaises(card.OracleCardError, msg=bad):
+                    card.validate(json.dumps({**stats(), key: bad}), NOW)
 
-    def test_the_backup_slots_are_optional_on_the_wire_checked_and_handed_to_the_watch(self):
-        self.run_card(report())
-        self.assertEqual(self.slots[-1], None)                                       # an older stats.mjs sends no slots: unknown
-        self.run_card(report(), answer=lambda host: json.dumps({**stats(), "backups": {"used": 5, "available": 0}}).encode())
-        self.assertEqual(self.slots[-1], {"used": 5, "available": 0})
-        for bad in ({"used": 5}, {"used": -1, "available": 0}, {"used": "5", "available": 0}, {"used": 5, "available": 0.5}, {"used": 5, "available": 0, "id": "x"}, [5, 0]):
-            self.run_card(report(), answer=lambda host, b=bad: json.dumps({**stats(), "backups": b}).encode())
-            self.assertEqual(self.slots[-1], None)                                   # off-contract: the whole reply is refused, the card shows unavailable
-
-    def test_reclaim_risk_is_shown_plainly(self):
-        rep = report()
-        self.run_card(rep, answer=lambda host: json.dumps(stats(reclaim="AT_RISK")).encode())
-        self.assertIn("Reclaim risk: AT RISK", rep.plain("obody"))
-
-    def test_an_unreachable_off_contract_or_stale_source_is_all_unavailable(self):
-        for answer in (lambda host: (_ for _ in ()).throw(OSError()), lambda host: b"{}",
-                       lambda host: json.dumps(stats(extra=1)).encode(), lambda host: json.dumps(stats(memory_pct=140)).encode(),
-                       lambda host: json.dumps(stats(observed_at="2026-10-15T11:00:00Z")).encode()):
-            rep = report()
-            counts, log = self.run_card(rep, answer=answer)
-            self.assertIn("source refused", log)
-            self.assertEqual(counts["missing"], 12)
-            self.assertTrue(rep.plain("ohead").startswith("Oracle Cloud (DEGRADED · "))
-            self.assertIn("Memory unavailable · Disk unavailable", rep.plain("obody"))
-
-    def test_dry_run_writes_nothing_and_never_touches_the_watches(self):
-        rep = report()
-        self.assertEqual(self.run_card(rep, live=False)[0]["written"], 0)
-        self.assertEqual((rep.patches, self.watched, self.counted), ([], [], []))
-
-    def test_a_missing_ambiguous_or_reshaped_callout_is_not_owned(self):
-        no_card = Report()
-        twice = report()
-        twice.add("oracle2", "callout", "col", [])
-        twice.add("ohead2", "heading_3", "oracle2", [text("Oracle Cloud")])
-        twice.add("obody2", "paragraph", "oracle2", [])
-        extra = report()
-        extra.add("obody3", "paragraph", "oracle", [])
-        for rep in (no_card, twice, extra):
+    def test_an_unreachable_off_contract_or_stale_source_is_refused(self):
+        for raw in (b"", b"{}", json.dumps(stats(extra=1)).encode(), json.dumps(stats(memory_pct=140)).encode(), json.dumps(stats(observed_at="2026-10-15T11:00:00Z")).encode()):
             with self.assertRaises(card.OracleCardError):
-                self.run_card(rep)
-            self.assertEqual(rep.patches, [])
-        with self.assertRaises(card.OracleCardError):
-            self.run_card(report(), env={**self.ENV, "JIRA_CARD_BLOCK_ID": ""})
+                card.validate(raw, NOW)
 
-    def test_the_card_is_found_under_the_jira_card_where_jim_moved_it(self):
-        rep = Report()
-        rep.add("col2", "column", "root")
-        rep.add("jira", "callout", "col2", [text("JIRA Execution")])
-        rep.add("oracle", "callout", "col2", [])
-        rep.add("ohead", "heading_3", "oracle", [text("Oracle Cloud (10/14 · 6:07 AM CT)")])
-        rep.add("obody", "paragraph", "oracle", [])
-        env = {**self.ENV, "JIRA_CARD_BLOCK_ID": "jira"}
-        counts, _ = self.run_card(rep, env=env)
-        self.assertEqual(counts["written"], 2)
-        self.assertEqual(rep.plain("ohead"), "Oracle Cloud (10/15 · 8:05 AM CT)")
-        with self.assertRaises(card.OracleCardError):                                  # without the JIRA anchor nothing is searched
-            self.run_card(rep, env={**self.ENV, "JIRA_CARD_BLOCK_ID": ""})
-        both = Report()                                                                 # a second Oracle card in the Jira card's column makes it ambiguous
-        both.add("col2", "column", "root")
-        both.add("jira", "callout", "col2", [text("JIRA Execution")])
-        for n in ("oracle", "oracle2"):
-            both.add(n, "callout", "col2", [])
-            both.add("h" + n, "heading_3", n, [text("Oracle Cloud (10/14 · 6:07 AM CT)")])
-            both.add("b" + n, "paragraph", n, [])
-        with self.assertRaises(card.OracleCardError):
-            self.run_card(both, env=env)
-        self.assertEqual(both.patches, [])
+    def test_stats_of_answers_none_and_logs_a_fixed_code_instead_of_raising(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertIsNone(card.stats_of("h", lambda host: (_ for _ in ()).throw(OSError()), NOW))
+            self.assertIsNone(card.stats_of("h", lambda host: b"{}", NOW))
+        self.assertEqual(out.getvalue().count("oracle-card: source refused"), 2)
+        self.assertEqual(card.stats_of("h", lambda host: json.dumps(stats()).encode(), NOW)["disk_pct"], 38.6)
 
-    def test_a_live_write_needs_the_other_regions_configured(self):
-        with self.assertRaises(card.OracleCardError) as error:
-            card.run(0, True, self.ENV, NOW, lambda host: json.dumps(stats()).encode(), report())
-        self.assertEqual(str(error.exception), "PROTECTED_REGION_UNAVAILABLE")
 
-    def test_another_cards_write_during_ours_no_longer_fails_the_run(self):
-        """LIFE-613: the other cards' regions are no longer compared before and after our write, so a legitimate write by another card at the same time cannot fail this one."""
-        rep = report()
-        write = rep.call_once
+class Place(unittest.TestCase):
+    """Finding the System callout and writing its heading and its cells in place."""
 
-        def busy(method, path, body=None, **kw):
-            result = write(method, path, body, **kw)
-            rep.blocks["bills"]["callout"] = {"rich_text": [text("Bills (another card wrote this)")]}
-            return result
+    def table(self, memory="9%"):
+        return [[[(h, "bold")] for h in st.HEADER]] + [[[(label, None)], [("██", "green"), ("░░░░░░░░", "gray")], [(memory, None)], [("—", None)], [("OK", "green")]] for label in st.LABELS]
 
-        rep.call_once = busy
-        counts, _ = self.run_card(rep)
-        self.assertEqual(counts["written"], 2)
+    def test_the_callout_is_found_at_the_top_level_through_the_jira_card_and_a_stamped_heading_still_matches(self):
+        for heading in ("System", "System (11/24 · 11:01 PM CT)"):
+            heading_block, table, rows = card.locate(SystemPage(heading), "jira")
+            self.assertEqual((report_region.plain(heading_block), len(rows)), (heading, 17))
 
-    def test_an_unchanged_card_makes_zero_writes_and_a_changed_one_writes_only_the_differing_blocks(self):
-        """LIFE-661: read, compare, write only the difference. The same readings at the same minute: no PATCH and no read-back. A later hour: only the stamp. New readings in the minute just written: only the paragraph."""
-        rep = report()
-        self.assertEqual(self.run_card(rep)[0]["written"], 2)
-        rep.patches.clear()
-        counts, _ = self.run_card(rep)
-        self.assertEqual((counts["written"], rep.patches), (0, []))
-        later = NOW + dt.timedelta(hours=1)
-
-        def fresh(**over):
-            return lambda host: json.dumps(stats(observed_at="2026-10-15T14:04:30Z", **over)).encode()
-        counts, _ = self.run_card(rep, now=later, answer=fresh())
-        self.assertEqual((counts["written"], [p[0] for p in rep.patches]), (1, ["ohead"]))
-        rep.patches.clear()
-        counts, _ = self.run_card(rep, now=later, answer=fresh(cpu_24h_pct=9.9))
-        self.assertEqual((counts["written"], [p[0] for p in rep.patches]), (1, ["obody"]))
-        self.assertIn("avg 9.9%", rep.plain("obody"))
-
-    def test_a_429_on_the_card_write_is_retried_and_forever_fails_with_the_same_fixed_code(self):
-        """LIFE-661: the card writes with call_once, which used to give up on the first 429 (the Nov 13 failures). Through the real client: 429 then success writes; 429 forever is ORACLE_WRITE_FAILED."""
-        def run_with(rep, refusals):
-            left = [refusals]
-
-            def opener(request, timeout=0):
-                path = request.full_url.removeprefix(notion_client.API)
-                if request.get_method() == "PATCH":
-                    if left[0]:
-                        left[0] -= 1
-                        raise http_error(request, 429, headers={"Retry-After": "1"})
-                    return Response(rep.call_once("PATCH", path, json.loads(request.data)))
-                return Response(rep.call(request.get_method(), path))
-
-            client = notion_client.Client({"NOTION_API_TOKEN": "t", "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "s"}, sleep=lambda s: None)
-            with mock.patch.object(urllib.request, "urlopen", opener):
-                return self.run_card(rep, client=client)[0]
-
-        rep = report()
-        self.assertEqual(run_with(rep, 2)["written"], 2)
-        self.assertEqual(rep.plain("ohead"), "Oracle Cloud (10/15 · 8:05 AM CT)")
-        rep = report()
-        with self.assertRaises(card.OracleCardError) as error:
-            run_with(rep, 99)
-        self.assertEqual((str(error.exception), rep.patches), ("ORACLE_WRITE_FAILED", []))
-
-    def test_a_write_into_another_cards_block_is_refused_before_it_is_sent_and_nothing_changes(self):
-        """LIFE-613 mutation proof. A writer aimed at another card's block (the Attention callout) must fail with the fixed code and leave that block untouched. On the old code the write went
-        through and was only noticed afterwards (PROTECTED_REGION_CHANGED), so the untouched-block assertion fails there."""
-        rep = report()
-        before = deepcopy(rep.blocks["attn"])
-
-        def buggy_writer(client, heading, paragraph, segments, heading_text):
-            client.call_once("PATCH", "/blocks/attn", {"callout": {"rich_text": [{"type": "text", "text": {"content": "overwritten"}}]}})
-
-        with mock.patch.object(card, "write", buggy_writer):
+    def test_a_missing_two_or_reshaped_callout_is_not_owned_and_nothing_is_written(self):
+        for page in (SystemPage("Oracle Cloud"), SystemPage(extra_callout=True), SystemPage(table_rows=16)):
             with self.assertRaises(card.OracleCardError) as error:
-                self.run_card(rep)
+                card.locate(page, "jira")
+            self.assertEqual(str(error.exception), "CARD_NOT_OWNED")
+            self.assertEqual(page.patches, [])
+
+    def test_only_the_differing_rows_and_the_heading_are_written_and_each_is_read_back(self):
+        page = SystemPage()
+        heading, _, rows = card.locate(page, "jira")
+        want = self.table()
+        result = card.write(page, heading, rows, want, "System (11/25 · 9:00 AM CT)", True)
+        self.assertEqual((result["rows_written"], result["heading_written"]), (16, True))                  # the header and the rows that already match are not touched
+        self.assertEqual(page.plain("sys-h"), "System (11/25 · 9:00 AM CT)")
+        self.assertEqual(page.row_text()[1][2], "9%")
+        again_heading, _, again_rows = card.locate(page, "jira")
+        mark = len(page.patches)
+        self.assertEqual(card.write(page, again_heading, again_rows, want, "System (11/25 · 9:00 AM CT)", True)["rows_written"], 0)
+        self.assertEqual(len(page.patches), mark)                                                            # an unchanged table writes nothing
+        changed = self.table(memory="10%")
+        card.write(page, again_heading, again_rows, changed, "System (11/25 · 9:00 AM CT)", True)
+        self.assertEqual([p[0] for p in page.patches[mark:]], [f"sys-r{i}" for i in range(1, 17)])
+
+    def test_the_heading_keeps_jims_bold_and_a_dry_run_writes_nothing(self):
+        page = SystemPage()
+        heading, _, rows = card.locate(page, "jira")
+        result = card.write(page, heading, rows, self.table(), "System (11/25 · 9:00 AM CT)", False)
+        self.assertEqual((result["rows_changed"], result["rows_written"], page.patches), (16, 0, []))
+        card.write(page, heading, rows, self.table(), "System (11/25 · 9:00 AM CT)", True)
+        self.assertTrue(page.blocks["sys-h"]["heading_3"]["rich_text"][0]["annotations"]["bold"])
+
+    def test_a_row_that_does_not_read_back_fails_with_a_fixed_code(self):
+        page = SystemPage()
+        heading, _, rows = card.locate(page, "jira")
+        real = page.call_once
+        page.call_once = lambda method, path, body=None, **kw: (real(method, path, body, **kw), page.blocks.__setitem__("sys-r1", {**page.blocks["sys-r1"], "table_row": {"cells": [[]] * 5}}))[0]
+        with self.assertRaises(card.OracleCardError) as error:
+            card.write(page, heading, rows, self.table(), "System (11/25 · 9:00 AM CT)", True)
+        self.assertEqual(str(error.exception), "ORACLE_READBACK_MISMATCH")
+
+    def test_a_write_outside_the_located_blocks_is_refused_before_it_is_sent(self):
+        page = SystemPage()
+        heading, _, rows = card.locate(page, "jira")
+        scoped = report_region.ScopedClient(page, heading["id"], card.OracleCardError).adopt(*(r["id"] for r in rows))
+        with self.assertRaises(card.OracleCardError) as error:
+            scoped.call_once("PATCH", "/blocks/jira", {"callout": {"rich_text": []}})
         self.assertEqual(str(error.exception), "WRITE_OUT_OF_SCOPE")
-        self.assertEqual(rep.blocks["attn"], before)
-        self.assertEqual(rep.patches, [])
+        self.assertEqual(page.patches, [])
+        card.write(scoped, heading, rows, self.table(), "System (11/25 · 9:00 AM CT)", True)                  # the heading and the rows themselves are allowed
+
 
 class Endpoint(unittest.TestCase):
     def call(self, payload, stats_fn):

@@ -184,13 +184,13 @@ class Contract(unittest.TestCase):
 class Card(unittest.TestCase):
     ENV = {"IMESSAGE_ALERTS_HOST": "100.64.0.9", "JIRA_CARD_BLOCK_ID": "jira", "CALENDAR_CARD_BLOCK_ID": "attn", "BILLS_CARD_BLOCK_ID": "bills", "AMAZON_CARD_BLOCK_ID": "amz", "NOTION_JIRA_TOKEN": "unused"}
 
-    def run_card(self, report, live=True, answer=None, env=None):
+    def run_card(self, report, live=True, answer=None, env=None, tasks=None):
         answer = answer or (lambda host, key: json.dumps({"schema": card.SCHEMA, "observed_at": "2026-10-14T15:00:00Z", "health": "CURRENT", "unread_7d": 45,
                                                           "latest_state": "PRESENT", "latest": ep.scramble(key, NAME), "telegram": tg_block(key),
                                                           "whatsapp": tg_block(key, "Carol Example")}).encode())
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
-            counts = card.run(0, live, env or self.ENV, NOW, answer, report, keygen=lambda n: KEY)
+            counts = card.run(0, live, env or self.ENV, NOW, answer, report, keygen=lambda n: KEY, tasks=tasks)
         return counts, out.getvalue()
 
     def test_live_writes_only_the_messages_and_telegram_rows_their_latest_lines_and_the_time(self):
@@ -276,6 +276,64 @@ class Card(unittest.TestCase):
         self.assertEqual([p[0] for p in report.patches], ["l0", "r0", "l1", "r1", "l2", "r2", "head"])      # the channel rows are still written, nothing else
         self.assertEqual((report.blocks["extral"], report.blocks["extrar"]), before)                    # label, icon-less text, count and link untouched
         self.assertEqual(counts["written"], 7)
+
+    TODOIST_ENV = {"FOLLOWUP_TODOIST_PERSONAL_TOKEN": "unused"}
+
+    def todoist_row(self, report):
+        report.add("div", "divider", "comms")
+        self.add_row(report, "extra", own_links=True)
+
+    def test_the_todoist_launcher_reads_its_live_count_and_keeps_its_link_and_label(self):
+        """LIFE-975 step 4d: `Todoist (-)` becomes `Todoist (13)`; nothing else on that paragraph or on Reminders changes."""
+        report = Report()
+        self.todoist_row(report)
+        reminders = copy.deepcopy(report.blocks["extral"])
+        counts, log = self.run_card(report, env={**self.ENV, **self.TODOIST_ENV}, tasks=lambda limit: [{}] * 13)
+        self.assertEqual((report.plain("extrar"), report.plain("extral")), ("Todoist (13)", "Reminders (-)"))
+        self.assertEqual(report.blocks["extrar"]["paragraph"]["rich_text"][0]["text"]["link"]["url"], LAUNCH % "todoist")
+        self.assertEqual(report.blocks["extral"], reminders)
+        self.assertEqual([p[0] for p in report.patches], ["l0", "r0", "l1", "r1", "l2", "r2", "head", "extrar"])
+        self.assertEqual((counts["todoist"], counts["written"]), (13, 8))
+
+    def test_more_than_ninety_nine_open_tasks_read_99_plus_and_an_unchanged_count_writes_nothing_more(self):
+        report = Report()
+        self.todoist_row(report)
+        self.run_card(report, env={**self.ENV, **self.TODOIST_ENV}, tasks=lambda limit: [{}] * (limit))
+        self.assertEqual(report.plain("extrar"), "Todoist (99+)")
+        mark = len(report.patches)
+        counts, _ = self.run_card(report, env={**self.ENV, **self.TODOIST_ENV}, tasks=lambda limit: [{}] * limit)
+        self.assertNotIn("extrar", [p[0] for p in report.patches[mark:]])
+        self.assertEqual(counts["written"], 7)
+
+    def test_a_todoist_count_that_cannot_be_read_leaves_the_launcher_as_it_is_never_zero(self):
+        for env, tasks in ((self.ENV, None), ({**self.ENV, **self.TODOIST_ENV}, lambda limit: (_ for _ in ()).throw(RuntimeError("TODOIST_HTTP_401")))):
+            report = Report()
+            self.todoist_row(report)
+            counts, log = self.run_card(report, env=env, tasks=tasks)
+            self.assertEqual(report.plain("extrar"), "Todoist (-)")
+            self.assertEqual(counts["todoist"], "unread" if tasks else "unread")
+            self.assertNotIn("unused", log)
+        self.assertIn("TODOIST_UNREADABLE", log)
+        self.assertNotIn("401", log)
+
+    def test_the_callout_is_found_in_another_column_than_the_calendar_card(self):
+        """Jim's Nov 25 layout: the Communications callout sits in the right column, the Calendar card in the left one."""
+        report = Report()
+        report.add("col2", "column", "root")
+        report.blocks["col2"]["parent"] = {"type": "page_id", "page_id": "root"}
+        report.kids["col"].remove("comms")
+        report.kids["col2"] = ["comms"]
+        report.blocks["comms"]["parent"] = {"type": "block_id", "block_id": "col2"}
+        counts, _ = self.run_card(report)
+        self.assertEqual(counts["written"], 7)
+
+    def test_two_todoist_launchers_are_ambiguous_and_nothing_is_written(self):
+        report = Report()
+        self.todoist_row(report)
+        report.add("more", "paragraph", "extraR", [text("Todoist (-)", LAUNCH % "todoist")])
+        with self.assertRaises(card.CommsError):
+            self.run_card(report, env={**self.ENV, **self.TODOIST_ENV}, tasks=lambda limit: [])
+        self.assertEqual(report.patches, [])
 
     def test_two_rows_with_launch_links_are_ambiguous_and_nothing_is_written(self):
         report = Report()

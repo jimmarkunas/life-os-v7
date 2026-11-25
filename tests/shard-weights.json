@@ -205,7 +205,6 @@
   "tests.jobs.fit.test_backlog": 7.38,
   "tests.jobs.fit.test_backlog_workflow": 1.53,
   "tests.jobs.fit.test_calibration": 0.01,
-  "tests.jobs.fit.test_capacity_card": 0.01,
   "tests.jobs.fit.test_cloud": 3.05,
   "tests.jobs.fit.test_edge": 0.33,
   "tests.jobs.fit.test_fit": 0.64,
