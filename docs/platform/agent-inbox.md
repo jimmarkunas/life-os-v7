@@ -22,14 +22,17 @@ Two ways, both ending as one row with Status = New.
 | Workspace | select | `Personal` or `Bytalos` |
 | Urgency | select | `Now`, `Today`, `This week`, `FYI` |
 | Status | select | `New` (always New on a new row) |
-| Due | date | optional, a date or a date-time |
+| Due | date | a date or a date-time in CT. The sender's own `due` always wins; otherwise the tool sets it from Urgency when the row is created (LIFE-988): `Now` the creation time, `Today` 11:59 PM CT that day, `This week` 11:59 PM CT on the coming Sunday (the same day on a Sunday), `FYI` none. The views sort by Due |
 | Link | url | optional https link to the context (ticket, PR, page, thread) |
-| Details | text | optional, 1,500 characters at most |
+| Details | text | one readable line, 120 characters at most: the gist (the first line of the text). The full text (the tool accepts 1,500 characters) is the styled page body: the first line a callout, `a | b | c` rows a table, `- ` and `1. ` lists, `# ` headings, **bold** kept. An update with the same key replaces the body |
 | Key | text | optional idempotency key: the same key never adds a second row |
 
 Never write a secret, a token, a private key or personal data (an address, a phone or card number) into any property. The tool refuses them; a direct writer must not. Reply, Replied, Snooze until and Promoted to are Jim's.
 
 ## Rules the tool enforces
+
+A resend with the same key never moves a Due that is already set unless the sender names a `due`. Rows written by hand or by a Notion tool with no Due get one within one hour: the Followup stage's run fills each open row that has an urgency but no Due, from the row's own Received time, by the same rule (`agent_inbox.fill_missing_due`). Rollback: revert the change; Due values already filled are harmless.
+
 
 One database only (found by title; none or several is a refusal); Status is always New; subject, details and link are checked for secrets, personal data and synthetic hosts before anything is sent; one sender adds at most 20
 rows an hour; the same key never adds a second row; output is counts and fixed words (never the item, the sender, a link or the token).
