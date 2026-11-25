@@ -194,9 +194,10 @@ class OffByDefault(unittest.TestCase):
             self.assertTrue(on.queries)
             self.assertTrue(all("issuetype != Sub-task" in q for q in on.queries))
 
-    def test_week_caller_and_the_scheduled_snapshot_never_pass_the_argument(self):
+    def test_only_the_gated_week_builder_and_never_the_scheduled_snapshot_passes_the_argument(self):
         from lifeos.jira import snapshot
-        self.assertNotIn("v3_week_view", inspect.getsource(week_caller))
+        self.assertEqual(inspect.getsource(week_caller).count("v3_week_view=True"), 1)                  # only the V3_WEEK_VIEW-gated builder passes it
+        self.assertIn('switches.on("V3_WEEK_VIEW"', inspect.getsource(week_caller))
         self.assertNotIn("v3_week_view", inspect.getsource(snapshot.run))
 
     def test_the_default_view_text_is_unchanged_by_the_new_branch(self):

@@ -169,6 +169,102 @@ def write_parts(client, block_id, stamp, parts, live):
     return {"changed": changed, "summary_page": found["summary"]}
 
 
+TREE_KINDS = ("paragraph", "heading_3", "bulleted_list_item", "toggle", "callout", "column_list")      # LIFE-918: what a V3 week callout's body may hold (the legacy one-paragraph body is the first of them)
+INLINE_LEVELS = 2                                                                                  # Notion accepts two levels of children inside one append; anything deeper is appended afterwards
+
+
+def _rich_sig(items):
+    """[(text, link, bold, color)] of rich text (as read or as specified), adjacent pieces with the same look merged."""
+    out = []
+    for text_, url, bold, color in items:
+        key = (unquote(url) if url else None, bool(bold), color if color and color != "default" else None)
+        if out and out[-1][1:] == key:
+            out[-1] = (out[-1][0] + text_, *key)
+        elif text_:
+            out.append((text_, *key))
+    return out
+
+
+def _live_rich(block):
+    return _rich_sig([(p.get("plain_text") or (p.get("text") or {}).get("content") or "", p.get("href") or ((p.get("text") or {}).get("link") or {}).get("url"),
+                       (p.get("annotations") or {}).get("bold"), (p.get("annotations") or {}).get("color")) for p in (block.get(block.get("type")) or {}).get("rich_text") or []])
+
+
+def _spec_sig(item):
+    return (item["type"], _rich_sig(item["rich"]), [_spec_sig(c) for c in item["children"]])
+
+
+def _tree_sig(client, block):
+    kids = report_region.children(client, block["id"], AccountabilityError) if block.get("has_children") else []
+    return (block.get("type"), _live_rich(block), [_tree_sig(client, k) for k in kids])
+
+
+def _payload(item, levels):
+    """The Notion block for a spec, with its children inline for `levels` more levels."""
+    kind = item["type"]
+    body = {} if kind in ("column_list", "column") else {"rich_text": [_node(*piece) for piece in item["rich"]]}
+    if kind == "callout":
+        body["icon"] = {"type": "emoji", "emoji": item.get("icon") or "📋"}
+        body["color"] = item.get("color") or "default"
+    if item["children"] and levels > 0:
+        body["children"] = [_payload(c, levels - 1) for c in item["children"]]
+    return {"object": "block", "type": kind, kind: body}
+
+
+def _node(text_, url=None, bold=False, color=None):
+    out = {"type": "text", "text": {"content": text_, **({"link": {"url": url}} if url else {})}}
+    if bold or color:
+        out["annotations"] = {**({"bold": True} if bold else {}), **({"color": color} if color else {})}
+    return out
+
+
+def _depth(item):
+    return 1 + max(_depth(c) for c in item["children"]) if item["children"] else 0
+
+
+def _complete(client, block_id, item, left):
+    """Append what a deeper-than-inline spec still lacks. `left` is how many levels of children the block was created with."""
+    if _depth(item) <= left:
+        return
+    if left <= 0:
+        client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": [_payload(c, INLINE_LEVELS) for c in item["children"]]})
+        left = INLINE_LEVELS + 1
+    for kid, child in zip(report_region.children(client, block_id, AccountabilityError), item["children"]):
+        _complete(client, kid["id"], child, left - 1)
+
+
+def write_tree(client, block_id, stamp, specs, live):
+    """LIFE-918: the body of a V3 week callout is exactly `specs` (see lifeos.accountability.weekview). The body may be the one legacy paragraph or an earlier copy of this tree; any other kind of block
+    raises ACCOUNTABILITY_SHAPE and nothing is written. A change creates the new body right under the stamp, then removes the old one, then reads everything back (stamp and tree) before success; the heading,
+    the `Summary for Claude:` line and every block outside the callout are never touched. -> {changed, summary_page}."""
+    found = locate(client, block_id)
+    if not found["middle"] or any(b.get("type") not in TREE_KINDS for b in found["middle"]):
+        raise fail("ACCOUNTABILITY_SHAPE")
+    want = [_spec_sig(s) for s in specs]
+    old = found["middle"]
+    changed = _set(client, found["stamp"], stamp, live, "gray")
+    if [_tree_sig(client, b) for b in old] != want:
+        changed += 1
+        if live:
+            client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": [_payload(s, INLINE_LEVELS) for s in specs], "after": found["stamp"]["id"]})
+            gone = {b["id"] for b in old}
+            created = [k for k in report_region.children(client, block_id, AccountabilityError) if k["id"] not in gone][2:-1][:len(specs)]
+            if len(created) != len(specs):
+                raise fail("ACCOUNTABILITY_VERIFY_FAILED")
+            for block, item in zip(created, specs):
+                _complete(client, block["id"], item, INLINE_LEVELS)
+            for block in old:
+                client.call_once("DELETE", f"/blocks/{quote(block['id'], safe='')}")
+
+    def matches(after):
+        return text(after["stamp"]) == stamp.strip() and [_tree_sig(client, b) for b in after["middle"]] == want
+    if live and changed:
+        ok, _ = readback.confirmed(lambda: locate(client, block_id), matches)
+        if not ok:
+            raise fail("ACCOUNTABILITY_VERIFY_FAILED")
+    return {"changed": changed, "summary_page": found["summary"]}
+
+
 def write_directory(client, block_id, stamp, lines, bulleted, live):
     """LIFE-840: the body of an Artifacts callout. V7 owns only the trailing run of bulleted_list_item blocks (one per artifact, `lines` [[(text, link, bold)]]) or, when there are none, the last paragraph
     (a message such as "no verified artifacts"); everything before that, such as a person's decorative link list, is never read as content and never written. Owned blocks of the right kind are rewritten in place,
