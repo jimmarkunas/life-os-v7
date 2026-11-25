@@ -61,7 +61,7 @@ class Place(unittest.TestCase):
     """Finding the System callout and writing its heading and its cells in place."""
 
     def table(self, memory="9%"):
-        return [[[(h, "bold")] for h in st.HEADER]] + [[[(label, None)], [("██", "green"), ("░░░░░░░░", "gray")], [(memory, None)], [("—", None)], [("OK", "green")]] for label in st.LABELS]
+        return [[[(h, "bold")] for h in st.HEADER]] + [[[(label, None)], [("██", "green"), ("████████", "gray")], [(memory, None)], [("—", None)], [("OK", "green")]] for label in st.LABELS]
 
     def test_the_callout_is_found_at_the_top_level_through_the_jira_card_and_a_stamped_heading_still_matches(self):
         for heading in ("System", "System (11/24 · 11:01 PM CT)"):

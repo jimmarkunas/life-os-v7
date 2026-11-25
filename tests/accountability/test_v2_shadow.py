@@ -113,7 +113,7 @@ class Switches(unittest.TestCase):
 class Table(unittest.TestCase):
     def test_on_upgrades_the_table_in_place_and_jfm_needs_its_list_like_matt(self):
         out, notion, jira = run_goals([kid("JFM-20", "JFM-9", True), kid("JFM-21", "JFM-9")])
-        self.assertEqual(table(notion, "jim"), [["Lane", "Progress", "Done / all", "New count (preview)", "Status"], ["Career", "█████░░░░░", "1 / 2", "—", "NEEDS Q1 MEMBER LIST"]])
+        self.assertEqual(table(notion, "jim"), [["Lane", "Progress", "Done / all", "New count (preview)", "Status"], ["Career", "██████████", "1 / 2", "—", "NEEDS Q1 MEMBER LIST"]])
         order = notion.kids["b-jim-goals"]
         self.assertEqual([notion.blocks[k]["type"] for k in order[2:]], ["table", "paragraph", "toggle"])               # lanes, note and toggle kept; no second block anywhere
         self.assertEqual(notion.text("b-jim-goals-h"), "Quarterly Goals & Review — Jim · Q4 2026")
@@ -128,7 +128,7 @@ class Table(unittest.TestCase):
         _, notion, _ = run_goals([kid("JFM-20", "JFM-9", True), kid("JFM-21", "JFM-9"), kid("JFM-22", "JFM-9"), kid("MEJ-20", "MEJ-2", True)], membership=frozen)
         jim, matt = table(notion, "jim"), table(notion, "matt")
         self.assertEqual(jim[0], matt[0])
-        self.assertEqual(jim[1], ["Career", "███░░░░░░░", "1 / 3", "1 / 2", "OK"])
+        self.assertEqual(jim[1], ["Career", "██████████", "1 / 3", "1 / 2", "OK"])
         self.assertEqual(matt[1][3:], ["1 / 1", "OK"])
 
     def test_jfm_without_its_own_list_reads_needs_q1_member_list_in_red_even_when_mej_is_approved(self):
@@ -139,14 +139,14 @@ class Table(unittest.TestCase):
 
     def test_matt_needs_the_q1_member_list_while_none_is_approved_and_legacy_stays_official(self):
         _, notion, _ = run_goals([kid("MEJ-20", "MEJ-2", True), kid("MEJ-21", "MEJ-2")])
-        self.assertEqual(table(notion, "matt")[1], ["Creative", "█████░░░░░", "1 / 2", "—", "NEEDS Q1 MEMBER LIST"])
+        self.assertEqual(table(notion, "matt")[1], ["Creative", "██████████", "1 / 2", "—", "NEEDS Q1 MEMBER LIST"])
         status = notion.blocks[notion.kids[next(k for k in notion.kids["b-matt-goals"] if notion.blocks[k]["type"] == "table")][1]]["table_row"]["cells"][4][0]
         self.assertEqual(status["annotations"]["color"], "red")
 
     def test_an_approved_list_shows_the_v2_count_beside_the_official_legacy_count(self):
         frozen = approved({"MEJ-20": {"parent": "MEJ-2", "goal": "MEJ-2"}, "MEJ-21": {"parent": "MEJ-2", "goal": "MEJ-2"}})
         _, notion, _ = run_goals([kid("MEJ-20", "MEJ-2", True), kid("MEJ-21", "MEJ-2"), kid("MEJ-22", "MEJ-2", True)], membership=frozen)
-        self.assertEqual(table(notion, "matt")[1], ["Creative", "███████░░░", "2 / 3", "1 / 2", "OK"])
+        self.assertEqual(table(notion, "matt")[1], ["Creative", "██████████", "2 / 3", "1 / 2", "OK"])
 
     def test_a_drifted_list_reads_data_missing_in_red(self):
         frozen = approved({"MEJ-20": {"parent": "MEJ-2", "goal": "MEJ-99"}})
@@ -195,10 +195,11 @@ class Bar(unittest.TestCase):
         for done, total, filled, color in ((5, 26, 2, "red"), (3, 7, 4, "orange"), (6, 9, 7, "orange"), (7, 10, 7, "green"), (0, 6, 0, None), (10, 10, 10, "green"), (0, 0, 0, None)):
             pieces = render.bar(done, total)
             self.assertEqual(sum(len(p[0]) for p in pieces), 10)
-            self.assertEqual(sum(len(p[0]) for p in pieces if p[0].startswith("█")), filled)
+            self.assertEqual(sum(len(p[0]) for p in pieces if p[3] != "gray"), filled)                         # filled cells keep their colour
+            self.assertEqual(sum(len(p[0]) for p in pieces if p[3] == "gray"), 10 - filled)                     # empty cells are the same glyph in gray
+            self.assertTrue(all(set(p[0]) == {"█"} for p in pieces))                                            # one glyph, so every bar is the same width (Jim, Nov 25 2026)
             if filled:
                 self.assertEqual(pieces[0][3], color)
-            self.assertTrue(all(p[3] == "gray" for p in pieces if p[0].startswith("░")))
 
 
 class Render(unittest.TestCase):
@@ -207,8 +208,8 @@ class Render(unittest.TestCase):
         with contextlib.redirect_stdout(out), mock.patch("socket.socket", side_effect=AssertionError("network")):
             self.assertEqual(preview.main(["--synthetic"]), 0)
         text = out.getvalue()
-        self.assertIn("██░░░░░░░░ · 5 / 26 · — · NEEDS Q1 MEMBER LIST", text)
-        self.assertIn("████░░░░░░ · 12 / 29 · — · NEEDS Q1 MEMBER LIST", text)
+        self.assertIn("██████████ · 5 / 26 · — · NEEDS Q1 MEMBER LIST", text)
+        self.assertIn("██████████ · 12 / 29 · — · NEEDS Q1 MEMBER LIST", text)
 
     def test_any_other_argument_is_refused(self):
         with contextlib.redirect_stdout(io.StringIO()):

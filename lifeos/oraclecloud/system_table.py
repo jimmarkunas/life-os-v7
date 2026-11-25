@@ -68,7 +68,7 @@ def colour_days(days):
 def bar(filled, colour):
     """-> segments [(text, colour)]: `filled` blocks (of ten) in `colour`, the rest gray."""
     filled = min(BAR, max(0, int(filled + 0.5)))
-    return [(text, c) for text, c in (("█" * filled, colour), ("░" * (BAR - filled), "gray")) if text]
+    return [(text, c) for text, c in (("█" * filled, colour), ("█" * (BAR - filled), "gray")) if text]
 
 
 def blocks_of(share):
@@ -84,7 +84,7 @@ class Row:
     """One table row before the stale rule: `have` False means the reading could not be had this run."""
 
     def __init__(self, label, usage=None, reading="—", resets="—", reason=None, as_of=None, have=True):
-        self.label, self.usage, self.reading, self.resets, self.reason, self.as_of, self.have = label, usage or [("░" * BAR, "gray")], reading, resets, reason, as_of, have
+        self.label, self.usage, self.reading, self.resets, self.reason, self.as_of, self.have = label, usage or [("█" * BAR, "gray")], reading, resets, reason, as_of, have
 
 
 def _money(v, places=2):
@@ -239,7 +239,7 @@ def finish(rows, previous, previous_stamp, now):
         old = previous.get(row.label)
         carried = STALE_WORDS.search(old[3]).group(1) if old and STALE_WORDS.search(old[3]) else None
         if not row.have:
-            usage, reading, resets = (old[0], old[1], old[2]) if old else ([("░" * BAR, "gray")], "unavailable", "—")
+            usage, reading, resets = (old[0], old[1], old[2]) if old else ([("█" * BAR, "gray")], "unavailable", "—")
             since = carried or (when(previous_stamp, now) if previous_stamp else "unknown")
             status = [(f"STALE since {since}", "red")]
         else:
