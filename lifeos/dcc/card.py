@@ -18,14 +18,13 @@ TITLE = router.DCC_REGION
 MODULE = router.OWNERS[TITLE]
 FRESH_MINUTES = 90                                        # an hourly card is current this long after its stamp
 # LIFE-612: a card that runs less often than every tick is current for the longest gap between its runs plus the same 90 minutes, read from the due-time table (lifeos/platform/due_table.json).
-JOB_OF = {"Calendar": "outlook", "Jira": "jira", "Bills": "bills", "Mail Alerts": "mail", "Amazon": "amazon", "Hiring Pipeline": "hiring"}
+JOB_OF = {"Calendar": "outlook", "Jira": "jira", "Bills": "bills", "Mail Alerts": "mail", "Amazon": "amazon"}
 TIME = re.compile(r"(\d{1,2}):(\d{2}) ([AP]M) CT")          # the clock in a DEGRADED or STALE line ("failed at 10:05 PM CT")
 # (label, block id secret, where the status text is). "head": the callout's heading carries it; "line": the heading's stamp, then the first text line under the heading (the counts; a card that still carries its stamp in that line works as before); "floating": the Hiring Pipeline's heading stamp and table rows.
 # LIFE-645: V7 retired the Attention card, so the Attention callout is no longer a source (it would read STALE for good); it stays a protected region.
 AREAS = (("Calendar", "CALENDAR_CARD_BLOCK_ID", router.CALENDAR_REGION, "head"), ("Jira", "JIRA_CARD_BLOCK_ID", router.JIRA_REGION, "head"),
          ("Bills", "BILLS_CARD_BLOCK_ID", router.BILLS_REGION, "line"), ("Mail Alerts", "MAIL_ALERTS_CARD_BLOCK_ID", router.MAIL_ALERTS_REGION, "line"),
-         ("Amazon", "AMAZON_CARD_BLOCK_ID", router.AMAZON_REGION, "line"),
-         ("Hiring Pipeline", "HIRING_CARD_BLOCK_ID", router.HIRING_REGION, "floating"))
+         ("Amazon", "AMAZON_CARD_BLOCK_ID", router.AMAZON_REGION, "line"))           # LIFE-975: the Hiring Pipeline is a live view now: it has no write time to read
 PROTECTED = tuple((name, region) for _, name, region, _ in AREAS)
 
 
@@ -161,7 +160,6 @@ def compose(areas, now, runs=None):
     """-> the callout's content as plain data (the approved native layout, LIFE-57). Pure. A count is shown only from a card that is current: a stale, degraded or unreadable card shows
     its own state in place of a number, never a zero. LIFE-694: `runs` (lifeos/platform/runs_today.py, LIFE-975) is the fourth card, Runs OK today; without it the three KPI cards are as before."""
     states = {label: classify(area, now, fresh_minutes(label)) for label, area in areas.items()}
-    ok, bad = [l for l, (state, _) in states.items() if state == "fresh"], [(l, state) for l, (state, _) in states.items() if state != "fresh"]
 
     def source(label):
         state, stamp = states.get(label, ("unset", None))
@@ -176,14 +174,11 @@ def compose(areas, now, runs=None):
     sprint = next((t for t in fresh_lines if OVERDUE_BLOCKED.search(t) or SPLIT_COUNTS.search(t)), None)
     bills_due, waiting = count("Bills", r"(\d+) bills? due"), count("Mail Alerts", r"(\d+) waiting")
     combined = _overdue_blocked(sprint) if states.get("Jira", ("unset",))[0] == "fresh" else None
-    freshness = " · ".join(f"{label} {stamp}" if state == "fresh" else f"{label} {state}" + (f" (last {stamp})" if stamp else "") for label, (state, stamp) in states.items())
 
     def kpi(value, name, text):
         return (str(value) if value is not None else "—", name, text)
 
-    return {"health": f"Source health and freshness · {len(ok)} of {len(states)} current" + "".join(f" · {label} {state.upper()}" for label, state in bad),
-            "detail": [freshness, ("✅" if not bad else "⚠️") + f" {len(ok)} of {len(states)} source cards current · This is source-card health, not proof that every task is complete."],
-            "kpis": [kpi(bills_due, "Bills due", source("Bills")), kpi(combined, "Jira Overdue / Blocked", source("Jira") + (" · count not reported" if combined is None and states.get("Jira", ("unset",))[0] == "fresh" else "")),
+    return {"kpis": [kpi(bills_due, "Bills due", source("Bills")), kpi(combined, "Jira Overdue / Blocked", source("Jira") + (" · count not reported" if combined is None and states.get("Jira", ("unset",))[0] == "fresh" else "")),
                      kpi(waiting, "Mail waiting", source("Mail Alerts"))], **({"runs": runs} if runs is not None else {})}
 
 ICONS = ("credit-card", "arrow-right", "inbox")                  # the approved mockup's native icons, in card order
@@ -222,21 +217,20 @@ def runs_card(runs, now):
 
 
 def render(model):
-    """Source health directly below the heading, then four equal KPI callouts."""
+    """The four equal KPI callouts (LIFE-975 step 4d: the `Source health and freshness` toggle above them is retired; the System table's Connections row says what it said)."""
     def column(ratio, *kids):
         return {"object": "block", "type": "column", "column": {"width_ratio": ratio, "children": list(kids)}}
 
     def row(*cols):
         return {"object": "block", "type": "column_list", "column_list": {"children": list(cols)}}
 
-    health = _b("toggle", _t(model["health"]), children=[_b("paragraph", _t(text)) for text in model["detail"]])
     runs = model.get("runs")
     ratio = round(1 / (len(model["kpis"]) + (runs is not None)), 4)
     columns = [column(ratio, _b("callout", icon=icon, children=[_b("heading_3", _t(value)), _b("paragraph", _t(name, bold=True)), _b("paragraph", _t(text, gray=True))]))
                for icon, (value, name, text) in zip(ICONS, model["kpis"])]
     if runs is not None:
         columns.append(column(ratio, runs_card(runs, model.get("now") or datetime.now(TZ))))
-    return [health, row(*columns)]
+    return [row(*columns)]
 
 
 def _kpi_name(client, column):

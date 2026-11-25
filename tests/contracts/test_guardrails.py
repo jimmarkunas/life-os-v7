@@ -26,11 +26,11 @@ def strings_and_code(path):
 class HumanStateIsNeverDestroyed(unittest.TestCase):
     def test_every_trash_call_sits_behind_a_protection_check(self):
         users = {p.name: p.read_text() for p in CODE if '"in_trash": True' in p.read_text()}
-        self.assertEqual(sorted(users), ["agent_inbox.py", "audit.py", "capacity_card.py", "reset.py", "retention.py"])             # a new destructive writer must be added here on purpose
+        self.assertEqual(sorted(users), ["agent_inbox.py", "audit.py", "connections.py", "reset.py", "retention.py"])             # a new destructive writer must be added here on purpose
         self.assertLess(users["audit.py"].index("guard.protection"), users["audit.py"].index('"in_trash": True'))
         self.assertLess(users["reset.py"].index("_no_total(r)"), users["reset.py"].index('"in_trash": True'))      # Amazon Orders: only a row with no Grand Total (D152)
         self.assertLess(users["retention.py"].index("hiring_pipeline.handoff_for"), users["retention.py"].index('"in_trash": True'))
-        self.assertLess(users["capacity_card.py"].index("RETIRE_NOT_OWNED"), users["capacity_card.py"].index('"in_trash": True'))
+        self.assertLess(users["connections.py"].index("RETIRED = "), users["connections.py"].index('"in_trash": True'))                 # the System health writer trashes only the retired Todoist row, named in RETIRED
         self.assertLess(users["agent_inbox.py"].index("archive_not_a_test_row"), users["agent_inbox.py"].index('"in_trash": True'))      # the Agent Inbox proof trashes only its own test rows (keys proof-... and direct-...)
 
     def test_retention_only_ever_selects_unapplied_undecided_rows(self):

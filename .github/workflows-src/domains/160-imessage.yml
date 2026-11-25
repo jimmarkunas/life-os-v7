@@ -21,7 +21,7 @@
         with:
           wait_seconds: "200"
       - id: bws_imessage
-        name: Load the iMessage alert credentials from Bitwarden (exactly these 13; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        name: Load the iMessage alert credentials from Bitwarden (exactly these 14; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
@@ -40,6 +40,7 @@
             e54f0a84-84c3-47d8-8b5b-b4e30052d6e9 > TAILSCALE_OAUTH_CLIENT_SECRET
             6590208b-506d-4238-ab10-b4e30051b25f > IMESSAGE_ALERTS_HOST
             53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
+            89238d39-3528-44b6-90f4-b5040188c384 > FOLLOWUP_TODOIST_PERSONAL_TOKEN
             4d0c7449-ed0a-46c1-9c2c-b503015f8d54 > LIFEOS_ACQ_SSH_JUMP_HOST
             82efa413-6b9c-4c5c-b0d2-b503015f8e3d > LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS
       - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
@@ -93,6 +94,7 @@
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           IMESSAGE_ALERTS_HOST: ${{ steps.bws_imessage.outputs.IMESSAGE_ALERTS_HOST }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_imessage.outputs.NOTION_JIRA_TOKEN }}
+          FOLLOWUP_TODOIST_PERSONAL_TOKEN: ${{ steps.bws_imessage.outputs.FOLLOWUP_TODOIST_PERSONAL_TOKEN }}      # LIFE-975 step 4d: the Followup stage's existing read-only Todoist token, for the launcher's open-task count only
           AMAZON_CARD_BLOCK_ID: ""
           BILLS_CARD_BLOCK_ID: ""
           CALENDAR_CARD_BLOCK_ID: ""
@@ -108,7 +110,9 @@
         # Jim's approval Oct 15 2026 (Option B): the Oracle Cloud callout under Communications Attention. Oracle answers numbers only (OCI cost,
         # metrics and limits read as the VM itself; local memory, disk, services). Jim, Oct 24 (#510): written every tick despite the step name, Codex 5h/Week from the AI Capacity reading.
         # LIFE-129 (Jim, Oct 28 2026): the store and the push topic for the off-site backup alert (lifeos/oraclecloud/backup_watch.py), the same values the iMessage alerts step uses.
-        name: Oracle Cloud card (daily from 6 AM CT; numbers only in the log; writes only when live)
+        # LIFE-975 step 4d (Jim, Nov 25 2026: "system ok"): this one stage is the System writer: Oracle's stats, Codex read once, the Connections row from the System health database. GITHUB_TOKEN is the
+        # run's own default token (read only here: the history of the domains jobs, no new permission); GITHUB_REPOSITORY is the runner's own variable.
+        name: System card (every tick; numbers only in the log; writes only when live)
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_DB_NAME }}
@@ -124,15 +128,18 @@
           NTFY_TOPIC: ${{ steps.bws_imessage.outputs.NTFY_TOPIC }}
           IMESSAGE_ALERTS_HOST: ${{ steps.bws_imessage.outputs.IMESSAGE_ALERTS_HOST }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_imessage.outputs.NOTION_JIRA_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          LIFEOS_NOTION_IDS: ""
           AMAZON_CARD_BLOCK_ID: ""
           BILLS_CARD_BLOCK_ID: ""
           CALENDAR_CARD_BLOCK_ID: ""
           JIRA_CARD_BLOCK_ID: ""
           HIRING_CARD_BLOCK_ID: ""
         run: python -m lifeos.run oracle-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
-      - name: Oracle Cloud card warning (does not fail the run)
+      - name: System card warning (does not fail the run)
         if: ${{ always() && steps.oracle.outcome == 'failure' }}
-        run: echo "::warning title=Oracle Cloud card::the Oracle Cloud card was not updated; it keeps its previous update time"
+        run: echo "::warning title=System card::the System card was not updated; it keeps its previous update time"
       # LIFE-793: the AI Capacity card now runs in its own workflow (capacity-card.yml), not in this job.
       - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}

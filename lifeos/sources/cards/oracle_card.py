@@ -1,33 +1,75 @@
-"""The Oracle Cloud card stage with its Codex lines taken from the AI Capacity card's own reading (Jim, Oct 24 2026: the two cards must show the same numbers).
+"""The System card stage (LIFE-975 step 4d; the stage keeps its old name `oracle-card`, so no registry or workflow moves): one writer for the Daily Report's System table.
 
-lifeos.jobs.fit.edge.limits is the one read of Oracle's Codex windows that AI Capacity shows; this module asks it too and hands the card `left = 100 - used` for the 5h and
-Week windows. It lives in sources because only sources may import both the jobs layer (the reader) and the oraclecloud layer (the card). A reading that cannot be had is
-None: the card shows Codex unavailable and says DEGRADED, the same way AI Capacity does. Counts and fixed codes only in the log."""
+It merges what three cards showed: Oracle's `oracle1` stats (the old Oracle Cloud card), Oracle's `limits` (the old AI Capacity card; Codex is read ONCE here, there is no second reading to disagree with) and the System
+health database behind the Connections row (lifeos/platform/connections.py). It lives in sources because only sources may import the jobs layer (the `limits` reader), the oraclecloud layer (the card) and the platform.
+A reading that cannot be had is never zero: its row keeps the page's last values and says `STALE since ...`. The AI Capacity callout and the Command Center source-health toggle have no writer any more. Counts and fixed codes only."""
 import json
 import os
+from datetime import datetime, timezone
 
 from lifeos.jobs.fit import edge
-from lifeos.oraclecloud import card
-
-WINDOWS = (("5h", "left_5h"), ("Week", "left_week"))                     # the labels capacity_card shows as 5-hour and weekly
-
-
-def plan_from(reading):
-    """edge.limits() -> {"left_5h", "left_week"} (percent left), or None when Oracle reports no Codex pool or either window."""
-    pool = next((p for p in reading["pools"] if p["provider"] == "openai"), None)
-    used = {w["label"]: w["used"] for w in (pool or {}).get("windows", [])}
-    if not all(label in used for label, _ in WINDOWS):
-        return None
-    return {key: max(0, min(100, 100 - used[label])) for label, key in WINDOWS}
+from lifeos.oraclecloud import backup_watch, boot_backup_watch, card, system_table, worker_watch
+from lifeos.platform import connections, ct_stamp, router
+from lifeos.platform.fixed_code import fixed
+from lifeos.platform.notion_client import NotionError
 
 
-def run(limit, live, environ=os.environ, **kw):
-    host = (environ.get("IMESSAGE_ALERTS_HOST") or "").strip()
+def limits_of(host):
+    """-> (Oracle's `limits` reading, the time it was read) or (None, None): unreachable or off contract."""
+    try:
+        reading = edge.limits(host)
+    except edge.EdgeError as error:
+        print("oracle-card: limits unavailable", json.dumps({"code": str(error)}))
+        return None, None
+    try:
+        at = datetime.fromisoformat(reading["read_at"].replace("Z", "+00:00"))
+    except (ValueError, KeyError, AttributeError):
+        at = None
+    return reading, at
 
-    def plan():
+
+def connection_summary(client, environ, now, live, seen=None):
+    """-> (summary or None, {"changed", "retired"}). The owned rows are refreshed from the domains job history; a database that cannot be read is None (the row goes stale, the card still writes)."""
+    try:
+        rows = connections.read_rows(client, connections.source_id(environ))
+    except NotionError:
+        return None, {"changed": 0, "retired": 0}
+    updates = connections.plan(rows, connections.evidence(environ) if seen is None else seen, now)
+    retire = connections.retired_pages(rows)
+    if live:
         try:
-            return plan_from(edge.limits(host))
-        except edge.EdgeError as error:
-            print("oracle-card: codex limits unavailable", json.dumps({"code": str(error)}))
-            return None
-    return card.run(limit, live, environ, plan=plan, **kw)
+            connections.apply(client, updates, retire)
+        except NotionError:
+            print("oracle-card: connections not written", json.dumps({"code": "CONNECTIONS_WRITE_FAILED"}))
+            updates = []
+    return connections.summary(connections.merged(rows, updates), now), {"changed": len(updates), "retired": len(retire)}
+
+
+def run(limit, live, environ=os.environ, now=None, fetcher=card.fetch, client=None, limits=limits_of, seen=None, watch=None, workers_watch=None, boot_watch=None):
+    host = (environ.get("IMESSAGE_ALERTS_HOST") or "").strip()
+    anchor = (environ.get("JIRA_CARD_BLOCK_ID") or "").strip()                              # LIFE-969: any card block on the page finds the page; the Jira card is on it
+    if not host or not anchor:
+        raise card._fail("ORACLE_NOT_CONFIGURED")
+    router.check_write(card.MODULE, [card.TITLE])
+    now = now or datetime.now(timezone.utc)
+    client = client or card._writer(environ)
+    heading, _, rows = card.locate(client, anchor)
+    stats = card.stats_of(host, fetcher, now)
+    reading, read_at = limits(host)
+    summary, written = connection_summary(client, environ, now, live, seen)
+    built = system_table.readings(stats, now if stats else None, reading, read_at or (now if reading else None), summary, now)
+    stamp = connections.last_ok_time(card.heading_text_of(heading), now)
+    table = system_table.finish(built, system_table.previous_of(card.table_of(rows)), stamp, now)
+    heading_text = f"{card.TITLE} ({ct_stamp.when(now)})"
+    counts = {"rows": len(table) - 1, "stale": system_table.stale_count(table), "oracle": int(stats is not None), "limits": int(reading is not None),
+              "connections": f"{summary['connected']}/{summary['total']}" if summary else "unread", "connections_written": written["changed"], "todoist_row_retired": written["retired"], "written": 0}
+    if not live:
+        return {**counts, **card.write(client, heading, rows, table, heading_text, False)}
+    if stats is not None:
+        (watch or backup_watch.record)(stats["backup"], environ, now)                       # LIFE-129: never raises; the card's own result never depends on it
+        (workers_watch or worker_watch.record)(stats["workers"], environ, now)               # LIFE-531: same
+        (boot_watch or boot_backup_watch.record)(stats["backups"], environ, now)             # LIFE-808: same
+    scoped = card.scoped(environ, client, heading, rows)                                    # LIFE-613: only the heading and the table rows located above can be written
+    with fixed(NotionError, card._fail, "ORACLE_WRITE_FAILED"):
+        result = card.write(scoped, heading, rows, table, heading_text, True)
+    return {**counts, **result, "written": result["rows_written"] + int(result["heading_written"])}

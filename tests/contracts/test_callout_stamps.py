@@ -15,7 +15,6 @@ from lifeos.bills import card as bills
 from lifeos.hiring import models as hiring_models, render as hiring_render
 from lifeos.imessage import comms_card
 from lifeos.jira import card as jira
-from lifeos.jobs.fit import capacity_card
 from lifeos.megibow import render as megibow
 from lifeos.oraclecloud import card as oracle
 from lifeos.physmail import card as physmail
@@ -33,19 +32,12 @@ def heading_form(title):
 
 
 def oracle_heading():
-    raw = {"schema": oracle.SCHEMA, "observed_at": "2026-11-12T19:34:30Z", "cost": {"amount": 0, "currency": "USD"}, "cpu_24h_pct": 5, "memory_pct": 50, "disk_pct": 40,
-           "a1_cores": {"used": 2, "available": 0}, "reclaim": "NONE", "services": {key: True for key, _ in oracle.SERVICES}, "chatgpt": {"left_5h": 100, "left_week": 64},
-           "backup": {"ok": True, "code": "ok", "age_h": 3}}
-    return oracle.render(oracle.validate(json.dumps(raw), NOW), NOW)[1]
+    return f"{oracle.TITLE} ({ct_stamp.when(NOW)})"                              # LIFE-975: the System callout's heading, built by lifeos/sources/cards/oracle_card.py with the one formatter
 
 
 def hiring_heading():
     text = hiring_render.render({"rows": [], "reasons": []}, None, NOW)[0]
     return hiring_models.heading_text(hiring_models.split_status(text)[0])
-
-
-def capacity_heading():
-    return re.match(r"AI Capacity \([^)]*\)", capacity_card.render({"pools": [], "unavailable": [], "safety_cap": None}, NOW)[0].split("\n")[0]).group(0)          # the callout's first line, up to the heading's closing bracket
 
 
 # region (or card name) -> (the card's title, a function returning the heading the card writes for a fixed time)
@@ -60,7 +52,6 @@ HEADINGS = {
     router.ORACLE_REGION: (router.ORACLE_REGION, oracle_heading),
     router.RECRUITER_OUTREACH_REGION: (router.RECRUITER_OUTREACH_REGION, lambda: outreach_card.heading(NOW)),
     "MegIBOW": ("MegIBOW", lambda: re.match(r"MegIBOW \([^)]*\)", megibow.status(NOW)).group(0)),
-    "AI Capacity": ("AI Capacity", capacity_heading),
 }
 # Not a Daily Report card heading, with the reason:
 EXEMPT = {
@@ -108,7 +99,6 @@ class EveryCardHeadingShowsWhenItWasUpdated(unittest.TestCase):
         self.assertEqual(bills.heading_text({"taken_at": NOW.isoformat()}, True), "Bills: This Week (STALE · last accepted 11/12 · 1:35 PM CT)")
         self.assertEqual(agenda._heading_text({"taken_at": NOW.isoformat()}, True), "Calendar (STALE · last accepted 11/12 · 1:35 PM CT)")
         self.assertTrue(megibow.status(NOW, degraded=True).startswith("MegIBOW (DEGRADED at 11/12 · 1:35 PM CT)"))
-        self.assertTrue(capacity_card.render({"pools": [], "unavailable": [], "safety_cap": None}, NOW)[0].startswith("AI Capacity (11/12 · 1:35 PM CT) · "))
         self.assertEqual(oracle_heading().split(" (")[1][:len("11/12 · 1:35 PM CT")], "11/12 · 1:35 PM CT")
 
     def test_one_formatter_builds_the_stamp_for_every_form_and_a_new_year_and_zone_are_right(self):

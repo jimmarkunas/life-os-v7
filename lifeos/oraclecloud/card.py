@@ -1,8 +1,8 @@
-"""The Daily Report's Oracle Cloud callout, written every tick from Oracle's `oracle1` numbers and the AI Capacity card's Codex limits.
+"""The Daily Report's System callout (LIFE-975 step 4d: it was the Oracle Cloud callout), written every tick: its heading's stamp and the cells of its one table.
 
-Flow: hourly tick -> domains.yml `imessage` job -> Oracle's private endpoint (request `oracle1`) -> this stage -> Notion. Oracle answers numbers only (lifeos/oraclecloud/oracle/stats.mjs).
-The two Codex windows come from the same `limits` reading as the AI Capacity card (passed in by lifeos.sources.cards.oracle_card), so the two cards cannot disagree; a Codex reading that cannot be had shows as unavailable and marks the card DEGRADED.
-Output: live, exactly two blocks of the callout: the heading's stamp (`Oracle Cloud (10/15 · 7:05 AM CT)`, `DEGRADED · ` in front when any reading is missing) and the one paragraph under it. Both are read back; every other V7 region is proven unchanged. Counts and fixed codes only."""
+Flow: hourly tick -> domains.yml `imessage` job -> Oracle's private endpoint (request `oracle1`, and `limits` for Codex, read once) -> lifeos.sources.cards.oracle_card -> this module -> Notion.
+This module owns the Oracle contract (`fetch`, `validate`) and the writing: the callout is found at the top level of the page by its heading; only the heading text and the table's row cells are written, in place,
+each read back (the table's shape is never changed). The rows themselves are built by lifeos.oraclecloud.system_table. Counts and fixed codes only."""
 # Detail moved out of the docstring (LIFE-595):
 # Approved by Jim on Oct 15 2026 (Option B, OCI's own data): the callout sits under Communications Attention, or under the JIRA card where Jim moved it. Oct 24 2026: refreshed every tick so its Codex lines match the AI Capacity card.
 # Oracle's numbers: month-to-date cost from OCI billing, CPU from OCI Monitoring, the Always Free A1 core headroom from OCI Limits, Oracle's idle-reclaim rule, local memory and disk and service health.
@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from urllib.parse import quote
 
 from lifeos.oraclecloud import backup_watch, boot_backup_watch, worker_watch
-from lifeos.platform import ct_stamp, honcho_status, report_region, router
+from lifeos.platform import honcho_status, report_region, router
 from lifeos.platform.fixed_code import fixed
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 
@@ -31,7 +31,6 @@ OPTIONAL = {"backup", "workers", "backups", "honcho", "anthropic"}             #
 CODE = re.compile(r"[a-z0-9_]{1,40}")
 SERVICES = (("gateway", "Gateway"), ("telegram", "Telegram"), ("whatsapp", "WhatsApp"), ("alerts", "Alerts"))
 UNREPORTED = "unreported"         # the plan windows under Sign in with ChatGPT: OpenClaw prints none (Oct 16 2026), a known state, never counted as missing
-BAR = 10
 PROTECTED = (("JIRA_CARD_BLOCK_ID", router.JIRA_REGION), ("CALENDAR_CARD_BLOCK_ID", router.CALENDAR_REGION), ("BILLS_CARD_BLOCK_ID", router.BILLS_REGION),
              ("AMAZON_CARD_BLOCK_ID", router.AMAZON_REGION), ("HIRING_CARD_BLOCK_ID", router.HIRING_REGION))
 UNAVAILABLE = {"cost": None, "cpu_24h_pct": None, "memory_pct": None, "disk_pct": None, "a1_cores": None, "reclaim": None,
@@ -104,149 +103,118 @@ def validate(raw, now):
             "honcho": p.get("honcho"), "anthropic": p.get("anthropic"), "honcho_reported": "honcho" in p}
 
 
-def bar(pct):
-    """-> [(text, color)]: the filled part green, the rest gray (Jim, Oct 15)."""
-    filled = min(BAR, max(0, round(pct / 100 * BAR)))
-    return [(text, color) for text, color in (("█" * filled, "green"), ("░" * (BAR - filled), "gray")) if text]
-
-
-def missing(r):
-    """How many readings are unavailable (a stopped service is a reading, not a missing one)."""
-    return sum(r[k] is None for k in ("cost", "cpu_24h_pct", "memory_pct", "disk_pct", "a1_cores", "reclaim", "chatgpt", "backup")) + sum(
-        v is None for v in r["services"].values())
-
-
-def _gauge(label, pct, suffix="%"):
-    """`Memory ████░░░░░░ 44%` as segments, or `Memory unavailable`."""
-    return [(f"{label} unavailable", None)] if pct is None else [(f"{label} ", None), *bar(pct), (f" {pct:.0f}{suffix}", None)]
-
-
-def render(r, now):
-    """readings -> (paragraph segments [(text, color or None)], heading text). Jim's layout (Oct 15): cost and CPU on one line; memory and disk; cores
-    and reclaim risk on one line with services under it; both Codex (ChatGPT plan) windows; blank lines between those groups."""
-    cost, a1, plan, sep = r["cost"], r["a1_cores"], r["chatgpt"], [(" · ", None)]
-    first = ("Cost this month: unavailable" if cost is None else
-             f"Cost this month: {'$' if cost['currency'] == 'USD' else cost['currency'] + ' '}{cost['amount']:.2f} (Oracle billing)")
-    cpu = "CPU, last 24 h: unavailable" if r["cpu_24h_pct"] is None else f"CPU, last 24 h: avg {r['cpu_24h_pct']:.1f}%"
-    cores = ("Always Free A1 cores: unavailable" if a1 is None else f"Always Free A1 cores: {a1['used']} of {a1['used'] + a1['available']} in use · "
-             + ("no headroom" if a1["available"] == 0 else f"{a1['available']} free"))
-    reclaim = {"NONE": "Reclaim risk: none", "AT_RISK": "Reclaim risk: AT RISK (CPU and memory under Oracle's 20% idle line)"}.get(
-        r["reclaim"], "Reclaim risk: unavailable")
-    backup = backup_watch.healthy(r["backup"])
-    services = "Services: " + " · ".join(f"{label} {'✓' if v else '✗' if v is False else '?'}" for label, v in
-                                         [(label, r["services"][k]) for k, label in SERVICES] + [("Backup", backup)])
-    chatgpt = ([("Codex plan: unavailable", None)] if plan is None else [("ChatGPT plan: not reported by Sign in with ChatGPT", "gray")] if plan == UNREPORTED else
-               _gauge("Codex 5h", plan["left_5h"]) + sep + _gauge("Codex week", plan["left_week"]))
-    segments = ([(f"{first} · {cpu}\n\n", None)] + _gauge("Memory", r["memory_pct"]) + sep + _gauge("Disk", r["disk_pct"])
-                + [(f"\n\n{cores} · {reclaim}\n{services}\n", None)]
-                + (honcho_status.line(r["honcho"], now) + [("\n", None)] if r.get("honcho_reported") else [])             # LIFE-921: one Honcho line under Services (Oracle's older stats may not report it: no line)
-                + [("\n", None)] + chatgpt)
-    return segments, f"{TITLE} ({'DEGRADED · ' if missing(r) else ''}{ct_stamp.when(now)})"
+def items_of(segments):
+    """Segments [(text, colour)] -> Notion rich text; `bold` marks the header, any other colour is a colour annotation."""
+    out = []
+    for text, color in segments:
+        extra = {"annotations": {"bold": True}} if color == "bold" else {"annotations": {"color": color}} if color else {}
+        out += [{**i, **extra} for i in rich_text(text)]
+    return out
 
 
 def text_of(segments):
     return "".join(text for text, _ in segments)
 
 
-def items_of(segments):
-    """Segments -> Notion rich text, a color annotation on the colored pieces only."""
-    out = []
-    for text, color in segments:
-        out += [{**i, "annotations": {"color": color}} if color else i for i in rich_text(text)]
-    return out
+COLS, ROWS = 5, 17                                               # the table: the header and the sixteen rows, five columns
 
 
 def _parent_of(client, anchor):
+    """The id of the page that holds the anchor block (the Jira card), climbing its parents."""
     meta = client.call("GET", f"/blocks/{quote(report_region.clean_id(anchor), safe='')}")
-    parent = (meta.get("parent") if isinstance(meta, dict) else None) or {}
-    return parent.get("block_id") if parent.get("type") == "block_id" else None
+    return report_region.page_of(client, meta, _fail)
 
 
-def locate(client, anchor):
-    """-> (heading block, paragraph block): exactly one Oracle Cloud callout, holding its heading and exactly one paragraph, in the column of the JIRA callout (Jim's placement, Oct 21 2026: under the
-    JIRA card; LIFE-969: the Attention callout is retired, so the Jira card is the anchor). Two cards, or none, is CARD_NOT_OWNED."""
-    home = _parent_of(client, anchor)
-    if not home:
-        raise _fail("CARD_NOT_OWNED")
-    found = []
-    for block in report_region.children(client, home, _fail):
-        if block.get("type") == "callout":
-            kids = report_region.children(client, block["id"], _fail)
-            if kids and kids[0].get("type") in report_region.HEADINGS and report_region.titled(report_region.plain(kids[0]), TITLE):
-                found.append(kids)
-    if len(found) != 1 or len(found[0]) != 2 or found[0][1].get("type") != "paragraph":
-        raise _fail("CARD_NOT_OWNED")
-    return found[0][0], found[0][1]
-
-
-def _patch(client, block, items):
-    client.call_once("PATCH", f"/blocks/{quote(block['id'], safe='')}", {block["type"]: {"rich_text": items}})       # LIFE-661: a 429 is not applied, so it is repeated
-
-
-def _shape(rich):
-    """[(text, color or None)] of a rich_text list with neighbours of one color merged (Notion merges them too), to compare what is on the page with what we would write."""
+def _cell(rich):
+    """A table cell's rich text -> [(text, colour or None)], neighbours of one colour merged (Notion merges them too); a bold cell is ('text', 'bold')."""
     out = []
     for item in rich:
-        color = (item.get("annotations") or {}).get("color")
+        ann = item.get("annotations") or {}
+        color = "bold" if ann.get("bold") else None if ann.get("color") in (None, "default") else ann["color"]
         piece = item.get("plain_text") or (item.get("text") or {}).get("content") or ""
-        color = None if color == "default" else color
         out = out[:-1] + [(out[-1][0] + piece, color)] if out and out[-1][1] == color else out + [(piece, color)]
     return [p for p in out if p[0]]
 
 
-def write(client, heading, paragraph, segments, heading_text):
-    """LIFE-661: only a block whose text differs is written (the paragraph, then the heading, keeping its own formatting, e.g. Jim's bold), each read back; -> how many were written (0 to 2)."""
-    items, todo = items_of(segments), []
-    if _shape(paragraph[paragraph["type"]].get("rich_text") or []) != _shape(items):
-        _patch(client, paragraph, items)
-        todo.append((paragraph, text_of(segments)))
-    if report_region.plain(heading) != heading_text:
+def cells_of(row):
+    return [_cell(cell) for cell in (row.get("table_row") or {}).get("cells") or []]
+
+
+def locate(client, anchor):
+    """-> (heading block, table block, [row blocks]): exactly one callout at the top level of the page (found through the Jira card's block, which is on it) whose first child is the System heading and
+    which holds exactly one table of five columns and seventeen rows. Two callouts, none, or any other shape is CARD_NOT_OWNED and nothing is written."""
+    page = _parent_of(client, anchor)
+    if not page:
+        raise _fail("CARD_NOT_OWNED")
+    found = []
+    for block in report_region.children(client, page, _fail):
+        if block.get("type") == "callout":
+            kids = report_region.children(client, block["id"], _fail)
+            if kids and kids[0].get("type") in report_region.HEADINGS and report_region.titled(report_region.plain(kids[0]), TITLE):
+                found.append(kids)
+    if len(found) != 1:
+        raise _fail("CARD_NOT_OWNED")
+    tables = [b for b in found[0] if b.get("type") == "table"]
+    if len(tables) != 1 or (tables[0].get("table") or {}).get("table_width") != COLS:
+        raise _fail("CARD_NOT_OWNED")
+    rows = report_region.children(client, tables[0]["id"], _fail)
+    if len(rows) != ROWS or any(len(cells_of(r)) != COLS for r in rows):
+        raise _fail("CARD_NOT_OWNED")
+    return found[0][0], tables[0], rows
+
+
+def table_of(rows):
+    return [cells_of(r) for r in rows]
+
+
+def write(client, heading, rows, table, heading_text, live):
+    """In place only: each row whose cells differ and the heading when its text differs, then both read back. -> {"rows_changed", "rows_written", "heading_written"}."""
+    changed = [(r["id"], want) for r, want in zip(rows, table) if cells_of(r) != [_cell(items_of(c)) for c in want]]
+    heading_changed = report_region.plain(heading) != heading_text
+    result = {"rows_changed": len(changed), "rows_written": 0, "heading_written": False}
+    if not live or not (changed or heading_changed):
+        return result
+    for row_id, want in changed:
+        client.call_once("PATCH", f"/blocks/{quote(row_id, safe='')}", {"table_row": {"cells": [items_of(c) for c in want]}})
+        result["rows_written"] += 1
+    if heading_changed:
         first = ((heading.get(heading["type"]) or {}).get("rich_text") or [{}])[0]
         items = rich_text(heading_text)
         if isinstance(first.get("annotations"), dict):
             items = [{**i, "annotations": first["annotations"]} for i in items]
-        _patch(client, heading, items)
-        todo.append((heading, heading_text))
-    for block, want in todo:
-        if report_region.plain(client.call("GET", f"/blocks/{quote(block['id'], safe='')}")) != want:
+        client.call_once("PATCH", f"/blocks/{quote(heading['id'], safe='')}", {heading["type"]: {"rich_text": items}})
+        result["heading_written"] = True
+    for row_id, want in changed:
+        after = client.call("GET", f"/blocks/{quote(row_id, safe='')}")
+        if cells_of(after) != [_cell(items_of(c)) for c in want]:
             raise _fail("ORACLE_READBACK_MISMATCH")
-    return len(todo)
+    if heading_changed and report_region.plain(client.call("GET", f"/blocks/{quote(heading['id'], safe='')}")) != heading_text:
+        raise _fail("ORACLE_READBACK_MISMATCH")
+    return result
+
+
+def heading_text_of(heading):
+    return report_region.plain(heading)
+
+
+def scoped(environ, client, heading, rows):
+    """A client that refuses any write outside the located heading and rows (LIFE-613), after the other regions' block ids are proven configured."""
+    report_region.require_configured({region: (environ.get(var) or "").strip() for var, region in PROTECTED}, _fail)
+    return report_region.ScopedClient(client, heading["id"], _fail).adopt(*(r["id"] for r in rows))
 
 
 def _writer(environ):
     return Client({"NOTION_API_TOKEN": (environ.get("NOTION_JIRA_TOKEN") or "").strip(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused"})
 
 
-def run(limit, live, environ=os.environ, now=None, fetcher=fetch, client=None, plan=None, watch=None, workers_watch=None, boot_watch=None):
-    host = (environ.get("IMESSAGE_ALERTS_HOST") or "").strip()
-    anchor = (environ.get("JIRA_CARD_BLOCK_ID") or "").strip()                              # LIFE-969: any card block on the page finds the page; the Jira card is on it
-    if not host or not anchor:
-        raise _fail("ORACLE_NOT_CONFIGURED")
-    router.check_write(MODULE, [TITLE])
-    now = now or datetime.now(timezone.utc)
-    client = client or _writer(environ)
-    heading, paragraph = locate(client, anchor)
+def stats_of(host, fetcher, now):
+    """-> the validated `oracle1` readings, or None when Oracle cannot be trusted this run (the rows then go stale, never zero)."""
     try:
         raw = fetcher(host)
     except OSError:
         raw = b""
     try:
-        readings = validate(raw, now)
-    except OracleCardError as e:                                  # a source we cannot trust is shown as unavailable, with this run's time
+        return validate(raw, now)
+    except OracleCardError as e:
         print("oracle-card: source refused", json.dumps({"code": str(e)}))
-        readings = UNAVAILABLE
-    if plan is not None:                                          # the AI Capacity card's own reading replaces Oracle's plan line (None = unavailable)
-        readings = {**readings, "chatgpt": plan()}
-    segments, heading_text = render(readings, now)
-    counts = {"missing": missing(readings), "reclaim": (readings["reclaim"] or "unavailable").lower(),
-              "services_down": sum(v is False for v in readings["services"].values()), "written": 0}
-    if not live:
-        return counts
-    (watch or backup_watch.record)(readings["backup"], environ, now)             # LIFE-129: never raises; the card's own result never depends on it
-    (workers_watch or worker_watch.record)(readings["workers"], environ, now)     # LIFE-531: same: never raises
-    (boot_watch or boot_backup_watch.record)(readings["backups"], environ, now)   # LIFE-808: same: never raises
-    report_region.require_configured({region: (environ.get(var) or "").strip() for var, region in PROTECTED}, _fail)
-    scoped = report_region.ScopedClient(client, heading["id"], _fail).adopt(paragraph["id"])           # LIFE-613: only the two blocks located above can be written
-    with fixed(NotionError, _fail, "ORACLE_WRITE_FAILED"):
-        counts["written"] = write(scoped, heading, paragraph, segments, heading_text)
-    return counts
+        return None
