@@ -19,6 +19,7 @@ CLOUD_BACKLOG workflow_only:workflow Input of a manual hourly run: how many Clou
 CODES workflow_only:workflow Failure codes collected by an earlier workflow step, read by a later shell step
 COMPARE_NAMES input Set from the doppler-load action's names input: the secret names the Doppler trial compares (LIFE-863)
 DOMAINS_PHASE input Set from the domains workflow's phase input: tick marks the early run of a tick (LIFE-775)
+DOPPLER_ACTION input LIFE-981: copy or revoke, set by the one-time doppler-copy workflow's action input (removed with that workflow)
 DOPPLER_CONFIG input Set from the doppler-load action's config input: the Doppler config, prd (LIFE-863)
 DOPPLER_PROJECT input Set from the doppler-load action's project input: the Doppler project, life-os (LIFE-863)
 DOPPLER_TOKEN input Set from the GitHub secret DOPPLER_TOKEN (the one read-only Doppler service token, trial workflow capacity-card.yml only; LIFE-863)
