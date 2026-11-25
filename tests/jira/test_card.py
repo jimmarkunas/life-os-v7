@@ -217,6 +217,60 @@ class GtvTests(unittest.TestCase):
         self.assertNotIn("gtv", out)
 
 
+class AdjacentCalloutTests(unittest.TestCase):
+    """LIFE-975 follow-up (Jim moved the Global Talent Visa callout directly under JIRA Execution, Nov 25 2026): neighbours in one column, never each other's writer."""
+
+    class Page:
+        """One client for the page: routes each call to the fake that owns the block, and records every write with the callout it landed in."""
+        def __init__(self, jira, visa):
+            self.fakes, self.writes = {"card-1": jira, "gtv-card": visa}, []
+
+        def _owner(self, path):
+            if "/blocks/card-1/" in path or path.endswith("/blocks/card-1"):
+                return "card-1"
+            if "/blocks/gtv-card/" in path or path.endswith("/blocks/gtv-card"):
+                return "gtv-card"
+            block = path.split("/blocks/")[1].split("/")[0].split("?")[0]
+            return next((name for name, fake in self.fakes.items() if any(k["id"] == block for k in fake.kids)), None)
+
+        def call(self, method, path, body=None):
+            owner = self._owner(path)
+            if method != "GET":
+                self.writes.append((owner, method, path))
+            return self.fakes[owner].call(method, path, body)
+
+        def call_once(self, method, path, body=None, *args, **kwargs):
+            owner = self._owner(path)
+            self.writes.append((owner, method, path))
+            return self.fakes[owner].call_once(method, path, body)
+
+    def test_adjacent_callout_is_never_touched(self):
+        visa = FakeBlocks([{"id": "gh", "type": "heading_4", "heading_4": {"rich_text": [{"plain_text": "\U0001F1EC\U0001F1E7 Global Talent Visa"}]}},
+                           {"id": "gp", "type": "paragraph", "paragraph": {"rich_text": [{"plain_text": "GTV Action \u00b7 AAA-70 \u2014 old \u00b7 To Do"}]}}])
+        jira = FakeBlocks([heading(), old(1)])
+        page = self.Page(jira, visa)
+        snaps = {"AAA": snapshot(gtv=[issue("AAA-71", status="In Progress")])}
+        card.run(1, True, environ=dict(ENV, GTV_CARD_BLOCK_ID="gtv-card", JIRA_GTV_EPIC="AAA-1"), client=page, gtv_client=page, now=NOW, connect=conn(snaps))
+        visa_writes = [w for w in page.writes if w[0] == "gtv-card"]
+        self.assertEqual([(m, p) for _, m, p in visa_writes], [("PATCH", "/blocks/gp")])                       # the visa callout got exactly one in-place text edit
+        self.assertEqual([k["id"] for k in visa.kids], ["gh", "gp"])                                           # nothing emptied, nothing deleted, nothing added
+        self.assertIn("AAA-71", card._plain(visa.kids[1]))
+        self.assertTrue(all(o == "card-1" for o, _, _ in page.writes if o != "gtv-card"))
+        self.assertTrue(any(o == "card-1" for o, _, _ in page.writes))                                          # and the Jira callout was written too
+
+    def test_each_writer_refuses_the_neighbours_blocks_before_sending(self):
+        from lifeos.platform import report_region
+        for own, other in (("card-1", "gtv-card"), ("gtv-card", "card-1")):
+            sent = []
+            scoped = report_region.ScopedClient(type("C", (), {"call": lambda self, m, p, b=None: sent.append((m, p)) or {}, "call_once": lambda self, m, p, b=None, *a, **k: sent.append((m, p)) or {}})(),
+                                                own, lambda code: CardError("JIRA_CARD_" + code))
+            for method, path in (("PATCH", f"/blocks/{other}"), ("DELETE", f"/blocks/{other}"), ("POST", f"/blocks/{other}/children")):
+                with self.assertRaises(CardError) as ctx:
+                    scoped.call(method, path, {})
+                self.assertEqual(str(ctx.exception), "JIRA_CARD_WRITE_OUT_OF_SCOPE")
+            self.assertEqual(sent, [])
+
+
 class WriteTests(unittest.TestCase):
     def tearDown(self):
         while _patchers:
