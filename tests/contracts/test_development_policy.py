@@ -9,9 +9,25 @@ POLICY_PATH = ROOT / "docs" / "life-os-development-policy.md"
 POLICY = POLICY_PATH.read_text()
 
 
+class DryRunGate(unittest.TestCase):
+    """LIFE-986: the scoping gate is in the policy, the one-page boot guide and the ticket template."""
+    def test_the_policy_section_has_the_rules(self):
+        self.assertIn("## 12. Dry run gate (scoping, before Agent Go;", POLICY)
+        for kept in ("**Dry run**", "**Decisions pre-made**", "`dry-run-green`", "`dry-run-miss`", "`release LIFE-nnn`", "`dry run 856 877 981`",
+                     "read-only: no write, merge, deploy or delete", "One session, one outcome", "grandfathered", "is already its own `UAT for LIFE-nnn` ticket under LIFE-615"):
+            self.assertIn(kept, POLICY, kept)
+        self.assertNotIn("Found mid-run: the same, then keep building.", POLICY)       # the older stop-and-ask clause is replaced by the pre-made default rule
+
+    def test_agents_md_requires_the_label_at_claim_time_and_the_template_has_every_section(self):
+        self.assertIn("only with label `dry-run-green` (policy §12", (ROOT / "AGENTS.md").read_text())
+        template = (ROOT / "docs" / "templates" / "ticket.md").read_text()
+        for heading in ("Why", "Exact targets", "Dry run", "Decisions pre-made", "Jim must do first", "Done when", "Not in scope", "Rollback", "Executing agent", "Verifier"):
+            self.assertIn(f"## {heading}\n", template, heading)
+
+
 class OneFilePolicy(unittest.TestCase):
     def test_it_is_one_file_under_the_size_ceiling(self):
-        self.assertLessEqual(len(POLICY.encode()), 15 * 1024)
+        self.assertLessEqual(len(POLICY.encode()), 18 * 1024)         # LIFE-986: 15 KiB until the Dry run gate (section 12) Jim asked for on Nov 25 2026
         self.assertFalse((ROOT / "docs" / "development-policy").exists(), "the policy is one file; history lives in docs/archive/")
 
     def test_the_kept_guardrails_are_stated(self):

@@ -18,7 +18,8 @@ VERSION = 1
 LANES = ("lane-career-v7", "lane-edge-comm")
 DESCRIPTION_LIMIT = 4000                      # characters: a longer LIFE description is a warn
 KEY = re.compile(r"LIFE-\d+")
-SIZE_LIMIT = 15 * 1024                        # bytes: the one-file policy and the boot files stay one read each
+SIZE_LIMIT = 15 * 1024                        # bytes: the boot files stay one read each
+POLICY_LIMIT = 18 * 1024                      # bytes: LIFE-986 (Jim, Nov 25 2026) added the Dry run gate to the one-file policy; the other boot files keep SIZE_LIMIT
 GWT = ("given", "when", "then")
 ISSUE_FIELDS = {"key", "labels", "origin", "blockers", "authorization", "permissions", "acceptance"}   # the lane label is the owner; owner, host and source are optional
 
@@ -146,7 +147,8 @@ def check_repo(root):
         if is_global and not (row[1] and row[3]):
             out.append(refuse("owner_or_authority_missing", link.group(1)))
     sized = [root / n for n in ("INDEX.md", "AGENTS.md", "CLAUDE.md", "docs/life-os-development-policy.md")]
-    out += [refuse("size_over_limit", str(f.relative_to(root)), str(f.stat().st_size)) for f in sized if f.is_file() and f.stat().st_size > SIZE_LIMIT]
+    out += [refuse("size_over_limit", str(f.relative_to(root)), str(f.stat().st_size)) for f in sized
+            if f.is_file() and f.stat().st_size > (POLICY_LIMIT if f.name == "life-os-development-policy.md" else SIZE_LIMIT)]
     if not set(("key", "acceptance_criteria", "owner", "authorization")) <= set(schema.get("required", [])):
         out.append(refuse("schema_fields_lost", "docs/jira/issue-schema.v1.json"))
     return out

@@ -151,7 +151,7 @@ class RepositoryIndex(Fixture):
         for name, break_it, code in (
                 ("link", lambda r: (r / "docs" / "DECISIONS_INDEX.md").unlink(), "link_broken docs/DECISIONS_INDEX.md"),
                 ("owner", lambda r: (r / "INDEX.md").write_text((r / "INDEX.md").read_text().replace("| Jim (change by reviewed PR; Q04) |", "|  |", 1)), "owner_or_authority_missing"),
-                ("size", lambda r: (r / "docs" / "life-os-development-policy.md").write_text("x" * 16000), "size_over_limit docs/life-os-development-policy.md"),
+                ("size", lambda r: (r / "docs" / "life-os-development-policy.md").write_text("x" * 19000), "size_over_limit docs/life-os-development-policy.md"),
                 ("destination", lambda r: (r / "INDEX.md").write_text((r / "INDEX.md").read_text().replace("[`AGENTS.md`](AGENTS.md)", "[`AGENTS.md`](docs/SETUP.md)", 1)), "link_destination_mismatch AGENTS.md docs/SETUP.md"),
                 ("stripped", lambda r: (r / "INDEX.md").write_text((r / "INDEX.md").read_text().replace(next(l for l in (r / "INDEX.md").read_text().splitlines() if l.startswith("| [`AGENTS.md`]")), "| [`AGENTS.md`](AGENTS.md) |")), "index_row_malformed INDEX.md [`AGENTS.md`]"),
                 ("index", lambda r: (r / "INDEX.md").write_text("# empty\n"), "index_empty"),
