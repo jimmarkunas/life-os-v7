@@ -77,6 +77,34 @@ def doppler_write(token, batch, call=_call):
         return False
 
 
+def revoke(run=subprocess.run, environ=os.environ, call=_call, out=print):
+    """LIFE-981 step 4 (Jim: both approved): revoke the Doppler write token, then delete its Bitwarden item, and read both back. The token value is read from Bitwarden and held in memory only; Bitwarden is changed only by deleting that one item.
+    Fixed codes only: write_token_missing, bitwarden_unreadable, doppler_revoke_failed, doppler_token_still_valid, bitwarden_delete_failed, bitwarden_item_still_there."""
+    items = bitwarden_items(run, environ)
+    if items is None:
+        out("doppler-revoke: FAILED code=bitwarden_unreadable")
+        return 1
+    found = [(item, value) for item, (key, value) in items.items() if value and (key == TOKEN_NAME or key.endswith("/" + TOKEN_NAME))]
+    if len(found) != 1:
+        out(f"doppler-revoke: FAILED code=write_token_missing found={len(found)}")
+        return 1
+    item, token = found[0]
+    for line in token.splitlines():
+        out(f"::add-mask::{line.strip()}")
+    try:
+        call("DELETE", f"{SECRETS_URL.rsplit('/secrets', 1)[0]}/tokens/token", token, {"project": PROJECT, "config": CONFIG, "token": token})
+        revoked = "revoked"
+    except (urllib.error.URLError, OSError, ValueError, TimeoutError):
+        revoked = "doppler_revoke_failed"
+    still_valid = doppler_values(token, call) is not None                       # a revoked token must now be refused
+    done = run(["bws", "secret", "delete", item], capture_output=True, text=True, env={**environ})
+    after = bitwarden_items(run, environ)
+    gone = after is not None and item not in after
+    result = {"doppler": "gone" if not still_valid else "doppler_token_still_valid", "doppler_delete_call": revoked, "bitwarden": "gone" if gone else ("bitwarden_delete_failed" if done.returncode != 0 else "bitwarden_item_still_there")}
+    out("doppler-revoke: " + json.dumps(result, sort_keys=True))
+    return 0 if not still_valid and gone else 1
+
+
 def main(root=".", run=subprocess.run, environ=os.environ, call=_call, out=print):
     wanted, conflicts = pairs(root)
     items = bitwarden_items(run, environ)
@@ -130,4 +158,4 @@ def main(root=".", run=subprocess.run, environ=os.environ, call=_call, out=print
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(revoke() if os.environ.get("DOPPLER_ACTION") == "revoke" else main())

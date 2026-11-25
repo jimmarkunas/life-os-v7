@@ -86,3 +86,44 @@ class Copy(unittest.TestCase):
         self.assertIn("workflow_dispatch:", text)
         for trigger in ("schedule", "push:", "pull_request", "workflow_run"):
             self.assertNotIn(trigger, text.split("jobs:")[0].split("\n", 6)[-1])
+
+
+class Revoke(unittest.TestCase):
+    def run_revoke(self, items_after_delete=None, refuse_after=True, delete_rc=0):
+        state = {"deleted": False}
+
+        def run(argv, **kw):
+            if argv[:3] == ["bws", "secret", "delete"]:
+                state["deleted"] = delete_rc == 0
+                return SimpleNamespace(returncode=delete_rc, stdout="")
+            rows = {i: v for i, v in ITEMS.items() if not (state["deleted"] and i == IDT)}
+            return SimpleNamespace(returncode=0, stdout=json.dumps([{"id": i, "key": k, "value": v} for i, (k, v) in rows.items()]))
+
+        calls = []
+
+        def call(method, url, token, body=None, opener=None):
+            calls.append(method)
+            if method == "DELETE":
+                return {}
+            if refuse_after and "DELETE" in calls:
+                raise OSError("401")
+            return {}
+        out = []
+        code = c.revoke(run, {}, call, out.append)
+        return code, out, calls
+
+    def test_revoke_then_delete_then_read_both_back(self):
+        code, out, calls = self.run_revoke()
+        self.assertEqual(code, 0)
+        self.assertIn('"bitwarden": "gone"', out[-1])
+        self.assertIn('"doppler": "gone"', out[-1])
+        self.assertEqual(calls[0], "DELETE")
+        self.assertNotIn("WRITE-TOKEN-VALUE-1234", "\n".join(l for l in out if not l.startswith("::add-mask::")))
+
+    def test_a_token_that_still_works_or_an_item_that_stays_fails_with_fixed_codes(self):
+        code, out, _ = self.run_revoke(refuse_after=False)
+        self.assertEqual(code, 1)
+        self.assertIn("doppler_token_still_valid", out[-1])
+        code, out, _ = self.run_revoke(delete_rc=1)
+        self.assertEqual(code, 1)
+        self.assertIn("bitwarden_delete_failed", out[-1])
