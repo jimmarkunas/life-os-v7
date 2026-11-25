@@ -94,7 +94,7 @@ def lookup_agent(args, fetch_rows, now, workspace="Personal"):
     if found.decision != "allow":
         raise LookupError_(found.reason)
     row = next(r for r in agent_directory.snapshot(directory, now)["entries"] if r["agent_id"] == found.entry.agent_id)
-    return {"agent": row, "status": found.status, "reason": found.reason, "read_at": _ct(now), "source": directory.source, "authorizes": [],
+    return {"agent": row, "status": found.status, "reason": found.reason, "read_at": _ct(now), "source": directory.source, "authorizes": [], "skipped_rows": len(directory.skipped),
             "note": "catalog only: a listed agent is not online, reachable or permitted"}
 
 
