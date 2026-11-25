@@ -137,7 +137,7 @@ V7 must run with ChatGPT unavailable (D54). OpenClaw and Hermes run on the Oracl
 **Debug in order:** `trigger → runtime started → code ran → source reached → state persisted → read back`.
 - One retry per failure boundary; a second failure stops for diagnosis.
 - Two cycles or ten minutes on a simple operation: challenge the design.
-- Prefer subtraction over repair.
+- Prefer subtraction.
 
 A Notion view Jim has arranged by hand is canon. Agents never change a view's columns, order, sort or filter unless a ticket names that view and the change.
 
@@ -163,9 +163,9 @@ A request that breaks these rules stops with `ARCHITECTURAL DRIFT DETECTED — N
 
 ## 11. Read only when needed
 
-- `docs/DECISIONS.md`: only when a ticket cites a D-number. Use `python -m lifeos.sources.devtools.decisions show D<n>`.
+- `docs/DECISIONS.md`: only when a ticket cites a D-number. Use `python -m lifeos.sources.devtools.decisions show D<n>` and never read the whole file.
 - `docs/agent-reference.md`: the code map, commands and epic delivery rules.
-- `docs/archive/`: history, no authority.
+- `docs/archive/`: history only.
 
 ## 12. Dry run gate (scoping, before Agent Go; Jim, Nov 25 2026, LIFE-986)
 
@@ -175,5 +175,5 @@ Blockers found mid-run (a secret in the wrong Bitwarden project, a delete the pr
 2. **The executing agent runs the dry run** on the machine and identity that will do the build. It is read-only: no write, merge, deploy or delete. It checks: every named **secret** exists under its exact name in the project the runner can read (name only, never the value); every **write or delete** is allowed for that identity (provider docs or a read-only check; if that cannot be confirmed without writing, it is a Jim step); every **tool**, connector and CLI is loaded in that agent's session; every action the agent's own **permission rules or safety checks** will stop (for example Keychain reads and deletes) is a pre-approved rule or a Jim step; the **target** is reachable within the approved scope on current data (if not, the decision goes into Decisions pre-made); every **wait** (natural runs, soaks, dates) is already its own `UAT for LIFE-nnn` ticket under LIFE-615.
 3. **One `Dry run` comment** per ticket: a table of check, result and any human step. Every human step moves into the ticket's **Jim must do first**.
 4. **Jim batches:** he does the Jim must do first list in one go, then says `release LIFE-nnn`. That is his only involvement before the build. He may say `dry run 856 877 981`: the agent dry-runs them in one session and posts one combined list of human steps, as an Agent Inbox item and on each ticket.
-5. **Gate:** a ticket without a green Dry run comment and the label `dry-run-green` cannot be claimed (checked at claim time). Tickets already in Agent Go on Nov 25 2026 are grandfathered. A blocker the dry run missed: take the pre-made default if there is one; otherwise file a Bug under LIFE-615 labelled `dry-run-miss` naming the missed check, and move to the next ticket instead of stopping to ask Jim.
+5. **Gate:** a ticket without a green Dry run comment and the label `dry-run-green` cannot be claimed. Tickets already in Agent Go on Nov 25 2026 are grandfathered. A blocker the dry run missed: take the pre-made default if there is one; otherwise file a Bug under LIFE-615 labelled `dry-run-miss` naming the missed check, and move to the next ticket instead of stopping to ask Jim.
 6. **One session, one outcome:** a build ticket ends Done (merged, live, first proof) or with a Bug filed. "Left open for..." is not allowed; every leftover becomes its own UAT or Bug ticket. Each session starts by reading Jira state, not its memory of earlier sessions.
