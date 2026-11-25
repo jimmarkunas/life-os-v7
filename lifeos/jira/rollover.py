@@ -8,6 +8,7 @@ from datetime import datetime, time as clock, timedelta
 from zoneinfo import ZoneInfo
 
 from lifeos.platform.jira import JiraError
+from . import reconcile
 from .boards import boards, owned
 
 LOCAL_TZ = "America/Chicago"
@@ -155,6 +156,18 @@ def preview_mej_selective_carry(issues, approved_keys, finite_keys=(), backlog_v
     if backlog_verified:
         return carry, stranded, backlog
     return carry, stranded
+
+
+def select_carry(project, issues, recurring=(), roster=None):
+    """Decision A: the carry rule for either board; Matt's roster is an OPTIONAL MEJ-only override, used only when `roster` (a validated rollover.selective_config) is given and the project is MEJ. Pure; never writes.
+    -> the same shape as carry_plan. The override reuses PR #1507's preview (backlog verified) and keeps recurring series and unknown types out of its carry and backlog."""
+    if roster is None or project != "MEJ":
+        return reconcile.carry_plan(issues, recurring)
+    base = reconcile.carry_plan(issues, recurring)
+    skip = set(base["recurring"]) | set(base["exceptions"])
+    kept = [i for i in issues if i.get("key") not in skip]
+    carry, stranded, backlog = preview_mej_selective_carry(kept, roster["roster"], roster.get("finite", ()), backlog_verified=True)
+    return {"carry": sorted(set(carry)), "backlog": sorted(set(backlog) | set(stranded)), "recurring": base["recurring"], "exceptions": base["exceptions"]}
 
 
 MEJ_PROJECT = "MEJ"

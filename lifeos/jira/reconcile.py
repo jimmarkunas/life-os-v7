@@ -209,24 +209,11 @@ def plan_recurrence(issues, found, next_sprint_id, configured=()):
     return out
 
 
-def select_carry(project, issues, recurring=(), roster=None):
-    """Decision A: the carry rule for either board; Matt's roster is an OPTIONAL MEJ-only override, used only when `roster` (a validated rollover.selective_config) is given and the project is MEJ. Pure; never writes.
-    -> the same shape as carry_plan. The override reuses PR #1507's preview (backlog verified) and keeps recurring series and unknown types out of its carry and backlog."""
-    if roster is None or project != "MEJ":
-        return carry_plan(issues, recurring)
-    from .rollover import preview_mej_selective_carry
-    base = carry_plan(issues, recurring)
-    skip = set(base["recurring"]) | set(base["exceptions"])
-    kept = [i for i in issues if i.get("key") not in skip]
-    carry, stranded, backlog = preview_mej_selective_carry(kept, roster["roster"], roster.get("finite", ()), backlog_verified=True)
-    return {"carry": sorted(set(carry)), "backlog": sorted(set(backlog) | set(stranded)), "recurring": base["recurring"], "exceptions": base["exceptions"]}
-
-
 def auto_close_fields(run_id):
     """Decision B: what an automatic closure adds: the fixed label and ONE comment line naming the run. -> {"label": ..., "comment": ...}; a manual closure never gets either (callers pass only closures they made)."""
     run = str(run_id or "").strip()
     if not run or "\n" in run:
-        raise JiraError("JIRA_RECONCILE_RUN_ID_INVALID")
+        raise JiraError("JIRA_RECONCILE_IDENTITY_AMBIGUOUS")
     return {"label": AUTO_LABEL, "comment": f"Closed automatically by LIFE OS run {run}."}
 
 

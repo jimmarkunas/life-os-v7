@@ -6,7 +6,7 @@ from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 from lifeos import run as entry
-from lifeos.jira import reconcile as rc
+from lifeos.jira import reconcile as rc, rollover
 from lifeos.platform.jira import JiraError
 
 TZ = ZoneInfo("America/Chicago")
@@ -218,18 +218,18 @@ class Override(unittest.TestCase):
 
     def test_the_rule_governs_both_boards_without_a_roster(self):
         for project in ("JFM", "MEJ"):
-            plan = rc.select_carry(project, self.ISSUES)
+            plan = rollover.select_carry(project, self.ISSUES)
             self.assertEqual((plan["carry"], plan["backlog"]), (["MEJ-2", "MEJ-4"], ["MEJ-1", "MEJ-3", "MEJ-5"]))
 
     def test_a_blocked_low_priority_item_goes_to_the_backlog(self):
-        self.assertIn("MEJ-3", rc.select_carry("MEJ", self.ISSUES)["backlog"])
+        self.assertIn("MEJ-3", rollover.select_carry("MEJ", self.ISSUES)["backlog"])
 
     def test_the_roster_overrides_only_mej_and_only_when_set(self):
         roster = {"roster": ["MEJ-1"], "finite": [], "consent": "x", "backlog": None}
-        mej = rc.select_carry("MEJ", self.ISSUES, roster=roster)
+        mej = rollover.select_carry("MEJ", self.ISSUES, roster=roster)
         self.assertEqual(mej["carry"], ["MEJ-1", "MEJ-5"])
         self.assertEqual(mej["backlog"], ["MEJ-2", "MEJ-3", "MEJ-4"])
-        self.assertEqual(rc.select_carry("JFM", self.ISSUES, roster=roster)["carry"], ["MEJ-2", "MEJ-4"])
+        self.assertEqual(rollover.select_carry("JFM", self.ISSUES, roster=roster)["carry"], ["MEJ-2", "MEJ-4"])
 
 
 class Daily(unittest.TestCase):
