@@ -329,3 +329,26 @@ class OneClickAndCloseAll(unittest.TestCase):
         svc.clock += timedelta(minutes=16)
         self.assertEqual(svc("POST", "/recruiter", form=form)[0], 403)
         self.assertEqual(rec.writes, [])
+
+
+class FewerCalls(unittest.TestCase):
+    """LIFE-972 (Jim, Nov 24 11:35 PM CT): a click should answer fast; the Close screen passes the row it has just read, so a save is one write and one read-back."""
+    def test_a_save_with_the_row_in_hand_is_one_write_and_one_read_and_no_schema_read(self):
+        rec = world()
+        reads = []
+        original = rec.get_page
+        rec.get_page = lambda pid: (reads.append(pid), original(pid))[1]
+        calls = []
+        base_call = rec.call
+        rec.call = lambda *a, **k: (calls.append(a[:2]), base_call(*a, **k))[1]
+        row = store.read(original(ROW))
+        self.assertEqual(store.close_row(rec, ROW, "Completed", row=row)["status"], "recorded")
+        self.assertEqual((len(reads), len(rec.writes), calls), (1, 1, []))                  # one read-back, one write, no schema call
+        self.assertEqual(store.read(rec.pages[0])["action"], "Completed")
+
+    def test_a_row_in_hand_is_still_checked_and_a_lost_write_is_still_a_mismatch(self):
+        rec = world()
+        rec.drop_writes = True
+        with self.assertRaises(store.RecruitersError) as caught:
+            store.close_row(rec, ROW, "Dismissed", row=store.read(rec.pages[0]))
+        self.assertEqual(str(caught.exception), "RECRUITERS_READBACK_MISMATCH")
