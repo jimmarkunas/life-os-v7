@@ -26,6 +26,7 @@ class Notion:
 
     def tile(self, column, number, label):
         callout = self.new(column, "callout")
+        self.blocks[callout]["callout"]["color"] = "default"
         self.new(callout, "heading_3", number)
         self.new(callout, "paragraph", label)
 
@@ -38,6 +39,7 @@ class Notion:
             column = self.new(row, "column")
             if merged and i == 0:
                 box = self.new(column, "callout")
+                self.blocks[box]["callout"]["color"] = "red_background"
                 self.new(box, "heading_3", "Now 0 · Today 0")
             elif merged:
                 self.tile(column, "9", agent_inbox.MERGED_LABELS[i - 1] if i - 1 < 3 else "x")
@@ -71,6 +73,8 @@ class Notion:
                 bid = f"blk{next(self.ids)}"
                 self.blocks[bid] = {"id": bid, "type": kind, kind: {"rich_text": [{**p, "plain_text": p["text"]["content"], "href": (p["text"].get("link") or {}).get("url")} for p in child[kind]["rich_text"]]}}
                 self.kids.setdefault(parts[2], []).append(bid)
+        elif method == "PATCH" and len(parts) == 3 and "callout" in (body or {}):
+            self.blocks[parts[2]]["callout"] = {**self.blocks[parts[2]]["callout"], **body["callout"]}
         elif method == "DELETE":
             for kids in self.kids.values():
                 if parts[2] in kids:
@@ -99,7 +103,7 @@ def build(wrapped=True, old_page=True):
 class MergedTiles(unittest.TestCase):
     def box(self, n):
         merged = agent_inbox._merged_row(n, MERGED)
-        return merged[0], merged[1], merged[2]
+        return merged[0], merged[1], merged[3]
 
     def test_the_merged_page_wins_over_the_old_agent_inbox_page_and_the_old_page_is_never_written(self):
         n = build()
@@ -110,7 +114,7 @@ class MergedTiles(unittest.TestCase):
         self.assertEqual((out["layout"], out["tiles"]), ("merged", 4))
         self.assertFalse([w for w in n.writes if OLD in w[1] or w[1].split("/")[2] in n.kids.get(OLD, [])])
         box, heading, tiles = self.box(n)
-        self.assertEqual(n.texts(box["id"]), [("heading_3", "Now 1 · Today 1")])                   # Jim, Nov 24 2026 2:36 PM CT: a counter only, no item list
+        self.assertEqual(n.texts(box["id"]), [("heading_3", "2"), ("paragraph", "Now 1 · Today 1")])      # Jim, Nov 24 2026 6:12 PM CT: the tiles' shape, one number and a gray line
         self.assertEqual([agent_inbox._words(number) for _, number, _ in tiles], ["0", "0", "0"])      # This week, FYI, Snoozed counts
 
     def test_a_list_an_earlier_version_left_in_the_box_is_removed_and_the_same_heading_block_is_kept(self):
@@ -120,12 +124,12 @@ class MergedTiles(unittest.TestCase):
         n.new(box["id"], "bulleted_list_item", "Now: first")
         n.new(box["id"], "bulleted_list_item", "+3 more in the Agent Inbox list")
         out = agent_inbox.recount_page(n, source=SOURCE)
-        self.assertEqual(n.texts(box["id"]), [("heading_3", "Now 1 · Today 0")])
+        self.assertEqual(n.texts(box["id"]), [("heading_3", "1"), ("paragraph", "Now 1 · Today 0")])
         self.assertEqual(sum(1 for w in n.writes if w[0] == "DELETE"), 2)                          # exactly the two list lines, nothing else
         box2, heading2, _ = self.box(n)
         self.assertEqual((box2["id"], heading2["id"]), (box["id"], heading["id"]))
         self.assertEqual({w[0] for w in n.writes}, {"PATCH", "DELETE"})
-        self.assertFalse([w for w in n.writes if w[0] == "PATCH" and w[1].endswith("/children")])  # nothing is ever appended to the box
+        self.assertEqual(len([w for w in n.writes if w[0] == "PATCH" and w[1].endswith("/children")]), 1)  # the one gray line is appended
 
     def test_a_second_run_with_nothing_new_writes_nothing_and_a_change_touches_only_the_heading(self):
         n = build()
@@ -137,9 +141,9 @@ class MergedTiles(unittest.TestCase):
         self.assertEqual(n.writes, [])
         n.rows[0]["status"] = "Done"                                                         # one resolved: only the heading changes
         out = agent_inbox.recount_page(n, source=SOURCE)
-        self.assertEqual(out["tiles_changed"], 1)
+        self.assertEqual(out["tiles_changed"], 2)                                            # the number and the gray line
         box, _, _ = self.box(n)
-        self.assertEqual(n.texts(box["id"]), [("heading_3", "Now 1 · Today 0")])
+        self.assertEqual(n.texts(box["id"]), [("heading_3", "1"), ("paragraph", "Now 1 · Today 0")])
 
     def test_many_items_still_give_only_the_counts_with_no_more_line(self):
         n = build()
@@ -147,7 +151,7 @@ class MergedTiles(unittest.TestCase):
             n.row("Today", f"item {i}")
         agent_inbox.recount_page(n, source=SOURCE)
         box, _, _ = self.box(n)
-        self.assertEqual(n.texts(box["id"]), [("heading_3", "Now 0 · Today 15")])
+        self.assertEqual(n.texts(box["id"]), [("heading_3", "15"), ("paragraph", "Now 0 · Today 15")])
 
     def test_the_bare_row_without_a_wrapper_works_and_a_wrong_shape_falls_back_to_the_old_page(self):
         n = build(wrapped=False)
@@ -195,6 +199,7 @@ class JimsRearrangedLayout(unittest.TestCase):
         for label in agent_inbox.MERGED_LABELS:
             n.tile(n.new(row, "column"), "9", label)
         box = n.new(MERGED, "callout")
+        n.blocks[box]["callout"]["color"] = "red_background"
         n.new(box, "heading_3", "Now 0 · Today 0")
         n.new(box, "bulleted_list_item", "Now: a list from the earlier layout")
         return n, box
@@ -202,7 +207,7 @@ class JimsRearrangedLayout(unittest.TestCase):
     def test_the_box_and_tiles_are_found_by_what_they_say_wherever_they_are(self):
         n, box = self.make()
         found = agent_inbox._merged_row(n, MERGED)
-        self.assertEqual((found[0]["id"], [agent_inbox._words(t[2]) for t in found[2]]), (box, ["This week", "FYI", "Snoozed"]))
+        self.assertEqual((found[0]["id"], [agent_inbox._words(t[2]) for t in found[3]]), (box, ["This week", "FYI", "Snoozed"]))
 
     def test_a_run_writes_the_counter_into_the_standalone_box_and_the_three_tiles_and_nothing_else(self):
         n, box = self.make()
@@ -210,7 +215,7 @@ class JimsRearrangedLayout(unittest.TestCase):
         n.row("Now", "two")
         out = agent_inbox.recount_page(n, source=SOURCE)
         self.assertEqual(out["layout"], "merged")
-        self.assertEqual(n.texts(box), [("heading_3", "Now 2 · Today 0")])                             # counter only, the earlier list line is removed
+        self.assertEqual(n.texts(box), [("heading_3", "2"), ("paragraph", "Now 2 · Today 0")])         # the tiles' shape; the earlier list line is removed
         self.assertEqual(agent_inbox.locate_page(n, SOURCE), MERGED)
 
     def test_two_boxes_or_a_missing_tile_are_not_a_merged_page(self):
@@ -222,3 +227,31 @@ class JimsRearrangedLayout(unittest.TestCase):
         callout = [k for k, b in m.blocks.items() if b["type"] == "paragraph" and agent_inbox._words(b) == "FYI"][0]
         m.blocks[callout]["paragraph"] = {"rich_text": rich("Other")}
         self.assertIsNone(agent_inbox._merged_row(m, MERGED))
+
+
+class TileShapedBox(unittest.TestCase):
+    """Jim, Nov 24 2026 6:12 PM CT: the box is the same shape as the tiles beside it: a default callout, one number, and one plain gray line `Now N · Today M`."""
+    def test_the_box_becomes_a_default_callout_with_one_number_and_a_gray_line_and_a_second_run_writes_nothing(self):
+        n = build()
+        n.row("Now", "a")
+        n.row("Today", "b")
+        n.row("Today", "c")
+        box = agent_inbox._merged_row(n, MERGED)[0]["id"]
+        self.assertEqual(n.blocks[box]["callout"]["color"], "red_background")
+        agent_inbox.recount_page(n, source=SOURCE)
+        self.assertEqual(n.blocks[box]["callout"]["color"], "default")                                  # no red background, like its neighbours
+        self.assertEqual(n.texts(box), [("heading_3", "3"), ("paragraph", "Now 1 · Today 2")])
+        line = n.kids[box][1]
+        self.assertEqual(n.blocks[line]["paragraph"]["rich_text"][0]["annotations"], {"color": "gray"})    # plain gray, not bold
+        n.writes.clear()
+        self.assertEqual(agent_inbox.recount_page(n, source=SOURCE)["tiles_changed"], 0)
+        self.assertEqual(n.writes, [])
+
+    def test_a_tile_shaped_box_is_found_by_its_gray_line_and_neighbouring_tiles_keep_their_block_structure(self):
+        n = build()
+        agent_inbox.recount_page(n, source=SOURCE)
+        found = agent_inbox._merged_row(n, MERGED)
+        self.assertIsNotNone(found[2])                                                               # the gray line block is the box's second block
+        kinds = lambda bid: [n.blocks[k]["type"] for k in n.kids[bid]]                               # noqa: E731
+        self.assertEqual(kinds(found[0]["id"]), kinds(found[3][0][0]))                               # box and a tile: heading_3 then paragraph
+        self.assertEqual(kinds(found[0]["id"]), ["heading_3", "paragraph"])
