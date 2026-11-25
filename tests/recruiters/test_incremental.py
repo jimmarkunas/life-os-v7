@@ -51,7 +51,7 @@ def go(records, ledger, live=False, notion=None, now=AFTERNOON, environ=None, ou
     gmail = CountingGmail(records)
     notion = notion or FakeRecruiters()
     with contextlib.redirect_stdout(io.StringIO()):
-        counts = stage.run(0, live, environ=environ or {}, gmail=gmail, outlook_accounts=outlook or [], notion=notion, now=now, ledger=ledger)
+        counts = stage.run(0, live, environ=environ or {}, gmail=gmail, outlook_accounts=outlook or [], notion=notion, now=now, ledger=ledger, chores=False)
     return counts, gmail, notion
 
 
@@ -120,7 +120,7 @@ class IncrementalTests(unittest.TestCase):
     def test_a_failed_write_records_nothing_so_the_message_is_read_again(self):
         ledger = after_a_full_scan_at_9()
         notion = FakeRecruiters(drop_writes=True)
-        failed_run(lambda: stage.run(0, True, environ={}, gmail=CountingGmail([signed("n1")]), outlook_accounts=[], notion=notion, now=AFTERNOON, ledger=ledger))
+        failed_run(lambda: stage.run(0, True, environ={}, gmail=CountingGmail([signed("n1")]), outlook_accounts=[], notion=notion, now=AFTERNOON, ledger=ledger, chores=False))
         self.assertEqual(ledger.commits, [])
 
     def test_a_ledger_that_cannot_be_saved_is_reported_and_the_run_still_succeeds(self):

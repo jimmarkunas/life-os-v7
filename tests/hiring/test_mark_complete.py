@@ -42,7 +42,7 @@ class EdgeScreen(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn("What happened with this lead?", body)                                  # the lead action offers both of its outcomes (Jim, Oct 24)
         self.assertIn("I replied — mark it done", body)
-        self.assertIn(f'href="/?o={h.world.ws.target.replace("-", "")}">Close this lead instead', body)
+        self.assertNotIn("Close this lead instead", body)      # LIFE-973: the Close screen is retired
         self.assertEqual(h.world.ws.writes(), [])                                          # the link (step 1) never writes
         status, body, _ = h.call("POST", "/complete", form={**h.fields(body), "step": "confirm"})
         self.assertEqual(status, 200, body)

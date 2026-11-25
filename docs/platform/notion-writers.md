@@ -19,8 +19,6 @@ One card owns one region of the Daily Report page and writes only its own blocks
 | lifeos/bills/card.py | BILLS_REGION | v7-bills | bills.bills-card | BILLS_CARD_BLOCK_ID callout | replace_text |
 | lifeos/amazon/card.py | AMAZON_REGION | v7-amazon | amazon.amazon-card | AMAZON_CARD_BLOCK_ID callout | replace_text |
 | lifeos/physmail/card.py | MAIL_ALERTS_REGION | v7-mail-alerts | mail.mail-card | MAIL_ALERTS_CARD_BLOCK_ID callout | replace_text |
-| lifeos/hiring/card.py | HIRING_REGION | v7-hiring | hiring.hiring | HIRING_CARD_BLOCK_ID heading; its table found next to it | ScopedClient |
-| lifeos/recruiters/outreach_card.py | RECRUITER_OUTREACH_REGION | v7-recruiter-outreach | recruiters.recruiter-outreach | heading and table found by one read of the page (the table block id names the page) | ScopedClient |
 | lifeos/imessage/comms_card.py | COMMS_REGION | v7-comms | imessage.imessage-comms | the Communications callout's heading and Messages row, found in the column of CALENDAR_CARD_BLOCK_ID | ScopedClient |
 | lifeos/oraclecloud/card.py | ORACLE_REGION | v7-oracle | imessage.oracle-card | its heading and one paragraph, found under the page | ScopedClient |
 | lifeos/dcc/card.py | DCC_REGION | daily-command-center | dcc.dcc-card | DCC_CARD_BLOCK_ID callout; its heading carries the run time (`ChatGPT · Daily Command Center · Tue 11/24 · 11:02 PM CT`, LIFE-975); the page's dated line is retired | ScopedClient |
@@ -38,7 +36,9 @@ The row with `-` is not a region in `OWNERS`: the AI Capacity card is a top-leve
 | lifeos/accountability/region.py | the This week, Quarterly goals and Quarterly review callouts on Jim & Matt V3, found by the V3 block ID register (jim.thisweek, matt.goals, ...) | each callout and its summary page is read and written by block id inside the callout (ScopedClient) and read back |
 | lifeos/accountability/preview.py | the one V3 preview callout on Jim & Matt V3 (LIFE-918), named by the V3_PREVIEW_BLOCK_ID row and checked to sit on that page | off unless V2_QUARTER_SHADOW is on; only on a live run; written inside that callout only (ScopedClient: heading, stamp and one body paragraph, anything else refused) and read back; never the fixed blocks |
 | lifeos/megibow/card.py, lifeos/megibow/v3.py | the MegIBOW callouts, found by MEGIBOW_BLOCK_ID and the V3 block ids | each callout is read and written by block id and read back |
-| lifeos/sources/apps/close_app.py, lifeos/sources/apps/outreach_app.py | the Recruiter Outreach table of the Daily Report (LIFE-971) | after a verified Done, Dismiss or Close all overdue the private Close service answers at once and pokes the background redraw worker (lifeos/sources/apps/redraw_worker.py, its own socket-activated unit), which redraws the table by calling lifeos/recruiters/outreach_card.py (its ScopedClient guard and read-back) through the Close integration's own token; HIRING_TABLE_BLOCK_ID and the origin come from /etc/lifeos-close/redraw.json (LIFE-972) |
+| lifeos/recruiters/outreach_card.py | the Recruiter Outreach callout's gray count line `N need action · M overdue` (LIFE-973), named by the RECRUITER_COUNT_BLOCK_ID row | one PATCH of the callout's own text before its link; the live view inside it is never read or written; read back |
+| lifeos/recruiters/stage.py, lifeos/recruiters/fill.py | the Recruiters data source rows (not the Daily Report): Done / Active / Needs review follow Action Status, Follow-up Date, Company / Role / Client (LIFE-973) | each write is read back; a set value is never replaced |
+| lifeos/hiring/decision_sync.py | Job Ledger rows with a hand-set Hiring Decision (LIFE-973): Decision On, one history line, Freshness Status Closed | each write is read back; Hiring Decision itself is never changed |
 
 ## Whole-page reads
 
@@ -46,8 +46,6 @@ The row with `-` is not a region in `OWNERS`: the AI Capacity card is a top-leve
 
 | module | page | use |
 |---|---|---|
-| lifeos/hiring/card.py | Daily Report | once, before the write, to prove the Hiring heading is unique; nothing is compared afterwards |
-| lifeos/recruiters/outreach_card.py | Daily Report | once, before the write, to prove the Recruiter Outreach heading is unique; nothing is compared afterwards |
 | lifeos/sources/pipeline/job_page_outreach.py | a job page | before and after one write, single writer |
 | lifeos/platform/branches.py | the Weekly Review | before and after one write, single writer |
 

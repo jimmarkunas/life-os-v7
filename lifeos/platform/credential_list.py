@@ -320,7 +320,6 @@ PATTERNS = [{'file': 'lifeos/inbox/followup_wiring.py', 'match': ['FOLLOWUP_ACCO
  {'file': 'lifeos/buzz/mcp.py', 'match': ['BUZZ_*']},
  {'file': 'lifeos/dcc/card.py', 'match': ['*_BLOCK_ID']},
  {'file': 'lifeos/hermes_requests.py', 'match': ['BUZZ_*']},
- {'file': 'lifeos/hiring/card.py', 'match': ['*_BLOCK_ID']},
  {'file': 'lifeos/imessage/comms_card.py', 'match': ['*_BLOCK_ID']},
  {'file': 'lifeos/oraclecloud/card.py', 'match': ['*_BLOCK_ID']},
  {'file': 'lifeos/physmail/card.py', 'match': ['*_BLOCK_ID']},

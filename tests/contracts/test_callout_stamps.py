@@ -12,7 +12,6 @@ from zoneinfo import ZoneInfo
 from lifeos.agenda import card as agenda
 from lifeos.amazon import card as amazon
 from lifeos.bills import card as bills
-from lifeos.hiring import models as hiring_models, render as hiring_render
 from lifeos.imessage import comms_card
 from lifeos.jira import card as jira
 from lifeos.jobs.fit import capacity_card
@@ -20,7 +19,6 @@ from lifeos.megibow import render as megibow
 from lifeos.oraclecloud import card as oracle
 from lifeos.physmail import card as physmail
 from lifeos.platform import ct_stamp, router
-from lifeos.recruiters import outreach_card
 
 NOW = dt.datetime(2026, 11, 12, 13, 35, tzinfo=ZoneInfo("America/Chicago"))
 CLOCK = r"(?:[1-9]|1[0-2])/(?:[1-9]|[12]\d|3[01]) · (?:[1-9]|1[0-2]):\d{2} [AP]M CT"                  # LIFE-679: month/day numbers (no leading zero), a middle dot, the time: `11/12 · 1:35 PM CT`; no word "Updated"
@@ -39,11 +37,6 @@ def oracle_heading():
     return oracle.render(oracle.validate(json.dumps(raw), NOW), NOW)[1]
 
 
-def hiring_heading():
-    text = hiring_render.render({"rows": [], "reasons": []}, None, NOW)[0]
-    return hiring_models.heading_text(hiring_models.split_status(text)[0])
-
-
 def capacity_heading():
     return re.match(r"AI Capacity \([^)]*\)", capacity_card.render({"pools": [], "unavailable": [], "safety_cap": None}, NOW)[0].split("\n")[0]).group(0)          # the callout's first line, up to the heading's closing bracket
 
@@ -55,16 +48,16 @@ HEADINGS = {
     router.BILLS_REGION: (router.BILLS_REGION, lambda: bills.heading_text({"taken_at": NOW.isoformat()}, False)),
     router.AMAZON_REGION: (router.AMAZON_REGION, lambda: amazon.heading_text(NOW)),
     router.MAIL_ALERTS_REGION: (router.MAIL_ALERTS_REGION, lambda: physmail.heading_text(NOW)),
-    router.HIRING_REGION: (router.HIRING_REGION, hiring_heading),
     router.COMMS_REGION: (router.COMMS_REGION, lambda: comms_card.render(comms_card.UNAVAILABLE, NOW)[1]),
     router.ORACLE_REGION: (router.ORACLE_REGION, oracle_heading),
-    router.RECRUITER_OUTREACH_REGION: (router.RECRUITER_OUTREACH_REGION, lambda: outreach_card.heading(NOW)),
     "MegIBOW": ("MegIBOW", lambda: re.match(r"MegIBOW \([^)]*\)", megibow.status(NOW)).group(0)),
     "AI Capacity": ("AI Capacity", capacity_heading),
 }
 # Not a Daily Report card heading, with the reason:
 EXEMPT = {
     router.DCC_REGION: "the Command Center's stamp is in its heading, `ChatGPT · Daily Command Center · Tue 11/24 · 11:02 PM CT` (lifeos/dcc/card.py heading_text: weekday and date included), checked by the DCC tests",
+    router.HIRING_REGION: "LIFE-973: a live Job Ledger view inside its callout; V7 writes no heading or stamp there",
+    router.RECRUITER_OUTREACH_REGION: "LIFE-973: a live Recruiters view; V7 writes only its gray count line (lifeos/recruiters/outreach_card.py), which carries no stamp",
     router.REPO_REGION: "the Weekly LIFE OS Review page, not the Daily Report (lifeos/platform/branches.py)",
 }
 
@@ -99,9 +92,6 @@ class EveryCardHeadingShowsWhenItWasUpdated(unittest.TestCase):
         self.assertEqual(sorted(set(router.OWNERS) - covered), [], "a region has no heading rule: add it to HEADINGS (or EXEMPT, with the reason) in this test")
 
     def test_the_degraded_stale_and_unread_forms_keep_the_title_and_the_date_and_clock_in_the_heading(self):
-        self.assertEqual(outreach_card.heading(NOW, "success", "14-day scan (Outlook personal unread)"), "🤝 Recruiter Outreach (11/12 · 1:35 PM CT, Outlook personal unread)")
-        self.assertEqual(outreach_card.heading(NOW, "success", "new mail"), "🤝 Recruiter Outreach (11/12 · 1:35 PM CT)")
-        self.assertEqual(outreach_card.heading(NOW, "skipped"), "🤝 Recruiter Outreach (Redrawn 11/12 · 1:35 PM CT)")
         self.assertEqual(jira.heading_text(NOW, NOW), "JIRA Execution (STALE · last accepted 11/12 · 1:35 PM CT)")
         self.assertEqual(amazon.heading_text(NOW, True), "Amazon Orders (DEGRADED at 11/12 · 1:35 PM CT)")
         self.assertEqual(physmail.heading_text(NOW, True), "Mail Alerts (DEGRADED at 11/12 · 1:35 PM CT)")

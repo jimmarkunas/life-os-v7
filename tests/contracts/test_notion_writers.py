@@ -15,7 +15,8 @@ INFRA = {"lifeos/platform/report_region.py", "lifeos/platform/readback.py", "lif
 PROOFS = "lifeos/sources/proofs/"
 GUARDS = ("ScopedClient", "replace_text", "replace_tree")
 HOW_TO = "a module that writes a Notion page needs one OWNERS entry in lifeos/platform/router.py and one row in docs/platform/notion-writers.md (see its 'The rules')"
-NOT_OWNED_HERE = {router.REPO_REGION: "the Weekly Review page, listed under other writers"}
+NOT_OWNED_HERE = {router.REPO_REGION: "the Weekly Review page, listed under other writers",
+                  router.HIRING_REGION: "LIFE-973: a live Job Ledger view; no table writer", router.RECRUITER_OUTREACH_REGION: "LIFE-973: a live Recruiters view; only its count line is written (other writers)"}
 
 
 def tables(text):
@@ -97,8 +98,6 @@ class NotionWriters(unittest.TestCase):
         listed = {row[0] for row in self.digests}
         callers = digest_callers(self.srcs)
         self.assertEqual(sorted(callers), sorted(listed), "page_digest is allowed only in the listed places")
-        for path in ("lifeos/hiring/card.py", "lifeos/recruiters/outreach_card.py"):
-            self.assertEqual(callers[path], 1, f"{path} reads the Daily Report page once and compares nothing afterwards")
 
     def test_the_detector_catches_a_new_unlisted_writer_and_a_second_digest(self):
         fake = {"lifeos/newcard/card.py": "from lifeos.platform import report_region\nclient = report_region.ScopedClient(c, b, f)\n",
