@@ -1,4 +1,6 @@
-"""LIFE-918 AC3: the V3 weekly sprint view as native Notion blocks, built to Jim's approved wireframe (Nov 25 2026, 3:19 AM CT; layout corrected 3:22 AM CT: Jim left, Matt right).
+"""LIFE-918 AC3: the V3 weekly sprint view as native Notion blocks, to the approved wireframe.
+
+Jim approved it Nov 25 2026, 3:19 AM CT; layout corrected 3:22 AM CT: Jim left, Matt right.
 
 Pure: no Notion, no Jira, no clock. `spec` gives a list of block specs; a spec is {"type", "rich": [(text, link, bold, color)], "children": [spec], "icon": emoji, "color": block colour}.
 `region.write_tree` turns a spec into blocks inside one person's week callout and reads it back. Blocks: a title line, a 2 x 2 grid of tile callouts (Sprint commitments and Overdue backlog left,
