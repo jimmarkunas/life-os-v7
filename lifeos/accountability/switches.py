@@ -8,25 +8,26 @@ import os
 from lifeos.platform import settings
 
 SWITCHES = ("MEJ_SPRINT_AUTOMATION", "V3_WEEK_VIEW", "V2_QUARTER_SHADOW", "V2_PROMOTION", "V2_OFFICIAL")
-PREVIEW_BLOCK = "V3_PREVIEW_BLOCK_ID"
+
+
+def _read(environ):
+    """The six raw values, or all empty when the environment cannot be read."""
+    environ = os.environ if environ is None else environ
+    try:
+        return {"MEJ_SPRINT_AUTOMATION": environ.get("MEJ_SPRINT_AUTOMATION"), "V3_WEEK_VIEW": environ.get("V3_WEEK_VIEW"), "V2_QUARTER_SHADOW": environ.get("V2_QUARTER_SHADOW"),
+                "V2_PROMOTION": environ.get("V2_PROMOTION"), "V2_OFFICIAL": environ.get("V2_OFFICIAL"), "V3_PREVIEW_BLOCK_ID": environ.get("V3_PREVIEW_BLOCK_ID")}
+    except (AttributeError, TypeError):
+        return {}
 
 
 def on(name, environ=None):
     """True only when the named switch row is exactly "on"; every other value, and any name that is not one of the five switches, is off."""
-    if name not in SWITCHES:
-        return False
-    try:
-        return str((environ if environ is not None else os.environ).get(name) or "").strip().lower() == "on"
-    except (AttributeError, TypeError):
-        return False
+    return name in SWITCHES and str(_read(environ).get(name) or "").strip().lower() == "on"
 
 
 def preview_block(environ=None):
     """The V3 preview block id as 32 lowercase hex characters, or "" (no preview block) when unset or not a valid id."""
-    try:
-        value = str((environ if environ is not None else os.environ).get(PREVIEW_BLOCK) or "").strip()
-    except (AttributeError, TypeError):
-        return ""
+    value = str(_read(environ).get("V3_PREVIEW_BLOCK_ID") or "").strip()
     return value.replace("-", "").lower() if value and settings.ADDRESS.match(value) else ""
 
 
