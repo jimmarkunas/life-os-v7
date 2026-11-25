@@ -310,7 +310,7 @@ class Dormant(unittest.TestCase):
         text = (self.ROOT / ".github/workflows/fit-edge-test.yml").read_text()
         self.assertNotRegex(text, r"(?m)^\s*(schedule|workflow_run|push|pull_request\w*|repository_dispatch):")
         self.assertNotIn("--live", text)
-        self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", text))), ["LIFEOS_BWS_RUNTIME_TOKEN"])
+        self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", text)) - {"DOPPLER_TOKEN"}), ["LIFEOS_BWS_RUNTIME_TOKEN"])
         self.assertIn("inputs.confirm == 'SYNTHETIC'", text)
         importers = [str(p.relative_to(self.ROOT)) for p in (self.ROOT / "lifeos").rglob("*.py") if p.name != "edge.py" and ("fit.edge" in p.read_text() or "fit import edge" in p.read_text())]
         self.assertEqual(sorted(importers), ["lifeos/jobs/fit/backlog.py", "lifeos/jobs/fit/cloud.py", "lifeos/run.py", "lifeos/sources/cards/oracle_card.py"])   # the stage table, the Oracle Cloud card (Oct 24: its Codex lines are the AI Capacity `limits` reading; read-only, no model run), the D214 shadow (off unless V7_CLOUD_FIT is set), and the D228 card and the backlog batch's count report (only the no-model limits request)

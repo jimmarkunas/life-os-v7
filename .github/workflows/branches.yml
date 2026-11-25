@@ -48,6 +48,15 @@ jobs:
           set_env: false
           secrets: |
             c7b3ff1a-e0d9-456a-b8c6-b5030158f900 > V7_ARCHIVE_TOKEN
+      - id: doppler_bws_archive
+        if: ${{ steps.bws_archive.outcome == 'success' }}
+        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
+        name: Doppler parity compare (LIFE-981; the same 1 name read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
+        uses: ./.github/actions/doppler-load
+        with:
+          token: ${{ secrets.DOPPLER_TOKEN }}
+          names: V7_ARCHIVE_TOKEN
+          bitwarden: ${{ toJSON(steps.bws_archive.outputs) }}
       - name: Archive the merged branch (tag in life-os-automation, read back) and delete it only when safe
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -80,6 +89,15 @@ jobs:
           set_env: false
           secrets: |
             53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
+      - id: doppler_bws_report
+        if: ${{ steps.bws_report.outcome == 'success' }}
+        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
+        name: Doppler parity compare (LIFE-981; the same 1 name read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
+        uses: ./.github/actions/doppler-load
+        with:
+          token: ${{ secrets.DOPPLER_TOKEN }}
+          names: NOTION_JIRA_TOKEN
+          bitwarden: ${{ toJSON(steps.bws_report.outputs) }}
       - id: bws_runtime_config
         continue-on-error: true
         name: Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)
@@ -89,6 +107,15 @@ jobs:
           set_env: false
           secrets: |
             0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
+      - id: doppler_bws_runtime_config
+        if: ${{ steps.bws_runtime_config.outcome == 'success' }}
+        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
+        name: Doppler parity compare (LIFE-981; the same 1 name read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
+        uses: ./.github/actions/doppler-load
+        with:
+          token: ${{ secrets.DOPPLER_TOKEN }}
+          names: V7_RUNTIME_CONFIG_SOURCE_ID
+          bitwarden: ${{ toJSON(steps.bws_runtime_config.outputs) }}
       - name: V7 settings page for the Weekly Review page address (LIFE-703; names and counts only; an unreadable page changes nothing)
         continue-on-error: true
         env:

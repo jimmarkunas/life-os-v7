@@ -174,7 +174,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(list(manual[True]), ["workflow_dispatch"])                                       # manual only: no schedule, push or other trigger
         self.assertEqual(inputs["stage"]["options"], ["orders", "backfill", "retention", "review-reset", "census"])
         self.assertEqual((inputs["since"]["default"], inputs["live"]["default"]), ("2015-01-01", False))   # dry run stays the default
-        self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", text))), ["LIFEOS_BWS_RUNTIME_TOKEN"])    # LIFE-704: the Gmail client id comes from Bitwarden too; LIFE-699: the Amazon data source id comes from the V7 settings page
+        self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", text))), ["DOPPLER_TOKEN", "LIFEOS_BWS_RUNTIME_TOKEN"])    # LIFE-704: the Gmail client id comes from Bitwarden too; LIFE-699: the Amazon data source id comes from the V7 settings page
         for moved in ("GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_AMAZON_TOKEN"):
             self.assertNotIn(f"secrets.{moved}", text)                                                    # no direct copy, so no fallback
         self.assertEqual(re.findall(r"uses:\s*(\S*bws-load)", text), ["./.github/actions/bws-load"] * 2)   # the one local credential loader (LIFE-631) plus the NOTION_JIRA_TOKEN-only settings loader (LIFE-703); the reviewed v3.0.1 commit and its one retry (D209) live in that action, pinned by the loader rules below
@@ -227,7 +227,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn("--live", text.split("\n  # LIFE-10:")[0])                                         # the database and Gmail diagnostics never write
         confirm = diag[True]["workflow_dispatch"]["inputs"]["confirm"]                                      # LIFE-10: the proof's typed confirmation, an env value, never inlined in the command
         self.assertEqual((confirm["type"], confirm["default"]), ("string", ""))
-        self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", text))), ["LIFEOS_BWS_RUNTIME_TOKEN"])      # LIFE-699: the Notion ids map is declared empty and the LIFEOS_NOTION_<KEY> ids come from the settings page. LIFE-121: the report job reads the Ledger's data source id (LIFE-699: from the V7 settings page now) to find its page; LIFE-704: the Gmail client id and the SSH port no longer come from GitHub
+        self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", text))), ["DOPPLER_TOKEN", "LIFEOS_BWS_RUNTIME_TOKEN"])      # LIFE-699: the Notion ids map is declared empty and the LIFEOS_NOTION_<KEY> ids come from the settings page. LIFE-121: the report job reads the Ledger's data source id (LIFE-699: from the V7 settings page now) to find its page; LIFE-704: the Gmail client id and the SSH port no longer come from GitHub
         for name in moved:
             self.assertNotIn(f"secrets.{name}", text)                                                      # no direct copy, so no fallback
         self.assertEqual(re.findall(r"uses:\s*(\S*bws-load)", text), ["./.github/actions/bws-load"] * 9)   # the one local loader, once per job (LIFE-631; the Action Inbox view QA job is the sixth, LIFE-711) plus the three runtime-configuration loaders (LIFE-859: sandbox, interview_ui, inbox_view_qa)
@@ -743,6 +743,11 @@ def settings_loader_withs():
     return [base, {**base, "secrets": base["secrets"] + f"{UUIDS['V7_RUNTIME_CONFIG_SOURCE_ID']} > V7_RUNTIME_CONFIG_SOURCE_ID\n"}]
 
 
+def is_parity(step):
+    """LIFE-981 (Jim, Nov 25 2026, "doppler parity"): the side-by-side Doppler compare that follows a Bitwarden load. It is read-only, continue-on-error, never consumed by any other step, and never fails a job."""
+    return step.get("uses") == "./.github/actions/doppler-load"
+
+
 def is_settings_loader(step):
     """The settings loader exactly as written: its id, the local loader, the one Notion token, nothing exported job-wide, and `continue-on-error` as its only extra key."""
     return (step.get("id") == SETTINGS_LOADER_ID and step.get("uses") == "./.github/actions/bws-load" and step.get("with") in settings_loader_withs()
@@ -865,7 +870,7 @@ class DomainsWorkflowTests(unittest.TestCase):
         """LIFE-649: -> what a job's final step fails to surface. A stage step is every `continue-on-error` step; the tailnet join is the one allowed to fail quietly (a failed join only loses the Oracle fallback).
         The final step must run always(), fail the job (`exit 1`), and cover every stage step: by the wildcard `steps.*.outcome` (every step with an id) or by naming each stage id."""
         steps, problems = job["steps"], []
-        stage = [s for s in steps if s.get("continue-on-error") and not is_settings_loader(s) and s.get("id") != RUNTIME_CONFIG_LOADER_ID]       # LIFE-703: the settings loader may fail quietly; it is that exact step or it is a stage step like any other
+        stage = [s for s in steps if s.get("continue-on-error") and not is_settings_loader(s) and not is_parity(s) and s.get("id") != RUNTIME_CONFIG_LOADER_ID]       # LIFE-703: the settings loader may fail quietly; it is that exact step or it is a stage step like any other
         for step in stage:
             if not step.get("id") and step.get("uses") != "./.github/actions/tailscale":
                 problems.append(f"stage step without an id: {step.get('name')}")
@@ -914,7 +919,7 @@ class DomainsWorkflowTests(unittest.TestCase):
         """LIFE-730 (temporary): the V3 accountability stages warn but do not end the jira job red; every other jira step id is on the red list, computed from the parsed job so a new jira step must be decided here."""
         job = self.doc["jobs"]["jira"]
         condition = job["steps"][-1]["if"]
-        ids = [s["id"] for s in job["steps"] if s.get("id") and s["id"] != RUNTIME_CONFIG_LOADER_ID]      # LIFE-859: the address loader may fail quietly, like the settings loader
+        ids = [s["id"] for s in job["steps"] if s.get("id") and s["id"] != RUNTIME_CONFIG_LOADER_ID and not is_parity(s)]      # LIFE-859: the address loader may fail quietly, like the settings loader
         v3 = set(self.V3_STAGES_THAT_ONLY_WARN)
         self.assertLessEqual(v3, set(ids))                                                                # the five exempt ids are real steps of this job
         self.assertNotIn("contains(steps.*.outcome", condition)                                          # the wildcard would put the V3 stages back on the red list
@@ -1179,7 +1184,7 @@ class BitwardenConsumerTests(unittest.TestCase):
                             if k in UUIDS:
                                 self.assertIn((k, str(v).strip()), (("NOTION_JIRA_TOKEN", SETTINGS_CONSUMER), ("V7_RUNTIME_CONFIG_SOURCE_ID", SETTINGS_CONSUMER.replace("NOTION_JIRA_TOKEN", "V7_RUNTIME_CONFIG_SOURCE_ID"))), (name, job, step.get("name")))
                                 self.assertTrue(settings_at is not None and i > settings_at, (name, job, step.get("name")))
-                    self.assertFalse([v for step in body["steps"] for v in (step.get("with") or {}).values() if "steps.bws_" in str(v)], (name, job))
+                    self.assertFalse([v for step in body["steps"] for v in (step.get("with") or {}).values() if "steps.bws_" in str(v) and not is_parity(step)], (name, job))
                     continue
                 ((at, loader),) = found
                 seen = set()
@@ -1321,7 +1326,7 @@ class SweepFailureIsItsOwnLaneTests(unittest.TestCase):
         for prefix in ("Load the migrated credentials", "Gate - skip"):                 # LIFE-856: the unit tests moved to their own job beside the run (a failing test reds the run through the report lane)
             step = next(s for s in before if s.get("name", "").startswith(prefix))
             self.assertNotIn("continue-on-error", step, prefix)                        # a credential or gate failure fails the job, as before
-        tolerated = [s.get("name", "") for s in self.steps[:sweep_at] if s.get("continue-on-error")]
+        tolerated = [s.get("name", "") for s in self.steps[:sweep_at] if s.get("continue-on-error") and not is_parity(s)]
         self.assertEqual(len(tolerated), 2)
         self.assertEqual(sum(name.startswith("LIFE-854 - start the employer-board window") for name in tolerated), 0)   # ... LIFE-905 retired LIFE-854's start of the board window (the tick crawls the boards itself) ...
         self.assertEqual(sum("tailnet" in name for name in tolerated), 1)             # the tolerated earlier steps are the tailnet join ...
@@ -1392,7 +1397,7 @@ class FinishFailuresAreSurfacedTests(unittest.TestCase):
     def test_every_continue_on_error_step_is_a_lane_or_listed_as_silent_with_a_reason(self):
         listed = set(re.findall(r"=\$\{\{ steps\.(\w+)\.outcome \}\}", self.lanes["run"]))
         for step in self.steps:
-            if step.get("continue-on-error") and step.get("id") != "lanes":
+            if step.get("continue-on-error") and step.get("id") != "lanes" and not is_parity(step):
                 ident = step.get("id")
                 self.assertTrue(ident in listed or (ident in self.SILENT and self.SILENT[ident]), f"silent and unlisted: {ident or step.get('name')}")
         self.assertTrue(listed.isdisjoint(self.SILENT))                                # a step is one or the other, never both
@@ -1426,7 +1431,7 @@ class FinishFailuresAreSurfacedTests(unittest.TestCase):
     def test_credentials_the_gate_and_unit_tests_still_block_the_finish_job(self):
         browser_at = next(i for i, s in enumerate(self.steps) if s.get("id") == "browser")
         for step in self.steps[:browser_at]:
-            if step.get("continue-on-error"):
+            if step.get("continue-on-error") and not is_parity(step):
                 self.assertEqual(step.get("uses"), "./.github/actions/tailscale")      # the only tolerated earlier step is the tailnet join
         loader = next(s for s in self.steps if s.get("id") == "bws_finish")
         self.assertFalse({"if", "continue-on-error"} & set(loader))
@@ -1456,3 +1461,63 @@ class ConcurrencyHasNoSwitch(unittest.TestCase):
         for path in list((root / ".github/workflows").glob("*.yml")) + [root / "lifeos/jobs/tick.py", root / "lifeos/platform/credential_list.py"]:
             self.assertNotIn("TICK_CONCURRENCY", path.read_text(), path.name)
             self.assertNotIn("BENCH_TICK_CONCURRENCY", path.read_text(), path.name)
+
+
+class DopplerParityTests(unittest.TestCase):
+    """LIFE-981 (Jim, Nov 25 2026, "doppler parity"): every job that loads Bitwarden secrets also compares the same names with Doppler, side by side. Production keeps using Bitwarden's values: the compare step never feeds
+    any other step, never fails a job, and is the only place `DOPPLER_TOKEN` appears."""
+
+    @classmethod
+    def setUpClass(cls):
+        try:
+            import yaml as _yaml
+        except ImportError:
+            raise unittest.SkipTest("pyyaml unavailable") from None
+        root = pathlib.Path(__file__).resolve().parents[2] / ".github/workflows"
+        cls.docs = {p.stem: _yaml.safe_load(p.read_text()) for p in sorted(root.glob("*.yml"))}
+        cls.texts = {p.stem: p.read_text() for p in sorted(root.glob("*.yml"))}
+
+    def loaders_with_compare(self):
+        """-> [(workflow, job, loader step, the compare step that follows it or None)] for every runtime-token Bitwarden load that names secrets."""
+        out = []
+        for name, doc in self.docs.items():
+            for job, body in (doc.get("jobs") or {}).items():
+                steps = body.get("steps") or []
+                for i, step in enumerate(steps):
+                    with_ = step.get("with") or {}
+                    if step.get("uses") == "./.github/actions/bws-load" and step.get("id") and "LIFEOS_BWS_RUNTIME_TOKEN" in str(with_.get("access_token")):
+                        follow = next((s for s in steps[i + 1:] if is_parity(s) and f"steps.{step['id']}.outputs" in str((s.get("with") or {}).get("bitwarden"))), None)
+                        out.append((name, job, step, follow))
+        return out
+
+    def test_every_secret_loading_job_compares_the_same_names_side_by_side(self):
+        found = self.loaders_with_compare()
+        self.assertGreaterEqual(len(found), 90)
+        for name, job, loader, compare in found:
+            self.assertIsNotNone(compare, (name, job, loader["id"]))
+            names = [line.split(">")[1].strip() for line in str(loader["with"]["secrets"]).splitlines() if ">" in line]
+            self.assertEqual(str(compare["with"]["names"]).split(","), names, (name, job))                  # exactly the names that job loaded
+            self.assertEqual(compare["with"]["token"], "${{ secrets.DOPPLER_TOKEN }}", (name, job))
+            self.assertEqual(compare["with"]["bitwarden"], f"${{{{ toJSON(steps.{loader['id']}.outputs) }}}}", (name, job))
+            self.assertTrue(compare.get("continue-on-error") is True, (name, job))                         # Doppler down or wrong never fails the job
+            self.assertEqual(compare.get("if"), f"${{{{ steps.{loader['id']}.outcome == 'success' }}}}", (name, job))   # no compare when the Bitwarden load failed
+
+    def test_production_keeps_bitwarden_nothing_consumes_the_compare_step_and_the_token_has_one_use(self):
+        for name, doc in self.docs.items():
+            text = self.texts[name]
+            ids = [s["id"] for body in (doc.get("jobs") or {}).values() for s in (body.get("steps") or []) if is_parity(s) and s.get("id")]
+            for ident in ids:
+                uses = re.findall(rf"steps\.{ident}\.(\w+)", text)
+                self.assertEqual(uses, [], (name, ident))                                                   # no step reads the compare step's outputs, let alone a value
+            token_uses = re.findall(r".*secrets\.DOPPLER_TOKEN.*", text)
+            parity_steps = sum(1 for body in (doc.get("jobs") or {}).values() for s in (body.get("steps") or []) if is_parity(s))
+            self.assertEqual(len(token_uses), parity_steps, name)                                          # DOPPLER_TOKEN only as the token input of a compare step
+            for body in (doc.get("jobs") or {}).values():
+                for s in body.get("steps") or []:
+                    if is_parity(s):
+                        self.assertEqual(set(s["with"]), {"token", "names", "bitwarden"}, name)
+
+    def test_the_action_only_reports_a_code_and_counts(self):
+        import yaml as _yaml
+        action = _yaml.safe_load(pathlib.Path(__file__).resolve().parents[2].joinpath(".github/actions/doppler-load/action.yml").read_text())
+        self.assertEqual(set(action["outputs"]), {"code", "matched", "total", "doppler_ms"})

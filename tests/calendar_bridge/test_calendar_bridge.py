@@ -283,7 +283,7 @@ class WorkflowTests(unittest.TestCase):
 
     def test_manual_only_with_only_the_calendar_outlook_and_database_secrets(self):
         self.assertNotRegex(self.text, r"\n  (schedule|push|pull_request):")
-        direct = set(re.findall(r"secrets\.(\w+)", self.text)) - {"LIFEOS_BWS_RUNTIME_TOKEN"}
+        direct = set(re.findall(r"secrets\.(\w+)", self.text)) - {"LIFEOS_BWS_RUNTIME_TOKEN", "DOPPLER_TOKEN"}
         self.assertEqual(sorted(direct | set(re.findall(r"steps\.\w+\.outputs\.(\w+)", self.text))),              # EDGE-1.3: migrated values arrive as masked Bitwarden loader outputs
                          sorted(["OUTLOOK_CLIENT_ID", "GCAL_SERVICE_ACCOUNT_JSON", "NOTION_JIRA_TOKEN", "V7_RUNTIME_CONFIG_SOURCE_ID"] + [f"LIFEOS_ACQ_{n}" for n in (
                              "SSH_PRIVATE_KEY", "DB_PASSWORD", "SSH_HOST", "SSH_USER", "SSH_KNOWN_HOSTS", "DB_NAME", "DB_USER")]))      # LIFE-704: the port comes from the plain-switch loader, not a secret
@@ -302,7 +302,7 @@ class HourlyJobTests(unittest.TestCase):
     def test_runs_after_an_hourly_tick_only_and_never_fails_the_jobs_run(self):
         job = self.job()
         self.assertIn("needs.gate.outputs.due_outlook == 'true'", job.split("runs-on")[0])             # LIFE-604 item 11: the tick trigger lives once, in the gate job (tests/jobs/test_domains_events.py)
-        self.assertEqual(job.count("continue-on-error: true"), 3)            # calendar sync + the LIFE-85 tailnet join (no fallback, not a failure) + the LIFE-703 settings loader (NOTION_JIRA_TOKEN only; a failure leaves the GitHub values); the credential load and its retry are inside the local action (LIFE-631)
+        self.assertEqual(job.count("continue-on-error: true") - job.count("actions/doppler-load"), 3)            # calendar sync + the LIFE-85 tailnet join (no fallback, not a failure) + the LIFE-703 settings loader (NOTION_JIRA_TOKEN only; a failure leaves the GitHub values); the credential load and its retry are inside the local action (LIFE-631)
         self.assertNotIn("\n    continue-on-error:", job)
         self.assertIn("::warning", job)
 
@@ -312,7 +312,7 @@ class HourlyJobTests(unittest.TestCase):
         self.assertNotIn("secrets.", head)
         for name in ("NOTION_API_TOKEN", "GMAIL_OAUTH_REFRESH_TOKEN", "TINYFISH_API_KEY", "FIT_PROFILE_JSON", "HIRING_PIPELINE_PAGE_ID"):
             self.assertNotIn(name, job, name)                                  # no Jobs secret is even named in this workflow
-        direct = set(re.findall(r"secrets\.(\w+)", steps)) - {"LIFEOS_BWS_RUNTIME_TOKEN"}
+        direct = set(re.findall(r"secrets\.(\w+)", steps)) - {"LIFEOS_BWS_RUNTIME_TOKEN", "DOPPLER_TOKEN"}
         self.assertEqual(sorted((direct | set(re.findall(r"steps\.\w+\.outputs\.(\w+)", steps))) - {"V7_RUNTIME_CONFIG_SOURCE_ID"}),                  # LIFE-859: the Runtime Configuration address is not a secret; EDGE-1.3: migrated values arrive as masked Bitwarden loader outputs
                          sorted(["OUTLOOK_CLIENT_ID", "GCAL_SERVICE_ACCOUNT_JSON", "NOTION_JIRA_TOKEN", "NTFY_TOPIC", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET"] + [f"LIFEOS_ACQ_{n}" for n in (
                              "SSH_PRIVATE_KEY", "DB_PASSWORD", "SSH_HOST", "SSH_USER", "SSH_KNOWN_HOSTS", "DB_NAME", "DB_USER", "SSH_JUMP_KEY", "SSH_JUMP_HOST", "SSH_JUMP_KNOWN_HOSTS")]))   # LIFE-85: the Oracle relay key, and the Tailscale pair for the join only

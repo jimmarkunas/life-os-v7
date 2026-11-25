@@ -62,14 +62,11 @@ class Compare(unittest.TestCase):
 
 
 class Workflow(unittest.TestCase):
-    """The trial is wired into capacity-card.yml only; every other workflow keeps the Bitwarden token alone; the job keeps using Bitwarden's values."""
-    def test_doppler_token_is_the_second_github_secret_in_the_trial_workflow_only(self):
+    """LIFE-981: the compare runs after every Bitwarden load; `DOPPLER_TOKEN` is used only as the token input of the compare step, once per compare step; the job keeps using Bitwarden's values."""
+    def test_doppler_token_is_used_only_as_the_token_of_a_compare_step(self):
         for path in (ROOT / ".github").rglob("*.yml"):
-            found = sorted(set(re.findall(r"secrets\.(\w+)", path.read_text())))
-            if path.name == "capacity-card.yml":
-                self.assertEqual(found, ["DOPPLER_TOKEN", "LIFEOS_BWS_RUNTIME_TOKEN"])
-            else:
-                self.assertNotIn("DOPPLER_TOKEN", found, str(path))
+            text = path.read_text()
+            self.assertEqual(len(re.findall(r"secrets\.DOPPLER_TOKEN", text)), text.count("uses: ./.github/actions/doppler-load"), str(path))
 
     def test_the_trial_step_cannot_fail_the_job_and_nothing_uses_doppler_values(self):
         import yaml

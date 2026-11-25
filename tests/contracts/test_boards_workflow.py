@@ -68,7 +68,7 @@ class BoardsWorkflow(unittest.TestCase):
         self.assertEqual(len(loaded), 12)
         for uuid, name in loaded:
             self.assertEqual(hourly.get(uuid), name, name)                                           # the same ids and names the hourly workflow loads
-        self.assertEqual(re.findall(r"secrets\.(\w+)", text), ["LIFEOS_BWS_RUNTIME_TOKEN", "LIFEOS_BWS_RUNTIME_TOKEN"])      # the one bootstrap token, for the loader and the switches reader
+        self.assertEqual([n for n in re.findall(r"secrets\.(\w+)", text) if n != "DOPPLER_TOKEN"], ["LIFEOS_BWS_RUNTIME_TOKEN", "LIFEOS_BWS_RUNTIME_TOKEN"])      # the one bootstrap token, for the loader and the switches reader
         self.assertNotIn("NOTION", text.replace("Notion", ""))
 
     def test_the_hourly_tick_no_longer_runs_the_boards_stage_but_keeps_the_backfill(self):
