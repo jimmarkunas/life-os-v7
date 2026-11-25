@@ -56,16 +56,20 @@ class Jira:
     def post(self, path: str, payload: Any, retry: bool = False) -> Any:
         return self.request("POST", path, payload=payload, retry=retry)
 
-    def pages(self, path: str, params: dict[str, Any] | None = None, key: str = "values") -> list[Any]:
-        """Every item of a paged Agile endpoint; bounded, and a page that makes no progress is an error."""
-        out, start = [], 0
+    def pages(self, path: str, params: dict[str, Any] | None = None, key: str = "values", meta: dict[str, Any] | None = None) -> list[Any]:
+        """Every item of a paged Agile endpoint; bounded, and a page that makes no progress is an error. `meta`, when given, receives {"pages", "items", "total", "complete"} (counts and booleans only; LIFE-918 diagnostics)."""
+        out, start, count = [], 0, 0
         for _ in range(MAX_PAGES):
             data = self.get(path, {**(params or {}), "startAt": start, "maxResults": PAGE_SIZE})
             items = data.get(key)
             if not isinstance(items, list):
                 raise JiraError("JIRA_BAD_PAGE")
             out.extend(items)
+            count += 1
             done = data.get("isLast", True) if key == "values" else len(out) >= int(data.get("total", len(out)))
+            if meta is not None:
+                total = data.get("total")
+                meta.update({"pages": count, "items": len(out), "total": total if type(total) is int else None, "complete": bool(done or not items)})
             if done or not items:
                 return out
             start += len(items)
@@ -81,8 +85,8 @@ class Jira:
     def sprint(self, sprint_id: int | str) -> Any:
         return self.get(f"/rest/agile/1.0/sprint/{int(sprint_id)}")
 
-    def sprint_issues(self, sprint_id: int | str, jql: str, fields: str) -> list[Any]:
-        return self.pages(f"/rest/agile/1.0/sprint/{int(sprint_id)}/issue", {**({"jql": jql} if jql else {}), "fields": fields}, "issues")
+    def sprint_issues(self, sprint_id: int | str, jql: str, fields: str, meta: dict[str, Any] | None = None) -> list[Any]:
+        return self.pages(f"/rest/agile/1.0/sprint/{int(sprint_id)}/issue", {**({"jql": jql} if jql else {}), "fields": fields}, "issues", meta)
 
     def board_issues(self, board_id: int | str, jql: str, fields: str) -> list[Any]:
         return self.pages(f"/rest/agile/1.0/board/{int(board_id)}/issue", {"jql": jql, "fields": fields}, "issues")
@@ -100,16 +104,18 @@ class Jira:
 
     def move_issues(self, sprint_id: int | str, keys: list[str]) -> None:
         for index in range(0, len(keys), 50):
-            self.post(f"/rest/agile/1.0/sprint/{int(sprint_id)}/issue", {"issues": keys[index:index + 50]}, retry=True)
+            reply = self.post(f"/rest/agile/1.0/sprint/{int(sprint_id)}/issue", {"issues": keys[index:index + 50]}, retry=True)
+            self.last_write = {"ok": True, "body_empty": not reply}               # a non-2xx raises; LIFE-918 diagnostics read this, counts and booleans only
 
     # LIFE-915: the Jira Agile backlog primitive. UNVERIFIED against the live tenant (permissions, board semantics, returned shape): nothing calls it live. run() never passes it; the gated MEJ
     # rollover only uses an object like this one that a test injects, and refuses to close a sprint with unapproved work and no such object. LIFE-918 proves the live contract before any activation.
     def move_to_backlog(self, keys: list[str]) -> None:
         for index in range(0, len(keys), 50):
-            self.post("/rest/agile/1.0/backlog/issue", {"issues": keys[index:index + 50]}, retry=True)
+            reply = self.post("/rest/agile/1.0/backlog/issue", {"issues": keys[index:index + 50]}, retry=True)
+            self.last_write = {"ok": True, "body_empty": not reply}
 
-    def backlog_issues(self, board_id: int | str, jql: str, fields: str) -> list[Any]:
-        return self.pages(f"/rest/agile/1.0/board/{int(board_id)}/backlog", {"jql": jql, "fields": fields}, "issues")
+    def backlog_issues(self, board_id: int | str, jql: str, fields: str, meta: dict[str, Any] | None = None) -> list[Any]:
+        return self.pages(f"/rest/agile/1.0/board/{int(board_id)}/backlog", {"jql": jql, "fields": fields}, "issues", meta)
 
     # LIFE-918 (live writers; every one UNVERIFIED against the tenant until the throwaway-sprint check passes and JIRA_WRITERS_VERIFIED is "yes"). Nothing here runs without lifeos.jira.writers.
     def put(self, path: str, payload: Any, retry: bool = False) -> Any:

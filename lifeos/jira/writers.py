@@ -14,6 +14,7 @@ import time
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+from lifeos.platform import jira as jira_module
 from lifeos.platform.jira import Jira, JiraError
 
 from . import reconcile as rc
@@ -104,17 +105,60 @@ def live_writers(client, environ=None):
 
 PERMISSIONS = ("CREATE_ISSUES", "EDIT_ISSUES", "DELETE_ISSUES", "TRANSITION_ISSUES", "MANAGE_SPRINTS_PERMISSION", "SCHEDULE_ISSUES")
 ATTEMPTS, WAIT = 4, 5
+MEMBER_ATTEMPTS, MEMBER_WAIT = 6, 10                                        # LIFE-918 diagnostics: the three sprint and backlog membership read-backs are more patient (still bounded: 50 s)
 
 
-def _eventually(call, sleep):
-    """Jira is eventually consistent: a read that is not yet true is retried (ATTEMPTS tries, WAIT seconds apart) before it counts as a failure. -> the last value."""
+def _eventually(call, sleep, attempts=ATTEMPTS, wait=WAIT):
+    """Jira is eventually consistent: a read that is not yet true is retried (`attempts` tries, `wait` seconds apart) before it counts as a failure. -> the last value."""
     value = call()
-    for _ in range(ATTEMPTS - 1):
+    for _ in range(attempts - 1):
         if value:
             break
-        sleep(WAIT)
+        sleep(wait)
         value = call()
     return value
+
+
+def _with_meta(read, *args, meta):
+    """Call a paged read with a `meta` dict that receives its page counts; a client whose read does not take one is called without it."""
+    try:
+        return read(*args, meta=meta)
+    except TypeError:
+        return read(*args)
+
+
+def _sprint_field_id(client):
+    """The id of the Sprint field (by name), or None when it cannot be found."""
+    try:
+        for field in client.field_list():
+            if field.get("name") == "Sprint" and field.get("id"):
+                return field["id"]
+    except JiraError:
+        pass
+    return None
+
+
+def _sprint_ids(client, key, field_id):
+    """The ids of the sprints the issue itself lists in its own Sprint field (a second, independent view), or None when it cannot be read."""
+    if not field_id:
+        return None
+    try:
+        value = ((client.issue(key, field_id) or {}).get("fields") or {}).get(field_id)
+    except JiraError:
+        return None
+    if not isinstance(value, list):
+        return None
+    return [int(v["id"]) for v in value if isinstance(v, dict) and v.get("id") is not None]
+
+
+def _write_state(client):
+    """What the last Agile write reported ({"write_ok", "body_empty"}: a non-2xx raises, so a recorded write was 2xx), then forgotten; None when the client records nothing."""
+    last = getattr(client, "last_write", None)
+    try:
+        client.last_write = None
+    except AttributeError:
+        pass
+    return None if not last else {"write_ok": bool(last.get("ok")), "body_empty": bool(last.get("body_empty"))}
 
 
 def permissions(client, project):
@@ -185,8 +229,31 @@ def verify(client, configured, board, issue_key, live, now=None, sleep=None, kee
     start = datetime.combine(now.astimezone(tz).date() + timedelta(days=60), datetime.min.time(), tzinfo=tz)       # far enough ahead to touch no real week
     name = _test_sprint_name(now)
     writers = raw_writers(client)
-    steps, why, sprint_id, clone = {}, {}, None, None
-    held = lambda: _eventually(lambda: _held(client, sprint_id, clone), sleep)
+    steps, why, diag, sprint_id, clone = {}, {}, {}, None, None
+    field_id = _sprint_field_id(client)
+
+    def member(label, kind, write):
+        """One sprint or backlog membership read-back with two independent views: the list read and the clone's own Sprint field. Counts, booleans and fixed words only go into diag[label]."""
+        began, tries = time.monotonic(), {"n": 0}
+
+        def probe():
+            tries["n"] += 1
+            meta = {}
+            if kind == "sprint":
+                items = _with_meta(client.sprint_issues, sprint_id, "", "summary", meta=meta)
+            else:
+                items = _with_meta(client.backlog_issues, board_id, "statusCategory != Done", "summary", meta=meta)
+            in_list = clone in {i.get("key") for i in items}
+            ids = _sprint_ids(client, clone, field_id)
+            by_field = False if ids is None else ((sprint_id in ids) if kind == "sprint" else (sprint_id not in ids))
+            diag[label] = {"write": write, "reads": tries["n"], "list_items": meta.get("items", len(items)), "list_total": meta.get("total"), "list_pages": meta.get("pages"),
+                           "list_complete": meta.get("complete"), "page_cap": jira_module.MAX_PAGES * jira_module.PAGE_SIZE, "in_list": in_list,
+                           "field_sprints": None if ids is None else len(ids), "in_sprint_field": None if ids is None else (sprint_id in ids),
+                           "passed_by": "both" if in_list and by_field else "list" if in_list else "field" if by_field else "none"}
+            return in_list or by_field
+        ok = _eventually(probe, sleep, MEMBER_ATTEMPTS, MEMBER_WAIT)
+        diag[label]["seconds"] = int(time.monotonic() - began)
+        return ok
 
     def step(label, call):
         try:
@@ -203,7 +270,7 @@ def verify(client, configured, board, issue_key, live, now=None, sleep=None, kee
         step("rename_sprint", lambda: _eventually(lambda: any(int(s["id"]) == sprint_id and s.get("name") == renamed for s in client.sprints(board_id, "future")), sleep))
         origin = client.issue(issue_key, "summary,description,assignee,priority,labels,parent,duedate,issuetype,project,issuelinks")
         clone = writers.create_clone(issue_key, rc.clone_fields(origin, 7), sprint_id, issue_key)
-        step("clone_into_sprint", lambda: bool(clone) and held())
+        step("clone_into_sprint", lambda: bool(clone) and member("clone_into_sprint", "sprint", _write_state(client)))
 
         def identity():
             def read():
@@ -214,10 +281,11 @@ def verify(client, configured, board, issue_key, live, now=None, sleep=None, kee
         step("clone_link_identity", identity)
         writers.sync_fields(clone, {"summary": f"{TEST_PREFIX} sync"})
         step("sync_fields", lambda: _eventually(lambda: (client.issue(clone, "summary").get("fields") or {}).get("summary") == f"{TEST_PREFIX} sync", sleep))
+        _write_state(client)
         writers.move_to_backlog([clone])
-        step("move_to_backlog", lambda: _eventually(lambda: clone in {i.get("key") for i in client.backlog_issues(board_id, "statusCategory != Done", "summary")}, sleep))
+        step("move_to_backlog", lambda: member("move_to_backlog", "backlog", _write_state(client)))
         client.move_issues(sprint_id, [clone])
-        step("back_into_sprint", held)
+        step("back_into_sprint", lambda: member("back_into_sprint", "sprint", _write_state(client)))
         writers.close_done(clone, "verify-" + now.strftime("%Y%m%d%H%M"))
 
         def closed():
@@ -238,7 +306,7 @@ def verify(client, configured, board, issue_key, live, now=None, sleep=None, kee
                 parts[part] = False
                 why["cleanup_" + part] = _code(error)
         cleaned = all(parts.values())
-    out = {"mode": "live", "ok": all(steps.values()) and len(steps) == 8 and cleaned and "run" not in why, "steps": steps, "why": why, "cleaned": cleaned, "cleaned_parts": parts}
+    out = {"mode": "live", "ok": all(steps.values()) and len(steps) == 8 and cleaned and "run" not in why, "steps": steps, "why": why, "diag": diag, "cleaned": cleaned, "cleaned_parts": parts}
     if keep:
         out["kept"] = [clone] if clone else []
     return out
