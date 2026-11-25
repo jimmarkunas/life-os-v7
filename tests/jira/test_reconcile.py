@@ -27,6 +27,14 @@ def monday(y, m, d):
     return date(y, m, d)
 
 
+class OldName(unittest.TestCase):
+    def test_an_old_long_name_is_renamed_in_place_not_recreated(self):
+        week = monday(2026, 11, 30)
+        p = rc.plan_sprints("MEJ", [], [sprint(7, "MEJ", week, name="MEJ S49 W49 2026")], at(2026, 11, 25), TZ)
+        self.assertEqual(p["rename"], [(7, "MEJ W49 2026")])
+        self.assertNotIn("MEJ W49 2026", [c[0] for c in p["create"]])
+
+
 class Gate(unittest.TestCase):
     def test_the_local_gate_agrees_with_the_accountability_switch_reader(self):
         from lifeos.accountability import switches
@@ -38,12 +46,12 @@ class Gate(unittest.TestCase):
 
 class Naming(unittest.TestCase):
     def test_iso_names_follow_the_iso_week_and_year(self):
-        self.assertEqual(rc.iso_name("JFM", monday(2027, 1, 4)), "JFM S1 W1 2027")
-        self.assertEqual(rc.iso_name("MEJ", monday(2027, 1, 4)), "MEJ S1 W1 2027")
+        self.assertEqual(rc.iso_name("JFM", monday(2027, 1, 4)), "JFM W1 2027")
+        self.assertEqual(rc.iso_name("MEJ", monday(2027, 1, 4)), "MEJ W1 2027")
 
     def test_week_53_and_the_year_change(self):
-        self.assertEqual(rc.iso_name("MEJ", monday(2026, 12, 28)), "MEJ S53 W53 2026")     # 2026 has 53 ISO weeks
-        self.assertEqual(rc.iso_name("MEJ", monday(2024, 12, 30)), "MEJ S1 W1 2025")       # the Monday of ISO week 1 of 2025 is in December 2024
+        self.assertEqual(rc.iso_name("MEJ", monday(2026, 12, 28)), "MEJ W53 2026")     # 2026 has 53 ISO weeks
+        self.assertEqual(rc.iso_name("MEJ", monday(2024, 12, 30)), "MEJ W1 2025")       # the Monday of ISO week 1 of 2025 is in December 2024
 
     def test_week_bounds_are_monday_to_sunday_in_chicago_across_dst(self):
         start, end = rc.week_bounds(monday(2026, 11, 2), TZ)                              # the week the clocks went back (Nov 1 2026)
@@ -56,27 +64,27 @@ class Naming(unittest.TestCase):
 class Inventory(unittest.TestCase):
     def test_a_board_with_nothing_gets_four_future_weeks(self):
         p = rc.plan_sprints("MEJ", [], [], at(2026, 11, 25), TZ)
-        self.assertEqual([c[0] for c in p["create"]], ["MEJ S49 W49 2026", "MEJ S50 W50 2026", "MEJ S51 W51 2026", "MEJ S52 W52 2026"])
+        self.assertEqual([c[0] for c in p["create"]], ["MEJ W49 2026", "MEJ W50 2026", "MEJ W51 2026", "MEJ W52 2026"])
         self.assertEqual(p["rename"], [])
 
     def test_existing_sprints_are_renamed_in_place_and_the_gap_is_filled(self):
         active = [sprint(10, "MEJ", monday(2026, 11, 23), "active", "MEJ Sprint 12")]
         future = [sprint(11, "MEJ", monday(2026, 11, 30), name="Old name"), sprint(13, "MEJ", monday(2026, 12, 14))]
         p = rc.plan_sprints("MEJ", active, future, at(2026, 11, 25), TZ)
-        self.assertEqual(p["rename"], [(10, "MEJ S48 W48 2026"), (11, "MEJ S49 W49 2026")])
-        self.assertEqual([c[0] for c in p["create"]], ["MEJ S50 W50 2026", "MEJ S52 W52 2026"])   # week 50 fills the gap; the floor adds 52
+        self.assertEqual(p["rename"], [(10, "MEJ W48 2026"), (11, "MEJ W49 2026")])
+        self.assertEqual([c[0] for c in p["create"]], ["MEJ W50 2026", "MEJ W52 2026"])   # week 50 fills the gap; the floor adds 52
         self.assertEqual(p["future"], 4)
 
     def test_across_the_year_end_and_week_53(self):
         active = [sprint(1, "JFM", monday(2026, 12, 21), "active")]
         p = rc.plan_sprints("JFM", active, [], at(2026, 12, 23), TZ)
-        self.assertEqual([c[0] for c in p["create"]], ["JFM S53 W53 2026", "JFM S1 W1 2027", "JFM S2 W2 2027", "JFM S3 W3 2027"])
+        self.assertEqual([c[0] for c in p["create"]], ["JFM W53 2026", "JFM W1 2027", "JFM W2 2027", "JFM W3 2027"])
 
     def test_a_legacy_dst_stamp_matches_its_week_not_a_new_one(self):
         start = datetime(2026, 11, 2, 5, 0, tzinfo=timezone.utc)                           # midnight CDT stamped before the clocks changed: 11 PM the previous day in CST
-        legacy = {"id": 21, "name": "MEJ S45 W45 2026", "state": "future", "startDate": start.isoformat(), "endDate": datetime(2026, 11, 9, 5, 30, tzinfo=timezone.utc).isoformat()}
+        legacy = {"id": 21, "name": "MEJ W45 2026", "state": "future", "startDate": start.isoformat(), "endDate": datetime(2026, 11, 9, 5, 30, tzinfo=timezone.utc).isoformat()}
         p = rc.plan_sprints("MEJ", [sprint(20, "MEJ", monday(2026, 10, 26), "active")], [legacy], at(2026, 10, 28), TZ)
-        self.assertNotIn(("MEJ S45 W45 2026",), [(c[0],) for c in p["create"]])
+        self.assertNotIn(("MEJ W45 2026",), [(c[0],) for c in p["create"]])
 
     def test_conflicts_fail_closed_before_any_write(self):
         week = monday(2026, 12, 7)
@@ -91,12 +99,12 @@ class Inventory(unittest.TestCase):
 
     def test_closed_history_is_never_touched(self):
         p = rc.plan_sprints("MEJ", [], [], at(2026, 11, 25), TZ)
-        self.assertTrue(all(c[0].startswith("MEJ S") for c in p["create"]))                # only names, no id of a closed sprint is ever in a plan
+        self.assertTrue(all(c[0].startswith("MEJ W") for c in p["create"]))                # only names, no id of a closed sprint is ever in a plan
         self.assertEqual(p["rename"], [])
 
 
 def issue(key, type_="Task", status="To Do", category="new", priority="Medium", parent=None, labels=(), links=(), sprint_id=None, due=None, summary="s", description=None):
-    return {"key": key, "fields": {"issuetype": {"name": type_}, "status": {"name": status, "statusCategory": {"key": category}}, "priority": {"name": priority}, "parent": {"key": parent} if parent else None,
+    return {"key": key, "fields": {"issuetype": {"name": type_, "subtask": type_ == "Sub-task"}, "status": {"name": status, "statusCategory": {"key": category}}, "priority": {"name": priority}, "parent": {"key": parent} if parent else None,
                                    "labels": list(labels), "issuelinks": list(links), "sprint": {"id": sprint_id} if sprint_id else None, "duedate": due, "summary": summary, "description": description}}
 
 
@@ -193,7 +201,35 @@ class Recurrence(unittest.TestCase):
 
 class Counts(unittest.TestCase):
     def test_manual_automatic_and_total_stay_apart(self):
-        self.assertEqual(rc.closure_counts([("A-1", "manual"), ("A-2", "automatic"), ("A-3", "automatic"), ("A-4", None)]), {"manual": 1, "automatic": 2, "total": 4, "unverified": 1})
+        done = dict(status="Done", category="done")
+        self.assertEqual(rc.closure_counts([issue("A-1", **done), issue("A-2", labels=["auto-closed"], **done), issue("A-3", labels=["auto-closed", "x"], **done), issue("A-4")]),
+                         {"manual": 1, "automatic": 2, "total": 3})
+
+    def test_the_marker_is_one_label_and_one_comment_line(self):
+        self.assertEqual(rc.auto_close_fields("123456"), {"label": "auto-closed", "comment": "Closed automatically by LIFE OS run 123456."})
+        for bad in ("", None, "a\nb"):
+            with self.assertRaises(JiraError):
+                rc.auto_close_fields(bad)
+
+
+class Override(unittest.TestCase):
+    ISSUES = [issue("MEJ-1", priority="Low"), issue("MEJ-2", priority="High"), issue("MEJ-3", status="Blocked", priority="Low"),
+              issue("MEJ-4", status="In Progress", category="indeterminate", priority="Low"), issue("MEJ-5", type_="Sub-task", parent="MEJ-1")]
+
+    def test_the_rule_governs_both_boards_without_a_roster(self):
+        for project in ("JFM", "MEJ"):
+            plan = rc.select_carry(project, self.ISSUES)
+            self.assertEqual((plan["carry"], plan["backlog"]), (["MEJ-2", "MEJ-4"], ["MEJ-1", "MEJ-3", "MEJ-5"]))
+
+    def test_a_blocked_low_priority_item_goes_to_the_backlog(self):
+        self.assertIn("MEJ-3", rc.select_carry("MEJ", self.ISSUES)["backlog"])
+
+    def test_the_roster_overrides_only_mej_and_only_when_set(self):
+        roster = {"roster": ["MEJ-1"], "finite": [], "consent": "x", "backlog": None}
+        mej = rc.select_carry("MEJ", self.ISSUES, roster=roster)
+        self.assertEqual(mej["carry"], ["MEJ-1", "MEJ-5"])
+        self.assertEqual(mej["backlog"], ["MEJ-2", "MEJ-3", "MEJ-4"])
+        self.assertEqual(rc.select_carry("JFM", self.ISSUES, roster=roster)["carry"], ["MEJ-2", "MEJ-4"])
 
 
 class Daily(unittest.TestCase):
