@@ -76,3 +76,26 @@ The old rollback (empty `V7_RUNTIME_CONFIG_SOURCE_ID` returns to the old page) n
 ## Verification receipt (code PR)
 
 Filled in on the PR: same-head CI run IDs, `tools/preflight.sh` result, and the test names for each acceptance criterion of LIFE-844 (reader by ID, refused and duplicate names, dual-read parity, fallback, title change, rollback).
+
+## MEJ and JFM cutover rows and the permanent manual runs (LIFE-918)
+
+**Six rows, all off or empty until the LIFE-918 activation** (registered in `settings.MOVABLE`, owned by `lifeos/accountability/config.txt`, read through `lifeos/accountability/switches.py`, which fails closed: only the exact value `on` turns a switch on).
+
+| Row | Kind | Meaning | Default |
+| --- | --- | --- | --- |
+| `MEJ_SPRINT_AUTOMATION` | switch | JFM and MEJ sprint automation, on and off as one unit | off |
+| `V3_WEEK_VIEW` | switch | the new V3 weekly view (Task commitments, Sub-tasks under their parent, blocked and overdue sections) | off |
+| `V2_QUARTER_SHADOW` | switch | the v2 quarterly reader runs as a shadow beside the official legacy figures | off |
+| `V3_PREVIEW_BLOCK_ID` | address | the Notion block that holds the V3 preview figures | empty (no preview block) |
+| `V2_PROMOTION` | switch | the promotion kill switch: only `on` lets the first reconciliation run at or after Fri Jan 1 2027, 8:00 AM CT decide | off |
+| `V2_OFFICIAL` | switch | v2 quarterly figures are official; set only by the promotion run | off |
+
+Rollback: restore the before rows (all off), or revert the PR that reads them. These rows add no scheduler, credential or store, and the existing explicit-argument gates (`mej_metric_version`, `mej_task_focus`, `mej_selective`) are unchanged by this PR.
+
+**Permanent manual runs** use the one existing entry point (no new workflow, scheduler or test platform):
+
+| Mode | How | Writes |
+| --- | --- | --- |
+| Synthetic | `rollover.run(limit, live, environ=ENV, client=<fake>, now=<fixed date>)` in a test (`tests/jira/test_manual_modes.py`, `tests/jira/test_mej_selective_rollover.py`) | none; no network, no real client built |
+| Dry run (real reads, zero writes) | `python -m lifeos.run jira-rollover` (no `--live`), or the `domains.yml` manual run with the `jira` input `rollover` and `V7_LIVE` not true | none |
+| Live | `python -m lifeos.run jira-rollover --live`, or the same manual run with `V7_LIVE=true`; the scheduled path is `jira-rollover-scheduled` | only behind the existing `V7_LIVE` gates |
