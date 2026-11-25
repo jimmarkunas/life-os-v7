@@ -88,7 +88,7 @@ This table is rendered from `lifeos/platform/stages.json` (LIFE-768): edit a sta
 | `jira-card` | `jira.card` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `jira-fill` | `jira.fill_defaults` | `guarded` | Loops over its items with error handling inside; one failed item does not stop the others. | no |
 | `jira-probe` | `jira.snapshot` | `guarded` | Loops over its items with error handling inside; one failed item does not stop the others. | no |
-| `jira-reconcile-daily` | `jira.reconcile` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
+| `jira-reconcile-daily` | `jira.reconcile_stage` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `jira-release` | `jira.release` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `jira-rollover` | `jira.rollover` | `guarded` | Loops over its items with error handling inside; one failed item does not stop the others. | no |
 | `jira-rollover-scheduled` | `jira.rollover` | `guarded` | Loops over its items with error handling inside; one failed item does not stop the others. | no |

@@ -3,3 +3,5 @@ V3_WEEK_VIEW flag LIFE-918: on shows the new V3 weekly view (Task commitments, S
 V2_QUARTER_SHADOW flag LIFE-918: on runs the v2 quarterly reader as a shadow beside the official legacy figures; off or anything else is off
 V2_PROMOTION flag LIFE-918: the promotion kill switch; on lets the first reconciliation run at or after Fri Jan 1 2027 8:00 AM CT decide v2 official, off or anything else stops it
 V2_OFFICIAL flag LIFE-918: on makes the v2 quarterly figures official; set only by the promotion run, off or anything else keeps legacy official
+JIRA_WRITERS_VERIFIED flag LIFE-918: yes (exactly) lets the live Jira writers run; set by MC only after the throwaway-sprint verification passed, anything else keeps every live Jira write failing closed
+MEJ_AUTOMATION_SINCE flag LIFE-918: the activation time as an ISO time with a zone; the manual and automatic closure split counts only closures from then on, unset shows the total only
