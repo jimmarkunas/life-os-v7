@@ -23,6 +23,8 @@ tailnet TCP port to it with a PROXY protocol v2 header carrying the WireGuard-au
   gran1 (LIFE-37 Step 2, Jim's approval Oct 26 2026, Jira 11235/11242): `gran1 <1..4096>\\n` + that many bytes of JSON. This process (user ubuntu, no sudo) does not run Granola: it forwards the frame
      unchanged over the root-installed Unix socket /run/lifeos-gran/gran.sock to lifeos/edge/granola/gran_helper.py, which runs as the `grans` user, and passes the one reply back
      (at most 25,004,096 bytes). It never reads the frame or the reply; the same caller checks above apply.
+  concord1 (LIFE-977, Jim's approval Nov 25 2026 10:58 AM CT): the fixed line `concord1`, forwarded unchanged over the root-installed Unix socket /run/lifeos-concord/concord.sock to
+     lifeos/edge/concord/concord_helper.py, which runs as the `concord` user and reads Concord's own store read-only. The reply is ONE JSON line of a count and a fixed code (never message text, ids or paths).
 Anything else closes with no output. It writes nothing, logs nothing and never runs inside a Luna/OpenClaw session. A scan that reached the reader's 50-message
 or time cap (or any page failure) cannot prove it saw everything, so it says so (complete false, health DEGRADED) instead of passing as complete."""
 import hashlib
@@ -50,6 +52,8 @@ GRAN_MAX_REPLY = 25_004_096
 GRAN_WAIT = 82
 DRIVE_SOCKET = "/run/lifeos-drive/drive.sock"                  # LIFE-945: the read-only Drive weekly-count helper (lifeos/edge/drive/drive_helper.py), a local Unix socket only
 DRIVE_WAIT, DRIVE_MAX_REPLY = 60, 4096
+CONCORD_SOCKET = "/run/lifeos-concord/concord.sock"             # LIFE-977: the read-only Concord health helper (lifeos/edge/concord/concord_helper.py), a local Unix socket only
+CONCORD_WAIT, CONCORD_MAX_REPLY = 40, 1024
 SCHEMA = "lifeos.imessage.alerts.v2"
 COMMS_SCHEMA = "lifeos.imessage.comms.v1"
 COMMS2_SCHEMA = "lifeos.imessage.comms.v2"
@@ -137,7 +141,7 @@ def authorized(ip, lookup=whois):
 
 
 def request(stream):
-    """-> ("alerts", hours) | ("comms", 32-byte key) | ("oracle1", None) | ("gran1", the whole frame) | ("drive1", the request line) | None."""
+    """-> ("alerts", hours) | ("comms", 32-byte key) | ("oracle1", None) | ("gran1", the whole frame) | ("drive1", the request line) | ("concord1", the fixed line) | None."""
     raw = b""
     while len(raw) < MAX_REQUEST:
         c = stream.read(1)
@@ -156,6 +160,8 @@ def request(stream):
             return None
         body = read_exact(stream, int(size))
         return ("gran1", raw + b"\n" + body) if body is not None else None
+    if raw == b"concord1":                                           # LIFE-977: no argument; the helper's one line is a count and a fixed code
+        return "concord1", b"concord1\n"
     if raw.startswith(b"drive1 "):                                   # LIFE-945: `drive1 <1..14>`, forwarded unchanged to the Drive helper, which counts files and nothing else
         days = raw[7:]
         return ("drive1", raw + b"\n") if days.isdigit() and days[:1] != b"0" and 1 <= int(days) <= 14 else None
@@ -348,7 +354,25 @@ def drive1(frame, path=DRIVE_SOCKET, wait=DRIVE_WAIT):
     return data
 
 
-def main(stdin=None, stdout=None, lookup=whois, wrapper_path=WRAPPER, key_path=EVENT_KEY, now=None, uid=loopback_peer_uid, stats=oracle_stats, gran=gran1, drive=drive1):
+def concord1(frame, path=CONCORD_SOCKET, wait=CONCORD_WAIT):
+    """LIFE-977: one round trip to the Concord helper: the fixed request line goes in, its one JSON reply line comes back (or an exception, and the caller answers nothing)."""
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+        s.settimeout(wait)
+        s.connect(path)
+        s.sendall(frame)
+        s.shutdown(socket.SHUT_WR)
+        data = b""
+        while len(data) <= CONCORD_MAX_REPLY:
+            chunk = s.recv(1024)
+            if not chunk:
+                break
+            data += chunk
+    if len(data) > CONCORD_MAX_REPLY or not data.startswith(b"{") or not data.endswith(b"\n"):
+        raise ValueError("reply is not one JSON line")
+    return data
+
+
+def main(stdin=None, stdout=None, lookup=whois, wrapper_path=WRAPPER, key_path=EVENT_KEY, now=None, uid=loopback_peer_uid, stats=oracle_stats, gran=gran1, drive=drive1, concord=concord1):
     stdin = stdin or sys.stdin.buffer
     stdout = stdout or sys.stdout.buffer
     try:
@@ -366,6 +390,14 @@ def main(stdin=None, stdout=None, lookup=whois, wrapper_path=WRAPPER, key_path=E
     if kind == "drive1":
         try:
             reply = drive(arg)
+        except Exception:
+            return 1                                               # no partial answer and no exception text
+        stdout.write(reply)
+        stdout.flush()
+        return 0
+    if kind == "concord1":
+        try:
+            reply = concord(arg)
         except Exception:
             return 1                                               # no partial answer and no exception text
         stdout.write(reply)

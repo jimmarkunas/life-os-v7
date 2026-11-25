@@ -4,7 +4,9 @@
 # writer with the mirror view and nothing wrote the rows again, so they have said `Last OK 11/16 · 8:30 PM CT` ever since. This module is the writer now, and it writes only owned rows.
 # A connection works when the domains job that uses it passed (GitHub's run history of domains.yml, read with the token the step already has; no new credential). Last OK is when that job last finished
 # with success; Health is 🟢 ok when its newest finished run passed and 🔴 unavailable when it failed. A row with no job is a connection nothing exercises yet (Concord: the Agent Inbox's Concord source
-# is read-only and refuses live reads, lifeos/inbox/sources.py LIVE_READS_ENABLED): it stays `⚪ not connected` and counts as down, because Concord should work (Jim, Nov 25 2026). Off by design: TGP
+# is read-only and refused live reads until LIFE-977): until its first good read it stays `⚪ not connected` and counts as down, because Concord should work (Jim, Nov 25 2026). Since LIFE-977 the System card asks the
+# private endpoint's `concord1` once per tick (a count and a fixed code, lifeos/inbox/concord_reader.py): a good read sets the row 🟢 ok with Last OK = the read time; a failed read keeps the last good time, and the row
+# counts as connected for 2.5 hours after it, then reads `CONCORD DOWN · STALE since <time>`. Off by design: TGP
 # Everything, School Outlook, Bytalos Asana. The Todoist row is retired: archived once, never written again. Names, counts and fixed words only.
 import datetime as dt
 import json
@@ -30,6 +32,8 @@ JOBS = {                                     # record id -> the domains.yml job 
 CONCORD = "health:all:concord"
 NAMES = {"health:all:concord": "Concord"}
 OK, FAILING, NOT_CONNECTED = "🟢 ok", "🔴 unavailable", "⚪ not connected"
+FRESH = {CONCORD: dt.timedelta(hours=2, minutes=30)}      # LIFE-977: a connection counts as connected this long after its last good read; every other row 2 hours
+DEFAULT_FRESH = dt.timedelta(hours=2)
 RUNS = 12                                    # the newest domains runs read for evidence (about half a day of ticks)
 API = "https://api.github.com"
 
@@ -113,10 +117,18 @@ def evidence(environ=os.environ, api=_api):
         return {}
 
 
-def plan(rows, seen, now):
-    """-> [(page id, {"Health": option, "Last OK": text})] for each owned row whose job evidence changed it. Rows with no job, off by design and retired are left as they are."""
+def plan(rows, seen, now, concord=None):
+    """-> [(page id, {"Health": option, "Last OK": text})] for each owned row whose job evidence changed it. Rows with no job, off by design and retired are left as they are.
+    `concord`: the parsed `concord1` reading (lifeos/inbox/concord_reader.py) or None. A good read sets the Concord row ok with the read time; a failed or absent one changes nothing (the last good time stands)."""
     updates = []
     for row in rows:
+        if row["id"] == CONCORD:
+            if concord and concord.get("ok") and concord.get("at"):
+                at = dt.datetime.fromtimestamp(concord["at"], tz=dt.timezone.utc)
+                last = ct_stamp.when(at)
+                if row["health"] != OK or row["last_ok"] != last:
+                    updates.append((row["page"], {"Health": OK, "Last OK": last}))
+            continue
         job = JOBS.get(row["id"])
         found = seen.get(job) if job else None
         if not found:
@@ -153,7 +165,7 @@ def summary(rows, now):
     connected = 0
     for row in should:
         at = last_ok_time(row["last_ok"], now)
-        fresh = at is not None and now - at <= dt.timedelta(hours=2)
+        fresh = at is not None and now - at <= FRESH.get(row["id"], DEFAULT_FRESH)
         if row["health"] == OK and fresh:
             connected += 1
             continue

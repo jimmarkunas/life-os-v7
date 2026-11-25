@@ -10,9 +10,15 @@ from datetime import timedelta
 from lifeos.inbox.model import InboxError
 
 LIVE_READS_ENABLED = False                  # no real Jira or Calendar read until Jim approves the exact account, scope and credential per workspace and a stage is released
+LIVE_READ_SOURCES = frozenset({"concord"})  # LIFE-977 (Jim, Nov 25 2026 10:58 AM CT, "Concord YES"): the one source that may be read live, and only by lifeos/inbox/concord_reader.py (counts and a fixed code); every other source still refuses
 JIRA_FIELDS = "summary,status,assignee,duedate,updated"
 JIRA_JQL = 'status = "Human UAT" OR (assignee = currentUser() AND statusCategory != Done)'
 WINDOW_DAYS = 14
+
+
+def live_allowed(source):
+    """True only for a source on the per-source allow-list. The global switch above is untouched: Jira, Calendar, Todoist, Asana and Followup keep refusing."""
+    return source in LIVE_READ_SOURCES
 
 
 def refuse_live(credential_ref):
