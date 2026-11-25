@@ -77,12 +77,12 @@ class Service:
             return self.recruiters
         return self.ledger
 
-    def __call__(self, method, path, query=None, form=None):
+    def __call__(self, method, path, query=None, form=None, headers=None):
         secrets = {"link": SECRET, "config": self.config}
         secrets.update({"reader": self.ledger} if method == "GET" else {"notion": b"token", "after": self.after})
         with mock.patch.object(outreach_app, "Client", self._client), mock.patch.object(close_app, "_now", lambda: self.clock), \
                 mock.patch.object(outreach_app, "_now", lambda: self.clock):
-            return close_app.handle({"method": method, "path": path, "query": query or {}, "form": form or {}}, WHO, secrets)
+            return close_app.handle({"method": method, "path": path, "query": query or {}, "form": form or {}, **({"headers": headers} if headers else {})}, WHO, secrets)
 
 
 def fields(body):

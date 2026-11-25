@@ -72,6 +72,7 @@ function clock(s){return Math.floor(s/60)+":"+("0"+s%60).slice(-2)}function wait
 document.addEventListener("submit",function(ev){var f=ev.target,b=ev.submitter;if(f.classList.contains("busy")){ev.preventDefault();return}if(b&&b.hasAttribute("data-wait")){f.classList.add("busy");b.classList.add("spin");wait(f,b);return}busy(f,b)});
 document.addEventListener("click",function(ev){var a=ev.target.closest&&ev.target.closest("a.btn");if(!a||a.target||a.hasAttribute("download")||ev.defaultPrevented||ev.metaKey||ev.ctrlKey||ev.shiftKey||ev.altKey)return;busy(document.body,a)});
 window.addEventListener("pageshow",idle);
+document.querySelectorAll("form[data-auto]").forEach(function(f){if(f.requestSubmit)f.requestSubmit();else f.submit()});
 """
 NONE = "Not recorded"
 

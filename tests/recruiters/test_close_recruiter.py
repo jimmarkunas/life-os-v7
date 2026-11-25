@@ -1,8 +1,9 @@
 """LIFE-20 (Jim, Oct 23 2026), synthetic only: Close recruiter record from the Daily Report's Recruiter Outreach table. One open row (Needs Action or Waiting) becomes
-Completed or Dismissed through the signed review-and-confirm screen; only Action Status is written, read back, and nothing else changes. GET and Review never write."""
+Completed or Dismissed through the signed review-and-confirm screen; Action Status, Done, Active and Needs review are written together (LIFE-971), read back, and nothing else changes. GET and Review never write."""
 import contextlib
 import io
 import unittest
+from unittest import mock
 from copy import deepcopy
 from datetime import timedelta
 
@@ -13,6 +14,7 @@ from tests.recruiters.fakes import FakeRecruiters, page
 from tests.recruiters.test_outreach import RECRUITERS, Ledger, Service, fields, walk
 
 ROW = "c" * 32
+RECRUITERS_ID = RECRUITERS
 
 
 class Rows(FakeRecruiters):
@@ -32,10 +34,10 @@ def world(action="Needs Action", **kw):
 
 class Svc(Service):
     """The gate's GET reader reads the Recruiters row (the real ReadOnly client reads any page its token can see)."""
-    def __call__(self, method, path, query=None, form=None):
+    def __call__(self, method, path, query=None, form=None, headers=None):
         if method == "GET":
             self.ledger = self.recruiters
-        return super().__call__(method, path, query, form)
+        return super().__call__(method, path, query, form, headers)
 
 
 def close(svc, status):
@@ -50,13 +52,14 @@ class CloseRow(unittest.TestCase):
                 before = store.read(deepcopy(rec.pages[0]))
                 done = store.close_row(rec, ROW, status)
                 self.assertEqual((done["status"], done["verified"]), ("recorded", True))
-                self.assertEqual(rec.writes, [("update", {"Action Status": {"select": {"name": status}}})])
+                self.assertEqual(rec.writes, [("update", {"Action Status": {"select": {"name": status}}, "Done": {"checkbox": True}, "Active": {"checkbox": False}, "Needs review": {"checkbox": False}})])
                 after = store.read(rec.pages[0])
-                self.assertEqual(after["action"], status)
-                self.assertEqual({k: v for k, v in after.items() if k != "action"}, {k: v for k, v in before.items() if k != "action"})
+                self.assertEqual((after["action"], after["done"], after["active"], after["needs_review"]), (status, True, False, False))     # LIFE-971: all three flags move with the status
+                gone = ("action", "done", "active", "needs_review")
+                self.assertEqual({k: v for k, v in after.items() if k not in gone}, {k: v for k, v in before.items() if k not in gone})
 
     def test_replay_and_closed_or_unclassified_rows_write_nothing(self):
-        self.assertEqual(store.close_row(world("Completed"), ROW, "Completed")["status"], "already_recorded")
+        self.assertEqual(store.close_row(world("Completed", done=True, active=False), ROW, "Completed")["status"], "already_recorded")
         for action, kw in (("Dismissed", {}), ("Declined", {}), ("Replied", {}), (None, {}), ("Needs Action", {"done": True}), ("Needs Action", {"active": False})):
             rec = world(action, **kw)
             self.assertEqual(store.close_row(rec, ROW, "Completed")["status"], "not_changed", (action, kw))
@@ -196,3 +199,137 @@ class Screen(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RepairAndOverdue(unittest.TestCase):
+    """LIFE-971 (Jim, Nov 24 2026): a row closed by Action Status alone (Done off, Active on) is repaired; the overdue list is what the card marks overdue."""
+    def test_a_completed_row_with_done_off_and_active_on_is_repaired_to_consistent_and_a_second_close_writes_nothing(self):
+        rec = world("Completed")
+        self.assertEqual(store.close_row(rec, ROW, "Completed")["status"], "recorded")
+        after = store.read(rec.pages[0])
+        self.assertEqual((after["done"], after["active"], after["needs_review"]), (True, False, False))
+        self.assertEqual(store.close_row(rec, ROW, "Completed")["status"], "already_recorded")
+        self.assertEqual(len(rec.writes), 1)
+
+    def test_a_completed_row_is_never_flipped_to_dismissed(self):
+        rec = world("Completed")
+        self.assertEqual(store.close_row(rec, ROW, "Dismissed")["status"], "not_changed")
+        self.assertEqual(rec.writes, [])
+
+    def test_overdue_rows_are_the_open_needs_action_rows_past_their_reply_day(self):
+        from datetime import date
+        rows = [store.read(p) for p in (page_row("a", "Needs Action", "2026-11-20"), page_row("b", "Needs Action", "2026-11-24"), page_row("c", "Waiting", "2026-11-01"), page_row("d", "Needs Action", "2026-11-25"))]
+        self.assertEqual([r["person"] for r in store.overdue_rows(rows, date(2026, 11, 24))], ["a"])
+
+
+def page_row(person, action, follow_up):
+    return page(person, action=action, follow_up=follow_up)
+
+
+class OneClickAndCloseAll(unittest.TestCase):
+    """LIFE-971 (Jim, Nov 24 2026): Done and Dismiss are one click from the card; the page opened by the link saves on its own, and Close all overdue lists names and closes them on one confirm."""
+    def one(self, rec, do="done", headers=None):
+        svc = Svc(Ledger(), rec)
+        status, _, body, _ = svc("GET", "/recruiter", {"r": ROW, "do": do}, headers=headers)
+        return svc, status, body
+
+    def test_the_done_link_opens_a_page_that_saves_by_itself_and_sets_all_three_fields(self):
+        rec = world()
+        svc, status, body = self.one(rec)
+        self.assertEqual(status, 200)
+        self.assertEqual(rec.writes, [])                                                      # opening the link wrote nothing
+        self.assertIn(b"data-auto", body)
+        form = fields(body)
+        self.assertEqual((form["status"], form["step"]), ("Completed", "confirm"))
+        status, _, done, _ = svc("POST", "/recruiter", form=form)
+        self.assertEqual(status, 200, done)
+        self.assertIn(b"Closed: Completed", done)
+        row = store.read(rec.pages[0])
+        self.assertEqual((row["action"], row["done"], row["active"], row["needs_review"]), ("Completed", True, False, False))
+        self.assertEqual(len(rec.writes), 1)
+
+    def test_the_dismiss_link_dismisses_and_a_second_click_changes_nothing(self):
+        rec = world()
+        svc, status, body = self.one(rec, "dismiss")
+        form = fields(body)
+        self.assertEqual(svc("POST", "/recruiter", form=form)[0], 200)
+        self.assertEqual(store.read(rec.pages[0])["action"], "Dismissed")
+        self.assertEqual(svc("POST", "/recruiter", form=form)[0], 409)                        # the same signed form again: the record has changed, nothing is written
+        self.assertEqual(len(rec.writes), 1)
+        self.assertEqual(svc("GET", "/recruiter", {"r": ROW, "do": "done"})[0], 409)          # and the link of a closed row says nothing is open
+
+    def test_an_embedded_fetch_or_an_unknown_action_never_gets_the_auto_saving_page(self):
+        for headers in ({"sec-fetch-dest": "image"}, {"sec-fetch-dest": "iframe"}, {"sec-fetch-dest": "empty"}):
+            _, status, body = self.one(world(), headers=headers)
+            self.assertEqual(status, 403)
+            self.assertNotIn(b"<form", body)
+        self.assertEqual(self.one(world(), "delete")[1], 403)
+        self.assertEqual(self.one(world(), headers={"sec-fetch-dest": "document"})[1], 200)
+
+    def test_jitenders_case_a_completed_row_with_done_off_and_active_on_is_repaired_by_the_link(self):
+        rec = world("Completed", review=True)
+        svc, status, body = self.one(rec)
+        self.assertEqual(status, 200)
+        self.assertEqual(svc("POST", "/recruiter", form=fields(body))[0], 200)
+        row = store.read(rec.pages[0])
+        self.assertEqual((row["action"], row["done"], row["active"], row["needs_review"]), ("Completed", True, False, False))
+
+    def test_the_page_says_the_card_is_updated_only_when_the_in_service_rewrite_was_verified(self):
+        config = {"ledger": "1" * 32, "pipeline": "2" * 32, "recruiters": RECRUITERS_ID, "hiring_table": "a" * 32, "close_base": "https://close.example.test"}
+        for verified, text, asked in ((True, b"Closed. The card is updated.", []), (False, b"Closed. The card updates on the next refresh.", ["recruiters"])):
+            rec = world()
+            svc = Svc(Ledger(), rec)
+            svc.config = config
+            _, _, body, _ = svc("GET", "/recruiter", {"r": ROW, "do": "done"})
+            with mock.patch("lifeos.recruiters.outreach_card.run", return_value={"verified": verified}) as run:
+                status, _, done, _ = svc("POST", "/recruiter", form=fields(body))
+            self.assertEqual(status, 200)
+            self.assertIn(text, done)
+            self.assertEqual(svc.after, asked)                                                # a failed rewrite falls back to the workflow refresh
+            self.assertEqual(run.call_args.kwargs["environ"]["RECRUITERS_STAGE_OUTCOME"], "skipped")
+            self.assertTrue(run.call_args.args[1])                                            # live
+
+    def test_a_card_rewrite_that_raises_never_breaks_the_verified_close(self):
+        config = {"ledger": "1" * 32, "pipeline": "2" * 32, "recruiters": RECRUITERS_ID, "hiring_table": "a" * 32, "close_base": "https://close.example.test"}
+        rec = world()
+        svc = Svc(Ledger(), rec)
+        svc.config = config
+        _, _, body, _ = svc("GET", "/recruiter", {"r": ROW, "do": "done"})
+        with mock.patch("lifeos.recruiters.outreach_card.run", side_effect=NotionError("X")):
+            status, _, done, _ = svc("POST", "/recruiter", form=fields(body))
+        self.assertEqual((status, svc.after), (200, ["recruiters"]))
+        self.assertEqual(store.read(rec.pages[0])["action"], "Completed")
+
+    def test_close_all_overdue_lists_the_overdue_names_and_dismisses_exactly_those_on_one_confirm(self):
+        rec = Rows([page("Olga Overdue", action="Needs Action", follow_up="2026-10-10", pid="a" * 32), page("Nora Today", action="Needs Action", follow_up="2026-10-15", pid="b" * 32),
+                              page("Wanda Waiting", action="Waiting", follow_up="2026-10-01", pid="c" * 32), page("Otto Overdue", action="Needs Action", follow_up="2026-10-12", pid="d" * 32)])
+        rec.source = RECRUITERS_ID
+        svc = Svc(Ledger(), rec)
+        status, _, body, _ = svc("GET", "/recruiter", {"all": "overdue"})
+        self.assertEqual(status, 200)
+        self.assertIn(b"Olga Overdue", body)
+        self.assertIn(b"Otto Overdue", body)
+        self.assertNotIn(b"Nora Today", body)                                                 # due today is not overdue
+        self.assertNotIn(b"Wanda Waiting", body)                                              # only Needs Action
+        self.assertEqual(rec.writes, [])
+        status, _, done, _ = svc("POST", "/recruiter", form={**fields(body), "step": "confirm"})
+        self.assertEqual(status, 200, done)
+        self.assertIn(b"Dismissed 2 overdue", done)
+        states = {store.read(p)["person"]: (store.read(p)["action"], store.read(p)["done"], store.read(p)["active"]) for p in rec.pages}
+        self.assertEqual(states, {"Olga Overdue": ("Dismissed", True, False), "Nora Today": ("Needs Action", False, True),
+                                  "Wanda Waiting": ("Waiting", False, True), "Otto Overdue": ("Dismissed", True, False)})
+        self.assertEqual(svc.after, ["recruiters"])
+        status, _, again, _ = svc("GET", "/recruiter", {"all": "overdue"})                    # nothing overdue any more: no form
+        self.assertNotIn(b"<form", again)
+
+    def test_a_tampered_or_expired_close_all_form_writes_nothing(self):
+        rec = Rows([page("Olga Overdue", action="Needs Action", follow_up="2026-10-10", pid="a" * 32)])
+        rec.source = RECRUITERS_ID
+        svc = Svc(Ledger(), rec)
+        _, _, body, _ = svc("GET", "/recruiter", {"all": "overdue"})
+        form = {**fields(body), "step": "confirm"}
+        for patch in ({"i0": "e" * 32}, {"t": "bad"}, {"n": "2"}, {"exp": "1"}):
+            self.assertIn(svc("POST", "/recruiter", form={**form, **patch})[0], (400, 403), patch)
+        svc.clock += timedelta(minutes=16)
+        self.assertEqual(svc("POST", "/recruiter", form=form)[0], 403)
+        self.assertEqual(rec.writes, [])
