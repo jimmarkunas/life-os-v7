@@ -260,15 +260,25 @@ class AdjacentCalloutTests(unittest.TestCase):
 
     def test_each_writer_refuses_the_neighbours_blocks_before_sending(self):
         from lifeos.platform import report_region
+
+        class Recorder:
+            def __init__(self):
+                self.sent = []
+
+            def call(self, method, path, body=None):
+                self.sent.append((method, path))
+                return {}
+
+            call_once = call
+
         for own, other in (("card-1", "gtv-card"), ("gtv-card", "card-1")):
-            sent = []
-            scoped = report_region.ScopedClient(type("C", (), {"call": lambda self, m, p, b=None: sent.append((m, p)) or {}, "call_once": lambda self, m, p, b=None, *a, **k: sent.append((m, p)) or {}})(),
-                                                own, lambda code: CardError("JIRA_CARD_" + code))
+            recorder = Recorder()
+            scoped = report_region.ScopedClient(recorder, own, lambda code: CardError("JIRA_CARD_" + code))
             for method, path in (("PATCH", f"/blocks/{other}"), ("DELETE", f"/blocks/{other}"), ("POST", f"/blocks/{other}/children")):
                 with self.assertRaises(CardError) as ctx:
                     scoped.call(method, path, {})
                 self.assertEqual(str(ctx.exception), "JIRA_CARD_WRITE_OUT_OF_SCOPE")
-            self.assertEqual(sent, [])
+            self.assertEqual(recorder.sent, [])
 
 
 class WriteTests(unittest.TestCase):
