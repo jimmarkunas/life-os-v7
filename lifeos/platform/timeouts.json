@@ -204,6 +204,14 @@
    "slowest_seconds": 678,
    "target": 30
   },
+  "domains.yml::fit_cloud_backlog": {
+   "basis": "LIFE-856: moved from the hourly finish job unchanged; its batch ends by :55 and the 58 minute limit it had there",
+   "current": 58,
+   "median_seconds": 58,
+   "runs_measured": 12,
+   "slowest_seconds": 107,
+   "target": 58
+  },
   "domains.yml::followup": {
    "basis": "not measured: no completed run in the last 100; keeps its current value",
    "current": 15,
@@ -243,6 +251,14 @@
    "runs_measured": 45,
    "slowest_seconds": 498,
    "target": 10
+  },
+  "domains.yml::network_surface": {
+   "basis": "LIFE-856: moved from the hourly finish job unchanged (109 s p50, 209 s slowest as Step 7c there); twice the slowest rounds to 7 minutes, the 20 minute limit of the other late jobs kept",
+   "current": 20,
+   "median_seconds": 109,
+   "runs_measured": 12,
+   "slowest_seconds": 209,
+   "target": 20
   },
   "domains.yml::recruiters": {
    "basis": "twice the slowest run (1501 s) rounds to 51 min, not below the current 30: unchanged",

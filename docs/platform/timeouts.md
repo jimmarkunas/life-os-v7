@@ -50,11 +50,13 @@ The job timeouts in `.github/workflows` change in one separate workflow pull req
 | `domains.yml` | `imessage` | 10 | 10 | 45 | 113 | 162 | twice the slowest run (162 s) rounds to 10 min, not below the current 10: unchanged |
 | `domains.yml` | `interview_mail` | 30 | 30 | 0 | - | - | not measured: no completed run in the last 100; keeps its current value |
 | `domains.yml` | `interview` | 30 | 30 | 31 | 442 | 678 | twice the slowest run (678 s) rounds to 30 min, not below the current 30: unchanged |
+| `domains.yml` | `fit_cloud_backlog` | 58 | 58 | 12 | 58 | 107 | LIFE-856: moved from the hourly finish job unchanged; its batch ends by :55 and the 58 minute limit it had there |
 | `domains.yml` | `followup` | 15 | 15 | 0 | - | - | not measured: no completed run in the last 100; keeps its current value |
 | `domains.yml` | `jira` | 15 | 15 | 45 | 82 | 117 | twice the slowest run (117 s) rounds to 15 min, not below the current 15: unchanged |
 | `domains.yml` | `mail` | 10 | 10 | 45 | 28 | 90 | twice the slowest run (90 s) rounds to 10 min, not below the current 10: unchanged |
 | `domains.yml` | `megibow` | 20 | 20 | 45 | 36 | 334 | twice the slowest run (334 s) rounds to 20 min, not below the current 20: unchanged |
 | `domains.yml` | `outlook` | 10 | 10 | 45 | 22 | 498 | twice the slowest run (498 s) rounds to 17 min, not below the current 10: unchanged |
+| `domains.yml` | `network_surface` | 20 | 20 | 12 | 109 | 209 | LIFE-856: moved from the hourly finish job unchanged (109 s p50, 209 s slowest as Step 7c there); the 20 minute limit of the other late jobs kept |
 | `domains.yml` | `recruiters` | 30 | 30 | 54 | 86 | 1501 | twice the slowest run (1501 s) rounds to 51 min, not below the current 30: unchanged |
 | `domains.yml` | `report` | 5 | 5 | 8 | 8 | 10 | kept: only 8 measured runs (fewer than 10), slowest 10 s |
 | `domains.yml` | `weekly_review` | 10 | 10 | 0 | - | - | new job (LIFE-945): not measured yet; 10 min like the other card jobs, the stage budget is 600 s |

@@ -1,7 +1,7 @@
   report:
     # A failed domain job (a provider outage, a Bitwarden 503) used to be only a workflow warning, so a stale card and a red run reached nobody. This job pushes the phone once per
     # failed tick-triggered run, counts only; a manual run never pushes. It never writes anything.
-    needs: [gate, jira, followup, outlook, bills, agenda, amazon, amazon_retention, mail, hiring, megibow, recruiters, hiring_outcomes, interview_mail, interview, dcc, weekly_review, imessage, granola]
+    needs: [gate, jira, followup, outlook, bills, agenda, amazon, amazon_retention, mail, hiring, megibow, recruiters, hiring_outcomes, interview_mail, interview, dcc, weekly_review, imessage, granola, network_surface, fit_cloud_backlog]
     if: ${{ always() && needs.gate.outputs.tick == 'true' && contains(needs.*.result, 'failure') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -44,7 +44,7 @@
           NTFY_TOPIC: ${{ steps.bws_report.outputs.NTFY_TOPIC }}
         run: |
           failed=""
-          for pair in jira=${{ needs.jira.result }} followup=${{ needs.followup.result }} outlook=${{ needs.outlook.result }} bills=${{ needs.bills.result }} agenda=${{ needs.agenda.result }} amazon=${{ needs.amazon.result }} amazon_retention=${{ needs.amazon_retention.result }} mail=${{ needs.mail.result }} hiring=${{ needs.hiring.result }} megibow=${{ needs.megibow.result }} recruiters=${{ needs.recruiters.result }} hiring_outcomes=${{ needs.hiring_outcomes.result }} interview_mail=${{ needs.interview_mail.result }} interview=${{ needs.interview.result }} dcc=${{ needs.dcc.result }} weekly_review=${{ needs.weekly_review.result }} imessage=${{ needs.imessage.result }} granola=${{ needs.granola.result }}; do
+          for pair in jira=${{ needs.jira.result }} followup=${{ needs.followup.result }} outlook=${{ needs.outlook.result }} bills=${{ needs.bills.result }} agenda=${{ needs.agenda.result }} amazon=${{ needs.amazon.result }} amazon_retention=${{ needs.amazon_retention.result }} mail=${{ needs.mail.result }} hiring=${{ needs.hiring.result }} megibow=${{ needs.megibow.result }} recruiters=${{ needs.recruiters.result }} hiring_outcomes=${{ needs.hiring_outcomes.result }} interview_mail=${{ needs.interview_mail.result }} interview=${{ needs.interview.result }} dcc=${{ needs.dcc.result }} weekly_review=${{ needs.weekly_review.result }} imessage=${{ needs.imessage.result }} granola=${{ needs.granola.result }} network_surface=${{ needs.network_surface.result }} fit_cloud_backlog=${{ needs.fit_cloud_backlog.result }}; do
             [ "${pair#*=}" = "failure" ] && failed="$failed ${pair%=*}"
           done
           python3 -m lifeos.platform.alerts push --key domain_jobs_failed --title "V7 domain jobs failed" --body "Failed domain jobs:$failed. Their cards keep the last good content. Open the Actions tab."

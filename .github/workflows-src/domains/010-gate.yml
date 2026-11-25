@@ -15,6 +15,7 @@
       early: ${{ inputs.all || inputs.phase == 'tick' || (github.event_name == 'workflow_run' && steps.cover.outputs.early_covered == 'false') }}      # LIFE-775: the jobs that read nothing the tick writes: the early run, `all`, or the after-tick run when it found no early run
       late: ${{ inputs.all || github.event_name == 'workflow_run' }}      # LIFE-775: megibow, interview, granola: the after-tick run, or `all`
       all: ${{ inputs.all }}
+      pipeline: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && steps.ran.outputs.ran != 'false' }}      # LIFE-856: the tick's hourly `finish` job ran (unreadable counts as ran); Network Leads and the Cloud Fit backlog moved here from it
       due_jira: ${{ steps.due.outputs.due_jira }}
       due_followup: ${{ steps.due.outputs.due_followup }}
       due_outlook: ${{ steps.due.outputs.due_outlook }}
@@ -32,6 +33,8 @@
       due_interview: ${{ steps.due.outputs.due_interview }}
       due_imessage: ${{ steps.due.outputs.due_imessage }}
       due_granola: ${{ steps.due.outputs.due_granola }}
+      due_network_surface: ${{ steps.due.outputs.due_network_surface }}
+      due_fit_cloud_backlog: ${{ steps.due.outputs.due_fit_cloud_backlog }}
       granola_auto: ${{ steps.settings.outputs.GRANOLA_AUTO }}      # LIFE-703: the page's value when GitHub holds none; GitHub's own value when the page cannot be read
       imessage_alerts: ${{ steps.settings.outputs.V7_IMESSAGE_ALERTS }}
     steps:
@@ -55,6 +58,14 @@
           GITHUB_TOKEN: ${{ github.token }}
           TICK_STARTED: ${{ github.event.workflow_run.run_started_at }}
         run: python3 -m lifeos.platform.phase
+      - id: ran
+        name: LIFE-856 - did the tick's hourly finish job run (the moved Network Leads and Cloud Fit backlog jobs run only then; unreadable counts as yes)
+        if: ${{ github.event_name == 'workflow_run' }}
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TICK_RUN: ${{ github.event.workflow_run.id }}
+        run: python3 -m lifeos.platform.pipeline_ran
       - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
         continue-on-error: true
         uses: ./.github/actions/bws-helper
