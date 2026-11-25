@@ -1,17 +1,11 @@
-"""LIFE-918 AC6, AC11, AC12: the MEJ/JFM v2 quarterly promotion check. NOT WIRED and OFF BY DEFAULT: nothing calls `run_if_due` yet, and the kill switch V2_PROMOTION is off until Jim's activation.
+"""LIFE-918 AC6, AC11, AC12: the v2 quarterly promotion check (off by default, not wired; the kill switch V2_PROMOTION is off).
 
-On the first reconciliation run at or after Fri Jan 1 2027, 8:00 AM America/Chicago (a tz-aware compare, so daylight time cannot shift it), `run_if_due` evaluates the promotion checks. A pass sets the v2-official row (V2_OFFICIAL = on) through
-an injected setter; a fail keeps legacy official and sends ONE Agent Inbox alert through an injected alerter, under the same dedupe key every day so the existing inbox send updates one row. V2_PROMOTION off (the default) stops everything:
-no read, no write, no alert. Names, counts and fixed codes only; never an issue summary.
+On the first run at or after Fri Jan 1 2027, 8:00 AM America/Chicago (a tz-aware compare), `run_if_due` evaluates AC11 and AC12. A pass sets V2_OFFICIAL through an injected setter; a fail keeps legacy official and sends ONE
+Agent Inbox alert through an injected alerter, under one dedupe key. V2_PROMOTION off: no read, write or alert. Codes and counts only.
 
-AC11 (any missing, ambiguous, duplicate or wrong-date datum is a hard fail, and no tolerance ever excuses it):
-- membership: the frozen quarter list exists (the shipped manifest is empty, so missing membership fails) and 100% of it is counted in v2;
-- no key is attributed to two goals;
-- every Done completion date is the first verified transition into Done from the Jira changelog, and present;
-- historical parity: the v1 historical figures are unchanged;
-- manual and automatic recurring closures are kept distinct (no overlap, and manual + automatic = the reported total).
-AC12 (the reconciliation method, `reconcile`): each Task discrepancy between the legacy and v2 figures needs an explanation record (who explained it, what, a source reference). A discrepancy without a complete record is unexplained.
-At most ONE unexplained discrepancy per board per quarter is tolerated; two or more block promotion. The tolerance applies only to AC12; it never turns an AC11 failure into a pass."""
+AC11, hard fail on any missing, ambiguous, duplicate or wrong-date datum, never excused: the frozen quarter list exists and is 100% counted; no key has two goals; completion dates are the first verified Done transition
+from the changelog; historical v1 figures are unchanged; manual and automatic recurring closures stay distinct (no overlap, and they add up to the total).
+AC12 (`reconcile`): a discrepancy is explained only by a record with who, what and source; at most ONE unexplained per board per quarter, two or more block promotion."""
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -171,10 +165,9 @@ def run_if_due(now, switches, readers, setters, alerter):
 
 
 def inbox_alerter(deliver=None):
-    """The alerter for `run_if_due`: the existing Agent Inbox delivery (lifeos.inbox.send_to_jim.deliver, which updates the row of the same key instead of adding one). A delivery that is not ok raises, so run_if_due records it as not sent."""
+    """The alerter for `run_if_due` over the existing Agent Inbox delivery, which the CALLER passes in (lifeos.inbox.send_to_jim.deliver; this package never imports the inbox). It updates the row of the same key. A delivery that is not ok raises, so run_if_due records it as not sent."""
     if deliver is None:
-        from lifeos.inbox import send_to_jim
-        deliver = send_to_jim.deliver
+        raise PromotionError(ALERT_FAILED)
 
     def send(item):
         out = deliver({**item, "from": "v7-promotion"})
