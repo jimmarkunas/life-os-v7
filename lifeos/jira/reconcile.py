@@ -1,18 +1,16 @@
 """LIFE-918 (the unbuilt LIFE-915 parts): sprint inventory and ISO names, carry rule, recurrence, closure counts, daily reconciliation. OFF BY DEFAULT.
 
-Gate: the Runtime Configuration switch MEJ_SPRINT_AUTOMATION (lifeos.accountability.switches), exactly "on"; off, `run` does nothing and returns {"enabled": 0}. JFM (board 5) and MEJ (board 38) are one unit: a board's
-`readonly` flag in JIRA_BOARDS still skips it. Every Jira WRITE is an injected executor (create_sprint, rename_sprint, create_clone, sync_fields); this module never builds one, and a live run without them fails closed
-with JIRA_RECONCILE_WRITER_UNVERIFIED (the tenant contract for sprint rename and issue create is UNVERIFIED; LIFE-918 proves it before any activation). Planning is pure and tested on synthetic data.
-Never closes or starts a sprint (rollover owns the boundary); daily reconciliation repairs inventory, recurrence and drift only. Output: counts and fixed codes; keys, names and summaries stay private.
+Gate: the Runtime Configuration switch MEJ_SPRINT_AUTOMATION, exactly "on"; otherwise `run` does nothing ({"enabled": 0}). Every Jira write is an injected executor (never built here); a live run without them, or
+without a checkpoint, fails closed with JIRA_RECONCILE_WRITER_UNVERIFIED (the tenant contract is UNVERIFIED; LIFE-918 proves it first). Planning is pure and tested on synthetic data. Never closes or starts a sprint
+(rollover owns the boundary). Output: counts and fixed codes only.
 
-Owner decisions (Notion canon, LIFE-915 section, Nov 24 2026): 3 recurring Tasks are marked Done at the boundary with exactly one next-week clone; 4 at least four future week-long sprints; 6 names `PROJECT S{week} W{week} {year}`,
-ISO week-year, Monday to Sunday America/Chicago; 7 carry: In Progress any priority, High/Highest To Do or Blocked, the rest to backlog, no roster; 8 existing recurrence configuration plus the `recurring` label, deduplicated;
-10 manual, automatic and total closed kept apart; 11 removing the label stops the series; 12 edits reach future unfinished occurrences only; 13 rename in place, conflicts detected before any write; 14 inspect before retry."""
+Owner decisions (Notion canon, LIFE-915 section, Nov 24 2026): 3 recurring Tasks close Done with one next-week clone; 4 at least four future week-long sprints; 6 names PROJECT S{week} W{week} {year}, ISO week-year,
+Monday to Sunday America/Chicago; 7 carry: In Progress any priority, High/Highest To Do or Blocked, the rest to backlog; 8 configuration plus the `recurring` label, deduplicated; 10 manual, automatic and total
+closed kept apart; 11 removing the label stops the series; 12 edits reach future unfinished occurrences only; 13 rename in place; 14 inspect before retry."""
 import os
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from lifeos.accountability import switches
 from lifeos.platform.jira import JiraError
 
 from .boards import boards, owned
@@ -222,6 +220,14 @@ def due(now, last_done, tz=None):
     return local.hour >= DAILY_HOUR and (last_done is None or last_done != local.date())
 
 
+def enabled(environ=None):
+    """The MEJ_SPRINT_AUTOMATION row: on only when exactly "on" (same rule as lifeos.accountability.switches; jira may not import accountability), off for anything unreadable."""
+    try:
+        return str((os.environ if environ is None else environ).get("MEJ_SPRINT_AUTOMATION") or "").strip().lower() == "on"
+    except (AttributeError, TypeError):
+        return False
+
+
 class Writers:
     """The injected Jira writes; every method is optional and absent means UNVERIFIED (fail closed). create_sprint(board_id, name, start, end), rename_sprint(sprint_id, name), create_clone(root_key, fields),
     sync_fields(key, fields)."""
@@ -268,7 +274,7 @@ def reconcile_board(client, project, board_id, now, tz, writers, live, keys=(), 
 def run(limit, live, environ=os.environ, client=None, now=None, writers=None, state=None, alert=None, sleep=None):
     """The daily reconciliation stage. Off (switch not "on"): {"enabled": 0}, nothing read. On: at most once per Chicago date at or after 8:00 AM CT, per board (JFM and MEJ as one unit: any board's failure fails
     the run and nothing is marked done). Dry run reads and plans only. Live needs injected `writers` and `state` (get() -> last date, set(date)); without them it fails closed. `alert(subject, details)` is the existing inbox send."""
-    if not switches.on("MEJ_SPRINT_AUTOMATION", environ):
+    if not enabled(environ):
         return {"enabled": 0}
     tz = ZoneInfo(TZ)
     now = now or datetime.now(tz)

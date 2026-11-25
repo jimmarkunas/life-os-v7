@@ -27,6 +27,15 @@ def monday(y, m, d):
     return date(y, m, d)
 
 
+class Gate(unittest.TestCase):
+    def test_the_local_gate_agrees_with_the_accountability_switch_reader(self):
+        from lifeos.accountability import switches
+        for value in (None, "", "off", "on", " ON ", "yes", "true", "1", "onn"):
+            environ = {} if value is None else {"MEJ_SPRINT_AUTOMATION": value}
+            self.assertEqual(rc.enabled(environ), switches.on("MEJ_SPRINT_AUTOMATION", environ), value)
+        self.assertFalse(rc.enabled(None.__class__))                                        # an unreadable environment is off
+
+
 class Naming(unittest.TestCase):
     def test_iso_names_follow_the_iso_week_and_year(self):
         self.assertEqual(rc.iso_name("JFM", monday(2027, 1, 4)), "JFM S1 W1 2027")
