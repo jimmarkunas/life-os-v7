@@ -35,7 +35,7 @@ class AccessError(ValueError):
 
 def _grant(row):
     return G.Grant(id=row["id"], principal=row["principal"], tenant=row["tenant"], account=row["account"], tool=row["tool"], purpose=row["purpose"], actions=tuple(row["actions"]),
-                   credential_ref=row["credential_ref"], expires=datetime.fromisoformat(row["expires"] + "T23:59:59+00:00"), revoked=row["revoked"] is True)
+                   credential_ref=row["credential_ref"], expires=datetime.fromisoformat(row["expires"] if "T" in row["expires"] else row["expires"] + "T23:59:59+00:00"), revoked=row["revoked"] is True)
 
 
 def load(text=None, catalog_text=None):
