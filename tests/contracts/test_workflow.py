@@ -949,6 +949,16 @@ class DomainsWorkflowTests(unittest.TestCase):
         trigger = self.doc.get("on") or self.doc[True]
         self.assertLessEqual({"writers-check", "writers-verify"}, set(trigger["workflow_dispatch"]["inputs"]["jira"]["options"]))
 
+    def test_the_daily_reconcile_runs_on_the_due_tick_or_the_manual_reconcile_choice_and_goes_live_only_with_the_live_box(self):
+        """LIFE-918 AC10: the permanent manual entry point. The step runs on the due hourly tick or when a person picks jira=reconcile; --live comes only from the existing LIVE flag, and the step takes no new secret."""
+        job = self.doc["jobs"]["jira"]
+        step = [s for s in job["steps"] if s.get("id") == "jreconcile"][0]
+        self.assertEqual(step["if"], "${{ needs.gate.outputs.due_jira == 'true' || inputs.jira == 'reconcile' }}")
+        self.assertEqual(step["run"], 'python -m lifeos.run jira-reconcile-daily $([ "$LIVE" = "true" ] && echo --live)')
+        trigger = self.doc.get("on") or self.doc[True]
+        self.assertIn("reconcile", trigger["workflow_dispatch"]["inputs"]["jira"]["options"])
+        self.assertEqual(self.doc["permissions"], {"contents": "read"})
+
     def test_a_new_jira_step_must_be_put_on_the_red_list_or_among_the_v3_stages(self):
         import copy
         job = copy.deepcopy(self.doc["jobs"]["jira"])

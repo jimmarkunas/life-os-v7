@@ -418,6 +418,12 @@
  "dispatch: jira=snapshot + live": [
   "jira"
  ],
+ "dispatch: jira=reconcile": [
+  "jira"
+ ],
+ "dispatch: jira=reconcile + live": [
+  "jira"
+ ],
  "dispatch: jira=writers-check": [
   "jira"
  ],
