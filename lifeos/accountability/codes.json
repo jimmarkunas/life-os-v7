@@ -166,5 +166,33 @@
     false,
     "The one Agent Inbox alert for a failed promotion check could not be delivered.",
     "Retried on the next reconciliation run."
+  ],
+  "RUNTIME_CONFIG_WRITE_NOT_ALLOWED": [
+    "accountability",
+    "blocked",
+    false,
+    "A write to a Runtime Configuration row other than V2_OFFICIAL was refused before any read.",
+    "None: only V2_OFFICIAL may be written."
+  ],
+  "RUNTIME_CONFIG_WRITE_ROW_MISSING": [
+    "accountability",
+    "blocked",
+    false,
+    "The V2_OFFICIAL row is missing or inactive in Runtime Configuration.",
+    "Restore the row; nothing was written."
+  ],
+  "RUNTIME_CONFIG_WRITE_ROW_REPEATED": [
+    "accountability",
+    "blocked",
+    false,
+    "Two active V2_OFFICIAL rows exist in Runtime Configuration.",
+    "Remove the duplicate; nothing was written."
+  ],
+  "RUNTIME_CONFIG_WRITE_VERIFY_FAILED": [
+    "accountability",
+    "blocked",
+    false,
+    "The V2_OFFICIAL write did not read back as written.",
+    "Legacy stays official; Jim checks the row."
   ]
 }
