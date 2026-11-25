@@ -161,10 +161,13 @@ def _code(error):
     return text if re.match(r"^JIRA_[A-Z0-9_]{2,60}(:[0-9]{3})?$", text) else "JIRA_ERROR"
 
 
-def verify(client, configured, board, issue_key, live, now=None, sleep=None):
+def verify(client, configured, board, issue_key, live, now=None, sleep=None, keep=False):
     """The throwaway-sprint verification. Dry run (live False): the contract check and the plan, no write. Live: see the module docstring. -> {"ok": bool, "steps": {name: bool}, "why": {step: fixed code},
     "cleaned": bool, "cleaned_parts": {"clone": bool, "sprint": bool}, "mode": ...}. A board that is not configured, an issue key that is not a plain key, a failed contract check or a missing DELETE_ISSUES permission
-    stops before any write (we never create an issue we cannot remove). A step that fails is recorded with a fixed code and the run goes on to the cleanup; reads after writes are retried (Jira is eventually consistent)."""
+    stops before any write (we never create an issue we cannot remove). `keep` (Jira Free plan: nobody can delete issues; Jim, LIFE-918 comment 14242) skips that permission check and keeps the test clone: the throwaway sprint is still deleted, the result lists
+    the kept key under "kept", and pass or fail excludes the clone deletion. `keep` without `live` is refused. A step that fails is recorded with a fixed code and the run goes on to the cleanup; reads after writes are retried (Jira is eventually consistent)."""
+    if keep and not live:
+        raise JiraError("JIRA_VERIFY_ARGUMENTS_INVALID")
     chosen = [b for b in configured if b[0] == board and not b[3]]
     if not chosen or not ISSUE_KEY.match(str(issue_key or "")):
         raise JiraError("JIRA_VERIFY_ARGUMENTS_INVALID")
@@ -175,7 +178,7 @@ def verify(client, configured, board, issue_key, live, now=None, sleep=None):
         return {"mode": "dry_run", "ok": check["ok"], "steps": check["checks"], "permissions": check["permissions"], "cleaned": True}
     if not check["ok"]:
         raise JiraError("JIRA_VERIFY_CONTRACT_FAILED")
-    if not (check["permissions"].get(board) or {}).get("DELETE_ISSUES"):
+    if not keep and not (check["permissions"].get(board) or {}).get("DELETE_ISSUES"):
         raise JiraError("JIRA_VERIFY_NO_DELETE_PERMISSION")
     tz = ZoneInfo("America/Chicago")
     now = now or datetime.now(tz)
@@ -227,7 +230,7 @@ def verify(client, configured, board, issue_key, live, now=None, sleep=None):
         parts = {"clone": True, "sprint": True}
         for part in ("clone", "sprint"):
             try:
-                if part == "clone" and clone:
+                if part == "clone" and clone and not keep:
                     client.delete_issue(clone)                              # only the issue this run created
                 if part == "sprint" and sprint_id is not None:
                     client.delete_sprint(sprint_id)                         # only the throwaway sprint this run created, named with the test prefix
@@ -235,7 +238,10 @@ def verify(client, configured, board, issue_key, live, now=None, sleep=None):
                 parts[part] = False
                 why["cleanup_" + part] = _code(error)
         cleaned = all(parts.values())
-    return {"mode": "live", "ok": all(steps.values()) and len(steps) == 8 and cleaned and "run" not in why, "steps": steps, "why": why, "cleaned": cleaned, "cleaned_parts": parts}
+    out = {"mode": "live", "ok": all(steps.values()) and len(steps) == 8 and cleaned and "run" not in why, "steps": steps, "why": why, "cleaned": cleaned, "cleaned_parts": parts}
+    if keep:
+        out["kept"] = [clone] if clone else []
+    return out
 
 
 def main(argv=None, environ=os.environ, client=None):
@@ -246,10 +252,11 @@ def main(argv=None, environ=os.environ, client=None):
     check.add_argument("--board", required=True)
     check.add_argument("--issue", required=True)
     check.add_argument("--live", action="store_true")
+    check.add_argument("--keep", action="store_true")
     args = parser.parse_args(argv)
     configured = boards(environ)
     client = client or Jira.from_env(environ)
-    result = contract_check(client, configured) if args.command == "contract-check" else verify(client, configured, args.board, args.issue, args.live)
+    result = contract_check(client, configured) if args.command == "contract-check" else verify(client, configured, args.board, args.issue, args.live, keep=args.keep)
     print("jira-writers:", json.dumps(result, sort_keys=True))
     return 0 if result["ok"] else 1
 
