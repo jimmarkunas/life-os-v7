@@ -20,6 +20,7 @@ DB_TITLE = "Agent Inbox list"
 PAGE_TITLE = "Agent Inbox"
 MERGED_TITLE = "Daily LIFE OS Report (Hourly)"                                    # LIFE-938/939: the one page after the merge; the old Agent Inbox page is archived, no pointer
 PAGE_TITLES = (MERGED_TITLE, PAGE_TITLE)
+COUNTER_LINE = re.compile(r"Now \d+ · Today \d+")
 MERGED_LABELS = ("This week", "FYI", "Snoozed")                                    # the three count tiles beside the Now and Today box
 URGENCY = ("Now", "Today", "This week", "FYI")
 WORKSPACES = ("Personal", "Bytalos")
@@ -211,8 +212,8 @@ def _tiles(client, page_id):
 
 
 def _merged_row(client, page_id):
-    """LIFE-938: the merged page's blocks as (box callout, box heading block, [(callout id, number block, label block)] for This week, FYI and Snoozed), or None.
-    They are found by what they say, wherever Jim put them among the page's first blocks and the containers inside them (callouts, columns): the box is the one callout headed `Now N · Today M`,
+    """LIFE-938: the merged page's blocks as (box callout, box heading block, box gray line block or None, [(callout id, number block, label block)] for This week, FYI and Snoozed), or None.
+    They are found by what they say, wherever Jim put them among the page's first blocks and the containers inside them (callouts, columns): the box is the one callout headed `Now N · Today M` (earlier shape) or whose second block is the gray line `Now N · Today M` (tile shape),
     each tile is the one callout whose first block is its number and whose second is its label. Two of a kind, or a missing one, is None (the caller then falls back to the old page)."""
     boxes, tiles = [], {}
 
@@ -224,7 +225,9 @@ def _merged_row(client, page_id):
                 if kids and kids[0].get("type") == "heading_3":
                     head = _words(kids[0])
                     if head.startswith("Now") and "Today" in head:
-                        boxes.append((block, kids[0]))
+                        boxes.append((block, kids[0], None))                       # the earlier shape: the heading alone says `Now N · Today M`
+                    elif len(kids) > 1 and kids[1].get("type") == "paragraph" and COUNTER_LINE.fullmatch(_words(kids[1]).strip()):
+                        boxes.append((block, kids[0], kids[1]))                    # the tile shape: one number, then the gray line `Now N · Today M`
                     elif len(kids) > 1 and kids[1].get("type") == "paragraph" and _words(kids[1]).strip() in MERGED_LABELS:
                         tiles.setdefault(_words(kids[1]).strip(), []).append((block["id"], kids[0], kids[1]))
                 if depth < 3:
@@ -235,7 +238,7 @@ def _merged_row(client, page_id):
     scan(_children(client, page_id)[:6], 0)
     if len(boxes) != 1 or any(len(tiles.get(label, ())) != 1 for label in MERGED_LABELS):
         return None
-    return boxes[0][0], boxes[0][1], [tiles[label][0] for label in MERGED_LABELS]
+    return boxes[0][0], boxes[0][1], boxes[0][2], [tiles[label][0] for label in MERGED_LABELS]
 
 
 def _live_titled(page, titles):
@@ -295,37 +298,40 @@ def _line_key(rich):
     return [(piece.get("plain_text") or (piece.get("text") or {}).get("content", ""), piece.get("href") or ((piece.get("text") or {}).get("link") or {}).get("url") or "") for piece in rich]
 
 
-def _set_box(client, box, heading, lines, want_heading):
-    """Make the box exactly `heading` plus the given bulleted lines (none for the merged page: a counter only): change only what differs, append what is missing, delete what is extra. Only the box's own children are touched. -> blocks changed."""
+def _set_counter(client, box, heading, line, now, today):
+    """Make the box the same shape as the tiles beside it (Jim, Nov 24 2026 6:12 PM CT): a default callout (no background colour), one number as its heading (Now + Today), and one plain gray line `Now N · Today M` below it;
+    anything else inside it is removed. Change only what differs; only the box's own blocks are touched. -> blocks changed."""
     changed = 0
-    if _words(heading) != want_heading:
-        client.update_block(heading["id"], "heading_3", [{"type": "text", "text": {"content": want_heading}}])
+    if (box.get("callout") or {}).get("color") != "default":
+        client.call_once("PATCH", f"/blocks/{box['id']}", {"callout": {"color": "default"}})
         changed += 1
-    existing = [b for b in _children(client, box["id"]) if b["id"] != heading["id"]]
-    for index, rich in enumerate(lines):
-        if index < len(existing) and existing[index].get("type") == "bulleted_list_item":
-            have = _line_key((existing[index].get("bulleted_list_item") or {}).get("rich_text") or ())
-            if have != _line_key(rich):
-                client.update_block(existing[index]["id"], "bulleted_list_item", rich)
-                changed += 1
-        else:
-            client.call_once("PATCH", f"/blocks/{box['id']}/children", {"children": [{"object": "block", "type": "bulleted_list_item", "bulleted_list_item": {"rich_text": rich}}]})
-            changed += 1
-    for extra in existing[len(lines):]:
+    if _words(heading) != str(now + today):
+        client.update_block(heading["id"], "heading_3", [{"type": "text", "text": {"content": str(now + today)}}])
+        changed += 1
+    text = f"Now {now} · Today {today}"
+    rich = [{"type": "text", "text": {"content": text}, "annotations": {"color": "gray"}}]
+    if line is None:
+        client.call_once("PATCH", f"/blocks/{box['id']}/children", {"children": [{"object": "block", "type": "paragraph", "paragraph": {"rich_text": rich}}]})
+        changed += 1
+    elif _words(line) != text or any(p.get("annotations", {}).get("color") != "gray" for p in (line.get("paragraph") or {}).get("rich_text") or ()):
+        client.update_block(line["id"], "paragraph", rich)
+        changed += 1
+    keep = {heading["id"], (line or {}).get("id")}
+    for extra in [b for b in _children(client, box["id"]) if b["id"] not in keep and not (line is None and b.get("type") == "paragraph" and COUNTER_LINE.fullmatch(_words(b).strip()))]:
         client.call_once("DELETE", f"/blocks/{extra['id']}")
         changed += 1
     return changed
 
 
 def recount_page(client, page_id=None, source=None):
-    """Write the tiles from the database. Old page: the five tile numbers and labels. Merged page (LIFE-938): the Now and Today box (the heading `Now N · Today M` and nothing else; a list left in it is removed) and the This week, FYI and Snoozed tiles. Only those blocks are ever patched, and only when they differ. -> {"tiles": n, "tiles_changed": n}."""
+    """Write the tiles from the database. Old page: the five tile numbers and labels. Merged page (LIFE-938): the Now and Today box (the tiles' shape: a default callout, one number, one gray line `Now N · Today M`; anything else in it is removed) and the This week, FYI and Snoozed tiles. Only those blocks are ever patched, and only when they differ. -> {"tiles": n, "tiles_changed": n}."""
     source = source or locate(client)
     numbers = counts(client, source)
     page_id = page_id or locate_page(client, source)
     merged = _merged_row(client, page_id)
     if merged:
-        box, heading, tiles = merged
-        changed = _set_box(client, box, heading, [], f"Now {numbers['Now']} · Today {numbers['Today']}")   # Jim, Nov 24 2026 2:36 PM CT: a counter only, no item list
+        box, heading, line, tiles = merged
+        changed = _set_counter(client, box, heading, line, numbers["Now"], numbers["Today"])      # Jim, Nov 24 2026 2:36 PM CT: a counter only, no item list; 6:12 PM CT: the tiles' own shape
         for label, (_, number_block, label_block) in zip(MERGED_LABELS, tiles, strict=True):
             if _words(number_block) != str(numbers[label]):
                 client.update_block(number_block["id"], "heading_3", [{"type": "text", "text": {"content": str(numbers[label])}}])
