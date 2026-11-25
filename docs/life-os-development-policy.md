@@ -136,10 +136,10 @@ V7 must run with ChatGPT unavailable (D54). OpenClaw and Hermes run on the Oracl
 
 **Debug in order:** `trigger → runtime started → code ran → source reached → state persisted → read back`.
 - One retry per failure boundary; a second failure stops for diagnosis.
-- Two cycles or ten minutes on a simple operation: challenge the design, don't add machinery.
+- Two cycles or ten minutes on a simple operation: challenge the design.
 - Prefer subtraction over repair.
 
-**Notion views (Jim, Nov 25 2026, LIFE-989):** A Notion view Jim has arranged by hand is canon. Agents never change a view's columns, order, sort or filter unless a ticket names that view and the change.
+A Notion view Jim has arranged by hand is canon. Agents never change a view's columns, order, sort or filter unless a ticket names that view and the change.
 
 A request that breaks these rules stops with `ARCHITECTURAL DRIFT DETECTED — NO MUTATION`.
 
@@ -159,17 +159,17 @@ A request that breaks these rules stops with `ARCHITECTURAL DRIFT DETECTED — N
 ## 10. Exceptions in force
 
 - **V7 modernization consolidation exception (Jim, Nov 18 and 21, 2026):** applied; old open tickets were cancelled and replaced by Epics LIFE-846, LIFE-847 and LIFE-848, history untouched. Further reparenting or Epic cancellation needs Jim's yes on the exact list.
-- **Freezes and STOP gates lifted (Jim, Nov 21, 2026, 12:17 AM CT).** All freezes and STOP blocks removed. The agent holding LIFE-856 In Progress is the sole writer of `hourly.yml`.
+- **Freezes and STOP gates lifted (Jim, Nov 21, 2026, 12:17 AM CT).** The agent holding LIFE-856 In Progress is the sole writer of `hourly.yml`.
 
 ## 11. Read only when needed
 
-- `docs/DECISIONS.md`: only when a ticket cites a D-number. Use `python -m lifeos.sources.devtools.decisions show D<n>` and never read the whole file.
+- `docs/DECISIONS.md`: only when a ticket cites a D-number. Use `python -m lifeos.sources.devtools.decisions show D<n>`.
 - `docs/agent-reference.md`: the code map, commands and epic delivery rules.
 - `docs/archive/`: history, no authority.
 
 ## 12. Dry run gate (scoping, before Agent Go; Jim, Nov 25 2026, LIFE-986)
 
-Blockers found mid-run (a secret in the wrong Bitwarden project, a delete the provider refuses, a tool not loaded, an action the agent's own rules stop, a target out of reach) are found before the build instead.
+Blockers found mid-run (a secret in the wrong Bitwarden project, a delete the provider refuses, a tool not loaded, an action the agent's own rules stop, a target out of reach) are found before the build.
 
 1. **Every new ticket carries two sections** (template: `docs/templates/ticket.md`): **Dry run**, a checklist of everything the build touches, and **Decisions pre-made**, an "if X, do Y" default for every fork. Jim approves the defaults once, when he releases the ticket.
 2. **The executing agent runs the dry run** on the machine and identity that will do the build. It is read-only: no write, merge, deploy or delete. It checks: every named **secret** exists under its exact name in the project the runner can read (name only, never the value); every **write or delete** is allowed for that identity (provider docs or a read-only check; if that cannot be confirmed without writing, it is a Jim step); every **tool**, connector and CLI is loaded in that agent's session; every action the agent's own **permission rules or safety checks** will stop (for example Keychain reads and deletes) is a pre-approved rule or a Jim step; the **target** is reachable within the approved scope on current data (if not, the decision goes into Decisions pre-made); every **wait** (natural runs, soaks, dates) is already its own `UAT for LIFE-nnn` ticket under LIFE-615.
