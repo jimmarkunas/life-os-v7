@@ -7,6 +7,8 @@ import json
 import os
 from datetime import datetime, timezone
 
+from lifeos.inbox import concord_reader
+from lifeos.inbox.model import InboxError
 from lifeos.jobs.fit import edge
 from lifeos.oraclecloud import backup_watch, boot_backup_watch, card, system_table, worker_watch
 from lifeos.platform import connections, ct_stamp, router
@@ -28,13 +30,24 @@ def limits_of(host):
     return reading, at
 
 
-def connection_summary(client, environ, now, live, seen=None):
+def concord_of(host, fetcher=None):
+    """-> the parsed `concord1` reading (a count and a fixed code, never message content). One ask per tick; a refusal or an unreachable endpoint is a failed read, not an error."""
+    fetch = fetcher or (lambda h, request: card.fetch(h, request=request))
+    try:
+        got = concord_reader.health(host, fetch)
+    except InboxError as error:
+        got = {"ok": False, "code": str(error), "messages": 0, "at": 0}
+    print("oracle-card: concord", json.dumps({"ok": got["ok"], "code": got["code"], "messages": got["messages"]}))
+    return got
+
+
+def connection_summary(client, environ, now, live, seen=None, concord=None):
     """-> (summary or None, {"changed", "retired"}). The owned rows are refreshed from the domains job history; a database that cannot be read is None (the row goes stale, the card still writes)."""
     try:
         rows = connections.read_rows(client, connections.source_id(environ))
     except NotionError:
         return None, {"changed": 0, "retired": 0}
-    updates = connections.plan(rows, connections.evidence(environ) if seen is None else seen, now)
+    updates = connections.plan(rows, connections.evidence(environ) if seen is None else seen, now, concord)
     retire = connections.retired_pages(rows)
     if live:
         try:
@@ -45,7 +58,7 @@ def connection_summary(client, environ, now, live, seen=None):
     return connections.summary(connections.merged(rows, updates), now), {"changed": len(updates), "retired": len(retire)}
 
 
-def run(limit, live, environ=os.environ, now=None, fetcher=card.fetch, client=None, limits=limits_of, seen=None, watch=None, workers_watch=None, boot_watch=None):
+def run(limit, live, environ=os.environ, now=None, fetcher=card.fetch, client=None, limits=limits_of, seen=None, watch=None, workers_watch=None, boot_watch=None, concord_fetch=None):
     host = (environ.get("IMESSAGE_ALERTS_HOST") or "").strip()
     anchor = (environ.get("JIRA_CARD_BLOCK_ID") or "").strip()                              # LIFE-969: any card block on the page finds the page; the Jira card is on it
     if not host or not anchor:
@@ -56,13 +69,14 @@ def run(limit, live, environ=os.environ, now=None, fetcher=card.fetch, client=No
     heading, _, rows = card.locate(client, anchor)
     stats = card.stats_of(host, fetcher, now)
     reading, read_at = limits(host)
-    summary, written = connection_summary(client, environ, now, live, seen)
+    concord = concord_of(host, concord_fetch)
+    summary, written = connection_summary(client, environ, now, live, seen, concord)
     built = system_table.readings(stats, now if stats else None, reading, read_at or (now if reading else None), summary, now)
     stamp = connections.last_ok_time(card.heading_text_of(heading), now)
     table = system_table.finish(built, system_table.previous_of(card.table_of(rows)), stamp, now)
     heading_text = f"{card.TITLE} ({ct_stamp.when(now)})"
     counts = {"rows": len(table) - 1, "stale": system_table.stale_count(table), "oracle": int(stats is not None), "limits": int(reading is not None),
-              "connections": f"{summary['connected']}/{summary['total']}" if summary else "unread", "connections_written": written["changed"], "todoist_row_retired": written["retired"], "written": 0}
+              "connections": f"{summary['connected']}/{summary['total']}" if summary else "unread", "concord": "ok" if concord["ok"] else concord["code"], "connections_written": written["changed"], "todoist_row_retired": written["retired"], "written": 0}
     if not live:
         return {**counts, **card.write(client, heading, rows, table, heading_text, False)}
     if stats is not None:

@@ -1,0 +1,17 @@
+# LIFE-977: one process per connection, as the concord user (no sudo, no login). It reads Concord's own store with the CLI that account already has; no credential is loaded or issued. No log output (stderr
+# discarded), a hard deadline shorter than the endpoint's, no new privileges, the system directories read-only.
+[Unit]
+Description=LIFE OS Concord health helper (one connection)
+
+[Service]
+User=concord
+ExecStart=/usr/bin/python3 -I /opt/lifeos-concord/concord_helper.py
+StandardInput=socket
+StandardOutput=socket
+StandardError=null
+Environment=CONCORD_TELEMETRY_DISABLED=1
+RuntimeMaxSec=35
+NoNewPrivileges=yes
+ProtectSystem=full
+PrivateTmp=yes
+MemoryMax=512M

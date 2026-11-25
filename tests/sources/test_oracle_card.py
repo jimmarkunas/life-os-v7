@@ -16,6 +16,16 @@ from tests.oraclecloud.test_system_table import limits as good_limits
 
 NOW = dt.datetime(2026, 11, 25, 15, 0, tzinfo=dt.timezone.utc)                  # 9:00 AM in Chicago
 ENV = {"IMESSAGE_ALERTS_HOST": " 100.64.0.9 ", "JIRA_CARD_BLOCK_ID": "jira", "NOTION_JIRA_TOKEN": "unused", "LIFEOS_NOTION_SYSTEM_HEALTH_SOURCE": "src-id"}
+def setUpModule():                                                                       # LIFE-977: no test ever reaches the endpoint; the Concord ask answers nothing unless a test hands it a fetcher
+    global _patch
+    _patch = mock.patch.object(card, "fetch", lambda host, port=card.PORT, request=b"": b"")
+    _patch.start()
+
+
+def tearDownModule():
+    _patch.stop()
+
+
 SVC = {"gateway": True, "telegram": True, "whatsapp": True, "alerts": True}
 
 
@@ -137,6 +147,69 @@ class Run(unittest.TestCase):
         with self.assertRaises(card.OracleCardError) as error:
             self.run_card(page)
         self.assertEqual((str(error.exception), page.patches), ("CARD_NOT_OWNED", []))
+
+
+
+
+def concord_reply(ok=True, code="", messages=3, at=None):
+    at = at if at is not None else int(NOW.timestamp()) - 60
+    return json.dumps({"ok": ok, "code": code, "messages": messages, "at": at}, sort_keys=True).encode() + b"\n"
+
+
+class ConcordRow(unittest.TestCase):
+    def run_card(self, page, reply, now=NOW, seen=GOOD, allowed=None):
+        out = io.StringIO()
+        noop = lambda *a, **k: None
+        with mock.patch.object(report_region, "require_configured", lambda ids, fail: None), contextlib.redirect_stdout(out):
+            counts = oracle_card.run(0, True, ENV, now, lambda host: stats_raw(), page, lambda host: reading(), seen, noop, noop, noop, concord_fetch=lambda host, request: reply)
+        return counts, out.getvalue()
+
+    def health(self, page):
+        props = page.pages["pg-health:all:concord"]["properties"]
+        return props["Health"]["select"]["name"], props["Last OK"]["rich_text"][0]["plain_text"]
+
+    def test_a_good_read_makes_the_concord_row_ok_with_its_read_time_and_the_line_reads_twelve_of_twelve(self):
+        page = database()
+        counts, log = self.run_card(page, concord_reply())
+        self.assertEqual(self.health(page), (connections.OK, "11/25 · 8:59 AM CT"))
+        self.assertEqual((counts["concord"], counts["connections"]), ("ok", "6/6"))
+        rows = {r[0]: r for r in page.row_text()[1:]}
+        self.assertEqual((rows["Connections"][2], rows["Connections"][4]), ("6 of 6 connected · 3 off by design", "OK"))
+        self.assertIn('"messages": 3', log)
+        self.assertNotIn("sender", log)
+
+    def test_cli_missing_gives_the_fixed_code_and_a_row_that_was_never_good_stays_not_connected(self):
+        page = database()
+        counts, log = self.run_card(page, concord_reply(False, "CONCORD_CLI_MISSING", 0))
+        self.assertEqual(counts["concord"], "CONCORD_CLI_MISSING")
+        self.assertEqual(self.health(page)[0], connections.NOT_CONNECTED)
+        self.assertIn("CONCORD_CLI_MISSING", log)
+        rows = {r[0]: r for r in page.row_text()[1:]}
+        self.assertEqual(rows["Connections"][4], "CONCORD DOWN")
+
+    def test_a_failed_read_keeps_the_last_good_time_and_the_row_stays_connected_for_two_and_a_half_hours(self):
+        page = database()
+        self.run_card(page, concord_reply())                                                        # good read at 8:59 AM CT
+        later = NOW + dt.timedelta(hours=2, minutes=20)
+        fresh = lambda at: {job: {"last_ok": at, "failed": False} for job in ("jira", "agenda", "recruiters", "followup")}       # the job-backed rows stay fresh; only Concord ages
+        counts, _ = self.run_card(page, concord_reply(False, "CONCORD_READ_FAILED", 0), later, fresh(later - dt.timedelta(minutes=5)))
+        self.assertEqual(self.health(page), (connections.OK, "11/25 · 8:59 AM CT"))               # unchanged
+        self.assertEqual(counts["connections"], "6/6")                                              # 2h20m: still inside 2.5 hours
+        counts, _ = self.run_card(page, concord_reply(False, "CONCORD_READ_FAILED", 0), NOW + dt.timedelta(hours=2, minutes=40), fresh(NOW + dt.timedelta(hours=2, minutes=35)))
+        self.assertEqual(counts["connections"], "5/6")                                              # 2h40m: DOWN
+        rows = {r[0]: r for r in page.row_text()[1:]}
+        self.assertEqual(rows["Connections"][4], "CONCORD DOWN · STALE since 8:59 AM")
+
+    def test_the_reader_is_refused_when_concord_is_not_on_the_allow_list(self):
+        from lifeos.inbox import concord_reader
+        from lifeos.inbox.model import InboxError
+        called = []
+        with self.assertRaises(InboxError) as caught:
+            concord_reader.health("host", lambda h, r: called.append(r), allowed=frozenset())
+        self.assertEqual((str(caught.exception), called), ("live_reads_not_authorized", []))
+        with mock.patch("lifeos.inbox.sources.LIVE_READ_SOURCES", frozenset()):
+            counts, _ = self.run_card(database(), concord_reply())
+        self.assertEqual(counts["concord"], "live_reads_not_authorized")                           # the stage still writes; the row just does not become good
 
 
 if __name__ == "__main__":

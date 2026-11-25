@@ -7,5 +7,11 @@
   "ORACLE_STALE": ["oraclecloud", "degraded", false, "Oracle's stats are older than the freshness limit.", "Check the Edge stats service."],
   "ORACLE_UNREACHABLE": ["oraclecloud", "retry", false, "The Oracle stats endpoint could not be reached.", "None; retried next tick."],
   "ORACLE_WRITE_FAILED": ["oraclecloud", "degraded", false, "The card could not be written to Notion.", "Retried next tick."],
-  "AT_RISK": ["oraclecloud", "state", false, "The Oracle instance reclaim state is AT_RISK.", "None."]
+  "AT_RISK": ["oraclecloud", "state", false, "The Oracle instance reclaim state is AT_RISK.", "None."],
+  "CONCORD_BAD_FRAME": ["oraclecloud", "bug", false, "The Concord helper got a request that was not the fixed `concord1` line.", "Compare the endpoint version."],
+  "CONCORD_CLI_MISSING": ["oraclecloud", "blocked", false, "The Concord command-line tool is missing for the concord user on Oracle.", "Reinstall the Concord CLI for that account; the row stays on its last good read for 2.5 hours."],
+  "CONCORD_READ_FAILED": ["oraclecloud", "degraded", false, "The Concord command-line tool exited with an error.", "Check the concord account's workspace; the next tick asks again."],
+  "CONCORD_TIMEOUT": ["oraclecloud", "degraded", false, "The Concord command-line tool did not answer in 25 seconds.", "The next tick asks again."],
+  "CONCORD_BAD_OUTPUT": ["oraclecloud", "bug", false, "The Concord command-line tool's listing was not the expected message records.", "Compare the Concord CLI version with lifeos/inbox/concord_source.py."],
+  "CONCORD_UNREACHABLE": ["oraclecloud", "degraded", false, "The private endpoint could not be asked for the Concord reading, or answered off contract.", "Check the endpoint and the Concord helper socket on Oracle."]
 }
