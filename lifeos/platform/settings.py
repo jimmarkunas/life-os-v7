@@ -29,6 +29,7 @@ MOVABLE = frozenset({
     "V7_CLOUD_FIT_PROFILE_REF", 
     "TICK_CAP_ATS", "TICK_CAP_DICE", "TICK_CAP_JOBRIGHT", "TICK_CAP_LINKEDIN", "TICK_CAP_TINYFISH", "TICK_MAX_PARALLEL", "NETWORK_SURFACE_SKIP", "INTERVIEW_CONVERT",
     "INTERVIEW_CONVERT_CAP", "PHYSICAL_MAIL_EXPECT", "MEGIBOW_EXCLUDED_DOMAINS", "JIRA_CARD_PROJECTS", "JIRA_GTV_CONTEXT_URL", 
+    "MEJ_SPRINT_AUTOMATION", "V3_WEEK_VIEW", "V2_QUARTER_SHADOW", "V3_PREVIEW_BLOCK_ID", "V2_PROMOTION", "V2_OFFICIAL",      # LIFE-918: the MEJ/JFM cutover rows, all off or empty until the LIFE-918 activation
     
 })
 # Never from Notion: the production write switch, the alarm, the SSH route and model spend (LIFE-699), and every credential.
