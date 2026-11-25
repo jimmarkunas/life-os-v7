@@ -9,8 +9,8 @@ from lifeos.dcc import weekly_review as wr
 from lifeos.platform.notion_client import rich_text
 
 CT = ZoneInfo("America/Chicago")
-SOURCE, REPORT, CARD, HUB, POINTER, DASH = "1" * 32, "2" * 32, "3" * 32, "4" * 32, "5" * 32, "6" * 32
-ENV = {"WEEKLY_REVIEW": "on", "NOTION_WEEKLY_REVIEWS_DATA_SOURCE_ID": SOURCE, "JIRA_CARD_BLOCK_ID": CARD, "WEEKLY_REVIEW_PAGE_ID": HUB, "WEEKLY_REVIEW_POINTER_PAGE_ID": DASH,
+SOURCE, REPORT, CARD, HUB = "1" * 32, "2" * 32, "3" * 32, "4" * 32
+ENV = {"WEEKLY_REVIEW": "on", "NOTION_WEEKLY_REVIEWS_DATA_SOURCE_ID": SOURCE, "JIRA_CARD_BLOCK_ID": CARD, "WEEKLY_REVIEW_PAGE_ID": HUB,
        "NOTION_JIRA_TOKEN": "x", "GITHUB_REPOSITORY": "o/r", "GITHUB_TOKEN": "t"}
 TUE = datetime(2026, 11, 24, 13, 30, tzinfo=CT)
 FRI = datetime(2026, 11, 27, 22, 5, tzinfo=CT)
@@ -23,8 +23,6 @@ class Notion:
         self.add(REPORT, "page", None)
         self.add(CARD, "callout", REPORT, "Calendar (11/24 · 1:20 PM CT)")
         self.add(HUB, "page", None)
-        self.add(DASH, "page", None)
-        self.add(POINTER, "paragraph", DASH, "Latest review: none")
         self.report_edited = "2026-11-24T19:20:00.000Z" if fresh else "2026-11-23T01:00:00.000Z"
         self.add_header(cards)
         self.card("JIRA Execution", "JIRA Execution (11/24 · 1:25 PM CT)", ["JFM Sprint 22 · 16 Overdue/Blocked · 8 Today · 87 This Week · 1 Done"], fresh)
@@ -184,9 +182,8 @@ class Run(unittest.TestCase):
         out = go(n, live=False, drive=drive_ok)
         self.assertEqual(out["weeks"][0]["action"], "would_create")
         self.assertEqual(n.writes, [])
-        self.assertEqual(n.blocks[POINTER]["paragraph"]["rich_text"][0]["text"]["content"], "Latest review: none")
 
-    def test_the_backfill_week_is_made_once_current_with_the_old_current_cleared_and_the_pointer_set(self):
+    def test_the_backfill_week_is_made_once_current_with_the_old_current_cleared(self):
         n = Notion()
         old = n.row("2026-08-30", "Degraded", True)
         n.rows.append(old)
@@ -197,8 +194,6 @@ class Run(unittest.TestCase):
         self.assertEqual(made["properties"]["Status"], {"select": {"name": "Generated"}})
         self.assertTrue(made["properties"]["Current"]["checkbox"])
         self.assertEqual(old["properties"]["Current"], {"checkbox": False})
-        self.assertIn("week ending Fri Nov 20", n.blocks[POINTER]["paragraph"]["rich_text"][0]["plain_text"])
-        self.assertEqual(out["pointer"], "updated")
         again = go(n, drive=drive_ok)
         self.assertEqual(again["weeks"], [])
         self.assertEqual(len([r for r in n.rows if r["properties"]["Week Ending"]["date"]["start"] == "2026-11-20"]), 1)
@@ -264,7 +259,7 @@ class Run(unittest.TestCase):
         self.assertEqual(out["status"], "duplicate_weeks")
         self.assertEqual(n.writes, [])
 
-    def test_the_only_writes_are_the_new_row_its_body_the_old_current_flag_and_the_pointer(self):
+    def test_the_only_writes_are_the_new_row_its_body_the_old_current_flag(self):
         n = Notion()
         n.rows.append(n.row("2026-08-30", "Degraded", True))
         go(n, drive=drive_ok)
@@ -332,30 +327,17 @@ class OracleDrive(unittest.TestCase):
         self.assertIn("Drive: Degraded (DRIVE_ORACLE_UNREACHABLE)", text)
 
 
-class PointerLine(unittest.TestCase):
-    def test_a_missing_line_is_reported_not_made_and_two_lines_stop_the_stage(self):
+class NoDashboardLine(unittest.TestCase):
+    """Jim, Nov 24 2026 (LIFE-945, comment 14179): no Dashboard pointer line. The stage neither writes one nor treats its absence as a fault."""
+    def test_the_stage_runs_clean_with_no_dashboard_line_and_writes_none(self):
         n = Notion()
-        n.blocks[POINTER]["paragraph"] = {"rich_text": rich_text("something else")}
         out = go(n, drive=drive_ok)
-        self.assertEqual(out["pointer"], "line_missing")
-        two = Notion()
-        two.add("9" * 32, "paragraph", DASH, "Latest review: also here")
-        with self.assertRaises(wr.ReviewError):
-            go(two, drive=drive_ok)
-        self.assertEqual(go(Notion(), drive=drive_ok, env={"WEEKLY_REVIEW_POINTER_PAGE_ID": ""})["pointer"], "not_configured")
-
-
-class DeepDashboard(unittest.TestCase):
-    def test_the_line_is_found_six_containers_down_like_the_real_dashboard(self):
-        n = Notion()
-        parent = DASH
-        for i, kind in enumerate(("callout", "column_list", "column", "callout", "column_list", "column")):
-            parent = n.add(f"{0xA00 + i:032x}", kind, parent)
-        n.blocks[POINTER]["paragraph"] = {"rich_text": rich_text("something else")}
-        n.add("b" * 32, "paragraph", parent, "Latest review: none yet")
-        out = go(n, drive=drive_ok)
-        self.assertEqual(out["pointer"], "updated")
-        self.assertIn("week ending", n.blocks["b" * 32]["paragraph"]["rich_text"][0]["plain_text"])
+        self.assertEqual(out["weeks"][0]["action"], "created")
+        self.assertNotIn("pointer", out)
+        self.assertNotIn("pointer_line", out)
+        self.assertEqual(out["status"], "ok")
+        self.assertFalse(any("Latest review" in str(w) for w in n.writes))
+        self.assertFalse([k for k in dir(wr) if "pointer" in k.lower()])
 
 
 class AutomationLane(unittest.TestCase):
@@ -385,11 +367,5 @@ class RowQuality(unittest.TestCase):
         self.assertEqual(wl.calendar({"Calendar": ("Calendar (11/24 · 1:20 PM CT)", same_day)}, self.NOW).items[0][0], "Schedule")
         n = Notion()
         out = go(n, drive=drive_ok)
-        self.assertEqual(out["pointer_line"], "found")
         text = " ".join(b["to_do"]["rich_text"][0]["text"]["content"] for b in n.rows[-1]["blocks"] if b["type"] == "to_do")
         self.assertIn("2 Recruiter Outreach rows", text)
-
-    def test_a_dry_run_reports_whether_the_pointer_line_is_there_without_writing(self):
-        n = Notion()
-        out = go(n, live=False, drive=drive_ok)
-        self.assertEqual((out["pointer_line"], out["pointer_scanned"] > 0, n.writes), ("found", True, []))

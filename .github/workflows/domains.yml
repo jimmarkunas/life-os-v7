@@ -1488,7 +1488,6 @@ jobs:
           JIRA_CARD_BLOCK_ID: ""
           WEEKLY_REVIEW: ""
           WEEKLY_REVIEW_PAGE_ID: ""
-          WEEKLY_REVIEW_POINTER_PAGE_ID: ""
           LIFEOS_NOTION_IDS: ""
           NOTION_WEEKLY_REVIEWS_DATA_SOURCE_ID: ""
           NOTION_JIRA_TOKEN: ${{ steps.bws_weekly_review.outputs.NOTION_JIRA_TOKEN }}

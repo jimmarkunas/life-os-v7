@@ -751,7 +751,7 @@ def is_settings_loader(step):
 
 DOMAIN_SECRETS = {         # the only secrets each domain job may see; adding one here is a conscious decision
     "granola": DB | {"LIFEOS_ACQ_SSH_PORT", "NOTION_INTERVIEW_TOKEN", "HIRING_PIPELINE_PAGE_ID", "IMESSAGE_ALERTS_HOST", "NOTION_JOB_LEDGER_DATA_SOURCE_ID"},   # LIFE-360: the readers take opportunities from Ledger rows first;   # LIFE-122: the automatic Granola bridge; the Tailscale OAuth pair goes only to the pinned join action (see TAILSCALE_WITH)
-    "weekly_review": {"NOTION_JIRA_TOKEN", "IMESSAGE_ALERTS_HOST", "JIRA_CARD_BLOCK_ID", "WEEKLY_REVIEW", "WEEKLY_REVIEW_PAGE_ID", "WEEKLY_REVIEW_POINTER_PAGE_ID", "NOTION_WEEKLY_REVIEWS_DATA_SOURCE_ID", "V7_RUNTIME_CONFIG_SOURCE_ID"},   # LIFE-945 (Jim, 945 workflow approve, comment 14158): the Weekly Review job; the Tailscale OAuth pair goes only to the pinned join action (see TAILSCALE_WITH)
+    "weekly_review": {"NOTION_JIRA_TOKEN", "IMESSAGE_ALERTS_HOST", "JIRA_CARD_BLOCK_ID", "WEEKLY_REVIEW", "WEEKLY_REVIEW_PAGE_ID", "NOTION_WEEKLY_REVIEWS_DATA_SOURCE_ID", "V7_RUNTIME_CONFIG_SOURCE_ID"},   # LIFE-945 (Jim, 945 workflow approve, comment 14158): the Weekly Review job; the Tailscale OAuth pair goes only to the pinned join action (see TAILSCALE_WITH)
     "report": {"NTFY_TOPIC"},   # the failure-push job: the phone topic and nothing else
     "chain": set(),   # LIFE-904: the clock receipt reads the Actions API with the run's own token and holds no secret
     "gate": {"NOTION_JIRA_TOKEN"},   # LIFE-604 item 11: the gate holds no credential of its own (the run's own token); LIFE-703: it also reads the V7 settings page with the Notion token from the settings loader

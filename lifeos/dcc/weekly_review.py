@@ -1,7 +1,7 @@
 """LIFE-945: V7 writes the Weekly LIFE OS Review each Friday 10 PM CT, Saturday to Friday (Jim, Nov 24 2026); the retired ChatGPT generator no longer does (LIFE-933).
 
-On the first run at or after Friday 10:00 PM CT it makes one row in the Weekly Reviews database for that Friday (Week Ending), Status Generated, Current, and updates the one-line Dashboard pointer. One row per Week Ending, always: a rerun finds it and
-does nothing, except that a row still Degraded inside 48 hours of its first write is rebuilt from fresh reads. The six lanes (weekly_lanes.py) are read-only; the only writes are the row, its page body and the pointer line. The week ending Fri Nov 20 2026 is
+On the first run at or after Friday 10:00 PM CT it makes one row in the Weekly Reviews database for that Friday (Week Ending), Status Generated, Current. One row per Week Ending, always: a rerun finds it and
+does nothing, except that a row still Degraded inside 48 hours of its first write is rebuilt from fresh reads. The six lanes (weekly_lanes.py) are read-only; the only writes are the row and its page body. The week ending Fri Nov 20 2026 is
 a one-time backfill, never Current once a newer week exists. Off unless the `WEEKLY_REVIEW` setting is on; a dry run (no --live) reads and reports and writes nothing. Reviewed and Applied stay Jim's. Counts and fixed codes only."""
 import os
 from datetime import date, datetime, timedelta
@@ -17,7 +17,6 @@ FRIDAY, DUE_HOUR = 4, 22                                        # Friday 10:00 P
 REFRESH = timedelta(hours=48)                                   # a Degraded row may be rebuilt, and a missed week caught up, this long after Friday 10 PM
 BACKFILL = (date(2026, 11, 20),)                                # Jim, Nov 24 2026 ("945 backfill yes"): the week ending Fri Nov 20, made once on the first production run
 WORKFLOWS = ("hourly.yml", "domains.yml")
-POINTER_KINDS = ("paragraph", "callout")
 
 
 class ReviewError(NotionError):
@@ -145,33 +144,6 @@ def _children(client, page_id):
     return wl.kids(client, page_id)
 
 
-def _pointer_text(friday, health, open_count):
-    return f"{POINTER_PREFIX} week ending {short(friday)} · Generated · Source Health {health} · {open_count} open decisions"
-
-
-POINTER_PREFIX = "Latest review:"
-
-
-def _find_pointer(client, page_id):
-    """-> (the one paragraph or callout on the Dashboard page whose text starts `Latest review:`, or None; how many blocks were scanned). Two such lines stop the stage."""
-    blocks = list(wl._flat(wl._tree(client, page_id, limit=9)))
-    found = [b["id"] for b in blocks if b.get("type") in POINTER_KINDS and wl.block_text(b).strip().startswith(POINTER_PREFIX)]
-    if len(found) > 1:
-        raise _fail("POINTER_AMBIGUOUS")
-    return (found[0] if found else None), blocks
-
-
-def _set_pointer(client, block_id, friday, health, open_count):
-    block = client.call("GET", f"/blocks/{quote(block_id, safe='')}")
-    kind = block.get("type")
-    if kind not in POINTER_KINDS:
-        raise _fail("POINTER_KIND")
-    client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}", {kind: {"rich_text": rich_text(_pointer_text(friday, health, open_count))}})
-    again = client.call("GET", f"/blocks/{quote(block_id, safe='')}")
-    if _pointer_text(friday, health, open_count) not in "".join(t.get("plain_text", "") or (t.get("text") or {}).get("content", "") for t in (again.get(kind) or {}).get("rich_text", [])):
-        raise _fail("POINTER_READBACK")
-
-
 def _rows(client, source, flt=None):
     out, cursor = [], None
     for _ in range(20):
@@ -273,25 +245,10 @@ def run(limit, live, environ=os.environ, client=None, now=None, drive_read=None,
         newest = day >= max(have, default=day)
         out["weeks"].append(write_week(client, source, environ, day, kind, now, live, drive_read, newest=newest, opener=opener))
     made = [w for w in out["weeks"] if w.get("action") in ("created", "rebuilt")]
-    dash = weekly_archive._clean(environ.get("WEEKLY_REVIEW_POINTER_PAGE_ID"))
-    pointer, scanned = _find_pointer(client, dash) if dash else (None, [])            # read-only: a dry run proves the line is there before any live write
-    out["pointer_line"] = "found" if pointer else ("not_configured" if not dash else "missing")
-    out["pointer_scanned"] = len(scanned)
-    if dash and not pointer:                                                             # why: block kinds seen, and any block whose text mentions the line (kind and first 40 characters only)
-        kinds = {}
-        for b in scanned:
-            kinds[b.get("type")] = kinds.get(b.get("type"), 0) + 1
-        out["pointer_kinds"] = dict(sorted(kinds.items(), key=lambda kv: -kv[1])[:8])
-        out["pointer_near"] = [(b.get("type"), wl.block_text(b).strip()[:40]) for b in scanned if "latest" in wl.block_text(b).lower() or "weekly life os review" in wl.block_text(b).lower()][:5]
     if live and made:
         current = [r for r in _rows(client, source, {"property": "Current", "checkbox": {"equals": True}})]
         newest_made = max(made, key=lambda w: w["week_ending"])
         for row in current:
             if row["id"].replace("-", "") != newest_made["page"].replace("-", "") and (_row_date(row) or date.min) < date.fromisoformat(newest_made["week_ending"]):
                 client.call_once("PATCH", f"/pages/{quote(row['id'], safe='')}", {"properties": {"Current": {"checkbox": False}}})
-        if pointer:
-            _set_pointer(client, pointer, date.fromisoformat(newest_made["week_ending"]), newest_made["health"], newest_made["open_decisions"])
-            out["pointer"] = "updated"
-        else:
-            out["pointer"] = "not_configured" if not dash else "line_missing"
     return out
