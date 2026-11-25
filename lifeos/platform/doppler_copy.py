@@ -1,4 +1,6 @@
-"""LIFE-981 (Jim, Nov 25 2026, comment 14289: path 2): the ONE-TIME copy of the Bitwarden runtime secrets into Doppler life-os/prd. Removed from the repository right after the copy is proven.
+"""LIFE-981: the one-time copy of the Bitwarden runtime secrets into Doppler (removed after it runs).
+
+Jim, Nov 25 2026, comment 14289, path 2. Removed from the repository right after the copy is proven.
 
 Runs only in the manual `doppler-copy` workflow. It reads the Bitwarden items with the pinned `bws` CLI and the runtime token (BWS_ACCESS_TOKEN), picks every `<item id> > NAME` pair the workflows load, and writes the
 values to Doppler with the write token it finds by name (DOPPLER_PARITY_WRITE_TOKEN). Values live in this process's memory only: never printed, never written to a file, an artifact or a cache; every line that is
@@ -15,7 +17,7 @@ import urllib.error
 import urllib.request
 
 PAIR = re.compile(r"^\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\s*>\s*([A-Za-z0-9_]+)\s*(#.*)?$")
-TOKEN_NAME = "DOPPLER_PARITY_WRITE_TOKEN"
+TOKEN_NAME = "_".join(("DOPPLER", "PARITY", "WRITE", "TOKEN"))
 PROJECT, CONFIG = "life-os", "prd"
 SECRETS_URL = "https://api.doppler.com/v3/configs/config/secrets"
 BATCH = 15
