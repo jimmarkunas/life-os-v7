@@ -82,10 +82,22 @@ on:
         type: boolean
         default: false
       jira:
-        description: "Jira only (unticked 'Run every domain job' above): snapshot, card, report (both), rollover, rollover+snapshot, or a read-only layout probe"
+        description: "Jira only (unticked 'Run every domain job' above): snapshot, card, report (both), rollover, rollover+snapshot, a read-only layout probe, or (LIFE-918) writers-check = the read-only Jira writer contract check, writers-verify = the throwaway-sprint writer verification (dry unless verify_live is yes)"
         type: choice
-        options: ["none", "snapshot", "card", "report", "rollover", "both", "probe"]
+        options: ["none", "snapshot", "card", "report", "rollover", "both", "probe", "writers-check", "writers-verify"]
         default: "none"
+      verify_board:
+        description: "LIFE-918, writers-verify only: the board to verify on, JFM or MEJ"
+        type: string
+        default: ""
+      verify_issue:
+        description: "LIFE-918, writers-verify only: the ONE issue key to clone into the ZZ-LIFE918-TEST sprint (for example JFM-123); nothing else is touched"
+        type: string
+        default: ""
+      verify_live:
+        description: "LIFE-918, writers-verify only: type yes to really write on the throwaway sprint; anything else is a dry run (contract check and plan, no write)"
+        type: string
+        default: ""
       refresh:
         description: "Close screen refresh (Jim, Oct 24): hiring = redraw the Hiring Pipeline region right after a verified close; recruiters = redraw only the Recruiter Outreach table after a verified recruiter close, status or Mark as Sent (no mail read). It queues in the after-tick group, so it never runs beside another Daily Report writer; the Close service skips it when a run is already waiting"
         type: choice
