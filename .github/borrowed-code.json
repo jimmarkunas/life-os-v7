@@ -63,16 +63,6 @@
       "files": [
         ".github/actions/browser/action.yml"
       ]
-    },
-    {
-      "name": "bws 2.0.0 command-line client (LIFE-981, one time)",
-      "owner": "Jim",
-      "level": "b",
-      "reason": "downloaded from the publisher's release page and used only if its SHA-256 equals the pinned one (also the publisher's own checksum file); used by the one-time Doppler copy workflow, removed with it",
-      "review": "2026-12-13",
-      "files": [
-        ".github/workflows/doppler-copy.yml"
-      ]
     }
   ],
   "packages": [
