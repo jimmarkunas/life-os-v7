@@ -376,6 +376,9 @@ class Writers(unittest.TestCase):
         def backlog_issues(self, board_id, jql, fields):
             return [{"key": self.clone}] if getattr(self, "in_backlog", False) else []
 
+        def my_permissions(self, project, names):
+            return {n: {"havePermission": n not in getattr(self, "missing", ())} for n in names}
+
         def link_types(self):
             return [{"name": "Cloners", "outward": "clones", "inward": "is cloned by"}]
 
@@ -461,14 +464,63 @@ class Writers(unittest.TestCase):
         self.assertEqual(len(out["steps"]), 8)
         self.assertTrue(client.sprint["name"].startswith(jw.TEST_PREFIX))
         self.assertEqual(client.deleted, [("issue", "JFM-900"), ("sprint", 777)])
-        self.assertIn(("POST", "link", "Cloners", "JFM-1", "JFM-900"), client.calls)
+        self.assertIn(("POST", "link", "Cloners", "JFM-900", "JFM-1"), client.calls)           # the clone is the inward argument: "<clone> clones <origin>"
+        self.assertEqual(out["why"], {})
+        self.assertEqual(out["cleaned_parts"], {"clone": True, "sprint": True})
 
     def test_a_failing_step_still_cleans_up(self):
         client = self.Client()
         client.transitions = lambda key: []                                                            # no Done transition: close fails
-        with self.assertRaises(JiraError):
-            jw.verify(client, self.BOARDS, "JFM", "JFM-1", True, now=at(2026, 11, 25, 9))
+        out = jw.verify(client, self.BOARDS, "JFM", "JFM-1", True, now=at(2026, 11, 25, 9), sleep=lambda s: None)
+        self.assertFalse(out["ok"])
+        self.assertEqual(out["why"]["run"], "JIRA_RECONCILE_TRANSITION_AMBIGUOUS")
         self.assertEqual(client.deleted, [("issue", "JFM-900"), ("sprint", 777)])
+
+    def test_no_delete_permission_stops_before_any_write(self):
+        client = self.Client()
+        client.missing = ("DELETE_ISSUES",)
+        with self.assertRaises(JiraError) as error:
+            jw.verify(client, self.BOARDS, "JFM", "JFM-1", True, now=at(2026, 11, 25, 9))
+        self.assertEqual(str(error.exception), "JIRA_VERIFY_NO_DELETE_PERMISSION")
+        self.assertEqual([c for c in client.calls if c[0] == "POST"], [])
+        self.assertEqual(client.deleted, [])
+
+    def test_the_contract_check_reports_the_permission_booleans(self):
+        out = jw.contract_check(self.Client(), self.BOARDS)
+        self.assertEqual(set(out["permissions"]["JFM"]), set(jw.PERMISSIONS))
+        self.assertTrue(all(out["permissions"]["JFM"].values()))
+
+    def test_a_read_that_lags_is_retried_and_a_wrong_one_gets_a_fixed_code(self):
+        client = self.Client()
+        real, seen = client.sprint_issues, {"n": 0}
+
+        def lagging(sprint_id, jql, fields):
+            seen["n"] += 1
+            return [] if seen["n"] < 3 else real(sprint_id, jql, fields)                               # the sprint lists the clone only from the third read
+        client.sprint_issues = lagging
+        naps = []
+        out = jw.verify(client, self.BOARDS, "JFM", "JFM-1", True, now=at(2026, 11, 25, 9), sleep=naps.append)
+        self.assertTrue(out["ok"], out)
+        self.assertEqual(naps[:2], [5, 5])
+        client = self.Client()
+        client.issue_orig = client.issue
+        client.issue = lambda key, fields: {**client.issue_orig(key, fields), "fields": {**client.issue_orig(key, fields)["fields"], "issuelinks": []}} if key == client.clone else client.issue_orig(key, fields)
+        out = jw.verify(client, self.BOARDS, "JFM", "JFM-1", True, now=at(2026, 11, 25, 9), sleep=lambda s: None)
+        self.assertFalse(out["ok"])
+        self.assertEqual(out["why"]["clone_link_identity"], "READ_MISMATCH")
+        self.assertEqual(client.deleted, [("issue", "JFM-900"), ("sprint", 777)])
+
+    def test_a_failed_delete_is_reported_by_part_with_a_fixed_code(self):
+        client = self.Client()
+
+        def refuse(key):
+            raise JiraError("JIRA_HTTP_403")
+        client.delete_issue = refuse
+        out = jw.verify(client, self.BOARDS, "JFM", "JFM-1", True, now=at(2026, 11, 25, 9), sleep=lambda s: None)
+        self.assertFalse(out["ok"])
+        self.assertEqual(out["cleaned_parts"], {"clone": False, "sprint": True})
+        self.assertEqual(out["why"]["cleanup_clone"], "JIRA_HTTP_403")
+        self.assertEqual(client.deleted, [("sprint", 777)])
 
 
 if __name__ == "__main__":

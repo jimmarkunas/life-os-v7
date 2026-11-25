@@ -82,7 +82,7 @@ class Jira:
         return self.get(f"/rest/agile/1.0/sprint/{int(sprint_id)}")
 
     def sprint_issues(self, sprint_id: int | str, jql: str, fields: str) -> list[Any]:
-        return self.pages(f"/rest/agile/1.0/sprint/{int(sprint_id)}/issue", {"jql": jql, "fields": fields}, "issues")
+        return self.pages(f"/rest/agile/1.0/sprint/{int(sprint_id)}/issue", {**({"jql": jql} if jql else {}), "fields": fields}, "issues")
 
     def board_issues(self, board_id: int | str, jql: str, fields: str) -> list[Any]:
         return self.pages(f"/rest/agile/1.0/board/{int(board_id)}/issue", {"jql": jql, "fields": fields}, "issues")
@@ -136,6 +136,10 @@ class Jira:
 
     def link_types(self) -> list[Any]:
         return (self.get("/rest/api/3/issueLinkType") or {}).get("issueLinkTypes") or []
+
+    def my_permissions(self, project_key: str, names: Any) -> dict[str, Any]:
+        """GET only: which of `names` the calling user holds in one project. -> {name: {"havePermission": bool, ...}}."""
+        return (self.get("/rest/api/3/mypermissions", {"projectKey": project_key, "permissions": ",".join(names)}) or {}).get("permissions") or {}
 
     def field_list(self) -> list[Any]:
         return self.get("/rest/api/3/field") or []
