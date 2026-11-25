@@ -16,7 +16,7 @@ from lifeos.platform import gate, mail
 from lifeos.platform.gmail import Gmail, GmailError
 from lifeos.platform.notion_client import Client, NotionError
 from lifeos.platform import mail_seen as seen
-from . import classify, notion as store, qualify, scan
+from . import backfill, classify, fill, notion as store, qualify, scan
 
 CHICAGO = ZoneInfo("America/Chicago")
 AUTO = object()                       # LIFE-610: "build the production ledger if the database is configured"
@@ -37,7 +37,7 @@ def _announce(environ, kind, moment, unread=()):
             handle.write(f"scan_kind={shown}\nscan_at={scan.clock(moment)}\n")
 
 
-def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, notion=None, now=None, ledger=AUTO):
+def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, notion=None, now=None, ledger=AUTO, chores=True):
     now = now or datetime.now(timezone.utc)
     began = time.monotonic()
     ledger = seen.production(environ) if ledger is AUTO else ledger
@@ -54,7 +54,10 @@ def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, noti
     stats = {"scanned": 0, "new": 0}
     if action == "skip":
         _announce(environ, state[1], state[0])
-        return {"scan": "skipped", "why": why, "ledger": ledger_status}
+        skipped = {"scan": "skipped", "why": why, "ledger": ledger_status}
+        if chores:
+            skipped.update(_chores(environ, live, now, notion))                       # LIFE-973: the status sync and reply-by dates need no mail, so a skipped read still runs them
+        return skipped
     incremental = kind == seen.NEW_MAIL
     known = (lambda provider, ident: seen.key(provider, ident) in known_keys) if incremental else None
     counts = {"messages": 0, "unreadable": 0, "sources_failed": 0, "outlook_accounts": 0, "direct_human": 0, "human_relay": 0, "excluded": 0, "unresolved": 0, "needs_review": 0,
@@ -62,6 +65,7 @@ def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, noti
               "waiting": 0, "would_schedule": 0, "scheduled": 0, "would_reopen_due": 0, "reopened_due": 0, "notion": "ok",
               "scan": kind, "scan_why": why, "ledger": ledger_status}
     records, unread = [], []
+    gm = None
 
     def take(read, name):
         try:
@@ -117,6 +121,9 @@ def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, noti
     if notion is not None:
         _apply(candidates, notion, write, counts)                          # every candidate is a message that was read; an unread source adds none
         _follow_ups(notion, write, counts, now.astimezone(CHICAGO).date())
+        if chores:
+            _status_and_dates(notion, write, counts, now.astimezone(CHICAGO).date())
+            _fill(notion, write, counts, records, gm, accounts)
     if degraded:
         counts["unread"] = unread
     if degraded and not partial:
@@ -188,3 +195,70 @@ def _follow_ups(notion, write, counts, today):
                 counts["scheduled" if kind == "schedule" else "reopened_due"] += 1
             except NotionError:
                 counts["failed"] += 1
+
+
+def _chores(environ, live, now, notion):
+    """The Notion-only work of a run that reads no mail: Done / Active / Needs review follow Action Status, and every open row gets its reply-by date. -> counts."""
+    counts = {"status_synced": 0, "would_sync": 0, "dates_set": 0, "would_set_date": 0, "failed": 0}
+    try:
+        notion = notion or _client(environ)
+        store.check_schema(notion)
+        _status_and_dates(notion, bool(live), counts, now.astimezone(CHICAGO).date())
+    except NotionError:
+        counts["chores"] = "unavailable"
+    return counts
+
+
+def _status_and_dates(notion, write, counts, today):
+    """LIFE-973: Action Status is the only source of truth. A row whose Done / Active / Needs review disagree with it is corrected (Completed, Dismissed, Declined: Done on, Active and Needs review off;
+    Needs Action: Done off, Active on). A Needs Action row with no Follow-up Date gets one (a set date is never replaced). Each write is read back."""
+    for key in ("status_synced", "would_sync", "dates_set", "would_set_date", "failed"):
+        counts.setdefault(key, 0)
+    for row in store.disagreeing_rows(notion):
+        props = store.sync_plan(row)
+        if not props:
+            continue
+        counts["would_sync"] += 1
+        if write:
+            try:
+                store.set_props(notion, row, props, {"done": props["Done"]["checkbox"], "active": props["Active"]["checkbox"], **({"needs_review": False} if "Needs review" in props else {})})
+                counts["status_synced"] += 1
+            except NotionError:
+                counts["failed"] += 1
+    for row in store.rows_where(notion, {"and": [{"property": "Action Status", "select": {"equals": store.NEEDS_ACTION}}, {"property": "Follow-up Date", "date": {"is_empty": True}}]}):
+        day = store.default_follow_up(row)
+        if day is None:
+            continue
+        counts["would_set_date"] += 1
+        if write:
+            try:
+                store.set_props(notion, row, {"Follow-up Date": {"date": {"start": day.isoformat()}}}, {"follow_up": day.isoformat()})
+                counts["dates_set"] += 1
+            except NotionError:
+                counts["failed"] += 1
+
+
+def _fill(notion, write, counts, records, gm, accounts):
+    """LIFE-973: Recruiter Company, Role and Client of every open row that has a blank one, from the one message behind it (lifeos.recruiters.fill). Messages this run read are used as read; older rows' messages
+    are read once more (backfill.MAX_PER_RUN a run). A set value is never replaced. The log carries the row's page id and where each value came from, never a name or a company."""
+    counts.update(filled=0, would_fill=0, fill_unread=0)
+    by_url = {m["url"]: m for m in records if m.get("url")}
+    older = 0
+    for row in fill.blank_rows(notion):
+        if row["source_url"] not in by_url:
+            if older >= backfill.MAX_PER_RUN:
+                continue
+            older += 1
+        message = backfill.message_for(row, by_url, gm, accounts)
+        if message is None:
+            counts["fill_unread"] += 1
+            continue
+        try:
+            sources = fill.apply(notion, row, message, write)
+        except NotionError:
+            counts["failed"] += 1
+            continue
+        if sources:
+            counts["would_fill"] += 1
+            counts["filled"] += 1 if write else 0
+            print("recruiters-fill:", row["page_id"].replace("-", "")[:8], ", ".join(f"{f}={src}" for f, src in sorted(sources.items())))

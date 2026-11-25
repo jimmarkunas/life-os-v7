@@ -95,7 +95,7 @@ class Reopen(unittest.TestCase):
         self.assertIn("Opportunity reopened", body)
         self.assertIsNone(h.world.source.decision())
         self.assertEqual([(e["action"], e["outcome"]) for e in D.entries(h.world.source.history())], [(D.ACTION, "Rejected"), (D.REOPEN, "Rejected")])   # the close stays
-        self.assertEqual(h.after, ["hiring", "hiring"])                                   # the close and the reopen each ask for the Hiring redraw
+        self.assertEqual(h.after, ["hiring"])                                              # the reopen asks for the Hiring redraw (the close is written directly by the test; the Close screen is retired)
         self.assertGreater(h.writes(), writes)
 
     def test_gwt_dw_2_an_interview_pursuit_row_closed_and_reopened_on_the_screens_moves_no_page(self):

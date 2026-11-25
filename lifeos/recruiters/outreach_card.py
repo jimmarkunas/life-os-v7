@@ -1,43 +1,22 @@
-"""LIFE-20: the Daily Report's one "🤝 Recruiter Outreach" table, refreshed in place from the Recruiters data source after the Recruiters stage.
+"""LIFE-973: the one gray count line above the Recruiter Outreach view on the Daily Report: `N need action · M overdue`.
 
-V7 owns the region exclusively (router.OWNERS), a floating region anchored on the pinned Hiring Pipeline table (HIRING_TABLE_BLOCK_ID). Only the heading's stamp and the table's data rows
-are written, through `report_region.ScopedClient` (LIFE-656), which refuses any other block before the write is sent; the page is not digested before and after the write. Anything unexpected raises: nothing is created, moved or guessed.
-Fail closed: if the Recruiters stage failed or the source is unreadable, rows are kept and the heading says DEGRADED. Live writes need --live AND RECRUITER_OUTREACH=on. Fixed codes and counts only."""
-# Detail kept from the former docstring:
-# - Like the Hiring Pipeline it is a floating region, not a callout. The block right after the pinned Hiring Pipeline table, in the same parent, must be a heading_3 titled exactly
-#   `🤝 Recruiter Outreach` or `🤝 Recruiter Outreach (stamp)`, then one four-column table whose header row is exactly HEADERS, then anything but another table. The header row, the link
-#   under the table, the Historical Snapshot and every other block on the page are refused by the scope guard (WRITE_OUT_OF_SCOPE); the read-back proves the heading, header row and data rows.
-# - One table, four columns, open rows only (Action Status Needs Action or Waiting, not Done, Active): Needs Action first, then Waiting, each by Follow-up Date (none last), then the latest
-#   contact first. A row with any other status, including a blank one, is not an action item and is not shown.
-# - Original Contact, in order: the row's First Contact (set by the Recruiters stage when it creates the row, from that message's own date); else a date already shown in this table for the
-#   same recruiter (same name and the same contact or message link, one unique match), which keeps the verified dates that predate the field; else "Not verified". Either date must not be
-#   after the row's Last Contact. Last Contact itself and the row's creation time are never used, and nothing is backfilled.
-# - Without --live AND the repo variable RECRUITER_OUTREACH=on the region is validated and the counts say what would change.
+The table, its Done / Dismiss / Close all overdue links and the Close screen are gone: the card is a live Notion view of the Recruiters data source (Action Status = Needs Action), which Jim changes in place.
+V7 writes ONE thing here: the text of the count line, in the callout named by the RECRUITER_COUNT_BLOCK_ID setting (an address row in Runtime Configuration, as the Agent Inbox count is). The callout's title
+and its link (`All recruiter records ↗`) stay exactly as Jim made them; only the gray text before the link is replaced. The view inside the callout is never read as a child and never written.
+Live writes need --live AND RECRUITER_OUTREACH=on. If the Recruiters stage failed or the source is unreadable, the line is left as it was and the step is a warning. Fixed codes and counts only."""
 import json
 import os
 import re
-from datetime import date, datetime, timezone
-from urllib.parse import quote, urlparse
+from datetime import datetime, timezone
+from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
-from lifeos.platform import ct_stamp, report_region as R, router
-from lifeos.platform.fixed_code import note_cause
+from lifeos.platform import report_region as R
 from lifeos.platform.notion_client import Client, NotionError
 from . import notion as store
 
-TITLE = router.RECRUITER_OUTREACH_REGION
-MODULE = router.OWNERS[TITLE]
-HEADERS = ("Recruiter · Employer", "Channel · Role", "Original Contact", "Next Step · Due")      # Jim's approved four columns (LIFE-20, Oct 23 2026)
-ORDER = (store.NEEDS_ACTION, store.WAITING)
-MAX_ROWS = 50
-NOT_VERIFIED, NO_DUE = "Not verified", "Due date not set"
-REPLY_DAYS = 1                                                   # Jim, Oct 24: a recruiter's message needs a reply by the next business day
-CHANNELS = (("mail.google.com", "Gmail"), ("outlook.office.com", "Outlook"), ("outlook.office365.com", "Outlook"), ("outlook.live.com", "Outlook"), ("linkedin.com", "LinkedIn"))
-SKIP = (router.DCC_REGION,)                                      # as for the Hiring Pipeline: the DCC callout is recorded by id only
 CHICAGO = ZoneInfo("America/Chicago")
-_SOURCE = r"(?:Gmail|Outlook [a-z0-9_-]{1,24})"
-KIND = re.compile(rf"(?:new mail|14-day scan)(?: \({_SOURCE}(?:, {_SOURCE})* unread\))?")          # LIFE-646: the heading names only fixed words, never an address
-UNREAD = re.compile(rf"\(({_SOURCE}(?:, {_SOURCE})*) unread\)$")
+SETTING = "RECRUITER_COUNT_BLOCK_ID"
 
 
 class OutreachError(NotionError):
@@ -56,291 +35,114 @@ def source(environ):
     return Client(environ, token_name="NOTION_RECRUITERS_TOKEN", source_name="NOTION_RECRUITERS_DATA_SOURCE_ID")
 
 
-def _step(name, call):
-    try:
-        return call()
-    except NotionError as error:
-        if isinstance(error, OutreachError):
-            raise
-        raise fail(f"{name}:{error}") from None
+def line(needs_action, overdue):
+    return f"{needs_action} need action · {overdue} overdue"
 
 
-# --- the rows ---
-
-def _link(url):
-    """An https link as recorded, or None: nothing is built or guessed."""
-    url = (url or "").strip()
-    parts = urlparse(url)
-    return url if parts.scheme == "https" and parts.netloc else None
+def _gray(part):
+    return (part.get("annotations") or {}).get("color") == "gray"
 
 
-def _day(text):
-    try:
-        return date.fromisoformat((text or "")[:10])
-    except ValueError:
+def _is_link(part):
+    return part.get("type") == "text" and bool((part.get("text") or {}).get("link"))
+
+
+def retext(parts, text):
+    """The callout's rich text with the gray text before the link replaced by `text` (followed by ` · ` when a link follows). The title and the link are returned untouched.
+    -> the new parts, or None when there is neither gray text nor a link to anchor on."""
+    parts = [p for p in parts if isinstance(p, dict)]
+    link_at = next((i for i, p in enumerate(parts) if _is_link(p)), None)
+    head = parts if link_at is None else parts[:link_at]
+    gray = [i for i, p in enumerate(head) if p.get("type") == "text" and _gray(p)]
+    if not gray and link_at is None:
         return None
+    new = {"type": "text", "text": {"content": text + (" · " if link_at is not None else "")}, "annotations": {"color": "gray"}}
+    if gray:
+        out = [p for i, p in enumerate(parts) if i not in gray[1:]]
+        out[gray[0]] = new
+        return out
+    return parts[:link_at] + [new] + parts[link_at:]
 
 
-def _shown(day):
-    return f"{day:%b} {day.day}, {day.year}"
+def _plain(parts):
+    return "".join(p.get("plain_text") or (p.get("text") or {}).get("content") or "" for p in parts)
 
 
-def _channel(row):
-    link = _link(row["source_url"])
-    host = urlparse(link).netloc.lower() if link else ""
-    label = next((name for domain, name in CHANNELS if host == domain or host.endswith("." + domain)), None) or row["medium"].strip() or "Channel not recorded"
-    return (f"{label} ↗", link, "bold") if link else (label, None, "bold")
-
-
-def _due(row, today):
-    day = _day(row["follow_up"])
-    if day is None and row.get("action") == store.NEEDS_ACTION and _local_day(row.get("first_contact")):
-        day = store.add_business_days(_local_day(row["first_contact"]), REPLY_DAYS)       # an inbound recruiter message: reply within one business day of its first contact
-        return "Reply by " + _shown(day) + (" · overdue" if day < today else " · due today" if day == today else "")
-    if day is None:
-        return NO_DUE
-    return _shown(day) + (" · overdue" if day < today else " · due today" if day == today else "")
-
-
-def _shown_day(text):
-    try:
-        return datetime.strptime(text, "%b %d, %Y").date()
-    except ValueError:
-        return None
-
-
-def kept_dates(table_rows):
-    """The table's current data rows -> [(name, links, day)] for each row whose Original Contact cell is one plain date (no link, no other text)."""
+def _clean(parts):
+    """Notion's read shape -> the write shape (text, link, annotations), dropping the read-only fields."""
     out = []
-    for row in table_rows:
-        view = R.live_view(row)
-        if len(view) != 4 or not view[0] or len(view[2]) != 1 or view[2][0][1] is not None:
+    for p in parts:
+        if p.get("type") != "text":
+            out.append({k: v for k, v in p.items() if k != "href"})
             continue
-        day = _shown_day(view[2][0][0].strip())
-        if day:
-            out.append((view[0][0][0].strip().lower(), {link for cell in view[:2] for _, link, _ in cell if link}, day))
+        item = {"type": "text", "text": {"content": (p.get("text") or {}).get("content", "")}}
+        link = (p.get("text") or {}).get("link")
+        if link:
+            item["text"]["link"] = {"url": link.get("url")}
+        if p.get("annotations"):
+            item["annotations"] = {k: v for k, v in p["annotations"].items() if v not in (False, "default")}
+        out.append(item)
     return out
 
-
-def _local_day(text):
-    """A Notion date or datetime -> its Central Time calendar day, or None."""
-    try:
-        moment = datetime.fromisoformat((text or "").replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    return (moment.astimezone(CHICAGO) if moment.tzinfo else moment).date()
-
-
-def first_contact(row, kept):
-    """The row's First Contact; else the date this table already shows for exactly this recruiter (same name AND a shared contact or message link, one match only); else None.
-    Never after the row's Last Contact (a first contact cannot follow the latest one), and never derived from Last Contact itself."""
-    day = _local_day(row.get("first_contact"))
-    if day is None:
-        mine = {u for u in (_link(row["contact"]), _link(row["source_url"])) if u}
-        found = [d for name, links, d in kept if name == row["person"].strip().lower() and links & mine]
-        day = found[0] if len(found) == 1 else None
-    latest = _local_day(row["last_contact"])
-    return day if day and latest and day <= latest else None
-
-
-def _id(value):
-    raw = str(value or "").replace("-", "").lower()
-    return raw if re.fullmatch(r"[0-9a-f]{32}", raw) else ""
-
-
-def action_links(base, row):
-    """The private Close service's links for this row, or [] without an https origin (V7_CLOSE_BASE_URL): a row linked to exactly one job first gets that job's Record reply or referral; every row
-    with a page id gets Done (Completed) and Dismiss (Dismissed), each one click (LIFE-971). Links, never actions of their own: the service's page confirms and writes."""
-    base = (base or "").strip().rstrip("/")
-    if not base.startswith("https://"):
-        return []
-    out = []
-    if len(row["jobs"]) == 1 and _id(row["jobs"][0]):
-        out.append(("Record reply or referral ↗", f"{base}/referral?j={_id(row['jobs'][0])}"))
-    if _id(row["page_id"]):
-        out += [("Done ↗", f"{base}/recruiter?r={_id(row['page_id'])}&do=done"), ("Dismiss ↗", f"{base}/recruiter?r={_id(row['page_id'])}&do=dismiss")]
-    return out
-
-
-def close_all_link(base):
-    """The one `Close all overdue` link of the card heading, or None without an https origin."""
-    base = (base or "").strip().rstrip("/")
-    return ("Close all overdue ↗", f"{base}/recruiter?all=overdue") if base.startswith("https://") else None
-
-
-def brief_link(base, row):
-    """LIFE-35 (Jim, Oct 25: "Approve the Brief link"): the row's read-only recruiter brief on the same Close service, or None without an https origin or a page id.
-    A link, never an action: the brief page reads the records on file and writes nothing."""
-    base = (base or "").strip().rstrip("/")
-    if not base.startswith("https://") or not _id(row["page_id"]):
-        return None
-    return ("Brief ↗", f"{base}/brief?r={_id(row['page_id'])}")
-
-
-def cells(row, today, first=None, base=None):
-    """One open row -> the four cells. Line 1 bold, line 2 gray (D222 spans); the name links to the verified contact channel (the database's Contact link, else the original
-    message), the channel to the original message only. `first`: the verified first-contact date (first_contact), else "Not verified". Line 2 of Next Step · Due ends with
-    the row's action links (action_links), then its Brief link (brief_link), when the Close origin is configured."""
-    links = [*action_links(base, row), *[link for link in (brief_link(base, row),) if link]]
-    due = [("\n" + _due(row, today) + (" · " if links else ""), None, "gray")]
-    for i, (label, url) in enumerate(links):
-        due += [(" · ", None, "gray")] if i else []
-        due.append((label, url, "gray"))
-    contact = _link(row["contact"]) or _link(row["source_url"])
-    return [[(row["person"].strip() or "Name not recorded", contact, "bold"), ("\n" + (row["company"].strip() or "Company not recorded"), None, "gray")],
-            [_channel(row), ("\n" + (row["role"].strip() or "Role not recorded"), None, "gray")],
-            [(_shown(first) if first else NOT_VERIFIED, None)],
-            [(row["action"], None, "bold"), *due]]
-
-
-def ordered(rows):
-    """Open rows only, Needs Action before Waiting, then by Follow-up Date (none last), then the latest contact first; ties by name and page, so a replay is identical."""
-    open_rows = [r for r in rows if r["action"] in ORDER and not r["done"] and r["active"]]
-    open_rows.sort(key=lambda r: (r["person"].strip().lower(), r["page_id"]))
-    open_rows.sort(key=lambda r: r["last_contact"] or "", reverse=True)
-    open_rows.sort(key=lambda r: (ORDER.index(r["action"]), _day(r["follow_up"]) or date.max))
-    return open_rows
-
-
-def read_rows(notion):
-    """Every Needs Action or Waiting row, completely, or a fixed reason it cannot be trusted."""
-    store.check_schema(notion)
-    rows = store.rows_where(notion, {"or": [{"property": "Action Status", "select": {"equals": s}} for s in ORDER]})
-    ids = [r["page_id"] for r in rows]
-    if not all(ids) or len(set(ids)) != len(ids):
-        raise fail("SOURCE_DUPLICATE")
-    return rows
-
-
-# --- the region ---
 
 def region(client, environ):
-    """-> {"heading", "status": None, "table", "rows", "page_id"}: the exact region right after the pinned Hiring Pipeline table, or a fixed code."""
-    anchor = R.clean_id(environ.get("HIRING_TABLE_BLOCK_ID"))
-    if not anchor:
+    """-> the callout block named by RECRUITER_COUNT_BLOCK_ID, proven to be a callout, or a fixed code."""
+    block_id = R.clean_id(environ.get("RECRUITER_COUNT_BLOCK_ID"))
+    if not block_id:
         raise fail("NOT_CONFIGURED")
-    if not re.fullmatch(r"[0-9a-fA-F]{32}", anchor.replace("-", "")):
-        raise fail(f"ID_INVALID:HIRING_TABLE_BLOCK_ID:len{len(anchor.replace('-', ''))}")
-    meta = _step("ANCHOR_GET", lambda: R._meta(client, anchor))
-    if not isinstance(meta, dict) or meta.get("type") != "table" or not R.same_id(meta.get("id"), anchor):
-        raise fail("ANCHOR_INVALID")
-    ancestors = []
-    page_id = _step("PARENT_WALK", lambda: R.page_of(client, meta, fail, ancestors))
-    if "callout" in ancestors:
-        raise fail("WRAPPED_IN_CALLOUT")
-    parent = meta.get("parent") or {}
-    siblings = _step("SIBLINGS", lambda: R.children(client, parent.get("block_id") or parent.get("page_id"), fail))
-    at = [i for i, b in enumerate(siblings) if R.same_id(b.get("id"), anchor)]
-    if len(at) != 1:
-        raise fail("ANCHOR_AMBIGUOUS")
-    heading, table, after = (siblings[at[0] + 1:at[0] + 4] + [None] * 3)[:3]
-    if not heading or heading.get("type") != "heading_3" or not R.titled(R.plain(heading), TITLE):
-        raise fail("HEADING_MISSING")
-    if not table or table.get("type") != "table" or (after and after.get("type") == "table"):
-        raise fail("SHAPE_INVALID")
-    rows = _step("TABLE_ROWS", lambda: R.children(client, table["id"], fail))
-    spec = table.get("table") or {}
-    if spec.get("table_width") != 4 or spec.get("has_column_header") is not True or not rows or any(r.get("type") != "table_row" for r in rows):
-        raise fail("TABLE_INVALID")
-    if R.cells_of(rows[0]) != list(HEADERS):
-        raise fail("HEADERS_CHANGED")
-    return {"heading": heading, "status": None, "table": table, "rows": rows, "page_id": page_id}
-
-
-def validate(client, environ):
-    """-> the region, after proving it is the only one of its title on the page (one read; nothing is compared afterwards)."""
-    found = region(client, environ)
-    own = [found["heading"]["id"], found["table"]["id"]]
-    digest = _step("DIGEST", lambda: R.page_digest(client, found["page_id"], own, fail, SKIP))
-    if any(R.titled(text, TITLE) for text in digest["h3"]):          # the owned heading is outside the digest: any other heading with the title is a second region
-        raise fail("HEADING_NOT_UNIQUE")
+    if not re.fullmatch(r"[0-9a-fA-F]{32}", block_id.replace("-", "")):
+        raise fail(f"ID_INVALID:{SETTING}:len{len(block_id.replace('-', ''))}")
     try:
-        router.check_write(MODULE, [TITLE])
-    except router.RouterError:
-        raise fail("NOT_OWNED") from None
-    return found
+        block = client.call("GET", f"/blocks/{quote(block_id, safe='')}")
+    except NotionError as error:
+        raise fail(f"ANCHOR_GET:{error}") from None
+    if not isinstance(block, dict) or block.get("type") != "callout" or not R.same_id(block.get("id"), block_id) or block.get("archived") or block.get("in_trash"):
+        raise fail("ANCHOR_INVALID")
+    return block
 
 
-def _retitle(client, block_id, text, link=None):
-    """Write the heading; `link` = (label, url) makes that label (the last words before the closing bracket) a link."""
-    parts = [{"type": "text", "text": {"content": text}}]
-    if link and text.endswith(link[0] + ")"):
-        parts = [{"type": "text", "text": {"content": text[:-len(link[0]) - 1]}}, {"type": "text", "text": {"content": link[0], "link": {"url": link[1]}}}, {"type": "text", "text": {"content": ")"}}]
-    client.call("PATCH", f"/blocks/{quote(block_id, safe='')}", {"heading_3": {"rich_text": parts}})
-
-
-def present(client, environ, build, heading, live, link=None):
-    """Dry run: validate only. Live: rewrite the data rows and the heading through the scope guard, read back. build(current data rows) -> the new rows, or build None keeps them."""
-    found = validate(client, environ)
-    rows = build(found["rows"][1:]) if build else None
-    counts = {"rows_changed": 0, "rows_added": 0, "rows_removed": 0, "verified": False}
-    if rows is not None:
-        have = [R.live_view(r) for r in found["rows"][1:]]
-        counts["would_change"] = sum(a != R.want_view(b) for a, b in zip(have, rows)) + abs(len(have) - len(rows))
+def present(client, environ, text, live):
+    """Dry run: prove the callout and the new text only. Live: one write of the callout's own text, read back. -> {"would_change", "verified"}"""
+    block = region(client, environ)
+    parts = (block.get("callout") or {}).get("rich_text") or []
+    new = retext(parts, text)
+    if new is None:
+        raise fail("SHAPE_INVALID")
+    counts = {"would_change": int(_plain(parts) != _plain(new)), "verified": False}
     if not live:
         return counts
-    scoped = R.ScopedClient(client, found["heading"]["id"], fail).adopt(found["table"]["id"], *(r["id"] for r in found["rows"][1:]))      # LIFE-656: the heading, the table and its data rows only
-    try:
-        counts.update(R.write_floating(scoped, found, None, rows, fail))
-        if R.plain(found["heading"]).strip() != heading:
-            _retitle(scoped, found["heading"]["id"], heading, link)
-    except Exception as error:
-        if str(error) == str(fail("WRITE_OUT_OF_SCOPE")):          # the guard refused a block that is not ours before anything was sent; keep its code
-            raise
-        note_cause(error)
-        try:                                                     # a half-written table must not look current: the heading says so, best effort
-            _retitle(scoped, found["heading"]["id"], f"{TITLE} (DEGRADED)")
-        except Exception:
-            pass
-        raise fail("WRITE_FAILED") from None
-    again = region(client, environ)                                                  # authoritative read-back
-    if not R.same_id(again["heading"]["id"], found["heading"]["id"]) or not R.same_id(again["table"]["id"], found["table"]["id"]) or R.plain(again["heading"]).strip() != heading:
-        raise fail("HEADING_CHANGED")
-    if rows is not None and [R.live_view(r) for r in again["rows"][1:]] != [R.want_view(r) for r in rows]:
+    if counts["would_change"]:
+        try:
+            client.call("PATCH", f"/blocks/{quote(block['id'], safe='')}", {"callout": {"rich_text": _clean(new)}})
+        except NotionError:
+            raise fail("WRITE_FAILED") from None
+    back = (region(client, environ).get("callout") or {}).get("rich_text") or []
+    if _plain(back) != _plain(new):
         raise fail("READBACK_MISMATCH")
     counts["verified"] = True
     return counts
 
 
-def heading(moment, stage="success", scan_kind="", link=None):
-    """LIFE-609: `<Title> (11/13 · 3:31 PM CT)`, the form every Daily Report card heading takes. Skipped (a Close screen refresh ran no mail stage on purpose) says Redrawn, so the heading never
-    claims mail was read (Jim, Oct 24). A mail source that was not read (LIFE-646) is named by its fixed name, only then: `(11/13 · 9:30 AM CT, Outlook personal unread)`."""
-    scan_kind = (scan_kind or "").strip()
-    unread = UNREAD.search(scan_kind) if stage == "success" and KIND.fullmatch(scan_kind) else None
-    return f"{TITLE} ({'Redrawn ' if stage == 'skipped' else ''}{ct_stamp.when(moment)}{f', {unread.group(1)} unread' if unread else ''}{f' · {link[0]}' if link else ''})"
-
-
 def run(limit, live, environ=os.environ, notion=None, client=None, now=None):
     now = (now or datetime.now(timezone.utc)).astimezone(CHICAGO)
     write = bool(live) and (environ.get("RECRUITER_OUTREACH") or "").strip().lower() == "on"
-    counts = {"rows": 0, "needs_action": 0, "waiting": 0, "live": write, "status": "ok"}
-    reason = None
+    counts = {"needs_action": 0, "overdue": 0, "live": write, "status": "ok"}
     stage = (environ.get("RECRUITERS_STAGE_OUTCOME") or "success").strip()
+    reason, rows = None, []
     if stage not in ("success", "skipped"):                         # the Recruiters stage failed this run: what the source holds is not this run's truth
         reason = "RECRUITERS_STAGE_FAILED"
     else:
         try:
-            shown = ordered(read_rows(notion or source(environ)))
+            notion = notion or source(environ)
+            store.check_schema(notion)
+            rows = store.rows_where(notion, {"property": "Action Status", "select": {"equals": store.NEEDS_ACTION}})
         except NotionError:
             reason = "SOURCE_UNREADABLE"
-        else:
-            if len(shown) > MAX_ROWS:
-                reason = "SOURCE_TOO_MANY"
-    target = client or writer(environ)
     if reason:
         counts["status"] = "degraded"
-        counts.update(present(target, environ, None, f"{TITLE} (DEGRADED at {ct_stamp.when(now)})", write))
         print("recruiter-outreach:", json.dumps(counts, sort_keys=True))
-        raise fail(f"DEGRADED:{reason}")                            # the rows keep their last accepted content; the step is a warning
-    today = now.date()
-    counts.update(rows=len(shown), needs_action=sum(r["action"] == store.NEEDS_ACTION for r in shown), waiting=sum(r["action"] == store.WAITING for r in shown))
-    def build(current):
-        kept = kept_dates(current)
-        firsts = [first_contact(r, kept) for r in shown]
-        counts["first_contact_shown"] = sum(1 for f in firsts if f)
-        return [cells(r, today, f, environ.get("V7_CLOSE_BASE_URL")) for r, f in zip(shown, firsts)]
-    overdue = store.overdue_rows(shown, today)
-    link = close_all_link(environ.get("V7_CLOSE_BASE_URL")) if overdue else None          # LIFE-971: one link at the top of the card, only when something is overdue
-    counts["overdue"] = len(overdue)
-    counts.update(present(target, environ, build, heading(now, stage, environ.get("RECRUITERS_SCAN"), link), write, link))
+        raise fail(f"DEGRADED:{reason}")                            # the line keeps its last accepted text; the step is a warning
+    open_rows = [r for r in rows if r["active"] and not r["done"]]
+    counts.update(needs_action=len(open_rows), overdue=len(store.overdue_rows(open_rows, now.date())))
+    counts.update(present(client or writer(environ), environ, line(counts["needs_action"], counts["overdue"]), write))
     return counts
