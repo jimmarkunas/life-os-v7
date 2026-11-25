@@ -94,6 +94,10 @@ class Jira:
         return self.post("/rest/agile/1.0/sprint", {"name": name, "originBoardId": int(board_id),
                                                     "startDate": start.isoformat(), "endDate": end.isoformat()})
 
+    # LIFE-918: partial sprint update (name only). UNVERIFIED against the live tenant; nothing calls it live. The daily reconciliation takes its writes as injected objects and refuses a live run without them.
+    def rename_sprint(self, sprint_id: int | str, name: str) -> Any:
+        return self.post(f"/rest/agile/1.0/sprint/{int(sprint_id)}", {"name": name}, retry=True)   # idempotent
+
     def move_issues(self, sprint_id: int | str, keys: list[str]) -> None:
         for index in range(0, len(keys), 50):
             self.post(f"/rest/agile/1.0/sprint/{int(sprint_id)}/issue", {"issues": keys[index:index + 50]}, retry=True)
