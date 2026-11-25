@@ -191,7 +191,6 @@
         "tests.hiring.test_hiring.CompilerTests.test_prior_state_carries_only_as_degraded_and_never_rolls_a_stage_back",
         "tests.hiring.test_hiring.CompilerTests.test_an_unreadable_ledger_or_pages_carries_the_whole_prior_state_or_is_unavailable",
         "tests.hiring.test_hiring.CompilerTests.test_nothing_computed_with_incomplete_evidence_is_never_a_trustworthy_empty_table",
-        "tests.hiring.test_hiring.OutcomeConsumerTests.test_unavailable_outcome_mail_degrades_hiring_keeps_the_last_accepted_rows_and_invents_no_outcome",
         "tests.hiring.test_hiring.OutcomeConsumerTests.test_outcome_mail_not_saved_for_eighteen_hours_or_never_saved_is_degraded_and_a_fresh_save_clears_it"
       ]
     },
@@ -200,9 +199,6 @@
       "live": "PENDING",
       "missing": "Manage (a read-only hub on the Close screen, linked from each opportunity page) reaches Close, Mark Complete, Build résumé / I applied with this résumé and Mark as Sent, and Reopen is a signed review and confirm through the S1 rules; Paused / Waiting on employer / Active (LIFE-111) and a hand-set next action and due date (LIFE-112) are signed reviews and confirms with read-back on the Job Ledger row (LIFE-353: no Notes page path), which needs the `LIFE OS Hand-Set` text property; none of it has been used live and read back yet",
       "tests": [
-        "tests.hiring.test_close_app.Post.test_a_missing_expired_forged_or_foreign_confirmation_is_refused_with_no_write",
-        "tests.hiring.test_close_app.Post.test_a_backend_failure_or_a_read_back_mismatch_never_looks_like_success",
-        "tests.hiring.test_close_app.Post.test_the_close_route_never_reopens_and_manage_is_its_own_route",
         "tests.hiring.test_manage_app.Hub.test_an_open_application_links_its_existing_actions_and_get_writes_nothing",
         "tests.hiring.test_manage_app.Reopen.test_a_closed_application_is_reopened_on_its_ledger_row_after_review_and_read_back",
         "tests.hiring.test_manage_app.Reopen.test_gwt_dw_2_an_interview_pursuit_row_closed_and_reopened_on_the_screens_moves_no_page",
