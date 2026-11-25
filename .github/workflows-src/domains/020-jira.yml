@@ -106,7 +106,7 @@
       - id: jreconcile
         continue-on-error: true
         name: Jira daily reconcile (LIFE-918; off unless MEJ_SPRINT_AUTOMATION is on; once a day at or after 8 AM CT; sprint inventory, recurring clones, closure counts, the Daily Report summary row, the promotion check; dry run unless live; counts only)
-        if: ${{ needs.gate.outputs.due_jira == 'true' }}
+        if: ${{ needs.gate.outputs.due_jira == 'true' || inputs.jira == 'reconcile' }}
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_jira.outputs.NOTION_JIRA_TOKEN }}
