@@ -424,15 +424,22 @@ def _sync(client, parent, old, new, anchor, fail, live):
     return count
 
 
-def replace_tree(client, block_id, title, module, spec, protected_ids, fail, tag, live, skip=frozenset()):
+def stamped_by_dot(text, title):
+    """True when `text` is the region's heading: exactly `title`, or `title · <stamp>` (LIFE-975: the Command Center carries its run time in its heading, `ChatGPT · Daily Command Center · Tue 11/24 · 11:02 PM CT`)."""
+    text = (text or "").strip()
+    return text == title or text.startswith(title + " · ")
+
+
+def replace_tree(client, block_id, title, module, spec, protected_ids, fail, tag, live, skip=frozenset(), heading=None):
     """The owner's callout keeps its heading and holds exactly `spec` under it: preflight, sync, read back (a second sync finds nothing), then remove the old flat lines. -> (changes, removed).
-    `skip` (LIFE-938, Jim's Nov 24 rearrangement): ids of blocks inside the callout that belong to another writer (the Agent Inbox tile row, a divider); they are never read as ours, never synced, never deleted."""
+    `skip` (LIFE-938, Jim's Nov 24 rearrangement): ids of blocks inside the callout that belong to another writer (the Agent Inbox tile row, a divider); they are never read as ours, never synced, never deleted.
+    `heading` (LIFE-975): the heading text to show, `title · <stamp>`; the callout's heading may be `title` or `title · ...`; a live write sets it (one PATCH of the heading block's text) and the read-back requires it. None: exactly `title`, as before."""
     meta = client.call("GET", f"/blocks/{quote(block_id, safe='')}")
     if not isinstance(meta, dict) or meta.get("type") != "callout" or not same_id(meta.get("id"), block_id):
         raise fail("CARD_NOT_OWNED")
     client = ScopedClient(client, block_id, fail)                                       # LIFE-586: every write below is checked against this card's own region first
     existing = children(client, block_id, fail)
-    if not (existing and existing[0].get("type") in HEADINGS and plain(existing[0]).strip() == title):
+    if not (existing and existing[0].get("type") in HEADINGS and (plain(existing[0]).strip() == title if heading is None else stamped_by_dot(plain(existing[0]), title) and stamped_by_dot(heading, title))):
         raise fail("CARD_NOT_OWNED")
     existing = existing[:1] + [b for b in existing[1:] if b.get("id") not in skip]
     old_text, ours = [b for b in existing[1:] if b.get("type") in TEXT_KINDS], [b for b in existing[1:] if b.get("type") not in TEXT_KINDS]
@@ -450,6 +457,9 @@ def replace_tree(client, block_id, title, module, spec, protected_ids, fail, tag
     changes = _sync(client, block_id, ours, spec, existing[0]["id"], fail, True)
     if _sync(client, block_id, [b for b in children(client, block_id, fail)[1:] if b.get("type") not in TEXT_KINDS and b.get("id") not in skip], spec, None, fail, False):
         raise fail("CARD_VERIFY_FAILED")
+    if heading is not None and plain(existing[0]).strip() != heading:
+        client.call("PATCH", f"/blocks/{quote(existing[0]['id'], safe='')}", {existing[0]["type"]: {"rich_text": [{"type": "text", "text": {"content": heading}}]}})
+        changes += 1
     removed = 0
     for old in old_text:
         try:
@@ -460,7 +470,7 @@ def replace_tree(client, block_id, title, module, spec, protected_ids, fail, tag
                 raise
     after = children(client, block_id, fail)
     after = after[:1] + [b for b in after[1:] if b.get("id") not in skip]
-    if [b.get("id") for b in after[:1]] != [existing[0]["id"]] or [b.get("type") for b in after[1:]] != [b.get("type") for b in spec]:
+    if [b.get("id") for b in after[:1]] != [existing[0]["id"]] or [b.get("type") for b in after[1:]] != [b.get("type") for b in spec] or (heading is not None and plain(after[0]).strip() != heading):
         raise fail("CARD_VERIFY_FAILED")
     return changes, removed
 

@@ -123,6 +123,8 @@
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           JIRA_CARD_BLOCK_ID: ""
+          GTV_CARD_BLOCK_ID: ""   # LIFE-975: the Global Talent Visa callout's own block id, filled from the Runtime Configuration row
+          JIRA_GTV_EPIC: ""   # LIFE-975: the visa epic's tickets are left out of this card (the visa callout covers them)
           JIRA_CARD_PROJECTS: ""   # LIFE-703: declared empty so the V7 settings page can fill it; the code's own default applies when both are empty
           JIRA_SITE_URL: ""
           JIRA_GTV_CONTEXT_URL: ""   # LIFE-703: declared empty so the V7 settings page can fill it; the code's own default applies when both are empty

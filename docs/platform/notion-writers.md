@@ -23,11 +23,10 @@ One card owns one region of the Daily Report page and writes only its own blocks
 | lifeos/recruiters/outreach_card.py | RECRUITER_OUTREACH_REGION | v7-recruiter-outreach | recruiters.recruiter-outreach | heading and table found by one read of the page (the table block id names the page) | ScopedClient |
 | lifeos/imessage/comms_card.py | COMMS_REGION | v7-comms | imessage.imessage-comms | the Communications callout's heading and Messages row, found in the column of CALENDAR_CARD_BLOCK_ID | ScopedClient |
 | lifeos/oraclecloud/card.py | ORACLE_REGION | v7-oracle | imessage.oracle-card | its heading and one paragraph, found under the page | ScopedClient |
-| lifeos/dcc/card.py | DCC_REGION | daily-command-center | dcc.dcc-card | DCC_CARD_BLOCK_ID callout | ScopedClient |
-| lifeos/dcc/header.py | - | - | dcc.dcc-card | the page's date line: one top-level paragraph of a fixed shape, found among the page's top-level blocks; created at the top only if none exists | page-level, read back |
+| lifeos/dcc/card.py | DCC_REGION | daily-command-center | dcc.dcc-card | DCC_CARD_BLOCK_ID callout; its heading carries the run time (`ChatGPT · Daily Command Center · Tue 11/24 · 11:02 PM CT`, LIFE-975); the page's dated line is retired | ScopedClient |
 | lifeos/jobs/fit/capacity_card.py | - | - | capacity-card.capacity-card | the AI Capacity callout, found among the page's top-level blocks by its table header; inserted after the last divider if absent; off unless V7_AI_CAPACITY_CARD is on | in place, read back |
 
-The two rows with `-` are not regions in `OWNERS`: the date line is the page header and the AI Capacity card is a top-level callout outside the half-width column. Both are page-level writes (a top-level read and, at most, one insert); they run in jobs of their own (`dcc` runs last, after every card job; `imessage` also holds the Communications and Oracle cards, which write inside their own callouts), so their page-level operations do not overlap another card's blocks.
+The row with `-` is not a region in `OWNERS`: the AI Capacity card is a top-level callout outside the half-width column. It is a page-level write (a top-level read and, at most, one insert); it runs in jobs of their own (`dcc` runs last, after every card job; `imessage` also holds the Communications and Oracle cards, which write inside their own callouts), so its page-level operations do not overlap another card's blocks.
 
 ## Other writers of Notion pages (not the Daily Report)
 

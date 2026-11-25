@@ -1,11 +1,13 @@
 """The Jira card in the Daily Report (Phase B): the one Notion block V7 owns, rendered from the private database snapshot.
 
 Block: the "JIRA Execution" callout named by JIRA_CARD_BLOCK_ID, and nothing else on the page. Input: the snapshot only, never live Jira, so a report refresh cannot break when Jira is down.
-Buckets (V1's): Overdue / Blocked, Today (capacity 3), This Week, Done. A snapshot older than STALE_HOURS is never shown as current: only the status line changes, to STALE.
+LIFE-975 (Jim's wireframe, Nov 25 2026): Overdue (oldest due first) and Blocked (a ticket that is both is Blocked only) are two sections, Today (capacity 3, quarter-end goals left out), the Done toggle; This Week is a COUNT in the
+header line only (children of one non-epic parent count once), and every ticket under the Global Talent Visa epic (JIRA_GTV_EPIC) is left out of every list and count: that epic has its own callout (GTV_CARD_BLOCK_ID), which this stage
+fills in place. A snapshot older than STALE_HOURS is never shown as current: only the status line changes, to STALE.
 Output: counts and fixed codes only."""
 import os
 import re
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
@@ -18,7 +20,6 @@ from . import store
 LOCAL_TZ = "America/Chicago"
 STALE_HOURS = 3
 TODAY_CAPACITY = 3
-WEEK_OPEN_LIMIT = 5                       # V1: up to 5 This Week rows stay expanded, more go behind a toggle
 CARD_TITLE = "JIRA Execution"
 
 HIGH = {"high", "highest"}
@@ -36,27 +37,56 @@ def _blocked(issue):
     return issue["status"].lower() == "blocked"
 
 
-def buckets(snap, today):
-    """V1's precedence (Overdue/Blocked -> Today -> This Week), over actionable leaves only: a parent that still has unfinished
-    children is suppressed so work is never double counted. Anything V1 would have dropped (e.g. a review status) lands in This Week."""
+def quarter_end(today):
+    """The last day of the calendar quarter `today` is in (Dec 31 in Q4)."""
+    month = ((today.month - 1) // 3 + 1) * 3
+    return (date(today.year + (month == 12), month % 12 + 1, 1) - timedelta(days=1))
+
+
+def visa_keys(snap, epic):
+    """The tickets under the Global Talent Visa epic: the snapshot's own `gtv` work (its Tasks and their Sub-tasks), anything whose parent is the epic or one of those Tasks, and the epic itself."""
+    keys = {i["key"] for i in snap.get("gtv") or []} | ({epic} if epic else set())
+    return keys
+
+
+def _visa(issue, keys):
+    return issue["key"] in keys or issue.get("parent") in keys
+
+
+def buckets(snap, today, epic=None):
+    """Over actionable leaves only: a parent that still has unfinished children is suppressed so work is never double counted.
+    LIFE-975 precedence: Blocked (status blocked), Overdue (due before today), then Today (high priority or due today; a goal due on the last day of the quarter is left out), else This Week.
+    Every ticket under the visa epic `epic` is left out. Overdue is oldest due first. `this_week` is the list; `week_count` is the number shown (children of one non-epic parent count once)."""
+    gtv = visa_keys(snap, epic)
     seen, open_items = set(), []
     for issue in snap["current_tasks"] + snap["overdue"] + snap["blocked"]:
-        if issue["key"] not in seen and issue["category"] != "done":
+        if issue["key"] not in seen and issue["category"] != "done" and not _visa(issue, gtv):
             seen.add(issue["key"])
             open_items.append(issue)
     parents = {i["parent"] for i in open_items if i.get("parent")}
     leaves = [i for i in open_items if i["key"] not in parents]
-    out = {"overdue_blocked": [], "today": [], "this_week": [], "done": list(snap["done"])}
+    last = quarter_end(today).isoformat()
+    out = {"overdue": [], "blocked": [], "today": [], "this_week": [], "done": [i for i in snap["done"] if not _visa(i, gtv)]}
     for issue in leaves:
         due = _day(issue.get("due"))
-        if _blocked(issue) or (due and due < today):
-            out["overdue_blocked"].append(issue)
+        if _blocked(issue):
+            out["blocked"].append(issue)
+        elif due and due < today:
+            out["overdue"].append(issue)
+        elif issue.get("due") == last:
+            continue                                                  # a quarter goal is not this week's or today's work; it shows under Overdue if it ever passes its date
         elif issue["priority"].lower() in HIGH or due == today:
             out["today"].append(issue)
         else:
             out["this_week"].append(issue)
-    out["overdue_blocked"].sort(key=lambda i: (i.get("due") or "9999", i["key"]))
+    out["overdue"].sort(key=lambda i: (i.get("due") or "9999", i["key"]))
+    out["blocked"].sort(key=lambda i: (i.get("due") or "9999", i["key"]))
     return out
+
+
+def week_count(items):
+    """The This Week number: all children of one non-epic parent count as 1; an epic's children and parentless tickets count one each."""
+    return len({("parent", i["parent"]) if i.get("parent") and i.get("parent_type") != "Epic" else ("leaf", i["key"]) for i in items})
 
 
 def _text(content, url=None, bold=False):
@@ -68,15 +98,15 @@ def _text(content, url=None, bold=False):
     return node
 
 
-def _line(issue, site, show_due=True, show_status=True):
+def _line(issue, site, show_due=True, show_status=True, tag_blocked=True):
     label = f"{issue['key']} — {issue['summary']}"
     parts = [_text(label, f"{site}/browse/{issue['key']}" if site else None)]
     tail = []
     if show_due and issue.get("due"):
         tail.append("due " + _day(issue["due"]).strftime("%b %-d"))
-    if _blocked(issue):
+    if _blocked(issue) and tag_blocked:
         tail.append("blocked")
-    elif show_status:
+    elif show_status and not _blocked(issue):
         tail.append(issue["status"])
     if tail:
         parts.append(_text(" · " + " · ".join(tail)))
@@ -90,7 +120,7 @@ def _bullet(parts, children=None):
     return block
 
 
-def _rows(issues, site):
+def _rows(issues, site, **line):
     """Flat leaves in stable order, except leaves sharing a parent: that parent is rendered once, as a non-counting header."""
     rows, groups = [], {}
     for issue in issues:
@@ -106,11 +136,11 @@ def _rows(issues, site):
     out = []
     for kind, value in rows:
         if kind == "leaf":
-            out.append(_bullet(_line(value, site)))
+            out.append(_bullet(_line(value, site, **line)))
         else:
             group = groups[value]
             out.append(_bullet([_text(f"{group['label']}{value} — {group['summary']}", f"{site}/browse/{value}" if site else None, bold=True)],
-                               [_bullet(_line(kid, site)) for kid in group["kids"]]))
+                               [_bullet(_line(kid, site, **line)) for kid in group["kids"]]))
     return out
 
 
@@ -143,8 +173,8 @@ def gtv_action(snap, sticky):
     return leaves[0] if leaves else None
 
 
-def gtv_blocks(snap, sticky, site, context_url):
-    """-> (blocks, chosen key). Only for a snapshot that has a GTV epic configured (gtv is a list, possibly empty)."""
+def gtv_parts(snap, sticky, site, context_url):
+    """-> (rich text of the `GTV Action` line, chosen key). Only for a snapshot that has a GTV epic configured (gtv is a list, possibly empty)."""
     action = gtv_action(snap, sticky)
     parts = [_text("GTV Action \u00b7 ", bold=True)]
     if action:
@@ -153,8 +183,7 @@ def gtv_blocks(snap, sticky, site, context_url):
         parts.append(_text("Create Jira \u2014 define the next GTV action \u00b7 Needs Jira"))
     if context_url:
         parts += [_text(" \u00b7 "), _text("GTV Notion Context", context_url)]
-    return [_heading("\U0001F1EC\U0001F1E7 Global Talent Visa"),
-            {"object": "block", "type": "paragraph", "paragraph": {"rich_text": parts}}], (action or {}).get("key")
+    return parts, (action or {}).get("key")
 
 
 def heading_text(now, stale_at=None):
@@ -164,36 +193,29 @@ def heading_text(now, stale_at=None):
     return f"{CARD_TITLE} ({ct_stamp.when(now)})"
 
 
-def render(snaps, today, now, site, sticky=None, context_url=None):
-    """Notion blocks for the card body (the 'JIRA Execution' heading is not part of it) and the per-section counts."""
-    counts = {"overdue_blocked": 0, "today": 0, "this_week": 0, "done": 0, "gtv": 0}
+def render(snaps, today, now, site, epic=None):
+    """Notion blocks for the card body (the 'JIRA Execution' heading is not part of it) and the per-section counts. The visa epic is never in it."""
+    counts = {"overdue": 0, "blocked": 0, "today": 0, "this_week": 0, "done": 0}
     body = []
     for snap in snaps:
-        if snap.get("gtv") is not None:
-            gtv, chosen = gtv_blocks(snap, sticky, site, context_url)
-            body += gtv
-            counts["gtv"] += int(chosen is not None)
-        b = buckets(snap, today)
-        for name in b:
+        b = buckets(snap, today, epic)
+        week = week_count(b["this_week"])
+        for name in ("overdue", "blocked", "today", "done"):
             counts[name] += len(b[name])
+        counts["this_week"] += week
         if len(snaps) > 1:
             body.append({"object": "block", "type": "heading_3", "heading_3": {"rich_text": [_text(snap["project"])]}})
         sprint = (snap.get("current_sprint") or {}).get("name") or "no active sprint"
         body.append({"object": "block", "type": "paragraph", "paragraph": {"rich_text": [_text(
-            f"{sprint} · {len(b['overdue_blocked'])} Overdue/Blocked · {len(b['today'])} Today · "
-            f"{len(b['this_week'])} This Week · {len(b['done'])} Done", bold=True)]}})
-        body.append(_heading(f"Overdue / Blocked — {len(b['overdue_blocked'])}"))
-        body += _rows(b["overdue_blocked"], site) or _none()
-        flag = " · RE-PRIORITIZE" if len(b["today"]) > TODAY_CAPACITY else ""
-        body.append(_heading(f"Today — {len(b['today'])} · Capacity {len(b['today'])}/{TODAY_CAPACITY}{flag}"))
+            f"{sprint} \u00b7 {len(b['overdue'])} Overdue \u00b7 {len(b['blocked'])} Blocked \u00b7 {len(b['today'])} Today \u00b7 {week} This Week \u00b7 {len(b['done'])} Done", bold=True)]}})
+        body.append(_heading(f"Overdue \u2014 {len(b['overdue'])}"))
+        body += _rows(b["overdue"], site) or _none()
+        body.append(_heading(f"Blocked \u2014 {len(b['blocked'])}"))
+        body += _rows(b["blocked"], site, show_status=False, tag_blocked=False) or _none()
+        flag = " \u00b7 RE-PRIORITIZE" if len(b["today"]) > TODAY_CAPACITY else ""
+        body.append(_heading(f"Today \u2014 {len(b['today'])} \u00b7 Capacity {len(b['today'])}/{TODAY_CAPACITY}{flag}"))
         body += _rows(b["today"], site) or _none()
-        body.append(_heading(f"This Week — {len(b['this_week'])}"))
-        week = _rows(b["this_week"], site)
-        if len(b["this_week"]) > WEEK_OPEN_LIMIT:
-            body.append(_toggle("Show This Week items", week))
-        else:
-            body += week or _none()
-        body.append(_toggle(f"Done — {len(b['done'])}", [_bullet(_line(i, site, show_due=False, show_status=False)) for i in b["done"]]
+        body.append(_toggle(f"Done \u2014 {len(b['done'])}", [_bullet(_line(i, site, show_due=False, show_status=False)) for i in b["done"]]
                             or _none()))
     return body, counts
 
@@ -271,7 +293,43 @@ def _client(environ):
     return Client({"NOTION_API_TOKEN": (environ.get("NOTION_JIRA_TOKEN") or "").strip(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused"})
 
 
-def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
+GTV_TITLE = "Global Talent Visa"
+
+
+def _gtv_line(kids):
+    """The one `GTV Action` paragraph of the visa callout, or None."""
+    lines = [k for k in kids if k.get("type") == "paragraph" and _plain(k).startswith("GTV Action")]
+    return lines[0] if len(lines) == 1 else None
+
+
+def write_gtv(client, block_id, snaps, live, site, context_url):
+    """LIFE-975 step 3: the Global Talent Visa callout (Jim moved the GTV line out of Jira Execution into its own callout, GTV_CARD_BLOCK_ID). Only its `GTV Action` paragraph is rewritten, in place, through a client scoped to that
+    callout; the heading, every other block and the page are never touched, and a callout that is not the visa callout or holds no such line is never written or filled. -> counts."""
+    client = report_region.ScopedClient(client, block_id, lambda code: CardError("JIRA_CARD_" + code))
+    kids = children(client, block_id)
+    if not (kids and kids[0].get("type") in report_region.HEADINGS and GTV_TITLE in _plain(kids[0])):
+        raise CardError("JIRA_CARD_GTV_NOT_OWNED")
+    line = _gtv_line(kids)
+    if line is None:
+        raise CardError("JIRA_CARD_GTV_NO_LINE")
+    snap = next((s for s in snaps if s.get("gtv") is not None), None)
+    if snap is None:
+        return {"gtv": 0, "gtv_written": 0}
+    sticky = next((m.group(0) for m in [KEY_RE.search(_plain(line))] if m), None)
+    parts, chosen = gtv_parts(snap, sticky, site, context_url)
+    want = "".join(p["text"]["content"] for p in parts)
+    result = {"gtv": int(chosen is not None), "gtv_written": 0}
+    if _plain(line) == want or not live:
+        return result
+    client.call("PATCH", f"/blocks/{line['id']}", {"paragraph": {"rich_text": parts}})
+    after = _gtv_line(children(client, block_id))
+    if after is None or _plain(after) != want or after["id"] != line["id"]:
+        raise CardError("JIRA_CARD_GTV_VERIFY_FAILED")
+    result["gtv_written"] = 1
+    return result
+
+
+def run(limit, live, environ=os.environ, client=None, now=None, connect=None, gtv_client=None):
     block_id = (environ.get("JIRA_CARD_BLOCK_ID") or "").strip()
     if not block_id:
         raise CardError("JIRA_CARD_CONFIG_MISSING")
@@ -284,7 +342,8 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
         raise CardError("JIRA_CARD_NO_SNAPSHOT")
     taken = min(datetime.fromisoformat(s["taken_at"]) for s in snaps)
     stale = now - taken > timedelta(hours=STALE_HOURS)
-    client = report_region.ScopedClient(client or _client(environ), block_id, lambda code: CardError("JIRA_CARD_" + code))      # LIFE-688: like every card, a write to any block outside this callout is refused before it is sent
+    raw = client or _client(environ)
+    client = report_region.ScopedClient(raw, block_id, lambda code: CardError("JIRA_CARD_" + code))      # LIFE-688: like every card, a write to any block outside this callout is refused before it is sent
     existing = children(client, block_id)
     if not _owned(existing):
         raise CardError("JIRA_CARD_NOT_OWNED")
@@ -297,10 +356,18 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
             client.call("PATCH", f"/blocks/{heading_block['id']}", {"heading_4": {"rich_text": rich_text(heading_text(now, taken))}})   # only the heading text changes
             result["written"] = 1
         return result
-    sticky = next((m.group(0) for b in existing[1:] if _plain(b).startswith("GTV Action") for m in [KEY_RE.search(_plain(b))] if m), None)
-    body, counts = render(snaps, now.date(), now, site_url(environ), sticky, (environ.get("JIRA_GTV_CONTEXT_URL") or "").strip() or None)
+    site, epic = site_url(environ), (environ.get("JIRA_GTV_EPIC") or "").strip() or None
+    body, counts = render(snaps, now.date(), now, site, epic)
     result.update({k: v for k, v in counts.items()}, blocks=len(body))
+    gtv_block, gtv_error = (environ.get("GTV_CARD_BLOCK_ID") or "").strip(), None
+    if gtv_block:                                                  # LIFE-975: the visa callout is its own card; a failure here is reported after the Jira card itself is written, never instead of it
+        try:
+            result.update(write_gtv(gtv_client or raw, report_region.clean_id(gtv_block), snaps, live, site, (environ.get("JIRA_GTV_CONTEXT_URL") or "").strip() or None))
+        except CardError as error:
+            gtv_error = error
     if not live:
+        if gtv_error:
+            raise gtv_error
         return result
     old = existing[1:]
     append_tree(client, block_id, body)                             # new content first: a failure here removes nothing
@@ -317,4 +384,6 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
     if not _owned(after) or len(after) != 1 + len(body) or after[0].get("id") != heading_block["id"] or _plain(after[0]).strip() != heading:
         raise CardError("JIRA_CARD_VERIFY_FAILED")
     result["written"] = 1
+    if gtv_error:
+        raise gtv_error                                            # the Jira card is written and read back; the visa callout's own failure still fails the stage with its fixed code
     return result

@@ -345,7 +345,6 @@
   "tests.platform.test_shared_read": 0.01,
   "tests.platform.test_snapshot_store": 0.01,
   "tests.platform.test_source_lookup": 0.01,
-  "tests.platform.test_stability": 0.01,
   "tests.platform.test_stage_contract": 0.01,
   "tests.platform.test_stage_timing": 0.3,
   "tests.platform.test_switches": 0.01,
