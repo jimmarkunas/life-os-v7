@@ -85,7 +85,8 @@ def main(root=".", run=subprocess.run, environ=os.environ, call=_call, out=print
         return 1
     token = next((value for key, value in items.values() if value and (key == TOKEN_NAME or key.endswith("/" + TOKEN_NAME))), None)
     if not token:
-        out("doppler-copy: FAILED code=write_token_missing")
+        like = sorted(key for key, _ in items.values() if "DOPPLER" in key.upper())
+        out(f"doppler-copy: FAILED code=write_token_missing items={len(items)} with_value={sum(1 for _, v in items.values() if v)} doppler_like_keys={like} wanted_ids_found={sum(1 for i in wanted.values() if i in items)}/{len(wanted)}")
         return 1
     for _, value in items.values():
         for line in str(value or "").splitlines():
