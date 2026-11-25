@@ -4,7 +4,7 @@ Gate: the Runtime Configuration switch MEJ_SPRINT_AUTOMATION, exactly "on"; othe
 without a checkpoint, fails closed with JIRA_RECONCILE_WRITER_UNVERIFIED (the tenant contract is UNVERIFIED; LIFE-918 proves it first). Planning is pure and tested on synthetic data. Never closes or starts a sprint
 (rollover owns the boundary). Output: counts and fixed codes only.
 
-Owner decisions (Notion canon, LIFE-915 section, Nov 24 2026): 3 recurring Tasks close Done with one clone; 4 four future week sprints; 6 names PROJECT S{week} W{week} {year}, ISO, Monday to Sunday CT; 7 carry rule;
+Owner decisions (Notion canon, LIFE-915 section, Nov 24 2026): 3 recurring Tasks close Done with one clone; 4 four future week sprints; 6 names PROJECT W{week} {year} (short form, decision C, Nov 25 2026), ISO, Monday to Sunday CT; 7 carry rule;
 8 configuration plus the `recurring` label; 10 manual, automatic, total closed apart; 11 label removal stops a series; 12 edits reach unfinished future occurrences; 13 rename in place; 14 inspect before retry."""
 import os
 from datetime import date, datetime, timedelta
@@ -30,9 +30,9 @@ def _when(value):
 
 
 def iso_name(project, monday):
-    """PROJECT S{week} W{week} {year} with the ISO week and ISO week-year of the Monday (week 53 and the year change follow ISO)."""
+    """PROJECT W{week} {year} (e.g. `MEJ W48 2026`) with the ISO week and ISO week-year of the Monday (week 53 and the year change follow ISO). A sprint still carrying the old long name is renamed in place."""
     year, week = monday.isocalendar()[:2]
-    return f"{project} S{week} W{week} {year}"
+    return f"{project} W{week} {year}"
 
 
 def week_bounds(monday, tz):
@@ -102,8 +102,13 @@ def _norm(issue):
             "labels": list(f.get("labels") or []), "parent": (f.get("parent") or {}).get("key")}
 
 
+AUTO_LABEL = "auto-closed"                                                  # decision B (Nov 25 2026): the one fixed marker of an automatic closure
+
+
 def carry_plan(issues, recurring=()):
-    """-> {"carry": [...], "backlog": [...], "recurring": [...], "exceptions": [...]} for the unfinished issues of the ending sprint (decisions 1, 2, 7). Epics are excluded; Sub-tasks follow their parent; a recurring
+    """Decision A (Nov 25 2026), the rule for BOTH boards. Reading chosen: In Progress at any priority carries; a High/Highest item carries when it is To Do or Blocked (any open status); everything else goes to the
+    backlog, so a Low or Medium Blocked item goes to the backlog unless it is In Progress (a status named Blocked is never "In Progress" here).
+    -> {"carry": [...], "backlog": [...], "recurring": [...], "exceptions": [...]} for the unfinished issues of the ending sprint (decisions 1, 2, 7). Epics are excluded; Sub-tasks follow their parent; a recurring
     series is closed Done with its clone instead of carried (3); an unknown standard type is an exception, never a silent move."""
     rows = [_norm(i) for i in issues]
     top = {r["key"]: r for r in rows if r["type"] in STANDARD}
@@ -204,11 +209,19 @@ def plan_recurrence(issues, found, next_sprint_id, configured=()):
     return out
 
 
-def closure_counts(closures):
-    """-> manual, automatic and total closed, kept apart (10). `closures` are (key, "manual"|"automatic"|None); an unverifiable provenance counts only toward total and is reported as unverified, never guessed."""
-    manual = sum(1 for _, p in closures if p == "manual")
-    auto = sum(1 for _, p in closures if p == "automatic")
-    return {"manual": manual, "automatic": auto, "total": len(closures), "unverified": len(closures) - manual - auto}
+def auto_close_fields(run_id):
+    """Decision B: what an automatic closure adds: the fixed label and ONE comment line naming the run. -> {"label": ..., "comment": ...}; a manual closure never gets either (callers pass only closures they made)."""
+    run = str(run_id or "").strip()
+    if not run or "\n" in run:
+        raise JiraError("JIRA_RECONCILE_IDENTITY_AMBIGUOUS")
+    return {"label": AUTO_LABEL, "comment": f"Closed automatically by LIFE OS run {run}."}
+
+
+def closure_counts(issues):
+    """-> manual, automatic and total closed, kept apart (10), read from the `auto-closed` label (B): a Done issue with the label is automatic, any other Done issue is manual. Open issues are not counted."""
+    done = [i for i in issues if _norm(i)["category"] == "done"]
+    auto = sum(1 for i in done if AUTO_LABEL in (_field(i, "labels") or []))
+    return {"manual": len(done) - auto, "automatic": auto, "total": len(done)}
 
 
 def due(now, last_done, tz=None):
