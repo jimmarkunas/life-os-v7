@@ -1,4 +1,4 @@
-"""LIFE-918: the six cutover rows are registered, default off and fail closed. Nothing here reads Notion or changes behavior."""
+"""LIFE-918: the five cutover rows are registered, default off and fail closed. Nothing here reads Notion or changes behavior."""
 import unittest
 from pathlib import Path
 
@@ -6,8 +6,7 @@ from lifeos.accountability import switches
 from lifeos.platform import settings
 
 ROOT = Path(__file__).resolve().parents[2]
-BLOCK = "[removed]"
-NAMES = ("MEJ_SPRINT_AUTOMATION", "V3_WEEK_VIEW", "V2_QUARTER_SHADOW", "V3_PREVIEW_BLOCK_ID", "V2_PROMOTION", "V2_OFFICIAL")
+NAMES = ("MEJ_SPRINT_AUTOMATION", "V3_WEEK_VIEW", "V2_QUARTER_SHADOW", "V2_PROMOTION", "V2_OFFICIAL")
 
 
 class Registration(unittest.TestCase):
@@ -16,8 +15,10 @@ class Registration(unittest.TestCase):
             self.assertTrue(settings.movable(name), name)
             self.assertNotIn(name, settings.SAFETY)
 
-    def test_the_preview_block_is_the_only_address_row(self):
-        self.assertEqual([n for n in NAMES if settings.is_address(n)], ["V3_PREVIEW_BLOCK_ID"])
+    def test_no_row_is_an_address_and_the_preview_block_row_is_gone(self):
+        self.assertEqual([n for n in NAMES if settings.is_address(n)], [])
+        self.assertFalse(settings.movable("V3_PREVIEW_BLOCK_ID"))
+        self.assertNotIn("V3_PREVIEW_BLOCK_ID", (ROOT / "lifeos/accountability/config.txt").read_text())
 
     def test_every_row_is_in_the_accountability_config_registry(self):
         text = (ROOT / "lifeos/accountability/config.txt").read_text()
@@ -29,8 +30,7 @@ class FailClosed(unittest.TestCase):
     def test_everything_is_off_with_nothing_set(self):
         for name in switches.SWITCHES:
             self.assertFalse(switches.on(name, {}), name)
-        self.assertEqual(switches.preview_block({}), "")
-        self.assertEqual(switches.snapshot({}), {**{n: False for n in switches.SWITCHES}, "preview_block": False})
+        self.assertEqual(switches.snapshot({}), {n: False for n in switches.SWITCHES})
 
     def test_only_exactly_on_turns_a_switch_on(self):
         for value, want in (("on", True), (" ON ", True), ("On", True), ("off", False), ("", False), ("true", False), ("1", False), ("yes", False), ("on please", False), (None, False)):
@@ -42,13 +42,6 @@ class FailClosed(unittest.TestCase):
 
     def test_an_unreadable_environment_is_off(self):
         self.assertFalse(switches.on("V2_OFFICIAL", object()))
-        self.assertEqual(switches.preview_block(object()), "")
-
-    def test_the_preview_block_must_be_a_valid_id(self):
-        self.assertEqual(switches.preview_block({"V3_PREVIEW_BLOCK_ID": BLOCK.upper()}), BLOCK)
-        self.assertEqual(switches.preview_block({"V3_PREVIEW_BLOCK_ID": "[removed]"}), BLOCK)
-        for bad in ("not-an-id", "4203", "https://example.invalid", "on"):
-            self.assertEqual(switches.preview_block({"V3_PREVIEW_BLOCK_ID": bad}), "", bad)
 
     def test_the_rows_are_independent(self):
         env = {"MEJ_SPRINT_AUTOMATION": "on"}
