@@ -307,7 +307,7 @@ def _row(issue, **extra):
             "done": (status.get("statusCategory") or {}).get("key") == "done", **extra}
 
 
-V3_WEEK_FIELDS = WEEK_FIELDS + ",parent"
+V3_WEEK_FIELDS = WEEK_FIELDS + ",parent,labels"
 
 
 def _is_subtask(issue):
@@ -348,7 +348,7 @@ def _v3_week(jira, project, today, monday):
     overdue = [r for r in rows if r["status"].lower() != "blocked" and r["due"] and r["due"] < today.isoformat()]
     done = search(jira, f'project = {project} AND issuetype != Epic AND issuetype != Sub-task AND statusCategory = Done AND statusCategoryChangedDate >= "{monday}" ORDER BY key ASC', V3_WEEK_FIELDS)
     return {"v3": True, "open": [_row(i) for i in commitments], "subtasks": subtasks, "subtasks_elsewhere": elsewhere,
-            "blocked": blocked, "overdue": overdue, "done": [_row(i) for i in done],
+            "blocked": blocked, "overdue": overdue, "done": [_row(i, labels=list((i.get("fields") or {}).get("labels") or [])) for i in done],
             "jql": standard + sprint, "outside_jql": standard + outside_clause}
 
 
