@@ -74,8 +74,7 @@ READ = {  # operation: (summary, parameters {name: (type, required)}, handler(re
 LOOKUP = {"fetchers": {}, "rows": None}                                             # LIFE-888: wired by main(); empty means source_unavailable / directory_unavailable, never a guess
 GOOGLE = {"creds": None, "opener": None}                                            # LIFE-875: wired by main(); None means not_configured, never a guess
 MEMORY, MEMORY_OPS = {"client": None, "now": None}, ("memory_store", "memory_recall", "memory_correct", "memory_revoke", "memory_ask")   # LIFE-868, LIFE-949 (memory_ask): shared memory on the retained Honcho, each operation its own gate tool; MEMORY is wired by main() (memory_not_configured until HONCHO_MEMORY_TOKEN is set)
-INBOX, ROUTES = {"client": None, "now": None}, {}
-ORCH = {"gateway": None, "ticket_state": None, "inbox": None, "seen": {}}                  # LIFE-987: the orchestrator operations; gateway None means the fixed Concord gateway socket, ticket_state None means ticket_state_unavailable (the bridge holds no Jira credential), inbox is INBOX                                   # LIFE-876: the Agent Inbox write; ROUTES: operation -> route(op, args, tenant) -> (tenant, action, account, service) for the gate, filled by each operation module
+INBOX, ROUTES = {"client": None, "now": None}, {}; ORCH = {"gateway": None, "ticket_state": None, "inbox": INBOX, "seen": {}}   # LIFE-987: ORCH is the orchestrator state: gateway None = the fixed Concord socket, ticket_state None = ticket_state_unavailable (no Jira credential here)                                   # LIFE-876: the Agent Inbox write; ROUTES: operation -> route(op, args, tenant) -> (tenant, action, account, service) for the gate, filled by each operation module
 
 
 def _lift(module, op, state):
@@ -430,7 +429,6 @@ def main():
     except (ValueError, OSError) as e:
         sys.exit(f"config error: {e}")
     if google_read and source_lookup and inbox_send:
-        ORCH["inbox"] = INBOX                                                      # LIFE-987: the offline fallback uses the same Agent Inbox client
         inbox_send.wire(credentials(os.environ), INBOX)                              # LIFE-876: the Agent Inbox write, with the service's Notion integration (NOTION_READONLY_TOKEN, now Read, Insert and Update); None until it is placed
         GOOGLE["creds"] = google_read.creds_from_env(credentials(os.environ))      # LIFE-875: a read-only Google credential is read here by name only; None until the six names are set
         source_lookup.wire(credentials(os.environ), LOOKUP)                           # LIFE-888: GitHub (public) always; Notion pages and the directory only when the service holds the credential and the source id

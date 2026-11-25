@@ -1,14 +1,9 @@
-"""LIFE-987: the orchestrator operations of the LIFE OS Buzz bridge: agent_status, agent_dispatch and agent_messages, for the clients `claude` and `chatgpt` only.
+"""LIFE-987: the orchestrator operations of the Buzz bridge: agent_status, agent_dispatch, agent_messages, for the clients `claude` and `chatgpt` only (grants in mcp_access.json; never in the frozen contract).
 
-They sit beside send_to_jim (lifeos/platform/inbox_send.py): each is its own gate tool, routed here (tenant personal, account `orchestrator`, service `buzz`), granted only to claude-chat and chatgpt-chat in
-mcp_access.json, and never part of the frozen buzz_capabilities / buzz_read / buzz_publish contract. The bridge talks to Concord through ONE fixed Unix socket, /run/lifeos-concord-gateway/orchestrator.sock, owned by
-`concord` (lifeos/edge/concord/gateway.py). The path is a constant, never an argument. With no socket (today, until the host change) every operation answers the fixed reason `gateway_unavailable` and nothing else changes.
-
-Trust boundary (Jim, comment 14334 and LIFE-987 target 5): a dispatch is checked here BEFORE it is sent. The ticket must be a LIFE key whose Jira status is Agent Go or In Progress (`ticket_state(key)`, read-only and
-injectable: the bridge holds NO Jira credential today, so until one is placed by Jim or a signed read-only mirror exists the lookup is absent and a dispatch fails closed with `ticket_state_unavailable`; this module adds
-no credential); the text is untrusted data, refused when it carries a secret or plainly asks for a credential, spend, deletion, scope change or permission; the idempotency key makes a repeat safe. A dispatch can
-never approve anything new, and nothing here starts a session: `not_delivered: agent_offline` puts ONE deduplicated Agent Inbox item "Start <agent>: go" (key per agent), which is also what ORCHESTRATOR_CAN_START=on does
-until a start mechanism exists. Reasons are fixed words; message text never reaches a log or an error."""
+The bridge reaches Concord through ONE fixed Unix socket, /run/lifeos-concord-gateway/orchestrator.sock (lifeos/edge/concord/gateway.py, run as `concord`); the path is a constant. With no socket every operation answers `gateway_unavailable`.
+Trust boundary: before a dispatch the ticket must be Agent Go or In Progress by a read-only `ticket_state(key)` (injectable; the bridge holds no Jira credential, so without one it fails closed `ticket_state_unavailable`), the text
+is untrusted data (refused when it holds a secret or plainly asks for a credential, spend, deletion, scope change or permission), and the idempotency key makes a repeat safe. Nothing here starts a session: an offline agent gets
+ONE deduplicated Agent Inbox item "Start <agent>: go", with ORCHESTRATOR_CAN_START on or off. Reasons are fixed words; message text never reaches a log."""
 import json
 import os
 import re
@@ -57,8 +52,9 @@ def route(op, args, tenant):
 
 def can_start(environ=None):
     """ORCHESTRATOR_CAN_START: on only when exactly "on" (case and spaces ignored); anything else, unset or unreadable is off. No start mechanism exists in this release, so on and off both fall back to the inbox item."""
+    environ = os.environ if environ is None else environ
     try:
-        return str((os.environ if environ is None else environ).get("ORCHESTRATOR_CAN_START") or "").strip().lower() == "on"
+        return str(environ.get("ORCHESTRATOR_CAN_START") or "").strip().lower() == "on"
     except (AttributeError, TypeError):
         return False
 
