@@ -417,7 +417,7 @@ class Refresh(unittest.TestCase):
         self.assertIn('options: ["none", "hiring", "recruiters"]', text)
         self.assertIn("group: ${{ (github.event_name == 'workflow_dispatch' && (inputs.refresh == 'hiring' || inputs.refresh == 'recruiters' || inputs.phase == 'tick')) && 'life-os-v7-domains' ||", text)   # LIFE-775: the early run of a tick holds the same group
         self.assertEqual(text.count("inputs.refresh == 'hiring'"), 2)                             # the group and the hiring job's `if`, nothing else
-        self.assertEqual(text.count("if: ${{ inputs.refresh != 'recruiters' }}"), 6)              # recruiters refresh: mail stage, outcome scan, Interview OS and job-page outreach skipped, and (LIFE-858) the two compare-only source ID loads that serve the recruiters and interview steps
+        self.assertEqual(text.count("if: ${{ inputs.refresh != 'recruiters' }}"), 5)              # recruiters refresh: mail stage, outcome scan, Interview OS and job-page outreach skipped, and (LIFE-858) the Interview's compare-only source ID load; the recruiters job's own settings load now runs on a refresh (LIFE-971)
         self.assertIn("inputs.recruiters || inputs.refresh == 'recruiters') }}", text)               # the Recruiters job runs, so its Recruiter Outreach step does
         self.assertIn("RECRUITERS_STAGE_OUTCOME: ${{ steps.recruiters.outcome }}", text)              # 'skipped' on a refresh: the card redraws and says Redrawn
         self.assertEqual(close_gate.REFRESH["hiring"], {"refresh": "hiring", "live": "true"})          # the name the app appends is the gate's, and its input is this workflow's

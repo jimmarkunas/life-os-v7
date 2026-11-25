@@ -38,6 +38,7 @@ The two rows with `-` are not regions in `OWNERS`: the date line is the page hea
 | lifeos/sources/pipeline/job_page_outreach.py | each job's page in the Job Ledger | one writer per job page; compares the page before and after for the same reason |
 | lifeos/accountability/region.py | the This week, Quarterly goals and Quarterly review callouts on Jim & Matt V3, found by the V3 block ID register (jim.thisweek, matt.goals, ...) | each callout and its summary page is read and written by block id inside the callout (ScopedClient) and read back |
 | lifeos/megibow/card.py, lifeos/megibow/v3.py | the MegIBOW callouts, found by MEGIBOW_BLOCK_ID and the V3 block ids | each callout is read and written by block id and read back |
+| lifeos/sources/apps/close_app.py, lifeos/sources/apps/outreach_app.py | the Recruiter Outreach table of the Daily Report (LIFE-971) | after a verified Done, Dismiss or Close all overdue the private Close service redraws the table by calling lifeos/recruiters/outreach_card.py (its ScopedClient guard and read-back), through the Close integration's own token; HIRING_TABLE_BLOCK_ID and its origin come from the service's policy file |
 
 ## Whole-page reads
 

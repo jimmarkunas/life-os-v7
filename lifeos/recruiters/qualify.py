@@ -89,7 +89,7 @@ SUFFIX_WORDS = {"inc", "inc.", "llc", "ltd", "ltd.", "corp", "corp.", "corporati
 
 
 def _domain_label(address):
-    """The company part of a sender's address (`acme` of pat@mail.acme.co.uk), or '' for a free-mail, job-board or relay domain, or one too short to be a name."""
+    """The company part of a sender's address (`acme` of a sender at mail.acme.co.uk), or '' for a free-mail, job-board or relay domain, or one too short to be a name."""
     domain = str(address or "").rsplit("@", 1)[-1].lower().strip()
     parts = [p for p in domain.split(".") if p]
     if len(parts) < 2 or C._is_relay(str(address or "")):

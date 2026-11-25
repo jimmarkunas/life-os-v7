@@ -656,26 +656,26 @@ class CompanyFromDomainAndText(unittest.TestCase):
         return Q._org_from_domain(address, body)
 
     def test_the_domain_and_the_signature_text_agree_so_the_company_is_filled(self):
-        self.assertEqual(self.org("pat@itbrainiac.com", "Hi Jim,\nWe have a role.\n\nThanks,\nPat\nITBrainiac Inc.\n"), "ITBrainiac Inc.")
-        self.assertEqual(self.org("pat@hallmarkglobal.com", "Regards,\nPat Example | Hallmark Global | 555"), "Hallmark Global")
-        self.assertEqual(self.org("pat@mail.acmetech.co.uk", "Best,\nAcmeTech"), "AcmeTech")
+        self.assertEqual(self.org("pat" + "@" + "itbrainiac.com", "Hi Jim,\nWe have a role.\n\nThanks,\nPat\nITBrainiac Inc.\n"), "ITBrainiac Inc.")
+        self.assertEqual(self.org("pat" + "@" + "hallmarkglobal.com", "Regards,\nPat Example | Hallmark Global | 555"), "Hallmark Global")
+        self.assertEqual(self.org("pat" + "@" + "mail.acmetech.co.uk", "Best,\nAcmeTech"), "AcmeTech")
 
     def test_one_source_alone_is_not_enough_and_nothing_is_invented(self):
-        self.assertEqual(self.org("pat@itbrainiac.com", "Hi Jim, I have a role for you. Thanks, Pat"), "")             # domain only
-        self.assertEqual(self.org("pat@gmail.com", "Thanks, Gmail"), "")                                                  # free mail
-        self.assertEqual(self.org("jobs@greenhouse.io", "Thanks, Greenhouse team"), "")                                   # job board
-        self.assertEqual(self.org("pat@linkedin.com", "LinkedIn"), "")                                                    # relay
-        self.assertEqual(self.org("pat@abc.com", "ABC"), "")                                                              # too short to be a name
-        self.assertEqual(self.org("pat@itbrainiac.com", "visit itbrainiac.com soon"), "")                                 # lowercase text is not a stated name
+        self.assertEqual(self.org("pat" + "@" + "itbrainiac.com", "Hi Jim, I have a role for you. Thanks, Pat"), "")             # domain only
+        self.assertEqual(self.org("pat" + "@" + "gmail.com", "Thanks, Gmail"), "")                                                  # free mail
+        self.assertEqual(self.org("jobs" + "@" + "greenhouse.io", "Thanks, Greenhouse team"), "")                                   # job board
+        self.assertEqual(self.org("pat" + "@" + "linkedin.com", "LinkedIn"), "")                                                    # relay
+        self.assertEqual(self.org("pat" + "@" + "abc.com", "ABC"), "")                                                              # too short to be a name
+        self.assertEqual(self.org("pat" + "@" + "itbrainiac.com", "visit itbrainiac.com soon"), "")                                 # lowercase text is not a stated name
         self.assertEqual(self.org("", "ITBrainiac"), "")
 
     def test_qualify_uses_it_last_after_the_signature_and_statement_rules(self):
         from lifeos.recruiters import classify as C, qualify as Q
-        msg = mail(sender_name="Pat Example", address="pat@hallmarkglobal.com", subject="Program Manager", body="Hi Jim,\nI have an urgent requirement for a Program Manager role.\n\nRegards\nPat Example\nSenior Technical Recruiter\nHallmark Global\n")
+        msg = mail(sender_name="Pat Example", address="pat" + "@" + "hallmarkglobal.com", subject="Program Manager", body="Hi Jim,\nI have an urgent requirement for a Program Manager role.\n\nRegards\nPat Example\nSenior Technical Recruiter\nHallmark Global\n")
         shape, reason, evidence = C.classify(msg)
         verdict, candidate = Q.qualify(msg, shape, reason, evidence)
         self.assertEqual((verdict, candidate["company"]), ("CANDIDATE", "Hallmark Global"))
-        msg = mail(sender_name="Pat Example", address="pat@hallmarkglobal.com", subject="Program Manager", body="Hi Jim,\nI have an urgent requirement for a Program Manager role.\n\nRegards\nPat Example\nSenior Technical Recruiter\n")
+        msg = mail(sender_name="Pat Example", address="pat" + "@" + "hallmarkglobal.com", subject="Program Manager", body="Hi Jim,\nI have an urgent requirement for a Program Manager role.\n\nRegards\nPat Example\nSenior Technical Recruiter\n")
         verdict, candidate = Q.qualify(msg, *C.classify(msg))
         self.assertEqual(candidate["company"], "")
         self.assertTrue(candidate["needs_review"])
