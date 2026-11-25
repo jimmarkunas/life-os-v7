@@ -66,7 +66,7 @@ STAGES = {
     "jira-rollover": lazy("lifeos.jira.rollover"),
     "jira-rollover-scheduled": lazy("lifeos.jira.rollover", auto=True),
     "jira-rollover-watch": lazy("lifeos.jira.watch"),
-    "jira-reconcile-daily": lazy("lifeos.jira.reconcile"),                 # LIFE-918: daily 8 AM CT sprint reconciliation; off unless MEJ_SPRINT_AUTOMATION is on; a live run needs injected writers (none yet)
+    "jira-reconcile-daily": lazy("lifeos.jira.reconcile_stage"),           # LIFE-918: daily 8 AM CT sprint reconciliation; off unless MEJ_SPRINT_AUTOMATION is on; a live run needs JIRA_WRITERS_VERIFIED "yes"
     "jira-probe": lazy("lifeos.jira.snapshot", "probe"),
     "jira-card": lazy("lifeos.jira.card"),
     "jira-release": lazy("lifeos.jira.release"),                            # LIFE-727: To Do tickets of an epic Jim labelled auto-release move to Agent Go when ready (at most 3 an hour, rank order); dry run unless live
