@@ -430,9 +430,10 @@ def _close_post(req, who, secrets):
     if not _same(form.get("c"), sign):
         return invalid(_close_stop, "Review it again.", "This confirmation is not valid")
     recruiters = _recruiters(secrets)
-    if _row_fp(store.own_row(recruiters, pid)) != st:
+    current = store.own_row(recruiters, pid)
+    if _row_fp(current) != st:
         return _close_stop(409, "Conflict", "Record changed", "The record changed since this form was opened.", "No write attempted. Reload it and review it again.")
-    done, early = written(_close_stop, lambda: store.close_row(recruiters, pid, status), "Could not verify the close")
+    done, early = written(_close_stop, lambda: store.close_row(recruiters, pid, status, row=current), "Could not verify the close")
     if early:
         return early
     head = f"{shown['person']} · {shown['company'] or 'Company not recorded'}"
