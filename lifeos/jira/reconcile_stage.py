@@ -5,7 +5,7 @@ Dry run (every run without V7_LIVE) reads and plans only. A live run writes only
 JIRA_RECONCILE_WRITER_UNVERIFIED. State is the existing private table v7_jira_rollover (its own row `reconcile`: the last reconciled date; alert rows `rc…` keyed by the failure code, one push per code per Chicago day).
 The Daily Report line is one counts-only summary row saved next to the Jira snapshots (key `_recon`) for the card to read; the card never calls Jira. An alert is the existing phone push (alerts.push, INFO, deduped);
 the Agent Inbox needs the inbox Notion token, which this job deliberately does not hold (tests/jira/test_jira.py keeps NOTION_API_TOKEN out of the Jira job).
-After a successful run the promotion check runs (lifeos.accountability.promotion.run_if_due): kill switch V2_PROMOTION, the Fri Jan 1 2027 8:00 AM CT boundary, and on a pass the one LIFE-976 setter, once.
+After a successful run the optional `after` hook runs; lifeos.run passes lifeos.accountability.promotion_call.promotion (kill switch V2_PROMOTION, the Fri Jan 1 2027 8:00 AM CT boundary, on a pass the one LIFE-976 setter, once).
 Output: counts and fixed codes only."""
 import hashlib
 import os
@@ -20,7 +20,6 @@ from . import reconcile, recurrence, store, writers
 
 KEY = "reconcile"
 ALERT_KEY = "jira_reconcile_failed"
-PROMOTION_ALERT_KEY = "v2_promotion_failed"
 RECON_ROW = "_recon"
 SCHEMA = ("""CREATE TABLE IF NOT EXISTS v7_jira_rollover (
         k VARCHAR(16) NOT NULL PRIMARY KEY, last_ok DATETIME NOT NULL, alert_open TINYINT NOT NULL DEFAULT 0, last_notified DATETIME NULL
@@ -86,26 +85,7 @@ def save_summary(connection, now, line, ok):
     store._STORE.save(connection, RECON_ROW, {"schema": SUMMARY_SCHEMA, "taken_at": now.isoformat(), "line": line, "ok": ok})
 
 
-def promotion(environ, now, live, alert, client_factory=None, readers=None):
-    """The AC6 call site: V2_PROMOTION off is a no-op; before the boundary or when already official nothing happens; on a pass the LIFE-976 setter runs exactly once (dry run unless live); a fail keeps legacy official and
-    sends one alert. The inputs of AC11/AC12 come from `readers`; the shipped default is the empty frozen membership, so it fails closed with MEMBERSHIP_MISSING until the Q1 2027 list is approved and a reader is built."""
-    from lifeos.accountability import official_setter, promotion as check, switches
-    state = switches.snapshot(environ)
-    if not state["V2_PROMOTION"]:
-        return {"status": "not_enabled"}
-
-    def missing():
-        raise check.PromotionError(check.MEMBERSHIP_MISSING)
-
-    def send(item):
-        alert(item["subject"], item["details"], PROMOTION_ALERT_KEY, True)
-    from lifeos.accountability import common
-    client = (client_factory or common.notion_writer)(environ)
-    setter = official_setter.official_setter(client, environ.get("V7_RUNTIME_CONFIG_SOURCE_ID", ""), live)
-    return check.run_if_due(now, {"V2_PROMOTION": True, "V2_OFFICIAL": state["V2_OFFICIAL"]}, readers or missing, setter, send)
-
-
-def run(limit, live, environ=os.environ, client=None, now=None, connect=None, writers_=None, sleep=time.sleep, push=alerts.push, client_factory=None, readers=None):
+def run(limit, live, environ=os.environ, client=None, now=None, connect=None, writers_=None, sleep=time.sleep, push=alerts.push, after=None):
     if not reconcile.enabled(environ):
         return {"enabled": 0}
     tz = ZoneInfo(reconcile.TZ)
@@ -130,6 +110,7 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None, wr
         total["summary"] = line
         if live:
             save_summary(connection, now, line, True)
-        total["promotion"] = promotion(environ, now, live, alert, client_factory, readers)
+        if after is not None:                                                  # lifeos.run passes the AC6 promotion call site (jira may not import accountability)
+            total["promotion"] = after(environ, now, live, alert)
         return total
 
