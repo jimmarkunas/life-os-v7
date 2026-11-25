@@ -96,5 +96,75 @@
     false,
     "MEJ metric mode must be v1 or v2; no other value is allowed.",
     "Keep v1 until K2/K3 validation and approved v2 cutover are complete."
+  ],
+  "ACCOUNTABILITY_PROMOTION_MEMBERSHIP_MISSING": [
+    "accountability",
+    "blocked",
+    false,
+    "The frozen quarter membership list for the v2 promotion check is missing or empty.",
+    "Approve the frozen list (LIFE-918); v2 stays preview and legacy stays official."
+  ],
+  "ACCOUNTABILITY_PROMOTION_MEMBERSHIP_INCOMPLETE": [
+    "accountability",
+    "blocked",
+    false,
+    "Not every Task on the frozen quarter list is counted in v2, so eligible membership is below 100%.",
+    "Find the missing Tasks; v2 stays preview."
+  ],
+  "ACCOUNTABILITY_PROMOTION_DUPLICATE_ATTRIBUTION": [
+    "accountability",
+    "blocked",
+    false,
+    "A Task is attributed to more than one goal, or counted twice, in the v2 figures.",
+    "Fix the attribution; v2 stays preview."
+  ],
+  "ACCOUNTABILITY_PROMOTION_COMPLETION_DATE_UNVERIFIED": [
+    "accountability",
+    "blocked",
+    false,
+    "A completion date is missing, ambiguous or not the first verified transition into Done from the Jira changelog.",
+    "Read the full changelog for that Task; v2 stays preview."
+  ],
+  "ACCOUNTABILITY_PROMOTION_HISTORY_DRIFT": [
+    "accountability",
+    "blocked",
+    false,
+    "The historical v1 figures differ before and after the v2 change.",
+    "Find what changed history; v2 stays preview."
+  ],
+  "ACCOUNTABILITY_PROMOTION_RECURRING_NOT_DISTINCT": [
+    "accountability",
+    "blocked",
+    false,
+    "Manual and automatic recurring closures overlap or do not add up to the reported total.",
+    "Keep the two kinds apart; v2 stays preview."
+  ],
+  "ACCOUNTABILITY_PROMOTION_TOLERANCE_EXCEEDED": [
+    "accountability",
+    "blocked",
+    false,
+    "More than one unexplained Task discrepancy on a board in the quarter.",
+    "Explain the discrepancies with a record (who, what, source) or fix them; v2 stays preview."
+  ],
+  "ACCOUNTABILITY_PROMOTION_INPUT_INVALID": [
+    "accountability",
+    "blocked",
+    false,
+    "The promotion check inputs are missing, malformed or could not be read (or the time had no zone).",
+    "Fix the reader; v2 stays preview."
+  ],
+  "ACCOUNTABILITY_PROMOTION_SETTER_UNAVAILABLE": [
+    "accountability",
+    "blocked",
+    false,
+    "The check passed but the V2_OFFICIAL row could not be set (V7 has no safe writer of Runtime Configuration rows yet).",
+    "Jim sets V2_OFFICIAL by hand or approves a row writer; legacy stays official."
+  ],
+  "ACCOUNTABILITY_PROMOTION_ALERT_FAILED": [
+    "accountability",
+    "bug",
+    false,
+    "The one Agent Inbox alert for a failed promotion check could not be delivered.",
+    "Retried on the next reconciliation run."
   ]
 }
