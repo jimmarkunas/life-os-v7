@@ -254,7 +254,7 @@ def create_channels(base, owner, source, chan_names, say):
     say("roster", code == 200 and bool(pubs), f"{len(pubs)} members in the source channel, HTTP {code}")
     if not pubs:
         return
-    for name in names:
+    for name in chan_names:
         channel = str(uuid.uuid4())
         code, ack = signed(base, "/events", owner, nip98.event(owner, 9007, [["h", channel], ["name", name]]))
         made = code == 200 and isinstance(ack, dict) and ack.get("accepted") is True
