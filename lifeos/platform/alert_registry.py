@@ -42,6 +42,8 @@ REGISTRY = {
     "expiry_*": _page("jobs", "A credential or token expires within a week."),
     # --- other watchers with their own state
     "jira_rollover_stuck": _page("jira", "The Monday sprint rollover has not worked for 3 hours."),
+    "jira_reconcile_failed": _info("jira", "The daily Jira sprint reconciliation failed for a board (LIFE-918; one phone push per failure code per day; phone only)."),
+    "v2_promotion_failed": _info("jira", "The v2 quarterly promotion check failed: legacy stays official (LIFE-918; one push, phone only)."),
     "calendar_sync_stuck": _page("calendar", "The calendar bridge has not synced for 3 hours."),
     "offsite_backup_failed": _info("edge", "The nightly off-site backup (Oracle to Drive) failed, or has not succeeded for 36 hours (LIFE-129, Jim: quiet, phone only)."),
     "openclaw_workers_leaking": _info("edge", "OpenClaw has more Codex app-server workers than agents on Oracle: the duplicate-worker leak is back (LIFE-531, upstream 196499; phone only)."),

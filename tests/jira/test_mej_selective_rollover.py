@@ -330,7 +330,7 @@ class Primitive(unittest.TestCase):
         self.assertEqual([c[0:2] for c in calls[:2]], [("POST", "/rest/agile/1.0/backlog/issue")] * 2)           # 60 keys go in two bounded batches
         self.assertTrue(calls[2][1].startswith("/rest/agile/1.0/board/38/backlog"))
         sources = [str(p.relative_to(ROOT)) for p in (ROOT / "lifeos").rglob("*.py") if "move_to_backlog" in p.read_text()]
-        self.assertEqual(sorted(sources), ["lifeos/jira/rollover.py", "lifeos/platform/jira.py"])
+        self.assertEqual(sorted(sources), ["lifeos/jira/rollover.py", "lifeos/jira/writers.py", "lifeos/platform/jira.py"])      # LIFE-918 wiring: writers.py is the one gated caller (JIRA_WRITERS_VERIFIED)
 
 
 if __name__ == "__main__":

@@ -128,7 +128,7 @@ class Carry(unittest.TestCase):
 
 
 def clones(**chain):
-    return {k: [{"type": {"name": "Cloners"}, "inwardIssue": {"key": v}}] for k, v in chain.items()}
+    return {k: [{"type": {"name": "Cloners"}, "outwardIssue": {"key": v}}] for k, v in chain.items()}
 
 
 class Recurrence(unittest.TestCase):
@@ -150,7 +150,7 @@ class Recurrence(unittest.TestCase):
         self.assertEqual(len(found), 1)
 
     def test_two_origins_or_a_loop_fail_closed(self):
-        both = [{"type": {"name": "Cloners"}, "inwardIssue": {"key": "R-1"}}, {"type": {"name": "Cloners"}, "inwardIssue": {"key": "R-9"}}]
+        both = [{"type": {"name": "Cloners"}, "outwardIssue": {"key": "R-1"}}, {"type": {"name": "Cloners"}, "outwardIssue": {"key": "R-9"}}]
         with self.assertRaises(JiraError) as error:
             rc.series([issue("R-1"), issue("R-9"), issue("R-2", labels=["recurring"], links=both)])
         self.assertEqual(str(error.exception), "JIRA_RECONCILE_IDENTITY_AMBIGUOUS")
@@ -200,10 +200,14 @@ class Recurrence(unittest.TestCase):
 
 
 class Counts(unittest.TestCase):
-    def test_manual_automatic_and_total_stay_apart(self):
-        done = dict(status="Done", category="done")
-        self.assertEqual(rc.closure_counts([issue("A-1", **done), issue("A-2", labels=["auto-closed"], **done), issue("A-3", labels=["auto-closed", "x"], **done), issue("A-4")]),
-                         {"manual": 1, "automatic": 2, "total": 3})
+    def test_manual_automatic_and_total_stay_apart_from_activation_on(self):
+        def done(key, hour, labels=()):
+            made = issue(key, status="Done", category="done", labels=labels)
+            made["fields"]["statuscategorychangedate"] = at(2026, 11, 25, hour).isoformat()
+            return made
+        issues = [done("A-1", 10), done("A-2", 16, ["auto-closed"]), done("A-3", 17, ["auto-closed", "x"]), issue("A-4")]
+        self.assertEqual(rc.closure_counts(issues, at(2026, 11, 25, 14)), {"manual": 0, "automatic": 2, "total": 3, "split": True})   # A-1 closed before activation: total only
+        self.assertEqual(rc.closure_counts(issues), {"manual": None, "automatic": None, "total": 3, "split": False})
 
     def test_the_marker_is_one_label_and_one_comment_line(self):
         self.assertEqual(rc.auto_close_fields("123456"), {"label": "auto-closed", "comment": "Closed automatically by LIFE OS run 123456."})
@@ -294,7 +298,7 @@ class Stage(unittest.TestCase):
         self.assertEqual(board.log, [])
 
     def test_the_stage_is_registered_and_its_default_call_is_off(self):
-        self.assertEqual(entry.STAGES["jira-reconcile-daily"].target, ("lifeos.jira.reconcile", "run"))
+        self.assertEqual(entry.STAGES["jira-reconcile-daily"].target, ("lifeos.jira.reconcile_stage", "run"))
         with patch.dict("os.environ", {}, clear=False):
             self.assertEqual(entry.STAGES["jira-reconcile-daily"](5, False), {"enabled": 0})
 

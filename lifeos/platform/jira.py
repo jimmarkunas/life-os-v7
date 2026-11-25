@@ -110,3 +110,45 @@ class Jira:
 
     def backlog_issues(self, board_id: int | str, jql: str, fields: str) -> list[Any]:
         return self.pages(f"/rest/agile/1.0/board/{int(board_id)}/backlog", {"jql": jql, "fields": fields}, "issues")
+
+    # LIFE-918 (live writers; every one UNVERIFIED against the tenant until the throwaway-sprint check passes and JIRA_WRITERS_VERIFIED is "yes"). Nothing here runs without lifeos.jira.writers.
+    def put(self, path: str, payload: Any, retry: bool = False) -> Any:
+        return self.request("PUT", path, payload=payload, retry=retry)
+
+    def delete(self, path: str) -> Any:
+        return self.request("DELETE", path, retry=False)
+
+    def issue(self, key: str, fields: str) -> Any:
+        return self.get(f"/rest/api/3/issue/{urllib.parse.quote(str(key), safe='')}", {"fields": fields})
+
+    def create_issue(self, fields: dict[str, Any]) -> Any:
+        return self.post("/rest/api/3/issue", {"fields": fields})
+
+    def edit_issue(self, key: str, fields: dict[str, Any] | None = None, update: dict[str, Any] | None = None) -> Any:
+        return self.put(f"/rest/api/3/issue/{urllib.parse.quote(str(key), safe='')}", {**({"fields": fields} if fields else {}), **({"update": update} if update else {})}, retry=True)   # idempotent
+
+    def add_comment(self, key: str, text: str) -> Any:
+        body = {"type": "doc", "version": 1, "content": [{"type": "paragraph", "content": [{"type": "text", "text": text}]}]}
+        return self.post(f"/rest/api/3/issue/{urllib.parse.quote(str(key), safe='')}/comment", {"body": body})
+
+    def link_issues(self, link_type: str, inward_key: str, outward_key: str) -> Any:
+        return self.post("/rest/api/3/issueLink", {"type": {"name": link_type}, "inwardIssue": {"key": inward_key}, "outwardIssue": {"key": outward_key}})
+
+    def link_types(self) -> list[Any]:
+        return (self.get("/rest/api/3/issueLinkType") or {}).get("issueLinkTypes") or []
+
+    def field_list(self) -> list[Any]:
+        return self.get("/rest/api/3/field") or []
+
+    def transitions(self, key: str) -> list[Any]:
+        return (self.get(f"/rest/api/3/issue/{urllib.parse.quote(str(key), safe='')}/transitions") or {}).get("transitions") or []
+
+    def transition(self, key: str, transition_id: str) -> Any:
+        return self.post(f"/rest/api/3/issue/{urllib.parse.quote(str(key), safe='')}/transitions", {"transition": {"id": str(transition_id)}})
+
+    def delete_sprint(self, sprint_id: int | str) -> Any:
+        return self.delete(f"/rest/agile/1.0/sprint/{int(sprint_id)}")
+
+    def delete_issue(self, key: str) -> Any:
+        return self.delete(f"/rest/api/3/issue/{urllib.parse.quote(str(key), safe='')}")
+
