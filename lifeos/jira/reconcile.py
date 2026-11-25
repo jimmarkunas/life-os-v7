@@ -4,9 +4,8 @@ Gate: the Runtime Configuration switch MEJ_SPRINT_AUTOMATION, exactly "on"; othe
 without a checkpoint, fails closed with JIRA_RECONCILE_WRITER_UNVERIFIED (the tenant contract is UNVERIFIED; LIFE-918 proves it first). Planning is pure and tested on synthetic data. Never closes or starts a sprint
 (rollover owns the boundary). Output: counts and fixed codes only.
 
-Owner decisions (Notion canon, LIFE-915 section, Nov 24 2026): 3 recurring Tasks close Done with one next-week clone; 4 at least four future week-long sprints; 6 names PROJECT S{week} W{week} {year}, ISO week-year,
-Monday to Sunday America/Chicago; 7 carry: In Progress any priority, High/Highest To Do or Blocked, the rest to backlog; 8 configuration plus the `recurring` label, deduplicated; 10 manual, automatic and total
-closed kept apart; 11 removing the label stops the series; 12 edits reach future unfinished occurrences only; 13 rename in place; 14 inspect before retry."""
+Owner decisions (Notion canon, LIFE-915 section, Nov 24 2026): 3 recurring Tasks close Done with one clone; 4 four future week sprints; 6 names PROJECT S{week} W{week} {year}, ISO, Monday to Sunday CT; 7 carry rule;
+8 configuration plus the `recurring` label; 10 manual, automatic, total closed apart; 11 label removal stops a series; 12 edits reach unfinished future occurrences; 13 rename in place; 14 inspect before retry."""
 import os
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
