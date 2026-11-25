@@ -1121,8 +1121,6 @@ class BitwardenConsumerTests(unittest.TestCase):
 
     def test_every_loader_is_the_local_action_with_the_exact_ids_and_nothing_that_could_bypass_it(self):
         for name, doc in self.doc.items():
-            if name == "doppler-copy":                                                                         # LIFE-981: the one-time copy reads items by name with the pinned bws client; removed with the workflow
-                continue
             text, jobs = self.text[name], self.jobs_with_loaders(name)
             self.assertTrue(jobs, name)                                                                         # every workflow that reads a credential loads it through the one local loader
             self.assertIn("LIFEOS_BWS_RUNTIME_TOKEN", re.findall(r"secrets\.(\w+)", text), name)
