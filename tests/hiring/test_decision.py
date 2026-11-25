@@ -77,6 +77,8 @@ class Source:
             if self.fail_read:
                 raise NotionError("NOTION_HTTP_500")
             return {"results": [copy.deepcopy(p) for p in self.pages.values() if staged(p)], "has_more": False}
+        if flt == {"property": "Hiring Decision", "select": {"is_not_empty": True}}:      # LIFE-973: the decision sync's read, covered by test_decision_sync
+            return {"results": [], "has_more": False}
         self.log.append(("QUERY", "data_sources"))
         if self.fail_read:
             raise NotionError("NOTION_HTTP_500")
