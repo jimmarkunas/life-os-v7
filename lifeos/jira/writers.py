@@ -10,6 +10,7 @@ import json
 import os
 import re
 import sys
+import time
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -69,7 +70,8 @@ def raw_writers(client):
             raise JiraError("JIRA_RECONCILE_IDENTITY_AMBIGUOUS")
         key = client.create_issue(payload(fields, project, kind))["key"]
         try:
-            client.link_issues(CLONE_LINK, origin, key)                     # the clone is the OUTWARD side: "<clone> clones <origin>"
+            client.link_issues(CLONE_LINK, key, origin)                     # "<clone> clones <origin>": the clone is the INWARD argument (the issue that reads the outward text "clones"), so its own link entry carries outwardIssue=<origin>
+                                                                            # (live check Nov 25 2026: the opposite order wrote "origin clones clone", which series() and Jira's own Clone read as reversed)
         except JiraError:
             client.delete_issue(key)                                        # never leave an unlinked clone behind: the next run would create a second occurrence
             raise
@@ -100,6 +102,30 @@ def live_writers(client, environ=None):
     return raw_writers(client) if rc.writers_verified(environ) else rc.Writers()
 
 
+PERMISSIONS = ("CREATE_ISSUES", "EDIT_ISSUES", "DELETE_ISSUES", "TRANSITION_ISSUES", "MANAGE_SPRINTS_PERMISSION", "SCHEDULE_ISSUES")
+ATTEMPTS, WAIT = 4, 5
+
+
+def _eventually(call, sleep):
+    """Jira is eventually consistent: a read that is not yet true is retried (ATTEMPTS tries, WAIT seconds apart) before it counts as a failure. -> the last value."""
+    value = call()
+    for _ in range(ATTEMPTS - 1):
+        if value:
+            break
+        sleep(WAIT)
+        value = call()
+    return value
+
+
+def permissions(client, project):
+    """-> {permission: bool} from GET mypermissions for one project; a read that fails gives all False (never an exception text)."""
+    try:
+        have = client.my_permissions(project, PERMISSIONS)
+        return {name: bool((have.get(name) or {}).get("havePermission")) for name in PERMISSIONS}
+    except Exception:                                                       # noqa: BLE001
+        return {name: False for name in PERMISSIONS}
+
+
 def contract_check(client, configured):
     """Read-only (GET only). -> {"ok": bool, "boards": n, "checks": {name: bool}}: each board is scrum and answers sprint and backlog reads, the Cloners link type reads "clones" outward, and the Sprint, labels, issuelinks and
     duedate fields exist. Counts and booleans only; a failing read is a False check, never an exception text."""
@@ -117,7 +143,8 @@ def contract_check(client, configured):
     attempt("cloners_link_type", lambda: any(t.get("name") == CLONE_LINK and t.get("outward") == "clones" for t in client.link_types()))
     names = set()
     attempt("fields", lambda: names.update(f.get("name") for f in client.field_list()) or {"Sprint", "Labels", "Linked Issues", "Due date"} <= names)
-    return {"ok": all(checks.values()) and bool(checks), "boards": len(configured), "checks": checks}
+    held = {project: permissions(client, project) for project, _, _, readonly in configured if not readonly}
+    return {"ok": all(checks.values()) and bool(checks), "boards": len(configured), "checks": checks, "permissions": held}
 
 
 def _test_sprint_name(now):
@@ -128,56 +155,87 @@ def _held(client, sprint_id, key):
     return key in {i.get("key") for i in client.sprint_issues(sprint_id, "", "summary")}
 
 
+def _code(error):
+    """A fixed code for a failed step: the JiraError's own code when it has one, else a generic one. Never message text."""
+    text = str(error)
+    return text if re.match(r"^JIRA_[A-Z0-9_]{2,60}(:[0-9]{3})?$", text) else "JIRA_ERROR"
+
+
 def verify(client, configured, board, issue_key, live, now=None, sleep=None):
-    """The throwaway-sprint verification. Dry run (live False): the contract check and the plan, no write. Live: see the module docstring. -> {"ok": bool, "steps": {name: bool}, "cleaned": bool, "mode": ...}.
-    A board that is not configured, an issue key that is not a plain key, or a step that does not read back stops at once; the cleanup always runs."""
+    """The throwaway-sprint verification. Dry run (live False): the contract check and the plan, no write. Live: see the module docstring. -> {"ok": bool, "steps": {name: bool}, "why": {step: fixed code},
+    "cleaned": bool, "cleaned_parts": {"clone": bool, "sprint": bool}, "mode": ...}. A board that is not configured, an issue key that is not a plain key, a failed contract check or a missing DELETE_ISSUES permission
+    stops before any write (we never create an issue we cannot remove). A step that fails is recorded with a fixed code and the run goes on to the cleanup; reads after writes are retried (Jira is eventually consistent)."""
     chosen = [b for b in configured if b[0] == board and not b[3]]
     if not chosen or not ISSUE_KEY.match(str(issue_key or "")):
         raise JiraError("JIRA_VERIFY_ARGUMENTS_INVALID")
     board_id = chosen[0][1]
+    sleep = sleep or time.sleep
     check = contract_check(client, configured)
     if not live:
-        return {"mode": "dry_run", "ok": check["ok"], "steps": check["checks"], "cleaned": True}
+        return {"mode": "dry_run", "ok": check["ok"], "steps": check["checks"], "permissions": check["permissions"], "cleaned": True}
     if not check["ok"]:
         raise JiraError("JIRA_VERIFY_CONTRACT_FAILED")
+    if not (check["permissions"].get(board) or {}).get("DELETE_ISSUES"):
+        raise JiraError("JIRA_VERIFY_NO_DELETE_PERMISSION")
     tz = ZoneInfo("America/Chicago")
     now = now or datetime.now(tz)
     start = datetime.combine(now.astimezone(tz).date() + timedelta(days=60), datetime.min.time(), tzinfo=tz)       # far enough ahead to touch no real week
     name = _test_sprint_name(now)
     writers = raw_writers(client)
-    steps, sprint_id, clone = {}, None, None
+    steps, why, sprint_id, clone = {}, {}, None, None
+    held = lambda: _eventually(lambda: _held(client, sprint_id, clone), sleep)
+
+    def step(label, call):
+        try:
+            steps[label] = bool(call())
+            if not steps[label]:
+                why[label] = "READ_MISMATCH"
+        except JiraError as error:
+            steps[label], why[label] = False, _code(error)
     try:
         sprint_id = int(client.create_sprint(board_id, name, start, start + timedelta(days=6, hours=23, minutes=30))["id"])
-        steps["create_sprint"] = any(int(s["id"]) == sprint_id and s.get("name") == name for s in client.sprints(board_id, "future"))
+        step("create_sprint", lambda: _eventually(lambda: any(int(s["id"]) == sprint_id and s.get("name") == name for s in client.sprints(board_id, "future")), sleep))
         renamed = name + " RENAMED"
         client.rename_sprint(sprint_id, renamed)
-        steps["rename_sprint"] = any(int(s["id"]) == sprint_id and s.get("name") == renamed for s in client.sprints(board_id, "future"))
+        step("rename_sprint", lambda: _eventually(lambda: any(int(s["id"]) == sprint_id and s.get("name") == renamed for s in client.sprints(board_id, "future")), sleep))
         origin = client.issue(issue_key, "summary,description,assignee,priority,labels,parent,duedate,issuetype,project,issuelinks")
         clone = writers.create_clone(issue_key, rc.clone_fields(origin, 7), sprint_id, issue_key)
-        steps["clone_into_sprint"] = bool(clone) and _held(client, sprint_id, clone)
-        fresh = client.issue(clone, "summary,labels,issuelinks,sprint,status")
-        found = rc.series([origin, fresh])
-        steps["clone_link_identity"] = list(found) == [issue_key] and clone in found[issue_key]["keys"]
+        step("clone_into_sprint", lambda: bool(clone) and held())
+
+        def identity():
+            def read():
+                fresh = client.issue(clone, "summary,labels,issuelinks,sprint,status")
+                found = rc.series([origin, fresh], configured=(issue_key,))   # the origin need not carry the `recurring` label (the verification issue is any Done Task); the chain is what is checked
+                return list(found) == [issue_key] and clone in found[issue_key]["keys"]
+            return _eventually(read, sleep)
+        step("clone_link_identity", identity)
         writers.sync_fields(clone, {"summary": f"{TEST_PREFIX} sync"})
-        steps["sync_fields"] = (client.issue(clone, "summary").get("fields") or {}).get("summary") == f"{TEST_PREFIX} sync"
+        step("sync_fields", lambda: _eventually(lambda: (client.issue(clone, "summary").get("fields") or {}).get("summary") == f"{TEST_PREFIX} sync", sleep))
         writers.move_to_backlog([clone])
-        steps["move_to_backlog"] = clone in {i.get("key") for i in client.backlog_issues(board_id, "statusCategory != Done", "summary")}
+        step("move_to_backlog", lambda: _eventually(lambda: clone in {i.get("key") for i in client.backlog_issues(board_id, "statusCategory != Done", "summary")}, sleep))
         client.move_issues(sprint_id, [clone])
-        steps["back_into_sprint"] = _held(client, sprint_id, clone)
+        step("back_into_sprint", held)
         writers.close_done(clone, "verify-" + now.strftime("%Y%m%d%H%M"))
-        closed = client.issue(clone, "status,labels")
-        steps["close_done_with_label"] = (((closed.get("fields") or {}).get("status") or {}).get("statusCategory") or {}).get("key") == "done" and rc.AUTO_LABEL in ((closed.get("fields") or {}).get("labels") or [])
+
+        def closed():
+            fields = client.issue(clone, "status,labels").get("fields") or {}
+            return ((fields.get("status") or {}).get("statusCategory") or {}).get("key") == "done" and rc.AUTO_LABEL in (fields.get("labels") or [])
+        step("close_done_with_label", lambda: _eventually(closed, sleep))
+    except JiraError as error:
+        why["run"] = _code(error)                                           # a write that raised: the steps after it did not run; the cleanup below always does
     finally:
-        cleaned = True
-        for step in ("clone", "sprint"):
+        parts = {"clone": True, "sprint": True}
+        for part in ("clone", "sprint"):
             try:
-                if step == "clone" and clone:
+                if part == "clone" and clone:
                     client.delete_issue(clone)                              # only the issue this run created
-                if step == "sprint" and sprint_id is not None:
+                if part == "sprint" and sprint_id is not None:
                     client.delete_sprint(sprint_id)                         # only the throwaway sprint this run created, named with the test prefix
-            except JiraError:
-                cleaned = False
-    return {"mode": "live", "ok": all(steps.values()) and len(steps) == 8 and cleaned, "steps": steps, "cleaned": cleaned}
+            except JiraError as error:
+                parts[part] = False
+                why["cleanup_" + part] = _code(error)
+        cleaned = all(parts.values())
+    return {"mode": "live", "ok": all(steps.values()) and len(steps) == 8 and cleaned and "run" not in why, "steps": steps, "why": why, "cleaned": cleaned, "cleaned_parts": parts}
 
 
 def main(argv=None, environ=os.environ, client=None):
