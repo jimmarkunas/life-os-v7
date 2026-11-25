@@ -2,7 +2,11 @@
 
 Title with the quarter, the refresh label, one row per quarter Epic (linked to Jira, done / all) and the Quarterly Reviews toggle linking the review pages. This stage is the only writer of that callout.
 """
-from lifeos.accountability import common, index, read, region, render
+import os
+from datetime import datetime
+
+from lifeos.accountability import common, index, preview, read, region, render, switches
+from lifeos.platform.jira import Jira
 
 
 def lanes(jira, person, year, n):
@@ -30,4 +34,12 @@ def _build(client, block_id, person, project, jira, now, live, site, notion):
 
 
 def run(limit, live, environ=None, jira=None, notion=None, now=None):
-    return common.run_region("goals", _build, environ, jira, notion, now, live)
+    environ = os.environ if environ is None else environ
+    if not switches.on("V2_QUARTER_SHADOW", environ):                      # LIFE-918: off (the default) is exactly the stage as it was
+        return common.run_region("goals", _build, environ, jira, notion, now, live)
+    now = now or datetime.now(common.CHI)
+    notion = notion or common.notion_writer(environ)
+    jira = jira or Jira.from_env(environ)
+    out = common.run_region("goals", _build, environ, jira, notion, now, live)
+    extra = preview.shadow(environ, jira, notion, now, live)               # the v2 shadow and its own preview block; a failure there never fails this stage
+    return {**out, **({"preview": extra} if extra else {})}

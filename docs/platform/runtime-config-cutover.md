@@ -90,6 +90,8 @@ Filled in on the PR: same-head CI run IDs, `tools/preflight.sh` result, and the 
 | `V2_PROMOTION` | switch | the promotion kill switch: only `on` lets the first reconciliation run at or after Fri Jan 1 2027, 8:00 AM CT decide | off |
 | `V2_OFFICIAL` | switch | v2 quarterly figures are official; set only by the promotion run | off |
 
+**The v2 shadow and the preview block (LIFE-918 AC4/AC5).** With `V2_QUARTER_SHADOW` `on` AND `V3_PREVIEW_BLOCK_ID` naming a callout on the Jim & Matt V3 page (heading, one gray stamp paragraph, one body paragraph; any other shape is refused), the existing goals stage also writes that one callout, only on a live run: official legacy figures beside preview v2 figures per lane, v2 DEGRADED with its fixed code when the frozen membership is missing or ambiguous (the shipped manifest is empty), JFM shown as staying on legacy. It writes nowhere else, never fails the goals stage, and does nothing when either row is off. See the rendered text without any Notion or Jira call: `python -m lifeos.accountability.preview --synthetic`.
+
 Rollback: restore the before rows (all off), or revert the PR that reads them. These rows add no scheduler, credential or store, and the existing explicit-argument gates (`mej_metric_version`, `mej_task_focus`, `mej_selective`) are unchanged by this PR.
 
 **Permanent manual runs** use the one existing entry point (no new workflow, scheduler or test platform):
