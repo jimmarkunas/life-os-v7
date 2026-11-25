@@ -148,7 +148,8 @@ class StageTests(unittest.TestCase):
         self.assertEqual((counts["created"], counts["failed"], len(notion.pages)), (1, 0, 1))
         row = store.read(notion.pages[0])
         self.assertEqual((row["person"], row["company"], row["week_ending"], row["done"], row["active"], row["needs_review"], row["what"], row["medium"]),
-                         ("Pat Example", "Acme Staffing", "2026-10-11", False, True, False, "", "Email"))
+                         ("Pat Example", "Acme Staffing", "2026-10-11", False, True, True, row["what"], "Email"))
+        self.assertTrue(row["what"].startswith("Reply to their message"))                       # LIFE-989: never blank; a fallback ask ticks Needs review
         self.assertEqual(row["first_contact"], row["last_contact"])                              # LIFE-20: set once, from the message the row is created from
         again = run([signed()], notion, live=True)
         self.assertEqual((again["created"], again["existing"], len(notion.pages)), (0, 1, 1))

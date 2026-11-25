@@ -11,7 +11,12 @@ from lifeos.platform.notion_client import NotionError, rich_text
 from . import classify as C, notion as store, qualify as Q
 
 NOT_STATED = "Not stated"
-FIELDS = (("company", "Recruiter Company"), ("role", "Role"), ("client", "Client"))
+FIELDS_BASE = (("company", "Recruiter Company"), ("role", "Role"), ("client", "Client"))
+
+
+def fields():
+    """The fillable fields with their LIVE property names (LIFE-989: Recruiter Company is Company after the rename)."""
+    return tuple((f, store.live(n)) for f, n in FIELDS_BASE)
 TITLE_WORDS = (r"engineer|developer|architect|manager|director|analyst|consultant|administrator|designer|scientist|specialist|lead|officer|programmer|technician|"
                r"strategist|coordinator|supervisor|owner|head of [A-Za-z]+|vp|vice president|cto|cio|ciso|devops|sre|sdet|qa|tester|writer|editor|producer|planner|advisor|executive")
 TITLE = re.compile(rf"\b(?:(?:senior|sr\.?|junior|jr\.?|staff|principal|lead|associate|chief|global|regional|technical|enterprise|cloud|data|software|solutions?|systems?|network|security|"
@@ -117,7 +122,7 @@ def derive(message):
 def plan(row, message):
     """-> (props, sources): Notion properties filling only the BLANK fields of `row`, and {field: source} for the fields written. A set value (including `Not stated`) is never touched."""
     found, props, sources = derive(message), {}, {}
-    for field, name in FIELDS:
+    for field, name in fields():
         if str(row[field] or "").strip():
             continue
         value, source = found[field]
@@ -131,7 +136,7 @@ def apply(notion, row, message, write):
     props, sources = plan(row, message)
     if not props or not write:
         return sources
-    values = {f: props[n]["rich_text"][0]["text"]["content"] for f, n in FIELDS if n in props}
+    values = {f: props[n]["rich_text"][0]["text"]["content"] for f, n in fields() if n in props}
     with fixed(NotionError, store.RecruitersError, "RECRUITERS_NOTION_WRITE_FAILED"):
         store.set_props(notion, row, props, values)
     return sources
@@ -140,4 +145,48 @@ def apply(notion, row, message, write):
 def blank_rows(notion):
     """The open (Needs Action or Waiting) rows with at least one blank Company, Role or Client: the rows to fill."""
     rows = store.rows_where(notion, {"or": [{"property": "Action Status", "select": {"equals": s}} for s in (store.NEEDS_ACTION, store.WAITING)]})
-    return [r for r in rows if r["active"] and not r["done"] and any(not str(r[f] or "").strip() for f, _ in FIELDS)]
+    return [r for r in rows if r["active"] and not r["done"] and any(not str(r[f] or "").strip() for f, _ in fields())]
+
+
+# ---------- LIFE-989: What they want is never empty ----------
+ASK_STATUSES = (store.NEEDS_ACTION, store.WAITING, store.REPLIED)
+
+
+def ask_of(message):
+    """-> (the one-sentence ask, used_fallback) for the message behind a row: the extracted ask, else `Reply to their message about <role or subject>.`, else `Reply to their message.` Never empty.
+    Only the sentence is kept; no message text beyond it."""
+    shape, reason, evidence = C.classify(message)
+    verdict, detail = Q.qualify(message, shape, reason, evidence)
+    found = detail if verdict == "CANDIDATE" and isinstance(detail, dict) else {}
+    subject = SUBJECT_NOISE.sub("", str(message.get("subject") or "")).strip()
+    return store.what_or_fallback({"what": found.get("what", ""), "role": found.get("role") or role(message)[0], "subject": subject})
+
+
+def blank_ask_rows(notion):
+    """The open (Needs Action, Waiting or Replied) rows whose What they want is blank: the rows the ask backfill fills."""
+    rows = store.rows_where(notion, {"or": [{"property": "Action Status", "select": {"equals": s}} for s in ASK_STATUSES]})
+    return [r for r in rows if not str(r["what"] or "").strip()]
+
+
+def ask_plan(row, message):
+    """-> (props, fallback): the properties that fill a blank What they want (and tick Needs review when the fallback was used); ({}, False) for a row that already has text."""
+    if str(row["what"] or "").strip():
+        return {}, False
+    text, fallback = ask_of(message)
+    props = {"What they want": {"rich_text": rich_text(text)}}
+    if fallback:
+        props["Needs review"] = {"checkbox": True}
+    return props, fallback
+
+
+def apply_ask(notion, row, message, write):
+    """Fill one blank What they want. -> "ask" | "fallback" | "" (what was or would be written). One write, read back: the ask holds, Needs review as written, nothing else changed."""
+    props, fallback = ask_plan(row, message)
+    if not props:
+        return ""
+    if write:
+        text = props["What they want"]["rich_text"][0]["text"]["content"]
+        expect = {"what": text, **({"needs_review": True} if fallback else {})}
+        with fixed(NotionError, store.RecruitersError, "RECRUITERS_NOTION_WRITE_FAILED"):
+            store.set_props(notion, row, props, expect)
+    return "fallback" if fallback else "ask"

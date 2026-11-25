@@ -139,6 +139,8 @@ V7 must run with ChatGPT unavailable (D54). OpenClaw and Hermes run on the Oracl
 - Two cycles or ten minutes on a simple operation: challenge the design, don't add machinery.
 - Prefer subtraction over repair.
 
+**Notion views (Jim, Nov 25 2026, LIFE-989):** A Notion view Jim has arranged by hand is canon. Agents never change a view's columns, order, sort or filter unless a ticket names that view and the change.
+
 A request that breaks these rules stops with `ARCHITECTURAL DRIFT DETECTED — NO MUTATION`.
 
 ## 9. Proof and tests

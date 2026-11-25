@@ -22,6 +22,8 @@ from .identity import key, norm
 SCHEMA = {"Recruiter / Person": "title", "Recruiter Company": "rich_text", "Client": "rich_text", "Role": "rich_text", "Medium": "rich_text", "What they want": "rich_text",
           "Last Contact": "date", "Week Ending": "date", "Done": "checkbox", "Active": "checkbox", "Needs review": "checkbox", "Source URL": "url",
           "Action Status": "select", "Follow-up Date": "date", "First Contact": "date"}
+RENAMES = {"Recruiter / Person": "Recruiter", "Recruiter Company": "Company"}       # LIFE-989 (Jim, Nov 25 2026): Claude chat renames these two properties between :25 and :55 past an hour; the code accepts either name
+_live = {"Recruiter / Person": "Recruiter / Person", "Recruiter Company": "Recruiter Company"}       # the name each of the two has in the live schema (set by check_schema; read() never depends on it)
 MAX_PAGES = 20
 NEEDS_ACTION, WAITING = "Needs Action", "Waiting"
 REOPENABLE = ("", WAITING)
@@ -29,7 +31,46 @@ REPLIED, OFFERED, CONFIRMED, DECLINED = "Replied", "Referral Offered", "Referral
 CONVERSATION = (REPLIED, OFFERED, CONFIRMED)                          # Jim-recorded progress of a job-linked outreach row, in order (offered is never confirmed)
 HISTORY = ("Completed", "Dismissed", DECLINED)                        # history: a later message changes nothing on these rows
 FOLLOW_UP_DAYS = 2
-FILLABLE = (("Recruiter Company", "company"), ("Role", "role"), ("Client", "client"), ("Medium", "medium"), ("What they want", "what"))
+FILLABLE_BASE = (("Recruiter Company", "company"), ("Role", "role"), ("Client", "client"), ("Medium", "medium"), ("What they want", "what"))
+
+
+def live(old):
+    """The live property name for an old one (`Recruiter / Person`, `Recruiter Company`): the renamed one when the schema has it, else the old one; any other name is itself."""
+    return _live.get(old, old)
+
+
+def title_name():
+    return live("Recruiter / Person")
+
+
+def company_name():
+    return live("Recruiter Company")
+
+
+def fillable():
+    return tuple((live(name), field) for name, field in FILLABLE_BASE)
+
+
+def schema_ok(props):
+    """True when every property in SCHEMA exists with its type under its old OR renamed name; records which one is live. Never raises."""
+    if not isinstance(props, dict):
+        return False
+    chosen = {}
+    for name, kind in SCHEMA.items():
+        for candidate in (RENAMES.get(name), name):                    # the renamed name is preferred when both exist
+            if candidate and isinstance(props.get(candidate), dict) and props[candidate].get("type") == kind:
+                chosen[name] = candidate
+                break
+        else:
+            return False
+    _live.update({old: chosen[old] for old in RENAMES})
+    return True
+
+
+def _pick(props, old):
+    """The property value under the renamed or the old name, whichever the page carries."""
+    new = RENAMES.get(old)
+    return props.get(new) if new in props else props.get(old)
 
 
 class RecruitersError(NotionError):
@@ -39,7 +80,7 @@ class RecruitersError(NotionError):
 def check_schema(notion):
     with fixed(NotionError, RecruitersError, "RECRUITERS_NOTION_SCHEMA_READ_FAILED"):
         props = notion.call("GET", f"/data_sources/{quote(notion.source, safe='')}").get("properties")
-    if not isinstance(props, dict) or any(not isinstance(props.get(n), dict) or props[n].get("type") != t for n, t in SCHEMA.items()):
+    if not schema_ok(props):
         raise RecruitersError("RECRUITERS_NOTION_SCHEMA_MISMATCH")
 
 
@@ -57,7 +98,7 @@ def read(page):
     if not isinstance(props, dict):
         raise RecruitersError("RECRUITERS_NOTION_ROW_INVALID")
     date = lambda name: ((props.get(name) or {}).get("date") or {}).get("start") or ""
-    return {"page_id": page.get("id", ""), "person": _text(props.get("Recruiter / Person")), "company": _text(props.get("Recruiter Company")), "client": _text(props.get("Client")),
+    return {"page_id": page.get("id", ""), "person": _text(_pick(props, "Recruiter / Person")), "company": _text(_pick(props, "Recruiter Company")), "client": _text(props.get("Client")),
             "role": _text(props.get("Role")), "medium": _text(props.get("Medium")), "what": _text(props.get("What they want")), "last_contact": date("Last Contact"),
             "week_ending": date("Week Ending")[:10], "done": bool((props.get("Done") or {}).get("checkbox")), "active": bool((props.get("Active") or {}).get("checkbox")),
             "needs_review": bool((props.get("Needs review") or {}).get("checkbox")), "source_url": (props.get("Source URL") or {}).get("url") or "",
@@ -135,17 +176,32 @@ def plan(rows, candidate):
             props["Source URL"] = {"url": candidate["source_url"]}
         if row["action"] in REOPENABLE:                               # a new reply is something to act on again
             props["Action Status"] = {"select": {"name": NEEDS_ACTION}}
-    for name, field in FILLABLE:                                      # fill a blank from source evidence; never replace a human's value
+    for name, field in fillable():                                    # fill a blank from source evidence; never replace a human's value
         if _blank(row[field]) and candidate.get(field):
             props[name] = {"rich_text": rich_text(candidate[field])}
+            if field == "what" and candidate.get("what_fallback"):
+                props["Needs review"] = {"checkbox": True}            # LIFE-989: a fallback ask is a guess about the ask, so the row waits for a look
     return ("update", row, props) if props else ("existing", row, None)
 
 
+FALLBACK_WHAT = "Reply to their message"
+
+
+def what_or_fallback(candidate):
+    """LIFE-989 (Jim, Nov 25 2026: "What they want should ALWAYS be populated"): -> (text, used_fallback). The extracted one-sentence ask when there is one; otherwise a sentence built from the message's role or
+    subject, never blank: `Reply to their message about <role or subject>.` or `Reply to their message.` A fallback is a guess about the ask, so the caller ticks Needs review."""
+    ask = " ".join(str(candidate.get("what") or "").split())
+    if ask:
+        return ask, False
+    topic = " ".join(str(candidate.get("role") or candidate.get("subject") or "").split()).strip(" .")[:120]
+    return (f"{FALLBACK_WHAT} about {topic}." if topic else f"{FALLBACK_WHAT}."), True
+
+
 def _create_props(c):
-    props = {"Recruiter / Person": {"title": rich_text(c["person"])}, "Medium": {"rich_text": rich_text(c["medium"])}, "Last Contact": {"date": {"start": c["last_contact"]}},
+    props = {title_name(): {"title": rich_text(c["person"])}, "Medium": {"rich_text": rich_text(c["medium"])}, "Last Contact": {"date": {"start": c["last_contact"]}},
              "Week Ending": {"date": {"start": c["week_ending"]}}, "Done": {"checkbox": False}, "Active": {"checkbox": True}, "Needs review": {"checkbox": bool(c["needs_review"])},
              "Action Status": {"select": {"name": NEEDS_ACTION}}, "First Contact": {"date": {"start": c["last_contact"]}}}      # LIFE-20: the date of the message this row is created from; set once, never updated
-    for name, field in (("Recruiter Company", "company"), ("Client", "client"), ("Role", "role"), ("What they want", "what")):
+    for name, field in ((company_name(), "company"), ("Client", "client"), ("Role", "role"), ("What they want", "what")):
         if c.get(field):
             props[name] = {"rich_text": rich_text(c[field])}
     if c["source_url"]:
@@ -175,14 +231,14 @@ def update(notion, row, props, candidate):
     if len(found) != 1 or found[0]["page_id"] != row["page_id"]:
         raise RecruitersError("RECRUITERS_READBACK_MISMATCH")
     after = found[0]
-    if (after["done"], after["active"], after["needs_review"], after["person"]) != (row["done"], row["active"], row["needs_review"], row["person"]):
+    if (after["done"], after["active"], after["needs_review"], after["person"]) != (row["done"], row["active"], True if "Needs review" in props else row["needs_review"], row["person"]):
         raise RecruitersError("RECRUITERS_READBACK_MISMATCH")
     if "Last Contact" in props and not _same_instant(after["last_contact"], candidate["last_contact"]):
         raise RecruitersError("RECRUITERS_READBACK_MISMATCH")
     if (after["action"] != (NEEDS_ACTION if "Action Status" in props else row["action"]) or after["follow_up"] != row["follow_up"]
             or after["first_contact"] != row["first_contact"]):                                  # a later message never moves the first contact
         raise RecruitersError("RECRUITERS_READBACK_MISMATCH")
-    for name, field in FILLABLE:
+    for name, field in fillable():
         expected = candidate[field] if name in props else row[field]
         if after[field] != expected:
             raise RecruitersError("RECRUITERS_READBACK_MISMATCH")
