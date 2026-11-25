@@ -56,6 +56,18 @@ class PilotCommunity(unittest.TestCase):
         self.assertFalse(relay_choice.pilot_url_ok("https://life-os-dev.communities.buzz.xyz"))
         self.assertFalse(relay_choice.pilot_url_ok("http://127.0.0.1:3100"))
 
+class SeveralChannels(unittest.TestCase):
+    """LIFE-927: the four channels that match the hosted names are writable beside the pilot channel; a bad one in the list stops the service naming only the setting."""
+    def test_a_comma_list_wires_every_channel_and_one_bad_entry_refuses_the_whole_setting(self):
+        second = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+        relay = type("R", (), {"urls": {}, "keys": {}, "writes": set()})()
+        wired = pilot_community.wire({"BUZZ_RELAY": "pilot", "BUZZ_PILOT_CHANNEL": f"{CHANNEL}, {second.upper()}", "BUZZ_KEY_CLAUDE_PILOT": CLAUDE_KEY}, {"claude": relay}, lambda v: v)
+        self.assertEqual((wired, relay.writes), (("claude",), {("pilot", CHANNEL), ("pilot", second)}))
+        with self.assertRaises(ValueError) as caught:
+            pilot_community.wire({"BUZZ_RELAY": "pilot", "BUZZ_PILOT_CHANNEL": f"{CHANNEL},nope", "BUZZ_KEY_CLAUDE_PILOT": CLAUDE_KEY}, {"claude": relay}, lambda v: v)
+        self.assertEqual(str(caught.exception), "BUZZ_PILOT_CHANNEL")
+
+
 
 if __name__ == "__main__":
     unittest.main()
