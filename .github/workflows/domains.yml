@@ -288,6 +288,8 @@ jobs:
           MEJ_SPRINT_AUTOMATION: ""   # LIFE-918: the sprint automation switch, off unless the Runtime Configuration row says on; later steps (rollover, reconcile) read it from the job environment
           MEJ_AUTOMATION_SINCE: ""   # LIFE-918: the activation time for the manual/automatic closure split
           JIRA_WRITERS_VERIFIED: ""   # LIFE-918: yes only after the throwaway-sprint verification passed
+          V2_PROMOTION: ""   # LIFE-918: the promotion kill switch, read by the daily reconcile's promotion check
+          V2_OFFICIAL: ""   # LIFE-918: the one row the promotion check may set on Jan 1 (LIFE-976)
         run: python3 -m lifeos.platform.settings
       - id: jrollauto
         continue-on-error: true
