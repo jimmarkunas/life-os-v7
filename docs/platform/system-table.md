@@ -1,0 +1,19 @@
+# The System table (LIFE-975 step 4d)
+
+One callout on the Daily Report, `System (11/25 · 9:00 AM CT)`, holds one table: System, Usage, Reading, Resets / expires, Status. It replaces the Oracle Cloud callout, the AI Capacity callout and the System health database on the page, and the Command Center's source-health toggle.
+
+**One writer.** Stage `oracle-card` (kept under its old name so no registry or workflow moved) runs in the `imessage` job every tick. It reads Oracle's `oracle1` stats once, Oracle's `limits` once (Codex is read once for the whole table) and the System health database, builds sixteen rows (`lifeos/oraclecloud/system_table.py`) and writes only the heading and the cells that differ, in place, each read back (`lifeos/oraclecloud/card.py`). The callout is found at the top level of the page by its heading, through the page of the Jira card. The table's shape is never changed; a page that does not hold exactly one such callout is `CARD_NOT_OWNED` and nothing is written.
+
+**Rows, in this fixed order:** Oracle Memory, Disk, CPU (24 h avg), Cores, Cost, Services; Honcho Backup; Codex 5-hour, Codex Week; Anthropic Promo credit; Honcho Monthly cap; OpenRouter Key budget; Cloud Fit Daily guard; Connections; Sign-in Usage meter; Sign-in Cloud Fit.
+
+**Bars.** Ten blocks. Filled is the share used (budgets and capacity), the share healthy (Services, Backup, Connections) or the days left out of seven (sign-ins). Green while fine, orange at 70% used or 2 days left, red at 90% used, 1 day left, a service down or a connection failing; the empty part is gray. Four of four cores is orange with an OK (no headroom is not a fault).
+
+**Status.** A green `OK`, or a short red reason: `NEAR LIMIT` (90% used), `DOWN <service>`, `EXPIRES <time>`, `EXPIRED`, `FAILING`, `<SOURCE> DOWN`.
+
+**Stale rule.** A row whose reading is more than two hours old, or could not be had this run, says `STALE since <when>`. A reading that could not be had keeps the page's last Usage, Reading and Resets (never zero) and carries the earliest stale time the page already showed. Oracle unreachable makes the Oracle rows and the two Anthropic rows stale; an unreadable `limits` reply makes the Codex, OpenRouter, guard and sign-in rows stale.
+
+**Connections.** Counts the sources that should work in the System health database (`lifeos/platform/connections.py`): everything except the three off by design (TGP Everything, School Outlook, Bytalos Asana) and the retired Todoist row. Concord counts as should-work and shows `CONCORD DOWN` until something exercises it. The database's owned rows (`Managed by = v7-inbox-writer`) are refreshed each tick from the history of the `domains.yml` jobs that use each connection (read with the run's own token; no new credential): Last OK is when the job last passed, Health is 🟢 ok or 🔴 unavailable by its newest finished run. The data source id is the `LIFEOS_NOTION_SYSTEM_HEALTH_SOURCE` setting (never in source). The Todoist row is archived once.
+
+**Why the old cards went stale.** The System health database was written only by the LIFE-711 view writer, which LIFE-792 retired on Nov 16 2026: nothing wrote it afterwards. The AI Capacity card stopped at 2:02 PM CT on Nov 24 because LIFE-969 (#1513, merged 2:59 PM CT) moved its anchor to `JIRA_CARD_BLOCK_ID` without declaring that name in the capacity-card workflow's step; the settings loader only fills a name a step declares, so every run after that returned `not_configured` and still passed. The stage is a no-op stub now (`lifeos/jobs/fit/capacity_card.py`).
+
+**Todoist.** The Todoist launcher in Communications Attention reads `Todoist (N)`, the count of open tasks, written by `lifeos/imessage/comms_card.py` with the Followup stage's existing read-only token (`FOLLOWUP_TODOIST_PERSONAL_TOKEN`); a count that cannot be read leaves the launcher as it is.

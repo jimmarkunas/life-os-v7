@@ -1,63 +1,142 @@
+"""LIFE-975 step 4d: the System card stage: Oracle's stats, Codex read once, the Connections row from the System health database, one write in place."""
 import contextlib
+import datetime as dt
 import io
 import json
 import unittest
 from unittest import mock
 
-from lifeos.jobs.fit import capacity_card, edge
-from lifeos.oraclecloud import card
+from lifeos.jobs.fit import edge
+from lifeos.oraclecloud import card, system_table as st
+from lifeos.platform import connections, report_region
 from lifeos.sources.cards import oracle_card
-import datetime as dt
+from tests.oraclecloud.support import SystemPage, default_rows
+from tests.platform.test_connections import GOOD, database
+from tests.oraclecloud.test_system_table import limits as good_limits
 
-NOW = dt.datetime(2026, 10, 24, 17, 17, tzinfo=dt.timezone.utc)
-
-
-def reading(five=0, week=2, extra=()):
-    return {"read_at": "2026-10-24T17:17:00Z", "unavailable": [], "safety_cap": None,
-            "pools": [{"provider": "openai", "stop": 50, "windows": [{"label": "5h", "used": five, "reset_at": "2026-10-24T22:17:00Z"},
-                                                                       {"label": "Week", "used": week, "reset_at": "2026-10-30T17:41:00Z"}]}, *extra]}
+NOW = dt.datetime(2026, 11, 25, 15, 0, tzinfo=dt.timezone.utc)                  # 9:00 AM in Chicago
+ENV = {"IMESSAGE_ALERTS_HOST": " 100.64.0.9 ", "JIRA_CARD_BLOCK_ID": "jira", "NOTION_JIRA_TOKEN": "unused", "LIFEOS_NOTION_SYSTEM_HEALTH_SOURCE": "src-id"}
+SVC = {"gateway": True, "telegram": True, "whatsapp": True, "alerts": True}
 
 
-class Mirror(unittest.TestCase):
-    def test_left_is_one_hundred_minus_used_for_both_windows(self):
-        self.assertEqual(oracle_card.plan_from(reading(0, 2)), {"left_5h": 100, "left_week": 98})
-        self.assertEqual(oracle_card.plan_from(reading(100, 100)), {"left_5h": 0, "left_week": 0})
+def stats_raw(**over):
+    base = {"schema": card.SCHEMA, "observed_at": "2026-11-25T14:59:30Z", "cost": {"amount": 0, "currency": "USD"}, "cpu_24h_pct": 5.4, "memory_pct": 23.0, "disk_pct": 66.0,
+            "a1_cores": {"used": 4, "available": 0}, "reclaim": "NONE", "services": dict(SVC), "chatgpt": "unreported", "backup": {"ok": True, "code": "ok", "age_h": 3},
+            "honcho": {"health": True, "failed": False, "exhausted": False, "stopped": False, "backup": {"at": "2026-11-24T09:30:00Z", "ok": True}, "meter": {"cap": 25, "reserved": 0.7}},
+            "anthropic": {"billed_usd": 0.02, "honcho_usd": 0.1, "as_of": "2026-11-25T14:30:00Z"}}
+    return json.dumps({**base, **over}).encode()
 
-    def test_no_codex_pool_or_a_missing_window_is_none(self):
-        self.assertIsNone(oracle_card.plan_from({"pools": [], "read_at": "x", "unavailable": [], "safety_cap": None}))
-        one = reading()
-        one["pools"][0]["windows"] = one["pools"][0]["windows"][:1]
-        self.assertIsNone(oracle_card.plan_from(one))
-        self.assertIsNone(oracle_card.plan_from(reading(extra=())["pools"] and {"pools": [{"provider": "groq", "windows": []}]}))
 
-    def test_the_oracle_card_and_ai_capacity_show_the_same_numbers_for_every_used_pair(self):
-        for five, week in ((0, 0), (0, 2), (37, 64), (99, 100), (100, 100)):
-            r = reading(five, week)
-            capacity = capacity_card.codex_line(r)                                   # "Codex allowance · 5-hour 37% used · weekly 64% used · Cloud Fit stops at 50%"
-            plan = oracle_card.plan_from(r)
-            self.assertIn(f"5-hour {five:g}% used", capacity)
-            self.assertIn(f"weekly {week:g}% used", capacity)
-            self.assertEqual((plan["left_5h"], plan["left_week"]), (100 - five, 100 - week))
+def reading():
+    return good_limits(read_at="2026-11-25T14:59:00Z"), dt.datetime(2026, 11, 25, 14, 59, tzinfo=dt.timezone.utc)
 
-    def test_run_hands_the_card_the_limits_reading_and_the_host(self):
-        seen = {}
 
-        def fake_card_run(limit, live, environ, plan=None, **kw):
-            seen["plan"] = plan()
-            return {"written": 2}
-        with mock.patch.object(edge, "limits", lambda host: seen.setdefault("host", host) and reading(0, 2)), mock.patch.object(card, "run", fake_card_run):
-            counts = oracle_card.run(0, True, {"IMESSAGE_ALERTS_HOST": " 100.64.0.9 "})
-        self.assertEqual((counts, seen), ({"written": 2}, {"host": "100.64.0.9", "plan": {"left_5h": 100, "left_week": 98}}))
+class Run(unittest.TestCase):
+    def run_card(self, page, live=True, raw=None, lim=None, seen=GOOD, env=None):
+        calls = {"limits": 0}
 
-    def test_a_failed_limits_read_is_none_with_a_fixed_code_in_the_log(self):
+        def limits(host):
+            calls["limits"] += 1
+            return lim() if callable(lim) else (lim or reading())
+        out = io.StringIO()
+        noop = lambda *a, **k: None
+        with mock.patch.object(report_region, "require_configured", lambda ids, fail: None), contextlib.redirect_stdout(out):
+            counts = oracle_card.run(0, live, env or ENV, NOW, lambda host: raw or stats_raw(), page, limits, seen, noop, noop, noop)
+        return counts, calls, out.getvalue()
+
+    def test_a_live_run_writes_the_sixteen_rows_and_the_stamped_heading_in_place(self):
+        page = database()
+        counts, calls, _ = self.run_card(page)
+        self.assertEqual((counts["rows"], counts["stale"], counts["oracle"], counts["limits"], counts["connections"]), (16, 0, 1, 1, "5/6"))
+        self.assertEqual(page.plain("sys-h"), "System (11/25 · 9:00 AM CT)")
+        table = page.row_text()
+        self.assertEqual([r[0] for r in table[1:]], list(st.LABELS))
+        rows = {r[0]: r for r in table[1:]}
+        self.assertEqual((rows["Oracle · Memory"][2], rows["Codex · 5-hour"][2], rows["Connections"][2], rows["Connections"][4]), ("23%", "7% used", "5 of 6 connected · Concord not connected · 3 off by design", "CONCORD DOWN"))
+        self.assertEqual({r[4] for k, r in rows.items() if k != "Connections"}, {"OK"})
+        self.assertEqual(calls["limits"], 1)                                                              # Codex is read ONCE for the whole table
+
+    def test_only_the_heading_and_the_table_rows_are_ever_written(self):
+        page = database()
+        self.run_card(page)
+        self.assertTrue(set(p[0] for p in page.patches) <= {"sys-h"} | {f"sys-r{i}" for i in range(17)})
+        self.assertEqual(page.plain("sys-h").split(" (")[0], "System")
+        self.assertNotIn("jira", {p[0] for p in page.patches})
+
+    def test_a_dry_run_resolves_the_block_and_writes_nothing_anywhere(self):
+        page = database()
+        counts, _, _ = self.run_card(page, live=False)
+        self.assertEqual((counts["rows_changed"], counts["rows_written"], counts["written"], page.patches, page.log), (16, 0, 0, [], []))
+
+    def test_the_second_run_writes_nothing_new(self):
+        page = database()
+        self.run_card(page)
+        mark, pages = len(page.patches), len(page.log)
+        counts, _, _ = self.run_card(page)
+        self.assertEqual((counts["rows_changed"], counts["connections_written"], len(page.patches) - mark, len(page.log) - pages), (0, 0, 0, 0))
+
+    def test_the_health_database_rows_are_refreshed_and_the_todoist_row_is_retired(self):
+        page = database()
+        counts, _, _ = self.run_card(page)
+        self.assertEqual((counts["connections_written"], counts["todoist_row_retired"]), (5, 1))
+        self.assertEqual(page.pages["pg-health:personal:jira"]["properties"]["Last OK"]["rich_text"][0]["plain_text"], "11/25 · 8:40 AM CT")
+        self.assertTrue(page.pages["pg-health:personal:todoist"].get("in_trash"))
+        self.assertEqual(page.pages["pg-health:all:concord"]["properties"]["Health"]["select"]["name"], connections.NOT_CONNECTED)
+
+    def test_oracle_unreachable_goes_stale_row_by_row_and_the_run_still_writes(self):
+        page = database()
+        self.run_card(page)
+
+        def refuse(host):
+            raise OSError()
+        noop = lambda *a, **k: None
+        later = NOW + dt.timedelta(minutes=58)
+        with mock.patch.object(report_region, "require_configured", lambda ids, fail: None), contextlib.redirect_stdout(io.StringIO()):
+            counts = oracle_card.run(0, True, ENV, later, refuse, page, lambda host: reading(), GOOD, noop, noop, noop)
+        rows = {r[0]: r for r in page.row_text()[1:]}
+        self.assertEqual((counts["oracle"], counts["stale"]), (0, 9))                                       # the seven Oracle rows and the two Anthropic rows that Oracle reports
+        self.assertEqual(rows["Oracle · Memory"][2:], ["23%", "—", "STALE since 9:00 AM"])                  # the last reading is kept, never zero
+        self.assertEqual(rows["Codex · Week"][4], "OK")
+
+    def test_limits_that_cannot_be_read_make_only_the_limits_rows_stale_with_a_fixed_code_in_the_log(self):
+        page = database()
+        counts, _, _ = self.run_card(page, lim=lambda: (None, None))
+        self.assertEqual((counts["limits"], counts["stale"]), (0, 6))                                       # Codex x2, OpenRouter, the guard and the two sign-ins
         def boom(host):
             raise edge.EdgeError("FIT_EDGE_NO_REPLY")
-        got, out = {}, io.StringIO()
-        with mock.patch.object(edge, "limits", boom), mock.patch.object(card, "run", lambda limit, live, environ, plan=None, **kw: got.setdefault("plan", plan())), \
-                contextlib.redirect_stdout(out):
-            oracle_card.run(0, True, {"IMESSAGE_ALERTS_HOST": "h"})
-        self.assertIsNone(got["plan"])
-        self.assertEqual(out.getvalue().strip(), 'oracle-card: codex limits unavailable ' + json.dumps({"code": "FIT_EDGE_NO_REPLY"}))
+        out = io.StringIO()
+        with mock.patch.object(edge, "limits", boom), contextlib.redirect_stdout(out):
+            self.assertEqual(oracle_card.limits_of("h"), (None, None))
+        self.assertIn('oracle-card: limits unavailable {"code": "FIT_EDGE_NO_REPLY"}', out.getvalue())
+
+    def test_an_unreadable_health_database_goes_stale_on_the_connections_row_only(self):
+        page = database()
+        real = page.call
+        def call(method, path, body=None):
+            if method == "POST":
+                raise card.NotionError("NOTION_HTTP_404")
+            return real(method, path, body)
+        page.call = call
+        counts, _, _ = self.run_card(page)
+        self.assertEqual((counts["connections"], counts["stale"]), ("unread", 1))
+
+    def test_without_the_health_source_setting_the_connections_row_goes_stale_and_nothing_else_changes(self):
+        page = database()
+        counts, _, _ = self.run_card(page, env={k: v for k, v in ENV.items() if k != "LIFEOS_NOTION_SYSTEM_HEALTH_SOURCE"})
+        self.assertEqual((counts["connections"], counts["stale"], counts["written"] > 0), ("unread", 1, True))
+        self.assertEqual(page.log, [])                                                                   # no database row is touched
+
+    def test_not_configured_without_a_host_or_the_jira_anchor(self):
+        for env in ({"JIRA_CARD_BLOCK_ID": "jira"}, {"IMESSAGE_ALERTS_HOST": "h"}):
+            with self.assertRaises(card.OracleCardError) as error:
+                self.run_card(database(), env=env)
+            self.assertEqual(str(error.exception), "ORACLE_NOT_CONFIGURED")
+
+    def test_a_page_with_no_system_callout_writes_nothing(self):
+        page = SystemPage("Oracle Cloud")
+        with self.assertRaises(card.OracleCardError) as error:
+            self.run_card(page)
+        self.assertEqual((str(error.exception), page.patches), ("CARD_NOT_OWNED", []))
 
 
 if __name__ == "__main__":

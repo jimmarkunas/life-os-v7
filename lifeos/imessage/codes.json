@@ -6,6 +6,7 @@
   "COMMS_SCRAMBLE_INVALID": ["imessage", "bug", false, "The scrambled counts failed validation.", "Check the Mac service."],
   "COMMS_STALE": ["imessage", "degraded", false, "The comms data is older than the freshness limit.", "Check the Mac service."],
   "COMMS_UNREACHABLE": ["imessage", "retry", false, "The comms endpoint could not be reached.", "None; retried next tick."],
+  "TODOIST_UNREADABLE": ["imessage", "degraded", false, "The Todoist open-task count could not be read; the launcher keeps its last text.", "Retried next tick."],
   "COMMS_WRITE_FAILED": ["imessage", "degraded", false, "The card could not be written to Notion.", "Retried next tick."],
   "ACTION_REQUIRED": ["imessage", "state", false, "Attention level: action is required.", "None."],
   "TIME_CRITICAL": ["imessage", "state", false, "Attention level: time critical.", "None."],

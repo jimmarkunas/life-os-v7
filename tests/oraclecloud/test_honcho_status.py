@@ -3,7 +3,7 @@ import datetime as dt
 import unittest
 from copy import deepcopy
 
-from lifeos.oraclecloud import card
+from lifeos.oraclecloud import card, system_table
 from lifeos.platform import honcho_status as hs
 from tests.oraclecloud.test_card import NOW, stats
 
@@ -106,24 +106,32 @@ class Read(unittest.TestCase):
 
 
 class OracleCard(unittest.TestCase):
-    def test_stats_that_report_honcho_are_accepted_and_put_one_line_under_services(self):
-        reading = card.validate(__import__("json").dumps(stats(honcho=GOOD, anthropic=BILLED)).encode(), NOW)
-        segments, _ = card.render(reading, NOW)
-        full = card.text_of(segments)
-        self.assertEqual(full.count("Honcho:"), 1)
-        self.assertLess(full.index("Services:"), full.index("Honcho:"))
-        self.assertLess(full.index("Honcho:"), full.index("Codex 5h"))
+    """LIFE-975 step 4d: Oracle's honcho and anthropic readings are rows of the System table (Honcho · Backup, Honcho · Monthly cap, Anthropic · Promo credit)."""
 
-    def test_older_stats_without_honcho_leave_the_card_exactly_as_it_was(self):
-        reading = card.validate(__import__("json").dumps(stats()).encode(), NOW)
-        self.assertNotIn("Honcho", card.text_of(card.render(reading, NOW)[0]))
+    def rows(self, **over):
+        reading = card.validate(__import__("json").dumps(stats(**over)).encode(), NOW)
+        built = system_table.readings(reading, NOW, None, None, None, NOW)
+        return {r[0][0][0]: r for r in system_table.finish(built, {}, None, NOW)[1:]}
 
-    def test_a_synthetic_FAILED_marker_reaches_the_card_as_a_red_alert(self):
+    def test_stats_that_report_honcho_are_accepted_and_become_the_backup_and_cap_rows(self):
+        rows = self.rows(honcho=GOOD, anthropic=BILLED)
+        backup = rows["Honcho · Backup"]
+        self.assertEqual((backup[4], backup[1][0][1]), ([("OK", "green")], "green"))
+        self.assertIn("healthy", backup[2][0][0])
+        self.assertTrue(rows["Honcho · Monthly cap"][2][0][0].startswith("$"))
+        self.assertTrue(rows["Anthropic · Promo credit"][2][0][0].startswith("$"))
+
+    def test_older_stats_without_honcho_leave_those_rows_unread_and_stale_never_zero(self):
+        rows = self.rows()
+        for label in ("Honcho · Backup", "Honcho · Monthly cap", "Anthropic · Promo credit"):
+            self.assertEqual(rows[label][4][0][1], "red", label)
+            self.assertEqual(rows[label][2], [("unavailable", None)], label)
+
+    def test_a_synthetic_FAILED_marker_reaches_the_table_as_a_red_down(self):
         failed = deepcopy(GOOD)
         failed["failed"] = True
-        reading = card.validate(__import__("json").dumps(stats(honcho=failed, anthropic=BILLED)).encode(), NOW)
-        segments, _ = card.render(reading, NOW)
-        self.assertIn(("Honcho: ALERT ✗", "red"), segments)
+        rows = self.rows(honcho=failed, anthropic=BILLED)
+        self.assertEqual(rows["Honcho · Backup"][4], [("DOWN", "red")])
 
     def test_an_off_contract_honcho_reading_refuses_the_whole_reply(self):
         with self.assertRaises(card.OracleCardError):

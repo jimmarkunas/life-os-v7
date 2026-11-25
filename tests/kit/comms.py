@@ -20,6 +20,7 @@ class Report:
     def __init__(self, heading="Communications Attention (Updated 3:05 AM CT)"):
         self.blocks, self.kids, self.patches = {}, {}, []
         self.add("col", "column", "root")
+        self.blocks["col"]["parent"] = {"type": "page_id", "page_id": "root"}              # LIFE-975: the page is found by climbing from the Calendar card, so the column sits on a page
         self.add("attn", "callout", "col", [text("Updated 10:01 AM CT · 3 active exceptions")])
         self.add("comms", "callout", "col", [])
         self.add("head", "heading_3", "comms", [text(heading)])

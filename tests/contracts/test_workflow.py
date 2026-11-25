@@ -755,7 +755,7 @@ DOMAIN_SECRETS = {         # the only secrets each domain job may see; adding on
     "report": {"NTFY_TOPIC"},   # the failure-push job: the phone topic and nothing else
     "chain": set(),   # LIFE-904: the clock receipt reads the Actions API with the run's own token and holds no secret
     "gate": {"NOTION_JIRA_TOKEN"},   # LIFE-604 item 11: the gate holds no credential of its own (the run's own token); LIFE-703: it also reads the V7 settings page with the Notion token from the settings loader
-    "imessage": DB | {"LIFEOS_ACQ_SSH_PORT", "NTFY_TOPIC", "IMESSAGE_ALERTS_HOST", "NOTION_JIRA_TOKEN", "AMAZON_CARD_BLOCK_ID", "ATTENTION_CARD_BLOCK_ID",
+    "imessage": DB | {"LIFEOS_ACQ_SSH_PORT", "NTFY_TOPIC", "IMESSAGE_ALERTS_HOST", "NOTION_JIRA_TOKEN", "FOLLOWUP_TODOIST_PERSONAL_TOKEN", "AMAZON_CARD_BLOCK_ID", "ATTENTION_CARD_BLOCK_ID",
                   "BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID"},   # LIFE-34 Communications card (Notion writer + region anchors). LIFE-31: the Tailscale OAuth pair goes only to the pinned join action (see TAILSCALE_WITH)
     "jira": DB | {"JIRA_API_TOKEN", "JIRA_BASE_URL", "JIRA_BOARDS", "JIRA_CARD_BLOCK_ID", "JIRA_CARD_PROJECTS", "JIRA_EMAIL",
                   "JIRA_GTV_CONTEXT_URL", "JIRA_GTV_EPIC", "JIRA_SITE_URL", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"},
@@ -1023,7 +1023,7 @@ LOADED = {
     "network": {"network": DB | JUMP | TS | {"NOTION_API_TOKEN"}},
     "boards": {"boards": DB | JUMP | TS},        # LIFE-854: the employer-board windows load the store and tailnet credentials the hourly job's boards step used, and nothing else
     "v3-pages": {"v3pages": {"JIRA_API_TOKEN", "JIRA_EMAIL", "NOTION_JIRA_TOKEN"}},
-    "capacity-card": {"capacitycard": {"TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST", "NOTION_JIRA_TOKEN"}},       # LIFE-793: the AI Capacity card, the same four credentials it used in the imessage job       # LIFE-793: the five V3 page stages, the same three credentials they used in the jira job
+    "capacity-card": {"capacitycard": {"TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "NOTION_JIRA_TOKEN"}},       # LIFE-975: the retired AI Capacity stage reads nothing; IMESSAGE_ALERTS_HOST is no longer loaded       # LIFE-793: the five V3 page stages, the same three credentials they used in the jira job
     "outlook": {"outlook": DB | {"OUTLOOK_CLIENT_ID"}},
     "profile-sync": {"sync": DB | {"NOTION_FIT_SYNC_TOKEN"}},
     "granola-auto": {"auto": DB - {"LIFEOS_ACQ_SSH_PORT"} | {"NOTION_INTERVIEW_TOKEN", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"}},

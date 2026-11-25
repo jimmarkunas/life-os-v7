@@ -36,6 +36,8 @@ WAIT = 100                                                             # seconds
 REPLY_TTL_SECONDS = 600                                               # seconds: an older observation is refused, never shown as current
 LAUNCHES = {"messages": "/launch/messages/", "telegram": "/launch/telegram/", "whatsapp": "/launch/whatsapp/"}
 LABELS = {"messages": "Messages", "telegram": "Telegram", "whatsapp": "WhatsApp"}
+TODOIST_LAUNCH = "/launch/todoist/"                                    # LIFE-975 step 4d: the Todoist launcher reads `Todoist (N)` with the live count of open tasks (it was `(-)`)
+TODOIST_LIMIT = 99                                                     # more than this many open tasks reads `99+`, like the other counts
 CHANNEL_BLOCKS = ("telegram", "whatsapp")
 STATES = ("PRESENT", "NONE", "UNAVAILABLE")
 PROTECTED = (("JIRA_CARD_BLOCK_ID", router.JIRA_REGION), ("CALENDAR_CARD_BLOCK_ID", router.CALENDAR_REGION), ("BILLS_CARD_BLOCK_ID", router.BILLS_REGION),
@@ -131,19 +133,28 @@ def _children(client, block_id):
     return report_region.children(client, block_id, _fail)
 
 
-def locate(client, anchor):
-    """-> (heading block, {channel: (left paragraph, its right-column paragraph)}). Exactly one Communications callout beside the Calendar callout, two
-    columns, and for each channel exactly one row whose link opens its launch page with a paragraph at the same position on the right; else CARD_NOT_OWNED."""
-    meta = client.call("GET", f"/blocks/{quote(report_region.clean_id(anchor), safe='')}")
-    parent = (meta.get("parent") if isinstance(meta, dict) else None) or {}
-    if parent.get("type") != "block_id":
-        raise _fail("CARD_NOT_OWNED")
+def _callouts(client, parent_id, depth=0):
+    """Every callout under `parent_id` (walking through columns and rows of columns only) whose first child is the Communications heading."""
     found = []
-    for block in _children(client, parent["block_id"]):
+    for block in _children(client, parent_id):
         if block.get("type") == "callout":
             kids = _children(client, block["id"])
             if kids and kids[0].get("type") in report_region.HEADINGS and report_region.titled(report_region.plain(kids[0]), TITLE):
                 found.append(kids)
+        elif block.get("type") in ("column_list", "column") and depth < 4:
+            found += _callouts(client, block["id"], depth + 1)
+    return found
+
+
+def locate(client, anchor):
+    """-> (heading block, {channel: (left paragraph, its right-column paragraph)}, the Todoist launcher paragraph or None). Exactly one Communications callout on the page (found through the Calendar card,
+    which is on it: Jim's Nov 25 layout puts the callout in the other column, so no longer beside it), two columns, and for each channel exactly one row whose link opens its launch page with a paragraph
+    at the same position on the right; else CARD_NOT_OWNED. The Todoist launcher is the one paragraph of the callout that links to its launch page; two of them are ambiguous (CARD_NOT_OWNED)."""
+    meta = client.call("GET", f"/blocks/{quote(report_region.clean_id(anchor), safe='')}")
+    if not isinstance(meta, dict) or not meta.get("parent"):
+        raise _fail("CARD_NOT_OWNED")
+    page = report_region.page_of(client, meta, _fail)
+    found = _callouts(client, page)
     if len(found) != 1:
         raise _fail("CARD_NOT_OWNED")
     heading, rest = found[0][0], found[0][1:]
@@ -156,6 +167,9 @@ def locate(client, anchor):
                 lists.append(columns)
     if len(lists) != 1 or len(lists[0]) != 2:
         raise _fail("CARD_NOT_OWNED")
+    todoists = [b for block in rest if block.get("type") == "column_list" for column in _children(client, block["id"]) for b in _children(client, column["id"]) if _todoist_item(b) is not None]
+    if len(todoists) > 1:
+        raise _fail("CARD_NOT_OWNED")
     left, right = (_children(client, c["id"]) for c in lists[0])
     found = {}
     for channel in LAUNCHES:
@@ -163,19 +177,27 @@ def locate(client, anchor):
         if len(rows) != 1 or rows[0] >= len(right) or right[rows[0]].get("type") != "paragraph":
             raise _fail("CARD_NOT_OWNED")
         found[channel] = (left[rows[0]], right[rows[0]])
-    return heading, found
+    return heading, found, (todoists[0] if todoists else None)
 
 
 def _items(block):
     return ((block.get(block.get("type")) or {}).get("rich_text") or []) if isinstance(block, dict) else []
 
 
-def _link_item(block, channel):
+def _launch_item(block, launch):
     if not isinstance(block, dict) or block.get("type") != "paragraph":
         return None
     hits = [i for i, item in enumerate(_items(block))
-            if item.get("type") == "text" and LAUNCHES[channel] in str(((item.get("text") or {}).get("link") or {}).get("url") or "")]
+            if item.get("type") == "text" and launch in str(((item.get("text") or {}).get("link") or {}).get("url") or "")]
     return hits[0] if len(hits) == 1 else None
+
+
+def _link_item(block, channel):
+    return _launch_item(block, LAUNCHES[channel])
+
+
+def _todoist_item(block):
+    return _launch_item(block, TODOIST_LAUNCH)
 
 
 def _sendable(item):
@@ -203,6 +225,38 @@ def _patch_text(client, block, items):
 
 def _plain(items):
     return [i.get("plain_text", "") for i in items]
+
+
+def write_todoist(client, block, label):
+    """The Todoist launcher's link text only (`Todoist (13)`); its icon, its link and everything else on the paragraph are sent back exactly as read, then it is read back."""
+    before, at = _items(block), _todoist_item(block)
+    items = [_sendable(i) for i in before]
+    items[at]["text"]["content"] = label
+    if _plain(before)[at] != label:
+        _patch_text(client, block, items)
+        expect = _plain(before)
+        expect[at] = label
+        if _plain(_items(client.call("GET", f"/blocks/{quote(block['id'], safe='')}"))) != expect:
+            raise _fail("COMMS_READBACK_MISMATCH")
+        return 1
+    return 0
+
+
+def todoist_label(count):
+    return f"Todoist ({'99+' if count > TODOIST_LIMIT else count})"
+
+
+def todoist_count(environ, tasks=None):
+    """-> the number of open Todoist tasks, or None when it cannot be read (the launcher is then left as it is, never written as zero). Read only; the credential is the Followup stage's existing one."""
+    token = (environ.get("FOLLOWUP_TODOIST_PERSONAL_TOKEN") or "").strip()
+    if not token:
+        return None
+    try:
+        from lifeos.platform import todoist                                                      # noqa: PLC0415
+        return len((tasks or todoist.Todoist(token).tasks)(TODOIST_LIMIT + 1))
+    except Exception:                                                                            # noqa: BLE001 - a fixed word only: never the token, a URL or a body
+        print("imessage-comms: todoist unavailable", json.dumps({"code": "TODOIST_UNREADABLE"}))
+        return None
 
 
 def write(client, heading, rows, lines, heading_text):
@@ -233,7 +287,7 @@ def _writer(environ):
     return Client({"NOTION_API_TOKEN": (environ.get("NOTION_JIRA_TOKEN") or "").strip(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused"})
 
 
-def run(limit, live, environ=os.environ, now=None, fetcher=fetch, client=None, keygen=os.urandom):
+def run(limit, live, environ=os.environ, now=None, fetcher=fetch, client=None, keygen=os.urandom, tasks=None):
     host = (environ.get("IMESSAGE_ALERTS_HOST") or "").strip()
     anchor = (environ.get("CALENDAR_CARD_BLOCK_ID") or "").strip()                          # LIFE-969: the Communications callout sits in the Calendar card's column (the Attention card was its anchor before)
     if not host or not anchor:
@@ -253,15 +307,18 @@ def run(limit, live, environ=os.environ, now=None, fetcher=fetch, client=None, k
         rows = UNAVAILABLE
     lines, heading_text = render(rows, now)
     client = client or _writer(environ)
-    heading, blocks = locate(client, anchor)
+    heading, blocks, todoist = locate(client, anchor)
+    count = todoist_count(environ, tasks) if todoist is not None else None
     counts = {"unread_7d": rows["messages"][0], "latest": rows["messages"][1].lower(),
               **{f"{c}_latest": rows[c][1].lower() for c in CHANNEL_BLOCKS},
-              **{f"{c}_{k}": v for c in CHANNEL_BLOCKS for k, v in detail[c].items()}, "written": 0}
+              **{f"{c}_{k}": v for c in CHANNEL_BLOCKS for k, v in detail[c].items()}, "todoist": "none" if todoist is None else "unread" if count is None else count, "written": 0}
     if not live:
         return counts
     report_region.require_configured({region: (environ.get(var) or "").strip() for var, region in PROTECTED}, _fail)
-    scoped = report_region.ScopedClient(client, heading["id"], _fail).adopt(*(b["id"] for pair in blocks.values() for b in pair))      # LIFE-613: only the blocks located above can be written
+    scoped = report_region.ScopedClient(client, heading["id"], _fail).adopt(*(b["id"] for pair in blocks.values() for b in pair), *([todoist["id"]] if todoist else []))      # LIFE-613: only the blocks located above can be written
     with fixed(NotionError, _fail, "COMMS_WRITE_FAILED"):
         write(scoped, heading, blocks, lines, heading_text)
-    counts["written"] = 2 * len(blocks) + 1
+        counts["written"] = 2 * len(blocks) + 1
+        if todoist is not None and count is not None:
+            counts["written"] += write_todoist(scoped, todoist, todoist_label(count))
     return counts
