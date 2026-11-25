@@ -53,6 +53,7 @@ jobs:
           names: LIVE
           live_mode: ${{ github.event_name == 'workflow_dispatch' && !inputs.tick && (inputs.live && 'true' || 'false') || 'follow' }}
       - id: doppler_trial
+        if: ${{ steps.bws_capacitycard.outcome == 'success' }}
         continue-on-error: true       # LIFE-863: a Doppler problem is a code in the log and never fails the job; Bitwarden's values above are the ones this job uses
         name: Doppler trial (LIFE-863; reads the same four names from Doppler and compares each with Bitwarden's value by hash; counts and a fixed code only, no value printed; production keeps Bitwarden)
         uses: ./.github/actions/doppler-load
@@ -75,6 +76,15 @@ jobs:
           set_env: false
           secrets: |
             0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
+      - id: doppler_bws_runtime_config
+        if: ${{ steps.bws_runtime_config.outcome == 'success' }}
+        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
+        name: Doppler parity compare (LIFE-981; the same 1 name read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
+        uses: ./.github/actions/doppler-load
+        with:
+          token: ${{ secrets.DOPPLER_TOKEN }}
+          names: V7_RUNTIME_CONFIG_SOURCE_ID
+          bitwarden: ${{ toJSON(steps.bws_runtime_config.outputs) }}
       - id: capacity
         continue-on-error: true
         name: AI Capacity card (readings only, no model run; numbers only in the log; writes only when live)

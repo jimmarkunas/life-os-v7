@@ -268,7 +268,7 @@ class InterviewJobIsIsolated(unittest.TestCase):
         block = self.block()
         self.assertIn("github.event_name == 'workflow_dispatch'", block)
         self.assertNotIn("\n    continue-on-error:", block)                    # a job-level continue-on-error would hide the result from the report job
-        self.assertEqual(block.count("continue-on-error: true"), 5)            # the four steps (D233: + the negative acceptance case) plus the address loader (LIFE-859); the Bitwarden load and its retry are inside the local action (LIFE-631)
+        self.assertEqual(block.count("continue-on-error: true") - block.count("actions/doppler-load"), 5)            # the four steps (D233: + the negative acceptance case) plus the address loader (LIFE-859); the Bitwarden load and its retry are inside the local action (LIFE-631)
         self.assertIn("::warning", block)
 
 
