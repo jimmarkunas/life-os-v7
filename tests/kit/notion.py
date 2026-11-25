@@ -102,7 +102,7 @@ class PaidBillTracker:
         return copy.deepcopy(self.pages[page_id])
 
     def update_page_properties(self, page_id, properties):
-        allowed = {"Last Paid", "Due Date", "Status", "Paid"}
+        allowed = {"Last Paid", "Due Date", "Status", "Paid", "Pay"}
         if not set(properties).issubset(allowed):
             raise AssertionError("unexpected Bill Tracker property")
         self.event_log.append(("update", tuple(properties)))

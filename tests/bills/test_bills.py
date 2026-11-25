@@ -137,14 +137,15 @@ class DisplayFieldTests(unittest.TestCase):
 
 
 def paid_page(*, page_id="11111111-1111-4111-8111-111111111111", cycle="Monthly", paid=True,
-              status="Active", next_due="2026-10-10"):
+              status="Active", next_due="2026-10-10", pay=None, due="2026-10-01"):
     return {"id": page_id, "parent": {"type": "data_source_id", "data_source_id": PaidBillTracker.SOURCE},
             "properties": {
                 "Name": {"type": "title", "title": [{"plain_text": "Example Systems"}]},
                 "Status": {"type": "select", "select": {"name": status} if status else None},
                 "Cycle": {"type": "select", "select": {"name": cycle} if cycle else None},
                 "Paid": {"type": "checkbox", "checkbox": paid},
-                "Due Date": {"type": "date", "date": {"start": "2026-10-01"}},
+                "Pay": {"type": "select", "select": {"name": pay} if pay else None},
+                "Due Date": {"type": "date", "date": {"start": due}},
                 "Next Due": {"type": "formula", "formula": {"type": "date",
                                                               "date": {"start": next_due} if next_due else None}},
                 "Last Paid": {"type": "date", "date": None},
@@ -174,7 +175,8 @@ class PaidProcessorTests(unittest.TestCase):
         self.assertEqual(props["Last Paid"]["date"]["start"], "2026-10-03")
         self.assertGreater(props["Next Due"]["formula"]["date"]["start"], "2026-10-10")
         self.assertFalse(props["Paid"]["checkbox"])
-        self.assertEqual(client.writes, [("Last Paid", "Due Date"), ("Paid",)])
+        self.assertEqual(client.writes, [("Last Paid", "Due Date"), ("Pay", "Paid")])
+        self.assertEqual(props["Pay"]["select"]["name"], "Unpaid")          # LIFE-978: the old tick is processed once and the row is tagged Unpaid
         first_update = next(i for i, event in enumerate(events) if event[0] == "update")
         self.assertLess(next(i for i, event in enumerate(events) if event == ("ledger", "prepared")), first_update)
         self.assertEqual(json.loads(database.rows[page["id"]])["step"], "complete")
@@ -189,7 +191,7 @@ class PaidProcessorTests(unittest.TestCase):
         self.assertEqual(props["Due Date"]["date"]["start"], "2026-10-01")
         self.assertEqual(props["Last Paid"]["date"]["start"], "2026-10-03")
         self.assertFalse(props["Paid"]["checkbox"])
-        self.assertEqual(client.writes, [("Last Paid", "Status"), ("Paid",)])
+        self.assertEqual(client.writes, [("Last Paid", "Status"), ("Pay", "Paid")])
 
     def test_unsupported_or_unknown_cycles_and_missing_next_due_stay_checked(self):
         pages = [paid_page(page_id=f"00000000-0000-4000-8000-{i:012d}", cycle=cycle)
@@ -345,3 +347,106 @@ class PaidProcessorTests(unittest.TestCase):
         client.update_page_properties("11111111-1111-4111-8111-111111111111", {"Paid": {"checkbox": False}})
         self.assertEqual(calls, [("PATCH", "/pages/11111111111141118111111111111111",
                                   {"properties": {"Paid": {"checkbox": False}}})])
+
+
+class PayTagTests(unittest.TestCase):
+    """LIFE-978: the Pay tag (Unpaid, Paid, Auto) next to the legacy checkbox."""
+    def setUp(self):
+        from zoneinfo import ZoneInfo
+        self.now = datetime(2026, 10, 3, 12, tzinfo=ZoneInfo("America/Chicago"))
+
+    def go(self, client, database=None, now=None):
+        database = database or BillsPaidDB(client.event_log)
+        return paid.run(40, True, client=client, now=now or self.now, connect=lambda database=database: database), database
+
+    def props(self, client, page):
+        return client.pages[page["id"]]["properties"]
+
+    def test_the_paid_tag_advances_one_cycle_sets_last_paid_today_and_resets_to_unpaid(self):
+        page = paid_page(paid=False, pay="Paid")
+        client = PaidBillTracker(page)
+        counts, _ = self.go(client)
+        props = self.props(client, page)
+        self.assertEqual((counts["advanced"], counts["failed"]), (1, 0))
+        self.assertEqual((props["Due Date"]["date"]["start"], props["Last Paid"]["date"]["start"], props["Pay"]["select"]["name"]), ("2026-10-10", "2026-10-03", "Unpaid"))
+        self.assertEqual(client.writes, [("Last Paid", "Due Date"), ("Pay",)])
+        self.assertFalse(props["Paid"]["checkbox"])
+
+    def test_auto_before_or_on_its_due_date_is_left_alone(self):
+        for due in ("2026-10-03", "2026-10-05"):
+            page = paid_page(paid=False, pay="Auto", due=due)
+            client = PaidBillTracker(page)
+            counts, _ = self.go(client)
+            self.assertEqual((counts["auto_rows"], counts["advanced"], client.writes), (0, 0, []), due)
+
+    def test_auto_after_its_due_date_advances_once_keeps_auto_and_last_paid_is_the_old_due_date(self):
+        page = paid_page(paid=False, pay="Auto", due="2026-10-01")
+        client = PaidBillTracker(page)
+        counts, database = self.go(client)
+        props = self.props(client, page)
+        self.assertEqual((counts["auto_rows"], counts["advanced"], counts["failed"]), (1, 1, 0))
+        self.assertEqual((props["Due Date"]["date"]["start"], props["Last Paid"]["date"]["start"], props["Pay"]["select"]["name"]), ("2026-10-10", "2026-10-01", "Auto"))
+        self.assertEqual(client.writes, [("Last Paid", "Due Date")])
+        self.assertEqual(json.loads(database.rows[page["id"]])["step"], "complete")
+        writes = len(client.writes)
+        counts, _ = self.go(client, database)                # same day, same tick again: the due date is now in the future
+        self.assertEqual((counts["auto_rows"], counts["advanced"], len(client.writes)), (0, 0, writes))
+
+    def test_auto_never_advances_twice_on_one_day_even_when_still_behind_after_one_cycle(self):
+        page = paid_page(paid=False, pay="Auto", due="2026-07-01", next_due="2026-08-01")
+        client = PaidBillTracker(page)
+        counts, database = self.go(client)
+        self.assertEqual(self.props(client, page)["Due Date"]["date"]["start"], "2026-08-01")
+        writes = len(client.writes)
+        counts, _ = self.go(client, database)                # still before today, same day: the ledger says it ran today
+        self.assertEqual((counts["advanced"], counts["review"], len(client.writes)), (0, 1, writes))
+        from datetime import timedelta
+        counts, _ = self.go(client, database, now=self.now + timedelta(days=1))
+        self.assertEqual(counts["advanced"], 1)               # one cycle per day, never two in a run
+
+    def test_auto_resumes_after_a_crash_without_advancing_twice_and_keeps_the_tag(self):
+        page = paid_page(paid=False, pay="Auto", due="2026-10-01")
+        client = PaidBillTracker(page)
+        database = BillsPaidDB(client.event_log, fail_step="verified")
+        counts = paid.run(40, True, client=client, now=self.now, connect=lambda database=database: database)
+        self.assertEqual(counts["failed"], 1)
+        counts, _ = self.go(client, database)
+        props = self.props(client, page)
+        self.assertEqual((counts["failed"], props["Due Date"]["date"]["start"], props["Pay"]["select"]["name"]), (0, "2026-10-10", "Auto"))
+        self.assertEqual(json.loads(database.rows[page["id"]])["step"], "complete")
+
+    def test_auto_whose_formula_date_is_not_after_the_due_date_or_whose_cycle_is_one_time_is_never_written(self):
+        stuck = paid_page(page_id="00000000-0000-4000-8000-000000000001", paid=False, pay="Auto", due="2026-10-01", next_due="2026-10-01")
+        once = paid_page(page_id="00000000-0000-4000-8000-000000000002", paid=False, pay="Auto", due="2026-10-01", cycle="One Time")
+        client = PaidBillTracker(stuck, once)
+        counts, _ = self.go(client)
+        self.assertEqual((counts["advanced"], counts["one_time"], client.writes), (0, 0, []))
+        self.assertEqual(counts["review"], 1)
+
+    def test_an_active_bill_with_no_tag_gets_unpaid_and_an_inactive_one_does_not(self):
+        empty = paid_page(page_id="00000000-0000-4000-8000-000000000001", paid=False)
+        inactive = paid_page(page_id="00000000-0000-4000-8000-000000000002", paid=False, status="Inactive")
+        client = PaidBillTracker(empty, inactive)
+        dry = paid.run(40, False, client=client, now=self.now)
+        self.assertEqual((dry["backfilled"], client.writes), (1, []))
+        counts, _ = self.go(client)
+        self.assertEqual((counts["backfilled"], client.writes), (1, [("Pay",)]))
+        self.assertEqual(self.props(client, empty)["Pay"]["select"]["name"], "Unpaid")
+        self.assertIsNone(self.props(client, inactive)["Pay"]["select"])
+
+    def test_a_missing_or_retyped_pay_column_stops_the_run_with_the_fixed_code_before_any_write(self):
+        for label, change in (("missing", lambda p: p["properties"].pop("Pay")), ("retyped", lambda p: p["properties"]["Pay"].update({"type": "checkbox", "checkbox": False}))):
+            page = paid_page()
+            change(page)
+            client = PaidBillTracker(page)
+            with self.assertRaises(paid.PaidError) as caught:
+                paid.run(40, True, client=client, now=self.now, connect=BillsPaidDB)
+            self.assertEqual((str(caught.exception), client.writes), ("BILLS_PAY_PROPERTY_INVALID", []), label)
+
+    def test_dry_run_counts_the_pay_work_and_writes_nothing(self):
+        pages = [paid_page(page_id="00000000-0000-4000-8000-000000000001", paid=False, pay="Paid"),
+                 paid_page(page_id="00000000-0000-4000-8000-000000000002", paid=False, pay="Auto", due="2026-10-01")]
+        client = PaidBillTracker(*pages)
+        counts = paid.run(40, False, client=client, now=self.now, connect=lambda: self.fail("dry run must not open the ledger"))
+        self.assertEqual((counts["paid_rows"], counts["auto_rows"], counts["advanced"], counts["writes"], client.writes), (1, 1, 2, 0, []))
+
