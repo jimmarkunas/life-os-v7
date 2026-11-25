@@ -1,4 +1,4 @@
-"""Process the Pay tag (Paid, Auto) and the legacy Paid checkbox against the configured Bill Tracker; output is counts only."""
+"""Process the Pay tag (Paid, Auto) against the configured Bill Tracker; output is counts only. The old Paid checkbox is no longer read (LIFE-978)."""
 import json
 import os
 from datetime import date, datetime
@@ -44,8 +44,6 @@ def _compact_page(page, source):
         raise PaidError("BILLS_SOURCE_MISMATCH")
     row = snapshot.compact(page)
     props = page["properties"]
-    if props.get("Paid", {}).get("type") != "checkbox":
-        raise PaidError("BILLS_PROPERTY_INVALID")
     if props.get("Last Paid", {}).get("type") not in (None, "date"):
         raise PaidError("BILLS_PROPERTY_INVALID")
     if props.get("Due Date", {}).get("type") not in (None, "date"):
@@ -61,8 +59,8 @@ def _compact_page(page, source):
 
 
 def _flag(row, kind):
-    """True while the row still carries the trigger of this kind of payment: `paid` is the Pay tag Paid or the legacy ticked checkbox; `auto` is the Pay tag Auto (which stays on)."""
-    return row.get("Pay") == "Auto" if kind == "auto" else (row.get("Paid") is True or row.get("Pay") == "Paid")
+    """True while the row still carries the trigger of this kind of payment: `paid` is the Pay tag Paid; `auto` is the Pay tag Auto (which stays on)."""
+    return row.get("Pay") == ("Auto" if kind == "auto" else "Paid")
 
 
 def _auto_due(row, today):
@@ -187,11 +185,11 @@ def _verify_source(client, page_id, source, entry, recurring, paid):
 
 def _process(client, connection, row, source, today, entry, counts, live, kind="paid"):
     if entry is not None and entry.get("step") == "complete" and entry.get("today") == today.isoformat():
-        counts["review"] += 1                       # D86: Paid ticked again on the day it was processed is not a second payment; left checked for a person
+        counts["review"] += 1                       # D86: the Paid tag set again on the day it was processed is not a second payment; left tagged for a person
         return
     is_new = entry is None or entry.get("step") == "complete"
     is_resume = not is_new
-    kind = kind if is_new else entry.get("kind", "paid")      # LIFE-978: `auto` advances a due Auto bill and keeps the tag; `paid` (the Pay tag Paid or the old checkbox) advances and resets the tag
+    kind = kind if is_new else entry.get("kind", "paid")      # LIFE-978: `auto` advances a due Auto bill and keeps the tag; `paid` (the Pay tag Paid) advances and resets the tag
     auto = kind == "auto"
     cycle = row.get("Cycle")
     recurring = cycle in state.SUPPORTED_CYCLES
@@ -309,10 +307,8 @@ def _process(client, connection, row, source, today, entry, counts, live, kind="
     _ledger_save(connection, entry)
     reset = {}
     if not auto:
-        if fresh.get("Pay") in ("Paid", None):
+        if fresh.get("Pay") == "Paid":
             reset["Pay"] = PAY_UNPAID                           # the tag goes back to Unpaid, an Auto tag is never touched
-        if fresh.get("Paid") is True:
-            reset["Paid"] = {"checkbox": False}
     if reset:
         _write(client, row["page_id"], reset, counts)
     try:
@@ -340,7 +336,7 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
     untagged = [row for row in rows if row.get("Status") == "Active" and row.get("Pay") is None and not _flag(row, "paid")]
     cap = min(MAX_LIMIT, max(0, int(limit)))
     by_id = {row["page_id"]: row for row in rows}
-    counts = {"paid_rows": len(paid), "auto_rows": len(autos), "checkbox_rows": sum(1 for row in rows if row.get("Paid") is True), "advanced": 0, "one_time": 0,
+    counts = {"paid_rows": len(paid), "auto_rows": len(autos), "advanced": 0, "one_time": 0,
               "review": 0, "failed": 0, "resumed": 0, "skipped": 0, "writes": 0, "invalid": invalid, "backfilled": 0}
     if not live:
         counts["skipped"] = max(0, len(paid) + len(autos) - cap)
