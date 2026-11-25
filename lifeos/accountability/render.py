@@ -64,8 +64,42 @@ def _group(title, rows, shown, site, more_url, flags=None, indent=None):
     return parts, lines
 
 
+def _v3_week_view(week, today, site):
+    """LIFE-918 AC3: sprint commitments with Sub-tasks grouped under their parent, then blocked and overdue backlog apart, then Done this week.
+    Every key is in one section only; the heading counts commitments, never Sub-tasks."""
+    open_rows, subtasks = week["open"], week["subtasks"]
+    blocked, overdue, done_rows = week["blocked"], week["overdue"], week["done"]
+    sub_count = sum(len(rows) for rows in subtasks.values())
+    head = (f"{len(open_rows)} sprint commitments · {sub_count} sub-tasks under them · {len(blocked)} blocked outside sprint · "
+            f"{len(overdue)} overdue backlog · {len(done_rows)} done this week")
+    late = {r["key"] for r in open_rows if r["due"] and r["due"] < today.isoformat()}
+    ordered = [r for r in open_rows if r["key"] in late] + [r for r in open_rows if r["key"] not in late]
+    shown = ordered[:OPEN_SHOWN]
+    parts, lines = [NL, p(f"Sprint commitments ({len(open_rows)})", bold=True)], [f"Sprint commitments ({len(open_rows)}):"]
+    if not open_rows:
+        parts, lines = parts + [NL, p("Nothing.")], lines + ["Nothing."]
+    for row in shown:
+        got, line = _issue(row, site, ", overdue" if row["key"] in late else "")
+        parts, lines = parts + got, lines + [line]
+        for sub in subtasks.get(row["key"], []):
+            got, line = _issue(sub, site, "", "    · ")
+            parts, lines = parts + got, lines + [line]
+    if len(open_rows) > len(shown):
+        more = f"…and {len(open_rows) - len(shown)} more in Jira"
+        parts, lines = parts + [NL, p(more, read.jql_url(site, week["jql"] + " ORDER BY duedate ASC"))], lines + [more]
+    blocked_parts, blocked_lines = _group("Blocked outside sprint", blocked, OPEN_SHOWN, site, read.jql_url(site, week["outside_jql"] + " ORDER BY duedate ASC"))
+    overdue_parts, overdue_lines = _group("Overdue backlog", overdue, OPEN_SHOWN, site, read.jql_url(site, week["outside_jql"] + " ORDER BY duedate ASC"),
+                                          flags={r["key"]: ", overdue" for r in overdue})
+    done_more = read.jql_url(site, "issuetype != Sub-task AND statusCategoryChangedDate >= startOfWeek() AND statusCategory = Done")
+    done_parts, done_lines = _group("Done this week", done_rows, DONE_SHOWN, site, done_more)
+    return ([p(head)] + parts + [NL] + blocked_parts + [NL] + overdue_parts + [NL] + done_parts,
+            [head] + lines + [""] + blocked_lines + [""] + overdue_lines + [""] + done_lines)
+
+
 def week_view(week, today, site):
-    """Render the legacy JFM weekly view or MEJ's separated sprint/due view."""
+    """Render the legacy JFM weekly view, MEJ's separated sprint/due view, or the LIFE-918 view both boards share."""
+    if week.get("v3"):
+        return _v3_week_view(week, today, site)
     open_rows, done_rows = week["open"], week["done"]
     if "outside" in week:
         outside = week["outside"]

@@ -307,7 +307,52 @@ def _row(issue, **extra):
             "done": (status.get("statusCategory") or {}).get("key") == "done", **extra}
 
 
-def week(jira, project, today, mej_task_focus=False):
+V3_WEEK_FIELDS = WEEK_FIELDS + ",parent"
+
+
+def _is_subtask(issue):
+    return bool(((issue.get("fields") or {}).get("issuetype") or {}).get("subtask"))
+
+
+def _v3_week(jira, project, today, monday):
+    """LIFE-918 AC3 (JFM and MEJ alike; OFF BY DEFAULT, only `week(..., v3_week_view=True)` reaches it).
+
+    One issue key lands in exactly one section, so nothing is counted twice:
+    - `open`: the open standard Tasks/Stories of the active sprint (Epics never; Sub-tasks never count as commitments of their own);
+    - `subtasks`: {parent key: [open Sub-task rows]} for Sub-tasks whose parent is one of those commitments (shown under the parent);
+      a Sub-task whose parent is not an open sprint commitment is only counted in `subtasks_elsewhere`;
+    - `blocked`: unfinished blocked standard issues OUTSIDE the sprint's open commitments;
+    - `overdue`: unfinished standard issues outside the sprint, due before today, not blocked;
+    - `done`: standard issues that moved to Done this week.
+    A Jira failure of any query (including an invalid sprint clause) propagates: the V3 writer then keeps the last accepted content and reports DEGRADED;
+    nothing falls back to arbitrary In Progress issues."""
+    tail = " ORDER BY duedate ASC, key ASC"
+    standard = f"project = {project} AND issuetype != Epic AND issuetype != Sub-task AND statusCategory != Done AND "
+    sprint = "(sprint in openSprints())"
+    everything = search(jira, f"project = {project} AND issuetype != Epic AND statusCategory != Done AND {sprint}" + tail, V3_WEEK_FIELDS)
+    commitments = [i for i in everything if not _is_subtask(i)]
+    keys = {i["key"] for i in commitments}
+    subtasks, elsewhere = {}, 0
+    for issue in everything:
+        if not _is_subtask(issue):
+            continue
+        parent = ((issue.get("fields") or {}).get("parent") or {}).get("key")
+        if parent in keys:
+            subtasks.setdefault(parent, []).append(_row(issue))
+        else:
+            elsewhere += 1
+    outside_clause = f'(sprint not in openSprints() OR sprint is EMPTY) AND (duedate < "{today}" OR status = blocked)'
+    outside = [i for i in search(jira, standard + outside_clause + tail, V3_WEEK_FIELDS) if i["key"] not in keys]
+    rows = [_row(i) for i in outside]
+    blocked = [r for r in rows if r["status"].lower() == "blocked"]
+    overdue = [r for r in rows if r["status"].lower() != "blocked" and r["due"] and r["due"] < today.isoformat()]
+    done = search(jira, f'project = {project} AND issuetype != Epic AND issuetype != Sub-task AND statusCategory = Done AND statusCategoryChangedDate >= "{monday}" ORDER BY key ASC', V3_WEEK_FIELDS)
+    return {"v3": True, "open": [_row(i) for i in commitments], "subtasks": subtasks, "subtasks_elsewhere": elsewhere,
+            "blocked": blocked, "overdue": overdue, "done": [_row(i) for i in done],
+            "jql": standard + sprint, "outside_jql": standard + outside_clause}
+
+
+def week(jira, project, today, mej_task_focus=False, v3_week_view=False):
     """Read this week's commitments and completions.
 
     OFF BY DEFAULT (LIFE-914): the default path is exactly the existing query and summary for every project, MEJ included. Only an explicit
@@ -316,9 +361,14 @@ def week(jira, project, today, mej_task_focus=False):
     sprint. Sub-tasks remain visible through their parent Task in Jira rather
     than inflating Matt's weekly commitment count. JFM retains its previously
     approved query/summary contract (LIFE-914).
+
+    `v3_week_view=True` (LIFE-918 AC3, also off by default, no setting or env var; a later release connects it to the `V3_WEEK_VIEW` row) gives
+    BOTH boards the same view: sprint commitments with Sub-tasks grouped under their parent, plus separate blocked and overdue-backlog sections.
     """
     sunday = today + timedelta(days=6 - today.weekday())
     monday = today - timedelta(days=today.weekday())
+    if v3_week_view:
+        return _v3_week(jira, project, today, monday)
     tail = " ORDER BY duedate ASC, key ASC"
     if project == "MEJ" and mej_task_focus:
         base = f"project = {project} AND issuetype != Epic AND issuetype != Sub-task AND statusCategory != Done AND "

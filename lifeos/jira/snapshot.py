@@ -50,7 +50,7 @@ def gtv_work(client, board_id, epic):
     return tasks + subs
 
 
-def project_snapshot(client, project, board_id, triage_all, now, keys=(), gtv_epic=None, mej_task_focus=False):
+def project_snapshot(client, project, board_id, triage_all, now, keys=(), gtv_epic=None, mej_task_focus=False, v3_week_view=False):
     board = client.board(board_id)
     if str(board.get("type", "")).lower() != "scrum":
         raise JiraError("JIRA_BOARD_NOT_SCRUM")
@@ -67,7 +67,8 @@ def project_snapshot(client, project, board_id, triage_all, now, keys=(), gtv_ep
 
     # OFF BY DEFAULT (LIFE-914): every project keeps the existing snapshot semantics. Only the explicit `mej_task_focus=True` code argument (LIFE-918)
     # makes MEJ count Tasks/Stories/Bugs with Sub-tasks reachable from their parents.
-    work_type = "issuetype != Epic AND issuetype != Sub-task" if project == "MEJ" and mej_task_focus else "issuetype != Epic"
+    # `v3_week_view=True` (LIFE-918 AC3, also off by default) gives every project the same standard-work view, so JFM and MEJ show the same weekly commitments.
+    work_type = "issuetype != Epic AND issuetype != Sub-task" if (project == "MEJ" and mej_task_focus) or v3_week_view else "issuetype != Epic"
 
     def tasks(sprint):
         if not sprint or sprint.get("id") is None:
