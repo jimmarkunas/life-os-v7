@@ -191,12 +191,23 @@ class FrozenQuarterAndFirstDone(unittest.TestCase):
         with self.assertRaisesRegex(JiraError, "ACCOUNTABILITY_MEJ_MEMBERSHIP_DRIFT"):
             self.v2(Jira(projects))
 
-    def test_jfm_v1_count_unchanged_even_when_mej_v2_opted_in(self):
-        fake = Jira()
+    def test_jfm_gets_the_same_v2_count_from_its_own_frozen_list(self):
+        """LIFE-918, "918 uniform new" (comment 14228): two frozen lists, one per board, in one quarter row."""
+        both = {"schema_version": 1, "quarters": {"2026-q4": {"boards": {
+            "MEJ": FROZEN["quarters"]["2026-q4"],
+            "JFM": {"approved": True, "baseline_id": "SYNTHETIC-JFM", "approval_ref": "SYNTHETIC", "tasks": {"JFM-10": {"parent": "JFM-2", "goal": "JFM-2"}, "JFM-11": {"parent": "JFM-2", "goal": "JFM-2"}}}}}}}
+        fake = Jira(histories={"MEJ-11": [status_change("2026-11-20T10:00:00.000-0600")], "MEJ-501": [status_change("2026-11-20T10:00:00.000-0600")],
+                               "JFM-10": [status_change("2026-11-20T10:00:00.000-0600")]})
         goals = GOALS + [{"key": "JFM-2", "person": "Jim", "lane": "Career"}]
-        counts = read.tally(fake, goals, FIRST, LAST, mej_metric_version="v2",
-                            frozen_membership=FROZEN)
+        counts = read.tally(fake, goals, FIRST, LAST, mej_metric_version="v2", frozen_membership=both)
         self.assertEqual(counts, {"MEJ-2": [2, 4], "JFM-2": [1, 2]})
+
+    def test_jfm_without_its_own_approved_list_fails_closed_even_when_mej_has_one(self):
+        goals = GOALS + [{"key": "JFM-2", "person": "Jim", "lane": "Career"}]
+        with self.assertRaisesRegex(JiraError, "ACCOUNTABILITY_MEJ_MEMBERSHIP_NOT_APPROVED"):
+            read.tally(Jira(), goals, FIRST, LAST, mej_metric_version="v2", frozen_membership=FROZEN)
+        with self.assertRaisesRegex(JiraError, "ACCOUNTABILITY_MEJ_MEMBERSHIP_NOT_APPROVED"):
+            read.tally(Jira(), [{"key": "JFM-2", "person": "Jim", "lane": "Career"}], FIRST, LAST, mej_metric_version="v2", frozen_membership=None)
 
     def test_v1_issues_exactly_main_requests_and_never_reads_history_or_project_labels(self):
         """Parity with main: the default path asks Jira only for the quarter epics' children (main's field list) and the open-work scan; no changelog, no project-label search, for MEJ and JFM alike."""

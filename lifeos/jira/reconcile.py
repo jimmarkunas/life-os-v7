@@ -91,6 +91,12 @@ def plan_sprints(project, active, future, now, tz, minimum=MIN_FUTURE):
     return {"rename": rename, "create": create, "future": horizon}
 
 
+def order(key):
+    """A sort key for issue keys: project, then the NUMBER (R-10 follows R-9, never R-1 then R-10 by text)."""
+    head, _, tail = str(key).rpartition("-")
+    return (head, int(tail) if tail.isdigit() else -1, str(key))
+
+
 def _field(issue, name):
     return (issue.get("fields") or {}).get(name)
 
@@ -146,8 +152,8 @@ def series(issues, configured=()):
     parent_of = {}
     for i in issues:
         for link in (_field(i, "issuelinks") or []):
-            if ((link.get("type") or {}).get("name")) == "Cloners" and link.get("inwardIssue"):
-                origin = link["inwardIssue"]["key"]
+            if ((link.get("type") or {}).get("name")) == "Cloners" and link.get("outwardIssue"):
+                origin = link["outwardIssue"]["key"]                           # a clone's own link reads "clones <origin>": the origin is the OUTWARD side; the throwaway verification reads this back from the tenant before JIRA_WRITERS_VERIFIED
                 if parent_of.get(i["key"], origin) != origin:
                     raise JiraError("JIRA_RECONCILE_IDENTITY_AMBIGUOUS")
                 parent_of[i["key"]] = origin
@@ -162,7 +168,7 @@ def series(issues, configured=()):
         entry = out.setdefault(root(key), {"keys": [], "labelled": False})
         entry["keys"].append(key)
     for r, entry in out.items():
-        members = sorted(k for k in by_key if root(k) == r)
+        members = sorted((k for k in by_key if root(k) == r), key=order)
         entry["keys"] = members
         latest = members[-1]
         entry["labelled"] = RECURRING in (_field(by_key[latest], "labels") or [])
@@ -195,7 +201,7 @@ def plan_recurrence(issues, found, next_sprint_id, configured=()):
         if len(in_next) > 1:
             out["exceptions"].append("JIRA_RECONCILE_DUPLICATE_OCCURRENCE")
             continue
-        latest = max((m for m in members if ((_field(m, "sprint") or {}).get("id")) != next_sprint_id), key=lambda m: m["key"], default=None)
+        latest = max((m for m in members if ((_field(m, "sprint") or {}).get("id")) != next_sprint_id), key=lambda m: order(m["key"]), default=None)
         if not in_next:
             out["create"].append(root_key)
             continue
@@ -217,11 +223,39 @@ def auto_close_fields(run_id):
     return {"label": AUTO_LABEL, "comment": f"Closed automatically by LIFE OS run {run}."}
 
 
-def closure_counts(issues):
-    """-> manual, automatic and total closed, kept apart (10), read from the `auto-closed` label (B): a Done issue with the label is automatic, any other Done issue is manual. Open issues are not counted."""
+def _closed_at(issue):
+    f = issue.get("fields") or {}
+    return _when(f.get("statuscategorychangedate") or f.get("resolutiondate"))
+
+
+def closure_counts(issues, since=None):
+    """-> manual, automatic and total closed, kept apart (10). Decision (Jim, Nov 25 2026, comment 14226): the manual/automatic split starts at activation (`since`, an aware time from the MEJ_AUTOMATION_SINCE row);
+    earlier Done items count only in the total. A Done issue with the `auto-closed` label closed at or after `since` is automatic, any other one closed at or after `since` is manual. With no `since`, or a Done issue
+    with no close time, nothing is classified: manual and automatic are None and only the total is real. Open issues are not counted."""
     done = [i for i in issues if _norm(i)["category"] == "done"]
-    auto = sum(1 for i in done if AUTO_LABEL in (_field(i, "labels") or []))
-    return {"manual": len(done) - auto, "automatic": auto, "total": len(done)}
+    if since is None:
+        return {"manual": None, "automatic": None, "total": len(done), "split": False}
+    later = [i for i in done if (_closed_at(i) is not None and _closed_at(i) >= since)]
+    auto = sum(1 for i in later if AUTO_LABEL in (_field(i, "labels") or []))
+    return {"manual": len(later) - auto, "automatic": auto, "total": len(done), "split": True}
+
+
+def since(environ=None):
+    """MEJ_AUTOMATION_SINCE: the activation time as an ISO time with a zone, or None (unset, unreadable, or without a zone: fail closed, the split is then not shown)."""
+    try:
+        value = str((os.environ if environ is None else environ).get("MEJ_AUTOMATION_SINCE") or "").strip()
+        moment = datetime.fromisoformat(value.replace("Z", "+00:00")) if value else None
+    except (AttributeError, TypeError, ValueError):
+        return None
+    return moment if moment is not None and moment.tzinfo is not None else None
+
+
+def writers_verified(environ=None):
+    """JIRA_WRITERS_VERIFIED: "yes" (exactly, spaces and case ignored) once the throwaway-sprint verification passed; anything else is not verified (fail closed)."""
+    try:
+        return str((os.environ if environ is None else environ).get("JIRA_WRITERS_VERIFIED") or "").strip().lower() == "yes"
+    except (AttributeError, TypeError):
+        return False
 
 
 def due(now, last_done, tz=None):
@@ -283,7 +317,7 @@ def reconcile_board(client, project, board_id, now, tz, writers, live, keys=(), 
     raise JiraError("JIRA_RECONCILE_VERIFY_FAILED")
 
 
-def run(limit, live, environ=os.environ, client=None, now=None, writers=None, state=None, alert=None, sleep=None):
+def run(limit, live, environ=os.environ, client=None, now=None, writers=None, state=None, alert=None, sleep=None, extra=None):
     """The daily reconciliation stage. Off (switch not "on"): {"enabled": 0}, nothing read. On: at most once per Chicago date at or after 8:00 AM CT, per board (JFM and MEJ as one unit: any board's failure fails
     the run and nothing is marked done). Dry run reads and plans only. Live needs injected `writers` and `state` (get() -> last date, set(date)); without them it fails closed. `alert(subject, details)` is the existing inbox send."""
     if not enabled(environ):
@@ -303,6 +337,8 @@ def run(limit, live, environ=os.environ, client=None, now=None, writers=None, st
     for position, (project, board_id, _, _) in enumerate(configured, 1):
         try:
             result = reconcile_board(client, project, board_id, now, tz, writers, live, keys, sleep)
+            if extra is not None:                                           # LIFE-918 wiring: recurrence and closure counts of the same board, inside the same fail-as-one-unit rule
+                result = {**result, **extra(client, project, board_id, now, tz, writers, live, keys, sleep)}
         except JiraError as error:
             total["failed"] += 1
             code = (str(error) if str(error).startswith("JIRA_") else "JIRA_ERROR") + f"@{position}"
@@ -311,6 +347,9 @@ def run(limit, live, environ=os.environ, client=None, now=None, writers=None, st
         total["ok"] += 1
         for k in ("renamed", "created", "would_rename", "would_create"):
             total[k] += result.get(k, 0)
+        for k, v in result.items():
+            if k not in ("renamed", "created", "would_rename", "would_create", "future") and isinstance(v, int) and not isinstance(v, bool):
+                total[k] = total.get(k, 0) + v
     if total["failed"]:
         if alert:
             alert("Jira daily reconciliation failed", f"{total['failed']} of {total['boards']} boards: " + ", ".join(sorted(total["why"])))

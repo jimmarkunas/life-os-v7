@@ -1,5 +1,5 @@
 {
   "schema_version": 1,
-  "description": "MEJ v2 quarter-frozen Task/Story membership baseline. Requires Jim approval per quarter; do not infer assignments from project Epic links. No approved per-task baseline is recorded yet.",
+  "description": "v2 quarter-frozen Task/Story membership baseline for JFM and MEJ (one row per board under quarters.<id>.boards, or the original single MEJ row). Requires Jim approval per quarter; do not infer assignments from project Epic links. No approved per-task baseline is recorded yet.",
   "quarters": {}
 }

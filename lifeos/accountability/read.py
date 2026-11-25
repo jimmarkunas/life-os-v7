@@ -200,8 +200,10 @@ def _first_verified_done(jira, key, current_done_status_id=None):
     raise JiraError("ACCOUNTABILITY_MEJ_COMPLETION_HISTORY_UNVERIFIED")
 
 
-def _frozen_mej_membership(first, manifest=None):
-    """Load an explicitly approved, version-controlled Task->parent->goal baseline.
+def _frozen_mej_membership(first, manifest=None, project="MEJ"):
+    """Load an explicitly approved, version-controlled Task->parent->goal baseline for one board.
+
+    LIFE-918 (Jim, "918 uniform new", comment 14228): JFM and MEJ alike. A quarter row is either the original single MEJ row, or {"boards": {"JFM": row, "MEJ": row}} (two lists, one approval).
 
     A project Epic's live Relates link NEVER assigns its entire child backlog
     to a quarter. Missing approval or a missing quarter fails closed. Historical
@@ -216,15 +218,20 @@ def _frozen_mej_membership(first, manifest=None):
         raise JiraError("ACCOUNTABILITY_MEJ_MEMBERSHIP_NOT_APPROVED")
     quarter_id = f"{first.year}-q{(first.month - 1) // 3 + 1}"
     row = (manifest.get("quarters") or {}).get(quarter_id)
+    if isinstance(row, dict) and "boards" in row:
+        row = (row["boards"] or {}).get(project) if isinstance(row["boards"], dict) else None
+    elif project != "MEJ":
+        row = None
     if not isinstance(row, dict) or row.get("approved") is not True or not row.get("baseline_id") or not row.get("approval_ref") or not isinstance(row.get("tasks"), dict):
         raise JiraError("ACCOUNTABILITY_MEJ_MEMBERSHIP_NOT_APPROVED")
     for key, assignment in row["tasks"].items():
-        if not re.fullmatch(r"MEJ-\d+", key) or not isinstance(assignment, dict) or not re.fullmatch(r"MEJ-\d+", str(assignment.get("parent") or "")) or not re.fullmatch(r"MEJ-\d+", str(assignment.get("goal") or "")):
+        pattern = project + r"-\d+"
+        if not re.fullmatch(pattern, key) or not isinstance(assignment, dict) or not re.fullmatch(pattern, str(assignment.get("parent") or "")) or not re.fullmatch(pattern, str(assignment.get("goal") or "")):
             raise JiraError("ACCOUNTABILITY_MEJ_MEMBERSHIP_NOT_APPROVED")
     return row["tasks"]
 
 
-def _mej_v2_tally(jira, quarter_keys, first, last, manifest=None):
+def _mej_v2_tally(jira, quarter_keys, first, last, manifest=None, project="MEJ"):
     """K2/K3: quarter counts only frozen Task/Story membership, with verified Done history.
 
     Keep the v1 reader separate and off-by-default. Missing or drifted entries
@@ -232,8 +239,8 @@ def _mej_v2_tally(jira, quarter_keys, first, last, manifest=None):
     """
     if not quarter_keys:
         return {}
-    frozen = _frozen_mej_membership(first, manifest)
-    project_goals = _mej_project_goals(jira, quarter_keys)
+    frozen = _frozen_mej_membership(first, manifest, project)
+    project_goals = _mej_project_goals(jira, quarter_keys) if project == "MEJ" else {}          # project Epics (the mej-project label) exist only on MEJ
     parent_keys = sorted(set(quarter_keys) | set(project_goals))
     tally = {goal: [0, 0] for goal in quarter_keys}
     seen = set()
@@ -262,11 +269,10 @@ def _mej_v2_tally(jira, quarter_keys, first, last, manifest=None):
 
 
 def tally(jira, found, first, last, *, mej_metric_version=None, frozen_membership=None):
-    """v1 historical direct-child metrics, or opt-in future MEJ v2 frozen metrics.
+    """v1 historical direct-child metrics, or the opt-in v2 frozen metrics, the same for JFM and MEJ (LIFE-918, comment 14228).
 
-    JFM always retains historical v1 behavior; v2 is reachable only through the
-    explicit `mej_metric_version="v2"` code argument AND an approved frozen
-    quarter manifest (no environment variable, no default).
+    v2 is reachable only through the explicit `mej_metric_version="v2"` code argument AND an approved
+    frozen quarter list for that board (no environment variable, no default); the default is v1.
     """
     if not found:
         return {}
@@ -277,16 +283,17 @@ def tally(jira, found, first, last, *, mej_metric_version=None, frozen_membershi
     if mode not in ("v1", "v2"):
         raise JiraError("ACCOUNTABILITY_MEJ_METRIC_VERSION_INVALID")
     if mode == "v2":
-        matt_keys = {e["key"] for e in found if e["person"] == "Matt"}
-        if matt_keys:
-            out.update(_mej_v2_tally(jira, matt_keys, first, last, frozen_membership))
+        for person, project in PEOPLE:
+            board_keys = {e["key"] for e in found if e["person"] == person}
+            if board_keys:
+                out.update(_mej_v2_tally(jira, board_keys, first, last, frozen_membership, project))
     return out
 
 
 def unparented(jira, project, epic_keys, *, mej_metric_version=None):
     """How many open non-epic, non-sub-task issues of the project sit under none of the quarter's epics.
 
-    v1 (the default, and always for JFM) is the historical count. Only an explicit MEJ v2 call also accepts a labelled project Epic linked to a quarter Epic as a parent."""
+    v1 (the default) is the historical count. Only an explicit MEJ v2 call also accepts a labelled project Epic linked to a quarter Epic as a parent."""
     allowed = set(epic_keys)
     if project == "MEJ" and mej_metric_version == "v2":
         allowed.update(_mej_project_goals(jira, allowed))

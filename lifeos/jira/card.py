@@ -15,7 +15,7 @@ from lifeos.platform import ct_stamp, report_region
 from lifeos.platform.jira import JiraError
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 from .boards import boards
-from . import store
+from . import reconcile, store
 
 LOCAL_TZ = "America/Chicago"
 STALE_HOURS = 3
@@ -329,6 +329,13 @@ def write_gtv(client, block_id, snaps, live, site, context_url):
     return result
 
 
+def reconcile_line(recon, now):
+    """LIFE-918: the one Daily Report line of the sprint reconcile workload (counts only), or DEGRADED when there is no good summary from the last 36 hours."""
+    if recon and recon.get("ok") and recon.get("line") and now - datetime.fromisoformat(recon["taken_at"]) <= timedelta(hours=36):
+        return recon["line"]
+    return "Jira sprints: DEGRADED \u00b7 " + ((recon or {}).get("line", "").replace("Jira sprints: DEGRADED \u00b7 ", "") if recon and not recon.get("ok") else "no good run in the last 36 hours")
+
+
 def run(limit, live, environ=os.environ, client=None, now=None, connect=None, gtv_client=None):
     block_id = (environ.get("JIRA_CARD_BLOCK_ID") or "").strip()
     if not block_id:
@@ -338,6 +345,7 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None, gt
     projects = card_projects(environ)
     with (connect or __import__("lifeos.platform.db", fromlist=["connect"]).connect)() as connection:
         snaps = [store.load(connection, p) for p in projects]
+        recon = store.load(connection, "_recon") if reconcile.enabled(environ) else None      # LIFE-918: the sprint reconcile's one summary row; read only when MEJ_SPRINT_AUTOMATION is on
     if any(s is None for s in snaps):
         raise CardError("JIRA_CARD_NO_SNAPSHOT")
     taken = min(datetime.fromisoformat(s["taken_at"]) for s in snaps)
@@ -358,6 +366,9 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None, gt
         return result
     site, epic = site_url(environ), (environ.get("JIRA_GTV_EPIC") or "").strip() or None
     body, counts = render(snaps, now.date(), now, site, epic)
+    if reconcile.enabled(environ):
+        body.insert(0, {"object": "block", "type": "paragraph", "paragraph": {"rich_text": [_text(reconcile_line(recon, now), bold=False)]}})
+        result["reconcile_line"] = 1
     result.update({k: v for k, v in counts.items()}, blocks=len(body))
     gtv_block, gtv_error = (environ.get("GTV_CARD_BLOCK_ID") or "").strip(), None
     if gtv_block:                                                  # LIFE-975: the visa callout is its own card; a failure here is reported after the Jira card itself is written, never instead of it

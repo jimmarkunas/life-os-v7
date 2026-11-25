@@ -8,7 +8,7 @@ from datetime import datetime, time as clock, timedelta
 from zoneinfo import ZoneInfo
 
 from lifeos.platform.jira import JiraError
-from . import reconcile
+from . import reconcile, recurrence
 from .boards import boards, owned
 
 LOCAL_TZ = "America/Chicago"
@@ -256,7 +256,87 @@ def _closable(client, sprint_id, p):
         raise JiraError("JIRA_MEJ_INVENTORY_INVALID")
 
 
-def plan(client, project, board_id, now, tz, keys=(), auto=False, selective=None):
+def _automation_partition(client, project, sprint_id, raw, stranded, target_id, automation):
+    """LIFE-918 (MEJ_SPRINT_AUTOMATION on): the carry rule for either board (decision A, `select_carry`; Matt's roster only as the optional MEJ-only override), the recurring series and their one clone each, all decided
+    before any write. A stale sprint read, an unknown issue type or an ambiguous series stops here with a fixed code."""
+    if client.sprint(sprint_id).get("state") not in ("active", "future"):
+        raise JiraError("JIRA_MEJ_SPRINT_STALE")
+    for issue in raw:
+        current = ((issue.get("fields") or {}).get("sprint") or {}).get("id")
+        if current is not None and int(current) != sprint_id:
+            raise JiraError("JIRA_MEJ_SPRINT_STALE")
+    _orphans(raw)
+    series_issues = client.sprint_issues(sprint_id, "labels = recurring", recurrence.SERIES_FIELDS)
+    if target_id:
+        series_issues += client.sprint_issues(target_id, "labels = recurring", recurrence.SERIES_FIELDS)
+    found = reconcile.series(series_issues)
+    recurring = {k for entry in found.values() if entry["labelled"] for k in entry["keys"]}
+    rule = select_carry(project, [i for i in raw if i.get("key") not in set(stranded)], recurring, automation.get("roster"))
+    if rule["exceptions"]:
+        raise JiraError("JIRA_ROLLOVER_UNKNOWN_TYPE")
+    again, clones = recurrence.jobs(series_issues, target_id)
+    if again["exceptions"]:
+        raise JiraError(again["exceptions"][0])
+    already = _members(client, target_id) & set(rule["carry"]) if target_id else set()
+    writers = automation["writers"]
+    held = type("Backlog", (), {"move_to_backlog": staticmethod(lambda keys: writers.need("move_to_backlog")(keys)), "backlog_issues": staticmethod(client.backlog_issues)})
+    return {"unfinished": [k for k in rule["carry"] if k not in already], "already": sorted(already), "backlog": rule["backlog"], "selective": {"backlog": held, "roster": []},
+            "close_recurring": rule["recurring"], "clones": clones, "finite_missed": 0}
+
+
+def _execute_automation(client, project, board_id, p, now, sleep, keys, automation):
+    """The boundary with automation on: the same order as `execute` (create the next sprint under its short name, carry, backlog, verify, close, start), plus one clone per recurring series into the next sprint and the
+    recurring originals closed Done with the auto-closed label and one run-ID comment (decision 3), all before the old sprint closes. Every write goes through the injected writers; unverified writers fail closed
+    before the first write."""
+    if now < p["end_local"]:
+        raise JiraError("JIRA_EARLY_ROLLOVER")
+    writers = automation["writers"]
+    for name in ("create_sprint", "move_to_backlog", "create_clone", "close_done"):
+        writers.need(name)
+    created, target_id = 0, p["target_id"]
+    if target_id is None:
+        target_id = int(writers.need("create_sprint")(board_id, p["name"], p["start"], p["end"])["id"])
+        created = 1
+    _state(client, target_id, "future", "JIRA_TARGET_NOT_FUTURE")
+    if p["catchup"]:
+        client.set_sprint_state(p["sprint_id"], "active")
+        _state(client, p["sprint_id"], "active", "JIRA_CATCHUP_FAILED")
+    if p["unfinished"]:
+        client.move_issues(target_id, p["unfinished"])
+        have = {i["key"] for i in client.sprint_issues(target_id, "statusCategory != Done", "summary") if i.get("key")}
+        if any(key not in have for key in p["unfinished"]):
+            raise JiraError("JIRA_CARRY_VERIFY_FAILED")
+    have = _members(client, target_id)
+    if any(key not in have for key in p["already"]):
+        raise JiraError("JIRA_CARRY_VERIFY_FAILED")
+    if p["backlog"]:
+        _place_in_backlog(client, board_id, p, target_id)
+    for root, latest, fields in recurrence.jobs(client.sprint_issues(p["sprint_id"], "labels = recurring", recurrence.SERIES_FIELDS)
+                                                + client.sprint_issues(target_id, "labels = recurring", recurrence.SERIES_FIELDS), target_id)[1]:
+        writers.need("create_clone")(root, fields, target_id, latest)         # one occurrence per series; a repeat after a crash plans from the actual state and creates none
+    after = recurrence.jobs(client.sprint_issues(p["sprint_id"], "labels = recurring", recurrence.SERIES_FIELDS)
+                            + client.sprint_issues(target_id, "labels = recurring", recurrence.SERIES_FIELDS), target_id)
+    if after[1]:
+        raise JiraError("JIRA_CARRY_VERIFY_FAILED")
+    for key in p["close_recurring"]:
+        writers.need("close_done")(key, automation["run_id"])
+    left = {i["key"] for i in client.sprint_issues(p["sprint_id"], "statusCategory != Done", "summary,issuetype")
+            if i.get("key") and ((i.get("fields") or {}).get("issuetype") or {}).get("name") != "Epic"}
+    _, stranded = split_unfinished(client.sprint_issues(p["sprint_id"], "statusCategory != Done", UNFINISHED_FIELDS))
+    if left != set(stranded):
+        raise JiraError("JIRA_MEJ_INVENTORY_INVALID")
+    client.set_sprint_state(p["sprint_id"], "closed")
+    _state(client, p["sprint_id"], "closed", "JIRA_CLOSE_VERIFY_FAILED")
+    client.set_sprint_state(target_id, "active")
+    _state(client, target_id, "active", "JIRA_START_VERIFY_FAILED")
+    after = owned(client.sprints(board_id, "active"), project, keys)
+    if len(after) != 1 or int(after[0].get("id", -1)) != target_id:
+        raise JiraError("JIRA_FINAL_VERIFY_FAILED")
+    return {"created": created, "carried": len(p["unfinished"]), "stranded": p["stranded"], "backlogged": len(p["backlog"]),
+            "cloned": len(p["clones"]), "recurring_closed": len(p["close_recurring"])}
+
+
+def plan(client, project, board_id, now, tz, keys=(), auto=False, selective=None, automation=None):
     if str(client.board(board_id).get("type", "")).lower() != "scrum":
         raise JiraError("JIRA_BOARD_NOT_SCRUM")
     active = owned(client.sprints(board_id, "active"), project, keys)
@@ -293,7 +373,7 @@ def plan(client, project, board_id, now, tz, keys=(), auto=False, selective=None
         if not end or now < datetime.combine(end.astimezone(tz).date() + timedelta(days=1), clock(AUTO_AFTER_HOUR), tzinfo=tz):
             return {"not_due": True}
     # every unfinished item in the sprint moves, whatever its project: cross-assigned work must not be stranded in a closed sprint
-    raw = client.sprint_issues(sprint_id, "statusCategory != Done", UNFINISHED_FIELDS + (",sprint" if selective else ""))
+    raw = client.sprint_issues(sprint_id, "statusCategory != Done", recurrence.SERIES_FIELDS if automation else UNFINISHED_FIELDS + (",sprint" if selective else ""))
     unfinished, stranded = split_unfinished(raw)
     end_local, start, end = target_week(sprint, tz)
     matching = [s for s in future if int(s.get("id", -1)) != sprint_id and _matches(s, start, end, tz)]
@@ -308,6 +388,9 @@ def plan(client, project, board_id, now, tz, keys=(), auto=False, selective=None
            "name": sprint_name(project, start, end)}
     if selective:
         out.update(_selective_partition(client, sprint_id, raw, out["target_id"], selective))
+    if automation is not None:                                # LIFE-918: the short name at creation, the carry rule, the recurrence clones (decisions A, C, 3)
+        out["name"] = reconcile.iso_name(project, start.date())
+        out.update(_automation_partition(client, project, sprint_id, raw, stranded, out["target_id"], automation))
     return out
 
 
@@ -348,12 +431,15 @@ def execute(client, project, board_id, p, now, sleep=time.sleep, keys=(), select
     return out
 
 
-def run_project(client, project, board_id, live, now, tz, sleep, keys=(), auto=False, mej_selective=None):
+def run_project(client, project, board_id, live, now, tz, sleep, keys=(), auto=False, mej_selective=None, automation=None):
     """`mej_selective` is the LIFE-915 gate: None (the default, and what every caller passes today) leaves this exactly as it was for every board; a config (see selective_config) applies only to MEJ."""
     selective = selective_config(mej_selective) if mej_selective is not None and str(project).upper() == MEJ_PROJECT else None
     retry = ("JIRA_CARRY_VERIFY_FAILED", "JIRA_MEJ_BACKLOG_PARTIAL") if selective else ("JIRA_CARRY_VERIFY_FAILED",)
     for attempt in range(2):
-        p = plan(client, project, board_id, now, tz, keys, auto, selective) if selective else plan(client, project, board_id, now, tz, keys, auto)
+        if automation is not None:                                           # LIFE-918, MEJ_SPRINT_AUTOMATION on: short names, the carry rule, recurrence clones; absent (the default) is the path below, unchanged
+            p = plan(client, project, board_id, now, tz, keys, auto, None, automation)
+        else:
+            p = plan(client, project, board_id, now, tz, keys, auto, selective) if selective else plan(client, project, board_id, now, tz, keys, auto)
         if p.get("not_due"):
             return {"not_due": 1}
         if p.get("start_only"):
@@ -369,23 +455,31 @@ def run_project(client, project, board_id, live, now, tz, sleep, keys=(), auto=F
         if not live:
             preview = {"reuse": int(p["target_id"] is not None), "would_create": int(p["target_id"] is None),
                        "would_carry": len(p["unfinished"]), "would_strand": p["stranded"], "catchup": int(p["catchup"])}
+            if automation is not None:
+                return {**preview, "would_backlog": len(p["backlog"]), "would_clone": len(p["clones"]), "would_close_recurring": len(p["close_recurring"])}
             return {**preview, "would_backlog": len(p["backlog"]), "selective": 1} if selective else preview
         try:
-            done = execute(client, project, board_id, p, now, sleep, keys, selective) if selective else execute(client, project, board_id, p, now, sleep, keys)
+            if automation is not None:
+                done = _execute_automation(client, project, board_id, p, now, sleep, keys, automation)
+            else:
+                done = execute(client, project, board_id, p, now, sleep, keys, selective) if selective else execute(client, project, board_id, p, now, sleep, keys)
             return {**done, "closed": 1, "started": 1}
         except JiraError as error:
-            if str(error) in retry and attempt == 0:
+            if str(error) in (retry + ("JIRA_MEJ_BACKLOG_PARTIAL",) if automation is not None else retry) and attempt == 0:
                 sleep(15)                                         # known Jira consistency lag: one re-plan, then give up
                 continue
             raise
 
 
-def run(limit, live, environ=os.environ, client=None, now=None, sleep=time.sleep, auto=False, mej_selective=None):
+def run(limit, live, environ=os.environ, client=None, now=None, sleep=time.sleep, auto=False, mej_selective=None, automation=None):
     from lifeos.platform.jira import Jira
     configured = boards(environ)
     client = client or Jira.from_env(environ)
     tz = ZoneInfo(LOCAL_TZ)
     now = now or datetime.now(tz)
+    if automation is None and reconcile.enabled(environ):         # LIFE-918: the one switch row; off (the default) leaves everything below exactly as it was
+        from . import writers as jira_writers
+        automation = {"writers": jira_writers.live_writers(client, environ), "run_id": str(environ.get("GITHUB_RUN_ID") or "manual"), "roster": None}
     total = {"projects": len(configured), "ok": 0, "failed": 0, "reuse": 0, "would_create": 0, "would_carry": 0, "would_strand": 0,
              "catchup": 0, "not_due": 0, "skipped_readonly": 0, "created": 0, "carried": 0, "stranded": 0, "closed": 0, "started": 0, "writes": 0, "why": {}}
     keys = [entry[0] for entry in configured]
@@ -395,7 +489,10 @@ def run(limit, live, environ=os.environ, client=None, now=None, sleep=time.sleep
             total["ok"] += 1
             continue
         try:
-            result = run_project(client, project, board_id, live, now, tz, sleep, keys, auto, mej_selective) if mej_selective is not None else run_project(client, project, board_id, live, now, tz, sleep, keys, auto)
+            if automation is not None:
+                result = run_project(client, project, board_id, live, now, tz, sleep, keys, auto, mej_selective, automation)
+            else:
+                result = run_project(client, project, board_id, live, now, tz, sleep, keys, auto, mej_selective) if mej_selective is not None else run_project(client, project, board_id, live, now, tz, sleep, keys, auto)
         except JiraError as error:
             total["failed"] += 1
             code = (str(error) if str(error).startswith("JIRA_") else "JIRA_ERROR") + f"@{position}"   # board position, never its name

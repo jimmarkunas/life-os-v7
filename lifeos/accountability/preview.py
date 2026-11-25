@@ -2,8 +2,8 @@
 
 Through Q4 2026 the legacy (v1) figures stay official; this module only works out what v2 would say beside them. With the V2_QUARTER_SHADOW row exactly "on" the goals stage upgrades each person's own
 Quarterly Goals & Review table in place (Lane, Progress, Done / all, New count (preview), Status); there is no separate preview block and no address row for one (Jim, comment 14216). Matt shows the v2
-count per lane when an approved frozen quarter list exists, else a dash and a red reason: NEEDS Q1 MEMBER LIST while the list is not approved, DATA MISSING when the frozen list and Jira disagree. JFM has no v2:
-a dash and a green OK. A v2 problem never fails the goals stage and nothing is invented. Pure except `reading`, which only reads Jira; `python -m lifeos.accountability.preview --synthetic` needs no network."""
+count per lane when an approved frozen quarter list exists, else a dash and a red reason: NEEDS Q1 MEMBER LIST while the list is not approved, DATA MISSING when the frozen list and Jira disagree. JFM and MEJ alike
+("918 uniform new", Jim, comment 14228). A v2 problem never fails the goals stage and nothing is invented. Pure except `reading`, which only reads Jira; `python -m lifeos.accountability.preview --synthetic` needs no network."""
 import re
 import sys
 
@@ -23,8 +23,8 @@ def _code(error):
 
 
 def reading(jira, person, mine, first, last):
-    """-> {"applies": bool, "counts": {epic key: (done, all)} or None, "code": fixed code or None}. Only Matt has a v2; its read that fails closed gives counts None and the fixed code (legacy is not this module's to hide)."""
-    if person != "Matt" or not mine:
+    """-> {"applies": bool, "counts": {epic key: (done, all)} or None, "code": fixed code or None}. Both boards have a v2; a read that fails closed gives counts None and the fixed code (legacy is not this module's to hide)."""
+    if not mine:
         return {"applies": False, "counts": None, "code": None}
     try:
         counts = read.tally(jira, mine, first, last, mej_metric_version="v2")
@@ -51,7 +51,7 @@ def plain(table):
     return [" · ".join("".join(piece[0] for piece in cell) for cell in row) for row in table.values()]
 
 
-SYNTHETIC = {"Jim": ([("Career", 5, 26, "JFM-9"), ("LIFE OS", 6, 9, "JFM-102")], {"applies": False, "counts": None, "code": None}),
+SYNTHETIC = {"Jim": ([("Career", 5, 26, "JFM-9"), ("LIFE OS", 6, 9, "JFM-102")], {"applies": True, "counts": None, "code": NOT_APPROVED}),
              "Matt": ([("Career", 12, 29, "MEJ-1"), ("Creative", 4, 23, "MEJ-2")], {"applies": True, "counts": None, "code": NOT_APPROVED})}
 
 

@@ -121,8 +121,15 @@ def evaluate(inputs):
 
 def alert_item(verdict):
     """The one Agent Inbox item for a failed check. The key is the same every day (it carries the quarter only), so the existing inbox send updates one row instead of adding more. Codes and counts only."""
+    failing = failing_boards(verdict)
     return {"subject": ALERT_SUBJECT, "urgency": "Today", "workspace": "Personal", "key": f"v2-promotion-{verdict.get('quarter') or 'unknown'}",
-            "details": "reasons: " + ", ".join(verdict.get("reasons") or []) + ". Legacy stays official; v2 stays preview."}
+            "details": ("failing board: " + ", ".join(failing) + ". " if failing else "") + "reasons: " + ", ".join(verdict.get("reasons") or []) + ". Both boards stay on legacy; v2 stays preview."}
+
+
+def failing_boards(verdict):
+    """The boards (JFM, MEJ in that order) that made a check fail: an AC11 hard failure or more than the AC12 tolerance. Promotion is one unit (Jim, comment 14228): either failing keeps both on legacy, and the one alert names them."""
+    boards = (verdict or {}).get("boards") or {}
+    return [name for name in BOARDS if name in boards and (boards[name]["hard"] or boards[name]["unexplained"] > MAX_UNEXPLAINED)]
 
 
 def refusing_setter():
