@@ -333,29 +333,62 @@ def locate_combined(client, block_id):
     return {"heading": kids[0], "stamp": kids[1], "middle": kids[2:-1] if legacy else kids[2:], "legacy": legacy}
 
 
-def write_combined(client, block_id, heading, stamp, lanes, extra, review_parts, live):
+def write_combined(client, block_id, heading, stamp, lanes, extra, review_parts, live, wide=None):
     """LIFE-840: the one Quarterly Goals & Review callout of a person. Body: the two-column Epic table (`lanes` {lane: (done / all, issue url or None)}; a row is matched by the lane name its first
     cell starts with, its first cell is linked to the Epic, a lane with no epic shows a dash), one note paragraph, then the toggle "Quarterly Reviews" whose one paragraph links the review pages
-    (`review_parts` [(text, link, bold)]). The title is set to `heading`. A legacy `Summary for Claude:` line is removed (its summary page stays in Notion, untouched). -> {changed}."""
+    (`review_parts` [(text, link, bold)]). The title is set to `heading`. A legacy `Summary for Claude:` line is removed (its summary page stays in Notion, untouched).
+    LIFE-918: `wide` (None = the two-column table exactly as before) is {lane: [the four cells after the lane name: progress, done / all, new count, status]}, each cell [(text, link, bold, color)]; the table is then
+    five columns wide (Lane, Progress, Done / all, New count (preview), Status). An existing two-column table cannot be widened in Notion, so a new table is created under the stamp, the old one removed, and the
+    rows read back; the lane names, their links, the note and the toggle are kept. -> {changed}."""
     found = locate_combined(client, block_id)
     kinds = [b.get("type") for b in found["middle"]]
-    if kinds not in (["table"], ["table", "paragraph"], ["table", "paragraph", "toggle"]) or (found["middle"][0].get("table") or {}).get("table_width") != 2:
+    width = (found["middle"][0].get("table") or {}).get("table_width") if kinds and kinds[0] == "table" else None
+    if kinds not in (["table"], ["table", "paragraph"], ["table", "paragraph", "toggle"]) or width != (2 if wide is None else width) or (wide is not None and width not in (2, 5)):
         raise fail("ACCOUNTABILITY_SHAPE")
+    replaced = 0
+    if wide is not None and width == 2:
+        replaced = 1
+        if live:
+            old_rows = report_region.children(client, found["middle"][0]["id"], AccountabilityError)[1:]
+            labels = [_cells(r)[0] for r in old_rows]
+            client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": [_table_payload(labels, lanes, wide)], "after": found["stamp"]["id"]})
+            client.call_once("DELETE", f"/blocks/{quote(found['middle'][0]['id'], safe='')}")
+            found = locate_combined(client, block_id)
+            kinds = [b.get("type") for b in found["middle"]]
+            if kinds[:1] != ["table"] or (found["middle"][0].get("table") or {}).get("table_width") != 5:
+                raise fail("ACCOUNTABILITY_VERIFY_FAILED")
     table, note = found["middle"][0], (found["middle"][1] if len(kinds) > 1 else None)
     toggle = found["middle"][2] if len(kinds) == 3 else None
     inner = report_region.children(client, toggle["id"], AccountabilityError) if toggle else []
     if toggle and (len(inner) != 1 or inner[0].get("type") != "paragraph"):
         raise fail("ACCOUNTABILITY_SHAPE")
-    rows = report_region.children(client, table["id"], AccountabilityError)[1:]
+    every = report_region.children(client, table["id"], AccountabilityError) if (wide is None or not replaced or live) else []
+    rows = every[1:]
     wanted = []
     for row in rows:
         label = _cells(row)[0]
         value, url = next(((v, u) for lane, (v, u) in lanes.items() if label.lower().startswith(lane.lower())), ("–", None))
-        wanted.append((row, [(label, url), (value, None)]))
+        if wide is not None:
+            cells = next((c for lane, c in wide.items() if label.lower().startswith(lane.lower())), _EMPTY_WIDE)
+            wanted.append((row, [[(label, url, False, None)]] + [list(c) for c in cells]))
+        else:
+            wanted.append((row, [(label, url), (value, None)]))
     want_review = _normalise([(c, u) for c, u, _ in review_parts])
     changed = _set(client, found["heading"], heading, live) + _set(client, found["stamp"], stamp, live, "gray")
+    changed += replaced
+    if wide is not None and every:
+        header = [[(h, None, False, None)] for h in WIDE_HEADER]
+        if _wide_signature(every[0]) != _rich_cells(header):
+            changed += 1
+            if live:
+                client.call_once("PATCH", f"/blocks/{quote(every[0]['id'], safe='')}", {"table_row": {"cells": [[_node(*p) for p in cell] for cell in header]}})
     for row, cells in wanted:
-        if _row_signature(row) != _normalise_cells(cells):
+        if wide is not None:
+            if _wide_signature(row) != _rich_cells(cells):
+                changed += 1
+                if live:
+                    client.call_once("PATCH", f"/blocks/{quote(row['id'], safe='')}", {"table_row": {"cells": [[_node(*p) for p in cell] for cell in cells]}})
+        elif _row_signature(row) != _normalise_cells(cells):
             changed += 1
             if live:
                 client.call_once("PATCH", f"/blocks/{quote(row['id'], safe='')}", {"table_row": {"cells": [_linked(c, u) for c, u in cells]}})
@@ -384,13 +417,38 @@ def write_combined(client, block_id, heading, stamp, lanes, extra, review_parts,
             return False
         rows_after = report_region.children(client, mid[0]["id"], AccountabilityError)[1:]
         again = report_region.children(client, mid[2]["id"], AccountabilityError)
-        return (text(after["heading"]) == heading.strip() and text(after["stamp"]) == stamp.strip() and [_row_signature(r) for r in rows_after] == [_normalise_cells(c) for _, c in wanted]
+        same = ([_wide_signature(r) for r in rows_after] == [_rich_cells(c) for _, c in wanted]) if wide is not None else ([_row_signature(r) for r in rows_after] == [_normalise_cells(c) for _, c in wanted])
+        return (text(after["heading"]) == heading.strip() and text(after["stamp"]) == stamp.strip() and same
                 and (not extra or text(mid[1]) == extra.strip()) and len(again) == 1 and signature(again[0]) == want_review)
     if live and changed:
         ok, _ = readback.confirmed(lambda: locate_combined(client, block_id), matches)
         if not ok:
             raise fail("ACCOUNTABILITY_VERIFY_FAILED")
     return {"changed": changed}
+
+
+WIDE_HEADER = ("Lane", "Progress", "Done / all", "New count (preview)", "Status")
+_EMPTY_WIDE = ([("–", None, False, None)], [("–", None, False, None)], [("—", None, False, None)], [("—", None, False, None)])
+
+
+def _rich_cells(cells):
+    return [_rich_sig(cell) for cell in cells]
+
+
+def _wide_signature(row):
+    return [_live_rich({"type": "x", "x": {"rich_text": cell}}) for cell in (row.get("table_row") or {}).get("cells") or []]
+
+
+def _table_payload(labels, lanes, wide):
+    """A five-column table block (header row, then one row per lane label), every cell [(text, link, bold, color)]."""
+    def row(cells):
+        return {"object": "block", "type": "table_row", "table_row": {"cells": [[_node(*p) for p in cell] for cell in cells]}}
+    rows = [row([[(h, None, False, None)] for h in WIDE_HEADER])]
+    for label in labels:
+        url = next((u for lane, (_, u) in lanes.items() if label.lower().startswith(lane.lower())), None)
+        cells = next((c for lane, c in wide.items() if label.lower().startswith(lane.lower())), _EMPTY_WIDE)
+        rows.append(row([[(label, url, False, None)]] + [list(c) for c in cells]))
+    return {"object": "block", "type": "table", "table": {"table_width": 5, "has_column_header": True, "has_row_header": False, "children": rows}}
 
 
 def _row_signature(row):
