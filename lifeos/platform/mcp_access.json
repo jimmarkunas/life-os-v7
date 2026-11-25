@@ -6,6 +6,9 @@
   "buzz_read": "buzz-read",
   "buzz_publish": "buzz-publish",
   "send_to_jim": "agent-inbox",
+  "agent_status": "orchestrator-read",
+  "agent_dispatch": "orchestrator-dispatch",
+  "agent_messages": "orchestrator-read",
   "source_read": "source-read",
   "agent_lookup": "agent-lookup",
   "gmail_search": "governed-google-read",
@@ -281,6 +284,90 @@
     "write"
    ],
    "credential_ref": "buzz-scoped-member-key",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-claude-chat-personal-agent_status",
+   "principal": "claude-chat",
+   "tenant": "personal",
+   "account": "orchestrator",
+   "tool": "agent_status",
+   "purpose": "orchestrator-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "concord-gateway-socket",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-claude-chat-personal-agent_dispatch",
+   "principal": "claude-chat",
+   "tenant": "personal",
+   "account": "orchestrator",
+   "tool": "agent_dispatch",
+   "purpose": "orchestrator-dispatch",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "concord-gateway-socket",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-claude-chat-personal-agent_messages",
+   "principal": "claude-chat",
+   "tenant": "personal",
+   "account": "orchestrator",
+   "tool": "agent_messages",
+   "purpose": "orchestrator-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "concord-gateway-socket",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-chatgpt-chat-personal-agent_status",
+   "principal": "chatgpt-chat",
+   "tenant": "personal",
+   "account": "orchestrator",
+   "tool": "agent_status",
+   "purpose": "orchestrator-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "concord-gateway-socket",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-chatgpt-chat-personal-agent_dispatch",
+   "principal": "chatgpt-chat",
+   "tenant": "personal",
+   "account": "orchestrator",
+   "tool": "agent_dispatch",
+   "purpose": "orchestrator-dispatch",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "concord-gateway-socket",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-chatgpt-chat-personal-agent_messages",
+   "principal": "chatgpt-chat",
+   "tenant": "personal",
+   "account": "orchestrator",
+   "tool": "agent_messages",
+   "purpose": "orchestrator-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "concord-gateway-socket",
    "expires": "2027-02-22",
    "revoked": false
   },

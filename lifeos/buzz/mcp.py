@@ -74,7 +74,8 @@ READ = {  # operation: (summary, parameters {name: (type, required)}, handler(re
 LOOKUP = {"fetchers": {}, "rows": None}                                             # LIFE-888: wired by main(); empty means source_unavailable / directory_unavailable, never a guess
 GOOGLE = {"creds": None, "opener": None}                                            # LIFE-875: wired by main(); None means not_configured, never a guess
 MEMORY, MEMORY_OPS = {"client": None, "now": None}, ("memory_store", "memory_recall", "memory_correct", "memory_revoke", "memory_ask")   # LIFE-868, LIFE-949 (memory_ask): shared memory on the retained Honcho, each operation its own gate tool; MEMORY is wired by main() (memory_not_configured until HONCHO_MEMORY_TOKEN is set)
-INBOX, ROUTES = {"client": None, "now": None}, {}                                   # LIFE-876: the Agent Inbox write; ROUTES: operation -> route(op, args, tenant) -> (tenant, action, account, service) for the gate, filled by each operation module
+INBOX, ROUTES = {"client": None, "now": None}, {}
+ORCH = {"gateway": None, "ticket_state": None, "inbox": None, "seen": {}}                  # LIFE-987: the orchestrator operations; gateway None means the fixed Concord gateway socket, ticket_state None means ticket_state_unavailable (the bridge holds no Jira credential), inbox is INBOX                                   # LIFE-876: the Agent Inbox write; ROUTES: operation -> route(op, args, tenant) -> (tenant, action, account, service) for the gate, filled by each operation module
 
 
 def _lift(module, op, state):
@@ -88,12 +89,12 @@ def _lift(module, op, state):
 
 
 try:                                                                                 # a release without the platform files serves without these operations (the gate would refuse them anyway)
-    from lifeos.platform import call_limit, google_read, inbox_send, mcp_access, pilot_community, source_lookup
-    for _module, _state in ((source_lookup, LOOKUP), (google_read, GOOGLE), (inbox_send, INBOX)):
+    from lifeos.platform import call_limit, google_read, inbox_send, mcp_access, orchestrator, pilot_community, source_lookup
+    for _module, _state in ((source_lookup, LOOKUP), (google_read, GOOGLE), (inbox_send, INBOX), (orchestrator, ORCH)):
         READ.update({op: (text, params, _lift(_module, op, _state)) for op, (text, params) in _module.OPS.items()})
         ROUTES.update({op: _module.route for op in _module.OPS})                      # each operation is its own gate tool, routed by its module
 except ImportError:
-    call_limit = google_read = inbox_send = mcp_access = pilot_community = source_lookup = None
+    call_limit = google_read = inbox_send = mcp_access = orchestrator = pilot_community = source_lookup = None
 try:                                                                                 # LIFE-868: separate from the lookups above, so a release that carries the memory file but not the Google and lookup files still serves memory
     from lifeos.platform import memory_honcho
     memory_honcho.register(READ, _lift, MEMORY)
@@ -149,7 +150,7 @@ def dispatch(relay, name, args, who):
         raise BuzzError("community_required")
     if comm is not None and comm not in who["communities"]:
         raise BuzzError("community_not_authorized")
-    a = {**a, "_client": (who.get("facts") or {}).get("credential") or who.get("client") or "unknown"} if op in (*MEMORY_OPS, "send_to_jim") else a   # LIFE-868, LIFE-876: the verified client is the provenance, injected after the argument check so a caller can never name it
+    a = {**a, "_client": (who.get("facts") or {}).get("credential") or who.get("client") or "unknown"} if op in (*MEMORY_OPS, "send_to_jim", "agent_status", "agent_dispatch", "agent_messages") else a   # LIFE-868, LIFE-876: the verified client is the provenance, injected after the argument check so a caller can never name it
     data, nxt = ([c for c in who["communities"] if c in relay.keys], None) if op == "list_communities" else READ[op][2](relay, comm, a)
     return {"ok": True, "contract": CONTRACT, "operation": op, "data": data, "next_cursor": nxt}
 
@@ -429,6 +430,7 @@ def main():
     except (ValueError, OSError) as e:
         sys.exit(f"config error: {e}")
     if google_read and source_lookup and inbox_send:
+        ORCH["inbox"] = INBOX                                                      # LIFE-987: the offline fallback uses the same Agent Inbox client
         inbox_send.wire(credentials(os.environ), INBOX)                              # LIFE-876: the Agent Inbox write, with the service's Notion integration (NOTION_READONLY_TOKEN, now Read, Insert and Update); None until it is placed
         GOOGLE["creds"] = google_read.creds_from_env(credentials(os.environ))      # LIFE-875: a read-only Google credential is read here by name only; None until the six names are set
         source_lookup.wire(credentials(os.environ), LOOKUP)                           # LIFE-888: GitHub (public) always; Notion pages and the directory only when the service holds the credential and the source id
