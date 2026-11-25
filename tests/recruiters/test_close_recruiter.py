@@ -274,31 +274,26 @@ class OneClickAndCloseAll(unittest.TestCase):
         row = store.read(rec.pages[0])
         self.assertEqual((row["action"], row["done"], row["active"], row["needs_review"]), ("Completed", True, False, False))
 
-    def test_the_page_says_the_card_is_updated_only_when_the_in_service_rewrite_was_verified(self):
-        config = {"ledger": "1" * 32, "pipeline": "2" * 32, "recruiters": RECRUITERS_ID, "hiring_table": "a" * 32, "close_base": "https://close.example.test"}
-        for verified, text, asked in ((True, b"Closed. The card is updated.", []), (False, b"Closed. The card updates on the next refresh.", ["recruiters"])):
+    def test_the_answer_never_waits_for_the_card_and_says_a_few_seconds_when_the_worker_is_there(self):
+        """LIFE-972 (Jim, Nov 24 11:35 PM CT): save, answer at once, redraw in the background. The app only asks (`after`); it never runs the writer."""
+        for worker, text, asked in ((True, b"Done. The card updates in a few seconds.", ["card"]), (False, b"Done. The card updates on the next refresh.", ["recruiters"])):
             rec = world()
             svc = Svc(Ledger(), rec)
-            svc.config = config
             _, _, body, _ = svc("GET", "/recruiter", {"r": ROW, "do": "done"})
-            with mock.patch("lifeos.recruiters.outreach_card.run", return_value={"verified": verified}) as run:
+            with mock.patch("lifeos.edge.close_redraw.available", return_value=worker), mock.patch("lifeos.recruiters.outreach_card.run") as writer:
                 status, _, done, _ = svc("POST", "/recruiter", form=fields(body))
             self.assertEqual(status, 200)
             self.assertIn(text, done)
-            self.assertEqual(svc.after, asked)                                                # a failed rewrite falls back to the workflow refresh
-            self.assertEqual(run.call_args.kwargs["environ"]["RECRUITERS_STAGE_OUTCOME"], "skipped")
-            self.assertTrue(run.call_args.args[1])                                            # live
+            self.assertEqual(svc.after, asked)
+            writer.assert_not_called()                                                         # nothing in the request redraws the card
+            self.assertEqual(store.read(rec.pages[0])["action"], "Completed")
 
-    def test_a_card_rewrite_that_raises_never_breaks_the_verified_close(self):
-        config = {"ledger": "1" * 32, "pipeline": "2" * 32, "recruiters": RECRUITERS_ID, "hiring_table": "a" * 32, "close_base": "https://close.example.test"}
-        rec = world()
-        svc = Svc(Ledger(), rec)
-        svc.config = config
-        _, _, body, _ = svc("GET", "/recruiter", {"r": ROW, "do": "done"})
-        with mock.patch("lifeos.recruiters.outreach_card.run", side_effect=NotionError("X")):
-            status, _, done, _ = svc("POST", "/recruiter", form=fields(body))
-        self.assertEqual((status, svc.after), (200, ["recruiters"]))
-        self.assertEqual(store.read(rec.pages[0])["action"], "Completed")
+    def test_dismiss_says_dismissed(self):
+        svc = Svc(Ledger(), world())
+        _, _, body, _ = svc("GET", "/recruiter", {"r": ROW, "do": "dismiss"})
+        with mock.patch("lifeos.edge.close_redraw.available", return_value=True):
+            done = svc("POST", "/recruiter", form=fields(body))[2]
+        self.assertIn(b"Dismissed. The card updates in a few seconds.", done)
 
     def test_close_all_overdue_lists_the_overdue_names_and_dismisses_exactly_those_on_one_confirm(self):
         rec = Rows([page("Olga Overdue", action="Needs Action", follow_up="2026-10-10", pid="a" * 32), page("Nora Today", action="Needs Action", follow_up="2026-10-15", pid="b" * 32),
@@ -315,10 +310,11 @@ class OneClickAndCloseAll(unittest.TestCase):
         status, _, done, _ = svc("POST", "/recruiter", form={**fields(body), "step": "confirm"})
         self.assertEqual(status, 200, done)
         self.assertIn(b"Dismissed 2 overdue", done)
+        self.assertNotIn(b"Closed. The card is updated", done)
         states = {store.read(p)["person"]: (store.read(p)["action"], store.read(p)["done"], store.read(p)["active"]) for p in rec.pages}
         self.assertEqual(states, {"Olga Overdue": ("Dismissed", True, False), "Nora Today": ("Needs Action", False, True),
                                   "Wanda Waiting": ("Waiting", False, True), "Otto Overdue": ("Dismissed", True, False)})
-        self.assertEqual(svc.after, ["recruiters"])
+        self.assertEqual(svc.after, ["recruiters"])                                           # no worker in the test: the workflow refresh is asked
         status, _, again, _ = svc("GET", "/recruiter", {"all": "overdue"})                    # nothing overdue any more: no form
         self.assertNotIn(b"<form", again)
 

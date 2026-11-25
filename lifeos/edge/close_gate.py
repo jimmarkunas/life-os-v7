@@ -14,6 +14,7 @@ import sys
 import urllib.request
 from urllib.parse import parse_qsl
 
+from lifeos.edge import close_redraw
 from lifeos.imessage import alerts_endpoint as ep
 from lifeos.platform.notion_client import Client
 
@@ -184,7 +185,7 @@ def main(app, stdin=None, stdout=None, lookup=ep.whois, uid=ep.loopback_peer_uid
     except (OSError, ValueError):
         picker = None
     after = []
-    secrets["config"] = {k: policy.get(k) for k in ("ledger", "pipeline", "hiring_table", "close_base")}      # the last two (LIFE-971): where the Recruiter Outreach table is, and this service's own origin for its links
+    secrets["config"] = {k: policy.get(k) for k in ("ledger", "pipeline")}
     if isinstance(picker, dict):
         secrets["picker"] = {k: picker[k] for k in ("client_id", "api_key", "app_id") if isinstance(picker.get(k), str)}
     if policy.get("recruiters"):                                          # D221 Mark as Sent; without it /sent refuses NOTION_CONFIG_MISSING and nothing is written
@@ -203,6 +204,8 @@ def main(app, stdin=None, stdout=None, lookup=ep.whois, uid=ep.loopback_peer_uid
         status, ctype, body, extra = 500, "text/plain; charset=utf-8", b"", ()
     hub = req["method"] == "GET" and req["path"] in PICKER_PATHS and status == 200 and ctype.startswith("text/html")
     respond(stdout, status, body, ctype, extra, PICKER_CSP if hub else CSP, PICKER_REFERRER if hub else REFERRER)
+    if "card" in after and status == 200:                                 # LIFE-972: the card is redrawn by the background worker; no worker -> the workflow refresh
+        after[:] = [w for w in after if w != "card"] + ([] if close_redraw.poke() else ["recruiters"])
     if token and after and status == 200:
         refresh(token, after)
     return 0

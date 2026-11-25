@@ -4,10 +4,9 @@ Same Edge gate and signed-form pattern as close_app. Only the confirm POST write
 The people offered are the job page's own Network Leads (lifeos.network.surface, read only, dismissed leads left out), signed into the form with the job so a tampered name is refused; "Other" takes a typed name. The employer is optional: typed, or the current employer the chosen lead's own line states ("Listed at ..."); it is
 shown on Review, signed with the person and stored as the row's Recruiter Company. Nothing is guessed.
 Outputs: fixed codes only. Pointer: D221, LIFE-21, LIFE-47."""
-import contextlib
-import io
 from html import escape as e
 
+from lifeos.edge import close_redraw
 from lifeos.hiring import close_screen as S, decision as D
 from lifeos.network import surface as N
 from lifeos.platform.fixed_code import fixed
@@ -308,8 +307,6 @@ _close_stop = stopper("A close counts only after the canonical record is read ba
 
 
 DO_STATUS = {"done": "Completed", "dismiss": "Dismissed"}                  # LIFE-971: the card's one-click links
-CARD_UPDATED = "Closed. The card is updated."
-CARD_LATER = "Closed. The card updates on the next refresh."
 
 
 def _one_click(req):
@@ -325,28 +322,14 @@ def _closable(r, status):
     return r["action"] == status and not (r["done"] and not r["active"] and not r["needs_review"])
 
 
-def _refresh_card(secrets):
-    """Rewrite the Daily Report's Recruiter Outreach table from the Recruiters rows right now, with the same writer the hourly stage uses, through this service's own Notion integration (no new credential).
-    -> True only when the writer's own read-back verified the table; any failure is False and the caller asks the workflow refresh instead. Nothing is printed."""
-    config = secrets["config"]
-    if not config.get("hiring_table") or not config.get("close_base"):
-        return False
-    try:
-        from lifeos.recruiters import outreach_card as card
-        env = {"HIRING_TABLE_BLOCK_ID": config["hiring_table"], "RECRUITER_OUTREACH": "on", "RECRUITERS_STAGE_OUTCOME": "skipped", "V7_CLOSE_BASE_URL": config["close_base"]}
-        writer = Client({"NOTION_API_TOKEN": secrets["notion"].decode(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused"})
-        with contextlib.redirect_stdout(io.StringIO()):
-            return bool(card.run(0, True, environ=env, notion=_recruiters(secrets), client=writer).get("verified"))
-    except Exception:                                                                # noqa: BLE001 - the close itself is already verified; the hourly run still redraws
-        return False
-
-
-def _after_close(secrets):
-    """After a verified close: redraw the card now; if that cannot be proven, ask the workflow refresh. -> the one sentence the page shows."""
-    if _refresh_card(secrets):
-        return CARD_UPDATED
+def _after_close(secrets, said):
+    """After a verified close: ask the background worker for a redraw (the gate pokes its socket once the answer is sent); without a worker, ask the workflow refresh as before.
+    -> the one sentence the page shows. Nothing here waits for the card (Jim, Nov 24 11:35 PM CT)."""
+    if close_redraw.available():
+        secrets.get("after", []).append("card")
+        return f"{said}. The card updates in a few seconds."
     secrets.get("after", []).append("recruiters")
-    return CARD_LATER
+    return f"{said}. The card updates on the next refresh."
 
 
 def _one_click_page(r, pid, status, who, secrets):
@@ -397,7 +380,7 @@ def _all_post(form, who, secrets):
             return early
         if done["status"] == "recorded":
             closed.append(pid)
-    note = _after_close(secrets) if closed else "Nothing was open any more."
+    note = _after_close(secrets, f"Dismissed {len(closed)}") if closed else "Nothing was open any more."
     return _close_stop(200, "Recorded", f"Dismissed {len(closed)} overdue", "Each record was written and read back.", note, "ok")
 
 
@@ -454,7 +437,7 @@ def _close_post(req, who, secrets):
         return early
     head = f"{shown['person']} · {shown['company'] or 'Company not recorded'}"
     if done["status"] == "recorded":
-        return _close_stop(200, "Recorded", f"Closed: {status}", "The canonical record was written and read back.", f"{head} · {status}. {_after_close(secrets)}", "ok")
+        return _close_stop(200, "Recorded", f"Closed: {status}", "The canonical record was written and read back.", f"{head} · {_after_close(secrets, 'Done' if status == 'Completed' else 'Dismissed')}", "ok")
     if done["status"] == "already_recorded":
         return _close_stop(200, "Already recorded", "Already closed", "This record was closed that way before; nothing was changed.", f"{head} · {done['action']}.", "")
     return _close_stop(409, "Not changed", "Nothing was changed", "The record is no longer open.", f"{head} · currently {done['action'] or 'no status'}.")

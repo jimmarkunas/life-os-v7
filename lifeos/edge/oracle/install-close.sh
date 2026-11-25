@@ -92,6 +92,56 @@ MemoryMax=128M
 TasksMax=16
 CPUQuota=50%
 EOF
+  cat > "$1/lifeos-close-redraw.socket" <<'EOF'
+[Unit]
+Description=LIFE OS Close card redraw (LIFE-972); only the lifeos-resume group (the Close service) may poke it
+[Socket]
+ListenStream=/run/lifeos-close-redraw/redraw.sock
+SocketUser=root
+SocketGroup=lifeos-resume
+SocketMode=0660
+DirectoryMode=0755
+Accept=no
+Backlog=64
+[Install]
+WantedBy=sockets.target
+EOF
+  cat > "$1/lifeos-close-redraw.service" <<'EOF'
+[Unit]
+Description=LIFE OS Close card redraw worker (LIFE-972): one redraw at a time, pokes that arrive meanwhile make one more
+[Service]
+ExecStart=/usr/bin/python3 -I -c "import sys; sys.path.insert(0, '/opt/lifeos-close/current'); from lifeos.edge import close_redraw; sys.exit(close_redraw.main())"
+StandardInput=null
+StandardOutput=journal
+StandardError=journal
+DynamicUser=yes
+LoadCredentialEncrypted=notion:/etc/credstore.encrypted/lifeos-close.notion
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectProc=invisible
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
+RuntimeMaxSec=300
+MemoryMax=192M
+TasksMax=16
+CPUQuota=50%
+EOF
   if [ -s "$CREDS/lifeos-close.github" ]; then                                       # optional (Jim, Oct 24): the post-close Hiring refresh; absent = never asked
     sed -i "/^LoadCredentialEncrypted=link:/a LoadCredentialEncrypted=github:$CREDS/lifeos-close.github" "$1/lifeos-close@.service"
   fi
@@ -152,7 +202,7 @@ case "${1:-}" in
     if [ -e "$dest" ]; then python3 -I "$REL" check "$dest" || { drop "$stage"; say "STOP: existing $dest differs"; exit 1; }; drop "$stage"; else mv -T "$stage" "$dest"; fi
     [ -L "$OPT/current" ] && [ "$(readlink "$OPT/current")" != "$dest" ] && ln -sfn "$(readlink "$OPT/current")" "$OPT/previous"
     ln -sfn "$dest" "$OPT/current.new" && mv -T "$OPT/current.new" "$OPT/current"
-    units "$UNITS"; systemctl daemon-reload; systemctl enable --now lifeos-close.socket >/dev/null
+    units "$UNITS"; systemctl daemon-reload; systemctl enable --now lifeos-close.socket lifeos-close-redraw.socket >/dev/null
     [ "$st" = ours ] || tailscale serve --bg --tls-terminated-tcp "$TAILNET" --proxy-protocol 2 "tcp://127.0.0.1:$LOCAL" >/dev/null || { say "FAIL: Serve $TAILNET not added (run uninstall)"; exit 1; }
     "$0" verify && remember "$dest" ;;
   verify)
@@ -286,7 +336,8 @@ EOF
     if systemctl list-unit-files lifeos-close-release.timer --no-legend 2>/dev/null | grep -q .; then systemctl disable --now lifeos-close-release.timer >/dev/null || { say "FAIL: auto-release timer not stopped"; bad=1; }; fi
     rm -f "$UNITS/lifeos-close-release.timer" "$UNITS/lifeos-close-release.service"
     if systemctl list-unit-files lifeos-close.socket --no-legend 2>/dev/null | grep -q .; then systemctl disable --now lifeos-close.socket >/dev/null || { say "FAIL: socket not stopped"; bad=1; }; fi
-    rm -f "$UNITS/lifeos-close.socket" "$UNITS/lifeos-close@.service"; systemctl daemon-reload || bad=1
+    systemctl disable --now lifeos-close-redraw.socket >/dev/null 2>&1 || true
+    rm -f "$UNITS/lifeos-close.socket" "$UNITS/lifeos-close@.service" "$UNITS/lifeos-close-redraw.socket" "$UNITS/lifeos-close-redraw.service"; systemctl daemon-reload || bad=1
     [ "$(serve_state)" = free ] || { say "FAIL: Serve $TAILNET not verified free"; bad=1; }
     if [ "$bad" = 0 ]; then say "Removed the socket, the auto-release timer, units and Serve port $TAILNET; the tree, policy and credentials stay until removed by hand."; else say "UNINSTALL INCOMPLETE"; exit 1; fi ;;
   *) say "usage: install-close.sh policy|credential|units|install|auto|auto-units|verify|rollback|uninstall"; exit 2 ;;
