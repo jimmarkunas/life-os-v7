@@ -106,6 +106,18 @@ def concurrency_from_env(environ=None):
             "parallel": _small_int(environ.get("TICK_MAX_PARALLEL"), MAX_PARALLEL_DEFAULT)}
 
 
+def tick_concurrency(environ=None):
+    """LIFE-856: the caps, read AFTER the Runtime Configuration rows are applied. The workflow declares TICK_CAP_* empty so the settings source can fill them (LIFE-703), but the tick process read them before
+    any stage had applied the settings, so a TICK_CAP_TINYFISH row never reached the caps (Nov 25 2026: discover-jobs still waited a p50 65 s behind web-titlewatch). Applying the source here never fails the tick."""
+    environ = os.environ if environ is None else environ
+    try:
+        from lifeos.platform import settings                                           # noqa: PLC0415
+        settings.apply(environ)
+    except Exception:                                                                   # noqa: BLE001 - an unreadable settings source leaves the caps at their defaults, never fails the run
+        pass
+    return concurrency_from_env(environ)
+
+
 def _stop_thread(thread, flag):
     """Raise StageTimeout inside `thread` (the alarm signal only reaches the main thread). It takes effect when the thread is next running Python code, so a read blocked in the network ends at its own
     socket timeout; the flag stops it from firing at a stage that already finished."""
@@ -310,7 +322,7 @@ def main(argv=None):
     parser.add_argument("--quick", action="store_true", help="small caps for a manual end-to-end proof (D206)")
     args = parser.parse_args(argv)
     sys.stdout.reconfigure(line_buffering=True)                                     # each stage's counts line reaches the log when it is printed, not at exit
-    concurrency = concurrency_from_env()
+    concurrency = tick_concurrency()
     timings, begun = {}, time.monotonic()
     if concurrency:                                                                    # LIFE-569: the global limit on board reads is set before any stage runs
         from lifeos.platform import read_slots                                         # noqa: PLC0415
