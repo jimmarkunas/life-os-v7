@@ -124,6 +124,25 @@ class SelfhostProbe(unittest.TestCase):
         for secret in (OWNER_HEX, AGENT_HEX):
             self.assertNotIn(secret, done.stdout + done.stderr)
 
+    def test_channels_mode_creates_each_named_channel_with_the_source_channels_members_and_prints_only_public_ids(self):
+        """LIFE-927: the pinned relay gets channels matching the hosted names; members come from the source channel's roster (public keys), the owner is not re-added, nothing else changes."""
+        relay = FakeRelay()
+        other = nip98.pubkey(bytes.fromhex("44" * 32))
+        relay.members |= {AGENT_PUB, other}
+        relay.events.append({"id": "r" * 64, "kind": 39002, "pubkey": OWNER_PUB, "tags": [["d", "src"], ["p", OWNER_PUB], ["p", AGENT_PUB], ["p", other]], "content": ""})
+        before = set(relay.channels)
+        done, tmp = self.run_probe(relay, mode=("channels", "src", "life-os-main", "life-os-test"))
+        lines = done.stdout.splitlines()
+        self.assertEqual([line.split(" ")[:2] for line in lines], [["keys", "ok"], ["roster", "ok"], ["channel_life-os-main", "ok"], ["channel_life-os-test", "ok"]], done.stdout + done.stderr)
+        made = [c for c in relay.channels if c not in before]
+        self.assertEqual((done.returncode, len(made), [relay.channels[c] for c in made]), (0, 2, [{OWNER_PUB, AGENT_PUB, other}] * 2))
+        names = [t[1] for e in relay.events if e["kind"] == 9007 for t in e["tags"] if t[0] == "name"]
+        self.assertEqual(sorted(names), ["life-os-main", "life-os-test"])
+        for secret in (OWNER_HEX, AGENT_HEX):
+            self.assertNotIn(secret, done.stdout + done.stderr)
+        refused, _ = self.run_probe(FakeRelay(), mode=("channels",))
+        self.assertEqual((refused.stdout.splitlines()[-1], refused.returncode), ("channels fail (a source channel and at least one name are required)", 1))
+
     def test_members_mode_adds_exactly_the_given_public_keys_to_the_relay_and_the_channel_and_nothing_else(self):
         """LIFE-927: the owner adds public keys only; no member private key is involved and nobody else is added."""
         relay = FakeRelay()
