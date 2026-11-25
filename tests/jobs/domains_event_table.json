@@ -418,6 +418,18 @@
  "dispatch: jira=snapshot + live": [
   "jira"
  ],
+ "dispatch: jira=writers-check": [
+  "jira"
+ ],
+ "dispatch: jira=writers-check + live": [
+  "jira"
+ ],
+ "dispatch: jira=writers-verify": [
+  "jira"
+ ],
+ "dispatch: jira=writers-verify + live": [
+  "jira"
+ ],
  "dispatch: live=True": [],
  "dispatch: megibow=True": [
   "megibow"

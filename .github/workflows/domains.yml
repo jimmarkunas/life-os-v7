@@ -428,9 +428,9 @@ jobs:
         env:
           JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
           JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
-          VERIFY: ${{ inputs.verify }}
+          JIRA_WRITERS_VERIFY: ${{ inputs.verify }}
         run: |
-          set -f; set -- $VERIFY; VERIFY_BOARD="$1"; VERIFY_ISSUE="$2"; VERIFY_LIVE="${3:-}"
+          set -f; set -- $JIRA_WRITERS_VERIFY; VERIFY_BOARD="$1"; VERIFY_ISSUE="$2"; VERIFY_LIVE="${3:-}"
           [ "$#" -ge 2 ] && [ "$#" -le 3 ] || { echo "::error title=jira::verify must be BOARD ISSUE or BOARD ISSUE yes"; exit 1; }
           case "$VERIFY_BOARD" in JFM|MEJ) ;; *) echo "::error title=jira::verify board must be JFM or MEJ"; exit 1;; esac
           printf '%s' "$VERIFY_ISSUE" | grep -Eq '^[A-Z][A-Z0-9]{1,9}-[0-9]{1,7}$' || { echo "::error title=jira::verify issue must be one issue key"; exit 1; }

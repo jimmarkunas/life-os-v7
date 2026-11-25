@@ -938,11 +938,11 @@ class DomainsWorkflowTests(unittest.TestCase):
         self.assertEqual(steps["jwcheck"]["run"], "python -m lifeos.jira.writers contract-check")
         run = steps["jwverify"]["run"]
         self.assertNotIn("${{", run)                                                                      # no input is interpolated into the shell
-        self.assertEqual(steps["jwverify"]["env"]["VERIFY"], "${{ inputs.verify }}")
+        self.assertEqual(steps["jwverify"]["env"]["JIRA_WRITERS_VERIFY"], "${{ inputs.verify }}")
         self.assertIn('[ "$VERIFY_LIVE" = "yes" ]', run)
         self.assertEqual(run.count("--live"), 1)                                                          # --live appears only on the yes branch
         for step in steps.values():                                                                       # no new secret: only the two Jira values every Jira step already takes
-            self.assertEqual({k for k in step["env"] if not k.startswith("VERIFY")}, {"JIRA_API_TOKEN", "JIRA_EMAIL"})
+            self.assertEqual({k for k in step["env"] if k != "JIRA_WRITERS_VERIFY"}, {"JIRA_API_TOKEN", "JIRA_EMAIL"})
         self.assertEqual(self.doc["permissions"], {"contents": "read"})
         trigger = self.doc.get("on") or self.doc[True]
         self.assertLessEqual({"writers-check", "writers-verify"}, set(trigger["workflow_dispatch"]["inputs"]["jira"]["options"]))
