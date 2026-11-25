@@ -268,14 +268,6 @@
    "slowest_seconds": 0,
    "target": 10
   },
-  "doppler-copy.yml::copy": {
-   "basis": "LIFE-981 one-time copy, removed after it runs; a 15 minute cap is far above its expected half minute",
-   "current": 15,
-   "median_seconds": 0,
-   "runs_measured": 0,
-   "slowest_seconds": 0,
-   "target": 15
-  },
   "fit-edge-test.yml::fit_edge": {
    "basis": "twice the slowest run (76 s) rounds to 5 min, not below the current 5: unchanged",
    "current": 5,
