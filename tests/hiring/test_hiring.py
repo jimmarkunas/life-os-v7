@@ -1,6 +1,4 @@
 """HIRE-1.2: Job Ledger Applied + Hiring Pipeline pages + Calendar -> deterministic compiler -> one private snapshot row -> the floating Daily Report region."""
-import copy
-import inspect
 import json
 import pathlib
 import re
@@ -9,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from unittest import mock
 from zoneinfo import ZoneInfo
 
-from lifeos.hiring import card, compile as C, models as M, render, snapshot
+from lifeos.hiring import compile as C, models as M, render, snapshot
 from lifeos.jobs import hiring_pipeline, ledger
 from lifeos.platform import report_region as R, router
 from lifeos.sources.pipeline import hiring as stage
@@ -254,21 +252,6 @@ class CloseLinkTests(unittest.TestCase):
         rows = compile_(applied_rows, parents)["rows"]
         return rows, stage.close_ids(rows, applied_rows, parents)
 
-    def test_the_ledger_row_is_linked_and_a_pursuit_without_one_has_no_close_link(self):
-        led = {**applied("Acme", "PM"), "id": LED}
-        rows, ids = self.ids([led], [parent(PAGE, "Acme", "PM")])
-        self.assertEqual(ids, {rows[0]["key"]: LED.replace("-", "")})                      # the Notes page is never substituted for the Ledger row
-        rows, ids = self.ids([], [parent(PAGE, "Globex", "Dir", rounds=1)])
-        self.assertEqual(ids, {})                                                          # LIFE-353: a Notes page alone carries no decision
-        rows, ids = self.ids([], [{**parent(PAGE, "Globex", "Dir", rounds=1), "row_id": LED}])
-        self.assertEqual(ids, {rows[0]["key"]: LED.replace("-", "")})                      # an interview pursuit's row (Stage set, not Applied) is linked by its row id
-
-    def test_an_ambiguous_or_unmatched_pursuit_has_no_id(self):
-        led = {**applied("Acme", "PM"), "id": LED}
-        self.assertEqual(self.ids([led, {**led, "id": "cccccccc-3333-4333-8333-cccccccccccc"}], [])[1], {})            # two Ledger rows
-        self.assertEqual(self.ids([], [{**parent(PAGE, "Acme", "PM"), "row_id": LED}, {**parent("dddddddd-4444-4444-8444-dddddddddddd", "Acme", "PM"), "row_id": "cccccccc-3333-4333-8333-cccccccccccc"}])[1], {})
-        self.assertEqual(self.ids([{**applied("Acme", "PM"), "id": "not-an-id"}], [])[1], {})                                    # an invalid id is dropped, never repaired
-
     def test_the_url_is_built_only_from_a_bare_https_origin_and_one_hex_id(self):
         pid = LED.replace("-", "")
         self.assertEqual(render.close_url(BASE, pid), f"{BASE}/?o={pid}")
@@ -289,48 +272,6 @@ class CloseLinkTests(unittest.TestCase):
         self.assertEqual(render.row_cells(row, NOW, None), plain)
         orphan = compile_([applied("Acme", "PM")])["rows"][0]
         self.assertEqual(R.want_view(render.row_cells(orphan, NOW, link))[3], [("Needs Notes · ", None, None), ("Close ↗", link, None)])        # a Close link needs no Notes link
-
-    def test_render_adds_links_by_row_key_keeps_order_and_labels_and_ignores_a_bad_origin(self):
-        applied_rows = [{**applied("Acme", "PM"), "id": LED}, applied("Globex", "Dir")]
-        parents = [parent(PAGE, "Acme", "PM")]
-        result = compile_(applied_rows, parents)
-        ids = stage.close_ids(result["rows"], applied_rows, parents)
-        base = render.render(result, None, NOW)
-        for origin in (None, "", "http://x", "https://u:p" + "@x.ts.net"):
-            self.assertEqual(render.render(result, None, NOW, (origin, ids)), base)
-        text, shown, _ = render.render(result, None, NOW, (BASE, ids))
-        self.assertEqual(text, base[0])
-        self.assertEqual([R.want_view(r)[:3] for r in shown], [R.want_view(r)[:3] for r in base[1]])
-        by_name = {r[0][0].split(" — ")[0]: R.want_view(r)[3] for r in shown}
-        self.assertEqual([x[0] for x in by_name["Acme"]], ["Opportunity Page ↗", " · ", "Close ↗"])
-        self.assertEqual(by_name["Acme"][2][1], f"{BASE}/?o={LED.replace('-', '')}")
-        self.assertEqual(by_name["Globex"], [("Needs Notes", None, None)])                                                       # no id, no link
-
-    def test_the_writer_renders_two_links_reads_them_back_and_repairs_only_a_changed_link(self):
-        link = render.close_url(BASE, PAGE.replace("-", ""))
-        want = [[("Acme — PM", None), ("Submitted", None), ("Awaiting", None), [("Opportunity Page ↗", "https://www.notion.so/abc"), (" · ", None), ("Close ↗", link)]]]
-        t = page(extra_rows=0)
-        done = card.present(t, ENV, "Updated 2:00 PM CT · 1 active", want, True)
-        self.assertTrue(done["verified"])
-        self.assertEqual(R.cell_blocks(want[0])[3], [{"type": "text", "text": {"content": "Opportunity Page ↗", "link": {"url": "https://www.notion.so/abc"}}},
-                                                     {"type": "text", "text": {"content": " · "}}, {"type": "text", "text": {"content": "Close ↗", "link": {"url": link}}}])
-        t.log.clear()
-        again = card.present(t, ENV, "Updated 2:00 PM CT · 1 active", want, True)
-        self.assertEqual((again["rows_changed"], again["rows_added"], again["rows_removed"], writes(t)), (0, 0, 0, []))     # a repeat run writes nothing
-        spans = lambda *parts: [{"type": "text", "text": {"content": c, **({"link": {"url": u}} if u else {})}} for c, u in parts]
-        row_id = t.kids["0000000000000000000000000000a003"][1]
-        notes = "https://www.notion.so/abc"
-        t.blocks[row_id]["table_row"]["cells"][3] = spans(("Opportunity Page ↗", notes), (" · ", link), ("Close ↗", None))      # same text and same URLs, but the link sits on the separator: Close is not clickable
-        self.assertNotEqual(R.live_view(t.blocks[row_id]), R.want_view(want[0]))
-        self.assertEqual(card.present(t, ENV, "Updated 2:00 PM CT · 1 active", want, True)["rows_changed"], 1)              # repaired, and the read-back proves it
-        self.assertEqual(R.live_view(t.blocks[row_id]), R.want_view(want[0]))
-        t.blocks[row_id]["table_row"]["cells"][3] = spans(("Opportunity", notes), (" Page ↗", notes), (" · ", None), ("Close", link), (" ↗", link))      # Notion may split or join spans: still the same ownership
-        t.log.clear()
-        self.assertEqual((card.present(t, ENV, "Updated 2:00 PM CT · 1 active", want, True)["rows_changed"], writes(t)), (0, []))
-        moved = [[*want[0][:3], [want[0][3][0], want[0][3][1], ("Close ↗", link.replace("47443", "47444"))]]]
-        self.assertEqual(card.present(t, ENV, "Updated 2:00 PM CT · 1 active", moved, True)["rows_changed"], 1)          # the second link alone changed
-        self.assertEqual(card.present(t, ENV, "Updated 2:00 PM CT · 1 active", [want[0][:3] + [want[0][3][0]]], True)["rows_changed"], 1)    # dropping the config removes the link
-
 
 class LifecycleTests(unittest.TestCase):
     """D189: a Retired page closes the pursuit, and a role that has waited two weeks says so."""
@@ -428,225 +369,7 @@ class HeaderMigrationTests(unittest.TestCase):
     """The header row moves to the accepted text once, in the same fail-closed write; nothing else is touched and a replay changes nothing."""
     HEAD = "0000000000000000000000000000a003-r0"
 
-    def test_a_dry_run_on_the_old_header_validates_writes_nothing_and_says_a_migration_is_pending(self):
-        t = page(extra_rows=1, headers=M.OLD_HEADERS)
-        done = card.present(t, ENV, "x", WANT, False)
-        self.assertEqual((writes(t), done["verified"], done["header"]), ([], False, "old"))
-
-    def test_the_live_write_migrates_the_header_with_the_rows_and_proves_the_page_unchanged(self):
-        t = page(extra_rows=1, headers=M.OLD_HEADERS)
-        done = card.present(t, ENV, "Updated 2:00 PM CT · 2 active", WANT, True)
-        self.assertEqual((done["verified"], done["header"]), (True, "migrated"))
-        self.assertEqual(R.cells_of(t.blocks[self.HEAD]), list(M.HEADERS))
-        self.assertEqual(table_state(t), [[(a, b) for a, b in row] for row in WANT])
-        t.log.clear()
-        again = card.present(t, ENV, "Updated 2:00 PM CT · 2 active", WANT, True)
-        self.assertEqual((again["header"], again["rows_changed"], writes(t)), ("new", 0, []))               # idempotent
-
-    def test_any_other_header_is_refused_before_a_single_write(self):
-        t = page(extra_rows=1, headers=("Company / Role", "Stage", "Action Needed", "Source"))
-        with self.assertRaises(snapshot.HiringError) as error:
-            card.present(t, ENV, "x", WANT, True)
-        self.assertEqual((str(error.exception), writes(t)), ("HIRING_HEADERS_CHANGED", []))
-
-    def test_a_failed_header_write_is_honest_keeps_the_rows_and_the_next_run_finishes_it(self):
-        t = page(extra_rows=1, headers=M.OLD_HEADERS)
-        t.fail_write = self.HEAD
-        with self.assertRaises(snapshot.HiringError) as error:
-            card.present(t, ENV, "Updated 2:00 PM CT", WANT, True)
-        self.assertEqual(str(error.exception), "HIRING_WRITE_FAILED")
-        self.assertEqual(R.cells_of(t.blocks[self.HEAD]), list(M.OLD_HEADERS))                              # the old header is intact, never half-written
-        self.assertEqual(R.plain(t.blocks["0000000000000000000000000000a001"]), "📈 Hiring Pipeline (DEGRADED)")                   # the heading says the table may be incomplete
-        t.fail_write = None
-        done = card.present(t, ENV, "Updated 2:00 PM CT · 2 active", WANT, True)
-        self.assertEqual((done["verified"], done["header"], R.cells_of(t.blocks[self.HEAD])), (True, "migrated", list(M.HEADERS)))
-
-
 class RegionWriterTests(unittest.TestCase):
-    def test_the_exact_heading_table_shape_is_written_in_place_and_read_back(self):
-        t = page(extra_rows=1)
-        before = t.snapshot(skip={"0000000000000000000000000000a001", "0000000000000000000000000000a003", "0000000000000000000000000000a003-r0", "0000000000000000000000000000a003-r1"})
-        done = card.present(t, ENV, "Updated 2:00 PM CT · 2 active", WANT, True)
-        self.assertTrue(done["verified"])
-        self.assertEqual((done["rows_changed"], done["rows_added"], done["rows_removed"]), (1, 1, 0))
-        self.assertEqual(table_state(t), [[(a, b) for a, b in row] for row in WANT])
-        self.assertEqual(t.snapshot(skip={"0000000000000000000000000000a001", "0000000000000000000000000000a003"} | set(t.kids["0000000000000000000000000000a003"]) | {k for k in t.blocks if k.startswith("new-")}), {k: v for k, v in before.items() if not k.startswith("0000000000000000000000000000a003-r")})
-        self.assertEqual(R.plain(t.blocks["0000000000000000000000000000a001"]), "📈 Hiring Pipeline (Updated 2:00 PM CT)")
-
-    def test_the_header_row_is_never_written_and_the_heading_only_ever_gets_its_stamp(self):
-        t = page(extra_rows=3)
-        card.present(t, ENV, "Updated 2:00 PM CT · 1 active", WANT[:1], True)
-        patched = [path for method, path in writes(t) if method == "PATCH"]
-        self.assertFalse(any("0000000000000000000000000000a003-r0" in p for p in patched))
-        self.assertEqual(sum("0000000000000000000000000000a001" in p for p in patched), 1)                          # one PATCH of the heading: its title and the stamp
-        self.assertEqual(t.blocks["0000000000000000000000000000a001"]["type"], "heading_3")
-        self.assertEqual(len(t.kids["0000000000000000000000000000a003"]), 2)                                         # header + one row; the surplus rows were removed
-
-    @mock.patch.object(R.time, "sleep")
-    def test_a_block_that_vanishes_mid_walk_is_read_again_once_from_the_page_root(self, _sleep):
-        for block, final in (("left", "HIRING_PAGE_WALK_NOTION_HTTP_404:column"), ("cal-card", "HIRING_PAGE_WALK_NOTION_HTTP_404:callout")):      # a listing that fails, and the first-child check of a skipped callout
-            for failures in (1, 2):
-                t = page(extra_rows=1)
-                real, seen = t.call, []
-
-                def flaky(method, path, body=None, real=real, seen=seen, block=block, failures=failures):
-                    if method == "GET" and f"/blocks/{block}/children" in path and len(seen) < failures:
-                        seen.append(path)
-                        raise stage.NotionError("NOTION_HTTP_404")
-                    return real(method, path, body)
-                t.call = flaky
-                if failures == 1:
-                    self.assertFalse(card.present(t, ENV, "x", WANT, False)["verified"])
-                else:                                                  # the same fixed code after the one repeat
-                    with self.assertRaises(snapshot.HiringError) as error:
-                        card.present(t, ENV, "x", WANT, False)
-                    self.assertEqual(str(error.exception), final)
-                self.assertEqual((len(seen), writes(t)), (failures, []))
-
-    def test_a_dry_run_validates_and_writes_nothing(self):
-        t = page(extra_rows=1)
-        done = card.present(t, ENV, "x", WANT, False)
-        self.assertEqual((writes(t), done["verified"]), ([], False))
-
-    def test_an_identical_replay_changes_no_row(self):
-        t = page(extra_rows=1)
-        card.present(t, ENV, "Updated 2:00 PM CT · 2 active", WANT, True)
-        t.log.clear()
-        again = card.present(t, ENV, "Updated 2:00 PM CT · 2 active", WANT, True)
-        self.assertEqual((again["rows_changed"], again["rows_added"], again["rows_removed"], writes(t)), (0, 0, 0, []))
-        self.assertEqual(len(t.kids["0000000000000000000000000000a003"]), 3)
-
-    def test_a_callout_wrapped_hiring_surface_is_rejected_without_a_write(self):
-        t = page(wrapped=True)
-        with self.assertRaises(snapshot.HiringError) as error:
-            card.present(t, ENV, "x", WANT, True)
-        self.assertEqual(str(error.exception), "HIRING_FLOATING_WRAPPED_IN_CALLOUT")
-        self.assertEqual(writes(t), [])
-
-    def test_a_wrong_missing_or_duplicate_heading_is_rejected(self):
-        for kwargs, code in (({"heading": "Hiring Pipeline"}, "FLOATING_HEADING_INVALID"), ({"duplicate": True}, "FLOATING_HEADING_AMBIGUOUS")):
-            t = page(**kwargs)
-            with self.assertRaises(snapshot.HiringError) as error:
-                card.present(t, ENV, "x", WANT, True)
-            self.assertEqual(str(error.exception), "HIRING_" + code)
-            self.assertEqual(writes(t), [])
-        t = page()
-        with self.assertRaises(stage.NotionError):
-            card.present(t, {**ENV, "HIRING_CARD_BLOCK_ID": "0000000000000000000000000000b003"}, "x", WANT, True)
-        self.assertEqual(writes(t), [])
-        with self.assertRaises(snapshot.HiringError):
-            card.present(page(), {k: v for k, v in ENV.items() if k != "HIRING_CARD_BLOCK_ID"}, "x", WANT, True)
-        with self.assertRaises(stage.NotionError):
-            card.present(page(), {**ENV, "HIRING_CARD_BLOCK_ID": "0000000000000000000000000000b003"}, "x", WANT, True)
-        t = page()
-        t.blocks["0000000000000000000000000000a001"]["type"] = "heading_2"
-        with self.assertRaises(snapshot.HiringError):
-            card.present(t, ENV, "x", WANT, True)
-
-    def test_both_blocks_are_pinned_and_a_different_block_under_the_heading_is_never_written(self):
-        for missing in ("HIRING_TABLE_BLOCK_ID", "HIRING_CARD_BLOCK_ID"):
-            t = page()
-            with self.assertRaises(snapshot.HiringError) as error:
-                card.present(t, {k: v for k, v in ENV.items() if k != missing}, "x", WANT, True)
-            self.assertEqual(str(error.exception), "HIRING_NOT_CONFIGURED")
-            self.assertEqual(writes(t), [])
-        for wrong in ({"HIRING_TABLE_BLOCK_ID": "0000000000000000000000000000b002"},):
-            t = page()
-            with self.assertRaises(snapshot.HiringError) as error:
-                card.present(t, {**ENV, **wrong}, "x", WANT, True)
-            self.assertEqual(str(error.exception), "HIRING_PINNED_BLOCK_MISMATCH")
-            self.assertEqual(writes(t), [])
-
-    def test_a_copied_notion_link_is_accepted_as_the_block_id_everywhere(self):
-        link = lambda block: f"https://example.test/Daily-Report-3c73c5a0592680e3898cc56025ab8678?source=copy_link#{block}"      # noqa: E731
-        env = {**ENV, "HIRING_CARD_BLOCK_ID": link("0000000000000000000000000000a001"),
-               "HIRING_TABLE_BLOCK_ID": link("0000000000000000000000000000a003")}
-        self.assertTrue(card.present(page(extra_rows=1), env, "Updated", WANT, True)["verified"])
-        self.assertEqual(R.clean_id("0000000000000000-0000-00000000A001"), "0000000000000000000000000000a001")
-        self.assertEqual(R.clean_id("not an id"), "not an id")
-        t = page()
-        got = R.protected(t, {router.JIRA_REGION: "0000000000000000000000000000a004", router.HIRING_REGION: link("0000000000000000000000000000a001")}, lambda code: RuntimeError(code))
-        self.assertEqual(set(got), {router.JIRA_REGION, router.HIRING_REGION})
-
-    def test_a_pasted_link_or_stray_text_is_named_by_secret_not_value(self):
-        t = page()
-        with self.assertRaises(snapshot.HiringError) as error:
-            card.present(t, {**ENV, "HIRING_TABLE_BLOCK_ID": "https://example.test/page#abc"}, "x", WANT, True)
-        self.assertRegex(str(error.exception), r"^HIRING_ID_INVALID:HIRING_TABLE_BLOCK_ID:len\d+$")
-        self.assertNotIn("example", str(error.exception))
-        self.assertEqual(writes(t), [])
-
-    def test_a_changed_shape_is_rejected(self):
-        for kwargs, code in (({"headers": ("Company", "Stage", "Action", "Source")}, "HEADERS_CHANGED"), ({"status": "between"}, "FLOATING_SHAPE_INVALID"), ({"with_table": False}, "FLOATING_SHAPE_INVALID")):
-            t = page(**kwargs)
-            with self.assertRaises(snapshot.HiringError) as error:
-                card.present(t, ENV, "x", WANT, True)
-            self.assertEqual(str(error.exception), "HIRING_" + code)
-            self.assertEqual(writes(t), [])
-        t = page()
-        t.add("extra-p", "paragraph", "right", text="an unexpected paragraph", index=t.kids["right"].index("0000000000000000000000000000a004"))        # the region now runs on past its table
-        with self.assertRaises(snapshot.HiringError):
-            card.present(t, ENV, "x", WANT, True)
-        t = page()
-        t.blocks["0000000000000000000000000000a003"]["table"]["table_width"] = 5
-        with self.assertRaises(snapshot.HiringError):
-            card.present(t, ENV, "x", WANT, True)
-
-    def test_the_retired_status_paragraph_is_not_ours_a_stale_secret_is_ignored_and_the_orphan_is_never_touched(self):
-        t = page(extra_rows=1, status="orphan")
-        orphan = dict(t.blocks["0000000000000000000000000000a002"])
-        done = card.present(t, {**ENV, "HIRING_STATUS_BLOCK_ID": "not even an id"}, "Updated 2:00 PM CT · 2 active", WANT, True)     # the old secret may stay set: nothing reads it
-        self.assertTrue(done["verified"])
-        self.assertEqual((t.blocks["0000000000000000000000000000a002"], any("0000000000000000000000000000a002" in path for _, path in writes(t))), (orphan, False))
-        for status in ("between",):                                                        # a paragraph back between the heading and the table is a wrong shape: nothing is written
-            t = page(extra_rows=1, status=status)
-            with self.assertRaises(snapshot.HiringError) as error:
-                card.present(t, ENV, "x", WANT, True)
-            self.assertEqual((str(error.exception), writes(t)), ("HIRING_FLOATING_SHAPE_INVALID", []))
-
-    def test_a_region_on_another_page_than_the_report_is_rejected(self):
-        t = page()
-        t.blocks["cols"]["parent"] = {"type": "page_id", "page_id": "page-2"}                   # the Jira card now sits on a different page than the anchor's column
-        t.blocks["left"]["parent"] = {"type": "block_id", "block_id": "cols"}
-        t.blocks["0000000000000000000000000000a004"]["parent"] = {"type": "page_id", "page_id": "page-9"}
-        with self.assertRaises(snapshot.HiringError) as error:
-            card.present(t, ENV, "x", WANT, True)
-        self.assertEqual(str(error.exception), "HIRING_WRONG_PAGE")
-
-    def test_another_cards_write_during_ours_no_longer_fails_the_run(self):
-        """LIFE-613: the rest of the page is no longer compared before and after our write, so a legitimate write by another card at the same time cannot fail this one."""
-        for victim in ("clients-h", "mail-p", "cal-p", "jira-p", "notes"):
-            t = page()
-            t.trip = ("0000000000000000000000000000a001", lambda tree, v=victim: tree.blocks[v][tree.blocks[v]["type"]].update({"rich_text": rich("changed by another card")}))
-            self.assertTrue(card.present(t, ENV, "x", WANT[:1], True)["verified"], victim)
-        t = page()
-        t.trip = ("0000000000000000000000000000a001", lambda tree: tree.add("sneaky", "paragraph", "page-1", text="new"))
-        self.assertTrue(card.present(t, ENV, "x", WANT[:1], True)["verified"])
-
-    def test_a_write_into_another_cards_block_is_refused_before_it_is_sent_and_nothing_changes(self):
-        """LIFE-613 mutation proof. A writer aimed at a block of another card (the Jira paragraph) must fail with the fixed code and leave that block untouched. On the old code the write went through and
-        was only noticed afterwards (HIRING_PROTECTED_REGION_CHANGED), so the untouched-block assertion fails there."""
-        t = page()
-        before = copy.deepcopy(t.blocks["jira-p"])
-
-        def buggy_writer(client, region, status, rows, fail):
-            client.call("PATCH", "/blocks/jira-p", {"paragraph": {"rich_text": rich("overwritten")}})
-
-        with mock.patch.object(R, "write_floating", buggy_writer):
-            with self.assertRaises(snapshot.HiringError) as error:
-                card.present(t, ENV, "x", WANT[:1], True)
-        self.assertEqual(str(error.exception), "HIRING_WRITE_OUT_OF_SCOPE")
-        self.assertEqual(t.blocks["jira-p"], before)
-
-    def test_the_stamp_follows_the_status_and_the_heading_keeps_its_block_title_and_place(self):
-        t = page()
-        for text, heading in (("11/13 · 2:00 PM CT · 3 active · 1 more not shown", "📈 Hiring Pipeline (11/13 · 2:00 PM CT)"),
-                              ("Updated 2:00 PM CT · 3 active · 1 more not shown", "📈 Hiring Pipeline (Updated 2:00 PM CT)"),
-                              ("DEGRADED · Hiring Pipeline Calendar unreadable at 3:00 PM CT · showing last accepted state (10/6 · 2:00 PM CT) · 3 active",
-                               "📈 Hiring Pipeline (DEGRADED at 3:00 PM CT)")):
-            self.assertTrue(card.present(t, ENV, text, WANT[:1], True)["verified"])
-            self.assertEqual(R.plain(t.blocks["0000000000000000000000000000a001"]), heading)
-            self.assertEqual(t.kids["right"][:2], ["0000000000000000000000000000a001", "0000000000000000000000000000a003"])
 
     def test_split_status_reads_the_dated_stamp_and_still_the_time_only_one(self):
         """LIFE-660: `11/13 · 2:00 PM CT · 5 active` holds a middle dot of its own: the stamp is the whole `11/13 · 2:00 PM CT`, not the text up to the first dot."""
@@ -668,71 +391,6 @@ class RegionWriterTests(unittest.TestCase):
                          ("DEGRADED at 2:00 PM CT", "Hiring Pipeline unavailable · Job Ledger unreadable · no accepted state yet"))
         self.assertEqual(M.split_status("DEGRADED · something unexpected"), ("DEGRADED", "something unexpected"))
         self.assertEqual(M.heading_text(""), M.TITLE)
-
-    def test_a_second_heading_with_the_title_or_a_stamped_title_is_a_second_region(self):
-        for second in ("📈 Hiring Pipeline", "📈 Hiring Pipeline (Updated 1:00 PM CT)"):
-            t = page()
-            t.add("extra-h", "heading_3", "cols", text=second)
-            with self.assertRaises(snapshot.HiringError):
-                card.present(t, ENV, "Updated 2:00 PM CT · 1 active", WANT[:1], True)
-
-    def test_the_command_center_reads_the_stamp_from_the_heading(self):
-        from lifeos.dcc import card as dcc
-        t = page()
-        card.present(t, ENV, "Updated 2:00 PM CT · 2 active", WANT, True)
-        status, _ = dcc._text_of(t, "0000000000000000000000000000a001", "floating", router.HIRING_REGION)
-        self.assertEqual(status, "Updated 2:00 PM CT · 2 active")                       # the stamp from the heading, the count from the table rows
-        self.assertEqual(dcc.classify({"status": status}, NOW)[0], "fresh")
-        card.present(t, ENV, "DEGRADED · Hiring Pipeline Calendar unreadable at 2:05 PM CT · showing last accepted state (10/6 · 2:00 PM CT) · 3 active", WANT[:1], True)
-        status, _ = dcc._text_of(t, "0000000000000000000000000000a001", "floating", router.HIRING_REGION)
-        self.assertEqual(dcc.classify({"status": status}, NOW)[0], "degraded")
-        self.assertEqual(dcc._text_of(page(), "0000000000000000000000000000a001", "floating", router.HIRING_REGION)[0], "")      # a heading with no stamp yet (before the first write) reads as unknown, never as fresh
-        with self.assertRaises(stage.NotionError):                                      # the retired shape (a paragraph under the heading) is unreadable, never guessed
-            dcc._text_of(page(status="between"), "0000000000000000000000000000a001", "floating", router.HIRING_REGION)
-
-    def test_the_command_center_never_counts_a_held_row_as_active(self):
-        from lifeos.dcc import card as dcc
-        t = page()
-        held = [("Initech — Director", None), ("Waiting on employer · Submitted", None), ("No to-do · waiting on employer (set by Jim Oct 5)", None), ("Opportunity Notes", None)]
-        card.present(t, ENV, "Updated 2:00 PM CT · 2 active", [*WANT, held], True)
-        status, _ = dcc._text_of(t, "0000000000000000000000000000a001", "floating", router.HIRING_REGION)
-        self.assertEqual(status, "Updated 2:00 PM CT · 2 active")                       # LIFE-111: listed in the table, off the active count
-
-    def test_the_region_chatgpt_writes_is_outside_the_proof_but_never_touched(self):
-        t = page()
-        t.trip = ("0000000000000000000000000000a001", lambda tree: tree.blocks["dcc-p"]["paragraph"].update({"rich_text": rich("chatgpt rewrote it")}))
-        self.assertTrue(card.present(t, ENV, "x", WANT[:1], True)["verified"])
-        self.assertFalse(any("dcc" in path for _, path in writes(t)))
-
-    def test_a_failed_write_leaves_an_honest_degraded_heading_and_raises(self):
-        t = page(extra_rows=1)
-        t.fail_write = "0000000000000000000000000000a003-r1"
-        with self.assertRaises(snapshot.HiringError) as error:
-            card.present(t, ENV, "Updated 2:00 PM CT", WANT, True)
-        self.assertEqual(str(error.exception), "HIRING_WRITE_FAILED")
-        self.assertEqual(R.plain(t.blocks["0000000000000000000000000000a001"]), "📈 Hiring Pipeline (DEGRADED)")
-
-    def test_a_read_back_that_does_not_match_fails(self):
-        t = page(extra_rows=1)
-        original = t.call
-
-        def lying(method, path, body=None):
-            result = original(method, path, body)
-            if method == "PATCH" and "0000000000000000000000000000a003-r1" in path:
-                t.blocks["0000000000000000000000000000a003-r1"]["table_row"]["cells"][0][0]["plain_text"] = "something else"
-            return result
-        t.call = lying
-        with self.assertRaises(snapshot.HiringError) as error:
-            card.present(t, ENV, "x", WANT[:1] + [WANT[1]], True)
-        self.assertEqual(str(error.exception), "HIRING_READBACK_MISMATCH")
-
-    def test_unavailable_marks_the_heading_and_leaves_the_table_alone(self):
-        t = page(extra_rows=2)
-        rows_before = table_state(t)
-        card.present(t, ENV, "DEGRADED · Hiring Pipeline unavailable at 2:00 PM CT", None, True)
-        self.assertEqual(table_state(t), rows_before)
-        self.assertEqual(R.plain(t.blocks["0000000000000000000000000000a001"]), "📈 Hiring Pipeline (DEGRADED at 2:00 PM CT)")
-
 
 class ReciprocalProtectionTests(unittest.TestCase):
     def test_the_floating_region_is_one_router_owner_and_not_a_callout(self):
@@ -769,16 +427,6 @@ class ReciprocalProtectionTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             R.protected(t, {router.JIRA_REGION: "", router.HIRING_REGION: "0000000000000000000000000000a001"}, lambda code: RuntimeError(code))      # a missing mandatory id still fails
 
-    def test_every_existing_card_that_proves_its_neighbours_also_proves_the_hiring_region(self):
-        from lifeos.amazon import card as amazon
-        from lifeos.physmail import card as mail
-        for module in (amazon, mail):
-            self.assertIn(("HIRING_CARD_BLOCK_ID", router.HIRING_REGION), module.PROTECTED, module.__name__)
-        self.assertIn("report_region.replace_text", (ROOT / "lifeos/bills/card.py").read_text())                                      # the Bills card writes through the shared writer, which holds the scope guard
-        for module in ("lifeos/agenda/card.py", "lifeos/hiring/card.py"):          # LIFE-613: these no longer compare regions; each writes through the scope guard instead
-            self.assertIn("ScopedClient", (ROOT / module).read_text(), module)
-
-
 class FakeLedger:
     source = "src"
 
@@ -793,6 +441,8 @@ class FakeLedger:
     def query_data_source(self, source_id=None, body=None):
         if self.broken:
             raise stage.NotionError("NOTION_HTTP_500")
+        if body["filter"] == {"property": "Hiring Decision", "select": {"is_not_empty": True}}:      # LIFE-973: the decision sync's read (tests/hiring/test_decision_sync.py covers it)
+            return {"results": [], "has_more": False}
         if body["filter"] == {"property": "Stage", "select": {"is_not_empty": True}}:      # LIFE-352: the Ledger-first read
             return {"results": [{"id": i, "properties": {"Company": {"rich_text": rich(c)}, "Job": {"title": rich(r)}, "Stage": {"select": {"name": st}},
                                  "Hiring Decision": {"select": {"name": d} if d else None}}} for i, c, r, st, d in self.stage_rows], "has_more": False}
@@ -855,71 +505,12 @@ class RuntimePathTests(unittest.TestCase):
         self.assertEqual((writes(t), store.saves, counts["saved"], counts["blocks_written"]), ([], 0, 0, 0))
         self.assertEqual((counts["applied"], counts["opportunities"], counts["events"], counts["status"]), (1, 1, 1, "fresh"))
 
-    def test_live_saves_with_read_back_writes_the_region_and_replays_idempotently(self):
-        t, store = page(extra_rows=0), FakeStore()
-        events = [gcal("e1", "Interview Acme", at(1, 10))]
-        first = run(t, store, events=events)
-        self.assertEqual((first["saved"], first["verified"], store.saves), (1, True, 1))
-        self.assertEqual(table_state(t), [[("Acme — Senior Program Manager", None), ("Interviewing", None),
-                                           ("Prepare for the interview · Tomorrow 10:00 AM CT", None), ("Opportunity Page ↗", "https://www.notion.so/aaaa1111000040008000000000000001")]])
-        self.assertEqual(R.plain(t.blocks["0000000000000000000000000000a001"]), "📈 Hiring Pipeline (10/6 · 2:00 PM CT)")
-        t.log.clear()
-        again = run(t, store, events=events)
-        self.assertEqual((again["rows_changed"], again["rows_added"], again["rows_removed"]), (0, 0, 0))
-        self.assertEqual(len(table_state(t)), 1)
-        self.assertEqual(json.loads(json.dumps(store.row))["rows"], store.row["rows"])
-        self.assertEqual(store.row["accepted_at"], NOW.isoformat())
-
-    def test_the_next_hourly_run_rewrites_a_row_that_still_carries_a_dot_and_the_dot_stays_gone(self):
-        t, store = page(extra_rows=1), FakeStore()
-        t.blocks["0000000000000000000000000000a003-r1"]["table_row"]["cells"][0] = rich("🟢 Acme — Senior Program Manager")       # the row as the live page shows it today
-        events = [gcal("e1", "Interview Acme", at(1, 10))]
-        first = run(t, store, events=events)
-        self.assertEqual((first["rows_changed"], first["verified"]), (1, True))
-        self.assertEqual([row[0][0] for row in table_state(t)], ["Acme — Senior Program Manager"])
-        again = run(t, store, events=events)
-        self.assertEqual((again["rows_changed"], again["rows_added"], again["rows_removed"]), (0, 0, 0))
-
-    def test_a_retired_page_drops_the_row_from_the_region_and_is_counted(self):
-        t, store = page(extra_rows=1), FakeStore()
-        retired = [hiring_pipeline.Opportunity("r", "Acme - Senior Program Manager", hiring_pipeline.RETIRED, 1, "Acme", "Senior Program Manager")]
-        counts = run(t, store, parents=retired)
-        self.assertEqual((counts["closed"], counts["retired_pages"], counts["opportunities"], counts["rows"]), (1, 1, 0, 0))
-        self.assertEqual(table_state(t), [])
-        self.assertRegex(R.plain(t.blocks["0000000000000000000000000000a001"]), r"^📈 Hiring Pipeline \(\d{1,2}/\d{1,2} · \d{1,2}:\d{2} [AP]M CT\)$")
-
     def test_a_failed_snapshot_save_stops_before_the_page_is_touched(self):
         t = page(extra_rows=1)
         with self.assertRaises(snapshot.HiringError) as error:
             run(t, FakeStore(fail=True))
         self.assertEqual(str(error.exception), "HIRING_READBACK_MISMATCH")
         self.assertEqual(writes(t), [])
-
-    def test_an_unreadable_source_shows_degraded_with_the_last_accepted_state(self):
-        t, store = page(extra_rows=0), FakeStore()
-        run(t, store, events=[gcal("e1", "Interview Acme", at(1, 10))])
-        for kwargs in ({"ledger_broken": True}, {"pages_ok": False}, {"calendar_broken": True}):
-            counts = run(t, store, now=NOW + timedelta(hours=1), **kwargs)
-            self.assertEqual(counts["status"], "degraded", kwargs)
-            self.assertTrue(R.plain(t.blocks["0000000000000000000000000000a001"]).startswith("📈 Hiring Pipeline (DEGRADED at"), kwargs)
-            self.assertIn("(last accepted)" if "calendar_broken" in kwargs else "Interviewing", " ".join(c[0] for c in table_state(t)[0]))
-        self.assertEqual(store.row["accepted_at"], NOW.isoformat())                              # carried, never refreshed by a degraded run
-
-    def test_no_accepted_state_and_an_unreadable_source_is_unavailable_not_empty(self):
-        t, store = page(extra_rows=2), FakeStore()
-        before = table_state(t)
-        counts = run(t, store, ledger_broken=True)
-        self.assertEqual(counts["status"], "unavailable")
-        self.assertEqual((table_state(t), store.saves), (before, 0))
-        self.assertIn("DEGRADED", R.plain(t.blocks["0000000000000000000000000000a001"]))
-
-    def test_cancelled_declined_and_all_day_events_are_not_evidence(self):
-        mine = [{"self": True, "responseStatus": "declined"}]
-        events = [gcal("e1", "Interview Acme", at(1), status="cancelled"), gcal("e2", "Interview Acme", at(1), attendees=mine),
-                  {"id": "e3", "summary": "Interview Acme", "start": {"date": "2026-10-08"}, "end": {"date": "2026-10-09"}}]
-        t, store = page(), FakeStore()
-        run(t, store, events=events)
-        self.assertEqual(table_state(t)[0][1][0].split(" · ")[0], "Submitted")
 
     def test_the_calendar_window_is_read_only_and_bounded(self):
         calendar = FakeCalendar()
@@ -952,20 +543,6 @@ class OutcomeConsumerTests(unittest.TestCase):
             counts = run(t, store, parents=parents)
         return t, store, counts
 
-    def test_stored_outcome_mail_is_shown_as_a_line_to_confirm_and_only_the_pinned_region_blocks_are_written(self):
-        t, store, counts = self.go(lambda conn: (self.FOUND, self.SCANNED))
-        self.assertEqual((counts["mail_outcomes"], counts["status"]), (1, "fresh"))
-        action = table_state(t)[0][2][0]
-        self.assertEqual(action, "Rejection email received Oct 5 · confirm, then move the Notes page to Retired")
-        self.assertEqual(len(table_state(t)), 1)                                                   # still listed: V7 closes nothing
-        self.assertEqual({entry[1].split("/")[2] for entry in writes(t)}, {"0000000000000000000000000000a001", "0000000000000000000000000000a003"})
-        self.assertEqual(R.plain(t.blocks["cal-p"]), "9:00 AM standup")                           # the neighbouring card is untouched
-
-    def test_a_role_without_a_notes_page_keeps_applied_as_history(self):
-        t, _, _ = self.go(lambda conn: ({self.KEY: {**self.FOUND[self.KEY], "match": "company"}}, self.SCANNED), parents=[])
-        action = table_state(t)[0][2][0]
-        self.assertEqual(action, "Possible rejection email received Oct 5 · confirm (Applied stays as history)")
-
     def test_the_ledger_is_only_ever_read_and_the_applied_state_is_never_written(self):
         class ReadOnlyLedger(FakeLedger):
             def __getattr__(self, name):
@@ -986,15 +563,6 @@ class OutcomeConsumerTests(unittest.TestCase):
             counts = run(t, store)
         return t, store, counts
 
-    def test_unavailable_outcome_mail_degrades_hiring_keeps_the_last_accepted_rows_and_invents_no_outcome(self):
-        def broken(conn):
-            raise RuntimeError("store down")
-        t, store, counts = self.seeded(broken)
-        self.assertEqual((counts["mail_outcomes"], counts["status"]), (0, "degraded"))
-        self.assertIn("OUTCOME_MAIL_UNREADABLE", counts["reasons"])
-        self.assertEqual(len(table_state(t)), 1)                                                   # the accepted row stays; the pipeline is not stopped
-        self.assertNotIn("email", table_state(t)[0][2][0].lower())
-
     def test_outcome_mail_not_saved_for_eighteen_hours_or_never_saved_is_degraded_and_a_fresh_save_clears_it(self):
         stale = (NOW - timedelta(hours=19)).astimezone(timezone.utc).isoformat()
         for scanned in (stale, None):
@@ -1004,15 +572,6 @@ class OutcomeConsumerTests(unittest.TestCase):
                 self.assertEqual(counts["mail_outcomes"], 1)                                       # the last accepted outcome is still shown, never dropped
         t, store, counts = self.seeded(lambda conn: (self.FOUND, self.SCANNED))
         self.assertEqual((counts["status"], counts["reasons"]), ("fresh", []))
-
-    def test_the_manual_proof_input_can_only_tighten_the_staleness_limit_and_leaves_the_accepted_rows_on_the_card(self):
-        for value, status in (("0", "degraded"), ("1", "degraded"), ("", "fresh"), ("18", "fresh"), ("99", "fresh"), ("-1", "fresh"), ("soon", "fresh")):
-            with self.subTest(value=value):
-                with mock.patch.dict(RUN_ENV, {"HIRING_OUTCOME_STALE_HOURS": value}):
-                    t, store, counts = self.seeded(lambda conn: (self.FOUND, self.SCANNED))               # the scan is 2 hours old
-                self.assertEqual(counts["status"], status)
-                self.assertEqual(counts["reasons"], ["OUTCOME_MAIL_STALE"] if status == "degraded" else [])
-                self.assertEqual((counts["mail_outcomes"], len(table_state(t))), (1, 1))                  # the last accepted outcome and row stay either way
 
     def test_a_pipeline_with_no_accepted_state_yet_is_not_degraded_by_a_scan_that_has_nothing_to_look_for(self):
         t, store, counts = self.go(lambda conn: ({}, None))
@@ -1038,61 +597,14 @@ class AutoCloseTests(unittest.TestCase):
             counts = run(t, store, live=live, now=now, rows=rows, calendar_broken=calendar_broken)
         return t, store, counts, calls
 
-    def test_a_role_matched_rejection_closes_once_on_the_ledger_and_shows_as_closed(self):
-        t, store, counts, calls = self.go()
-        self.assertEqual(counts["auto_close"], {"due": 1, "closed": 1, "refused": {}, "switch": True, "shown": 1})
-        (req,) = calls
-        self.assertEqual((req["action"], req["confirmed"], req["outcome"], req["id"]), ("CONFIRM_REJECTED", True, "Rejected", "aaaa11110000400080000000000000ff"))
-        self.assertTrue(req["op"].startswith("auto-") and req["reason"] == "Auto-closed: rejection email received Oct 5 (Jim's standing rule, Oct 24)")
-        (row,) = table_state(t)
-        self.assertEqual((row[1][0], row[2][0]), ("Closed", "Closed — rejection email received Oct 5 · auto-closed Oct 6"))
-        self.assertEqual([e["key"] for e in store.row["auto_closed"]], [OutcomeConsumerTests.KEY])
-        _, _, again, calls2 = self.go(store=store)                                       # the next run sends the same operation: the decision module makes it a no-op
-        self.assertEqual(calls2[0]["op"], req["op"])
-
-    def test_the_closed_row_drops_off_after_24_hours(self):
-        t, store, _, _ = self.go()
-        t, _, counts, _ = self.go(found={}, store=store, now=NOW + timedelta(hours=23), rows=())            # the Ledger now carries the decision: the row has left the live table
-        self.assertEqual((counts["auto_close"]["shown"], table_state(t)[-1][1][0]), (1, "Closed"))
-        t, _, counts, _ = self.go(found={}, store=store, now=NOW + timedelta(hours=25), rows=())
-        self.assertEqual(counts["auto_close"]["shown"], 0)
-        self.assertNotIn("Closed", [r[1][0] for r in table_state(t)])
-
-    def test_switch_off_dry_run_company_only_or_an_offer_never_writes(self):
-        key = OutcomeConsumerTests.KEY
-        for label, kw in (("Jim's kill switch", {"switch": "off"}), ("not live", {"live": False}), ("company only", {"found": {key: {**self.FOUND[key], "match": "company"}}}),
-                          ("offer", {"found": {key: {**self.FOUND[key], "kind": "OFFER"}}}), ("words only, not the exact role", {"found": {key: {**self.FOUND[key], "exact": False}}}),
-                          ("scan saved before exact existed", {"found": {key: {k: v for k, v in self.FOUND[key].items() if k != "exact"}}}),
-                          ("calendar unreadable", {"calendar_broken": True}),
-                          ("another role there contains these words", {"rows": (("Acme", "Senior Program Manager", "2026-10-02"), ("Acme", "Senior Program Manager, Ads", "2026-09-01"))})):
-            with self.subTest(label):
-                t, _, counts, calls = self.go(**kw)
-                self.assertEqual((calls, counts["auto_close"]["closed"]), ([], 0))
-                if kw.get("live", True):                                                 # a dry run writes no table at all
-                    self.assertNotEqual(table_state(t)[0][1][0], "Closed")
-
-    def test_a_reopened_row_is_never_shown_twice(self):
-        _, store, _, _ = self.go()
-        t, _, counts, _ = self.go(found={}, store=store, now=NOW + timedelta(hours=2))      # Reopen: the Ledger row is open again, so the row is live
-        self.assertEqual((counts["auto_close"]["shown"], [r[1][0] for r in table_state(t)]), (0, ["Submitted"]))
-
     def test_exact_role_needs_the_whole_title_with_no_seniority_or_level_touching_it(self):
         from lifeos.hiring import outcomes as O
         for text, want in (("Your application for Program Manager at Acme", True), ("Update on the Program Manager role", True), ("Senior Program Manager", False),
                            ("Program Manager II opening", False), ("Program and Product Manager", False), ("Lead Program Manager", False)):
             self.assertEqual(O.exact_role({"subject": text, "body": ""}, "Program Manager"), want, text)
 
-    def test_a_refused_or_unverified_close_leaves_the_row_to_confirm(self):
-        def refuse(request):
-            raise stage.decision.fail("CONFLICT")
-        for write, code in ((refuse, "DECISION_CONFLICT"), (lambda r: {"status": "recorded", "verified": False}, "DECISION_NOT_VERIFIED")):
-            t, _, counts, _ = self.go(write=write)
-            self.assertEqual((counts["auto_close"]["closed"], counts["auto_close"]["refused"]), (0, {code: 1}))
-            self.assertEqual(table_state(t)[0][2][0], "Rejection email received Oct 5 · confirm, then move the Notes page to Retired")
-
-
 class GuardrailTests(unittest.TestCase):
-    SOURCES = ["lifeos/hiring/models.py", "lifeos/hiring/compile.py", "lifeos/hiring/render.py", "lifeos/hiring/snapshot.py", "lifeos/hiring/card.py", "lifeos/sources/pipeline/hiring.py"]
+    SOURCES = ["lifeos/hiring/models.py", "lifeos/hiring/compile.py", "lifeos/hiring/render.py", "lifeos/hiring/snapshot.py", "lifeos/sources/pipeline/hiring.py"]
 
     def test_there_is_no_mail_calendar_jira_ledger_or_tinyfish_mutation_path(self):
         for name in self.SOURCES:

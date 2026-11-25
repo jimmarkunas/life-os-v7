@@ -8,7 +8,6 @@ whose decision did not land is finished by the same operation, never written twi
 Pipeline only after this returns."""
 import json
 import re
-from datetime import datetime
 
 from lifeos.platform.fixed_code import fixed
 from lifeos.platform.notion_client import NotionError, rich_text

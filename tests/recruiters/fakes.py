@@ -33,15 +33,32 @@ class FakeRecruiters:
         self.queries += 1
         if self.fail_query:
             raise NotionError("NOTION_HTTP_500")
-        if "relation" in body["filter"]:
-            rel = body["filter"]["relation"]
-            linked = lambda p: [r["id"] for r in (p["properties"].get("Job") or {}).get("relation") or []]          # noqa: E731
-            return {"results": [p for p in self.pages if (rel["contains"] in linked(p) if "contains" in rel else bool(linked(p)))], "has_more": False}
-        if "select" in body["filter"]:
-            wanted = body["filter"]["select"]["equals"]
-            return {"results": [p for p in self.pages if ((p["properties"].get("Action Status") or {}).get("select") or {}).get("name") == wanted], "has_more": False}
-        week = body["filter"]["date"]["equals"]
-        return {"results": [p for p in self.pages if p["properties"]["Week Ending"]["date"]["start"] == week], "has_more": False}
+        return {"results": [p for p in self.pages if self.match(p, body["filter"])], "has_more": False}
+
+    def match(self, page, flt):
+        """LIFE-973: the filter shapes the Recruiters code uses: and / or, select equals, checkbox equals, date equals / is_empty, relation."""
+        if "and" in flt:
+            return all(self.match(page, f) for f in flt["and"])
+        if "or" in flt:
+            return any(self.match(page, f) for f in flt["or"])
+        props = page["properties"]
+        if "relation" in flt:
+            linked = [r["id"] for r in (props.get("Job") or {}).get("relation") or []]
+            rel = flt["relation"]
+            return rel["contains"] in linked if "contains" in rel else bool(linked)
+        name = flt["property"]
+        if "select" in flt:
+            return ((props.get(name) or {}).get("select") or {}).get("name") == flt["select"]["equals"]
+        if "checkbox" in flt:
+            return bool((props.get(name) or {}).get("checkbox")) == flt["checkbox"]["equals"]
+        if "date" in flt:
+            start = ((props.get(name) or {}).get("date") or {}).get("start")
+            return not start if flt["date"].get("is_empty") else start == flt["date"]["equals"]
+        raise AssertionError(flt)
+
+    def get_page(self, page_id):
+        found = next(p for p in self.pages if p["id"] == page_id)
+        return {**found, "parent": {"type": "data_source_id", "data_source_id": self.source}}
 
     def call_once(self, method, path, body=None):
         assert (method, path) == ("POST", "/pages")

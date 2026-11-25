@@ -118,7 +118,7 @@ def source(records):
 
 
 def run(records, notion, live=False, outlook=None):
-    return stage.run(0, live, environ={}, gmail=ReadOnlyGmail(records), outlook_accounts=outlook or [], notion=notion, now=NOW)
+    return stage.run(0, live, environ={}, gmail=ReadOnlyGmail(records), outlook_accounts=outlook or [], notion=notion, now=NOW, chores=False)
 
 
 def signed(**kw):
@@ -214,17 +214,17 @@ class StageTests(unittest.TestCase):
         self.assertEqual(notion.writes, [])
 
     def test_missing_secrets_still_reports_a_dry_run_and_refuses_live(self):
-        counts = stage.run(0, False, environ={}, gmail=ReadOnlyGmail([signed()]), outlook_accounts=[], now=NOW)
+        counts = stage.run(0, False, environ={}, gmail=ReadOnlyGmail([signed()]), outlook_accounts=[], now=NOW, chores=False)
         self.assertEqual((counts["notion"], counts["direct_human"], counts["would_create"]), ("unavailable", 1, 0))
         with self.assertRaises(store.RecruitersError):
-            stage.run(0, True, environ={}, gmail=ReadOnlyGmail([signed()]), outlook_accounts=[], now=NOW)
+            stage.run(0, True, environ={}, gmail=ReadOnlyGmail([signed()]), outlook_accounts=[], now=NOW, chores=False)
 
     def test_an_incomplete_source_is_degraded_and_nothing_is_written(self):
         notion = FakeRecruiters()
         broken = ReadOnlyGmail([signed()])
         broken.list_ids_complete = lambda *a, **k: (_ for _ in ()).throw(platform_mail.GmailError("GMAIL_LISTING_INCOMPLETE"))
         with self.assertRaises(store.RecruitersError), contextlib.redirect_stdout(io.StringIO()):          # the degraded run prints its counts line; keep it out of the test log
-            stage.run(0, True, environ={}, gmail=broken, outlook_accounts=[], notion=notion, now=NOW)
+            stage.run(0, True, environ={}, gmail=broken, outlook_accounts=[], notion=notion, now=NOW, chores=False)
         self.assertEqual(notion.writes, [])
 
     def test_gmail_and_outlook_are_both_read_without_mutation_and_spam_is_included(self):
@@ -233,7 +233,7 @@ class StageTests(unittest.TestCase):
                                   junk=[])
         gmail = ReadOnlyGmail([signed(folder="JUNK")])
         notion = FakeRecruiters()
-        counts = stage.run(0, True, environ={}, gmail=gmail, outlook_accounts=[("work", outlook)], notion=notion, now=NOW)
+        counts = stage.run(0, True, environ={}, gmail=gmail, outlook_accounts=[("work", outlook)], notion=notion, now=NOW, chores=False)
         self.assertEqual((counts["messages"], counts["created"], counts["outlook_accounts"]), (2, 2, 1))
         self.assertTrue(gmail.calls[0][1])                                                   # spam listed
         self.assertEqual(outlook.calls, ["inbox", "junkemail"])
@@ -460,8 +460,9 @@ class EntryPointTests(unittest.TestCase):
         notion = FakeRecruiters()
         code, counts, err = self.go([signed()], notion)
         self.assertEqual((code, err, counts["created"], counts["failed"], len(notion.pages)), (0, "", 1, 0, 1))
+        first = len(notion.writes)                                                   # the create, then LIFE-973's reply-by date and Company / Role / Client fill on that row
         code, counts, err = self.go([signed()], notion)
-        self.assertEqual((code, err, counts["created"], counts["existing"], counts["failed"], len(notion.writes)), (0, "", 0, 1, 0, 1))
+        self.assertEqual((code, err, counts["created"], counts["existing"], counts["failed"], len(notion.writes)), (0, "", 0, 1, 0, first))
 
     def test_a_create_that_does_not_read_back_exits_1_with_a_fixed_code_and_truthful_counts(self):
         notion = FakeRecruiters(drop_writes=True)
