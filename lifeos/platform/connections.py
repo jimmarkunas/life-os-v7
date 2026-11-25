@@ -88,6 +88,9 @@ def last_ok_time(text, now):
     return None
 
 
+TICK_RUN = "domains (after tick)"                  # the run title of the after-tick run: the only runs that count as evidence a connection works
+
+
 def _api(path, token, opener=urllib.request.urlopen):
     request = urllib.request.Request(API + path, headers={"Accept": "application/vnd.github+json", "User-Agent": "life-os-v7", **({"Authorization": "Bearer " + token} if token else {})})
     with opener(request, timeout=30) as reply:
@@ -104,8 +107,8 @@ def evidence(environ=os.environ, api=_api):
         runs = api(f"/repos/{repo}/actions/workflows/domains.yml/runs?per_page={RUNS}&status=completed", token)["workflow_runs"]
         out = {}
         for run in runs:
-            if run.get("conclusion") not in ("success", "failure"):
-                continue
+            if run.get("conclusion") not in ("success", "failure") or not str(run.get("display_title") or "").startswith(TICK_RUN):
+                continue                          # a manual or dry run (an agent proving a change) says nothing about whether a connection works
             for job in api(f"/repos/{repo}/actions/runs/{run['id']}/jobs?per_page=100", token)["jobs"]:
                 if job.get("conclusion") not in ("success", "failure") or not job.get("completed_at"):
                     continue
