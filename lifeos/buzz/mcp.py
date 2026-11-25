@@ -14,7 +14,8 @@ from lifeos.buzz import nip98
 from lifeos.buzz.auth import SCOPES, AuthError, Verifier
 from lifeos.buzz.relay import ALIAS, COMMUNITIES, COUNCIL_TYPES, CURSOR_TTL, ETYPES, HEX, MAX_TEXT, RELAY_MAX, URL, BuzzError, Relay
 
-IDENTITIES = ("claude", "chatgpt", "muse", "duet")   # muse (LIFE-923): Meta-hosted, its own member key and grants; duet (LIFE-922): the Claude Duet app, the grants `claude` has, its own Buzz member keys
+IDENTITIES = ("claude", "chatgpt", "muse", "duet", "openclaw")   # openclaw (LIFE-877, Jim 14311): its own relay identity on the private pilot ONLY (PILOT_ONLY); muse (LIFE-923): Meta-hosted, its own member key and grants; duet (LIFE-922): the Claude Duet app, the grants `claude` has, its own Buzz member keys
+PILOT_ONLY = ("openclaw",)   # identities with no hosted key, no hosted address and no hosted write channel: their relay is created empty and only pilot_community.wire can give it the pilot
 ALIASES = ("ChatGPT-Chat", "Claude-Chat", "Claude-Code", "Codex")  # existing identities only; a recipient is one of these names, never a key
 PROTOCOL, VERSIONS, MAX_BODY, MAX_RESPONSE = "2025-06-18", ("2025-06-18", "2025-03-26", "2024-11-05"), 65536, 262144
 CONTRACT, VERSION = "1.0", "0.3.0"
@@ -411,7 +412,9 @@ def from_env(env):
         raise ValueError("at least one BUZZ_URL_<COMMUNITY> with a BUZZ_KEY_<CLIENT>_<COMMUNITY>, BUZZ_OAUTH_CLIENTS, BUZZ_OAUTH_USERS (<sub>:<claude|chatgpt>:<community>+...) and an origin-only BUZZ_MCP_PUBLIC_URL are required")
     auth = Verifier(https(env, "BUZZ_OAUTH_ISSUER"), base + "/mcp", clients, https(env, "BUZZ_OAUTH_JWKS_URL"), users, https(env, "BUZZ_OAUTH_AS_URL") if env.get("BUZZ_OAUTH_AS_URL") else None,
                     extra_audiences=tuple(x + "/mcp" for x in extras))
-    return {i: Relay(urls, ks, writes, recipients=recipients, may_address=i in senders) for i, ks in keys.items() if ks}, auth, base, tuple(x for x in env.get("BUZZ_MCP_ORIGINS", "").split(",") if x)
+    relays = {i: Relay(urls, ks, writes, recipients=recipients, may_address=i in senders) for i, ks in keys.items() if ks and i not in PILOT_ONLY}
+    relays.update({i: Relay({}, {}, (), recipients=recipients) for i in PILOT_ONLY})      # LIFE-877: no hosted community exists for these (community_not_authorized before any key is looked at)
+    return relays, auth, base, tuple(x for x in env.get("BUZZ_MCP_ORIGINS", "").split(",") if x)
 
 
 def credentials(env):

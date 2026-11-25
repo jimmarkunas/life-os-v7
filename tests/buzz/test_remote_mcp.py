@@ -466,8 +466,8 @@ class Credentials(Server):
                 "BUZZ_OAUTH_ISSUER": ISS, "BUZZ_OAUTH_JWKS_URL": ISS + "/jwks", "BUZZ_OAUTH_CLIENTS": "cid-one", "BUZZ_MCP_PUBLIC_URL": BASE,
                 "BUZZ_OAUTH_USERS": "user-claude:claude:life-os,user-chatgpt:chatgpt:life-os,user-duet:duet:life-os", "BUZZ_RECIPIENTS": "hermes:life-os:" + "ab" * 32}
         flags = lambda env: {i: r.may_address for i, r in buzz_mcp.from_env(env)[0].items()}
-        self.assertEqual(flags({**base, "BUZZ_MENTION_SENDERS": "claude,chatgpt"}), {"claude": True, "chatgpt": True, "duet": False})
-        self.assertEqual(flags({**base, "BUZZ_MENTION_SENDERS": "claude,chatgpt,duet"}), {"claude": True, "chatgpt": True, "duet": True})
+        self.assertEqual(flags({**base, "BUZZ_MENTION_SENDERS": "claude,chatgpt"}), {"claude": True, "chatgpt": True, "duet": False, "openclaw": False})
+        self.assertEqual(flags({**base, "BUZZ_MENTION_SENDERS": "claude,chatgpt,duet"}), {"claude": True, "chatgpt": True, "duet": True, "openclaw": False})
 
     def test_the_extra_public_hosts_setting_is_origin_only_and_never_the_primary(self):
         env = {"BUZZ_MCP_PUBLIC_URL": BASE, "BUZZ_MCP_PUBLIC_URLS_EXTRA": "https://second.example.test/"}
@@ -486,14 +486,14 @@ class Credentials(Server):
         from lifeos.platform import mcp_access
         from tests.platform.mcp_access_fixture import CATALOG, DOC
         self.start(access=self.access())
-        for cid in ("mac-claude-code", "oracle-claude-code", "openclaw", "hermes-librarian", "honcho-alerts"):
+        for cid in ("mac-claude-code", "oracle-claude-code", "hermes-librarian", "honcho-alerts"):
             status, out = self.tool(self.tok(cid), "buzz_publish", operation="message", community="life-os", arguments={"channel": CHAN, "text": "x", "idempotency_key": "k1"})
             self.assertEqual(status, 403, cid)                                                                       # read scope only, whatever the grants say
             doc = json.loads(json.dumps(DOC))
             next(r for r in doc["credentials"] if r["id"] == cid)["write"] = True
             with self.assertRaises(mcp_access.AccessError, msg=cid):                                                 # the opt-in on any row but muse refuses the whole file
                 mcp_access.load(json.dumps(doc), json.dumps(CATALOG))
-        self.assertEqual([r["id"] for r in DOC["credentials"] if r.get("write")], ["muse"] if any(r["id"] == "muse" for r in DOC["credentials"]) else [])
+        self.assertEqual(sorted(r["id"] for r in DOC["credentials"] if r.get("write")), ["muse", "openclaw"] if any(r["id"] == "muse" for r in DOC["credentials"]) else ["openclaw"])    # LIFE-877: muse and openclaw only
 
     def test_bad_credentials_are_one_401_and_no_tool_runs(self):
         self.start(access=self.access(edit=lambda d: d["credentials"][1].update(revoked=True)))
@@ -572,11 +572,12 @@ class Credentials(Server):
         self.start(access=self.access(no_identity=True))
         with mock.patch.dict(buzz_mcp.LOOKUP, {"fetchers": {"github": github}, "rows": lambda: F.rows(), "now": lambda: now}):
             for cid in (c for c in self.SECRETS if c not in ("honcho-alerts", "muse")):
-                status, out = self.tool(self.tok(cid), "buzz_read", operation="source_read", community="life-os", arguments={"source": "github", "path": "AGENTS.md"})
+                comm = "pilot" if cid == "openclaw" else "life-os"                                                              # LIFE-877: openclaw's only community
+                status, out = self.tool(self.tok(cid), "buzz_read", operation="source_read", community=comm, arguments={"source": "github", "path": "AGENTS.md"})
                 self.assertEqual((status, out["ok"], out["data"]["revision"]["commit_sha"], out["data"]["freshness"]), (200, True, "a" * 40, "fresh"), cid)
                 allow = self.receipts[-2]
                 self.assertEqual((allow["tool"], allow["purpose"], allow["outcome"], allow["principal_fp"]), ("source_read", "source-read", "allow", fp(cid)))
-                status, out = self.tool(self.tok(cid), "buzz_read", operation="agent_lookup", community="life-os", arguments={"agent_id": "bot_hermes_claude-hermes"})
+                status, out = self.tool(self.tok(cid), "buzz_read", operation="agent_lookup", community=comm, arguments={"agent_id": "bot_hermes_claude-hermes"})
                 self.assertEqual((status, out["ok"], out["data"]["status"], out["data"]["authorizes"]), (200, True, "configured-untested", []), cid)
                 self.assertEqual((self.receipts[-2]["tool"], self.receipts[-2]["purpose"]), ("agent_lookup", "agent-lookup"))
             status, out = self.tool(self.tok(), "buzz_read", operation="source_read", community="life-os", arguments={"source": "github", "path": "AGENTS.md", "max_age_seconds": 60})
@@ -685,15 +686,32 @@ class Credentials(Server):
         self.assertEqual(self.tool(tok, "buzz_read", operation="list_channels", community="life-os")[1]["error"], "client_identity_not_configured")
         self.assertEqual(self.rpc(self.tok("hermes-librarian", self.SECRETS["openclaw"]), "tools/list")[0], 401)                                   # another client's secret is a 401
 
-    def test_openclaw_ships_capabilities_only_with_its_own_two_read_tools_and_no_buzz_key(self):
+    PILOT_BASE = {"BUZZ_URL_LIFE_OS": "https://life-os.communities.buzz.xyz", "BUZZ_KEY_CLAUDE_LIFE_OS": "01" * 32, "BUZZ_OAUTH_ISSUER": ISS, "BUZZ_OAUTH_JWKS_URL": ISS + "/jwks", "BUZZ_OAUTH_CLIENTS": "cid-one", "BUZZ_MCP_PUBLIC_URL": BASE,
+                  "BUZZ_OAUTH_USERS": "user-claude:claude:life-os"}
+
+    def test_openclaw_has_its_own_pilot_only_relay_identity_reads_and_posts_on_the_pilot_and_nothing_hosted(self):
+        """LIFE-877 (Jim, comment 14311): OpenClaw's own relay identity on community `pilot` only: read plus write to the pilot channels, no hosted life-os, no bytalos, and nobody else's key is touched."""
+        from lifeos.platform import pilot_community
         self.start(access=self.access())
+        relay = buzz_mcp.from_env({**self.PILOT_BASE, "BUZZ_RELAY": "pilot", "BUZZ_PILOT_CHANNEL": CHAN, "BUZZ_KEY_OPENCLAW_PILOT": "07" * 32})[0]["openclaw"]
+        self.assertEqual((dict(relay.urls), dict(relay.keys), set(relay.writes)), ({}, {}, set()))                           # before wiring: no community at all
+        self.assertEqual(pilot_community.wire({**self.PILOT_BASE, "BUZZ_RELAY": "pilot", "BUZZ_PILOT_CHANNEL": CHAN, "BUZZ_KEY_OPENCLAW_PILOT": "07" * 32}, {"openclaw": relay}, nip98.secret_from), ("openclaw",))
+        relay.send = self.fake
+        self.relays["openclaw"] = relay
         tok = self.tok("openclaw")
         names = {t["name"] for t in self.rpc(tok, "tools/list")[1]["result"]["tools"]}
-        self.assertEqual((len(names), {"buzz_capabilities", "buzz_read"} <= names, "buzz_publish" in names or "buzz_post_message" in names), (6, True, False))   # the same six read tools as the other clients, no publish
+        self.assertEqual((len(names), {"buzz_capabilities", "buzz_read", "buzz_publish"} <= names), (8, True))
         status, caps = self.tool(tok, "buzz_capabilities")
-        self.assertEqual((status, caps["ok"], caps["data"]["identity"]["communities"]), (200, True, {}))
-        self.assertEqual(self.tool(tok, "buzz_read", operation="list_channels", community="life-os")[1]["error"], "client_identity_not_configured")
-        self.assertEqual(self.rpc(self.tok("openclaw", self.SECRETS["mac-claude-code"]), "tools/list")[0], 401)   # another client's secret is a 401
+        self.assertEqual((status, caps["ok"], sorted(caps["data"]["identity"]["communities"]), caps["data"]["writable_channels"]), (200, True, ["pilot"], {"pilot": [CHAN]}))
+        for comm in ("life-os", "bytalos"):
+            self.assertEqual(self.tool(tok, "buzz_read", operation="list_channels", community=comm)[1]["error"], "community_not_authorized", comm)
+            out = self.tool(tok, "buzz_publish", operation="message", community=comm, arguments={"channel": CHAN, "text": "x", "idempotency_key": "oc-" + comm})[1]
+            self.assertFalse(out.get("ok"), comm)                                                                            # no hosted write, whatever the channel
+        out = self.tool(tok, "buzz_publish", operation="message", community="pilot", arguments={"channel": CHAN, "text": "synthetic openclaw pilot post", "idempotency_key": "oc-pilot"})[1]
+        self.assertTrue(out.get("ok"), out)
+        out = self.tool(tok, "buzz_publish", operation="message", community="pilot", arguments={"channel": OTHER, "text": "x", "idempotency_key": "oc-other"})[1]
+        self.assertFalse(out.get("ok"), out)                                                                                 # a channel outside the pilot list
+        self.assertEqual(self.rpc(self.tok("openclaw", self.SECRETS["mac-claude-code"]), "tools/list")[0], 401)             # another client's secret is a 401
 
     def memory(self, cid, op, **arguments):
         return self.tool(self.tok(cid), "buzz_read", operation=op, arguments=arguments)
@@ -1026,13 +1044,13 @@ class Config(unittest.TestCase):
     def test_from_env_builds_four_identities_defaults_to_no_writes_and_rejects_unsafe_config(self):
         relays, auth, base, origins = buzz_mcp.from_env(self.ENV)
         self.assertEqual(({i: {c: nip98.pubkey(k) for c, k in r.keys.items()} for i, r in relays.items()}, {r.writes.__len__() for r in relays.values()}),
-                         ({i: {c: nip98.pubkey(KEYS[i, c]) for c in ("life-os", "bytalos")} for i in ("claude", "chatgpt")}, {0}))
+                         ({**{i: {c: nip98.pubkey(KEYS[i, c]) for c in ("life-os", "bytalos")} for i in ("claude", "chatgpt")}, "openclaw": {}}, {0}))      # LIFE-877: openclaw exists with no hosted key, address or write channel
         self.assertEqual((base, origins, auth.audience, auth.clients), (BASE, (), BASE + "/mcp", frozenset({"cid-one"})))
         self.assertEqual(auth.users["svc+x@example.com"], ("chatgpt", frozenset({"life-os"})))   # a plus-address subject parses, the label is the middle field
         url_ids = buzz_mcp.from_env({**self.ENV, "BUZZ_OAUTH_CLIENTS": "https://chatgpt.com/oauth/client.json, dcr-abc123"})[1]
         self.assertEqual(url_ids.clients, frozenset({"https://chatgpt.com/oauth/client.json", "dcr-abc123"}))   # a client id may be a URL
         no_chatgpt = {k: v for k, v in self.ENV.items() if "CHATGPT_BYTALOS" not in k}
-        self.assertEqual({i: set(r.keys) for i, r in buzz_mcp.from_env(no_chatgpt)[0].items()}, {"claude": {"life-os", "bytalos"}, "chatgpt": {"life-os"}})
+        self.assertEqual({i: set(r.keys) for i, r in buzz_mcp.from_env(no_chatgpt)[0].items()}, {"claude": {"life-os", "bytalos"}, "chatgpt": {"life-os"}, "openclaw": set()})
         bad = [{**self.ENV, "BUZZ_MCP_PUBLIC_URL": "http://edge.example.test"}, {**self.ENV, "BUZZ_MCP_PUBLIC_URL": BASE + "/mcp"}, {**self.ENV, "BUZZ_OAUTH_ISSUER": ""}, {**self.ENV, "BUZZ_OAUTH_JWKS_URL": "http://x"},
                {**self.ENV, "BUZZ_OAUTH_USERS": "user-claude:admin:life-os"}, {**self.ENV, "BUZZ_OAUTH_USERS": "user-claude:shared:life-os"}, {**self.ENV, "BUZZ_OAUTH_USERS": ""}, {**self.ENV, "BUZZ_OAUTH_USERS": "user-claude:claude:other"}, {**self.ENV, "BUZZ_OAUTH_USERS": "user-claude"}, {**self.ENV, "BUZZ_OAUTH_USERS": "user-claude:claude"},
                {**self.ENV, "BUZZ_OAUTH_CLIENTS": ""}, {**self.ENV, "BUZZ_KEY_CLAUDE_LIFE_OS": "nothex"}, {**self.ENV, "BUZZ_AUTH_TAG": "x"},

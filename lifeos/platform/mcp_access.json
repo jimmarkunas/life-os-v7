@@ -51,7 +51,7 @@
     "notion": "write"
    },
    "2b7ba37fbdfcc2839223417b879d835df0eb9b51d886d6051bb5043694028d6f": {
-    "buzz": "read",
+    "buzz": "write",
     "honcho": "write",
     "notion": "write"
    },
@@ -405,6 +405,20 @@
    "purpose": "buzz-read",
    "actions": [
     "read"
+   ],
+   "credential_ref": "mcp-credential-openclaw",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-openclaw-personal-buzz_publish",
+   "principal": "openclaw",
+   "tenant": "personal",
+   "account": "buzz",
+   "tool": "buzz_publish",
+   "purpose": "buzz-publish",
+   "actions": [
+    "write"
    ],
    "credential_ref": "mcp-credential-openclaw",
    "expires": "2027-02-22",
@@ -1613,10 +1627,11 @@
    "sha256": "20a6074f75af9f67f7541734bcd796c196b58e93b3b64e1deb486064e482864a",
    "expires": "2027-02-22",
    "revoked": false,
-   "buzz_identity": null,
+   "buzz_identity": "openclaw",
    "communities": [
-    "life-os"
-   ]
+    "pilot"
+   ],
+   "write": true
   },
   {
    "id": "hermes-librarian",

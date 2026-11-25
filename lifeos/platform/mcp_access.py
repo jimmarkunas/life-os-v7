@@ -22,7 +22,7 @@ FILE = Path(__file__).with_name("mcp_access.json")
 CATALOG = Path(__file__).with_name("capability_catalog.json")
 
 
-WRITERS = {"muse": (True, False)}   # LIFE-923 (Jim, comment 13908): the only credential row that may opt in to the write scope; every other row is read-only and a `write` flag on it refuses the whole file
+WRITERS = {"muse": (True, False), "openclaw": (True, False)}   # LIFE-923 (Jim, comment 13908): the only credential row that may opt in to the write scope; every other row is read-only and a `write` flag on it refuses the whole file
 CRED_ID = re.compile(r"^[a-z][a-z0-9-]{2,31}$")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 CRED_SECRET = re.compile(r"^[A-Za-z0-9_-]{43,86}$")
@@ -50,7 +50,7 @@ def load(text=None, catalog_text=None):
             raise ValueError("bad_shape")
         creds = tuple(doc.get("credentials", ()))
         if any(not CRED_ID.match(c["id"]) or not HEX64.match(c["sha256"]) or c.get("revoked") not in (True, False) or datetime.fromisoformat(c["expires"]) is None
-               or not isinstance(c["communities"], list) or c["buzz_identity"] not in (None, "claude", "chatgpt", "muse") or c.get("write", False) not in WRITERS.get(c["id"], (False,)) for c in creds) or len({c["id"] for c in creds}) != len(creds):
+               or not isinstance(c["communities"], list) or c["buzz_identity"] not in (None, "claude", "chatgpt", "muse", "openclaw") or c.get("write", False) not in WRITERS.get(c["id"], (False,)) for c in creds) or len({c["id"] for c in creds}) != len(creds):
             raise ValueError("bad_credentials")
         return SimpleNamespace(credentials=creds, clients=tuple(doc["clients"]), grants=tuple(_grant(g) for g in doc["grants"]), policy=policy, catalog=catalog,
                                purpose=dict(doc["tool_purpose"]), communities=dict(doc["communities"]))
