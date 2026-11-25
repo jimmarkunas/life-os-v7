@@ -6,6 +6,7 @@ BOARDS_EVENT input Set from the boards workflow's trigger (github.event_name): a
 BOARDS_MODE_INPUT input Set from the boards workflow's mode input: window or catchup, for a manual run (LIFE-854)
 BUZZ_KEY_CHATGPT_PILOT secret ChatGPT's own member key on the private relay pilot; read only when BUZZ_RELAY is pilot, unset means ChatGPT has no pilot identity (LIFE-870)
 BUZZ_KEY_CLAUDE_PILOT secret Claude's own member key on the private relay pilot, a systemd credential; read only when BUZZ_RELAY is pilot (LIFE-870)
+BUZZ_KEY_OPENCLAW_PILOT secret OpenClaw's own member key on the private relay pilot, a systemd credential; it has no hosted key; read only when BUZZ_RELAY is pilot (LIFE-877)
 BUZZ_KEY_DUET_PILOT secret Duet's own member key on the private relay pilot, a systemd credential; read only when BUZZ_RELAY is pilot (LIFE-922)
 BUZZ_MCP_PUBLIC_URLS_EXTRA input More public origins of this same Oracle MCP service (comma list, https, origin only; LIFE-922): each names its own resource and challenge and is accepted as an audience
 BUZZ_PILOT_CHANNEL input The pilot relay channel, or a comma list of channels (LIFE-927), the governed MCP service reads and posts to when BUZZ_RELAY is pilot (LIFE-870)
