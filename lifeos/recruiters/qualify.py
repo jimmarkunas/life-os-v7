@@ -1,6 +1,6 @@
 """Turn a classified message into a Recruiters candidate: only source-backed fields, never a guess. -> ("CANDIDATE", fields) | ("UNRESOLVED", code) | ("EXCLUDED", code).
 
-Person: a human name from the sender. Company: only from the signature line or a first-person statement ("I'm with (Acme)", "I work with Acme"). Client: only when the source
+Person: a human name from the sender. Company: only from the signature line, a first-person statement ("I'm with (Acme)", "I work with Acme"), or the sender's company domain when the message writes the same name as capitalized words (LIFE-971). Client: only when the source
 says so explicitly. Role: only from a fixed pattern ("for a X role", or a "Role: [requisition -] X" line). What they want: only a fixed request pattern (intent.py).
 A missing company, a relay or an ambiguous request makes the row Needs review; a name that cannot be read at all is UNRESOLVED (no row, nothing invented), and so is a LinkedIn
 notification with no recruiting evidence (D193)."""
@@ -81,6 +81,49 @@ def _org_from_signature(body):
     return ""
 
 
+FREE_MAIL = {"gmail", "googlemail", "yahoo", "outlook", "hotmail", "live", "msn", "icloud", "me", "mac", "aol", "proton", "protonmail", "pm", "gmx", "mail", "comcast", "att", "verizon", "sbcglobal", "zoho", "yandex"}
+ATS = {"greenhouse", "lever", "workday", "myworkday", "icims", "smartrecruiters", "bamboohr", "jobvite", "monster", "careerbuilder", "recruitee", "ashbyhq", "workable", "taleo", "paylocity", "ultipro", "adp", "linkedin", "indeed"}
+SECOND_LEVEL = {"co", "com", "org", "net", "ac", "gov", "edu"}
+WORD = re.compile(r"[A-Za-z0-9&](?:[A-Za-z0-9&.'’-]*[A-Za-z0-9&])?")
+SUFFIX_WORDS = {"inc", "inc.", "llc", "ltd", "ltd.", "corp", "corp.", "corporation", "solutions", "technologies", "systems", "staffing", "consulting", "group", "services", "global"}
+
+
+def _domain_label(address):
+    """The company part of a sender's address (`acme` of pat@mail.acme.co.uk), or '' for a free-mail, job-board or relay domain, or one too short to be a name."""
+    domain = str(address or "").rsplit("@", 1)[-1].lower().strip()
+    parts = [p for p in domain.split(".") if p]
+    if len(parts) < 2 or C._is_relay(str(address or "")):
+        return ""
+    label = parts[-3] if len(parts) >= 3 and parts[-2] in SECOND_LEVEL and len(parts[-1]) == 2 else parts[-2]
+    return label if len(label) >= 4 and label.isalnum() and label not in FREE_MAIL and label not in ATS else ""
+
+
+def _org_from_domain(address, body):
+    """A company name only when two sources agree (LIFE-971): the sender's own company domain (`itbrainiac.com`) AND the message itself writing that same name as capitalized words
+    (`ITBrainiac Inc.`, `Hallmark Global`), the words as written plus one closing company word on the same line. Free-mail, job-board and relay senders, or no matching words, give ''."""
+    label = _domain_label(address)
+    if not label:
+        return ""
+    text = str(body or "")[:6000]
+    words = list(WORD.finditer(text))
+    for i, first in enumerate(words):
+        for width in range(1, 5):
+            window = words[i:i + width]
+            if len(window) < width:
+                break
+            if any(text[a.end():b.start()] not in (" ", " & ") for a, b in zip(window, window[1:])):
+                break
+            span = text[window[0].start():window[-1].end()]
+            if re.sub(r"[^a-z0-9]", "", span.lower()) == label and all(w.group()[0].isupper() or w.group()[0].isdigit() for w in window) and span.casefold() not in NOT_AN_ORG:
+                nxt = words[i + width] if i + width < len(words) else None
+                if nxt and text[window[-1].end():nxt.start()] == " " and nxt.group().casefold() in SUFFIX_WORDS and nxt.group().casefold() != window[-1].group().casefold():
+                    span = text[window[0].start():nxt.end()]
+                    if nxt.group().casefold() in ("inc", "ltd", "corp") and text[nxt.end():nxt.end() + 1] == ".":
+                        span += "."
+                return span
+    return ""
+
+
 def _search(pattern, group, *texts):
     for text in texts:
         found = pattern.search(text or "")
@@ -99,7 +142,7 @@ def qualify(message, shape, reason, evidence):
     if relay and reason == C.RELAY_UNVERIFIED:
         return "UNRESOLVED", reason                                   # a name and a notification are not recruiting evidence
     body = message.get("body", "")[:6000]
-    company = "" if relay else (_company(evidence) or _stated_company(body) or _org_from_signature(message.get("body", "")))
+    company = "" if relay else (_company(evidence) or _stated_company(body) or _org_from_signature(message.get("body", "")) or _org_from_domain(message.get("sender_address", ""), message.get("body", "")))
     client = _search(CLIENT, "c", body)
     role, requisition = _role(message.get("subject", ""), body)
     what, ambiguous = ("", False) if relay else request(body, role, requisition)

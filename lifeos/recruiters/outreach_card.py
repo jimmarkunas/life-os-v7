@@ -148,17 +148,24 @@ def _id(value):
     return raw if re.fullmatch(r"[0-9a-f]{32}", raw) else ""
 
 
-def action_link(base, row):
-    """The private Close service's one action for this row, or None without an https origin (V7_CLOSE_BASE_URL): a row linked to exactly one job -> that job's Record reply or
-    referral; a row linked to no job -> Close recruiter record (Completed / Dismissed). A link, never an action: opening it writes nothing."""
+def action_links(base, row):
+    """The private Close service's links for this row, or [] without an https origin (V7_CLOSE_BASE_URL): a row linked to exactly one job first gets that job's Record reply or referral; every row
+    with a page id gets Done (Completed) and Dismiss (Dismissed), each one click (LIFE-971). Links, never actions of their own: the service's page confirms and writes."""
     base = (base or "").strip().rstrip("/")
     if not base.startswith("https://"):
-        return None
+        return []
+    out = []
     if len(row["jobs"]) == 1 and _id(row["jobs"][0]):
-        return ("Record reply or referral ↗", f"{base}/referral?j={_id(row['jobs'][0])}")
-    if not row["jobs"] and _id(row["page_id"]):
-        return ("Close ↗", f"{base}/recruiter?r={_id(row['page_id'])}")
-    return None
+        out.append(("Record reply or referral ↗", f"{base}/referral?j={_id(row['jobs'][0])}"))
+    if _id(row["page_id"]):
+        out += [("Done ↗", f"{base}/recruiter?r={_id(row['page_id'])}&do=done"), ("Dismiss ↗", f"{base}/recruiter?r={_id(row['page_id'])}&do=dismiss")]
+    return out
+
+
+def close_all_link(base):
+    """The one `Close all overdue` link of the card heading, or None without an https origin."""
+    base = (base or "").strip().rstrip("/")
+    return ("Close all overdue ↗", f"{base}/recruiter?all=overdue") if base.startswith("https://") else None
 
 
 def brief_link(base, row):
@@ -173,8 +180,8 @@ def brief_link(base, row):
 def cells(row, today, first=None, base=None):
     """One open row -> the four cells. Line 1 bold, line 2 gray (D222 spans); the name links to the verified contact channel (the database's Contact link, else the original
     message), the channel to the original message only. `first`: the verified first-contact date (first_contact), else "Not verified". Line 2 of Next Step · Due ends with
-    the row's one action link (action_link), then its Brief link (brief_link), when the Close origin is configured."""
-    links = [link for link in (action_link(base, row), brief_link(base, row)) if link]
+    the row's action links (action_links), then its Brief link (brief_link), when the Close origin is configured."""
+    links = [*action_links(base, row), *[link for link in (brief_link(base, row),) if link]]
     due = [("\n" + _due(row, today) + (" · " if links else ""), None, "gray")]
     for i, (label, url) in enumerate(links):
         due += [(" · ", None, "gray")] if i else []
@@ -254,11 +261,15 @@ def validate(client, environ):
     return found
 
 
-def _retitle(client, block_id, text):
-    client.call("PATCH", f"/blocks/{quote(block_id, safe='')}", {"heading_3": {"rich_text": [{"type": "text", "text": {"content": text}}]}})
+def _retitle(client, block_id, text, link=None):
+    """Write the heading; `link` = (label, url) makes that label (the last words before the closing bracket) a link."""
+    parts = [{"type": "text", "text": {"content": text}}]
+    if link and text.endswith(link[0] + ")"):
+        parts = [{"type": "text", "text": {"content": text[:-len(link[0]) - 1]}}, {"type": "text", "text": {"content": link[0], "link": {"url": link[1]}}}, {"type": "text", "text": {"content": ")"}}]
+    client.call("PATCH", f"/blocks/{quote(block_id, safe='')}", {"heading_3": {"rich_text": parts}})
 
 
-def present(client, environ, build, heading, live):
+def present(client, environ, build, heading, live, link=None):
     """Dry run: validate only. Live: rewrite the data rows and the heading through the scope guard, read back. build(current data rows) -> the new rows, or build None keeps them."""
     found = validate(client, environ)
     rows = build(found["rows"][1:]) if build else None
@@ -272,7 +283,7 @@ def present(client, environ, build, heading, live):
     try:
         counts.update(R.write_floating(scoped, found, None, rows, fail))
         if R.plain(found["heading"]).strip() != heading:
-            _retitle(scoped, found["heading"]["id"], heading)
+            _retitle(scoped, found["heading"]["id"], heading, link)
     except Exception as error:
         if str(error) == str(fail("WRITE_OUT_OF_SCOPE")):          # the guard refused a block that is not ours before anything was sent; keep its code
             raise
@@ -291,12 +302,12 @@ def present(client, environ, build, heading, live):
     return counts
 
 
-def heading(moment, stage="success", scan_kind=""):
+def heading(moment, stage="success", scan_kind="", link=None):
     """LIFE-609: `<Title> (11/13 · 3:31 PM CT)`, the form every Daily Report card heading takes. Skipped (a Close screen refresh ran no mail stage on purpose) says Redrawn, so the heading never
     claims mail was read (Jim, Oct 24). A mail source that was not read (LIFE-646) is named by its fixed name, only then: `(11/13 · 9:30 AM CT, Outlook personal unread)`."""
     scan_kind = (scan_kind or "").strip()
     unread = UNREAD.search(scan_kind) if stage == "success" and KIND.fullmatch(scan_kind) else None
-    return f"{TITLE} ({'Redrawn ' if stage == 'skipped' else ''}{ct_stamp.when(moment)}{f', {unread.group(1)} unread' if unread else ''})"
+    return f"{TITLE} ({'Redrawn ' if stage == 'skipped' else ''}{ct_stamp.when(moment)}{f', {unread.group(1)} unread' if unread else ''}{f' · {link[0]}' if link else ''})"
 
 
 def run(limit, live, environ=os.environ, notion=None, client=None, now=None):
@@ -328,5 +339,8 @@ def run(limit, live, environ=os.environ, notion=None, client=None, now=None):
         firsts = [first_contact(r, kept) for r in shown]
         counts["first_contact_shown"] = sum(1 for f in firsts if f)
         return [cells(r, today, f, environ.get("V7_CLOSE_BASE_URL")) for r, f in zip(shown, firsts)]
-    counts.update(present(target, environ, build, heading(now, stage, environ.get("RECRUITERS_SCAN")), write))
+    overdue = store.overdue_rows(shown, today)
+    link = close_all_link(environ.get("V7_CLOSE_BASE_URL")) if overdue else None          # LIFE-971: one link at the top of the card, only when something is overdue
+    counts["overdue"] = len(overdue)
+    counts.update(present(target, environ, build, heading(now, stage, environ.get("RECRUITERS_SCAN"), link), write, link))
     return counts

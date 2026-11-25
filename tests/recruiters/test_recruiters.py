@@ -647,3 +647,35 @@ class ActionStateTests(unittest.TestCase):
         from datetime import date
         self.assertEqual(store.add_business_days(date(2026, 10, 8), 2), date(2026, 10, 12))   # Thu -> Mon
         self.assertEqual(store.add_business_days(date(2026, 10, 10), 2), date(2026, 10, 13))  # Sat -> Tue
+
+
+class CompanyFromDomainAndText(unittest.TestCase):
+    """LIFE-971 (Jim, Nov 24 2026): company is filled from the email only when two sources agree (the sender's company domain and the same name written in the message); otherwise it stays blank."""
+    def org(self, address, body):
+        from lifeos.recruiters import qualify as Q
+        return Q._org_from_domain(address, body)
+
+    def test_the_domain_and_the_signature_text_agree_so_the_company_is_filled(self):
+        self.assertEqual(self.org("pat@itbrainiac.com", "Hi Jim,\nWe have a role.\n\nThanks,\nPat\nITBrainiac Inc.\n"), "ITBrainiac Inc.")
+        self.assertEqual(self.org("pat@hallmarkglobal.com", "Regards,\nPat Example | Hallmark Global | 555"), "Hallmark Global")
+        self.assertEqual(self.org("pat@mail.acmetech.co.uk", "Best,\nAcmeTech"), "AcmeTech")
+
+    def test_one_source_alone_is_not_enough_and_nothing_is_invented(self):
+        self.assertEqual(self.org("pat@itbrainiac.com", "Hi Jim, I have a role for you. Thanks, Pat"), "")             # domain only
+        self.assertEqual(self.org("pat@gmail.com", "Thanks, Gmail"), "")                                                  # free mail
+        self.assertEqual(self.org("jobs@greenhouse.io", "Thanks, Greenhouse team"), "")                                   # job board
+        self.assertEqual(self.org("pat@linkedin.com", "LinkedIn"), "")                                                    # relay
+        self.assertEqual(self.org("pat@abc.com", "ABC"), "")                                                              # too short to be a name
+        self.assertEqual(self.org("pat@itbrainiac.com", "visit itbrainiac.com soon"), "")                                 # lowercase text is not a stated name
+        self.assertEqual(self.org("", "ITBrainiac"), "")
+
+    def test_qualify_uses_it_last_after_the_signature_and_statement_rules(self):
+        from lifeos.recruiters import classify as C, qualify as Q
+        msg = mail(sender_name="Pat Example", address="pat@hallmarkglobal.com", subject="Program Manager", body="Hi Jim,\nI have an urgent requirement for a Program Manager role.\n\nRegards\nPat Example\nSenior Technical Recruiter\nHallmark Global\n")
+        shape, reason, evidence = C.classify(msg)
+        verdict, candidate = Q.qualify(msg, shape, reason, evidence)
+        self.assertEqual((verdict, candidate["company"]), ("CANDIDATE", "Hallmark Global"))
+        msg = mail(sender_name="Pat Example", address="pat@hallmarkglobal.com", subject="Program Manager", body="Hi Jim,\nI have an urgent requirement for a Program Manager role.\n\nRegards\nPat Example\nSenior Technical Recruiter\n")
+        verdict, candidate = Q.qualify(msg, *C.classify(msg))
+        self.assertEqual(candidate["company"], "")
+        self.assertTrue(candidate["needs_review"])

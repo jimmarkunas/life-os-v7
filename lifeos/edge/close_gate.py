@@ -184,7 +184,7 @@ def main(app, stdin=None, stdout=None, lookup=ep.whois, uid=ep.loopback_peer_uid
     except (OSError, ValueError):
         picker = None
     after = []
-    secrets["config"] = {k: policy.get(k) for k in ("ledger", "pipeline")}
+    secrets["config"] = {k: policy.get(k) for k in ("ledger", "pipeline", "hiring_table", "close_base")}      # the last two (LIFE-971): where the Recruiter Outreach table is, and this service's own origin for its links
     if isinstance(picker, dict):
         secrets["picker"] = {k: picker[k] for k in ("client_id", "api_key", "app_id") if isinstance(picker.get(k), str)}
     if policy.get("recruiters"):                                          # D221 Mark as Sent; without it /sent refuses NOTION_CONFIG_MISSING and nothing is written

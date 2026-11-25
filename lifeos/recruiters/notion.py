@@ -1,7 +1,7 @@
 """The existing Recruiters data source, and nothing else: create after absence is proven, update only a single non-Done match, read every write back.
 
 Natural key: Week Ending + Recruiter / Person + Recruiter Company + Role (normalized, no fuzzy matching). Two matches is an ambiguity and nothing is changed.
-V7 never writes Done, never reopens a Done row and never replaces a non-blank What they want. Enrichment of a blank company or role: D193. Action state: D220 (RECR-1.4)."""
+V7 writes Done only when Jim closes a row from the Daily Report (LIFE-971), never reopens a Done row and never replaces a non-blank What they want. Enrichment of a blank company or role: D193. Action state: D220 (RECR-1.4)."""
 # Detail kept from the former docstring:
 # - A row with the same person and week, the SAME non-empty Source URL as the message, and only a BLANK Recruiter Company or Role as the difference is the same row, enriched under the same
 #   page (D193): only blank fields are filled (company, role, What they want, client, medium), never a human's value, and the corrected key must then resolve to exactly that page.
@@ -11,6 +11,7 @@ V7 never writes Done, never reopens a Done row and never replaces a non-blank Wh
 # - Action state (RECR-1.4, D220): a new row starts Needs Action; a newer message reopens a Waiting or blank row as Needs Action; a Waiting row with no Follow-up Date gets one two business
 #   days out, and a Waiting row whose Follow-up Date has come returns to Needs Action. Completed and Dismissed rows, Done rows and inactive rows are history and are never changed.
 from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 from urllib.parse import quote
 
 from lifeos.platform.fixed_code import fixed
@@ -206,9 +207,9 @@ def waiting_rows(notion):
     return rows_where(notion, {"property": "Action Status", "select": {"equals": WAITING}})
 
 
-def rows_where(notion, where):
+def rows_where(notion, where, source=None):
     """Every row matching the Notion filter `where`, following every page; an incomplete read raises."""
-    return [read(p) for page in query(notion, None, {"page_size": 100, "filter": where}, RecruitersError, incomplete="RECRUITERS_NOTION_QUERY_INCOMPLETE", repeat="RECRUITERS_NOTION_PAGINATION_INVALID", capped="RECRUITERS_NOTION_PAGINATION_INCOMPLETE", limit=MAX_PAGES, read="RECRUITERS_NOTION_QUERY_FAILED") for p in page["results"]]
+    return [read(p) for page in query(notion, source, {"page_size": 100, "filter": where}, RecruitersError, incomplete="RECRUITERS_NOTION_QUERY_INCOMPLETE", repeat="RECRUITERS_NOTION_PAGINATION_INVALID", capped="RECRUITERS_NOTION_PAGINATION_INCOMPLETE", limit=MAX_PAGES, read="RECRUITERS_NOTION_QUERY_FAILED") for p in page["results"]]
 
 
 def follow_up_plan(row, today):
@@ -255,22 +256,49 @@ def own_row(notion, page_id, source=None):
     return read(page)
 
 
+CLOSED_FLAGS = {"Done": {"checkbox": True}, "Active": {"checkbox": False}, "Needs review": {"checkbox": False}}      # LIFE-971 (Jim, Nov 24 2026): a closed row is Done, not Active, and not waiting for review
+CHICAGO = ZoneInfo("America/Chicago")
+
+
+def _closed_flags(row):
+    return row["done"] and not row["active"] and not row["needs_review"]
+
+
+def reply_day(row):
+    """The day a Needs Action row's reply is due: its Follow-up Date, else one business day after its First Contact (Central Time), else None."""
+    try:
+        return date.fromisoformat(row["follow_up"][:10])
+    except ValueError:
+        pass
+    try:
+        moment = datetime.fromisoformat((row.get("first_contact") or "").replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return add_business_days((moment.astimezone(CHICAGO) if moment.tzinfo else moment).date(), 1)
+
+
+def overdue_rows(rows, today):
+    """The open Needs Action rows whose reply day is before `today` (what the card marks `overdue`), in a fixed order."""
+    out = [r for r in rows if r["action"] == NEEDS_ACTION and not r["done"] and r["active"] and (reply_day(r) or today) < today]
+    return sorted(out, key=lambda r: (r["person"].strip().lower(), r["page_id"]))
+
+
 def close_row(notion, page_id, status):
-    """Jim's confirmed close of ONE open row (Needs Action or Waiting, not Done, Active) as Completed or Dismissed. Only Action Status is written, once, then the row is read back:
-    the status as written and every other value unchanged. A row already closed that way is left alone; any other row is not changed.
-    -> {"status": "recorded" | "already_recorded" | "not_changed", "verified": True, "action"}"""
+    """Jim's confirmed close of ONE row as Completed or Dismissed. An open row (Needs Action or Waiting, not Done, Active) gets Action Status AND Done on, Active off, Needs review off, in one write, then is read back:
+    the new values as written and every other value unchanged. A row already closed that way whose three flags disagree (the Nov 24 case) is repaired the same way; one already closed and consistent is left alone;
+    any other row is not changed. -> {"status": "recorded" | "already_recorded" | "not_changed", "verified": True, "action"}"""
     if status not in CLOSE_TO:
         raise RecruitersError("RECRUITERS_CLOSE_INVALID")
     check_schema(notion)
     row = own_row(notion, page_id)
-    if row["action"] == status:
+    if row["action"] == status and _closed_flags(row):
         return {"status": "already_recorded", "verified": True, "action": row["action"]}
-    if row["done"] or not row["active"] or row["action"] not in (NEEDS_ACTION, WAITING):
+    if row["action"] != status and (row["done"] or not row["active"] or row["action"] not in (NEEDS_ACTION, WAITING)):
         return {"status": "not_changed", "verified": True, "action": row["action"]}
     with fixed(NotionError, RecruitersError, "RECRUITERS_NOTION_WRITE_FAILED"):
-        notion.update_page_properties(row["page_id"], {"Action Status": {"select": {"name": status}}})
+        notion.update_page_properties(row["page_id"], {"Action Status": {"select": {"name": status}}, **CLOSED_FLAGS})
     after = own_row(notion, page_id)
-    keep = lambda r: {k: v for k, v in r.items() if k not in ("action", "edited_by")}      # noqa: E731
-    if after["action"] != status or keep(after) != keep(row):
+    keep = lambda r: {k: v for k, v in r.items() if k not in ("action", "edited_by", "done", "active", "needs_review")}      # noqa: E731
+    if after["action"] != status or not _closed_flags(after) or keep(after) != keep(row):
         raise RecruitersError("RECRUITERS_READBACK_MISMATCH")
     return {"status": "recorded", "verified": True, "action": status}
