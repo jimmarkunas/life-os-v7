@@ -209,17 +209,18 @@
         run: python -m lifeos.jira.writers contract-check
       - id: jwverify
         continue-on-error: true
-        name: Jira writer verification on a throwaway sprint (LIFE-918 decision E; manual only; a dry run unless verify_live is yes; only a ZZ-LIFE918-TEST sprint and the one named issue; counts and fixed codes only)
+        name: Jira writer verification on a throwaway sprint (LIFE-918 decision E; manual only; a dry run unless the third word of verify is yes; only a ZZ-LIFE918-TEST sprint and the one named issue; counts and fixed codes only)
         if: ${{ inputs.jira == 'writers-verify' }}
         env:
           JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
           JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
-          VERIFY_BOARD: ${{ inputs.verify_board }}
-          VERIFY_ISSUE: ${{ inputs.verify_issue }}
-          VERIFY_LIVE: ${{ inputs.verify_live }}
+          VERIFY: ${{ inputs.verify }}
         run: |
-          case "$VERIFY_BOARD" in JFM|MEJ) ;; *) echo "::error title=jira::verify_board must be JFM or MEJ"; exit 1;; esac
-          printf '%s' "$VERIFY_ISSUE" | grep -Eq '^[A-Z][A-Z0-9]{1,9}-[0-9]{1,7}$' || { echo "::error title=jira::verify_issue must be one issue key"; exit 1; }
+          set -f; set -- $VERIFY; VERIFY_BOARD="$1"; VERIFY_ISSUE="$2"; VERIFY_LIVE="${3:-}"
+          [ "$#" -ge 2 ] && [ "$#" -le 3 ] || { echo "::error title=jira::verify must be BOARD ISSUE or BOARD ISSUE yes"; exit 1; }
+          case "$VERIFY_BOARD" in JFM|MEJ) ;; *) echo "::error title=jira::verify board must be JFM or MEJ"; exit 1;; esac
+          printf '%s' "$VERIFY_ISSUE" | grep -Eq '^[A-Z][A-Z0-9]{1,9}-[0-9]{1,7}$' || { echo "::error title=jira::verify issue must be one issue key"; exit 1; }
+          case "$VERIFY_LIVE" in ""|yes) ;; *) echo "::error title=jira::the third word must be yes or absent"; exit 1;; esac
           if [ "$VERIFY_LIVE" = "yes" ]; then python -m lifeos.jira.writers verify --board "$VERIFY_BOARD" --issue "$VERIFY_ISSUE" --live; else python -m lifeos.jira.writers verify --board "$VERIFY_BOARD" --issue "$VERIFY_ISSUE"; fi
       - id: jroll
         continue-on-error: true

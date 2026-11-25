@@ -82,20 +82,12 @@ on:
         type: boolean
         default: false
       jira:
-        description: "Jira only (unticked 'Run every domain job' above): snapshot, card, report (both), rollover, rollover+snapshot, a read-only layout probe, or (LIFE-918) writers-check = the read-only Jira writer contract check, writers-verify = the throwaway-sprint writer verification (dry unless verify_live is yes)"
+        description: "Jira only (unticked 'Run every domain job' above): snapshot, card, report (both), rollover, rollover+snapshot, a read-only layout probe, or (LIFE-918) writers-check = the read-only Jira writer contract check, writers-verify = the throwaway-sprint writer verification (dry unless the verify input ends in yes)"
         type: choice
         options: ["none", "snapshot", "card", "report", "rollover", "both", "probe", "writers-check", "writers-verify"]
         default: "none"
-      verify_board:
-        description: "LIFE-918, writers-verify only: the board to verify on, JFM or MEJ"
-        type: string
-        default: ""
-      verify_issue:
-        description: "LIFE-918, writers-verify only: the ONE issue key to clone into the ZZ-LIFE918-TEST sprint (for example JFM-123); nothing else is touched"
-        type: string
-        default: ""
-      verify_live:
-        description: "LIFE-918, writers-verify only: type yes to really write on the throwaway sprint; anything else is a dry run (contract check and plan, no write)"
+      verify:
+        description: "LIFE-918, writers-verify only: BOARD ISSUE to verify the Jira writers on a throwaway ZZ-LIFE918-TEST sprint, for example JFM JFM-123 (a dry run: contract check and plan). Add a third word, yes, to really write (JFM JFM-123 yes). Only that sprint and that one issue are touched"
         type: string
         default: ""
       refresh:
@@ -431,17 +423,18 @@ jobs:
         run: python -m lifeos.jira.writers contract-check
       - id: jwverify
         continue-on-error: true
-        name: Jira writer verification on a throwaway sprint (LIFE-918 decision E; manual only; a dry run unless verify_live is yes; only a ZZ-LIFE918-TEST sprint and the one named issue; counts and fixed codes only)
+        name: Jira writer verification on a throwaway sprint (LIFE-918 decision E; manual only; a dry run unless the third word of verify is yes; only a ZZ-LIFE918-TEST sprint and the one named issue; counts and fixed codes only)
         if: ${{ inputs.jira == 'writers-verify' }}
         env:
           JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
           JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
-          VERIFY_BOARD: ${{ inputs.verify_board }}
-          VERIFY_ISSUE: ${{ inputs.verify_issue }}
-          VERIFY_LIVE: ${{ inputs.verify_live }}
+          VERIFY: ${{ inputs.verify }}
         run: |
-          case "$VERIFY_BOARD" in JFM|MEJ) ;; *) echo "::error title=jira::verify_board must be JFM or MEJ"; exit 1;; esac
-          printf '%s' "$VERIFY_ISSUE" | grep -Eq '^[A-Z][A-Z0-9]{1,9}-[0-9]{1,7}$' || { echo "::error title=jira::verify_issue must be one issue key"; exit 1; }
+          set -f; set -- $VERIFY; VERIFY_BOARD="$1"; VERIFY_ISSUE="$2"; VERIFY_LIVE="${3:-}"
+          [ "$#" -ge 2 ] && [ "$#" -le 3 ] || { echo "::error title=jira::verify must be BOARD ISSUE or BOARD ISSUE yes"; exit 1; }
+          case "$VERIFY_BOARD" in JFM|MEJ) ;; *) echo "::error title=jira::verify board must be JFM or MEJ"; exit 1;; esac
+          printf '%s' "$VERIFY_ISSUE" | grep -Eq '^[A-Z][A-Z0-9]{1,9}-[0-9]{1,7}$' || { echo "::error title=jira::verify issue must be one issue key"; exit 1; }
+          case "$VERIFY_LIVE" in ""|yes) ;; *) echo "::error title=jira::the third word must be yes or absent"; exit 1;; esac
           if [ "$VERIFY_LIVE" = "yes" ]; then python -m lifeos.jira.writers verify --board "$VERIFY_BOARD" --issue "$VERIFY_ISSUE" --live; else python -m lifeos.jira.writers verify --board "$VERIFY_BOARD" --issue "$VERIFY_ISSUE"; fi
       - id: jroll
         continue-on-error: true

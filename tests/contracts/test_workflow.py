@@ -929,7 +929,7 @@ class DomainsWorkflowTests(unittest.TestCase):
                 self.assertEqual(self.uncovered_stage_steps(other), [], name)
 
     def test_the_writer_check_steps_run_only_on_their_manual_choice_and_take_the_key_from_the_environment(self):
-        """LIFE-918 decision E: writers-check and writers-verify start only when a person picks them; scheduled and tick runs never reach them; the board, issue and live words reach the shell only as env variables, and the live flag needs the word yes."""
+        """LIFE-918 decision E: writers-check and writers-verify start only when a person picks them; scheduled and tick runs never reach them; the one verify input reaches the shell only as an env variable, is split and validated there, and the live flag needs the word yes."""
         job = self.doc["jobs"]["jira"]
         steps = {s["id"]: s for s in job["steps"] if s.get("id") in ("jwcheck", "jwverify")}
         self.assertEqual(set(steps), {"jwcheck", "jwverify"})
@@ -938,12 +938,11 @@ class DomainsWorkflowTests(unittest.TestCase):
         self.assertEqual(steps["jwcheck"]["run"], "python -m lifeos.jira.writers contract-check")
         run = steps["jwverify"]["run"]
         self.assertNotIn("${{", run)                                                                      # no input is interpolated into the shell
-        self.assertEqual({k: v for k, v in steps["jwverify"]["env"].items() if k.startswith("VERIFY_")},
-                         {"VERIFY_BOARD": "${{ inputs.verify_board }}", "VERIFY_ISSUE": "${{ inputs.verify_issue }}", "VERIFY_LIVE": "${{ inputs.verify_live }}"})
+        self.assertEqual(steps["jwverify"]["env"]["VERIFY"], "${{ inputs.verify }}")
         self.assertIn('[ "$VERIFY_LIVE" = "yes" ]', run)
         self.assertEqual(run.count("--live"), 1)                                                          # --live appears only on the yes branch
         for step in steps.values():                                                                       # no new secret: only the two Jira values every Jira step already takes
-            self.assertEqual({k for k in step["env"] if not k.startswith("VERIFY_")}, {"JIRA_API_TOKEN", "JIRA_EMAIL"})
+            self.assertEqual({k for k in step["env"] if not k.startswith("VERIFY")}, {"JIRA_API_TOKEN", "JIRA_EMAIL"})
         self.assertEqual(self.doc["permissions"], {"contents": "read"})
         trigger = self.doc.get("on") or self.doc[True]
         self.assertLessEqual({"writers-check", "writers-verify"}, set(trigger["workflow_dispatch"]["inputs"]["jira"]["options"]))
