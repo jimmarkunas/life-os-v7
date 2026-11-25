@@ -136,8 +136,8 @@ class DisplayFieldTests(unittest.TestCase):
             snapshot.compact(self.page(Cycle={"type": "rollup", "rollup": {}}))
 
 
-def paid_page(*, page_id="11111111-1111-4111-8111-111111111111", cycle="Monthly", paid=True,
-              status="Active", next_due="2026-10-10", pay=None, due="2026-10-01"):
+def paid_page(*, page_id="11111111-1111-4111-8111-111111111111", cycle="Monthly", paid=False,
+              status="Active", next_due="2026-10-10", pay="Paid", due="2026-10-01"):
     return {"id": page_id, "parent": {"type": "data_source_id", "data_source_id": PaidBillTracker.SOURCE},
             "properties": {
                 "Name": {"type": "title", "title": [{"plain_text": "Example Systems"}]},
@@ -175,8 +175,8 @@ class PaidProcessorTests(unittest.TestCase):
         self.assertEqual(props["Last Paid"]["date"]["start"], "2026-10-03")
         self.assertGreater(props["Next Due"]["formula"]["date"]["start"], "2026-10-10")
         self.assertFalse(props["Paid"]["checkbox"])
-        self.assertEqual(client.writes, [("Last Paid", "Due Date"), ("Pay", "Paid")])
-        self.assertEqual(props["Pay"]["select"]["name"], "Unpaid")          # LIFE-978: the old tick is processed once and the row is tagged Unpaid
+        self.assertEqual(client.writes, [("Last Paid", "Due Date"), ("Pay",)])
+        self.assertEqual(props["Pay"]["select"]["name"], "Unpaid")          # LIFE-978: the Paid tag goes back to Unpaid
         first_update = next(i for i, event in enumerate(events) if event[0] == "update")
         self.assertLess(next(i for i, event in enumerate(events) if event == ("ledger", "prepared")), first_update)
         self.assertEqual(json.loads(database.rows[page["id"]])["step"], "complete")
@@ -191,7 +191,7 @@ class PaidProcessorTests(unittest.TestCase):
         self.assertEqual(props["Due Date"]["date"]["start"], "2026-10-01")
         self.assertEqual(props["Last Paid"]["date"]["start"], "2026-10-03")
         self.assertFalse(props["Paid"]["checkbox"])
-        self.assertEqual(client.writes, [("Last Paid", "Status"), ("Pay", "Paid")])
+        self.assertEqual(client.writes, [("Last Paid", "Status"), ("Pay",)])
 
     def test_unsupported_or_unknown_cycles_and_missing_next_due_stay_checked(self):
         pages = [paid_page(page_id=f"00000000-0000-4000-8000-{i:012d}", cycle=cycle)
@@ -201,7 +201,7 @@ class PaidProcessorTests(unittest.TestCase):
         counts, _ = self.run_paid(client)
         self.assertEqual(counts["review"], 4)
         self.assertEqual(client.writes, [])
-        self.assertTrue(all(p["properties"]["Paid"]["checkbox"] for p in client.pages.values()))
+        self.assertTrue(all(p["properties"]["Pay"]["select"]["name"] == "Paid" for p in client.pages.values()))
 
     def test_dry_run_and_snapshot_never_update_notion_or_create_ledger_rows(self):
         page = paid_page()
@@ -246,8 +246,8 @@ class PaidProcessorTests(unittest.TestCase):
         client = PaidBillTracker(good, odd)
         counts, _ = self.run_paid(client)
         self.assertEqual((counts["invalid"], counts["advanced"]), (1, 1))
-        self.assertFalse(client.pages[good["id"]]["properties"]["Paid"]["checkbox"])
-        self.assertTrue(client.pages[odd["id"]]["properties"]["Paid"]["checkbox"])
+        self.assertEqual(client.pages[good["id"]]["properties"]["Pay"]["select"]["name"], "Unpaid")
+        self.assertEqual(client.pages[odd["id"]]["properties"]["Pay"]["select"]["name"], "Paid")
 
     def test_wrong_source_and_incomplete_error_are_fixed_codes(self):
         page = paid_page()
@@ -263,7 +263,7 @@ class PaidProcessorTests(unittest.TestCase):
         client = PaidBillTracker(page, recalculate_formula=False)
         counts, _ = self.run_paid(client)
         self.assertEqual(counts["failed"], 1)
-        self.assertTrue(client.pages[page["id"]]["properties"]["Paid"]["checkbox"])
+        self.assertEqual(client.pages[page["id"]]["properties"]["Pay"]["select"]["name"], "Paid")
         page = paid_page()
         client = PaidBillTracker(page)
         def fail_write(*_args, **_kwargs):
@@ -271,7 +271,7 @@ class PaidProcessorTests(unittest.TestCase):
         client.update_page_properties = fail_write
         counts, _ = self.run_paid(client)
         self.assertEqual(counts["failed"], 1)
-        self.assertTrue(client.pages[page["id"]]["properties"]["Paid"]["checkbox"])
+        self.assertEqual(client.pages[page["id"]]["properties"]["Pay"]["select"]["name"], "Paid")
         self.assertNotIn("Example Systems", repr(counts))
         self.assertNotIn("12.34", repr(counts))
 
@@ -294,7 +294,7 @@ class PaidProcessorTests(unittest.TestCase):
                 counts = paid.run(40, True, client=client, now=self.now, connect=lambda database=database: database)
                 props = client.pages[page["id"]]["properties"]
                 self.assertEqual(props["Due Date"]["date"]["start"], "2026-10-10")
-                self.assertFalse(props["Paid"]["checkbox"])
+                self.assertEqual(props["Pay"]["select"]["name"], "Unpaid")
                 self.assertEqual(json.loads(database.rows[page["id"]])["step"], "complete")
                 self.assertEqual(counts["failed"], 0)
                 # A third pass is a no-op after acknowledgement.
@@ -310,12 +310,12 @@ class PaidProcessorTests(unittest.TestCase):
         writes = len(client.writes)
         props = client.pages[page["id"]]["properties"]
         due = props["Due Date"]["date"]["start"]
-        props["Paid"]["checkbox"] = True                      # an accidental second tick, same day
+        props["Pay"]["select"] = {"name": "Paid"}             # an accidental second tag, same day
         counts = paid.run(40, True, client=client, now=self.now, connect=lambda database=database: database)
         self.assertEqual((counts["review"], counts["advanced"], counts["failed"]), (1, 0, 0))
         self.assertEqual(len(client.writes), writes)
         self.assertEqual(props["Due Date"]["date"]["start"], due)
-        self.assertTrue(props["Paid"]["checkbox"])            # left checked for a person
+        self.assertEqual(props["Pay"]["select"]["name"], "Paid")   # left tagged for a person
         from datetime import timedelta
         counts = paid.run(40, True, client=client, now=self.now + timedelta(days=1), connect=lambda database=database: database)
         self.assertEqual(counts["advanced"], 1)               # the next day a tick is a new payment
@@ -424,8 +424,8 @@ class PayTagTests(unittest.TestCase):
         self.assertEqual(counts["review"], 1)
 
     def test_an_active_bill_with_no_tag_gets_unpaid_and_an_inactive_one_does_not(self):
-        empty = paid_page(page_id="00000000-0000-4000-8000-000000000001", paid=False)
-        inactive = paid_page(page_id="00000000-0000-4000-8000-000000000002", paid=False, status="Inactive")
+        empty = paid_page(page_id="00000000-0000-4000-8000-000000000001", pay=None)
+        inactive = paid_page(page_id="00000000-0000-4000-8000-000000000002", pay=None, status="Inactive")
         client = PaidBillTracker(empty, inactive)
         dry = paid.run(40, False, client=client, now=self.now)
         self.assertEqual((dry["backfilled"], client.writes), (1, []))
