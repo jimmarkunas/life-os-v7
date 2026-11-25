@@ -77,7 +77,8 @@ def _run_step(step, live, limit, stages):
         return "ok" if code == 0 else "failed"
     from lifeos import run                                                          # noqa: PLC0415 - the one stage registry
     code = run.main([step.name, "--limit", str(limit)] + (["--live"] if live else [])) if stages is None else stages[step.name](limit, live)
-    stage_timing.note_counts(code)
+    if stages is not None:                                                          # LIFE-974: through lifeos.run.main the stage's counts are already noted and `code` is the exit code (0): noting it again wiped them, so `items` was null on every stage
+        stage_timing.note_counts(code)
     return "ok" if code in (0, None) or isinstance(code, dict) else "failed"
 
 

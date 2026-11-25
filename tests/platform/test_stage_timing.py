@@ -78,6 +78,25 @@ class DeclaredCounts(unittest.TestCase):
         self.assertIsNone(rows[0]["items"])
 
 
+class ProductionPath(unittest.TestCase):
+    def test_items_survive_the_real_run_main_path_where_the_stage_returns_an_exit_code(self):
+        """LIFE-974: in production the tick calls lifeos.run.main (stages=None), which notes the stage's counts and returns the integer exit code 0; the tick then noted that 0 over the counts, so `items` was
+        null on every stage. A declared stage must report its number; an undeclared one stays null."""
+        from unittest import mock
+        from lifeos import run
+
+        def fake_main(argv):
+            stage_timing.note_counts({"due": 7, "failed": 0} if argv[0] == "web" else {"due": 9})      # what run.main does for the stage it just ran
+            return 0
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.object(run, "main", fake_main), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            tick.tick(False, plan=[Step("web", 60, 10), Step("fit", 60, 10)], stages=None, clock=shared.Clock(), concurrency=None)
+        rows = {r["stage"]: r for r in (json.loads(x.split("stage_timing: ", 1)[1]) for x in err.getvalue().splitlines() if x.startswith("stage_timing: "))}
+        self.assertEqual(rows["web"]["items"], 7)                                                  # declared items_key `due`
+        self.assertIsNone(rows["fit"]["items"])                                                    # not declared: unknown, never zero
+        self.assertEqual(rows["web"]["outcome"], "complete")
+
+
 class Standalone(unittest.TestCase):
     def test_a_standalone_stage_prints_its_line_only_when_the_file_is_set_and_never_inside_the_tick(self):
         import os
