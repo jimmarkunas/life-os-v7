@@ -13,17 +13,17 @@ from zoneinfo import ZoneInfo
 from lifeos.jobs import hiring_pipeline
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 from lifeos.platform.notion_text import block_text as _plain
-from lifeos.hiring import close_screen as S, decision as D, models as M
-from lifeos.sources.apps.signed import HTML, gate, handler, invalid, live, mac as _mac, norm, same as _same, stopper, unverified
+from lifeos.hiring import close_screen as S, decision as D
+from lifeos.sources.apps.signed import HTML, handler, invalid, live, mac as _mac, norm, same as _same, stopper, unverified      # noqa: F401 (_same: manage_app reads it as C._same)
 
 CLOSURE = ("lifeos/hiring/close_screen.py", "lifeos/hiring/decision.py", "lifeos/hiring/models.py", "lifeos/jobs/__init__.py", "lifeos/jobs/hiring_pipeline.py", "lifeos/platform/names.py",
-           "lifeos/sources/apps/close_app.py", "lifeos/sources/apps/__init__.py", "lifeos/sources/apps/signed.py", "lifeos/sources/apps/outreach_app.py", "lifeos/recruiters/__init__.py", "lifeos/recruiters/outreach.py", "lifeos/recruiters/notion.py", "lifeos/recruiters/identity.py", "lifeos/recruiters/outreach_card.py", "lifeos/sources/apps/redraw_worker.py", "lifeos/platform/close_redraw.py", "lifeos/platform/report_region.py", "lifeos/platform/router.py", "lifeos/platform/ct_stamp.py", "lifeos/platform/limits.py", "lifeos/platform/readback.py",
+           "lifeos/sources/apps/close_app.py", "lifeos/sources/apps/__init__.py", "lifeos/sources/apps/signed.py", "lifeos/sources/apps/outreach_app.py", "lifeos/recruiters/__init__.py", "lifeos/recruiters/outreach.py", "lifeos/recruiters/notion.py", "lifeos/recruiters/identity.py", 
            "lifeos/network/__init__.py", "lifeos/network/surface.py", "lifeos/network/match.py", "lifeos/platform/hidden.py", "lifeos/platform/ledger_body.py",
            "lifeos/sources/apps/resume_app.py", "lifeos/platform/notion_files.py", "lifeos/platform/gdrive.py", "lifeos/platform/google_consent.py",
            "lifeos/sources/apps/manage_app.py", "lifeos/sources/apps/alerts_app.py", "lifeos/platform/alerts.py", "lifeos/platform/alert_registry.py", "lifeos/platform/alert_settings.py", "lifeos/platform/alert_store.py", "lifeos/platform/redact.py",
            "lifeos/platform/credentials.py", "lifeos/platform/credential_list.py", "lifeos/platform/fixed_code.py", "lifeos/platform/notion_text.py", "lifeos/platform/notion_pages.py")
-ROUTES = {"/sent": ("apps.outreach_app", "handle"), "/referral": ("apps.outreach_app", "handle_status"), "/recruiter": ("apps.outreach_app", "handle_close"),     # D221 Mark as Sent, referral status, LIFE-20 recruiter close,
-          "/resume": ("apps.resume_app", "handle"), "/manage": ("apps.manage_app", "handle"), "/manage.css": ("apps.manage_app", "handle_css"), "/manage-picker.js": ("apps.manage_app", "handle_js"), "/brief": ("apps.outreach_app", "handle_brief"), "/alerts": ("apps.alerts_app", "handle"), "/alerts.css": ("apps.alerts_app", "handle_css")}                                                       # D234 Build resume, E14 Manage + Reopen (Jim, Oct 24), LIFE-35 brief (read only)
+ROUTES = {"/sent": ("apps.outreach_app", "handle"), "/referral": ("apps.outreach_app", "handle_status"),     # D221 Mark as Sent, referral status, LIFE-20 recruiter close,
+          "/resume": ("apps.resume_app", "handle"), "/manage": ("apps.manage_app", "handle"), "/manage.css": ("apps.manage_app", "handle_css"), "/manage-picker.js": ("apps.manage_app", "handle_js"), "/alerts": ("apps.alerts_app", "handle"), "/alerts.css": ("apps.alerts_app", "handle_css")}                                                       # D234 Build resume, E14 Manage + Reopen (Jim, Oct 24), LIFE-35 brief (read only)
 KIND = "ledger"                                                                       # LIFE-353: the only record a decision is written on (signed into every form)
 TTL, TZ = 900, ZoneInfo("America/Chicago")
 
@@ -46,83 +46,8 @@ def _state(client, root, pages=None):
     return rows, [{"id": o.page_id, "tree_id": o.tree_id, "company": o.company, "role": o.role, "retired": o.section == hiring_pipeline.RETIRED} for o in found]
 
 
-def resolve(client, config, pid):
-    """The ONE Job Ledger pursuit row with this exact page id (decision.route), or a fixed refusal. -> {kind, id, company, role, closed, st}; `st` fingerprints what the screen was shown.
-    Only the Ledger is read: no page tree (Jim, Oct 24: confirm too slow)."""
-    rec = D.route(D.rows(D.ledger_pages(client)), {"action": D.ACTION, "id": pid})
-    if D._page_id(rec["id"]) != pid:
-        raise D.fail("NOT_FOUND")
-    closed = bool(rec.get("decision"))
-    return {"kind": KIND, "id": pid, "company": rec["company"], "role": rec["role"], "closed": closed, "st": _fingerprint(KIND, pid, rec["company"], rec["role"], closed)}
-
-
 def _fingerprint(kind, pid, company, role, closed):
     return hashlib.sha256(norm(f"{kind}|{pid}|{company}|{role}|{closed}").encode()).hexdigest()[:16]
-
-
-def _fields(secret, login, opp, exp):
-    return {"o": opp["id"], "k": opp["kind"], "co": opp["company"], "ro": opp["role"], "exp": str(exp), "st": opp["st"], "t": _mac(secret, "t", login, opp["id"], opp["st"], exp)}
-
-
-def _shown(form, pid, st):
-    """The open record exactly as the GET showed it, proven by the signed fingerprint `st` and read from no source: Edit and Review re-render without a Notion
-    round trip (they never write). None when the carried fields are not the ones `st` was computed from. Confirm always resolves afresh."""
-    kind, company, role = form.get("k", ""), form.get("co", ""), form.get("ro", "")
-    return {"kind": kind, "id": pid, "company": company, "role": role, "closed": False, "st": st} if kind == KIND and _same(_fingerprint(kind, pid, company, role, False), st) else None
-
-
-def _get(req, who, secrets):
-    pid = D._page_id(req["query"].get("o"))
-    if not pid:
-        return _stop(400, "Invalid link", "No opportunity selected", "Open this screen from an opportunity link.", "Nothing was changed.")
-    opp = resolve(secrets["reader"], secrets["config"], pid)
-    if opp["closed"]:
-        return _stop(409, "Already decided", "This opportunity is already closed", "A decision is already recorded for it.", "Nothing was changed.")
-    return 200, HTML, S.form(opp, _fields(secrets["link"], who["login"], opp, int(_now().timestamp()) + TTL)), ()
-
-
-def _post(req, who, secrets):
-    form, secret, login = req["form"], secrets["link"], who["login"]
-    pid, step, exp, st, early = gate(form, secret, login, _now(), "t", "o", _stop, "Reload the opportunity from its link.", ("No changes made", "The proposed closure was cancelled. The opportunity remains in its current state."))
-    if early:
-        return early
-    outcome, notes = form.get("outcome", ""), (form.get("notes") or "").strip()
-    config = secrets["config"]
-    if step == "confirm":
-        client = Client({"NOTION_API_TOKEN": secrets["notion"].decode(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": config["ledger"]})
-        opp = resolve(client, config, pid)                                       # the write is authorized only by a fresh read of the canonical record
-        if not opp["closed"] and opp["st"] != st:
-            return _stop(409, "Conflict", "Opportunity changed", "The record changed since this form was opened.", "No write attempted. Reload the opportunity and review it again.")
-    else:
-        opp = _shown(form, pid, st)
-        if opp is None:
-            return invalid(_stop, "Reload the opportunity from its link.")
-    fields = {"o": pid, "k": opp["kind"], "co": opp["company"], "ro": opp["role"], "exp": exp, "st": st, "t": form["t"]}     # the token was verified above; the review step adds its own
-    if step == "edit":
-        return 200, HTML, S.form(opp, fields, outcome, notes), ()
-    if outcome in M.LEAD_REASONS:                                     # E01b: "I'm passing", "Not a real job", "Went nowhere" are recorded as an existing outcome plus a fixed note
-        outcome, fixed = M.LEAD_REASONS[outcome]
-        notes = (fixed + (": " + notes if notes else ""))[:D.REASON_MAX]
-    if outcome not in M.OUTCOMES or len(notes) > D.REASON_MAX or not (notes or outcome != "Other") or not (notes or "x").isprintable():
-        return 400, HTML, S.form(opp, fields, outcome if outcome in M.OUTCOMES else "", notes[:D.REASON_MAX], "Choose a closure reason. Other needs a short note (up to 200 characters)."), ()
-    sign = _mac(secret, "c", login, pid, st, exp, outcome, notes)
-    if step == "review":
-        return 200, HTML, S.review(opp, {**fields, "outcome": outcome, "notes": notes, "c": sign}, outcome, notes), ()
-    if not _same(form.get("c"), sign):
-        return invalid(_stop, "Review the closure again.", "This confirmation is not valid")
-    request = {"action": D.ACTION, "confirmed": True, "id": pid, "company": opp["company"], "role": opp["role"], "reason": notes or outcome, "outcome": outcome,
-               "op": _mac(secret, "op", pid, st, exp, outcome, notes)[:32]}
-    try:
-        done = D.confirm_rejected(client, request, True, _now())
-    except NotionError as error:
-        code = str(error)[:60]
-        if code in ("DECISION_CONFLICT", "DECISION_SCHEMA_MISSING"):
-            return _stop(409, "Not changed", "This closure was not recorded", "A conflicting decision exists, or this outcome is not enabled on the Ledger yet.", f"Refused: {code}. Nothing was changed.")
-        return unverified(_stop, "Could not verify closure", "the opportunity was closed", code)
-    if done.get("verified") is not True or done.get("status") not in ("recorded", "already_recorded"):
-        return unverified(_stop, "Could not verify closure", "the opportunity was closed")
-    secrets.get("after", []).append("hiring")                          # Jim, Oct 24: the gate asks for the Hiring Pipeline region to be redrawn now (close_gate.REFRESH)
-    return _stop(200, "Closed", "Opportunity closed", "The canonical record was updated and read back successfully.", f"{opp['company']} — {opp['role']} · Closed — {outcome}{' (already recorded)' if done['status'] == 'already_recorded' else ''}.", "ok")
 
 
 # ---------- E05 Mark Complete (Jim, Oct 24): one opportunity page's one primary action, recorded in that page's own fold after two steps, read back ----------
@@ -177,7 +102,7 @@ def _complete_get(req, who, secrets):
     fields = {"o": pid, "a": key, "exp": exp, "st": st, "t": _mac(secrets["link"], "m", who["login"], pid, key, st, exp)}
     lead = a["text"].startswith(LEAD_ACTION)                                     # "Reply to the recruiter's message, or close this lead.": both outcomes are offered (Jim, Oct 24)
     ask, cta = ("What happened with this lead?", "I replied \u2014 mark it done") if lead else (f'Mark \u201c{e(a["text"])}\u201d complete?', "Mark complete")
-    close = f'<a class="btn" href="/?o={pid}">Close this lead instead \u2192</a>' if lead else ""
+    close = ""
     return 200, HTML, S.page("Mark complete", "Your confirmation is required before anything is recorded.", (
         f'<form method="post" action="/complete">{S._hidden(fields)}<section class="section"><div class="eyebrow">Opportunity</div>'
         f'<h2>{e(a["company"])} — {e(a["role"])}</h2></section><section class="section"><div class="eyebrow">{e(a["text"])}</div>'
@@ -229,8 +154,6 @@ def handle(req, who, secrets):
             return getattr(importlib.import_module("lifeos.sources." + module), name)(req, who, secrets)
         if req["path"] == "/complete" and req["method"] in ("GET", "POST"):                   # E05: Mark Complete, same gate, signing key and fresh read
             return handle_complete(req, who, secrets)
-        if req["path"] != "/" or req["method"] not in ("GET", "POST"):
-            return _stop(404, "Not found", "Nothing here", "This service only closes one opportunity at a time.", "Nothing was changed.")
-        return (_get if req["method"] == "GET" else _post)(req, who, secrets)
+        return _stop(404, "Not found", "Nothing here", "There is no screen at this address.", "Nothing was changed.")      # LIFE-973: the opportunity Close screen (/?o=) is retired
     except NotionError as error:
         return _stop(409, "Not changed", "This opportunity cannot be closed here", "The request was refused before anything was written.", f"Refused: {str(error)[:60]}")

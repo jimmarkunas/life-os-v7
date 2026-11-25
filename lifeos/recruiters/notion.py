@@ -283,6 +283,58 @@ def overdue_rows(rows, today):
     return sorted(out, key=lambda r: (r["person"].strip().lower(), r["page_id"]))
 
 
+# ---------- LIFE-973: Action Status is the only source of truth for Done / Active / Needs review, and every open row carries a reply-by date ----------
+CLOSED_STATUSES = ("Completed", "Dismissed", DECLINED)                # history: Done ticked, Active off, Needs review off
+
+
+def sync_plan(row):
+    """-> the properties that make Done / Active / Needs review agree with Action Status, or None. Completed / Dismissed / Declined: Done on, Active off, Needs review off.
+    Needs Action: Done off, Active on (Needs review is Jim's and stays). Any other status (Waiting, blank) is not synced."""
+    if row["action"] in CLOSED_STATUSES:
+        return dict(CLOSED_FLAGS) if not _closed_flags(row) else None
+    if row["action"] == NEEDS_ACTION and (row["done"] or not row["active"]):
+        return {"Done": {"checkbox": False}, "Active": {"checkbox": True}}
+    return None
+
+
+def disagreeing_rows(notion):
+    """Every row whose Done / Active / Needs review disagree with its Action Status (two filtered reads), complete or raising."""
+    closed = {"and": [{"or": [{"property": "Action Status", "select": {"equals": s}} for s in CLOSED_STATUSES]},
+                      {"or": [{"property": "Done", "checkbox": {"equals": False}}, {"property": "Active", "checkbox": {"equals": True}}, {"property": "Needs review", "checkbox": {"equals": True}}]}]}
+    open_ = {"and": [{"property": "Action Status", "select": {"equals": NEEDS_ACTION}}, {"or": [{"property": "Done", "checkbox": {"equals": True}}, {"property": "Active", "checkbox": {"equals": False}}]}]}
+    seen, out = set(), []
+    for flt in (closed, open_):
+        for r in rows_where(notion, flt):
+            if r["page_id"] not in seen:
+                seen.add(r["page_id"])
+                out.append(r)
+    return out
+
+
+def default_follow_up(row):
+    """The reply-by date to write on a Needs Action row that has none: one business day after its First Contact, else after its Last Contact (Central Time), else None.
+    The old card's rule (REPLY_DAYS = 1) with a Last Contact fallback for rows made before First Contact existed. A date Jim or V7 already set is never replaced."""
+    if row["action"] != NEEDS_ACTION or row["done"] or not row["active"] or row["follow_up"]:
+        return None
+    for field in ("first_contact", "last_contact"):
+        try:
+            moment = datetime.fromisoformat((row.get(field) or "").replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        return add_business_days((moment.astimezone(CHICAGO) if moment.tzinfo else moment).date(), 1)
+    return None
+
+
+def set_props(notion, row, props, expect):
+    """One non-retried update of owned properties, then a fresh read of the same page: `expect` ({row key: value}) must hold and nothing else may have changed."""
+    with fixed(NotionError, RecruitersError, "RECRUITERS_NOTION_WRITE_FAILED"):
+        notion.update_page_properties(row["page_id"], props)
+    after = own_row(notion, row["page_id"])
+    want = {**row, **expect}
+    if {k: v for k, v in after.items() if k != "edited_by"} != {k: v for k, v in want.items() if k != "edited_by"}:
+        raise RecruitersError("RECRUITERS_READBACK_MISMATCH")
+
+
 def close_row(notion, page_id, status, row=None):
     """Jim's confirmed close of ONE row as Completed or Dismissed. An open row (Needs Action or Waiting, not Done, Active) gets Action Status AND Done on, Active off, Needs review off, in one write, then is read back:
     the new values as written and every other value unchanged. A row already closed that way whose three flags disagree (the Nov 24 case) is repaired the same way; one already closed and consistent is left alone;

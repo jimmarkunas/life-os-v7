@@ -4,7 +4,7 @@ import html
 import json
 import re
 import unittest
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from unittest import mock
 from zoneinfo import ZoneInfo
 
@@ -13,7 +13,7 @@ from lifeos.platform import hidden
 from lifeos.recruiters import notion as store, outreach as O, stage
 from lifeos.sources.apps import close_app
 from lifeos.sources.apps import outreach_app
-from tests.recruiters.fakes import FakeRecruiters, mail, page
+from tests.recruiters.fakes import FakeRecruiters, mail
 
 LEDGER, PIPELINE, RECRUITERS = "1" * 32, "2" * 32, "3" * 32
 JOB_A, JOB_B = "a" * 32, "b" * 32
@@ -372,7 +372,7 @@ class Lifecycle(unittest.TestCase):
 
     def run_stage(self, when, records=()):
         from tests.recruiters.test_recruiters import ReadOnlyGmail
-        return stage.run(10, True, gmail=ReadOnlyGmail(list(records)), outlook_accounts=[], notion=self.rec, now=when)
+        return stage.run(10, True, gmail=ReadOnlyGmail(list(records)), outlook_accounts=[], notion=self.rec, now=when, chores=False)
 
     def rows(self):
         return [store.read(p) for p in self.rec.pages]

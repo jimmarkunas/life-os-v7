@@ -15,7 +15,6 @@ import urllib.request
 from urllib.parse import parse_qsl
 
 from lifeos.imessage import alerts_endpoint as ep
-from lifeos.platform import close_redraw
 from lifeos.platform.notion_client import Client
 
 POLICY = "/etc/lifeos-close/policy.json"
@@ -204,8 +203,6 @@ def main(app, stdin=None, stdout=None, lookup=ep.whois, uid=ep.loopback_peer_uid
         status, ctype, body, extra = 500, "text/plain; charset=utf-8", b"", ()
     hub = req["method"] == "GET" and req["path"] in PICKER_PATHS and status == 200 and ctype.startswith("text/html")
     respond(stdout, status, body, ctype, extra, PICKER_CSP if hub else CSP, PICKER_REFERRER if hub else REFERRER)
-    if "card" in after and status == 200:                                 # LIFE-972: the card is redrawn by the background worker; no worker -> the workflow refresh
-        after[:] = [w for w in after if w != "card"] + ([] if close_redraw.poke() else ["recruiters"])
     if token and after and status == 200:
         refresh(token, after)
     return 0

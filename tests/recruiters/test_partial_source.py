@@ -9,8 +9,8 @@ from unittest import mock
 
 from lifeos.platform import mail_seen as seen
 from lifeos.platform.outlook import Outlook, OutlookError
-from lifeos.recruiters import outreach_card, scan, stage
-from tests.recruiters.fakes import FakeRecruiters, ReadOnlyGmail, mail
+from lifeos.recruiters import scan, stage
+from tests.recruiters.fakes import FakeRecruiters, ReadOnlyGmail
 from tests.recruiters.test_incremental import AFTERNOON, FakeLedger, after_a_full_scan_at_9, signed
 
 
@@ -24,7 +24,7 @@ class DownOutlook:
 def run(records, outlook, ledger=None, live=True, notion=None, environ=None):
     notion = notion or FakeRecruiters()
     with contextlib.redirect_stdout(io.StringIO()):
-        counts = stage.run(0, live, environ=environ or {}, gmail=ReadOnlyGmail(records), outlook_accounts=outlook, notion=notion, now=AFTERNOON, ledger=ledger)
+        counts = stage.run(0, live, environ=environ or {}, gmail=ReadOnlyGmail(records), outlook_accounts=outlook, notion=notion, now=AFTERNOON, ledger=ledger, chores=False)
     return counts, notion
 
 
@@ -46,7 +46,7 @@ class PartialSourceTests(unittest.TestCase):
         notion = FakeRecruiters()
         with mock.patch.object(stage.mail, "gmail_records", mock.Mock(side_effect=stage.mail.MailError("MAIL_SOURCE"))):
             with contextlib.redirect_stdout(io.StringIO()), self.assertRaises(stage.store.RecruitersError) as caught:
-                stage.run(0, True, environ={}, gmail=ReadOnlyGmail([signed("g1")]), outlook_accounts=[("personal", DownOutlook())], notion=notion, now=AFTERNOON, ledger=None)
+                stage.run(0, True, environ={}, gmail=ReadOnlyGmail([signed("g1")]), outlook_accounts=[("personal", DownOutlook())], notion=notion, now=AFTERNOON, ledger=None, chores=False)
         self.assertEqual(str(caught.exception), "RECRUITERS_DEGRADED_SOURCE_INCOMPLETE")
         self.assertEqual(notion.writes, [])
 
@@ -74,10 +74,6 @@ class PartialSourceTests(unittest.TestCase):
             out = Path(folder) / "out"
             run([signed("g1")], [("personal", DownOutlook())], environ={"GITHUB_OUTPUT": str(out)})
             self.assertIn("scan_kind=14-day scan (Outlook personal unread)\n", out.read_text())
-        for fine in ("new mail", "14-day scan", "14-day scan (Outlook personal unread)", "new mail (Gmail, Outlook work unread)"):
-            self.assertTrue(outreach_card.KIND.fullmatch(fine), fine)
-        for bad in ("14-day scan (pat@example.com unread)", "14-day scan (Outlook Personal Name unread)", "yesterday"):
-            self.assertFalse(outreach_card.KIND.fullmatch(bad), bad)
 
 
 class OutlookOutageTests(unittest.TestCase):

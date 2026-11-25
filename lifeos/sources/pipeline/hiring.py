@@ -9,7 +9,7 @@ import os
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from lifeos.hiring import auto_close, card, compile as C, decision, models as M, outcomes as outcome_mail, render, snapshot
+from lifeos.hiring import auto_close, compile as C, decision, decision_sync, models as M, outcomes as outcome_mail, render, snapshot
 from lifeos.jobs import hiring_pipeline, ledger
 from lifeos.platform import db, notion_pages
 from lifeos.platform.gcal import GoogleCalendar
@@ -121,28 +121,6 @@ def meeting(event):
     return (join, place) if join or place else None
 
 
-def pursuit_rows(applied, parents):
-    """The Ledger pursuit rows this run read, in `decision.route`'s shape: every Applied row, plus each Ledger pursuit (Stage set) the pipeline reader found. One row per page id."""
-    out = {decision._page_id(r.get("id")): {"id": r.get("id"), "company": r["company"], "role": r["role"], "decision": r.get("decision")} for r in applied}
-    for p in parents:
-        if p.get("row_id") and decision._page_id(p["row_id"]) not in out:
-            out[decision._page_id(p["row_id"])] = {"id": p["row_id"], "company": p["company"], "role": p["role"], "decision": None}
-    return [r for k, r in out.items() if k]
-
-
-def close_ids(rows, applied, parents):
-    """D194 S3: {row key: the Job Ledger row id `decision.route` would close it on}, the very rule the private Close screen runs; an ambiguous or unmatched pursuit has none."""
-    ids, pursuits = {}, pursuit_rows(applied, parents)
-    for r in rows or []:
-        try:
-            pid = decision._page_id(decision.route(pursuits, {"company": r["company"], "role": r["role"], "action": decision.ACTION}).get("id"))
-        except decision.DecisionError:
-            continue
-        if pid:
-            ids[r["key"]] = pid
-    return ids
-
-
 def _stale_hours(environ):
     """The outcome-mail staleness limit: the real one, or a smaller whole number of hours from the manual LIFE-19 proof input. It can only tighten the limit, never loosen it; anything else is ignored."""
     raw = (environ.get("HIRING_OUTCOME_STALE_HOURS") or "").strip()
@@ -195,10 +173,9 @@ def run(limit, live, environ=os.environ, ledger_client=None, pipeline_client=Non
             gone = {e["key"] for e in auto["closed"]}
             result["rows"], result["closed"] = [r for r in result["rows"] if r["key"] not in gone], result["closed"] + len(gone)
         recent = auto_close.shown(prior, auto["closed"], now, [r["key"] for r in result["rows"] or []])
-        text, cells, counts = render.render(result, prior, now, ((environ.get("V7_CLOSE_BASE_URL") or "").strip(), close_ids(result["rows"], applied, parents)))
+        _text, cells, counts = render.render(result, prior, now, (None, {}))          # LIFE-973: counts only; the Daily Report card is a live Job Ledger view now, nothing here writes it
         if cells is not None:
-            extra = auto_close.cells(recent, _day)[:max(0, render.MAX_ROWS - len(cells))]     # shown for 24 hours as closed, then dropped; inside the table's row cap
-            cells, counts["rows"] = cells + extra, counts["rows"] + len(extra)
+            counts["rows"] += len(auto_close.cells(recent, _day)[:max(0, render.MAX_ROWS - len(cells))])
         counts["auto_close"] = {"due": auto["due"], "closed": len(auto["closed"]), "refused": auto["refused"], "switch": auto["switch"], "shown": len(recent)}
         counts.update({"applied": len(applied), "opportunities": sum(1 for p in parents if not p.get("retired")), "mail_outcomes": len(heard), "retired_pages": sum(1 for p in parents if p.get("retired")), "closed": result["closed"], "events": len(events), "unsupported": result["unsupported"],
                        "unmatched_events": result["unmatched_events"], "untitled_pages": result["untitled_pages"], "ledger": ledger_stats, "saved": 0, "blocks_written": 0, "sources": dict(ok)})
@@ -208,8 +185,5 @@ def run(limit, live, environ=os.environ, ledger_client=None, pipeline_client=Non
         if live and new is not None:
             snapshot.save(conn, new)                              # saved with authoritative read-back; a failed save raises before the presentation is touched
             counts["saved"] = 1
-    done = card.present(client or card.writer(environ), environ, text, cells, live)
-    counts.update(rows_changed=done["rows_changed"], rows_added=done["rows_added"], rows_removed=done["rows_removed"], verified=done["verified"], header=done["header"])
-    if live:
-        counts["blocks_written"] = done["rows_changed"] + done["rows_added"] + 1
+    counts["decision_sync"] = decision_sync.run(ledger_client, live, now)      # LIFE-973: a Hiring Decision Jim set by hand gets its Decision On, history line and Closed freshness
     return counts

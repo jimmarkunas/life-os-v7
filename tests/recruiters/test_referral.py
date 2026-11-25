@@ -5,9 +5,8 @@ from datetime import date
 
 from lifeos.recruiters import notion as store, outreach as O
 from lifeos.sources.pipeline import job_page_outreach as JP
-from lifeos.sources.apps import outreach_app
 from tests.recruiters.fakes import FakeRecruiters, page
-from tests.recruiters.test_outreach import (JOB_A, JOB_B, LEDGER, SCHEMA, NOW, Ledger, Service, fields, ledger_page, mark, walk)
+from tests.recruiters.test_outreach import (JOB_A, JOB_B, LEDGER, SCHEMA, Ledger, Service, fields, ledger_page, mark, walk)
 
 OPTIONS = {"Action Status": {"type": "select", "select": {"options": [{"name": n} for n in ("Needs Action", "Waiting", *store.CONVERSATION, store.DECLINED)]}}}
 JOB = {"id": JOB_A, "company": "Northwind Labs", "role": "Senior Technical Program Manager"}
