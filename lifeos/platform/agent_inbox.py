@@ -10,7 +10,8 @@
 # Output is counts and fixed reason words only: never a subject, a sender, a link or a token.
 import hashlib
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from lifeos.platform import notion_pages
 from lifeos.platform.inbox_error import InboxError
@@ -28,6 +29,8 @@ STATUSES = ("New", "Done", "Dismissed", "Snoozed", "Promoted")
 TILES = (("Now", "New", "Now"), ("Today", "New", "Today"), ("This week", "New", "This week"), ("FYI", "New", "FYI"), ("Snoozed", "Snoozed", None))   # label, status, urgency (None: any)
 SUBJECT_MAX, DETAILS_MAX, FROM_MAX, LINK_MAX, KEY_MAX = 160, 1500, 60, 500, 64
 RATE_PER_HOUR = 20
+CT = ZoneInfo("America/Chicago")
+DETAILS_LINE_MAX, BODY_BLOCKS_MAX, CELL_MAX = 120, 90, 300                          # LIFE-988: the Details property is one readable line; the full text is the styled page body
 
 _FROM = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _.:/-]{0,59}$")                       # a name or an agent id: never an address
 _KEY = re.compile(r"^[A-Za-z0-9_.:-]{1,64}$")
@@ -65,6 +68,17 @@ def _due(value):
     return text if "T" in text else parsed.date().isoformat()
 
 
+def due_for(urgency, moment):
+    """LIFE-988: the Due an urgency means for an item created at `moment` (CT, with its own offset): Now is that moment, Today is 11:59 PM CT that day, This week is 11:59 PM CT on the coming Sunday (the same day on a Sunday), FYI has none."""
+    local = moment.astimezone(CT)
+    if urgency == "Now":
+        return local.replace(microsecond=0).isoformat()
+    if urgency not in ("Today", "This week"):
+        return ""
+    ahead = 0 if urgency == "Today" else (6 - local.weekday()) % 7
+    return datetime.combine(local.date() + timedelta(days=ahead), time(23, 59), tzinfo=CT).isoformat()
+
+
 def _link(value):
     if value is None or str(value).strip() == "":
         return ""
@@ -77,8 +91,8 @@ def _link(value):
     return text
 
 
-def normalize(item):
-    """A validated item: from, subject, urgency, workspace, due, link, details, key. InboxError with a fixed word otherwise; nothing is ever echoed back."""
+def normalize(item, now=None):
+    """A validated item: from, subject, urgency, workspace, due, due_given, link, details, key. `due` is the sender's own when given, else the one its urgency means at `now` (LIFE-988). InboxError with a fixed word otherwise; nothing is ever echoed back."""
     if not isinstance(item, dict):
         raise InboxError("item_invalid")
     sender = _text(item.get("from"), FROM_MAX, "from", required=True)
@@ -91,12 +105,13 @@ def normalize(item):
     workspace = str(item.get("workspace") or "Personal").strip()
     if workspace not in WORKSPACES:
         raise InboxError("workspace_invalid")
-    out = {"from": sender, "subject": subject, "urgency": urgency, "workspace": workspace, "due": _due(item.get("due")), "link": _link(item.get("link")),
-           "details": _text(item.get("details"), DETAILS_MAX, "details")}
+    given = _due(item.get("due"))
+    out = {"from": sender, "subject": subject, "urgency": urgency, "workspace": workspace, "due": given or due_for(urgency, now or datetime.now(timezone.utc)), "due_given": bool(given),
+           "link": _link(item.get("link")), "details": _text(item.get("details"), DETAILS_MAX, "details")}
     key = str(item.get("key") or "").strip()
     if key and not _KEY.match(key):
         raise InboxError("key_invalid")
-    out["key"] = key or hashlib.sha256("\x1f".join((sender, subject, out["due"], out["link"])).encode()).hexdigest()[:32]
+    out["key"] = key or hashlib.sha256("\x1f".join((sender, subject, given, out["link"])).encode()).hexdigest()[:32]       # the key never depends on a computed Due
     return out
 
 
@@ -104,10 +119,91 @@ def _rich(text):
     return {"rich_text": [{"type": "text", "text": {"content": text[:1900]}}] if text else []}
 
 
+_BOLD = re.compile(r"\*\*(.+?)\*\*")
+
+
+def _spans(text):
+    """Inline text with **bold** as Notion rich text (each piece at most 1900 characters)."""
+    out, last = [], 0
+    for found in list(_BOLD.finditer(text)) + [None]:
+        plain = text[last:found.start() if found else len(text)]
+        if plain:
+            out.append({"type": "text", "text": {"content": plain[:1900]}})
+        if found:
+            out.append({"type": "text", "text": {"content": found.group(1)[:1900]}, "annotations": {"bold": True}})
+            last = found.end()
+    return out
+
+
+def gist(details):
+    """The one-line Details property: the first line of the text without markup, at most DETAILS_LINE_MAX characters."""
+    for line in str(details or "").splitlines():
+        words = re.sub(r"^\s*(?:#{1,3}\s+|[-*]\s+|\d+\.\s+)", "", line.replace("**", "")).strip()
+        if words and not re.fullmatch(r"[\s|:-]+", words):
+            words = " · ".join(c.strip() for c in words.split("|") if c.strip())
+            return words if len(words) <= DETAILS_LINE_MAX else words[:DETAILS_LINE_MAX - 1].rstrip() + "…"
+    return ""
+
+
+def _row(cells, width):
+    cells = [c.strip()[:CELL_MAX] for c in cells][:width]
+    return {"object": "block", "type": "table_row", "table_row": {"cells": [_spans(c) for c in cells + [""] * (width - len(cells))]}}
+
+
+def body_blocks(details):
+    """LIFE-988: the item's text as styled Notion blocks. The first line is a callout (the ask); `a | b | c` rows become a table (first row the header); `- ` and `1. ` lines become lists; `# ` and `## ` headings;
+    everything else a paragraph; **bold** stays bold. At most BODY_BLOCKS_MAX blocks."""
+    lines, blocks, i = [ln.rstrip() for ln in str(details or "").splitlines()], [], 0
+    while i < len(lines) and len(blocks) < BODY_BLOCKS_MAX:
+        line = lines[i].strip()
+        if not line:
+            i += 1
+            continue
+        if not blocks:
+            blocks.append({"object": "block", "type": "callout", "callout": {"rich_text": _spans(line), "icon": {"type": "emoji", "emoji": "📌"}}})
+        elif line.count("|") >= 1 and " | " in f" {line} ":
+            rows = []
+            while i < len(lines) and "|" in lines[i]:
+                cells = [c for c in lines[i].strip().strip("|").split("|")]
+                if not all(re.fullmatch(r"\s*:?-{2,}:?\s*", c) for c in cells):
+                    rows.append(cells)
+                i += 1
+            width = max(len(r) for r in rows)
+            blocks.append({"object": "block", "type": "table", "table": {"table_width": width, "has_column_header": True, "has_row_header": False, "children": [_row(r, width) for r in rows[:30]]}})
+            continue
+        elif re.match(r"^#{1,2}\s+", line):
+            kind = "heading_2" if line.startswith("# ") else "heading_3"
+            blocks.append({"object": "block", "type": kind, kind: {"rich_text": _spans(re.sub(r"^#{1,2}\s+", "", line))}})
+        elif re.match(r"^[-*]\s+", line):
+            blocks.append({"object": "block", "type": "bulleted_list_item", "bulleted_list_item": {"rich_text": _spans(re.sub(r"^[-*]\s+", "", line))}})
+        elif re.match(r"^\d+\.\s+", line):
+            blocks.append({"object": "block", "type": "numbered_list_item", "numbered_list_item": {"rich_text": _spans(re.sub(r"^\d+\.\s+", "", line))}})
+        else:
+            blocks.append({"object": "block", "type": "paragraph", "paragraph": {"rich_text": _spans(line)}})
+        i += 1
+    return blocks
+
+
+def replace_body(client, page_id, details):
+    """Make the page body exactly the styled text (an update with the same key replaces the body, never appends): delete the old blocks, then add the new ones."""
+    blocks = body_blocks(details)
+    if not blocks:
+        return
+    cursor = None
+    while True:
+        page = client.call("GET", f"/blocks/{page_id}/children?page_size=100" + (f"&start_cursor={cursor}" if cursor else ""))
+        for old in page.get("results", []):
+            client.call("DELETE", f"/blocks/{old['id']}")
+        if not page.get("has_more"):
+            break
+        cursor = page.get("next_cursor")
+    client.call_once("PATCH", f"/blocks/{page_id}/children", {"children": blocks})
+
+
 def properties(item):
     """The Notion property payload for a normalized item: Status is always New, nothing else is ever preset."""
     props = {"Subject": {"title": [{"type": "text", "text": {"content": item["subject"]}}]}, "From": _rich(item["from"]), "Workspace": {"select": {"name": item["workspace"]}},
-             "Urgency": {"select": {"name": item["urgency"]}}, "Status": {"select": {"name": "New"}}, "Key": _rich(item["key"]), "Details": _rich(item["details"])}
+             "Urgency": {"select": {"name": item["urgency"]}}, "Status": {"select": {"name": "New"}}, "Key": _rich(item["key"]), "Details": _rich(gist(item["details"]))}
     if item["due"]:
         props["Due"] = {"date": {"start": item["due"]}}
     if item["link"]:
@@ -148,8 +244,8 @@ def _select(name, value):
 
 def send(client, item, now=None, source=None):
     """Add one row. -> {"created": 1} or {"duplicate": 1}. InboxError (fixed word) when the item is refused or the sender is over the rate; NotionError (fixed code) when Notion refuses."""
-    item = normalize(item)
     now = now or datetime.now(timezone.utc)
+    item = normalize(item, now)
     source = source or locate(client)
     matched = client.query_data_source(source, {"page_size": 2, "filter": {"property": "Key", "rich_text": {"equals": item["key"]}}}).get("results") or []
     if matched:
@@ -163,14 +259,37 @@ def send(client, item, now=None, source=None):
             raise InboxError("key_other_sender")
         props = properties(item)
         props.pop("Status")
+        if not item["due_given"] and ((matched[0].get("properties", {}).get("Due") or {}).get("date") or {}).get("start"):
+            props.pop("Due", None)                                                           # LIFE-988: a resend never moves a Due that is already set unless the sender names one
         client.call_once("PATCH", f"/pages/{matched[0]['id']}", {"properties": props})
+        replace_body(client, matched[0]["id"], item["details"])
         return {"updated": 1}
     since = (now - timedelta(hours=1)).isoformat()
     recent = _count(client, source, [{"property": "From", "rich_text": {"equals": item["from"]}}, {"timestamp": "created_time", "created_time": {"after": since}}], cap_pages=1)
     if recent >= RATE_PER_HOUR:
         raise InboxError("rate_limited")
-    client.call_once("POST", "/pages", {"parent": {"type": "data_source_id", "data_source_id": source}, "properties": properties(item)})
+    client.call_once("POST", "/pages", {"parent": {"type": "data_source_id", "data_source_id": source}, "properties": properties(item), **({"children": body_blocks(item["details"])} if item["details"] else {})})
     return {"created": 1}
+
+
+def fill_missing_due(client, source, now=None, statuses=("New",), cap=40):
+    """LIFE-988: give every open row that has an urgency but no Due the one its urgency means at the row's own Received time (rows with a Due, FYI rows and closed rows are never touched). -> {"filled": n, "left": n}."""
+    out, cursor = {"filled": 0, "left": 0}, None
+    flt = {"and": [{"or": [_select("Status", st) for st in statuses]} if len(statuses) > 1 else _select("Status", statuses[0]), {"property": "Due", "date": {"is_empty": True}}]}
+    for _ in range(5):
+        page = client.query_data_source(source, {"page_size": 100, "filter": flt, **({"start_cursor": cursor} if cursor else {})})
+        for row in page.get("results", ()):
+            urgency = ((row.get("properties", {}).get("Urgency") or {}).get("select") or {}).get("name") or ""
+            made = due_for(urgency, datetime.fromisoformat(row["created_time"].replace("Z", "+00:00"))) if urgency in URGENCY and row.get("created_time") else ""
+            if not made:
+                out["left"] += 1
+            elif out["filled"] < cap:
+                client.call_once("PATCH", f"/pages/{row['id']}", {"properties": {"Due": {"date": {"start": made}}}})
+                out["filled"] += 1
+        if not page.get("has_more"):
+            break
+        cursor = page.get("next_cursor")
+    return out
 
 
 def counts(client, source=None):

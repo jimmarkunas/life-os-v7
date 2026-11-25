@@ -76,7 +76,8 @@ def _moment(text):
 
 
 def _same(current, item):
-    return (current["Subject"], current["Urgency"], current["Link"]) == (item["subject"], item["urgency"], item["link"]) and _moment(current["Due"]) == _moment(item["due"])
+    due_ok = _moment(current["Due"]) == _moment(item["due"]) if item["due_given"] else bool(current["Due"] or not item["due"])      # LIFE-988: a Due computed from the urgency is only filled in once, never compared or moved
+    return (current["Subject"], current["Urgency"], current["Link"]) == (item["subject"], item["urgency"], item["link"]) and due_ok
 
 
 def _current(page):
@@ -84,10 +85,11 @@ def _current(page):
     return {"Subject": _plain(p.get("Subject", {})), "Urgency": _plain(p.get("Urgency", {})), "Due": _plain(p.get("Due", {})), "Link": _plain(p.get("Link", {}))}
 
 
-def _props(item):
+def _props(item, current_due=""):
     full = agent_inbox.properties(item)
     keep = {name: full[name] for name in ("Subject", "Urgency", "Details") if name in full}
-    keep["Due"] = full.get("Due", {"date": None})
+    if item["due_given"] or not current_due:
+        keep["Due"] = full.get("Due", {"date": None})                                    # the loop's own checkpoint, or a Due filled in from the urgency where there is none
     keep["Link"] = full.get("Link", {"url": None})
     return keep                                                                          # never Status, From, Workspace or Key
 
@@ -109,7 +111,7 @@ def deliver(payloads, now=None, environ=None, client=None):
             continue                                                                      # TGP and anything unknown: never delivered
         for thread in payload.get("threads") or ():                                       # active loops only: Review Needed is a separate list and is never sent
             try:
-                item = agent_inbox.normalize(item_of(payload, thread, now))
+                item = agent_inbox.normalize(item_of(payload, thread, now), now)
                 page = _existing(client, source, item["key"])
                 if page is None:
                     out["created"] += agent_inbox.send(client, item, now=now, source=source).get("created", 0)
@@ -119,7 +121,8 @@ def deliver(payloads, now=None, environ=None, client=None):
                 elif _same(_current(page), item):
                     out["unchanged"] += 1
                 else:
-                    client.call_once("PATCH", f"/pages/{page['id']}", {"properties": _props(item)})
+                    client.call_once("PATCH", f"/pages/{page['id']}", {"properties": _props(item, _current(page)["Due"])})
+                    agent_inbox.replace_body(client, page["id"], item["details"])
                     out["updated"] += 1
             except InboxError as error:
                 out["skipped"] += 1
@@ -136,6 +139,11 @@ def deliver(payloads, now=None, environ=None, client=None):
             except NotionError as error:
                 out["failed"] += 1
                 print(f"followup-inbox failed notion_{str(error).lower()[:30]}")
+    try:                                                                                  # LIFE-988: rows written by hand or by a Notion tool with no Due get the one their urgency means, within one tick
+        out["filled"] = agent_inbox.fill_missing_due(client, source, now).get("filled", 0)
+    except NotionError as error:
+        out["failed"] += 1
+        print(f"followup-inbox failed notion_{str(error).lower()[:30]}")
     return out
 
 

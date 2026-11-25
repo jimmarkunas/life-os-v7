@@ -50,6 +50,8 @@ class FakeNotion:
         self.pages, self.writes = [], []
 
     def call(self, method, path, body=None):
+        if path.startswith("/blocks/"):                                                  # LIFE-988: the page body of a row (none kept here)
+            return {"results": [], "has_more": False}
         if path == "/search":
             return {"results": [{"object": "data_source", "id": SOURCE, "title": [{"plain_text": agent_inbox.DB_TITLE}]}], "has_more": False}
         raise AssertionError(f"unexpected call {method} {path}")
@@ -59,6 +61,8 @@ class FakeNotion:
         if method == "POST" and path == "/pages":
             assert body["parent"]["data_source_id"] == SOURCE, "a write left the inbox data source"
             self.pages.append({"id": f"p{len(self.pages)}", "properties": {k: _store(v) for k, v in body["properties"].items()}})
+        elif method == "PATCH" and path.startswith("/blocks/"):
+            pass
         elif method == "PATCH":
             page = next(p for p in self.pages if f"/pages/{p['id']}" == path)
             page["properties"].update({k: _store(v) for k, v in body["properties"].items()})
@@ -72,7 +76,10 @@ class FakeNotion:
         for page in self.pages:
             ok = True
             for part in parts:
-                if "timestamp" in part:
+                if "timestamp" in part or "or" in part:
+                    continue
+                if part.get("property") == "Due":
+                    ok = ok and not _plain(page["properties"].get("Due", {}))
                     continue
                 name = part["property"]
                 want = part["select"]["equals"] if "select" in part else part["rich_text"]["equals"]

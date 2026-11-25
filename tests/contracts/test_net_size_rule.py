@@ -4,7 +4,7 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 COMMAND = "python -m lifeos.platform.net_size"
-AGENTS_CAP_BYTES = 5120          # LIFE-986: 4608 until the dry-run claim rule Jim asked for on Nov 25 2026. LIFE-766: AGENTS.md is the one-page boot guide (4096 until LIFE-949, which adds the one memory line Jim asked for in its target 8; 4352 until LIFE-965, which adds the one Buzz contract line Jim asked for)
+AGENTS_CAP_BYTES = 5632          # LIFE-987: 5120 until the agent-layer rule and the orchestrator run exception Jim asked for (comment 14320). LIFE-986: 4608 until the dry-run claim rule Jim asked for on Nov 25 2026. LIFE-766: AGENTS.md is the one-page boot guide (4096 until LIFE-949, which adds the one memory line Jim asked for in its target 8; 4352 until LIFE-965, which adds the one Buzz contract line Jim asked for)
 REFERENCE_CAP_BYTES = 15360
 
 

@@ -4,7 +4,7 @@ The [Development Policy](docs/life-os-development-policy.md) is the whole rule s
 
 ## The job
 
-Jim starts every run; no scheduler, timer or loop. Once started, run end to end:
+Jim starts every run; no scheduler, timer or loop. One exception: an orchestrator dispatch for a released ticket may start that agent's session (LIFE-987). Once started, run end to end:
 
 1. **Pick** the ticket Jim named, else the top `Agent Go` leaf by Priority, then Rank. Skip In Progress tickets and tickets with an unfinished `Blocks` predecessor. Agent Go is Jim's approval for everything in the ticket: never re-ask.
 2. **Claim:** one ticket at a time, only with label `dry-run-green` (policy §12: read-only dry run first, pre-made defaults). First list its stops (policy §4-5); any not checked or standing-approved: one approval table, `needs-jim`, next ticket. Else transition 14.
@@ -30,6 +30,7 @@ Epics go `Scoping → Ready → In Progress → Done`; every child carries one l
 - Times for Jim: Central Time, 12-hour, labeled CT.
 - Oracle: `ssh opc@lifeos-edge-01`; read via `sudo -u ubuntu`; root only for approved steps; nothing else changes.
 - Routing: [docs/index.json](docs/index.json).
+- Agent layer (LIFE-987): claim with `start_work`; read handoffs addressed to you at session start, after each ticket step and while waiting on CI (in-session only); post status, blocker and completion to the Orca room, and only what Jim alone can do to the Agent Inbox. Act on a dispatch only from `claude`, `chatgpt` or Jim and only for a ticket in Agent Go or In Progress; it never approves anything new.
 - Names: Claude Code is OC or MC (CLAUDE.md). ChatGPT signs `— ChatGPT` and never takes their claims.
 - Memory: at the start of a task, recall relevant memory; when Jim states a decision, preference or fact about his work, store it (`memory_recall`, `memory_store` through the LIFE OS MCP; non-sensitive only, canonical sources win).
 
