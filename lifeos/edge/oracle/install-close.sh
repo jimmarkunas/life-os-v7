@@ -110,7 +110,7 @@ EOF
 [Unit]
 Description=LIFE OS Close card redraw worker (LIFE-972): one redraw at a time, pokes that arrive meanwhile make one more
 [Service]
-ExecStart=/usr/bin/python3 -I -c "import sys; sys.path.insert(0, '/opt/lifeos-close/current'); from lifeos.edge import close_redraw; sys.exit(close_redraw.main())"
+ExecStart=/usr/bin/python3 -I -c "import sys; sys.path.insert(0, '/opt/lifeos-close/current'); from lifeos.sources.apps import redraw_worker; sys.exit(redraw_worker.main())"
 StandardInput=null
 StandardOutput=journal
 StandardError=journal

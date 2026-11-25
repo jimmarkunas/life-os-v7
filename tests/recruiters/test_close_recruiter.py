@@ -280,7 +280,7 @@ class OneClickAndCloseAll(unittest.TestCase):
             rec = world()
             svc = Svc(Ledger(), rec)
             _, _, body, _ = svc("GET", "/recruiter", {"r": ROW, "do": "done"})
-            with mock.patch("lifeos.edge.close_redraw.available", return_value=worker), mock.patch("lifeos.recruiters.outreach_card.run") as writer:
+            with mock.patch("lifeos.platform.close_redraw.available", return_value=worker), mock.patch("lifeos.recruiters.outreach_card.run") as writer:
                 status, _, done, _ = svc("POST", "/recruiter", form=fields(body))
             self.assertEqual(status, 200)
             self.assertIn(text, done)
@@ -291,7 +291,7 @@ class OneClickAndCloseAll(unittest.TestCase):
     def test_dismiss_says_dismissed(self):
         svc = Svc(Ledger(), world())
         _, _, body, _ = svc("GET", "/recruiter", {"r": ROW, "do": "dismiss"})
-        with mock.patch("lifeos.edge.close_redraw.available", return_value=True):
+        with mock.patch("lifeos.platform.close_redraw.available", return_value=True):
             done = svc("POST", "/recruiter", form=fields(body))[2]
         self.assertIn(b"Dismissed. The card updates in a few seconds.", done)
 

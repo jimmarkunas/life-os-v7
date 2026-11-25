@@ -7,7 +7,8 @@ import time
 import unittest
 from unittest import mock
 
-from lifeos.edge import close_redraw as R
+from lifeos.platform import close_redraw as P
+from lifeos.sources.apps import redraw_worker as R
 
 
 def listener(path):
@@ -23,12 +24,12 @@ class Worker(unittest.TestCase):
         self.path = os.path.join(self.dir, "r.sock")
 
     def test_poke_is_false_without_a_worker_and_true_with_one(self):
-        self.assertFalse(R.poke(self.path))
-        self.assertFalse(R.available(self.path))
+        self.assertFalse(P.poke(self.path))
+        self.assertFalse(P.available(self.path))
         srv = listener(self.path)
         self.addCleanup(srv.close)
-        self.assertTrue(R.available(self.path))
-        self.assertTrue(R.poke(self.path))
+        self.assertTrue(P.available(self.path))
+        self.assertTrue(P.poke(self.path))
 
     def test_a_burst_of_pokes_waiting_during_a_redraw_gets_exactly_one_more_redraw(self):
         srv = listener(self.path)
@@ -43,10 +44,10 @@ class Worker(unittest.TestCase):
         done = []
         worker = threading.Thread(target=lambda: done.append(R.serve(srv, run, idle=0.6)))
         worker.start()
-        self.assertTrue(R.poke(self.path))
+        self.assertTrue(P.poke(self.path))
         self.assertTrue(started.wait(5))
         for _ in range(5):                                                                    # five quick clicks during the running redraw
-            self.assertTrue(R.poke(self.path))
+            self.assertTrue(P.poke(self.path))
         gate.set()
         worker.join(10)
         self.assertEqual((len(runs), done), (2, [0]))                                         # the first, then ONE for all five
@@ -55,7 +56,7 @@ class Worker(unittest.TestCase):
         srv = listener(self.path)
         self.addCleanup(srv.close)
         for _ in range(4):
-            self.assertTrue(R.poke(self.path))
+            self.assertTrue(P.poke(self.path))
         runs = []
         self.assertEqual(R.serve(srv, lambda: runs.append(1), idle=0.3), 0)
         self.assertEqual(len(runs), 1)

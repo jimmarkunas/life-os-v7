@@ -6,8 +6,8 @@ shown on Review, signed with the person and stored as the row's Recruiter Compan
 Outputs: fixed codes only. Pointer: D221, LIFE-21, LIFE-47."""
 from html import escape as e
 
-from lifeos.edge import close_redraw
 from lifeos.hiring import close_screen as S, decision as D
+from lifeos.platform import close_redraw
 from lifeos.network import surface as N
 from lifeos.platform.fixed_code import fixed
 from lifeos.platform.notion_client import Client, NotionError

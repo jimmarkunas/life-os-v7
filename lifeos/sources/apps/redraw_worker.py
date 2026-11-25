@@ -1,6 +1,6 @@
 """LIFE-972 (Jim, Nov 24 2026, 11:35 PM CT): the Recruiter Outreach card is redrawn by a background worker, never inside a Done or Dismiss click.
 
-The Close service saves the record, answers at once and pokes this worker's socket (`poke`). The worker (a socket-activated unit with its own copy of the Close Notion credential) redraws the card with the hourly writer
+The Close service saves the record, answers at once and pokes this worker's socket (lifeos/platform/close_redraw.py). The worker (a socket-activated unit with its own copy of the Close Notion credential) redraws the card with the hourly writer
 (outreach_card, its scope guard and read-back). One redraw at a time: pokes that arrive while one runs wait in the socket and are answered by ONE next redraw, however many there were. It exits after `IDLE` seconds
 without a poke and is started again by the next one. Prints fixed words only (`redraw ok|fail`), never a name, id or token."""
 import contextlib
@@ -10,26 +10,9 @@ import os
 import socket
 import sys
 
-SOCKET = "/run/lifeos-close-redraw/redraw.sock"
 SETTINGS = "/etc/lifeos-close/redraw.json"                       # {"hiring_table": <block id>, "close_base": <https origin>}: its own file, so a regenerated policy.json never loses them
 POLICY = "/etc/lifeos-close/policy.json"
 IDLE = 20.0
-
-
-def available(path=SOCKET):
-    return os.path.exists(path)
-
-
-def poke(path=SOCKET):
-    """Ask for one redraw. -> True when the worker's socket took it (it queues in the socket even while a redraw is running), False when there is no worker."""
-    try:
-        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as conn:
-            conn.settimeout(2)
-            conn.connect(path)
-            conn.sendall(b"1")
-        return True
-    except OSError:
-        return False
 
 
 def redraw(token, recruiters, hiring_table, close_base):
@@ -66,9 +49,7 @@ def serve(listener, run, idle=IDLE):
 
 def main(environ=os.environ, listener=None, run=None):
     if listener is None:
-        if int(environ.get("LISTEN_FDS") or 0) < 1:
-            return 1
-        listener = socket.socket(fileno=3)
+        listener = socket.socket(fileno=3)                       # systemd socket activation hands the one listening socket over as file descriptor 3
     if run is None:
         with open(os.path.join(environ.get("CREDENTIALS_DIRECTORY", ""), "notion"), "rb") as f:
             token = f.read().strip().decode()

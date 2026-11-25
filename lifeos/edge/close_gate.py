@@ -14,8 +14,8 @@ import sys
 import urllib.request
 from urllib.parse import parse_qsl
 
-from lifeos.edge import close_redraw
 from lifeos.imessage import alerts_endpoint as ep
+from lifeos.platform import close_redraw
 from lifeos.platform.notion_client import Client
 
 POLICY = "/etc/lifeos-close/policy.json"
