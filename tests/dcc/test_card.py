@@ -215,6 +215,8 @@ class ComposeTests(unittest.TestCase):
         kpi = lambda areas: card.compose(areas, NOW)["kpis"][1]
         self.assertEqual(kpi(self.areas()), ("6", "Jira Overdue / Blocked", "Jira · 10:05 PM CT"))
         self.assertEqual(kpi(self.areas(Jira={"status": "JIRA Execution (Updated 10:05 PM CT)", "lines": [GTV, "JFM Sprint 15 · 0 Overdue/Blocked · 1 Today"]}))[0], "0")
+        split = "JFM Sprint 22 · 7 Overdue · 6 Blocked · 4 Today · 12 This Week · 1 Done"                          # LIFE-975: the counter is Overdue + Blocked of the new header line, no visa-epic ticket in either
+        self.assertEqual(kpi(self.areas(Jira={"status": "JIRA Execution (Updated 10:05 PM CT)", "lines": [split]}))[0], "13")
         stale = {"status": "JIRA Execution (Updated 8:00 PM CT)", "lines": [GTV, SPRINT]}
         self.assertEqual(kpi(self.areas(Jira=stale)), ("—", "Jira Overdue / Blocked", "STALE · Jira (last 8:00 PM)"))
         degraded = {"status": "DEGRADED · Jira sync failed at 10:05 PM CT · showing the last accepted state", "lines": [GTV, SPRINT]}
@@ -261,11 +263,11 @@ class RunTests(unittest.TestCase):
         counts = go(notion)
         kids = notion.children["dcc-callout"]
         self.assertEqual([b["type"] for b in kids][1:], ["toggle", "column_list"])
-        self.assertEqual((report_region.plain(kids[0]), kids[0]["id"]), (router.DCC_REGION, "heading-dcc-callout"))        # the heading keeps its identity
+        self.assertEqual((report_region.plain(kids[0]), kids[0]["id"]), (router.DCC_REGION + " · Mon 10/12 · 10:20 PM CT", "heading-dcc-callout"))        # the heading keeps its identity
         self.assertNotIn("Protected DCC content", str(self.shape(notion)))                                                  # the old flat line is gone
         health, kpi_row = (b["id"] for b in kids[1:])
         self.assertEqual(len(notion.children[health]), 2)
-        self.assertEqual([len(notion.children[c["id"]]) for c in notion.children[kpi_row]], [1, 1, 1, 1])               # LIFE-694: the three KPI cards and the Platform Stability card
+        self.assertEqual([len(notion.children[c["id"]]) for c in notion.children[kpi_row]], [1, 1, 1, 1])               # LIFE-694: the three KPI cards and the Runs OK today card
         self.assertEqual({k: notion.full_tree(k) for k in before}, before)
         self.assertEqual((counts["fresh"], counts["not_current"], counts["removed"]), (5, 1, 1))
         self.assertEqual({v for k, v in counts["states"].items() if k != "Hiring Pipeline"}, {"fresh"})
@@ -446,7 +448,8 @@ class RunTests(unittest.TestCase):
         self.assertEqual(entry.STAGES["dcc-card"].target, ("lifeos.dcc.card", "run"))
 
 
-CLOCK = {"state": "counting", "days": 4, "why": ""}
+RUNS = {"state": "ok", "ok": 18, "total": 18, "failed": [], "why": ""}
+RUN_URL = "https://github.com/x/y/actions/runs/1"
 
 
 def kpi_columns(notion):
@@ -454,83 +457,86 @@ def kpi_columns(notion):
     return [notion.children[notion.children[c["id"]][0]["id"]] for c in notion.children[row]], row
 
 
-def go_with(notion, clock, **kw):
-    with mock.patch.object(card.stability, "clock", return_value=clock):
+def go_with(notion, runs, **kw):
+    with mock.patch.object(card.runs_today, "read", return_value=runs):
         return go(notion, **kw)
 
 
-class StabilityCardTests(unittest.TestCase):
-    """LIFE-694: the Platform Stability card is the fourth of four equal cards, built by the same renderer; the other three are as before."""
+class RunsCardTests(unittest.TestCase):
+    """LIFE-975 step 4b: the Runs OK today card is the fourth of four equal cards, built by the same renderer; the other three are as before."""
 
-    def segments(self, clock):
-        kids = card.clock_card(clock)["callout"]["children"]
-        return kids[1]["paragraph"]["rich_text"][0]["text"]["content"], "".join(p["text"]["content"] for p in kids[2]["paragraph"]["rich_text"])
+    def shown(self, runs):
+        kids = card.runs_card(runs, NOW)["callout"]["children"]
+        return [report_region.plain(k) for k in kids], kids
 
-    def test_the_four_states_read_exactly_as_approved(self):
-        for clock, line, segments in ((CLOCK, "4 of 7 clean days", "■ ■ ■ ■  □ □ □"), ({"state": "counting", "days": 0, "why": ""}, "0 of 7 clean days", "□ □ □ □ □ □ □"),
-                                      ({"state": "reset", "days": 0, "why": ""}, "0 of 7 clean days · RESET", "□ □ □ □ □ □ □"), ({"state": "complete", "days": 7, "why": ""}, "7 of 7 clean days", "■ ■ ■ ■ ■ ■ ■"),
-                                      ({"state": "unverified", "days": 0, "why": "STABILITY_NO_TOKEN"}, "Unverified", "□ □ □ □ □ □ □")):
-            shown, bar = self.segments(clock)
-            self.assertEqual((shown, bar), (line, segments), clock)
-            self.assertEqual(bar.count("■") + bar.count("□"), 7)                                              # exactly seven segments, always
-        kids = card.clock_card(CLOCK)["callout"]
-        self.assertEqual([k["type"] for k in kids["children"]], ["heading_3", "paragraph", "paragraph"])         # heading, one line, the segments: no timestamp, no explanation, no button
-        self.assertEqual(kids["children"][0]["heading_3"]["rich_text"][0]["text"]["content"], "Platform Stability")
-        self.assertTrue(kids["icon"]["external"]["url"].endswith("layers_gray.svg"))
-        colors = [p["annotations"]["color"] for p in kids["children"][2]["paragraph"]["rich_text"]]
-        self.assertEqual(colors, ["blue", "gray"])
-        self.assertEqual([p["annotations"]["color"] for p in card.clock_card({"state": "complete", "days": 7, "why": ""})["callout"]["children"][2]["paragraph"]["rich_text"]], ["green"])
+    def test_every_state_reads_as_approved(self):
+        cases = (
+            (RUNS, ["18 / 18", "Runs OK today", "GitHub · 10:20 PM CT"]),
+            ({"state": "failed", "ok": 16, "total": 18, "failed": [RUN_URL], "why": ""}, ["16 / 18", "1 failed today", "GitHub · 10:20 PM CT"]),
+            ({"state": "latest_failed", "ok": 16, "total": 17, "failed": [RUN_URL], "why": ""}, ["16 / 17", "Last run failed", "GitHub · 10:20 PM CT"]),
+            ({"state": "paused", "ok": 5, "total": 5, "failed": [], "why": ""}, ["Paused", "Runs OK today", "GitHub · 10:20 PM CT"]),
+            ({"state": "none", "ok": 0, "total": 0, "failed": [], "why": ""}, ["0 / 0", "Runs OK today", "GitHub · 10:20 PM CT"]),
+            ({"state": "unverified", "ok": 0, "total": 0, "failed": [], "why": "RUNS_NO_TOKEN"}, ["—", "Runs OK today", "GitHub unreadable"]),
+        )
+        for runs, want in cases:
+            self.assertEqual(self.shown(runs)[0], want, runs["state"])
+
+    def test_it_has_the_other_cards_shape_and_the_failure_labels_are_red_and_link_to_the_runs(self):
+        text, kids = self.shown(RUNS)
+        self.assertEqual([k["type"] for k in kids], ["heading_3", "paragraph", "paragraph"])
+        self.assertTrue(card.runs_card(RUNS, NOW)["callout"]["icon"]["external"]["url"].endswith("layers_gray.svg"))
+        many = {"state": "failed", "ok": 15, "total": 18, "failed": [RUN_URL + "0", RUN_URL + "1", RUN_URL + "2"], "why": ""}
+        parts = card.runs_card(many, NOW)["callout"]["children"][1]["paragraph"]["rich_text"]
+        self.assertEqual([p["annotations"]["color"] for p in parts], ["red", "red", "red"])
+        self.assertEqual([p["text"]["link"]["url"] for p in parts], [RUN_URL + "2", RUN_URL + "0", RUN_URL + "1"])       # the latest failed run on the label, the earlier ones as arrows
+        last = card.runs_card({"state": "latest_failed", "ok": 1, "total": 2, "failed": [RUN_URL], "why": ""}, NOW)["callout"]["children"][1]["paragraph"]["rich_text"]
+        self.assertEqual((last[0]["text"]["content"], last[0]["text"]["link"]["url"], last[0]["annotations"]), ("Last run failed", RUN_URL, {"bold": True, "color": "red"}))
 
     def test_the_command_center_shows_four_equal_cards_and_the_first_three_are_unchanged(self):
         notion = page()
         before = card.compose(card.read_areas(notion, ENV), NOW)
-        go_with(notion, CLOCK)
+        go_with(notion, RUNS)
         columns, row = kpi_columns(notion)
         self.assertEqual(len(columns), 4)
         self.assertEqual({c["column"]["width_ratio"] for c in notion.children[row]}, {0.25})
-        self.assertEqual(card.compose(card.read_areas(notion, ENV), NOW, CLOCK)["kpis"], before["kpis"])             # the three KPI cards say what they said without the clock
-        names = [report_region.plain(k[1]) for k in columns[:3]]
-        self.assertEqual(names, ["Bills due", "Jira Overdue / Blocked", "Mail waiting"])
-        self.assertEqual(report_region.plain(columns[3][0]), "Platform Stability")
-        self.assertEqual(report_region.plain(columns[3][1]), "4 of 7 clean days")
+        self.assertEqual(card.compose(card.read_areas(notion, ENV), NOW, RUNS)["kpis"], before["kpis"])
+        self.assertEqual([report_region.plain(k[1]) for k in columns[:3]], ["Bills due", "Jira Overdue / Blocked", "Mail waiting"])
+        self.assertEqual([report_region.plain(k) for k in columns[3]], ["18 / 18", "Runs OK today", "GitHub · 10:20 PM CT"])
 
-    def test_an_hourly_refresh_keeps_the_count_and_writes_nothing_until_it_changes(self):
+    def test_the_card_updates_in_place_over_the_old_platform_stability_card_and_a_refresh_writes_only_text(self):
         notion = page()
-        go_with(notion, CLOCK)
+        go_with(notion, RUNS)
+        legacy = notion.children[notion.children[notion.children[kpi_columns(notion)[1]][3]["id"]][0]["id"]]
+        legacy[0] = notion._text_block(legacy[0]["id"], "heading_3", "Platform Stability")                       # the page as Jim has it today: the old card under the same four-column row
+        legacy[1] = notion._text_block(legacy[1]["id"], "paragraph", "Unverified")
+        ids = [k["id"] for k in legacy]
         mark = len(notion.log)
-        go_with(notion, CLOCK, now=NOW + timedelta(minutes=2))
-        self.assertEqual([m for m in writes(notion, mark) if m != "PATCH"], [])
-        self.assertEqual(report_region.plain(kpi_columns(notion)[0][3][1]), "4 of 7 clean days")
-        go_with(notion, {"state": "counting", "days": 5, "why": ""})                                            # the next completed day
-        self.assertEqual(report_region.plain(kpi_columns(notion)[0][3][1]), "5 of 7 clean days")
-        go_with(notion, {"state": "reset", "days": 0, "why": ""})
-        self.assertEqual(report_region.plain(kpi_columns(notion)[0][3][1]), "0 of 7 clean days · RESET")
-        self.assertEqual(len(kpi_columns(notion)[0]), 4)                                                        # the clock column is recognised each time, never deleted as a surplus column
-
-    def test_a_page_with_three_cards_grows_a_fourth_and_nothing_else_is_touched(self):
-        notion = page()
-        original = card.render
-        with mock.patch.object(card, "render", lambda m: original({**m, "clock": None})):
-            go(notion)                                                                                          # the page as it stood before LIFE-694: three KPI cards
-        self.assertEqual(len(kpi_columns(notion)[0]), 3)
-        others = {k: notion.full_tree(k) for k in ("calendar-callout", "jira-callout", "bills-callout", "amazon-callout", "attention-callout", "mail-callout")}
-        mark = len(notion.log)
-        counts = go_with(notion, CLOCK)
-        self.assertEqual(len(kpi_columns(notion)[0]), 4)
+        go_with(notion, {"state": "failed", "ok": 16, "total": 18, "failed": [RUN_URL], "why": ""})
+        self.assertEqual([k["id"] for k in kpi_columns(notion)[0][3]], ids)                                    # the same blocks, new text
+        self.assertEqual([report_region.plain(k) for k in kpi_columns(notion)[0][3]][:2], ["16 / 18", "1 failed today"])
         self.assertNotIn("DELETE", writes(notion, mark))
-        self.assertEqual({k: notion.full_tree(k) for k in others}, others)
-        self.assertEqual(counts["stability"], CLOCK)
+        self.assertEqual(len(kpi_columns(notion)[0]), 4)                                                        # the fourth column is recognised each time, never deleted as a surplus column
 
-    def test_unreadable_github_shows_unverified_and_never_a_zero(self):
+    def test_unreadable_github_shows_a_dash_and_never_a_zero(self):
         notion = page()
-        go(notion)                                                                                              # the real clock with no token in the environment
-        self.assertEqual(report_region.plain(kpi_columns(notion)[0][3][1]), "Unverified")
+        go(notion)                                                                                              # the real read with no token in the environment
+        self.assertEqual(report_region.plain(kpi_columns(notion)[0][3][0]), "—")
 
-    def test_seven_of_seven_stays_and_is_exposed_to_the_epic_lead_in_the_counts(self):
+    def test_the_run_time_is_in_the_heading_and_no_dated_line_is_ever_created(self):
         notion = page()
-        counts = go_with(notion, {"state": "complete", "days": 7, "why": ""})
-        self.assertEqual(report_region.plain(kpi_columns(notion)[0][3][1]), "7 of 7 clean days")
-        self.assertEqual((counts["stability"]["state"], counts["stability"]["days"]), ("complete", 7))           # the run's counts carry the fact: no push, no Jira call
+        go_with(notion, RUNS)
+        self.assertEqual(report_region.plain(notion.children["dcc-callout"][0]), "ChatGPT · Daily Command Center · Mon 10/12 · 10:20 PM CT")
+        self.assertEqual(notion.children["dcc-callout"][0]["id"], "heading-dcc-callout")
+        top = [b for b in notion.children.get("page", []) if b.get("type") == "paragraph"]
+        self.assertEqual(top, [])
+        go_with(notion, RUNS, now=NOW + timedelta(minutes=1))                                                    # a second run only changes the heading text
+        self.assertEqual(report_region.plain(notion.children["dcc-callout"][0]), "ChatGPT · Daily Command Center · Mon 10/12 · 10:21 PM CT")
+        self.assertFalse(hasattr(card, "header"))
+
+    def test_the_counter_is_overdue_plus_blocked_from_the_new_header_and_still_reads_the_old_one(self):
+        self.assertEqual(card._overdue_blocked("JFM Sprint 22 · 7 Overdue · 6 Blocked · 4 Today · 12 This Week · 1 Done"), 13)
+        self.assertEqual(card._overdue_blocked("JFM Sprint 15 · 6 Overdue/Blocked · 1 Today"), 6)
+        self.assertIsNone(card._overdue_blocked("JFM Sprint 15 · many Overdue/Blocked"))
 
 
 class SurplusColumnTests(unittest.TestCase):
@@ -551,7 +557,7 @@ class SurplusColumnTests(unittest.TestCase):
     def names(self, notion, row):
         def name(column):
             kids = notion.children[notion.children[column["id"]][0]["id"]]
-            return card.CLOCK_NAME if any(k["type"] == "heading_3" and report_region.plain(k) == card.CLOCK_NAME for k in kids) else report_region.plain(kids[1])
+            return report_region.plain(kids[1])
         return [name(c) for c in notion.children[row]]
 
     def test_four_live_columns_converge_to_three_and_nothing_else_on_the_page_is_touched(self):
@@ -560,7 +566,7 @@ class SurplusColumnTests(unittest.TestCase):
         others = {k: notion.full_tree(k) for k in ("calendar-callout", "jira-callout", "bills-callout", "amazon-callout", "attention-callout", "mail-callout")}
         mark = len(notion.log)
         counts = go(notion)
-        self.assertEqual(self.names(notion, row), ["Bills due", "Jira Overdue / Blocked", "Mail waiting", "Platform Stability"])
+        self.assertEqual(self.names(notion, row), ["Bills due", "Jira Overdue / Blocked", "Mail waiting", "Runs OK today"])
         self.assertEqual([p for m, p in notion.log[mark:] if m == "DELETE"], [f"/blocks/{attention}"])               # one DELETE, aimed at the Attention column
         self.assertEqual(counts["columns_removed"], 1)
         self.assertEqual({c["column"]["width_ratio"] for c in notion.children[row]}, {0.25})                                         # four equal columns
@@ -575,7 +581,7 @@ class SurplusColumnTests(unittest.TestCase):
         notion = page()
         go(notion)
         mark = len(notion.log)
-        self.assertEqual(card.converge_columns(notion, "dcc-callout", ["Bills due", "Jira Overdue / Blocked", "Mail waiting", card.CLOCK_NAME], {}, True), 0)
+        self.assertEqual(card.converge_columns(notion, "dcc-callout", ["Bills due", "Jira Overdue / Blocked", "Mail waiting", card.RUNS_NAME], {}, True), 0)
         self.assertEqual(writes(notion, mark), [])
         self.assertEqual(go(notion)["columns_removed"], 0)
 
@@ -627,17 +633,7 @@ class SurplusColumnTests(unittest.TestCase):
         mark = len(notion.log)
         self.assertEqual(go(notion, live=False)["columns_removed"], 1)
         self.assertEqual(writes(notion, mark), [])
-        self.assertEqual(len(notion.children[row]), 5)                                                               # three KPI cards, the Platform Stability card and the surplus Attention column
-
-    def test_the_page_updated_line_is_still_written_when_the_callout_write_fails_but_not_for_a_wrong_target(self):
-        with mock.patch.object(card.header, "run", return_value="updated") as stamp, mock.patch.object(report_region, "replace_tree", side_effect=NotionError("DCC_CARD_STRUCTURE_CHANGED")):
-            with self.assertRaises(NotionError):
-                go(page())
-        self.assertEqual(stamp.call_count, 1)
-        with mock.patch.object(card.header, "run", return_value="updated") as stamp:
-            with self.assertRaises(NotionError):
-                go(page(), env={"DCC_CARD_BLOCK_ID": "jira-callout"})
-        self.assertEqual(stamp.call_count, 0)
+        self.assertEqual(len(notion.children[row]), 5)                                                               # three KPI cards, the Runs OK today card and the surplus Attention column
 
 
 if __name__ == "__main__":

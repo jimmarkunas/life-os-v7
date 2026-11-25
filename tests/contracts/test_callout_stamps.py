@@ -64,7 +64,7 @@ HEADINGS = {
 }
 # Not a Daily Report card heading, with the reason:
 EXEMPT = {
-    router.DCC_REGION: "the Command Center's stamp is the page's first line (lifeos/dcc/header.py, `Friday, 11/13 · 1:35 PM CT`: it already carries the weekday and date), checked by the DCC tests",
+    router.DCC_REGION: "the Command Center's stamp is in its heading, `ChatGPT · Daily Command Center · Tue 11/24 · 11:02 PM CT` (lifeos/dcc/card.py heading_text: weekday and date included), checked by the DCC tests",
     router.REPO_REGION: "the Weekly LIFE OS Review page, not the Daily Report (lifeos/platform/branches.py)",
 }
 
@@ -73,7 +73,6 @@ NOT_A_CARD_HEADING = {
     "lifeos/platform/ct_stamp.py": "the formatter itself",
     "lifeos/platform/branches.py": "the Weekly LIFE OS Review line (`Fri, 11/13 · 3:31 PM CT`: weekday and date)",
     "lifeos/platform/scheduled_jobs.py": "the scheduled-jobs table in a report, with its own date",
-    "lifeos/dcc/header.py": "the page's date line: `Friday, 11/13 · 3:31 PM CT`, weekday and date",
     "lifeos/sources/pipeline/job_page_outreach.py": "the Outreach heading on a job page (`Updated 10/20 @ 9:40 PM CT`, a date already; not a Daily Report card)",
     "lifeos/hiring/models.py": "it only READS the stamp back out of the status line (accepting the new form and the time-only form); it builds none",
     "lifeos/hiring/render.py": "the clock of a meeting row (`Today 3:30 PM CT`), not a heading stamp",
