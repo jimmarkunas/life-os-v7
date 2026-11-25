@@ -587,6 +587,15 @@
    "status": "guarded",
    "why": "Loops over its items with error handling inside; one failed item does not stop the others."
   },
+  "jira-reconcile-daily": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 600,
+   "module": "jira.reconcile",
+   "status": "single",
+   "why": "No loop over external items: one read or write unit, so its failure is the stage's own.",
+   "exits_1": false
+  },
   "jira-release": {
    "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
    "exits_1": false,
