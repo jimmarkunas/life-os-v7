@@ -217,9 +217,9 @@ class InboxAlerter(unittest.TestCase):
 
 
 class NotWired(unittest.TestCase):
-    def test_nothing_in_the_code_base_calls_the_promotion_yet(self):
+    def test_only_the_one_call_site_calls_the_promotion(self):
         root = Path(__file__).resolve().parents[2]
-        callers = [str(path.relative_to(root)) for path in (root / "lifeos").rglob("*.py") if path.name != "promotion.py" and "promotion" in path.read_text() and "run_if_due" in path.read_text()]
+        callers = [str(path.relative_to(root)) for path in (root / "lifeos").rglob("*.py") if path.name not in ("promotion.py", "promotion_call.py") and "promotion" in path.read_text() and "run_if_due" in path.read_text()]
         self.assertEqual(callers, [])
 
 

@@ -1,8 +1,7 @@
-"""LIFE-918 wiring: recurring-series clones and closure counts for one board, shared by the daily reconcile and the rollover boundary. Off unless MEJ_SPRINT_AUTOMATION is on (the callers check it); every Jira write
-goes through the injected writers, so a test mocks them and a live run without verified writers fails closed with JIRA_RECONCILE_WRITER_UNVERIFIED.
+"""LIFE-918 wiring: recurring-series clones and closure counts of one board, shared by the daily reconcile and the rollover boundary.
 
-`jobs` is pure: from the issues of the labelled series and the next sprint's id it returns reconcile.plan_recurrence's plan plus, for each series that needs its next occurrence, (root, latest occurrence key, clone fields
-with the due date +7 days). Never creates a second occurrence (14: a repeat plans from the actual state). Output: counts and fixed codes only."""
+Every write goes through the injected writers (an unverified live run fails closed), `jobs` is pure and never plans a second occurrence of a series, output is counts and fixed codes only."""
+
 from datetime import timedelta
 
 from lifeos.platform.jira import JiraError

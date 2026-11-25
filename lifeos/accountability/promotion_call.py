@@ -1,7 +1,7 @@
-"""LIFE-918 AC6 call site: the daily reconcile stage's promotion check (off unless V2_PROMOTION is on). Kept in this package because the Jira package may not import it; lifeos.run hands it to the stage as `after`.
+"""LIFE-918 AC6: the daily reconcile's promotion call site (off unless V2_PROMOTION is on); lifeos.run hands it to the Jira stage as `after`.
 
-V2_PROMOTION off: nothing. On: promotion.run_if_due (the Fri Jan 1 2027 8:00 AM CT boundary, already-official, evaluate AC11 and AC12); on a pass the LIFE-976 setter runs exactly once (a dry run when the run is not live),
-on a fail legacy stays official and one alert is sent, once. Codes and counts only."""
+Kept here because the Jira package may not import this one. Off: nothing. On: promotion.run_if_due (Fri Jan 1 2027 8:00 AM CT, not already official); a pass runs the LIFE-976 setter once, a fail keeps legacy and alerts once."""
+
 from lifeos.accountability import common, official_setter, promotion as check, switches
 
 PROMOTION_ALERT_KEY = "v2_promotion_failed"

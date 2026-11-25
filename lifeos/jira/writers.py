@@ -1,15 +1,10 @@
-"""LIFE-918 wiring: the live Jira writers, the read-only contract check and the throwaway-sprint verification (decision E, Jim, Nov 25 2026, comment 14214). UNVERIFIED against the tenant until the check below passes.
+"""LIFE-918 wiring: the live Jira writers behind JIRA_WRITERS_VERIFIED, the read-only contract check and the throwaway-sprint verification (decision E).
 
-`live_writers(client, environ)` gives the daily reconcile and the rollover boundary their writes (create_sprint, rename_sprint, create_clone, sync_fields, move_to_backlog, close_done) ONLY when the Runtime Configuration
-row JIRA_WRITERS_VERIFIED is exactly "yes"; otherwise it gives an empty Writers, whose every use fails closed with JIRA_RECONCILE_WRITER_UNVERIFIED. MC sets the row after `verify` passes. Nothing here runs from the hourly tick
-except through that gate.
+Without the row exactly `yes` every live write fails closed. Entry points: `python -m lifeos.jira.writers contract-check`, and `verify --board JFM --issue JFM-123 [--live]` (a dry run unless --live).
+The live verification creates a ZZ-LIFE918-TEST sprint, renames it, clones the one named issue into it, syncs, backlogs, closes it Done with the label, reads each back and deletes only what it made."""
+# UNVERIFIED against the tenant until `verify --live` passes; MC then sets JIRA_WRITERS_VERIFIED. It refuses a board that is not configured, a sprint without the test prefix and any issue it did not create.
+# Counts and fixed codes only; the Jira REST settings come from the environment like every Jira stage.
 
-Manual entry points (counts and fixed codes only; the Jira REST settings come from the environment like every Jira stage):
-  python -m lifeos.jira.writers contract-check                       read-only GETs: boards are scrum, sprint and backlog reads work, the Cloners link type and the issue fields exist
-  python -m lifeos.jira.writers verify --board JFM --issue JFM-123    dry run: what it would do, plus the contract check; writes nothing
-  python -m lifeos.jira.writers verify --board JFM --issue JFM-123 --live
-        creates a throwaway future sprint named ZZ-LIFE918-TEST ..., renames it, clones the ONE named issue into it, syncs a field, moves the clone to the backlog and back, closes it Done with the auto-closed label and
-        one comment, reading every step back, then deletes the clone it created and the throwaway sprint. It refuses a board that is not configured, a sprint whose name lacks the prefix, and any issue it did not create."""
 import argparse
 import json
 import os
