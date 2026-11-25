@@ -940,7 +940,9 @@ class DomainsWorkflowTests(unittest.TestCase):
         self.assertNotIn("${{", run)                                                                      # no input is interpolated into the shell
         self.assertEqual(steps["jwverify"]["env"]["JIRA_WRITERS_VERIFY"], "${{ inputs.verify }}")
         self.assertIn('[ "$VERIFY_LIVE" = "yes" ]', run)
-        self.assertEqual(run.count("--live"), 1)                                                          # --live appears only on the yes branch
+        self.assertEqual(run.count("--live"), 2)                                                          # --live appears only on the two yes branches (plain and keep)
+        self.assertEqual(run.count("--keep"), 1)                                                          # --keep only with yes and the exact fourth word keep
+        self.assertIn('[ "$VERIFY_KEEP" = "keep" ]', run)
         for step in steps.values():                                                                       # no new secret: only the two Jira values every Jira step already takes
             self.assertEqual({k for k in step["env"] if k != "JIRA_WRITERS_VERIFY"}, {"JIRA_API_TOKEN", "JIRA_EMAIL"})
         self.assertEqual(self.doc["permissions"], {"contents": "read"})
