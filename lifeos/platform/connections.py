@@ -104,7 +104,7 @@ def evidence(environ=os.environ, api=_api):
         runs = api(f"/repos/{repo}/actions/workflows/domains.yml/runs?per_page={RUNS}&status=completed", token)["workflow_runs"]
         out = {}
         for run in runs:
-            if run.get("conclusion") not in ("success", "failure"):
+            if run.get("conclusion") not in ("success", "failure") or "(manual)" in str(run.get("display_title") or ""):       # a hand-started diagnostic run (a dry run, a one-stage test) is no evidence of a connection
                 continue
             for job in api(f"/repos/{repo}/actions/runs/{run['id']}/jobs?per_page=100", token)["jobs"]:
                 if job.get("conclusion") not in ("success", "failure") or not job.get("completed_at"):

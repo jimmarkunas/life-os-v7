@@ -53,15 +53,19 @@ class Rows(unittest.TestCase):
 
 
 class Evidence(unittest.TestCase):
-    def runs(self, jobs_by_run):
+    def runs(self, jobs_by_run, titles=None):
         def api(path, token):
             if "/workflows/domains.yml/runs" in path:
-                return {"workflow_runs": [{"id": i, "conclusion": "success"} for i, _ in enumerate(jobs_by_run)]}
+                return {"workflow_runs": [{"id": i, "conclusion": "success", "display_title": (titles or {}).get(i, "domains (after tick)")} for i, _ in enumerate(jobs_by_run)]}
             return {"jobs": jobs_by_run[int(path.split("/runs/")[1].split("/")[0])]}
         return api
 
     def job(self, name, conclusion, at="2026-11-25T14:40:00Z"):
         return {"name": name, "conclusion": conclusion, "completed_at": at}
+
+    def test_a_hand_started_manual_run_is_no_evidence_either_way(self):
+        api = self.runs([[self.job("jira", "failure", "2026-11-25T18:40:00Z")], [self.job("jira", "success", "2026-11-25T18:00:00Z")]], {0: "domains (manual)"})
+        self.assertEqual(c.evidence({"GITHUB_REPOSITORY": "o/r"}, api)["jira"], {"last_ok": dt.datetime(2026, 11, 25, 18, 0, tzinfo=UTC), "failed": False})
 
     def test_a_job_is_ok_with_the_time_it_last_passed_and_skipped_jobs_say_nothing(self):
         api = self.runs([[self.job("jira", "success"), self.job("agenda", "skipped", None)], [self.job("agenda", "success", "2026-11-25T13:41:00Z"), self.job("jira", "success", "2026-11-25T13:40:00Z")]])
