@@ -5,6 +5,12 @@ run-name: doppler-copy (one time, LIFE-981)
 # never written to a file, an artifact or a cache. The log carries names written, counts and fixed codes only.
 on:
   workflow_dispatch:
+    inputs:
+      action:
+        description: "copy (done) or revoke (revoke the oc-parity-writer token in Doppler and delete the Bitwarden item, LIFE-981 step 4)"
+        type: choice
+        options: [copy, revoke]
+        default: copy
 permissions:
   contents: read
 concurrency:
@@ -30,4 +36,5 @@ jobs:
       - name: Copy the runtime secrets to Doppler and read them back by hash (names and counts only)
         env:
           BWS_ACCESS_TOKEN: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          DOPPLER_ACTION: ${{ inputs.action }}
         run: python3 -m lifeos.platform.doppler_copy
