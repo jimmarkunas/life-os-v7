@@ -245,6 +245,26 @@ def run(base, owner, agent, say):
         say("repeat_idempotent", False, error.code)
 
 
+def create_channels(base, owner, source, chan_names, say):
+    """LIFE-927: the owner creates one channel per name (kind 9007 with its name) and adds to each the members of the `source` channel (its roster, kind 39002, public keys only; kind 9000). Prints each new channel's public id.
+    Run once per name: a second run makes a second channel of the same name."""
+    from lifeos.buzz import nip98
+    code, rows = signed(base, "/query", owner, [{"kinds": [39002], "#d": [source], "limit": 1}])
+    pubs = [t[1] for e in (rows or [])[:1] for t in e.get("tags", []) if len(t) > 1 and t[0] == "p" and len(t[1]) == 64 and t[1] != nip98.pubkey(owner)]
+    say("roster", code == 200 and bool(pubs), f"{len(pubs)} members in the source channel, HTTP {code}")
+    if not pubs:
+        return
+    for name in chan_names:
+        channel = str(uuid.uuid4())
+        code, ack = signed(base, "/events", owner, nip98.event(owner, 9007, [["h", channel], ["name", name]]))
+        made = code == 200 and isinstance(ack, dict) and ack.get("accepted") is True
+        added = 0
+        for pub in pubs if made else ():
+            code2, ack2 = signed(base, "/events", owner, nip98.event(owner, 9000, [["h", channel], ["p", pub]]))
+            added += 1 if code2 == 200 and isinstance(ack2, dict) and ack2.get("accepted") is True else 0
+        say("channel_" + name, made and added == len(pubs), f"{name} {channel} members {added}/{len(pubs)}")
+
+
 def main(argv):
     duet = argv[:3] if argv[:1] == ["duet-profile"] and argv[1:2] and argv[1] in ("life-os", "bytalos", "pilot") and argv[2:3] else None      # `selfhost-probe duet-profile <community> <png path>` (LIFE-922)
     argv = argv[3:] if duet else argv
@@ -261,6 +281,14 @@ def main(argv):
     argv = argv[2:] if hosted_what else argv
     remove = argv[:1] == ["remove"]                                                  # `selfhost-probe remove [relay URL]` with public keys (64 hex, one per line) on stdin (LIFE-956)
     argv = argv[1:] if remove else argv
+    channels = argv[:1] == ["channels"]                                              # `selfhost-probe channels <source channel> <name>... [relay URL]` (LIFE-927): create the named channels with the source channel's members
+    if channels:
+        argv = argv[1:]
+        source = argv.pop(0) if argv else None
+        chan_names = []
+        while argv and not argv[0].startswith("http"):
+            chan_names.append(argv.pop(0))
+        argv = [x for x in argv]
     members = argv[:1] == ["members"]                                                # `selfhost-probe members <channel> [relay URL]` with public keys (64 hex, one per line) on stdin (LIFE-927)
     argv = argv[1:] if members else argv
     pilot_channel = argv.pop(0) if members and argv else None
@@ -320,6 +348,12 @@ def main(argv):
             print("remove fail (at least one public key is required)")
             return 1
         remove_members(base, owner, pubs, say)
+        return 1 if failed else 0
+    if channels:
+        if not source or not chan_names:
+            print("channels fail (a source channel and at least one name are required)")
+            return 1
+        create_channels(base, owner, source, chan_names, say)
         return 1 if failed else 0
     if members:
         pubs = [x for x in (sys.stdin.read().split() if not sys.stdin.isatty() else []) if len(x) == 64 and all(c in "0123456789abcdef" for c in x)]
