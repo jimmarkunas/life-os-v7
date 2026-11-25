@@ -501,7 +501,7 @@ class Writers(unittest.TestCase):
         naps = []
         out = jw.verify(client, self.BOARDS, "JFM", "JFM-1", True, now=at(2026, 11, 25, 9), sleep=naps.append)
         self.assertTrue(out["ok"], out)
-        self.assertEqual(naps[:2], [5, 5])
+        self.assertEqual(naps[:2], [10, 10])
         client = self.Client()
         client.issue_orig = client.issue
         client.issue = lambda key, fields: {**client.issue_orig(key, fields), "fields": {**client.issue_orig(key, fields)["fields"], "issuelinks": []}} if key == client.clone else client.issue_orig(key, fields)
@@ -552,6 +552,71 @@ class Writers(unittest.TestCase):
         self.assertFalse(out["ok"])
         self.assertEqual(out["kept"], ["JFM-900"])
         self.assertEqual(out["why"]["cleanup_sprint"], "JIRA_HTTP_403")
+
+    def test_every_membership_step_reports_diagnostics_with_counts_and_booleans_only(self):
+        client = self.Client()
+        out = jw.verify(client, self.BOARDS, "JFM", "JFM-1", True, now=at(2026, 11, 25, 9), sleep=lambda s: None, keep=True)
+        self.assertTrue(out["ok"], out)
+        self.assertEqual(sorted(out["diag"]), ["back_into_sprint", "clone_into_sprint", "move_to_backlog"])
+        first = out["diag"]["clone_into_sprint"]
+        self.assertEqual((first["reads"], first["in_list"], first["passed_by"]), (1, True, "list"))
+        self.assertEqual(first["page_cap"], 2000)
+        for entry_ in out["diag"].values():
+            for value in entry_.values():
+                self.assertIn(type(value), (int, bool, str, type(None)))
+
+    def test_the_clones_own_sprint_field_passes_a_read_back_the_list_misses(self):
+        client = self.Client()
+        client.field_list = lambda: [{"name": n, "id": "customfield_10020" if n == "Sprint" else "f" + n} for n in ("Sprint", "Labels", "Linked Issues", "Due date")]
+        real = client.issue
+
+        def with_sprint(key, fields):
+            got = real(key, fields)
+            if fields == "customfield_10020":
+                got = {**got, "fields": {"customfield_10020": [{"id": 777}] if getattr(client, "held", None) else []}}
+            return got
+        client.issue = with_sprint
+        client.sprint_issues = lambda sprint_id, jql, fields: []                                       # the list never shows the clone
+        client.backlog_issues = lambda board_id, jql, fields: []                                       # nor does the backlog list
+        out = jw.verify(client, self.BOARDS, "JFM", "JFM-1", True, now=at(2026, 11, 25, 9), sleep=lambda s: None, keep=True)
+        self.assertTrue(out["ok"], out)
+        self.assertEqual([out["diag"][k]["passed_by"] for k in ("clone_into_sprint", "move_to_backlog", "back_into_sprint")], ["field", "field", "field"])
+
+    def test_the_membership_read_backs_are_bounded_and_say_so_when_they_fail(self):
+        client = self.Client()
+        client.sprint_issues = lambda sprint_id, jql, fields: []
+        naps = []
+        out = jw.verify(client, self.BOARDS, "JFM", "JFM-1", True, now=at(2026, 11, 25, 9), sleep=naps.append, keep=True)
+        self.assertFalse(out["ok"])
+        self.assertEqual(out["why"]["clone_into_sprint"], "READ_MISMATCH")
+        self.assertEqual(out["diag"]["clone_into_sprint"]["reads"], 6)
+        self.assertEqual(out["diag"]["clone_into_sprint"]["passed_by"], "none")
+        self.assertTrue(all(n == 10 for n in naps if n))
+
+
+class Paging(unittest.TestCase):
+    """Jira.pages follows startAt, total and isLast for the Agile issue and value endpoints and reports counts."""
+
+    def client(self, total, size=50):
+        from lifeos.platform.jira import Jira
+        client = Jira("https://example.invalid", "a@b", "t")
+        client.seen = []
+
+        def get(path, params=None):
+            start = params["startAt"]
+            client.seen.append(start)
+            upto = min(total, start + min(size, params["maxResults"]))
+            return {"issues": [{"key": f"K-{i}"} for i in range(start, upto)], "total": total, "startAt": start}
+        client.get = get
+        return client
+
+    def test_a_backlog_of_hundreds_is_read_completely_even_when_the_server_caps_the_page(self):
+        client = self.client(430, size=30)                                                             # the server returns fewer than we ask
+        meta = {}
+        got = client.pages("/rest/agile/1.0/board/5/backlog", {}, "issues", meta)
+        self.assertEqual(len(got), 430)
+        self.assertEqual(meta, {"pages": 15, "items": 430, "total": 430, "complete": True})
+        self.assertEqual(client.seen[:3], [0, 30, 60])
 
 
 if __name__ == "__main__":
