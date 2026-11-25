@@ -50,7 +50,7 @@ Every LIFE ticket includes **Jim must do first** checkbox items for owner-only: 
 - **Chat approval:** Jim's explicit ChatGPT instruction naming a LIFE ticket and approved scope is sufficient human authorization. ChatGPT records it in the Jira description, checks only proven owner items, verifies live readiness/dependencies/verdict, and moves an eligible ticket to `Agent Go`; no repeat approval. Ambiguous consent does not count; it never waives safety/feasibility gates or starts an agent.
 - **Release:** A ticket with an unchecked item or no section does not move to Agent Go. `lifeos.jira.promote`, auto-release, and `python -m lifeos.sources.devtools.readiness` enforce this.
 - **Agent Go is the approval** of the written scope; agents do not re-ask.
-- **Check before claiming:** before transition 14, list every §5 item and host step the ticket will hit. If one is neither checked nor a standing approval (§5), do not claim: post one approval table, label `needs-jim`, take the next ticket. Found mid-run: the same, then keep building.
+- **Check before claiming:** before transition 14, list every §5 item and host step the ticket will hit. If one is neither checked nor a standing approval (§5), do not claim: post one approval table, label `needs-jim`, take the next ticket. Found mid-run: take the ticket's pre-made default (§12) and keep building; with none, file the `dry-run-miss` Bug (§12) and take the next ticket instead of stopping to ask Jim. The label `dry-run-green` is checked at claim time (§12).
 
 ## 5. What always stops for Jim
 
@@ -164,3 +164,14 @@ A request that breaks these rules stops with `ARCHITECTURAL DRIFT DETECTED — N
 - `docs/DECISIONS.md`: only when a ticket cites a D-number. Use `python -m lifeos.sources.devtools.decisions show D<n>` and never read the whole file.
 - `docs/agent-reference.md`: the code map, commands and epic delivery rules.
 - `docs/archive/`: history, no authority.
+
+## 12. Dry run gate (scoping, before Agent Go; Jim, Nov 25 2026, LIFE-986)
+
+Blockers found mid-run (a secret in the wrong Bitwarden project, a delete the provider refuses, a tool not loaded, an action the agent's own rules stop, a target out of reach) are found before the build instead.
+
+1. **Every new ticket carries two sections** (template: `docs/templates/ticket.md`): **Dry run**, a checklist of everything the build touches, and **Decisions pre-made**, an "if X, do Y" default for every fork. Jim approves the defaults once, when he releases the ticket.
+2. **The executing agent runs the dry run** on the machine and identity that will do the build. It is read-only: no write, merge, deploy or delete. It checks: every named **secret** exists under its exact name in the project the runner can read (name only, never the value); every **write or delete** is allowed for that identity (provider docs or a read-only check; if that cannot be confirmed without writing, it is a Jim step); every **tool**, connector and CLI is loaded in that agent's session; every action the agent's own **permission rules or safety checks** will stop (for example Keychain reads and deletes) is a pre-approved rule or a Jim step; the **target** is reachable within the approved scope on current data (if not, the decision goes into Decisions pre-made); every **wait** (natural runs, soaks, dates) is already its own `UAT for LIFE-nnn` ticket under LIFE-615.
+3. **One `Dry run` comment** per ticket: a table of check, result and any human step. Every human step moves into the ticket's **Jim must do first**.
+4. **Jim batches:** he does the Jim must do first list in one go, then says `release LIFE-nnn`. That is his only involvement before the build. He may say `dry run 856 877 981`: the agent dry-runs them in one session and posts one combined list of human steps, as an Agent Inbox item and on each ticket.
+5. **Gate:** a ticket without a green Dry run comment and the label `dry-run-green` cannot be claimed (checked at claim time). Tickets already in Agent Go on Nov 25 2026 are grandfathered. A blocker the dry run missed: take the pre-made default if there is one; otherwise file a Bug under LIFE-615 labelled `dry-run-miss` naming the missed check, and move to the next ticket instead of stopping to ask Jim.
+6. **One session, one outcome:** a build ticket ends Done (merged, live, first proof) or with a Bug filed. "Left open for..." is not allowed; every leftover becomes its own UAT or Bug ticket. Each session starts by reading Jira state, not its memory of earlier sessions.

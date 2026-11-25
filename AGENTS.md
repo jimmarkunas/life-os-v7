@@ -7,7 +7,7 @@ The [Development Policy](docs/life-os-development-policy.md) is the whole rule s
 Jim starts every run; no scheduler, timer or loop. Once started, run end to end:
 
 1. **Pick** the ticket Jim named, else the top `Agent Go` leaf by Priority, then Rank. Skip In Progress tickets and tickets with an unfinished `Blocks` predecessor. Agent Go is Jim's approval for everything in the ticket: never re-ask.
-2. **Claim:** one ticket at a time. First list its stops (policy §4-5); any not checked or standing-approved: one approval table, `needs-jim`, next ticket. Else transition 14.
+2. **Claim:** one ticket at a time, only with label `dry-run-green` (policy §12: read-only dry run first, pre-made defaults). First list its stops (policy §4-5); any not checked or standing-approved: one approval table, `needs-jim`, next ticket. Else transition 14.
 3. **Build** on `life/LIFE-nnn/<slug>`, one PR `[LIFE-nnn] <outcome>`. Never change a ticket's scope without asking Jim.
 4. **Test:** `sh tools/preflight.sh` before every push; CI is the full gate.
 5. **Land:** auto-merge on green. A merge is not Done.
