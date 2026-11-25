@@ -92,56 +92,6 @@ MemoryMax=128M
 TasksMax=16
 CPUQuota=50%
 EOF
-  cat > "$1/lifeos-close-redraw.socket" <<'EOF'
-[Unit]
-Description=LIFE OS Close card redraw (LIFE-972); only the lifeos-resume group (the Close service) may poke it
-[Socket]
-ListenStream=/run/lifeos-close-redraw/redraw.sock
-SocketUser=root
-SocketGroup=lifeos-resume
-SocketMode=0660
-DirectoryMode=0755
-Accept=no
-Backlog=64
-[Install]
-WantedBy=sockets.target
-EOF
-  cat > "$1/lifeos-close-redraw.service" <<'EOF'
-[Unit]
-Description=LIFE OS Close card redraw worker (LIFE-972): one redraw at a time, pokes that arrive meanwhile make one more
-[Service]
-ExecStart=/usr/bin/python3 -I -c "import sys; sys.path.insert(0, '/opt/lifeos-close/current'); from lifeos.sources.apps import redraw_worker; sys.exit(redraw_worker.main())"
-StandardInput=null
-StandardOutput=journal
-StandardError=journal
-DynamicUser=yes
-LoadCredentialEncrypted=notion:/etc/credstore.encrypted/lifeos-close.notion
-UMask=0077
-NoNewPrivileges=yes
-ProtectSystem=strict
-ProtectHome=yes
-PrivateTmp=yes
-PrivateDevices=yes
-ProtectProc=invisible
-ProtectKernelTunables=yes
-ProtectKernelModules=yes
-ProtectKernelLogs=yes
-ProtectControlGroups=yes
-ProtectClock=yes
-ProtectHostname=yes
-RestrictNamespaces=yes
-RestrictRealtime=yes
-RestrictSUIDSGID=yes
-LockPersonality=yes
-CapabilityBoundingSet=
-RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
-SystemCallFilter=@system-service
-SystemCallArchitectures=native
-RuntimeMaxSec=300
-MemoryMax=192M
-TasksMax=16
-CPUQuota=50%
-EOF
   if [ -s "$CREDS/lifeos-close.github" ]; then                                       # optional (Jim, Oct 24): the post-close Hiring refresh; absent = never asked
     sed -i "/^LoadCredentialEncrypted=link:/a LoadCredentialEncrypted=github:$CREDS/lifeos-close.github" "$1/lifeos-close@.service"
   fi
@@ -202,7 +152,7 @@ case "${1:-}" in
     if [ -e "$dest" ]; then python3 -I "$REL" check "$dest" || { drop "$stage"; say "STOP: existing $dest differs"; exit 1; }; drop "$stage"; else mv -T "$stage" "$dest"; fi
     [ -L "$OPT/current" ] && [ "$(readlink "$OPT/current")" != "$dest" ] && ln -sfn "$(readlink "$OPT/current")" "$OPT/previous"
     ln -sfn "$dest" "$OPT/current.new" && mv -T "$OPT/current.new" "$OPT/current"
-    units "$UNITS"; systemctl daemon-reload; systemctl enable --now lifeos-close.socket lifeos-close-redraw.socket >/dev/null
+    units "$UNITS"; systemctl daemon-reload; systemctl enable --now lifeos-close.socket >/dev/null; systemctl disable --now lifeos-close-redraw.socket lifeos-close-redraw.service >/dev/null 2>&1 || true; rm -f "$UNITS/lifeos-close-redraw.socket" "$UNITS/lifeos-close-redraw.service"      # LIFE-973: the card redraw worker is retired
     [ "$st" = ours ] || tailscale serve --bg --tls-terminated-tcp "$TAILNET" --proxy-protocol 2 "tcp://127.0.0.1:$LOCAL" >/dev/null || { say "FAIL: Serve $TAILNET not added (run uninstall)"; exit 1; }
     "$0" verify && remember "$dest" ;;
   verify)

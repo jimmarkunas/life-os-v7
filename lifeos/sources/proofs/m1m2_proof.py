@@ -9,7 +9,7 @@ import pathlib
 import time
 from datetime import date, datetime, timedelta
 
-from lifeos.hiring import card, compile as hiring, models as HM, render
+from lifeos.hiring import compile as hiring, models as HM, render
 from lifeos.interview import create, notion
 from lifeos.interview.models import Ownership, ParentQuery, RoundQuery
 from lifeos.interview.ui_probe import QA_PARENT
@@ -141,6 +141,15 @@ def _human_tree(client, page_id):
     return [{k: v for k, v in b.items() if k not in ("last_edited_time", "last_edited_by", "request_id")} for b in notion.children(client, page_id, [10])]
 
 
+def _present(client, pins, cells):
+    """LIFE-973: the production Hiring Pipeline table writer is gone (the card is a live Job Ledger view); this proof keeps its own sandbox table so the compiled rows are still read back from Notion."""
+    region = R.floating_region(client, pins["HIRING_CARD_BLOCK_ID"], HM.TITLE, NotionError, with_status=False)
+    scoped = R.ScopedClient(client, region["heading"]["id"], NotionError).adopt(region["table"]["id"], *(row["id"] for row in region["rows"]))
+    counts = R.write_floating(scoped, region, None, cells, NotionError)
+    again = R.floating_region(client, pins["HIRING_CARD_BLOCK_ID"], HM.TITLE, NotionError, with_status=False)
+    return {**counts, "verified": [R.live_view(r) for r in again["rows"][1:]] == [R.want_view(row) for row in cells]}
+
+
 def _hiring_rows(client, pins):
     """The job's Hiring Pipeline rows as Notion holds them, through the region validator -> [[cell text] x 4]."""
     region = R.floating_region(client, pins["HIRING_CARD_BLOCK_ID"], HM.TITLE, NotionError, with_status=False)
@@ -201,7 +210,7 @@ def drive(client, environ, box, now, results, counts, report=None):
         result = hiring.compile_rows(pipeline.read_applied(ledger), pipeline.read_parents(client, box["pipe"], ledger), list(events), None,
                                      {"ledger": True, "parents": True, "calendar": True}, now)
         status, cells, _ = render.render(result, None, now)
-        done = card.present(report, pins, status, cells, True)
+        done = _present(report, pins, cells)
         counts["hiring_writes"] += done["rows_changed"] + done["rows_added"] + done["rows_removed"]
         return done["verified"], _hiring_rows(report, pins)
     verified, mine = hiring_card()
