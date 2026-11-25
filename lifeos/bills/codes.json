@@ -18,6 +18,7 @@
   "BILLS_PAGE_INVALID": ["bills", "terminal", false, "One Bills row is not valid; it is skipped and counted.", "Fix the row in Notion."],
   "BILLS_PAGINATION_INVALID": ["bills", "bug", false, "Notion paging repeated a cursor while reading Bills.", "Retried next run."],
   "BILLS_PAID_FAILED": ["bills", "degraded", false, "Paid-bill processing failed for an unnamed reason.", "Retried next run; check the log."],
+  "BILLS_PAY_PROPERTY_INVALID": ["bills", "blocked", false, "The Bills Pay column is missing or is not a select, so paid processing stops before any write.", "Restore the Pay select (Unpaid, Paid, Auto) on the Bills database."],
   "BILLS_PROPERTY_INVALID": ["bills", "terminal", false, "A Bills row property has the wrong type; the row is skipped and counted.", "Fix the row in Notion."],
   "BILLS_PROPERTY_MISSING": ["bills", "blocked", false, "A required Bills property is missing from the database.", "Restore the property."],
   "BILLS_PROTECTED_REGION_CHANGED": ["bills", "blocked", false, "Jim's protected content changed during a write, so the write stops.", "None; nothing of Jim's is overwritten."],

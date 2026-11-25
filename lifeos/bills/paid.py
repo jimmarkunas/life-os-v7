@@ -1,4 +1,4 @@
-"""Process explicit Paid flags against the configured Bill Tracker; output is counts only."""
+"""Process the Pay tag (Paid, Auto) and the legacy Paid checkbox against the configured Bill Tracker; output is counts only."""
 import json
 import os
 from datetime import date, datetime
@@ -10,6 +10,8 @@ from lifeos.platform.notion_client import Client, NotionError
 from lifeos.platform.snapshot_store import Store
 from . import snapshot, state
 from .state import _day
+
+PAY_UNPAID = {"select": {"name": "Unpaid"}}
 
 LOCAL_TZ = ZoneInfo("America/Chicago")
 LEDGER = Store("v7_bills_paid_ledger", key_column="page_id", key_type="VARCHAR(64)")
@@ -50,7 +52,27 @@ def _compact_page(page, source):
         raise PaidError("BILLS_PROPERTY_INVALID")
     if props.get("Status", {}).get("type") not in ("select", "status"):
         raise PaidError("BILLS_PROPERTY_INVALID")
+    pay = props.get("Pay")
+    if not isinstance(pay, dict) or pay.get("type") != "select":
+        raise PaidError("BILLS_PAY_PROPERTY_INVALID")           # a missing or retyped Pay column is a schema change: the whole run stops with this code, nothing is written
+    item = pay.get("select")
+    row["Pay"] = item.get("name") if isinstance(item, dict) else None
     return row
+
+
+def _flag(row, kind):
+    """True while the row still carries the trigger of this kind of payment: `paid` is the Pay tag Paid or the legacy ticked checkbox; `auto` is the Pay tag Auto (which stays on)."""
+    return row.get("Pay") == "Auto" if kind == "auto" else (row.get("Paid") is True or row.get("Pay") == "Paid")
+
+
+def _auto_due(row, today):
+    due = _day(row.get("Due Date"))
+    return (row.get("Pay") == "Auto" and row.get("Status") == "Active" and row.get("Cycle") in state.SUPPORTED_CYCLES
+            and due is not None and due < today)
+
+
+def _triggered(row, kind, today):
+    return _auto_due(row, today) if kind == "auto" else _flag(row, "paid")
 
 
 ROW_CODES = ("BILLS_PAGE_INVALID", "BILLS_PROPERTY_INVALID")     # a bad row is skipped and counted; a wrong source, pagination or duplicate stays fatal
@@ -144,7 +166,7 @@ def _status_property(page, name):
 
 
 def _targets_match(row, entry, recurring):
-    if row.get("Last Paid") != entry["today"]:
+    if row.get("Last Paid") != entry.get("last_paid", entry["today"]):
         return False
     if recurring:
         due = _day(entry.get("captured_next_due"))
@@ -158,27 +180,29 @@ def _verify_source(client, page_id, source, entry, recurring, paid):
     if page.get("id") != page_id:
         raise PaidError("BILLS_PAGE_ID_MISMATCH")
     row = _compact_page(page, source)
-    if row.get("Paid") is not paid or not _targets_match(row, entry, recurring):
+    if _flag(row, entry.get("kind", "paid")) is not paid or not _targets_match(row, entry, recurring):
         return None, page
     return row, page
 
 
-def _process(client, connection, row, source, today, entry, counts, live):
+def _process(client, connection, row, source, today, entry, counts, live, kind="paid"):
     if entry is not None and entry.get("step") == "complete" and entry.get("today") == today.isoformat():
         counts["review"] += 1                       # D86: Paid ticked again on the day it was processed is not a second payment; left checked for a person
         return
     is_new = entry is None or entry.get("step") == "complete"
     is_resume = not is_new
+    kind = kind if is_new else entry.get("kind", "paid")      # LIFE-978: `auto` advances a due Auto bill and keeps the tag; `paid` (the Pay tag Paid or the old checkbox) advances and resets the tag
+    auto = kind == "auto"
     cycle = row.get("Cycle")
     recurring = cycle in state.SUPPORTED_CYCLES
     one_time = cycle == "One Time"
     status_ok = row.get("Status") == "Active" or (
         is_resume and one_time and row.get("Status") == "Inactive" and row.get("Last Paid") == entry.get("today"))
-    if not status_ok or not (recurring or one_time):
+    if not status_ok or not (recurring or one_time) or (auto and not recurring):
         counts["review"] += 1
         return
     if is_new:
-        if row.get("Paid") is not True:
+        if not _triggered(row, kind, today):
             counts["review"] += 1
             return
         if live:
@@ -187,15 +211,19 @@ def _process(client, connection, row, source, today, entry, counts, live):
             except Exception:
                 counts["failed"] += 1
                 return
-            if row.get("Paid") is not True or row.get("Status") != "Active" or row.get("Cycle") != cycle:
+            if not _triggered(row, kind, today) or row.get("Status") != "Active" or row.get("Cycle") != cycle:
                 counts["review"] += 1
                 return
         captured_day = _day(row.get("Next Due")) if recurring else None
         if recurring and not captured_day:
             counts["review"] += 1
             return
+        if auto and not captured_day > _day(row.get("Due Date")):          # the formula must name a date after the due date, or nothing is advanced
+            counts["review"] += 1
+            return
         entry = {"page_id": row["page_id"], "captured_next_due": captured_day.isoformat() if captured_day else None,
-                 "today": today.isoformat(), "step": "prepared", "cycle": cycle}
+                 "today": today.isoformat(), "step": "prepared", "cycle": cycle, "kind": kind,
+                 "last_paid": _day(row.get("Due Date")).isoformat() if auto else today.isoformat()}
         if not live:
             counts["advanced" if recurring else "one_time"] += 1
             return
@@ -207,9 +235,9 @@ def _process(client, connection, row, source, today, entry, counts, live):
             counts["failed"] += 1
             return
         today = date.fromisoformat(entry["today"])
-        if entry.get("step") == "verified" and row.get("Paid") is False:
+        if entry.get("step") == "verified" and _flag(row, kind) is auto:
             try:
-                verified, _ = _verify_source(client, row["page_id"], source, entry, recurring, False)
+                verified, _ = _verify_source(client, row["page_id"], source, entry, recurring, auto)
             except Exception:
                 verified = None
             if verified is None:
@@ -219,7 +247,7 @@ def _process(client, connection, row, source, today, entry, counts, live):
             _ledger_save(connection, entry)
             counts["advanced" if recurring else "one_time"] += 1
             return
-        if row.get("Paid") is not True:
+        if not _flag(row, kind):
             counts["failed"] += 1
             return
 
@@ -233,7 +261,7 @@ def _process(client, connection, row, source, today, entry, counts, live):
             counts["failed"] += 1
             return
     expected_status = "Inactive" if is_resume and one_time and fresh.get("Last Paid") == entry.get("today") else "Active"
-    if fresh.get("Paid") is not True or fresh.get("Status") != expected_status or fresh.get("Cycle") != cycle:
+    if not _flag(fresh, kind) or fresh.get("Status") != expected_status or fresh.get("Cycle") != cycle:
         counts["review"] += 1
         return
     if recurring:
@@ -242,10 +270,11 @@ def _process(client, connection, row, source, today, entry, counts, live):
             counts["review"] += 1
             return
         target_due = due.isoformat()
-        need_write = fresh.get("Last Paid") != entry["today"] or _day(fresh.get("Due Date")) != due
+        last_paid = entry.get("last_paid", entry["today"])
+        need_write = fresh.get("Last Paid") != last_paid or _day(fresh.get("Due Date")) != due
         if need_write:
             _write(client, row["page_id"], {
-                "Last Paid": _date_property(entry["today"]), "Due Date": _date_property(target_due)}, counts)
+                "Last Paid": _date_property(last_paid), "Due Date": _date_property(target_due)}, counts)
             try:
                 fresh, page = _verify_source(client, row["page_id"], source, entry, True, True)
             except Exception:
@@ -278,10 +307,16 @@ def _process(client, connection, row, source, today, entry, counts, live):
             return
     entry["step"] = "verified"
     _ledger_save(connection, entry)
-    if fresh.get("Paid") is True:
-        _write(client, row["page_id"], {"Paid": {"checkbox": False}}, counts)
+    reset = {}
+    if not auto:
+        if fresh.get("Pay") in ("Paid", None):
+            reset["Pay"] = PAY_UNPAID                           # the tag goes back to Unpaid, an Auto tag is never touched
+        if fresh.get("Paid") is True:
+            reset["Paid"] = {"checkbox": False}
+    if reset:
+        _write(client, row["page_id"], reset, counts)
     try:
-        verified, _ = _verify_source(client, row["page_id"], source, entry, recurring, False)
+        verified, _ = _verify_source(client, row["page_id"], source, entry, recurring, auto)
     except Exception:
         verified = None
     if verified is None:
@@ -298,19 +333,24 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
     if len(source) != 32 or any(ch not in "0123456789abcdef" for ch in source):
         raise PaidError("BILLS_SOURCE_INVALID")
     rows, invalid = _query(client, source)           # a partial answer is never interpreted as an empty queue; one malformed row never blocks the rest
-    paid = [row for row in rows if row.get("Paid") is True]
     now = now or datetime.now(LOCAL_TZ)
     today = _today(now)
+    paid = [row for row in rows if _flag(row, "paid")]
+    autos = [row for row in rows if _auto_due(row, today) and not _flag(row, "paid")]
+    untagged = [row for row in rows if row.get("Status") == "Active" and row.get("Pay") is None and not _flag(row, "paid")]
     cap = min(MAX_LIMIT, max(0, int(limit)))
     by_id = {row["page_id"]: row for row in rows}
-    counts = {"paid_rows": len(paid), "advanced": 0, "one_time": 0, "review": 0,
-              "failed": 0, "resumed": 0, "skipped": 0, "writes": 0, "invalid": invalid}
+    counts = {"paid_rows": len(paid), "auto_rows": len(autos), "checkbox_rows": sum(1 for row in rows if row.get("Paid") is True), "advanced": 0, "one_time": 0,
+              "review": 0, "failed": 0, "resumed": 0, "skipped": 0, "writes": 0, "invalid": invalid, "backfilled": 0}
     if not live:
-        counts["skipped"] = max(0, len(paid) - cap)
-        for row in paid[:cap]:
+        counts["skipped"] = max(0, len(paid) + len(autos) - cap)
+        counts["backfilled"] = len(untagged)
+        for row in [*paid, *autos][:cap]:
             if row.get("Status") != "Active" or not (row.get("Cycle") in state.SUPPORTED_CYCLES or row.get("Cycle") == "One Time"):
                 counts["review"] += 1
             elif row.get("Cycle") in state.SUPPORTED_CYCLES and not _day(row.get("Next Due")):
+                counts["review"] += 1
+            elif row in autos and not _day(row.get("Next Due")) > _day(row.get("Due Date")):
                 counts["review"] += 1
             else:
                 counts["advanced" if row.get("Cycle") in state.SUPPORTED_CYCLES else "one_time"] += 1
@@ -319,20 +359,24 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
         with (connect or db.connect)() as connection:
             LEDGER.ensure(connection)
             ledger = _ledger_all(connection)
-            queued = {row["page_id"]: by_id[row["page_id"]] for row in paid}
+            queued = {row["page_id"]: (by_id[row["page_id"]], "paid") for row in paid}
+            queued.update({row["page_id"]: (row, "auto") for row in autos})
             for page_id, entry in ledger.items():
                 if entry.get("step") != "complete":
-                    queued[page_id] = by_id.get(page_id)
+                    queued[page_id] = (by_id.get(page_id), entry.get("kind", "paid"))
             counts["skipped"] = max(0, len(queued) - cap)
-            for page_id, row in list(queued.items())[:cap]:
+            for page_id, (row, kind) in list(queued.items())[:cap]:
                 if row is None:
                     counts["failed"] += 1
                     continue
-                if row.get("Paid") is not True and ledger.get(page_id, {}).get("step") != "verified":
+                if not _flag(row, kind) and ledger.get(page_id, {}).get("step") != "verified":
                     counts["review"] += 1
                     continue
                 try:
-                    _process(client, connection, row, source, today, ledger.get(page_id), counts, True)
+                    _process(client, connection, row, source, today, ledger.get(page_id), counts, True, kind)
                 except Exception:
                     counts["failed"] += 1
+            for row in [r for r in untagged if r["page_id"] not in queued][:cap]:      # an Active bill with no tag is tagged Unpaid (LIFE-978); Jim sets Auto himself
+                if _write(client, row["page_id"], {"Pay": PAY_UNPAID}, counts):
+                    counts["backfilled"] += 1
     return counts
