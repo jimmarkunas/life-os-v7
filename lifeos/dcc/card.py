@@ -217,7 +217,7 @@ def runs_card(runs, now):
         label = [_colored(f"{len(failed)} failed today", RED, failed[-1] if failed else None)] + [_colored(" ↗", RED, url) for url in failed[:-1][-2:]]
     else:
         label = [_t(RUNS_NAME, bold=True)]
-    line = "GitHub unreadable" if state == "unverified" else f"GitHub · {now.strftime('%-I:%M %p')} CT"
+    line = "GitHub unreadable" if state == "unverified" else f"GitHub · {ct_stamp.when(now).split(' · ', 1)[1]}"
     return _b("callout", icon=RUNS_ICON, children=[_b("heading_3", _t(value)), _b("paragraph", *label), _b("paragraph", _t(line, gray=True))])
 
 
