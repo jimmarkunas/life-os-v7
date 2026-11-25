@@ -1,6 +1,6 @@
 """LIFE-976: the one writer of a Runtime Configuration row, and it can change exactly one: `V2_OFFICIAL`, only its Value (and Revision + 1).
 
-The LIFE-918 promotion check (`promotion.run_if_due`) calls `official_setter(...)` as its `setters` argument after a pass, with the kill switch on and the quarter boundary reached; those three gates stay in `run_if_due`.
+The LIFE-918 promotion check (lifeos.accountability.promotion) calls `official_setter(...)` as its `setters` argument after a pass, with the kill switch on and the quarter boundary reached; those three gates stay in the check itself.
 The allow-list is enforced here, before any read or write: any other row name fails closed with RUNTIME_CONFIG_WRITE_NOT_ALLOWED. A dry run (the default) reads the row and reports the intended write; it writes nothing.
 A live write reads the row back and must see the new Value and Revision, or it fails with RUNTIME_CONFIG_WRITE_VERIFY_FAILED. A second run on a row that already holds the value writes nothing. Uses the existing Notion client;
 no new token, integration or scheduler. Fixed codes and counts only, never a value."""
@@ -53,7 +53,7 @@ def set_value(client, source, name, value, live=False, allowed=ALLOWED):
 
 
 def official_setter(client, source, live=False):
-    """The `setters` argument of promotion.run_if_due: sets V2_OFFICIAL to "on". A dry run prints one counts-only line and writes nothing."""
+    """The `setters` argument of promotion.the check: sets V2_OFFICIAL to "on". A dry run prints one counts-only line and writes nothing."""
     def setter():
         out = set_value(client, source, "V2_OFFICIAL", "on", live=live)
         print(f"promotion: V2_OFFICIAL {out['status']}")
