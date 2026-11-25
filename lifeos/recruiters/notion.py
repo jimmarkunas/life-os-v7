@@ -283,14 +283,15 @@ def overdue_rows(rows, today):
     return sorted(out, key=lambda r: (r["person"].strip().lower(), r["page_id"]))
 
 
-def close_row(notion, page_id, status):
+def close_row(notion, page_id, status, row=None):
     """Jim's confirmed close of ONE row as Completed or Dismissed. An open row (Needs Action or Waiting, not Done, Active) gets Action Status AND Done on, Active off, Needs review off, in one write, then is read back:
     the new values as written and every other value unchanged. A row already closed that way whose three flags disagree (the Nov 24 case) is repaired the same way; one already closed and consistent is left alone;
-    any other row is not changed. -> {"status": "recorded" | "already_recorded" | "not_changed", "verified": True, "action"}"""
+    any other row is not changed. `row`: the row the caller read an instant ago in this same request (it is still read back after the write). -> {"status": "recorded" | "already_recorded" | "not_changed", "verified": True, "action"}"""
     if status not in CLOSE_TO:
         raise RecruitersError("RECRUITERS_CLOSE_INVALID")
-    check_schema(notion)
-    row = own_row(notion, page_id)
+    if row is None:                                                    # the Close screen passes the row it has just read (LIFE-972: two Notion calls fewer, the schema was read on the same screen's GET)
+        check_schema(notion)
+        row = own_row(notion, page_id)
     if row["action"] == status and _closed_flags(row):
         return {"status": "already_recorded", "verified": True, "action": row["action"]}
     if row["action"] != status and (row["done"] or not row["active"] or row["action"] not in (NEEDS_ACTION, WAITING)):
