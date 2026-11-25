@@ -18,6 +18,17 @@ class DryRunGate(unittest.TestCase):
             self.assertIn(kept, POLICY, kept)
         self.assertNotIn("Found mid-run: the same, then keep building.", POLICY)       # the older stop-and-ask clause is replaced by the pre-made default rule
 
+    def test_the_orchestrator_exception_and_the_agent_layer_rule_are_written_down(self):
+        """LIFE-987 (Jim, comment 14320): the one exception to 'Jim starts every run', its kill switch, and the agent-layer rules agents follow."""
+        for name in ("docs/life-os-development-policy.md", "CLAUDE.md", "AGENTS.md"):
+            self.assertIn("LIFE-987", (ROOT / name).read_text(), name)
+        self.assertIn("`ORCHESTRATOR_CAN_START`", POLICY)
+        self.assertIn("Jim starts every agent run", POLICY)
+        agents = (ROOT / "AGENTS.md").read_text()
+        for kept in ("claim with `start_work`", "post status, blocker and completion to the Orca room", "it never approves anything new"):
+            self.assertIn(kept, agents, kept)
+        self.assertNotIn("anything that starts or wakes an agent after the session ends", (ROOT / "CLAUDE.md").read_text())
+
     def test_agents_md_requires_the_label_at_claim_time_and_the_template_has_every_section(self):
         self.assertIn("only with label `dry-run-green` (policy §12", (ROOT / "AGENTS.md").read_text())
         template = (ROOT / "docs" / "templates" / "ticket.md").read_text()
