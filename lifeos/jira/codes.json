@@ -349,6 +349,13 @@
     "The read-only contract check failed, so the throwaway verification wrote nothing.",
     "Run the contract check and read which check failed."
   ],
+  "JIRA_VERIFY_NO_DELETE_PERMISSION": [
+    "jira",
+    "blocked",
+    false,
+    "The Jira user cannot delete issues in the board's project, so the throwaway verification wrote nothing (it never creates an issue it cannot remove).",
+    "Grant Delete Issues on that project to the Jira user, or run the verification with a user that has it."
+  ],
   "JM_DASH_JIRA_BAD_PAGE": [
     "jira",
     "retry",
