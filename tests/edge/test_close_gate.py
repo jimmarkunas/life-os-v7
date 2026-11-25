@@ -240,7 +240,7 @@ class RealClientGet(unittest.TestCase):
             return 200, "text/html", b"ok", ()
 
         self.assertEqual(self.run_get(screen), 200)
-        self.assertEqual(seen, {"config": {"ledger": self.LEDGER, "pipeline": self.PIPELINE, "hiring_table": None, "close_base": None}, "token": False, "source": self.LEDGER})
+        self.assertEqual(seen, {"config": {"ledger": self.LEDGER, "pipeline": self.PIPELINE}, "token": False, "source": self.LEDGER})
         self.assertEqual([(m, p) for m, p, _ in self.sent], [("GET", "/pages/" + "3" * 32), ("POST", f"/data_sources/{self.LEDGER}/query")])
         self.assertTrue(all(a == "Bearer synthetic-notion" for _, _, a in self.sent))      # the scoped token is used by the client, never handed to GET code
 
@@ -284,6 +284,32 @@ class Refresh(Gate):
         self.assertEqual((code, status), (0, 200))
         asked.assert_called_once_with(b"synthetic-github-token", ["hiring"])
         self.assertNotIn(b"synthetic-github-token", repr(self.calls[0][2]).encode())
+
+    def asking_card(self, status=200):
+        def app(req, who, secrets):
+            self.calls.append((req, who, secrets))
+            secrets.get("after", []).append("card")
+            return status, "text/html; charset=utf-8", b"<p>ok</p>", ()
+        return app
+
+    def test_a_card_request_pokes_the_background_worker_after_the_response_and_needs_no_github_credential(self):
+        """LIFE-972: the redraw is the worker's job; the answer has already been sent when it is poked."""
+        with mock.patch.object(gate.close_redraw, "poke", return_value=True) as poked, mock.patch.object(gate, "refresh") as asked:
+            code, status, _ = self.run_gate(v2(RUNNER) + http("POST", headers=POST_OK, body=b"a=b"), app=self.asking_card())
+        self.assertEqual((code, status), (0, 200))
+        poked.assert_called_once_with()
+        asked.assert_not_called()
+
+    def test_without_a_worker_the_poke_falls_back_to_the_workflow_refresh(self):
+        self.with_token()
+        with mock.patch.object(gate.close_redraw, "poke", return_value=False), mock.patch.object(gate, "refresh", return_value=["dispatched"]) as asked:
+            self.run_gate(v2(RUNNER) + http("POST", headers=POST_OK, body=b"a=b"), app=self.asking_card())
+        asked.assert_called_once_with(b"synthetic-github-token", ["recruiters"])
+
+    def test_a_refused_post_never_pokes(self):
+        with mock.patch.object(gate.close_redraw, "poke") as poked:
+            self.run_gate(v2(RUNNER) + http("POST", headers=POST_OK, body=b"a=b"), app=self.asking_card(409))
+        poked.assert_not_called()
 
     def test_no_credential_a_get_or_a_refused_post_asks_nothing(self):
         with mock.patch.object(gate, "refresh") as asked:

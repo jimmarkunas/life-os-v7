@@ -14,7 +14,7 @@ import urllib.request
 REPO = "jimmarkunas/life-os-v7"
 APP = "lifeos/sources/apps/close_app.py"
 EDGE = ("lifeos/__init__.py", "lifeos/edge/close_gate.py", "lifeos/imessage/__init__.py", "lifeos/imessage/alerts_endpoint.py", "lifeos/platform/__init__.py",
-        "lifeos/platform/notion_client.py", "lifeos/platform/limits.py", "lifeos/hiring/__init__.py", "lifeos/sources/__init__.py", APP)      # the gate's own runtime closure, GET client included
+        "lifeos/platform/notion_client.py", "lifeos/platform/limits.py", "lifeos/platform/close_redraw.py", "lifeos/hiring/__init__.py", "lifeos/sources/__init__.py", APP)      # the gate's own runtime closure, GET client included
 NOTION_ID = re.compile(r"[0-9a-f]{32}\Z")
 PATH = re.compile(r"lifeos(/[a-z0-9_]+)+\.py\Z")
 SHA = re.compile(r"[0-9a-f]{40}\Z")
