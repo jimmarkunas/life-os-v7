@@ -82,10 +82,14 @@ on:
         type: boolean
         default: false
       jira:
-        description: "Jira only (unticked 'Run every domain job' above): snapshot, card, report (both), rollover, rollover+snapshot, or a read-only layout probe"
+        description: "Jira only (unticked 'Run every domain job' above): snapshot, card, report (both), rollover, rollover+snapshot, a read-only layout probe, or (LIFE-918) writers-check = the read-only Jira writer contract check, writers-verify = the throwaway-sprint writer verification (dry unless the verify input ends in yes)"
         type: choice
-        options: ["none", "snapshot", "card", "report", "rollover", "both", "probe"]
+        options: ["none", "snapshot", "card", "report", "rollover", "both", "probe", "writers-check", "writers-verify"]
         default: "none"
+      verify:
+        description: "LIFE-918, writers-verify only: BOARD ISSUE to verify the Jira writers on a throwaway ZZ-LIFE918-TEST sprint, for example JFM JFM-123 (a dry run: contract check and plan). Add a third word, yes, to really write (JFM JFM-123 yes). Only that sprint and that one issue are touched"
+        type: string
+        default: ""
       refresh:
         description: "Close screen refresh (Jim, Oct 24): hiring = redraw the Hiring Pipeline region right after a verified close; recruiters = redraw only the Recruiter Outreach table after a verified recruiter close, status or Mark as Sent (no mail read). It queues in the after-tick group, so it never runs beside another Daily Report writer; the Close service skips it when a run is already waiting"
         type: choice
@@ -409,6 +413,29 @@ jobs:
           JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
           JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
         run: python -m lifeos.run jira-probe
+      - id: jwcheck
+        continue-on-error: true
+        name: Jira writer contract check (LIFE-918; manual only; GET requests only, nothing is written; booleans and counts only)
+        if: ${{ inputs.jira == 'writers-check' }}
+        env:
+          JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
+          JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
+        run: python -m lifeos.jira.writers contract-check
+      - id: jwverify
+        continue-on-error: true
+        name: Jira writer verification on a throwaway sprint (LIFE-918 decision E; manual only; a dry run unless the third word of verify is yes; only a ZZ-LIFE918-TEST sprint and the one named issue; counts and fixed codes only)
+        if: ${{ inputs.jira == 'writers-verify' }}
+        env:
+          JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
+          JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
+          JIRA_WRITERS_VERIFY: ${{ inputs.verify }}
+        run: |
+          set -f; set -- $JIRA_WRITERS_VERIFY; VERIFY_BOARD="$1"; VERIFY_ISSUE="$2"; VERIFY_LIVE="${3:-}"
+          [ "$#" -ge 2 ] && [ "$#" -le 3 ] || { echo "::error title=jira::verify must be BOARD ISSUE or BOARD ISSUE yes"; exit 1; }
+          case "$VERIFY_BOARD" in JFM|MEJ) ;; *) echo "::error title=jira::verify board must be JFM or MEJ"; exit 1;; esac
+          printf '%s' "$VERIFY_ISSUE" | grep -Eq '^[A-Z][A-Z0-9]{1,9}-[0-9]{1,7}$' || { echo "::error title=jira::verify issue must be one issue key"; exit 1; }
+          case "$VERIFY_LIVE" in ""|yes) ;; *) echo "::error title=jira::the third word must be yes or absent"; exit 1;; esac
+          if [ "$VERIFY_LIVE" = "yes" ]; then python -m lifeos.jira.writers verify --board "$VERIFY_BOARD" --issue "$VERIFY_ISSUE" --live; else python -m lifeos.jira.writers verify --board "$VERIFY_BOARD" --issue "$VERIFY_ISSUE"; fi
       - id: jroll
         continue-on-error: true
         name: Jira sprint rollover (dry run unless live; never before the sprint ends)
@@ -418,11 +445,11 @@ jobs:
           JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
         run: python -m lifeos.run jira-rollover $([ "$LIVE" = "true" ] && echo --live)
       - name: Jira warning (does not fail the run)
-        if: ${{ always() && (steps.jsnap.outcome == 'failure' || steps.jcard.outcome == 'failure' || steps.jrelease.outcome == 'failure' || steps.jstalled.outcome == 'failure' || steps.jfill.outcome == 'failure' || steps.jrollauto.outcome == 'failure' || steps.jreconcile.outcome == 'failure' || steps.jrollwatch.outcome == 'failure' || steps.jroll.outcome == 'failure' || steps.jprobe.outcome == 'failure') }}
+        if: ${{ always() && (steps.jsnap.outcome == 'failure' || steps.jcard.outcome == 'failure' || steps.jrelease.outcome == 'failure' || steps.jstalled.outcome == 'failure' || steps.jfill.outcome == 'failure' || steps.jrollauto.outcome == 'failure' || steps.jreconcile.outcome == 'failure' || steps.jrollwatch.outcome == 'failure' || steps.jroll.outcome == 'failure' || steps.jprobe.outcome == 'failure' || steps.jwcheck.outcome == 'failure' || steps.jwverify.outcome == 'failure') }}
         run: echo "::warning title=Jira::a Jira step failed; the Jobs pipeline is unaffected"
       # LIFE-793: the five V3 accountability stages now run in their own workflow (v3-pages.yml), not in this job.
       - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
-        if: ${{ always() && (steps.bws_jira.outcome == 'failure' || steps.settings.outcome == 'failure' || steps.jrollauto.outcome == 'failure' || steps.jreconcile.outcome == 'failure' || steps.jrollwatch.outcome == 'failure' || steps.jsnap.outcome == 'failure' || steps.jcard.outcome == 'failure' || steps.jrelease.outcome == 'failure' || steps.jstalled.outcome == 'failure' || steps.jfill.outcome == 'failure' || steps.jprobe.outcome == 'failure' || steps.jroll.outcome == 'failure') }}
+        if: ${{ always() && (steps.bws_jira.outcome == 'failure' || steps.settings.outcome == 'failure' || steps.jrollauto.outcome == 'failure' || steps.jreconcile.outcome == 'failure' || steps.jrollwatch.outcome == 'failure' || steps.jsnap.outcome == 'failure' || steps.jcard.outcome == 'failure' || steps.jrelease.outcome == 'failure' || steps.jstalled.outcome == 'failure' || steps.jfill.outcome == 'failure' || steps.jprobe.outcome == 'failure' || steps.jwcheck.outcome == 'failure' || steps.jwverify.outcome == 'failure' || steps.jroll.outcome == 'failure') }}
         run: echo "::error title=jira::a stage step failed in the jira job (see the step marked failed above)"; exit 1
 
 
