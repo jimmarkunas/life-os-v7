@@ -216,9 +216,10 @@ class SeededGrants(unittest.TestCase):
                          {(p, "buzz_publish", "buzz-publish", "buzz-scoped-member-key") for p in ("claude-chat", "claude-chat-bytalos", "chatgpt-chat", "chatgpt-chat-bytalos", "muse-chat", "duet-chat", "duet-chat-bytalos")}
                          | {(p, op, "synthetic-memory-test", "mcp-credential-" + p) for p in ("openclaw", "hermes-librarian") for op in ("memory_store", "memory_correct", "memory_revoke")}   # LIFE-868 (Jim, comment 13743): synthetic memory writes (kept for tests; no tool uses that purpose now)
                          | {(p, op, "personal-memory", "mcp-credential-" + p if p in MEMORY_CREDENTIALS else "honcho-memory-token") for p in MEMORY_CLIENTS for op in ("memory_store", "memory_correct", "memory_revoke")}   # LIFE-949 (Jim, Nov 23 and 24 2026): real non-sensitive Personal memory for every governed client
+                         | {("openclaw", "buzz_publish", "buzz-publish", "mcp-credential-openclaw")}   # LIFE-877 (Jim, comment 14311): OpenClaw's own pilot-only relay identity; its credential row alone besides muse may carry the write scope
                          | {(p, "send_to_jim", "agent-inbox", "notion-readonly-token") for p in ("mac-claude-code", "oracle-claude-code", "openclaw", "hermes-librarian", "claude-chat", "chatgpt-chat", "honcho-alerts", "muse-chat", "duet-chat")})   # LIFE-876 (Jim, comments 13748 and 13823): the Agent Inbox, Personal only
         self.assertEqual({g.tenant for g in writes if g.tool == "send_to_jim"}, {"personal"})
-        self.assertEqual(len(writes), 22 + 8 * 3)                                                                      # LIFE-949: three memory writes for each of eight clients
+        self.assertEqual(len(writes), 23 + 8 * 3)                                                                      # LIFE-949: three memory writes for each of eight clients
         self.assertEqual(sorted(c["principal"] for c in CATALOG["capabilities"] if c["tool"] == "send_to_jim"), sorted(["mac-claude-code", "oracle-claude-code", "openclaw", "hermes-librarian", "claude-chat", "chatgpt-chat", "honcho-alerts", "muse-chat", "duet-chat"]))   # a catalog row for exactly the six granted clients, none for the stdio Mac row or a Bytalos principal
 
     def test_the_shipped_seed_lets_no_one_call_send_to_jim(self):
@@ -287,8 +288,8 @@ class ProposedPublishGrants(unittest.TestCase):
         self.assertEqual(len(grants), 4)
         active = {g["id"] for g in DOC["grants"]}
         self.assertEqual(active & {g["id"] for g in grants}, {g["id"] for g in grants})
-        self.assertEqual([c for c in CATALOG["capabilities"] if c["tool"] == "buzz_publish" and c["principal"] not in ("muse-chat", "duet-chat", "duet-chat-bytalos")], rows)                    # Muse's own publish grant (LIFE-923, Jim's M3) is pinned by its own test
-        self.assertEqual([g for g in DOC["grants"] if g["tool"] == "buzz_publish" and g["principal"] not in ("muse-chat", "duet-chat", "duet-chat-bytalos")], grants)                                   # exactly these, no other publish grant
+        self.assertEqual([c for c in CATALOG["capabilities"] if c["tool"] == "buzz_publish" and c["principal"] not in ("muse-chat", "duet-chat", "duet-chat-bytalos", "openclaw")], rows)                    # Muse's own publish grant (LIFE-923, Jim's M3) is pinned by its own test
+        self.assertEqual([g for g in DOC["grants"] if g["tool"] == "buzz_publish" and g["principal"] not in ("muse-chat", "duet-chat", "duet-chat-bytalos", "openclaw")], grants)                                   # exactly these, no other publish grant
         self.assertEqual({(g["principal"], g["tenant"], g["tool"], tuple(g["actions"]), g["purpose"], g["expires"]) for g in grants},
                          {(p, t, "buzz_publish", ("write",), "buzz-publish", "2027-02-22") for p, t in (("claude-chat", "personal"), ("claude-chat-bytalos", "bytalos"), ("chatgpt-chat", "personal"), ("chatgpt-chat-bytalos", "bytalos"))})
         self.assertEqual({r["status"] for r in rows}, {"synthetic"})
