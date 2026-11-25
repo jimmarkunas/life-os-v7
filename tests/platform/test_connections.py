@@ -53,10 +53,10 @@ class Rows(unittest.TestCase):
 
 
 class Evidence(unittest.TestCase):
-    def runs(self, jobs_by_run):
+    def runs(self, jobs_by_run, titles=None):
         def api(path, token):
             if "/workflows/domains.yml/runs" in path:
-                return {"workflow_runs": [{"id": i, "conclusion": "success"} for i, _ in enumerate(jobs_by_run)]}
+                return {"workflow_runs": [{"id": i, "conclusion": "success", "display_title": titles[i] if titles else "domains (after tick)"} for i, _ in enumerate(jobs_by_run)]}
             return {"jobs": jobs_by_run[int(path.split("/runs/")[1].split("/")[0])]}
         return api
 
@@ -72,6 +72,12 @@ class Evidence(unittest.TestCase):
     def test_a_job_whose_newest_finished_run_failed_is_failing_even_if_an_older_one_passed(self):
         seen = c.evidence({"GITHUB_REPOSITORY": "o/r"}, self.runs([[self.job("outlook", "failure")], [self.job("outlook", "success", "2026-11-25T10:00:00Z")]]))
         self.assertEqual(seen["outlook"], {"last_ok": dt.datetime(2026, 11, 25, 10, 0, tzinfo=UTC), "failed": True})
+
+    def test_a_manual_run_that_failed_never_turns_a_connection_red(self):
+        """Nov 25 2026: an agent's manual domains run failed in its jira job; the System table showed JIRA DOWN although every tick passed."""
+        api = self.runs([[self.job("jira", "failure")], [self.job("jira", "success", "2026-11-25T10:00:00Z")]], titles=["domains (manual)", "domains (after tick)"])
+        self.assertEqual(c.evidence({"GITHUB_REPOSITORY": "o/r"}, api)["jira"], {"last_ok": dt.datetime(2026, 11, 25, 10, 0, tzinfo=UTC), "failed": False})
+        self.assertEqual(c.evidence({"GITHUB_REPOSITORY": "o/r"}, self.runs([[self.job("jira", "success")]], titles=["domains (manual)"])), {})
 
     def test_an_unreadable_history_is_empty_never_a_guess(self):
         def boom(path, token):
