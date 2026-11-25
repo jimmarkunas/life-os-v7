@@ -3,7 +3,6 @@ the date showing up"; the stamp in the heading, the same form as Calendar's; not
 output must match. A region added to the router without a rule here fails; a card whose heading lacks the stamp or the date fails; a stamp only in the body line fails; a card that builds a stamp
 without `lifeos.platform.ct_stamp` (the one formatter) fails. Names and times only."""
 import datetime as dt
-import json
 import pathlib
 import re
 import unittest
