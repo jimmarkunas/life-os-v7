@@ -718,7 +718,7 @@ DB = {"LIFEOS_ACQ_DB_NAME", "LIFEOS_ACQ_DB_PASSWORD", "LIFEOS_ACQ_DB_USER", "LIF
 SETTINGS_LOADER_ID = "bws_settings"
 SETTINGS_CONSUMER = "${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}"
 RUNTIME_CONFIG_LOADER_ID = "bws_runtime_config"          # LIFE-858: the compare-only read's own loader: the bootstrap ID (an address) and nothing else, continue-on-error, never exported job-wide
-RUNTIME_CONFIG_JOBS = {"agenda": {"agenda"}, "branches": {"report"}, "capacity-card": {"capacitycard"}, "diag": {"inbox_view_qa", "interview_ui", "sandbox"}, "domains": {"agenda", "amazon", "bills", "dcc", "followup", "hiring", "imessage", "interview", "jira", "mail", "megibow", "recruiters", "weekly_review"}, "hourly": {"finish", "interview", "jobright", "lensa", "linkedin"}, "network": {"network"}, "v3-pages": {"v3pages"}}     # the exact jobs that carry it: nothing else may
+RUNTIME_CONFIG_JOBS = {"agenda": {"agenda"}, "branches": {"report"}, "capacity-card": {"capacitycard"}, "diag": {"inbox_view_qa", "interview_ui", "sandbox"}, "domains": {"agenda", "amazon", "bills", "dcc", "fit_cloud_backlog", "followup", "hiring", "imessage", "interview", "jira", "mail", "megibow", "network_surface", "recruiters", "weekly_review"}, "hourly": {"finish", "interview", "jobright", "lensa", "linkedin"}, "network": {"network"}, "v3-pages": {"v3pages"}}     # the exact jobs that carry it: nothing else may
 RUNTIME_CONFIG_CONSUMER = "${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}"
 SETTINGS_JOBS = {            # the exact jobs that carry the settings loader: nothing else may
     "amazon": {"amazon"}, "bills": {"bills"}, "calendar": {"calendar"}, "granola": {"granola"}, "granola-auto": {"auto"}, "hermes-stage": {"hermes"}, "manual-job": {"manual"},
@@ -783,6 +783,10 @@ DOMAIN_SECRETS = {         # the only secrets each domain job may see; adding on
                     "NOTION_INTERVIEW_TOKEN", "NOTION_JIRA_TOKEN", "NOTION_JOB_LEDGER_DATA_SOURCE_ID", "V7_CLOSE_BASE_URL"},
     "amazon": {"V7_RUNTIME_CONFIG_SOURCE_ID", "AMAZON_CARD_BLOCK_ID", "BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET",
                "GMAIL_OAUTH_REFRESH_TOKEN", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "NOTION_AMAZON_DATA_SOURCE_ID", "NOTION_AMAZON_TOKEN", "NOTION_JIRA_TOKEN"},
+    "network_surface": DB | {"FIT_PROFILE_EXTRA_JSON", "FIT_PROFILE_JSON", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "JOBRIGHT_EMAIL", "JOBRIGHT_PASSWORD", "LIFEOS_ACQ_SSH_JUMP_HOST", "LIFEOS_ACQ_SSH_JUMP_KEY", "LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS",
+                        "NETWORK_SURFACE_SKIP", "NOTION_API_TOKEN", "OPEN_JOBS_CONTACT", "TINYFISH_API_KEY", "V7_CLOSE_BASE_URL"},   # LIFE-856: Step 7c moved here from hourly's finish job; the same names it had there
+    "fit_cloud_backlog": DB | {"CLOUD_BACKLOG", "FIT_PROFILE_EXTRA_JSON", "FIT_PROFILE_JSON", "IMESSAGE_ALERTS_HOST", "LIFEOS_ACQ_SSH_JUMP_HOST", "LIFEOS_ACQ_SSH_JUMP_KEY", "LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS", "NOTION_API_TOKEN", "PIPELINE",
+                               "V7_CLOUD_FIT_BACKLOG_BUDGET", "V7_CLOUD_FIT_BACKLOG_MAX", "V7_CLOUD_FIT_BACKLOG_PAGE", "V7_CLOUD_FIT_PARALLEL", "V7_CLOUD_FIT_PROFILE_REF"},   # LIFE-856: Step 6a2 (scheduled) moved here from hourly's finish job; the same names it had there
     "amazon_retention": DB | {"GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_AMAZON_DATA_SOURCE_ID", "NOTION_AMAZON_TOKEN"},   # LIFE-906: plus the store credentials the checkpoint reads and writes (the same names interview_mail loads, LIFE-894);   # LIFE-571: retention in its own job
 }
 for _job in SETTINGS_JOBS["domains"] - {"gate"}:      # LIFE-703: a job that reads the V7 settings page gets the Notion token from its settings loader and nothing else new
@@ -829,7 +833,7 @@ class DomainsWorkflowTests(unittest.TestCase):
     def test_only_five_steps_read_the_close_origin_from_its_own_secret(self):
         """D198 S3 / LIFE-78 / LIFE-20 / E05: the links exist only when the V7_CLOSE_BASE_URL secret is set; five steps pass it (Hiring Pipeline Close links, the job-page Outreach links, the Recruiter Outreach table's action links, the Interview writer's Mark Complete link, and hourly's network-surface step for the Mark as Sent link in a Network Leads block), from that secret, and nothing else names it."""
         seen = [(job, step.get("id")) for job, spec in self.doc["jobs"].items() for step in spec.get("steps", []) if "V7_CLOSE_BASE_URL" in str(step)]
-        self.assertEqual(sorted(seen), [("hiring", "hiring"), ("interview", "interview"), ("recruiters", "jpoutreach"), ("recruiters", "routreach")])      # LIFE-20: the Recruiter Outreach table's action links; E05: Mark Complete
+        self.assertEqual(sorted(seen), [("hiring", "hiring"), ("interview", "interview"), ("network_surface", "network_surface"), ("recruiters", "jpoutreach"), ("recruiters", "routreach")])      # LIFE-20: the Recruiter Outreach table's action links; E05: Mark Complete
         for job, ident in seen:
             step = next(s for s in self.doc["jobs"][job]["steps"] if s.get("id") == ident)
             self.assertEqual(step["env"]["V7_CLOSE_BASE_URL"], "")      # LIFE-699: declared empty; the V7 settings page fills it
@@ -838,8 +842,7 @@ class DomainsWorkflowTests(unittest.TestCase):
                 self.assertNotIn("V7_CLOSE_BASE_URL", path.read_text(), path.name)
         hourly = yaml.safe_load((pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows" / "hourly.yml").read_text())
         named = [(job, step.get("id")) for job, spec in hourly["jobs"].items() for step in spec.get("steps", []) if "V7_CLOSE_BASE_URL" in str(step)]
-        self.assertEqual(named, [("finish", "network_surface")])                                   # the Jobs pipeline's one reader: it never reaches the other finish steps
-        self.assertEqual(next(s for s in hourly["jobs"]["finish"]["steps"] if s.get("id") == "network_surface")["env"]["V7_CLOSE_BASE_URL"], "")      # LIFE-699: declared empty; the V7 settings page fills it, and still only this one step reads it
+        self.assertEqual(named, [])                                   # LIFE-856: the Jobs pipeline's one reader (Step 7c) moved to the domains network_surface job, so the hourly run holds none
         self.assertNotIn("V7_CLOSE_BASE_URL", str(hourly.get("env")))
 
     def test_the_calendar_mass_delete_brake_is_skipped_only_by_a_manual_input_and_that_run_touches_nothing_else(self):
@@ -1406,7 +1409,7 @@ class FinishFailuresAreSurfacedTests(unittest.TestCase):
                 self.assertIn(ident, [s.get("id") for s in self.steps])                # a stale entry fails here
 
     def test_the_network_surface_and_alerts_steps_are_lanes_and_still_do_not_stop_the_steps_after_them(self):
-        for ident in ("network_surface", "alerts"):
+        for ident in ("alerts",):                                                     # LIFE-856: network_surface is a domains job now (its own tests below)
             step = next(s for s in self.steps if s.get("id") == ident)
             self.assertTrue(step.get("continue-on-error"), ident)                      # every later stage still runs
             self.assertEqual(self.lane_result(ident), (1, f"failed={ident}"))          # the run ends red and names only the lane
