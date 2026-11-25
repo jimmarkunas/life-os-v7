@@ -44,10 +44,10 @@ class OracleCardError(Exception):
 _fail = OracleCardError
 
 
-def fetch(host, port=PORT):
+def fetch(host, port=PORT, request=b"oracle1\n"):
     data = b""
     with socket.create_connection((host, port), timeout=WAIT) as s:
-        s.sendall(b"oracle1\n")
+        s.sendall(request)
         while len(data) <= MAX_REPLY:
             chunk = s.recv(MAX_REPLY + 1 - len(data))
             if not chunk:
