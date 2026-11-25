@@ -40,11 +40,11 @@ def text(cell):
 
 class Bars(unittest.TestCase):
     def test_ten_blocks_filled_in_the_colour_and_the_rest_gray(self):
-        self.assertEqual(st.used_bar(23), [("██", "green"), ("░░░░░░░░", "gray")])
-        self.assertEqual(st.used_bar(66), [("███████", "green"), ("░░░", "gray")])
+        self.assertEqual(st.used_bar(23), [("██", "green"), ("████████", "gray")])
+        self.assertEqual(st.used_bar(66), [("███████", "green"), ("███", "gray")])
         self.assertEqual(st.used_bar(100), [("██████████", "red")])                    # a full bar has no gray part
-        self.assertEqual(st.used_bar(0), [("░░░░░░░░░░", "gray")])
-        self.assertEqual(st.used_bar(2), [("█", "green"), ("░░░░░░░░░", "gray")])        # a share above zero always shows one block
+        self.assertEqual(st.used_bar(0), [("██████████", "gray")])
+        self.assertEqual(st.used_bar(2), [("█", "green"), ("█████████", "gray")])        # a share above zero always shows one block
 
     def test_the_colour_turns_orange_at_70_and_red_at_90_percent_used(self):
         self.assertEqual([st.colour_used(p) for p in (0, 69.9, 70, 89.9, 90, 100)], ["green", "green", "orange", "orange", "red", "red"])
@@ -65,7 +65,7 @@ class Rows(unittest.TestCase):
     def test_a_healthy_page_reads_like_the_approved_wireframe(self):
         rows = {text(r[0]): r for r in build()[1:]}
         memory = rows["Oracle · Memory"]
-        self.assertEqual((memory[1], text(memory[2]), text(memory[4])), ([("██", "green"), ("░░░░░░░░", "gray")], "23%", "OK"))
+        self.assertEqual((memory[1], text(memory[2]), text(memory[4])), ([("██", "green"), ("████████", "gray")], "23%", "OK"))
         cores = rows["Oracle · Cores"]
         self.assertEqual((cores[1], text(cores[2]), cores[4]), ([("██████████", "orange")], "4 of 4 in use", [("OK", "green")]))      # no headroom stays orange, with an OK
         self.assertEqual(text(rows["Oracle · Cost"][2]), "$0.00 this month")
@@ -96,7 +96,7 @@ class Rows(unittest.TestCase):
         rows = {text(r[0]): r for r in build()[1:]}
         meter, fit = rows["Sign-in · Usage meter"], rows["Sign-in · Cloud Fit"]
         self.assertEqual((text(meter[2]), text(meter[3]), meter[4]), ("3 days left", "Sat Nov 28, 10:35 PM", [("OK", "green")]))
-        self.assertEqual((text(fit[2]), fit[1]), ("4 days left", [("██████", "green"), ("░░░░", "gray")]))
+        self.assertEqual((text(fit[2]), fit[1]), ("4 days left", [("██████", "green"), ("████", "gray")]))
         soon = limits(signins={"meter": {"state": "OK", "expires": "2026-11-26T20:00:00Z"}, "fit": {"state": "OK", "expires": "2026-11-27T20:00:00Z"}})
         rows = {text(r[0]): r for r in build(limits_=soon)[1:]}
         self.assertEqual((rows["Sign-in · Usage meter"][1][0][1], text(rows["Sign-in · Usage meter"][2])), ("red", "1 day left"))
@@ -109,7 +109,7 @@ class Rows(unittest.TestCase):
     def test_the_connections_row_counts_what_should_work_and_names_what_is_down(self):
         row = {text(r[0]): r for r in build()[1:]}["Connections"]
         self.assertEqual(text(row[2]), "11 of 12 connected · Concord not connected · 3 off by design")
-        self.assertEqual((row[1], row[4]), ([("█████████", "red"), ("░", "gray")], [("CONCORD DOWN", "red")]))                # a failing connection turns the bar red
+        self.assertEqual((row[1], row[4]), ([("█████████", "red"), ("█", "gray")], [("CONCORD DOWN", "red")]))                # a failing connection turns the bar red
         whole = {text(r[0]): r for r in build(conn={"total": 12, "connected": 12, "down": [], "off": 3, "stale_since": None})[1:]}["Connections"]
         self.assertEqual((whole[1], whole[4], text(whole[2])), ([("██████████", "green")], [("OK", "green")], "12 of 12 connected · 3 off by design"))
 
@@ -149,3 +149,16 @@ class Stale(unittest.TestCase):
     def test_the_stale_count_counts_rows_not_words(self):
         self.assertEqual(st.stale_count(build()), 0)
         self.assertEqual(st.stale_count(build(limits_=False, previous={}, stamp=None)), 6)
+
+
+class BarWidthTests(unittest.TestCase):
+    def test_every_bar_is_exactly_ten_full_block_cells_whatever_the_fill(self):
+        """Jim, Nov 25 2026: filled and empty cells are the same glyph, so bars of different fill render at the same length; empty cells are gray."""
+        for filled in range(0, 11):
+            for colour in ("green", "orange", "red"):
+                pieces = st.bar(filled, colour)
+                self.assertEqual("".join(text for text, _ in pieces), "\u2588" * 10)
+                self.assertEqual(sum(len(text) for text, c in pieces if c == "gray"), 10 - filled if colour != "gray" else 10)
+                self.assertEqual(sum(len(text) for text, c in pieces if c == colour), filled)
+        self.assertEqual(st.used_bar(0), [("\u2588" * 10, "gray")])
+        self.assertEqual("".join(t for t, _ in st.used_bar(66)), "\u2588" * 10)

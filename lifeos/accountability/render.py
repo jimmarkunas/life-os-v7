@@ -42,7 +42,7 @@ def bar(done, total):
     share = done / total if total else 0.0
     filled = min(BAR, int(share * BAR + 0.5))
     color = GREEN if share >= 0.7 else ORANGE if share >= 0.3 else RED
-    return ([("█" * filled, None, False, color)] if filled else []) + ([("░" * (BAR - filled), None, False, GRAY)] if filled < BAR else [])
+    return ([("█" * filled, None, False, color)] if filled else []) + ([("█" * (BAR - filled), None, False, GRAY)] if filled < BAR else [])
 
 
 def p(text, url=None, bold=False):

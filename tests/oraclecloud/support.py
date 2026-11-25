@@ -17,7 +17,7 @@ def cells(row):
     return [[seg(t, None if c == "bold" else c, c == "bold") for t, c in col] for col in row]
 
 
-def plain_row(label, usage="░░░░░░░░░░", reading="1%", resets="—", status="OK", color="green"):
+def plain_row(label, usage="██████████", reading="1%", resets="—", status="OK", color="green"):
     return [[(label, None)], [(usage, "gray")], [(reading, None)], [(resets, None)], [(status, color)]]
 
 
