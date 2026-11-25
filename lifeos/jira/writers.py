@@ -188,7 +188,36 @@ def contract_check(client, configured):
     names = set()
     attempt("fields", lambda: names.update(f.get("name") for f in client.field_list()) or {"Sprint", "Labels", "Linked Issues", "Due date"} <= names)
     held = {project: permissions(client, project) for project, _, _, readonly in configured if not readonly}
-    return {"ok": all(checks.values()) and bool(checks), "boards": len(configured), "checks": checks, "permissions": held}
+    listed = sprint_list_check(client, configured)
+    return {"ok": all(checks.values()) and bool(checks), "boards": len(configured), "checks": checks, "permissions": held,
+            "sprint_list": listed, "sprint_list_ok": bool(listed) and all(row["equal"] for row in listed)}       # LIFE-918: reported, never fatal (it does not change "ok")
+
+
+def sprint_list_check(client, configured):
+    """LIFE-918 (Jim, comment 14271): the Agile sprint issue list read returned 0 for a future sprint that held the test clone. Read-only cross-check, GET only: for each configured board, its active sprint and every future sprint,
+    the counts of the Agile list read with the rollover's own filter ("statusCategory != Done"), the list read with no filter, and the JQL search `sprint = <id>` with and without the same filter. -> [{"board", "sprint", "state",
+    "list_open", "list_all", "jql_open", "jql_all", "equal"}]; `equal` means each list count equals its JQL count. Counts only; a sprint whose read fails is listed with None counts and equal False, never an exception text."""
+    from .search import search
+    rows = []
+    for position, (_, board_id, _, _) in enumerate(configured, 1):
+        for state in ("active", "future"):
+            try:
+                sprints = client.sprints(board_id, state)
+            except Exception:                                               # noqa: BLE001 - a failed read is a failed row
+                rows.append({"board": position, "sprint": None, "state": state, "list_open": None, "list_all": None, "jql_open": None, "jql_all": None, "equal": False})
+                continue
+            for sprint in sprints:
+                row = {"board": position, "sprint": int(sprint["id"]), "state": state}
+                try:
+                    row["list_open"] = len(client.sprint_issues(row["sprint"], "statusCategory != Done", "summary"))
+                    row["list_all"] = len(client.sprint_issues(row["sprint"], "", "summary"))
+                    row["jql_open"] = len(search(client, f"sprint = {row['sprint']} AND statusCategory != Done", "summary"))
+                    row["jql_all"] = len(search(client, f"sprint = {row['sprint']}", "summary"))
+                    row["equal"] = row["list_open"] == row["jql_open"] and row["list_all"] == row["jql_all"]
+                except Exception:                                           # noqa: BLE001
+                    row.update({"list_open": None, "list_all": None, "jql_open": None, "jql_all": None, "equal": False})
+                rows.append(row)
+    return rows
 
 
 def _test_sprint_name(now):

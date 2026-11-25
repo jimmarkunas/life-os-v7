@@ -445,6 +445,61 @@ class Writers(unittest.TestCase):
         self.assertTrue(out["ok"])
         self.assertTrue(all(call[0] == "GET" for call in client.calls))
 
+    class ListClient:
+        """Sprint 11 (active) and 12 (future): the Agile list and the JQL search can be made to disagree."""
+
+        def __init__(self, listed, searched):
+            self.listed, self.searched, self.calls = listed, searched, []
+
+        def sprints(self, board_id, state):
+            self.calls.append(("GET", "sprints", state))
+            return {"active": [{"id": 11}], "future": [{"id": 12}]}[state]
+
+        def sprint_issues(self, sprint_id, jql, fields):
+            self.calls.append(("GET", "sprint_issues", sprint_id, jql))
+            return [{"key": f"JFM-{n}"} for n in range(self.listed[sprint_id] if not jql else self.listed[sprint_id] - 1)]
+
+        def get(self, path, params):
+            self.calls.append(("GET", path, params["jql"]))
+            sprint_id = int(params["jql"].split("sprint = ")[1].split()[0])
+            total = self.searched[sprint_id]
+            return {"issues": [{"key": f"JFM-{n}"} for n in range(total if "Done" not in params["jql"] else total - 1)], "isLast": True}
+
+    def test_the_sprint_list_cross_check_reports_equal_counts_and_reads_only(self):
+        client = self.ListClient({11: 4, 12: 2}, {11: 4, 12: 2})
+        rows = jw.sprint_list_check(client, self.BOARDS)
+        self.assertEqual([(r["sprint"], r["state"], r["list_open"], r["list_all"], r["jql_open"], r["jql_all"], r["equal"]) for r in rows],
+                         [(11, "active", 3, 4, 3, 4, True), (12, "future", 1, 2, 1, 2, True)])
+        self.assertTrue(all(call[0] == "GET" for call in client.calls))
+
+    def test_a_list_that_disagrees_with_the_search_is_reported_not_fatal(self):
+        client = self.ListClient({11: 4, 12: 0}, {11: 4, 12: 2})                  # the future sprint's list is empty, as in the Nov 25 live check
+        rows = jw.sprint_list_check(client, self.BOARDS)
+        self.assertEqual([r["equal"] for r in rows], [True, False])
+
+    def test_the_contract_check_carries_the_cross_check_without_changing_ok(self):
+        class Both(Writers.Client, Writers.ListClient):
+            def __init__(self):
+                Writers.Client.__init__(self)
+                self.listed, self.searched = {11: 4, 12: 0}, {11: 4, 12: 2}
+
+            def sprints(self, board_id, state):
+                return Writers.ListClient.sprints(self, board_id, state)
+
+            def sprint_issues(self, sprint_id, jql, fields):
+                return Writers.ListClient.sprint_issues(self, sprint_id, jql, fields)
+        out = jw.contract_check(Both(), self.BOARDS)
+        self.assertTrue(out["ok"])
+        self.assertFalse(out["sprint_list_ok"])
+        self.assertEqual(len(out["sprint_list"]), 2)
+
+    def test_a_failing_sprint_read_is_a_failed_row_never_an_exception(self):
+        class Broken(Writers.ListClient):
+            def sprint_issues(self, sprint_id, jql, fields):
+                raise JiraError("JIRA_HTTP_500")
+        rows = jw.sprint_list_check(Broken({11: 1, 12: 1}, {11: 1, 12: 1}), self.BOARDS)
+        self.assertEqual([(r["list_open"], r["equal"]) for r in rows], [(None, False), (None, False)])
+
     def test_a_dry_run_verification_writes_nothing(self):
         client = self.Client()
         out = jw.verify(client, self.BOARDS, "JFM", "JFM-1", False)
