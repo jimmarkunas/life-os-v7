@@ -1,3 +1,4 @@
+GTV_CARD_BLOCK_ID input Notion block id of the Global Talent Visa callout on the Daily Report page
 JIRA_BASE_URL input Jira setting (base url)
 JIRA_BOARDS input Jira setting (boards)
 JIRA_CARD_PROJECTS input Jira setting (card projects)

@@ -34,6 +34,27 @@
     "The Jira card configuration is missing.",
     "Set the variables."
   ],
+  "JIRA_CARD_GTV_NOT_OWNED": [
+    "jira",
+    "blocked",
+    false,
+    "The Global Talent Visa callout block is not the visa callout, so nothing is changed.",
+    "Check GTV_CARD_BLOCK_ID."
+  ],
+  "JIRA_CARD_GTV_NO_LINE": [
+    "jira",
+    "blocked",
+    false,
+    "The Global Talent Visa callout holds no single `GTV Action` line to fill, so nothing is written.",
+    "Put one `GTV Action` line in the callout."
+  ],
+  "JIRA_CARD_GTV_VERIFY_FAILED": [
+    "jira",
+    "degraded",
+    false,
+    "The Global Talent Visa line did not read back as written.",
+    "Retried next run."
+  ],
   "JIRA_CARD_NOT_OWNED": [
     "jira",
     "blocked",
