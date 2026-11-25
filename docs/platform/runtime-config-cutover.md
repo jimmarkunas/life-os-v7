@@ -79,18 +79,17 @@ Filled in on the PR: same-head CI run IDs, `tools/preflight.sh` result, and the 
 
 ## MEJ and JFM cutover rows and the permanent manual runs (LIFE-918)
 
-**Six rows, all off or empty until the LIFE-918 activation** (registered in `settings.MOVABLE`, owned by `lifeos/accountability/config.txt`, read through `lifeos/accountability/switches.py`, which fails closed: only the exact value `on` turns a switch on).
+**Five rows, all off until the LIFE-918 activation** (registered in `settings.MOVABLE`, owned by `lifeos/accountability/config.txt`, read through `lifeos/accountability/switches.py`, which fails closed: only the exact value `on` turns a switch on).
 
 | Row | Kind | Meaning | Default |
 | --- | --- | --- | --- |
 | `MEJ_SPRINT_AUTOMATION` | switch | JFM and MEJ sprint automation, on and off as one unit | off |
 | `V3_WEEK_VIEW` | switch | the new V3 weekly sprint view for both boards, as native blocks to the approved wireframe: a 2 x 2 grid of counter tiles, Task commitments with Sub-tasks under their parent, blocked and overdue sections, a Done toggle with `auto-closed` marks, and the next four short sprint names. Jim (JFM) is the left callout, Matt (MEJ) the right, as the V3 page already pairs them | off |
 | `V2_QUARTER_SHADOW` | switch | the v2 quarterly reader runs as a shadow beside the official legacy figures | off |
-| `V3_PREVIEW_BLOCK_ID` | address | the Notion block that holds the V3 preview figures | empty (no preview block) |
 | `V2_PROMOTION` | switch | the promotion kill switch: only `on` lets the first reconciliation run at or after Fri Jan 1 2027, 8:00 AM CT decide | off |
 | `V2_OFFICIAL` | switch | v2 quarterly figures are official; set only by the promotion run | off |
 
-**The v2 shadow and the preview block (LIFE-918 AC4/AC5).** With `V2_QUARTER_SHADOW` `on` AND `V3_PREVIEW_BLOCK_ID` naming a callout on the Jim & Matt V3 page (heading, one gray stamp paragraph, one body paragraph; any other shape is refused), the existing goals stage also writes that one callout, only on a live run: official legacy figures beside preview v2 figures per lane, v2 DEGRADED with its fixed code when the frozen membership is missing or ambiguous (the shipped manifest is empty), JFM shown as staying on legacy. It writes nowhere else, never fails the goals stage, and does nothing when either row is off. See the rendered text without any Notion or Jira call: `python -m lifeos.accountability.preview --synthetic`.
+**The v2 preview inside the Quarterly Goals & Review blocks (LIFE-918 AC4/AC5; Jim, comment 14216: no separate preview block, so there is no `V3_PREVIEW_BLOCK_ID` row; the blocks are found by the existing V3 block ID register rows `jim.goals` and `matt.goals`).** With `V2_QUARTER_SHADOW` `on`, the goals stage upgrades each person's own table in place to Lane, Progress (ten blocks: green at 70% or more, orange 30% to 69%, red under 30%), Done / all, New count (preview) and Status. The legacy figures stay official. JFM shows a dash and a green OK. Matt shows the v2 count per lane when an approved frozen quarter list exists; otherwise a dash and a red `NEEDS Q1 MEMBER LIST` (not approved) or `DATA MISSING` (the list and Jira disagree). Notion cannot widen a table, so the first live run creates the new table under the stamp, removes the old one and reads the rows back; the title, lanes and their Epic links, the Last refreshed line, the open-tasks note and the Quarterly Reviews toggle are kept. A v2 problem never fails the stage. Off, the two-column table is untouched. See it without Notion or Jira: `python -m lifeos.accountability.preview --synthetic`.
 
 Rollback: restore the before rows (all off), or revert the PR that reads them. These rows add no scheduler, credential or store, and the existing explicit-argument gates (`mej_metric_version`, `mej_task_focus`, `mej_selective`) are unchanged by this PR.
 
