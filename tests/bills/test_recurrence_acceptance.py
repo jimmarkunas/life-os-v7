@@ -15,8 +15,8 @@ def paid_page(*, page_id, cycle, next_due="2026-10-10"):
             "Name": {"type": "title", "title": [{"plain_text": "Synthetic recurrence fixture"}]},
             "Status": {"type": "select", "select": {"name": "Active"}},
             "Cycle": {"type": "select", "select": {"name": cycle}},
-            "Paid": {"type": "checkbox", "checkbox": True},
-            "Pay": {"type": "select", "select": None},
+            "Paid": {"type": "checkbox", "checkbox": False},
+            "Pay": {"type": "select", "select": {"name": "Paid"}},
             "Due Date": {"type": "date", "date": {"start": "2026-10-01"}},
             "Next Due": {"type": "formula", "formula": {"type": "date", "date": {"start": next_due}}},
             "Last Paid": {"type": "date", "date": None},
@@ -50,8 +50,8 @@ class RecurrenceAcceptanceTests(unittest.TestCase):
                 self.assertEqual(props["Due Date"]["date"]["start"], "2026-10-10")
                 self.assertEqual(props["Last Paid"]["date"]["start"], "2026-10-03")
                 self.assertEqual(props["Next Due"]["formula"]["date"]["start"], expected_next_due)
-                self.assertFalse(props["Paid"]["checkbox"])
-                self.assertEqual(client.writes, [("Last Paid", "Due Date"), ("Pay", "Paid")])
+                self.assertEqual(props["Pay"]["select"]["name"], "Unpaid")
+                self.assertEqual(client.writes, [("Last Paid", "Due Date"), ("Pay",)])
 
 
 if __name__ == "__main__":
