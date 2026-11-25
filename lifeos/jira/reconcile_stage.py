@@ -1,12 +1,10 @@
-"""LIFE-918 wiring: the `jira-reconcile-daily` stage of the hourly tick (the existing Jira job; no new scheduler). OFF unless the MEJ_SPRINT_AUTOMATION row is "on": then `{"enabled": 0}` and nothing is read or written.
+"""LIFE-918: the `jira-reconcile-daily` stage of the hourly tick, off unless MEJ_SPRINT_AUTOMATION is on; JFM and MEJ as one unit.
 
-On: once per Chicago date at or after 8:00 AM CT (DST-aware, lifeos.jira.reconcile.due), JFM and MEJ as one unit: the sprint inventory with short names, the recurring-series clones and the week's closure counts.
-Dry run (every run without V7_LIVE) reads and plans only. A live run writes only through lifeos.jira.writers.live_writers, i.e. only when JIRA_WRITERS_VERIFIED is "yes"; otherwise it fails closed with
-JIRA_RECONCILE_WRITER_UNVERIFIED. State is the existing private table v7_jira_rollover (its own row `reconcile`: the last reconciled date; alert rows `rc…` keyed by the failure code, one push per code per Chicago day).
-The Daily Report line is one counts-only summary row saved next to the Jira snapshots (key `_recon`) for the card to read; the card never calls Jira. An alert is the existing phone push (alerts.push, INFO, deduped);
-the Agent Inbox needs the inbox Notion token, which this job deliberately does not hold (tests/jira/test_jira.py keeps NOTION_API_TOKEN out of the Jira job).
-After a successful run the optional `after` hook runs; lifeos.run passes lifeos.accountability.promotion_call.promotion (kill switch V2_PROMOTION, the Fri Jan 1 2027 8:00 AM CT boundary, on a pass the one LIFE-976 setter, once).
-Output: counts and fixed codes only."""
+On: once per Chicago date at or after 8:00 AM CT, the sprint inventory, recurring clones and closure counts; a dry run reads only. A live run writes only through lifeos.jira.writers (JIRA_WRITERS_VERIFIED yes).
+State is one private row of v7_jira_rollover, alerts are one phone push per code per day, the Daily Report line is one summary row; `after` is the promotion hook. Counts and fixed codes only."""
+# The Agent Inbox needs the inbox Notion token, which the Jira job deliberately does not hold (tests/jira/test_jira.py keeps NOTION_API_TOKEN out of it), so an alert is the existing phone push (INFO, deduped).
+# The Daily Report summary row is saved beside the Jira snapshots under key `_recon`; the card reads it and never calls Jira. Alert rows `rc...` are keyed by a hash of the failure code.
+
 import hashlib
 import os
 import time
