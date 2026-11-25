@@ -1,18 +1,4 @@
 {
-  "JM_DASH_JIRA_BAD_PAGE": [
-    "jira",
-    "retry",
-    true,
-    "Jira's search answered in an unexpected shape.",
-    "None; retried next run."
-  ],
-  "JM_DASH_JIRA_TOO_MANY_PAGES": [
-    "jira",
-    "terminal",
-    false,
-    "A Jira search (the Hermes request stage) matched more issues than one run reads.",
-    "Narrow the search."
-  ],
   "JIRA_ACTIVE_AMBIGUOUS": [
     "jira",
     "blocked",
@@ -125,26 +111,68 @@
     "The parent, Component or Fix Version fill could not write any ticket it found (a Jira write failed).",
     "None; retried next hour."
   ],
-  "JIRA_PARENT_REQUIRED": [
-    "jira",
-    "blocked",
-    false,
-    "A new LIFE ticket was created without a parent epic.",
-    "Name the parent epic and create it again."
-  ],
-  "JIRA_PARENT_NOT_AN_EPIC": [
-    "jira",
-    "blocked",
-    false,
-    "The named parent of a new LIFE ticket is not an epic.",
-    "Name an epic as the parent and create it again."
-  ],
   "JIRA_FINAL_VERIFY_FAILED": [
     "jira",
     "degraded",
     false,
     "The rollover's final check did not match.",
     "Retried next run."
+  ],
+  "JIRA_MEJ_BACKLOG_FAILED": [
+    "jira",
+    "blocked",
+    false,
+    "The Jira backlog placement or its read-back failed (permission, rate limit, timeout or an unreadable reply); the sprint was not closed.",
+    "None until the backlog contract is verified (LIFE-918); nothing was changed beyond the verified carry."
+  ],
+  "JIRA_MEJ_BACKLOG_PARTIAL": [
+    "jira",
+    "retry",
+    false,
+    "Not every excluded MEJ issue was found in the backlog after the move; the sprint was not closed.",
+    "One bounded re-plan, then it stops; inspect the sprint before the next run."
+  ],
+  "JIRA_MEJ_BACKLOG_UNVERIFIED": [
+    "jira",
+    "blocked",
+    false,
+    "Unapproved unfinished MEJ work lacks a verified backlog destination before sprint close.",
+    "Verify the Jira Agile backlog REST operation and readback, then explicitly replan without blanket carry."
+  ],
+  "JIRA_MEJ_DESTINATION_MISMATCH": [
+    "jira",
+    "blocked",
+    false,
+    "A carried issue and a backlogged issue ended up in the wrong destination (a child apart from its parent).",
+    "Do not close; inspect the source sprint, the target sprint and the backlog."
+  ],
+  "JIRA_MEJ_FINITE_NOT_CARRY": [
+    "jira",
+    "blocked",
+    false,
+    "A finite weekly occurrence is selected for automatic sprint carry.",
+    "Remove this occurrence from the approved next-sprint roster; preserve its truthful status."
+  ],
+  "JIRA_MEJ_INVENTORY_INVALID": [
+    "jira",
+    "blocked",
+    false,
+    "The unfinished sprint inventory is incomplete, ambiguous or lacks required issue type.",
+    "Refresh Jira source inventory; no sprint was closed."
+  ],
+  "JIRA_MEJ_ROSTER_INVALID": [
+    "jira",
+    "blocked",
+    false,
+    "The MEJ carry roster does not exactly identify approved standard deliverables in the unfinished source sprint.",
+    "Obtain Matt's exact written roster and compare the frozen sprint inventory."
+  ],
+  "JIRA_MEJ_SPRINT_STALE": [
+    "jira",
+    "blocked",
+    false,
+    "The source sprint read is stale (already closed) or an issue reads as belonging to another sprint.",
+    "Refresh the Jira sprint inventory; no sprint was closed."
   ],
   "JIRA_NOT_MONDAY": [
     "jira",
@@ -166,6 +194,76 @@
     false,
     "There is no sprint to roll over.",
     "None."
+  ],
+  "JIRA_PARENT_NOT_AN_EPIC": [
+    "jira",
+    "blocked",
+    false,
+    "The named parent of a new LIFE ticket is not an epic.",
+    "Name an epic as the parent and create it again."
+  ],
+  "JIRA_PARENT_REQUIRED": [
+    "jira",
+    "blocked",
+    false,
+    "A new LIFE ticket was created without a parent epic.",
+    "Name the parent epic and create it again."
+  ],
+  "JIRA_RECONCILE_CLOCK_INVALID": [
+    "jira",
+    "bug",
+    false,
+    "The reconciliation clock carried no time zone.",
+    "Check the run."
+  ],
+  "JIRA_RECONCILE_DUPLICATE_OCCURRENCE": [
+    "jira",
+    "blocked",
+    false,
+    "A recurring series has more than one occurrence in the next week's sprint; nothing is created or changed for it.",
+    "Remove the extra occurrence."
+  ],
+  "JIRA_RECONCILE_FAILED": [
+    "jira",
+    "retry",
+    true,
+    "The daily sprint reconciliation failed on one or more boards; the board position and codes follow.",
+    "Open the jira job's reconcile step."
+  ],
+  "JIRA_RECONCILE_IDENTITY_AMBIGUOUS": [
+    "jira",
+    "blocked",
+    false,
+    "A recurring series has two origins or a loop in its clone links, so it is not synchronized.",
+    "Fix the clone links."
+  ],
+  "JIRA_RECONCILE_SPRINT_CONFLICT": [
+    "jira",
+    "blocked",
+    false,
+    "A sprint is not one Monday-to-Sunday week, two sprints share a week, or a future sprint is off the weekly grid, so the board's sprints are left unchanged.",
+    "Fix or close the odd sprint."
+  ],
+  "JIRA_RECONCILE_VERIFY_FAILED": [
+    "jira",
+    "retry",
+    true,
+    "After the sprint inventory writes, a re-read still showed work to do.",
+    "None; the next run plans from actual state."
+  ],
+  "JIRA_RECONCILE_WRITER_UNVERIFIED": [
+    "jira",
+    "blocked",
+    false,
+    "A live daily reconciliation has no verified Jira writer or checkpoint, so it refuses to run.",
+    "None until LIFE-918 verifies the tenant writes."
+  ],
+  "JIRA_RELEASE_FAILED": [
+    "jira",
+    "retry",
+    false,
+    "The auto-release rule could not move any ticket it found ready (a Jira write failed).",
+    "None; retried next hour."
   ],
   "JIRA_START_VERIFY_FAILED": [
     "jira",
@@ -202,67 +300,18 @@
     "The sprint dates do not define a Monday-Sunday 7- or 14-day window.",
     "Correct the sprint dates in Jira."
   ],
-  "JIRA_RELEASE_FAILED": [
+  "JM_DASH_JIRA_BAD_PAGE": [
     "jira",
     "retry",
-    false,
-    "The auto-release rule could not move any ticket it found ready (a Jira write failed).",
-    "None; retried next hour."
+    true,
+    "Jira's search answered in an unexpected shape.",
+    "None; retried next run."
   ],
-  "JIRA_MEJ_ROSTER_INVALID": [
+  "JM_DASH_JIRA_TOO_MANY_PAGES": [
     "jira",
-    "blocked",
+    "terminal",
     false,
-    "The MEJ carry roster does not exactly identify approved standard deliverables in the unfinished source sprint.",
-    "Obtain Matt's exact written roster and compare the frozen sprint inventory."
-  ],
-  "JIRA_MEJ_INVENTORY_INVALID": [
-    "jira",
-    "blocked",
-    false,
-    "The unfinished sprint inventory is incomplete, ambiguous or lacks required issue type.",
-    "Refresh Jira source inventory; no sprint was closed."
-  ],
-  "JIRA_MEJ_FINITE_NOT_CARRY": [
-    "jira",
-    "blocked",
-    false,
-    "A finite weekly occurrence is selected for automatic sprint carry.",
-    "Remove this occurrence from the approved next-sprint roster; preserve its truthful status."
-  ],
-  "JIRA_MEJ_BACKLOG_UNVERIFIED": [
-    "jira",
-    "blocked",
-    false,
-    "Unapproved unfinished MEJ work lacks a verified backlog destination before sprint close.",
-    "Verify the Jira Agile backlog REST operation and readback, then explicitly replan without blanket carry."
-  ],
-  "JIRA_MEJ_BACKLOG_FAILED": [
-      "jira",
-      "blocked",
-      false,
-      "The Jira backlog placement or its read-back failed (permission, rate limit, timeout or an unreadable reply); the sprint was not closed.",
-      "None until the backlog contract is verified (LIFE-918); nothing was changed beyond the verified carry."
-  ],
-  "JIRA_MEJ_BACKLOG_PARTIAL": [
-      "jira",
-      "retry",
-      false,
-      "Not every excluded MEJ issue was found in the backlog after the move; the sprint was not closed.",
-      "One bounded re-plan, then it stops; inspect the sprint before the next run."
-  ],
-  "JIRA_MEJ_DESTINATION_MISMATCH": [
-      "jira",
-      "blocked",
-      false,
-      "A carried issue and a backlogged issue ended up in the wrong destination (a child apart from its parent).",
-      "Do not close; inspect the source sprint, the target sprint and the backlog."
-  ],
-  "JIRA_MEJ_SPRINT_STALE": [
-      "jira",
-      "blocked",
-      false,
-      "The source sprint read is stale (already closed) or an issue reads as belonging to another sprint.",
-      "Refresh the Jira sprint inventory; no sprint was closed."
+    "A Jira search (the Hermes request stage) matched more issues than one run reads.",
+    "Narrow the search."
   ]
 }
