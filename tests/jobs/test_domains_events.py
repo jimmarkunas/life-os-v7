@@ -125,7 +125,7 @@ class DomainsEventTable(unittest.TestCase):
 
     def test_a_clean_tick_runs_the_chain_a_failure_adds_the_report_and_a_cancelled_or_manual_run_runs_nothing(self):
         current = table()
-        chain = {"jira", "followup", "agenda", "bills", "amazon", "amazon_retention", "mail", "hiring", "dcc", "weekly_review", "megibow", "recruiters", "hiring_outcomes", "interview", "outlook", "granola"}      # LIFE-894: the early mail read (interview_mail) is in the early run only, so it is not part of this chain
+        chain = {"jira", "followup", "agenda", "bills", "amazon", "amazon_retention", "mail", "hiring", "dcc", "weekly_review", "megibow", "recruiters", "hiring_outcomes", "interview", "outlook", "granola", "network_surface", "fit_cloud_backlog"}      # LIFE-894: the early mail read (interview_mail); LIFE-856: Network Leads and the Cloud Fit backlog moved here from hourly is in the early run only, so it is not part of this chain
         self.assertEqual(chain, set(domain_jobs(current["after hourly: tick, success"])))
         self.assertEqual(set(domain_jobs(current["after hourly: tick, success, jira fails"])), chain | {"report"})        # the report job exists to name a failed job
         for label in ("after hourly: tick, cancelled", "after hourly: manual, success", "after hourly: quick, success", "dispatch: no input"):
@@ -137,7 +137,7 @@ class DomainsEventTable(unittest.TestCase):
         doc = load()
         events_ = events(doc)
         chain = set(domain_jobs(runs(doc, events_["after hourly: tick, success"])))
-        late = {"megibow", "interview", "granola"}
+        late = {"megibow", "interview", "granola", "network_surface", "fit_cloud_backlog"}
         early = set(domain_jobs(runs(doc, events_["early run: phase=tick"])))
         after = set(domain_jobs(runs(doc, events_["after hourly: tick, success, early run true"])))
         self.assertEqual(late, after)
@@ -147,7 +147,7 @@ class DomainsEventTable(unittest.TestCase):
         self.assertEqual(early | after, chain | early_only)                                         # none is skipped
         self.assertEqual(set(domain_jobs(runs(doc, events_["after hourly: tick, success, early run unknown"]))), late)
         self.assertEqual(domain_jobs(runs(doc, events_["after hourly: tick, cancelled, early run true"])), [])   # a cancelled tick still runs nothing after it
-        self.assertEqual(domain_jobs(runs(doc, events_["dispatch: all=True"])), sorted(chain))      # `all` runs every job once
+        self.assertEqual(domain_jobs(runs(doc, events_["dispatch: all=True"])), sorted(chain - {"network_surface", "fit_cloud_backlog"}))      # `all` runs every job once, except the two that only follow a real tick (LIFE-856)
         for broken in ("jira", "recruiters"):
             self.assertIn("report", runs(doc, events_[f"early run: phase=tick, {broken} fails"]))   # the early run pushes its own failures
 

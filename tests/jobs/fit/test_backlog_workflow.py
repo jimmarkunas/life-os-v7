@@ -225,15 +225,18 @@ class ScheduledBatch(unittest.TestCase):
         ctx = context(self.doc, event, variables, **given)
         return {k: evaluate(v, ctx) for k, v in self.step["env"].items() if k.startswith(("CLOUD_BACKLOG", "V7_CLOUD_FIT_BACKLOG"))}
 
-    def test_a_tick_with_the_variable_runs_the_batch_after_the_tick_with_its_own_ceiling_budget_and_no_page(self):
+    def test_a_tick_with_the_variable_no_longer_runs_the_batch_in_the_hourly_run_it_runs_in_the_after_tick_domains_run(self):
+        """LIFE-856 change 4 (Jim, Nov 25 2026, 4:36 PM CT): the scheduled batch moved out of hourly.yml's finish job into domains.yml's fit_cloud_backlog job, so the hourly run no longer waits for it."""
         on = {"V7_CLOUD_FIT_SCHEDULED": "20", "V7_CLOUD_FIT_BACKLOG_PAGE": "0" * 32, "V7_CLOUD_FIT_BACKLOG_MAX": "1"}
         for event, given in (("schedule", {}), ("workflow_dispatch", {"tick": True, "live": True})):
             names = self.names(plan(self.doc, event, on, **given))
-            self.assertIn("fit_cloud_backlog", names, event)
-            self.assertLess(names.index("tick"), names.index("fit_cloud_backlog"), event)                 # after the tick: this hour's new jobs are candidates
-            self.assertTrue(any("join the tailnet" in str(n) for n in names), event)                     # the only route to Oracle
-            self.assertEqual(self.env(event, on, **given), {"CLOUD_BACKLOG": "20", "V7_CLOUD_FIT_BACKLOG_MAX": "20", "V7_CLOUD_FIT_BACKLOG_BUDGET": "",
-                                                            "V7_CLOUD_FIT_BACKLOG_PAGE": ""}, event)      # a leftover pilot page never narrows a tick; the budget is sized when it runs
+            self.assertIn("tick", names, event)
+            self.assertNotIn("fit_cloud_backlog", names, event)
+            self.assertTrue(any("join the tailnet" in str(n) for n in names), event)                     # the tick's own cloud fit canary still needs the route to Oracle
+        domains = yaml.safe_load((WORKFLOW.parent / "domains.yml").read_text())["jobs"]["fit_cloud_backlog"]
+        step = next(s for s in domains["steps"] if s.get("id") == "fit_cloud_backlog")
+        self.assertEqual({k: v for k, v in step["env"].items() if k.startswith(("CLOUD_BACKLOG", "V7_CLOUD_FIT_BACKLOG"))},
+                         {"CLOUD_BACKLOG": "${{ env.V7_CLOUD_FIT_SCHEDULED }}", "V7_CLOUD_FIT_BACKLOG_MAX": "${{ env.V7_CLOUD_FIT_SCHEDULED || '0' }}", "V7_CLOUD_FIT_BACKLOG_BUDGET": "", "V7_CLOUD_FIT_BACKLOG_PAGE": ""})   # the scheduled count is its own ceiling; a leftover pilot page never narrows a tick
 
     def test_without_the_variable_a_tick_is_unchanged(self):
         for variables in ({}, {"V7_CLOUD_FIT_SCHEDULED": "0"}, {"V7_CLOUD_FIT_SCHEDULED": ""}):
@@ -264,8 +267,8 @@ class TheHourIsFilled(unittest.TestCase):
         import subprocess
         import tempfile
         import yaml
-        doc = yaml.safe_load(open(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".github", "workflows", "hourly.yml")))
-        script = next(s["run"] for s in doc["jobs"]["finish"]["steps"] if s.get("id") == "fit_cloud_backlog")
+        doc = yaml.safe_load(open(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".github", "workflows", "domains.yml")))      # LIFE-856: the scheduled batch runs in the after-tick domains run now
+        script = next(s["run"] for s in doc["jobs"]["fit_cloud_backlog"]["steps"] if s.get("id") == "fit_cloud_backlog")
         now = 1792500000 - (1792500000 % 3600) + minute * 60 + second
         with tempfile.TemporaryDirectory() as d:
             for name, body in (("date", f'case "$1" in +%s) echo {now};; +%M) printf %02d {minute};; +%S) printf %02d {second};; esac'),

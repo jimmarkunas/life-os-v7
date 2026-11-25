@@ -15,7 +15,7 @@
       early: ${{ inputs.all || inputs.phase == 'tick' || (github.event_name == 'workflow_run' && steps.cover.outputs.early_covered == 'false') }}      # LIFE-775: the jobs that read nothing the tick writes: the early run, `all`, or the after-tick run when it found no early run
       late: ${{ inputs.all || github.event_name == 'workflow_run' }}      # LIFE-775: megibow, interview, granola: the after-tick run, or `all`
       all: ${{ inputs.all }}
-      pipeline: ${{ github.event_name == 'workflow_run' && steps.ran.outputs.ran != 'false' }}      # LIFE-856: the tick's hourly `finish` job ran (unreadable counts as ran); Network Leads and the Cloud Fit backlog moved here from it
+      pipeline: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && steps.ran.outputs.ran != 'false' }}      # LIFE-856: the tick's hourly `finish` job ran (unreadable counts as ran); Network Leads and the Cloud Fit backlog moved here from it
       due_jira: ${{ steps.due.outputs.due_jira }}
       due_followup: ${{ steps.due.outputs.due_followup }}
       due_outlook: ${{ steps.due.outputs.due_outlook }}
