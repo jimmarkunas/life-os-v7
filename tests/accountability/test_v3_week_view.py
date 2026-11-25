@@ -114,8 +114,10 @@ class WeekView(unittest.TestCase):
         for project in ("JFM", "MEJ"):
             for needle in ("sprint in openSprints()", "sprint not in openSprints()", "statusCategory = Done"):
                 class Failing(Board):
+                    fail_on = needle
+
                     def get(self, path, params):
-                        if needle in params["jql"]:
+                        if self.fail_on in params["jql"]:
                             self.queries.append(params["jql"])
                             raise JiraError("ACCOUNTABILITY_JIRA_HTTP_400")
                         return super().get(path, params)
@@ -171,10 +173,11 @@ class OffByDefault(unittest.TestCase):
             for kwargs in ({}, {"v3_week_view": False}):
                 class Main:
                     queries = []
+                    rows = [issue(f"{project}-1")]
 
                     def get(self, path, params):
                         Main.queries.append(params["jql"])
-                        return {"issues": [] if "statusCategory = Done" in params["jql"] else [issue(f"{project}-1")], "isLast": True}
+                        return {"issues": [] if "statusCategory = Done" in params["jql"] else self.rows, "isLast": True}
                 Main.queries = []
                 got = read.week(Main(), project, TODAY, **kwargs)
                 self.assertEqual(Main.queries, [q.format(p=project) for q in MAIN_WEEK_QUERIES])
