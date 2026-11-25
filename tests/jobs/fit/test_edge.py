@@ -315,7 +315,7 @@ class Dormant(unittest.TestCase):
         importers = [str(p.relative_to(self.ROOT)) for p in (self.ROOT / "lifeos").rglob("*.py") if p.name != "edge.py" and ("fit.edge" in p.read_text() or "fit import edge" in p.read_text())]
         self.assertEqual(sorted(importers), ["lifeos/jobs/fit/backlog.py", "lifeos/jobs/fit/cloud.py", "lifeos/run.py", "lifeos/sources/cards/oracle_card.py"])   # the stage table, the Oracle Cloud card (Oct 24: its Codex lines are the AI Capacity `limits` reading; read-only, no model run), the D214 shadow (off unless V7_CLOUD_FIT is set), and the D228 card and the backlog batch's count report (only the no-model limits request)
         workflows = [p.name for p in (self.ROOT / ".github/workflows").glob("*.y*ml") if "V7_CLOUD_FIT" in p.read_text()]
-        self.assertEqual(workflows, ["hourly.yml"])                                                        # D214: only the tick reads the switch, from the repository variable
+        self.assertEqual(sorted(workflows), ["domains.yml", "hourly.yml"])                                       # D214: only the tick and its after-tick run (LIFE-856: the scheduled batch moved there) read the switch
         hourly = (self.ROOT / ".github/workflows/hourly.yml").read_text()
         self.assertEqual(re.findall(r"V7_CLOUD_FIT: (\S.*?\}\})", hourly), ["${{ env.V7_CLOUD_FIT || 'off' }}"])     # off unless Jim sets the variable (G6); never a dispatch input or a literal
         self.assertEqual(len(re.findall(r"vars\.V7_CLOUD_FIT == '(shadow|canary)'", hourly)), 0)         # LIFE-85: the tailnet join no longer depends on the Cloud Fit mode (the store fallback needs it every run);

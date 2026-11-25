@@ -459,13 +459,16 @@ class Contract(unittest.TestCase):
             text = (self.ROOT / name).read_text()
             for banned in ("TinyFish", "tinyfish", "sendMail", "/send", "move(", "hiring_pipeline.read", "Hiring Pipeline page"):
                 self.assertNotIn(banned, text, name)
-        text = (self.ROOT / ".github/workflows/hourly.yml").read_text()
+        hourly = (self.ROOT / ".github/workflows/hourly.yml").read_text()
+        self.assertNotIn("id: network_surface", hourly)                                                      # LIFE-856: Step 7c moved to the after-tick domains run; the hourly run no longer waits for it
+        self.assertNotIn("network_surface=${{ steps.network_surface.outcome }}", hourly)
+        text = (self.ROOT / ".github/workflows/domains.yml").read_text()
         step = text[text.index("id: network_surface"):]
-        step = step[:step.index("      - id: review")]
-        self.assertIn("continue-on-error: true", step)                                                       # a Network failure never stops the stages after it ...
+        step = step[:step.index("      - name: A failed stage step makes this job red")]
+        self.assertIn("continue-on-error: true", step)                                                       # a Network failure never stops the other steps of its job ...
         self.assertIn("--limit 82", step)                                                                    # ... the bound that makes the 20-hour worst case true ...
         self.assertIn("::warning title=Network surface::", step)                                             # ... it is always explicit warning evidence ...
-        self.assertIn("network_surface=${{ steps.network_surface.outcome }}", text[text.index("Lane failures fail the run"):])   # ... and (LIFE-653) its own lane: the run ends red and the report job pushes once
+        self.assertIn("::error title=network_surface::", text)                                               # ... and (LIFE-649) its job ends red, so the domains report job pushes once
 
     def test_the_importer_does_not_create_the_surface_tables(self):
         conn = MySQLite()
