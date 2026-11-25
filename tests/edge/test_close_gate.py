@@ -240,7 +240,7 @@ class RealClientGet(unittest.TestCase):
             return 200, "text/html", b"ok", ()
 
         self.assertEqual(self.run_get(screen), 200)
-        self.assertEqual(seen, {"config": {"ledger": self.LEDGER, "pipeline": self.PIPELINE}, "token": False, "source": self.LEDGER})
+        self.assertEqual(seen, {"config": {"ledger": self.LEDGER, "pipeline": self.PIPELINE, "hiring_table": None, "close_base": None}, "token": False, "source": self.LEDGER})
         self.assertEqual([(m, p) for m, p, _ in self.sent], [("GET", "/pages/" + "3" * 32), ("POST", f"/data_sources/{self.LEDGER}/query")])
         self.assertTrue(all(a == "Bearer synthetic-notion" for _, _, a in self.sent))      # the scoped token is used by the client, never handed to GET code
 

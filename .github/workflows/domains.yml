@@ -1561,7 +1561,6 @@ jobs:
           oauth-secret: ${{ steps.bws_recruiters.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
       - id: bws_runtime_config
-        if: ${{ inputs.refresh != 'recruiters' }}
         continue-on-error: true
         name: Runtime Configuration source ID from Bitwarden for the compare-only read (LIFE-858; read only, an address not a secret; if it fails the step runs exactly as before)
         uses: ./.github/actions/bws-load

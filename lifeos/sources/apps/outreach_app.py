@@ -4,6 +4,8 @@ Same Edge gate and signed-form pattern as close_app. Only the confirm POST write
 The people offered are the job page's own Network Leads (lifeos.network.surface, read only, dismissed leads left out), signed into the form with the job so a tampered name is refused; "Other" takes a typed name. The employer is optional: typed, or the current employer the chosen lead's own line states ("Listed at ..."); it is
 shown on Review, signed with the person and stored as the row's Recruiter Company. Nothing is guessed.
 Outputs: fixed codes only. Pointer: D221, LIFE-21, LIFE-47."""
+import contextlib
+import io
 from html import escape as e
 
 from lifeos.hiring import close_screen as S, decision as D
@@ -305,13 +307,116 @@ def _close_review(r, fields, status):
 _close_stop = stopper("A close counts only after the canonical record is read back.", CLOSE_PATH, "Close recruiter record")
 
 
+DO_STATUS = {"done": "Completed", "dismiss": "Dismissed"}                  # LIFE-971: the card's one-click links
+CARD_UPDATED = "Closed. The card is updated."
+CARD_LATER = "Closed. The card updates on the next refresh."
+
+
+def _one_click(req):
+    """The page asks to write on open (Done or Dismiss link): only a browser navigation may do that, never an image, script or fetch."""
+    dest = (req.get("headers") or {}).get("sec-fetch-dest", "document")
+    return dest in ("document", "")
+
+
+def _closable(r, status):
+    """True for an open row (Needs Action or Waiting, not Done, Active), or for a row already closed this way whose Done, Active and Needs review disagree (the Nov 24 repair)."""
+    if r["action"] in (store.NEEDS_ACTION, store.WAITING):
+        return not r["done"] and r["active"]
+    return r["action"] == status and not (r["done"] and not r["active"] and not r["needs_review"])
+
+
+def _refresh_card(secrets):
+    """Rewrite the Daily Report's Recruiter Outreach table from the Recruiters rows right now, with the same writer the hourly stage uses, through this service's own Notion integration (no new credential).
+    -> True only when the writer's own read-back verified the table; any failure is False and the caller asks the workflow refresh instead. Nothing is printed."""
+    config = secrets["config"]
+    if not config.get("hiring_table") or not config.get("close_base"):
+        return False
+    try:
+        from lifeos.recruiters import outreach_card as card
+        env = {"HIRING_TABLE_BLOCK_ID": config["hiring_table"], "RECRUITER_OUTREACH": "on", "RECRUITERS_STAGE_OUTCOME": "skipped", "V7_CLOSE_BASE_URL": config["close_base"]}
+        writer = Client({"NOTION_API_TOKEN": secrets["notion"].decode(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused"})
+        with contextlib.redirect_stdout(io.StringIO()):
+            return bool(card.run(0, True, environ=env, notion=_recruiters(secrets), client=writer).get("verified"))
+    except Exception:                                                                # noqa: BLE001 - the close itself is already verified; the hourly run still redraws
+        return False
+
+
+def _after_close(secrets):
+    """After a verified close: redraw the card now; if that cannot be proven, ask the workflow refresh. -> the one sentence the page shows."""
+    if _refresh_card(secrets):
+        return CARD_UPDATED
+    secrets.get("after", []).append("recruiters")
+    return CARD_LATER
+
+
+def _one_click_page(r, pid, status, who, secrets):
+    exp, st = str(int(_now().timestamp()) + TTL), _row_fp(r)
+    fields = {"r": pid, "pe": r["person"], "co": r["company"], "ro": r["role"], "ac": r["action"], "exp": exp, "st": st, "t": _mac(secrets["link"], "k", who["login"], pid, st, exp),
+              "status": status, "step": "confirm", "c": _mac(secrets["link"], "x", who["login"], pid, st, exp, status)}
+    label = "Done" if status == "Completed" else "Dismiss"
+    return 200, HTML, S.page(label, "One click. LIFE OS never contacts anyone.", _row_section(r) + (
+        f'<form method="post" action="/recruiter" data-auto="1">{S._hidden(fields)}<section class="section"><div class="eyebrow">Action · {e(label)}</div>'
+        f'<div class="notice">Saving {e(r["person"] or "this recruiter")} as {e(status)}: Action Status, Done, Active and Needs review change together, nothing else.</div></section>'
+        f'<div class="actions"><button class="btn primary">{e(label)}</button></div></form>'), CLOSE_PATH, "Close recruiter record"), ()
+
+
+def _overdue_rows(reader, config):
+    return store.overdue_rows(store.rows_where(reader, {"property": "Action Status", "select": {"equals": store.NEEDS_ACTION}}, config["recruiters"]), _now().date())
+
+
+def _all_get(req, who, secrets):
+    rows = _overdue_rows(secrets["reader"], secrets["config"])
+    if not rows:
+        return _close_stop(200, "Nothing to close", "No overdue recruiters", "No Needs Action row is past its reply day.", "Nothing was changed.", "")
+    exp, ids = str(int(_now().timestamp()) + TTL), [D._page_id(r["page_id"]) for r in rows]
+    fields = {"all": "overdue", "exp": exp, "n": str(len(ids)), **{f"i{i}": pid for i, pid in enumerate(ids)}, "t": _mac(secrets["link"], "o", who["login"], exp, *ids)}
+    names = "".join(f"<li>{e(r['person'] or 'Name not recorded')} · {e(r['company'] or 'Company not recorded')}</li>" for r in rows)
+    return 200, HTML, S.page("Close all overdue", "Each one is saved as Dismissed. LIFE OS never contacts anyone.", (
+        f'<form method="post" action="/recruiter">{S._hidden(fields)}<section class="section"><div class="eyebrow">Action · Close all overdue</div>'
+        f'<ul class="people">{names}</ul><div class="notice alert">{len(rows)} Needs Action rows are past their reply day. Confirming sets each to Dismissed (Done on, Active off, Needs review off) and redraws the card.</div></section>'
+        '<div class="actions"><button class="btn link" name="step" value="cancel" formnovalidate>Cancel</button><button class="btn primary" name="step" value="confirm">Dismiss all overdue</button></div></form>'),
+        CLOSE_PATH, "Close recruiter record"), ()
+
+
+def _all_post(form, who, secrets):
+    secret, login = secrets["link"], who["login"]
+    ids = []
+    while f"i{len(ids)}" in form and len(ids) < 60:
+        ids.append(D._page_id(form[f"i{len(ids)}"]))
+    exp = form.get("exp", "")
+    if not ids or not all(ids) or form.get("n") != str(len(ids)) or not exp.isdigit() or not _same(form.get("t"), _mac(secret, "o", login, exp, *ids)):
+        return invalid(_close_stop, "Reload it from the Recruiter Outreach table.")
+    if int(exp) < _now().timestamp():
+        return _close_stop(403, "Expired", "This confirmation expired", "Open Close all overdue again from the card.", "Nothing was changed.")
+    if form.get("step") == "cancel":
+        return _close_stop(200, "Cancelled", "No changes made", "Nothing was recorded.", "Nothing was written.", "")
+    recruiters, closed = _recruiters(secrets), []
+    for pid in ids:
+        done, early = written(_close_stop, lambda pid=pid: store.close_row(recruiters, pid, "Dismissed"), "Could not verify the close")
+        if early:
+            return early
+        if done["status"] == "recorded":
+            closed.append(pid)
+    note = _after_close(secrets) if closed else "Nothing was open any more."
+    return _close_stop(200, "Recorded", f"Dismissed {len(closed)} overdue", "Each record was written and read back.", note, "ok")
+
+
 def _close_get(req, who, secrets):
+    if req["query"].get("all") == "overdue":
+        return _all_get(req, who, secrets) if secrets["config"].get("recruiters") else _close_stop(409, "Not changed", "Not configured", "The Recruiters database is not configured for this service.", "Refused: NOTION_CONFIG_MISSING. Nothing was changed.")
     pid = D._page_id(req["query"].get("r"))
     if not pid:
         return _close_stop(400, "Invalid link", "No recruiter selected", "Open this screen from the Recruiter Outreach table.", "Nothing was changed.")
     if not secrets["config"].get("recruiters"):
         return _close_stop(409, "Not changed", "Not configured", "The Recruiters database is not configured for this service.", "Refused: NOTION_CONFIG_MISSING. Nothing was changed.")
     r = store.own_row(secrets["reader"], pid, secrets["config"]["recruiters"])          # GET reads through the gate's read-only client
+    do = req["query"].get("do", "")
+    if do:
+        if do not in DO_STATUS or not _one_click(req):
+            return _close_stop(403, "Refused", "This link must be opened from the card", "It is not a page to embed or fetch.", "Nothing was changed.")
+        if not _closable(r, DO_STATUS[do]):
+            return _close_stop(409, "Nothing to close", "This record is not open", "It is already closed or not an action item.", f"Currently: {r['action'] or 'no status'}. Nothing was changed.", "")
+        return _one_click_page(r, pid, DO_STATUS[do], who, secrets)
     if r["done"] or not r["active"] or r["action"] not in (store.NEEDS_ACTION, store.WAITING):
         return _close_stop(409, "Nothing to close", "This record is not open", "It is already closed or not an action item.", f"Currently: {r['action'] or 'no status'}. Nothing was changed.", "")
     exp, st = str(int(_now().timestamp()) + TTL), _row_fp(r)
@@ -321,6 +426,8 @@ def _close_get(req, who, secrets):
 
 def _close_post(req, who, secrets):
     form, secret, login = req["form"], secrets["link"], who["login"]
+    if form.get("all") == "overdue":
+        return _all_post(form, who, secrets)
     reload = "Reload it from the Recruiter Outreach table."
     pid, step, exp, st, early = gate(form, secret, login, _now(), "k", "r", _close_stop, reload)
     if early:
@@ -347,8 +454,7 @@ def _close_post(req, who, secrets):
         return early
     head = f"{shown['person']} · {shown['company'] or 'Company not recorded'}"
     if done["status"] == "recorded":
-        secrets.get("after", []).append("recruiters")
-        return _close_stop(200, "Recorded", f"Closed: {status}", "The canonical record was written and read back.", f"{head} · {status}.", "ok")
+        return _close_stop(200, "Recorded", f"Closed: {status}", "The canonical record was written and read back.", f"{head} · {status}. {_after_close(secrets)}", "ok")
     if done["status"] == "already_recorded":
         return _close_stop(200, "Already recorded", "Already closed", "This record was closed that way before; nothing was changed.", f"{head} · {done['action']}.", "")
     return _close_stop(409, "Not changed", "Nothing was changed", "The record is no longer open.", f"{head} · currently {done['action'] or 'no status'}.")

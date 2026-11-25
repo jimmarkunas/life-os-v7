@@ -358,7 +358,7 @@ class FirstContactTests(unittest.TestCase):
 
 
 class ActionLinkTests(unittest.TestCase):
-    """Jim (Oct 23 2026): each row's one action link sits on line 2 of Next Step · Due. A job-linked row -> Record reply or referral; an inbound row -> Close."""
+    """Jim (Oct 23 2026): each row's one action link sits on line 2 of Next Step · Due. A job-linked row -> Record reply or referral; an inbound row -> Done and Dismiss (LIFE-971)."""
     BASE = "https://close.example.test"
 
     def row(self, jobs=(), pid="c" * 32):
@@ -368,8 +368,8 @@ class ActionLinkTests(unittest.TestCase):
     def test_an_inbound_row_links_close_and_a_job_linked_row_links_its_referral_action(self):
         today = NOW.date()
         self.assertEqual(card.cells(self.row(), today, base=self.BASE)[3],
-                         [("Needs Action", None, "bold"), ("\nOct 27, 2026 · ", None, "gray"), ("Close ↗", f"{self.BASE}/recruiter?r={'c' * 32}", "gray"),
-                          (" · ", None, "gray"), ("Brief ↗", f"{self.BASE}/brief?r={'c' * 32}", "gray")])
+                         [("Needs Action", None, "bold"), ("\nOct 27, 2026 · ", None, "gray"), ("Done ↗", f"{self.BASE}/recruiter?r={'c' * 32}&do=done", "gray"),
+                          (" · ", None, "gray"), ("Dismiss ↗", f"{self.BASE}/recruiter?r={'c' * 32}&do=dismiss", "gray"), (" · ", None, "gray"), ("Brief ↗", f"{self.BASE}/brief?r={'c' * 32}", "gray")])
         self.assertEqual(card.cells(self.row(jobs=["a" * 8 + "-" + "a" * 24]), today, base=self.BASE)[3][2],
                          ("Record reply or referral ↗", f"{self.BASE}/referral?j={'a' * 32}", "gray"))
 
@@ -382,11 +382,11 @@ class ActionLinkTests(unittest.TestCase):
     def test_every_row_links_its_read_only_brief_even_without_an_action(self):
         """LIFE-35 (Jim, Oct 25): the brief was reachable only by typing its address; each open row now links it, after the row's action link if it has one."""
         today = NOW.date()
-        self.assertEqual(card.cells(self.row(jobs=["a" * 32, "b" * 32]), today, base=self.BASE)[3],
-                         [("Needs Action", None, "bold"), ("\nOct 27, 2026 · ", None, "gray"), ("Brief ↗", f"{self.BASE}/brief?r={'c' * 32}", "gray")])
+        self.assertEqual(card.cells(self.row(jobs=["a" * 32, "b" * 32], pid="p1"), today, base=self.BASE)[3], [("Needs Action", None, "bold"), ("\nOct 27, 2026", None, "gray")])
         self.assertEqual(card.cells(self.row(jobs=["a" * 32]), today, base=self.BASE)[3][2:],
                          [("Record reply or referral ↗", f"{self.BASE}/referral?j={'a' * 32}", "gray"), (" · ", None, "gray"),
-                          ("Brief ↗", f"{self.BASE}/brief?r={'c' * 32}", "gray")])
+                          ("Done ↗", f"{self.BASE}/recruiter?r={'c' * 32}&do=done", "gray"), (" · ", None, "gray"),
+                          ("Dismiss ↗", f"{self.BASE}/recruiter?r={'c' * 32}&do=dismiss", "gray"), (" · ", None, "gray"), ("Brief ↗", f"{self.BASE}/brief?r={'c' * 32}", "gray")])
         self.assertIsNone(card.brief_link(self.BASE + "/", {"page_id": "not-an-id"}))
 
     def test_links_are_written_once_and_a_replay_writes_nothing(self):
@@ -395,7 +395,7 @@ class ActionLinkTests(unittest.TestCase):
         t = report()
         env = {**ENV, "V7_CLOSE_BASE_URL": self.BASE}
         go(t, Source(pages), env=env)
-        self.assertEqual(shown(t)[0][3][2], ("Close ↗", f"{self.BASE}/recruiter?r={'c' * 32}", "gray"))
+        self.assertEqual(shown(t)[0][3][2:5], [("Done ↗", f"{self.BASE}/recruiter?r={'c' * 32}&do=done", "gray"), (" · ", None, "gray"), ("Dismiss ↗", f"{self.BASE}/recruiter?r={'c' * 32}&do=dismiss", "gray")])
         log = len(t.log)
         go(t, Source(pages), env=env)
         self.assertEqual([e for e in t.log[log:] if e[0] != "GET"], [])
@@ -472,3 +472,40 @@ class ProtectionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CloseAllLinkTests(unittest.TestCase):
+    """LIFE-971 (Jim, Nov 24 2026): one `Close all overdue` link at the top of the card, only when a Needs Action row is overdue and the Close origin is configured."""
+    BASE = "https://close.example.test"
+
+    def test_the_heading_carries_the_link_when_something_is_overdue(self):
+        t = report()
+        done = go(t, Source(MIXED), env={**ENV, "V7_CLOSE_BASE_URL": self.BASE})
+        self.assertTrue(done["verified"])
+        self.assertEqual(done["overdue"], 1)                                                      # Oscar Overdue (Oct 21); Tess is due today and Wanda is Waiting
+        self.assertEqual(R.plain(t.blocks["ro-h"]), "🤝 Recruiter Outreach (10/23 · 9:30 AM CT · Close all overdue ↗)")
+        parts = t.blocks["ro-h"]["heading_3"]["rich_text"]
+        self.assertEqual(parts[1]["text"]["link"]["url"], f"{self.BASE}/recruiter?all=overdue")
+        self.assertTrue(R.titled(R.plain(t.blocks["ro-h"]), card.TITLE))                           # still the region's heading
+        log = len(t.log)
+        go(t, Source(MIXED), env={**ENV, "V7_CLOSE_BASE_URL": self.BASE})
+        self.assertEqual([e for e in t.log[log:] if e[0] != "GET"], [])                           # a replay writes nothing
+
+    def test_no_link_without_overdue_rows_or_without_the_origin(self):
+        t = report()
+        go(t, Source([MIXED[1]]), env={**ENV, "V7_CLOSE_BASE_URL": self.BASE})
+        self.assertEqual(R.plain(t.blocks["ro-h"]), "🤝 Recruiter Outreach (10/23 · 9:30 AM CT)")
+        t = report()
+        go(t, Source(MIXED), env=ENV)
+        self.assertEqual(R.plain(t.blocks["ro-h"]), "🤝 Recruiter Outreach (10/23 · 9:30 AM CT)")
+
+    def test_a_closed_row_leaves_the_card_on_the_next_redraw(self):
+        t = report()
+        rows = [page(1, "Jitender Synthetic", follow_up="2026-10-20"), page(2, "Kept Synthetic", follow_up="2026-10-27")]
+        go(t, Source(rows))
+        self.assertEqual(len(shown(t)), 2)
+        rows[0]["properties"]["Action Status"] = {"select": {"name": "Completed"}}
+        rows[0]["properties"]["Done"] = {"checkbox": True}
+        rows[0]["properties"]["Active"] = {"checkbox": False}
+        go(t, Source(rows), env={**ENV, "RECRUITERS_STAGE_OUTCOME": "skipped"})
+        self.assertEqual([c[0][0][0] for c in shown(t)], ["Kept Synthetic"])
