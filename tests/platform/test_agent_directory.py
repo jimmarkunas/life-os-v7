@@ -115,6 +115,28 @@ class FailClosed(unittest.TestCase):
             with self.assertRaises(D.DirectoryError):
                 D.build(rows, "fixture", NOW)
 
+    def test_one_bad_row_is_skipped_with_its_number_and_reason_and_the_rest_still_resolve(self):       # LIFE-985
+        bad = [row("bot_hermes_main", **{"Agent ID": ""}), row("buzz_lifeos_codex", Notes="key " + "nsec1" + "q" * 58), row("bot_hermes_writer", **{"date:Last Checked:start": "yesterday"})]
+        with self.assertLogs("lifeos.agent_directory", "WARNING") as logged:
+            d = build(F.rows() + bad[:1])
+        self.assertEqual(d.skipped, ((len(F.rows()) + 1, "bad_agent_id"),))
+        self.assertEqual(len(d.entries), len(build().entries))
+        self.assertEqual(resolve(d, agent_id="buzz_lifeos_hermes").decision, "allow")
+        self.assertEqual(logged.records[0].getMessage(), "agent directory: row %d skipped: bad_agent_id" % (len(F.rows()) + 1))
+        with self.assertLogs("lifeos.agent_directory", "WARNING") as logged:
+            d = build(F.rows() + bad[1:])
+        self.assertEqual([r for _, r in d.skipped], ["secret_material", "bad_last_checked"])
+        self.assertNotIn("nsec1", " ".join(r.getMessage() for r in logged.records))                      # the reason word only, never a row's text
+        self.assertEqual(build().skipped, ())
+
+    def test_a_duplicate_among_good_rows_and_a_directory_with_no_good_row_are_still_refused(self):     # LIFE-985
+        with self.assertRaises(D.DirectoryError) as c:
+            build(F.rows() + [row("bot_hermes_main"), row("bot_hermes_main", **{"Agent ID": ""})])
+        self.assertEqual(c.exception.reason, "duplicate_agent_id")
+        with self.assertRaises(D.DirectoryError) as c:
+            build([row("bot_hermes_main", **{"Agent ID": ""}), row("bot_hermes_main", **{"Agent ID": "Bad!"})])
+        self.assertEqual(c.exception.reason, "bad_agent_id")
+
     def test_unavailable_notion_raises_and_nothing_is_cached(self):
         def boom():
             raise RuntimeError("503 token=abcdefghijkl")

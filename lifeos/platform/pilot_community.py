@@ -17,7 +17,7 @@ def wire(env, relays, decode):
     channels = [c.strip().lower() for c in (env.get("BUZZ_PILOT_CHANNEL") or "").split(",") if c.strip()]            # LIFE-927: one channel or a comma list (the four that match the hosted names)
     if not channels or not all(UUID.match(c) for c in channels):
         raise ValueError("BUZZ_PILOT_CHANNEL")
-    keys, wired = {"claude": env.get("BUZZ_KEY_CLAUDE_PILOT"), "chatgpt": env.get("BUZZ_KEY_CHATGPT_PILOT"), "duet": env.get("BUZZ_KEY_DUET_PILOT")}, []
+    keys, wired = {"claude": env.get("BUZZ_KEY_CLAUDE_PILOT"), "chatgpt": env.get("BUZZ_KEY_CHATGPT_PILOT"), "duet": env.get("BUZZ_KEY_DUET_PILOT"), "openclaw": env.get("BUZZ_KEY_OPENCLAW_PILOT")}, []
     for identity, relay in relays.items():
         value = keys.get(identity)
         if value:

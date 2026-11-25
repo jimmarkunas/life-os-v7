@@ -2,10 +2,11 @@
 
 # A row grants nothing and is never proof an agent is online. load() checks the access policy (service notion, read) before calling the caller's fetch(); resolve() returns ONE entry by exact
 # Agent ID or exact unique alias for one workspace (never a list, wildcard or broadcast) and re-checks the grant each call; snapshot() is the redacted machine-readable projection.
-# Fails closed with a fixed reason word: Notion unavailable, duplicate ID, bad record, no workspace, secret-looking value (nsec, private key, token), stale data, partial identity, ambiguous alias, TGP.
+# Fails closed with a fixed reason word: Notion unavailable, duplicate ID, no good row, stale data, partial identity, ambiguous alias, TGP. One bad row (bad record, no workspace, secret-looking value) is skipped and logged by number and reason (LIFE-985).
 # routable-verified needs a row claim AND a fresh same-host Proof from a live check handed in by the caller; a row, Candidate, surface or persona alone never qualifies. Nothing is cached.
 # Live discovery of the Mac, Oracle and Buzz is a separate approved step: docs/platform/agent-directory-discovery.md.
 import json
+import logging
 import re
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
@@ -13,6 +14,7 @@ from zoneinfo import ZoneInfo
 
 from lifeos.platform import access_policy
 
+LOG = logging.getLogger("lifeos.agent_directory")
 CENTRAL = ZoneInfo("America/Chicago")
 MAX_AGE = timedelta(days=7)                       # a directory row last checked longer ago than this is stale
 PROOF_TTL = timedelta(hours=1)                    # a routing proof is a live observation: it expires quickly
@@ -60,6 +62,7 @@ class Directory:
     source: str
     read_at: datetime
     principal: str                # the 64-hex principal that read it (kept only as a short fingerprint in a snapshot)
+    skipped: tuple = ()           # LIFE-985: ((row number, fixed reason word), ...) for every row left out because that one row was bad; never a row's text
 
 
 @dataclass(frozen=True)
@@ -119,7 +122,7 @@ def _entry(row):
         raise DirectoryError("bad_row")
     for field in TEXT_FIELDS:
         if SECRET.search(_text(row, field)):
-            raise DirectoryError("secret_material")                                       # refuse the whole directory; the value is never echoed
+            raise DirectoryError("secret_material")                                       # this row is skipped (LIFE-985); the value is never echoed
     agent_id = _text(row, "Agent ID")
     if not AGENT_ID.match(agent_id):
         raise DirectoryError("bad_agent_id")
@@ -135,14 +138,23 @@ def _entry(row):
 
 
 def build(rows, source, now, principal=""):
-    """Rows (native dicts) -> Directory. Raises DirectoryError on the first problem; one bad or duplicate row refuses the whole directory (a half-trusted catalog is worse than none)."""
+    """Rows (native dicts) -> Directory. LIFE-985: ONE bad row (bad id, record, workspace, date or secret-looking text) is left out with its row number and fixed reason in `skipped` and one log line, so a single mistake in Notion
+    cannot take every lookup down; the other rows keep their own checks. A directory with no good row, or with a duplicate ID among the good rows (an ambiguous identity), is still refused whole."""
     if not isinstance(rows, (list, tuple)) or not rows:
         raise DirectoryError("empty_directory")
-    entries = [_entry(row) for row in rows]
+    entries, skipped = [], []
+    for number, row in enumerate(rows, 1):
+        try:
+            entries.append(_entry(row))
+        except DirectoryError as error:
+            skipped.append((number, error.reason))
+            LOG.warning("agent directory: row %d skipped: %s", number, error.reason)
+    if not entries:
+        raise DirectoryError(skipped[0][1])
     ids = [e.agent_id for e in entries]
     if len(set(ids)) != len(ids):
         raise DirectoryError("duplicate_agent_id")
-    return Directory(tuple(sorted(entries, key=lambda e: e.agent_id)), source, now, principal)
+    return Directory(tuple(sorted(entries, key=lambda e: e.agent_id)), source, now, principal, tuple(skipped))
 
 
 def load(fetch, policy, principal, now, source="notion:life-os-agent-directory"):
