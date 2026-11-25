@@ -582,3 +582,20 @@ class RuntimeConfigCompareOnTheTick(unittest.TestCase):
             self.assertEqual(started, [1])                      # the read has started and the caller is already free to run its stages
             gate.set()
             collect(1)
+
+
+class TickConcurrencyAppliesSettings(unittest.TestCase):
+    def test_a_runtime_configuration_row_reaches_the_caps_and_an_unreadable_source_leaves_the_defaults(self):
+        """LIFE-856: TICK_CAP_TINYFISH set in the settings source must reach the tick's caps (it was read before the settings were applied)."""
+        from unittest import mock
+        env = {}
+
+        def fill(environ, **kw):
+            environ["TICK_CAP_TINYFISH"] = "2"
+            return {"status": "ok"}
+        with mock.patch("lifeos.platform.settings.apply", fill):
+            self.assertEqual(tick.tick_concurrency(env)["caps"]["tinyfish"], 2)
+        with mock.patch("lifeos.platform.settings.apply", side_effect=OSError("down")):
+            self.assertEqual(tick.tick_concurrency({})["caps"]["tinyfish"], 1)
+        self.assertEqual(tick.tick_concurrency({"LIFEOS_SETTINGS": "off"})["caps"]["tinyfish"], 1)
+
