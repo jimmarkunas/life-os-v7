@@ -1,0 +1,33 @@
+name: doppler-copy
+run-name: doppler-copy (one time, LIFE-981)
+# LIFE-981 (Jim, Nov 25 2026, comment 14289, path 2): the ONE-TIME copy of every Bitwarden runtime secret into Doppler life-os/prd. Manual only: no schedule, no push or other trigger.
+# Removed in a follow-up PR as soon as the copy is proven. The one job holds the runtime token and the Doppler write token in memory of one step (lifeos/platform/doppler_copy.py); values are masked, never printed,
+# never written to a file, an artifact or a cache. The log carries names written, counts and fixed codes only.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: life-os-v7-doppler-copy
+  cancel-in-progress: false
+jobs:
+  copy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout the exact commit (own git fetch; the token is passed once and never stored)
+        run: |
+          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
+          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
+          git checkout -q --detach FETCH_HEAD
+      - name: Bitwarden CLI, pinned (bws 2.0.0, SHA-256 from the publisher's own checksum file; a mismatch fails the job)
+        run: |
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/bws.zip" "https://github.com/bitwarden/sdk-sm/releases/download/bws-v2.0.0/bws-x86_64-unknown-linux-gnu-2.0.0.zip"
+          echo "a8340ce01da609200441f2eca0e591173e124f012c88a16afda574279c052013  $RUNNER_TEMP/bws.zip" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/bin" && unzip -q -o "$RUNNER_TEMP/bws.zip" -d "$RUNNER_TEMP/bin" && chmod 755 "$RUNNER_TEMP/bin/bws"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: Copy the runtime secrets to Doppler and read them back by hash (names and counts only)
+        env:
+          BWS_ACCESS_TOKEN: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+        run: python3 -m lifeos.platform.doppler_copy
