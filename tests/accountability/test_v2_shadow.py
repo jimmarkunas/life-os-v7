@@ -1,7 +1,7 @@
-"""LIFE-918 AC4/AC5 (synthetic, no network, no provider write): the v2 quarterly shadow and the V3 preview block.
+"""LIFE-918 AC4/AC5 (synthetic, no network, no provider write): the v2 quarterly preview inside the existing Quarterly Goals & Review blocks (Jim, comment 14216: no separate block).
 
-Off by default and byte-identical to main when off; on with no preview block does nothing; on with the shipped empty membership reads DEGRADED and invents nothing; on with approved fixture membership shows
-official legacy figures beside preview v2 figures; an ambiguous mapping is DEGRADED; the write stays inside the one preview callout and never touches the fixed blocks; v1 figures are the unchanged reader's."""
+Off by default and exactly the old two-column table when off; on, the table is upgraded in place to Lane, Progress, Done / all, New count (preview), Status; JFM shows a dash and OK; Matt shows NEEDS Q1 MEMBER LIST
+with the shipped empty membership, the v2 count with an approved fixture list, DATA MISSING when the list and Jira disagree; legacy figures stay official; the second run writes nothing."""
 import contextlib
 import io
 import json
@@ -10,13 +10,13 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from lifeos.accountability import common, goals, preview, read, region, render
+from lifeos.accountability import common, goals, index, preview, read, region, render
 from lifeos.platform.jira import JiraError
 from tests.accountability import fakes as F
+from tests.accountability.treefake import TreeNotion
 
 NOW = F.NOW
-PREVIEW = "abcdef0123456789" * 2
-ON = {"V2_QUARTER_SHADOW": "on", "V3_PREVIEW_BLOCK_ID": PREVIEW}
+ON = {"V2_QUARTER_SHADOW": "on", "JIRA_SITE_URL": "https://jira.example.com"}
 EPICS = [F.epic("JFM-9", "Career Q4 2026"), F.epic("MEJ-2", "Creative Q4 2026")]
 
 
@@ -52,158 +52,152 @@ class Jira:
 
 
 def board():
-    """A fake Notion with the preview callout (heading, stamp, one body paragraph) and a fixed block that must never be written."""
-    notion = F.Notion()
-    notion.callout(PREVIEW, "V3 preview", "Not updated yet", [F.para("pv-body", "Nothing yet.")], "unused", legacy=False)
-    notion.callout("fixed", "Quarterly goals Jim", "Not updated yet", [F.para("fx-body", "keep me")], "pg-fixed")
+    """Two Quarterly Goals & Review callouts as they stand today: the two-column table (Lane, Done / all), the note and the Quarterly Reviews toggle, plus a fixed block that must never be written."""
+    notion = TreeNotion()
+    for who, lane in (("jim", "Career"), ("matt", "Creative")):
+        notion.callout(f"b-{who}-goals", f"Quarterly Goals & Review — {who}", "Not updated yet", [notion.table(f"t-{who}", [(lane, "–")]), F.para(f"note-{who}", "old note"), notion.toggle(f"tg-{who}", "x")], f"pg-{who}", legacy=False)
+        notion.blocks[f"tg-{who}"]["toggle"]["rich_text"] = F.rich("Quarterly Reviews")
+    notion.callout("fixed", "Fixed block", "Not updated yet", [F.para("fx-body", "keep me")], "pg-fixed")
     return notion
 
 
-def run_shadow(kids, environ=ON, live=True, notion=None, membership=None, page="Jim & Matt V3"):
+def run_goals(kids, environ=ON, live=True, notion=None, membership=None):
     notion = notion or board()
     jira = Jira(kids)
     with contextlib.ExitStack() as stack:
-        stack.enter_context(mock.patch.object(region, "_page_of", return_value=page))
+        stack.enter_context(mock.patch.object(region, "address", lambda _n, key: f"b-{key.split('.')[0]}-goals"))
+        stack.enter_context(mock.patch.object(index, "reviews", lambda _n, person: [("Q4 2026 (current)", "https://example.invalid/q4")]))
         if membership is not None:
             path = Path(tempfile.mkdtemp()) / "m.json"
             path.write_text(json.dumps(membership))
             stack.enter_context(mock.patch.object(read, "MEJ_MEMBERSHIP", path))
-        out = preview.shadow(environ, jira, notion, NOW, live)
+        out = goals.run(0, live, environ=environ, jira=jira, notion=notion, now=NOW)
     return out, notion, jira
 
 
-class Switches(unittest.TestCase):
-    def test_off_by_default_reads_and_writes_nothing(self):
-        for environ in ({}, {"V3_PREVIEW_BLOCK_ID": PREVIEW}, {"V2_QUARTER_SHADOW": "off", "V3_PREVIEW_BLOCK_ID": PREVIEW}, {"V2_QUARTER_SHADOW": "true", "V3_PREVIEW_BLOCK_ID": PREVIEW}):
-            out, notion, jira = run_shadow([], environ)
-            self.assertIsNone(out)
-            self.assertEqual((notion.writes, jira.queries), ([], []))
+def table(notion, who):
+    """[[cell text]] of the person's table rows, header first."""
+    block = next(k for k in notion.kids[f"b-{who}-goals"] if notion.blocks[k]["type"] == "table")
+    return [["".join(p["plain_text"] for p in cell) for cell in notion.blocks[row]["table_row"]["cells"]] for row in notion.kids[block]]
 
-    def test_goals_stage_with_the_switch_off_is_exactly_the_stage_as_it_was(self):
-        for environ in ({}, {"V3_PREVIEW_BLOCK_ID": PREVIEW}):
-            with mock.patch.object(common, "run_region", return_value={"jim": {"epics": 1}}) as base, mock.patch.object(preview, "shadow") as shadow:
+
+class Switches(unittest.TestCase):
+    def test_off_by_default_is_exactly_the_stage_as_it_was(self):
+        for environ in ({}, {"V2_QUARTER_SHADOW": "off"}, {"V2_QUARTER_SHADOW": "true"}):
+            with mock.patch.object(common, "run_region", return_value={"jim": {"epics": 1}}) as base:
                 out = goals.run(0, False, environ=environ, jira="J", notion="N", now=NOW)
             self.assertEqual(out, {"jim": {"epics": 1}})
             base.assert_called_once_with("goals", goals._build, environ, "J", "N", NOW, False)
-            shadow.assert_not_called()
 
-    def test_goals_stage_with_the_switch_on_adds_only_a_preview_count(self):
-        with mock.patch.object(common, "run_region", return_value={"jim": {"epics": 1}}), mock.patch.object(preview, "shadow", return_value={"preview": "written"}):
+    def test_on_uses_the_shadow_builder_and_adds_nothing_else(self):
+        with mock.patch.object(common, "run_region", return_value={"jim": {"epics": 1}}) as base:
             out = goals.run(0, True, environ=ON, jira="J", notion="N", now=NOW)
-        self.assertEqual(out, {"jim": {"epics": 1}, "preview": {"preview": "written"}})
+        self.assertEqual(out, {"jim": {"epics": 1}})
+        base.assert_called_once_with("goals", goals._build_shadow, ON, "J", "N", NOW, True)
 
-    def test_a_failing_preview_never_fails_the_goals_stage(self):
-        with mock.patch.object(common, "run_region", return_value={"jim": {}}), mock.patch.object(preview, "figures", side_effect=JiraError("JIRA_NETWORK")), \
-                mock.patch.object(region, "_page_of", return_value="Jim & Matt V3"):
-            out = goals.run(0, True, environ=ON, jira="J", notion=board(), now=NOW)
-        self.assertEqual(out["preview"], {"preview": "failed", "code": "JIRA_NETWORK"})
+    def test_off_keeps_the_two_column_table(self):
+        out, notion, _ = run_goals([kid("JFM-20", "JFM-9", True)], environ={"JIRA_SITE_URL": "https://jira.example.com"})
+        self.assertEqual(table(notion, "jim"), [["Lane", "Done / all"], ["Career", "1 / 1"]])
+        self.assertEqual(notion.blocks["t-jim"]["table"]["table_width"], 2)
 
-    def test_no_preview_block_configured_writes_nothing(self):
-        for environ in ({"V2_QUARTER_SHADOW": "on"}, {"V2_QUARTER_SHADOW": "on", "V3_PREVIEW_BLOCK_ID": "not-an-id"}):
-            out, notion, jira = run_shadow([], environ)
-            self.assertEqual(out, {"preview": "no_block"})
-            self.assertEqual((notion.writes, jira.queries), ([], []))
-
-    def test_not_live_plans_and_writes_nothing(self):
-        out, notion, _ = run_shadow([kid("JFM-20", "JFM-9", True)], live=False)
-        self.assertEqual(out["preview"], "planned")
-        self.assertEqual(notion.writes, [])
+    def test_the_old_preview_block_row_is_gone(self):
+        from lifeos.accountability import switches
+        self.assertFalse(hasattr(switches, "preview_block"))
+        self.assertNotIn("preview_block", switches.snapshot({}))
 
 
-class Figures(unittest.TestCase):
-    def test_empty_shipped_membership_is_degraded_and_nothing_is_invented(self):
-        out, notion, _ = run_shadow([kid("JFM-20", "JFM-9", True), kid("JFM-21", "JFM-9"), kid("MEJ-20", "MEJ-2", True)])
-        self.assertEqual((out["preview"], out["degraded"]), ("written", 1))
-        body = notion.text("pv-body")
-        self.assertIn("Career: Official (legacy) 1 / 2 · Preview (v2) no v2 for JFM (stays on legacy)", body)
-        self.assertIn("Creative: Official (legacy) 1 / 1 · Preview (v2) DEGRADED (ACCOUNTABILITY_MEJ_MEMBERSHIP_NOT_APPROVED)", body)
-        self.assertNotIn("v2) 1 / 1", body)
-
-    def test_approved_fixture_membership_shows_official_and_preview_side_by_side(self):
-        frozen = approved({"MEJ-20": {"parent": "MEJ-2", "goal": "MEJ-2"}, "MEJ-21": {"parent": "MEJ-2", "goal": "MEJ-2"}})
-        out, notion, _ = run_shadow([kid("MEJ-20", "MEJ-2", True), kid("MEJ-21", "MEJ-2"), kid("MEJ-22", "MEJ-2", True)], membership=frozen)
-        self.assertEqual(out["degraded"], 0)
-        self.assertIn("Creative: Official (legacy) 2 / 3 · Preview (v2) 1 / 2", notion.text("pv-body"))
-
-    def test_an_ambiguous_or_drifted_mapping_is_degraded(self):
-        frozen = approved({"MEJ-20": {"parent": "MEJ-2", "goal": "MEJ-99"}})
-        out, notion, _ = run_shadow([kid("MEJ-20", "MEJ-2", True)], membership=frozen)
-        self.assertEqual(out["degraded"], 1)
-        self.assertIn("Preview (v2) DEGRADED (ACCOUNTABILITY_MEJ_MEMBERSHIP_DRIFT)", notion.text("pv-body"))
-
-    def test_official_legacy_figures_are_the_unchanged_reader(self):
-        kids = [kid("JFM-20", "JFM-9", True), kid("JFM-21", "JFM-9"), kid("MEJ-20", "MEJ-2", True), kid("MEJ-21", "MEJ-2")]
-        jira = Jira(kids)
-        year, n, rows = preview.figures(jira, NOW)
-        first, last = read.quarter_bounds(year, n)
-        direct = read.tally(Jira(kids), [{"key": "JFM-9", "person": "Jim", "lane": "Career"}], first, last)
-        self.assertEqual(next(r["legacy"] for r in rows if r["key"] == "JFM-9"), tuple(direct["JFM-9"]))
-        self.assertTrue(all(r["v2"] is None for r in rows))
-
-    def test_a_legacy_read_that_fails_is_not_hidden(self):
-        with mock.patch.object(read, "tally", side_effect=JiraError("JIRA_NETWORK")):
-            out, notion, _ = run_shadow([kid("JFM-20", "JFM-9")])
-        self.assertEqual(out, {"preview": "failed", "code": "JIRA_NETWORK"})
-        self.assertEqual(notion.writes, [])
-
-
-class Write(unittest.TestCase):
-    def test_the_write_stays_inside_the_preview_callout(self):
-        out, notion, _ = run_shadow([kid("JFM-20", "JFM-9", True)])
-        self.assertEqual(out["preview"], "written")
-        self.assertEqual(set(notion.writes), {"pv-body", PREVIEW + "-st"})
+class Table(unittest.TestCase):
+    def test_on_upgrades_the_table_in_place_and_jfm_has_no_v2(self):
+        out, notion, jira = run_goals([kid("JFM-20", "JFM-9", True), kid("JFM-21", "JFM-9")])
+        self.assertEqual(table(notion, "jim"), [["Lane", "Progress", "Done / all", "New count (preview)", "Status"], ["Career", "█████░░░░░", "1 / 2", "—", "OK"]])
+        order = notion.kids["b-jim-goals"]
+        self.assertEqual([notion.blocks[k]["type"] for k in order[2:]], ["table", "paragraph", "toggle"])               # lanes, note and toggle kept; no second block anywhere
+        self.assertEqual(notion.text("b-jim-goals-h"), "Quarterly Goals & Review — Jim · Q4 2026")
+        self.assertEqual(notion.blocks[order[2]]["table"]["table_width"], 5)
         self.assertEqual(notion.text("fx-body"), "keep me")
         self.assertEqual(notion.text("fixed-st"), "Not updated yet")
-        self.assertTrue(notion.text(PREVIEW + "-st").startswith("Last refreshed"))
+        link = notion.blocks[notion.kids[order[2]][1]]["table_row"]["cells"][0][0]["href"]
+        self.assertEqual(link, "https://jira.example.com/browse/JFM-9")                                                  # the lane stays linked to its Epic
 
-    def test_a_second_identical_run_writes_nothing(self):
+    def test_matt_needs_the_q1_member_list_while_none_is_approved_and_legacy_stays_official(self):
+        _, notion, _ = run_goals([kid("MEJ-20", "MEJ-2", True), kid("MEJ-21", "MEJ-2")])
+        self.assertEqual(table(notion, "matt")[1], ["Creative", "█████░░░░░", "1 / 2", "—", "NEEDS Q1 MEMBER LIST"])
+        status = notion.blocks[notion.kids[next(k for k in notion.kids["b-matt-goals"] if notion.blocks[k]["type"] == "table")][1]]["table_row"]["cells"][4][0]
+        self.assertEqual(status["annotations"]["color"], "red")
+
+    def test_an_approved_list_shows_the_v2_count_beside_the_official_legacy_count(self):
+        frozen = approved({"MEJ-20": {"parent": "MEJ-2", "goal": "MEJ-2"}, "MEJ-21": {"parent": "MEJ-2", "goal": "MEJ-2"}})
+        _, notion, _ = run_goals([kid("MEJ-20", "MEJ-2", True), kid("MEJ-21", "MEJ-2"), kid("MEJ-22", "MEJ-2", True)], membership=frozen)
+        self.assertEqual(table(notion, "matt")[1], ["Creative", "███████░░░", "2 / 3", "1 / 2", "OK"])
+
+    def test_a_drifted_list_reads_data_missing_in_red(self):
+        frozen = approved({"MEJ-20": {"parent": "MEJ-2", "goal": "MEJ-99"}})
+        _, notion, _ = run_goals([kid("MEJ-20", "MEJ-2", True)], membership=frozen)
+        self.assertEqual(table(notion, "matt")[1][3:], ["—", "DATA MISSING"])
+
+    def test_a_failing_v2_read_never_fails_the_stage_or_hides_the_legacy_figures(self):
+        with mock.patch.object(read, "tally", side_effect=lambda jira, found, first, last, **kw: (_ for _ in ()).throw(JiraError("JIRA_NETWORK")) if kw else real_tally(jira, found, first, last)):
+            out, notion, _ = run_goals([kid("MEJ-20", "MEJ-2", True)])
+        self.assertEqual(table(notion, "matt")[1][2:], ["1 / 1", "—", "DATA MISSING"])
+
+    def test_a_second_run_writes_nothing_and_a_dry_run_writes_nothing(self):
         kids = [kid("JFM-20", "JFM-9", True)]
-        _, notion, _ = run_shadow(kids)
+        _, notion, _ = run_goals(kids)
         notion.writes.clear()
-        out, notion, _ = run_shadow(kids, notion=notion)
-        self.assertEqual((out["preview"], notion.writes), ("unchanged", []))
-
-    def test_a_block_that_is_not_on_the_v3_page_is_refused(self):
-        out, notion, _ = run_shadow([], page="Some other page")
-        self.assertEqual(out, {"preview": "failed", "code": "ACCOUNTABILITY_TARGET_NOT_FOUND"})
+        run_goals(kids, notion=notion)
         self.assertEqual(notion.writes, [])
+        fresh = board()
+        out, fresh, _ = run_goals(kids, live=False, notion=fresh)
+        self.assertEqual(fresh.writes, [])
+        self.assertEqual(out["jim"]["changed"] > 0, True)
 
-    def test_a_wrong_shaped_callout_is_refused_and_nothing_is_written(self):
-        notion = F.Notion()
-        notion.callout(PREVIEW, "V3 preview", "stamp", [], "unused", legacy=False)
-        out, notion, _ = run_shadow([], notion=notion)
-        self.assertEqual(out, {"preview": "failed", "code": "ACCOUNTABILITY_SHAPE"})
-        self.assertEqual(notion.writes, [])
+    def test_a_changed_figure_rewrites_only_that_row(self):
+        _, notion, _ = run_goals([kid("JFM-20", "JFM-9", True)])
+        notion.writes.clear()
+        run_goals([kid("JFM-20", "JFM-9", True), kid("JFM-21", "JFM-9")], notion=notion)
+        rows = {k for k in notion.writes if k.startswith("n") and notion.blocks[k]["type"] == "table_row"}
+        self.assertEqual(len(rows), 1)
+
+    def test_a_table_of_another_width_is_refused(self):
+        notion = board()
+        notion.blocks["t-jim"]["table"]["table_width"] = 3
+        with self.assertRaises(region.AccountabilityError) as caught:
+            run_goals([], notion=notion)
+        self.assertEqual(str(caught.exception), "ACCOUNTABILITY_SHAPE")
 
     def test_the_scoped_client_refuses_a_fixed_block(self):
-        client = region.scoped(board(), PREVIEW)
+        client = region.scoped(board(), "b-jim-goals")
         with self.assertRaises(region.AccountabilityError) as caught:
             client.call_once("PATCH", "/blocks/fx-body", {"paragraph": {"rich_text": []}})
         self.assertEqual(str(caught.exception), "ACCOUNTABILITY_WRITE_OUT_OF_SCOPE")
 
 
-class Render(unittest.TestCase):
-    def test_render_is_pure_and_labels_both_sides(self):
-        rows = [{"person": "Matt", "lane": "Career", "key": "MEJ-1", "legacy": (1, 2), "v2": (1, 1), "code": None, "applies": True}]
-        text = preview.plain(preview.render_preview(2026, 4, rows))
-        self.assertIn("legacy figures are official", text)
-        self.assertIn("Career: Official (legacy) 1 / 2 · Preview (v2) 1 / 1", text)
-        self.assertEqual(preview.render_preview(2026, 4, rows), preview.render_preview(2026, 4, rows))
+class Bar(unittest.TestCase):
+    def test_ten_blocks_filled_by_share_and_coloured_by_threshold(self):
+        for done, total, filled, color in ((5, 26, 2, "red"), (3, 7, 4, "orange"), (6, 9, 7, "orange"), (7, 10, 7, "green"), (0, 6, 0, None), (10, 10, 10, "green"), (0, 0, 0, None)):
+            pieces = render.bar(done, total)
+            self.assertEqual(sum(len(p[0]) for p in pieces), 10)
+            self.assertEqual(sum(len(p[0]) for p in pieces if p[0].startswith("█")), filled)
+            if filled:
+                self.assertEqual(pieces[0][3], color)
+            self.assertTrue(all(p[3] == "gray" for p in pieces if p[0].startswith("░")))
 
+
+class Render(unittest.TestCase):
     def test_the_synthetic_command_prints_without_any_network_or_write(self):
         out = io.StringIO()
         with contextlib.redirect_stdout(out), mock.patch("socket.socket", side_effect=AssertionError("network")):
             self.assertEqual(preview.main(["--synthetic"]), 0)
         text = out.getvalue()
-        self.assertIn("Last refreshed 12/1 · 9:00 AM CT", text)
-        self.assertIn("Official (legacy) 2 / 6 · Preview (v2) 2 / 5", text)
-        self.assertIn("DEGRADED (ACCOUNTABILITY_MEJ_MEMBERSHIP_NOT_APPROVED)", text)
+        self.assertIn("██░░░░░░░░ · 5 / 26 · — · OK", text)
+        self.assertIn("████░░░░░░ · 12 / 29 · — · NEEDS Q1 MEMBER LIST", text)
 
     def test_any_other_argument_is_refused(self):
         with contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(preview.main([]), 2)
             self.assertEqual(preview.main(["--live"]), 2)
 
+
+real_tally = read.tally
 
 if __name__ == "__main__":
     unittest.main()

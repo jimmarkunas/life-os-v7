@@ -7,46 +7,11 @@ from zoneinfo import ZoneInfo
 from lifeos.accountability import read, region, render, week, weekview
 from tests.accountability import fakes as F
 from tests.accountability import test_v3_week_view as W
+from tests.accountability.treefake import TreeNotion
 
 NOW = datetime(2026, 11, 25, 8, 0, tzinfo=ZoneInfo("America/Chicago"))
 TODAY = date(2026, 11, 25)
 SITE = "https://example.invalid"
-
-
-class TreeNotion(F.Notion):
-    """The fake Notion with nested block creation (children inline), `after` placement and has_children, as the API gives them."""
-
-    def _make(self, parent, child):
-        kind = child["type"]
-        self.made += 1
-        body = child[kind]
-        rich = [F.rich(n["text"]["content"], (n["text"].get("link") or {}).get("url"))[0] | {"annotations": n.get("annotations") or {}} for n in body.get("rich_text") or []]
-        block = {"id": f"n{self.made}", "type": kind, kind: {"rich_text": rich}, "has_children": bool(body.get("children"))}
-        self.blocks[block["id"]] = block
-        self.kids.setdefault(parent, [])
-        for inner in body.get("children") or []:
-            made = self._make(block["id"], inner)
-            self.kids[block["id"]].append(made)
-        return block["id"]
-
-    def call_once(self, method, path, body=None, *args, **kwargs):
-        if method == "PATCH" and path.endswith("/children"):
-            parent = path.split("/blocks/")[1].split("/")[0]
-            self.writes.append(parent)
-            order = self.kids.setdefault(parent, [])
-            at = order.index(body["after"]) + 1 if body.get("after") else len(order)
-            for child in body["children"]:
-                new = self._make(parent, child)
-                order.insert(at, new)
-                at += 1
-            self.blocks[parent]["has_children"] = True
-            return {"results": []}
-        if method == "DELETE":
-            self.writes.append(path.split("/blocks/")[1])
-        return super().call_once(method, path, body, *args, **kwargs)
-
-    def remove_dead(self):
-        pass
 
 
 class Wireframe(unittest.TestCase):

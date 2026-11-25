@@ -33,6 +33,18 @@ def goal_cell(done, total):
     return f"{done} / {total}"
 
 
+BAR = 10
+GREEN, ORANGE, RED, GRAY = "green", "orange", "red", "gray"
+
+
+def bar(done, total):
+    """LIFE-918: the ten-block Progress cell as [(text, link, bold, color)]: filled blocks = Done / all, green at 70% or more, orange from 30% to 69%, red under 30%, the rest gray."""
+    share = done / total if total else 0.0
+    filled = min(BAR, int(share * BAR + 0.5))
+    color = GREEN if share >= 0.7 else ORANGE if share >= 0.3 else RED
+    return ([("█" * filled, None, False, color)] if filled else []) + ([("░" * (BAR - filled), None, False, GRAY)] if filled < BAR else [])
+
+
 def p(text, url=None, bold=False):
     """One piece of a Notion paragraph: (text, link or None, bold)."""
     return (text, url, bold)
