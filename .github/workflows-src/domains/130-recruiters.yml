@@ -103,6 +103,7 @@
           RECRUITER_OUTREACH: ""
           NOTION_RECRUITERS_DATA_SOURCE_ID: ""
           HIRING_TABLE_BLOCK_ID: ""
+          RECRUITER_COUNT_BLOCK_ID: ""          # LIFE-973: the callout above the live view; the gray count line is written there
           V7_CLOSE_BASE_URL: ""          # the private Close origin: each row gets its one action link (Close, or Record reply or referral); unset, no link
           NOTION_RECRUITERS_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_RECRUITERS_TOKEN }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_JIRA_TOKEN }}
