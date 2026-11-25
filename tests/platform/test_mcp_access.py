@@ -98,6 +98,19 @@ class SendToJim(unittest.TestCase):
             if why != "unknown_tenant":
                 self.assertEqual((receipts[-1]["outcome"], receipts[-1]["reason"]), ("deny", why))
 
+    def test_a_grant_expiry_may_carry_a_time_and_is_refused_the_second_it_passes(self):        # LIFE-877 (Jim, comment 14311): the live expiry test uses a grant that ends two minutes out
+        from datetime import timedelta
+        def run(delta):
+            access = build(grants=lambda seeded: [{**g, "expires": (NOW + delta).astimezone(timezone.utc).isoformat()} if g["tool"] == "send_to_jim" else g for g in seeded])
+            replies, receipts, client = call(tool_call(ok_item()), access)
+            return replies, receipts, client
+        replies, receipts, client = run(timedelta(minutes=2))
+        self.assertFalse(replies[0]["result"].get("isError"), replies)
+        self.assertEqual(len(client.rows), 1)
+        replies, receipts, client = run(timedelta(seconds=-1))
+        self.assertTrue(replies[0]["result"]["isError"])
+        self.assertEqual((reason(replies), client.rows, receipts[-1]["reason"]), ("denied_grant_expired", [], "grant_expired"))
+
     def test_an_unregistered_os_user_and_unreadable_data_refuse_every_call(self):
         replies, receipts, client = call(tool_call(ok_item()), build(), facts={"os_user": "stranger"})
         self.assertEqual((reason(replies), client.rows, receipts), ("identity_unknown", [], []))
