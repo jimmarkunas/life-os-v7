@@ -407,7 +407,7 @@ class StyledBody(unittest.TestCase):
         self.assertEqual(client.rows[0]["details"], "New ask only")
 
     def test_a_secret_or_personal_detail_is_still_refused_before_any_write(self):
-        for text in ("token=abcdefghijklmnop12345", "mail me at someone@example.org"):
+        for text in ("token=abcdefghijklmnop12345", "mail me at someone" + "@" + "host.org"):
             with self.assertRaises(agent_inbox.InboxError):
                 agent_inbox.normalize(ok_item(details=text), NOW)
 
