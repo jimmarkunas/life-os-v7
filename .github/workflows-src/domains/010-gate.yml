@@ -45,62 +45,61 @@
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
           git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
           git checkout -q --detach FETCH_HEAD
+      # why: Which domain jobs are due (LIFE-609) - one table, each job's last successful run; an unreadable history makes every job due
       - id: due
-        name: Which domain jobs are due (LIFE-609) - one table, each job's last successful run; an unreadable history makes every job due
+        name: Which domain jobs are due
         env:
           GITHUB_TOKEN: ${{ github.token }}
           DOMAINS_PHASE: ${{ inputs.phase }}
         run: python3 -m lifeos.platform.due
+      # why: LIFE-775 - is the early run of this tick already started (the after-tick run then leaves the early jobs to it; no early run means it runs every job; unreadable leaves them out)
       - id: cover
-        name: LIFE-775 - is the early run of this tick already started (the after-tick run then leaves the early jobs to it; no early run means it runs every job; unreadable leaves them out)
+        name: Is the early run of this tick already started
         if: ${{ github.event_name == 'workflow_run' }}
         continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ github.token }}
           TICK_STARTED: ${{ github.event.workflow_run.run_started_at }}
         run: python3 -m lifeos.platform.phase
+      # why: LIFE-856 - did the tick's hourly finish job run (the moved Network Leads and Cloud Fit backlog jobs run only then; unreadable counts as yes)
       - id: ran
-        name: LIFE-856 - did the tick's hourly finish job run (the moved Network Leads and Cloud Fit backlog jobs run only then; unreadable counts as yes)
+        name: Did the tick's hourly finish job run
         if: ${{ github.event_name == 'workflow_run' }}
         continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ github.token }}
           TICK_RUN: ${{ github.event.workflow_run.id }}
         run: python3 -m lifeos.platform.pipeline_ran
-      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
+      # why: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
+      - name: Bitwarden helper from a saved, fingerprint-checked copy
         continue-on-error: true
         uses: ./.github/actions/bws-helper
         with:
           wait_seconds: "60"
+      # why: Notion token from Bitwarden so the gate can read the V7 settings page (LIFE-703; read only; if it fails the GitHub values decide)
       - id: bws_settings
         continue-on-error: true
-        name: Notion token from Bitwarden so the gate can read the V7 settings page (LIFE-703; read only; if it fails the GitHub values decide)
+        name: Notion token from Bitwarden so the gate can read the V7 settings page
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
             0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
-      - id: doppler_bws_settings
-        if: ${{ steps.bws_settings.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 2 names read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: NOTION_JIRA_TOKEN,V7_RUNTIME_CONFIG_SOURCE_ID
-          bitwarden: ${{ toJSON(steps.bws_settings.outputs) }}
-      - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
+      # why: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
+      - name: Plain switches from Bitwarden
         continue-on-error: true
         uses: ./.github/actions/bws-plain
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIVE
           live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
+      # why: V7 settings page for the two switches a job condition needs (LIFE-703; names and counts only; an unreadable page changes nothing)
       - id: settings
         continue-on-error: true
-        name: V7 settings page for the two switches a job condition needs (LIFE-703; names and counts only; an unreadable page changes nothing)
+        name: V7 settings page for the two switches a job condition needs
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_settings.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}
