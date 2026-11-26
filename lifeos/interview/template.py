@@ -1,14 +1,7 @@
-"""LIFE-88 / LIFE-46: the two Jim-approved native Notion layouts as block trees, nothing else.
+"""The two native Notion page layouts (opportunity page, interview page) as block trees, nothing else.
 
-UI 3c opportunity page: (Notion page, found by title) (LIFE-88 D01-D18, 10867, 10869).
-UI 4 interview page: (Notion page, found by title) (LIFE-46 10874, 10875).
-
-Same block types, nesting, order, labels, tables, native tabs and column ratios as those pages, filled from a view.Opportunity
-(and its round). Their ExampleCo / Smartsheet values are QA fixture data: here every value comes from the view, and a source the
-view does not have is written as not verified. Deliberate differences, each required by an approved rule: QA-only prose (the
-"QA preview details" / "QA design reference" toggles, "(QA preview)" / "(sandbox)" suffixes) is left out (D16.2); Mark Complete
-is a toggle that says it is unavailable, never a checkbox (D05, LIFE-88 10869); a Full Transcript page is linked from its callout
-because the API creates child pages only at the end of a page. Nested children are written in stages by notion.write_tree."""
+Every value comes from the view.Opportunity (and its round); a missing source is written as not verified.
+"""
 from .notion import FOLD, JIM_NOTES, LIVE_PANE, MARKERS, RAW_HEADING, RAW_TOGGLE, ROUND_FOLD
 import hashlib
 import re
@@ -20,12 +13,12 @@ from .view import (HOLD_LINE, NEXT_LINE, SENT_LINE, UNSENT_LINE, UNCONNECTED, ev
                    stage)                                                                                                                   # this writer's carried line formats
 
 CENTRAL = ZoneInfo("America/Chicago")
-HOLD_LABEL = {"paused": "Paused", "waiting": "Waiting on employer"}      # LIFE-111: lifeos.hiring.models.HOLD_LABEL's words
+HOLD_LABEL = {"paused": "Paused", "waiting": "Waiting on employer"}
 
 GRAY, NV = "gray", "Not verified"
 ARROW, INFO = "https://www.notion.so/icons/arrow-right_gray.svg", "https://www.notion.so/icons/info-alternate_gray.svg"
 PAGE_ICONS = {kind: {"type": "external", "external": {"url": f"https://www.notion.so/icons/{name}_gray.svg"}}
-              for kind, name in (("opportunity", "briefcase"), ("round", "target"))}       # the approved pages' own icons
+              for kind, name in (("opportunity", "briefcase"), ("round", "target"))}
 PLAIN = "default_background"
 
 
@@ -108,17 +101,16 @@ def _url(page_id):
 
 
 def fold(*lines, title=FOLD, extra=()):
-    """D236: the machine marker and identity lines inside one collapsed gray toggle, the page's first block."""
     return toggle(title, [para(x) for x in lines] + list(extra), color=GRAY)
 
 
-MACHINE_NOTE = "Machine-written section: do not edit here. LIFE OS rewrites it from its sources; write your notes under Jim’s Notes below."      # LIFE-658
+MACHINE_NOTE = "Machine-written section: do not edit here. LIFE OS rewrites it from its sources; write your notes under Jim’s Notes below."
 ROUND_MACHINE_NOTE = "Machine-written section: do not edit here. Write your notes in Live Notes and Raw Notes; LIFE OS never touches them."
 REPAIRED_LINE = re.compile(r"Repaired \d{1,2}:\d{2} [AP]M CT: an edit in the machine section was preserved below")
 
 
 def repaired_line(clock):
-    """LIFE-658: the one-line marker a repaired machine region carries ("4:34 PM" in Central time); the edited text itself sits in the page's Preserved edits toggle."""
+    """The marker for a repaired machine region (`clock` like "4:34 PM", Central)."""
     return f"Repaired {clock} CT: an edit in the machine section was preserved below"
 
 
@@ -126,24 +118,22 @@ def render_line(job, source, page="pending"):
     return f"v7-render:1;job={job or 'none'};source={source};page={page}"
 
 
-# ---------- UI 3c opportunity page ----------
 
-# E05 Mark Complete (Jim, Oct 24): the fold names the page's one completable primary action; the private Close screen appends a completion line to the same fold
-# (lifeos/sources/apps/close_app.py keeps its own copy of these two formats for the Edge; a contract test holds them equal)
+# Mark Complete: the fold names the page's one completable primary action and the Close screen appends a completion
+# line to it. close_app.py keeps its own copy of these two formats; a contract test holds them equal.
 ACTION_LINE = re.compile(r"v7-action:1;key=([0-9a-f]{16});text=(.+)")
 DONE_LINE = re.compile(r"v7-done:1;key=([0-9a-f]{16});on=(\d{4}-\d{2}-\d{2})")
-DONE_MAX = 20                                                  # completion lines carried per page, newest last
-# Jim, Oct 25: the Close / Manage screens record a Notes-page decision (Close, Reopen) as one line in this fold, never below Jim's Notes (lifeos/hiring/decision.py
-# writes it; this writer carries it forward and never counts it as an edit)
+DONE_MAX = 20
+# Decisions (Close, Reopen) are recorded as one line in this fold by lifeos/hiring/decision.py, carried forward and
+# never counted as an edit.
 DECISION_LINE = re.compile(r"Hiring decision \(V7\) · .+ · op [A-Za-z0-9_-]{8,64}")
-DECISION_MAX = 20                                              # decision lines carried per page, newest last
-HAND_MAX = 10                                                  # LIFE-111/112: hand-set hold and next-action lines (Manage) carried per page, newest last
-SENT_MAX = 20                                                  # LIFE-114: sent-material lines (Manage) carried per page, newest last (= hiring.models.SENT_MAX)
+DECISION_MAX = 20
+HAND_MAX = 10
+SENT_MAX = 20
 SENT_KIND = {"form": "Application form", "file": "Drive file"}
 
 
 def action_key(text, context=""):
-    """The action's identity: its text, plus the opportunity's rounds when it has any, so the same wording for a later round is a new action, never already done."""
     return hashlib.sha256((text + "\x1f" + context if context else text).encode()).hexdigest()[:16]
 
 
@@ -160,8 +150,8 @@ def _rounds(view):
 
 
 def fold_lines(view, label, action):
-    """E05: the one completable primary action (a source-backed PRIMARY ACTION, never a degraded one), Jim's hand-set next action (LIFE-112, completable by its own key),
-    every recorded completion, every recorded decision and Jim's hand-set lines, in the fold."""
+    """The fold's lines: the completable primary action, the hand-set next action, every recorded completion and
+    decision."""
     hand = hand_action(view)
     return (([action_line(action, _rounds(view))] if label == "PRIMARY ACTION" else []) + ([f"v7-action:1;key={hand[0]};text={hand[1]}"] if hand else [])
             + [done_line(k, d) for k, d in view.done] + list(view.decisions) + list(view.hand))
@@ -173,7 +163,6 @@ def _day(moment):
 
 
 def hand_parts(view):
-    """LIFE-112 (Jim, Oct 29): Jim's own next action and/or due date, which replaces the derived one; its Mark Complete link (which clears it) once the Close screen is configured."""
     hand = hand_action(view)
     if not hand:
         return []
@@ -186,7 +175,6 @@ def hand_parts(view):
 
 
 def status_parts(view):
-    """LIFE-111: the Stage line's opportunity status: Jim's hand-set Paused / Waiting on employer, or why it was cleared by new evidence, else not verified."""
     held = hold(view)
     if held and not held[3]:
         return [(HOLD_LABEL[held[0]], True), f" · set by Jim {_day(held[1])} · off the to-do list until new evidence arrives"]
@@ -196,8 +184,9 @@ def status_parts(view):
 
 
 def complete_parts(view, label, action):
-    """E05 Mark Complete (Jim, Oct 24): done when the Close screen recorded this exact action; otherwise its one link to the private Close
-    screen's two-step confirmation; without that screen (or for a degraded action) it says it is unavailable and records nothing."""
+    """Mark Complete: done when the Close screen recorded this action; otherwise a link to its two-step confirmation;
+    unavailable (recording nothing) without that screen or for a degraded action.
+    """
     done = dict(view.done).get(action_key(action, _rounds(view))) if label == "PRIMARY ACTION" else None
     if done:
         day = date.fromisoformat(done)
@@ -215,12 +204,12 @@ def _health(view, rounds_label):
     rows = [("Interviews", rounds_label),
             ("Job Ledger", {"linked": "exact row linked by Stable Job Key", "mismatch": "row does not match this job's Stable Job Key",
                             "unreadable": "row unreadable this run"}.get(view.ledger, "no exact row linked")),
-            ("Request message", ("Request message ↗", False, view.request_url) if view.request_url else "not recorded")]     # the page names its request in every state (LIFE-78)
+            ("Request message", ("Request message ↗", False, view.request_url) if view.request_url else "not recorded")]
     linked = [r for r in view.rounds if r.calendar]
     threads = {"linked": f"{len(view.recruiters)} thread(s) linked from the Recruiters database by this job's exact request message",
                "none": "no Recruiters row for this job's exact request message", "unreadable": "DEGRADED · Recruiters source unreadable this run"}
     mail = {"read": f"{len(view.sent_mail)} email(s) you sent on the request thread", "unreadable": "DEGRADED · Gmail unreadable this run"}.get(view.sent_mail_state, "sent email not read this run")
-    others = f"; {len(sent_material(view))} form(s) / Drive file(s) recorded on Manage; {mail}"          # LIFE-114
+    others = f"; {len(sent_material(view))} form(s) / Drive file(s) recorded on Manage; {mail}"
     resume = {"recorded": f"{len(view.resume)} submitted résumé file(s) on the exact Job Ledger row{others}",
               "not_recorded": f"no submitted résumé recorded on the Job Ledger row{others}",
               "not_connected": f"the Job Ledger has no Submitted Résumé field{others}"}
@@ -253,7 +242,6 @@ def _interviews(view):
 
 
 def _contacts(view):
-    """E10: the job's own Network Leads (its Ledger page, dismissed leads left out), as the Network section names them; never guessed from names elsewhere."""
     rows = [["Person", "Role / Relevance", "Outreach Status"]]
     rows += [[[(name, True)], why or NV, "Not tracked"] for name, why in view.contacts]
     if len(rows) == 1:
@@ -262,7 +250,6 @@ def _contacts(view):
 
 
 def _recruiters(view):
-    """E10: one row per Recruiters row linked by the exact request message; the Email cell opens that thread (never composes)."""
     rows = [["Person", "Role", "Email"]]
     for person, company, url in view.recruiters:
         rows.append([[(person or NV, True)], " · ".join(x for x in ("Recruiter", company) if x),
@@ -274,8 +261,7 @@ def _recruiters(view):
 
 
 def _submitted(view):
-    """E10: the Materials Sent list, submitted résumé first. Only the Job Ledger's Submitted Résumé field counts; an uploaded file is opened
-    from its row (its own URL expires), an external one directly. Every other state says why there is no file."""
+    """The Materials Sent list, submitted résumé first; only the Ledger's Submitted Résumé field counts."""
     if view.resume_state == "recorded":
         return [bullet(("Submitted résumé", True), " — ", (name, False, url or _url(view.ledger_page_id)), " (Job Ledger)") for name, url in view.resume]
     why = {"not_recorded": "not recorded on the Job Ledger row", "not_connected": "not connected (the Job Ledger has no Submitted Résumé field)"}
@@ -283,8 +269,8 @@ def _submitted(view):
 
 
 def _sent(view):
-    """LIFE-114 (Jim, Oct 29): after the résumé, the forms and Drive files Jim recorded on Manage, then his own emails on this job's request thread (Gmail, read only).
-    Cover letters are not tracked. An unread mailbox is said, never shown as none sent."""
+    """After the résumé: forms and Drive files recorded on Manage, then the user's emails on the request thread. An
+    unread mailbox is said, never shown as none sent."""
     out = [bullet((SENT_KIND[kind], True), " — ", (text, False, url) if url else text, f" · recorded {_day(at)}") for kind, text, url, at in sent_material(view)]
     mails = sorted(view.sent_mail)
     if view.sent_mail_state == "read":
@@ -298,12 +284,11 @@ def _sent(view):
 
 
 def opportunity_page(view, today, source="pending", adopted=None):
-    """The full UI 3c page: machine region first, then the protected Jim's Notes region (blocks after JIM_NOTES)."""
     marker = MARKERS["opportunity"] + (f";adopted={adopted}" if adopted else "")
     current, next_date = stage(view, today)
     label, action, due, link, basis = primary_action(view, today)
     ledger = [("Job Ledger row ↗", False, _url(view.ledger_page_id))] if view.ledger_page_id else []
-    if view.close_base and view.page_id:                                   # E14 (Jim, Oct 24): every action for this opportunity, each confirmed on its own Close screen
+    if view.close_base and view.page_id:
         ledger += [" · " if ledger else "", ("Manage ↗", False, f"{view.close_base}/manage?{urlencode({'o': view.page_id.replace('-', '')})}")]
     posting = [("Original posting ↗", False, view.apply_url)] if view.apply_url else []
     derived = [
@@ -312,7 +297,7 @@ def opportunity_page(view, today, source="pending", adopted=None):
              *([" · ", ("Request message ↗", False, link)] if link else [])),
         *complete_parts(view, label, action)]
     mine = hand_parts(view)
-    if mine:                                                               # LIFE-112 (Jim, Oct 29): his action replaces the derived one; new evidence since he set it shows under his
+    if mine:
         new = evidence_since(view, hand_set_at(view))
         later = [divider(), para(("New since you set this", True), f" · {new[1]} {_day(new[0])} · ", (label, True), " · ", basis), *derived] if new else []
         primary = callout([*mine, *later], None, PLAIN, ("SET BY JIM", True), " · your next action")
@@ -379,12 +364,10 @@ def notes_region():
 
 
 def machine_part(blocks):
-    """The machine region of a rendered UI 3c page: everything before the Jim's Notes heading."""
     return blocks[:next((i for i, b in enumerate(blocks) if b["type"] == "heading_2"
                          and b["heading_2"]["rich_text"][0]["text"]["content"] == JIM_NOTES), len(blocks))]
 
 
-# ---------- UI 4 interview page ----------
 
 PREP_SECTIONS = (("focus", "What they may evaluate"), ("strongest_evidence", "Strongest stories & evidence"),
                  ("pressure_points", "Risks & objections"), ("questions", "Questions to ask"))
@@ -393,7 +376,6 @@ LIVE_HEADINGS = ("Questions Asked", "What Landed", "What Needs Work", "Signals /
 
 
 def prepare_pane(prep, ordinal):
-    """The Prepare tab's blocks: accepted preparation (prep.normalize output) or the not-run state."""
     out = [h(3, "Interview objective"), para("Not run." if not prep else "Use the evaluation themes, stories and questions below.")]
     for key, label in PREP_SECTIONS:
         values = (prep or {}).get(key) or ()
@@ -414,8 +396,8 @@ def prepare_pane(prep, ordinal):
 
 
 def transcript_lines(state="absent", page_id=None):
-    """The UI 4 Full Transcript facts: (Source Health line, Transcript & Recording line). A page that exists is linked; it reads as an accepted
-    transcript only in state "accepted" (create.transcript_state), never because the page exists."""
+    """The Full Transcript facts: (Source Health line, Transcript & Recording line); accepted only in state
+    "accepted"."""
     if not page_id:
         return (field("Transcript", "no Full Transcript page yet; Granola import not connected"),
                 field("Full Transcript page", "Not created yet — added when a verified transcript is imported"))
@@ -426,11 +408,10 @@ def transcript_lines(state="absent", page_id=None):
 
 
 def meeting_parts(join, place):
-    """E10: the Logistics value for the accepted invite's joining details; create.round_meeting reads it back."""
     return [p for p in (("Join link ↗", False, join) if join else None, " · " if join and place else None, place) if p] or ["Unavailable"]
 
 
-VERIFY_SCHEDULING = "Verify scheduling and interview details before treating this round as confirmed."     # the machine's Next action when no Calendar event is linked; lifeos/interview/held.py replaces it once the round is Held (LIFE-958)
+VERIFY_SCHEDULING = "Verify scheduling and interview details before treating this round as confirmed."     # the machine's Next action until the round is Held (lifeos/interview/held.py replaces it)
 
 
 def round_page(view, query, parent_id, identity, prep=None, transcript=("absent", None)):

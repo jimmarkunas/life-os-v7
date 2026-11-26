@@ -1,7 +1,8 @@
-"""LIFE-931: the Interviews list on Hiring Pipeline, one row per machine round, kept current by the Interview job.
+"""The Interviews list on Hiring Pipeline: one row per machine round, kept current by the Interview job.
 
-The database is a child of the Hiring Pipeline page titled `Interviews`, found by that title and written with the Interview integration (no new token). Every cell is read from the round page's own snapshot, so a fact the page does not hold reads `Not verified`.
-The list never writes a round page and never lists a page Jim made by hand. Jim does not type in it: a row whose round is gone is marked Retired, never deleted."""
+Every cell is read from the round page's own snapshot, so a fact the page does not hold reads `Not verified`. The list
+never writes a round page or lists a hand-made one; a row whose round is gone is marked Retired, never deleted.
+"""
 import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -14,7 +15,7 @@ TITLE = "Interviews"
 NV = "Not verified"
 PROPERTIES = {"Interview": "title", "Company": "rich_text", "Role": "rich_text", "Round": "number", "Date (CT)": "date", "When": "rich_text", "Interviewer": "rich_text",
               "Status": "select", "Transcript": "checkbox", "Round page": "url", "Updated (CT)": "rich_text"}
-SCREEN = re.compile(r"^Round type: (?P<kind>Recruiter screen(?: \(.*\))?)$")      # LIFE-958: the one marker line a round's snapshot carries when the call was a screen, not a numbered round (set once, read here, never rewritten)
+SCREEN = re.compile(r"^Round type: (?P<kind>Recruiter screen(?: \(.*\))?)$")      # marker line in a round's snapshot when the call was a screen, not a numbered round
 SNAPSHOT_WHO = re.compile(r"^Interviewer: (?P<who>.*?) · Status: (?P<status>.*)$")
 LIMIT = 100
 
@@ -24,7 +25,8 @@ def _today():
 
 
 def find_source(client, root, context=None):
-    """-> (code, data source id): roster_found, roster_absent (no database titled Interviews, nothing is written), roster_ambiguous or roster_unreadable (its schema is not the contracted one)."""
+    """-> (code, data source id): roster_found, roster_absent (nothing is written), roster_ambiguous, or
+    roster_unreadable (its schema is not the expected one)."""
     try:
         blocks = [b for b in notion.children(client, root, [notion.MAX_CALLS], context) if b.get("type") == "child_database"
                   and ((b.get("child_database") or {}).get("title") or "") == TITLE]
@@ -48,7 +50,6 @@ def page_url(page_id):
 
 
 def status_of(raw, date, today):
-    """The list's Status for the snapshot's own status text and the round's date."""
     head = (raw or "").split(" · ")[0].strip()
     if head.startswith("Scheduling Pending"):
         return "Scheduling pending"
@@ -57,12 +58,12 @@ def status_of(raw, date, today):
     if head.startswith("Held"):
         return "Held"
     if date and date < today:
-        return "Date passed"                                           # dated in the past, but nothing on the page says it was held
+        return "Date passed"
     return "Scheduled"
 
 
 def facts(client, parent, child, context=None, today=None):
-    """One row's cells, read from the round page: -> dict, or None when the page's snapshot is not the one this writer makes."""
+    """One row's cells, read from the round page. -> dict, or None when the snapshot is not one this writer made."""
     budget = [notion.MAX_CALLS]
     tops = notion.children(client, child.page_id, budget, context)
     callouts = [b for b in tops[1:] if b.get("type") == "callout"]
@@ -85,13 +86,12 @@ def facts(client, parent, child, context=None, today=None):
     company, role = split_title(parent.title)
     date = child.interview_date
     natural = status_of(status, date, today or _today())
-    state = "Retired" if parent.active is False else natural               # LIFE-958: a round of an opportunity under Retired Opportunities (or no longer active) is Retired, so it leaves the Newest first view
+    state = "Retired" if parent.active is False else natural
     return {"company": company, "role": role, "round": None if screen else child.ordinal, "kind": screen, "date": date, "when": when, "who": who,
             "status": state, "held": natural == "Held" and state != "Retired", "transcript": transcript, "url": page_url(child.page_id)}
 
 
 def properties(row, stamp):
-    """The Notion properties of a row (the round page's own URL is its key)."""
     title = f"{row['company']} · {row['kind']}" if row.get("kind") else f"{row['company']} · Interview {row['round']}" if row["round"] else f"{row['company']} · Interview"
     props = {"Interview": {"title": rich_text(title)}, "Company": {"rich_text": rich_text(row["company"])}, "Role": {"rich_text": rich_text(row["role"])},
              "Round": {"number": row["round"]}, "Date (CT)": {"date": {"start": row["date"]} if row["date"] else None}, "When": {"rich_text": rich_text(row["when"])},
@@ -116,13 +116,11 @@ CELLS = ("Interview", "Company", "Role", "Round", "Date (CT)", "When", "Intervie
 
 
 def same(existing, wanted):
-    """True when every cell but the update stamp already reads as wanted."""
     have = existing.get("properties") or {}
     return all(_plain(have.get(name) or {}) == _plain({"type": PROPERTIES[name], PROPERTIES[name]: wanted[name][PROPERTIES[name]]}) for name in CELLS)
 
 
 def existing_rows(client, source, context=None):
-    """{round page url: row} for every live row; a read that is not complete raises NotionError."""
     rows, cursor = {}, None
     for _ in range(20):
         if context:
@@ -141,8 +139,9 @@ def existing_rows(client, source, context=None):
 
 
 def sync(client, environ, rounds, live, context, counts, stamp=None, today=None):
-    """Bring the list up to date: one row per machine round in `rounds` ((parent, child) pairs), a changed row updated, a missing one created, a row whose round is gone marked Retired.
-    Counts and fixed codes only. -> the fixed code."""
+    """Bring the list up to date: create missing rows, update changed ones, mark a row whose round is gone Retired.
+    Counts and fixed codes only. -> the fixed code.
+    """
     code, source = find_source(client, (environ.get("HIRING_PIPELINE_PAGE_ID") or "").strip(), context)
     counts["why"][code] = counts["why"].get(code, 0) + 1
     if source is None:
@@ -160,7 +159,7 @@ def sync(client, environ, rounds, live, context, counts, stamp=None, today=None)
                 continue
             wanted[row["url"]] = row
             if row["held"]:
-                held.repair(client, child.page_id, live, counts, context)                      # LIFE-958: a Held round's Verify-scheduling sentence becomes the page's own follow-up, or None
+                held.repair(client, child.page_id, live, counts, context)
         for url, row in wanted.items():
             props = properties(row, stamp)
             old = have.get(url)
