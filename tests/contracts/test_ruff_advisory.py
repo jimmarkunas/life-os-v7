@@ -15,7 +15,10 @@ class Configured(unittest.TestCase):
     def test_pyproject_holds_the_ruff_rules_and_nothing_else(self):
         text = (ROOT / "pyproject.toml").read_text()
         sections = re.findall(r"^\[([^\]]+)\]", text, flags=re.M)
-        self.assertEqual(sections, ["tool.ruff", "tool.ruff.lint"])
+        self.assertEqual(sections, ["tool.ruff", "tool.ruff.lint", "tool.ruff.format"])
+        self.assertIn("line-length = 120", text)
+        self.assertIn('quote-style = "preserve"', text)
+        self.assertIn("skip-magic-trailing-comma = false", text)
         self.assertRegex(text, r'select = \["E", "F", "B"\]')
         self.assertIn('ignore = ["E501"]', text)                                      # existing lines run to 661 characters
 
