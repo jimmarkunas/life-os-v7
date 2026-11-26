@@ -303,7 +303,7 @@ class SideBySide(unittest.TestCase):
         stages = {n: (lambda limit, live, n=n: calls.append(n) or 0) for n in ("fast", "boards", "after")}
         tick.tick(False, plan=plan, stages=stages)                                                             # concurrency=None: the old sequential order
         self.assertEqual(calls, ["fast", "boards", "after"])
-        self.assertEqual([s.name for s in tick.PLAN if s.early], ["web-titlewatch"])                              # LIFE-856: the one early step in the real plan (TinyFish only, nothing after the fast path reads what it writes); discover-jobs stays put because it holds the LinkedIn slot that group A needs                                            # LIFE-854: the real plan has no early step now (the boards stage moved to its own four windows); the mechanism stays proven by the plan above
+        self.assertEqual([s.name for s in tick.PLAN if s.early], ["web-titlewatch", "discover-jobs"])                              # LIFE-856: the two early steps in the real plan (nothing after the fast path reads what they write); discover-jobs shares the LinkedIn slot with group A, so an early step asks for its slots a moment after the run's first group                                            # LIFE-854: the real plan has no early step now (the boards stage moved to its own four windows); the mechanism stays proven by the plan above
 
     def test_the_stage_thread_limit_is_honoured(self):
         state, stage = self.gate()
@@ -598,4 +598,26 @@ class TickConcurrencyAppliesSettings(unittest.TestCase):
         with mock.patch("lifeos.platform.settings.apply", side_effect=OSError("down")):
             self.assertEqual(tick.tick_concurrency({})["caps"]["tinyfish"], 1)
         self.assertEqual(tick.tick_concurrency({"LIFEOS_SETTINGS": "off"})["caps"]["tinyfish"], 1)
+
+
+class EarlyStepAsksAfterGroupA(unittest.TestCase):
+    def test_an_early_step_that_shares_a_service_with_group_a_gets_the_slot_after_group_a(self):
+        """LIFE-856: discover-jobs (early, TinyFish and LinkedIn) must not take the LinkedIn slot before resolve-linkedin and linkedin-search, which sit in group A and start with the run."""
+        import threading
+        import time
+        order, lock = [], threading.Lock()
+
+        def stage(name, pause=0.05):
+            def run(limit, live):
+                with lock:
+                    order.append(name)
+                time.sleep(pause)
+                return 0
+            return run
+        plan = (Step("li1", 20, group="A", providers=("linkedin",)), Step("li2", 20, group="A", providers=("linkedin",)), Step("fast", 20),
+                Step("disc", 20, bulk=True, group="B", providers=("linkedin",), early=True), Step("after", 20))
+        stages = {n: stage(n) for n in ("li1", "li2", "fast", "disc", "after")}
+        tick.tick(False, plan=plan, stages=stages, concurrency=tick.concurrency_from_env({}))
+        self.assertLess(order.index("li1"), order.index("disc"))
+        self.assertLess(order.index("li2"), order.index("disc"))                                          # group A held the slot first, in order
 
