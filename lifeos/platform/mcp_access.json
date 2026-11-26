@@ -1694,7 +1694,7 @@
   },
   {
    "id": "jira-capture",
-   "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+   "sha256": "b5e6c9cf78026b294468a10c0f2b9ee9f7cfa6aaa617f7fd93b7a5b096e9a6b6",
    "expires": "2027-02-22",
    "revoked": false,
    "buzz_identity": null,
