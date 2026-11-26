@@ -1,9 +1,8 @@
-"""LIFE-37 Step 2: write ONE verified Granola transcript as the round's "Full Transcript" child page, read it back, and report counts and fixed codes only.
+"""Write ONE verified Granola transcript as the round's "Full Transcript" child page, read it back, report codes only.
 
-The page is the convention create.transcript_state already reads: a child page titled "Full Transcript" whose FIRST block is `v7-transcript:1;accepted=<sha256>`
-(the contract's content hash of the envelope). Absent -> created; accepted with the same hash -> NOOP; accepted with another hash, or a page that exists but is not
-ours -> no write and a fixed code (a rewrite is not built; changing a transcript Jim has looked at is his call). Nothing here prints transcript text: the caller gets
-codes and counts, and the text only ever goes to the private Notion page."""
+The page's FIRST block is `v7-transcript:1;accepted=<sha256>` (the envelope's content hash), as
+create.transcript_state reads. Absent: created. Same hash: NOOP. Another hash, or a page that is not ours: no write,
+a fixed code, because an existing transcript is never rewritten. Transcript text goes only to the private Notion page."""
 import hashlib
 from datetime import datetime
 
@@ -14,8 +13,8 @@ from . import create, notion
 from .transcript import Envelope
 
 TITLE = create.TRANSCRIPT
-MAX_RUN = 1800                  # characters per rich-text run (Notion allows 2,000)
-FIRST_BATCH = 100               # children accepted by one create or append call
+MAX_RUN = 1800
+FIRST_BATCH = 100
 FOOT = "Source: Granola transcript via LIFE OS (completeness not verified by the source)."
 
 
@@ -28,7 +27,7 @@ def _offset(segment, first):
 
 
 def lines(envelope):
-    """The page's transcript lines, in order: `mm:ss  Speaker: text` (speaker falls back to the audio channel)."""
+    """The transcript lines, in order: `mm:ss  Speaker: text` (speaker falls back to the audio channel)."""
     if not envelope.segments:
         return []
     first = datetime.fromisoformat(envelope.segments[0].start_timestamp.replace("Z", "+00:00"))
@@ -56,13 +55,14 @@ def _paragraph(line):
 
 
 def header_lines(header):
-    """The notes and summary above the transcript (LIFE-122, Jim Oct 26): `header` is ((label, text), ...). -> the paragraph lines in order, each non-empty source line one paragraph."""
+    """The paragraph lines of the notes and summary above the transcript; `header` is ((label, text), ...)."""
     return [line.strip() for _, text in header for line in str(text or "").splitlines() if line.strip()]
 
 
 def blocks(envelope, header=()):
-    """[marker, source line, (a heading and paragraphs per header section), "Transcript" heading when there is a header, transcript paragraphs...]; the marker stays the FIRST block. A long
-    utterance is one paragraph with several runs, so one line is always one block. Headings are blocks but not paragraphs: the read-back compares paragraphs only."""
+    """[marker, source line, header sections, "Transcript" heading when there is a header, transcript paragraphs...].
+
+    The marker is the FIRST block. One line is always one block; the read-back compares paragraphs only."""
     marker = f"{create.ACCEPTED}{envelope.source_content_sha256}"
     out = [notion.paragraph(marker), notion.paragraph(FOOT)]
     for label, text in header:
@@ -77,15 +77,17 @@ def blocks(envelope, header=()):
 
 
 def _page_lines(client, page_id):
-    """(marker text, transcript lines) as read from Notion, skipping the marker and source line."""
+    """(marker text, transcript lines, block count) as read from Notion, skipping the marker and source line."""
     found = notion.children(client, page_id, [400])
     texts = [notion.text(b) for b in found if b.get("type") == "paragraph"]
     return (texts[0] if texts else ""), texts[2:], len(found)
 
 
 def write(client, round_id, envelope, live, header=()):
-    """-> (code, counts). Codes: TRANSCRIPT_WRITTEN, TRANSCRIPT_NOOP, TRANSCRIPT_PLANNED (not live), TRANSCRIPT_CHANGED_NOT_REWRITTEN,
-    TRANSCRIPT_PAGE_UNVERIFIED, TRANSCRIPT_PAGE_AMBIGUOUS, TRANSCRIPT_WRITE_FAILED, TRANSCRIPT_READBACK_MISMATCH."""
+    """-> (code, counts).
+
+    Codes: TRANSCRIPT_WRITTEN, _NOOP, _PLANNED (not live), _CHANGED_NOT_REWRITTEN, _PAGE_UNVERIFIED, _PAGE_AMBIGUOUS,
+    _WRITE_FAILED, _READBACK_MISMATCH."""
     counts = {"segments": len(envelope.segments), "blocks_planned": 0, "blocks_written": 0, "readback_ok": 0, "readback_failed": 0}
     want = lines(envelope)
     state, page = create.transcript_state(client, round_id)
@@ -98,11 +100,11 @@ def write(client, round_id, envelope, live, header=()):
         return ("TRANSCRIPT_NOOP", counts) if marker == f"{create.ACCEPTED}{envelope.source_content_sha256}" else ("TRANSCRIPT_CHANGED_NOT_REWRITTEN", counts)
     body = blocks(envelope, header)
     counts["blocks_planned"] = len(body)
-    want = header_lines(header) + want                       # the read-back must find the header paragraphs, then the transcript lines
+    want = header_lines(header) + want
     if not live:
         return "TRANSCRIPT_PLANNED", counts
     try:
-        made = full_width.create_page(client, round_id, TITLE, body, post=client.call)["id"]                  # D16.1: a full width page, from the template
+        made = full_width.create_page(client, round_id, TITLE, body, post=client.call)["id"]
         counts["blocks_written"] = len(body)
     except (NotionError, full_width.FullWidthError):
         return "TRANSCRIPT_WRITE_FAILED", counts
