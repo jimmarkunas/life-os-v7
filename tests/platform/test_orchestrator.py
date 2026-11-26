@@ -261,3 +261,74 @@ class Grants(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class JiraTicketState(unittest.TestCase):
+    """LIFE-991: the bridge's own read-only Jira lookup of one issue's status; fail closed until its three credentials are placed."""
+
+    class Reply:
+        def __init__(self, body):
+            self.body = body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def read(self, limit=-1):
+            return self.body
+
+    def opener(self, body=b'{"fields": {"status": {"name": "In Progress"}}}', error=None, seen=None):
+        def open_(request, timeout=None):
+            if seen is not None:
+                seen.append((request.full_url, request.get_method(), dict(request.header_items()), timeout))
+            if error:
+                raise error
+            return self.Reply(body)
+        return open_
+
+    def test_it_reads_the_status_name_with_one_basic_auth_get_and_a_timeout(self):
+        seen = []
+        got = O.jira_status("https://example.invalid/", "user", "tok", self.opener(seen=seen))("LIFE-987")
+        self.assertEqual(got, "In Progress")
+        url, method, headers, timeout = seen[0]
+        self.assertEqual((url, method, timeout), ("https://example.invalid/rest/api/3/issue/LIFE-987?fields=status", "GET", O.JIRA_TIMEOUT))
+        self.assertTrue(headers["Authorization"].startswith("Basic "))
+
+    def test_an_unknown_key_is_unknown_and_every_other_failure_is_none(self):
+        import urllib.error
+        make = lambda err: O.jira_status("https://example.invalid", "user", "tok", self.opener(error=err))("LIFE-987")
+        self.assertEqual(make(urllib.error.HTTPError("u", 404, "n", {}, None)), "unknown")
+        self.assertIsNone(make(urllib.error.HTTPError("u", 401, "n", {}, None)))
+        self.assertIsNone(make(urllib.error.URLError("down")))
+        self.assertIsNone(make(OSError("boom")))
+        self.assertIsNone(O.jira_status("https://example.invalid", "user", "tok", self.opener(body=b"not json"))("LIFE-987"))
+        self.assertIsNone(O.jira_status("https://example.invalid", "user", "tok", self.opener(body=b'{"fields": {}}'))("LIFE-987"))
+
+    def test_a_key_that_is_not_a_life_key_is_never_sent(self):
+        seen = []
+        self.assertIsNone(O.jira_status("https://example.invalid", "user", "tok", self.opener(seen=seen))("LIFE-1/../../x"))
+        self.assertEqual(seen, [])
+
+    def test_wire_needs_all_three_names_and_an_https_address(self):
+        names = {"JIRA_READ_BASE_URL": "https://example.invalid", "JIRA_READ_EMAIL": "user", "JIRA_READ_TOKEN": "tok"}
+        st = {"ticket_state": None}
+        O.wire({k: v for k, v in names.items() if k != "JIRA_READ_TOKEN"}, st)
+        self.assertIsNone(st["ticket_state"])
+        O.wire({**names, "JIRA_READ_BASE_URL": "http://example.invalid"}, st)
+        self.assertIsNone(st["ticket_state"])
+        O.wire(names, st)
+        self.assertTrue(callable(st["ticket_state"]))
+
+    def test_the_dispatch_check_accepts_a_released_status_and_refuses_the_rest(self):
+        for status, want in (("Agent Go", None), ("In Progress", None), ("Done", "ticket_not_released"), ("unknown", "ticket_not_released"), (None, "ticket_state_unavailable")):
+            st = state()
+            st["ticket_state"] = lambda key, status=status: status
+            args = {"agent": "oc", "ticket": "LIFE-987", "text": "do it", "idempotency_key": "k-" + str(status).replace(" ", "-")}
+            if want:
+                with self.assertRaises(O.OrchestratorError) as raised:
+                    O._check_dispatch(args, st)
+                self.assertEqual(str(raised.exception), want)
+            else:
+                self.assertEqual(O._check_dispatch(args, st)[1], "LIFE-987")

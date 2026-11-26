@@ -4,11 +4,15 @@
 Trust boundary: before a dispatch the ticket must be Agent Go or In Progress by a read-only `ticket_state(key)` (injectable; the bridge holds no Jira credential, so without one it fails closed `ticket_state_unavailable`), the text
 is untrusted data (refused when it holds a secret or plainly asks for a credential, spend, deletion, scope change or permission), and the idempotency key makes a repeat safe. Nothing here starts a session: an offline agent gets
 ONE deduplicated Agent Inbox item "Start <agent>: go", with ORCHESTRATOR_CAN_START on or off. Reasons are fixed words; message text never reaches a log."""
+import base64
 import json
 import os
 import re
 import socket
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from datetime import datetime, timezone
 
 from lifeos.platform import inbox_send
@@ -87,6 +91,38 @@ def gateway(op, client, args, connect=socket.socket, path=SOCKET):
     if not isinstance(reply, dict) or type(reply.get("ok")) is not bool:
         raise OrchestratorError("gateway_bad_reply")
     return reply
+
+
+
+JIRA_NAMES = ("JIRA_READ_BASE_URL", "JIRA_READ_EMAIL", "JIRA_READ_TOKEN")      # LIFE-991: the bridge's own read-only Jira credential, placed with place-credentials (Bitwarden: lifeos/edge/JIRA_READ_*); never logged, never returned
+JIRA_TIMEOUT = 8
+
+
+def jira_status(base, email, token, opener=urllib.request.urlopen):
+    """-> the status name of one issue, or None when it cannot be read (an unreachable Jira, a refusal, a bad reply). One GET of `/rest/api/3/issue/<key>?fields=status` with Basic auth; the caller checks the key's shape first.
+    A key Jira does not know is `"unknown"`, which is never a released status. Nothing here is ever logged or returned except the status word."""
+    def lookup(key):
+        if not TICKET.match(key):
+            return None
+        url = f"{base.rstrip('/')}/rest/api/3/issue/{urllib.parse.quote(key, safe='')}?fields=status"
+        request = urllib.request.Request(url, headers={"Authorization": "Basic " + base64.b64encode(f"{email}:{token}".encode()).decode(), "Accept": "application/json"}, method="GET")
+        try:
+            with opener(request, timeout=JIRA_TIMEOUT) as reply:
+                data = json.loads(reply.read(65536))
+        except urllib.error.HTTPError as error:
+            return "unknown" if error.code == 404 else None
+        except (OSError, ValueError):
+            return None
+        name = (((data.get("fields") or {}).get("status") or {}).get("name")) if isinstance(data, dict) else None
+        return name if isinstance(name, str) and name else None
+    return lookup
+
+
+def wire(environ, state):
+    """The ticket-state lookup from the service's own environment: all three JIRA_READ_* names, with an https base address, or None (ticket_state_unavailable, fail closed) until they are placed. Replaces nothing that is already wired."""
+    base, email, token = (str(environ.get("JIRA_READ_BASE_URL") or "").strip(), str(environ.get("JIRA_READ_EMAIL") or "").strip(), str(environ.get("JIRA_READ_TOKEN") or "").strip())
+    if base.startswith("https://") and email and token and "\n" not in base + email + token:
+        state["ticket_state"] = jira_status(base, email, token)
 
 
 def _refuse_text(text):
