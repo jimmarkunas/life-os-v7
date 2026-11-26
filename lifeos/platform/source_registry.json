@@ -50,7 +50,7 @@
   "sources": [
     {"name": "boards", "module": "lifeos.sources.web.boards"},
     {"name": "web-scale-up", "module": "lifeos.sources.web.run", "args": {"lane": "Scale-Up"}, "tick": {"budget": 300, "limit": 12, "bulk": true, "group": "B", "providers": ["ats"]}, "after": "finalize"},
-    {"name": "web-titlewatch", "module": "lifeos.sources.web.titlewatch", "tick": {"budget": 240, "bulk": true, "group": "B", "providers": ["tinyfish"]}, "after": "web-scale-up"},
+    {"name": "web-titlewatch", "module": "lifeos.sources.web.titlewatch", "tick": {"budget": 240, "bulk": true, "group": "B", "providers": ["tinyfish"], "early": true}, "after": "web-scale-up"},
     {"name": "discover-jobs", "module": "lifeos.sources.web.discover_jobs", "tick": {"budget": 300, "limit": 12, "bulk": true, "group": "B", "providers": ["tinyfish", "linkedin"]}, "after": "web-titlewatch"},
     {"name": "sponsors", "module": "lifeos.sources.discovery.sponsor_register", "function": "CONTRACT", "tick": {"budget": 120, "bulk": true, "group": "B"}, "after": "discover-jobs"},
     {"name": "web", "module": "lifeos.sources.web.run", "tick": {"budget": 180, "limit": 12, "group": "A", "providers": ["ats"]}, "after": "resolve-dice"},
