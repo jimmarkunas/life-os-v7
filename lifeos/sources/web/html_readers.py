@@ -1,8 +1,8 @@
 """First-party careers-page readers for the Scale-Up sponsors that have no public ATS API.
 
-Ported (smallest proven mechanics only) from the V2 Scale-Up acquirer: each reader takes the page HTML and returns job dicts
-(id, title, location, url, posted, content). A reader that cannot PROVE the inventory raises ValueError: the lister turns that into FAILED,
-never into 'zero jobs' and never into a removal. A page that says explicitly it has no vacancies is the only empty COMPLETE listing."""
+Each reader takes the page HTML and returns job dicts (id, title, location, url, posted, content). A reader that cannot
+prove the inventory raises ValueError, which the lister turns into FAILED, never 'zero jobs'. Only a page that says
+explicitly it has no vacancies is an empty COMPLETE listing."""
 from html import unescape
 from html.parser import HTMLParser
 import hashlib
@@ -101,8 +101,7 @@ def _jsonld_jobs(page, source):
 
 
 def _links(text, source, accept, jsonld=True):
-    """The shared walk of a careers page: the JSON-LD postings first (when the reader uses them), then every link `accept(url, href, title)` turns into a title
-    (None = not a job); the first sight of a URL wins. `title` is the link's label with its spaces collapsed."""
+    """Walk a careers page: JSON-LD postings first (if used), then each link `accept(url, href, title)` titles."""
     page = parse_page(text)
     rows = _jsonld_jobs(page, source) if jsonld else []
     seen = {r["url"] for r in rows}
@@ -128,8 +127,7 @@ STREAM_SLUG = re.compile(r"^(?P<role>.+)-(?P<city>london|new-york|arlington|manc
 
 
 def _stream(text, source):
-    """Stream lists "<role> <city> <department>" as one label and says nothing else about the place; its URL slug carries the city
-    (/careers/delivery-manager-london-8459831). The role keeps its own words, the place becomes the job's location (D111)."""
+    """Stream labels are "<role> <city> <department>"; the city comes from the URL slug and becomes the location."""
     rows = _path_jobs(text, source, PATH_KINDS["stream_html"])
     for row in rows:
         m = STREAM_SLUG.match(urlparse(row["url"]).path.rstrip("/").rsplit("/", 1)[-1])
@@ -166,7 +164,7 @@ def _bluestonex(text, source):
     def accept(url, href, title):
         if "full-time more information" not in title.casefold():
             return None
-        return re.split(r"\s*full-time more information", title, flags=re.I)[0].strip()     # the card's button text is not part of the role
+        return re.split(r"\s*full-time more information", title, flags=re.I)[0].strip()
     return _links(text, source, accept, jsonld=False)
 
 
@@ -323,7 +321,6 @@ def _veramed(text, source, fetch_text):
     return rows
 
 
-# kind -> reader(text, source, fetch_text); `zero_marker` (registry) is the only way an empty page is a COMPLETE zero
 PATH_KINDS = {"wttj_html": r"/jobs/[^/]+", "stream_html": r"/(?:[a-z]{2}(?:-[a-z]{2})?/)?careers/[^/]+", "popsa_html": r"/careers/[^/]+"}
 READERS = {
     "static_complete_html": lambda t, s, f: _generic(t, s), "rippling_html": lambda t, s, f: _generic(t, s),
@@ -335,4 +332,4 @@ READERS = {
     "doubleword_bundle": _doubleword, "revolut_html": lambda t, s, f: _revolut(t, s),
     "tg0_html": lambda t, s, f: _tg0(t, s), "veramed_html": _veramed,
 }
-SELF_PROVING = {"sixflow_html", "futuristic_html", "doubleword_bundle", "revolut_html", "tg0_html", "veramed_html"}   # these raise on an ambiguous page themselves
+SELF_PROVING = {"sixflow_html", "futuristic_html", "doubleword_bundle", "revolut_html", "tg0_html", "veramed_html"}

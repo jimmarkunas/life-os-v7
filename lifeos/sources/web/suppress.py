@@ -1,6 +1,7 @@
-"""Cheap suppression BEFORE any description, Fit or Notion work: only unequivocal misses are dropped.
+"""Cheap suppression before any description, Fit or Notion work: only unequivocal misses are dropped.
 
-A title that names the target family always continues (so "Technical Program Manager, DevOps Platform" is never killed by "DevOps"), and anything ambiguous goes on to Fit."""
+A title naming the target family always continues (so "Technical Program Manager, DevOps Platform" survives "DevOps"),
+and anything ambiguous goes on to Fit."""
 from datetime import date
 import re
 
@@ -20,8 +21,10 @@ US = re.compile(r"\b(united states|usa|u\.s\.|us)\b|(?:,\s*|\s)(?:AL|AK|AZ|AR|CA
 
 
 def reason(job, today=None, lane="US Remote", first_party=False):
-    """A fixed reason code when the posting is an unequivocal miss for the lane, else None. first_party: the job is on its employer's own board (D111): being listed there
-    shows it is open, so age is not a reason."""
+    """Return a fixed reason code when the posting is an unequivocal miss for the lane, else None.
+
+    first_party: the job is on its employer's own board, so being listed shows it is open and age is not a reason.
+    """
     title, where = job["title"], job["location"]
     policy = lanes.POLICIES[lane]
     if not TARGET.search(title) and OFF.search(title):
@@ -32,7 +35,7 @@ def reason(job, today=None, lane="US Remote", first_party=False):
         if policy.work_mode == "remote_only" and lanes.detect_work_mode(where, title) in ("onsite", "hybrid"):
             return "not_remote"
     elif lanes.geography_status(where) == lanes.NEGATIVE:
-        return "non_target_geography"                   # Scale-Up: any work mode, but a named non-target place is out
+        return "non_target_geography"                   # Any work mode, but a named non-target place is out
     if policy.max_age_days and not first_party and job["posted"] and ((today or date.today()) - job["posted"]).days > policy.max_age_days:
         return "stale"
     return None

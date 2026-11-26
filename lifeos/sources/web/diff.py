@@ -1,15 +1,18 @@
-"""Classify a board listing against the accepted state: NEW, MATERIAL_CHANGE, UNCHANGED and (only after a COMPLETE listing) REMOVED."""
+"""Classify a board listing against the accepted state: new, changed, unchanged and (complete only) removed."""
 from hashlib import sha256
 
 
 def material_hash(job):
-    """Title, location, url, content and posted date are the material fields; first-seen and crawl time are not."""
+    """Hash of the material fields (title, location, url, content, posted date); crawl timestamps are excluded."""
     raw = "\x1f".join([job["title"], job["location"], job["url"], job["content"] or "", job["posted"].isoformat() if job["posted"] else ""])
     return sha256(raw.encode()).hexdigest()
 
 
 def classify(previous, jobs, complete):
-    """previous: {provider job id: material hash}. -> (new, changed, unchanged, removed); removed is [] unless `complete`."""
+    """`previous` maps provider job id to material hash. Return (new, changed, unchanged, removed).
+
+    `removed` is [] unless `complete`.
+    """
     new, changed, unchanged, seen = [], [], [], set()
     for job in jobs:
         seen.add(job["id"])
