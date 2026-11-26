@@ -69,6 +69,21 @@ class CommentsAreNeutral(unittest.TestCase):
         self.assertEqual(check(head, base), [])
 
 
+class CredentialSets(unittest.TestCase):
+    """LIFE-1013: a `bws-load` step names its list with `set:` (the lists are in sets.yml); the gate judges the list, so a name added there is a new credential."""
+    FLOW = BASE.replace("        with:\n          secrets: |\n            11111111-1111-1111-1111-111111111111 > KNOWN_ITEM\n", "        with:\n          set: other\n")
+    OLD = "other: |\n  11111111-1111-1111-1111-111111111111 > KNOWN_ITEM\n"
+
+    def test_a_name_added_to_a_set_is_a_new_credential_and_an_unchanged_set_is_not(self):
+        same = gate.reasons_for(".github/workflows/demo.yml", gate.expand_sets(self.FLOW, self.OLD), gate.expand_sets(self.FLOW, self.OLD))
+        more = gate.reasons_for(".github/workflows/demo.yml", gate.expand_sets(self.FLOW, self.OLD), gate.expand_sets(self.FLOW, self.OLD + "  33333333-3333-3333-3333-333333333333 > BRAND_NEW\n"))
+        self.assertEqual(same, [])
+        self.assertTrue(any("new credential" in r and "BRAND_NEW" in r for r in more), more)
+
+    def test_a_set_reference_expands_to_the_inline_block(self):
+        self.assertIn("secrets: |\n            11111111-1111-1111-1111-111111111111 > KNOWN_ITEM", gate.expand_sets(self.FLOW, self.OLD))
+
+
 class Stops(unittest.TestCase):
     def test_a_new_secret_stops(self):
         head = BASE.replace("TOKEN: ${{ secrets.EXISTING }}", "TOKEN: ${{ secrets.EXISTING }}\n          NEW: ${{ secrets.NEW_THING }}")
