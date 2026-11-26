@@ -16,6 +16,27 @@
           JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
           JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
         run: python -m lifeos.run jira-fill $([ "$LIVE" = "true" ] && echo --live)
+      # why: Jira decision capture (LIFE-994; LIFE tickets updated in the last two hours, decision comments only, into the shared memory through the governed tools; the server filters sensitive text; counts only; dry run unless live)
+      - id: jcapture
+        continue-on-error: true
+        name: Jira decision capture
+        if: ${{ needs.gate.outputs.due_jira == 'true' }}
+        env:
+          JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
+          JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
+          LIFEOS_MCP_JIRA_CAPTURE: ${{ steps.bws_jira.outputs.LIFEOS_MCP_JIRA_CAPTURE }}
+          LIFEOS_MCP_URL: ""
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KEY: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
+          LIFEOS_ACQ_SSH_JUMP_HOST: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_USER }}
+        run: python -m lifeos.run jira-capture $([ "$LIVE" = "true" ] && echo --live)
       - id: jprobe
         continue-on-error: true
         name: Jira layout probe (read-only; counts only)

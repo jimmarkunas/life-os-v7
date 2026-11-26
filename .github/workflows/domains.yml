@@ -389,6 +389,22 @@ jobs:
           JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
           JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
         run: python -m lifeos.run jira-release $([ "$LIVE" = "true" ] && echo --live)
+      - id: jstalled
+        continue-on-error: true
+        name: Stall check
+        if: ${{ inputs.jira == 'card' || inputs.jira == 'report' || needs.gate.outputs.due_jira == 'true' }}
+        env:
+          JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
+          JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
+        run: python -m lifeos.run jira-stalled $([ "$LIVE" = "true" ] && echo --live)
+      - id: jfill
+        continue-on-error: true
+        name: Parent, Component and Fix Version fill
+        if: ${{ inputs.jira == 'card' || inputs.jira == 'report' || needs.gate.outputs.due_jira == 'true' }}
+        env:
+          JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
+          JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
+        run: python -m lifeos.run jira-fill $([ "$LIVE" = "true" ] && echo --live)
       - id: jcapture
         continue-on-error: true
         name: Jira decision capture
@@ -409,22 +425,6 @@ jobs:
           LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_USER }}
         run: python -m lifeos.run jira-capture $([ "$LIVE" = "true" ] && echo --live)
-      - id: jstalled
-        continue-on-error: true
-        name: Stall check
-        if: ${{ inputs.jira == 'card' || inputs.jira == 'report' || needs.gate.outputs.due_jira == 'true' }}
-        env:
-          JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
-          JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
-        run: python -m lifeos.run jira-stalled $([ "$LIVE" = "true" ] && echo --live)
-      - id: jfill
-        continue-on-error: true
-        name: Parent, Component and Fix Version fill
-        if: ${{ inputs.jira == 'card' || inputs.jira == 'report' || needs.gate.outputs.due_jira == 'true' }}
-        env:
-          JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
-          JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
-        run: python -m lifeos.run jira-fill $([ "$LIVE" = "true" ] && echo --live)
       - id: jprobe
         continue-on-error: true
         name: Jira layout probe (read-only; counts only)
