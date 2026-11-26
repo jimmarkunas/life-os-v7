@@ -104,6 +104,18 @@ class Checksum(unittest.TestCase):
         self.assertEqual([e["revoked"] for e in pilot.EXTRA_EDGES], [True, False])
 
 
+class Exclusions(unittest.TestCase):
+    rows = staticmethod(lambda *ids: [{"id": i} for i in ids])
+
+    def test_a_revoked_edge_and_a_stale_record_are_reported_excluded_only_when_the_filter_removed_them(self):
+        r = pilot.exclusions(self.rows("FAKE-REQ-002"), self.rows("FAKE-REQ-002", "FAKE-REQ-001"), self.rows(), self.rows("FAKE-TASK-002"))
+        self.assertEqual((r["revoked_edge_excluded"], r["stale_record_excluded"]), (True, True))
+
+    def test_it_says_false_when_the_filter_let_them_through(self):
+        r = pilot.exclusions(self.rows("FAKE-REQ-002", "FAKE-REQ-001"), self.rows("FAKE-REQ-002", "FAKE-REQ-001"), self.rows("FAKE-TASK-002"), self.rows("FAKE-TASK-002"))
+        self.assertEqual((r["revoked_edge_excluded"], r["stale_record_excluded"]), (False, False))
+
+
 class Hygiene(unittest.TestCase):
     def test_the_script_holds_no_credential_and_names_secrets_only_by_their_item_names(self):
         text = (ROOT / "tools" / "um_aura_pilot.py").read_text()
