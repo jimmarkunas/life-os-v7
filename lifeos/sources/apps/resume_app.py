@@ -1,5 +1,4 @@
-"""Build resume on the private Close service: a tailored .docx for one exact open Job Ledger job, attached to its
-page.
+"""Build resume on the private Close service: a tailored .docx for one open Job Ledger job, attached to its page.
 
 Same Edge gate, signing key and fresh-read rule as Mark as Sent. The confirm POST re-reads the job, takes its
 description from the published v7-jd sections and asks the Oracle resume worker (private socket) for a checked

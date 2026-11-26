@@ -1,5 +1,4 @@
-"""What every signed Close page shares: signing, the result page, the refusal wrapper, the POST guard and one write
-with its read-back.
+"""What every signed Close page shares: signing, result page, refusal wrapper, POST guard and one verified write.
 
 A leaf module: it imports no app. Fixed codes only.
 """

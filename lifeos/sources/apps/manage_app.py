@@ -1,5 +1,4 @@
-"""Manage on the private Close service for one interview opportunity page: a read-only hub, Reopen and hand-set
-fields.
+"""Manage on the private Close service for one interview opportunity page: hub, Reopen and hand-set fields.
 
 GET /manage?o=<opportunity page id> links the existing actions. POST writes only through a signed review and
 confirm on a fresh read: Reopen, set Paused, Waiting on employer or Active, set a next action or due date, or

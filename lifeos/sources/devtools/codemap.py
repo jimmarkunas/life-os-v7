@@ -1,5 +1,4 @@
-"""The code map: one generated index of V7 (stages, packages, workflows, tables, decisions) so an agent finds things
-without reading the repo.
+"""The code map: one generated index of V7 (stages, packages, workflows, tables, decisions) for finding things fast.
 
 `python -m lifeos.sources.devtools.codemap` writes docs/CODEMAP.md and docs/codemap.json (generated, not
 committed); `find <text>` builds the map in memory. It is derived from the code itself, so it cannot drift. Names

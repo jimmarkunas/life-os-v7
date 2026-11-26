@@ -1,5 +1,4 @@
-"""Where the hourly and domains workflows spend their time, read-only, from GitHub's run records: seconds per job and
-step.
+"""Where the hourly and domains workflows spend their time (read-only, from GitHub run records), per job and step.
 
   python -m lifeos.sources.devtools.profile_runs --workflow hourly|domains --last 10 [--failed 5]
 

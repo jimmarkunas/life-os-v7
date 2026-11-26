@@ -1,5 +1,4 @@
-"""Granola bridge: write each synced meeting that matches exactly one Interview OS round to its Notion page, catalogue
-it, then purge it from Oracle.
+"""Granola bridge: file each meeting matching exactly one Interview OS round in Notion, catalogue it, purge Oracle.
 
 The round's Full Transcript page gets the notes and summary (when Oracle supplies them) above the transcript and is
 read back; the meeting is catalogued in Hostinger (`v7_meeting_catalog`, the dedupe key); only then is it purged
