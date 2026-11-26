@@ -35,6 +35,7 @@
       due_granola: ${{ steps.due.outputs.due_granola }}
       due_network_surface: ${{ steps.due.outputs.due_network_surface }}
       due_fit_cloud_backlog: ${{ steps.due.outputs.due_fit_cloud_backlog }}
+      due_last_seen_purge: ${{ steps.due.outputs.due_last_seen_purge }}
       granola_auto: ${{ steps.settings.outputs.GRANOLA_AUTO }}      # LIFE-703: the page's value when GitHub holds none; GitHub's own value when the page cannot be read
       imessage_alerts: ${{ steps.settings.outputs.V7_IMESSAGE_ALERTS }}
     steps:
