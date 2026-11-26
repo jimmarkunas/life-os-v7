@@ -1,0 +1,119 @@
+# docs/ index
+
+Every markdown file under `docs/`, grouped by area, with what it is for and whether it is current or historical. `docs/index.json` is the routing index (task to docs). `tests/contracts/test_docs_index.py` fails when a doc is missing here or a link here points nowhere. Add a new doc to this file in the same PR.
+
+## Policy and canon
+
+- [life-os-development-policy.md](life-os-development-policy.md): the whole development rule set, one file. Current.
+- [agent-reference.md](agent-reference.md): code map, commands and epic delivery rules that AGENTS.md points to. Current.
+- [DECISIONS.md](DECISIONS.md): numbered, dated decisions owned by Jim; wins over any other doc. Current.
+- [DECISIONS_INDEX.md](DECISIONS_INDEX.md): one line per decision, to find a number without reading DECISIONS.md. Current.
+- [PRIVACY.md](PRIVACY.md): the hard privacy rule for this public repository. Current.
+- [LIMITS.md](LIMITS.md): provider limits canon, mirrored by `lifeos/platform/limits.py`. Current.
+- [SETUP.md](SETUP.md): one-time setup of secrets and variables. Current.
+- [templates/ticket.md](templates/ticket.md): the ticket template agents and Claude chat use. Current.
+- [archive/development-policy-2026-11-20.md](archive/development-policy-2026-11-20.md): the 11-part policy before Nov 21, 2026; no authority. Historical.
+
+## Platform
+
+- [platform/action-inbox-readiness.md](platform/action-inbox-readiness.md): Action Inbox platform readiness and synthetic contract (LIFE-685). Historical inventory.
+- [platform/agent-directory-discovery.md](platform/agent-directory-discovery.md): Agent Directory resolver and live-discovery gate (LIFE-736). Current.
+- [platform/agent-inbox.md](platform/agent-inbox.md): the Agent Inbox where agents write to Jim (LIFE-791). Current.
+- [platform/agent-jira-settings.md](platform/agent-jira-settings.md): how to keep Jira tool answers small (LIFE-605). Current.
+- [platform/agent-loop-baseline.md](platform/agent-loop-baseline.md): agent-loop timing baseline from 20 merged PRs (LIFE-556). Historical measurement.
+- [platform/authorization-gate.md](platform/authorization-gate.md): the central authorization gate, synthetic only (LIFE-811). Current.
+- [platform/bitwarden-layout.md](platform/bitwarden-layout.md): the three-project Bitwarden layout (LIFE-733). Current.
+- [platform/boards-in-tick.md](platform/boards-in-tick.md): the `BOARDS_IN_TICK` switch and employer boards in the hourly tick (LIFE-905). Current.
+- [platform/branch-protection.md](platform/branch-protection.md): what GitHub enforces on `main` (LIFE-604). Current.
+- [platform/capability-catalog.md](platform/capability-catalog.md): capability catalog and agent identity contract (LIFE-810). Current.
+- [platform/ci-cost.md](platform/ci-cost.md): PR CI cost and escapes measured Nov 16 2026 (LIFE-744). Historical measurement.
+- [platform/codebase-value-audit.md](platform/codebase-value-audit.md): read-only codebase value audit (LIFE-806). Historical.
+- [platform/config-registry.md](platform/config-registry.md): checked list of every environment-variable name (LIFE-560). Current.
+- [platform/fake-conformance.md](platform/fake-conformance.md): how fakes are kept faithful to the real thing (LIFE-549). Current.
+- [platform/health-model.md](platform/health-model.md): what pages the phone, what only shows on the report (LIFE-690). Current.
+- [platform/ledger-claim.md](platform/ledger-claim.md): the claim every Job Ledger row creation takes first (LIFE-903). Current.
+- [platform/lint-baseline.md](platform/lint-baseline.md): advisory Ruff starting counts (LIFE-558). Historical baseline.
+- [platform/mcp-grants-proposed.md](platform/mcp-grants-proposed.md): Buzz publish grants for the chat clients (LIFE-865). Current, active despite the filename.
+- [platform/module-inventory.md](platform/module-inventory.md): inventory of `lifeos/` and the repo as of Nov 9 (LIFE-524). Historical.
+- [platform/monitoring-finish.md](platform/monitoring-finish.md): monitoring wrap-up as of Nov 10 (LIFE-528). Historical.
+- [platform/notion-rate-limits.md](platform/notion-rate-limits.md): Notion API limits and the one rule, tied to `limits.py` (LIFE-682). Current.
+- [platform/notion-writers.md](platform/notion-writers.md): list of every writer on the Daily Report page (LIFE-688). Current.
+- [platform/receipt-template.md](platform/receipt-template.md): the shape of every ticket receipt and summary (LIFE-605). Current.
+- [platform/release-proof.md](platform/release-proof.md): proof run after every deploy (LIFE-693). Current.
+- [platform/runs-today.md](platform/runs-today.md): the Runs OK today card (LIFE-975). Current.
+- [platform/runtime-config-cutover.md](platform/runtime-config-cutover.md): Runtime Configuration cutover map and rollback (LIFE-844). Current, cutover done.
+- [platform/runtime-profile.md](platform/runtime-profile.md): where the hourly and domains workflows spend time, Nov 10 (LIFE-555). Historical measurement.
+- [platform/scheduled-checks.md](platform/scheduled-checks.md): scheduled-check failure paging and the test clock (LIFE-692). Current.
+- [platform/shared-layer-matrix.md](platform/shared-layer-matrix.md): which pieces are shared across lanes (LIFE-526). Historical.
+- [platform/simplify-plan.md](platform/simplify-plan.md): measured baseline and plan to simplify, Nov 16 (LIFE-763). Historical plan.
+- [platform/stage-isolation.md](platform/stage-isolation.md): one bad item never fails a stage (LIFE-689). Current.
+- [platform/stage-timing.md](platform/stage-timing.md): `stage_timing` receipts per stage (LIFE-855). Current.
+- [platform/switch-exits.md](platform/switch-exits.md): every live switch with its default and exit condition (LIFE-604). Current.
+- [platform/system-table.md](platform/system-table.md): the System table callout on the Daily Report (LIFE-975). Current.
+- [platform/test-diet-manifest.md](platform/test-diet-manifest.md): which tests were removed and why, Nov 10 (LIFE-527). Historical.
+- [platform/test-index.md](platform/test-index.md): the test index and affected-test runs (LIFE-548). Current.
+- [platform/timeouts.md](platform/timeouts.md): timeouts and stage budgets (LIFE-691). Current.
+- [platform/type-baseline.md](platform/type-baseline.md): advisory type-check pilot baseline (LIFE-559). Historical baseline.
+- [platform/weekly-review.md](platform/weekly-review.md): the Weekly LIFE OS Review, V7 as sole writer (LIFE-945). Current.
+- [workflows.md](workflows.md): generated why-lines for every workflow step; edit the sources, not this file. Current, generated.
+
+## Jira and V3
+
+- [jira/review-checklist.md](jira/review-checklist.md): epic review checklist (LIFE-851). Current.
+- [MASTER_ROADMAP.md](MASTER_ROADMAP.md): Oct 13 technical WBS and acceptance evidence, not a planning authority; Jira is. Historical.
+- [ROADMAP.md](ROADMAP.md): early V7 roadmap and Codex prompts. Historical.
+- [PLAN.md](PLAN.md): the original Job Newsletter pipeline plan (Phase 1). Historical.
+- [SCHEDULER_AUTHORITY_DELTA.md](SCHEDULER_AUTHORITY_DELTA.md): the Oct 4 scheduler authority conflict and fix. Historical.
+
+## Buzz and agents
+
+- [buzz-implementation-roadmap-v1.md](buzz-implementation-roadmap-v1.md): frozen baseline of the 25 approved Buzz steps, approved Nov 1. Current baseline, not execution status.
+- [buzz-remote-mcp-deploy.md](buzz-remote-mcp-deploy.md): the Buzz remote MCP service on lifeos-edge-01 (LIFE-216). Current.
+- [buzz-selfhost-pilot.md](buzz-selfhost-pilot.md): the pinned private Buzz relay pilot on Oracle (LIFE-870). Current.
+- [concord-oracle.md](concord-oracle.md): Concord's one shared store on Oracle for Mac and Oracle agents (LIFE-872). Current.
+- [EDGE_GATEWAY_SCOPE.md](EDGE_GATEWAY_SCOPE.md): Oracle edge gateway and OpenClaw live contract. Current.
+- [SCRIPT_PACK_RUNNER.md](SCRIPT_PACK_RUNNER.md): the script-pack runner for approved host changes (LIFE-310). Current.
+- [hermes-files.md](hermes-files.md): where every Hermes file lives (LIFE-315). Current.
+- [NOTION_INTEGRATIONS.md](NOTION_INTEGRATIONS.md): map of Notion connections and their credentials. Current.
+- [platform/shared-read-acceptance.md](platform/shared-read-acceptance.md): two clients reading one Jira source (LIFE-721). Historical acceptance.
+- [platform/shared-read-oracle-runbook.md](platform/shared-read-oracle-runbook.md): Oracle runbook for the shared Jira read proof (LIFE-754). Historical.
+
+## Followup and Action Inbox
+
+- [platform/inbox-access-contract.md](platform/inbox-access-contract.md): Action Inbox tool paths, grants and evidence (LIFE-707). Historical.
+- [platform/inbox-schema-rollout.md](platform/inbox-schema-rollout.md): Action Inbox schema rollout proposal (LIFE-712). Historical proposal.
+- [platform/followup-contract-draft.md](platform/followup-contract-draft.md): draft Production Contract text for Followup (LIFE-750). Historical draft.
+- [platform/followup-credentials.md](platform/followup-credentials.md): Followup credentials in one sitting (LIFE-757). Historical.
+- [platform/followup-loop-markers.md](platform/followup-loop-markers.md): which title markers start a Followup open loop (LIFE-716). Current.
+- [platform/followup-os-8-1-promotion.md](platform/followup-os-8-1-promotion.md): Followup OS 8.1 slice and promotion proposal (LIFE-737). Historical.
+- [platform/followup-schema-rollout.md](platform/followup-schema-rollout.md): Followup tables check, apply and rollback (LIFE-756). Historical.
+
+## Jobs and Interview
+
+- [LANES.md](LANES.md): the three opportunity lanes and shared Jobs OS rules. Current.
+- [FIT_MODEL.md](FIT_MODEL.md): deterministic professional Fit model (Phase 2). Current.
+- [US_REMOTE_WEB.md](US_REMOTE_WEB.md): incremental US Remote web acquisition plan. Current.
+- [NETWORK_INTELLIGENCE_SCOPE.md](NETWORK_INTELLIGENCE_SCOPE.md): Network Intelligence requirements; the top approved section governs, the rest is historical. Current at top.
+- [INTERVIEW_HANDOFF.md](INTERVIEW_HANDOFF.md): how to build Interview OS in V7. Current.
+- [DCC_CARD_CONTRACT.md](DCC_CARD_CONTRACT.md): Daily Command Center card contract; V7 became the writer in D175. Partly historical.
+- [platform/life-973-recruiter-view.md](platform/life-973-recruiter-view.md): Recruiter Outreach and Hiring Pipeline cards as live Notion views (LIFE-973). Current.
+- [DRIVE_RESUMES.md](DRIVE_RESUMES.md): Google Drive résumé saves (LIFE-88). Current.
+
+## Providers
+
+- [LIMITS.md](LIMITS.md): provider limit numbers, also listed under Policy. Current.
+- [platform/notion-rate-limits.md](platform/notion-rate-limits.md): Notion limits, also listed under Platform. Current.
+- [design/bitwarden-load-pairs.md](design/bitwarden-load-pairs.md): design to collapse Bitwarden load and retry step pairs (LIFE-540). Design only, historical.
+
+## Proposals
+
+- [delivery-flow-v2-proposal.md](delivery-flow-v2-proposal.md): why delivery hurts and a simpler flow; proposal, not built. Findings historical.
+- [BIG_FEATURES_ROADMAP.md](BIG_FEATURES_ROADMAP.md): one-sequence roadmap of big features; proposal, nothing built.
+- [DELIVERY_TRACKING_SCOPE.md](DELIVERY_TRACKING_SCOPE.md): delivery tracking scope; proposal, nothing built.
+- [MEGIBOW_SCOPE.md](MEGIBOW_SCOPE.md): Automated MegIBOW scope; proposal, nothing built.
+
+## Machine files and non-markdown
+
+- `index.json`: the routing index mapping tasks to docs.
+- `contracts/career-lifecycle.requirements.v1.json`, `jira/issue-schema.v1.json`: JSON contracts read by code and tests.
+- `prototypes/hiring-decision-center.html`: static prototype page. Historical.
