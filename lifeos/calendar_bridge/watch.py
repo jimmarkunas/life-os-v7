@@ -1,6 +1,7 @@
-"""Wraps `sync.run` so a persistently failing sync reaches the phone: a live failure pages only after STUCK_HOURS
-without success, then reminds every 6 hours and reports recovery. State is one private row; alerting never changes
-the sync's result or error."""
+"""Wraps `sync.run` so a persistently failing sync reaches the phone.
+
+A live failure pages only after STUCK_HOURS without success, then reminds every 6 hours and reports recovery. State is
+one private row; alerting never changes the sync's result or error."""
 import json
 import os
 from datetime import datetime, timezone
