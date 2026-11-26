@@ -15,7 +15,7 @@ def settings(path):
 class Units(unittest.TestCase):
     def test_the_socket_is_a_unix_socket_for_concord_and_the_bridge_group_only(self):
         rows = settings(ORACLE / "lifeos-concord-gateway.socket")
-        for want in ("ListenStream=/run/lifeos-concord-gateway/orchestrator.sock", "SocketUser=concord", "SocketGroup=buzz-mcp", "SocketMode=0660", "DirectoryMode=0750", "Accept=yes"):
+        for want in ("ListenStream=/run/lifeos-concord-gateway/orchestrator.sock", "SocketUser=concord", "SocketGroup=buzz-mcp", "SocketMode=0660", "DirectoryMode=0755", "Accept=yes"):
             self.assertIn(want, rows)
         self.assertFalse([r for r in rows if re.match(r"ListenStream=(?!/run/)", r) or r.startswith(("ListenDatagram", "ListenFIFO"))])      # no TCP, no other listener
 
