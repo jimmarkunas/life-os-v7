@@ -29,7 +29,7 @@ class Recruiters:
         url = body["filter"]["url"]["equals"]
         self.queries.append(url)
         text = lambda v: {"type": "rich_text", "rich_text": [{"plain_text": v}]}
-        return {"results": [{"id": f"rec-{i}", "properties": {"Recruiter / Person": text(person), "Recruiter Company": text(company), "Source URL": {"type": "url", "url": link}}}
+        return {"results": [{"id": f"rec-{i}", "properties": {"Recruiter": text(person), "Company": text(company), "Source URL": {"type": "url", "url": link}}}
                             for i, (person, company, link) in enumerate(self.rows) if link == url], "has_more": False}
 
 

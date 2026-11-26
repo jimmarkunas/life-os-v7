@@ -273,7 +273,7 @@ def _asks(notion, write, counts, records, gm, accounts):
 
 
 def _fill(notion, write, counts, records, gm, accounts):
-    """LIFE-973: Recruiter Company, Role and Client of every open row that has a blank one, from the one message behind it (lifeos.recruiters.fill). Messages this run read are used as read; older rows' messages
+    """LIFE-973: Company, Role and Client of every open row that has a blank one, from the one message behind it (lifeos.recruiters.fill). Messages this run read are used as read; older rows' messages
     are read once more (backfill.MAX_PER_RUN a run). A set value is never replaced. The log carries the row's page id and where each value came from, never a name or a company."""
     counts.update(filled=0, would_fill=0, fill_unread=0)
     by_url = {m["url"]: m for m in records if m.get("url")}

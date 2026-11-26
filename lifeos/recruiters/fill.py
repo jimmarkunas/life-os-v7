@@ -1,4 +1,4 @@
-"""LIFE-973 (Jim, Nov 25 2026: "fill companies"): the Recruiter Company, Role and Client of a recruiter row, from the one message behind it.
+"""LIFE-973 (Jim, Nov 25 2026: "fill companies"): the Company, Role and Client of a recruiter row, from the one message behind it.
 
 Company, in order: the email signature (a company line), the sender's display name ("Name | Agency"), the sender's domain when it is not a free-mail domain. Role: the subject line's job title,
 then the first job title named in the body. Client: when the message names the end client separately from the agency. Only words that appear in the message; nothing inferred. A field the message
@@ -11,12 +11,9 @@ from lifeos.platform.notion_client import NotionError, rich_text
 from . import classify as C, notion as store, qualify as Q
 
 NOT_STATED = "Not stated"
-FIELDS_BASE = (("company", "Recruiter Company"), ("role", "Role"), ("client", "Client"))
+FIELDS = (("company", "Company"), ("role", "Role"), ("client", "Client"))
 
 
-def fields():
-    """The fillable fields with their LIVE property names (LIFE-989: Recruiter Company is Company after the rename)."""
-    return tuple((f, store.live(n)) for f, n in FIELDS_BASE)
 TITLE_WORDS = (r"engineer|developer|architect|manager|director|analyst|consultant|administrator|designer|scientist|specialist|lead|officer|programmer|technician|"
                r"strategist|coordinator|supervisor|owner|head of [A-Za-z]+|vp|vice president|cto|cio|ciso|devops|sre|sdet|qa|tester|writer|editor|producer|planner|advisor|executive")
 TITLE = re.compile(rf"\b(?:(?:senior|sr\.?|junior|jr\.?|staff|principal|lead|associate|chief|global|regional|technical|enterprise|cloud|data|software|solutions?|systems?|network|security|"
@@ -122,7 +119,7 @@ def derive(message):
 def plan(row, message):
     """-> (props, sources): Notion properties filling only the BLANK fields of `row`, and {field: source} for the fields written. A set value (including `Not stated`) is never touched."""
     found, props, sources = derive(message), {}, {}
-    for field, name in fields():
+    for field, name in FIELDS:
         if str(row[field] or "").strip():
             continue
         value, source = found[field]
@@ -136,7 +133,7 @@ def apply(notion, row, message, write):
     props, sources = plan(row, message)
     if not props or not write:
         return sources
-    values = {f: props[n]["rich_text"][0]["text"]["content"] for f, n in fields() if n in props}
+    values = {f: props[n]["rich_text"][0]["text"]["content"] for f, n in FIELDS if n in props}
     with fixed(NotionError, store.RecruitersError, "RECRUITERS_NOTION_WRITE_FAILED"):
         store.set_props(notion, row, props, values)
     return sources
@@ -145,7 +142,7 @@ def apply(notion, row, message, write):
 def blank_rows(notion):
     """The open (Needs Action or Waiting) rows with at least one blank Company, Role or Client: the rows to fill."""
     rows = store.rows_where(notion, {"or": [{"property": "Action Status", "select": {"equals": s}} for s in (store.NEEDS_ACTION, store.WAITING)]})
-    return [r for r in rows if r["active"] and not r["done"] and any(not str(r[f] or "").strip() for f, _ in fields())]
+    return [r for r in rows if r["active"] and not r["done"] and any(not str(r[f] or "").strip() for f, _ in FIELDS)]
 
 
 # ---------- LIFE-989: What they want is never empty ----------

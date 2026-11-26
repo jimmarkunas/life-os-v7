@@ -55,7 +55,7 @@ def employer_from(reason):
 
 
 def _props(job, person, now, employer=""):
-    return {store.title_name(): {"title": rich_text(person)}, **({store.company_name(): {"rich_text": rich_text(employer)}} if employer else {}),
+    return {"Recruiter": {"title": rich_text(person)}, **({"Company": {"rich_text": rich_text(employer)}} if employer else {}),
             "Client": {"rich_text": rich_text(job["company"])}, "Role": {"rich_text": rich_text(job["role"])},
             "Medium": {"rich_text": rich_text(MEDIUM)}, "Last Contact": {"date": {"start": now.replace(second=0, microsecond=0).isoformat()}},
             "Week Ending": {"date": {"start": week_ending(now)}}, "Done": {"checkbox": False}, "Active": {"checkbox": True}, "Needs review": {"checkbox": False},
@@ -64,7 +64,7 @@ def _props(job, person, now, employer=""):
 
 
 def mark_sent(notion, job, person, now, ledger_source, employer=""):
-    """Jim's confirmed Mark as Sent for one exact job and one person, with the person's employer when known (stored as Recruiter Company; never guessed). -> {"status": "recorded" | "already_recorded", "verified": True, "state": "open" | "closed",
+    """Jim's confirmed Mark as Sent for one exact job and one person, with the person's employer when known (stored as Company; never guessed). -> {"status": "recorded" | "already_recorded", "verified": True, "state": "open" | "closed",
     "action", "follow_up"}; an existing row for (job, person) is returned as it is (never rewritten, never relabelled Waiting).
     One non-retried create after absence is proven for (job, person), then a fresh read must show exactly that one row, Waiting, linked to the job."""
     person, employer = valid_person(person), valid_person(employer)
