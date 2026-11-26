@@ -621,3 +621,25 @@ class EarlyStepAsksAfterGroupA(unittest.TestCase):
         self.assertLess(order.index("li1"), order.index("disc"))
         self.assertLess(order.index("li2"), order.index("disc"))                                          # group A held the slot first, in order
 
+
+class ServiceCapsHoldAcrossGroups(unittest.TestCase):
+    def test_an_early_step_and_group_a_never_hold_the_same_one_slot_service_at_once(self):
+        """LIFE-856: each group made its own slots, so an early step and group A could both use LinkedIn (cap 1) at the same time."""
+        import threading
+        import time
+        inside, peak, lock = [0], [0], threading.Lock()
+
+        def stage(limit, live):
+            with lock:
+                inside[0] += 1
+                peak[0] = max(peak[0], inside[0])
+            time.sleep(0.15)
+            with lock:
+                inside[0] -= 1
+            return 0
+        plan = (Step("a1", 20, group="A", providers=("linkedin",)), Step("a2", 20, group="A", providers=("dice",)), Step("fast", 20), Step("e", 20, bulk=True, group="B", providers=("linkedin",), early=True), Step("after", 20))
+        from unittest import mock
+        with mock.patch.object(tick, "EARLY_START_DELAY", 0.0):                                              # start both at once so any missing cap shows
+            tick.tick(False, plan=plan, stages={"a1": stage, "a2": lambda limit, live: 0, "e": stage, "fast": lambda limit, live: 0, "after": lambda limit, live: 0}, concurrency=tick.concurrency_from_env({}))
+        self.assertEqual(peak[0], 1)
+
