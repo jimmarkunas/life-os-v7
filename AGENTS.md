@@ -24,7 +24,7 @@ Epics go `Scoping → Ready → In Progress → Done`; every child carries one l
 
 - Stops for Jim: wider workflow `permissions`, a new or moved credential (secrets manager only; GitHub holds just its bootstrap token), deleting GitHub data, spend over budget.
 - Buzz MCP: adding or changing an operation must never touch the tool names, descriptions or schemas of `buzz_capabilities`, `buzz_read` or `buzz_publish`; if it would, stop and ask Jim (docs/buzz-remote-mcp-deploy.md).
-- Buzz posting (LIFE-927, Nov 26 2026): post with `buzz_publish` and `community: "pilot"` (the pinned Oracle relay). Team channel `life-os-main` on pilot is `be8a687a-a111-42e5-9016-6501016d0656`; `buzz_capabilities` lists the five pilot channels. Hosted `life-os` is read-only standby, so `write_disabled` there is expected, not a fault. The legacy `buzz_post_message` / `buzz_get_messages` tools only accept `life-os` or `bytalos` and cannot reach pilot: use `buzz_publish` and `buzz_read` instead. Read back your post with `buzz_read` `get_messages` on the same channel.
+- Buzz: post with `buzz_publish`, `community: "pilot"` (team channel `life-os-main`; ids in `buzz_capabilities`). Hosted `life-os` is read-only (LIFE-927), so `write_disabled` there is expected. Legacy `buzz_post_message` can't reach pilot.
 - Public repo: no personal data or secrets, ever (docs/PRIVACY.md).
 - Notion views: A Notion view Jim has arranged by hand is canon. Agents never change a view's columns, order, sort or filter unless a ticket names that view and the change. (LIFE-989)
 - Jira connector: `mcp__claude_ai_Atlassian_MCP__*` only; Rovo connectors are retired. Pass `fields` on reads.
