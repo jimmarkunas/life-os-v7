@@ -1,5 +1,4 @@
-"""Durable, atomic state for the Action Inbox in the V7 MySQL store: seen events, pending confirmations, claimed
-actions and read-access receipts.
+"""Durable, atomic Action Inbox state in the V7 MySQL store: events, confirmations, actions and access receipts.
 
 `Ledger(connect)`: `connect` is a context manager yielding an autocommit connection. Atomicity comes from unique
 keys with `INSERT IGNORE` (a claim) and compare-and-set `UPDATE ... WHERE state = ...` (a transition); no lock is

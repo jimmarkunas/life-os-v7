@@ -45,7 +45,7 @@ class ConcordSource(_Source):
     def _read(self, read):
         messages, live = read()
         if not isinstance(messages, list) or len(messages) > MAX_MESSAGES or not all(_valid_message(m) for m in messages):
-            raise InboxError("listing_incomplete")
+            raise InboxError("listing_incomplete")  # a partial or malformed answer is an error, never a smaller list
         self._live = frozenset(live) if isinstance(live, (list, tuple, set, frozenset)) else None
         return self._requests(messages)
 

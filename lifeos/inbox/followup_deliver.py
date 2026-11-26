@@ -1,5 +1,4 @@
-"""Delivers Followup open loops to the Agent Inbox (From = Followup), one row per loop, through the `send_to_jim`
-path.
+"""Delivers Followup open loops to the Agent Inbox, one row per loop, through the `send_to_jim` path.
 
 A loop is never a copy of a Jira ticket, Todoist task or event: its Link points at the evidence. The row key is the
 loop's thread id (`followup-<id>`), so a rerun never adds a second row. Only ACTIVE loops get a row; Review Needed

@@ -1,5 +1,4 @@
-"""How an action started in Notion is tied to the right person, record revision and grant: two signed events and an
-out-of-band code.
+"""Ties an action started in Notion to a person, record revision and grant: two signed events and a code.
 
 The actor is the HMAC-signed event's single person author, mapped through a server-side allowlist. Step 1: the person
 sets "Requested action"; the row and record are read fresh, policy is checked and a pending confirmation is stored; a

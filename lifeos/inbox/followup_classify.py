@@ -1,5 +1,4 @@
-"""The bounded Followup classifier: an item becomes follow-up evidence only when its title starts with an explicit
-marker.
+"""The bounded Followup classifier: an item becomes evidence only when its title starts with a marker.
 
 Input is the delta readers' minimal items (source, id, link, observed time, a title of at most 120 characters, a due
 date only when the SOURCE holds one); no body or attendee is read. Only items in the user's own task or notes systems
