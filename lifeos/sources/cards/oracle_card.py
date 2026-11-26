@@ -11,7 +11,7 @@ from lifeos.inbox import concord_reader
 from lifeos.inbox.model import InboxError
 from lifeos.jobs.fit import edge
 from lifeos.oraclecloud import backup_watch, boot_backup_watch, card, system_table, worker_watch
-from lifeos.platform import connections, ct_stamp, router
+from lifeos.platform import connections, ct_stamp, inbox_send, router
 from lifeos.platform.fixed_code import fixed
 from lifeos.platform.notion_client import NotionError
 from lifeos.sources.cards import signin_reminder
@@ -59,11 +59,16 @@ def connection_summary(client, environ, now, live, seen=None, concord=None):
     return connections.summary(connections.merged(rows, updates), now), {"changed": len(updates), "retired": len(retire)}
 
 
-def reminders(reading, environ, now, send=None):
+def reminders(reading, environ, now, send=None, client=None):
     """LIFE-993: the Agent Inbox renewal items for a sign-in due within three days (see signin_reminder). -> a count; never raises and never changes the card."""
     try:
         items = signin_reminder.plan((reading or {}).get("signins"), now)
-        return signin_reminder.send_all(items, environ, send)["sent"] if items else 0
+        if send is None and client is not None:                                             # the step holds the card's Notion writer, not NOTION_API_TOKEN; the inbox is on the same page
+            send = lambda item: inbox_send.deliver(item, client, now)                       # noqa: E731
+        out = signin_reminder.send_all(items, environ, send) if items else {"sent": 0, "failed": 0}
+        if items:
+            print("oracle-card: signin reminders", json.dumps(out))                         # counts only
+        return out["sent"]
     except Exception:                                                                       # noqa: BLE001
         return 0
 
@@ -93,7 +98,7 @@ def run(limit, live, environ=os.environ, now=None, fetcher=card.fetch, client=No
         (watch or backup_watch.record)(stats["backup"], environ, now)                       # LIFE-129: never raises; the card's own result never depends on it
         (workers_watch or worker_watch.record)(stats["workers"], environ, now)               # LIFE-531: same
         (boot_watch or boot_backup_watch.record)(stats["backups"], environ, now)             # LIFE-808: same
-    counts["signin_reminders"] = reminders(reading, environ, now, reminder_send)
+    counts["signin_reminders"] = reminders(reading, environ, now, reminder_send, client)
     scoped = card.scoped(environ, client, heading, rows)                                    # LIFE-613: only the heading and the table rows located above can be written
     with fixed(NotionError, card._fail, "ORACLE_WRITE_FAILED"):
         result = card.write(scoped, heading, rows, table, heading_text, True)

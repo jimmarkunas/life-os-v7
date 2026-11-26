@@ -58,6 +58,13 @@ class Send(unittest.TestCase):
         self.assertEqual(oracle_card.reminders(reading, {}, NOW, lambda item: 1 / 0), 0)
         self.assertEqual(oracle_card.reminders(None, {}, NOW, None), 0)
 
+    def test_without_a_send_the_card_writer_client_delivers_through_the_inbox(self):
+        from unittest import mock
+        reading = {"signins": {"meter": {"state": "OK", "expires": METER}}}
+        with mock.patch("lifeos.sources.cards.oracle_card.inbox_send.deliver", return_value={"ok": True}) as deliver:
+            self.assertEqual(oracle_card.reminders(reading, {}, NOW, None, "writer"), 1)
+        self.assertEqual(deliver.call_args.args[1], "writer")
+
 
 if __name__ == "__main__":
     unittest.main()
