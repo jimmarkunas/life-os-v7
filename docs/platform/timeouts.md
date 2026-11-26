@@ -56,6 +56,7 @@ The job timeouts in `.github/workflows` change in one separate workflow pull req
 | `domains.yml` | `mail` | 10 | 10 | 45 | 28 | 90 | twice the slowest run (90 s) rounds to 10 min, not below the current 10: unchanged |
 | `domains.yml` | `megibow` | 20 | 20 | 45 | 36 | 334 | twice the slowest run (334 s) rounds to 20 min, not below the current 20: unchanged |
 | `domains.yml` | `outlook` | 10 | 10 | 45 | 22 | 498 | twice the slowest run (498 s) rounds to 17 min, not below the current 10: unchanged |
+| `domains.yml` | `last_seen_purge` | 20 | 20 | 12 | 24 | 51 | LIFE-856 change 5: Steps 8 and 8b moved from the hourly finish job unchanged (about 14 s and 10 s p50 there); the 20 minute limit of the other late jobs kept |
 | `domains.yml` | `network_surface` | 20 | 20 | 12 | 109 | 209 | LIFE-856: moved from the hourly finish job unchanged (109 s p50, 209 s slowest as Step 7c there); the 20 minute limit of the other late jobs kept |
 | `domains.yml` | `recruiters` | 30 | 30 | 54 | 86 | 1501 | twice the slowest run (1501 s) rounds to 51 min, not below the current 30: unchanged |
 | `domains.yml` | `report` | 5 | 5 | 8 | 8 | 10 | kept: only 8 measured runs (fewer than 10), slowest 10 s |

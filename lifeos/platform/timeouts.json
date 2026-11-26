@@ -252,6 +252,14 @@
    "slowest_seconds": 498,
    "target": 10
   },
+  "domains.yml::last_seen_purge": {
+   "basis": "LIFE-856 change 5: Steps 8 and 8b moved from the hourly finish job unchanged (about 14 s and 10 s p50 there); the 20 minute limit of the other late jobs kept",
+   "current": 20,
+   "median_seconds": 24,
+   "runs_measured": 12,
+   "slowest_seconds": 51,
+   "target": 20
+  },
   "domains.yml::network_surface": {
    "basis": "LIFE-856: moved from the hourly finish job unchanged (109 s p50, 209 s slowest as Step 7c there); twice the slowest rounds to 7 minutes, the 20 minute limit of the other late jobs kept",
    "current": 20,

@@ -136,7 +136,7 @@ class SettingsStepsNeverStopAJob(unittest.TestCase):
 
 
 # The only names a `needs.<job>.outputs.<name>` may carry: due flags and trigger facts, settings switches, fixed words (failed stage names, codes) and run facts. Never a credential.
-KNOWN_OUTPUTS = {"all", "codes", "due_network_surface", "due_fit_cloud_backlog", "pipeline", "due_agenda", "due_amazon", "due_amazon_retention", "due_bills", "due_dcc", "due_followup", "due_granola", "due_hiring", "due_hiring_outcomes", "due_imessage", "due_weekly_review",
+KNOWN_OUTPUTS = {"all", "codes", "due_network_surface", "due_fit_cloud_backlog", "due_last_seen_purge", "pipeline", "due_agenda", "due_amazon", "due_amazon_retention", "due_bills", "due_dcc", "due_followup", "due_granola", "due_hiring", "due_hiring_outcomes", "due_imessage", "due_weekly_review",
                  "due_interview", "due_jira", "due_mail", "due_megibow", "due_outlook", "due_recruiters", "early", "extract", "failed", "fit_profile_sync", "granola_auto", "imessage_alerts", "late",
                  "matrix", "pipeline", "sweep", "tick",
                  "run", "mode", "limit", "deadline_minutes", "slot", "slot_ct", "late_reason"}     # LIFE-854: the board window gate's decision (a flag, a mode word, counts, a window label and a fixed reason code; no credential)

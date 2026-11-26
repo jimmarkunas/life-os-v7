@@ -61,3 +61,83 @@ class MovedJobs(unittest.TestCase):
         self.assertIn("58 * 60", step["run"])
         self.assertEqual(self.domains["jobs"]["fit_cloud_backlog"]["timeout-minutes"], 58)
         self.assertEqual(step["env"]["V7_CLOUD_FIT_BACKLOG_PAGE"], "")                                    # a tick never narrows to a pilot page
+
+
+class MovedJobsKeepTheEnvironmentTheirStageReads(unittest.TestCase):
+    """LIFE-856 (Nov 25 2026): PR #1564 moved two steps to domains.yml and left out NOTION_JOB_LEDGER_DATA_SOURCE_ID, a name the old hourly.yml declared at workflow level; both jobs failed with CONFIG_MISSING at once (run
+    45726238990). The settings source fills a name only for a step that declares it, so a moved step must declare every name its old step had, workflow-level ones included, unless the name is listed here as never read."""
+    WORKFLOW_LEVEL = {"HIRING_PIPELINE_PAGE_ID", "NOTION_JOB_LEDGER_DATA_SOURCE_ID", "V7_FIT_GATE"}      # hourly.yml's own `env:` before change 4
+    OLD = {      # the `env:` names each step had in hourly.yml's finish job (git show 13e157f3^ for change 4, 283f7b52 for change 5)
+        "network_surface": {"FIT_PROFILE_EXTRA_JSON", "FIT_PROFILE_JSON", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "JOBRIGHT_EMAIL", "JOBRIGHT_PASSWORD", "LIFEOS_ACQ_DB_NAME",
+                            "LIFEOS_ACQ_DB_PASSWORD", "LIFEOS_ACQ_DB_USER", "LIFEOS_ACQ_SSH_HOST", "LIFEOS_ACQ_SSH_JUMP_HOST", "LIFEOS_ACQ_SSH_JUMP_KEY", "LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS", "LIFEOS_ACQ_SSH_KNOWN_HOSTS",
+                            "LIFEOS_ACQ_SSH_PRIVATE_KEY", "LIFEOS_ACQ_SSH_USER", "NETWORK_SURFACE_SKIP", "NOTION_API_TOKEN", "OPEN_JOBS_CONTACT", "TINYFISH_API_KEY", "V7_CLOSE_BASE_URL", "V7_RUNTIME_CONFIG_SOURCE_ID"},
+        "fit_cloud_backlog": {"CLOUD_BACKLOG", "FIT_PROFILE_EXTRA_JSON", "FIT_PROFILE_JSON", "IMESSAGE_ALERTS_HOST", "LIFEOS_ACQ_DB_NAME", "LIFEOS_ACQ_DB_PASSWORD", "LIFEOS_ACQ_DB_USER", "LIFEOS_ACQ_SSH_HOST",
+                              "LIFEOS_ACQ_SSH_JUMP_HOST", "LIFEOS_ACQ_SSH_JUMP_KEY", "LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS", "LIFEOS_ACQ_SSH_KNOWN_HOSTS", "LIFEOS_ACQ_SSH_PRIVATE_KEY", "LIFEOS_ACQ_SSH_USER", "NOTION_API_TOKEN",
+                              "V7_CLOUD_FIT_BACKLOG_BUDGET", "V7_CLOUD_FIT_BACKLOG_MAX", "V7_CLOUD_FIT_BACKLOG_PAGE", "V7_CLOUD_FIT_PARALLEL", "V7_CLOUD_FIT_PROFILE_REF", "V7_RUNTIME_CONFIG_SOURCE_ID"},
+        "sync_seen": {"FIT_PROFILE_EXTRA_JSON", "FIT_PROFILE_JSON", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "JOBRIGHT_EMAIL", "JOBRIGHT_PASSWORD", "LIFEOS_ACQ_DB_NAME",
+                      "LIFEOS_ACQ_DB_PASSWORD", "LIFEOS_ACQ_DB_USER", "LIFEOS_ACQ_SSH_HOST", "LIFEOS_ACQ_SSH_JUMP_HOST", "LIFEOS_ACQ_SSH_JUMP_KEY", "LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS", "LIFEOS_ACQ_SSH_KNOWN_HOSTS",
+                      "LIFEOS_ACQ_SSH_PRIVATE_KEY", "LIFEOS_ACQ_SSH_USER", "NOTION_API_TOKEN", "OPEN_JOBS_CONTACT", "TINYFISH_API_KEY", "V7_RUNTIME_CONFIG_SOURCE_ID"},
+        "purge": {"FIT_PROFILE_EXTRA_JSON", "FIT_PROFILE_JSON", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "JOBRIGHT_EMAIL", "JOBRIGHT_PASSWORD", "LIFEOS_ACQ_DB_NAME",
+                  "LIFEOS_ACQ_DB_PASSWORD", "LIFEOS_ACQ_DB_USER", "LIFEOS_ACQ_SSH_HOST", "LIFEOS_ACQ_SSH_JUMP_HOST", "LIFEOS_ACQ_SSH_JUMP_KEY", "LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS", "LIFEOS_ACQ_SSH_KNOWN_HOSTS",
+                  "LIFEOS_ACQ_SSH_PRIVATE_KEY", "LIFEOS_ACQ_SSH_USER", "NOTION_API_TOKEN", "NTFY_TOPIC", "OPEN_JOBS_CONTACT", "PURGE_FORCE", "TINYFISH_API_KEY", "V7_RUNTIME_CONFIG_SOURCE_ID"},
+    }
+    JOB = {"network_surface": "network_surface", "fit_cloud_backlog": "fit_cloud_backlog", "sync_seen": "last_seen_purge", "purge": "last_seen_purge"}
+    DROPPED = {      # names the old step carried that its code never reads (least privilege), proved below by a text search of the modules the stage runs
+        "network_surface": {"GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "OPEN_JOBS_CONTACT"},
+        "fit_cloud_backlog": set(),
+        "sync_seen": {"FIT_PROFILE_EXTRA_JSON", "FIT_PROFILE_JSON", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "JOBRIGHT_EMAIL", "JOBRIGHT_PASSWORD", "OPEN_JOBS_CONTACT", "TINYFISH_API_KEY"},
+        "purge": {"FIT_PROFILE_EXTRA_JSON", "FIT_PROFILE_JSON", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "JOBRIGHT_EMAIL", "JOBRIGHT_PASSWORD", "OPEN_JOBS_CONTACT", "TINYFISH_API_KEY"},
+    }
+    MODULES = {      # the files each stage runs (its own module and what it imports from lifeos.jobs / lifeos.platform for storage, Notion and alerts)
+        "network_surface": ["lifeos/sources/network/network_surface.py"],
+        "sync_seen": ["lifeos/jobs/repost.py", "lifeos/jobs/store.py", "lifeos/jobs/ledger.py", "lifeos/platform/notion_client.py", "lifeos/platform/db.py"],
+        "purge": ["lifeos/jobs/retention.py", "lifeos/jobs/hiring_pipeline.py", "lifeos/jobs/lanes.py", "lifeos/jobs/progression.py", "lifeos/jobs/tombstone.py", "lifeos/jobs/ledger.py", "lifeos/jobs/store.py", "lifeos/platform/alerts.py", "lifeos/platform/db.py"],
+    }
+
+    @classmethod
+    def setUpClass(cls):
+        cls.domains = yaml.safe_load((ROOT / "domains.yml").read_text())
+
+    def step(self, stage):
+        return next(s for s in self.domains["jobs"][self.JOB[stage]]["steps"] if s.get("id") == stage)
+
+    def test_every_moved_step_declares_every_name_its_old_step_had_and_the_three_workflow_level_names(self):
+        for stage in self.OLD:
+            declared = set(self.step(stage).get("env") or {})
+            self.assertEqual(sorted((self.OLD[stage] - self.DROPPED[stage]) - declared), [], stage)
+            self.assertEqual(sorted(self.WORKFLOW_LEVEL - declared), [], stage)                                     # the omission that failed run 45726238990
+
+    def test_a_dropped_name_is_never_read_by_the_stage(self):
+        for stage, names in self.DROPPED.items():
+            text = " ".join((ROOT.parents[1] / path).read_text() for path in self.MODULES.get(stage, []))
+            self.assertEqual(sorted(n for n in names if n in text), [], stage)
+
+    def test_the_last_seen_and_purge_job_runs_after_a_tick_that_ran_its_pipeline_only_and_keeps_both_steps_red_on_failure(self):
+        job = self.domains["jobs"]["last_seen_purge"]
+        for needed in ("needs.gate.outputs.late == 'true'", "needs.gate.outputs.tick == 'true'", "needs.gate.outputs.pipeline == 'true'", "needs.gate.outputs.due_last_seen_purge == 'true'", "needs.gate.result != 'failure'"):
+            self.assertIn(needed, job["if"])
+        self.assertNotIn("inputs.", job["if"])
+        ids = [s.get("id") for s in job["steps"] if s.get("id") in ("sync_seen", "purge")]
+        self.assertEqual(ids, ["sync_seen", "purge"])                                                         # the sync first, then the purge, as in the old order
+        for stage in ("sync_seen", "purge"):
+            self.assertTrue(self.step(stage).get("continue-on-error"))
+        self.assertIn("::error title=last_seen_purge::", job["steps"][-1]["run"])
+        purge = self.step("purge")["run"]
+        for line in ("purge_done", "purge_failed", "exit 1", "not_due"):
+            self.assertIn(line, purge)                                                                         # the purge keeps its own pushes and exit code
+        for name in ("report", "chain"):
+            self.assertIn("last_seen_purge", self.domains["jobs"][name]["needs"])
+        self.assertIn("last_seen_purge=${{ needs.last_seen_purge.result }}", " ".join(str(s.get("run", "")) for s in self.domains["jobs"]["report"]["steps"]))
+
+    def test_hourly_keeps_the_two_steps_for_a_manual_maintenance_dispatch_only(self):
+        hourly = yaml.safe_load((ROOT / "hourly.yml").read_text())
+        steps = {s.get("id"): s for s in hourly["jobs"]["finish"]["steps"]}
+        for stage in ("sync_seen", "purge"):
+            condition = steps[stage]["if"]
+            self.assertIn("inputs.maintenance", condition)
+            self.assertIn("needs.prep.outputs.pipeline != 'true'", condition)
+            self.assertNotIn("pipeline == 'true'", condition)
+        for ident in ("alerts", "lanes"):
+            self.assertIn(ident, steps)                                                                        # they report the finish lanes and stay
+        self.assertIn("sync_seen=${{ steps.sync_seen.outcome }}", steps["lanes"]["run"])
+
