@@ -6,7 +6,7 @@
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - name: Checkout the exact commit (own git fetch, token never stored)
+      - name: Checkout the exact commit (own fetch, token never stored)
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
@@ -35,7 +35,7 @@
       # why: Notion token from Bitwarden so this job can read the V7 settings page (LIFE-703; read only; if it fails the GitHub values stay as they are)
       - id: bws_settings
         continue-on-error: true
-        name: Notion token from Bitwarden so this job can read the V7 settings page
+        name: Notion token from Bitwarden for the V7 settings page
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
@@ -73,10 +73,3 @@
           LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_hiring_outcomes.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_hiring_outcomes.outputs.LIFEOS_ACQ_SSH_USER }}
         run: python -m lifeos.run hiring-outcomes --limit 0 $([ "$LIVE" = "true" ] && echo --live)
-      - name: Hiring outcome mail warning (does not fail the Jobs run)
-        if: ${{ always() && steps.houtcomes.outcome == 'failure' }}
-        run: echo "::warning title=Hiring outcome mail::the hiring outcome-mail scan failed or a source was unread; the Hiring card keeps the last accepted outcomes"
-      # why: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
-      - name: A failed stage step makes this job red after every stage has run
-        if: ${{ always() && contains(steps.*.outcome, 'failure') }}
-        run: echo "::error title=hiring_outcomes::a stage step failed in the hiring_outcomes job (see the step marked failed above)"; exit 1

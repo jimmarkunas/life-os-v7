@@ -6,7 +6,7 @@
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - name: Checkout the exact commit (own git fetch, token never stored)
+      - name: Checkout the exact commit (own fetch, token never stored)
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
@@ -53,7 +53,7 @@
       # why: MegIBOW (Gmail, Outlook and calendars to the Notion table; counts only; writes only when live; a failed source is DEGRADED)
       - id: megibow
         continue-on-error: true
-        name: MegIBOW (Gmail, Outlook and calendars to the Notion table; counts only; writes
+        name: MegIBOW (mail and calendars to Notion; counts only)
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           LIFEOS_NOTION_IDS: ""
@@ -79,6 +79,3 @@
           NOTION_JIRA_TOKEN: ${{ steps.bws_megibow.outputs.NOTION_JIRA_TOKEN }}
           NTFY_TOPIC: ${{ steps.bws_megibow.outputs.NTFY_TOPIC }}
         run: python -m lifeos.run megibow --limit 0 $([ "$LIVE" = "true" ] && echo --live)
-      - name: MegIBOW warning (does not fail the Jobs run)
-        if: ${{ always() && steps.megibow.outcome == 'failure' }}
-        run: echo "::warning title=MegIBOW::the MegIBOW stage failed or a source was unread; the table shows DEGRADED and the Jobs pipeline is unaffected"

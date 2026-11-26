@@ -9,7 +9,7 @@
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - name: Checkout the exact commit (own git fetch, token never stored)
+      - name: Checkout the exact commit (own fetch, token never stored)
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
@@ -53,24 +53,3 @@
           doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           set: runtime-config
-      # why: Step 8 - Last Seen sync (daily; moved from the hourly finish job by LIFE-856, it runs beside the after-tick domains work)
-      - id: sync_seen
-        continue-on-error: true
-        name: Step 8 - Last Seen sync
-        env:
-          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
-          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""   # LIFE-856: the old hourly.yml declared these three at workflow level, so the settings source filled them for every step; a domains step must declare them itself
-          HIRING_PIPELINE_PAGE_ID: ""
-          V7_FIT_GATE: ""
-          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KEY: ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
-          LIFEOS_ACQ_SSH_JUMP_HOST: ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_USER }}
-          NOTION_API_TOKEN: ${{ steps.bws_last_seen_purge.outputs.NOTION_API_TOKEN }}
-        run: python -m lifeos.run sync-seen $([ "$LIVE" = "true" ] && echo --live)

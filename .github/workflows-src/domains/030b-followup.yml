@@ -27,6 +27,6 @@
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_followup.outputs.LIFEOS_ACQ_SSH_USER }}
         run: python -m lifeos.run followup $([ "$LIVE" = "true" ] && echo --live)
       # why: A failed stage step makes this job red after the stage has run (LIFE-649), so the report job pushes the phone
-      - name: A failed stage step makes this job red after the stage has run
+      - name: Fail the job if any stage step failed
         if: ${{ always() && (steps.bws_followup.outcome == 'failure' || steps.followup.outcome == 'failure') }}
         run: echo "::error title=followup::a stage step failed in the followup job (see the step marked failed above)"; exit 1

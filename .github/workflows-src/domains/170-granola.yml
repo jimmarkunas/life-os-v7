@@ -11,7 +11,7 @@
       group: life-os-v7-interview-writer
       cancel-in-progress: false
     steps:
-      - name: Checkout the exact commit (own git fetch, token never stored)
+      - name: Checkout the exact commit (own fetch, token never stored)
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
@@ -40,7 +40,7 @@
       # why: Notion token from Bitwarden so this job can read the V7 settings page (LIFE-703; read only; if it fails the GitHub values stay as they are)
       - id: bws_settings
         continue-on-error: true
-        name: Notion token from Bitwarden so this job can read the V7 settings page
+        name: Notion token from Bitwarden for the V7 settings page
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
@@ -78,11 +78,3 @@
           IMESSAGE_ALERTS_HOST: ${{ steps.bws_granola.outputs.IMESSAGE_ALERTS_HOST }}
           GRANOLA_LIVE: ${{ env.LIVE == 'true' && needs.gate.outputs.granola_auto == 'on' && 'true' || 'false' }}
         run: python -m lifeos.run granola-auto $([ "$GRANOLA_LIVE" = "true" ] && echo --live)
-      - name: Granola auto warning
-        if: ${{ always() && steps.gran.outcome == 'failure' }}
-        run: echo "::warning title=Granola auto::the automatic Granola run stopped; nothing is purged from Oracle that is not safely in Notion and the catalog"
-      # why: Granola auto stopped - fail this job (LIFE-312) so the run is red and the report job pushes the phone
-      - name: Granola auto stopped - fail this job
-        if: ${{ always() && steps.gran.outcome == 'failure' }}
-        run: exit 1
-

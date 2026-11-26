@@ -1,0 +1,8 @@
+      - name: Granola auto warning
+        if: ${{ always() && steps.gran.outcome == 'failure' }}
+        run: echo "::warning title=Granola auto::the automatic Granola run stopped; nothing is purged from Oracle that is not safely in Notion and the catalog"
+      # why: Granola auto stopped - fail this job (LIFE-312) so the run is red and the report job pushes the phone
+      - name: Granola auto stopped - fail this job
+        if: ${{ always() && steps.gran.outcome == 'failure' }}
+        run: exit 1
+

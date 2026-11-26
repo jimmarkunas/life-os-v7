@@ -1,3 +1,13 @@
+      # why: Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)
+      - id: bws_runtime_config
+        continue-on-error: true
+        name: Runtime Configuration source ID from Bitwarden
+        uses: ./.github/actions/bws-load
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
+          set_env: false
+          set: runtime-config
       # why: Mail Alerts card (reads the stored state; writes only the Mail Alerts callout, with read-back; a failed ingest is shown as DEGRADED)
       - id: mcard
         continue-on-error: true
@@ -28,7 +38,7 @@
         if: ${{ always() && (steps.mail.outcome == 'failure' || steps.mcard.outcome == 'failure' || steps.mfile.outcome == 'failure') }}
         run: echo "::warning title=Mail Alerts::the Physical Mail stage failed; the Jobs pipeline is unaffected"
       # why: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
-      - name: A failed stage step makes this job red after every stage has run
+      - name: Fail the job if any stage step failed
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=mail::a stage step failed in the mail job (see the step marked failed above)"; exit 1
 

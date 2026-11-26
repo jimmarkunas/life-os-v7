@@ -4,7 +4,7 @@
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Checkout the exact commit (own git fetch, token never stored)
+      - name: Checkout the exact commit (own fetch, token never stored)
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
@@ -31,7 +31,7 @@
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,LIVE
           live_mode: ${{ github.event_name == 'workflow_dispatch' && !inputs.tick && (inputs.live && 'true' || 'false') || 'follow' }}
-      - name: Resolver lanes and the finish job report here (the run fails if any lane failed)
+      - name: Lanes and the finish job report (fails if a lane failed)
         env:
           NTFY_TOPIC: ${{ steps.bws_report.outputs.NTFY_TOPIC }}
           STAGES: ${{ needs.finish.outputs.failed }}

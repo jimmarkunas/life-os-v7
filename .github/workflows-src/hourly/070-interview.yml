@@ -26,7 +26,7 @@
       FIT_PROFILE_EXTRA_JSON: ""
       OPEN_JOBS_CONTACT: ""
     steps:
-      - name: Checkout the exact commit (own git fetch, token never stored)
+      - name: Checkout the exact commit (own fetch, token never stored)
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
@@ -72,7 +72,7 @@
         run: python -m lifeos.run interview-probe
       - id: irun
         continue-on-error: true
-        name: Interview stage (live only when Actually move mail is ticked)
+        name: Interview stage (live only when move mail is ticked)
         if: ${{ inputs.interview }}
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
@@ -82,7 +82,7 @@
         run: python -m lifeos.run interview --limit 20 $([ "$LIVE" = "true" ] && echo --live)
       - id: iacc
         continue-on-error: true
-        name: Interview private acceptance (manual dispatch only; case comes from the secret)
+        name: Interview private acceptance (manual dispatch only)
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.interview_acceptance == true && inputs.tick != true }}
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
@@ -90,20 +90,3 @@
           NOTION_INTERVIEW_TOKEN: ${{ steps.bws_interview.outputs.NOTION_INTERVIEW_TOKEN }}
           NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""   # D231: the Scheduling Pending case reads the exact Ledger rows (read-only, Interview token)
         run: python -m lifeos.run interview-acceptance --limit 1 $([ "$LIVE" = "true" ] && echo --live)
-      # why: Interview private acceptance - negative case (always a dry run; skipped when its secret is empty)
-      - id: iaccneg
-        continue-on-error: true
-        name: Interview private acceptance - negative case
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.interview_acceptance == true && inputs.tick != true }}
-        env:
-          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
-          INTERVIEW_ACCEPTANCE_JSON: ${{ steps.bws_interview.outputs.INTERVIEW_ACCEPTANCE_NEGATIVE_JSON }}   # D233: the case that must be refused; always a dry run, so it cannot write
-          NOTION_INTERVIEW_TOKEN: ${{ steps.bws_interview.outputs.NOTION_INTERVIEW_TOKEN }}
-          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
-        run: |
-          if [ -z "$INTERVIEW_ACCEPTANCE_JSON" ]; then echo "INTERVIEW-ACCEPTANCE NEGATIVE CASE NOT SET"; exit 0; fi
-          python -m lifeos.run interview-acceptance --limit 1
-      - name: Interview warning (does not fail the run)
-        if: ${{ always() && (steps.iprobe.outcome == 'failure' || steps.irun.outcome == 'failure' || steps.iacc.outcome == 'failure' || steps.iaccneg.outcome == 'failure') }}
-        run: echo "::warning title=Interview OS::the Interview step failed or was DEGRADED; the Jobs pipeline is unaffected"
-

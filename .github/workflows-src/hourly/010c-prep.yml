@@ -1,3 +1,39 @@
+      - name: Step 3b - reconcile (repair, manual only)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.reconcile && inputs.live }}
+        env:
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_prep.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_prep.outputs.GMAIL_OAUTH_CLIENT_ID }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_prep.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KEY: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
+          LIFEOS_ACQ_SSH_JUMP_HOST: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_prep.outputs.NOTION_API_TOKEN }}
+        run: python -m lifeos.sources.newsletters.ingest --reconcile --live --limit 300
+      - name: Step 2 - store check
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.check_store }}
+        env:
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_prep.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_prep.outputs.GMAIL_OAUTH_CLIENT_ID }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_prep.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KEY: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
+          LIFEOS_ACQ_SSH_JUMP_HOST: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_prep.outputs.NOTION_API_TOKEN }}
+        run: python -m lifeos.jobs.store
       - id: extract
         continue-on-error: true
         name: Stage - extract cards from mail

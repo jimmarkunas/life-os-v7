@@ -8,7 +8,7 @@
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - name: Checkout the exact commit (own git fetch, token never stored)
+      - name: Checkout the exact commit (own fetch, token never stored)
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
@@ -63,7 +63,7 @@
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_interview_mail.outputs.LIFEOS_ACQ_SSH_USER }}
         run: python -m lifeos.run interview-mail $([ "$LIVE" = "true" ] && echo --live)
       # why: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
-      - name: A failed stage step makes this job red after every stage has run
+      - name: Fail the job if any stage step failed
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=interview_mail::a stage step failed in the interview_mail job (see the step marked failed above)"; exit 1
 
