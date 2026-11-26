@@ -1,12 +1,12 @@
-"""OAuth 2.1 resource-server checks for the remote Buzz MCP: RS256 access tokens from one issuer, a client allowlist and a user allowlist. Stdlib only.
-
-Inputs: the bearer token; the allowlists and issuer from the environment (named in lifeos.buzz.mcp). Outputs: a verified identity (subject, label, communities) or an AuthError with a fixed code.
-The client (client_id/azp) and the user (`sub`) must both be allowlisted; the label (claude or chatgpt) comes only from the verified `sub`, so one registered client can serve both products.
-Never issues tokens, stores secrets or logs a token. Pointer: docs/buzz-remote-mcp-deploy.md (LIFE-216, LIFE-254)."""
+"""OAuth 2.1 resource-server checks for the remote Buzz MCP: RS256 access tokens from one issuer, a client allowlist
+and a user allowlist. Stdlib only. Output: a verified identity (subject, label, communities) or an AuthError with a
+fixed code. Client (client_id/azp) and user (`sub`) must both be allowlisted; the label comes only from the
+verified `sub`.
+"""
 import base64, hashlib, hmac, json, threading, time, urllib.request
 from lifeos.buzz.relay import _NoRedirect
 
-DIGEST_INFO = bytes.fromhex("3031300d060960864801650304020105000420")  # PKCS#1 v1.5 SHA-256 prefix
+DIGEST_INFO = bytes.fromhex("3031300d060960864801650304020105000420")
 SCOPES = ("buzz:read", "buzz:write")
 
 
@@ -28,13 +28,13 @@ def fetch_json(url):
 class Verifier:
     def __init__(self, issuer, audience, clients, jwks_url, users, as_url=None, fetch=fetch_json, clock=time.time, ttl=300, extra_audiences=()):
         self.issuer, self.audience, self.clients, self.jwks_url, self.users = issuer, audience, frozenset(clients), jwks_url, {k: (v[0], frozenset(v[1])) for k, v in users.items()}
-        self.as_url = as_url or issuer  # where clients fetch authorization-server metadata; some IdPs (Oracle IAM) publish it away from the `iss` string
-        self.fetch, self.clock, self.ttl, self.keys, self.loaded, self.lock, self.extra_audiences = fetch, clock, ttl, {}, -1e9, threading.Lock(), tuple(extra_audiences)      # LIFE-922: more public hosts of the same service; a token may name any, scope names keep the primary prefix
+        self.as_url = as_url or issuer
+        self.fetch, self.clock, self.ttl, self.keys, self.loaded, self.lock, self.extra_audiences = fetch, clock, ttl, {}, -1e9, threading.Lock(), tuple(extra_audiences)
 
     def _key(self, kid):
         with self.lock:
             age = self.clock() - self.loaded
-            if age > self.ttl or (kid not in self.keys and age > 30):  # unknown kid refreshes at most every 30 s
+            if age > self.ttl or (kid not in self.keys and age > 30):
                 try:
                     doc = self.fetch(self.jwks_url)
                     self.keys = {k["kid"]: (int.from_bytes(_b64(k["n"]), "big"), int.from_bytes(_b64(k["e"]), "big"))
@@ -68,12 +68,14 @@ class Verifier:
             raise AuthError("invalid_token")
         cid, sub = claims.get("client_id") or claims.get("azp"), claims.get("sub")
         client_ok, user_ok = isinstance(cid, str) and cid in self.clients, isinstance(sub, str) and sub in self.users
-        if exp <= now:  # an expired token is always the same 401; its subject is attributed only once issuer, audience, client and user all check out
+        # an expired token is always the same 401; its subject is attributed only after issuer, audience, client and
+        # user check out
+        if exp <= now:
             raise AuthError("invalid_token", 401, sub[:64] if client_ok and user_ok else None, "expired" if client_ok and user_ok else None)
         if not client_ok:
             raise AuthError("client_not_authorized", 403)
-        if not user_ok:  # fail closed: absent, wrong-type or unlisted user
+        if not user_ok:
             raise AuthError("user_not_authorized", 403, sub[:64] if isinstance(sub, str) else None)
         label, communities = self.users[sub]
-        scope = claims.get("scope")  # Oracle IAM names scopes <audience><scope>; accept exactly that prefix and no other
+        scope = claims.get("scope")
         return {"client": label, "scopes": {x[len(self.audience):] if x.startswith(self.audience) else next((x[len(a):] for a in self.extra_audiences if x.startswith(a)), x) for x in scope.split()} if isinstance(scope, str) else set(), "sub": sub[:64], "communities": communities, "iat": claims.get("iat"), "exp": exp, "tid": hashlib.sha256(sig).hexdigest()[:8]}

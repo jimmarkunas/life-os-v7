@@ -1,7 +1,6 @@
-"""Stage `accountability-week` (LIFE-671): This week for Jim and Matt on V3; tickets link to Jira, open and done apart.
-
-LIFE-918 AC3: with the Runtime Configuration row V3_WEEK_VIEW exactly "on" (off by default, fail closed, lifeos.accountability.switches), BOTH boards get the approved weekly sprint view as native blocks
-(tiles, grouped lists, Done toggle; lifeos.accountability.weekview) and read the new Jira view; otherwise the stage is exactly as it was."""
+"""Stage `accountability-week`: This week for Jim and Matt on V3. With V3_WEEK_VIEW exactly "on" (fail closed), BOTH
+boards get the sprint view as native blocks (lifeos.accountability.weekview); otherwise the plain weekly view.
+"""
 import os
 
 from lifeos.accountability import common, read, region, render, switches, weekview
@@ -20,7 +19,7 @@ def _build(client, block_id, person, project, jira, now, live, site, notion):
 def _build_v3(client, block_id, person, project, jira, now, live, site, notion):
     today = now.date()
     week = read.week(jira, project, today, v3_week_view=True)
-    _, lines = render.week_view(week, today, site)                                   # the plain lines the summary page keeps, from the same data
+    _, lines = render.week_view(week, today, site)
     stamp = render.stamp(now)
     out = region.write_tree(client, block_id, stamp, weekview.spec(week, today, site, project, now), live)
     page = out.pop("summary_page")

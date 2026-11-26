@@ -1,7 +1,6 @@
-"""Clear the Amazon Orders rows that never got a Grand Total: each moves to the Notion trash, recoverable for 30 days (D146, D152).
-
-Dry run unless live; counts only; at most 100 a run. A row that has a total is never touched. The next backfill rebuilds any row that mail can still fill in."""
-# Jim's rule (D152): an order without a total is not worth keeping, so every row whose Grand Total is empty, whatever its status, is trashed.
+"""Clear Amazon Orders rows that never got a Grand Total: each moves to the Notion trash (recoverable for 30 days).
+Dry run unless live; at most 100 a run. A row with a total is never touched.
+"""
 import os
 from urllib.parse import quote
 

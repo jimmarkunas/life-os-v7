@@ -1,8 +1,7 @@
-"""Render the canonical Amazon Orders rows into V7's one "Amazon Orders" callout on the Daily Report (D118).
-
-Gmail -> amazon-orders -> canonical Notion Amazon Orders -> amazon-card. The card only READS the canonical orders (the same data source the ingest writes)
-and writes the text of the one callout it owns; it never changes an order. When the ingest step just failed the line says DEGRADED and the last accepted
-orders stay visible: a failed sync is never shown as current, and an unreadable order list changes nothing. Counts-only logs, fixed error codes."""
+"""Render the canonical Amazon Orders rows into V7's one "Amazon Orders" callout on the Daily Report. Reads the
+canonical orders and writes only the callout it owns; when the ingest step just failed the line says DEGRADED and
+the last accepted orders stay visible.
+"""
 import os
 from urllib.parse import quote
 from datetime import datetime, timedelta
@@ -17,8 +16,10 @@ from . import packages as packages_mod, stage
 TZ = ZoneInfo("America/Chicago")
 TITLE = router.AMAZON_REGION
 MODULE = router.OWNERS[TITLE]
-DELIVERED_DAYS = 7                      # Jim, Oct 12: delivered orders stay for 7 days (the 48-hour idea was dropped)
-OPEN_STALE_DAYS = 30                    # an open order with no event for this long can no longer be advanced by mail (D139 trashes order mail after 30 days): counted, not listed
+DELIVERED_DAYS = 7
+# an open order with no event this long can no longer be advanced by mail (order mail is trashed after 30 days):
+# counted, not listed
+OPEN_STALE_DAYS = 30
 MAX_LISTED = 10
 MAX_PAGES = 10
 PROTECTED = (("JIRA_CARD_BLOCK_ID", router.JIRA_REGION), ("CALENDAR_CARD_BLOCK_ID", router.CALENDAR_REGION), ("BILLS_CARD_BLOCK_ID", router.BILLS_REGION), ("HIRING_CARD_BLOCK_ID", router.HIRING_REGION))
@@ -42,7 +43,6 @@ def _query_body(since):
 
 
 def read_rows(client, source_id, since):
-    """Every open, review and recently delivered order, or a fixed error: a partial list is never rendered as the whole."""
     rows = []
     for page in notion_pages.query(client, source_id, _query_body(since), _fail, incomplete="CARD_READ_INCOMPLETE", repeat="CARD_PAGINATION_INVALID",
                                    capped="CARD_PAGINATION_INCOMPLETE", limit=MAX_PAGES, read="CARD_READ_FAILED"):
@@ -95,7 +95,6 @@ def _paragraph(content, url=None):
 
 
 def _orders_url(reader, source_id):
-    """The Amazon Orders database as a link, from the data source's own parent; None (no link, nothing else changes) if Notion does not say."""
     try:
         parent = (reader.call("GET", f"/data_sources/{quote(source_id, safe='')}") or {}).get("parent")
     except NotionError:
@@ -112,18 +111,19 @@ def sections(rows, now):
     newest = lambda items: sorted(items, key=when, reverse=True)
     open_ = pick(("ORDERED", "SHIPPED"), OPEN_STALE_DAYS)
     return (newest(open_), newest(pick(("DELIVERED",), DELIVERED_DAYS)), newest(review), len(pick(("ORDERED", "SHIPPED"))) - len(open_),
-            newest(pick(("RETURNING",), OPEN_STALE_DAYS)),         # LIFE-124: returning leaves like an open order
-            newest(pick(("REFUNDED",), DELIVERED_DAYS)))           # LIFE-124: refunded stays the same 7 days as Delivered
+            newest(pick(("RETURNING",), OPEN_STALE_DAYS)),
+            newest(pick(("REFUNDED",), DELIVERED_DAYS)))
 
 
 def _package_bullet(pkg, label):
-    """One line: store, state, then the carrier and tracking number as the link to the carrier's own tracking page, then the day."""
     track = _linked(" ".join(part for part in (pkg.get("carrier"), pkg["number"]) if part), packages_mod.tracking_url(pkg.get("carrier"), pkg["number"]))
     return _item(rich_text(f"{pkg['store']} · {label} · "), track, rich_text(f" · {_day(pkg['delivered_at'] if label == 'Delivered' else pkg['shipped_at'])}"))
 
 
 def package_blocks(packages, now, error=False):
-    """-> (blocks, counts) for the other-store packages. None with error=True means the read failed: shown as unavailable, never as 'no packages'."""
+    """-> (blocks, counts) for other-store packages. None with error=True means the read failed: shown as unavailable,
+    never as 'no packages'.
+    """
     if packages is None:
         return ([_paragraph("Other packages · unavailable (mail read failed this run)")] if error else []), {"packages_in_transit": 0, "packages_delivered": 0, "packages_status": "unavailable" if error else "off"}
     transit, delivered = packages_mod.split(packages, now)
@@ -133,12 +133,10 @@ def package_blocks(packages, now, error=False):
 
 
 def heading_text(now, degraded=False):
-    """LIFE-609: the update time shares the heading, like Calendar: "Amazon Orders (11/13 · 2:30 PM CT)"; a failed sync says "Amazon Orders (DEGRADED at 11/13 · 2:30 PM CT)"."""
     return f"{TITLE} ({'DEGRADED at ' + ct_stamp.when(now) if degraded else ct_stamp.when(now)})"
 
 
 def render(rows, now, degraded=False, url=None, packages=None, packages_error=False):
-    """-> (blocks, counts). Pure."""
     open_, delivered, review, older, returning, refunded = sections(rows, now)
     summary = f"{'Amazon sync failed · showing last accepted orders · ' if degraded else ''}{len(open_)} in transit · {len(delivered)} delivered (last {DELIVERED_DAYS} days)"
     summary += (f" · {len(returning)} returning" if returning else "") + (f" · {len(refunded)} refunded (last {DELIVERED_DAYS} days)" if refunded else "") + f" · {len(review)} need review"
@@ -168,7 +166,7 @@ def _gmail(environ, gmail):
     if gmail is not None:
         return gmail
     if not all((environ.get(name) or "").strip() for name in ("GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN")):
-        return None                                           # no mail access in this run: the packages part is off, the Amazon part is unchanged
+        return None
     try:
         return Gmail.from_env()
     except GmailError:

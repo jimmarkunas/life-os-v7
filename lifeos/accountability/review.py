@@ -1,6 +1,5 @@
-"""Stage `accountability-review`: RETIRED by LIFE-840; the Quarterly Goals & Review callout is written by `accountability-goals` alone.
-
-This stage writes nothing and keeps its name so the workflow step and the stage registry stay valid. The retired review callouts and their summary pages stay as they are until Jim authorises their retirement.
+"""Stage `accountability-review`: RETIRED. `accountability-goals` writes the callout; this stage writes nothing and
+keeps its name so the workflow step and registry stay valid.
 """
 
 

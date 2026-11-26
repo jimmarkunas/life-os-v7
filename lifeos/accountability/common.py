@@ -1,6 +1,7 @@
-"""The shared run of one V3 accountability stage (LIFE-671): for Jim and then Matt, read Jira, write that person's callout and its summary page, read both back.
-
-A person whose Jira read fails gets a DEGRADED stamp (body kept) and the stage fails with ACCOUNTABILITY_DEGRADED after the other person was still written. Counts and fixed codes only."""
+"""Shared run of one V3 accountability stage: for Jim then Matt, read Jira, write the callout and summary page, read
+both back. A person whose Jira read fails gets a DEGRADED stamp (body kept); the other is still written, then the
+stage fails.
+"""
 import os
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -19,7 +20,6 @@ def notion_writer(environ):
 
 
 def run_region(kind, build, environ=None, jira=None, notion=None, now=None, live=False):
-    """`build(client, block_id, person, project, jira, now, live, site, notion)` reads Jira and writes the callout; it returns counts (`notion` is the unscoped client, for read-only index pages). kind is the register row suffix (week, goals, review)."""
     environ = os.environ if environ is None else environ
     now = now or datetime.now(CHI)
     notion = notion or notion_writer(environ)

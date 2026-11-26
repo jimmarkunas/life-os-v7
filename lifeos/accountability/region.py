@@ -1,7 +1,7 @@
-"""Writes one V3 accountability callout (LIFE-671) by its register address, inside that callout only, and reads every write back.
-
-A region is: a heading, one gray stamp paragraph, the body, then the `Summary for Claude: <page>` line. Anything else raises ACCOUNTABILITY_SHAPE and writes nothing. V7 writes only the stamp,
-the body cells or text it owns and the summary page; text a person adds outside those blocks is never touched. A write outside the callout is refused (ScopedClient)."""
+"""Writes one V3 accountability callout by its register address, inside that callout only, and reads every write back.
+A region is a heading, one gray stamp paragraph, the body, then the `Summary for Claude: <page>` line; anything
+else raises ACCOUNTABILITY_SHAPE and writes nothing. A write outside the callout is refused (ScopedClient).
+"""
 import re
 from urllib.parse import quote, unquote
 
@@ -47,14 +47,13 @@ def _rich(content, color=None):
 def _title(obj):
     if isinstance(obj.get("title"), list):
         return "".join(p.get("plain_text") or "" for p in obj["title"])
-    for prop in (obj.get("properties") or {}).values():                # a Notion page keeps its title in its title property
+    for prop in (obj.get("properties") or {}).values():
         if isinstance(prop, dict) and prop.get("type") == "title":
             return "".join(p.get("plain_text") or "" for p in prop.get("title") or [])
     return ""
 
 
 def _page_of(notion, block_id):
-    """The title of the page a block sits on, found by walking up through column blocks (a callout in a column has the column as its parent); "" when it is not found within four steps."""
     current = block_id
     for _ in range(4):
         parent = (notion.call("GET", f"/blocks/{quote(current, safe='')}").get("parent") or {})
@@ -67,8 +66,10 @@ def _page_of(notion, block_id):
 
 
 def register_row(notion, key):
-    """The block id the V3 block ID register names for `key`, or None when the register has no such row. Exactly one register page must exist (else ACCOUNTABILITY_TARGET_NOT_FOUND)."""
-    found = notion_pages.search_all(notion, REGISTER_TITLE, "page", fail, incomplete="ACCOUNTABILITY_TARGET_NOT_FOUND", capped="ACCOUNTABILITY_TARGET_NOT_FOUND")      # LIFE-891: every result page
+    """The block id the V3 block ID register names for `key`, or None. Exactly one register page must exist (else
+    ACCOUNTABILITY_TARGET_NOT_FOUND).
+    """
+    found = notion_pages.search_all(notion, REGISTER_TITLE, "page", fail, incomplete="ACCOUNTABILITY_TARGET_NOT_FOUND", capped="ACCOUNTABILITY_TARGET_NOT_FOUND")
     hits = [r["id"] for r in found if isinstance(r, dict) and _title(r).strip() == REGISTER_TITLE and not r.get("in_trash") and not r.get("archived")]
     if len(hits) != 1:
         raise fail("ACCOUNTABILITY_TARGET_NOT_FOUND")
@@ -81,8 +82,10 @@ def register_row(notion, key):
 
 
 def address(notion, key):
-    """The callout id from the V3 block ID register row `key` (jim.thisweek, matt.goals, ...), accepted only when that callout sits on the Jim & Matt V3 page,
-    so an edited register row can never point a write anywhere else. Anything else raises ACCOUNTABILITY_TARGET_NOT_FOUND."""
+    """The callout id from register row `key` (jim.thisweek, matt.goals, ...), accepted only when that callout sits on
+    the Jim & Matt V3 page, so an edited register row cannot redirect a write (else
+    ACCOUNTABILITY_TARGET_NOT_FOUND).
+    """
     block_id = register_row(notion, key)
     if block_id is None or _page_of(notion, block_id) != V3_PAGE_TITLE:
         raise fail("ACCOUNTABILITY_TARGET_NOT_FOUND")
@@ -90,7 +93,6 @@ def address(notion, key):
 
 
 def locate(client, block_id):
-    """-> {heading, stamp, middle (blocks between the stamp and the summary line), summary (page id)}."""
     kids = report_region.children(client, block_id, AccountabilityError)
     if len(kids) < 3 or kids[0].get("type") not in HEADINGS or kids[1].get("type") != "paragraph":
         raise fail("ACCOUNTABILITY_SHAPE")
@@ -111,7 +113,6 @@ def _only(found, kinds):
 
 
 def _set(client, block, content, live, color=None):
-    """Replace a text block's text when it differs. -> 1 when written."""
     if text(block) == content.strip():
         return 0
     if live:
@@ -120,8 +121,9 @@ def _set(client, block, content, live, color=None):
 
 
 def _normalise(items):
-    """[(text, link)] with adjacent pieces that share a link merged, so two ways of cutting the same text compare equal. A link is compared decoded: Notion stores some characters of
-    an address unescaped (parentheses, "!") that were sent escaped, and the same address must still read back as written."""
+    """[(text, link)] with adjacent same-link pieces merged. Links compare decoded: Notion stores some escaped
+    characters (parentheses, "!") unescaped.
+    """
     out = []
     for content, url in ((c, unquote(u) if u else u) for c, u in items):
         if out and out[-1][1] == url:
@@ -132,7 +134,6 @@ def _normalise(items):
 
 
 def signature(block):
-    """What a text block shows: [(text, link)] read from its rich text."""
     pieces = []
     for item in (block.get(block.get("type")) or {}).get("rich_text") or []:
         link = (item.get("text") or {}).get("link") or {}
@@ -151,9 +152,9 @@ def _nodes(parts):
 
 
 def write_parts(client, block_id, stamp, parts, live):
-    """The body paragraph of a callout as linked, partly bold pieces [(text, link, bold)]: the middle is exactly one paragraph. -> {changed, summary_page}."""
     found = locate(client, block_id)
-    if [b.get("type") for b in found["middle"]] not in (["paragraph"], ["bulleted_list_item"]):         # a person may have turned the one body paragraph into one bullet; it is written as the kind it is
+    # the body paragraph may have been turned into a bullet; write the kind it is
+    if [b.get("type") for b in found["middle"]] not in (["paragraph"], ["bulleted_list_item"]):
         raise fail("ACCOUNTABILITY_SHAPE")
     kind = found["middle"][0]["type"]
     want = _normalise([(content, url) for content, url, _ in parts])
@@ -169,12 +170,11 @@ def write_parts(client, block_id, stamp, parts, live):
     return {"changed": changed, "summary_page": found["summary"]}
 
 
-TREE_KINDS = ("paragraph", "heading_3", "bulleted_list_item", "toggle", "callout", "column_list")      # LIFE-918: what a V3 week callout's body may hold (the legacy one-paragraph body is the first of them)
-INLINE_LEVELS = 2                                                                                  # Notion accepts two levels of children inside one append; anything deeper is appended afterwards
+TREE_KINDS = ("paragraph", "heading_3", "bulleted_list_item", "toggle", "callout", "column_list")
+INLINE_LEVELS = 2
 
 
 def _rich_sig(items):
-    """[(text, link, bold, color)] of rich text (as read or as specified), adjacent pieces with the same look merged."""
     out = []
     for text_, url, bold, color in items:
         key = (unquote(url) if url else None, bool(bold), color if color and color != "default" else None)
@@ -200,7 +200,6 @@ def _tree_sig(client, block):
 
 
 def _payload(item, levels):
-    """The Notion block for a spec, with its children inline for `levels` more levels."""
     kind = item["type"]
     body = {} if kind in ("column_list", "column") else {"rich_text": [_node(*piece) for piece in item["rich"]]}
     if kind == "callout":
@@ -223,7 +222,6 @@ def _depth(item):
 
 
 def _complete(client, block_id, item, left):
-    """Append what a deeper-than-inline spec still lacks. `left` is how many levels of children the block was created with."""
     if _depth(item) <= left:
         return
     if left <= 0:
@@ -234,9 +232,10 @@ def _complete(client, block_id, item, left):
 
 
 def write_tree(client, block_id, stamp, specs, live):
-    """LIFE-918: the body of a V3 week callout is exactly `specs` (see lifeos.accountability.weekview). The body may be the one legacy paragraph or an earlier copy of this tree; any other kind of block
-    raises ACCOUNTABILITY_SHAPE and nothing is written. A change creates the new body right under the stamp, then removes the old one, then reads everything back (stamp and tree) before success; the heading,
-    the `Summary for Claude:` line and every block outside the callout are never touched. -> {changed, summary_page}."""
+    """Write the body of a V3 week callout as exactly `specs` (see weekview). Any block other than the one paragraph
+    or an earlier copy of this tree raises ACCOUNTABILITY_SHAPE and nothing is written. The new body is created
+    under the stamp, the old one removed, then everything read back.
+    """
     found = locate(client, block_id)
     if not found["middle"] or any(b.get("type") not in TREE_KINDS for b in found["middle"]):
         raise fail("ACCOUNTABILITY_SHAPE")
@@ -266,10 +265,11 @@ def write_tree(client, block_id, stamp, specs, live):
 
 
 def write_directory(client, block_id, stamp, lines, bulleted, live):
-    """LIFE-840: the body of an Artifacts callout. V7 owns only the trailing run of bulleted_list_item blocks (one per artifact, `lines` [[(text, link, bold)]]) or, when there are none, the last paragraph
-    (a message such as "no verified artifacts"); everything before that, such as a person's decorative link list, is never read as content and never written. Owned blocks of the right kind are rewritten in place,
-    missing ones are added after the last, surplus or wrong-kind ones are removed only after the new ones exist, and a legacy `Summary for Claude:` line is removed (its page stays in Notion).
-    A body that ends in anything else raises ACCOUNTABILITY_SHAPE. -> {changed}."""
+    """Write the body of an Artifacts callout. V7 owns only the trailing run of bulleted_list_item blocks (one per
+    artifact) or, with none, the last paragraph (a message such as "no verified artifacts"). Surplus or wrong-kind
+    blocks are removed only after the new ones exist; a `Summary for Claude:` line is removed. Any other ending
+    raises ACCOUNTABILITY_SHAPE.
+    """
     found = locate_combined(client, block_id)
     middle = found["middle"]
     tail = []
@@ -324,8 +324,6 @@ def _linked(content, url=None):
 
 
 def locate_combined(client, block_id):
-    """-> {heading, stamp, middle, legacy}: the combined Quarterly Goals & Review callout is a heading, one gray stamp paragraph and the body; a trailing `Summary for Claude:` line (the shape before
-    LIFE-840) is returned as `legacy` and is not part of the body. Anything else raises ACCOUNTABILITY_SHAPE."""
     kids = report_region.children(client, block_id, AccountabilityError)
     if len(kids) < 3 or kids[0].get("type") not in HEADINGS or kids[1].get("type") != "paragraph":
         raise fail("ACCOUNTABILITY_SHAPE")
@@ -334,12 +332,11 @@ def locate_combined(client, block_id):
 
 
 def write_combined(client, block_id, heading, stamp, lanes, extra, review_parts, live, wide=None):
-    """LIFE-840: the one Quarterly Goals & Review callout of a person. Body: the two-column Epic table (`lanes` {lane: (done / all, issue url or None)}; a row is matched by the lane name its first
-    cell starts with, its first cell is linked to the Epic, a lane with no epic shows a dash), one note paragraph, then the toggle "Quarterly Reviews" whose one paragraph links the review pages
-    (`review_parts` [(text, link, bold)]). The title is set to `heading`. A legacy `Summary for Claude:` line is removed (its summary page stays in Notion, untouched).
-    LIFE-918: `wide` (None = the two-column table exactly as before) is {lane: [the four cells after the lane name: progress, done / all, new count, status]}, each cell [(text, link, bold, color)]; the table is then
-    five columns wide (Lane, Progress, Done / all, New count (preview), Status). An existing two-column table cannot be widened in Notion, so a new table is created under the stamp, the old one removed, and the
-    rows read back; the lane names, their links, the note and the toggle are kept. -> {changed}."""
+    """Write a person's Quarterly Goals & Review callout: title, Epic table (`lanes` {lane: (done / all, issue url or
+    None)}), note paragraph and "Quarterly Reviews" toggle. `wide` ({lane: [progress, done / all, new count, status
+    cells]}) makes it five columns; Notion cannot widen a table, so a new one is created under the stamp, the old
+    removed and the rows read back.
+    """
     found = locate_combined(client, block_id)
     kinds = [b.get("type") for b in found["middle"]]
     width = (found["middle"][0].get("table") or {}).get("table_width") if kinds and kinds[0] == "table" else None
@@ -440,7 +437,6 @@ def _wide_signature(row):
 
 
 def _table_payload(labels, lanes, wide):
-    """A five-column table block (header row, then one row per lane label), every cell [(text, link, bold, color)]."""
     def row(cells):
         return {"object": "block", "type": "table_row", "table_row": {"cells": [[_node(*p) for p in cell] for cell in cells]}}
     rows = [row([[(h, None, False, None)] for h in WIDE_HEADER])]
@@ -461,7 +457,6 @@ def _normalise_cells(cells):
 
 
 def degrade(client, block_id, make, live):
-    """Jira could not be read: only the stamp changes, to DEGRADED with the last accepted stamp; the body stays. -> 1 when written."""
     found = locate_combined(client, block_id)
     new = make(text(found["stamp"]))
     changed = _set(client, found["stamp"], new, live, "orange")
@@ -473,7 +468,6 @@ def degrade(client, block_id, make, live):
 
 
 def write_summary(client, page_id, content, live):
-    """The callout's own summary page (named by the mention inside it) is the one other block this card may write; its paragraph is learned by reading it."""
     client.adopt(page_id)
     content = content[:SUMMARY_MAX]
     kids = report_region.children(client, page_id, AccountabilityError)
@@ -489,7 +483,7 @@ def write_summary(client, page_id, content, live):
 
 
 def append_bullet(client, block_id, content, live):
-    """Canon / Change Log: add one bullet after the last one; earlier lines are never edited, moved or removed. The middle must be bullets only. -> {appended, lines, last, summary_page}."""
+    """Add one bullet after the last; earlier lines are never edited. The middle must be bullets only."""
     found = locate(client, block_id)
     if any(b.get("type") != "bulleted_list_item" for b in found["middle"]):
         raise fail("ACCOUNTABILITY_SHAPE")

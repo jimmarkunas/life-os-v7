@@ -1,8 +1,7 @@
-"""D140: record ALL historical Amazon order mail in the canonical Amazon Orders data source, one calendar month at a time.
-
-Each month is the normal ingest (stage.run) bounded by `after:` and `before:`, so every safety rule holds: only the three allowlisted senders, exactly one order id per
-message, monotone lifecycle, one row per order id, mail filed only after the row reads back equal, replay changes nothing. A month that fails is reported and the
-backfill moves on; running it again resumes harmlessly. AMAZON_SINCE=YYYY-MM-DD is the first day (default 2015-01-01). Dry run unless live; counts only."""
+"""Record ALL historical Amazon order mail in the canonical Amazon Orders data source, one calendar month at a time.
+Each month is a normal ingest (stage.run) bounded by `after:` and `before:`; a failed month is reported and
+rerunning resumes. AMAZON_SINCE=YYYY-MM-DD is the first day. Dry run unless live.
+"""
 import os
 from datetime import datetime, timezone
 

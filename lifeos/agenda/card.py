@@ -24,7 +24,6 @@ class CardError(NotionError):
 
 
 def _owned(blocks):
-    """The first child is the Calendar heading: exactly "Calendar", or "Calendar (11/13 · 1:18 PM CT)" (an older heading says "Updated 1:18 PM CT") once the update time shares the heading (D119)."""
     if not (blocks and blocks[0].get("type") in ("heading_3", "heading_4")):
         return False
     return report_region.titled(plain(blocks[0]), CARD_TITLE)
@@ -35,15 +34,12 @@ def _fail(code):
 
 
 def _configured(environ):
-    """The Jira callout must still be configured (a missing one means the page is not set up as expected); nothing is read from it. LIFE-613: the proof that this card writes only inside its own
-    region is the scope guard on the client, which refuses any other block before the write is sent, not a comparison of the other cards' regions afterwards."""
+    """The Jira callout must still be configured (else the page is not set up); nothing is read from it."""
     if not (environ.get("JIRA_CARD_BLOCK_ID") or "").strip():
         raise CardError("AGENDA_PROTECTED_REGION_UNAVAILABLE")
 
 
 def _target(client, block_id):
-    # The configured ID is the single authority for this region (D58: one owner per region);
-    # scanning the Daily Report tree would be costly and is intentionally unnecessary.
     meta = client.call("GET", f"/blocks/{quote(block_id, safe='')}")
     if not isinstance(meta, dict) or meta.get("type") != "callout" or not report_region.same_id(meta.get("id"), block_id):
         raise CardError("AGENDA_CARD_NOT_OWNED")
@@ -66,15 +62,16 @@ URL = re.compile(r"https?://[^\s<>\"']+")
 
 
 def _location_parts(location, meeting_link=None):
-    """The location as ` · text`, with any web address in it as a small link named for its site (a location that is only a link, such as a live-session address, printed its
-    whole address as plain text that wrapped onto a second line). Plain words stay plain; an address the Join link already carries is not repeated; a very long address stays text."""
+    """The location as ` · text`; a web address becomes a small link named for its site, unless the Join link already
+    carries it.
+    """
     pieces, last = [], 0
     for found in URL.finditer(location):
         url = found.group(0).rstrip(".,;)")
         pieces.append((location[last:found.start()], None))
         host = (urlparse(url).hostname or "").removeprefix("www.")
         if url == meeting_link:
-            pass                                                                        # the Join link already carries it
+            pass
         elif len(url) <= 1900 and host:
             pieces.append((host, url))
         else:
@@ -87,7 +84,7 @@ def _location_parts(location, meeting_link=None):
     parts = _text(" · ")
     for index, (content, url) in enumerate(pieces):
         if index and (url or content[0] not in ".,;)"):
-            parts += _text(" ")                                                         # the space is plain, never inside a link's underline
+            parts += _text(" ")
         parts += _text(content, url)
     return parts
 
@@ -109,7 +106,9 @@ def _line(event):
 
 
 def _merged(events):
-    """One line per title and time: a Gmail-created copy beside the event you made shows once, as the richer of the two (a meeting link, then the longer location; a tie keeps the first). Display only: the snapshot is unchanged."""
+    """One line per title and time: a Gmail copy beside the event you made shows once, as the richer of the two.
+    Display only.
+    """
     kept = {}
     for event in events:
         rank = (bool(event.get("meeting_link")), len(event.get("location") or ""))
@@ -143,9 +142,9 @@ def _event_block(event, marker=None):
         prefix = f"{start.strftime('%-I:%M %p')}–{end.strftime('%-I:%M %p')} — "
     if marker:
         prefix = f"{marker} · {prefix}"
-    parts = _text(prefix) + _text(event["title"], event.get("calendar_link"))          # the title opens the event in Google Calendar, never the meeting
+    parts = _text(prefix) + _text(event["title"], event.get("calendar_link"))
     if event.get("meeting_link"):
-        parts += _text(" · ") + _text("Join", event["meeting_link"])                      # the conference (Teams / Meet) is its own small link
+        parts += _text(" · ") + _text("Join", event["meeting_link"])
     if event.get("location"):
         parts += _location_parts(event["location"], event.get("meeting_link"))
     return {"object": "block", "type": "bulleted_list_item", "bulleted_list_item": {"rich_text": parts}}
@@ -172,7 +171,7 @@ def _snapshot_counts(snapshot, stale):
         if (not isinstance(event, dict) or not isinstance(event.get("days"), list) or any(day not in (today, tomorrow) for day in event["days"])
                 or not isinstance(event.get("id"), str) or not isinstance(event.get("title"), str) or not isinstance(event.get("all_day"), bool)
                 or not isinstance(event.get("start"), str) or not isinstance(event.get("end"), str)
-                or any(event.get(key) is not None and not isinstance(event[key], str) for key in ("location", "meeting_link", "calendar_link"))):      # calendar_link is optional: snapshots saved before it existed stay valid
+                or any(event.get(key) is not None and not isinstance(event[key], str) for key in ("location", "meeting_link", "calendar_link"))):
             raise CardError("AGENDA_SNAPSHOT_INVALID")
         with fixed((TypeError, ValueError), CardError, "AGENDA_SNAPSHOT_INVALID"):
             if event["all_day"]:
@@ -192,7 +191,7 @@ def render(snapshot, stale=False, now=None):
     counts = _snapshot_counts(snapshot, stale)
     blocks = []
     today, tomorrow = _merged(_day_events(snapshot, snapshot["today"])), _merged(_day_events(snapshot, snapshot["tomorrow"]))
-    counts["merged"] = counts["today"] + counts["tomorrow"] - len(today) - len(tomorrow)               # duplicate lines hidden
+    counts["merged"] = counts["today"] + counts["tomorrow"] - len(today) - len(tomorrow)
     marker_id, marker = _today_marker(today, now)
     for label, day, events in (("Today", snapshot["today"], today), ("Tomorrow", snapshot["tomorrow"], tomorrow)):
         blocks.append(_heading(label))
@@ -231,17 +230,17 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
         taken = _instant(saved["taken_at"])
     stale = now - taken > timedelta(hours=STALE_HOURS)
     blocks, counts = render(saved, stale, now)
-    client = report_region.ScopedClient(client or _client(environ), block_id, _fail)      # LIFE-613: every write is checked against this card's own callout first
+    client = report_region.ScopedClient(client or _client(environ), block_id, _fail)
     existing = _target(client, block_id)
     heading = _heading_text(saved, stale)
     heading_block = existing[0]
     heading_patch = {heading_block["type"]: {"rich_text": rich_text(heading)}}
     if stale:
         if len(existing) < 2 or not plain(heading_block).strip().startswith(CARD_TITLE + " ("):
-            raise CardError("AGENDA_CARD_STALE_NO_BASELINE")                 # V7 has not written this card yet: nothing known-good of ours to keep showing
+            raise CardError("AGENDA_CARD_STALE_NO_BASELINE")
         if live:
             _configured(environ)
-            client.call("PATCH", f"/blocks/{quote(heading_block['id'], safe='')}", heading_patch)     # only the heading text changes; the events stay as accepted
+            client.call("PATCH", f"/blocks/{quote(heading_block['id'], safe='')}", heading_patch)
             after = report_region.children(client, block_id, _fail)
             if (not _owned(after) or plain(after[0]) != heading or after[0].get("id") != heading_block["id"]
                     or json.dumps(existing[1:], sort_keys=True) != json.dumps(after[1:], sort_keys=True)):
@@ -258,8 +257,8 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
         except NotionError as error:
             if str(error) != "NOTION_HTTP_404":
                 raise
-    client.call("PATCH", f"/blocks/{quote(heading_block['id'], safe='')}", heading_patch)   # the update time shares the heading (D119)
-    after = report_region.children(client, block_id, _fail)                    # read back the configured Calendar region
+    client.call("PATCH", f"/blocks/{quote(heading_block['id'], safe='')}", heading_patch)
+    after = report_region.children(client, block_id, _fail)
     if not _owned(after) or len(after) != 1 + len(blocks) or plain(after[0]) != heading or after[0].get("id") != heading_block["id"]:
         raise CardError("AGENDA_CARD_VERIFY_FAILED")
     counts["blocks_written"] = len(blocks)
