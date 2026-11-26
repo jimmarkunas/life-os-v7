@@ -1,12 +1,9 @@
-"""LIFE-994: Jira decisions flow into the shared memory by themselves, once an hour, through the governed memory tools.
+"""LIFE-994: Jira decisions flow into the shared memory by themselves, once an hour, through the governed memory tools (Jim: "capture jira ok", "capture projects: LIFE", Nov 26 2026).
 
-Jim, Nov 26 2026 ("capture jira ok", "capture projects: LIFE"): the LIFE project only, decisions only, Personal memory only. A comment is a decision when it carries an `[approvals]` line or opens with Jim's
-decision wording ("Jim's decision", "Jim's rule", "Jim, <date>: ..."). The decision text becomes one memory item whose text names the ticket and comment (Jira always wins: the item only points back at it).
-The same comment never stores twice (a small private state row per comment), an edited comment corrects its item, and a deleted comment revokes it. The hourly run reads tickets updated in the last two hours
-only: nothing older is ever backfilled.
-
-Every write goes through the governed MCP (`memory_store`, `memory_correct`, `memory_revoke` as the `jira-capture` client, Personal): the server applies the sensitive-text filter before any write (a refused
-decision is counted and never stored, echoed or logged), the rate limit and the meter. This module holds no filter of its own and never recalls. Output is counts and fixed words only: no ticket, comment text or token."""
+LIFE tickets updated in the last two hours only; a comment is a decision when it has an `[approvals]` line or opens with Jim's decision wording; each becomes one Personal memory item naming its ticket and comment. Counts and fixed words out, never text."""
+# The same comment never stores twice (a small private state row per comment); an edited comment corrects its item and a deleted comment revokes it. Nothing older than two hours is ever backfilled.
+# Every write goes through the governed MCP as the `jira-capture` client (memory_store, memory_correct, memory_revoke, Personal): the server applies the sensitive-text filter before any write (a refused
+# decision is counted and never stored, echoed or logged), the rate limit and the meter. This module holds no filter of its own and never recalls.
 import hashlib
 import json
 import os
