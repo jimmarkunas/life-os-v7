@@ -4,7 +4,9 @@ JIRA_BOARDS input Jira setting (boards)
 JIRA_CARD_PROJECTS input Jira setting (card projects)
 JIRA_GTV_CONTEXT_URL secret Jira setting (gtv context url)
 JIRA_GTV_EPIC input Jira setting (gtv epic)
+JIRA_FUTURE_SPRINTS input Runtime Configuration horizon for future sprints (default eight)
 JIRA_ROLLOVER_OUTCOME input Jira setting (rollover outcome)
+JIRA_RECONCILE_FORCE workflow_only:workflow Manual reconcile input that bypasses only the once-per-date guard
 JIRA_SITE_URL input Jira setting (site url)
 MEGIBOW_BLOCK_ID input Notion block id (megibow)
 JIRA_WRITERS_VERIFY input LIFE-918 manual verify words (board, one issue key, optional yes) for the throwaway-sprint writer check

@@ -238,7 +238,7 @@ class Stage(unittest.TestCase):
     def test_dry_run_plans_the_sprints_and_the_clone_and_writes_nothing(self):
         db, world, pushes = FakeDb(), self.world(), []
         out = self.run_stage(False, ON, db, world, pushes)
-        self.assertEqual((out["ok"], out["failed"], out["would_create"], out["would_clone"]), (1, 0, 4, 1))
+        self.assertEqual((out["ok"], out["failed"], out["would_create"], out["would_clone"]), (1, 0, 8, 1))
         self.assertEqual(world.log, [])
         self.assertIn("would add", out["summary"])
         self.assertEqual((db.rows, db.snapshots), ({}, {}))                                           # a dry run marks nothing and saves nothing
@@ -247,7 +247,7 @@ class Stage(unittest.TestCase):
     def test_live_with_mock_writers_creates_the_four_sprints_and_the_clone_then_marks_the_day(self):
         db, world, pushes = FakeDb(), self.world(), []
         out = self.run_stage(True, ON, db, world, pushes)
-        self.assertEqual((out["created"], out["cloned"], out["failed"]), (4, 1, 0))
+        self.assertEqual((out["created"], out["cloned"], out["failed"]), (8, 1, 0))
         self.assertEqual(len([e for e in world.log if e[0] == "clone"]), 1)
         self.assertTrue(db.snapshots["ok"])
         self.assertIn("1 of 1 boards in order", db.snapshots["line"])
@@ -309,6 +309,7 @@ class Counts(unittest.TestCase):
     def test_the_summary_line_is_counts_only_and_shows_the_split_only_when_it_exists(self):
         total = {"ok": 2, "boards": 2, "created": 4, "renamed": 1, "cloned": 3, "closures_total": 6}
         self.assertEqual(recurrence.summary(total, True), "Jira sprints: 2 of 2 boards in order, 4 sprints added, 1 renamed, 3 recurring cloned · closed this week 6")
+        self.assertIn("future sprints JFM 9 (over 8), MEJ 8", recurrence.summary({**total, "future_by_board": {"JFM": 9, "MEJ": 8}}, True))
         self.assertIn("(2 automatic, 4 manual)", recurrence.summary({**total, "closures_automatic": 2, "closures_manual": 4}, True))
 
 
