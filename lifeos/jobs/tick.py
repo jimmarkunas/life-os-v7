@@ -158,6 +158,17 @@ def _report(step, label, seconds, outcome, timings, lock=None, queued=0.0):
     stage_timing.emit(stage_timing.record(step.name, label, seconds, queued + waited, counts, stage_timing.items_key_for(step.name)))
 
 
+_SLOT_LOCK = threading.Lock()
+
+
+def _service_slots(concurrency):
+    """LIFE-856: the per-service slots of this tick, made once. Each group used to make its own, which was right while the groups ran one after another; an early step runs beside another group, so a cap (LinkedIn 1, TinyFish 2) did not hold between them and discover-jobs ran with the LinkedIn lanes."""
+    with _SLOT_LOCK:
+        if "slots" not in concurrency:
+            concurrency["slots"] = {name: threading.BoundedSemaphore(n) for name, n in concurrency["caps"].items() if name != "ats"}
+        return concurrency["slots"]
+
+
 def _run_group(steps, live, quick, stages, clock, remaining, concurrency, outcome, timings):
     """LIFE-569: run consecutive independent steps side by side as threads of this process (one store tunnel: lifeos/platform/db.py opens it once per process). Each keeps its own budget, its own
     outcome and its own `stage ...` line; a stage that fails or times out is that stage's red entry and the others finish and save. Services are capped (concurrency["caps"]); a stage waits for its
@@ -165,7 +176,7 @@ def _run_group(steps, live, quick, stages, clock, remaining, concurrency, outcom
     Timeouts here are a timer thread that raises StageTimeout inside the stage's thread (the alarm signal only reaches the main thread); a read blocked in the operating system ignores that until it
     returns, so the run stops waiting for such a stage after its budget plus ABANDON_GRACE_SECONDS and names it (`stage abandoned: <name>`)."""
     caps = concurrency["caps"]
-    slots = {name: threading.BoundedSemaphore(caps[name]) for name in caps if name != "ats"}      # "ats" is capped inside the reader, per read
+    slots = _service_slots(concurrency)                                                  # LIFE-856: one set per tick, shared by every group and early step, so a service cap holds across them ("ats" is capped inside the reader, per read)
     parallel = threading.BoundedSemaphore(concurrency["parallel"])
     shared = threading.RLock()                                                          # re-entrant: the check for "abandoned" and the report are one step
     abandoned = set()
