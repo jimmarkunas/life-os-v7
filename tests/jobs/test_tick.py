@@ -637,7 +637,9 @@ class ServiceCapsHoldAcrossGroups(unittest.TestCase):
             with lock:
                 inside[0] -= 1
             return 0
-        plan = (Step("a1", 20, group="A", providers=("linkedin",)), Step("fast", 20), Step("e", 20, bulk=True, group="B", providers=("linkedin",), early=True), Step("after", 20))
-        tick.tick(False, plan=plan, stages={n: stage for n in ("a1", "fast", "e", "after")}, concurrency=tick.concurrency_from_env({}))
+        plan = (Step("a1", 20, group="A", providers=("linkedin",)), Step("a2", 20, group="A", providers=("dice",)), Step("fast", 20), Step("e", 20, bulk=True, group="B", providers=("linkedin",), early=True), Step("after", 20))
+        from unittest import mock
+        with mock.patch.object(tick, "EARLY_START_DELAY", 0.0):                                              # start both at once so any missing cap shows
+            tick.tick(False, plan=plan, stages={"a1": stage, "a2": lambda limit, live: 0, "e": stage, "fast": lambda limit, live: 0, "after": lambda limit, live: 0}, concurrency=tick.concurrency_from_env({}))
         self.assertEqual(peak[0], 1)
 
