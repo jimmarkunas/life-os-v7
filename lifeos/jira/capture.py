@@ -1,6 +1,6 @@
-"""LIFE-994: Jira decisions flow into the shared memory by themselves, once an hour, through the governed memory tools (Jim: "capture jira ok", "capture projects: LIFE", Nov 26 2026).
+"""LIFE-994: LIFE-project decisions in Jira flow into the shared memory once an hour, through the governed memory tools.
 
-LIFE tickets updated in the last two hours only; a comment is a decision when it has an `[approvals]` line or opens with Jim's decision wording; each becomes one Personal memory item naming its ticket and comment. Counts and fixed words out, never text."""
+Jim approved it ("capture jira ok", "capture projects: LIFE", Nov 26 2026). LIFE tickets updated in the last two hours only; a comment is a decision when it has an `[approvals]` line or opens with Jim's decision wording; each becomes one Personal memory item naming its ticket and comment. Counts and fixed words out, never text."""
 # The same comment never stores twice (a small private state row per comment); an edited comment corrects its item and a deleted comment revokes it. Nothing older than two hours is ever backfilled.
 # Every write goes through the governed MCP as the `jira-capture` client (memory_store, memory_correct, memory_revoke, Personal): the server applies the sensitive-text filter before any write (a refused
 # decision is counted and never stored, echoed or logged), the rate limit and the meter. This module holds no filter of its own and never recalls.
