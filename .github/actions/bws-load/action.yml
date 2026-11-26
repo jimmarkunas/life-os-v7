@@ -4,6 +4,7 @@ inputs:
   access_token: {description: "The Bitwarden machine token (a GitHub secret)", required: true}
   secrets: {description: "One 'secret-id > NAME' per line", required: true}
   set_env: {description: "Export the values to the job environment (the default of the loader); false keeps them as masked step outputs only", default: "true"}
+  doppler_compare: {description: "LIFE-1010 (LIFE-981 parity): the read-only Doppler service token (GitHub secret DOPPLER_TOKEN). When set, the same names are read from Doppler and compared by hash with the values just loaded; counts and a fixed code only; it never fails the job and Bitwarden stays the source of every value", default: ""}
 outputs:
   BUZZ_STAGE_HERMES_PUBKEY: {value: "${{ steps.first.outputs.BUZZ_STAGE_HERMES_PUBKEY || steps.retry.outputs.BUZZ_STAGE_HERMES_PUBKEY }}"}
   BUZZ_STAGE_KEY: {value: "${{ steps.first.outputs.BUZZ_STAGE_KEY || steps.retry.outputs.BUZZ_STAGE_KEY }}"}
@@ -63,3 +64,17 @@ runs:
       if: ${{ steps.first.outcome == 'failure' }}
       uses: ./.github/actions/sm-action
       with: {access_token: "${{ inputs.access_token }}", secrets: "${{ inputs.secrets }}", set_env: "${{ inputs.set_env }}"}
+    - id: names
+      if: ${{ inputs.doppler_compare != '' && (steps.first.outcome == 'success' || steps.retry.outcome == 'success') }}
+      shell: bash
+      env:
+        SECRETS: ${{ inputs.secrets }}
+      run: echo "list=$(printf '%s\n' "$SECRETS" | sed -n 's/^.*> *//p' | paste -sd, -)" >> "$GITHUB_OUTPUT"
+    - id: doppler
+      if: ${{ steps.names.outcome == 'success' }}
+      continue-on-error: true
+      uses: ./.github/actions/doppler-load
+      with:
+        token: ${{ inputs.doppler_compare }}
+        names: ${{ steps.names.outputs.list }}
+        bitwarden: ${{ toJSON(steps.first.outcome == 'success' && steps.first.outputs || steps.retry.outputs) }}
