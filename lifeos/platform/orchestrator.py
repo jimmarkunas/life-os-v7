@@ -1,6 +1,6 @@
-"""LIFE-987: the orchestrator operations of the Buzz bridge: agent_status, agent_dispatch, agent_messages, for the clients `claude` and `chatgpt` only (grants in mcp_access.json; never in the frozen contract).
+"""LIFE-987: the orchestrator operations of the Buzz bridge (agent_status, agent_dispatch, agent_messages), for the two chat clients only.
 
-The bridge reaches Concord through ONE fixed Unix socket, /run/lifeos-concord-gateway/orchestrator.sock (lifeos/edge/concord/gateway.py, run as `concord`); the path is a constant. With no socket every operation answers `gateway_unavailable`.
+(Grants: mcp_access.json; never part of the frozen contract.) The bridge reaches Concord through ONE fixed Unix socket, /run/lifeos-concord-gateway/orchestrator.sock (lifeos/edge/concord/gateway.py, run as `concord`); the path is a constant. With no socket every operation answers `gateway_unavailable`.
 Trust boundary: before a dispatch the ticket must be Agent Go or In Progress by a read-only `ticket_state(key)` (injectable; the bridge holds no Jira credential, so without one it fails closed `ticket_state_unavailable`), the text
 is untrusted data (refused when it holds a secret or plainly asks for a credential, spend, deletion, scope change or permission), and the idempotency key makes a repeat safe. Nothing here starts a session: an offline agent gets
 ONE deduplicated Agent Inbox item "Start <agent>: go", with ORCHESTRATOR_CAN_START on or off. Reasons are fixed words; message text never reaches a log."""
