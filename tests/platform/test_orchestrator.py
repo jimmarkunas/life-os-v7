@@ -263,6 +263,15 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class QueuedIsNotOffline(unittest.TestCase):
+    """LIFE-992: a present but idle agent has the prompt stored for pull; that is not offline, so no 'Start <agent>: go' item is made."""
+    def test_queued_for_pull_creates_no_start_item(self):
+        gate = Gate(data={"delivered": False, "reason": "queued_for_pull", "state": "queued_pull", "agent": "mc01"})
+        out = O.run("agent_dispatch", {**ARGS, "agent": "mc01", "idempotency_key": "idem-q1"}, state(gate), now=NOW) if "now" in O.run.__code__.co_varnames else O.run("agent_dispatch", {**ARGS, "agent": "mc01", "idempotency_key": "idem-q1"}, state(gate))
+        self.assertEqual((out["delivered"], out["not_delivered"]), (False, "queued_for_pull"))
+        self.assertNotIn("start_item", out)
+
+
 class JiraTicketState(unittest.TestCase):
     """LIFE-991: the bridge's own read-only Jira lookup of one issue's status; fail closed until its three credentials are placed."""
 
