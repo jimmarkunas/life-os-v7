@@ -72,6 +72,16 @@ class PlaceCredentials(unittest.TestCase):
         self.assertEqual(done.stdout.splitlines(), ["lifeos/edge/GMAIL_OAUTH_REFRESH_TOKEN ok", "lifeos/edge/FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH ok", "lifeos/edge/NOTION_READONLY_TOKEN ok", "lifeos/edge/NOTION_API_TOKEN missing"])
         self.assertEqual(sorted(p.name for p in creds.iterdir()), ["google_read_bytalos_gmail_refresh.cred", "google_read_personal_gmail_refresh.cred", "notion_readonly_token.cred"])      # the hourly write token is still not on the list
 
+    def test_every_identity_the_pilot_wires_has_its_key_in_the_service_credential_list(self):
+        """LIFE-877: a place-credentials run rewrites the drop-in from its own list, so a pilot key missing from that list is silently dropped from the service (ChatGPT lost its pilot write that way)."""
+        import re
+        wiring = (SCRIPT.parents[2] / "lifeos/platform/pilot_community.py").read_text()
+        script = SCRIPT.read_text()
+        creds = re.search(r'^CREDS="([^"]*)"', script, re.M).group(1).split()
+        for identity in re.findall(r'"(\w+)": env\.get\("BUZZ_KEY_(\w+)_PILOT"\)', wiring):
+            self.assertIn(f"buzz_key_{identity[0]}_pilot", creds, identity)
+            self.assertIn(f"echo buzz_key_{identity[0]}_pilot ;;", script, identity)
+
     def test_the_private_relay_key_is_placed_for_the_pilot_but_never_loaded_by_the_mcp_service(self):
         done, tmp, creds = self.run_script([{"key": "lifeos/edge/BUZZ_SELFHOST_RELAY_KEY", "value": SENTINEL}, {"key": "NOTION_READONLY_TOKEN", "value": SENTINEL}], "lifeos/edge/BUZZ_SELFHOST_RELAY_KEY", "NOTION_READONLY_TOKEN")
         self.assertEqual(done.stdout.splitlines(), ["lifeos/edge/BUZZ_SELFHOST_RELAY_KEY ok", "NOTION_READONLY_TOKEN ok"])
