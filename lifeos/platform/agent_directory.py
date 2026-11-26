@@ -20,7 +20,7 @@ MAX_AGE = timedelta(days=7)                       # a directory row last checked
 PROOF_TTL = timedelta(hours=1)                    # a routing proof is a live observation: it expires quickly
 STATUSES = ("manual-only", "configured-untested", "not-reachable", "routable-verified")
 KINDS = {"Client Surface": "client_surface", "Community Identity": "agent_identity", "Bot Profile": "agent_identity", "Agent Session": "agent_session", "Persona": "persona"}
-PLATFORMS = ("Claude", "ChatGPT", "Buzz", "Orca", "Hermes")
+PLATFORMS = ("Claude", "ChatGPT", "Buzz", "Orca", "Hermes", "Meta")             # Meta: Muse (LIFE-967; Jim, comment 14347, "muse platform meta")
 SPACES = ("Personal", "Bytalos", "TGP", "Unknown")
 GRANTABLE_SPACES = ("Personal", "Bytalos")        # TGP is never inferred or resolved from a label: it needs its own isolated grant that this module does not model
 AGENT_ID = re.compile(r"^[a-z][a-z0-9_-]{2,63}$")
