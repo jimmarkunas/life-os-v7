@@ -1,6 +1,6 @@
 # LIFE OS V7: Claude Code entrypoint
 
-Read [AGENTS.md](AGENTS.md) and follow it. The [Development Policy](docs/life-os-development-policy.md) is the whole rule set, in one file; read the section a task needs.
+Read [AGENTS.md](AGENTS.md) and follow it. The [Development Policy](docs/life-os-development-policy.md) is the whole rule set, in one file; read the section a task needs. Every doc: [docs/README.md](docs/README.md).
 
 - **Times for Jim:** US Central Time only, labeled CT, 12-hour (for example 4:34 PM CT). Never show UTC; convert log, API and cron times first.
 - **Runs:** Jim starts each session. Once started, finish the ticket, then pull the next `Agent Go` ticket yourself until the queue is empty. No `/loop`, timers, pollers or scheduled Claude invocations. The only exception: an orchestrator dispatch for a released ticket may start that agent's session (LIFE-987, Jim, Nov 25 2026). Inside a session that is already running, you may watch your own CI and workflow runs.
