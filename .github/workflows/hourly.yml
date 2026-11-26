@@ -1305,8 +1305,8 @@ jobs:
         run: python -m lifeos.run probe
       - id: sync_seen
         continue-on-error: true
-        name: Step 8 - Last Seen sync (daily)
-        if: ${{ needs.prep.outputs.pipeline == 'true' || (github.event_name == 'workflow_dispatch' && inputs.maintenance) }}
+        name: Step 8 - Last Seen sync (daily; manual maintenance dispatch only here, the tick's run is in domains.yml since LIFE-856)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.maintenance && needs.prep.outputs.pipeline != 'true' }}
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
@@ -1332,8 +1332,8 @@ jobs:
         run: python -m lifeos.run sync-seen $([ "$LIVE" = "true" ] && echo --live)
       - id: purge
         continue-on-error: true
-        name: Step 8b - retention purge (about weekly and catching up (the stage decides when it is due); pushes its own result to the phone, counts and fixed codes only)
-        if: ${{ needs.prep.outputs.pipeline == 'true' || (github.event_name == 'workflow_dispatch' && inputs.maintenance) }}
+        name: Step 8b - retention purge (manual maintenance dispatch only here, the tick's run is in domains.yml since LIFE-856; about weekly and catching up (the stage decides when it is due); pushes its own result to the phone, counts and fixed codes only)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.maintenance && needs.prep.outputs.pipeline != 'true' }}
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}

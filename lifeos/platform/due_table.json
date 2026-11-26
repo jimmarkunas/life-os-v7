@@ -60,6 +60,9 @@
     },
     "fit_cloud_backlog": {
       "every_hours": 1
+    },
+    "last_seen_purge": {
+      "every_hours": 1
     }
   },
   "steps": {
