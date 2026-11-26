@@ -68,7 +68,7 @@ class Guard:
 
     def _deadline(self):
         if self.clock.now() - self.started > RUN_S:
-            raise Stop("deadline")
+            raise Stop("deadline") from None
 
     def _settled(self):
         """The queue is idle and two readings a second apart agree: nothing is in flight and the ledger is final. -> spend since the start."""
@@ -78,22 +78,22 @@ class Guard:
             try:
                 idle = self.hon.queue_idle()
             except Unauthorized:
-                raise Stop("token_expired")
+                raise Stop("token_expired") from None
             except HonchoError:
-                raise Stop("honcho_unreadable")
+                raise Stop("honcho_unreadable") from None
             if idle:
                 try:
                     first = self._read()
                     self.clock.sleep(SETTLE_S)
                     second = self._read()
                 except MeterError as error:
-                    raise Stop("meter_" + str(error))
+                    raise Stop("meter_" + str(error)) from None
                 if first == second and self.hon.queue_idle():
                     break
             self.clock.sleep(WAIT_STEP_S)
             waited += WAIT_STEP_S
             if waited > DRAIN_S:
-                raise Stop("drain_timeout")
+                raise Stop("drain_timeout") from None
         if self.base is None:
             self.base = second
         spent = second - self.base
@@ -121,7 +121,7 @@ class Guard:
                 errors = 0
                 if spent >= self.trip:
                     self.brake()
-                    raise Stop("tripped")
+                    raise Stop("tripped") from None
             except MeterError:
                 errors += 1
                 if errors >= MAX_METER_ERRORS:
@@ -130,7 +130,7 @@ class Guard:
             waited += WAIT_STEP_S
             if waited > DRAIN_S:
                 self.brake()
-                raise Stop("drain_timeout")
+                raise Stop("drain_timeout") from None
 
     # ---- the run
     def seed(self, messages):
@@ -142,13 +142,13 @@ class Guard:
             spent = self._settled()
             exposure = budget.tranche_worst(len(batch))
             if not budget.can_arm(spent, exposure, budget.dream_worst(), self.ceiling):
-                raise Stop("budget_before_tranche_%d" % (i // self.tranche + 1))
+                raise Stop("budget_before_tranche_%d" % (i // self.tranche + 1)) from None
             try:
                 self.hon.post_messages(batch, armed=True)
             except Unauthorized:
-                raise Stop("token_expired")
+                raise Stop("token_expired") from None
             except HonchoError:
-                raise Stop("post_failed")
+                raise Stop("post_failed") from None
             self.units_seen_armed, sent = True, sent + len(batch)
             self.exposure += exposure
             self._log("armed_tranche", n=len(batch), spent=round(spent, 5), exposure=round(exposure, 4))
@@ -162,45 +162,45 @@ class Guard:
         try:
             return self.hon.queue_idle()
         except Unauthorized:
-            raise Stop("token_expired")
+            raise Stop("token_expired") from None
         except HonchoError:
-            raise Stop("honcho_unreadable")
+            raise Stop("honcho_unreadable") from None
 
     def dream(self):
         spent = self._settled()
         try:
             count = self.hon.explicit_count()
         except Unauthorized:
-            raise Stop("token_expired")
+            raise Stop("token_expired") from None
         except HonchoError:
-            raise Stop("honcho_unreadable")
+            raise Stop("honcho_unreadable") from None
         if count > budget.EXPLICIT_MAX:
-            raise Stop("too_many_conclusions_for_isolation")
+            raise Stop("too_many_conclusions_for_isolation") from None
         exposure = budget.dream_worst()
         if not budget.can_arm(spent, exposure, 0.0, self.ceiling):
-            raise Stop("budget_before_dream")
+            raise Stop("budget_before_dream") from None
         try:
             self.hon.set_flags(True, True)
         except Unauthorized:
             self.brake()
-            raise Stop("token_expired")
+            raise Stop("token_expired") from None
         except HonchoError:
             self.brake()
-            raise Stop("arm_failed")
+            raise Stop("arm_failed") from None
         self.exposure += exposure
         self._log("armed_dream", spent=round(spent, 5), exposure=round(exposure, 4))
         try:
             self.hon.schedule_dream()
         except HonchoError:
             self.brake()
-            raise Stop("schedule_failed")
+            raise Stop("schedule_failed") from None
         self.units_seen_armed = False
         try:
             self._watch(lambda: self.hon.dream_finished())
         finally:
             self.brake()
         if self._settled() - spent > exposure + budget.CHECK_DELTA:
-            raise Stop("exposure_exceeded")
+            raise Stop("exposure_exceeded") from None
         return True
 
     def run(self, messages):
@@ -209,7 +209,7 @@ class Guard:
         try:
             self.hon.set_flags(False, False)
             if tuple(self.hon.get_flags()) != (False, False):
-                raise Stop("flags_unverified")
+                raise Stop("flags_unverified") from None
             self.seed(messages)
             self.dream()
         except Stop as stop:
