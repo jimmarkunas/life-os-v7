@@ -1,8 +1,8 @@
-"""Outlook calendar to the person's own Google calendar, one-way, idempotent, never touching events V7 did not write.
+"""Outlook to Google calendar: one-way, idempotent, never touching events V7 did not write.
 
-Every Google event V7 writes carries a private marker and a deterministic id derived from the Outlook event (iCalUId + occurrence start), so re-runs never duplicate. Output is counts and fixed codes only."""
-# Detail kept from the former docstring: an Outlook event that already reached Google another way (the same invite, matched by iCalUID and start) is left alone; a cancelled or declined Outlook
-# event removes only V7's own copy; titles, times, places and addresses are private and never printed.
+Written events carry a private marker and an id derived from iCalUId plus occurrence start, so re-runs never
+duplicate. An event already on Google by another route is left alone; a cancelled or declined one removes only V7's
+copy. Output is counts and fixed codes only."""
 import hashlib
 import json
 import os
@@ -21,7 +21,7 @@ MASS_DELETE_FLOOR = 5
 
 
 class BridgeError(RuntimeError):
-    """The message is always a fixed code."""
+    """Fixed codes only."""
 
 
 def _z(moment):
@@ -29,18 +29,17 @@ def _z(moment):
 
 
 def google_id(label, ical_uid, start):
-    return "v7" + hashlib.sha256(f"{label}|{ical_uid}|{start}".encode()).hexdigest()[:40]       # hex digits are valid Google event ids
+    return "v7" + hashlib.sha256(f"{label}|{ical_uid}|{start}".encode()).hexdigest()[:40]
 
 
 def mirrors(event):
-    """False for events that must not appear on Google: cancelled, declined, or without a stable identity."""
     if event.get("isCancelled") or not event.get("iCalUId"):
         return False
     return (event.get("responseStatus") or {}).get("response") != "declined"
 
 
 def to_google(label, event):
-    """The Google event body for one Outlook occurrence (times arrive in UTC)."""
+    """Google event body for one Outlook occurrence (times arrive in UTC)."""
     start, end = event["start"]["dateTime"][:19], event["end"]["dateTime"][:19]
     if event.get("isAllDay"):
         when = {"start": {"date": start[:10]}, "end": {"date": end[:10]}}
@@ -59,7 +58,6 @@ def to_google(label, event):
 
 
 def _utc(when):
-    """(date or UTC datetime string) of a Google start, for comparing with an Outlook occurrence."""
     if not when:
         return None
     if "date" in when and "dateTime" not in when:
@@ -68,12 +66,12 @@ def _utc(when):
 
 
 def already_there(event):
-    """The (iCalUID, start) of an event V7 did not write, so the same invite arriving by another route is not copied again."""
+    """The (iCalUID, start) of an event V7 did not write."""
     return (event.get("iCalUID"), _utc(event.get("start")))
 
 
 def plan(wanted, existing):
-    """wanted {id: body}; existing {id: google event}. -> (create, update, delete) lists of ids; every other wanted id is already the same."""
+    """Returns (create, update, delete) id lists for wanted {id: body} against existing {id: event}."""
     create = [i for i in wanted if i not in existing]
     update = [i for i in wanted if i in existing and
               ((existing[i].get("extendedProperties") or {}).get("private") or {}).get(HASH) !=
@@ -92,7 +90,7 @@ def run(limit, live, environ=os.environ, connect=None, outlook_factory=None, gca
     if not client_id or not labels:
         raise BridgeError("CALENDAR_CONFIG_MISSING")
     wanted, ident, seen, skipped = {}, {}, 0, 0
-    with connect() as connection:                          # tokens are read and any rotated token saved while the connection is open
+    with connect() as connection:  # rotated tokens are saved while open
         outlook_tokens.ensure_schema(connection)
         for label in labels:
             token = outlook_tokens.load(connection, label)
@@ -117,10 +115,11 @@ def run(limit, live, environ=os.environ, connect=None, outlook_factory=None, gca
     out = {"outlook": seen, "skipped": skipped, "google": len(existing), "create": len(create), "update": len(update),
            "already_in_google": len(covered), "delete": len(delete), "same": len(wanted) - len(create) - len(update), "applied": 0, "failed": 0}
     floor = max(MASS_DELETE_FLOOR, len(existing) // 2)
-    answered = len(wanted) + len(covered)                      # events Outlook returned that belong in the mirror (covered ones were taken out of `wanted` above)
+    answered = len(wanted) + len(covered)  # events belonging in the mirror
     if len(delete) > floor and answered <= floor and not environ.get("CALENDAR_ALLOW_MASS_DELETE"):
-        print("calendar-sync guard:", json.dumps(out))         # counts only, so a refusal says what it saw (the code alone hid why it fired every run for five days)
-        raise BridgeError("CALENDAR_MASS_DELETE_GUARD")        # a half-empty Outlook answer must never wipe the mirror; a full answer whose event ids all changed (D172) is replaced, not refused
+        print("calendar-sync guard:", json.dumps(out))
+        # A half-empty answer must never wipe the mirror; a full answer with all-new ids is replaced.
+        raise BridgeError("CALENDAR_MASS_DELETE_GUARD")
     if not live:
         return out
     def attempt(call, *args):
@@ -134,7 +133,7 @@ def run(limit, live, environ=os.environ, connect=None, outlook_factory=None, gca
         try:
             gcal.insert({"id": gid, **wanted[gid]})
         except GcalError as error:
-            if str(error) != "GCAL_HTTP_409":              # already there (a retried insert, or a previously deleted id): update it
+            if str(error) != "GCAL_HTTP_409":  # id already exists: update it
                 raise
             gcal.update(gid, wanted[gid])
 
