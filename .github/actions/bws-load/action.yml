@@ -21,6 +21,7 @@ outputs:
   IMESSAGE_ALERTS_HOST: {value: "${{ steps.first.outputs.IMESSAGE_ALERTS_HOST || steps.retry.outputs.IMESSAGE_ALERTS_HOST }}"}
   JIRA_API_TOKEN: {value: "${{ steps.first.outputs.JIRA_API_TOKEN || steps.retry.outputs.JIRA_API_TOKEN }}"}
   JIRA_EMAIL: {value: "${{ steps.first.outputs.JIRA_EMAIL || steps.retry.outputs.JIRA_EMAIL }}"}
+  LIFEOS_MCP_JIRA_CAPTURE: {value: "${{ steps.first.outputs.LIFEOS_MCP_JIRA_CAPTURE || steps.retry.outputs.LIFEOS_MCP_JIRA_CAPTURE }}"}
   JOBRIGHT_EMAIL: {value: "${{ steps.first.outputs.JOBRIGHT_EMAIL || steps.retry.outputs.JOBRIGHT_EMAIL }}"}
   JOBRIGHT_PASSWORD: {value: "${{ steps.first.outputs.JOBRIGHT_PASSWORD || steps.retry.outputs.JOBRIGHT_PASSWORD }}"}
   LIFEOS_ACQ_DB_NAME: {value: "${{ steps.first.outputs.LIFEOS_ACQ_DB_NAME || steps.retry.outputs.LIFEOS_ACQ_DB_NAME }}"}
