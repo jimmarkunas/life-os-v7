@@ -1,0 +1,28 @@
+  unit-tests:
+    # LIFE-856 change 1 (Jim, comment 13633: unit tests beside the main run): the tests no longer run in `prep` before `finish`; they start with the run and run beside it. The gate that skips them when pr-tests is green on this exact
+    # commit (LIFE-570, fail closed) is unchanged. A failing test turns the run red and pushes through the `report` job's `unit-tests` lane; it no longer stops that same tick's writes (every main commit passed pr-tests on its pull request).
+    # No secret, no permission beyond the workflow's `contents: read`. Rollback: revert the pull request.
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.cloud_backlog != '' && inputs.cloud_backlog != '0') }}   # D219: a Cloud Fit backlog dispatch runs only the batch, as it did not need the tests beside it before
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout the exact commit (own git fetch, token never stored)
+        run: |
+          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
+          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
+          git checkout -q --detach FETCH_HEAD
+      - uses: ./.github/actions/python
+      # why: Unit-test gate (LIFE-570; fail closed - the tests are skipped only when pr-tests is green on this exact commit)
+      - name: Unit-test gate
+        id: testgate
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python -m lifeos.platform.testgate
+      # why: Test-only dependency (PyYAML, for the workflow contract tests; skipped if unavailable)
+      - name: Test-only dependency
+        if: ${{ steps.testgate.outputs.skip != 'true' }}
+        run: pip install --require-hashes -r requirements-test.lock || echo "pyyaml unavailable; the workflow contract tests will skip"
+      - name: Unit tests
+        if: ${{ steps.testgate.outputs.skip != 'true' }}
+        run: python -m unittest discover -s tests -t . -v
