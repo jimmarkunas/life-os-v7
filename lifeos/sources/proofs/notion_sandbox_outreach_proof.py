@@ -50,7 +50,7 @@ def conversation(person, job_id, action, last_contact, follow_up):
     """One fictional Recruiters row, shaped as the Recruiters data source returns it (lifeos.recruiters.notion.read)."""
     rich = lambda t: [{"type": "text", "plain_text": t, "text": {"content": t}}]   # noqa: E731
     return {"id": f"synthetic-{person.split()[0].lower()}", "properties": {
-        "Recruiter / Person": {"type": "title", "title": rich(person)}, "Recruiter Company": {"type": "rich_text", "rich_text": rich("Fictional Recruiting Co (SYNTHETIC)")},
+        "Recruiter": {"type": "title", "title": rich(person)}, "Company": {"type": "rich_text", "rich_text": rich("Fictional Recruiting Co (SYNTHETIC)")},
         "Role": {"type": "rich_text", "rich_text": rich("Outreach table proof (SYNTHETIC)")}, "Medium": {"type": "rich_text", "rich_text": rich("LinkedIn")},
         "Last Contact": {"type": "date", "date": {"start": last_contact}}, "Done": {"type": "checkbox", "checkbox": False}, "Active": {"type": "checkbox", "checkbox": True},
         "Action Status": {"type": "select", "select": {"name": action}}, "Follow-up Date": {"type": "date", "date": {"start": follow_up}},
