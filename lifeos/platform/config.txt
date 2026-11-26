@@ -64,6 +64,9 @@ INBOX_VIEW_MODE workflow_only:workflow Which manual run the inbox-view stage doe
 INTERVIEW_TEST_COMPANIES workflow_only:workflow Interview OS setting (test companies)
 JIRA_API_TOKEN secret Jira setting (api token)
 JIRA_EMAIL secret Jira setting (email)
+JIRA_READ_BASE_URL secret LIFE-991: the Jira site address the governed Buzz bridge reads one issue's status from for agent_dispatch (an https address kept as a credential because the site name stays out of the public repository; placed with place-credentials, never logged)
+JIRA_READ_EMAIL secret LIFE-991: the account email of the bridge's read-only Jira credential (placed with place-credentials, never logged)
+JIRA_READ_TOKEN secret LIFE-991: the bridge's read-only (scoped) Atlassian API token for one status read per dispatch (placed with place-credentials, never logged)
 KEY workflow_only:workflow Scratch variable used inside a workflow step
 LIFEOS_ACQ_DB_PASSWORD secret Connection detail for the Hostinger job store (read at run time through db.py)
 LIFEOS_ACQ_DB_USER secret Connection detail for the Hostinger job store (read at run time through db.py)

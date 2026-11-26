@@ -429,7 +429,7 @@ def main():
     except (ValueError, OSError) as e:
         sys.exit(f"config error: {e}")
     if google_read and source_lookup and inbox_send:
-        inbox_send.wire(credentials(os.environ), INBOX)                              # LIFE-876: the Agent Inbox write, with the service's Notion integration (NOTION_READONLY_TOKEN, now Read, Insert and Update); None until it is placed
+        orchestrator and orchestrator.wire(credentials(os.environ), ORCH); inbox_send.wire(credentials(os.environ), INBOX)                              # LIFE-876: the Agent Inbox write, with the service's Notion integration (NOTION_READONLY_TOKEN, now Read, Insert and Update); None until it is placed      # LIFE-991: the read-only Jira ticket-state lookup only when the three JIRA_READ_* credentials are placed (else agent_dispatch fails closed); LIFE-876: the Agent Inbox write, with the service's Notion integration (NOTION_READONLY_TOKEN, now Read, Insert and Update); None until it is placed
         GOOGLE["creds"] = google_read.creds_from_env(credentials(os.environ))      # LIFE-875: a read-only Google credential is read here by name only; None until the six names are set
         source_lookup.wire(credentials(os.environ), LOOKUP)                           # LIFE-888: GitHub (public) always; Notion pages and the directory only when the service holds the credential and the source id
     ThreadingHTTPServer(("127.0.0.1", int(os.environ.get("buzz_mcp_port".upper(), "8787"))), handler(relays, auth, base, origins)).serve_forever()
