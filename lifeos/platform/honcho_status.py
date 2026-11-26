@@ -1,9 +1,7 @@
-"""LIFE-921: the Honcho line (Oracle card) and the two Anthropic rows with a summary line (AI Capacity card), from Oracle's `honcho` and `anthropic` readings.
+"""The Honcho line (Oracle card) and the two Anthropic rows with a summary line (AI Capacity card).
 
-Rendering is pure; `read` is the one network call (Oracle's private `oracle1` endpoint). Readings (names and numbers only, from the `oracle1` stats): honcho = {"health", "failed", "exhausted", "stopped": True|False|None, "backup": None | {"at": ISO, "ok": bool},
-"meter": None | {"cap": number, "reserved": number}}; anthropic = {"billed_usd": number|None, "honcho_usd": number|None, "as_of": ISO|None}. A reading that cannot be had is None and prints UNVERIFIED, never zero.
-RESERVED (a hold against the meter's cap, from the meter itself) and ACTUAL (billed spend, from Anthropic's own report) are never swapped and a reservation is never shown as spend.
-Red only for ALERT and STOPPED; UNVERIFIED stays neutral (Jim, Nov 23 2026, comment 13901)."""
+A reading that cannot be had is None and prints UNVERIFIED, never zero. RESERVED (a hold against the meter's cap) and
+ACTUAL (billed spend) are never swapped. Red only for ALERT and STOPPED."""
 import json
 import socket
 from datetime import datetime
@@ -12,9 +10,9 @@ from zoneinfo import ZoneInfo
 from lifeos.platform import credit_window
 
 TZ = ZoneInfo("America/Chicago")
-PROMO_USD = credit_window.PROMO_USD                                    # LIFE-950: the credit and the meter's cap both reset on the 5th at 6:00 PM CT, each month
-NEAR_REMAINING = 25                                                    # NEAR LIMIT at or below this percent of the credit left (the table's own threshold)
-PORT, MAX_REPLY, WAIT, TTL = 47341, 4096, 100, 600                      # Oracle's private `oracle1` endpoint (the one the Oracle card reads), its reply limit, wait and freshness in seconds
+PROMO_USD = credit_window.PROMO_USD
+NEAR_REMAINING = 25
+PORT, MAX_REPLY, WAIT, TTL = 47341, 4096, 100, 600
 FLAGS = ("health", "failed", "exhausted", "stopped")
 RED = "red"
 
@@ -100,7 +98,7 @@ def _money(v, places=2):
 
 
 def ranked(h, a, now):
-    """-> [(percent left or 101 when unknown, cells)] for the promo credit and the Honcho meter. Cells are the table's six: Pool, Remaining, Used, Window, Resets, Status (its own words)."""
+    """-> [(percent left or 101 when unknown, cells)] for the promo credit and the Honcho meter."""
     end = credit_window.window(now)[1]
     resets = f"{end.strftime('%a %b')} {end.day}, {_clock(end)}"
     billed = a["billed_usd"] if a else None
@@ -125,12 +123,10 @@ def ranked(h, a, now):
 
 
 def rows(h, a, now):
-    """-> the two rows' cells only (promo credit, then Honcho meter)."""
     return [cells for _, cells in ranked(h, a, now)]
 
 
 def summary(h, a, now):
-    """-> the one line under the AI Capacity heading."""
     read = _clock(now.astimezone(TZ))
     billed = a["billed_usd"] if a else None
     meter = h["meter"] if h else None
@@ -156,7 +152,7 @@ def fetch(host, port=PORT):
 
 
 def read(host, now, send=fetch):
-    """-> (honcho, anthropic) from Oracle's `oracle1` stats, or (None, None) when they cannot be had: unreachable, too big, stale (older than TTL), off contract or not reported. Never raises: the rows then read UNVERIFIED, never zero."""
+    """-> (honcho, anthropic) from Oracle's `oracle1` stats, or (None, None) when they cannot be had. Never raises."""
     try:
         raw = send(host)
         if not raw or len(raw) > MAX_REPLY:

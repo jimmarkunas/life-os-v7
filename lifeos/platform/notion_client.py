@@ -1,5 +1,5 @@
-"""Notion API transport (platform: free API only, paced under 3 req/s, 429/529 retry per Retry-After, 409 conflict retry); fixed error codes, no job knowledge."""
-# The documented rule and the provider numbers: docs/platform/notion-rate-limits.md. Every Notion call in lifeos/ goes through this class (tests/contracts/test_limits.py).
+"""Notion API transport: free API only, paced under 3 req/s, 429/529 retry per Retry-After, 409 conflict retry; fixed
+error codes, no job knowledge."""
 from __future__ import annotations
 
 import json
@@ -19,8 +19,7 @@ VERSION = "2025-09-03"
 
 
 class NotionError(RuntimeError):
-    """Fixed codes only - never tokens, ids, or response bodies. `detail` (when Notion refused a request) is Notion's own error code plus the
-    request-body paths it names, e.g. "validation_error body.filter.and[4].or[1]": words from a fixed vocabulary, never free text from the message."""
+    """Fixed codes only - never tokens, ids, or response bodies."""
     detail = ""
 
 
@@ -30,7 +29,7 @@ _BODY_PATH = re.compile(r"body(?:\.[A-Za-z_]+|\[\d+\])+")
 def _detail(error: urllib.error.HTTPError) -> str:
     try:
         body = json.loads(error.read() or b"{}")
-    except Exception:                                                                        # noqa: BLE001 - diagnostics must never hide the real error
+    except Exception:  # noqa:
         return ""
     if not isinstance(body, dict):
         return ""
@@ -44,7 +43,8 @@ def rich_text(content: str) -> list[dict[str, Any]]:
 
 
 def _pieces(content: str, limit: int) -> list[str]:
-    """Pieces of at most `limit` UTF-16 units (Notion counts units, not Python characters: a character outside the basic plane is two), never splitting a character. An empty text is one empty piece."""
+    """Pieces of at most `limit` UTF-16 units (Notion counts units, not Python characters), never splitting a
+    character."""
     pieces, start, units = [], 0, 0
     for index, char in enumerate(content):
         width = 2 if ord(char) > 0xFFFF else 1
@@ -70,14 +70,13 @@ class Client:
         return self._call(method, path, body, None)
 
     def call_once(self, method: str, path: str, body: Any = None, version: str | None = None, rate_retries: int | None = None) -> Any:
-        """Perform one request without retrying an operation with uncertain write outcome (a 5xx on a write is never repeated). `version` overrides the pinned API version for this one call.
-        `rate_retries` (LIFE-661, LIFE-682): how many times to repeat it after a 429 or 529, which Notion rejects as over the limit, so it is safe for any write; None (the default) is limits.NOTION_RATE_RETRIES, except a POST, which is one attempt unless asked."""
+        """Perform one request without retrying an operation with uncertain write outcome (a 5xx on a write is never
+        repeated)."""
         if rate_retries is None and method == "POST":
-            rate_retries = 0                                                                   # a create is a single attempt unless its caller asks otherwise (the Interview advisor store relies on it)
+            rate_retries = 0
         return self._call(method, path, body, rate_retries, version)
 
     def query_data_source(self, source_id: str | None = None, body: dict[str, Any] | None = None) -> Any:
-        """Read one data-source page through the shared pacing and retry path."""
         source = (source_id or self.source).strip().replace("collection://", "")
         if not source or any(ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-" for ch in source):
             raise NotionError("NOTION_SOURCE_INVALID")
@@ -91,7 +90,6 @@ class Client:
         return value
 
     def get_page(self, page_id: Any) -> Any:
-        """Read one exact page through the paced Notion client."""
         return self.call("GET", f"/pages/{self._page_id(page_id)}")
 
     def update_page_properties(self, page_id: Any, properties: dict[str, Any]) -> Any:
@@ -101,7 +99,8 @@ class Client:
         return self.call_once("PATCH", f"/pages/{self._page_id(page_id)}", {"properties": properties})
 
     def update_block(self, block_id: Any, kind: str, rich: list[dict[str, Any]]) -> Any:
-        """Replace the text of one heading, paragraph or callout block (one non-retried write; the caller reads back before any repeat)."""
+        """Replace the text of one heading, paragraph or callout block (one non-retried write; the caller reads back
+        before any repeat)."""
         if kind not in ("heading_1", "heading_2", "heading_3", "paragraph", "callout") or not isinstance(rich, list):
             raise NotionError("NOTION_PROPERTIES_INVALID")
         return self.call_once("PATCH", f"/blocks/{self._page_id(block_id)}", {kind: {"rich_text": rich}})
@@ -123,8 +122,6 @@ class Client:
                     return json.loads(response.read() or b"{}")
             except urllib.error.HTTPError as error:
                 if error.code in (429, 529) and rate < rate_retries:
-                    # LIFE-682, from Notion's documentation: wait the Retry-After seconds (an integer, at most 60 per connection), with jitter because the parallel domain jobs share one integration and
-                    # must not retry in step; no header: exponential from 2 s; then slow this process down for the rest of the run; give up (fixed code) when the waits add up past the budget.
                     try:
                         advised = float(error.headers.get("Retry-After")) if error.headers.get("Retry-After") else None
                     except (TypeError, ValueError):
@@ -136,9 +133,8 @@ class Client:
                     slept, rate = slept + pause, rate + 1
                     self._gap = min(self._gap * limits.NOTION_RATE_SLOWDOWN, limits.NOTION_GAP_MAX_SECONDS)
                     continue
+                # A 409 was not applied, so any method may retry it; a 5xx may have been applied, so only GET and DELETE repeat.
                 if flaky < len(limits.NOTION_RETRY_BACKOFF) and (error.code == 409 or (error.code in (502, 503, 504) and method in limits.NOTION_IDEMPOTENT_METHODS)):
-                    # LIFE-654: a 409 means another request was editing the same page and this one was NOT applied, so any method may retry it, even `call_once`.
-                    # A 5xx may have been applied, so only an idempotent request (GET, DELETE; Notion's own advice) repeats it; every write that reaches here is read back by its caller before any repeat.
                     self._sleep(limits.NOTION_RETRY_BACKOFF[flaky] * (1 + self._jitter()))
                     flaky += 1
                     continue

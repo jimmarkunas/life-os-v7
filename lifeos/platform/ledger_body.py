@@ -1,9 +1,9 @@
-"""The Job Ledger page body (contract v7.jd.1 text, v7.jd.2 layout; Jim, Oct 27: the approved two-column page, and no marker line showing).
+"""The Job Ledger page body (contract v7.jd.1 text, v7.jd.2 layout).
 
-Layout (v7.jd.2): a hidden marker paragraph, then ONE column_list. The left column (40%) holds the "Overview" heading, the Summary and a toggle "Full job description" with every other section; the right
-column (60%) holds the LinkedIn connections block that lifeos.network.surface writes. The marker is a zero-width character whose link carries `v7-jd:N | key=<Stable Job Key>`, so nothing machine-made shows.
-A page written before this (visible `v7-jd:1 | key=...` paragraph, the sections at the top level) is still read everywhere. Pure builders and readers; callers own the Notion calls.
-Notion allows two levels of nesting in one request, so a toggle inside a column cannot carry its children at creation: `fill` appends them afterwards."""
+v7.jd.2: a hidden marker paragraph (`v7-jd:N | key=<Stable Job Key>` in a zero-width link), then ONE column_list:
+Overview, Summary and a "Full job description" toggle on the left, the LinkedIn connections block on the right.
+v7.jd.1 pages are still read. Notion allows two levels of nesting per request, so `fill` appends the toggle's children
+afterwards."""
 from typing import Any
 
 from lifeos.platform import hidden, limits
@@ -25,7 +25,8 @@ def _plain(block):
 
 
 def marker_text(block: dict[str, Any]) -> str:
-    """The marker line of a paragraph: the hidden ref when it has one (v7.jd.2 and later), else its visible text (v7.jd.1 pages)."""
+    """The marker line of a paragraph: the hidden ref when it has one (v7.jd.2 and later), else its visible text
+    (v7.jd.1 pages)."""
     return (hidden.refs(block) or [_plain(block)])[0]
 
 
@@ -48,7 +49,8 @@ def _lines(text, kind="paragraph"):
 
 
 def legacy_blocks(key: str, description: dict[str, Any]) -> list[dict[str, Any]]:
-    """Contract v7.jd.1 as it was written: a visible marker paragraph, then heading_2 + bullets/paragraphs per non-empty section, all at the top level."""
+    """Contract v7.jd.1: a visible marker paragraph, then heading_2 + bullets/paragraphs per non-empty section, all at
+    the top level."""
     blocks = [_block("paragraph", f"{MARK1} | key={key}")]
     for field, heading in SECTIONS:
         text = (description.get(field) or "").strip()
@@ -57,17 +59,17 @@ def legacy_blocks(key: str, description: dict[str, Any]) -> list[dict[str, Any]]
     return blocks
 
 
-OVERVIEW_MAX = 90                                                       # blocks one request may carry in a column (Notion allows 100 per array); a longer Summary continues inside the toggle
+OVERVIEW_MAX = 90
 
 
 def _split(description):
-    """-> (the Summary's blocks that stay in the Overview, the rest of the Summary's blocks)."""
     lines = _lines((description.get("summary") or "").strip())
     return lines[:OVERVIEW_MAX], lines[OVERVIEW_MAX:]
 
 
 def full_blocks(description: dict[str, Any]) -> list[dict[str, Any]]:
-    """The children of the "Full job description" toggle: any Summary overflow, then heading_3 + items for every other section."""
+    """The children of the "Full job description" toggle: any Summary overflow, then heading_3 + items for every other
+    section."""
     blocks = list(_split(description)[1])
     for field, heading in SECTIONS[1:]:
         text = (description.get(field) or "").strip()
@@ -77,7 +79,8 @@ def full_blocks(description: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def column_list(description: dict[str, Any]) -> dict[str, Any]:
-    """The two-column block: Overview (left, with the Full job description toggle, empty) and a blank paragraph (right) that the leads block replaces."""
+    """The two-column block: Overview with an empty Full job description toggle (left) and a blank paragraph
+    (right)."""
     left = [_block("heading_2", OVERVIEW), *_split(description)[0], {"object": "block", "type": "toggle", "toggle": {"rich_text": rich_text(FULL)}}]
     cols = [{"object": "block", "type": "column", "column": {"width_ratio": LEFT, "children": left}},
             {"object": "block", "type": "column", "column": {"width_ratio": RIGHT, "children": [_block("paragraph", "")]}}]
@@ -85,7 +88,7 @@ def column_list(description: dict[str, Any]) -> dict[str, Any]:
 
 
 def build(key: str, description: dict[str, Any]) -> list[dict[str, Any]]:
-    """v7.jd.2: [hidden marker, column_list]. The toggle is created empty (see the module note); `fill` gives it the rest of the description."""
+    """v7.jd.2: [hidden marker, column_list]."""
     return [marker_block(key), column_list(description)]
 
 
@@ -105,10 +108,7 @@ def _kids(client, block_id):
 
 
 def description_list(top: list[dict[str, Any]], key: str | None = None) -> dict[str, Any] | None:
-    """The job description's column_list among a page's top-level blocks, or None. LIFE-361: the description is found by WHAT it is, not where it sits.
-    With the row's Stable Job Key: the column_list right after a marker that names this key. A description copied in from another job (another key) is never
-    it; several with this key are V7's own repeated write, and the top-most is used (description_duplicates counts the rest for repair), so nothing stalls.
-    Without a key (a caller that cannot know it): the only column_list on the page, else the one right after the only marker."""
+    """The job description's column_list among a page's top-level blocks, or None."""
     def after(i):
         return top[i + 1] if i + 1 < len(top) and top[i + 1].get("type") == "column_list" else None
     if key:
@@ -122,12 +122,12 @@ def description_list(top: list[dict[str, Any]], key: str | None = None) -> dict[
 
 
 def description_duplicates(top: list[dict[str, Any]], key: str | None) -> int:
-    """How many EXTRA descriptions carry this row's key (0 normally): V7's own repeated write, reported for repair; the top-most is the one in use."""
+    """How many EXTRA descriptions carry this row's key (0 normally); reported for repair, the top-most is in use."""
     return max(0, sum(1 for b in top if is_marker(b, key)) - 1) if key else 0
 
 
 def find(client: Any, page_id: str, top: list[dict[str, Any]] | None = None, key: str | None = None) -> dict[str, Any] | None:
-    """-> {"list", "left", "right", "toggle"} block ids of a v7.jd.2 page, or None for a page without the layout. Reads at most the top blocks, the column_list and the two columns."""
+    """-> {"list", "left", "right", "toggle"} block ids of a v7.jd.2 page, or None for a page without the layout."""
     top = top if top is not None else _kids(client, page_id)
     found = description_list(top, key)
     if found is None:
@@ -142,8 +142,7 @@ def find(client: Any, page_id: str, top: list[dict[str, Any]] | None = None, key
 
 
 def fill(client: Any, page_id: str, description: dict[str, Any], strict: bool = True) -> int:
-    """Append the rest of the description into the toggle of a page `build` just wrote. -> number of blocks written. A toggle that already holds blocks is left alone (a replay writes nothing).
-    strict=False is for an adopted page that may be the older layout: no layout means nothing to fill."""
+    """Append the rest of the description into the toggle of a page `build` just wrote."""
     where = find(client, page_id)
     if not where or not where["toggle"]:
         if strict:
@@ -158,7 +157,8 @@ def fill(client: Any, page_id: str, description: dict[str, Any], strict: bool = 
 
 
 def text_of(client: Any, page_id: str, top: list[dict[str, Any]] | None = None, limit: int = 24000) -> str:
-    """The job's own description from its page, either layout, as the resume worker takes it: summary lines, then every section's heading and items, in order."""
+    """The job's own description from its page, either layout: summary lines, then every section's heading and
+    items."""
     top = top if top is not None else _kids(client, page_id)
     lines = []
 

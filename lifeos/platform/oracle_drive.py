@@ -1,7 +1,8 @@
-"""LIFE-945: the Weekly Review's link to the governed Oracle Drive reader (Jim, "945 drive 2"): one `drive1 <days>` line over the tailnet, one JSON line back.
+"""The Weekly Review's link to the governed Oracle Drive reader: one `drive1 <days>` line over the tailnet, one JSON
+line back.
 
-The runner joins the tailnet as the ephemeral tag:v7-runner node, which the policy lets reach only Oracle's private endpoint (TCP 47341); Oracle's read-only Drive helper counts files and answers counts only. No credential
-here: the runner holds none for Google. Anything but a clean answer is a fixed code raised as OSError, which the Drive lane reports as its Degraded reason (the other five lanes are unaffected)."""
+The runner holds no Google credential. Anything but a clean answer is a fixed code raised as OSError, which the Drive
+lane reports as its Degraded reason."""
 import json
 import socket
 
@@ -23,7 +24,7 @@ def fetch(host, days, port=PORT, connect=socket.create_connection):
 
 
 def reader(host, days=7, fetcher=fetch):
-    """-> a callable for weekly_review: {"new", "changed", "unfiled", "duplicates", "missing_metadata", ...} or an OSError whose text is a fixed code."""
+    """-> a callable for weekly_review returning the Drive counts, or raising OSError with a fixed code."""
     def read():
         if not (host or "").strip():
             raise OSError("DRIVE_HOST_NOT_SET")
@@ -32,7 +33,7 @@ def reader(host, days=7, fetcher=fetch):
         except (OSError, ValueError):
             raise OSError("DRIVE_ORACLE_UNREACHABLE") from None
         if not data:
-            raise OSError("DRIVE_ORACLE_REFUSED")                       # the endpoint answers nothing to anything it does not accept
+            raise OSError("DRIVE_ORACLE_REFUSED")
         try:
             doc = json.loads(data)
         except ValueError:

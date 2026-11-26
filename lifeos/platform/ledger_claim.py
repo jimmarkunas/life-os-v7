@@ -1,9 +1,8 @@
-"""LIFE-903: the one cross-process claim every Job Ledger creator takes before it creates a row.
+"""The one cross-process claim every Job Ledger creator takes before it creates a row (docs/platform/ledger-claim.md).
 
-Notion has no unique constraint, so lookup-then-create can race; the store does. One conditional UPDATE on the UNIQUE `v7_jobs.dedupe_key` is a lock-protected test-and-set, held in two nullable columns.
-claim() -> WON (read the Ledger by key, adopt or create, read back, release), HELD (another creator has the key: adopt a page that exists, create nothing) or CREATED (page id recorded: adopt it).
-A create that timed out is never released: the claim stays for LEASE and the next winner reads by key first, so a page Notion accepted is adopted, never repeated. Nothing is deleted or rewritten.
-Design and rollback: docs/platform/ledger-claim.md. memory() is an in-process table for a synthetic proof with no store."""
+Notion has no unique constraint, so one conditional UPDATE on the UNIQUE `v7_jobs.dedupe_key` is the lock-protected
+test-and-set. claim() -> WON, HELD (adopt the existing page, create nothing) or CREATED (page id recorded: adopt it).
+A create that timed out is never released: the claim stays for LEASE and the next winner reads by key first."""
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 from contextlib import contextmanager
@@ -13,9 +12,9 @@ import uuid
 from lifeos.platform import db
 from lifeos.platform.names import norm
 
-LEASE = timedelta(minutes=15)                     # Notion's index can lag a create by a minute or two; well past that, an unreleased claim is an abandoned one
+LEASE = timedelta(minutes=15)
 WON, HELD, CREATED = "won", "held", "created"
-_memory = None                                    # a dict while memory() is active (a synthetic proof), else the store is used
+_memory = None
 
 
 @contextmanager
@@ -30,17 +29,18 @@ def memory():
 
 
 def who(role):
-    """-> an identity for this claimant: a fixed role word, the workflow run (or process) and a random suffix, so two processes of one run are two claimants."""
+    """-> an identity for this claimant: role word, workflow run (or process) and a random suffix."""
     return f"{role}:{os.environ.get('GITHUB_RUN_ID') or os.getpid()}:{uuid.uuid4().hex[:8]}"[:64]
 
 
 def role_key(company, role):
-    """-> the claim key for a row that has no Stable Job Key (an Interview opportunity found by company and role): a hash, never the names themselves."""
+    """-> the claim key for a row with no Stable Job Key (an Interview opportunity found by company and role): a hash,
+    never the names."""
     return sha256(f"ledger-role|{norm(company)}|{norm(role)}".encode()).hexdigest()
 
 
 def claim(key, claimant, connect=None, now=None):
-    """-> (WON, None) | (HELD, None) | (CREATED, page id). One short connection, committed before any Notion call so other processes see it."""
+    """-> (WON, None) | (HELD, None) | (CREATED, page id)."""
     moment = now or datetime.now(timezone.utc).replace(tzinfo=None)
     if _memory is not None:
         held = _memory.get(key)
@@ -60,7 +60,7 @@ def claim(key, claimant, connect=None, now=None):
 
 
 def release(key, claimant, connect=None):
-    """The create is verified by read-back (or there was nothing to create): give the claim up. Only the holder's own claim is released."""
+    """The create is verified by read-back (or there was nothing to create): give the claim up."""
     if _memory is not None:
         if (_memory.get(key) or (None,))[0] == claimant:
             del _memory[key]

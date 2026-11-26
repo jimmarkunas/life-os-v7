@@ -1,6 +1,6 @@
-"""Minimal Google Calendar client (stdlib plus the system openssl for the JWT signature; platform: no product knowledge).
+"""Minimal Google Calendar client (stdlib plus the system openssl for the JWT signature).
 
-Service-account auth: the account only ever sees the one calendar its owner shared with it. Every error is a fixed code: never a URL, a token, an id or a response body."""
+Service-account auth: the account sees only the calendar shared with it. Every error is a fixed code."""
 import base64
 import json
 import os
@@ -17,7 +17,7 @@ from lifeos.platform.fixed_code import fixed
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 API = "https://www.googleapis.com/calendar/v3"
 SCOPE = "https://www.googleapis.com/auth/calendar.events"
-SCOPE_READONLY = "https://www.googleapis.com/auth/calendar.readonly"       # LIFE-757: the Followup reader never gets a write scope
+SCOPE_READONLY = "https://www.googleapis.com/auth/calendar.readonly"
 MAX_PAGES = 40
 
 
@@ -30,7 +30,8 @@ def _b64(data):
 
 
 def openssl_sign(private_key_pem, message):
-    """RS256 signature of `message` with the service-account key. The key touches disk only in a private temp file, briefly."""
+    """RS256 signature of `message` with the service-account key; the key touches disk only in a private temp file,
+    briefly."""
     handle, path = tempfile.mkstemp()
     try:
         os.write(handle, private_key_pem.encode())
@@ -83,13 +84,14 @@ class GoogleCalendar:
     def request(self, method, path, params=None, body=None, ok=(200,)):
         url = f"{API}/calendars/{self._calendar}{path}" + ("?" + urllib.parse.urlencode(params, doseq=True) if params else "")
         data = None if body is None else json.dumps(body).encode()
-        attempts = 4 if method in ("GET", "PUT", "DELETE") else 2          # insert/patch retried once: both are safe to repeat here
+        attempts = 4 if method in ("GET", "PUT", "DELETE") else 2
         build = lambda: urllib.request.Request(url, data=data, method=method, headers={
             "Authorization": "Bearer " + self._access(), "Content-Type": "application/json", "User-Agent": "life-os-v7"})
         return rest.call(build, GcalError, "GCAL", self._sleep, self._timeout, attempts=attempts, bad_json="BAD_RESPONSE")
 
     def list_events(self, time_min, time_max, private_property=None):
-        """Every non-cancelled single event in the window (optionally only those carrying a private extended property k=v)."""
+        """Every non-cancelled single event in the window, optionally only those carrying a private extended property
+        k=v."""
         params = {"timeMin": time_min, "timeMax": time_max, "singleEvents": "true", "orderBy": "startTime",
                   "maxResults": 250, "showDeleted": "false"}
         if private_property:
@@ -120,5 +122,5 @@ class GoogleCalendar:
         try:
             self.request("DELETE", f"/events/{urllib.parse.quote(event_id, safe='')}")
         except GcalError as error:
-            if str(error) not in ("GCAL_HTTP_404", "GCAL_HTTP_410"):          # already gone is fine
+            if str(error) not in ("GCAL_HTTP_404", "GCAL_HTTP_410"):  # already gone is fine
                 raise

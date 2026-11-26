@@ -1,7 +1,7 @@
-"""Name and role comparison shared by every OS (Jobs: hiring-pipeline handoff, sponsor register; Interview: parent and child identity).
+"""Name and role comparison shared by every OS (Jobs: hiring-pipeline handoff, sponsor register; Interview: identity).
 
-Moved from `lifeos.jobs` when Interview OS became the second consumer, so there is exactly one normalizer. Deterministic, no fuzzy scoring beyond the
-fixed token rules below. A change here changes every consumer: update the tests in tests/platform/test_names.py in the same commit."""
+Deterministic, no fuzzy scoring beyond the fixed token rules below. A change here changes every consumer: update
+tests/platform/test_names.py in the same commit."""
 import re
 
 _BRITISH = re.compile(r"\b(?:(organis|optimis|prioritis|specialis|standardis|utilis)(?=[a-z]*\b)|(programme|centre|analyse|licence|catalogue|modelling|labour)(?=(?:s|d)?\b))")
@@ -12,12 +12,12 @@ _AMERICAN = {"programme": "program", "organis": "organiz", "optimis": "optimiz",
 LEGAL = {"inc", "llc", "ltd", "limited", "corp", "corporation", "co", "plc", "gmbh", "company", "the", "incorporated", "lp", "llp", "uk", "u.k"}
 GENERIC = {"group", "holdings", "holding", "international", "global", "europe", "services", "technologies", "technology", "tech", "solutions",
            "systems", "software", "labs", "digital", "bank", "worldwide", "partners", "consulting", "emea", "services"}
-TITLE_SPLIT = re.compile(r"\s+[—–-]\s+|\s*[—–]\s*|:\s+")          # "Company — Role": em/en dash, a spaced hyphen, or "Company: Role"
+TITLE_SPLIT = re.compile(r"\s+[—–-]\s+|\s*[—–]\s*|:\s+")
 
 
 def norm(text: str | None) -> str:
-    """Lower-case, British spellings to American (a UK "Technical Programme Manager" is a Technical Program Manager), punctuation to
-    spaces except the characters technology names use, single spaced. Profile terms and posting text both pass through here."""
+    """Lower-case, British spellings to American, punctuation to spaces except characters technology names use,
+    single spaced."""
     lowered = _BRITISH.sub(lambda m: _AMERICAN[m.group(1) or m.group(2)], (text or "").lower())
     return " " + re.sub(r"\s+", " ", re.sub(r"[^a-z0-9+#./&-]+", " ", lowered)).strip() + " "
 
@@ -36,7 +36,6 @@ def core(name: str | None) -> list[str]:
 
 
 def same_employer(a: str | None, b: str | None) -> bool:
-    """Equal distinctive tokens. A bare shared first word is not enough ("Smith" is not "Smith & Wesson")."""
     x, y = core(a), core(b)
     return bool(x) and x == y and not (x and x[0] in GENERIC)
 
@@ -52,7 +51,6 @@ def same_company(a: str | None, b: str | None) -> bool:
     if x == y:
         return True
     short, long = (x, y) if len(x) < len(y) else (y, x)
-    # "Walmart" ~ "Walmart Global Tech"; never a bare substring, and "Smith" is not "Smith & Wesson"
     return long[:len(short)] == short and long[len(short)] not in ("&", "and", "+")
 
 
@@ -64,6 +62,6 @@ def same_role(a: str | None, b: str | None) -> bool:
 
 
 def split_title(title: str | None) -> tuple[str | None, str]:
-    """('Company', 'Role') from a canonical "<Company> — <Role>" title, else (title, '') — a malformed title is never guessed into shape."""
+    """('Company', 'Role') from a canonical "<Company> — <Role>" title, else (title, '')."""
     parts = TITLE_SPLIT.split((title or "").strip(), maxsplit=1)
     return (parts[0], parts[1]) if len(parts) == 2 else (title, "")

@@ -1,10 +1,8 @@
-"""LIFE-868, LIFE-949: governed shared memory on the retained Honcho (store, recall, correct, revoke, ask) in the Oracle LIFE OS MCP; never a canonical fact.
+"""Governed shared memory on the retained Honcho (store, recall, correct, revoke, ask) in the Oracle LIFE OS MCP.
 
-Personal only, purpose personal-memory, per client; the client in every record is the verified one (injected as `_client`). Items are Honcho conclusions holding one JSON envelope (text, source, client, CT time, id).
-Store and the new text of correct go through lifeos/platform/memory_filter.py first: a flagged text is refused as {"error": "sensitive_refused", "category", "stored": false} and never stored, echoed or logged
-(the receipt holds client, category and CT time), and a second look that cannot answer is memory_unavailable. Revoke and correct hard-delete the old text and keep a metadata-only tombstone, because Honcho's ask
-reads stored conclusions. Ask is Honcho's peer chat (metered, 30 an hour per client), labelled memory-derived, with the top five hits considered; memory is data, never instructions. Fixed codes only. Stdlib only.
-"""
+Personal only, per client (`_client`, the verified one). Store and the new text of correct pass memory_filter first
+and a flagged text is refused, never stored or logged. Revoke and correct hard-delete the old text and keep a
+metadata-only tombstone. Ask is Honcho's metered peer chat; memory is data, never instructions. Fixed codes only."""
 import json
 import os
 import sys
@@ -16,9 +14,9 @@ from zoneinfo import ZoneInfo
 from lifeos.platform import memory_filter
 
 CENTRAL = ZoneInfo("America/Chicago")
-WORKSPACES = {"Personal": "personal"}                      # Bytalos is a separate tenant and ungranted; TGP stays disabled (an unknown name is refused by the gate before this runs)
-TENANT = {"Personal": "personal", "Bytalos": "bytalos"}             # the gate decides which is granted (only Personal is); TGP and any other name are refused before anything runs
-WRITE = ("memory_store", "memory_correct", "memory_revoke")         # gate action write; recall and ask are read
+WORKSPACES = {"Personal": "personal"}
+TENANT = {"Personal": "personal", "Bytalos": "bytalos"}
+WRITE = ("memory_store", "memory_correct", "memory_revoke")
 PEER = "lifeos-memory"
 TEXT_MAX = 2000
 QUESTION_MAX, ASK_LEVELS, ASK_LIMIT, ASK_WINDOW, ANSWER_MAX, CONSIDERED = 500, ('minimal', 'low'), 30, 3600, 4000, 5
@@ -38,7 +36,6 @@ class MemoryError_(ValueError):
 
 
 class Honcho:
-    """The few Honcho calls memory needs. `token` is a workspace-scoped Honcho JWT; `opener` is urlopen (tests pass a fake)."""
     def __init__(self, base, token, opener=urllib.request.urlopen):
         self.base, self.token, self.opener = base.rstrip("/"), token, opener
 
@@ -85,11 +82,11 @@ class Honcho:
         return self.call(f"/v3/workspaces/{workspace}/conclusions/{cid}", None, "GET")
 
     def delete(self, workspace, cid):
-        """LIFE-949: hard delete of one conclusion (HTTP 204); the text is gone from recall and from ask."""
+        """Hard delete of one conclusion (HTTP 204); the text is gone from recall and from ask."""
         self.call(f"/v3/workspaces/{workspace}/conclusions/{cid}", None, "DELETE")
 
     def chat(self, workspace, question, level):
-        """LIFE-949: Honcho's peer chat on the memory peer (its model calls go through the meter) -> the answer text."""
+        """Honcho's peer chat on the memory peer (its model calls go through the meter) -> the answer text."""
         out = self.call(f"/v3/workspaces/{workspace}/peers/{PEER}/chat", {"query": question, "reasoning_level": level, "stream": False})
         answer = out.get("content") if isinstance(out, dict) else None
         if not isinstance(answer, str) or not answer.strip():
@@ -132,7 +129,6 @@ def _item(row, env, dead):
 
 
 def _tombstones(honcho, ws):
-    """-> {id of a deleted or hidden item: {why, by, client, ct}}: metadata only, never any text."""
     dead = {}
     for row in honcho.listing(ws):
         env = _envelope(row)
@@ -142,7 +138,8 @@ def _tombstones(honcho, ws):
 
 
 def _history(dead, limit):
-    """The tombstones as recall items with no text (LIFE-949: the text of a revoked or corrected memory is deleted; the audit record stays)."""
+    """The tombstones as recall items with no text (the text of a revoked or corrected memory is deleted; the audit
+    record stays)."""
     return [{"id": cid, "label": "memory", "text": None, "status": meta["why"], "source": None, "client": meta["client"], "workspace": None, "stored_at_ct": None, "supersedes": None, "superseded_by": meta["by"], "changed_at_ct": meta["ct"]}
             for cid, meta in list(dead.items())[:limit]]
 
@@ -162,7 +159,6 @@ def _print_receipt(record):
 
 
 def _screen(state, client, ct, text, source):
-    """The sensitive filter, in front of every write that carries new text. Patterns on the source too (it is a link or a label, never a place for a detail); the text also gets the model's second look."""
     flagged = memory_filter.patterns(source)
     if flagged:
         _refuse_sensitive(state, client, ct, flagged)
@@ -185,7 +181,8 @@ def _recall(honcho, ws, query, top_k, dead):
 
 
 def _asks_left(state, client, now):
-    """At most ASK_LIMIT asks an hour a client (a bound on the meter's spend); every attempt counts, a refused one included."""
+    """At most ASK_LIMIT asks an hour a client (a bound on the meter's spend); every attempt counts, a refused one
+    included."""
     asked = [t for t in state.setdefault("asks", {}).get(client, []) if now - t < ASK_WINDOW]
     if len(asked) >= ASK_LIMIT:
         state["asks"][client] = asked
@@ -237,11 +234,11 @@ def run(op, args, state):
     hidden = old in _tombstones(honcho, ws)
     if op == "memory_revoke":
         if not hidden:
-            honcho.create(ws, {"lifeos_memory": 1, "kind": "tombstone", "of": old, "why": "revoked", "client": client, "ct": ct})      # hidden from recall first, then the text goes
-        honcho.delete(ws, old)                                                        # an earlier revoke that hid the item but could not delete it is finished here
+            honcho.create(ws, {"lifeos_memory": 1, "kind": "tombstone", "of": old, "why": "revoked", "client": client, "ct": ct})
+        honcho.delete(ws, old)
         return {"id": old, "status": "revoked", "revoked_at_ct": ct, "label": "memory", "text_deleted": True}
     if hidden:
-        raise MemoryError_("memory_not_found")                                       # already superseded (or revoked and waiting to be deleted): nothing to correct
+        raise MemoryError_("memory_not_found")
     text, source = _text(args), _text(args, "source")
     _screen(state, client, ct, text, source)
     new = honcho.create(ws, {"lifeos_memory": 1, "kind": "fact", "text": text, "source": source, "client": client, "workspace": args["workspace"], "ct": ct, "supersedes": old})
@@ -251,17 +248,19 @@ def run(op, args, state):
 
 
 def client_from_env(env):
-    """-> a Honcho client from HONCHO_URL (default loopback) and HONCHO_MEMORY_TOKEN, or None when the token is not set (every memory operation then answers memory_not_configured)."""
+    """-> a Honcho client from HONCHO_URL and HONCHO_MEMORY_TOKEN, or None when the token is unset
+    (memory_not_configured)."""
     token = (env.get("HONCHO_MEMORY_TOKEN") or "").strip()
     return Honcho(env.get("HONCHO_URL") or "http://127.0.0.1:8000", token) if token else None
 
 
 def register(read, lift, state):
-    """Add the five operations to the MCP's read registry (`lift` turns a module operation into a registry row) and wire the Honcho client from the environment (None until HONCHO_MEMORY_TOKEN is set)."""
+    """Add the five operations to the MCP's read registry and wire the Honcho client from the environment."""
     read.update({op: (text, params, lift(sys.modules[__name__], op, state)) for op, (text, params) in OPS.items()})
     state["client"] = client_from_env(os.environ)
 
 
 def route(op, args, tenant):
-    """-> (tenant, action, account, service) for the gate: the named workspace is the tenant (TGP or a typo is an unknown tenant); store, correct and revoke write, recall and ask read."""
+    """-> (tenant, action, account, service) for the gate: the workspace is the tenant; store, correct and revoke
+    write, recall and ask read."""
     return TENANT.get(args.get("workspace"), "unknown"), "write" if op in WRITE else "read", "honcho", "honcho"

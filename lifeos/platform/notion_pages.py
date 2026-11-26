@@ -1,6 +1,9 @@
-"""LIFE-645: the one Notion paging loop: yields each page of a query or a block's children; anything short of a provably complete read raises a fixed code.
+"""The one Notion paging loop: yields each page of a query or a block's children; anything short of a provably
+complete read raises a fixed code.
 
-`fail` is the caller's error factory (`fail(code)` returns the exception). Codes: `incomplete` (a page without results/has_more, or a missing or empty next_cursor), `repeat` (a cursor seen before; default `incomplete`), `capped` (more than `limit` pages; default `incomplete`), `read` (the fetch itself raised NotionError; when None that error passes through). `limit=None` is unbounded."""
+`fail(code)` is the caller's error factory. Codes: `incomplete`, `repeat` (a cursor seen before), `capped` (more than
+`limit` pages) and `read` (the fetch raised NotionError); the last three default to `incomplete`. `limit=None` is
+unbounded."""
 from urllib.parse import quote
 
 from lifeos.platform import limits
@@ -33,17 +36,17 @@ def pages(fetch, fail, incomplete, repeat=None, capped=None, limit=None, read=No
 
 
 def query(client, source_id, body, fail, **codes):
-    """The pages of a data-source query; `body` is the request body without start_cursor (source_id None means the client's own source)."""
+    """The pages of a data-source query; `body` is the request body without start_cursor (source_id None means the
+    client's own source)."""
     return pages(lambda cursor: client.query_data_source(source_id, {**body, **({"start_cursor": cursor} if cursor else {})}), fail, **codes)
 
 
-SEARCH_PAGE_LIMIT = 20                 # LIFE-891: a title lookup follows at most this many result pages; more is a fixed refusal, never a partial answer
+SEARCH_PAGE_LIMIT = 20
 
 
 def search_all(client, query, kind, fail, **codes):
-    """LIFE-891: EVERY result of `POST /search` for `query` (kind: "page" or "data_source"), following next_cursor / start_cursor until has_more is false.
-    A lookup by exact title must see the whole result set: new pages with similar names push the real one past the first page. Same codes as `pages`
-    (`incomplete` is required; `repeat`, `capped`, `read` optional); `limit` defaults to SEARCH_PAGE_LIMIT pages and reaching it raises `capped`, never a short list."""
+    """EVERY result of `POST /search` for `query` (kind: "page" or "data_source"), following next_cursor until
+    has_more is false."""
     body = {"query": query, "filter": {"property": "object", "value": kind}, "page_size": limits.NOTION_PAGE_SIZE}
     codes.setdefault("limit", SEARCH_PAGE_LIMIT)
     found = []
@@ -53,6 +56,5 @@ def search_all(client, query, kind, fail, **codes):
 
 
 def children(client, block_id, fail, **codes):
-    """The pages of a block's (or page's) children, page_size 100."""
     path = f"/blocks/{quote(block_id, safe='')}/children?page_size={limits.NOTION_PAGE_SIZE}"
     return pages(lambda cursor: client.call("GET", path + (f"&start_cursor={quote(cursor, safe='')}" if cursor else "")), fail, **codes)

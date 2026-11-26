@@ -1,4 +1,5 @@
-"""Private storage for Outlook refresh tokens: one row per account label, replaced whenever Microsoft rotates the token.
+"""Private storage for Outlook refresh tokens: one row per account label, replaced whenever Microsoft rotates the
+token.
 
 The database is private; this repo and its logs are not (labels like 'personal' are not addresses)."""
 from datetime import datetime, timezone
@@ -16,7 +17,7 @@ def ensure_schema(connection):
     with connection.cursor() as cursor:
         for statement in SCHEMA:
             cursor.execute(statement)
-        for column, alter in COLUMNS:                               # works on MySQL and MariaDB alike: ask first, add if missing
+        for column, alter in COLUMNS:
             cursor.execute("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() "
                            "AND table_name = 'v7_outlook_token' AND column_name = %s", (column,))
             if not cursor.fetchone()[0]:
@@ -24,7 +25,6 @@ def ensure_schema(connection):
 
 
 def save(connection, account, refresh_token, fingerprint=None):
-    """Insert or replace. A rotated token (no fingerprint given) keeps the stored fingerprint."""
     with connection.cursor() as cursor:
         cursor.execute("INSERT INTO v7_outlook_token (account, refresh_token, updated_at, fingerprint) VALUES (%s,%s,%s,%s) "
                        "ON DUPLICATE KEY UPDATE refresh_token=VALUES(refresh_token), updated_at=VALUES(updated_at), "
@@ -33,7 +33,6 @@ def save(connection, account, refresh_token, fingerprint=None):
 
 
 def _first(connection, sql, value):
-    """The first column of the first row, or None."""
     with connection.cursor() as cursor:
         cursor.execute(sql, (value,))
         row = cursor.fetchone()

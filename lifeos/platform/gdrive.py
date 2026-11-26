@@ -1,7 +1,7 @@
-"""Minimal Google Drive client (stdlib only; platform: no job knowledge) for the résumé folder: find or create, upload, read back and lock.
+"""Minimal Google Drive client (stdlib only) for the résumé folder: find or create, upload, read back and lock.
 
-The credential is the full `drive` scope (docs/DRIVE_RESUMES.md): one JSON object {"client_id", "client_secret", "refresh_token"}, stored encrypted by the Edge as `gdrive`. It finds exactly one "LIFE OS" folder at the top of My Drive, creates or finds Résumés inside it, uploads .docx files (never converted to Google Docs, so bytes and checksum stay fixed), reads back and locks its own uploads. Every error is a fixed code: never a URL, a token, an id or a response body."""
-# Jim, Oct 24 2026 ("full"): résumés live in Drive as real .docx files, directly in My Drive / LIFE OS / Résumés, with no hand moving; the credential is the full `drive` scope because the narrower drive.file cannot see the LIFE OS folder Jim made himself.
+The credential is the full `drive` scope (docs/DRIVE_RESUMES.md) as one JSON object, stored as `gdrive`. .docx files
+are uploaded unconverted so bytes and checksum stay fixed. Every error is a fixed code."""
 import hashlib
 import json
 import secrets
@@ -13,9 +13,9 @@ import urllib.request
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 API = "https://www.googleapis.com/drive/v3/files"
 UPLOAD = "https://www.googleapis.com/upload/drive/v3/files"
-SCOPE = "https://www.googleapis.com/auth/drive"                      # Jim, Oct 24: "full" (see the docstring)
+SCOPE = "https://www.googleapis.com/auth/drive"
 FOLDER_MIME = "application/vnd.google-apps.folder"
-HOME_NAME, FOLDER_NAME, FOLDER_TAG = "LIFE OS", "Résumés", "resumes"   # My Drive / LIFE OS / Résumés
+HOME_NAME, FOLDER_NAME, FOLDER_TAG = "LIFE OS", "Résumés", "resumes"
 FIELDS = "id,name,md5Checksum,webViewLink,trashed,mimeType,appProperties,contentRestrictions"
 MAX_FILE = 20 * 1024 * 1024
 
@@ -70,7 +70,7 @@ class Drive:
             if not isinstance(token, str) or not token:
                 raise DriveError("GDRIVE_TOKEN_REFUSED")
             if "scope" in reply and SCOPE not in str(reply["scope"]).split():
-                raise DriveError("GDRIVE_SCOPE_NARROW")                   # the stored grant predates "full": rerun the Drive sign-in (docs/DRIVE_RESUMES.md)
+                raise DriveError("GDRIVE_SCOPE_NARROW")
             self._token = token
         return self._token
 
@@ -83,13 +83,12 @@ class Drive:
         return files
 
     def folder(self):
-        """My Drive / LIFE OS / Résumés -> its id. LIFE OS must be exactly one folder at the top of My Drive (never guessed, never created); Résumés is
-        found inside it (the oldest if there are several) or created there once, tagged."""
+        """My Drive / LIFE OS / Résumés -> its id."""
         homes = self.find(f"mimeType='{FOLDER_MIME}' and name='{HOME_NAME}' and 'root' in parents")
         if len(homes) != 1:
             raise DriveError("GDRIVE_LIFE_OS_FOLDER_" + ("MISSING" if not homes else "AMBIGUOUS"))
         home = homes[0]["id"]
-        names = " or ".join(f"name='{n}'" for n in dict.fromkeys(unicodedata.normalize(f, FOLDER_NAME) for f in ("NFC", "NFD")))   # a Mac may store the accents decomposed
+        names = " or ".join(f"name='{n}'" for n in dict.fromkeys(unicodedata.normalize(f, FOLDER_NAME) for f in ("NFC", "NFD")))
         found = self.find(f"mimeType='{FOLDER_MIME}' and ({names}) and '{_quote(home)}' in parents")
         if found:
             return found[0]["id"]
@@ -99,7 +98,8 @@ class Drive:
         return made["id"]
 
     def upload(self, folder_id, name, data, mime, tags):
-        """One file as itself (never converted) -> its metadata, checked: the checksum Drive reports must be the bytes sent."""
+        """One file as itself (never converted) -> its metadata, checked: the checksum Drive reports must match the
+        bytes sent."""
         if not data or len(data) > MAX_FILE:
             raise DriveError("GDRIVE_SIZE")
         boundary = "lifeos-" + secrets.token_hex(12)
@@ -116,7 +116,6 @@ class Drive:
         return self._send("GET", f"{API}/{urllib.parse.quote(file_id, safe='')}?fields={FIELDS}")
 
     def lock(self, file_id, reason):
-        """Make the file read-only in Drive (a content restriction): what was sent cannot change afterwards. -> the file's metadata."""
         return self._json("PATCH", f"{API}/{urllib.parse.quote(file_id, safe='')}?fields={FIELDS}",
                           {"contentRestrictions": [{"readOnly": True, "reason": reason[:100]}]})
 

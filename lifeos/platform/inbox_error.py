@@ -1,4 +1,4 @@
-"""LIFE-876: the one error of the Agent Inbox writer, shared by the inbox package and the governed MCP."""
+"""The one error of the Agent Inbox writer, shared by the inbox package and the governed MCP."""
 
 
 class InboxError(ValueError):
