@@ -1,9 +1,11 @@
-"""Synthetic journey proof on real Notion: the real Interview runner and Notion writer, tick after tick, against a fresh sandbox (LIFE-78).
+"""Synthetic journey proof on real Notion: the real Interview runner and Notion writer, tick after tick, against a
+fresh sandbox.
 
-Manual only: the interview-proof workflow with `confirm = QA` (Interview token only, its own queue, no mail read), or a domains dispatch with `interview_journey_proof = QA` and Actually write UNticked, so every other step in that job stays a dry run. The QA confirmation is this proof's only write switch.
-It drives `interview_evidence.run` against a FRESH sandbox under the QA Interview OS parent: a container page, its own "Hiring Pipeline" and "Active Opportunities", and (LIFE-361) its own small Job Ledger data source. LIFE-353: it ends with Confirm Rejected and then Reopen on the ExampleCo row of that Ledger (the production
-`hiring.decision` writer, each repeated to prove a no-op), read back.
-Mail, Google Calendar and the Jobs side of the Ledger are synthetic and in memory (ExampleCo / SampleCorp, invented requisitions, example.test links): nothing real is read or written. Outputs: fixed codes and counts per step. Proves the machine on real Notion; it is not M1/M2 evidence."""
+Manual only: the interview-proof workflow with `confirm = QA`, or a domains dispatch with `interview_journey_proof =
+QA`
+and Actually write unticked; the QA confirmation is this proof's only write switch. Mail, Google Calendar and the Jobs
+side of the Ledger are synthetic and in memory. Outputs: fixed codes and counts.
+"""
 from datetime import datetime, timedelta
 from lifeos.hiring import decision as D
 from lifeos.interview import create, notion
@@ -42,9 +44,8 @@ INVITE = "ExampleCo Program Manager Interview"
 
 
 class Ledger:
-    """The Jobs side of the Job Ledger, keyed like the real one: the target check, an exact Stable Job Key lookup, one create and its read-back.
-    LIFE-361: each row it creates is a REAL row of the sandbox's own Ledger (Job, Company, Stable Job Key), so the Interview step finds that row and every
-    reader that opens the row page (Network Leads, the opportunity itself) reads a real page; its other answers stay in memory."""
+    """The Jobs side of the Job Ledger, keyed like the real one. Rows it creates are real rows of the sandbox Ledger;
+    its other answers stay in memory."""
     source = "synthetic-ledger"
 
     def __init__(self, client=None, sandbox=None):
@@ -60,11 +61,11 @@ class Ledger:
         return {"properties": {"Stable Job Key": {"type": "rich_text", "rich_text": [{"plain_text": row["stable_job_key"]}]}, "Visible Lane": {"select": {"name": row["lane"]}}}}
 
     def query_data_source(self, source, body):
-        return {"results": [], "has_more": False}                             # no Applied rows: the journey is the recruiter-lead path
+        return {"results": [], "has_more": False}
 
     def create(self, props, blocks):
         pid = f"synthetic-ledger-{len(self.rows) + 1}"
-        if self.client is not None:                                            # the row lives in the sandbox Ledger: only the properties that Ledger has
+        if self.client is not None:
             kept = {name: props[name] for name in ("Job", "Company", "Stable Job Key") if name in props}
             pid = self.client.call_once("POST", "/pages", {"parent": {"type": "data_source_id", "data_source_id": self.sandbox}, "properties": kept})["id"]
         self.rows[pid] = {"page_id": pid, "company": props["Company"]["rich_text"][0]["text"]["content"], "role": props["Job"]["title"][0]["text"]["content"],
@@ -77,7 +78,6 @@ class Ledger:
 
 
 class Calendar:
-    """Google Calendar, in memory: the accepted listing and the deleted-inclusive read."""
     def __init__(self):
         self.events = []
 
@@ -93,7 +93,6 @@ def _event(title, start, status="confirmed"):
 
 
 def drive(client, environ, pipeline_id, now, ledger_id):
-    """The journey against `pipeline_id` (a sandbox Hiring Pipeline) and `ledger_id` (its sandbox Ledger): -> (steps, checks), counts and fixed codes only."""
     env = {**environ, "HIRING_PIPELINE_PAGE_ID": pipeline_id, "INTERVIEW_OS_WRITER": "v7", "INTERVIEW_LEADS": "on", "INTERVIEW_CONVERT": "",
            "INTERVIEW_TEST_COMPANIES": "", "INTERVIEW_JOURNEY_PROOF": "", "NOTION_JOB_LEDGER_DATA_SOURCE_ID": ledger_id}
     ledger, calendar, steps = Ledger(client, ledger_id), Calendar(), []
@@ -133,7 +132,7 @@ def drive(client, environ, pipeline_id, now, ledger_id):
     step("N request naming another requisition (second job)", mail + (REQUEST, WRONG_B),
          lambda t, w: t[0]["writes"] == 0 and w.get("requisition_conflict") == 1, settle=False)
 
-    scan = notion.parents(client, env)                                       # LIFE-361: each pursuit is its sandbox Ledger row
+    scan = notion.parents(client, env)
     titles = {split_title(p.title): p.page_id for p in scan.items if p.active}
     rounds = notion.child_scan(client, titles[("ExampleCo", "Program Manager")]).items if ("ExampleCo", "Program Manager") in titles else ()
     other = notion.child_scan(client, titles[("SampleCorp", "Analyst")]).items if ("SampleCorp", "Analyst") in titles else ()
@@ -148,7 +147,6 @@ def drive(client, environ, pipeline_id, now, ledger_id):
 
 
 class Rows:
-    """The sandbox Ledger as the decision writer reads it: its own data source id, the row page read and one properties write (no retry)."""
     def __init__(self, client, source):
         self.client, self.source = client, source
 
@@ -166,8 +164,8 @@ class Rows:
 
 
 def decide(client, ledger_id, row_id, now):
-    """LIFE-353 GWT-DW-1/2 on the sandbox: Confirm Rejected then Reopen on the ExampleCo row, each sent twice (the second is `already_recorded`), the row read back
-    after each: Hiring Decision set then cleared, two history lines, Stage unchanged. -> one step, codes and counts only."""
+    """Confirm Rejected then Reopen on the ExampleCo row, each sent twice (the second is `already_recorded`), read
+    back after each."""
     out = {"step": "D Confirm Rejected then Reopen on the Ledger row", "ticks": 0, "writes": 0, "lead_rows": 0, "lead_review": {}, "why": {}, "settled_failed": 0, "pass": False}
     if not row_id:
         out["why"] = {"decision_row_missing": 1}
@@ -201,13 +199,13 @@ def decide(client, ledger_id, row_id, now):
 LEDGER_SCHEMA = {"Job": {"title": {}}, "Company": {"rich_text": {}}, "Stable Job Key": {"rich_text": {}}, "Source Types": {"multi_select": {}},
                  "Applied": {"checkbox": {}},                                       # the decision writers' pursuit read filters on it (a missing property is HTTP 400)
                  "Stage": {"select": {"options": [{"name": n} for n in notion.LEDGER_STAGES]}},
-                 "Hiring Decision": {"select": {"options": [{"name": D.REJECTED}, {"name": D.PASSED}]}},             # the sandbox's own options; the real Ledger is never changed
+                 "Hiring Decision": {"select": {"options": [{"name": D.REJECTED}, {"name": D.PASSED}]}},
                  "Hiring Decision History": {"rich_text": {}}, "Dismissed Outcome Ref": {"rich_text": {}}}
 
 
 def sandbox(client, now):
-    """A fresh sandbox for this run under the QA parent: container -> "Hiring Pipeline" -> "Active Opportunities", and the container's own small Job Ledger
-    (only the properties the Interview step reads and writes). -> (the pipeline page id, the Ledger data source id). A refused database fails the run closed."""
+    """A fresh sandbox under the QA parent: container, "Hiring Pipeline", "Active Opportunities" and a small Job
+    Ledger. -> (pipeline page id, Ledger data source id)."""
     container = notion.write_tree(client, QA_PARENT, [], title=f"Interview journey proof · {now.strftime('%Y-%m-%d %I:%M %p')} CT (synthetic)", template=notion.FULL_WIDTH)
     pipeline = notion.write_tree(client, container, [], title="Hiring Pipeline", template=notion.FULL_WIDTH)
     notion.write_tree(client, pipeline, [], title="Active Opportunities", template=notion.FULL_WIDTH)
@@ -216,25 +214,24 @@ def sandbox(client, now):
 
 
 def run(environ, live, now=None, client=None):
-    """-> counts only: per-step results, final read-back checks and `failed` (steps or checks that did not pass). LIFE-903: the sandbox Ledger has no store, so its creators claim in a table of this process only."""
     with ledger_claim.memory():
         return _run(environ, live, now, client)
 
 
 def _run(environ, live, now=None, client=None):
-    if (environ.get("INTERVIEW_JOURNEY_PROOF") or "").strip() == "M1M2":            # LIFE-78: the bounded synthetic M1/M2 exit case, same switch and sandbox rules
+    if (environ.get("INTERVIEW_JOURNEY_PROOF") or "").strip() == "M1M2":
         from lifeos.sources.proofs import m1m2_proof
         return m1m2_proof.run(environ, live, now=now, client=client)
-    if (environ.get("INTERVIEW_JOURNEY_PROOF") or "").strip() == "E10":              # LIFE-88: the synthetic Network Leads / LinkedIn Contacts QA, same switch and sandbox rules
+    if (environ.get("INTERVIEW_JOURNEY_PROOF") or "").strip() == "E10":
         from lifeos.sources.proofs import interview_contacts_proof
         return interview_contacts_proof.run(environ, live, now=now, client=client)
-    if (environ.get("INTERVIEW_JOURNEY_PROOF") or "").strip() == "LAYOUT":           # Jim, Oct 27: the two-column Ledger page and its migration, on real Notion in a fresh sandbox
+    if (environ.get("INTERVIEW_JOURNEY_PROOF") or "").strip() == "LAYOUT":
         from lifeos.sources.proofs import interview_contacts_proof
         return interview_contacts_proof.run_layout(environ, live, now=now, client=client)
     if (environ.get("INTERVIEW_JOURNEY_PROOF") or "").strip() != CONFIRM:
         return {"proof": "refused", "code": "proof_confirm_missing", "failed": 1, "why": {}, "writes": 0}
     if live:
-        return {"proof": "refused", "code": "proof_requires_dry_dispatch", "failed": 1, "why": {}, "writes": 0}      # Actually write would make the job's other steps live
+        return {"proof": "refused", "code": "proof_requires_dry_dispatch", "failed": 1, "why": {}, "writes": 0}
     now = (now or datetime.now(ev.TZ)).astimezone(ev.TZ)
     client = client or notion.make_client(environ)
     pipeline, ledger_id = sandbox(client, now)

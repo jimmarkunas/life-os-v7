@@ -1,8 +1,9 @@
-"""Interview OS's normal path (the `interview` stage): compose the accepted evidence V7 can read into the existing writer's queries (LIFE-88).
+"""The `interview` stage: compose the evidence V7 can read into the Interview writer's queries.
 
-Lives under sources because it reads the Ledger, the Calendar and Interview OS together. Evidence, never inference: a machine UI 3c opportunity page names its job (Stable Job Key) and its request message in its own machine region; the exact Job Ledger row for that key links it (progression); an existing round page supplies the
-round identity; an accepted Calendar interview event adds a round only when its title states the round number and no round page already holds it, or (LIFE-46 E07) dates the one Scheduling Pending Interview 1 page in place.
-Anything else is a fixed code for that item alone: nothing is guessed, no round is numbered from the pages that exist, and one gap never stops the others. Writes need INTERVIEW_OS_WRITER=v7 (Jim's activation switch); without it the run is a dry run. Outputs: counts and fixed codes only."""
+Evidence, never inference: an opportunity page names its job and request message, a round page supplies the round
+identity, and an accepted Calendar event adds a round only when its title states the number. Anything else is a fixed
+code for that item alone. Writes need INTERVIEW_OS_WRITER=v7; otherwise a dry run. Counts and fixed codes only.
+"""
 import os
 import re
 import time
@@ -33,11 +34,11 @@ from lifeos.sources.interview import unreadable_streak as streaks
 TZ = ZoneInfo("America/Chicago")
 ROUND = re.compile(r"\b(?:interview|round)\s+(\d{1,2})\b|\b(\d{1,2})(?:st|nd|rd|th)\s+(?:interview|round)\b", re.I)
 REQUEST = "Request message ↗"
-LEAD_LANE = "Recruiter"                # the Job Ledger's Visible Lane for a recruiter lead (Notion adds the option on first write)
+LEAD_LANE = "Recruiter"
 HEADLINE_AT = re.compile(r"(?:\bat\b|@)\s+(?P<c>[A-Z][A-Za-z0-9&'’.\-]*(?:\s+[A-Za-z0-9&'’.\-]+){0,3}?)\s*(?:[|,·(\n]|$)")
-STAGE_SECONDS = 720                    # the budget of the Notion write stage, started after the mail has been read: run 39556923423 spent 300 s on page scans and wrote nothing; the recruiters job limit is 30 minutes
-HELD_BLOCKS = ("human_page",)          # LIFE-664: a request for a page Jim wrote himself: nothing is written to it (his `LIFE OS: adopt` line changes that), so the block is `permanent`, not `failed`
-LEADS_PER_RUN = 5                      # new lead pages per tick, newest first: the first live run drains a 14-day backlog over a few ticks instead of in one burst
+STAGE_SECONDS = 720
+HELD_BLOCKS = ("human_page",)          # a hand-written page is never written to: `permanent`, not `failed`
+LEADS_PER_RUN = 5
 ASKS = re.compile(r"\b(?:schedul\w*|set up|arrange|book)\b[^.?!\n]{0,60}\b(?:interview|call|conversation|chat|meeting|time)\b|\binterview (?:invitation|request|availability)\b|"
                   r"\binvit\w+ you to (?:an? )?(?:interview|call|chat)\b|\bselect (?:a|your) (?:time|slot)\b|\b(?:share|send|provide|confirm) your availability\b", re.I)
 URL = re.compile(r"https?://[^\s<>\"')\]]+")
@@ -61,7 +62,7 @@ def _links(client, blocks, context, depth=0):
 
 
 def facts(client, page_id, context):
-    """(Stable Job Key or None, request URL or None) of a UI 3c page this writer wrote, else None."""
+    """(Stable Job Key or None, request URL or None) of an opportunity page this writer wrote, else None."""
     machine, lines, _ = create.machine_region(client, page_id, context)
     renders = [m for m in (create.RENDER.fullmatch(notion.text(b)) for b in lines) if m]
     if machine is None or not lines or not notion.is_marker(notion.text(lines[0]), "opportunity") or len(renders) != 1:
@@ -74,8 +75,7 @@ KEY_TEXT = re.compile(r"Stable Job Key\s+([a-z0-9][a-z0-9-]*)", re.I)
 
 
 def legacy_facts(client, page_id, context):
-    """(Stable Job Key, request URL or None) of a machine page still in the accepted UI 3b layout (marker fold, then the "Canonical opportunity parent" callout), read from the
-    page's own text: exactly one key, else None. Only the pursuits Jim named reach this (migration is authorized for them)."""
+    """(Stable Job Key, request URL or None) of an older-layout machine page: exactly one key, else None."""
     machine, lines, _ = create.machine_region(client, page_id, context)
     if machine is None or not lines or not notion.is_marker(notion.text(lines[0]), "opportunity") or len(machine) < 2 or not notion.text(machine[1]).startswith("Canonical opportunity parent"):
         return None
@@ -93,15 +93,15 @@ def squash(text):
 
 
 def matches(records, roster):
-    """E01a, pure: ({Applied row id: (row, message, requisition)}, codes). A message that asks to schedule a call or interview, names exactly one Applied row
-    (the company's words in order, the role's words) and is not a rejection or an offer. Automated mail counts; the newest request per row wins."""
+    """Pure. ({Applied row id: (row, message, requisition)}, codes) for messages that ask to schedule and name exactly
+    one Applied row. The newest per row wins."""
     found, codes = {}, []
     for message in sorted(records, key=lambda m: m["received"]):
         text = f"{message.get('subject', '')}\n{(message.get('body') or '')[:3000]}"
         named = [r for r in roster if outcomes.mentions(message, r["company"])] if ASKS.search(text) and not outcomes.kind_of(text) else []
         by_role = [r for r in named if outcomes.role_in(message, r["role"])]
         if len({tuple(tokens(r["company"])) for r in named}) > 1 or len(by_role) > 1:
-            codes.append("request_ambiguous")                               # two companies, or two roles the text cannot tell apart: never guessed
+            codes.append("request_ambiguous")
         elif by_role:
             req = REQ.search(text)
             found[by_role[0]["id"]] = (by_role[0], message, req.group(1) if req else None)
@@ -109,7 +109,6 @@ def matches(records, roster):
 
 
 def headline_company(message):
-    """The employer a LinkedIn sender's own headline names ("... at Acme"), read only from the sender's part of the notification (before the footer that describes Jim), else ''."""
     text = str(message.get("body") or "")
     cut = classify.RELAY_FOOTER.search(text)
     for line in (text[:cut.start()] if cut else text)[:1500].splitlines():
@@ -121,68 +120,63 @@ def headline_company(message):
 
 
 def posting_link(message):
-    """The one public job-posting link (an employer ATS page for a single vacancy) a recruiter's message carries, else None; two different ones are not guessed between."""
     found = {u.rstrip(".,;:") for u in URL.findall(str(message.get("body") or "")[:20000])}
     found = {u for u in found if job_site.apply_kind(u) == "ats" and not quality.link_problem(u)}
     return found.pop() if len(found) == 1 else None
 
 
 def reference(event_id):
-    """LIFE-46 E07: the short hash a round page records for its Calendar event (never the event id itself)."""
     return sha1(str(event_id).encode()).hexdigest()[:12]
 
 
 def mint(company, role, requisition=None):
-    """The Stable Job Key of a recruiter lead or a converted pursuit that has no public posting: recruiter-<company>-<requisition or role>."""
     slug = lambda text: "-".join(re.findall(r"[a-z0-9]+", " ".join(tokens(text)).lower()))[:40]
     return "recruiter-" + slug(company) + "-" + (squash(requisition) if requisition else slug(role))
 
 
 def lead_of(message):
-    """E01b, pure: a recruiter outreach that names a role -> (company, role, requisition, minted Stable Job Key, message link), else None. Email and LinkedIn messages in the
-    inbox alike (the recruiters classifier decides who is a recruiter). The company is the client when the message names one, else the recruiter's company; a LinkedIn message that
-    names neither takes the employer in the sender's own headline, else the sender's name, never invented; a message with no company at all is not a lead."""
+    """Pure. A recruiter outreach that names a role -> (company, role, requisition, minted key, message link), else
+    None.
+
+    The company is the client, else the recruiter's, else the LinkedIn sender's headline employer or name.
+    """
     shape, reason, evidence = classify.classify(message)
     verdict, found = qualify.qualify(message, shape, reason, evidence)
     company = (found["client"] or found["company"] or ((headline_company(message) or f"LinkedIn · {found['person']}") if shape == classify.HUMAN_NAMED_RELAY else "")) if verdict == "CANDIDATE" else ""
     if not (company and found["role"] and str(message.get("url", "")).startswith("https://")):
         return None
     req = REQ.search(f"{message.get('subject', '')}\n{(message.get('body') or '')[:3000]}")
-    link = posting_link(message)                                         # a public posting is a real job: its Stable Job Key is the one Jobs OS gives that link, so the Ledger row will match
-    requisition = req.group(1) if req else None                          # LIFE-25 (Jim, 10851): with no posting, only the employer's requisition names the job; none -> key None (REVIEW)
+    link = posting_link(message)
+    requisition = req.group(1) if req else None                          # no posting: only the employer's requisition names the job; none -> key None (REVIEW)
     key = identity.url_hash(link) if link else (mint(company, found["role"], requisition) if requisition else None)
     return company, found["role"], requisition, key, message["url"]
 
 
 def window(environ, live):
-    """Mail days to read: the usual 14 on every live tick (the job has a 20 minute limit and this step reads mail again after the Recruiters step), or a longer look
-    (INTERVIEW_MAIL_DAYS, up to 90) on a manual dry run only."""
     asked = (environ.get("INTERVIEW_MAIL_DAYS") or "").strip()
     return min(90, max(mail.WINDOW_DAYS, int(asked))) if asked.isdigit() and not live else mail.WINDOW_DAYS
 
 
 def lead_job(company, role, link, message, now, connect=store.connect):
-    """E01b: a recruiter's public posting link enters Jobs OS like any job (RESOLVED at its own ATS link, lane Recruiter, source `recruiter`), so Enrich reads the posting, the
-    static Fit and the Cloud Fit (Luna, public postings only) score it, and Publish writes its Ledger row. The recruiter's own email text never leaves this job.
-    -> True when the job is new, False when Jobs OS already holds that link."""
+    """Enter a recruiter's posting link into Jobs OS like any job. -> True when the job is new."""
     received = datetime.fromisoformat(str(message["received"]).replace("Z", "+00:00")).astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
     with connect() as connection, connection.cursor() as cursor:
         return manual_job.enter(cursor, link, company, role, "recruiter", "Recruiter outreach", received, now.astimezone(ZoneInfo("UTC")).replace(tzinfo=None), "ats")[1]
 
 
 def lead_row(writer, company, role, key, url, today):
-    """E01b: the lead's Job Ledger row, once per Stable Job Key (Visible Lane Recruiter, Admitted, not Applied; no fit gate: a recruiter wrote to Jim, whatever the role), read back.
-    -> 'created' | 'present'; a wrong target, an ambiguous key or a read-back that differs raises NotionError."""
+    """Create the lead's Job Ledger row once per Stable Job Key, read back. -> 'created' | 'present'; a wrong target
+    or differing read-back raises NotionError."""
     if jobs_ledger.verify(writer) != jobs_ledger.OK:
         raise NotionError("lead_row_target")
     claimant = ledger_claim.who("lead")
-    state, _ = ledger_claim.claim(key, claimant)                  # LIFE-903: no create without the cross-process claim on this Stable Job Key
+    state, _ = ledger_claim.claim(key, claimant)
     if state == ledger_claim.CREATED:
         return "present"
-    if state == ledger_claim.HELD:                                              # adopt only: a held key may already have its page (a create that crashed after Notion accepted it)
+    if state == ledger_claim.HELD:                                              # adopt only: a held key may already have its page
         if publish.existing_page(writer, key):
             return "present"
-        raise NotionError("lead_row_held")                                      # another creator has the key, or an earlier create is unresolved: no row is made, so no page is queued; a fixed code
+        raise NotionError("lead_row_held")
     if publish.existing_page(writer, key):
         ledger_claim.release(key, claimant)
         return "present"
@@ -190,16 +184,18 @@ def lead_row(writer, company, role, key, url, today):
                                              "eligible": [LEAD_LANE], "admission": lanes.ADMIT}), [])
     props = writer.call("GET", f"/pages/{page}").get("properties") or {}
     if view._plain(props.get("Stable Job Key")) != key or ((props.get("Visible Lane") or {}).get("select") or {}).get("name") != LEAD_LANE:
-        raise NotionError("lead_row_readback")                                  # the claim stays until the lease passes: an unverified create is settled by read-back, never repeated
+        raise NotionError("lead_row_readback")
     ledger_claim.release(key, claimant)
     return "created"
 
 
 def read_mail(environ, now, gmail=None, outlook_accounts=None, days=mail.WINDOW_DAYS, seconds=None, detail=None, reuse=None):
-    """-> (records, sources that could not be read in full). Read only; Gmail and Outlook are read whole, as the recruiters stage does, because a lead has no company on any roster.
-    LIFE-793: the sources are read one after another again (the first run of a side-by-side read, PR 1318, ended DEGRADED with a source read in part and measured nothing gained: Outlook took 1.2 s and
-    1.4 s, Gmail 239 s). `seconds`, when given, is filled with each source's elapsed seconds under a fixed name (gmail, outlook_1, outlook_2, ...); `detail`, when given, gets Gmail's own listed and read
-    counts with their seconds: counts only, never an address or label. LIFE-906: `reuse` ({Gmail message id: record}) is mail an earlier complete read already holds; Gmail reads only the rest (Outlook is read whole, as it takes seconds)."""
+    """-> (records, count of sources that could not be read in full). Read only.
+
+    `seconds` and `detail`, when given, are filled with timings and counts. `reuse` is {Gmail message id: record} from
+    an
+    earlier complete read; Gmail then reads only the rest.
+    """
     records, down, limit = [], 0, mail.MAX_MESSAGES * -(-days // mail.WINDOW_DAYS)
     gmail_timing = {} if detail is not None else None
     reads = [("gmail", lambda: mail.gmail_records(gmail or Gmail.from_env(), now, limit=limit, days=days, workers=MAIL_WORKERS, timing=gmail_timing, heal=True, **({"reuse": reuse} if reuse else {})))]
@@ -218,13 +214,12 @@ def read_mail(environ, now, gmail=None, outlook_accounts=None, days=mail.WINDOW_
                 seconds[name] = round(time.monotonic() - began, 1)
     if detail is not None:
         detail["gmail"] = gmail_timing
-        down -= len(gmail_timing.get("unreadable") or {})                    # messages that stay unreadable are handled one by one in run() (a streak, then permanent), exactly like an unreadable sent thread; a whole source down still counts here
+        down -= len(gmail_timing.get("unreadable") or {})
     return records, down
 
 
 def recruiter_threads(environ, evidence, recruiters=None):
-    """LIFE-78 E10: each request's Recruiters rows, matched only by an exactly equal Source URL (the request message itself; never a name or company).
-    -> (evidence with recruiters on each request, failed?). Not connected (no Recruiters token or data source in this step) leaves the evidence unchanged."""
+    """Attach each request's Recruiters rows, matched by an exactly equal Source URL. -> (evidence, failed?)."""
     urls = sorted({q.source for _, q in evidence if (q.source or "").startswith("https://")})
     if not urls:
         return evidence, False
@@ -240,20 +235,19 @@ def recruiter_threads(environ, evidence, recruiters=None):
                 raise NotionError("RECRUITERS_QUERY_INCOMPLETE")
             rows = [r for r in map(recruiters_store.read, page["results"]) if r["source_url"] == url]
             found[url] = tuple(sorted({(r["person"].strip(), r["company"].strip(), r["source_url"]) for r in rows}))
-    except NotionError:                                                      # unknown is never "no recruiter": every linked request reads DEGRADED this run
+    except NotionError:                                                      # unknown is never "no recruiter"
         return [(p, replace(q, recruiters_state="unreadable") if (q.source or "").startswith("https://") else q) for p, q in evidence], True
     return [(p, replace(q, recruiters=found[q.source], recruiters_state="linked" if found[q.source] else "none") if q.source in found else q)
             for p, q in evidence], False
 
 
-GMAIL_THREAD = re.compile(r"https://mail\.google\.com/mail/u/0/#all/([0-9a-f]{8,32})")      # the request link platform.mail writes for a Gmail thread
+GMAIL_THREAD = re.compile(r"https://mail\.google\.com/mail/u/0/#all/([0-9a-f]{8,32})")
 SENT_SHOWN = 10
-STILL_UNREADABLE = {"gmail_message_incomplete"}      # LIFE-793: causes a retry cannot change (Gmail's reply has no payload or time): counted on their own, never `failed`
-MAIL_WORKERS = 4                     # LIFE-793: Gmail reads at once in this step (one by one before): well under Gmail's per-user concurrent-request limit; Outlook is listed in pages, not per message
+STILL_UNREADABLE = {"gmail_message_incomplete"}
+MAIL_WORKERS = 4
 
 
 def gmail_cause(error):
-    """LIFE-664: a Gmail error as a fixed code, never its text: `http_404`, or the error's own fixed code in lower case, else `other`."""
     text = str(error)
     status = re.search(r"HTTP (\d{3})\b", text)
     fixed = re.fullmatch(r"[A-Z][A-Z0-9_]{2,47}", text)
@@ -261,10 +255,11 @@ def gmail_cause(error):
 
 
 def sent_mail(environ, evidence, gmail=None, report=None):
-    """LIFE-114 (Jim, Oct 29): Jim's own messages (follow-ups, thank-yous) on each request's Gmail thread, matched only by the exact thread in the request link; read only,
-    metadata only. -> (evidence with sent_mail on each Gmail request, failed?). No Gmail credential in this step leaves the evidence unchanged (not connected).
-    LIFE-657: a thread Gmail answers 404 for stays unreadable (the page says so, nothing a retry fixes), so it is not `failed?`; any other error (a rate limit, a 5xx, a token or a malformed reply) could clear and is.
-    LIFE-664: `report`, when given, is filled with each unreadable thread's fixed cause code (see gmail_cause), so run can print it and count how long the thread has stayed so."""
+    """Attach the owner's sent messages on each request's Gmail thread (metadata only). -> (evidence, failed?).
+
+    A 404 thread stays unreadable and is not `failed?`; any other error is. `report`, when given, gets each unreadable
+    thread's fixed cause code.
+    """
     threads = sorted({m.group(1) for _, q in evidence if (m := GMAIL_THREAD.fullmatch((q.source or "").strip()))})
     if not threads:
         return evidence, False
@@ -280,7 +275,7 @@ def sent_mail(environ, evidence, gmail=None, report=None):
             return thread, tuple((at.isoformat(timespec="seconds"), subject) for at, subject in gmail.thread_sent(thread)[-SENT_SHOWN:]), None
         except GmailError as error:
             return thread, None, error
-    if len(threads) > 1:                                                     # LIFE-793: the same reads and the same results, at most MAIL_WORKERS at a time; the first goes alone so the access token is fetched once
+    if len(threads) > 1:
         first = [read_thread(threads[0])]
         with ThreadPoolExecutor(max_workers=MAIL_WORKERS) as pool:
             results = first + list(pool.map(read_thread, threads[1:]))
@@ -291,7 +286,7 @@ def sent_mail(environ, evidence, gmail=None, report=None):
             found[thread] = (shown, "read")
             if report is not None:
                 report[thread] = None
-        else:                                                                # unknown is never "none sent": this request reads DEGRADED this run
+        else:
             cause = gmail_cause(error)
             found[thread], failed = ((), "unreadable"), failed or cause != "http_404"
             if report is not None:
@@ -307,11 +302,11 @@ CONTACTS_SHOWN = 5
 
 
 def network_contacts(client, evidence, context=None, seconds=60):
-    """E10 (Jim, Oct 24): each request's job page Network Leads (the exact Ledger row linked, dismissed leads left out), at most CONTACTS_SHOWN, as (name, why).
-    -> (evidence with contacts on each request, failed?). A request with no Ledger row is left unchanged; an unreadable page is "unreadable", never "none"."""
+    """Attach each request's job page Network Leads, at most CONTACTS_SHOWN, as (name, why). -> (evidence,
+    failed?)."""
     from lifeos.network import surface as network
     out, failed, seen = [], False, {}
-    clock = context or RunContext.start(seconds)                             # its own small budget: past it, the rest read "unreadable" (flagged), never "none"
+    clock = context or RunContext.start(seconds)
     for p, q in evidence:
         pid = q.ledger_page_id
         if not pid:
@@ -323,7 +318,7 @@ def network_contacts(client, evidence, context=None, seconds=60):
             try:
                 leads = network.leads_on_page(client, pid, CONTACTS_SHOWN)
                 seen[pid] = (tuple((lead["name"], lead["reason"]) for lead in leads), "linked" if leads else "none")
-            except NotionError:                                              # SurfaceError included: unreadable, flagged, never "none"
+            except NotionError:
                 seen[pid], failed = ((), "unreadable"), True
         contacts, state = seen[pid]
         out.append((p, replace(q, contacts=contacts, contacts_state=state)))
@@ -331,7 +326,7 @@ def network_contacts(client, evidence, context=None, seconds=60):
 
 
 def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, ledger_rows=None, context=None, ledger=None, records=None, gmail=None, outlook_accounts=None, writer=None, recruiters=None, connect=None):
-    if (environ.get("INTERVIEW_JOURNEY_PROOF") or "").strip():                 # LIFE-78: the manual synthetic journey proof on a fresh QA sandbox, never the real pipeline
+    if (environ.get("INTERVIEW_JOURNEY_PROOF") or "").strip():
         from lifeos.sources.proofs import interview_journey_proof
         return interview_journey_proof.run(environ, live, now=now, client=client)
     live = bool(live) and environ.get("INTERVIEW_OS_WRITER") == "v7"
@@ -340,7 +335,7 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
     read_rows = ledger_rows or (lambda company: acceptance.ledger_rows(company, environ))
     why, evidence, ready, where, permanent = {}, [], {}, {}, {}
     mail_seconds, mail_detail = {}, {}
-    laps, mark = {}, [time.monotonic()]                                     # LIFE-793: seconds per fixed phase, measurement only: no read, write or order changes; counts and fixed names, never an id, title or address
+    laps, mark = {}, [time.monotonic()]
 
     def lap(name):
         now_ = time.monotonic()
@@ -349,14 +344,14 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
 
     def flag(code, site=None, stays=False):
         why[code] = why.get(code, 0) + 1
-        if stays:                                                         # LIFE-657: a state nothing but Jim or the source changes, and the page already shows: counted on its own, never `failed`
+        if stays:
             permanent[code] = permanent.get(code, 0) + 1
-        if site:                                                          # which check raised it, as a fixed word: counts only, never a title, id or address
+        if site:
             where[site] = where.get(site, 0) + 1
 
     def queue(company, role, job, url, rows, date, who, number, requisition=None, ref=None, meeting=None):
         made = progress(Invite(company, role, date, who, number, requisition, job, url), rows)
-        if made.code == "ready":                                          # the dated shape drops the job and request: they are the page's own facts
+        if made.code == "ready":
             evidence.append((made.parent, replace(made.round, stable_job_key=job, source=url, calendar_ref=ref, meeting=meeting)))
         else:
             flag(made.code, "progression_identity" if made.code == "round_identity_incomplete" else None)
@@ -366,7 +361,7 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
     titles = [(p, *split_title(p.title)) for p in scan.items if p.active and scan.complete]
     convert = {"adopt": 0, "upgrade": 0, "awaiting_adopt_line": 0, "migrate": 0}
 
-    def conversion(company, role, how):                                      # a pursuit Jim named: its existing page becomes the UI 3c page through the page's own adopt / upgrade path
+    def conversion(company, role, how):
         convert[how] += 1
         evidence.append((ParentQuery(company, role), RoundQuery(True, None, None, None, stable_job_key=mint(company, role))))
 
@@ -376,9 +371,9 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
         owner = notion.ownership(client, parent.page_id, "opportunity")
         named = notion.is_legacy_company(environ, company)
         if owner == Ownership.ADOPT:
-            conversion(company, role, "adopt")                               # Jim's own `LIFE OS: adopt` line is the opt-in, for any page
+            conversion(company, role, "adopt")
         elif owner == Ownership.HUMAN and named:
-            convert["awaiting_adopt_line"] += 1                              # a named page without his `LIFE OS: adopt` first line: nothing is written to it
+            convert["awaiting_adopt_line"] += 1
         if owner != Ownership.MACHINE:
             continue
         page = facts(client, parent.page_id, context)
@@ -386,77 +381,77 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
             try:
                 tops = notion.children(client, parent.page_id, [notion.MAX_CALLS], context)
                 has_notes = any(b.get("type", "").startswith("heading") and notion.text(b) in notion.NOTES for b in tops)
-            except Exception:                                                # noqa: BLE001 - an unread page is a visible gap, never an upgrade
+            except Exception:  # noqa: BLE001
                 has_notes = True
             legacy = legacy_facts(client, parent.page_id, context) if has_notes and named else None
             if legacy and legacy[0]:
-                try:                                                         # a named UI 3b page: its own key and request, then the existing refresh migrates it (create.refresh(migrate=True))
+                try:
                     ready[parent.page_id] = (company, role, *legacy, notion.child_scan(client, parent.page_id, context), read_rows(company))
                     convert["migrate"] += 1
-                except Exception:                                            # noqa: BLE001 - a fixed code, never the exception text
+                except Exception:  # noqa: BLE001
                     flag("ledger_unreadable")
             elif has_notes:
-                flag("parent_legacy_layout")                                 # a UI 3b page waits for its own migration (only the pursuits Jim named are migrated)
+                flag("parent_legacy_layout")
             else:
-                conversion(company, role, "upgrade")                         # V7's own skeleton page (LIFE-46 option B): the approved sections go in once, Jim's notes protected
+                conversion(company, role, "upgrade")
         elif page[0] is None:
             flag("job_key_missing")
         else:
             try:
                 ready[parent.page_id] = (company, role, *page, notion.child_scan(client, parent.page_id, context), read_rows(company))
-            except Exception:                                                # noqa: BLE001 - a fixed code, never the exception text
+            except Exception:  # noqa: BLE001
                 flag("ledger_unreadable")
     lap("page_reads")
     events, gone = [], []
     try:
         cancelled = []
-        def keep(event, into):                                               # an interview invite for a pursuit whose page is ready
+        def keep(event, into):
             at = hiring.match_event(event["title"], [{"company": c, "role": r} for _, c, r in titles])[0]
             if at is not None and hiring.event_kind(event["title"]) in ("interview", "hiring_manager") and titles[at][0].page_id in ready:
                 into.append((titles[at][0].page_id, event))
         for event in pipeline.read_events(calendar or GoogleCalendar.from_env(environ), now, cancelled):
             keep(event, events)
-        for event in cancelled:                                              # LIFE-46 E07: a cancelled invite, matched to its round only by the round's own recorded reference below
+        for event in cancelled:
             keep(event, gone)
-    except Exception:                                                        # noqa: BLE001
+    except Exception:  # noqa: BLE001
         flag("calendar_unavailable")
     lap("calendar")
     recorded = {}
 
-    def calendar_of(child):                                                  # the event reference a dated round page records, read only when an event needs it
+    def calendar_of(child):
         if child.page_id not in recorded:
             try:
                 recorded[child.page_id] = create.round_calendar(client, child.page_id)
-            except Exception:                                                # noqa: BLE001 - an older layout records none: it is never moved or cancelled
+            except Exception:  # noqa: BLE001
                 recorded[child.page_id] = (None, False)
         return recorded[child.page_id]
 
-    def joined(child, ref, joining):                                         # E10: the dated round linked to this very invite records other joining details (one page read)
+    def joined(child, ref, joining):
         try:
             found = create.round_logistics(client, child.page_id)
-        except Exception:                                                    # noqa: BLE001 - an older layout is never rewritten for its details
+        except Exception:  # noqa: BLE001
             found = (None, False, None)
         recorded[child.page_id] = found[:2]
         return found[:2] == (ref, False) and found[2] != joining
 
-    confirms, moves, cancels = {}, {}, {}                                    # LIFE-46 E07: the round pages Calendar moves in place
-    for page_id, event in events:                                            # a new round first: the refresh below then waits for the next run
+    confirms, moves, cancels = {}, {}, {}
+    for page_id, event in events:
         company, role, job, url, kids, rows = ready[page_id]
         held, number, day, ref = [c for c in kids.items if c.identity_valid is True], ordinal(event["title"]), event["start"][:10], reference(event["id"])
         joining = event.get("meeting")
         if not kids.complete:
             flag("child_scan_incomplete")
-        elif same := [c for c in held if c.interview_date == day]:           # the round page exists: no number is needed to add nothing
+        elif same := [c for c in held if c.interview_date == day]:
             if len(same) == 1 and joined(same[0], ref, joining):
-                moves.setdefault(same[0].page_id, (page_id, same[0], set()))[2].add((day, joining))   # E10: its own invite's joining details changed
+                moves.setdefault(same[0].page_id, (page_id, same[0], set()))[2].add((day, joining))
         elif number in (None, 1) and len(held) == 1 and held[0].interview_date is None and held[0].ordinal == 1:
-            confirms.setdefault(page_id, set()).add((day, ref, joining))     # the invite for the pending Interview 1: that page is dated, never a second one
+            confirms.setdefault(page_id, set()).add((day, ref, joining))
         elif len(linked := [c for c in held if c.interview_date and calendar_of(c)[0] == ref]) == 1:
-            moves.setdefault(linked[0].page_id, (page_id, linked[0], set()))[2].add((day, joining))     # the same event at a new time: that round is rescheduled
-        elif number is None:                                                 # a new round is never numbered from the pages
+            moves.setdefault(linked[0].page_id, (page_id, linked[0], set()))[2].add((day, joining))
+        elif number is None:
             flag("round_identity_incomplete", "calendar_event_pending_round" if any(c.interview_date is None for c in held) else "calendar_event_no_ordinal")
         elif any(c.ordinal == number for c in held):
-            flag("round_conflict")                                           # the same number on another date: never a second page, never a rewrite
+            flag("round_conflict")
         else:
             queue(company, role, job, url, rows, day, None, number, ref=ref, meeting=joining)
     for page_id, event in gone:
@@ -467,7 +462,7 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
     for page_id, found in confirms.items():
         company, role, job, url, kids, rows = ready[page_id]
         if len(found) > 1:
-            flag("calendar_event_ambiguous", "calendar_event_pending_round")    # two accepted times for one pending round: neither is chosen
+            flag("calendar_event_ambiguous", "calendar_event_pending_round")
             continue
         (day, ref, joining), = found
         pending = [c for c in kids.items if c.identity_valid is True][0]
@@ -476,7 +471,7 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
     for child_id, (page_id, child, days) in moves.items():
         company, role, job, url, kids, rows = ready[page_id]
         if len(days) > 1 or child_id in cancels:
-            flag("calendar_event_ambiguous", "calendar_event_moved")         # one event, two times (or moved and cancelled): neither is chosen
+            flag("calendar_event_ambiguous", "calendar_event_moved")
             continue
         day, joining = days.pop()
         evidence.append((ParentQuery(company, role), RoundQuery(True, day, child.interviewer, child.ordinal, explicit_child_page_id=child_id, stable_job_key=job,
@@ -492,20 +487,20 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
     try:
         ledger = ledger or Client(environ, token_name="NOTION_INTERVIEW_TOKEN", source_name="NOTION_JOB_LEDGER_DATA_SOURCE_ID")
         roster = pipeline.read_applied(ledger)
-    except Exception:                                                        # noqa: BLE001
+    except Exception:  # noqa: BLE001
         flag("ledger_unreadable")
     lap("ledger_roster")
     pursuits = [{"id": "page:" + p.page_id, "company": c, "role": r, "title": p.title, "pursuit": True} for p, c, r in titles
                 if c.strip() and r.strip() and not any(same_company(c, a["company"]) and same_role(r, a["role"]) for a in roster)]
     snapshot_why = None
     if records is None:
-        began = time.monotonic()                                             # LIFE-894: the early domains run of this tick may already have read this mail: used only when complete, for this window and taken after this tick started
+        began = time.monotonic()
         taken = snapshots.take(environ, now, window(environ, live), connect) if gmail is None and outlook_accounts is None else {"why": "no_tick"}
         if taken["why"] == "used":
             records, down = taken["records"], taken["down"]
             mail_detail.update(taken["detail"])
             mail_seconds["snapshot"] = round(time.monotonic() - began, 1)
-        else:                                                                # no snapshot, or one not usable: the full read exactly as before
+        else:
             records, down = read_mail(environ, now, gmail, outlook_accounts, window(environ, live), mail_seconds, mail_detail)
         snapshot_why = None if taken["why"] == "no_tick" else taken["why"]
         if down:
@@ -514,52 +509,52 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
     asked, codes = matches(records or [], roster + pursuits)
     for code in codes:
         flag(code)
-    leads = [v for v in asked.values() if v[0].get("pursuit")]                 # a request for a pursuit with no Applied row: the lead path (E01b), reported here, never written
+    leads = [v for v in asked.values() if v[0].get("pursuit")]
     asked = {k: v for k, v in asked.items() if not v[0].get("pursuit")}
     retired_skips = 0
-    for row, message, req in asked.values():                                 # E01a: a scheduling request for a job Jim applied to -> Interview 1, Scheduling Pending
+    for row, message, req in asked.values():
         try:
             props = ledger.call("GET", f"/pages/{row['id']}").get("properties") or {}
             key, apply_url = view._plain(props.get("Stable Job Key")), view._plain(props.get("Apply URL"))
-        except Exception:                                                    # noqa: BLE001
+        except Exception:  # noqa: BLE001
             flag("ledger_unreadable")
             continue
         page = next((v for v in ready.values() if same_company(v[0], row["company"]) and same_role(v[1], row["role"])), None)
         _, _, page_job, page_url, page_kids, _ = page or (None,) * 6
         states = {p.active for p, c, r in ((p, *split_title(p.title)) for p in scan.items) if same_company(c, row["company"]) and same_role(r, row["role"])}
-        if states == {False}:                                                # only a Retired page: an Active one (keyed or not) still takes the request as before
-            retired_skips += 1                                               # Jim retired this pursuit: an old request never brings back an Active page (Walmart, Oct 24)
+        if states == {False}:
+            retired_skips += 1
             continue
         if not key:
             flag("job_key_missing")
         elif req and squash(req) not in squash(apply_url):
-            flag("requisition_conflict")                                     # the message names a requisition the Applied row's Apply URL does not carry
+            flag("requisition_conflict")
         elif page and page_job != key:
             flag("identity_conflict")
         elif page and any(c.identity_valid is True for c in page_kids.items):
             if page_url != message["url"]:
-                flag("round_identity_incomplete", "applied_row_other_request")      # another request for a job that already has a round: its round number is unknown
+                flag("round_identity_incomplete", "applied_row_other_request")
         elif not page or page_kids.complete:
             queue(row["company"], row["role"], key, message["url"], [{"page_id": row["id"], "company": row["company"], "role": row["role"], "stable_job_key": key, "requisition": None}],
                   None, None, None, req)
     lap("ledger_requests")
     pursuit_requests, handled = 0, set()
-    outreach = {m["url"] for m in records or [] if lead_of(m) and not ASKS.search(f"{m.get('subject', '')}\n{(m.get('body') or '')[:3000]}")}      # recruiter outreach in the mailbox that is provably not a request, by its own link
-    for row, message, req in leads:                                          # M1 (LIFE-25): a request for a keyed V7 pursuit page with no Applied row is that page's Interview 1
+    outreach = {m["url"] for m in records or [] if lead_of(m) and not ASKS.search(f"{m.get('subject', '')}\n{(m.get('body') or '')[:3000]}")}
+    for row, message, req in leads:
         page = ready.get(row["id"].split(":", 1)[1])
         if page is None:
-            continue                                                         # no key on the page: counted below, never guessed
+            continue
         company, role, page_job, page_url, page_kids, page_rows = page
         handled.add(row["id"])
         keyed_by_requisition = (page_job or "").startswith("recruiter-") and page_job != mint(company, role)
         if req and keyed_by_requisition and page_job != mint(company, role, req):
-            flag("requisition_conflict", "pursuit_requisition")             # LIFE-25: the request names another requisition than the one this job was keyed by
+            flag("requisition_conflict", "pursuit_requisition")
         elif any(c.identity_valid is True for c in page_kids.items):
             held = [c for c in page_kids.items if c.identity_valid is True]
             if page_url != message["url"] and page_url in outreach and len(held) == 1 and held[0].ordinal == 1:
-                ready[row["id"].split(":", 1)[1]] = (company, role, page_job, message["url"], page_kids, page_rows)     # the page still links the recruiter's outreach: this request is its Interview 1's
+                ready[row["id"].split(":", 1)[1]] = (company, role, page_job, message["url"], page_kids, page_rows)
             elif page_url != message["url"]:
-                flag("round_identity_incomplete", "pursuit_other_request")          # the page already has a round and names another request: its number is unknown
+                flag("round_identity_incomplete", "pursuit_other_request")
         elif page_kids.complete:
             queue(company, role, page_job, message["url"], page_rows, None, None, None, req)
             pursuit_requests += 1
@@ -567,60 +562,59 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
             flag("child_scan_incomplete")
     counts_requests = len(asked)
     every = [split_title(p.title) for p in scan.items] + [(a["company"], a["role"]) for a in roster]
-    fresh = {}                                                               # one lead per job: Stable Job Key -> (lead, its own message); the newest message wins
-    for message in sorted(records if scan.complete else [], key=lambda m: m["received"]):     # E01b: recruiter outreach that names a role is the first warning; no reply is needed
+    fresh = {}
+    for message in sorted(records if scan.complete else [], key=lambda m: m["received"]):
         found = lead_of(message)
-        if found and not any(same_company(found[0], c) and same_role(found[1], r) for c, r in every):      # a retired page counts: a closed lead never comes back
+        if found and not any(same_company(found[0], c) and same_role(found[1], r) for c, r in every):
             fresh[found[3] or ("review", message["url"])] = (found, message)
-    leads_live = live and environ.get("INTERVIEW_LEADS") == "on"              # Jim's second switch: lead rows, jobs and pages stay off until it is "on"
+    leads_live = live and environ.get("INTERVIEW_LEADS") == "on"
     made_rows = made_jobs = 0
-    review = {}                                                              # LIFE-25: a lead held for review is counted by reason, writes nothing and is not a failure (the source message stays in the mailbox)
+    review = {}
     groups = {}
     for lead, source in sorted(fresh.values(), key=lambda v: v[1]["received"], reverse=True):
         groups.setdefault((tuple(tokens(lead[0])), tuple(tokens(lead[1]))), []).append((lead, source))
     chosen = []
-    for items in groups.values():                                            # newest first within each company and role
+    for items in groups.values():
         keyed = [(lead, source) for lead, source in items if lead[3]]
         if not keyed:
             review["requisition_missing"] = review.get("requisition_missing", 0) + 1
         elif len({lead[3] for lead, source in keyed if not posting_link(source)}) > 1:
-            review["requisition_ambiguous"] = review.get("requisition_ambiguous", 0) + 1     # two requisitions under one title: two jobs that one page title cannot tell apart, never merged
-        elif len(chosen) < LEADS_PER_RUN:                                    # two links for one company and role are one pursuit, never two pages
+            review["requisition_ambiguous"] = review.get("requisition_ambiguous", 0) + 1
+        elif len(chosen) < LEADS_PER_RUN:
             chosen.append(keyed[0])
     for (company, role, req, key, url), source in chosen:
         if live and not leads_live:
-            continue                                                         # live, but Jim has not turned leads on: nothing is written or queued for a lead
-        link = posting_link(source)                                          # this lead's own message, never another one's
-        if not link:                                                         # LIFE-25: the requisition names the job; an existing row for this title either is it or conflicts
+            continue
+        link = posting_link(source)
+        if not link:
             try:
                 same = [r for r in read_rows(company) if same_company(r.get("company") or "", company) and same_role(r.get("role") or "", role)]
-            except Exception:                                                # noqa: BLE001 - a fixed code, never the exception text
+            except Exception:  # noqa: BLE001
                 flag("ledger_unreadable")
                 continue
             held = [r for r in same if r.get("stable_job_key") == key or (r.get("requisition") and squash(r["requisition"]) == squash(req))]
             if len(held) > 1 or (same and not held):
-                flag("identity_conflict", "lead_requisition")                # another requisition already holds this title, or two rows claim this one: nothing is written
+                flag("identity_conflict", "lead_requisition")
                 continue
-            key = held[0]["stable_job_key"] if held else key                 # the existing row is the job: no second row
-        if leads_live:                                                       # the job or Ledger row first: no page for a lead Jobs OS does not hold
+            key = held[0]["stable_job_key"] if held else key
+        if leads_live:
             try:
                 if link:
                     made_jobs += bool(lead_job(company, role, link, source, now))
                 else:
                     made_rows += lead_row(writer or Client(environ), company, role, key, url, now.date()) == "created"
-            except Exception:                                                # noqa: BLE001 - a fixed code, never the exception text
+            except Exception:  # noqa: BLE001
                 flag("lead_row_failed")
                 continue
         evidence.append((ParentQuery(company, role), RoundQuery(True, None, None, 1, source=url, requisition=req, stable_job_key=key)))
-    leads_refresh = []                                                      # E05: refresh-only items go after every real item, so they never crowd one out of the stage limit
+    leads_refresh = []
     for company, role, job, url, kids, ledger_rows_of in ready.values():
         held = [c for c in kids.items if c.identity_valid is True]
         if not kids.complete:
             flag("child_scan_incomplete")
         elif held:
             queue(company, role, job, url, ledger_rows_of, held[0].interview_date, held[0].interviewer, held[0].ordinal)
-        elif not kids.items and job:        # E05: a keyed machine page with no rounds of its own (a recruiter lead, or one whose interview pages sit in Jim's Notes) is refreshed
-            # from its own key, and its request when one is recorded, never given a round. E14 (Jim, Oct 25: "Manage is not there"): no request link is no reason to skip it
+        elif not kids.items and job:        # a keyed machine page with no rounds is refreshed from its key, never given a round
             leads_refresh.append((ParentQuery(company, role), RoundQuery(True, None, None, None, source=url, stable_job_key=job, refresh_only=True)))
     evidence += [item for item in leads_refresh if (item[0].company, item[0].role) not in {(p.company, p.role) for p, _ in evidence}]
     lap("decisions")
@@ -634,50 +628,50 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
         flag("network_unreadable")
     reads, causes = {}, {}
     evidence, _ = sent_mail(environ, evidence, gmail, reads)
-    for message_id, code in ((mail_detail.get("gmail") or {}).get("unreadable") or {}).items():      # LIFE-793: a Gmail message that stays unreadable after its one more try is followed like an unreadable thread
+    for message_id, code in ((mail_detail.get("gmail") or {}).get("unreadable") or {}).items():
         reads["message:" + message_id] = code.lower()
     unreadable = {thread: cause for thread, cause in reads.items() if cause}
-    before = streaks.previous(connect) if reads else None                     # LIFE-664: the runs in a row each thread has been unreadable, in the private daily counts
+    before = streaks.previous(connect) if reads else None
     runs = {streaks.label(thread): (before or {}).get(streaks.label(thread), 0) + 1 for thread in unreadable}
-    for thread, cause in sorted(unreadable.items()):                          # each thread alone: a 404 stays unreadable at once; any other cause is `failed` for its first runs, then `permanent` (still counted, still on the page)
-        if thread.startswith("message:"):                                    # a message Gmail cannot parse never changes: permanent at once; any other cause (a rate limit, a 5xx) is `failed` for its first runs
+    for thread, cause in sorted(unreadable.items()):
+        if thread.startswith("message:"):
             flag("mail_message_unreadable", stays=cause in STILL_UNREADABLE or runs[streaks.label(thread)] > streaks.FAILED_RUNS)
             continue
         flag("sent_mail_unreadable", stays=cause == "http_404" or runs[streaks.label(thread)] > streaks.FAILED_RUNS)
         causes[cause] = causes.get(cause, 0) + 1
-    kept = not reads or not live or streaks.save(runs, before, connect)       # a dry run writes no streak
+    kept = not reads or not live or streaks.save(runs, before, connect)
     lap("sent_mail")
-    counts = stage.run(limit, live, environ, client=client, evidence=evidence, context=injected or RunContext.start(STAGE_SECONDS), roster=True)      # a fresh clock: the mail read above can take minutes, and the writes need their own budget
+    counts = stage.run(limit, live, environ, client=client, evidence=evidence, context=injected or RunContext.start(STAGE_SECONDS), roster=True)
     lap("writer")
     if where:
         counts["where"] = where
     if mail_detail.get("gmail", {}).get("unreadable"):
         counts["mail_causes"] = {}
-        for code in mail_detail["gmail"]["unreadable"].values():             # fixed codes only, never an id
+        for code in mail_detail["gmail"]["unreadable"].values():
             counts["mail_causes"][code.lower()] = counts["mail_causes"].get(code.lower(), 0) + 1
-    if causes:                                                               # LIFE-664: the fixed cause of each unreadable thread, never an id or the error's text
+    if causes:
         counts["sent_mail_causes"], counts["sent_mail_runs"] = causes, max(runs.values())
     if (before is None or not kept) and any(cause != "http_404" for cause in causes):
-        counts["streak_store"] = "unavailable"                               # the streak could not be read or kept: such a thread stays `failed`, never quietly permanent
-    held = {code: counts["blocked_why"][code] for code in HELD_BLOCKS if counts.get("blocked_why", {}).get(code)}      # LIFE-664: a block that is Jim's own state, counted on its own
+        counts["streak_store"] = "unavailable"
+    held = {code: counts["blocked_why"][code] for code in HELD_BLOCKS if counts.get("blocked_why", {}).get(code)}
     counts["why"], counts["requests"], counts["leads"], counts["lead_rows"], counts["lead_jobs"] = {**counts["why"], **why}, counts_requests, len(fresh), made_rows, made_jobs
     counts["leads_this_run"] = len(chosen)
     counts["lead_review"] = review
     counts["convert"] = convert
-    if sweep.mode(environ) and scan.complete:                                # Jim, Oct 21: every opportunity page becomes the new page; INTERVIEW_CONVERT=inventory only counts them
+    if sweep.mode(environ) and scan.complete:
         counts["sweep"] = sweep.run(environ, live, client, scan, mint, lambda c, page_id, context: (legacy_facts(c, page_id, context) or (None,))[0], context=RunContext.start(sweep.SWEEP_SECONDS))
-    counts["lead_requests"] = {}                                            # per pursuit, by a short hash of its title: logs carry counts only
+    counts["lead_requests"] = {}
     counts["pursuit_requests"] = pursuit_requests
-    counts["retired_skipped"] = retired_skips                                # requests for a pursuit Jim retired: expected, never a failure
+    counts["retired_skipped"] = retired_skips
     for row, *_ in [v for v in leads if v[0]["id"] not in handled]:
         label = sha1(row["title"].encode()).hexdigest()[:6]
         counts["lead_requests"][label] = counts["lead_requests"].get(label, 0) + 1
     counts["permanent"] = {**permanent, **held}
-    counts["failed"] = sum(why.values()) - sum(permanent.values()) + counts["blocked"] - sum(held.values()) + counts.get("sweep", {}).get("failed", 0)      # a UI 3b page waiting for migration is DEGRADED too: it is not refreshed
+    counts["failed"] = sum(why.values()) - sum(permanent.values()) + counts["blocked"] - sum(held.values()) + counts.get("sweep", {}).get("failed", 0)
     lap("after_writer")
-    counts["mail_gmail"] = mail_detail.get("gmail") or {}                          # LIFE-793: Gmail listed, read and their seconds
-    counts["mail_seconds"] = mail_seconds                                          # LIFE-793: each mail source's own seconds (inside the `mail` phase, not added to the total)
+    counts["mail_gmail"] = mail_detail.get("gmail") or {}
+    counts["mail_seconds"] = mail_seconds
     if snapshot_why:
-        counts["mail_snapshot"] = snapshot_why                                     # LIFE-894: `used`, or the fixed code of why this run read the mail itself; a measurement field, left out when comparing outputs
-    counts["seconds"] = {**laps, "total": round(sum(laps.values()), 1)}                     # LIFE-793: where the Interview run's time goes, by fixed phase
+        counts["mail_snapshot"] = snapshot_why
+    counts["seconds"] = {**laps, "total": round(sum(laps.values()), 1)}
     return counts
