@@ -1,0 +1,20 @@
+# LIFE-987: one process per connection, as the concord user (no sudo, no login). It launches concord-mcp against the shared store at /home/concord/life-os-v7 with CONCORD_AGENT_ID=orchestrator-<client>, so every
+# dispatch is attributable. No credential is loaded or issued. No log output (stderr discarded), a hard deadline shorter than the bridge's, no new privileges, the system directories read-only. The only writable
+# places are the Concord store (.concord under the repo) and the Concord state the CLI keeps (~/.config/concord and ~/.cache), which are the ones Concord's own sessions already write.
+[Unit]
+Description=LIFE OS Concord gateway (one connection)
+
+[Service]
+User=concord
+ExecStart=/usr/bin/python3 -I /opt/lifeos-concord/gateway.py
+StandardInput=socket
+StandardOutput=socket
+StandardError=null
+Environment=CONCORD_TELEMETRY_DISABLED=1
+RuntimeMaxSec=35
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/home/concord/life-os-v7/.concord -/home/concord/.config/concord -/home/concord/.cache
+PrivateTmp=yes
+MemoryMax=512M
+CapabilityBoundingSet=

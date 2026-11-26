@@ -48,6 +48,7 @@ SURFACES = (
 # Installers that are deliberately NOT surfaces. A new install-*.sh must be a surface above or be listed here with the reason (tests/platform/test_drift.py reads this).
 UNCOVERED_INSTALLERS = {
     "lifeos/edge/runner/install-runner.sh": "The script-pack runner starts no unit, so there is no unit state to compare; its program is pinned by a hash inside its own installer and checked by that installer's verify.",
+    "lifeos/edge/concord/oracle/install-gateway.sh": "LIFE-987: run once by hand with sudo (like the LIFE-977 Concord helper installer, which is not a surface either); it prints a smoke test and has its own rollback, and its files are repo files with tests.",
 }
 
 

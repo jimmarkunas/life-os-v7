@@ -199,6 +199,9 @@ MEMORY_CLIENTS = ("claude-chat", "chatgpt-chat", "muse-chat", "mac-claude-code",
 MEMORY_CREDENTIALS = ("openclaw", "hermes-librarian", "mac-claude-code", "oracle-claude-code")
 
 
+ORCHESTRATOR_TOOLS = ("agent_status", "agent_dispatch", "agent_messages")
+
+
 class SeededGrants(unittest.TestCase):
     def test_every_seed_is_complete_expiring_named_and_in_the_catalog(self):
         access = M.load()
@@ -210,16 +213,17 @@ class SeededGrants(unittest.TestCase):
             self.assertRegex(g.credential_ref, r"^[a-z][a-z0-9-]+$")
             self.assertEqual(len(g.actions), 1, g.id)
             self.assertTrue(all((g.principal, g.tool, a) in rows for a in g.actions), g.id)
-        self.assertEqual(sorted({g.tool for g in access.grants}), ["agent_lookup", "buzz_capabilities", "buzz_publish", "buzz_read", "drive_read", "drive_search", "gmail_read", "gmail_search", "memory_ask", "memory_correct", "memory_recall", "memory_revoke", "memory_store", "send_to_jim", "source_read"])
+        self.assertEqual(sorted({g.tool for g in access.grants}), ["agent_dispatch", "agent_lookup", "agent_messages", "agent_status", "buzz_capabilities", "buzz_publish", "buzz_read", "drive_read", "drive_search", "gmail_read", "gmail_search", "memory_ask", "memory_correct", "memory_recall", "memory_revoke", "memory_store", "send_to_jim", "source_read"])
         writes = [g for g in access.grants if "write" in g.actions]                                                # Jim, Nov 22 2026 (option A): the only writes are today's Buzz publishing for the two chat clients, in the two communities each can write to
         self.assertEqual({(g.principal, g.tool, g.purpose, g.credential_ref) for g in writes},
                          {(p, "buzz_publish", "buzz-publish", "buzz-scoped-member-key") for p in ("claude-chat", "claude-chat-bytalos", "chatgpt-chat", "chatgpt-chat-bytalos", "muse-chat", "duet-chat", "duet-chat-bytalos")}
                          | {(p, op, "synthetic-memory-test", "mcp-credential-" + p) for p in ("openclaw", "hermes-librarian") for op in ("memory_store", "memory_correct", "memory_revoke")}   # LIFE-868 (Jim, comment 13743): synthetic memory writes (kept for tests; no tool uses that purpose now)
                          | {(p, op, "personal-memory", "mcp-credential-" + p if p in MEMORY_CREDENTIALS else "honcho-memory-token") for p in MEMORY_CLIENTS for op in ("memory_store", "memory_correct", "memory_revoke")}   # LIFE-949 (Jim, Nov 23 and 24 2026): real non-sensitive Personal memory for every governed client
                          | {("openclaw", "buzz_publish", "buzz-publish", "mcp-credential-openclaw")}   # LIFE-877 (Jim, comment 14311): OpenClaw's own pilot-only relay identity; its credential row alone besides muse may carry the write scope
-                         | {(p, "send_to_jim", "agent-inbox", "notion-readonly-token") for p in ("mac-claude-code", "oracle-claude-code", "openclaw", "hermes-librarian", "claude-chat", "chatgpt-chat", "honcho-alerts", "muse-chat", "duet-chat")})   # LIFE-876 (Jim, comments 13748 and 13823): the Agent Inbox, Personal only
+                         | {(p, "send_to_jim", "agent-inbox", "notion-readonly-token") for p in ("mac-claude-code", "oracle-claude-code", "openclaw", "hermes-librarian", "claude-chat", "chatgpt-chat", "honcho-alerts", "muse-chat", "duet-chat")}   # LIFE-876 (Jim, comments 13748 and 13823): the Agent Inbox, Personal only
+                         | {(p, "agent_dispatch", "orchestrator-dispatch", "concord-gateway-socket") for p in ("claude-chat", "chatgpt-chat")})   # LIFE-987 (Jim, comments 14334 and 14344): the only orchestrator write, the two chats, Personal only
         self.assertEqual({g.tenant for g in writes if g.tool == "send_to_jim"}, {"personal"})
-        self.assertEqual(len(writes), 23 + 8 * 3)                                                                      # LIFE-949: three memory writes for each of eight clients
+        self.assertEqual(len(writes), 25 + 8 * 3)                                                                      # LIFE-949: three memory writes for each of eight clients
         self.assertEqual(sorted(c["principal"] for c in CATALOG["capabilities"] if c["tool"] == "send_to_jim"), sorted(["mac-claude-code", "oracle-claude-code", "openclaw", "hermes-librarian", "claude-chat", "chatgpt-chat", "honcho-alerts", "muse-chat", "duet-chat"]))   # a catalog row for exactly the six granted clients, none for the stdio Mac row or a Bytalos principal
 
     def test_the_shipped_seed_lets_no_one_call_send_to_jim(self):
@@ -256,7 +260,7 @@ class SeededGrants(unittest.TestCase):
     def test_duet_holds_exactly_the_grants_claude_holds_under_its_own_client_and_nothing_wider(self):
         """LIFE-922 (Jim, comment 13883): the claude client's Buzz read and publish in Personal and Bytalos plus send_to_jim in Personal, expiring Feb 22 2027; identified by the verified OAuth label `duet` only."""
         access = M.load()
-        shape = lambda principal: sorted((g.tenant, g.tool, g.purpose, tuple(g.actions), g.credential_ref, g.expires.date().isoformat(), g.revoked) for g in access.grants if g.principal.startswith(principal))
+        shape = lambda principal: sorted((g.tenant, g.tool, g.purpose, tuple(g.actions), g.credential_ref, g.expires.date().isoformat(), g.revoked) for g in access.grants if g.principal.startswith(principal) and g.tool not in ORCHESTRATOR_TOOLS)   # LIFE-987: the orchestrator operations are granted to claude-chat and chatgpt-chat only, never to duet (Jim, 14334)
         self.assertEqual(shape("duet-chat"), shape("claude-chat"))                                               # the same rows, the same scope, no widening
         self.assertEqual(sorted({g.tool for g in access.grants if g.principal.startswith("duet-chat")}), ["buzz_capabilities", "buzz_publish", "buzz_read", *MEMORY_TOOLS, "send_to_jim"])
         self.assertEqual([c["facts"] for c in json.loads(M.FILE.read_text())["clients"] if c["id"] == "duet-chat"], [{"oauth_client": "duet"}])
