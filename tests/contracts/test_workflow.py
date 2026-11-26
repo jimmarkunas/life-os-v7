@@ -968,6 +968,22 @@ class DomainsWorkflowTests(unittest.TestCase):
         self.assertIn("reconcile", trigger["workflow_dispatch"]["inputs"]["jira"]["options"])
         self.assertEqual(self.doc["permissions"], {"contents": "read"})
 
+    def test_v3_pages_runs_after_every_after_tick_domains_run_and_keeps_its_cron_fallback_and_live_rule(self):
+        """LIFE-1000: the V3 page is refreshed after each hourly domains run (GitHub fires the cron only about twice a day); only an after-tick domains run starts it, a manual one does not; live mode follows V7_LIVE exactly as a scheduled run."""
+        path = pathlib.Path(__file__).resolve().parents[2] / ".github/workflows/v3-pages.yml"
+        text = path.read_text()
+        data = yaml.safe_load(text)
+        trigger = data.get("on") or data[True]
+        self.assertEqual(trigger["workflow_run"], {"workflows": ["domains"], "types": ["completed"]})
+        self.assertEqual(trigger["schedule"], [{"cron": "40 * * * *"}])                                            # the fallback stays
+        self.assertEqual(list(trigger["workflow_dispatch"]["inputs"]), ["live"])                                    # workflow_dispatch is unchanged
+        self.assertEqual(data["jobs"]["v3pages"]["if"], "${{ github.event_name != 'workflow_run' || github.event.workflow_run.display_title == 'domains (after tick)' }}")
+        self.assertIn("live_mode: ${{ github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'follow' }}", text)   # a workflow_run start follows V7_LIVE
+        self.assertEqual(data["permissions"], {"contents": "read"})
+        self.assertEqual(data["concurrency"], {"group": "life-os-v7-v3-pages", "cancel-in-progress": False})     # overlapping starts queue, they never cancel a running write
+        domains_name = yaml.safe_load((pathlib.Path(__file__).resolve().parents[2] / ".github/workflows/domains.yml").read_text())["run-name"]
+        self.assertIn("'domains (after tick)'", domains_name)                                                       # the title the condition depends on
+
     def test_a_new_jira_step_must_be_put_on_the_red_list_or_among_the_v3_stages(self):
         import copy
         job = copy.deepcopy(self.doc["jobs"]["jira"])
