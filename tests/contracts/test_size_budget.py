@@ -1,4 +1,4 @@
-"""LIFE-1010: the size budget of the big workflows. A generated workflow is at most 130 KB, a source part at most 8 KB and a step name at most 80 characters, so an agent can read and edit one job without loading the whole file.
+"""LIFE-1010: the size budget of the big workflows. A generated workflow is at most 130 KB, a source part at most 6 KB and a step name at most 60 characters, so an agent can read and edit one job without loading the whole file.
 
 domains.yml is held at the size the lean pass reached (RATCHET), not the 130 KB: what is left in it is the per-step credential wiring, which this pass was forbidden to change. The number may only go down."""
 import pathlib
@@ -11,9 +11,9 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 FLOWS = ROOT / ".github/workflows"
 SRC = ROOT / ".github/workflows-src"
 GENERATED_MAX = 130 * 1024
-PART_MAX = 8 * 1024
-NAME_MAX = 80
-RATCHET = {"domains.yml": 141_000, "hourly.yml": 95_000}               # reached 140,192 and 94,068 bytes (240,853 and 123,939 before the lean passes); lower them when the files shrink, never raise
+PART_MAX = 6 * 1024
+NAME_MAX = 60
+RATCHET = {"domains.yml": 140_000, "hourly.yml": 94_500}               # reached 139,192 and 93,683 bytes (240,853 and 123,939 before the lean passes); lower them when the files shrink, never raise
 BUDGETED = ("domains.yml", "hourly.yml", "v3-pages.yml")
 
 

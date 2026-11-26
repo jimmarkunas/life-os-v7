@@ -10,7 +10,7 @@
       extract: ${{ steps.extract.outcome }}
       sweep: ${{ steps.sweep.outcome }}      # LIFE-650: the sweep may fail without stopping the tick; the report job names it as its own failed lane
     steps:
-      - name: Checkout the exact commit (own git fetch, token never stored)
+      - name: Checkout the exact commit (own fetch, token never stored)
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
@@ -59,23 +59,3 @@
           oauth-client-id: ${{ steps.bws_prep.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ steps.bws_prep.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
-      # why: Gate - skip a scheduled or tick run when another tick started in the last 50 minutes (manual runs do not count)
-      - name: Gate - skip a scheduled or tick run when another tick started in the last 50
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          TICK: ${{ inputs.tick }}
-          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_prep.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
-          GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_prep.outputs.GMAIL_OAUTH_CLIENT_ID }}
-          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_prep.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
-          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KEY: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
-          LIFEOS_ACQ_SSH_JUMP_HOST: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_USER }}
-          NOTION_API_TOKEN: ${{ steps.bws_prep.outputs.NOTION_API_TOKEN }}
-        run: python3 -m lifeos.platform.gate

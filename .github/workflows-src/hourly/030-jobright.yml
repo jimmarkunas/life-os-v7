@@ -4,7 +4,7 @@
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
-      - name: Checkout the exact commit (own git fetch, token never stored)
+      - name: Checkout the exact commit (own fetch, token never stored)
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
@@ -56,7 +56,7 @@
           set_env: false
           set: runtime-config
       - id: jobright
-        name: Step 5 - resolve Jobright jobs (free Chromium, saves when live)
+        name: Step 5 - resolve Jobright jobs (free Chromium)
         if: ${{ needs.prep.outputs.pipeline == 'true' || (github.event_name == 'workflow_dispatch' && inputs.resolve_jobright) }}
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}

@@ -42,7 +42,7 @@
         run: python -m lifeos.run jira-reconcile-daily $([ "$LIVE" = "true" ] && echo --live)
       - id: jsnap
         continue-on-error: true
-        name: Jira snapshot (counts only; saved to the private database only when live)
+        name: Jira snapshot (counts only; saved only when live)
         if: ${{ inputs.jira == 'snapshot' || inputs.jira == 'both' || inputs.jira == 'report' || needs.gate.outputs.due_jira == 'true' }}
         env:
           JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
@@ -58,39 +58,3 @@
           LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_USER }}
         run: python -m lifeos.run jira-snapshot $([ "$LIVE" = "true" ] && echo --live)
-      - id: jcard
-        continue-on-error: true
-        name: Jira card (Daily Report; counts only; the page is written only when live)
-        if: ${{ inputs.jira == 'card' || inputs.jira == 'report' || needs.gate.outputs.due_jira == 'true' }}
-        env:
-          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
-          JIRA_CARD_BLOCK_ID: ""
-          GTV_CARD_BLOCK_ID: ""   # LIFE-975: the Global Talent Visa callout's own block id, filled from the Runtime Configuration row
-          JIRA_GTV_EPIC: ""   # LIFE-975: the visa epic's tickets are left out of this card (the visa callout covers them)
-          JIRA_CARD_PROJECTS: ""   # LIFE-703: declared empty so the V7 settings page can fill it; the code's own default applies when both are empty
-          JIRA_SITE_URL: ""
-          JIRA_GTV_CONTEXT_URL: ""   # LIFE-703: declared empty so the V7 settings page can fill it; the code's own default applies when both are empty
-          MEJ_SPRINT_AUTOMATION: ""   # LIFE-918: with the switch on the card shows the sprint reconcile summary line
-          JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
-          JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
-          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KEY: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
-          LIFEOS_ACQ_SSH_JUMP_HOST: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_USER }}
-          NOTION_JIRA_TOKEN: ${{ steps.bws_jira.outputs.NOTION_JIRA_TOKEN }}
-        run: python -m lifeos.run jira-card $([ "$LIVE" = "true" ] && echo --live)
-      # why: Auto-release (LIFE-727; moves ready tickets of an epic labelled auto-release to Agent Go, at most 3 an hour; written only when live; counts only)
-      - id: jrelease
-        continue-on-error: true
-        name: Auto-release
-        if: ${{ inputs.jira == 'card' || inputs.jira == 'report' || needs.gate.outputs.due_jira == 'true' }}
-        env:
-          JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
-          JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
-        run: python -m lifeos.run jira-release $([ "$LIVE" = "true" ] && echo --live)

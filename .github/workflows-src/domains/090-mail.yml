@@ -7,7 +7,7 @@
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - name: Checkout the exact commit (own git fetch, token never stored)
+      - name: Checkout the exact commit (own fetch, token never stored)
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
@@ -43,7 +43,7 @@
           tags: tag:v7-runner
       - id: mail
         continue-on-error: true
-        name: Physical Mail (Gmail read-only to the private state; saved with read-back)
+        name: Physical Mail (Gmail read-only; saved with read-back)
         env:
           GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_mail.outputs.GMAIL_OAUTH_CLIENT_ID }}
           PHYSICAL_MAIL_ANCHOR: ${{ inputs.physical_mail_anchor }}
@@ -73,13 +73,3 @@
           GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_mail.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
           GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_mail.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
         run: python -m lifeos.run mail-filing $([ "$LIVE" = "true" ] && echo --live)
-      # why: Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)
-      - id: bws_runtime_config
-        continue-on-error: true
-        name: Runtime Configuration source ID from Bitwarden
-        uses: ./.github/actions/bws-load
-        with:
-          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
-          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
-          set_env: false
-          set: runtime-config

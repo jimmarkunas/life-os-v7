@@ -154,7 +154,7 @@ jobs:
       granola_auto: ${{ steps.settings.outputs.GRANOLA_AUTO }}
       imessage_alerts: ${{ steps.settings.outputs.V7_IMESSAGE_ALERTS }}
     steps:
-      - name: Checkout the exact commit (own git fetch, token never stored)
+      - name: Checkout the exact commit (own fetch, token never stored)
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
@@ -189,7 +189,7 @@ jobs:
           wait_seconds: "60"
       - id: bws_settings
         continue-on-error: true
-        name: Notion token from Bitwarden so the gate can read the V7 settings page
+        name: Notion token from Bitwarden for the V7 settings page
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
@@ -218,7 +218,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - name: Checkout the exact commit (own git fetch, token never stored)
+      - name: Checkout the exact commit (own fetch, token never stored)
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
@@ -324,7 +324,7 @@ jobs:
         run: python -m lifeos.run jira-reconcile-daily $([ "$LIVE" = "true" ] && echo --live)
       - id: jsnap
         continue-on-error: true
-        name: Jira snapshot (counts only; saved to the private database only when live)
+        name: Jira snapshot (counts only; saved only when live)
         if: ${{ inputs.jira == 'snapshot' || inputs.jira == 'both' || inputs.jira == 'report' || needs.gate.outputs.due_jira == 'true' }}
         env:
           JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
@@ -342,7 +342,7 @@ jobs:
         run: python -m lifeos.run jira-snapshot $([ "$LIVE" = "true" ] && echo --live)
       - id: jcard
         continue-on-error: true
-        name: Jira card (Daily Report; counts only; the page is written only when live)
+        name: Jira card (Daily Report; written only when live)
         if: ${{ inputs.jira == 'card' || inputs.jira == 'report' || needs.gate.outputs.due_jira == 'true' }}
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
@@ -446,7 +446,7 @@ jobs:
           if [ "$VERIFY_LIVE" = "yes" ] && [ "$VERIFY_KEEP" = "keep" ]; then python -m lifeos.jira.writers verify --board "$VERIFY_BOARD" --issue "$VERIFY_ISSUE" --live --keep; elif [ "$VERIFY_LIVE" = "yes" ]; then python -m lifeos.jira.writers verify --board "$VERIFY_BOARD" --issue "$VERIFY_ISSUE" --live; else python -m lifeos.jira.writers verify --board "$VERIFY_BOARD" --issue "$VERIFY_ISSUE"; fi
       - id: jroll
         continue-on-error: true
-        name: Jira sprint rollover (dry run unless live; never before the sprint ends)
+        name: Jira sprint rollover (dry run unless live)
         if: ${{ inputs.jira == 'rollover' || inputs.jira == 'both' }}
         env:
           JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
@@ -455,7 +455,7 @@ jobs:
       - name: Jira warning (does not fail the run)
         if: ${{ always() && (steps.jsnap.outcome == 'failure' || steps.jcard.outcome == 'failure' || steps.jrelease.outcome == 'failure' || steps.jstalled.outcome == 'failure' || steps.jfill.outcome == 'failure' || steps.jcapture.outcome == 'failure' || steps.jrollauto.outcome == 'failure' || steps.jreconcile.outcome == 'failure' || steps.jrollwatch.outcome == 'failure' || steps.jroll.outcome == 'failure' || steps.jprobe.outcome == 'failure' || steps.jwcheck.outcome == 'failure' || steps.jwverify.outcome == 'failure') }}
         run: echo "::warning title=Jira::a Jira step failed; the Jobs pipeline is unaffected"
-      - name: A failed stage step makes this job red after every stage has run
+      - name: Fail the job if any stage step failed
         if: ${{ always() && (steps.bws_jira.outcome == 'failure' || steps.settings.outcome == 'failure' || steps.jrollauto.outcome == 'failure' || steps.jreconcile.outcome == 'failure' || steps.jrollwatch.outcome == 'failure' || steps.jsnap.outcome == 'failure' || steps.jcard.outcome == 'failure' || steps.jrelease.outcome == 'failure' || steps.jstalled.outcome == 'failure' || steps.jfill.outcome == 'failure' || steps.jcapture.outcome == 'failure' || steps.jprobe.outcome == 'failure' || steps.jwcheck.outcome == 'failure' || steps.jwverify.outcome == 'failure' || steps.jroll.outcome == 'failure') }}
         run: echo "::error title=jira::a stage step failed in the jira job (see the step marked failed above)"; exit 1
 
@@ -466,7 +466,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - name: Checkout the exact commit (own git fetch, token never stored)
+      - name: Checkout the exact commit (own fetch, token never stored)
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
@@ -533,7 +533,7 @@ jobs:
           LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_followup.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_followup.outputs.LIFEOS_ACQ_SSH_USER }}
         run: python -m lifeos.run followup $([ "$LIVE" = "true" ] && echo --live)
-      - name: A failed stage step makes this job red after the stage has run
+      - name: Fail the job if any stage step failed
         if: ${{ always() && (steps.bws_followup.outcome == 'failure' || steps.followup.outcome == 'failure') }}
         run: echo "::error title=followup::a stage step failed in the followup job (see the step marked failed above)"; exit 1
   outlook:
@@ -542,7 +542,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - name: Checkout the exact commit (own git fetch, token never stored)
+      - name: Checkout the exact commit (own fetch, token never stored)
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
@@ -568,7 +568,7 @@ jobs:
           live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
       - id: bws_settings
         continue-on-error: true
-        name: Notion token from Bitwarden so this job can read the V7 settings page
+        name: Notion token from Bitwarden for the V7 settings page
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
@@ -607,7 +607,7 @@ jobs:
       - name: Outlook warning (does not fail the run)
         if: ${{ always() && steps.calsync.outcome == 'failure' }}
         run: echo "::warning title=Outlook::an Outlook step failed; the Jobs pipeline is unaffected"
-      - name: A failed stage step makes this job red after every stage has run
+      - name: Fail the job if any stage step failed
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=outlook::a stage step failed in the outlook job (see the step marked failed above)"; exit 1
 
@@ -618,7 +618,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - name: Checkout the exact commit (own git fetch, token never stored)
+      - name: Checkout the exact commit (own fetch, token never stored)
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
@@ -679,7 +679,7 @@ jobs:
         run: python -m lifeos.run bills-paid $([ "$LIVE" = "true" ] && echo --live)
       - id: bsnap
         continue-on-error: true
-        name: Bills snapshot (read-only; private snapshot saved only when live)
+        name: Bills snapshot (read-only; saved only when live)
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           NOTION_BILLS_DATA_SOURCE_ID: ""
@@ -720,7 +720,7 @@ jobs:
       - name: Bills warning (does not fail the Jobs run)
         if: ${{ always() && (steps.bsnap.outcome == 'failure' || steps.bpaid.outcome == 'failure' || steps.bcard.outcome == 'failure') }}
         run: echo "::warning title=Bills::the Bill Tracker snapshot or card failed; the Jobs pipeline is unaffected"
-      - name: A failed stage step makes this job red after every stage has run
+      - name: Fail the job if any stage step failed
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=bills::a stage step failed in the bills job (see the step marked failed above)"; exit 1
 
@@ -731,7 +731,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - name: Checkout the exact commit (own git fetch, token never stored)
+      - name: Checkout the exact commit (own fetch, token never stored)
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
@@ -773,7 +773,7 @@ jobs:
           set: runtime-config
       - id: asnap
         continue-on-error: true
-        name: Agenda snapshot (read-only Google Calendar; private save only when live)
+        name: Agenda snapshot (read-only; saved only when live)
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_agenda.outputs.NOTION_JIRA_TOKEN }}
@@ -813,7 +813,7 @@ jobs:
       - name: Agenda warning (does not fail the Jobs run)
         if: ${{ always() && (steps.asnap.outcome == 'failure' || steps.acard.outcome == 'failure') }}
         run: echo "::warning title=Agenda::the Calendar snapshot or card failed; the Jobs pipeline is unaffected"
-      - name: A failed stage step makes this job red after every stage has run
+      - name: Fail the job if any stage step failed
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=agenda::a stage step failed in the agenda job (see the step marked failed above)"; exit 1
 
@@ -825,7 +825,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - name: Checkout the exact commit (own git fetch, token never stored)
+      - name: Checkout the exact commit (own fetch, token never stored)
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
@@ -860,7 +860,7 @@ jobs:
           set: runtime-config
       - id: amazon
         continue-on-error: true
-        name: Amazon Orders (Gmail to Notion; archive only after read-back)
+        name: Amazon Orders (Gmail to Notion; archive after read-back)
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_amazon.outputs.GMAIL_OAUTH_CLIENT_ID }}
@@ -892,7 +892,7 @@ jobs:
         if: ${{ always() && (steps.amazon.outcome == 'failure' || steps.acard.outcome == 'failure') }}
         run: echo "::warning title=Amazon Orders::the Amazon Orders stage failed; the Jobs pipeline is unaffected"
 
-      - name: A failed stage step makes this job red after every stage has run
+      - name: Fail the job if any stage step failed
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=amazon::a stage step failed in the amazon job (see the step marked failed above)"; exit 1
   amazon_retention:
@@ -901,7 +901,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - name: Checkout the exact commit (own git fetch, token never stored)
+      - name: Checkout the exact commit (own fetch, token never stored)
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
@@ -927,7 +927,7 @@ jobs:
           live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
       - id: bws_settings
         continue-on-error: true
-        name: Notion token from Bitwarden so this job can read the V7 settings page
+        name: Notion token from Bitwarden for the V7 settings page
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
@@ -960,7 +960,7 @@ jobs:
       - name: Amazon retention warning (does not fail the Jobs run)
         if: ${{ always() && steps.aretain.outcome == 'failure' }}
         run: echo "::warning title=Amazon retention::the Amazon retention stage failed; the Jobs pipeline is unaffected"
-      - name: A failed stage step makes this job red after every stage has run
+      - name: Fail the job if any stage step failed
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=amazon_retention::a stage step failed in the amazon_retention job (see the step marked failed above)"; exit 1
 
@@ -970,7 +970,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - name: Checkout the exact commit (own git fetch, token never stored)
+      - name: Checkout the exact commit (own fetch, token never stored)
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
@@ -1003,7 +1003,7 @@ jobs:
           tags: tag:v7-runner
       - id: mail
         continue-on-error: true
-        name: Physical Mail (Gmail read-only to the private state; saved with read-back)
+        name: Physical Mail (Gmail read-only; saved with read-back)
         env:
           GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_mail.outputs.GMAIL_OAUTH_CLIENT_ID }}
           PHYSICAL_MAIL_ANCHOR: ${{ inputs.physical_mail_anchor }}
@@ -1069,7 +1069,7 @@ jobs:
       - name: Mail Alerts warning (does not fail the Jobs run)
         if: ${{ always() && (steps.mail.outcome == 'failure' || steps.mcard.outcome == 'failure' || steps.mfile.outcome == 'failure') }}
         run: echo "::warning title=Mail Alerts::the Physical Mail stage failed; the Jobs pipeline is unaffected"
-      - name: A failed stage step makes this job red after every stage has run
+      - name: Fail the job if any stage step failed
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=mail::a stage step failed in the mail job (see the step marked failed above)"; exit 1
 
@@ -1079,7 +1079,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - name: Checkout the exact commit (own git fetch, token never stored)
+      - name: Checkout the exact commit (own fetch, token never stored)
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
@@ -1152,7 +1152,7 @@ jobs:
       - name: Hiring Pipeline warning (does not fail the Jobs run)
         if: ${{ always() && steps.hiring.outcome == 'failure' }}
         run: echo "::warning title=Hiring Pipeline::the Hiring Pipeline stage failed; the region keeps its last accepted content and the Jobs pipeline is unaffected"
-      - name: A failed stage step makes this job red after every stage has run
+      - name: Fail the job if any stage step failed
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=hiring::a stage step failed in the hiring job (see the step marked failed above)"; exit 1
 
@@ -1162,7 +1162,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - name: Checkout the exact commit (own git fetch, token never stored)
+      - name: Checkout the exact commit (own fetch, token never stored)
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
@@ -1204,7 +1204,7 @@ jobs:
           set: runtime-config
       - id: megibow
         continue-on-error: true
-        name: MegIBOW (Gmail, Outlook and calendars to the Notion table; counts only; writes
+        name: MegIBOW (mail and calendars to Notion; counts only)
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           LIFEOS_NOTION_IDS: ""
@@ -1233,7 +1233,7 @@ jobs:
       - name: MegIBOW warning (does not fail the Jobs run)
         if: ${{ always() && steps.megibow.outcome == 'failure' }}
         run: echo "::warning title=MegIBOW::the MegIBOW stage failed or a source was unread; the table shows DEGRADED and the Jobs pipeline is unaffected"
-      - name: A failed stage step makes this job red after every stage has run
+      - name: Fail the job if any stage step failed
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=megibow::a stage step failed in the megibow job (see the step marked failed above)"; exit 1
 
@@ -1247,7 +1247,7 @@ jobs:
       actions: read
       issues: read
     steps:
-      - name: Checkout the exact commit (own git fetch, token never stored)
+      - name: Checkout the exact commit (own fetch, token never stored)
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
@@ -1312,7 +1312,7 @@ jobs:
       - name: Daily Command Center warning (does not fail the Jobs run)
         if: ${{ always() && steps.dcccard.outcome == 'failure' }}
         run: echo "::warning title=Daily Command Center::the Command Center could not be written; its callout keeps the last text and the Jobs pipeline is unaffected"
-      - name: A failed stage step makes this job red after every stage has run
+      - name: Fail the job if any stage step failed
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=dcc::a stage step failed in the dcc job (see the step marked failed above)"; exit 1
 
@@ -1325,7 +1325,7 @@ jobs:
       contents: read
       actions: read
     steps:
-      - name: Checkout the exact commit (own git fetch, token never stored)
+      - name: Checkout the exact commit (own fetch, token never stored)
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
@@ -1382,7 +1382,7 @@ jobs:
       - name: Weekly LIFE OS Review warning (does not fail the Jobs run)
         if: ${{ always() && steps.weeklyreview.outcome == 'failure' }}
         run: echo "::warning title=Weekly LIFE OS Review::the weekly row could not be written or read back; the week's row is made by the next run inside 48 hours"
-      - name: A failed stage step makes this job red after every stage has run
+      - name: Fail the job if any stage step failed
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=weekly_review::a stage step failed in the weekly_review job (see the step marked failed above)"; exit 1
   recruiters:
@@ -1391,7 +1391,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - name: Checkout the exact commit (own git fetch, token never stored)
+      - name: Checkout the exact commit (own fetch, token never stored)
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
@@ -1434,7 +1434,7 @@ jobs:
       - id: recruiters
         if: ${{ inputs.refresh != 'recruiters' }}
         continue-on-error: true
-        name: Recruiters (read-only mail to the Recruiters data source; counts only)
+        name: Recruiters (read-only mail to its data source; counts)
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           DOMAINS_PHASE: ${{ inputs.phase }}
@@ -1487,7 +1487,7 @@ jobs:
       - name: Recruiters warning (does not fail the Jobs run)
         if: ${{ always() && (steps.recruiters.outcome == 'failure' || steps.routreach.outcome == 'failure' || steps.jpoutreach.outcome == 'failure') }}
         run: echo "::warning title=Recruiters::the Recruiters stage, the Recruiter Outreach table or the job-page outreach tables failed or a source was unread; the Jobs pipeline is unaffected"
-      - name: A failed stage step makes this job red after every stage has run
+      - name: Fail the job if any stage step failed
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=recruiters::a stage step failed in the recruiters job (see the step marked failed above)"; exit 1
 
@@ -1497,7 +1497,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - name: Checkout the exact commit (own git fetch, token never stored)
+      - name: Checkout the exact commit (own fetch, token never stored)
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
@@ -1564,10 +1564,10 @@ jobs:
           V7_CLOSE_BASE_URL: ""
           NETWORK_SURFACE_SKIP: ""
         run: python -m lifeos.run network-surface --limit 82 $([ "$LIVE" = "true" ] && echo --live)
-      - name: Network surface warning (the annotation; a failed step fails this job)
+      - name: Network surface warning (a failed step fails this job)
         if: ${{ always() && steps.network_surface.outcome == 'failure' }}
         run: echo "::warning title=Network surface::NETWORK_SURFACE_DEGRADED or failed; Ledger Network Leads blocks may be stale, the other stages are unaffected. See the step log for the counts."
-      - name: A failed stage step makes this job red after every stage has run
+      - name: Fail the job if any stage step failed
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=network_surface::a stage step failed in the network_surface job (see the step marked failed above)"; exit 1
   fit_cloud_backlog:
@@ -1576,7 +1576,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 58
     steps:
-      - name: Checkout the exact commit (own git fetch, token never stored)
+      - name: Checkout the exact commit (own fetch, token never stored)
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
@@ -1655,7 +1655,7 @@ jobs:
           if [ "$budget" -lt 300 ]; then echo "fit-cloud-backlog: skipped this hour (${budget}s left before :55 or the job limit)"; exit 0; fi
           export V7_CLOUD_FIT_BACKLOG_BUDGET=$budget
           python -m lifeos.run fit-cloud-backlog --limit "$CLOUD_BACKLOG" $([ "$LIVE" = "true" ] && echo --live)
-      - name: A failed stage step makes this job red after every stage has run
+      - name: Fail the job if any stage step failed
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=fit_cloud_backlog::a stage step failed in the fit_cloud_backlog job (see the step marked failed above)"; exit 1
   last_seen_purge:
@@ -1664,7 +1664,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - name: Checkout the exact commit (own git fetch, token never stored)
+      - name: Checkout the exact commit (own fetch, token never stored)
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
@@ -1760,7 +1760,7 @@ jobs:
             python3 -m lifeos.platform.alerts push --key purge_failed --title "V7 weekly purge FAILED" --body "$last" || true
             exit 1
           fi
-      - name: A failed stage step makes this job red after every stage has run
+      - name: Fail the job if any stage step failed
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=last_seen_purge::a stage step failed in the last_seen_purge job (see the step marked failed above)"; exit 1
   hiring_outcomes:
@@ -1769,7 +1769,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - name: Checkout the exact commit (own git fetch, token never stored)
+      - name: Checkout the exact commit (own fetch, token never stored)
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
@@ -1795,7 +1795,7 @@ jobs:
           live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
       - id: bws_settings
         continue-on-error: true
-        name: Notion token from Bitwarden so this job can read the V7 settings page
+        name: Notion token from Bitwarden for the V7 settings page
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
@@ -1834,7 +1834,7 @@ jobs:
       - name: Hiring outcome mail warning (does not fail the Jobs run)
         if: ${{ always() && steps.houtcomes.outcome == 'failure' }}
         run: echo "::warning title=Hiring outcome mail::the hiring outcome-mail scan failed or a source was unread; the Hiring card keeps the last accepted outcomes"
-      - name: A failed stage step makes this job red after every stage has run
+      - name: Fail the job if any stage step failed
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=hiring_outcomes::a stage step failed in the hiring_outcomes job (see the step marked failed above)"; exit 1
   interview_mail:
@@ -1843,7 +1843,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - name: Checkout the exact commit (own git fetch, token never stored)
+      - name: Checkout the exact commit (own fetch, token never stored)
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
@@ -1893,7 +1893,7 @@ jobs:
           LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_interview_mail.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_interview_mail.outputs.LIFEOS_ACQ_SSH_USER }}
         run: python -m lifeos.run interview-mail $([ "$LIVE" = "true" ] && echo --live)
-      - name: A failed stage step makes this job red after every stage has run
+      - name: Fail the job if any stage step failed
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=interview_mail::a stage step failed in the interview_mail job (see the step marked failed above)"; exit 1
 
@@ -1906,7 +1906,7 @@ jobs:
       group: life-os-v7-interview-writer
       cancel-in-progress: false
     steps:
-      - name: Checkout the exact commit (own git fetch, token never stored)
+      - name: Checkout the exact commit (own fetch, token never stored)
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
@@ -1989,7 +1989,7 @@ jobs:
       - name: Interview OS warning (does not fail the Jobs run)
         if: ${{ always() && steps.interview.outcome == 'failure' }}
         run: echo "::warning title=Interview OS::the Interview OS stage (DEGRADED or failed) or a source was unread; the Jobs pipeline is unaffected"
-      - name: A failed stage step makes this job red after every stage has run
+      - name: Fail the job if any stage step failed
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=interview::a stage step failed in the interview job (see the step marked failed above)"; exit 1
 
@@ -1999,7 +1999,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - name: Checkout the exact commit (own git fetch, token never stored)
+      - name: Checkout the exact commit (own fetch, token never stored)
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
@@ -2079,7 +2079,7 @@ jobs:
       - id: oracle
         continue-on-error: true
         if: ${{ always() }}
-        name: System card (every tick; numbers only in the log; writes only when live)
+        name: System card (every tick; writes only when live)
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_DB_NAME }}
@@ -2107,7 +2107,7 @@ jobs:
       - name: System card warning (does not fail the run)
         if: ${{ always() && steps.oracle.outcome == 'failure' }}
         run: echo "::warning title=System card::the System card was not updated; it keeps its previous update time"
-      - name: A failed stage step makes this job red after every stage has run
+      - name: Fail the job if any stage step failed
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=imessage::a stage step failed in the imessage job (see the step marked failed above)"; exit 1
 
@@ -2120,7 +2120,7 @@ jobs:
       group: life-os-v7-interview-writer
       cancel-in-progress: false
     steps:
-      - name: Checkout the exact commit (own git fetch, token never stored)
+      - name: Checkout the exact commit (own fetch, token never stored)
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
@@ -2146,7 +2146,7 @@ jobs:
           live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
       - id: bws_settings
         continue-on-error: true
-        name: Notion token from Bitwarden so this job can read the V7 settings page
+        name: Notion token from Bitwarden for the V7 settings page
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
@@ -2195,7 +2195,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Checkout the exact commit (own git fetch, token never stored)
+      - name: Checkout the exact commit (own fetch, token never stored)
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
@@ -2219,7 +2219,7 @@ jobs:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIVE
           live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
-      - name: Domain jobs report here (the run is already red; this pushes the phone)
+      - name: Domain jobs report here (pushes the phone)
         env:
           NTFY_TOPIC: ${{ steps.bws_report.outputs.NTFY_TOPIC }}
         run: |
@@ -2237,13 +2237,13 @@ jobs:
       contents: read
       actions: read
     steps:
-      - name: Checkout the exact commit (own git fetch, token never stored)
+      - name: Checkout the exact commit (own fetch, token never stored)
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
           git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
           git checkout -q --detach FETCH_HEAD
-      - name: The chain receipt - Jobs, career and full-platform clocks for this tick
+      - name: Chain receipt - Jobs, career and platform clocks
         env:
           GITHUB_TOKEN: ${{ github.token }}
           CHAIN_TICK_ID: ${{ inputs.tick_run || github.event.workflow_run.id }}

@@ -26,10 +26,10 @@
           V7_CLOSE_BASE_URL: ""          # the private Close origin: the Network Leads block gets a Mark as Sent link for its own job; unset, the block is unchanged
           NETWORK_SURFACE_SKIP: ""   # LIFE-703: declared empty so the V7 settings page can fill it; the code's own default applies when both are empty
         run: python -m lifeos.run network-surface --limit 82 $([ "$LIVE" = "true" ] && echo --live)
-      - name: Network surface warning (the annotation; a failed step fails this job)
+      - name: Network surface warning (a failed step fails this job)
         if: ${{ always() && steps.network_surface.outcome == 'failure' }}
         run: echo "::warning title=Network surface::NETWORK_SURFACE_DEGRADED or failed; Ledger Network Leads blocks may be stale, the other stages are unaffected. See the step log for the counts."
       # why: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
-      - name: A failed stage step makes this job red after every stage has run
+      - name: Fail the job if any stage step failed
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=network_surface::a stage step failed in the network_surface job (see the step marked failed above)"; exit 1

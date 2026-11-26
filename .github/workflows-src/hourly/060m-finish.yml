@@ -1,0 +1,44 @@
+      # why: Alerts - detect, dedupe and push to the phone (counts only; a failure is the `alerts` lane (LIFE-653), so the run ends red and the report job pushes once)
+      - id: alerts
+        continue-on-error: true
+        name: Alerts - detect, dedupe and push to the phone
+        if: ${{ needs.prep.outputs.pipeline == 'true' }}
+        env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
+          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
+          FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_ID }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          JOBRIGHT_EMAIL: ${{ steps.bws_finish.outputs.JOBRIGHT_EMAIL }}
+          JOBRIGHT_PASSWORD: ${{ steps.bws_finish.outputs.JOBRIGHT_PASSWORD }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
+          LIFEOS_ACQ_SSH_JUMP_HOST: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN }}
+          NTFY_TOPIC: ${{ steps.bws_finish.outputs.NTFY_TOPIC }}
+          OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
+          TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
+        run: python -m lifeos.run alerts $([ "$LIVE" = "true" ] && echo --live)
+      - id: lanes
+        name: Lane failures fail the run (other stages still ran)
+        if: ${{ always() }}
+        env:
+          CODES: ${{ steps.tick.outputs.cloud_fit_code }} ${{ steps.fit.outputs.cloud_fit_code }} ${{ steps.fit_cloud_backlog.outputs.cloud_fit_code }}
+        run: |
+          codes=$(printf '%s\n' $CODES | grep -E '^[A-Z0-9_]{1,48}$' | sort -u | tr '\n' ' ' || true)   # no code is the normal case (bash -e, pipefail)
+          echo "codes=${codes% }" >> "$GITHUB_OUTPUT"
+          failed=""
+          for pair in extract=${{ needs.prep.outputs.extract }} jobright=${{ steps.browser.outcome }} tick=${{ steps.tick.outcome }} web=${{ steps.web.outcome }} scale_up=${{ steps.web_scale_up.outcome }} titlewatch=${{ steps.titlewatch.outcome }} sponsors=${{ steps.sponsors.outcome }} enrich=${{ steps.enrich.outcome }} fit=${{ steps.fit.outcome }} fit_cloud_backlog=${{ steps.fit_cloud_backlog.outcome }} audit=${{ steps.audit.outcome }} publish=${{ steps.publish.outcome }} finalize=${{ steps.finalize.outcome }} holds=${{ steps.holds.outcome }} probe=${{ steps.probe.outcome }} sync_seen=${{ steps.sync_seen.outcome }} purge=${{ steps.purge.outcome }} alerts=${{ steps.alerts.outcome }}; do
+            [ "${pair#*=}" = "failure" ] && failed="$failed ${pair%=*}"
+          done
+          echo "failed=${failed# }" >> "$GITHUB_OUTPUT"
+          if [ -n "$failed" ]; then echo "FAILED STAGES:$failed"; exit 1; fi
+

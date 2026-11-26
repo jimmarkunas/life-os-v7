@@ -1,9 +1,10 @@
-      - id: funnel
+      - id: web_scale_up
         continue-on-error: true
-        name: Funnel report (dispatch only, read-only, counts only)
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.report == 'funnel' }}
+        name: Step 5c - UK Scale-Up web acquisition (scheduled)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.web_scale_up }}
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
+          WEB_FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.report || '' }}
           FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
           FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
           GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
@@ -24,32 +25,15 @@
           NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN }}
           OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
           TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
-        run: python -m lifeos.run funnel
-      - id: boards_preview
+        run: python -m lifeos.run web-scale-up --limit 12 $([ "$LIVE" = "true" ] && echo --live)
+      # why: Step 5d - Scale-Up title watch (roles a company's own site lists but its board listing does not carry; free search, found roles arrive as Review)
+      - id: titlewatch
         continue-on-error: true
-        timeout-minutes: 10
-        name: Employer boards acceptance preview (dispatch only, read-only, counts only, D202)
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.report == 'boards-preview' }}
-        env:                                   # the store (read only) and the private Fit profile (in memory)
-          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
-          FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
-          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
-          LIFEOS_ACQ_SSH_JUMP_HOST: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_USER }}
-        run: python -m lifeos.run boards-preview --limit 600     # the whole seed-99 benchmark sample (run.py defaults to 40)
-      - id: probe
-        continue-on-error: true
-        name: Probe - source shapes (dispatch only, counts only)
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.probe }}
+        name: Step 5d - Scale-Up title watch
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.web_scale_up }}
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
+          WEB_FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.report || '' }}
           FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
           FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
           GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
@@ -70,4 +54,4 @@
           NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN }}
           OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
           TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
-        run: python -m lifeos.run probe
+        run: python -m lifeos.run web-titlewatch $([ "$LIVE" = "true" ] && echo --live)

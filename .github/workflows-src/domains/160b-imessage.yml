@@ -27,7 +27,7 @@
         # LIFE-129 (Jim, Oct 28 2026): the store and the push topic for the off-site backup alert (lifeos/oraclecloud/backup_watch.py), the same values the iMessage alerts step uses.
         # LIFE-975 step 4d (Jim, Nov 25 2026: "system ok"): this one stage is the System writer: Oracle's stats, Codex read once, the Connections row from the System health database. GITHUB_TOKEN is the
         # run's own default token (read only here: the history of the domains jobs, no new permission); GITHUB_REPOSITORY is the runner's own variable.
-        name: System card (every tick; numbers only in the log; writes only when live)
+        name: System card (every tick; writes only when live)
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_DB_NAME }}
@@ -57,7 +57,7 @@
         run: echo "::warning title=System card::the System card was not updated; it keeps its previous update time"
       # LIFE-793: the AI Capacity card now runs in its own workflow (capacity-card.yml), not in this job.
       # why: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
-      - name: A failed stage step makes this job red after every stage has run
+      - name: Fail the job if any stage step failed
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=imessage::a stage step failed in the imessage job (see the step marked failed above)"; exit 1
 

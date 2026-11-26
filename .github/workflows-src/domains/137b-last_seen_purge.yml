@@ -1,3 +1,24 @@
+      # why: Step 8 - Last Seen sync (daily; moved from the hourly finish job by LIFE-856, it runs beside the after-tick domains work)
+      - id: sync_seen
+        continue-on-error: true
+        name: Step 8 - Last Seen sync
+        env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
+          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""   # LIFE-856: the old hourly.yml declared these three at workflow level, so the settings source filled them for every step; a domains step must declare them itself
+          HIRING_PIPELINE_PAGE_ID: ""
+          V7_FIT_GATE: ""
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KEY: ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
+          LIFEOS_ACQ_SSH_JUMP_HOST: ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_last_seen_purge.outputs.NOTION_API_TOKEN }}
+        run: python -m lifeos.run sync-seen $([ "$LIVE" = "true" ] && echo --live)
       # why: Step 8b - retention purge (about weekly and catching up (the stage decides when it is due); moved from the hourly finish job by LIFE-856; pushes its own result to the phone, counts and fixed codes only)
       - id: purge
         continue-on-error: true
@@ -36,6 +57,6 @@
             exit 1
           fi
       # why: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
-      - name: A failed stage step makes this job red after every stage has run
+      - name: Fail the job if any stage step failed
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=last_seen_purge::a stage step failed in the last_seen_purge job (see the step marked failed above)"; exit 1

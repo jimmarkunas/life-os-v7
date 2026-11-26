@@ -39,7 +39,7 @@
       granola_auto: ${{ steps.settings.outputs.GRANOLA_AUTO }}      # LIFE-703: the page's value when GitHub holds none; GitHub's own value when the page cannot be read
       imessage_alerts: ${{ steps.settings.outputs.V7_IMESSAGE_ALERTS }}
     steps:
-      - name: Checkout the exact commit (own git fetch, token never stored)
+      - name: Checkout the exact commit (own fetch, token never stored)
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
@@ -70,27 +70,3 @@
           GITHUB_TOKEN: ${{ github.token }}
           TICK_RUN: ${{ github.event.workflow_run.id }}
         run: python3 -m lifeos.platform.pipeline_ran
-      # why: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
-      - name: Bitwarden helper from a saved, fingerprint-checked copy
-        continue-on-error: true
-        uses: ./.github/actions/bws-helper
-        with:
-          wait_seconds: "60"
-      # why: Notion token from Bitwarden so the gate can read the V7 settings page (LIFE-703; read only; if it fails the GitHub values decide)
-      - id: bws_settings
-        continue-on-error: true
-        name: Notion token from Bitwarden so the gate can read the V7 settings page
-        uses: ./.github/actions/bws-load
-        with:
-          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
-          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
-          set_env: false
-          set: settings
-      # why: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
-      - name: Plain switches from Bitwarden
-        continue-on-error: true
-        uses: ./.github/actions/bws-plain
-        with:
-          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
-          names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIVE
-          live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}

@@ -1,3 +1,39 @@
+      - id: jcard
+        continue-on-error: true
+        name: Jira card (Daily Report; written only when live)
+        if: ${{ inputs.jira == 'card' || inputs.jira == 'report' || needs.gate.outputs.due_jira == 'true' }}
+        env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
+          JIRA_CARD_BLOCK_ID: ""
+          GTV_CARD_BLOCK_ID: ""   # LIFE-975: the Global Talent Visa callout's own block id, filled from the Runtime Configuration row
+          JIRA_GTV_EPIC: ""   # LIFE-975: the visa epic's tickets are left out of this card (the visa callout covers them)
+          JIRA_CARD_PROJECTS: ""   # LIFE-703: declared empty so the V7 settings page can fill it; the code's own default applies when both are empty
+          JIRA_SITE_URL: ""
+          JIRA_GTV_CONTEXT_URL: ""   # LIFE-703: declared empty so the V7 settings page can fill it; the code's own default applies when both are empty
+          MEJ_SPRINT_AUTOMATION: ""   # LIFE-918: with the switch on the card shows the sprint reconcile summary line
+          JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
+          JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KEY: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
+          LIFEOS_ACQ_SSH_JUMP_HOST: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_JIRA_TOKEN: ${{ steps.bws_jira.outputs.NOTION_JIRA_TOKEN }}
+        run: python -m lifeos.run jira-card $([ "$LIVE" = "true" ] && echo --live)
+      # why: Auto-release (LIFE-727; moves ready tickets of an epic labelled auto-release to Agent Go, at most 3 an hour; written only when live; counts only)
+      - id: jrelease
+        continue-on-error: true
+        name: Auto-release
+        if: ${{ inputs.jira == 'card' || inputs.jira == 'report' || needs.gate.outputs.due_jira == 'true' }}
+        env:
+          JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
+          JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
+        run: python -m lifeos.run jira-release $([ "$LIVE" = "true" ] && echo --live)
       # why: Stall check (LIFE-729; read-only; names LIFE tickets idle with no waiting-on note)
       - id: jstalled
         continue-on-error: true
@@ -37,56 +73,3 @@
           LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_USER }}
         run: python -m lifeos.run jira-capture $([ "$LIVE" = "true" ] && echo --live)
-      - id: jprobe
-        continue-on-error: true
-        name: Jira layout probe (read-only; counts only)
-        if: ${{ inputs.jira == 'probe' }}
-        env:
-          JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
-          JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
-        run: python -m lifeos.run jira-probe
-      # why: Jira writer contract check (LIFE-918; manual only; GET requests only, nothing is written; booleans and counts only)
-      - id: jwcheck
-        continue-on-error: true
-        name: Jira writer contract check
-        if: ${{ inputs.jira == 'writers-check' }}
-        env:
-          JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
-          JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
-        run: python -m lifeos.jira.writers contract-check
-      # why: Jira writer verification on a throwaway sprint (LIFE-918 decision E; manual only; a dry run unless the third word of verify is yes; a fourth word keep keeps the test clone because the Jira Free plan cannot delete; only a ZZ-LIFE918-TEST sprint and the one named issue; counts and fixed codes only)
-      - id: jwverify
-        continue-on-error: true
-        name: Jira writer verification on a throwaway sprint
-        if: ${{ inputs.jira == 'writers-verify' }}
-        env:
-          JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
-          JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
-          JIRA_WRITERS_VERIFY: ${{ inputs.verify }}
-        run: |
-          set -f; set -- $JIRA_WRITERS_VERIFY; VERIFY_BOARD="$1"; VERIFY_ISSUE="$2"; VERIFY_LIVE="${3:-}"; VERIFY_KEEP="${4:-}"
-          [ "$#" -ge 2 ] && [ "$#" -le 4 ] || { echo "::error title=jira::verify must be BOARD ISSUE [yes [keep]]"; exit 1; }
-          case "$VERIFY_BOARD" in JFM|MEJ) ;; *) echo "::error title=jira::verify board must be JFM or MEJ"; exit 1;; esac
-          printf '%s' "$VERIFY_ISSUE" | grep -Eq '^[A-Z][A-Z0-9]{1,9}-[0-9]{1,7}$' || { echo "::error title=jira::verify issue must be one issue key"; exit 1; }
-          case "$VERIFY_LIVE" in ""|yes) ;; *) echo "::error title=jira::the third word must be yes or absent"; exit 1;; esac
-          case "$VERIFY_KEEP" in ""|keep) ;; *) echo "::error title=jira::the fourth word must be keep or absent"; exit 1;; esac
-          [ -z "$VERIFY_KEEP" ] || [ "$VERIFY_LIVE" = "yes" ] || { echo "::error title=jira::keep needs yes before it"; exit 1; }
-          if [ "$VERIFY_LIVE" = "yes" ] && [ "$VERIFY_KEEP" = "keep" ]; then python -m lifeos.jira.writers verify --board "$VERIFY_BOARD" --issue "$VERIFY_ISSUE" --live --keep; elif [ "$VERIFY_LIVE" = "yes" ]; then python -m lifeos.jira.writers verify --board "$VERIFY_BOARD" --issue "$VERIFY_ISSUE" --live; else python -m lifeos.jira.writers verify --board "$VERIFY_BOARD" --issue "$VERIFY_ISSUE"; fi
-      - id: jroll
-        continue-on-error: true
-        name: Jira sprint rollover (dry run unless live; never before the sprint ends)
-        if: ${{ inputs.jira == 'rollover' || inputs.jira == 'both' }}
-        env:
-          JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
-          JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
-        run: python -m lifeos.run jira-rollover $([ "$LIVE" = "true" ] && echo --live)
-      - name: Jira warning (does not fail the run)
-        if: ${{ always() && (steps.jsnap.outcome == 'failure' || steps.jcard.outcome == 'failure' || steps.jrelease.outcome == 'failure' || steps.jstalled.outcome == 'failure' || steps.jfill.outcome == 'failure' || steps.jcapture.outcome == 'failure' || steps.jrollauto.outcome == 'failure' || steps.jreconcile.outcome == 'failure' || steps.jrollwatch.outcome == 'failure' || steps.jroll.outcome == 'failure' || steps.jprobe.outcome == 'failure' || steps.jwcheck.outcome == 'failure' || steps.jwverify.outcome == 'failure') }}
-        run: echo "::warning title=Jira::a Jira step failed; the Jobs pipeline is unaffected"
-      # LIFE-793: the five V3 accountability stages now run in their own workflow (v3-pages.yml), not in this job.
-      # why: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
-      - name: A failed stage step makes this job red after every stage has run
-        if: ${{ always() && (steps.bws_jira.outcome == 'failure' || steps.settings.outcome == 'failure' || steps.jrollauto.outcome == 'failure' || steps.jreconcile.outcome == 'failure' || steps.jrollwatch.outcome == 'failure' || steps.jsnap.outcome == 'failure' || steps.jcard.outcome == 'failure' || steps.jrelease.outcome == 'failure' || steps.jstalled.outcome == 'failure' || steps.jfill.outcome == 'failure' || steps.jcapture.outcome == 'failure' || steps.jprobe.outcome == 'failure' || steps.jwcheck.outcome == 'failure' || steps.jwverify.outcome == 'failure' || steps.jroll.outcome == 'failure') }}
-        run: echo "::error title=jira::a stage step failed in the jira job (see the step marked failed above)"; exit 1
-
-

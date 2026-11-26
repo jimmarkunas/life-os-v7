@@ -68,7 +68,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(lane_result("publish"), (1, "FAILED STAGES: publish", "failed=publish"))
         self.assertEqual(lane_result("none"), (0, "", "failed="))
 
-        report = next(step for step in data["jobs"]["report"]["steps"] if "Resolver lanes" in step.get("name", ""))
+        report = next(step for step in data["jobs"]["report"]["steps"] if "finish job report" in step.get("name", ""))
         self.assertIn("finish", data["jobs"]["report"]["needs"])
         self.assertEqual(report["env"]["STAGES"], "${{ needs.finish.outputs.failed }}")
         self.assertIn("alerts push --key run_failed", report["run"])
@@ -412,7 +412,7 @@ class PullRequestTestsWorkflow(unittest.TestCase):
     def test_it_reuses_the_shared_python_action_and_runs_the_accepted_command_with_the_runtime_limits(self):
         doc = yaml.safe_load(self.path.read_text())
         steps = doc["jobs"]["unit-tests"]["steps"]
-        self.assertEqual([s.get("name") or s.get("uses") for s in steps[:2]], ["Checkout the exact commit (own git fetch, token never stored)", "./.github/actions/python"])
+        self.assertEqual([s.get("name") or s.get("uses") for s in steps[:2]], ["Checkout the exact commit (own fetch, token never stored)", "./.github/actions/python"])
         run = [s["run"] for s in steps if "Unit tests" in s.get("name", "")][0]
         for k in (1, 2, 3, 4):                                               # Jim, Oct 26 2026: parallel shards of whole test modules (three since LIFE-705, four since LIFE-963, Nov 24 2026: the public runner has 4 vCPUs); tests/contracts/test_shards.py proves every test runs in exactly one
             self.assertIn(f"python -m tests.shard {k} 4 > shard-{k}.log", run)
@@ -515,7 +515,7 @@ class UnitTestGateTests(unittest.TestCase):
                 self.assertNotIn("unit-tests", j.get("needs", []) if isinstance(j.get("needs"), list) else [j.get("needs")], name)   # nothing on the critical path waits for the tests
         report = self.doc["jobs"]["report"]
         self.assertIn("unit-tests", report["needs"])
-        self.assertIn("unit-tests=${{ needs.unit-tests.result }}", next(s for s in report["steps"] if "Resolver lanes" in s.get("name", ""))["run"])   # a failing test is named in the red run and the push
+        self.assertIn("unit-tests=${{ needs.unit-tests.result }}", next(s for s in report["steps"] if "finish job report" in s.get("name", ""))["run"])   # a failing test is named in the red run and the push
 
     def test_chromium_is_cached_on_the_browser_lock_and_the_browser_step_is_its_own_timed_step(self):
         """LIFE-604 item 13: ONE shared composite action installs the browser; the finish job and the manual Jobright job both use it."""
@@ -1170,7 +1170,7 @@ class BitwardenConsumerTests(unittest.TestCase):
                 steps, names = doc["jobs"][job]["steps"], self.loaded(name, job)
                 self.assertTrue(names and names <= set(UUIDS), (name, job))
                 self.assertTrue(names <= DOMAIN_SECRETS[job] | TS if name == "domains" else names == LOADED[name][job], (name, job, sorted(names)))
-                self.assertEqual(steps[0].get("name"), "Checkout the exact commit (own git fetch, token never stored)", (name, job))
+                self.assertEqual(steps[0].get("name"), "Checkout the exact commit (own fetch, token never stored)", (name, job))
                 self.assertEqual(loader["with"]["access_token"], "${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}", (name, job))
                 self.assertEqual(sorted(re.findall(r"^([0-9a-f-]{36}) > (\w+)$", loader["with"]["secrets"], re.M)), sorted((UUIDS[n], n) for n in names), (name, job))
                 self.assertEqual(len(re.findall(r" > ", loader["with"]["secrets"])), len(names), (name, job))
@@ -1268,7 +1268,7 @@ class BitwardenConsumerTests(unittest.TestCase):
                 steps = self.doc[name]["jobs"][job]["steps"]
                 self.assertTrue(is_settings_loader(loader), (name, job))
                 self.assertTrue(all(i < at for i, _ in self.loaders(name, job)), (name, job))              # after the credential loader: that one is first and keeps its helper seed
-                self.assertEqual(steps[0].get("name"), "Checkout the exact commit (own git fetch, token never stored)", (name, job))
+                self.assertEqual(steps[0].get("name"), "Checkout the exact commit (own fetch, token never stored)", (name, job))
                 consumers = [s for s in steps if SETTINGS_CONSUMER in str((s.get("env") or {}).values())]
                 self.assertTrue(consumers, (name, job))                                                    # a loader nobody uses is not there
                 for step in consumers:
@@ -1374,7 +1374,7 @@ class SweepFailureIsItsOwnLaneTests(unittest.TestCase):
     def test_the_report_job_names_a_failed_sweep_as_its_own_lane_and_pushes_once(self):
         import os
         import subprocess
-        report = next(s for s in self.doc["jobs"]["report"]["steps"] if "Resolver lanes" in s.get("name", ""))
+        report = next(s for s in self.doc["jobs"]["report"]["steps"] if "finish job report" in s.get("name", ""))
         self.assertIn("sweep=${{ needs.prep.outputs.sweep }}", report["run"])
 
         def run(prep="success", sweep="success", finish="success"):
@@ -1477,7 +1477,7 @@ class FinishFailuresAreSurfacedTests(unittest.TestCase):
     def test_the_report_job_pushes_once_and_names_the_stages(self):
         import os
         import subprocess
-        report = next(s for s in self.doc["jobs"]["report"]["steps"] if "Resolver lanes" in s.get("name", ""))
+        report = next(s for s in self.doc["jobs"]["report"]["steps"] if "finish job report" in s.get("name", ""))
 
         def run(stages):
             script = re.sub(r"\$\{\{\s*([^}]+?)\s*\}\}", lambda m: "failure" if m.group(1) == "needs.finish.result" else "success", report["run"])
