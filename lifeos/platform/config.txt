@@ -7,8 +7,8 @@ BOARDS_EVENT input Set from the boards workflow's trigger (github.event_name): a
 BOARDS_MODE_INPUT input Set from the boards workflow's mode input: window or catchup, for a manual run (LIFE-854)
 BUZZ_KEY_CHATGPT_PILOT secret ChatGPT's own member key on the private relay pilot; read only when BUZZ_RELAY is pilot, unset means ChatGPT has no pilot identity (LIFE-870)
 BUZZ_KEY_CLAUDE_PILOT secret Claude's own member key on the private relay pilot, a systemd credential; read only when BUZZ_RELAY is pilot (LIFE-870)
-BUZZ_KEY_OPENCLAW_PILOT secret OpenClaw's own member key on the private relay pilot, a systemd credential; it has no hosted key; read only when BUZZ_RELAY is pilot (LIFE-877)
 BUZZ_KEY_DUET_PILOT secret Duet's own member key on the private relay pilot, a systemd credential; read only when BUZZ_RELAY is pilot (LIFE-922)
+BUZZ_KEY_OPENCLAW_PILOT secret OpenClaw's own member key on the private relay pilot, a systemd credential; it has no hosted key; read only when BUZZ_RELAY is pilot (LIFE-877)
 BUZZ_MCP_PUBLIC_URLS_EXTRA input More public origins of this same Oracle MCP service (comma list, https, origin only; LIFE-922): each names its own resource and challenge and is accepted as an audience
 BUZZ_PILOT_CHANNEL input The pilot relay channel, or a comma list of channels (LIFE-927), the governed MCP service reads and posts to when BUZZ_RELAY is pilot (LIFE-870)
 BUZZ_RELAY input Whether the governed MCP service also serves the private relay pilot: hosted (default) or pilot; rollback is setting it back to hosted (LIFE-870)
@@ -98,6 +98,7 @@ NOTION_READONLY_TOKEN secret The governed LIFE OS service's Notion integration (
 NOTION_WEEKLY_REVIEWS_DATA_SOURCE_ID input Notion data source id of the Weekly Reviews database (LIFE-945)
 NTFY_TOPIC secret Phone push topic name (the topic name is the secret)
 OPEN_JOBS_CONTACT secret:probe Contact line sent with open-jobs requests
+ORCHESTRATOR_CAN_START flag LIFE-987: on lets an orchestrator dispatch for a released ticket start that agent's session; off or anything else keeps the Start <agent>: go Agent Inbox item
 OUTLOOK_CLIENT_ID input Outlook setting (client id)
 OUTLOOK_REPLACE flag:run Outlook setting (replace)
 OUTLOOK_WRITE flag:run Outlook setting (write)

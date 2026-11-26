@@ -124,6 +124,12 @@
     {"principal": "duet-chat-bytalos", "tool": "buzz_read", "action": "read", "provider": "buzz", "account_alias": null, "host": "oracle-edge", "source": "lifeos/buzz/mcp.py", "as_of": "2026-11-22", "max_age_days": 90, "status": "synthetic"},
     {"principal": "duet-chat", "tool": "buzz_publish", "action": "write", "provider": "buzz", "account_alias": null, "host": "oracle-edge", "source": "lifeos/buzz/mcp.py", "as_of": "2026-11-22", "max_age_days": 90, "status": "synthetic"},
     {"principal": "duet-chat-bytalos", "tool": "buzz_publish", "action": "write", "provider": "buzz", "account_alias": null, "host": "oracle-edge", "source": "lifeos/buzz/mcp.py", "as_of": "2026-11-22", "max_age_days": 90, "status": "synthetic"},
-    {"principal": "duet-chat", "tool": "send_to_jim", "action": "write", "provider": "notion", "account_alias": null, "host": "oracle-edge", "source": "lifeos/platform/inbox_send.py", "as_of": "2026-11-23", "max_age_days": 90, "status": "synthetic"}
+    {"principal": "duet-chat", "tool": "send_to_jim", "action": "write", "provider": "notion", "account_alias": null, "host": "oracle-edge", "source": "lifeos/platform/inbox_send.py", "as_of": "2026-11-23", "max_age_days": 90, "status": "synthetic"},
+    {"principal": "claude-chat", "tool": "agent_status", "action": "read", "provider": "buzz", "account_alias": null, "host": "oracle-edge", "source": "lifeos/platform/orchestrator.py", "as_of": "2026-11-25", "max_age_days": 90, "status": "synthetic"},
+    {"principal": "claude-chat", "tool": "agent_dispatch", "action": "write", "provider": "buzz", "account_alias": null, "host": "oracle-edge", "source": "lifeos/platform/orchestrator.py", "as_of": "2026-11-25", "max_age_days": 90, "status": "synthetic"},
+    {"principal": "claude-chat", "tool": "agent_messages", "action": "read", "provider": "buzz", "account_alias": null, "host": "oracle-edge", "source": "lifeos/platform/orchestrator.py", "as_of": "2026-11-25", "max_age_days": 90, "status": "synthetic"},
+    {"principal": "chatgpt-chat", "tool": "agent_status", "action": "read", "provider": "buzz", "account_alias": null, "host": "oracle-edge", "source": "lifeos/platform/orchestrator.py", "as_of": "2026-11-25", "max_age_days": 90, "status": "synthetic"},
+    {"principal": "chatgpt-chat", "tool": "agent_dispatch", "action": "write", "provider": "buzz", "account_alias": null, "host": "oracle-edge", "source": "lifeos/platform/orchestrator.py", "as_of": "2026-11-25", "max_age_days": 90, "status": "synthetic"},
+    {"principal": "chatgpt-chat", "tool": "agent_messages", "action": "read", "provider": "buzz", "account_alias": null, "host": "oracle-edge", "source": "lifeos/platform/orchestrator.py", "as_of": "2026-11-25", "max_age_days": 90, "status": "synthetic"}
   ]
 }
