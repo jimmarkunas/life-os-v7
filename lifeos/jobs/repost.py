@@ -1,9 +1,9 @@
-"""D6 - reposts. One real opening is one row: a repost never creates a second row or resets the original age.
+"""Reposts: one real opening is one row; a repost never creates a second row or resets the original age.
 
 link(): a NEW row whose normalized company+title+location matches a live row seen in the last 60 days becomes a
-DUPLICATE of it (repost_of) and bumps the original's seen_count/last_seen. Ghost risk is evidence, never a filter:
-3+ sightings inside 60 days, or no real posting date for 21+ days, flags `ghost_flag` (Review Reason in Notion).
-sync_last_seen(): daily Notion write per resighted/flagged page (no reads).
+DUPLICATE of it (repost_of) and bumps the original's seen_count/last_seen. Ghost risk is evidence, never a filter: 3+
+sightings inside 60 days, or no real posting date for 21+ days, flags `ghost_flag`. sync_last_seen(): daily Notion
+write per resighted/flagged page.
 """
 from datetime import timedelta
 
@@ -29,7 +29,7 @@ def link(cursor, key, fuzzy, now):
     rows = cursor.fetchall()
     if not rows:
         return None
-    if len(rows) > 1:                                  # ambiguous identity evidence: never pick one arbitrarily, keep both and mark it
+    if len(rows) > 1:  # ambiguous identity evidence: never pick one arbitrarily, keep both and mark it
         cursor.execute("UPDATE v7_jobs SET unresolved_reason='repost_ambiguous', updated_at=%s WHERE dedupe_key=%s", (now, key))
         return None
     row = rows[0]

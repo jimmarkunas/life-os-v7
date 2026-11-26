@@ -1,13 +1,17 @@
-"""Ledger fields derived from what the pipeline already knows about a job: Location / Work Mode, Market, Visa Route, Compensation.
+"""Ledger fields derived from what the pipeline already knows about a job: Location / Work Mode, Market, Visa Route,
+Compensation.
 
-Pure: no I/O. Only populated fields are returned (a blank is better than a guess); never touches human state."""
+Pure: no I/O. Only populated fields are returned (a blank is better than a guess); never touches human state.
+"""
 import re
 
 from lifeos.jobs import lanes
 from lifeos.platform.notion_client import rich_text
 
-VISIBLE_LANE_LABEL = {"Scale-Up": "Scale-up"}        # the Ledger's Visible Lane option is spelled "Scale-up" (Eligible Lanes uses "Scale-Up")
-META_VERSION = 2            # 2: the Role column (the job title) is filled on every published page. bump to re-sync these fields onto already published pages (fit_sync picks pages with an older version)
+# the Ledger's Visible Lane option is spelled "Scale-up" (Eligible Lanes uses "Scale-Up")
+VISIBLE_LANE_LABEL = {"Scale-Up": "Scale-up"}
+# bump to re-sync these fields onto already published pages (fit_sync picks pages with an older version)
+META_VERSION = 2
 
 _AMOUNT = r"[$£€]\s?\d[\d,]*(?:\.\d+)?\s?(?:[kK]|[mM]\b)?"
 _RANGE = re.compile(rf"{_AMOUNT}\s*(?:-|–|—|to)\s*(?:[$£€]\s?)?\d[\d,]*(?:\.\d+)?\s?(?:[kK]|[mM]\b)?(?:\s*(?:/|per|a|an)\s*(?:yr|year|annum|hr|hour)\b|\s*(?:USD|GBP|EUR)\b)?", re.I)
@@ -15,7 +19,9 @@ _SINGLE = re.compile(rf"{_AMOUNT}\s*(?:/|per|a)\s*(?:yr|year|annum)\b|{_AMOUNT}\
 
 
 def pay_text(salary_text, full_text):
-    """Posted pay as shown on the job: the stored pay field, else an explicit range (or per-year figure) in the description. '' when none."""
+    """Posted pay as shown on the job: the stored pay field, else an explicit range (or per-year figure) in the
+    description. '' when none.
+    """
     if salary_text and lanes.parse_pay(salary_text)[0]:
         return salary_text.strip()[:80]
     text = full_text or ""
@@ -29,7 +35,8 @@ def pay_text(salary_text, full_text):
 
 
 def market_label(location):
-    """The Ledger's Market options are US and London. A UK location that is not London stays blank rather than guessed."""
+    """The Ledger's Market options are US and London. A UK location that is not London stays blank rather than guessed.
+    """
     market = lanes.market_of(location)
     if market == "US":
         return "US"

@@ -1,10 +1,12 @@
-"""Weekly retention per the Jobs canon plus Jim's rules (docs/LANES.md): description, row and tombstone expiry, and trashing our stale Notion pages. Counts only.
+"""Weekly retention (docs/LANES.md): description, row and tombstone expiry, and trashing our stale Notion pages.
 
-Hostinger: job descriptions go at 90 days; rows never published or already PURGED go at 365; suppression tombstones expire at 90 days.
-Notion, OUR pages only (matched by stored page id): an UNAPPLIED job with no Saturn Decision, aged 30+ days (employer Posting Date, else First Surfaced; never Created At), for which progression.resolve says NOT_PROTECTED, is trashed (recoverable 30 days), marked PURGED and given a 90-day tombstone.
-A job off its employer's own board (source web:<board>) is retired only once a complete listing of that board no longer has it (D111, D167). LIFE-212: a lane whose policy judges employer-board jobs by age (US Remote 14 days, Scale-Up 30) retires an older job, listed or not.
-Applied jobs resolve UNKNOWN and are kept until the Interview progression handoff (INT-7.1A) exists. One filtered Notion query per page of 100 (the approved weekly read)."""
-# Pre-existing ledger rows are never touched. No legacy Lifecycle / Liveness value is read for a decision or written. LIFE-212 is Jim, Oct 31 2026.
+Database: descriptions go at 90 days; rows never published or already PURGED at 365; tombstones expire at 90. Notion,
+OUR pages only (matched by stored page id): an UNAPPLIED job with no Saturn Decision, aged 30+ days, for which
+progression.resolve says NOT_PROTECTED, is trashed, marked PURGED and given a 90-day tombstone. A job off its
+employer's own board is retired only once a complete listing of that board no longer has it, except in a lane that
+judges such jobs by age. Counts only.
+"""
+# Pre-existing ledger rows are never touched. No legacy Lifecycle / Liveness value is read or written.
 from datetime import date, timedelta
 import os
 
@@ -15,9 +17,10 @@ RETIRE_DAYS = 30
 DESC_DAYS = 90
 JOB_ROW_DAYS = 365
 MAX_PAGES = 20
-PURGE_EVERY = timedelta(days=6, hours=12)       # weekly, with slack so a late tick does not skip a week
-RETRY_AFTER = timedelta(hours=6)                # a failed attempt is tried again after this, until one succeeds
-OK_KEY, TRY_KEY = "purge_ok", "purge_try"       # marker rows in v7_alerts (status RESOLVED, so the alerts stage never reads them): last success, last attempt
+PURGE_EVERY = timedelta(days=6, hours=12)  # weekly, with slack so a late tick does not skip a week
+RETRY_AFTER = timedelta(hours=6)  # a failed attempt is retried after this
+# marker rows in v7_alerts (status RESOLVED, so the alerts stage never reads them): last success, last attempt
+OK_KEY, TRY_KEY = "purge_ok", "purge_try"
 KNOWN_LANES = ("Newsletter", "US Web", "US Remote", "Scale-Up", "Scale-up", "Skilled Worker")
 WRITES_PER_RUN = 150
 
@@ -26,14 +29,17 @@ _now = store.now
 
 
 def query_filter(cutoff, lane):
-    """Unapplied, no Saturn Decision, our lane, and old by the Posting Date or the First Surfaced date. The legacy Lifecycle field is not read.
-    Notion allows a compound filter two levels deep (an `and` holding one `or`); the earlier shape nested a third level and Notion refused every
-    weekly query with HTTP 400. The two date tests are therefore one flat `or`, which can also return a row with a recent Posting Date and an old
-    First Surfaced; `action` re-checks each candidate against the employer Posting Date (else First Surfaced) before anything is retired."""
+    """Unapplied, no Saturn Decision, our lane, and old by the Posting Date or the First Surfaced date.
+
+    Notion allows a compound filter two levels deep, so the two date tests are one flat `or`; a row with a recent
+    Posting Date and an old First Surfaced can come back, so `action` re-checks each candidate before anything is
+    retired.
+    """
     day = cutoff.date().isoformat()
     return {"and": [
         {"property": "Applied", "checkbox": {"equals": False}},
-        {"property": "Applied On", "date": {"is_empty": True}},            # an Applied On date is human state even if the checkbox is clear
+        # an Applied On date is human state even if the checkbox is clear
+        {"property": "Applied On", "date": {"is_empty": True}},
         {"property": "Saturn Decision", "select": {"is_empty": True}},
         {"property": "Visible Lane", "select": {"equals": lane}},
         {"or": [{"property": "Posting Date", "date": {"before": day}},
@@ -42,19 +48,23 @@ def query_filter(cutoff, lane):
 
 
 def age_days(posted, first_surfaced, today):
-    """Whole days since the Posting Date, else since First Surfaced; None when neither is known (never retire on a guess)."""
+    """Whole days since the Posting Date, else since First Surfaced; None when neither is known (never retire on a guess).
+    """
     anchor = posted or first_surfaced
     return (today - anchor).days if anchor else None
 
 
 def _lane_age(lane):
-    """The Ledger lane's own first-party max age (LIFE-212), or None. Only the lane itself: the Newsletter lane keeps RETIRE_DAYS and D167."""
+    """The Ledger lane's own first-party max age, or None (the Newsletter lane keeps RETIRE_DAYS)."""
     return None if lane in lanes.LANE_ALIAS else lanes.first_party_age(lane)
 
 
 def retire_days(lane):
-    """(query cutoff in days, least age in days to retire) for a lane. LIFE-212 (Jim, Oct 31 2026): a lane that judges employer-board jobs by age (US Remote 14,
-    Scale-Up 30) retires a job OLDER than that age, as admission bounces it ("older than N days"); every other lane keeps RETIRE_DAYS."""
+    """(query cutoff in days, least age in days to retire) for a lane.
+
+    A lane that judges employer-board jobs by age (US Remote 14, Scale-Up 30) retires a job OLDER than that age; every
+    other lane keeps RETIRE_DAYS.
+    """
     days = _lane_age(lane)
     return (days, days + 1) if days else (RETIRE_DAYS, RETIRE_DAYS)
 
@@ -92,15 +102,17 @@ def _date(prop):
 
 
 def candidates(client, now, lane):
-    """(page id, Posting Date, First Surfaced, lane) of one lane from the filtered query, up to MAX_PAGES pages of 100."""
+    """(page id, Posting Date, First Surfaced, lane) of one lane from the filtered query, up to MAX_PAGES pages of 100.
+    """
     found, cursor = [], None
     for _ in range(MAX_PAGES):
-        body = {"page_size": limits.NOTION_PAGE_SIZE, "filter": query_filter(now - timedelta(days=retire_days(lane)[0]), lane)}     # LIFE-212: the lane's own age
+        body = {"page_size": limits.NOTION_PAGE_SIZE, "filter": query_filter(now - timedelta(days=retire_days(lane)[0]), lane)}
         if cursor:
             body["start_cursor"] = cursor
         try:
             data = client.call("POST", f"/data_sources/{client.source}/query", body)
-        except notion_client.NotionError as error:                    # D165: a bare HTTP 400 hid which request Notion refused; name the lane and what Notion named
+        # name the lane and what Notion named: a bare HTTP 400 hides which request was refused
+        except notion_client.NotionError as error:
             tag = lane if lane in KNOWN_LANES else "other"
             raise notion_client.NotionError(" ".join(part for part in (str(error), f"lane={tag}", error.detail) if part)) from None
         for page in data.get("results", []):
@@ -115,26 +127,27 @@ def candidates(client, now, lane):
 def purge_notion(live, now, environ=None):
     counts = {"candidates": 0, "ours": 0, "retired": 0, "failed": 0, "protected": 0, "kept_open": 0, "lanes": 0, "handoff": "not_configured", "target": ledger.OK}
     client = notion_client.Client(environ) if environ is not None else notion_client.Client()
-    counts["target"] = ledger.verify(client)                         # never query or trash against a data source that is not the Job Ledger
+    counts["target"] = ledger.verify(client)
     if counts["target"] != ledger.OK:
         return counts
     pipeline_id = ((environ if environ is not None else os.environ).get("HIRING_PIPELINE_PAGE_ID") or "").strip()
     opportunities = []
-    if pipeline_id:                                                  # INT-7.1A: protect pursuits with a live hiring process
+    if pipeline_id:
         opportunities, counts["handoff"] = hiring_pipeline.snapshot(client, pipeline_id, ledger=client)
         if counts["handoff"] != "ok":
-            return counts if not live else {**counts, "retired": 0}                  # unreadable handoff = UNKNOWN: fail closed
+            return counts if not live else {**counts, "retired": 0}  # unreadable handoff = UNKNOWN: fail closed
     options = {option.casefold(): option for option in ledger.select_options(client, "Visible Lane")}
     if not options:
-        return {**counts, "target": "lane_options_unreadable"}              # cannot name a lane the Ledger knows: fail closed, ask nothing
+        # cannot name a lane the Ledger knows: fail closed
+        return {**counts, "target": "lane_options_unreadable"}
     with store.connect() as connection, connection.cursor() as cursor:
         cursor.execute("SELECT DISTINCT lane FROM v7_jobs WHERE notion_page_id IS NOT NULL")
-        wanted = {name for (raw,) in cursor.fetchall() for name in (raw, lanes.lane_for(raw))}    # rows carry the lane they were published under
-    # D165: the Ledger spells the option `Scale-up` while the database says `Scale-Up`, and Notion refuses a filter naming an option it does not have
-    # (HTTP 400, validation_error). Ask only for the Ledger's own spelling; a lane with no such option cannot have rows there.
+        wanted = {name for (raw,) in cursor.fetchall() for name in (raw, lanes.lane_for(raw))}
+    # The Ledger spells the option `Scale-up` while the database says `Scale-Up`, and Notion refuses a filter naming
+    # an option it does not have (HTTP 400): ask only for the Ledger's own spelling.
     names = {options[name.casefold()] for name in wanted if name and name.casefold() in options}
     counts["lanes"] = len(names)
-    pages = [page for lane in sorted(names) for page in candidates(client, now, lane)]            # slow: no DB connection open
+    pages = [page for lane in sorted(names) for page in candidates(client, now, lane)]
     counts["candidates"] = len(pages)
     with store.connect() as connection, connection.cursor() as cursor:
         ours, open_on_board = {}, set()
@@ -144,9 +157,10 @@ def purge_notion(live, now, environ=None):
             if not row:
                 continue
             ours[page_id] = (row[:5], posted, first, lane)
-            if lanes.first_party_source(row[5]) and _lane_age(lane) is None:      # LIFE-212 (Jim, Oct 31 2026): not in US Remote or Scale-Up, which retire it by age
-                # D167 (D111): a role on its employer's own board is open, so its posting age does not retire it. It is retired only once a complete
-                # listing of that board no longer has it (the web pass marks it REMOVED). No board record at all cannot prove it closed: keep it.
+            if lanes.first_party_source(row[5]) and _lane_age(lane) is None:
+                # A role on its employer's own board is open, so its age does not retire it: only a complete listing
+                # of that board without it (the web pass marks it REMOVED) does. No board record cannot prove it
+                # closed: keep it.
                 cursor.execute("SELECT SUM(state='CURRENT'), SUM(state='REMOVED') FROM v7_source_items WHERE job_id=%s", (row[0],))
                 current, removed = cursor.fetchone() or (0, 0)
                 if int(current or 0) > 0 or int(removed or 0) == 0:
@@ -157,7 +171,8 @@ def purge_notion(live, now, environ=None):
         return counts
     writes, today = 0, now.date()
     for page_id, ((job_id, key, fuzzy, company, title), posted, first, lane) in ours.items():
-        # the filter already excluded Applied and Saturn Decision rows; the handoff can still protect an unapplied pursuit
+        # the filter already excluded Applied and Saturn Decision rows; the handoff can still protect an unapplied
+        # pursuit
         if page_id in open_on_board:
             continue
         if hiring_pipeline.handoff_for(company, title, opportunities).protected:
@@ -181,7 +196,9 @@ def purge_notion(live, now, environ=None):
 
 
 def due(now, last_ok, last_try, force=False):
-    """The purge runs about weekly and catches up: due when there is no success in the last 6.5 days and no attempt in the last 6 hours."""
+    """The purge runs about weekly and catches up: due with no success in the last 6.5 days and no attempt in the last 6
+    hours.
+    """
     if force:
         return True
     if last_ok is not None and now - last_ok < PURGE_EVERY:
@@ -200,13 +217,14 @@ def _mark(cursor, key, now):
 
 
 def incomplete(notion):
-    """A purge that fail-closed (wrong target, unreadable hand-off or lane options) did nothing; that is a failure, never a quiet success."""
+    """A purge that failed closed (wrong target, unreadable hand-off or lane options) did nothing: a failure, not a success.
+    """
     return notion.get("target") != ledger.OK or notion.get("handoff") not in ("ok", "not_configured")
 
 
 def run(live, environ=None, now=None, force=None):
     now = now or _now()
-    force = (os.environ.get("PURGE_FORCE") == "true") if force is None else force          # a manual dispatch with Maintenance ticked
+    force = (os.environ.get("PURGE_FORCE") == "true") if force is None else force
     if not live and not force:
         return {"purge": "skipped_dry_run"}
     with store.connect() as connection:
@@ -217,7 +235,7 @@ def run(live, environ=None, now=None, force=None):
             if not due(now, last_ok, last_try, force):
                 return {"purge": "not_due", "days_since_ok": None if last_ok is None else (now - last_ok).days}
             if live:
-                _mark(cursor, TRY_KEY, now)                                                  # throttle: a failing purge retries every 6 hours, not every tick
+                _mark(cursor, TRY_KEY, now)
     result = {"database": purge_database(live, now), "notion": purge_notion(live, now, environ)}
     if incomplete(result["notion"]):
         raise notion_client.NotionError(f"PURGE_INCOMPLETE target={result['notion'].get('target')} handoff={result['notion'].get('handoff')}")

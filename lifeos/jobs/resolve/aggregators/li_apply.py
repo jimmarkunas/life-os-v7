@@ -1,8 +1,7 @@
-"""LinkedIn apply-type and employer link WITHOUT logging in (ported from V2's proven logic, D12/D14).
+"""LinkedIn apply-type and employer link WITHOUT logging in (plain HTTP only).
 
-The public guest posting page exposes (a) which apply path a job uses (native Easy Apply vs external) and (b) for
-external jobs, the employer URL - either in JSON-ish keys or wrapped in LinkedIn redirect links
-(/safety/go/?url=..., /redir/redirect?url=...). Plain HTTP only; LinkedIn is never logged in to.
+The public guest posting page exposes which apply path a job uses (native Easy Apply vs external) and, for external
+jobs, the employer URL: in JSON-ish keys or wrapped in LinkedIn redirect links (/safety/go/?url=...).
 """
 import html as htmllib
 import re
@@ -83,7 +82,8 @@ CLOSED = re.compile(r"no longer accepting applications|no longer available|job (
 
 
 def read(body):
-    """('external', url) | ('easy_apply', None) | ('external_unlinked', None) | ('closed', None) | ('unknown', None)."""
+    """('external', url) | ('easy_apply', None) | ('external_unlinked', None) | ('closed', None) | ('unknown', None).
+    """
     if CLOSED.search(re.sub(r"<[^>]+>", " ", htmllib.unescape(body or ""))):
         return "closed", None
     urls = external_urls(body)

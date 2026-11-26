@@ -1,7 +1,8 @@
-"""Counts-only diagnostic: why do parked (HOLD) roles on employers' own boards not move? Reads v7_jobs, writes nothing, prints no title, link or text.
+"""Counts-only diagnostic: why do parked (HOLD) roles on employers' own boards not move? Reads v7_jobs only.
 
-Per source: status and reason, how long since the row last changed, how many attempts it has used, whether it has a link, and whether today's daily re-read
-(`relink_first_party`) would select it right now."""
+Per source: status and reason, time since the row last changed, attempts used, whether it has a link, and whether the
+daily re-read (`relink_first_party`) would select it now. Prints no title, link or text.
+"""
 from datetime import timedelta
 
 from lifeos.jobs import enrich, store

@@ -1,6 +1,7 @@
-"""LinkedIn rows to the final apply link without logging in (D14).
+"""LinkedIn rows to the final apply link without logging in.
 
-Order: guest page (external URL, Easy Apply, closed) -> employer ATS board match by company/title/location -> pending."""
+Order: guest page (external URL, Easy Apply, closed) -> employer ATS board match by company/title/location -> pending.
+"""
 import time
 
 from lifeos.jobs.resolve import ats_match, search_match
@@ -48,9 +49,12 @@ def resolve_rows(rows, budget=None):
 
 
 def page_fallback(row, result):
-    """D3 rank 4: when the employer link stays hidden (no ATS board, no search hit), the LinkedIn posting is the apply link, flagged `aggregator`.
-    Its title, description and liveness are read from the guest page by Enrich, so identity and open/closed are still proven. Only a definite
-    no-match falls back (a `deferred` result is retried), and only for a real LinkedIn job id."""
+    """When the employer link stays hidden (no ATS board, no search hit), the LinkedIn posting is the apply link, flagged
+    `aggregator`.
+
+    Enrich reads its title, description and liveness from the guest page, so identity and open/closed are still
+    proven. Only a definite no-match falls back (a `deferred` result is retried), and only for a real LinkedIn job id.
+    """
     jid = li_apply.job_id(row[1])
     if str(result.get("outcome", "")).startswith("no_match_") and jid and li_apply.is_linkedin(row[1]):
         return {"outcome": "landed", "via": "linkedin_page", "kind": "aggregator", "url": "https://www.linkedin.com/jobs/view/" + jid}
@@ -69,19 +73,21 @@ def match_rows(rows, results, search_limit=SEARCH_LIMIT, budget=None):
         if not result["outcome"].startswith("no_match_"):
             continue
         if len(rows[i]) > 5 and rows[i][5] == "linkedin-search":
-            continue                                      # D203: no TinyFish for a search row; a definite no-match takes the LinkedIn page (page_fallback)
+            continue  # no TinyFish for a search row; a definite no-match takes the LinkedIn page (page_fallback)
         if budget["left"] <= 0:
             results[i] = {"outcome": "deferred"}          # search budget for this run is spent; not an attempt
             continue
         budget["left"] -= 1
         verdict = search_match.find(rows[i][2], rows[i][3])
-        if verdict[0] == "failed_search":               # the search itself failed: not an attempt, and no more searches this run
+        # the search itself failed: not an attempt, and no more searches this run
+        if verdict[0] == "failed_search":
             results[i], budget["left"] = {"outcome": "failed_search:" + verdict[1]}, 0
             continue
         if verdict[0] != "hit":
             results[i] = {"outcome": results[i]["outcome"] + "+" + verdict[1]}
             continue
-        gone = fetch(verdict[2], timeout=12, max_hops=4).status in (404, 410)      # terminal evidence: dead page = closed
+        # terminal evidence: dead page = closed
+        gone = fetch(verdict[2], timeout=12, max_hops=4).status in (404, 410)
         results[i] = ({"outcome": "closed"} if gone else
                       {"outcome": "landed", "via": "search", "kind": verdict[1], "url": verdict[2]})
     return results

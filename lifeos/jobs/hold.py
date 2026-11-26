@@ -1,29 +1,38 @@
-"""Jobs on HOLD for a week are excluded (EXCLUDED_UNRESOLVED), so the newsletter mail that holds them open can close (D185).
+"""Jobs on HOLD for a week are excluded (EXCLUDED_UNRESOLVED), so the newsletter mail that holds them open can close.
 
-HOLD means retries ran out (a link that never resolves, a page that never reads, a link rejected again and again). After HOLD_DAYS the job becomes EXCLUDED_UNRESOLVED: terminal, never published, never retried. Counts only.
-Recovery (D185): a worthwhile HOLD job gets ONE more try through the normal path, from day 6; one still HOLD, NEW or RESOLVED RECOVERY_HOURS after its try is excluded as `unresolved_after_recovery`, so the latest exclusion is day 7."""
-# Nothing retries a HOLD job, so it never reaches an outcome by itself, and a newsletter mail closes only when every job from it has one (D-finalize). The seven-day rule is unchanged.
+HOLD means retries ran out. After HOLD_DAYS the job becomes EXCLUDED_UNRESOLVED: terminal, never published, never
+retried. A worthwhile HOLD job gets ONE more try through the normal path from day 6; one still HOLD, NEW or RESOLVED
+RECOVERY_HOURS after its try is excluded as `unresolved_after_recovery`, so the latest exclusion is day 7. Counts
+only.
+"""
+# Nothing retries a HOLD job, so a newsletter mail would never close without this: it closes only when every job has
+# an outcome.
 from datetime import datetime, timedelta
 
 from lifeos.jobs import lanes, store
 from lifeos.platform import limits
 
 HOLD_DAYS = 7
-RECOVER_DAYS = 6               # a hold is recovered from day 6 ...
-RECOVERY_HOURS = 12            # ... for this long, and a recovered job has this long to leave NEW / RESOLVED: 6 days + 12 h + 12 h = the seven days
+RECOVER_DAYS = 6  # a hold is recovered from day 6 ...
+# ... for this long, then the job has this long to leave NEW / RESOLVED: 6 days + 12 h + 12 h = seven days
+RECOVERY_HOURS = 12
 RECOVER_PER_RUN = 25
 EXCLUDED = "EXCLUDED_UNRESOLVED"
 REASON = "hold_expired"
-FAILED_RECOVERY = "unresolved_after_recovery"      # the alert counts this reason
-RESOLVED_BY = ("jobright", "linkedin-alerts", "linkedin-search", "dice")       # the sources a resolve stage reads (lifeos/run.py); a NEW job of any other source would wait for nothing
-RETIRED = {"lensa": "source_retired_lensa"}               # D201: a retired source's NEW or HOLD jobs end EXCLUDED_UNRESOLVED with this reason (its RESOLVED jobs carry on)
-RETIRED["web:openjobs"] = "source_retired_openjobs"   # LIFE-212 (Jim, Oct 31 2026): Open Jobs shut down Oct 10 (D201) and no resolve stage reads it, so its NEW rows waited for nothing
+FAILED_RECOVERY = "unresolved_after_recovery"
+# the sources a resolve stage reads (lifeos/run.py); a NEW job of any other source would wait for nothing
+RESOLVED_BY = ("jobright", "linkedin-alerts", "linkedin-search", "dice")
+# a retired source's NEW or HOLD jobs end EXCLUDED_UNRESOLVED with this reason
+RETIRED = {"lensa": "source_retired_lensa"}
+# no resolve stage reads Open Jobs
+RETIRED["web:openjobs"] = "source_retired_openjobs"
 
 
 def worthwhile(lane, posted, first_seen, reason, now):
     if str(reason or "").startswith(("closed", "dup")):
         return False
-    policy = lanes.POLICIES.get(lanes.lane_for(lane))                          # still inside its lane's admission age (what Fit would apply anyway); an unknown lane is not worthwhile (fail closed)
+    # still inside its lane's admission age; an unknown lane is not worthwhile (fail closed)
+    policy = lanes.POLICIES.get(lanes.lane_for(lane))
     return bool(policy) and (now.date() - (posted or first_seen.date())).days <= policy.max_age_days
 
 
@@ -35,11 +44,11 @@ def recover(cursor, now, live):
     done = []
     for job_id, key in picked[:RECOVER_PER_RUN] if live else ():
         cursor.execute("UPDATE v7_jobs SET status=CASE WHEN final_apply_url IS NULL THEN 'NEW' ELSE 'RESOLVED' END, unresolved_reason='recovery_retry', recovered_at=%s, updated_at=%s, "
-                       "resolve_attempts=%s, enrich_attempts=%s WHERE id=%s AND status='HOLD' AND recovered_at IS NULL",       # one attempt left on either counter
+                       "resolve_attempts=%s, enrich_attempts=%s WHERE id=%s AND status='HOLD' AND recovered_at IS NULL",
                        (now, now, limits.RESOLVE_MAX_ATTEMPTS - 1, limits.ENRICH_MAX_ATTEMPTS - 1, job_id))
         if cursor.rowcount:
             done.append((job_id, key))
-    if done:                                                                  # read-back: the same jobs (id and dedupe key), in the state, reason, time and counters written
+    if done:  # read-back: the same jobs in the state written
         cursor.execute("SELECT id, dedupe_key FROM v7_jobs WHERE id IN (" + ",".join(["%s"] * len(done)) + ") AND status=CASE WHEN final_apply_url IS NULL THEN 'NEW' ELSE 'RESOLVED' END AND unresolved_reason='recovery_retry' "
                        "AND recovered_at=%s AND resolve_attempts=%s AND enrich_attempts=%s", (*[d[0] for d in done], now, limits.RESOLVE_MAX_ATTEMPTS - 1, limits.ENRICH_MAX_ATTEMPTS - 1))
         if sorted(tuple(r) for r in cursor.fetchall()) != sorted(done):
@@ -47,15 +56,19 @@ def recover(cursor, now, live):
     return len(picked), len(done)
 
 
-RELEASE_AT = datetime(2026, 10, 26, 0, 5)       # Jim, Oct 25 2026 ~6:00 PM CT: "Fix those 77 jobs on hold immediately". 7:05 PM CT, after the TinyFish Fetch day cap resets (UTC midnight)
-EARLY_AT = datetime(2026, 10, 25, 23, 25)        # Jim, 6:20 PM CT: "solve this in the next 20 minutes": a hold no TinyFish read can help (a wrong link, a refused page) goes at 6:25 PM CT
-NEEDS_READER = ("jd_thin", "description_empty", "description_empty_tf")     # these wait for 7:05 PM CT: retried before the cap resets they would fail again and be excluded
+RELEASE_AT = datetime(2026, 10, 26, 0, 5)  # UTC; holds older than this are released by release()
+# UTC; before this, a hold no reader can help (wrong link, refused page) goes at once
+EARLY_AT = datetime(2026, 10, 25, 23, 25)
+# wait for the TinyFish Fetch day cap to reset; retried earlier they would fail again
+NEEDS_READER = ("jd_thin", "description_empty", "description_empty_tf")
 
 
 def release(cursor, now, live):
-    """One-off (Jim, Oct 25): every worthwhile job that went on HOLD before RELEASE_AT gets its D185 retry now instead of on day 6, once each (recovered_at),
-    through the normal path, so it reaches an outcome tonight; one that fails again is excluded as `unresolved_after_recovery` by the same rules.
-    An employer-board job (web:*) with no final link goes back to RESOLVED on its own page (enrich proves the link again). -> (candidates, released)."""
+    """One-off: every worthwhile job on HOLD before RELEASE_AT gets its recovery retry now instead of on day 6, once each.
+    One that fails again is excluded as `unresolved_after_recovery`.
+
+    An employer-board job (web:*) with no final link goes back to RESOLVED on its own page. -> (candidates, released).
+    """
     if now < EARLY_AT:
         return 0, 0
     cursor.execute("SELECT id, lane, posted_date, first_seen, unresolved_reason, final_apply_url IS NOT NULL, source, dedupe_key FROM v7_jobs WHERE status='HOLD' AND recovered_at IS NULL "
@@ -70,7 +83,7 @@ def release(cursor, now, live):
                        (now, now, limits.RESOLVE_MAX_ATTEMPTS - 1, limits.ENRICH_MAX_ATTEMPTS - 1, job_id))
         if cursor.rowcount:
             done.append((job_id, key))
-    if done:                                                                  # read-back: the same jobs, out of HOLD, with the reason, time and counters written
+    if done:  # read-back: out of HOLD with the reason, time and counters written
         cursor.execute("SELECT id, dedupe_key FROM v7_jobs WHERE id IN (" + ",".join(["%s"] * len(done)) + ") AND status IN ('NEW', 'RESOLVED') AND unresolved_reason='recovery_retry' "
                        "AND recovered_at=%s AND resolve_attempts=%s AND enrich_attempts=%s", (*[d[0] for d in done], now, limits.RESOLVE_MAX_ATTEMPTS - 1, limits.ENRICH_MAX_ATTEMPTS - 1))
         if sorted(tuple(r) for r in cursor.fetchall()) != sorted(done):
@@ -78,15 +91,17 @@ def release(cursor, now, live):
     return len(picked), len(done)
 
 
-MISMATCH_AT = datetime(2026, 10, 31, 10, 0)      # LIFE-212 (Jim, Oct 31 2026: "yes to both"): 5:00 AM CT. A link_mismatch hold from before this time gets its one retry now
+MISMATCH_AT = datetime(2026, 10, 31, 10, 0)  # a link_mismatch hold from before this time gets its one retry now
 LINKEDIN_VIEW = "https://www.linkedin.com/jobs/view/"
 
 
 def mismatch_release(cursor, now, live):
-    """One-off (LIFE-212, Jim, Oct 31): every worthwhile job held for link_mismatch before MISMATCH_AT gets its D185 retry now, once each (recovered_at). A LinkedIn
-    row takes its own LinkedIn posting as an aggregator link (as enrich.linkedin_page does since PR 708) and Enrich reads it next; any other row a resolve stage
-    reads goes back to NEW with one attempt left, for the PR 708 title check. A row whose posting another job already holds, or that nothing can retry, stays
-    for the seven-day rule. A second failure is excluded by the usual rules. -> (candidates, released)."""
+    """One-off: every worthwhile job held for link_mismatch before MISMATCH_AT gets its recovery retry now, once each.
+
+    A LinkedIn row takes its own LinkedIn posting as an aggregator link and Enrich reads it next; any other row a
+    resolve stage reads goes back to NEW with one attempt left. A row another job already holds, or that nothing can
+    retry, stays for the seven-day rule. -> (candidates, released).
+    """
     from lifeos.jobs.resolve.aggregators import li_apply                     # noqa: PLC0415 - as enrich imports it
     cursor.execute("SELECT id, lane, posted_date, first_seen, source, source_url, dedupe_key FROM v7_jobs WHERE status='HOLD' AND recovered_at IS NULL "
                    "AND unresolved_reason='link_mismatch' AND updated_at < %s ORDER BY updated_at, id", (MISMATCH_AT,))
@@ -113,7 +128,7 @@ def mismatch_release(cursor, now, live):
                            (now, now, limits.RESOLVE_MAX_ATTEMPTS - 1, limits.ENRICH_MAX_ATTEMPTS - 1, job_id))
         if cursor.rowcount:
             done.append((job_id, key))
-    if done:                                                                  # read-back, as release()
+    if done:
         cursor.execute("SELECT id, dedupe_key FROM v7_jobs WHERE id IN (" + ",".join(["%s"] * len(done)) + ") AND status IN ('NEW', 'RESOLVED') AND unresolved_reason='recovery_retry' "
                        "AND recovered_at=%s AND resolve_attempts=%s AND enrich_attempts=%s", (*[d[0] for d in done], now, limits.RESOLVE_MAX_ATTEMPTS - 1, limits.ENRICH_MAX_ATTEMPTS - 1))
         if sorted(tuple(r) for r in cursor.fetchall()) != sorted(done):
@@ -121,12 +136,13 @@ def mismatch_release(cursor, now, live):
     return len(picked), len(done)
 
 
-DUE = "((status='HOLD' AND (updated_at < %s OR recovered_at IS NOT NULL)) OR (status IN ('NEW', 'RESOLVED') AND recovered_at < %s))"       # (hold cutoff, recovery deadline)
+DUE = "((status='HOLD' AND (updated_at < %s OR recovered_at IS NOT NULL)) OR (status IN ('NEW', 'RESOLVED') AND recovered_at < %s))"
 
 
 def run(limit, live, now=None):
     from lifeos.jobs.retention import _now                                  # noqa: PLC0415 - one clock for the jobs stages
-    now = (now or _now()).replace(microsecond=0)                           # the DATETIME columns keep whole seconds, so the read-back compares the value they store
+    # the DATETIME columns keep whole seconds, so the read-back compares the stored value
+    now = (now or _now()).replace(microsecond=0)
     due_at = (now - timedelta(days=HOLD_DAYS), now - timedelta(hours=RECOVERY_HOURS))
     with store.connect() as connection:
         store.ensure_schema(connection)
@@ -140,10 +156,10 @@ def run(limit, live, now=None):
             holding = int(cursor.fetchone()[0] or 0)
             cursor.execute("SELECT COALESCE(unresolved_reason, 'none'), COALESCE(source, 'unknown'), COUNT(*) FROM v7_jobs WHERE status='HOLD' GROUP BY 1, 2")
             by_reason, by_source, matrix = {}, {}, {}
-            for reason, source, n in cursor.fetchall():                 # fixed reason codes and producer names, counts only
+            for reason, source, n in cursor.fetchall():
                 by_reason[reason] = by_reason.get(reason, 0) + int(n)
                 by_source[source] = by_source.get(source, 0) + int(n)
-                matrix.setdefault(source, {})[reason] = int(n)           # where each producer loses its jobs
+                matrix.setdefault(source, {})[reason] = int(n)
             retired = {}
             for source, reason in RETIRED.items():
                 cursor.execute("SELECT COUNT(*) FROM v7_jobs WHERE source=%s AND status IN ('NEW', 'HOLD')", (source,))
@@ -152,7 +168,7 @@ def run(limit, live, now=None):
                 if live and open_rows:
                     cursor.execute("UPDATE v7_jobs SET status=%s, unresolved_reason=%s, updated_at=%s WHERE source=%s AND status IN ('NEW', 'HOLD')", (EXCLUDED, reason, now, source))
                     cursor.execute("SELECT COUNT(*) FROM v7_jobs WHERE source=%s AND status IN ('NEW', 'HOLD')", (source,))
-                    if int(cursor.fetchone()[0] or 0):                  # read-back: none of the retired source's open jobs is left open
+                    if int(cursor.fetchone()[0] or 0):
                         raise store.StoreError("HOLD_RETIRE_READBACK_MISMATCH")
             excluded = 0
             if live and due:
@@ -160,7 +176,7 @@ def run(limit, live, now=None):
                                (EXCLUDED, REASON, FAILED_RECOVERY, now, *due_at))
                 excluded = int(cursor.rowcount or 0)
                 cursor.execute("SELECT COUNT(*), COALESCE(SUM(unresolved_reason=%s), 0) FROM v7_jobs WHERE status=%s AND updated_at=%s AND unresolved_reason IN (%s, %s)", (FAILED_RECOVERY, EXCLUDED, now, REASON, FAILED_RECOVERY))
-                if tuple(int(x or 0) for x in cursor.fetchone()) != (due, failed_due) or excluded != due:         # read-back: every due job is now terminal with its reason, as many as were counted
+                if tuple(int(x or 0) for x in cursor.fetchone()) != (due, failed_due) or excluded != due:
                     raise store.StoreError("HOLD_READBACK_MISMATCH")
     return {"on_hold": holding, "due": due, "excluded": excluded, "by_reason": by_reason, "by_source": by_source, "by_source_reason": matrix, "saved": bool(live),
             "recovery_candidates": candidates, "recovered": requeued, "retired": retired, "release_candidates": release_candidates, "released": released,
