@@ -30,28 +30,42 @@ class DomainsParts(unittest.TestCase):
         self.assertEqual(regen.domains_text(), GENERATED.read_text(), "run python tools/regen.py")
 
     def test_each_fragment_holds_exactly_the_job_its_file_name_says(self):
-        names = [p.name for p in sorted(PARTS.glob("*.yml"))]
-        self.assertEqual(names[0], "000-header.yml")
-        for path in sorted(PARTS.glob("*.yml"))[1:]:
-            keys = re.findall(r"^  ([A-Za-z0-9_-]+):\s*(?:#.*)?$", path.read_text(), re.M)
-            self.assertEqual(keys[:1], [path.stem.split("-", 1)[1]], path.name)
-            self.assertNotIn("\njobs:", path.read_text(), path.name)
-        header = (PARTS / "000-header.yml").read_text()
+        """LIFE-1010: a long job continues in lettered files (020b-jira.yml) that start at a step and hold no job key; the header is 000-header.yml plus 001-header-inputs.yml."""
+        files = sorted(PARTS.glob("*.yml"))
+        self.assertEqual([p.name for p in files[:2]], ["000-header.yml", "001-header-inputs.yml"])
+        header = "".join(p.read_text() for p in files[:2])
         self.assertTrue(header.endswith("\njobs:\n"))
+        self.assertNotIn("\njobs:", "".join(p.read_text() for p in files[:1]) )
+        job = None
+        for path in files[2:]:
+            found = re.match(r"^(\d{3})([b-z]?)-(.+)\.yml$", path.name)
+            self.assertTrue(found, path.name)
+            keys = re.findall(r"^  ([A-Za-z0-9_-]+):\s*(?:#.*)?$", path.read_text(), re.M)
+            self.assertNotIn("\njobs:", path.read_text(), path.name)
+            if found.group(2):
+                self.assertEqual((keys, found.group(3)), ([], job), path.name)
+                self.assertTrue(path.read_text().lstrip().startswith(("-", "#")), path.name)          # starts at a step
+            else:
+                job = found.group(3)
+                self.assertEqual(keys[:1], [job], path.name)
 
     def test_the_fragments_define_the_same_jobs_the_workflow_runs(self):
         import yaml
         jobs = set(yaml.safe_load(GENERATED.read_text())["jobs"])
-        self.assertEqual(jobs, {p.stem.split("-", 1)[1] for p in PARTS.glob("*.yml")} - {"header"})
+        self.assertEqual(jobs, {p.stem.split("-", 1)[1] for p in PARTS.glob("*.yml") if re.match(r"^\d{3}-", p.name) and not p.name.startswith(("000-", "001-"))})
 
     def test_the_fragments_sit_outside_the_workflows_folder_so_github_never_runs_them(self):
         self.assertEqual(list((ROOT / ".github/workflows").glob("*domains*")), [GENERATED])
+
+    def test_the_generated_file_has_no_comments_and_the_history_is_in_the_workflow_doc(self):
+        self.assertNotRegex(GENERATED.read_text(), r"(?m)^ {0,8}#")                       # no YAML comment (a shell comment inside a run script is the script's own)
+        self.assertEqual(regen.workflow_doc_text(), (ROOT / "docs/workflows.md").read_text(), "run python tools/regen.py")
 
     def test_a_fragment_edited_alone_fails_the_check(self):
         with tempfile.TemporaryDirectory() as tmp:
             copy = pathlib.Path(tmp) / "domains"
             shutil.copytree(PARTS, copy)
-            (copy / "020-jira.yml").write_text((copy / "020-jira.yml").read_text() + "    # edited\n")
+            (copy / "020-jira.yml").write_text((copy / "020-jira.yml").read_text() + "      - run: echo edited\n")
             with mock.patch.object(regen, "DOMAINS_PARTS", copy):
                 code, out = check()
         self.assertEqual(code, 1)

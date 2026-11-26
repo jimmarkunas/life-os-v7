@@ -14,7 +14,7 @@ class RefreshLoadsSettings(unittest.TestCase):
         return match.group(1)
 
     def test_the_recruiters_job_loads_its_settings_on_a_refresh_run_in_both_the_source_and_the_generated_workflow(self):
-        source = (ROOT / ".github/workflows-src/domains/130-recruiters.yml").read_text()
+        source = "".join(p.read_text() for p in sorted((ROOT / ".github/workflows-src/domains").glob("130*-recruiters.yml")))   # LIFE-1010: a long job continues in lettered parts
         generated = (ROOT / ".github/workflows/domains.yml").read_text()
         self.assertNotIn("inputs.refresh", self.step(source))
         job = generated[generated.index("\n  recruiters:\n"):]
@@ -22,7 +22,7 @@ class RefreshLoadsSettings(unittest.TestCase):
         self.assertNotIn("inputs.refresh", self.step(job))
 
     def test_the_outreach_step_that_needs_the_settings_still_runs_on_a_refresh(self):
-        source = (ROOT / ".github/workflows-src/domains/130-recruiters.yml").read_text()
+        source = "".join(p.read_text() for p in sorted((ROOT / ".github/workflows-src/domains").glob("130*-recruiters.yml")))   # LIFE-1010: a long job continues in lettered parts
         step = source[source.index("      - id: routreach"):]
         self.assertNotIn("if:", step.split("run:")[0])
 

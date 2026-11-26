@@ -43,7 +43,7 @@ def code_lines(text):
     for line in text.splitlines():
         if line.lstrip().startswith("#"):
             continue
-        kept.append(re.sub(r"\s#\s.*$", "", line))
+        kept.append(re.sub(r"\s+#\s.*$", "", line))          # LIFE-1010: the spaces before the comment go too, so dropping a comment changes no line
     return "\n".join(kept)
 
 

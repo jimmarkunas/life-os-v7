@@ -1,0 +1,41 @@
+      # why: Step 8b - retention purge (about weekly and catching up (the stage decides when it is due); moved from the hourly finish job by LIFE-856; pushes its own result to the phone, counts and fixed codes only)
+      - id: purge
+        continue-on-error: true
+        name: Step 8b - retention purge
+        env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
+          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
+          HIRING_PIPELINE_PAGE_ID: ""
+          V7_FIT_GATE: ""
+          PURGE_FORCE: ""          # a tick never forces; a manual maintenance dispatch of hourly.yml does, in its own step there
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KEY: ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
+          LIFEOS_ACQ_SSH_JUMP_HOST: ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_last_seen_purge.outputs.NOTION_API_TOKEN }}
+          NTFY_TOPIC: ${{ steps.bws_last_seen_purge.outputs.NTFY_TOPIC }}
+        run: |
+          # D168: the stage decides when it is due (about weekly, 6.5 days after the last success, retried every 6 hours after a failure), so a failed Sunday no longer waits a week.
+          status=0
+          out=$(python -m lifeos.run purge $([ "$LIVE" = "true" ] && echo --live) 2>&1) || status=$?
+          echo "$out"
+          last=$(printf '%s\n' "$out" | tail -n 1)
+          if [ "$status" = "0" ]; then
+            case "$last" in
+              *not_due*|*skipped_dry_run*) ;;
+              *) python3 -m lifeos.platform.alerts push --key purge_done --title "V7 weekly purge done" --body "$last" || true ;;
+            esac
+          else
+            python3 -m lifeos.platform.alerts push --key purge_failed --title "V7 weekly purge FAILED" --body "$last" || true
+            exit 1
+          fi
+      # why: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+      - name: A failed stage step makes this job red after every stage has run
+        if: ${{ always() && contains(steps.*.outcome, 'failure') }}
+        run: echo "::error title=last_seen_purge::a stage step failed in the last_seen_purge job (see the step marked failed above)"; exit 1

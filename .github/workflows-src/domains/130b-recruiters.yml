@@ -1,0 +1,39 @@
+      # why: Recruiter Outreach (LIFE-20; the Daily Report's one Recruiter Outreach table from the Recruiters data source, after the Recruiters stage; writes only when live AND the repo variable RECRUITER_OUTREACH is on; read-back and whole-page proof)
+      - id: routreach
+        continue-on-error: true
+        name: Recruiter Outreach
+        env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
+          RECRUITERS_STAGE_OUTCOME: ${{ steps.recruiters.outcome }}        # 'skipped' only on a Close screen refresh: the rows are redrawn and the heading says Redrawn
+          RECRUITERS_SCAN: ${{ steps.recruiters.outputs.scan_kind }}        # LIFE-610: which mail read the rows come from
+          RECRUITERS_SCAN_AT: ${{ steps.recruiters.outputs.scan_at }}
+          RECRUITER_OUTREACH: ""
+          NOTION_RECRUITERS_DATA_SOURCE_ID: ""
+          HIRING_TABLE_BLOCK_ID: ""
+          RECRUITER_COUNT_BLOCK_ID: ""          # LIFE-973: the callout above the live view; the gray count line is written there
+          V7_CLOSE_BASE_URL: ""          # the private Close origin: each row gets its one action link (Close, or Record reply or referral); unset, no link
+          NOTION_RECRUITERS_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_RECRUITERS_TOKEN }}
+          NOTION_JIRA_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_JIRA_TOKEN }}
+        run: python -m lifeos.run recruiter-outreach --limit 0 $([ "$LIVE" = "true" ] && echo --live)
+      # why: Job-page outreach (LIFE-10; the outreach table on each Job Ledger job page from Mark as Sent; writes only when live AND the repo variable JOB_PAGE_OUTREACH is on; page proof and read-back)
+      - id: jpoutreach
+        if: ${{ inputs.refresh != 'recruiters' }}       # a Close screen refresh redraws only the Recruiter Outreach table
+        continue-on-error: true
+        name: Job-page outreach
+        env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
+          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
+          NOTION_RECRUITERS_DATA_SOURCE_ID: ""
+          JOB_PAGE_OUTREACH: ""
+          V7_CLOSE_BASE_URL: ""          # the private Close origin: each open conversation gets a "Record reply or referral" link; unset, no link
+          NOTION_API_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_API_TOKEN }}
+          NOTION_RECRUITERS_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_RECRUITERS_TOKEN }}
+        run: python -m lifeos.run job-page-outreach --limit 0 $([ "$LIVE" = "true" ] && echo --live)
+      - name: Recruiters warning (does not fail the Jobs run)
+        if: ${{ always() && (steps.recruiters.outcome == 'failure' || steps.routreach.outcome == 'failure' || steps.jpoutreach.outcome == 'failure') }}
+        run: echo "::warning title=Recruiters::the Recruiters stage, the Recruiter Outreach table or the job-page outreach tables failed or a source was unread; the Jobs pipeline is unaffected"
+      # why: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+      - name: A failed stage step makes this job red after every stage has run
+        if: ${{ always() && contains(steps.*.outcome, 'failure') }}
+        run: echo "::error title=recruiters::a stage step failed in the recruiters job (see the step marked failed above)"; exit 1
+
