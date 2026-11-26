@@ -1,10 +1,9 @@
-"""Board check (D110): for named Scale-Up employers, what does the LIVE board return, and what became of each job?
+"""Board check: for named Scale-Up employers, what does the live board return, and what became of each job?
 
-The question this answers is "this role is open at that employer, why is it not in the database?". It reads each named employer's board from the runner (the same
-reader the Scale-Up web pass uses), applies the same early suppression, looks every job up by its URL key in `v7_jobs`, and writes ONE private page in the Job
-Ledger: per employer, every job grouped as stored (with its status, Fit and reason), dropped before storing (with the suppression reason) or not stored.
-The page has no row in v7_jobs, so no stage touches it. The log carries counts only.
-Input: BOARD_COMPANY, comma separated, 3+ letters each, matched against the registry's source id and company ("board:" in front is ignored)."""
+Reads each board with the Scale-Up reader, applies the same early suppression, looks every job up by URL key in
+`v7_jobs`, and writes one private Job Ledger page grouping jobs as stored, dropped before storing, or not stored.
+The page has no v7_jobs row, so no stage touches it. The log carries counts only.
+Input: BOARD_COMPANY, comma separated, 3+ letters each, matched against registry source id and company."""
 from datetime import datetime
 import os
 from zoneinfo import ZoneInfo
@@ -28,7 +27,10 @@ def matching_sources(names, sources):
 
 
 def outcome(job, today, stored):
-    """(group, detail) for one live job: dropped before storing, stored (its status), or not stored. `stored`: the v7_jobs row (status, reason, score, admission) or None."""
+    """Return (group, detail) for one live job: dropped before storing, stored (its status), or not stored.
+
+    `stored` is the v7_jobs row (status, reason, score, admission) or None.
+    """
     why = suppress.reason(job, today, "Scale-Up")
     if why:
         return "Dropped before storing: " + why, ""
