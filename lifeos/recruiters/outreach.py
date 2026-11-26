@@ -30,7 +30,7 @@ def check_schema(notion, ledger_source):
     target = ((job or {}).get("relation") or {}).get("data_source_id")
     if not isinstance(job, dict) or job.get("type") != "relation" or _id(target) != _id(ledger_source):
         raise store.RecruitersError("OUTREACH_SCHEMA_MISSING")
-    if any(not isinstance(props.get(n), dict) or props[n].get("type") != t for n, t in store.SCHEMA.items()):
+    if not store.schema_ok(props):
         raise store.RecruitersError("RECRUITERS_NOTION_SCHEMA_MISMATCH")
 
 
@@ -55,7 +55,7 @@ def employer_from(reason):
 
 
 def _props(job, person, now, employer=""):
-    return {"Recruiter / Person": {"title": rich_text(person)}, **({"Recruiter Company": {"rich_text": rich_text(employer)}} if employer else {}),
+    return {store.title_name(): {"title": rich_text(person)}, **({store.company_name(): {"rich_text": rich_text(employer)}} if employer else {}),
             "Client": {"rich_text": rich_text(job["company"])}, "Role": {"rich_text": rich_text(job["role"])},
             "Medium": {"rich_text": rich_text(MEDIUM)}, "Last Contact": {"date": {"start": now.replace(second=0, microsecond=0).isoformat()}},
             "Week Ending": {"date": {"start": week_ending(now)}}, "Done": {"checkbox": False}, "Active": {"checkbox": True}, "Needs review": {"checkbox": False},

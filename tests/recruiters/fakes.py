@@ -2,6 +2,12 @@
 from lifeos.platform.notion_client import NotionError
 from lifeos.recruiters import notion as store
 
+def renamed_page(page_dict):
+    """The same row as a database whose two properties are already renamed (LIFE-989)."""
+    props = {store.RENAMES.get(k, k): v for k, v in page_dict["properties"].items()}
+    return {**page_dict, "properties": props}
+
+
 CELL = lambda t: [{"type": "text", "plain_text": t, "text": {"content": t}}]
 
 
@@ -20,9 +26,10 @@ def page(person, company="", role="", week="2026-10-11", last="2026-10-07T15:00:
 class FakeRecruiters:
     source = "source-example"
 
-    def __init__(self, pages=None, fail_query=False, drop_writes=False, schema=None):
+    def __init__(self, pages=None, fail_query=False, drop_writes=False, schema=None, renamed=False):
         self.pages, self.writes, self.queries, self.fail_query, self.drop_writes = list(pages or []), [], 0, fail_query, drop_writes
-        self.schema = {n: {"type": t} for n, t in store.SCHEMA.items()} | (schema or {})
+        self.renamed = renamed                                                                   # LIFE-989: the schema as it reads after the rename (Recruiter, Company)
+        self.schema = {(store.RENAMES.get(n, n) if renamed else n): {"type": t} for n, t in store.SCHEMA.items()} | (schema or {})
 
     def call(self, method, path, body=None):
         if method == "GET" and path.startswith("/data_sources/"):
@@ -71,8 +78,9 @@ class FakeRecruiters:
             props[name] = {"type": kind, **value}
             if kind in ("title", "rich_text"):
                 props[name][kind] = [{"type": "text", "plain_text": value[kind][0]["text"]["content"], "text": value[kind][0]["text"]}]
-        for name in store.SCHEMA:
-            props.setdefault(name, {"type": store.SCHEMA[name], store.SCHEMA[name]: [] if store.SCHEMA[name] in ("title", "rich_text") else None})
+        for old in store.SCHEMA:
+            name = store.RENAMES.get(old, old) if self.renamed else old
+            props.setdefault(name, {"type": store.SCHEMA[old], store.SCHEMA[old]: [] if store.SCHEMA[old] in ("title", "rich_text") else None})
         self.pages.append({"id": f"page-new-{len(self.pages)}", "created_by": {"id": "bot-1"}, "last_edited_by": {"id": "bot-1"}, "properties": props})
         return {}
 

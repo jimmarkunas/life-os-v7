@@ -124,6 +124,7 @@ def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, noti
         if chores:
             _status_and_dates(notion, write, counts, now.astimezone(CHICAGO).date())
             _fill(notion, write, counts, records, gm, accounts)
+            _asks(notion, write, counts, records, gm, accounts)
     if degraded:
         counts["unread"] = unread
     if degraded and not partial:
@@ -154,6 +155,12 @@ def _apply(candidates, notion, write, counts):
         if c["week_ending"] not in cache:
             cache[c["week_ending"]] = store.week_rows(notion, c["week_ending"])
         action, row, props = store.plan(cache[c["week_ending"]], c)
+        if action == "create" or (action == "update" and not str(row["what"] or "").strip()):         # LIFE-989: What they want is never written blank
+            c["what"], c["what_fallback"] = store.what_or_fallback(c)
+            if c["what_fallback"]:
+                c["needs_review"] = True
+            if action == "update":
+                action, row, props = store.plan(cache[c["week_ending"]], c)
         if action == "ambiguous":
             counts["ambiguous"] += 1
         elif action == "done":
@@ -236,6 +243,33 @@ def _status_and_dates(notion, write, counts, today):
                 counts["dates_set"] += 1
             except NotionError:
                 counts["failed"] += 1
+
+
+def _asks(notion, write, counts, records, gm, accounts):
+    """LIFE-989: What they want is never empty. Every open row (Needs Action, Waiting, Replied) with a blank one gets the ask from the message behind it, or the fallback sentence with Needs review ticked.
+    Older rows' messages are read once more (backfill.MAX_PER_RUN a run, read-only); a row that already has text is skipped. The log carries the row's page id and `ask` or `fallback`, never a name or text."""
+    counts.update(asks_filled=0, asks_would_fill=0, asks_fallback=0, asks_unread=0)
+    by_url = {m["url"]: m for m in records if m.get("url")}
+    older = 0
+    for row in fill.blank_ask_rows(notion):
+        if row["source_url"] not in by_url:
+            if older >= backfill.MAX_PER_RUN:
+                continue
+            older += 1
+        message = backfill.message_for(row, by_url, gm, accounts)
+        if message is None:
+            counts["asks_unread"] += 1
+            continue
+        try:
+            kind = fill.apply_ask(notion, row, message, write)
+        except NotionError:
+            counts["failed"] += 1
+            continue
+        if kind:
+            counts["asks_would_fill"] += 1
+            counts["asks_filled"] += 1 if write else 0
+            counts["asks_fallback"] += 1 if kind == "fallback" else 0
+            print("recruiters-ask:", row["page_id"].replace("-", "")[:8], kind)
 
 
 def _fill(notion, write, counts, records, gm, accounts):
