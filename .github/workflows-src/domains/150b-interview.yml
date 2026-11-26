@@ -42,7 +42,7 @@
         if: ${{ always() && steps.interview.outcome == 'failure' }}
         run: echo "::warning title=Interview OS::the Interview OS stage (DEGRADED or failed) or a source was unread; the Jobs pipeline is unaffected"
       # why: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
-      - name: A failed stage step makes this job red after every stage has run
+      - name: Fail the job if any stage step failed
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=interview::a stage step failed in the interview job (see the step marked failed above)"; exit 1
 
