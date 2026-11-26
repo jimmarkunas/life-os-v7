@@ -237,6 +237,13 @@
     "The reconciliation clock carried no time zone.",
     "Check the run."
   ],
+  "JIRA_RECONCILE_CONFIG_INVALID": [
+    "jira",
+    "blocked",
+    false,
+    "The configured future sprint target is not a whole number from 1 to 52.",
+    "Fix JIRA_FUTURE_SPRINTS in Runtime Configuration."
+  ],
   "JIRA_RECONCILE_DUPLICATE_OCCURRENCE": [
     "jira",
     "blocked",

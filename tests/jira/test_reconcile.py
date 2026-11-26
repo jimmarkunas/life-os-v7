@@ -1,7 +1,7 @@
 """LIFE-918: the unbuilt LIFE-915 parts, proven on synthetic data only (no network, no Jira write): ISO sprint names and the four-sprint floor, the carry rule, recurring series, closure counts, and the daily 8 AM CT
 reconciliation with its switch OFF by default. The Jira writes are injected mocks."""
 import unittest
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
@@ -62,9 +62,16 @@ class Naming(unittest.TestCase):
 
 
 class Inventory(unittest.TestCase):
-    def test_a_board_with_nothing_gets_four_future_weeks(self):
+    def test_runtime_target_defaults_to_eight_and_rejects_invalid_values(self):
+        self.assertEqual(rc.future_target({}), 8)
+        self.assertEqual(rc.future_target({"JIRA_FUTURE_SPRINTS": "9"}), 9)
+        for invalid in ("0", "53", "eight"):
+            with self.assertRaises(JiraError):
+                rc.future_target({"JIRA_FUTURE_SPRINTS": invalid})
+
+    def test_a_board_with_nothing_gets_eight_future_weeks(self):
         p = rc.plan_sprints("MEJ", [], [], at(2026, 11, 25), TZ)
-        self.assertEqual([c[0] for c in p["create"]], ["MEJ W49 2026", "MEJ W50 2026", "MEJ W51 2026", "MEJ W52 2026"])
+        self.assertEqual([c[0] for c in p["create"]], ["MEJ W49 2026", "MEJ W50 2026", "MEJ W51 2026", "MEJ W52 2026", "MEJ W53 2026", "MEJ W1 2027", "MEJ W2 2027", "MEJ W3 2027"])
         self.assertEqual(p["rename"], [])
 
     def test_existing_sprints_are_renamed_in_place_and_the_gap_is_filled(self):
@@ -72,13 +79,19 @@ class Inventory(unittest.TestCase):
         future = [sprint(11, "MEJ", monday(2026, 11, 30), name="Old name"), sprint(13, "MEJ", monday(2026, 12, 14))]
         p = rc.plan_sprints("MEJ", active, future, at(2026, 11, 25), TZ)
         self.assertEqual(p["rename"], [(10, "MEJ W48 2026"), (11, "MEJ W49 2026")])
-        self.assertEqual([c[0] for c in p["create"]], ["MEJ W50 2026", "MEJ W52 2026"])   # week 50 fills the gap; the floor adds 52
-        self.assertEqual(p["future"], 4)
+        self.assertEqual([c[0] for c in p["create"]], ["MEJ W50 2026", "MEJ W52 2026", "MEJ W53 2026", "MEJ W1 2027", "MEJ W2 2027", "MEJ W3 2027"])
+        self.assertEqual(p["future"], 8)
 
     def test_across_the_year_end_and_week_53(self):
         active = [sprint(1, "JFM", monday(2026, 12, 21), "active")]
         p = rc.plan_sprints("JFM", active, [], at(2026, 12, 23), TZ)
-        self.assertEqual([c[0] for c in p["create"]], ["JFM W53 2026", "JFM W1 2027", "JFM W2 2027", "JFM W3 2027"])
+        self.assertEqual([c[0] for c in p["create"]], ["JFM W53 2026", "JFM W1 2027", "JFM W2 2027", "JFM W3 2027", "JFM W4 2027", "JFM W5 2027", "JFM W6 2027", "JFM W7 2027"])
+
+    def test_more_than_eight_existing_sprints_are_preserved_without_creating_past_the_horizon(self):
+        active = [sprint(1, "JFM", monday(2026, 11, 23), "active")]
+        future = [sprint(i + 2, "JFM", monday(2026, 11, 23) + timedelta(days=7 * i)) for i in range(1, 10)]
+        plan = rc.plan_sprints("JFM", active, future, at(2026, 11, 25), TZ)
+        self.assertEqual((plan["future"], plan["create"], plan["rename"]), (8, [], []))
 
     def test_a_legacy_dst_stamp_matches_its_week_not_a_new_one(self):
         start = datetime(2026, 11, 2, 5, 0, tzinfo=timezone.utc)                           # midnight CDT stamped before the clocks changed: 11 PM the previous day in CST
@@ -264,11 +277,13 @@ class FakeBoard:
 class State:
     def __init__(self, last=None):
         self.last = last
+        self.set_calls = 0
 
     def get(self):
         return self.last
 
     def set(self, day):
+        self.set_calls += 1
         self.last = day
 
 
@@ -304,7 +319,7 @@ class Stage(unittest.TestCase):
     def test_dry_run_plans_both_boards_and_writes_nothing(self):
         board = self.board()
         result = rc.run(5, False, environ=ENV_ON, client=board, now=at(2026, 11, 25))
-        self.assertEqual((result["ok"], result["failed"], result["would_create"], result["would_rename"]), (2, 0, 8, 1))             # MEJ has no active sprint of its own on this fake board, so only JFM's is renamed
+        self.assertEqual((result["ok"], result["failed"], result["would_create"], result["would_rename"]), (2, 0, 16, 1))
         self.assertEqual(board.log, [])
 
     def test_a_live_run_without_verified_writers_or_a_checkpoint_fails_closed(self):
@@ -319,10 +334,17 @@ class Stage(unittest.TestCase):
     def test_live_with_mock_writers_renames_creates_reads_back_and_marks_the_day(self):
         board, state = self.board(), State()
         result = rc.run(5, True, environ={**ENV_ON, "JIRA_BOARDS": "JFM:5"}, client=board, now=at(2026, 11, 25), writers=writers(board), state=state)
-        self.assertEqual((result["created"], result["renamed"], result["failed"]), (4, 1, 0))
+        self.assertEqual((result["created"], result["renamed"], result["failed"]), (8, 1, 0))
         self.assertEqual(state.get(), date(2026, 11, 25))
         self.assertEqual(rc.run(5, True, environ={**ENV_ON, "JIRA_BOARDS": "JFM:5"}, client=board, now=at(2026, 11, 25, 15), writers=writers(board), state=state), {"enabled": 1, "not_due": 1})
-        self.assertEqual(len(board.log), 5)                                                 # the same day again writes nothing
+        self.assertEqual(len(board.log), 9)                                                 # the same day again writes nothing
+
+    def test_manual_force_skips_only_the_same_date_guard_and_keeps_the_due_marker(self):
+        board, state = self.board(), State(date(2026, 11, 25))
+        result = rc.run(5, True, environ={**ENV_ON, "JIRA_BOARDS": "JFM:5"}, client=board, now=at(2026, 11, 25, 15), writers=writers(board), state=state, force=True)
+        self.assertEqual((result["created"], state.get()), (8, date(2026, 11, 25)))
+        self.assertEqual(state.set_calls, 0)
+        self.assertEqual(rc.run(5, True, environ={**ENV_ON, "JIRA_BOARDS": "JFM:5"}, client=board, now=at(2026, 11, 26, 7), writers=writers(board), state=state, force=True), {"enabled": 1, "not_due": 1})
 
     def test_restart_after_a_partial_write_plans_from_actual_state_without_a_blind_create(self):
         board = self.board()
@@ -341,7 +363,7 @@ class Stage(unittest.TestCase):
         rc.run(5, True, environ={**ENV_ON, "JIRA_BOARDS": "JFM:5"}, client=board, now=at(2026, 11, 25), writers=writers(board), state=state)
         names = [s["name"] for s in board.sprints_by_state["future"]]
         self.assertEqual(len(names), len(set(names)))                                       # no duplicate of the sprint that already landed
-        self.assertEqual(len(names), 4)
+        self.assertEqual(len(names), 8)
 
     def test_a_readback_that_still_shows_work_re_plans_once_then_fails_closed(self):
         board = self.board()

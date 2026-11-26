@@ -94,9 +94,12 @@ def summary(total, live):
     done = "added" if live else "would add"
     line = f"Jira sprints: {total.get('ok', 0)} of {total.get('boards', 0)} boards in order, {total.get('created' if live else 'would_create', 0)} sprints {done}, {total.get('renamed' if live else 'would_rename', 0)} {'renamed' if live else 'would rename'}"
     line += f", {total.get('cloned' if live else 'would_clone', 0)} recurring {'cloned' if live else 'to clone'}"
+    counts = total.get("future_by_board") or {}
+    if counts:
+        target = total.get("future_target", 8)
+        line += " · future sprints " + ", ".join(f"{name} {count}" + (f" (over {target})" if count > target else "") for name, count in sorted(counts.items()))
     if "closures_total" in total:
         line += f" · closed this week {total['closures_total']}"
         if "closures_automatic" in total:
             line += f" ({total['closures_automatic']} automatic, {total.get('closures_manual', 0)} manual)"
     return line
-
