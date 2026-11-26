@@ -16,7 +16,8 @@
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
           git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
           git checkout -q --detach FETCH_HEAD
-      - name: The chain receipt - Jobs, career and full-platform clocks for this tick (counts, times and fixed codes only; never fails the run)
+      # why: The chain receipt - Jobs, career and full-platform clocks for this tick (counts, times and fixed codes only; never fails the run)
+      - name: The chain receipt - Jobs, career and full-platform clocks for this tick
         env:
           GITHUB_TOKEN: ${{ github.token }}
           CHAIN_TICK_ID: ${{ inputs.tick_run || github.event.workflow_run.id }}

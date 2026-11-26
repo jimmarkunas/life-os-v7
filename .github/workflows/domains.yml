@@ -1,8 +1,5 @@
 name: domains
 run-name: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'domains (after tick)' || 'domains (manual)' }}
-# The V7 domain jobs: Jira, Outlook (calendar sync), Bills, Agenda (Calendar card) and Amazon Orders. Each reads or writes ONE provider and none
-# touches the Jobs pipeline, so they live apart from hourly.yml: this workflow declares NO secrets at the top, so a job can only see what its own steps pass it
-# (isolation by construction, not by blanking). A failed stage step is a warning while the stages run, then its job ends red (LIFE-649) and the report job pushes the phone. Runs by itself a few minutes after every hourly TICK (not after a manual hourly run or one the gate cancelled), and by hand with the inputs below.
 on:
   workflow_run:
     workflows: ["hourly"]
@@ -111,25 +108,13 @@ on:
 permissions:
   contents: read
 concurrency:
-  # A run that will do nothing (a workflow_run after a manual hourly run, or after one the gate cancelled: every job below is skipped by its `if`) still joins its concurrency
-  # group, and a group holds only one WAITING run, so such a run cancels the real run that is waiting (the Oct 20-21 stall: no card refreshed for two and a half hours). It gets
-  # its own group, which nothing else uses, so it can only wait behind or replace other do-nothing runs. A manual (workflow_dispatch) run has its own group too: a string of manual
-  # runs (8-16 minutes each) otherwise kept the one slot busy and replaced the waiting after-tick runs (Oct 21). The manual Amazon and Recruiters workflows queue behind 'life-os-v7-domains'.
-  # A Close screen refresh (inputs.refresh) joins the early group instead: it writes the Hiring Pipeline region, which only one Daily Report writer may change at a time.
-  # LIFE-775: a tick makes two runs. The EARLY run (phase tick, started by the hourly prep job) holds 'life-os-v7-domains' with the Hiring Pipeline, Amazon, Recruiters and Mail jobs, so the manual
-  # Amazon and Recruiters workflows still queue behind them. The run that starts when the tick FINISHES holds its own group, 'life-os-v7-domains-late' (megibow, interview, granola: they read what the tick
-  # writes), so it never waits for the early run; only a real after-tick run joins it, so a do-nothing run cannot replace it. With no early run (its dispatch failed or was cancelled) that run does every job.
   group: ${{ (github.event_name == 'workflow_dispatch' && (inputs.refresh == 'hiring' || inputs.refresh == 'recruiters' || inputs.phase == 'tick')) && 'life-os-v7-domains' || github.event_name != 'workflow_run' && 'life-os-v7-domains-manual' || ((github.event.workflow_run.conclusion == 'cancelled' || github.event.workflow_run.display_title != 'tick') && 'life-os-v7-domains-idle' || 'life-os-v7-domains-late') }}
   cancel-in-progress: false
 env:
-  STAGE_TIMING_FILE: /tmp/stage-timing-domains.jsonl   # LIFE-855: each standalone stage prints its one `stage_timing` line (names and numbers only); a path, not a secret
+  STAGE_TIMING_FILE: /tmp/stage-timing-domains.jsonl
 jobs:
   gate:
-    name: ${{ (inputs.tick_run || github.event.workflow_run.id) && format('gate (tick {0})', inputs.tick_run || github.event.workflow_run.id) || 'gate' }}      # LIFE-904: the tick's run ID is the chain's correlation ID; the chain receipt finds this tick's domains runs by it
-    # LIFE-604 item 11: the ONE place that decides whether this run does the domain work. It runs only for a completed tick or `all`; a manual run of one domain skips it, and then a domain job runs only on its own input. Outputs: due_<job> (LIFE-609: one per domain job, from lifeos/platform/due_table.json; for a tick a job is due when its row says
-    # so, for `all` every job is due), tick (only a tick: imessage, granola and the failure push depend on that) and all (only `all`). A failed gate makes every domain job skip (their `needs.gate.result != 'failure'`).
-    # Why each domain job uses always() or !cancelled(): a job that waits for other page writers (needs: ...) uses always() so one failed writer never stops the next card; a job with
-    # no writer to wait for uses !cancelled(). Both skip when the gate failed or the run was cancelled, and both run on their own manual input without the gate.
+    name: ${{ (inputs.tick_run || github.event.workflow_run.id) && format('gate (tick {0})', inputs.tick_run || github.event.workflow_run.id) || 'gate' }}
     if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || (github.event_name == 'workflow_dispatch' && inputs.phase == 'tick') || inputs.all }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -138,10 +123,10 @@ jobs:
       actions: read
     outputs:
       tick: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || (github.event_name == 'workflow_dispatch' && inputs.phase == 'tick') }}
-      early: ${{ inputs.all || inputs.phase == 'tick' || (github.event_name == 'workflow_run' && steps.cover.outputs.early_covered == 'false') }}      # LIFE-775: the jobs that read nothing the tick writes: the early run, `all`, or the after-tick run when it found no early run
-      late: ${{ inputs.all || github.event_name == 'workflow_run' }}      # LIFE-775: megibow, interview, granola: the after-tick run, or `all`
+      early: ${{ inputs.all || inputs.phase == 'tick' || (github.event_name == 'workflow_run' && steps.cover.outputs.early_covered == 'false') }}
+      late: ${{ inputs.all || github.event_name == 'workflow_run' }}
       all: ${{ inputs.all }}
-      pipeline: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && steps.ran.outputs.ran != 'false' }}      # LIFE-856: the tick's hourly `finish` job ran (unreadable counts as ran); Network Leads and the Cloud Fit backlog moved here from it
+      pipeline: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && steps.ran.outputs.ran != 'false' }}
       due_jira: ${{ steps.due.outputs.due_jira }}
       due_followup: ${{ steps.due.outputs.due_followup }}
       due_outlook: ${{ steps.due.outputs.due_outlook }}
@@ -162,7 +147,7 @@ jobs:
       due_network_surface: ${{ steps.due.outputs.due_network_surface }}
       due_fit_cloud_backlog: ${{ steps.due.outputs.due_fit_cloud_backlog }}
       due_last_seen_purge: ${{ steps.due.outputs.due_last_seen_purge }}
-      granola_auto: ${{ steps.settings.outputs.GRANOLA_AUTO }}      # LIFE-703: the page's value when GitHub holds none; GitHub's own value when the page cannot be read
+      granola_auto: ${{ steps.settings.outputs.GRANOLA_AUTO }}
       imessage_alerts: ${{ steps.settings.outputs.V7_IMESSAGE_ALERTS }}
     steps:
       - name: Checkout the exact commit (own git fetch, token never stored)
@@ -172,13 +157,13 @@ jobs:
           git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
           git checkout -q --detach FETCH_HEAD
       - id: due
-        name: Which domain jobs are due (LIFE-609) - one table, each job's last successful run; an unreadable history makes every job due
+        name: Which domain jobs are due
         env:
           GITHUB_TOKEN: ${{ github.token }}
           DOMAINS_PHASE: ${{ inputs.phase }}
         run: python3 -m lifeos.platform.due
       - id: cover
-        name: LIFE-775 - is the early run of this tick already started (the after-tick run then leaves the early jobs to it; no early run means it runs every job; unreadable leaves them out)
+        name: Is the early run of this tick already started
         if: ${{ github.event_name == 'workflow_run' }}
         continue-on-error: true
         env:
@@ -186,38 +171,30 @@ jobs:
           TICK_STARTED: ${{ github.event.workflow_run.run_started_at }}
         run: python3 -m lifeos.platform.phase
       - id: ran
-        name: LIFE-856 - did the tick's hourly finish job run (the moved Network Leads and Cloud Fit backlog jobs run only then; unreadable counts as yes)
+        name: Did the tick's hourly finish job run
         if: ${{ github.event_name == 'workflow_run' }}
         continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ github.token }}
           TICK_RUN: ${{ github.event.workflow_run.id }}
         run: python3 -m lifeos.platform.pipeline_ran
-      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
+      - name: Bitwarden helper from a saved, fingerprint-checked copy
         continue-on-error: true
         uses: ./.github/actions/bws-helper
         with:
           wait_seconds: "60"
       - id: bws_settings
         continue-on-error: true
-        name: Notion token from Bitwarden so the gate can read the V7 settings page (LIFE-703; read only; if it fails the GitHub values decide)
+        name: Notion token from Bitwarden so the gate can read the V7 settings page
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
             0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
-      - id: doppler_bws_settings
-        if: ${{ steps.bws_settings.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 2 names read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: NOTION_JIRA_TOKEN,V7_RUNTIME_CONFIG_SOURCE_ID
-          bitwarden: ${{ toJSON(steps.bws_settings.outputs) }}
-      - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
+      - name: Plain switches from Bitwarden
         continue-on-error: true
         uses: ./.github/actions/bws-plain
         with:
@@ -226,7 +203,7 @@ jobs:
           live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
       - id: settings
         continue-on-error: true
-        name: V7 settings page for the two switches a job condition needs (LIFE-703; names and counts only; an unreadable page changes nothing)
+        name: V7 settings page for the two switches a job condition needs
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_settings.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}
@@ -234,10 +211,8 @@ jobs:
           V7_IMESSAGE_ALERTS: ""
         run: python3 -m lifeos.platform.settings --output GRANOLA_AUTO --output V7_IMESSAGE_ALERTS
   jira:
-    # Jira runs in its OWN job, like Interview: scheduled and tick runs refresh the snapshot and the report card (rollover stays manual), only the Jira secrets (the database secrets are
-    # re-supplied to the snapshot step alone), and a failure is a warning that never fails the Jobs run.
     needs: [gate]
-    if: ${{ !cancelled() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_jira == 'true' && needs.gate.outputs.early == 'true') || (github.event_name == 'workflow_dispatch' && inputs.jira != 'none')) }}   # D212: an empty input (a workflow_run after a manual or cancelled hourly run) is not a request
+    if: ${{ !cancelled() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_jira == 'true' && needs.gate.outputs.early == 'true') || (github.event_name == 'workflow_dispatch' && inputs.jira != 'none')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -247,16 +222,16 @@ jobs:
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
           git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
           git checkout -q --detach FETCH_HEAD
-      - uses: ./.github/actions/python
-      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
-        uses: ./.github/actions/bws-helper
+      - name: Python and the Bitwarden helper
+        uses: ./.github/actions/job-start
         with:
           wait_seconds: "300"
       - id: bws_jira
-        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 14; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        name: Load the migrated credentials from Bitwarden
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             3fa6f4f4-bd6d-45e7-8f2c-b4db015ec0c3 > JIRA_API_TOKEN
@@ -275,22 +250,13 @@ jobs:
             83c553e9-23a6-45aa-9006-b4db015f00ac > NTFY_TOPIC
             4d0c7449-ed0a-46c1-9c2c-b503015f8d54 > LIFEOS_ACQ_SSH_JUMP_HOST
             82efa413-6b9c-4c5c-b0d2-b503015f8e3d > LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS
-      - id: doppler_bws_jira
-        if: ${{ steps.bws_jira.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 16 names read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: JIRA_API_TOKEN,JIRA_EMAIL,LIFEOS_ACQ_DB_NAME,LIFEOS_ACQ_DB_PASSWORD,LIFEOS_ACQ_DB_USER,LIFEOS_ACQ_SSH_HOST,LIFEOS_ACQ_SSH_KNOWN_HOSTS,LIFEOS_ACQ_SSH_PRIVATE_KEY,LIFEOS_ACQ_SSH_USER,LIFEOS_ACQ_SSH_JUMP_KEY,TAILSCALE_OAUTH_CLIENT_ID,TAILSCALE_OAUTH_CLIENT_SECRET,NOTION_JIRA_TOKEN,NTFY_TOPIC,LIFEOS_ACQ_SSH_JUMP_HOST,LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS
-          bitwarden: ${{ toJSON(steps.bws_jira.outputs) }}
-      - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
+      - name: Plain switches from Bitwarden
         uses: ./.github/actions/bws-plain
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
           live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
-      - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
+      - name: Join the tailnet as the ephemeral tag:v7-runner node
         continue-on-error: true
         uses: ./.github/actions/tailscale
         with:
@@ -299,40 +265,32 @@ jobs:
           tags: tag:v7-runner
       - id: bws_runtime_config
         continue-on-error: true
-        name: Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)
+        name: Runtime Configuration source ID from Bitwarden
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
-      - id: doppler_bws_runtime_config
-        if: ${{ steps.bws_runtime_config.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 1 name read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: V7_RUNTIME_CONFIG_SOURCE_ID
-          bitwarden: ${{ toJSON(steps.bws_runtime_config.outputs) }}
       - id: settings
         continue-on-error: true
-        name: V7 settings page for the Jira base URL, boards and GTV epic (LIFE-699; names and counts only; an unreadable page changes nothing). Only this step holds the Notion token; the Jira steps get the values through the job environment
+        name: V7 settings page for the Jira base URL, boards and GTV epic
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_jira.outputs.NOTION_JIRA_TOKEN }}
           JIRA_BASE_URL: ""
           JIRA_BOARDS: ""
           JIRA_GTV_EPIC: ""
-          MEJ_SPRINT_AUTOMATION: ""   # LIFE-918: the sprint automation switch, off unless the Runtime Configuration row says on; later steps (rollover, reconcile) read it from the job environment
-          MEJ_AUTOMATION_SINCE: ""   # LIFE-918: the activation time for the manual/automatic closure split
-          JIRA_WRITERS_VERIFIED: ""   # LIFE-918: yes only after the throwaway-sprint verification passed
-          V2_PROMOTION: ""   # LIFE-918: the promotion kill switch, read by the daily reconcile's promotion check
-          V2_OFFICIAL: ""   # LIFE-918: the one row the promotion check may set on Jan 1 (LIFE-976)
+          MEJ_SPRINT_AUTOMATION: ""
+          MEJ_AUTOMATION_SINCE: ""
+          JIRA_WRITERS_VERIFIED: ""
+          V2_PROMOTION: ""
+          V2_OFFICIAL: ""
         run: python3 -m lifeos.platform.settings
       - id: jrollauto
         continue-on-error: true
-        name: Jira sprint rollover (scheduled; waits for the sprint to end and Monday 6 AM; live only when V7_LIVE)
+        name: Jira sprint rollover
         if: ${{ needs.gate.outputs.due_jira == 'true' }}
         env:
           JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
@@ -340,7 +298,7 @@ jobs:
         run: python -m lifeos.run jira-rollover-scheduled $([ "$LIVE" = "true" ] && echo --live)
       - id: jrollwatch
         continue-on-error: true
-        name: Jira rollover watch (pages the phone when the scheduled rollover has not worked for 3 hours; one private state row; counts only)
+        name: Jira rollover watch
         if: ${{ always() && steps.jrollauto.outcome != 'skipped' }}
         env:
           JIRA_ROLLOVER_OUTCOME: ${{ steps.jrollauto.outcome }}
@@ -358,7 +316,7 @@ jobs:
         run: python -m lifeos.run jira-rollover-watch $([ "$LIVE" = "true" ] && echo --live)
       - id: jreconcile
         continue-on-error: true
-        name: Jira daily reconcile (LIFE-918; off unless MEJ_SPRINT_AUTOMATION is on; once a day at or after 8 AM CT; sprint inventory, recurring clones, closure counts, the Daily Report summary row, the promotion check; dry run unless live; counts only)
+        name: Jira daily reconcile
         if: ${{ needs.gate.outputs.due_jira == 'true' || inputs.jira == 'reconcile' }}
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
@@ -402,12 +360,12 @@ jobs:
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           JIRA_CARD_BLOCK_ID: ""
-          GTV_CARD_BLOCK_ID: ""   # LIFE-975: the Global Talent Visa callout's own block id, filled from the Runtime Configuration row
-          JIRA_GTV_EPIC: ""   # LIFE-975: the visa epic's tickets are left out of this card (the visa callout covers them)
-          JIRA_CARD_PROJECTS: ""   # LIFE-703: declared empty so the V7 settings page can fill it; the code's own default applies when both are empty
+          GTV_CARD_BLOCK_ID: ""
+          JIRA_GTV_EPIC: ""
+          JIRA_CARD_PROJECTS: ""
           JIRA_SITE_URL: ""
-          JIRA_GTV_CONTEXT_URL: ""   # LIFE-703: declared empty so the V7 settings page can fill it; the code's own default applies when both are empty
-          MEJ_SPRINT_AUTOMATION: ""   # LIFE-918: with the switch on the card shows the sprint reconcile summary line
+          JIRA_GTV_CONTEXT_URL: ""
+          MEJ_SPRINT_AUTOMATION: ""
           JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
           JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_DB_NAME }}
@@ -424,7 +382,7 @@ jobs:
         run: python -m lifeos.run jira-card $([ "$LIVE" = "true" ] && echo --live)
       - id: jrelease
         continue-on-error: true
-        name: Auto-release (LIFE-727; moves ready tickets of an epic labelled auto-release to Agent Go, at most 3 an hour; written only when live; counts only)
+        name: Auto-release
         if: ${{ inputs.jira == 'card' || inputs.jira == 'report' || needs.gate.outputs.due_jira == 'true' }}
         env:
           JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
@@ -432,7 +390,7 @@ jobs:
         run: python -m lifeos.run jira-release $([ "$LIVE" = "true" ] && echo --live)
       - id: jstalled
         continue-on-error: true
-        name: Stall check (LIFE-729; read-only; names LIFE tickets idle with no waiting-on note)
+        name: Stall check
         if: ${{ inputs.jira == 'card' || inputs.jira == 'report' || needs.gate.outputs.due_jira == 'true' }}
         env:
           JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
@@ -440,7 +398,7 @@ jobs:
         run: python -m lifeos.run jira-stalled $([ "$LIVE" = "true" ] && echo --live)
       - id: jfill
         continue-on-error: true
-        name: Parent, Component and Fix Version fill (LIFE-752; LIFE tickets updated in the last 2 days; one [sweep] comment each; written only when live; counts only)
+        name: Parent, Component and Fix Version fill
         if: ${{ inputs.jira == 'card' || inputs.jira == 'report' || needs.gate.outputs.due_jira == 'true' }}
         env:
           JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
@@ -456,7 +414,7 @@ jobs:
         run: python -m lifeos.run jira-probe
       - id: jwcheck
         continue-on-error: true
-        name: Jira writer contract check (LIFE-918; manual only; GET requests only, nothing is written; booleans and counts only)
+        name: Jira writer contract check
         if: ${{ inputs.jira == 'writers-check' }}
         env:
           JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
@@ -464,7 +422,7 @@ jobs:
         run: python -m lifeos.jira.writers contract-check
       - id: jwverify
         continue-on-error: true
-        name: Jira writer verification on a throwaway sprint (LIFE-918 decision E; manual only; a dry run unless the third word of verify is yes; a fourth word keep keeps the test clone because the Jira Free plan cannot delete; only a ZZ-LIFE918-TEST sprint and the one named issue; counts and fixed codes only)
+        name: Jira writer verification on a throwaway sprint
         if: ${{ inputs.jira == 'writers-verify' }}
         env:
           JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
@@ -490,17 +448,12 @@ jobs:
       - name: Jira warning (does not fail the run)
         if: ${{ always() && (steps.jsnap.outcome == 'failure' || steps.jcard.outcome == 'failure' || steps.jrelease.outcome == 'failure' || steps.jstalled.outcome == 'failure' || steps.jfill.outcome == 'failure' || steps.jrollauto.outcome == 'failure' || steps.jreconcile.outcome == 'failure' || steps.jrollwatch.outcome == 'failure' || steps.jroll.outcome == 'failure' || steps.jprobe.outcome == 'failure' || steps.jwcheck.outcome == 'failure' || steps.jwverify.outcome == 'failure') }}
         run: echo "::warning title=Jira::a Jira step failed; the Jobs pipeline is unaffected"
-      # LIFE-793: the five V3 accountability stages now run in their own workflow (v3-pages.yml), not in this job.
-      - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+      - name: A failed stage step makes this job red after every stage has run
         if: ${{ always() && (steps.bws_jira.outcome == 'failure' || steps.settings.outcome == 'failure' || steps.jrollauto.outcome == 'failure' || steps.jreconcile.outcome == 'failure' || steps.jrollwatch.outcome == 'failure' || steps.jsnap.outcome == 'failure' || steps.jcard.outcome == 'failure' || steps.jrelease.outcome == 'failure' || steps.jstalled.outcome == 'failure' || steps.jfill.outcome == 'failure' || steps.jprobe.outcome == 'failure' || steps.jwcheck.outcome == 'failure' || steps.jwverify.outcome == 'failure' || steps.jroll.outcome == 'failure') }}
         run: echo "::error title=jira::a stage step failed in the jira job (see the step marked failed above)"; exit 1
 
 
   followup:
-    # LIFE-757: the Followup lane (Production Contract v2.15.16, FOLLOWUP LANE OWNERSHIP OVERRIDE): one full reconciliation of every approved source every hour (Jim, Nov 16 2026). DEFAULT OFF: the stage is a counts-only
-    # no-op while the switch FOLLOWUP_WIRING (lifeos/platform/switches.json) is off, so merging this job cannot turn a run red; once on it runs LIVE on a scheduled or tick run while the V7_LIVE switch is on (the step adds --live
-    # exactly like the other stages; Jim, Nov 16 2026: "Go Live"; the tables exist, LIFE-756) and stays a dry run that writes nothing on a manual run with live false. Each source credential is one bws-load line below plus its inventory row in lifeos/platform/credential_list.py (named in
-    # lifeos/inbox/followup_wiring.py INVENTORY); a source without both shows DEGRADED. Top-level permissions apply unchanged (contents: read).
     needs: [gate]
     if: ${{ !cancelled() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_followup == 'true' && needs.gate.outputs.early == 'true') || inputs.followup) }}
     runs-on: ubuntu-24.04
@@ -512,16 +465,16 @@ jobs:
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
           git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
           git checkout -q --detach FETCH_HEAD
-      - uses: ./.github/actions/python
-      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
-        uses: ./.github/actions/bws-helper
+      - name: Python and the Bitwarden helper
+        uses: ./.github/actions/job-start
         with:
           wait_seconds: "300"
       - id: bws_followup
-        name: Load the credentials from Bitwarden (LIFE-757, the store and its jump route, the existing Jira token, email, Outlook client id and Notion, Calendar and Gmail items, plus the two new FOLLOWUP_ items (Bytalos Gmail refresh token, Todoist token; Jim, Nov 16 2026); masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        name: Load the credentials from Bitwarden
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             d71bbaed-6a6c-49b5-8a1f-b4db015ecfda > LIFEOS_ACQ_DB_NAME
@@ -546,22 +499,13 @@ jobs:
             672a44e9-235f-4121-a99d-b4db015a6987 > GMAIL_OAUTH_REFRESH_TOKEN
             c87d470c-b351-4004-a5ea-b50401885f98 > FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH
             89238d39-3528-44b6-90f4-b5040188c384 > FOLLOWUP_TODOIST_PERSONAL_TOKEN
-      - id: doppler_bws_followup
-        if: ${{ steps.bws_followup.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 22 names read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: LIFEOS_ACQ_DB_NAME,LIFEOS_ACQ_DB_PASSWORD,LIFEOS_ACQ_DB_USER,LIFEOS_ACQ_SSH_HOST,LIFEOS_ACQ_SSH_KNOWN_HOSTS,LIFEOS_ACQ_SSH_PRIVATE_KEY,LIFEOS_ACQ_SSH_USER,LIFEOS_ACQ_SSH_JUMP_KEY,TAILSCALE_OAUTH_CLIENT_ID,TAILSCALE_OAUTH_CLIENT_SECRET,LIFEOS_ACQ_SSH_JUMP_HOST,LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS,JIRA_API_TOKEN,JIRA_EMAIL,OUTLOOK_CLIENT_ID,NOTION_API_TOKEN,GCAL_SERVICE_ACCOUNT_JSON,GMAIL_OAUTH_CLIENT_ID,GMAIL_OAUTH_CLIENT_SECRET,GMAIL_OAUTH_REFRESH_TOKEN,FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH,FOLLOWUP_TODOIST_PERSONAL_TOKEN
-          bitwarden: ${{ toJSON(steps.bws_followup.outputs) }}
-      - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, port fails - names and codes only)
+      - name: Plain switches from Bitwarden
         uses: ./.github/actions/bws-plain
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: FOLLOWUP_GCAL_BYTALOS_CALENDAR_ID,FOLLOWUP_GCAL_PERSONAL_CALENDAR_ID,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
           live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
-      - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
+      - name: Join the tailnet as the ephemeral tag:v7-runner node
         continue-on-error: true
         uses: ./.github/actions/tailscale
         with:
@@ -570,25 +514,17 @@ jobs:
           tags: tag:v7-runner
       - id: bws_runtime_config
         continue-on-error: true
-        name: Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)
+        name: Runtime Configuration source ID from Bitwarden
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
-      - id: doppler_bws_runtime_config
-        if: ${{ steps.bws_runtime_config.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 1 name read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: V7_RUNTIME_CONFIG_SOURCE_ID
-          bitwarden: ${{ toJSON(steps.bws_runtime_config.outputs) }}
       - id: followup
         continue-on-error: true
-        name: Followup lane (LIFE-757; LIVE on a scheduled or tick run while V7_LIVE is on, otherwise a dry run that writes nothing; reads only sources that have a credential and an expiry row)
+        name: Followup lane
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           JIRA_API_TOKEN: ${{ steps.bws_followup.outputs.JIRA_API_TOKEN }}
@@ -601,7 +537,7 @@ jobs:
           GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_followup.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
           FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH: ${{ steps.bws_followup.outputs.FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH }}
           FOLLOWUP_TODOIST_PERSONAL_TOKEN: ${{ steps.bws_followup.outputs.FOLLOWUP_TODOIST_PERSONAL_TOKEN }}
-          FOLLOWUP_WIRING: ""              # lifeos/platform/switches.json decides (off) unless the repository variable says "off" (kill switch) or "on"
+          FOLLOWUP_WIRING: ""
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_followup.outputs.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_followup.outputs.LIFEOS_ACQ_DB_PASSWORD }}
           LIFEOS_ACQ_DB_USER: ${{ steps.bws_followup.outputs.LIFEOS_ACQ_DB_USER }}
@@ -613,13 +549,10 @@ jobs:
           LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_followup.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_followup.outputs.LIFEOS_ACQ_SSH_USER }}
         run: python -m lifeos.run followup $([ "$LIVE" = "true" ] && echo --live)
-      - name: A failed stage step makes this job red after the stage has run (LIFE-649), so the report job pushes the phone
+      - name: A failed stage step makes this job red after the stage has run
         if: ${{ always() && (steps.bws_followup.outcome == 'failure' || steps.followup.outcome == 'failure') }}
         run: echo "::error title=followup::a stage step failed in the followup job (see the step marked failed above)"; exit 1
   outlook:
-    # Outlook (read-only) on every scheduled or tick run: meeting invites into your Google calendar. Its own
-    # job like Jira and Interview: every other credential is blanked, the Outlook/calendar/database secrets reach only the steps that need
-    # them, and a failure is a warning that never fails the Jobs run.
     needs: [gate]
     if: ${{ !cancelled() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_outlook == 'true' && needs.gate.outputs.early == 'true') || inputs.calendar_sync) }}
     runs-on: ubuntu-24.04
@@ -631,16 +564,16 @@ jobs:
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
           git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
           git checkout -q --detach FETCH_HEAD
-      - uses: ./.github/actions/python
-      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
-        uses: ./.github/actions/bws-helper
+      - name: Python and the Bitwarden helper
+        uses: ./.github/actions/job-start
         with:
           wait_seconds: "200"
       - id: bws_outlook
-        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 12; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        name: Load the migrated credentials from Bitwarden
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             e697c607-f798-4528-9967-b4db015a6940 > GCAL_SERVICE_ACCOUNT_JSON
@@ -658,16 +591,7 @@ jobs:
             2b2c73a9-7a1e-44b9-95f0-b50301509b09 > OUTLOOK_CLIENT_ID
             4d0c7449-ed0a-46c1-9c2c-b503015f8d54 > LIFEOS_ACQ_SSH_JUMP_HOST
             82efa413-6b9c-4c5c-b0d2-b503015f8e3d > LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS
-      - id: doppler_bws_outlook
-        if: ${{ steps.bws_outlook.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 15 names read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: GCAL_SERVICE_ACCOUNT_JSON,LIFEOS_ACQ_DB_NAME,LIFEOS_ACQ_DB_PASSWORD,LIFEOS_ACQ_DB_USER,LIFEOS_ACQ_SSH_HOST,LIFEOS_ACQ_SSH_KNOWN_HOSTS,LIFEOS_ACQ_SSH_PRIVATE_KEY,LIFEOS_ACQ_SSH_USER,LIFEOS_ACQ_SSH_JUMP_KEY,TAILSCALE_OAUTH_CLIENT_ID,TAILSCALE_OAUTH_CLIENT_SECRET,NTFY_TOPIC,OUTLOOK_CLIENT_ID,LIFEOS_ACQ_SSH_JUMP_HOST,LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS
-          bitwarden: ${{ toJSON(steps.bws_outlook.outputs) }}
-      - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
+      - name: Plain switches from Bitwarden
         uses: ./.github/actions/bws-plain
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
@@ -675,24 +599,16 @@ jobs:
           live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
       - id: bws_settings
         continue-on-error: true
-        name: Notion token from Bitwarden so this job can read the V7 settings page (LIFE-703; read only; if it fails the GitHub values stay as they are)
+        name: Notion token from Bitwarden so this job can read the V7 settings page
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
             0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
-      - id: doppler_bws_settings
-        if: ${{ steps.bws_settings.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 2 names read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: NOTION_JIRA_TOKEN,V7_RUNTIME_CONFIG_SOURCE_ID
-          bitwarden: ${{ toJSON(steps.bws_settings.outputs) }}
-      - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
+      - name: Join the tailnet as the ephemeral tag:v7-runner node
         continue-on-error: true
         uses: ./.github/actions/tailscale
         with:
@@ -701,7 +617,7 @@ jobs:
           tags: tag:v7-runner
       - id: calsync
         continue-on-error: true
-        name: Calendar sync (Outlook invites to Google; counts only; writes only when live; pages the phone when it has not worked for 3 hours)
+        name: Calendar sync
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_settings.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}
@@ -724,14 +640,12 @@ jobs:
       - name: Outlook warning (does not fail the run)
         if: ${{ always() && steps.calsync.outcome == 'failure' }}
         run: echo "::warning title=Outlook::an Outlook step failed; the Jobs pipeline is unaffected"
-      - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+      - name: A failed stage step makes this job red after every stage has run
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=outlook::a stage step failed in the outlook job (see the step marked failed above)"; exit 1
 
 
   bills:
-    # Bills reads its own Notion source and saves only to the private snapshot database. The Paid processor (D85, D86) runs first, so the snapshot sees the advanced dates; on a tick it follows V7_LIVE like every other domain job.
-    # D116: the Bills card then renders the saved snapshot into the Daily Report's "Bills: This Week" callout. LIFE-613: it no longer waits for the jira and agenda jobs; its writes are checked against its own callout before they are sent (report_region.ScopedClient).
     needs: [gate]
     if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_bills == 'true' && needs.gate.outputs.early == 'true') || inputs.bills_paid) }}
     runs-on: ubuntu-24.04
@@ -743,16 +657,16 @@ jobs:
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
           git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
           git checkout -q --detach FETCH_HEAD
-      - uses: ./.github/actions/python
-      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
-        uses: ./.github/actions/bws-helper
+      - name: Python and the Bitwarden helper
+        uses: ./.github/actions/job-start
         with:
           wait_seconds: "300"
       - id: bws_bills
-        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 12; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        name: Load the migrated credentials from Bitwarden
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             d71bbaed-6a6c-49b5-8a1f-b4db015ecfda > LIFEOS_ACQ_DB_NAME
@@ -769,22 +683,13 @@ jobs:
             53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
             4d0c7449-ed0a-46c1-9c2c-b503015f8d54 > LIFEOS_ACQ_SSH_JUMP_HOST
             82efa413-6b9c-4c5c-b0d2-b503015f8e3d > LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS
-      - id: doppler_bws_bills
-        if: ${{ steps.bws_bills.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 14 names read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: LIFEOS_ACQ_DB_NAME,LIFEOS_ACQ_DB_PASSWORD,LIFEOS_ACQ_DB_USER,LIFEOS_ACQ_SSH_HOST,LIFEOS_ACQ_SSH_KNOWN_HOSTS,LIFEOS_ACQ_SSH_PRIVATE_KEY,LIFEOS_ACQ_SSH_USER,LIFEOS_ACQ_SSH_JUMP_KEY,TAILSCALE_OAUTH_CLIENT_ID,TAILSCALE_OAUTH_CLIENT_SECRET,NOTION_BILLS_TOKEN,NOTION_JIRA_TOKEN,LIFEOS_ACQ_SSH_JUMP_HOST,LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS
-          bitwarden: ${{ toJSON(steps.bws_bills.outputs) }}
-      - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
+      - name: Plain switches from Bitwarden
         uses: ./.github/actions/bws-plain
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
           live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
-      - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
+      - name: Join the tailnet as the ephemeral tag:v7-runner node
         continue-on-error: true
         uses: ./.github/actions/tailscale
         with:
@@ -793,26 +698,18 @@ jobs:
           tags: tag:v7-runner
       - id: bws_runtime_config
         continue-on-error: true
-        name: Runtime Configuration source ID from Bitwarden for the compare-only read (LIFE-858; read only, an address not a secret; if it fails the step runs exactly as before)
+        name: Runtime Configuration source ID from Bitwarden
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
-      - id: doppler_bws_runtime_config
-        if: ${{ steps.bws_runtime_config.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 1 name read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: V7_RUNTIME_CONFIG_SOURCE_ID
-          bitwarden: ${{ toJSON(steps.bws_runtime_config.outputs) }}
       - id: bpaid
         continue-on-error: true
-        name: Bills Paid processor (before the snapshot; writes Notion only when live; counts only)
-        if: ${{ github.event_name == 'workflow_run' || inputs.phase == 'tick' || inputs.all || inputs.bills_paid }}      # LIFE-775: the early run of a tick processes Paid rows like any tick
+        name: Bills Paid processor
+        if: ${{ github.event_name == 'workflow_run' || inputs.phase == 'tick' || inputs.all || inputs.bills_paid }}
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           NOTION_BILLS_DATA_SOURCE_ID: ""
@@ -848,7 +745,7 @@ jobs:
         run: python -m lifeos.run bills-snapshot $([ "$LIVE" = "true" ] && echo --live)
       - id: bcard
         continue-on-error: true
-        name: Bills card (saved snapshot only; writes only when live; a stale snapshot is shown as STALE, never as current)
+        name: Bills card
         if: ${{ always() }}
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
@@ -871,14 +768,12 @@ jobs:
       - name: Bills warning (does not fail the Jobs run)
         if: ${{ always() && (steps.bsnap.outcome == 'failure' || steps.bpaid.outcome == 'failure' || steps.bcard.outcome == 'failure') }}
         run: echo "::warning title=Bills::the Bill Tracker snapshot or card failed; the Jobs pipeline is unaffected"
-      - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+      - name: A failed stage step makes this job red after every stage has run
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=bills::a stage step failed in the bills job (see the step marked failed above)"; exit 1
 
 
   agenda:
-    # Read the main Google Calendar and refresh its isolated Daily Report callout; failures are warnings only.
-    # LIFE-613: it no longer waits for the jira job. Its writes are checked against its own callout before they are sent (report_region.ScopedClient), not by comparing the Jira region afterwards.
     needs: [gate]
     if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_agenda == 'true' && needs.gate.outputs.early == 'true')) }}
     runs-on: ubuntu-24.04
@@ -890,16 +785,16 @@ jobs:
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
           git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
           git checkout -q --detach FETCH_HEAD
-      - uses: ./.github/actions/python
-      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
-        uses: ./.github/actions/bws-helper
+      - name: Python and the Bitwarden helper
+        uses: ./.github/actions/job-start
         with:
           wait_seconds: "300"
       - id: bws_agenda
-        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 12; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        name: Load the migrated credentials from Bitwarden
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             e697c607-f798-4528-9967-b4db015a6940 > GCAL_SERVICE_ACCOUNT_JSON
@@ -916,22 +811,13 @@ jobs:
             53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
             4d0c7449-ed0a-46c1-9c2c-b503015f8d54 > LIFEOS_ACQ_SSH_JUMP_HOST
             82efa413-6b9c-4c5c-b0d2-b503015f8e3d > LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS
-      - id: doppler_bws_agenda
-        if: ${{ steps.bws_agenda.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 14 names read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: GCAL_SERVICE_ACCOUNT_JSON,LIFEOS_ACQ_DB_NAME,LIFEOS_ACQ_DB_PASSWORD,LIFEOS_ACQ_DB_USER,LIFEOS_ACQ_SSH_HOST,LIFEOS_ACQ_SSH_KNOWN_HOSTS,LIFEOS_ACQ_SSH_PRIVATE_KEY,LIFEOS_ACQ_SSH_USER,LIFEOS_ACQ_SSH_JUMP_KEY,TAILSCALE_OAUTH_CLIENT_ID,TAILSCALE_OAUTH_CLIENT_SECRET,NOTION_JIRA_TOKEN,LIFEOS_ACQ_SSH_JUMP_HOST,LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS
-          bitwarden: ${{ toJSON(steps.bws_agenda.outputs) }}
-      - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
+      - name: Plain switches from Bitwarden
         uses: ./.github/actions/bws-plain
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
           live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
-      - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
+      - name: Join the tailnet as the ephemeral tag:v7-runner node
         continue-on-error: true
         uses: ./.github/actions/tailscale
         with:
@@ -940,22 +826,14 @@ jobs:
           tags: tag:v7-runner
       - id: bws_runtime_config
         continue-on-error: true
-        name: Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)
+        name: Runtime Configuration source ID from Bitwarden
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
-      - id: doppler_bws_runtime_config
-        if: ${{ steps.bws_runtime_config.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 1 name read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: V7_RUNTIME_CONFIG_SOURCE_ID
-          bitwarden: ${{ toJSON(steps.bws_runtime_config.outputs) }}
       - id: asnap
         continue-on-error: true
         name: Agenda snapshot (read-only Google Calendar; private save only when live)
@@ -998,17 +876,13 @@ jobs:
       - name: Agenda warning (does not fail the Jobs run)
         if: ${{ always() && (steps.asnap.outcome == 'failure' || steps.acard.outcome == 'failure') }}
         run: echo "::warning title=Agenda::the Calendar snapshot or card failed; the Jobs pipeline is unaffected"
-      - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+      - name: A failed stage step makes this job red after every stage has run
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=agenda::a stage step failed in the agenda job (see the step marked failed above)"; exit 1
 
 
 
   amazon:
-    # Amazon Orders is isolated; a failure warns without affecting the Jobs run.
-    # D118: the Amazon card then renders the canonical orders into the Daily Report's "Amazon Orders" callout.
-    # LIFE-586: it no longer waits for jira, agenda and bills. Its writes are checked against its own region BEFORE they are sent (report_region.ScopedClient), not by comparing the other cards' regions
-    # afterwards, and none of those three compares the Amazon region. The cards that DO compare it (imessage, hiring) still wait for this job; tests/jobs/test_domains_order.py holds that rule.
     needs: [gate]
     if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_amazon == 'true' && needs.gate.outputs.early == 'true') || inputs.amazon) }}
     runs-on: ubuntu-24.04
@@ -1020,16 +894,16 @@ jobs:
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
           git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
           git checkout -q --detach FETCH_HEAD
-      - uses: ./.github/actions/python
-      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
-        uses: ./.github/actions/bws-helper
+      - name: Python and the Bitwarden helper
+        uses: ./.github/actions/job-start
         with:
           wait_seconds: "300"
       - id: bws_amazon
-        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 4; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        name: Load the migrated credentials from Bitwarden
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET
@@ -1037,16 +911,7 @@ jobs:
             46fe195b-82e2-416e-8272-b4db015eea12 > NOTION_AMAZON_TOKEN
             53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
             8657d1ed-2cde-4298-bd62-b50301523e01 > GMAIL_OAUTH_CLIENT_ID
-      - id: doppler_bws_amazon
-        if: ${{ steps.bws_amazon.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 5 names read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: GMAIL_OAUTH_CLIENT_SECRET,GMAIL_OAUTH_REFRESH_TOKEN,NOTION_AMAZON_TOKEN,NOTION_JIRA_TOKEN,GMAIL_OAUTH_CLIENT_ID
-          bitwarden: ${{ toJSON(steps.bws_amazon.outputs) }}
-      - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
+      - name: Plain switches from Bitwarden
         uses: ./.github/actions/bws-plain
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
@@ -1054,22 +919,14 @@ jobs:
           live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
       - id: bws_runtime_config
         continue-on-error: true
-        name: Runtime Configuration source ID from Bitwarden for the compare-only read (LIFE-858; read only, an address not a secret; if it fails the step runs exactly as before)
+        name: Runtime Configuration source ID from Bitwarden
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
-      - id: doppler_bws_runtime_config
-        if: ${{ steps.bws_runtime_config.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 1 name read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: V7_RUNTIME_CONFIG_SOURCE_ID
-          bitwarden: ${{ toJSON(steps.bws_runtime_config.outputs) }}
       - id: amazon
         continue-on-error: true
         name: Amazon Orders (Gmail to Notion; archive only after read-back)
@@ -1083,7 +940,7 @@ jobs:
         run: python -m lifeos.run amazon-orders $([ "$LIVE" = "true" ] && echo --live)
       - id: acard
         continue-on-error: true
-        name: Amazon card (reads the canonical orders and, read-only, other stores' shipping mail; writes only when live; a failed sync is shown as DEGRADED)
+        name: Amazon card
         if: ${{ always() }}
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
@@ -1104,10 +961,7 @@ jobs:
         if: ${{ always() && (steps.amazon.outcome == 'failure' || steps.acard.outcome == 'failure') }}
         run: echo "::warning title=Amazon Orders::the Amazon Orders stage failed; the Jobs pipeline is unaffected"
 
-  # LIFE-571: Amazon retention (D139) runs in its OWN job. It reads and trashes Gmail and reads the saved Amazon orders; it never writes the Daily Report page, so it does not belong in the
-  # serial chain of page writers (jira, agenda, bills, amazon, mail, ...). It starts when the amazon job (Orders saved, card written) is over and runs beside the rest of the chain. A failure
-  # is a warning only, exactly as before. Same 30-day rule, same 200-a-run limit, same live switch.
-      - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+      - name: A failed stage step makes this job red after every stage has run
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=amazon::a stage step failed in the amazon job (see the step marked failed above)"; exit 1
   amazon_retention:
@@ -1122,16 +976,16 @@ jobs:
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
           git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
           git checkout -q --detach FETCH_HEAD
-      - uses: ./.github/actions/python
-      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
-        uses: ./.github/actions/bws-helper
+      - name: Python and the Bitwarden helper
+        uses: ./.github/actions/job-start
         with:
           wait_seconds: "300"
       - id: bws_amazon_retention
-        name: Load the migrated credentials from Bitwarden (EDGE-1.3, these 4 plus the 10 store names the interview_mail job already loads (LIFE-906, the checkpoint of what an old mail's read concluded); masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        name: Load the migrated credentials from Bitwarden
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET
@@ -1148,16 +1002,7 @@ jobs:
             192db2d1-be66-4fca-b9b5-b4e900240507 > LIFEOS_ACQ_SSH_JUMP_KEY
             4d0c7449-ed0a-46c1-9c2c-b503015f8d54 > LIFEOS_ACQ_SSH_JUMP_HOST
             82efa413-6b9c-4c5c-b0d2-b503015f8e3d > LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS
-      - id: doppler_bws_amazon_retention
-        if: ${{ steps.bws_amazon_retention.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 14 names read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: GMAIL_OAUTH_CLIENT_SECRET,GMAIL_OAUTH_REFRESH_TOKEN,NOTION_AMAZON_TOKEN,GMAIL_OAUTH_CLIENT_ID,LIFEOS_ACQ_DB_NAME,LIFEOS_ACQ_DB_PASSWORD,LIFEOS_ACQ_DB_USER,LIFEOS_ACQ_SSH_HOST,LIFEOS_ACQ_SSH_KNOWN_HOSTS,LIFEOS_ACQ_SSH_PRIVATE_KEY,LIFEOS_ACQ_SSH_USER,LIFEOS_ACQ_SSH_JUMP_KEY,LIFEOS_ACQ_SSH_JUMP_HOST,LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS
-          bitwarden: ${{ toJSON(steps.bws_amazon_retention.outputs) }}
-      - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
+      - name: Plain switches from Bitwarden
         uses: ./.github/actions/bws-plain
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
@@ -1165,36 +1010,28 @@ jobs:
           live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
       - id: bws_settings
         continue-on-error: true
-        name: Notion token from Bitwarden so this job can read the V7 settings page (LIFE-703; read only; if it fails the GitHub values stay as they are)
+        name: Notion token from Bitwarden so this job can read the V7 settings page
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
             0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
-      - id: doppler_bws_settings
-        if: ${{ steps.bws_settings.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 2 names read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: NOTION_JIRA_TOKEN,V7_RUNTIME_CONFIG_SOURCE_ID
-          bitwarden: ${{ toJSON(steps.bws_settings.outputs) }}
       - id: aretain
         continue-on-error: true
-        name: Amazon retention (D139; mail older than 30 days to the Trash once its order is recorded; dry run unless live; counts only)
+        name: Amazon retention
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_settings.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}
           GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_amazon_retention.outputs.GMAIL_OAUTH_CLIENT_ID }}
           NOTION_AMAZON_DATA_SOURCE_ID: ""
-          RETENTION_LIVE: "true"    # D139: live since Jim read the dry-run counts (Oct 5): mail older than 30 days with a recorded order goes to the Trash, at most 200 a run (Jim approved raising it from 40)
+          RETENTION_LIVE: "true"
           GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_amazon_retention.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
           GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_amazon_retention.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
           NOTION_AMAZON_TOKEN: ${{ steps.bws_amazon_retention.outputs.NOTION_AMAZON_TOKEN }}
-          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_amazon_retention.outputs.LIFEOS_ACQ_DB_NAME }}      # LIFE-906: the checkpoint store; a store that cannot be reached only means every mail is read, as before
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_amazon_retention.outputs.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_amazon_retention.outputs.LIFEOS_ACQ_DB_PASSWORD }}
           LIFEOS_ACQ_DB_USER: ${{ steps.bws_amazon_retention.outputs.LIFEOS_ACQ_DB_USER }}
           LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_amazon_retention.outputs.LIFEOS_ACQ_SSH_HOST }}
@@ -1208,14 +1045,11 @@ jobs:
       - name: Amazon retention warning (does not fail the Jobs run)
         if: ${{ always() && steps.aretain.outcome == 'failure' }}
         run: echo "::warning title=Amazon retention::the Amazon retention stage failed; the Jobs pipeline is unaffected"
-      - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+      - name: A failed stage step makes this job red after every stage has run
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=amazon_retention::a stage step failed in the amazon_retention job (see the step marked failed above)"; exit 1
 
   mail:
-    # MAIL-1.2 (D143): V7 is the sole owner and writer of the Daily Report "Mail Alerts" region (Production Contract v2.15.12). Gmail read-only evidence -> private state row -> the callout.
-    # LIFE-586: it no longer waits for the other writers. Its writes are checked against its own region before they are sent (report_region.ScopedClient), and the cards that compare the Mail
-    # Alerts region (hiring, which digests the whole page) still wait for this job; tests/jobs/test_domains_order.py holds that rule. A failed ingest is a warning and the card shows DEGRADED with the last accepted state.
     needs: [gate]
     if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_mail == 'true' && needs.gate.outputs.early == 'true') || inputs.physical_mail) }}
     runs-on: ubuntu-24.04
@@ -1227,16 +1061,16 @@ jobs:
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
           git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
           git checkout -q --detach FETCH_HEAD
-      - uses: ./.github/actions/python
-      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
-        uses: ./.github/actions/bws-helper
+      - name: Python and the Bitwarden helper
+        uses: ./.github/actions/job-start
         with:
           wait_seconds: "200"
       - id: bws_mail
-        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 14; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        name: Load the migrated credentials from Bitwarden
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET
@@ -1256,22 +1090,13 @@ jobs:
             8657d1ed-2cde-4298-bd62-b50301523e01 > GMAIL_OAUTH_CLIENT_ID
             4d0c7449-ed0a-46c1-9c2c-b503015f8d54 > LIFEOS_ACQ_SSH_JUMP_HOST
             82efa413-6b9c-4c5c-b0d2-b503015f8e3d > LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS
-      - id: doppler_bws_mail
-        if: ${{ steps.bws_mail.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 17 names read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: GMAIL_OAUTH_CLIENT_SECRET,GMAIL_OAUTH_REFRESH_TOKEN,LIFEOS_ACQ_DB_NAME,LIFEOS_ACQ_DB_PASSWORD,LIFEOS_ACQ_DB_USER,LIFEOS_ACQ_SSH_HOST,LIFEOS_ACQ_SSH_KNOWN_HOSTS,LIFEOS_ACQ_SSH_PRIVATE_KEY,LIFEOS_ACQ_SSH_USER,LIFEOS_ACQ_SSH_JUMP_KEY,TAILSCALE_OAUTH_CLIENT_ID,TAILSCALE_OAUTH_CLIENT_SECRET,NOTION_JIRA_TOKEN,NTFY_TOPIC,GMAIL_OAUTH_CLIENT_ID,LIFEOS_ACQ_SSH_JUMP_HOST,LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS
-          bitwarden: ${{ toJSON(steps.bws_mail.outputs) }}
-      - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
+      - name: Plain switches from Bitwarden
         uses: ./.github/actions/bws-plain
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
           live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
-      - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
+      - name: Join the tailnet as the ephemeral tag:v7-runner node
         continue-on-error: true
         uses: ./.github/actions/tailscale
         with:
@@ -1284,7 +1109,7 @@ jobs:
         env:
           GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_mail.outputs.GMAIL_OAUTH_CLIENT_ID }}
           PHYSICAL_MAIL_ANCHOR: ${{ inputs.physical_mail_anchor }}
-          PHYSICAL_MAIL_EXPECT: ""   # LIFE-703: declared empty so the V7 settings page can fill it; the code's own default applies when both are empty
+          PHYSICAL_MAIL_EXPECT: ""
           PHYSICAL_MAIL_TRACKING_ENTRY: ${{ inputs.physical_mail_tracking }}
           GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_mail.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
           GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_mail.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
@@ -1302,7 +1127,7 @@ jobs:
         run: python -m lifeos.run mail-alerts $([ "$LIVE" = "true" ] && echo --live)
       - id: mfile
         continue-on-error: true
-        name: Physical Mail filing (LIFE-149; the vendor's no-reply notices marked read and moved to the Physical Mail label; nothing deleted; read-back; dry run unless live)
+        name: Physical Mail filing
         if: ${{ always() }}
         env:
           GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_mail.outputs.GMAIL_OAUTH_CLIENT_ID }}
@@ -1311,25 +1136,17 @@ jobs:
         run: python -m lifeos.run mail-filing $([ "$LIVE" = "true" ] && echo --live)
       - id: bws_runtime_config
         continue-on-error: true
-        name: Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)
+        name: Runtime Configuration source ID from Bitwarden
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
-      - id: doppler_bws_runtime_config
-        if: ${{ steps.bws_runtime_config.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 1 name read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: V7_RUNTIME_CONFIG_SOURCE_ID
-          bitwarden: ${{ toJSON(steps.bws_runtime_config.outputs) }}
       - id: mcard
         continue-on-error: true
-        name: Mail Alerts card (reads the stored state; writes only the Mail Alerts callout, with read-back; a failed ingest is shown as DEGRADED)
+        name: Mail Alerts card
         if: ${{ always() }}
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
@@ -1355,13 +1172,11 @@ jobs:
       - name: Mail Alerts warning (does not fail the Jobs run)
         if: ${{ always() && (steps.mail.outcome == 'failure' || steps.mcard.outcome == 'failure' || steps.mfile.outcome == 'failure') }}
         run: echo "::warning title=Mail Alerts::the Physical Mail stage failed; the Jobs pipeline is unaffected"
-      - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+      - name: A failed stage step makes this job red after every stage has run
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=mail::a stage step failed in the mail job (see the step marked failed above)"; exit 1
 
   hiring:
-    # HIRE-1.2: V7 is the sole writer of the floating Daily Report "Hiring Pipeline" region (a heading and a four-column table; never a callout). Read-only toward the Ledger, the Notion pages and the Calendar; no mail.
-    # LIFE-613: it no longer waits for every other Daily Report writer. Its writes can reach only its heading, its table and the table's rows (report_region.ScopedClient), checked before each write.
     needs: [gate]
     if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_hiring == 'true' && needs.gate.outputs.early == 'true') || inputs.hiring || inputs.refresh == 'hiring') }}
     runs-on: ubuntu-24.04
@@ -1373,16 +1188,16 @@ jobs:
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
           git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
           git checkout -q --detach FETCH_HEAD
-      - uses: ./.github/actions/python
-      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
-        uses: ./.github/actions/bws-helper
+      - name: Python and the Bitwarden helper
+        uses: ./.github/actions/job-start
         with:
           wait_seconds: "300"
       - id: bws_hiring
-        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 14; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        name: Load the migrated credentials from Bitwarden
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             e697c607-f798-4528-9967-b4db015a6940 > GCAL_SERVICE_ACCOUNT_JSON
@@ -1401,22 +1216,13 @@ jobs:
             53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
             4d0c7449-ed0a-46c1-9c2c-b503015f8d54 > LIFEOS_ACQ_SSH_JUMP_HOST
             82efa413-6b9c-4c5c-b0d2-b503015f8e3d > LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS
-      - id: doppler_bws_hiring
-        if: ${{ steps.bws_hiring.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 16 names read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: GCAL_SERVICE_ACCOUNT_JSON,LIFEOS_ACQ_DB_NAME,LIFEOS_ACQ_DB_PASSWORD,LIFEOS_ACQ_DB_USER,LIFEOS_ACQ_SSH_HOST,LIFEOS_ACQ_SSH_KNOWN_HOSTS,LIFEOS_ACQ_SSH_PRIVATE_KEY,LIFEOS_ACQ_SSH_USER,LIFEOS_ACQ_SSH_JUMP_KEY,TAILSCALE_OAUTH_CLIENT_ID,TAILSCALE_OAUTH_CLIENT_SECRET,NOTION_API_TOKEN,NOTION_INTERVIEW_TOKEN,NOTION_JIRA_TOKEN,LIFEOS_ACQ_SSH_JUMP_HOST,LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS
-          bitwarden: ${{ toJSON(steps.bws_hiring.outputs) }}
-      - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
+      - name: Plain switches from Bitwarden
         uses: ./.github/actions/bws-plain
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
           live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
-      - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
+      - name: Join the tailnet as the ephemeral tag:v7-runner node
         continue-on-error: true
         uses: ./.github/actions/tailscale
         with:
@@ -1425,25 +1231,17 @@ jobs:
           tags: tag:v7-runner
       - id: bws_runtime_config
         continue-on-error: true
-        name: Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)
+        name: Runtime Configuration source ID from Bitwarden
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
-      - id: doppler_bws_runtime_config
-        if: ${{ steps.bws_runtime_config.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 1 name read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: V7_RUNTIME_CONFIG_SOURCE_ID
-          bitwarden: ${{ toJSON(steps.bws_runtime_config.outputs) }}
       - id: hiring
         continue-on-error: true
-        name: Hiring Pipeline (Ledger, Notion pages and Calendar to the private state and the floating region; read-back and whole-page proof; a failed source is DEGRADED)
+        name: Hiring Pipeline
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
@@ -1452,8 +1250,8 @@ jobs:
           HIRING_OUTCOME_STALE_HOURS: ${{ inputs.hiring_outcome_stale_hours }}
           HIRING_STATUS_BLOCK_ID: ""
           HIRING_TABLE_BLOCK_ID: ""
-          V7_CLOSE_BASE_URL: ""          # D198 S3: the private Close origin; unset, the Notes cell has no Close link
-          HIRING_AUTO_CLOSE: ""              # lifeos/platform/switches.json decides unless this repository variable says "off" (Jim's kill switch) or "on"
+          V7_CLOSE_BASE_URL: ""
+          HIRING_AUTO_CLOSE: ""
           JIRA_CARD_BLOCK_ID: ""
           GCAL_CALENDAR_ID: ""
           GCAL_SERVICE_ACCOUNT_JSON: ${{ steps.bws_hiring.outputs.GCAL_SERVICE_ACCOUNT_JSON }}
@@ -1474,13 +1272,11 @@ jobs:
       - name: Hiring Pipeline warning (does not fail the Jobs run)
         if: ${{ always() && steps.hiring.outcome == 'failure' }}
         run: echo "::warning title=Hiring Pipeline::the Hiring Pipeline stage failed; the region keeps its last accepted content and the Jobs pipeline is unaffected"
-      - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+      - name: A failed stage step makes this job red after every stage has run
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=hiring::a stage step failed in the hiring job (see the step marked failed above)"; exit 1
 
   megibow:
-    # D134: MegIBOW is its own job. It reads sent mail and calendars (read only) and writes only its one Notion block, its review list and two tiny private tables; a failure is a
-    # warning that never touches another card or the Jobs run, and a failed source leaves the last good table in place and says DEGRADED.
     needs: [gate]
     if: ${{ !cancelled() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_megibow == 'true' && needs.gate.outputs.late == 'true') || inputs.megibow) }}
     runs-on: ubuntu-24.04
@@ -1492,16 +1288,16 @@ jobs:
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
           git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
           git checkout -q --detach FETCH_HEAD
-      - uses: ./.github/actions/python
-      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
-        uses: ./.github/actions/bws-helper
+      - name: Python and the Bitwarden helper
+        uses: ./.github/actions/job-start
         with:
           wait_seconds: "400"
       - id: bws_megibow
-        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 15; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        name: Load the migrated credentials from Bitwarden
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             e697c607-f798-4528-9967-b4db015a6940 > GCAL_SERVICE_ACCOUNT_JSON
@@ -1523,22 +1319,13 @@ jobs:
             2b2c73a9-7a1e-44b9-95f0-b50301509b09 > OUTLOOK_CLIENT_ID
             4d0c7449-ed0a-46c1-9c2c-b503015f8d54 > LIFEOS_ACQ_SSH_JUMP_HOST
             82efa413-6b9c-4c5c-b0d2-b503015f8e3d > LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS
-      - id: doppler_bws_megibow
-        if: ${{ steps.bws_megibow.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 19 names read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: GCAL_SERVICE_ACCOUNT_JSON,GMAIL_OAUTH_CLIENT_SECRET,GMAIL_OAUTH_REFRESH_TOKEN,LIFEOS_ACQ_DB_NAME,LIFEOS_ACQ_DB_PASSWORD,LIFEOS_ACQ_DB_USER,LIFEOS_ACQ_SSH_HOST,LIFEOS_ACQ_SSH_KNOWN_HOSTS,LIFEOS_ACQ_SSH_PRIVATE_KEY,LIFEOS_ACQ_SSH_USER,LIFEOS_ACQ_SSH_JUMP_KEY,TAILSCALE_OAUTH_CLIENT_ID,TAILSCALE_OAUTH_CLIENT_SECRET,NOTION_JIRA_TOKEN,NTFY_TOPIC,GMAIL_OAUTH_CLIENT_ID,OUTLOOK_CLIENT_ID,LIFEOS_ACQ_SSH_JUMP_HOST,LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS
-          bitwarden: ${{ toJSON(steps.bws_megibow.outputs) }}
-      - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
+      - name: Plain switches from Bitwarden
         uses: ./.github/actions/bws-plain
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
           live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
-      - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
+      - name: Join the tailnet as the ephemeral tag:v7-runner node
         continue-on-error: true
         uses: ./.github/actions/tailscale
         with:
@@ -1547,25 +1334,17 @@ jobs:
           tags: tag:v7-runner
       - id: bws_runtime_config
         continue-on-error: true
-        name: Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)
+        name: Runtime Configuration source ID from Bitwarden
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
-      - id: doppler_bws_runtime_config
-        if: ${{ steps.bws_runtime_config.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 1 name read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: V7_RUNTIME_CONFIG_SOURCE_ID
-          bitwarden: ${{ toJSON(steps.bws_runtime_config.outputs) }}
       - id: megibow
         continue-on-error: true
-        name: MegIBOW (Gmail, Outlook and calendars to the Notion table; counts only; writes only when live; a failed source is DEGRADED)
+        name: MegIBOW (Gmail, Outlook and calendars to the Notion table; counts only; writes
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           LIFEOS_NOTION_IDS: ""
@@ -1573,8 +1352,8 @@ jobs:
           OUTLOOK_CLIENT_ID: ${{ steps.bws_megibow.outputs.OUTLOOK_CLIENT_ID }}
           GCAL_CALENDAR_ID: ""
           MEGIBOW_BLOCK_ID: ""
-          MEGIBOW_REVIEW_DB_ID: ""   # LIFE-703: declared empty so the V7 settings page can fill it; the code's own default applies when both are empty
-          MEGIBOW_EXCLUDED_DOMAINS: ""   # LIFE-703: declared empty so the V7 settings page can fill it; the code's own default applies when both are empty
+          MEGIBOW_REVIEW_DB_ID: ""
+          MEGIBOW_EXCLUDED_DOMAINS: ""
           GCAL_SERVICE_ACCOUNT_JSON: ${{ steps.bws_megibow.outputs.GCAL_SERVICE_ACCOUNT_JSON }}
           GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_megibow.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
           GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_megibow.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
@@ -1594,14 +1373,11 @@ jobs:
       - name: MegIBOW warning (does not fail the Jobs run)
         if: ${{ always() && steps.megibow.outcome == 'failure' }}
         run: echo "::warning title=MegIBOW::the MegIBOW stage failed or a source was unread; the table shows DEGRADED and the Jobs pipeline is unaffected"
-      - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+      - name: A failed stage step makes this job red after every stage has run
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=megibow::a stage step failed in the megibow job (see the step marked failed above)"; exit 1
 
   dcc:
-    # D175: V7 writes the Daily Command Center callout (it was the ChatGPT task's, which could only edit page markdown). It runs after EVERY other Daily Report writer, so no card changes while it reads
-    # or writes, reads only the first lines the cards already carry, writes only its own region and proves every other V7 region unchanged around the write. A failure is a warning.
-    # A mail-only manual run (physical_mail) also refreshes this job, so the Command Center never shows the Mail Alerts source it had before the run (LIFE-95).
     needs: [jira, agenda, bills, amazon, mail, hiring, imessage, gate]
     if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_dcc == 'true' && needs.gate.outputs.early == 'true') || inputs.dcc || inputs.physical_mail) }}
     runs-on: ubuntu-24.04
@@ -1617,30 +1393,21 @@ jobs:
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
           git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
           git checkout -q --detach FETCH_HEAD
-      - uses: ./.github/actions/python
-      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
-        uses: ./.github/actions/bws-helper
+      - name: Python and the Bitwarden helper
+        uses: ./.github/actions/job-start
         with:
           wait_seconds: "200"
       - id: bws_dcc
-        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 2; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        name: Load the migrated credentials from Bitwarden
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
             b78d1476-663e-496d-9bc4-b4e1003b61b0 > DCC_CARD_BLOCK_ID
-      - id: doppler_bws_dcc
-        if: ${{ steps.bws_dcc.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 2 names read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: NOTION_JIRA_TOKEN,DCC_CARD_BLOCK_ID
-          bitwarden: ${{ toJSON(steps.bws_dcc.outputs) }}
-      - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
+      - name: Plain switches from Bitwarden
         uses: ./.github/actions/bws-plain
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
@@ -1648,25 +1415,17 @@ jobs:
           live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
       - id: bws_runtime_config
         continue-on-error: true
-        name: Runtime Configuration source ID from Bitwarden for the archive step (LIFE-933; read only, an address not a secret; if it fails the archive step finds no page and writes nothing)
+        name: Runtime Configuration source ID from Bitwarden
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
-      - id: doppler_bws_runtime_config
-        if: ${{ steps.bws_runtime_config.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 1 name read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: V7_RUNTIME_CONFIG_SOURCE_ID
-          bitwarden: ${{ toJSON(steps.bws_runtime_config.outputs) }}
       - id: dcccard
         continue-on-error: true
-        name: Daily Command Center (rules over the cards' first lines; writes only its own callout when live; every other region proven unchanged)
+        name: Daily Command Center
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           GITHUB_TOKEN: ${{ github.token }}
@@ -1681,7 +1440,7 @@ jobs:
         run: python -m lifeos.run dcc-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - id: archive
         continue-on-error: true
-        name: Weekly Reports Archive (LIFE-933; the first run at or after 6 PM CT freezes one static Daily Report snapshot into the week's archive page and reads it back; Sunday also freezes the Notes, Monday resets them only after the snapshot re-verifies; the existing Notion token only)
+        name: Weekly Reports Archive
         env:
           GITHUB_TOKEN: ${{ github.token }}
           DCC_CARD_BLOCK_ID: ${{ steps.bws_dcc.outputs.DCC_CARD_BLOCK_ID }}
@@ -1696,14 +1455,11 @@ jobs:
       - name: Daily Command Center warning (does not fail the Jobs run)
         if: ${{ always() && steps.dcccard.outcome == 'failure' }}
         run: echo "::warning title=Daily Command Center::the Command Center could not be written; its callout keeps the last text and the Jobs pipeline is unaffected"
-      - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+      - name: A failed stage step makes this job red after every stage has run
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=dcc::a stage step failed in the dcc job (see the step marked failed above)"; exit 1
 
   weekly_review:
-    # LIFE-945 (Jim, Nov 24 2026): the Weekly LIFE OS Review. It runs after the dcc job on the same ticks; the stage itself decides whether anything is due (the first run at or after Friday 10 PM CT makes that week's one row)
-    # and does nothing unless the WEEKLY_REVIEW setting is on. Its own job because the Drive lane reads through Oracle: it joins the tailnet as the ephemeral tag:v7-runner node (the policy admits it only to Oracle TCP 47341)
-    # with the credentials the iMessage job already uses, and holds the Notion token the other cards use; nothing new is stored or issued. A failure is a warning.
     needs: [dcc, gate]
     if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_weekly_review == 'true' && needs.gate.outputs.early == 'true') || inputs.dcc) }}
     runs-on: ubuntu-24.04
@@ -1718,32 +1474,23 @@ jobs:
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
           git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
           git checkout -q --detach FETCH_HEAD
-      - uses: ./.github/actions/python
-      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
-        uses: ./.github/actions/bws-helper
+      - name: Python and the Bitwarden helper
+        uses: ./.github/actions/job-start
         with:
           wait_seconds: "200"
       - id: bws_weekly_review
-        name: Load the Weekly Review credentials from Bitwarden (exactly these 4, all already used by other jobs; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        name: Load the Weekly Review credentials from Bitwarden
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
             454e12df-637f-4f65-9ec1-b4e30052942f > TAILSCALE_OAUTH_CLIENT_ID
             e54f0a84-84c3-47d8-8b5b-b4e30052d6e9 > TAILSCALE_OAUTH_CLIENT_SECRET
             6590208b-506d-4238-ab10-b4e30051b25f > IMESSAGE_ALERTS_HOST
-      - id: doppler_bws_weekly_review
-        if: ${{ steps.bws_weekly_review.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 4 names read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: NOTION_JIRA_TOKEN,TAILSCALE_OAUTH_CLIENT_ID,TAILSCALE_OAUTH_CLIENT_SECRET,IMESSAGE_ALERTS_HOST
-          bitwarden: ${{ toJSON(steps.bws_weekly_review.outputs) }}
-      - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
+      - name: Plain switches from Bitwarden
         uses: ./.github/actions/bws-plain
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
@@ -1751,23 +1498,15 @@ jobs:
           live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
       - id: bws_runtime_config
         continue-on-error: true
-        name: Runtime Configuration source ID from Bitwarden for the settings read (LIFE-859; read only, an address not a secret; if it fails the stage finds no settings and writes nothing)
+        name: Runtime Configuration source ID from Bitwarden
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
-      - id: doppler_bws_runtime_config
-        if: ${{ steps.bws_runtime_config.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 1 name read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: V7_RUNTIME_CONFIG_SOURCE_ID
-          bitwarden: ${{ toJSON(steps.bws_runtime_config.outputs) }}
-      - name: Join the tailnet as an ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 47341; a failed join only means the Drive lane shows Degraded)
+      - name: Join the tailnet as an ephemeral tag:v7-runner node
         continue-on-error: true
         uses: ./.github/actions/tailscale
         with:
@@ -1776,7 +1515,7 @@ jobs:
           tags: tag:v7-runner
       - id: weeklyreview
         continue-on-error: true
-        name: Weekly LIFE OS Review (LIFE-945; off unless WEEKLY_REVIEW is on; the first run at or after Friday 10 PM CT makes that week's one Weekly Reviews row from six read-only lanes, sets Status Generated, moves Current and the one pointer line; Reviewed and Applied are never written)
+        name: Weekly LIFE OS Review
         env:
           GITHUB_TOKEN: ${{ github.token }}
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
@@ -1791,15 +1530,10 @@ jobs:
       - name: Weekly LIFE OS Review warning (does not fail the Jobs run)
         if: ${{ always() && steps.weeklyreview.outcome == 'failure' }}
         run: echo "::warning title=Weekly LIFE OS Review::the weekly row could not be written or read back; the week's row is made by the next run inside 48 hours"
-      - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+      - name: A failed stage step makes this job red after every stage has run
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=weekly_review::a stage step failed in the weekly_review job (see the step marked failed above)"; exit 1
   recruiters:
-    # RECR-1.2 runs on every tick (Jim, Oct 12; it had been manual-only and the Recruiters table stopped updating on Oct 7). It only READS Gmail and Outlook and writes the existing
-    # Recruiters data source (create only after absence is proven, read back). A failure is a warning and never touches another card or the Jobs run.
-    # LIFE-680: it reads the whole Daily Report page (Recruiter Outreach and job-page outreach prove nothing else changed), and the Jira card removes and rewrites ~16 blocks at the same moment, so the read got Notion 404s
-    # every few hours. It takes its turn after the Jira card (always(): a red Jira job never stops it); a manual Recruiters run has no Jira job and starts at once.
-    # LIFE-688 (Jim, Nov 15 2026: option B): hiring and recruiters are the two jobs that read the whole Daily Report page; they take turns (recruiters after hiring), each keeping its own if: and always(), so a red one never stops the other.
     needs: [gate, jira, hiring]
     if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_recruiters == 'true' && needs.gate.outputs.early == 'true') || inputs.recruiters || inputs.refresh == 'recruiters') }}
     runs-on: ubuntu-24.04
@@ -1811,16 +1545,16 @@ jobs:
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
           git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
           git checkout -q --detach FETCH_HEAD
-      - uses: ./.github/actions/python
-      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
-        uses: ./.github/actions/bws-helper
+      - name: Python and the Bitwarden helper
+        uses: ./.github/actions/job-start
         with:
           wait_seconds: "600"
       - id: bws_recruiters
-        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 15; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        name: Load the migrated credentials from Bitwarden
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET
@@ -1842,22 +1576,13 @@ jobs:
             2b2c73a9-7a1e-44b9-95f0-b50301509b09 > OUTLOOK_CLIENT_ID
             4d0c7449-ed0a-46c1-9c2c-b503015f8d54 > LIFEOS_ACQ_SSH_JUMP_HOST
             82efa413-6b9c-4c5c-b0d2-b503015f8e3d > LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS
-      - id: doppler_bws_recruiters
-        if: ${{ steps.bws_recruiters.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 19 names read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: GMAIL_OAUTH_CLIENT_SECRET,GMAIL_OAUTH_REFRESH_TOKEN,LIFEOS_ACQ_DB_NAME,LIFEOS_ACQ_DB_PASSWORD,LIFEOS_ACQ_DB_USER,LIFEOS_ACQ_SSH_HOST,LIFEOS_ACQ_SSH_KNOWN_HOSTS,LIFEOS_ACQ_SSH_PRIVATE_KEY,LIFEOS_ACQ_SSH_USER,LIFEOS_ACQ_SSH_JUMP_KEY,TAILSCALE_OAUTH_CLIENT_ID,TAILSCALE_OAUTH_CLIENT_SECRET,NOTION_RECRUITERS_TOKEN,NOTION_API_TOKEN,NOTION_JIRA_TOKEN,GMAIL_OAUTH_CLIENT_ID,OUTLOOK_CLIENT_ID,LIFEOS_ACQ_SSH_JUMP_HOST,LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS
-          bitwarden: ${{ toJSON(steps.bws_recruiters.outputs) }}
-      - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
+      - name: Plain switches from Bitwarden
         uses: ./.github/actions/bws-plain
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
           live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
-      - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
+      - name: Join the tailnet as the ephemeral tag:v7-runner node
         continue-on-error: true
         uses: ./.github/actions/tailscale
         with:
@@ -1866,29 +1591,21 @@ jobs:
           tags: tag:v7-runner
       - id: bws_runtime_config
         continue-on-error: true
-        name: Runtime Configuration source ID from Bitwarden for the compare-only read (LIFE-858; read only, an address not a secret; if it fails the step runs exactly as before)
+        name: Runtime Configuration source ID from Bitwarden
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
-      - id: doppler_bws_runtime_config
-        if: ${{ steps.bws_runtime_config.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 1 name read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: V7_RUNTIME_CONFIG_SOURCE_ID
-          bitwarden: ${{ toJSON(steps.bws_runtime_config.outputs) }}
       - id: recruiters
-        if: ${{ inputs.refresh != 'recruiters' }}       # a Close screen refresh redraws only the Recruiter Outreach table
+        if: ${{ inputs.refresh != 'recruiters' }}
         continue-on-error: true
         name: Recruiters (read-only mail to the Recruiters data source; counts only)
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
-          DOMAINS_PHASE: ${{ inputs.phase }}      # LIFE-775: the early run of a tick plans its mail scan as a tick does
+          DOMAINS_PHASE: ${{ inputs.phase }}
           GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_recruiters.outputs.GMAIL_OAUTH_CLIENT_ID }}
           OUTLOOK_CLIENT_ID: ${{ steps.bws_recruiters.outputs.OUTLOOK_CLIENT_ID }}
           NOTION_RECRUITERS_DATA_SOURCE_ID: ""
@@ -1908,44 +1625,41 @@ jobs:
         run: python -m lifeos.run recruiters --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - id: routreach
         continue-on-error: true
-        name: Recruiter Outreach (LIFE-20; the Daily Report's one Recruiter Outreach table from the Recruiters data source, after the Recruiters stage; writes only when live AND the repo variable RECRUITER_OUTREACH is on; read-back and whole-page proof)
+        name: Recruiter Outreach
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
-          RECRUITERS_STAGE_OUTCOME: ${{ steps.recruiters.outcome }}        # 'skipped' only on a Close screen refresh: the rows are redrawn and the heading says Redrawn
-          RECRUITERS_SCAN: ${{ steps.recruiters.outputs.scan_kind }}        # LIFE-610: which mail read the rows come from
+          RECRUITERS_STAGE_OUTCOME: ${{ steps.recruiters.outcome }}
+          RECRUITERS_SCAN: ${{ steps.recruiters.outputs.scan_kind }}
           RECRUITERS_SCAN_AT: ${{ steps.recruiters.outputs.scan_at }}
           RECRUITER_OUTREACH: ""
           NOTION_RECRUITERS_DATA_SOURCE_ID: ""
           HIRING_TABLE_BLOCK_ID: ""
-          RECRUITER_COUNT_BLOCK_ID: ""          # LIFE-973: the callout above the live view; the gray count line is written there
-          V7_CLOSE_BASE_URL: ""          # the private Close origin: each row gets its one action link (Close, or Record reply or referral); unset, no link
+          RECRUITER_COUNT_BLOCK_ID: ""
+          V7_CLOSE_BASE_URL: ""
           NOTION_RECRUITERS_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_RECRUITERS_TOKEN }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_JIRA_TOKEN }}
         run: python -m lifeos.run recruiter-outreach --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - id: jpoutreach
-        if: ${{ inputs.refresh != 'recruiters' }}       # a Close screen refresh redraws only the Recruiter Outreach table
+        if: ${{ inputs.refresh != 'recruiters' }}
         continue-on-error: true
-        name: Job-page outreach (LIFE-10; the outreach table on each Job Ledger job page from Mark as Sent; writes only when live AND the repo variable JOB_PAGE_OUTREACH is on; page proof and read-back)
+        name: Job-page outreach
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
           NOTION_RECRUITERS_DATA_SOURCE_ID: ""
           JOB_PAGE_OUTREACH: ""
-          V7_CLOSE_BASE_URL: ""          # the private Close origin: each open conversation gets a "Record reply or referral" link; unset, no link
+          V7_CLOSE_BASE_URL: ""
           NOTION_API_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_API_TOKEN }}
           NOTION_RECRUITERS_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_RECRUITERS_TOKEN }}
         run: python -m lifeos.run job-page-outreach --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - name: Recruiters warning (does not fail the Jobs run)
         if: ${{ always() && (steps.recruiters.outcome == 'failure' || steps.routreach.outcome == 'failure' || steps.jpoutreach.outcome == 'failure') }}
         run: echo "::warning title=Recruiters::the Recruiters stage, the Recruiter Outreach table or the job-page outreach tables failed or a source was unread; the Jobs pipeline is unaffected"
-      - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+      - name: A failed stage step makes this job red after every stage has run
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=recruiters::a stage step failed in the recruiters job (see the step marked failed above)"; exit 1
 
   network_surface:
-    # LIFE-856 change 4 (Jim, Nov 25 2026, 4:36 PM CT: "856 move NL CF"): Step 7c Network Leads used to run after the tick inside the hourly `finish` job, so the hourly run, and with it the whole chain, waited for it (p50 109 s).
-    # It reads the Ledger pages and the store the tick has finished writing; nothing in the tick or after it reads what it writes (its own v7_network_* tables and the owned block on each page), so it runs here, in the after-tick run,
-    # beside the other late jobs. One run per tick (pipeline gate: only when the tick's `finish` job ran), same step, same limit, same secrets.
     needs: [gate]
     if: ${{ !cancelled() && needs.gate.result != 'failure' && needs.gate.outputs.late == 'true' && needs.gate.outputs.tick == 'true' && needs.gate.outputs.pipeline == 'true' && needs.gate.outputs.due_network_surface == 'true' }}
     runs-on: ubuntu-24.04
@@ -1957,16 +1671,16 @@ jobs:
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
           git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
           git checkout -q --detach FETCH_HEAD
-      - uses: ./.github/actions/python
-      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
-        uses: ./.github/actions/bws-helper
+      - name: Python and the Bitwarden helper
+        uses: ./.github/actions/job-start
         with:
           wait_seconds: "400"
       - id: bws_network_surface
-        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 18; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        name: Load the migrated credentials from Bitwarden
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             3e264d79-3af4-4f2a-a86a-b4db015a68de > FIT_PROFILE_EXTRA_JSON
@@ -1987,22 +1701,13 @@ jobs:
             f45f29e2-acbc-4be7-9749-b4db015f0817 > TINYFISH_API_KEY
             454e12df-637f-4f65-9ec1-b4e30052942f > TAILSCALE_OAUTH_CLIENT_ID
             e54f0a84-84c3-47d8-8b5b-b4e30052d6e9 > TAILSCALE_OAUTH_CLIENT_SECRET
-      - id: doppler_bws_network_surface
-        if: ${{ steps.bws_network_surface.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 18 names read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: FIT_PROFILE_EXTRA_JSON,FIT_PROFILE_JSON,JOBRIGHT_EMAIL,JOBRIGHT_PASSWORD,LIFEOS_ACQ_DB_NAME,LIFEOS_ACQ_DB_PASSWORD,LIFEOS_ACQ_DB_USER,LIFEOS_ACQ_SSH_HOST,LIFEOS_ACQ_SSH_JUMP_KEY,LIFEOS_ACQ_SSH_JUMP_HOST,LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS,LIFEOS_ACQ_SSH_KNOWN_HOSTS,LIFEOS_ACQ_SSH_PRIVATE_KEY,LIFEOS_ACQ_SSH_USER,NOTION_API_TOKEN,TINYFISH_API_KEY,TAILSCALE_OAUTH_CLIENT_ID,TAILSCALE_OAUTH_CLIENT_SECRET
-          bitwarden: ${{ toJSON(steps.bws_network_surface.outputs) }}
-      - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
+      - name: Plain switches from Bitwarden
         uses: ./.github/actions/bws-plain
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
           live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
-      - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback and the Cloud Fit request; the policy admits it only to Oracle; a failed join only means no fallback)
+      - name: Join the tailnet as the ephemeral tag:v7-runner node
         continue-on-error: true
         uses: ./.github/actions/tailscale
         with:
@@ -2011,28 +1716,20 @@ jobs:
           tags: tag:v7-runner
       - id: bws_runtime_config
         continue-on-error: true
-        name: Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)
+        name: Runtime Configuration source ID from Bitwarden
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
-      - id: doppler_bws_runtime_config
-        if: ${{ steps.bws_runtime_config.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 1 name read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: V7_RUNTIME_CONFIG_SOURCE_ID
-          bitwarden: ${{ toJSON(steps.bws_runtime_config.outputs) }}
       - id: network_surface
         continue-on-error: true
-        name: Step 7c - Network Leads blocks on Ledger pages (NET-2.3; 41 pages a run, rotating; moved from the hourly finish job by LIFE-856, it runs beside the after-tick domains work; a failure fails this job and the report job pushes once)
+        name: Step 7c - Network Leads blocks on Ledger pages
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
-          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""   # LIFE-856: the old hourly.yml declared these three at workflow level, so the settings source filled them for every step; a domains step must declare them itself
+          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
           HIRING_PIPELINE_PAGE_ID: ""
           V7_FIT_GATE: ""
           FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_network_surface.outputs.FIT_PROFILE_EXTRA_JSON }}
@@ -2051,20 +1748,16 @@ jobs:
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_network_surface.outputs.LIFEOS_ACQ_SSH_USER }}
           NOTION_API_TOKEN: ${{ steps.bws_network_surface.outputs.NOTION_API_TOKEN }}
           TINYFISH_API_KEY: ${{ steps.bws_network_surface.outputs.TINYFISH_API_KEY }}
-          V7_CLOSE_BASE_URL: ""          # the private Close origin: the Network Leads block gets a Mark as Sent link for its own job; unset, the block is unchanged
-          NETWORK_SURFACE_SKIP: ""   # LIFE-703: declared empty so the V7 settings page can fill it; the code's own default applies when both are empty
+          V7_CLOSE_BASE_URL: ""
+          NETWORK_SURFACE_SKIP: ""
         run: python -m lifeos.run network-surface --limit 82 $([ "$LIVE" = "true" ] && echo --live)
       - name: Network surface warning (the annotation; a failed step fails this job)
         if: ${{ always() && steps.network_surface.outcome == 'failure' }}
         run: echo "::warning title=Network surface::NETWORK_SURFACE_DEGRADED or failed; Ledger Network Leads blocks may be stale, the other stages are unaffected. See the step log for the counts."
-      - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+      - name: A failed stage step makes this job red after every stage has run
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=network_surface::a stage step failed in the network_surface job (see the step marked failed above)"; exit 1
   fit_cloud_backlog:
-    # LIFE-856 change 4 (Jim, Nov 25 2026, 4:36 PM CT: "856 move NL CF"): the scheduled Cloud Fit backlog batch (Step 6a2) used to run after the tick inside the hourly `finish` job, so the hourly run and the whole chain waited for it
-    # (p50 58 s, up to 45 minutes when the backlog is large). It asks Oracle's one fit path about published jobs the tick's single canary call never reached and writes the visible Fit through the same promotion; the tick only
-    # reads those answers on its NEXT run, and nothing after it in `finish` reads them, so it runs here, after the tick, beside the other late jobs. The :55 end and the 58-minute arithmetic are unchanged. The manual `cloud_backlog`
-    # dispatch of hourly.yml keeps its own step there.
     needs: [gate]
     if: ${{ !cancelled() && needs.gate.result != 'failure' && needs.gate.outputs.late == 'true' && needs.gate.outputs.tick == 'true' && needs.gate.outputs.pipeline == 'true' && needs.gate.outputs.due_fit_cloud_backlog == 'true' }}
     runs-on: ubuntu-24.04
@@ -2076,16 +1769,16 @@ jobs:
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
           git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
           git checkout -q --detach FETCH_HEAD
-      - uses: ./.github/actions/python
-      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
-        uses: ./.github/actions/bws-helper
+      - name: Python and the Bitwarden helper
+        uses: ./.github/actions/job-start
         with:
           wait_seconds: "400"
       - id: bws_fit_cloud_backlog
-        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 16; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        name: Load the migrated credentials from Bitwarden
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             3e264d79-3af4-4f2a-a86a-b4db015a68de > FIT_PROFILE_EXTRA_JSON
@@ -2104,22 +1797,13 @@ jobs:
             6590208b-506d-4238-ab10-b4e30051b25f > IMESSAGE_ALERTS_HOST
             454e12df-637f-4f65-9ec1-b4e30052942f > TAILSCALE_OAUTH_CLIENT_ID
             e54f0a84-84c3-47d8-8b5b-b4e30052d6e9 > TAILSCALE_OAUTH_CLIENT_SECRET
-      - id: doppler_bws_fit_cloud_backlog
-        if: ${{ steps.bws_fit_cloud_backlog.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 16 names read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: FIT_PROFILE_EXTRA_JSON,FIT_PROFILE_JSON,LIFEOS_ACQ_DB_NAME,LIFEOS_ACQ_DB_PASSWORD,LIFEOS_ACQ_DB_USER,LIFEOS_ACQ_SSH_HOST,LIFEOS_ACQ_SSH_JUMP_KEY,LIFEOS_ACQ_SSH_JUMP_HOST,LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS,LIFEOS_ACQ_SSH_KNOWN_HOSTS,LIFEOS_ACQ_SSH_PRIVATE_KEY,LIFEOS_ACQ_SSH_USER,NOTION_API_TOKEN,IMESSAGE_ALERTS_HOST,TAILSCALE_OAUTH_CLIENT_ID,TAILSCALE_OAUTH_CLIENT_SECRET
-          bitwarden: ${{ toJSON(steps.bws_fit_cloud_backlog.outputs) }}
-      - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
+      - name: Plain switches from Bitwarden
         uses: ./.github/actions/bws-plain
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,V7_CLOUD_FIT,V7_CLOUD_FIT_SCHEDULED,V7_CLOUD_FIT_BACKLOG_BUDGET,V7_CLOUD_FIT_BACKLOG_MAX,V7_CLOUD_FIT_PARALLEL,V7_CLOUD_FIT_BACKLOG_PAGE,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
           live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
-      - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback and the Cloud Fit request; the policy admits it only to Oracle; a failed join only means no fallback)
+      - name: Join the tailnet as the ephemeral tag:v7-runner node
         continue-on-error: true
         uses: ./.github/actions/tailscale
         with:
@@ -2128,28 +1812,20 @@ jobs:
           tags: tag:v7-runner
       - id: bws_runtime_config
         continue-on-error: true
-        name: Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)
+        name: Runtime Configuration source ID from Bitwarden
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
-      - id: doppler_bws_runtime_config
-        if: ${{ steps.bws_runtime_config.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 1 name read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: V7_RUNTIME_CONFIG_SOURCE_ID
-          bitwarden: ${{ toJSON(steps.bws_runtime_config.outputs) }}
       - id: fit_cloud_backlog
         continue-on-error: true
-        name: Step 6a2 - Cloud Fit backlog batch (LIFE-41 D219; after each tick when V7_CLOUD_FIT_SCHEDULED is set; moved from the hourly finish job, LIFE-856; one Oracle request at a time)
-        if: ${{ env.V7_CLOUD_FIT_SCHEDULED && env.V7_CLOUD_FIT_SCHEDULED != '0' }}   # LIFE-41 (Jim, Oct 19 2026): one call a tick is too few; after the tick, the strongest never-asked jobs get the Cloud Fit call, bounded
+        name: Step 6a2 - Cloud Fit backlog batch
+        if: ${{ env.V7_CLOUD_FIT_SCHEDULED && env.V7_CLOUD_FIT_SCHEDULED != '0' }}
         env:
-          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""   # LIFE-856: the old hourly.yml declared these three at workflow level, so the settings source filled them for every step; a domains step must declare them itself
+          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
           HIRING_PIPELINE_PAGE_ID: ""
           V7_FIT_GATE: ""
           PIPELINE: "true"
@@ -2169,11 +1845,11 @@ jobs:
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_fit_cloud_backlog.outputs.LIFEOS_ACQ_SSH_USER }}
           NOTION_API_TOKEN: ${{ steps.bws_fit_cloud_backlog.outputs.NOTION_API_TOKEN }}
           IMESSAGE_ALERTS_HOST: ${{ steps.bws_fit_cloud_backlog.outputs.IMESSAGE_ALERTS_HOST }}
-          V7_CLOUD_FIT_BACKLOG_MAX: ${{ env.V7_CLOUD_FIT_SCHEDULED || '0' }}     # a tick: the scheduled count itself; 0 (unset) asks nothing
-          V7_CLOUD_FIT_BACKLOG_BUDGET: ""     # a tick: sized below to the time left in the hour
-          V7_CLOUD_FIT_BACKLOG_PAGE: ""     # LIFE-41 G6: Jim's one preapproved Ledger page, manual runs only; a tick never narrows to it
+          V7_CLOUD_FIT_BACKLOG_MAX: ${{ env.V7_CLOUD_FIT_SCHEDULED || '0' }}
+          V7_CLOUD_FIT_BACKLOG_BUDGET: ""
+          V7_CLOUD_FIT_BACKLOG_PAGE: ""
           V7_CLOUD_FIT_PROFILE_REF: ""
-          V7_CLOUD_FIT_PARALLEL: ${{ env.V7_CLOUD_FIT_PARALLEL || '1' }}     # D232: calls in flight at once, one per Oracle lane (1-3); unset is 1, one at a time
+          V7_CLOUD_FIT_PARALLEL: ${{ env.V7_CLOUD_FIT_PARALLEL || '1' }}
         run: |
           # LIFE-41 (Jim, Oct 20 2026: "fill every hour"): the scheduled batch runs until about :55, so the next tick never waits, never past the
           # code's 45-minute batch cap (D238), and never past this job's 58 minutes (5 minutes kept for the steps after it). Too little time: skipped, not failed.
@@ -2183,15 +1859,10 @@ jobs:
           if [ "$budget" -lt 300 ]; then echo "fit-cloud-backlog: skipped this hour (${budget}s left before :55 or the job limit)"; exit 0; fi
           export V7_CLOUD_FIT_BACKLOG_BUDGET=$budget
           python -m lifeos.run fit-cloud-backlog --limit "$CLOUD_BACKLOG" $([ "$LIVE" = "true" ] && echo --live)
-      - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+      - name: A failed stage step makes this job red after every stage has run
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=fit_cloud_backlog::a stage step failed in the fit_cloud_backlog job (see the step marked failed above)"; exit 1
   last_seen_purge:
-    # LIFE-856 change 5 (Jim, Nov 25 2026, 5:48 PM CT: "any step that the dependency check shows doesn't feed later work may move without asking"): Step 8 (Last Seen sync) and Step 8b (retention purge) used to run after the
-    # tick inside the hourly `finish` job (about 14 s and 10 s p50), so the hourly run, and the chain, waited for them. Dependency check: the Last Seen sync reads PUBLISHED v7_jobs rows the tick has finished writing and
-    # writes only the Notion Last Seen property and v7_jobs.notion_synced_at / ghost_flag; the purge writes only its own marker rows in v7_alerts (status RESOLVED, which the alerts stage never reads) and removes rows
-    # older than 30 / 90 / 365 days; the `alerts` and `lanes` steps that stay in `finish` read job statuses and OPEN alerts, never what these two write. So they run here, after the tick, beside the other late jobs, in
-    # this one job (the sync first, then the purge, as before). One run per tick (pipeline gate: only when the tick's `finish` job ran). A manual maintenance dispatch of hourly.yml keeps its own steps there.
     needs: [gate]
     if: ${{ !cancelled() && needs.gate.result != 'failure' && needs.gate.outputs.late == 'true' && needs.gate.outputs.tick == 'true' && needs.gate.outputs.pipeline == 'true' && needs.gate.outputs.due_last_seen_purge == 'true' }}
     runs-on: ubuntu-24.04
@@ -2203,16 +1874,16 @@ jobs:
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
           git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
           git checkout -q --detach FETCH_HEAD
-      - uses: ./.github/actions/python
-      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
-        uses: ./.github/actions/bws-helper
+      - name: Python and the Bitwarden helper
+        uses: ./.github/actions/job-start
         with:
           wait_seconds: "400"
       - id: bws_last_seen_purge
-        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 14; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        name: Load the migrated credentials from Bitwarden
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             d71bbaed-6a6c-49b5-8a1f-b4db015ecfda > LIFEOS_ACQ_DB_NAME
@@ -2229,22 +1900,13 @@ jobs:
             83c553e9-23a6-45aa-9006-b4db015f00ac > NTFY_TOPIC
             454e12df-637f-4f65-9ec1-b4e30052942f > TAILSCALE_OAUTH_CLIENT_ID
             e54f0a84-84c3-47d8-8b5b-b4e30052d6e9 > TAILSCALE_OAUTH_CLIENT_SECRET
-      - id: doppler_bws_last_seen_purge
-        if: ${{ steps.bws_last_seen_purge.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 14 names read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: LIFEOS_ACQ_DB_NAME,LIFEOS_ACQ_DB_PASSWORD,LIFEOS_ACQ_DB_USER,LIFEOS_ACQ_SSH_HOST,LIFEOS_ACQ_SSH_JUMP_KEY,LIFEOS_ACQ_SSH_JUMP_HOST,LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS,LIFEOS_ACQ_SSH_KNOWN_HOSTS,LIFEOS_ACQ_SSH_PRIVATE_KEY,LIFEOS_ACQ_SSH_USER,NOTION_API_TOKEN,NTFY_TOPIC,TAILSCALE_OAUTH_CLIENT_ID,TAILSCALE_OAUTH_CLIENT_SECRET
-          bitwarden: ${{ toJSON(steps.bws_last_seen_purge.outputs) }}
-      - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
+      - name: Plain switches from Bitwarden
         uses: ./.github/actions/bws-plain
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
           live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
-      - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback and the Cloud Fit request; the policy admits it only to Oracle; a failed join only means no fallback)
+      - name: Join the tailnet as the ephemeral tag:v7-runner node
         continue-on-error: true
         uses: ./.github/actions/tailscale
         with:
@@ -2253,28 +1915,20 @@ jobs:
           tags: tag:v7-runner
       - id: bws_runtime_config
         continue-on-error: true
-        name: Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)
+        name: Runtime Configuration source ID from Bitwarden
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
-      - id: doppler_bws_runtime_config
-        if: ${{ steps.bws_runtime_config.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 1 name read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: V7_RUNTIME_CONFIG_SOURCE_ID
-          bitwarden: ${{ toJSON(steps.bws_runtime_config.outputs) }}
       - id: sync_seen
         continue-on-error: true
-        name: Step 8 - Last Seen sync (daily; moved from the hourly finish job by LIFE-856, it runs beside the after-tick domains work)
+        name: Step 8 - Last Seen sync
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
-          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""   # LIFE-856: the old hourly.yml declared these three at workflow level, so the settings source filled them for every step; a domains step must declare them itself
+          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
           HIRING_PIPELINE_PAGE_ID: ""
           V7_FIT_GATE: ""
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_DB_NAME }}
@@ -2291,13 +1945,13 @@ jobs:
         run: python -m lifeos.run sync-seen $([ "$LIVE" = "true" ] && echo --live)
       - id: purge
         continue-on-error: true
-        name: Step 8b - retention purge (about weekly and catching up (the stage decides when it is due); moved from the hourly finish job by LIFE-856; pushes its own result to the phone, counts and fixed codes only)
+        name: Step 8b - retention purge
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
           HIRING_PIPELINE_PAGE_ID: ""
           V7_FIT_GATE: ""
-          PURGE_FORCE: ""          # a tick never forces; a manual maintenance dispatch of hourly.yml does, in its own step there
+          PURGE_FORCE: ""
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_DB_PASSWORD }}
           LIFEOS_ACQ_DB_USER: ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_DB_USER }}
@@ -2325,12 +1979,10 @@ jobs:
             python3 -m lifeos.platform.alerts push --key purge_failed --title "V7 weekly purge FAILED" --body "$last" || true
             exit 1
           fi
-      - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+      - name: A failed stage step makes this job red after every stage has run
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=last_seen_purge::a stage step failed in the last_seen_purge job (see the step marked failed above)"; exit 1
   hiring_outcomes:
-    # LIFE-632: the D190 Hiring outcome mail scan had run after the Recruiters mail read in the `recruiters` job (211 s). It reads Gmail and Outlook and saves one record to the store; it reads nothing the
-    # Recruiters step writes, so it runs beside it. Same trigger as the Recruiters job (its own due row, the same manual input), skipped for a Close screen refresh, which redraws only the Recruiter Outreach table.
     needs: [gate]
     if: ${{ !cancelled() && needs.gate.result != 'failure' && inputs.refresh != 'recruiters' && ((needs.gate.outputs.due_hiring_outcomes == 'true' && needs.gate.outputs.early == 'true') || inputs.recruiters) }}
     runs-on: ubuntu-24.04
@@ -2342,16 +1994,16 @@ jobs:
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
           git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
           git checkout -q --detach FETCH_HEAD
-      - uses: ./.github/actions/python
-      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
-        uses: ./.github/actions/bws-helper
+      - name: Python and the Bitwarden helper
+        uses: ./.github/actions/job-start
         with:
           wait_seconds: "600"
       - id: bws_hiring_outcomes
-        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 12; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        name: Load the migrated credentials from Bitwarden
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET
@@ -2370,16 +2022,7 @@ jobs:
             2b2c73a9-7a1e-44b9-95f0-b50301509b09 > OUTLOOK_CLIENT_ID
             4d0c7449-ed0a-46c1-9c2c-b503015f8d54 > LIFEOS_ACQ_SSH_JUMP_HOST
             82efa413-6b9c-4c5c-b0d2-b503015f8e3d > LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS
-      - id: doppler_bws_hiring_outcomes
-        if: ${{ steps.bws_hiring_outcomes.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 16 names read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: GMAIL_OAUTH_CLIENT_SECRET,GMAIL_OAUTH_REFRESH_TOKEN,LIFEOS_ACQ_DB_NAME,LIFEOS_ACQ_DB_PASSWORD,LIFEOS_ACQ_DB_USER,LIFEOS_ACQ_SSH_HOST,LIFEOS_ACQ_SSH_KNOWN_HOSTS,LIFEOS_ACQ_SSH_PRIVATE_KEY,LIFEOS_ACQ_SSH_USER,LIFEOS_ACQ_SSH_JUMP_KEY,TAILSCALE_OAUTH_CLIENT_ID,TAILSCALE_OAUTH_CLIENT_SECRET,GMAIL_OAUTH_CLIENT_ID,OUTLOOK_CLIENT_ID,LIFEOS_ACQ_SSH_JUMP_HOST,LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS
-          bitwarden: ${{ toJSON(steps.bws_hiring_outcomes.outputs) }}
-      - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
+      - name: Plain switches from Bitwarden
         uses: ./.github/actions/bws-plain
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
@@ -2387,24 +2030,16 @@ jobs:
           live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
       - id: bws_settings
         continue-on-error: true
-        name: Notion token from Bitwarden so this job can read the V7 settings page (LIFE-703; read only; if it fails the GitHub values stay as they are)
+        name: Notion token from Bitwarden so this job can read the V7 settings page
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
             0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
-      - id: doppler_bws_settings
-        if: ${{ steps.bws_settings.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 2 names read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: NOTION_JIRA_TOKEN,V7_RUNTIME_CONFIG_SOURCE_ID
-          bitwarden: ${{ toJSON(steps.bws_settings.outputs) }}
-      - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
+      - name: Join the tailnet as the ephemeral tag:v7-runner node
         continue-on-error: true
         uses: ./.github/actions/tailscale
         with:
@@ -2412,9 +2047,9 @@ jobs:
           oauth-secret: ${{ steps.bws_hiring_outcomes.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
       - id: houtcomes
-        if: ${{ inputs.refresh != 'recruiters' }}       # a Close screen refresh redraws only the Recruiter Outreach table
+        if: ${{ inputs.refresh != 'recruiters' }}
         continue-on-error: true
-        name: Hiring outcome mail (D190; read-only Gmail and Outlook for the companies in the Hiring Pipeline, rejection or offer wording only; due every 12 hours; counts only)
+        name: Hiring outcome mail
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_settings.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}
@@ -2436,14 +2071,10 @@ jobs:
       - name: Hiring outcome mail warning (does not fail the Jobs run)
         if: ${{ always() && steps.houtcomes.outcome == 'failure' }}
         run: echo "::warning title=Hiring outcome mail::the hiring outcome-mail scan failed or a source was unread; the Hiring card keeps the last accepted outcomes"
-      - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+      - name: A failed stage step makes this job red after every stage has run
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=hiring_outcomes::a stage step failed in the hiring_outcomes job (see the step marked failed above)"; exit 1
   interview_mail:
-    # LIFE-894 (Jim, Nov 21 2026, LIFE-856 comment 13633): about 237 s of the Interview job's roughly 308 s p50 is a Gmail read of the same mail every hour, which needs nothing the tick writes. This job, in the EARLY run of a tick
-    # (phase tick, beside the tick), reads that mail and files it, with a fingerprint, in one table of the private store (v7_interview_mail). It is read only: it writes nothing to Notion or the Ledger. The `interview` job below, still the
-    # one writer of the opportunity pages and still late, uses the snapshot only when it is complete, for the same window and taken after the tick started; otherwise it reads mail itself exactly as before. The step is continue-on-error and
-    # the stage itself ends 0 whatever the read did (a failed read files nothing, which only means the late job reads for itself), so a failed early read never fails the run; the closing red step is the usual one for an unexpected crash. It holds no concurrency group (it writes no page).
     needs: [gate]
     if: ${{ !cancelled() && needs.gate.result != 'failure' && inputs.phase == 'tick' && needs.gate.outputs.due_interview == 'true' && needs.gate.outputs.early == 'true' }}
     runs-on: ubuntu-24.04
@@ -2455,16 +2086,16 @@ jobs:
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
           git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
           git checkout -q --detach FETCH_HEAD
-      - uses: ./.github/actions/python
-      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
-        uses: ./.github/actions/bws-helper
+      - name: Python and the Bitwarden helper
+        uses: ./.github/actions/job-start
         with:
           wait_seconds: "600"
       - id: bws_interview_mail
-        name: Load the migrated credentials from Bitwarden (the same names the interview job loads, only the 16 a mail read needs; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        name: Load the migrated credentials from Bitwarden
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET
@@ -2483,22 +2114,13 @@ jobs:
             2b2c73a9-7a1e-44b9-95f0-b50301509b09 > OUTLOOK_CLIENT_ID
             4d0c7449-ed0a-46c1-9c2c-b503015f8d54 > LIFEOS_ACQ_SSH_JUMP_HOST
             82efa413-6b9c-4c5c-b0d2-b503015f8e3d > LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS
-      - id: doppler_bws_interview_mail
-        if: ${{ steps.bws_interview_mail.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 16 names read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: GMAIL_OAUTH_CLIENT_SECRET,GMAIL_OAUTH_REFRESH_TOKEN,LIFEOS_ACQ_DB_NAME,LIFEOS_ACQ_DB_PASSWORD,LIFEOS_ACQ_DB_USER,LIFEOS_ACQ_SSH_HOST,LIFEOS_ACQ_SSH_KNOWN_HOSTS,LIFEOS_ACQ_SSH_PRIVATE_KEY,LIFEOS_ACQ_SSH_USER,LIFEOS_ACQ_SSH_JUMP_KEY,TAILSCALE_OAUTH_CLIENT_ID,TAILSCALE_OAUTH_CLIENT_SECRET,GMAIL_OAUTH_CLIENT_ID,OUTLOOK_CLIENT_ID,LIFEOS_ACQ_SSH_JUMP_HOST,LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS
-          bitwarden: ${{ toJSON(steps.bws_interview_mail.outputs) }}
-      - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
+      - name: Plain switches from Bitwarden
         uses: ./.github/actions/bws-plain
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
           live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
-      - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
+      - name: Join the tailnet as the ephemeral tag:v7-runner node
         continue-on-error: true
         uses: ./.github/actions/tailscale
         with:
@@ -2507,7 +2129,7 @@ jobs:
           tags: tag:v7-runner
       - id: interview_mail
         continue-on-error: true
-        name: Interview OS mail, read early (LIFE-894; read only - Gmail and Outlook into the private store's snapshot table for the late Interview job; counts and fixed codes only)
+        name: Interview OS mail, read early
         env:
           GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_interview_mail.outputs.GMAIL_OAUTH_CLIENT_ID }}
           OUTLOOK_CLIENT_ID: ${{ steps.bws_interview_mail.outputs.OUTLOOK_CLIENT_ID }}
@@ -2524,20 +2146,17 @@ jobs:
           LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_interview_mail.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_interview_mail.outputs.LIFEOS_ACQ_SSH_USER }}
         run: python -m lifeos.run interview-mail $([ "$LIVE" = "true" ] && echo --live)
-      - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+      - name: A failed stage step makes this job red after every stage has run
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=interview_mail::a stage step failed in the interview_mail job (see the step marked failed above)"; exit 1
 
   interview:
-    # LIFE-632: Interview OS (LIFE-88) had run after the Recruiters mail read and the hiring outcome scan in the `recruiters` job (about 570 s after about 400 s plus 211 s), which made that job the
-    # critical path of the whole run. It reads its own mail and only READS the Recruiters rows (recruiter threads by the exact request message), so it runs beside the Recruiters job: a brand-new
-    # recruiter message is linked to its opportunity one tick (one hour) later. This job is the one writer of the opportunity pages: it holds the group, and Granola, which writes the same pages, waits for it.
     needs: [gate]
     if: ${{ !cancelled() && needs.gate.result != 'failure' && inputs.refresh != 'recruiters' && ((needs.gate.outputs.due_interview == 'true' && needs.gate.outputs.late == 'true') || inputs.recruiters) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     concurrency:
-      group: life-os-v7-interview-writer     # the Interview OS step is the one writer of the opportunity pages: an after-tick and a manual run take turns, never write the same page together
+      group: life-os-v7-interview-writer
       cancel-in-progress: false
     steps:
       - name: Checkout the exact commit (own git fetch, token never stored)
@@ -2546,16 +2165,16 @@ jobs:
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
           git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
           git checkout -q --detach FETCH_HEAD
-      - uses: ./.github/actions/python
-      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
-        uses: ./.github/actions/bws-helper
+      - name: Python and the Bitwarden helper
+        uses: ./.github/actions/job-start
         with:
           wait_seconds: "600"
       - id: bws_interview
-        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 16; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        name: Load the migrated credentials from Bitwarden
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET
@@ -2578,22 +2197,13 @@ jobs:
             2b2c73a9-7a1e-44b9-95f0-b50301509b09 > OUTLOOK_CLIENT_ID
             4d0c7449-ed0a-46c1-9c2c-b503015f8d54 > LIFEOS_ACQ_SSH_JUMP_HOST
             82efa413-6b9c-4c5c-b0d2-b503015f8e3d > LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS
-      - id: doppler_bws_interview
-        if: ${{ steps.bws_interview.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 20 names read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: GMAIL_OAUTH_CLIENT_SECRET,GMAIL_OAUTH_REFRESH_TOKEN,LIFEOS_ACQ_DB_NAME,LIFEOS_ACQ_DB_PASSWORD,LIFEOS_ACQ_DB_USER,LIFEOS_ACQ_SSH_HOST,LIFEOS_ACQ_SSH_KNOWN_HOSTS,LIFEOS_ACQ_SSH_PRIVATE_KEY,LIFEOS_ACQ_SSH_USER,LIFEOS_ACQ_SSH_JUMP_KEY,TAILSCALE_OAUTH_CLIENT_ID,TAILSCALE_OAUTH_CLIENT_SECRET,NOTION_RECRUITERS_TOKEN,NOTION_INTERVIEW_TOKEN,GCAL_SERVICE_ACCOUNT_JSON,NOTION_API_TOKEN,GMAIL_OAUTH_CLIENT_ID,OUTLOOK_CLIENT_ID,LIFEOS_ACQ_SSH_JUMP_HOST,LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS
-          bitwarden: ${{ toJSON(steps.bws_interview.outputs) }}
-      - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
+      - name: Plain switches from Bitwarden
         uses: ./.github/actions/bws-plain
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
           live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
-      - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
+      - name: Join the tailnet as the ephemeral tag:v7-runner node
         continue-on-error: true
         uses: ./.github/actions/tailscale
         with:
@@ -2603,29 +2213,21 @@ jobs:
       - id: bws_runtime_config
         if: ${{ inputs.refresh != 'recruiters' }}
         continue-on-error: true
-        name: Runtime Configuration source ID from Bitwarden for the compare-only read (LIFE-858; read only, an address not a secret; if it fails the step runs exactly as before)
+        name: Runtime Configuration source ID from Bitwarden
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
-      - id: doppler_bws_runtime_config
-        if: ${{ steps.bws_runtime_config.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 1 name read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: V7_RUNTIME_CONFIG_SOURCE_ID
-          bitwarden: ${{ toJSON(steps.bws_runtime_config.outputs) }}
       - id: interview
-        if: ${{ inputs.refresh != 'recruiters' }}       # a Close screen refresh redraws only the Recruiter Outreach table
+        if: ${{ inputs.refresh != 'recruiters' }}
         continue-on-error: true
-        name: Interview OS (LIFE-88; V7 is the only Interview OS writer - scheduling requests in Gmail and Outlook for jobs Jim applied to, accepted Calendar rounds, and the refresh of machine pages from the Ledger and each page's own identity; a dry run unless INTERVIEW_OS_WRITER is v7)
+        name: Interview OS
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
-          TICK_STARTED: ${{ github.event.workflow_run.run_started_at }}      # LIFE-894: this tick's start, to find the early mail snapshot made for it (empty on a manual run: the mail is read here)
+          TICK_STARTED: ${{ github.event.workflow_run.run_started_at }}
           LIFEOS_NOTION_IDS: ""
           GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_interview.outputs.GMAIL_OAUTH_CLIENT_ID }}
           OUTLOOK_CLIENT_ID: ${{ steps.bws_interview.outputs.OUTLOOK_CLIENT_ID }}
@@ -2647,30 +2249,25 @@ jobs:
           GCAL_SERVICE_ACCOUNT_JSON: ${{ steps.bws_interview.outputs.GCAL_SERVICE_ACCOUNT_JSON }}
           NOTION_INTERVIEW_TOKEN: ${{ steps.bws_interview.outputs.NOTION_INTERVIEW_TOKEN }}
           NOTION_API_TOKEN: ${{ steps.bws_interview.outputs.NOTION_API_TOKEN }}
-          NOTION_RECRUITERS_TOKEN: ${{ steps.bws_interview.outputs.NOTION_RECRUITERS_TOKEN }}   # LIFE-78 E10: read only, recruiter threads by the exact request message
+          NOTION_RECRUITERS_TOKEN: ${{ steps.bws_interview.outputs.NOTION_RECRUITERS_TOKEN }}
           NOTION_RECRUITERS_DATA_SOURCE_ID: ""
           INTERVIEW_OS_WRITER: ""
           INTERVIEW_LEADS: ""
           INTERVIEW_TEST_COMPANIES: ""
           INTERVIEW_MAIL_DAYS: ${{ inputs.interview_mail_days }}
           INTERVIEW_JOURNEY_PROOF: ${{ inputs.interview_journey_proof }}
-          INTERVIEW_CONVERT: ${{ inputs.interview_convert }}   # LIFE-703: declared empty so the V7 settings page can fill it; the code's own default applies when both are empty
-          INTERVIEW_CONVERT_CAP: ""   # LIFE-703: declared empty so the V7 settings page can fill it; the code's own default applies when both are empty
-          V7_CLOSE_BASE_URL: ""          # E05: the private Close origin: each opportunity page's primary action gets its Mark Complete link; unset, it says unavailable
+          INTERVIEW_CONVERT: ${{ inputs.interview_convert }}
+          INTERVIEW_CONVERT_CAP: ""
+          V7_CLOSE_BASE_URL: ""
         run: python -m lifeos.run interview --limit 20 $([ "$LIVE" = "true" ] && echo --live)
       - name: Interview OS warning (does not fail the Jobs run)
         if: ${{ always() && steps.interview.outcome == 'failure' }}
         run: echo "::warning title=Interview OS::the Interview OS stage (DEGRADED or failed) or a source was unread; the Jobs pipeline is unaffected"
-      - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+      - name: A failed stage step makes this job red after every stage has run
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=interview::a stage step failed in the interview job (see the step marked failed above)"; exit 1
 
   imessage:
-    # COMM-1.4b (LIFE-31, Jim's approval in comment 10136): urgent iMessage alerts. The runner joins the tailnet as an ephemeral tag:v7-runner node, which the
-    # tailnet policy lets reach only Oracle's alert-METADATA endpoint (TCP 47341); Oracle reads and classifies privately and returns keyed event ids, severity and
-    # completeness only. State: the private v7_alerts table. Push: the existing ntfy topic, counts only. Off unless V7_IMESSAGE_ALERTS is 'true' (or run by hand).
-    # LIFE-613: it no longer follows the other writers. Its Communications and Oracle Cloud cards can write only the blocks they located (report_region.ScopedClient), checked before each write, so a write by
-    # another card at the same time is no longer mistaken for a violation.
     needs: [gate]
     if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.tick == 'true' && needs.gate.outputs.early == 'true' && needs.gate.outputs.due_imessage == 'true' && needs.gate.outputs.imessage_alerts == 'true') || inputs.imessage) }}
     runs-on: ubuntu-24.04
@@ -2682,16 +2279,16 @@ jobs:
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
           git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
           git checkout -q --detach FETCH_HEAD
-      - uses: ./.github/actions/python
-      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
-        uses: ./.github/actions/bws-helper
+      - name: Python and the Bitwarden helper
+        uses: ./.github/actions/job-start
         with:
           wait_seconds: "200"
       - id: bws_imessage
-        name: Load the iMessage alert credentials from Bitwarden (exactly these 14; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        name: Load the iMessage alert credentials from Bitwarden
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             d71bbaed-6a6c-49b5-8a1f-b4db015ecfda > LIFEOS_ACQ_DB_NAME
@@ -2710,22 +2307,13 @@ jobs:
             89238d39-3528-44b6-90f4-b5040188c384 > FOLLOWUP_TODOIST_PERSONAL_TOKEN
             4d0c7449-ed0a-46c1-9c2c-b503015f8d54 > LIFEOS_ACQ_SSH_JUMP_HOST
             82efa413-6b9c-4c5c-b0d2-b503015f8e3d > LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS
-      - id: doppler_bws_imessage
-        if: ${{ steps.bws_imessage.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 16 names read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: LIFEOS_ACQ_DB_NAME,LIFEOS_ACQ_DB_PASSWORD,LIFEOS_ACQ_DB_USER,LIFEOS_ACQ_SSH_HOST,LIFEOS_ACQ_SSH_KNOWN_HOSTS,LIFEOS_ACQ_SSH_PRIVATE_KEY,LIFEOS_ACQ_SSH_USER,LIFEOS_ACQ_SSH_JUMP_KEY,NTFY_TOPIC,TAILSCALE_OAUTH_CLIENT_ID,TAILSCALE_OAUTH_CLIENT_SECRET,IMESSAGE_ALERTS_HOST,NOTION_JIRA_TOKEN,FOLLOWUP_TODOIST_PERSONAL_TOKEN,LIFEOS_ACQ_SSH_JUMP_HOST,LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS
-          bitwarden: ${{ toJSON(steps.bws_imessage.outputs) }}
-      - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
+      - name: Plain switches from Bitwarden
         uses: ./.github/actions/bws-plain
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
           live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
-      - name: Join the tailnet as an ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 47341)
+      - name: Join the tailnet as an ephemeral tag:v7-runner node
         uses: ./.github/actions/tailscale
         with:
           oauth-client-id: ${{ steps.bws_imessage.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
@@ -2733,7 +2321,7 @@ jobs:
           tags: tag:v7-runner
       - id: imsg
         continue-on-error: true
-        name: iMessage urgent alerts (metadata only from Oracle; private alert state; counts-only push)
+        name: IMessage urgent alerts
         env:
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_DB_PASSWORD }}
@@ -2753,33 +2341,23 @@ jobs:
         run: echo "::warning title=iMessage alerts::the iMessage alert stage failed; no alert was lost (undelivered alerts stay queued)"
       - id: bws_runtime_config
         continue-on-error: true
-        name: Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)
+        name: Runtime Configuration source ID from Bitwarden
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
-      - id: doppler_bws_runtime_config
-        if: ${{ steps.bws_runtime_config.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 1 name read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: V7_RUNTIME_CONFIG_SOURCE_ID
-          bitwarden: ${{ toJSON(steps.bws_runtime_config.outputs) }}
       - id: comms
         continue-on-error: true
         if: ${{ always() }}
-        # LIFE-34 (Jim's approval Oct 15 2026): the Messages row of the Daily Report's Communications callout. Oracle returns the 7-day unread count and the
-        # newest sender's name scrambled under this run's own key; the name is unscrambled only in memory for the Notion write and is never logged or stored.
-        name: Communications card, Messages row (7-day unread count and latest sender; counts only in the log; writes only when live)
+        name: Communications card, Messages row
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           IMESSAGE_ALERTS_HOST: ${{ steps.bws_imessage.outputs.IMESSAGE_ALERTS_HOST }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_imessage.outputs.NOTION_JIRA_TOKEN }}
-          FOLLOWUP_TODOIST_PERSONAL_TOKEN: ${{ steps.bws_imessage.outputs.FOLLOWUP_TODOIST_PERSONAL_TOKEN }}      # LIFE-975 step 4d: the Followup stage's existing read-only Todoist token, for the launcher's open-task count only
+          FOLLOWUP_TODOIST_PERSONAL_TOKEN: ${{ steps.bws_imessage.outputs.FOLLOWUP_TODOIST_PERSONAL_TOKEN }}
           AMAZON_CARD_BLOCK_ID: ""
           BILLS_CARD_BLOCK_ID: ""
           CALENDAR_CARD_BLOCK_ID: ""
@@ -2792,11 +2370,6 @@ jobs:
       - id: oracle
         continue-on-error: true
         if: ${{ always() }}
-        # Jim's approval Oct 15 2026 (Option B): the Oracle Cloud callout under Communications Attention. Oracle answers numbers only (OCI cost,
-        # metrics and limits read as the VM itself; local memory, disk, services). Jim, Oct 24 (#510): written every tick despite the step name, Codex 5h/Week from the AI Capacity reading.
-        # LIFE-129 (Jim, Oct 28 2026): the store and the push topic for the off-site backup alert (lifeos/oraclecloud/backup_watch.py), the same values the iMessage alerts step uses.
-        # LIFE-975 step 4d (Jim, Nov 25 2026: "system ok"): this one stage is the System writer: Oracle's stats, Codex read once, the Connections row from the System health database. GITHUB_TOKEN is the
-        # run's own default token (read only here: the history of the domains jobs, no new permission); GITHUB_REPOSITORY is the runner's own variable.
         name: System card (every tick; numbers only in the log; writes only when live)
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
@@ -2825,16 +2398,11 @@ jobs:
       - name: System card warning (does not fail the run)
         if: ${{ always() && steps.oracle.outcome == 'failure' }}
         run: echo "::warning title=System card::the System card was not updated; it keeps its previous update time"
-      # LIFE-793: the AI Capacity card now runs in its own workflow (capacity-card.yml), not in this job.
-      - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+      - name: A failed stage step makes this job red after every stage has run
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=imessage::a stage step failed in the imessage job (see the step marked failed above)"; exit 1
 
   granola:
-    # LIFE-122 (Jim, Oct 26 2026: "Approved, go"): the Granola bridge, automatic. After every tick it carries each synced meeting that has not been carried before into its Interview OS
-    # round (lifeos/sources/granola_auto.py): Full Transcript page written and read back, catalogued in Hostinger, and only then purged whole from Oracle. A meeting that matches no round is left
-    # on Oracle and counted. It writes only when the run is live AND the repository variable GRANOLA_AUTO is "on" (Jim's switch); otherwise it is a dry run that changes nothing.
-    # It waits for the Interview job (LIFE-632), which holds the one-writer group of the Interview OS pages.
     needs: [interview, gate]
     if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.tick == 'true' && needs.gate.outputs.late == 'true' && needs.gate.outputs.due_granola == 'true' && needs.gate.outputs.granola_auto != 'off') || needs.gate.outputs.all == 'true') }}
     runs-on: ubuntu-24.04
@@ -2849,16 +2417,16 @@ jobs:
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
           git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
           git checkout -q --detach FETCH_HEAD
-      - uses: ./.github/actions/python
-      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
-        uses: ./.github/actions/bws-helper
+      - name: Python and the Bitwarden helper
+        uses: ./.github/actions/job-start
         with:
           wait_seconds: "400"
       - id: bws_granola
-        name: Load the Granola credentials from Bitwarden (exactly these 12; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        name: Load the Granola credentials from Bitwarden
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             d71bbaed-6a6c-49b5-8a1f-b4db015ecfda > LIFEOS_ACQ_DB_NAME
@@ -2875,16 +2443,7 @@ jobs:
             6590208b-506d-4238-ab10-b4e30051b25f > IMESSAGE_ALERTS_HOST
             4d0c7449-ed0a-46c1-9c2c-b503015f8d54 > LIFEOS_ACQ_SSH_JUMP_HOST
             82efa413-6b9c-4c5c-b0d2-b503015f8e3d > LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS
-      - id: doppler_bws_granola
-        if: ${{ steps.bws_granola.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 14 names read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: LIFEOS_ACQ_DB_NAME,LIFEOS_ACQ_DB_PASSWORD,LIFEOS_ACQ_DB_USER,LIFEOS_ACQ_SSH_HOST,LIFEOS_ACQ_SSH_KNOWN_HOSTS,LIFEOS_ACQ_SSH_PRIVATE_KEY,LIFEOS_ACQ_SSH_USER,LIFEOS_ACQ_SSH_JUMP_KEY,NOTION_INTERVIEW_TOKEN,TAILSCALE_OAUTH_CLIENT_ID,TAILSCALE_OAUTH_CLIENT_SECRET,IMESSAGE_ALERTS_HOST,LIFEOS_ACQ_SSH_JUMP_HOST,LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS
-          bitwarden: ${{ toJSON(steps.bws_granola.outputs) }}
-      - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
+      - name: Plain switches from Bitwarden
         uses: ./.github/actions/bws-plain
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
@@ -2892,24 +2451,16 @@ jobs:
           live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
       - id: bws_settings
         continue-on-error: true
-        name: Notion token from Bitwarden so this job can read the V7 settings page (LIFE-703; read only; if it fails the GitHub values stay as they are)
+        name: Notion token from Bitwarden so this job can read the V7 settings page
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
             0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
-      - id: doppler_bws_settings
-        if: ${{ steps.bws_settings.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 2 names read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: NOTION_JIRA_TOKEN,V7_RUNTIME_CONFIG_SOURCE_ID
-          bitwarden: ${{ toJSON(steps.bws_settings.outputs) }}
-      - name: Join the tailnet as an ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 22 and 47341)
+      - name: Join the tailnet as an ephemeral tag:v7-runner node
         uses: ./.github/actions/tailscale
         with:
           oauth-client-id: ${{ steps.bws_granola.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
@@ -2917,12 +2468,12 @@ jobs:
           tags: tag:v7-runner
       - id: gran
         continue-on-error: true
-        name: Granola auto (every meeting not yet carried; counts and fixed codes only; writes only when live and GRANOLA_AUTO is on)
+        name: Granola auto
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_settings.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}
           LIFEOS_NOTION_IDS: ""
-          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""   # LIFE-360 (Jim approved Nov 7, 4:17 PM CT): the readers take opportunities from Ledger rows first (read-only, Interview token)
+          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
           HIRING_PIPELINE_PAGE_ID: ""
           LIFEOS_ACQ_SSH_JUMP_HOST: ${{ steps.bws_granola.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
           LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: ${{ steps.bws_granola.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
@@ -2941,13 +2492,11 @@ jobs:
       - name: Granola auto warning
         if: ${{ always() && steps.gran.outcome == 'failure' }}
         run: echo "::warning title=Granola auto::the automatic Granola run stopped; nothing is purged from Oracle that is not safely in Notion and the catalog"
-      - name: Granola auto stopped - fail this job (LIFE-312) so the run is red and the report job pushes the phone
+      - name: Granola auto stopped - fail this job
         if: ${{ always() && steps.gran.outcome == 'failure' }}
         run: exit 1
 
   report:
-    # A failed domain job (a provider outage, a Bitwarden 503) used to be only a workflow warning, so a stale card and a red run reached nobody. This job pushes the phone once per
-    # failed tick-triggered run, counts only; a manual run never pushes. It never writes anything.
     needs: [gate, jira, followup, outlook, bills, agenda, amazon, amazon_retention, mail, hiring, megibow, recruiters, hiring_outcomes, interview_mail, interview, dcc, weekly_review, imessage, granola, network_surface, fit_cloud_backlog, last_seen_purge]
     if: ${{ always() && needs.gate.outputs.tick == 'true' && contains(needs.*.result, 'failure') }}
     runs-on: ubuntu-24.04
@@ -2959,28 +2508,20 @@ jobs:
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
           git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
           git checkout -q --detach FETCH_HEAD
-      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
+      - name: Bitwarden helper from a saved, fingerprint-checked copy
         uses: ./.github/actions/bws-helper
         with:
           wait_seconds: "100"
       - id: bws_report
-        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 1; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        name: Load the migrated credentials from Bitwarden
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             83c553e9-23a6-45aa-9006-b4db015f00ac > NTFY_TOPIC
-      - id: doppler_bws_report
-        if: ${{ steps.bws_report.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 1 name read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: NTFY_TOPIC
-          bitwarden: ${{ toJSON(steps.bws_report.outputs) }}
-      - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
+      - name: Plain switches from Bitwarden
         uses: ./.github/actions/bws-plain
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
@@ -2996,9 +2537,6 @@ jobs:
           done
           python3 -m lifeos.platform.alerts push --key domain_jobs_failed --title "V7 domain jobs failed" --body "Failed domain jobs:$failed. Their cards keep the last good content. Open the Actions tab."
   chain:
-    # LIFE-904: the three end-to-end clocks (Jobs, career, full platform) of ONE logical tick, correlated by the tick's run ID (the hourly run ID; the early run gets it as `tick_run`, the run after the tick as
-    # `workflow_run.id`; both gate jobs are named `gate (tick <id>)`). It reads the Actions API only (actions: read, no secret, no write) and ALWAYS ends green: a missing, failed or still-running job is
-    # DEGRADED or UNVERIFIED in the printed `chain:` line, never zero and never Done. The full-platform clock prints only once the last required domain job of both runs has ended, so whichever of the two runs ends last prints the final line.
     needs: [gate, jira, followup, outlook, bills, agenda, amazon, amazon_retention, mail, hiring, megibow, recruiters, hiring_outcomes, interview_mail, interview, dcc, weekly_review, imessage, granola, network_surface, fit_cloud_backlog, last_seen_purge]
     if: ${{ always() && needs.gate.outputs.tick == 'true' }}
     runs-on: ubuntu-24.04
@@ -3013,7 +2551,7 @@ jobs:
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
           git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
           git checkout -q --detach FETCH_HEAD
-      - name: The chain receipt - Jobs, career and full-platform clocks for this tick (counts, times and fixed codes only; never fails the run)
+      - name: The chain receipt - Jobs, career and full-platform clocks for this tick
         env:
           GITHUB_TOKEN: ${{ github.token }}
           CHAIN_TICK_ID: ${{ inputs.tick_run || github.event.workflow_run.id }}

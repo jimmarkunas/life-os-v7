@@ -14,16 +14,17 @@
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
           git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
           git checkout -q --detach FETCH_HEAD
-      - uses: ./.github/actions/python
-      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
-        uses: ./.github/actions/bws-helper
+      - name: Python and the Bitwarden helper
+        uses: ./.github/actions/job-start
         with:
           wait_seconds: "300"
+      # why: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 4; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
       - id: bws_amazon
-        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 4; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        name: Load the migrated credentials from Bitwarden
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET
@@ -31,39 +32,24 @@
             46fe195b-82e2-416e-8272-b4db015eea12 > NOTION_AMAZON_TOKEN
             53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
             8657d1ed-2cde-4298-bd62-b50301523e01 > GMAIL_OAUTH_CLIENT_ID
-      - id: doppler_bws_amazon
-        if: ${{ steps.bws_amazon.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 5 names read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: GMAIL_OAUTH_CLIENT_SECRET,GMAIL_OAUTH_REFRESH_TOKEN,NOTION_AMAZON_TOKEN,NOTION_JIRA_TOKEN,GMAIL_OAUTH_CLIENT_ID
-          bitwarden: ${{ toJSON(steps.bws_amazon.outputs) }}
-      - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
+      # why: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
+      - name: Plain switches from Bitwarden
         uses: ./.github/actions/bws-plain
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIVE
           live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
+      # why: Runtime Configuration source ID from Bitwarden for the compare-only read (LIFE-858; read only, an address not a secret; if it fails the step runs exactly as before)
       - id: bws_runtime_config
         continue-on-error: true
-        name: Runtime Configuration source ID from Bitwarden for the compare-only read (LIFE-858; read only, an address not a secret; if it fails the step runs exactly as before)
+        name: Runtime Configuration source ID from Bitwarden
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           secrets: |
             0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
-      - id: doppler_bws_runtime_config
-        if: ${{ steps.bws_runtime_config.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 1 name read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: V7_RUNTIME_CONFIG_SOURCE_ID
-          bitwarden: ${{ toJSON(steps.bws_runtime_config.outputs) }}
       - id: amazon
         continue-on-error: true
         name: Amazon Orders (Gmail to Notion; archive only after read-back)
@@ -75,9 +61,10 @@
           GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_amazon.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
           NOTION_AMAZON_TOKEN: ${{ steps.bws_amazon.outputs.NOTION_AMAZON_TOKEN }}
         run: python -m lifeos.run amazon-orders $([ "$LIVE" = "true" ] && echo --live)
+      # why: Amazon card (reads the canonical orders and, read-only, other stores' shipping mail; writes only when live; a failed sync is shown as DEGRADED)
       - id: acard
         continue-on-error: true
-        name: Amazon card (reads the canonical orders and, read-only, other stores' shipping mail; writes only when live; a failed sync is shown as DEGRADED)
+        name: Amazon card
         if: ${{ always() }}
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
@@ -101,6 +88,7 @@
   # LIFE-571: Amazon retention (D139) runs in its OWN job. It reads and trashes Gmail and reads the saved Amazon orders; it never writes the Daily Report page, so it does not belong in the
   # serial chain of page writers (jira, agenda, bills, amazon, mail, ...). It starts when the amazon job (Orders saved, card written) is over and runs beside the rest of the chain. A failure
   # is a warning only, exactly as before. Same 30-day rule, same 200-a-run limit, same live switch.
-      - name: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+      # why: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+      - name: A failed stage step makes this job red after every stage has run
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=amazon::a stage step failed in the amazon job (see the step marked failed above)"; exit 1

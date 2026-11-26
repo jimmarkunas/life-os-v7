@@ -1,0 +1,32 @@
+      # why: Followup lane (LIFE-757; LIVE on a scheduled or tick run while V7_LIVE is on, otherwise a dry run that writes nothing; reads only sources that have a credential and an expiry row)
+      - id: followup
+        continue-on-error: true
+        name: Followup lane
+        env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
+          JIRA_API_TOKEN: ${{ steps.bws_followup.outputs.JIRA_API_TOKEN }}
+          JIRA_EMAIL: ${{ steps.bws_followup.outputs.JIRA_EMAIL }}
+          OUTLOOK_CLIENT_ID: ${{ steps.bws_followup.outputs.OUTLOOK_CLIENT_ID }}
+          NOTION_API_TOKEN: ${{ steps.bws_followup.outputs.NOTION_API_TOKEN }}
+          GCAL_SERVICE_ACCOUNT_JSON: ${{ steps.bws_followup.outputs.GCAL_SERVICE_ACCOUNT_JSON }}
+          GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_followup.outputs.GMAIL_OAUTH_CLIENT_ID }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_followup.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_followup.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH: ${{ steps.bws_followup.outputs.FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH }}
+          FOLLOWUP_TODOIST_PERSONAL_TOKEN: ${{ steps.bws_followup.outputs.FOLLOWUP_TODOIST_PERSONAL_TOKEN }}
+          FOLLOWUP_WIRING: ""              # lifeos/platform/switches.json decides (off) unless the repository variable says "off" (kill switch) or "on"
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_followup.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_followup.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_followup.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_followup.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KEY: ${{ steps.bws_followup.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
+          LIFEOS_ACQ_SSH_JUMP_HOST: ${{ steps.bws_followup.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: ${{ steps.bws_followup.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_followup.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_followup.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_followup.outputs.LIFEOS_ACQ_SSH_USER }}
+        run: python -m lifeos.run followup $([ "$LIVE" = "true" ] && echo --live)
+      # why: A failed stage step makes this job red after the stage has run (LIFE-649), so the report job pushes the phone
+      - name: A failed stage step makes this job red after the stage has run
+        if: ${{ always() && (steps.bws_followup.outcome == 'failure' || steps.followup.outcome == 'failure') }}
+        run: echo "::error title=followup::a stage step failed in the followup job (see the step marked failed above)"; exit 1
