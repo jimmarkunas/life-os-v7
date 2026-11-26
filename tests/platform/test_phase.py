@@ -88,7 +88,7 @@ class Workflows(unittest.TestCase):
 
     def dispatch_step(self):
         steps = self.hourly["jobs"]["prep"]["steps"]
-        found = [s for s in steps if str(s.get("name", "")).startswith("LIFE-775 - start the early domains run")]
+        found = [s for s in steps if str(s.get("name", "")).startswith("Start the early domains run")]
         self.assertEqual(len(found), 1)
         return steps, found[0]
 

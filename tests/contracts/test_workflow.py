@@ -1356,7 +1356,7 @@ class SweepFailureIsItsOwnLaneTests(unittest.TestCase):
         self.assertEqual(len(tolerated), 2)
         self.assertEqual(sum(name.startswith("LIFE-854 - start the employer-board window") for name in tolerated), 0)   # ... LIFE-905 retired LIFE-854's start of the board window (the tick crawls the boards itself) ...
         self.assertEqual(sum("tailnet" in name for name in tolerated), 1)             # the tolerated earlier steps are the tailnet join ...
-        self.assertEqual(sum(name.startswith("LIFE-775 - start the early domains run") for name in tolerated), 1)   # ... and LIFE-775's dispatch of the early domains run: a failed dispatch costs only the time it saves
+        self.assertEqual(sum(name.startswith("Start the early domains run") for name in tolerated), 1)   # ... and LIFE-775's dispatch of the early domains run: a failed dispatch costs only the time it saves
         finish = self.doc["jobs"]["finish"]
         self.assertEqual(finish["needs"], ["prep"])
         self.assertIn("needs.prep.result == 'success'", finish["if"])                  # prep red (credentials, gate, unit tests) still skips the Jobs work
@@ -1489,7 +1489,7 @@ class ConcurrencyHasNoSwitch(unittest.TestCase):
             self.assertNotIn("BENCH_TICK_CONCURRENCY", path.read_text(), path.name)
 
 
-LEAN = ("v3-pages", "domains")                  # LIFE-1010: the workflows whose compare is folded into the loader
+LEAN = ("v3-pages", "domains", "hourly")                  # LIFE-1010: the workflows whose compare is folded into the loader
 
 
 class DopplerParityTests(unittest.TestCase):

@@ -1,0 +1,73 @@
+      # why: LIFE-775 - start the early domains run now (this tick passed its gate; every domain job that reads nothing the tick writes runs while the tick runs; the run that starts when the tick finishes does megibow, interview and granola, and every job if this dispatch fails, so a failure here costs only the time it saves)
+      - name: Start the early domains run now
+        if: ${{ (github.event_name == 'schedule' || inputs.tick) && github.run_attempt == 1 && !cancelled() }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          status=0
+          gh api -X POST "repos/${GITHUB_REPOSITORY}/actions/workflows/domains.yml/dispatches" -f ref="${GITHUB_REF_NAME}" -f "inputs[phase]=tick" -f "inputs[tick_run]=${GITHUB_RUN_ID}" || status=$?
+          # LIFE-957: GitHub's own cron ran the AI Capacity card (capacity-card.yml, minute 55) only every 5 to 10 hours, so the card went stale. The tick, which the Oracle ticker starts every hour, starts the card whenever its last run is 40 minutes or more old; a card the cron already started leaves this a no-op. A failure here costs only a stale card until the next tick.
+          last=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/capacity-card.yml/runs?per_page=1" --jq '.workflow_runs[0].created_at // ""' 2>/dev/null || true)
+          age=$(python3 -c 'import sys, datetime as d; t = sys.argv[1]; print(int((d.datetime.now(d.timezone.utc) - d.datetime.fromisoformat(t.replace("Z", "+00:00"))).total_seconds()) if t else 99999)' "$last" 2>/dev/null || echo 99999)
+          if [ "$age" -ge 2400 ]; then
+            gh api -X POST "repos/${GITHUB_REPOSITORY}/actions/workflows/capacity-card.yml/dispatches" -f ref="${GITHUB_REF_NAME}" -f "inputs[tick]=true" || true
+          fi
+          exit $status
+      - uses: ./.github/actions/python
+      - id: sweep
+        continue-on-error: true      # LIFE-650: the sweep only moves mail between Gmail labels and nothing after it needs it (the extract step reads mail already under the label; unswept mail waits for the next run); a failure turns the report job's `sweep` lane red and pushes, but does not skip the finish job. Credentials, the gate and the unit tests above still fail prep
+        name: Stage 1 - sweep
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.cloud_backlog != '' && inputs.cloud_backlog != '0') }}   # D219: a Cloud Fit backlog dispatch never sweeps newsletters
+        env:
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_prep.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_prep.outputs.GMAIL_OAUTH_CLIENT_ID }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_prep.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KEY: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
+          LIFEOS_ACQ_SSH_JUMP_HOST: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_prep.outputs.NOTION_API_TOKEN }}
+        run: python -m lifeos.sources.newsletters.sweep $([ "$LIVE" = "true" ] && echo --live)
+      - name: Step 3b - reconcile (repair, manual only)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.reconcile && inputs.live }}
+        env:
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_prep.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_prep.outputs.GMAIL_OAUTH_CLIENT_ID }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_prep.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KEY: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
+          LIFEOS_ACQ_SSH_JUMP_HOST: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_prep.outputs.NOTION_API_TOKEN }}
+        run: python -m lifeos.sources.newsletters.ingest --reconcile --live --limit 300
+      - name: Step 2 - store check
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.check_store }}
+        env:
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_prep.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_prep.outputs.GMAIL_OAUTH_CLIENT_ID }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_prep.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KEY: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
+          LIFEOS_ACQ_SSH_JUMP_HOST: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_prep.outputs.NOTION_API_TOKEN }}
+        run: python -m lifeos.jobs.store

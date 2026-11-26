@@ -24,7 +24,7 @@ esac
 
 def step():
     steps = yaml.safe_load((ROOT / ".github/workflows/hourly.yml").read_text())["jobs"]["prep"]["steps"]
-    found = [s for s in steps if str(s.get("name", "")).startswith("LIFE-775 - start the early domains run")]
+    found = [s for s in steps if str(s.get("name", "")).startswith("Start the early domains run")]
     assert len(found) == 1
     return found[0]
 
