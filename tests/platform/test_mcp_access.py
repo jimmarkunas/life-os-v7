@@ -217,13 +217,12 @@ class SeededGrants(unittest.TestCase):
         writes = [g for g in access.grants if "write" in g.actions]                                                # Jim, Nov 22 2026 (option A): the only writes are today's Buzz publishing for the two chat clients, in the two communities each can write to
         self.assertEqual({(g.principal, g.tool, g.purpose, g.credential_ref) for g in writes},
                          {(p, "buzz_publish", "buzz-publish", "buzz-scoped-member-key") for p in ("claude-chat", "claude-chat-bytalos", "chatgpt-chat", "chatgpt-chat-bytalos", "muse-chat", "duet-chat", "duet-chat-bytalos")}
-                         | {(p, op, "synthetic-memory-test", "mcp-credential-" + p) for p in ("openclaw", "hermes-librarian") for op in ("memory_store", "memory_correct", "memory_revoke")}   # LIFE-868 (Jim, comment 13743): synthetic memory writes (kept for tests; no tool uses that purpose now)
                          | {(p, op, "personal-memory", "mcp-credential-" + p if p in MEMORY_CREDENTIALS else "honcho-memory-token") for p in MEMORY_CLIENTS for op in ("memory_store", "memory_correct", "memory_revoke")}   # LIFE-949 (Jim, Nov 23 and 24 2026): real non-sensitive Personal memory for every governed client
                          | {("openclaw", "buzz_publish", "buzz-publish", "mcp-credential-openclaw")}   # LIFE-877 (Jim, comment 14311): OpenClaw's own pilot-only relay identity; its credential row alone besides muse may carry the write scope
                          | {(p, "send_to_jim", "agent-inbox", "notion-readonly-token") for p in ("mac-claude-code", "oracle-claude-code", "openclaw", "hermes-librarian", "claude-chat", "chatgpt-chat", "honcho-alerts", "muse-chat", "duet-chat")}   # LIFE-876 (Jim, comments 13748 and 13823): the Agent Inbox, Personal only
                          | {(p, "agent_dispatch", "orchestrator-dispatch", "concord-gateway-socket") for p in ("claude-chat", "chatgpt-chat")})   # LIFE-987 (Jim, comments 14334 and 14344): the only orchestrator write, the two chats, Personal only
         self.assertEqual({g.tenant for g in writes if g.tool == "send_to_jim"}, {"personal"})
-        self.assertEqual(len(writes), 25 + 8 * 3)                                                                      # LIFE-949: three memory writes for each of eight clients
+        self.assertEqual(len(writes), 19 + 8 * 3)                                                                      # LIFE-949: three memory writes for each of eight clients
         self.assertEqual(sorted(c["principal"] for c in CATALOG["capabilities"] if c["tool"] == "send_to_jim"), sorted(["mac-claude-code", "oracle-claude-code", "openclaw", "hermes-librarian", "claude-chat", "chatgpt-chat", "honcho-alerts", "muse-chat", "duet-chat"]))   # a catalog row for exactly the six granted clients, none for the stdio Mac row or a Bytalos principal
 
     def test_the_shipped_seed_lets_no_one_call_send_to_jim(self):
@@ -244,7 +243,8 @@ class SeededGrants(unittest.TestCase):
         self.assertEqual([g for g in access.grants if g.tool.startswith("memory_") and (g.tenant != "personal" or g.principal.endswith("bytalos"))], [])   # no Bytalos or TGP memory grant of any kind
         rows = {(c["principal"], c["tool"]) for c in CATALOG["capabilities"] if c["tool"].startswith("memory_")}
         self.assertEqual(rows, {(p, t) for p in MEMORY_CLIENTS for t in MEMORY_TOOLS})
-        self.assertEqual({c["status"] for c in CATALOG["capabilities"] if c["tool"].startswith("memory_") and c["as_of"] == "2026-11-24"}, {"synthetic"})   # until a live call proves each row
+        synthetic = {(c["principal"], c["tool"]) for c in CATALOG["capabilities"] if c["tool"].startswith("memory_") and c["status"] == "synthetic"}
+        self.assertEqual(synthetic, {(p, "memory_ask") for p in MEMORY_CLIENTS if p != "mac-claude-code"} | {(p, t) for p in ("duet-chat", "muse-chat") for t in MEMORY_TOOLS})   # LIFE-877 sign-off (Nov 26 2026): a row is working only with a live receipt for that client and tool
 
     def test_muse_holds_the_four_personal_grants_jim_approved_plus_the_five_memory_tools_and_nothing_on_gmail_drive_or_bytalos(self):
         """LIFE-923 (Jim, M3, comment 13891): Buzz read and publish in life-os plus send_to_jim, Personal only, expiring Feb 22 2027."""
@@ -270,14 +270,21 @@ class SeededGrants(unittest.TestCase):
         with self.assertRaises(M.AccessError):
             M.identify(access, "http", {"oauth_client": "duet2"})
 
+    LIVE_877 = {**{p: {"buzz_capabilities", "buzz_read", "memory_store", "memory_recall", "memory_correct", "memory_revoke", "send_to_jim", "source_read"} for p in ("mac-claude-code", "oracle-claude-code", "openclaw", "claude-chat", "chatgpt-chat")},
+                "hermes-librarian": {"buzz_capabilities", "buzz_read", "memory_store", "memory_recall", "memory_correct", "memory_revoke", "send_to_jim", "source_read", "gmail_search", "gmail_read", "drive_search", "drive_read"},
+                "hermes-librarian-bytalos": {"gmail_search", "gmail_read", "drive_search", "drive_read"}, "claude-chat-bytalos": {"buzz_read"}}
+    LIVE_877["mac-claude-code"] |= {"memory_ask", "agent_lookup"}
+    LIVE_877["oracle-claude-code"] |= {"agent_lookup"}
+    LIVE_877["claude-chat"] |= {"buzz_publish"}
+    LIVE_877["chatgpt-chat"] |= {"buzz_publish"}
+
     def test_only_the_catalog_rows_a_live_call_exercised_are_working_and_every_other_seeded_row_stays_synthetic(self):
-        """LIFE-865 live proof (Nov 22 2026, through the claude.ai Buzz connector against release 52343c06da4e): Claude's capabilities and Personal read, and its Bytalos read, were called live. Nothing else was: not ChatGPT, not a publish, not send_to_jim."""
-        new = [c for c in CATALOG["capabilities"] if c["as_of"] == "2026-11-22"]
-        self.assertTrue(new)
-        live = {(c["principal"], c["tool"]) for c in new if c["status"] == "working"}
-        self.assertEqual(live, {("claude-chat", "buzz_capabilities"), ("claude-chat", "buzz_read"), ("claude-chat-bytalos", "buzz_read")})
-        self.assertEqual({c["status"] for c in new if (c["principal"], c["tool"]) not in live}, {"synthetic"})
-        self.assertEqual({c["status"] for c in new if c["tool"] in ("buzz_publish", "send_to_jim")} - {"synthetic"}, set())       # no write is live-proven
+        """LIFE-865 live proof (Nov 22 2026) and the LIFE-877 walk-through (Nov 25 to 26 2026, signed off by Jim): a row is `working` only where a live receipt exists for that client and tool (LIVE_877); every other governed row stays synthetic."""
+        governed = [c for c in CATALOG["capabilities"] if c["as_of"] >= "2026-11-22" and c["provider"] in ("buzz", "google", "honcho", "notion")]
+        self.assertTrue(governed)
+        live = {(c["principal"], c["tool"]) for c in governed if c["status"] == "working"}
+        self.assertEqual(live, {(p, t) for p, tools in self.LIVE_877.items() for t in tools if any(c["principal"] == p and c["tool"] == t for c in governed)})
+        self.assertEqual({c["status"] for c in governed if (c["principal"], c["tool"]) not in live}, {"synthetic"})
         out = G.Outcome("allow", "ok", True)
         self.assertFalse(out.live_proven)                                                                                         # the gate's own flag stays False: the catalog row status is the live-proof ledger
 
@@ -296,7 +303,7 @@ class ProposedPublishGrants(unittest.TestCase):
         self.assertEqual([g for g in DOC["grants"] if g["tool"] == "buzz_publish" and g["principal"] not in ("muse-chat", "duet-chat", "duet-chat-bytalos", "openclaw")], grants)                                   # exactly these, no other publish grant
         self.assertEqual({(g["principal"], g["tenant"], g["tool"], tuple(g["actions"]), g["purpose"], g["expires"]) for g in grants},
                          {(p, t, "buzz_publish", ("write",), "buzz-publish", "2027-02-22") for p, t in (("claude-chat", "personal"), ("claude-chat-bytalos", "bytalos"), ("chatgpt-chat", "personal"), ("chatgpt-chat-bytalos", "bytalos"))})
-        self.assertEqual({r["status"] for r in rows}, {"synthetic"})
+        self.assertEqual({(r["principal"], r["status"]) for r in rows}, {("claude-chat", "working"), ("claude-chat-bytalos", "synthetic"), ("chatgpt-chat", "working"), ("chatgpt-chat-bytalos", "synthetic")})      # LIFE-877: the two Personal rows have live receipts
         self.assertEqual({r["tool"] for r in rows}, {"buzz_publish"})
 
     def test_activated_they_allow_exactly_those_four_and_nothing_else(self):

@@ -90,7 +90,7 @@ So today both chat clients can publish in both communities, limited by the relay
   "source": "lifeos/buzz/mcp.py",
   "as_of": "2026-11-22",
   "max_age_days": 90,
-  "status": "synthetic"
+  "status": "working"
  },
  {
   "principal": "claude-chat-bytalos",
@@ -114,7 +114,7 @@ So today both chat clients can publish in both communities, limited by the relay
   "source": "lifeos/buzz/mcp.py",
   "as_of": "2026-11-22",
   "max_age_days": 90,
-  "status": "synthetic"
+  "status": "working"
  },
  {
   "principal": "chatgpt-chat-bytalos",
