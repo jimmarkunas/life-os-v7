@@ -4,7 +4,10 @@ name: v3-pages
 # Hourly at minute 40: the hourly tick runs at :07/:27/:47 and the domains jobs follow it, the watchdog is at :17/:47, so :40 keeps Jira and Notion calls off those minutes. Manual runs are a dry run unless "Actually write" is ticked; a scheduled run follows V7_LIVE (dry run if it cannot be read).
 on:
   schedule:
-    - cron: "40 * * * *"
+    - cron: "40 * * * *"           # the fallback: GitHub fires it only about twice a day (Nov 26 2026), so it is no longer the page's clock
+  workflow_run:                    # LIFE-1000 (Jim, Nov 26 2026, 2:54 PM CT): the page refreshes after every hourly domains run, like the Jira job did before LIFE-793
+    workflows: ["domains"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       live:
@@ -18,6 +21,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   v3pages:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.display_title == 'domains (after tick)' }}   # LIFE-1000: a manual domains run does not start it; whatever the domains conclusion, the stages read Jira themselves
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
