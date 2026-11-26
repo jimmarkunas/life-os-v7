@@ -20,7 +20,8 @@ ALLOWED = {                                                          # path: (mo
 
 def workflow_ids(root):
     ids = set()
-    for path in sorted((Path(root) / ".github" / "workflows").glob("*.y*ml")):
+    sets = Path(root) / ".github" / "actions" / "bws-load" / "sets.yml"                                  # LIFE-1013: the credential lists the workflows name with `set:` are the one home of the ids
+    for path in sorted((Path(root) / ".github" / "workflows").glob("*.y*ml")) + ([sets] if sets.exists() else []):
         for line in path.read_text(errors="ignore").splitlines():
             if MAPPING_LINE.search(line):
                 ids.update(m.lower() for m in UUID.findall(line))
@@ -39,7 +40,7 @@ def copies(root, files=None, ids=None):
     ids = workflow_ids(root) if ids is None else ids
     found = {}
     for rel in (tracked(root) if files is None else files):
-        if rel.startswith((".github/workflows/", ".github/workflows-src/")):                    # LIFE-764: the fragments domains.yml is joined from are the workflow file's own text
+        if rel.startswith((".github/workflows/", ".github/workflows-src/")) or rel == ".github/actions/bws-load/sets.yml":                    # LIFE-764: the fragments domains.yml is joined from are the workflow file's own text
             continue
         try:
             text = (Path(root) / rel).read_text(errors="ignore").lower()

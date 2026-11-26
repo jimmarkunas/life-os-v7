@@ -153,9 +153,24 @@ def git(*args, root=ROOT):
     return subprocess.run(["git", *args], cwd=root, capture_output=True, text=True)
 
 
+SETS_PATH = ".github/actions/bws-load/sets.yml"
+SET_REF = re.compile(r"(?m)^( +)set: ([A-Za-z0-9_-]+)\s*$")
+
+
+def expand_sets(text, sets_text):
+    """LIFE-1013: a `bws-load` step names its credential list with `set: <name>` (the lists live in sets.yml); the gate judges the inline `secrets:` block that stands for it, so adding a name to sets.yml is a new credential like adding it inline."""
+    sets = yaml.safe_load(sets_text) if sets_text else None
+    sets = sets if isinstance(sets, dict) else {}
+    return SET_REF.sub(lambda m: f"{m.group(1)}secrets: |\n" + "".join(f"{m.group(1)}  {line}\n" for line in str(sets.get(m.group(2), "")).splitlines()), text)
+
+
 def changed_workflows(base, head, root=ROOT):
-    out = git("diff", "--name-only", "--diff-filter=ACMRD", base, head, "--", ".github/workflows", root=root).stdout
-    return [line for line in out.splitlines() if line.endswith((".yml", ".yaml"))]
+    out = git("diff", "--name-only", "--diff-filter=ACMRD", base, head, "--", ".github/workflows", SETS_PATH, root=root).stdout
+    names = [line for line in out.splitlines() if line.endswith((".yml", ".yaml"))]
+    if SETS_PATH in names:                                       # a changed list can reach every workflow that names it
+        listed = git("ls-tree", "--name-only", head, ".github/workflows/", root=root).stdout + git("ls-tree", "--name-only", base, ".github/workflows/", root=root).stdout
+        names = sorted({n for n in names if n != SETS_PATH} | {n for n in listed.splitlines() if n.endswith((".yml", ".yaml"))})
+    return names
 
 
 def show(ref, path, root=ROOT):
@@ -169,8 +184,9 @@ def verdict(base, head, root=ROOT):
 
 def verdict_detail(base, head, root=ROOT):
     found = []
+    base_sets, head_sets = show(base, SETS_PATH, root), show(head, SETS_PATH, root)
     for path in changed_workflows(base, head, root):
-        found += reasons_detail(path, show(base, path, root), show(head, path, root))
+        found += reasons_detail(path, expand_sets(show(base, path, root), base_sets), expand_sets(show(head, path, root), head_sets))
     return found
 
 

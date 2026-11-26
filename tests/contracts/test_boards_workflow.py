@@ -10,6 +10,10 @@ except ImportError:                                           # the contract tes
     yaml = None
 
 from lifeos.platform import boards_window, limits
+import sys as _sys
+_sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[2] / "tools"))
+import wfsets  # noqa: E402  (LIFE-1013: credential lists named with `set:`)
+
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 BOARDS = ROOT / ".github/workflows/boards.yml"
@@ -64,7 +68,7 @@ class BoardsWorkflow(unittest.TestCase):
     def test_no_new_secret_name_and_only_the_store_and_tailnet_credentials(self):
         text = BOARDS.read_text()
         loaded = re.findall(r"^\s+([0-9a-f-]{36}) > (\w+)$", text, re.M)
-        hourly = dict((u, n) for u, n in re.findall(r"^\s+([0-9a-f-]{36}) > (\w+)$", (ROOT / ".github/workflows/hourly.yml").read_text(), re.M))
+        hourly = dict((u, n) for u, n in re.findall(r"^\s+([0-9a-f-]{36}) > (\w+)$", wfsets.expand_text((ROOT / ".github/workflows/hourly.yml").read_text()), re.M))
         self.assertEqual(len(loaded), 12)
         for uuid, name in loaded:
             self.assertEqual(hourly.get(uuid), name, name)                                           # the same ids and names the hourly workflow loads
