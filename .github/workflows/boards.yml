@@ -39,7 +39,7 @@ jobs:
       slot_ct: ${{ steps.gate.outputs.slot_ct }}
       late_reason: ${{ steps.gate.outputs.late_reason }}
     steps:
-      - name: Checkout the exact commit (own git fetch; the token is passed once and never stored)
+      - name: Checkout the exact commit (own git fetch, token never stored)
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
@@ -59,7 +59,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 35                 # the catch-up's 25-minute crawl step plus checkout, the Bitwarden helper wait and the tailnet join
     steps:
-      - name: Checkout the exact commit (own git fetch; the token is passed once and never stored)
+      - name: Checkout the exact commit (own git fetch, token never stored)
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"

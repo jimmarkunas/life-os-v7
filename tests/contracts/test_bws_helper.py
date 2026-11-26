@@ -19,6 +19,9 @@ def _read(path):
         return handle.read()
 
 
+SEEDS = ("./.github/actions/bws-helper", "./.github/actions/job-start")             # LIFE-1010: job-start is the Python step plus the helper step in one
+
+
 def _jobs():
     for path in sorted(glob.glob(os.path.join(ROOT, ".github", "workflows", "*.yml"))):
         doc = yaml.safe_load(_read(path))
@@ -41,7 +44,7 @@ class WorkflowWiring(unittest.TestCase):
             first = loaders[0]
             self.assertGreater(first, 0, (file, name))
             seed = steps[first - 1]
-            self.assertEqual(seed.get("uses"), "./.github/actions/bws-helper", (file, name))
+            self.assertIn(seed.get("uses"), SEEDS, (file, name))
             self.assertNotIn("id", seed, (file, name))                    # nothing downstream reads the helper step
             if main:
                 self.assertNotIn("continue-on-error", seed, (file, name))     # a missing verified helper fails the job; no fallback
@@ -60,7 +63,7 @@ class WorkflowWiring(unittest.TestCase):
 
     def test_the_helper_is_called_exactly_once_per_job(self):
         for file, name, job in _jobs():
-            calls = [s for s in job.get("steps") or [] if s.get("uses") == "./.github/actions/bws-helper"]
+            calls = [s for s in job.get("steps") or [] if s.get("uses") in SEEDS]
             loaders = [s for s in job.get("steps") or [] if s.get("uses") == "./.github/actions/bws-load"]
             self.assertEqual(len(calls), 1 if loaders else 0, (file, name))
 

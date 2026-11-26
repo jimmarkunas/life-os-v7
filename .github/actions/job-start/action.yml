@@ -1,0 +1,13 @@
+name: Job start
+description: "LIFE-1010: the two steps every job runs right after its own checkout (a local action cannot run before the repository exists, so the checkout stays in the job): Python and the locked dependencies, then the Bitwarden helper from a saved, fingerprint-checked copy. Same actions, same inputs, in one step."
+inputs:
+  wait_seconds: {description: "How long the Bitwarden helper download may keep retrying when there is no saved copy (the caller sizes it to the job's time limit)", default: "300"}
+  python: {description: "false skips Python and the dependencies (a job that needs only the helper)", default: "true"}
+runs:
+  using: composite
+  steps:
+    - if: ${{ inputs.python != 'false' }}
+      uses: ./.github/actions/python
+    - uses: ./.github/actions/bws-helper
+      with:
+        wait_seconds: ${{ inputs.wait_seconds }}
