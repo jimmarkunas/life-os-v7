@@ -1,8 +1,9 @@
-"""One-time read-only check that the Jobs Notion integration (NOTION_API_TOKEN) can read the synthetic sandbox Job Ledger (LIFE-10 §2).
+"""Read-only check that the Jobs Notion integration can read the synthetic sandbox Job Ledger.
 
-Manual only (diag.yml, stage notion-sandbox-access); never on a tick. Exactly three reads against fixed sandbox ids, never inputs: the sandbox data source, a one-row query of it, and the private sandbox page that holds it. There is no write path and --live is refused.
-Outputs: fixed codes and counts only: "200" or Notion's HTTP code and error code (e.g. "NOTION_HTTP_404 object_not_found"), never a title, id, token or content. Any refused read counts as failed, so the step exits 1 with NOTION_SANDBOX_ACCESS_DENIED and its codes still printed."""
-# TL comment 10754 on LIFE-10.
+Manual only; never on a tick. Exactly three reads against fixed sandbox ids (the data source, a one-row query, the page
+holding it); there is no write path and --live is refused.
+Outputs fixed codes and counts only ("200", or Notion's HTTP and error code), never a title, id, token or content. Any
+refused read fails the step with NOTION_SANDBOX_ACCESS_DENIED and its codes still printed."""
 import os
 
 from lifeos.platform.notion_ids import notion_id

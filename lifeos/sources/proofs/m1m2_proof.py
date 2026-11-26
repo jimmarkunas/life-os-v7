@@ -1,8 +1,8 @@
-"""Bounded synthetic M1/M2 exit: one acquired vacancy to a second interview round, through real V7 code on native Notion QA surfaces (LIFE-78).
+"""Synthetic proof: one acquired vacancy to a second interview round, through real code on Notion QA surfaces.
 
-Manual only: interview-proof with `confirm = M1M2` (Interview token only). Every write goes to a FRESH sandbox under the QA Interview OS parent: its own Job Ledger and Recruiters data sources, a synthetic Daily Report page (the Hiring card's region) and its own Hiring Pipeline pages. Only the outside sources are synthetic and in
-memory (the fetched page, the Fit profile, mail, Calendar; m1m2_fixture.json); nothing real is read or written, nothing is sent or submitted.
-Outputs: independent read-back with a new client; PASS/FAIL per assertion, counts only. Gate B machine evidence, not Gate A."""
+Manual only: interview-proof with `confirm = M1M2`. Every write goes to a fresh sandbox under the QA Interview OS parent;
+the fetched page, Fit profile, mail and Calendar are synthetic and in memory (m1m2_fixture.json). Nothing real is read
+or written and nothing is sent. Output: PASS/FAIL per assertion from an independent read-back, counts only."""
 import copy
 import json
 import pathlib
@@ -29,16 +29,15 @@ CONFIRM, MAX_TICKS = "M1M2", 6
 COMPANY, ROLE, REQ, LANE = "SampleWorks", "Senior Technical Program Manager", "880042", "US Remote"
 POSTING, REQUEST_URL = f"https://jobs.example.test/sampleworks/jobs/{REQ}", "https://example.test/m1m2/request"
 TITLE, INVITE = f"{COMPANY} — {ROLE}", f"{COMPANY} {ROLE} Interview"
-RECRUITER, AGENCY, DECOY_AGENCY = "Riley Synthetic", "Staffing Example Inc", "Other Staffing Example"     # the decoy has the SAME person name
+RECRUITER, AGENCY, DECOY_AGENCY = "Riley Synthetic", "Staffing Example Inc", "Other Staffing Example"
 FIXTURE = json.loads((pathlib.Path(__file__).with_name("m1m2_fixture.json")).read_text())
 PROFILE, DESCRIPTION, SALARY, PLACE = Profile(FIXTURE["profile"]), FIXTURE["description_html"], "$170,000 - $190,000", "Remote, United States"
-READ_FIELDS = {"Hiring Decision": "select", "Dismissed Outcome Ref": "rich_text", "Stage": "select"}       # what the Hiring readers read from a Ledger row (LIFE-361: Stage too)
+READ_FIELDS = {"Hiring Decision": "select", "Dismissed Outcome Ref": "rich_text", "Stage": "select"}
 ACTIONS = ("Needs Action", "Waiting", *rstore.CONVERSATION, *rstore.HISTORY)
-SLEEP, WAITS = time.sleep, 10                                             # a data-source query can trail a write: wait (bounded) to SEE the case's own write
+SLEEP, WAITS = time.sleep, 10
 
 
 def visible(probe):
-    """Wait until `probe()` is truthy, at most WAITS tries two seconds apart. -> the last answer. Never writes."""
     answer = probe()
     for _ in range(WAITS):
         if answer:
@@ -49,7 +48,6 @@ def visible(probe):
 
 
 def ats_page(posted, valid_through=None):
-    """An invented, already-fetched employer ATS page carrying a schema.org JobPosting, as the Jobs detail stage receives it."""
     posting = {"@context": "https://schema.org", "@type": "JobPosting", "title": ROLE, "description": DESCRIPTION, "datePosted": posted,
                "hiringOrganization": {"@type": "Organization", "name": COMPANY}, "jobLocationType": "TELECOMMUTE",
                "applicantLocationRequirements": {"@type": "Country", "name": "United States"}, **({"validThrough": valid_through} if valid_through else {})}
@@ -57,7 +55,6 @@ def ats_page(posted, valid_through=None):
 
 
 def ledger_schema():
-    """The sandbox Ledger: the target guard's required set, every property the real publish path can write (all optional fields present), the read fields."""
     sample = {"title": ROLE, "company": COMPANY, "url": POSTING, "source": "s", "provider": "s", "lane": LANE, "key": "s", "first_seen": date(2026, 1, 1),
               "posted": date(2026, 1, 1), "fit": 80, "fit_line": "s", "admission": lanes.REVIEW, "admission_reason": "s", "eligible": [LANE], "work_mode": "remote",
               "salary": SALARY, "location": PLACE, "text": "s", "apply_kind": "easy_apply"}
@@ -65,7 +62,6 @@ def ledger_schema():
 
 
 def _scoped(client, source):
-    """The same client (same token, same pacing) aimed at one sandbox data source."""
     scoped = copy.copy(client)
     scoped.source = source
     scoped.__dict__.pop("_ledger_target", None)
@@ -73,7 +69,6 @@ def _scoped(client, source):
 
 
 def _database(client, parent, title, properties, code="M1M2_SANDBOX_DATABASE_UNREADABLE"):
-    """One disposable data source under a sandbox page -> its id. A refusal raises `code`: the run fails closed and says so."""
     made = client.call_once("POST", "/databases", {"parent": {"type": "page_id", "page_id": parent}, "title": rich_text(title), "initial_data_source": {"properties": properties}})
     sources = made.get("data_sources") if isinstance(made, dict) else None
     if not isinstance(sources, list) or len(sources) != 1 or not sources[0].get("id"):
@@ -86,7 +81,6 @@ def _block(kind, text="", **extra):
 
 
 def report_page(client, container):
-    """A synthetic Daily Report page with the Hiring Pipeline region in the shape the real card validates (an anchor on the same page, the heading, the table)."""
     header = {"object": "block", "type": "table_row", "table_row": {"cells": [rich_text(c) for c in HM.HEADERS]}}
     blocks = [_block("callout", "Synthetic anchor (stands in for the Jira card)"), _block("heading_3", HM.TITLE),
               {"object": "block", "type": "table", "table": {"table_width": 4, "has_column_header": True, "has_row_header": False, "children": [header]}}, _block("divider")]
@@ -98,7 +92,7 @@ def report_page(client, container):
 
 
 def sandbox(client, now, report=None):
-    """A fresh sandbox under the QA parent. -> its ids: pipeline, human page, Ledger and Recruiters data sources, the report's pinned blocks."""
+    """Create a fresh sandbox under the QA parent; return its page, data source and pinned report block ids."""
     container = notion.write_tree(client, QA_PARENT, [], title=f"M1/M2 synthetic exit · {now.strftime('%Y-%m-%d %I:%M %p')} CT (synthetic)", template=notion.FULL_WIDTH)
     pipe = notion.write_tree(client, container, [], title="Hiring Pipeline", template=notion.FULL_WIDTH)
     active = notion.write_tree(client, pipe, [], title="Active Opportunities", template=notion.FULL_WIDTH)
@@ -115,7 +109,6 @@ def _plain(prop, kind):
 
 
 def _ledger_rows(ledger):
-    """The Interview runner's per-company Ledger rows, read from the sandbox Ledger."""
     def rows(company):
         found = ledger.query_data_source(None, {"page_size": 100, "filter": {"property": "Company", "rich_text": {"equals": company}}})
         return [{"page_id": p["id"], "company": company, "role": _plain(p["properties"].get("Job"), "title"), "requisition": None,
@@ -124,7 +117,6 @@ def _ledger_rows(ledger):
 
 
 def _rows_text(client, page_id):
-    """Every text on a page as Notion holds it (nested blocks, table cells; not child pages), for presence checks only; never printed."""
     out, budget = [], [120]
 
     def walk(block_id, depth):
@@ -142,7 +134,6 @@ def _human_tree(client, page_id):
 
 
 def _present(client, pins, cells):
-    """LIFE-973: the production Hiring Pipeline table writer is gone (the card is a live Job Ledger view); this proof keeps its own sandbox table so the compiled rows are still read back from Notion."""
     region = R.floating_region(client, pins["HIRING_CARD_BLOCK_ID"], HM.TITLE, NotionError, with_status=False)
     scoped = R.ScopedClient(client, region["heading"]["id"], NotionError).adopt(region["table"]["id"], *(row["id"] for row in region["rows"]))
     counts = R.write_floating(scoped, region, None, cells, NotionError)
@@ -151,17 +142,16 @@ def _present(client, pins, cells):
 
 
 def _hiring_rows(client, pins):
-    """The job's Hiring Pipeline rows as Notion holds them, through the region validator -> [[cell text] x 4]."""
     region = R.floating_region(client, pins["HIRING_CARD_BLOCK_ID"], HM.TITLE, NotionError, with_status=False)
     return [c for c in map(R.cells_of, region["rows"][1:]) if c[0] == HM.label(COMPANY, ROLE)]
 
 
 def drive(client, environ, box, now, results, counts, report=None):
-    """The case against a fresh sandbox; appends (assertion, pass) to `results`. Fixed names and counts only."""
+    """Run the case against a fresh sandbox, appending (assertion, pass) to `results`."""
     check = lambda name, ok: results.append((name, bool(ok)))      # noqa: E731
     today, day = now.date(), (lambda n: (now + timedelta(days=n)).strftime("%Y-%m-%dT10:00:00-05:00"))
     ledger, recruiters, report, pins = _scoped(client, box["ledger"]), _scoped(client, box["recruiters"]), report or client, {**environ, **box["report"]}
-    found = enrich.parse_html(POSTING, ROLE, ats_page(today.isoformat()), lane=LANE, first_party=True)       # 1. acquisition, then identity, Fit, lane
+    found = enrich.parse_html(POSTING, ROLE, ats_page(today.isoformat()), lane=LANE, first_party=True)       # Acquisition, then identity, Fit, lane.
     desc = found.get("description") or {}
     text = desc.get("full_text", "")
     check("1a acquisition: the JSON-LD page normalizes to READY with sections, the employer and today's posting date", found.get("outcome") == "ready"
@@ -182,7 +172,7 @@ def drive(client, environ, box, now, results, counts, report=None):
            "posted": found.get("posted"), "fit": fit.score, "fit_line": fit.line, "admission": decision.status, "eligible": eligible, "work_mode": "remote", "salary": SALARY,
            "location": found.get("location") or PLACE, "text": text}
     creates = 0
-    for attempt in (POSTING, tracked, POSTING):                               # 2. the publish path: key lookup, then create; a replay and the tracked link adopt
+    for attempt in (POSTING, tracked, POSTING):                               # Publish path: key lookup, then create; a replay and the tracked link adopt the row.
         if not publish.existing_page(ledger, identity.url_key(attempt)):
             ledger.create(publish.properties({**row, "key": identity.url_key(attempt)}), publish.body_blocks(key, desc))
             creates += 1
@@ -191,7 +181,7 @@ def drive(client, environ, box, now, results, counts, report=None):
     check("2a one Ledger row after three publishes (replay and tracked link adopt it)", creates == 1 and bool(job_id) and jobs_ledger.verify(ledger) == jobs_ledger.OK)
     if not job_id:
         return
-    job = {"id": job_id, "company": COMPANY, "role": ROLE}                  # 3-4. Jim's own outreach and application, simulated; nothing is sent or submitted
+    job = {"id": job_id, "company": COMPANY, "role": ROLE}                  # The user's own outreach and application, simulated; nothing is sent or submitted.
     sent, again = (outreach.mark_sent(recruiters, job, RECRUITER, now, box["ledger"], AGENCY) for _ in range(2))
     replied = outreach.set_conversation(recruiters, job, RECRUITER, rstore.REPLIED, box["ledger"])
     check("3a Mark as Sent records one Waiting conversation; a replay writes nothing", (sent["status"], again["status"]) == ("recorded", "already_recorded")
@@ -206,7 +196,7 @@ def drive(client, environ, box, now, results, counts, report=None):
     ledger.update_page_properties(job_id, {"Applied": {"checkbox": True}, "Applied On": {"date": {"start": today.isoformat()}}})
     visible(lambda: pipeline.read_applied(ledger))
 
-    def hiring_card(events=()):                                              # 5. the real Hiring card from the sandbox Ledger and pipeline, read back from Notion
+    def hiring_card(events=()):                                              # The real Hiring card from the sandbox Ledger and pipeline, read back from Notion.
         result = hiring.compile_rows(pipeline.read_applied(ledger), pipeline.read_parents(client, box["pipe"], ledger), list(events), None,
                                      {"ledger": True, "parents": True, "calendar": True}, now)
         status, cells, _ = render.render(result, None, now)
@@ -220,21 +210,20 @@ def drive(client, environ, box, now, results, counts, report=None):
     mail = (_outreach("Data Engineer", "OtherCo", "111111", "https://example.test/m1m2/amb-1", age(30)),
             _outreach("Data Engineer", "OtherCo", "222222", "https://example.test/m1m2/amb-2", age(29)),
             _request("NotAppliedCo", "Program Lead", "123456", "https://example.test/m1m2/stranger", age(19)))
-    for agency, url in ((AGENCY, REQUEST_URL), (DECOY_AGENCY, "https://example.test/m1m2/another-thread")):      # the Recruiters stage's own create for each message
+    for agency, url in ((AGENCY, REQUEST_URL), (DECOY_AGENCY, "https://example.test/m1m2/another-thread")):      # The Recruiters stage's own create for each message.
         rstore.create(recruiters, {"person": RECRUITER, "company": agency, "client": COMPANY, "role": ROLE, "medium": "Email", "what": "", "needs_review": False,
                                    "last_contact": (now - timedelta(hours=24)).replace(second=0, microsecond=0).isoformat(), "week_ending": week_ending(now - timedelta(hours=24)), "source_url": url})
     env = {**environ, "HIRING_PIPELINE_PAGE_ID": box["pipe"], "INTERVIEW_OS_WRITER": "v7", "INTERVIEW_LEADS": "on", "INTERVIEW_CONVERT": "", "INTERVIEW_TEST_COMPANIES": "",
-           "INTERVIEW_JOURNEY_PROOF": "", "NOTION_JOB_LEDGER_DATA_SOURCE_ID": box["ledger"]}     # LIFE-361: the opportunity is the sandbox Ledger row
+           "INTERVIEW_JOURNEY_PROOF": "", "NOTION_JOB_LEDGER_DATA_SOURCE_ID": box["ledger"]}     # The opportunity is the sandbox Ledger row.
     calendar = Calendar()
 
-    def tick(records):                                                       # 6-7. the real Interview runner and Notion writer, with negatives and replays
+    def tick(records):                                                       # The real Interview runner and Notion writer, with negatives and replays.
         counts["ticks"] += 1
         done = ev.run(20, True, environ=env, client=client, calendar=calendar, now=now, ledger=ledger, records=list(records), ledger_rows=_ledger_rows(ledger),
                       writer=ledger, recruiters=recruiters)
         counts["writes"] += done["writes"]
-        counts["tick_codes"].append(f"w{done['writes']}f{done['failed']}:" + ",".join(sorted(k for k in done["why"] if k not in ("child_match", "parent_unchanged"))))      # fixed codes only
+        counts["tick_codes"].append(f"w{done['writes']}f{done['failed']}:" + ",".join(sorted(k for k in done["why"] if k not in ("child_match", "parent_unchanged"))))      # Fixed codes only.
         return done
-
     def settle(records):
         ticks = [tick(records)]
         while ticks[-1]["writes"] and len(ticks) < MAX_TICKS:
@@ -293,12 +282,12 @@ def drive(client, environ, box, now, results, counts, report=None):
     check("5b Hiring Pipeline region rewritten and verified: the row reads Interviewing", verified and len(mine) == 1 and mine[0][1].startswith("Interviewing"))
     final = tick(mail + (request,))
     check("7f final replay writes nothing", final["writes"] == 0 and final["failed"] == 0)
-    check("8a Jim’s Notes on the opportunity are unchanged", notion.protected_snapshot(client, page_id, "opportunity") == notes)       # 8. protected content
+    check("8a Jim’s Notes on the opportunity are unchanged", notion.protected_snapshot(client, page_id, "opportunity") == notes)       # Protected content.
     check("8b the human page is unchanged", _human_tree(client, box["human"]) == human_before)
 
 
 def readback(reader, box, report=None):
-    """Independent final evidence: a NEW client reads, from each sandbox surface the case wrote, the canonical state it claims."""
+    """Independent evidence: a new client reads back the state the case claims from each sandbox surface."""
     ledger, recruiters, key = _scoped(reader, box["ledger"]), _scoped(reader, box["recruiters"]), identity.url_key(POSTING)
     rows = ledger.query_data_source(None, {"page_size": 100}).get("results") or []
     props = rows[0]["properties"] if len(rows) == 1 else {}
@@ -312,7 +301,7 @@ def readback(reader, box, report=None):
                 and (job_rows[0]["action"], job_rows[0]["person"]) == ("Replied", RECRUITER) and len(thread) == 1 and thread[0]["company"] == AGENCY))
     hiring_rows = _hiring_rows(report or reader, box["report"])
     out.append(("9c Hiring Pipeline read-back: one row for the job, Interviewing", len(hiring_rows) == 1 and hiring_rows[0][1].startswith("Interviewing")))
-    scan = notion.parents(reader, {"HIRING_PIPELINE_PAGE_ID": box["pipe"], "NOTION_JOB_LEDGER_DATA_SOURCE_ID": box["ledger"]})      # LIFE-361: Ledger rows first, then the tree
+    scan = notion.parents(reader, {"HIRING_PIPELINE_PAGE_ID": box["pipe"], "NOTION_JOB_LEDGER_DATA_SOURCE_ID": box["ledger"]})      # Ledger rows first, then the tree.
     active = [p for p in scan.items if p.active]
     opp = [p for p in active if split_title(p.title) == (COMPANY, ROLE)]
     rounds = {r.ordinal: r for r in (notion.child_scan(reader, opp[0].page_id).items if len(opp) == 1 else ())}
@@ -323,9 +312,8 @@ def readback(reader, box, report=None):
                   ("9f Interview read-back: Interview 1 cancelled by its own invite, Interview 2 dated", sorted(rounds) == [1, 2]
                    and create.round_calendar(reader, rounds[1].page_id)[1] is True and bool(rounds[2].interview_date))]
 
-
 def run(environ, live, now=None, client=None, reader=None, report=None):
-    """-> counts only: assertions as PASS/FAIL and `failed`. A sandbox that cannot be built fails closed with its fixed code and claims nothing."""
+    """Return counts only; a sandbox that cannot be built fails closed with its fixed code."""
     if (environ.get("INTERVIEW_JOURNEY_PROOF") or "").strip() != CONFIRM:
         return {"proof": "refused", "code": "proof_confirm_missing", "failed": 1, "why": {}, "writes": 0}
     if live:
@@ -333,14 +321,14 @@ def run(environ, live, now=None, client=None, reader=None, report=None):
     now, client = (now or datetime.now(ev.TZ)).astimezone(ev.TZ), client or notion.make_client(environ)
     try:
         box = sandbox(client, now, report)
-    except NotionError as error:                                             # e.g. the integration may not create a database under the QA parent
+    except NotionError as error:                                             # For example the integration may not create a database under the QA parent.
         return {"proof": "blocked", "code": f"sandbox:{str(error)[:40]}", "detail": str(getattr(error, "detail", ""))[:80], "failed": 1, "why": {}, "writes": 0}
     results, counts = [], {"ticks": 0, "writes": 0, "hiring_writes": 0, "tick_codes": []}
     for stage, call in (("stopped", lambda: drive(client, environ, box, now, results, counts, report)),
                         ("read-back stopped", lambda: results.extend(readback(reader or notion.make_client(environ), box, report)))):
         try:
             call()
-        except NotionError as error:                                         # a refusal is a failed assertion with its fixed code, never a crash or a silent PASS
+        except NotionError as error:                                         # A refusal is a failed assertion with its fixed code, never a crash or a silent PASS.
             results.append((f"{stage}: {str(error)[:60]}", False))
     return {"proof": "m1m2", "assertions": {name: "PASS" if ok else "FAIL" for name, ok in results}, "passed": sum(ok for _, ok in results),
             "failed": sum(not ok for _, ok in results), "why": {}, **counts}

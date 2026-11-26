@@ -1,11 +1,10 @@
-"""One-time synthetic proof of the job-page outreach writer (D225) on the real Notion API, confined to the sandbox Job Ledger (LIFE-10 §2).
+"""Synthetic proof of the job-page outreach writer on the real Notion API, confined to the sandbox Job Ledger.
 
-Manual only (diag.yml, stage notion-sandbox-outreach-proof, typed confirmation SYNTHETIC); never on a tick. One page, `TEST — ServiceNow Outreach (SYNTHETIC)`, in the sandbox data source: created with synthetic neighbour blocks when no page has that title, reused when exactly one does and it carries no outreach region yet,
-refused otherwise.
-Fictional conversations ("Avery Synthetic", then "Blake Synthetic") come from an in-memory adapter, so the production Recruiters store is never read or written. The real `job_page_outreach.run` then runs four times against the sandbox client, each step proven by its own read-back: create, unchanged replay, an in-place update
-that keeps the region's block ids and puts the Needs Action row first, unchanged replay. Without --live it only reports whether the page exists.
-Outputs: fixed codes and counts only; the page id and every name stay out of the log."""
-# TL comment 10754 on LIFE-10; Jim's plan approval on LIFE-10 comment 10773.
+Manual only (typed confirmation SYNTHETIC); never on a tick. One sandbox page is created (or reused when exactly one
+exists and has no outreach region), fed fictional conversations from an in-memory adapter (the production Recruiters
+store is never touched), and `job_page_outreach.run` runs four times: create, replay, in-place update that keeps block
+ids and puts the Needs Action row first, replay. Without --live it only reports whether the page exists.
+Outputs fixed codes and counts only."""
 import os
 from datetime import timedelta
 
@@ -34,7 +33,6 @@ def _para(content):
 
 
 def page_body():
-    """The synthetic neighbours the writer must leave alone: a description marker, a description, a Network Leads toggle (NET-2.3 marker first) and Jim's notes."""
     leads = {"object": "block", "type": "toggle", "toggle": {"rich_text": _text("Network Leads (1)"),
                                                              "children": [_para(f"{N.MARK} synthetic"), _para("Casey Synthetic · Fictional Labs (SYNTHETIC)")]}}
     return [_para(f"{N.DESCRIPTION_MARK} | key=synthetic-servicenow-outreach"),
@@ -47,7 +45,6 @@ def page_properties():
 
 
 def conversation(person, job_id, action, last_contact, follow_up):
-    """One fictional Recruiters row, shaped as the Recruiters data source returns it (lifeos.recruiters.notion.read)."""
     rich = lambda t: [{"type": "text", "plain_text": t, "text": {"content": t}}]   # noqa: E731
     return {"id": f"synthetic-{person.split()[0].lower()}", "properties": {
         "Recruiter": {"type": "title", "title": rich(person)}, "Company": {"type": "rich_text", "rich_text": rich("Fictional Recruiting Co (SYNTHETIC)")},
@@ -58,7 +55,6 @@ def conversation(person, job_id, action, last_contact, follow_up):
 
 
 class Conversations:
-    """The in-memory stand-in for the Recruiters data source: answers the writer's one query shape, holds nothing else, and cannot be written."""
     source = "synthetic-recruiters"
 
     def __init__(self):
@@ -71,7 +67,6 @@ class Conversations:
 
 
 class Counted:
-    """The sandbox client with every write counted (any call but a GET or a data-source query)."""
     def __init__(self, client):
         self._client, self.writes = client, 0
 
@@ -100,13 +95,12 @@ def find_pages(client):
 
 
 def ensure_page(client):
-    """-> (page id, "created" | "reused"). One non-retried create, then the query decides what exists."""
     found = find_pages(client)
     if not found:
         try:
             client.call_once("POST", "/pages", {"parent": {"type": "data_source_id", "data_source_id": SANDBOX_SOURCE}, "properties": page_properties(), "children": page_body()})
         except NotionError:
-            pass                                                            # never retried: the query below decides what happened
+            pass                                                            # Never retried: the query below decides what happened.
         found, how = find_pages(client), "created"
     else:
         how = "reused"
@@ -118,7 +112,6 @@ def ensure_page(client):
 
 
 def _region(client, page_id):
-    """The page's one outreach region (refuses zero or two)."""
     owned = J._owned(R.children(client, page_id, fail))
     if len(owned) != 1:
         raise fail("REGION_NOT_UNIQUE")

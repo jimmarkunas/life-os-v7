@@ -1,8 +1,8 @@
-"""Counts-only diagnostic: for every Scale-Up board in the registry, what did V7 see and what became of it? Reads the store, writes nothing, prints no title, link or text.
+"""Counts-only diagnostic: for every Scale-Up board in the registry, what was read and what became of it.
 
-Per source id (the ids are in the public registry): the registry status and reader kind, the board's own state (last read result, how long ago it last completed, consecutive
-failures, when it is next due), the vacancies it currently lists by what became of them (the ingest state and the suppress reason), and the jobs created from it by status.
-It answers "is this board fed, and if nothing reaches the Ledger, where does it stop?" without a private Notion page."""
+Reads the store, writes nothing, prints no title, link or text. Per source id: registry status and reader kind, the
+board's own state (last read result, age of last completion, consecutive failures, whether due), the current vacancies
+by ingest state and suppress reason, and the jobs created from it by status."""
 from lifeos.jobs import store
 from lifeos.sources.web import registry
 

@@ -1,6 +1,6 @@
-"""The US Remote web source universe (employers, staffing agencies, discovery helpers). Public names and ATS identities only.
+"""The web source universe (employers, staffing agencies, discovery helpers). Public names and ATS identities only.
 
-Config, not code: a source is one row. `status` says how V7 can read it today (see us_remote.json): ready | port | bespoke | discovery.
+A source is one config row; `status` says how it can be read: ready | port | bespoke | discovery | fallback.
 """
 import json
 from pathlib import Path
@@ -36,29 +36,26 @@ def enabled(status=None, tier=None, path=PATH):
 
 
 def for_lane(lane, status="ready"):
-    """Enabled sources of one lane's universe (default: the ones V7 can list today)."""
     return enabled(status=status, path=PATHS[lane])
 
 
 BOARDS_PATH = Path(__file__).with_name("boards.json")
-BOARD_KINDS = {"greenhouse": "gh", "ashby": "ab", "lever": "lv"}    # D202: the seed ATS families and their id prefixes
-MAX_ID = 36                                                          # "web:" + id fits the 40-character source column
+BOARD_KINDS = {"greenhouse": "gh", "ashby": "ab", "lever": "lv"}    # Seed ATS families and their id prefixes.
+MAX_ID = 36
 
 
 def company_from_slug(slug):
-    """A readable fallback name ("keeper-security" -> "Keeper Security"); a Greenhouse board's own name replaces it on each job."""
     return " ".join(w[:1].upper() + w[1:] for w in slug.replace("_", "-").replace(".", "-").split("-") if w) or slug
 
 
 def boards(path=BOARDS_PATH):
-    """D202: the employer boards seeded from the Open Jobs board list (CC0) plus the extras, minus `skip` and minus any board a curated
-    universe (us_remote.json, scale_up.json) already reads, so no board is read twice. Rows are ready employer boards on a slow refresh."""
+    """Ready employer board rows from the seed list plus extras, minus `skip` and boards already read elsewhere."""
     from lifeos.platform import limits                                   # noqa: PLC0415
     data = json.loads(Path(path).read_text())
     known = {(r["kind"], str(r.get("slug") or "").lower()) for p in PATHS.values() for r in load(p) if r.get("slug")}
     skip = {(s.split(":", 1)[0], s.split(":", 1)[1].lower()) for s in data.get("skip", [])}
     rows, seen = [], set()
-    pairs = [(e["kind"], e["slug"], e["company"], True) for e in data.get("extras", [])] + [(k, slug, None, False) for k in BOARD_KINDS for slug in data["seed"].get(k, [])]   # an extra's name wins
+    pairs = [(e["kind"], e["slug"], e["company"], True) for e in data.get("extras", [])] + [(k, slug, None, False) for k in BOARD_KINDS for slug in data["seed"].get(k, [])]   # An extra's name wins.
     for kind, slug, company, extra in pairs:
         key = (kind, slug.lower())
         if kind not in BOARD_KINDS or key in known or key in skip or key in seen:
@@ -69,5 +66,5 @@ def boards(path=BOARDS_PATH):
             raise RegistryError(f"{ident}: longer than {MAX_ID} characters")
         rows.append({"id": ident, "company": company or company_from_slug(slug), "tier": "employer", "kind": kind, "status": "ready",
                      "enabled": True, "slug": slug, "refresh_hours": limits.BOARDS_REFRESH_HOURS, "hot_hours": limits.BOARDS_HOT_HOURS, "quiet": True,
-                     **({"extra": True} if extra else {})})                       # D217: a curated extra is read by the hourly pass from its first read
+                     **({"extra": True} if extra else {})})                       # A curated extra is read by the hourly pass from its first read.
     return rows

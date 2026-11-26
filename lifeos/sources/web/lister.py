@@ -1,6 +1,6 @@
-"""Status-aware board listing for the public ATS APIs: COMPLETE only for a valid, fully-read inventory, otherwise FAILED with a fixed reason.
+"""Status-aware board listing for the public ATS APIs: COMPLETE only for a valid, fully-read inventory, else FAILED.
 
-FAILED is never "zero jobs" and never implies a removal. (`resolve.ats_match.board` returns [] for both, which is fine for matching a title but not for acquisition.)"""
+FAILED carries a fixed reason, is never "zero jobs" and never implies a removal."""
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 import html as htmllib
@@ -15,22 +15,21 @@ from lifeos.sources.web import html_readers
 from lifeos.platform import egress, impersonate, limits
 from lifeos.platform.http import fetch
 
-COMPLETE, FAILED, UNCHANGED = "COMPLETE", "FAILED", "UNCHANGED"     # UNCHANGED (D216): the provider answered 304 to our own validators
-CONDITIONAL = ("greenhouse", "ashby", "lever")          # D216: one plain GET returns the whole board, so a 304 means the whole board is unchanged
-MAX_BYTES = 25_000_000                      # a large Greenhouse board with full content is several MB
-SMARTRECRUITERS_PAGES = 30                  # 3,000 postings; a board that is still not finished is FAILED, not COMPLETE
+COMPLETE, FAILED, UNCHANGED = "COMPLETE", "FAILED", "UNCHANGED"
+CONDITIONAL = ("greenhouse", "ashby", "lever")          # One plain GET returns the whole board, so a 304 means the whole board is unchanged.
+MAX_BYTES = 25_000_000
+SMARTRECRUITERS_PAGES = 30
 
 
 @dataclass
 class Listing:
     status: str
-    jobs: list = field(default_factory=list)       # dicts: id, title, location, url, posted (date|None), content (text|None)
+    jobs: list = field(default_factory=list)
     reason: str | None = None
-    validators: dict = field(default_factory=dict)  # D216: the board answer's ETag / Last-Modified (CONDITIONAL kinds only)
+    validators: dict = field(default_factory=dict)
 
 
 def refusal(status):
-    """Why a board answer is FAILED, never zero jobs: 429 throttled, 403 refused (named apart, D202), 404 gone, else http_<status> or network; None for 200."""
     if status == 200:
         return None
     return {429: "rate_limited_429", 403: "blocked_403", 404: "not_found"}.get(status) or (f"http_{status}" if status else "network")
@@ -44,11 +43,10 @@ def _json(url, fetcher, body=None):
     try:
         return json.loads(page.html), None
     except ValueError:
-        return None, "bad_json"                  # includes a truncated body
+        return None, "bad_json"
 
 
 def _day(value):
-    """date from an ISO string or epoch milliseconds, else None."""
     if not value:
         return None
     try:
@@ -65,7 +63,7 @@ def _text(markup):
 
 def _job(ident, title, location, url, posted=None, content=None, company=None):
     return {"id": str(ident), "title": (title or "").strip(), "location": (location or "").strip(), "url": url or "",
-            "posted": _day(posted), "content": content, "company": (company or "").strip() or None}     # company: the board's own name, when it gives one (not hashed)
+            "posted": _day(posted), "content": content, "company": (company or "").strip() or None}
 
 
 def _greenhouse(slug, fetcher):
@@ -110,7 +108,7 @@ def _smartrecruiters(slug, fetcher):
             if loc.get("remote"):
                 where = ("Remote " + where).strip()
             jobs.append(_job(j.get("id"), j.get("name"), where, f"https://jobs.smartrecruiters.com/{slug}/{j.get('id')}",
-                             j.get("releasedDate")))                                  # no content in the list: enrich reads the page
+                             j.get("releasedDate")))
         if len(data["content"]) < 100:
             return Listing(COMPLETE, jobs)
     return Listing(FAILED, reason="too_many_pages")
@@ -140,11 +138,10 @@ def _pinpoint(source, fetcher):
                               for j in data["data"]])
 
 
-WORKDAY_PAGE, WORKDAY_MAX = 20, 2000            # Workday's page size is 20; a board past the bound is FAILED, not COMPLETE
+WORKDAY_PAGE, WORKDAY_MAX = 20, 2000
 
 
 def workday_urls(source):
-    """(CXS list url, public job base) from either a CXS url or a public site url."""
     url = source["url"]
     if "/wday/cxs/" in url:
         return url, (source.get("public_job_base_url") or "").rstrip("/")
@@ -155,7 +152,6 @@ def workday_urls(source):
 
 
 def _posted_on(text, today):
-    """'Posted Today' / 'Posted Yesterday' / 'Posted 3 Days Ago' -> a date; '30+ Days Ago' and anything else -> None."""
     low = (text or "").lower()
     if "today" in low:
         return today
@@ -175,7 +171,7 @@ def _workday(source, fetcher, today=None):
             return Listing(FAILED, reason=err or "bad_shape")
         batch = data["jobPostings"]
         if total is None:
-            total = data.get("total")                       # only the first page carries a real total
+            total = data.get("total")
             if not isinstance(total, int) or total < 0:
                 return Listing(FAILED, reason="bad_shape")
             if total > WORKDAY_MAX:
@@ -207,7 +203,7 @@ def _jibe(source, fetcher):
             if total > WORKDAY_MAX:
                 return Listing(FAILED, reason="too_many")
         elif data["totalCount"] != total:
-            return Listing(FAILED, reason="inconsistent")      # the inventory moved while we read it
+            return Listing(FAILED, reason="inconsistent")
         if not data["jobs"]:
             if len(seen) < total:
                 return Listing(FAILED, reason="incomplete")
@@ -227,18 +223,17 @@ def _jibe(source, fetcher):
 
 
 def _teamtailor(source, fetcher):
-    """Teamtailor career sites publish every open job as an RSS feed at <jobs url>.rss (found by the shape probe; the HTML list has no JSON-LD)."""
     page = fetcher(source["url"].rstrip("/") + ".rss", timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=2, max_bytes=MAX_BYTES)
     if refusal(page.status):
         return Listing(FAILED, reason=refusal(page.status))
     if "<!DOCTYPE" in page.html[:2000].upper() or "<!ENTITY" in page.html.upper():
-        return Listing(FAILED, reason="bad_shape")                   # never expand entities from a third-party feed
+        return Listing(FAILED, reason="bad_shape")                   # Never expand entities from a third-party feed.
     try:
         channel = ET.fromstring(page.html).find("channel")
     except ET.ParseError:
         return Listing(FAILED, reason="bad_xml")
     if channel is None:
-        return Listing(FAILED, reason="bad_shape")                   # a valid empty board still has a channel; anything else is not an inventory
+        return Listing(FAILED, reason="bad_shape")
     jobs, seen = [], set()
     for item in channel.findall("item"):
         def text(name, item=item):
@@ -266,16 +261,15 @@ def _teamtailor(source, fetcher):
 
 
 def _first_party_html(source, fetcher):
-    """A sponsor's own careers page (no public ATS API). COMPLETE only when the reader proves the inventory, or the page carries the
-    registry's `zero_marker` phrase; an ambiguous page is FAILED (bad_shape), never zero jobs."""
+    """A sponsor's own careers page: COMPLETE only when the reader proves the inventory or `zero_marker` shows."""
     def fetch_text(url):
         got = fetcher(url, timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=2, max_bytes=MAX_BYTES)
         if got.status != 200:
             raise ValueError(f"http_{got.status}")
         return got.html
-    if source.get("announced_ua"):                      # a site that refuses a browser-looking agent but serves an announced bot (Futuristic; V1's way)
+    if source.get("announced_ua"):
         page = egress.honest(source["url"], timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=3, max_bytes=MAX_BYTES)
-    elif source.get("impersonate"):                       # a site that refuses plain requests (Revolut): Chrome TLS fingerprint, warm-up, retries
+    elif source.get("impersonate"):
         page = impersonate.fetch(source["url"], warm_url=source.get("warm_url"), alt_urls=source.get("alt_urls", ()), must_contain=source.get("must_contain", ""))
     else:
         page = fetcher(source["url"], timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=3, max_bytes=MAX_BYTES)
@@ -304,9 +298,11 @@ READERS = {"greenhouse": _by_slug(_greenhouse), "ashby": _by_slug(_ashby), "leve
 
 
 def list_source(source, fetcher=fetch):
-    """The listing for one registry source (any reader above). D216: for a CONDITIONAL kind, the source's stored validators (`if_etag`, `if_modified`, set by
-    the run only when a skip is allowed) go out as If-None-Match / If-Modified-Since; a 304 to them is UNCHANGED, a 304 nobody asked for is FAILED, and a
-    COMPLETE answer carries its own validators for next time. Every other kind and every error path is unchanged: a full read."""
+    """The listing for one registry source.
+
+    For a CONDITIONAL kind, stored validators (`if_etag`, `if_modified`) go out as If-None-Match / If-Modified-Since:
+    a 304 to them is UNCHANGED, an unrequested 304 is FAILED, and a COMPLETE answer carries fresh validators.
+    """
     reader = READERS.get(source["kind"])
     if reader is None:
         return Listing(FAILED, reason="no_reader")
@@ -327,7 +323,7 @@ def list_source(source, fetcher=fetch):
     if any(getattr(p, "status", None) == 304 for p in pages):
         return Listing(UNCHANGED) if sent else Listing(FAILED, reason="ambiguous_304")
     if listing.status == COMPLETE:
-        listing.jobs = [j for j in listing.jobs if j["id"] and j["title"] and j["url"]]     # a row without identity is not a job
+        listing.jobs = [j for j in listing.jobs if j["id"] and j["title"] and j["url"]]
         if conditional and len(pages) == 1:
             listing.validators = dict(getattr(pages[0], "validators", None) or {})
     return listing

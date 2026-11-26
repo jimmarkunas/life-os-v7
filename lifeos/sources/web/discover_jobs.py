@@ -1,9 +1,8 @@
-"""Scale-Up sponsors with no job board of their own: find their jobs through web search (free TinyFish Search), then let the normal pipeline decide.
+"""Scale-Up sponsors with no job board of their own: find their jobs through web search.
 
-For each sponsor still on the `fallback` status, one search finds job pages that name the company (aggregators, startup.jobs, UK job boards, the
-company's own site). Each result that clearly names the sponsor becomes a NEW candidate (lane Scale-Up, route evidence Scale-up:POSITIVE: membership of the
-curated sponsor universe). Candidates then run the same final-link chain as newsletter jobs: employer ATS board match, then one search for the employer's own posting.
-Nothing is published without a final employer/ATS link and a full description (D1); an aggregator-only lead is counted unresolved. Counts only in the log."""
+One search per `fallback` sponsor finds job pages naming the company. Each result that clearly names the sponsor becomes
+a NEW candidate (lane Scale-Up, route evidence Scale-up:POSITIVE), then runs the final-link chain: employer ATS board
+match, then one search for the employer's posting. Only `promote_leads` publishes without a final employer link."""
 from datetime import datetime, timezone
 import re
 from urllib.parse import urlsplit
@@ -17,12 +16,13 @@ from lifeos.platform.tinyfish import TinyFishError
 from lifeos.sources.web import registry
 
 SOURCE = "discover"
-PER_SPONSOR = 5                  # candidates kept per sponsor per run
-RESOLVE_SEARCHES = 40            # final-link searches per run (the shared per-hour search allowance is 500: LinkedIn 100 + this 40 + titlewatch 14; Lensa retired, D201)
+PER_SPONSOR = 5
+RESOLVE_SEARCHES = 40
 _SEPARATORS = re.compile(r"\s+[|\-–—·•]\s+|\s+at\s+|\s+@\s+", re.I)
 _SITE_WORD = re.compile(r"\b(jobs?|careers?|vacanc\w+|indeed|linkedin|startup|reed|totaljobs|glassdoor|adzuna|cv-?library|visa|sponsor\w*|apply|hiring|work (?:at|for)|uk|london)\b", re.I)
 _NOT_A_ROLE = re.compile(r"^(jobs?|careers?|vacancies|current vacancies|open positions?|work (?:at|for) .*|jobs? (?:in|at) .*)$", re.I)
-# LIFE-759: pages that are not a job. Sponsor-directory domains (kept here, one place) never post; a title with no role noun, or one that names a sponsor licence, is not a job title.
+# Pages that are not a job: sponsor-directory domains never post, and a title with no role noun, or one that names a
+# sponsor licence, is not a job title.
 SPONSOR_DIRECTORY_HOSTS = ("legitsponsors.co.uk", "sponsordirectory.co.uk", "hirenza.com", "getborderless.co.uk", "atlaspriorityservices.com", "jobvisaai.com", "myvisajobs.co.uk")
 _ROLE_NOUN = re.compile(r"\b(manager|engineer|developer|analyst|designer|director|lead|head|officer|executive|specialist|consultant|scientist|architect|coordinator|associate|assistant|administrator|"
                         r"recruiter|marketer|writer|producer|technician|advis[eo]r|strategist|representative|researcher|programmer|accountant|president|vp|cto|cfo|coo|ceo|founder|owner|"
@@ -41,7 +41,6 @@ def _tokens(company):
 
 
 def role_from_title(page_title, company):
-    """'Product Manager at Sixfold Bioscience | startup.jobs' -> 'Product Manager'; '' when no plausible role is left."""
     tokens = _tokens(company)
     for part in _SEPARATORS.split(page_title or ""):
         part = " ".join(part.split()).strip(" -|")
@@ -49,15 +48,14 @@ def role_from_title(page_title, company):
             continue
         folded = ats_match.norm(part)
         if tokens and all(t in folded for t in tokens):
-            continue                                       # the company's name, not the role
+            continue
         if _SITE_WORD.fullmatch(part) or re.fullmatch(r"[\w.-]+\.(?:com|co\.uk|io|org|net)", part, re.I):
-            continue                                       # a site name
+            continue
         return part
     return ""
 
 
 def candidates(company, results):
-    """Job candidates from search results: a single-job-looking URL, the sponsor named in the page title/snippet/url, and a role we can read."""
     tokens = _tokens(company)
     out, seen = [], set()
     for result in results[:8]:
@@ -73,7 +71,7 @@ def candidates(company, results):
             continue
         seen.add(url)
         snippet = " ".join((result.get("snippet") or "").split())[:300]
-        place = "London, UK" if lanes.geography_status(f"{title} {snippet}") == lanes.POSITIVE else ""      # London, or a UK-wide remote role (D96, D98)
+        place = "London, UK" if lanes.geography_status(f"{title} {snippet}") == lanes.POSITIVE else ""
         out.append({"url": url, "title": role, "location": place, "host": classify.host(url), "snippet": snippet})
         if len(out) >= PER_SPONSOR:
             break
@@ -81,9 +79,7 @@ def candidates(company, results):
 
 
 def direct_link(url, company):
-    """A search result that is itself a single-job page on the sponsor's own domain, or on an ATS, needs no second search: it IS the employer's posting
-    (D3 ranks 1 and 2). Aggregators and recruiters are not: the first token of the sponsor's name must be in the host. Enrich still reads the page and
-    refuses a form, a list or a title that does not match."""
+    """Return a landed-link result when the URL is itself the employer's posting (ATS or own domain), else None."""
     kind = classify.apply_kind(url)
     if quality.link_problem(url):
         return None
@@ -97,8 +93,6 @@ def direct_link(url, company):
 
 
 def requeue_held(cursor):
-    """Jobs parked on HOLD by the old two-step resolve (reason `no_match_*`) whose own URL is a direct link now (D77) go back to NEW once. A job that
-    fails Enrich afterwards carries a link reason, not `no_match_*`, so it is never requeued again."""
     cursor.execute("SELECT id, source_url, company FROM v7_jobs WHERE source=%s AND status='HOLD' AND unresolved_reason LIKE 'no_match%%'", (SOURCE,))
     ids = [row[0] for row in cursor.fetchall() if direct_link(row[1], row[2] or "")]
     for job_id in ids:
@@ -107,7 +101,6 @@ def requeue_held(cursor):
 
 
 def _resolve(rows, budget):
-    """Direct links first; whatever is left goes through the ATS board match and the one employer search (shared with LinkedIn and Lensa)."""
     results = [direct_link(row[1], row[2]) or {"outcome": "external_hidden"} for row in rows]
     return linkedin.match_rows(rows, results, budget=budget)
 
@@ -125,13 +118,11 @@ LISTING_NOTE = "Found by web search; the listing page was not read."
 
 
 def is_sponsor_directory(url):
-    """True when the listing URL's host is a known sponsor-directory domain or a subdomain of one (by host, never by substring)."""
     host = (urlsplit(url or "").hostname or "").lower()
     return any(host == d or host.endswith("." + d) for d in SPONSOR_DIRECTORY_HOSTS)
 
 
 def is_not_a_job(title, company):
-    """True when the search result's title is not a job title: it names a sponsor licence or a directory, is a bare company name, or has no role noun."""
     text = re.sub(r"\s+", " ", title or "").strip()
     if not text or _NOT_A_JOB_TITLE.search(text):
         return True
@@ -141,11 +132,13 @@ def is_not_a_job(title, company):
 
 
 def promote_leads(cursor, snippets, now=None):
-    """LIFE-723 (Jim, Nov 15 2026; relaxes D1 and D36 for this one case): a Scale-Up sponsor with no employer board whose job the chain could not link to the employer (HOLD, no_match_*) is posted
-    from its listing page when it passes the Scale-Up rules: a London or UK-wide remote place (D96, D98) and no hard title exclusion (D95). The listing page is never fetched: only the search result's
-    own title, snippet and URL are used. The job becomes RESOLVED with link_proof `listing`; Fit and the lane gate then decide it (always Review, never Admit) and Publish posts it with Aggregator Link.
-    LIFE-759: a sponsor-directory host or a title that is not a job (see is_sponsor_directory, is_not_a_job) is excluded first, with the fixed reasons sponsor_directory and not_a_job.
-    -> counts: promoted, not_london, title_excluded, sponsor_directory, not_a_job."""
+    """Promote HOLD jobs (no_match_*) from their listing data when they pass the Scale-Up rules; return counts.
+
+    Requires a London or UK-wide remote place and no hard title exclusion. The listing page is never fetched; the job
+    becomes RESOLVED with link_proof `listing`, and Fit and the lane gate then decide it (Review, never Admit).
+    Sponsor-directory hosts and non-job titles are excluded first. Counts: promoted, not_london, title_excluded,
+    sponsor_directory, not_a_job.
+    """
     now = now or _now()
     counts = {"promoted": 0, "not_london": 0, "title_excluded": 0, "sponsor_directory": 0, "not_a_job": 0}
     cursor.execute("SELECT id, source_url, title, company, location_text FROM v7_jobs WHERE source=%s AND status='HOLD' AND unresolved_reason LIKE 'no_match%%' AND notion_page_id IS NULL", (SOURCE,))
@@ -156,7 +149,7 @@ def promote_leads(cursor, snippets, now=None):
             counts[reason] += bool(cursor.rowcount)
             continue
         if lanes.geography_status(place) != lanes.POSITIVE:
-            counts["not_london"] += 1                                                     # no stated place, or not London: never guessed
+            counts["not_london"] += 1
             continue
         if title_rules.check(title, company, "")[0]:
             counts["title_excluded"] += 1
@@ -204,5 +197,5 @@ def run(limit, live, search=None, sources=None):
     snippets = {job["url"]: job["snippet"] for _, job in found if job.get("snippet")}
     with store.connect() as connection:
         with connection.cursor() as cursor:
-            counts["listing"] = promote_leads(cursor, snippets)                                   # LIFE-723: after the chain, so a real employer link always wins
+            counts["listing"] = promote_leads(cursor, snippets)
     return counts
