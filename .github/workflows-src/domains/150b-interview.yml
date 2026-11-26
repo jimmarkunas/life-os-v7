@@ -1,0 +1,48 @@
+      # why: Interview OS (LIFE-88; V7 is the only Interview OS writer - scheduling requests in Gmail and Outlook for jobs Jim applied to, accepted Calendar rounds, and the refresh of machine pages from the Ledger and each page's own identity; a dry run unless INTERVIEW_OS_WRITER is v7)
+      - id: interview
+        if: ${{ inputs.refresh != 'recruiters' }}       # a Close screen refresh redraws only the Recruiter Outreach table
+        continue-on-error: true
+        name: Interview OS
+        env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
+          TICK_STARTED: ${{ github.event.workflow_run.run_started_at }}      # LIFE-894: this tick's start, to find the early mail snapshot made for it (empty on a manual run: the mail is read here)
+          LIFEOS_NOTION_IDS: ""
+          GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_interview.outputs.GMAIL_OAUTH_CLIENT_ID }}
+          OUTLOOK_CLIENT_ID: ${{ steps.bws_interview.outputs.OUTLOOK_CLIENT_ID }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_interview.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_interview.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_interview.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_interview.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_interview.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_interview.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KEY: ${{ steps.bws_interview.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
+          LIFEOS_ACQ_SSH_JUMP_HOST: ${{ steps.bws_interview.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: ${{ steps.bws_interview.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_interview.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_interview.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_interview.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
+          HIRING_PIPELINE_PAGE_ID: ""
+          GCAL_CALENDAR_ID: ""
+          GCAL_SERVICE_ACCOUNT_JSON: ${{ steps.bws_interview.outputs.GCAL_SERVICE_ACCOUNT_JSON }}
+          NOTION_INTERVIEW_TOKEN: ${{ steps.bws_interview.outputs.NOTION_INTERVIEW_TOKEN }}
+          NOTION_API_TOKEN: ${{ steps.bws_interview.outputs.NOTION_API_TOKEN }}
+          NOTION_RECRUITERS_TOKEN: ${{ steps.bws_interview.outputs.NOTION_RECRUITERS_TOKEN }}   # LIFE-78 E10: read only, recruiter threads by the exact request message
+          NOTION_RECRUITERS_DATA_SOURCE_ID: ""
+          INTERVIEW_OS_WRITER: ""
+          INTERVIEW_LEADS: ""
+          INTERVIEW_TEST_COMPANIES: ""
+          INTERVIEW_MAIL_DAYS: ${{ inputs.interview_mail_days }}
+          INTERVIEW_JOURNEY_PROOF: ${{ inputs.interview_journey_proof }}
+          INTERVIEW_CONVERT: ${{ inputs.interview_convert }}   # LIFE-703: declared empty so the V7 settings page can fill it; the code's own default applies when both are empty
+          INTERVIEW_CONVERT_CAP: ""   # LIFE-703: declared empty so the V7 settings page can fill it; the code's own default applies when both are empty
+          V7_CLOSE_BASE_URL: ""          # E05: the private Close origin: each opportunity page's primary action gets its Mark Complete link; unset, it says unavailable
+        run: python -m lifeos.run interview --limit 20 $([ "$LIVE" = "true" ] && echo --live)
+      - name: Interview OS warning (does not fail the Jobs run)
+        if: ${{ always() && steps.interview.outcome == 'failure' }}
+        run: echo "::warning title=Interview OS::the Interview OS stage (DEGRADED or failed) or a source was unread; the Jobs pipeline is unaffected"
+      # why: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+      - name: A failed stage step makes this job red after every stage has run
+        if: ${{ always() && contains(steps.*.outcome, 'failure') }}
+        run: echo "::error title=interview::a stage step failed in the interview job (see the step marked failed above)"; exit 1
+

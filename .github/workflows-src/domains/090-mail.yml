@@ -101,37 +101,3 @@
           set_env: false
           secrets: |
             0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
-      # why: Mail Alerts card (reads the stored state; writes only the Mail Alerts callout, with read-back; a failed ingest is shown as DEGRADED)
-      - id: mcard
-        continue-on-error: true
-        name: Mail Alerts card
-        if: ${{ always() }}
-        env:
-          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
-          MAIL_ALERTS_CARD_BLOCK_ID: ""
-          AMAZON_CARD_BLOCK_ID: ""
-          BILLS_CARD_BLOCK_ID: ""
-          CALENDAR_CARD_BLOCK_ID: ""
-          JIRA_CARD_BLOCK_ID: ""
-          HIRING_CARD_BLOCK_ID: ""
-          MAIL_SYNC_OUTCOME: ${{ steps.mail.outcome }}
-          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KEY: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
-          LIFEOS_ACQ_SSH_JUMP_HOST: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_USER }}
-          NOTION_JIRA_TOKEN: ${{ steps.bws_mail.outputs.NOTION_JIRA_TOKEN }}
-        run: python -m lifeos.run mail-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
-      - name: Mail Alerts warning (does not fail the Jobs run)
-        if: ${{ always() && (steps.mail.outcome == 'failure' || steps.mcard.outcome == 'failure' || steps.mfile.outcome == 'failure') }}
-        run: echo "::warning title=Mail Alerts::the Physical Mail stage failed; the Jobs pipeline is unaffected"
-      # why: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
-      - name: A failed stage step makes this job red after every stage has run
-        if: ${{ always() && contains(steps.*.outcome, 'failure') }}
-        run: echo "::error title=mail::a stage step failed in the mail job (see the step marked failed above)"; exit 1
-

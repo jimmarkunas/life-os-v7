@@ -1,0 +1,63 @@
+      # why: Communications card, Messages row (7-day unread count and latest sender; counts only in the log; writes only when live)
+      - id: comms
+        continue-on-error: true
+        if: ${{ always() }}
+        # LIFE-34 (Jim's approval Oct 15 2026): the Messages row of the Daily Report's Communications callout. Oracle returns the 7-day unread count and the
+        # newest sender's name scrambled under this run's own key; the name is unscrambled only in memory for the Notion write and is never logged or stored.
+        name: Communications card, Messages row
+        env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
+          IMESSAGE_ALERTS_HOST: ${{ steps.bws_imessage.outputs.IMESSAGE_ALERTS_HOST }}
+          NOTION_JIRA_TOKEN: ${{ steps.bws_imessage.outputs.NOTION_JIRA_TOKEN }}
+          FOLLOWUP_TODOIST_PERSONAL_TOKEN: ${{ steps.bws_imessage.outputs.FOLLOWUP_TODOIST_PERSONAL_TOKEN }}      # LIFE-975 step 4d: the Followup stage's existing read-only Todoist token, for the launcher's open-task count only
+          AMAZON_CARD_BLOCK_ID: ""
+          BILLS_CARD_BLOCK_ID: ""
+          CALENDAR_CARD_BLOCK_ID: ""
+          JIRA_CARD_BLOCK_ID: ""
+          HIRING_CARD_BLOCK_ID: ""
+        run: python -m lifeos.run imessage-comms --limit 0 $([ "$LIVE" = "true" ] && echo --live)
+      - name: Communications card warning (does not fail the run)
+        if: ${{ always() && steps.comms.outcome == 'failure' }}
+        run: echo "::warning title=Communications card::the Messages row was not updated; the Daily Report keeps its previous update time"
+      - id: oracle
+        continue-on-error: true
+        if: ${{ always() }}
+        # Jim's approval Oct 15 2026 (Option B): the Oracle Cloud callout under Communications Attention. Oracle answers numbers only (OCI cost,
+        # metrics and limits read as the VM itself; local memory, disk, services). Jim, Oct 24 (#510): written every tick despite the step name, Codex 5h/Week from the AI Capacity reading.
+        # LIFE-129 (Jim, Oct 28 2026): the store and the push topic for the off-site backup alert (lifeos/oraclecloud/backup_watch.py), the same values the iMessage alerts step uses.
+        # LIFE-975 step 4d (Jim, Nov 25 2026: "system ok"): this one stage is the System writer: Oracle's stats, Codex read once, the Connections row from the System health database. GITHUB_TOKEN is the
+        # run's own default token (read only here: the history of the domains jobs, no new permission); GITHUB_REPOSITORY is the runner's own variable.
+        name: System card (every tick; numbers only in the log; writes only when live)
+        env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KEY: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
+          LIFEOS_ACQ_SSH_JUMP_HOST: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_SSH_USER }}
+          NTFY_TOPIC: ${{ steps.bws_imessage.outputs.NTFY_TOPIC }}
+          IMESSAGE_ALERTS_HOST: ${{ steps.bws_imessage.outputs.IMESSAGE_ALERTS_HOST }}
+          NOTION_JIRA_TOKEN: ${{ steps.bws_imessage.outputs.NOTION_JIRA_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          LIFEOS_NOTION_IDS: ""
+          AMAZON_CARD_BLOCK_ID: ""
+          BILLS_CARD_BLOCK_ID: ""
+          CALENDAR_CARD_BLOCK_ID: ""
+          JIRA_CARD_BLOCK_ID: ""
+          HIRING_CARD_BLOCK_ID: ""
+        run: python -m lifeos.run oracle-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
+      - name: System card warning (does not fail the run)
+        if: ${{ always() && steps.oracle.outcome == 'failure' }}
+        run: echo "::warning title=System card::the System card was not updated; it keeps its previous update time"
+      # LIFE-793: the AI Capacity card now runs in its own workflow (capacity-card.yml), not in this job.
+      # why: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+      - name: A failed stage step makes this job red after every stage has run
+        if: ${{ always() && contains(steps.*.outcome, 'failure') }}
+        run: echo "::error title=imessage::a stage step failed in the imessage job (see the step marked failed above)"; exit 1
+

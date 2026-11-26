@@ -96,13 +96,3 @@
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIVE
           live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
-      # why: V7 settings page for the two switches a job condition needs (LIFE-703; names and counts only; an unreadable page changes nothing)
-      - id: settings
-        continue-on-error: true
-        name: V7 settings page for the two switches a job condition needs
-        env:
-          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_settings.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
-          NOTION_JIRA_TOKEN: ${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}
-          GRANOLA_AUTO: ""
-          V7_IMESSAGE_ALERTS: ""
-        run: python3 -m lifeos.platform.settings --output GRANOLA_AUTO --output V7_IMESSAGE_ALERTS

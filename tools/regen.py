@@ -25,6 +25,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+import wfsrc  # noqa: E402
 from lifeos import run                                                    # noqa: E402
 from lifeos.platform import stages as manifest_stages                       # noqa: E402
 from lifeos.jobs import tick                                               # noqa: E402
@@ -36,6 +37,8 @@ TIMEOUTS_DOC = ROOT / "docs/platform/timeouts.md"
 ISOLATION_DOC = ROOT / "docs/platform/stage-isolation.md"
 DOMAINS = ROOT / ".github/workflows/domains.yml"
 DOMAINS_PARTS = ROOT / ".github/workflows-src/domains"
+V3_PAGES = ROOT / ".github/workflows/v3-pages.yml"
+WORKFLOW_DOC = ROOT / "docs/workflows.md"
 DOCSTYLE = ROOT / "lifeos/platform/docstyle.py"
 RUNTIME = ROOT / "lifeos/platform/runtime.json"
 DEFAULT_BASIS = "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values"
@@ -44,8 +47,14 @@ GUARDED_WHY = "Loops over its items with error handling inside; one failed item 
 
 
 def domains_text():
-    """LIFE-764: the whole of domains.yml, joined from its fragments (000-header.yml, then one file per job) in file-name order."""
-    return "".join(path.read_text() for path in sorted(DOMAINS_PARTS.glob("*.yml")))
+    """LIFE-764: the whole of domains.yml, joined from its fragments (000-header.yml, then one file per job, a long job in lettered continuation files) in file-name order; LIFE-1010: without comments (the history lives in docs/workflows.md)."""
+    return wfsrc.strip_comments("".join(path.read_text() for path in sorted(DOMAINS_PARTS.glob("*.yml"))))
+
+
+def workflow_doc_text():
+    """LIFE-1010: docs/workflows.md from the `# why:` lines of every source part and of the hand-written v3-pages.yml."""
+    parts = [("domains", path.name, path.read_text()) for path in sorted(DOMAINS_PARTS.glob("*.yml"))] + [("v3-pages", V3_PAGES.name, V3_PAGES.read_text())]
+    return wfsrc.docs_text(wfsrc.why_rows(parts))
 
 
 def workflow_steps():
@@ -152,7 +161,7 @@ def runtime_text(changes):
 
 # LIFE-765: `--commit` is what `sh tools/preflight.sh` runs, so nobody runs this by hand: on a clean tree it writes what a new stage needs, then commits exactly the files below (added by name) as one commit.
 def targets():
-    return (STAGES, BUDGETS, TIMEOUTS_DOC, ISOLATION_DOC, DOCSTYLE, RUNTIME, manifest.INVENTORY, DOMAINS)
+    return (STAGES, BUDGETS, TIMEOUTS_DOC, ISOLATION_DOC, DOCSTYLE, RUNTIME, manifest.INVENTORY, DOMAINS, WORKFLOW_DOC)
 
 
 def git(*args):
@@ -202,9 +211,12 @@ def main(argv):
     domains = domains_text()
     if DOMAINS.read_text() != domains:
         changes.append("domains.yml: joined from .github/workflows-src/domains")
-    rendered_files = ((STAGES, manifest_text), (BUDGETS, budget_text), (TIMEOUTS_DOC, doc_timeouts), (ISOLATION_DOC, doc_isolation), (DOCSTYLE, style), (RUNTIME, runtime), (manifest.INVENTORY, inventory), (DOMAINS, domains))
+    workflow_doc = workflow_doc_text()
+    if not WORKFLOW_DOC.exists() or WORKFLOW_DOC.read_text() != workflow_doc:
+        changes.append("workflows.md: rendered from the # why: lines")
+    rendered_files = ((STAGES, manifest_text), (BUDGETS, budget_text), (TIMEOUTS_DOC, doc_timeouts), (ISOLATION_DOC, doc_isolation), (DOCSTYLE, style), (RUNTIME, runtime), (manifest.INVENTORY, inventory), (DOMAINS, domains), (WORKFLOW_DOC, workflow_doc))
     for path, text in rendered_files:
-        if path.read_text() != text and not check:
+        if (not path.exists() or path.read_text() != text) and not check:
             path.write_text(text)
     for line in changes + [f"NEEDS A HUMAN: {p}" for p in problems]:
         print(line)
