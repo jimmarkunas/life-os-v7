@@ -307,6 +307,11 @@
    "required": true,
    "seconds": 300
   },
+  "jira-capture": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 600
+  },
   "jira-card": {
    "basis": "twice its slowest measured step (70 s), rounded up to 30 s, at least 120 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
    "required": false,

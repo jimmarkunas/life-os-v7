@@ -75,6 +75,9 @@
     "buzz": "write",
     "honcho": "write",
     "notion": "write"
+   },
+   "830066c4d83d9115377ac113b66f0458825f224788917fe6c0fe4fca9d0df763": {
+    "honcho": "write"
    }
   }
  },
@@ -158,6 +161,14 @@
     "credential": "honcho-alerts"
    },
    "policy_key": "9d238d6471fc5568f5b54860d0c2e191a8948e63770ed36d124566595b9fc031"
+  },
+  {
+   "id": "jira-capture",
+   "transport": "http",
+   "facts": {
+    "credential": "jira-capture"
+   },
+   "policy_key": "830066c4d83d9115377ac113b66f0458825f224788917fe6c0fe4fca9d0df763"
   }
  ],
  "grants": [
@@ -1574,6 +1585,48 @@
    "credential_ref": "notion-readonly-token",
    "expires": "2027-02-22",
    "revoked": false
+  },
+  {
+   "id": "g-jira-capture-personal-memory_store",
+   "principal": "jira-capture",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_store",
+   "purpose": "personal-memory",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "honcho-memory-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-jira-capture-personal-memory_correct",
+   "principal": "jira-capture",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_correct",
+   "purpose": "personal-memory",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "honcho-memory-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-jira-capture-personal-memory_revoke",
+   "principal": "jira-capture",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_revoke",
+   "purpose": "personal-memory",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "honcho-memory-token",
+   "expires": "2027-02-22",
+   "revoked": false
   }
  ],
  "credentials": [
@@ -1638,6 +1691,16 @@
     "life-os"
    ],
    "write": true
+  },
+  {
+   "id": "jira-capture",
+   "sha256": "b5e6c9cf78026b294468a10c0f2b9ee9f7cfa6aaa617f7fd93b7a5b096e9a6b6",
+   "expires": "2027-02-22",
+   "revoked": false,
+   "buzz_identity": null,
+   "communities": [
+    "life-os"
+   ]
   }
  ]
 }
