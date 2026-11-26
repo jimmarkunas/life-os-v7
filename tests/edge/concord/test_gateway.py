@@ -85,6 +85,7 @@ class Frames(unittest.TestCase):
         for raw in (b"", b"not json\n", b'{"op":"agent_status","client":"claude","args":{}}', b"[]\n", request("delete_everything"), request("agent_status", client="muse"),
                     request("agent_status", extra=1), request("agent_dispatch", agent="oc"), request("agent_dispatch", agent="nobody", ticket="LIFE-1", text="x", idempotency_key="k"),
                     request("agent_dispatch", agent="oc", ticket="LIFE-1", text="x", idempotency_key="k" * 129), request("agent_messages", limit=0), request("agent_messages", limit=51),
+                    request("agent_dispatch", agent="oc", ticket="LIFE-1", text="x", idempotency_key="k", mode="unsafe"),
                     request("agent_messages", cursor="-1"), b"x" * 30000 + b"\n"):
             reply = G.answer(raw, popen=FakeConcord)
             self.assertEqual(reply["ok"], False, raw[:40])
@@ -134,7 +135,7 @@ class Dispatch(unittest.TestCase):
     def test_delivered_and_acknowledged_are_reported_as_concord_reports_them(self):
         for state in ("delivered", "acknowledged"):
             reply, sent = self.sent(state)
-            self.assertEqual((reply["ok"], reply["data"]["delivered"], reply["data"]["state"], reply["data"]["message"]), (True, True, state, "m-1"))
+            self.assertEqual((reply["ok"], reply["data"]["delivered"], reply["data"]["delivery"], reply["data"]["state"], reply["data"]["message"]), (True, True, state, "message_only", "m-1"))
             self.assertEqual(len(sent), 1)
         call = sent[0]
         self.assertEqual((call["operation"], call["to_agent_id"], call["idempotency_key"], call["delivery_mode"]), ("prompt", "oc-oracle", "idem-1", "steer"))
@@ -149,12 +150,65 @@ class Dispatch(unittest.TestCase):
         reply, _ = self.sent("something_new")
         self.assertEqual((reply["data"]["delivered"], reply["data"]["reason"], reply["data"]["state"]), (False, "delivery_unknown", "unknown"))
 
-    def test_an_agent_that_is_not_online_gets_no_prompt_at_all(self):
+    def test_an_owned_ticket_gets_a_dispatcher_owned_child_offer_without_moving_the_original_claim(self):
+        workspace = {"agents": WORKSPACE["agents"]}
+        child = "LIFE-987/mc02"
+        calls = []
+        child_started = False
+
+        def inspect(args):
+            calls.append(("inspect_work", args))
+            if not args:
+                return workspace
+            if args.get("task_id") == "LIFE-987":
+                return {"task": {"taskId": "LIFE-987", "agentId": "oc-oracle", "version": 7}}
+            return {"task": {"taskId": child, "agentId": "orchestrator-claude", "version": 3, "pending_handoff": None}} if child_started else {}
+
+        def start(args):
+            nonlocal child_started
+            child_started = True
+            calls.append(("start_work", args))
+            return {"taskId": child, "version": 2}
+
+        def offer(args):
+            calls.append(("transfer_work", args))
+            return {"taskId": child, "handoffId": 41, "deliveryStatus": "pending"}
+
+        reply = go(request("agent_dispatch", **{**self.ARGS, "agent": "mc02"}), inspect_work=inspect,
+                   start_work=start, transfer_work=offer)
+        self.assertEqual((reply["ok"], reply["data"]["state"], reply["data"]["handoff_id"]), (True, "handoff_offered", "41"))
+        made = next(args for name, args in calls if name == "start_work")
+        self.assertEqual((made["task_id"], made["parent_task_id"], made["agent_id"], made["expected_files"]),
+                         (child, "LIFE-987", "orchestrator-claude", []))
+        offered = next(args for name, args in calls if name == "transfer_work")
+        self.assertEqual((offered["action"], offered["task_id"], offered["to_agent_id"], offered["expected_version"]),
+                         ("offer", child, "mac-mc02", 3))
+        self.assertIn("Please look at the gateway test.", offered["what_changed"])
+
+    def test_an_unowned_ticket_sends_a_message_without_creating_a_handoff(self):
+        calls = []
+        def inspect(args):
+            return WORKSPACE if not args else {"task": {"taskId": "LIFE-987", "version": 1}}
+        reply = go(request("agent_dispatch", **self.ARGS), inspect_work=inspect,
+                   update_work=lambda args: calls.append(args) or {"messageId": "m-2", "deliveryStatus": "delivered"},
+                   start_work=lambda args: self.fail("unowned tasks must not create child tasks"),
+                   transfer_work=lambda args: self.fail("unowned tasks must not create handoffs"))
+        self.assertEqual((reply["ok"], reply["data"]["state"], reply["data"]["message"]), (True, "message_only", "m-2"))
+        self.assertEqual(calls[0]["task_id"], "LIFE-987")
+
+    def test_a_dry_run_dispatch_has_the_required_prefix(self):
         sent = []
-        reply = go(request("agent_dispatch", **{**self.ARGS, "agent": "mc01"}), update_work=lambda a: sent.append(a) or {})
-        self.assertEqual((reply["data"]["reason"], sent), ("agent_offline", []))
+        reply = go(request("agent_dispatch", **{**self.ARGS, "mode": "dry_run"}),
+                   update_work=lambda args: sent.append(args) or {"messageId": "m-dry", "deliveryStatus": "delivered"})
+        self.assertEqual(reply["data"]["state"], "message_only")
+        self.assertTrue(sent[0]["content"].startswith("DRY RUN ONLY: read-only, no writes, merges, deploys or deletes; post the Dry run comment and stop."))
+
+    def test_a_registered_offline_agent_is_queued_for_pull_and_an_unknown_agent_is_not_guessed(self):
+        sent = []
+        reply = go(request("agent_dispatch", **{**self.ARGS, "agent": "mc01"}), update_work=lambda a: sent.append(a) or {"messageId": "m-q", "deliveryStatus": "queued_pull"})
+        self.assertEqual((reply["data"]["state"], reply["data"]["message"], len(sent)), ("queued_pull", "m-q", 1))
         reply = go(request("agent_dispatch", **{**self.ARGS, "agent": "codex"}), update_work=lambda a: sent.append(a) or {})
-        self.assertEqual((reply["data"]["reason"], sent), ("agent_offline", []))
+        self.assertEqual((reply["data"]["state"], reply["data"]["reason"], len(sent)), ("not_delivered", "agent_offline", 1))
 
     def test_two_live_sessions_of_one_name_are_ambiguous_not_a_guess(self):
         both = {"agents": [{"agentId": "oc", "status": "live/active"}, {"agentId": "oc-oracle", "status": "live/idle"}]}

@@ -42,7 +42,7 @@ class Route(unittest.TestCase):
             self.assertIn(op, mcp.ROUTES)
             self.assertNotIn(op, str(mcp.FROZEN))
             self.assertNotIn(op, mcp.NEEDS_COMMUNITY)
-        self.assertEqual(sorted(O.OPS["agent_dispatch"][1]), ["agent", "idempotency_key", "text", "ticket"])
+        self.assertEqual(sorted(O.OPS["agent_dispatch"][1]), ["agent", "idempotency_key", "mode", "text", "ticket"])
 
 
 class Switch(unittest.TestCase):
@@ -184,6 +184,21 @@ class Trust(unittest.TestCase):
         O.run("agent_status", {"_client": "claude-chat"}, state(gate))
         self.assertEqual(gate.calls[0][1], "claude")
 
+    def test_dry_run_requires_the_label_and_refuses_done_or_cancelled(self):
+        for status, labels, reason in (("Agent Go", [], "ticket_not_dry_run"), ("Done", ["needs-dry-run"], "ticket_not_dry_run"),
+                                       ("Cancelled", ["needs-dry-run"], "ticket_not_dry_run")):
+            self.refused(reason, mode="dry_run", st=state(ticket={"status": status, "labels": labels}))
+        st = state(ticket={"status": "To Do", "labels": ["needs-dry-run"]})
+        out = O.run("agent_dispatch", {**ARGS, "mode": "dry_run"}, st)
+        self.assertTrue(out["delivered"])
+        self.assertEqual(st["gateway"].calls[0][2]["mode"], "dry_run")
+
+    def test_normal_dispatch_still_requires_release_even_with_dry_run_label(self):
+        self.refused("ticket_not_released", st=state(ticket={"status": "To Do", "labels": ["needs-dry-run"]}))
+
+    def test_unknown_dispatch_mode_is_invalid(self):
+        self.refused("invalid_argument", mode="unsafe")
+
 
 class Dispatch(unittest.TestCase):
     def test_a_repeat_with_the_same_key_never_reaches_the_gateway_twice(self):
@@ -288,7 +303,7 @@ class JiraTicketState(unittest.TestCase):
         def read(self, limit=-1):
             return self.body
 
-    def opener(self, body=b'{"fields": {"status": {"name": "In Progress"}}}', error=None, seen=None):
+    def opener(self, body=b'{"fields": {"status": {"name": "In Progress"}, "labels": ["needs-dry-run"]}}', error=None, seen=None):
         def open_(request, timeout=None):
             if seen is not None:
                 seen.append((request.full_url, request.get_method(), dict(request.header_items()), timeout))
@@ -297,12 +312,12 @@ class JiraTicketState(unittest.TestCase):
             return self.Reply(body)
         return open_
 
-    def test_it_reads_the_status_name_with_one_basic_auth_get_and_a_timeout(self):
+    def test_it_reads_status_and_labels_with_one_basic_auth_get_and_a_timeout(self):
         seen = []
         got = O.jira_status("https://example.invalid/", "user", "tok", self.opener(seen=seen))("LIFE-987")
-        self.assertEqual(got, "In Progress")
+        self.assertEqual(got, {"status": "In Progress", "labels": ["needs-dry-run"]})
         url, method, headers, timeout = seen[0]
-        self.assertEqual((url, method, timeout), ("https://example.invalid/rest/api/3/issue/LIFE-987?fields=status", "GET", O.JIRA_TIMEOUT))
+        self.assertEqual((url, method, timeout), ("https://example.invalid/rest/api/3/issue/LIFE-987?fields=status,labels", "GET", O.JIRA_TIMEOUT))
         self.assertTrue(headers["Authorization"].startswith("Basic "))
 
     def test_an_unknown_key_is_unknown_and_every_other_failure_is_none(self):
