@@ -1,32 +1,13 @@
-"""COMM-1.4b: the private, read-only iMessage alert-METADATA endpoint on Oracle (Jim's approval, LIFE-31, Oct 13 2026).
+"""The private, read-only iMessage alert-metadata endpoint on Oracle: one request and one JSON line per process.
 
-systemd starts one process per connection on 127.0.0.1 (socket activation, Accept=yes: the connection is stdin/stdout); Oracle's Tailscale Serve forwards one
-tailnet TCP port to it with a PROXY protocol v2 header carrying the WireGuard-authenticated source. The process:
-  0. requires the loopback peer to be tailscaled itself (the connecting local socket's owner, from /proc/net/tcp, must be root): a local non-root process
-     cannot present a forged PROXY header, because it is refused before one byte is read;
-  1. requires that header and asks tailscaled who the source is: only a node carrying TAG (the V7 hourly runner's ephemeral identity) is served;
-  2. requires the request to be exactly "alerts <lookback hours 1-72>" or "comms <64 lowercase hex: a one-run key the runner just generated>";
-  comms3 (LIFE-30, Jim's approval Oct 15 2026, Jira 10215): the comms2 answer plus a `whatsapp` block read from the dedicated WhatsApp attention
-     service's Unix socket (/run/lifeos-wa/attention.sock, owner lifeos-wa, group ubuntu, 0660; LIFE-643 cleanup: the old per-user socket is gone): counts, health and the newest sender's name scrambled the same way;
-  comms2 (LIFE-29/LIFE-34, Jim's approval Oct 15 2026, Jira 10203/10206): the comms answer plus a `telegram` block from the local TDLib attention
-     adapter (~/.local/lib/lifeos-telegram/attention.py): Main-list unread messages/chats, total and unmuted, health and auth state, and the newest
-     incoming sender's name scrambled under the same one-run key; the adapter's plaintext name never leaves this process;
-  comms (LIFE-34, Jim's approval Oct 15 2026): answers the reader's unread count for the last 7 days and the display name of the newest incoming
-     sender, the name SCRAMBLED under the runner's one-run key (HMAC-SHA256 keystream, encrypt-then-MAC), so it is never plain text anywhere between the
-     Mac and the runner's in-memory Notion write. Never a handle, number, text or reference; nothing is kept, so no key exists after the run;
-  oracle1 (Jim's approval Oct 15 2026, Option B): the Oracle Cloud card's numbers from ~/.local/lib/lifeos-oracle/stats.mjs (OCI's own metrics, cost and
-     limits read as the VM itself, plus local memory, disk, service and ChatGPT-plan state), passed through only if it is that script's one JSON object;
-  3. alerts: reads ALL of the Mac Mini's incoming messages for that lookback through the existing wrapper path (read or unread alike), paging until the reader
-     proves the end, classifies them in memory with the wrapper's deterministic rules and answers ONE JSON line of metadata: keyed event ids (HMAC of the
-     source reference under a key that never leaves Oracle), severity, reason codes, review flag, observation time, pages and completeness. Never text,
-     names, handles, chat or message references.
-  gran1 (LIFE-37 Step 2, Jim's approval Oct 26 2026, Jira 11235/11242): `gran1 <1..4096>\\n` + that many bytes of JSON. This process (user ubuntu, no sudo) does not run Granola: it forwards the frame
-     unchanged over the root-installed Unix socket /run/lifeos-gran/gran.sock to lifeos/edge/granola/gran_helper.py, which runs as the `grans` user, and passes the one reply back
-     (at most 25,004,096 bytes). It never reads the frame or the reply; the same caller checks above apply.
-  concord1 (LIFE-977, Jim's approval Nov 25 2026 10:58 AM CT): the fixed line `concord1`, forwarded unchanged over the root-installed Unix socket /run/lifeos-concord/concord.sock to
-     lifeos/edge/concord/concord_helper.py, which runs as the `concord` user and reads Concord's own store read-only. The reply is ONE JSON line of a count and a fixed code (never message text, ids or paths).
-Anything else closes with no output. It writes nothing, logs nothing and never runs inside a Luna/OpenClaw session. A scan that reached the reader's 50-message
-or time cap (or any page failure) cannot prove it saw everything, so it says so (complete false, health DEGRADED) instead of passing as complete."""
+Started by systemd socket activation behind Tailscale Serve, which supplies a PROXY v2 header with the authenticated
+source. It refuses before reading anything unless the loopback peer is tailscaled itself (socket owner root, from
+/proc/net/tcp), and serves only a source node carrying TAG. Requests: `alerts <hours 1-72>` (keyed event metadata,
+never text, names or handles), `comms`/`comms2`/`comms3` (unread counts plus the newest sender's name scrambled under
+the caller's one-run key; comms2 adds Telegram, comms3 WhatsApp), `oracle1` (Oracle card stats) and
+`gran1`/`drive1`/`concord1` (frames forwarded unchanged to the root-installed Unix-socket helpers). Anything else
+closes with no output. Nothing is written or logged. A scan that hit the reader's 50-message or time cap reports
+complete false and health DEGRADED."""
 import hashlib
 import hmac
 import importlib.machinery
@@ -41,7 +22,7 @@ from datetime import datetime, timezone
 
 TAG = "tag:v7-runner"
 WRAPPER = os.path.expanduser("~/.local/bin/openclaw-imessage")
-EVENT_KEY = os.path.expanduser("~/.config/openclaw-imessage/event-key")       # 64 hex characters, 0600, generated on Oracle, never copied anywhere
+EVENT_KEY = os.path.expanduser("~/.config/openclaw-imessage/event-key")
 TAILSCALE = "/usr/bin/tailscale"
 SIG = b"\r\n\r\n\x00\r\nQUIT\n"
 MAX_PROXY_TAIL = 216
@@ -50,15 +31,15 @@ GRAN_SOCKET = "/run/lifeos-gran/gran.sock"
 GRAN_MAX_FRAME = 4096
 GRAN_MAX_REPLY = 25_004_096
 GRAN_WAIT = 82
-DRIVE_SOCKET = "/run/lifeos-drive/drive.sock"                  # LIFE-945: the read-only Drive weekly-count helper (lifeos/edge/drive/drive_helper.py), a local Unix socket only
+DRIVE_SOCKET = "/run/lifeos-drive/drive.sock"
 DRIVE_WAIT, DRIVE_MAX_REPLY = 60, 4096
-CONCORD_SOCKET = "/run/lifeos-concord/concord.sock"             # LIFE-977: the read-only Concord health helper (lifeos/edge/concord/concord_helper.py), a local Unix socket only
+CONCORD_SOCKET = "/run/lifeos-concord/concord.sock"
 CONCORD_WAIT, CONCORD_MAX_REPLY = 40, 1024
 SCHEMA = "lifeos.imessage.alerts.v2"
 COMMS_SCHEMA = "lifeos.imessage.comms.v1"
 COMMS2_SCHEMA = "lifeos.imessage.comms.v2"
 COMMS3_SCHEMA = "lifeos.imessage.comms.v3"
-WHATSAPP_SOCKET_WA = "/run/lifeos-wa/attention.sock"                                         # LIFE-643 row 1: the lifeos-wa service's socket (owner lifeos-wa, group ubuntu, 0660)
+WHATSAPP_SOCKET_WA = "/run/lifeos-wa/attention.sock"
 WA_HEALTH = ("CURRENT", "DEGRADED", "DISCONNECTED", "NOT_LINKED", "UNAVAILABLE")
 TELEGRAM = os.path.expanduser("~/.local/lib/lifeos-telegram/attention.py")
 TELEGRAM_TIMEOUT = 60
@@ -78,7 +59,6 @@ def _hex(host, port):
 
 
 def peer_uid(table, peer, local):
-    """The uid owning the local socket at the other end of this loopback connection: its row has local = our peer and remote = our listener."""
     want = (_hex(*peer), _hex(*local))
     for line in table.splitlines()[1:]:
         fields = line.split()
@@ -110,7 +90,6 @@ def read_exact(stream, n):
 
 
 def proxy_source(stream):
-    """The source address from a PROXY v2 PROXY-command header for TCP over IPv4/IPv6, or None."""
     head = read_exact(stream, 16)
     if not head or head[:12] != SIG or head[12] != 0x21:
         return None
@@ -131,8 +110,7 @@ def whois(ip):
 
 
 def authorized(ip, lookup=whois):
-    """Only a tailnet node that carries TAG. Tags are set by the tailnet's policy owner, never by the node itself, so an untagged device (Jim's own Macs, phone,
-    Oracle itself) is refused even though the tailnet lets it reach the port."""
+    """Only a tailnet node that carries TAG (tags are set by the tailnet's policy, never by the node)."""
     try:
         node = (lookup(ip) or {}).get("Node") or {}
     except (OSError, ValueError, subprocess.SubprocessError):
@@ -141,7 +119,7 @@ def authorized(ip, lookup=whois):
 
 
 def request(stream):
-    """-> ("alerts", hours) | ("comms", 32-byte key) | ("oracle1", None) | ("gran1", the whole frame) | ("drive1", the request line) | ("concord1", the fixed line) | None."""
+    """-> (kind, argument) for a valid request line, else None."""
     raw = b""
     while len(raw) < MAX_REQUEST:
         c = stream.read(1)
@@ -160,9 +138,9 @@ def request(stream):
             return None
         body = read_exact(stream, int(size))
         return ("gran1", raw + b"\n" + body) if body is not None else None
-    if raw == b"concord1":                                           # LIFE-977: no argument; the helper's one line is a count and a fixed code
+    if raw == b"concord1":
         return "concord1", b"concord1\n"
-    if raw.startswith(b"drive1 "):                                   # LIFE-945: `drive1 <1..14>`, forwarded unchanged to the Drive helper, which counts files and nothing else
+    if raw.startswith(b"drive1 "):
         days = raw[7:]
         return ("drive1", raw + b"\n") if days.isdigit() and days[:1] != b"0" and 1 <= int(days) <= 14 else None
     parts = raw.split(b" ")
@@ -190,7 +168,6 @@ def _keystream(key, nonce, n):
 
 
 def scramble(key, text, nonce=None):
-    """Encrypt-then-MAC with two HMAC-SHA256 domains of the runner's one-run key (stdlib only)."""
     nonce = nonce or os.urandom(16)
     data = text.encode("utf-8")
     box = bytes(a ^ b for a, b in zip(data, _keystream(key, nonce, len(data))))
@@ -199,7 +176,7 @@ def scramble(key, text, nonce=None):
 
 
 def comms(wrapper, key, now=None):
-    """The 7-day unread count and the newest incoming sender's name (scrambled). A source that is not CURRENT gives null, never a guess or a zero."""
+    """The 7-day unread count and newest sender's name (scrambled); a source that is not CURRENT gives null."""
     now = now or datetime.now(timezone.utc)
     counts = wrapper.run(["counts"], now) or {}
     recent = wrapper.run(["recent", "--hours", "72"], now) or {}
@@ -250,8 +227,8 @@ def scan(hours, wrapper, secret, now=None):
 
 
 def telegram(key, run=subprocess.run):
-    """The TDLib adapter's one observation, re-shaped: counts and states pass through, the name only scrambled. A missing, slow or malformed adapter is
-    UNAVAILABLE with null counts, never a zero."""
+    """The TDLib adapter's observation: counts and states pass through, the name only scrambled; a bad adapter is
+    UNAVAILABLE with null counts, never zero."""
     try:
         done = run(["/usr/bin/python3", "-I", TELEGRAM, "attention"], capture_output=True, text=True, timeout=TELEGRAM_TIMEOUT)
         got = json.loads(done.stdout) if done.returncode == 0 else None
@@ -260,11 +237,10 @@ def telegram(key, run=subprocess.run):
     healths = ("CURRENT", "DEGRADED", "UNAVAILABLE")
     got = got if isinstance(got, dict) and got.get("channel") == "telegram" else None
     block = _attention_block(got, key, healths)
-    return {**block, "auth": None} if got and got.get("health") in healths and not got.get("auth") else block       # an adapter that omits auth stays null, not the health word
+    return {**block, "auth": None} if got and got.get("health") in healths and not got.get("auth") else block
 
 
 def _attention_block(got, key, healths):
-    """A channel adapter's observation, re-shaped for the runner: counts and states pass through only when CURRENT, the name only scrambled."""
     blank = {"health": "UNAVAILABLE", "auth": "ADAPTER_UNAVAILABLE", "error": None, "observed_at": None, "latest_state": "UNAVAILABLE", "latest": None,
              **{k: None for k in TG_COUNTS}}
     if not isinstance(got, dict) or got.get("health") not in healths:
@@ -281,7 +257,6 @@ def _attention_block(got, key, healths):
 
 
 def _wa_snapshot(path):
-    """One reply (at most 4096 bytes) from one socket path, parsed; anything wrong is None."""
     data = b""
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
@@ -298,19 +273,18 @@ def _wa_snapshot(path):
 
 
 def whatsapp(key, path=None):
-    """One snapshot from the always-on WhatsApp attention service; not running, slow or malformed is UNAVAILABLE, never zero. Without `path`: the lifeos-wa socket."""
+    """One snapshot from the WhatsApp attention service; unavailable is never zero."""
     got = _wa_snapshot(path or WHATSAPP_SOCKET_WA)
     if isinstance(got, dict) and got.get("channel") != "whatsapp":
         got = None
     if isinstance(got, dict) and "chats_known" in got:
-        got = {**got, "chats_main": got["chats_known"]}                    # the service counts every non-archived chat it knows
+        got = {**got, "chats_main": got["chats_known"]}
     if isinstance(got, dict) and got.get("health") in ("DISCONNECTED", "NOT_LINKED"):
         got = {**got, "auth": got["health"], "health": "UNAVAILABLE"}
     return _attention_block(got, key, WA_HEALTH)
 
 
 def oracle_stats(run=subprocess.run):
-    """The stats script's one JSON object, or an exception (the caller then answers nothing)."""
     done = run([NODE, ORACLE_STATS], capture_output=True, text=True, timeout=ORACLE_TIMEOUT)
     got = json.loads(done.stdout) if done.returncode == 0 else None
     if not isinstance(got, dict) or got.get("schema") != ORACLE_SCHEMA:
@@ -319,7 +293,6 @@ def oracle_stats(run=subprocess.run):
 
 
 def gran1(frame, path=GRAN_SOCKET, wait=GRAN_WAIT):
-    """One round trip to the Granola helper: the frame goes in unchanged, the helper's whole reply comes back (or an exception, and the caller answers nothing)."""
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
         s.settimeout(wait)
         s.connect(path)
@@ -337,7 +310,6 @@ def gran1(frame, path=GRAN_SOCKET, wait=GRAN_WAIT):
 
 
 def drive1(frame, path=DRIVE_SOCKET, wait=DRIVE_WAIT):
-    """LIFE-945: one round trip to the Drive helper: the request line goes in, its one JSON reply line comes back (or an exception, and the caller answers nothing)."""
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
         s.settimeout(wait)
         s.connect(path)
@@ -355,7 +327,6 @@ def drive1(frame, path=DRIVE_SOCKET, wait=DRIVE_WAIT):
 
 
 def concord1(frame, path=CONCORD_SOCKET, wait=CONCORD_WAIT):
-    """LIFE-977: one round trip to the Concord helper: the fixed request line goes in, its one JSON reply line comes back (or an exception, and the caller answers nothing)."""
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
         s.settimeout(wait)
         s.connect(path)
@@ -377,7 +348,7 @@ def main(stdin=None, stdout=None, lookup=whois, wrapper_path=WRAPPER, key_path=E
     stdout = stdout or sys.stdout.buffer
     try:
         if uid() != 0:
-            return 1                                               # not tailscaled: a local process, refused before any header is read
+            return 1
     except (OSError, ValueError):
         return 1
     ip = proxy_source(stdin)
@@ -391,7 +362,7 @@ def main(stdin=None, stdout=None, lookup=whois, wrapper_path=WRAPPER, key_path=E
         try:
             reply = drive(arg)
         except Exception:
-            return 1                                               # no partial answer and no exception text
+            return 1
         stdout.write(reply)
         stdout.flush()
         return 0
@@ -399,7 +370,7 @@ def main(stdin=None, stdout=None, lookup=whois, wrapper_path=WRAPPER, key_path=E
         try:
             reply = concord(arg)
         except Exception:
-            return 1                                               # no partial answer and no exception text
+            return 1
         stdout.write(reply)
         stdout.flush()
         return 0
@@ -407,7 +378,7 @@ def main(stdin=None, stdout=None, lookup=whois, wrapper_path=WRAPPER, key_path=E
         try:
             reply = gran(arg)
         except Exception:
-            return 1                                               # no partial answer and no exception text
+            return 1
         stdout.write(reply)
         stdout.flush()
         return 0

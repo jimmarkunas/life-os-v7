@@ -1,14 +1,11 @@
-"""Outcome mail for the Hiring Pipeline (D190): finds a rejection or an offer in Gmail and Outlook that arrived after the pipeline last heard from an opportunity.
+"""Outcome mail for the Hiring Pipeline: finds a rejection or an offer in Gmail and Outlook that arrived after the
+pipeline last heard from an opportunity.
 
-Input: mail read only (nothing marked, moved, labelled, deleted, sent or forwarded) for the companies already in the pipeline. Output: one private row of what it found, which the Hiring Pipeline reads; this stage never closes anything itself.
-Matching is deterministic: the company's words in order in the sender's name, subject, sender's domain or start of the body; after the opportunity's last evidence; outcome wording present.
-A message naming two companies, or two roles of one company it cannot tell apart, is ambiguous and counted, never guessed.
-Failure is per source (LIFE-648): an `unread` source keeps what the other sources hold and any outcome already accepted, is named in fixed words, and `scanned_at` advances; no source listed fails closed and saves nothing. Counts and fixed codes only."""
-# Detail moved out of the docstring (LIFE-595):
-# The Hiring Pipeline says, for example, "Rejection email Sep 12 · confirm, then move the Notes page to Retired". A wrong match costs a line of text, never an opportunity.
-# No company, sender, subject, address or message text is logged or stored: only the pipeline's own row key, the kind, the received time and whether the role matched as well as the company.
-# The pipeline's stages come from the Job Ledger, the Notes pages and the Calendar. As LIFE-646 did for Recruiters, a source that could not be listed, or listed with a message that could not be read, does not drop an outcome already accepted
-# or turn it into "no outcome"; the next due scan (12 hours), not the next hourly tick, reads the whole window again.
+Reads mail only (nothing marked, moved or sent) for companies already in the pipeline and saves one private row for
+the pipeline to read; it never closes anything itself, and stores only the row key, kind, received time and role-match
+flag. Matching is deterministic (company words in order in sender name, subject, domain or body start, after the
+opportunity's last evidence); ambiguous messages are counted, never guessed. Failure is per source: an `unread` source
+keeps what the other sources hold and any outcome already accepted."""
 import json
 import os
 import re
@@ -22,12 +19,12 @@ from lifeos.platform.snapshot_store import Store
 from . import models as M, snapshot as hiring_snapshot
 
 STORE, KEY, SCHEMA_V = Store("v7_hiring_outcomes"), 1, 1
-SCAN_EVERY_HOURS = 12                  # outcome mail is not urgent; the stage decides when it is due, so a tick that is not due reads no mail
-STALE_HOURS = 18                       # E13: a scan not saved for this long (one missed cycle plus a tick) makes the Hiring card DEGRADED; the last accepted outcomes stay shown
-MIN_DAYS, MAX_DAYS = 14, 60            # how far back it reads: from the oldest evidence in the pipeline, between these bounds
+SCAN_EVERY_HOURS = 12
+STALE_HOURS = 18
+MIN_DAYS, MAX_DAYS = 14, 60
 BODY_CHARS = 3000
 REJECTED, OFFER = "REJECTED", "OFFER"
-UNREAD_NAME = re.compile(r"Gmail|Outlook [a-z0-9_-]{1,24}")        # the only names a record may carry for an unread source (lifeos.platform.mail.source_name): never an address or text
+UNREAD_NAME = re.compile(r"Gmail|Outlook [a-z0-9_-]{1,24}")
 
 REJECT = re.compile("|".join((
     r"\bnot (?:be )?moving forward\b", r"\bwill not be (?:proceeding|continuing|advancing|moving)\b", r"\bwon'?t be (?:moving|proceeding|continuing)\b",
@@ -36,7 +33,7 @@ REJECT = re.compile("|".join((
     r"\bdecided (?:not )?to (?:move|proceed|go) (?:forward )?with (?:other|another|different)\b", r"\bother candidates? (?:whose|who|that) (?:experience|background|qualifications|skills)\b")), re.I)
 AUTOMATED = re.compile(r"(?i)no-?reply|do-?not-?reply|auto|confirm|notif|alert|news|digest|market|ship|order|store|update|mailer|bounce|jobs?\b|careers?|talent"
                        r"|recruit|\bhr\b|info|support|team|hello|help|account|security|billing|service|apply|applicant|candidate|receipt|deal|offer|promo|reward|email|mail"
-                       r"|deliver|notice|payment|message|return|reply|event|survey|calendar|invite|refund|order")     # LIFE-26: a mailbox, not a person
+                       r"|deliver|notice|payment|message|return|reply|event|survey|calendar|invite|refund|order")
 OFFERED = re.compile("|".join((r"\bpleased to (?:offer|extend)\b", r"\boffer of employment\b", r"\bextend(?:ing)? (?:you )?an? (?:formal )?offer\b", r"\boffer letter\b")), re.I)
 
 
@@ -49,7 +46,6 @@ def fail(code):
 
 
 def kind_of(text):
-    """REJECTED | OFFER | None from the fixed wording. An offer wins when both appear (a rejection of one role and an offer for another is not told apart here, so the person looks)."""
     if OFFERED.search(text):
         return OFFER
     if REJECT.search(text):
@@ -63,7 +59,6 @@ def _domain_labels(address):
 
 
 def mentions(message, company):
-    """True when the company's words appear in order in the sender's name, the subject, the sender's domain or the opening of the body."""
     want = names.tokens(company)
     if not want or len("".join(want)) < 3:
         return False
@@ -82,8 +77,7 @@ MODIFIERS = {"senior", "sr", "junior", "jr", "lead", "principal", "staff", "asso
 
 
 def exact_role(message, role):
-    """Auto-close (Jim, Oct 24): the role's own words appear together, in order, with no seniority word or level number touching them: "Program Manager" in
-    "your application for Program Manager" is exact, in "Senior Program Manager" or "Program Manager II" it is another role."""
+    """The role's own words appear together, in order, with no seniority word or level number touching them."""
     want, text = names.tokens(role), names.tokens(f"{message.get('subject', '')} {(message.get('body') or '')[:BODY_CHARS]}")
     n = len(want)
     return n > 0 and any(text[i:i + n] == want and (i == 0 or text[i - 1] not in MODIFIERS) and (i + n == len(text) or text[i + n] not in MODIFIERS)
@@ -91,7 +85,6 @@ def exact_role(message, role):
 
 
 def _since(row):
-    """The moment the pipeline last had evidence for this row: its latest event, else its Applied date (start of that day, Central), else None."""
     value = row.get("event_start") or row.get("applied_on")
     return M.moment(value) if value else None
 
@@ -102,8 +95,9 @@ def _received(message):
 
 
 def find(messages, roster):
-    """-> ({row key: {"kind", "received", "match", "exact"}}, {"ambiguous": n, "outcome_messages": n, "unmatched": n}). Pure.
-    roster: [{"key", "company", "role", "event_start", "applied_on"}]. One outcome per row: the newest qualifying message."""
+    """-> ({row key: {"kind", "received", "match", "exact"}}, {"ambiguous": n, "outcome_messages": n, "unmatched": n}).
+
+    Pure. One outcome per row: the newest qualifying message."""
     found, stats = {}, {"ambiguous": 0, "outcome_messages": 0, "unmatched": 0}
     for message in sorted(messages, key=_received):
         kind = kind_of(f"{message.get('subject', '')}\n{(message.get('body') or '')[:BODY_CHARS]}")
@@ -120,8 +114,6 @@ def find(messages, roster):
 
 
 def attribute(message, roster, at):
-    """-> (the one roster row this message belongs to, "role" | "company"), or (None, "unmatched" | "ambiguous"). It must name the company and arrive
-    after the row's last evidence; two pipeline companies, or two roles at one company the text cannot tell apart, are ambiguous and never guessed."""
     named = [row for row in roster if mentions(message, row["company"]) and (_since(row) is None or at > _since(row))]
     if not named:
         return None, "unmatched"
@@ -132,19 +124,17 @@ def attribute(message, roster, at):
     return (pick[0], "role" if by_role else "company") if len(pick) == 1 else (None, "ambiguous")
 
 
-SUFFIXES = {"co", "com", "org", "net", "ac", "gov"}                # the second-level labels of a two-label public suffix (acme.co.uk, acme.com.au)
+SUFFIXES = {"co", "com", "org", "net", "ac", "gov"}
 
 
 def _own_domain(domain, company):
-    """LIFE-26: the employer's own registered domain and nothing under it: acme.com or acme.co.uk, never a tenant such as acme.myworkday.com or jira.acme.net."""
+    """The employer's own registered domain and nothing under it: acme.com or acme.co.uk, never acme.myworkday.com."""
     labels = [label for label in domain.lower().split(".") if label]
     base = labels[:-2] if len(labels) > 2 and labels[-2] in SUFFIXES else labels[:-1]
     return len(base) == 1 and base[0].replace("-", "") == "".join(names.tokens(company))
 
 
 def _person(message, company):
-    """LIFE-26: a person writing, from their own mailbox: a display name of 2-4 words, none a company word or a mailbox word, one of which also names the mailbox
-    (Maria Lopez <maria.lopez@...> or <mlopez@...>). Brand, team and transactional senders have no such name."""
     words = re.findall(r"[a-z]+", (message.get("sender_name") or "").lower())
     local = (message.get("sender_address") or "").partition("@")[0].lower()
     return (2 <= len(words) <= 4 and not set(words) & set(names.tokens(company)) and not any(AUTOMATED.search(w) for w in words)
@@ -152,16 +142,16 @@ def _person(message, company):
 
 
 def contacts(messages, roster):
-    """LIFE-26: {row key: the newest received time of a direct message from that row's hiring team}. Pure. Only positive evidence counts: an inbox
-    message (never junk, list, bulk or auto-submitted mail) from a named person's own mailbox on the employer's own registered domain, attributed to
-    exactly one row. A brand, team or transactional sender, any other domain (an agency, an ATS or SaaS tenant, a marketplace), or mail that cannot be
-    attributed never counts: an unknown is never contact, so a row only goes Stale sooner."""
+    """{row key: the newest received time of a direct message from that row's hiring team}. Pure.
+
+    Only positive evidence counts: an inbox message (never junk, list, bulk or auto-submitted) from a named person on
+    the employer's own registered domain, attributed to exactly one row."""
     found = {}
     for message in sorted(messages, key=_received):
         local, _, domain = (message.get("sender_address") or "").partition("@")
         marked = message.get("markers") or {}
         if (message.get("folder") != "INBOX" or not local or not domain or "@" in domain or AUTOMATED.search(local)
-                or marked.get("bulk") or marked.get("auto") or marked.get("noreply")):         # list, newsletter or auto-submitted mail is never a person writing
+                or marked.get("bulk") or marked.get("auto") or marked.get("noreply")):
             continue
         at = _received(message)
         row, _ = attribute(message, roster, at)
@@ -177,14 +167,13 @@ def window_days(roster, now):
 
 
 def _exists(connection):
-    """True when the outcomes table exists (a read before the first live save must not create it)."""
     with connection.cursor() as cursor:
         cursor.execute("SHOW TABLES LIKE %s", (STORE.table,))
         return cursor.fetchone() is not None
 
 
 def load(connection):
-    """The stored outcomes ({row key: {...}}), when they were last scanned, LIFE-26's last direct contact per row ({row key: time}) and the sources that scan could not read in full (LIFE-648), or ({}, None, {}, [])."""
+    """The stored outcomes ({row key: {...}}), when last scanned, direct contact per row, and unread sources."""
     if not _exists(connection):
         return {}, None, {}, []
     with fixed((TypeError, ValueError), fail, "STORE_INVALID"):
@@ -208,7 +197,6 @@ def _terms(roster):
 
 
 def _merge(prior, new, newest):
-    """LIFE-648: what was accepted before, with each find laid over it unless the accepted one is newer; nothing accepted is dropped because a source was unread."""
     return {**prior, **{key: value for key, value in new.items() if key not in prior or newest(value) >= newest(prior[key])}}
 
 
@@ -243,7 +231,7 @@ def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, conn
                 return
             records.extend(found)
             counts["unreadable"] += bad
-            if bad:                                                # a listing that is complete but had a message that could not be read is just as incomplete
+            if bad:
                 unread.append(name)
 
         try:
@@ -263,12 +251,12 @@ def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, conn
         outcomes, stats = find(records, roster)
         heard = contacts(records, roster)
         counts.update(stats, matched=len(outcomes), rejected=sum(1 for o in outcomes.values() if o["kind"] == REJECTED), offers=sum(1 for o in outcomes.values() if o["kind"] == OFFER), contacts=len(heard))
-        if failed == 1 + len(accounts):                          # no source could be listed: nothing was read, so nothing is saved and the last accepted outcomes stay
+        if failed == 1 + len(accounts):                          # no source could be listed: save nothing, keep the last accepted outcomes
             counts["status"] = "degraded"
             print("hiring-outcomes:", json.dumps(counts, sort_keys=True))
             raise fail("DEGRADED_SOURCE_INCOMPLETE")
         counts["status"] = "partial" if unread else "fresh"
-        if unread:                                                # never a trustworthy "no outcome" from a source that was not read in full: keep what was accepted, add what was found
+        if unread:                                                # a source not read in full never yields a trustworthy "no outcome": keep what was accepted, add what was found
             counts["unread"] = list(dict.fromkeys(unread))
             outcomes, heard = _merge(accepted, outcomes, lambda o: o.get("received", "")), _merge(accepted_contacts, heard, str)
         if live:

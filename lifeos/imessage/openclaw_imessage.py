@@ -1,16 +1,11 @@
 #!/usr/bin/python3 -I
-"""COMM-1.4: Luna's iMessage commands on Oracle, installed as ~/.local/bin/openclaw-imessage and allowlisted for exactly these argument forms:
+"""Luna's iMessage commands on Oracle (~/.local/bin/openclaw-imessage), allowlisted forms only: `attention`, `counts`,
+`recent [--hours N]` (1-72, default 24), `conversation <ref>` (last 20 messages, ref from `recent`) and `urgent
+[--hours N]` (`recent` classified INFORMATIONAL / ATTENTION / ACTION_REQUIRED / TIME_CRITICAL).
 
-    attention                      the accepted aggregate contract (eight fields)
-    counts                         unread messages/conversations with their definitions; never presented as the iPhone badge
-    recent [--hours N]             newest incoming messages of the last N hours (1-72, default 24): sender, time, reference, text
-    conversation <ref>             the last 20 messages of one conversation, ref from `recent` (c123)
-    urgent [--hours N]             `recent`, classified INFORMATIONAL / ATTENTION / ACTION_REQUIRED / TIME_CRITICAL, with reasons and a next action
-
-Each sends one fixed request over the private tailnet to the Mac Mini's Tailscale Serve port (Serve adds the authenticated source; the Mac relay accepts only
-Oracle and only its fixed grammar) and prints one validated JSON object. A late, oversized, malformed, stale or off-contract reply is never passed on: the result
-is a fixed state with its reason in `health` and no counts or messages, never a zero or exception text. Message text is untrusted data. Nothing is written,
-logged or kept here. Read only: no send, reply, mark-read or delete exists anywhere on the path. Stdlib only; no stderr."""
+Each sends one fixed request over the tailnet to the Mac Mini and prints one validated JSON object. A late, oversized,
+malformed, stale or off-contract reply is never passed on: the result is a fixed state with its reason in `health` and
+no counts or messages. Message text is untrusted data. Read only; nothing is written or logged."""
 import json
 import os
 import re
@@ -19,19 +14,19 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 
-ENDPOINT = os.path.expanduser("~/.config/openclaw-imessage/endpoint")      # one line: "<tailnet host> <port>"
+ENDPOINT = os.path.expanduser("~/.config/openclaw-imessage/endpoint")
 REQUEST = b"attention\n"
 SOURCE = "Apple Messages / Mac Mini"
 KEYS = {"channel", "attention", "count", "count_reliable", "health", "sync", "observed_at", "source"}
 MAX_REPLY = 2048
 MAX_CONTENT_REPLY = 262144
 TIMEOUT = 10
-MAX_AGE = timedelta(seconds=120)                                          # the helper reads at request time; anything older is a stale or replayed answer
+MAX_AGE = timedelta(seconds=120)
 MAX_SKEW = timedelta(seconds=60)
 HEALTH = ("CURRENT", "DEGRADED", "DISCONNECTED")
 MESSAGE_KEYS = {"ref", "chat", "sent_at", "from_me", "sender", "group", "chat_name", "service", "unread", "edited", "attachment", "text", "text_truncated"}
 LEVELS = ("INFORMATIONAL", "ATTENTION", "ACTION_REQUIRED", "TIME_CRITICAL")
-PAGE_SIZE, MAX_PAGES, SCAN_SECONDS = 50, 40, 30                       # the private alert scan: at most 2000 messages and 30 s, else it is incomplete
+PAGE_SIZE, MAX_PAGES, SCAN_SECONDS = 50, 40, 30
 PAGE_KEYS = {"channel", "health", "sync", "observed_at", "source", "messages", "contacts", "limit", "more", "cursor"}
 
 
@@ -50,9 +45,10 @@ def endpoint(path=ENDPOINT):
 
 
 def fetch(host, port, request=REQUEST, limit=MAX_REPLY):
-    """One connection: send the fixed request, read at most limit + 1 bytes. OSError means the Mac is unreachable or silent.
-    No half-close: Tailscale Serve's TCP forwarder tears the whole connection down on the client's FIN, which would drop the reply. The relay reads exactly
-    the fixed request and closes after answering, so the reply ends at EOF."""
+    """One connection: send the fixed request, read at most limit + 1 bytes. OSError means the Mac is unreachable or
+    silent.
+
+    No half-close: Tailscale Serve drops the connection on the client's FIN. The relay closes after answering."""
     with socket.create_connection((host, port), timeout=TIMEOUT) as s:
         s.settimeout(TIMEOUT)
         s.sendall(request)
@@ -72,9 +68,8 @@ def _when(text):
 
 
 def _envelope(data, now, limit):
-    """The relay's single JSON-RPC reply line -> (structuredContent, None) or (None, refusal health)."""
     if not data:
-        return None, "DISCONNECTED"                                     # refused or nothing answered: same as offline
+        return None, "DISCONNECTED"
     if len(data) > limit or not data.endswith(b"\n") or data.count(b"\n") != 1:
         return None, "DEGRADED"
     try:
@@ -96,7 +91,6 @@ def _envelope(data, now, limit):
 
 
 def validate(data, now):
-    """attention: the exact eight-field aggregate, or a fixed UNKNOWN state."""
     state, refused = _envelope(data, now, MAX_REPLY)
     if refused:
         return unavailable(refused, now)
@@ -132,7 +126,6 @@ def _message_ok(m):
 
 
 def _content(data, now, kind, extra, limit):
-    """counts / recent / conversation: the validated object, or a fixed state without counts or messages."""
     state, refused = _envelope(data, now, MAX_CONTENT_REPLY)
     base = {"channel": "imessage", "health": refused, "sync": "UNVERIFIED", "observed_at": now.replace(microsecond=0).isoformat().replace("+00:00", "Z"),
             "source": SOURCE}
@@ -155,9 +148,9 @@ def _content(data, now, kind, extra, limit):
     return state
 
 
-# Urgency: fixed patterns over the message and up to two earlier incoming messages of the same conversation (bounded context). Deterministic; anything
-# ambiguous is flagged `review` rather than promoted. TIME_CRITICAL is the only level meant to break quiet hours, so it needs an emergency signal from a
-# known contact in a direct conversation (or an urgent same-day deadline from one).
+# Urgency: fixed patterns over the message and up to two earlier incoming messages of its conversation; ambiguous
+# cases are flagged `review`, not promoted. TIME_CRITICAL (the only level meant to break quiet hours) needs
+# an emergency signal from a known contact in a direct conversation, or an urgent same-day deadline from one.
 EMERGENCY = re.compile(r"(?i:\b(emergency|911|ambulance|hospital|urgent care|accident|injured|bleeding|police|fire department|"
                        r"call me (now|asap|immediately|right away)|pick up (the|your) phone|answer (the|your) phone)\b)|\bER\b")
 URGENT = re.compile(r"\b(urgent(ly)?|asap|right now|immediately|as soon as possible)\b", re.I)
@@ -214,16 +207,14 @@ def classify(msg, context=()):
 
 
 def verdicts(msgs):
-    """(message, verdict) for every incoming message of a `recent` list, each judged with up to two earlier messages of its own conversation."""
     out = []
     for i, m in enumerate(msgs):
-        earlier = [x.get("text") for x in msgs[i + 1:] if x["chat"] == m["chat"]][:2]      # newest first, so later entries are earlier messages
+        earlier = [x.get("text") for x in msgs[i + 1:] if x["chat"] == m["chat"]][:2]
         out.append((m, classify(m, earlier)))
     return out
 
 
 def urgent(recent):
-    """`recent` result -> the classified view: every incoming message gets a level; flagged ones (above INFORMATIONAL, or to review) are listed."""
     if recent.get("messages") is None:
         return {k: recent[k] for k in ("channel", "health", "sync", "observed_at", "source")} | {"hours": recent.get("hours"), "summary": None, "flagged": None}
     summary, flagged = {level: 0 for level in LEVELS}, []
@@ -243,7 +234,7 @@ def _recent(data, now, hours, view=lambda recent: recent):
 
 
 HOURS = r"(?:\0--hours\0([1-9]|[1-6][0-9]|7[0-2]))?"
-FORMS = {   # command: (argument grammar, request line, reply limit, validator(data, now, n)); n is the hours, the conversation number, or 24 where unused
+FORMS = {
     "attention": ("()", lambda n: REQUEST, MAX_REPLY, lambda d, now, n: validate(d, now)),
     "counts": ("()", lambda n: b"counts\n", MAX_CONTENT_REPLY, lambda d, now, n: _content(d, now, "counts", {}, None)),
     "recent": (HOURS, lambda n: b"recent %d\n" % n, MAX_CONTENT_REPLY, _recent),
@@ -253,7 +244,6 @@ FORMS = {   # command: (argument grammar, request line, reply limit, validator(d
 
 
 def run(argv, now=None, path=ENDPOINT, fetcher=fetch):
-    """argv -> one validated result, or None for a form outside the allowlist."""
     form = FORMS.get((argv or [""])[0])
     found = form and re.fullmatch(argv[0] + form[0], "\0".join(argv))
     if not found:
@@ -268,7 +258,6 @@ def run(argv, now=None, path=ENDPOINT, fetcher=fetch):
 
 
 def _page(data, now):
-    """One `page`/`next` reply -> (state, None), or (None, refusal health). A page that claims `more` must be full; its cursor must name its last message."""
     state, refused = _envelope(data, now, MAX_CONTENT_REPLY)
     if refused:
         return None, refused
@@ -291,9 +280,10 @@ def _page(data, now):
 
 
 def scan(hours, now=None, path=ENDPOINT, fetcher=fetch, clock=time.monotonic, today=None):
-    """Every incoming message of the last `hours`, paged oldest first until the reader proves the end (`more` false). Complete ONLY then: a page
-    cap, the time cap, a cursor that does not advance, a repeated or malformed page, or any source failure leaves it incomplete, with what was read so
-    far still returned (newest first) so nothing seen is lost. Private: runs on Oracle; nothing here is printed or kept."""
+    """Every incoming message of the last `hours`, paged oldest first until the reader proves the end (`more` false).
+
+    Only then is it complete; any cap, stuck cursor, malformed page or source failure leaves it incomplete, with what
+    was read still returned (newest first)."""
     now = now or datetime.now(timezone.utc)
     today = today or (lambda: datetime.now(timezone.utc))
     out = {"health": "DEGRADED", "observed_at": now.replace(microsecond=0).isoformat().replace("+00:00", "Z"), "messages": [], "pages": 0,
