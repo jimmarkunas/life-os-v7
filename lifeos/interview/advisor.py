@@ -1,4 +1,4 @@
-"""Private Interview Advisor contracts and deterministic B3 compiler."""
+"""Private Interview Advisor contracts and the deterministic compiler into PrepEvidence."""
 from dataclasses import dataclass
 from datetime import date
 from enum import Enum
@@ -366,7 +366,7 @@ def _validate_draft(bundle, draft):
 
 
 def compile_prep(bundle: AdvisorInputBundle, draft: AdvisorDraft) -> PrepEvidence:
-    """Validate an untrusted draft and compile bounded conclusions to the existing B3 contract."""
+    """Validate an untrusted draft and compile its bounded conclusions into PrepEvidence."""
     _fail(isinstance(bundle, AdvisorInputBundle), "advisor_input_invalid")
     _validate_draft(bundle, draft)
     evidence_by_ref = {item.ref.canonical(): item for item in bundle.evidence}

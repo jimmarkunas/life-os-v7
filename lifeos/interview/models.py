@@ -13,7 +13,7 @@ class Ownership(str, Enum):
     MACHINE = "MACHINE"
     HUMAN = "HUMAN"
     UNKNOWN = "UNKNOWN"
-    ADOPT = "ADOPT"                            # LIFE-46: a human page whose exact first line asks LIFE OS to adopt it
+    ADOPT = "ADOPT"
 
 
 @dataclass(frozen=True)
@@ -29,20 +29,20 @@ class RoundQuery:
     interviewer: str | None = None
     ordinal: int | None = None
     explicit_child_page_id: str | None = None
-    source: str | None = None                  # LIFE-42: the exact request message link (private page content only)
+    source: str | None = None
     requisition: str | None = None
     stable_job_key: str | None = None
-    ledger_page_id: str | None = None          # LIFE-46: the exact Job Ledger row progression linked (private page content only)
-    calendar_ref: str | None = None            # LIFE-46 E07: a short hash of the accepted Calendar event's id (never the id), kept in the round's Logistics
-    cancelled: bool = False                    # LIFE-46 E07: that event was cancelled in Calendar; the round keeps its date and identity
-    meeting: tuple | None = None               # E10: (join link, location) from that accepted invite, either may be None; private page content only
-    recruiters: tuple = ()                     # LIFE-78 E10: Recruiters rows whose Source URL is exactly `source`, as (person, company, thread url); private page content only
-    recruiters_state: str | None = None        # None = the Recruiters source is not connected to this run; "linked" | "none" | "unreadable"
-    contacts: tuple = ()                       # E10 (Jim, Oct 24): the job's own Network Leads on its Ledger page, as (name, why); private page content only
-    contacts_state: str | None = None          # None = no Ledger row linked; "linked" | "none" | "unreadable"
-    sent_mail: tuple = ()                      # LIFE-114: (sent time ISO, subject) of Jim's own messages on the request thread `source`; private page content only
-    sent_mail_state: str | None = None         # None = Gmail not read for this run; "read" | "unreadable"
-    refresh_only: bool = False                 # E05: bring an existing machine page with no rounds (a recruiter lead) up to date; never creates a page or a round
+    ledger_page_id: str | None = None
+    calendar_ref: str | None = None
+    cancelled: bool = False
+    meeting: tuple | None = None
+    recruiters: tuple = ()
+    recruiters_state: str | None = None        # None: not connected; else "linked" | "none" | "unreadable".
+    contacts: tuple = ()
+    contacts_state: str | None = None          # None: no Ledger row linked; else "linked" | "none" | "unreadable".
+    sent_mail: tuple = ()
+    sent_mail_state: str | None = None         # None: Gmail not read; else "read" | "unreadable".
+    refresh_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -58,7 +58,7 @@ class Parent:
     page_id: str
     title: str
     active: bool = True
-    stage: str = field(default="", compare=False)           # LIFE-931: the Ledger row's Stage ("" for a page-tree parent); the Interviews list also reads rounds of a job that is no longer active
+    stage: str = field(default="", compare=False)
 
 
 @dataclass(frozen=True)
@@ -69,8 +69,8 @@ class Child:
     interviewer: str | None = None
     ordinal: int | None = None
     identity_valid: bool | None = None
-    legacy: bool = False                       # LIFE-88: a hand-made round page whose number and date Jim let V7 read from its title (named pursuits only); shown, never written
-    created: str | None = field(default=None, compare=False)        # LIFE-111/112: when the round page was created (Notion created_time): new interview evidence for a hand-set state
+    legacy: bool = False
+    created: str | None = field(default=None, compare=False)
 
 
 @dataclass(frozen=True)
@@ -84,5 +84,5 @@ class Resolution:
 class Scan:
     items: tuple
     complete: bool
-    ledger: int = field(default=0, compare=False)           # LIFE-360: how many of the items came from Job Ledger rows (the rest from the page tree); evidence only
+    ledger: int = field(default=0, compare=False)
     tree_only: int = field(default=0, compare=False)

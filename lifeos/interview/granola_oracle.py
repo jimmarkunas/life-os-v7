@@ -1,8 +1,9 @@
-"""LIFE-37 Step 2: the V7 side of Oracle's `gran1` request (contract posted in LIFE-37 comment 11235).
+"""Client side of Oracle's `gran1` request.
 
-Same private endpoint and framing as the Cloud Fit `fit1` verb (TCP 47341 over the runner's tailnet node): no new credential, port or service. One request per
-connection: `gran1 <len>\\n` + a JSON body with `op` and a fresh `nonce`; the reply is `gran1 <len>\\n` + JSON with `ok`, `code` and the echoed `nonce`. Ops: sync, list, show,
-purge. Nothing here logs a reply: callers get fixed codes, and the transcript JSON only ever goes to the contract check and the private Notion page."""
+Same private endpoint as the Cloud Fit `fit1` verb (TCP 47341 over the tailnet). One request per connection:
+`gran1 <len>\\n` + a JSON body with `op` and a fresh `nonce`; the reply is `gran1 <len>\\n` + JSON with `ok`,
+`code` and the echoed `nonce`. Ops: sync, list, show, purge. Callers get fixed codes only; the transcript JSON goes
+only to the contract check and the private Notion page."""
 import json
 import secrets
 import socket
@@ -13,14 +14,14 @@ from lifeos.platform.fixed_code import fixed
 
 PORT = 47341
 MAX_REQUEST = 4096
-MAX_REPLY = 26_000_000              # the contract's own transcript limit is 25,000,000 bytes, plus the envelope
-WAIT = 180                          # sync can take a while; Oracle answers or closes
+MAX_REPLY = 26_000_000              # Transcript limit is 25,000,000 bytes, plus the envelope.
+WAIT = 180
 OPS = ("sync", "list", "show", "purge")
 CODES = {"GRAN_BAD_FRAME", "GRAN_BAD_OP", "GRAN_NOT_FOUND", "GRAN_SYNC_FAILED", "GRAN_AUTH_EXPIRED", "GRAN_TIMEOUT", "GRAN_OVERSIZE", "GRAN_HASH_MISMATCH"}
 
 
 class OracleError(RuntimeError):
-    """A fixed code only: GRAN_* from Oracle, or one of GRAN_NO_HOST, GRAN_CONNECT_FAILED, GRAN_NO_REPLY, GRAN_REPLY_INVALID, GRAN_NONCE_MISMATCH."""
+    """A fixed code only: GRAN_* from Oracle, or one raised here (GRAN_NO_HOST, GRAN_CONNECT_FAILED, ...)."""
 
     def __init__(self, code):
         super().__init__(code)
@@ -37,13 +38,14 @@ def frame(op, nonce, **fields):
 
 
 def exchange(host, data, port=PORT, wait=WAIT, sleep=time.sleep):
-    """One request, read to the server's close (shared logic: lifeos/platform/socket_exchange.py). b"" = closed with no output. A connection that cannot be opened has sent nothing: tried twice."""
+    """One request, read to the server's close; b"" means closed with no output. An unopened connection is retried."""
     return socket_exchange.exchange(host, data, port, wait, MAX_REPLY, lambda: OracleError("GRAN_CONNECT_FAILED"), lambda: OracleError("GRAN_TIMEOUT"), sleep=sleep, chunk=1 << 20)
 
 
 def call(host, op, send=exchange, **fields):
-    """-> the reply's dict on `ok`. Raises OracleError with a fixed code on anything else: no host, no reply, a reply that is not as contracted, a nonce that was
-    not echoed, or Oracle's own refusal (its code is passed through only when it is on the contract's list)."""
+    """-> the reply's dict on `ok`.
+
+    Any failure raises OracleError with a fixed code; an Oracle code not in CODES becomes GRAN_REPLY_INVALID."""
     if not host:
         raise OracleError("GRAN_NO_HOST")
     nonce = secrets.token_hex(16)
