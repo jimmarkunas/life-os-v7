@@ -680,7 +680,7 @@ jobs:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,V7_CLOUD_FIT,V7_CLOUD_FIT_SCHEDULED,V7_CLOUD_FIT_BACKLOG_BUDGET,V7_CLOUD_FIT_BACKLOG_MAX,V7_CLOUD_FIT_PARALLEL,V7_CLOUD_FIT_BACKLOG_PAGE,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
           live_mode: ${{ github.event_name == 'workflow_dispatch' && !inputs.tick && (inputs.live && 'true' || 'false') || 'follow' }}
-      - name: Cloud-Fit shadow only
+      - name: Join the tailnet (Cloud-Fit shadow only; existing runner node)
         continue-on-error: true
         uses: ./.github/actions/tailscale
         with:

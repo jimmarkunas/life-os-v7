@@ -232,7 +232,7 @@ class ScheduledBatch(unittest.TestCase):
             names = self.names(plan(self.doc, event, on, **given))
             self.assertIn("tick", names, event)
             self.assertNotIn("fit_cloud_backlog", names, event)
-            self.assertTrue(any("join the tailnet" in str(n) for n in names), event)                     # the tick's own cloud fit canary still needs the route to Oracle
+            self.assertTrue(any("join the tailnet" in str(n).lower() for n in names), event)                     # the tick's own cloud fit canary still needs the route to Oracle
         domains = yaml.safe_load((WORKFLOW.parent / "domains.yml").read_text())["jobs"]["fit_cloud_backlog"]
         step = next(s for s in domains["steps"] if s.get("id") == "fit_cloud_backlog")
         self.assertEqual({k: v for k, v in step["env"].items() if k.startswith(("CLOUD_BACKLOG", "V7_CLOUD_FIT_BACKLOG"))},
@@ -244,7 +244,7 @@ class ScheduledBatch(unittest.TestCase):
                 names = self.names(plan(self.doc, event, variables, **given))
                 self.assertIn("tick", names)
                 self.assertNotIn("fit_cloud_backlog", names, (variables, event))
-                self.assertTrue(any("join the tailnet" in str(n) for n in names), (variables, event))      # LIFE-85: the finish job always joins (the store's Oracle fallback)
+                self.assertTrue(any("join the tailnet" in str(n).lower() for n in names), (variables, event))      # LIFE-85: the finish job always joins (the store's Oracle fallback)
 
     def test_a_parked_pipeline_never_runs_it(self):
         p = plan(self.doc, "schedule", {"V7_PIPELINE": "false", "V7_CLOUD_FIT_SCHEDULED": "20"})

@@ -74,7 +74,7 @@
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,V7_CLOUD_FIT,V7_CLOUD_FIT_SCHEDULED,V7_CLOUD_FIT_BACKLOG_BUDGET,V7_CLOUD_FIT_BACKLOG_MAX,V7_CLOUD_FIT_PARALLEL,V7_CLOUD_FIT_BACKLOG_PAGE,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
           live_mode: ${{ github.event_name == 'workflow_dispatch' && !inputs.tick && (inputs.live && 'true' || 'false') || 'follow' }}
       # why: Cloud-Fit shadow only (D214, G6) - join the tailnet as the existing ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 47341)
-      - name: Cloud-Fit shadow only
+      - name: Join the tailnet (Cloud-Fit shadow only; existing runner node)
         continue-on-error: true                 # LIFE-85: the store's Oracle fallback needs the tailnet on every run; a failed join only means no fallback
         uses: ./.github/actions/tailscale
         with:
