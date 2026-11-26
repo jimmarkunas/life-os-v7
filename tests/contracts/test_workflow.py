@@ -980,7 +980,7 @@ class DomainsWorkflowTests(unittest.TestCase):
         self.assertEqual(trigger["workflow_run"], {"workflows": ["domains"], "types": ["completed"]})
         self.assertEqual(trigger["schedule"], [{"cron": "40 * * * *"}])                                            # the fallback stays
         self.assertEqual(list(trigger["workflow_dispatch"]["inputs"]), ["live"])                                    # workflow_dispatch is unchanged
-        self.assertEqual(data["jobs"]["v3pages"]["if"], "${{ github.event_name != 'workflow_run' || github.event.workflow_run.display_title == 'domains (after tick)' }}")
+        self.assertEqual(data["jobs"]["v3pages"]["if"], "${{ github.event_name != 'workflow_run' || (github.event.workflow_run.display_title == 'domains (after tick)' && github.event.workflow_run.event == 'workflow_run') }}")
         self.assertIn("live_mode: ${{ github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'follow' }}", text)   # a workflow_run start follows V7_LIVE
         self.assertEqual(data["permissions"], {"contents": "read"})
         self.assertEqual(data["concurrency"], {"group": "life-os-v7-v3-pages", "cancel-in-progress": False})     # overlapping starts queue, they never cancel a running write
