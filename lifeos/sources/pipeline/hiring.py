@@ -1,5 +1,4 @@
-"""Hiring Pipeline stage (no mail): compose the Ledger Applied state, Hiring Pipeline pages and Calendar evidence into
-the Daily Report region.
+"""Hiring Pipeline stage (no mail): compose Ledger, Pipeline pages and Calendar evidence into the Daily Report region.
 
 Read-only toward every source except `confirm_rejected`, the only Ledger write (two properties of one confirmed row).
 A

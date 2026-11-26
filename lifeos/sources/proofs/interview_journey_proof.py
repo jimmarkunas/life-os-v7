@@ -1,5 +1,4 @@
-"""Synthetic journey proof on real Notion: the real Interview runner and Notion writer, tick after tick, against a
-fresh sandbox.
+"""Synthetic journey proof on real Notion: the real Interview runner and writer, tick after tick, in a fresh sandbox.
 
 Manual only: the interview-proof workflow with `confirm = QA`, or a domains dispatch with `interview_journey_proof =
 QA`

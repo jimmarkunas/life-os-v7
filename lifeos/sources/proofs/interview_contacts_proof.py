@@ -1,5 +1,4 @@
-"""Synthetic QA proof: the opportunity page's LinkedIn Contacts table, through the real V7 path, on Notion QA
-surfaces.
+"""Synthetic QA proof of the opportunity page's LinkedIn Contacts table, through the real V7 path, on Notion QA.
 
 Manual only: interview-proof with `confirm = E10`. Every write goes to a fresh sandbox under the QA parent; two
 production pages are only read, for job description text. Outputs: PASS/FAIL per assertion, counts only; no name, id

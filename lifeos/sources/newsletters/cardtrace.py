@@ -1,5 +1,4 @@
-"""Why a Newsletter message's saved vacancies are fewer than the cards parsed from it. Read-only, counts and fixed
-codes only.
+"""Why a Newsletter message's saved vacancies are fewer than its parsed cards. Read-only; counts and fixed codes.
 
 Given ALERTS_MESSAGE_REF (the SHA-256 of one Gmail message id, never the id), it finds the message, parses its cards
 with the real parser, and for each card reads the Jobs store. Each card gets one class: owned, collision (only other

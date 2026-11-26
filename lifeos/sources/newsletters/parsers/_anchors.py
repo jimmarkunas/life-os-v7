@@ -1,5 +1,4 @@
-"""Shared parser pieces: the job Card, the "N days ago" reader, and a collector of (href, [text nodes]) for every <a>
-whose href matches a pattern. Sloppy-HTML tolerant."""
+"""Shared parser pieces: the job Card, the "N days ago" reader and an <a> collector, tolerant of sloppy HTML."""
 from html.parser import HTMLParser
 import re
 
