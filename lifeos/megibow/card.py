@@ -1,6 +1,6 @@
-"""The MegIBOW block writer: edits only the machine-owned callout (MEGIBOW_BLOCK_ID) and its one table, in place, and reads every write back (D134).
-
-Nothing around the block can change: nothing is inserted, deleted, moved or reordered. A block that is not the expected shape is DEGRADED and nothing is written."""
+"""The MegIBOW block writer: edits only the machine-owned callout (MEGIBOW_BLOCK_ID) and its one table, in place, and
+reads every write back. Nothing around the block changes; a block of unexpected shape is DEGRADED and nothing is
+written."""
 from urllib.parse import quote
 
 from lifeos.platform import readback, report_region
@@ -40,7 +40,7 @@ def locate(client, block_id):
 
 
 def write(client, block_id, text, table_rows, live):
-    """text: the callout's own text; table_rows: ROWS x COLS strings, or None to leave the table alone (DEGRADED). -> {"rows_written", "text_written", "verified"}."""
+    """text: the callout's own text; table_rows: ROWS x COLS strings, or None to leave the table alone (DEGRADED)."""
     meta, _, rows = locate(client, block_id)
     changed = []
     if table_rows is not None:
@@ -53,7 +53,7 @@ def write(client, block_id, text, table_rows, live):
         return result
     last_id = rows[-1]["id"] if rows else None
     for row_id, want in changed:
-        bold = {"annotations": {"bold": True}} if row_id == last_id else {}               # the totals row is the last row and is bold
+        bold = {"annotations": {"bold": True}} if row_id == last_id else {}
         client.call("PATCH", f"/blocks/{quote(row_id, safe='')}", {"table_row": {"cells": [[{"type": "text", "text": {"content": c}, **bold}] for c in want]}})
         result["rows_written"] += 1
     if text_changed:
@@ -61,7 +61,7 @@ def write(client, block_id, text, table_rows, live):
         result["text_written"] = True
     if not (changed or text_changed):
         return result
-    ok, _ = readback.confirmed(lambda: locate(client, block_id),                       # authoritative read-back; Notion may briefly show the old state
+    ok, _ = readback.confirmed(lambda: locate(client, block_id),
                                lambda after: (table_rows is None or [_cells(r) for r in after[2]] == table_rows) and _plain_callout(after[0]) == text)
     if ok:
         return result
@@ -69,8 +69,8 @@ def write(client, block_id, text, table_rows, live):
 
 
 def read_legacy(client, block_id):
-    """The one-time seed for Cumulative: a paragraph inside the block reading "Legacy totals: Outreach 20, Scheduled 13, ..." -> counts, or None when there is none."""
-    from lifeos.megibow import classify as C                                   # noqa: PLC0415
+    """The one-time Cumulative seed: a "Legacy totals: Outreach 20, ..." paragraph -> counts, or None."""
+    from lifeos.megibow import classify as C  # noqa: PLC0415
     for block in report_region.children(client, block_id, _fail):
         text = report_region.plain(block)
         if block.get("type") == "paragraph" and text.lower().startswith("legacy totals:"):
@@ -87,11 +87,10 @@ MANUAL = "phone calls:"
 
 
 def parse_manual(text, today):
-    """Jim's own count line, "Phone calls: Oct 5 Recruiter Calls 1; Oct 7 Company Calls 2" -> ({monday: {activity: n}}, unreadable entry count). A date is "Mon D" in the current year
-    (the previous year when that would be more than a week ahead); an entry that does not parse is counted and ignored, never guessed."""
-    from datetime import date, datetime as dt, timedelta                         # noqa: PLC0415
-    from lifeos.megibow import classify as C                                     # noqa: PLC0415
-    from lifeos.megibow.windows import monday                                    # noqa: PLC0415
+    """"Phone calls: Oct 5 Recruiter Calls 1; ..." -> ({monday: {activity: n}}, unreadable entry count)."""
+    from datetime import date, datetime as dt, timedelta  # noqa: PLC0415
+    from lifeos.megibow import classify as C  # noqa: PLC0415
+    from lifeos.megibow.windows import monday  # noqa: PLC0415
     out, bad = {}, 0
     body = text.split(":", 1)[1] if ":" in text else ""
     for entry in body.replace("\n", ";").split(";"):
@@ -115,7 +114,6 @@ def parse_manual(text, today):
 
 
 def read_manual(client, block_id, today):
-    """-> ({monday: {activity: n}}, unreadable entries, line present). Reads the paragraph inside the block that starts with "Phone calls:"; absent means no entries."""
     for block in report_region.children(client, block_id, _fail):
         text = report_region.plain(block)
         if block.get("type") == "paragraph" and text.lower().startswith(MANUAL):
@@ -125,5 +123,4 @@ def read_manual(client, block_id, today):
 
 
 def ensure_manual_line(client, block_id):
-    """Add the empty "Phone calls: none" paragraph at the end of the block once, so Jim has a line to edit. Never touches an existing one."""
     client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": [{"object": "block", "type": "paragraph", "paragraph": {"rich_text": [{"type": "text", "text": {"content": "Phone calls: none"}}]}}]})

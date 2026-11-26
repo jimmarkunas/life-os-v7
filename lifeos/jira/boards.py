@@ -1,7 +1,5 @@
-"""Which Jira boards V7 manages, read from JIRA_BOARDS (a secret: keys and ids stay out of the public repo).
-
-JIRA_BOARDS="KEY:board_id[:flag...],...". Flags: all = triage every non-Epic item; readonly = snapshot only, never sprint rollover (e.g. a team board until opted in).
-Failure: JIRA_CONFIG_MISSING:JIRA_BOARDS."""
+"""Which Jira boards V7 manages, read from JIRA_BOARDS (a secret): "KEY:board_id[:flag...],...". Flags: all = triage
+every non-Epic item; readonly = snapshot only, no rollover. Failure: JIRA_CONFIG_MISSING:JIRA_BOARDS."""
 import os
 
 from lifeos.platform.jira import JiraError
@@ -26,8 +24,6 @@ def boards(environ=os.environ):
 
 
 def owned(sprints, project, keys):
-    """Sprints on a (possibly shared) board that belong to this project: named with its key (V7 names its sprints that way);
-    otherwise those not named for another configured project. Boards whose filter spans projects list each other's sprints."""
     named = [s for s in sprints if str(s.get("name") or "").startswith(project)]
     if named:
         return named

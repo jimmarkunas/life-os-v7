@@ -1,14 +1,14 @@
-"""LIFE-742: may an agent move this ticket to Agent Go itself, or must it wait for Jim? A pure check on a fetched Jira issue, no network and no write."""
-# Jim, Nov 16 2026: agents may promote tickets on their own, "everything but the scary list". The rule is written once in docs/life-os-development-policy.md (section 4, Jim must do first).
-# This module only decides. The agent then makes transition 17 (To Do to Agent Go) and posts the one comment, or posts `[waiting on] Jim: <the one thing>`.
+"""May an agent move this ticket to Agent Go itself, or must it wait for Jim? A pure check on a fetched Jira issue: no
+network, no write."""
+# Agents promote on their own except for the scary list below (policy: docs/life-os-development-policy.md section 4).
+# The agent makes transition 17 (To Do to Agent Go) and posts the one comment, or `[waiting on] Jim: <the one thing>`.
 import re
 
 from lifeos.jira.release import JIM_FIRST, gate, has_done_when, jim_first, text_of
 
-# LIFE-753: the label an agent adds with every `[waiting on] Jim:` comment; the saved filter "Waiting on Jim" lists the tickets that carry it.
-WAITING_LABEL = "needs-jim"                                   # LIFE-780: the one workflow-control label (was waiting-on-jim, jim-only, hold, planning-only, needs-approval, protected-file)
+WAITING_LABEL = "needs-jim"
 
-# The scary list: a ticket whose description names one of these steps needs Jim's yes at the moment it arises. Each pattern reads the ticket text, case-insensitive.
+# The scary list: steps that need Jim's yes when they arise, matched case-insensitively against the ticket text.
 PROTECTED = {
     "credential": r"\b(credentials?|api[ _-]?keys?|access tokens?|oauth|bitwarden|secrets?|passwords?|rotat\w+ (a )?(token|key))\b",
     "live_access": r"\b(live (provider|read|write|access|run|data)s?|production (data|access|deploy\w*|change)s?|provider data|real (provider )?data)\b",
@@ -20,17 +20,16 @@ PROTECTED = {
     "ingress": r"\b(public (endpoint|ingress|url)|open(ing)? a port|cloudflare tunnel|tailscale (config|funnel))\b",
 }
 COMPILED = {name: re.compile(pattern, re.I) for name, pattern in PROTECTED.items()}
-# A ticket may say what it will NOT do ("No credentials"): a sentence under a STOP, Not in scope or Never heading names refusals, not needs, so those lines are not scanned.
+# Lines under a STOP, Not in scope or Never heading name refusals, not needs, so they are not scanned.
 REFUSAL_HEADING = re.compile(r"^\W*(stop|not in scope|never|out of scope)\b", re.I)
 
 
 def scanned_lines(description):
-    """The description's lines outside any STOP / Not in scope / Never section."""
     out, skipping = [], False
     for line in text_of(description).splitlines():
         if re.match(r"^\W*(outcome|done when|steps|scope|authority|release|facts|targets|who verifies)\b", line, re.I):
             skipping = False
-        if REFUSAL_HEADING.match(line) or JIM_FIRST.match(line):            # needs listed under Jim must do first are gated by its checkboxes, not by this scan
+        if REFUSAL_HEADING.match(line) or JIM_FIRST.match(line):
             skipping = True
             continue
         if not skipping:
@@ -39,13 +38,12 @@ def scanned_lines(description):
 
 
 def protected_steps(description):
-    """-> sorted names of the protected categories the ticket's own needs mention (empty means none)."""
     body = "\n".join(scanned_lines(description))
     return sorted(name for name, pattern in COMPILED.items() if pattern.search(body))
 
 
 def decide(issue):
-    """-> ("promote", []) | ("wait", [categories]) | ("skip", [reason]). `skip` changes nothing in Jira; `wait` means post `[waiting on] Jim:`; `promote` means transition 17 plus one comment."""
+    """-> ("promote", []) | ("wait", [categories]) | ("skip", [reason]). `skip` changes nothing in Jira."""
     fields = issue.get("fields") or {}
     status = ((fields.get("status") or {}).get("name") or "To Do")
     if status not in ("To Do", "To do"):
@@ -54,10 +52,10 @@ def decide(issue):
         return "skip", ["epic"]
     if not has_done_when(fields.get("description")):
         return "skip", ["no_done_when"]
-    why = gate(fields)                                                          # LIFE-850: one readiness label (only `ready` moves), an Epic out of Scoping (or a research / verdict child), every blocker Done
+    why = gate(fields)
     if why:
         return "skip", [why]
-    present, open_items = jim_first(fields.get("description"))                 # Jim, Nov 21 2026: the release rule
+    present, open_items = jim_first(fields.get("description"))
     if not present:
         return "skip", ["no_jim_first"]
     if open_items:
@@ -69,7 +67,8 @@ def decide(issue):
 
 
 def act(issue):
-    """-> {"decision", "reasons", "label", "comment"}: on `wait`, the label and exact comment to apply in one step (LIFE-753); otherwise both are None."""
+    """-> {"decision", "reasons", "label", "comment"}; on `wait`, the label and exact comment to apply, else both
+    None."""
     decision, reasons = decide(issue)
     if decision != "wait":
         return {"decision": decision, "reasons": reasons, "label": None, "comment": None}

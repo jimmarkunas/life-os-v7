@@ -1,7 +1,5 @@
-"""LIFE-729: name LIFE tickets idle in In Progress (30 minutes) or Agent Go (2 hours) with no `[waiting on]` last comment. Read only; no phone push.
-
-
-A ticket Jim is waited on carries `[waiting on] Jim: ...`; a ticket stopped on a decision only Jim can make carries `needs-jim` (LIFE-780); both are not stalled. Only the LIFE project is read (its keys are public, unlike the personal boards)."""
+"""Name LIFE tickets idle in In Progress (30 minutes) or Agent Go (2 hours) whose last comment is not `[waiting on]`.
+Read only, no phone push; `needs-jim` tickets are not stalled."""
 import os
 from datetime import datetime, timedelta, timezone
 

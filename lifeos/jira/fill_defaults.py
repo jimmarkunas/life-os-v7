@@ -1,8 +1,12 @@
-"""LIFE-741: fill the parent epic, Component and Fix Version of LIFE tickets by one set of rules; a value that is already set is never changed."""
-# Rules, in order (Jim, Nov 16 2026): (1) Parent: keep it; else a Bug goes under LIFE-615; else `action-inbox` goes to LIFE-696 and a title "Stability n/7" to LIFE-686; else the container epic "LIFE one-off tasks" (found by its title alone, created once when absent). (2) Component: keep it; else the parent epic's; else Platform / Core OS.
-# (3) Fix Version: keep it; else "<Component> 1.0.0". Epics get rules 2 and 3 only. Nothing here creates a Component or a version, or changes a status.
-#   python -m lifeos.jira.fill_defaults [--backfill] [--live]     counts only; a dry run unless --live (the hourly stage is lifeos.run jira-fill)
-#   python -m lifeos.jira.fill_defaults --plan FILE              FILE = {"issues": [...], "epics": [...]} saved from Jira; prints the planned changes, writes nothing
+"""Fill the parent epic, Component and Fix Version of LIFE tickets by one set of rules; a value that is already set is
+never changed."""
+# Rules, in order: (1) Parent: keep it; else a Bug goes under BUGS_EPIC; else `action-inbox` goes to INBOX_EPIC and a
+# title "Stability n/7" to STABILITY_EPIC; else the container epic "LIFE one-off tasks" (found by its title alone,
+# created once when absent). (2) Component: keep it; else the parent epic's; else Platform / Core OS. (3) Fix Version:
+# keep it; else "<Component> 1.0.0". Epics get rules 2 and 3 only. Nothing here creates a Component or a version, or
+# changes a status.
+#   python -m lifeos.jira.fill_defaults [--backfill] [--live]   dry run unless --live
+#   python -m lifeos.jira.fill_defaults --plan FILE   plan from a saved Jira read; writes nothing
 import json
 import os
 import re
@@ -48,7 +52,6 @@ def is_done(fields):
 
 
 def find_container(epics):
-    """The open epic titled CONTAINER_TITLE (LIFE-780: the title alone picks it, no label); the lowest key when several; None when absent."""
     found = [k for k, e in epics.items() if _is_container(e.get("fields") or {})]
     return min(found, key=number) if found else None
 
@@ -65,11 +68,10 @@ def pick_parent(fields, epics, container):
         return INBOX_EPIC
     if STABILITY.match(fields.get("summary") or ""):
         return STABILITY_EPIC
-    return container                                                            # LIFE-849: the `los-N` label match is retired; a ticket with no parent goes to the container epic
+    return container
 
 
 def plan(fields, epics, container):
-    """-> {"parent": key, "components": name, "fixVersions": name}: only what is missing."""
     changes = {}
     parent = (fields.get("parent") or {}).get("key")
     if not is_epic(fields) and not parent:
@@ -89,7 +91,6 @@ def load_epics(jira):
 
 
 def ensure_container(jira, epics, live):
-    """The container epic's key (created once when absent and live; a dry run names it `(new container)`)."""
     key = find_container(epics)
     if key or not live:
         return key or "(new container)"
@@ -111,7 +112,7 @@ def write(jira, key, changes, comment):
     if "fixVersions" in changes:
         body["fields"]["fixVersions"] = [{"name": changes["fixVersions"]}]
     try:
-        jira.request("PUT", f"/rest/api/3/issue/{key}", payload=body, retry=True)       # idempotent
+        jira.request("PUT", f"/rest/api/3/issue/{key}", payload=body, retry=True)
         if comment:
             text = "[sweep] set " + ", ".join(LABEL_OF[f] for f in ("parent", "components", "fixVersions") if f in changes) + " by rule"
             jira.post(f"/rest/api/3/issue/{key}/comment", {"body": {"type": "doc", "version": 1, "content": [{"type": "paragraph", "content": [{"type": "text", "text": text}]}]}})
@@ -120,7 +121,7 @@ def write(jira, key, changes, comment):
 
 
 def fill_key(jira, key, live=True, comment=False):
-    """Fill one ticket by key (readiness); a read error is a plain JiraError, a failed write is FillFailed. -> the changes."""
+    """Fill one ticket by key. -> the changes; a failed write is FillFailed."""
     issue = jira.get(f"/rest/api/3/issue/{key}", {"fields": FIELDS})
     epics = load_epics(jira)
     changes = plan(issue.get("fields") or {}, epics, find_container(epics) or "(new container)")
@@ -132,7 +133,6 @@ def fill_key(jira, key, live=True, comment=False):
 
 
 def fill_many(jira, jql, live, comment, sleep=time.sleep):
-    """Fill every ticket the JQL finds, BATCH at a time. A failed ticket is counted and the rest go on; only when nothing could be written is the stage failed."""
     found = search(jira, jql, FIELDS)
     epics = load_epics(jira)
     container = find_container(epics)
@@ -160,13 +160,13 @@ def fill_many(jira, jql, live, comment, sleep=time.sleep):
 
 
 def run(limit, live, environ=None, jira=None, days=2):
-    """The hourly stage: tickets created or updated in the last `days` days that miss a field; one `[sweep]` comment per changed ticket."""
+    """The hourly stage: tickets created or updated in the last `days` days that miss a field, one `[sweep]` comment
+    per changed ticket."""
     jira = jira or Jira.from_env(os.environ if environ is None else environ)
     return fill_many(jira, f"{GAPS} AND updated >= -{int(days)}d", live, True)
 
 
 def backfill(jira, live, sleep=time.sleep):
-    """The one-time pass over every LIFE ticket in every status. -> counts with the gap totals before and after (no per-ticket comments)."""
     before = len(search(jira, GAPS, "summary"))
     out = fill_many(jira, GAPS, live, False, sleep)
     out["gaps_before"], out["gaps_after"] = before, len(search(jira, GAPS, "summary"))
@@ -174,7 +174,8 @@ def backfill(jira, live, sleep=time.sleep):
 
 
 def create_issue(jira, summary, issuetype, parent, description="", labels=()):
-    """LIFE-773: create a LIFE ticket whose Component and Fix Version come from its parent epic by the same rules as the fill; no parent epic is a one-line refusal. -> the new key."""
+    """Create a LIFE ticket with Component and Fix Version from its parent epic; no parent epic is refused. -> the new
+    key."""
     fields = {"project": {"key": "LIFE"}, "issuetype": {"name": issuetype}, "summary": summary, "labels": list(labels)}
     if issuetype == "Epic":
         component = DEFAULT_COMPONENT
@@ -194,7 +195,6 @@ def create_issue(jira, summary, issuetype, parent, description="", labels=()):
 
 
 def plan_file(path):
-    """Plan from a saved read of Jira (no network): -> {key: changes} for every issue that misses a field."""
     data = json.loads(Path(path).read_text())
     epics = {e["key"]: e for e in data.get("epics") or []}
     container = find_container(epics) or "(new container)"

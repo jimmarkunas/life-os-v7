@@ -1,8 +1,9 @@
-"""Pages the phone when a scheduled sprint rollover keeps failing (D181).
+"""Pages the phone when a scheduled sprint rollover keeps failing.
 
-Runs right after the rollover step and is told that step's outcome. Live success: records the time and closes any open alert. Live failure: pages only once the rollover has not worked for STUCK_HOURS
-(one blip is not an incident), then reminds every 6 hours (platform alerts, D53) and says when it recovers. A skipped step or a dry run records nothing.
-The rollover step itself gets no database or phone secret: only this step does. State: one private row. Output: counts and fixed codes only; alerting never changes the rollover's own result."""
+Told the rollover step's outcome: success records the time and closes any open alert; failure pages once it has not
+worked for STUCK_HOURS, then reminds every 6 hours and says when it recovers. Skipped steps and dry runs record
+nothing.
+"""
 import json
 import os
 from datetime import datetime, timezone
@@ -10,15 +11,14 @@ from datetime import datetime, timezone
 from lifeos.platform import alerts, db
 
 KEY = "jira_rollover_stuck"
-STUCK_HOURS = 3                    # three hourly runs without a success
+STUCK_HOURS = 3
 SCHEMA = ("""CREATE TABLE IF NOT EXISTS v7_jira_rollover (
         k VARCHAR(16) NOT NULL PRIMARY KEY, last_ok DATETIME NOT NULL, alert_open TINYINT NOT NULL DEFAULT 0, last_notified DATETIME NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",)
 
 
 def decide(state, ok, now):
-    """state: None or {"last_ok", "alert_open", "last_notified"}; now: naive UTC. -> (new state, alerts.Plan). The first time anything is seen counts as the last good moment, so a rollover that was
-    already broken when this shipped pages after STUCK_HOURS, not instantly and not never."""
+    """state: None or {"last_ok", "alert_open", "last_notified"}; now: naive UTC."""
     state = dict(state or {"last_ok": now, "alert_open": False, "last_notified": None})
     was_open = bool(state["alert_open"])
     known = {KEY: {"severity": alerts.PAGE, "last_notified": state["last_notified"]}} if was_open else {}
@@ -47,7 +47,7 @@ def _save(connection, state):
 
 
 def run(limit, live, environ=os.environ, now=None, send=None, connect=None):
-    """JIRA_ROLLOVER_OUTCOME is the rollover step's outcome (success | failure); anything else (the step was skipped) records nothing. A dry run records nothing and pushes nothing."""
+    """JIRA_ROLLOVER_OUTCOME is the rollover step's outcome (success | failure); anything else records nothing."""
     outcome = environ.get("JIRA_ROLLOVER_OUTCOME", "")
     if not live or outcome not in ("success", "failure"):
         return {"recorded": False}
@@ -61,10 +61,10 @@ def run(limit, live, environ=os.environ, now=None, send=None, connect=None):
             state, plan = decide(_load(connection), outcome == "success", clock)
             sent = alerts.deliver(plan, environ.get("NTFY_TOPIC", ""), send)
             if plan.notify and sent["failed"] == 0 and state["alert_open"]:
-                state["last_notified"] = clock                  # a push the phone service did not accept is retried next run
+                state["last_notified"] = clock
             _save(connection, state)
         result = {"recorded": True, "alert_open": state["alert_open"], **sent}
-    except Exception:                                           # noqa: BLE001 - alerting must never change the rollover's result
+    except Exception:  # noqa: BLE001
         result = {"recorded": False, "state": "unavailable"}
     print("jira-rollover-watch:", json.dumps(result))
     return result

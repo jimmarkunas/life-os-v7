@@ -12,7 +12,7 @@ from lifeos.jira.release import text_of
 from lifeos.platform.ct_stamp import stamp
 from lifeos.platform.jira import Jira
 
-DONE = "15"                                   # the transition to Done
+DONE = "15"
 REPO_PULL = "https://github.com/jimmarkunas/life-os-v7/pull/"
 REPO_RUN = "https://github.com/jimmarkunas/life-os-v7/actions/runs/"
 KEY = re.compile(r"^[A-Z][A-Z0-9]+-\d+$")

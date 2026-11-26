@@ -1,11 +1,9 @@
-"""LIFE-918 (the unbuilt LIFE-915 parts): sprint inventory and ISO names, carry rule, recurrence, closure counts, daily reconciliation. OFF BY DEFAULT.
+"""Sprint inventory, ISO names, carry rule, recurrence, closure counts and daily reconciliation. OFF BY DEFAULT.
 
-Gate: the Runtime Configuration switch MEJ_SPRINT_AUTOMATION, exactly "on"; otherwise `run` does nothing ({"enabled": 0}). Every Jira write is an injected executor (never built here); a live run without them, or
-without a checkpoint, fails closed with JIRA_RECONCILE_WRITER_UNVERIFIED (the tenant contract is UNVERIFIED; LIFE-918 proves it first). Planning is pure and tested on synthetic data. Never closes or starts a sprint
-(rollover owns the boundary). Output: counts and fixed codes only.
-
-Owner decisions (Notion canon, LIFE-915 section, Nov 24 2026; LIFE-998): 3 recurring Tasks close Done with one clone; 8 future week sprints; 6 names PROJECT W{week} {year} (short form, decision C, Nov 25 2026), ISO, Monday to Sunday CT; 7 carry rule;
-8 configuration plus the `recurring` label; 10 manual, automatic, total closed apart; 11 label removal stops a series; 12 edits reach unfinished future occurrences; 13 rename in place; 14 inspect before retry."""
+Gated by MEJ_SPRINT_AUTOMATION (exactly "on"). Every Jira write is an injected executor; a live run without them fails
+closed with JIRA_RECONCILE_WRITER_UNVERIFIED. Planning is pure; never closes or starts a sprint (rollover does).
+Counts and fixed codes only.
+"""
 import os
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -20,9 +18,9 @@ RECURRING = "recurring"
 STANDARD = ("Task", "Story")
 HIGH = ("Highest", "High")
 DAILY_HOUR = 8
-SPRINT_END = timedelta(days=6, hours=23, minutes=30)                      # the existing rollover's week: Monday 00:00 to Sunday 23:30
+SPRINT_END = timedelta(days=6, hours=23, minutes=30)
 DST_TOLERANCE = timedelta(hours=2)
-KEY = "reconcile"                                                         # the existing v7_jira_rollover state table, its own row (no new store)
+KEY = "reconcile"
 
 
 def _when(value):
@@ -30,7 +28,6 @@ def _when(value):
 
 
 def iso_name(project, monday):
-    """PROJECT W{week} {year} (e.g. `MEJ W48 2026`) with the ISO week and ISO week-year of the Monday (week 53 and the year change follow ISO). A sprint still carrying the old long name is renamed in place."""
     year, week = monday.isocalendar()[:2]
     return f"{project} W{week} {year}"
 
@@ -45,7 +42,6 @@ def monday_of(day):
 
 
 def _span(sprint, tz):
-    """The sprint's local Monday if it is exactly one Monday-to-Sunday week, else None."""
     start, end = _when(sprint.get("startDate")), _when(sprint.get("endDate"))
     if not start or not end:
         return None
@@ -53,13 +49,13 @@ def _span(sprint, tz):
     if (last - first).days == 6 and first.weekday() == 0:
         return first
     if abs(start - week_bounds(monday_of((start + DST_TOLERANCE).astimezone(tz).date()), tz)[0]) <= DST_TOLERANCE and (end - start) < timedelta(days=8):
-        return monday_of((start + DST_TOLERANCE).astimezone(tz).date())     # a legacy stamp off by the DST shift is still that week
+        return monday_of((start + DST_TOLERANCE).astimezone(tz).date())
     return None
 
 
 def plan_sprints(project, active, future, now, tz, minimum=MIN_FUTURE):
-    """-> {"rename": [(sprint_id, name)], "create": [(name, start, end)], "future": n} from the board's active and future sprints, or JiraError with a fixed code before any write.
-    Conflicts (a sprint that is not one Monday-Sunday week, two sprints for one week, a future sprint off the weekly grid, two active sprints) stop the board. Plans fill missing weeks only through the configured horizon; excess future sprints are kept and reported. Closed sprints are never read here."""
+    """-> {"rename", "create", "future"}, or JiraError with a fixed code before any write. A non-weekly sprint,
+    duplicate week, off-grid future sprint or two active sprints stop the board."""
     if len(active) > 1:
         raise JiraError("JIRA_ACTIVE_AMBIGUOUS")
     today = now.astimezone(tz).date()
@@ -92,7 +88,6 @@ def plan_sprints(project, active, future, now, tz, minimum=MIN_FUTURE):
 
 
 def order(key):
-    """A sort key for issue keys: project, then the NUMBER (R-10 follows R-9, never R-1 then R-10 by text)."""
     head, _, tail = str(key).rpartition("-")
     return (head, int(tail) if tail.isdigit() else -1, str(key))
 
@@ -108,14 +103,12 @@ def _norm(issue):
             "labels": list(f.get("labels") or []), "parent": (f.get("parent") or {}).get("key")}
 
 
-AUTO_LABEL = "auto-closed"                                                  # decision B (Nov 25 2026): the one fixed marker of an automatic closure
+AUTO_LABEL = "auto-closed"
 
 
 def carry_plan(issues, recurring=()):
-    """Decision A (Nov 25 2026), the rule for BOTH boards. Reading chosen: In Progress at any priority carries; a High/Highest item carries when it is To Do or Blocked (any open status); everything else goes to the
-    backlog, so a Low or Medium Blocked item goes to the backlog unless it is In Progress (a status named Blocked is never "In Progress" here).
-    -> {"carry": [...], "backlog": [...], "recurring": [...], "exceptions": [...]} for the unfinished issues of the ending sprint (decisions 1, 2, 7). Epics are excluded; Sub-tasks follow their parent; a recurring
-    series is closed Done with its clone instead of carried (3); an unknown standard type is an exception, never a silent move."""
+    """Carry rule: In Progress carries at any priority; High/Highest carries when To Do or Blocked; the rest go to the
+    backlog. -> {"carry", "backlog", "recurring", "exceptions"}."""
     rows = [_norm(i) for i in issues]
     top = {r["key"]: r for r in rows if r["type"] in STANDARD}
     out = {"carry": [], "backlog": [], "recurring": [], "exceptions": []}
@@ -123,7 +116,7 @@ def carry_plan(issues, recurring=()):
         if r["category"] == "done" or r["type"] == "Epic":
             continue
         if r["type"] == "Sub-task":
-            continue                                                        # decided below, with its parent
+            continue
         if r["type"] not in STANDARD:
             out["exceptions"].append(r["key"])
             continue
@@ -137,7 +130,7 @@ def carry_plan(issues, recurring=()):
         else:
             out["backlog"].append(r["key"])
             r["_in"] = False
-    for r in rows:                                                          # children follow their parent, decided after every parent is known
+    for r in rows:
         if r["type"] == "Sub-task" and r["category"] != "done" and r["parent"] in top and "_in" in top[r["parent"]]:
             out["carry" if top[r["parent"]]["_in"] else "backlog"].append(r["key"])
         elif r["type"] == "Sub-task" and r["category"] != "done" and r["parent"] in recurring:
@@ -146,14 +139,14 @@ def carry_plan(issues, recurring=()):
 
 
 def series(issues, configured=()):
-    """-> {root key: {"keys": [...], "labelled": bool}} from the `recurring` label and the existing configuration, deduplicated by root (decision 8). An occurrence's root follows its `Cloners` link chain, never its
-    title; a chain with two origins fails closed. A configured series whose latest occurrence has lost the label is stopped (11): it appears with labelled False and is never created or synchronized."""
+    """-> {root key: {"keys", "labelled"}} from the `recurring` label and configuration. A root follows the `Cloners`
+    chain; two origins fail closed; a series that lost its label is stopped."""
     by_key = {i["key"]: i for i in issues}
     parent_of = {}
     for i in issues:
         for link in (_field(i, "issuelinks") or []):
             if ((link.get("type") or {}).get("name")) == "Cloners" and link.get("outwardIssue"):
-                origin = link["outwardIssue"]["key"]                           # a clone's own link reads "clones <origin>": the origin is the OUTWARD side; the throwaway verification reads this back from the tenant before JIRA_WRITERS_VERIFIED
+                origin = link["outwardIssue"]["key"]
                 if parent_of.get(i["key"], origin) != origin:
                     raise JiraError("JIRA_RECONCILE_IDENTITY_AMBIGUOUS")
                 parent_of[i["key"]] = origin
@@ -176,7 +169,8 @@ def series(issues, configured=()):
 
 
 def clone_fields(issue, advance_days=7):
-    """Q8: copy summary, description, assignee, priority, labels, parent Epic; status To Do, resolution cleared, description checkboxes unchecked, due date +7 days; no comments, attachments, worklogs or history."""
+    """Fields copied to a clone: summary, description, assignee, priority, labels, parent Epic; status To Do, due date
+    +7 days, no comments or history."""
     f = issue.get("fields") or {}
     description = f.get("description")
     if isinstance(description, str):
@@ -188,8 +182,8 @@ def clone_fields(issue, advance_days=7):
 
 
 def plan_recurrence(issues, found, next_sprint_id, configured=()):
-    """-> {"create": [root key], "sync": [(future key, fields)], "stopped": n, "exceptions": [codes]}. Exactly one occurrence per series per next-week sprint: none means create from the latest occurrence, more than one is a
-    duplicate and fails closed for that series (14: never a blind create). `found` is series() of the same issues; `issues` carry their sprint in the `sprint` field. Sync reaches unfinished future occurrences only."""
+    """-> {"create": [root key], "sync": [(key, fields)], "stopped": n, "exceptions": [codes]}. One occurrence per
+    series per next-week sprint; a duplicate fails closed."""
     by_key = {i["key"]: i for i in issues}
     out = {"create": [], "sync": [], "stopped": 0, "exceptions": []}
     for root_key, entry in sorted(found.items()):
@@ -216,7 +210,6 @@ def plan_recurrence(issues, found, next_sprint_id, configured=()):
 
 
 def auto_close_fields(run_id):
-    """Decision B: what an automatic closure adds: the fixed label and ONE comment line naming the run. -> {"label": ..., "comment": ...}; a manual closure never gets either (callers pass only closures they made)."""
     run = str(run_id or "").strip()
     if not run or "\n" in run:
         raise JiraError("JIRA_RECONCILE_IDENTITY_AMBIGUOUS")
@@ -229,9 +222,8 @@ def _closed_at(issue):
 
 
 def closure_counts(issues, since=None):
-    """-> manual, automatic and total closed, kept apart (10). Decision (Jim, Nov 25 2026, comment 14226): the manual/automatic split starts at activation (`since`, an aware time from the MEJ_AUTOMATION_SINCE row);
-    earlier Done items count only in the total. A Done issue with the `auto-closed` label closed at or after `since` is automatic, any other one closed at or after `since` is manual. With no `since`, or a Done issue
-    with no close time, nothing is classified: manual and automatic are None and only the total is real. Open issues are not counted."""
+    """-> manual, automatic and total closed counts. The split starts at `since`; earlier closures count only in the
+    total, and without `since` nothing is classified."""
     done = [i for i in issues if _norm(i)["category"] == "done"]
     if since is None:
         return {"manual": None, "automatic": None, "total": len(done), "split": False}
@@ -241,7 +233,6 @@ def closure_counts(issues, since=None):
 
 
 def since(environ=None):
-    """MEJ_AUTOMATION_SINCE: the activation time as an ISO time with a zone, or None (unset, unreadable, or without a zone: fail closed, the split is then not shown)."""
     try:
         value = str((os.environ if environ is None else environ).get("MEJ_AUTOMATION_SINCE") or "").strip()
         moment = datetime.fromisoformat(value.replace("Z", "+00:00")) if value else None
@@ -251,7 +242,6 @@ def since(environ=None):
 
 
 def writers_verified(environ=None):
-    """JIRA_WRITERS_VERIFIED: "yes" (exactly, spaces and case ignored) once the throwaway-sprint verification passed; anything else is not verified (fail closed)."""
     try:
         return str((os.environ if environ is None else environ).get("JIRA_WRITERS_VERIFIED") or "").strip().lower() == "yes"
     except (AttributeError, TypeError):
@@ -259,7 +249,7 @@ def writers_verified(environ=None):
 
 
 def due(now, last_done, tz=None):
-    """True on the first run at or after 8:00 AM America/Chicago on a Chicago date that has not reconciled yet (seven days a week, DST-aware); `now` must carry a time zone."""
+    """True on the first run at or after 8:00 AM America/Chicago on a not-yet-reconciled Chicago date."""
     if now.tzinfo is None:
         raise JiraError("JIRA_RECONCILE_CLOCK_INVALID")
     local = now.astimezone(tz or ZoneInfo(TZ))
@@ -267,7 +257,7 @@ def due(now, last_done, tz=None):
 
 
 def enabled(environ=None):
-    """The MEJ_SPRINT_AUTOMATION row: on only when exactly "on" (same rule as lifeos.accountability.switches; jira may not import accountability), off for anything unreadable."""
+    """MEJ_SPRINT_AUTOMATION: on only for exactly "on"."""
     try:
         return str((os.environ if environ is None else environ).get("MEJ_SPRINT_AUTOMATION") or "").strip().lower() == "on"
     except (AttributeError, TypeError):
@@ -275,7 +265,6 @@ def enabled(environ=None):
 
 
 def future_target(environ=None):
-    """The Runtime Configuration horizon; an absent value defaults to eight, invalid values fail closed."""
     source = os.environ if environ is None else environ
     raw = str(source.get("JIRA_FUTURE_SPRINTS") or MIN_FUTURE).strip()
     try:
@@ -288,8 +277,7 @@ def future_target(environ=None):
 
 
 class Writers:
-    """The injected Jira writes; every method is optional and absent means UNVERIFIED (fail closed). create_sprint(board_id, name, start, end), rename_sprint(sprint_id, name), create_clone(root_key, fields),
-    sync_fields(key, fields)."""
+    """Injected Jira writes, each optional (absent means unverified, fail closed)."""
 
     def __init__(self, **calls):
         self.__dict__.update(calls)
@@ -305,7 +293,6 @@ def _inventory(client, board_id, project, keys):
 
 
 def reconcile_board(client, project, board_id, now, tz, writers, live, keys=(), sleep=None, minimum=MIN_FUTURE):
-    """Plan the board's sprint inventory; live, write it through `writers`, read it back and re-plan once on a lag (14). -> counts."""
     for attempt in range(2):
         active, future = _inventory(client, board_id, project, keys)
         p = plan_sprints(project, active, future, now, tz, minimum)
@@ -325,15 +312,16 @@ def reconcile_board(client, project, board_id, now, tz, writers, live, keys=(), 
         if not check["rename"] and not check["create"]:
             return {**done, "future": len(future_after)}
         if attempt == 0 and sleep:
-            sleep(15)                                                       # a known Jira consistency lag: one re-plan from actual state, never a blind repeat
+            sleep(15)
             continue
         raise JiraError("JIRA_RECONCILE_VERIFY_FAILED")
     raise JiraError("JIRA_RECONCILE_VERIFY_FAILED")
 
 
 def run(limit, live, environ=os.environ, client=None, now=None, writers=None, state=None, alert=None, sleep=None, extra=None, force=False):
-    """The daily reconciliation stage. Off (switch not "on"): {"enabled": 0}, nothing read. On: at most once per Chicago date at or after 8:00 AM CT, per board (JFM and MEJ as one unit: any board's failure fails
-    the run and nothing is marked done). Dry run reads and plans only. Live needs injected `writers` and `state` (get() -> last date, set(date)); without them it fails closed. `alert(subject, details)` is the existing inbox send."""
+    """The daily reconciliation stage. Off: {"enabled": 0}, nothing read. On: at most once per Chicago date after 8:00
+    AM CT, JFM and MEJ as one unit. Live needs injected `writers` and `state` (get() -> last date, set(date)) or fails
+    closed."""
     if not enabled(environ):
         return {"enabled": 0}
     minimum = future_target(environ)
@@ -354,7 +342,7 @@ def run(limit, live, environ=os.environ, client=None, now=None, writers=None, st
     for position, (project, board_id, _, _) in enumerate(configured, 1):
         try:
             result = reconcile_board(client, project, board_id, now, tz, writers, live, keys, sleep, minimum)
-            if extra is not None:                                           # LIFE-918 wiring: recurrence and closure counts of the same board, inside the same fail-as-one-unit rule
+            if extra is not None:
                 result = {**result, **extra(client, project, board_id, now, tz, writers, live, keys, sleep)}
         except JiraError as error:
             total["failed"] += 1

@@ -1,10 +1,10 @@
-"""LIFE-727: a ticket whose blockers are Done and whose epic Jim approved moves To Do to Agent Go by itself, in rank order.
+"""Move tickets from To Do to Agent Go by themselves, in rank order, when their blockers are Done and their epic
+carries the label `auto-release`.
 
-Jim approves an epic's list once with the label `auto-release` on the epic. A child is released only when ALL hold: its status is To Do; it was never in Agent Go before (so a ticket Jim moved back is never moved again);
-it has a Done-when line; every Blocks predecessor is Done; its Jim must do first section exists and every item in it is checked (Jim, Nov 21 2026); it does not carry `needs-jim`; at most RELEASE_LIMIT per run, in Jira rank order. Each release is one short comment naming the epic. Dry run unless live.
-Counts only in the output (ticket keys stay in Jira).
-
-LIFE-850: `gate` adds the fixed reasons shared with promote and readiness: no_readiness_label, two_readiness_labels, not_ready_label, epic_scoping, epic_status_unread, blocked_by_open."""
+A child also needs: never in Agent Go before, a Done-when line, a complete Jim must do first section, no `needs-jim`
+label; at most RELEASE_LIMIT per run. `gate` returns the fixed refusal reasons shared with promote and readiness. Dry
+run unless live.
+"""
 import os
 import re
 
@@ -12,18 +12,17 @@ from lifeos.jira.search import search
 from lifeos.platform.jira import Jira, JiraError
 
 EPIC_LABEL = "auto-release"
-NEEDS_JIM = "needs-jim"                                          # LIFE-780 (Jim, Nov 16 2026: "needs Jim + blocking only"): the one workflow-control label; blocking is the Blocks links below
-READINESS = ("ready", "needs-prep", NEEDS_JIM)                   # LIFE-850 (policy section 7): every child carries exactly one; only `ready` moves to Agent Go
-SCOPING_CHILD = {"research", "verdict"}                          # the only children allowed to be released while their Epic is in Scoping
+NEEDS_JIM = "needs-jim"
+READINESS = ("ready", "needs-prep", NEEDS_JIM)
+SCOPING_CHILD = {"research", "verdict"}
 RELEASE_LIMIT = 3
-AGENT_GO = "17"                                                  # the To Do to Agent Go transition
+AGENT_GO = "17"
 DONE_WHEN = re.compile(r"done when", re.I)
 ROW = re.compile(r"\bgiven\b|\bthen\b|^\s*[-*•]", re.I)
 FIELDS = "summary,description,labels,parent,issuelinks"
 
 
 def text_of(node):
-    """The plain text of a Jira rich-text body, one line per block."""
     if isinstance(node, str):
         return node
     if isinstance(node, list):
@@ -35,7 +34,6 @@ def text_of(node):
 
 
 def has_done_when(description):
-    """A "Done when" heading or label followed by at least one Given/Then row or bullet."""
     lines = text_of(description).splitlines()
     for index, line in enumerate(lines):
         if DONE_WHEN.search(line):
@@ -45,14 +43,13 @@ def has_done_when(description):
     return False
 
 
-JIM_FIRST = re.compile(r"^[#*\s]*jim must do first\b", re.I)                   # Jim, Nov 21 2026 (the older "Needs before development" list stays a warning)
+JIM_FIRST = re.compile(r"^[#*\s]*jim must do first\b", re.I)
 OPEN_ITEM = re.compile(r"^\s*(?:[-*•]\s*)?\[ \]")
 DONE_ITEM = re.compile(r"^\s*(?:[-*•]\s*)?\[[xX]\]")
 NONE_ITEM = re.compile(r"^\s*(?:[-*•]\s*)?\(?none\)?\.?\s*$", re.I)
 
 
 def checkbox_lines(node, out=None):
-    """The plain text lines of a Jira body: a heading as `# text`, a list item as `- text`, a Jira task item as `- [x] text` (done) or `- [ ] text` (open), so ADF and markdown read alike."""
     out = [] if out is None else out
     if isinstance(node, str):
         out.extend(node.splitlines())
@@ -79,8 +76,8 @@ BULLET = re.compile(r"^\s*[-*•]\s+\S")
 
 
 def jim_first(description):
-    """-> (present, open items) for the Jim must do first section (Jim, Nov 21 2026). Inside it an unchecked box or a plain bullet is open, a checked box or `None` is done,
-    and the first other non-empty line (a heading, a paragraph, the next bold label) ends the section. A missing section is (False, [])."""
+    """-> (present, open items) for the Jim must do first section: an unchecked box or plain bullet is open, a checked
+    box or `None` is done; a missing section is (False, [])."""
     rows = checkbox_lines(description)
     for index, line in enumerate(rows):
         if not JIM_FIRST.match(line):
@@ -89,7 +86,7 @@ def jim_first(description):
         out = []
         for item in [inline] + rows[index + 1:]:
             item = item.replace("\\", "").strip()
-            bare = item.strip("*").strip()                                    # markdown bold around an inline `None`
+            bare = item.strip("*").strip()
             if not bare or DONE_ITEM.match(bare) or NONE_ITEM.match(bare):
                 continue
             if OPEN_ITEM.match(bare) or BULLET.match(item):
@@ -101,7 +98,6 @@ def jim_first(description):
 
 
 def blockers_done(links):
-    """Every issue that blocks this one (the inward side of a Blocks link) is Done."""
     for link in links or []:
         if (link.get("type") or {}).get("name") == "Blocks" and link.get("inwardIssue"):
             status = ((link["inwardIssue"].get("fields") or {}).get("status") or {}).get("statusCategory") or {}
@@ -111,12 +107,10 @@ def blockers_done(links):
 
 
 def parent_status(fields):
-    """The parent Epic's status name from the fields already fetched ("" when no parent is present or the read did not return it)."""
     return (((fields.get("parent") or {}).get("fields") or {}).get("status") or {}).get("name") or ""
 
 
 def label_reason(labels):
-    """None when exactly one readiness label is `ready`, else the fixed reason."""
     held = [x for x in labels or [] if x in READINESS]
     if not held:
         return "no_readiness_label"
@@ -126,7 +120,7 @@ def label_reason(labels):
 
 
 def epic_reason(fields):
-    """The parent Epic's state refuses build work during Scoping; a research or verdict child is allowed (when otherwise eligible). No parent is not judged here (readiness reports it)."""
+    """Epics in Scoping refuse build work except research or verdict children."""
     if not fields.get("parent"):
         return None
     status = parent_status(fields)
@@ -138,12 +132,10 @@ def epic_reason(fields):
 
 
 def gate(fields):
-    """LIFE-850: -> the first fixed reason this fetched issue may not move to Agent Go, or None. Pure: reads only the fields already fetched (labels, parent with its status, issuelinks)."""
     return label_reason(fields.get("labels")) or epic_reason(fields) or (None if blockers_done(fields.get("issuelinks")) else "blocked_by_open")
 
 
 def candidates(jira):
-    """-> (epic keys, children in rank order)."""
     epics = [i["key"] for i in search(jira, f'issuetype = Epic AND labels = "{EPIC_LABEL}"', "summary")]
     if not epics:
         return [], []
