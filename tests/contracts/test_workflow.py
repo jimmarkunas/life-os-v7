@@ -971,8 +971,8 @@ class DomainsWorkflowTests(unittest.TestCase):
         self.assertIn("reconcile", trigger["workflow_dispatch"]["inputs"]["jira"]["options"])
         self.assertEqual(self.doc["permissions"], {"contents": "read"})
 
-    def test_v3_pages_runs_after_every_after_tick_domains_run_and_keeps_its_cron_fallback_and_live_rule(self):
-        """LIFE-1000: the V3 page is refreshed after each hourly domains run (GitHub fires the cron only about twice a day); only an after-tick domains run starts it, a manual one does not; live mode follows V7_LIVE exactly as a scheduled run."""
+    def test_v3_pages_runs_after_successful_after_tick_domains_runs_and_keeps_its_cron_fallback_and_live_rule(self):
+        """LIFE-1009: only a successful after-tick domains run starts the V3 page path; skipped/failed ticks do not, and the cron fallback and live rule remain."""
         path = pathlib.Path(__file__).resolve().parents[2] / ".github/workflows/v3-pages.yml"
         text = path.read_text()
         data = yaml.safe_load(text)
@@ -980,7 +980,7 @@ class DomainsWorkflowTests(unittest.TestCase):
         self.assertEqual(trigger["workflow_run"], {"workflows": ["domains"], "types": ["completed"]})
         self.assertEqual(trigger["schedule"], [{"cron": "40 * * * *"}])                                            # the fallback stays
         self.assertEqual(list(trigger["workflow_dispatch"]["inputs"]), ["live"])                                    # workflow_dispatch is unchanged
-        self.assertEqual(data["jobs"]["v3pages"]["if"], "${{ github.event_name != 'workflow_run' || (github.event.workflow_run.display_title == 'domains (after tick)' && github.event.workflow_run.event == 'workflow_run') }}")
+        self.assertEqual(data["jobs"]["v3pages"]["if"], "${{ github.event_name != 'workflow_run' || (github.event.workflow_run.display_title == 'domains (after tick)' && github.event.workflow_run.event == 'workflow_run' && github.event.workflow_run.conclusion == 'success') }}")
         self.assertIn("live_mode: ${{ github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'follow' }}", text)   # a workflow_run start follows V7_LIVE
         self.assertEqual(data["permissions"], {"contents": "read"})
         self.assertEqual(data["concurrency"], {"group": "life-os-v7-v3-pages", "cancel-in-progress": False})     # overlapping starts queue, they never cancel a running write

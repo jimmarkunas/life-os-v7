@@ -21,7 +21,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   v3pages:
-    if: ${{ github.event_name != 'workflow_run' || (github.event.workflow_run.display_title == 'domains (after tick)' && github.event.workflow_run.event == 'workflow_run') }}   # LIFE-1009: only the late after-tick domains run starts this path, not its early workflow_dispatch sibling
+    if: ${{ github.event_name != 'workflow_run' || (github.event.workflow_run.display_title == 'domains (after tick)' && github.event.workflow_run.event == 'workflow_run' && github.event.workflow_run.conclusion == 'success') }}   # LIFE-1009: only a successful late after-tick domains run starts this path
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
