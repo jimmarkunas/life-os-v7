@@ -1,0 +1,637 @@
+{
+ "dependency_cases": [
+  {
+   "expect_ids": [
+    "FAKE-REQ-001"
+   ],
+   "id": "D1",
+   "intent": {
+    "kinds": [
+     "requirement"
+    ],
+    "op": "downstream",
+    "start": "FAKE-ISS-002",
+    "via": [
+     "blocks",
+     "implements"
+    ]
+   },
+   "kind": "impact",
+   "tenant": "alpha",
+   "text": "If the compression library upgrade slips, which requirement is put at risk?"
+  },
+  {
+   "expect_ids": [
+    "FAKE-REQ-003"
+   ],
+   "id": "D2",
+   "intent": {
+    "kind": "requirement",
+    "missing": "any",
+    "needs": [
+     "pull_request",
+     "uat"
+    ],
+    "op": "gaps"
+   },
+   "kind": "gaps",
+   "tenant": "alpha",
+   "text": "Which requirement is missing a pull request or an acceptance check?"
+  },
+  {
+   "expect_ids": [
+    "FAKE-TASK-001"
+   ],
+   "id": "D3",
+   "intent": {
+    "decision_query": "bundle format decision",
+    "op": "derived",
+    "via": [
+     "derived_from"
+    ]
+   },
+   "kind": "decision_to_task",
+   "tenant": "alpha",
+   "text": "Which task comes from the current bundle format decision?"
+  }
+ ],
+ "edges": [
+  {
+   "from": "FAKE-ISS-001",
+   "to": "FAKE-REQ-001",
+   "type": "implements"
+  },
+  {
+   "from": "FAKE-ISS-003",
+   "to": "FAKE-REQ-002",
+   "type": "implements"
+  },
+  {
+   "from": "FAKE-ISS-004",
+   "to": "FAKE-REQ-003",
+   "type": "implements"
+  },
+  {
+   "from": "FAKE-PR-001",
+   "to": "FAKE-ISS-001",
+   "type": "implements"
+  },
+  {
+   "from": "FAKE-PR-002",
+   "to": "FAKE-ISS-003",
+   "type": "implements"
+  },
+  {
+   "from": "FAKE-PR-003",
+   "to": "FAKE-ISS-002",
+   "type": "implements"
+  },
+  {
+   "from": "FAKE-UAT-001",
+   "to": "FAKE-REQ-001",
+   "type": "verifies"
+  },
+  {
+   "from": "FAKE-UAT-002",
+   "to": "FAKE-REQ-002",
+   "type": "verifies"
+  },
+  {
+   "from": "FAKE-ISS-002",
+   "to": "FAKE-ISS-001",
+   "type": "blocks"
+  },
+  {
+   "from": "FAKE-DEC-004",
+   "to": "FAKE-DEC-001",
+   "type": "supersedes"
+  },
+  {
+   "from": "FAKE-TASK-001",
+   "to": "FAKE-DEC-004",
+   "type": "derived_from"
+  },
+  {
+   "from": "FAKE-TASK-002",
+   "to": "FAKE-DEC-002",
+   "type": "derived_from"
+  },
+  {
+   "from": "FAKE-DEC-002",
+   "to": "FAKE-NOTE-002",
+   "type": "supersedes"
+  },
+  {
+   "from": "FAKE-DEC-003",
+   "to": "FAKE-NOTE-003",
+   "type": "supersedes"
+  },
+  {
+   "from": "FAKE-ISS-101",
+   "to": "FAKE-REQ-101",
+   "type": "implements"
+  }
+ ],
+ "note": "Fabricated only. Fake tenants, fake ids, no real data (LIFE-1002).",
+ "questions": [
+  {
+   "category": "known",
+   "expect_first": "FAKE-REQ-001",
+   "expect_ids": [
+    "FAKE-REQ-001"
+   ],
+   "id": "Q01",
+   "tenant": "alpha",
+   "text": "What does the offline export bundle requirement say?"
+  },
+  {
+   "category": "known",
+   "expect_first": "FAKE-DEC-002",
+   "expect_ids": [
+    "FAKE-DEC-002"
+   ],
+   "id": "Q02",
+   "tenant": "alpha",
+   "text": "How many days until a share link expires by default?"
+  },
+  {
+   "category": "known",
+   "expect_first": "FAKE-ISS-003",
+   "expect_ids": [
+    "FAKE-ISS-003"
+   ],
+   "id": "Q03",
+   "tenant": "alpha",
+   "text": "Which issue adds the share link expiry timer?"
+  },
+  {
+   "category": "known",
+   "expect_first": "FAKE-PR-002",
+   "expect_ids": [
+    "FAKE-PR-002"
+   ],
+   "id": "Q04",
+   "tenant": "alpha",
+   "text": "Which pull request adds the expiry timer?"
+  },
+  {
+   "category": "known",
+   "expect_first": "FAKE-DEC-003",
+   "expect_ids": [
+    "FAKE-DEC-003"
+   ],
+   "id": "Q05",
+   "tenant": "alpha",
+   "text": "How long are audit entries kept?"
+  },
+  {
+   "category": "known",
+   "expect_first": "FAKE-NOTE-001",
+   "expect_ids": [
+    "FAKE-NOTE-001"
+   ],
+   "id": "Q06",
+   "tenant": "alpha",
+   "text": "Who is the beta release owner?"
+  },
+  {
+   "category": "known",
+   "expect_first": "FAKE-REQ-101",
+   "expect_ids": [
+    "FAKE-REQ-101"
+   ],
+   "id": "Q07",
+   "tenant": "beta",
+   "text": "What does the offline export bundle requirement say?"
+  },
+  {
+   "category": "known",
+   "expect_first": "FAKE-DEC-101",
+   "expect_ids": [
+    "FAKE-DEC-101"
+   ],
+   "id": "Q08",
+   "tenant": "beta",
+   "text": "Which bundle format was chosen?"
+  },
+  {
+   "category": "known",
+   "expect_first": "FAKE-UAT-001",
+   "expect_ids": [
+    "FAKE-UAT-001"
+   ],
+   "id": "Q09",
+   "tenant": "alpha",
+   "text": "Which acceptance check covers the offline export bundle?"
+  },
+  {
+   "category": "known",
+   "expect_first": "FAKE-TASK-001",
+   "expect_ids": [
+    "FAKE-TASK-001"
+   ],
+   "id": "Q10",
+   "tenant": "alpha",
+   "text": "Which task writes the migration notes?"
+  },
+  {
+   "category": "absent",
+   "expect_first": null,
+   "expect_ids": [],
+   "id": "Q11",
+   "tenant": "alpha",
+   "text": "What is the budget for the launch party?"
+  },
+  {
+   "category": "absent",
+   "expect_first": null,
+   "expect_ids": [],
+   "id": "Q12",
+   "tenant": "alpha",
+   "text": "Which database engine stores the audit entries?"
+  },
+  {
+   "category": "absent",
+   "expect_first": null,
+   "expect_ids": [],
+   "id": "Q13",
+   "tenant": "alpha",
+   "text": "Who signed the vendor contract?"
+  },
+  {
+   "category": "absent",
+   "expect_first": null,
+   "expect_ids": [],
+   "id": "Q14",
+   "tenant": "beta",
+   "text": "What is the default share link expiry?"
+  },
+  {
+   "category": "absent",
+   "expect_first": null,
+   "expect_ids": [],
+   "id": "Q15",
+   "tenant": "alpha",
+   "text": "What colour is the mascot?"
+  },
+  {
+   "category": "stale",
+   "expect_first": "FAKE-DEC-004",
+   "expect_ids": [
+    "FAKE-DEC-004"
+   ],
+   "id": "Q16",
+   "tenant": "alpha",
+   "text": "What is the bundle format?"
+  },
+  {
+   "category": "stale",
+   "expect_first": "FAKE-DEC-004",
+   "expect_ids": [
+    "FAKE-DEC-004"
+   ],
+   "id": "Q17",
+   "tenant": "alpha",
+   "text": "Is the bundle format zip?"
+  },
+  {
+   "category": "stale",
+   "expect_first": "FAKE-DEC-004",
+   "expect_ids": [
+    "FAKE-DEC-004"
+   ],
+   "id": "Q18",
+   "tenant": "alpha",
+   "text": "Which manifest version does the bundle use?"
+  },
+  {
+   "category": "stale",
+   "expect_first": "FAKE-DEC-002",
+   "expect_ids": [
+    "FAKE-DEC-002"
+   ],
+   "id": "Q19",
+   "tenant": "alpha",
+   "text": "How many days until a share link expires?"
+  },
+  {
+   "category": "stale",
+   "expect_first": "FAKE-DEC-003",
+   "expect_ids": [
+    "FAKE-DEC-003"
+   ],
+   "id": "Q20",
+   "tenant": "alpha",
+   "text": "How many days are audit entries retained?"
+  }
+ ],
+ "sources": [
+  {
+   "id": "FAKE-REQ-001",
+   "kind": "requirement",
+   "refs": [],
+   "revision": "r1",
+   "status": "current",
+   "superseded_by": null,
+   "tenant": "alpha",
+   "text": "Requirement: a reader can export a project as an offline bundle that opens without a network connection.",
+   "title": "Offline export bundle"
+  },
+  {
+   "id": "FAKE-REQ-002",
+   "kind": "requirement",
+   "refs": [],
+   "revision": "r1",
+   "status": "current",
+   "superseded_by": null,
+   "tenant": "alpha",
+   "text": "Requirement: every share link expires after a set number of days unless the owner renews it.",
+   "title": "Share link expiry"
+  },
+  {
+   "id": "FAKE-REQ-003",
+   "kind": "requirement",
+   "refs": [],
+   "revision": "r1",
+   "status": "current",
+   "superseded_by": null,
+   "tenant": "alpha",
+   "text": "Requirement: every edit to a project leaves an audit entry with the editor and the time.",
+   "title": "Audit trail for edits"
+  },
+  {
+   "id": "FAKE-ISS-001",
+   "kind": "issue",
+   "refs": [
+    "FAKE-REQ-001",
+    "FAKE-ISS-002"
+   ],
+   "revision": "r1",
+   "status": "current",
+   "superseded_by": null,
+   "tenant": "alpha",
+   "text": "Issue: build the bundle writer for the offline export. Blocked by FAKE-ISS-002.",
+   "title": "Bundle writer"
+  },
+  {
+   "id": "FAKE-ISS-002",
+   "kind": "issue",
+   "refs": [
+    "FAKE-ISS-001"
+   ],
+   "revision": "r1",
+   "status": "current",
+   "superseded_by": null,
+   "tenant": "alpha",
+   "text": "Issue: upgrade the compression library; the bundle writer FAKE-ISS-001 needs the new release.",
+   "title": "Compression library upgrade"
+  },
+  {
+   "id": "FAKE-ISS-003",
+   "kind": "issue",
+   "refs": [
+    "FAKE-REQ-002"
+   ],
+   "revision": "r1",
+   "status": "current",
+   "superseded_by": null,
+   "tenant": "alpha",
+   "text": "Issue: add the expiry timer that retires share links.",
+   "title": "Expiry timer"
+  },
+  {
+   "id": "FAKE-ISS-004",
+   "kind": "issue",
+   "refs": [
+    "FAKE-REQ-003"
+   ],
+   "revision": "r1",
+   "status": "current",
+   "superseded_by": null,
+   "tenant": "alpha",
+   "text": "Issue: write an audit entry on every edit.",
+   "title": "Audit entry writer"
+  },
+  {
+   "id": "FAKE-PR-001",
+   "kind": "pull_request",
+   "refs": [
+    "FAKE-ISS-001"
+   ],
+   "revision": "r1",
+   "status": "current",
+   "superseded_by": null,
+   "tenant": "alpha",
+   "text": "Pull request: adds the bundle writer.",
+   "title": "Bundle writer change"
+  },
+  {
+   "id": "FAKE-PR-002",
+   "kind": "pull_request",
+   "refs": [
+    "FAKE-ISS-003"
+   ],
+   "revision": "r1",
+   "status": "current",
+   "superseded_by": null,
+   "tenant": "alpha",
+   "text": "Pull request: adds the expiry timer for share links.",
+   "title": "Expiry timer change"
+  },
+  {
+   "id": "FAKE-PR-003",
+   "kind": "pull_request",
+   "refs": [
+    "FAKE-ISS-002"
+   ],
+   "revision": "r1",
+   "status": "current",
+   "superseded_by": null,
+   "tenant": "alpha",
+   "text": "Pull request: moves to the new compression release.",
+   "title": "Compression upgrade change"
+  },
+  {
+   "id": "FAKE-UAT-001",
+   "kind": "uat",
+   "refs": [
+    "FAKE-REQ-001"
+   ],
+   "revision": "r1",
+   "status": "current",
+   "superseded_by": null,
+   "tenant": "alpha",
+   "text": "Acceptance check: open an exported bundle with the network off.",
+   "title": "Offline bundle acceptance"
+  },
+  {
+   "id": "FAKE-UAT-002",
+   "kind": "uat",
+   "refs": [
+    "FAKE-REQ-002"
+   ],
+   "revision": "r1",
+   "status": "current",
+   "superseded_by": null,
+   "tenant": "alpha",
+   "text": "Acceptance check: a share link stops working after its expiry.",
+   "title": "Share link expiry acceptance"
+  },
+  {
+   "id": "FAKE-DEC-001",
+   "kind": "decision",
+   "refs": [],
+   "revision": "r0",
+   "status": "stale",
+   "superseded_by": "FAKE-DEC-004",
+   "tenant": "alpha",
+   "text": "Decision: the bundle format is zip with manifest version two.",
+   "title": "Bundle format zip"
+  },
+  {
+   "id": "FAKE-DEC-002",
+   "kind": "decision",
+   "refs": [],
+   "revision": "r1",
+   "status": "current",
+   "superseded_by": null,
+   "tenant": "alpha",
+   "text": "Decision: the default share link expiry is fourteen days.",
+   "title": "Share link default expiry"
+  },
+  {
+   "id": "FAKE-DEC-003",
+   "kind": "decision",
+   "refs": [],
+   "revision": "r1",
+   "status": "current",
+   "superseded_by": null,
+   "tenant": "alpha",
+   "text": "Decision: audit entries are kept for ninety days.",
+   "title": "Audit retention"
+  },
+  {
+   "id": "FAKE-DEC-004",
+   "kind": "decision",
+   "refs": [
+    "FAKE-DEC-001"
+   ],
+   "revision": "r1",
+   "status": "current",
+   "superseded_by": null,
+   "tenant": "alpha",
+   "text": "Decision: the bundle format is tar with manifest version three; it replaces the zip decision FAKE-DEC-001.",
+   "title": "Bundle format tar"
+  },
+  {
+   "id": "FAKE-TASK-001",
+   "kind": "task",
+   "refs": [
+    "FAKE-DEC-004"
+   ],
+   "revision": "r1",
+   "status": "current",
+   "superseded_by": null,
+   "tenant": "alpha",
+   "text": "Task: write the migration notes for the tar bundle format, from the bundle format decision FAKE-DEC-004.",
+   "title": "Bundle migration notes"
+  },
+  {
+   "id": "FAKE-TASK-002",
+   "kind": "task",
+   "refs": [
+    "FAKE-DEC-002"
+   ],
+   "revision": "r1",
+   "status": "current",
+   "superseded_by": null,
+   "tenant": "alpha",
+   "text": "Task: write the banner text that shows the default share link expiry, from FAKE-DEC-002.",
+   "title": "Expiry banner copy"
+  },
+  {
+   "id": "FAKE-NOTE-001",
+   "kind": "note",
+   "refs": [],
+   "revision": "r1",
+   "status": "current",
+   "superseded_by": null,
+   "tenant": "alpha",
+   "text": "Note: the beta release owner is Mara Quillfeather.",
+   "title": "Beta release owner"
+  },
+  {
+   "id": "FAKE-NOTE-002",
+   "kind": "note",
+   "refs": [],
+   "revision": "r0",
+   "status": "stale",
+   "superseded_by": "FAKE-DEC-002",
+   "tenant": "alpha",
+   "text": "Note: the share link expiry is seven days.",
+   "title": "Old expiry note"
+  },
+  {
+   "id": "FAKE-NOTE-003",
+   "kind": "note",
+   "refs": [],
+   "revision": "r0",
+   "status": "stale",
+   "superseded_by": "FAKE-DEC-003",
+   "tenant": "alpha",
+   "text": "Note: audit entries are kept for thirty days.",
+   "title": "Old audit retention note"
+  },
+  {
+   "id": "FAKE-REQ-101",
+   "kind": "requirement",
+   "refs": [],
+   "revision": "r1",
+   "status": "current",
+   "superseded_by": null,
+   "tenant": "beta",
+   "text": "Requirement: a crew member can export a chart set as an offline bundle for use at sea.",
+   "title": "Offline export bundle"
+  },
+  {
+   "id": "FAKE-ISS-101",
+   "kind": "issue",
+   "refs": [
+    "FAKE-REQ-101"
+   ],
+   "revision": "r1",
+   "status": "current",
+   "superseded_by": null,
+   "tenant": "beta",
+   "text": "Issue: build the chart bundle writer.",
+   "title": "Chart bundle writer"
+  },
+  {
+   "id": "FAKE-DEC-101",
+   "kind": "decision",
+   "refs": [],
+   "revision": "r1",
+   "status": "current",
+   "superseded_by": null,
+   "tenant": "beta",
+   "text": "Decision: the bundle format is zip with manifest version two.",
+   "title": "Bundle format zip"
+  },
+  {
+   "id": "FAKE-NOTE-101",
+   "kind": "note",
+   "refs": [],
+   "revision": "r1",
+   "status": "current",
+   "superseded_by": null,
+   "tenant": "beta",
+   "text": "Note: tide tables come from the harbour office feed.",
+   "title": "Tide table source"
+  }
+ ],
+ "tenants": [
+  "alpha",
+  "beta"
+ ],
+ "version": 1
+}
