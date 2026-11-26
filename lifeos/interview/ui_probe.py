@@ -1,7 +1,8 @@
-"""LIFE-88 QA acceptance probe: the QA render of Walmart's real, read-only evidence, under the QA Interview OS / Opportunity Parent only.
+"""QA acceptance probe: render real, read-only evidence into QA pages under the QA Opportunity Parent only.
 
-Manual only (diag.yml, stage interview-ui-probe, typed confirmation QA); never on a tick. Interview token. Its pages (_render) are created from the Full width template the way production creates them.
-Prints fixed codes, block-type outlines and counts only; never content or ids."""
+Manual only (typed confirmation QA); never on a tick. Prints fixed codes, block-type outlines and counts only,
+never content or ids.
+"""
 import difflib
 import os
 from lifeos.platform import full_width
@@ -10,13 +11,12 @@ from lifeos.platform.notion_client import Client, NotionError
 from . import create, notion, template, view
 from .models import ParentQuery, RoundQuery
 
-QA_PARENT = notion_id("QA_PARENT")        # QA — Interview OS / Opportunity Parent (LIFE OS QA Home)
-UI3C = notion_id("UI3C")             # accepted UI 3c native QA preview (LIFE-88 comment 10869); read only
-# LIFE-88 QA acceptance: real canonical evidence, read only, rendered only into QA pages under QA_PARENT.
-UI4 = notion_id("UI4")              # approved UI 4 interview page (LIFE-46 10875); read only
-LEDGER_ROW = notion_id("LEDGER_ROW")       # Walmart's Job Ledger row (LIFE-42); read only
-ROUND_PAGE = notion_id("ROUND_PAGE")       # Walmart Interview 1 in the Hiring Pipeline; its identity is read only
-RENDER_TITLE = "UI 3c — V7 render · Walmart (QA, full width)"         # created from the Full width template (D16.1)
+QA_PARENT = notion_id("QA_PARENT")
+UI3C = notion_id("UI3C")
+UI4 = notion_id("UI4")
+LEDGER_ROW = notion_id("LEDGER_ROW")
+ROUND_PAGE = notion_id("ROUND_PAGE")
+RENDER_TITLE = "UI 3c — V7 render · Walmart (QA, full width)"
 CONTROL_TITLE = "UI 3c — V7 render · wrong-job control (QA, machine-written)"
 SEED = "QA synthetic note — written once by the QA probe; every refresh must keep it."
 
@@ -34,7 +34,6 @@ def _one(client, parent, title, kind="child_page"):
 
 
 def _seed(client, parent, title):
-    """Once, a synthetic note inside a protected container, standing in for Jim's own writing in QA."""
     box = _one(client, parent, title, "toggle") or _one(client, parent, title, "paragraph")
     if box and SEED not in [notion.text(b) for b in notion.children(client, box, [notion.MAX_CALLS])]:
         notion.write_tree(client, box, [template.para(SEED)])
@@ -47,9 +46,9 @@ def _round_parts(client, page):
 
 
 def _render(client):
-    """Renders Walmart's real evidence into one QA opportunity page and its QA Interview 1, then proves: replay writes nothing,
-    a source change (the interview page appearing) updates the same page in place, protected notes and child pages survive,
-    and the same view refuses another job's page. Returns fixed codes and structural diffs against the approved pages."""
+    """Render the evidence into one QA opportunity page and its QA Interview 1, then check that replay writes
+    nothing, a source change updates the page in place, protected notes survive, and the view refuses another
+    job's page. Returns fixed codes and structural diffs against the approved pages."""
     out, today = {}, create.today()
     props = client.call("GET", f"/pages/{LEDGER_ROW}").get("properties") or {}
     parent_query = ParentQuery(view._plain(props.get("Company")) or "", view._plain(props.get("Job")) or "")
