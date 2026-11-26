@@ -1,10 +1,8 @@
-"""LIFE-933: V7 writes the Weekly Reports Archive (it was the retired ChatGPT 6 PM closeout's), one static snapshot of the Daily Report per day.
+"""The Weekly Reports Archive: one static snapshot of the Daily Report per day.
 
-On the first run at or after 6:00 PM CT the stage freezes the live Daily Report as plain static blocks into its week's child page `Weekly Reports — Week Ending <Sunday>` (made if missing), as
-`Daily LIFE OS Report — <date>`: no live linked database view is copied, one snapshot per date (a re-run is a no-op), and the write is read back block by block against what was meant to be written.
-Sunday: after the day's snapshot verifies, the Report's Notes callout (if the page has one) is frozen once as `Weekly Notes — Week Ending <date>`. Monday: the live Notes callout is reset only when the prior
-week's one Notes snapshot re-verifies exactly; a missing, duplicate or different snapshot keeps the live Notes. No Notes callout on the page: the receipt says `notes: none` and nothing is made or reset.
-It reads and writes with the existing Notion integration only (NOTION_JIRA_TOKEN), in the existing dcc job: no new token and no schedule. Counts and fixed codes only in logs."""
+From 6:00 PM CT the first run freezes the Daily Report as plain blocks into the week's page, one `Daily LIFE OS
+Report — <date>` per date, read back block by block. Sunday freezes the Notes callout once; Monday resets the live
+Notes only if the prior week's snapshot re-verifies exactly. Counts and fixed codes only."""
 import os
 from datetime import date, datetime, timedelta
 from urllib.parse import quote
@@ -15,13 +13,13 @@ from lifeos.platform.notion_client import Client, NotionError, rich_text
 from lifeos.platform.notion_text import block_text
 
 TZ = ZoneInfo("America/Chicago")
-DUE_HOUR = 18                                                            # 6:00 PM CT: the first run at or after it takes the day's snapshot
+DUE_HOUR = 18  # 6:00 PM CT
 WEEK_TITLE, DAY_TITLE, NOTES_TITLE = "Weekly Reports — Week Ending {}", "Daily LIFE OS Report — {}", "Weekly Notes — Week Ending {}"
 NOTES_NAMES = ("Notes", "Live Notes", "Protected Notes")
-MARK = "Snapshot complete and read back"                                   # the last block of a finished snapshot: a page without it is an interrupted write, never counted
+MARK = "Snapshot complete and read back"  # last block of a finished snapshot
 BATCH = 90
 STATIC = {"paragraph", "heading_1", "heading_2", "heading_3", "bulleted_list_item", "numbered_list_item", "to_do", "toggle", "callout", "quote", "code", "divider", "table", "table_row"}
-FLATTEN = {"column_list", "column"}                                         # their children are copied in order, one after the other
+FLATTEN = {"column_list", "column"}
 LIVE = {"child_database", "link_to_page", "synced_block", "child_page", "embed", "bookmark", "image", "file", "pdf", "video", "audio", "unsupported"}
 
 
@@ -34,7 +32,6 @@ def _fail(code):
 
 
 def week_end(day):
-    """The Sunday that ends the Monday to Sunday week of `day`."""
     return day + timedelta(days=6 - day.weekday())
 
 
@@ -52,7 +49,7 @@ def _clean(raw):
 
 
 def _kids(client, block_id):
-    """Every child block of `block_id`, all pages (a page that reports more than it gave, or a loop, is a fixed code)."""
+    """Every child block across all pages; an inconsistent page raises PAGE_INCOMPLETE."""
     results, cursor, seen = [], None, set()
     for _ in range(50):
         path = f"/blocks/{quote(block_id, safe='')}/children?page_size=100" + (f"&start_cursor={quote(cursor, safe='')}" if cursor else "")
@@ -70,7 +67,6 @@ def _kids(client, block_id):
 
 
 def _page_of(client, block_id):
-    """The page a block lives on, walking up its parents (at most 12 levels)."""
     node = client.call("GET", f"/blocks/{quote(block_id, safe='')}")
     for _ in range(12):
         parent = (node or {}).get("parent") or {}
@@ -83,7 +79,6 @@ def _page_of(client, block_id):
 
 
 def _rich(items):
-    """Rich text as plain static pieces: the text, its link and its annotations; a mention is only its text."""
     out = []
     for part in items or []:
         if not isinstance(part, dict):
@@ -98,7 +93,7 @@ def _rich(items):
 
 
 def freeze(client, block_id, skipped):
-    """The static copy of one block's children as [{type, <type>: payload, children: [...]}]: only plain content kinds; a live view, embed, image or link-to-page is skipped and counted, never copied."""
+    """Static copy of a block's children; live views, embeds and images are appended to `skipped`."""
     out = []
     for block in _kids(client, block_id):
         kind = block.get("type")
@@ -114,7 +109,7 @@ def freeze(client, block_id, skipped):
         if "caption" in inner:
             inner["caption"] = _rich(inner["caption"])
         if kind == "callout" and (inner.get("icon") or {}).get("type") != "emoji":
-            inner.pop("icon", None)                                         # only an emoji icon is copied; a hosted file or custom icon cannot be re-created
+            inner.pop("icon", None)  # only emoji icons are copied
         if kind == "table_row":
             inner["cells"] = [_rich(cell) for cell in inner.get("cells") or []]
         node = {"type": kind, kind: inner}
@@ -125,7 +120,7 @@ def freeze(client, block_id, skipped):
 
 
 def digest(nodes, depth=0):
-    """[(depth, type, text)] of a frozen tree or of one read back from Notion (rows read as their cells)."""
+    """[(depth, type, text)] of a frozen tree or one read back from Notion."""
     out = []
     for node in nodes:
         kind = node["type"]
@@ -149,7 +144,7 @@ def read_tree(client, block_id):
 
 
 def _write(client, parent_id, nodes):
-    """Append `nodes` under `parent_id` in batches, then each node's children under the block just made (one non-retried write each; the caller reads everything back)."""
+    """Append `nodes` in batches, then their children; each write is sent once."""
     for start in range(0, len(nodes), BATCH):
         batch = nodes[start:start + BATCH]
         body = {"children": [_create(node) for node in batch]}
@@ -157,12 +152,12 @@ def _write(client, parent_id, nodes):
         if len(made) != len(batch):
             raise _fail("WRITE_COUNT")
         for node, block in zip(batch, made):
-            if node.get("children") and node["type"] != "table":            # a table's rows went in with the table
+            if node.get("children") and node["type"] != "table":
                 _write(client, block["id"], node["children"])
 
 
 def _create(node):
-    """The create payload of one node: Notion refuses a table without its rows in the same request, so the rows travel inside it; every other node's children are appended afterwards."""
+    """A table's rows must travel inside its create payload; other children are appended later."""
     out = {k: v for k, v in node.items() if k != "children"}
     if node["type"] == "table":
         out["table"] = {**out["table"], "children": [_create(row) for row in node.get("children") or []]}
@@ -170,13 +165,11 @@ def _create(node):
 
 
 def _fill(client, page_id, nodes):
-    """Write `nodes` into a page made from the template, then remove the template's one empty paragraph (it can only go once there is another block under it)."""
     _write(client, page_id, nodes)
     full_width.clear_filler(client, page_id)
 
 
 def _page_titles(client, page_id):
-    """{title: [child page ids]} for the child pages of `page_id`."""
     found = {}
     for block in _kids(client, page_id):
         if block.get("type") == "child_page":
@@ -192,7 +185,7 @@ def _one(found, title):
 
 
 def _make_page(client, parent_id, title, emoji):
-    """The empty page from the Full Width template (D16.1); its blocks are written after it. Fails closed, making nothing, when the template is not configured."""
+    """A page from the Full Width template; fails closed when the template is missing."""
     try:
         return full_width.create(client, parent_id, title, emoji)
     except full_width.FullWidthError as error:
@@ -216,7 +209,8 @@ def _week_page(client, archive_id, found, end, live):
              {"type": "bulleted_list_item", "bulleted_list_item": {"rich_text": rich_text(f"End: {label(end)}")}},
              {"type": "bulleted_list_item", "bulleted_list_item": {"rich_text": rich_text("Static Daily LIFE OS Report snapshots are stored below once each day (the first V7 run at or after 6 PM CT).")}},
              {"type": "bulleted_list_item", "bulleted_list_item": {"rich_text": rich_text("Live linked database views are not archived here.")}}]
-    page = page or _make_page(client, archive_id, WEEK_TITLE.format(label(end)), "🗓️")      # a week page left empty by an interrupted run is filled, not duplicated
+    # fill, don't duplicate, an empty page from an interrupted run
+    page = page or _make_page(client, archive_id, WEEK_TITLE.format(label(end)), "🗓️")
     _fill(client, page, intro)
     if digest(read_tree(client, page)) != digest(intro):
         raise _fail("READBACK_MISMATCH")
@@ -224,8 +218,9 @@ def _week_page(client, archive_id, found, end, live):
 
 
 def _snapshot(client, parent_id, title, emoji, head, make_nodes, live, may_be_empty=False):
-    """Make the page `title` under `parent_id` (full width) with `head` and the frozen `nodes`, finish it with the marker and read it all back. -> ("created" | "exists" | "would_create" | "empty", rows).
-    Fails closed on an empty body, or one with fewer top-level blocks than the source gave: a title with no content is never done. Frozen notes that are empty make no page (`may_be_empty`)."""
+    """Make page `title`, mark it complete and read it back; returns (state, rows).
+
+    Fails closed on an empty or short body unless `may_be_empty`."""
     found = _page_titles(client, parent_id)
     existing = _one(found, title)
     if existing and _complete(client, existing):
@@ -238,7 +233,8 @@ def _snapshot(client, parent_id, title, emoji, head, make_nodes, live, may_be_em
             return "empty", 0
         raise _fail("EMPTY_SNAPSHOT")
     if existing:
-        client.call_once("PATCH", f"/pages/{quote(existing, safe='')}", {"archived": True})                      # an interrupted write: set it aside, never counted, then write it afresh
+        # interrupted write: archive and redo
+        client.call_once("PATCH", f"/pages/{quote(existing, safe='')}", {"archived": True})
     body = head + nodes
     page = _make_page(client, parent_id, title, emoji)
     _fill(client, page, body)
@@ -252,7 +248,6 @@ def _snapshot(client, parent_id, title, emoji, head, make_nodes, live, may_be_em
 
 
 def find_notes(client, page_id):
-    """The id of the Report's Notes callout (top level or inside a column), or None when the page has none."""
     def scan(block_id, depth):
         for block in _kids(client, block_id):
             kind = block.get("type")
@@ -285,11 +280,12 @@ def run(limit, live, environ=os.environ, client=None, now=None):
     client = client or _client(environ)
     page = _page_of(client, card)
     out = {"status": "ok", "date": label(now.date()), "live": bool(live)}
-    root = client.call("GET", f"/pages/{quote(archive_id, safe='')}")                        # LIFE-944: the archive root read by its id with this token, every run (an unreadable root fails the stage closed)
+    # an unreadable archive root fails the stage closed
+    root = client.call("GET", f"/pages/{quote(archive_id, safe='')}")
     out["archive"] = {"root": "readable", "archived": bool(root.get("archived") or root.get("in_trash")), "weeks": sorted(t for t in _page_titles(client, archive_id) if t.startswith("Weekly Reports"))}
     notes_id = find_notes(client, page)
     out["notes"] = "present" if notes_id else "none"
-    if now.weekday() == 0 and notes_id:                                       # Monday: the reset gate, before anything else is written
+    if now.weekday() == 0 and notes_id:  # Monday: reset gate first
         out["reset"] = _monday(client, archive_id, notes_id, now.date(), live)
     if now.hour < DUE_HOUR:
         out["snapshot"] = "not_due"
@@ -305,13 +301,14 @@ def run(limit, live, environ=os.environ, client=None, now=None):
                                                               "annotations": {"italic": True}}]}}]
     out["snapshot"], out["blocks"] = _snapshot(client, week, DAY_TITLE.format(label(now.date())), "📄", head, lambda: freeze(client, page, skipped), live)
     out["live_views_skipped"] = len(skipped)
-    if now.weekday() == 6 and notes_id:                                       # Sunday: the one final weekly Notes snapshot, after the day's snapshot verified
+    if now.weekday() == 6 and notes_id:  # Sunday: weekly Notes snapshot
         out["weekly_notes"] = _snapshot(client, week, NOTES_TITLE.format(label(end)), "🗒️", [], lambda: _notes_nodes(client, notes_id), live, may_be_empty=True)[0]
     return out
 
 
 def _monday(client, archive_id, notes_id, today, live):
-    """Reset the live Notes only when the prior week's one Notes snapshot re-reads exactly equal to it. -> "reset", "already_empty", "would_reset" or a fixed refusal word (the live Notes stays)."""
+    """Reset the live Notes only if the prior week's snapshot re-reads equal; returns "reset", "already_empty",
+    "would_reset" or a refusal word."""
     live_nodes = _notes_nodes(client, notes_id)
     if not any(text.strip() for _, _, text in digest(live_nodes)):
         return "already_empty"

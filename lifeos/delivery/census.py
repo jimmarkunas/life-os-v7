@@ -1,8 +1,7 @@
-"""DEL-1.1: count the real tracking numbers in recent mail, read-only. Nothing is written, labelled, trashed or stored.
+"""Count the real tracking numbers in recent mail, read-only.
 
-A candidate message mentions a shipment or tracking in its subject; its body is searched for carrier-shaped numbers. Digit-only shapes (FedEx, DHL) count only
-next to the word "tracking" so order numbers and phone numbers are not miscounted. Output is counts only (D7): numbers per carrier, distinct and repeated, and how
-many candidate messages hold none. No tracking number, sender or subject is ever returned or logged."""
+Subjects select candidates; bodies are searched for carrier-shaped numbers, and digit-only shapes (FedEx, DHL) count
+only after the word "tracking". Output is counts only."""
 import os
 import re
 from collections import Counter
@@ -28,7 +27,7 @@ CARRIERS = tuple(name for name, _, _ in SHAPES)
 
 
 class CensusError(GmailError):
-    """Fixed failure codes only."""
+    """Fixed codes only."""
 
 
 def numbers_in(text):
@@ -41,7 +40,6 @@ def numbers_in(text):
 
 
 def link_numbers(html):
-    """Distinct (carrier, number) pairs held in the links of an HTML body: a carrier-shaped number anywhere in a link, or a number in a tracking query parameter."""
     found = {}
     for href in HREF.findall(html or ""):
         href = unquote(unquote(href.replace("&amp;", "&")))
