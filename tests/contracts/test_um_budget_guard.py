@@ -37,6 +37,7 @@ class World:
             dream_attempts, rep_attempts = 1, 1                    # a normal run: one attempt each, about a third of the worst price
         self.dream_attempts, self.rep_attempts, self.explicit = dream_attempts, rep_attempts, explicit
         self.burst_at, self.burst = None, 0.0
+        self.dream_at_worst = False
         self.sleeps, self.crash_at, self.other_rate = 0, None, 0.0
         self.meter_fail = set()        # reading numbers that raise
         self.meter_frozen_after = None
@@ -147,7 +148,7 @@ class Honcho:
         self._live()
         worst = budget.dream_attempt_worst() / sum(budget.DREAM_ITER)
         for _ in range(self.w.dream_attempts):
-            self.w.queue.append({"kind": "attempt", "started": False, "costs": [self.w.call_cost(worst) for _ in range(sum(budget.DREAM_ITER))]})
+            self.w.queue.append({"kind": "attempt", "started": False, "costs": [worst if self.w.dream_at_worst else self.w.call_cost(worst) for _ in range(sum(budget.DREAM_ITER))]})
         self.w.dream_in_queue = True
 
     def dream_finished(self):
@@ -243,6 +244,22 @@ class Bound(unittest.TestCase):
             w2.crash_at = k
             run(w2)
             self.check(w2, k)
+
+    def test_cheap_seeding_then_a_dream_at_the_worst_price_with_all_three_attempts_and_a_crash_at_every_step(self):
+        probe = World("typical")
+        probe.dream_attempts, probe.dream_at_worst = 3, True
+        run(probe)
+        self.assertIsNotNone(probe.sleeps)
+        peak = 0.0
+        for k in range(0, probe.sleeps + 1):
+            w = World("typical")
+            w.dream_attempts, w.dream_at_worst = 3, True
+            w.crash_at = k or None
+            run(w)
+            self.check(w, k)
+            peak = max(peak, w.ours())
+        self.assertGreater(peak, 0.3)                                                                  # the dream really ran at full price in some crash schedule
+        self.assertLessEqual(peak, budget.CEILING)
 
     def test_random_prices_and_random_failures_never_break_the_ceiling(self):
         for seed in range(250):
