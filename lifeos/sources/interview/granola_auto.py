@@ -1,11 +1,11 @@
-"""Granola bridge, automatic: write each synced meeting that matches exactly one Interview OS round to its Notion page, catalogue it, then purge it from Oracle (LIFE-122).
+"""Granola bridge: file each meeting matching exactly one Interview OS round in Notion, catalogue it, purge Oracle.
 
-A meeting not carried before is matched to its Interview OS round; one that matches exactly one round is written to the round's Full Transcript page (notes and summary above the word-for-word transcript when Oracle supplies them), read back, catalogued in Hostinger (`v7_meeting_catalog`, the dedupe key), and ONLY THEN purged
-from Oracle. A meeting that matches no round, or several, is never touched: it stays on Oracle and is counted.
-Purge only after (a) exactly one round matched, (b) the Notion page was written and read back, (c) the catalog row was saved and read back (Jim's safety rule, LIFE-37 comment 11261). Oracle announces what it can do in `list`'s `caps`: `purge_all` (delete everything held for a meeting) and `notes` (`show` also returns `notes` and
-`summary`); without `purge_all` nothing is purged.
-Dry run unless live. Outputs: counts and fixed codes only; no title, name, address, id or transcript text leaves this module (the meeting id is stored as a 16-character hash)."""
-# LIFE-122 (Jim, Oct 26 2026: "Approved, go"). Without `purge_all` an Oracle that has not shipped the whole-meeting purge is never asked to do a partial one by mistake.
+The round's Full Transcript page gets the notes and summary (when Oracle supplies them) above the transcript and is
+read back; the meeting is catalogued in Hostinger (`v7_meeting_catalog`, the dedupe key); only then is it purged
+from Oracle, and only if Oracle's `list` reports `caps` with `purge_all`. A meeting matching no round, or several,
+is never touched. Dry run unless live. Counts and fixed codes only; the meeting id is stored as a 16-character
+hash.
+"""
 import hashlib
 import os
 from datetime import datetime, timedelta
@@ -23,14 +23,14 @@ from lifeos.sources.interview import granola_clients
 from lifeos.sources.interview import interview_evidence
 
 TZ = ZoneInfo("America/Chicago")
-PER_RUN = 3                        # meetings carried per run: a backlog drains over a few runs and one run stays well inside its time
+PER_RUN = 3
 DONE = ("carried", "carried_purged")
-NOTE_LIMIT = 60_000                # characters of notes or summary kept
-PER_MEETING = ("GRAN_NOT_FOUND", "GRAN_OVERSIZE", "GRAN_TIMEOUT")   # LIFE-651: what Oracle's `show` says about ONE meeting; every other code (no host, connect, no reply, auth, sync) is the helper's and stops the run
-STREAK = 3                         # per-meeting read failures in a row with no read in between: the helper is the problem, not the meetings, so the run stops
-READ_TRIES = 5                     # failed runs on one meeting before later runs skip it (counted as GRAN_READ_GIVEN_UP) ...
-RETRY_DAYS = 3                     # ... and a failure older than this is forgotten, so the meeting is tried again
-READ_FAILED = tuple(f"read_failed_{n}" for n in range(1, READ_TRIES + 1))   # the catalog outcomes that record it; not in DONE, so the meeting is still to do
+NOTE_LIMIT = 60_000
+PER_MEETING = ("GRAN_NOT_FOUND", "GRAN_OVERSIZE", "GRAN_TIMEOUT")
+STREAK = 3  # read failures in a row with no read between: the helper is the problem, so the run stops
+READ_TRIES = 5
+RETRY_DAYS = 3
+READ_FAILED = tuple(f"read_failed_{n}" for n in range(1, READ_TRIES + 1))  # catalog outcomes that record a failure; not in DONE, so the meeting is still to do
 
 
 def key_of(meeting_id):
@@ -38,7 +38,6 @@ def key_of(meeting_id):
 
 
 def catalog_done(cursor, keys):
-    """-> the set of meeting keys already carried (outcome in DONE)."""
     if not keys:
         return set()
     cursor.execute("SELECT meeting_key FROM v7_meeting_catalog WHERE outcome IN %s AND meeting_key IN %s", (DONE, tuple(keys)))
@@ -46,7 +45,6 @@ def catalog_done(cursor, keys):
 
 
 def catalog_failed(cursor, keys, since):
-    """-> {meeting key: failed reads so far} for meetings whose newest read failure is not older than `since`."""
     if not keys:
         return {}
     cursor.execute("SELECT meeting_key, outcome FROM v7_meeting_catalog WHERE outcome IN %s AND carried_at > %s AND meeting_key IN %s", (READ_FAILED, since, tuple(keys)))
@@ -66,7 +64,6 @@ def catalog_has(cursor, key, outcome):
 
 
 def rounds_with_parents(client, environ, context):
-    """-> ([granola_match.Round], {round page id: its opportunity page id}); GRAN_PIPELINE_INCOMPLETE as a Stop when a scan is partial."""
     scan = notion.parents(client, environ, context)
     if not scan.complete:
         raise Stop("GRAN_PIPELINE_INCOMPLETE")
@@ -86,7 +83,6 @@ def rounds_with_parents(client, environ, context):
 
 
 def header_of(shown):
-    """((label, text), ...) from Oracle's `show` reply when it carries notes or a summary, bounded; else ()."""
     out = []
     for label, field in (("Summary", "summary"), ("Notes", "notes")):
         text = shown.get(field)
@@ -105,13 +101,13 @@ def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=No
         counts["why"][code] = counts["why"].get(code, 0) + 1
 
     def left(code, failed=0):
-        """The meeting stays on Oracle, for this fixed reason (and counts as failed when `failed`)."""
         counts["failed"] += failed
         counts["left_on_oracle"] += 1
         why(code)
 
     def purge(meeting, envelope):
-        """The whole-meeting purge, only from an Oracle that announced `purge_all`. -> True when Oracle confirmed it; otherwise the meeting is counted as left."""
+        """The whole-meeting purge, only from an Oracle that announced `purge_all`. -> True when Oracle confirmed it.
+        """
         if "purge_all" not in caps:
             left("GRAN_PURGE_ALL_UNSUPPORTED")
             return False
@@ -147,7 +143,7 @@ def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=No
             try:
                 done = catalog_done(cursor, list(keys.values()))
                 read_tries = catalog_failed(cursor, list(keys.values()), now - timedelta(days=RETRY_DAYS))
-            except Exception:                                   # noqa: BLE001 - a missing table on a dry run before the first live run reads as nothing carried yet
+            except Exception:  # noqa: BLE001 - a missing table before the first live run reads as nothing carried
                 if live:
                     raise
                 done, read_tries = set(), {}
@@ -157,12 +153,12 @@ def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=No
             return {"code": "GRAN_AUTO_NOTHING_NEW", "counts": counts}
         context.require_time()
         have, parent_of = rounds_with_parents(client, environ, context)
-        matched = granola_match.match(listed, have)                 # every meeting is matched against every round, so a round two meetings claim is ambiguous for both
+        matched = granola_match.match(listed, have)
         order = sorted(todo, key=lambda m: m.start, reverse=True)
-        order.sort(key=lambda m: keys[m.id] in read_tries)           # LIFE-651: a meeting whose read failed lately goes last, so it never blocks the newer ones
+        order.sort(key=lambda m: keys[m.id] in read_tries)
         carried_now = 0
         read_streak = 0
-        meetings_state = []                                          # the Meetings database check, made once per run: ["target_ok"] or the failure
+        meetings_state = []
         filed_as = {"client": granola_clients.CLIENT, "internal": granola_clients.INTERNAL}.get((environ.get("GRAN_UNMATCHED_TO") or "").strip().lower())
         by_key = {keys[m.id]: m for m in listed}
 
@@ -172,7 +168,6 @@ def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=No
             return meetings_state[0] == "target_ok"
 
         def finish(meeting, envelope, header, result, round_key, job_key, after=None):
-            """The shared tail of a carried meeting: catalog row saved and read back, then (only then) the whole-meeting purge. -> True when the meeting counts as carried."""
             nonlocal carried_now
             day = granola_match.central_day(meeting.start)
             with connect() as connection, connection.cursor() as cursor:
@@ -194,7 +189,6 @@ def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=No
             return True
 
         def fetch(meeting):
-            """(envelope, header) from Oracle, or None after counting a contract failure or a failed read of this meeting (LIFE-651: that one only; the run goes on)."""
             nonlocal read_streak
             key = keys[meeting.id]
             if read_tries.get(key, 0) >= READ_TRIES:
@@ -222,7 +216,6 @@ def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=No
             return envelope, (header_of(shown) if "notes" in caps else ())
 
         def file_on_meetings(meeting, filed_to):
-            """File one meeting on the Meetings database (LIFE-166). -> True when it was handled (carried, or counted and left on Oracle)."""
             if carried_now >= max(1, limit or PER_RUN):
                 left("GRAN_AUTO_LATER_RUN")
                 return True
@@ -241,10 +234,9 @@ def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=No
             return finish(meeting, envelope, header, result, key_of(f"meetings:{filed_to}"), None)
 
         def carry_client(meeting):
-            """LIFE-164: a meeting that matches no round but belongs to client work. -> False when it is not client work (the caller lists it as Unfiled)."""
             target, route_code = granola_clients.route(meeting)
             if target is None and route_code == "ROUTE_NONE" and filed_as is not None:
-                target = filed_as                                    # Jim's one-off instruction for this run: whatever matches nothing is filed there
+                target = filed_as
                 counts["client_by_instruction"] += 1
             if target is None:
                 if route_code in ("ROUTE_OTHER_ATTENDEES", "ROUTE_TITLE_AMBIGUOUS"):
@@ -255,7 +247,9 @@ def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=No
             return True
 
         def triage():
-            """LIFE-166: Jim's decisions. A row marked Unfiled with a File as is filed there; Delete removes the meeting from Oracle. Rows whose meeting is gone from Oracle are closed."""
+            """A row marked Unfiled with a File as is filed there; Delete removes the meeting from Oracle. Rows whose
+            meeting is gone are closed.
+            """
             if not meetings_ok():
                 return
             for page_id, key, choice in granola_clients.rows_where(client, granola_clients.UNFILED, True):
@@ -266,7 +260,7 @@ def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=No
                         granola_clients.set_status(client, page_id, granola_clients.DELETED)
                     continue
                 if keys[meeting.id] in done:
-                    continue                                          # carried by an earlier run; the row catches up through the write path
+                    continue
                 if choice == "Interview":
                     counts["triage_interview_later"] += 1
                     continue
@@ -286,7 +280,7 @@ def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=No
                     before = counts["carried"]
                     file_on_meetings(meeting, choice)
                     counts["triage_filed"] += counts["carried"] - before
-                    done.add(keys[meeting.id])                          # one decision per meeting per run
+                    done.add(keys[meeting.id])
 
         listed_unfiled = []
         triage()
@@ -322,7 +316,7 @@ def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=No
             except (NotionError, KeyError):
                 job_key = None
             finish(meeting, envelope, header, result, key_of(round_id), job_key, after=lambda round_id=round_id: create.link_transcript(client, round_id, True, {}))
-        if listed_unfiled and meetings_ok():                              # LIFE-166: every meeting nothing could place waits for Jim as an Unfiled row
+        if listed_unfiled and meetings_ok():
             for meeting in listed_unfiled:
                 outcome = granola_clients.unfiled_row(client, meeting, keys[meeting.id], live)
                 counts["unfiled_" + outcome] += 1
@@ -337,12 +331,11 @@ def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=No
     except (NotionError, DeadlineExceeded, KeyError, TypeError, ValueError):
         counts["failed"] += 1
         return {"code": "GRAN_NOTION_FAILED", "counts": counts}
-    except Exception:                                           # noqa: BLE001 - a store failure: a fixed code, never the exception text (its message can carry hosts)
+    except Exception:  # noqa: BLE001 - a fixed code, never the exception text (its message can carry hosts)
         counts["failed"] += 1
         return {"code": "GRAN_CATALOG_FAILED", "counts": counts}
 
 
 def stage(limit, live, environ=os.environ):
-    """`python -m lifeos.run granola-auto [--live]`: every synced meeting that has not been carried. Counts and the final fixed code only."""
     out = run(limit, live, environ=environ)
     return {"code": out["code"], **out["counts"]}

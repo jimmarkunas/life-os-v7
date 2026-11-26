@@ -1,8 +1,10 @@
-"""The System card stage (LIFE-975 step 4d; the stage keeps its old name `oracle-card`, so no registry or workflow moves): one writer for the Daily Report's System table.
+"""The System card stage: one writer for the Daily Report's System table (the stage name stays `oracle-card`).
 
-It merges what three cards showed: Oracle's `oracle1` stats (the old Oracle Cloud card), Oracle's `limits` (the old AI Capacity card; Codex is read ONCE here, there is no second reading to disagree with) and the System
-health database behind the Connections row (lifeos/platform/connections.py). It lives in sources because only sources may import the jobs layer (the `limits` reader), the oraclecloud layer (the card) and the platform.
-A reading that cannot be had is never zero: its row keeps the page's last values and says `STALE since ...`. The AI Capacity callout and the Command Center source-health toggle have no writer any more. Counts and fixed codes only."""
+It merges Oracle's `oracle1` stats, Oracle's `limits` (Codex is read once here) and the System health database
+behind the Connections row. It lives in sources because only sources may import the jobs and oraclecloud layers. A
+reading that cannot be had is never zero: its row keeps the last values and says `STALE since ...`. Counts and
+fixed codes only.
+"""
 import json
 import os
 from datetime import datetime, timezone
@@ -18,7 +20,6 @@ from lifeos.sources.cards import signin_reminder
 
 
 def limits_of(host):
-    """-> (Oracle's `limits` reading, the time it was read) or (None, None): unreachable or off contract."""
     try:
         reading = edge.limits(host)
     except edge.EdgeError as error:
@@ -32,7 +33,6 @@ def limits_of(host):
 
 
 def concord_of(host, fetcher=None):
-    """-> the parsed `concord1` reading (a count and a fixed code, never message content). One ask per tick; a refusal or an unreachable endpoint is a failed read, not an error."""
     fetch = fetcher or (lambda h, request: card.fetch(h, request=request))
     try:
         got = concord_reader.health(host, fetch)
@@ -43,7 +43,9 @@ def concord_of(host, fetcher=None):
 
 
 def connection_summary(client, environ, now, live, seen=None, concord=None):
-    """-> (summary or None, {"changed", "retired"}). The owned rows are refreshed from the domains job history; a database that cannot be read is None (the row goes stale, the card still writes)."""
+    """-> (summary or None, {"changed", "retired"}); an unreadable database gives None (the row goes stale, the card
+    still writes).
+    """
     try:
         rows = connections.read_rows(client, connections.source_id(environ))
     except NotionError:
@@ -60,14 +62,16 @@ def connection_summary(client, environ, now, live, seen=None, concord=None):
 
 
 def reminders(reading, environ, now, send=None, client=None):
-    """LIFE-993: the Agent Inbox renewal items for a sign-in due within three days (see signin_reminder). -> a count; never raises and never changes the card."""
+    """Agent Inbox renewal items for sign-ins due within three days (see signin_reminder). -> a count; never raises
+    and never changes the card.
+    """
     try:
         items = signin_reminder.plan((reading or {}).get("signins"), now)
-        if send is None and client is not None:                                             # the step holds the card's Notion writer, not NOTION_API_TOKEN; the inbox is on the same page
+        if send is None and client is not None:
             send = lambda item: inbox_send.deliver(item, client, now)                       # noqa: E731
         out = signin_reminder.send_all(items, environ, send) if items else {"sent": 0, "failed": 0}
         if items:
-            print("oracle-card: signin reminders", json.dumps(out))                         # counts only
+            print("oracle-card: signin reminders", json.dumps(out))
         return out["sent"]
     except Exception:                                                                       # noqa: BLE001
         return 0
@@ -75,7 +79,7 @@ def reminders(reading, environ, now, send=None, client=None):
 
 def run(limit, live, environ=os.environ, now=None, fetcher=card.fetch, client=None, limits=limits_of, seen=None, watch=None, workers_watch=None, boot_watch=None, concord_fetch=None, reminder_send=None):
     host = (environ.get("IMESSAGE_ALERTS_HOST") or "").strip()
-    anchor = (environ.get("JIRA_CARD_BLOCK_ID") or "").strip()                              # LIFE-969: any card block on the page finds the page; the Jira card is on it
+    anchor = (environ.get("JIRA_CARD_BLOCK_ID") or "").strip()
     if not host or not anchor:
         raise card._fail("ORACLE_NOT_CONFIGURED")
     router.check_write(card.MODULE, [card.TITLE])
@@ -95,11 +99,11 @@ def run(limit, live, environ=os.environ, now=None, fetcher=card.fetch, client=No
     if not live:
         return {**counts, **card.write(client, heading, rows, table, heading_text, False)}
     if stats is not None:
-        (watch or backup_watch.record)(stats["backup"], environ, now)                       # LIFE-129: never raises; the card's own result never depends on it
-        (workers_watch or worker_watch.record)(stats["workers"], environ, now)               # LIFE-531: same
-        (boot_watch or boot_backup_watch.record)(stats["backups"], environ, now)             # LIFE-808: same
+        (watch or backup_watch.record)(stats["backup"], environ, now)
+        (workers_watch or worker_watch.record)(stats["workers"], environ, now)
+        (boot_watch or boot_backup_watch.record)(stats["backups"], environ, now)
     counts["signin_reminders"] = reminders(reading, environ, now, reminder_send, client)
-    scoped = card.scoped(environ, client, heading, rows)                                    # LIFE-613: only the heading and the table rows located above can be written
+    scoped = card.scoped(environ, client, heading, rows)  # only the heading and table rows located above can be written
     with fixed(NotionError, card._fail, "ORACLE_WRITE_FAILED"):
         result = card.write(scoped, heading, rows, table, heading_text, True)
     return {**counts, **result, "written": result["rows_written"] + int(result["heading_written"])}
