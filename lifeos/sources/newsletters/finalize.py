@@ -1,9 +1,9 @@
-"""Stage 4 - finalize: close out a newsletter email only when EVERY job in it has an outcome.
+"""Stage 4 - finalize: close out a newsletter email only when every job in it has an outcome.
 
-Extract marks a message Processed once its cards are saved (accounting before cleanup). Finalize adds the Done label later, and only
-when no job from that message is still in flight and every PUBLISHED one has been read back from the Ledger. A mail with no saved
-jobs (not a job mail, or already stale) has nothing in flight and is closed too. Idempotent; counts only.
+Finalize adds the Done label once no job from the message is in flight and every published one has been read back from
+the Ledger. A mail with no saved jobs has nothing in flight and is closed too. Idempotent; counts only.
 Usage: python -m lifeos.sources.newsletters.finalize [--live] [--limit N]
+
 """
 import argparse
 import sys
@@ -17,8 +17,8 @@ TERMINAL = ("PUBLISHED", "CLOSED", "DUPLICATE", "PURGED")       # plus EXCLUDED_
 
 
 def survivor_verified(cursor, job_id, hops=3):
-    """LIFE-903: True when the job a DUPLICATE points at (repost_of) is PUBLISHED and read back from the Ledger (verified_at set), following a survivor that is itself a DUPLICATE for at most `hops` steps.
-    A survivor that is missing, unpublished or unverified is not a verified twin: the mail stays open."""
+    """True when the job a DUPLICATE points at (repost_of) is published and read back from the Ledger, following a
+    survivor that is itself a DUPLICATE for at most `hops` steps."""
     for _ in range(hops):
         cursor.execute("SELECT status, verified_at IS NULL, repost_of FROM v7_jobs WHERE id=%s", (job_id,))
         row = cursor.fetchone()
@@ -45,7 +45,7 @@ def blockers(connection, message_ids):
             f" WHERE s.gmail_message_id IN ({marks})", tuple(message_ids))
         for message_id, status, unverified, twin in cursor.fetchall():
             if status == "DUPLICATE" and twin and not survivor_verified(cursor, twin):
-                out.setdefault(message_id, "twin_unverified")            # LIFE-903: a mail is finalized as DUPLICATE only once the job it duplicates has a Ledger row the read-back verified
+                out.setdefault(message_id, "twin_unverified")            # a mail is finalized as DUPLICATE only once the job it duplicates has a verified Ledger row
                 continue
             if status in IN_FLIGHT:
                 out.setdefault(message_id, "in_flight")
@@ -64,7 +64,7 @@ def finalize(gmail, live, limit, connection_factory=store.connect):
     except GmailError:
         if live:
             raise
-        done_label = None                       # a dry run before the label exists: report what WOULD close, create nothing
+        done_label = None                       # a dry run before the label exists: report what would close, create nothing
     ids = gmail.list_ids(config.FINALIZE_QUERY, limit=limit)
     counts = {"candidates": len(ids), "closed": 0, "in_flight": 0, "unverified": 0, "twin_unverified": 0, "hold": 0, "other": 0}
     if not ids:

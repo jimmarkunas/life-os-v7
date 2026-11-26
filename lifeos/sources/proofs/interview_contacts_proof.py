@@ -1,9 +1,10 @@
-"""Synthetic QA proof: the opportunity page's LinkedIn Contacts table, through the real V7 path, on native Notion QA surfaces (LIFE-88 E10).
+"""Synthetic QA proof of the opportunity page's LinkedIn Contacts table, through the real V7 path, on Notion QA.
 
-Manual only: interview-proof with `confirm = E10` (Interview token only). Synthetic evidence, not a real-world hiring event and not a live-production E10 PASS.
-Every write goes to a FRESH sandbox under the QA Interview OS parent: its own Job Ledger data source with synthetic rows (their Network Leads blocks written by the real surface writer, `surface.build_block`), a synthetic human page and one QA opportunity page per case. The contacts are fictional (company and title marked
-SYNTHETIC, no profile links). The production Walmart Ledger row and the production Smith opportunity page are only READ, for the job's description text and identity; no production page, Ledger row, roster, status or record is written.
-Code under test: interview_evidence.network_contacts, view.opportunity, the UI 3c renderer and Notion writer (create), then an independent read-back with a NEW client. Outputs: PASS/FAIL per assertion, counts only; no name, id or link is printed."""
+Manual only: interview-proof with `confirm = E10`. Every write goes to a fresh sandbox under the QA parent; two
+production pages are only read, for job description text. Outputs: PASS/FAIL per assertion, counts only; no name, id
+or
+link is printed.
+"""
 from datetime import datetime, timedelta
 from urllib.parse import quote
 
@@ -20,8 +21,8 @@ from lifeos.sources.proofs import m1m2_proof as base
 
 CONFIRM = "E10"
 SYN = "(SYNTHETIC)"
-WALMART_PAGE = notion_id("WALMART_PAGE")        # the production Walmart opportunity page: read only (its source-grounded job description; the Ledger row has no body)
-SMITH_PAGE = notion_id("SMITH_PAGE")        # the production Smith opportunity page: read only (its recovered job description)
+WALMART_PAGE = notion_id("WALMART_PAGE")
+SMITH_PAGE = notion_id("SMITH_PAGE")
 SMITH_COMPANY, SMITH_ROLE = "Smith", "Senior Project Manager — Commerce"
 SMITH_URL = "https://www.indeed.com/viewjob?jk=31a46a8ea6620375"
 WALMART_URL = "https://careers.walmart.com/us/en/jobs/R-2612137"
@@ -33,7 +34,6 @@ FRESH_NOTE = "Synthetic Ledger row for LIFE-88 E10 QA. Not a real vacancy record
 
 
 def fictional_leads(today, company):
-    """Three fictional contacts as the writer's display dicts: a fresh, an aging and a stale observation, so the three relevance lines differ."""
     out = []
     for number, (name, title, age) in enumerate(PEOPLE, 1):
         lead = {"person_id": 9000 + number, "tier": match.CURRENT, "freshness": match.freshness(age), "age_days": age, "name": name, "company": f"{company} {SYN}",
@@ -44,7 +44,6 @@ def fictional_leads(today, company):
 
 
 class Unreadable:
-    """The real client, except that reading one page's blocks fails: the injected fault behind the DEGRADED case."""
     def __init__(self, client, page_id):
         self._client, self._page = client, page_id
 
@@ -58,7 +57,6 @@ class Unreadable:
 
 
 def sandbox(client, now):
-    """A fresh sandbox under the QA parent. -> its ids: the container, the synthetic human page, the synthetic Job Ledger data source."""
     container = notion.write_tree(client, QA_PARENT, [], title=f"LIFE-88 E10 synthetic Network Leads QA · {now.strftime('%Y-%m-%d %I:%M %p')} CT (SYNTHETIC, QA-only)", template=notion.FULL_WIDTH)
     human = notion.write_tree(client, container, [base._block("paragraph", "Synthetic human notes. LIFE OS must never change this page.")], title=f"Human page {SYN}", template=notion.FULL_WIDTH)
     ledger = base._database(client, container, "Job Ledger (synthetic)", {n: {k: {}} for n, k in base.ledger_schema().items()})
@@ -66,7 +64,8 @@ def sandbox(client, now):
 
 
 def description_lines(client, page_id, after=None, size=12):
-    """READ ONLY: the first lines of a production page's own job description (the text under the heading that starts with `after`, else the page's own opening lines)."""
+    """READ ONLY: the first lines of a production page's own job description (under the heading that starts with
+    `after`, else its opening lines)."""
     try:
         tops = notion.children(client, page_id, [notion.MAX_CALLS])
     except NotionError:
@@ -87,7 +86,6 @@ def description_lines(client, page_id, after=None, size=12):
 
 
 def ledger_row(client, box, company, role, key, apply_url, lines, leads=None):
-    """One synthetic Ledger row: its properties, then its body (description marker first, the job description text, the Network Leads block written by the real surface writer, a human note)."""
     props = {"Job": {"title": rich_text(role)}, "Company": {"rich_text": rich_text(company)}, "Stable Job Key": {"rich_text": rich_text(key)}, "Apply URL": {"url": apply_url}}
     page = client.call_once("POST", "/pages", {"parent": {"type": "data_source_id", "data_source_id": box["ledger"]}, "properties": props})["id"]
     body = [base._block("paragraph", f"{surface.DESCRIPTION_MARK} | key={key}"), base._block("paragraph", FRESH_NOTE), *[base._block("paragraph", t) for t in lines]]
@@ -99,7 +97,8 @@ def ledger_row(client, box, company, role, key, apply_url, lines, leads=None):
 
 
 def contacts_table(reader, page_id):
-    """The rows of the page's LinkedIn Contacts table (header matched), as Notion holds them -> [[cell text] x 3], or None when there is no such table."""
+    """The rows of the page's LinkedIn Contacts table as Notion holds them -> [[cell text] x 3], or None when there is
+    no such table."""
     budget = [200]
 
     def cells(row):
@@ -129,7 +128,6 @@ def _ledger_page(client, box, key, children):
 
 
 def layout_cases(client, reader, box, check, today):
-    """The two-column Ledger page on real Notion: a new page (nested create, toggle fill, leads block in the right column) and a flat page moved by the migration. Synthetic pages only."""
     key = "qa-synthetic-layout-" + today.isoformat()
     candidates = ["\u200b", "\u200c", "\u200d", "\u2060", "\u2062", "\u2063", "\ufeff", "\u00ad", "\u3164", "\u2800", "\u115f", "\u180e", "\u034f"]
     probe_page = _ledger_page(client, box, key + "-chars", [{"object": "block", "type": "paragraph", "paragraph": {"rich_text": [{"type": "text", "text": {"content": c, "link": {"url": "https://example.com/lifeos/x"}}}]}} for c in candidates])
@@ -138,7 +136,7 @@ def layout_cases(client, reader, box, check, today):
     page = _ledger_page(client, box, key, ledger_body.build(key, LAYOUT_DESC))
     ledger_body.fill(client, page, LAYOUT_DESC)
     top = notion.children(reader, page, [notion.MAX_CALLS])
-    PROBE.append([{k: v for k, v in part.items() if k in ("type", "plain_text", "href", "text")} for part in ((top[0].get("paragraph") or {}).get("rich_text") or [])] if top else None)      # synthetic page only: what Notion kept of the hidden marker
+    PROBE.append([{k: v for k, v in part.items() if k in ("type", "plain_text", "href", "text")} for part in ((top[0].get("paragraph") or {}).get("rich_text") or [])] if top else None)
     where = ledger_body.find(reader, page, top)
     check("9a a new Ledger page is a hidden marker and one column_list; the first line shows nothing", [b.get("type") for b in top] == ["paragraph", "column_list"]
           and notion.text(top[0]) == ledger_body.hidden.ZW and ledger_body.marker_text(top[0]) == f"v7-jd:2 | key={key}")
@@ -169,7 +167,7 @@ def layout_cases(client, reader, box, check, today):
 def drive(client, reader, box, now, results, counts):
     check = lambda name, ok: results.append((name, bool(ok)))                                                  # noqa: E731
     today, container = now.date(), box["container"]
-    props = client.call("GET", f"/pages/{LEDGER_ROW}").get("properties") or {}                                # production Walmart row: READ ONLY
+    props = client.call("GET", f"/pages/{LEDGER_ROW}").get("properties") or {}
     company, role, key = view._plain(props.get("Company")), view._plain(props.get("Job")), view._plain(props.get("Stable Job Key"))
     walmart_jd, smith_jd = description_lines(client, WALMART_PAGE, after="Job Description — Source-Grounded"), description_lines(client, SMITH_PAGE, after="Job Description — Recovered")
     check("0a the Walmart and Smith job descriptions are read (read only) from their production pages", company and role and key and walmart_jd and smith_jd)
@@ -185,12 +183,12 @@ def drive(client, reader, box, now, results, counts):
     pages, views = {}, {}
     for name, parent, job_key, ledger_id, reading in cases:
         query = RoundQuery(True, None, None, None, stable_job_key=job_key, ledger_page_id=ledger_id)
-        evidence, _ = ev.network_contacts(reading, [(parent, query)])                                          # the real contact reader
-        current = view.opportunity(reading, parent, evidence[0][1], container, None, create.today())          # the real opportunity view
-        blocks = create.rendered(current, tail=None)[0]                                                        # the real renderer
+        evidence, _ = ev.network_contacts(reading, [(parent, query)])
+        current = view.opportunity(reading, parent, evidence[0][1], container, None, create.today())
+        blocks = create.rendered(current, tail=None)[0]
         page = notion.write_tree(client, container, blocks, title=f"E10 QA · {name} {SYN}", icon=template.PAGE_ICONS["opportunity"], template=notion.FULL_WIDTH)
         check(f"1 {name}: the QA page is written and read back as the approved structure", create.finalize(client, page, current, blocks) == "readback_ok")
-        _seed(client, page, "Live Notes · protected space")                                                    # a synthetic human note in the protected region
+        _seed(client, page, "Live Notes · protected space")
         pages[name], views[name] = page, (parent, evidence[0][1], current)
     expected = [[lead["name"], surface.reason(lead), "Not tracked"] for lead in positive]
     shown = lambda name: base._rows_text(reader, pages[name])                                                  # noqa: E731
@@ -207,7 +205,7 @@ def drive(client, reader, box, now, results, counts):
           row_fact("wrong job") == [NONE_ROW] and not any(p[0] in wrong for p in PEOPLE) and "LinkedIn contacts: not connected (no exact Job Ledger row)" in wrong)
     check("6 no exact Ledger link (Smith): not connected, no contact shown",
           row_fact("no exact Ledger link") == [NONE_ROW] and "LinkedIn contacts: not connected (no exact Job Ledger row)" in shown("no exact Ledger link"))
-    # replay, then a real change at the source: Jim's Dismiss tick on one lead, re-read and refreshed in place
+    # replay, then a real change at the source: a Dismiss tick on one lead, re-read and refreshed in place
     parent, query, _ = views["positive"]
     page, out = pages["positive"], {"writes": 0, "readback_ok": 0, "readback_failed": 0, "writes_planned": 0}
     notes, human_before = notion.protected_snapshot(client, page, "opportunity"), base._human_tree(client, box["human"])
@@ -215,7 +213,7 @@ def drive(client, reader, box, now, results, counts):
     check("7a positive: a replay writes nothing", create.refresh(client, page, views["positive"][2], True, out) == "parent_unchanged")
     toggle = next(b for b in notion.children(client, w1, [notion.MAX_CALLS]) if b.get("type") == "callout")
     tick = next(b for b in notion.children(client, toggle["id"], [notion.MAX_CALLS]) if b.get("type") == "to_do" and any(r.startswith(f"Dismiss {positive[2]['person_id']}:") for r in hidden.refs(b)))
-    client.call("PATCH", f"/blocks/{quote(tick['id'], safe='')}", {"to_do": {"rich_text": [{"type": "text", "text": r["text"]} for r in tick["to_do"]["rich_text"]], "checked": True}})       # the runs as they are: the hidden link on the tick is its id
+    client.call("PATCH", f"/blocks/{quote(tick['id'], safe='')}", {"to_do": {"rich_text": [{"type": "text", "text": r["text"]} for r in tick["to_do"]["rich_text"]], "checked": True}})
     evidence, _ = ev.network_contacts(client, [(parent, query)])
     again = view.opportunity(client, parent, evidence[0][1], container, None, create.today())
     check("7b positive: after a Dismiss tick the page refreshes in place", create.refresh(client, page, again, True, out) == "parent_refreshed")
@@ -228,7 +226,6 @@ def drive(client, reader, box, now, results, counts):
 
 
 def run_layout(environ, live, now=None, client=None, reader=None):
-    """The two-column Ledger page on real Notion (confirm = LAYOUT): its own fresh sandbox, synthetic pages only. -> counts only, like run."""
     if (environ.get("INTERVIEW_JOURNEY_PROOF") or "").strip() != "LAYOUT":
         return {"proof": "refused", "code": "proof_confirm_missing", "failed": 1, "why": {}, "writes": 0}
     if live:
@@ -245,7 +242,6 @@ def run_layout(environ, live, now=None, client=None, reader=None):
 
 
 def run(environ, live, now=None, client=None, reader=None):
-    """-> counts only: assertions as PASS/FAIL, `failed`, and the label that this is synthetic evidence."""
     if (environ.get("INTERVIEW_JOURNEY_PROOF") or "").strip() != CONFIRM:
         return {"proof": "refused", "code": "proof_confirm_missing", "failed": 1, "why": {}, "writes": 0}
     if live:
@@ -253,7 +249,7 @@ def run(environ, live, now=None, client=None, reader=None):
     now, client = (now or datetime.now(ev.TZ)).astimezone(ev.TZ), client or notion.make_client(environ)
     try:
         box = sandbox(client, now)
-    except NotionError as error:                                             # e.g. the integration may not create a database under the QA parent
+    except NotionError as error:
         return {"proof": "blocked", "code": f"sandbox:{str(error)[:40]}", "detail": str(getattr(error, "detail", ""))[:80], "failed": 1, "why": {}, "writes": 0}
     results, counts = [], {}
     try:

@@ -1,11 +1,11 @@
-"""LIFE-37 (Jim, Oct 26): one job Jim names by hand. Manual only (manual-job.yml); a dry run unless live.
+"""One job named by hand. Manual only (manual-job.yml); a dry run unless live.
 
-Jim gives the posting link, the company and the title (MANUAL_JOB_URL / _COMPANY / _TITLE). Two halves, both idempotent:
-1. Jobs OS: the job enters like a recruiter's posting link (RESOLVED at that link, lane Recruiter, source `manual`), so Enrich reads the posting, Fit scores it and Publish writes its
-   Ledger row. Its Stable Job Key is the one Jobs OS gives that link.
-2. Interview OS: the existing writer creates the machine opportunity page and its Interview 1 round, keyed by that same Stable Job Key. The round is either dated
-   (MANUAL_JOB_ROUND_DAY, a Central day Jim states) or Scheduling Pending at a request message link (MANUAL_JOB_REQUEST_URL). Either is Jim's own evidence; neither is guessed.
-Counts and fixed codes only: no link, name or title is ever logged."""
+MANUAL_JOB_URL / _COMPANY / _TITLE name the job. Two idempotent halves: Jobs OS takes the posting link like a
+recruiter's
+(RESOLVED, lane Recruiter, source `manual`), and Interview OS creates the machine opportunity page and its Interview 1
+round keyed by the same Stable Job Key, dated (MANUAL_JOB_ROUND_DAY, a Central day) or Scheduling Pending at a request
+message link (MANUAL_JOB_REQUEST_URL). Counts and fixed codes only: no link, name or title is logged.
+"""
 import os
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -25,8 +25,10 @@ def _text(environ, name):
 
 
 def enter(cursor, url, company, title, source, provider, received, stamp, kind):
-    """A job somebody named enters Jobs OS like a recruiter's posting link: RESOLVED at that link, lane Recruiter, so Enrich reads the posting, Fit scores it and Publish writes its Ledger row.
-    -> (Stable Job Key, new); a new job also keeps the link as its final apply URL (`kind`: ats, aggregator or employer). Interview OS's recruiter-lead path enters its jobs here too."""
+    """A named job enters Jobs OS like a recruiter's posting link: RESOLVED at that link, lane Recruiter.
+
+    -> (Stable Job Key, new); a new job keeps the link as its final apply URL (`kind`: ats, aggregator or employer).
+    """
     key, new = intake.add_job(cursor, {"url": url, "status": "RESOLVED", "title": title, "company": company, "location": "", "salary": "", "source": source, "provider": provider,
                                        "lane": lanes.RECRUITER, "age_days": None, "provider_score": None, "received": received}, stamp)
     if new:
@@ -35,7 +37,8 @@ def enter(cursor, url, company, title, source, provider, received, stamp, kind):
 
 
 def add_job(url, company, title, now, live, connect=store.connect):
-    """-> 'new' | 'present' (live: the job was added or already held; dry run: it would be added or is held). Read only unless live."""
+    """-> 'new' | 'present' (live: added or already held; dry run: would be added or is held). Read only unless
+    live."""
     stamp = now.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
     with connect() as connection, connection.cursor() as cursor:
         if not live:
@@ -64,10 +67,10 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=store.co
     if request and not request.startswith("https://"):
         return stop("MANUAL_JOB_REQUEST_INVALID")
     if not (day or request):
-        return stop("MANUAL_JOB_ROUND_EVIDENCE_MISSING")         # a round is dated by Jim's day or pending at a request message: never invented
+        return stop("MANUAL_JOB_ROUND_EVIDENCE_MISSING")         # a round is dated by the given day or pending at a request message: never invented
     try:
         counts["job"] = add_job(url, company, title, now, live, connect)
-    except Exception:                                            # noqa: BLE001 - a fixed code, never the exception text (the store's errors can carry hosts)
+    except Exception:                                            # noqa: BLE001
         return stop("MANUAL_JOB_STORE_FAILED")
     key = identity.url_hash(url)
     round_query = RoundQuery(True, day or None, None, 1, source=request or None, stable_job_key=key)

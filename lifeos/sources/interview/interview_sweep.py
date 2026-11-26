@@ -1,9 +1,11 @@
-"""LIFE-88 (Jim, Oct 21 2026): every opportunity page, active or retired, becomes the new UI 3c page.
+"""Page-by-page sweep that converts every opportunity page, active or retired, to the current page layout.
 
-A page-by-page sweep, separate from the request-driven path: it classifies each page by its own shape, then converts the ones that are not current, a few per run, through the writers that
-already exist (a hand-made page is adopted, V7's old skeleton is upgraded, a UI 3b or fold-less page is migrated). Every write is proven by the existing before/after digest of Jim's own content and child
-pages, and the sweep stops at the first failure. `INTERVIEW_CONVERT` is `inventory` (classify and count, write nothing) or `all` (convert, up to `INTERVIEW_CONVERT_CAP` pages per run, default 2); any
-other value is off. Writes also need INTERVIEW_OS_WRITER=v7. Counts and fixed codes only."""
+Each page is classified by its own shape and the non-current ones are converted, a few per run, through the existing
+writers; every write is proven by a before/after digest of the owner's own content and the sweep stops at the first
+failure. `INTERVIEW_CONVERT` is `inventory` (classify and count only) or `all` (convert, up to `INTERVIEW_CONVERT_CAP`
+pages per run, default 2); any other value is off. Writes also need INTERVIEW_OS_WRITER=v7. Counts and fixed codes
+only.
+"""
 import re
 
 from lifeos.interview import create, notion, view as views
@@ -14,10 +16,10 @@ from lifeos.platform.runtime import DeadlineExceeded, RunContext
 
 MODES = ("inventory", "all")
 DEFAULT_CAP = 2
-SWEEP_SECONDS = 300                                                      # the recruiters job has 30 minutes: mail read, evidence and the write stage come first
-PAGE_SECONDS = 75                                                        # run 39662178449: five pages took about 60 s each; a page is not started with less than this left
+SWEEP_SECONDS = 300                                                      # the job's time limit leaves the mail read, evidence and write stage first
+PAGE_SECONDS = 75                                                        # a page is not started with less than this left
 CONVERTIBLE = ("human", "adopt_line", "skeleton", "prefold", "ui3b")
-NEUTRAL = ("parent_unchanged",)                                             # a current page whose region already says what its interviews say
+NEUTRAL = ("parent_unchanged",)
 DONE = ("parent_adopted", "parent_upgraded", "parent_refreshed", "adopt_allowed", "upgrade_allowed", "refresh_allowed", "adopt_line_allowed")
 
 
@@ -25,7 +27,8 @@ SETTING = re.compile(r"(inventory|all)(?::(\d{1,2}))?(?:@([0-9a-f]{32}|[0-9a-f]{
 
 
 def _setting(environ):
-    """(mode, cap text, page id) of `inventory`, `all`, `all:N` or `all:N@<page id>` (a first live test of exactly one page); anything else is off."""
+    """(mode, cap text, page id) of `inventory`, `all`, `all:N` or `all:N@<page id>` (exactly one page); anything else
+    is off."""
     found = SETTING.fullmatch((environ.get("INTERVIEW_CONVERT") or "").strip().lower())
     return tuple(g or "" for g in found.groups()) if found and (found.group(1) == "all" or not (found.group(2) or found.group(3))) else ("", "", "")
 
@@ -46,7 +49,6 @@ def cap(environ):
 
 
 def classify(client, page_id, context=None):
-    """current | ui3b | prefold | skeleton | adopt_line | human | unrecognized: by the page's own first blocks, read only."""
     tops = notion.children(client, page_id, [notion.MAX_CALLS], context)
     if not tops:
         return "human"
@@ -69,7 +71,6 @@ def classify(client, page_id, context=None):
 
 
 def render_job(client, page_id, context=None):
-    """The Stable Job Key a current page's own render line names (None when it names none)."""
     _, lines, _ = create.machine_region(client, page_id, context)
     found = [m for m in (create.RENDER.fullmatch(notion.text(b)) for b in lines) if m]
     return None if len(found) != 1 or found[0].group(1) == "none" else found[0].group(1)
@@ -82,13 +83,13 @@ def _convert(client, environ, live, context, parent, company, role, kind, key, p
         code = create.begin_adopt(client, parent.page_id, live, out, context)
         if code != "adopt_line_added":
             return code, out
-        kind = "adopt_line"                                               # the line is there: the normal adopt converts the page in the same run
+        kind = "adopt_line"
     if kind == "adopt_line":
         return create.adopt(client, environ, parent, pq, query, live, context, out), out
     if kind == "skeleton":
         tops = notion.children(client, parent.page_id, [notion.MAX_CALLS], context)
         return create.upgrade(client, environ, parent, pq, query, live, context, out, tops), out
-    kids = notion.child_scan(client, parent.page_id, context, legacy=True)   # a pursuit converted here: Jim's hand-made `Interview N: Name (date)` pages count by title
+    kids = notion.child_scan(client, parent.page_id, context, legacy=True)
     if not kids.complete:
         return "child_scan_incomplete", out
     current = views.opportunity(client, pq, query, pipeline, kids, today)
@@ -96,9 +97,10 @@ def _convert(client, environ, live, context, parent, company, role, kind, key, p
 
 
 def run(environ, live, client, scan, mint, legacy_key, context=None):
-    """-> counts. `scan` is the complete parent scan (Active and Retired); `mint(company, role)` is the Stable Job Key of a page with none of its own; `legacy_key(client, page_id, context)` reads a UI 3b page's own."""
+    """-> counts. `scan` is the complete parent scan; `mint(company, role)` is the key of a page with none of its own;
+    `legacy_key(client, page_id, context)` reads an older page's own."""
     how = mode(environ)
-    live = bool(live) and how == "all"                                      # `live` here is already INTERVIEW_OS_WRITER=v7 and Actually write
+    live = bool(live) and how == "all"
     context = context or RunContext.start(SWEEP_SECONDS)
     pipeline = (environ.get("HIRING_PIPELINE_PAGE_ID") or "").strip()
     counts = {"mode": how, "inventory": {}, "rounds": {"machine": 0, "human_titled": 0, "human_other": 0, "unread": 0}, "retired": 0, "converted": 0, "waiting": 0, "failed": 0, "writes_planned": 0, "writes": 0, "readback_ok": 0, "why": {}}
@@ -109,7 +111,7 @@ def run(environ, live, client, scan, mint, legacy_key, context=None):
     limit, stopped, only = cap(environ), False, target(environ)
     try:
         for index, parent in enumerate(scan.items):
-            if context.remaining_seconds() < PAGE_SECONDS:                # not a failure: nothing was started, the pages not yet seen wait for the next run (a converted page is never redone)
+            if context.remaining_seconds() < PAGE_SECONDS:                # not a failure: pages not yet seen wait for the next run
                 counts["waiting"] += len(scan.items) - index
                 note("time_budget")
                 break
@@ -121,17 +123,17 @@ def run(environ, live, client, scan, mint, legacy_key, context=None):
                 continue
             kind = classify(client, parent.page_id, context)
             counts["inventory"][kind] = counts["inventory"].get(kind, 0) + 1
-            kids = notion.child_scan(client, parent.page_id, context, legacy=True)       # the page's interview pages, by who wrote them (Jim's by title only), counted not read
+            kids = notion.child_scan(client, parent.page_id, context, legacy=True)
             if not kids.complete:
                 counts["rounds"]["unread"] += 1
             for child in kids.items:
                 counts["rounds"]["machine" if child.identity_valid is True else "human_titled" if child.legacy else "human_other"] += 1
             if kind == "current" and how == "all" and kids.complete and any(c.legacy for c in kids.items):
-                kind = "refresh"                                         # a converted page whose Interviews table must now show Jim's hand-made rounds (by title only)
+                kind = "refresh"
             if kind not in CONVERTIBLE and kind != "refresh":
                 continue
             if only and not notion.same_notion_id(parent.page_id, only):
-                continue                                                 # a targeted run touches that one page only
+                continue
             if how != "all" or stopped or counts["converted"] >= limit:
                 counts["waiting"] += 1
                 continue
