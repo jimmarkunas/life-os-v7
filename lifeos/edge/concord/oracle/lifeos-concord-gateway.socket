@@ -1,5 +1,5 @@
 # LIFE-987: the Concord gateway's local listener. A Unix socket only (no TCP, nothing on a tailnet or public address). The Buzz bridge (`buzz-mcp`) is the one client: the socket belongs to concord, group buzz-mcp,
-# mode 0660, in a directory only those two can enter (0750). One process per connection (Accept=yes); nothing runs between connections. No timer, no scheduler.
+# mode 0660, so only those two can open it; the directory is 0755 because systemd creates a socket's directory as root:root and 0750 would lock buzz-mcp out (found live Nov 25 2026: the bridge got Permission denied; the LIFE-977 helper's socket directory is 0755 for the same reason). One process per connection (Accept=yes); nothing runs between connections. No timer, no scheduler.
 [Unit]
 Description=LIFE OS Concord gateway (local socket for the Buzz bridge only)
 
@@ -8,7 +8,7 @@ ListenStream=/run/lifeos-concord-gateway/orchestrator.sock
 SocketUser=concord
 SocketGroup=buzz-mcp
 SocketMode=0660
-DirectoryMode=0750
+DirectoryMode=0755
 Accept=yes
 MaxConnections=4
 MaxConnectionsPerSource=4
