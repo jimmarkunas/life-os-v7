@@ -157,6 +157,13 @@ def deps_aura(sc, ns, case):
     raise ValueError("unknown_op")
 
 
+def exclusions(prod, raw, prod_stale, raw_stale):
+    """The revoked edge ISS-003 BLOCKS ISS-001 would lead to REQ-001; ISS-003 also really implements REQ-002, which both templates return. The stale decision DEC-001 would lead to TASK-002."""
+    prod, raw, prod_stale, raw_stale = ([r["id"] for r in x] for x in (prod, raw, prod_stale, raw_stale))
+    return {"revoked_edge": {"production_template": prod, "without_filter": raw}, "stale_record": {"production_template": prod_stale, "without_filter": raw_stale},
+            "revoked_edge_excluded": "FAKE-REQ-001" not in prod and "FAKE-REQ-001" in raw and "FAKE-REQ-002" in prod, "stale_record_excluded": prod_stale == [] and raw_stale == ["FAKE-TASK-002"]}
+
+
 def run_aura_pass(sc, ns, doc):
     out = {}
     for q in doc["questions"]:
@@ -273,8 +280,7 @@ def main(argv=None):
     raw = sc.read("downstream_unfiltered", NAMESPACES[0], start="FAKE-ISS-003", tenant="alpha", via=["BLOCKS", "IMPLEMENTS"], kinds=["requirement"])
     prod2 = sc.read("derived", NAMESPACES[0], tenant="alpha", id="FAKE-DEC-001")
     raw2 = sc.read("derived_unfiltered", NAMESPACES[0], tenant="alpha", id="FAKE-DEC-001")
-    ev["p5_exclusions"] = {"revoked_edge": {"production_template": [r["id"] for r in prod], "without_filter": [r["id"] for r in raw]}, "stale_record": {"production_template": [r["id"] for r in prod2], "without_filter": [r["id"] for r in raw2]},
-                           "excluded": prod == [] and [r["id"] for r in raw] == ["FAKE-REQ-001"] and prod2 == [] and [r["id"] for r in raw2] == ["FAKE-TASK-002"]}
+    ev["p5_exclusions"] = exclusions(prod, raw, prod2, raw2)
     # P6: the four retrieval modes on the same corpus (honcho and combined need T2's workspace and are not run here).
     world = um.World(doc)
     local = um.run(doc, ("direct", "graph"), args.reps)
