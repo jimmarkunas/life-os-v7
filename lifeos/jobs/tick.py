@@ -118,6 +118,15 @@ def tick_concurrency(environ=None):
     return concurrency_from_env(environ)
 
 
+EARLY_START_DELAY = 1.0               # LIFE-856: seconds an early step waits before it asks for its services' slots, so the group that starts with the run asks first (the slots hand out in the order asked)
+
+
+def _after_a_moment(target, *args):
+    """LIFE-856: start an early step a moment after the run's first group has asked for its slots. Without this, an early step that shares a service with group A (discover-jobs and the LinkedIn lanes) would take the slot first and hold group A back for its whole run."""
+    time.sleep(EARLY_START_DELAY)
+    target(*args)
+
+
 def _stop_thread(thread, flag):
     """Raise StageTimeout inside `thread` (the alarm signal only reaches the main thread). It takes effect when the thread is next running Python code, so a read blocked in the network ends at its own
     socket timeout; the flag stops it from firing at a stage that already finished."""
@@ -230,7 +239,7 @@ def tick(live, quick=False, plan=PLAN, stages=None, clock=time.monotonic, budget
         if concurrency:
             for step in plan:
                 if step.early and step.group:
-                    thread = threading.Thread(target=_run_group, args=([step], live, quick, stages, clock, lambda: budget - (clock() - started), concurrency, outcome, timings), name=f"tick-early-{step.name}", daemon=True)
+                    thread = threading.Thread(target=_after_a_moment, args=(_run_group, [step], live, quick, stages, clock, lambda: budget - (clock() - started), concurrency, outcome, timings), name=f"tick-early-{step.name}", daemon=True)
                     thread.start()
                     early[step.name] = thread
         position = 0
