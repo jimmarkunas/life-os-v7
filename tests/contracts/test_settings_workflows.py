@@ -7,6 +7,10 @@ import re
 import unittest
 
 from lifeos.platform import settings
+import sys as _sys
+_sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[2] / "tools"))
+import wfsets  # noqa: E402  (LIFE-1013: credential lists named with `set:`)
+
 
 try:
     import yaml
@@ -90,7 +94,7 @@ class DefaultsWhenNothingIsSet(unittest.TestCase):
 class SettingsStepsNeverStopAJob(unittest.TestCase):
     def steps(self):
         for path in sorted(WORKFLOWS.glob("*.yml")):
-            data = yaml.safe_load(path.read_text())
+            data = yaml.safe_load(wfsets.expand_text(path.read_text()))
             for job_name, job in (data.get("jobs") or {}).items():
                 for step in job.get("steps") or []:
                     yield path.name, job_name, step

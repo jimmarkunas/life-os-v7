@@ -2,7 +2,8 @@ name: Load credentials from Bitwarden
 description: "LIFE-631: the pinned Bitwarden loader with its one retry (D209: 429 / 5xx pause, then one more try; a failed retry fails the job, no fallback). A masked output per secret name; the first try's value wins, else the retry's."
 inputs:
   access_token: {description: "The Bitwarden machine token (a GitHub secret)", required: true}
-  secrets: {description: "One 'secret-id > NAME' per line", required: true}
+  secrets: {description: "One 'secret-id > NAME' per line (inline; or use set)", default: ""}
+  set: {description: "LIFE-1013: the name of a credential list in sets.yml next to this file (one per job); its lines are exactly the lines that were inline here", default: ""}
   set_env: {description: "Export the values to the job environment (the default of the loader); false keeps them as masked step outputs only", default: "true"}
   doppler_compare: {description: "LIFE-1010 (LIFE-981 parity): the read-only Doppler service token (GitHub secret DOPPLER_TOKEN). When set, the same names are read from Doppler and compared by hash with the values just loaded; counts and a fixed code only; it never fails the job and Bitwarden stays the source of every value", default: ""}
 outputs:
@@ -54,22 +55,31 @@ outputs:
 runs:
   using: composite
   steps:
+    - id: sets
+      if: ${{ inputs.set != '' }}
+      shell: bash
+      env:
+        SET: ${{ inputs.set }}
+      run: |
+        list=$(awk -v k="$SET: |" '$0==k{f=1;next} f&&/^  /{sub(/^  /,"");print;next} f{exit}' "$GITHUB_ACTION_PATH/sets.yml")
+        [ -n "$list" ] || { echo "::error::no credential set named $SET"; exit 1; }
+        { echo "list<<EOF_SET"; printf '%s\n' "$list"; echo EOF_SET; } >> "$GITHUB_OUTPUT"
     - id: first
       continue-on-error: true
       uses: ./.github/actions/sm-action
-      with: {access_token: "${{ inputs.access_token }}", secrets: "${{ inputs.secrets }}", set_env: "${{ inputs.set_env }}"}
+      with: {access_token: "${{ inputs.access_token }}", secrets: "${{ inputs.set != '' && steps.sets.outputs.list || inputs.secrets }}", set_env: "${{ inputs.set_env }}"}
     - if: ${{ steps.first.outcome == 'failure' }}
       shell: bash
       run: sleep $((30 + RANDOM % 45))
     - id: retry
       if: ${{ steps.first.outcome == 'failure' }}
       uses: ./.github/actions/sm-action
-      with: {access_token: "${{ inputs.access_token }}", secrets: "${{ inputs.secrets }}", set_env: "${{ inputs.set_env }}"}
+      with: {access_token: "${{ inputs.access_token }}", secrets: "${{ inputs.set != '' && steps.sets.outputs.list || inputs.secrets }}", set_env: "${{ inputs.set_env }}"}
     - id: names
       if: ${{ inputs.doppler_compare != '' && (steps.first.outcome == 'success' || steps.retry.outcome == 'success') }}
       shell: bash
       env:
-        SECRETS: ${{ inputs.secrets }}
+        SECRETS: ${{ inputs.set != '' && steps.sets.outputs.list || inputs.secrets }}
       run: echo "list=$(printf '%s\n' "$SECRETS" | sed -n 's/^.*> *//p' | paste -sd, -)" >> "$GITHUB_OUTPUT"
     - id: doppler
       if: ${{ steps.names.outcome == 'success' }}

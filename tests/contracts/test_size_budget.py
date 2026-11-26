@@ -13,7 +13,7 @@ SRC = ROOT / ".github/workflows-src"
 GENERATED_MAX = 130 * 1024
 PART_MAX = 8 * 1024
 NAME_MAX = 80
-RATCHET = {"domains.yml": 165_000}                                   # reached 162,955 bytes (240,853 before); lower it when it shrinks, never raise it
+RATCHET = {"domains.yml": 141_000, "hourly.yml": 95_000}               # reached 140,192 and 94,068 bytes (240,853 and 123,939 before the lean passes); lower them when the files shrink, never raise
 BUDGETED = ("domains.yml", "hourly.yml", "v3-pages.yml")
 
 
@@ -53,9 +53,8 @@ class Budget(unittest.TestCase):
     def test_a_clean_tree_has_no_problem_and_the_ratchet_sits_just_above_the_reached_size(self):
         with tempfile.TemporaryDirectory() as tmp:
             self.assertEqual(problems(tmp, tmp), [])
-        size = len((FLOWS / "domains.yml").read_bytes())
-        self.assertLess(RATCHET["domains.yml"] - size, 4000, "lower the ratchet to just above the new size")
-        self.assertLess(RATCHET["domains.yml"], GENERATED_MAX + 40_000)
+        for name, ceiling in RATCHET.items():
+            self.assertLess(ceiling - len((FLOWS / name).read_bytes()), 4000, f"lower the {name} ratchet to just above the new size")
 
 
 if __name__ == "__main__":
