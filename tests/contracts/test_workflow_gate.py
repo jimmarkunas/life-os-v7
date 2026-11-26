@@ -61,6 +61,14 @@ class PreApproved(unittest.TestCase):
         self.assertEqual(check(head), [])
 
 
+class CommentsAreNeutral(unittest.TestCase):
+    def test_dropping_a_trailing_comment_changes_no_line_so_a_spend_word_in_it_or_beside_it_stops_nothing(self):
+        """LIFE-1010: the generated workflows lost their comments; a line that only lost its comment must not look newly added."""
+        base = BASE.replace("      - run: echo hello", "      - run: echo hello\n        env:\n          V7_CLOUD_FIT_PARALLEL: '1'     # the old comment").replace("        env:\n          TOKEN", "        env2:\n          TOKEN")
+        head = base.replace("     # the old comment", "")
+        self.assertEqual(check(head, base), [])
+
+
 class Stops(unittest.TestCase):
     def test_a_new_secret_stops(self):
         head = BASE.replace("TOKEN: ${{ secrets.EXISTING }}", "TOKEN: ${{ secrets.EXISTING }}\n          NEW: ${{ secrets.NEW_THING }}")
