@@ -1,7 +1,8 @@
-"""LIFE-129: the one-time Google sign-in for the BACKUP credential. Unlike lifeos/platform/google_consent.py (the full `drive` scope the résumé feature needs), this asks for
-`drive.file` ONLY: the backup job can see and delete just the files it made itself, never the rest of Jim's Drive, and a reply that grants anything wider is refused. The sign-in itself
-(PKCE link, loopback catcher, a credential written only to a pipe, never to a terminal) is google_consent's, run with this scope. It runs on Jim's Mac, where the browser is, once:
-  python3 -m lifeos.edge.backup.consent --port 8765 | ssh opc@lifeos-edge-01 "sudo bash /opt/lifeos-offsite/install-offsite.sh credential"
+"""Google sign-in for the backup credential. Unlike lifeos/platform/google_consent.py (full `drive` scope) this
+asks only for `drive.file`, so the backup job sees and deletes only files it made, and a wider grant is refused. The sign-in
+(PKCE link, loopback catcher, credential written only to a pipe) is google_consent's. Run once on the Mac:
+  python3 -m lifeos.edge.backup.consent --port 8765 | ssh opc@lifeos-edge-01 "sudo bash
+/opt/lifeos-offsite/install-offsite.sh credential"
 """
 import functools
 import sys

@@ -1,7 +1,9 @@
-"""LIFE-643 row 5 helper (python3 standard library only): slim an existing npm tree by REMOVING packages, and check it against the committed lockfile. No npm, no network, no script runs. Prints fixed words and counts only.
-
-    slim.py prune DIR LOCKFILE      DIR holds a copy of node_modules/ ; delete every package the lockfile flags optional or peer-only (the sharp / @img image libraries), drop them from the hidden lockfile and remove dangling .bin links
-    slim.py verify DIR LOCKFILE     exit 0 only if the package list (hidden lockfile and folders) equals the lockfile's non-optional, non-peer packages and no image library is left"""
+"""Slim an npm tree by removing packages and check it against the committed lockfile (stdlib only; no npm, no network,
+no script runs). `slim.py prune DIR LOCKFILE`: in a copy of node_modules/, delete every package the lockfile flags
+optional or peer-only (the sharp / @img image libraries), drop them from the hidden lockfile and remove dangling .bin
+links. `slim.py verify DIR LOCKFILE`: exit 0 only if the package list equals the lockfile's non-optional, non-peer
+packages and no image library is left. Prints fixed words and counts only.
+"""
 import json
 import os
 import shutil

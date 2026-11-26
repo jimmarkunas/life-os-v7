@@ -1,19 +1,15 @@
-"""LIFE-538 / LIFE-529: ONE command that proves a real backup can be restored, from ANY computer that can reach Bitwarden. Nothing here depends on the Mac.
-
-  python3 -m lifeos.edge.backup.restore_check ARCHIVE.gpg                              the secret id is read from ~/.config/life-os/offsite-key-secret-id (one line, mode 600)
-  python3 -m lifeos.edge.backup.restore_check ARCHIVE.gpg --bws-secret SECRET_ID      the private key lives in Bitwarden Secrets Manager (needs `bws` and its access token)
-  python3 -m lifeos.edge.backup.restore_check ARCHIVE.gpg --passphrase-prompt         the key's passphrase is typed by the person at the terminal (hidden, never stored)
-  python3 -m lifeos.edge.backup.restore_check ARCHIVE.gpg --bw-item "ITEM NAME"       the private key lives in the Bitwarden vault (needs `bw`, unlocked: BW_SESSION)
-
-ARCHIVE.gpg is either the nightly off-site file downloaded from Drive (lifeos-edge-YYYY....tar.gz.gpg) or the Mac file (mac-YYYYMMDD-HHMM.tar.gz.gpg).
-
-What it does, in order: makes a private RAM-backed folder (Linux /dev/shm, or a macOS RAM disk), reads the private key from Bitwarden straight into gpg's keyring INSIDE that folder
-(never a file on disk, never printed, never an argument or environment value), decrypts the archive there, opens the Mac archive inside the nightly one when present (decrypts it too),
-checks every member name, runs `PRAGMA integrity_check` on every database, and prints PASS or FAIL with COUNTS ONLY: no file name from the archive, no table name, no content, no key.
-Then it deletes the folder and the RAM disk (also when it fails). Stdlib plus `gpg` and `bws` or `bw`. Exit 0 only on PASS.
-
-Fixed codes: restore_key_source (no way to read the key), restore_key_fetch, restore_key_import, restore_no_ram (no RAM-backed folder can be made; nothing is written to disk instead),
-restore_decrypt (the key does not open this archive), plus the verify_restore codes (RESTORE_UNSAFE_PATH, RESTORE_TOO_BIG, RESTORE_DB_CORRUPT, RESTORE_DB_UNCHECKED, RESTORE_UNREADABLE).
+"""Prove a real backup can be restored, from any computer that can reach Bitwarden:
+  python3 -m lifeos.edge.backup.restore_check ARCHIVE.gpg [--bws-secret SECRET_ID | --bw-item "NAME"]
+[--passphrase-prompt]
+ARCHIVE.gpg is the nightly off-site file or the Mac file. The private key comes from Bitwarden Secrets Manager
+(default
+id in ~/.config/life-os/offsite-key-secret-id; needs `bws`) or the vault (needs `bw` unlocked via BW_SESSION). It goes
+straight into gpg's keyring inside a private RAM-backed folder (never a file on disk, argument or environment value);
+the archive (and the Mac archive inside it) is decrypted there, every member name checked and every database run
+through
+`PRAGMA integrity_check`. Output is PASS or FAIL with counts only; the folder is always deleted. Exit 0 only on PASS.
+Codes: restore_key_source, restore_key_fetch, restore_key_import, restore_no_ram, restore_decrypt, plus the
+verify_restore codes. Stdlib plus `gpg` and `bws` or `bw`.
 """
 import contextlib
 import getpass
@@ -31,7 +27,8 @@ import uuid
 from lifeos.edge.backup import verify_restore as vr
 from lifeos.platform.fixed_code import fixed
 
-ID_FILE = os.path.expanduser("~/.config/life-os/offsite-key-secret-id")        # one line: the Bitwarden Secrets Manager id of the backup key, kept only on the machine that runs the check (never in Jira or the repo)
+# one line: the Bitwarden Secrets Manager id of the backup key (kept only on the machine that runs the check)
+ID_FILE = os.path.expanduser("~/.config/life-os/offsite-key-secret-id")
 MAC_INNER = re.compile(r"^mac/mac-\d{8}-\d{4}\.tar\.gz\.gpg$")
 RAM_MB = 512
 
@@ -42,7 +39,9 @@ class CheckError(RuntimeError):
 
 @contextlib.contextmanager
 def ram_folder(run=subprocess.run, platform=sys.platform, mb=RAM_MB):
-    """A private folder that lives in memory only. Linux: /dev/shm. macOS: a RAM disk (hdiutil, no admin needed), detached afterwards. Anything else: refused (never falls back to disk)."""
+    """A private in-memory folder: Linux /dev/shm, or a macOS RAM disk detached afterwards. Anything else is refused
+    (never disk).
+    """
     if platform.startswith("linux") and os.path.isdir("/dev/shm"):
         path = tempfile.mkdtemp(prefix="rc-", dir="/dev/shm")
         os.chmod(path, 0o700)
@@ -73,9 +72,11 @@ def ram_folder(run=subprocess.run, platform=sys.platform, mb=RAM_MB):
 
 
 def fetch_key(source, run=subprocess.run):
-    """-> the ASCII-armoured private key as bytes, straight from Bitwarden. `source` is ("bws", secret id) or ("bw", item name). The value never touches disk, argv or the environment."""
+    """-> the ASCII-armoured private key as bytes from Bitwarden; `source` is ("bws", secret id) or ("bw", item name).
+    Never touches disk, argv or the environment.
+    """
     kind, ref = source
-    if kind == "prompt":                                                                 # Jim types it: hidden, read from the terminal itself, never an argument, an environment value or history
+    if kind == "prompt":
         with fixed(OSError, CheckError, "restore_no_tty"):
             open("/dev/tty").close()
         return getpass.getpass("Backup key passphrase (typing is hidden): ").encode()
@@ -113,7 +114,9 @@ def decrypt(folder, source, dest, run=subprocess.run, passfile=None):
 
 
 def manifest_hash(archive, prefix):
-    """-> (file count, one sha256 over the sorted lines 'name size sha256') for the members under `prefix`: a fingerprint that can be recomputed on the live folder, no names printed."""
+    """-> (file count, one sha256 over the sorted lines "name size sha256") for the members under `prefix`: a
+    fingerprint, no names printed.
+    """
     lines = []
     with tarfile.open(archive, "r:gz") as tar:
         for member in tar.getmembers():
@@ -124,7 +127,6 @@ def manifest_hash(archive, prefix):
 
 
 def check_archive(plain, work):
-    """verify_restore on every member; -> counts only."""
     report = vr.verify(plain, prefix="", min_files=1, work=work)
     return {"files": report["files"], "databases": len(report["databases"])}
 
@@ -138,7 +140,7 @@ def run_check(archive, source, run=subprocess.run, ram=ram_folder, platform=sys.
             import_key(folder, key, run)
             del key
             passfile = None
-            if passphrase:                                                               # the key's passphrase, if it has one, also comes from Bitwarden and lives only in the RAM folder
+            if passphrase:
                 passfile = os.path.join(folder, "pp")
                 fd = os.open(passfile, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
                 with os.fdopen(fd, "wb") as handle:
@@ -173,7 +175,7 @@ def run_check(archive, source, run=subprocess.run, ram=ram_folder, platform=sys.
     except (CheckError, vr.RestoreError) as error:
         out.write("FAIL %s\n" % error)
         return 1
-    except Exception:                                                                    # any other failure is a fixed code, never a message that could carry a name or a value
+    except Exception:
         out.write("FAIL RESTORE_UNEXPECTED\n")
         return 1
 
@@ -201,7 +203,7 @@ def main(argv=None, out=sys.stdout):
             archive = None
             break
     if archive and not source and os.path.isfile(ID_FILE):
-        source = ("bws", open(ID_FILE).read().strip())                                   # no id on the command line: read it from the local file
+        source = ("bws", open(ID_FILE).read().strip())
     if not archive or not source:
         out.write("usage: restore_check ARCHIVE.gpg (--bws-secret SECRET_ID | --bw-item NAME) [--passphrase-prompt | --passphrase-bws ID | --passphrase-bw NAME] [--manifest code/lifeos-fit/ ...]\n")
         return 2

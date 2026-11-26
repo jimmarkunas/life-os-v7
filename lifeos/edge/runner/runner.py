@@ -1,19 +1,11 @@
-"""LIFE-310: the script-pack runner. One root-owned program, one `sudo` command, run on lifeos-edge-01.
-
-    sudo /usr/local/sbin/lifeos-run LIFE-310 1a2b3c4d      Jim's whole approval step: `run LIFE-310 1a2b3c4d` in chat, then this one command.
-    lifeos-run hash DIR                    the pack's full sha256 (the agent prints it in the ticket receipt)
-    lifeos-run check DIR                   validate a pack without running it
-    lifeos-run help                        usage, and the sha256 of every pack staged on this host
-
-A pack is a folder: pack.json (ticket, steps, what to restore), steps/*.sh and optional files/. Jim copies it to /tmp/lifeos-pack-<KEY>/. The runner COPIES it to a root-only work
-folder first and hashes the COPY, so the bytes that were approved are the bytes that run. It executes only when the first 8 hex characters of that sha256 equal the ones Jim typed
-and pack.json is for the same ticket. Anything else is refused with one line and nothing runs.
-
-The terminal shows exactly one line: `RESULT ok` or `RESULT fail <code>`. Step output never reaches the terminal. It is redacted for secret-shaped text and reduced to names and counts in
-/var/lib/lifeos-runner/results/<KEY>.json (plus a line in runner.log), which the agent reads instead of pasted output. A step may print `READBACK name=value` lines (names and counts only).
-
-Before the first step the runner saves every file and service state the pack declares under "restore". If a step fails, times out, or the run is interrupted (Ctrl-C, SIGTERM, SIGHUP), it puts
-them back and says what it restored. It starts no timer, no watcher and no second scheduler, keeps no sudoers rule and holds no credential. Python standard library only (run with python3 -I).
+"""The script-pack runner: one root-owned program, one `sudo` command, on lifeos-edge-01: `sudo
+/usr/local/sbin/lifeos-run <KEY> <sha8>` (also `hash DIR`, `check DIR`, `help`). A pack is a folder: pack.json
+(ticket, steps, what to restore), steps/*.sh, optional files/. The runner copies it to a root-only work folder and
+hashes the copy, so the approved bytes are the bytes that run; it runs only when the sha8 matches and pack.json is for
+the same ticket. The terminal shows one line, `RESULT ok` or `RESULT fail <code>`; step output is redacted and reduced
+to names and counts in /var/lib/lifeos-runner/results/<KEY>.json and runner.log. Before the first step it saves every
+file and service state declared under "restore" and puts them back on failure, timeout or interrupt. No timer, sudoers
+rule or credential. Python standard library only.
 """
 import fcntl
 import glob
@@ -42,7 +34,6 @@ STEP_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 
 class Refuse(Exception):
-    """A run that must stop with one fixed code (and, when steps had started, after the restore)."""
     def __init__(self, code):
         super().__init__(code)
         self.code = code
@@ -52,7 +43,6 @@ class Interrupted(Exception):
     pass
 
 
-# ---- redaction: secret-shaped text never leaves a step's output --------------------------------------------------------------------------------------------------------------------
 
 def _long(match):
     text = match.group(0)
@@ -73,7 +63,6 @@ _PATTERNS = [
 
 
 def redact(text):
-    """-> (text with secret-shaped parts replaced, how many replacements)."""
     total = 0
     for rx, repl in _PATTERNS:
         hits = [0]
@@ -87,10 +76,11 @@ def redact(text):
     return text, total
 
 
-# ---- the pack: files, hash, manifest ----------------------------------------------------------------------------------------------------------------------------------------------
 
 def pack_files(root):
-    """Sorted relative paths of every regular file in the pack. Symlinks, devices, odd names, extra top-level entries and oversize packs are refused (E_PACK)."""
+    """Sorted relative paths of every regular file in the pack; links, devices, odd names, extra top-level entries and
+    oversize packs are refused (E_PACK).
+    """
     found, total = [], 0
     try:
         top = os.lstat(root)
@@ -125,7 +115,6 @@ def pack_files(root):
 
 
 def pack_hash(root):
-    """sha256 over the sorted (path, sha256 of content) pairs: names and bytes, not permissions or timestamps. This is the one number the receipt prints."""
     digest = hashlib.sha256()
     for rel in pack_files(root):
         with open(os.path.join(root, rel), "rb") as handle:
@@ -135,7 +124,6 @@ def pack_hash(root):
 
 
 def stage_copy(src, dest):
-    """Copy the pack to a root-only folder without following links; the hash is taken from THIS copy."""
     names = pack_files(src)
     os.makedirs(dest, mode=0o700)
     for rel in names:
@@ -183,7 +171,6 @@ def load_manifest(root):
     return {"ticket": data["ticket"], "steps": steps, "files": files, "services": units, "timeout": timeout}
 
 
-# ---- the host: real paths and systemctl, swappable in tests ---------------------------------------------------------------------------------------------------------------------
 
 class Host:
     def __init__(self, state=STATE, inbox=INBOX, require_root=True, systemctl=None, clock=time.time):
@@ -191,7 +178,6 @@ class Host:
         self._systemctl = systemctl
 
     def systemctl(self, *args):
-        """-> (exit code, first word of stdout)."""
         if self._systemctl:
             return self._systemctl(*args)
         try:
@@ -209,10 +195,11 @@ def _write_atomic(path, data, mode):
     os.replace(tmp, path)
 
 
-# ---- snapshot and restore (GWT-RUN-03) --------------------------------------------------------------------------------------------------------------------------------------------
 
 def snapshot(manifest, host, snapdir):
-    """Everything the pack declared, as it is now. Also written root-only under snapdir so a hard kill (SIGKILL, power) still leaves the originals."""
+    """Everything the pack declared, as it is now; also written root-only under snapdir so a hard kill still leaves
+    the originals.
+    """
     os.makedirs(snapdir, mode=0o700)
     files, meta = {}, []
     for i, path in enumerate(manifest["files"]):
@@ -239,7 +226,7 @@ def snapshot(manifest, host, snapdir):
 
 
 def restore(snap, host):
-    """-> (names put back, names that could not be). Idempotent: a file or service already as it was is left alone."""
+    """-> (names put back, names that could not be); idempotent."""
     done, failed, systemd_touched = [], [], False
     for path, saved in snap["files"].items():
         try:
@@ -294,7 +281,6 @@ def restore(snap, host):
     return done, sorted(set(failed))
 
 
-# ---- running the steps ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 def _kill_group(proc):
     try:
@@ -304,7 +290,7 @@ def _kill_group(proc):
 
 
 def run_step(stage, rel, key, timeout):
-    """-> (exit code or None on timeout, redacted output, replacements, seconds). The raw output exists only in memory."""
+    """-> (exit code or None on timeout, redacted output, replacements, seconds). Raw output exists only in memory."""
     env = {"PATH": STEP_PATH, "LANG": "C", "LC_ALL": "C", "HOME": "/root", "LIFE_KEY": key, "PACK_DIR": stage}
     began = time.monotonic()
     proc = subprocess.Popen(["/bin/bash", "--noprofile", "--norc", os.path.join(stage, rel)], cwd=stage, env=env, stdin=subprocess.DEVNULL,
@@ -343,7 +329,9 @@ def _ct(epoch):
 
 
 def record(host, result, given):
-    """The result file(s) the agent reads (names and counts only) and one line in runner.log. A failure to write never changes the RESULT line."""
+    """The result file the agent reads (names and counts only) and one line in runner.log; a write failure never
+    changes the RESULT line.
+    """
     try:
         out = os.path.join(host.state, "results")
         os.makedirs(out, mode=0o755, exist_ok=True)
@@ -415,12 +403,12 @@ def execute(key, sha8, host):
         result["code"] = "E_INTERRUPTED"
     except Refuse as stopped:
         result["code"] = stopped.code
-    except Exception:                                   # a bug in the runner is a failed run, never a crash with a traceback on the terminal
+    except Exception:
         result["code"] = "E_RUNNER"
     finally:
         for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
             if sig in previous:
-                signal.signal(sig, signal.SIG_IGN)      # the restore must finish
+                signal.signal(sig, signal.SIG_IGN)  # the restore must finish
         if snap is not None and result["outcome"] != "ok":
             try:
                 result["restored"], result["restore_failed"] = restore(snap, host)
@@ -433,7 +421,7 @@ def execute(key, sha8, host):
         if stage and os.path.isdir(stage):
             shutil.rmtree(stage, ignore_errors=True)
         if snapdir and os.path.isdir(snapdir) and not result["restore_failed"]:
-            shutil.rmtree(snapdir, ignore_errors=True)  # kept only when something could not be put back
+            shutil.rmtree(snapdir, ignore_errors=True)
         if lock:
             lock.close()
         finished = host.clock()
@@ -443,7 +431,6 @@ def execute(key, sha8, host):
     return result
 
 
-# ---- the command line -------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 HELP = """lifeos-run: the LIFE-310 script-pack runner.
   sudo /usr/local/sbin/lifeos-run <LIFE-key> <sha8>    run the pack staged in /tmp/lifeos-pack-<LIFE-key>/ if its sha256 starts with <sha8> and it is for that ticket
