@@ -13,7 +13,7 @@ class Plan(unittest.TestCase):
     def test_both_current_sign_ins_are_inside_three_days_and_get_one_item_each(self):
         items = signin_reminder.plan({"meter": {"state": "OK", "expires": METER}, "fit": {"state": "OK", "expires": FIT}}, NOW)
         self.assertEqual([i["key"] for i in items], ["signin-meter-202611282235", "signin-fit-202611291301"])
-        self.assertIn("Sat Nov 28, 10:35 PM CT", items[0]["subject"])
+        self.assertIn("Nov 28 2026, 10:35 PM CT", items[0]["subject"])
         self.assertIn("**start usage meter renewal**", items[0]["details"])
         self.assertIn("**cloud fit renewed**", items[1]["details"])
 

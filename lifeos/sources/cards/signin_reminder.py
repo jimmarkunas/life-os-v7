@@ -1,17 +1,17 @@
-"""LIFE-993: the sign-in renewal reminder. Three days before an OpenClaw model sign-in (Usage meter, Cloud Fit) expires, or once it has lapsed, Jim gets ONE styled Agent Inbox item per profile per expiry.
+"""LIFE-993: the sign-in renewal reminder.
+
+Three days before an OpenClaw model sign-in (Usage meter, Cloud Fit) expires, or once it has lapsed, Jim gets ONE styled Agent Inbox item per profile per expiry.
 
 It reads the same `limits.signins` reading the System table already shows (a state word and an expiry time, nothing else). The key is per profile and per expiry, so the hourly repeat updates the same row and never adds a second;
 a new expiry (after Jim signs in) is a new key. Only Jim signs in: the item says so and the agent only starts the device-code flow on Oracle and reads the new expiry back. Counts and fixed words only; a failure never reaches the card."""
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+from lifeos.platform import ct_stamp
+
 CT = ZoneInfo("America/Chicago")
 LEAD = timedelta(days=3)
 PROFILES = {"meter": ("Usage meter", "usage meter"), "fit": ("Cloud Fit", "cloud fit")}
-
-
-def _when(at):
-    return f"{at:%a %b} {at.day}, {at:%I:%M %p}".replace(" 0", " ") + " CT"
 
 
 def plan(signins, now):
@@ -31,7 +31,7 @@ def plan(signins, now):
         if at is None and not lapsed:
             continue
         stamp = at.strftime("%Y%m%d%H%M") if at else "lapsed"
-        deadline = f"expires {_when(at)}" if at and not lapsed else "has lapsed" if lapsed else "is due"
+        deadline = f"expires {ct_stamp.stamp(at)}" if at and not lapsed else "has lapsed" if lapsed else "is due"
         subject = f"Renew the {name} sign-in: it {deadline} (about 2 minutes)"
         details = "\n".join((
             f"> Deadline: the {name} sign-in {deadline}. About 2 minutes. Only you can sign in; no password goes through any agent.",
