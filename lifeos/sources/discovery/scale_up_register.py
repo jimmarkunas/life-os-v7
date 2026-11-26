@@ -1,7 +1,8 @@
-"""Read-only comparison of the CURRENT official sponsor register with V7's Scale-Up registry (LIFE-121 London coverage, step 1).
+"""Read-only comparison of the current official sponsor register with the Scale-Up registry.
 
-Counts in the clear; the names of London Scale-up-route sponsors V7 does not hold go to ONE private Notion page (lifeos.jobs.private_report), only when live; a dry run writes nothing."""
-# LIFE-121 (Jim, Oct 26 2026: "Do them!").
+The names of London Scale-up-route sponsors not held go to one private Notion page (lifeos.jobs.private_report),
+only when live; a dry run writes nothing.
+"""
 import json
 import pathlib
 
@@ -13,7 +14,6 @@ REGISTRY = pathlib.Path(__file__).parent.parent / "web" / "scale_up.json"
 
 
 def rows_of(text):
-    """-> ([(name, town, county)] on the Scale-up route, reason). By header name, never by position."""
     def entry(name, row, cols):
         return (name, *((row.get(cols[k]) or "").strip() if k in cols else "" for k in ("town/city", "county")))
     return sponsor_register.read(text, "scale-up", entry)
@@ -24,7 +24,6 @@ def held_keys(path=REGISTRY):
 
 
 def compare(entries, held):
-    """-> (counts, the sponsors in London that V7 does not hold). London = the register's Town/City names London."""
     london = [e for e in entries if "london" in e[1].lower()]
     missing = [e for e in london if tuple(names.core(e[0])) not in held]
     counts = {"register_scale_up": len(entries), "london": len(london), "london_held": len(london) - len(missing), "london_missing": len(missing),

@@ -1,8 +1,11 @@
-"""Build resume on the private Close service: a tailored .docx for one exact open Job Ledger job, attached to its page (D234).
+"""Build resume on the private Close service: a tailored .docx for one exact open Job Ledger job, attached to its
+page.
 
-Same Edge gate, signing key and fresh-read rule as Mark as Sent (D221). Jim presses Build; the confirm POST re-reads the job, takes its description from the page V7 published (the v7-jd sections) and hands it to the Oracle resume worker over its private socket. The worker writes the resume under Jim's resume rules and evidence,
-checks it with the claims guard and returns the .docx, which is attached to the job's Ledger page; success is shown only after reading it back. GET never writes.
-Outputs: fixed codes only; no resume text, evidence or contact detail reaches a log. Pointer: D234, LIFE-87."""
+Same Edge gate, signing key and fresh-read rule as Mark as Sent. The confirm POST re-reads the job, takes its
+description from the published v7-jd sections and asks the Oracle resume worker (private socket) for a checked
+.docx, which is attached to the job's Ledger page; success is shown only after reading it back. GET never writes.
+Fixed codes only.
+"""
 import base64
 from html import escape as e
 import json
@@ -18,15 +21,15 @@ from lifeos.sources.apps.close_app import TTL, _now
 from .outreach_app import RELOAD, _fp, _job_section, job
 
 PATH = "Job Ledger / Build resume"
-WORKER, WORKER_WAIT = "/run/lifeos-resume/worker.sock", 140      # the worker waits for Cloud Fit's one-call lock, then about a minute of Luna
+WORKER, WORKER_WAIT = "/run/lifeos-resume/worker.sock", 140
 MAX_REPLY, MAX_DESCRIPTION, MIN_DESCRIPTION = 4 * 1024 * 1024, 24000, 200
 DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 FILENAME = re.compile(r"Jim_Markunas_(Resume|CV)_[A-Za-z0-9_]{1,80}\.docx\Z")
-MARKER = "v7-jd:1"                                              # publish's first body line (lifeos.jobs.publish.body_blocks)
-RESUME_COLUMN = "Resume"                                        # the Ledger's Files column: the latest resume built for this job
-SUBMITTED_COLUMN = "Submitted Résumé"                           # LIFE-88 E10: the file Jim sent (lifeos.interview.view.SUBMITTED; a test holds them equal)
-DRIVE_FILE = re.compile(r"https://(?:drive\.google\.com/file|docs\.google\.com/document)/d/([A-Za-z0-9_-]{10,200})/(?:view|edit)")   # Drive links a .docx as docs.google.com/document/.../edit (live, Oct 25)
-SHOWN_BUILDS = 5                                               # the newest Drive builds offered as "applied with this one"
+MARKER = "v7-jd:1"
+RESUME_COLUMN = "Resume"
+SUBMITTED_COLUMN = "Submitted Résumé"
+DRIVE_FILE = re.compile(r"https://(?:drive\.google\.com/file|docs\.google\.com/document)/d/([A-Za-z0-9_-]{10,200})/(?:view|edit)")
+SHOWN_BUILDS = 5
 LOCK_REASON = "Submitted with the application for this job (LIFE OS)"
 TEXT = ("heading_2", "paragraph", "bulleted_list_item")
 REASONS = {"QUOTA_RESERVE": "Luna's allowance is at your 50% reserve; it resets on its own (see the AI Capacity card).",
@@ -57,7 +60,6 @@ def _plain(block):
 
 
 def description(client, pid):
-    """The job's own description from its Ledger page, in either layout: the sections V7 published after its v7-jd marker (the two-column page reads its Overview and the Full job description toggle)."""
     return body.text_of(client, pid, _children(client, pid), MAX_DESCRIPTION)
 
 
@@ -67,7 +69,6 @@ def location(client, pid):
 
 
 def ask_worker(payload, path=WORKER, wait=WORKER_WAIT):
-    """One request to the Oracle resume worker -> its reply {status, filename?, docx?, codes?}, or {"status": "WORKER_UNAVAILABLE"}."""
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
             s.settimeout(wait)
@@ -86,10 +87,10 @@ def ask_worker(payload, path=WORKER, wait=WORKER_WAIT):
 
 
 def attach(client, token, pid, filename, docx, now, upload=None):
-    """Upload the .docx twice (Notion does not promise one upload can be attached in two places): append one copy to the job's page as a file block (every
-    build stays there, newest last) and set the Ledger's Resume column to the other (the latest build, visible in the table). Then read both back.
-    -> True only when the page holds a file block with this name AND its Resume column is exactly this file."""
-    send = upload or notion_files.upload                                                       # looked up at call time
+    """Upload the .docx twice (one Notion upload cannot attach in two places): a file block on the job's page and the
+    Ledger's Resume column. -> True only when both read back as this file.
+    """
+    send = upload or notion_files.upload
     caption = f"Tailored resume · built {now.strftime('%b %-d, %-I:%M %p')} CT · LIFE OS"
     block_upload = send(token, filename, docx, DOCX)
     client.call_once("PATCH", f"/blocks/{pid}/children", {"children": [{"object": "block", "type": "file", "file": {
@@ -102,10 +103,10 @@ def attach(client, token, pid, filename, docx, now, upload=None):
 
 
 def attach_drive(client, drive, pid, filename, docx, now):
-    """Jim, Oct 24 2026: with the Drive credential the .docx lives in Drive (My Drive / LIFE OS / Résumés, as itself, never converted) and Notion
-    holds links: one external file block on the job's page (every build stays there, newest last) and the Ledger's Resume column set to this
-    build. The Drive file is tagged with the job, so a later "applied with this résumé" step can list this job's builds. Then all three are
-    read back. -> True only when Drive holds these exact bytes, the page links this file and the Resume column is exactly this file."""
+    """With the Drive credential the .docx lives in Drive (never converted) and Notion holds links: an external file
+    block and the Ledger's Resume column. -> True only when Drive holds these bytes, the page links this file and
+    the Resume column is exactly this file.
+    """
     caption = f"Tailored resume · built {now.strftime('%b %-d, %-I:%M %p')} CT · Google Drive · LIFE OS"
     meta = drive.upload(drive.folder(), filename, docx, DOCX, {"lifeos": "resume", "job": pid.replace("-", "")})
     link = meta["webViewLink"]
@@ -123,25 +124,22 @@ def page_url(pid):
 
 
 def drive_builds(client, pid):
-    """The job page's Drive builds, newest last: (file id, name, link) from its external file blocks (attach_drive writes them)."""
     out = []
     for b in _children(client, pid):
         f = b.get("file") or {} if b.get("type") == "file" else {}
         url = ((f.get("external") or {}).get("url")) or ""
         hit = DRIVE_FILE.match(url)
         if hit and f.get("name"):
-            out.append((hit.group(1), f["name"], url))                    # the link exactly as the page holds it
+            out.append((hit.group(1), f["name"], url))
     return out
 
 
 def recorded(client, pid):
-    """The job's Submitted Résumé entries as (name, link)."""
     files = ((client.get_page(pid).get("properties") or {}).get(SUBMITTED_COLUMN) or {}).get("files") or []
     return [(f.get("name"), (f.get("external") or {}).get("url")) for f in files]
 
 
 def _submit_forms(secret, login, j, st, exp, builds):
-    """One signed "applied with this one" form per Drive build (newest first)."""
     out = ""
     for fid, name, _ in reversed(builds[-SHOWN_BUILDS:]):
         fields = {"j": j["id"], "co": j["company"], "ro": j["role"], "exp": exp, "st": st, "f": fid, "n": name, "a": _mac(secret, "a", login, j["id"], st, exp, fid, name)}
@@ -151,10 +149,9 @@ def _submit_forms(secret, login, j, st, exp, builds):
 
 
 def _applied_section(reader, secret, login, j, st, exp):
-    """Jim, Oct 24: record which built résumé was actually sent. Shown under Build; read only here."""
     try:
         done, builds = recorded(reader, j["id"]), drive_builds(reader, j["id"])
-    except NotionError:                                                    # Build still works; only this list is unavailable this time
+    except NotionError:
         return '<section class="section"><div class="notice alert">Submitted résumé: unavailable this time. Reload to try again.</div></section>'
     if done:
         return ('<section class="section"><div class="eyebrow">Submitted résumé</div>'
@@ -166,8 +163,6 @@ def _applied_section(reader, secret, login, j, st, exp):
 
 
 def _submit(form, who, secrets, step):
-    """Review, then record: the Drive file must be a build of THIS job (its tag) still linked on its page; it is locked read-only, then the Ledger's
-    Submitted Résumé field is set to it, and both are read back. Nothing else is written; replay of the same file writes nothing."""
     pid, exp, st, fid, name = D._page_id(form.get("j")), form.get("exp", ""), form.get("st", ""), form.get("f", ""), form.get("n", "")
     if (not pid or not (exp.isascii() and exp.isdigit()) or int(exp) < _now().timestamp() or not fid or not name
             or not _same(form.get("a"), _mac(secrets["link"], "a", who["login"], pid, st, exp, fid, name))
@@ -197,7 +192,7 @@ def _submit(form, who, secrets, step):
         return _stop(409, "Not recorded", "Google Drive is not connected", "The Drive credential is not installed on the Close service.", "Nothing was changed.")
     try:
         return _record(client, current, gdrive_client(secrets["gdrive"]), pid, fid, name, link)
-    except RuntimeError as error:                                          # NotionError or gdrive.DriveError: fixed codes only
+    except RuntimeError as error:
         if not isinstance(error, NotionError) and type(error).__name__ != "DriveError":
             raise
         return _stop(500, "Unavailable", "Could not record the submitted résumé", "Do not assume it is recorded. The Drive file may already be locked read-only; "
@@ -205,7 +200,7 @@ def _submit(form, who, secrets, step):
 
 
 def gdrive_client(raw):
-    from lifeos.platform import gdrive                                     # imported here, so a release without the Drive client still serves every other route
+    from lifeos.platform import gdrive
     return gdrive.Drive(raw)
 
 
@@ -225,7 +220,6 @@ def _record(client, current, drive, pid, fid, name, link):
 
 
 def _done(title, sub, eyebrow, current, pid, notice):
-    """A success screen: what was done (`notice` is escaped HTML), and a link straight to the job's page in Notion."""
     return 200, HTML, S.page(title, sub, (
         f'<section class="section"><div class="eyebrow">{eyebrow}</div><h3 class="step-title">{title}</h3>'
         f'<p class="lead">{e(current["company"])} · {e(current["role"])}</p><div class="notice ok">{notice}</div></section>'
@@ -233,7 +227,6 @@ def _done(title, sub, eyebrow, current, pid, notice):
 
 
 def _attached(current, filename, pid, drive=False):
-    """The success screen: what was attached, and a link straight to the job's Ledger page (its Resume column and the file at the bottom of the page)."""
     return _done("Resume attached", "A resume counts only after it is attached to the job's Ledger page and read back.", "Attached", current, pid,
                  f'{e(filename)} · {"saved in Google Drive (My Drive / LIFE OS / Résumés) and linked " if drive else ""}in the job\'s Resume column and at the bottom of its page · read back.')
 
@@ -270,7 +263,7 @@ def _post(req, who, secrets):
         return invalid(_stop, RELOAD)
     config, token = secrets["config"], secrets["notion"].decode()
     client = Client({"NOTION_API_TOKEN": token, "NOTION_JOB_LEDGER_DATA_SOURCE_ID": config["ledger"]})
-    current = job(client, config, pid)                                     # the build is authorized only by a fresh read of the same open job
+    current = job(client, config, pid)
     if _fp(current) != st:
         return _stop(409, "Conflict", "Job changed", "The job changed since this page was opened.", "Nothing was run. Reload the job and try again.")
     text = description(client, pid)
@@ -290,11 +283,11 @@ def _post(req, who, secrets):
     if not FILENAME.match(filename) or not docx.startswith(b"PK"):
         return _stop(500, "Unavailable", "The resume came back malformed", "Nothing was attached.", "Status: DEGRADED · WORKER_OFF_CONTRACT", "danger")
     try:
-        if secrets.get("gdrive"):                                          # the Drive credential is installed: the file goes to Drive, Notion links it
+        if secrets.get("gdrive"):
             verified = attach_drive(client, gdrive_client(secrets["gdrive"]), pid, filename, docx, _now())
         else:
             verified = attach(client, token, pid, filename, docx, _now())
-    except RuntimeError as error:                                          # NotionError or gdrive.DriveError: fixed codes only; anything else is the gate's 500
+    except RuntimeError as error:
         if not isinstance(error, NotionError) and type(error).__name__ != "DriveError":
             raise
         code = str(error)[:60]

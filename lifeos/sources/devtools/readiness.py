@@ -1,13 +1,11 @@
-"""Offline readiness validator: is a LIFE issue ready to start (LIFE-225).
+"""Offline readiness validator: is a LIFE issue ready to start.
 
-Refuses (exit 2): an invalid key, no Done-when line, an open `Blocks` predecessor, an unchecked Jim must do first item, or a release-gate reason (LIFE-850). Anything else prints `warn v1 <code> <field>` on stderr and exits 0 (`ready v1`). Unreadable input refuses (exit 2).
-Usage: python -m lifeos.sources.devtools.readiness issue FILE | issue-key KEY | issue-json FILE | issue-mcp FILE KEY | open-gaps | open-gaps-mcp FILE | epic-review FILE | epic-review-key KEY | repo [ROOT]   (FILE is JSON)
-  issue-key  a LIVE issue by key (read-only GET, JIRA_* settings); issue-json a saved REST v3 issue; issue a normalized record
-  issue-mcp  the unmodified Atlassian MCP getJiraIssue result in FILE (no credential; older than 15 minutes warns)
-  open-gaps  LIFE-850: open issues missing parent, Component, Fix Version or readiness label (-mcp: a saved search)
-  epic-review  LIFE-851: a Ready Epic needs a current `ChatGPT review: pass` comment (FILE: saved comments and children)
-  repo       the global source index points at real files with an owner and authority, inside the size limit"""
-# LIFE-225 (ARCH-04), simplified by delivery flow v3 (Jim, Nov 9 2026). A Done-when line is a Given/When/Then row with any id or none, or a bullet under "Done when".
+Refuses (exit 2): an invalid key, no Done-when line, an open `Blocks` predecessor, an unchecked Jim must do first
+item, a release-gate reason, or unreadable input. Anything else prints `warn v1 <code> <field>` on stderr and exits
+0.
+Usage: python -m lifeos.sources.devtools.readiness issue FILE | issue-key KEY | issue-json FILE | issue-mcp FILE
+KEY | open-gaps | open-gaps-mcp FILE | epic-review FILE | epic-review-key KEY | repo [ROOT]
+"""
 import json
 import re
 import sys
@@ -16,12 +14,12 @@ from pathlib import Path
 
 VERSION = 1
 LANES = ("lane-career-v7", "lane-edge-comm")
-DESCRIPTION_LIMIT = 4000                      # characters: a longer LIFE description is a warn
+DESCRIPTION_LIMIT = 4000
 KEY = re.compile(r"LIFE-\d+")
-SIZE_LIMIT = 15 * 1024                        # bytes: the boot files stay one read each
-POLICY_LIMIT = 18 * 1024                      # bytes: LIFE-986 (Jim, Nov 25 2026) added the Dry run gate to the one-file policy; the other boot files keep SIZE_LIMIT
+SIZE_LIMIT = 15 * 1024
+POLICY_LIMIT = 18 * 1024
 GWT = ("given", "when", "then")
-ISSUE_FIELDS = {"key", "labels", "origin", "blockers", "authorization", "permissions", "acceptance"}   # the lane label is the owner; owner, host and source are optional
+ISSUE_FIELDS = {"key", "labels", "origin", "blockers", "authorization", "permissions", "acceptance"}
 
 
 def refuse(code, field, detail=""):
@@ -33,12 +31,11 @@ def text(value):
 
 
 HARD = {"issue_unreadable", "key_invalid", "blockers_unreadable", "blocked_by_open", "gwt_missing", "jim_first_open",
-        "no_readiness_label", "two_readiness_labels", "not_ready_label", "epic_scoping", "epic_status_unread", "epic_unreviewed"}      # LIFE-850: the release gate's reasons are hard here too; LIFE-851: so is an unreviewed Ready Epic          # the only refusals; field_absent refuses only for the three inputs below
+        "no_readiness_label", "two_readiness_labels", "not_ready_label", "epic_scoping", "epic_status_unread", "epic_unreviewed"}
 HARD_FIELDS = {"key", "blockers", "acceptance"}
 
 
 def findings(issue):
-    """Every gap in a normalized issue record, each on its own line; check_issue sorts them into refusals and warnings."""
     if not isinstance(issue, dict):
         return [refuse("issue_unreadable", "issue")]
     out = [refuse("field_absent", name) for name in sorted(ISSUE_FIELDS - issue.keys())]
@@ -48,7 +45,7 @@ def findings(issue):
     if "origin" in issue:
         parent = origin.get("parent") if isinstance(origin, dict) else None
         if not parent:
-            out.append(refuse("origin_missing", "origin"))                 # LIFE-849: LOS is retired; the origin is a LIFE parent epic, nothing else
+            out.append(refuse("origin_missing", "origin"))
         elif not (re.fullmatch(r"LIFE-\d+", str(parent)) and origin.get("approved") is True):
             out.append(refuse("origin_unapproved", "origin", str(parent)))
     if "owner" in issue and not text(issue["owner"]):
@@ -78,11 +75,11 @@ def findings(issue):
             out.append(refuse("authorization_missing", "authorization"))
     if "permissions" in issue and not (isinstance(issue["permissions"], list) and issue["permissions"] and all(text(p) for p in issue["permissions"])):
         out.append(refuse("permissions_missing", "permissions"))
-    if "gate" in issue:                                                        # LIFE-850: the release gate's label and Epic reasons (lifeos.jira.release.gate), read from the fields the record was built from
+    if "gate" in issue:
         why = issue["gate"]
         if why in ("no_readiness_label", "two_readiness_labels", "not_ready_label", "epic_scoping", "epic_status_unread"):
             out.append(refuse(why, "gate"))
-    if "jim_first" in issue:                                                   # Jim, Nov 21 2026: an unchecked Jim must do first item refuses; a missing section warns at start (release refuses it)
+    if "jim_first" in issue:
         jf = issue["jim_first"]
         if not isinstance(jf, dict) or not jf.get("present"):
             out.append(refuse("jim_first_missing", "jim_first"))
@@ -102,7 +99,7 @@ def findings(issue):
     if "acceptance" in issue:
         items = issue["acceptance"]
         if not (isinstance(items, list) and items):
-            out.append(refuse("gwt_missing", "acceptance"))                  # no Given/When/Then row and no Done-when bullet
+            out.append(refuse("gwt_missing", "acceptance"))
         else:
             out += [refuse("gwt_incomplete", "acceptance", f"item {i + 1}") for i, c in enumerate(items) if not (isinstance(c, dict) and (text(c.get("done_when")) or all(text(c.get(k)) for k in GWT)))]
     if str(issue.get("key", "")).startswith("LIFE-") and isinstance(issue.get("description_chars"), int) and issue["description_chars"] > DESCRIPTION_LIMIT:
@@ -111,7 +108,6 @@ def findings(issue):
 
 
 def check_issue(issue):
-    """-> (refusals, warnings). Only HARD codes (and a missing key, blockers or acceptance input) refuse; every other gap is a warning."""
     refusals, warnings = [], []
     for f in findings(issue):
         (refusals if f["code"] in HARD or (f["code"] == "field_absent" and f["field"] in HARD_FIELDS) else warnings).append(f)
@@ -119,7 +115,6 @@ def check_issue(issue):
 
 
 def check_repo(root):
-    """Refusals for the global source index: every indexed path exists, has an owner and an authority, and is inside the size limit."""
     root, out = Path(root), []
     try:
         rows, section = [], ""
@@ -134,11 +129,11 @@ def check_repo(root):
         out.append(refuse("index_empty", "INDEX.md"))
     for is_global, row in rows:
         link = re.match(r"\[`([^`]+)`\]\(([^)]+)\)$", row[0])
-        if len(row) != (5 if is_global else 1) or not link:              # global-source rows carry all five columns; only the Not global list is link-only
+        if len(row) != (5 if is_global else 1) or not link:
             out.append(refuse("index_row_malformed", "INDEX.md", row[0][:60]))
             continue
         if link.group(2) != link.group(1):
-            out.append(refuse("link_destination_mismatch", link.group(1), link.group(2)))   # the clickable destination must be the file the label names
+            out.append(refuse("link_destination_mismatch", link.group(1), link.group(2)))
             continue
         path = root / link.group(1)
         if not path.is_file():
@@ -155,9 +150,8 @@ def check_repo(root):
 
 
 def jira_issue(mode, arg):
-    """LIFE-313: normalize a Jira issue (live by key, or a saved REST v3 JSON file) and run the same issue check. Gaps in Jira data are QUEUE_NOT_READY."""
-    from lifeos.jira import readiness_record as rr          # lazy: the offline modes never import or touch the network
-    from lifeos.jira import fill_defaults                    # LIFE-741: a live read first fills the parent, Component and Fix Version; a failed Jira write is the one `fill_failed` refusal
+    from lifeos.jira import readiness_record as rr
+    from lifeos.jira import fill_defaults  # a live read first fills the parent, Component and Fix Version; a failed Jira write is the one `fill_failed` refusal
     try:
         if mode == "issue-key":
             client = rr.Jira.from_env()
@@ -168,16 +162,17 @@ def jira_issue(mode, arg):
         return (*check_issue(rr.normalize(raw)), None)
     except fill_defaults.FillFailed:
         return [refuse("fill_failed", "jira")], [], None
-    except Exception as exc:                                  # noqa: BLE001  every failure is a fixed code, never a body, URL or value
+    except Exception as exc:  # noqa: BLE001  fixed code only
         code = str(exc) if str(exc).startswith(("JIRA_", "INCOMPLETE:")) else type(exc).__name__
         return [], [], f"QUEUE_NOT_READY — {code}"
 
 
-MCP_MAX_AGE = 15 * 60                         # seconds: an older saved MCP read is a warning (v3), no longer a refusal
+MCP_MAX_AGE = 15 * 60
 
 
 def mcp_issue(path, key):
-    """LIFE-363: -> (refusals, warnings, gap, fields used). The session wrote the file, so the limit (it cannot be proven unmodified) is stated in the output by the caller."""
+    """-> (refusals, warnings, gap, fields used). The file cannot be proven unmodified; the caller states that limit.
+    """
     from lifeos.jira import readiness_record as rr
     p, shown = Path(path), None
     try:
@@ -186,7 +181,7 @@ def mcp_issue(path, key):
         shown = rr.used(raw)
         refusals, warnings = check_issue(rr.normalize(raw))
         return refusals, ([refuse("stale_read", "file", "saved more than 15 minutes ago")] if stale else []) + warnings, None, shown
-    except Exception as exc:                                  # noqa: BLE001  every failure is a fixed code, never a body or value
+    except Exception as exc:  # noqa: BLE001  fixed code only
         code = str(exc) if str(exc).startswith(("INCOMPLETE:", "KEY_MISMATCH")) else type(exc).__name__
         return [], [], f"QUEUE_NOT_READY — {code}", shown
 
@@ -195,7 +190,6 @@ REVIEW = re.compile(r"^[#*\s]*ChatGPT review:\s*(pass|changes)\b", re.I)
 
 
 def moment(value):
-    """A Jira timestamp as an aware datetime, or None when it cannot be read (an unreadable comment never counts as a review)."""
     from datetime import datetime
     try:
         return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
@@ -204,8 +198,10 @@ def moment(value):
 
 
 def epic_review(bundle):
-    """LIFE-851: -> None, or the reason an Epic in Ready has no current pass: "missing", "failed" (the newest review says changes) or "stale" (a child was edited after the newest pass). Any other Epic status is not judged.
-    bundle: {"key", "status", "comments": [{"body", "created"}], "children": [{"key", "updated"}]}."""
+    """-> None, or why an Epic in Ready has no current pass: "missing", "failed" (newest review says changes) or
+    "stale" (a child was edited after it).
+    bundle: {"key", "status", "comments": [{"body", "created"}], "children": [{"key", "updated"}]}.
+    """
     if (bundle.get("status") or "") != "Ready":
         return None
     from lifeos.jira.readiness_record import lines
@@ -234,7 +230,6 @@ GAPS_FIELDS = "parent,components,fixVersions,labels"
 
 
 def open_gaps(issues):
-    """LIFE-850: -> [(key, [missing...])] for the issues that lack a parent, a Component, a Fix Version or a readiness label (`ready`, `needs-prep`, `needs-jim`). Pure; reporting only."""
     from lifeos.jira.release import READINESS
     out = []
     for issue in issues:
@@ -255,7 +250,6 @@ def gaps_report(issues):
 
 
 def report(refusals, warnings):
-    """Warn lines first, then refusals; exit 0 with `ready` only when nothing refused."""
     for w in warnings:
         print(f"warn v{VERSION} {w['code']} {w['field']} {w['detail']}".rstrip(), file=sys.stderr)
     for r in refusals:
@@ -284,7 +278,7 @@ def run(argv):
                 bundle = rr.epic_bundle(argv[1])
             if not isinstance(bundle, dict):
                 raise ValueError("INCOMPLETE:bundle")
-        except Exception as exc:                                  # noqa: BLE001  a fixed code only, never a body, URL or value
+        except Exception as exc:  # noqa: BLE001  fixed code only
             code = str(exc) if str(exc).startswith(("JIRA_", "INCOMPLETE:", "JM_DASH_")) else type(exc).__name__
             print(f"QUEUE_NOT_READY — {code}", file=sys.stderr)
             return 2
@@ -300,7 +294,7 @@ def run(argv):
                 issues = nodes if isinstance(nodes, list) else None
                 if issues is None:
                     raise ValueError("INCOMPLETE:issues")
-        except Exception as exc:                                  # noqa: BLE001  a fixed code only, never a body, URL or value
+        except Exception as exc:  # noqa: BLE001  fixed code only
             code = str(exc) if str(exc).startswith(("JIRA_", "INCOMPLETE:", "JM_DASH_")) else type(exc).__name__
             print(f"QUEUE_NOT_READY — {code}", file=sys.stderr)
             return 2
@@ -309,7 +303,7 @@ def run(argv):
         refusals, warnings, gap = jira_issue(argv[0], argv[1])
         if gap:
             print(gap, file=sys.stderr)
-            if "_MISSING:" in gap:                                    # the settings-missing gap (LIFE-313); names only
+            if "_MISSING:" in gap:
                 print("hint: no Jira settings here? Read the ticket with the Atlassian MCP, save the result and run: python -m lifeos.sources.devtools.readiness issue-mcp FILE KEY", file=sys.stderr)
             return 2
         return report(refusals, warnings)
@@ -318,7 +312,7 @@ def run(argv):
         checks = {"issue": lambda: check_issue(json.loads(Path(args[0]).read_text())),
                   "repo": lambda: (check_repo(args[0] if args else Path(__file__).resolve().parents[3]), [])}
         refusals, warnings = checks[mode]()
-    except Exception:                                                        # noqa: BLE001  unreadable input, bad mode or any error is a refusal, never a pass
+    except Exception:  # noqa: BLE001  any error is a refusal, never a pass
         refusals, warnings = [refuse("input_unreadable", "argv")], []
     return report(refusals, warnings)
 

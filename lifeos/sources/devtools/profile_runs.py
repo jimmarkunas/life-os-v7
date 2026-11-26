@@ -1,10 +1,12 @@
-"""LIFE-555: where the hourly and domains workflows spend their time. Read-only: it reads GitHub's own run records and prints seconds per job and per step.
+"""Where the hourly and domains workflows spend their time, read-only, from GitHub's run records: seconds per job and
+step.
 
   python -m lifeos.sources.devtools.profile_runs --workflow hourly|domains --last 10 [--failed 5]
 
-Only job and step NAMES (they are written in the workflow files) and start/end times are used; no log text, no data from any run, no secret. A step that was skipped is not counted.
-Runs are grouped by outcome (success, failure) and by kind (hourly: the Oracle ticker's "tick" versus a manual dispatch; domains: "after tick" versus manual); cancelled and skipped runs are left out.
-Percentiles are nearest-rank over the runs that executed the step. The critical path is the longest chain of jobs through the workflow's `needs:` lines at the p50 job times."""
+Runs are grouped by outcome and kind (tick versus manual dispatch); cancelled and skipped runs are left out.
+Percentiles are nearest-rank. The critical path is the longest chain through the workflow's `needs:` lines at p50
+job times.
+"""
 import argparse
 import json
 import re
@@ -25,7 +27,6 @@ def parse(stamp):
 
 
 def span(start, end):
-    """Whole seconds between two GitHub timestamps, or None when either is missing or the order is wrong."""
     if not start or not end:
         return None
     seconds = int((parse(end) - parse(start)).total_seconds())
@@ -39,7 +40,9 @@ def kind(workflow, run):
 
 
 def run_record(detail):
-    """One run's `gh run view --json jobs,startedAt,updatedAt` -> {"wall": s, "jobs": {job: {"seconds": s, "steps": {step: s}}}}. Skipped steps and jobs are left out."""
+    """One `gh run view --json jobs,startedAt,updatedAt` -> {"wall": s, "jobs": {job: {"seconds": s, "steps": {step:
+    s}}}}; skipped steps and jobs are left out.
+    """
     jobs = {}
     first = last = None
     for job in detail.get("jobs", []):
@@ -62,9 +65,8 @@ def run_record(detail):
 
 
 def percentile(values, p):
-    """Nearest-rank percentile (p in 0..100) of a non-empty list."""
     ordered = sorted(values)
-    rank = max(1, -(-len(ordered) * p // 100))                                   # ceil(n * p / 100)
+    rank = max(1, -(-len(ordered) * p // 100))
     return ordered[int(rank) - 1]
 
 
@@ -73,7 +75,6 @@ def stats(values):
 
 
 def summarize(records):
-    """-> {"runs", "wall", "jobs": {job: {**stats, "steps": {step: stats}}}, "startup_share", "unit_test_share"} over run_record() results."""
     jobs = {}
     startup = tests = total = 0
     for record in records:
@@ -93,8 +94,7 @@ def summarize(records):
 
 
 def needs_from_workflow(path):
-    """{job: [jobs it waits for]} from the workflow file's `needs:` lines (PyYAML)."""
-    import yaml                                                                  # noqa: PLC0415 - a runtime dependency of the pipeline, imported only here
+    import yaml
     jobs = (yaml.safe_load(Path(path).read_text()) or {}).get("jobs", {})
     out = {}
     for name, body in jobs.items():
@@ -104,7 +104,7 @@ def needs_from_workflow(path):
 
 
 def critical_path(needs, seconds):
-    """-> (total seconds, [jobs in order]): the longest chain through the `needs` graph using each job's duration (jobs with no record count 0)."""
+    """-> (total seconds, [jobs in order]): the longest chain through the `needs` graph by job duration."""
     best = {}
 
     def reach(job):
@@ -112,7 +112,7 @@ def critical_path(needs, seconds):
             before = max((reach(dep) for dep in needs.get(job, [])), default=(0, []), key=lambda pair: (pair[0], len(pair[1])))
             best[job] = (before[0] + seconds.get(job, 0), before[1] + [job])
         return best[job]
-    return max((reach(job) for job in needs), default=(0, []), key=lambda pair: (pair[0], len(pair[1])))      # a tie goes to the longer chain
+    return max((reach(job) for job in needs), default=(0, []), key=lambda pair: (pair[0], len(pair[1])))
 
 
 def gh(args):
@@ -123,9 +123,9 @@ def gh(args):
 
 
 def pick(runs, workflow, last, failed):
-    """-> {(outcome, kind): [run ids]}: the newest `last` successes and `failed` failures per kind; cancelled and skipped runs are left out."""
+    """-> {(outcome, kind): [run ids]}: the newest `last` successes and `failed` failures per kind."""
     chosen = {}
-    for run in runs:                                                              # newest first
+    for run in runs:
         outcome = run.get("conclusion")
         if outcome not in ("success", "failure"):
             continue

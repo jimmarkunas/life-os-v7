@@ -1,6 +1,8 @@
-"""What every signed Close page shares: signing, the result page, the refusal wrapper, the POST guard, and one write with its read-back (LIFE-645).
+"""What every signed Close page shares: signing, the result page, the refusal wrapper, the POST guard and one write
+with its read-back.
 
-A leaf module: it imports no app, so close_app and each app can use it. Outputs: fixed codes only; nothing here reads or writes Notion by itself."""
+A leaf module: it imports no app. Fixed codes only.
+"""
 import hashlib
 import hmac
 import sys
@@ -14,7 +16,6 @@ STEPS = ("cancel", "edit", "review", "confirm")
 
 
 def norm(value):
-    """LIFE-695: a browser submits every form value with its line breaks as CR+LF, so a text with a line break must enter a signature or a fingerprint the same on both sides: CR+LF and lone CR become LF."""
     return str(value).replace("\r\n", "\n").replace("\r", "\n")
 
 
@@ -27,7 +28,6 @@ def same(a, b):
 
 
 def stopper(sub, path, tab):
-    """-> stop(status, eyebrow, title, text, detail, css): the page's one result screen, as (status, content type, body, no extra headers)."""
     def stop(status, eyebrow, title, text, detail, css="alert"):
         return status, HTML, S.page(title, sub, f'<section class="section"><div class="eyebrow">{e(eyebrow)}</div><h3 class="step-title">{e(title)}</h3><p class="lead">{e(text)}</p>'
                                                 f'<div class="notice {css}">{e(detail)}</div></section>', path, tab), ()
@@ -35,7 +35,6 @@ def stopper(sub, path, tab):
 
 
 def refused(code):
-    """LIFE-684: the reason a form was refused goes to the service log as a fixed code (never a value), so the next report can name the cause."""
     print(f"refused: {code}", file=sys.stderr, flush=True)
 
 
@@ -45,18 +44,18 @@ def invalid(stop, reload, title="This form is no longer valid", code="FORM_ALTER
 
 
 def expired_form(stop, reload):
-    """A good form that was opened more than 15 minutes ago (close_app.TTL; a test keeps the words and the number together)."""
     refused("FORM_EXPIRED")
     return stop(403, "Not accepted", "This form expired", f"Forms are good for 15 minutes. {reload}", "Nothing was changed.", "danger")
 
 
 def unverified(stop, title, done="it was recorded", code="not verified"):
-    """The 'cannot prove it' screen: the write may or may not have happened, so nothing is claimed."""
     return stop(500, "Unavailable", title, f"Do not assume {done} or left unchanged.", f"Status: DEGRADED · {code}", "danger")
 
 
 def written(stop, call, verify, refused=(), refusal=("", ""), what="it was recorded"):
-    """Run one write -> (its read-back result, None), or (None, the screen to show): a code in `refused` is a clear 409, any other Notion error or a result not verified is 'cannot prove it'."""
+    """Run one write -> (its read-back result, None) or (None, the screen to show): a code in `refused` is a clear
+    409; any other Notion error or unverified result is 'cannot prove it'.
+    """
     try:
         done = call()
     except NotionError as error:
@@ -66,7 +65,6 @@ def written(stop, call, verify, refused=(), refusal=("", ""), what="it was recor
 
 
 def handler(get, post, stop, title):
-    """The page's handle(req, who, secrets): GET or POST, a Notion refusal shown as refused before anything was written."""
     def handle(req, who, secrets):
         try:
             return (get if req["method"] == "GET" else post)(req, who, secrets)
@@ -76,21 +74,21 @@ def handler(get, post, stop, title):
 
 
 def signed(form, secret, tag, login, pid, st, steps=STEPS, mid=(), tail=()):
-    """True for a form with a page id, one of `steps` (None: any), a whole-number expiry and the token `t` signing (tag, login, pid, *mid, st, exp, *tail), whatever the time."""
+    """True for a form with a page id, one of `steps` (None: any), a whole-number expiry and a valid token `t`,
+    whatever the time.
+    """
     exp = form.get("exp", "")
     return bool(pid) and (steps is None or form.get("step") in steps) and exp.isascii() and exp.isdigit() and same(form.get("t"), mac(secret, tag, login, pid, *mid, st, exp, *tail))
 
 
 def live(form, secret, tag, login, pid, st, now, steps=STEPS, mid=(), tail=()):
-    """True for a form still good: `signed`, with an expiry that has not passed."""
     return signed(form, secret, tag, login, pid, st, steps, mid, tail) and int(form.get("exp", "")) >= now.timestamp()
 
 
 def gate(form, secret, login, now, tag, key, stop, reload, cancel=("No changes made", "Nothing was recorded.")):
-    """The first test of a signed three-step POST -> (pid, step, exp, st, None) for a live form, else (.., the response): stale or altered (403), or cancel (200, nothing written)."""
     pid, step, exp, st = D._page_id(form.get(key)), form.get("step"), form.get("exp", ""), form.get("st", "")
     if not live(form, secret, tag, login, pid, st, now):
-        if signed(form, secret, tag, login, pid, st):                                   # untouched and signed by us, only too old
+        if signed(form, secret, tag, login, pid, st):
             return pid, step, exp, st, expired_form(stop, reload)
         return pid, step, exp, st, invalid(stop, reload)
     return pid, step, exp, st, stop(200, "Cancelled", cancel[0], cancel[1], "Nothing was written.", "") if step == "cancel" else None

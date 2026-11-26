@@ -1,8 +1,10 @@
-"""MegIBOW stage (D134): Gmail + Outlook sent mail, Google + Outlook calendars, Jim's review decisions -> the 8-week table, warnings and the review list in Notion.
+"""MegIBOW stage: sent mail, calendars and review decisions -> the 8-week table, warnings and review list in Notion.
 
-Flow: read every source (a failed source makes the run DEGRADED and the table is left as it was) -> apply Jim's review decisions -> classify (pure) -> project -> warnings -> render
--> write only the bounded block. Counts and fixed codes only in the log; names and addresses stay in memory and in Jim's private Notion pages.
-Lives under sources because it may read the Jobs tables for the companies Jim is pursuing; the engine itself (lifeos/megibow) imports platform only."""
+Flow: read every source (a failed source makes the run DEGRADED and leaves the table as it was) -> apply review
+decisions -> classify (pure) -> project -> warnings -> render -> write only the bounded block. Counts and fixed
+codes only in the log. Lives under sources because it may read the Jobs tables; lifeos/megibow imports platform
+only.
+"""
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 import collections
@@ -20,9 +22,9 @@ from lifeos.platform.notion_client import Client, NotionError
 from lifeos.platform.outlook import OutlookError
 
 FORWARD_DAYS = 60
-DASHBOARD_PAGE = notion_id("DASHBOARD_PAGE")        # Jim & Matt Dashboard V2 (an id, not a credential); the block is found by its shape
-REVIEW_SOURCE = notion_id("REVIEW_SOURCE")        # the MegIBOW Review data source
-CUTOVER_DEFAULT = "2026-10-05"          # V7 counts from here; the weeks before come from Jim's own sheet (megibow/history.py)
+DASHBOARD_PAGE = notion_id("DASHBOARD_PAGE")
+REVIEW_SOURCE = notion_id("REVIEW_SOURCE")
+CUTOVER_DEFAULT = "2026-10-05"
 
 
 class MegibowError(NotionError):
@@ -34,7 +36,6 @@ def _writer(environ):
 
 
 def _meta(outcome, msgs, evs, ctx):
-    """The private details of a review item (who, when, which people to remember): memory and Notion only."""
     key = outcome["key"]
     if key in msgs:
         m = msgs[key]
@@ -48,13 +49,14 @@ def _meta(outcome, msgs, evs, ctx):
 
 
 def run(limit, live, environ=os.environ, gmail=None, gcal=None, outlook_clients=None, notion=None, connection=None, now=None, known=None):
-    """LIFE-672: Jim's table first, then Matt's, each isolated: a failure of either never stops or changes the other. Jim's failure is raised after Matt's write;
-    Matt's alone is `failed` 1 (MEGIBOW_MATT_DEGRADED)."""
+    """Jim's table first, then Matt's, each isolated: a failure of either never changes the other. Jim's failure is
+    raised after Matt's write; Matt's alone is `failed` 1 (MEGIBOW_MATT_DEGRADED).
+    """
     now = (now or datetime.now(timezone.utc)).astimezone(CHI)
     jim_error = counts = None
     try:
         counts = _jim(limit, live, environ, gmail, gcal, outlook_clients, notion, connection, now, known)
-    except Exception as error:                                                       # noqa: BLE001 - re-raised below, after Matt's own write
+    except Exception as error:  # noqa: BLE001 - re-raised below, after Matt's own write
         jim_error = error
     try:
         notion = notion or _writer(environ)
@@ -71,7 +73,9 @@ def run(limit, live, environ=os.environ, gmail=None, gcal=None, outlook_clients=
 
 
 def _matt(notion, now, live):
-    """Matt's callout from his own database (LIFE-672). Never raises: -> {status OK | DEGRADED, code, entered, warnings, rows_written, ...}."""
+    """Matt's callout from his own database. Never raises: -> {status OK | DEGRADED, code, entered, warnings,
+    rows_written, ...}.
+    """
     out = {"status": "DEGRADED", "code": "", "entered": 0, "warnings": 0, "rows_written": 0, "ignored": 0}
     when = ct_stamp.when(now)
     try:
@@ -80,7 +84,7 @@ def _matt(notion, now, live):
         block_id = v3.matt_block(notion)
         try:
             entered, out["ignored"] = v3.matt_rows(notion, v3.find(notion, v3.MATT_SOURCE_TITLE, "data_source"))
-        except Exception as error:                                                   # noqa: BLE001 - an unreadable database keeps the last accepted rows and says so
+        except Exception as error:  # noqa: BLE001 - an unreadable database keeps the last accepted rows
             out["code"] = _code(error)
             out.update(v3.write(notion, block_id, f"DEGRADED at {ct_stamp.when(now)} — Matt's database could not be read; showing the last accepted rows", None, None, live))
             out.pop("summary_page", None)
@@ -89,12 +93,12 @@ def _matt(notion, now, live):
         warns, suppressed = v3.matt_warnings(proj, now)
         lines = warns or ([f"Warnings start once {v3.MIN_ENTERED} weeks are entered ({proj['entered']} so far)."] if suppressed else [W.HEALTHY])
         stamp = f"Last refreshed {when}"
-        link = v3.history_link(notion, "Matt")                                          # LIFE-687: the note line also links his Megibow history page
+        link = v3.history_link(notion, "Matt")
         notes = [("\n".join(lines) + "\n", None), ("Megibow history", link)] if link else [("\n".join(lines), None)]
         out.update(v3.write(notion, block_id, stamp, v3.table(proj["weeks"], proj["counts"], proj["cumulative"]), notes, live))
         out["summary_written"] = v3.write_summary(notion, out.pop("summary_page"), v3.summary("Matt", stamp, proj["weeks"], proj["counts"], proj["cumulative"], lines), live)
         out.update(status="OK", entered=proj["entered"], warnings=len(warns))
-    except Exception as error:                                                       # noqa: BLE001 - isolation: Matt's failure never reaches Jim's result
+    except Exception as error:  # noqa: BLE001 - Matt's failure never reaches Jim's result
         out["code"] = out["code"] or _code(error)
     out.pop("summary_page", None)
     return out
@@ -171,16 +175,16 @@ def _finish(counts, live, environ, notion, connection, now, today, msgs, evs, ow
     excluded = {d.strip().lower() for d in (environ.get("MEGIBOW_EXCLUDED_DOMAINS") or "").split(",") if d.strip()}
     review_id = (environ.get("MEGIBOW_REVIEW_DB_ID") or REVIEW_SOURCE).strip().replace("collection://", "")
     notion = notion or _writer(environ)
-    try:                                                     # LIFE-672: the V3 block ID register (row jim.megibow) is the address; the MEGIBOW_BLOCK_ID secret is only the fallback
+    try:  # the block ID register (row jim.megibow) is the address; MEGIBOW_BLOCK_ID is only the fallback
         block_id, counts["block_source"] = v3.registered(notion, "jim.megibow"), "register"
     except v3.V3Error as error:
         if str(error) != "MEGIBOW_V3_TARGET_NOT_FOUND":
             raise
         block_id, counts["block_source"] = (environ.get("MEGIBOW_BLOCK_ID") or "").strip(), "secret"
     if not block_id:
-        raise card._fail("BLOCK_NOT_FOUND")                  # LIFE-385 (D250-13): a fixed block id only, never found by the table's shape
-    layout_v3 = v3.is_v3(notion, block_id)                   # the V3 callout (heading first); the V2 block while the register has no jim.megibow row
-    if legacy is None:                                                    # the old sheet's totals, typed once into the block as "Legacy totals: ..."; read, then remembered
+        raise card._fail("BLOCK_NOT_FOUND")
+    layout_v3 = v3.is_v3(notion, block_id)  # the callout (heading first); the older block while the register has no jim.megibow row
+    if legacy is None:
         legacy = card.read_legacy(notion, block_id)
         if legacy and live and connection is not None:
             store.save_legacy(connection, legacy)
@@ -199,7 +203,6 @@ def _finish(counts, live, environ, notion, connection, now, today, msgs, evs, ow
     for e in evs:
         by_ev[C.key_hash("sched", e["uid"])] = e
         by_ev[C.key_hash("call", e["occ"])] = e
-    # Jim's answers from the review list, applied before the recount (and remembered when live)
     plan = review.plan([], rows, now)
     answered = plan["decisions"]
     ctx["overrides"].update(answered)
@@ -221,7 +224,7 @@ def _finish(counts, live, environ, notion, connection, now, today, msgs, evs, ow
     try:
         manual, bad_manual, has_line = card.read_manual(notion, block_id, today)
     except NotionError:
-        pass                                                                      # an unreadable line never fails the run; the count simply is not added
+        pass
     counts["manual_unreadable"] = bad_manual
     if live and not has_line and not layout_v3:
         try:
@@ -230,7 +233,8 @@ def _finish(counts, live, environ, notion, connection, now, today, msgs, evs, ow
         except NotionError:
             pass
     cutover = date.fromisoformat((environ.get("MEGIBOW_CUTOVER") or CUTOVER_DEFAULT).strip())
-    # Monday rollover: freeze every finished week from the cut-over on, once, with read-back; only from a complete read
+    # Monday rollover: freeze every finished week from the cut-over on, once, with read-back, from a complete read
+    # only from a complete read
     this_monday = monday(today)
     counts["buckets"] = dict(collections.Counter(f"{o['status']}:{o['reason']}" for o in outcomes))
     proj = P.project(outcomes, today, frozen, legacy, cutover, history.WEEKS, manual)
@@ -255,7 +259,6 @@ def _finish(counts, live, environ, notion, connection, now, today, msgs, evs, ow
     warns = W.evaluate(proj["counts"][proj["current"]], baseline, now, forward, degraded, unresolved)
     counts["warnings"], counts["review_open"] = len(warns), len(proj["review"])
     counts["status"] = {a: proj["counts"][proj["current"]][a] for a in C.ACTIVITIES}
-    # the review list: add the uncertain items, mark answered ones Applied, supersede the rest
     items = [{"key": o["key"], "candidate": o["candidate"] or "Outreach", "why": o["reason"], "week": (o["meta"]["when"]).isoformat(), "who": o["meta"]["who"]} for o in proj["review"]]
     if review_id and notion is not None:
         wanted = review.plan(items, rows, now)
@@ -264,7 +267,7 @@ def _finish(counts, live, environ, notion, connection, now, today, msgs, evs, ow
         counts["review_created"] = len(wanted["create"])
     if layout_v3:
         shown, weekly_error = proj, ""
-        try:                                                                     # LIFE-687: Jim's weekly database is the history and the source of his lifetime Cumulative
+        try:
             source_id = v3.find(notion, weekly.JIM_SOURCE_TITLE, "data_source")
             rows, counts["weekly_ignored"] = weekly.read(notion, source_id)
             if not degraded:
@@ -275,9 +278,9 @@ def _finish(counts, live, environ, notion, connection, now, today, msgs, evs, ow
         except v3.V3Error as error:
             if str(error) != "MEGIBOW_V3_TARGET_NOT_FOUND":
                 raise
-            counts["weekly"] = "MISSING"                                         # no weekly database yet: the engine's own table and Cumulative, as before
+            counts["weekly"] = "MISSING"
         except NotionError as error:
-            weekly_error = counts["weekly_code"] = _code(error)                  # unreadable: keep the last accepted table and say so
+            weekly_error = counts["weekly_code"] = _code(error)
         counts.update(_jim_v3(notion, block_id, shown, warns, degraded, review_db, now, live, weekly_error))
     else:
         status = R.status(now, degraded, len(proj["review"]), None)
@@ -291,7 +294,6 @@ def _finish(counts, live, environ, notion, connection, now, today, msgs, evs, ow
 
 
 def _jim_v3(notion, block_id, proj, warns, degraded, review_db, now, live, weekly_error=""):
-    """Jim's V3 callout (LIFE-672): stamp, the 8-week table with Cumulative last, warnings or the healthy line, the review-needed line, the Megibow history link, then the summary page."""
     when = ct_stamp.when(now)
     if weekly_error and not degraded:
         return v3.write(notion, block_id, f"DEGRADED at {ct_stamp.when(now)} — Jim's weekly database could not be read; showing the last accepted counts", None, None, live) | {"layout": "v3"}
@@ -319,7 +321,6 @@ def known_companies(connection):
 
 
 def _alert(environ, now, live, counts):
-    """Wednesday 1:30 PM and 2:30 PM CT: a refresh that is still failing is worth a phone push (counts only); the table itself says DEGRADED regardless."""
     if not live or now.weekday() != 2 or not ((now.hour, now.minute) >= (13, 30) and now.hour < 15):
         return
     from lifeos.platform import alerts                                    # noqa: PLC0415

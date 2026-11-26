@@ -1,11 +1,11 @@
-"""Manage on the private Close service for ONE interview opportunity page: a read-only hub, Reopen, and hand-set fields (LIFE-88 E14).
+"""Manage on the private Close service for one interview opportunity page: a read-only hub, Reopen and hand-set
+fields.
 
-GET /manage?o=<opportunity page id> finds the record that carries the pursuit's decision (decision.route: its one Job Ledger row, LIFE-353), says whether it is open or closed, and links the existing actions (Close, Mark Complete, Build résumé / I applied with this résumé, Mark as Sent), each with its own signed review and
-confirm. GET never writes.
-Writes, each through a signed review and confirm on a fresh read: Reopen a closed pursuit (decision.confirm_rejected clears Hiring Decision, appends one Reopened line and reads it back; a Hired outcome needs its own tick); on an open pursuit, set Paused, Waiting on employer or Active, or a next action and/or due date
-(decision.set_hand, LIFE-111 / LIFE-112); record sent material (LIFE-114): an application form or portal answers with an optional link, or a Google Drive file that must exist and not be in the trash at review and again at confirm.
-Outputs: fixed codes only. Pointer: LIFE-88, LIFE-353."""
-# LIFE-88 E14 (Jim, Oct 24 2026): 12a was the read-only hub, 12b the Reopen. LIFE-111 / LIFE-112 (Jim, Oct 25) added Paused, Waiting on employer and next action; LIFE-114 (Jim, Oct 29) added sent material.
+GET /manage?o=<opportunity page id> links the existing actions. POST writes only through a signed review and
+confirm on a fresh read: Reopen, set Paused, Waiting on employer or Active, set a next action or due date, or
+record sent material (form answers, or a Google Drive file that must exist and not be in the trash at review and at
+confirm). Outputs: fixed codes only.
+"""
 import re
 from datetime import date
 from html import escape as e
@@ -21,10 +21,10 @@ SUB = "One interview opportunity: its actions, each confirmed on its own screen.
 REASON = "Reopened on the Close screen"
 HOLD_CHOICES = ((M.PAUSED, "Pause it"), (M.WAITING, "Waiting on employer"), (M.ACTIVE, "Back to Active"))
 DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
-MANAGE_TTL = 8 * 3600                                                      # LIFE-174 (Jim, Oct 31): a Manage page stays usable for a working session, not 15 minutes
-QMAX, HITS = 100, 15                                                       # LIFE-173: a Drive search's longest query and most results shown
+MANAGE_TTL = 8 * 3600
+QMAX, HITS = 100, 15
 FOLDER = "application/vnd.google-apps.folder"
-OP = re.compile(r"[0-9a-f]{16}")                                          # LIFE-172: the op of the sent item to remove
+OP = re.compile(r"[0-9a-f]{16}")
 DRIVE_LINK = re.compile(r"https://(?:drive\.google\.com/file|docs\.google\.com/(?:document|spreadsheets|presentation))/d/([A-Za-z0-9_-]{10,200})(?:/[A-Za-z]*)?(?:[?#]\S*)?")
 LINK = re.compile(r"https://[^\s<>\"]{1,500}")
 
@@ -33,13 +33,11 @@ _stop = stopper(SUB, PATH, TAB)
 
 
 def _record(rows, page):
-    """-> (kind, record, closed) for the pursuit on this opportunity page, routed exactly as Close would route it: its Ledger row by page id, else by company and role."""
     rec = D.route(rows, {"action": D.ACTION, "id": D._page_id(page["id"]), "company": page["company"], "role": page["role"]})
     return C.KIND, rec, bool(rec.get("decision"))
 
 
 def _fold_lines(client, pid):
-    """The paragraph lines of the page's ⚙️ LIFE OS fold, or [] for a page V7 did not write."""
     tops = C._lines(client, pid)
     if not tops or tops[0].get("type") != "toggle" or C._plain(tops[0]) != C.FOLD:
         return []
@@ -47,7 +45,6 @@ def _fold_lines(client, pid):
 
 
 def _open_actions(lines):
-    """The page's completable actions that are not done yet -> [(key, text)]: the derived primary action and Jim's own (LIFE-112), each with its own key."""
     done = {m.group(1) for m in map(C.DONE_LINE.fullmatch, lines) if m}
     return [(m.group(1), m.group(2)) for m in map(C.ACTION_LINE.fullmatch, lines) if m and m.group(1) not in done]
 
@@ -72,10 +69,9 @@ def _day(at):
 
 
 def _hand(secret, login, kind, rec, page, lines, ledger_ready, exp, picker=None):
-    """LIFE-111 / LIFE-112: the hand-set state of the open pursuit and its two signed forms (nothing is written from here)."""
     o, hold, nxt = D._page_id(rec["id"]), M.hold_of(lines), M.next_of(lines)
     if nxt and nxt["op"] in {m.group(1) for m in map(C.DONE_LINE.fullmatch, lines) if m}:
-        nxt = None                                                               # Mark Complete cleared it
+        nxt = None
     state = f"{M.HOLD_LABEL[hold['state']]} · set by Jim {_day(hold['at'])}" if hold else "Active"
     body = ('<div class="eyebrow">Set by Jim</div><p class="lead">A hand-set state never changes the stage evidence shows; new mail or Calendar evidence clears Paused or Waiting.</p>'
             f'<p class="lead"><b>State:</b> {e(state)}</p>')
@@ -85,21 +81,21 @@ def _hand(secret, login, kind, rec, page, lines, ledger_ready, exp, picker=None)
         return body + f'<div class="notice alert">Not available yet: the Job Ledger has no “{e(D.HAND_SET)}” text property, so nothing can be stored on this application. Nothing was changed.</div>'
     form = lambda act, extra=None: f'<form method="post" action="/manage">{S._hidden(_hand_fields(secret, login, kind, o, page["company"], page["role"], exp, act) | {"p": D._page_id(page["id"])} | (extra or {}))}'   # noqa: E731
     buttons = "".join(f'<button class="btn" name="v" value="{v}">{e(label)}</button>' for v, label in HOLD_CHOICES if v != (hold or {}).get("state", M.ACTIVE))
-    body += (f'<div class="mcard"><h4>Status</h4>{form("hold")}<div class="mrow">{buttons}</div></form></div>'      # LIFE-174 (Jim, Oct 31): one card per action, fields and button together
+    body += (f'<div class="mcard"><h4>Status</h4>{form("hold")}<div class="mrow">{buttons}</div></form></div>'
              f'<div class="mcard"><h4>Set a next action</h4>{form("next")}<div class="mrow">'
              f'<label class="fld">Next action<input type="text" name="nx" maxlength="{M.NEXT_MAX}"></label><label class="fld due">Due<input type="date" name="due"></label>'
              '<button class="btn">Review next action</button></div></form><p class="hint">Shown beside the derived action, labelled set by Jim; Mark Complete clears it.</p></div>')
     sent, unsent = M.sent_of(lines), _hand_fields(secret, login, kind, o, page["company"], page["role"], exp, "unsent")
-    body += '<div class="mcard"><h4>Materials sent</h4>' + ("".join(                        # LIFE-172: each item can be removed, through its own review and confirm
+    body += '<div class="mcard"><h4>Materials sent</h4>' + ("".join(
         f'<form method="post" action="/manage" class="item">{S._hidden(unsent | {"p": D._page_id(page["id"]), "v": m["op"], "sx": m["text"]})}<span>{e(M.SENT_KINDS[m["kind"]])}: {e(m["text"])} · recorded {e(_day(m["at"]))}</span>'
         '<button class="btn">Remove</button></form>' for m in sent) or '<p class="hint">None recorded yet.</p>') + '</div>'
-    if picker:                                                            # LIFE-217: Google's own picker; a pick opens the usual review (sk=file, su=its link)
+    if picker:
         pick = form("sent", {"sk": M.FILE, "su": ""}).replace("<form ", '<form id="pick-form" ', 1)
         body += (f'<div class="mcard"><h4>Pick a Google Drive file you sent</h4>{pick}</form>'
                  f'<div class="mrow"><button type="button" class="btn" id="pick-drive" disabled data-client="{e(picker["client_id"])}" data-key="{e(picker["api_key"])}" data-app="{e(picker["app_id"])}">Choose from Google Drive</button></div>'
                  '<p class="hint">Google asks you to sign in the first time; it sees only the file you pick. You review it before anything is recorded.</p>'
                  '<script src="/manage-picker.js" defer></script></div>')
-    body += (f'<div class="mcard"><h4>Add a Google Drive file you sent</h4>{form("drive")}<div class="mrow">'   # LIFE-173: find the file instead of hunting for its link
+    body += (f'<div class="mcard"><h4>Add a Google Drive file you sent</h4>{form("drive")}<div class="mrow">'
              f'<label class="fld">Search my Drive (optional)<input type="search" name="q" maxlength="{QMAX}" placeholder="Leave empty for your latest files"></label><button class="btn">Show my Drive files</button></div></form>'
              '<p class="hint">Click it with the box empty to pick from your most recently edited files, or type part of a name first. You review the file before anything is recorded.</p>'
              f'<div class="or">or paste its link</div>{form("sent", {"sk": M.FILE})}<div class="mrow">'
@@ -110,7 +106,7 @@ def _hand(secret, login, kind, rec, page, lines, ledger_ready, exp, picker=None)
     return body
 
 
-CSS = (".mcard{border:1px solid var(--border);border-radius:10px;background:var(--light);padding:16px 18px;margin:0 0 14px}.mcard h4{margin:0 0 12px;font-size:13px;font-weight:720}"   # LIFE-174
+CSS = (".mcard{border:1px solid var(--border);border-radius:10px;background:var(--light);padding:16px 18px;margin:0 0 14px}.mcard h4{margin:0 0 12px;font-size:13px;font-weight:720}"
        ".mrow{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;justify-content:flex-end}.mrow .fld{flex:1 1 220px}.mrow .fld.due{flex:0 1 170px}"
        ".fld{display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:680;color:var(--muted)}"
        ".fld input{font:inherit;font-weight:500;color:var(--ink);background:var(--paper);border:1px solid var(--border-strong);border-radius:7px;padding:9px 11px;min-height:40px;width:100%;box-sizing:border-box}"
@@ -119,12 +115,11 @@ CSS = (".mcard{border:1px solid var(--border);border-radius:10px;background:var(
        ".or{margin:14px 0 8px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:740}")
 
 
-# LIFE-217 (Jim, Oct 31 2026: "build the Google pop-up picker"; "Google sign-in pop-up"): Google's own Drive picker on Manage. Its sign-in asks only drive.file
-# (the files Jim picks); the Close service's Drive credential never reaches the browser. Its browser identifiers (an OAuth client id, a Picker API key restricted
-# to this origin, the Cloud project number) are the Close service's optional `picker` credential (install-close.sh credential picker), never in this public repository;
-# close_gate passes them on GET /manage only. Without them the picker button is not shown and the name search stays the way in.
-# LIFE-173 (Jim, Nov 6 2026: "my login should be persistent"): a pick reloads the page, so the drive.file token is kept in this browser until it expires
-# (about an hour), and a new one is asked for with prompt "" so Google reuses the existing sign-in and consent instead of asking again.
+# The Drive picker asks only for drive.file; the service's own Drive credential never reaches the browser. Its browser
+# identifiers are the optional `picker` credential, passed by close_gate on GET /manage only (without it the button is
+# hidden).
+# A pick reloads the page, so the drive.file token is kept in this browser until it expires and renewed with prompt
+# "".
 PICKER_FIELDS = {"client_id": re.compile(r"[0-9]{6,20}-[a-z0-9]{10,64}\.apps\.googleusercontent\.com"), "api_key": re.compile(r"AIza[0-9A-Za-z_-]{30,60}"),
                  "app_id": re.compile(r"[0-9]{6,20}")}
 PICKER_JS = """(function () {
@@ -162,7 +157,6 @@ PICKER_JS = """(function () {
 
 
 def picker(secrets):
-    """The picker's browser identifiers from the gate (GET /manage only), each in its exact shape, else None (no button)."""
     got = secrets.get("picker")
     ok = isinstance(got, dict) and all(isinstance(got.get(k), str) and rx.fullmatch(got[k]) for k, rx in PICKER_FIELDS.items())
     return {k: got[k] for k in PICKER_FIELDS} if ok else None
@@ -177,12 +171,10 @@ def handle_css(req, who, secrets):
 
 
 def _styled(page):
-    """The Close page with Manage's own stylesheet after /close.css (the gate's CSP allows only this origin's files, never inline styles)."""
     return page.replace(b'<link rel="stylesheet" href="/close.css">', b'<link rel="stylesheet" href="/close.css"><link rel="stylesheet" href="/manage.css">')
 
 
 def _drive(secrets):
-    """The Drive client on a POST that has the credential (close_gate passes it on POST only), else None."""
     if not secrets.get("gdrive"):
         return None
     from .resume_app import gdrive_client
@@ -190,7 +182,6 @@ def _drive(secrets):
 
 
 def _drive_file(drive, fid):
-    """-> (name, link) of a Drive file that exists and is not in the trash, else None. Read only."""
     meta = drive.get(fid)
     name, link = meta.get("name"), meta.get("webViewLink")
     if meta.get("trashed") or not isinstance(name, str) or not name.strip() or not (isinstance(link, str) and LINK.fullmatch(link)):
@@ -199,7 +190,7 @@ def _drive_file(drive, fid):
 
 
 def _sent_check(form, secrets):
-    """LIFE-114: -> (kind, text, url, None) for a valid sent-material form, or (None, None, None, the refusal). A Drive file is read (never changed) to name it."""
+    """-> (kind, text, url, None) for a valid sent-material form, else (None, None, None, refusal)."""
     sk, text, url = form.get("sk", ""), " ".join((form.get("sx") or "").split()), (form.get("su") or "").strip()
     if sk == M.FORM:
         if not text or len(text) > M.NEXT_MAX or not text.isprintable() or (url and not LINK.fullmatch(url)):
@@ -215,7 +206,7 @@ def _sent_check(form, secrets):
         return None, None, None, _stop(409, "Not recorded", "Google Drive is not connected", "The Drive credential is not installed on the Close service.", "Nothing was changed.")
     try:
         found = _drive_file(drive, hit.group(1))
-    except RuntimeError as error:                                          # gdrive.DriveError: fixed codes only
+    except RuntimeError as error:
         return None, None, None, _stop(409, "Not recorded", "That Drive file could not be read", "Check the link and that the file is shared with you.", f"Refused: {str(error)[:60]}. Nothing was changed.")
     if not found:
         return None, None, None, _stop(409, "Not recorded", "That Drive file is in the trash or has no name", "Restore it in Drive or pick another file.", "Nothing was changed.")
@@ -241,7 +232,7 @@ def _hub(req, who, secrets):
             '<div class="eyebrow">Actions</div><p class="lead">Each action opens its own screen and changes nothing until you confirm there.</p>')
     exp = int(C._now().timestamp()) + MANAGE_TTL
     if closed:
-        try:                                                               # offered only when the POST's REOPEN routing would reach this same record
+        try:
             again = D.route(rows, {"action": D.REOPEN, "id": rid, "company": page["company"], "role": page["role"]})
             why = None if D._page_id(again["id"]) == rid else "DECISION_STALE_IDENTITY"
         except D.DecisionError as error:
@@ -272,9 +263,8 @@ def _hub(req, who, secrets):
 
 
 def _moved(secret, login, act, target, company, role, form):
-    """LIFE-169 (Jim, Oct 30 2026): the pursuit no longer lives on the open row this form names. Nothing is written; the screen says where it lives now and, when that row is open, offers
-    the same change for review there with Jim's entry carried over (a form signed for that row only; its confirm does its own fresh read)."""
-    back = D._page_id(form.get("p"))                                                    # the opportunity page Manage was opened from
+    """The pursuit no longer lives on the open row this form names. Nothing is written."""
+    back = D._page_id(form.get("p"))
     hub = _link("Open Manage again", "/manage?" + urlencode({"o": back}), "From the opportunity page, with its current state.") if back else ""
     if target.get("decision"):
         body = ('<section class="section"><div class="eyebrow">Conflict</div><h3 class="step-title">This opportunity was closed after Manage opened</h3>'
@@ -292,7 +282,6 @@ def _moved(secret, login, act, target, company, role, form):
 
 
 def _hand_post(req, who, secrets):
-    """LIFE-111 / LIFE-112: review, then confirm, one hand-set line on the open record. Review never reads Notion; confirm writes only after a fresh read routes to the same open record."""
     form, secret, login = req["form"], secrets["link"], who["login"]
     o, step, exp, st, kind, act = D._page_id(form.get("o")), form.get("step"), form.get("exp", ""), form.get("st", ""), form.get("k", ""), form.get("act", "")
     company, role = form.get("co", ""), form.get("ro", "")
@@ -301,7 +290,7 @@ def _hand_post(req, who, secrets):
     if step == "cancel":
         return _stop(200, "Cancelled", "Nothing changed", "The opportunity keeps its current state and next action.", "Nothing was written.", "")
     value, text, due = form.get("v", ""), " ".join((form.get("sx" if act == "unsent" else "nx") or "").split()), (form.get("due") or "").strip()
-    if act == "sent":                                                     # LIFE-114: the Drive file is read at review and again at confirm, before anything is written
+    if act == "sent":
         value, text, due, refused = _sent_check(form, secrets)
         if refused:
             return refused
@@ -311,7 +300,7 @@ def _hand_post(req, who, secrets):
         return _stop(400, "Not accepted", "Choose Paused, Waiting on employer or Active", "Reload Manage and choose one.", "Nothing was changed.")
     if act == "next":
         try:
-            valid = bool(DAY.fullmatch(due) and date.fromisoformat(due)) if due else True       # exactly the date Jim typed, a real one, or none: never a guessed date
+            valid = bool(DAY.fullmatch(due) and date.fromisoformat(due)) if due else True
         except ValueError:
             valid = False
         if not valid or len(text) > M.NEXT_MAX or not (text or due) or not (text or "x").isprintable():
@@ -338,7 +327,7 @@ def _hand_post(req, who, secrets):
         return invalid(_stop, "Review the change again.", "This confirmation is not valid")
     config = secrets["config"]
     client = Client({"NOTION_API_TOKEN": secrets["notion"].decode(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": config["ledger"]})
-    target = D.route(D.rows(D.ledger_pages(client)), {"action": D.ACTION, "id": o, "company": company, "role": role})      # the write is authorized only by a fresh read
+    target = D.route(D.rows(D.ledger_pages(client)), {"action": D.ACTION, "id": o, "company": company, "role": role})
     if D._page_id(target["id"]) != o or target.get("decision"):
         return _moved(secret, login, act, target, company, role, form)
     at, op = C._now().isoformat(timespec="seconds"), C._mac(secret, "op-h", o, st, exp, act, payload)[:16]
@@ -356,13 +345,12 @@ def _hand_post(req, who, secrets):
     if done.get("verified") is not True or done.get("status") not in ("recorded", "already_recorded"):
         return unverified(_stop, "Could not verify the change")
     if act == "hold":
-        secrets.get("after", []).append("hiring")                      # the Hiring Pipeline region is redrawn now (close_gate.REFRESH)
+        secrets.get("after", []).append("hiring")
     return _stop(200, "Recorded", "Recorded and read back", "The opportunity's own record was updated and read back successfully.",
                  f"{company} — {role} · {what}{' (already recorded)' if done['status'] == 'already_recorded' else ''}.", "ok")
 
 
 def _expired(form):
-    """LIFE-174 (Jim, Oct 31 2026): a stale or altered Manage form writes nothing; the screen offers Manage again for the same opportunity in one click."""
     page = D._page_id(form.get("p"))
     body = ('<section class="section"><div class="eyebrow">Not accepted</div><h3 class="step-title">This page has expired</h3>'
             '<p class="lead">Manage was open too long, or the form was changed. Open it again and repeat the step.</p><div class="notice danger">Nothing was changed.</div>'
@@ -371,14 +359,12 @@ def _expired(form):
 
 
 def _drive_search(req, who, secrets):
-    """LIFE-173 (Jim, Oct 30 2026): "I don't want to have to hunt for Google Drive files". A signed search of Jim's Drive by file name (read only, the Close service's own Drive
-    credential, newest edits first); each hit opens the usual sent-material review for that file, so nothing is recorded until he confirms there."""
     form, secret, login = req["form"], secrets["link"], who["login"]
     o, exp, st, kind, company, role = D._page_id(form.get("o")), form.get("exp", ""), form.get("st", ""), form.get("k", ""), form.get("co", ""), form.get("ro", "")
     if not (live(form, secret, "manage-hand", login, o, st, C._now(), None, tail=("drive",)) and kind == C.KIND and C._same(C._fingerprint(kind, o, company, role, False), st)):
         return _expired(form)
     q = " ".join((form.get("q") or "").split())
-    if len(q) > QMAX or not q.isprintable():                             # an empty box lists the latest files (Jim, Oct 31 2026: "I shouldn't have to type")
+    if len(q) > QMAX or not q.isprintable():
         return _stop(400, "Not accepted", "Shorten the file name", f"Up to {QMAX} characters.", "Nothing was searched.")
     drive = _drive(secrets)
     if drive is None:
@@ -386,7 +372,7 @@ def _drive_search(req, who, secrets):
     from lifeos.platform.gdrive import _quote
     try:
         files = drive.find((f"name contains '{_quote(q)}' and " if q else "") + f"mimeType != '{FOLDER}'", order="modifiedTime desc")
-    except RuntimeError as error:                                          # gdrive.DriveError: fixed codes only
+    except RuntimeError as error:
         return _stop(409, "Not searched", "Google Drive could not be searched", "Try again in a minute.", f"Refused: {str(error)[:60]}. Nothing was changed.")
     hits = [f for f in files if isinstance(f.get("name"), str) and DRIVE_LINK.fullmatch(str(f.get("webViewLink") or ""))][:HITS]
     pick = _hand_fields(secret, login, kind, o, company, role, int(exp), "sent") | {"sk": M.FILE, "sx": ""}
@@ -421,7 +407,7 @@ def _post(req, who, secrets):
             '<button class="btn primary" name="step" value="confirm">Reopen it</button></div></form>'), PATH, TAB), ()
     config = secrets["config"]
     client = Client({"NOTION_API_TOKEN": secrets["notion"].decode(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": config["ledger"]})
-    target = D.route(D.rows(D.ledger_pages(client)), {"action": D.REOPEN, "id": o, "company": company, "role": role})      # the write is authorized only by a fresh read
+    target = D.route(D.rows(D.ledger_pages(client)), {"action": D.REOPEN, "id": o, "company": company, "role": role})
     if D._page_id(target["id"]) != o:
         return _stop(409, "Conflict", "Opportunity changed", "The record that closed it is not the one this form names.", "Nothing was changed. Reload Manage and try again.")
     request = {"action": D.REOPEN, "confirmed": True, "id": o, "company": company, "role": role, "reason": REASON, "op": C._mac(secret, "op-r", o, st, exp)[:32], "reopen_hired": hired}
@@ -436,7 +422,7 @@ def _post(req, who, secrets):
         return unverified(_stop, "Could not verify the reopen", "it was reopened", code)
     if done.get("verified") is not True or done.get("status") not in ("recorded", "already_recorded"):
         return unverified(_stop, "Could not verify the reopen", "it was reopened")
-    secrets.get("after", []).append("hiring")                          # the Hiring Pipeline region is redrawn now (close_gate.REFRESH)
+    secrets.get("after", []).append("hiring")
     return _stop(200, "Reopened", "Opportunity reopened", "The canonical record was updated and read back successfully.",
                  f"{company} — {role} · Reopened{' (already recorded)' if done['status'] == 'already_recorded' else ''}.", "ok")
 

@@ -1,8 +1,9 @@
 """Load the UK Home Office register of licensed sponsors (workers) into Hostinger, Skilled Worker route only.
 
-The gov.uk content API names the current CSV attachment; the CSV is read by header name (never by position), kept for the Skilled Worker
-route and A-rated licences, and replaces v7_sponsors in one transaction. Anything unexpected (HTTP error, no CSV link, missing columns, or
-suspiciously few rows) is FAILED and the previous register stays. Refreshed at most weekly unless SPONSORS_FORCE=true. Counts only.
+The CSV named by the gov.uk content API is read by header name (never by position), kept for the Skilled Worker
+route and A-rated licences, and replaces v7_sponsors in one transaction. Anything unexpected (HTTP error, no CSV
+link, missing columns, too few rows) is FAILED and the previous register stays. Refreshed at most weekly unless
+SPONSORS_FORCE=true. Counts only.
 """
 import csv
 from datetime import datetime, timedelta, timezone
@@ -17,7 +18,7 @@ from lifeos.platform.http import fetch
 
 PAGE = "https://www.gov.uk/api/content/government/publications/register-of-licensed-sponsors-workers"
 CSV_URL = re.compile(r"https://assets\.publishing\.service\.gov\.uk/[^\"\s\\]+\.csv", re.I)
-MIN_ROWS = 5000                       # the register holds well over 100,000 licences; a short file is a bad download
+MIN_ROWS = 5000  # a real register holds well over 100,000 licences; a short file is a bad download
 REFRESH_DAYS = 7
 MAX_BYTES = 80_000_000
 
@@ -39,8 +40,9 @@ def csv_url(fetcher=fetch):
 
 
 def read(text, route, entry, rated=False):
-    """-> ([entry(name, row, cols)], reason): the register rows on one route (lower case), read by header name (never by position), one per distinctive-token name.
-    `rated` keeps A-rated licences only (when the rating column exists). Shared with scale_up_register."""
+    """-> ([entry(name, row, cols)], reason): rows on one route, one per distinctive-token name; `rated` keeps A-rated
+    licences only. Shared with scale_up_register.
+    """
     reader = csv.DictReader(io.StringIO(text.lstrip("﻿")))
     cols = {(f or "").strip().lower(): f for f in (reader.fieldnames or [])}
     name_col, route_col = cols.get("organisation name"), cols.get("route")
@@ -60,7 +62,6 @@ def read(text, route, entry, rated=False):
 
 
 def parse(text):
-    """-> (names, reason). Skilled Worker route, A-rated (when the rating column exists), unique by distinctive tokens."""
     return read(text, "skilled worker", lambda name, row, cols: name[:200], rated=True)
 
 
@@ -95,7 +96,7 @@ def run(limit, live, now=None, fetcher=fetch, environ=os.environ):
     return counts
 
 
-CONTRACT = stage_contract.Contract(      # LIFE-589 (pilot): the stage declared; the registry runs it as `sponsors` through this object
+CONTRACT = stage_contract.Contract(
     name="sponsors", run=run,
     inputs=("the gov.uk content API page for the register of licensed sponsors (public)", "the CSV that page names (public)", "table v7_sponsors, read for its newest refresh time", "SPONSORS_FORCE, an optional switch"),
     outputs=("status", "sponsors", "saved"),
