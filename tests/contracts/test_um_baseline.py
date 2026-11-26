@@ -145,6 +145,36 @@ class WithAClient(unittest.TestCase):
         self.assertTrue(all(r["absent_abstained"].values()))
 
 
+class GraphArm(unittest.TestCase):
+    """LIFE-1003: the graph arm can be injected (the Aura fixtures); `graph` and `combined` use it, `direct` never does."""
+
+    class Arm:
+        def __init__(self, world):
+            self.world, self.calls = world, 0
+
+        def answer(self, tenant, text):
+            self.calls += 1
+            return um.answer_direct(self.world, tenant, text)
+
+        def deps(self, case):
+            self.calls += 1
+            return um.deps_graph(self.world, case)
+
+    def test_graph_and_combined_use_the_injected_arm_and_direct_does_not(self):
+        world = um.World(DOC)
+        arm = self.Arm(world)
+        report = um.run(DOC, ("direct", "graph", "honcho", "combined"), 1, {"honcho": FakeHoncho(world), "graph": arm})
+        self.assertEqual(arm.calls, 2 * (len(DOC["questions"]) + len(DOC["dependency_cases"])))
+        self.assertTrue(report["graph"]["pass"])
+        arm.calls = 0
+        um.run(DOC, ("direct",), 1, {"graph": arm})
+        self.assertEqual(arm.calls, 0)
+
+    def test_without_an_arm_nothing_changes(self):
+        a, b = um.run(DOC, ("graph",), 1), um.run(DOC, ("graph",), 1, {"graph": None})
+        self.assertEqual(a["graph"]["dependency_ok"], b["graph"]["dependency_ok"])
+
+
 class Cli(unittest.TestCase):
     def test_the_command_prints_a_table_and_writes_the_json_report(self):
         with tempfile.TemporaryDirectory() as tmp:

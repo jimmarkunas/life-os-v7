@@ -131,17 +131,19 @@ def honcho_answer(world, client, tenant, text):
     return _ids_of(items), 1
 
 
-def run_mode(world, mode, client=None):
-    """One pass over every question and case -> {key: {"ids": [...], "abstain": bool, "calls": n, "ms": float}}."""
+def run_mode(world, mode, client=None, graph=None):
+    """One pass over every question and case -> {key: {"ids": [...], "abstain": bool, "calls": n, "ms": float}}. `graph` (optional) answers for the graph arm of `graph` and `combined`: .answer(tenant, text) and .deps(case), each -> (ids, calls); LIFE-1003 passes the Aura graph here."""
     out = {}
     for q in world.doc["questions"]:
         t0 = time.perf_counter()
-        if mode in ("direct", "graph"):
+        if mode == "direct" or (mode == "graph" and graph is None):
             ids, calls = answer_direct(world, q["tenant"], q["text"])
+        elif mode == "graph":
+            ids, calls = graph.answer(q["tenant"], q["text"])
         elif mode == "honcho":
             ids, calls = honcho_answer(world, client, q["tenant"], q["text"])
         else:
-            g, c1 = answer_direct(world, q["tenant"], q["text"])
+            g, c1 = graph.answer(q["tenant"], q["text"]) if graph else answer_direct(world, q["tenant"], q["text"])
             h, c2 = honcho_answer(world, client, q["tenant"], q["text"])
             ids = g + [i for i in h if i in world.src and world.src[i]["tenant"] == q["tenant"] and i not in g]       # honcho items that are not canonical for this tenant are dropped
             calls = c1 + c2
@@ -151,11 +153,11 @@ def run_mode(world, mode, client=None):
         if mode == "direct":
             ids, calls = deps_direct(world, c)
         elif mode == "graph":
-            ids, calls = deps_graph(world, c)
+            ids, calls = graph.deps(c) if graph else deps_graph(world, c)
         elif mode == "honcho":
             ids, calls = honcho_answer(world, client, c["tenant"], c["text"])
         else:
-            g, c1 = deps_graph(world, c)
+            g, c1 = graph.deps(c) if graph else deps_graph(world, c)
             h, c2 = honcho_answer(world, client, c["tenant"], c["text"])
             ids, calls = sorted(set(g) | {i for i in h if i in world.src and world.src[i]["tenant"] == c["tenant"]}), c1 + c2
         out[c["id"]] = {"ids": list(ids), "abstain": not ids, "calls": calls, "ms": (time.perf_counter() - t0) * 1000}
@@ -201,7 +203,7 @@ def run(corpus=None, modes=("direct", "graph"), reps=5, clients=None):
         client = (clients or {}).get("honcho")
         if mode in ("honcho", "combined") and client is None:
             raise ValueError("honcho_client_missing")
-        report[mode] = score(world, [run_mode(world, mode, client) for _ in range(reps)], client)
+        report[mode] = score(world, [run_mode(world, mode, client, (clients or {}).get("graph")) for _ in range(reps)], client)
     return report
 
 
