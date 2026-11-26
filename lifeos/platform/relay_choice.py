@@ -1,11 +1,10 @@
-"""LIFE-870: BUZZ_RELAY=hosted|pilot says whether the governed MCP service also serves the private relay pilot.
+"""BUZZ_RELAY=hosted|pilot: whether the governed MCP service also serves the private relay pilot. hosted (the default,
+also when empty) serves only the community relays; anything else is refused, so a typo never falls back to a different
+relay.
+"""
 
-Jim, comment 13867. Rollback is setting it back to hosted.
-
-hosted (the default, also when the setting is empty or absent) serves only the community relays, as today. pilot adds the private relay pilot on the Oracle host (reached over the tailnet only, never a public
-address) as one more community. Anything else is refused, so a typo never falls back to a different relay. The pilot address is fixed here, not a setting a caller can aim."""
-
-PILOT_URL = "https://lifeos-edge-01.tail96b07f.ts.net:3100"                 # LIFE-927 (Jim, comment 13971): the relay's one address, tailnet only; loopback is no longer accepted by the relay
+# tailnet only; the relay does not accept loopback
+PILOT_URL = "https://lifeos-edge-01.tail96b07f.ts.net:3100"
 MODES = ("hosted", "pilot")
 
 

@@ -1,12 +1,7 @@
-"""Write the text of one V7-owned callout on the Daily Report, safely (the mechanics proven by the Calendar and Bills cards).
-
-The caller owns exactly one region (router.OWNERS). This module only: checks the configured block is a callout whose first child is that region's
-heading; inserts new text right under the heading; removes the old PLAIN TEXT of that callout (never a table, database, page or any other block, so
-Jim's interactive views stay where they are); re-reads the callout; and proves the other V7 regions are byte-for-byte unchanged around every write.
-`fail(code)` builds the caller's own error type, so codes stay fixed and carry no content.
-
-LIFE-586: for `replace_text` and `replace_tree` the proof that nothing else changed is no longer a before/after comparison of the other cards' regions; it is `ScopedClient`, which refuses any write
-outside the card's own region before it is sent (WRITE_OUT_OF_SCOPE). The comparison is still used by the floating-region writers (Hiring) and by the cards that carry their own copy of it."""
+"""Write one V7-owned callout on the Daily Report safely. The caller owns one region (router.OWNERS): this module checks
+the block is a callout led by that region's heading, inserts new text under it, removes only the old plain text and
+re-reads. `fail(code)` builds the caller's error type; codes carry no content.
+"""
 import hashlib
 import json
 import re
@@ -20,13 +15,15 @@ from lifeos.platform.notion_client import NotionError
 
 HEADINGS = ("heading_2", "heading_3", "heading_4")
 TEXT_KINDS = ("paragraph", "bulleted_list_item", "numbered_list_item", "to_do")
-WALK_ATTEMPTS, WALK_RETRY_SECONDS = 2, 2                                    # LIFE-680: another card writer can rewrite blocks while the page is read; one more walk, then fail as before
-VOLATILE = {"last_edited_time", "last_edited_by", "request_id", "expiry_time"}      # metadata that changes without the content changing
+# another writer can rewrite blocks mid-walk: walk once more, then fail
+WALK_ATTEMPTS, WALK_RETRY_SECONDS = 2, 2
+VOLATILE = {"last_edited_time", "last_edited_by", "request_id", "expiry_time"}
 
 
 def clean_id(raw):
-    """A block id as Notion wants it. Accepts the id itself (with or without dashes) or a copied Notion link, whose `#` fragment is the block id; anything else comes back
-    unchanged so the caller's own check rejects it. Never logs or raises."""
+    """A Notion block id from a bare id or a copied link (`#` fragment); anything else is returned unchanged. Never
+    raises.
+    """
     value = (raw or "").strip()
     if "#" in value:
         value = value.rsplit("#", 1)[1].strip()
@@ -41,7 +38,6 @@ def plain(block):
 
 
 def titled(text, title):
-    """True when `text` is the region's heading: exactly `title`, or `title (stamp)` the way the Calendar, Jira and Hiring Pipeline headings carry their update time."""
     text = (text or "").strip()
     return text == title or (text.startswith(title + " (") and text.endswith(")"))
 
@@ -95,11 +91,11 @@ def _tree(client, block, fail):
 
 
 def region_digest(client, block_id, fail):
-    """One hash per field of a protected callout and one per child block, so a change can be located (names only)."""
+    """One hash per protected-callout field and per child block, to locate a change."""
     block_id = clean_id(block_id)
     meta = client.call("GET", f"/blocks/{quote(block_id, safe='')}")
     if isinstance(meta, dict) and meta.get("type") == "heading_3" and same_id(meta.get("id"), block_id):
-        return floating_digest(client, meta, fail)                                   # the Hiring Pipeline region is a heading, a paragraph and a table, not a callout
+        return floating_digest(client, meta, fail)
     if not isinstance(meta, dict) or meta.get("type") != "callout" or not same_id(meta.get("id"), block_id):
         raise fail("PROTECTED_REGION_UNAVAILABLE")
     tree = _stable(_tree(client, meta, fail))
@@ -117,8 +113,7 @@ def changed(before, after):
 
 
 def protected(client, ids, fail):
-    """ids: {region heading: block id}. Every id must be configured; -> {region: digest}."""
-    ids = {region: clean_id(block_id) for region, block_id in (ids or {}).items() if block_id or region != router.HIRING_REGION}     # Hiring joins the proof once its anchor is configured
+    ids = {region: clean_id(block_id) for region, block_id in (ids or {}).items() if block_id or region != router.HIRING_REGION}
     if not ids or not all(ids.values()):
         raise fail("PROTECTED_REGION_UNAVAILABLE")
     try:
@@ -134,18 +129,15 @@ def _norm(raw):
 
 
 class ScopedClient:
-    """LIFE-586 (option 2, Jim's decision of Nov 12 2026): the guard that a card writes only inside its own region, checked BEFORE every write instead of after it.
-    The card's callout is the root. A block becomes ours when a read of the children of a block that is ours returns it, or when a write under one of ours returns it.
-    A PATCH, POST or DELETE aimed at any other block (another card's callout, a page, a block never seen under ours) is refused with WRITE_OUT_OF_SCOPE and is never sent.
-    This replaces comparing the other cards' regions before and after our write, which made two cards unable to write at the same time (a legitimate write by the other card looked like a violation)."""
+    """Guard: a card writes only blocks it owns, checked BEFORE every write. Owned: the root callout and blocks returned
+    by reading or writing under an owned block. Anything else raises WRITE_OUT_OF_SCOPE and is never sent.
+    """
     WRITES = ("PATCH", "POST", "DELETE", "PUT")
 
     def __init__(self, client, root, fail):
         self._client, self._fail, self.owned = client, fail, {_norm(root)}
 
     def adopt(self, *block_ids):
-        """LIFE-613: for a card whose blocks are found by walking the page rather than under one callout (the Communications and Oracle Cloud cards, the Hiring heading and table): the blocks it located
-        and will write are named once, here, and every other block stays refused."""
         self.owned.update(_norm(i) for i in block_ids)
         return self
 
@@ -181,7 +173,6 @@ class ScopedClient:
 
 
 def require_configured(protected_ids, fail):
-    """The other regions' block ids must still be configured (a missing one means the page is not set up as expected), but nothing is read from them any more."""
     ids = {region: clean_id(block_id) for region, block_id in (protected_ids or {}).items() if block_id or region != router.HIRING_REGION}
     if not ids or not all(ids.values()):
         raise fail("PROTECTED_REGION_UNAVAILABLE")
@@ -195,15 +186,14 @@ def _prove(client, module, before, protected_ids, tag, fail):
 
 
 def replace_text(client, block_id, title, module, blocks, protected_ids, fail, tag, live, headless=False, heading=None):
-    """Dry run: validate the target and return (existing children, [] ). Live: write, read back, verify. -> (existing children, removed count).
-    headless (D129): the callout has no heading of its own (it holds only Jim's interactive view, which shows its own title), so the configured block id is the ownership proof;
-    it must hold at least one non-text block and no heading, and the text goes in at the top, above that view.
-    heading (LIFE-609): the heading text the card shows, `title (stamp)` (the way Calendar, Jira and Hiring carry their update time). The callout's heading may be `title` or `title (...)`; a live write
-    sets it to `heading` (one PATCH of the heading block's text, before the body is written) and the read-back requires it. None: the heading must be exactly `title`, as before."""
+    """Dry run: validate -> (existing children, []). Live: write, read back, verify -> (existing children, removed
+    count). `headless`: the callout has no heading and holds only an interactive view. `heading`: the heading to show,
+    `title (stamp)`; None means exactly `title`.
+    """
     meta = client.call("GET", f"/blocks/{quote(block_id, safe='')}")
     if not isinstance(meta, dict) or meta.get("type") != "callout" or not same_id(meta.get("id"), block_id):
         raise fail("CARD_NOT_OWNED")
-    client = ScopedClient(client, block_id, fail)                                       # LIFE-586: every write below is checked against this card's own region first
+    client = ScopedClient(client, block_id, fail)
     existing = children(client, block_id, fail)
     if headless:
         if not existing or any(b.get("type") in HEADINGS for b in existing) or all(b.get("type") in TEXT_KINDS for b in existing):
@@ -218,15 +208,15 @@ def replace_text(client, block_id, title, module, blocks, protected_ids, fail, t
         return existing, 0
     body = existing if headless else existing[1:]
     old_text = [b for b in body if b.get("type") in TEXT_KINDS]
-    kept = [b["id"] for b in body if b.get("type") not in TEXT_KINDS]                    # tables, databases, pages and anything else stay, in order
+    kept = [b["id"] for b in body if b.get("type") not in TEXT_KINDS]
     require_configured(protected_ids, fail)
     shown, was = title if heading is None else heading, plain(existing[0]).strip()
     stamped = shown != was
     if stamped:
         client.call("PATCH", f"/blocks/{quote(existing[0]['id'], safe='')}", {existing[0]["type"]: {"rich_text": [{"type": "text", "text": {"content": shown}}]}})
-    try:                                                                                 # LIFE-722: from here a failure must not leave the NEW stamp over the OLD content
+    try:  # a failure from here on must not leave the NEW stamp over the OLD content
         def intact():
-            """Kept for the writers below; the proof is now the scope guard on the client, which acts before each write, so there is nothing to compare afterwards."""
+            """No-op: the scope guard acts before each write."""
 
         if headless:
             return existing, _write_headless(client, block_id, title, module, blocks, existing, kept, old_text, intact, fail)
@@ -237,7 +227,6 @@ def replace_text(client, block_id, title, module, blocks, protected_ids, fail, t
             result = client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": blocks, **placement})
         finally:
             intact()
-        # Notion's reply to an insert-after can list the following blocks as well as the new ones, so the count is only a floor; the read-back below is the proof.
         if not isinstance(result, dict) or not isinstance(result.get("results"), list) or len(result["results"]) < len(blocks):
             raise fail("CARD_APPEND_MISMATCH")
         removed = 0
@@ -254,7 +243,7 @@ def replace_text(client, block_id, title, module, blocks, protected_ids, fail, t
                     raise
             finally:
                 intact()
-        after = children(client, block_id, fail)                                             # authoritative read-back
+        after = children(client, block_id, fail)
         intact()
         if (not after or after[0].get("id") != existing[0].get("id") or plain(after[0]).strip() != shown or len(after) != 1 + len(blocks) + len(kept)
                 or [plain(b) for b in after[1:1 + len(blocks)]] != [plain(b) for b in blocks] or [b.get("id") for b in after[1 + len(blocks):]] != kept):
@@ -267,26 +256,23 @@ def replace_text(client, block_id, title, module, blocks, protected_ids, fail, t
 
 
 def _restore_stamp(client, heading_block, text):
-    """LIFE-722: the card's body write failed after its heading stamp was written, so the stamp goes back to what it was: a card that did not update must not look current (the stamp is how Jim and the
-    stale-card alert tell). Best effort and silent: if Notion refuses this too, the caller still sees the failure it already had, never this one. Same heading shape the stamp write itself uses."""
+    """Restore the old heading stamp after a failed body write. Best effort and silent."""
     try:
         client.call("PATCH", f"/blocks/{quote(heading_block['id'], safe='')}", {heading_block["type"]: {"rich_text": [{"type": "text", "text": {"content": text}}]}})
-    except Exception:                                                                    # noqa: BLE001 - the original failure is the one to report
+    except Exception:  # noqa: BLE001
         pass
 
 
 def _in_place_ok(body, old_text, blocks):
-    """Edit in place (Jim, Oct 15 2026: an insert-then-delete write showed new and old lines together for most of a minute) only when the old text sits
-    together right under the heading, holds no nested blocks, and every line that will be rewritten keeps its block type. Anything else uses the insert path."""
+    """Edit in place only when the old text sits right under the heading, has no nested blocks, and each rewritten line
+    keeps its block type.
+    """
     if not old_text or body[:len(old_text)] != old_text or any(b.get("has_children") for b in old_text):
         return False
     return all(old.get("type") == new.get("type") for old, new in zip(old_text, blocks))
 
 
 def _write_in_place(client, block_id, title, module, blocks, existing, kept, old_text, intact, fail, shown=None):
-    """Each old line takes the new text in place (same block, same position); extra new lines go in right after them; surplus old lines are removed.
-    The page never shows two versions of the card at once. Same ownership checks, protected-region proof after every write and authoritative read-back.
-    -> removed count."""
     def owned():
         try:
             router.check_write(module, [title])
@@ -322,7 +308,7 @@ def _write_in_place(client, block_id, title, module, blocks, existing, kept, old
                 raise
         finally:
             intact()
-    after = children(client, block_id, fail)                                             # authoritative read-back
+    after = children(client, block_id, fail)
     intact()
     rewritten = [b["id"] for b, _ in pairs]
     if (not after or after[0].get("id") != existing[0].get("id") or plain(after[0]).strip() != (title if shown is None else shown) or len(after) != 1 + len(blocks) + len(kept)
@@ -333,9 +319,9 @@ def _write_in_place(client, block_id, title, module, blocks, existing, kept, old
 
 
 def _write_headless(client, block_id, title, module, blocks, existing, kept, old_text, intact, fail):
-    """D131: the status line of a callout that holds only Jim's view is the callout's OWN text (its rich_text field), set by one PATCH of the callout block. Child paragraphs made the line
-    pile up: Notion's child listing did not show earlier lines, so every run inserted another. One field cannot pile up, needs no insert or delete, and is read back from the same block.
-    Child text blocks the listing does show are removed. -> removed count."""
+    """Set the status line as the callout's own rich_text (one PATCH); child paragraphs piled up. Listed child text
+    blocks are removed. -> removed count.
+    """
     if len(blocks) != 1 or blocks[0].get("type") != "paragraph":
         raise fail("CARD_NOT_OWNED")
     rich = blocks[0]["paragraph"]["rich_text"]
@@ -365,14 +351,13 @@ def _write_headless(client, block_id, title, module, blocks, existing, kept, old
         own = plain({"type": "callout", "callout": (meta or {}).get("callout") or {}})
         return (own == wanted, not any(b.get("type") in TEXT_KINDS for b in after), [b.get("id") for b in after] == kept), len(after)
 
-    ok, (shape, n_after) = readback.confirmed(read, lambda seen: all(seen[0]))     # authoritative read-back; a short wait first if Notion still shows the pre-write state
+    ok, (shape, n_after) = readback.confirmed(read, lambda seen: all(seen[0]))
     if ok:
         return removed
     raise fail("CARD_VERIFY_FAILED:own=%s:no_child_text=%s:kept=%s:n=%d/%d" % (*shape, n_after, len(kept)))
 
 
 def _shell(block, depth=2):
-    """The block as Notion accepts it in ONE append (two levels of children); deeper levels are filled by the next sync step."""
     kind = block["type"]
     body = {k: v for k, v in block[kind].items() if k != "children"}
     if depth and block[kind].get("children"):
@@ -390,8 +375,9 @@ def _runs(blocks):
 
 
 def _sync(client, parent, old, new, anchor, fail, live):
-    """-> number of changes. Blocks match run by run (same type, in order): text is patched in place, a missing block appended and filled, only a numbered list may grow or shrink; anything else
-    (another type, an extra block) is somebody else's edit and fails before any write (the dry run comes first)."""
+    """-> number of changes. Blocks match run by run (same type, in order): text is patched in place, missing blocks
+    appended, only a numbered list may grow or shrink; anything else fails before any write.
+    """
     count, olds, news = 0, _runs(old), _runs(new)
     if len(olds) > len(news) or any(o[0] != w[0] for o, w in zip(olds, news)):
         raise fail("CARD_STRUCTURE_CHANGED")
@@ -425,19 +411,19 @@ def _sync(client, parent, old, new, anchor, fail, live):
 
 
 def stamped_by_dot(text, title):
-    """True when `text` is the region's heading: exactly `title`, or `title · <stamp>` (LIFE-975: the Command Center carries its run time in its heading, `ChatGPT · Daily Command Center · Tue 11/24 · 11:02 PM CT`)."""
     text = (text or "").strip()
     return text == title or text.startswith(title + " · ")
 
 
 def replace_tree(client, block_id, title, module, spec, protected_ids, fail, tag, live, skip=frozenset(), heading=None):
-    """The owner's callout keeps its heading and holds exactly `spec` under it: preflight, sync, read back (a second sync finds nothing), then remove the old flat lines. -> (changes, removed).
-    `skip` (LIFE-938, Jim's Nov 24 rearrangement): ids of blocks inside the callout that belong to another writer (the Agent Inbox tile row, a divider); they are never read as ours, never synced, never deleted.
-    `heading` (LIFE-975): the heading text to show, `title · <stamp>`; the callout's heading may be `title` or `title · ...`; a live write sets it (one PATCH of the heading block's text) and the read-back requires it. None: exactly `title`, as before."""
+    """The owner's callout keeps its heading and holds exactly `spec`: preflight, sync, read back, then remove old flat
+    lines -> (changes, removed). `skip`: ids of blocks inside it owned by another writer. `heading`: as in
+    replace_text, `title · <stamp>`.
+    """
     meta = client.call("GET", f"/blocks/{quote(block_id, safe='')}")
     if not isinstance(meta, dict) or meta.get("type") != "callout" or not same_id(meta.get("id"), block_id):
         raise fail("CARD_NOT_OWNED")
-    client = ScopedClient(client, block_id, fail)                                       # LIFE-586: every write below is checked against this card's own region first
+    client = ScopedClient(client, block_id, fail)
     existing = children(client, block_id, fail)
     if not (existing and existing[0].get("type") in HEADINGS and (plain(existing[0]).strip() == title if heading is None else stamped_by_dot(plain(existing[0]), title) and stamped_by_dot(heading, title))):
         raise fail("CARD_NOT_OWNED")
@@ -449,10 +435,10 @@ def replace_tree(client, block_id, title, module, spec, protected_ids, fail, tag
         raise fail("CARD_NOT_OWNED") from None
     owned_types = {b.get("type") for b in spec}
     if any(b.get("type") not in owned_types for b in ours):
-        raise fail("CARD_NOT_OWNED")                                                  # only the rendered component types under the heading are ours to rewrite
+        raise fail("CARD_NOT_OWNED")
     if not live:
         return _sync(client, block_id, ours, spec, existing[0]["id"], fail, False), 0
-    _sync(client, block_id, ours, spec, existing[0]["id"], fail, False)                   # preflight: the whole tree is checked before the first write
+    _sync(client, block_id, ours, spec, existing[0]["id"], fail, False)
     require_configured(protected_ids, fail)
     changes = _sync(client, block_id, ours, spec, existing[0]["id"], fail, True)
     if _sync(client, block_id, [b for b in children(client, block_id, fail)[1:] if b.get("type") not in TEXT_KINDS and b.get("id") not in skip], spec, None, fail, False):
@@ -475,10 +461,9 @@ def replace_tree(client, block_id, title, module, spec, protected_ids, fail, tag
     return changes, removed
 
 
-# ---- The floating region (HIRE-1.2): a heading_3 anchor, one status paragraph and one table, owned by one module and written in place. ----
-# Shared primitives: resolve and validate the region, digest the whole page outside it, and rewrite the paragraph and the table rows. Nothing here creates, moves or deletes the heading.
+# Floating region: a heading_3 anchor, one status paragraph and one table, owned by one module.
 TABLE_KINDS = ("table", "table_row")
-LEAVES = ("child_page", "child_database", "link_to_page", "link_preview", "unsupported")      # separate pages and views: never walked, never ours
+LEAVES = ("child_page", "child_database", "link_to_page", "link_preview", "unsupported")
 
 
 def cells_of(row):
@@ -489,18 +474,14 @@ STYLES = {"bold": {"bold": True}, "gray": {"color": "gray"}, "bold+gray": {"bold
 
 
 def _segs(cell):
-    """A cell is one span or a list of spans; a span is (text, link) or (text, link, style) with style None, "bold", "gray" or "bold+gray" (D222)."""
     return [(s + (None,))[:3] for s in ([cell] if isinstance(cell, tuple) else cell)]
 
 
 def _owned(spans):
-    """[(text, link, style)] -> adjacent spans with the same link and style merged: the view ignores how Notion splits or joins rich text but still says which span owns
-    each link and style."""
     return [("".join(t for t, _, _ in group), link, style) for (link, style), group in groupby(spans, key=lambda span: (span[1], span[2]))]
 
 
 def want_view(row):
-    """A rendered row as [[(text, link, style)] runs] per cell: comparable with `live_view`."""
     return [_owned(_segs(c)) for c in row]
 
 
@@ -511,7 +492,7 @@ def _style(part):
 
 
 def live_view(row):
-    return [_owned([(plain({"type": "x", "x": {"rich_text": [part]}}), ((part.get("text") or {}).get("link") or {}).get("url"), _style(part)) for part in cell if isinstance(part, dict)])      # Notion sends "link": null for plain text
+    return [_owned([(plain({"type": "x", "x": {"rich_text": [part]}}), ((part.get("text") or {}).get("link") or {}).get("url"), _style(part)) for part in cell if isinstance(part, dict)])
             for cell in (row.get("table_row") or {}).get("cells") or []]
 
 
@@ -520,7 +501,7 @@ def _meta(client, block_id):
 
 
 def page_of(client, meta, fail, ancestors=None):
-    """The page id a block lives on, walking up its parents (at most 12 levels). `ancestors`, if given, collects every ancestor block's type."""
+    """The page id a block lives on (at most 12 parents up)."""
     node = meta
     for _ in range(12):
         parent = (node or {}).get("parent") or {}
@@ -538,17 +519,17 @@ def page_of(client, meta, fail, ancestors=None):
 
 
 def floating_region(client, block_id, title, fail, with_status=True):
-    """Validate the one floating region the configured heading anchors and return {"heading", "status", "table", "rows", "page_id", "parent_id", "siblings"}.
-    Accepted shape ONLY: a heading_3 whose text is `title` or `title (stamp)`, not inside any callout, followed by exactly one paragraph (none when `with_status` is False: the Hiring
-    Pipeline's heading -> table shape, "status" is None) and one table with a header row of four columns; the block after them (if any) is neither a paragraph nor a table.
-    Anything else raises: no write is ever attempted on an ambiguous region."""
+    """Validate the floating region the heading anchors -> {"heading", "status", "table", "rows", "page_id", "parent_id",
+    "siblings"}. Accepted shape: a heading_3 `title` or `title (stamp)` outside any callout, one paragraph (none when
+    `with_status` is False), one four-column table. Anything else raises: nothing is written to an ambiguous region.
+    """
     def at(stage, call):
         try:
             return call()
         except NotionError as error:
             if type(error).__name__ == type(fail("X")).__name__:
                 raise
-            raise fail(f"FLOATING_{stage}_{error}") from None             # the failing call's name and Notion's status, never an id or text
+            raise fail(f"FLOATING_{stage}_{error}") from None
 
     meta = at("HEADING_GET", lambda: _meta(client, block_id))
     if not isinstance(meta, dict) or meta.get("type") != "heading_3" or not same_id(meta.get("id"), block_id) or not titled(plain(meta), title):
@@ -576,7 +557,6 @@ def floating_region(client, block_id, title, fail, with_status=True):
 
 
 def floating_digest(client, meta, fail):
-    """Digest of a floating region as a protected neighbour: the heading and the block after it (its table) with everything under them. Lenient about shape (only the owner validates it)."""
     parent = (meta.get("parent") or {})
     parent_id = parent.get("block_id") or parent.get("page_id")
     if not parent_id:
@@ -585,15 +565,15 @@ def floating_digest(client, meta, fail):
     at = [i for i, b in enumerate(siblings) if same_id(b.get("id"), meta.get("id"))]
     if len(at) != 1:
         raise fail("PROTECTED_REGION_UNAVAILABLE")
-    group = siblings[at[0]:at[0] + 2]                                               # the heading and its table
+    group = siblings[at[0]:at[0] + 2]
     trees = [_stable(_tree(client, b, fail)) for b in group]
     return {"fields": {f"block{n}": _hash(tree) for n, tree in enumerate(trees)}, "children": [[t.get("type"), _hash(t)] for t in trees]}
 
 
 def page_digest(client, page_id, own_ids, fail, skip_titles=(), budget=400):
-    """A stable digest of every block on the page OUTSIDE the owned blocks: {"nodes": {id: hash of the block's own content}, "layout": {parent: [child ids]}, "h3": {heading text: count}}.
-    Owned blocks (and everything under them) appear only as ids, so the owner's own edits never register. A callout whose first child is a heading in `skip_titles`
-    (a region another system writes on its own schedule) is recorded by id only. Separate pages and views are never entered."""
+    """Stable digest of every block on the page OUTSIDE the owned blocks: {"nodes": {id: hash}, "layout": {parent: [child
+    ids]}, "h3": {heading text: count}}. Owned blocks appear only as ids.
+    """
     own = {i.replace("-", "").lower() for i in own_ids}
     for attempt in range(WALK_ATTEMPTS):
         nodes, layout, titles, left, kinds = {}, {}, {}, [budget], {}
@@ -606,7 +586,7 @@ def page_digest(client, page_id, own_ids, fail, skip_titles=(), budget=400):
 
 
 class _PageChanged(Exception):
-    """A block listed a moment ago is gone (Notion 404): another writer rewrote the page during the walk. Carries the fixed code and the block kind only."""
+    """A listed block is gone (Notion 404): another writer rewrote the page mid-walk."""
 
 
 def _walk_page(client, page_id, own, fail, skip_titles, nodes, layout, titles, left, kinds):
@@ -618,8 +598,8 @@ def _walk_page(client, page_id, own, fail, skip_titles, nodes, layout, titles, l
             kids = children(client, parent_id, fail)
         except NotionError as error:
             if str(error) == "NOTION_HTTP_404" and parent_id != page_id:
-                raise _PageChanged(f"{error}:{kinds.get(parent_id, 'page')}") from None             # LIFE-680: a block under the page vanished mid-walk; the caller walks again once
-            raise fail(f"PAGE_WALK_{error}:{kinds.get(parent_id, 'page')}") from None             # the kind of block that could not be listed, never its id or text
+                raise _PageChanged(f"{error}:{kinds.get(parent_id, 'page')}") from None
+            raise fail(f"PAGE_WALK_{error}:{kinds.get(parent_id, 'page')}") from None
         layout[parent_id] = [k["id"] for k in kids]
         for position, kid in enumerate(kids):
             key = kid["id"].replace("-", "").lower()
@@ -648,21 +628,20 @@ def _walk_page(client, page_id, own, fail, skip_titles, nodes, layout, titles, l
 
 
 def page_changed(before, after):
-    """Counts only: how many blocks differ, appeared or vanished, and whether any parent's child order moved."""
     keys = set(before["nodes"]) | set(after["nodes"])
     return {"blocks": sum(before["nodes"].get(k) != after["nodes"].get(k) for k in keys),
             "layout": sum(before["layout"].get(k) != after["layout"].get(k) for k in set(before["layout"]) | set(after["layout"]))}
 
 
 def cell_blocks(cells):
-    """cells: one row, each cell a span or a list of spans (see _segs) -> the table_row `cells` field."""
     return [[{"type": "text", "text": {"content": text, **({"link": {"url": link}} if link else {})}, **({"annotations": STYLES[style]} if style else {})}
              for text, link, style in _segs(cell)] for cell in cells]
 
 
 def write_floating(client, region, status_text, rows, fail):
-    """Rewrite only the status paragraph and the table rows of a validated region. rows: [[(text, link)] x 4] or None to leave the table alone.
-    The header row (row 0) is never edited. Existing data rows are PATCHed in place, extras appended, surplus deleted. -> {"rows_changed", "rows_added", "rows_removed"}."""
+    """Rewrite the status paragraph and table rows of a validated region. rows: [[(text, link)] x 4] or None; the header
+    row is never edited. -> {"rows_changed", "rows_added", "rows_removed"}.
+    """
     counts = {"rows_changed": 0, "rows_added": 0, "rows_removed": 0}
     table_id = region["table"]["id"]
     if rows is not None:

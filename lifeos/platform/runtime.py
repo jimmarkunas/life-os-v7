@@ -1,14 +1,13 @@
-"""Bounded execution primitives (ported, trimmed, from the V2 runtime kernel). Not a workflow engine: a deadline and a run id.
-
-Consumers: the resolve stage (`lifeos.jobs.resolve.stage`) for its batch deadline; Interview OS stages are the second (docs/INTERVIEW_HANDOFF.md).
-No registry, no hooks, no pipeline graph. One run at a time stays a workflow concern (the concurrency group), not code."""
+"""Bounded execution primitives: a deadline and a run id. Not a workflow engine; one run at a time is the workflow's
+concurrency group.
+"""
 from __future__ import annotations
 
 from collections.abc import Callable
 import time
 from uuid import uuid4
 
-MAX_RUNTIME_SECONDS = 3600.0          # one Actions job; a stage asks for less
+MAX_RUNTIME_SECONDS = 3600.0
 
 
 class DeadlineExceeded(TimeoutError):

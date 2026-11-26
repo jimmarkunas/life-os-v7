@@ -1,13 +1,8 @@
-"""LIFE-570: should the hourly run's unit-tests job (beside the run since LIFE-856) re-run the unit tests?
-
-pr-tests already runs the full suite on every push to main. When the commit an hourly run is about to test already has a green `pr-tests` push run on main, re-running the same
-tests proves nothing new, so the job skips them and says why. FAIL CLOSED: anything but a confirmed green run on THIS exact commit (a lookup that fails, no run, a newer run that is not
-green, a run too old, a SHA that is not a full commit id) means the tests RUN. The age cap keeps the time-dependent tests (the index freshness check, date-based checks) running a few
-times a day even when main does not change.
-
-    python -m lifeos.platform.testgate        # env: GITHUB_SHA, GITHUB_REPOSITORY, GITHUB_TOKEN; writes skip=true|false to $GITHUB_OUTPUT and one line to $GITHUB_STEP_SUMMARY
-
-Stdlib only. Counts and a short commit id; no job data."""
+"""Should the hourly unit-tests job re-run the tests? Not when this exact commit already has a recent green `pr-tests`
+push run on main. FAIL CLOSED: a failed lookup, no run, a newer non-green run, a run too old or a SHA that is not a
+full commit id means the tests RUN. python -m lifeos.platform.testgate (env: GITHUB_SHA, GITHUB_REPOSITORY,
+GITHUB_TOKEN; writes skip=true|false to $GITHUB_OUTPUT)
+"""
 import datetime as dt
 import json
 import os
@@ -17,7 +12,7 @@ import urllib.request
 WORKFLOW = "pr-tests.yml"
 PATH = ".github/workflows/pr-tests.yml"
 SHA = re.compile(r"^[0-9a-f]{40}$")
-MAX_AGE_HOURS = 6                       # a green run older than this does not excuse the hourly run (time-dependent tests still run about four times a day)
+MAX_AGE_HOURS = 6
 
 
 def _t(value):
@@ -25,7 +20,7 @@ def _t(value):
 
 
 def decide(runs, sha, now, max_age_hours=MAX_AGE_HOURS):
-    """-> (skip: bool, reason: str). `runs`: the Actions runs of pr-tests for this commit. Only a confirmed green push run on main for exactly `sha`, finished recently, skips."""
+    """-> (skip: bool, reason: str)."""
     if not isinstance(sha, str) or not SHA.match(sha):
         return False, "no full commit id"
     mine = [r for r in (runs or []) if isinstance(r, dict) and r.get("head_sha") == sha and r.get("head_branch") == "main" and r.get("event") == "push" and r.get("path") == PATH]
@@ -58,7 +53,7 @@ def main(environ=None, opener=urllib.request.urlopen, now=None):
     sha, repo, token = environ.get("GITHUB_SHA", ""), environ.get("GITHUB_REPOSITORY", ""), environ.get("GITHUB_TOKEN", "")
     try:
         skip, reason = decide(fetch(sha, repo, token, opener), sha, now or dt.datetime.now(dt.timezone.utc))
-    except Exception:                                                    # noqa: BLE001 - fail closed: any lookup problem means the tests run
+    except Exception:  # noqa: BLE001 - fail closed
         skip, reason = False, "the pr-tests lookup failed"
     line = f"tests skipped: {reason}" if skip else f"tests run: {reason}"
     print(line)

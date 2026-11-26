@@ -1,9 +1,8 @@
-"""LIFE-627: one read-only list of every job that starts on a clock, with its schedule and last run in Central Time and a state: on time, late, missing, not due or unknown.
-
-    GITHUB_REPOSITORY=owner/name python -m lifeos.platform.scheduled_jobs
-
-The jobs and their tolerances are data (scheduled_jobs.json; a contract test fails when a workflow schedule or a systemd timer has no row). A last run comes from the repository's public run
-history, so no secret is held; a job whose last run leaves no trace there (Oracle timers, launchd) is `unknown`, never guessed. The view starts nothing. Late or missing jobs are named in the daily check."""
+"""Every job that starts on a clock: schedule and last run in Central Time, and a state of on time, late, missing, not
+due or unknown (`GITHUB_REPOSITORY=owner/name python -m lifeos.platform.scheduled_jobs`). Jobs and tolerances are data
+(scheduled_jobs.json; a contract test fails when a workflow schedule or systemd timer has no row). A job that leaves
+no trace in public run history (Oracle timers, launchd) is `unknown`.
+"""
 import datetime as dt
 import json
 import os
@@ -26,14 +25,13 @@ def _t(text):
 
 
 def slot(now, weekday, hhmm):
-    """The newest weekly slot (UTC, Monday = 0) that is not after now."""
     hour, minute = map(int, hhmm.split(":"))
     found = now.replace(hour=hour, minute=minute, second=0, microsecond=0) - dt.timedelta(days=(now.weekday() - weekday) % 7)
     return found if found <= now else found - dt.timedelta(days=7)
 
 
 def state(job, runs, now):
-    """-> (state, last run or None). runs maps a workflow file to its run list, or to None when it could not be read."""
+    """-> (state, last run or None). `runs` maps a workflow file to its run list, or None when unreadable."""
     rule, source = job["rule"], job.get("source")
     if rule == "unknown" or runs.get(source) is None or runs.get(job.get("after", source)) is None:
         return UNKNOWN, None
@@ -57,7 +55,6 @@ def state(job, runs, now):
 
 
 def evaluate(now, runs, jobs=None):
-    """-> one dict per job: job, host, schedule (CT), last (aware datetime or None), state."""
     rows = []
     for job in jobs or load()["jobs"]:
         found, last = state(job, runs, now)
@@ -77,12 +74,12 @@ def render(rows):
 
 
 def fetch(api, jobs=None):
-    """-> {workflow file: run list, or None when unreadable}. `api(path)` returns the parsed JSON for one repository API path."""
+    """-> {workflow file: run list, or None when unreadable}."""
     runs = {}
     for name in {j[k] for j in jobs or load()["jobs"] for k in ("source", "after") if j.get(k)}:
         try:
             runs[name] = api(f"actions/workflows/{name}/runs?per_page=60")["workflow_runs"]
-        except Exception:                                                  # noqa: BLE001 - an unreadable history is `unknown`, never a crash or a guess
+        except Exception:  # noqa: BLE001
             runs[name] = None
     return runs
 

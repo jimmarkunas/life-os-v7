@@ -1,11 +1,7 @@
-"""LIFE-844: the Runtime Configuration data source reader, addressed by a stable ID, never by title.
-
-It is V7's one settings source (LIFE-892 switched to it; LIFE-859 retired the old page, REQ-52).
-
-`settings.apply` reads it and fills the environment; `shadow` is now a read-only health check of the source (rows, kinds, and which Notion tokens can read it), called by lifeos.run and the tick. It compares nothing.
-The source is addressed by V7_RUNTIME_CONFIG_SOURCE_ID, so a rename or a move cannot hide it. Rows: Name, Value, Kind (address | switch), Revision, Active. It reuses settings.py's allowlist (MOVABLE), refusals
-(SAFETY and credential-shaped names), shadow rule (`_fill`) and last-accepted fallback; two active rows for a name apply neither. Counts and names only, never a value; never raises (`status` says why).
-History: docs/platform/runtime-config-cutover.md."""
+"""The Runtime Configuration data source reader, addressed by V7_RUNTIME_CONFIG_SOURCE_ID, never by title: V7's one
+settings source. Rows: Name, Value, Kind (address | switch), Revision, Active; two active rows for a name apply
+neither. Reuses settings.py's allowlist, refusals and shadow rule. Counts and names only; never raises.
+"""
 import os
 import re
 import threading
@@ -16,14 +12,14 @@ from lifeos.platform import settings
 SOURCE_NAME = "V7_RUNTIME_CONFIG_SOURCE_ID"
 KINDS = ("address", "switch")
 REQUIRED = {"Name": "title", "Value": "rich_text", "Kind": "select", "Revision": "number", "Active": "checkbox"}
-MAX_PAGES = 20                                                           # a settings source is a few dozen rows; more than 20 pages is a mistake, not data
+MAX_PAGES = 20  # more than 20 pages is a mistake, not a settings source
 CODE = re.compile(r"[A-Z0-9_]{3,60}")
 NAME = re.compile(r"[A-Z][A-Z0-9_]*")
-PROOF_TOKENS = ("NOTION_JIRA_TOKEN", "NOTION_API_TOKEN", "NOTION_INTERVIEW_TOKEN", "NOTION_RECRUITERS_TOKEN", "NOTION_AMAZON_TOKEN", "NOTION_BILLS_TOKEN", "NOTION_FIT_SYNC_TOKEN")   # LIFE-858: the seven identities that must read the source
+PROOF_TOKENS = ("NOTION_JIRA_TOKEN", "NOTION_API_TOKEN", "NOTION_INTERVIEW_TOKEN", "NOTION_RECRUITERS_TOKEN", "NOTION_AMAZON_TOKEN", "NOTION_BILLS_TOKEN", "NOTION_FIT_SYNC_TOKEN")
 
 
 class RuntimeConfigError(RuntimeError):
-    """Fixed codes only: RUNTIME_CONFIG_SOURCE_ID_MISSING, RUNTIME_CONFIG_SOURCE_ID_INVALID, RUNTIME_CONFIG_UNREADABLE, RUNTIME_CONFIG_EMPTY."""
+    """Fixed codes only: RUNTIME_CONFIG_SOURCE_ID_MISSING, _SOURCE_ID_INVALID, _UNREADABLE, _EMPTY."""
 
 
 def source_id(environ):
@@ -41,7 +37,7 @@ def _text(prop):
 
 
 def _row(page):
-    """One Notion page -> (name, value, kind, revision, active), or None when a required property is missing or has the wrong type."""
+    """One Notion page -> (name, value, kind, revision, active), or None when a property is missing or mistyped."""
     props = (page or {}).get("properties") or {}
     if any((props.get(key) or {}).get("type") != kind for key, kind in REQUIRED.items()):
         return None
@@ -51,7 +47,7 @@ def _row(page):
 
 
 def fetch(client, source):
-    """-> every row of the source, by ID. Any client failure becomes RUNTIME_CONFIG_UNREADABLE; the source is never searched for by title."""
+    """-> every row of the source, by ID. Any client failure becomes RUNTIME_CONFIG_UNREADABLE."""
     rows, cursor = [], None
     try:
         for _ in range(MAX_PAGES):
@@ -61,13 +57,15 @@ def fetch(client, source):
             cursor = reply.get("next_cursor")
             if not (reply.get("has_more") and cursor):
                 return rows
-    except Exception:                                                    # noqa: BLE001 - the reader never raises its cause (it may hold a value); the fixed code is the receipt
+    except Exception:  # noqa: BLE001
         raise RuntimeConfigError("RUNTIME_CONFIG_UNREADABLE") from None
-    raise RuntimeConfigError("RUNTIME_CONFIG_UNREADABLE")                # the source kept paging: not a settings source
+    raise RuntimeConfigError("RUNTIME_CONFIG_UNREADABLE")
 
 
 def parse(pages):
-    """Notion pages -> ({name: value}, counts). The counts are `refused`, `unknown`, `invalid`, `repeated` and `inactive`; none of them is applied."""
+    """Notion pages -> ({name: value}, counts of refused, unknown, invalid, repeated and inactive rows, which are not
+    applied).
+    """
     counts = {"refused": [], "unknown": 0, "invalid": [], "repeated": [], "inactive": 0}
     seen, rows = {}, []
     for page in pages:
@@ -79,7 +77,7 @@ def parse(pages):
         if not active:
             counts["inactive"] += 1
             continue
-        if not NAME.fullmatch(name):                                         # a Name that is not NAME_LIKE_THIS is not a setting
+        if not NAME.fullmatch(name):
             counts["unknown"] += 1
             continue
         seen[name] = seen.get(name, 0) + 1
@@ -103,17 +101,15 @@ def parse(pages):
 
 
 def read(client, environ=os.environ):
-    """-> ({name: value}, counts) from the configured source; the source is addressed only by its bootstrap ID."""
     return parse(fetch(client, source_id(environ)))
 
 
 def export_rows(found):
-    """The rows to create in the new source from an accepted settings map (a migration helper for the protected cutover; it writes nothing)."""
     return [{"Name": n, "Value": v, "Kind": "address" if settings.is_address(n) else "switch", "Revision": 1, "Active": True} for n, v in sorted(found.items())
             if settings.movable(n) and n not in settings.SAFETY]
 
 
-_ONCE = {}                                                               # LIFE-858: the process-wide receipt of `shadow(once=True)`, so the many stages of one tick process make one read, not one each
+_ONCE = {}
 _ONCE_LOCK = threading.Lock()
 
 
@@ -128,8 +124,7 @@ def _client_for(token):
 
 
 def probe(environ=os.environ, make_client=_client_for):
-    """LIFE-858 (Phase 1, read only): can each Notion token identity THIS step holds read the source? One read of the source per token present, by ID, through the same reader.
-    -> {TOKEN_NAME: "PASS" | "FAIL:<CODE>"}. A token the step does not hold is not listed (UNVERIFIED for that run); a name outside PROOF_TOKENS is never probed. Names and codes only: never a token, a value or a message."""
+    """Can each Notion token this step holds read the source? -> {TOKEN_NAME: "PASS" | "FAIL:<CODE>"}."""
     out = {}
     for name in PROOF_TOKENS:
         token = (environ.get(name) or "").strip()
@@ -140,34 +135,33 @@ def probe(environ=os.environ, make_client=_client_for):
             out[name] = "PASS" if found else "FAIL:RUNTIME_CONFIG_EMPTY"
         except RuntimeConfigError as error:
             out[name] = "FAIL:" + str(error)
-        except Exception as error:                                       # noqa: BLE001 - a probe never fails a stage and never repeats a message
+        except Exception as error:  # noqa: BLE001
             out[name] = "FAIL:" + type(error).__name__
     return out
 
 
 def shadow(environ=os.environ, client=None, make_client=None, once=False):
-    """With `once=True` (the `lifeos.run` hook and the tick) the first call in a process makes the read and every later call with the same bootstrap ID and token names returns a compact
-    `{"status", "matched", "blocking", "cached": True}` without touching Notion: the hourly tick runs about 23 stages in one process and each used to repeat the whole read (about 2.6 s each)."""
+    """With `once=True`, later calls with the same bootstrap ID and token names return the first call's receipt."""
     if not once:
         return _shadow(environ, client, make_client)
     try:
         key = (source_id(environ), tuple(name for name in PROOF_TOKENS if (environ.get(name) or "").strip()))
     except RuntimeConfigError:
-        return _shadow(environ, client, make_client)                          # off or invalid: nothing is read, nothing to cache
-    with _ONCE_LOCK:                                                         # a concurrent caller waits for the first read instead of repeating it
+        return _shadow(environ, client, make_client)
+    with _ONCE_LOCK:
         if key in _ONCE:
             first = _ONCE[key]
             return {"status": "ok", "rows": first["rows"], "cached": True}
         receipt = _shadow(environ, client, make_client)
-        if receipt.get("status") == "ok":                                     # only a good read is remembered: a transient failure never poisons the later stages
+        if receipt.get("status") == "ok":
             _ONCE[key] = receipt
         return receipt
 
 
 def _shadow(environ, client, make_client):
-    """Read-only health check of the source. Changes nothing in the environment, writes nothing, never raises.
-    -> {"status": "off"} with no bootstrap ID or no token (nothing was read), else `status` ok or `unreadable:<CODE>` with `rows` and `kinds` (counts), `new_counts` (names of rows the reader refused or found invalid or
-    repeated, only when there are any), `seconds` (the read's own cost), `tokens` (`probe`: one PASS/FAIL per Notion token this step holds, only in production or with `make_client`) and `names` (only on a manual dispatch)."""
+    """Read-only health check of the source; never raises. -> {"status": "off"} with no bootstrap ID or token, else
+    `status` ok or `unreadable:<CODE>` plus `rows`, `kinds`, `seconds` and optional `new_counts`, `tokens`, `names`.
+    """
     try:
         source_id(environ)
     except RuntimeConfigError as error:
@@ -182,7 +176,7 @@ def _shadow(environ, client, make_client):
             client = _client_for(token)
             make_client = make_client or _client_for
         new, new_counts = read(client, environ)
-    except Exception as error:                                           # noqa: BLE001 - a shadow read never fails a stage
+    except Exception as error:  # noqa: BLE001
         return {"status": "unreadable:" + (str(error) if CODE.fullmatch(str(error)) else type(error).__name__)}
     out = {"status": "ok", "rows": len(new), "kinds": {"address": sum(1 for n in new if settings.is_address(n)), "switch": sum(1 for n in new if not settings.is_address(n))}}
     flagged = {key: value for key, value in new_counts.items() if value}

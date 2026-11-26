@@ -1,10 +1,8 @@
-"""LIFE-975 step 4b: the Command Center's fourth card, `Runs OK today`: how many hourly ticks today (America/Chicago midnight on) finished without a failure.
-
-Source: GitHub's own run history, read with the dcc job's own read-only `GITHUB_TOKEN` (the one the other Command Center reads already use); no new workflow, token, store, cron or phone alert.
-A tick is a completed run of `hourly.yml` titled `tick` (a scheduled run or a dispatched tick; runs titled `manual` and any other title are left out; cancelled runs are left out).
-A tick FAILED when the tick itself, or any follow-on run it started, concluded failure. Follow-on runs are the `domains.yml` runs titled `domains (after tick)`, `recruiters.yml` and `capacity-card.yml`
-runs, each belonging to the latest tick that started before it (a tick owns the time from its own start to the next tick's start). Unreadable history is `unverified`, never a healthy count.
-Read-only; fixed codes only."""
+"""The Command Center's `Runs OK today` card: hourly ticks today (America/Chicago midnight on) that finished without a
+failure, from GitHub's run history. A tick is a completed, non-cancelled `hourly.yml` run titled `tick`; it FAILED if
+it or a follow-on run (`domains (after tick)`, `recruiters.yml`, `capacity-card.yml`) failed. Unreadable history is
+`unverified`, never a healthy count.
+"""
 import datetime as dt
 import json
 import urllib.request
@@ -17,13 +15,13 @@ TZ = ZoneInfo("America/Chicago")
 FAILED = ("failure", "timed_out", "startup_failure")
 DONE = FAILED + ("success",)
 TICKS = "hourly.yml"
-FOLLOW_ON = {"domains.yml": gate.DOMAINS_TITLE, "recruiters.yml": None, "capacity-card.yml": None}      # workflow -> the run title that counts (None: any title)
+FOLLOW_ON = {"domains.yml": gate.DOMAINS_TITLE, "recruiters.yml": None, "capacity-card.yml": None}
 PER_PAGE, MAX_PAGES = 100, 5
 NAME = "Runs OK today"
 
 
 class Unreadable(Exception):
-    """Fixed code only (never a value)."""
+    """Fixed code only, never a value."""
 
 
 def _get(environ, path, opener):
@@ -59,7 +57,7 @@ def _at(run):
 
 
 def tally(ticks, follow_ons):
-    """Pure. ticks / follow_ons: GitHub run dicts. -> {"ok": n, "total": n, "failed": [run url, oldest first], "latest_failed": bool}. Only completed, non-cancelled ticks count; a failed follow-on fails the tick that owns it."""
+    """-> {"ok", "total", "failed": [run url, oldest first], "latest_failed"}."""
     ticks = sorted((t for t in ticks if t.get("display_title") == gate.TICK_TITLE and t.get("conclusion") in DONE), key=_at)
     bad = {t["id"]: t.get("conclusion") in FAILED for t in ticks}
     first_failed = {}

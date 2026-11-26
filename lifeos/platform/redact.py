@@ -1,8 +1,6 @@
-"""Public-safe redaction (ported, trimmed, from V2 core/security.py), with meeting credentials added.
-
-The primary log control in V7 is counts-only output with fixed error codes. This is defence in depth for the places free text can leak in: exception messages
-and any structured diagnostic. Private meeting credentials (passcode, meeting id, join token) are sensitive evidence: they may live only on the bounded
-operating surface where a person needs to join, never in logs, summaries or derived context."""
+"""Public-safe redaction. Meeting credentials (passcode, meeting id, join token) never reach logs, summaries or derived
+context.
+"""
 from collections.abc import Iterable, Mapping
 import re
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -51,7 +49,8 @@ def _text(value, secrets):
 
 
 def redact(value, secrets: Iterable[str] = ()):
-    """A JSON-friendly redacted copy; the input is never mutated. Unknown objects are reduced to their type name, never repr()'d."""
+    """A JSON-friendly redacted copy; the input is never mutated and unknown objects are reduced to their type name.
+    """
     return _walk(value, tuple(str(s) for s in secrets if s))
 
 
@@ -70,5 +69,5 @@ def _walk(value, secrets):
 
 
 def safe_error(error, secrets: Iterable[str] = ()):
-    """A redacted one-line description of an exception for a log line: type name plus scrubbed message."""
+    """A redacted one-line description of an exception: type name plus scrubbed message."""
     return f"{type(error).__name__}: {_text(str(error), tuple(str(s) for s in secrets if s))}"[:300]

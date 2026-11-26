@@ -1,8 +1,7 @@
-"""Production switches in the repository (Jim, Oct 24 2026 standing grant, LIFE-3 comment 11095).
-
-Each switch lives in switches.json with its state and the bounds it runs within, so a change is a reviewed PR under the merge rule, never an unseen setting.
-A repository variable of the same name still wins in one direction only: "off" is Jim's kill switch, whatever the file says; "on" turns a switch on by hand.
-Anything else (unset, empty, a typo) defers to the file. Never covered: paid spend, sending mail, applying to jobs, secrets, deleting data."""
+"""Production switches kept in switches.json with their state and bounds, so a change is a reviewed PR. A repository
+variable of the same name wins in one direction only: "off" is the kill switch, "on" turns a switch on by hand;
+anything else defers to the file. Never covered: paid spend, sending mail, applying to jobs, secrets, deleting data.
+"""
 import json
 from pathlib import Path
 
@@ -17,4 +16,4 @@ def state(name, environ):
     try:
         return (json.loads(FILE.read_text()).get(name) or {}).get("state") == "on"
     except (OSError, ValueError):
-        return False                                                   # an unreadable file is off, never on
+        return False
