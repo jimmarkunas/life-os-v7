@@ -88,6 +88,9 @@
         name: Step 7c - Network Leads blocks on Ledger pages (NET-2.3; 41 pages a run, rotating; moved from the hourly finish job by LIFE-856, it runs beside the after-tick domains work; a failure fails this job and the report job pushes once)
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
+          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""   # LIFE-856: the old hourly.yml declared these three at workflow level, so the settings source filled them for every step; a domains step must declare them itself
+          HIRING_PIPELINE_PAGE_ID: ""
+          V7_FIT_GATE: ""
           FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_network_surface.outputs.FIT_PROFILE_EXTRA_JSON }}
           FIT_PROFILE_JSON: ${{ steps.bws_network_surface.outputs.FIT_PROFILE_JSON }}
           JOBRIGHT_EMAIL: ${{ steps.bws_network_surface.outputs.JOBRIGHT_EMAIL }}
