@@ -132,6 +132,19 @@ class Guard:
                 self.brake()
                 raise Stop("drain_timeout") from None
 
+    def _inputs_ok(self, batch=()):
+        """Refuse BEFORE anything is armed when a message or the workspace's text is larger than the limits the bound assumes."""
+        if any(len(m.get("content", "")) > budget.MESSAGE_CHARS_MAX for m in batch):
+            raise Stop("message_too_long") from None
+        try:
+            volume = self.hon.volume_chars()
+        except Unauthorized:
+            raise Stop("token_expired") from None
+        except HonchoError:
+            raise Stop("honcho_unreadable") from None
+        if volume + sum(len(m.get("content", "")) for m in batch) > budget.VOLUME_CHARS_MAX:
+            raise Stop("volume_exceeded") from None
+
     # ---- the run
     def seed(self, messages):
         sent = 0
@@ -141,6 +154,7 @@ class Guard:
             batch = messages[i:i + self.tranche]
             spent = self._settled()
             exposure = budget.tranche_worst(len(batch))
+            self._inputs_ok(batch)
             if not budget.can_arm(spent, exposure, budget.dream_worst(), self.ceiling):
                 raise Stop("budget_before_tranche_%d" % (i // self.tranche + 1)) from None
             try:
@@ -177,6 +191,7 @@ class Guard:
         if count > budget.EXPLICIT_MAX:
             raise Stop("too_many_conclusions_for_isolation") from None
         exposure = budget.dream_worst()
+        self._inputs_ok()
         if not budget.can_arm(spent, exposure, 0.0, self.ceiling):
             raise Stop("budget_before_dream") from None
         try:
@@ -203,14 +218,15 @@ class Guard:
             raise Stop("exposure_exceeded") from None
         return True
 
-    def run(self, messages):
-        """-> the report. Never raises: a Stop is the reason the run ended early."""
+    def run(self, messages, seeded=False):
+        """-> the report. Never raises: a Stop is the reason the run ended early. `seeded=True`: the conclusions were created directly (no deriver spending), so only the dream is armed."""
         reason = ""
         try:
             self.hon.set_flags(False, False)
             if tuple(self.hon.get_flags()) != (False, False):
                 raise Stop("flags_unverified") from None
-            self.seed(messages)
+            if not seeded:
+                self.seed(messages)
             self.dream()
         except Stop as stop:
             reason = stop.reason

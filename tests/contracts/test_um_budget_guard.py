@@ -29,7 +29,7 @@ class Crash(BaseException):
 
 
 class World:
-    def __init__(self, cost="worst", seed=0, dream_attempts=3, rep_attempts=budget.BILLED_ATTEMPTS, explicit=None):
+    def __init__(self, cost="worst", seed=0, dream_attempts=1, rep_attempts=budget.BILLED["modeled"], explicit=None):
         self.t, self.spent, self.others = 0.0, BASE, 0.0
         self.queue, self.completed, self.posted, self.dead = [], 0, 0, False
         self.flags, self.cost, self.rng = [False, False], cost, random.Random(seed)
@@ -38,6 +38,7 @@ class World:
         self.dream_attempts, self.rep_attempts, self.explicit = dream_attempts, rep_attempts, explicit
         self.burst_at, self.burst = None, 0.0
         self.dream_at_worst = False
+        self.volume = None
         self.sleeps, self.crash_at, self.other_rate = 0, None, 0.0
         self.meter_fail = set()        # reading numbers that raise
         self.meter_frozen_after = None
@@ -117,6 +118,10 @@ class Honcho:
         self._live()
         return self.w.completed
 
+    def volume_chars(self):
+        self._live()
+        return self.w.volume if self.w.volume is not None else self.w.posted * 200
+
     def explicit_count(self):
         self._live()
         return self.w.explicit if self.w.explicit is not None else self.w.posted * 2
@@ -141,7 +146,7 @@ class Honcho:
             self.w.posted += 1
             if armed or self.w.flags[0]:
                 self.w.armed_posts += 1
-                worst = budget.call_worst(budget.CALL_IN_MAX)
+                worst = budget.call_worst(budget.DERIVER_IN, budget.DERIVER_OUT)
                 self.w.queue.append({"kind": "unit", "costs": [self.w.call_cost(worst) for _ in range(self.w.rep_attempts)]})
 
     def schedule_dream(self):
@@ -183,22 +188,30 @@ def run(world, messages=20):
 
 
 class Model(unittest.TestCase):
-    def test_the_prices_and_the_output_cap_are_the_meters(self):
+    def test_the_prices_are_the_meters_prices(self):
         meter = (ROOT / "lifeos" / "edge" / "honcho" / "meter_proxy.py").read_text()
         self.assertIn('PRICES = {"input": 0.10, "cache_write": 0.125, "cache_read": 0.01, "output": 0.50}', meter)
         self.assertEqual((budget.PRICE_IN, budget.PRICE_OUT), (0.10, 0.50))
-        self.assertIn("DEFAULT_MAX_TOKENS = %d" % budget.OUT_MAX, meter)
 
-    def test_the_worst_cases_fit_the_ceiling_in_the_only_orders_the_guard_allows(self):
-        self.assertLess(budget.tranche_worst() + budget.dream_worst(), budget.CEILING)               # one tranche then the dream
+    def test_the_modeled_exposures_fit_the_ceiling_in_the_only_orders_the_guard_allows(self):
+        self.assertLess(budget.tranche_worst() + budget.dream_worst(), budget.CEILING)               # one tranche then the dream (one attempt)
         self.assertLess(budget.dream_worst(), budget.CEILING)
         n = budget.numbers()
-        self.assertAlmostEqual(n["message_worst_usd"], 9 * budget.call_worst(budget.CALL_IN_MAX), places=3)
-        self.assertLess(n["dream_worst_usd"], 0.35)
+        self.assertAlmostEqual(n["message_worst_modeled_usd"], 9 * budget.call_worst(budget.DERIVER_IN, budget.DERIVER_OUT), places=3)
+        self.assertAlmostEqual(n["dream_attempt_worst_usd"], 0.1654, places=3)
+
+    def test_the_code_limits_the_model_rests_on_are_not_the_earlier_guess(self):
+        self.assertEqual((budget.DREAM_OUT, budget.DERIVER_OUT, budget.DERIVER_IN), (8192, 2500, 25000))          # the dream asks for 8,192 output tokens per call, not 2,500
+        self.assertEqual(budget.DREAM_ITER, (13, 11))
+
+    def test_the_queue_retry_limit_alone_uses_up_the_ceiling_and_the_strict_profile_cannot_fit_at_all(self):
+        self.assertGreater(budget.dream_worst(budget.DREAM_ATTEMPTS_QUEUE) + budget.tranche_worst(1), budget.CEILING)
+        self.assertGreater(budget.dream_worst(profile="strict"), budget.CEILING)
+        self.assertGreater(budget.tranche_worst(1, "strict") + budget.dream_worst(profile="strict"), budget.CEILING)
 
     def test_arming_refuses_a_step_that_would_not_fit_and_a_negative_reading(self):
         self.assertTrue(budget.can_arm(0.0, budget.tranche_worst(), budget.dream_worst()))
-        self.assertFalse(budget.can_arm(0.12, budget.tranche_worst(), budget.dream_worst()))
+        self.assertFalse(budget.can_arm(0.25, budget.tranche_worst(), budget.dream_worst()))
         self.assertFalse(budget.can_arm(-0.01, 0.0, 0.0))
 
     def test_the_explicit_limit_keeps_every_automatic_dream_out_of_reach(self):
@@ -245,26 +258,40 @@ class Bound(unittest.TestCase):
             run(w2)
             self.check(w2, k)
 
-    def test_cheap_seeding_then_a_dream_at_the_worst_price_with_all_three_attempts_and_a_crash_at_every_step(self):
+    def test_cheap_seeding_then_a_dream_at_the_worst_price_and_a_crash_at_every_step(self):
         probe = World("typical")
-        probe.dream_attempts, probe.dream_at_worst = 3, True
+        probe.dream_at_worst = True
         run(probe)
-        self.assertIsNotNone(probe.sleeps)
         peak = 0.0
         for k in range(0, probe.sleeps + 1):
             w = World("typical")
-            w.dream_attempts, w.dream_at_worst = 3, True
+            w.dream_at_worst = True
             w.crash_at = k or None
             run(w)
             self.check(w, k)
             peak = max(peak, w.ours())
-        self.assertGreater(peak, 0.3)                                                                  # the dream really ran at full price in some crash schedule
+        self.assertGreater(peak, 0.15)                                                                 # the dream really ran at full price in some crash schedule
         self.assertLessEqual(peak, budget.CEILING)
+
+    def test_documented_residual_a_dead_guard_and_two_more_queue_attempts_of_the_dream_can_pass_the_ceiling(self):
+        """Not a pass: this is the case no guard can close (it needs the meter to refuse). The dream's exposure is armed for one attempt; the queue may run three."""
+        peak = 0.0
+        probe = World("typical")
+        probe.dream_attempts, probe.dream_at_worst = 3, True
+        run(probe)
+        for k in range(1, probe.sleeps + 1):
+            w = World("typical")
+            w.dream_attempts, w.dream_at_worst = 3, True
+            w.crash_at = k
+            run(w)
+            peak = max(peak, w.ours())
+        self.assertGreater(peak, budget.CEILING)
+        self.assertLess(peak, budget.CEILING + 0.05)
 
     def test_random_prices_and_random_failures_never_break_the_ceiling(self):
         for seed in range(250):
             rng = random.Random(seed)
-            w = World("random", seed=seed, dream_attempts=rng.choice([1, 2, 3]))
+            w = World("random", seed=seed)
             w.crash_at = rng.choice([None, rng.randint(1, 500)])
             w.meter_fail = {rng.randint(1, 120) for _ in range(rng.randint(0, 6))}
             w.flag_fail = rng.random() < 0.15
@@ -344,6 +371,26 @@ class Failures(unittest.TestCase):
         finally:
             Honcho.set_flags = orig
         self.assertEqual((report["stopped"], w.armed_posts), ("flags_unverified", 0))
+
+    def test_a_message_over_the_limit_and_too_much_workspace_text_are_refused_before_anything_is_armed(self):
+        w = World("typical")
+        g = guard.Guard(Meter(w), Honcho(w), Clock(w))
+        self.assertEqual(g.run([{"content": "x" * (budget.MESSAGE_CHARS_MAX + 1)}])["stopped"], "message_too_long")
+        self.assertEqual((w.armed_posts, w.spent), (0, BASE))
+        w2 = World("typical")
+        w2.volume = budget.VOLUME_CHARS_MAX
+        g2 = guard.Guard(Meter(w2), Honcho(w2), Clock(w2))
+        self.assertEqual(g2.run([{"content": "ok"}])["stopped"], "volume_exceeded")
+        self.assertEqual((w2.armed_posts, w2.spent), (0, BASE))
+
+    def test_seeded_directly_only_the_dream_is_armed_and_the_text_limit_still_applies(self):
+        w = World("typical", explicit=40)
+        w.posted = 40
+        g = guard.Guard(Meter(w), Honcho(w), Clock(w))
+        report = g.run([], seeded=True)
+        self.assertIsNone(report["stopped"], report)
+        self.assertEqual(w.armed_posts, 0)
+        self.assertLessEqual(w.ours(), budget.dream_worst() + 1e-9)
 
     def test_too_many_conclusions_stops_before_the_dream(self):
         w = World("typical", explicit=60)

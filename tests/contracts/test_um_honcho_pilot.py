@@ -29,6 +29,7 @@ DOC = json.loads(um.CORPUS.read_text())
 class Honcho(sim.Honcho):
     scoped = True
     unarmed_makes_work = False
+    oversize_refused = True
 
     def create_workspace(self):
         return {}
@@ -43,6 +44,13 @@ class Honcho(sim.Honcho):
         super().post_messages(batch, armed)
         if self.unarmed_makes_work and not armed:
             self.w.queue.append({"kind": "unit", "costs": [0.001]})
+
+    def probe_oversize_message(self):
+        return self.oversize_refused
+
+    def create_conclusions(self, rows):
+        self.created = len(rows)
+        self.w.posted += len(rows)
 
     def conclusion_ids(self):
         return ["c1", "c2"]
@@ -93,21 +101,21 @@ class Graph:
         return um.deps_graph(um.World(DOC), case)
 
 
-def go(world=None, db=None, honcho=None, graph=None):
+def go(world=None, db=None, honcho=None, graph=None, seed="messages"):
     w = world or sim.World("typical")
     h = honcho or Honcho(w)
-    return w, run(w, h, db or Db(), graph or Graph())
+    return w, run(w, h, db or Db(), graph or Graph(), seed)
 
 
-def run(w, h, db, graph):
-    return pilot.run_pilot(h, sim.Meter(w), db, DOC, graph, sim.Clock(w), reps=2)
+def run(w, h, db, graph, seed="messages"):
+    return pilot.run_pilot(h, sim.Meter(w), db, DOC, graph, sim.Clock(w), reps=2, seed=seed)
 
 
 class Free(unittest.TestCase):
     def test_a_clean_run_goes_through_every_step_in_order_and_ends_bounded(self):
         w, ev = go()
         names = [s["step"] for s in ev["steps"]]
-        self.assertEqual(names, ["personal_baseline", "due_before", "created_all_off", "token_refused_on_personal", "brake_test_unarmed_message_creates_no_work", "guard_run"])
+        self.assertEqual(names, ["personal_baseline", "due_before", "created_all_off", "token_refused_on_personal", "brake_test_unarmed_message_creates_no_work", "oversize_message_refused_by_the_api", "guard_run"])
         self.assertNotIn("stopped", ev)
         self.assertLessEqual(w.ours(), 0.5)
         self.assertEqual(w.armed_posts, 20)
@@ -147,6 +155,22 @@ class Free(unittest.TestCase):
         h.get_flags = lambda: (True, False)
         w, ev = go(w, honcho=h)
         self.assertEqual(ev["stopped"], "flags_unverified")
+
+    def test_an_oversize_message_that_the_api_accepts_stops_the_run_before_the_guard(self):
+        w = sim.World("typical")
+        h = Honcho(w)
+        h.oversize_refused = False
+        w, ev = go(w, honcho=h)
+        self.assertEqual((ev["stopped"], w.armed_posts), ("oversize_message_accepted", 0))
+
+    def test_seeding_the_conclusions_directly_arms_only_the_dream_and_stays_inside_its_exposure(self):
+        w = sim.World("typical", explicit=40)
+        h = Honcho(w)
+        w, ev = go(w, honcho=h, seed="conclusions")
+        self.assertEqual((h.created, w.armed_posts), (20, 0))
+        self.assertIn("conclusions_created_directly", [s["step"] for s in ev["steps"]])
+        self.assertLessEqual(w.ours(), pilot.budget.dream_worst() + 1e-9)
+        self.assertNotIn("stopped", ev)
 
     def test_the_guard_stopping_is_reported_and_the_comparison_still_runs_on_what_exists(self):
         w, ev = go(world=sim.World("worst"))

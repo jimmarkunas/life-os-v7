@@ -73,6 +73,28 @@ class Safety(unittest.TestCase):
         self.assertFalse(h.probe_other_workspace("personal"))
 
 
+class Limits(unittest.TestCase):
+    def test_an_oversize_message_is_true_when_the_api_refuses_it_and_false_when_it_does_not(self):
+        h, op = make(error=urllib.error.HTTPError("u", 422, "too long", {}, None))
+        self.assertTrue(h.probe_oversize_message())
+        self.assertGreater(len(op.log[0][2]["messages"][0]["content"]), 25000)
+        h, _ = make(replies=[{}])
+        self.assertFalse(h.probe_oversize_message())
+        h, _ = make(error=urllib.error.HTTPError("u", 401, "x", {}, None))
+        with self.assertRaises(guard.Unauthorized):
+            h.probe_oversize_message()
+
+    def test_the_volume_is_the_measured_text_of_the_messages_and_the_conclusions(self):
+        h, _ = make(replies=[{"items": [{"content": "a" * 100}, {"content": "b" * 50}]}, {"items": [{"content": "c" * 25}]}])
+        self.assertEqual(h.volume_chars(), 175)
+
+    def test_conclusions_are_created_in_one_call_under_the_tenants_own_peer_and_the_session(self):
+        h, op = make()
+        h.create_conclusions([{"content": "FAKE-REQ-001: x", "tenant": "alpha"}, {"content": "FAKE-REQ-101: y", "tenant": "beta"}])
+        rows = op.log[0][2]["conclusions"]
+        self.assertEqual([(r["observer_id"], r["observed_id"], r["session_id"]) for r in rows], [("t-alpha", "t-alpha", "s1"), ("t-beta", "t-beta", "s1")])
+
+
 class Calls(unittest.TestCase):
     def test_the_workspace_is_created_with_every_spending_switch_off(self):
         h, op = make()

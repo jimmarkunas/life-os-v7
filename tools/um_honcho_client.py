@@ -25,6 +25,10 @@ TENANT_PEER = {"alpha": "t-alpha", "beta": "t-beta"}
 AGENTS = ("agent-a", "agent-b")
 
 
+def client_peer(row):
+    return TENANT_PEER[row["tenant"]]
+
+
 class Http:
     def __init__(self, base, token, opener=None, timeout=30):
         self.base, self._token, self.opener, self.timeout = base.rstrip("/"), token, opener or urllib.request.urlopen, timeout
@@ -82,6 +86,29 @@ class Honcho:
                 row["configuration"] = {"reasoning": {"enabled": True}}                       # spending is switched on for these messages only; the workspace stays off
             rows.append(row)
         self.http.call("POST", self._p(f"/sessions/{self.session}/messages"), {"messages": rows})
+
+    def create_conclusions(self, rows):
+        """Free seeding (no deriver): explicit conclusions with the fixture id in the text, observed and observed-by the tenant's peer, in the one session."""
+        self.http.call("POST", self._p("/conclusions"), {"conclusions": [{"content": r["content"], "observer_id": client_peer(r), "observed_id": client_peer(r), "session_id": self.session} for r in rows]})
+
+    def volume_chars(self):
+        """All message and conclusion text in the workspace (what a deriver or dream call can be fed), measured, not assumed."""
+        total = 0
+        out = self.http.call("POST", self._p(f"/sessions/{self.session}/messages/list?page=1&size=100"), {})
+        total += sum(len(m.get("content") or "") for m in out.get("items", []))
+        out = self.http.call("POST", self._p("/conclusions/list?page=1&size=100"), {})
+        total += sum(len(c.get("content") or "") for c in out.get("items", []))
+        return total
+
+    def probe_oversize_message(self):
+        """-> True when the API itself refuses a message above its limit (settings.MAX_MESSAGE_SIZE 25000): a free call that never reaches a model."""
+        try:
+            self.http.call("POST", self._p(f"/sessions/{self.session}/messages"), {"messages": [{"peer_id": TENANT_PEER["alpha"], "content": "x" * 26_000, "metadata": {"source_ref": "FAKE-OVERSIZE-000"}}]})
+        except guard.Unauthorized:
+            raise
+        except guard.HonchoError:
+            return True
+        return False
 
     def queue(self):
         return self.http.call("GET", self._p("/queue/status"))

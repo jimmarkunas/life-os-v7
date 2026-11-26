@@ -33,7 +33,7 @@ def corpus_messages(doc):
     out = []
     for tenant, limit in (("alpha", ALPHA_MESSAGES), ("beta", BETA_MESSAGES)):
         for s in sorted((x for x in doc["sources"] if x["tenant"] == tenant), key=lambda x: x["id"])[:limit]:
-            out.append({"peer_id": client.TENANT_PEER[tenant], "content": f'{s["id"]}: {s["title"]}. {s["text"]}'[:300], "source_ref": s["id"]})
+            out.append({"peer_id": client.TENANT_PEER[tenant], "tenant": tenant, "content": f'{s["id"]}: {s["title"]}. {s["text"]}'[:300], "source_ref": s["id"]})
     return out
 
 
@@ -54,15 +54,22 @@ class OracleDb:
         row = self._sql("select count(*), coalesce(max(created_at)::text,''), md5(coalesce(string_agg(id||md5(content), ',' order by id), '')) from documents where workspace_name='personal';")[0]
         return {"count": int(row[0]), "newest": row[1], "hash": row[2]}
 
+    DUE = ("import asyncio,json\nfrom src.dependencies import tracked_db\nfrom src.dreamer.dream_due import list_due_dreams\n"
+           "async def main():\n    async with tracked_db('um_t2_due') as db:\n        print(json.dumps(sorted({r.workspace_name for r in await list_due_dreams(db)})))\nasyncio.run(main())\n")
+
     def due_workspaces(self):
-        return None                                                  # the installed due selector is run through the API container by the live wrapper; the tests inject a list
+        """The installed due-dream selector, read-only, run in the API container: -> the workspaces with a dream due."""
+        done = self.run(["sudo", "docker", "exec", "-i", "-e", "PYTHONPATH=/app", "honcho-api-1", "/app/.venv/bin/python", "-c", self.DUE], capture_output=True, text=True, timeout=90)
+        if done.returncode:
+            raise RuntimeError("due_selector_failed")
+        return json.loads(done.stdout.strip().splitlines()[-1])
 
     def residue(self, workspace, conclusion_id):
         rows = self._sql(f"select (select count(*) from documents where id='{conclusion_id}'), (select count(*) from dream_run_changes where conclusion_id='{conclusion_id}'), (select count(*) from dream_run_changes where workspace_name='{workspace}' and peer_card_after is not null);")[0]
         return {"documents": int(rows[0]), "dream_changes": int(rows[1]), "peer_card_changes": int(rows[2])}
 
 
-def run_pilot(honcho, meter, db, doc, graph, clock, reps=5):
+def run_pilot(honcho, meter, db, doc, graph, clock, reps=5, seed="messages"):
     """-> the evidence (aggregates, counts and fixture ids only). Stops at the first free proof that fails, before any paid call."""
     ev, calls = {"steps": []}, []
 
@@ -98,9 +105,17 @@ def run_pilot(honcho, meter, db, doc, graph, clock, reps=5):
     if not (idle and same):
         ev["stopped"] = "unarmed_message_created_work"
         return ev
+    oversize = honcho.probe_oversize_message()
+    step("oversize_message_refused_by_the_api", refused=oversize)
+    if not oversize:
+        ev["stopped"] = "oversize_message_accepted"
+        return ev
     messages = corpus_messages(doc)
+    if seed == "conclusions":
+        honcho.create_conclusions(messages)                      # free seeding: no deriver call at all
+        step("conclusions_created_directly", n=len(messages))
     g = guard.Guard(meter, honcho, clock)
-    report = g.run(messages)
+    report = g.run(messages, seeded=(seed == "conclusions"))
     step("guard_run", **{k: v for k, v in report.items() if k != "events"}, events=len(report["events"]))
     ev["guard_events"] = report["events"]
     if report["stopped"]:
