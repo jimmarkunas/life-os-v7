@@ -4,7 +4,7 @@ Gate: the Runtime Configuration switch MEJ_SPRINT_AUTOMATION, exactly "on"; othe
 without a checkpoint, fails closed with JIRA_RECONCILE_WRITER_UNVERIFIED (the tenant contract is UNVERIFIED; LIFE-918 proves it first). Planning is pure and tested on synthetic data. Never closes or starts a sprint
 (rollover owns the boundary). Output: counts and fixed codes only.
 
-Owner decisions (Notion canon, LIFE-915 section, Nov 24 2026): 3 recurring Tasks close Done with one clone; 4 four future week sprints; 6 names PROJECT W{week} {year} (short form, decision C, Nov 25 2026), ISO, Monday to Sunday CT; 7 carry rule;
+Owner decisions (Notion canon, LIFE-915 section, Nov 24 2026; LIFE-998): 3 recurring Tasks close Done with one clone; 8 future week sprints; 6 names PROJECT W{week} {year} (short form, decision C, Nov 25 2026), ISO, Monday to Sunday CT; 7 carry rule;
 8 configuration plus the `recurring` label; 10 manual, automatic, total closed apart; 11 label removal stops a series; 12 edits reach unfinished future occurrences; 13 rename in place; 14 inspect before retry."""
 import os
 from datetime import date, datetime, timedelta
@@ -15,7 +15,7 @@ from lifeos.platform.jira import JiraError
 from .boards import boards, owned
 
 TZ = "America/Chicago"
-MIN_FUTURE = 4
+MIN_FUTURE = 8
 RECURRING = "recurring"
 STANDARD = ("Task", "Story")
 HIGH = ("Highest", "High")
@@ -59,7 +59,7 @@ def _span(sprint, tz):
 
 def plan_sprints(project, active, future, now, tz, minimum=MIN_FUTURE):
     """-> {"rename": [(sprint_id, name)], "create": [(name, start, end)], "future": n} from the board's active and future sprints, or JiraError with a fixed code before any write.
-    Conflicts (a sprint that is not one Monday-Sunday week, two sprints for one week, a future sprint off the weekly grid, two active sprints) stop the board. Closed sprints are never read here."""
+    Conflicts (a sprint that is not one Monday-Sunday week, two sprints for one week, a future sprint off the weekly grid, two active sprints) stop the board. Plans fill missing weeks only through the configured horizon; excess future sprints are kept and reported. Closed sprints are never read here."""
     if len(active) > 1:
         raise JiraError("JIRA_ACTIVE_AMBIGUOUS")
     today = now.astimezone(tz).date()
@@ -76,7 +76,7 @@ def plan_sprints(project, active, future, now, tz, minimum=MIN_FUTURE):
         if monday in by_week:
             raise JiraError("JIRA_RECONCILE_SPRINT_CONFLICT")
         by_week[monday] = sprint
-    horizon = max([minimum] + [(m - current).days // 7 for m in by_week])
+    horizon = minimum
     rename, create = [], []
     if active and active[0].get("name") != iso_name(project, current):
         rename.append((int(active[0]["id"]), iso_name(project, current)))
@@ -274,6 +274,19 @@ def enabled(environ=None):
         return False
 
 
+def future_target(environ=None):
+    """The Runtime Configuration horizon; an absent value defaults to eight, invalid values fail closed."""
+    source = os.environ if environ is None else environ
+    raw = str(source.get("JIRA_FUTURE_SPRINTS") or MIN_FUTURE).strip()
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        raise JiraError("JIRA_RECONCILE_CONFIG_INVALID") from None
+    if not 1 <= value <= 52:
+        raise JiraError("JIRA_RECONCILE_CONFIG_INVALID")
+    return value
+
+
 class Writers:
     """The injected Jira writes; every method is optional and absent means UNVERIFIED (fail closed). create_sprint(board_id, name, start, end), rename_sprint(sprint_id, name), create_clone(root_key, fields),
     sync_fields(key, fields)."""
@@ -291,15 +304,15 @@ def _inventory(client, board_id, project, keys):
     return owned(client.sprints(board_id, "active"), project, keys), owned(client.sprints(board_id, "future"), project, keys)
 
 
-def reconcile_board(client, project, board_id, now, tz, writers, live, keys=(), sleep=None):
+def reconcile_board(client, project, board_id, now, tz, writers, live, keys=(), sleep=None, minimum=MIN_FUTURE):
     """Plan the board's sprint inventory; live, write it through `writers`, read it back and re-plan once on a lag (14). -> counts."""
     for attempt in range(2):
         active, future = _inventory(client, board_id, project, keys)
-        p = plan_sprints(project, active, future, now, tz)
+        p = plan_sprints(project, active, future, now, tz, minimum)
         if not live:
-            return {"would_rename": len(p["rename"]), "would_create": len(p["create"]), "future": p["future"]}
+            return {"would_rename": len(p["rename"]), "would_create": len(p["create"]), "future": len(future) + len(p["create"])}
         if not p["rename"] and not p["create"]:
-            return {"renamed": 0, "created": 0, "future": p["future"]}
+            return {"renamed": 0, "created": 0, "future": len(future)}
         done = {"renamed": 0, "created": 0}
         for sprint_id, name in p["rename"]:
             writers.need("rename_sprint")(sprint_id, name)
@@ -307,9 +320,10 @@ def reconcile_board(client, project, board_id, now, tz, writers, live, keys=(), 
         for name, start, end in p["create"]:
             writers.need("create_sprint")(board_id, name, start, end)
             done["created"] += 1
-        check = plan_sprints(project, *_inventory(client, board_id, project, keys), now, tz)
+        active_after, future_after = _inventory(client, board_id, project, keys)
+        check = plan_sprints(project, active_after, future_after, now, tz, minimum)
         if not check["rename"] and not check["create"]:
-            return {**done, "future": check["future"]}
+            return {**done, "future": len(future_after)}
         if attempt == 0 and sleep:
             sleep(15)                                                       # a known Jira consistency lag: one re-plan from actual state, never a blind repeat
             continue
@@ -317,26 +331,29 @@ def reconcile_board(client, project, board_id, now, tz, writers, live, keys=(), 
     raise JiraError("JIRA_RECONCILE_VERIFY_FAILED")
 
 
-def run(limit, live, environ=os.environ, client=None, now=None, writers=None, state=None, alert=None, sleep=None, extra=None):
+def run(limit, live, environ=os.environ, client=None, now=None, writers=None, state=None, alert=None, sleep=None, extra=None, force=False):
     """The daily reconciliation stage. Off (switch not "on"): {"enabled": 0}, nothing read. On: at most once per Chicago date at or after 8:00 AM CT, per board (JFM and MEJ as one unit: any board's failure fails
     the run and nothing is marked done). Dry run reads and plans only. Live needs injected `writers` and `state` (get() -> last date, set(date)); without them it fails closed. `alert(subject, details)` is the existing inbox send."""
     if not enabled(environ):
         return {"enabled": 0}
+    minimum = future_target(environ)
     tz = ZoneInfo(TZ)
     now = now or datetime.now(tz)
     last = state.get() if state else None
     if live and (state is None or writers is None):
         raise JiraError("JIRA_RECONCILE_WRITER_UNVERIFIED")
-    if not due(now, last, tz):
+    local = now.astimezone(tz)
+    if (force and local.hour < DAILY_HOUR) or (not force and not due(now, last, tz)):
         return {"enabled": 1, "not_due": 1}
     from lifeos.platform.jira import Jira
     configured = [b for b in boards(environ) if not b[3]]
     client = client or Jira.from_env(environ)
     keys = [b[0] for b in boards(environ)]
     total = {"enabled": 1, "boards": len(configured), "ok": 0, "failed": 0, "renamed": 0, "created": 0, "would_rename": 0, "would_create": 0, "why": {}}
+    future_by_board = {}
     for position, (project, board_id, _, _) in enumerate(configured, 1):
         try:
-            result = reconcile_board(client, project, board_id, now, tz, writers, live, keys, sleep)
+            result = reconcile_board(client, project, board_id, now, tz, writers, live, keys, sleep, minimum)
             if extra is not None:                                           # LIFE-918 wiring: recurrence and closure counts of the same board, inside the same fail-as-one-unit rule
                 result = {**result, **extra(client, project, board_id, now, tz, writers, live, keys, sleep)}
         except JiraError as error:
@@ -345,6 +362,7 @@ def run(limit, live, environ=os.environ, client=None, now=None, writers=None, st
             total["why"][code] = total["why"].get(code, 0) + 1
             continue
         total["ok"] += 1
+        future_by_board[project] = result.get("future", 0)
         for k in ("renamed", "created", "would_rename", "would_create"):
             total[k] += result.get(k, 0)
         for k, v in result.items():
@@ -354,7 +372,10 @@ def run(limit, live, environ=os.environ, client=None, now=None, writers=None, st
         if alert:
             alert("Jira daily reconciliation failed", f"{total['failed']} of {total['boards']} boards: " + ", ".join(sorted(total["why"])))
         raise JiraError(f"JIRA_RECONCILE_FAILED:{total['failed']}of{total['boards']}:" + ",".join(sorted(total["why"])))
-    if live and state is not None:
+    if live and state is not None and not force:
         state.set(now.astimezone(tz).date())
+    total["future_by_board"] = future_by_board
+    total["future_over_target"] = sorted(project for project, count in future_by_board.items() if count > minimum)
+    total["future_target"] = minimum
     total["summary"] = f"Jira sprints: {total['ok']} boards in order, {total['created']} sprints added, {total['renamed']} renamed" if live else "Jira sprints: dry run"
     return total

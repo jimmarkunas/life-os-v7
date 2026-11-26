@@ -97,7 +97,8 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None, wr
         def notify(subject, details):
             alert(subject, details)
         try:
-            total = reconcile.run(limit, live, environ=environ, client=client, now=now, writers=chosen, state=state, alert=notify, sleep=sleep, extra=recurrence.extra(environ))
+            manual_force = str(environ.get("GITHUB_EVENT_NAME") or "") == "workflow_dispatch" and str(environ.get("JIRA_RECONCILE_FORCE") or "").strip().lower() == "true"
+            total = reconcile.run(limit, live, environ=environ, client=client, now=now, writers=chosen, state=state, alert=notify, sleep=sleep, extra=recurrence.extra(environ), force=manual_force)
         except JiraError as error:
             if live:
                 save_summary(connection, now, f"Jira sprints: DEGRADED · {str(error)[:120]}", False)
@@ -111,4 +112,3 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None, wr
         if after is not None:                                                  # lifeos.run passes the AC6 promotion call site (jira may not import accountability)
             total["promotion"] = after(environ, now, live, alert)
         return total
-

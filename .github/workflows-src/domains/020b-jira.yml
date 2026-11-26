@@ -17,7 +17,7 @@
           LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_USER }}
         run: python -m lifeos.run jira-rollover-watch $([ "$LIVE" = "true" ] && echo --live)
-      # why: Jira daily reconcile (LIFE-918; off unless MEJ_SPRINT_AUTOMATION is on; once a day at or after 8 AM CT; sprint inventory, recurring clones, closure counts, the Daily Report summary row, the promotion check; dry run unless live; counts only)
+      # why: Jira daily reconcile (LIFE-918 / LIFE-998; off unless MEJ_SPRINT_AUTOMATION is on; once a day at or after 8 AM CT; a manual force skips only today's date guard; dry run unless live; counts only)
       - id: jreconcile
         continue-on-error: true
         name: Jira daily reconcile
@@ -27,6 +27,7 @@
           NOTION_JIRA_TOKEN: ${{ steps.bws_jira.outputs.NOTION_JIRA_TOKEN }}
           JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
           JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
+          JIRA_RECONCILE_FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.jira == 'reconcile' && inputs.reconcile_force && 'true' || '' }}
           NTFY_TOPIC: ${{ steps.bws_jira.outputs.NTFY_TOPIC }}
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_DB_PASSWORD }}

@@ -83,6 +83,10 @@ on:
         type: choice
         options: ["none", "snapshot", "card", "report", "rollover", "both", "probe", "writers-check", "writers-verify", "reconcile"]
         default: "none"
+      reconcile_force:
+        description: "Manual LIFE-918 reconcile only: bypass today's already-ran check after 8 AM CT; still dry run unless Actually write is ticked"
+        type: boolean
+        default: false
       verify:
         description: "LIFE-918, writers-verify only: BOARD ISSUE to verify the Jira writers on a throwaway ZZ-LIFE918-TEST sprint, for example JFM JFM-123 (a dry run: contract check and plan). Add a third word, yes, to really write (JFM JFM-123 yes), and a fourth, keep, to keep the test clone because the Free plan cannot delete issues (JFM JFM-123 yes keep). Only that sprint and that one issue are touched"
         type: string
@@ -286,6 +290,7 @@ jobs:
           MEJ_SPRINT_AUTOMATION: ""
           MEJ_AUTOMATION_SINCE: ""
           JIRA_WRITERS_VERIFIED: ""
+          JIRA_FUTURE_SPRINTS: ""
           V2_PROMOTION: ""
           V2_OFFICIAL: ""
         run: python3 -m lifeos.platform.settings
@@ -324,6 +329,7 @@ jobs:
           NOTION_JIRA_TOKEN: ${{ steps.bws_jira.outputs.NOTION_JIRA_TOKEN }}
           JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
           JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
+          JIRA_RECONCILE_FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.jira == 'reconcile' && inputs.reconcile_force && 'true' || '' }}
           NTFY_TOPIC: ${{ steps.bws_jira.outputs.NTFY_TOPIC }}
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_DB_PASSWORD }}

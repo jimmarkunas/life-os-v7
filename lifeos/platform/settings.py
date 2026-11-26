@@ -30,7 +30,7 @@ MOVABLE = frozenset({
     "TICK_CAP_ATS", "TICK_CAP_DICE", "TICK_CAP_JOBRIGHT", "TICK_CAP_LINKEDIN", "TICK_CAP_TINYFISH", "TICK_MAX_PARALLEL", "NETWORK_SURFACE_SKIP", "INTERVIEW_CONVERT",
     "INTERVIEW_CONVERT_CAP", "PHYSICAL_MAIL_EXPECT", "MEGIBOW_EXCLUDED_DOMAINS", "JIRA_CARD_PROJECTS", "JIRA_GTV_CONTEXT_URL", 
     "RECRUITER_COUNT_BLOCK_ID",      # LIFE-973: the Recruiter Outreach callout whose gray text is the count line
-    "MEJ_SPRINT_AUTOMATION", "V3_WEEK_VIEW", "V2_QUARTER_SHADOW", "V2_PROMOTION", "V2_OFFICIAL", "JIRA_WRITERS_VERIFIED", "MEJ_AUTOMATION_SINCE",      # LIFE-918: the MEJ/JFM cutover rows, all off or empty until the LIFE-918 activation
+    "MEJ_SPRINT_AUTOMATION", "V3_WEEK_VIEW", "V2_QUARTER_SHADOW", "V2_PROMOTION", "V2_OFFICIAL", "JIRA_WRITERS_VERIFIED", "MEJ_AUTOMATION_SINCE", "JIRA_FUTURE_SPRINTS",      # LIFE-918 / LIFE-998: the MEJ/JFM cutover rows and configurable sprint horizon
     "ORCHESTRATOR_CAN_START",      # LIFE-987: on lets an orchestrator dispatch for a released ticket start that agent's session; off or anything else keeps the Start <agent>: go Agent Inbox item
     
 })

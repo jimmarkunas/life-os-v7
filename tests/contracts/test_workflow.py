@@ -965,6 +965,8 @@ class DomainsWorkflowTests(unittest.TestCase):
         step = [s for s in job["steps"] if s.get("id") == "jreconcile"][0]
         self.assertEqual(step["if"], "${{ needs.gate.outputs.due_jira == 'true' || inputs.jira == 'reconcile' }}")
         self.assertEqual(step["run"], 'python -m lifeos.run jira-reconcile-daily $([ "$LIVE" = "true" ] && echo --live)')
+        self.assertEqual(step["env"]["JIRA_RECONCILE_FORCE"], "${{ github.event_name == 'workflow_dispatch' && inputs.jira == 'reconcile' && inputs.reconcile_force && 'true' || '' }}")
+        self.assertEqual(self.doc[True]["workflow_dispatch"]["inputs"]["reconcile_force"]["default"], False)
         trigger = self.doc.get("on") or self.doc[True]
         self.assertIn("reconcile", trigger["workflow_dispatch"]["inputs"]["jira"]["options"])
         self.assertEqual(self.doc["permissions"], {"contents": "read"})
