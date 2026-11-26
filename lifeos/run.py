@@ -75,6 +75,7 @@ STAGES = {
     "jira-rollover-watch": lazy("lifeos.jira.watch"),
     "jira-reconcile-daily": _reconcile_daily,                              # LIFE-918: daily 8 AM CT sprint reconciliation; off unless MEJ_SPRINT_AUTOMATION is on; a live run needs JIRA_WRITERS_VERIFIED "yes"
     "jira-probe": lazy("lifeos.jira.snapshot", "probe"),
+    "jira-capture": lazy("lifeos.jira.capture"),                           # LIFE-994: LIFE decisions into the shared memory through the governed tools (dry run unless --live; not wired into any workflow until its credential is placed)
     "jira-card": lazy("lifeos.jira.card"),
     "jira-release": lazy("lifeos.jira.release"),                            # LIFE-727: To Do tickets of an epic Jim labelled auto-release move to Agent Go when ready (at most 3 an hour, rank order); dry run unless live
     "jira-fill": lazy("lifeos.jira.fill_defaults"),                         # LIFE-741: sets the parent epic, Component and Fix Version of LIFE tickets updated in the last 2 days that miss one (one [sweep] comment each); dry run unless --live

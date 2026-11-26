@@ -85,6 +85,7 @@ This table is rendered from `lifeos/platform/stages.json` (LIFE-768): edit a sta
 | `interview-mail` | `sources.interview.mail_snapshot` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `interview-probe` | `interview.stage` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `interview-ui-probe` | `interview.ui_probe` | `guarded` | Loops over its items with error handling inside; one failed item does not stop the others. | no |
+| `jira-capture` | `jira.capture` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `jira-card` | `jira.card` | `single` | No loop over external items: one read or write unit, so its failure is the stage's own. | no |
 | `jira-fill` | `jira.fill_defaults` | `guarded` | Loops over its items with error handling inside; one failed item does not stop the others. | no |
 | `jira-probe` | `jira.snapshot` | `guarded` | Loops over its items with error handling inside; one failed item does not stop the others. | no |

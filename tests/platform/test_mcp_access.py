@@ -218,11 +218,12 @@ class SeededGrants(unittest.TestCase):
         self.assertEqual({(g.principal, g.tool, g.purpose, g.credential_ref) for g in writes},
                          {(p, "buzz_publish", "buzz-publish", "buzz-scoped-member-key") for p in ("claude-chat", "claude-chat-bytalos", "chatgpt-chat", "chatgpt-chat-bytalos", "muse-chat", "duet-chat", "duet-chat-bytalos")}
                          | {(p, op, "personal-memory", "mcp-credential-" + p if p in MEMORY_CREDENTIALS else "honcho-memory-token") for p in MEMORY_CLIENTS for op in ("memory_store", "memory_correct", "memory_revoke")}   # LIFE-949 (Jim, Nov 23 and 24 2026): real non-sensitive Personal memory for every governed client
+                         | {("jira-capture", t, "personal-memory", "honcho-memory-token") for t in ("memory_store", "memory_correct", "memory_revoke")}      # LIFE-994 (Jim, "capture jira ok"): the hourly Jira decision capture, store, correct and revoke only
                          | {("openclaw", "buzz_publish", "buzz-publish", "mcp-credential-openclaw")}   # LIFE-877 (Jim, comment 14311): OpenClaw's own pilot-only relay identity; its credential row alone besides muse may carry the write scope
                          | {(p, "send_to_jim", "agent-inbox", "notion-readonly-token") for p in ("mac-claude-code", "oracle-claude-code", "openclaw", "hermes-librarian", "claude-chat", "chatgpt-chat", "honcho-alerts", "muse-chat", "duet-chat")}   # LIFE-876 (Jim, comments 13748 and 13823): the Agent Inbox, Personal only
                          | {(p, "agent_dispatch", "orchestrator-dispatch", "concord-gateway-socket") for p in ("claude-chat", "chatgpt-chat")})   # LIFE-987 (Jim, comments 14334 and 14344): the only orchestrator write, the two chats, Personal only
         self.assertEqual({g.tenant for g in writes if g.tool == "send_to_jim"}, {"personal"})
-        self.assertEqual(len(writes), 19 + 8 * 3)                                                                      # LIFE-949: three memory writes for each of eight clients
+        self.assertEqual(len(writes), 22 + 8 * 3)                                                                      # LIFE-949: three memory writes for each of eight clients
         self.assertEqual(sorted(c["principal"] for c in CATALOG["capabilities"] if c["tool"] == "send_to_jim"), sorted(["mac-claude-code", "oracle-claude-code", "openclaw", "hermes-librarian", "claude-chat", "chatgpt-chat", "honcho-alerts", "muse-chat", "duet-chat"]))   # a catalog row for exactly the six granted clients, none for the stdio Mac row or a Bytalos principal
 
     def test_the_shipped_seed_lets_no_one_call_send_to_jim(self):
@@ -233,7 +234,7 @@ class SeededGrants(unittest.TestCase):
     def test_the_five_memory_tools_are_granted_to_eight_clients_in_personal_only_with_the_personal_memory_purpose(self):
         """LIFE-949 (Jim, Nov 23 2026 7:24 and 7:28 PM CT, Nov 24 3:53 AM CT): all governed agents share real non-sensitive Personal memory; Bytalos and TGP stay refused; no expiry in practice, revocable any time."""
         access = M.load()
-        mine = [g for g in access.grants if g.purpose == "personal-memory"]
+        mine = [g for g in access.grants if g.purpose == "personal-memory" and g.principal != "jira-capture"]            # LIFE-994: the capture client is pinned by its own test
         self.assertEqual({(g.principal, g.tool) for g in mine}, {(p, t) for p in MEMORY_CLIENTS for t in MEMORY_TOOLS})
         self.assertEqual(len(mine), 40)
         self.assertEqual({(g.tenant, g.account, g.expires.date().isoformat(), g.revoked) for g in mine}, {("personal", "honcho", "2099-12-31", False)})
@@ -241,10 +242,21 @@ class SeededGrants(unittest.TestCase):
         self.assertEqual({g.tool: g.purpose for g in access.grants if g.tool.startswith("memory_") and g.purpose == "personal-memory"}, {t: "personal-memory" for t in MEMORY_TOOLS})
         self.assertEqual(set(json.loads(M.FILE.read_text())["tool_purpose"][t] for t in MEMORY_TOOLS), {"personal-memory"})                 # every memory tool is called with that purpose, server side
         self.assertEqual([g for g in access.grants if g.tool.startswith("memory_") and (g.tenant != "personal" or g.principal.endswith("bytalos"))], [])   # no Bytalos or TGP memory grant of any kind
-        rows = {(c["principal"], c["tool"]) for c in CATALOG["capabilities"] if c["tool"].startswith("memory_")}
+        rows = {(c["principal"], c["tool"]) for c in CATALOG["capabilities"] if c["tool"].startswith("memory_") and c["principal"] != "jira-capture"}
         self.assertEqual(rows, {(p, t) for p in MEMORY_CLIENTS for t in MEMORY_TOOLS})
-        synthetic = {(c["principal"], c["tool"]) for c in CATALOG["capabilities"] if c["tool"].startswith("memory_") and c["status"] == "synthetic"}
+        synthetic = {(c["principal"], c["tool"]) for c in CATALOG["capabilities"] if c["tool"].startswith("memory_") and c["status"] == "synthetic" and c["principal"] != "jira-capture"}
         self.assertEqual(synthetic, {(p, "memory_ask") for p in MEMORY_CLIENTS if p != "mac-claude-code"} | {(p, t) for p in ("duet-chat", "muse-chat") for t in MEMORY_TOOLS})   # LIFE-877 sign-off (Nov 26 2026): a row is working only with a live receipt for that client and tool
+
+    def test_jira_capture_holds_exactly_store_correct_and_revoke_in_personal_and_nothing_else(self):
+        """LIFE-994 (Jim, "capture jira ok" and "capture projects: LIFE", Nov 26 2026): no recall, no ask, no Gmail, Drive, Buzz, source lookup or inbox; Personal only; expiring Feb 22 2027."""
+        access = M.load()
+        mine = [g for g in access.grants if g.principal == "jira-capture"]
+        self.assertEqual({(g.tool, g.actions, g.tenant, g.account, g.purpose, g.expires.date().isoformat(), g.revoked) for g in mine},
+                         {(t, ("write",), "personal", "honcho", "personal-memory", "2027-02-22", False) for t in ("memory_store", "memory_correct", "memory_revoke")})
+        self.assertEqual(sorted(c["tool"] for c in CATALOG["capabilities"] if c["principal"] == "jira-capture"), ["memory_correct", "memory_revoke", "memory_store"])
+        self.assertEqual({c["status"] for c in CATALOG["capabilities"] if c["principal"] == "jira-capture"}, {"synthetic"})            # until its first live call
+        cred = next(c for c in access.credentials if c["id"] == "jira-capture")
+        self.assertEqual((cred["buzz_identity"], cred.get("write", False), cred["revoked"]), (None, False, False))
 
     def test_muse_holds_the_four_personal_grants_jim_approved_plus_the_five_memory_tools_and_nothing_on_gmail_drive_or_bytalos(self):
         """LIFE-923 (Jim, M3, comment 13891): Buzz read and publish in life-os plus send_to_jim, Personal only, expiring Feb 22 2027."""

@@ -1,0 +1,179 @@
+"""LIFE-994: LIFE-project decisions in Jira flow into the shared memory once an hour, through the governed memory tools.
+
+Jim approved it ("capture jira ok", "capture projects: LIFE", Nov 26 2026). LIFE tickets updated in the last two hours only; a comment is a decision when it has an `[approvals]` line or opens with Jim's decision wording; each becomes one Personal memory item naming its ticket and comment. Counts and fixed words out, never text."""
+# The same comment never stores twice (a small private state row per comment); an edited comment corrects its item and a deleted comment revokes it. Nothing older than two hours is ever backfilled.
+# Every write goes through the governed MCP as the `jira-capture` client (memory_store, memory_correct, memory_revoke, Personal): the server applies the sensitive-text filter before any write (a refused
+# decision is counted and never stored, echoed or logged), the rate limit and the meter. This module holds no filter of its own and never recalls.
+import hashlib
+import json
+import os
+import re
+import urllib.error
+import urllib.request
+from datetime import datetime, timezone
+
+from lifeos.jira.search import search
+from lifeos.platform.jira import Jira, JiraError
+from lifeos.platform.snapshot_store import Store
+
+PROJECT = "LIFE"                               # Jim: "capture projects: LIFE" (any other project needs his say)
+WINDOW_HOURS = 2                               # an hourly run reads two hours back so one missed run loses nothing; never older
+MAX_ISSUES, WRITE_CAP, TEXT_MAX = 40, 30, 500
+URL_DEFAULT = "https://lifeos-buzz.tail96b07f.ts.net/mcp"
+SOURCE = "jira-decision"
+TAG = re.compile(r"\[approvals\]", re.I)
+LEAD = re.compile(r"^\W*(?:jim'?s (?:decisions?|rules?|approvals?)\b|jim,\s+[A-Z][a-z]{2,8}\s+\d{1,2}\b[^\n:]{0,60}:)", re.I)
+COMMENT_STORE = Store("jira_capture_comment", "comment_id", "BIGINT")
+ISSUE_STORE = Store("jira_capture_issue", "issue_key", "VARCHAR(32)")
+
+
+def flatten(node):
+    """Plain text of a Jira rich-text body: paragraphs and breaks become new lines."""
+    if isinstance(node, dict):
+        inner = "".join(flatten(c) for c in node.get("content") or ())
+        text = node.get("text", "") + inner
+        return text + "\n" if node.get("type") in ("paragraph", "heading", "listItem", "hardBreak", "bulletList", "orderedList") else text
+    return str(node or "")
+
+
+def decision_text(body):
+    """The decision the comment states, or "" when it is not a decision comment: the `[approvals]` lines, else the opening paragraph of a comment that opens with Jim's decision wording."""
+    text = flatten(body).strip()
+    tagged = [ln.strip() for ln in text.splitlines() if TAG.search(ln)]
+    if tagged:
+        return " ".join(tagged)[:TEXT_MAX]
+    first = next((p.strip() for p in text.split("\n\n") if p.strip()), "")
+    return re.sub(r"\s+", " ", first)[:TEXT_MAX] if LEAD.search(text[:160]) else ""
+
+
+class Memory:
+    """The governed memory tools over MCP as the jira-capture client. Fixed words only."""
+
+    def __init__(self, url, token, urlopen=urllib.request.urlopen):
+        self.url, self.token, self.urlopen = url, token, urlopen
+
+    def call(self, operation, arguments):
+        body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "buzz_read", "arguments": {"operation": operation, "arguments": arguments}}}).encode()
+        request = urllib.request.Request(self.url, data=body, method="POST", headers={"Content-Type": "application/json", "Accept": "application/json, text/event-stream", "MCP-Protocol-Version": "2025-06-18",
+                                                                                      "Authorization": "Bearer " + self.token, "User-Agent": "life-os-v7"})
+        try:
+            with self.urlopen(request, timeout=30) as reply:
+                return json.loads(json.loads(reply.read())["result"]["content"][0]["text"])
+        except (urllib.error.URLError, OSError, ValueError, KeyError, IndexError, TypeError):
+            return {"ok": False, "error": "capture_unreachable"}
+
+    def store(self, text, source):
+        return self.call("memory_store", {"workspace": "Personal", "text": text, "source": source})
+
+    def correct(self, memory_id, text, source):
+        return self.call("memory_correct", {"workspace": "Personal", "id": memory_id, "text": text, "source": source})
+
+    def revoke(self, memory_id):
+        return self.call("memory_revoke", {"workspace": "Personal", "id": memory_id})
+
+
+class State:
+    """The private state rows: one per captured comment (text hash, memory id) and one per ticket (its comment ids), so a repeat, an edit and a deletion are told apart."""
+
+    def __init__(self, connection):
+        self.connection = connection
+        COMMENT_STORE.ensure(connection)
+        ISSUE_STORE.ensure(connection)
+
+    @staticmethod
+    def _wrap(payload, now):
+        return {"taken_at": now.isoformat(), "schema": 1, **payload}
+
+    def comment(self, comment_id):
+        return COMMENT_STORE.load(self.connection, int(comment_id))
+
+    def put_comment(self, comment_id, payload, now):
+        COMMENT_STORE.save(self.connection, int(comment_id), self._wrap(payload, now))
+
+    def issue(self, key):
+        return (ISSUE_STORE.load(self.connection, key) or {}).get("comments") or []
+
+    def put_issue(self, key, ids, now):
+        ISSUE_STORE.save(self.connection, key, self._wrap({"comments": sorted(ids)}, now))
+
+
+def _tick(total, key, why=None):
+    total[key] += 1
+    if why:
+        total["why"][why] = total["why"].get(why, 0) + 1
+
+
+def _item(key, comment_id, decision):
+    return f"{decision} (Jira {key}, comment {comment_id}; Jira is the source of truth)"
+
+
+def capture_issue(jira, key, memory, state, live, now, total):
+    data = jira.get(f"/rest/api/3/issue/{key}/comment", {"maxResults": 100, "orderBy": "created"})
+    comments = [c for c in (data or {}).get("comments") or [] if isinstance(c, dict) and str(c.get("id", "")).isdigit()]
+    seen = set()
+    for comment in comments:
+        decision = decision_text(comment.get("body"))
+        if not decision:
+            continue
+        cid = int(comment["id"])
+        seen.add(cid)
+        total["decisions"] += 1
+        digest = hashlib.sha256(decision.encode()).hexdigest()
+        prior = state.comment(cid) if state else None
+        if prior and prior.get("state") in ("stored", "filtered") and prior.get("sha") == digest:
+            total["unchanged"] += 1                                    # a refused decision is not retried every hour: only a changed comment is tried again
+            continue
+        if total["writes"] >= WRITE_CAP:
+            _tick(total, "deferred")
+            continue
+        if not live:
+            total["would_write"] += 1
+            continue
+        total["writes"] += 1
+        text, source = _item(key, cid, decision), f"{SOURCE}:{key}#{cid}"
+        reply = memory.correct(prior["memory_id"], text, source) if prior and prior.get("state") == "stored" else memory.store(text, source)
+        new = (reply.get("data") or {}).get("id")
+        if reply.get("ok") and new:
+            _tick(total, "corrected" if prior and prior.get("state") == "stored" else "stored")
+            state.put_comment(cid, {"issue": key, "sha": digest, "memory_id": new, "state": "stored"}, now)
+        elif reply.get("error") == "sensitive_refused":
+            _tick(total, "filtered")                                   # refused before any write; the text is never kept or logged
+            state.put_comment(cid, {"issue": key, "sha": digest, "memory_id": "", "state": "filtered"}, now)
+        else:
+            _tick(total, "failed", str(reply.get("error") or "capture_failed")[:40])
+    if live and state:
+        for gone in sorted(set(state.issue(key)) - seen):             # a decision comment that is no longer there: its item is revoked
+            prior = state.comment(gone) or {}
+            if prior.get("state") == "stored" and prior.get("memory_id") and total["writes"] < WRITE_CAP:
+                total["writes"] += 1
+                if memory.revoke(prior["memory_id"]).get("ok"):
+                    _tick(total, "revoked")
+                    state.put_comment(gone, {**prior, "state": "revoked"}, now)
+                else:
+                    _tick(total, "failed", "revoke_failed")
+        state.put_issue(key, seen, now)
+
+
+def run(limit, live, environ=os.environ, jira=None, now=None, connect=None, memory=None):
+    """Counts and fixed words only. Not configured (no credential placed yet) is a fixed `capture_not_configured`, never a failure."""
+    now = now or datetime.now(timezone.utc)
+    total = {"issues": 0, "decisions": 0, "stored": 0, "corrected": 0, "revoked": 0, "unchanged": 0, "filtered": 0, "failed": 0, "deferred": 0, "would_write": 0, "writes": 0, "why": {}}
+    token = (environ.get("LIFEOS_MCP_JIRA_CAPTURE") or "").strip()
+    if live and memory is None and not token:
+        return {**total, "why": {"capture_not_configured": 1}}
+    memory = memory or Memory((environ.get("LIFEOS_MCP_URL") or URL_DEFAULT).strip(), token)
+    jira = jira or Jira.from_env(environ)
+    issues = search(jira, f"project = {PROJECT} AND updated >= -{WINDOW_HOURS}h ORDER BY updated DESC", "summary")[:MAX_ISSUES]
+    total["issues"] = len(issues)
+    state = None
+    if live or connect:
+        with (connect or __import__("lifeos.platform.db", fromlist=["connect"]).connect)() as connection:
+            state = State(connection)
+            for issue in issues:
+                try:
+                    capture_issue(jira, issue["key"], memory, state, live, now, total)
+                except JiraError:
+                    _tick(total, "failed", "jira_comments")
+    if total["failed"]:
+        raise JiraError("JIRA_CAPTURE_FAILED:" + ",".join(sorted(total["why"])))
+    return total

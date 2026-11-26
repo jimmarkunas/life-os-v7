@@ -8,3 +8,5 @@ JIRA_ROLLOVER_OUTCOME input Jira setting (rollover outcome)
 JIRA_SITE_URL input Jira setting (site url)
 MEGIBOW_BLOCK_ID input Notion block id (megibow)
 JIRA_WRITERS_VERIFY input LIFE-918 manual verify words (board, one issue key, optional yes) for the throwaway-sprint writer check
+LIFEOS_MCP_JIRA_CAPTURE secret the jira-capture client's bearer credential (lm1.jira-capture.<secret>) for the governed memory tools; without it the capture stage is the fixed word capture_not_configured (LIFE-994)
+LIFEOS_MCP_URL input the governed MCP address the capture stage calls (default is the public Buzz bridge address)

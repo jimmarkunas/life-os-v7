@@ -336,7 +336,7 @@ class Governed(Server):
 
 class Credentials(Server):
     """LIFE-873: scoped `lm1.` credentials for the local clients, through the real HTTP handler. Synthetic secrets only; the shipped data holds hashes, never a secret."""
-    SECRETS = {"mac-claude-code": "A" * 43, "oracle-claude-code": "B" * 43, "openclaw": "D" * 43, "hermes-librarian": "E" * 43, "honcho-alerts": "F" * 43, "muse": "G" * 43}
+    SECRETS = {"mac-claude-code": "A" * 43, "oracle-claude-code": "B" * 43, "openclaw": "D" * 43, "hermes-librarian": "E" * 43, "honcho-alerts": "F" * 43, "muse": "G" * 43, "jira-capture": "H" * 43}
 
     def access(self, edit=None, no_identity=False):
         import copy
@@ -358,7 +358,7 @@ class Credentials(Server):
 
     def test_each_credential_lists_only_its_granted_tools_and_completes_one_read_with_its_own_receipt(self):
         self.start(access=self.access())
-        for cid in (c for c in self.SECRETS if c not in ("openclaw", "hermes-librarian", "honcho-alerts", "muse")):                                                # openclaw and hermes-librarian are capabilities only: their own tests below
+        for cid in (c for c in self.SECRETS if c not in ("openclaw", "hermes-librarian", "honcho-alerts", "muse", "jira-capture")):                                                # openclaw and hermes-librarian are capabilities only: their own tests below
             status, out = self.rpc(self.tok(cid), "tools/list")
             names = {t["name"] for t in out["result"]["tools"]}
             self.assertEqual((status, {"buzz_capabilities", "buzz_read"} <= names, "buzz_publish" in names or "buzz_post_message" in names), (200, True, False), cid)
@@ -571,7 +571,7 @@ class Credentials(Server):
         github = lambda path, ref: {"commit": "a" * 40, "last_change": "b" * 40, "blob": "c" * 40, "modified": now - timedelta(days=1), "text": "policy text"}
         self.start(access=self.access(no_identity=True))
         with mock.patch.dict(buzz_mcp.LOOKUP, {"fetchers": {"github": github}, "rows": lambda: F.rows(), "now": lambda: now}):
-            for cid in (c for c in self.SECRETS if c not in ("honcho-alerts", "muse")):
+            for cid in (c for c in self.SECRETS if c not in ("honcho-alerts", "muse", "jira-capture")):
                 comm = "pilot" if cid == "openclaw" else "life-os"                                                              # LIFE-877: openclaw's only community
                 status, out = self.tool(self.tok(cid), "buzz_read", operation="source_read", community=comm, arguments={"source": "github", "path": "AGENTS.md"})
                 self.assertEqual((status, out["ok"], out["data"]["revision"]["commit_sha"], out["data"]["freshness"]), (200, True, "a" * 40, "fresh"), cid)
