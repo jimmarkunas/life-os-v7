@@ -6,6 +6,7 @@ isolation single when the module has no loop over items, guarded when every loop
   docs/platform/timeouts.md              the "Stage budgets" row per stage
   docs/platform/stage-isolation.md       the "Every stage" row per stage
   .github/workflows/domains.yml          the fragments in .github/workflows-src/domains joined in file-name order (LIFE-764: edit a domain's fragment, never this file)
+  .github/workflows/hourly.yml           the same for .github/workflows-src/hourly (LIFE-1010); docs/workflows.md is the table of the `# why:` lines of both
 Edit a stage's numbers or wording in stages.json only; the three rendered files are overwritten from it.
 Rows the contract tests mirror from code (this writes the missing ones and drops the stale ones):
   lifeos/platform/docstyle.py            ENFORCED lists every package with an __init__.py
@@ -37,6 +38,8 @@ TIMEOUTS_DOC = ROOT / "docs/platform/timeouts.md"
 ISOLATION_DOC = ROOT / "docs/platform/stage-isolation.md"
 DOMAINS = ROOT / ".github/workflows/domains.yml"
 DOMAINS_PARTS = ROOT / ".github/workflows-src/domains"
+HOURLY = ROOT / ".github/workflows/hourly.yml"
+HOURLY_PARTS = ROOT / ".github/workflows-src/hourly"
 V3_PAGES = ROOT / ".github/workflows/v3-pages.yml"
 WORKFLOW_DOC = ROOT / "docs/workflows.md"
 DOCSTYLE = ROOT / "lifeos/platform/docstyle.py"
@@ -51,9 +54,14 @@ def domains_text():
     return wfsrc.strip_comments("".join(path.read_text() for path in sorted(DOMAINS_PARTS.glob("*.yml"))))
 
 
+def hourly_text():
+    """LIFE-1010: the whole of hourly.yml, joined from `.github/workflows-src/hourly` the same way, without comments."""
+    return wfsrc.strip_comments("".join(path.read_text() for path in sorted(HOURLY_PARTS.glob("*.yml"))))
+
+
 def workflow_doc_text():
     """LIFE-1010: docs/workflows.md from the `# why:` lines of every source part and of the hand-written v3-pages.yml."""
-    parts = [("domains", path.name, path.read_text()) for path in sorted(DOMAINS_PARTS.glob("*.yml"))] + [("v3-pages", V3_PAGES.name, V3_PAGES.read_text())]
+    parts = [("domains", path.name, path.read_text()) for path in sorted(DOMAINS_PARTS.glob("*.yml"))] + [("hourly", path.name, path.read_text()) for path in sorted(HOURLY_PARTS.glob("*.yml"))] + [("v3-pages", V3_PAGES.name, V3_PAGES.read_text())]
     return wfsrc.docs_text(wfsrc.why_rows(parts))
 
 
@@ -161,7 +169,7 @@ def runtime_text(changes):
 
 # LIFE-765: `--commit` is what `sh tools/preflight.sh` runs, so nobody runs this by hand: on a clean tree it writes what a new stage needs, then commits exactly the files below (added by name) as one commit.
 def targets():
-    return (STAGES, BUDGETS, TIMEOUTS_DOC, ISOLATION_DOC, DOCSTYLE, RUNTIME, manifest.INVENTORY, DOMAINS, WORKFLOW_DOC)
+    return (STAGES, BUDGETS, TIMEOUTS_DOC, ISOLATION_DOC, DOCSTYLE, RUNTIME, manifest.INVENTORY, DOMAINS, HOURLY, WORKFLOW_DOC)
 
 
 def git(*args):
@@ -211,10 +219,13 @@ def main(argv):
     domains = domains_text()
     if DOMAINS.read_text() != domains:
         changes.append("domains.yml: joined from .github/workflows-src/domains")
+    hourly = hourly_text()
+    if HOURLY.read_text() != hourly:
+        changes.append("hourly.yml: joined from .github/workflows-src/hourly")
     workflow_doc = workflow_doc_text()
     if not WORKFLOW_DOC.exists() or WORKFLOW_DOC.read_text() != workflow_doc:
         changes.append("workflows.md: rendered from the # why: lines")
-    rendered_files = ((STAGES, manifest_text), (BUDGETS, budget_text), (TIMEOUTS_DOC, doc_timeouts), (ISOLATION_DOC, doc_isolation), (DOCSTYLE, style), (RUNTIME, runtime), (manifest.INVENTORY, inventory), (DOMAINS, domains), (WORKFLOW_DOC, workflow_doc))
+    rendered_files = ((STAGES, manifest_text), (BUDGETS, budget_text), (TIMEOUTS_DOC, doc_timeouts), (ISOLATION_DOC, doc_isolation), (DOCSTYLE, style), (RUNTIME, runtime), (manifest.INVENTORY, inventory), (DOMAINS, domains), (HOURLY, hourly), (WORKFLOW_DOC, workflow_doc))
     for path, text in rendered_files:
         if (not path.exists() or path.read_text() != text) and not check:
             path.write_text(text)

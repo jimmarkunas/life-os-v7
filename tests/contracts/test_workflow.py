@@ -1489,7 +1489,7 @@ class ConcurrencyHasNoSwitch(unittest.TestCase):
             self.assertNotIn("BENCH_TICK_CONCURRENCY", path.read_text(), path.name)
 
 
-LEAN = ("v3-pages", "domains")                  # LIFE-1010: the workflows whose compare is folded into the loader
+LEAN = ("v3-pages", "domains", "hourly")                  # LIFE-1010: the workflows whose compare is folded into the loader
 
 
 class DopplerParityTests(unittest.TestCase):
