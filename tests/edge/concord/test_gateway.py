@@ -144,7 +144,8 @@ class Dispatch(unittest.TestCase):
 
     def test_queued_for_pull_is_not_delivered_and_an_unknown_state_is_never_called_delivered(self):
         reply, _ = self.sent("queued_pull")
-        self.assertEqual(reply["data"], {"delivered": False, "reason": "agent_offline", "state": "not_delivered", "agent": "oc"})
+        data = reply["data"]
+        self.assertEqual((data["delivered"], data["reason"], data["state"], data["agent"]), (False, "queued_for_pull", "queued_pull", "oc"))      # LIFE-992: a present but idle agent is queued, not offline
         reply, _ = self.sent("something_new")
         self.assertEqual((reply["data"]["delivered"], reply["data"]["reason"], reply["data"]["state"]), (False, "delivery_unknown", "unknown"))
 

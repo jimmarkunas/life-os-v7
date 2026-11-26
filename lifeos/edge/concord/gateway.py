@@ -31,7 +31,7 @@ PAGE_MAX = 50
 CONTENT_MAX = 600
 KEY_MAX = 128
 DELIVERED, ACKNOWLEDGED, OFFLINE = "delivered", "acknowledged", "queued_pull"
-KNOWN_STATES = {"delivered": "delivered", "acknowledged": "acknowledged", "acked": "acknowledged", "read": "acknowledged", "queued_pull": "offline", "queued": "offline", "pending_pull": "offline", "offline": "offline"}
+KNOWN_STATES = {"delivered": "delivered", "acknowledged": "acknowledged", "acked": "acknowledged", "read": "acknowledged", "queued_pull": "queued", "queued": "queued", "pending_pull": "queued", "offline": "offline"}
 STATE_KEYS = ("deliveryStatus", "delivery_status", "status", "state", "delivery")
 
 
@@ -230,6 +230,8 @@ def dispatch(mcp, client, args):
     state = _state(result)
     if state in ("delivered", "acknowledged"):
         return {"delivered": True, "state": state, "agent": name, "message": _clip(str(_find(result, ("messageId", "message_id", "id")) or ""), 80)}
+    if state == "queued":                                       # LIFE-992 (found live Nov 26 2026): the agent IS present but idle, so Concord stored the prompt for pull; it is not offline and nobody needs to start it
+        return {"delivered": False, "reason": "queued_for_pull", "state": "queued_pull", "agent": name, "message": _clip(str(_find(result, ("messageId", "message_id", "id")) or ""), 80)}
     if state == "offline":
         return {"delivered": False, "reason": "agent_offline", "state": "not_delivered", "agent": name}
     return {"delivered": False, "reason": "delivery_unknown", "state": "unknown", "agent": name}
