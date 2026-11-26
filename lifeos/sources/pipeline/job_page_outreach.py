@@ -1,9 +1,12 @@
-"""The outreach table on each Job Ledger job page, in the Recruiter Outreach style: one V7-owned region per page (LIFE-10 §2, D225).
+"""The outreach table on each Job Ledger job page: one V7-owned region per page, below the Network Leads block.
 
-A heading_3 `🤝 Outreach (Updated 10/20 @ 9:40 PM CT)` directly followed by a native table (Person — Employer · Channel · Role · Initial outreach · Conversation · Next step · Due), one row per conversation recorded against that exact job by Mark as Sent (D221). Only recorded facts are shown: a reply that cannot be verified reads
-"reply unknown", never "no reply". A job with no recorded conversation gets no region.
-Writes are bounded to the region, on an open Job Ledger page (the Ledger data source, not archived). A new region is appended right after the Network Leads block (else at the end of the page) with one non-retried call and read back; an existing region is edited row by row in place, and the heading stamp changes only when a row
-changes. Every other block on the page is digested before and after and must be identical. Live writes need JOB_PAGE_OUTREACH=on as well as --live; otherwise the stage reports what it would do. Outputs: fixed codes and counts only. Pointer: D225, D221."""
+A heading_3 `🤝 Outreach (Updated <date> @ <time> CT)` followed by a native table, one row per conversation recorded
+against that exact job. Only recorded facts are shown: a reply that cannot be verified reads "reply unknown", never
+"no
+reply"; a job with no conversation gets no region. Writes are bounded to the region: a new one is appended with one
+non-retried call and read back, an existing one is edited row by row, and every other block is digested before and
+after and must be identical. Live writes need JOB_PAGE_OUTREACH=on as well as --live. Fixed codes and counts only.
+"""
 import os
 from datetime import date, datetime
 from urllib.parse import quote
@@ -20,7 +23,7 @@ CT = ZoneInfo("America/Chicago")
 
 
 class JobPageOutreachError(NotionError):
-    """Fixed failure codes only; never a name, company or id."""
+    """Fixed failure codes only."""
 
 
 def fail(code):
@@ -40,7 +43,6 @@ def _day(iso):
 
 
 def _two(primary, detail="", link=None):
-    """The Recruiter Outreach cell: a bold primary line, then a gray detail line."""
     return [(primary, link, "bold")] + ([("\n", None, None), (detail, None, "gray")] if detail else [])
 
 
@@ -77,14 +79,15 @@ def _sort_key(r):
 
 
 def action_link(base, job_id):
-    """The private Close screen for this exact job's Record reply or referral action, or None when no https origin is configured. A link, never an action: opening it writes nothing."""
+    """The private Close screen link for this job's Record reply or referral action, or None when no https origin is
+    configured."""
     base = (base or "").strip().rstrip("/")
     return f"{base}/referral?j={O._id(job_id)}" if base.startswith("https://") and O._id(job_id) else None
 
 
 def sent_link(base, job_id):
-    """The private Close screen for this exact job's Mark as Sent action (D221), or None when no https origin is configured. Jim asked (Oct 21) for it in the table, under the
-    contact's channel, not in the page properties. A link, never an action: opening it writes nothing."""
+    """The private Close screen link for this job's Mark as Sent action, or None when no https origin is
+    configured."""
     base = (base or "").strip().rstrip("/")
     return f"{base}/sent?j={O._id(job_id)}" if base.startswith("https://") and O._id(job_id) else None
 
@@ -100,14 +103,11 @@ def _conversation_cell(r, link):
 
 
 def cells(rows, today, link=None, sent=None):
-    """Recruiters rows for ONE job -> table rows, most urgent first: Needs Action, then by the soonest follow-up, closed conversations last. `link` (the job's private
-    Record reply or referral screen) is added to each open conversation; `sent` (its Mark as Sent screen) goes under the channel of every row."""
     return [[_two(r["person"], r["company"]), _channel_cell(r, sent), _conversation_cell(r, link), _next(r, today)]
             for r in sorted(rows, key=_sort_key)]
 
 
 def outreach_rows(notion):
-    """Every Recruiters row that carries a Job, following every page; an incomplete read raises (never a trustworthy empty table)."""
     rows, cursor, seen = [], None, set()
     for _ in range(store.MAX_PAGES):
         body = {"page_size": 100, "filter": {"property": O.JOB, "relation": {"is_not_empty": True}}, **({"start_cursor": cursor} if cursor else {})}
@@ -137,7 +137,6 @@ def _owned(top):
 
 
 def _is_leads(client, block):
-    """The Network Leads block (NET-2.3) is the current callout whose title carries a hidden marker, or the older toggle whose first child paragraph carries its marker."""
     if block.get("type") == "callout":
         return any(ref.startswith(N.MARK2 + " ") for ref in hidden.refs(block))
     if block.get("type") != "toggle" or not block.get("has_children", True):
@@ -154,8 +153,11 @@ def _check_page(page, ledger_source):
 
 
 def _region(client, page_id, heading_id):
-    """The owned region on a job page: the top-level heading and the table directly after it (4 columns, a header row). Unlike the Daily Report's floating regions,
-    Jim's own notes may follow the table. -> {"heading", "table", "rows", "status": None}."""
+    """The owned region on a job page: the top-level heading and the table directly after it (4 columns, a header
+    row).
+
+    -> {"heading", "table", "rows", "status": None}. Hand-written notes may follow the table.
+    """
     top = R.children(client, page_id, fail)
     at = [i for i, b in enumerate(top) if R.same_id(b.get("id"), heading_id)]
     if len(at) != 1 or at[0] + 1 >= len(top):
@@ -183,16 +185,17 @@ def _verify(client, page_id, heading_id, want, before):
         raise fail("READBACK_MISMATCH")
     mine = {region["heading"]["id"], region["table"]["id"]}
     after = R.page_digest(client, page_id, list(mine), fail)
-    unowned = lambda d: ({k: v for k, v in d["nodes"].items() if v != "owned"},                       # every other block's content,
-                         {k: v for k, v in d["layout"].items() if k != page_id},                      # every nested child order,
-                         [i for i in d["layout"].get(page_id, []) if i not in mine])                  # and the page's own top-level order, minus only the region
+    unowned = lambda d: ({k: v for k, v in d["nodes"].items() if v != "owned"},                       # digest of every other block's content and order, minus only the region
+                         {k: v for k, v in d["layout"].items() if k != page_id},
+                         [i for i in d["layout"].get(page_id, []) if i not in mine])
     if unowned(after) != unowned(before):
         raise fail("PROTECTED_CONTENT_CHANGED")
     return region
 
 
 def sync_page(client, ledger, ledger_source, page_id, rows, now, live, link=None, sent=None):
-    """-> "created" | "updated" | "unchanged" (prefixed "would_" when not writing). Raises a fixed code on anything unsafe; nothing outside the region is ever written."""
+    """-> "created" | "updated" | "unchanged" (prefixed "would_" when not writing). Raises a fixed code on anything
+    unsafe."""
     _check_page(ledger.get_page(page_id), ledger_source)
     top = R.children(client, page_id, fail)
     owned = _owned(top)
@@ -208,7 +211,7 @@ def sync_page(client, ledger, ledger_source, page_id, rows, now, live, link=None
         try:
             client.call_once("PATCH", f"/blocks/{quote(page_id, safe='')}/children", body)
         except NotionError:
-            pass                                                            # never retried: the read-back below decides what happened
+            pass
         made = _owned(R.children(client, page_id, fail))
         if len(made) != 1:
             raise fail("CREATE_NOT_VERIFIED")
@@ -229,8 +232,8 @@ def sync_page(client, ledger, ledger_source, page_id, rows, now, live, link=None
 
 
 def run(limit, live, environ=os.environ, recruiters=None, ledger=None, client=None, now=None):
-    """The job-page-outreach stage. Live writes need JOB_PAGE_OUTREACH=on as well as --live. A page that fails is counted under its fixed code and the run ends failed;
-    the other pages still sync."""
+    """The stage. A failed page is counted under its fixed code and the run ends failed; the other pages still
+    sync."""
     now = (now or datetime.now(CT)).astimezone(CT)
     writing = live and (environ.get("JOB_PAGE_OUTREACH") or "").strip().lower() == "on"
     recruiters = recruiters or Client(environ, token_name="NOTION_RECRUITERS_TOKEN", source_name="NOTION_RECRUITERS_DATA_SOURCE_ID")
@@ -248,7 +251,7 @@ def run(limit, live, environ=os.environ, recruiters=None, ledger=None, client=No
         code = str(error)[:60]
         return code if code.startswith("JOB_PAGE_OUTREACH_") else "JOB_PAGE_OUTREACH_NOTION_ERROR"
 
-    # LIFE-689: a page that fails is that page's failure under its fixed code (any error, not only Notion's); the other pages still sync, and the stage fails only if every page failed
+    # a failed page is that page's failure under its fixed code; the stage fails only if every page failed
     done = isolate.run_items(sorted(jobs)[:limit or None], sync_one, code_of=code_of)
     for _, result in done.results:
         counts["codes"][result] = counts["codes"].get(result, 0) + 1

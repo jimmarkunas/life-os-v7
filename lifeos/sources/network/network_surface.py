@@ -1,11 +1,16 @@
-"""Surface network leads as one marker-owned "Network Leads (n)" block on the Job Ledger page of each target job (NET-2.3, D160).
+"""Surface network leads as one marker-owned "Network Leads (n)" block on the Job Ledger page of each target job.
 
-Dry unless live; counts only. Targets: published jobs whose stored Fit admission is ADMIT, plus applied opportunities and upcoming interviews (accepted Hiring Pipeline snapshot) that resolve to exactly one published Ledger page. The human-owned Hiring Pipeline and Interview pages are never written.
-Per page: prove it is the canonical Ledger page for the job; read Jim's Dismiss and Same company ticks from the owned block and persist them (live) before anything is replaced; recompute the leads (five at most); then create, replace, leave or REMOVE the owned block and read it back, proving nothing outside it changed. Any
-failed read, guard, write or read-back is counted and the run ends DEGRADED (NETWORK_SURFACE_DEGRADED), never zero leads or a silent success.
-Tables v7_network_dismissals, v7_network_aliases and v7_network_page_state are created only by a live run; a page budget (`limit`) bounds one run. LIFE-116: a page is read only when dirty (no state, a different page, or a different wanted hash), pages with leads first. Pointer: D160."""
-# LIFE-116 (v7_network_page_state: the hash of the block each page was last PROVEN to show, empty for none): pages that hold a block are still re-read on a rotation (Jim's Dismiss and Same company ticks live in the block) and a small sweep of the settled no-block pages catches drift. Without the table
-# (a dry run before the first live run) every page is dirty.
+Dry unless live; counts only. Targets: published ADMIT jobs plus applied opportunities and upcoming interviews that
+resolve to exactly one published Ledger page. Per page: prove it is the canonical Ledger page, persist the Dismiss and
+Same company ticks read from the owned block before anything is replaced, recompute the leads (five at most), then
+create, replace, leave or remove the block and read it back, proving nothing outside it changed. Any failed read,
+guard,
+write or read-back is counted and the run ends DEGRADED, never zero leads or a silent success. `limit` bounds the
+pages
+per run; a page is read only when dirty (no state, a different page, or a different wanted hash).
+"""
+# Pages that hold a block are re-read on a rotation (ticks live in the block); settled no-block pages get a small
+# sweep.
 import json
 import os
 import time
@@ -25,7 +30,7 @@ DEFAULT_PAGES = 300
 
 
 def _read(connection, now):
-    with connection.cursor() as cursor, fixed(Exception, NetworkError, "NETWORK_MATCH_READ_FAILED"):          # a driver message may carry names; only the fixed code leaves
+    with connection.cursor() as cursor, fixed(Exception, NetworkError, "NETWORK_MATCH_READ_FAILED"):
         cursor.execute("SELECT s.person_id, s.company_key, s.title, s.position_state, s.last_verified, s.id, s.company_name, p.display_name, p.url_key FROM v7_network_positions s "
                        "JOIN v7_network_people p ON p.id = s.person_id WHERE p.status='ACTIVE'")
         roster = cursor.fetchall()
@@ -44,7 +49,6 @@ def _day(value):
 
 
 def resolve_targets(jobs, pipeline, now):
-    """-> (surfaced {job_key: (page_id, company, title, classes)}, others [(job_key, page_id, company, title)], counts). A pursuit target resolves only to exactly one published page."""
     pursuit, status = network_leads.targets([], pipeline, now)
     surfaced, counts = {}, {"pursuit_source": status, "targets_admitted": 0, "targets_pursuit_resolved": 0, "applied_no_safe_surface": 0, "interview_no_safe_surface": 0, "pursuit_ambiguous": 0}
     for key, page, company, title, admission in jobs:
@@ -78,7 +82,7 @@ def _display(lead, details, today):
     return out
 
 
-CANDIDATES = 200                                                        # the bounded candidate set a decision is validated against (the rendered shortlist is still five)
+CANDIDATES = 200
 
 
 def _leads(company, title, index, details, today, aliases, dismissed, key, honour_dismissals=True, shortlist=True):
@@ -91,7 +95,6 @@ def _leads(company, title, index, details, today, aliases, dismissed, key, honou
 
 
 def _decisions(owned, full, job_key, ckey):
-    """Jim's ticks that match exactly the evidence that was shown -> (dismissals, aliases, stale count)."""
     dismissals, aliases, stale = [], [], 0
     shown = {(d["person_id"], d["evidence_hash"]): d for d in full}
     for kind, person_id, evidence, checked in [t for o in (owned or []) for t in o["ticks"]]:
@@ -99,8 +102,8 @@ def _decisions(owned, full, job_key, ckey):
             continue
         lead = shown.get((person_id, evidence))
         if lead is None:
-            stale += 1                                                 # the evidence changed since the block was written: a tick never carries over to new evidence
-        elif kind in ("Dismiss", "Closed"):                              # the approved card's Closed tick (Jim, Oct 28) is the dismissal: that person leaves this job's cards
+            stale += 1
+        elif kind in ("Dismiss", "Closed"):
             dismissals.append((job_key, person_id, evidence))
         elif lead["tier"] == match.POSSIBLE:
             aliases.append((lead["company_key"], ckey))
@@ -108,19 +111,21 @@ def _decisions(owned, full, job_key, ckey):
 
 
 def _window(items, size, hour):
-    """`size` items starting at an offset that advances with the hour, wrapping, so successive runs cover the whole list (no stored state)."""
     if not items or size <= 0:
         return []
     start = (hour * size) % len(items)
     return (items[start:] + items[:start])[:size]
 
 
-SWEEP_SHARE = 4                                                         # LIFE-116: one page in four of the spare budget goes to the settled no-block pages (drift), the rest to the block pages (ticks)
+SWEEP_SHARE = 4
 
 
 def _queue_state(surfaced, others, wanted, state, budget, now):
-    """LIFE-116 -> (pages to read this run, number of candidate pages, dirty pages). Dirty pages first (leads before the rest); then, with what is left, a rotation of the pages that hold a
-    block (Jim's ticks) and a small sweep of the settled no-block pages. Some of the budget is kept for the block pages while any exist, so a long dirty list cannot starve the ticks."""
+    """-> (pages to read this run, number of candidate pages, dirty pages).
+
+    Dirty pages first, then a rotation of the pages that hold a block (ticks live there) and a small sweep of settled
+    no-block pages; part of the budget is kept for the block pages.
+    """
     pages = {k: (v[0], v[1], v[2], True) for k, v in surfaced.items()}
     pages.update({o[0]: (o[1], o[2], o[3], False) for o in others})
     total = len(pages)
@@ -136,7 +141,7 @@ def _queue_state(surfaced, others, wanted, state, budget, now):
             blocks.append(key)
         else:
             settled.append(key)
-    reserve = min(len(blocks), budget // 5)             # none for a tiny budget: a new job is never starved by it
+    reserve = min(len(blocks), budget // 5)
     take = budget - reserve
     lead_dirty = [k for k in dirty if wanted.get(k)]
     other_dirty = [k for k in dirty if not wanted.get(k)]
@@ -163,7 +168,7 @@ MAX_SHARDS = 8
 
 
 def parse_shard(raw, error, code):
-    """A shard setting "i/n" -> (i, n); unset = (0, 1), everything. Anything else raises `error(code)`. The Ledger layout stage reads its own variable the same way."""
+    """A shard setting "i/n" -> (i, n); unset = (0, 1), everything. Anything else raises `error(code)`."""
     with fixed(ValueError, error, code):
         index, count = (int(part) for part in (raw or "0/1").strip().split("/"))
     if not 0 < count <= MAX_SHARDS or not 0 <= index < count:
@@ -172,12 +177,11 @@ def parse_shard(raw, error, code):
 
 
 def shard_of(environ):
-    """SURFACE_SHARD "i/n" -> (i, n). Unset = (0, 1), every page."""
     return parse_shard(environ.get("SURFACE_SHARD"), NetworkError, "NETWORK_SURFACE_SHARD_INVALID")
 
 
 def _run(limit, live, environ, connection, client, now, today):
-    budget = limit if isinstance(limit, int) and limit > 0 else DEFAULT_PAGES      # an explicit positive limit is honoured exactly (the first live run can be 1 page)
+    budget = limit if isinstance(limit, int) and limit > 0 else DEFAULT_PAGES
     roster, jobs, pipeline = _read(connection, now)
     if not roster:
         raise NetworkError("NETWORK_NO_ROSTER")
@@ -185,13 +189,13 @@ def _run(limit, live, environ, connection, client, now, today):
     details = {posid: (name, url, cname, title, _day(verified)) for pid, ckey, title, state, verified, posid, cname, name, url in roster}
     surfaced, others, counts = resolve_targets(jobs, pipeline, now)
     index_n, count_n = shard_of(environ)
-    if count_n > 1:                                                     # Jim, Oct 28: up to 8 surface runs at once, each only its own slice of the pages (job key modulo n), so no two touch one page
+    if count_n > 1:
         surfaced = {k: v for k, v in surfaced.items() if int(k[:8], 16) % count_n == index_n}
         others = [o for o in others if int(o[0][:8], 16) % count_n == index_n]
     counts.update({"live": bool(live), "roster_positions": len(roster), "published_pages": len(jobs), "pages_read": 0, "pages_deferred": 0, "with_leads": 0, "blocks": {}, "ticks_dismiss": 0,
                    "ticks_same_company": 0, "ticks_stale": 0, "guard_failed": {}, "failed": 0, "degraded": False, "pages_unread": 0})
     if counts["pursuit_source"] == "unavailable":
-        counts["degraded"] = True                                       # the applied and interview triggers could not be read: reported, never a silent zero
+        counts["degraded"] = True
     if live:
         store.ensure_surface_schema(connection)
     dismissed, aliases, counts["tables_present"] = store.load_decisions(connection)
@@ -204,7 +208,7 @@ def _run(limit, live, environ, connection, client, now, today):
     if notion is None:
         if live:
             raise NetworkError("NETWORK_SURFACE_CONFIG_MISSING")
-        counts["pages_unread"] = len(surfaced)                          # a dry run without Notion access still counts the leads it would show
+        counts["pages_unread"] = len(surfaced)
         for key, (page, company, title, classes) in surfaced.items():
             shown, _ = _leads(company, title, index, details, today, aliases, dismissed, key)
             counts["with_leads"] += bool(shown)
@@ -214,14 +218,14 @@ def _run(limit, live, environ, connection, client, now, today):
         counts["guard_failed"]["ledger_target"] = counts["guard_failed"].get("ledger_target", 0) + 1
         return _finish(counts)
     wanted = {k: surface.set_hash(_leads(company, title, index, details, today, aliases, dismissed, k)[0])
-              for k, (page, company, title, classes) in surfaced.items()}       # what each target page should show now, as the hash of its block ("" = none): pure and in memory
+              for k, (page, company, title, classes) in surfaced.items()}
     state, counts["state_table"] = store.load_page_state(connection)
     edits, counts["edit_table"] = store.load_page_edits(connection) if counts["state_table"] else ({}, False)
     checked = store.load_page_checked(connection)[0] if counts["state_table"] else {}
     queue, candidates, counts["pages_dirty"] = _queue_state(surfaced, others, wanted, state, budget, now)
     recorded, seen_edits = {}, {}
-    clean = {k for k in (q[0] for q in queue) if counts["state_table"] and k in state and state[k][1] == wanted.get(k, "")}      # LIFE-572: proven to show exactly what it should; the only pages that may be skipped
-    skip = Skip(edits, clean, seen_edits, now, checked) if (environ.get("NETWORK_SURFACE_SKIP") or "on").strip().lower() != "off" else None      # LIFE-572: one repository variable turns the skip off
+    clean = {k for k in (q[0] for q in queue) if counts["state_table"] and k in state and state[k][1] == wanted.get(k, "")}
+    skip = Skip(edits, clean, seen_edits, now, checked) if (environ.get("NETWORK_SURFACE_SKIP") or "on").strip().lower() != "off" else None
     timing = Timing(notion)
     for key, page, company, title, target in queue:
         began = timing.start()
@@ -245,8 +249,7 @@ def _run(limit, live, environ, connection, client, now, today):
 
 
 class Timing:
-    """LIFE-572 step 1: where the step's time goes. Seconds and Notion calls per page and per outcome ("created", "replaced", "left", "removed", ...), nothing else: no page id, title or
-    content. The Notion client is paced (limits.NOTION_GAP_SECONDS between calls), so calls per page is what the time is made of."""
+    """Where the step's time goes: seconds and Notion calls per page and per outcome; no page id, title or content."""
     def __init__(self, notion, clock=time.monotonic):
         self.notion, self.clock, self.began = notion, clock, clock()
         self.by_label, self.slowest = {}, 0.0
@@ -270,7 +273,7 @@ class Timing:
                 "by_outcome": {k: {"pages": r[0], "seconds": round(r[1], 1), "calls": r[2]} for k, r in sorted(self.by_label.items())}}
 
 
-FLUSH_EVERY = 25                                                         # a long run saves its proven pages as it goes: a timeout loses at most this many
+FLUSH_EVERY = 25
 
 
 def _flush(connection, recorded, counts, seen_edits=None):
@@ -283,7 +286,7 @@ def _flush(connection, recorded, counts, seen_edits=None):
         if seen_edits:
             store.save_page_edits(connection, dict(seen_edits))
             counts["edits_saved"] = counts.get("edits_saved", 0) + len(seen_edits)
-    except NetworkError as error:                                       # only a shortcut is lost: the pages are read again next run
+    except NetworkError as error:
         counts["degraded"] = True
         code = str(error)[:48]
         counts["guard_failed"][code] = counts["guard_failed"].get(code, 0) + 1
@@ -293,16 +296,19 @@ def _flush(connection, recorded, counts, seen_edits=None):
 
 
 class Skip:
-    """LIFE-572: a page that was proven to show exactly what it should, and that has not been edited since, is not read again: one Notion call (the page itself) instead of about sixteen.
-    Jim's Dismiss and Same company ticks and any other edit change the page's last-edited time, so they are still found. Two ways to know a page is untouched since its proof:
-      1. the time recorded right after the proof equals the page's time now (pages this stage wrote or re-proved since LIFE-572);
-      2. no time was recorded yet (every page proven before LIFE-572), but the page's time is older than its saved proof time by LEGACY_MARGIN_SECONDS. The proof time is saved at the end of a
-         run, so the margin must cover a whole run (and Notion's whole-minute rounding): an edit after the proof cannot be older than that.
-    Notion keeps the time to the minute, so a page edited in the last SETTLE_SECONDS is never skipped. Any doubt (no proof, a different time, an unreadable time, a proof older than
-    MAX_AGE_HOURS) reads the page in full, exactly as before. The rotation reaches a page about every 60 hours, so a week is the longest a proof is trusted."""
+    """A page proven to show what it should, and not edited since, is not read again (one Notion call, not about
+    sixteen).
+
+    Untouched means the time recorded right after the proof equals the page's time now, or none was recorded and the
+    page's
+    time is older than the saved proof time by LEGACY_MARGIN_SECONDS. A page edited in the last SETTLE_SECONDS is
+    never
+    skipped; any doubt (no proof, a different or unreadable time, a proof older than MAX_AGE_HOURS) reads the page in
+    full.
+    """
     SETTLE_SECONDS = 180
     LEGACY_MARGIN_SECONDS = 1800
-    MAX_AGE_HOURS = 168                   # a safety net: a proof older than a week is not trusted, so every page is read in full at least weekly whatever Notion's timestamps did
+    MAX_AGE_HOURS = 168
 
     def __init__(self, edits, clean, seen, now, checked=None):
         self.edits, self.clean, self.seen, self.now, self.checked = edits or {}, clean or set(), seen, now, checked or {}
@@ -314,19 +320,17 @@ class Skip:
         return datetime.fromisoformat(str(value).replace("T", " ")[:19]).replace(tzinfo=timezone.utc)
 
     def miss(self, key, edited):
-        """None when the page may be skipped, else the one fixed word that says why not (LIFE-788: so a run's counts show why a page was read in full). The checks and their order are the
-        ones may_skip always made; nothing about when a page may be skipped changes."""
         if key not in self.clean:
-            return "not_proven"                                        # no stored proof of exactly what it should show, or the wanted block changed since
+            return "not_proven"
         if not edited:
             return "no_edit_time"
         try:
             when = self._when(edited)
             recorded = self.edits.get(key)
-            if recorded:                                               # 1. the time recorded right after the proof
+            if recorded:
                 proof = self._when(recorded[1])
                 same = recorded[0] == edited
-            else:                                                      # 2. only the saved proof time exists (older pages)
+            else:
                 saved = self.checked.get(key)
                 if not saved:
                     return "no_proof_time"
@@ -360,13 +364,13 @@ def _page(notion, connection, key, page_id, company, title, target, index, detai
     if skip is not None and live:
         missed = skip.miss(key, edited)
         if missed is None:
-            counts["unchanged_skipped"] = counts.get("unchanged_skipped", 0) + 1       # LIFE-572: proven earlier, untouched since: nothing to read, nothing to write
+            counts["unchanged_skipped"] = counts.get("unchanged_skipped", 0) + 1
             return "skipped_unchanged"
-        counts.setdefault("skip_missed", {})[missed] = counts.get("skip_missed", {}).get(missed, 0) + 1      # LIFE-788: why this page is read in full (a fixed word and a number, nothing identifying)
+        counts.setdefault("skip_missed", {})[missed] = counts.get("skip_missed", {}).get(missed, 0) + 1
     top, owned = surface.read_page(notion, page_id, key=key)
     counts["pages_read"] += 1
     why = surface.guard(page, top, key, notion.source)
-    if not why and ledger_body.description_duplicates(top, key):         # V7's own description written twice: the top-most is used; a pure copy is removed (LIFE-361)
+    if not why and ledger_body.description_duplicates(top, key):
         counts["description_duplicate"] = counts.get("description_duplicate", 0) + 1
         done = surface.remove_duplicate_descriptions(notion, page_id, top, key, live)
         counts[f"description_duplicate_{done}"] = counts.get(f"description_duplicate_{done}", 0) + 1
@@ -376,21 +380,21 @@ def _page(notion, connection, key, page_id, company, title, target, index, detai
         counts["degraded"] = True
         counts["guard_failed"][why] = counts["guard_failed"].get(why, 0) + 1
         return "guard_failed"
-    if not target:                                                      # not an admitted job or active pursuit: it shows nothing, so a block left from before is removed
+    if not target:
         action = surface.apply(notion, page_id, top, owned, [], live)
         counts["blocks"][action] = counts["blocks"].get(action, 0) + 1
         if recorded is not None and live and not action.startswith("would_"):
-            recorded[key] = (page_id, "")                                  # proven by apply's own read-back: no owned block remains
+            recorded[key] = (page_id, "")
             _note_edit(notion, skip, key, page_id, action, edited)
         return action
-    full, ckey = _leads(company, title, index, details, today, aliases, dismissed, key, honour_dismissals=False, shortlist=False)       # decisions are validated against every candidate, not only the shown five
+    full, ckey = _leads(company, title, index, details, today, aliases, dismissed, key, honour_dismissals=False, shortlist=False)
     new_dismissals, new_aliases, stale = _decisions(owned, full, key, ckey)
     counts["ticks_dismiss"] += len(new_dismissals)
     counts["ticks_same_company"] += len(new_aliases)
     counts["ticks_stale"] += stale
     local_dismissed, local_aliases = set(dismissed) | set(new_dismissals), dict(aliases, **dict(new_aliases))
     if live and (new_dismissals or new_aliases):
-        store.save_decisions(connection, new_dismissals, new_aliases)    # Jim's decisions are persisted and read back BEFORE the block is replaced
+        store.save_decisions(connection, new_dismissals, new_aliases)
         dismissed.update(new_dismissals)
         aliases.update(dict(new_aliases))
     shown, _ = _leads(company, title, index, details, today, local_aliases, local_dismissed, key)
@@ -398,25 +402,24 @@ def _page(notion, connection, key, page_id, company, title, target, index, detai
     action = surface.apply(notion, page_id, top, owned, shown, live)
     counts["blocks"][action] = counts["blocks"].get(action, 0) + 1
     if recorded is not None and live and not action.startswith("would_"):
-        recorded[key] = (page_id, surface.set_hash(shown))           # the block (or its absence) that apply just proved on the page
+        recorded[key] = (page_id, surface.set_hash(shown))
         _note_edit(notion, skip, key, page_id, action, edited)
     return action
 
 
 def _note_edit(notion, skip, key, page_id, action, edited):
-    """LIFE-572: remember the page's last-edited time as it is right after this proof: the time already read when nothing was written, else one fresh read (the write moved it)."""
     if skip is None:
         return
     if action in WRITES:
         try:
             edited = notion.call("GET", f"/pages/{page_id}").get("last_edited_time")
         except (NotionError, NetworkError):
-            edited = None                                                  # no time recorded: the page is simply read in full next run
+            edited = None
     skip.note(key, edited)
 
 
 def _finish(counts):
     if counts["degraded"]:
-        print("network-surface:", json.dumps(counts, sort_keys=True))     # counts only: a degraded run still says what it saw
+        print("network-surface:", json.dumps(counts, sort_keys=True))
         raise NetworkError("NETWORK_SURFACE_DEGRADED")
     return counts

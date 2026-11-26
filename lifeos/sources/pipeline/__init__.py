@@ -1,3 +1,3 @@
-"""Hiring and outreach stages on the Job Ledger: the Hiring Pipeline, the job-page outreach table and the manual job."""
+"""Hiring and outreach stages on the Job Ledger: Hiring Pipeline, job-page outreach table, manual job."""
 
 __all__ = ["hiring", "job_page_outreach", "manual_job"]

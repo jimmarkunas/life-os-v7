@@ -1,9 +1,11 @@
-"""Ledger page layout migration: move a flat v7.jd.1 Job Ledger page to the two-column v7.jd.2 layout (lifeos.platform.ledger_body).
+"""Ledger page layout migration: move a flat v7.jd.1 Job Ledger page to the two-column v7.jd.2 layout.
 
-Dry unless live; counts only. A page is touched only when its own blocks are EXACTLY what V7 wrote from the stored description (same types, same text): nothing Jim wrote can be moved, and a page that differs is counted and left alone.
-Per page, each step proven before the next: (1) the column_list is added right after the marker (the old description is still there), (2) its toggle is filled and read back, (3) the marker is replaced by the hidden one in place, (4) the old description blocks are deleted, (5) the top-level blocks are proven to be the marker, the
-column_list and exactly the blocks that followed the old description. An interrupted page is finished by the next run. The page's network state is cleared so the next surface run moves its leads block into the right column. Done pages are remembered in v7_ledger_layout (job key, page id, state)."""
-# Jim, Oct 27 2026: the approved two-column page, and no marker line showing.
+Layout is defined by lifeos.platform.ledger_body. Dry unless live; counts only. A page is touched only when its own
+blocks are exactly what V7 wrote from the stored description. Per page, each step is proven before the next: add the
+column_list after the marker, fill and read back its toggle, replace the marker by the hidden one, delete the old
+description blocks, then prove the top-level blocks. An interrupted page is finished by the next run. Done pages are
+remembered in v7_ledger_layout.
+"""
 import json
 import os
 from datetime import datetime, timezone
@@ -18,7 +20,7 @@ SCHEMA = f"""CREATE TABLE IF NOT EXISTS {STATE} (
     job_key CHAR(64) NOT NULL PRIMARY KEY,
     page_id VARCHAR(64) NOT NULL, state VARCHAR(16) NOT NULL, checked_at DATETIME NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"""
-DONE, LEFT = "DONE", "LEFT"                  # DONE: the page has the layout. LEFT: its blocks are not exactly V7's; not touched (re-checked only if the row is removed)
+DONE, LEFT = "DONE", "LEFT"                  # DONE: the page has the layout. LEFT: its blocks are not exactly V7's; not touched
 DEFAULT_PAGES = 20
 
 
@@ -39,12 +41,12 @@ def _same(actual, expected):
 
 
 def shard_of(environ):
-    """LAYOUT_SHARD "i/n" -> (i, n): this run takes only the jobs whose id is i modulo n, so n runs can move different pages at once and never the same page. Unset = (0, 1), everything."""
     return network_surface.parse_shard(environ.get("LAYOUT_SHARD"), LayoutError, "LAYOUT_SHARD_INVALID")
 
 
 def read(connection, limit, shard=(0, 1)):
-    """-> [(job_key, page_id, description dict)] of PUBLISHED jobs not yet DONE or LEFT, oldest first, only this shard's. A missing state table reads as nothing done."""
+    """-> [(job_key, page_id, description dict)] of published jobs not yet DONE or LEFT, oldest first, for this shard.
+    A missing state table reads as nothing done."""
     index, count = shard
     with connection.cursor() as cursor:
         try:
@@ -59,15 +61,16 @@ def read(connection, limit, shard=(0, 1)):
     for key, page, summary, resp, req, qual, full in rows:
         desc = {"summary": summary, "responsibilities": resp, "requirements": req, "qualifications": qual}
         if not any(desc.values()):
-            desc["summary"] = (full or "")[:6000]                      # the fallback publish applies
+            desc["summary"] = (full or "")[:6000]
         out.append((key, page, desc))
     return out
 
 
 def migrate(client, page_id, key, desc, live):
-    """-> "done" (already the layout) | "migrated" | "would_migrate" | "left" (blocks are not exactly V7's). Raises LayoutError on any read-back that does not match."""
+    """-> "done" | "migrated" | "would_migrate" | "left" (blocks are not exactly V7's). Raises LayoutError on a
+    read-back mismatch."""
     top = body._kids(client, page_id)
-    old = body.legacy_blocks(key, desc)[1:]                            # what V7 wrote after the marker
+    old = body.legacy_blocks(key, desc)[1:]
     if not top or not body.is_marker(top[0], key):
         return "left"
     layout = len(top) > 1 and top[1].get("type") == "column_list"
@@ -75,15 +78,15 @@ def migrate(client, page_id, key, desc, live):
     old_there = _same(top[start:start + len(old)], old)
     if layout and not old_there:
         found = body.find(client, page_id, top, key)
-        if found and found["toggle"] and _text(top[0]) == "\u2060":    # finished: hidden marker, layout, nothing of the old description left
+        if found and found["toggle"] and _text(top[0]) == "\u2060":
             return "done"
     if not layout and not old_there:
         return "left"
     if not live:
         return "would_migrate"
-    if not layout:                                                      # (1) the column_list, right after the marker
+    if not layout:
         client.call("PATCH", f"/blocks/{page_id}/children", {"children": [body.column_list(desc)], "after": top[0]["id"]})
-    body.fill(client, page_id, desc, strict=True)                       # (2) the toggle (a replay writes nothing)
+    body.fill(client, page_id, desc, strict=True)
     top = body._kids(client, page_id)
     found = body.find(client, page_id, top, key)
     if not found or not found["toggle"] or len([b for b in top if b.get("type") == "column_list"]) != 1:
@@ -97,10 +100,10 @@ def migrate(client, page_id, key, desc, live):
     after = [b for b in top[2:]]
     if not _same(after[:len(old)], old):
         raise LayoutError("LAYOUT_OLD_BLOCKS_CHANGED")                    # the page changed under us: nothing is deleted
-    client.call("PATCH", f"/blocks/{top[0]['id']}", {"paragraph": body.marker_block(key)["paragraph"]})      # (3) the hidden marker, in place
-    for block in after[:len(old)]:                                      # (4) the old description
+    client.call("PATCH", f"/blocks/{top[0]['id']}", {"paragraph": body.marker_block(key)["paragraph"]})
+    for block in after[:len(old)]:
         client.call("DELETE", f"/blocks/{block['id']}")
-    final = body._kids(client, page_id)                                 # (5) proof
+    final = body._kids(client, page_id)
     if [b["id"] for b in final] != [top[0]["id"], found["list"]] + [b["id"] for b in after[len(old):]] or not body.is_marker(final[0], key) or _text(final[0]) != "\u2060":
         raise LayoutError("LAYOUT_READBACK_MISMATCH")
     return "migrated"
@@ -114,15 +117,15 @@ def run(limit, live, environ=os.environ, connection=None, client=None):
 
 
 def _remember(connection, key, page, state, cleared, counts):
-    """Record a page as done (or left) so a later run does not read it again. Only a shortcut: a failed save loses nothing (the page reads back as done next run) and never fails the stage."""
+    """Record a page as done (or left) so a later run does not read it again; a failed save never fails the stage."""
     revive(connection)
     try:
         with connection.cursor() as cursor:
             cursor.execute(f"REPLACE INTO {STATE} (job_key, page_id, state, checked_at) VALUES (%s,%s,%s,%s)", (key, page, state, _now()))
             if cleared:
                 try:
-                    cursor.execute("DELETE FROM v7_network_page_state WHERE job_key=%s", (key,))      # the surface reads the page again and moves its leads block into the right column
-                except Exception:                                      # noqa: BLE001 - that table exists only after the first live surface run
+                    cursor.execute("DELETE FROM v7_network_page_state WHERE job_key=%s", (key,))
+                except Exception:                                      # noqa: BLE001
                     pass
         connection.commit()
     except Exception:                                                  # noqa: BLE001 - a driver message may carry names; only a count leaves
@@ -148,7 +151,7 @@ def _run(limit, live, environ, connection, client):
         counts[outcome] += 1
         if live and outcome in ("done", "migrated", "left"):
             _remember(connection, key, page, LEFT if outcome == "left" else DONE, outcome == "migrated", counts)
-    print("ledger-layout:", json.dumps(counts, sort_keys=True))          # counts only
+    print("ledger-layout:", json.dumps(counts, sort_keys=True))
     if counts["failed"]:
         raise LayoutError("LAYOUT_PAGES_FAILED")
     return counts

@@ -1,9 +1,10 @@
-"""LIFE-894: Interview OS's mail, read early beside the tick and handed to the late Interview job through one table of the private store (v7_interview_mail).
+"""Interview OS's mail, read early in the tick and handed to the late Interview job through one private-store table.
 
-The early domains run of a tick (phase tick) reads the same Gmail and Outlook window the late job reads today (interview_evidence.read_mail) and files the records, the per-source status and a fingerprint under the tick's hour;
-it writes nothing to Notion, the Ledger or anywhere else, and a failed read files nothing. The late Interview job (the one writer of the opportunity pages) uses the snapshot only when it is complete, for the same window
-and taken after THIS tick started (the same two-minute grace lifeos.platform.phase gives a dispatch run); a stale, wrong-hour, incomplete, corrupt or missing snapshot, or a store that cannot be read, means it reads mail itself exactly as before.
-The proof-week shadow that compared a fresh read with the snapshot is removed (Jim accepted it, LIFE-894 comment 14099). Output is counts and fixed codes only: never an address, subject, id or body."""
+The early run files the records, per-source status and a fingerprint under the tick's hour and writes nothing else.
+The
+late job uses a snapshot only when it is complete, for the same window and taken after this tick started; otherwise it
+reads the mail itself. Output is counts and fixed codes only.
+"""
 import json
 import os
 import zlib
@@ -14,18 +15,16 @@ from lifeos.jobs import store
 
 UTC = timezone.utc
 TABLE = "v7_interview_mail"
-GRACE = timedelta(minutes=2)             # a snapshot taken this long before the tick started still belongs to it (the grace lifeos.platform.phase gives the early run)
-KEEP = timedelta(hours=6)                # older rows are removed whenever a new one is filed
-MAX_BYTES = 12_000_000                   # a compressed payload above this is not filed (the late job then reads for itself); MySQL's MEDIUMBLOB holds 16 MB
+GRACE = timedelta(minutes=2)             # a snapshot taken this long before the tick started still belongs to it
+KEEP = timedelta(hours=6)
+MAX_BYTES = 12_000_000                   # a larger compressed payload is not filed (MySQL's MEDIUMBLOB holds 16 MB)
 
 
 def hour_key(moment):
-    """The UTC hour a snapshot is filed under, e.g. 2026-11-22T12."""
     return moment.astimezone(UTC).strftime("%Y-%m-%dT%H")
 
 
 def parse(value):
-    """An ISO 8601 time (a trailing Z allowed) as an aware UTC datetime; a naive one is read as UTC."""
     moment = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
     return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
 
@@ -35,12 +34,12 @@ def _canon(records):
 
 
 def fingerprint(records):
-    """A hash of the records, independent of their order: it covers every field, so equal fingerprints mean byte-identical mail input."""
     return sha256(_canon(records).encode()).hexdigest()
 
 
 def judge(row, tick_started, now, days):
-    """Pure: 'used' when the row is complete, for the same window and taken between this tick's start (less the grace) and now; else a fixed code saying why not."""
+    """Pure: 'used' when complete, for the same window and taken since this tick's start (less the grace); else a
+    fixed code saying why not."""
     if row is None:
         return "none"
     taken = row["taken_at"]
@@ -62,7 +61,7 @@ def _create():
 
 
 def save(connect, taken, days, complete, records, down, detail, seconds):
-    """File the snapshot under its hour and remove the rows older than KEEP. An incomplete read (or one too large) files its status only: its records would never be used. Raises on a store error."""
+    """File the snapshot under its hour and remove rows older than KEEP. Raises on a store error."""
     payload = zlib.compress(json.dumps({"records": records, "down": down, "detail": detail, "seconds": seconds}, separators=(",", ":")).encode(), 6) if complete else b""
     if len(payload) > MAX_BYTES:
         complete = False
@@ -81,13 +80,13 @@ def save(connect, taken, days, complete, records, down, detail, seconds):
 
 
 def load(connect, tick_started, now, days):
-    """-> {'why': 'used', 'records', 'down', 'detail', 'seconds', 'taken_at'} for a snapshot the late job may use, else {'why': <fixed code>}: none, wrong_hour, days, incomplete, stale, future, corrupt or store.
-    Never raises: a store that cannot be read, a missing table or a payload that does not match its fingerprint all mean 'read the mail yourself'."""
+    """-> {'why': 'used', 'records', 'down', 'detail', 'seconds', 'taken_at'} for a usable snapshot, else {'why':
+    <code>}. Never raises: any problem means 'read the mail yourself'."""
     try:
         with connect() as connection, connection.cursor() as cursor:
             cursor.execute(f"SELECT tick_hour, taken_at, days, complete, fingerprint, payload FROM {TABLE} ORDER BY taken_at DESC LIMIT 1")
             found = cursor.fetchone()
-    except Exception:                                                                            # noqa: BLE001 - any store problem: the full read, never an error
+    except Exception:                                                                            # noqa: BLE001
         return {"why": "store"}
     row = None
     if found:
@@ -102,17 +101,17 @@ def load(connect, tick_started, now, days):
         if not isinstance(records, list) or fingerprint(records) != held_fingerprint:
             return {"why": "corrupt"}
         return {"why": "used", "records": records, "down": int(body["down"]), "detail": dict(body["detail"]), "seconds": dict(body["seconds"]), "taken_at": row["taken_at"]}
-    except Exception:                                                                            # noqa: BLE001 - an unreadable payload is never used
+    except Exception:                                                                            # noqa: BLE001
         return {"why": "corrupt"}
 
 
-FULL_EVERY_HOURS = 6                     # LIFE-906: at hours 0, 6, 12 and 18 Central the whole window is read, so a message whose folder changed after it was reused is corrected within six hours
-REUSE_MAX_AGE = timedelta(hours=3)       # LIFE-906: an earlier complete read older than this is not trusted as a checkpoint (the next read is the full window)
+FULL_EVERY_HOURS = 6                     # at hours 0, 6, 12 and 18 Central the whole window is read, so a message whose folder changed is corrected within six hours
+REUSE_MAX_AGE = timedelta(hours=3)       # an earlier complete read older than this is not trusted as a checkpoint
 
 
 def previous(connect, now, days):
-    """LIFE-906: the checkpoint for an incremental read: {Gmail message id: record} from the LATEST COMPLETE snapshot of this window taken within REUSE_MAX_AGE, else {}. A missing, stale, incomplete, other-window or
-    corrupt snapshot, or any store problem, is {} (the full window is read); a partial read never became a checkpoint because only complete rows are chosen. Never raises."""
+    """{Gmail message id: record} from the latest complete snapshot of this window within REUSE_MAX_AGE, else {}.
+    Never raises."""
     try:
         with connect() as connection, connection.cursor() as cursor:
             cursor.execute(f"SELECT taken_at, days, fingerprint, payload FROM {TABLE} WHERE complete = 1 ORDER BY taken_at DESC LIMIT 1")
@@ -127,12 +126,12 @@ def previous(connect, now, days):
         if not isinstance(records, list) or fingerprint(records) != held_fingerprint:
             return {}
         return {r["id"]: r for r in records if isinstance(r, dict) and r.get("provider") == "gmail" and isinstance(r.get("id"), str)}
-    except Exception:                                                                            # noqa: BLE001 - any problem: read the whole window
+    except Exception:                                                                            # noqa: BLE001
         return {}
 
 
 def take(environ, now, days, connect=None):
-    """What the late job asks: a usable snapshot for the tick that just finished, or why not. Without TICK_STARTED (a manual run, `all`) it answers 'no_tick' and never touches the store."""
+    """A usable snapshot for the tick that just finished, or why not. Without TICK_STARTED it answers 'no_tick'."""
     started = (environ.get("TICK_STARTED") or "").strip()
     if not started:
         return {"why": "no_tick"}
@@ -151,22 +150,21 @@ def _sources(records):
 
 
 def stage(limit, live, environ=os.environ, now=None, connect=None, read=None):
-    """The early step: read the mail window and, on a live run, file it. Read only: nothing is written to Notion or the Ledger, and any failure files nothing and does not fail the run (the late job reads for itself)."""
     from lifeos.sources.interview import interview_evidence as evidence             # noqa: PLC0415 - that module imports this one
     now = (now or datetime.now(evidence.TZ)).astimezone(evidence.TZ)
     days, seconds, detail = evidence.window(environ, live), {}, {}
-    reuse = previous(connect or store.connect, now.astimezone(UTC), days) if live and read is None and now.hour % FULL_EVERY_HOURS else {}   # LIFE-906: read only the mail the last complete snapshot does not hold, except in the full-read hours
+    reuse = previous(connect or store.connect, now.astimezone(UTC), days) if live and read is None and now.hour % FULL_EVERY_HOURS else {}
     try:
         records, down = (read or evidence.read_mail)(environ, now, None, None, days, seconds, detail, reuse=reuse) if reuse else (read or evidence.read_mail)(environ, now, None, None, days, seconds, detail)
-    except Exception as error:                                                       # noqa: BLE001 - a fixed code, never the error's text
+    except Exception as error:                                                       # noqa: BLE001
         return {"snapshot": "not_saved", "why": "read_" + type(error).__name__.lower()[:40]}
     counts = {"records": len(records), "complete": down == 0, "down": down, "days": days, "sources": _sources(records), "seconds": seconds,
-              "gmail": {k: (detail.get("gmail") or {}).get(k) for k in ("listed", "read", "reused", "retries")}}      # LIFE-906: listed, read, skipped (reused) and retries, counts only
+              "gmail": {k: (detail.get("gmail") or {}).get(k) for k in ("listed", "read", "reused", "retries")}}
     if not live:
         return {"snapshot": "dry_run", **counts}
     try:
         filed = save(connect or store.connect, now, days, down == 0, records, down, detail, seconds)
-    except Exception:                                                                # noqa: BLE001 - a fixed code
+    except Exception:                                                                # noqa: BLE001
         return {"snapshot": "not_saved", "why": "store", **counts}
     return {"snapshot": "saved" if filed else "saved_incomplete", **counts}
 

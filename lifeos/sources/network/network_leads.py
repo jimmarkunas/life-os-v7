@@ -1,8 +1,10 @@
-"""NET-2.2: how many job and pursuit targets have network leads, and how many each. Read-only, counts only.
+"""How many job and pursuit targets have network leads, and how many each. Read-only, counts only.
 
-Writes nothing, creates no table, prints no name, company or title. Three trigger classes (the product canon): an admitted job (published, stored Fit admission ADMIT), an applied or active-pursuit opportunity, and a scheduled or upcoming interview. The last two come from the accepted Hiring Pipeline snapshot
-(`lifeos.hiring.snapshot`, the private derivative row the pipeline already writes from the Job Ledger, the Hiring Pipeline pages and the Calendar): no Notion or Calendar read, no new source.
-The roster is the whole stored network; matching is lifeos.network.match and this stage only reads and counts. A target in more than one class is counted in each class and once in the distinct total (by company key and role words)."""
+Writes nothing and prints no name, company or title. Three trigger classes: an admitted job, an applied or
+active-pursuit opportunity, and a scheduled or upcoming interview; the last two come from the stored hiring snapshot
+(`lifeos.hiring.snapshot`). Matching is lifeos.network.match; this stage only reads and counts. A target in more than
+one class is counted in each class and once in the distinct total (by company key and role words).
+"""
 from datetime import date, datetime, timezone
 
 from lifeos.hiring import render as hiring_render, snapshot as hiring_snapshot
@@ -21,22 +23,25 @@ def _today():
 
 
 def _read(connection):
-    with connection.cursor() as cursor, fixed(Exception, NetworkError, "NETWORK_MATCH_READ_FAILED"):          # a driver message may carry names; only the fixed code leaves
+    with connection.cursor() as cursor, fixed(Exception, NetworkError, "NETWORK_MATCH_READ_FAILED"):
         cursor.execute("SELECT s.person_id, s.company_key, s.title, s.position_state, s.last_verified FROM v7_network_positions s JOIN v7_network_people p ON p.id = s.person_id WHERE p.status='ACTIVE'")
         rows = [(pid, key, title, state, verified if isinstance(verified, date) else date.fromisoformat(str(verified)[:10])) for pid, key, title, state, verified in cursor.fetchall()]
         cursor.execute("SELECT j.id, j.company, j.title FROM v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id WHERE j.status='PUBLISHED' AND j.notion_page_id IS NOT NULL AND f.admission='ADMIT'")
         jobs = cursor.fetchall()
     try:
         pipeline = hiring_snapshot.load(connection)
-    except Exception:                                                  # noqa: BLE001 - the pursuit source is reported unavailable; the job class still counts
+    except Exception:                                                  # noqa: BLE001
         pipeline = None
     return rows, jobs, pipeline
 
 
 def targets(jobs, pipeline, now, stats=None):
-    """-> ([(class, company, title)], source status). Pipeline rows are structure from the accepted snapshot. An opportunity is active by the Hiring Pipeline's own rule
-    (`hiring.render.older_submitted`: a plain Submitted row older than 30 days after Applied On is no longer active; a carried row, an undated row and any later stage stay), not a second
-    lifecycle. An interview is a timed upcoming event of an interview kind."""
+    """-> ([(class, company, title)], source status).
+
+    An opportunity is active by the Hiring Pipeline's own rule (`hiring.render.older_submitted`): a plain Submitted
+    row older
+    than 30 days after Applied On is no longer active. An interview is a timed upcoming event of an interview kind.
+    """
     out = [(ADMITTED_JOB, company, title or "") for _, company, title in jobs]
     if not pipeline or not isinstance(pipeline.get("rows"), list):
         return out, "unavailable"

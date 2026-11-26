@@ -1,10 +1,12 @@
-"""Granola meetings that are not interviews: each becomes one row of the Meetings database, routed by attendees, then title (LIFE-164, LIFE-166).
+"""Granola meetings that are not interviews: each becomes one row of the Meetings database.
 
-A row's page holds the word-for-word transcript, notes and summary above it; a page elsewhere shows a filtered view of the same table, so there is no second page and no link to keep in step.
-Routing of a meeting that matches no Interview OS round (granola_match): a client attendee gives TGP (whoever else is on the call), only Bytalos people (and personal mailboxes) gives Bytalos, with no attendee evidence the title decides. Anything these rules cannot decide (another company on a Bytalos call, a title naming both
-sides, nothing at all) becomes an Unfiled row: Jim picks "File as" (TGP, Bytalos, Personal, Interview or Delete) and the hourly job files it. A row that carries a transcript that is not ours is never touched.
-The caller (granola_auto) owns the catalog, the purge and the per-run cap. Outputs: codes and counts only; titles, names and addresses are compared here and never logged."""
-# LIFE-164 / LIFE-166 (Jim, Oct 27 2026; routing rule in his words: "By the attendees, then the title"). A meeting leaves Oracle only after its row is written and read back and the catalog row is saved and read back.
+A meeting that matches no Interview OS round is routed by attendees: a client attendee gives TGP, only Bytalos people
+(and personal mailboxes) give Bytalos, and with no attendee evidence the title decides. Anything else becomes an
+Unfiled
+row that the owner files by hand. A row carrying a transcript that is not ours is never touched. The caller
+(granola_auto) owns the catalog, the purge and the per-run cap. Codes and counts only; never titles or names.
+"""
+# A meeting leaves Oracle only after its row is written and read back and the catalog row is saved and read back.
 import re
 
 from lifeos.platform.notion_ids import notion_id
@@ -13,13 +15,13 @@ from lifeos.interview.granola_match import central_day
 from lifeos.platform import hidden
 from lifeos.platform.notion_client import NotionError, rich_text
 
-DATA_SOURCE = notion_id("DATA_SOURCE")        # the Meetings database (an id is not a secret)
+DATA_SOURCE = notion_id("DATA_SOURCE")
 TITLE, DATE, STATUS, FILE_AS, FILED_TO, KEY, LINES = "Meeting", "Meeting date", "Status", "File as", "Filed to", "Source key", "Transcript lines"
 SCHEMA = {TITLE: "title", DATE: "date", STATUS: "select", FILE_AS: "select", FILED_TO: "select", KEY: "rich_text", LINES: "number"}
-CLIENT, INTERNAL, PERSONAL = "TGP", "Bytalos", "Personal"       # the values of Filed to / File as that carry a transcript
+CLIENT, INTERNAL, PERSONAL = "TGP", "Bytalos", "Personal"
 UNFILED, FILED, DELETED = "Unfiled", "Filed", "Deleted"
 CLIENT_DOMAIN, OWN_DOMAIN = "tgpinternational.com", "bytalos.com"
-PERSONAL_DOMAINS = {"gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "icloud.com", "me.com", "yahoo.com"}      # Jim's own mailbox is one of the attendees; it does not make a call external
+PERSONAL_DOMAINS = {"gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "icloud.com", "me.com", "yahoo.com"}
 CLIENT_WORDS, OWN_WORDS = ("tgp", "tpg"), ("bytalos",)
 MAX_TITLE = 120
 
@@ -33,13 +35,12 @@ def _words(text):
 
 
 def route(meeting):
-    """-> (CLIENT | INTERNAL | None, code). Codes: ROUTE_CLIENT_ATTENDEE, ROUTE_INTERNAL_ATTENDEE, ROUTE_CLIENT_TITLE, ROUTE_INTERNAL_TITLE, ROUTE_NONE, ROUTE_OTHER_ATTENDEES, ROUTE_TITLE_AMBIGUOUS."""
     domains = _domains(meeting.attendees)
     if CLIENT_DOMAIN in domains:
-        return CLIENT, "ROUTE_CLIENT_ATTENDEE"                          # a client attendee makes it a client meeting, whoever else is on the call
+        return CLIENT, "ROUTE_CLIENT_ATTENDEE"
     if OWN_DOMAIN in domains:
         if domains - {OWN_DOMAIN} - PERSONAL_DOMAINS:
-            return None, "ROUTE_OTHER_ATTENDEES"                        # another company is on the call: not guessed
+            return None, "ROUTE_OTHER_ATTENDEES"
         return INTERNAL, "ROUTE_INTERNAL_ATTENDEE"
     words = _words(meeting.title)
     client, own = bool(words & set(CLIENT_WORDS)), bool(words & set(OWN_WORDS))
@@ -53,7 +54,8 @@ def route(meeting):
 
 
 def check(client):
-    """-> "target_ok" | "target_mismatch" | "target_unreadable": the Meetings data source is reachable with this token and has the columns the job writes."""
+    """-> "target_ok" | "target_mismatch" | "target_unreadable": the Meetings data source is reachable and has the
+    written columns."""
     try:
         props = client.call("GET", f"/data_sources/{DATA_SOURCE}").get("properties") or {}
         return "target_ok" if all((props.get(name) or {}).get("type") == kind for name, kind in SCHEMA.items()) else "target_mismatch"
@@ -71,7 +73,6 @@ def _select(name):
 
 
 def _state(status, filed_to=None, lines=None):
-    """The properties that say where a meeting stands: Status, and (once filed) where and how many lines."""
     out = {STATUS: _select(status)}
     if filed_to:
         out[FILED_TO] = _select(filed_to)
@@ -96,7 +97,6 @@ def _plain(prop):
 
 
 def find(client, key):
-    """The row for a catalog key, or None. Two rows for one key is a stop (NotionError), never a guess."""
     reply = client.query_data_source(DATA_SOURCE, {"page_size": 3, "filter": {"property": KEY, "rich_text": {"equals": key}}})
     rows = reply.get("results") if isinstance(reply, dict) else None
     if not isinstance(rows, list) or len(rows) > 1:
@@ -105,7 +105,8 @@ def find(client, key):
 
 
 def rows_where(client, status, with_choice):
-    """-> [(page id, key, File as)] for rows with this Status; with_choice keeps only rows where Jim has picked a File as. Complete or NotionError."""
+    """-> [(page id, key, File as)] for rows with this Status; with_choice keeps only rows with a File as picked.
+    Complete or NotionError."""
     flt = {"and": [{"property": STATUS, "select": {"equals": status}}, {"property": FILE_AS, "select": {"is_not_empty": True}}]} if with_choice else {"property": STATUS, "select": {"equals": status}}
     out, cursor = [], None
     for _ in range(20):
@@ -121,7 +122,6 @@ def rows_where(client, status, with_choice):
 
 
 def unfiled_row(client, meeting, key, live):
-    """Make sure an Unfiled row exists for a meeting nothing could place. -> "created" | "exists" | "planned"."""
     if find(client, key):
         return "exists"
     if not live:
@@ -135,12 +135,10 @@ def set_status(client, page_id, status, filed_to=None, lines=None):
 
 
 def _marker_block(marker):
-    """The marker paragraph, hidden: a zero-width character whose link carries the marker, so no `v7-transcript:1;accepted=...` line shows on the page."""
     return {"object": "block", "type": "paragraph", "paragraph": {"rich_text": [hidden.run(marker)]}}
 
 
 def _read_back(client, page_id):
-    """-> (marker, transcript lines, number of blocks, the first paragraph's block). The marker is the hidden ref, or the older visible line on a page written before the marker was hidden."""
     found = notion.children(client, page_id, [400])
     paras = [b for b in found if b.get("type") == "paragraph"]
     texts = [notion.text(b) for b in paras]
@@ -149,9 +147,8 @@ def _read_back(client, page_id):
 
 
 def write(client, filed_to, meeting, key, envelope, live, header=()):
-    """File one meeting's transcript on its Meetings row, creating the row if it has none. -> (code, counts).
-    Codes: TRANSCRIPT_WRITTEN, TRANSCRIPT_NOOP, TRANSCRIPT_PLANNED (not live), CLIENT_PAGE_NOT_OURS, TRANSCRIPT_WRITE_FAILED, TRANSCRIPT_READBACK_MISMATCH.
-    counts: segments, blocks_planned, blocks_written, readback_ok, readback_failed."""
+    """File one meeting's transcript on its Meetings row, creating the row if it has none. -> (code, counts), code
+    being a TRANSCRIPT_* or CLIENT_PAGE_NOT_OURS constant."""
     counts = {"segments": len(envelope.segments), "blocks_planned": 0, "blocks_written": 0, "readback_ok": 0, "readback_failed": 0}
     marker = f"{create.ACCEPTED}{envelope.source_content_sha256}"
     body = granola_write.blocks(envelope, header)
@@ -162,20 +159,20 @@ def write(client, filed_to, meeting, key, envelope, live, header=()):
     page = row["id"] if row else None
     if page:
         first, got, total, head = _read_back(client, page)
-        if first == marker:                                         # a page of ours: it counts as filed only if it reads back whole, never on the marker alone
+        if first == marker:                                         # a page of ours counts as filed only if it reads back whole, never on the marker alone
             if granola_write.digest(got) != granola_write.digest(want) or total != len(body):
                 counts["readback_failed"] = 1
                 return "TRANSCRIPT_READBACK_MISMATCH", counts
-            if live and head is not None and not hidden.refs(head):             # a page written before the marker was hidden: its visible marker line is replaced once, in place
+            if live and head is not None and not hidden.refs(head):
                 try:
                     client.call_once("PATCH", f"/blocks/{head['id']}", {"paragraph": _marker_block(marker)["paragraph"]})
                 except NotionError:
-                    pass                                            # the transcript is intact; the next run tries again
+                    pass
             if live and _plain(row["properties"].get(STATUS)) != FILED:
                 set_status(client, page, FILED, filed_to, len(envelope.segments))
             return "TRANSCRIPT_NOOP", counts
         if total:
-            return "CLIENT_PAGE_NOT_OURS", counts                   # the row's page already holds something that is not this transcript: never touched
+            return "CLIENT_PAGE_NOT_OURS", counts                   # the page already holds something that is not this transcript: never touched
     if not live:
         return "TRANSCRIPT_PLANNED", counts
     batch = granola_write.FIRST_BATCH
@@ -200,7 +197,7 @@ def write(client, filed_to, meeting, key, envelope, live, header=()):
         try:
             set_status(client, page, FILED, filed_to, len(envelope.segments))
         except NotionError:
-            pass                                                    # the transcript is written and read back; a status that did not stick is repaired by the next run's NOOP path
+            pass
         return "TRANSCRIPT_WRITTEN", counts
     counts["readback_failed"] = 1
     return "TRANSCRIPT_READBACK_MISMATCH", counts

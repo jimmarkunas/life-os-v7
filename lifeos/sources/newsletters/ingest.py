@@ -1,8 +1,9 @@
 """Stage 3 - extract: parse job cards out of labeled newsletters into v7_jobs (status NEW).
 
-Only supported senders are processed; others stay pending. A message is marked Processed only AFTER its
-cards are safely written (accounting before cleanup). Dry run parses and counts; it writes nothing.
+Only supported senders are processed; others stay pending. A message is marked Processed only after its cards are
+safely written. A dry run parses and counts and writes nothing.
 Usage: python -m lifeos.sources.newsletters.ingest [--live] [--limit N]      Logs: counts only (public repo).
+
 """
 import argparse
 from datetime import datetime, timezone
@@ -18,7 +19,7 @@ PARSERS = {"jobright": jobright.parse, "linkedin-alerts": linkedin.parse}
 LOOKS_LIKE_JOBS = {"jobright": jobright.looks_like_jobs, "linkedin-alerts": linkedin.looks_like_jobs}
 from lifeos.jobs import lanes                                                # noqa: E402
 
-# A coarse mail-age pre-filter only, so link-resolution budget is not spent on stale mail; the number is the lane policy's, never a second authority.
+# A coarse mail-age pre-filter only, so link-resolution budget is not spent on stale mail.
 MAX_AGE_DAYS = lanes.POLICIES["US Remote"].max_age_days
 
 
@@ -27,7 +28,6 @@ def mail_age_days(received_epoch, now=None):
 
 
 def known_age(card, mail_age):
-    """Lower bound on the job's age today: its own 'posted N ago' (if any) plus how old the email already is."""
     return (card.age_days or 0) + mail_age
 
 
@@ -37,19 +37,22 @@ def status_for(card, mail_age=0):
 
 LANE = "Newsletter"
 PROVIDERS = {"lensa": "Lensa", "jobright": "Jobright", "linkedin-alerts": "LinkedIn Jobs",
-             "dice": "Dice", "reed": "Reed"}   # the Notion "Source Types" names; dice/reed are no longer read (LIFE-645), kept only for backfill_provider on old rows
+             "dice": "Dice", "reed": "Reed"}   # the Notion "Source Types" names; dice/reed are no longer read, kept only for backfill_provider on old rows
 
 
 def backfill_provider(connection):
-    """Rows saved before `provider` existed: label them once (idempotent)."""
     with connection.cursor() as cursor:
         for rule, label in PROVIDERS.items():
             cursor.execute("UPDATE v7_jobs SET provider=%s WHERE provider IS NULL AND source=%s", (label, rule))
 
 
 def save_cards(connection, rule, message_id, cards, received_epoch=None, counts=None):
-    """Emit each card to Jobs OS. Returns (new_jobs, repeat_links). Every card leaves one source row for THIS message (LIFE-64): the unique key is the URL, so
-    a vacancy repeated in a later mail is keyed by mail + URL; a card a tombstone suppressed has no job, so its row has no job and is counted in counts["suppressed"]."""
+    """Emit each card to Jobs OS. Returns (new_jobs, repeat_links).
+
+    Every card leaves one source row for this message, keyed by mail + URL. A card a tombstone suppressed has no job;
+    it is
+    counted in counts["suppressed"].
+    """
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     mail_age = mail_age_days(received_epoch) if received_epoch else 0
     received = datetime.fromtimestamp(received_epoch, timezone.utc).replace(tzinfo=None) if received_epoch else None
@@ -82,7 +85,7 @@ def save_cards(connection, rule, message_id, cards, received_epoch=None, counts=
 
 
 def extract(gmail, live, limit, connection=None):
-    processed_label = gmail.label_id(config.PROCESSED_LABEL, create=True) if live else None   # M5: a dry run moves nothing, so it needs no label
+    processed_label = gmail.label_id(config.PROCESSED_LABEL, create=True) if live else None
     retired_label = gmail.label_id(config.RETIRED_LABEL, create=True) if live else None
     counts = {"messages": 0, "cards": 0, "new_jobs": 0, "repeat_links": 0, "suppressed": 0,
               "unsupported_sender": 0, "no_cards": 0, "non_job_mail": 0, "stale_mail": 0, "marked_processed": 0, "retired_sender_lensa": 0, "marked_retired": 0}
@@ -90,7 +93,7 @@ def extract(gmail, live, limit, connection=None):
     for message_id in gmail.list_ids(config.PENDING_QUERY, limit=limit):
         sender, html, received = gmail.message(message_id)
         rule = config.classify(sender)
-        if rule in config.RETIRED_SENDERS:                     # D201: its own label at once (never Processed), so it holds no pending slot; no card is read
+        if rule in config.RETIRED_SENDERS:
             counts[config.RETIRED_SENDERS[rule]] += 1
             if live:
                 retired.append(message_id)
@@ -100,19 +103,19 @@ def extract(gmail, live, limit, connection=None):
             counts["unsupported_sender"] += 1
             continue
         counts["messages"] += 1
-        if mail_age_days(received) > MAX_AGE_DAYS:   # every job in it is already older than the window
+        if mail_age_days(received) > MAX_AGE_DAYS:
             counts["stale_mail"] += 1
             if live:
                 done.append(message_id)
             continue
         cards = parser(html)
         counts["cards"] += len(cards)
-        if not cards and not LOOKS_LIKE_JOBS[rule](html):   # e.g. a password-reset email: nothing to extract, close it out
+        if not cards and not LOOKS_LIKE_JOBS[rule](html):
             counts["non_job_mail"] += 1
             if live:
                 done.append(message_id)
             continue
-        counts["no_cards"] += 0 if cards else 1                # job links but no cards = parser gap: stays pending
+        counts["no_cards"] += 0 if cards else 1
         if live and cards:                      # zero cards = parser gap: leave pending, never mark Processed
             new, repeat = save_cards(connection, rule, message_id, cards, received, counts)
             counts["new_jobs"] += new
@@ -150,9 +153,12 @@ def backfill_dates(gmail, connection):
 
 
 def reconcile(gmail, connect, limit):
-    """Repair (LIFE-64): Processed mail with fewer source rows than cards (marked before a parser fix, or before every card was accounted), for every Gmail sender; then reopen
-    mail labelled Done that now has a vacancy in flight, on hold or unverified. Idempotent: save_cards adds a row only for a (vacancy, message) pair not yet recorded.
-    `connect` opens the store. Reading the mail takes over a minute, so no connection is held while it is read: the first live run lost its idle connection on the first save."""
+    """Repair: Processed mail with fewer source rows than cards, for every Gmail sender; then reopen mail labelled
+    Done that
+    now has a vacancy in flight, on hold or unverified. Idempotent. `connect` opens the store; no connection is held
+    while
+    the mail is read.
+    """
     counts = {"checked": 0, "recovered_messages": 0, "recovered_jobs": 0, "suppressed": 0, "still_no_cards": 0,
               "stale_mail": 0, "reopened": 0, "backfilled_messages": 0, "rows_dated": 0}
     with connect() as connection:
@@ -175,7 +181,7 @@ def reconcile(gmail, connect, limit):
         if not cards:
             counts["still_no_cards"] += 1
             continue
-        if rows.get(message_id, 0) < len({card.url for card in cards}):          # fewer rows than cards: a card has no row of its own
+        if rows.get(message_id, 0) < len({card.url for card in cards}):
             work.append((rule, message_id, cards, received))
     done = gmail.list_ids(config.REOPEN_QUERY, limit=limit)
     with connect() as connection:
