@@ -12,7 +12,7 @@ except ImportError:
     yaml = None
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-NAME = "Checkout the exact commit (own git fetch; the token is passed once and never stored)"
+NAME = "Checkout the exact commit (own git fetch, token never stored)"
 HEAD = ["auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\\n'); echo \"::add-mask::$auth\"",
         "git init -q . && git remote add origin \"$GITHUB_SERVER_URL/$GITHUB_REPOSITORY\""]
 VARIANTS = {                                                       # the only three steps that may exist: the exact commit, its two parents (pr-tests), and main with every branch (branches archive)

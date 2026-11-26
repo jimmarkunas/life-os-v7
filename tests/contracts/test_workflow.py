@@ -408,7 +408,7 @@ class PullRequestTestsWorkflow(unittest.TestCase):
     def test_it_reuses_the_shared_python_action_and_runs_the_accepted_command_with_the_runtime_limits(self):
         doc = yaml.safe_load(self.path.read_text())
         steps = doc["jobs"]["unit-tests"]["steps"]
-        self.assertEqual([s.get("name") or s.get("uses") for s in steps[:2]], ["Checkout the exact commit (own git fetch; the token is passed once and never stored)", "./.github/actions/python"])
+        self.assertEqual([s.get("name") or s.get("uses") for s in steps[:2]], ["Checkout the exact commit (own git fetch, token never stored)", "./.github/actions/python"])
         run = [s["run"] for s in steps if "Unit tests" in s.get("name", "")][0]
         for k in (1, 2, 3, 4):                                               # Jim, Oct 26 2026: parallel shards of whole test modules (three since LIFE-705, four since LIFE-963, Nov 24 2026: the public runner has 4 vCPUs); tests/contracts/test_shards.py proves every test runs in exactly one
             self.assertIn(f"python -m tests.shard {k} 4 > shard-{k}.log", run)
@@ -740,7 +740,8 @@ def without_address(env):
 def settings_loader_withs():
     """LIFE-844: the settings loader may also carry the Runtime Configuration bootstrap ID (an address, not a credential) in the steps that run lifeos.run; nothing else."""
     base = settings_loader_with()
-    return [base, {**base, "secrets": base["secrets"] + f"{UUIDS['V7_RUNTIME_CONFIG_SOURCE_ID']} > V7_RUNTIME_CONFIG_SOURCE_ID\n"}]
+    plain = [base, {**base, "secrets": base["secrets"] + f"{UUIDS['V7_RUNTIME_CONFIG_SOURCE_ID']} > V7_RUNTIME_CONFIG_SOURCE_ID\n"}]
+    return plain + [{**w, "doppler_compare": "${{ secrets.DOPPLER_TOKEN }}"} for w in plain]       # LIFE-1010: the Doppler parity compare runs inside the loader
 
 
 def is_parity(step):
@@ -1159,12 +1160,12 @@ class BitwardenConsumerTests(unittest.TestCase):
                 steps, names = doc["jobs"][job]["steps"], self.loaded(name, job)
                 self.assertTrue(names and names <= set(UUIDS), (name, job))
                 self.assertTrue(names <= DOMAIN_SECRETS[job] | TS if name == "domains" else names == LOADED[name][job], (name, job, sorted(names)))
-                self.assertEqual(steps[0].get("name"), "Checkout the exact commit (own git fetch; the token is passed once and never stored)", (name, job))
+                self.assertEqual(steps[0].get("name"), "Checkout the exact commit (own git fetch, token never stored)", (name, job))
                 self.assertEqual(loader["with"]["access_token"], "${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}", (name, job))
                 self.assertEqual(sorted(re.findall(r"^([0-9a-f-]{36}) > (\w+)$", loader["with"]["secrets"], re.M)), sorted((UUIDS[n], n) for n in names), (name, job))
                 self.assertEqual(len(re.findall(r" > ", loader["with"]["secrets"])), len(names), (name, job))
                 self.assertFalse({"if", "env", "continue-on-error"} & set(loader), (name, job))                  # no bypass, no fallback source, and a failed load (after its one retry) fails the job
-                self.assertTrue({"access_token", "secrets"} <= set(loader["with"]) <= {"access_token", "secrets", "set_env"}, (name, job))
+                self.assertTrue({"access_token", "secrets"} <= set(loader["with"]) <= {"access_token", "secrets", "set_env", "doppler_compare"}, (name, job))
                 if name not in PILOTS:                                                                             # every workflow after the four accepted pilots is cut over
                     self.assertEqual(loader["id"], f"bws_{job}", (name, job))                                      # deterministic, unique id
                     self.assertIs(loader["with"]["set_env"], False, (name, job))                                  # nothing is exported job-wide
@@ -1174,13 +1175,18 @@ class BitwardenConsumerTests(unittest.TestCase):
         """LIFE-631: D209 (Bitwarden's 429 / 5xx gets one retry after a jittered pause, and a failed retry fails the job) is written once, here, instead of in 45 jobs."""
         root = pathlib.Path(__file__).resolve().parents[2] / ".github"
         action = yaml.safe_load((root / "actions" / "bws-load" / "action.yml").read_text())
-        first, pause, retry = action["runs"]["steps"]
+        first, pause, retry, names, doppler = action["runs"]["steps"]
         failed = "${{ steps.first.outcome == 'failure' }}"
         passed = {"access_token": "${{ inputs.access_token }}", "secrets": "${{ inputs.secrets }}", "set_env": "${{ inputs.set_env }}"}
         self.assertEqual(action["runs"]["using"], "composite")
         self.assertEqual(first, {"id": "first", "continue-on-error": True, "uses": self.PINNED, "with": passed})
         self.assertEqual(pause, {"if": failed, "shell": "bash", "run": self.PAUSE})                              # a jittered pause, only when the first load failed
         self.assertEqual(retry, {"id": "retry", "if": failed, "uses": self.PINNED, "with": passed})            # the same pinned action and ids; no continue-on-error and no env: a used-up retry fails the job
+        self.assertEqual(names["id"], "names")                                                                    # LIFE-1010: the parity compare is inside the loader: only when a Doppler token is passed and a load succeeded, never fails the job, and the Bitwarden values stay the ones used
+        self.assertIn("inputs.doppler_compare != ''", names["if"])
+        self.assertEqual({k: doppler.get(k) for k in ("id", "continue-on-error", "uses")}, {"id": "doppler", "continue-on-error": True, "uses": "./.github/actions/doppler-load"})
+        self.assertEqual(doppler["with"]["token"], "${{ inputs.doppler_compare }}")
+        self.assertEqual(set(doppler["with"]), {"token", "names", "bitwarden"})
         needed = {n for text in self.text.values() for n in re.findall(r"^\s+[0-9a-f-]{36} > (\w+)$", text, re.M)}
         self.assertTrue(needed <= set(action["outputs"]), sorted(needed - set(action["outputs"])))                # every loaded name has an output
         for key, spec in action["outputs"].items():
@@ -1252,7 +1258,7 @@ class BitwardenConsumerTests(unittest.TestCase):
                 steps = self.doc[name]["jobs"][job]["steps"]
                 self.assertTrue(is_settings_loader(loader), (name, job))
                 self.assertTrue(all(i < at for i, _ in self.loaders(name, job)), (name, job))              # after the credential loader: that one is first and keeps its helper seed
-                self.assertEqual(steps[0].get("name"), "Checkout the exact commit (own git fetch; the token is passed once and never stored)", (name, job))
+                self.assertEqual(steps[0].get("name"), "Checkout the exact commit (own git fetch, token never stored)", (name, job))
                 consumers = [s for s in steps if SETTINGS_CONSUMER in str((s.get("env") or {}).values())]
                 self.assertTrue(consumers, (name, job))                                                    # a loader nobody uses is not there
                 for step in consumers:
@@ -1483,6 +1489,9 @@ class ConcurrencyHasNoSwitch(unittest.TestCase):
             self.assertNotIn("BENCH_TICK_CONCURRENCY", path.read_text(), path.name)
 
 
+LEAN = ("v3-pages",)                  # LIFE-1010: the workflows whose compare is folded into the loader
+
+
 class DopplerParityTests(unittest.TestCase):
     """LIFE-981 (Jim, Nov 25 2026, "doppler parity"): every job that loads Bitwarden secrets also compares the same names with Doppler, side by side. Production keeps using Bitwarden's values: the compare step never feeds
     any other step, never fails a job, and is the only place `DOPPLER_TOKEN` appears."""
@@ -1506,36 +1515,37 @@ class DopplerParityTests(unittest.TestCase):
                 for i, step in enumerate(steps):
                     with_ = step.get("with") or {}
                     if step.get("uses") == "./.github/actions/bws-load" and step.get("id") and "LIFEOS_BWS_RUNTIME_TOKEN" in str(with_.get("access_token")):
-                        follow = next((s for s in steps[i + 1:] if is_parity(s) and f"steps.{step['id']}.outputs" in str((s.get("with") or {}).get("bitwarden"))), None)
-                        out.append((name, job, step, follow))
+                        old = next((s for s in steps[i + 1:] if is_parity(s) and f"steps.{step['id']}.outputs" in str((s.get("with") or {}).get("bitwarden"))), None)
+                        out.append((name, job, step, step if with_.get("doppler_compare") else old))      # LIFE-1010: the compare is the loader's own doppler_compare input in domains, hourly and v3-pages; the other workflows still carry the separate step
         return out
 
     def test_every_secret_loading_job_compares_the_same_names_side_by_side(self):
         found = self.loaders_with_compare()
-        self.assertGreaterEqual(len(found), 90)
+        self.assertGreaterEqual(len(found), 55)
         for name, job, loader, compare in found:
-            self.assertIsNotNone(compare, (name, job, loader["id"]))
+            self.assertIsNotNone(compare, (name, job, loader["id"]))                                       # the compare covers exactly the names the loader lists (the action derives them from its own secrets input)
+            if compare is loader:
+                self.assertEqual(loader["with"]["doppler_compare"], "${{ secrets.DOPPLER_TOKEN }}", (name, job))
+                continue
+            self.assertNotIn(name, LEAN, (name, job))                                                      # the three lean workflows use the folded form only
             names = [line.split(">")[1].strip() for line in str(loader["with"]["secrets"]).splitlines() if ">" in line]
-            self.assertEqual(str(compare["with"]["names"]).split(","), names, (name, job))                  # exactly the names that job loaded
+            self.assertEqual(str(compare["with"]["names"]).split(","), names, (name, job))
             self.assertEqual(compare["with"]["token"], "${{ secrets.DOPPLER_TOKEN }}", (name, job))
             self.assertEqual(compare["with"]["bitwarden"], f"${{{{ toJSON(steps.{loader['id']}.outputs) }}}}", (name, job))
-            self.assertTrue(compare.get("continue-on-error") is True, (name, job))                         # Doppler down or wrong never fails the job
-            self.assertEqual(compare.get("if"), f"${{{{ steps.{loader['id']}.outcome == 'success' }}}}", (name, job))   # no compare when the Bitwarden load failed
+            self.assertTrue(compare.get("continue-on-error") is True, (name, job))
+            self.assertEqual(compare.get("if"), f"${{{{ steps.{loader['id']}.outcome == 'success' }}}}", (name, job))
 
-    def test_production_keeps_bitwarden_nothing_consumes_the_compare_step_and_the_token_has_one_use(self):
+    def test_production_keeps_bitwarden_nothing_consumes_the_compare_and_the_token_has_one_use(self):
         for name, doc in self.docs.items():
             text = self.texts[name]
+            if name in LEAN:
+                self.assertNotIn("actions/doppler-load", text, name)                                       # LIFE-1010: no separate compare step in the lean workflows
             ids = [s["id"] for body in (doc.get("jobs") or {}).values() for s in (body.get("steps") or []) if is_parity(s) and s.get("id")]
             for ident in ids:
-                uses = re.findall(rf"steps\.{ident}\.(\w+)", text)
-                self.assertEqual(uses, [], (name, ident))                                                   # no step reads the compare step's outputs, let alone a value
+                self.assertEqual(re.findall(rf"steps\.{ident}\.(\w+)", text), [], (name, ident))         # no step reads a compare step's outputs, let alone a value
             token_uses = re.findall(r".*secrets\.DOPPLER_TOKEN.*", text)
-            parity_steps = sum(1 for body in (doc.get("jobs") or {}).values() for s in (body.get("steps") or []) if is_parity(s))
-            self.assertEqual(len(token_uses), parity_steps, name)                                          # DOPPLER_TOKEN only as the token input of a compare step
-            for body in (doc.get("jobs") or {}).values():
-                for s in body.get("steps") or []:
-                    if is_parity(s):
-                        self.assertEqual(set(s["with"]), {"token", "names", "bitwarden"}, name)
+            compares = sum(1 for body in (doc.get("jobs") or {}).values() for s in (body.get("steps") or []) if is_parity(s) or (s.get("with") or {}).get("doppler_compare"))
+            self.assertEqual(len(token_uses), compares, name)                                              # DOPPLER_TOKEN only as the token of a compare (a step's token input or a loader's doppler_compare input)
 
     def test_the_action_only_reports_a_code_and_counts(self):
         import yaml as _yaml
