@@ -137,6 +137,12 @@ class FailClosed(unittest.TestCase):
             build([row("bot_hermes_main", **{"Agent ID": ""}), row("bot_hermes_main", **{"Agent ID": "Bad!"})])
         self.assertEqual(c.exception.reason, "bad_agent_id")
 
+    def test_meta_is_a_platform_so_the_muse_row_resolves_and_an_unknown_platform_is_still_refused(self):     # LIFE-985 (Jim, comment 14347)
+        d = build([row("surface_chatgpt_chat_web", **{"Agent ID": "muse", "Platform": "Meta", "Space": '["Personal"]'})])
+        self.assertEqual((d.skipped, resolve(d, agent_id="muse").decision, resolve(d, agent_id="muse").entry.platform), ((), "allow", "Meta"))
+        with self.assertRaises(D.DirectoryError):
+            build([row("surface_chatgpt_chat_web", **{"Platform": "Gemini"})])
+
     def test_unavailable_notion_raises_and_nothing_is_cached(self):
         def boom():
             raise RuntimeError("503 token=abcdefghijkl")
