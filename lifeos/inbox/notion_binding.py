@@ -1,10 +1,12 @@
-"""How an action started in Notion is tied to the right person, record revision and grant: two signed events and an out-of-band code (REQ-7, LIFE-697); synthetic.
+"""How an action started in Notion is tied to the right person, record revision and grant: two signed events and an
+out-of-band code.
 
-Nothing in a Notion page is a credential and no caller-supplied field names a person: who acted comes only from the HMAC-signed event's single person author, mapped through a server-side
-allowlist. Step 1: that person sets "Requested action" on their row; Oracle reads the row and record fresh, checks policy, and stores a pending confirmation in the durable ledger (person,
-workspace, account, record revision, action); a random code goes to that person out of band, never onto the row, valid 5 minutes, 3 tries. Step 2: the same person writes the code into
-"Confirmation code" (a second signed event); only then is an ExactAuthorization minted. Notion proves no intent beyond the signed author id, so the verdict is PARTIAL: real execution stays off
-(policy.LIVE_WRITES_ENABLED) and a live webhook needs a public HTTPS endpoint Jim has not approved. The event shape follows Notion's webhook docs and is UNVERIFIED live; the button's webhook is never used."""
+The actor is the HMAC-signed event's single person author, mapped through a server-side allowlist. Step 1: the person
+sets "Requested action"; the row and record are read fresh, policy is checked and a pending confirmation is stored; a
+random code goes to that person out of band (valid 5 minutes, 3 tries). Step 2: the same person writes the code into
+"Confirmation code" (a second signed event); only then is an ExactAuthorization minted. Notion proves no intent beyond
+the author id, so real execution stays off (policy.LIVE_WRITES_ENABLED); the event shape is UNVERIFIED live.
+"""
 import hashlib
 import hmac
 import json
@@ -21,8 +23,8 @@ REQUESTABLE = frozenset(a for actions in policy.MATRIX.values() for a in actions
 PROP_ACTION, PROP_CODE = "requested_action", "confirmation_code"
 CODE_TTL = timedelta(minutes=5)
 MAX_ATTEMPTS = 3
-CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"                                           # no 0/O/1/I: read aloud or typed without doubt
-CODE_LENGTH = 10                                                                           # 32^10 = 50 bits, with 3 tries and 5 minutes
+CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+CODE_LENGTH = 10
 
 
 @dataclass(frozen=True)
@@ -47,13 +49,14 @@ def new_code(rng=secrets):
 
 
 def verify_signature(verification_token, raw_body, header):
-    """Constant-time check of `sha256=<hex>` over the exact raw bytes; anything else is False."""
     expected = "sha256=" + hmac.new(verification_token, raw_body, hashlib.sha256).hexdigest()
     return isinstance(header, str) and hmac.compare_digest(expected, header)
 
 
 def parse_event(token, raw_body, header, *, notion_workspace_id, principals):
-    """-> Event, or InboxError(reason). `principals`: {notion person id: principal id}, a server-side allowlist. Verifies the signature before anything is read from the body."""
+    """Returns Event, or raises InboxError(reason). `principals` is {notion person id: principal id}. Verifies the
+    signature first.
+    """
     if not verify_signature(token, raw_body, header):
         raise InboxError("signature_invalid")
     try:
@@ -71,7 +74,7 @@ def parse_event(token, raw_body, header, *, notion_workspace_id, principals):
         raise InboxError("notion_workspace_mismatch")
     authors = event.get("authors") or []
     if len(authors) != 1 or not isinstance(authors[0], dict) or authors[0].get("type") != "person":
-        raise InboxError("author_not_a_person")                                              # a bot, an agent or several authors never start or confirm an action
+        raise InboxError("author_not_a_person")
     principal_id = principals.get(authors[0].get("id"))
     if principal_id is None:
         raise InboxError("author_not_allowlisted")
@@ -86,7 +89,9 @@ def code_mac(key, intent_id, code):
 
 
 def _fresh_row(read_row, row_map, row_id, principal_id):
-    """The row as Notion has it now, or the reason it can no longer carry an action: deleted, unmapped, edited id column, or owned by somebody else now."""
+    """The row as Notion has it now, or why it can no longer carry an action: deleted, unmapped, edited id column, or
+    another owner.
+    """
     if row_id not in row_map:
         raise InboxError("row_unknown")
     try:
@@ -96,7 +101,7 @@ def _fresh_row(read_row, row_map, row_id, principal_id):
     if not isinstance(row, dict):
         raise InboxError("row_deleted")
     if row.get("record_id") != row_map[row_id]:
-        raise InboxError("row_tampered")                                                     # somebody edited the id column
+        raise InboxError("row_tampered")
     if row.get("principal_id") != principal_id:
         raise InboxError("row_reassigned")
     return row
@@ -106,7 +111,7 @@ def _fresh_record(read_record, record_id, principal, action, now):
     record = read_record(record_id)
     if record is None:
         raise InboxError("record_unavailable")
-    allowed, reason = policy.decide(principal, record, action, now)                            # grants are read again: access revoked since the request refuses here
+    allowed, reason = policy.decide(principal, record, action, now)
     if not allowed:
         raise InboxError(reason)
     if record.freshness(now) != "fresh":
@@ -115,9 +120,8 @@ def _fresh_record(read_record, record_id, principal, action, now):
 
 
 def open_intent(ledger, event, *, key, row_map, read_row, read_record, principal_of, deliver, now, rng=secrets):
-    """Step 1 -> Pending, or InboxError(reason). Nothing is authorized yet. `deliver(principal_id, intent_id, code)` sends the code to that person out of band; it is not stored anywhere readable."""
     if PROP_ACTION not in event.updated or PROP_CODE in event.updated:
-        raise InboxError("event_coalesced" if PROP_ACTION in event.updated else "event_not_a_request")      # one event that changes both cannot be ordered: ask again
+        raise InboxError("event_coalesced" if PROP_ACTION in event.updated else "event_not_a_request")
     if not ledger.claim_event(event.event_id, "request", now):
         raise InboxError("event_replayed")
     row = _fresh_row(read_row, row_map, event.row_id, event.principal_id)
@@ -136,8 +140,6 @@ def open_intent(ledger, event, *, key, row_map, read_row, read_record, principal
 
 
 def confirm(ledger, event, *, key, row_map, read_row, read_record, principal_of, now):
-    """Step 2 -> an ExactAuthorization, or InboxError(reason). The person is the signed event's author, never a parameter. Any change since step 1 invalidates the confirmation; a wrong code
-    spends one of 3 tries; a right one is used once."""
     if PROP_CODE not in event.updated or PROP_ACTION in event.updated:
         raise InboxError("event_coalesced" if PROP_CODE in event.updated else "event_not_a_confirmation")
     if not ledger.claim_event(event.event_id, "confirm", now):
@@ -151,9 +153,9 @@ def confirm(ledger, event, *, key, row_map, read_row, read_record, principal_of,
         ledger.close_intent(intent_id, "invalidated")
         raise InboxError(reason)
     if stamp(event.at) <= intent["event_at"]:
-        raise InboxError("event_out_of_order")                                               # older than the request it answers: a late or reordered delivery changes nothing
+        raise InboxError("event_out_of_order")
     if event.principal_id != intent["principal_id"]:
-        refuse("confirmer_mismatch")                                                         # somebody else typed in the row: the pending request is void
+        refuse("confirmer_mismatch")
     if stamp(now) >= intent["expires_at"]:
         ledger.close_intent(intent_id, "expired")
         raise InboxError("challenge_expired")
@@ -162,7 +164,7 @@ def confirm(ledger, event, *, key, row_map, read_row, read_record, principal_of,
     except InboxError as error:
         refuse(error.reason)
     if row.get("requested_action") != intent["action"] or row_map[event.row_id] != intent["record_id"]:
-        refuse("intent_changed")                                                             # the row now asks for something else: never bind the old code to the new action
+        refuse("intent_changed")
     principal = principal_of(event.principal_id)
     try:
         record = _fresh_record(read_record, intent["record_id"], principal, intent["action"], now)
@@ -176,5 +178,5 @@ def confirm(ledger, event, *, key, row_map, read_row, read_record, principal_of,
     if not isinstance(typed, str) or not hmac.compare_digest(code_mac(key, intent_id, typed.strip().upper()), intent["code_mac"]):
         raise InboxError("challenge_wrong")
     if not ledger.close_intent(intent_id, "confirmed"):
-        raise InboxError("challenge_used")                                                   # a concurrent confirmation already consumed it
+        raise InboxError("challenge_used")
     return policy.mint(key, principal, record, intent["action"], intent["nonce"], now)

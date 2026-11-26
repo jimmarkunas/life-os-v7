@@ -1,9 +1,11 @@
-"""LIFE-716: delivers Followup open loops to Jim's Agent Inbox as items (From = Followup), one row per loop, through the same validated path `send_to_jim` uses."""
-# Jim, Nov 16 2026: Jira stays the only task list, so a loop is NEVER a copy of a Jira ticket, a Todoist task or a calendar event: it is a Followup item whose Link points at the canonical evidence.
-# One row per active loop, keyed by the loop's stable thread id (`followup-<id>`), so a rerun never adds a second row and an updated loop updates its row. A row is created only for an ACTIVE loop
-# (Needs Action Today, Waiting/Aging, Upcoming): Review Needed suggestions are never sent. Jim's own decision on a row (Done, Dismissed, Promoted) is final: old evidence never reopens or edits it.
-# A loop the store closed on strong proof marks its still-open row Done; nothing else ever sets Status. Subject, details and link go through agent_inbox.normalize (secrets, personal data, synthetic hosts
-# refused, one reason word counted, never echoed). Counts and fixed reason words only: no subject, link, key or token reaches the log.
+"""Delivers Followup open loops to the Agent Inbox (From = Followup), one row per loop, through the `send_to_jim`
+path.
+
+A loop is never a copy of a Jira ticket, Todoist task or event: its Link points at the evidence. The row key is the
+loop's thread id (`followup-<id>`), so a rerun never adds a second row. Only ACTIVE loops get a row; Review Needed
+is never sent. A row the user resolved (Done, Dismissed, Promoted) is final. A loop the store closed on strong
+proof marks its still-open row Done; nothing else sets Status. Counts and fixed reason words only reach the log.
+"""
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -14,9 +16,10 @@ from lifeos.platform.notion_client import NotionError
 SENDER = "Followup"
 KEY_PREFIX = "followup-"
 LOCAL = ZoneInfo("America/Chicago")
-STATE_URGENCY = {"waiting_aging": "This week", "upcoming": "FYI"}                      # needs_action_today is Now (overdue) or Today (due today): decided from the checkpoint
+# needs_action_today is Now (overdue) or Today, decided from the checkpoint
+STATE_URGENCY = {"waiting_aging": "This week", "upcoming": "FYI"}
 STATE_WORDS = {"needs_action_today": "Needs action", "waiting_aging": "Waiting", "upcoming": "Upcoming"}
-JIM_DECIDED = frozenset({"Done", "Dismissed", "Promoted"})                              # a row Jim has resolved: never touched again
+JIM_DECIDED = frozenset({"Done", "Dismissed", "Promoted"})
 OPEN = frozenset({"New", "Snoozed"})
 
 
@@ -40,7 +43,6 @@ def urgency_of(state, checkpoint, now):
 
 
 def item_of(payload, thread, now):
-    """The `send_to_jim` item for one active loop of a payload."""
     state = thread.get("state")
     details = f"{STATE_WORDS.get(state, 'Open loop')}. {str(thread.get('notes') or '')[:200]}".strip()
     return {"from": SENDER, "subject": str(thread.get("title") or "")[:agent_inbox.SUBJECT_MAX], "urgency": urgency_of(state, thread.get("next_checkpoint"), now),
@@ -65,7 +67,7 @@ def _existing(client, source, key):
 
 
 def _moment(text):
-    """A due value as a comparable (aware UTC datetime, or a date): Notion hands a date-time back in its own spelling, so strings are never compared."""
+    """A due value as a comparable (aware UTC datetime or date), never a string."""
     if not text:
         return None
     try:
@@ -76,7 +78,7 @@ def _moment(text):
 
 
 def _same(current, item):
-    due_ok = _moment(current["Due"]) == _moment(item["due"]) if item["due_given"] else bool(current["Due"] or not item["due"])      # LIFE-988: a Due computed from the urgency is only filled in once, never compared or moved
+    due_ok = _moment(current["Due"]) == _moment(item["due"]) if item["due_given"] else bool(current["Due"] or not item["due"])
     return (current["Subject"], current["Urgency"], current["Link"]) == (item["subject"], item["urgency"], item["link"]) and due_ok
 
 
@@ -89,13 +91,15 @@ def _props(item, current_due=""):
     full = agent_inbox.properties(item)
     keep = {name: full[name] for name in ("Subject", "Urgency", "Details") if name in full}
     if item["due_given"] or not current_due:
-        keep["Due"] = full.get("Due", {"date": None})                                    # the loop's own checkpoint, or a Due filled in from the urgency where there is none
+        keep["Due"] = full.get("Due", {"date": None})
     keep["Link"] = full.get("Link", {"url": None})
-    return keep                                                                          # never Status, From, Workspace or Key
+    return keep
 
 
 def deliver(payloads, now=None, environ=None, client=None):
-    """-> counts only: created, updated, unchanged, kept (Jim already decided the row), done (closed loops), skipped (an item the validator refused), failed. Never raises."""
+    """Returns counts: created, updated, unchanged, kept (the user already decided the row), done (closed loops),
+    skipped (the validator refused the item), failed. Never raises.
+    """
     out = {"created": 0, "updated": 0, "unchanged": 0, "kept": 0, "done": 0, "skipped": 0, "failed": 0}
     now = now or datetime.now(timezone.utc)
     try:
@@ -108,8 +112,8 @@ def deliver(payloads, now=None, environ=None, client=None):
         return {**out, "failed": 1}
     for payload in payloads:
         if payload.get("workspace") not in ("personal", "bytalos"):
-            continue                                                                      # TGP and anything unknown: never delivered
-        for thread in payload.get("threads") or ():                                       # active loops only: Review Needed is a separate list and is never sent
+            continue
+        for thread in payload.get("threads") or ():
             try:
                 item = agent_inbox.normalize(item_of(payload, thread, now), now)
                 page = _existing(client, source, item["key"])
@@ -130,7 +134,7 @@ def deliver(payloads, now=None, environ=None, client=None):
             except NotionError as error:
                 out["failed"] += 1
                 print(f"followup-inbox failed notion_{str(error).lower()[:30]}")
-        for thread_id in payload.get("closed") or ():                                     # a loop the store closed on strong proof: its still-open row is Done
+        for thread_id in payload.get("closed") or ():
             try:
                 page = _existing(client, source, key_of(thread_id))
                 if page and _plain(page.get("properties", {}).get("Status", {})) in OPEN:
@@ -139,7 +143,7 @@ def deliver(payloads, now=None, environ=None, client=None):
             except NotionError as error:
                 out["failed"] += 1
                 print(f"followup-inbox failed notion_{str(error).lower()[:30]}")
-    try:                                                                                  # LIFE-988: rows written by hand or by a Notion tool with no Due get the one their urgency means, within one tick
+    try:
         out["filled"] = agent_inbox.fill_missing_due(client, source, now).get("filled", 0)
     except NotionError as error:
         out["failed"] += 1

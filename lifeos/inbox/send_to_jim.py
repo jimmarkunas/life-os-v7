@@ -1,8 +1,12 @@
-"""LIFE-791: `send_to_jim`, the one small tool any agent calls to put an item in Jim's Agent Inbox (a command line and a stdio MCP server over lifeos.inbox.agent_inbox)."""
-# python -m lifeos.inbox.send_to_jim --from claude-code --subject "Approve the Buzz key rotation" --urgency Today --workspace Personal [--due 2026-11-20] [--link https://...] [--details "..."] [--key ID]
-# python -m lifeos.inbox.send_to_jim --mcp        a stdio MCP server (JSON-RPC lines) with one tool, `send_to_jim`, with the same arguments
-# It needs NOTION_API_TOKEN (the existing V7 Notion integration, which the inbox database is shared with); without it, it prints `config_missing` and writes nothing. Agents that have the Notion connector
-# can instead write a row straight into the database (docs/platform/agent-inbox.md). Output: one JSON line of counts or a fixed reason word; never the item, the sender, a link or the token.
+"""`send_to_jim`: the one small tool any agent calls to put an item in the Agent Inbox (CLI and stdio MCP server).
+
+  python -m lifeos.inbox.send_to_jim --from claude-code --subject "..." --urgency Today --workspace Personal
+      [--due 2026-11-20] [--link https://...] [--details "..."] [--key ID]
+  python -m lifeos.inbox.send_to_jim --mcp   stdio MCP server (JSON-RPC lines), one tool `send_to_jim`, same arguments
+
+Needs NOTION_API_TOKEN, else it prints `config_missing` and writes nothing. Output is one JSON line of counts or a
+fixed reason word, never the item.
+"""
 import argparse
 import json
 import os
@@ -22,11 +26,13 @@ def _client(env):
     token = (env.get("NOTION_API_TOKEN") or "").strip()
     if not token:
         raise InboxError("config_missing")
-    return Client({"NOTION_API_TOKEN": token, "NOTION_INBOX_VIEW_SOURCE": "0" * 32}, source_name="NOTION_INBOX_VIEW_SOURCE")        # the data source is found by search, not configured
+    return Client({"NOTION_API_TOKEN": token, "NOTION_INBOX_VIEW_SOURCE": "0" * 32}, source_name="NOTION_INBOX_VIEW_SOURCE")
 
 
 def deliver(item, environ=None, client=None, now=None):
-    """-> {"ok": true, "created"|"duplicate": 1, "tiles_changed": n} or {"ok": false, "reason": word}. Never raises; never carries content. The delivery itself is lifeos.platform.inbox_send.deliver (shared with the governed MCP)."""
+    """Returns {"ok": true, "created"|"duplicate": 1, "tiles_changed": n} or {"ok": false, "reason": word}. Never
+    raises or carries content.
+    """
     env = os.environ if environ is None else environ
     try:
         client = client or _client(env)
@@ -46,15 +52,17 @@ TENANT = {"Personal": "personal", "Bytalos": "bytalos"}
 
 
 def governed(arguments, environ, client, access, facts, audit, now):
-    """LIFE-865: send_to_jim through authorization_gate.execute. The client is the OS user of this process (never an argument), the tenant is the item's workspace; -> deliver's dict, or {"ok": false, "reason": a fixed word}."""
+    """send_to_jim through authorization_gate.execute: the client is the OS user of this process (never an argument),
+    the tenant is the item's workspace. Returns deliver's dict, or {"ok": false, "reason": fixed word}.
+    """
     try:
         access = access or mcp_access.load()
         who = mcp_access.identify(access, "stdio", facts or mcp_access.stdio_facts())
         tenant = TENANT.get(arguments.get("workspace") or "Personal")
         if tenant is None:
             raise mcp_access.AccessError("unknown_tenant")
-        # A request's From is not identity. This server derives it from the one
-        # authenticated client row; a caller-supplied different From is refused.
+        # From is not identity: it is derived from the one authenticated client row; a different caller-supplied From
+        # is refused.
         sender = who["id"]
         if arguments.get("from") not in (None, sender):
             from lifeos.platform.authorization_gate import fingerprint
@@ -64,18 +72,17 @@ def governed(arguments, environ, client, access, facts, audit, now):
         out = mcp_access.call(access, who, tenant, "send_to_jim", "write", "agent-inbox", "notion", lambda: deliver(item, environ=environ, client=client, now=now), audit, now)
     except mcp_access.AccessError as error:
         return {"ok": False, "reason": str(error)}
-    except Exception:                                                                       # noqa: BLE001  an unwritable receipt or any failure: no effect, a fixed word
+    except Exception:  # noqa: BLE001  an unwritable receipt or any failure: no effect, a fixed word
         return {"ok": False, "reason": "governance_unavailable"}
     return out.result if out.executed and isinstance(out.result, dict) else {"ok": False, "reason": "denied_" + out.reason if not out.executed else out.reason}
 
 
 def _receipt(record):
-    sys.stderr.write(json.dumps(record, separators=(",", ":")) + "\n")                       # stderr: stdout carries the protocol; the receipt is redacted by the gate
+    sys.stderr.write(json.dumps(record, separators=(",", ":")) + "\n")
     sys.stderr.flush()
 
 
 def serve(lines=None, environ=None, client=None, access=None, facts=None, audit=_receipt, now=None):
-    """A minimal stdio MCP server: initialize, tools/list, tools/call (send_to_jim). One JSON-RPC message per line. Every tool call goes through the authorization gate (LIFE-865)."""
     for line in lines if lines is not None else sys.stdin:
         line = line.strip()
         if not line:
@@ -87,7 +94,7 @@ def serve(lines=None, environ=None, client=None, access=None, facts=None, audit=
             continue
         method, request_id = message.get("method"), message.get("id")
         if request_id is None:
-            continue                                                                          # a notification: no reply
+            continue
         if method == "initialize":
             _reply(request_id, {"protocolVersion": "2025-06-18", "capabilities": {"tools": {}}, "serverInfo": {"name": "send_to_jim", "version": "1.0"}})
         elif method == "tools/list":

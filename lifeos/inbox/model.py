@@ -1,24 +1,26 @@
-"""The one normalized Action Inbox record and its validation (LIFE-685).
+"""The one normalized Action Inbox record and its validation.
 
-A record is a pointer plus presentation facts about a task another system owns: it never replaces the source record and never infers completion.
-Errors are InboxError with a fixed lower-case reason word; no message ever carries record content."""
+A record is a pointer plus presentation facts about a task another system owns: it never replaces the source record
+and never infers completion. Errors are InboxError with a fixed lower-case reason word and no record content.
+"""
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from lifeos.platform.inbox_error import InboxError  # noqa: F401 - LIFE-876: defined in platform (shared with the governed MCP); this name keeps working
+from lifeos.platform.inbox_error import InboxError  # noqa: F401 - defined in platform (shared with the governed MCP); this name keeps working
 
 SOURCES = ("jira", "todoist", "concord", "followup", "calendar", "asana")
-WORKSPACES = ("personal", "bytalos")                    # released together (Jim, Nov 13 2026); each is authorized, credentialed and read on its own
-UNRELEASED_WORKSPACES = ("tgp",)                        # excluded from this release: never loaded, never acted on
+WORKSPACES = ("personal", "bytalos")
+UNRELEASED_WORKSPACES = ("tgp",)
 PRESENTATION = ("needs_me", "waiting", "approvals", "upcoming")
 HEALTH = ("ok", "degraded", "unavailable", "no_grant", "refused")
-FRESH_FOR = timedelta(minutes=15)                       # a record older than this since its retrieval is stale and can support no action or completion claim
+# A record older than this since retrieval is stale and supports no action or completion claim
+FRESH_FOR = timedelta(minutes=15)
 _PART = re.compile(r"^[A-Za-z0-9_.@:-]{1,80}$")
 
 
 def record_id(source, workspace, account, native_id):
-    """The canonical source-qualified id: the same title in two sources, accounts or workspaces is always a different record."""
+    """The canonical source-qualified id: the same title in two sources, accounts or workspaces is a different record."""
     for part in (source, workspace, account, native_id):
         if not isinstance(part, str) or not _PART.match(part):
             raise InboxError("id_part_invalid")
@@ -32,23 +34,23 @@ class Record:
     workspace: str
     account: str
     native_id: str
-    url: str                                  # the original record in its own system
+    url: str
     title: str
     description: str
-    assignee: str                             # the human or party responsible, as the source names them
-    source_status: str                        # exactly the source's own status word
-    presentation: str                         # one of PRESENTATION
-    due: object                               # tz-aware datetime or None (due date or next checkpoint)
-    due_tz: object                            # the IANA zone name the source gave, or None
+    assignee: str
+    source_status: str
+    presentation: str
+    due: object
+    due_tz: object
     source_updated_at: object
     retrieved_at: object
-    health: str                               # the connector's state when this was read: ok | degraded
-    kind: str                                 # task | human_uat | approval_request | agent_work | checkpoint | event
-    flags: frozenset = frozenset()            # eligibility facts the adapter proved from the source record (human_uat, personal_task, resumable)
+    health: str
+    kind: str
+    flags: frozenset = frozenset()
     approval_required: bool = False
-    approval_evidence: tuple = ()             # references (urls or ids) to the evidence, never its content
+    approval_evidence: tuple = ()
     correlation_id: object = None
-    revision: str = ""                        # changes whenever the source status or update time changes; an action is tied to one revision
+    revision: str = ""
 
     @property
     def label(self):
@@ -64,7 +66,6 @@ def _aware(value, name):
 
 
 def validate(record):
-    """-> the record, or InboxError(reason). TGP and any unknown workspace are refused before anything else is looked at."""
     if record.workspace in UNRELEASED_WORKSPACES:
         raise InboxError("workspace_not_released")
     if record.workspace not in WORKSPACES:
