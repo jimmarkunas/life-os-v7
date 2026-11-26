@@ -1,5 +1,4 @@
-"""Ledger fields derived from what the pipeline already knows about a job: Location / Work Mode, Market, Visa Route,
-Compensation.
+"""Ledger fields derived from what the pipeline knows about a job (location, market, visa route, pay).
 
 Pure: no I/O. Only populated fields are returned (a blank is better than a guess); never touches human state.
 """

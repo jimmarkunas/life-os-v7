@@ -1,5 +1,4 @@
-"""Two fixed weekly checks that need the real database, plus the saved representative Fit set. Counts and fixed codes
-only.
+"""Two weekly checks that need the real database, plus the saved Fit set. Counts and fixed codes only.
 
 `sql-smoke`: every SQL string in `lifeos/` is run through `EXPLAIN` on the real database with the real PyMySQL driver
 (unit tests use SQLite, which cannot catch MySQL-only syntax or a renamed column). EXPLAIN never executes. A statement

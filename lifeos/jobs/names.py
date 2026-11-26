@@ -1,6 +1,4 @@
-"""Employer-name comparison for Jobs: recruiter/intermediary detection for the hiring-pipeline handoff and the sponsor
-register.
-"""
+"""Employer-name comparison for Jobs: recruiter/intermediary detection for the handoff and sponsor register."""
 # The normalizer and token rules live in `lifeos.platform.names` (shared with Interview OS); this module keeps only
 # what is Jobs' own.
 from lifeos.platform.names import GENERIC, LEGAL, core, norm, same_employer, tokens  # noqa: F401 - re-exported for existing callers
