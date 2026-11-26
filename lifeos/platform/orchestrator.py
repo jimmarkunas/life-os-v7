@@ -94,7 +94,7 @@ def gateway(op, client, args, connect=socket.socket, path=SOCKET):
 
 
 
-JIRA_NAMES = ("JIRA_READ_BASE_URL", "JIRA_READ_EMAIL", "JIRA_READ_TOKEN")      # LIFE-991: the bridge's own read-only Jira credential, placed with place-credentials (Bitwarden: lifeos/edge/JIRA_READ_*); never logged, never returned
+JIRA_NAMES = ("JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN")      # LIFE-991 (Jim, comment 14371): the existing OpenClaw Atlassian token, shared with the bridge (Bitwarden LIFEOS-OpenClaw-Jira and openclaw/jira/email in LIFE OS EDGE/OPENCLAW, placed with place-credentials; the base address is in the bridge config); never logged, never returned. It can read and write as Jim's account; this module only reads one status
 JIRA_TIMEOUT = 8
 
 
@@ -119,8 +119,8 @@ def jira_status(base, email, token, opener=urllib.request.urlopen):
 
 
 def wire(environ, state):
-    """The ticket-state lookup from the service's own environment: all three JIRA_READ_* names, with an https base address, or None (ticket_state_unavailable, fail closed) until they are placed. Replaces nothing that is already wired."""
-    base, email, token = (str(environ.get("JIRA_READ_BASE_URL") or "").strip(), str(environ.get("JIRA_READ_EMAIL") or "").strip(), str(environ.get("JIRA_READ_TOKEN") or "").strip())
+    """The ticket-state lookup from the service's own environment: all three JIRA_BASE_URL, JIRA_EMAIL and JIRA_API_TOKEN names, with an https base address, or None (ticket_state_unavailable, fail closed) until they are placed. Replaces nothing that is already wired."""
+    base, email, token = (str(environ.get("JIRA_BASE_URL") or "").strip(), str(environ.get("JIRA_EMAIL") or "").strip(), str(environ.get("JIRA_API_TOKEN") or "").strip())
     if base.startswith("https://") and email and token and "\n" not in base + email + token:
         state["ticket_state"] = jira_status(base, email, token)
 

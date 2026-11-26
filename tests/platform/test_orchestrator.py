@@ -312,11 +312,11 @@ class JiraTicketState(unittest.TestCase):
         self.assertEqual(seen, [])
 
     def test_wire_needs_all_three_names_and_an_https_address(self):
-        names = {"JIRA_READ_BASE_URL": "https://example.invalid", "JIRA_READ_EMAIL": "user", "JIRA_READ_TOKEN": "tok"}
+        names = {"JIRA_BASE_URL": "https://example.invalid", "JIRA_EMAIL": "user", "JIRA_API_TOKEN": "tok"}
         st = {"ticket_state": None}
-        O.wire({k: v for k, v in names.items() if k != "JIRA_READ_TOKEN"}, st)
+        O.wire({k: v for k, v in names.items() if k != "JIRA_API_TOKEN"}, st)
         self.assertIsNone(st["ticket_state"])
-        O.wire({**names, "JIRA_READ_BASE_URL": "http://example.invalid"}, st)
+        O.wire({**names, "JIRA_BASE_URL": "http://example.invalid"}, st)
         self.assertIsNone(st["ticket_state"])
         O.wire(names, st)
         self.assertTrue(callable(st["ticket_state"]))
