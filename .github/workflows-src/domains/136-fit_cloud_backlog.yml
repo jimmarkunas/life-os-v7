@@ -87,6 +87,9 @@
         name: Step 6a2 - Cloud Fit backlog batch (LIFE-41 D219; after each tick when V7_CLOUD_FIT_SCHEDULED is set; moved from the hourly finish job, LIFE-856; one Oracle request at a time)
         if: ${{ env.V7_CLOUD_FIT_SCHEDULED && env.V7_CLOUD_FIT_SCHEDULED != '0' }}   # LIFE-41 (Jim, Oct 19 2026): one call a tick is too few; after the tick, the strongest never-asked jobs get the Cloud Fit call, bounded
         env:
+          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""   # LIFE-856: the old hourly.yml declared these three at workflow level, so the settings source filled them for every step; a domains step must declare them itself
+          HIRING_PIPELINE_PAGE_ID: ""
+          V7_FIT_GATE: ""
           PIPELINE: "true"
           CLOUD_BACKLOG: ${{ env.V7_CLOUD_FIT_SCHEDULED }}
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
