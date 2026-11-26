@@ -180,7 +180,7 @@ class CloudBacklogRunsAlone(unittest.TestCase):
             self.assertEqual(list(p), ["prep"], name)
             result, steps = p["prep"]
             self.assertEqual(result, "failure", name)
-            self.assertEqual([st.get("name") for st in steps[:1]], ["Checkout the exact commit (own git fetch; the token is passed once and never stored)"], name)          # only the repository checkout ran before it: no credential
+            self.assertEqual([st.get("name") for st in steps[:1]], ["Checkout the exact commit (own git fetch, token never stored)"], name)          # only the repository checkout ran before it: no credential
             self.assertEqual(len(steps), 2, name)
             self.assertIn("CLOUD_BACKLOG_COMBINED_INPUTS", steps[1]["run"])
             self.assertIn("exit 1", steps[1]["run"])
