@@ -1,9 +1,11 @@
-"""Mark as Sent on the private Close service: Jim confirms he messaged one person about one exact Job Ledger job (D221).
+"""Mark as Sent on the private Close service: confirm that one person was messaged about one exact Job Ledger job.
 
-Same Edge gate and signed-form pattern as close_app. Only the confirm POST writes, through lifeos.recruiters.outreach.mark_sent, and success is shown only after its read-back. GET and Review never write; nothing is sent to anyone.
-The people offered are the job page's own Network Leads (lifeos.network.surface, read only, dismissed leads left out), signed into the form with the job so a tampered name is refused; "Other" takes a typed name. The employer is optional: typed, or the current employer the chosen lead's own line states ("Listed at ..."); it is
-shown on Review, signed with the person and stored as the row's Company. Nothing is guessed.
-Outputs: fixed codes only. Pointer: D221, LIFE-21, LIFE-47."""
+Same Edge gate and signed-form pattern as close_app. Only the confirm POST writes
+(lifeos.recruiters.outreach.mark_sent), and success is shown only after its read-back; nothing is sent. The people
+offered are the job page's own Network Leads, signed into the form so a tampered name is refused; "Other" takes a
+typed name. The employer is typed or the one the chosen lead's own line states, never guessed. Outputs: fixed codes
+only.
+"""
 from html import escape as e
 
 from lifeos.hiring import close_screen as S, decision as D
@@ -26,8 +28,9 @@ _stop = stopper("A Mark as Sent counts only after the canonical record is read b
 
 
 def job(client, config, pid):
-    """The ONE open Job Ledger job with this exact page id -> {id, company, role}, or a fixed refusal. Read only. Open follows the Close rules (D194): a recorded
-    Hiring Decision closes the job (JOB_CLOSED); a Ledger page without the Hiring Decision property is not provably open and is refused (JOB_STATE_UNKNOWN)."""
+    """The one open Job Ledger job with this page id -> {id, company, role}, or a fixed refusal (JOB_CLOSED once a
+    Hiring Decision exists; JOB_STATE_UNKNOWN without that property).
+    """
     with fixed(NotionError, D.fail, "NOT_FOUND"):
         page = client.get_page(pid)
     parent = (page.get("parent") or {}).get("data_source_id") or ""
@@ -49,7 +52,6 @@ def _job_section(j):
 
 
 def _people_fields(secret, login, pid, st, exp, people):
-    """The offered people as hidden fields, signed with the job: l0/r0 (name, reason) ... and lm."""
     out = {}
     for i, (name, why) in enumerate(people):
         out[f"l{i}"], out[f"r{i}"] = name, why
@@ -121,15 +123,15 @@ def _post(req, who, secrets):
     if not _same(_fp(shown), st) or not _same(form.get("lm"), _people_fields(secret, login, pid, st, exp, people)["lm"]):
         return invalid(_stop, RELOAD)
     fields = {**{k: form.get(k, "") for k in ("j", "co", "ro", "exp", "st", "t")}, **_people_fields(secret, login, pid, st, exp, people)}
-    choice = form.get("who") or ("" if people else "other")                 # with people offered, a choice is required; without, the typed name is the only one
+    choice = form.get("who") or ("" if people else "other")
     employer = O.valid_person(form.get("employer"))
-    if step == "review":                                                   # the choice decides the person: an offered lead's signed name, or the typed Other
+    if step == "review":
         index = choice[5:] if choice.startswith("lead:") else ""
         lead = people[int(index)] if index.isdigit() and int(index) < len(people) else None
         person = O.valid_person(lead[0]) if lead else O.valid_person(form.get("person")) if choice == "other" else ""
-        employer = employer or (O.employer_from(lead[1]) if lead else "")   # typed wins; else only the current employer the lead's own signed line states
+        employer = employer or (O.employer_from(lead[1]) if lead else "")
     else:
-        person = O.valid_person(form.get("person"))                        # edit and confirm carry the reviewed person and employer, bound by the confirmation signature
+        person = O.valid_person(form.get("person"))
     if step == "edit":
         return 200, HTML, _form(shown, fields, people, choice, person if choice == "other" else "", employer=employer), ()
     if not person:
@@ -141,7 +143,7 @@ def _post(req, who, secrets):
     if not _same(form.get("c"), sign):
         return invalid(_stop, "Review it again.", "This confirmation is not valid")
     config = secrets["config"]
-    current = job(_ledger(secrets), config, pid)                           # the write is authorized only by a fresh read
+    current = job(_ledger(secrets), config, pid)
     if _fp(current) != st:
         return _stop(409, *JOB_CHANGED)
     done, early = written(_stop, lambda: O.mark_sent(_recruiters(secrets), current, person, _now(), config["ledger"], employer), "Could not verify Mark as Sent",
@@ -150,9 +152,9 @@ def _post(req, who, secrets):
         return early
     head = f"{current['company']} — {current['role']} · {person}" + (f" ({employer})" if employer else "")
     if done["status"] == "recorded":
-        secrets.get("after", []).append("recruiters")                      # Jim, Oct 24: the gate asks for the Recruiter Outreach table to be redrawn now (close_gate.REFRESH)
+        secrets.get("after", []).append("recruiters")
         return _stop(200, "Recorded", "Marked as sent", "The canonical record was written and read back.", f"{head} · Waiting · follow-up {done['follow_up']}.", "ok")
-    if done["state"] == "closed":                                              # never relabel a closed, inactive or finished conversation (D221)
+    if done["state"] == "closed":
         return _stop(409, "Not changed", "This conversation is already closed", "It was recorded before and is no longer open.",
                      f"{head} · {done['action'] or 'no status'} · nothing was changed.")
     follow = f" · follow-up {done['follow_up']}" if done["follow_up"] else ""
@@ -164,7 +166,9 @@ handle = handler(_get, _post, _stop, "This job cannot be marked here")
 
 
 def conversations_on_page(client, page_id):
-    """The people with a recorded conversation on this job page: the first line of the first cell of each row of the page's own Outreach table. Read only; no table -> []."""
+    """The people with a recorded conversation on this job page: the first line of the first cell of each row of its
+    Outreach table.
+    """
     top = N.children(client, page_id)
     for i, block in enumerate(top):
         if block.get("type") == "heading_3" and N._plain(block).startswith(OUTREACH_TITLE) and i + 1 < len(top) and top[i + 1].get("type") == "table":

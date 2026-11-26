@@ -1,10 +1,13 @@
-"""Claim a decision number before writing a decision, so parallel sessions never take the same one (LIFE-89).
+"""Claim a decision number before writing a decision, so parallel sessions never take the same one.
 
-`python -m lifeos.sources.devtools.decisions claim` finds the highest D-number in use (the `## D###` headings of docs/DECISIONS.md on the remote's main, plus every `decision-claim/D###` tag on the remote) and creates the tag for the next number on the remote. Creating a ref there is atomic: when another session took the number
-first, the push is rejected and the next number is tried. Prints the claimed number, e.g. `D242`, and nothing else; an unused claim leaves a harmless gap. Fixed error codes only.
-`... duplicates` lists any decision number used twice in docs/DECISIONS.md or docs/DECISIONS_INDEX.md (the contract test's check).
-`... show D139` (LIFE-592) prints only that decision's section, with its amendments and advice, about 1 KB instead of the 367 KB log."""
-# LIFE-89 (PLAT-GOV-2, Jim approved Oct 20 2026). Each claim is its own annotated tag object (a random claim id in its message), so a second claim of the same number can never look like an up-to-date push of the same tag.
+`claim` finds the highest D-number in use (the `## D###` headings of docs/DECISIONS.md on the remote's main plus
+every `decision-claim/D###` tag) and creates the tag for the next number on the remote. Ref creation is atomic: if
+another session took the number first, the push is rejected and the next is tried. Prints only the claimed number;
+an unused claim leaves a harmless gap. `duplicates` lists numbers used twice; `show D139` prints one decision's
+section. Fixed error codes only.
+"""
+# Each claim is its own annotated tag object (random claim id in its message), so a repeat claim never looks like an
+# up-to-date push of the same tag.
 import re
 import subprocess
 import sys
@@ -15,7 +18,7 @@ from pathlib import Path
 PREFIX = "decision-claim/D"
 HEADING = re.compile(r"^## D(\d+)\b(.*)$", re.M)
 INDEX_ENTRY = re.compile(r"^- D(\d+)\b(.*)$", re.M)
-FOLLOW_UP = re.compile(r"^\s*(amendment|advice)\b", re.I)         # "## D12 amendment …", "## D6 advice …": the same decision, continued
+FOLLOW_UP = re.compile(r"^\s*(amendment|advice)\b", re.I)  # "## D12 amendment ...", "## D6 advice ...": the same decision, continued
 TRIES = 10
 
 
@@ -28,12 +31,10 @@ def _git(*args, cwd=None, data=None):
 
 
 def numbers(text, pattern=HEADING):
-    """Every decision number a log (or, with INDEX_ENTRY, an index) uses."""
     return {int(n) for n, _ in pattern.findall(text)}
 
 
 def duplicates(text, pattern=HEADING):
-    """Decision numbers with more than one primary entry -> {number: [titles]}. A follow-up entry (amendment, advice) of an existing number is allowed."""
     seen = {}
     for n, rest in pattern.findall(text):
         if FOLLOW_UP.match(rest):
@@ -43,7 +44,6 @@ def duplicates(text, pattern=HEADING):
 
 
 def section(text, number):
-    """The primary section of decision `number` and every follow-up (amendment, advice) of it, in file order, from the log's text. '' when the number is not in the log."""
     heads = list(HEADING.finditer(text))
     out = []
     for i, head in enumerate(heads):
@@ -54,7 +54,6 @@ def section(text, number):
 
 
 def claimed(remote="origin", cwd=None):
-    """Every number already claimed on the remote."""
     out = _git("ls-remote", "--tags", remote, f"refs/tags/{PREFIX}*", cwd=cwd)
     if out.returncode != 0:
         raise ClaimError("DECISION_CLAIM_REMOTE_UNREADABLE")
@@ -62,7 +61,6 @@ def claimed(remote="origin", cwd=None):
 
 
 def highest(remote="origin", cwd=None, branch="main"):
-    """The highest number in use: the remote main's decision log and every claim. -> (number, the remote main's commit)."""
     if _git("fetch", "--quiet", remote, branch, cwd=cwd).returncode != 0:
         raise ClaimError("DECISION_CLAIM_FETCH_FAILED")
     sha = _git("rev-parse", "FETCH_HEAD", cwd=cwd).stdout.strip()
@@ -73,7 +71,6 @@ def highest(remote="origin", cwd=None, branch="main"):
 
 
 def _claim_object(n, sha, cwd=None):
-    """An annotated tag object for this one claim (its random id makes it unlike any other claim of the same number)."""
     body = (f"object {sha}\ntype commit\ntag {PREFIX}{n}\ntagger LIFE OS decisions <decisions@example.com> {int(time.time())} +0000\n\n"
             f"LIFE-89 decision number claim {uuid.uuid4().hex}\n")
     made = _git("hash-object", "-t", "tag", "-w", "--stdin", cwd=cwd, data=body)
@@ -83,14 +80,14 @@ def _claim_object(n, sha, cwd=None):
 
 
 def claim(remote="origin", cwd=None, tries=TRIES, start=None):
-    """-> the claimed number. `start` (tests only) overrides the computed next number, to force a race."""
+    """-> the claimed number. `start` (tests only) forces a race."""
     top, sha = highest(remote, cwd)
     n = start if start is not None else top + 1
     for _ in range(tries):
         pushed = _git("push", "--quiet", remote, f"{_claim_object(n, sha, cwd)}:refs/tags/{PREFIX}{n}", cwd=cwd)
         if pushed.returncode == 0:
             return n
-        n = max(n + 1, max(claimed(remote, cwd) | {0}) + 1)              # taken: the next number above every claim
+        n = max(n + 1, max(claimed(remote, cwd) | {0}) + 1)
     raise ClaimError("DECISION_CLAIM_FAILED")
 
 
