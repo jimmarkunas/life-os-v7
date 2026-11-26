@@ -15,24 +15,22 @@ from .models import Child, Ownership, Parent, Scan
 
 MARKERS = {kind: f"v7-interview:1;owner=machine;kind={kind}" for kind in ("opportunity", "round")}
 PROTECTED = ("Live Notes", "Raw Notes")
-# LIFE-46 (accepted UI 3b): Jim types ADOPT as the exact first line of his own opportunity page; adoption swaps it for the
-# opportunity marker plus ";adopted=<date>". Everything from the JIM_NOTES heading to the end of the page is his.
+# Typing ADOPT as the first line of an opportunity page hands it to this writer: the line becomes the
+# opportunity marker plus ";adopted=<date>", and everything from the JIM_NOTES heading on stays the person's.
 ADOPT = "LIFE OS: adopt"
-JIM_NOTES = "Jim’s Notes"                               # LIFE-88: the approved UI 3c heading (typographic apostrophe)
-LEGACY_NOTES = "🔒 Jim's notes"                         # UI 3b pages (D235-D237) keep theirs until migrated
+JIM_NOTES = "Jim’s Notes"
+LEGACY_NOTES = "🔒 Jim's notes"
 NOTES = (JIM_NOTES, LEGACY_NOTES)
-# D236: the marker (and a round's identity line) are folded into one collapsed toggle at the top of the page. Pages written
-# before D236 carry them as the first two plain paragraphs and are still read. UI 4 (LIFE-46 10875) titles it with Source Health.
+# The marker (and a round's identity line) sit in one collapsed toggle at the top; older pages use plain paragraphs.
 FOLD = "⚙️ LIFE OS"
 ROUND_FOLD = "⚙️ LIFE OS · Source Health"
 ADOPTED = re.compile(re.escape(MARKERS["opportunity"]) + r";adopted=(\d{4}-\d{2}-\d{2})")
 MAX_CALLS, MAX_DEPTH = 40, 4
-PROTECTED_MAX_DEPTH = 12                    # Jim's blocks may nest far deeper than the 4 levels of page scans (columns, callouts, lists inside lists); past this the read still fails closed
-PROTECTED_MAX_CALLS = 400                  # Jim's own content on an adopted page can nest far deeper than a scan: every container is one read, and the whole of it is digested before and after a write
+PROTECTED_MAX_DEPTH = 12                    # human blocks nest deeper than page scans reach; past this the read fails closed
+PROTECTED_MAX_CALLS = 400
 
 
 def same_notion_id(a, b):
-    """Notion references may use compact, dashed, or uppercase UUID spelling."""
     if not isinstance(a, str) or not isinstance(b, str):
         return False
     left, right = a.replace("-", "").lower(), b.replace("-", "").lower()
@@ -49,7 +47,6 @@ def make_client(environ=os.environ):
 
 
 def is_marker(value, kind):
-    """The exact machine marker, or for an opportunity the adopted form (LIFE-46). Deleting the line hands the page back."""
     if value == MARKERS.get(kind):
         return True
     from .identity import valid_date
@@ -62,7 +59,7 @@ def is_fold(block):
 
 
 def machine_lines(client, page_id, size):
-    """(lines, fold): the first `size` machine lines, read from inside the folded toggle when the page's first block is one."""
+    """(lines, fold): the first `size` machine lines, read from the folded toggle when the first block is one."""
     blocks = client.call("GET", f"/blocks/{page_id}/children?page_size={size}")["results"]
     if blocks and is_fold(blocks[0]):
         return client.call("GET", f"/blocks/{blocks[0]['id']}/children?page_size={size}")["results"], blocks[0]
@@ -132,7 +129,6 @@ def parent_scan(client, root, context=None):
                     container = client.call("GET", f"/pages/{block['id']}")
                     if not same_notion_id((container.get("parent") or {}).get("page_id"), root) or container.get("archived") or container.get("in_trash"):
                         raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
-                # A container scopes its descendants, never its following root siblings.
                 walk(block["id"], title == "Active Opportunities", depth + 1)
             elif title in ("Active Opportunities", "Retired Opportunities") and (kind.startswith("heading") or kind == "toggle"):
                 current = title == "Active Opportunities"
@@ -153,7 +149,7 @@ def parent_scan(client, root, context=None):
 
 
 LEDGER_PAGES = 20
-LEDGER_STAGE, LEDGER_DECISION, LEDGER_ACTIVE = "Stage", "Hiring Decision", ("Applied", "Interviewing", "Offer")      # REQ-5: active = Stage in (Applied, Interviewing, Offer) and Hiring Decision empty
+LEDGER_STAGE, LEDGER_DECISION, LEDGER_ACTIVE = "Stage", "Hiring Decision", ("Applied", "Interviewing", "Offer")
 
 
 def _ledger_text(prop, kind):
@@ -161,7 +157,6 @@ def _ledger_text(prop, kind):
 
 
 def _ledger_pages(client, source_id, body, context):
-    """The pages of a Job Ledger query (LEDGER_PAGES at most); anything short of a complete read raises NotionError, and each page first checks the deadline."""
     def fetch(cursor):
         if context:
             context.require_time()
@@ -170,15 +165,15 @@ def _ledger_pages(client, source_id, body, context):
 
 
 def parents_from_ledger(client, source_id, context=None):
-    """LIFE-360: every Job Ledger row whose Stage is set, as the same Parent the page-tree scan gives (page_id = the row page id, title = "Company - Role").
-    Incomplete (a bad page set, a repeated cursor, too many pages, an unreadable row) is Scan((), False): never a partial list."""
+    """Every Job Ledger row whose Stage is set, as a Parent. An incomplete read gives Scan((), False), never a partial
+    list."""
     try:
         rows = [row for page in _ledger_pages(client, source_id, {"page_size": 100, "filter": {"property": LEDGER_STAGE, "select": {"is_not_empty": True}}}, context)
                 for row in page["results"]]
         found = []
         for row in map(_ledger_row, rows):
             if not (row["company"] and row["role"] and row["stage"] and row["id"]):
-                continue                                                       # an unnamed row is not a pursuit
+                continue
             found.append(Parent(row["id"], f"{row['company']} - {row['role']}", row["stage"] in LEDGER_ACTIVE and not row["decision"], row["stage"]))
         return Scan(tuple(found), True)
     except (NotionError, DeadlineExceeded, KeyError, TypeError, ValueError, AttributeError):
@@ -186,8 +181,9 @@ def parents_from_ledger(client, source_id, context=None):
 
 
 def parents(client, environ, context=None):
-    """LIFE-360: the opportunities every Interview OS reader works from. With NOTION_JOB_LEDGER_DATA_SOURCE_ID set, Ledger rows with Stage come first and the page tree
-    fills in only what no Ledger row matches on company AND role (a row with Stage empty). Without it, the page tree alone, exactly as before. Either read incomplete is incomplete."""
+    """The opportunities every reader works from: Ledger rows with Stage, plus page-tree pages no row matches on company
+    AND role. An incomplete read of either is an incomplete scan.
+    """
     tree = parent_scan(client, (environ.get("HIRING_PIPELINE_PAGE_ID") or "").strip(), context)
     source = ((environ or {}).get("NOTION_JOB_LEDGER_DATA_SOURCE_ID") or "").strip()
     if not source:
@@ -200,7 +196,7 @@ def parents(client, environ, context=None):
     return Scan(tuple(ledger.items) + tuple(kept), True, len(ledger.items), len(kept))
 
 
-LEDGER_STAGES = ("Found", "Applied", "Interviewing", "Offer", "Working", "Ended")   # REQ-5 Ledger contract: exactly these six
+LEDGER_STAGES = ("Found", "Applied", "Interviewing", "Offer", "Working", "Ended")
 MANUAL = "Manual"
 
 
@@ -213,9 +209,9 @@ def _ledger_row(row):
 
 
 def ledger_row(client, source_id, company, role, key=None, context=None):
-    """LIFE-361: the one Job Ledger row for a pursuit: the row holding its Stable Job Key when one is given, else the row whose Company and Job (role) match
-    (same rules as every Interview OS reader). Reads every row whose Company contains the company's first word, completely or not at all.
-    -> (code, row): ledger_row_found with the row, ledger_row_missing, ledger_row_ambiguous (two or more match: nothing is guessed) or ledger_unreadable."""
+    """The one Job Ledger row for a pursuit, by Stable Job Key when given, else by Company and Job. Reads completely
+    or not at all. -> (code, row): ledger_row_found, ledger_row_missing, ledger_row_ambiguous (nothing guessed),
+    ledger_unreadable."""
     words = tokens(company)
     if not words or not role.strip():
         return "ledger_unreadable", None
@@ -232,8 +228,8 @@ def ledger_row(client, source_id, company, role, key=None, context=None):
 
 
 def create_ledger_row(client, source_id, company, role, key=None):
-    """LIFE-361 (REQ-5 Ledger contract): a new Manual row: Job = role, Company = company, Source Types = Manual, Stable Job Key only when the caller holds the one Jobs OS gave
-    (manual jobs: the posting link's key); Stage is set later, as the commit point. One request, never retried: a create whose answer is lost is found by name on the next run."""
+    """A new Manual Ledger row. Stage is set later, as the commit point. One request, never retried: a create whose
+    answer is lost is found by name on the next run."""
     props = {"Job": {"title": rich_text(role)}, "Company": {"rich_text": rich_text(company)}, "Source Types": {"multi_select": [{"name": MANUAL}]}}
     if key:
         props["Stable Job Key"] = {"rich_text": rich_text(key)}
@@ -242,13 +238,13 @@ def create_ledger_row(client, source_id, company, role, key=None):
 
 def set_stage(client, row_id, stage):
     if stage not in LEDGER_STAGES:
-        raise ValueError("stage")                                       # a caller bug, never a value from Notion
+        raise ValueError("stage")
     client.call("PATCH", f"/pages/{row_id}", {"properties": {LEDGER_STAGE: {"select": {"name": stage}}}})
 
 
 def ledger_shape(client, source_id, context=None):
-    """GET-only probe (LIFE-361, replaces the Active Opportunities container probe): creation is supported when the Ledger's Stage is a select with exactly the six
-    REQ-5 options and Source Types offers Manual. Counts and fixed codes only."""
+    """GET-only probe: creation is supported when Stage is a select with exactly the six expected options and Source
+    Types offers Manual."""
     out = {"ledger_stage_options": 0, "insertion_supported": False, "code": "ledger_shape_incomplete"}
     if not source_id:
         out["code"] = "ledger_config_missing"
@@ -274,7 +270,6 @@ LEGACY_TITLE = re.compile(r"^Interview (\d{1,2}):\s*(.+?)\s*\((\d{1,2})/(\d{1,2}
 
 
 def legacy_companies(environ):
-    """Company words of the pursuits Jim named (INTERVIEW_TEST_COMPANIES) for which a hand-made round page's title is explicit evidence of its number and date."""
     return [c.strip() for c in ((environ or {}).get("INTERVIEW_TEST_COMPANIES") or "").split(",") if c.strip()]
 
 
@@ -284,7 +279,8 @@ def is_legacy_company(environ, company):
 
 
 def legacy_round(block, child):
-    """`Interview 1: Name (9/10/26)` -> the same Child with its number, interviewer and date, marked legacy; any other title leaves the child as it was."""
+    """`Interview 1: Name (9/10/26)` -> the same Child with number, interviewer and date, marked legacy; other titles
+    unchanged."""
     found = LEGACY_TITLE.match(str((block.get("child_page") or {}).get("title") or ""))
     if not found:
         return child
@@ -301,7 +297,6 @@ NEST_KINDS = ("column_list", "column", "toggle")
 
 
 def _nested_pages(client, blocks, budget, context, depth=1):
-    """(page block, container id) for every child page inside the column / toggle blocks of a page, to MAX_DEPTH levels: where Jim keeps his own Interview Notes list."""
     out = []
     for block in blocks:
         if block.get("type") in NEST_KINDS and block.get("has_children"):
@@ -317,7 +312,6 @@ def child_scan(client, parent_id, context=None, legacy=False):
     try:
         budget = [MAX_CALLS]
         blocks = children(client, parent_id, budget, context)
-        # B1 reads verified identity properties only; never guesses identities from legacy titles.
         found = []
         for block in blocks:
             if block.get("type") != "child_page":
@@ -330,7 +324,7 @@ def child_scan(client, parent_id, context=None, legacy=False):
             if child is None or not same_notion_id(child.parent_id, parent_id):
                 raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
             found.append(legacy_round(block, child) if legacy and child.identity_valid is None else child)
-        if legacy:                                                              # a pursuit Jim named: his hand-made `Interview N: Name (m/d/yy)` pages inside his own columns count too, by title only, never read or changed
+        if legacy:                                                              # hand-made `Interview N: Name (m/d/yy)` pages of named pursuits count, by title only
             for block, container in _nested_pages(client, blocks, budget, context):
                 if len(found) >= MAX_CALLS:
                     raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
@@ -345,7 +339,9 @@ def child_scan(client, parent_id, context=None, legacy=False):
 
 
 def explicit_child(client, page_id, home=None, via=None):
-    """The page's identity. `home` and `via` are for a page nested in a column or toggle of its parent page: its API parent is that block (`via`), and it counts as the page's child only then."""
+    """The page's identity. `home` and `via` describe a page nested in a column or toggle of its parent (`via` is its API
+    parent block).
+    """
     page = client.call("GET", f"/pages/{page_id}")
     if page.get("archived") or page.get("in_trash"):
         return None
@@ -366,7 +362,6 @@ def explicit_child(client, page_id, home=None, via=None):
 
 
 def _protected_children(client, page_id, budget):
-    """children() for a protected read, with its failures told apart by fixed code: the read budget ran out, or the API answer was malformed."""
     try:
         return children(client, page_id, budget)
     except NotionError:
@@ -378,10 +373,10 @@ def _subtree(client, block, budget, depth=0):
         raise NotionError("INTERVIEW_PROTECTED_DEPTH")
     value = {k: v for k, v in block.items() if k not in ("last_edited_time", "last_edited_by")}
     if block.get("type") in ("child_page", "child_database"):
-        return {"id": value.get("id"), "type": value.get("type")}                # a page or database nested in Jim's columns (his Interview Notes list) is its own page: never read as part of this one, like a top-level child page
+        return {"id": value.get("id"), "type": value.get("type")}
     body = value.get(value.get("type"))
     if isinstance(body, dict) and body.get("type") == "file" and isinstance(body.get("file"), dict):
-        value[value["type"]] = {**body, "file": {}}                              # a Notion-hosted file's signed URL and expiry change on every read; the name, caption and the block itself stay in the digest
+        value[value["type"]] = {**body, "file": {}}                              # a Notion-hosted file's signed URL changes on every read
     if block.get("has_children"):
         value["protected_children"] = [_subtree(client, b, budget, depth + 1) for b in _protected_children(client, block["id"], budget)]
     return value
@@ -392,10 +387,9 @@ def _digest(value):
 
 
 def protected_snapshot(client, page_id, kind="round"):
-    """Call only around an authorized mutation. Hash ordered anchors and all descendant evidence privately.
-    An opportunity parent may instead carry Jim's notes (NOTES; LIFE-46/LIFE-88): that region runs to the end of the page,
-    through any headings Jim writes. Child pages are left out of it because Notion appends every new round page at the end of
-    its parent; their contents are never read here. A UI 4 round (LIFE-46 10875) keeps them in its left column instead."""
+    """Call only around an authorized mutation. Hashes ordered anchors and all descendant evidence privately. An
+    opportunity's notes region runs to the end of the page but leaves out child pages (Notion appends new rounds
+    there)."""
     budget, regions = [PROTECTED_MAX_CALLS], {}
     labels = PROTECTED + (NOTES if kind == "opportunity" else ())
     current = None
@@ -428,7 +422,6 @@ RAW_HEADING, RAW_TOGGLE, LIVE_PANE = "Protected Raw Notes", "Raw notes · open t
 
 
 def _round_regions(client, tops, budget):
-    """UI 4: the Live Notes tab pane and the toggle under "Protected Raw Notes", both in the left of the one column list."""
     lists = [b for b in tops if b.get("type") == "column_list"]
     columns = children(client, lists[0]["id"], budget) if len(lists) == 1 else []
     left = children(client, columns[0]["id"], budget) if columns else []
@@ -443,8 +436,6 @@ def _round_regions(client, tops, budget):
 
 
 def human_tail(client, page_id, blocks=None):
-    """Private digest of Jim's own content on an adoption page: every top-level block after the first line before adoption
-    (blocks given), or every block after the Jim's notes heading and its one notes callout after it. Child pages excluded."""
     budget = [PROTECTED_MAX_CALLS]
     if blocks is None:
         blocks = _protected_children(client, page_id, budget)
@@ -457,13 +448,10 @@ def human_tail(client, page_id, blocks=None):
     return _digest([_subtree(client, b, budget) for b in blocks if b.get("type") != "child_page"])
 
 
-# LIFE-88: the approved UI 3c / UI 4 trees nest deeper than the two levels one Notion request may carry, and a column list,
-# column, table or tab must be created with its children. write_tree sends each block with the leading children that fit and
-# appends the rest to the created blocks in order; a column whose first child cannot fit starts with an empty placeholder
-# paragraph that is deleted once its children are written.
+# A column list, column, table or tab is created with its children, and one request carries two levels:
+# write_tree sends each block with the leading children that fit and appends the rest; a column whose first child
+# cannot fit starts with an empty placeholder paragraph, deleted afterwards.
 MUST, TREE_MAX_CALLS = ("column_list", "column", "table", "tab"), 200
-# D16.1 (Jim verified Oct 21): a page created from Jim's blank "Full Width Page" (create-page `template`) is Full width. Notion applies
-# the template after the create returns, so the page's blocks are written once it has had time to.
 FULL_WIDTH, TEMPLATE_WAIT = notion_id("FULL_WIDTH_TEMPLATE"), 8
 PLACEHOLDER = {"object": "block", "type": "paragraph", "paragraph": {"rich_text": []}}
 
@@ -513,9 +501,9 @@ FILLER_MAX = 3
 
 
 def clear_template_filler(client, page_id, budget):
-    """Delete the empty paragraphs a template page leaves at the TOP of a page this writer has just created. Only a leading paragraph with no text, no children and no
-    mention is removed, at most FILLER_MAX of them, and never the last block of the page: nothing a person wrote is ever touched (the page is seconds old and machine made).
-    The first block must be the machine fold or marker, or ownership() reads the page as a human's and it can never be refreshed."""
+    """Delete the empty leading paragraphs a template page leaves on a page just created. The first block must be the
+    machine fold or marker, or ownership() reads the page as a human's and it is never refreshed.
+    """
     top = children(client, page_id, budget)
     gone = 0
     while gone < FILLER_MAX and len(top) - gone > 1:
@@ -529,9 +517,8 @@ def clear_template_filler(client, page_id, budget):
 
 
 def write_tree(client, parent_id, blocks, after=None, title=None, budget=None, icon=None, template=None, start=False):
-    """Write `blocks` (nested `children` at any depth) under parent_id, or as a new page titled `title` under it; returns the
-    id written into. `start` puts them above everything already on the page (LIFE-361: the machine fold goes first on a Ledger row that has a body).
-    Fails closed (NotionError) on an unwritable shape or an exhausted call budget."""
+    """Write `blocks` (nested `children` at any depth) under parent_id, or as a new page titled `title`; returns the
+    id written into. `start` puts them above existing content. Fails closed (NotionError) on an unwritable shape."""
     budget = budget if budget is not None else [TREE_MAX_CALLS]
     plans = [_shell(block, 0) for block in blocks]
     if any(plan is None for plan in plans):
@@ -543,12 +530,12 @@ def write_tree(client, parent_id, blocks, after=None, title=None, budget=None, i
     if title is not None:
         page = {"parent": {"type": "page_id", "page_id": parent_id}, "properties": {"title": {"type": "title", "title": rich_text(title)}},
                 **({"icon": icon} if icon else {})}
-        if template:                                                    # a template page takes no children in the same request
+        if template:
             target = client.call("POST", "/pages", {**page, "template": {"type": "template_id", "template_id": template}})["id"]
             time.sleep(TEMPLATE_WAIT)
-            clear_template_filler(client, target, budget)               # a template that lands first leaves its empty paragraph above the machine fold: the page would read as not ours
+            clear_template_filler(client, target, budget)               # a template landing at any time leaves an empty paragraph above the machine fold
             written = write_tree(client, target, blocks, budget=budget)
-            clear_template_filler(client, target, budget)               # and one that lands after the write puts it first just the same
+            clear_template_filler(client, target, budget)
             return written
         target = client.call("POST", "/pages", {**page, **body})["id"]
         made = children(client, target, budget)
@@ -565,7 +552,6 @@ def write_tree(client, parent_id, blocks, after=None, title=None, budget=None, i
 
 
 def _plain(runs):
-    """Text of rich-text runs; a mention counts by its target, never its title, so renaming a linked page changes nothing."""
     return "".join(f"@{((r.get('mention') or {}).get('page') or {}).get('id', '').replace('-', '')}" if r.get("type") == "mention"
                    else r.get("plain_text", (r.get("text") or {}).get("content", "")) for r in runs or [])
 
@@ -584,12 +570,10 @@ def _node(kind, body, value):
 
 
 def as_nodes(blocks):
-    """Normalized nodes of a block payload as written (compare with read_tree)."""
     return [{**_node(b["type"], b[b["type"]], text(b)), **({"children": as_nodes(kids(b))} if kids(b) else {})} for b in blocks]
 
 
 def region_nodes(client, blocks, budget, skip=(), depth=0):
-    """Normalized nodes of `blocks` and everything under them (child pages by title only), in order; ids in `skip` left out."""
     out = []
     for block in blocks:
         if block.get("id") in skip:
@@ -613,8 +597,7 @@ CONTENT = ("paragraph", "bulleted_list_item", "numbered_list_item", "to_do", "qu
 
 
 def outline(nodes, depth=0, parent="", icons=True):
-    """The structural outline compared with the approved pages: block types, nesting, order, column ratios, callout colours
-    and icons, table shapes, heading / toggle / tab labels. Text content and table rows are data, not structure."""
+    """The structural outline of a tree (types, nesting, order, layout); text content is data, not structure."""
     out = []
     for node in nodes:
         kind = node["type"]
@@ -648,7 +631,7 @@ def delete_block(client, block_id):
     return client.call("DELETE", f"/blocks/{block_id}")
 
 
-PRESERVED, PRESERVE_BATCH = "Preserved edits", 90      # LIFE-658: the toggle a repaired machine region's edited text is copied into; Notion takes at most 100 blocks a request
+PRESERVED, PRESERVE_BATCH = "Preserved edits", 90
 
 
 def is_preserved(block):
@@ -656,7 +639,6 @@ def is_preserved(block):
 
 
 def writable(runs):
-    """A block's rich text as it can be written back: what the page showed (text, link, mention, annotations), nothing Notion computes."""
     out = []
     for run in runs or []:
         kind = run.get("type") or ("mention" if run.get("mention") else "text")
@@ -667,8 +649,9 @@ def writable(runs):
 
 
 def preserve(client, page_id, toggle, lines, stamp, after=None):
-    """LIFE-658: copy `lines` verbatim and in order under `stamp` into the page's one Preserved edits toggle (`toggle`, its block, or None: created once, after `after` or at the end
-    of the page) and read them back. Any failure is one fixed code; what was copied stays."""
+    """Copy `lines` verbatim under `stamp` into the page's one Preserved edits toggle and read them back. Any failure is
+    one fixed code.
+    """
     batch = [paragraph(stamp)] + [paragraph(line) for line in lines]
     try:
         head = batch[:PRESERVE_BATCH]
@@ -693,10 +676,6 @@ DERIVED_MAX_CALLS = 100
 
 
 def derived_blocks(client, page_id):
-    """(heading, payload): the one Derived heading and the blocks it bounds.
-    Notion cannot page from a heading, so the API returns the whole top-level list; blocks before the heading are
-    dropped as each page arrives and only headings are compared by text. A separate call budget keeps large human
-    notes from exhausting the scan budget; running out still fails closed."""
     heading, payload, ended = None, [], False
     for data in notion_pages.children(client, page_id, NotionError, incomplete="INTERVIEW_SCAN_INCOMPLETE", limit=DERIVED_MAX_CALLS):
         for block in data["results"]:
@@ -717,8 +696,8 @@ def derived_blocks(client, page_id):
 
 
 def readback(client, page_id, parent_id, kind, before=None):
-    """Verify a page we created or hold by ID: it is live, its first block is the machine marker for `kind`, and its protected content is unchanged. LIFE-382 (D250-06): where the page sits
-    (its parent) is not checked; `parent_id` stays in the signature for the callers and is not used."""
+    """Verify a held page: live, first block is the machine marker for `kind`, protected content unchanged.
+    `parent_id` unused."""
     try:
         page = client.call("GET", f"/pages/{page_id}")
         if page.get("archived") or page.get("in_trash"):

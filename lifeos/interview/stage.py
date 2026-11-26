@@ -1,4 +1,4 @@
-"""Counts-only Interview probe and bounded B2 evidence execution."""
+"""Counts-only Interview probe and bounded evidence execution."""
 import os
 from lifeos.platform import stage_contract
 from lifeos.platform.runtime import RunContext, DeadlineExceeded
@@ -24,32 +24,32 @@ def _reason(counts, code):
 def _block(counts, code):
     counts["blocked"] += 1
     _reason(counts, code)
-    counts["blocked_why"][code] = counts["blocked_why"].get(code, 0) + 1       # LIFE-664: the fixed code of each block, so a red run names its cause
+    counts["blocked_why"][code] = counts["blocked_why"].get(code, 0) + 1
 
 
 def _tally(counts, cause):
-    causes = counts.setdefault("causes", {})                       # counts only: a fixed code or the exception's class name
+    causes = counts.setdefault("causes", {})
     causes[cause] = causes.get(cause, 0) + 1
 
 
 def evidence_outcome(result):
-    """PURE: how one evidence result moves the counts. -> (the count it adds one to, or None; stop the loop)."""
+    """Pure. -> (the count this result adds one to, or None; whether to stop the loop)."""
     code = result["code"]
     bump = "matched" if code == "child_match" else "not_found" if code in ("create_allowed", "parent_create_allowed") else None if code in QUIET else "blocked"
     return bump, bool(result["readback_failed"] or code == "write_failed")
 
 
 def prep_outcome(result):
-    """PURE: how one prep result moves the counts. -> (blocked, stop the loop)."""
+    """Pure. -> (blocked, whether to stop the loop)."""
     code = result["code"]
     return code not in DERIVED_OK, code in ("derived_readback_failed", "readback_protected_changed") or (result["writes"] > 0 and code != "derived_created")
 
 
-ROSTER_STAGES = ("Interviewing", "Offer", "Working", "Ended")       # LIFE-931: a job that reached interviews keeps its rounds on the Interviews list after it is closed
+ROSTER_STAGES = ("Interviewing", "Offer", "Working", "Ended")
 
 
 def _closed_rounds(client, parent, context, rounds):
-    """The machine rounds of a job that is no longer active, for the Interviews list only (nothing is counted, nothing is written)."""
+    """Collect the machine rounds of an inactive job for the Interviews list; nothing is counted or written."""
     children = notion.child_scan(client, parent.page_id, context)
     if not children.complete:
         return False
@@ -60,8 +60,8 @@ def _closed_rounds(client, parent, context, rounds):
 
 
 def _root_rounds(client, environ, context, rounds):
-    """LIFE-931: the machine opportunity pages the Job Ledger scan does not reach (Uber's page sits in a column under Hiring Pipeline, and the Ledger row that names it is another page) list their rounds here, found by the page-tree walk and the pages directly under Hiring Pipeline.
-    -> False when a read was incomplete."""
+    """Collect rounds of machine opportunity pages the Job Ledger scan does not reach. -> False when a read was
+    incomplete."""
     root = (environ.get("HIRING_PIPELINE_PAGE_ID") or "").strip()
     scan = notion.parent_scan(client, root, context)
     if not scan.complete:
@@ -82,18 +82,19 @@ def _root_rounds(client, environ, context, rounds):
 
 
 def _survey(client, environ, context, counts, rounds=None):
-    """READ: every active parent and its rounds, and who owns each page. -> False when the pipeline could not be read completely.
-    `rounds` (LIFE-931), when given, collects every machine round it meets as (parent, child) for the Interviews list."""
+    """READ every active parent and its rounds and who owns each page. -> False when the pipeline was not read
+    completely. `rounds`, when given, collects every machine round met as (parent, child).
+    """
     scan = notion.parents(client, environ, context)
     counts["observed"] = len(scan.items)
-    counts["parents_ledger"], counts["parents_tree_only"] = scan.ledger, scan.tree_only        # LIFE-360: proof the Ledger path ran (ledger > 0), not the page-tree fallback alone
+    counts["parents_ledger"], counts["parents_tree_only"] = scan.ledger, scan.tree_only
     if not scan.complete:
         _block(counts, "pipeline_incomplete")
         return False
     for parent in scan.items:
         if not parent.active:
             if rounds is not None and parent.stage in ROSTER_STAGES and not _closed_rounds(client, parent, context, rounds):
-                rounds.append(None)                                  # an unreadable closed job: the list is not synced this run
+                rounds.append(None)
             continue
         context.require_time()
         company, role = split_title(parent.title)
@@ -126,14 +127,13 @@ def _survey(client, environ, context, counts, rounds=None):
 
 
 def _apply_evidence(client, environ, evidence, limit, live, context, probe, counts):
-    """APPLY each evidence item (create.apply writes and reads back); the outcome of each is tallied by evidence_outcome."""
     from .create import apply
     deferred = set()
     for index, (parent_query, round_query) in enumerate(evidence):
         if index >= max(0, limit):
             if any(not q.refresh_only for _, q in evidence[index:]):
                 _block(counts, "pipeline_incomplete")
-            else:                                                   # E05: refresh-only items come last; the ones past the limit are counted, not an alarm
+            else:                                                   # refresh-only items come last; those past the limit are counted, not an alarm
                 counts["why"]["refresh_deferred"] = len(evidence) - index
             break
         if probe:
@@ -155,7 +155,6 @@ def _apply_evidence(client, environ, evidence, limit, live, context, probe, coun
 
 
 def _apply_prep(client, environ, prep_evidence, limit, live, context, counts):
-    """APPLY each derived prep write; the outcome of each is tallied by prep_outcome."""
     from .prep import apply as apply_prep
     for index, (parent_query, round_query, prep) in enumerate(prep_evidence):
         if index >= max(0, limit):
@@ -176,7 +175,9 @@ def _apply_prep(client, environ, prep_evidence, limit, live, context, counts):
 
 
 def _roster(client, environ, rounds, live, context, counts):
-    """LIFE-931: keep the Interviews list current. Only after a complete survey (an unreadable job leaves the list as it was); a list that is absent or unreadable is a code, never a block."""
+    """Keep the Interviews list current, only after a complete survey; an absent or unreadable list is a reason code,
+    never a block.
+    """
     from . import roster
     if not _root_rounds(client, environ, context, rounds):
         rounds.append(None)
@@ -207,7 +208,7 @@ def run(limit, live, environ=os.environ, client=None, evidence=(), context=None,
         if target != "target_ok":
             _block(counts, target)
             return counts
-        if _probe:                                                      # LIFE-361: creation needs the Ledger's Stage (six options) and Manual source, not a container page
+        if _probe:
             shape = notion.ledger_shape(client, (environ.get("NOTION_JOB_LEDGER_DATA_SOURCE_ID") or "").strip(), context)
             _reason(counts, shape.pop("code"))
             counts.update(shape)
@@ -216,7 +217,7 @@ def run(limit, live, environ=os.environ, client=None, evidence=(), context=None,
             _apply_evidence(client, environ, evidence, limit, live, context, _probe, counts)
             _apply_prep(client, environ, prep_evidence, limit, live, context, counts)
             if roster and not _probe:
-                _roster(client, environ, rounds, live, context, counts)       # a round created in this run is listed by the next one
+                _roster(client, environ, rounds, live, context, counts)
         return counts
     except (NotionError, DeadlineExceeded, KeyError, TypeError, ValueError) as error:
         from .create import cause_of
@@ -229,7 +230,7 @@ def probe(limit, live, **kwargs):
     return run(limit, False, _probe=True, **kwargs)
 
 
-CONTRACT = stage_contract.Contract(      # LIFE-623: the stage declared; run() = target check, read (_survey), apply (_apply_evidence, _apply_prep; each is write then read-back inside create/prep.apply), decide (evidence_outcome, prep_outcome: pure)
+CONTRACT = stage_contract.Contract(      # run() = target check, read (_survey), apply (_apply_evidence, _apply_prep), decide (pure)
     name="interview-stage", run=run,
     inputs=("the Hiring Pipeline page and the Job Ledger (parents and rounds)", "page ownership markers", "the evidence items and prep items the caller passes"),
     outputs=("observed", "valid_parents", "with_rounds", "matched", "not_found", "blocked", "human_pages", "machine_pages", "writes_planned", "writes", "derived_created", "derived_match", "why", "blocked_why"),

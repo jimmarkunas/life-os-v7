@@ -1,12 +1,9 @@
-"""LIFE-88 / LIFE-46: the source-keyed view models the UI 3c opportunity page and the UI 4 interview page are rendered from.
+"""Source-keyed view models the opportunity and interview pages are rendered from.
 
-Built only from canonical evidence V7 can read today: the exact Job Ledger row (Interview token, read only, confirmed by its
-Stable Job Key), the exact interview request message, and the machine interview pages under the opportunity (their identity
-lines). Every other source the approved layout names (Calendar, the exact-job Gmail/Outlook threads, the LinkedIn Connections
-sheet, the other sent files, the verbatim job description, interview transcripts) is not connected to this writer yet and is
-carried as `None`, which the template renders as not verified. Nothing here is guessed or defaulted. The submitted résumé comes
-only from the exact row's human-owned Submitted Résumé field (Jim, Oct 24), never from the Resume column, which holds the latest
-résumé LIFE OS built, not the one Jim sent."""
+Built only from canonical evidence (the exact Ledger row, request message and machine interview pages). A source not
+connected is `None`, which the template renders as not verified; nothing is guessed. The submitted resume comes
+only from the row's human-owned Submitted Résumé field, never from the Resume column.
+"""
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -16,15 +13,15 @@ from .identity import valid_date
 
 UNCONNECTED = ("Calendar", "Recruiter email threads", "LinkedIn contacts", "Submitted résumé and sent materials",
                "Original job description", "Interview transcripts")
-SUBMITTED = "Submitted Résumé"                   # the Job Ledger's Files field Jim fills with the file he actually sent (LIFE-88 E10)
-# LIFE-111 / LIFE-112 (Jim, Oct 25): the lines Manage writes for a hand-set hold or next action, in this page's fold or in the Job Ledger row's HAND_SET property
-# (lifeos.hiring.models and lifeos.hiring.decision keep the formats and the property name for the Close service; a contract test holds them equal)
+SUBMITTED = "Submitted Résumé"
+# Lines Manage writes for a hand-set hold or next action (page fold or Ledger row HAND_SET property). The formats are
+# duplicated in lifeos.hiring.models and lifeos.hiring.decision; a contract test holds them equal.
 HAND_SET = "LIFE OS Hand-Set"
 _AT = r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}"
 HOLD_LINE = re.compile(rf"v7-hold:1;state=(paused|waiting|active);at=({_AT});op=([0-9a-f]{{16}})")
 NEXT_LINE = re.compile(rf"v7-next:1;due=(\d{{4}}-\d{{2}}-\d{{2}}|none);at=({_AT});op=([0-9a-f]{{16}});text=(.*)")
-SENT_LINE = re.compile(rf"v7-sent:1;kind=(form|file);at=({_AT});op=([0-9a-f]{{16}});url=(https://\S+|none);text=(.*)")     # LIFE-114: sent material Jim recorded on Manage
-UNSENT_LINE = re.compile(rf"v7-unsent:1;at=({_AT});op=([0-9a-f]{{16}});of=([0-9a-f]{{16}})")                              # LIFE-172: a sent item Jim removed on Manage
+SENT_LINE = re.compile(rf"v7-sent:1;kind=(form|file);at=({_AT});op=([0-9a-f]{{16}});url=(https://\S+|none);text=(.*)")
+UNSENT_LINE = re.compile(rf"v7-unsent:1;at=({_AT});op=([0-9a-f]{{16}});of=([0-9a-f]{{16}})")
 
 
 @dataclass(frozen=True)
@@ -33,9 +30,9 @@ class Round:
     ordinal: int | None
     date: str | None
     interviewer: str | None
-    calendar: str | None = None                  # LIFE-78 E10: "accepted" | "cancelled" from the round page's own Logistics reference, else not verified
-    joining: bool = False                        # E10: that accepted round page records its invite's joining details (link or location, #481)
-    created: str | None = field(default=None, compare=False)        # LIFE-111/112: when the round page was created (new interview evidence after a hand-set state)
+    calendar: str | None = None                  # "accepted" | "cancelled" from the round page's own Logistics reference, else not verified
+    joining: bool = False
+    created: str | None = field(default=None, compare=False)
 
 
 @dataclass(frozen=True)
@@ -45,7 +42,7 @@ class Opportunity:
     stable_job_key: str | None
     requisition: str | None
     ledger_page_id: str | None
-    ledger: str                                  # linked | not_linked | unreadable | mismatch
+    ledger: str
     request_url: str | None
     pipeline_id: str
     compensation: str | None = None
@@ -53,21 +50,21 @@ class Opportunity:
     apply_url: str | None = None
     fit_summary: str | None = None
     rounds: tuple = ()
-    recruiters: tuple = ()                       # LIFE-78 E10: (person, company, thread url) from Recruiters rows linked to this job's exact request message
+    recruiters: tuple = ()                       # (person, company, thread url) from Recruiters rows linked to this job's request message
     recruiters_state: str | None = None          # None = not connected; "linked" | "none" | "unreadable"
-    contacts: tuple = ()                         # E10: (name, why) from the job page's own Network Leads, read by the source adapter
+    contacts: tuple = ()
     contacts_state: str | None = None            # None = no Ledger row linked; "linked" | "none" | "unreadable"
-    done: tuple = ()                             # E05: (action key, YYYY-MM-DD) completion lines the Close screen recorded in this page's fold, carried forward
-    decisions: tuple = ()                        # Jim, Oct 25: the Close / Reopen record lines in this page's fold (template.DECISION_LINE), carried forward as written
-    page_id: str | None = None                   # E05: this opportunity page's own id, once it exists (the Mark Complete link names it)
-    close_base: str | None = None                # E05: the private Close origin (V7_CLOSE_BASE_URL); unset, Mark Complete stays unavailable
-    resume: tuple = ()                           # E10: (file name, stable link or None) from the exact row's Submitted Résumé field
-    resume_state: str | None = None              # None = Job Ledger row not verified; "recorded" | "not_recorded" | "not_connected" (no such field)
-    hand: tuple = ()                             # LIFE-111/112: the hand-set lines Manage wrote in this page's fold, carried forward as written
-    repaired: str = ""                           # LIFE-658: the one "Repaired <time> CT" line a self-repair wrote into this page's machine region (template.REPAIRED_LINE), carried forward as written
-    hand_ledger: tuple = ()                      # LIFE-111/112: the hand-set lines on the exact Job Ledger row (read only here)
-    sent_mail: tuple = ()                        # LIFE-114: (sent time ISO, subject) of Jim's own messages on this job's request thread, read only from Gmail
-    sent_mail_state: str | None = None           # None = not connected this run; "read" | "unreadable"
+    done: tuple = ()
+    decisions: tuple = ()
+    page_id: str | None = None
+    close_base: str | None = None
+    resume: tuple = ()
+    resume_state: str | None = None              # None = Ledger row not verified; "recorded" | "not_recorded" | "not_connected"
+    hand: tuple = ()
+    repaired: str = ""
+    hand_ledger: tuple = ()
+    sent_mail: tuple = ()                        # (sent time ISO, subject) of the user's messages on the request thread, read from Gmail
+    sent_mail_state: str | None = None
 
 
 def _plain(prop):
@@ -80,7 +77,6 @@ def _plain(prop):
 
 
 def ledger_facts(client, page_id, stable_job_key):
-    """The exact Job Ledger row, only when its Stable Job Key is the job's. Returns (state, facts)."""
     if not page_id:
         return "not_linked", {}
     try:
@@ -98,8 +94,8 @@ def ledger_facts(client, page_id, stable_job_key):
 
 
 def submitted_resume(props):
-    """E10: the files Jim recorded as sent. An uploaded file's own URL expires within the hour, so it is named (the page links the row
-    that holds it); an external link is stable and is kept, https only. Anything that is not a files value is not connected."""
+    """The files recorded as sent: uploaded files keep only their name (their URL expires); external https links are
+    kept."""
     prop = props.get(SUBMITTED)
     if not isinstance(prop, dict) or prop.get("type") != "files":
         return (), "not_connected"
@@ -109,20 +105,17 @@ def submitted_resume(props):
         if isinstance(name, str) and name.strip():
             ext = f.get("external") if f.get("type") == "external" else None
             url = ext.get("url") if isinstance(ext, dict) else None
-            ok = isinstance(url, str) and url.startswith("https://") and not any(c.isspace() for c in url)      # a hand-typed bad link would fail the whole page write
+            ok = isinstance(url, str) and url.startswith("https://") and not any(c.isspace() for c in url)
             out.append((name.strip(), url if ok else None))
     return tuple(out), ("recorded" if out else "not_recorded")
 
 
 def rounds_of(children):
-    """Machine interview pages with a verified identity line (and, for a pursuit Jim named, hand-made ones whose title states the number and date), in D15 order (dated before undated is decided in sort_rounds)."""
     return tuple(Round(c.page_id, c.ordinal, c.interview_date, c.interviewer, created=getattr(c, "created", None)) for c in getattr(children, "items", ())
                  if c.identity_valid is True or c.legacy)
 
 
 def with_calendar(client, rounds):
-    """E10: each dated machine round with the Calendar state its own Logistics records (E07 writes it with the event reference). A page whose layout
-    is not UI 4, or that cannot be read this run, stays not verified; nothing is inferred from a date alone."""
     from .create import round_logistics
     out = []
     for r in rounds:
@@ -142,8 +135,8 @@ def _live(r):
 
 
 def sort_rounds(rounds, today):
-    """D15: upcoming confirmed interviews first (nearest first), then Scheduling Pending, then past ones (most recent first);
-    ties by round number, then page id, so the order is stable."""
+    """Upcoming confirmed interviews first (nearest first), then Scheduling Pending, then past ones (most recent
+    first)."""
     def key(r):
         number = r.ordinal if type(r.ordinal) is int else 10 ** 6
         if valid_date(r.date) and r.date >= today and _live(r):
@@ -167,9 +160,10 @@ def opportunity(client, parent_query, query, pipeline_id, children=None, today="
 
 
 def primary_action(view, today):
-    """D02-D06: one primary action derived from verified evidence, never invented. (label, action, due, source_url, basis): `basis` says what it
-    rests on, and an action whose request or Calendar evidence is not connected is labelled derived, never source-backed."""
-    if not view.rounds and view.request_url and (view.stable_job_key or "").startswith("recruiter-"):          # E01b: recruiter outreach (a minted recruiter key) with no round yet
+    """One primary action derived from verified evidence. -> (label, action, due, source_url, basis); `basis` says what it
+    rests on.
+    """
+    if not view.rounds and view.request_url and (view.stable_job_key or "").startswith("recruiter-"):
         return "PRIMARY ACTION", "Reply to the recruiter's message, or close this lead.", "No verified deadline", view.request_url, "derived from the linked recruiter message"
     for r in view.rounds:
         if not valid_date(r.date):
@@ -182,7 +176,7 @@ def primary_action(view, today):
         r = upcoming[0]
         return ("PRIMARY ACTION", f"Prepare for Interview {r.ordinal or ''} on {r.date}.".replace("  ", " "), r.date, None,
                 "from the accepted Calendar invite" if r.calendar == "accepted" else "derived from the interview page's date; Calendar not verified")
-    if view.rounds and view.rounds[0].calendar == "cancelled":                        # the latest round's invite was cancelled and nothing is upcoming
+    if view.rounds and view.rounds[0].calendar == "cancelled":
         r = view.rounds[0]
         name = f"Interview {r.ordinal}" if r.ordinal else "the interview"
         return ("PRIMARY ACTION", f"Ask the recruiter whether {name} moves to a new time.", "No verified deadline", view.request_url,
@@ -192,14 +186,13 @@ def primary_action(view, today):
 
 
 def _latest(view, pattern):
-    """The latest hand-set line of one kind on either record (the exact Ledger row, this page's fold), by its own time; ties go to the page's fold."""
     found = [(datetime.fromisoformat(m.group(2)), i, m) for i, m in enumerate(map(pattern.fullmatch, view.hand_ledger + view.hand)) if m]
     return max(found, key=lambda f: f[:2])[2] if found else None
 
 
 def hand_action(view):
-    """LIFE-112: the next action and/or due date Jim set by hand -> (key, text, due or None), or None. The latest line on either record (this page's fold, the exact Ledger
-    row) wins; it is never derived, never overwritten by evidence, and Mark Complete clears it (a completion line for its key, the op that set it)."""
+    """The hand-set next action. -> (key, text, due or None), or None. The latest line on either record wins; evidence
+    never overwrites it, and Mark Complete clears it."""
     m = _latest(view, NEXT_LINE)
     if m is None:
         return None
@@ -210,7 +203,6 @@ def hand_action(view):
 
 
 def hand_set_at(view):
-    """LIFE-112: when Jim set the next action hand_action shows (an aware datetime), or None when none is shown."""
     m = _latest(view, NEXT_LINE)
     return datetime.fromisoformat(m.group(2)) if m and hand_action(view) else None
 
@@ -223,15 +215,15 @@ def _created(value):
 
 
 def evidence_since(view, since):
-    """LIFE-111/112 (Jim, Oct 29: the automation works in concert with his hand-set state): the first interview round page created after `since` -> (aware datetime, what),
-    or None. Only a round page with a readable creation time counts; nothing is inferred from a date alone."""
+    """The first round page created after `since`. -> (aware datetime, what), or None."""
     found = sorted((t, f"Interview {r.ordinal} page added" if r.ordinal else "an interview page added")
                    for r in view.rounds if (t := _created(r.created)) is not None and since is not None and t > since)
     return found[0] if found else None
 
 
 def sent_material(view):
-    """LIFE-114: the sent material Jim recorded on Manage, on either record, oldest first, each op once and (LIFE-172) none he removed -> [(kind, text, url or None, aware datetime)]."""
+    """Sent material recorded on Manage, oldest first, each op once, none that was removed. -> [(kind, text, url,
+    datetime)]."""
     found, seen = [], {m.group(3) for m in map(UNSENT_LINE.fullmatch, view.hand_ledger + view.hand) if m}
     for m in sorted(filter(None, map(SENT_LINE.fullmatch, view.hand_ledger + view.hand)), key=lambda m: datetime.fromisoformat(m.group(2))):
         if m.group(3) not in seen:
@@ -241,8 +233,8 @@ def sent_material(view):
 
 
 def hold(view):
-    """LIFE-111: Jim's hand-set Paused / Waiting on employer -> (state, set at, op, cleared) or None (Active, or never set). `cleared` is (when, what) when new
-    interview evidence arrived after he set it (the opportunity is back on the to-do list and the page says why), else None."""
+    """The hand-set Paused / Waiting state. -> (state, set at, op, cleared) or None; `cleared` is (when, what) when
+    newer interview evidence arrived."""
     m = _latest(view, HOLD_LINE)
     if m is None or m.group(1) == "active":
         return None
