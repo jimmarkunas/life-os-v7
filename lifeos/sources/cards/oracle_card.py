@@ -14,6 +14,7 @@ from lifeos.oraclecloud import backup_watch, boot_backup_watch, card, system_tab
 from lifeos.platform import connections, ct_stamp, router
 from lifeos.platform.fixed_code import fixed
 from lifeos.platform.notion_client import NotionError
+from lifeos.sources.cards import signin_reminder
 
 
 def limits_of(host):
@@ -58,7 +59,16 @@ def connection_summary(client, environ, now, live, seen=None, concord=None):
     return connections.summary(connections.merged(rows, updates), now), {"changed": len(updates), "retired": len(retire)}
 
 
-def run(limit, live, environ=os.environ, now=None, fetcher=card.fetch, client=None, limits=limits_of, seen=None, watch=None, workers_watch=None, boot_watch=None, concord_fetch=None):
+def reminders(reading, environ, now, send=None):
+    """LIFE-993: the Agent Inbox renewal items for a sign-in due within three days (see signin_reminder). -> a count; never raises and never changes the card."""
+    try:
+        items = signin_reminder.plan((reading or {}).get("signins"), now)
+        return signin_reminder.send_all(items, environ, send)["sent"] if items else 0
+    except Exception:                                                                       # noqa: BLE001
+        return 0
+
+
+def run(limit, live, environ=os.environ, now=None, fetcher=card.fetch, client=None, limits=limits_of, seen=None, watch=None, workers_watch=None, boot_watch=None, concord_fetch=None, reminder_send=None):
     host = (environ.get("IMESSAGE_ALERTS_HOST") or "").strip()
     anchor = (environ.get("JIRA_CARD_BLOCK_ID") or "").strip()                              # LIFE-969: any card block on the page finds the page; the Jira card is on it
     if not host or not anchor:
@@ -83,6 +93,7 @@ def run(limit, live, environ=os.environ, now=None, fetcher=card.fetch, client=No
         (watch or backup_watch.record)(stats["backup"], environ, now)                       # LIFE-129: never raises; the card's own result never depends on it
         (workers_watch or worker_watch.record)(stats["workers"], environ, now)               # LIFE-531: same
         (boot_watch or boot_backup_watch.record)(stats["backups"], environ, now)             # LIFE-808: same
+    counts["signin_reminders"] = reminders(reading, environ, now, reminder_send)
     scoped = card.scoped(environ, client, heading, rows)                                    # LIFE-613: only the heading and the table rows located above can be written
     with fixed(NotionError, card._fail, "ORACLE_WRITE_FAILED"):
         result = card.write(scoped, heading, rows, table, heading_text, True)
