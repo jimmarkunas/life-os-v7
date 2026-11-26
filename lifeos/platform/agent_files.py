@@ -1,23 +1,22 @@
-"""LIFE-593: AGENTS.md is the one source of the Concord block that the per-tool instruction files repeat.
+"""AGENTS.md is the one source of the Concord block that the per-tool instruction files repeat.
 
     python -m lifeos.platform.agent_files            rewrite the block in every generated file from AGENTS.md
-    python -m lifeos.platform.agent_files --check    exit 1 and name the files whose block differs from AGENTS.md (the contract test runs this)
+    python -m lifeos.platform.agent_files --check    exit 1 and name the files whose block differs from AGENTS.md
 
-The block is the text between `<!-- concord:start -->` and `<!-- concord:end -->`. Only that block is replaced; the rest of each file (a Cursor front-matter header, for example) is kept.
-AGENTS.md holds the common text only (what Claude Code uses). A generated file's block is that common text plus, for a tool that needs it, that tool's own paragraph from PARAGRAPHS (the
-Cursor file gets Cursor's). A per-tool file that carries a different, shorter block (a variant Concord's own setup writes for that tool) is listed in VARIANTS with the reason and is NOT generated
-or compared. Names only; no data, no secrets."""
+The block is the text between `<!-- concord:start -->` and `<!-- concord:end -->`; the rest of each file is kept. A
+generated file's block is the common text plus that tool's paragraph from PARAGRAPHS, if it has one. A file with its
+own shorter block is listed in VARIANTS and is neither generated nor compared.
+"""
 import re
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 BLOCK = re.compile(r"(<!-- concord:start -->\n)(.*?)(<!-- concord:end -->)", re.S)
-# generated file -> the tool whose own paragraph it carries after the common text (None: the common text only)
+# generated file -> the tool whose paragraph it carries after the common text (None: common text only)
 GENERATED = {".github/copilot-instructions.md": None, ".cursor/rules/concord.mdc": "cursor", ".codex/concord.md": None}
 VARIANTS = {".agents/rules/concord.md": "a shorter block written by Concord's own setup for that tool; not built from AGENTS.md"}
-# LIFE-593 (option b, Jim's decision of Nov 12 2026): AGENTS.md keeps only the Concord text Claude Code uses. What the other tools need to keep themselves reachable lives here, byte for byte as it
-# was in AGENTS.md, and a file generated for a tool gets the common text plus that tool's paragraph. A tool with no generated file yet keeps its paragraph here for when one exists.
+# What the other tools need to stay reachable lives here, not in AGENTS.md.
 PREAMBLE = "Replace <agent-id> with the id the SessionStart hook printed for this session.\nA monitor may not inherit the session's environment, so it cannot work the id out itself."
 PARAGRAPHS = {
     "grok": 'In Grok Build, keep this session reachable while idle by starting one persistent\nmonitor for `concord inbox watch --agent <agent-id> --provider grok`. Do not start a duplicate when that monitor is active.',
@@ -28,7 +27,6 @@ PARAGRAPHS = {
 
 
 def block_of(text):
-    """The text between the markers, or None when the markers are missing."""
     found = BLOCK.search(text)
     return found.group(2) if found else None
 
@@ -41,13 +39,15 @@ def source(root=ROOT):
 
 
 def expected(name, common):
-    """The block a generated file must carry: the common text, plus its tool's paragraph (with the monitor preamble) when it has one."""
+    """The block a generated file must carry: the common text plus its tool's paragraph (with the monitor preamble) when
+    it has one.
+    """
     tool = GENERATED[name]
     return common if tool is None else common + PREAMBLE + "\n\n" + PARAGRAPHS[tool] + "\n"
 
 
 def drifted(root=ROOT):
-    """-> the generated files (repo paths) whose block is missing or differs from what AGENTS.md and the table say it should be."""
+    """-> the generated files (repo paths) whose block is missing or differs from what AGENTS.md and the table say."""
     common = source(root)
     out = []
     for name in GENERATED:
@@ -58,7 +58,7 @@ def drifted(root=ROOT):
 
 
 def sync(root=ROOT):
-    """Write each generated file's block from AGENTS.md and the table -> the files that changed."""
+    """Write each generated file's block -> the files that changed."""
     common = source(root)
     changed = []
     for name in GENERATED:

@@ -1,14 +1,17 @@
-"""The alert registry (LIFE-75): every alert LIFE OS can send, in one list. Each entry says who owns it, how loud it is (severity), what it means, and which channels carry it
-by default. Severity and channels are read from here at send time, never typed at the call site: `alerts.push` refuses a key that is not listed, and tests/contracts/test_alert_registry.py
-fails when the code builds an alert or a push that is not listed. A key ending in `*` covers a family whose last part is data (a source name, a credential name).
-Jim approved the severities on Oct 25 2026 (LIFE-75 comment 11182): PAGE is the loud kind, INFO the quiet kind. Nothing here changes WHEN an alert fires.
-The channel names are the three places a push can land: the phone (ntfy) and the two copies the Oracle relay makes (Telegram, WhatsApp)."""
+"""The alert registry: every alert LIFE OS can send, in one list; each entry says who owns it, how loud it is (severity),
+what it means and which channels carry it by default.
+
+Severity and channels are read from here at send time: `alerts.push` refuses a key that is not listed, and
+tests/contracts/test_alert_registry.py fails when the code builds an alert or push that is not listed. A key ending in
+`*` covers a family whose last part is data. PAGE is the loud kind, INFO the quiet kind. Channels: the phone (ntfy)
+and the two copies the Oracle relay makes (Telegram, WhatsApp). Nothing here changes WHEN an alert fires.
+"""
 from typing import NamedTuple
 
 PAGE, INFO = "page", "info"
 CHANNELS = ("ntfy", "telegram", "whatsapp")
-LOUD = CHANNELS                      # a PAGE reaches every channel by default
-QUIET = ("ntfy",)                    # an INFO reaches the phone only by default
+LOUD = CHANNELS  # a PAGE reaches every channel by default
+QUIET = ("ntfy",)  # an INFO reaches the phone only by default
 
 
 class Spec(NamedTuple):
@@ -60,7 +63,7 @@ REGISTRY = {
     "scheduled_red_*": _page("platform", "A scheduled workflow's newest scheduled run failed: one page per workflow, none for a second red run (LIFE-692)."),
     "scheduled_recovered_*": _info("platform", "A scheduled workflow that was red passed its scheduled run(s) again (LIFE-692)."),
     "daily_check": _info("platform", "The daily check-in (LIFE-603): OK or DEGRADED, with the last 24 hours of hourly runs (counts only). Its absence is the alarm."),
-    # --- the edge host (lifeos/edge/ticker/ticker.py, LIFE-301; INFO: phone only, Jim approved the alarm Nov 7 2026)
+    # --- the edge host (lifeos/edge/ticker/ticker.py; INFO: phone only)
     "hermes_disk_full": _info("edge", "The Hermes disk image is 80% full or more."),
     "hermes_disk_full_recovered": _info("edge", "The Hermes disk image is back under 80%."),
     "deploy_drift": _info("edge", "A repo-owned file installed on the Oracle VM differs from main, or its unit is not running (LIFE-528)."),

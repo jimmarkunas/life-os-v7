@@ -1,10 +1,13 @@
-"""LIFE-863: the Doppler trial: read the same secret names from Doppler and compare each by hash with the value Bitwarden already loaded.
+"""The Doppler trial: read the same secret names from Doppler and compare each by hash with the value Bitwarden already loaded.
 
-    python -m lifeos.platform.doppler_compare        env: DOPPLER_TOKEN, DOPPLER_PROJECT, DOPPLER_CONFIG, COMPARE_NAMES (comma list), BITWARDEN (JSON object name -> value, from the masked Bitwarden step outputs)
+    python -m lifeos.platform.doppler_compare
+        env: DOPPLER_TOKEN, DOPPLER_PROJECT, DOPPLER_CONFIG, COMPARE_NAMES (comma list), BITWARDEN (JSON name -> value)
 
-Bitwarden stays the source of every value the job uses; this only compares. Values are compared by SHA-256 in memory and are never printed; Doppler's values are masked. Output: one `doppler-compare: {...}` line with counts, NAMES (not values), a fixed code and the
-Doppler read time, plus the step outputs `code`, `matched`, `total`, `doppler_ms`. Fixed codes: match, mismatch, missing_in_doppler, missing_in_bitwarden, doppler_unauthorized, doppler_unreachable, doppler_bad_reply, bad_input. A problem is a code and exit 0: the job
-keeps running on Bitwarden. Stdlib only."""
+Bitwarden stays the source of every value; this only compares, by SHA-256 in memory, and never prints a value. Output:
+one `doppler-compare: {...}` line (counts, NAMES, a fixed code, Doppler read time) plus step outputs `code`,
+`matched`, `total`, `doppler_ms`. Codes: match, mismatch, missing_in_doppler, missing_in_bitwarden,
+doppler_unauthorized, doppler_unreachable, doppler_bad_reply, bad_input. A problem is a code and exit 0.
+"""
 import hashlib
 import hmac
 import json
@@ -20,7 +23,9 @@ TIMEOUT_SECONDS = 20
 
 
 def fetch(token, project, config, timeout=TIMEOUT_SECONDS):
-    """-> (code, {name: value} or None). Doppler's download endpoint with the service token; no value is ever returned in a code."""
+    """-> (code, {name: value} or None) from Doppler's download endpoint with the service token; no value is ever
+    returned in a code.
+    """
     query = urllib.parse.urlencode({"format": "json", "project": project, "config": config})
     request = urllib.request.Request(f"{URL}?{query}", headers={"Authorization": f"Bearer {token}", "Accept": "application/json"})
     try:
@@ -42,7 +47,9 @@ def digest(value):
 
 
 def compare(names, bitwarden, doppler):
-    """-> {"matched": [...], "mismatched": [...], "missing_in_doppler": [...], "missing_in_bitwarden": [...]} by name; equality by hash."""
+    """-> {"matched": [...], "mismatched": [...], "missing_in_doppler": [...], "missing_in_bitwarden": [...]} by name;
+    equality by hash.
+    """
     out = {"matched": [], "mismatched": [], "missing_in_doppler": [], "missing_in_bitwarden": []}
     for name in names:
         have_b = isinstance(bitwarden.get(name), str) and bitwarden[name] != ""
@@ -77,7 +84,7 @@ def main(environ=os.environ, fetcher=fetch, clock=time.monotonic, out=print):
         else:
             for value in doppler.values():
                 if value:
-                    out(f"::add-mask::{value}")                                           # the runner masks it from here on; nothing prints it
+                    out(f"::add-mask::{value}")
             found = compare(names, bitwarden, doppler)
             result.update(matched=len(found["matched"]), mismatched=found["mismatched"], missing_in_doppler=found["missing_in_doppler"], missing_in_bitwarden=found["missing_in_bitwarden"])
             result["code"] = "match" if result["matched"] == len(names) else "missing_in_bitwarden" if found["missing_in_bitwarden"] else "missing_in_doppler" if found["missing_in_doppler"] else "mismatch"

@@ -1,11 +1,12 @@
-"""LIFE-757: the read-only fetchers behind the Followup readers: one per source, GET only, bounded by the checkpoint and a row cap. Fixtures only until the live step runs."""
-# `build_fetchers(environ)` -> {source: fetch(credential_ref, since)}, the `fetch` that `followup_readers.read_delta` calls. The reader passes a credential NAME; the fetcher accepts only the names in
-# CREDENTIAL_NAMES for ITS source (a grant can never point the Jira fetcher at the Todoist token or at any other environment variable), reads the value at call time and builds a read-only client.
-# Read-only is built in, not promised: each client is a subclass whose request path refuses every method but GET (token exchanges aside), and the Calendar scope is calendar.readonly.
-# A missing value or setting is a fixed code, which the reader turns into DEGRADED for that source alone. Rows carry only what the normalizers need (id, link, time, a title or subject); bodies,
-# snippets, descriptions, attendees and recipients are never kept. At most MAX_ROWS + 1 rows come back, so the reader sees a larger answer as truncated. Personal and Bytalos use separate names, and
-# Jira reads only that workspace's project keys. TGP is excluded: there is no TGP name, scope or credential here, and mail from or to a TGP address, or forwarded from one, is dropped.
-# Outlook tokens rotate, so each Outlook credential is a LABEL (the existing `personal` and `work` sign-ins, Nov 16 2026) whose token is read from, and rotated into, the private v7_outlook_token store. Jira creates NO new credential: it reads the existing JIRA_BASE_URL, JIRA_EMAIL and JIRA_API_TOKEN (grant refs are JIRA_API_TOKEN@personal / @bytalos). That token can write, so the Jira client is GET-only in code and a test pins it. Every other name below is a NEW read-only credential.
+"""The read-only fetchers behind the Followup readers: one per source, GET only, bounded by the checkpoint and a row cap.
+"""
+# `build_fetchers(environ)` -> {source: fetch(credential_ref, since)}, the `fetch` that `followup_readers.read_delta`
+# calls. The reader passes a credential NAME; the fetcher accepts only the names in CREDENTIAL_NAMES for ITS source
+# and builds a GET-only client at call time. A missing value or setting is a fixed code (the reader turns it into
+# DEGRADED for that source). Rows keep only id, link, time and a title or subject; at most MAX_ROWS + 1 come back so
+# truncation is visible. TGP mail (from, to or forwarded) is dropped. Outlook credentials are LABELS whose rotating
+# token lives in the v7_outlook_token store; Jira reuses a token that can write, so its client is GET-only in code and
+# a test pins it.
 from datetime import datetime, timedelta, timezone
 import functools
 import json
@@ -19,20 +20,20 @@ from lifeos.platform import gcal, gmail, jira, notion_client, outlook, todoist
 SOURCES = ("jira", "calendar", "gmail", "outlook", "todoist", "notion", "interview_os")
 TENANTS = ("personal", "bytalos")
 MAX_ROWS = readers.MAX_ROWS
-LOOKBACK_DAYS = 7                    # a first read (no checkpoint) looks back this far
-NOTION_LOOKBACK_DAYS = 1             # Notion search returns every edited page, so a first read looks back one day; more than MAX_ROWS rows in the window reads as `truncated` and the checkpoint never advances
+LOOKBACK_DAYS = 7
+NOTION_LOOKBACK_DAYS = 1  # a first Notion read looks back one day: search returns every edited page, and more than MAX_ROWS rows reads as `truncated`
 CALENDAR_AHEAD_DAYS = 30
-MARGIN = timedelta(minutes=5)        # the readers filter exactly on the checkpoint; this only keeps an API's coarse time filter from dropping a row
+MARGIN = timedelta(minutes=5)
 MAX_PAGES = 10
-JIRA_ENV = ("JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN")             # the EXISTING Jira secrets the hourly jira job already loads; no new Jira credential (Jim, Nov 16 2026)
-JIRA_PROJECTS = {"personal": ("JFM", "LIFE"), "bytalos": ("BAD", "BPP")}      # one Atlassian account; each workspace's grant reads only its own project keys (Jim, Nov 16 2026)
-GMAIL_APP = ("GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET")     # the existing OAuth app (not an account credential); the refresh token below is new and read-only
-OUTLOOK_SCOPES = outlook.SCOPES                                         # Mail.Read + Calendars.Read only; the label sign-in never asks for more
-OUTLOOK_APP = "OUTLOOK_CLIENT_ID"                                      # the existing public client id; the refresh token below is new and read-only
-SLOTS = {("outlook", "personal"): 2}                                   # two connected Personal Outlook accounts (a third, the school mailbox, needs its tenant admin to approve the app: NOT CONNECTED); every other source has one account per workspace
-OUTLOOK_LABELS = {1: "personal", 2: "work"}                            # the labels already signed in (the sign-in refuses a second label for the same mailbox); which address holds which label is not recorded in the repo
-STORED_TOKENS = {"outlook"}                                                           # these credentials are labels whose token is read from (and rotated in) the private database, not the environment
-NOT_USED = {("outlook", "bytalos"), ("todoist", "bytalos")}            # no Bytalos Outlook, Todoist is Personal only
+JIRA_ENV = ("JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN")
+JIRA_PROJECTS = {"personal": ("JFM", "LIFE"), "bytalos": ("BAD", "BPP")}
+GMAIL_APP = ("GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET")
+OUTLOOK_SCOPES = outlook.SCOPES
+OUTLOOK_APP = "OUTLOOK_CLIENT_ID"
+SLOTS = {("outlook", "personal"): 2}  # two connected Personal Outlook accounts; every other source has one per workspace
+OUTLOOK_LABELS = {1: "personal", 2: "work"}
+STORED_TOKENS = {"outlook"}
+NOT_USED = {("outlook", "bytalos"), ("todoist", "bytalos")}
 TGP_ADDRESS = re.compile(r"(?<![a-z0-9-])(?:[a-z0-9-]+\.)*tgpinternational\.com(?![a-z0-9-])", re.I)
 GMAIL_HEADERS = ("Subject", "From", "To", "Cc", "Reply-To", "Sender", "Return-Path", "Resent-From", "Resent-To", "Delivered-To", "X-Forwarded-For", "X-Forwarded-To", "X-Original-From",
                  "X-Original-To", "X-Original-Sender")
@@ -44,8 +45,8 @@ def _name(source, tenant, kind):
     return f"FOLLOWUP_{source}_{tenant.upper()}_{kind}"
 
 
-EXISTING = {"jira": "JIRA_API_TOKEN", "notion": "NOTION_API_TOKEN", "interview_os": "NOTION_API_TOKEN", "calendar": "GCAL_SERVICE_ACCOUNT_JSON"}   # reused as they are (Jim, Nov 16 2026: reuse wherever one exists)
-EXISTING_GMAIL = {"personal": "GMAIL_OAUTH_REFRESH_TOKEN"}                              # the mail job's refresh token; Bytalos Gmail has none, so it gets the one new name below
+EXISTING = {"jira": "JIRA_API_TOKEN", "notion": "NOTION_API_TOKEN", "interview_os": "NOTION_API_TOKEN", "calendar": "GCAL_SERVICE_ACCOUNT_JSON"}
+EXISTING_GMAIL = {"personal": "GMAIL_OAUTH_REFRESH_TOKEN"}
 
 
 def _credential_name(source, tenant, slot):
@@ -54,14 +55,14 @@ def _credential_name(source, tenant, slot):
     if source == "gmail" and tenant in EXISTING_GMAIL:
         return EXISTING_GMAIL[tenant]
     if source == "outlook":
-        return OUTLOOK_LABELS[slot]                                                   # an existing LABEL in v7_outlook_token (Microsoft rotates the token, so it lives in the database, not in a secret)
+        return OUTLOOK_LABELS[slot]
     return {"gmail": f"FOLLOWUP_GMAIL_{tenant.upper()}_READONLY_REFRESH", "todoist": f"FOLLOWUP_TODOIST_{tenant.upper()}_TOKEN"}[source]
 
 
 CREDENTIAL_NAMES = {(source, tenant, slot): _credential_name(source, tenant, slot) for source in SOURCES for tenant in TENANTS if (source, tenant) not in NOT_USED
                     for slot in range(1, SLOTS.get((source, tenant), 1) + 1)}
 _SHARED = {name for name in CREDENTIAL_NAMES.values() if list(CREDENTIAL_NAMES.values()).count(name) > 1}
-GRANT_REFS = {key: (f"{name}:{key[0]}.{key[1]}" if name in _SHARED else name) for key, name in CREDENTIAL_NAMES.items()}   # what a grant names; a secret shared by several grants carries source.workspace so each grant is its own
+GRANT_REFS = {key: (f"{name}:{key[0]}.{key[1]}" if name in _SHARED else name) for key, name in CREDENTIAL_NAMES.items()}  # what a grant names; a secret shared by several grants carries source.workspace so each grant is its own
 NEW_NAMES = sorted({name for name in CREDENTIAL_NAMES.values() if name.startswith("FOLLOWUP_")})
 REUSED_NAMES = sorted({name for key, name in CREDENTIAL_NAMES.items() if key[0] not in STORED_TOKENS and not name.startswith("FOLLOWUP_")})
 ACCOUNT_SOURCE = {"calendar": "CALENDAR", "interview_os": "INTERVIEW"}
@@ -72,8 +73,8 @@ def _account_name(key):
     return f"FOLLOWUP_ACCOUNT_{ACCOUNT_SOURCE.get(source, source.upper())}_{tenant.upper()}" + (f"_{slot}" if (source, tenant) in SLOTS else "")
 
 
-ACCOUNT_NAMES = {key: _account_name(key) for key in CREDENTIAL_NAMES}                # the short account label per credential comes from the environment (never from the repo)
-CONFIG_NAMES = {                                                                      # settings that are identifiers, not secrets (templates; {T} is PERSONAL or BYTALOS)
+ACCOUNT_NAMES = {key: _account_name(key) for key in CREDENTIAL_NAMES}
+CONFIG_NAMES = {  # settings that are identifiers, not secrets ({T} is PERSONAL or BYTALOS)
     "jira": ("JIRA_BASE_URL", "JIRA_EMAIL"), "calendar": ("FOLLOWUP_GCAL_{T}_CALENDAR_ID",), "gmail": GMAIL_APP, "outlook": (OUTLOOK_APP,),
     "todoist": (), "notion": (), "interview_os": ()}
 _BY_REF = {ref: key for key, ref in GRANT_REFS.items()}
@@ -113,12 +114,14 @@ class ReadOnlyCalendar(gcal.GoogleCalendar):
 
 class ReadOnlyGmail(gmail.Gmail):
     def _request(self, method, url, body=None, form=None, auth=True):
-        if not (method == "GET" or (method == "POST" and url == gmail.TOKEN_URL and not auth)):         # the one POST is the refresh-token exchange
+        if not (method == "GET" or (method == "POST" and url == gmail.TOKEN_URL and not auth)):  # the one POST is the refresh-token exchange
             raise FetchError("FOLLOWUP_READ_ONLY")
         return super()._request(method, url, body, form, auth)
 
     def message_metadata(self, message_id):
-        """One message's time and the few headers the reader needs (subject, and the routing headers the TGP filter checks); never the body."""
+        """One message's time and the few headers the reader needs (subject, routing headers for the TGP filter); never
+        the body.
+        """
         query = "&".join("metadataHeaders=" + urllib.parse.quote(name) for name in GMAIL_HEADERS)
         return self._request("GET", f"{gmail.API}/messages/{urllib.parse.quote(str(message_id), safe='')}?format=metadata&{query}")
 
@@ -132,7 +135,7 @@ class ReadOnlyOutlook(outlook.Outlook):
 
 class ReadOnlyNotion(notion_client.Client):
     def call(self, method, path, body=None):
-        if not (method == "GET" or (method == "POST" and (path == "/search" or (path.startswith("/data_sources/") and path.endswith("/query"))))):         # search and a data-source query are POSTs that only read
+        if not (method == "GET" or (method == "POST" and (path == "/search" or (path.startswith("/data_sources/") and path.endswith("/query"))))):  # search and a data-source query are POSTs that only read
             raise FetchError("FOLLOWUP_READ_ONLY")
         return super().call(method, path, body)
 
@@ -140,7 +143,7 @@ class ReadOnlyNotion(notion_client.Client):
 
 
 class DbTokens:
-    """The private refresh-token store (v7_outlook_token): load by label, save a rotated token. The rotation write-back is credential upkeep, the only write here."""
+    """The private refresh-token store: load by label, save a rotated token. The write-back is the only write here."""
 
     def load(self, label):
         from lifeos.platform import db, outlook_tokens as store              # noqa: PLC0415
@@ -154,11 +157,11 @@ class DbTokens:
 
 
 def _make_jira(base_url, email, token):
-    return ReadOnlyJira(base_url, email, token)                                       # basic auth is built from the two existing secrets at call time
+    return ReadOnlyJira(base_url, email, token)
 
 
 def _make_notion(secret):
-    return ReadOnlyNotion({"T": secret, "S": "search"}, token_name="T", source_name="S")      # the client wants a source name; every page is read through search, so none is used
+    return ReadOnlyNotion({"T": secret, "S": "search"}, token_name="T", source_name="S")  # every page is read through search, so the client's source name is unused
 
 
 FACTORIES = {
@@ -184,7 +187,8 @@ def _start(since, now, days=LOOKBACK_DAYS):
 
 
 def _own_id(client):
-    """The id of the bot behind this Notion token (one GET), or None when it cannot be read: then nothing is skipped."""
+    """The id of the bot behind this Notion token (one GET), or None when it cannot be read: then nothing is skipped.
+    """
     try:
         me = client.call("GET", "/users/me")
     except Exception:                                                                   # noqa: BLE001 - a failed lookup only means no self-edit filter
@@ -199,14 +203,13 @@ def _utc(text):
 
 
 def _is_tgp(*texts):
-    """True when any value names a TGP address or domain."""
     return any(TGP_ADDRESS.search(str(text)) for text in texts if text)
 
 
 def _read_jira(make, environ, tenant, secret, since, now):
     client = make(_config(environ, "JIRA_BASE_URL"), _config(environ, "JIRA_EMAIL"), secret)
     keys = JIRA_PROJECTS[tenant]
-    minutes = math.ceil((now - _start(since, now)).total_seconds() / 60)                  # a relative time: JQL accepts -Nm, so no date format is built here
+    minutes = math.ceil((now - _start(since, now)).total_seconds() / 60)  # JQL accepts a relative -Nm, so no date format is built
     jql = f"project in ({', '.join(keys)}) AND (assignee = currentUser() OR reporter = currentUser()) AND updated >= -{minutes}m ORDER BY updated ASC"
     rows, token = [], None
     for _ in range(MAX_PAGES):
@@ -215,7 +218,7 @@ def _read_jira(make, environ, tenant, secret, since, now):
             raise FetchError("FOLLOWUP_LISTING_INCOMPLETE")
         for issue in page["issues"]:
             key = issue.get("key") if isinstance(issue, dict) else None
-            if not isinstance(key, str) or key.split("-")[0] not in keys:                 # defense in depth: a key outside this workspace's projects is never returned
+            if not isinstance(key, str) or key.split("-")[0] not in keys:  # defense in depth: a key outside this workspace's projects is never returned
                 continue
             fields = issue.get("fields") or {}
             rows.append({"key": key, "fields": {"updated": _utc(fields.get("updated")), "summary": fields.get("summary"), "duedate": fields.get("duedate")}})
@@ -234,7 +237,8 @@ def _read_calendar(make, environ, tenant, secret, since, now):
 
 
 def _bare_token(secret):
-    """The runbook stores the bare refresh token; if the sign-in helper's JSON was pasted instead, take its refresh_token."""
+    """Accept the bare refresh token, or take refresh_token from the sign-in helper's JSON if that was stored instead.
+    """
     if secret.startswith("{"):
         try:
             secret = str(json.loads(secret).get("refresh_token") or "").strip()
@@ -255,7 +259,7 @@ def _read_gmail(make, environ, tenant, secret, since, now):
             raise FetchError("FOLLOWUP_LISTING_INCOMPLETE")
         headers = [h for h in (reply.get("payload") or {}).get("headers") or [] if isinstance(h, dict)]
         if _is_tgp(*[h.get("value") for h in headers if str(h.get("name")).lower() != "subject"]):
-            continue                                                                   # TGP is excluded: never a row, never a count
+            continue  # TGP: never a row, never a count
         subject = next((h.get("value") for h in headers if str(h.get("name")).lower() == "subject"), "")
         try:
             at = datetime.fromtimestamp(int(reply["internalDate"]) / 1000, timezone.utc).isoformat()
@@ -303,7 +307,7 @@ def _title(page):
 def _read_notion_like(time_key, title_key):
     def read(make, environ, tenant, secret, since, now):
         client, start = make(secret), _start(since, now, NOTION_LOOKBACK_DAYS)
-        own = _own_id(client)                                                         # the integration's own edits (V7 refreshing its cards) are not Jim's activity
+        own = _own_id(client)  # the integration's own edits are not Jim's activity
         body = {"page_size": 100, "filter": {"property": "object", "value": "page"}, "sort": {"direction": "descending", "timestamp": "last_edited_time"}}
         rows, cursor = [], None
         for _ in range(MAX_PAGES):
@@ -314,7 +318,7 @@ def _read_notion_like(time_key, title_key):
                 edited = _utc(item.get("last_edited_time")) if isinstance(item, dict) else None
                 if edited is None:
                     continue
-                if datetime.fromisoformat(edited) < start:                           # newest first: everything after this is older than the checkpoint
+                if datetime.fromisoformat(edited) < start:  # newest first: everything after this is older than the checkpoint
                     return rows
                 if own and ((item.get("last_edited_by") or {}).get("id") == own):
                     continue
@@ -336,7 +340,9 @@ READ = {"jira": _read_jira, "calendar": _read_calendar, "gmail": _read_gmail, "o
 
 
 def build_fetchers(environ, factories=None, clock=None, token_store=None):
-    """{source: fetch(credential_ref, since)}. `environ` is read at call time; `factories` replaces the client builders (tests); `clock` is the current UTC time; `token_store` holds the Outlook refresh tokens by label."""
+    """{source: fetch(credential_ref, since)}. `environ` is read at call time; `factories` replaces the client builders
+    (tests); `token_store` holds the Outlook refresh tokens by label.
+    """
     store = token_store or DbTokens()
     make = {**FACTORIES, **(factories or {})}
     now = clock or (lambda: datetime.now(timezone.utc))
