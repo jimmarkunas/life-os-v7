@@ -1,9 +1,9 @@
-"""LIFE-958: a Held round never asks to verify scheduling.
+"""A Held round never asks to verify scheduling.
 
-The round snapshot's Next action is written once, at creation, as `Verify scheduling and interview details before treating this round as confirmed.` when no Calendar event is linked. When the page's own status later reads
-Held (the round took place), that sentence is wrong. The Interview job replaces exactly that machine sentence, and nothing else, with the page's own follow-up: the Recommended Follow-Up action the After Interview review wrote,
-else the page's `Follow-up owed / due` line when it holds a real value, else `None`. A Next action line that reads any other way (a person's own words, an earlier repair) is never touched, so a second run writes nothing and a
-transition (a re-date or cancel) does not bring the sentence back: it changes only the lines whose two renders differ, and this line is the same in both."""
+The round snapshot's Next action is written once as the Verify-scheduling sentence when no Calendar event is linked.
+Once the page reads Held, this module replaces exactly that sentence, and nothing else, with the page's own
+follow-up: the Recommended Follow-Up action, else a real `Follow-up owed / due` value, else `None`. Any other Next
+action is never touched, so a second run writes nothing."""
 from lifeos.platform.notion_client import NotionError, rich_text
 from . import notion
 from .template import VERIFY_SCHEDULING
@@ -17,7 +17,6 @@ UNSET = ("Unverified", "Not verified", "None", "Unknown")
 
 
 def _walk(client, page_id, budget, context, depth=0):
-    """Every block of the page and of its non-page containers, in reading order."""
     for block in notion.children(client, page_id, budget, context):
         yield block
         if block.get("has_children") and block.get("type") not in ("child_page", "child_database") and depth < 4:
@@ -25,7 +24,7 @@ def _walk(client, page_id, budget, context, depth=0):
 
 
 def follow_up(client, page_id, context=None):
-    """-> the page's own next action: the Recommended Follow-Up action, else a real `Follow-up owed / due` value, else `None`."""
+    """-> the page's own next action: the Recommended Follow-Up action, else a `Follow-up owed / due` value, else `None`."""
     budget = [notion.MAX_CALLS]
     blocks = list(_walk(client, page_id, budget, context))
     texts = [notion.text(b).strip() for b in blocks]
@@ -45,7 +44,7 @@ def follow_up(client, page_id, context=None):
 
 
 def repair(client, page_id, live, counts, context=None):
-    """-> a fixed code. Replaces the machine's Verify sentence on a Held round's snapshot; any other Next action is left alone."""
+    """-> a fixed code. Replaces the machine's Verify sentence on a Held round; other Next actions are kept."""
     try:
         tops = notion.children(client, page_id, [notion.MAX_CALLS], context)
         callouts = [b for b in tops[1:] if b.get("type") == "callout"]

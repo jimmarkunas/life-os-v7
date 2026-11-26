@@ -66,8 +66,9 @@ def _title(page):
 
 
 def _page(client, page_id, expected_title=None, parent=None, code=_CODE):
-    """A page held by ID must be readable and live. LIFE-383 (D250): its title and its parent are NOT compared (`expected_title` and `parent` stay in the signature for the callers and are unused);
-    a page's identity is its machine marker block, checked by `_marked`."""
+    """A page held by ID must be readable and live.
+
+    Its identity is its marker block (see `_marked`), so title and parent are ignored."""
     with fixed(Exception, AdvisorStoreError, "advisor_store_unreadable", keep=AdvisorStoreError):
         page = client.call("GET", f"/pages/{page_id}")
         _need(isinstance(page, dict) and not page.get("archived") and not page.get("in_trash"), code)
@@ -84,13 +85,11 @@ _TEXT_BLOCKS = ("paragraph", "heading_1", "heading_2", "heading_3", "bulleted_li
 
 
 def _marker_like(block):
-    """Any text that looks like an Advisor marker or metadata line, whatever its version, spelling or block type."""
     kind = block.get("type")
     return kind in _TEXT_BLOCKS and _plain(block).strip().lower().startswith("v7-interview-advisor")
 
 
 def _marked(client, page_id, kind, metadata_prefix=None):
-    """First block is the exact marker; the only other marker-like text allowed is the one exact metadata block."""
     blocks = _blocks(client, page_id)
     marker = f"v7-interview-advisor:1;kind={kind}"
     _need(bool(blocks) and blocks[0].get("type") == "paragraph" and _plain(blocks[0]) == marker,
@@ -103,7 +102,6 @@ def _marked(client, page_id, kind, metadata_prefix=None):
 
 
 def _first_marker(client, page_id, kind):
-    """Read only the marker block; Queue contents belong to the later queue contract."""
     with fixed(Exception, AdvisorStoreError, "advisor_store_unreadable", keep=AdvisorStoreError):
         data = client.call("GET", f"/blocks/{page_id}/children?page_size=1")
         blocks = data["results"]
@@ -113,17 +111,18 @@ def _first_marker(client, page_id, kind):
 
 
 def _kind_of(client, page_id):
-    """The `kind` in the page's first-block marker `v7-interview-advisor:1;kind=<kind>`, else None (an unmarked page is free-form and not ours)."""
+    """The `kind` in the first-block marker `v7-interview-advisor:1;kind=<kind>`, else None for a free-form page."""
     with fixed(Exception, AdvisorStoreError, "advisor_store_unreadable"):
-        first = client.call("GET", f"/blocks/{page_id}/children?page_size=1")["results"][:1]     # the marker block only: a queue's contents belong to the queue contract
+        first = client.call("GET", f"/blocks/{page_id}/children?page_size=1")["results"][:1]
     text = _plain(first[0]) if first and first[0].get("type") == "paragraph" else ""
     match = re.fullmatch(r"v7-interview-advisor:1;kind=([a-z_]+)", text)
     return match.group(1) if match else None
 
 
 def _direct_pages(client, parent_id, allowed, kinds=None):
-    """The held page's child pages that carry an Advisor marker, mapped name -> page id. LIFE-383 (D250): each child is identified by its own machine marker (`kinds`: name -> marker kind),
-    never by its title or its parent; a page without a marker is free-form and ignored; every expected kind must appear exactly once."""
+    """The held page's marker-bearing child pages, mapped name -> page id.
+
+    Children are identified by marker kind, never by title or parent; every expected kind must appear exactly once."""
     kinds = kinds or {n: _MARKERS[n] for n in allowed}
     blocks = _blocks(client, parent_id)
     _need(not any(b.get("type") == "child_database" for b in blocks), "advisor_store_incomplete")
@@ -224,7 +223,7 @@ class AdvisorStoreSnapshot:
 
 
 def read_store(client, environ=os.environ):
-    """Read only the root configured by INTERVIEW_ADVISOR_ROOT_PAGE_ID and its exact required descendants."""
+    """Read the store under INTERVIEW_ADVISOR_ROOT_PAGE_ID and its required descendants; refuse if incomplete."""
     root_page_id = (environ.get("INTERVIEW_ADVISOR_ROOT_PAGE_ID") or "").strip()
     _need(bool(root_page_id), "advisor_store_invalid")
     with fixed(Exception, AdvisorStoreError, "advisor_store_unreadable", keep=AdvisorStoreError):
@@ -420,16 +419,16 @@ def create_preview(client, previews_page_id, generation_id, bundle, draft):
     _page(client, previews_page_id, "Advisor Previews")
     _marked(client, previews_page_id, "previews")
     existing = _blocks(client, previews_page_id)
-    marker = f"v7-interview-advisor-preview:1;{generation_id};"                      # LIFE-383 (D250): an existing preview is found by its own marker (it carries the generation id), not by its title
+    marker = f"v7-interview-advisor-preview:1;{generation_id};"
     for b in existing:
         if b.get("type") == "child_page":
             first = _blocks(client, b.get("id"))[:1]
             _need(not (first and first[0].get("type") == "paragraph" and _plain(first[0]).startswith(marker)), "advisor_preview_conflict")
-    # Once POST begins, never retry: a transport error may follow a committed insert.
+    # Never retry once POST begins: a transport error may follow a committed insert.
     try:
-        page = full_width.create_page(client, previews_page_id, title, blocks, post=post)                    # D16.1: a full width page, from the template; a failed write archives its stub
+        page = full_width.create_page(client, previews_page_id, title, blocks, post=post)
     except NotionError as error:
-        # Only a response that proves Notion rejected the request means nothing was created; everything else is uncertain.
+        # Only a response proving Notion rejected the request means nothing was created.
         raise AdvisorStoreError("advisor_preview_write_failed" if str(error) in _DEFINITE
                                 else "advisor_preview_readback_failed") from None
     except Exception:

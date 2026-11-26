@@ -155,7 +155,7 @@ def _call(client, budget, method, path, body=None, once=False):
 def _page(client, budget, page_id, title, parent=None, unavailable="advisor_queue_incomplete"):
     page = _call(client, budget, "GET", f"/pages/{page_id}")
     _need(isinstance(page, dict) and not page.get("archived") and not page.get("in_trash"), unavailable)
-    return page                                         # LIFE-383 (D250): no title or parent comparison; `title` and `parent` stay in the signature, unused; identity is the marker block
+    return page
 
 
 def _children(client, budget, page_id):
@@ -166,7 +166,7 @@ def _children(client, budget, page_id):
 
 
 def _queue(client, budget, queue_page_id):
-    _page(client, budget, queue_page_id, _QUEUE_TITLE)         # the queue page is held by ID (the store hands it over); its root is not derived from its parent (D250)
+    _page(client, budget, queue_page_id, _QUEUE_TITLE)
     first_data = _call(client, budget, "GET", f"/blocks/{queue_page_id}/children?page_size=1")
     _need(isinstance(first_data, dict) and isinstance(first_data.get("results"), list),
           "advisor_queue_incomplete")
@@ -180,7 +180,7 @@ def _queue(client, budget, queue_page_id):
 
 
 def _marker_ids(client, budget, block_id, pattern):
-    """The groups of a child page's first-block marker (`pattern`), else None: the page's own machine identity (D250), read as its first block only."""
+    """The groups of a child page's first-block marker, else None."""
     data = _call(client, budget, "GET", f"/blocks/{block_id}/children?page_size=1")
     first = data.get("results") if isinstance(data, dict) else None
     _need(isinstance(first, list), "advisor_queue_incomplete")
@@ -202,13 +202,12 @@ def _read_request(client, budget, page_id, expected_parent=None):
     marker = _MARKER.fullmatch(_plain(blocks[0])) if blocks[0].get("type") == "paragraph" else None
     _need(marker is not None and blocks[1].get("type") == "paragraph", "advisor_queue_invalid")
     mid, bundle_hash = marker.groups()
-    request_id = mid                                                 # LIFE-383 (D250): the request id is the marker's own id, never parsed from the title
+    request_id = mid
     payload = _plain(blocks[1])
     _need(not _reserved(payload), "advisor_queue_invalid")
     bundle = parse_bundle(payload)
     _need(advisor.bundle_digest(bundle) == bundle_hash and bundle_hash[:32] == request_id, "advisor_queue_conflict")
     request = QueueRequest(request_id, bundle_hash, bundle, page_id)
-    # A valid request body is immutable; child anomalies are classified by scan_queue as AMBIGUOUS.
     return request, blocks[2:]
 
 
@@ -240,9 +239,9 @@ def ensure_request(client, queue_page_id, bundle):
     candidates = []
     for block in queue_blocks[1:]:
         _need(block.get("type") == "child_page", "advisor_queue_invalid")
-        pair = _marker_ids(client, budget, block.get("id"), _MARKER)         # LIFE-383 (D250): a request page is recognised by its own marker, not by its title
+        pair = _marker_ids(client, budget, block.get("id"), _MARKER)
         _need(pair is not None, "advisor_queue_invalid")
-        _need(pair[1][:32] == pair[0], "advisor_queue_conflict")             # a marker whose id is not its hash's prefix is tampered: fail closed
+        _need(pair[1][:32] == pair[0], "advisor_queue_conflict")             # Tampered marker: fail closed.
         if pair[0] == request_id:
             candidates.append(block.get("id"))
     if len(candidates) > 1:
@@ -255,7 +254,7 @@ def ensure_request(client, queue_page_id, bundle):
         return existing
     request = QueueRequest(request_id, bundle_hash, bundle, "")
     try:
-        page = full_width.create_page(client, queue_page_id, title, _request_blocks(request))                # D16.1: a full width page, from the template; a failed write archives its stub
+        page = full_width.create_page(client, queue_page_id, title, _request_blocks(request))
     except NotionError as error:
         status = re.fullmatch(r"NOTION_HTTP_(\d+)", str(error))
         raise AdvisorQueueError("advisor_queue_write_failed" if status and int(status.group(1)) in _DEFINITE
@@ -334,7 +333,7 @@ def scan_queue(client, queue_page_id):
     for block in blocks[1:]:
         _need(block.get("type") == "child_page", "advisor_queue_invalid")
         request, extras = _request_for_scan(client, budget, queue_page_id, block)
-        _need(request.request_id not in seen_request_ids, "advisor_queue_conflict")      # LIFE-383 (D250): the id comes from the request's own marker
+        _need(request.request_id not in seen_request_ids, "advisor_queue_conflict")
         seen_request_ids.add(request.request_id)
         child_pages = [b for b in extras if b.get("type") == "child_page"]
         malformed = len(child_pages) != len(extras) or len(child_pages) > 1

@@ -1,9 +1,9 @@
-"""LIFE-37 Step 2, part 2: one manual run that carries ONE Granola meeting from Oracle into its round's Full Transcript page, and stops.
+"""Manual run that carries ONE Granola meeting from Oracle into its round's Full Transcript page, and stops.
 
-Order (Jim's approved plan, LIFE-37 comments 11218, 11231): ask Oracle to sync and list its meetings -> keep the pinned Central day (exactly one meeting must fall on it)
--> match every listed meeting to the rounds in Notion under the approved rule -> the pinned meeting must match exactly one round -> fetch its transcript and run the
-contract check -> write the Full Transcript page and read it back -> only after a verified write (or an identical page already there) ask Oracle to purge its copy ->
-refresh the round's Transcript lines. Never loops to a second meeting. Returns codes and counts only; no title, name, address, id or transcript text leaves this module."""
+Order: sync and list Oracle's meetings, keep the pinned Central day (exactly one meeting), match meetings to rounds
+in Notion, fetch the transcript and run the contract check, write the page and read it back, then ask Oracle to purge
+its copy and refresh the round's Transcript lines. Returns codes and counts only; no title, name, id or transcript
+text leaves this module."""
 import os
 
 from lifeos.platform.fixed_code import fixed
@@ -23,7 +23,7 @@ class Stop(Exception):
 
 
 def rounds(client, environ, context, counts=None):
-    """The dated rounds under the Hiring Pipeline. With `counts`, also tallies what was scanned (opportunities, rounds with no interview date) so a stop can be diagnosed."""
+    """The dated rounds under the Hiring Pipeline; `counts`, when given, also receives scan tallies."""
     scan = notion.parents(client, environ, context)
     if not scan.complete:
         raise Stop("GRAN_PIPELINE_INCOMPLETE")
@@ -49,7 +49,9 @@ def meetings(reply):
 
 
 def run(live, only_day, environ=os.environ, send=granola_oracle.exchange, client=None, context=None):
-    """-> {"code": the final fixed code, "counts": {...}}. `only_day` (YYYY-MM-DD, Central) is required: the first write is pinned to one day, and exactly one synced meeting must fall on it."""
+    """-> {"code": final fixed code, "counts": {...}}.
+
+    `only_day` (YYYY-MM-DD, Central) is required and pins the write."""
     counts = {"opportunities": 0, "rounds_undated": 0, "sync_documents": 0, "sync_transcripts": 0, "meetings": 0, "on_day": 0, "rounds": 0, "segments": 0, "writes": 0, "readback_ok": 0, "purged": 0, "linked": 0}
     context = context or RunContext.start(600)
     host = (environ.get("IMESSAGE_ALERTS_HOST") or "").strip()
@@ -104,6 +106,6 @@ def run(live, only_day, environ=os.environ, send=granola_oracle.exchange, client
 
 
 def stage(limit, live, environ=os.environ):
-    """`python -m lifeos.run granola [--live]`: GRAN_PIN_DAY (YYYY-MM-DD, Central) names the one day to carry. Counts and the final fixed code only. `limit` is unused: one meeting, always."""
+    """`python -m lifeos.run granola [--live]`: GRAN_PIN_DAY names the one day to carry. `limit` is unused."""
     out = run(live, (environ.get("GRAN_PIN_DAY") or "").strip(), environ=environ)
     return {"code": out["code"], "failed": 0 if out["code"] in ("TRANSCRIPT_WRITTEN", "TRANSCRIPT_NOOP", "TRANSCRIPT_PLANNED") else 1, **out["counts"]}
