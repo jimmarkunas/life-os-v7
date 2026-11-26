@@ -4,7 +4,7 @@ import io
 import unittest
 
 from lifeos.recruiters import fill, notion as store, stage
-from tests.recruiters.fakes import FakeRecruiters, ReadOnlyGmail, mail, page, renamed_page
+from tests.recruiters.fakes import FakeRecruiters, ReadOnlyGmail, mail, page
 from tests.recruiters.test_recruiters import NOW, SIGNED, run, signed
 
 ASK = SIGNED + "\nCould you send an updated resume today?\n"
@@ -35,38 +35,35 @@ class Fallback(unittest.TestCase):
         self.assertTrue(row["what"].startswith("Reply to their message") and row["needs_review"])
 
 
-class BothNames(unittest.TestCase):
-    def test_the_old_names_are_read_and_written_before_the_rename(self):
+class Names(unittest.TestCase):
+    def test_rows_are_read_and_written_under_recruiter_and_company(self):
         notion = FakeRecruiters()
-        run([signed()], notion, live=True)
-        keys = set(notion.writes[0][1])
-        self.assertTrue({"Recruiter / Person", "Recruiter Company"} <= keys and not ({"Recruiter", "Company"} & keys))
-        self.assertEqual(store.read(notion.pages[0])["person"], "Pat Example")
-
-    def test_the_renamed_names_are_read_and_written_after_the_rename(self):
-        notion = FakeRecruiters(renamed=True)
         run([signed()], notion, live=True)
         keys = set(notion.writes[0][1])
         self.assertTrue({"Recruiter", "Company"} <= keys and not ({"Recruiter / Person", "Recruiter Company"} & keys))
         row = store.read(notion.pages[0])
         self.assertEqual((row["person"], row["company"]), ("Pat Example", "Acme Staffing"))
-        again = run([signed()], notion, live=True)                                                  # a replay on the renamed schema finds the same row
+        again = run([signed()], notion, live=True)                                                  # a replay finds the same row
         self.assertEqual((again["created"], len(notion.pages)), (0, 1))
 
-    def test_read_takes_either_name_from_a_page_and_prefers_the_renamed_one(self):
-        old, new = page("Pat Example", "Acme"), renamed_page(page("Pat Example", "Acme"))
-        self.assertEqual((store.read(old)["person"], store.read(old)["company"]), ("Pat Example", "Acme"))
-        self.assertEqual((store.read(new)["person"], store.read(new)["company"]), ("Pat Example", "Acme"))
-
-    def test_neither_name_is_a_fixed_code(self):
-        notion = FakeRecruiters(renamed=True)
-        del notion.schema["Recruiter"]
+    def test_the_old_names_alone_fail_closed_with_the_fixed_code(self):
+        notion = FakeRecruiters(schema={})
+        notion.schema = {("Recruiter / Person" if n == "Recruiter" else "Recruiter Company" if n == "Company" else n): {"type": t} for n, t in store.SCHEMA.items()}
         with self.assertRaises(store.RecruitersError) as caught:
             store.check_schema(notion)
         self.assertEqual(str(caught.exception), "RECRUITERS_NOTION_SCHEMA_MISMATCH")
+        self.assertEqual(notion.writes, [])
 
-    def test_company_fill_writes_the_live_name(self):
-        notion = FakeRecruiters([renamed_page(page("Pat Example", "", role="", url="https://mail.google.com/m/1"))], renamed=True)
+    def test_either_new_name_missing_is_a_fixed_code(self):
+        for missing in ("Recruiter", "Company"):
+            notion = FakeRecruiters()
+            del notion.schema[missing]
+            with self.assertRaises(store.RecruitersError) as caught:
+                store.check_schema(notion)
+            self.assertEqual(str(caught.exception), "RECRUITERS_NOTION_SCHEMA_MISMATCH")
+
+    def test_company_fill_writes_company(self):
+        notion = FakeRecruiters([page("Pat Example", "", role="", url="https://mail.google.com/m/1")])
         store.check_schema(notion)
         props, _ = fill.plan(store.read(notion.pages[0]), mail(body=SIGNED))
         self.assertIn("Company", props)

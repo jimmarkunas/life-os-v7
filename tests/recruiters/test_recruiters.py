@@ -209,7 +209,7 @@ class StageTests(unittest.TestCase):
 
     def test_unknown_schema_means_no_mutation(self):
         notion = FakeRecruiters()
-        notion.call = lambda method, path, body=None: {"properties": {"Recruiter / Person": {"type": "title"}}}
+        notion.call = lambda method, path, body=None: {"properties": {"Recruiter": {"type": "title"}}}
         with self.assertRaises(store.RecruitersError):
             run([signed()], notion, live=True)
         self.assertEqual(notion.writes, [])
@@ -361,7 +361,7 @@ class EnrichmentTests(unittest.TestCase):
         row = store.read(notion.pages[0])
         self.assertEqual((row["page_id"], row["company"], row["role"], row["what"], row["done"], row["active"], row["needs_review"], row["source_url"]),
                          ("page-riley", "NW", "Technical Project Manager", WANT, False, True, True, self.SRC))      # Needs review is the human's to clear
-        self.assertEqual(sorted(notion.writes[0][1]), ["Recruiter Company", "Role", "What they want"])
+        self.assertEqual(sorted(notion.writes[0][1]), ["Company", "Role", "What they want"])
         again = run([opportunity(received="2026-10-07T15:00:00+00:00")], notion, live=True)
         self.assertEqual((again["updated"], again["created"], again["existing"], len(notion.writes), len(notion.pages)), (0, 0, 1, 1, 1))
 
