@@ -5,11 +5,13 @@ CI) and by the git hooks. A finding names the file, the line and the kind and sh
 value; the full value is never printed. Real Notion ids are kept out of this repository by stable names such as
 `notion:daily_report` (and `lifeos.platform.notion_ids`, which gives an unconfigured name a hash that matches
 nothing), so a 32-digit hex string or a UUID is a finding unless it is made up (all zeros, one repeated digit per
-group, a counting run) or listed by exact value, with a reason, in `tools/public_repo_guard_allow.txt`. An email
-address is a finding unless it is @example.com, .org or .net, a noreply address of Anthropic or GitHub, or listed
-the same way."""
+group, a counting run) or listed in `tools/public_repo_guard_allow.txt`. An email address is a finding unless it is
+@example.com, .org or .net, a noreply address of Anthropic or GitHub, or listed the same way. The list holds the
+SHA-256 of each exact value (an id without hyphens, an address in lower case), each with a reason, so the list never
+copies a value into the repository; `--hash VALUE` prints the line to add."""
 
 import argparse
+import hashlib
 import os
 import re
 import subprocess
@@ -22,7 +24,7 @@ ID = re.compile(
     r"(?<![0-9A-Za-z])([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|[0-9a-fA-F]{32})(?![0-9A-Za-z])"
 )
 FREE_DOMAINS = ("example.com", "example.org", "example.net")
-FREE_ADDRESSES = ("noreply@anthropic.com", "noreply@github.com")
+FREE_ADDRESSES = tuple("noreply" + "@" + domain for domain in ("anthropic.com", "github.com"))
 HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 MAX_SHOWN = 6
 
@@ -46,8 +48,14 @@ def shown(value):
     return value if len(value) <= MAX_SHOWN else value[:3] + "…" + value[-2:]
 
 
+def digest(kind, value):
+    """SHA-256 of the exact value: an address in lower case, an id as its digits without hyphens."""
+    text = value.lower() if kind == "personal email" else value.replace("-", "").lower()
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
 def load_allowlist(path=ALLOW_FILE):
-    """-> {lowercase value: reason} from lines `value | reason`; a line without a reason is an error."""
+    """-> {sha256 of the value: reason} from lines `sha256 | reason`; a line without a reason is an error."""
     allowed = {}
     if not os.path.exists(path):
         return allowed
@@ -57,16 +65,20 @@ def load_allowlist(path=ALLOW_FILE):
             if not text or text.startswith("#"):
                 continue
             value, bar, reason = (part.strip() for part in text.partition("|"))
-            if not value or not bar or not reason:
-                raise ValueError(f"{os.path.basename(path)} line {number}: every entry needs `value | reason`")
-            allowed[value.lower()] = reason
+            if not re.fullmatch(r"[0-9a-f]{64}", value) or not bar or not reason:
+                raise ValueError(f"{os.path.basename(path)} line {number}: every entry needs `sha256 | reason`")
+            allowed[value] = reason
     return allowed
 
 
 def _email_ok(address, allowed):
     low = address.lower()
     domain = low.rsplit("@", 1)[1]
-    return low in FREE_ADDRESSES or low in allowed or any(domain == d or domain.endswith("." + d) for d in FREE_DOMAINS)
+    return (
+        low in FREE_ADDRESSES
+        or digest("personal email", low) in allowed
+        or any(domain == d or domain.endswith("." + d) for d in FREE_DOMAINS)
+    )
 
 
 def scan_line(name, number, line, allowed):
@@ -76,7 +88,7 @@ def scan_line(name, number, line, allowed):
             found.append((name, number, "personal email", shown(match.group(0))))
     for match in ID.finditer(line):
         value = match.group(1)
-        if not made_up(value) and value.lower() not in allowed:
+        if not made_up(value) and digest("notion id", value) not in allowed:
             found.append((name, number, "notion id", shown(value)))
     return found
 
@@ -118,7 +130,12 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--staged", action="store_true", help="scan the staged changes")
     parser.add_argument("--message", metavar="FILE", help="scan a commit message file")
+    parser.add_argument("--hash", metavar="VALUE", help="print the allowlist line start for a value (add ` | reason`)")
     args = parser.parse_args(argv)
+    if args.hash:
+        kind = "personal email" if "@" in args.hash else "notion id"
+        print(digest(kind, args.hash))
+        return 0
     found = []
     if args.staged:
         found += scan_diff(_git("diff", "--cached", "--unified=0", "--no-color", "--diff-filter=ACMR"))

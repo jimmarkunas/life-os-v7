@@ -18,6 +18,7 @@ ALLOW = ROOT / "tools" / "public_repo_guard_allow.txt"
 # Bad values are built from pieces, so this file does not contain one.
 BAD_MAIL = "someone" + "@" + "gmail" + ".com"
 BAD_UUID = "1a2b3c4d" + "-5926-" + "4e5f-9a8b-7c6d5e4f3a2b"
+VENDOR = "sender" + "@" + "vendor.test"
 BAD_HEX = "".join(["9f8e7d6c", "5b4a4938", "8271605f", "4e3d2c1b"])
 
 
@@ -43,21 +44,28 @@ class Tree(unittest.TestCase):
 
     def test_every_allowlist_entry_has_a_reason_and_still_matches_something(self):
         allowed = guard.load_allowlist()
-        text = "\n".join(t.lower() for name, t in tracked_text() if name != "tools/public_repo_guard_allow.txt")
+        seen = set()
+        for name, text in tracked_text():
+            if name != "tools/public_repo_guard_allow.txt":
+                seen |= {guard.digest("personal email", m.group(0)) for m in guard.EMAIL.finditer(text)}
+                seen |= {guard.digest("notion id", m.group(1)) for m in guard.ID.finditer(text)}
         self.assertGreater(len(allowed), 0)
         for value, reason in allowed.items():
-            self.assertTrue(reason.strip(), value[:3])
-            self.assertIn(value, text, f"unused entry {guard.shown(value)}: remove it")
+            self.assertTrue(reason.strip(), value[:6])
+            self.assertIn(value, seen, f"unused entry {value[:6]}: remove it")
 
     def test_a_line_without_a_reason_is_refused(self):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "allow.txt"
-            for bad in ("value-only\n", "value |\n", " | reason\n"):
+            for bad in ("value-only\n", "abc |\n", " | reason\n", "not-a-hash | reason\n"):
                 path.write_text(bad)
                 with self.assertRaises(ValueError):
                     guard.load_allowlist(str(path))
-            path.write_text("# comment\n\nsender@vendor.test | a vendor sender address\n")
-            self.assertEqual(guard.load_allowlist(str(path)), {"sender@vendor.test": "a vendor sender address"})
+            line = guard.digest("personal email", VENDOR) + " | a vendor sender address\n"
+            path.write_text("# comment\n\n" + line)
+            self.assertEqual(
+                guard.load_allowlist(str(path)), {guard.digest("personal email", VENDOR): "a vendor sender address"}
+            )
 
 
 class Pull(unittest.TestCase):
@@ -89,14 +97,16 @@ class Rules(unittest.TestCase):
 
     def test_allowed_addresses_pass(self):
         for address in (
-            "noreply@anthropic.com",
-            "noreply@github.com",
+            "noreply" + "@" + "anthropic.com",
+            "noreply" + "@" + "github.com",
             "a@example.com",
-            "a@mail.example.org",
-            "x@example.net",
+            "a" + "@" + "mail.example.org",
+            "x" + "@" + "example.net",
         ):
             self.assertEqual(guard.scan_text("f", address, {}), [], address)
-        self.assertEqual(guard.scan_text("f", "Sender@Vendor.test", {"sender@vendor.test": "r"}), [])
+        listed = {guard.digest("personal email", VENDOR): "r"}
+        self.assertEqual(guard.scan_text("f", VENDOR.upper(), listed), [])
+        self.assertEqual(len(guard.scan_text("f", VENDOR, {})), 1)
 
     def test_a_real_looking_id_is_a_finding_dashed_or_plain_and_never_shown_whole(self):
         for value in (BAD_UUID, BAD_UUID.replace("-", ""), BAD_HEX, BAD_HEX.upper()):
@@ -113,7 +123,10 @@ class Rules(unittest.TestCase):
             "00000000000000000000000000000abc",
         ):
             self.assertEqual(guard.scan_text("f", value, {}), [], value)
-        self.assertEqual(guard.scan_text("f", BAD_HEX, {BAD_HEX: "a proven hash"}), [])
+        self.assertEqual(guard.scan_text("f", BAD_HEX, {guard.digest("notion id", BAD_HEX): "a proven hash"}), [])
+        self.assertEqual(
+            guard.scan_text("f", BAD_UUID, {guard.digest("notion id", BAD_UUID): "r"}), []
+        )  # dashed or plain
 
     def test_longer_hex_such_as_a_commit_or_content_hash_is_not_an_id(self):
         self.assertEqual(guard.scan_text("f", "sha " + "a1b2c3d4e5" * 4 + " end", {}), [])

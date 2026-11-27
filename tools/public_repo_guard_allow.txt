@@ -1,94 +1,95 @@
-# Values the public-repo guard lets through, one per line: `value | reason`. Every entry needs a reason.
+# Values the public-repo guard lets through, one per line: `sha256 | reason`. Every entry needs a reason.
+# The hash is of the exact value (an address in lower case, an id without hyphens): `python -m lifeos.platform.public_repo_guard --hash VALUE`.
 # Only add a value you have proven is not a personal email address or a real Notion id (a vendor sender address,
-# a Bitwarden secret id, a vendor job id, a commit or content hash). Real Notion ids never go here: use a stable name.
+# a Bitwarden secret id, a vendor job id, a content hash). Real Notion ids never go here: use a stable name.
 
-0053654c-d504-4453-87f7-b5080113d136 | Bitwarden secret id, not a Notion id (by design)
-00d82e0d-be10-4c8c-bdbe-b4db015ed389 | Bitwarden secret id, not a Notion id (by design)
-039e50d1-2793-4809-9ef2-b503015f8fc0 | Bitwarden secret id, not a Notion id (by design)
-08245c07-728f-438e-940b-b4db015a6967 | Bitwarden secret id, not a Notion id (by design)
-092b44ae-32cb-453b-8cc2-b4db015ef571 | Bitwarden secret id, not a Notion id (by design)
-1051e89d-233b-4050-b6ce-b50401674a4f | Bitwarden secret id, not a Notion id (by design)
-10a984d9-e720-4012-b457-b504015ed0cb | Bitwarden secret id, not a Notion id (by design)
-141b6f81-341b-4277-b2b3-b503015f8bd0 | Bitwarden secret id, not a Notion id (by design)
-187ac5b0-200b-4800-973f-b4db015ecc0a | Bitwarden secret id, not a Notion id (by design)
-192db2d1-be66-4fca-b9b5-b4e900240507 | Bitwarden secret id, not a Notion id (by design)
-1dde497d-8758-4eed-8aac-816bed294b63 | public vendor job id the live probe requests
-1efae544-c7e8-44fb-9201-ad978e31076c | Atlassian cloud id inside a gateway URL, not a Notion id
-27bf9699-1f27-4176-beba-b503015f89b1 | Bitwarden secret id, not a Notion id (by design)
-2b2c73a9-7a1e-44b9-95f0-b50301509b09 | Bitwarden secret id, not a Notion id (by design)
-31a07198-aa35-450f-913c-b4db015a690d | Bitwarden secret id, not a Notion id (by design)
-3e264d79-3af4-4f2a-a86a-b4db015a68de | Bitwarden secret id, not a Notion id (by design)
-3fa6f4f4-bd6d-45e7-8f2c-b4db015ec0c3 | Bitwarden secret id, not a Notion id (by design)
-454e12df-637f-4f65-9ec1-b4e30052942f | Bitwarden secret id, not a Notion id (by design)
-46fe195b-82e2-416e-8272-b4db015eea12 | Bitwarden secret id, not a Notion id (by design)
-486e59dc-2cfe-4ce1-80e4-b503015b80b0 | Bitwarden secret id, not a Notion id (by design)
-4c76200c-a064-41b4-9594-b504015e855e | Bitwarden secret id, not a Notion id (by design)
-4d0c7449-ed0a-46c1-9c2c-b503015f8d54 | Bitwarden secret id, not a Notion id (by design)
-53dc3d04-dbb2-45fe-8185-b4db015eedcb | Bitwarden secret id, not a Notion id (by design)
-53f47cb9-f6bb-4cde-87f4-b4db015ef928 | Bitwarden secret id, not a Notion id (by design)
-53f91adc-5bb5-4a33-98a8-b5030155ac02 | Bitwarden secret id, not a Notion id (by design)
-6590208b-506d-4238-ab10-b4e30051b25f | Bitwarden secret id, not a Notion id (by design)
-672a44e9-235f-4121-a99d-b4db015a6987 | Bitwarden secret id, not a Notion id (by design)
-6aac4a8e-309a-4c44-aa8d-b5040184cfe8 | Bitwarden secret id, not a Notion id (by design)
-6b3e12b9-1987-4073-bda2-b4db015ee653 | Bitwarden secret id, not a Notion id (by design)
-6c067b5b-b2c6-4f6b-b6f2-b503015a2e3f | Bitwarden secret id, not a Notion id (by design)
-6f1c86f6-c48f-4e77-b65d-b4db015edb15 | Bitwarden secret id, not a Notion id (by design)
-7ada9cea-8711-4b37-bef9-b4db015ee298 | Bitwarden secret id, not a Notion id (by design)
-7b62e076-8a46-4228-9977-b4db015f0463 | Bitwarden secret id, not a Notion id (by design)
-7f144adc-14f8-42b7-898f-b5040184a962 | Bitwarden secret id, not a Notion id (by design)
-815268ba-fa49-4461-afb3-b4db015ef189 | Bitwarden secret id, not a Notion id (by design)
-82efa413-6b9c-4c5c-b0d2-b503015f8e3d | Bitwarden secret id, not a Notion id (by design)
-83c553e9-23a6-45aa-9006-b4db015f00ac | Bitwarden secret id, not a Notion id (by design)
-8657d1ed-2cde-4298-bd62-b50301523e01 | Bitwarden secret id, not a Notion id (by design)
-875eafd7-b718-4bcb-bf1c-b503015f916f | Bitwarden secret id, not a Notion id (by design)
-881cd6f8-ee94-4e6d-a20d-b5040167732c | Bitwarden secret id, not a Notion id (by design)
-89238d39-3528-44b6-90f4-b5040188c384 | Bitwarden secret id, not a Notion id (by design)
-90130d93-3843-44be-8c37-b504015e66e1 | Bitwarden secret id, not a Notion id (by design)
-9422b842-3bb0-4153-bb8d-b4db015ed746 | Bitwarden secret id, not a Notion id (by design)
-9f8e7d6c-5b4a-4938-8271-605f4e3d2c1b | random sample id inside the privacy test's own checks, not a Notion id
-a6d3a41b-c451-4d4d-b1fb-b50e00c2d0f4 | Bitwarden secret id, not a Notion id (by design)
-b533a10f-69b5-4ccf-8f47-b503015f90a4 | Bitwarden secret id, not a Notion id (by design)
-b65dd2fc-2573-4bda-9e80-b4db015edec6 | Bitwarden secret id, not a Notion id (by design)
-b78d1476-663e-496d-9bc4-b4e1003b61b0 | Bitwarden secret id, not a Notion id (by design)
-b7b921fa-3f62-478a-a4f5-b4db015efcf7 | Bitwarden secret id, not a Notion id (by design)
-bb1503dc-1603-43b8-a315-b5030156ca0d | Bitwarden secret id, not a Notion id (by design)
-c7b3ff1a-e0d9-456a-b8c6-b5030158f900 | Bitwarden secret id, not a Notion id (by design)
-c87d470c-b351-4004-a5ea-b50401885f98 | Bitwarden secret id, not a Notion id (by design)
-ca47c0f1-5a25-4dbf-9b36-b503015f8f15 | Bitwarden secret id, not a Notion id (by design)
-d58fac7a-9c4e-4678-8327-b503015f922b | Bitwarden secret id, not a Notion id (by design)
-d71bbaed-6a6c-49b5-8a1f-b4db015ecfda | Bitwarden secret id, not a Notion id (by design)
-dc0b1ad9-45a8-4e1f-8868-b503015f8c97 | Bitwarden secret id, not a Notion id (by design)
-e54f0a84-84c3-47d8-8b5b-b4e30052d6e9 | Bitwarden secret id, not a Notion id (by design)
-e6466367-9a55-4899-ae1c-b4db015ec49f | Bitwarden secret id, not a Notion id (by design)
-efc8fc25-0228-4aa4-a7ee-b503015f8a8c | Bitwarden secret id, not a Notion id (by design)
-f143e760-f52a-499f-a6be-b504015ea555 | Bitwarden secret id, not a Notion id (by design)
-f207f236-5ede-43c1-bd45-b4db015ec857 | Bitwarden secret id, not a Notion id (by design)
-f45f29e2-acbc-4be7-9749-b4db015f0817 | Bitwarden secret id, not a Notion id (by design)
-f92e4a37-0289-40a6-b31f-b503015f8824 | Bitwarden secret id, not a Notion id (by design)
-abc-123-xyz@user.dice.com | business or vendor sender address used as a matching fixture, not a person
-aggregated@lensa.com | business or vendor sender address used as a matching fixture, not a person
-alerts@jobright.ai | business or vendor sender address used as a matching fixture, not a person
-dice@connect.dice.com | business or vendor sender address used as a matching fixture, not a person
-digest@linkedin.com | business or vendor sender address used as a matching fixture, not a person
-editors-noreply@linkedin.com | business or vendor sender address used as a matching fixture, not a person
-hit-reply@linkedin.com | business or vendor sender address used as a matching fixture, not a person
-inmail-hit-reply@linkedin.com | business or vendor sender address used as a matching fixture, not a person
-invitations@linkedin.com | business or vendor sender address used as a matching fixture, not a person
-jobalert@lensa.com | business or vendor sender address used as a matching fixture, not a person
-jobalerts-noreply@linkedin.com | business or vendor sender address used as a matching fixture, not a person
-jobs-noreply@linkedin.com | business or vendor sender address used as a matching fixture, not a person
-jobs@linkedin.com | business or vendor sender address used as a matching fixture, not a person
-lee@jobright.ai | business or vendor sender address used as a matching fixture, not a person
-life-os-v7-calendar@life-os-gmail-508407.iam.gserviceaccount.com | Google service account identifier of the project, not a person
-m@linkedin.com | business or vendor sender address used as a matching fixture, not a person
-messages-noreply@connect.dice.com | business or vendor sender address used as a matching fixture, not a person
-messages-noreply@linkedin.com | business or vendor sender address used as a matching fixture, not a person
-messaging-digest-noreply@linkedin.com | business or vendor sender address used as a matching fixture, not a person
-no-reply@jobs.reed.co.uk | business or vendor sender address used as a matching fixture, not a person
-noreply@lensa.com | business or vendor sender address used as a matching fixture, not a person
-noreply@lensa.com.evil.example | business or vendor sender address used as a matching fixture, not a person
-pat@jobright.ai | business or vendor sender address used as a matching fixture, not a person
-pat@lensa.com | business or vendor sender address used as a matching fixture, not a person
-rec@lensa.com | business or vendor sender address used as a matching fixture, not a person
-recruiter@linkedin.com | business or vendor sender address used as a matching fixture, not a person
-sam@jobright.ai | business or vendor sender address used as a matching fixture, not a person
+067556a4d1562a4c1b5f8dcacd25b2fd408e5f016497dc5d3912d3667946ea04 | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-load/sets.yml)
+1568ebf13d8215b350fad70552a4ff3a59a4c871d27a6b358609393f2222dd9f | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-load/sets.yml)
+2987db7612fc2640c85c2fc6cf955bfb0c046c50935b95fa37e585355e0db47b | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-load/sets.yml)
+30b004cfb8fdefeddf2496fd4074e2145ad65c355c336d3d19c56d39bcf3efb3 | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-load/sets.yml)
+37675d72bd4c42591e5ef8e804e87c9ba24af90f1e0e0e0af89774c6066b3da7 | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-load/sets.yml)
+38753813dd4d71c513e3916be3b149adb8a6ae0d1b5048bc1d2cfeeb6f88c07d | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-load/sets.yml)
+4972e69286a6f1c9d8aab727496bc954daa3c5a51580c7113b3e6c6b8f3bd777 | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-load/sets.yml)
+59fbabfdbe85691cbbc54f4d1565aa89b79b6eb7868f7f02cbba0e4d51c06389 | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-load/sets.yml)
+5bce0753891d37f6b1929afe6b074a8fe7aa467d661516e68c9c0f18e70ebb77 | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-load/sets.yml)
+664179bd68fbba95d167502638b95a7fcd64957fb2e3e73b888445baf499c032 | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-load/sets.yml)
+67261bdb22d904666efddc22f6a9040b40207f60d47fb7e7bfde0775b809916c | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-load/sets.yml)
+6973dbbafe4ae85352f46f50920ca8fd5e9e2c9bca7cee0e02130824cc626909 | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-load/sets.yml)
+70b606605f2657f412baacfff8ddb939836b4154a3bef820ea76defe68c6b3b9 | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-load/sets.yml)
+78ed0724f9ae2e286925c38016ea20684cfc86e3527be76428f8d881265bb9d0 | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-load/sets.yml)
+84db699491cc9bcfcff61a625013e8f1d40e29f10294fe8288e47f8c7fe055e2 | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-load/sets.yml)
+8ad9f42454506ffe41e021726f8bae29297f3a57c8c4e893b67700462564d489 | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-load/sets.yml)
+92a49a2450ca45d8d890ce6b98a33d18389c7ebb42554eda58b4bad1c26dcc41 | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-load/sets.yml)
+9d293fbc49a8fba37d05312d7d6ca54deef4fc0e43ca53817f9110af277615b0 | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-load/sets.yml)
+a3ebfec3a86650588836345b338ad6424e439299d7b67decc391a66e7b2d25da | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-load/sets.yml)
+ac02614454a95cb76f8da47594a6b7ab2255e1ffaab838aab1e77c95c473f963 | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-load/sets.yml)
+ad1db0e78c3e9299c12402ff1bcf4895436bf5a5c0e753e99a09c009d97a0019 | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-load/sets.yml)
+b00a9d98e4144e7aaa79e69c3fe7e6904cd25db143ed6e69a9b284473a59ee3a | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-load/sets.yml)
+b35788f390c2af8cb2191c5645c948782dc9ac7ad763539404ca42dd1f501930 | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-load/sets.yml)
+b66045eb2e8ff659a6a5055de713bfdbee65a01bbbb6ed6ecd3fc118ffb1e7b3 | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-load/sets.yml)
+c410c96de438e709c5196df85441ce59d6ab784c18b6fd27071e14f16b412ab7 | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-load/sets.yml)
+caa6d71bca58912d0e6224c32d9b27569d42a20ffb85b3977b4899272015585c | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-load/sets.yml)
+cab324091d6d9ee56069c42830b7abd33489464f70c1a440a11c06e500462687 | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-load/sets.yml)
+cdaf7324bff3200e3fddf7f72b357d0b9cd3b3ff8e5f139df9be90cc9ad05411 | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-load/sets.yml)
+d5f4a38fe3e614937aacb0ab80d72ca207827c421f1a7d885a52645b4b79194e | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-load/sets.yml)
+db92b3e7b71da5690be1a65333c24acde6bdf9de491ba6d39edcea3427d0d6dd | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-load/sets.yml)
+e5adeaf7274a47b6894554599fc5adbccbe2a08aa6308be4ec2bcd961b916e91 | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-load/sets.yml)
+e9f7fb69adb01caad47c2adbcb077ef3f8a03ad148366fb9f7d9b4beea62e022 | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-load/sets.yml)
+ebc4463c407e15209a6a5d753921165d63bbf76e32e9a1a1f4be339cb398123f | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-load/sets.yml)
+f1b7677bb8070678ed8962c9eef8daf08dbe661e9b6a83f6cd2a519f286977c8 | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-load/sets.yml)
+f603a7b1b4d4f96c24ebc0544c5c3b2dd2e4d827935019f8f1bca2fcb278716e | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-load/sets.yml)
+f6b3b13c9a49b99275275b262091407ee64d04fae6c6c94296d5abfd753a1e60 | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-load/sets.yml)
+f89ce698a16f33cfa08a519828f72471391cc4c487cccdbc2502fcaec60d95dc | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-load/sets.yml)
+fb20bd4199e2c683e9b66cf89f10d109116f601306608512caeb561f831095ac | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-load/sets.yml)
+fd9526674f92835f99bf23a8ebe4a82f0b0958f80a7e32c10f0988497d1bb75b | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-load/sets.yml)
+0bbc1a866c7be6197145a4b3b373ce67a71c55bb5e719b4498b24c5ae018079b | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-plain/plain.py)
+0e10a121f64bbbf03291347963fcaf44d3923a514b8d2b15525f793a12c8cdc1 | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-plain/plain.py)
+2a1050f205e28dc19326c8f3781467f1acca26a53e6389b2eb1b9ba76b2f27c8 | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-plain/plain.py)
+4a1782e981643bbd0768d509a8bdcd1cf7a297e6552a0bb011fbde013f89e82b | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-plain/plain.py)
+4d9f546fd2ce6d57334a59e9d347f8c5f0b6d5f647dbe9e457b8b4e8027ab7df | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-plain/plain.py)
+594df470bacff6868b39b34bee37925cdbefc2926b0f446bedfb956d18e44e49 | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-plain/plain.py)
+604e474583d919417cf10353046f04aed46cf8aed8815a9e1943b7165a3a7433 | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-plain/plain.py)
+7d296f97f77f9c12603385dd2b6d5952f02a89f37d70ce374fdc1b868f4ee937 | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-plain/plain.py)
+80e5578f1c26f2fd035e66c54016134362cfe3b14422a73c7678d954f761ee35 | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-plain/plain.py)
+839ac32485a55b9aa4ce1eccf1ca1438a2d0642f3dcc7872ecfee7477f2827d0 | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-plain/plain.py)
+9ba22080a6f0effdd9879b45ba968d7f05fede0778151cdc46e097dd1e531a89 | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-plain/plain.py)
+adcd7bbc7535a161012e31e1fb25571358f8f653b203545a4507ee7629c60c08 | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-plain/plain.py)
+c548ff5be7f4074165553db0c77b0d4288bfd15838b118db7a9b53be75a9b65d | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-plain/plain.py)
+dcb60c4300af2e99fd76526883139ac3a39e7b277b499cf76ff7fcfeaac392b4 | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-plain/plain.py)
+ee4c7e58464c9bfab54b5fdbb98f25b7a3e26a99cc758b6f0086e1589131cb90 | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-plain/plain.py)
+fc15ef1647e5f4c71bef28eefa1c161e20aefe1a1a32c100621da9fdd9f4af20 | Bitwarden secret id, not a Notion id (by design) (in .github/actions/bws-plain/plain.py)
+79df4c55d245cb004b7e3e2dcfab02f48cf7f5661e6305be5c892bd8e1341438 | Bitwarden secret id, not a Notion id (by design) (in .github/workflows/branches.yml)
+a6330a565e374e44ab7b91c0f6bfd9142b7cd15d02a6151fc13eab2199ca1bf8 | Bitwarden secret id, not a Notion id (by design) (in .github/workflows/hermes-stage.yml)
+c7766226b8cdc96e56618edf67c52d8a56eb309cb3ccaa3c5b80a02c0c44429b | Bitwarden secret id, not a Notion id (by design) (in .github/workflows/hermes-stage.yml)
+c86ee1bd68c4041bf964197b6b2384212b9bba528d3342dd6147efc53dd816ad | Bitwarden secret id, not a Notion id (by design) (in .github/workflows/hermes-stage.yml)
+2e5782a3c59976aefa1c97994c1c96257e51cc3ef1d48bb9405c620ed688eeb4 | Bitwarden secret id, not a Notion id (by design) (in .github/workflows/profile-sync.yml)
+d3ffad67e35c21b8fcf84e84bd23f796b92ec5772bb908d8841aca3d3763efa6 | business or vendor sender address used as a matching fixture, not a person (in docs/DECISIONS.md)
+d2133a7b5907d7fa1213254c5d6da976c87d39a6ee5e471471de72e098102ea1 | Atlassian cloud id inside a gateway URL, not a Notion id (in docs/platform/shared-read-oracle-runbook.md)
+8d4664825f9892519d2604e6c8f4cb22af326758f165c6195b24c5c4e01a4b3d | Google service account identifier of the project, not a person (in lifeos/platform/gcal.py)
+9f5b501f27630e07f6da7c3eb21ff7faaba01fdab475a2cbd23d61fa77e5128b | public vendor job id the live probe requests (in lifeos/probe.py)
+c76d6a5c9036053ea82775435f3b7978686def996d53a8b8abebed88f026c2e5 | business or vendor sender address used as a matching fixture, not a person (in lifeos/sources/newsletters/config.py)
+e9b38a32642534684495d6bfbafa6493f1e280ae9bc31e9d7895438f70b16b5b | business or vendor sender address used as a matching fixture, not a person (in lifeos/sources/newsletters/config.py)
+98705b9a7155223a4113929a1a8e468e303432f0fcb2ee581852c1f3d81e87a7 | random sample id inside the privacy test's own checks, not a Notion id (in tests/contracts/test_privacy.py)
+011f1fa89b687c4250f2a00c01103e86e6e95b68327be4b613a25f9047265268 | business or vendor sender address used as a matching fixture, not a person (in tests/hiring/test_outcomes.py)
+6078d1e613b845da41f7e4dd7f22bb67ae3080165141f0d048a9a5a78fa406bd | business or vendor sender address used as a matching fixture, not a person (in tests/hiring/test_outcomes.py)
+532ad10f7f3cb534fcaac42d51849ea91c094e936bd1e6be1a2938a7fae84405 | business or vendor sender address used as a matching fixture, not a person (in tests/jobs/test_newsletter_golden_path.py)
+0187118466421fe487a5307dd57be8a84ccf0068d70bdd92855b2d4d0b40f5ba | business or vendor sender address used as a matching fixture, not a person (in tests/megibow/test_engine.py)
+2aefdf0d0a012d2af18a8b4460484fbec376b805274557f2dc1c1479008c63a9 | business or vendor sender address used as a matching fixture, not a person (in tests/megibow/test_engine.py)
+7e229eb3dcc6e74a172eb2a958bfb6813bb69b6b62d1d2b58ca05c3610d69127 | business or vendor sender address used as a matching fixture, not a person (in tests/megibow/test_engine.py)
+af7739341a86c810e26cbaef4a3c1a7fd7773ca3308b8e1f9717a2796251ed92 | business or vendor sender address used as a matching fixture, not a person (in tests/megibow/test_engine.py)
+b561373e4c167952991b1dd3c571b9dd6873c92f1a4cda8c5a6fcbef55faced4 | business or vendor sender address used as a matching fixture, not a person (in tests/megibow/test_engine.py)
+f1787c36863b2f0a114e5ea8422e593c1125ac7b0ebba5b9f9bc785163936bbe | business or vendor sender address used as a matching fixture, not a person (in tests/megibow/test_engine.py)
+5029a4008c8db2e85f999287839f2599470dad682863d6000658c53e2b272f04 | business or vendor sender address used as a matching fixture, not a person (in tests/recruiters/test_recruiters.py)
+5efb19103751fd5efef72358c3b31903c923fb032647d7dbb859a036529582a1 | business or vendor sender address used as a matching fixture, not a person (in tests/recruiters/test_recruiters.py)
+8ad1c0e923995371a1ce9efa5a91673b0468cbc9f581e49224e7d68bfc4cd7ae | business or vendor sender address used as a matching fixture, not a person (in tests/recruiters/test_recruiters.py)
+975c4c1761ad1f3d3e67d8b7733225e10c28455bdf5ed2620d9b0458ccd15e02 | business or vendor sender address used as a matching fixture, not a person (in tests/recruiters/test_recruiters.py)
+9de16a49914c4132cf9fa62a3c4c44c93487f6fb9407b75dccea2a888b7d25c1 | business or vendor sender address used as a matching fixture, not a person (in tests/recruiters/test_recruiters.py)
+a955c52113a1eac0bbd9a4ee14110157a42a2912267243c8361724285709e63d | business or vendor sender address used as a matching fixture, not a person (in tests/recruiters/test_recruiters.py)
+af7d83a5b6d2d52a993fed87e58136207fd724593195c3f1ad6bca144516f25b | business or vendor sender address used as a matching fixture, not a person (in tests/recruiters/test_recruiters.py)
+b4a0f55abf3ec97145ce03b3511ff258c987a864f211a986af5d13389c31737d | business or vendor sender address used as a matching fixture, not a person (in tests/recruiters/test_recruiters.py)
+c737649871274d7c9acf4d7ffde46053540c111d67769518664ef476ed29ca5b | business or vendor sender address used as a matching fixture, not a person (in tests/recruiters/test_recruiters.py)
+519d5d16a1746c0210f84d297011e839d4a0865c8f5273f3494ed72b18dc458e | business or vendor sender address used as a matching fixture, not a person (in tests/sources/newsletters/test_ingest.py)
+3d70aaffc6ea9d149b513ccdb8376d46678481656fcd1c243f94a0d28143cfb5 | business or vendor sender address used as a matching fixture, not a person (in tests/sources/newsletters/test_sweep.py)
+6c5e99223b39084e3a5f9473b5e3ece334fac5ce865be982ca9f172bb2ef4e68 | business or vendor sender address used as a matching fixture, not a person (in tests/sources/newsletters/test_sweep.py)
+dce19c7bc64ab6c7f158226ff4b568116a595e1cd524d7269f304182df4ae03a | business or vendor sender address used as a matching fixture, not a person (in tests/sources/newsletters/test_sweep.py)
+f1aa255cb1fdbdecb77e554f3ea85955e32d74d9aaba8240374b767602c206b1 | business or vendor sender address used as a matching fixture, not a person (in tests/sources/newsletters/test_sweep.py)
