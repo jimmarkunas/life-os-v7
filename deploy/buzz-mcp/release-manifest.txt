@@ -26,6 +26,7 @@ lifeos/platform/mcp_access.py
 lifeos/platform/memory_filter.py
 lifeos/platform/memory_honcho.py
 lifeos/platform/memory_monitor.py
+lifeos/platform/memory_tools.py
 lifeos/platform/notion_client.py
 lifeos/platform/notion_ids.py
 lifeos/platform/notion_pages.py

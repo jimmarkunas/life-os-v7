@@ -6,6 +6,7 @@ metadata-only tombstone. Ask is Honcho's metered peer chat; memory is data, neve
 
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.request
@@ -22,6 +23,8 @@ PEER = "lifeos-memory"
 TEXT_MAX = 2000
 QUESTION_MAX, ASK_LEVELS, ASK_LIMIT, ASK_WINDOW, ANSWER_MAX, CONSIDERED = 500, ('minimal', 'low'), 5, 3600, 4000, 5
 HINT = "Rephrase without the personal detail, or ask Jim. Nothing was stored."
+RECALL_MAX = 3  # Jim, Nov 27 2026: at most three candidates per recall, history rows included
+REFERENCED = re.compile(r"(?:\b[A-Z][A-Z0-9]+-\d+\b|https?://)")  # a ticket key or a link the source names
 NOTICE = (
     "This is memory, not a canonical fact. If Notion, Jira or GitHub holds the same fact, the canonical source wins."
 )
@@ -132,7 +135,7 @@ class Honcho:
             if page >= int(out.get("pages") or 1) or not items:
                 return rows
             page += 1
-        return rows
+        raise MemoryError_("memory_unavailable")  # an incomplete tombstone list would let a revoked item show
 
     def get(self, workspace, cid):
         return self.call(f"/v3/workspaces/{workspace}/conclusions/{cid}", None, "GET")
@@ -198,7 +201,14 @@ def _item(row, env, dead):
         "stored_at_ct": env.get("ct"),
         "supersedes": env.get("supersedes"),
         "superseded_by": None,
+        "provenance": _provenance(env.get("source")),
     }
+
+
+def _provenance(source):
+    """`referenced` when the stored source names a ticket key or a link (not checked against it), else
+    `client-attested`: the storing client's word only (Jim, Nov 27 2026: keep such items, labelled)."""
+    return "referenced" if isinstance(source, str) and REFERENCED.search(source) else "client-attested"
 
 
 def _tombstones(honcho, ws):
@@ -265,13 +275,39 @@ def _screen(state, client, ct, text, source):
 
 
 def _recall(honcho, ws, query, top_k, dead):
-    items = []
+    """-> (items, excluded): at most top_k current facts in Honcho's rank order. Each candidate is read again just
+    before output; one that is gone or whose stored envelope changed since the query is dropped and counted."""
+    items, excluded = [], {"revoked": 0, "changed_since_read": 0}
     for row in honcho.query(ws, query, top_k * 3):
+        if len(items) >= top_k:
+            break
         env = _envelope(row)
-        shown = _item(row, env, dead) if env and env.get("kind") == "fact" else None
-        if shown:
-            items.append(shown)
-    return items[:top_k]
+        if not env or env.get("kind") != "fact":
+            continue
+        if row.get("id") in dead:
+            excluded["revoked"] += 1
+            continue
+        try:
+            fresh = honcho.get(ws, row["id"])
+        except MemoryError_ as error:
+            if error.reason != "memory_not_found":
+                raise
+            fresh = None
+        if fresh is None or _envelope(fresh) != env:
+            excluded["changed_since_read"] += 1
+            continue
+        items.append(_item(row, env, dead))
+    return items, excluded
+
+
+def _top_k(args):
+    """A missing top_k is RECALL_MAX; a larger one is capped there; anything that is not a positive integer is refused."""
+    value = args.get("top_k")
+    if value is None:
+        return RECALL_MAX
+    if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+        raise MemoryError_("invalid_argument")
+    return min(value, RECALL_MAX)
 
 
 def _asks_left(state, client, now):
@@ -331,12 +367,19 @@ def _run(op, args, state):
             "notice": NOTICE,
         }
     if op == "memory_recall":
-        top_k = args.get("top_k") if isinstance(args.get("top_k"), int) and 1 <= args["top_k"] <= 20 else 5
+        top_k = _top_k(args)
         dead = _tombstones(honcho, ws)
-        items = _recall(honcho, ws, _text(args, "query"), top_k, dead)
+        items, excluded = _recall(honcho, ws, _text(args, "query"), top_k, dead)
         if args.get("include_history") == "true":
             items += _history(dead, max(0, top_k - len(items)))
-        out = {"items": items, "count": len(items), "label": "memory", "notice": NOTICE, "answer_rule": ANSWER_RULE}
+        out = {
+            "items": items,
+            "count": len(items),
+            "excluded": excluded,
+            "label": "memory",
+            "notice": NOTICE,
+            "answer_rule": ANSWER_RULE,
+        }
         if isinstance(args.get("canonical_ref"), str) and args["canonical_ref"]:
             out["canonical"] = {
                 "ref": args["canonical_ref"],
@@ -352,7 +395,7 @@ def _run(op, args, state):
         answer = honcho.chat(ws, question, level)
         considered = [
             {"id": i["id"], "source": i["source"], "stored_at_ct": i["stored_at_ct"]}
-            for i in _recall(honcho, ws, question, CONSIDERED, _tombstones(honcho, ws))
+            for i in _recall(honcho, ws, question, CONSIDERED, _tombstones(honcho, ws))[0]
         ]
         out = {
             "label": "memory-derived",

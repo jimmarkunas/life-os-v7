@@ -6,7 +6,7 @@ import base64, hashlib, json, os, pathlib, random, shlex, shutil, socket, subpro
 from http.server import ThreadingHTTPServer
 
 from lifeos.buzz import mcp as buzz_mcp
-from lifeos.platform import call_limit
+from lifeos.platform import authorization_gate as G, call_limit
 
 from lifeos.buzz import nip98
 from lifeos.buzz.auth import AuthError, Verifier
@@ -314,6 +314,11 @@ class DualClient(Server):
                 "buzz_search_messages",
                 "buzz_get_addressed",
                 "buzz_post_message",
+                "memory_store",
+                "memory_recall",
+                "memory_correct",
+                "memory_revoke",
+                "memory_ask",
             ],
         )
         self.assertEqual(seen["claude"][1][1][0]["untrusted_text"], "synthetic room message")
@@ -1494,8 +1499,8 @@ class Credentials(Server):
                 {"buzz_capabilities", "buzz_read"} <= names,
                 "buzz_publish" in names or "buzz_post_message" in names,
             ),
-            (6, True, False),
-        )
+            (11, True, False),
+        )  # 6 Buzz tools plus its 5 granted first-class memory tools
         status, caps = self.tool(tok, "buzz_capabilities")
         self.assertEqual((status, caps["ok"], caps["data"]["identity"]["communities"]), (200, True, {}))
         self.assertEqual(
@@ -1550,7 +1555,9 @@ class Credentials(Server):
         self.relays["openclaw"] = relay
         tok = self.tok("openclaw")
         names = {t["name"] for t in self.rpc(tok, "tools/list")[1]["result"]["tools"]}
-        self.assertEqual((len(names), {"buzz_capabilities", "buzz_read", "buzz_publish"} <= names), (8, True))
+        self.assertEqual(
+            (len(names), {"buzz_capabilities", "buzz_read", "buzz_publish"} <= names), (13, True)
+        )  # 8 Buzz tools plus its 5 granted first-class memory tools
         status, caps = self.tool(tok, "buzz_capabilities")
         self.assertEqual(
             (status, caps["ok"], sorted(caps["data"]["identity"]["communities"]), caps["data"]["writable_channels"]),
@@ -2234,3 +2241,62 @@ class Config(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FirstClassMemoryTools(Server):
+    """`memory_recall` and the other memory operations as their own MCP tools: listed only to a caller granted them,
+    run through the same gate as the `buzz_read` alias, and answered with the operation's own data."""
+
+    SECRETS, access, tok = Credentials.SECRETS, Credentials.access, Credentials.tok
+
+    def names(self, cid):
+        status, out = self.rpc(self.tok(cid), "tools/list")
+        self.assertEqual(status, 200)
+        return [t["name"] for t in out["result"]["tools"]]
+
+    def test_codex_lists_exactly_discovery_the_alias_and_recall(self):
+        self.start(access=self.access())
+        self.assertEqual(sorted(self.names("codex")), ["buzz_capabilities", "buzz_read", "memory_recall"])
+
+    def test_each_client_lists_only_the_memory_tools_it_is_granted(self):
+        self.start(access=self.access())
+        jira = set(self.names("jira-capture"))
+        self.assertLessEqual({"memory_store", "memory_correct", "memory_revoke"}, jira)
+        self.assertNotIn("memory_recall", jira)
+        for cid in ("mac-claude-code", "hermes-librarian"):
+            self.assertLessEqual({"memory_recall", "memory_store"}, set(self.names(cid)), cid)
+
+    def test_a_listed_memory_tool_carries_its_schema_and_hints(self):
+        self.start(access=self.access())
+        status, out = self.rpc(self.tok("codex"), "tools/list")
+        recall = next(t for t in out["result"]["tools"] if t["name"] == "memory_recall")
+        self.assertEqual(recall["inputSchema"]["properties"]["workspace"], {"type": "string", "enum": ["Personal"]})
+        self.assertIn("query", recall["inputSchema"]["required"])
+        self.assertTrue(recall["annotations"]["readOnlyHint"])
+
+    def test_a_first_class_recall_reaches_the_gate_as_personal_and_its_reply_has_no_envelope(self):
+        self.start(access=self.access())
+        status, out = self.tool(self.tok("codex"), "memory_recall", workspace="Personal", query="probe", community="x")
+        self.assertEqual(status, 200)
+        self.assertNotIn("contract", out)
+        self.assertNotIn(out.get("reason"), ("unknown_tenant", "no_grant"))
+        allow = self.receipts[-2] if self.receipts[-1]["outcome"] != "allow" else self.receipts[-1]
+        self.assertEqual((allow["tenant"], allow["principal_fp"]), ("personal", G.fingerprint("codex")))
+
+    def test_another_workspace_and_an_ungranted_tool_are_refused_with_a_fixed_code(self):
+        self.start(access=self.access())
+        status, out = self.tool(self.tok("codex"), "memory_recall", workspace="Bytalos", query="probe")
+        self.assertEqual((status, out["error"]), (200, "access_denied"))
+        self.assertNotIn("contract", out)
+        status, out = self.tool(self.tok("codex"), "memory_store", workspace="Personal", text="probe", source="x")
+        self.assertEqual((status, out["error"]), (200, "access_denied"))
+        self.assertIn(out["reason"], ("no_grant", "catalog_unknown_capability"))  # refused before any source call
+        self.assertNotIn("probe", json.dumps(out))
+
+    def test_the_buzz_read_alias_still_answers_with_its_envelope(self):
+        self.start(access=self.access())
+        status, out = self.tool(
+            self.tok("codex"), "buzz_read", operation="memory_recall", arguments={"workspace": "Personal", "query": "p"}
+        )
+        self.assertEqual(status, 200)
+        self.assertIn("operation", out) if out.get("ok") else self.assertIn("error", out)

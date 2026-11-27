@@ -599,3 +599,104 @@ class Wiring(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RecallSafeguards(unittest.TestCase):
+    """At most three current facts, each read again before output; a gone or changed row, a revoked row and an
+    incomplete tombstone list never produce a misleading answer."""
+
+    def setUp(self):
+        self.h = FakeHoncho()
+        for i in range(5):
+            source = "LIFE-123" if i == 0 else ("https://example.org/x" if i == 1 else "claude-chat session")
+            run("memory_store", {"workspace": "Personal", "text": f"zebra fact {i}", "source": source}, self.h)
+
+    def recall(self, **extra):
+        return run("memory_recall", {"workspace": "Personal", "query": "zebra", **extra}, self.h)
+
+    def test_at_most_three_by_default_and_a_larger_top_k_is_capped_while_a_smaller_one_is_honored(self):
+        self.assertEqual(self.recall()["count"], 3)
+        self.assertEqual(self.recall(top_k=20)["count"], 3)
+        self.assertEqual(self.recall(top_k=2)["count"], 2)
+
+    def test_a_top_k_that_is_not_a_positive_integer_is_refused(self):
+        for bad in (0, -1, True, 2.5, "3"):
+            err = refused(self, "memory_recall", {"workspace": "Personal", "query": "zebra", "top_k": bad}, self.h)
+            self.assertEqual(err.reason, "invalid_argument", bad)
+
+    def test_history_rows_count_toward_the_cap(self):
+        fact = self.recall()["items"][0]["id"]
+        run("memory_revoke", {"workspace": "Personal", "id": fact}, self.h, "claude-chat")
+        out = self.recall(include_history="true")
+        self.assertLessEqual(len(out["items"]), 3)
+
+    def test_each_item_carries_its_provenance_class(self):
+        by_text = {i["text"]: i["provenance"] for i in self.recall(top_k=3)["items"]}
+        self.assertEqual(by_text["zebra fact 0"], "referenced")  # a ticket key
+        self.assertEqual(by_text["zebra fact 1"], "referenced")  # a link
+        self.assertEqual(by_text["zebra fact 2"], "client-attested")  # the storing client's word only
+
+    def test_a_row_changed_or_gone_since_the_query_is_dropped_and_counted_never_shown(self):
+        first = self.h.rows[0]
+        real_get = self.h.get
+
+        def changed(ws, cid):
+            row = real_get(ws, cid)
+            if cid == first["id"]:
+                env = json.loads(row["content"])
+                env["text"] = "rewritten meanwhile"
+                return {**row, "content": json.dumps(env, sort_keys=True)}
+            if cid == self.h.rows[1]["id"]:
+                raise mh.MemoryError_("memory_not_found")
+            return row
+
+        self.h.get = changed
+        out = self.recall()
+        self.assertNotIn(first["id"], [i["id"] for i in out["items"]])
+        self.assertEqual(out["excluded"]["changed_since_read"], 2)
+        self.assertNotIn("rewritten meanwhile", json.dumps(out))
+
+    def test_a_revoked_candidate_whose_text_survived_is_counted_and_hidden(self):
+        fact = self.recall()["items"][0]["id"]
+        self.h.fail_delete = True  # the marker is written but the text could not be deleted yet
+        with self.assertRaises(mh.MemoryError_):
+            run("memory_revoke", {"workspace": "Personal", "id": fact}, self.h, "claude-chat")
+        self.h.fail_delete = False
+        out = self.recall()
+        self.assertNotIn(fact, [i["id"] for i in out["items"]])
+        self.assertEqual(out["excluded"]["revoked"], 1)
+
+    def test_a_provider_error_on_the_re_read_is_memory_unavailable_not_an_empty_answer(self):
+        def down(ws, cid):
+            raise mh.MemoryError_("memory_unavailable")
+
+        self.h.get = down
+        self.assertEqual(
+            refused(self, "memory_recall", {"workspace": "Personal", "query": "zebra"}, self.h).reason,
+            "memory_unavailable",
+        )
+
+
+class ListingFailsClosed(unittest.TestCase):
+    def test_more_than_twenty_pages_of_tombstones_is_memory_unavailable(self):
+        class Paged(mh.Honcho):
+            def __init__(self):
+                pass
+
+            def call(self, path, body=None, method="POST"):
+                return {"items": [{"id": "x", "content": "{}"}], "pages": 25}
+
+        with self.assertRaises(mh.MemoryError_) as raised:
+            Paged().listing("personal")
+        self.assertEqual(raised.exception.reason, "memory_unavailable")
+
+    def test_a_complete_listing_is_returned_whole(self):
+        class Paged(mh.Honcho):
+            def __init__(self):
+                self.n = 0
+
+            def call(self, path, body=None, method="POST"):
+                self.n += 1
+                return {"items": [{"id": f"r{self.n}", "content": "{}"}], "pages": 3}
+
+        self.assertEqual([r["id"] for r in Paged().listing("personal")], ["r1", "r2", "r3"])

@@ -726,3 +726,50 @@ class ProposedPublishGrants(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OutputTimeRecheck(unittest.TestCase):
+    """A read runs the complete gate again just before output: a grant revoked while the source answered gives none."""
+
+    def setUp(self):
+        self.access = build()
+        self.row = M.identify(self.access, "http", {"oauth_client": "claude"})
+
+    def read(self, effect, receipts):
+        return M.call(
+            self.access, self.row, "personal", "memory_recall", "read", "honcho", "honcho", effect, receipts.append, NOW
+        )
+
+    def test_a_grant_still_live_at_output_returns_the_answer(self):
+        receipts = []
+        out = self.read(lambda: {"items": []}, receipts)
+        self.assertEqual((out.decision, out.executed), ("allow", True))
+        self.assertEqual([r["outcome"] for r in receipts], ["allow", "ok"])
+
+    def test_a_grant_revoked_while_the_source_answered_gives_a_deny_and_a_deny_receipt(self):
+        receipts = []
+
+        def revoke_meanwhile():
+            self.access.grants = tuple(g for g in self.access.grants if getattr(g, "tool", None) != "memory_recall")
+            return {"items": ["would leak"]}
+
+        out = self.read(revoke_meanwhile, receipts)
+        self.assertEqual(out.decision, "deny")
+        self.assertFalse(getattr(out, "executed", False))
+        self.assertEqual([r["outcome"] for r in receipts], ["allow", "ok", "deny"])
+
+    def test_a_write_is_not_checked_twice(self):
+        calls = []
+        out = M.call(
+            self.access,
+            self.row,
+            "personal",
+            "memory_store",
+            "write",
+            "honcho",
+            "honcho",
+            lambda: calls.append(1) or {"ok": True},
+            [].append,
+            NOW,
+        )
+        self.assertEqual((out.decision, calls), ("allow", [1]))
