@@ -113,6 +113,7 @@ class HonchoAlert(unittest.TestCase):
             auth, args = server.seen[0]
             self.assertEqual(auth, "Bearer " + self.token())
             self.assertEqual(args["operation"], "send_to_jim")
+            self.assertNotIn("community", args)  # no Buzz community is named: the Inbox write needs none
             self.assertEqual(
                 (args["arguments"]["subject"], args["arguments"]["urgency"], args["arguments"]["details"]),
                 ("Honcho backup failed", "Now", "see journal"),
