@@ -2,6 +2,7 @@
 
 Device-code sign-in once, then silent refresh. Every error is a fixed code. Writes are limited to creating one mail
 folder and moving a message into it; nothing here deletes, sends or edits mail."""
+
 from collections.abc import Callable
 from typing import Any
 from datetime import datetime
@@ -18,12 +19,16 @@ from lifeos.platform import rest
 
 AUTHORITY = "https://login.microsoftonline.com/common/oauth2/v2.0"
 GRAPH = "https://graph.microsoft.com/v1.0"
-SCOPES = "offline_access Mail.Read Calendars.Read"                       # read-only sign-in
+SCOPES = "offline_access Mail.Read Calendars.Read"  # read-only sign-in
 SCOPES_WRITE = "offline_access Mail.ReadWrite Calendars.Read"
 MAX_PAGES = 100
 PAGE_SIZE = 100
-EVENT_FIELDS = "id,iCalUId,subject,start,end,isAllDay,isCancelled,showAs,responseStatus,location,webLink,type,seriesMasterId"
-MESSAGE_FIELDS = "id,internetMessageId,receivedDateTime,isRead,from,subject,hasAttachments,parentFolderId,conversationId"
+EVENT_FIELDS = (
+    "id,iCalUId,subject,start,end,isAllDay,isCancelled,showAs,responseStatus,location,webLink,type,seriesMasterId"
+)
+MESSAGE_FIELDS = (
+    "id,internetMessageId,receivedDateTime,isRead,from,subject,hasAttachments,parentFolderId,conversationId"
+)
 
 
 class OutlookError(RuntimeError):
@@ -34,7 +39,11 @@ def _down_marker(refresh_token):
     """One marker file per mailbox in the runner's temp folder (empty outside a runner, so nothing changes
     locally)."""
     base = os.environ.get("RUNNER_TEMP")
-    return os.path.join(base, "lifeos-outlook-down-" + hashlib.sha256(str(refresh_token).encode()).hexdigest()[:12]) if base else None
+    return (
+        os.path.join(base, "lifeos-outlook-down-" + hashlib.sha256(str(refresh_token).encode()).hexdigest()[:12])
+        if base
+        else None
+    )
 
 
 def _is_outage(code):
@@ -42,8 +51,12 @@ def _is_outage(code):
 
 
 def _post_form(url, form, timeout=30):
-    request = urllib.request.Request(url, data=urllib.parse.urlencode(form).encode(), method="POST",
-                                     headers={"Content-Type": "application/x-www-form-urlencoded"})
+    request = urllib.request.Request(
+        url,
+        data=urllib.parse.urlencode(form).encode(),
+        method="POST",
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             return json.loads(response.read() or b"{}")
@@ -52,8 +65,19 @@ def _post_form(url, form, timeout=30):
             code = json.loads(error.read()).get("error", "")
         except (ValueError, OSError, AttributeError):
             code = ""
-        return {"error": code if code in ("authorization_pending", "slow_down", "expired_token", "authorization_declined",
-                                           "invalid_grant", "bad_verification_code") else f"http_{error.code}"}
+        return {
+            "error": code
+            if code
+            in (
+                "authorization_pending",
+                "slow_down",
+                "expired_token",
+                "authorization_declined",
+                "invalid_grant",
+                "bad_verification_code",
+            )
+            else f"http_{error.code}"
+        }
     except (urllib.error.URLError, TimeoutError, OSError, ValueError):
         raise OutlookError("OUTLOOK_NETWORK") from None
 
@@ -65,14 +89,25 @@ def device_start(client_id: str, write: bool = False) -> dict[str, Any]:
     return reply
 
 
-def device_wait(client_id: str, started: dict[str, Any], sleep: Callable[[float], None] = time.sleep, clock: Callable[[], float] = time.monotonic) -> dict[str, Any]:
+def device_wait(
+    client_id: str,
+    started: dict[str, Any],
+    sleep: Callable[[float], None] = time.sleep,
+    clock: Callable[[], float] = time.monotonic,
+) -> dict[str, Any]:
     """Poll until the person finishes signing in."""
     deadline = clock() + int(started.get("expires_in", 900))
     interval = int(started.get("interval", 5))
     while clock() < deadline:
         sleep(interval)
-        reply = _post_form(f"{AUTHORITY}/token", {"client_id": client_id, "device_code": started["device_code"],
-                                                   "grant_type": "urn:ietf:params:oauth:grant-type:device_code"})
+        reply = _post_form(
+            f"{AUTHORITY}/token",
+            {
+                "client_id": client_id,
+                "device_code": started["device_code"],
+                "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+            },
+        )
         if "refresh_token" in reply:
             return reply
         error = reply.get("error")
@@ -84,16 +119,23 @@ def device_wait(client_id: str, started: dict[str, Any], sleep: Callable[[float]
 
 
 def refresh(client_id: str, refresh_token: str) -> dict[str, Any]:
-    reply = _post_form(f"{AUTHORITY}/token", {"client_id": client_id, "refresh_token": refresh_token,
-                                               "grant_type": "refresh_token"})
+    reply = _post_form(
+        f"{AUTHORITY}/token", {"client_id": client_id, "refresh_token": refresh_token, "grant_type": "refresh_token"}
+    )
     if "access_token" not in reply:
         raise OutlookError("OUTLOOK_REFRESH_" + str(reply.get("error", "failed")).upper())
     return reply
 
 
 class Outlook:
-
-    def __init__(self, client_id: str, refresh_token: str, save_refresh: Callable[[str], None] | None = None, timeout: float = 30, sleep: Callable[[float], None] = time.sleep) -> None:
+    def __init__(
+        self,
+        client_id: str,
+        refresh_token: str,
+        save_refresh: Callable[[str], None] | None = None,
+        timeout: float = 30,
+        sleep: Callable[[float], None] = time.sleep,
+    ) -> None:
         if not client_id or not refresh_token:
             raise OutlookError("OUTLOOK_CONFIG_INVALID")
         self._client, self._refresh, self._save = client_id, refresh_token, save_refresh
@@ -118,17 +160,31 @@ class Outlook:
         elif not url.startswith(GRAPH + "/"):
             raise OutlookError("OUTLOOK_BAD_LINK")
         data = None if body is None else json.dumps(body).encode()
+
         def build():
-            headers = {"Authorization": "Bearer " + self._access(), "Accept": "application/json", "User-Agent": "life-os-v7",
-                       "Prefer": 'IdType="ImmutableId"' + (", " + prefer if prefer else "")}
+            headers = {
+                "Authorization": "Bearer " + self._access(),
+                "Accept": "application/json",
+                "User-Agent": "life-os-v7",
+                "Prefer": 'IdType="ImmutableId"' + (", " + prefer if prefer else ""),
+            }
             if data is not None:
                 headers["Content-Type"] = "application/json"
             return urllib.request.Request(url, data=data, headers=headers, method=method)
+
         if self._down and os.path.exists(self._down):
             raise OutlookError("OUTLOOK_UNAVAILABLE_THIS_JOB")
         try:
-            return rest.call(build, OutlookError, "OUTLOOK", self._sleep, self._timeout, bad_json="BAD_RESPONSE",
-                             codes={401: "OUTLOOK_UNAUTHORIZED"}, honor_retry_after=True)
+            return rest.call(
+                build,
+                OutlookError,
+                "OUTLOOK",
+                self._sleep,
+                self._timeout,
+                bad_json="BAD_RESPONSE",
+                codes={401: "OUTLOOK_UNAUTHORIZED"},
+                honor_retry_after=True,
+            )
         except OutlookError as error:
             if self._down and _is_outage(str(error)):
                 try:
@@ -140,7 +196,9 @@ class Outlook:
     def folder_id(self, name: str, create: bool = False) -> str | None:
         """The id of a top-level mail folder by name; created when asked and missing."""
         quoted = name.replace("'", "''")
-        found = self.get("/me/mailFolders", {"$filter": f"displayName eq '{quoted}'", "$select": "id,displayName", "$top": 10})
+        found = self.get(
+            "/me/mailFolders", {"$filter": f"displayName eq '{quoted}'", "$select": "id,displayName", "$top": 10}
+        )
         for folder in found.get("value") or []:
             if folder.get("displayName") == name and folder.get("id"):
                 return folder["id"]
@@ -167,7 +225,15 @@ class Outlook:
                 break
         raise OutlookError("OUTLOOK_LISTING_INCOMPLETE")
 
-    def messages(self, folder: str = "inbox", since: str | None = None, limit: int = 5000, fields: str | None = None, time_field: str = "receivedDateTime", prefer: str = "") -> list[Any]:
+    def messages(
+        self,
+        folder: str = "inbox",
+        since: str | None = None,
+        limit: int = 5000,
+        fields: str | None = None,
+        time_field: str = "receivedDateTime",
+        prefer: str = "",
+    ) -> list[Any]:
         """Every message in a folder received at or after `since` (ISO 8601), newest first, following every page."""
         params = {"$select": fields or MESSAGE_FIELDS, "$top": PAGE_SIZE, "$orderby": f"{time_field} desc"}
         if since:
@@ -179,7 +245,10 @@ class Outlook:
         if not conversation_id:
             return False
         quoted = str(conversation_id).replace("'", "''")
-        reply = self.get("/me/mailFolders/sentitems/messages", {"$select": "id,sentDateTime", "$top": 25, "$filter": f"conversationId eq '{quoted}'"})
+        reply = self.get(
+            "/me/mailFolders/sentitems/messages",
+            {"$select": "id,sentDateTime", "$top": 25, "$filter": f"conversationId eq '{quoted}'"},
+        )
         since = datetime.fromisoformat(since_iso.replace("Z", "+00:00"))
         for message in reply.get("value") or []:
             sent = message.get("sentDateTime")
@@ -194,7 +263,11 @@ class Outlook:
         merged: dict[str, Any] = {}
         for name in names:
             quoted = name.replace("'", "''")
-            params = {"$select": MESSAGE_FIELDS + ",categories", "$top": PAGE_SIZE, "$filter": f"categories/any(c:c eq '{quoted}')"}
+            params = {
+                "$select": MESSAGE_FIELDS + ",categories",
+                "$top": PAGE_SIZE,
+                "$filter": f"categories/any(c:c eq '{quoted}')",
+            }
             found = self._pages("/me/messages", params, limit)
             for message in found:
                 merged.setdefault(message["id"], message)
@@ -203,12 +276,20 @@ class Outlook:
     def events(self, start: str, end: str, limit: int = 2000, fields: str | None = None) -> list[Any]:
         """Every calendar event overlapping [start, end) (ISO 8601, UTC), recurring series expanded. An incomplete
         enumeration raises."""
-        params = {"startDateTime": start, "endDateTime": end, "$top": 100, "$select": fields or EVENT_FIELDS,
-                  "$orderby": "start/dateTime"}
+        params = {
+            "startDateTime": start,
+            "endDateTime": end,
+            "$top": 100,
+            "$select": fields or EVENT_FIELDS,
+            "$orderby": "start/dateTime",
+        }
         return self._pages("/me/calendarView", params, limit, 'outlook.timezone="UTC"')
 
     def message_html(self, message_id: str) -> str:
-        reply = self.get(f"/me/messages/{urllib.parse.quote(message_id, safe='')}", {"$select": "id,body"},
-                         prefer='outlook.body-content-type="html"')
+        reply = self.get(
+            f"/me/messages/{urllib.parse.quote(message_id, safe='')}",
+            {"$select": "id,body"},
+            prefer='outlook.body-content-type="html"',
+        )
         body = reply.get("body") or {}
         return body.get("content") or "" if str(body.get("contentType", "")).lower() == "html" else ""

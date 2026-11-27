@@ -3,6 +3,7 @@
 Pure logic, no clock. Severities: PAGE (phone push), WARN (Daily Report card only), INFO. A push goes out when an
 incident's state changes; a run-based incident closes after 3 finished runs passed. The same item failing with the
 same fixed code on consecutive runs is a known state: WARN from the second run, ONE PAGE after 7 days."""
+
 import datetime as dt
 import re
 from collections.abc import Callable, Mapping, MutableMapping, Sequence
@@ -51,7 +52,6 @@ class Observation:
 
 
 class KnownStates:
-
     def __init__(self, store: MutableMapping[str, dict]):
         self.store = store
 
@@ -86,6 +86,10 @@ def escalate(observation: Observation, family: str, push: Callable[..., bool]) -
     """Send the one PAGE for each known state that crossed ESCALATE_DAYS; -> pushes accepted."""
     sent = 0
     for k in observation.escalate:
-        if push(state_key(ESCALATION_FAMILY, family), f"A known failure is {ESCALATE_DAYS} days old", f"{k.item} still fails with {k.code} after {ESCALATE_DAYS} days. It never paged before this."):
+        if push(
+            state_key(ESCALATION_FAMILY, family),
+            f"A known failure is {ESCALATE_DAYS} days old",
+            f"{k.item} still fails with {k.code} after {ESCALATE_DAYS} days. It never paged before this.",
+        ):
             sent += 1
     return sent

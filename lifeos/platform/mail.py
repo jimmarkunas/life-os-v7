@@ -3,6 +3,7 @@
 A record: provider, id, received (ISO 8601 UTC), sender_name, sender_address, subject, body, folder ("INBOX" or
 "JUNK"), markers (bulk, auto, noreply), url. Content stays in memory: nothing here writes, labels, moves, deletes or
 sends mail."""
+
 import os
 import re
 import time
@@ -18,7 +19,10 @@ from lifeos.platform.outlook import Outlook, OutlookError
 WINDOW_DAYS = 14
 MAX_MESSAGES = 3000
 OUTLOOK_FIELDS = "id,receivedDateTime,from,subject,body,webLink,internetMessageHeaders"
-NOREPLY = re.compile(r"(?:^|[._-])(?:no[-_.]?reply|do[-_.]?not[-_.]?reply|mailer[-_.]?daemon|postmaster|bounce[s]?|notifications?|alerts?|newsletter)(?:$|[._-]|\d)", re.I)
+NOREPLY = re.compile(
+    r"(?:^|[._-])(?:no[-_.]?reply|do[-_.]?not[-_.]?reply|mailer[-_.]?daemon|postmaster|bounce[s]?|notifications?|alerts?|newsletter)(?:$|[._-]|\d)",
+    re.I,
+)
 
 
 class MailError(RuntimeError):
@@ -32,9 +36,12 @@ def _sender(raw):
 
 def _markers(headers, address):
     get = lambda key: str(headers.get(key, "") or "").strip()
-    return {"bulk": bool(get("list-id") or get("list-unsubscribe")) or get("precedence").lower() in ("bulk", "list", "junk"),
-            "auto": get("auto-submitted").lower() not in ("", "no") or bool(get("x-auto-response-suppress")),
-            "noreply": bool(NOREPLY.search(address.split("@")[0] if address else ""))}
+    return {
+        "bulk": bool(get("list-id") or get("list-unsubscribe"))
+        or get("precedence").lower() in ("bulk", "list", "junk"),
+        "auto": get("auto-submitted").lower() not in ("", "no") or bool(get("x-auto-response-suppress")),
+        "noreply": bool(NOREPLY.search(address.split("@")[0] if address else "")),
+    }
 
 
 def _old_enough(record, now, fresh_hours):
@@ -46,7 +53,20 @@ def _old_enough(record, now, fresh_hours):
         return False
 
 
-def gmail_records(gmail, now, limit=MAX_MESSAGES, days=WINDOW_DAYS, terms="", known=None, stats=None, workers=1, timing=None, heal=False, reuse=None, fresh_hours=2):
+def gmail_records(
+    gmail,
+    now,
+    limit=MAX_MESSAGES,
+    days=WINDOW_DAYS,
+    terms="",
+    known=None,
+    stats=None,
+    workers=1,
+    timing=None,
+    heal=False,
+    reuse=None,
+    fresh_hours=2,
+):
     """Gmail Inbox and Spam, last `days` days (default WINDOW_DAYS), optionally only messages matching Gmail search
     `terms`."""
     query = f"{{in:inbox in:spam}} newer_than:{days}d" + (f" {terms}" if terms else "")
@@ -77,6 +97,7 @@ def gmail_records(gmail, now, limit=MAX_MESSAGES, days=WINDOW_DAYS, terms="", kn
             if re.search(r"\bHTTP 404\b", str(error)):
                 missing.add(message_id)
             return None
+
     if workers > 1 and len(ids) > 1:
         first = [read(ids[0])]
         with ThreadPoolExecutor(max_workers=workers) as pool:
@@ -98,7 +119,9 @@ def gmail_records(gmail, now, limit=MAX_MESSAGES, days=WINDOW_DAYS, terms="", kn
             timing["retries"] = retries
         if heal:
             timing["gone"] = len(gone)
-            timing["unreadable"] = {m: code for m, code in failures.items() if m not in gone and raws[ids.index(m)] is None}
+            timing["unreadable"] = {
+                m: code for m, code in failures.items() if m not in gone and raws[ids.index(m)] is None
+            }
     raw_of = dict(zip(ids, raws))
     if timing is not None:
         timing["reused"] = len(kept)
@@ -113,9 +136,20 @@ def gmail_records(gmail, now, limit=MAX_MESSAGES, days=WINDOW_DAYS, terms="", kn
             continue
         name, address = _sender(raw["headers"].get("from", ""))
         labels = raw.get("label_ids") or []
-        out.append({"provider": "gmail", "id": raw["id"], "received": raw["received_at"], "sender_name": name, "sender_address": address,
-                    "subject": raw["headers"].get("subject", ""), "body": raw.get("body_text", ""), "folder": "JUNK" if "SPAM" in labels else "INBOX",
-                    "markers": _markers(raw["headers"], address), "url": f"https://mail.google.com/mail/u/0/#all/{raw.get('thread') or raw['id']}"})
+        out.append(
+            {
+                "provider": "gmail",
+                "id": raw["id"],
+                "received": raw["received_at"],
+                "sender_name": name,
+                "sender_address": address,
+                "subject": raw["headers"].get("subject", ""),
+                "body": raw.get("body_text", ""),
+                "folder": "JUNK" if "SPAM" in labels else "INBOX",
+                "markers": _markers(raw["headers"], address),
+                "url": f"https://mail.google.com/mail/u/0/#all/{raw.get('thread') or raw['id']}",
+            }
+        )
     return out, unreadable
 
 
@@ -124,15 +158,28 @@ NEW_READ_LIMIT = 100
 
 def _outlook_record(raw, account, label):
     """One Graph message -> the record, or None when it has no id or time (counted as unreadable by the caller)."""
-    sender = ((raw.get("from") or {}).get("emailAddress") or {})
+    sender = (raw.get("from") or {}).get("emailAddress") or {}
     if not raw.get("id") or not raw.get("receivedDateTime"):
         return None
-    headers = {str(h.get("name", "")).lower(): str(h.get("value", "")) for h in raw.get("internetMessageHeaders") or [] if isinstance(h, dict)}
+    headers = {
+        str(h.get("name", "")).lower(): str(h.get("value", ""))
+        for h in raw.get("internetMessageHeaders") or []
+        if isinstance(h, dict)
+    }
     address = str(sender.get("address") or "").strip().lower()
     body = raw.get("body") or {}
-    return {"provider": "outlook", "id": f"{account}:{raw['id']}", "received": raw["receivedDateTime"], "sender_name": str(sender.get("name") or "").strip(),
-            "sender_address": address, "subject": raw.get("subject") or "", "body": body.get("content") or "", "folder": label,
-            "markers": _markers(headers, address), "url": raw.get("webLink") or ""}
+    return {
+        "provider": "outlook",
+        "id": f"{account}:{raw['id']}",
+        "received": raw["receivedDateTime"],
+        "sender_name": str(sender.get("name") or "").strip(),
+        "sender_address": address,
+        "subject": raw.get("subject") or "",
+        "body": body.get("content") or "",
+        "folder": label,
+        "markers": _markers(headers, address),
+        "url": raw.get("webLink") or "",
+    }
 
 
 def outlook_records(client, account, now, limit=MAX_MESSAGES, days=WINDOW_DAYS, known=None, stats=None):
@@ -142,7 +189,9 @@ def outlook_records(client, account, now, limit=MAX_MESSAGES, days=WINDOW_DAYS, 
     text = 'outlook.body-content-type="text"'
     for folder, label in (("inbox", "INBOX"), ("junkemail", "JUNK")):
         with fixed(OutlookError, MailError, "MAIL_OUTLOOK_LISTING_INCOMPLETE"):
-            found = client.messages(folder, since, limit, OUTLOOK_FIELDS if known is None else "id,receivedDateTime", prefer=text)
+            found = client.messages(
+                folder, since, limit, OUTLOOK_FIELDS if known is None else "id,receivedDateTime", prefer=text
+            )
             if known is not None:
                 fresh = [m for m in found if m.get("id") and not known("outlook", f"{account}:{m['id']}")]
                 if stats is not None:
@@ -150,12 +199,22 @@ def outlook_records(client, account, now, limit=MAX_MESSAGES, days=WINDOW_DAYS, 
                     stats["new"] = stats.get("new", 0) + len(fresh)
                 if len(fresh) > NEW_READ_LIMIT:
                     ids = {m["id"] for m in fresh}
-                    found = [m for m in client.messages(folder, since, limit, OUTLOOK_FIELDS, prefer=text) if m.get("id") in ids]
+                    found = [
+                        m
+                        for m in client.messages(folder, since, limit, OUTLOOK_FIELDS, prefer=text)
+                        if m.get("id") in ids
+                    ]
                 else:
                     found = []
                     for m in fresh:
                         try:
-                            found.append(client.get(f"/me/messages/{urllib.parse.quote(m['id'], safe='')}", {"$select": OUTLOOK_FIELDS}, text))
+                            found.append(
+                                client.get(
+                                    f"/me/messages/{urllib.parse.quote(m['id'], safe='')}",
+                                    {"$select": OUTLOOK_FIELDS},
+                                    text,
+                                )
+                            )
                         except OutlookError:
                             unreadable += 1
         for raw in found:
@@ -177,11 +236,17 @@ def outlook_accounts(environ=os.environ):
     if not client_id:
         return []
     from lifeos.platform import db, outlook_tokens as store  # noqa: PLC0415
+
     out = []
     with db.connect() as connection:
         for label in store.accounts(connection):
             try:
-                out.append((label, Outlook(client_id, store.load(connection, label), lambda new, label=label: _save(label, new))))
+                out.append(
+                    (
+                        label,
+                        Outlook(client_id, store.load(connection, label), lambda new, label=label: _save(label, new)),
+                    )
+                )
             except OutlookError:
                 out.append((label, None))
     return out
@@ -189,5 +254,6 @@ def outlook_accounts(environ=os.environ):
 
 def _save(label, token):
     from lifeos.platform import db, outlook_tokens as store  # noqa: PLC0415
+
     with db.connect() as connection:
         store.save(connection, label, token)

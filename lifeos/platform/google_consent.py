@@ -4,6 +4,7 @@ Writes {"client_id", "client_secret", "refresh_token"} to stdout, which must be 
 stdlib only (docs/DRIVE_RESUMES.md):
   python3 google_consent.py --port 8765 | ssh opc@lifeos-edge-01 "sudo bash /opt/lifeos-close/bin/install-close.sh credential gdrive"
 """
+
 import base64
 import getpass
 import hashlib
@@ -22,19 +23,45 @@ AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 
 def auth_url(client_id, redirect, state, verifier, scope=SCOPE):
     challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
-    return AUTH_URL + "?" + urllib.parse.urlencode({"client_id": client_id, "redirect_uri": redirect, "response_type": "code", "scope": scope,
-                                                    "access_type": "offline", "prompt": "consent", "state": state,
-                                                    "code_challenge": challenge, "code_challenge_method": "S256"})
+    return (
+        AUTH_URL
+        + "?"
+        + urllib.parse.urlencode(
+            {
+                "client_id": client_id,
+                "redirect_uri": redirect,
+                "response_type": "code",
+                "scope": scope,
+                "access_type": "offline",
+                "prompt": "consent",
+                "state": state,
+                "code_challenge": challenge,
+                "code_challenge_method": "S256",
+            }
+        )
+    )
 
 
-def exchange(client_id, client_secret, code, redirect, verifier, opener=urllib.request.urlopen, scope=SCOPE, exact=False):
-    body = urllib.parse.urlencode({"client_id": client_id, "client_secret": client_secret, "code": code, "redirect_uri": redirect,
-                                   "grant_type": "authorization_code", "code_verifier": verifier}).encode()
+def exchange(
+    client_id, client_secret, code, redirect, verifier, opener=urllib.request.urlopen, scope=SCOPE, exact=False
+):
+    body = urllib.parse.urlencode(
+        {
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "code": code,
+            "redirect_uri": redirect,
+            "grant_type": "authorization_code",
+            "code_verifier": verifier,
+        }
+    ).encode()
     with opener(urllib.request.Request(TOKEN_URL, data=body, method="POST"), timeout=30) as response:
         reply = json.loads(response.read())
     granted = str(reply.get("scope", "")).split()
     if (granted != [scope] if exact else scope not in granted) or not reply.get("refresh_token"):
-        raise SystemExit(f"Google did not grant {'exactly ' if exact else ''}the {scope.rsplit('/', 1)[1]} scope with a refresh token; nothing was stored.")
+        raise SystemExit(
+            f"Google did not grant {'exactly ' if exact else ''}the {scope.rsplit('/', 1)[1]} scope with a refresh token; nothing was stored."
+        )
     return json.dumps({"client_id": client_id, "client_secret": client_secret, "refresh_token": reply["refresh_token"]})
 
 
@@ -50,7 +77,11 @@ def catch(server, state):
             self.send_response(200)
             self.send_header("Content-Type", "text/plain; charset=utf-8")
             self.end_headers()
-            self.wfile.write(("LIFE OS: done, you can close this tab." if ok else "LIFE OS: sign-in refused; nothing was stored.").encode())
+            self.wfile.write(
+                (
+                    "LIFE OS: done, you can close this tab." if ok else "LIFE OS: sign-in refused; nothing was stored."
+                ).encode()
+            )
 
         def log_message(self, *args):
             return
@@ -66,13 +97,23 @@ def main(argv=(), stdout=sys.stdout, tty=None, scope=SCOPE, exact=False, sink="E
     if stdout.isatty():
         tty.write(f"Refused: pipe this into the {sink}; the credential is never printed on screen.\n")
         return 2
-    client_id = input_tty("Client ID of the LIFE OS Gmail Web client (Bitwarden openclaw/gmail/clientId): ", tty).strip()
+    client_id = input_tty(
+        "Client ID of the LIFE OS Gmail Web client (Bitwarden openclaw/gmail/clientId): ", tty
+    ).strip()
     client_secret = getpass.getpass("Its client secret (Bitwarden openclaw/gmail/clientSecret; not shown): ").strip()
     port = int(argv[argv.index("--port") + 1]) if "--port" in argv else 0
     server = http.server.HTTPServer(("127.0.0.1", port), http.server.BaseHTTPRequestHandler)
-    redirect, state, verifier = f"http://127.0.0.1:{server.server_port}", secrets.token_urlsafe(24), secrets.token_urlsafe(48)
+    redirect, state, verifier = (
+        f"http://127.0.0.1:{server.server_port}",
+        secrets.token_urlsafe(24),
+        secrets.token_urlsafe(48),
+    )
     url = auth_url(client_id, redirect, state, verifier, scope)
-    tty.write("Open this address in the browser on this Mac and click Allow (Google sends the reply back to this window):\n" + url + "\n")
+    tty.write(
+        "Open this address in the browser on this Mac and click Allow (Google sends the reply back to this window):\n"
+        + url
+        + "\n"
+    )
     tty.flush()
     code = catch(server, state)
     if not code:

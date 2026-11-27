@@ -2,6 +2,7 @@
 
 A stage fails only when EVERY item failed or the stage itself could not do its job (docs/platform/stage-isolation.md).
 A stage that adopts the helper adds `items`, `item_failed` and `item_codes` to its counts only when an item failed."""
+
 import re
 from dataclasses import dataclass, field
 
@@ -22,6 +23,7 @@ def fixed_code(error, default=DEFAULT_CODE):
 class Isolated:
     """What a list of items came to: `results` are (item, value) pairs in order, `failures` are (item, fixed code)
     pairs in order."""
+
     total: int = 0
     results: list = field(default_factory=list)
     failures: list = field(default_factory=list)
@@ -55,7 +57,11 @@ def run_items(items, work, code_of=fixed_code, reraise=()):
 def record(counts, isolated):
     """Add the item outcome to a stage's counts (nothing when every item succeeded) and return them."""
     if isolated.failures:
-        counts["items"], counts["item_failed"], counts["item_codes"] = isolated.total, len(isolated.failures), isolated.codes
+        counts["items"], counts["item_failed"], counts["item_codes"] = (
+            isolated.total,
+            len(isolated.failures),
+            isolated.codes,
+        )
     return counts
 
 

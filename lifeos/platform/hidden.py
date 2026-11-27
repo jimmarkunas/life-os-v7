@@ -1,6 +1,7 @@
 """Machine ids that ride in a page unseen: a hidden ref is a zero-width character linked to a fixed address.
 
 The ref is the link's last path segment. Pure; callers own what a ref means."""
+
 from urllib.parse import quote, unquote
 
 BASE = "https://example.com/lifeos/"
@@ -12,12 +13,16 @@ def run(ref):
 
 
 def refs(block):
-    inner = (block.get(block.get("type")) if block.get("type") else next((v for v in block.values() if isinstance(v, dict) and "rich_text" in v), None)) or {}
+    inner = (
+        block.get(block.get("type"))
+        if block.get("type")
+        else next((v for v in block.values() if isinstance(v, dict) and "rich_text" in v), None)
+    ) or {}
     out = []
     for part in inner.get("rich_text") or []:
         if not isinstance(part, dict):
             continue
         url = part.get("href") or ((part.get("text") or {}).get("link") or {}).get("url") or ""
         if url.startswith(BASE):
-            out.append(unquote(url[len(BASE):]))
+            out.append(unquote(url[len(BASE) :]))
     return out
