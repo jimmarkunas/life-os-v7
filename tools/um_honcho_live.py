@@ -2,6 +2,7 @@
 used or any call is made. The gate is not a release: the release is the ticket (Agent Go on LIFE-1003 and Jim's two items); it only makes sure a stray run cannot spend.
 Gate (all must hold): `--live`; UM_T2_RELEASE equals the exact string `RELEASED-LIFE-1003:um-t2-fixture-v1`; the host is lifeos-edge-01; the Honcho URL is loopback; UM_T2_TOKEN is a workspace-scoped token for exactly
 `um-t2-fixture-v1` (claim `w`), not admin (`ad`), with no narrower claim, valid for at least five more minutes and no more than two hours; and no admin token is present in the environment."""
+
 import argparse
 import base64
 import importlib.util

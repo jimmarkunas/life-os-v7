@@ -3,6 +3,7 @@
 Order (policy: free proofs before any paid call): fresh Personal baseline and due-dream list; create the workspace (all spending switches off) with its peers and session; prove the token is refused on `personal`; brake test (an UNARMED message
 must create no work); then the guard seeds in armed tranches and arms the one manual dream; then isolation, residue and the four-mode comparison (T1's runner, Honcho client, Aura graph arm). Live use needs `--live`, the host user's Bitwarden
 access for Aura, and the scoped token in UM_T2_TOKEN (never printed). Without `--live` it only prints the plan and the budget numbers."""
+
 import argparse
 import hashlib
 import importlib.util
@@ -23,9 +24,17 @@ def _load(name):
     return module
 
 
-budget, guard, client, um = _load("um_budget"), _load("um_budget_guard"), _load("um_honcho_client"), _load("um_baseline")
+budget, guard, client, um = (
+    _load("um_budget"),
+    _load("um_budget_guard"),
+    _load("um_honcho_client"),
+    _load("um_baseline"),
+)
 WORKSPACE = "um-t2-fixture-v1"
-ALPHA_MESSAGES, BETA_MESSAGES = 16, 4                                 # 20 messages: two conclusions each at most stays under the automatic dream threshold of 50
+ALPHA_MESSAGES, BETA_MESSAGES = (
+    16,
+    4,
+)  # 20 messages: two conclusions each at most stays under the automatic dream threshold of 50
 
 
 def corpus_messages(doc):
@@ -33,7 +42,14 @@ def corpus_messages(doc):
     out = []
     for tenant, limit in (("alpha", ALPHA_MESSAGES), ("beta", BETA_MESSAGES)):
         for s in sorted((x for x in doc["sources"] if x["tenant"] == tenant), key=lambda x: x["id"])[:limit]:
-            out.append({"peer_id": client.TENANT_PEER[tenant], "tenant": tenant, "content": f'{s["id"]}: {s["title"]}. {s["text"]}'[:300], "source_ref": s["id"]})
+            out.append(
+                {
+                    "peer_id": client.TENANT_PEER[tenant],
+                    "tenant": tenant,
+                    "content": f'{s["id"]}: {s["title"]}. {s["text"]}'[:300],
+                    "source_ref": s["id"],
+                }
+            )
     return out
 
 
@@ -45,27 +61,64 @@ class OracleDb:
 
     def _sql(self, text):
         script = "BEGIN READ ONLY;\n" + text + "\nROLLBACK;\n"
-        done = self.run(["sudo", "docker", "exec", "-i", "honcho-database-1", "sh", "-c", 'psql -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-postgres}" -At -F"|"'], input=script, capture_output=True, text=True, timeout=60)
+        done = self.run(
+            [
+                "sudo",
+                "docker",
+                "exec",
+                "-i",
+                "honcho-database-1",
+                "sh",
+                "-c",
+                'psql -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-postgres}" -At -F"|"',
+            ],
+            input=script,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
         if done.returncode:
             raise RuntimeError("sql_failed")
         return [line.split("|") for line in done.stdout.splitlines() if line and line not in ("BEGIN", "ROLLBACK")]
 
     def personal_state(self):
-        row = self._sql("select count(*), coalesce(max(created_at)::text,''), md5(coalesce(string_agg(id||md5(content), ',' order by id), '')) from documents where workspace_name='personal';")[0]
+        row = self._sql(
+            "select count(*), coalesce(max(created_at)::text,''), md5(coalesce(string_agg(id||md5(content), ',' order by id), '')) from documents where workspace_name='personal';"
+        )[0]
         return {"count": int(row[0]), "newest": row[1], "hash": row[2]}
 
-    DUE = ("import asyncio,json\nfrom src.dependencies import tracked_db\nfrom src.dreamer.dream_due import list_due_dreams\n"
-           "async def main():\n    async with tracked_db('um_t2_due') as db:\n        print(json.dumps(sorted({r.workspace_name for r in await list_due_dreams(db)})))\nasyncio.run(main())\n")
+    DUE = (
+        "import asyncio,json\nfrom src.dependencies import tracked_db\nfrom src.dreamer.dream_due import list_due_dreams\n"
+        "async def main():\n    async with tracked_db('um_t2_due') as db:\n        print(json.dumps(sorted({r.workspace_name for r in await list_due_dreams(db)})))\nasyncio.run(main())\n"
+    )
 
     def due_workspaces(self):
         """The installed due-dream selector, read-only, run in the API container: -> the workspaces with a dream due."""
-        done = self.run(["sudo", "docker", "exec", "-i", "-e", "PYTHONPATH=/app", "honcho-api-1", "/app/.venv/bin/python", "-c", self.DUE], capture_output=True, text=True, timeout=90)
+        done = self.run(
+            [
+                "sudo",
+                "docker",
+                "exec",
+                "-i",
+                "-e",
+                "PYTHONPATH=/app",
+                "honcho-api-1",
+                "/app/.venv/bin/python",
+                "-c",
+                self.DUE,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=90,
+        )
         if done.returncode:
             raise RuntimeError("due_selector_failed")
         return json.loads(done.stdout.strip().splitlines()[-1])
 
     def residue(self, workspace, conclusion_id):
-        rows = self._sql(f"select (select count(*) from documents where id='{conclusion_id}'), (select count(*) from dream_run_changes where conclusion_id='{conclusion_id}'), (select count(*) from dream_run_changes where workspace_name='{workspace}' and peer_card_after is not null);")[0]
+        rows = self._sql(
+            f"select (select count(*) from documents where id='{conclusion_id}'), (select count(*) from dream_run_changes where conclusion_id='{conclusion_id}'), (select count(*) from dream_run_changes where workspace_name='{workspace}' and peer_card_after is not null);"
+        )[0]
         return {"documents": int(rows[0]), "dream_changes": int(rows[1]), "peer_card_changes": int(rows[2])}
 
 
@@ -98,7 +151,16 @@ def run_pilot(honcho, meter, db, doc, graph, clock, reps=5, seed="messages"):
         ev["stopped"] = "token_not_scoped"
         return ev
     units = honcho.completed_units()
-    honcho.post_messages([{"peer_id": client.TENANT_PEER["alpha"], "content": "brake test: an unarmed message", "source_ref": "FAKE-BRAKE-000"}], armed=False)
+    honcho.post_messages(
+        [
+            {
+                "peer_id": client.TENANT_PEER["alpha"],
+                "content": "brake test: an unarmed message",
+                "source_ref": "FAKE-BRAKE-000",
+            }
+        ],
+        armed=False,
+    )
     clock.sleep(3)
     idle, same = honcho.queue_idle(), honcho.completed_units() == units
     step("brake_test_unarmed_message_creates_no_work", queue_idle=idle, units_unchanged=same)
@@ -112,7 +174,7 @@ def run_pilot(honcho, meter, db, doc, graph, clock, reps=5, seed="messages"):
         return ev
     messages = corpus_messages(doc)
     if seed == "conclusions":
-        honcho.create_conclusions(messages)                      # free seeding: no deriver call at all
+        honcho.create_conclusions(messages)  # free seeding: no deriver call at all
         step("conclusions_created_directly", n=len(messages))
     g = guard.Guard(meter, honcho, clock)
     report = g.run(messages, seeded=(seed == "conclusions"))
@@ -132,7 +194,12 @@ def run_pilot(honcho, meter, db, doc, graph, clock, reps=5, seed="messages"):
     ev["dream_runs"] = len(runs)
     if runs:
         detail = honcho.dream_detail(runs[0]["id"])
-        ev["dream"] = {"status": detail.get("status"), "created": len(detail.get("created") or []), "removed": len(detail.get("removed") or []), "peer_card_updated": detail.get("peer_card_updated")}
+        ev["dream"] = {
+            "status": detail.get("status"),
+            "created": len(detail.get("created") or []),
+            "removed": len(detail.get("removed") or []),
+            "peer_card_updated": detail.get("peer_card_updated"),
+        }
     ev["comparison"] = um.run(doc, ("direct", "graph", "honcho", "combined"), reps, {"honcho": honcho, "graph": graph})
     return ev
 
@@ -142,7 +209,12 @@ def main(argv=None):
     ap.add_argument("--live", action="store_true")
     args = ap.parse_args(argv)
     doc = json.loads(um.CORPUS.read_text())
-    plan = {"workspace": WORKSPACE, "messages": len(corpus_messages(doc)), "budget": budget.numbers(len(corpus_messages(doc))), "live": args.live}
+    plan = {
+        "workspace": WORKSPACE,
+        "messages": len(corpus_messages(doc)),
+        "budget": budget.numbers(len(corpus_messages(doc))),
+        "live": args.live,
+    }
     if not args.live:
         print(json.dumps(plan))
         return 0

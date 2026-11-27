@@ -1,6 +1,7 @@
 """LIFE-1013: the credential lists a workflow names with `set: <name>` on a `bws-load` step live in `.github/actions/bws-load/sets.yml`, one list per job; the lines are the same `<id> > NAME` lines that used to be inline. Code that reads what a workflow loads (the workflow gate, the secret-usage report, the contract tests) reads it through here.
 
-  expand_text(text)   workflow text with every `set: name` line replaced by the inline `secrets: |` block it stands for"""
+expand_text(text)   workflow text with every `set: name` line replaced by the inline `secrets: |` block it stands for"""
+
 import pathlib
 import re
 
