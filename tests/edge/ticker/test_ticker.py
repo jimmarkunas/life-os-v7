@@ -240,6 +240,67 @@ class Disk(unittest.TestCase):
         self.assertNotIn("secret", out.getvalue())
 
 
+class TodoistRefresher(unittest.TestCase):
+    def test_the_watch_runs_it_after_the_other_checks_and_a_failure_never_fails_the_watch(self):
+        import contextlib
+        import io
+
+        order = []
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = ticker.watch(
+                TOKEN,
+                TOPIC,
+                FakeGitHub({}),
+                store=STORE,
+                run=lambda **k: order.append("gate"),
+                environ={},
+                disk=lambda: order.append("disk"),
+                todoist=lambda: order.append("todoist") or {"read": "fresh", "write": "not_consented"},
+            )[0]
+        self.assertEqual((code, order), ("WATCH_DONE", ["gate", "disk", "todoist"]))
+        self.assertIn("ticker: todoist read=fresh write=not_consented", out.getvalue())
+
+        def boom():
+            raise RuntimeError("secret detail")
+
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = ticker.watch(
+                TOKEN,
+                TOPIC,
+                FakeGitHub({}),
+                store=STORE,
+                run=lambda **k: None,
+                environ={},
+                disk=lambda: None,
+                todoist=boom,
+            )[0]
+        self.assertEqual(code, "WATCH_DONE")
+        self.assertIn("ticker: todoist refresh failed (RuntimeError)", out.getvalue())
+        self.assertNotIn("secret", out.getvalue())
+
+    def test_the_incident_opens_on_any_word_but_ok_and_closes_when_both_are_ok(self):
+        seen = []
+        self.assertEqual(
+            ticker.todoist_incident({"read": "reauth_required", "write": "fresh"}, lambda *a: seen.append(a)),
+            ["read:reauth_required"],
+        )
+        self.assertEqual(
+            ticker.todoist_incident({"read": "refreshed", "write": "not_consented"}, lambda *a: seen.append(a)), []
+        )
+        self.assertEqual([a[3] for a in seen], [True, False])
+        self.assertIn("read:reauth_required", seen[0][2])
+        self.assertEqual(
+            ticker.todoist_incident({"read": "refreshed_recovery_file", "write": "fresh"}, lambda *a: seen.append(a)),
+            ["read:refreshed_recovery_file"],
+        )
+        from lifeos.platform import alert_registry
+
+        for key in ("todoist_token", "todoist_token_recovered"):
+            self.assertEqual(alert_registry.lookup(key).severity, "info")
+
+
 class Stall(unittest.TestCase):
     """the Close release timer writes a marker after 2 hours without a green main head"""
 

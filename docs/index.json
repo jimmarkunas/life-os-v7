@@ -31,6 +31,27 @@
    "retrieval": "Read the section the task needs"
   },
   {
+   "path": "docs/policy/dry-run-gate.md",
+   "authority": "Canonical: policy section 12, moved unchanged",
+   "purpose": "The dry run, `Dry run` comment, `dry-run-green`, `release LIFE-nnn`",
+   "owner": "Jim (change by reviewed PR; Q04)",
+   "retrieval": "When scoping or releasing a ticket"
+  },
+  {
+   "path": "docs/policy/proof-and-tests.md",
+   "authority": "Canonical: policy section 9 detail, moved unchanged",
+   "purpose": "Real-shape fixes, runtime-facing proof, Jobs increments, full width, code comments",
+   "owner": "Jim (change by reviewed PR; Q04)",
+   "retrieval": "When a change touches runtime code, Jobs or Notion pages"
+  },
+  {
+   "path": "docs/policy/writing-tickets.md",
+   "authority": "Canonical: policy section 7 detail, moved unchanged",
+   "purpose": "Replacing cancelled work; new or changed UI",
+   "owner": "Jim (change by reviewed PR; Q04)",
+   "retrieval": "When a ticket replaces cancelled work or changes UI"
+  },
+  {
    "path": "docs/life-os-production-contract.md",
    "authority": "Canonical: the Production Contract, for schedules and runtime (v2.15.19, moved unchanged from the V1 repository)",
    "purpose": "What may run, when, with which secrets and owners; each scheduled workload's section",

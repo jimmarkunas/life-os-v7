@@ -406,7 +406,10 @@ CREDENTIALS = [
 #   or private detail, identifier only) | workflow_only (set in a workflow, read by a shell step or an action)
 # - patterns: files that read names built at run time, with the name patterns they may read.
 # - not_environment: files whose `env` is not the process environment.
-PROVIDED = {'prefixes': ['GITHUB_', 'RUNNER_'], 'names': ['CI', 'PATH', 'SUDO_USER', 'CREDENTIALS_DIRECTORY', 'HOME']}
+PROVIDED = {
+    'prefixes': ['GITHUB_', 'RUNNER_'],
+    'names': ['CI', 'PATH', 'SUDO_USER', 'CREDENTIALS_DIRECTORY', 'STATE_DIRECTORY', 'HOME'],
+}
 PATTERNS = [
     {'file': 'lifeos/inbox/followup_wiring.py', 'match': ['FOLLOWUP_ACCOUNT_*']},
     {'file': 'lifeos/amazon/card.py', 'match': ['*_CARD_BLOCK_ID', 'GMAIL_OAUTH_*']},

@@ -31,7 +31,7 @@ Before OpenClaw, Oracle, channel, local-model, assistant, meeting-capture or AI-
 - **Rate limits:** Never poll or loop on rate-limited APIs (GitHub, Notion REST): use git for repo state, batch single calls.
 - **Format:** run `ruff format lifeos tools` before you commit; CI runs `ruff format --check` on both.
 - **Tests:** `sh tools/preflight.sh` before every push (quick gate: contract tests, scanners and tests mirroring your changed files; never the whole suite (CI does), so fix once if red; `sh tools/automerge.sh <pr>` exits 4 without its PASS for HEAD); `sh tools/preflight.sh --all` or `sh tools/test.sh --all` for everything; one file `python -m unittest <module>`; setup `sh tools/setup-dev.sh`. Tickets on the same files may share one PR (LIFE-762).
-- **Jira connector:** `mcp__claude_ai_Atlassian_MCP__*` only; Rovo connectors are retired.
+- **Jira connector:** the Atlassian connector only; Rovo connectors are retired. Its tool names depend on the surface: `mcp__claude_ai_Atlassian_MCP__*` on claude.ai, `mcp__<connector id>__*` (for example `getJiraIssue`, `transitionJiraIssue`) in the Claude desktop app, which `.claude/settings.json` lists as `mcp__Atlassian_MCP__*` for Claude Code CLI. Read the tools your session actually loaded; do not guess a spelling.
 - **Jira reads and searches:** always pass `fields` (docs/platform/agent-jira-settings.md). **Receipts:** docs/platform/receipt-template.md.
 - **New tickets (LIFE-741):** Create every ticket under an epic (bugs under LIFE-615); Component and Fix Version are filled for you, set them only to override.
 - `git add` new files BEFORE running the suite (the privacy test checks staged files only).

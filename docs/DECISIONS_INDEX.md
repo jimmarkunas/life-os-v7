@@ -258,3 +258,4 @@ This index is checked by a test: add a line here with every new decision.
 - D257 — Bitwarden stays at three projects and three machine accounts; the alert switches live in LIFE OS ALERTS and the Alert settings app and the ticker use them (2026-11-16, Jim; LIFE-733)
 - D258 — Followup runs as a `followup` stage on V7's hourly tick, with a `v7_followup_*` table family in the V7 MySQL store and six first sources (2026-11-16, Jim; LIFE-737, LIFE-746)
 - D259 — The public repo guard: a personal email address or a real Notion id fails the unit-tests check and the commit hooks (2026-11-27, Jim; LIFE-1074)
+- D260 — The Development Policy stays under 15 KB: task-specific parts live in docs/policy/ and the policy points to them (2026-11-27, Jim; LIFE-1075)

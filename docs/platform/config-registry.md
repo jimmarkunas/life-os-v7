@@ -10,7 +10,7 @@ One checked list of every environment-variable **name** LIFE OS reads or sets. I
 * `secret`: a credential or private detail. Listed by identifier only; the kind marks it.
 * `workflow_only`: set in a workflow and used by a shell step or an action, not read by Python.
 
-GitHub- and host-provided names (`GITHUB_*`, `RUNNER_*`, `CI`, `PATH`, `SUDO_USER`, `CREDENTIALS_DIRECTORY`, `HOME`) are one group under `provided`, not listed one by one.
+GitHub- and host-provided names (`GITHUB_*`, `RUNNER_*`, `CI`, `PATH`, `SUDO_USER`, `CREDENTIALS_DIRECTORY`, `STATE_DIRECTORY`, `HOME`) are one group under `provided`, not listed one by one.
 
 **Names built at run time** (for example `"LIFEOS_ACQ_" + field`) cannot be read from the code, so the file that builds them is declared under `patterns` with the name patterns it may read. A new run-time read in an undeclared file fails the test.
 
