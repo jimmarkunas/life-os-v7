@@ -1,11 +1,11 @@
 {
   "schema_version": 2,
-  "description": "v2 quarter-frozen Task/Story membership baseline for JFM and MEJ (one row per board under quarters.<id>.boards, or the original single MEJ row). Requires Jim approval per quarter; do not infer assignments from project Epic links. Schema 2 adds reason, approval and effective date per key. Q4 2026 MEJ holds only the approved Career baseline; the other Matt goals are reported gaps and JFM has no approved list.",
+  "description": "v2 quarter-frozen Task/Story membership baseline for JFM and MEJ (one row per board under quarters.<id>.boards, or the original single MEJ row). Requires Jim approval per quarter; do not infer assignments from project Epic links. Schema 2 adds reason, approval and effective date per key. Q4 2026 MEJ holds the approved baselines for Career, Creative, Health, Finances & Travel, and Relationships; JFM has no approved list.",
   "quarters": {
     "2026-q4": {
       "approved": true,
-      "baseline_id": "Q4-2026-MEJ-CAREER-12-OF-29",
-      "approval_ref": "Jim, Nov 27 2026, chat: Approved, go (LIFE-1061 / LIFE-1025)",
+      "baseline_id": "Q4-2026-MEJ-CAREER-12-OF-29-AND-THREE-LANES",
+      "approval_ref": "Jim, Nov 27 2026, chat: Approved, go (LIFE-1061 / LIFE-1025); Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
       "tasks": {
         "MEJ-52": {
           "parent": "MEJ-1",
@@ -209,12 +209,385 @@
           "reason": "Q4 2026 Career baseline: 15 direct children of MEJ-1 plus the 14 keys reparented in the Nov 26 migration (LIFE-917 comment 14469); matches the published 12 / 29 of Nov 25 (LIFE-918 comment 14282)",
           "approval": "Jim, Nov 27 2026, chat: Approved, go (LIFE-1061 / LIFE-1025)",
           "effective": "2026-10-07"
+        },
+        "MEJ-29": {
+          "parent": "MEJ-2",
+          "goal": "MEJ-2",
+          "reason": "Q4 2026 Creative baseline: the Task and Story children of MEJ-2 that the legacy rule counts today, which reproduces the published 3 / 14 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-33": {
+          "parent": "MEJ-2",
+          "goal": "MEJ-2",
+          "reason": "Q4 2026 Creative baseline: the Task and Story children of MEJ-2 that the legacy rule counts today, which reproduces the published 3 / 14 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-37": {
+          "parent": "MEJ-2",
+          "goal": "MEJ-2",
+          "reason": "Q4 2026 Creative baseline: the Task and Story children of MEJ-2 that the legacy rule counts today, which reproduces the published 3 / 14 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-44": {
+          "parent": "MEJ-2",
+          "goal": "MEJ-2",
+          "reason": "Q4 2026 Creative baseline: the Task and Story children of MEJ-2 that the legacy rule counts today, which reproduces the published 3 / 14 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-123": {
+          "parent": "MEJ-2",
+          "goal": "MEJ-2",
+          "reason": "Q4 2026 Creative baseline: the Task and Story children of MEJ-2 that the legacy rule counts today, which reproduces the published 3 / 14 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-133": {
+          "parent": "MEJ-2",
+          "goal": "MEJ-2",
+          "reason": "Q4 2026 Creative baseline: the Task and Story children of MEJ-2 that the legacy rule counts today, which reproduces the published 3 / 14 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-158": {
+          "parent": "MEJ-2",
+          "goal": "MEJ-2",
+          "reason": "Q4 2026 Creative baseline: the Task and Story children of MEJ-2 that the legacy rule counts today, which reproduces the published 3 / 14 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-239": {
+          "parent": "MEJ-2",
+          "goal": "MEJ-2",
+          "reason": "Q4 2026 Creative baseline: the Task and Story children of MEJ-2 that the legacy rule counts today, which reproduces the published 3 / 14 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-240": {
+          "parent": "MEJ-2",
+          "goal": "MEJ-2",
+          "reason": "Q4 2026 Creative baseline: the Task and Story children of MEJ-2 that the legacy rule counts today, which reproduces the published 3 / 14 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-241": {
+          "parent": "MEJ-2",
+          "goal": "MEJ-2",
+          "reason": "Q4 2026 Creative baseline: the Task and Story children of MEJ-2 that the legacy rule counts today, which reproduces the published 3 / 14 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-246": {
+          "parent": "MEJ-2",
+          "goal": "MEJ-2",
+          "reason": "Q4 2026 Creative baseline: the Task and Story children of MEJ-2 that the legacy rule counts today, which reproduces the published 3 / 14 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-254": {
+          "parent": "MEJ-2",
+          "goal": "MEJ-2",
+          "reason": "Q4 2026 Creative baseline: the Task and Story children of MEJ-2 that the legacy rule counts today, which reproduces the published 3 / 14 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-256": {
+          "parent": "MEJ-2",
+          "goal": "MEJ-2",
+          "reason": "Q4 2026 Creative baseline: the Task and Story children of MEJ-2 that the legacy rule counts today, which reproduces the published 3 / 14 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-351": {
+          "parent": "MEJ-2",
+          "goal": "MEJ-2",
+          "reason": "Q4 2026 Creative baseline: the Task and Story children of MEJ-2 that the legacy rule counts today, which reproduces the published 3 / 14 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-72": {
+          "parent": "MEJ-3",
+          "goal": "MEJ-3",
+          "reason": "Q4 2026 Health, Finances & Travel baseline: the Task and Story children of MEJ-3 that the legacy rule counts today, which reproduces the published 10 / 22 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-75": {
+          "parent": "MEJ-3",
+          "goal": "MEJ-3",
+          "reason": "Q4 2026 Health, Finances & Travel baseline: the Task and Story children of MEJ-3 that the legacy rule counts today, which reproduces the published 10 / 22 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-76": {
+          "parent": "MEJ-3",
+          "goal": "MEJ-3",
+          "reason": "Q4 2026 Health, Finances & Travel baseline: the Task and Story children of MEJ-3 that the legacy rule counts today, which reproduces the published 10 / 22 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-148": {
+          "parent": "MEJ-3",
+          "goal": "MEJ-3",
+          "reason": "Q4 2026 Health, Finances & Travel baseline: the Task and Story children of MEJ-3 that the legacy rule counts today, which reproduces the published 10 / 22 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-162": {
+          "parent": "MEJ-3",
+          "goal": "MEJ-3",
+          "reason": "Q4 2026 Health, Finances & Travel baseline: the Task and Story children of MEJ-3 that the legacy rule counts today, which reproduces the published 10 / 22 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-172": {
+          "parent": "MEJ-3",
+          "goal": "MEJ-3",
+          "reason": "Q4 2026 Health, Finances & Travel baseline: the Task and Story children of MEJ-3 that the legacy rule counts today, which reproduces the published 10 / 22 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-177": {
+          "parent": "MEJ-3",
+          "goal": "MEJ-3",
+          "reason": "Q4 2026 Health, Finances & Travel baseline: the Task and Story children of MEJ-3 that the legacy rule counts today, which reproduces the published 10 / 22 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-189": {
+          "parent": "MEJ-3",
+          "goal": "MEJ-3",
+          "reason": "Q4 2026 Health, Finances & Travel baseline: the Task and Story children of MEJ-3 that the legacy rule counts today, which reproduces the published 10 / 22 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-218": {
+          "parent": "MEJ-3",
+          "goal": "MEJ-3",
+          "reason": "Q4 2026 Health, Finances & Travel baseline: the Task and Story children of MEJ-3 that the legacy rule counts today, which reproduces the published 10 / 22 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-223": {
+          "parent": "MEJ-3",
+          "goal": "MEJ-3",
+          "reason": "Q4 2026 Health, Finances & Travel baseline: the Task and Story children of MEJ-3 that the legacy rule counts today, which reproduces the published 10 / 22 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-224": {
+          "parent": "MEJ-3",
+          "goal": "MEJ-3",
+          "reason": "Q4 2026 Health, Finances & Travel baseline: the Task and Story children of MEJ-3 that the legacy rule counts today, which reproduces the published 10 / 22 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-225": {
+          "parent": "MEJ-3",
+          "goal": "MEJ-3",
+          "reason": "Q4 2026 Health, Finances & Travel baseline: the Task and Story children of MEJ-3 that the legacy rule counts today, which reproduces the published 10 / 22 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-226": {
+          "parent": "MEJ-3",
+          "goal": "MEJ-3",
+          "reason": "Q4 2026 Health, Finances & Travel baseline: the Task and Story children of MEJ-3 that the legacy rule counts today, which reproduces the published 10 / 22 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-242": {
+          "parent": "MEJ-3",
+          "goal": "MEJ-3",
+          "reason": "Q4 2026 Health, Finances & Travel baseline: the Task and Story children of MEJ-3 that the legacy rule counts today, which reproduces the published 10 / 22 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-245": {
+          "parent": "MEJ-3",
+          "goal": "MEJ-3",
+          "reason": "Q4 2026 Health, Finances & Travel baseline: the Task and Story children of MEJ-3 that the legacy rule counts today, which reproduces the published 10 / 22 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-249": {
+          "parent": "MEJ-3",
+          "goal": "MEJ-3",
+          "reason": "Q4 2026 Health, Finances & Travel baseline: the Task and Story children of MEJ-3 that the legacy rule counts today, which reproduces the published 10 / 22 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-250": {
+          "parent": "MEJ-3",
+          "goal": "MEJ-3",
+          "reason": "Q4 2026 Health, Finances & Travel baseline: the Task and Story children of MEJ-3 that the legacy rule counts today, which reproduces the published 10 / 22 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-251": {
+          "parent": "MEJ-3",
+          "goal": "MEJ-3",
+          "reason": "Q4 2026 Health, Finances & Travel baseline: the Task and Story children of MEJ-3 that the legacy rule counts today, which reproduces the published 10 / 22 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-253": {
+          "parent": "MEJ-3",
+          "goal": "MEJ-3",
+          "reason": "Q4 2026 Health, Finances & Travel baseline: the Task and Story children of MEJ-3 that the legacy rule counts today, which reproduces the published 10 / 22 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-255": {
+          "parent": "MEJ-3",
+          "goal": "MEJ-3",
+          "reason": "Q4 2026 Health, Finances & Travel baseline: the Task and Story children of MEJ-3 that the legacy rule counts today, which reproduces the published 10 / 22 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-353": {
+          "parent": "MEJ-3",
+          "goal": "MEJ-3",
+          "reason": "Q4 2026 Health, Finances & Travel baseline: the Task and Story children of MEJ-3 that the legacy rule counts today, which reproduces the published 10 / 22 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-355": {
+          "parent": "MEJ-3",
+          "goal": "MEJ-3",
+          "reason": "Q4 2026 Health, Finances & Travel baseline: the Task and Story children of MEJ-3 that the legacy rule counts today, which reproduces the published 10 / 22 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-71": {
+          "parent": "MEJ-4",
+          "goal": "MEJ-4",
+          "reason": "Q4 2026 Relationships baseline: the Task and Story children of MEJ-4 that the legacy rule counts today, which reproduces the published 6 / 18 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-131": {
+          "parent": "MEJ-4",
+          "goal": "MEJ-4",
+          "reason": "Q4 2026 Relationships baseline: the Task and Story children of MEJ-4 that the legacy rule counts today, which reproduces the published 6 / 18 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-174": {
+          "parent": "MEJ-4",
+          "goal": "MEJ-4",
+          "reason": "Q4 2026 Relationships baseline: the Task and Story children of MEJ-4 that the legacy rule counts today, which reproduces the published 6 / 18 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-243": {
+          "parent": "MEJ-4",
+          "goal": "MEJ-4",
+          "reason": "Q4 2026 Relationships baseline: the Task and Story children of MEJ-4 that the legacy rule counts today, which reproduces the published 6 / 18 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-340": {
+          "parent": "MEJ-4",
+          "goal": "MEJ-4",
+          "reason": "Q4 2026 Relationships baseline: the Task and Story children of MEJ-4 that the legacy rule counts today, which reproduces the published 6 / 18 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-341": {
+          "parent": "MEJ-4",
+          "goal": "MEJ-4",
+          "reason": "Q4 2026 Relationships baseline: the Task and Story children of MEJ-4 that the legacy rule counts today, which reproduces the published 6 / 18 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-342": {
+          "parent": "MEJ-4",
+          "goal": "MEJ-4",
+          "reason": "Q4 2026 Relationships baseline: the Task and Story children of MEJ-4 that the legacy rule counts today, which reproduces the published 6 / 18 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-343": {
+          "parent": "MEJ-4",
+          "goal": "MEJ-4",
+          "reason": "Q4 2026 Relationships baseline: the Task and Story children of MEJ-4 that the legacy rule counts today, which reproduces the published 6 / 18 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-344": {
+          "parent": "MEJ-4",
+          "goal": "MEJ-4",
+          "reason": "Q4 2026 Relationships baseline: the Task and Story children of MEJ-4 that the legacy rule counts today, which reproduces the published 6 / 18 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-345": {
+          "parent": "MEJ-4",
+          "goal": "MEJ-4",
+          "reason": "Q4 2026 Relationships baseline: the Task and Story children of MEJ-4 that the legacy rule counts today, which reproduces the published 6 / 18 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-346": {
+          "parent": "MEJ-4",
+          "goal": "MEJ-4",
+          "reason": "Q4 2026 Relationships baseline: the Task and Story children of MEJ-4 that the legacy rule counts today, which reproduces the published 6 / 18 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-347": {
+          "parent": "MEJ-4",
+          "goal": "MEJ-4",
+          "reason": "Q4 2026 Relationships baseline: the Task and Story children of MEJ-4 that the legacy rule counts today, which reproduces the published 6 / 18 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-348": {
+          "parent": "MEJ-4",
+          "goal": "MEJ-4",
+          "reason": "Q4 2026 Relationships baseline: the Task and Story children of MEJ-4 that the legacy rule counts today, which reproduces the published 6 / 18 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-349": {
+          "parent": "MEJ-4",
+          "goal": "MEJ-4",
+          "reason": "Q4 2026 Relationships baseline: the Task and Story children of MEJ-4 that the legacy rule counts today, which reproduces the published 6 / 18 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-350": {
+          "parent": "MEJ-4",
+          "goal": "MEJ-4",
+          "reason": "Q4 2026 Relationships baseline: the Task and Story children of MEJ-4 that the legacy rule counts today, which reproduces the published 6 / 18 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-356": {
+          "parent": "MEJ-4",
+          "goal": "MEJ-4",
+          "reason": "Q4 2026 Relationships baseline: the Task and Story children of MEJ-4 that the legacy rule counts today, which reproduces the published 6 / 18 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-357": {
+          "parent": "MEJ-4",
+          "goal": "MEJ-4",
+          "reason": "Q4 2026 Relationships baseline: the Task and Story children of MEJ-4 that the legacy rule counts today, which reproduces the published 6 / 18 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-358": {
+          "parent": "MEJ-4",
+          "goal": "MEJ-4",
+          "reason": "Q4 2026 Relationships baseline: the Task and Story children of MEJ-4 that the legacy rule counts today, which reproduces the published 6 / 18 (candidate tables on LIFE-1068, comment 14742)",
+          "approval": "Jim, Nov 27 2026, chat: Approve Q4 baselines (LIFE-1068)",
+          "effective": "2026-10-07"
         }
-      },
-      "gaps": {
-        "MEJ-2": "no pre-migration published figure in Jira evidence",
-        "MEJ-3": "no pre-migration published figure in Jira evidence",
-        "MEJ-4": "no pre-migration published figure in Jira evidence"
       }
     }
   }

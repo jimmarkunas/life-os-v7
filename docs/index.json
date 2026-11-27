@@ -52,6 +52,13 @@
    "retrieval": "When a ticket replaces cancelled work or changes UI"
   },
   {
+   "path": "docs/notion-query-conservation-policy.md",
+   "authority": "Canonical: how agents and runs read Notion cheaply, and the per-query approval for metered reads",
+   "purpose": "Query precedence, the SQL and rows approval gate, DEGRADED on quota failure",
+   "owner": "Jim (change by reviewed PR; Q04)",
+   "retrieval": "Before the first Notion database or data-source query"
+  },
+  {
    "path": "docs/life-os-production-contract.md",
    "authority": "Canonical: the Production Contract, for schedules and runtime (v2.15.19, moved unchanged from the V1 repository)",
    "purpose": "What may run, when, with which secrets and owners; each scheduled workload's section",

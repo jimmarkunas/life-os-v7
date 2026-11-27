@@ -1027,6 +1027,22 @@ class Credentials(Server):
         status, out = self.tool(self.tok(), "buzz_read", operation="list_channels", community="life-os", workspace="x")
         self.assertEqual((status, out["error"]), (200, "invalid_argument"))  # only memory calls are lifted
 
+    def test_a_memory_call_naming_a_community_the_credential_lacks_still_routes_by_workspace(self):
+        """Codex's shape: nested arguments plus a community outside its credential; Buzz calls keep the check."""
+        self.start(access=self.access())
+        status, out = self.tool(
+            self.tok(),
+            "buzz_read",
+            operation="memory_recall",
+            community="bytalos",
+            arguments={"workspace": "Personal", "query": "probe"},
+        )
+        self.assertEqual(status, 200)
+        self.assertNotIn(out.get("error"), ("community_not_authorized",))
+        self.assertEqual(self.receipts[-2]["tenant"], "personal")
+        status, out = self.tool(self.tok(), "buzz_read", operation="list_channels", community="bytalos")
+        self.assertEqual((status, out["error"]), (200, "community_not_authorized"))  # non-memory calls unchanged
+
     def test_one_credential_never_becomes_another_client_whatever_the_caller_sends(self):
         self.start(access=self.access())
         status, raw, _ = self.req(

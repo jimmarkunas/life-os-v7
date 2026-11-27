@@ -8,6 +8,7 @@ Every markdown file under `docs/`, grouped by area, with what it is for and whet
 - [policy/dry-run-gate.md](policy/dry-run-gate.md): policy section 12, moved unchanged. Current.
 - [policy/proof-and-tests.md](policy/proof-and-tests.md): task-specific proof rules from policy section 9, moved unchanged. Current.
 - [policy/writing-tickets.md](policy/writing-tickets.md): two ticket-writing paragraphs from policy section 7, moved unchanged. Current.
+- [notion-query-conservation-policy.md](notion-query-conservation-policy.md): how agents and runs read Notion cheaply; metered queries need Jim's yes per query. Current.
 - [life-os-production-contract.md](life-os-production-contract.md): the Production Contract, authority for schedules and runtime; canonical here since Nov 27 2026 (v2.15.19, moved unchanged from `life-os-automation`). Current.
 - [agent-reference.md](agent-reference.md): code map, commands and epic delivery rules that AGENTS.md points to. Current.
 - [DECISIONS.md](DECISIONS.md): numbered, dated decisions owned by Jim; wins over any other doc. Current.
