@@ -257,7 +257,7 @@ jobs:
         run: python -m lifeos.platform.testgate
       - name: Test-only dependency
         if: &a26 ${{ steps.testgate.outputs.skip != 'true' }}
-        run: pip install --require-hashes -r requirements-test.lock || echo "pyyaml unavailable; the workflow contract tests will skip"
+        run: pip install --require-hashes -r requirements-yaml.lock || echo "pyyaml unavailable; the workflow contract tests will skip"
       - name: Unit tests
         if: *a26
         run: python -m unittest discover -s tests -t . -v
@@ -494,10 +494,16 @@ jobs:
       - uses: *a24
       - name: Semantic layer (optional shadow; local embedding model)
         if: &a44 ${{ needs.prep.outputs.pipeline == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.fit || inputs.publish || inputs.quick)) }}
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        uses: &a45 actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: .cache/fastembed
           key: fastembed-bge-small-v1
+      - name: Pip download cache for the semantic layer (keyed on requirements-fit.lock)
+        if: *a44
+        uses: *a45
+        with:
+          path: ~/.cache/pip
+          key: pip-fit-${{ runner.os }}-${{ hashFiles('requirements-fit.lock') }}
       - name: Install semantic layer
         if: *a44
         run: pip install --require-hashes -r requirements-fit.lock || echo "semantic layer unavailable (scoring unchanged)"
@@ -529,12 +535,12 @@ jobs:
       - id: browser
         continue-on-error: true
         name: Browser install
-        if: &a45 ${{ needs.prep.outputs.pipeline == 'true' || (github.event_name == 'workflow_dispatch' && inputs.quick) }}
+        if: &a46 ${{ needs.prep.outputs.pipeline == 'true' || (github.event_name == 'workflow_dispatch' && inputs.quick) }}
         uses: *a30
         with:
           cache_bust: life576a
       - id: bws_runtime_config
-        if: *a45
+        if: *a46
         continue-on-error: true
         name: *a31
         uses: *a3
@@ -542,30 +548,30 @@ jobs:
       - id: tick
         continue-on-error: true
         name: Jobs tick - the whole chain in one process
-        if: *a45
+        if: *a46
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: *a32
-          FIT_PROFILE_EXTRA_JSON: &a46 ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
-          FIT_PROFILE_JSON: &a47 ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
-          GMAIL_OAUTH_CLIENT_SECRET: &a48 ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
-          GMAIL_OAUTH_CLIENT_ID: &a49 ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_ID }}
-          GMAIL_OAUTH_REFRESH_TOKEN: &a50 ${{ steps.bws_finish.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
-          JOBRIGHT_EMAIL: &a51 ${{ steps.bws_finish.outputs.JOBRIGHT_EMAIL }}
-          JOBRIGHT_PASSWORD: &a52 ${{ steps.bws_finish.outputs.JOBRIGHT_PASSWORD }}
-          LIFEOS_ACQ_DB_NAME: &a53 ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: &a54 ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: &a55 ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: &a56 ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KEY: &a57 ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
-          LIFEOS_ACQ_SSH_JUMP_HOST: &a58 ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: &a59 ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: &a60 ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: &a61 ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: &a62 ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_USER }}
-          NOTION_API_TOKEN: &a63 ${{ steps.bws_finish.outputs.NOTION_API_TOKEN }}
-          OPEN_JOBS_CONTACT: &a64 ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
-          TINYFISH_API_KEY: &a65 ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
-          IMESSAGE_ALERTS_HOST: &a66 ${{ steps.bws_finish.outputs.IMESSAGE_ALERTS_HOST }}
+          FIT_PROFILE_EXTRA_JSON: &a47 ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
+          FIT_PROFILE_JSON: &a48 ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
+          GMAIL_OAUTH_CLIENT_SECRET: &a49 ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_CLIENT_ID: &a50 ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_ID }}
+          GMAIL_OAUTH_REFRESH_TOKEN: &a51 ${{ steps.bws_finish.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          JOBRIGHT_EMAIL: &a52 ${{ steps.bws_finish.outputs.JOBRIGHT_EMAIL }}
+          JOBRIGHT_PASSWORD: &a53 ${{ steps.bws_finish.outputs.JOBRIGHT_PASSWORD }}
+          LIFEOS_ACQ_DB_NAME: &a54 ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: &a55 ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: &a56 ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: &a57 ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KEY: &a58 ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
+          LIFEOS_ACQ_SSH_JUMP_HOST: &a59 ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: &a60 ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: &a61 ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: &a62 ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: &a63 ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: &a64 ${{ steps.bws_finish.outputs.NOTION_API_TOKEN }}
+          OPEN_JOBS_CONTACT: &a65 ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
+          TINYFISH_API_KEY: &a66 ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
+          IMESSAGE_ALERTS_HOST: &a67 ${{ steps.bws_finish.outputs.IMESSAGE_ALERTS_HOST }}
           V7_CLOUD_FIT: ${{ env.V7_CLOUD_FIT || 'off' }}
           V7_CLOUD_FIT_PROFILE_REF: ""
           TICK_CAP_LINKEDIN: ""
@@ -576,7 +582,7 @@ jobs:
           TICK_MAX_PARALLEL: ""
           GITHUB_TOKEN: *a9
           TICK_SKIP_STAGES: ${{ steps.browser.outcome == 'failure' && 'resolve-jobright' || '' }}
-          STAGE_TIMING_FILE: &a67 ${{ runner.temp }}/stage-timing-${{ github.run_id }}.jsonl
+          STAGE_TIMING_FILE: &a68 ${{ runner.temp }}/stage-timing-${{ github.run_id }}.jsonl
         run: |
           python -m lifeos.jobs.tick $([ "$LIVE" = "true" ] && echo --live) ${{ inputs.quick && '--quick' || '' }}
       - name: Stage timing receipt
@@ -584,7 +590,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: stage-timing-${{ github.run_id }}
-          path: *a67
+          path: *a68
           retention-days: 14
           if-no-files-found: ignore
       - id: web
@@ -593,26 +599,26 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.web }}
         env: &m5
           V7_RUNTIME_CONFIG_SOURCE_ID: *a32
-          FIT_PROFILE_EXTRA_JSON: *a46
-          FIT_PROFILE_JSON: *a47
-          GMAIL_OAUTH_CLIENT_SECRET: *a48
-          GMAIL_OAUTH_CLIENT_ID: *a49
-          GMAIL_OAUTH_REFRESH_TOKEN: *a50
-          JOBRIGHT_EMAIL: *a51
-          JOBRIGHT_PASSWORD: *a52
-          LIFEOS_ACQ_DB_NAME: *a53
-          LIFEOS_ACQ_DB_PASSWORD: *a54
-          LIFEOS_ACQ_DB_USER: *a55
-          LIFEOS_ACQ_SSH_HOST: *a56
-          LIFEOS_ACQ_SSH_JUMP_KEY: *a57
-          LIFEOS_ACQ_SSH_JUMP_HOST: *a58
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a59
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a60
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a61
-          LIFEOS_ACQ_SSH_USER: *a62
-          NOTION_API_TOKEN: *a63
-          OPEN_JOBS_CONTACT: *a64
-          TINYFISH_API_KEY: *a65
+          FIT_PROFILE_EXTRA_JSON: *a47
+          FIT_PROFILE_JSON: *a48
+          GMAIL_OAUTH_CLIENT_SECRET: *a49
+          GMAIL_OAUTH_CLIENT_ID: *a50
+          GMAIL_OAUTH_REFRESH_TOKEN: *a51
+          JOBRIGHT_EMAIL: *a52
+          JOBRIGHT_PASSWORD: *a53
+          LIFEOS_ACQ_DB_NAME: *a54
+          LIFEOS_ACQ_DB_PASSWORD: *a55
+          LIFEOS_ACQ_DB_USER: *a56
+          LIFEOS_ACQ_SSH_HOST: *a57
+          LIFEOS_ACQ_SSH_JUMP_KEY: *a58
+          LIFEOS_ACQ_SSH_JUMP_HOST: *a59
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a60
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a61
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a62
+          LIFEOS_ACQ_SSH_USER: *a63
+          NOTION_API_TOKEN: *a64
+          OPEN_JOBS_CONTACT: *a65
+          TINYFISH_API_KEY: *a66
         run: python -m lifeos.run web --limit 12 $([ "$LIVE" = "true" ] && echo --live)
       - id: enrich
         continue-on-error: true
@@ -628,27 +634,27 @@ jobs:
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: *a32
           FIT_ALL: ${{ inputs.fit_all && 'true' || '' }}
-          FIT_ONLY: &a68 ${{ github.event_name == 'workflow_dispatch' && inputs.report || '' }}
-          FIT_PROFILE_EXTRA_JSON: *a46
-          FIT_PROFILE_JSON: *a47
-          GMAIL_OAUTH_CLIENT_SECRET: *a48
-          GMAIL_OAUTH_CLIENT_ID: *a49
-          GMAIL_OAUTH_REFRESH_TOKEN: *a50
-          JOBRIGHT_EMAIL: *a51
-          JOBRIGHT_PASSWORD: *a52
-          LIFEOS_ACQ_DB_NAME: *a53
-          LIFEOS_ACQ_DB_PASSWORD: *a54
-          LIFEOS_ACQ_DB_USER: *a55
-          LIFEOS_ACQ_SSH_HOST: *a56
-          LIFEOS_ACQ_SSH_JUMP_KEY: *a57
-          LIFEOS_ACQ_SSH_JUMP_HOST: *a58
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a59
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a60
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a61
-          LIFEOS_ACQ_SSH_USER: *a62
-          NOTION_API_TOKEN: *a63
-          OPEN_JOBS_CONTACT: *a64
-          TINYFISH_API_KEY: *a65
+          FIT_ONLY: &a69 ${{ github.event_name == 'workflow_dispatch' && inputs.report || '' }}
+          FIT_PROFILE_EXTRA_JSON: *a47
+          FIT_PROFILE_JSON: *a48
+          GMAIL_OAUTH_CLIENT_SECRET: *a49
+          GMAIL_OAUTH_CLIENT_ID: *a50
+          GMAIL_OAUTH_REFRESH_TOKEN: *a51
+          JOBRIGHT_EMAIL: *a52
+          JOBRIGHT_PASSWORD: *a53
+          LIFEOS_ACQ_DB_NAME: *a54
+          LIFEOS_ACQ_DB_PASSWORD: *a55
+          LIFEOS_ACQ_DB_USER: *a56
+          LIFEOS_ACQ_SSH_HOST: *a57
+          LIFEOS_ACQ_SSH_JUMP_KEY: *a58
+          LIFEOS_ACQ_SSH_JUMP_HOST: *a59
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a60
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a61
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a62
+          LIFEOS_ACQ_SSH_USER: *a63
+          NOTION_API_TOKEN: *a64
+          OPEN_JOBS_CONTACT: *a65
+          TINYFISH_API_KEY: *a66
         run: python -m lifeos.run fit $([ "$LIVE" = "true" ] && echo --live)
       - id: fit_cloud_backlog
         continue-on-error: true
@@ -657,20 +663,20 @@ jobs:
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: *a32
           CLOUD_BACKLOG: ${{ needs.prep.outputs.pipeline == 'true' && env.V7_CLOUD_FIT_SCHEDULED || inputs.cloud_backlog }}
-          FIT_PROFILE_EXTRA_JSON: *a46
-          FIT_PROFILE_JSON: *a47
-          LIFEOS_ACQ_DB_NAME: *a53
-          LIFEOS_ACQ_DB_PASSWORD: *a54
-          LIFEOS_ACQ_DB_USER: *a55
-          LIFEOS_ACQ_SSH_HOST: *a56
-          LIFEOS_ACQ_SSH_JUMP_KEY: *a57
-          LIFEOS_ACQ_SSH_JUMP_HOST: *a58
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a59
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a60
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a61
-          LIFEOS_ACQ_SSH_USER: *a62
-          NOTION_API_TOKEN: *a63
-          IMESSAGE_ALERTS_HOST: *a66
+          FIT_PROFILE_EXTRA_JSON: *a47
+          FIT_PROFILE_JSON: *a48
+          LIFEOS_ACQ_DB_NAME: *a54
+          LIFEOS_ACQ_DB_PASSWORD: *a55
+          LIFEOS_ACQ_DB_USER: *a56
+          LIFEOS_ACQ_SSH_HOST: *a57
+          LIFEOS_ACQ_SSH_JUMP_KEY: *a58
+          LIFEOS_ACQ_SSH_JUMP_HOST: *a59
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a60
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a61
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a62
+          LIFEOS_ACQ_SSH_USER: *a63
+          NOTION_API_TOKEN: *a64
+          IMESSAGE_ALERTS_HOST: *a67
           V7_CLOUD_FIT_BACKLOG_MAX: ${{ needs.prep.outputs.pipeline == 'true' && env.V7_CLOUD_FIT_SCHEDULED || env.V7_CLOUD_FIT_BACKLOG_MAX || '0' }}
           V7_CLOUD_FIT_BACKLOG_BUDGET: ${{ needs.prep.outputs.pipeline != 'true' && env.V7_CLOUD_FIT_BACKLOG_BUDGET || '' }}
           V7_CLOUD_FIT_BACKLOG_PAGE: ${{ needs.prep.outputs.pipeline != 'true' && env.V7_CLOUD_FIT_BACKLOG_PAGE || '' }}
@@ -702,67 +708,67 @@ jobs:
       - id: holds
         continue-on-error: true
         name: Step 7a - exclude jobs that have sat on HOLD for 7 days
-        if: &a69 ${{ github.event_name == 'workflow_dispatch' && (inputs.publish || inputs.finalize) }}
+        if: &a70 ${{ github.event_name == 'workflow_dispatch' && (inputs.publish || inputs.finalize) }}
         env: *m5
         run: python -m lifeos.run expire-holds $([ "$LIVE" = "true" ] && echo --live)
       - id: finalize
         continue-on-error: true
         name: Step 7b - close out newsletter mail with outcomes
-        if: *a69
+        if: *a70
         env:
-          FIT_PROFILE_EXTRA_JSON: *a46
-          FIT_PROFILE_JSON: *a47
-          GMAIL_OAUTH_CLIENT_SECRET: *a48
-          GMAIL_OAUTH_CLIENT_ID: *a49
-          GMAIL_OAUTH_REFRESH_TOKEN: *a50
-          JOBRIGHT_EMAIL: *a51
-          JOBRIGHT_PASSWORD: *a52
-          LIFEOS_ACQ_DB_NAME: *a53
-          LIFEOS_ACQ_DB_PASSWORD: *a54
-          LIFEOS_ACQ_DB_USER: *a55
-          LIFEOS_ACQ_SSH_HOST: *a56
-          LIFEOS_ACQ_SSH_JUMP_KEY: *a57
-          LIFEOS_ACQ_SSH_JUMP_HOST: *a58
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a59
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a60
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a61
-          LIFEOS_ACQ_SSH_USER: *a62
-          NOTION_API_TOKEN: *a63
-          OPEN_JOBS_CONTACT: *a64
-          TINYFISH_API_KEY: *a65
+          FIT_PROFILE_EXTRA_JSON: *a47
+          FIT_PROFILE_JSON: *a48
+          GMAIL_OAUTH_CLIENT_SECRET: *a49
+          GMAIL_OAUTH_CLIENT_ID: *a50
+          GMAIL_OAUTH_REFRESH_TOKEN: *a51
+          JOBRIGHT_EMAIL: *a52
+          JOBRIGHT_PASSWORD: *a53
+          LIFEOS_ACQ_DB_NAME: *a54
+          LIFEOS_ACQ_DB_PASSWORD: *a55
+          LIFEOS_ACQ_DB_USER: *a56
+          LIFEOS_ACQ_SSH_HOST: *a57
+          LIFEOS_ACQ_SSH_JUMP_KEY: *a58
+          LIFEOS_ACQ_SSH_JUMP_HOST: *a59
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a60
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a61
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a62
+          LIFEOS_ACQ_SSH_USER: *a63
+          NOTION_API_TOKEN: *a64
+          OPEN_JOBS_CONTACT: *a65
+          TINYFISH_API_KEY: *a66
         run: python -m lifeos.sources.newsletters.finalize $([ "$LIVE" = "true" ] && echo --live)
       - id: web_scale_up
         continue-on-error: true
         name: Step 5c - UK Scale-Up web acquisition (scheduled)
-        if: &a70 ${{ github.event_name == 'workflow_dispatch' && inputs.web_scale_up }}
+        if: &a71 ${{ github.event_name == 'workflow_dispatch' && inputs.web_scale_up }}
         env: &m6
           V7_RUNTIME_CONFIG_SOURCE_ID: *a32
-          WEB_FORCE: *a68
-          FIT_PROFILE_EXTRA_JSON: *a46
-          FIT_PROFILE_JSON: *a47
-          GMAIL_OAUTH_CLIENT_SECRET: *a48
-          GMAIL_OAUTH_CLIENT_ID: *a49
-          GMAIL_OAUTH_REFRESH_TOKEN: *a50
-          JOBRIGHT_EMAIL: *a51
-          JOBRIGHT_PASSWORD: *a52
-          LIFEOS_ACQ_DB_NAME: *a53
-          LIFEOS_ACQ_DB_PASSWORD: *a54
-          LIFEOS_ACQ_DB_USER: *a55
-          LIFEOS_ACQ_SSH_HOST: *a56
-          LIFEOS_ACQ_SSH_JUMP_KEY: *a57
-          LIFEOS_ACQ_SSH_JUMP_HOST: *a58
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a59
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a60
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a61
-          LIFEOS_ACQ_SSH_USER: *a62
-          NOTION_API_TOKEN: *a63
-          OPEN_JOBS_CONTACT: *a64
-          TINYFISH_API_KEY: *a65
+          WEB_FORCE: *a69
+          FIT_PROFILE_EXTRA_JSON: *a47
+          FIT_PROFILE_JSON: *a48
+          GMAIL_OAUTH_CLIENT_SECRET: *a49
+          GMAIL_OAUTH_CLIENT_ID: *a50
+          GMAIL_OAUTH_REFRESH_TOKEN: *a51
+          JOBRIGHT_EMAIL: *a52
+          JOBRIGHT_PASSWORD: *a53
+          LIFEOS_ACQ_DB_NAME: *a54
+          LIFEOS_ACQ_DB_PASSWORD: *a55
+          LIFEOS_ACQ_DB_USER: *a56
+          LIFEOS_ACQ_SSH_HOST: *a57
+          LIFEOS_ACQ_SSH_JUMP_KEY: *a58
+          LIFEOS_ACQ_SSH_JUMP_HOST: *a59
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a60
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a61
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a62
+          LIFEOS_ACQ_SSH_USER: *a63
+          NOTION_API_TOKEN: *a64
+          OPEN_JOBS_CONTACT: *a65
+          TINYFISH_API_KEY: *a66
         run: python -m lifeos.run web-scale-up --limit 12 $([ "$LIVE" = "true" ] && echo --live)
       - id: titlewatch
         continue-on-error: true
         name: Step 5d - Scale-Up title watch
-        if: *a70
+        if: *a71
         env: *m6
         run: python -m lifeos.run web-titlewatch $([ "$LIVE" = "true" ] && echo --live)
       - id: sponsors
@@ -772,82 +778,82 @@ jobs:
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: *a32
           SPONSORS_FORCE: ${{ inputs.sponsors && 'true' || '' }}
-          FIT_PROFILE_EXTRA_JSON: *a46
-          FIT_PROFILE_JSON: *a47
-          GMAIL_OAUTH_CLIENT_SECRET: *a48
-          GMAIL_OAUTH_CLIENT_ID: *a49
-          GMAIL_OAUTH_REFRESH_TOKEN: *a50
-          JOBRIGHT_EMAIL: *a51
-          JOBRIGHT_PASSWORD: *a52
-          LIFEOS_ACQ_DB_NAME: *a53
-          LIFEOS_ACQ_DB_PASSWORD: *a54
-          LIFEOS_ACQ_DB_USER: *a55
-          LIFEOS_ACQ_SSH_HOST: *a56
-          LIFEOS_ACQ_SSH_JUMP_KEY: *a57
-          LIFEOS_ACQ_SSH_JUMP_HOST: *a58
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a59
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a60
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a61
-          LIFEOS_ACQ_SSH_USER: *a62
-          NOTION_API_TOKEN: *a63
-          OPEN_JOBS_CONTACT: *a64
-          TINYFISH_API_KEY: *a65
+          FIT_PROFILE_EXTRA_JSON: *a47
+          FIT_PROFILE_JSON: *a48
+          GMAIL_OAUTH_CLIENT_SECRET: *a49
+          GMAIL_OAUTH_CLIENT_ID: *a50
+          GMAIL_OAUTH_REFRESH_TOKEN: *a51
+          JOBRIGHT_EMAIL: *a52
+          JOBRIGHT_PASSWORD: *a53
+          LIFEOS_ACQ_DB_NAME: *a54
+          LIFEOS_ACQ_DB_PASSWORD: *a55
+          LIFEOS_ACQ_DB_USER: *a56
+          LIFEOS_ACQ_SSH_HOST: *a57
+          LIFEOS_ACQ_SSH_JUMP_KEY: *a58
+          LIFEOS_ACQ_SSH_JUMP_HOST: *a59
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a60
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a61
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a62
+          LIFEOS_ACQ_SSH_USER: *a63
+          NOTION_API_TOKEN: *a64
+          OPEN_JOBS_CONTACT: *a65
+          TINYFISH_API_KEY: *a66
         run: python -m lifeos.run sponsors $([ "$LIVE" = "true" ] && echo --live)
       - id: review
         continue-on-error: true
         name: Fit review (dispatch only; private Notion page)
-        if: &a71 ${{ github.event_name == 'workflow_dispatch' && inputs.report != '' && inputs.report != 'funnel' && inputs.report != 'boards-preview' && !startsWith(inputs.report, 'board:') }}
+        if: &a72 ${{ github.event_name == 'workflow_dispatch' && inputs.report != '' && inputs.report != 'funnel' && inputs.report != 'boards-preview' && !startsWith(inputs.report, 'board:') }}
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: *a32
-          REVIEW_COMPANY: &a72 ${{ inputs.report }}
-          FIT_PROFILE_EXTRA_JSON: *a46
-          FIT_PROFILE_JSON: *a47
-          GMAIL_OAUTH_CLIENT_SECRET: *a48
-          GMAIL_OAUTH_CLIENT_ID: *a49
-          GMAIL_OAUTH_REFRESH_TOKEN: *a50
-          JOBRIGHT_EMAIL: *a51
-          JOBRIGHT_PASSWORD: *a52
-          LIFEOS_ACQ_DB_NAME: *a53
-          LIFEOS_ACQ_DB_PASSWORD: *a54
-          LIFEOS_ACQ_DB_USER: *a55
-          LIFEOS_ACQ_SSH_HOST: *a56
-          LIFEOS_ACQ_SSH_JUMP_KEY: *a57
-          LIFEOS_ACQ_SSH_JUMP_HOST: *a58
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a59
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a60
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a61
-          LIFEOS_ACQ_SSH_USER: *a62
-          NOTION_API_TOKEN: *a63
-          OPEN_JOBS_CONTACT: *a64
-          TINYFISH_API_KEY: *a65
+          REVIEW_COMPANY: &a73 ${{ inputs.report }}
+          FIT_PROFILE_EXTRA_JSON: *a47
+          FIT_PROFILE_JSON: *a48
+          GMAIL_OAUTH_CLIENT_SECRET: *a49
+          GMAIL_OAUTH_CLIENT_ID: *a50
+          GMAIL_OAUTH_REFRESH_TOKEN: *a51
+          JOBRIGHT_EMAIL: *a52
+          JOBRIGHT_PASSWORD: *a53
+          LIFEOS_ACQ_DB_NAME: *a54
+          LIFEOS_ACQ_DB_PASSWORD: *a55
+          LIFEOS_ACQ_DB_USER: *a56
+          LIFEOS_ACQ_SSH_HOST: *a57
+          LIFEOS_ACQ_SSH_JUMP_KEY: *a58
+          LIFEOS_ACQ_SSH_JUMP_HOST: *a59
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a60
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a61
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a62
+          LIFEOS_ACQ_SSH_USER: *a63
+          NOTION_API_TOKEN: *a64
+          OPEN_JOBS_CONTACT: *a65
+          TINYFISH_API_KEY: *a66
         run: python -m lifeos.run fit-review $([ "$LIVE" = "true" ] && echo --live)
       - id: explain
         continue-on-error: true
         name: Explain (dispatch only; company names, counts, hashes)
-        if: *a71
+        if: *a72
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: *a32
-          EXPLAIN_COMPANY: *a72
-          FIT_PROFILE_EXTRA_JSON: *a46
-          FIT_PROFILE_JSON: *a47
-          GMAIL_OAUTH_CLIENT_SECRET: *a48
-          GMAIL_OAUTH_CLIENT_ID: *a49
-          GMAIL_OAUTH_REFRESH_TOKEN: *a50
-          JOBRIGHT_EMAIL: *a51
-          JOBRIGHT_PASSWORD: *a52
-          LIFEOS_ACQ_DB_NAME: *a53
-          LIFEOS_ACQ_DB_PASSWORD: *a54
-          LIFEOS_ACQ_DB_USER: *a55
-          LIFEOS_ACQ_SSH_HOST: *a56
-          LIFEOS_ACQ_SSH_JUMP_KEY: *a57
-          LIFEOS_ACQ_SSH_JUMP_HOST: *a58
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a59
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a60
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a61
-          LIFEOS_ACQ_SSH_USER: *a62
-          NOTION_API_TOKEN: *a63
-          OPEN_JOBS_CONTACT: *a64
-          TINYFISH_API_KEY: *a65
+          EXPLAIN_COMPANY: *a73
+          FIT_PROFILE_EXTRA_JSON: *a47
+          FIT_PROFILE_JSON: *a48
+          GMAIL_OAUTH_CLIENT_SECRET: *a49
+          GMAIL_OAUTH_CLIENT_ID: *a50
+          GMAIL_OAUTH_REFRESH_TOKEN: *a51
+          JOBRIGHT_EMAIL: *a52
+          JOBRIGHT_PASSWORD: *a53
+          LIFEOS_ACQ_DB_NAME: *a54
+          LIFEOS_ACQ_DB_PASSWORD: *a55
+          LIFEOS_ACQ_DB_USER: *a56
+          LIFEOS_ACQ_SSH_HOST: *a57
+          LIFEOS_ACQ_SSH_JUMP_KEY: *a58
+          LIFEOS_ACQ_SSH_JUMP_HOST: *a59
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a60
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a61
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a62
+          LIFEOS_ACQ_SSH_USER: *a63
+          NOTION_API_TOKEN: *a64
+          OPEN_JOBS_CONTACT: *a65
+          TINYFISH_API_KEY: *a66
         run: python -m lifeos.run explain
       - id: boardcheck
         continue-on-error: true
@@ -855,27 +861,27 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' && startsWith(inputs.report, 'board:') }}
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: *a32
-          BOARD_COMPANY: *a72
-          FIT_PROFILE_EXTRA_JSON: *a46
-          FIT_PROFILE_JSON: *a47
-          GMAIL_OAUTH_CLIENT_SECRET: *a48
-          GMAIL_OAUTH_CLIENT_ID: *a49
-          GMAIL_OAUTH_REFRESH_TOKEN: *a50
-          JOBRIGHT_EMAIL: *a51
-          JOBRIGHT_PASSWORD: *a52
-          LIFEOS_ACQ_DB_NAME: *a53
-          LIFEOS_ACQ_DB_PASSWORD: *a54
-          LIFEOS_ACQ_DB_USER: *a55
-          LIFEOS_ACQ_SSH_HOST: *a56
-          LIFEOS_ACQ_SSH_JUMP_KEY: *a57
-          LIFEOS_ACQ_SSH_JUMP_HOST: *a58
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a59
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a60
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a61
-          LIFEOS_ACQ_SSH_USER: *a62
-          NOTION_API_TOKEN: *a63
-          OPEN_JOBS_CONTACT: *a64
-          TINYFISH_API_KEY: *a65
+          BOARD_COMPANY: *a73
+          FIT_PROFILE_EXTRA_JSON: *a47
+          FIT_PROFILE_JSON: *a48
+          GMAIL_OAUTH_CLIENT_SECRET: *a49
+          GMAIL_OAUTH_CLIENT_ID: *a50
+          GMAIL_OAUTH_REFRESH_TOKEN: *a51
+          JOBRIGHT_EMAIL: *a52
+          JOBRIGHT_PASSWORD: *a53
+          LIFEOS_ACQ_DB_NAME: *a54
+          LIFEOS_ACQ_DB_PASSWORD: *a55
+          LIFEOS_ACQ_DB_USER: *a56
+          LIFEOS_ACQ_SSH_HOST: *a57
+          LIFEOS_ACQ_SSH_JUMP_KEY: *a58
+          LIFEOS_ACQ_SSH_JUMP_HOST: *a59
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a60
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a61
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a62
+          LIFEOS_ACQ_SSH_USER: *a63
+          NOTION_API_TOKEN: *a64
+          OPEN_JOBS_CONTACT: *a65
+          TINYFISH_API_KEY: *a66
         run: python -m lifeos.run board-check $([ "$LIVE" = "true" ] && echo --live)
       - id: funnel
         continue-on-error: true
@@ -889,18 +895,18 @@ jobs:
         name: Employer boards acceptance preview (dispatch only)
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.report == 'boards-preview' }}
         env:
-          FIT_PROFILE_EXTRA_JSON: *a46
-          FIT_PROFILE_JSON: *a47
-          LIFEOS_ACQ_DB_NAME: *a53
-          LIFEOS_ACQ_DB_PASSWORD: *a54
-          LIFEOS_ACQ_DB_USER: *a55
-          LIFEOS_ACQ_SSH_HOST: *a56
-          LIFEOS_ACQ_SSH_JUMP_KEY: *a57
-          LIFEOS_ACQ_SSH_JUMP_HOST: *a58
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a59
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a60
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a61
-          LIFEOS_ACQ_SSH_USER: *a62
+          FIT_PROFILE_EXTRA_JSON: *a47
+          FIT_PROFILE_JSON: *a48
+          LIFEOS_ACQ_DB_NAME: *a54
+          LIFEOS_ACQ_DB_PASSWORD: *a55
+          LIFEOS_ACQ_DB_USER: *a56
+          LIFEOS_ACQ_SSH_HOST: *a57
+          LIFEOS_ACQ_SSH_JUMP_KEY: *a58
+          LIFEOS_ACQ_SSH_JUMP_HOST: *a59
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a60
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a61
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a62
+          LIFEOS_ACQ_SSH_USER: *a63
         run: python -m lifeos.run boards-preview --limit 600
       - id: probe
         continue-on-error: true
@@ -911,36 +917,36 @@ jobs:
       - id: sync_seen
         continue-on-error: true
         name: Step 8 - Last Seen sync
-        if: &a73 ${{ github.event_name == 'workflow_dispatch' && inputs.maintenance && needs.prep.outputs.pipeline != 'true' }}
+        if: &a74 ${{ github.event_name == 'workflow_dispatch' && inputs.maintenance && needs.prep.outputs.pipeline != 'true' }}
         env: *m5
         run: python -m lifeos.run sync-seen $([ "$LIVE" = "true" ] && echo --live)
       - id: purge
         continue-on-error: true
         name: Step 8b - retention purge
-        if: *a73
+        if: *a74
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: *a32
-          FIT_PROFILE_EXTRA_JSON: *a46
-          FIT_PROFILE_JSON: *a47
-          GMAIL_OAUTH_CLIENT_SECRET: *a48
-          GMAIL_OAUTH_CLIENT_ID: *a49
-          GMAIL_OAUTH_REFRESH_TOKEN: *a50
-          JOBRIGHT_EMAIL: *a51
-          JOBRIGHT_PASSWORD: *a52
-          LIFEOS_ACQ_DB_NAME: *a53
-          LIFEOS_ACQ_DB_PASSWORD: *a54
-          LIFEOS_ACQ_DB_USER: *a55
-          LIFEOS_ACQ_SSH_HOST: *a56
-          LIFEOS_ACQ_SSH_JUMP_KEY: *a57
-          LIFEOS_ACQ_SSH_JUMP_HOST: *a58
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a59
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a60
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a61
-          LIFEOS_ACQ_SSH_USER: *a62
-          NOTION_API_TOKEN: *a63
-          OPEN_JOBS_CONTACT: *a64
-          TINYFISH_API_KEY: *a65
-          NTFY_TOPIC: &a74 ${{ steps.bws_finish.outputs.NTFY_TOPIC }}
+          FIT_PROFILE_EXTRA_JSON: *a47
+          FIT_PROFILE_JSON: *a48
+          GMAIL_OAUTH_CLIENT_SECRET: *a49
+          GMAIL_OAUTH_CLIENT_ID: *a50
+          GMAIL_OAUTH_REFRESH_TOKEN: *a51
+          JOBRIGHT_EMAIL: *a52
+          JOBRIGHT_PASSWORD: *a53
+          LIFEOS_ACQ_DB_NAME: *a54
+          LIFEOS_ACQ_DB_PASSWORD: *a55
+          LIFEOS_ACQ_DB_USER: *a56
+          LIFEOS_ACQ_SSH_HOST: *a57
+          LIFEOS_ACQ_SSH_JUMP_KEY: *a58
+          LIFEOS_ACQ_SSH_JUMP_HOST: *a59
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a60
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a61
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a62
+          LIFEOS_ACQ_SSH_USER: *a63
+          NOTION_API_TOKEN: *a64
+          OPEN_JOBS_CONTACT: *a65
+          TINYFISH_API_KEY: *a66
+          NTFY_TOPIC: &a75 ${{ steps.bws_finish.outputs.NTFY_TOPIC }}
           PURGE_FORCE: ${{ inputs.maintenance }}
         run: |
           # D168: the stage decides when it is due (about weekly, 6.5 days after the last success, retried every 6 hours after a failure), so a failed Sunday no longer waits a week.
@@ -963,27 +969,27 @@ jobs:
         if: ${{ needs.prep.outputs.pipeline == 'true' }}
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: *a32
-          FIT_PROFILE_EXTRA_JSON: *a46
-          FIT_PROFILE_JSON: *a47
-          GMAIL_OAUTH_CLIENT_SECRET: *a48
-          GMAIL_OAUTH_CLIENT_ID: *a49
-          GMAIL_OAUTH_REFRESH_TOKEN: *a50
-          JOBRIGHT_EMAIL: *a51
-          JOBRIGHT_PASSWORD: *a52
-          LIFEOS_ACQ_DB_NAME: *a53
-          LIFEOS_ACQ_DB_PASSWORD: *a54
-          LIFEOS_ACQ_DB_USER: *a55
-          LIFEOS_ACQ_SSH_HOST: *a56
-          LIFEOS_ACQ_SSH_JUMP_KEY: *a57
-          LIFEOS_ACQ_SSH_JUMP_HOST: *a58
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a59
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a60
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a61
-          LIFEOS_ACQ_SSH_USER: *a62
-          NOTION_API_TOKEN: *a63
-          NTFY_TOPIC: *a74
-          OPEN_JOBS_CONTACT: *a64
-          TINYFISH_API_KEY: *a65
+          FIT_PROFILE_EXTRA_JSON: *a47
+          FIT_PROFILE_JSON: *a48
+          GMAIL_OAUTH_CLIENT_SECRET: *a49
+          GMAIL_OAUTH_CLIENT_ID: *a50
+          GMAIL_OAUTH_REFRESH_TOKEN: *a51
+          JOBRIGHT_EMAIL: *a52
+          JOBRIGHT_PASSWORD: *a53
+          LIFEOS_ACQ_DB_NAME: *a54
+          LIFEOS_ACQ_DB_PASSWORD: *a55
+          LIFEOS_ACQ_DB_USER: *a56
+          LIFEOS_ACQ_SSH_HOST: *a57
+          LIFEOS_ACQ_SSH_JUMP_KEY: *a58
+          LIFEOS_ACQ_SSH_JUMP_HOST: *a59
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a60
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a61
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a62
+          LIFEOS_ACQ_SSH_USER: *a63
+          NOTION_API_TOKEN: *a64
+          NTFY_TOPIC: *a75
+          OPEN_JOBS_CONTACT: *a65
+          TINYFISH_API_KEY: *a66
         run: python -m lifeos.run alerts $([ "$LIVE" = "true" ] && echo --live)
       - id: lanes
         name: Lane failures fail the run (other stages still ran)
@@ -1061,7 +1067,7 @@ jobs:
         if: ${{ inputs.interview_probe }}
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: *a32
-          NOTION_INTERVIEW_TOKEN: &a75 ${{ steps.bws_interview.outputs.NOTION_INTERVIEW_TOKEN }}
+          NOTION_INTERVIEW_TOKEN: &a76 ${{ steps.bws_interview.outputs.NOTION_INTERVIEW_TOKEN }}
         run: python -m lifeos.run interview-probe
       - id: irun
         continue-on-error: true
@@ -1071,26 +1077,26 @@ jobs:
           V7_RUNTIME_CONFIG_SOURCE_ID: *a32
           LIFEOS_NOTION_IDS: ""
           NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
-          NOTION_INTERVIEW_TOKEN: *a75
+          NOTION_INTERVIEW_TOKEN: *a76
         run: python -m lifeos.run interview --limit 20 $([ "$LIVE" = "true" ] && echo --live)
       - id: iacc
         continue-on-error: true
         name: Interview private acceptance (manual dispatch only)
-        if: &a76 ${{ github.event_name == 'workflow_dispatch' && inputs.interview_acceptance == true && inputs.tick != true }}
+        if: &a77 ${{ github.event_name == 'workflow_dispatch' && inputs.interview_acceptance == true && inputs.tick != true }}
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: *a32
           INTERVIEW_ACCEPTANCE_JSON: ${{ steps.bws_interview.outputs.INTERVIEW_ACCEPTANCE_JSON }}
-          NOTION_INTERVIEW_TOKEN: *a75
+          NOTION_INTERVIEW_TOKEN: *a76
           NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
         run: python -m lifeos.run interview-acceptance --limit 1 $([ "$LIVE" = "true" ] && echo --live)
       - id: iaccneg
         continue-on-error: true
         name: Interview private acceptance - negative case
-        if: *a76
+        if: *a77
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: *a32
           INTERVIEW_ACCEPTANCE_JSON: ${{ steps.bws_interview.outputs.INTERVIEW_ACCEPTANCE_NEGATIVE_JSON }}
-          NOTION_INTERVIEW_TOKEN: *a75
+          NOTION_INTERVIEW_TOKEN: *a76
           NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
         run: |
           if [ -z "$INTERVIEW_ACCEPTANCE_JSON" ]; then echo "INTERVIEW-ACCEPTANCE NEGATIVE CASE NOT SET"; exit 0; fi
