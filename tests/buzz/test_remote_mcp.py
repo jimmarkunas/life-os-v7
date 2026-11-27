@@ -604,6 +604,7 @@ class Credentials(Server):
         "honcho-alerts": "F" * 43,
         "muse": "G" * 43,
         "jira-capture": "H" * 43,
+        "codex": "I" * 43,
     }
 
     def access(self, edit=None, no_identity=False):
@@ -1183,7 +1184,7 @@ class Credentials(Server):
         with mock.patch.dict(
             buzz_mcp.LOOKUP, {"fetchers": {"github": github}, "rows": lambda: F.rows(), "now": lambda: now}
         ):
-            for cid in (c for c in self.SECRETS if c not in ("honcho-alerts", "muse", "jira-capture")):
+            for cid in (c for c in self.SECRETS if c not in ("honcho-alerts", "muse", "jira-capture", "codex")):
                 comm = "pilot" if cid == "openclaw" else "life-os"  # openclaw's only community
                 status, out = self.tool(
                     self.tok(cid),

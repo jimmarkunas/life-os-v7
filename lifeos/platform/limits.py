@@ -66,3 +66,32 @@ BOARDS_BACKFILL_PER_RUN = 450
 
 RESOLVE_MAX_ATTEMPTS = 6
 ENRICH_MAX_ATTEMPTS = 12
+
+# Gmail (quota page re-read Nov 27 2026): 6,000 quota units per user per minute and 1,200,000 per project per minute;
+# a 403 "User rate limit exceeded" past either. Every LIFE OS process shares one Gmail user, so one budget covers all.
+GMAIL_UNITS_PER_MINUTE_PROVIDER = 6000  # provider limit, per user
+GMAIL_UNITS_PER_MINUTE = 4500  # ours: 75 percent, spent by one process at a time (the lease)
+GMAIL_BURST_UNITS = 120  # a process may start with two full-format reads in hand
+GMAIL_MAX_IN_FLIGHT = 4  # ours: the concurrent-request limit is not published
+GMAIL_RATE_SLOWDOWN = 0.5  # the rate is halved after a rate-limit answer
+GMAIL_MIN_UNITS_PER_MINUTE = 600  # the floor after repeated slowdowns
+GMAIL_LEASE_SECONDS = 8  # a holder that goes quiet loses the lease after this
+GMAIL_LEASE_RENEW_SECONDS = 3  # a holder renews at most this often
+GMAIL_LEASE_POLL_SECONDS = 1
+GMAIL_LEASE_WAIT_MAX_SECONDS = 120  # past this a caller goes ahead without the lease (fail open)
+GMAIL_UNIT_DEFAULT = 20  # a call this table does not know is priced high
+GMAIL_UNIT_SEND = 100
+GMAIL_UNIT_BATCH_MODIFY = 50
+GMAIL_UNIT_PROFILE = 1
+GMAIL_UNIT_HISTORY = 2
+GMAIL_UNIT_LABEL_READ = 1
+GMAIL_UNIT_LABEL_WRITE = 5
+GMAIL_UNIT_LIST = 5
+GMAIL_UNIT_MODIFY = 5
+GMAIL_UNIT_TRASH = 20
+GMAIL_UNIT_ATTACHMENT = 20
+GMAIL_UNIT_MESSAGE_LIGHT = 20  # messages.get with format metadata or minimal
+GMAIL_UNIT_MESSAGE_FULL = 60  # format full, raw or html (and the default, which is full)
+GMAIL_UNIT_THREAD_LIGHT = 40
+GMAIL_UNIT_THREAD_FULL = 120
+GMAIL_UNIT_THREAD_LIST = 10
