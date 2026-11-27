@@ -149,9 +149,11 @@ class OneFilePolicy(unittest.TestCase):
             "authorization receipt",
             "manifest.json",
             "Tech Lead",
-            "Codex",
         ):
             self.assertNotIn(gone, POLICY, gone)
+        for line in POLICY_FILE.splitlines():  # Codex returns only as an agent named in the Agent trailer rule
+            if "Codex" in line:
+                self.assertIn("`Agent: Codex`", line)
 
     def test_the_boot_files_route_to_it_and_carry_no_deadline_or_buzz_ceremony(self):
         for name in ("AGENTS.md", "CLAUDE.md"):

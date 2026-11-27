@@ -36,6 +36,7 @@ Link to the owner; never copy a fact into a second place.
 - **Build:** one branch `life/LIFE-nnn/<slug>`, one PR titled `[LIFE-nnn] <outcome>`. Tickets touching the same files may share one PR. Smallest change that delivers the outcome; remove the path it replaces.
 - **Test:** `sh tools/preflight.sh` before every push. CI is the full gate: fix once if red.
 - **Land:** auto-merge on same-head green CI. No reviewer is required unless branch protection or the ticket says so; never invent an approval.
+- **Agents share the repo:** every commit and PR carries an `Agent: MC01`, `Agent: OC` or `Agent: Codex` trailer, tickets list their paths, one Production Contract editor at a time, `main` uses the merge queue: [`policy/agent-coordination.md`](policy/agent-coordination.md).
 - **Close when shipped:** a build ticket is Done once it is merged on same-head green CI, live, and first-proved. A merged PR on green is not Done by itself. A check that only waits (natural runs, a soak, a scheduled time, Jim's UAT) becomes its own Task under LIFE-615: `UAT for LIFE-nnn: <check> (not before <time> CT)`, label `uat` plus `ready` or `needs-jim`, Agent Go, with the build ticket, verifier, Not before (CT), steps, Done when and "If it fails: file a Bug under LIFE-615". The build ticket names it; a successor starts once its predecessor is Done.
 - **Close:** `python -m lifeos.jira.closeout KEY... --pr N --sha S --run R --proof KEY=text --live` posts the one record (PR, SHA, CI run, outcome proof per Done when line) and moves the ticket to Done. Jim reopens it or files a Bug.
 - **Close a `research` ticket:** no PR, so no closeout script. Post one findings comment that answers every Done when line (UNCLEAR or UNVERIFIED with the reason is an answer), then move it to Done with transition 15. A `verdict` ticket closes the same way after its authorized writes are read back.
@@ -149,7 +150,7 @@ A request that breaks these rules stops with `ARCHITECTURAL DRIFT DETECTED — N
 - **Keep the suite under 90 s;** delete tests with the code they covered.
 - **Net size:** `python -m lifeos.platform.net_size` in every PR.
 - **Decision numbers:** only from `python -m lifeos.sources.devtools.decisions claim`.
-- **More proof rules** (fix on the real failing shape, runtime-facing changes, Jobs increments, full width, code comments): [`policy/proof-and-tests.md`](policy/proof-and-tests.md).
+- **More proof rules:** [`policy/proof-and-tests.md`](policy/proof-and-tests.md).
 
 ## 10. Exceptions in force
 
@@ -164,4 +165,4 @@ A request that breaks these rules stops with `ARCHITECTURAL DRIFT DETECTED — N
 
 ## 12. Dry run gate (scoping, before Agent Go; Jim, Nov 25 2026, LIFE-986)
 
-Every new ticket gets a read-only dry run and pre-made decisions, and carries the label `dry-run-green` before an agent may claim it. The full rules (what the dry run checks, the `Dry run` comment, `release LIFE-nnn`, the gate, one session one outcome) are in [`policy/dry-run-gate.md`](policy/dry-run-gate.md): read it when scoping or releasing a ticket.
+Every new ticket gets a read-only dry run and the label `dry-run-green` before an agent may claim it; the full rules are in [`policy/dry-run-gate.md`](policy/dry-run-gate.md).

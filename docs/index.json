@@ -52,6 +52,13 @@
    "retrieval": "When a ticket replaces cancelled work or changes UI"
   },
   {
+   "path": "docs/policy/agent-coordination.md",
+   "authority": "Canonical: policy section 3 detail (LIFE-1096)",
+   "purpose": "Agent trailers, one Production Contract editor, paths line in tickets, the merge queue",
+   "owner": "Jim (change by reviewed PR; Q04)",
+   "retrieval": "When starting a ticket, editing the contract or opening a PR"
+  },
+  {
    "path": "docs/notion-query-conservation-policy.md",
    "authority": "Canonical: how agents and runs read Notion cheaply, and the per-query approval for metered reads",
    "purpose": "Query precedence, the SQL and rows approval gate, DEGRADED on quota failure",
