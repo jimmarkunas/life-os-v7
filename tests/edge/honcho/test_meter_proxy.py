@@ -93,7 +93,7 @@ class Case(unittest.TestCase):
             patch.start()
             self.addCleanup(patch.stop)
         del real
-        self.start(0.90)
+        self.start(5.0)
 
     def start(self, cap):
         self.ledger = mp.Ledger(state_dir=self.tmp, cap=cap)
@@ -107,6 +107,8 @@ class Case(unittest.TestCase):
         self.port = self.proxy.server_address[1]
 
     def post(self, path, doc, headers=None):
+        if path == "/v1/messages" and isinstance(doc, dict):
+            doc = {"model": mp.MODEL, **doc}  # strict admission prices only the one model
         conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=20)
         conn.request("POST", path, json.dumps(doc), {"Content-Type": "application/json", "x-api-key": "dummy-local", **(headers or {})})
         answer = conn.getresponse()
@@ -128,10 +130,16 @@ class Pricing(unittest.TestCase):
         self.assertAlmostEqual(mp.usage_cost({"input_tokens": 100_000}), 0.01)
         self.assertAlmostEqual(mp.usage_cost({"input_tokens": 100_001}), 100_001 * 0.50 / 1e6)
         self.assertAlmostEqual(mp.usage_cost({"input_tokens": 50_000, "cache_read_input_tokens": 60_000, "output_tokens": 1000}), 50_000 * 0.50 / 1e6 + 60_000 * 0.05 / 1e6 + 1000 * 2.50 / 1e6)
-        big = json.dumps({"max_tokens": 1000, "messages": [{"role": "user", "content": "x" * 400_000}]}).encode()
-        worst, tokens_in, _ = mp.estimate(big)
-        self.assertGreater(tokens_in, 100_000)
-        self.assertAlmostEqual(worst, tokens_in * 0.50 / 1e6 + 1000 * 2.50 / 1e6)
+
+    def test_the_reservation_is_the_documented_maximum_at_the_dearest_class_and_tier(self):
+        self.assertEqual(mp.CONTEXT_TOKENS, 1_000_000)
+        self.assertEqual(mp.INPUT_NANO_PER_TOKEN, 1000)                                                    # the 1-hour cache write over 100,000 prompt tokens: $1.00 per million
+        self.assertEqual(mp.reservation_nano(1000), 1_000_000 * 1000 + 1000 * 2500)                        # a million input tokens plus the output at $2.50 per million
+        self.assertEqual(mp.reservation_nano(mp.MAX_OUTPUT_TOKENS), 1_320_000_000)                         # $1.32: the most one admitted request can ever bill
+        self.assertEqual(mp.admission(json.dumps({"model": mp.MODEL, "max_tokens": 1000, "messages": []}).encode()), (1_002_500_000, ""))
+        for kind in ("input", "cache_write", "cache_read", "output"):                                      # no class of any tier prices a token above the reserved rate
+            self.assertLessEqual(mp.nano_rate(kind, mp.PRICES), mp.INPUT_NANO_PER_TOKEN if kind != "output" else mp.nano_rate("output", mp.LONG_PRICES))
+            self.assertLessEqual(mp.nano_rate(kind, mp.LONG_PRICES), mp.INPUT_NANO_PER_TOKEN if kind != "output" else mp.nano_rate("output", mp.LONG_PRICES))
 
     def test_the_measured_live_run_costs_about_six_percent_of_the_old_dearest_rate_figure(self):
         new, written, read, out = 157_338, 72_421, 396_850, 27_797                                                          # the live meter's 248 calls on Nov 24 2026 (token counts only; every call is under 100,000 tokens)
@@ -139,14 +147,6 @@ class Pricing(unittest.TestCase):
         self.assertAlmostEqual(real, 0.0427, delta=0.0427 * 0.2)
         dearest = (157_338 + 72_421 + 396_850) * 1.00 / 1e6 + 27_797 * 2.50 / 1e6
         self.assertAlmostEqual(real / dearest, 0.06, delta=0.012)
-
-    def test_worst_case_is_input_bytes_over_three_plus_max_tokens_at_the_output_price(self):
-        body = json.dumps({"max_tokens": 1000, "messages": [{"role": "user", "content": "x" * 3000}]}).encode()
-        worst, tokens_in, max_tokens = mp.estimate(body)
-        self.assertEqual(max_tokens, 1000)
-        self.assertAlmostEqual(worst, tokens_in * 0.10 / 1e6 + 1000 * 0.50 / 1e6)
-        self.assertGreater(tokens_in, 1000)
-        self.assertEqual(mp.estimate(b"not json")[2], mp.DEFAULT_MAX_TOKENS)
 
     def test_stream_usage_takes_message_start_then_the_final_output_count(self):
         raw = ("data: " + json.dumps({"type": "message_start", "message": {"usage": {"input_tokens": 10, "output_tokens": 1}}}) + "\n\n"
@@ -205,7 +205,7 @@ class Metering(Case):
     def test_a_reply_that_breaks_off_keeps_the_whole_reservation(self):
         Upstream.mode = "broken"
         body = {"max_tokens": 1000, "messages": []}
-        worst = mp.estimate(json.dumps(body).encode())[0]
+        worst = mp.reservation_nano(1000) / mp.NANO
         try:
             self.post("/v1/messages", body)
         except (http.client.HTTPException, OSError):
@@ -239,7 +239,7 @@ class FailClosed(Case):
     def test_an_unreadable_ledger_refuses_every_request_and_nothing_is_forwarded(self):
         with open(self.ledger.path, "w") as handle:
             handle.write("not json")
-        self.start(0.90)
+        self.start(5.0)
         status, body = self.post("/v1/messages", self.MSG)
         self.assertEqual(status, 400)
         self.assertIn(b"budget cannot be verified", body)
@@ -318,7 +318,7 @@ class Routes(Case):
         conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
         conn.request("GET", "/health")
         out = json.loads(conn.getresponse().read())
-        self.assertEqual((out["ok"], out["cap_usd"], out["spent_usd"]), (True, 0.9, 0.0))
+        self.assertEqual((out["ok"], out["cap_usd"], out["spent_usd"]), (True, 5.0, 0.0))
         conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
         conn.request("POST", "/v1/messages", b"", {"Content-Length": str(mp.MAX_BODY + 1)})
         self.assertEqual(conn.getresponse().status, 400)
@@ -359,7 +359,7 @@ class MonthlyWindow(Case):
         self.start(25)
         self.ledger.clock = lambda: self.at(2026, 11, 23, 12)
         self.ledger.start, self.ledger.end = mp.window(self.ledger.clock())
-        self.ledger.spent, self.ledger.calls = 24.99, 40
+        self.ledger.spent, self.ledger.calls = 23.0, 40
         self.ledger.save()
         self.assertEqual(self.post("/v1/messages", self.MSG)[0], 200)                                     # inside the old window: spend is tiny but the cap is not
         self.ledger.clock = lambda: self.at(2026, 12, 5, 18, 1)
@@ -369,7 +369,7 @@ class MonthlyWindow(Case):
         self.assertEqual((saved["window_start"], saved["window_end"], saved["spent_usd"]), (self.at(2026, 12, 5, 18), self.at(2027, 1, 5, 18), 0.0))
         old = [json.loads(line) for line in open(self.ledger.windows_path)]
         self.assertEqual((len(old), old[0]["start"], old[0]["end"], old[0]["cap_usd"]), (1, self.at(2026, 11, 5, 18), self.at(2026, 12, 5, 18), 25))
-        self.assertGreater(old[0]["spent_usd"], 24.99)
+        self.assertGreater(old[0]["spent_usd"], 22.99)
 
     def test_over_the_cap_stops_inference_until_the_next_window_then_resumes(self):
         self.start(25)
