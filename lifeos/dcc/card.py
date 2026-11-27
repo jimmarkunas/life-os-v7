@@ -2,6 +2,7 @@
 
 It reads each card's first line (its `11/13 · 3:31 PM CT` stamp, or DEGRADED / STALE) and its counts, and rewrites
 only its own region. Runs last in the tick. Counts and fixed codes only in logs."""
+
 import os
 import re
 from datetime import datetime, timedelta
@@ -21,9 +22,13 @@ JOB_OF = {"Calendar": "outlook", "Jira": "jira", "Bills": "bills", "Mail Alerts"
 TIME = re.compile(r"(\d{1,2}):(\d{2}) ([AP]M) CT")
 # (label, block id secret, region, status location). "head": in the callout heading; "line": heading stamp plus the
 # first text line under it. The retired Attention card is not a source but stays a protected region.
-AREAS = (("Calendar", "CALENDAR_CARD_BLOCK_ID", router.CALENDAR_REGION, "head"), ("Jira", "JIRA_CARD_BLOCK_ID", router.JIRA_REGION, "head"),
-         ("Bills", "BILLS_CARD_BLOCK_ID", router.BILLS_REGION, "line"), ("Mail Alerts", "MAIL_ALERTS_CARD_BLOCK_ID", router.MAIL_ALERTS_REGION, "line"),
-         ("Amazon", "AMAZON_CARD_BLOCK_ID", router.AMAZON_REGION, "line"))
+AREAS = (
+    ("Calendar", "CALENDAR_CARD_BLOCK_ID", router.CALENDAR_REGION, "head"),
+    ("Jira", "JIRA_CARD_BLOCK_ID", router.JIRA_REGION, "head"),
+    ("Bills", "BILLS_CARD_BLOCK_ID", router.BILLS_REGION, "line"),
+    ("Mail Alerts", "MAIL_ALERTS_CARD_BLOCK_ID", router.MAIL_ALERTS_REGION, "line"),
+    ("Amazon", "AMAZON_CARD_BLOCK_ID", router.AMAZON_REGION, "line"),
+)
 PROTECTED = tuple((name, region) for _, name, region, _ in AREAS)
 
 
@@ -36,11 +41,23 @@ def _fail(code):
 
 
 def _writer(environ):
-    return Client({"NOTION_API_TOKEN": (environ.get("NOTION_JIRA_TOKEN") or "").strip(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused"})
+    return Client(
+        {
+            "NOTION_API_TOKEN": (environ.get("NOTION_JIRA_TOKEN") or "").strip(),
+            "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused",
+        }
+    )
 
 
 def _link(block):
-    return next((url for part in (block.get(block.get("type")) or {}).get("rich_text") or [] if (url := ((part.get("text") or {}).get("link") or {}).get("url"))), None)
+    return next(
+        (
+            url
+            for part in (block.get(block.get("type")) or {}).get("rich_text") or []
+            if (url := ((part.get("text") or {}).get("link") or {}).get("url"))
+        ),
+        None,
+    )
 
 
 def _links(client, block_id):
@@ -56,12 +73,23 @@ def _held(row):
 
 def _text_of(client, block_id, kind, region):
     if kind == "floating":
-        found = report_region.floating_region(client, report_region.clean_id(block_id), region, _fail, with_status=False)
-        heading, active = report_region.plain(found["heading"]).strip(), sum(1 for r in found["rows"][1:] if not _held(r))
-        stamp = heading[len(region) + 2:-1].strip() if heading.startswith(region + " (") and heading.endswith(")") else ""
+        found = report_region.floating_region(
+            client, report_region.clean_id(block_id), region, _fail, with_status=False
+        )
+        heading, active = (
+            report_region.plain(found["heading"]).strip(),
+            sum(1 for r in found["rows"][1:] if not _held(r)),
+        )
+        stamp = (
+            heading[len(region) + 2 : -1].strip() if heading.startswith(region + " (") and heading.endswith(")") else ""
+        )
         return (f"{stamp} · {active} active" if stamp and active else stamp), []
     kids = report_region.children(client, report_region.clean_id(block_id), _fail)
-    texts = [report_region.plain(b).strip() for b in kids if b.get("type") not in ("table", "child_database", "child_page", "link_to_page")]
+    texts = [
+        report_region.plain(b).strip()
+        for b in kids
+        if b.get("type") not in ("table", "child_database", "child_page", "link_to_page")
+    ]
     texts = [t for t in texts if t]
     if kind == "head":
         return (texts[0] if texts else ""), texts[1:]
@@ -69,7 +97,7 @@ def _text_of(client, block_id, kind, region):
     lines = [report_region.plain(b).strip() for b in body]
     lines = [t for t in lines if t]
     heading = next((report_region.plain(b).strip() for b in kids if b.get("type") in report_region.HEADINGS), "")
-    stamp = heading[len(region) + 2:-1].strip() if heading.startswith(region + " (") and heading.endswith(")") else ""
+    stamp = heading[len(region) + 2 : -1].strip() if heading.startswith(region + " (") and heading.endswith(")") else ""
     first = lines[0] if lines else ""
     return (f"{stamp} · {first}" if stamp and first else stamp or first), lines[1:]
 
@@ -157,7 +185,11 @@ def compose(areas, now, runs=None):
 
     def source(label):
         state, stamp = states.get(label, ("unset", None))
-        return f"{label} · {stamp} CT" if state == "fresh" else f"{state.upper()} · {label}" + (f" (last {stamp})" if stamp else "")
+        return (
+            f"{label} · {stamp} CT"
+            if state == "fresh"
+            else f"{state.upper()} · {label}" + (f" (last {stamp})" if stamp else "")
+        )
 
     def count(label, pattern, line=None):
         text = line if line is not None else (areas.get(label) or {}).get("status")
@@ -172,19 +204,52 @@ def compose(areas, now, runs=None):
     def kpi(value, name, text):
         return (str(value) if value is not None else "—", name, text)
 
-    return {"kpis": [kpi(bills_due, "Bills due", source("Bills")), kpi(combined, "Jira Overdue / Blocked", source("Jira") + (" · count not reported" if combined is None and states.get("Jira", ("unset",))[0] == "fresh" else "")),
-                     kpi(waiting, "Mail waiting", source("Mail Alerts"))], **({"runs": runs} if runs is not None else {})}
+    return {
+        "kpis": [
+            kpi(bills_due, "Bills due", source("Bills")),
+            kpi(
+                combined,
+                "Jira Overdue / Blocked",
+                source("Jira")
+                + (
+                    " · count not reported" if combined is None and states.get("Jira", ("unset",))[0] == "fresh" else ""
+                ),
+            ),
+            kpi(waiting, "Mail waiting", source("Mail Alerts")),
+        ],
+        **({"runs": runs} if runs is not None else {}),
+    }
+
 
 ICONS = ("credit-card", "arrow-right", "inbox")
 
 
 def _t(text, bold=False, gray=False, link=None):
-    return {"type": "text", "text": {"content": text[:1800], **({"link": {"url": link}} if link else {})}, **({"annotations": {**({"bold": True} if bold else {}), **({"color": "gray"} if gray else {})}} if bold or gray else {})}
+    return {
+        "type": "text",
+        "text": {"content": text[:1800], **({"link": {"url": link}} if link else {})},
+        **(
+            {"annotations": {**({"bold": True} if bold else {}), **({"color": "gray"} if gray else {})}}
+            if bold or gray
+            else {}
+        ),
+    }
 
 
 def _b(kind, *parts, children=None, icon=None):
-    return {"object": "block", "type": kind, kind: {"rich_text": list(parts), **({"icon": {"type": "external", "external": {"url": f"https://www.notion.so/icons/{icon}_gray.svg"}}} if icon else {}),
-                                                    **({"children": children} if children else {})}}
+    return {
+        "object": "block",
+        "type": kind,
+        kind: {
+            "rich_text": list(parts),
+            **(
+                {"icon": {"type": "external", "external": {"url": f"https://www.notion.so/icons/{icon}_gray.svg"}}}
+                if icon
+                else {}
+            ),
+            **({"children": children} if children else {}),
+        },
+    }
 
 
 RUNS_NAME, RUNS_ICON = runs_today.NAME, "layers"
@@ -192,21 +257,36 @@ RED = "red"
 
 
 def _colored(text, color, link=None):
-    return {"type": "text", "text": {"content": text, **({"link": {"url": link}} if link else {})}, "annotations": {"bold": True, "color": color}}
+    return {
+        "type": "text",
+        "text": {"content": text, **({"link": {"url": link}} if link else {})},
+        "annotations": {"bold": True, "color": color},
+    }
 
 
 def runs_card(runs, now):
     """The Runs OK today card from `runs_today.read`."""
-    state, ok, total, failed = runs.get("state"), int(runs.get("ok") or 0), int(runs.get("total") or 0), list(runs.get("failed") or [])
+    state, ok, total, failed = (
+        runs.get("state"),
+        int(runs.get("ok") or 0),
+        int(runs.get("total") or 0),
+        list(runs.get("failed") or []),
+    )
     value = {"paused": "Paused", "unverified": "—"}.get(state, f"{ok} / {total}")
     if state == "latest_failed":
         label = [_colored("Last run failed", RED, failed[-1] if failed else None)]
     elif state == "failed":
-        label = [_colored(f"{len(failed)} failed today", RED, failed[-1] if failed else None)] + [_colored(" ↗", RED, url) for url in failed[:-1][-2:]]
+        label = [_colored(f"{len(failed)} failed today", RED, failed[-1] if failed else None)] + [
+            _colored(" ↗", RED, url) for url in failed[:-1][-2:]
+        ]
     else:
         label = [_t(RUNS_NAME, bold=True)]
     line = "GitHub unreadable" if state == "unverified" else f"GitHub · {ct_stamp.when(now).split(' · ', 1)[1]}"
-    return _b("callout", icon=RUNS_ICON, children=[_b("heading_3", _t(value)), _b("paragraph", *label), _b("paragraph", _t(line, gray=True))])
+    return _b(
+        "callout",
+        icon=RUNS_ICON,
+        children=[_b("heading_3", _t(value)), _b("paragraph", *label), _b("paragraph", _t(line, gray=True))],
+    )
 
 
 def render(model):
@@ -218,8 +298,21 @@ def render(model):
 
     runs = model.get("runs")
     ratio = round(1 / (len(model["kpis"]) + (runs is not None)), 4)
-    columns = [column(ratio, _b("callout", icon=icon, children=[_b("heading_3", _t(value)), _b("paragraph", _t(name, bold=True)), _b("paragraph", _t(text, gray=True))]))
-               for icon, (value, name, text) in zip(ICONS, model["kpis"])]
+    columns = [
+        column(
+            ratio,
+            _b(
+                "callout",
+                icon=icon,
+                children=[
+                    _b("heading_3", _t(value)),
+                    _b("paragraph", _t(name, bold=True)),
+                    _b("paragraph", _t(text, gray=True)),
+                ],
+            ),
+        )
+        for icon, (value, name, text) in zip(ICONS, model["kpis"])
+    ]
     if runs is not None:
         columns.append(column(ratio, runs_card(runs, model.get("now") or datetime.now(TZ))))
     return [row(*columns)]
@@ -252,10 +345,19 @@ def converge_columns(client, block_id, names, protected_ids, live, skip=frozense
 
     Nothing is deleted unless the remaining names are exactly the rendered ones in order. Returns columns removed."""
     scoped = report_region.ScopedClient(client, block_id, _fail)
-    meta, existing = scoped.call("GET", f"/blocks/{quote(block_id, safe='')}"), report_region.children(scoped, block_id, _fail)
+    meta, existing = (
+        scoped.call("GET", f"/blocks/{quote(block_id, safe='')}"),
+        report_region.children(scoped, block_id, _fail),
+    )
     ours = ("toggle", "column_list", *report_region.TEXT_KINDS)
     existing = existing[:1] + [b for b in existing[1:] if b.get("id") not in skip]
-    if (not isinstance(meta, dict) or meta.get("type") != "callout" or not existing or not report_region.stamped_by_dot(report_region.plain(existing[0]), TITLE) or any(b.get("type") not in ours for b in existing[1:])):
+    if (
+        not isinstance(meta, dict)
+        or meta.get("type") != "callout"
+        or not existing
+        or not report_region.stamped_by_dot(report_region.plain(existing[0]), TITLE)
+        or any(b.get("type") not in ours for b in existing[1:])
+    ):
         return 0  # not our callout: the sync raises CARD_NOT_OWNED before any write
     rows = [b for b in existing if b.get("type") == "column_list"]
     columns = report_region.children(scoped, rows[0]["id"], _fail) if len(rows) == 1 else []
@@ -309,10 +411,25 @@ def run(limit, live, environ=os.environ, client=None, now=None):
         skip = foreign_ids(client, block_id, kpi_names)
         trimmed = converge_columns(client, block_id, kpi_names, protected_ids, live, skip)
         # a dry run cannot preflight an untrimmed tree
-        changed, removed = (0, 0) if trimmed and not live else report_region.replace_tree(client, block_id, TITLE, MODULE, spec, protected_ids, _fail, "dcc", live, skip, heading_text(now))
+        changed, removed = (
+            (0, 0)
+            if trimmed and not live
+            else report_region.replace_tree(
+                client, block_id, TITLE, MODULE, spec, protected_ids, _fail, "dcc", live, skip, heading_text(now)
+            )
+        )
     except NotionError:
         raise
-    counts = {"areas": len(areas), "fresh": states.count("fresh"), "not_current": len(states) - states.count("fresh"), "states": by_area, "status": "fresh", "blocks_written": 0, "columns_removed": trimmed, "runs": {k: runs[k] for k in ("state", "ok", "total", "why")}}
+    counts = {
+        "areas": len(areas),
+        "fresh": states.count("fresh"),
+        "not_current": len(states) - states.count("fresh"),
+        "states": by_area,
+        "status": "fresh",
+        "blocks_written": 0,
+        "columns_removed": trimmed,
+        "runs": {k: runs[k] for k in ("state", "ok", "total", "why")},
+    }
     if live:
         counts["blocks_written"], counts["removed"] = changed, removed
     return counts
