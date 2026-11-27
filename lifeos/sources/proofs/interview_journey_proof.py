@@ -5,6 +5,7 @@ QA`
 and Actually write unticked; the QA confirmation is this proof's only write switch. Mail, Google Calendar and the Jobs
 side of the Ledger are synthetic and in memory. Outputs: fixed codes and counts.
 """
+
 from datetime import datetime, timedelta
 from lifeos.hiring import decision as D
 from lifeos.interview import create, notion
@@ -20,23 +21,45 @@ MAX_TICKS = 6
 
 
 def _message(url, received, subject, body, person="Pat Example", auto=False):
-    return {"provider": "gmail", "id": url, "received": received, "sender_name": person, "sender_address": "no-reply.example" if auto else "pat-example",
-            "subject": subject, "body": body, "folder": "INBOX", "url": url, "markers": {"bulk": False, "auto": auto, "noreply": auto}}
+    return {
+        "provider": "gmail",
+        "id": url,
+        "received": received,
+        "sender_name": person,
+        "sender_address": "no-reply.example" if auto else "pat-example",
+        "subject": subject,
+        "body": body,
+        "folder": "INBOX",
+        "url": url,
+        "markers": {"bulk": False, "auto": auto, "noreply": auto},
+    }
 
 
 def _outreach(role, client, req, url, received):
-    body = (f"Hi Jim,\n\nI'm a senior recruiter at Staffing Example Inc. I am hiring for a {role} role for our client {client}."
-            + (f" Requisition {req}." if req else "") + "\n\nPat Example\nSenior Recruiter\nStaffing Example Inc\n")
+    body = (
+        f"Hi Jim,\n\nI'm a senior recruiter at Staffing Example Inc. I am hiring for a {role} role for our client {client}."
+        + (f" Requisition {req}." if req else "")
+        + "\n\nPat Example\nSenior Recruiter\nStaffing Example Inc\n"
+    )
     return _message(url, received, f"{role} opportunity", body)
 
 
 def _request(company, role, req, url, received):
-    return _message(url, received, f"Schedule your interview - {company} {role}", f"Please select a time for a call. Requisition {req}.", f"{company} Talent", True)
+    return _message(
+        url,
+        received,
+        f"Schedule your interview - {company} {role}",
+        f"Please select a time for a call. Requisition {req}.",
+        f"{company} Talent",
+        True,
+    )
 
 
 LEAD = _outreach("Program Manager", "ExampleCo", "777777", "https://example.test/proof/lead", "2026-10-19T15:00:00Z")
 NO_REQ = _outreach("Data Analyst", "OtherCo", None, "https://example.test/proof/noreq", "2026-10-19T16:00:00Z")
-REQUEST = _request("ExampleCo", "Program Manager", "777777", "https://example.test/proof/request", "2026-10-20T15:00:00Z")
+REQUEST = _request(
+    "ExampleCo", "Program Manager", "777777", "https://example.test/proof/request", "2026-10-20T15:00:00Z"
+)
 LEAD_B = _outreach("Analyst", "SampleCorp", "555555", "https://example.test/proof/lead-b", "2026-10-19T17:00:00Z")
 WRONG_B = _request("SampleCorp", "Analyst", "444444", "https://example.test/proof/wrong-b", "2026-10-20T16:00:00Z")
 INVITE = "ExampleCo Program Manager Interview"
@@ -45,6 +68,7 @@ INVITE = "ExampleCo Program Manager Interview"
 class Ledger:
     """The Jobs side of the Job Ledger, keyed like the real one. Rows it creates are real rows of the sandbox Ledger;
     its other answers stay in memory."""
+
     source = "synthetic-ledger"
 
     def __init__(self, client=None, sandbox=None):
@@ -57,7 +81,12 @@ class Ledger:
             key = body["filter"]["rich_text"]["equals"]
             return {"results": [{"id": pid} for pid, row in self.rows.items() if row["stable_job_key"] == key]}
         row = self.rows[path.rsplit("/", 1)[1]]
-        return {"properties": {"Stable Job Key": {"type": "rich_text", "rich_text": [{"plain_text": row["stable_job_key"]}]}, "Visible Lane": {"select": {"name": row["lane"]}}}}
+        return {
+            "properties": {
+                "Stable Job Key": {"type": "rich_text", "rich_text": [{"plain_text": row["stable_job_key"]}]},
+                "Visible Lane": {"select": {"name": row["lane"]}},
+            }
+        }
 
     def query_data_source(self, source, body):
         return {"results": [], "has_more": False}
@@ -66,10 +95,19 @@ class Ledger:
         pid = f"synthetic-ledger-{len(self.rows) + 1}"
         if self.client is not None:
             kept = {name: props[name] for name in ("Job", "Company", "Stable Job Key") if name in props}
-            pid = self.client.call_once("POST", "/pages", {"parent": {"type": "data_source_id", "data_source_id": self.sandbox}, "properties": kept})["id"]
-        self.rows[pid] = {"page_id": pid, "company": props["Company"]["rich_text"][0]["text"]["content"], "role": props["Job"]["title"][0]["text"]["content"],
-                          "stable_job_key": props["Stable Job Key"]["rich_text"][0]["text"]["content"], "requisition": None,
-                          "lane": props["Visible Lane"]["select"]["name"]}
+            pid = self.client.call_once(
+                "POST",
+                "/pages",
+                {"parent": {"type": "data_source_id", "data_source_id": self.sandbox}, "properties": kept},
+            )["id"]
+        self.rows[pid] = {
+            "page_id": pid,
+            "company": props["Company"]["rich_text"][0]["text"]["content"],
+            "role": props["Job"]["title"][0]["text"]["content"],
+            "stable_job_key": props["Stable Job Key"]["rich_text"][0]["text"]["content"],
+            "requisition": None,
+            "lane": props["Visible Lane"]["select"]["name"],
+        }
         return pid
 
     def for_company(self, company):
@@ -92,13 +130,31 @@ def _event(title, start, status="confirmed"):
 
 
 def drive(client, environ, pipeline_id, now, ledger_id):
-    env = {**environ, "HIRING_PIPELINE_PAGE_ID": pipeline_id, "INTERVIEW_OS_WRITER": "v7", "INTERVIEW_LEADS": "on", "INTERVIEW_CONVERT": "",
-           "INTERVIEW_TEST_COMPANIES": "", "INTERVIEW_JOURNEY_PROOF": "", "NOTION_JOB_LEDGER_DATA_SOURCE_ID": ledger_id}
+    env = {
+        **environ,
+        "HIRING_PIPELINE_PAGE_ID": pipeline_id,
+        "INTERVIEW_OS_WRITER": "v7",
+        "INTERVIEW_LEADS": "on",
+        "INTERVIEW_CONVERT": "",
+        "INTERVIEW_TEST_COMPANIES": "",
+        "INTERVIEW_JOURNEY_PROOF": "",
+        "NOTION_JOB_LEDGER_DATA_SOURCE_ID": ledger_id,
+    }
     ledger, calendar, steps = Ledger(client, ledger_id), Calendar(), []
 
     def tick(records):
-        return ev.run(20, True, environ=env, client=client, calendar=calendar, now=now, ledger=ledger, records=list(records),
-                      ledger_rows=ledger.for_company, writer=ledger)
+        return ev.run(
+            20,
+            True,
+            environ=env,
+            client=client,
+            calendar=calendar,
+            now=now,
+            ledger=ledger,
+            records=list(records),
+            ledger_rows=ledger.for_company,
+            writer=ledger,
+        )
 
     def step(name, records, expect, settle=True):
         ticks = [tick(records)]
@@ -110,14 +166,30 @@ def drive(client, environ, pipeline_id, now, ledger_id):
                 why[k] = why.get(k, 0) + v
         last = ticks[-1]
         ok = expect(ticks, why) and (not settle or (last["writes"] == 0 and last["failed"] == 0))
-        steps.append({"step": name, "ticks": len(ticks), "writes": sum(t["writes"] for t in ticks), "lead_rows": sum(t["lead_rows"] for t in ticks),
-                      "lead_review": last.get("lead_review", {}), "why": {k: v for k, v in why.items() if k not in ("child_match", "parent_unchanged")},
-                      "settled_failed": last["failed"], "pass": bool(ok)})
+        steps.append(
+            {
+                "step": name,
+                "ticks": len(ticks),
+                "writes": sum(t["writes"] for t in ticks),
+                "lead_rows": sum(t["lead_rows"] for t in ticks),
+                "lead_review": last.get("lead_review", {}),
+                "why": {k: v for k, v in why.items() if k not in ("child_match", "parent_unchanged")},
+                "settled_failed": last["failed"],
+                "pass": bool(ok),
+            }
+        )
 
     mail = (LEAD, NO_REQ, LEAD_B)
     day = lambda n: (now + timedelta(days=n)).strftime("%Y-%m-%dT10:00:00-05:00")
-    step("1 recruiter leads (one with requisition, one without, a second job)", mail,
-         lambda t, w: sum(x["lead_rows"] for x in t) == 2 and w.get("parent_created") == 2 and t[0]["lead_review"] == {"requisition_missing": 1})
+    step(
+        "1 recruiter leads (one with requisition, one without, a second job)",
+        mail,
+        lambda t, w: (
+            sum(x["lead_rows"] for x in t) == 2
+            and w.get("parent_created") == 2
+            and t[0]["lead_review"] == {"requisition_missing": 1}
+        ),
+    )
     step("2 replay", mail, lambda t, w: t[0]["writes"] == 0, settle=False)
     step("3 employer asks for availability", mail + (REQUEST,), lambda t, w: w.get("round_created") == 1)
     step("3 replay", mail + (REQUEST,), lambda t, w: t[0]["writes"] == 0 and t[0]["failed"] == 0, settle=False)
@@ -128,19 +200,44 @@ def drive(client, environ, pipeline_id, now, ledger_id):
     calendar.events[0] = _event(INVITE, day(14), "cancelled")
     step("6 invite cancelled", mail + (REQUEST,), lambda t, w: w.get("round_cancelled") == 1)
     step("6 replay", mail + (REQUEST,), lambda t, w: t[0]["writes"] == 0 and t[0]["failed"] == 0, settle=False)
-    step("N request naming another requisition (second job)", mail + (REQUEST, WRONG_B),
-         lambda t, w: t[0]["writes"] == 0 and w.get("requisition_conflict") == 1, settle=False)
+    step(
+        "N request naming another requisition (second job)",
+        mail + (REQUEST, WRONG_B),
+        lambda t, w: t[0]["writes"] == 0 and w.get("requisition_conflict") == 1,
+        settle=False,
+    )
 
     scan = notion.parents(client, env)
     titles = {split_title(p.title): p.page_id for p in scan.items if p.active}
-    rounds = notion.child_scan(client, titles[("ExampleCo", "Program Manager")]).items if ("ExampleCo", "Program Manager") in titles else ()
-    other = notion.child_scan(client, titles[("SampleCorp", "Analyst")]).items if ("SampleCorp", "Analyst") in titles else ()
+    rounds = (
+        notion.child_scan(client, titles[("ExampleCo", "Program Manager")]).items
+        if ("ExampleCo", "Program Manager") in titles
+        else ()
+    )
+    other = (
+        notion.child_scan(client, titles[("SampleCorp", "Analyst")]).items
+        if ("SampleCorp", "Analyst") in titles
+        else ()
+    )
     calendar_state = create.round_calendar(client, rounds[0].page_id) if len(rounds) == 1 else (None, False)
-    checks = {"pipeline_complete": scan.complete, "opportunities": len(titles), "ledger_rows": len(ledger.rows),
-              "exampleco_rounds": len(rounds), "exampleco_round_dated": bool(rounds and rounds[0].interview_date == day(14)[:10]),
-              "exampleco_round_cancelled": calendar_state == (ev.reference(INVITE), True), "samplecorp_rounds": len(other)}
-    checks["pass"] = (checks["pipeline_complete"] and checks["opportunities"] == 2 and checks["ledger_rows"] == 2 and checks["exampleco_rounds"] == 1
-                      and checks["exampleco_round_dated"] and checks["exampleco_round_cancelled"] and checks["samplecorp_rounds"] == 0)
+    checks = {
+        "pipeline_complete": scan.complete,
+        "opportunities": len(titles),
+        "ledger_rows": len(ledger.rows),
+        "exampleco_rounds": len(rounds),
+        "exampleco_round_dated": bool(rounds and rounds[0].interview_date == day(14)[:10]),
+        "exampleco_round_cancelled": calendar_state == (ev.reference(INVITE), True),
+        "samplecorp_rounds": len(other),
+    }
+    checks["pass"] = (
+        checks["pipeline_complete"]
+        and checks["opportunities"] == 2
+        and checks["ledger_rows"] == 2
+        and checks["exampleco_rounds"] == 1
+        and checks["exampleco_round_dated"]
+        and checks["exampleco_round_cancelled"]
+        and checks["samplecorp_rounds"] == 0
+    )
     steps.append(decide(client, ledger_id, titles.get(("ExampleCo", "Program Manager")), now))
     return steps, checks
 
@@ -165,51 +262,98 @@ class Rows:
 def decide(client, ledger_id, row_id, now):
     """Confirm Rejected then Reopen on the ExampleCo row, each sent twice (the second is `already_recorded`), read
     back after each."""
-    out = {"step": "D Confirm Rejected then Reopen on the Ledger row", "ticks": 0, "writes": 0, "lead_rows": 0, "lead_review": {}, "why": {}, "settled_failed": 0, "pass": False}
+    out = {
+        "step": "D Confirm Rejected then Reopen on the Ledger row",
+        "ticks": 0,
+        "writes": 0,
+        "lead_rows": 0,
+        "lead_review": {},
+        "why": {},
+        "settled_failed": 0,
+        "pass": False,
+    }
     if not row_id:
         out["why"] = {"decision_row_missing": 1}
         return out
     rows, stamp = Rows(client, ledger_id), now.strftime("%Y%m%d%H%M")
     base = {"confirmed": True, "id": row_id, "company": "ExampleCo", "role": "Program Manager"}
-    close = {**base, "action": D.ACTION, "outcome": D.REJECTED, "reason": "Synthetic proof close", "op": f"proof-close-{stamp}"}
+    close = {
+        **base,
+        "action": D.ACTION,
+        "outcome": D.REJECTED,
+        "reason": "Synthetic proof close",
+        "op": f"proof-close-{stamp}",
+    }
     reopen = {**base, "action": D.REOPEN, "reason": "Synthetic proof reopen", "op": f"proof-reopen-{stamp}"}
 
     def state():
         props = (rows.get_page(row_id) or {}).get("properties") or {}
-        return (((props.get(D.DECISION) or {}).get("select") or {}).get("name"), len(D.entries(D._text(props.get(D.HISTORY), "rich_text"))),
-                ((props.get("Stage") or {}).get("select") or {}).get("name"))
+        return (
+            ((props.get(D.DECISION) or {}).get("select") or {}).get("name"),
+            len(D.entries(D._text(props.get(D.HISTORY), "rich_text"))),
+            ((props.get("Stage") or {}).get("select") or {}).get("name"),
+        )
+
     try:
         routed = D._page_id(D.route(D.rows(D.ledger_pages(rows)), close)["id"]) == D._page_id(row_id)
         before = state()
-        done = [D.confirm_rejected(rows, close, True, now)["status"], D.confirm_rejected(rows, close, True, now)["status"]]
+        done = [
+            D.confirm_rejected(rows, close, True, now)["status"],
+            D.confirm_rejected(rows, close, True, now)["status"],
+        ]
         closed = state()
-        done += [D.confirm_rejected(rows, reopen, True, now)["status"], D.confirm_rejected(rows, reopen, True, now)["status"]]
+        done += [
+            D.confirm_rejected(rows, reopen, True, now)["status"],
+            D.confirm_rejected(rows, reopen, True, now)["status"],
+        ]
         opened = state()
     except NotionError as error:
         out["why"] = {str(error)[:60]: 1}
         return out
     out["why"] = {f"decision_{s}": done.count(s) for s in sorted(set(done))}
     out["writes"] = done.count("recorded")
-    out["pass"] = (routed and done == ["recorded", "already_recorded", "recorded", "already_recorded"] and before[:2] == (None, 0)
-                   and closed[:2] == (D.REJECTED, 1) and opened[:2] == (None, 2) and before[2] == closed[2] == opened[2] and before[2] is not None)
+    out["pass"] = (
+        routed
+        and done == ["recorded", "already_recorded", "recorded", "already_recorded"]
+        and before[:2] == (None, 0)
+        and closed[:2] == (D.REJECTED, 1)
+        and opened[:2] == (None, 2)
+        and before[2] == closed[2] == opened[2]
+        and before[2] is not None
+    )
     return out
 
 
-LEDGER_SCHEMA = {"Job": {"title": {}}, "Company": {"rich_text": {}}, "Stable Job Key": {"rich_text": {}}, "Source Types": {"multi_select": {}},
-                 "Applied": {"checkbox": {}},                                       # the decision writers' pursuit read filters on it (a missing property is HTTP 400)
-                 "Stage": {"select": {"options": [{"name": n} for n in notion.LEDGER_STAGES]}},
-                 "Hiring Decision": {"select": {"options": [{"name": D.REJECTED}, {"name": D.PASSED}]}},
-                 "Hiring Decision History": {"rich_text": {}}, "Dismissed Outcome Ref": {"rich_text": {}}}
+LEDGER_SCHEMA = {
+    "Job": {"title": {}},
+    "Company": {"rich_text": {}},
+    "Stable Job Key": {"rich_text": {}},
+    "Source Types": {"multi_select": {}},
+    "Applied": {"checkbox": {}},  # the decision writers' pursuit read filters on it (a missing property is HTTP 400)
+    "Stage": {"select": {"options": [{"name": n} for n in notion.LEDGER_STAGES]}},
+    "Hiring Decision": {"select": {"options": [{"name": D.REJECTED}, {"name": D.PASSED}]}},
+    "Hiring Decision History": {"rich_text": {}},
+    "Dismissed Outcome Ref": {"rich_text": {}},
+}
 
 
 def sandbox(client, now):
     """A fresh sandbox under the QA parent: container, "Hiring Pipeline", "Active Opportunities" and a small Job
     Ledger. -> (pipeline page id, Ledger data source id)."""
-    container = notion.write_tree(client, QA_PARENT, [], title=f"Interview journey proof · {now.strftime('%Y-%m-%d %I:%M %p')} CT (synthetic)", template=notion.FULL_WIDTH)
+    container = notion.write_tree(
+        client,
+        QA_PARENT,
+        [],
+        title=f"Interview journey proof · {now.strftime('%Y-%m-%d %I:%M %p')} CT (synthetic)",
+        template=notion.FULL_WIDTH,
+    )
     pipeline = notion.write_tree(client, container, [], title="Hiring Pipeline", template=notion.FULL_WIDTH)
     notion.write_tree(client, pipeline, [], title="Active Opportunities", template=notion.FULL_WIDTH)
-    from lifeos.sources.proofs import m1m2_proof                                    # imported here: m1m2_proof imports this module
-    return pipeline, m1m2_proof._database(client, container, "Job Ledger (synthetic)", LEDGER_SCHEMA, "JOURNEY_SANDBOX_LEDGER_UNREADABLE")
+    from lifeos.sources.proofs import m1m2_proof  # imported here: m1m2_proof imports this module
+
+    return pipeline, m1m2_proof._database(
+        client, container, "Job Ledger (synthetic)", LEDGER_SCHEMA, "JOURNEY_SANDBOX_LEDGER_UNREADABLE"
+    )
 
 
 def run(environ, live, now=None, client=None):
@@ -220,12 +364,15 @@ def run(environ, live, now=None, client=None):
 def _run(environ, live, now=None, client=None):
     if (environ.get("INTERVIEW_JOURNEY_PROOF") or "").strip() == "M1M2":
         from lifeos.sources.proofs import m1m2_proof
+
         return m1m2_proof.run(environ, live, now=now, client=client)
     if (environ.get("INTERVIEW_JOURNEY_PROOF") or "").strip() == "E10":
         from lifeos.sources.proofs import interview_contacts_proof
+
         return interview_contacts_proof.run(environ, live, now=now, client=client)
     if (environ.get("INTERVIEW_JOURNEY_PROOF") or "").strip() == "LAYOUT":
         from lifeos.sources.proofs import interview_contacts_proof
+
         return interview_contacts_proof.run_layout(environ, live, now=now, client=client)
     if (environ.get("INTERVIEW_JOURNEY_PROOF") or "").strip() != CONFIRM:
         return {"proof": "refused", "code": "proof_confirm_missing", "failed": 1, "why": {}, "writes": 0}
@@ -236,4 +383,11 @@ def _run(environ, live, now=None, client=None):
     pipeline, ledger_id = sandbox(client, now)
     steps, checks = drive(client, environ, pipeline, now, ledger_id)
     failed = sum(not s["pass"] for s in steps) + (not checks["pass"])
-    return {"proof": "journey", "steps": steps, "checks": checks, "failed": failed, "why": {}, "writes": sum(s["writes"] for s in steps)}
+    return {
+        "proof": "journey",
+        "steps": steps,
+        "checks": checks,
+        "failed": failed,
+        "why": {},
+        "writes": sum(s["writes"] for s in steps),
+    }

@@ -6,6 +6,7 @@ failure. `INTERVIEW_CONVERT` is `inventory` (classify and count only) or `all` (
 pages per run, default 2); any other value is off. Writes also need INTERVIEW_OS_WRITER=v7. Counts and fixed codes
 only.
 """
+
 import re
 
 from lifeos.interview import create, notion, view as views
@@ -16,21 +17,35 @@ from lifeos.platform.runtime import DeadlineExceeded, RunContext
 
 MODES = ("inventory", "all")
 DEFAULT_CAP = 2
-SWEEP_SECONDS = 300                                                      # the job's time limit leaves the mail read, evidence and write stage first
-PAGE_SECONDS = 75                                                        # a page is not started with less than this left
+SWEEP_SECONDS = 300  # the job's time limit leaves the mail read, evidence and write stage first
+PAGE_SECONDS = 75  # a page is not started with less than this left
 CONVERTIBLE = ("human", "adopt_line", "skeleton", "prefold", "ui3b")
 NEUTRAL = ("parent_unchanged",)
-DONE = ("parent_adopted", "parent_upgraded", "parent_refreshed", "adopt_allowed", "upgrade_allowed", "refresh_allowed", "adopt_line_allowed")
+DONE = (
+    "parent_adopted",
+    "parent_upgraded",
+    "parent_refreshed",
+    "adopt_allowed",
+    "upgrade_allowed",
+    "refresh_allowed",
+    "adopt_line_allowed",
+)
 
 
-SETTING = re.compile(r"(inventory|all)(?::(\d{1,2}))?(?:@([0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}))?")
+SETTING = re.compile(
+    r"(inventory|all)(?::(\d{1,2}))?(?:@([0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}))?"
+)
 
 
 def _setting(environ):
     """(mode, cap text, page id) of `inventory`, `all`, `all:N` or `all:N@<page id>` (exactly one page); anything else
     is off."""
     found = SETTING.fullmatch((environ.get("INTERVIEW_CONVERT") or "").strip().lower())
-    return tuple(g or "" for g in found.groups()) if found and (found.group(1) == "all" or not (found.group(2) or found.group(3))) else ("", "", "")
+    return (
+        tuple(g or "" for g in found.groups())
+        if found and (found.group(1) == "all" or not (found.group(2) or found.group(3)))
+        else ("", "", "")
+    )
 
 
 def mode(environ):
@@ -60,7 +75,11 @@ def classify(client, page_id, context=None):
             return "unrecognized"
         if any(create.RENDER.fullmatch(notion.text(b)) for b in lines):
             return "current"
-        return "ui3b" if len(machine) > 1 and notion.text(machine[1]).startswith("Canonical opportunity parent") else "unrecognized"
+        return (
+            "ui3b"
+            if len(machine) > 1 and notion.text(machine[1]).startswith("Canonical opportunity parent")
+            else "unrecognized"
+        )
     if notion.is_marker(first, "opportunity"):
         return "skeleton" if not heads else "prefold" if len(heads) == 1 else "unrecognized"
     if first == notion.ADOPT and tops[0].get("type") == "paragraph":
@@ -103,7 +122,19 @@ def run(environ, live, client, scan, mint, legacy_key, context=None):
     live = bool(live) and how == "all"
     context = context or RunContext.start(SWEEP_SECONDS)
     pipeline = (environ.get("HIRING_PIPELINE_PAGE_ID") or "").strip()
-    counts = {"mode": how, "inventory": {}, "rounds": {"machine": 0, "human_titled": 0, "human_other": 0, "unread": 0}, "retired": 0, "converted": 0, "waiting": 0, "failed": 0, "writes_planned": 0, "writes": 0, "readback_ok": 0, "why": {}}
+    counts = {
+        "mode": how,
+        "inventory": {},
+        "rounds": {"machine": 0, "human_titled": 0, "human_other": 0, "unread": 0},
+        "retired": 0,
+        "converted": 0,
+        "waiting": 0,
+        "failed": 0,
+        "writes_planned": 0,
+        "writes": 0,
+        "readback_ok": 0,
+        "why": {},
+    }
 
     def note(code):
         counts["why"][code] = counts["why"].get(code, 0) + 1
@@ -111,7 +142,7 @@ def run(environ, live, client, scan, mint, legacy_key, context=None):
     limit, stopped, only = cap(environ), False, target(environ)
     try:
         for index, parent in enumerate(scan.items):
-            if context.remaining_seconds() < PAGE_SECONDS:                # not a failure: pages not yet seen wait for the next run
+            if context.remaining_seconds() < PAGE_SECONDS:  # not a failure: pages not yet seen wait for the next run
                 counts["waiting"] += len(scan.items) - index
                 note("time_budget")
                 break
@@ -127,7 +158,9 @@ def run(environ, live, client, scan, mint, legacy_key, context=None):
             if not kids.complete:
                 counts["rounds"]["unread"] += 1
             for child in kids.items:
-                counts["rounds"]["machine" if child.identity_valid is True else "human_titled" if child.legacy else "human_other"] += 1
+                counts["rounds"][
+                    "machine" if child.identity_valid is True else "human_titled" if child.legacy else "human_other"
+                ] += 1
             if kind == "current" and how == "all" and kids.complete and any(c.legacy for c in kids.items):
                 kind = "refresh"
             if kind not in CONVERTIBLE and kind != "refresh":
@@ -137,8 +170,24 @@ def run(environ, live, client, scan, mint, legacy_key, context=None):
             if how != "all" or stopped or counts["converted"] >= limit:
                 counts["waiting"] += 1
                 continue
-            key = render_job(client, parent.page_id, context) if kind == "refresh" else (legacy_key(client, parent.page_id, context) if kind == "ui3b" else None) or mint(company, role)
-            code, out = _convert(client, environ, live, context, Parent(parent.page_id, parent.title, parent.active), company, role, kind, key, pipeline, create.today())
+            key = (
+                render_job(client, parent.page_id, context)
+                if kind == "refresh"
+                else (legacy_key(client, parent.page_id, context) if kind == "ui3b" else None) or mint(company, role)
+            )
+            code, out = _convert(
+                client,
+                environ,
+                live,
+                context,
+                Parent(parent.page_id, parent.title, parent.active),
+                company,
+                role,
+                kind,
+                key,
+                pipeline,
+                create.today(),
+            )
             note(code)
             for field in ("writes_planned", "writes", "readback_ok"):
                 counts[field] += out[field]
@@ -148,7 +197,7 @@ def run(environ, live, client, scan, mint, legacy_key, context=None):
                 pass
             else:
                 counts["failed"] += 1
-                stopped = True                                           # the first failure ends the sweep: the rest wait for the next run
+                stopped = True  # the first failure ends the sweep: the rest wait for the next run
             if out["readback_failed"] or code == "write_failed":
                 stopped = True
     except (NotionError, DeadlineExceeded, KeyError, TypeError, ValueError) as error:

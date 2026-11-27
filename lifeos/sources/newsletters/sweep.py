@@ -3,6 +3,7 @@
 Idempotent by construction: moved mail leaves the Inbox, so the next run no longer sees it.
 Usage: python -m lifeos.sources.newsletters.sweep [--live]   (default is a dry run that changes nothing)
 """
+
 import argparse
 import os
 import sys
@@ -33,8 +34,10 @@ def main(argv=None):
     except GmailError as error:
         print(f"SWEEP FAILED: {error}", file=sys.stderr)
         return 1
-    lines = [f"sweep {'LIVE' if result['live'] else 'DRY-RUN'}: would_move={result['would_move']} "
-             f"moved={result['moved']} by_rule={result['by_rule']}"]
+    lines = [
+        f"sweep {'LIVE' if result['live'] else 'DRY-RUN'}: would_move={result['would_move']} "
+        f"moved={result['moved']} by_rule={result['by_rule']}"
+    ]
     print(lines[0])
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:

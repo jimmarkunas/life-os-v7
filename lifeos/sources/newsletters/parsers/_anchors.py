@@ -1,4 +1,5 @@
 """Shared parser pieces: the job Card, the "N days ago" reader and an <a> collector, tolerant of sloppy HTML."""
+
 from html.parser import HTMLParser
 import re
 
@@ -11,8 +12,14 @@ class Card:
 
     def __init__(self, company, title, salary_text, location_text, url, age_days=None, provider_score=None):
         self.company, self.title, self.salary_text, self.location_text, self.url, self.age_days = (
-            company, title, salary_text, location_text, url, age_days)
-        self.provider_score = provider_score      # aggregator's own match %: evidence only
+            company,
+            title,
+            salary_text,
+            location_text,
+            url,
+            age_days,
+        )
+        self.provider_score = provider_score  # aggregator's own match %: evidence only
 
 
 class Anchors(HTMLParser):

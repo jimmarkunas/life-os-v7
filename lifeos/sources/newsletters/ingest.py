@@ -5,6 +5,7 @@ safely written. A dry run parses and counts and writes nothing.
 Usage: python -m lifeos.sources.newsletters.ingest [--live] [--limit N]      Logs: counts only (public repo).
 
 """
+
 import argparse
 from datetime import datetime, timezone
 import time
@@ -17,7 +18,7 @@ from lifeos.sources.newsletters.parsers import jobright, linkedin
 
 PARSERS = {"jobright": jobright.parse, "linkedin-alerts": linkedin.parse}
 LOOKS_LIKE_JOBS = {"jobright": jobright.looks_like_jobs, "linkedin-alerts": linkedin.looks_like_jobs}
-from lifeos.jobs import lanes                                                # noqa: E402
+from lifeos.jobs import lanes  # noqa: E402
 
 # A coarse mail-age pre-filter only, so link-resolution budget is not spent on stale mail.
 MAX_AGE_DAYS = lanes.POLICIES["US Remote"].max_age_days
@@ -36,8 +37,13 @@ def status_for(card, mail_age=0):
 
 
 LANE = "Newsletter"
-PROVIDERS = {"lensa": "Lensa", "jobright": "Jobright", "linkedin-alerts": "LinkedIn Jobs",
-             "dice": "Dice", "reed": "Reed"}   # the Notion "Source Types" names; dice/reed are no longer read, kept only for backfill_provider on old rows
+PROVIDERS = {
+    "lensa": "Lensa",
+    "jobright": "Jobright",
+    "linkedin-alerts": "LinkedIn Jobs",
+    "dice": "Dice",
+    "reed": "Reed",
+}  # the Notion "Source Types" names; dice/reed are no longer read, kept only for backfill_provider on old rows
 
 
 def backfill_provider(connection):
@@ -60,10 +66,19 @@ def save_cards(connection, rule, message_id, cards, received_epoch=None, counts=
     with connection.cursor() as cursor:
         for card in cards:
             job = {
-                "url": card.url, "status": status_for(card, mail_age), "title": card.title, "company": card.company,
-                "location": card.location_text, "salary": card.salary_text, "source": rule, "provider": PROVIDERS[rule],
-                "lane": LANE, "age_days": known_age(card, mail_age), "received": received,
-                "provider_score": card.provider_score}
+                "url": card.url,
+                "status": status_for(card, mail_age),
+                "title": card.title,
+                "company": card.company,
+                "location": card.location_text,
+                "salary": card.salary_text,
+                "source": rule,
+                "provider": PROVIDERS[rule],
+                "lane": LANE,
+                "age_days": known_age(card, mail_age),
+                "received": received,
+                "provider_score": card.provider_score,
+            }
             key, is_new = intake.add_job(cursor, job, now)
             new += is_new
             mine = identity.url_hash(message_id + "|" + card.url)
@@ -71,12 +86,15 @@ def save_cards(connection, rule, message_id, cards, received_epoch=None, counts=
                 "INSERT IGNORE INTO v7_job_sources (job_id, source, source_url_hash, gmail_message_id, seen_at)"
                 " SELECT id, %s, %s, %s, %s FROM v7_jobs WHERE dedupe_key = %s"
                 " AND NOT EXISTS (SELECT 1 FROM v7_job_sources x WHERE x.job_id = v7_jobs.id AND x.gmail_message_id = %s)",
-                (rule, mine, message_id, now, key, message_id))
+                (rule, mine, message_id, now, key, message_id),
+            )
             if not cursor.rowcount:
                 cursor.execute("SELECT 1 FROM v7_jobs WHERE dedupe_key = %s", (key,))
                 if not cursor.fetchone():
-                    cursor.execute("INSERT IGNORE INTO v7_job_sources (job_id, source, source_url_hash, gmail_message_id, seen_at) VALUES (NULL, %s, %s, %s, %s)",
-                                   (rule, mine, message_id, now))
+                    cursor.execute(
+                        "INSERT IGNORE INTO v7_job_sources (job_id, source, source_url_hash, gmail_message_id, seen_at) VALUES (NULL, %s, %s, %s, %s)",
+                        (rule, mine, message_id, now),
+                    )
                     if counts is not None:
                         counts["suppressed"] += 1
                     continue
@@ -87,8 +105,20 @@ def save_cards(connection, rule, message_id, cards, received_epoch=None, counts=
 def extract(gmail, live, limit, connection=None):
     processed_label = gmail.label_id(config.PROCESSED_LABEL, create=True) if live else None
     retired_label = gmail.label_id(config.RETIRED_LABEL, create=True) if live else None
-    counts = {"messages": 0, "cards": 0, "new_jobs": 0, "repeat_links": 0, "suppressed": 0,
-              "unsupported_sender": 0, "no_cards": 0, "non_job_mail": 0, "stale_mail": 0, "marked_processed": 0, "retired_sender_lensa": 0, "marked_retired": 0}
+    counts = {
+        "messages": 0,
+        "cards": 0,
+        "new_jobs": 0,
+        "repeat_links": 0,
+        "suppressed": 0,
+        "unsupported_sender": 0,
+        "no_cards": 0,
+        "non_job_mail": 0,
+        "stale_mail": 0,
+        "marked_processed": 0,
+        "retired_sender_lensa": 0,
+        "marked_retired": 0,
+    }
     done, retired = [], []
     for message_id in gmail.list_ids(config.PENDING_QUERY, limit=limit):
         sender, html, received = gmail.message(message_id)
@@ -116,7 +146,7 @@ def extract(gmail, live, limit, connection=None):
                 done.append(message_id)
             continue
         counts["no_cards"] += 0 if cards else 1
-        if live and cards:                      # zero cards = parser gap: leave pending, never mark Processed
+        if live and cards:  # zero cards = parser gap: leave pending, never mark Processed
             new, repeat = save_cards(connection, rule, message_id, cards, received, counts)
             counts["new_jobs"] += new
             counts["repeat_links"] += repeat
@@ -133,8 +163,10 @@ def extract(gmail, live, limit, connection=None):
 def backfill_dates(gmail, connection):
     """Rows saved before mail dates were tracked: fill the date and apply the 14-day rule. Runs once per message."""
     with connection.cursor() as cursor:
-        cursor.execute("SELECT DISTINCT s.gmail_message_id FROM v7_job_sources s JOIN v7_jobs j ON j.id = s.job_id"
-                       " WHERE j.mail_received_at IS NULL")
+        cursor.execute(
+            "SELECT DISTINCT s.gmail_message_id FROM v7_job_sources s JOIN v7_jobs j ON j.id = s.job_id"
+            " WHERE j.mail_received_at IS NULL"
+        )
         ids = [row[0] for row in cursor.fetchall()]
     done = stale = 0
     for message_id in ids:
@@ -146,7 +178,14 @@ def backfill_dates(gmail, connection):
                 " j.mail_received_at = %s, j.posted_age_days = COALESCE(j.posted_age_days, 0) + %s,"
                 " j.status = IF(j.status = 'NEW' AND COALESCE(j.posted_age_days, 0) + %s > %s, 'EXCLUDED_STALE', j.status)"
                 " WHERE s.gmail_message_id = %s AND j.mail_received_at IS NULL",
-                (datetime.fromtimestamp(received, timezone.utc).replace(tzinfo=None), age, age, MAX_AGE_DAYS, message_id))
+                (
+                    datetime.fromtimestamp(received, timezone.utc).replace(tzinfo=None),
+                    age,
+                    age,
+                    MAX_AGE_DAYS,
+                    message_id,
+                ),
+            )
             stale += cursor.rowcount
         done += 1
     return {"backfilled_messages": done, "rows_dated": stale}
@@ -159,8 +198,17 @@ def reconcile(gmail, connect, limit):
     while
     the mail is read.
     """
-    counts = {"checked": 0, "recovered_messages": 0, "recovered_jobs": 0, "suppressed": 0, "still_no_cards": 0,
-              "stale_mail": 0, "reopened": 0, "backfilled_messages": 0, "rows_dated": 0}
+    counts = {
+        "checked": 0,
+        "recovered_messages": 0,
+        "recovered_jobs": 0,
+        "suppressed": 0,
+        "still_no_cards": 0,
+        "stale_mail": 0,
+        "reopened": 0,
+        "backfilled_messages": 0,
+        "rows_dated": 0,
+    }
     with connect() as connection:
         with connection.cursor() as cursor:
             cursor.execute("SELECT gmail_message_id, COUNT(*) FROM v7_job_sources GROUP BY gmail_message_id")
@@ -200,7 +248,9 @@ def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--limit", type=int, default=100)
-    parser.add_argument("--reconcile", action="store_true", help="repair pass over recent Processed mail (needs --live)")
+    parser.add_argument(
+        "--reconcile", action="store_true", help="repair pass over recent Processed mail (needs --live)"
+    )
     args = parser.parse_args(argv)
     try:
         gmail = Gmail.from_env()

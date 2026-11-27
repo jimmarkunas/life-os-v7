@@ -5,6 +5,7 @@ production pages are only read, for job description text. Outputs: PASS/FAIL per
 or
 link is printed.
 """
+
 from datetime import datetime, timedelta
 from urllib.parse import quote
 
@@ -29,15 +30,28 @@ WALMART_URL = "https://careers.walmart.com/us/en/jobs/R-2612137"
 HEADER = ["Person", "Role / Relevance", "Outreach Status"]
 NONE_ROW = ["No separately verified contacts", "—", "Not tracked"]
 DEGRADED_ROW = ["DEGRADED · Network leads unreadable this run", "—", "Not tracked"]
-PEOPLE = (("Avery Synthetic", "Director, Operations Excellence", 10), ("Blake Synthetic", "Senior Manager, Program Delivery", 60), ("Casey Synthetic", "Technical Recruiter", 150))
+PEOPLE = (
+    ("Avery Synthetic", "Director, Operations Excellence", 10),
+    ("Blake Synthetic", "Senior Manager, Program Delivery", 60),
+    ("Casey Synthetic", "Technical Recruiter", 150),
+)
 FRESH_NOTE = "Synthetic Ledger row for LIFE-88 E10 QA. Not a real vacancy record."
 
 
 def fictional_leads(today, company):
     out = []
     for number, (name, title, age) in enumerate(PEOPLE, 1):
-        lead = {"person_id": 9000 + number, "tier": match.CURRENT, "freshness": match.freshness(age), "age_days": age, "name": name, "company": f"{company} {SYN}",
-                "title": f"{title} {SYN}", "verified": today - timedelta(days=age), "url_key": None}
+        lead = {
+            "person_id": 9000 + number,
+            "tier": match.CURRENT,
+            "freshness": match.freshness(age),
+            "age_days": age,
+            "name": name,
+            "company": f"{company} {SYN}",
+            "title": f"{title} {SYN}",
+            "verified": today - timedelta(days=age),
+            "url_key": None,
+        }
         lead["evidence_hash"] = surface.evidence_hash(lead, "qa-synthetic", lead["title"], lead["verified"])
         out.append(lead)
     return out
@@ -57,9 +71,23 @@ class Unreadable:
 
 
 def sandbox(client, now):
-    container = notion.write_tree(client, QA_PARENT, [], title=f"LIFE-88 E10 synthetic Network Leads QA · {now.strftime('%Y-%m-%d %I:%M %p')} CT (SYNTHETIC, QA-only)", template=notion.FULL_WIDTH)
-    human = notion.write_tree(client, container, [base._block("paragraph", "Synthetic human notes. LIFE OS must never change this page.")], title=f"Human page {SYN}", template=notion.FULL_WIDTH)
-    ledger = base._database(client, container, "Job Ledger (synthetic)", {n: {k: {}} for n, k in base.ledger_schema().items()})
+    container = notion.write_tree(
+        client,
+        QA_PARENT,
+        [],
+        title=f"LIFE-88 E10 synthetic Network Leads QA · {now.strftime('%Y-%m-%d %I:%M %p')} CT (SYNTHETIC, QA-only)",
+        template=notion.FULL_WIDTH,
+    )
+    human = notion.write_tree(
+        client,
+        container,
+        [base._block("paragraph", "Synthetic human notes. LIFE OS must never change this page.")],
+        title=f"Human page {SYN}",
+        template=notion.FULL_WIDTH,
+    )
+    ledger = base._database(
+        client, container, "Job Ledger (synthetic)", {n: {k: {}} for n, k in base.ledger_schema().items()}
+    )
     return {"container": container, "human": human, "ledger": ledger}
 
 
@@ -72,8 +100,10 @@ def description_lines(client, page_id, after=None, size=12):
         return []
     items = [(b.get("type", ""), notion.text(b)) for b in tops]
     if after:
-        start = next((i for i, (kind, text) in enumerate(items) if kind.startswith("heading") and text.startswith(after)), None)
-        items = items[start + 1:] if start is not None else []
+        start = next(
+            (i for i, (kind, text) in enumerate(items) if kind.startswith("heading") and text.startswith(after)), None
+        )
+        items = items[start + 1 :] if start is not None else []
     out = []
     for kind, text in items:
         if kind.startswith("heading") and out:
@@ -86,9 +116,20 @@ def description_lines(client, page_id, after=None, size=12):
 
 
 def ledger_row(client, box, company, role, key, apply_url, lines, leads=None):
-    props = {"Job": {"title": rich_text(role)}, "Company": {"rich_text": rich_text(company)}, "Stable Job Key": {"rich_text": rich_text(key)}, "Apply URL": {"url": apply_url}}
-    page = client.call_once("POST", "/pages", {"parent": {"type": "data_source_id", "data_source_id": box["ledger"]}, "properties": props})["id"]
-    body = [base._block("paragraph", f"{surface.DESCRIPTION_MARK} | key={key}"), base._block("paragraph", FRESH_NOTE), *[base._block("paragraph", t) for t in lines]]
+    props = {
+        "Job": {"title": rich_text(role)},
+        "Company": {"rich_text": rich_text(company)},
+        "Stable Job Key": {"rich_text": rich_text(key)},
+        "Apply URL": {"url": apply_url},
+    }
+    page = client.call_once(
+        "POST", "/pages", {"parent": {"type": "data_source_id", "data_source_id": box["ledger"]}, "properties": props}
+    )["id"]
+    body = [
+        base._block("paragraph", f"{surface.DESCRIPTION_MARK} | key={key}"),
+        base._block("paragraph", FRESH_NOTE),
+        *[base._block("paragraph", t) for t in lines],
+    ]
     if leads:
         body.append(surface.build_block(leads))
     body.append(base._block("paragraph", f"Synthetic note below the Network Leads {SYN}."))
@@ -102,7 +143,10 @@ def contacts_table(reader, page_id):
     budget = [200]
 
     def cells(row):
-        return ["".join(p.get("plain_text") or (p.get("text") or {}).get("content", "") for p in cell) for cell in (row.get("table_row") or {}).get("cells") or []]
+        return [
+            "".join(p.get("plain_text") or (p.get("text") or {}).get("content", "") for p in cell)
+            for cell in (row.get("table_row") or {}).get("cells") or []
+        ]
 
     def walk(block_id, depth):
         for block in notion.children(reader, block_id, budget):
@@ -115,113 +159,301 @@ def contacts_table(reader, page_id):
                 if found is not None:
                     return found
         return None
+
     return walk(page_id, 0)
 
 
 PROBE = []
-LAYOUT_DESC = {"summary": f"Synthetic overview {SYN}\n• a synthetic bullet", "responsibilities": f"Own the synthetic roadmap {SYN}", "requirements": "", "qualifications": f"Ten synthetic years {SYN}"}
+LAYOUT_DESC = {
+    "summary": f"Synthetic overview {SYN}\n• a synthetic bullet",
+    "responsibilities": f"Own the synthetic roadmap {SYN}",
+    "requirements": "",
+    "qualifications": f"Ten synthetic years {SYN}",
+}
 
 
 def _ledger_page(client, box, key, children):
-    props = {"Job": {"title": rich_text(f"E10 layout QA {SYN}")}, "Company": {"rich_text": rich_text("Layout Synthetic")}, "Stable Job Key": {"rich_text": rich_text(key)}}
-    return client.call_once("POST", "/pages", {"parent": {"type": "data_source_id", "data_source_id": box["ledger"]}, "properties": props, "children": children})["id"]
+    props = {
+        "Job": {"title": rich_text(f"E10 layout QA {SYN}")},
+        "Company": {"rich_text": rich_text("Layout Synthetic")},
+        "Stable Job Key": {"rich_text": rich_text(key)},
+    }
+    return client.call_once(
+        "POST",
+        "/pages",
+        {
+            "parent": {"type": "data_source_id", "data_source_id": box["ledger"]},
+            "properties": props,
+            "children": children,
+        },
+    )["id"]
 
 
 def layout_cases(client, reader, box, check, today):
     key = "qa-synthetic-layout-" + today.isoformat()
-    candidates = ["\u200b", "\u200c", "\u200d", "\u2060", "\u2062", "\u2063", "\ufeff", "\u00ad", "\u3164", "\u2800", "\u115f", "\u180e", "\u034f"]
-    probe_page = _ledger_page(client, box, key + "-chars", [{"object": "block", "type": "paragraph", "paragraph": {"rich_text": [{"type": "text", "text": {"content": c, "link": {"url": "https://example.com/lifeos/x"}}}]}} for c in candidates])
-    kept = [(ledger_body.hidden.refs(b) and True) or False for b in notion.children(reader, probe_page, [notion.MAX_CALLS])]
-    PROBE.append({"kept_by_codepoint": {f"U+{ord(c):04X}": ok for c, ok in zip(candidates, kept + [False] * (len(candidates) - len(kept)))}})
+    candidates = [
+        "\u200b",
+        "\u200c",
+        "\u200d",
+        "\u2060",
+        "\u2062",
+        "\u2063",
+        "\ufeff",
+        "\u00ad",
+        "\u3164",
+        "\u2800",
+        "\u115f",
+        "\u180e",
+        "\u034f",
+    ]
+    probe_page = _ledger_page(
+        client,
+        box,
+        key + "-chars",
+        [
+            {
+                "object": "block",
+                "type": "paragraph",
+                "paragraph": {
+                    "rich_text": [
+                        {"type": "text", "text": {"content": c, "link": {"url": "https://example.com/lifeos/x"}}}
+                    ]
+                },
+            }
+            for c in candidates
+        ],
+    )
+    kept = [
+        (ledger_body.hidden.refs(b) and True) or False for b in notion.children(reader, probe_page, [notion.MAX_CALLS])
+    ]
+    PROBE.append(
+        {
+            "kept_by_codepoint": {
+                f"U+{ord(c):04X}": ok for c, ok in zip(candidates, kept + [False] * (len(candidates) - len(kept)))
+            }
+        }
+    )
     page = _ledger_page(client, box, key, ledger_body.build(key, LAYOUT_DESC))
     ledger_body.fill(client, page, LAYOUT_DESC)
     top = notion.children(reader, page, [notion.MAX_CALLS])
-    PROBE.append([{k: v for k, v in part.items() if k in ("type", "plain_text", "href", "text")} for part in ((top[0].get("paragraph") or {}).get("rich_text") or [])] if top else None)
+    PROBE.append(
+        [
+            {k: v for k, v in part.items() if k in ("type", "plain_text", "href", "text")}
+            for part in ((top[0].get("paragraph") or {}).get("rich_text") or [])
+        ]
+        if top
+        else None
+    )
     where = ledger_body.find(reader, page, top)
-    check("9a a new Ledger page is a hidden marker and one column_list; the first line shows nothing", [b.get("type") for b in top] == ["paragraph", "column_list"]
-          and notion.text(top[0]) == ledger_body.hidden.ZW and ledger_body.marker_text(top[0]) == f"v7-jd:2 | key={key}")
-    check("9b the Overview column and the Full job description toggle hold the description", bool(where) and [notion.text(b) for b in notion.children(reader, where["toggle"], [notion.MAX_CALLS])]
-          == ["Responsibilities", LAYOUT_DESC["responsibilities"], "Qualifications", LAYOUT_DESC["qualifications"]] and notion.text(notion.children(reader, where["left"], [notion.MAX_CALLS])[0]) == "Overview")
+    check(
+        "9a a new Ledger page is a hidden marker and one column_list; the first line shows nothing",
+        [b.get("type") for b in top] == ["paragraph", "column_list"]
+        and notion.text(top[0]) == ledger_body.hidden.ZW
+        and ledger_body.marker_text(top[0]) == f"v7-jd:2 | key={key}",
+    )
+    check(
+        "9b the Overview column and the Full job description toggle hold the description",
+        bool(where)
+        and [notion.text(b) for b in notion.children(reader, where["toggle"], [notion.MAX_CALLS])]
+        == ["Responsibilities", LAYOUT_DESC["responsibilities"], "Qualifications", LAYOUT_DESC["qualifications"]]
+        and notion.text(notion.children(reader, where["left"], [notion.MAX_CALLS])[0]) == "Overview",
+    )
     leads = fictional_leads(today, "Layout")
     top2, owned = surface.read_page(client, page)
-    check("9c the leads block is created in the right column", surface.apply(client, page, top2, owned, leads, True) == "created")
+    check(
+        "9c the leads block is created in the right column",
+        surface.apply(client, page, top2, owned, leads, True) == "created",
+    )
     right = notion.children(reader, where["right"], [notion.MAX_CALLS])
-    check("9d the right column holds only the LinkedIn connections callout (the blank placeholder is gone), with the three contacts readable and no marker or id visible",
-          [b.get("type") for b in right] == ["callout"] and [lead["name"] for lead in surface.leads_on_page(reader, page)] == [lead["name"] for lead in leads]
-          and "net:2" not in notion.text(right[0]) and not any("Dismiss " in notion.text(c) for c in notion.children(reader, right[0]["id"], [notion.MAX_CALLS])))
+    check(
+        "9d the right column holds only the LinkedIn connections callout (the blank placeholder is gone), with the three contacts readable and no marker or id visible",
+        [b.get("type") for b in right] == ["callout"]
+        and [lead["name"] for lead in surface.leads_on_page(reader, page)] == [lead["name"] for lead in leads]
+        and "net:2" not in notion.text(right[0])
+        and not any("Dismiss " in notion.text(c) for c in notion.children(reader, right[0]["id"], [notion.MAX_CALLS])),
+    )
     top3, owned3 = surface.read_page(client, page)
     check("9e a replay writes nothing", surface.apply(client, page, top3, owned3, leads, True) == "unchanged")
     flat_key = key + "-flat"
     note = f"Synthetic note Jim wrote {SYN}"
-    flat = _ledger_page(client, box, flat_key, [*ledger_body.legacy_blocks(flat_key, LAYOUT_DESC), base._block("paragraph", note)])
-    from lifeos.sources.network import ledger_layout                                                                   # noqa: PLC0415
-    check("9f a flat page is moved to the two-column layout", ledger_layout.migrate(client, flat, flat_key, LAYOUT_DESC, True) == "migrated")
+    flat = _ledger_page(
+        client, box, flat_key, [*ledger_body.legacy_blocks(flat_key, LAYOUT_DESC), base._block("paragraph", note)]
+    )
+    from lifeos.sources.network import ledger_layout  # noqa: PLC0415
+
+    check(
+        "9f a flat page is moved to the two-column layout",
+        ledger_layout.migrate(client, flat, flat_key, LAYOUT_DESC, True) == "migrated",
+    )
     after = notion.children(reader, flat, [notion.MAX_CALLS])
-    check("9g after the move: hidden marker, the column_list, and Jim's note untouched and last", [b.get("type") for b in after] == ["paragraph", "column_list", "paragraph"]
-          and notion.text(after[0]) == ledger_body.hidden.ZW and notion.text(after[2]) == note)
+    check(
+        "9g after the move: hidden marker, the column_list, and Jim's note untouched and last",
+        [b.get("type") for b in after] == ["paragraph", "column_list", "paragraph"]
+        and notion.text(after[0]) == ledger_body.hidden.ZW
+        and notion.text(after[2]) == note,
+    )
     words = ledger_body.text_of(reader, flat)
-    check("9h the description still reads the same words (summary, responsibilities, qualifications) for the resume worker", all(part in words for desc in (LAYOUT_DESC,) for part in (desc["summary"].split("\n")[0], desc["responsibilities"], desc["qualifications"])))
+    check(
+        "9h the description still reads the same words (summary, responsibilities, qualifications) for the resume worker",
+        all(
+            part in words
+            for desc in (LAYOUT_DESC,)
+            for part in (desc["summary"].split("\n")[0], desc["responsibilities"], desc["qualifications"])
+        ),
+    )
     check("9i a replay finds the page done", ledger_layout.migrate(client, flat, flat_key, LAYOUT_DESC, True) == "done")
 
 
 def drive(client, reader, box, now, results, counts):
-    check = lambda name, ok: results.append((name, bool(ok)))                                                  # noqa: E731
+    check = lambda name, ok: results.append((name, bool(ok)))  # noqa: E731
     today, container = now.date(), box["container"]
     props = client.call("GET", f"/pages/{LEDGER_ROW}").get("properties") or {}
-    company, role, key = view._plain(props.get("Company")), view._plain(props.get("Job")), view._plain(props.get("Stable Job Key"))
-    walmart_jd, smith_jd = description_lines(client, WALMART_PAGE, after="Job Description — Source-Grounded"), description_lines(client, SMITH_PAGE, after="Job Description — Recovered")
-    check("0a the Walmart and Smith job descriptions are read (read only) from their production pages", company and role and key and walmart_jd and smith_jd)
+    company, role, key = (
+        view._plain(props.get("Company")),
+        view._plain(props.get("Job")),
+        view._plain(props.get("Stable Job Key")),
+    )
+    walmart_jd, smith_jd = (
+        description_lines(client, WALMART_PAGE, after="Job Description — Source-Grounded"),
+        description_lines(client, SMITH_PAGE, after="Job Description — Recovered"),
+    )
+    check(
+        "0a the Walmart and Smith job descriptions are read (read only) from their production pages",
+        company and role and key and walmart_jd and smith_jd,
+    )
     smith_key = identity.url_key(SMITH_URL)
     positive = fictional_leads(today, "Walmart")
     w1 = ledger_row(client, box, company, role, key, WALMART_URL, walmart_jd, positive)
     s1 = ledger_row(client, box, SMITH_COMPANY, SMITH_ROLE, smith_key, SMITH_URL, smith_jd)
     w2 = ledger_row(client, box, company, role, key, WALMART_URL, walmart_jd, fictional_leads(today, "Walmart"))
-    w3 = ledger_row(client, box, company, role, f"qa-synthetic-other-job-{key[:8]}", WALMART_URL, walmart_jd, fictional_leads(today, "Walmart"))
-    cases = (("positive", ParentQuery(company, role), key, w1, client), ("zero contacts", ParentQuery(SMITH_COMPANY, SMITH_ROLE), smith_key, s1, client),
-             ("unreadable source", ParentQuery(company, role), key, w2, Unreadable(client, w2)), ("wrong job", ParentQuery(company, role), key, w3, client),
-             ("no exact Ledger link", ParentQuery(SMITH_COMPANY, SMITH_ROLE), smith_key, None, client))
+    w3 = ledger_row(
+        client,
+        box,
+        company,
+        role,
+        f"qa-synthetic-other-job-{key[:8]}",
+        WALMART_URL,
+        walmart_jd,
+        fictional_leads(today, "Walmart"),
+    )
+    cases = (
+        ("positive", ParentQuery(company, role), key, w1, client),
+        ("zero contacts", ParentQuery(SMITH_COMPANY, SMITH_ROLE), smith_key, s1, client),
+        ("unreadable source", ParentQuery(company, role), key, w2, Unreadable(client, w2)),
+        ("wrong job", ParentQuery(company, role), key, w3, client),
+        ("no exact Ledger link", ParentQuery(SMITH_COMPANY, SMITH_ROLE), smith_key, None, client),
+    )
     pages, views = {}, {}
     for name, parent, job_key, ledger_id, reading in cases:
         query = RoundQuery(True, None, None, None, stable_job_key=job_key, ledger_page_id=ledger_id)
         evidence, _ = ev.network_contacts(reading, [(parent, query)])
         current = view.opportunity(reading, parent, evidence[0][1], container, None, create.today())
         blocks = create.rendered(current, tail=None)[0]
-        page = notion.write_tree(client, container, blocks, title=f"E10 QA · {name} {SYN}", icon=template.PAGE_ICONS["opportunity"], template=notion.FULL_WIDTH)
-        check(f"1 {name}: the QA page is written and read back as the approved structure", create.finalize(client, page, current, blocks) == "readback_ok")
+        page = notion.write_tree(
+            client,
+            container,
+            blocks,
+            title=f"E10 QA · {name} {SYN}",
+            icon=template.PAGE_ICONS["opportunity"],
+            template=notion.FULL_WIDTH,
+        )
+        check(
+            f"1 {name}: the QA page is written and read back as the approved structure",
+            create.finalize(client, page, current, blocks) == "readback_ok",
+        )
         _seed(client, page, "Live Notes · protected space")
         pages[name], views[name] = page, (parent, evidence[0][1], current)
     expected = [[lead["name"], surface.reason(lead), "Not tracked"] for lead in positive]
-    shown = lambda name: base._rows_text(reader, pages[name])                                                  # noqa: E731
-    row_fact = lambda name: contacts_table(reader, pages[name])                                                # noqa: E731
-    check("2a positive: the LinkedIn Contacts table shows exactly the three fictional contacts with their relevance lines", row_fact("positive") == expected)
-    check("2b positive: the Source Health line counts 3 Network leads from the job's Ledger page", "LinkedIn contacts: 3 Network lead(s) from the job's Ledger page" in shown("positive"))
-    check("2c positive: the three relevance lines differ (fresh, aging, stale) and the stale one says verify first", len({row[1] for row in expected}) == 3 and expected[2][1].endswith("verify first"))
-    check("3 zero contacts (Smith): the table says no separately verified contacts and the page says no Network leads on the Ledger page",
-          row_fact("zero contacts") == [NONE_ROW] and "LinkedIn contacts: no Network leads on the job's Ledger page" in shown("zero contacts"))
-    check("4 unreadable source: the table and the Source Health line both say DEGRADED, never none",
-          row_fact("unreadable source") == [DEGRADED_ROW] and "LinkedIn contacts: DEGRADED · Network leads unreadable this run" in shown("unreadable source"))
+    shown = lambda name: base._rows_text(reader, pages[name])  # noqa: E731
+    row_fact = lambda name: contacts_table(reader, pages[name])  # noqa: E731
+    check(
+        "2a positive: the LinkedIn Contacts table shows exactly the three fictional contacts with their relevance lines",
+        row_fact("positive") == expected,
+    )
+    check(
+        "2b positive: the Source Health line counts 3 Network leads from the job's Ledger page",
+        "LinkedIn contacts: 3 Network lead(s) from the job's Ledger page" in shown("positive"),
+    )
+    check(
+        "2c positive: the three relevance lines differ (fresh, aging, stale) and the stale one says verify first",
+        len({row[1] for row in expected}) == 3 and expected[2][1].endswith("verify first"),
+    )
+    check(
+        "3 zero contacts (Smith): the table says no separately verified contacts and the page says no Network leads on the Ledger page",
+        row_fact("zero contacts") == [NONE_ROW]
+        and "LinkedIn contacts: no Network leads on the job's Ledger page" in shown("zero contacts"),
+    )
+    check(
+        "4 unreadable source: the table and the Source Health line both say DEGRADED, never none",
+        row_fact("unreadable source") == [DEGRADED_ROW]
+        and "LinkedIn contacts: DEGRADED · Network leads unreadable this run" in shown("unreadable source"),
+    )
     wrong = shown("wrong job")
-    check("5 wrong job: another job's Ledger page shows no contact on this page and the row is not linked",
-          row_fact("wrong job") == [NONE_ROW] and not any(p[0] in wrong for p in PEOPLE) and "LinkedIn contacts: not connected (no exact Job Ledger row)" in wrong)
-    check("6 no exact Ledger link (Smith): not connected, no contact shown",
-          row_fact("no exact Ledger link") == [NONE_ROW] and "LinkedIn contacts: not connected (no exact Job Ledger row)" in shown("no exact Ledger link"))
+    check(
+        "5 wrong job: another job's Ledger page shows no contact on this page and the row is not linked",
+        row_fact("wrong job") == [NONE_ROW]
+        and not any(p[0] in wrong for p in PEOPLE)
+        and "LinkedIn contacts: not connected (no exact Job Ledger row)" in wrong,
+    )
+    check(
+        "6 no exact Ledger link (Smith): not connected, no contact shown",
+        row_fact("no exact Ledger link") == [NONE_ROW]
+        and "LinkedIn contacts: not connected (no exact Job Ledger row)" in shown("no exact Ledger link"),
+    )
     # replay, then a real change at the source: a Dismiss tick on one lead, re-read and refreshed in place
     parent, query, _ = views["positive"]
     page, out = pages["positive"], {"writes": 0, "readback_ok": 0, "readback_failed": 0, "writes_planned": 0}
     notes, human_before = notion.protected_snapshot(client, page, "opportunity"), base._human_tree(client, box["human"])
-    others = {n: notion.tree_digest(notion.read_tree(client, pages[n], [notion.TREE_MAX_CALLS])) for n in pages if n != "positive"}
-    check("7a positive: a replay writes nothing", create.refresh(client, page, views["positive"][2], True, out) == "parent_unchanged")
+    others = {
+        n: notion.tree_digest(notion.read_tree(client, pages[n], [notion.TREE_MAX_CALLS]))
+        for n in pages
+        if n != "positive"
+    }
+    check(
+        "7a positive: a replay writes nothing",
+        create.refresh(client, page, views["positive"][2], True, out) == "parent_unchanged",
+    )
     toggle = next(b for b in notion.children(client, w1, [notion.MAX_CALLS]) if b.get("type") == "callout")
-    tick = next(b for b in notion.children(client, toggle["id"], [notion.MAX_CALLS]) if b.get("type") == "to_do" and any(r.startswith(f"Dismiss {positive[2]['person_id']}:") for r in hidden.refs(b)))
-    client.call("PATCH", f"/blocks/{quote(tick['id'], safe='')}", {"to_do": {"rich_text": [{"type": "text", "text": r["text"]} for r in tick["to_do"]["rich_text"]], "checked": True}})
+    tick = next(
+        b
+        for b in notion.children(client, toggle["id"], [notion.MAX_CALLS])
+        if b.get("type") == "to_do"
+        and any(r.startswith(f"Dismiss {positive[2]['person_id']}:") for r in hidden.refs(b))
+    )
+    client.call(
+        "PATCH",
+        f"/blocks/{quote(tick['id'], safe='')}",
+        {
+            "to_do": {
+                "rich_text": [{"type": "text", "text": r["text"]} for r in tick["to_do"]["rich_text"]],
+                "checked": True,
+            }
+        },
+    )
     evidence, _ = ev.network_contacts(client, [(parent, query)])
     again = view.opportunity(client, parent, evidence[0][1], container, None, create.today())
-    check("7b positive: after a Dismiss tick the page refreshes in place", create.refresh(client, page, again, True, out) == "parent_refreshed")
-    check("7c positive: the refreshed table shows only the two undismissed contacts", contacts_table(reader, page) == expected[:2])
-    check("8a Jim's Notes and the protected region on the QA page are unchanged", notion.protected_snapshot(client, page, "opportunity") == notes)
+    check(
+        "7b positive: after a Dismiss tick the page refreshes in place",
+        create.refresh(client, page, again, True, out) == "parent_refreshed",
+    )
+    check(
+        "7c positive: the refreshed table shows only the two undismissed contacts",
+        contacts_table(reader, page) == expected[:2],
+    )
+    check(
+        "8a Jim's Notes and the protected region on the QA page are unchanged",
+        notion.protected_snapshot(client, page, "opportunity") == notes,
+    )
     check("8b the synthetic human page is unchanged", base._human_tree(client, box["human"]) == human_before)
-    check("8c the other QA case pages are unchanged by the positive page's refresh",
-          others == {n: notion.tree_digest(notion.read_tree(client, pages[n], [notion.TREE_MAX_CALLS])) for n in pages if n != "positive"})
+    check(
+        "8c the other QA case pages are unchanged by the positive page's refresh",
+        others
+        == {
+            n: notion.tree_digest(notion.read_tree(client, pages[n], [notion.TREE_MAX_CALLS]))
+            for n in pages
+            if n != "positive"
+        },
+    )
     counts["pages"] = len(pages)
 
 
@@ -234,11 +466,24 @@ def run_layout(environ, live, now=None, client=None, reader=None):
     results = []
     try:
         box = sandbox(client, now)
-        layout_cases(client, reader or notion.make_client(environ), box, lambda name, ok: results.append((name, bool(ok))), now.date())
+        layout_cases(
+            client,
+            reader or notion.make_client(environ),
+            box,
+            lambda name, ok: results.append((name, bool(ok))),
+            now.date(),
+        )
     except NotionError as error:
         results.append((f"stopped: {str(error)[:60]}", False))
-    return {"proof": "layout", "synthetic": True, "assertions": {name: "PASS" if ok else "FAIL" for name, ok in results}, "passed": sum(ok for _, ok in results),
-            "failed": sum(not ok for _, ok in results), "why": {}, "probe": PROBE}
+    return {
+        "proof": "layout",
+        "synthetic": True,
+        "assertions": {name: "PASS" if ok else "FAIL" for name, ok in results},
+        "passed": sum(ok for _, ok in results),
+        "failed": sum(not ok for _, ok in results),
+        "why": {},
+        "probe": PROBE,
+    }
 
 
 def run(environ, live, now=None, client=None, reader=None):
@@ -250,11 +495,25 @@ def run(environ, live, now=None, client=None, reader=None):
     try:
         box = sandbox(client, now)
     except NotionError as error:
-        return {"proof": "blocked", "code": f"sandbox:{str(error)[:40]}", "detail": str(getattr(error, "detail", ""))[:80], "failed": 1, "why": {}, "writes": 0}
+        return {
+            "proof": "blocked",
+            "code": f"sandbox:{str(error)[:40]}",
+            "detail": str(getattr(error, "detail", ""))[:80],
+            "failed": 1,
+            "why": {},
+            "writes": 0,
+        }
     results, counts = [], {}
     try:
         drive(client, reader or notion.make_client(environ), box, now, results, counts)
-    except NotionError as error:                                             # a refusal is a failed assertion with its fixed code, never a crash or a silent PASS
+    except NotionError as error:  # a refusal is a failed assertion with its fixed code, never a crash or a silent PASS
         results.append((f"stopped: {str(error)[:60]}", False))
-    return {"proof": "e10", "synthetic": True, "assertions": {name: "PASS" if ok else "FAIL" for name, ok in results}, "passed": sum(ok for _, ok in results),
-            "failed": sum(not ok for _, ok in results), "why": {}, **counts}
+    return {
+        "proof": "e10",
+        "synthetic": True,
+        "assertions": {name: "PASS" if ok else "FAIL" for name, ok in results},
+        "passed": sum(ok for _, ok in results),
+        "failed": sum(not ok for _, ok in results),
+        "why": {},
+        **counts,
+    }

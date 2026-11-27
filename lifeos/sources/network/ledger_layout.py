@@ -6,6 +6,7 @@ column_list after the marker, fill and read back its toggle, replace the marker 
 description blocks, then prove the top-level blocks. An interrupted page is finished by the next run. Done pages are
 remembered in v7_ledger_layout.
 """
+
 import json
 import os
 from datetime import datetime, timezone
@@ -20,7 +21,7 @@ SCHEMA = f"""CREATE TABLE IF NOT EXISTS {STATE} (
     job_key CHAR(64) NOT NULL PRIMARY KEY,
     page_id VARCHAR(64) NOT NULL, state VARCHAR(16) NOT NULL, checked_at DATETIME NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"""
-DONE, LEFT = "DONE", "LEFT"                  # DONE: the page has the layout. LEFT: its blocks are not exactly V7's; not touched
+DONE, LEFT = "DONE", "LEFT"  # DONE: the page has the layout. LEFT: its blocks are not exactly V7's; not touched
 DEFAULT_PAGES = 20
 
 
@@ -37,7 +38,9 @@ def _text(block):
 
 
 def _same(actual, expected):
-    return len(actual) == len(expected) and all(a.get("type") == e["type"] and _text(a) == _text(e) for a, e in zip(actual, expected))
+    return len(actual) == len(expected) and all(
+        a.get("type") == e["type"] and _text(a) == _text(e) for a, e in zip(actual, expected)
+    )
 
 
 def shard_of(environ):
@@ -50,12 +53,18 @@ def read(connection, limit, shard=(0, 1)):
     index, count = shard
     with connection.cursor() as cursor:
         try:
-            cursor.execute(f"SELECT j.dedupe_key, j.notion_page_id, d.summary, d.responsibilities, d.requirements, d.qualifications, d.full_text FROM v7_jobs j "
-                           f"JOIN v7_job_descriptions d ON d.job_id = j.id LEFT JOIN {STATE} s ON s.job_key = j.dedupe_key "
-                           f"WHERE j.status='PUBLISHED' AND j.notion_page_id IS NOT NULL AND s.job_key IS NULL AND MOD(j.id, %s) = %s ORDER BY j.id LIMIT %s", (count, index, limit))
-        except Exception:                                              # noqa: BLE001 - the state table may not exist before the first live run
-            cursor.execute("SELECT j.dedupe_key, j.notion_page_id, d.summary, d.responsibilities, d.requirements, d.qualifications, d.full_text FROM v7_jobs j "
-                           "JOIN v7_job_descriptions d ON d.job_id = j.id WHERE j.status='PUBLISHED' AND j.notion_page_id IS NOT NULL AND MOD(j.id, %s) = %s ORDER BY j.id LIMIT %s", (count, index, limit))
+            cursor.execute(
+                f"SELECT j.dedupe_key, j.notion_page_id, d.summary, d.responsibilities, d.requirements, d.qualifications, d.full_text FROM v7_jobs j "
+                f"JOIN v7_job_descriptions d ON d.job_id = j.id LEFT JOIN {STATE} s ON s.job_key = j.dedupe_key "
+                f"WHERE j.status='PUBLISHED' AND j.notion_page_id IS NOT NULL AND s.job_key IS NULL AND MOD(j.id, %s) = %s ORDER BY j.id LIMIT %s",
+                (count, index, limit),
+            )
+        except Exception:  # noqa: BLE001 - the state table may not exist before the first live run
+            cursor.execute(
+                "SELECT j.dedupe_key, j.notion_page_id, d.summary, d.responsibilities, d.requirements, d.qualifications, d.full_text FROM v7_jobs j "
+                "JOIN v7_job_descriptions d ON d.job_id = j.id WHERE j.status='PUBLISHED' AND j.notion_page_id IS NOT NULL AND MOD(j.id, %s) = %s ORDER BY j.id LIMIT %s",
+                (count, index, limit),
+            )
         rows = cursor.fetchall()
     out = []
     for key, page, summary, resp, req, qual, full in rows:
@@ -75,7 +84,7 @@ def migrate(client, page_id, key, desc, live):
         return "left"
     layout = len(top) > 1 and top[1].get("type") == "column_list"
     start = 2 if layout else 1
-    old_there = _same(top[start:start + len(old)], old)
+    old_there = _same(top[start : start + len(old)], old)
     if layout and not old_there:
         found = body.find(client, page_id, top, key)
         if found and found["toggle"] and _text(top[0]) == "\u2060":
@@ -85,7 +94,9 @@ def migrate(client, page_id, key, desc, live):
     if not live:
         return "would_migrate"
     if not layout:
-        client.call("PATCH", f"/blocks/{page_id}/children", {"children": [body.column_list(desc)], "after": top[0]["id"]})
+        client.call(
+            "PATCH", f"/blocks/{page_id}/children", {"children": [body.column_list(desc)], "after": top[0]["id"]}
+        )
     body.fill(client, page_id, desc, strict=True)
     top = body._kids(client, page_id)
     found = body.find(client, page_id, top, key)
@@ -95,16 +106,24 @@ def migrate(client, page_id, key, desc, live):
     if [_text(b) for b in body._kids(client, found["toggle"])] != want:
         raise LayoutError("LAYOUT_TOGGLE_MISMATCH")
     shown = [_text(b) for b in body._kids(client, found["left"]) if b.get("type") not in ("toggle",)]
-    if shown != [_text(b) for b in body.column_list(desc)["column_list"]["children"][0]["column"]["children"] if b["type"] != "toggle"]:
+    if shown != [
+        _text(b)
+        for b in body.column_list(desc)["column_list"]["children"][0]["column"]["children"]
+        if b["type"] != "toggle"
+    ]:
         raise LayoutError("LAYOUT_OVERVIEW_MISMATCH")
     after = [b for b in top[2:]]
-    if not _same(after[:len(old)], old):
-        raise LayoutError("LAYOUT_OLD_BLOCKS_CHANGED")                    # the page changed under us: nothing is deleted
+    if not _same(after[: len(old)], old):
+        raise LayoutError("LAYOUT_OLD_BLOCKS_CHANGED")  # the page changed under us: nothing is deleted
     client.call("PATCH", f"/blocks/{top[0]['id']}", {"paragraph": body.marker_block(key)["paragraph"]})
-    for block in after[:len(old)]:
+    for block in after[: len(old)]:
         client.call("DELETE", f"/blocks/{block['id']}")
     final = body._kids(client, page_id)
-    if [b["id"] for b in final] != [top[0]["id"], found["list"]] + [b["id"] for b in after[len(old):]] or not body.is_marker(final[0], key) or _text(final[0]) != "\u2060":
+    if (
+        [b["id"] for b in final] != [top[0]["id"], found["list"]] + [b["id"] for b in after[len(old) :]]
+        or not body.is_marker(final[0], key)
+        or _text(final[0]) != "\u2060"
+    ):
         raise LayoutError("LAYOUT_READBACK_MISMATCH")
     return "migrated"
 
@@ -121,21 +140,33 @@ def _remember(connection, key, page, state, cleared, counts):
     revive(connection)
     try:
         with connection.cursor() as cursor:
-            cursor.execute(f"REPLACE INTO {STATE} (job_key, page_id, state, checked_at) VALUES (%s,%s,%s,%s)", (key, page, state, _now()))
+            cursor.execute(
+                f"REPLACE INTO {STATE} (job_key, page_id, state, checked_at) VALUES (%s,%s,%s,%s)",
+                (key, page, state, _now()),
+            )
             if cleared:
                 try:
                     cursor.execute("DELETE FROM v7_network_page_state WHERE job_key=%s", (key,))
-                except Exception:                                      # noqa: BLE001
+                except Exception:  # noqa: BLE001
                     pass
         connection.commit()
-    except Exception:                                                  # noqa: BLE001 - a driver message may carry names; only a count leaves
+    except Exception:  # noqa: BLE001 - a driver message may carry names; only a count leaves
         counts["state_not_saved"] = counts.get("state_not_saved", 0) + 1
 
 
 def _run(limit, live, environ, connection, client):
     budget = limit if isinstance(limit, int) and limit > 0 else DEFAULT_PAGES
     shard = shard_of(environ)
-    counts = {"live": bool(live), "read": 0, "done": 0, "migrated": 0, "would_migrate": 0, "left": 0, "failed": 0, "why": {}}
+    counts = {
+        "live": bool(live),
+        "read": 0,
+        "done": 0,
+        "migrated": 0,
+        "would_migrate": 0,
+        "left": 0,
+        "failed": 0,
+        "why": {},
+    }
     if live:
         with connection.cursor() as cursor:
             cursor.execute(SCHEMA)
