@@ -1,7 +1,10 @@
-"""LIFE-47 S2 (Edge), stdlib only, used by install-close.sh as root; changes nothing live. `stage COMMIT DEST`: a full SHA on main; exactly the Edge files plus the
-CLOSURE the Career entry point declares (ast, never executed); regular blobs whose git hashes match the commit tree; imports and builds the GET client with
-nothing outside DEST; any surprise refuses before DEST is written. `check DEST`: exactly its MANIFEST, no extra file or symlink. `serve-state`: unknown unless
-the status is well-formed. `latest`: main's head once main's own hourly run tested it. `same A B`: two trees carry the same files. `policy PORT LOGIN LEDGER PIPELINE NODE...`: host, login, canonical ids and approved untagged nodes (never this node); no tokens."""
+"""Stdlib-only helper used by install-close.sh as root; changes nothing live. `stage COMMIT DEST`: a full SHA on main;
+exactly the Edge files plus the closure the Career entry point declares (read with ast, never executed); blobs whose
+git hashes match the commit tree; any surprise refuses before DEST is written. `check DEST`: exactly its MANIFEST.
+`serve-state`: unknown unless the status is well-formed. `latest`: main's head once its CI is green. `same A B`: two
+trees carry the same files. `policy PORT LOGIN LEDGER PIPELINE NODE...`: host, login, canonical ids and approved
+nodes.
+"""
 import ast
 import hashlib
 import json
@@ -14,7 +17,7 @@ import urllib.request
 REPO = "jimmarkunas/life-os-v7"
 APP = "lifeos/sources/apps/close_app.py"
 EDGE = ("lifeos/__init__.py", "lifeos/edge/close_gate.py", "lifeos/imessage/__init__.py", "lifeos/imessage/alerts_endpoint.py", "lifeos/platform/__init__.py",
-        "lifeos/platform/notion_client.py", "lifeos/platform/limits.py", "lifeos/hiring/__init__.py", "lifeos/sources/__init__.py", APP)      # the gate's own runtime closure, GET client included
+        "lifeos/platform/notion_client.py", "lifeos/platform/limits.py", "lifeos/hiring/__init__.py", "lifeos/sources/__init__.py", APP)
 NOTION_ID = re.compile(r"[0-9a-f]{32}\Z")
 PATH = re.compile(r"lifeos(/[a-z0-9_]+)+\.py\Z")
 SHA = re.compile(r"[0-9a-f]{40}\Z")
@@ -61,7 +64,7 @@ def stage(commit, dest, fetch=get, importer=None):
         if blob(data) != entry.get("sha"):
             raise Refused("CONTENT_MISMATCH:" + path)
         files[path] = data
-    os.makedirs(dest, mode=0o755)                                       # must not exist yet
+    os.makedirs(dest, mode=0o755)
     for path, data in files.items():
         os.makedirs(os.path.join(dest, os.path.dirname(path)), mode=0o755, exist_ok=True)
         with open(os.path.join(dest, path), "wb") as f:
@@ -73,9 +76,9 @@ def stage(commit, dest, fetch=get, importer=None):
 
 def imports(dest):
     code = (f"import sys; sys.path = [{dest!r}] + [p for p in sys.path if 'packages' not in p and p]; import lifeos.sources.apps.close_app; "
-            "from lifeos.edge import close_gate as g; g.ReadOnly(g.notion_client(b'dry-run', {'ledger': '0' * 32}))")   # the real GET client, built in the staged tree
+            "from lifeos.edge import close_gate as g; g.ReadOnly(g.notion_client(b'dry-run', {'ledger': '0' * 32}))")
     probe = [sys.executable, "-I", "-B", "-c", code]
-    if os.geteuid() == 0 and os.path.isdir("/run/systemd/system"):     # on the Edge (root, systemd) a commit's code never runs as root: a throwaway, read-only, offline user imports it
+    if os.geteuid() == 0 and os.path.isdir("/run/systemd/system"):
         probe = ["systemd-run", "--quiet", "--pipe", "--wait", "--collect", "-p", "DynamicUser=yes", "-p", "ProtectSystem=strict", "-p", "ProtectHome=yes",
                  "-p", "PrivateNetwork=yes", "-p", "PrivateTmp=yes", "-p", "NoNewPrivileges=yes", "-p", "CapabilityBoundingSet=", "-p", "RuntimeMaxSec=30"] + probe
     if subprocess.run(probe, capture_output=True, timeout=45).returncode != 0:
@@ -99,7 +102,6 @@ def check(dest):
 
 
 def head(fetch=get):
-    """main's head commit, green or not (what Jim's own install holds auto-release off)."""
     commit = json.loads(fetch(f"https://api.github.com/repos/{REPO}/commits/main")).get("sha") or ""
     if not SHA.match(commit):
         raise Refused("NOT_A_COMMIT")
@@ -108,8 +110,9 @@ def head(fetch=get):
 
 PR_TESTS = ".github/workflows/pr-tests.yml"
 HOURLY = ".github/workflows/hourly.yml"
-FLAG_LABEL = "release-paused"        # LIFE-693: the same word as lifeos/platform/release_proof.py FLAG_LABEL (a test keeps them equal; this file stays stdlib-only and imports nothing)
-PROOF_EXIT = {"PROOF_PAUSED": 3, "PROOF_STATE_UNREADABLE": 4}      # `latest` exits with these so install-close.sh can tell a paused release from a CI wait
+# same word as lifeos/platform/release_proof.py FLAG_LABEL (a test keeps them equal)
+FLAG_LABEL = "release-paused"
+PROOF_EXIT = {"PROOF_PAUSED": 3, "PROOF_STATE_UNREADABLE": 4}
 
 
 def _runs(workflow, commit, fetch):
@@ -119,52 +122,51 @@ def _runs(workflow, commit, fetch):
 
 
 def proof_pause(fetch=get):
-    """LIFE-693 (Jim, Nov 15 2026): a failed proof run after a deploy opens an issue labelled `release-paused`; while one is open the timer deploys nothing. Read unauthenticated from the public
-    API like every other read here. -> None when no such issue is open. Raises Refused(PROOF_PAUSED) when one is, and Refused(PROOF_STATE_UNREADABLE) for ANYTHING it cannot read (network error,
-    rate limit, an answer that is not a list): never deploy on an unknown state. A pull request that carries the label is not the flag. There is no automatic rollback: the alert is the action."""
+    """A failed proof run opens an issue labelled `release-paused`; while one is open the timer deploys nothing. ->
+    None when none is open. Raises Refused(PROOF_PAUSED) when one is, and Refused(PROOF_STATE_UNREADABLE) for anything
+    it cannot read: never deploy on an unknown state. A pull request carrying the label is not the flag.
+    """
     try:
         issues = json.loads(fetch(f"https://api.github.com/repos/{REPO}/issues?state=open&labels={FLAG_LABEL}&per_page=30"))
-    except Exception:                                                   # noqa: BLE001 - any failure to read is an unknown state, which refuses
+    except Exception:                                                   # noqa: BLE001
         raise Refused("PROOF_STATE_UNREADABLE") from None
     if not isinstance(issues, list) or not all(isinstance(i, dict) for i in issues):
         raise Refused("PROOF_STATE_UNREADABLE")
     if any("pull_request" not in i for i in issues):
         raise Refused("PROOF_PAUSED")
-    if len(issues) >= 30:                                               # a full page of labelled pull requests: more than we read, so the state is not known
+    if len(issues) >= 30:
         raise Refused("PROOF_STATE_UNREADABLE")
 
 
 def latest(fetch=get):
-    """Edge auto-release (Jim, Oct 24; LIFE-562, Nov 11): main's head commit, once the required CI check on that exact commit is green: the `pr-tests` workflow's push run on main
-    (the full unit-test suite, which includes the tests of every file the Close tree ships). The hourly data run no longer gates this deploy: a red or slow Cloud Fit step cannot hold a
-    screen back (Nov 10: the Alert settings deploy waited hours on it). Runs are read from the Actions runs of the workflow on main for this commit (never a check run, which any branch's
-    workflow could post); the newest push run decides: queued or running decides nothing yet (NOT_GREEN), anything but success is NOT_GREEN, and no run at all is NOT_GREEN.
-    LIFE-693: a green head is still not released while a proof run's failure holds an open `release-paused` issue (PROOF_PAUSED), or when that flag cannot be read (PROOF_STATE_UNREADABLE)."""
+    """Edge auto-release: main's head commit once the `pr-tests` push run on main for that exact commit is green (read
+    from Actions runs, never a check run). Queued, running, failed or no run at all is NOT_GREEN. A green head is
+    still held while an open `release-paused` issue exists (PROOF_PAUSED) or the flag cannot be read
+    (PROOF_STATE_UNREADABLE).
+    """
     commit = head(fetch)
     for run in _runs("pr-tests.yml", commit, fetch):
         if run.get("event") not in (None, "push"):
             continue
         if run.get("status") == "completed" and run.get("conclusion") == "success":
-            proof_pause(fetch)                                          # LIFE-693: green is necessary, not enough
+            proof_pause(fetch)
             return commit
-        raise Refused("NOT_GREEN")                                      # the newest run is still going, failed or was cancelled: wait for a newer green one
-    raise Refused("NOT_GREEN")                                          # no CI run of main tested this commit yet
+        raise Refused("NOT_GREEN")
+    raise Refused("NOT_GREEN")
 
 
 def hourly_report(commit, fetch=get):
-    """LIFE-562: what main's own hourly run says about this commit, for the journal only. It never blocks: green | red | running | none | unknown."""
     try:
         for run in _runs("hourly.yml", commit, fetch):
             if run.get("status") != "completed":
                 return "running"
             return "green" if run.get("conclusion") == "success" else "red"
         return "none"
-    except Exception:                                                   # noqa: BLE001 - a report line, never a reason to refuse
+    except Exception:                                                   # noqa: BLE001
         return "unknown"
 
 
 def same(a, b):
-    """True when two staged trees carry the same files (the commit line aside): a main commit that does not touch the Close closure is not a release."""
     body = lambda d: open(os.path.join(d, "MANIFEST")).read().splitlines()[1:]
     return body(a) == body(b)
 
@@ -204,8 +206,9 @@ STALL_SECONDS = 7200
 
 
 def waiting(now, since, window=STALL_SECONDS):
-    """LIFE-604 item 5 (was shell arithmetic in install-close.sh): the auto-release's wait for a green main head. `since` is the stored marker text (digits) or anything else for none.
-    -> (the marker to store, True once the wait has lasted `window` seconds). A marker in the future (the clock moved) restarts the wait."""
+    """The wait for a green main head. `since` is the stored marker (digits) or anything else for none. -> (marker to
+    store, True once the wait has lasted `window` seconds). A future marker restarts the wait.
+    """
     text = str(since).strip()
     start = int(text) if text.isdigit() else now
     if start > now:
@@ -227,7 +230,7 @@ def main(argv):
             try:
                 sha = latest()
             except Refused as e:
-                if str(e) in PROOF_EXIT:                                # LIFE-693: a paused or unknown-flag release is told apart from a CI wait by its exit status (3 paused, 4 unreadable)
+                if str(e) in PROOF_EXIT:
                     print(f"REFUSED: {e}", file=sys.stderr)
                     sys.exit(PROOF_EXIT[str(e)])
                 raise

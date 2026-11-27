@@ -1,12 +1,12 @@
-"""LIFE-538: back up the Mac-only Hermes and OpenClaw data. Runs on Jim's MacBook Pro, never on Oracle.
-
-  python -m lifeos.edge.backup.mac_push            dry run: build the archive and encrypt it, send nothing, keep nothing
-  python -m lifeos.edge.backup.mac_push --push     the same, then send it to the Oracle inbox over SFTP (key-only, one folder) and keep the newest 3 there
-
-What goes in is an explicit list (SQLITE, FILES, TREES). Databases are copied with the sqlite online-backup API (never a raw copy of a live file). Credential-shaped files are
-included on purpose (Jim's decision, Nov 9 2026: a lost Mac must not mean re-linking everything) and that is safe ONLY because the archive is encrypted to a PUBLIC key before it
-leaves the temporary folder; the private key is never on this machine. The plain archive is deleted right after encryption. Output is counts and fixed codes only: no file name
-from the secret list, no value. Stdlib plus the `gpg` and `sftp` programs.
+"""Back up the Mac-only Hermes and OpenClaw data (runs on the MacBook Pro, never on Oracle).
+  python -m lifeos.edge.backup.mac_push           dry run: build and encrypt the archive; send and keep nothing
+  python -m lifeos.edge.backup.mac_push --push    then SFTP it to the Oracle inbox and keep the newest 3 there
+What goes in is an explicit list (SQLITE, FILES, TREES); databases use the sqlite online-backup API. Credential-shaped
+files are included on purpose, which is safe only because the archive is encrypted to a PUBLIC key before it leaves
+the
+temporary folder (the private key is never on this machine); the plain archive is deleted right after. Output is
+counts
+and fixed codes only. Stdlib plus `gpg` and `sftp`.
 """
 import datetime
 import hashlib
@@ -22,15 +22,14 @@ import time
 from zoneinfo import ZoneInfo
 
 HOME = os.path.expanduser("~")
-KEY_FILE = os.path.join(HOME, ".config/life-os/offsite-recipient.asc")        # the PUBLIC key the Oracle off-site job already uses; Jim holds the private half
-SSH_KEY = os.path.join(HOME, ".ssh/lifeos-macinbox")                           # dedicated, SFTP-only into one Oracle folder
+KEY_FILE = os.path.join(HOME, ".config/life-os/offsite-recipient.asc")
+SSH_KEY = os.path.join(HOME, ".ssh/lifeos-macinbox")
 REMOTE = "macinbox@lifeos-edge-01"
 KEEP = 3
 MAX_ARCHIVE = 100 * 1024 * 1024
 CENTRAL = ZoneInfo("America/Chicago")
 NAME = re.compile(r"^mac-\d{8}-\d{4}\.tar\.gz\.gpg$")
 
-# (archive name, path under HOME): copied with the sqlite backup API. A missing one is counted, not fatal (a service may be off).
 SQLITE = (
     ("hermes/state.db", ".hermes/state.db"),
     ("hermes/kanban.db", ".hermes/kanban.db"),
@@ -43,23 +42,23 @@ SQLITE = (
 FILES = (
     ("hermes/config.yaml", ".hermes/config.yaml"),
     ("hermes/SOUL.md", ".hermes/SOUL.md"),
-    ("hermes/auth.json", ".hermes/auth.json"),                                  # secret: only inside the encrypted archive
+    ("hermes/auth.json", ".hermes/auth.json"),
     ("openclaw/openclaw.json", ".openclaw/openclaw.json"),
-    ("openclaw/mac-control.token", ".openclaw/mac-control.token"),              # secret
-    ("openclaw/config-journal-fingerprint.key", ".openclaw/config-journal-fingerprint.key"),   # secret
+    ("openclaw/mac-control.token", ".openclaw/mac-control.token"),
+    ("openclaw/config-journal-fingerprint.key", ".openclaw/config-journal-fingerprint.key"),
     ("config/life-os/lifeos-bws-run", ".config/life-os/lifeos-bws-run"),
     ("config/life-os/newsletter-policy.json", ".config/life-os/newsletter-policy.json"),
 )
-TREES = (   # (archive prefix, path under HOME): every regular file inside, except live-database side files and lock files
+TREES = (
     ("hermes/memories", ".hermes/memories"),
     ("hermes/plugins", ".hermes/plugins"),
     ("hermes/cron", ".hermes/cron"),
-    ("openclaw/credentials", ".openclaw/credentials"),                          # secret
-    ("openclaw/service-env", ".openclaw/service-env"),                          # secret
+    ("openclaw/credentials", ".openclaw/credentials"),
+    ("openclaw/service-env", ".openclaw/service-env"),
     ("openclaw/workspace", ".openclaw/workspace"),
 )
-SKIP_LEAF = re.compile(r"(-shm|-wal|\.lock|\.sock|\.pid|\.db|\.sqlite)$|\.reindex-lock\.sqlite$")   # databases are taken whole by the backup API above, not by file walk
-NEVER_FOLDERS = ("hermes-agent", "tools", "installs", "cache", "logs", "node_modules", "__pycache__")   # re-downloadable or noise; not in any list, listed here so a test can hold it
+SKIP_LEAF = re.compile(r"(-shm|-wal|\.lock|\.sock|\.pid|\.db|\.sqlite)$|\.reindex-lock\.sqlite$")
+NEVER_FOLDERS = ("hermes-agent", "tools", "installs", "cache", "logs", "node_modules", "__pycache__")
 
 
 class PushError(Exception):
@@ -85,24 +84,24 @@ def _copy_database(uri, dest):
 
 
 def snapshot(source, dest):
-    """Online backup of a live SQLite file -> a consistent copy; refuses a database that fails an integrity check.
-    LIFE-542: an idle WAL-mode database (no -wal file, because nothing has it open) cannot be opened read-only, since SQLite cannot create the -shm file.
-    Only in that case, retry once with immutable=1 (nothing is writing, so there is nothing to read around); the integrity check on the copy still decides."""
+    """Online backup of a live SQLite file -> a consistent copy; refuses a database that fails an integrity check. An
+    idle WAL-mode database (no -wal file) cannot be opened read-only because SQLite cannot create the -shm file; only
+    then it is retried once with immutable=1.
+    """
     try:
         try:
             _copy_database("file:%s?mode=ro" % source, dest)
         except sqlite3.OperationalError:
-            if os.path.exists(source + "-wal"):                                   # a live database: the read-only open must work, so this is a real failure
+            if os.path.exists(source + "-wal"):
                 raise
             if os.path.exists(dest):
-                os.remove(dest)                                                   # drop any partial copy before the retry
+                os.remove(dest)
             _copy_database("file:%s?immutable=1" % source, dest)
     except sqlite3.Error:
         raise PushError("mac_backup_db_unreadable") from None
 
 
 def collect(work, home=HOME, sqlite=None, files=None, trees=None):
-    """-> ({archive name: file in `work` or on disk}, counts). Nothing is read from outside the three lists."""
     sqlite, files, trees = SQLITE if sqlite is None else sqlite, FILES if files is None else files, TREES if trees is None else trees
     out, missing = {}, 0
     for name, rel in sqlite:
@@ -151,7 +150,6 @@ def build_archive(entries, dest):
 
 
 def encrypt(plain, dest, work, key_file=KEY_FILE, run=subprocess.run):
-    """Encrypt to the PUBLIC key in `key_file`. Refuses a key file that carries a secret key."""
     home = os.path.join(work, "gnupg")
     os.makedirs(home, mode=0o700, exist_ok=True)
     base = ["gpg", "--batch", "--no-tty", "--homedir", home]
@@ -181,7 +179,7 @@ def push(sealed, run=subprocess.run, ssh_key=SSH_KEY, remote=REMOTE):
     name = os.path.basename(sealed)
     if not NAME.match(name):
         raise PushError("mac_backup_bad_name")
-    sftp("cd in\nput %s %s.part\nrename %s.part %s\n" % (sealed, name, name, name), run, ssh_key, remote)       # lands under a temporary name, then appears whole
+    sftp("cd in\nput %s %s.part\nrename %s.part %s\n" % (sealed, name, name, name), run, ssh_key, remote)
     listing = sftp("cd in\nls -1\n", run, ssh_key, remote)
     names = sorted(line.strip().split("/")[-1] for line in listing.splitlines() if NAME.match(line.strip().split("/")[-1]))
     if name not in names:
@@ -204,7 +202,7 @@ def main(argv=None, home=HOME, key_file=KEY_FILE, run=subprocess.run, clock=time
         count = build_archive(entries, plain)
         sealed = os.path.join(work, "mac-%s.tar.gz.gpg" % stamp(clock))
         fingerprint = encrypt(plain, sealed, work, key_file, run)
-        os.remove(plain)                                                                                           # the plain archive is gone before anything is sent
+        os.remove(plain)
         result = {"files": count, "bytes": os.path.getsize(sealed), "recipient": fingerprint[-8:], **extra}
         if live:
             result.update(push(sealed, run))
@@ -213,7 +211,7 @@ def main(argv=None, home=HOME, key_file=KEY_FILE, run=subprocess.run, clock=time
     except PushError as error:
         print("mac_backup failed %s" % error, file=out)
         return 2
-    except Exception:                                                                                              # any other failure is a fixed code, never a message that could carry a name or value
+    except Exception:
         print("mac_backup failed mac_backup_unexpected", file=out)
         return 2
     finally:

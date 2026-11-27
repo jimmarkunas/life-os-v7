@@ -1,11 +1,10 @@
 #!/usr/bin/python3
-"""LIFE-889: the synthetic Honcho proof. FABRICATED DATA ONLY: three invented people, 40 invented messages in two test workspaces, 20 scored recall questions.
-
-Runs on lifeos-edge-01 against the private Honcho API (127.0.0.1:8000). Every model call goes through the metering proxy (cap $0.90); this program also reads the proxy's /health
-before each question and stops asking at $0.80 so the cap is never the thing that ends a run. Prints one JSON result (no secrets exist in it) and writes it to the path in argv[1].
-
-Measures: recall accuracy /20 at two depths (reasoning_level minimal, then medium), planted-fact extraction (conclusions that carry each planted fact), top-3 retrieval
-(workspace search with the question as the query; hit when a top-3 message holds the first expected token), embeddings latency p50/p95 through the proxy, and the proxy's spend."""
+"""Synthetic Honcho proof, fabricated data only (three invented people, 40 messages in two test workspaces, 20 scored
+recall questions). Runs against the private Honcho API (127.0.0.1:8000); every model call goes through the metering
+proxy (cap $0.90) and this program stops asking at $0.80. Prints one JSON result and writes it to argv[1]. Measures
+recall /20 at reasoning_level minimal and medium, planted-fact extraction, top-3 retrieval, embeddings latency p50/p95
+and the proxy's spend.
+"""
 import json
 import sys
 import time
@@ -137,7 +136,7 @@ def conclusions_text(workspace):
     texts = []
     try:
         page = call(HONCHO, "POST", f"/v3/workspaces/{workspace}/conclusions/list", {})
-    except Exception:                                                                    # noqa: BLE001 - the shape is checked, the proof reports UNVERIFIED instead of failing
+    except Exception:                                                                    # noqa: BLE001
         return None
     items = page.get("items") if isinstance(page, dict) else page
     for item in items or []:

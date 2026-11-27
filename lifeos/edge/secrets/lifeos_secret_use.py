@@ -1,26 +1,23 @@
 #!/usr/bin/python3 -I
-"""LIFE-306, route C (Jim, Nov 5, 2026: "build C"): the secrets broker on lifeos-edge-01. A root-owned fixed program that USES a host credential for a registered PURPOSE, so the
-value never appears in a prompt, chat, Jira, log or file an agent reads.
+"""Secrets broker on lifeos-edge-01: a root-owned fixed program that uses a host credential for a registered PURPOSE
+so the value never appears in a prompt, chat, Jira, log or file an agent reads: `sudo -n
+/usr/local/sbin/lifeos-secret-use PURPOSE` (anything extra is SECRET_BAD_ARGS). The root-owned registry
+(/etc/lifeos-secrets/purposes.d/*.json) fixes per purpose the one credential (an encrypted systemd credential in
+/etc/hermes-eval/creds), the allowed callers and one action: `http_get_fields` (GET one fixed https URL with the
+credential as bearer token, return only the listed scalar JSON fields; "auth": "x-api-key" targets exactly
+https://api.anthropic.com/v1/models, "auth": "basic" sends an `email:token` credential to one fixed Jira issue read on
+api.atlassian.com) or `check_credential` (NAME, length and first 8 hex of the SHA-256). Every output is searched for
+the value in raw, base64, URL-encoded, hex and JSON-escaped forms (for Basic also the token and header) and a hit
+refuses the answer. No redirects; output capped at 4096 bytes; 20 calls per minute per caller; every call appends to
+/var/log/lifeos-secret-use.jsonl and is refused if that cannot be written.
 
-    sudo -n /usr/local/sbin/lifeos-secret-use PURPOSE
+Limit: the agent account has passwordless root, so this cannot make reading a credential impossible; it keeps the
+normal path from showing a value and records every use. The caller name is SUDO_USER, which a root caller could forge.
 
-One argument, a purpose name. Nothing else is accepted: no secret name, URL, command, header or value (anything extra is SECRET_BAD_ARGS). The purpose registry
-(/etc/lifeos-secrets/purposes.d/*.json, root-owned, not writable by anyone else) fixes, for each purpose, the ONE credential it may use (an encrypted systemd credential in
-/etc/hermes-eval/creds), the users who may call it, and one action from a closed list:
-  http_get_fields   GET one fixed https URL with the credential as a bearer token and return only the listed JSON fields (scalars only). A purpose may set "auth": "x-api-key" (LIFE-889): the credential is sent as the x-api-key header (with anthropic-version) and the URL must be exactly https://api.anthropic.com/v1/models.
-                  A purpose may set "auth": "basic" (LIFE-754):
-                    the credential then holds `email:token`, the request sends HTTP Basic, and the URL must be one fixed Atlassian Jira issue read on api.atlassian.com.
-  check_credential  return the credential's NAME, its length and the first 8 hex characters of its SHA-256. Never the value.
-Every output is searched for the value in raw, base64, URL-encoded, hex and JSON-escaped forms (for Basic also the token alone and the whole Basic header); a hit refuses the whole answer (SECRET_OUTPUT_CONTAINS_SECRET).
-A redirect is never followed, so a credential is only ever sent to the one registered host. Output is capped at 4096
-bytes and a caller gets 20 calls per minute. Every call, refused or not, appends one line to /var/log/lifeos-secret-use.jsonl (epoch, Central Time, caller, pid, purpose, credential
-NAME, result code, bytes returned); if the log cannot be written the call is refused before anything is used (fail closed). No network listener, no timer, no daemon: it runs when called.
-
-Honest limit: the agent account on this host has passwordless root, so this program cannot make it technically impossible for an agent that chooses to read a credential. It makes the
-normal path never show a value, shrinks what is asked for, and records every use. The caller name is SUDO_USER, which a root-capable caller could forge. Stdlib only.
-
-Fixed result codes (reply ok false): SECRET_BAD_ARGS, SECRET_NOT_ROOT, SECRET_REGISTRY_UNSAFE, SECRET_UNKNOWN_PURPOSE, SECRET_CALLER_NOT_ALLOWED, SECRET_RATE_LIMITED, SECRET_AUDIT_UNAVAILABLE, SECRET_CRED_UNREADABLE, SECRET_FETCH_FAILED,
-SECRET_BAD_REPLY, SECRET_FIELD_NOT_SCALAR, SECRET_OUTPUT_TOO_LARGE, SECRET_OUTPUT_CONTAINS_SECRET. Never a message, path or exception text."""
+Codes (ok false): SECRET_BAD_ARGS, SECRET_NOT_ROOT, SECRET_REGISTRY_UNSAFE, SECRET_UNKNOWN_PURPOSE,
+SECRET_CALLER_NOT_ALLOWED, SECRET_RATE_LIMITED, SECRET_AUDIT_UNAVAILABLE, SECRET_CRED_UNREADABLE, SECRET_FETCH_FAILED,
+SECRET_BAD_REPLY, SECRET_FIELD_NOT_SCALAR, SECRET_OUTPUT_TOO_LARGE, SECRET_OUTPUT_CONTAINS_SECRET. Stdlib only.
+"""
 import base64
 import binascii
 import hashlib
@@ -45,7 +42,8 @@ PURPOSE = re.compile(r"[a-z][a-z0-9_]{1,40}")
 NAME = re.compile(r"[a-z][a-z0-9_]{1,60}")
 HTTPS = re.compile(r"https://[a-z0-9.-]+(/[A-Za-z0-9._~/-]*)?")
 ATLASSIAN = re.compile(r"https://api\.atlassian\.com/ex/jira/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/rest/api/3/issue/[A-Z][A-Z0-9]{1,9}-[0-9]{1,7}(\?fields=[a-z,]+)?")
-ANTHROPIC_URL = "https://api.anthropic.com/v1/models"                    # LIFE-889: the ONE URL an "x-api-key" purpose may read (the free model list: it proves a key works and costs nothing)
+# the one URL an "x-api-key" purpose may read (the free model list)
+ANTHROPIC_URL = "https://api.anthropic.com/v1/models"
 ANTHROPIC_VERSION = "2023-06-01"
 BASIC_CRED = re.compile(r"[^:\s@]+@[^:\s@]+:[^\s]+")                  # email:token, the only shape a Basic credential may have
 AUTHS = ("bearer", "basic", "x-api-key")
@@ -63,7 +61,6 @@ class Refused(Exception):
 
 
 def forms(value):
-    """Every spelling of the value that must never appear in an answer."""
     raw = value.encode()
     out = {value, value.encode().hex(), urllib.parse.quote(value, safe=""), json.dumps(value)[1:-1]}
     for enc in (base64.b64encode, base64.urlsafe_b64encode):
@@ -73,7 +70,6 @@ def forms(value):
 
 
 def secret_forms(value, auth="bearer"):
-    """forms() of the value; for Basic also of the token alone and of the whole `Basic <base64>` header value."""
     out = set(forms(value))
     if auth == "basic":
         token = value.split(":", 1)[1] if ":" in value else ""
@@ -95,7 +91,6 @@ def systemd_decrypt(name):
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
-    """A credential goes to the one registered host only: a redirect is an error, never followed."""
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
@@ -103,7 +98,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 def http_fetch(url, secret, auth="bearer"):
     headers = {"Accept": "application/json", "User-Agent": "lifeos-secret-use"}
-    if auth == "x-api-key":                                                  # LIFE-889: Anthropic reads the key from x-api-key, not Authorization
+    if auth == "x-api-key":
         headers.update({"x-api-key": secret, "anthropic-version": ANTHROPIC_VERSION})
     else:
         headers["Authorization"] = ("Basic " + base64.b64encode(secret.encode()).decode()) if auth == "basic" else "Bearer " + secret
@@ -118,10 +113,9 @@ def http_fetch(url, secret, auth="bearer"):
 class Broker:
     def __init__(self, registry=REGISTRY, creds=CREDS, log=LOG, decrypt=systemd_decrypt, fetch=http_fetch, euid=None, clock=time.time, owner=0):
         self.registry, self.creds, self.log = registry, creds, log
-        self.decrypt, self.fetch, self.clock, self.owner = decrypt, fetch, clock, owner      # owner: the uid that must own the registry (root; tests pass their own)
+        self.decrypt, self.fetch, self.clock, self.owner = decrypt, fetch, clock, owner
         self.euid = os.geteuid() if euid is None else euid
 
-    # ---- audit -------------------------------------------------------------------------------------------------------------------------------------------------
     def append(self, row):
         data = (json.dumps(row, sort_keys=True) + "\n").encode()
         fd = os.open(self.log, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o640)
@@ -144,12 +138,11 @@ class Broker:
                 row = json.loads(line)
             except ValueError:
                 continue
-            if (isinstance(row, dict) and row.get("caller") == caller and row.get("result") != "START"       # a call writes START and then its outcome: count the outcome only
+            if (isinstance(row, dict) and row.get("caller") == caller and row.get("result") != "START"
                     and isinstance(row.get("epoch"), (int, float)) and row["epoch"] > now - 60):
                 count += 1
         return count
 
-    # ---- registry -----------------------------------------------------------------------------------------------------------------------------------------------
     def purpose_of(self, purpose):
         path = os.path.join(self.registry, purpose + ".json")
         try:
@@ -169,15 +162,14 @@ class Broker:
         if ok and spec.get("auth", "bearer") not in AUTHS:
             ok = False
         if ok and spec["action"] == "http_get_fields":
-            pattern = ATLASSIAN if spec.get("auth") == "basic" else HTTPS                  # Basic only ever goes to one fixed Jira issue read on api.atlassian.com
-            url_ok = spec.get("url") == ANTHROPIC_URL if spec.get("auth") == "x-api-key" else (isinstance(spec.get("url"), str) and pattern.fullmatch(spec["url"]))      # x-api-key: exactly one URL
+            pattern = ATLASSIAN if spec.get("auth") == "basic" else HTTPS
+            url_ok = spec.get("url") == ANTHROPIC_URL if spec.get("auth") == "x-api-key" else (isinstance(spec.get("url"), str) and pattern.fullmatch(spec["url"]))
             ok = (url_ok and isinstance(spec.get("fields"), list) and spec["fields"]
                   and all(isinstance(f, str) and re.fullmatch(r"[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)*", f) for f in spec["fields"]))
         if not ok:
             raise Refused("SECRET_REGISTRY_UNSAFE")
         return spec
 
-    # ---- actions ------------------------------------------------------------------------------------------------------------------------------------------------
     def act(self, spec, value):
         if spec["action"] == "check_credential":
             return {"name": spec["secret"], "length": len(value), "sha256_prefix": hashlib.sha256(value.encode()).hexdigest()[:8]}
@@ -205,7 +197,6 @@ class Broker:
             out[path] = node
         return out
 
-    # ---- one call -----------------------------------------------------------------------------------------------------------------------------------------------
     def run(self, argv, caller):
         """-> (exit code, stdout text). The audit line is written before any credential is touched and once more with the outcome."""
         now = self.clock()
