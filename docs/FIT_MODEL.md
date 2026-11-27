@@ -11,7 +11,7 @@ the secret is a derived projection stamped with a hash, and a changed profile re
    A gated job keeps its real Fit score; decision is No-Go and the line says `Excluded: <reason>`.
 Decision: **Go at 72 or higher** (the universal admission floor, D191) and no gate; otherwise No-Go.
 
-## Arithmetic (V3, ported from V2 `fit_arithmetic`)
+## Arithmetic (V3, ported from the retired system's `fit_arithmetic`)
 Dimensions: Role/Seniority 29 (title evidence is a separate channel, 29/4 of it), Functional 29, Technical/Platform 21,
 Delivery complexity 14, Competitive advantage 7. Each requirement belongs to exactly one. Evidence: Direct 1,
 Adjacent 3/4, Method-equivalent 3/5, Unsupported 0. REQUIRED counts double; an inflated requirement (15+ years, years beyond a

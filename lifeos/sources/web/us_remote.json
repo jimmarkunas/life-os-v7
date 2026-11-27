@@ -1,10 +1,10 @@
 {
  "version": 1,
- "source": "harvested from life-os-v2 contracts/us_remote_sources.json (2026-10-01); public company and ATS names only",
+ "source": "harvested from the retired runtime's contracts/us_remote_sources.json (2026-10-01); public company and ATS names only",
  "statuses": {
   "ready": "V7 can list the board today (lifeos.sources.web.lister: Greenhouse, Ashby, Lever, SmartRecruiters, Workable, Pinpoint, Workday, Jibe)",
-  "port": "public JSON API; a small adapter to port (Open Jobs / V2 shape)",
-  "bespoke": "site-specific list parser; harvest from V2 only if Open Jobs does not cover the board",
+  "port": "public JSON API; a small adapter to port (Open Jobs / the retired system shape)",
+  "bespoke": "site-specific list parser; harvest from the retired system only if Open Jobs does not cover the board",
   "discovery": "aggregator: finds candidates, never authoritative Apply or JD evidence"
  },
  "sources": [
