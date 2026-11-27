@@ -1,4 +1,4 @@
-"""Step outputs are never passed as action inputs: nothing under .github may contain toJSON(steps.…)."""
+"""Step outputs are never passed as action inputs: nothing under.github may contain toJSON(steps.…)."""
 import pathlib
 import re
 import unittest

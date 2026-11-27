@@ -1,5 +1,6 @@
-"""LIFE-1003: the pilot end to end against the simulator (no network, no paid call): the free proofs come first and each one can stop the run before the guard arms anything, the Personal baseline is read fresh, and the comparison runs
-with the injected Honcho client and Aura graph arm."""
+"""the pilot end to end against the simulator (no network, no paid call): the free proofs come first and each one can
+stop the run before the guard arms.
+"""
 import importlib.util
 import json
 import pathlib
@@ -117,7 +118,7 @@ class Free(unittest.TestCase):
         names = [s["step"] for s in ev["steps"]]
         self.assertEqual(names, ["personal_baseline", "due_before", "created_all_off", "token_refused_on_personal", "brake_test_unarmed_message_creates_no_work", "oversize_message_refused_by_the_api", "guard_run"])
         self.assertNotIn("stopped", ev)
-        self.assertLessEqual(w.ours(), 2.0)                                                   # the approved scope; the old $0.50 no longer gates it
+        self.assertLessEqual(w.ours(), 2.0)  # the approved scope
         self.assertEqual(w.armed_posts, 20)
 
     def test_the_personal_baseline_is_read_fresh_not_assumed_to_be_thirty(self):
@@ -216,7 +217,7 @@ class Evidence(unittest.TestCase):
         self.assertEqual(len(msgs), 20)
         self.assertEqual({m["peer_id"] for m in msgs}, {"t-alpha", "t-beta"})
         self.assertTrue(all(m["content"].startswith(m["source_ref"]) and len(m["content"]) <= 300 for m in msgs))
-        self.assertLess(len(msgs) * 2, 45)                                                           # below the automatic dream threshold even at two conclusions each
+        self.assertLess(len(msgs) * 2, 45)
 
 
 class Safe(unittest.TestCase):

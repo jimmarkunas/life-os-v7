@@ -1,4 +1,4 @@
-"""Observers for the http family: the fake (tests/kit/http.py) and the real urllib over a loopback server. Stdlib only."""
+"""Observers for the http family: the fake (tests/kit/http.py) and the real urllib over a loopback server."""
 import threading
 import urllib.error
 import urllib.request
@@ -74,7 +74,7 @@ class Loopback:
         out = {}
         if case["kind"] == "response":
             with urllib.request.urlopen(url, timeout=10) as real:
-                out["ctx_returns_self"] = True                                # the real object is its own context; checked below on a second open
+                out["ctx_returns_self"] = True  # the real object is its own context
                 out["status"] = real.status
                 if "partial" in case:
                     out["partial"] = real.read(case["partial"]).decode()

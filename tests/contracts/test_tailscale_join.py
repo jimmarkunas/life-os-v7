@@ -1,4 +1,4 @@
-"""LIFE-637: our own tailnet join. The download is installed only when its SHA-256 equals the recorded one; the OAuth secret is masked first and never printed; no workflow uses the third-party action any more."""
+"""our own tailnet join."""
 import hashlib
 import io
 import os
@@ -42,7 +42,7 @@ class InstallTests(unittest.TestCase):
             done = run_install(good.as_uri(), recorded, bin_dir, tmp)
             self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
             self.assertEqual(sorted(p.name for p in bin_dir.iterdir()), ["tailscale", "tailscaled"])
-        with tempfile.TemporaryDirectory() as tmp:                          # fail-then-pass: the same recorded value, a download with one different byte
+        with tempfile.TemporaryDirectory() as tmp:
             bad = pathlib.Path(tmp, "bad.tgz")
             make_tarball(bad, b"fixture-binary-TAMPERED")
             bin_dir = pathlib.Path(tmp, "bin")
@@ -107,9 +107,9 @@ class JoinTests(unittest.TestCase):
         lines = done.stdout.splitlines()
         self.assertEqual(lines[0], f"::add-mask::{SECRET}")
         self.assertNotIn(SECRET, "\n".join(lines[1:]) + done.stderr)
-        self.assertIn("--advertise-tags=tag:v7-runner --hostname=github-fixture --accept-routes", calls)       # same arguments the action used
-        self.assertIn("?preauthorized=true&ephemeral=true", calls)                                              # an ephemeral, pre-authorized node
-        mutated, _ = run_join(self.source.replace('echo "::add-mask::$secret"', ":"))                          # fail-then-pass: without the mask line the value is not masked
+        self.assertIn("--advertise-tags=tag:v7-runner --hostname=github-fixture --accept-routes", calls)  # same arguments the action used
+        self.assertIn("?preauthorized=true&ephemeral=true", calls)  # an ephemeral, pre-authorized node
+        mutated, _ = run_join(self.source.replace('echo "::add-mask::$secret"', ":"))
         self.assertNotIn("::add-mask::", mutated.stdout)
 
     def test_five_failed_joins_fail_the_step_without_printing_the_secret(self):

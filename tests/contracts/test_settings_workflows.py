@@ -1,7 +1,6 @@
-"""LIFE-703: the workflows read the V7 settings page for every movable name, and what still comes from GitHub is listed here with its phase-5 status.
-
-A new `vars.<movable>` or `secrets.<movable>` reference fails the test until it is added below with a reason; a settings step can never stop a job; no
-workflow gains a write permission from this change; the names that left GitHub keep exactly today's default when neither GitHub nor the page holds them."""
+"""the workflows read the V7 settings page for every movable name, and what still comes from GitHub is listed here with
+its phase-5 status.
+"""
 import pathlib
 import re
 import unittest
@@ -9,20 +8,19 @@ import unittest
 from lifeos.platform import settings
 import sys as _sys
 _sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[2] / "tools"))
-import wfsets  # noqa: E402  (LIFE-1013: credential lists named with `set:`)
+import wfsets  # noqa: E402
 
 
 try:
     import yaml
-except ImportError:          # PyYAML is a dev convenience, not a runtime dependency
+except ImportError:
     yaml = None
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 WORKFLOWS = ROOT / ".github" / "workflows"
 REFERENCE = re.compile(r"\b(vars|secrets)\.([A-Z][A-Z0-9_]*)")
 
-# Every remaining reference to a movable name and what phase 5 (LIFE-704) does with it. "shadow" is the declared fallback: the step declares the GitHub value, the page fills it
-# when GitHub holds none, and LIFE-704 deletes the GitHub value after 24 matching hours. "own condition" and "workflow env" are the two places a name cannot move yet.
+# Every remaining reference to a movable name and what phase 5 does with it.
 STATUS = {
     "shadow": "the step declares the GitHub value; the page fills it when GitHub holds none; LIFE-704 deletes the GitHub value after 24 matching hours",
     "gate output": "read by the settings step; the condition uses the job output with the GitHub value as fallback; LIFE-704 deletes the GitHub value",
@@ -30,7 +28,7 @@ STATUS = {
     "conditional": "the declaration carries a condition the page cannot express; stays until LIFE-704 decides",
     "ticker": "the Oracle ticker reads this GitHub variable through the API (lifeos/edge/ticker/ticker.py); it stays until the ticker reads the page",
 }
-# One line per movable name still read from GitHub (the whole list; phase 5 deletes the GitHub value). Adding a reference needs a line here and a status above.
+# One line per movable name still read from GitHub (the whole list)
 EXPECTED = {
 }
 
@@ -66,12 +64,12 @@ class MovableNamesFromGitHub(unittest.TestCase):
 
 
 class DefaultsWhenNothingIsSet(unittest.TestCase):
-    """The gate and the steps declare the name empty; with nothing on the page the code sees exactly what it saw when GitHub held nothing."""
+    """The gate and the steps declare the name empty"""
 
     def test_nothing_on_the_page_changes_nothing(self):
         env = {n: "" for n in ("INTERVIEW_CONVERT", "NETWORK_SURFACE_SKIP", "TICK_CAP_LINKEDIN", "TICK_CAP_ATS", "TICK_MAX_PARALLEL", "PHYSICAL_MAIL_EXPECT")}
         before = dict(env)
-        out = settings.apply({**env, "V7_RUNTIME_CONFIG_SOURCE_ID": SOURCE_ID}, _Page(["GRANOLA_AUTO on"]))      # the source holds a name these steps never declare
+        out = settings.apply({**env, "V7_RUNTIME_CONFIG_SOURCE_ID": SOURCE_ID}, _Page(["GRANOLA_AUTO on"]))  # the source holds a name these steps never declare
         self.assertEqual((out["status"], out["filled"], env), ("ok", [], before))
 
     def test_the_code_defaults_are_the_old_workflow_defaults(self):
@@ -79,10 +77,10 @@ class DefaultsWhenNothingIsSet(unittest.TestCase):
         from lifeos.sources.interview import interview_sweep                               # noqa: PLC0415
         caps = tick.concurrency_from_env({})
         self.assertEqual((caps["caps"]["linkedin"], caps["caps"]["tinyfish"], caps["caps"]["jobright"], caps["caps"]["dice"], caps["caps"]["ats"], caps["parallel"]), (1, 1, 1, 1, 8, 4))
-        self.assertEqual(tick.concurrency_from_env({n: "" for n in ("TICK_CAP_LINKEDIN", "TICK_CAP_ATS", "TICK_MAX_PARALLEL")}), caps)           # declared empty = unset
-        self.assertEqual(interview_sweep.mode({"INTERVIEW_CONVERT": ""}), interview_sweep.mode({}))      # empty = off, as with an unset variable
+        self.assertEqual(tick.concurrency_from_env({n: "" for n in ("TICK_CAP_LINKEDIN", "TICK_CAP_ATS", "TICK_MAX_PARALLEL")}), caps)  # declared empty = unset
+        self.assertEqual(interview_sweep.mode({"INTERVIEW_CONVERT": ""}), interview_sweep.mode({}))  # empty = off, as with an unset variable
         self.assertEqual(interview_sweep.mode({}), "")
-        self.assertIn('(environ.get("NETWORK_SURFACE_SKIP") or "on")', (ROOT / "lifeos/sources/network/network_surface.py").read_text())      # empty means on, as the workflow's `|| 'on'` did
+        self.assertIn('(environ.get("NETWORK_SURFACE_SKIP") or "on")', (ROOT / "lifeos/sources/network/network_surface.py").read_text())  # empty means on, as the workflow's `|| 'on'` did
 
     def test_the_page_can_set_the_two_switches_the_gate_and_the_network_stage_read(self):
         env = {"INTERVIEW_CONVERT": "", "NETWORK_SURFACE_SKIP": "", "V7_RUNTIME_CONFIG_SOURCE_ID": SOURCE_ID}
@@ -115,10 +113,9 @@ class SettingsStepsNeverStopAJob(unittest.TestCase):
                 lines = [x.strip() for x in step["with"]["secrets"].splitlines() if x.strip()]
                 self.assertIn(len(lines), (1, 2), file)
                 self.assertTrue(lines[0].endswith("> NOTION_JIRA_TOKEN"), file)
-                self.assertTrue(len(lines) == 1 or lines[1].endswith("> V7_RUNTIME_CONFIG_SOURCE_ID"), file)      # LIFE-844: the bootstrap ID (an address) rides the same step in the lifeos.run jobs
+                self.assertTrue(len(lines) == 1 or lines[1].endswith("> V7_RUNTIME_CONFIG_SOURCE_ID"), file)
 
     def test_the_gate_outputs_read_the_page_only(self):
-        """LIFE-699: GitHub no longer holds these switches, so the gate outputs are the settings step's output alone (no `|| vars.X` fallback)."""
         data = yaml.safe_load((WORKFLOWS / "domains.yml").read_text())
         out = data["jobs"]["gate"]["outputs"]
         self.assertEqual(out["granola_auto"].split("#")[0].strip(), "${{ steps.settings.outputs.GRANOLA_AUTO }}")
@@ -127,7 +124,7 @@ class SettingsStepsNeverStopAJob(unittest.TestCase):
         self.assertEqual(sync.split("#")[0].strip(), "${{ steps.settings.outputs.FIT_PROFILE_SYNC }}")
 
     def test_no_job_gets_a_permissions_block_from_this_change(self):
-        """The gate keeps its two read permissions and the new jobs and steps declare none; any `write` permission anywhere is already in the baseline below."""
+        """The gate keeps its two read permissions and the new jobs and steps declare none"""
         baseline = {"contents: write": {"branches.yml"}}
         for path in sorted(WORKFLOWS.glob("*.yml")):
             text = path.read_text()
@@ -139,16 +136,16 @@ class SettingsStepsNeverStopAJob(unittest.TestCase):
         self.assertNotIn("permissions", yaml.safe_load((WORKFLOWS / "profile-sync.yml").read_text())["jobs"]["settings"])
 
 
-# The only names a `needs.<job>.outputs.<name>` may carry: due flags and trigger facts, settings switches, fixed words (failed stage names, codes) and run facts. Never a credential.
+# The only names a `needs.<job>.outputs.<name>` may carry: due flags and trigger facts, settings switches.
 KNOWN_OUTPUTS = {"all", "codes", "due_network_surface", "due_fit_cloud_backlog", "due_last_seen_purge", "pipeline", "due_agenda", "due_amazon", "due_amazon_retention", "due_bills", "due_dcc", "due_followup", "due_granola", "due_hiring", "due_hiring_outcomes", "due_imessage", "due_weekly_review",
                  "due_interview", "due_jira", "due_mail", "due_megibow", "due_outlook", "due_recruiters", "early", "extract", "failed", "fit_profile_sync", "granola_auto", "imessage_alerts", "late",
                  "matrix", "pipeline", "sweep", "tick",
-                 "run", "mode", "limit", "deadline_minutes", "slot", "slot_ct", "late_reason"}     # LIFE-854: the board window gate's decision (a flag, a mode word, counts, a window label and a fixed reason code; no credential)
+                 "run", "mode", "limit", "deadline_minutes", "slot", "slot_ct", "late_reason"}
 SECRET_NAME = re.compile(r"(_TOKEN|_KEY|_SECRET|_PASSWORD|_PRIVATE_KEY)$")
 
 
 def output_problems(docs, texts):
-    """LIFE-703: a credential must never travel through a job output (anything a later job can read). -> what breaks the rule, by file and job, never a value."""
+    """a credential must never travel through a job output (anything a later job can read)."""
     problems = []
     for file, doc in docs.items():
         for job, body in (doc.get("jobs") or {}).items():
@@ -194,7 +191,7 @@ jobs:
         self.assertEqual(len(problems), 4, problems)
         self.assertEqual(sorted(p.split(":")[-1].split(" carries")[0].strip() for p in problems if "carries" in p), ["output leak_loader", "output leak_named", "output leak_secret"])
         self.assertTrue(any("mystery_switch" in p for p in problems))
-        self.assertFalse(any("granola_auto" in p for p in problems))                              # a settings step's switch output is allowed
+        self.assertFalse(any("granola_auto" in p for p in problems))  # a settings step's switch output is allowed
 
 
 SOURCE_ID = "5a1c0e57-3b2d-4f6a-9c1d-0e2f3a4b5c6d"

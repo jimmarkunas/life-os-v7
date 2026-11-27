@@ -1,4 +1,6 @@
-"""The CI step `ruff format --check lifeos tools` fails on an unformatted file and passes on a formatted one, and it is in the unit-tests job."""
+"""The CI step `ruff format --check lifeos tools` fails on an unformatted file and passes on a formatted one, and it is
+in the unit-tests job.
+"""
 import importlib.util
 from pathlib import Path
 import subprocess

@@ -1,4 +1,6 @@
-"""LIFE-1003: the Honcho v3 client against a scripted opener: no network, the token never appears in a repr or an error, spending is armed per message, tenants are answered by their own peer."""
+"""the Honcho v3 client against a scripted opener: no network, the token never appears in a repr or an error, spending is
+armed per message, tenants are.
+"""
 import importlib.util
 import io
 import json

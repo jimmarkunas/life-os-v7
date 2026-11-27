@@ -1,5 +1,4 @@
-"""Jim, Nov 21 2026: the Development Policy is ONE file, short enough to read once, and it keeps the guardrails Jim kept.
-The old 11-part split, its manifest and the dated amendments are history in docs/archive/ (no authority). No network, Jira or Notion."""
+"""The old 11-part split, its manifest and the dated amendments are history in docs/archive/ (no authority)."""
 import re
 import unittest
 from pathlib import Path
@@ -10,16 +9,16 @@ POLICY = POLICY_PATH.read_text()
 
 
 class DryRunGate(unittest.TestCase):
-    """LIFE-986: the scoping gate is in the policy, the one-page boot guide and the ticket template."""
+    """the scoping gate is in the policy, the one-page boot guide and the ticket template."""
     def test_the_policy_section_has_the_rules(self):
         self.assertIn("## 12. Dry run gate (scoping, before Agent Go;", POLICY)
         for kept in ("**Dry run**", "**Decisions pre-made**", "`dry-run-green`", "`dry-run-miss`", "`release LIFE-nnn`", "`dry run 856 877 981`",
                      "read-only: no write, merge, deploy or delete", "One session, one outcome", "grandfathered", "is already its own `UAT for LIFE-nnn` ticket under LIFE-615"):
             self.assertIn(kept, POLICY, kept)
-        self.assertNotIn("Found mid-run: the same, then keep building.", POLICY)       # the older stop-and-ask clause is replaced by the pre-made default rule
+        self.assertNotIn("Found mid-run: the same, then keep building.", POLICY)
 
     def test_the_orchestrator_exception_and_the_agent_layer_rule_are_written_down(self):
-        """LIFE-987 (Jim, comment 14320): the one exception to 'Jim starts every run', its kill switch, and the agent-layer rules agents follow."""
+        """the one exception to 'Jim starts every run', its kill switch, and the agent-layer rules agents follow."""
         for name in ("docs/life-os-development-policy.md", "CLAUDE.md", "AGENTS.md"):
             self.assertIn("LIFE-987", (ROOT / name).read_text(), name)
         self.assertIn("`ORCHESTRATOR_CAN_START`", POLICY)
@@ -38,7 +37,7 @@ class DryRunGate(unittest.TestCase):
 
 class OneFilePolicy(unittest.TestCase):
     def test_it_is_one_file_under_the_size_ceiling(self):
-        self.assertLessEqual(len(POLICY.encode()), 18 * 1024)         # LIFE-986: 15 KiB until the Dry run gate (section 12) Jim asked for on Nov 25 2026
+        self.assertLessEqual(len(POLICY.encode()), 18 * 1024)
         self.assertFalse((ROOT / "docs" / "development-policy").exists(), "the policy is one file; history lives in docs/archive/")
 
     def test_the_kept_guardrails_are_stated(self):
@@ -52,8 +51,8 @@ class OneFilePolicy(unittest.TestCase):
         self.assertIn("does not move to Agent Go", POLICY)
         self.assertIn("Notion wireframe", POLICY)
         self.assertIn("Jim starts every agent run", POLICY)
-        self.assertIn("agents use `ssh opc@lifeos-edge-01`; `sudo -u ubuntu` reads are read-only", POLICY)   # Jim, Nov 21 2026: Oracle access
-        self.assertIn("inside one, it may watch its own CI and runs", POLICY)   # Jim, Nov 21 2026: in-session watching allowed
+        self.assertIn("agents use `ssh opc@lifeos-edge-01`; `sudo -u ubuntu` reads are read-only", POLICY)
+        self.assertIn("inside one, it may watch its own CI and runs", POLICY)
         self.assertIn('project = LIFE AND status = "Agent Go" AND issuetype != Epic ORDER BY priority DESC, Rank ASC', POLICY)
 
     def test_los_is_retired_and_epics_carry_the_lifecycle(self):
@@ -64,7 +63,7 @@ class OneFilePolicy(unittest.TestCase):
         self.assertNotIn("LOS idea", POLICY)
 
     def test_every_epic_proves_feasibility_before_any_build_ticket_runs(self):
-        self.assertIn("**Feasibility first, new Epics only:**", POLICY)   # Jim, Nov 22 2026: feasibility only for a new Epic he asks for
+        self.assertIn("**Feasibility first, new Epics only:**", POLICY)
         self.assertIn("`research`", POLICY)
         self.assertIn("GO / NO-GO comment", POLICY)
         self.assertIn("A change inside an existing Epic goes straight to a build ticket.", POLICY)
@@ -72,12 +71,12 @@ class OneFilePolicy(unittest.TestCase):
         self.assertIn("only then MCP rows or SQL queries, which count as metered", POLICY)
         self.assertIn("Build tickets wait for the verdict.", POLICY)
 
-    def test_runs_do_not_stop_midway_for_pre_approvable_steps(self):   # Jim, "approve all", Nov 22 2026, 6:03 PM CT
+    def test_runs_do_not_stop_midway_for_pre_approvable_steps(self):
         self.assertIn("**Standing approvals (Jim, Nov 22, 2026):**", POLICY)
         self.assertIn("a job reusing a secret or Bitwarden name its workflow already loads", POLICY)
         self.assertIn("**Check before claiming:**", POLICY)
         self.assertIn("**One ticket at a time** per session", POLICY)
-        self.assertIn("a natural run never gates a build ticket's Done; its UAT ticket checks it", POLICY)             # LIFE-929 replaced the 24-hour natural-run gate
+        self.assertIn("a natural run never gates a build ticket's Done; its UAT ticket checks it", POLICY)
         self.assertIn("only with label `needs-uat` or when Jim is the real user of the outcome", POLICY)
 
     def test_done_needs_outcome_proof_and_one_natural_run_rule(self):
@@ -105,7 +104,7 @@ class OneFilePolicy(unittest.TestCase):
 
 
 class LosIsRetired(unittest.TestCase):
-    """LIFE-849: LOS is retired, so nothing live queries it. Historical `LOS-nnn` keys in comments and docs stay as history."""
+    """LOS is retired, so nothing live queries it."""
 
     PATTERN = re.compile(r"project\s*=\s*LOS\b|project\s+in\s*\([^)\n]*\bLOS\b", re.I)
 
@@ -127,7 +126,9 @@ class LosIsRetired(unittest.TestCase):
 
 
 class GlobalIndex(unittest.TestCase):
-    """LIFE-222 (LOS-74 Q11): the root INDEX.md routes every global source with its path, authority, purpose, owner and retrieval, and copies no policy text."""
+    """(LOS-74 Q11): the root INDEX.md routes every global source with its path, authority, purpose, owner and retrieval,
+    and copies no policy text.
+    """
     INDEX = ROOT / "INDEX.md"
 
     def rows(self, heading):
@@ -168,7 +169,7 @@ if __name__ == "__main__":
 
 
 class AgentNames(unittest.TestCase):
-    """Jim, Nov 22, 2026: OC is Claude Code in VS Code, MC is Claude Code in the Mac app; the app decides, never the machine."""
+    """the app decides, never the machine."""
 
     def run_with(self, **env):
         import subprocess, os
@@ -198,13 +199,13 @@ class AgentNames(unittest.TestCase):
 
 
 class CloseWhenShipped(unittest.TestCase):
-    """Jim, Nov 23 2026 (LIFE-929, "UAT rule yes"): a build ticket is Done when merged, live and first-proved; every wait becomes a `UAT for LIFE-nnn` Task under the Bug Epic."""
+    """every wait becomes a `UAT for LIFE-nnn` Task under the Bug Epic."""
 
     def test_the_policy_states_the_rule(self):
         for phrase in ("a build ticket is Done once it is merged on same-head green CI, live, and first-proved", "UAT for LIFE-nnn", "LIFE-615", "label `uat`", "not before <time> CT", "Not before (CT)",
                        "A merged PR on green is not Done by itself.", "Agent Go", "a successor starts once its predecessor is Done"):
             self.assertIn(phrase, POLICY, phrase)
-        self.assertNotIn("gates Done only when the ticket's Done when names it", POLICY)                # the old 24-hour natural-run gate is gone
+        self.assertNotIn("gates Done only when the ticket's Done when names it", POLICY)  # the old 24-hour natural-run gate is gone
 
     def test_the_boot_file_states_the_rule_and_no_longer_asks_for_every_done_when_line_before_done(self):
         text = (ROOT / "CLAUDE.md").read_text()
@@ -213,12 +214,11 @@ class CloseWhenShipped(unittest.TestCase):
         self.assertNotIn("prove every Done when line on the delivered outcome (Agent UAT), then move the ticket to Done", text)
         self.assertNotIn("gets a watch note, not your session", text)
 
-    def test_the_fixture_catches_a_policy_without_the_rule(self):                                        # negative control: the check can fail
+    def test_the_fixture_catches_a_policy_without_the_rule(self):  # negative control: the check can fail
         self.assertNotIn("UAT for LIFE-nnn", "- **Agent UAT:** after merge, the agent checks the delivered outcome. A merged PR on green is not Done by itself.")
 
 
 class NeverIdleOnAClock(unittest.TestCase):
-    """Jim, Nov 22, 2026: agents build successors while a predecessor only waits on runs or UAT."""
 
     def test_boot_file_says_build_successors_during_waits(self):
         text = (ROOT / "CLAUDE.md").read_text()

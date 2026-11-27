@@ -1,4 +1,6 @@
-"""LIFE-636: the vendored Bitwarden wrapper runs only the checked helper program, never downloads or builds anything, and passes the helper's output (its ::add-mask:: lines) through untouched."""
+"""the vendored Bitwarden wrapper runs only the checked helper program, never downloads or builds anything, and passes
+the helper's output.
+"""
 import os
 import pathlib
 import shutil
@@ -13,7 +15,7 @@ TRIPLE = {("linux", "x64"): "x86_64-unknown-linux-gnu", ("linux", "arm64"): "aar
 
 
 def run_wrapper(source, helper_script):
-    """Copy a wrapper into a temp folder with a fixture helper where the wrapper looks for it; -> CompletedProcess."""
+    """Copy a wrapper into a temp folder with a fixture helper where the wrapper looks for it"""
     arch = subprocess.run([NODE, "-p", "process.platform+' '+process.arch"], capture_output=True, text=True).stdout.split()
     with tempfile.TemporaryDirectory() as tmp:
         (pathlib.Path(tmp) / "index.js").write_text(source)
@@ -32,8 +34,8 @@ class VendoredWrapperTests(unittest.TestCase):
         helper = "#!/bin/sh\necho '::add-mask::FIXTURE-SECRET-VALUE'\necho \"seen:$INPUT_SECRETS\"\n"
         done = run_wrapper(self.source, helper)
         self.assertEqual(done.returncode, 0, done.stderr)
-        self.assertEqual(done.stdout.splitlines(), ["::add-mask::FIXTURE-SECRET-VALUE", "seen:x > FIXTURE"])       # masked before anything else, inputs handed through
-        swallowed = run_wrapper(self.source.replace('stdio: "inherit"', 'stdio: "ignore"'), helper)               # fail-then-pass: a wrapper that hides the helper's output leaves the value unmasked
+        self.assertEqual(done.stdout.splitlines(), ["::add-mask::FIXTURE-SECRET-VALUE", "seen:x > FIXTURE"])  # masked before anything else, inputs handed through
+        swallowed = run_wrapper(self.source.replace('stdio: "inherit"', 'stdio: "ignore"'), helper)
         self.assertNotIn("::add-mask::FIXTURE-SECRET-VALUE", swallowed.stdout)
 
     def test_a_failing_helper_fails_the_step_and_a_missing_helper_downloads_and_builds_nothing(self):
@@ -48,7 +50,7 @@ class VendoredWrapperTests(unittest.TestCase):
             self.assertNotIn(word, code)
         fetch = (ROOT / ".github" / "actions" / "bws-helper" / "fetch.sh").read_text()
         self.assertIn("helper.sha256", (ROOT / ".github" / "actions" / "bws-helper" / "action.yml").read_text())
-        self.assertIn("valid", fetch)                                                                               # every copy is checked before use
+        self.assertIn("valid", fetch)  # every copy is checked before use
         self.assertIn("does not match the committed fingerprint", fetch)
 
     def test_the_license_is_kept_and_the_action_runs_node24_like_the_original(self):

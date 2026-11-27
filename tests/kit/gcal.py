@@ -5,7 +5,7 @@ class CalendarEvents:
     def __init__(self, *pages):
         self.pages, self.windows, self.private_properties = list(pages), [], []
 
-    def list_events(self, time_min, time_max, private_property=None):          # LIFE-549: the real client takes this optional filter too
+    def list_events(self, time_min, time_max, private_property=None):  # the real client takes this optional filter too
         self.windows.append((time_min, time_max))
         self.private_properties.append(private_property)
         out = []

@@ -1,4 +1,4 @@
-"""Observers for the db family: the real pymysql Cursor class (API only), the FakeCursor and MySQLite fakes. Domain-free."""
+"""Observers for the db family: the real pymysql Cursor class (API only), the FakeCursor and MySQLite fakes."""
 import inspect
 
 from tests.kit.db import FakeCursor
@@ -6,7 +6,7 @@ from tests.kit.mysqlite import MySQLite
 
 try:
     import pymysql.cursors as _real
-except ImportError:                                                         # pymysql is a runtime dependency; the real-class checks skip without it
+except ImportError:  # pymysql is a runtime dependency
     _real = None
 
 

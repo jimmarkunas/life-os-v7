@@ -1,5 +1,4 @@
-"""LIFE-544 (Decision D18): tests/kit holds shared fakes that know nothing about any domain. A kit file may import the standard library and lifeos.platform (the platform boundary the
-fakes stand in for); it may not import a domain package (lifeos.jobs, lifeos.amazon, lifeos.recruiters, ...). A fake that needs domain code lives beside that domain's tests instead."""
+"""tests/kit holds shared fakes that know nothing about any domain."""
 import ast
 import unittest
 from pathlib import Path
@@ -9,7 +8,9 @@ ALLOWED = {"lifeos.platform"}
 
 
 def domain_imports(source):
-    """-> sorted lifeos modules imported (anywhere in the file, including inside functions) that are not lifeos.platform[.x]."""
+    """> sorted lifeos modules imported (anywhere in the file, including inside functions) that are not
+    lifeos.platform[.x].
+    """
     found = set()
     for node in ast.walk(ast.parse(source)):
         names = [node.module] if isinstance(node, ast.ImportFrom) and node.module else [a.name for a in node.names] if isinstance(node, ast.Import) else []

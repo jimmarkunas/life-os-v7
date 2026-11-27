@@ -1,4 +1,6 @@
-"""LIFE-838: docs/index.json is the machine-readable twin of INDEX.md (same global sources, same order), every path exists, and it holds no Notion IDs."""
+"""docs/index.json is the machine-readable twin of INDEX.md (same global sources, same order), every path exists, and it
+holds no Notion IDs.
+"""
 import json
 import re
 import unittest

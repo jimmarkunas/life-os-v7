@@ -1,6 +1,4 @@
-"""LIFE-1010: the size budget of the big workflows. A generated workflow is at most 130 KB, a source part at most 6 KB and a step name at most 60 characters, so an agent can read and edit one job without loading the whole file.
-
-domains.yml and hourly.yml have their own, lower caps (RATCHET, LIFE-1013); the caps only go down."""
+"""the size budget of the big workflows."""
 import pathlib
 import tempfile
 import unittest
@@ -13,13 +11,14 @@ SRC = ROOT / ".github/workflows-src"
 GENERATED_MAX = 130 * 1024
 PART_MAX = 6 * 1024
 NAME_MAX = 60
-RATCHET = {"domains.yml": 125_000, "hourly.yml": 65_000}              # LIFE-1013: reached 112,341 and 56,549 bytes (240,853 and 123,939 before the lean passes); room for growth on purpose
-PARTS_TOTAL_MAX = 255_000                                              # LIFE-1016: the parts of domains and hourly were 297,690 bytes before the history moved to why.yml and the comments lost their ticket notes
+RATCHET = {"domains.yml": 125_000, "hourly.yml": 65_000}
+PARTS_TOTAL_MAX = 255_000
 BUDGETED = ("domains.yml", "hourly.yml", "v3-pages.yml")
 
 
 def problems(flows, src, ratchet=RATCHET):
-    """-> one text per breach: a generated workflow over its limit, a part over 8 KB, a step name over 80 characters."""
+    """> one text per breach: a generated workflow over its limit, a part over 8 KB, a step name over 80 characters.
+    """
     out = []
     for path in sorted(pathlib.Path(flows).glob("*.yml")):
         if path.name not in BUDGETED:
@@ -30,7 +29,7 @@ def problems(flows, src, ratchet=RATCHET):
         for name, job in (yaml.safe_load(path.read_text()).get("jobs") or {}).items():
             out += [f"{path.name} {name}: step name of {len(s['name'])} characters: {s['name'][:40]}" for s in job.get("steps") or [] if len(str(s.get("name", ""))) > NAME_MAX]
     for part in sorted(pathlib.Path(src).rglob("*.yml")):
-        if part.name == "why.yml":                                       # the history table docs/workflows.md is built from, not a part
+        if part.name == "why.yml":
             continue
         if len(part.read_bytes()) > PART_MAX:
             out.append(f"{part.name} is {len(part.read_bytes())} bytes, over {PART_MAX}")

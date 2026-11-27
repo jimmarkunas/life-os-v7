@@ -1,6 +1,5 @@
 class FakeCursor:
-    """Records every statement as (first two words, args). `script` maps an SQL prefix to the row fetchone() returns;
-    `handler(sql, args, cursor)` may set cursor.rowcount / cursor.row for anything more involved."""
+    """Records every statement as (first two words, args)."""
 
     def __init__(self, script=None, handler=None, rowcount=1):
         self.script, self.handler, self.rowcount = script or {}, handler, rowcount
@@ -17,7 +16,7 @@ class FakeCursor:
         self.row = next((row for prefix, row in self.script.items() if sql.startswith(prefix)), None)
         if self.handler:
             self.handler(sql, args, self)
-        return self.rowcount                             # LIFE-549: like pymysql, execute() returns the affected-row count
+        return self.rowcount
 
     def fetchone(self):
         return self.row
@@ -30,7 +29,7 @@ class FakeCursor:
 
 
 class FakeConn:
-    """One shared cursor, so a test can read what every statement did. Also a context manager like store.connect()."""
+    """One shared cursor, so a test can read what every statement did."""
 
     def __init__(self, script=None, handler=None):
         self.cur = FakeCursor(script, handler)
@@ -46,8 +45,9 @@ class FakeConn:
 
 
 class RoutedRows:
-    """A connection that is its own cursor (and a context manager, like store.connect()): execute() keeps the statement, then fetchall() returns the canned rows of
-    the FIRST route (needle, rows) whose needle is inside it, else `default`."""
+    """A connection that is its own cursor (and a context manager, like store.connect): execute keeps the statement, then
+    fetchall returns the canned rows.
+    """
 
     def __init__(self, routes=(), default=()):
         self.routes, self.default, self.sql, self.rows = list(routes), default, [], default
@@ -73,8 +73,7 @@ class RoutedRows:
 
 
 class RecorderCursor:
-    """LIFE-551: keeps every statement in full as (sql, args) in `statements`; fetchall() returns the canned `rows`; execute() raises the error whose
-    needle is inside the statement (after recording it); `driver_format=True` also checks the statement survives pymysql-style % formatting first."""
+    """keeps every statement in full as (sql, args) in `statements`"""
 
     def __init__(self, rows=(), errors=None, driver_format=False):
         self.rows, self.errors, self.driver_format, self.statements = list(rows), errors or {}, driver_format, []
@@ -98,7 +97,7 @@ class RecorderCursor:
 
 
 class RecorderConn:
-    """One RecorderCursor behind a connection that is also a context manager, like store.connect()."""
+    """One RecorderCursor behind a connection that is also a context manager, like store.connect."""
 
     def __init__(self, rows=(), errors=None, driver_format=False):
         self.cur = RecorderCursor(rows, errors, driver_format)
@@ -114,8 +113,7 @@ class RecorderConn:
 
 
 class SingleRowDb:
-    """LIFE-551: one row in memory behind the statements the two stuck-sync watches run (a SELECT returns the row; an INSERT stores params 1 to 3 as the new row).
-    `sql` keeps the first word of each statement; `broken=True` makes entering the connection raise like a lost store tunnel."""
+    """one row in memory behind the statements the two stuck-sync watches run (a SELECT returns the row)"""
 
     def __init__(self, row=None, broken=False):
         self.row, self.broken, self.sql = row, broken, []
@@ -144,7 +142,6 @@ class SingleRowDb:
 
 
 class BillsSnapshotDB:
-    """Private snapshot database fake with one atomically replaced JSON payload."""
 
     def __init__(self, payload=None):
         import json

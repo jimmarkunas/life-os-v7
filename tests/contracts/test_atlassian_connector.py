@@ -1,4 +1,4 @@
-"""LIFE-683: the Atlassian MCP connector (v2) is the only Jira connector an agent may use; the two Rovo connectors (deprecated /v1 endpoint, removal 2027-03-01) are retired."""
+"""the Atlassian MCP connector (v2) is the only Jira connector an agent may use"""
 import json
 import unittest
 from pathlib import Path
@@ -39,7 +39,7 @@ class OnlyTheSupportedAtlassianConnector(unittest.TestCase):
         self.assertIn("Rovo connectors are retired", text)
         for path in (ROOT / ".claude/settings.json", ROOT / ".claude/settings.local.json"):
             if path.is_file():
-                json.loads(path.read_text())                               # still valid JSON
+                json.loads(path.read_text())  # still valid JSON
 
 
 if __name__ == "__main__":

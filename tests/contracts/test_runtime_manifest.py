@@ -1,8 +1,4 @@
-"""LIFE-620: lifeos/platform/runtime.json is the one place that says which module runs where.
-
-The "where each module runs" table in docs/platform/module-inventory.md is GENERATED from it (`python -m tests.contracts.test_runtime_manifest --write`).
-The drift check's surface list (lifeos/platform/drift.py) and the ticker installer's MODULES are deployed files and drift surfaces themselves, so they are CHECKED against it,
-never rewritten here (editing them would show DRIFT on the Oracle VM until an install). A disagreement fails with the exact difference."""
+"""lifeos/platform/runtime.json is the one place that says which module runs where."""
 import json
 import re
 import sys

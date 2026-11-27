@@ -1,4 +1,4 @@
-"""Observers for the notion family: the recorded real response shapes, and the FakeBlocks fake. Domain-free."""
+"""Observers for the notion family: the recorded real response shapes, and the FakeBlocks fake."""
 import copy
 
 from tests.kit.conformance import runner

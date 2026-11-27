@@ -1,8 +1,6 @@
-"""LIFE-560: the environment-variable registry (lifeos/<package>/config.txt, collected by credentials.config()) must agree with the code and the workflows. Names only; no read site is changed.
-
-Fails when: code reads a name the registry does not list; a workflow sets a name that is in neither the registry nor the provided group (GITHUB_*, RUNNER_*, CI and the host names);
-a registry name is neither read by code, set by a workflow, nor covered by a declared run-time pattern (stale); or a file reads a name built at run time without a declared pattern.
-The scanner is tests/config_scan.py (AST over lifeos/, YAML over .github/workflows). To add a variable, add one line to its package's config.txt; docs/platform/config-registry.md says how."""
+"""the environment-variable registry (lifeos/<package>/config.txt, collected by credentials.config) must agree with the
+code and the workflows.
+"""
 import copy
 import re
 import tempfile
@@ -38,14 +36,14 @@ class RegistryAgreesWithTheRepo(unittest.TestCase):
     def test_every_row_has_a_valid_kind_an_owner_a_purpose_and_no_value_shaped_text(self):
         rows = credentials.config()["names"]
         names = [r["name"] for r in rows]
-        self.assertEqual(names, sorted(names))                                                      # sorted, so a merge conflict is a one-line fix
+        self.assertEqual(names, sorted(names))  # sorted, so a merge conflict is a one-line fix
         self.assertEqual(len(names), len(set(names)))
         for row in rows:
             self.assertEqual(set(row), {"name", "kind", "owner", "purpose"}, row["name"])
             self.assertRegex(row["name"], scan.NAME)
             self.assertIn(row["kind"], KINDS, row["name"])
             self.assertTrue(row["owner"] and row["purpose"], row["name"])
-            self.assertIsNone(SECRET_SHAPED.search(row["purpose"] + row["owner"]), row["name"])     # a purpose is words, never a value, an id or a path
+            self.assertIsNone(SECRET_SHAPED.search(row["purpose"] + row["owner"]), row["name"])  # a purpose is words, never a value, an id or a path
 
     def test_the_provided_group_is_not_listed_one_by_one(self):
         group = credentials.config()["provided"]
@@ -80,7 +78,7 @@ class NegativeControls(unittest.TestCase):
         self.assertTrue(any("built at run time" in p for p in scan.problems(config("KNOWN_NAME", "RT_ONE"), root)))
         declared = config("KNOWN_NAME", "RT_ONE", patterns=[{"file": "lifeos/mod.py", "match": ["RT_*"]}])
         self.assertEqual(scan.problems(declared, root), [])
-        plain = tree()                                                                              # the same declaration with no run-time read left is stale
+        plain = tree()
         self.assertTrue(any("no run-time read any more" in p for p in scan.problems(declared, plain)))
         loose = config("KNOWN_NAME", patterns=[{"file": "lifeos/mod.py", "match": ["ZZ_*"]}])
         self.assertTrue(any("matches no listed name" in p for p in scan.problems(loose, root)))

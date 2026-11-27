@@ -1,4 +1,4 @@
-"""LIFE-549: the db fakes in tests/kit conform to the real pymysql cursor API and to MySQL's documented results."""
+"""the db fakes in tests/kit conform to the real pymysql cursor API and to MySQL's documented results."""
 import unittest
 
 from tests.kit.conformance import db_subjects as subjects
@@ -22,7 +22,7 @@ class DbConformance(unittest.TestCase):
         def drifted(case):
             out = subjects.observe_mysqlite(case)
             if "dup" in out:
-                out["dup"] = 1                                              # INSERT IGNORE on a duplicate must affect 0 rows
+                out["dup"] = 1  # INSERT IGNORE on a duplicate must affect 0 rows
             return out
         self.assertTrue(any("insert_ignore" in p for p in runner.problems(SPEC, "mysqlite", drifted)))
         healed = dict(SPEC, gaps={"mysqlite": {"api_core_names": "pretend gap that does not differ"}})

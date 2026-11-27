@@ -1,4 +1,6 @@
-"""LIFE-763: the quick gate always carries the contracts and the repo-wide scanners, maps a changed file to the tests that name it, splits into processes without losing or repeating a module, and never grows to the whole suite."""
+"""the quick gate always carries the contracts and the repo-wide scanners, maps a changed file to the tests that name it,
+splits into processes without.
+"""
 import pathlib
 import tempfile
 import unittest
@@ -37,7 +39,7 @@ class QuickSelect(unittest.TestCase):
 
 
 def tree(files):
-    """A throwaway repo root holding `files` ({relative path: text}); every call gets its own root, so the selector's per-root caches never mix trees."""
+    """A throwaway repo root holding `files` ({relative path: text})"""
     root = pathlib.Path(tempfile.mkdtemp())
     for rel, text in files.items():
         path = root / rel
@@ -47,7 +49,9 @@ def tree(files):
 
 
 class ImportGraph(unittest.TestCase):
-    """LIFE-763: a change to a module reaches the tests of what imports it, so `credential_list` selects the credentials screen tests that CI failed on after PR 1287 while the quick gate passed."""
+    """a change to a module reaches the tests of what imports it, so `credential_list` selects the credentials screen
+    tests that CI failed on after PR 1287.
+    """
 
     def test_every_test_that_names_a_direct_importer_of_a_changed_module_is_selected(self):
         reverse = quickselect.reverse_graph()

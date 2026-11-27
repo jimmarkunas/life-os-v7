@@ -1,7 +1,6 @@
-"""LIFE-772: the parked packages (job search and Interview OS) are only reachable through lifeos/sources and the top-level entry points.
-
-That is what lets a pull request skip their tests unless a shared path changes: the test selector (tests/testindex.py) already sends a change to the tests that run it, so a change in another package never selects them. This check keeps that
-true. It reads the real imports, so a new import of a parked package from anywhere else fails here, in the contracts that always run, instead of silently skipping tests the new importer needs."""
+"""the parked packages (job search and Interview OS) are only reachable through lifeos/sources and the top-level entry
+points.
+"""
 import ast
 import pathlib
 import unittest
@@ -11,7 +10,7 @@ from tests import testindex
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 LIFEOS = ROOT / "lifeos"
 PARKED = ("jobs", "interview", "hiring", "recruiters", "megibow")
-ALLOWED_IMPORTERS = {"sources", "(top)"}          # lifeos/sources and the top-level modules (run.py, the entry points)
+ALLOWED_IMPORTERS = {"sources", "(top)"}
 
 
 def _package(path):
@@ -20,7 +19,7 @@ def _package(path):
 
 
 def _targets(node, path):
-    """-> the lifeos packages a statement imports, absolute or relative."""
+    """> the lifeos packages a statement imports, absolute or relative."""
     names = []
     if isinstance(node, ast.Import):
         names = [alias.name for alias in node.names]
@@ -40,7 +39,7 @@ def _targets(node, path):
 
 
 def importers():
-    """-> {parked package: sorted packages outside it that import it}."""
+    """> {parked package: sorted packages outside it that import it}."""
     found = {p: set() for p in PARKED}
     for path in LIFEOS.rglob("*.py"):
         own = _package(path)
@@ -66,7 +65,9 @@ class ParkedBoundary(unittest.TestCase):
             self.assertEqual([], outside, "lifeos/%s is imported from %s: its tests must run when those change, so it is no longer parked (LIFE-772)" % (package, outside))
 
     def test_a_change_outside_the_boundary_selects_no_parked_test(self):
-        """Selector behaviour with an index that maps each production file to its own mirror tests, which is what coverage gives for code that does not import a parked package."""
+        """Selector behaviour with an index that maps each production file to its own mirror tests, which is what
+        coverage gives for code that does not import a.
+        """
         modules = testindex.test_modules(ROOT)
         ids = sorted(modules)
         covers = {}
