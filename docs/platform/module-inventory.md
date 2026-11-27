@@ -55,6 +55,7 @@ Generated from `lifeos/platform/runtime.json`; do not edit by hand. The drift ch
 | lifeos/platform/gate.py | oracle | /opt/lifeos-ticker/lifeos/platform/gate.py | lifeos-ticker-watch.timer |
 | lifeos/platform/health.py | oracle | /opt/lifeos-ticker/lifeos/platform/health.py | lifeos-ticker-watch.timer |
 | lifeos/platform/release_proof.py | oracle | /opt/lifeos-ticker/lifeos/platform/release_proof.py | lifeos-ticker-watch.timer |
+| lifeos/platform/todoist_refresh.py | oracle | /opt/lifeos-ticker/lifeos/platform/todoist_refresh.py | lifeos-ticker-watch.timer |
 | lifeos/platform/alerts.py | oracle | /opt/lifeos-ticker/lifeos/platform/alerts.py | lifeos-ticker-watch.timer |
 | lifeos/platform/alert_registry.py | oracle | /opt/lifeos-ticker/lifeos/platform/alert_registry.py | lifeos-ticker-watch.timer |
 | lifeos/platform/alert_settings.py | oracle | /opt/lifeos-ticker/lifeos/platform/alert_settings.py | lifeos-ticker-watch.timer |

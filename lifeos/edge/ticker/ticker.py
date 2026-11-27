@@ -33,6 +33,8 @@ STALL_LABEL, STALL_TITLE = "deploy-stalled", "Close service release has not depl
 PROOF_FILE = "/etc/lifeos-close/auto.proof-unreadable"
 PROOF_LABEL, PROOF_TITLE = "release-pause-unreadable", "Close release timer cannot read the release-paused flag"
 DRIFT_LABEL, DRIFT_TITLE = "deploy-drift", "Installed files on the Oracle VM differ from main"
+TODOIST_LABEL, TODOIST_TITLE = "todoist-token", "The Todoist token refresher needs attention"
+TODOIST_OK = {"not_consented", "fresh", "refreshed"}
 # world-readable; the first line is `commit <40 hex>`
 RELEASE_MANIFEST, RELEASE_PREVIOUS = "/opt/lifeos-close/current/MANIFEST", "/opt/lifeos-close/previous/MANIFEST"
 # token, permissions, workflow name or inputs are wrong: a person must act
@@ -386,7 +388,44 @@ def release_proof(token, opener=urllib.request.urlopen, api=None, read=None, syn
     )
 
 
-def watch(token, topic, opener=urllib.request.urlopen, run=None, environ=None, disk=None, store=None):
+def todoist_incident(results, sync=None):
+    """One quiet issue + push while either Todoist app's refresher reports anything but ok; closes itself when both are ok.
+    The body holds fixed words only (`read:reauth_required`), never a token or a value."""
+    if sync is None:
+        from lifeos.platform import gate  # noqa: PLC0415
+
+        sync = gate.sync_incident
+    bad = sorted(f"{app}:{code}" for app, code in results.items() if code not in TODOIST_OK)
+    sync(
+        TODOIST_LABEL,
+        TODOIST_TITLE,
+        "The Todoist token refresher on lifeos-edge-01 reports: "
+        + (", ".join(bad) or "ok")
+        + ". reauth_required means Todoist "
+        "revoked the grant and Jim must consent again; vault_unwritable or access_unwritable means Bitwarden could not be written "
+        "(a recovery file keeps the new token); scope_mismatch means the consented scope is not the app's. This issue closes "
+        "itself when both apps are ok.",
+        bool(bad),
+        (
+            "Todoist token needs attention",
+            "The Todoist token refresher reports a problem. Open the todoist-token issue.",
+            "info",
+            "todoist_token",
+        ),
+        ("Todoist token ok again", "Both Todoist apps refresh normally.", "info", "todoist_token_recovered"),
+    )
+    return bad
+
+
+def todoist_check(bws, environ=None, opener=urllib.request.urlopen, run=subprocess.run, sync=None):
+    from lifeos.platform import todoist_refresh  # noqa: PLC0415
+
+    results = todoist_refresh.refresh_all(bws, environ, opener=opener, run=run)
+    todoist_incident(results, sync)
+    return results
+
+
+def watch(token, topic, opener=urllib.request.urlopen, run=None, environ=None, disk=None, store=None, todoist=None):
     found, status = variables(store)
     if found is None:
         return "TICKER_VARIABLES_UNREADABLE", status
@@ -423,6 +462,12 @@ def watch(token, topic, opener=urllib.request.urlopen, run=None, environ=None, d
             release_proof(token, opener)
         except Exception as error:  # noqa: BLE001
             print(f"ticker: release proof check failed ({type(error).__name__})")
+        if todoist:
+            try:
+                results = todoist()
+                print("ticker: todoist " + " ".join(f"{a}={c}" for a, c in sorted(results.items())))
+            except Exception as error:  # noqa: BLE001
+                print(f"ticker: todoist refresh failed ({type(error).__name__})")
     return "WATCH_DONE", None
 
 
@@ -446,7 +491,15 @@ def main(argv=None, opener=urllib.request.urlopen, run=None, environ=None):
     elif command == "tick":
         code, status = tick(token, opener)
     elif command == "watch":
-        code, status = watch(token, topic, opener, run, environ, store=store)
+        code, status = watch(
+            token,
+            topic,
+            opener,
+            run,
+            environ,
+            store=store,
+            todoist=(lambda: todoist_check(bws, environ)) if bws else None,
+        )
     else:
         found, status = variables(store)
         code = "TICKER_DRY_OK" if found is not None else "TICKER_VARIABLES_UNREADABLE"

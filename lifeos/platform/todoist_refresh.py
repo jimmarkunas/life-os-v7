@@ -8,6 +8,8 @@ An unset item is not consented yet and is skipped quietly; a grant whose scope i
 
 import json
 import os
+import subprocess
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -201,3 +203,51 @@ class FileRecovery:
             os.unlink(self.path)
         except FileNotFoundError:
             pass
+
+
+class BwsVault:
+    """`bws` items by id, read and edited with the ticker's Bitwarden machine-account token (never an argument)."""
+
+    def __init__(self, token, run=subprocess.run, environ=None):
+        self.token, self.run, self.environ = token, run, environ
+
+    def get(self, item):
+        from lifeos.platform import alert_store  # noqa: PLC0415 - installed beside this module on Oracle
+
+        try:
+            doc = json.loads(
+                alert_store._bws(self.token, ["secret", "get", item, "-o", "json"], self.run, self.environ)
+            )
+            if doc.get("id") != item or not isinstance(doc.get("value"), str):
+                raise ValueError("wrong item")
+            return doc["value"]
+        except (OSError, ValueError, AttributeError, subprocess.SubprocessError):
+            raise RefreshError("vault_unreadable") from None
+
+    def put(self, item, value):
+        from lifeos.platform import alert_store  # noqa: PLC0415
+
+        alert_store._bws(self.token, ["secret", "edit", item, "--value", value, "-o", "none"], self.run, self.environ)
+
+
+def refresh_all(token, environ=None, now=None, opener=urllib.request.urlopen, run=subprocess.run):
+    """-> {app: fixed result word} for both apps; one app failing never stops the other. The recovery file lives in the
+    unit's state directory (`STATE_DIRECTORY`); without one a vault outage after a rotation raises vault_unwritable."""
+    environ = environ if environ is not None else os.environ
+    state = (environ.get("STATE_DIRECTORY") or "").split(":")[0]
+    vault, out = BwsVault(token, run, environ), {}
+    for app in APPS:
+        try:
+            out[app] = refresh(
+                app,
+                vault,
+                now if now is not None else int(time.time()),
+                opener,
+                FileRecovery(os.path.join(state, f"todoist-{app}.json")) if state else None,
+                time.sleep,
+            )
+        except RefreshError as error:
+            out[app] = str(error)
+        except Exception as error:  # noqa: BLE001 - a fixed word only
+            out[app] = "failed_" + type(error).__name__.lower()[:24]
+    return out

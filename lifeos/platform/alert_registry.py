@@ -108,6 +108,11 @@ REGISTRY = {
         "edge", "The Close service release timer has found no green main head for over 2 hours (LIFE-562)."
     ),
     "deploy_stalled_recovered": _info("edge", "A green main head deployed; the Close release is moving again."),
+    "todoist_token": _info(
+        "edge",
+        "The Todoist token refresher reports a problem: a revoked grant, an unwritable vault or a wrong scope (REQ-88).",
+    ),
+    "todoist_token_recovered": _info("edge", "Both Todoist apps refresh normally again."),
     "release_proof_failed": _page(
         "edge",
         "The dry proof run after a Close release failed: one page with the deployed and previous good commits, the failing stage code and the revert line; Close releases pause (LIFE-693).",

@@ -226,5 +226,53 @@ class Refresh(unittest.TestCase):
                 self.assertNotIn(secret, str(e))
 
 
+class FakeBws:
+    """`bws secret get|edit` over a dict; records that the Bitwarden token is only ever in the environment."""
+
+    def __init__(self, store):
+        self.store, self.argv, self.envs = store, [], []
+
+    def __call__(self, argv, env=None, **kw):
+        self.argv.append(argv)
+        self.envs.append(env)
+        if argv[1:3] == ["secret", "get"]:
+            out = json.dumps({"id": argv[3], "value": self.store[argv[3]]})
+            return type("D", (), {"returncode": 0, "stdout": out})()
+        self.store[argv[3]] = argv[argv.index("--value") + 1]
+        return type("D", (), {"returncode": 0, "stdout": ""})()
+
+
+class RefreshAll(unittest.TestCase):
+    def test_both_apps_run_independently_through_bws_and_an_unset_app_is_quiet(self):
+        server, vault = consented()  # the read app is consented
+        store = dict(vault.d)
+        for k, v in Vault("write").d.items():
+            store[k] = v
+        bws = FakeBws(store)
+        server.clock = T0 + 2000
+        out = r.refresh_all("0.token", {"PATH": "/usr/bin"}, now=T0 + 2000, opener=server, run=bws)
+        self.assertEqual(out, {"read": "refreshed", "write": "not_consented"})
+        self.assertEqual(json.loads(store[A["read"]["token"]])["refresh_token"], "R1")
+        self.assertTrue(all(e["BWS_ACCESS_TOKEN"] == "0.token" for e in bws.envs))
+        self.assertFalse(any("0.token" in " ".join(a) for a in bws.argv))
+
+    def test_one_app_failing_never_stops_the_other_and_the_word_is_fixed(self):
+        server, vault = consented()
+        store = dict(vault.d)
+        for k, v in Vault("write").d.items():
+            store[k] = v
+        server.revoked = True
+        out = r.refresh_all("t", {}, now=T0 + 2000, opener=server, run=FakeBws(store))
+        self.assertEqual(out, {"read": "reauth_required", "write": "not_consented"})
+
+    def test_an_unreadable_vault_is_a_fixed_word(self):
+        def broken(argv, env=None, **kw):
+            return type("D", (), {"returncode": 1, "stdout": ""})()
+
+        self.assertEqual(
+            r.refresh_all("t", {}, now=T0, run=broken), {"read": "vault_unreadable", "write": "vault_unreadable"}
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
