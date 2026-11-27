@@ -199,7 +199,7 @@ class PrivacyGuard(unittest.TestCase):
 
 
 class BareIdsAndNames(unittest.TestCase):
-    """LIFE-1066: the sweep for ids with no URL around them and for personal and employer names"""
+    """the sweep for ids with no URL around them and for personal and employer names"""
 
     def test_the_repository_has_no_real_notion_id_unlisted_bare_id_or_listed_name(self):
         self.assertEqual(
